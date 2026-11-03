@@ -1,9 +1,9 @@
 import type { Annotations, LockViolation } from "../../src/core/annotations.js"
 import type { CheckResult } from "../../src/core/check.js"
 import type { HistoryListing } from "../../src/core/history.js"
-import type { CircuitModel, Edit } from "../../src/core/types.js"
+import type { CircuitModel, Edit, Literal, PartInfo, PropInfo, TraceInfo } from "../../src/core/types.js"
 
-export type { Annotations, CheckResult, CircuitModel, Edit, HistoryListing, LockViolation }
+export type { Annotations, CheckResult, CircuitModel, Edit, HistoryListing, Literal, LockViolation, PartInfo, PropInfo, TraceInfo }
 
 export interface CircuitData {
   file: string
@@ -54,6 +54,11 @@ function readToken(): string {
 
 const token = readToken()
 export const hasToken = token !== ""
+
+// Pasting the printed address into an open tab only changes the fragment, which does not reload.
+window.addEventListener("hashchange", () => {
+  if (/[#&]token=/.test(window.location.hash)) window.location.reload()
+})
 
 export async function api<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(path, {

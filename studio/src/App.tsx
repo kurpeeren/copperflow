@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react"
 import { api, hasToken, subscribe, type BuildState, type CircuitData, type Edit, type HistoryListing } from "./api"
+import { UndoIcon } from "./icons"
+import { Inspector } from "./Inspector"
+import { LeftPanel } from "./LeftPanel"
 import { PcbPane } from "./PcbPane"
 import { SchematicPane } from "./SchematicPane"
-import { Sidebar } from "./Sidebar"
 
 /** Every action reports failures itself and resolves to whether it succeeded. */
 export interface Actions {
@@ -69,6 +71,15 @@ export function App() {
     })
   }, [file, refresh, refreshBuild, notify])
 
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const typing = event.target instanceof HTMLElement && event.target.closest("input, textarea, select")
+      if (event.key === "Escape" && !typing) setSelected(null)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [])
+
   const run = useCallback(
     async (task: () => Promise<unknown>): Promise<boolean> => {
       try {
@@ -104,30 +115,42 @@ export function App() {
   }
   return (
     <div className="app">
-      <header>
-        <strong className="brand">copperflow</strong>
-        <select value={file ?? ""} onChange={(e) => setFile(e.target.value)} aria-label="Circuit file">
-          {files.map((f) => (
-            <option key={f}>{f}</option>
-          ))}
-        </select>
-        <nav>
-          {(["pcb", "schematic"] as const).map((t) => (
-            <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
+      <header className="topbar">
+        <div className="start">
+          <span className="brand">copperflow</span>
+          <select value={file ?? ""} onChange={(e) => setFile(e.target.value)} aria-label="Circuit file">
+            {files.map((f) => (
+              <option key={f}>{f}</option>
+            ))}
+          </select>
+        </div>
+        <div className="views" role="tablist" aria-label="View">
+          {(["schematic", "pcb"] as const).map((t) => (
+            <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
               {t === "pcb" ? "PCB" : "Schematic"}
             </button>
           ))}
-        </nav>
-        <span className={`status ${build.status}`}>{statusText(build)}</span>
-        <button onClick={() => void actions.undo()}>Undo</button>
+        </div>
+        <div className="end">
+          <span className={`build ${buildTone(build)}`} role="status">
+            <span className="dot" aria-hidden="true" />
+            {statusText(build)}
+          </span>
+          <button onClick={() => void actions.undo()} title="Undo the last change">
+            <UndoIcon /> Undo
+          </button>
+        </div>
       </header>
       {circuit && circuit.violations.length > 0 && (
-        <div className="banner">
-          Locked parts changed outside the Studio: {circuit.violations.map((v) => `${v.part} (${v.detail})`).join(", ")}
+        <div className="banner" role="alert">
+          Locked parts changed outside the editor: {circuit.violations.map((v) => `${v.part} (${v.detail})`).join(", ")}
         </div>
       )}
-      <main>
-        <section className="viewer">
+      <main className="workspace">
+        {circuit && (
+          <LeftPanel circuit={circuit} history={history} selected={selected} onSelect={setSelected} actions={actions} />
+        )}
+        <section className="canvas">
           {!json && <p className="empty">{build.status === "failed" ? build.error : "Building the circuit…"}</p>}
           {json && circuit && tab === "pcb" && (
             <PcbPane
@@ -144,15 +167,7 @@ export function App() {
           )}
         </section>
         {circuit && (
-          <Sidebar
-            circuit={circuit}
-            json={json}
-            build={build}
-            history={history}
-            selected={selected}
-            onSelect={setSelected}
-            actions={actions}
-          />
+          <Inspector circuit={circuit} json={json} build={build} selected={selected} onSelect={setSelected} actions={actions} />
         )}
       </main>
       {message && (
@@ -164,10 +179,20 @@ export function App() {
   )
 }
 
+function errorCount(build: BuildState): number {
+  return build.report?.errors.reduce((sum, g) => sum + g.count, 0) ?? 0
+}
+
 function statusText(build: BuildState): string {
-  if (build.status === "building") return "Building…"
+  if (build.status === "building") return "Building"
   if (build.status === "failed") return "Build failed"
-  if (build.status !== "done" || !build.report) return ""
-  const errors = build.report.errors.reduce((sum, g) => sum + g.count, 0)
-  return errors === 0 ? "Build OK" : `${errors} build errors`
+  if (build.status !== "done" || !build.report) return "Not built"
+  const errors = errorCount(build)
+  return errors === 0 ? "Build OK" : `${errors} errors`
+}
+
+function buildTone(build: BuildState): "busy" | "bad" | "good" | "idle" {
+  if (build.status === "building") return "busy"
+  if (build.status === "failed" || errorCount(build) > 0) return "bad"
+  return build.status === "done" ? "good" : "idle"
 }
