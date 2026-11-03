@@ -1,0 +1,6 @@
+node_modules/
+dist/
+coverage/
+.copperflow/
+*.log
+.DS_Store

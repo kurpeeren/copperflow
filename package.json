@@ -1,0 +1,54 @@
+{
+  "name": "copperflow",
+  "version": "0.1.0",
+  "description": "Design circuits in code with a human and an AI agent editing the same files.",
+  "license": "Apache-2.0",
+  "author": "Eren Kürpe",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kurpeeren/copperflow.git"
+  },
+  "keywords": [
+    "pcb",
+    "schematic",
+    "circuit",
+    "tscircuit",
+    "mcp",
+    "eda"
+  ],
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "copperflow": "dist/cli.js"
+  },
+  "exports": {
+    ".": "./dist/core/index.js"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@babel/parser": "8.1.0",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "magic-string": "1.4.5",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@babel/types": "8.1.0",
+    "@types/node": "22.20.5",
+    "@vitest/coverage-v8": "5.1.0",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}
