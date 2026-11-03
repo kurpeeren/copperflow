@@ -53,6 +53,6 @@ function formatProps(props: Record<string, PropInfo>): string {
 }
 
 /** Keeps every item on one line, so multi-line values cannot imitate other summary lines. */
-function oneLine(text: string): string {
+export function oneLine(text: string): string {
   return text.replace(/\s*[\r\n]+\s*/g, " ")
 }

@@ -186,7 +186,7 @@ function changedLockedParts(current: LoadedCircuit, next: CircuitModel): string[
     .filter((name) => state(current.model, name) !== state(next, name))
 }
 
-function isInside(root: string, path: string): boolean {
+export function isInside(root: string, path: string): boolean {
   const rel = relative(root, path)
   return rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)
 }

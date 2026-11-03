@@ -2,7 +2,9 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js"
 import { z } from "zod"
 import {
+  checkCircuit,
   editCircuit,
+  formatCheck,
   formatHistory,
   formatSummary,
   listCircuits,
@@ -16,6 +18,7 @@ import { VERSION } from "../version.js"
 const INSTRUCTIONS = `copperflow lets you edit tscircuit circuit files together with a human.
 - Call circuit_summary before changing a circuit, and again when the human says they changed something.
 - Change existing parts and traces through these tools rather than rewriting the file, so locks and history apply.
+- After moving or adding parts, call check_circuit and fix placement errors before reporting success.
 - Never change, move or remove a part marked [LOCKED]. If a summary lists lock violations, restore those parts.
 - "Marks from the human" are instructions placed on the board; follow them.
 - recent_changes shows what the human undid; do not redo an undone change unless asked.`
@@ -24,7 +27,12 @@ const file = z.string().describe("Circuit file path relative to the project root
 const literal = z.union([z.string(), z.number(), z.boolean()])
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false }
 
-export function createCopperflowServer(root: string): McpServer {
+export interface ServerOptions {
+  /** The tscircuit CLI used by check_circuit; defaults to $COPPERFLOW_TSCI or `tsci`. */
+  buildCommand?: string[]
+}
+
+export function createCopperflowServer(root: string, options: ServerOptions = {}): McpServer {
   const server = new McpServer({ name: "copperflow", version: VERSION }, { instructions: INSTRUCTIONS })
 
   const edit = (circuit: string, edits: Edit[], summary: string) =>
@@ -101,6 +109,21 @@ export function createCopperflowServer(root: string): McpServer {
       annotations: { destructiveHint: true },
     },
     ({ file: circuit, from, to }) => edit(circuit, [{ kind: "removeTrace", from, to }], `remove trace ${from} -> ${to}`),
+  )
+
+  server.registerTool(
+    "check_circuit",
+    {
+      description:
+        "Build the circuit with the tscircuit CLI and report its errors and warnings: courtyard overlaps, unrouted ports, missing parts. Run it after every placement change; it can take a minute.",
+      inputSchema: { file },
+      annotations: { readOnlyHint: false, destructiveHint: false },
+    },
+    ({ file: circuit }) =>
+      run(async () => {
+        const result = await checkCircuit(root, circuit, options.buildCommand ? { command: options.buildCommand } : {})
+        return formatCheck(circuit, result)
+      }),
   )
 
   server.registerTool(

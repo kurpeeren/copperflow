@@ -49,8 +49,8 @@ Source: device datasheets.
 
 ## Placement
 
-- Part courtyards must not overlap. tscircuit skips autorouting when they do, so build after
-  every placement change.
+- Part courtyards must not overlap. tscircuit skips autorouting when they do, so run
+  `check_circuit` after every placement change.
 
 Source: tscircuit build output; IPC-7351, *Generic Requirements for Surface Mount Design and
 Land Pattern Standard*, for courtyard definitions.

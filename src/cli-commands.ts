@@ -2,6 +2,8 @@ import { resolve } from "node:path"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   addMark,
+  checkCircuit,
+  formatCheck,
   formatHistory,
   formatSummary,
   listEntries,
@@ -26,6 +28,7 @@ const HELP = `copperflow ${VERSION}
 Usage:
   copperflow mcp                              start the MCP server on stdio
   copperflow summary <file>                   print a circuit summary
+  copperflow check <file>                     build with tscircuit and list errors and warnings
   copperflow lock <file> <part...>            lock parts so the agent cannot change them
   copperflow unlock <file> <part...>          unlock parts
   copperflow mark <file> <text> [--pcb x,y | --sch x,y]
@@ -34,20 +37,32 @@ Usage:
   copperflow history [--limit n]              list recent changes
   copperflow undo [id]                        undo the newest change, or the given one
 
-Every command accepts --root <dir> (default: the current directory).`
+Every command accepts --root <dir> (default: the current directory).
+Set COPPERFLOW_TSCI to use a tscircuit CLI that is not on the PATH.`
 
-export async function runCli(args: string[], cwd: string, io: CliIO): Promise<number> {
+export interface CliOptions {
+  /** The tscircuit CLI for `check` and the MCP server; defaults to $COPPERFLOW_TSCI or `tsci`. */
+  buildCommand?: string[]
+}
+
+export async function runCli(args: string[], cwd: string, io: CliIO, options: CliOptions = {}): Promise<number> {
   const [rootOption, afterRoot] = takeOption(args, "--root")
   const root = resolve(cwd, rootOption ?? ".")
   const [command, ...rest] = afterRoot
   try {
     switch (command) {
       case "mcp":
-        await createCopperflowServer(root).connect(new StdioServerTransport())
+        await createCopperflowServer(root, options).connect(new StdioServerTransport())
         return 0
       case "summary":
         io.out(formatSummary(await loadCircuit(root, required(rest[0], "file"))))
         return 0
+      case "check": {
+        const file = required(rest[0], "file")
+        const result = await checkCircuit(root, file, options.buildCommand ? { command: options.buildCommand } : {})
+        io.out(formatCheck(file, result))
+        return result.ok ? 0 : 1
+      }
       case "lock":
       case "unlock":
         await changeLocks(root, command, rest, io)

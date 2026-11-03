@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from "vitest"
 import { mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { createCopperflowServer } from "../src/mcp/server.js"
@@ -10,13 +11,14 @@ import { addMark, lockParts } from "../src/core/annotations.js"
 import { BOARD } from "./fixtures.js"
 
 const FILE = "main.circuit.tsx"
+const FAKE_TSCI = [process.execPath, fileURLToPath(new URL("./fixtures/fake-tsci.mjs", import.meta.url))]
 let root: string
 let client: Client
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "cf-mcp-"))
   await writeFile(join(root, FILE), BOARD)
-  const server = createCopperflowServer(root)
+  const server = createCopperflowServer(root, { buildCommand: FAKE_TSCI })
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
   client = new Client({ name: "test", version: "0.0.0" })
   await Promise.all([server.connect(serverSide), client.connect(clientSide)])
@@ -33,6 +35,7 @@ describe("MCP server", () => {
     const { tools } = await client.listTools()
     expect(tools.map((t) => t.name).sort()).toEqual([
       "add_trace",
+      "check_circuit",
       "circuit_summary",
       "list_circuits",
       "recent_changes",
@@ -81,6 +84,15 @@ describe("MCP server", () => {
     expect((await call("undo_change")).isError).toBe(false)
     expect((await call("undo_change")).isError).toBe(false)
     expect(await readFile(join(root, FILE), "utf8")).toBe(BOARD)
+  })
+
+  test("check_circuit builds the board and reports placement errors", async () => {
+    const elements = [{ type: "pcb_courtyard_overlap_error", message: "Courtyard of U1 overlaps with courtyard of C2" }]
+    await writeFile(join(root, "main.circuit.fake.json"), JSON.stringify({ exitCode: 1, elements }))
+    const result = await call("check_circuit", { file: FILE })
+    expect(result.isError).toBe(false)
+    expect(result.text).toContain("build failed, 1 error")
+    expect(result.text).toContain("pcb_courtyard_overlap_error: Courtyard of U1 overlaps with courtyard of C2")
   })
 
   test("paths outside the project are rejected", async () => {

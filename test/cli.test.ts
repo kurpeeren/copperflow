@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from "vitest"
 import { mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { runCli } from "../src/cli-commands.js"
 import { readAnnotations } from "../src/core/annotations.js"
 import { BOARD } from "./fixtures.js"
@@ -43,6 +44,16 @@ describe("cli", () => {
     expect(out.join("\n")).toContain("No changes recorded yet.")
     expect(await run("help")).toBe(0)
     expect(out.join("\n")).toContain("copperflow mcp")
+  })
+
+  test("check prints the build report and fails when the build has errors", async () => {
+    const fakeTsci = [process.execPath, fileURLToPath(new URL("./fixtures/fake-tsci.mjs", import.meta.url))]
+    const elements = [{ type: "pcb_courtyard_overlap_error", message: "Courtyard of U1 overlaps with courtyard of C2" }]
+    await writeFile(join(root, "main.circuit.fake.json"), JSON.stringify({ exitCode: 1, elements }))
+    expect(await runCli(["check", FILE], root, io(), { buildCommand: fakeTsci })).toBe(1)
+    expect(out.join("\n")).toContain("pcb_courtyard_overlap_error")
+    await writeFile(join(root, "main.circuit.fake.json"), JSON.stringify({ exitCode: 0, elements: [] }))
+    expect(await runCli(["check", FILE], root, io(), { buildCommand: fakeTsci })).toBe(0)
   })
 
   test("errors are reported with a non-zero exit code", async () => {

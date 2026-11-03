@@ -17,8 +17,10 @@ undoing their work.
    again unless they ask.
 3. Change existing parts and traces with `set_props`, `remove_part`, `add_trace` and
    `remove_trace`. These tools enforce locks and record history; editing the file directly does not.
-4. After any placement change, build the board (`tsci build <file>`) and read placement errors,
-   such as courtyard overlaps, which stop autorouting. Fix them before you report success.
+4. After any placement change, call `check_circuit`. Fix placement errors such as
+   `pcb_courtyard_overlap_error` first: they stop autorouting, so the unrouted-port errors
+   that follow them usually disappear once placement is fixed. Do not report success while
+   the build fails.
 5. Tell the human what you changed and the change ids, so they can undo a single step.
 
 ## Rules

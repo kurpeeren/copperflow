@@ -109,6 +109,7 @@ human undid.
 | `remove_part` | remove a part and the traces connected to it |
 | `add_trace` | add a trace between two selectors |
 | `remove_trace` | remove a trace |
+| `check_circuit` | build with the tscircuit CLI and report errors and warnings from the circuit JSON |
 | `recent_changes` | recent history entries, including undos |
 | `undo_change` | undo one of the agent's own changes |
 
