@@ -53,6 +53,15 @@ const buildQueues = new Map<string, Promise<void>>()
  * Builds in one project run one at a time.
  */
 export async function checkCircuit(root: string, file: string, options: CheckOptions = {}): Promise<CheckResult> {
+  return (await buildCircuit(root, file, options)).result
+}
+
+/** Like checkCircuit, but also returns the circuit JSON for viewers. */
+export async function buildCircuit(
+  root: string,
+  file: string,
+  options: CheckOptions = {},
+): Promise<{ result: CheckResult; circuitJson: unknown[] }> {
   const circuit = await resolveCircuit(root, file)
   const [command = "tsci", ...prefix] = options.command ?? [process.env.COPPERFLOW_TSCI || "tsci"]
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
@@ -69,7 +78,8 @@ export async function checkCircuit(root: string, file: string, options: CheckOpt
   }
   const elements = await readCircuitJson(root, written)
   const errors = groupIssues(elements, "_error")
-  return { ok: run.code === 0 && errors.length === 0, exitCode: run.code, errors, warnings: groupIssues(elements, "_warning") }
+  const warnings = groupIssues(elements, "_warning")
+  return { result: { ok: run.code === 0 && errors.length === 0, exitCode: run.code, errors, warnings }, circuitJson: elements }
 }
 
 export function formatCheck(file: string, result: CheckResult): string {

@@ -117,6 +117,32 @@ All file arguments are resolved inside the project root; paths outside it are re
 Every edit is re-parsed before it is written; an edit that would produce invalid code is
 rejected.
 
+### Studio (0.2)
+
+`copperflow studio` starts a local web server and opens a browser editor for the project.
+
+- The server builds the selected circuit with the tscircuit CLI (about 8 s for the example
+  board) and serves the circuit JSON. It watches circuit and annotation files, so changes made
+  by the agent or in a code editor appear in the browser, and rebuilds after each change.
+- The PCB view is tscircuit's PCB viewer in editing mode. Dropping a dragged part becomes a
+  `setProps` edit of `pcbX`/`pcbY`: the drag distance is added to the literal values, or the
+  new centre is written when the part had no position.
+- The schematic view is tscircuit's schematic viewer. Clicking a part selects it; in wiring
+  mode, clicking two pins adds a trace between them.
+- A side panel lists parts (lock, rotate by 90°, remove), traces (remove), marks (add at the
+  selected part or at a box drawn on the PCB, remove), the build report and the history with
+  undo.
+- Every change goes through the same core as the agent's tools, with author `human`: locks,
+  history and undo behave the same way.
+- Security: the server listens on 127.0.0.1 only, accepts only `localhost`/`127.0.0.1` Host
+  headers, rejects cross-origin requests and requires a random per-session token in a header.
+  The token is never served by the server: the CLI prints it in the URL fragment, which
+  browsers do not send, so neither web pages nor other local programs can obtain it. Pages
+  carry a strict Content-Security-Policy (no external connections), event streams and
+  connections are capped, and unexpected errors are reported without file paths.
+- The browser app is built with Vite and shipped prebuilt in the npm package; the viewers are
+  bundled into it, so they are not runtime dependencies.
+
 ### Project hierarchy (planned)
 
 ```
@@ -146,7 +172,7 @@ never writes pad coordinates; footprints come from footprint generators or impor
 
 - **0.1** (this release): source model with the editable subset, edits, locks and marks,
   history and undo, MCP server, CLI, a workflow skill, an example board, CI.
-- **0.2**: browser Studio built on tscircuit viewers; drag, rotate, lock, delete and
+- **0.2** (done): browser Studio built on tscircuit viewers; drag, rotate, lock, delete and
   reconnect wires, draw marks; all written back through the 0.1 core.
 - **0.3**: parts library format and datasheet-to-part pipeline; BOM and datasheet package.
 - **0.4**: project hierarchy (blocks, interfaces, generated summaries), `rules.yaml` checks.
@@ -170,4 +196,7 @@ never writes pad coordinates; footprints come from footprint generators or impor
   not new connections to it.
 - Removing a part also removes its traces, but refuses when one of them reaches a locked part.
 - Undo, by the agent or the human, refuses to change a locked part; unlock it first.
-- 0.1 is a single npm package; it becomes a monorepo when the Studio arrives.
+- copperflow stays a single npm package: the Studio's browser code lives in `studio/` and is
+  built into `dist/studio`.
+- Studio drags write `pcbX`/`pcbY` by adding the drag distance to the existing literals, so
+  parts inside offset groups move correctly.

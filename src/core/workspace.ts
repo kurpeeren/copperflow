@@ -36,6 +36,7 @@ export interface EditResult {
 
 /** Resolves a project-relative path and rejects anything outside the project root. */
 export function resolveInRoot(root: string, file: string): string {
+  if (file.includes("\0")) throw new Error("A file path cannot contain a NUL character")
   const path = resolve(root, file)
   if (!isInside(resolve(root), path)) throw new Error(`${file} is outside the project root`)
   return path

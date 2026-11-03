@@ -13,8 +13,8 @@ TSX files. You and your agent work on them together:
 Everything runs locally. There is no chat inside copperflow: use the agent you already use,
 for example Claude Code, through MCP.
 
-> **Status: 0.1, early.** The core, the MCP server and the CLI work. The visual editor,
-> the parts library and the project hierarchy are next; see [docs/design.md](docs/design.md).
+> **Status: 0.2, early.** The core, the MCP server, the CLI and the visual editor work.
+> The parts library and the project hierarchy are next; see [docs/design.md](docs/design.md).
 
 ## Quick start
 
@@ -55,6 +55,17 @@ cp -r /path/to/copperflow/skills/copperflow .claude/skills/
 Any other MCP client can run `copperflow mcp` over stdio from the project folder
 (or pass `--root <dir>`).
 
+### Open the visual editor
+
+```bash
+copperflow studio --root examples/usb-c-ldo
+```
+
+Then open the address it prints. The address carries a key for this session, so other web
+pages and other programs on your computer cannot use the editor's API. Drag parts on the PCB, lock them, rotate or remove them,
+wire pins in the schematic, leave marks for the agent and undo changes. Every edit is written
+back into the circuit file. When the agent changes the file, the editor updates by itself.
+
 ## How it works
 
 **The editable subset.** copperflow only writes back to code it can read without running it:
@@ -90,6 +101,7 @@ There is no unlock tool on purpose.
 
 ```text
 copperflow mcp                              start the MCP server on stdio
+copperflow studio [--port n]                open the visual editor at http://127.0.0.1:4777
 copperflow summary <file>                   print a circuit summary
 copperflow check <file>                     build with tscircuit and list errors and warnings
 copperflow lock <file> <part...>            lock parts so the agent cannot change them
@@ -103,7 +115,7 @@ copperflow undo [id]                        undo the newest change, or the given
 
 ## Roadmap
 
-- **0.2** Visual editor in the browser: drag, rotate, lock, delete and reconnect wires, draw marks.
+- **0.2** (done) Visual editor in the browser: drag, rotate, lock, delete and reconnect wires, marks.
 - **0.3** Parts library (one folder per part) and datasheet-to-part import; BOM and datasheet package.
 - **0.4** Project hierarchy for large boards: a project map, blocks with interfaces, generated summaries, project rules.
 

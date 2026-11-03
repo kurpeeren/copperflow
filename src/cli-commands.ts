@@ -16,6 +16,7 @@ import {
   type MarkInput,
 } from "./core/index.js"
 import { createCopperflowServer } from "./mcp/server.js"
+import { startStudio } from "./studio/server.js"
 import { VERSION } from "./version.js"
 
 export interface CliIO {
@@ -27,6 +28,7 @@ const HELP = `copperflow ${VERSION}
 
 Usage:
   copperflow mcp                              start the MCP server on stdio
+  copperflow studio [--port n]                open the visual editor at http://127.0.0.1:4777
   copperflow summary <file>                   print a circuit summary
   copperflow check <file>                     build with tscircuit and list errors and warnings
   copperflow lock <file> <part...>            lock parts so the agent cannot change them
@@ -54,6 +56,16 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
       case "mcp":
         await createCopperflowServer(root, options).connect(new StdioServerTransport())
         return 0
+      case "studio": {
+        const [port] = takeOption(rest, "--port")
+        const studio = await startStudio({
+          root,
+          ...(port ? { port: positiveInt(port) } : {}),
+          ...(options.buildCommand ? { buildCommand: options.buildCommand } : {}),
+        })
+        io.out(`copperflow studio is running. Open this address (it contains a key for this session):\n${studio.openUrl}\nPress Ctrl+C to stop.`)
+        return 0
+      }
       case "summary":
         io.out(formatSummary(await loadCircuit(root, required(rest[0], "file"))))
         return 0
