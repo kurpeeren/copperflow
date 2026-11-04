@@ -5,6 +5,7 @@ import type { Actions } from "./App"
 import { nameOfSchematicComponent, selectorOfSchematicPort } from "./circuit-json"
 import { WireIcon } from "./icons"
 import { useHeight } from "./useHeight"
+import { useHideVendorLabels } from "./useHideVendorLabels"
 
 /** Schematic colours matching the workspace: graphite sheet, silkscreen symbols, copper wires. */
 const SCHEMATIC_COLORS = {
@@ -40,6 +41,7 @@ interface Props {
 /** The schematic: click a part to select it; in wiring mode, click two pins to connect them. */
 export function SchematicPane({ json, actions, onSelect }: Props) {
   const { ref, height } = useHeight<HTMLDivElement>()
+  useHideVendorLabels()
   const [wiring, setWiring] = useState(false)
   const [first, setFirst] = useState<string | null>(null)
 

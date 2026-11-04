@@ -3,7 +3,7 @@ import { api, hasToken, subscribe, type BuildState, type CircuitData, type Edit,
 import { UndoIcon } from "./icons"
 import { Inspector } from "./Inspector"
 import { LeftPanel } from "./LeftPanel"
-import { PcbPane } from "./PcbPane"
+import { PcbCanvas } from "./pcb/PcbCanvas"
 import { SchematicPane } from "./SchematicPane"
 
 /** Every action reports failures itself and resolves to whether it succeeded. */
@@ -26,6 +26,7 @@ const PLACE_DEFAULTS: Record<string, Record<string, string>> = {
   inductor: { inductance: "10uH", footprint: "0805" },
   led: { color: "red", footprint: "0603" },
   crystal: { frequency: "16MHz" },
+  fuse: { currentRating: "500mA", footprint: "1206" },
 }
 
 export function App() {
@@ -203,7 +204,7 @@ export function App() {
         <section className="canvas">
           {!json && <p className="empty">{build.status === "failed" ? build.error : "Building the circuit…"}</p>}
           {json && circuit && tab === "pcb" && (
-            <PcbPane
+            <PcbCanvas
               json={json}
               buildId={build.finishedAt}
               circuit={circuit}

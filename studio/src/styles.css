@@ -236,6 +236,55 @@ input:disabled {
   height: 100%;
 }
 
+.pcb-canvas {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  background: #121417;
+}
+
+.pcb-canvas canvas {
+  display: block;
+  touch-action: none;
+}
+
+.canvas-tools {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgb(34 38 44 / 92%);
+}
+
+.canvas-tools label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding-left: 6px;
+  color: var(--muted);
+}
+
+.canvas-tools select,
+.canvas-tools button {
+  height: 26px;
+}
+
+.canvas-status {
+  position: absolute;
+  left: 10px;
+  bottom: 8px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: pre;
+  pointer-events: none;
+}
+
 .pane.with-toolbar {
   display: flex;
   flex-direction: column;

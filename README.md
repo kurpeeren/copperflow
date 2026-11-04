@@ -64,7 +64,8 @@ copperflow studio --root examples/usb-c-ldo
 Then open the address it prints. The address carries a key for this session, so other web
 pages and other programs on your computer cannot use the editor's API.
 
-Drag parts on the PCB, lock them, rotate or remove them, change values in the inspector,
+Drag parts on the PCB (they snap to a 0.1, 0.5 or 1 mm grid), press R to rotate and Delete to
+remove, scroll to zoom, drag the background to pan, lock parts, change values in the inspector,
 wire pins in the schematic, leave marks for the agent and undo changes. Every edit is written
 back into the circuit file. When the agent changes the file, the editor updates by itself.
 
@@ -157,3 +158,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). "copperflow" refers to this
 project; the license does not grant rights to the name.
+
+The visual editor bundles open-source packages, including tscircuit's drawing and schematic
+libraries (MIT). Their licences ship in `dist/app/THIRD_PARTY_LICENSES.txt`.

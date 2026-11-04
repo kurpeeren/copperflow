@@ -82,6 +82,7 @@ const TYPES: Record<string, string> = {
   ".wasm": "application/wasm",
   ".woff2": "font/woff2",
   ".map": "application/json",
+  ".txt": "text/plain; charset=utf-8",
 }
 
 const literal = z.union([z.string().max(500), z.number(), z.boolean()])
