@@ -12,6 +12,49 @@ export interface CircuitData {
   violations: LockViolation[]
 }
 
+export interface LibraryPart {
+  id: string
+  title: string
+  mpn?: string
+  footprint: string
+  component: string
+  verified: boolean
+  verifiedBy?: string
+}
+
+export interface PartsData {
+  library: LibraryPart[]
+  builtin: string[]
+}
+
+export interface PartDetails {
+  id: string
+  part: {
+    title: string
+    manufacturer?: string
+    mpn?: string
+    footprint: string
+    suppliers?: Record<string, string>
+    datasheet?: { file?: string; url?: string }
+    verified?: { by: string; against: string; date: string }
+  }
+  checklist: string
+}
+
+export interface BomLine {
+  designators: string[]
+  quantity: number
+  kind: string
+  value: string
+  footprint: string
+  manufacturer: string
+  mpn: string
+  supplier: string
+  datasheet: string
+  libraryPart?: string
+  verified?: boolean
+}
+
 export interface BuildState {
   status: "idle" | "building" | "done" | "failed"
   circuitJson?: CircuitElement[]
@@ -75,12 +118,14 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
  * Subscribes to file changes and build updates; returns an unsubscribe function.
  * Uses fetch rather than EventSource so the token goes in a header, not in the URL.
  */
-export function subscribe(onEvent: (event: "change" | "build", file: string) => void): () => void {
+export function subscribe(onEvent: (event: "change" | "build" | "library", file: string) => void): () => void {
   const controller = new AbortController()
   const handle = (block: string) => {
     const event = /^event: (.+)$/m.exec(block)?.[1]
     const data = /^data: (.+)$/m.exec(block)?.[1]
-    if ((event === "change" || event === "build") && data) onEvent(event, (JSON.parse(data) as { file: string }).file)
+    if ((event === "change" || event === "build" || event === "library") && data) {
+      onEvent(event, (JSON.parse(data) as { file?: string }).file ?? "")
+    }
   }
   const listen = async () => {
     while (!controller.signal.aborted) {

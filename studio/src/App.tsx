@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react"
-import { api, hasToken, subscribe, type BuildState, type CircuitData, type Edit, type HistoryListing } from "./api"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { api, hasToken, subscribe, type BuildState, type CircuitData, type Edit, type HistoryListing, type PartsData } from "./api"
 import { UndoIcon } from "./icons"
 import { Inspector } from "./Inspector"
 import { LeftPanel } from "./LeftPanel"
@@ -13,10 +13,20 @@ export interface Actions {
   mark(text: string, at?: { view: "pcb" | "schematic"; x: number; y: number }): Promise<boolean>
   unmark(id: string): Promise<boolean>
   undo(id?: string): Promise<boolean>
+  verify(id: string, by: string, against: string, confirm: string): Promise<boolean>
   notify(text: string): void
 }
 
 type Tab = "pcb" | "schematic"
+
+/** Starting values for built-in parts tscircuit cannot build without, so a placed part builds at once. */
+const PLACE_DEFAULTS: Record<string, Record<string, string>> = {
+  resistor: { resistance: "10k", footprint: "0402" },
+  capacitor: { capacitance: "100nF", footprint: "0402" },
+  inductor: { inductance: "10uH", footprint: "0805" },
+  led: { color: "red", footprint: "0603" },
+  crystal: { frequency: "16MHz" },
+}
 
 export function App() {
   const [files, setFiles] = useState<string[]>([])
@@ -27,6 +37,7 @@ export function App() {
   const [selected, setSelected] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>("pcb")
   const [message, setMessage] = useState<string | null>(null)
+  const [parts, setParts] = useState<PartsData>({ library: [], builtin: [] })
 
   const notify = useCallback((text: string) => {
     setMessage(text)
@@ -42,6 +53,10 @@ export function App() {
     setHistory(entries)
   }, [])
 
+  const refreshParts = useCallback(async () => {
+    setParts(await api<PartsData>("/api/parts"))
+  }, [])
+
   const refreshBuild = useCallback(async (target: string) => {
     const next = await api<BuildState>(`/api/build?file=${encodeURIComponent(target)}`)
     // Keep the same circuit JSON object while a build runs, so the viewers do not reset.
@@ -55,7 +70,8 @@ export function App() {
         setFile((current) => current ?? list[0])
       })
       .catch((error: Error) => notify(error.message))
-  }, [notify])
+    refreshParts().catch((error: Error) => notify(error.message))
+  }, [notify, refreshParts])
 
   useEffect(() => {
     if (!file) return
@@ -65,11 +81,15 @@ export function App() {
       .then(() => refreshBuild(file))
       .catch((error: Error) => notify(error.message))
     return subscribe((event, changed) => {
+      if (event === "library") {
+        refreshParts().catch((error: Error) => notify(error.message))
+        return
+      }
       if (changed !== file) return
       const update = event === "change" ? refresh(file) : refreshBuild(file)
       update.catch((error: Error) => notify(error.message))
     })
-  }, [file, refresh, refreshBuild, notify])
+  }, [file, refresh, refreshBuild, refreshParts, notify])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -95,13 +115,35 @@ export function App() {
     [file, refresh, notify],
   )
 
-  const actions: Actions = {
-    edit: (edits, summary) => run(() => api("/api/edit", { file, edits, summary })),
-    lock: (parts, locked) => run(() => api("/api/lock", { file, parts, locked })),
-    mark: (text, at) => run(() => api("/api/mark", { file, text, ...at })),
-    unmark: (id) => run(() => api("/api/unmark", { file, id })),
-    undo: (id) => run(() => api("/api/undo", id ? { id } : {})),
-    notify,
+  // Memoised so panels can depend on it in effects without refetching on every render.
+  const actions: Actions = useMemo(
+    () => ({
+      edit: (edits, summary) => run(() => api("/api/edit", { file, edits, summary })),
+      lock: (parts, locked) => run(() => api("/api/lock", { file, parts, locked })),
+      mark: (text, at) => run(() => api("/api/mark", { file, text, ...at })),
+      unmark: (id) => run(() => api("/api/unmark", { file, id })),
+      undo: (id) => run(() => api("/api/undo", id ? { id } : {})),
+      verify: async (id, by, against, confirm) => {
+        const ok = await run(() => api("/api/verify", { id, by, against, confirm }))
+        if (ok) await refreshParts()
+        return ok
+      },
+      notify,
+    }),
+    [file, run, notify, refreshParts],
+  )
+
+  const place = async (part: string) => {
+    try {
+      const props = PLACE_DEFAULTS[part]
+      const result = await api<{ name: string }>("/api/place", { file, part, ...(props ? { props } : {}) })
+      setSelected(result.name)
+      notify(`Placed ${result.name}${props ? " with a starting value; change it on the right" : ""}. Drag it into position on the PCB.`)
+    } catch (error) {
+      notify((error as Error).message)
+    } finally {
+      if (file) await refresh(file).catch(() => undefined)
+    }
   }
 
   const json = build.circuitJson
@@ -148,7 +190,15 @@ export function App() {
       )}
       <main className="workspace">
         {circuit && (
-          <LeftPanel circuit={circuit} history={history} selected={selected} onSelect={setSelected} actions={actions} />
+          <LeftPanel
+            circuit={circuit}
+            history={history}
+            parts={parts}
+            onPlace={(part) => void place(part)}
+            selected={selected}
+            onSelect={setSelected}
+            actions={actions}
+          />
         )}
         <section className="canvas">
           {!json && <p className="empty">{build.status === "failed" ? build.error : "Building the circuit…"}</p>}
@@ -167,7 +217,15 @@ export function App() {
           )}
         </section>
         {circuit && (
-          <Inspector circuit={circuit} json={json} build={build} selected={selected} onSelect={setSelected} actions={actions} />
+          <Inspector
+            circuit={circuit}
+            json={json}
+            build={build}
+            parts={parts}
+            selected={selected}
+            onSelect={setSelected}
+            actions={actions}
+          />
         )}
       </main>
       {message && (

@@ -62,9 +62,16 @@ copperflow studio --root examples/usb-c-ldo
 ```
 
 Then open the address it prints. The address carries a key for this session, so other web
-pages and other programs on your computer cannot use the editor's API. Drag parts on the PCB, lock them, rotate or remove them,
+pages and other programs on your computer cannot use the editor's API.
+
+Drag parts on the PCB, lock them, rotate or remove them, change values in the inspector,
 wire pins in the schematic, leave marks for the agent and undo changes. Every edit is written
 back into the circuit file. When the agent changes the file, the editor updates by itself.
+
+The Library tab places parts from your library or tscircuit's built-in set. Selecting a
+library part shows its maker, MPN, supplier number, datasheet and checklist, and lets you
+mark it verified. With nothing selected, the right panel shows the bill of materials and
+exports it with the datasheets.
 
 ## How it works
 

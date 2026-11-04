@@ -5,6 +5,14 @@ import { extname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { z, ZodError } from "zod"
 import {
+  BUILTIN_PARTS,
+  buildBom,
+  exportPackage,
+  listParts,
+  partDir,
+  placePart,
+  readPart,
+  verifyPart,
   addMark,
   editCircuit,
   EditError,
@@ -98,6 +106,8 @@ const Bodies = {
   unmark: z.object({ file, id: z.string() }),
   undo: z.object({ id: z.string().optional() }),
   build: z.object({ file }),
+  place: z.object({ file, part: z.string().min(1).max(64), name: z.string().max(40).optional(), props: props.optional() }),
+  verify: z.object({ id: z.string().min(1).max(64), by: z.string().min(1).max(100), against: z.string().min(1).max(300), confirm: z.string() }),
 }
 
 class HttpError extends Error {
@@ -189,6 +199,35 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       case "POST /api/unmark": {
         const body = Bodies.unmark.parse(await readJson(req))
         return send(res, await updateAnnotations(root, body.file, (a) => removeMark(a, body.id)))
+      }
+      case "GET /api/parts":
+        return send(res, { library: await listParts(root), builtin: BUILTIN_PARTS })
+      case "GET /api/part": {
+        const id = query("id")
+        const part = await readPart(root, id)
+        const checklist = await readFile(resolve(partDir(root, id), "verification.md"), "utf8").catch(() => "")
+        return send(res, { id, part, checklist })
+      }
+      case "POST /api/place": {
+        const { file: name, ...request } = Bodies.place.parse(await readJson(req))
+        const result = await placePart(root, name, request, { author: "human" })
+        return send(res, { entryId: result.entry.id, name: result.name })
+      }
+      case "POST /api/verify": {
+        const body = Bodies.verify.parse(await readJson(req))
+        // The person types the id back, as in the CLI, so a stray click cannot verify a part.
+        if (body.confirm.trim() !== body.id) throw new HttpError(400, `Type ${body.id} exactly to confirm`)
+        await verifyPart(root, body.id, { by: body.by, against: body.against }, new Date().toISOString())
+        return send(res, { id: body.id })
+      }
+      case "GET /api/bom": {
+        const circuit = (await loadCircuit(root, query("file"))).file
+        return send(res, await buildBom(root, circuit, live.getBuild(circuit).circuitJson))
+      }
+      case "POST /api/package": {
+        const circuit = (await loadCircuit(root, Bodies.build.parse(await readJson(req)).file)).file
+        const json = live.getBuild(circuit).circuitJson
+        return send(res, await exportPackage(root, circuit, json ? { circuitJson: json } : {}))
       }
       case "POST /api/undo": {
         const body = Bodies.undo.parse(await readJson(req))

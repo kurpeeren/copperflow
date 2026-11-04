@@ -132,6 +132,12 @@ rejected.
 - A side panel lists parts (lock, rotate by 90°, remove), traces (remove), marks (add at the
   selected part or at a box drawn on the PCB, remove), the build report and the history with
   undo.
+- The Library tab places library or built-in parts with the next free designator; built-in
+  parts get starting values tscircuit needs (a capacitor gets 100nF). The inspector shows a
+  library part's data, datasheet and checklist, and a person can mark it verified by typing the
+  part id. With nothing selected, the inspector shows the BOM and exports the datasheet package.
+- An agent that starts the Studio itself sees the session key in its terminal; the Studio's
+  verify action is meant for people, like `copperflow parts verify`.
 - Every change goes through the same core as the agent's tools, with author `human`: locks,
   history and undo behave the same way.
 - Security: the server listens on 127.0.0.1 only, accepts only `localhost`/`127.0.0.1` Host

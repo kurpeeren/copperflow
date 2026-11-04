@@ -1,5 +1,6 @@
 import { useState } from "react"
-import type { CircuitData, HistoryListing, TraceInfo } from "./api"
+import type { CircuitData, HistoryListing, PartsData, TraceInfo } from "./api"
+import { Library } from "./Library"
 import type { Actions } from "./App"
 import { partsInSelector } from "../../src/core/selectors.js"
 import { CloseIcon, LockIcon, UndoIcon } from "./icons"
@@ -7,14 +8,16 @@ import { CloseIcon, LockIcon, UndoIcon } from "./icons"
 interface Props {
   circuit: CircuitData
   history: HistoryListing[]
+  parts: PartsData
+  onPlace(part: string): void
   selected: string | null
   onSelect(name: string | null): void
   actions: Actions
 }
 
-type Tab = "parts" | "connections" | "history"
+type Tab = "parts" | "library" | "connections" | "history"
 
-const TAB_NAMES: Record<Tab, string> = { parts: "Parts", connections: "Connections", history: "History" }
+const TAB_NAMES: Record<Tab, string> = { parts: "Parts", library: "Library", connections: "Wires", history: "History" }
 
 /** The object tree: parts grouped by kind, every connection, and the change history. */
 export function LeftPanel(props: Props) {
@@ -30,6 +33,7 @@ export function LeftPanel(props: Props) {
       </div>
       <div className="panel-body">
         {tab === "parts" && <PartsTree {...props} />}
+        {tab === "library" && <Library parts={props.parts} onPlace={props.onPlace} />}
         {tab === "connections" && <Connections {...props} />}
         {tab === "history" && <History history={props.history} actions={props.actions} />}
       </div>
@@ -37,16 +41,17 @@ export function LeftPanel(props: Props) {
   )
 }
 
-function PartsTree({ circuit, selected, onSelect }: Props) {
+function PartsTree({ circuit, parts: library, selected, onSelect }: Props) {
   const locked = new Set(circuit.annotations.locks.map((lock) => lock.part))
+  const title = (tag: string) => library.library.find((p) => p.component === tag)?.title ?? tag
   const groups = new Map<string, typeof circuit.model.parts>()
   for (const part of circuit.model.parts) groups.set(part.tag, [...(groups.get(part.tag) ?? []), part])
   return (
     <div className="tree">
       {[...groups].map(([tag, parts]) => (
         <section key={tag}>
-          <h3>
-            {tag} <span className="count">{parts.length}</span>
+          <h3 title={tag}>
+            {title(tag)} <span className="count">{parts.length}</span>
           </h3>
           <ul>
             {parts.map((part) => (

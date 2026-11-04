@@ -11,10 +11,12 @@ export interface BuildState {
   finishedAt?: string
 }
 
-export type Listener = (event: "change" | "build", data: Record<string, unknown>) => void
+export type Listener = (event: "change" | "build" | "library", data: Record<string, unknown>) => void
 
 const IGNORED = /^(node_modules|dist|\.git|\.copperflow|coverage)\//
 const ANNOTATIONS = /\.circuit\.annotations\.json$/
+const PART_YAML = /^parts\/[^/]+\/part\.yaml$/
+const LIBRARY_TIMER = "\0library"
 const DEBOUNCE_MS = 150
 const MAX_KEPT_BUILDS = 5
 
@@ -89,6 +91,17 @@ export class LiveProject {
 
   private onFileEvent(name: string): void {
     if (IGNORED.test(name)) return
+    if (PART_YAML.test(name)) {
+      clearTimeout(this.timers.get(LIBRARY_TIMER))
+      this.timers.set(
+        LIBRARY_TIMER,
+        setTimeout(() => {
+          this.timers.delete(LIBRARY_TIMER)
+          this.emit("library", {})
+        }, DEBOUNCE_MS),
+      )
+      return
+    }
     const file = ANNOTATIONS.test(name) ? name.replace(ANNOTATIONS, ".circuit.tsx") : name
     if (!file.endsWith(".circuit.tsx")) return
     clearTimeout(this.timers.get(file))
@@ -102,7 +115,7 @@ export class LiveProject {
     )
   }
 
-  private emit(event: "change" | "build", data: Record<string, unknown>): void {
+  private emit(event: "change" | "build" | "library", data: Record<string, unknown>): void {
     for (const listener of this.listeners) listener(event, data)
   }
 }

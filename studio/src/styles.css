@@ -524,6 +524,10 @@ ul {
   font-size: 12px;
 }
 
+.props input.new-prop {
+  border-style: dashed;
+}
+
 .props .expr {
   display: block;
   overflow: hidden;
@@ -578,6 +582,150 @@ ul {
 .mark-form input {
   flex: 1;
   min-width: 0;
+}
+
+/* Library */
+.library .search {
+  width: 100%;
+  margin: 2px 0 8px;
+}
+
+.library h3 {
+  margin: 10px 6px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.library-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 6px;
+}
+
+.library-item:hover {
+  background: var(--raised);
+}
+
+.library-item .text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.library-item .title,
+.library-item .meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-item .meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.builtin {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 6px;
+}
+
+.chip-button {
+  height: 26px;
+  border-radius: 13px;
+}
+
+.badge {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  border: 1px solid currentColor;
+}
+
+.badge.verified {
+  color: var(--mask);
+}
+
+.badge.unverified {
+  margin-left: 6px;
+  color: var(--copper-strong);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: minmax(84px, auto) 1fr;
+  gap: 4px 10px;
+  margin: 0;
+}
+
+.facts dt {
+  color: var(--muted);
+}
+
+.facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.facts .contents {
+  display: contents;
+}
+
+.facts a {
+  color: var(--copper-strong);
+}
+
+.note.warn {
+  color: var(--copper-strong);
+}
+
+.checklist {
+  margin: 6px 0 10px;
+  padding-left: 18px;
+  list-style: square;
+  color: var(--text);
+}
+
+.checklist li {
+  padding: 1px 0;
+}
+
+.verify {
+  display: grid;
+  gap: 8px;
+}
+
+.verify label {
+  display: grid;
+  gap: 3px;
+  color: var(--muted);
+}
+
+.bom {
+  width: 100%;
+  margin-bottom: 10px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.bom th {
+  padding: 4px 6px 4px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-weight: 600;
+  text-align: left;
+}
+
+.bom td {
+  padding: 4px 6px 4px 0;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
 }
 
 .toast {

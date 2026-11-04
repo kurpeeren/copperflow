@@ -5,7 +5,7 @@ import { join } from "node:path"
 import { analyzeCircuit } from "../src/core/analyze.js"
 import { applyEdits, EditError } from "../src/core/edit.js"
 import { createPart } from "../src/core/library.js"
-import { placePart } from "../src/core/place.js"
+import { placePart, suggestName } from "../src/core/place.js"
 import { BOARD, LDO } from "./fixtures.js"
 
 const none = new Set<string>()
@@ -53,6 +53,16 @@ describe("addPart", () => {
     expect(editError(() => applyEdits(BOARD, [{ kind: "addPart", tag: "resistor x", name: "R9" }], none))).toBe("invalid")
     expect(editError(() => applyEdits(BOARD, [{ kind: "addPart", tag: "resistor", name: "R 9" }], none))).toBe("invalid")
     expect(editError(() => applyEdits(BOARD, [{ kind: "addPart", tag: "X", name: "U9", importFrom: 'evil";' }], none))).toBe("invalid")
+  })
+})
+
+describe("suggestName", () => {
+  test("uses the usual prefix and the next free number", () => {
+    const model = analyzeCircuit(BOARD)
+    expect(suggestName(model, "resistor", false)).toBe("R2")
+    expect(suggestName(model, "led", false)).toBe("LED2")
+    expect(suggestName(model, "LDO", true)).toBe("U2")
+    expect(suggestName(model, "pushbutton", false)).toBe("SW1")
   })
 })
 

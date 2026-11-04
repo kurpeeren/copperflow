@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react"
-import type { BuildState, CircuitData, CircuitElement, Literal, PartInfo, PropInfo } from "./api"
+import type { BuildState, CircuitData, CircuitElement, Literal, PartInfo, PartsData, PropInfo } from "./api"
 import type { Actions } from "./App"
+import { BomSection } from "./BomSection"
+import { LibraryInfo } from "./LibraryInfo"
 import { pcbCenterOf } from "./circuit-json"
 import { CloseIcon, LockIcon, RotateIcon, TrashIcon, UnlockIcon } from "./icons"
 import { touches } from "./LeftPanel"
@@ -9,6 +11,7 @@ interface Props {
   circuit: CircuitData
   json: CircuitElement[] | undefined
   build: BuildState
+  parts: PartsData
   selected: string | null
   onSelect(name: string | null): void
   actions: Actions
@@ -20,8 +23,11 @@ export function Inspector(props: Props) {
   return <aside className="panel right">{part ? <PartView {...props} part={part} /> : <BoardView {...props} />}</aside>
 }
 
-function PartView({ circuit, json, part, actions, onSelect }: Props & { part: PartInfo }) {
+function PartView({ circuit, json, parts, part, actions, onSelect }: Props & { part: PartInfo }) {
   const locked = circuit.annotations.locks.some((lock) => lock.part === part.name)
+  const library = parts.library.find((p) => p.component === part.tag)
+  const setProp = (key: string, value: Literal) =>
+    actions.edit([{ kind: "setProps", part: part.name, props: { [key]: value } }], `set ${part.name} ${key}=${JSON.stringify(value)}`)
   const canEdit = part.editable && !locked
   const rotation = part.props.pcbRotation?.literal
   const traces = circuit.model.traces.filter((t) => touches(t, part.name))
@@ -71,9 +77,16 @@ function PartView({ circuit, json, part, actions, onSelect }: Props & { part: Pa
       <h3>Properties</h3>
       <dl className="props">
         {Object.entries(part.props).map(([key, prop]) => (
-          <PropRow key={key} name={key} prop={prop} disabled={!canEdit} onCommit={(value) => actions.edit([{ kind: "setProps", part: part.name, props: { [key]: value } }], `set ${part.name} ${key}=${JSON.stringify(value)}`)} notify={actions.notify} />
+          <PropRow key={key} name={key} prop={prop} disabled={!canEdit} onCommit={(value) => setProp(key, value)} notify={actions.notify} />
         ))}
+        {(SUGGESTED_PROPS[part.tag] ?? [])
+          .filter(([key]) => !(key in part.props))
+          .map(([key, example]) => (
+            <NewPropRow key={key} name={key} example={example} disabled={!canEdit} onCommit={(value) => setProp(key, value)} />
+          ))}
       </dl>
+
+      {library && <LibraryInfo id={library.id} verified={library.verified} actions={actions} />}
 
       <h3>Connections</h3>
       {traces.length === 0 ? (
@@ -153,6 +166,57 @@ function PropRow({ name, prop, disabled, onCommit, notify }: {
   )
 }
 
+/** The props people usually set on each built-in part, with an example value. */
+const SUGGESTED_PROPS: Record<string, [string, string][]> = {
+  resistor: [["resistance", "10k"], ["footprint", "0402"]],
+  capacitor: [["capacitance", "100nF"], ["footprint", "0402"]],
+  inductor: [["inductance", "10uH"], ["footprint", "0805"]],
+  led: [["color", "green"], ["footprint", "0603"]],
+  diode: [["footprint", "sod123"]],
+  fuse: [["currentRating", "500mA"], ["footprint", "1206"]],
+  crystal: [["frequency", "16MHz"], ["footprint", "hc49"]],
+  pinheader: [["pinCount", "4"], ["pitch", "2.54mm"]],
+}
+const NUMERIC_PROPS = new Set(["pcbX", "pcbY", "pcbRotation", "schX", "schY", "schRotation", "pinCount"])
+
+/** An empty input for a usual prop the part does not have yet. */
+function NewPropRow({ name, example, disabled, onCommit }: {
+  name: string
+  example: string
+  disabled: boolean
+  onCommit(value: Literal): Promise<boolean>
+}) {
+  const [draft, setDraft] = useState("")
+  const commit = () => {
+    const text = draft.trim()
+    if (!text) return
+    const value = NUMERIC_PROPS.has(name) && Number.isFinite(Number(text)) ? Number(text) : text
+    void onCommit(value).then((ok) => ok && setDraft(""))
+  }
+  return (
+    <>
+      <dt>
+        <label htmlFor={`new-prop-${name}`}>{name}</label>
+      </dt>
+      <dd>
+        <input
+          id={`new-prop-${name}`}
+          className="new-prop"
+          placeholder={example}
+          value={draft}
+          disabled={disabled}
+          spellCheck={false}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur()
+          }}
+        />
+      </dd>
+    </>
+  )
+}
+
 /** Converts typed text to the same kind of literal the prop already has. */
 function parseLike(current: Literal | undefined, text: string): Literal | undefined {
   if (typeof current === "number") {
@@ -205,6 +269,8 @@ function BoardView({ circuit, build, actions }: Props) {
         ))}
       </ul>
       <MarkForm label="Note for the agent" onAdd={(text) => actions.mark(text)} />
+
+      <BomSection file={circuit.file} buildId={build.finishedAt} actions={actions} />
       <p className="hint">Select a part to see and change its properties.</p>
     </div>
   )

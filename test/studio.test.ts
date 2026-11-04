@@ -5,7 +5,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { startStudio, type Studio } from "../src/studio/server.js"
-import { BOARD } from "./fixtures.js"
+import { createPart } from "../src/core/library.js"
+import { BOARD, LDO } from "./fixtures.js"
 
 const FAKE = [process.execPath, fileURLToPath(new URL("./fixtures/fake-tsci.mjs", import.meta.url))]
 const FILE = "main.circuit.tsx"
@@ -144,6 +145,41 @@ describe("editing", () => {
     await data(await api("/api/edit", { file: FILE, summary: "remove LED1", edits: [{ kind: "removePart", part: "LED1" }] }))
     await data(await api("/api/undo", {}))
     expect(await readFile(join(root, FILE), "utf8")).toBe(BOARD)
+  })
+})
+
+describe("parts library", () => {
+  test("lists library and built-in parts and shows one part", async () => {
+    await createPart(root, "LDO", LDO, { now: "t" })
+    const parts = await data(await api("/api/parts"))
+    expect(parts.library.map((p: { id: string }) => p.id)).toEqual(["LDO"])
+    expect(parts.builtin).toContain("resistor")
+    const detail = await data(await api("/api/part?id=LDO"))
+    expect(detail.part.mpn).toBe("AP2112K-3.3TRG1")
+    expect(detail.checklist).toContain("- [ ] Pin 1 is VIN")
+  })
+
+  test("placing picks the next free designator", async () => {
+    const placed = await data(await api("/api/place", { file: FILE, part: "resistor", props: { resistance: "10k" } }))
+    expect(placed.name).toBe("R2")
+    expect(await readFile(join(root, FILE), "utf8")).toContain('<resistor name="R2" resistance="10k" />')
+    await createPart(root, "LDO", LDO, { now: "t" })
+    expect((await data(await api("/api/place", { file: FILE, part: "LDO" }))).name).toBe("U2")
+  })
+
+  test("verifying from the browser needs the part id typed back", async () => {
+    await createPart(root, "LDO", LDO, { now: "t" })
+    const wrong = await api("/api/verify", { id: "LDO", by: "Eren", against: "datasheet p.2", confirm: "ldo" })
+    expect(wrong.status).toBe(400)
+    await data(await api("/api/verify", { id: "LDO", by: "Eren", against: "datasheet p.2", confirm: "LDO" }))
+    expect((await data(await api("/api/parts"))).library[0].verified).toBe(true)
+  })
+
+  test("the BOM and the package come from the open circuit", async () => {
+    const lines = await data(await api(`/api/bom?file=${FILE}`))
+    expect(lines.map((l: { designators: string[] }) => l.designators[0])).toContain("R1")
+    const pkg = await data(await api("/api/package", { file: FILE }))
+    expect(pkg.files).toContain("exports/main/BOM.csv")
   })
 })
 
