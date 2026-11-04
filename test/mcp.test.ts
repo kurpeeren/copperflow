@@ -8,7 +8,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { createCopperflowServer } from "../src/mcp/server.js"
 import { loadCircuit, updateAnnotations } from "../src/core/workspace.js"
 import { addMark, lockParts } from "../src/core/annotations.js"
-import { BOARD } from "./fixtures.js"
+import { BOARD, LDO } from "./fixtures.js"
 
 const FILE = "main.circuit.tsx"
 const FAKE_TSCI = [process.execPath, fileURLToPath(new URL("./fixtures/fake-tsci.mjs", import.meta.url))]
@@ -31,19 +31,42 @@ async function call(name: string, args: Record<string, unknown> = {}) {
 }
 
 describe("MCP server", () => {
-  test("exposes the 0.1 tools and no unlock tool", async () => {
+  test("exposes its tools, with no unlock or verify tool", async () => {
     const { tools } = await client.listTools()
     expect(tools.map((t) => t.name).sort()).toEqual([
       "add_trace",
+      "bom",
       "check_circuit",
       "circuit_summary",
+      "create_part",
+      "export_package",
       "list_circuits",
+      "list_parts",
+      "part_info",
+      "place_part",
       "recent_changes",
       "remove_part",
       "remove_trace",
       "set_props",
       "undo_change",
     ])
+  })
+
+  test("the agent creates a part from a datasheet, places it and sees it in the BOM", async () => {
+    const created = await call("create_part", { id: "AP2112K-3.3", part: LDO })
+    expect(created.isError).toBe(false)
+    expect(created.text).toContain("NOT verified")
+    expect((await call("list_parts")).text).toContain("AP2112K-3.3  <AP2112K_3_3>  AP2112K-3.3 LDO regulator  sot23_5  NOT verified")
+    expect((await call("part_info", { id: "AP2112K-3.3" })).text).toContain("mpn: AP2112K-3.3TRG1")
+    const placed = await call("place_part", { file: FILE, part: "AP2112K-3.3", name: "U5", props: { pcbX: 3 } })
+    expect(placed.text).toMatch(/Change c0001 applied: place U5/)
+    expect(await readFile(join(root, FILE), "utf8")).toContain('<AP2112K_3_3 name="U5" pcbX={3} />')
+    expect((await call("bom", { file: FILE })).text).toContain("| U5 | 1 | chip | AP2112K-3.3 LDO regulator | sot23_5 | Diodes Incorporated | AP2112K-3.3TRG1 | jlcpcb C51118 |")
+  })
+
+  test("invalid parts come back as tool errors", async () => {
+    const result = await call("create_part", { id: "../evil", part: LDO })
+    expect(result.isError).toBe(true)
   })
 
   test("list_circuits and circuit_summary describe the project", async () => {

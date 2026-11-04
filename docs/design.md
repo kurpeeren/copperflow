@@ -161,12 +161,32 @@ The agent starts from `PROJECT.md`, reads only the block it works on, and reads 
 interfaces of neighbouring blocks. Global nets (ground, supplies) are listed separately.
 Notes are plain Markdown with `[[links]]`, so the folder also opens in Obsidian.
 
-### Parts library (planned)
+### Parts library (0.3)
 
-One folder per part. The agent can create a part from a datasheet or a photo: pinout,
-symbol, footprint parameters, 3D model reference and a `verification.md` that records
-what was checked against the datasheet. Passive parts need no library entry. The agent
-never writes pad coordinates; footprints come from footprint generators or imports.
+One folder per part under `parts/` in the project:
+
+```
+parts/AP2112K-3.3/
+  part.yaml          the source of truth: title, manufacturer, MPN, footprint, pins, suppliers
+  AP2112K_3_3.tsx    generated tscircuit component; never edited by hand
+  verification.md    checklist of what was checked against the datasheet, and where
+  datasheet.pdf      optional local copy
+```
+
+- `part.yaml` lists pins by number with a name and an electrical type (`power_in`,
+  `power_out`, `ground`, `input`, `output`, `bidirectional`, `passive`, `no_connect`).
+  The types become tscircuit pin attributes, so the build can warn about unpowered parts.
+- The footprint is a tscircuit footprint string such as `sot23_5` or `soic8_p1.27mm`.
+  Nobody writes pad coordinates; the footprint generator draws the pads.
+- The agent creates a part by reading the datasheet itself and calling `create_part`. The
+  part starts as *not verified*. Only a human marks it verified (`copperflow parts verify`),
+  after checking the items in `verification.md`. The agent has no verify tool.
+- `place_part` adds a part to a circuit: a library part (with its import added) or a
+  built-in tscircuit part such as a resistor. Passive parts need no library entry.
+- The BOM groups parts by kind, value, footprint and manufacturer part number, and fills in
+  supplier part numbers from the last build when the library does not give them.
+- `copperflow package` writes a folder with the BOM (CSV and Markdown), the local datasheets
+  and a list of every part with its datasheet link and verification status.
 
 ## Milestones
 
@@ -174,7 +194,7 @@ never writes pad coordinates; footprints come from footprint generators or impor
   history and undo, MCP server, CLI, a workflow skill, an example board, CI.
 - **0.2** (done): browser Studio built on tscircuit viewers; drag, rotate, lock, delete and
   reconnect wires, draw marks; all written back through the 0.1 core.
-- **0.3**: parts library format and datasheet-to-part pipeline; BOM and datasheet package.
+- **0.3** (done): parts library format and datasheet-to-part pipeline; BOM and datasheet package.
 - **0.4**: project hierarchy (blocks, interfaces, generated summaries), `rules.yaml` checks.
 - Later: redesign a PCB from a photo, design-rule skills library, simulation.
 

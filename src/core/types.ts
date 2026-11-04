@@ -24,6 +24,8 @@ export interface PartInfo {
 export interface TraceInfo {
   from: string | undefined
   to: string | undefined
+  /** Tag of the enclosing element, e.g. "board" or "group". */
+  parent?: string
   props: Record<string, PropInfo>
   line: number
   editable: boolean
@@ -38,10 +40,19 @@ export interface SkippedElement {
   reason: string
 }
 
+export interface ImportInfo {
+  /** The name used in this file. */
+  local: string
+  source: string
+  /** Offset just after the import declaration. */
+  end: number
+}
+
 export interface CircuitModel {
   parts: PartInfo[]
   traces: TraceInfo[]
   skipped: SkippedElement[]
+  imports: ImportInfo[]
   /** Offsets of the `<board>` element's closing tag, when there is one. */
   boardClose?: { start: number }
 }
@@ -51,3 +62,5 @@ export type Edit =
   | { kind: "removePart"; part: string }
   | { kind: "addTrace"; from: string; to: string; props?: Record<string, Literal> }
   | { kind: "removeTrace"; from: string; to: string }
+  /** `importFrom` adds `import { tag } from "<importFrom>"` when it is missing. */
+  | { kind: "addPart"; tag: string; name: string; props?: Record<string, Literal>; importFrom?: string }

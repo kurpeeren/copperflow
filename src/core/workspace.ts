@@ -12,6 +12,7 @@ import {
 import { applyEdits, EditError } from "./edit.js"
 import { serialized, writeFileAtomic } from "./fs-utils.js"
 import { readEntries, recordEntry, removeEntry, type Author, type HistoryEntry } from "./history.js"
+import { LIBRARY_OWNED_PROPS, libraryIds, libraryImports, PARTS_DIR } from "./library.js"
 import { partsInSelector } from "./selectors.js"
 import type { CircuitModel, Edit } from "./types.js"
 
@@ -94,6 +95,7 @@ export function editCircuit(
 ): Promise<EditResult> {
   return serialized(projectQueues, resolve(root), async () => {
     const loaded = await loadCircuit(root, file)
+    await refuseLibraryOverrides(root, loaded, edits)
     const locked = new Set(loaded.annotations.locks.map((lock) => lock.part))
     const after = applyEdits(loaded.source, edits, locked)
     if (after === loaded.source) throw new EditError("invalid", "The edit made no change")
@@ -150,6 +152,18 @@ export function updateAnnotations(
     await writeAnnotations(path, next)
     return next
   })
+}
+
+/** Library parts own their footprint, part numbers and pins; an instance cannot override them. */
+async function refuseLibraryOverrides(root: string, loaded: LoadedCircuit, edits: Edit[]): Promise<void> {
+  const library = libraryImports(loaded.model, loaded.file, await libraryIds(root))
+  for (const edit of edits) {
+    if (edit.kind !== "setProps" && edit.kind !== "addPart") continue
+    const tag = edit.kind === "addPart" ? edit.tag : loaded.model.parts.find((p) => p.name === edit.part)?.tag
+    const id = tag === undefined ? undefined : library.get(tag)
+    const owned = Object.keys(edit.props ?? {}).find((key) => LIBRARY_OWNED_PROPS.includes(key))
+    if (id && owned) throw new EditError("invalid", `${owned} comes from ${PARTS_DIR}/${id}/part.yaml; change it there`)
+  }
 }
 
 /** Records the history entry first, then writes the file; drops the entry if the write fails. */

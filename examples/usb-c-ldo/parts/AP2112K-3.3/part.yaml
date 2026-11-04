@@ -1,0 +1,24 @@
+title: AP2112K-3.3 LDO regulator, 600 mA
+manufacturer: Diodes Incorporated
+mpn: AP2112K-3.3TRG1
+footprint: sot23_5
+pins:
+  "1":
+    name: VIN
+    type: power_in
+  "2":
+    name: GND
+    type: ground
+  "3":
+    name: EN
+    type: input
+  "4":
+    name: NC
+    type: no_connect
+  "5":
+    name: VOUT
+    type: power_out
+suppliers:
+  jlcpcb: C51118
+datasheet:
+  url: https://www.diodes.com/assets/Datasheets/AP2112.pdf

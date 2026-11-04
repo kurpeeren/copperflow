@@ -30,6 +30,8 @@ undoing their work.
 - If a summary lists lock violations, restore those parts to their locked values first.
 - Treat marks as instructions placed on the board. Mention which marks you addressed.
 - You may undo your own changes with `undo_change`. You cannot undo the human's changes.
+- Add chips through the parts library (`create_part`, then `place_part`), never as inline
+  `<chip>` elements with hand-written pins. Only the human marks a library part verified.
 - Writing new parts directly in the file is fine. Keep them editable: see
   [references/editable-subset.md](references/editable-subset.md).
 - A passing build is not proof that a circuit is correct. Check connections against the
@@ -41,3 +43,5 @@ undoing their work.
   the human can still edit visually. Read before writing new parts.
 - [references/design-rules.md](references/design-rules.md): starter design rules (decoupling,
   trace width, USB-C, indicators). Read before placing power parts or connectors.
+- [references/parts-library.md](references/parts-library.md): how to add a chip from its
+  datasheet or a photo with `create_part`. Read before adding any part that is not a passive.

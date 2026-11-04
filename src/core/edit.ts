@@ -41,6 +41,9 @@ function applyEdit(source: string, edit: Edit, locked: ReadonlySet<string>): str
     case "removeTrace":
       next = removeTrace(source, scan, edit.from, edit.to, locked)
       break
+    case "addPart":
+      next = addPart(source, scan, edit)
+      break
   }
   scanOrThrow(next, "The edit would produce invalid code")
   return next
@@ -129,6 +132,53 @@ function removeTrace(source: string, scan: Scan, from: string, to: string, locke
   const lockedEnd = traceEnds(trace).find((p) => locked.has(p))
   if (lockedEnd) throw new EditError("locked", `${lockedEnd} is locked; its traces cannot be removed`)
   return removeRange(source, trace.start, trace.end)
+}
+
+const TAG = /^[A-Za-z][A-Za-z0-9_]*$/
+const PART_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
+const RELATIVE_IMPORT = /^\.{1,2}\/[\w./-]+$/
+
+/** Adds a part element before the board's first trace (or before </board>), plus its import. */
+function addPart(source: string, scan: Scan, edit: Extract<Edit, { kind: "addPart" }>): string {
+  if (!TAG.test(edit.tag)) throw new EditError("invalid", `"${edit.tag}" is not a component name`)
+  if (!PART_NAME.test(edit.name)) throw new EditError("invalid", `"${edit.name}" is not a valid part name; use letters, digits and _`)
+  if (scan.model.parts.some((p) => p.name === edit.name)) throw new EditError("invalid", `A part named ${edit.name} already exists`)
+  if (edit.importFrom !== undefined && !RELATIVE_IMPORT.test(edit.importFrom)) {
+    throw new EditError("invalid", `"${edit.importFrom}" is not a relative import path`)
+  }
+  const props = Object.entries(edit.props ?? {}).map(([key, value]) => {
+    validateOrThrow(key, value)
+    return ` ${key}=${formatLiteral(value)}`
+  })
+  const eol = lineEnding(source)
+  const element = `<${edit.tag} name=${formatLiteral(edit.name)}${props.join("")} />`
+
+  const existingImport = scan.model.imports.find((i) => i.local === edit.tag)
+  if (edit.importFrom !== undefined && existingImport && existingImport.source !== edit.importFrom) {
+    throw new EditError("invalid", `${edit.tag} is already imported from "${existingImport.source}"`)
+  }
+  // Anchor on the board's own traces, so the part never lands inside a group.
+  const firstTrace = scan.model.traces.find((t) => t.parent === "board" && lineIndent(source, t.start) !== undefined)
+  const anchor = firstTrace ? firstTrace.start : scan.model.boardClose?.start
+  if (anchor === undefined) throw new EditError("invalid", "No <board> element with a closing tag was found")
+  const indent = lineIndent(source, anchor)
+  if (indent === undefined) throw new EditError("invalid", "</board> must be on its own line to add a part")
+  const childIndent = anchor === firstTrace?.start ? indent : indent + (indent.includes("\t") ? "\t" : "  ")
+  const lineStart = anchor - indent.length
+  const withPart = source.slice(0, lineStart) + childIndent + element + eol + source.slice(lineStart)
+
+  if (edit.importFrom === undefined || existingImport) return withPart
+  const statement = `import { ${edit.tag} } from ${JSON.stringify(edit.importFrom)}`
+  const lastImport = scan.model.imports.reduce((end, i) => Math.max(end, i.end), -1)
+  return lastImport < 0
+    ? statement + eol + withPart
+    : withPart.slice(0, lastImport) + eol + statement + withPart.slice(lastImport)
+}
+
+/** The whitespace before `offset` on its line, or undefined when other text precedes it. */
+function lineIndent(source: string, offset: number): string | undefined {
+  const before = source.slice(source.lastIndexOf("\n", offset - 1) + 1, offset)
+  return before.trim() === "" ? before : undefined
 }
 
 function requireEditablePart(scan: Scan, name: string, locked: ReadonlySet<string>): PartInfo {

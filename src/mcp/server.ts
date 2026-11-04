@@ -1,7 +1,21 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js"
 import { z } from "zod"
+import { readFile } from "node:fs/promises"
+import { join } from "node:path"
+import YAML from "yaml"
 import {
+  BUILTIN_PARTS,
+  buildBom,
+  buildCircuit,
+  createPart,
+  exportPackage,
+  formatBomMarkdown,
+  listParts,
+  partDir,
+  PartSchema,
+  placePart,
+  readPart,
   checkCircuit,
   editCircuit,
   formatCheck,
@@ -21,7 +35,9 @@ const INSTRUCTIONS = `copperflow lets you edit tscircuit circuit files together 
 - After moving or adding parts, call check_circuit and fix placement errors before reporting success.
 - Never change, move or remove a part marked [LOCKED]. If a summary lists lock violations, restore those parts.
 - "Marks from the human" are instructions placed on the board; follow them.
-- recent_changes shows what the human undid; do not redo an undone change unless asked.`
+- recent_changes shows what the human undid; do not redo an undone change unless asked.
+- New chips go into the parts library first (create_part from the datasheet), then into the circuit with place_part.
+  Library parts start NOT verified; only the human verifies them.`
 
 const file = z.string().describe("Circuit file path relative to the project root, e.g. index.circuit.tsx")
 const literal = z.union([z.string(), z.number(), z.boolean()])
@@ -125,6 +141,96 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
         return formatCheck(circuit, result)
       }),
   )
+
+  server.registerTool(
+    "list_parts",
+    { description: "List the parts library (parts/ in the project) with each part's verification status.", annotations: READ_ONLY },
+    () =>
+      run(async () => {
+        const parts = await listParts(root)
+        if (parts.length === 0) return "The parts library is empty. Create parts with create_part."
+        return parts
+          .map((p) => `${p.id}  <${p.component}>  ${p.title}  ${p.footprint}  ${p.verified ? "verified" : "NOT verified"}`)
+          .join("\n")
+      }),
+  )
+
+  server.registerTool(
+    "part_info",
+    { description: "Show a library part's part.yaml and its verification checklist.", inputSchema: { id: z.string() }, annotations: READ_ONLY },
+    ({ id }) =>
+      run(async () => {
+        const part = await readPart(root, id)
+        const checklist = await readFile(join(partDir(root, id), "verification.md"), "utf8").catch(() => "(no verification.md)")
+        return `${YAML.stringify(part)}\n--- verification.md ---\n${checklist}`
+      }),
+  )
+
+  server.registerTool(
+    "create_part",
+    {
+      description:
+        "Create a library part from a datasheet you have read: pins by number with names and electrical types, a tscircuit footprint string (never pad coordinates), MPN and supplier numbers. The part starts NOT verified; tell the human to check verification.md.",
+      inputSchema: {
+        id: z.string().describe("Folder name, e.g. AP2112K-3.3"),
+        part: PartSchema.omit({ verified: true }),
+        replace: z.boolean().optional().describe("Overwrite an existing, unverified part"),
+      },
+    },
+    ({ id, part, replace }) =>
+      run(async () => {
+        const result = await createPart(root, id, part, { replace: replace === true, now: new Date().toISOString() })
+        return [
+          `Created ${result.files.join(", ")}.`,
+          `Use it with place_part (part "${id}"). It is NOT verified: ask the human to check parts/${id}/verification.md against the datasheet.`,
+        ].join("\n")
+      }),
+  )
+
+  server.registerTool(
+    "place_part",
+    {
+      description: `Add a part to a circuit: a library part id from list_parts (its import is added) or a built-in part: ${BUILTIN_PARTS.join(", ")}.`,
+      inputSchema: {
+        file,
+        part: z.string(),
+        name: z.string().describe("New designator, e.g. U2 or R5"),
+        props: z.record(z.string(), literal).optional().describe('Literal props, e.g. { "resistance": "10k", "pcbX": 4 }'),
+      },
+    },
+    ({ file: circuit, part, name, props }) =>
+      run(async () => {
+        const result = await placePart(root, circuit, { part, name, ...(props ? { props } : {}) }, { author: "ai" })
+        return `Change ${result.entry.id} applied: ${result.entry.summary}. Connect it with add_trace, then run check_circuit.`
+      }),
+  )
+
+  server.registerTool(
+    "bom",
+    {
+      description: "Bill of materials for a circuit, grouped by part. With build: true it runs a build first to include supplier part numbers chosen by tscircuit.",
+      inputSchema: { file, build: z.boolean().optional() },
+      annotations: READ_ONLY,
+    },
+    ({ file: circuit, build }) =>
+      run(async () => formatBomMarkdown(await buildBom(root, circuit, build ? await builtJson(circuit) : undefined))),
+  )
+
+  server.registerTool(
+    "export_package",
+    {
+      description: "Write a folder with BOM.csv, BOM.md, the local datasheets and a list of library parts with their verification status.",
+      inputSchema: { file, build: z.boolean().optional() },
+    },
+    ({ file: circuit, build }) =>
+      run(async () => {
+        const result = await exportPackage(root, circuit, build ? { circuitJson: await builtJson(circuit) } : {})
+        return `Wrote ${result.files.length} files to ${result.outDir}:\n${result.files.join("\n")}`
+      }),
+  )
+
+  const builtJson = async (circuit: string) =>
+    (await buildCircuit(root, circuit, options.buildCommand ? { command: options.buildCommand } : {})).circuitJson
 
   server.registerTool(
     "recent_changes",

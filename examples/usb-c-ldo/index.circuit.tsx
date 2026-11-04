@@ -1,5 +1,7 @@
 // USB-C input regulated down to 3.3 V, with a power LED and a 2-pin output header.
 // Objects such as pinLabels are expressions, so copperflow shows them as read-only.
+import { AP2112K_3_3 } from "./parts/AP2112K-3.3/AP2112K_3_3"
+
 export default () => (
   <board width="30mm" height="18mm" schMaxTraceDistance={0.5}>
     {/* Pinned part: without it the CLI picks a USB-C connector from the network */}
@@ -19,17 +21,8 @@ export default () => (
     <resistor name="R2" resistance="5.1k" footprint="0402" schX={5} schY={-2.5} schRotation={-90} pcbX={-4.5} pcbY={-4} />
     <capacitor name="C1" capacitance="1uF" footprint="0603" schX={3} schY={1.2} schRotation={-90} pcbX={-1.5} pcbY={0} />
 
-    {/* AP2112K-3.3 low-dropout regulator, SOT-23-5 */}
-    <chip
-      name="U1"
-      footprint="sot23_5"
-      pinLabels={{ pin1: "VIN", pin2: "GND", pin3: "EN", pin4: "NC", pin5: "VOUT" }}
-      supplierPartNumbers={{ jlcpcb: ["C51118"] }}
-      schX={9}
-      schY={0}
-      pcbX={2.5}
-      pcbY={0}
-    />
+    {/* AP2112K-3.3 low-dropout regulator from the parts library (parts/AP2112K-3.3) */}
+    <AP2112K_3_3 name="U1" schX={9} schY={0} pcbX={2.5} pcbY={0} />
     <capacitor name="C2" capacitance="1uF" footprint="0603" schX={12} schY={0} schRotation={-90} pcbX={6.5} pcbY={0} />
     <resistor name="R3" resistance="1k" footprint="0402" schX={14} schY={0.8} schRotation={-90} pcbX={6.5} pcbY={5} />
     {/* The JLCPCB LED has its cathode on pad 1 */}

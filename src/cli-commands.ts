@@ -1,6 +1,16 @@
 import { resolve } from "node:path"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
+  buildBom,
+  buildCircuit,
+  exportPackage,
+  formatBomCsv,
+  formatBomMarkdown,
+  listParts,
+  placePart,
+  readPart,
+  rebuildComponents,
+  verifyPart,
   addMark,
   checkCircuit,
   formatCheck,
@@ -22,6 +32,8 @@ import { VERSION } from "./version.js"
 export interface CliIO {
   out(text: string): void
   err(text: string): void
+  /** Asks the person at the terminal; absent when the CLI does not run in an interactive terminal. */
+  ask?(question: string): Promise<string>
 }
 
 const HELP = `copperflow ${VERSION}
@@ -36,6 +48,15 @@ Usage:
   copperflow mark <file> <text> [--pcb x,y | --sch x,y]
                                               leave a note for the agent
   copperflow unmark <file> <id>               remove a note
+  copperflow parts                            list the parts library
+  copperflow parts build                      regenerate part components after editing part.yaml
+  copperflow parts verify <id> --by <name> --against <datasheet, page>
+                                              mark a part as checked against its datasheet
+  copperflow place <file> <part> <name> [key=value ...]
+                                              add a library or built-in part to a circuit
+  copperflow bom <file> [--csv] [--build]     print the bill of materials
+  copperflow package <file> [--out dir] [--build]
+                                              write BOM, datasheets and part status to a folder
   copperflow history [--limit n]              list recent changes
   copperflow undo [id]                        undo the newest change, or the given one
 
@@ -91,6 +112,35 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
         io.out(formatHistory(await listEntries(root, positiveInt(limit ?? "20"))))
         return 0
       }
+      case "parts":
+        await partsCommand(root, rest, io)
+        return 0
+      case "place": {
+        const [file, part, name, ...props] = rest
+        const request = { part: required(part, "part"), name: required(name, "name"), props: parseProps(props) }
+        const result = await placePart(root, required(file, "file"), request, { author: "human" })
+        io.out(`${result.entry.id}: ${result.entry.summary}`)
+        return 0
+      }
+      case "bom": {
+        const [csv, withoutCsv] = takeFlag(rest, "--csv")
+        const [build, args] = takeFlag(withoutCsv, "--build")
+        const file = required(args[0], "file")
+        const lines = await buildBom(root, file, build ? await builtJson(root, file, options) : undefined)
+        io.out(csv ? formatBomCsv(lines) : formatBomMarkdown(lines))
+        return 0
+      }
+      case "package": {
+        const [build, withoutBuild] = takeFlag(rest, "--build")
+        const [outDir, args] = takeOption(withoutBuild, "--out")
+        const file = required(args[0], "file")
+        const result = await exportPackage(root, file, {
+          ...(outDir ? { outDir } : {}),
+          ...(build ? { circuitJson: await builtJson(root, file, options) } : {}),
+        })
+        io.out(`Wrote ${result.outDir}:\n${result.files.join("\n")}`)
+        return 0
+      }
       case "undo": {
         const entry = await undoChange(root, { author: "human", ...(rest[0] ? { id: rest[0] } : {}) })
         io.out(`${entry.id}: ${entry.summary}`)
@@ -137,6 +187,66 @@ async function mark(root: string, rest: string[], io: CliIO): Promise<void> {
     return result.annotations
   })
   io.out(`Added mark ${id}`)
+}
+
+async function partsCommand(root: string, rest: string[], io: CliIO): Promise<void> {
+  const [action, ...args] = rest
+  if (action === undefined) {
+    const parts = await listParts(root)
+    if (parts.length === 0) {
+      io.out("The parts library is empty. The agent creates parts with create_part.")
+      return
+    }
+    for (const p of parts) {
+      if (p.error) io.out(`${p.id}  ${p.error}`)
+      else io.out(`${p.id}  <${p.component}>  ${p.title}  ${p.footprint}  ${p.verified ? `verified by ${p.verifiedBy}` : "not verified"}`)
+    }
+    return
+  }
+  if (action === "build") {
+    io.out((await rebuildComponents(root)).join("\n") || "No parts to build.")
+    return
+  }
+  if (action === "verify") {
+    const [by, withoutBy] = takeOption(args, "--by")
+    const [against, remaining] = takeOption(withoutBy, "--against")
+    const id = required(remaining[0], "part id")
+    if (!by || !against) throw new Error('Usage: copperflow parts verify <id> --by "<name>" --against "<datasheet, revision, page>"')
+    // A person confirms at a real terminal; an agent's shell is not interactive.
+    if (!io.ask) throw new Error("parts verify must be run by a person in an interactive terminal")
+    const part = await readPart(root, id)
+    io.out(`${part.title}, ${part.mpn ?? "no MPN"}, footprint ${part.footprint}`)
+    for (const [number, pin] of Object.entries(part.pins)) io.out(`  pin ${number}: ${pin.name} (${pin.type})`)
+    const answer = await io.ask(`Type ${id} to confirm you checked all of this against the datasheet: `)
+    if (answer.trim() !== id) throw new Error(`Not verified: you typed "${answer.trim()}", not ${id}`)
+    await verifyPart(root, id, { by, against }, new Date().toISOString())
+    io.out(`${id} is verified by ${by}`)
+    return
+  }
+  throw new Error(`Unknown parts command "${action}". Run "copperflow help".`)
+}
+
+/** `key=value` arguments as literal props: numbers and true/false keep their type. */
+function parseProps(args: string[]): Record<string, string | number | boolean> {
+  return Object.fromEntries(
+    args.map((arg) => {
+      const split = arg.indexOf("=")
+      if (split < 1) throw new Error(`Props look like key=value (got "${arg}")`)
+      const [key, text] = [arg.slice(0, split), arg.slice(split + 1)]
+      // Only text that reads back the same is a number: "0402" stays a footprint string.
+      const asNumber = Number(text)
+      const value = text !== "" && String(asNumber) === text ? asNumber : text === "true" ? true : text === "false" ? false : text
+      return [key, value]
+    }),
+  )
+}
+
+async function builtJson(root: string, file: string, options: CliOptions): Promise<unknown[]> {
+  return (await buildCircuit(root, file, options.buildCommand ? { command: options.buildCommand } : {})).circuitJson
+}
+
+function takeFlag(args: string[], name: string): [boolean, string[]] {
+  return [args.includes(name), args.filter((arg) => arg !== name)]
 }
 
 /** Returns the value of `--name value` and the arguments without it. */

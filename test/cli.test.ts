@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, test } from "vitest"
-import { mkdtemp, writeFile } from "node:fs/promises"
+import { mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { runCli } from "../src/cli-commands.js"
 import { readAnnotations } from "../src/core/annotations.js"
-import { BOARD } from "./fixtures.js"
+import { createPart } from "../src/core/library.js"
+import { BOARD, LDO } from "./fixtures.js"
 
 const FILE = "main.circuit.tsx"
 let root: string
@@ -54,6 +55,33 @@ describe("cli", () => {
     expect(out.join("\n")).toContain("pcb_courtyard_overlap_error")
     await writeFile(join(root, "main.circuit.fake.json"), JSON.stringify({ exitCode: 0, elements: [] }))
     expect(await runCli(["check", FILE], root, io(), { buildCommand: fakeTsci })).toBe(0)
+  })
+
+  test("parts: list, rebuild and verify by a person", async () => {
+    expect(await run("parts")).toBe(0)
+    expect(out.join("\n")).toContain("The parts library is empty")
+    await createPart(root, "LDO", LDO, { now: "t" })
+    const person = { ...io(), ask: async () => "LDO" }
+    expect(await runCli(["parts", "verify", "LDO", "--by", "Eren", "--against", "AP2112 datasheet p.2"], root, person)).toBe(0)
+    expect(await run("parts")).toBe(0)
+    expect(out.join("\n")).toContain("LDO  <LDO>  AP2112K-3.3 LDO regulator  sot23_5  verified by Eren")
+    expect(await run("parts", "build")).toBe(0)
+    expect(out.join("\n")).toContain("parts/LDO/LDO.tsx")
+    expect(await run("parts", "verify", "LDO")).toBe(1)
+  })
+
+  test("place, bom and package", async () => {
+    await createPart(root, "LDO", LDO, { now: "t" })
+    expect(await run("place", FILE, "LDO", "U7", "pcbX=4", "footprintVariant=wide")).toBe(0)
+    expect(await readFile(join(root, FILE), "utf8")).toContain('<LDO name="U7" pcbX={4} footprintVariant="wide" />')
+    expect(await run("bom", FILE)).toBe(0)
+    expect(out.join("\n")).toContain("| U7 | 1 | chip |")
+    expect(await run("bom", FILE, "--csv")).toBe(0)
+    expect(out.join("\n")).toContain("Designators,Quantity,Kind")
+    expect(await run("package", FILE)).toBe(0)
+    expect(out.join("\n")).toContain("exports/main/BOM.csv")
+    // main.circuit.tsx sits at the project root, so its package folder is exports/main.
+    expect(await run("place", FILE, "LDO", "U8", "broken")).toBe(1)
   })
 
   test("errors are reported with a non-zero exit code", async () => {

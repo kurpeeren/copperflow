@@ -37,9 +37,14 @@ export function analyzeCircuit(source: string): CircuitModel {
 }
 
 export function scanCircuit(source: string): Scan {
-  const scan: Scan = { model: { parts: [], traces: [], skipped: [] }, partNodes: new Map(), traceNodes: [] }
+  const scan: Scan = { model: { parts: [], traces: [], skipped: [], imports: [] }, partNodes: new Map(), traceNodes: [] }
   walk(parseSource(source), [], (node, ancestors) => {
     if (node.type === "JSXElement") collectElement(source, node, ancestors, scan)
+    if (node.type === "ImportDeclaration") {
+      for (const specifier of node.specifiers) {
+        scan.model.imports.push({ local: specifier.local.name, source: node.source.value, end: node.end ?? 0 })
+      }
+    }
   })
   return scan
 }
@@ -64,9 +69,11 @@ function collectElement(source: string, node: JSXElement, ancestors: Node[], sca
     const to = props.to?.literal
     const literalEnds = typeof from === "string" && typeof to === "string"
     const reason = readonlyReason ?? (literalEnds ? undefined : "from or to is not a string literal")
+    const parentElement = [...ancestors].reverse().find((a): a is JSXElement => a.type === "JSXElement")
     const trace: TraceInfo = {
       from: typeof from === "string" ? from : undefined,
       to: typeof to === "string" ? to : undefined,
+      ...(parentElement ? { parent: slice(source, parentElement.openingElement.name) } : {}),
       props: omit(props, ["from", "to"]),
       line,
       editable: reason === undefined,
