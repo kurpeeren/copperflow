@@ -316,6 +316,12 @@ input:disabled {
   height: 26px;
 }
 
+.tool-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--line);
+}
+
 .canvas-status {
   position: absolute;
   left: 10px;

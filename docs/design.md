@@ -124,12 +124,16 @@ rejected.
 - The server builds the selected circuit with the tscircuit CLI (about 8 s for the example
   board) and serves the circuit JSON. It watches circuit and annotation files, so changes made
   by the agent or in a code editor appear in the browser, and rebuilds after each change.
-- The PCB view is copperflow's own canvas. tscircuit's MIT element drawer (`circuit-to-canvas`)
-  draws pads, holes, traces and silkscreen; copperflow owns the camera (pan, zoom to the
-  cursor, fit), the grid (dots on the minor grid, lines on the major grid), selection and hover,
-  dragging that snaps the part's centre to 0.1, 0.5 or 1 mm, lock badges, notes drawn as pins,
-  and keys (R rotates, Delete removes, F fits). A dragged part is drawn by the same drawer with
-  a shifted camera, so it looks exactly like itself while it moves. Dropping it becomes a
+- The PCB view is copperflow's own canvas with its own renderer (`studio/src/pcb/render.ts`):
+  board, pads of every shape, plated holes, holes, vias, traces on both layers, silkscreen
+  paths, lines, rectangles, circles and text, courtyards and fabrication notes, in layer order
+  and copperflow's palette. Element types it does not draw yet go to tscircuit's MIT drawer
+  (`circuit-to-canvas`) under the copper, and the status line names them. Hovering a pad
+  highlights its whole net and dims the rest; layers can be shown or hidden. copperflow owns
+  the camera (pan, zoom to the cursor, fit), the grid (dots on the minor grid, lines on the
+  major grid), selection and hover, dragging that snaps the part's centre to 0.1, 0.5 or 1 mm,
+  lock badges, notes drawn as pins, and keys (R rotates, Delete removes, F fits). A dragged part
+  is drawn by the same renderer with an offset, so it looks exactly like itself while it moves. Dropping it becomes a
   `setProps` edit of `pcbX`/`pcbY`: the drag distance is added to the literal values, or the
   new centre is written when the part had no position.
 - No vendor labels are shown on screen. The licences of every bundled package ship in

@@ -2,7 +2,9 @@ import { CircuitToCanvasDrawer } from "circuit-to-canvas"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { CircuitData, CircuitElement, Edit } from "../api"
 import type { Actions } from "../App"
+import { buildNets, padAt } from "./nets"
 import { drawGrid, drawLockBadge, drawMark, drawOutline, drawSelectionBox } from "./overlays"
+import { drawPcb, isSupported, type Layers } from "./render"
 import {
   boardBounds,
   componentBoxes,
@@ -34,6 +36,20 @@ type Gesture =
   | { kind: "box"; start: Point; current: Point }
 
 const SNAP_STEPS = [0.1, 0.5, 1]
+const LAYER_BUTTONS = [
+  ["topCopper", "Top"],
+  ["bottomCopper", "Bottom"],
+  ["silkscreen", "Silk"],
+  ["courtyard", "Courtyard"],
+] as const
+
+/** "U1.VIN" for a pcb_port id. */
+function pinLabel(json: CircuitElement[], pcbPortId: string): string | undefined {
+  const port = json.find((e) => e.type === "pcb_port" && e.pcb_port_id === pcbPortId)
+  const source = json.find((e) => e.type === "source_port" && e.source_port_id === port?.source_port_id)
+  const part = json.find((e) => e.type === "source_component" && e.source_component_id === source?.source_component_id)
+  return part && source ? `${String(part.name)}.${String(source.name)}` : undefined
+}
 const DRAG_THRESHOLD_PX = 3
 const BACKGROUND = "#121417"
 const round = (value: number) => Math.round(value * 1000) / 1000
@@ -63,8 +79,13 @@ export function PcbCanvas({ json, buildId, circuit, actions, selected, onSelect 
   const [cursor, setCursor] = useState<Point>()
   const [step, setStep] = useState(0.5)
   const [pending, setPending] = useState<{ name: string; offset: Point }>()
+  const [layers, setLayers] = useState<Layers>({ topCopper: true, bottomCopper: true, silkscreen: true, courtyard: true, fabrication: false })
+  const [hoverNet, setHoverNet] = useState<string>()
+  const [hoverPin, setHoverPin] = useState<string>()
+  const [unsupported, setUnsupported] = useState<string[]>([])
 
   const boxes = useMemo(() => componentBoxes(json), [json])
+  const nets = useMemo(() => buildNets(json), [json])
   const locked = useMemo(() => new Set(circuit.annotations.locks.map((l) => l.part)), [circuit])
   const bounds = useMemo(() => boardBounds(json), [json])
 
@@ -123,15 +144,25 @@ export function PcbCanvas({ json, buildId, circuit, actions, selected, onSelect 
     const moving = gesture?.kind === "drag" && gesture.moved && !gesture.allowed ? { name: gesture.part.name, offset: gesture.offset } : pending
     const movingId = moving ? boxes.find((b) => b.name === moving.name)?.pcbComponentId : undefined
     const isMoving = (e: CircuitElement) => movingId !== undefined && e.pcb_component_id === movingId
-    const elements = json as Parameters<CircuitToCanvasDrawer["drawElements"]>[0]
-    drawer.realToCanvasMat = toMatrix(camera, size, ratio)
-    drawer.drawElements(elements.filter((e) => !isMoving(e as CircuitElement)))
+    const highlight = hoverNet ? { net: hoverNet, nets } : undefined
+    // Element types our renderer does not draw yet go to tscircuit's drawer, under the copper.
+    const fallback = json.filter((e) => !isSupported(e) && !isMoving(e))
+    const result = drawPcb(ctx, json.filter((e) => !isMoving(e)), { camera, size }, {
+      ratio,
+      layers,
+      ...(highlight ? { highlight } : {}),
+      underCopper: () => {
+        if (fallback.length === 0) return
+        drawer.realToCanvasMat = toMatrix(camera, size, ratio)
+        drawer.drawElements(fallback as Parameters<CircuitToCanvasDrawer["drawElements"]>[0], {
+          clipContextElements: json as Parameters<CircuitToCanvasDrawer["drawElements"]>[0],
+        })
+      },
+    })
     if (moving && movingId) {
-      // The moved part is drawn by the same drawer with the camera shifted by the drag offset.
-      const shifted = { ...camera, cx: camera.cx - moving.offset.x, cy: camera.cy - moving.offset.y }
-      drawer.realToCanvasMat = toMatrix(shifted, size, ratio)
-      drawer.drawElements(elements.filter((e) => isMoving(e as CircuitElement)), { clipContextElements: elements })
+      drawPcb(ctx, json.filter(isMoving), { camera, size }, { ratio, layers, offset: moving.offset })
     }
+    setUnsupported((current) => (current.join() === result.unsupported.join() ? current : result.unsupported))
 
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
     for (const part of boxes) {
@@ -144,7 +175,7 @@ export function PcbCanvas({ json, buildId, circuit, actions, selected, onSelect 
       if (mark.view === "pcb" && mark.x !== undefined && mark.y !== undefined) drawMark(ctx, camera, size, { x: mark.x, y: mark.y }, mark.id, mark.text)
     }
     if (gesture?.kind === "box") drawSelectionBox(ctx, gesture.start, gesture.current)
-  }, [json, camera, size, gesture, pending, boxes, hover, selected, locked, circuit])
+  }, [json, camera, size, gesture, pending, boxes, hover, selected, locked, circuit, layers, hoverNet, nets])
 
   const local = useCallback(
     (event: { clientX: number; clientY: number }): Point => toCanvasPoint(canvasRef.current, size, event),
@@ -195,6 +226,9 @@ export function PcbCanvas({ json, buildId, circuit, actions, selected, onSelect 
     setCursor(world)
     if (!gesture) {
       setHover(hitTest(boxes, world)?.name)
+      const pad = padAt(json, world)
+      setHoverNet(pad ? nets.ofPort(pad) : undefined)
+      setHoverPin(pad ? pinLabel(json, pad) : undefined)
       return
     }
     if (gesture.kind === "pan") {
@@ -286,7 +320,11 @@ export function PcbCanvas({ json, buildId, circuit, actions, selected, onSelect 
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerLeave={() => setHover(undefined)}
+        onPointerLeave={() => {
+          setHover(undefined)
+          setHoverNet(undefined)
+          setHoverPin(undefined)
+        }}
         onContextMenu={(e) => e.preventDefault()}
         aria-label="PCB layout. Drag parts to move them, drag the background to pan, scroll to zoom."
         role="img"
@@ -305,10 +343,24 @@ export function PcbCanvas({ json, buildId, circuit, actions, selected, onSelect 
         <button onClick={fit} title="Fit the board (F)">
           Fit
         </button>
+        <span className="tool-divider" aria-hidden="true" />
+        {LAYER_BUTTONS.map(([key, label]) => (
+          <button
+            key={key}
+            className={layers[key] ? "active" : ""}
+            aria-pressed={layers[key]}
+            onClick={() => setLayers({ ...layers, [key]: !layers[key] })}
+            title={`Show or hide ${label.toLowerCase()}`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
       <div className="canvas-status" aria-live="off">
         {cursor ? `${cursor.x.toFixed(2)}, ${cursor.y.toFixed(2)} mm` : ""}
+        {hoverPin && `  ${hoverPin}`}
         {gesture?.kind === "drag" && gesture.moved && !gesture.allowed && `  Δ ${gesture.offset.x}, ${gesture.offset.y}`}
+        {unsupported.length > 0 && `\nDrawn by the fallback renderer: ${unsupported.join(", ")}`}
       </div>
     </div>
   )
