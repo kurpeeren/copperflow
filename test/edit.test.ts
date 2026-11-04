@@ -70,6 +70,24 @@ describe("traces", () => {
     expect(out).toContain('    <trace from=".C1 > .pin1" to=".R1 > .pin2" />\n    <trace from=".LED1 > .pin1" to="net.GND" />\n  </board>')
   })
 
+  test("writes the corners of a hand-drawn schematic wire, rounded", () => {
+    const corners = [
+      { x: 1, y: -2.5 },
+      { x: 3.123456, y: -2.5 },
+    ]
+    const out = applyEdits(BOARD, [{ kind: "addTrace", from: ".LED1 > .pin1", to: "net.GND", schematicRouteHints: corners }], none)
+    expect(out).toContain('<trace from=".LED1 > .pin1" to="net.GND" schematicRouteHints={[{ x: 1, y: -2.5 }, { x: 3.1235, y: -2.5 }]} />')
+  })
+
+  test("refuses corners that are not finite numbers or too many", () => {
+    const add = (corners: unknown) => () =>
+      applyEdits(BOARD, [{ kind: "addTrace", from: ".LED1 > .pin1", to: "net.GND", schematicRouteHints: corners as { x: number; y: number }[] }], none)
+    expectEditError(add([{ x: Number.NaN, y: 0 }]), "invalid")
+    expectEditError(add([{ x: "1", y: 0 }]), "invalid")
+    expectEditError(add(Array.from({ length: 201 }, () => ({ x: 0, y: 0 }))), "invalid")
+    expectEditError(add([{ x: 1e305, y: 0 }]), "invalid")
+  })
+
   test("adds extra literal props to a new trace", () => {
     const out = applyEdits(BOARD, [{ kind: "addTrace", from: ".R1 > .pin2", to: "net.V3_3", props: { thickness: "0.4mm" } }], none)
     expect(out).toContain('<trace from=".R1 > .pin2" to="net.V3_3" thickness="0.4mm" />')

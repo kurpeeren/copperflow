@@ -97,7 +97,16 @@ const file = z.string().min(1).max(500)
 const EditSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("setProps"), part: z.string(), props }),
   z.object({ kind: z.literal("removePart"), part: z.string() }),
-  z.object({ kind: z.literal("addTrace"), from: z.string(), to: z.string(), props: props.optional() }),
+  z.object({
+    kind: z.literal("addTrace"),
+    from: z.string(),
+    to: z.string(),
+    props: props.optional(),
+    schematicRouteHints: z
+      .array(z.object({ x: z.number().finite(), y: z.number().finite() }))
+      .max(200)
+      .optional(),
+  }),
   z.object({ kind: z.literal("removeTrace"), from: z.string(), to: z.string() }),
 ])
 const Bodies = {

@@ -18,6 +18,18 @@ describe("readLiteral", () => {
   })
 })
 
+describe("readPointList", () => {
+  const hintsOf = (list: string) =>
+    analyzeCircuit(`<board><trace from="R1.pin1" to="net.GND" schematicRouteHints={${list}} /></board>`).traces[0]?.schematicRouteHints
+
+  test("reads only plain finite x and y numbers", () => {
+    expect(hintsOf("[{ x: -0, y: 1e-3 }]")).toEqual([{ x: -0, y: 0.001 }])
+    expect(hintsOf("[{ [x]: 1, y: 2 }]")).toBeUndefined()
+    expect(hintsOf("[{ x: 1e999, y: 2 }]")).toBeUndefined()
+    expect(hintsOf("[{ x: 1, y: 2, z: 3 }]")).toBeUndefined()
+  })
+})
+
 describe("formatLiteral", () => {
   test("formats each literal kind", () => {
     expect(formatLiteral("0402")).toBe('"0402"')

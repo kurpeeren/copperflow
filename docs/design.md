@@ -155,13 +155,22 @@ rejected.
   not draw yet are named in the status line. The same camera, grid, snapping, selection, lock
   badges, notes and keys as the PCB apply. Dragging a symbol writes `schX`/`schY`; R writes
   `schRotation`. Wires are drawn the way KiCad users expect: clicking a free pin, or pressing W
-  over any pin, starts a wire; an elbow follows the pointer; clicking a pin, a net label or an
-  existing wire ends it, and Esc or a right click cancels. A wire or label stands for its net,
-  so the new trace goes to `net.NAME`. A wire that would join two named nets (GND and VCC, say)
-  asks first. Ends already on the same net are refused, and the core
-  refuses a trace that repeats an existing one. The new wire shows dashed until the build
-  draws it. tscircuit lays out wire paths itself, so clicked corners are not kept. The Wire
-  pins button (also W away from a pin) marks every pin.
+  over any pin, starts a wire; an elbow follows the pointer on the grid; clicking the sheet
+  places a corner (Backspace removes the last one); clicking a pin, a net label or an existing
+  wire ends it, and Esc or a right click cancels. A wire or label stands for its net, so the new
+  trace goes to `net.NAME`. A wire that would join two named nets (GND and VCC, say) asks first.
+  Ends already on the same net are refused, and the core refuses a trace that repeats an
+  existing one. The new wire shows dashed until the build draws it. The Wire pins button (also
+  W away from a pin) marks every pin.
+- Hand-drawn corners. tscircuit lays out schematic wires itself and ignores the trace prop
+  `schematicRouteHints`, so copperflow keeps clicked corners there anyway (the file stays valid
+  tscircuit, and the corners take effect natively if tscircuit starts reading them) and draws
+  such a trace itself: from its pin through the corners to the other pin, with right-angle
+  bends. A wire that ends on another wire or a label keeps that point as its last corner and
+  gets a junction. tscircuit's own path between the same two pins is hidden; elsewhere its
+  layout is kept, so a wire to a net may also show tscircuit's net label for that net. Pin ends
+  follow their pins when parts move; the corners stay where they were clicked. tscircuit's own
+  viewers and exports still show tscircuit's paths.
 - A side panel lists parts (lock, rotate by 90°, remove), traces (remove), marks (add at the
   selected part or at a box drawn on the PCB, remove), the build report and the history with
   undo.

@@ -87,6 +87,31 @@ describe("drawSchematic", () => {
   })
 })
 
+describe("hand-drawn wires", () => {
+  test("are drawn with their junctions, and the tscircuit paths they replace are skipped", () => {
+    const plain = recorder()
+    drawSchematic(plain.ctx, JSON_, VIEW, { ratio: 1, symbols: SYMBOLS })
+    const drawn = recorder()
+    drawSchematic(drawn.ctx, JSON_, VIEW, {
+      ratio: 1,
+      symbols: SYMBOLS,
+      wires: [
+        [
+          { x: 0, y: 0 },
+          { x: 2, y: 0 },
+          { x: 2, y: 1 },
+        ],
+      ],
+      junctions: [{ x: 2, y: 1 }],
+      hidden: new Set(["t1"]),
+    })
+    const count = (calls: string[], name: string) => calls.filter((c) => c === name).length
+    // t1 had one edge (one lineTo) and a junction; the new wire adds two lineTo and a junction.
+    expect(count(drawn.calls, "lineTo")).toBe(count(plain.calls, "lineTo") - 1 + 2)
+    expect(count(drawn.calls, "arc")).toBe(count(plain.calls, "arc"))
+  })
+})
+
 describe("placement", () => {
   // Camera at (1, 0), 60 px per unit, 800 x 600 view: world (x, y) lands at (400 + 60(x - 1), 300 - 60y).
   test("text lands where the camera puts it, with world y pointing up", () => {

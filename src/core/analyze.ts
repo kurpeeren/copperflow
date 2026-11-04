@@ -1,7 +1,7 @@
 import { parse } from "@babel/parser"
 import type { File, JSXAttribute, JSXElement, Node } from "@babel/types"
-import { readLiteral } from "./literals.js"
-import type { CircuitModel, PartInfo, PropInfo, TraceInfo } from "./types.js"
+import { readLiteral, readPointList } from "./literals.js"
+import type { CircuitModel, PartInfo, Point, PropInfo, TraceInfo } from "./types.js"
 
 const SKIP_KEYS = new Set(["loc", "start", "end", "extra", "comments", "leadingComments", "trailingComments", "innerComments"])
 const FUNCTION_TYPES = new Set([
@@ -74,6 +74,7 @@ function collectElement(source: string, node: JSXElement, ancestors: Node[], sca
       from: typeof from === "string" ? from : undefined,
       to: typeof to === "string" ? to : undefined,
       ...(parentElement ? { parent: slice(source, parentElement.openingElement.name) } : {}),
+      ...hintsOf(attributes),
       props: omit(props, ["from", "to"]),
       line,
       editable: reason === undefined,
@@ -150,6 +151,13 @@ function isNode(value: unknown): value is Node {
 
 function slice(source: string, node: Node): string {
   return source.slice(node.start ?? 0, node.end ?? 0)
+}
+
+/** The hand-drawn corners of a trace, when they are written as a literal list. */
+function hintsOf(attributes: JSXAttribute[]): { schematicRouteHints?: Point[] } {
+  const attribute = attributes.find((a) => a.name.type === "JSXIdentifier" && a.name.name === "schematicRouteHints")
+  const points = readPointList(attribute?.value)
+  return points ? { schematicRouteHints: points } : {}
 }
 
 function omit<T>(record: Record<string, T>, keys: string[]): Record<string, T> {

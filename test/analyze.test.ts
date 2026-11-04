@@ -45,6 +45,17 @@ describe("analyzeCircuit", () => {
     expect(model.traces.every((t) => t.editable)).toBe(true)
   })
 
+  test("reads the corners of a hand-drawn schematic wire", () => {
+    const m = analyzeCircuit(
+      '<board><trace from="R1.pin1" to="net.GND" schematicRouteHints={[{ x: 1, y: -2.5 }, { x: 3, y: -2.5 }]} /><trace from="R1.pin2" to="net.GND" schematicRouteHints={corners} /></board>',
+    )
+    expect(m.traces[0]?.schematicRouteHints).toEqual([
+      { x: 1, y: -2.5 },
+      { x: 3, y: -2.5 },
+    ])
+    expect(m.traces[1]?.schematicRouteHints).toBeUndefined()
+  })
+
   test("treats a valueless attribute as true and template literals as strings", () => {
     const m = analyzeCircuit("const x = <board><led name=\"D1\" doNotPlace color={`red`} /></board>")
     expect(m.parts[0]?.props.doNotPlace?.literal).toBe(true)

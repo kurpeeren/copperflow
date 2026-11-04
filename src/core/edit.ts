@@ -1,9 +1,9 @@
 import MagicString from "magic-string"
 import type { JSXAttribute, JSXElement } from "@babel/types"
 import { scanCircuit, type Scan } from "./analyze.js"
-import { formatLiteral, validateProp } from "./literals.js"
+import { formatLiteral, formatPointList, validateProp } from "./literals.js"
 import { partsInSelector } from "./selectors.js"
-import type { Edit, Literal, PartInfo } from "./types.js"
+import type { Edit, Literal, PartInfo, Point } from "./types.js"
 
 export type EditErrorCode = "not_found" | "locked" | "readonly" | "invalid" | "parse"
 
@@ -36,7 +36,7 @@ function applyEdit(source: string, edit: Edit, locked: ReadonlySet<string>): str
       next = removePart(source, scan, edit.part, locked)
       break
     case "addTrace":
-      next = addTrace(source, scan, edit.from, edit.to, edit.props ?? {})
+      next = addTrace(source, scan, edit.from, edit.to, edit.props ?? {}, edit.schematicRouteHints)
       break
     case "removeTrace":
       next = removeTrace(source, scan, edit.from, edit.to, locked)
@@ -108,7 +108,26 @@ function samePort(selector: string): string {
   return child ? `${child[1]}.${child[2]}` : trimmed
 }
 
-function addTrace(source: string, scan: Scan, from: string, to: string, props: Record<string, Literal>): string {
+/** Checks hand-drawn corners and rounds them, so the file stays readable. */
+function cornersOrThrow(points: unknown): Point[] {
+  if (!Array.isArray(points) || points.length > MAX_ROUTE_HINTS) {
+    throw new EditError("invalid", `schematicRouteHints must be a list of at most ${MAX_ROUTE_HINTS} points`)
+  }
+  return points.map((p: unknown) => {
+    const { x, y } = (p ?? {}) as { x?: unknown; y?: unknown }
+    const inRange = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && Math.abs(v) <= MAX_COORDINATE
+    if (!inRange(x) || !inRange(y)) {
+      throw new EditError("invalid", `Each corner in schematicRouteHints needs numbers x and y between -${MAX_COORDINATE} and ${MAX_COORDINATE}`)
+    }
+    return { x: roundCoordinate(x), y: roundCoordinate(y) }
+  })
+}
+
+function roundCoordinate(value: number): number {
+  return Math.round(value * 10_000) / 10_000 || 0
+}
+
+function addTrace(source: string, scan: Scan, from: string, to: string, props: Record<string, Literal>, hints?: Point[]): string {
   for (const [label, value] of [
     ["from", from],
     ["to", to],
@@ -116,9 +135,10 @@ function addTrace(source: string, scan: Scan, from: string, to: string, props: R
     if (typeof value !== "string" || value.trim() === "") throw new EditError("invalid", `${label} must be a selector`)
   }
   for (const [key, value] of Object.entries(props)) {
-    if (key === "from" || key === "to") throw new EditError("invalid", `pass ${key} as its own argument`)
+    if (key === "from" || key === "to" || key === "schematicRouteHints") throw new EditError("invalid", `pass ${key} as its own argument`)
     validateOrThrow(key, value)
   }
+  const corners = hints === undefined ? [] : cornersOrThrow(hints)
   const ends = [samePort(from), samePort(to)].sort().join("\0")
   const existing = scan.model.traces.find((t) => t.from !== undefined && t.to !== undefined && [samePort(t.from), samePort(t.to)].sort().join("\0") === ends)
   if (existing) throw new EditError("invalid", `${from} and ${to} are already connected (line ${existing.line})`)
@@ -127,9 +147,10 @@ function addTrace(source: string, scan: Scan, from: string, to: string, props: R
   const lineStart = source.lastIndexOf("\n", close - 1) + 1
   const indent = source.slice(lineStart, close)
   if (indent.trim() !== "") throw new EditError("invalid", "</board> must be on its own line to add a trace")
-  const extra = Object.entries(props)
-    .map(([key, value]) => ` ${key}=${formatLiteral(value)}`)
-    .join("")
+  const extra =
+    Object.entries(props)
+      .map(([key, value]) => ` ${key}=${formatLiteral(value)}`)
+      .join("") + (corners.length > 0 ? ` schematicRouteHints=${formatPointList(corners)}` : "")
   const childIndent = indent + (indent.includes("\t") ? "\t" : "  ")
   const element = `${childIndent}<trace from=${formatLiteral(from)} to=${formatLiteral(to)}${extra} />${lineEnding(source)}`
   return source.slice(0, lineStart) + element + source.slice(lineStart)
@@ -145,6 +166,9 @@ function removeTrace(source: string, scan: Scan, from: string, to: string, locke
 }
 
 const TAG = /^[A-Za-z][A-Za-z0-9_]*$/
+const MAX_ROUTE_HINTS = 200
+// Far beyond any sheet; keeps rounding and formatting exact.
+const MAX_COORDINATE = 1_000_000
 const PART_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 const RELATIVE_IMPORT = /^\.{1,2}\/[\w./-]+$/
 

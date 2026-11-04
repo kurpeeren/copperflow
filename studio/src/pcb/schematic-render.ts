@@ -31,6 +31,11 @@ export interface SchematicDrawOptions {
   activePorts?: readonly string[]
   /** Draws one component shifted, while it is dragged. */
   moving?: { componentId: string; by: Point }
+  /** Hand-drawn wires, drawn like tscircuit's, with junctions where they meet another wire. */
+  wires?: readonly Point[][]
+  junctions?: readonly Point[]
+  /** schematic_trace and schematic_net_label ids the hand-drawn wires replace. */
+  hidden?: ReadonlySet<string>
 }
 
 export const SCHEMATIC_PALETTE = {
@@ -122,8 +127,10 @@ export function drawSchematic(
   // Wires first, so symbols sit on top of their leads.
   ctx.strokeStyle = SCHEMATIC_PALETTE.wire
   ctx.fillStyle = SCHEMATIC_PALETTE.junction
+  ctx.lineWidth = line(WIRE_WIDTH)
+  const junctionRadius = Math.max(0.04, 3 * px)
   for (const trace of byType(elements, "schematic_trace")) {
-    ctx.lineWidth = line(WIRE_WIDTH)
+    if (options.hidden?.has(String(trace.schematic_trace_id))) continue
     for (const edge of list(trace.edges)) {
       const from = point((edge as { from?: unknown } | null)?.from)
       const to = point((edge as { to?: unknown } | null)?.to)
@@ -135,9 +142,18 @@ export function drawSchematic(
     }
     for (const junction of list(trace.junctions).map(point)) {
       if (!junction) continue
-      dot(ctx, junction, Math.max(0.04, 3 * px))
+      dot(ctx, junction, junctionRadius)
       ctx.fill()
     }
+  }
+  for (const wire of options.wires ?? []) {
+    ctx.beginPath()
+    wire.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)))
+    ctx.stroke()
+  }
+  for (const junction of options.junctions ?? []) {
+    dot(ctx, junction, junctionRadius)
+    ctx.fill()
   }
 
   for (const component of byType(elements, "schematic_component")) {
@@ -179,6 +195,7 @@ export function drawSchematic(
   world()
 
   for (const net of byType(elements, "schematic_net_label")) {
+    if (options.hidden?.has(String(net.schematic_net_label_id))) continue
     const symbol = symbolOf(options.symbols, net.symbol_name)
     const center = point(net.center) ?? { x: 0, y: 0 }
     const text = String(net.text ?? "")

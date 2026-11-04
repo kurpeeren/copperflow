@@ -21,9 +21,17 @@ export interface PartInfo {
   end: number
 }
 
+/** A point in schematic or board units. */
+export interface Point {
+  x: number
+  y: number
+}
+
 export interface TraceInfo {
   from: string | undefined
   to: string | undefined
+  /** Corners of a wire drawn by hand in the schematic, when written as a literal list. */
+  schematicRouteHints?: Point[]
   /** Tag of the enclosing element, e.g. "board" or "group". */
   parent?: string
   props: Record<string, PropInfo>
@@ -60,7 +68,8 @@ export interface CircuitModel {
 export type Edit =
   | { kind: "setProps"; part: string; props: Record<string, Literal> }
   | { kind: "removePart"; part: string }
-  | { kind: "addTrace"; from: string; to: string; props?: Record<string, Literal> }
+  /** `schematicRouteHints` are the corners of a wire drawn by hand in the schematic. */
+  | { kind: "addTrace"; from: string; to: string; props?: Record<string, Literal>; schematicRouteHints?: Point[] }
   | { kind: "removeTrace"; from: string; to: string }
   /** `importFrom` adds `import { tag } from "<importFrom>"` when it is missing. */
   | { kind: "addPart"; tag: string; name: string; props?: Record<string, Literal>; importFrom?: string }
