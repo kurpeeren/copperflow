@@ -140,3 +140,30 @@ function range(from: number, to: number): number[] {
   for (let i = from; i <= to; i++) values.push(i)
   return values
 }
+
+/**
+ * A wire being drawn (solid, ending in a ring) or one waiting for the build (dashed), along
+ * `points` in world units.
+ */
+export function drawWirePreview(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, points: Point[], kind: "drawing" | "pending"): void {
+  const screen = points.map((p) => worldToScreen(camera, size, p))
+  const last = screen[screen.length - 1]
+  if (!last) return
+  ctx.save()
+  ctx.strokeStyle = COPPER
+  ctx.lineWidth = 2
+  ctx.lineCap = "round"
+  ctx.lineJoin = "round"
+  ctx.globalAlpha = kind === "pending" ? 0.75 : 1
+  ctx.setLineDash(kind === "pending" ? [6, 5] : [])
+  ctx.beginPath()
+  screen.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)))
+  ctx.stroke()
+  if (kind === "drawing") {
+    ctx.setLineDash([])
+    ctx.beginPath()
+    ctx.arc(last.x, last.y, 5, 0, Math.PI * 2)
+    ctx.stroke()
+  }
+  ctx.restore()
+}

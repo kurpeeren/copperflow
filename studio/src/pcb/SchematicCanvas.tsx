@@ -2,15 +2,16 @@ import { symbols } from "schematic-symbols"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { CircuitData, CircuitElement } from "../api"
 import type { Actions } from "../App"
-import { selectorOfSchematicPort } from "../circuit-json"
 import { WireIcon } from "../icons"
 import { fitCamera, hitTest, schematicBoxes, screenToWorld, snap, zoomAt, type Camera, type PartBox, type Point, type Size } from "./geometry"
-import { drawGrid, drawLockBadge, drawMark, drawOutline, drawSelectionBox } from "./overlays"
+import { drawGrid, drawLockBadge, drawMark, drawOutline, drawSelectionBox, drawWirePreview } from "./overlays"
 import { drawSchematic, portAt, type SymbolLibrary } from "./schematic-render"
+import { alreadyConnected, elbow, joinsNets, portEnd, wireEndAt, type WireEnd } from "./wiring"
 
 interface Props {
   json: CircuitElement[]
   buildId: string | undefined
+  building: boolean
   circuit: CircuitData
   actions: Actions
   selected: string | null
@@ -22,6 +23,12 @@ type Gesture =
   | { kind: "drag"; part: PartBox; start: Point; offset: Point; moved: boolean; blocker: string | null }
   | { kind: "box"; start: Point; current: Point }
 
+/** A wire being drawn: where it starts, and the pin it starts on, if any. */
+interface Drawing {
+  start: WireEnd
+  portId?: string
+}
+
 const BACKGROUND = "#1b1e23"
 const SYMBOLS = symbols as unknown as SymbolLibrary
 const EMPTY_SHEET_CAMERA: Camera = { cx: 0, cy: 0, scale: 60 }
@@ -30,8 +37,12 @@ const DRAG_THRESHOLD_PX = 3
 const PORT_HIT_PX = 12
 const round = (value: number) => Math.round(value * 1000) / 1000
 
-/** The schematic, drawn by copperflow's own renderer under its camera, grid and tools. */
-export function SchematicCanvas({ json, buildId, circuit, actions, selected, onSelect }: Props) {
+/**
+ * The schematic, drawn by copperflow's own renderer under its camera, grid and tools. Wires are
+ * drawn the way KiCad users expect: click a free pin, or press W over any pin, then click a pin,
+ * a net label or a wire to connect; Esc or a right click cancels.
+ */
+export function SchematicCanvas({ json, buildId, building, circuit, actions, selected, onSelect }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [size, setSize] = useState<Size>({ width: 0, height: 0 })
@@ -39,10 +50,12 @@ export function SchematicCanvas({ json, buildId, circuit, actions, selected, onS
   const [gesture, setGesture] = useState<Gesture>()
   const [hover, setHover] = useState<string>()
   const [hoverPort, setHoverPort] = useState<string>()
+  const [hoverEnd, setHoverEnd] = useState<WireEnd>()
   const [cursor, setCursor] = useState<Point>()
   const [step, setStep] = useState(0.5)
   const [wiring, setWiring] = useState(false)
-  const [first, setFirst] = useState<{ selector: string; portId: string } | null>(null)
+  const [drawing, setDrawing] = useState<Drawing | null>(null)
+  const [pendingWires, setPendingWires] = useState<Point[][]>([])
   const [pending, setPending] = useState<{ name: string; offset: Point }>()
   const [unsupported, setUnsupported] = useState<string[]>([])
 
@@ -57,8 +70,25 @@ export function SchematicCanvas({ json, buildId, circuit, actions, selected, onS
       maxY: Math.max(...boxes.map((b) => b.box.maxY)) + 1,
     }
   }, [boxes])
+  // Pointer lookups only need the schematic, not the much larger PCB part of the circuit JSON.
+  const schematic = useMemo(() => json.filter((e) => e.type.startsWith("schematic_") || e.type.startsWith("source_")), [json])
+  // The end of the wire being drawn follows the pointer, so only then does the cursor cause redraws.
+  const drawingTo = drawing ? (hoverEnd?.at ?? cursor) : undefined
+  // The key handler reads what is under the pointer without being re-attached on every move.
+  const under = useRef<{ end?: WireEnd; port?: string }>({})
 
-  useEffect(() => setPending(undefined), [buildId])
+  const setUnder = (end: WireEnd | undefined, port: string | undefined) => {
+    under.current = { ...(end ? { end } : {}), ...(port ? { port } : {}) }
+    setHoverEnd(end)
+    setHoverPort(port)
+  }
+
+  // A new build moves pins and draws the new wires, so the old pointer targets and dashed wires go.
+  useEffect(() => {
+    setPending(undefined)
+    setPendingWires([])
+    setUnder(undefined, undefined)
+  }, [buildId])
 
   useEffect(() => {
     const wrap = wrapRef.current
@@ -108,20 +138,22 @@ export function SchematicCanvas({ json, buildId, circuit, actions, selected, onS
 
     const moving = gesture?.kind === "drag" && gesture.moved && !gesture.blocker ? { name: gesture.part.name, offset: gesture.offset } : pending
     const movingId = moving ? boxes.find((b) => b.name === moving.name)?.pcbComponentId : undefined
-    const active = [first?.portId, hoverPort].filter((id): id is string => id !== undefined)
+    const active = [drawing?.portId, hoverPort].filter((id): id is string => id !== undefined)
     const result = drawSchematic(ctx, json, { camera: view, size }, {
       ratio,
       symbols: SYMBOLS,
-      showPorts: wiring,
+      showPorts: wiring || drawing !== null,
       activePorts: active,
       ...(moving && movingId ? { moving: { componentId: movingId, by: moving.offset } } : {}),
     })
     setUnsupported((current) => (current.join() === result.unsupported.join() ? current : result.unsupported))
 
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
+    for (const wire of pendingWires) drawWirePreview(ctx, view, size, wire, "pending")
+    if (drawing && drawingTo) drawWirePreview(ctx, view, size, elbow(drawing.start.at, drawingTo), "drawing")
     for (const part of boxes) {
       const offset = moving && part.name === moving.name ? moving.offset : { x: 0, y: 0 }
-      if (part.name === hover && part.name !== selected) drawOutline(ctx, view, size, part.box, offset, "hover")
+      if (part.name === hover && part.name !== selected && !drawing) drawOutline(ctx, view, size, part.box, offset, "hover")
       if (part.name === selected) drawOutline(ctx, view, size, part.box, offset, "selected")
       if (locked.has(part.name)) drawLockBadge(ctx, view, size, part.box)
     }
@@ -129,7 +161,7 @@ export function SchematicCanvas({ json, buildId, circuit, actions, selected, onS
       if (mark.view === "schematic" && mark.x !== undefined && mark.y !== undefined) drawMark(ctx, view, size, { x: mark.x, y: mark.y }, mark.id, mark.text)
     }
     if (gesture?.kind === "box") drawSelectionBox(ctx, gesture.start, gesture.current)
-  }, [json, camera, size, gesture, pending, boxes, hover, selected, locked, circuit, wiring, first, hoverPort])
+  }, [json, camera, size, gesture, pending, boxes, hover, selected, locked, circuit, wiring, drawing, drawingTo, hoverPort, pendingWires])
 
   const local = useCallback(
     (event: { clientX: number; clientY: number }): Point => {
@@ -140,16 +172,29 @@ export function SchematicCanvas({ json, buildId, circuit, actions, selected, onS
     [size],
   )
 
-  /** The pin closest to the pointer within a few pixels; pins are too small to hit exactly. */
-  const portNear = (world: Point, scale: number) => portAt(json, world, PORT_HIT_PX / scale)
+  const finishWire = (target: WireEnd) => {
+    if (!drawing) return
+    const from = drawing.start
+    setDrawing(null)
+    if (target.selector === from.selector) return
+    if (alreadyConnected(from, target)) return actions.notify(`${from.label} and ${target.label} are already connected`)
+    const nets = joinsNets(from, target)
+    if (nets && !window.confirm(`This wire joins ${nets[0]} and ${nets[1]} into one net, a short circuit if they carry different voltages. Connect them anyway?`)) return
+    const wire = elbow(from.at, target.at)
+    setPendingWires((wires) => [...wires, wire])
+    void actions
+      .edit([{ kind: "addTrace", from: from.selector, to: target.selector }], `connect ${from.label} to ${target.label}`)
+      .then((ok) => ok || setPendingWires((wires) => wires.filter((w) => w !== wire)))
+  }
 
-  const onPortClick = (portId: string) => {
-    const selector = selectorOfSchematicPort(json, portId)
-    if (!selector) return actions.notify("This pin cannot be connected from the editor")
-    if (!first) return setFirst({ selector, portId })
-    if (first.selector === selector) return setFirst(null)
-    setFirst(null)
-    void actions.edit([{ kind: "addTrace", from: first.selector, to: selector }], `connect ${first.selector} to ${selector}`)
+  /** Where a wire would start under the pointer: any pin, label or wire while wiring, else only a free pin. */
+  const startAt = (world: Point, scale: number): Drawing | undefined => {
+    const reach = PORT_HIT_PX / scale
+    const portId = portAt(schematic, world, reach)
+    const pin = portId ? portEnd(schematic, portId) : undefined
+    if (pin && (wiring || pin.key === undefined)) return { start: pin, ...(portId ? { portId } : {}) }
+    const end = wiring ? wireEndAt(schematic, world, reach) : undefined
+    return end ? { start: end } : undefined
   }
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -157,12 +202,17 @@ export function SchematicCanvas({ json, buildId, circuit, actions, selected, onS
     event.currentTarget.setPointerCapture(event.pointerId)
     const point = local(event)
     const world = screenToWorld(camera, size, point)
+    if (event.button === 2 && drawing) return setDrawing(null)
     if (event.button === 1 || event.button === 2) return setGesture({ kind: "pan", start: point, camera })
     if (event.shiftKey) return setGesture({ kind: "box", start: point, current: point })
-    if (wiring) {
-      const port = portNear(world, camera.scale)
-      if (port) return onPortClick(port)
+    if (drawing) {
+      // A click on empty sheet keeps the wire going; tscircuit lays out the path, so corners are not kept.
+      const target = wireEndAt(schematic, world, PORT_HIT_PX / camera.scale)
+      if (target) finishWire(target)
+      return
     }
+    const start = startAt(world, camera.scale)
+    if (start) return setDrawing(start)
     const hit = hitTest(boxes, world)
     if (hit) {
       onSelect(hit.name)
@@ -178,7 +228,9 @@ export function SchematicCanvas({ json, buildId, circuit, actions, selected, onS
     const world = screenToWorld(camera, size, point)
     setCursor(world)
     if (!gesture) {
-      setHoverPort(wiring ? portNear(world, camera.scale) : undefined)
+      const reach = PORT_HIT_PX / camera.scale
+      const portId = portAt(schematic, world, reach)
+      setUnder(wiring || drawing ? wireEndAt(schematic, world, reach) : portId ? portEnd(schematic, portId) : undefined, portId)
       return setHover(hitTest(boxes, world)?.name)
     }
     if (gesture.kind === "pan") {
@@ -244,17 +296,25 @@ export function SchematicCanvas({ json, buildId, circuit, actions, selected, onS
     return () => wrap.removeEventListener("wheel", onWheel)
   }, [onWheel])
 
-  // R rotates the symbol, Delete removes the part, F fits, W toggles wiring.
+  // W starts a wire at the pin under the pointer, or turns wiring on and off; Esc cancels.
+  // R rotates the symbol, Delete removes the part, F fits.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLElement && event.target.closest("input, textarea, select")) return
+      // Ctrl+R, Ctrl+W and the like belong to the browser.
+      if (event.ctrlKey || event.metaKey || event.altKey) return
+      if (event.key === "Escape") {
+        if (drawing) return setDrawing(null)
+        return setWiring(false)
+      }
       if (event.key === "f" || event.key === "F") return fit()
       if (event.key === "w" || event.key === "W") {
-        setWiring((on) => !on)
-        setHoverPort(undefined)
-        return setFirst(null)
+        if (drawing) return
+        const { end, port } = under.current
+        if (end) return setDrawing({ start: end, ...(port ? { portId: port } : {}) })
+        return setWiring((on) => !on)
       }
-      if (!selected) return
+      if (!selected || drawing) return
       const blocker = blockerFor(selected)
       if (event.key === "r" || event.key === "R") {
         if (blocker) return actions.notify(blocker)
@@ -272,8 +332,9 @@ export function SchematicCanvas({ json, buildId, circuit, actions, selected, onS
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [selected, blockerFor, circuit, actions, onSelect, fit])
+  }, [selected, blockerFor, circuit, actions, onSelect, fit, drawing])
 
+  const overPin = hoverEnd !== undefined && (wiring || drawing !== null || hoverEnd.key === undefined)
   const cursorStyle =
     gesture?.kind === "pan"
       ? "grabbing"
@@ -281,12 +342,16 @@ export function SchematicCanvas({ json, buildId, circuit, actions, selected, onS
         ? gesture.blocker
           ? "not-allowed"
           : "move"
-        : hoverPort
+        : drawing || overPin
           ? "crosshair"
           : hover
             ? "pointer"
             : "default"
-  const hoverPin = hoverPort ? selectorOfSchematicPort(json, hoverPort) : undefined
+  const hint = drawing
+    ? `From ${drawing.start.label}: click a pin, a wire or a net label. Esc cancels.`
+    : wiring
+      ? "Click a pin to start a wire. Esc stops wiring."
+      : undefined
 
   return (
     <div
@@ -298,21 +363,21 @@ export function SchematicCanvas({ json, buildId, circuit, actions, selected, onS
       onPointerUp={onPointerUp}
       onPointerLeave={() => {
         setHover(undefined)
-        setHoverPort(undefined)
+        setUnder(undefined, undefined)
         setCursor(undefined)
       }}
       onContextMenu={(e) => e.preventDefault()}
       role="img"
-      aria-label="Schematic. Drag symbols to move them, drag the background to pan, scroll to zoom."
+      aria-label="Schematic. Drag symbols to move them, drag the background to pan, scroll to zoom. Click a free pin or press W over a pin to draw a wire."
     >
       <canvas ref={canvasRef} style={{ width: size.width, height: size.height }} />
       <div className="canvas-tools" onPointerDown={(e) => e.stopPropagation()}>
         <button
           className={wiring ? "active" : ""}
+          aria-pressed={wiring}
           onClick={() => {
             setWiring(!wiring)
-            setHoverPort(undefined)
-            setFirst(null)
+            setDrawing(null)
           }}
           title="Wire pins (W)"
         >
@@ -332,10 +397,15 @@ export function SchematicCanvas({ json, buildId, circuit, actions, selected, onS
           Fit
         </button>
       </div>
-      {wiring && <div className="canvas-hint">{first ? `From ${first.selector}: click the second pin` : "Click the first pin"}</div>}
+      {hint && <div className="canvas-hint">{hint}</div>}
+      {building && (
+        <div className="canvas-busy" role="status">
+          Updating…
+        </div>
+      )}
       <div className="canvas-status" aria-live="off">
         {cursor ? `${cursor.x.toFixed(2)}, ${cursor.y.toFixed(2)}` : ""}
-        {hoverPin && `  ${hoverPin}`}
+        {hoverEnd && `  ${hoverEnd.label}`}
         {gesture?.kind === "drag" && gesture.moved && !gesture.blocker && `  Δ ${gesture.offset.x}, ${gesture.offset.y}`}
         {unsupported.length > 0 && `\nNot drawn yet: ${unsupported.join(", ")}`}
       </div>

@@ -117,6 +117,12 @@ describe("edge cases", () => {
     expectEditError(() => applyEdits(BOARD, [{ kind: "addTrace", from: ".R1 > .pin1", to: "net.GND", props: { from: "x" } }], none), "invalid")
   })
 
+  test("refuses a trace that already exists, in either direction and either selector form", () => {
+    expectEditError(() => applyEdits(BOARD, [{ kind: "addTrace", from: ".R1 > .pin1", to: "net.GND" }], none), "invalid")
+    expectEditError(() => applyEdits(BOARD, [{ kind: "addTrace", from: "R1.pin2", to: "C1.pin1" }], none), "invalid")
+    expect(() => applyEdits(BOARD, [{ kind: "addTrace", from: ".R1 > .pin2", to: "net.GND" }], none)).not.toThrow()
+  })
+
   test("refuses to remove a read-only trace", () => {
     const source = '<board>\n  <trace from={a} to="net.GND" />\n  <trace from={a} to={b} />\n</board>'
     const model = analyzeCircuit(source)

@@ -26,6 +26,7 @@ import {
   unlockParts,
   updateAnnotations,
 } from "../core/index.js"
+import { Evaluator, findTscircuitEval } from "./evaluator.js"
 import { LiveProject } from "./live.js"
 
 export interface StudioOptions {
@@ -35,6 +36,11 @@ export interface StudioOptions {
   /** Folder with the built browser app; defaults to dist/app. */
   staticDir?: string
   buildCommand?: string[]
+  /**
+   * Build with the installed tscircuit's eval library in a long-lived worker (seconds per build
+   * instead of the CLI's start-up). On by default unless a build command or COPPERFLOW_TSCI is set.
+   */
+  fastBuild?: boolean
   /** Open event streams allowed at once. */
   maxStreams?: number
 }
@@ -125,7 +131,10 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
   const root = resolve(options.root)
   const staticDir = resolve(options.staticDir ?? fileURLToPath(new URL("../app/", import.meta.url)))
   const token = randomBytes(24).toString("hex")
-  const live = new LiveProject(root, options.buildCommand)
+  const customCli = options.buildCommand !== undefined || Boolean(process.env.COPPERFLOW_TSCI)
+  const evalEntry = (options.fastBuild ?? !customCli) ? findTscircuitEval() : undefined
+  const fast = evalEntry ? new Evaluator(evalEntry) : undefined
+  const live = new LiveProject(root, options.buildCommand, fast)
   const streams = new Set<ServerResponse>()
   const maxStreams = options.maxStreams ?? DEFAULT_MAX_STREAMS
   let port = 0
@@ -283,6 +292,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
   const address = server.address()
   port = typeof address === "object" && address ? address.port : 0
   live.start()
+  fast?.warm()
 
   return {
     url: `http://127.0.0.1:${port}`,
@@ -290,6 +300,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
     openUrl: `http://127.0.0.1:${port}/#token=${token}`,
     close: async () => {
       live.stop()
+      await fast?.stop()
       for (const stream of streams) stream.end()
       server.closeAllConnections()
       await new Promise<void>((done) => server.close(() => done()))

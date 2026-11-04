@@ -24,6 +24,8 @@ interface Props {
   json: CircuitElement[]
   /** Changes when a build finishes; a pending move is then part of the new build. */
   buildId: string | undefined
+  /** A build is running; the canvas shows that the drawing is about to change. */
+  building: boolean
   circuit: CircuitData
   actions: Actions
   selected: string | null
@@ -68,7 +70,7 @@ function toCanvasPoint(canvas: HTMLCanvasElement | null, size: Size, event: { cl
 }
 
 /** The PCB, drawn by copperflow's own renderer under its camera, grid and tools. */
-export function PcbCanvas({ json, buildId, circuit, actions, selected, onSelect }: Props) {
+export function PcbCanvas({ json, buildId, building, circuit, actions, selected, onSelect }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const drawerRef = useRef<CircuitToCanvasDrawer | null>(null)
@@ -356,6 +358,11 @@ export function PcbCanvas({ json, buildId, circuit, actions, selected, onSelect 
           </button>
         ))}
       </div>
+      {building && (
+        <div className="canvas-busy" role="status">
+          Updating…
+        </div>
+      )}
       <div className="canvas-status" aria-live="off">
         {cursor ? `${cursor.x.toFixed(2)}, ${cursor.y.toFixed(2)} mm` : ""}
         {hoverPin && `  ${hoverPin}`}

@@ -101,6 +101,13 @@ function traceEnds(trace: { from: string | undefined; to: string | undefined }):
   return [trace.from, trace.to].flatMap((end) => (end === undefined ? [] : partsInSelector(end)))
 }
 
+/** One spelling for a port selector: `.R1 > .pin1` and `R1.pin1` both become `R1.pin1`. */
+function samePort(selector: string): string {
+  const trimmed = selector.trim()
+  const child = /^\.([\w-]+)\s*>\s*\.([\w-]+)$/.exec(trimmed)
+  return child ? `${child[1]}.${child[2]}` : trimmed
+}
+
 function addTrace(source: string, scan: Scan, from: string, to: string, props: Record<string, Literal>): string {
   for (const [label, value] of [
     ["from", from],
@@ -112,6 +119,9 @@ function addTrace(source: string, scan: Scan, from: string, to: string, props: R
     if (key === "from" || key === "to") throw new EditError("invalid", `pass ${key} as its own argument`)
     validateOrThrow(key, value)
   }
+  const ends = [samePort(from), samePort(to)].sort().join("\0")
+  const existing = scan.model.traces.find((t) => t.from !== undefined && t.to !== undefined && [samePort(t.from), samePort(t.to)].sort().join("\0") === ends)
+  if (existing) throw new EditError("invalid", `${from} and ${to} are already connected (line ${existing.line})`)
   const close = scan.model.boardClose?.start
   if (close === undefined) throw new EditError("invalid", "No <board> element with a closing tag was found")
   const lineStart = source.lastIndexOf("\n", close - 1) + 1

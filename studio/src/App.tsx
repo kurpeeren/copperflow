@@ -205,8 +205,10 @@ export function App() {
           {!json && <p className="empty">{build.status === "failed" ? build.error : "Building the circuit…"}</p>}
           {json && circuit && tab === "pcb" && (
             <PcbCanvas
+              key={file}
               json={json}
               buildId={build.finishedAt}
+              building={build.status === "building"}
               circuit={circuit}
               actions={actions}
               selected={selected}
@@ -214,7 +216,16 @@ export function App() {
             />
           )}
           {json && circuit && tab === "schematic" && (
-            <SchematicCanvas json={json} buildId={build.finishedAt} circuit={circuit} actions={actions} selected={selected} onSelect={setSelected} />
+            <SchematicCanvas
+              key={file}
+              json={json}
+              buildId={build.finishedAt}
+              building={build.status === "building"}
+              circuit={circuit}
+              actions={actions}
+              selected={selected}
+              onSelect={setSelected}
+            />
           )}
         </section>
         {circuit && (

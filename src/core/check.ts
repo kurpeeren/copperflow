@@ -77,9 +77,14 @@ export async function buildCircuit(
     throw new Error(`The build did not produce circuit JSON (exit code ${run.code}). Last output:\n${tail(output)}`)
   }
   const elements = await readCircuitJson(root, written)
+  return { result: reportFromElements(elements, run.code), circuitJson: elements }
+}
+
+/** The errors and warnings in circuit JSON, grouped by type. */
+export function reportFromElements(elements: unknown[], exitCode: number | null = 0): CheckResult {
   const errors = groupIssues(elements, "_error")
   const warnings = groupIssues(elements, "_warning")
-  return { result: { ok: run.code === 0 && errors.length === 0, exitCode: run.code, errors, warnings }, circuitJson: elements }
+  return { ok: exitCode === 0 && errors.length === 0, exitCode, errors, warnings }
 }
 
 export function formatCheck(file: string, result: CheckResult): string {

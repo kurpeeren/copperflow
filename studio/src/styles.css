@@ -836,3 +836,15 @@ ul {
   place-items: center;
   pointer-events: none;
 }
+
+.canvas-busy {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgb(34 38 44 / 92%);
+  color: var(--muted);
+  pointer-events: none;
+}

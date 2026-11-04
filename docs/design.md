@@ -121,9 +121,19 @@ rejected.
 
 `copperflow studio` starts a local web server and opens a browser editor for the project.
 
-- The server builds the selected circuit with the tscircuit CLI (about 8 s for the example
-  board) and serves the circuit JSON. It watches circuit and annotation files, so changes made
-  by the agent or in a code editor appear in the browser, and rebuilds after each change.
+- The server builds the selected circuit and serves the circuit JSON. It watches circuit and
+  annotation files, so changes made by the agent or in a code editor appear in the browser,
+  and rebuilds after each change. Starting the tscircuit CLI costs about 20 s per build, so the
+  server loads the eval library of the installed tscircuit CLI once, in a worker thread
+  (`src/studio/evaluator.ts`), and builds there: a change appears after a few seconds instead
+  of half a minute. The project's source files are passed to it; npm packages are never fetched
+  from a CDN. A mistake in the circuit code is reported at once. The server falls back to
+  `tsci build` when the library is not found, an import needs `node_modules`, the project has a
+  `tscircuit.config.json` (whose settings only the CLI applies), or the worker fails or times
+  out. The worker is replaced every 20 builds, because the library keeps memory between them.
+  `tsci build` stays the reference for `copperflow check` and the MCP tool. The
+  fast path is off when `COPPERFLOW_TSCI` names another CLI; `COPPERFLOW_TSCIRCUIT_EVAL` can
+  point at the library directly. While a build runs, the canvas shows "Updating…".
 - The PCB view is copperflow's own canvas with its own renderer (`studio/src/pcb/render.ts`):
   board, pads of every shape, plated holes, holes, vias, traces on both layers, silkscreen
   paths, lines, rectangles, circles and text, courtyards and fabrication notes, in layer order
@@ -144,9 +154,14 @@ rejected.
   and the circuit's own text and graphics are drawn in copperflow's palette. Element types it does
   not draw yet are named in the status line. The same camera, grid, snapping, selection, lock
   badges, notes and keys as the PCB apply. Dragging a symbol writes `schX`/`schY`; R writes
-  `schRotation`. In wiring mode (W) every pin is marked, the pin under the pointer is
-  highlighted, and clicking near two pins adds a trace between them; the nearest pin within
-  12 px is used.
+  `schRotation`. Wires are drawn the way KiCad users expect: clicking a free pin, or pressing W
+  over any pin, starts a wire; an elbow follows the pointer; clicking a pin, a net label or an
+  existing wire ends it, and Esc or a right click cancels. A wire or label stands for its net,
+  so the new trace goes to `net.NAME`. A wire that would join two named nets (GND and VCC, say)
+  asks first. Ends already on the same net are refused, and the core
+  refuses a trace that repeats an existing one. The new wire shows dashed until the build
+  draws it. tscircuit lays out wire paths itself, so clicked corners are not kept. The Wire
+  pins button (also W away from a pin) marks every pin.
 - A side panel lists parts (lock, rotate by 90°, remove), traces (remove), marks (add at the
   selected part or at a box drawn on the PCB, remove), the build report and the history with
   undo.

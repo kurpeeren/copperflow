@@ -1,5 +1,6 @@
 import { watch, type FSWatcher } from "node:fs"
-import { buildCircuit, type CheckResult } from "../core/check.js"
+import { buildCircuit, reportFromElements, type CheckResult } from "../core/check.js"
+import { FastBuildUnavailable } from "./evaluator.js"
 
 export type BuildStatus = "idle" | "building" | "done" | "failed"
 
@@ -9,6 +10,14 @@ export interface BuildState {
   report?: CheckResult
   error?: string
   finishedAt?: string
+}
+
+/**
+ * Builds a circuit faster than the tscircuit CLI; see evaluator.ts. It rejects with
+ * FastBuildUnavailable when the CLI should build instead.
+ */
+export interface FastBuilder {
+  evaluate(root: string, file: string): Promise<unknown[]>
 }
 
 export type Listener = (event: "change" | "build" | "library", data: Record<string, unknown>) => void
@@ -30,10 +39,12 @@ export class LiveProject {
   private readonly rerun = new Set<string>()
   private readonly timers = new Map<string, NodeJS.Timeout>()
   private watcher: FSWatcher | undefined
+  private stopped = false
 
   constructor(
     private readonly root: string,
     private readonly buildCommand?: string[],
+    private readonly fast?: FastBuilder,
   ) {}
 
   start(): void {
@@ -48,6 +59,7 @@ export class LiveProject {
   }
 
   stop(): void {
+    this.stopped = true
     this.watcher?.close()
     for (const timer of this.timers.values()) clearTimeout(timer)
     this.timers.clear()
@@ -71,10 +83,29 @@ export class LiveProject {
     }
     this.builds.set(file, { ...previous, status: "building" })
     this.emit("build", { file, status: "building" })
-    const options = this.buildCommand ? { command: this.buildCommand } : {}
-    buildCircuit(this.root, file, options)
+    this.build(file)
       .then(({ result, circuitJson }) => this.finish(file, { status: "done", circuitJson, report: result }))
       .catch((error: Error) => this.finish(file, { ...this.getBuild(file), status: "failed", error: error.message }))
+  }
+
+  /**
+   * The fast builder when there is one. A mistake in the circuit code fails the build at once;
+   * the tscircuit CLI builds instead only when the fast builder cannot (see FastBuildUnavailable).
+   */
+  private async build(file: string): Promise<{ result: CheckResult; circuitJson: unknown[] }> {
+    if (this.fast) {
+      try {
+        const circuitJson = await this.fast.evaluate(this.root, file)
+        return { result: reportFromElements(circuitJson), circuitJson }
+      } catch (error) {
+        // The eval library appends its debug log after a blank line.
+        const message = (error as Error).message.split("\n\n")[0] ?? ""
+        if (!(error instanceof FastBuildUnavailable)) throw new Error(message)
+        if (this.stopped) throw error
+        console.error(`copperflow studio: building ${file} with tsci build: ${message.split("\n")[0]}`)
+      }
+    }
+    return buildCircuit(this.root, file, this.buildCommand ? { command: this.buildCommand } : {})
   }
 
   private finish(file: string, state: BuildState): void {
