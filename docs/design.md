@@ -138,12 +138,15 @@ rejected.
   new centre is written when the part had no position.
 - No vendor labels are shown on screen. The licences of every bundled package ship in
   `dist/app/THIRD_PARTY_LICENSES.txt`, generated at build time.
-- The schematic view is copperflow's own canvas too. tscircuit's SVG renderer (`circuit-to-svg`)
-  draws the symbols; the SVG is parsed and stripped of scripts, embedded HTML, event handlers
-  and outside links before it is shown. The SVG carries its world-to-pixel matrix, so the same
-  camera, grid, snapping, selection, lock badges, notes and keys as the PCB apply. Dragging a
-  symbol writes `schX`/`schY`; R writes `schRotation`. In wiring mode (W), clicking near two
-  pins adds a trace between them; the nearest pin within 12 px is used.
+- The schematic view is copperflow's own canvas and renderer too (`studio/src/pcb/schematic-render.ts`).
+  Passive parts are drawn from the symbol shapes in `schematic-symbols` with their designator and
+  value; chips are boxes with numbered, labelled pins; wires, junctions, net labels, power rails
+  and the circuit's own text and graphics are drawn in copperflow's palette. Element types it does
+  not draw yet are named in the status line. The same camera, grid, snapping, selection, lock
+  badges, notes and keys as the PCB apply. Dragging a symbol writes `schX`/`schY`; R writes
+  `schRotation`. In wiring mode (W) every pin is marked, the pin under the pointer is
+  highlighted, and clicking near two pins adds a trace between them; the nearest pin within
+  12 px is used.
 - A side panel lists parts (lock, rotate by 90°, remove), traces (remove), marks (add at the
   selected part or at a box drawn on the PCB, remove), the build report and the history with
   undo.

@@ -437,7 +437,7 @@ function text(ctx: Ctx, e: Element, camera: Camera, size: Size, offset: Point, c
   if (fontPx < MIN_TEXT_PX || content === "") return
   const anchor = (e.anchor_position as Point | undefined) ?? { x: 0, y: 0 }
   const p = worldToScreen(camera, size, { x: anchor.x + offset.x, y: anchor.y + offset.y })
-  const [vertical, horizontal] = alignment(String(e.anchor_alignment ?? "center"))
+  const [vertical, horizontal] = anchorAlignment(String(e.anchor_alignment ?? "center"))
   ctx.save()
   ctx.translate(p.x, p.y)
   if (num(e, "ccw_rotation")) ctx.rotate(-rad(num(e, "ccw_rotation")))
@@ -451,7 +451,7 @@ function text(ctx: Ctx, e: Element, camera: Camera, size: Size, offset: Point, c
 }
 
 /** Canvas baseline and alignment for anchors such as "top_left" or "center". */
-function alignment(anchor: string): [string, string] {
+export function anchorAlignment(anchor: string): [string, string] {
   const parts = anchor.split("_")
   const vertical = parts.includes("top") ? "top" : parts.includes("bottom") ? "bottom" : "middle"
   const horizontal = parts.includes("left") ? "left" : parts.includes("right") ? "right" : "center"

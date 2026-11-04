@@ -1,25 +1,12 @@
-import { convertCircuitJsonToSchematicSvg } from "circuit-to-svg"
+import { symbols } from "schematic-symbols"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { CircuitData, CircuitElement } from "../api"
 import type { Actions } from "../App"
 import { selectorOfSchematicPort } from "../circuit-json"
 import { WireIcon } from "../icons"
-import {
-  fitCamera,
-  hitTest,
-  parseMatrix,
-  schematicBoxes,
-  screenToWorld,
-  snap,
-  svgTransform,
-  zoomAt,
-  type Camera,
-  type PartBox,
-  type Point,
-  type Size,
-} from "./geometry"
+import { fitCamera, hitTest, schematicBoxes, screenToWorld, snap, zoomAt, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import { drawGrid, drawLockBadge, drawMark, drawOutline, drawSelectionBox } from "./overlays"
-import { sanitizeSvg } from "./sanitize-svg"
+import { drawSchematic, portAt, type SymbolLibrary } from "./schematic-render"
 
 interface Props {
   json: CircuitElement[]
@@ -35,61 +22,30 @@ type Gesture =
   | { kind: "drag"; part: PartBox; start: Point; offset: Point; moved: boolean; blocker: string | null }
   | { kind: "box"; start: Point; current: Point }
 
-/** Schematic colours matching the workspace: transparent sheet over our grid, copper wires. */
-const COLORS = {
-  schematic: {
-    background: "transparent",
-    component_body: "#22262c",
-    component_outline: "#d9d4c7",
-    pin: "#d9d4c7",
-    pin_name: "#e9e6df",
-    pin_number: "#959ca6",
-    reference: "#e0a46a",
-    value: "#959ca6",
-    fields: "#959ca6",
-    wire: "#c98a4b",
-    junction: "#e0a46a",
-    no_connect: "#e5675e",
-    net_name: "#e9e6df",
-    label_global: "#6ea8d6",
-    label_local: "#6ea8d6",
-    label_background: "#22262c",
-    note: "#959ca6",
-  },
-}
-const SVG_SIZE = { width: 1200, height: 800 }
+const BACKGROUND = "#1b1e23"
+const SYMBOLS = symbols as unknown as SymbolLibrary
+const EMPTY_SHEET_CAMERA: Camera = { cx: 0, cy: 0, scale: 60 }
 const SNAP_STEPS = [0.1, 0.5, 1]
 const DRAG_THRESHOLD_PX = 3
 const PORT_HIT_PX = 12
 const round = (value: number) => Math.round(value * 1000) / 1000
 
-/** The schematic, drawn by tscircuit's SVG renderer under copperflow's own camera, grid and tools. */
+/** The schematic, drawn by copperflow's own renderer under its camera, grid and tools. */
 export function SchematicCanvas({ json, buildId, circuit, actions, selected, onSelect }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
-  const gridRef = useRef<HTMLCanvasElement>(null)
-  const overlayRef = useRef<HTMLCanvasElement>(null)
-  const sheetRef = useRef<HTMLDivElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
   const [size, setSize] = useState<Size>({ width: 0, height: 0 })
   const [camera, setCamera] = useState<Camera>()
   const [gesture, setGesture] = useState<Gesture>()
   const [hover, setHover] = useState<string>()
+  const [hoverPort, setHoverPort] = useState<string>()
+  const [cursor, setCursor] = useState<Point>()
   const [step, setStep] = useState(0.5)
   const [wiring, setWiring] = useState(false)
-  const [first, setFirst] = useState<string | null>(null)
+  const [first, setFirst] = useState<{ selector: string; portId: string } | null>(null)
   const [pending, setPending] = useState<{ name: string; offset: Point }>()
+  const [unsupported, setUnsupported] = useState<string[]>([])
 
-  const svg = useMemo(
-    () =>
-      convertCircuitJsonToSchematicSvg(json as Parameters<typeof convertCircuitJsonToSchematicSvg>[0], {
-        ...SVG_SIZE,
-        grid: false,
-        includeVersion: false,
-        drawPorts: wiring,
-        colorOverrides: COLORS,
-      }),
-    [json, wiring],
-  )
-  const real = useMemo(() => parseMatrix(/data-real-to-screen-transform="([^"]+)"/.exec(svg)?.[1] ?? ""), [svg])
   const boxes = useMemo(() => schematicBoxes(json), [json])
   const locked = useMemo(() => new Set(circuit.annotations.locks.map((l) => l.part)), [circuit])
   const bounds = useMemo(() => {
@@ -101,12 +57,6 @@ export function SchematicCanvas({ json, buildId, circuit, actions, selected, onS
       maxY: Math.max(...boxes.map((b) => b.box.maxY)) + 1,
     }
   }, [boxes])
-
-  // Insert the sanitised sheet; declared before the effect that positions it.
-  useEffect(() => {
-    const node = sanitizeSvg(svg)
-    sheetRef.current?.replaceChildren(...(node ? [node] : []))
-  }, [svg])
 
   useEffect(() => setPending(undefined), [buildId])
 
@@ -140,52 +90,46 @@ export function SchematicCanvas({ json, buildId, circuit, actions, selected, onS
     [circuit, locked],
   )
 
-  // Place the SVG under the camera, and shift the symbol being moved.
+  // Draw everything whenever anything visible changes; a sheet without parts gets a default view.
   useEffect(() => {
-    const sheet = sheetRef.current
-    if (!sheet || !camera || !real) return
-    const t = svgTransform(camera, size, real)
-    sheet.style.transform = `translate(${t.x}px, ${t.y}px) scale(${t.zoom})`
-    const moving = gesture?.kind === "drag" && gesture.moved && !gesture.blocker ? { name: gesture.part.name, offset: gesture.offset } : pending
-    for (const group of sheet.querySelectorAll<SVGGElement>("[data-schematic-component-id]")) {
-      const part = boxes.find((b) => b.pcbComponentId === group.dataset.schematicComponentId)
-      const offset = moving && part?.name === moving.name ? moving.offset : undefined
-      group.setAttribute("transform", offset ? `translate(${offset.x * real.a}, ${offset.y * real.d})` : "")
-    }
-  }, [camera, size, real, svg, gesture, pending, boxes])
-
-  // Grid below the sheet; selection, locks and notes above it.
-  useEffect(() => {
-    const grid = gridRef.current
-    const overlay = overlayRef.current
-    if (!grid || !overlay || !camera || size.width === 0) return
+    const canvas = canvasRef.current
+    const view = camera ?? EMPTY_SHEET_CAMERA
+    if (!canvas || size.width === 0) return
     const ratio = window.devicePixelRatio || 1
-    for (const canvas of [grid, overlay]) {
-      canvas.width = size.width * ratio
-      canvas.height = size.height * ratio
-    }
-    const g = grid.getContext("2d")
-    const o = overlay.getContext("2d")
-    if (!g || !o) return
-    g.setTransform(ratio, 0, 0, ratio, 0, 0)
-    g.fillStyle = "#1b1e23"
-    g.fillRect(0, 0, size.width, size.height)
-    drawGrid(g, camera, size)
+    canvas.width = size.width * ratio
+    canvas.height = size.height * ratio
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.fillStyle = BACKGROUND
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
+    drawGrid(ctx, view, size)
 
-    o.setTransform(ratio, 0, 0, ratio, 0, 0)
-    o.clearRect(0, 0, size.width, size.height)
     const moving = gesture?.kind === "drag" && gesture.moved && !gesture.blocker ? { name: gesture.part.name, offset: gesture.offset } : pending
+    const movingId = moving ? boxes.find((b) => b.name === moving.name)?.pcbComponentId : undefined
+    const active = [first?.portId, hoverPort].filter((id): id is string => id !== undefined)
+    const result = drawSchematic(ctx, json, { camera: view, size }, {
+      ratio,
+      symbols: SYMBOLS,
+      showPorts: wiring,
+      activePorts: active,
+      ...(moving && movingId ? { moving: { componentId: movingId, by: moving.offset } } : {}),
+    })
+    setUnsupported((current) => (current.join() === result.unsupported.join() ? current : result.unsupported))
+
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
     for (const part of boxes) {
       const offset = moving && part.name === moving.name ? moving.offset : { x: 0, y: 0 }
-      if (part.name === hover && part.name !== selected) drawOutline(o, camera, size, part.box, offset, "hover")
-      if (part.name === selected) drawOutline(o, camera, size, part.box, offset, "selected")
-      if (locked.has(part.name)) drawLockBadge(o, camera, size, part.box)
+      if (part.name === hover && part.name !== selected) drawOutline(ctx, view, size, part.box, offset, "hover")
+      if (part.name === selected) drawOutline(ctx, view, size, part.box, offset, "selected")
+      if (locked.has(part.name)) drawLockBadge(ctx, view, size, part.box)
     }
     for (const mark of circuit.annotations.marks) {
-      if (mark.view === "schematic" && mark.x !== undefined && mark.y !== undefined) drawMark(o, camera, size, { x: mark.x, y: mark.y }, mark.id, mark.text)
+      if (mark.view === "schematic" && mark.x !== undefined && mark.y !== undefined) drawMark(ctx, view, size, { x: mark.x, y: mark.y }, mark.id, mark.text)
     }
-    if (gesture?.kind === "box") drawSelectionBox(o, gesture.start, gesture.current)
-  }, [camera, size, gesture, pending, boxes, hover, selected, locked, circuit])
+    if (gesture?.kind === "box") drawSelectionBox(ctx, gesture.start, gesture.current)
+  }, [json, camera, size, gesture, pending, boxes, hover, selected, locked, circuit, wiring, first, hoverPort])
 
   const local = useCallback(
     (event: { clientX: number; clientY: number }): Point => {
@@ -196,44 +140,30 @@ export function SchematicCanvas({ json, buildId, circuit, actions, selected, onS
     [size],
   )
 
-  /** The part under the pointer: the SVG element hit first, then the symbol boxes. */
-  const partAt = (target: EventTarget | null, world: Point): PartBox | undefined => {
-    const id = target instanceof Element ? target.closest<SVGElement>("[data-schematic-component-id]")?.dataset.schematicComponentId : undefined
-    return (id ? boxes.find((b) => b.pcbComponentId === id) : undefined) ?? hitTest(boxes, world)
-  }
-
   /** The pin closest to the pointer within a few pixels; pins are too small to hit exactly. */
-  const nearestPort = (clientX: number, clientY: number): string | undefined => {
-    let best: { id: string; distance: number } | undefined
-    for (const element of sheetRef.current?.querySelectorAll<SVGElement>("[data-schematic-port-id]") ?? []) {
-      const rect = element.getBoundingClientRect()
-      const distance = Math.hypot(rect.x + rect.width / 2 - clientX, rect.y + rect.height / 2 - clientY)
-      const id = element.dataset.schematicPortId
-      if (id && distance <= PORT_HIT_PX && (!best || distance < best.distance)) best = { id, distance }
-    }
-    return best?.id
-  }
+  const portNear = (world: Point, scale: number) => portAt(json, world, PORT_HIT_PX / scale)
 
   const onPortClick = (portId: string) => {
     const selector = selectorOfSchematicPort(json, portId)
     if (!selector) return actions.notify("This pin cannot be connected from the editor")
-    if (!first) return setFirst(selector)
-    if (first === selector) return setFirst(null)
+    if (!first) return setFirst({ selector, portId })
+    if (first.selector === selector) return setFirst(null)
     setFirst(null)
-    void actions.edit([{ kind: "addTrace", from: first, to: selector }], `connect ${first} to ${selector}`)
+    void actions.edit([{ kind: "addTrace", from: first.selector, to: selector }], `connect ${first.selector} to ${selector}`)
   }
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!camera) return
     event.currentTarget.setPointerCapture(event.pointerId)
     const point = local(event)
+    const world = screenToWorld(camera, size, point)
     if (event.button === 1 || event.button === 2) return setGesture({ kind: "pan", start: point, camera })
     if (event.shiftKey) return setGesture({ kind: "box", start: point, current: point })
     if (wiring) {
-      const port = nearestPort(event.clientX, event.clientY)
+      const port = portNear(world, camera.scale)
       if (port) return onPortClick(port)
     }
-    const hit = partAt(event.target, screenToWorld(camera, size, point))
+    const hit = hitTest(boxes, world)
     if (hit) {
       onSelect(hit.name)
       setGesture({ kind: "drag", part: hit, start: point, offset: { x: 0, y: 0 }, moved: false, blocker: blockerFor(hit.name) })
@@ -246,7 +176,11 @@ export function SchematicCanvas({ json, buildId, circuit, actions, selected, onS
     if (!camera) return
     const point = local(event)
     const world = screenToWorld(camera, size, point)
-    if (!gesture) return setHover(partAt(event.target, world)?.name)
+    setCursor(world)
+    if (!gesture) {
+      setHoverPort(wiring ? portNear(world, camera.scale) : undefined)
+      return setHover(hitTest(boxes, world)?.name)
+    }
     if (gesture.kind === "pan") {
       const dx = (point.x - gesture.start.x) / gesture.camera.scale
       const dy = (point.y - gesture.start.y) / gesture.camera.scale
@@ -317,6 +251,7 @@ export function SchematicCanvas({ json, buildId, circuit, actions, selected, onS
       if (event.key === "f" || event.key === "F") return fit()
       if (event.key === "w" || event.key === "W") {
         setWiring((on) => !on)
+        setHoverPort(undefined)
         return setFirst(null)
       }
       if (!selected) return
@@ -339,29 +274,44 @@ export function SchematicCanvas({ json, buildId, circuit, actions, selected, onS
     return () => window.removeEventListener("keydown", onKey)
   }, [selected, blockerFor, circuit, actions, onSelect, fit])
 
-  const cursorStyle = gesture?.kind === "pan" ? "grabbing" : gesture?.kind === "drag" ? (gesture.blocker ? "not-allowed" : "move") : hover ? "pointer" : "default"
+  const cursorStyle =
+    gesture?.kind === "pan"
+      ? "grabbing"
+      : gesture?.kind === "drag"
+        ? gesture.blocker
+          ? "not-allowed"
+          : "move"
+        : hoverPort
+          ? "crosshair"
+          : hover
+            ? "pointer"
+            : "default"
+  const hoverPin = hoverPort ? selectorOfSchematicPort(json, hoverPort) : undefined
 
   return (
     <div
-      className={`schematic-canvas${wiring ? " wiring" : ""}`}
+      className="schematic-canvas"
       ref={wrapRef}
       style={{ cursor: cursorStyle }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerLeave={() => setHover(undefined)}
+      onPointerLeave={() => {
+        setHover(undefined)
+        setHoverPort(undefined)
+        setCursor(undefined)
+      }}
       onContextMenu={(e) => e.preventDefault()}
       role="img"
       aria-label="Schematic. Drag symbols to move them, drag the background to pan, scroll to zoom."
     >
-      <canvas ref={gridRef} className="layer" style={{ width: size.width, height: size.height }} />
-      <div ref={sheetRef} className="sheet" />
-      <canvas ref={overlayRef} className="layer overlay" style={{ width: size.width, height: size.height }} />
+      <canvas ref={canvasRef} style={{ width: size.width, height: size.height }} />
       <div className="canvas-tools" onPointerDown={(e) => e.stopPropagation()}>
         <button
           className={wiring ? "active" : ""}
           onClick={() => {
             setWiring(!wiring)
+            setHoverPort(undefined)
             setFirst(null)
           }}
           title="Wire pins (W)"
@@ -382,9 +332,14 @@ export function SchematicCanvas({ json, buildId, circuit, actions, selected, onS
           Fit
         </button>
       </div>
-      {wiring && <div className="canvas-hint">{first ? `From ${first}: click the second pin` : "Click the first pin"}</div>}
-      {!real && <p className="empty">This schematic could not be drawn.</p>}
+      {wiring && <div className="canvas-hint">{first ? `From ${first.selector}: click the second pin` : "Click the first pin"}</div>}
+      <div className="canvas-status" aria-live="off">
+        {cursor ? `${cursor.x.toFixed(2)}, ${cursor.y.toFixed(2)}` : ""}
+        {hoverPin && `  ${hoverPin}`}
+        {gesture?.kind === "drag" && gesture.moved && !gesture.blocker && `  Δ ${gesture.offset.x}, ${gesture.offset.y}`}
+        {unsupported.length > 0 && `\nNot drawn yet: ${unsupported.join(", ")}`}
+      </div>
+      {!bounds && <p className="empty">This schematic has no parts yet.</p>}
     </div>
   )
 }
-

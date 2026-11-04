@@ -243,7 +243,7 @@ function BoardView({ circuit, build, actions }: Props) {
 
       <h3>Build</h3>
       {build.status === "failed" && <p className="note error">{build.error}</p>}
-      {build.status === "building" && <p className="note">Building with tscircuit…</p>}
+      {build.status === "building" && <p className="note">Building…</p>}
       {build.report && errors.length === 0 && <p className="note ok">No errors. {warnings} warnings.</p>}
       {errors.length > 0 && (
         <ul className="issues">

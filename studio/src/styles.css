@@ -252,31 +252,8 @@ input:disabled {
   background: var(--ground);
 }
 
-.schematic-canvas .layer {
-  position: absolute;
-  inset: 0;
+.schematic-canvas canvas {
   display: block;
-}
-
-.schematic-canvas .overlay {
-  pointer-events: none;
-}
-
-.schematic-canvas .sheet {
-  position: absolute;
-  top: 0;
-  left: 0;
-  transform-origin: 0 0;
-}
-
-.schematic-canvas .sheet svg {
-  display: block;
-  background: transparent !important;
-  overflow: visible;
-}
-
-.schematic-canvas.wiring [data-schematic-port-id] {
-  cursor: crosshair;
 }
 
 .canvas-hint {
@@ -850,4 +827,12 @@ ul {
     grid-column: 1 / -1;
     justify-content: flex-start;
   }
+}
+
+.schematic-canvas .empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
 }

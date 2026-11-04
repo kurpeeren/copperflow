@@ -67,7 +67,7 @@ function toCanvasPoint(canvas: HTMLCanvasElement | null, size: Size, event: { cl
   }
 }
 
-/** The PCB, drawn by tscircuit's element drawer under copperflow's own camera, grid and tools. */
+/** The PCB, drawn by copperflow's own renderer under its camera, grid and tools. */
 export function PcbCanvas({ json, buildId, circuit, actions, selected, onSelect }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
