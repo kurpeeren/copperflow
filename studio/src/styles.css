@@ -232,10 +232,6 @@ input:disabled {
   background: #000;
 }
 
-.pane {
-  height: 100%;
-}
-
 .pcb-canvas {
   position: relative;
   height: 100%;
@@ -246,6 +242,52 @@ input:disabled {
 .pcb-canvas canvas {
   display: block;
   touch-action: none;
+}
+
+.schematic-canvas {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+  background: var(--ground);
+}
+
+.schematic-canvas .layer {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.schematic-canvas .overlay {
+  pointer-events: none;
+}
+
+.schematic-canvas .sheet {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+
+.schematic-canvas .sheet svg {
+  display: block;
+  background: transparent !important;
+  overflow: visible;
+}
+
+.schematic-canvas.wiring [data-schematic-port-id] {
+  cursor: crosshair;
+}
+
+.canvas-hint {
+  position: absolute;
+  top: 54px;
+  left: 10px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--copper-wash);
+  color: var(--text);
+  pointer-events: none;
 }
 
 .canvas-tools {
@@ -285,35 +327,10 @@ input:disabled {
   pointer-events: none;
 }
 
-.pane.with-toolbar {
-  display: flex;
-  flex-direction: column;
-}
-
-.pane-toolbar {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--line);
-  background: var(--panel);
-  color: var(--muted);
-}
-
-.pane-toolbar button.active {
+.canvas-tools button.active {
   border-color: var(--copper);
   background: var(--copper-wash);
   color: var(--text);
-}
-
-.pane-body {
-  flex: 1;
-  min-height: 0;
-}
-
-/* The viewer opens part details on every part click; while wiring they would cover the pins. */
-.wiring [data-schematic-component-details-tooltip] {
-  display: none !important;
 }
 
 .empty {

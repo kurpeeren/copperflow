@@ -66,7 +66,7 @@ pages and other programs on your computer cannot use the editor's API.
 
 Drag parts on the PCB (they snap to a 0.1, 0.5 or 1 mm grid), press R to rotate and Delete to
 remove, scroll to zoom, drag the background to pan, lock parts, change values in the inspector,
-wire pins in the schematic, leave marks for the agent and undo changes. Every edit is written
+move symbols and wire pins in the schematic (W), leave marks for the agent and undo changes. Every edit is written
 back into the circuit file. When the agent changes the file, the editor updates by itself.
 
 The Library tab places parts from your library or tscircuit's built-in set. Selecting a

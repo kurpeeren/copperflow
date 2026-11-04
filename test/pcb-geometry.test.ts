@@ -5,7 +5,10 @@ import {
   fitCamera,
   gridSteps,
   hitTest,
+  parseMatrix,
+  schematicBoxes,
   screenToWorld,
+  svgTransform,
   snap,
   toMatrix,
   worldToScreen,
@@ -66,6 +69,33 @@ describe("grid and snapping", () => {
     expect(snap(2.26, 0.5)).toBe(2.5)
     expect(snap(-4.04, 0.1)).toBe(-4)
     expect(snap(0.3, 0.1)).toBe(0.3)
+  })
+})
+
+describe("schematic", () => {
+  const SCH = [
+    { type: "source_component", source_component_id: "s1", name: "R1" },
+    { type: "schematic_component", schematic_component_id: "c1", source_component_id: "s1", center: { x: 2, y: 1 }, size: { width: 1, height: 0.4 } },
+  ]
+
+  test("reads the real-to-screen matrix the SVG carries", () => {
+    expect(parseMatrix("matrix(51.36,0,0,-51.36,75.37,263.8)")).toEqual({ a: 51.36, b: 0, c: 0, d: -51.36, e: 75.37, f: 263.8 })
+    expect(parseMatrix("rotate(3)")).toBeUndefined()
+  })
+
+  test("schematic parts have boxes from their centre and size", () => {
+    expect(schematicBoxes(SCH)).toEqual([{ name: "R1", pcbComponentId: "c1", center: { x: 2, y: 1 }, box: { minX: 1.5, minY: 0.8, maxX: 2.5, maxY: 1.2 } }])
+  })
+
+  test("the SVG transform puts world points where the camera says", () => {
+    const m = { a: 50, b: 0, c: 0, d: -50, e: 100, f: 300 }
+    const camera = { cx: 2, cy: 1, scale: 80 }
+    const t = svgTransform(camera, SIZE, m)
+    const world = { x: 3, y: 2 }
+    const svg = { x: m.a * world.x + m.e, y: m.d * world.y + m.f }
+    const onScreen = { x: t.zoom * svg.x + t.x, y: t.zoom * svg.y + t.y }
+    expect(onScreen.x).toBeCloseTo(worldToScreen(camera, SIZE, world).x)
+    expect(onScreen.y).toBeCloseTo(worldToScreen(camera, SIZE, world).y)
   })
 })
 

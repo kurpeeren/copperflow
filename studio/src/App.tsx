@@ -4,7 +4,7 @@ import { UndoIcon } from "./icons"
 import { Inspector } from "./Inspector"
 import { LeftPanel } from "./LeftPanel"
 import { PcbCanvas } from "./pcb/PcbCanvas"
-import { SchematicPane } from "./SchematicPane"
+import { SchematicCanvas } from "./pcb/SchematicCanvas"
 
 /** Every action reports failures itself and resolves to whether it succeeded. */
 export interface Actions {
@@ -214,7 +214,7 @@ export function App() {
             />
           )}
           {json && circuit && tab === "schematic" && (
-            <SchematicPane json={json} actions={actions} onSelect={setSelected} />
+            <SchematicCanvas json={json} buildId={build.finishedAt} circuit={circuit} actions={actions} selected={selected} onSelect={setSelected} />
           )}
         </section>
         {circuit && (

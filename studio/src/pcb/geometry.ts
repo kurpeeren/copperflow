@@ -152,6 +152,49 @@ export function boardBounds(json: Element[]): Box | undefined {
   }
 }
 
+/** Parses an SVG `matrix(a,b,c,d,e,f)` string. */
+export function parseMatrix(text: string): Matrix | undefined {
+  const match = /^matrix\(([^)]+)\)$/.exec(text.trim())
+  const values = match?.[1]?.split(",").map(Number)
+  if (!values || values.length !== 6 || values.some((v) => !Number.isFinite(v))) return undefined
+  const [a, b, c, d, e, f] = values as [number, number, number, number, number, number]
+  return { a, b, c, d, e, f }
+}
+
+/** Boxes of schematic symbols, from each schematic_component's centre and size. */
+export function schematicBoxes(json: Element[]): PartBox[] {
+  const names = new Map<unknown, string>()
+  for (const e of json) if (e.type === "source_component" && typeof e.name === "string") names.set(e.source_component_id, e.name)
+  const boxes: PartBox[] = []
+  for (const e of json) {
+    if (e.type !== "schematic_component") continue
+    const name = names.get(e.source_component_id)
+    const center = e.center as Point | undefined
+    const size = e.size as { width?: number; height?: number } | undefined
+    if (!name || !center || typeof size?.width !== "number" || typeof size.height !== "number") continue
+    boxes.push({
+      name,
+      pcbComponentId: String(e.schematic_component_id),
+      center,
+      box: { minX: center.x - size.width / 2, minY: center.y - size.height / 2, maxX: center.x + size.width / 2, maxY: center.y + size.height / 2 },
+    })
+  }
+  return boxes
+}
+
+/**
+ * The CSS translate and zoom that place an SVG drawn with `real` (world to SVG pixels) so world
+ * points land where `camera` puts them on screen.
+ */
+export function svgTransform(camera: Camera, size: Size, real: Matrix): { x: number; y: number; zoom: number } {
+  const zoom = camera.scale / real.a
+  return {
+    zoom,
+    x: size.width / 2 - camera.cx * camera.scale - zoom * real.e,
+    y: size.height / 2 + camera.cy * camera.scale - zoom * real.f,
+  }
+}
+
 function clampScale(scale: number): number {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale))
 }
