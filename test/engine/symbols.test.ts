@@ -87,6 +87,15 @@ describe("variants", () => {
     expect(new Set(variants.map((v) => JSON.stringify(v))).size).toBe(3)
   })
 
+  test("inherited property names are not variants", () => {
+    const plain = shapesOf(`<diode name="D1" />`)
+    for (const variant of ["constructor", "toString", "hasOwnProperty", "valueOf", "__proto__"]) {
+      expect(shapesOf(`<diode name="D1" variant="${variant}" />`), variant).toEqual(plain)
+    }
+    const stranger: Component = { ...chip(), kind: "constructor" }
+    expect(symbolFor(stranger).pins).toHaveLength(5)
+  })
+
   test("pnp and p-channel turn the arrow", () => {
     expect(shapesOf(`<transistor name="Q1" type="pnp" />`)).not.toEqual(shapesOf(`<transistor name="Q1" type="npn" />`))
     expect(shapesOf(`<mosfet name="Q1" channelType="p" />`)).not.toEqual(shapesOf(`<mosfet name="Q1" channelType="n" />`))

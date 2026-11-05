@@ -16,7 +16,7 @@ const TWO_PIN = { 1: place(-0.5, 0, "left"), 2: place(0.5, 0, "right") }
 /** Pin 1 is the anode on the left; the bar is on the cathode, pin 2. */
 export function diode(component: Component): Drawing {
   const variant = component.props["variant"]
-  const bar = BARS[typeof variant === "string" && variant in BARS ? variant : "plain"] ?? []
+  const bar = BARS[typeof variant === "string" && Object.hasOwn(BARS, variant) ? variant : "plain"] ?? []
   const shapes: Shape[] = [
     line([-0.5, 0], [-0.15, 0]),
     polygon([[-0.15, 0.15], [-0.15, -0.15], [0.15, 0]], true),

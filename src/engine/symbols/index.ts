@@ -35,7 +35,7 @@ const samePins = (drawing: Drawing, pins: readonly Pin[]): boolean => {
 }
 
 function drawingFor(component: Component): Drawing {
-  const draw = DRAWINGS[component.kind]
+  const draw = Object.hasOwn(DRAWINGS, component.kind) ? DRAWINGS[component.kind] : undefined
   const drawing = draw?.(component)
   return drawing && samePins(drawing, component.pins) ? drawing : boxDrawing(component)
 }
