@@ -3,7 +3,7 @@ import { join } from "node:path"
 import type { Design } from "../engine/design.js"
 import { Engine } from "../engine/engine.js"
 import type { Component } from "../engine/model.js"
-import { isPartVerified, PARTS_DIR, readPart, type Part } from "./library.js"
+import { isPartVerified, libraryValues, PARTS_DIR, readPart, type Part } from "./library.js"
 import { resolveCircuit, resolveInRoot } from "./workspace.js"
 
 export interface BomLine {
@@ -18,6 +18,7 @@ export interface BomLine {
   supplier: string
   datasheet: string
   libraryPart?: string
+  /** True when a person verified the library part and this instance keeps its footprint, MPN and supplier numbers. */
   verified?: boolean
 }
 
@@ -106,8 +107,22 @@ function componentLine(component: Component, entry: LibraryEntry | undefined): B
     mpn: component.mpn ?? part?.mpn ?? "",
     supplier: supplier && numbers?.[0] ? `${supplier} ${numbers[0]}` : libSupplier ? `${libSupplier} ${libNumber}` : "",
     datasheet: part?.datasheet?.url ?? part?.datasheet?.file ?? "",
-    ...(component.library && entry ? { libraryPart: component.library, verified: entry.verified } : {}),
+    ...(component.library && entry ? { libraryPart: component.library, verified: entry.verified && keepsLibraryValues(component, component.library, entry.part) } : {}),
   }
+}
+
+/**
+ * Whether an instance builds with the footprint, MPN and supplier numbers its library part sets. A
+ * circuit can override them on the instance; the part a person verified is then not what is built.
+ */
+function keepsLibraryValues(component: Component, id: string, part: Part): boolean {
+  const expected = libraryValues(id, part)
+  const sorted = (numbers: Record<string, string[]>) => JSON.stringify(Object.entries(numbers).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+  return (
+    component.footprint === expected.footprint &&
+    component.mpn === expected.mpn &&
+    sorted(component.supplierPartNumbers) === sorted(expected.supplierPartNumbers)
+  )
 }
 
 /** The first of the props that give a part its value, e.g. an LED's color. */

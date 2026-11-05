@@ -279,19 +279,32 @@ export async function rebuildComponents(root: string): Promise<string[]> {
   return written
 }
 
-/** The tscircuit component for a part. Values are written with JSON.stringify, so they stay literals. */
+/** The footprint, MPN and supplier numbers the generated component of a part sets, as the engine reads them. */
+export interface LibraryValues {
+  footprint: string
+  mpn?: string
+  supplierPartNumbers: Record<string, string[]>
+}
+
+export function libraryValues(id: string, part: Part): LibraryValues {
+  return {
+    footprint: part.footprint === FOOTPRINT_FILE ? `${PARTS_DIR}/${id}/${FOOTPRINT_FILE}` : part.footprint,
+    ...(part.mpn ? { mpn: part.mpn } : {}),
+    supplierPartNumbers: Object.fromEntries(Object.entries(part.suppliers ?? {}).map(([supplier, number]) => [supplier, [number]])),
+  }
+}
+
+/** The component for a part. Values are written with JSON.stringify, so they stay literals. */
 export function generateComponent(id: string, part: Part): string {
   const pins = Object.entries(part.pins).sort(([a], [b]) => Number(a) - Number(b))
   const labels = Object.fromEntries(pins.map(([number, pin]) => [`pin${number}`, pin.name]))
   const attributes = Object.fromEntries(pins.map(([number, pin]) => [`pin${number}`, PIN_ATTRIBUTES[pin.type]]))
   const sides = Object.fromEntries(pins.flatMap(([number, pin]) => (pin.side ? [[`pin${number}`, pin.side]] : [])))
-  const suppliers = part.suppliers
-    ? Object.fromEntries(Object.entries(part.suppliers).map(([supplier, number]) => [supplier, [number]]))
-    : undefined
+  const values = libraryValues(id, part)
   const props = [
-    `footprint={${JSON.stringify(part.footprint === FOOTPRINT_FILE ? `${PARTS_DIR}/${id}/${FOOTPRINT_FILE}` : part.footprint)}}`,
-    part.mpn ? `manufacturerPartNumber={${JSON.stringify(part.mpn)}}` : undefined,
-    suppliers ? `supplierPartNumbers={${JSON.stringify(suppliers)}}` : undefined,
+    `footprint={${JSON.stringify(values.footprint)}}`,
+    values.mpn ? `manufacturerPartNumber={${JSON.stringify(values.mpn)}}` : undefined,
+    part.suppliers ? `supplierPartNumbers={${JSON.stringify(values.supplierPartNumbers)}}` : undefined,
     `pinLabels={${JSON.stringify(labels)}}`,
     `pinAttributes={${JSON.stringify(attributes)}}`,
     Object.keys(sides).length > 0 ? `pinSides={${JSON.stringify(sides)}}` : undefined,

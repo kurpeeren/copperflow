@@ -1,3 +1,4 @@
+import { LIBRARY_OWNED_PROPS } from "../core/library.js"
 import { buildBoard } from "./board.js"
 import { buildPart, NO_OFFSET, type Offset } from "./component.js"
 import { diagnostic } from "./diagnostics.js"
@@ -82,7 +83,21 @@ class Elaboration {
       throw new CircuitCodeError(`${where}: ${typeof message === "string" ? message : String(error)}`, { cause: error })
     }
     const library = LIBRARY_PATH.exec(origin ?? "")?.[1] ?? frame.library
+    if (library !== undefined && frame.library === undefined) this.libraryOverrides(element, library, this.sourceOf(element, frame))
     this.visit(result, { ...frame, callSite: frame.callSite ?? element.source, library })
+  }
+
+  /**
+   * A library part's generated component spreads the instance's props last, so a prop the part owns
+   * (its footprint, MPN, supplier numbers, pin labels or attributes) set on the instance replaces
+   * what a person verified. The BOM then marks the line not verified when the values differ.
+   */
+  private libraryOverrides(element: CfElement, library: string, source: SourceRef): void {
+    const owned = Object.keys(element.props).filter((key) => LIBRARY_OWNED_PROPS.includes(key))
+    if (owned.length === 0) return
+    const name = typeof element.props["name"] === "string" && element.props["name"] !== "" ? element.props["name"] : library
+    const message = `${name} sets ${owned.join(", ")}, which library part ${library} owns; parts/${library}/part.yaml no longer describes it`
+    this.diagnostics.push(diagnostic("library-override", "warning", message, owned.map((key) => `${name}.${key}`), source))
   }
 
   private tag(element: CfElement, tag: string, frame: Frame): void {

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { buildBom, exportPackage, formatBomCsv, formatBomMarkdown } from "../src/core/bom.js"
 import { createPart, verifyPart } from "../src/core/library.js"
-import { LDO } from "./fixtures.js"
+import { LDO, USBX, USBX_FOOTPRINT } from "./fixtures.js"
 import { inProcessEngine as engine } from "./helpers/in-process-engine.js"
 
 const FILE = "boards/main.circuit.tsx"
@@ -88,6 +88,42 @@ describe("buildBom", () => {
     )
     const lines = await buildBom(root, FILE, { engine })
     expect(lines.map((l) => [l.designators, l.footprint])).toEqual([[["D1"], "bga64"]])
+  })
+
+  describe("an instance that overrides what its verified library part owns", () => {
+    const withLdo = (instance: string) => writeFile(join(root, FILE), SOURCE.replace('<LDO name="U1" />', instance))
+    const ldoLine = async () => (await buildBom(root, FILE, { engine })).find((l) => l.libraryPart === "LDO")
+
+    beforeEach(() => verifyPart(root, "LDO", { by: "Eren", against: "datasheet p.2" }, "t"))
+
+    test("a footprint and an MPN of its own make the line not verified, and the design warns", async () => {
+      await withLdo('<LDO name="U1" footprint="0603" manufacturerPartNumber="OTHER" />')
+      expect(await ldoLine()).toMatchObject({ verified: false, footprint: "0603", mpn: "OTHER" })
+      const warnings = (await engine.build(root, FILE)).diagnostics.filter((d) => d.code === "library-override")
+      expect(warnings).toMatchObject([{ severity: "warning", items: ["U1.footprint", "U1.manufacturerPartNumber"] }])
+      expect(warnings[0]?.message).toContain("LDO")
+    })
+
+    test("supplier numbers of its own are enough", async () => {
+      await withLdo('<LDO name="U1" supplierPartNumbers={{ jlcpcb: ["C1"] }} />')
+      expect(await ldoLine()).toMatchObject({ verified: false, supplier: "jlcpcb C1" })
+    })
+
+    test("the library's own values, written again, keep it verified", async () => {
+      await withLdo('<LDO name="U1" footprint="sot23_5" manufacturerPartNumber="AP2112K-3.3TRG1" supplierPartNumbers={{ jlcpcb: ["C51118"] }} />')
+      expect((await ldoLine())?.verified).toBe(true)
+    })
+  })
+
+  test("a verified part with a footprint file is verified in the BOM until an instance overrides its footprint", async () => {
+    await createPart(root, "USBX", USBX, { footprintFile: USBX_FOOTPRINT, now: "t" })
+    await verifyPart(root, "USBX", { by: "Eren", against: "drawing p.1" }, "t")
+    const circuit = (instance: string) =>
+      `import { USBX } from "../parts/USBX/USBX"\nexport default () => (\n  <board width="20mm" height="20mm">\n    ${instance}\n  </board>\n)\n`
+    await writeFile(join(root, FILE), circuit('<USBX name="J1" />'))
+    expect((await buildBom(root, FILE, { engine }))[0]).toMatchObject({ libraryPart: "USBX", verified: true })
+    await writeFile(join(root, FILE), circuit('<USBX name="J1" footprint="0603" />'))
+    expect((await buildBom(root, FILE, { engine }))[0]).toMatchObject({ libraryPart: "USBX", verified: false })
   })
 
   test("a library part is verified only after a person verifies it", async () => {
