@@ -47,8 +47,8 @@ const SODS: Readonly<Record<string, SodOutline>> = {
 /**
  * The IPC-7351B nominal footprint for "sod" + code, such as "123", or undefined. Pin 1 is the anode
  * and pin 2 the cathode, so the silkscreen cathode bar sits on the pad 2 side, at positive x.
- * Amax for Table 3-2 Note 1 is the body length here; see `gullWingGoals` on why that reading is only
- * settled for these two packages.
+ * Amax for Table 3-2 Note 1 is the body length between the two leads; see `gullWingGoals` for how
+ * that reading was settled.
  */
 export function sodFootprint(code: string): Footprint | undefined {
   if (!Object.hasOwn(SODS, code)) return undefined

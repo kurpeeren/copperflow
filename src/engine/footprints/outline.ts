@@ -9,12 +9,17 @@ export interface Extent {
 }
 
 /** Engine plan: silkscreen keeps this far from copper. */
-const SILK_CLEARANCE = 0.15
+export const SILK_CLEARANCE = 0.15
 const TIDY = 1e6
 
-/** Removes floating-point noise below 1 nm. */
-function tidy(value: number): number {
-  return Math.round(value * TIDY) / TIDY
+/** Removes floating-point noise below 1 nm, and turns −0 into 0. */
+export function tidy(value: number): number {
+  return Math.round(value * TIDY) / TIDY + 0
+}
+
+/** `count` positions `pitch` apart, centred on 0, in rising order. */
+export function centredOffsets(count: number, pitch: number): number[] {
+  return Array.from({ length: count }, (_, i) => tidy((i - (count - 1) / 2) * pitch))
 }
 
 function padHalfSize(pad: Pad): Extent {
@@ -30,9 +35,9 @@ export function padExtent(pads: readonly Pad[]): Extent {
   }, { x: 0, y: 0 })
 }
 
-/** Half the gap between the pads of a two-terminal pattern: how far the nearest pad edge is from x = 0. */
-function innerEdge(pads: readonly Pad[]): number {
-  return Math.min(...pads.map((pad) => Math.abs(pad.x) - padHalfSize(pad).x))
+/** Half the gap between two rows of pads: how far the nearest pad edge is from the centre line across `axis`. */
+function innerEdge(pads: readonly Pad[], axis: "x" | "y" = "x"): number {
+  return Math.min(...pads.map((pad) => Math.abs(pad[axis]) - padHalfSize(pad)[axis]))
 }
 
 /** A rectangle's corners, counter-clockwise from the lower left. */
@@ -60,10 +65,15 @@ export function courtyard(pads: readonly Pad[], component: Extent, table: Readon
   })
 }
 
+/** A rectangle around the origin as a closed polyline. */
+export function closedRectangle(half: Extent): Point[] {
+  const clean = { x: tidy(half.x), y: tidy(half.y) }
+  return [...rectangle(clean), { x: -clean.x, y: -clean.y }]
+}
+
 /** The body outline as a closed polyline. */
 export function bodyOutline(body: Extent): Point[][] {
-  const half = { x: tidy(body.x), y: tidy(body.y) }
-  return [[...rectangle(half), { x: -half.x, y: -half.y }]]
+  return [closedRectangle(body)]
 }
 
 /** How far above and below the origin silkscreen lines run: at the body edge, but clear of the pads. */
@@ -90,4 +100,55 @@ export function cathodeBar(pads: readonly Pad[], body: Extent): Point[] {
   const x = tidy(inside > 0 ? inside : padExtent(pads).x + SILK_CLEARANCE)
   const y = silkY(pads, body)
   return [{ x, y: -y }, { x, y }]
+}
+
+/**
+ * Two columns of pads (SOIC, TSSOP): lines along the top and bottom body edges between the columns.
+ * The top line runs on over pad 1, at the top of the left column, to mark it.
+ */
+export function dualSilkscreen(pads: readonly Pad[], body: Extent): Point[][] {
+  const [top, bottom] = sideLines(pads, body) as [[Point, Point], Point[]]
+  const [, end] = top
+  return [[{ x: -tidy(padExtent(pads).x), y: end.y }, end], bottom]
+}
+
+/**
+ * Two rows of pads (SOT-23): lines along the left and right body edges between the rows. The left
+ * line runs on past pad 1, at the left of the bottom row, to mark it.
+ */
+export function rowSilkscreen(pads: readonly Pad[], body: Extent): Point[][] {
+  const extent = padExtent(pads)
+  const x = tidy(Math.max(body.x, extent.x + SILK_CLEARANCE))
+  const y = tidy(Math.min(body.y, innerEdge(pads, "y")))
+  return [
+    [{ x: -x, y: -tidy(extent.y) }, { x: -x, y }],
+    [{ x, y: -y }, { x, y }],
+  ]
+}
+
+/** How far along its side of a square package a pad reaches from the centre line. */
+function alongSide(pad: Pad): number {
+  const half = padHalfSize(pad)
+  return Math.abs(pad.x) > Math.abs(pad.y) ? Math.abs(pad.y) + half.y : Math.abs(pad.x) + half.x
+}
+
+/**
+ * Four sides of pads (QFP, QFN; pass the signal pads only): an L at each body corner, clear of the
+ * pads. The top-left L runs on to the outer end of pad 1, at the top of the left side, to mark it.
+ */
+export function quadSilkscreen(pads: readonly Pad[], body: Extent): Point[][] {
+  const start = tidy(Math.max(...pads.map(alongSide)) + SILK_CLEARANCE)
+  const c = tidy(Math.max(body.x, start))
+  const corner = (sx: number, sy: number): Point[] => [
+    { x: tidy(sx * c), y: tidy(sy * start) },
+    { x: tidy(sx * c), y: tidy(sy * c) },
+    { x: tidy(sx * start), y: tidy(sy * c) },
+  ]
+  return [
+    [{ x: -c, y: start }, { x: -c, y: c }],
+    [{ x: -tidy(padExtent(pads).x), y: c }, { x: -start, y: c }],
+    corner(1, 1),
+    corner(1, -1),
+    corner(-1, -1),
+  ]
 }

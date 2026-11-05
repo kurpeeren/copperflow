@@ -1,6 +1,10 @@
 import { chipFootprint } from "./chip.js"
+import { dualFootprint } from "./dual.js"
 import { parseFootprint, type ParsedFootprint } from "./parse.js"
+import { pinRowFootprint } from "./pinrow.js"
+import { quadFootprint } from "./quad.js"
 import { sodFootprint } from "./sod.js"
+import { sotFootprint } from "./sot.js"
 import type { Footprint } from "./types.js"
 
 export type FootprintResult = Footprint | { error: string }
@@ -8,12 +12,17 @@ export type FootprintResult = Footprint | { error: string }
 /** A footprint family: makes a footprint from a parsed string, or declines with undefined. */
 type Family = (parsed: ParsedFootprint) => Footprint | undefined
 
-const hasNoParams = (parsed: ParsedFootprint) => Object.keys(parsed.params).length === 0
+/** No variant and no parameters: "0603", not "0603_5" or "0603_p0.5mm". */
+const isPlain = (parsed: ParsedFootprint) => parsed.variant === undefined && Object.keys(parsed.params).length === 0
 
 /** Tried in order; the first family that accepts the string makes the footprint. */
 const FAMILIES: readonly Family[] = [
-  (parsed) => (parsed.kind === "" && hasNoParams(parsed) ? chipFootprint(parsed.code) : undefined),
-  (parsed) => (parsed.kind === "sod" && hasNoParams(parsed) ? sodFootprint(parsed.code) : undefined),
+  (parsed) => (parsed.kind === "" && isPlain(parsed) ? chipFootprint(parsed.code) : undefined),
+  (parsed) => (parsed.kind === "sod" && isPlain(parsed) ? sodFootprint(parsed.code) : undefined),
+  sotFootprint,
+  dualFootprint,
+  quadFootprint,
+  pinRowFootprint,
 ]
 
 /** Footprint strings in a project are few; the bound only guards against unbounded growth. */
@@ -21,7 +30,8 @@ const MAX_CACHED = 512
 const cache = new Map<string, FootprintResult>()
 
 /**
- * The footprint for a footprint string such as "0603" or "sod123", or an error naming the string.
+ * The footprint for a footprint string such as "0603", "sod123", "soic8", "qfn32_ep" or
+ * "pinrow4_p2.54mm", or an error naming the string.
  * Results are cached by text and frozen. `readFile` reads project files for footprints that come
  * from a file; the generated families here do not need it.
  */

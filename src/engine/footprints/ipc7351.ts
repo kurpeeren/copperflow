@@ -1,6 +1,6 @@
 /**
  * IPC-7351B nominal (density level B) land patterns: the equations, the solder joint goal tables, the
- * round-off and the two-terminal pad that comes out of them. Lengths are in mm. Every constant names
+ * round-off and the rows of pads that come out of them. Lengths are in mm. Every constant names
  * its source. The IPC-7351B tables were read from page images that PCB Libraries reproduces; its
  * running text (equations, tolerances, rounding) was not seen, so those come from the 2005 edition
  * and from PCB Libraries' published calculator outputs, as noted at each place.
@@ -8,7 +8,7 @@
  * Sources cited below:
  * - [IPC-7351B] IPC-7351B, "Generic Requirements for Surface Mount Design and Land Pattern Standard",
  *   June 2010. Table numbers and pages as listed in its table of contents
- *   (https://www.ipc.org/TOC/IPC-7351B.pdf).
+ *   (https://www.ipc.org/TOC/IPC-7351B.pdf, now served from https://www.electronics.org/TOC/IPC-7351B.pdf).
  * - [IPC-7351] IPC-7351, same title, February 2005 (the edition IPC-7351B revises).
  * - [PCBL-2025] PCB Libraries, Inc., "PCB Design Perfection Starts in the CAD Library", PCEA, 2025,
  *   https://pcea.net/wp-content/uploads/2025/09/PCB-Design-Perfection-Starts-in-the-CAD-Library.pdf
@@ -20,6 +20,12 @@
  *   https://www.pcblibraries.com/forum/printer_friendly_posts.asp?TID=1744
  * - [PCBL-30] PCB Libraries Forum, "0402 Min Size Land Pattern", Library Expert Lite output posted
  *   by jayx, 20 Apr 2015, https://www.pcblibraries.com/FORUM/printer_friendly_posts.asp?TID=30
+ * - [PCBL-785] PCB Libraries Forum, "IPC-7351 SMD & PTH Reference Calculators", post by Jeff.M,
+ *   25 Feb 2021, https://www.pcblibraries.com/forum/printer_friendly_posts.asp?TID=785
+ * - [FOOTAG2] endofexclusive/footag2, src/ipc7351b/table.c, a transcription of the IPC-7351B goal
+ *   tables, https://github.com/endofexclusive/footag2/blob/master/src/ipc7351b/table.c (values cited,
+ *   no code taken). Its Tables 3-2, 3-5 and 3-6 and the goal rows of its Table 3-3 agree with the
+ *   page images that PCB Libraries reproduces.
  */
 import type { Pad } from "./types.js"
 
@@ -72,7 +78,8 @@ export interface GoalTable {
  * the difference between the worst-case and the root-sum-square S tolerance off Smax, as PCB
  * Libraries' calculator does ([PCBL-2025] slide 18); its published outputs ([PCBL-2025] slide 15,
  * [PCBL-30]) come out of these equations. [IPC-7351] §3.1.1 (p. 9) instead adds CSrms to Smin,
- * which gives a smaller G.
+ * which gives a smaller G; [PCBL-785] quotes the SOIC example of [IPC-7351B] §3.1.1 (L 5.8–6.2,
+ * T 0.4–1.27, Smin 3.26, Smax 5.40) and says IPC-7351B takes the Smax' form.
  */
 export function landPattern(lead: Lead, goals: FilletGoals, tol: Tolerances): LandPattern {
   const cl = lead.span.max - lead.span.min
@@ -128,8 +135,34 @@ const SMALL_CHIP_LENGTH = 1.6
 export const GULL_WING_TABLE = table({ toe: 0.35, heel: 0.35, side: 0.03 }, 0.05, 0.25)
 
 /**
+ * The same leads with a pitch of 0.625 mm or less, level B: [IPC-7351B] Table 3-3, p. 16. Toe 0.35,
+ * heel 0.35, side −0.02, as in the page image reproduced in [PCBL-2587]. That image stops after the
+ * side row; the round-off (nearest 0.05 mm) and courtyard excess (0.25) come from [FOOTAG2] and are
+ * the same as Table 3-2's.
+ */
+export const FINE_PITCH_GULL_WING_TABLE = table({ toe: 0.35, heel: 0.35, side: -0.02 }, 0.05, 0.25)
+
+/** The titles of [IPC-7351B] Tables 3-2 and 3-3 split gull-wing leads at a pitch of 0.625 mm. */
+const FINE_PITCH = 0.625
+
+/** Table 3-2 for a pitch over 0.625 mm, Table 3-3 for 0.625 mm and under. */
+export function gullWingTable(pitch: number): Readonly<GoalTable> {
+  return pitch > FINE_PITCH + 1e-9 ? GULL_WING_TABLE : FINE_PITCH_GULL_WING_TABLE
+}
+
+/**
+ * Quad flat no-lead packages, level B: [IPC-7351B] Table 3-15 "Quad Flat No-Lead", p. 19 (title and
+ * page from the table of contents). Toe 0.30, heel 0, side −0.04; round-off to the nearest 0.05 mm;
+ * courtyard excess 0.25, as transcribed in [FOOTAG2]. No page image of this table was found, so
+ * [FOOTAG2] is the only source for these values.
+ */
+export const QFN_TABLE = table({ toe: 0.3, heel: 0, side: -0.04 }, 0.05, 0.25)
+
+/**
  * [IPC-7351B] Table 3-2, Note 1 (paraphrased): when Smin is at most Amax, the level B heel goal is
- * 0.15 mm. Note 2: Note 1 does not apply when the terminal length tolerance exceeds 0.5 mm.
+ * 0.15 mm. Note 2: Note 1 does not apply when the terminal length tolerance exceeds 0.5 mm. The note
+ * text was seen under Table 3-2 ([PCBL-1744], image Untitled3.png); the heel row of Table 3-3 carries
+ * the same note mark ([PCBL-2587]).
  */
 const NOTE_1_HEEL = 0.15
 const NOTE_2_TERMINAL_TOLERANCE = 0.5
@@ -140,18 +173,28 @@ export function chipTable(bodyLength: Range): Readonly<GoalTable> {
 }
 
 /**
- * Table 3-2 goals with Note 1 applied. Checked only for SOD-123 and SOD-323.
+ * The goals of a gull-wing table (Table 3-2 by default, or Table 3-3) with Note 1 applied.
  *
- * The meaning of Amax is unresolved. PCB Libraries' lead-style drawing ([PCBL-1744],
- * "Mini_Gull-Wing_Formula") puts it on the body length between the lead exits; a 2025 post in the
- * same thread calls it the toe-to-toe span. For SOD-123 and SOD-323 both readings give the Note 1
- * heel (tested). Settle the reading before any other package uses this function.
+ * `aMax` is the largest size of the package body measured between the two rows of leads, along the
+ * leads: E1 of a SOIC or TSSOP, E of a SOT-23, the body of a QFP, the body length of a SOD. Note 1
+ * then gives the shorter heel to feet that reach back under the body.
+ *
+ * How the reading was settled. In [PCBL-1744], Tom H posted on 6 Feb 2025 (3:59 pm) the lead-style
+ * drawing PCB Libraries made when it helped IPC define the two lead forms (Mini_Gull-Wing_Formula.JPG).
+ * It states both cases in the form of Notes 1 and 2 (mini gull-wing when Smin ≤ Amax and the
+ * terminal tolerance is under 0.5 mm, standard gull-wing otherwise) and draws A across the body and
+ * S between the inner ends of the feet. Posts in the same thread (5 Aug 2015; 6 Feb 2025, 9:23 am)
+ * call Amax the lead span, toe to toe; but Smin = Lmin − 2·Tmax is always below the lead span, so that
+ * reading would apply Note 1 to every gull-wing part and leave its condition without effect. No
+ * independent IPC-7351B nominal pattern was found for a package where the two readings differ
+ * (TSSOP, SOP and QFP do; SOT-23 and SOIC-8 do not), so this is a sourced reading, not one checked
+ * against such a pattern.
  */
-export function gullWingGoals(lead: Lead, aMax: number): FilletGoals {
+export function gullWingGoals(lead: Lead, aMax: number, goalTable: Readonly<GoalTable> = GULL_WING_TABLE): FilletGoals {
   const sMin = lead.span.min - 2 * lead.terminal.max
   const terminalTolerance = lead.terminal.max - lead.terminal.min
   const note1 = sMin <= aMax + 1e-9 && terminalTolerance <= NOTE_2_TERMINAL_TOLERANCE + 1e-9
-  return note1 ? { ...GULL_WING_TABLE.goals, heel: NOTE_1_HEEL } : { ...GULL_WING_TABLE.goals }
+  return note1 ? { ...goalTable.goals, heel: NOTE_1_HEEL } : { ...goalTable.goals }
 }
 
 /** Absorbs floating-point noise when a value lands on a step boundary. */
@@ -175,31 +218,44 @@ export function roundUpToStep(value: number, step: number): number {
 const CORNER_RATIO = 0.25
 const MAX_CORNER_RADIUS = 0.25
 
+/** One row of identical pads, as a land pattern gives it. */
+export interface PadRow {
+  /** (Z − G)/2, along the lead. */
+  length: number
+  /** X, across the lead. */
+  width: number
+  /** (Z + G)/4, from the part centre to the pad centre. */
+  centre: number
+}
+
 /**
- * The two pads of a two-terminal land pattern: (Z − G)/2 wide and X high, centred at
- * x = ±(Z + G)/4, pad 1 at negative x. Z, G and X are first rounded to the nearest multiple of the
- * table's round-off step, as the round-off rows of [IPC-7351B] Tables 3-2, 3-5 and 3-6 put it
+ * The pads of a land pattern after rounding Z, G and X to the nearest multiple of the table's
+ * round-off step, as the round-off rows of [IPC-7351B] Tables 3-2, 3-3, 3-5, 3-6 and 3-15 put it
  * ([IPC-7351] §3.1.5.1, p. 11, likewise lets the round-off go up or down). Throws when the rounded
  * pattern leaves no gap, which means the package table is wrong.
  */
-export function twoTerminalPads(pattern: LandPattern, roundOff: number): Pad[] {
+export function padRow(pattern: LandPattern, roundOff: number): PadRow {
   const perMm = Math.round(1 / roundOff)
   const z = steps(pattern.Z, roundOff, "nearest")
   const g = steps(pattern.G, roundOff, "nearest")
   const x = steps(pattern.X, roundOff, "nearest")
   if (g <= 0 || z <= g) throw new Error(`land pattern has no gap between its pads (Z ${pattern.Z}, G ${pattern.G})`)
-  const width = (z - g) / (2 * perMm)
-  const centre = (z + g) / (4 * perMm)
-  const height = x / perMm
-  return [roundRectPad("1", -centre, width, height), roundRectPad("2", centre, width, height)]
+  return { length: (z - g) / (2 * perMm), width: x / perMm, centre: (z + g) / (4 * perMm) }
 }
 
-function roundRectPad(number: string, x: number, width: number, height: number): Pad {
+/** The two pads of a two-terminal land pattern, along x, pad 1 at negative x. */
+export function twoTerminalPads(pattern: LandPattern, roundOff: number): Pad[] {
+  const row = padRow(pattern, roundOff)
+  return [roundRectPad("1", -row.centre, 0, row.length, row.width), roundRectPad("2", row.centre, 0, row.length, row.width)]
+}
+
+/** A top-side round-rectangle pad, `width` along x and `height` along y. */
+export function roundRectPad(number: string, x: number, y: number, width: number, height: number): Pad {
   return {
     number,
     shape: "roundrect",
     x,
-    y: 0,
+    y,
     width,
     height,
     rotation: 0,

@@ -2,16 +2,32 @@ import { buildBoard } from "./board.js"
 import { buildPart, NO_OFFSET, type Offset } from "./component.js"
 import { diagnostic } from "./diagnostics.js"
 import { CircuitCodeError, type Evaluated } from "./evaluate.js"
+import { PIN_ROW_DEFAULT_PITCH, pinRowName } from "./footprints/pinrow.js"
 import { Fragment, isElement, type CfElement, type ComponentFunction } from "./jsx-runtime.js"
 import { KINDS } from "./kinds.js"
 import type { Board, Circuit, Component, Diagnostic, SourceRef } from "./model.js"
 import { mergeNets } from "./nets.js"
-import { PropReader } from "./read-props.js"
+import { PropReader, type Props } from "./read-props.js"
 import { resolveTraces, type TraceDraft } from "./traces.js"
 
 export interface ElaborateOptions {
   /** How many pads a footprint string has, if known. */
   padCount(footprint: string): number | undefined
+}
+
+/**
+ * The footprint a part declares, or the one its kind implies: a pinheader with a pin count gets a pin
+ * row at its `pitch`, 2.54 mm when it has none. A pitch that is not a length gets a bad-value warning
+ * from `reader` and no footprint.
+ */
+function footprintOf(tag: string, props: Props, reader: PropReader): string | undefined {
+  const declared = props["footprint"]
+  if (typeof declared === "string" && declared !== "") return declared
+  const count = props["pinCount"]
+  if (tag !== "pinheader" || typeof count !== "number" || !Number.isInteger(count) || count < 1) return undefined
+  if (props["pitch"] === undefined) return pinRowName(count, PIN_ROW_DEFAULT_PITCH)
+  const pitch = reader.length("pitch")
+  return pitch === undefined ? undefined : pinRowName(count, pitch)
 }
 
 /** Tags that are accepted but have no effect until their stage lands. */
@@ -114,12 +130,13 @@ class Elaboration {
       return
     }
     const id = this.uniqueId(name, source)
-    const footprint = typeof element.props["footprint"] === "string" ? element.props["footprint"] : undefined
+    const reader = new PropReader(element.props, id, source)
+    const footprint = footprintOf(tag, element.props, reader)
     const padCount = footprint === undefined ? undefined : this.options.padCount(footprint)
     const origin = { source, library: frame.library, offset: frame.offset }
-    const built = buildPart(tag, id, element.props, origin, padCount)
+    const built = buildPart(tag, id, element.props, origin, { name: footprint, padCount })
     this.components.push(built.component)
-    this.diagnostics.push(...built.diagnostics)
+    this.diagnostics.push(...reader.diagnostics, ...built.diagnostics)
   }
 
   private uniqueId(name: string, source: SourceRef): string {

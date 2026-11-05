@@ -66,13 +66,19 @@ function makePins(tag: string, id: string, props: Props, padCount: number | unde
   })
 }
 
-/** Builds one part. `id` is already unique; `padCount` is how many pads its footprint has, if known. */
-export function buildPart(tag: string, id: string, props: Props, origin: PartOrigin, padCount: number | undefined): BuiltPart {
+/** A part's footprint string, declared or implied by its kind, and how many pads it has, if known. */
+export interface PartFootprint {
+  name: string | undefined
+  padCount: number | undefined
+}
+
+/** Builds one part. `id` is already unique. */
+export function buildPart(tag: string, id: string, props: Props, origin: PartOrigin, footprint: PartFootprint): BuiltPart {
   const reader = new PropReader(props, id, origin.source)
   const diagnostics: Diagnostic[] = []
   const pcb = pcbPlacement(reader, props, origin.offset)
   const sch = schPlacement(reader, id, origin, diagnostics)
-  const pins = makePins(tag, id, props, padCount)
+  const pins = makePins(tag, id, props, footprint.padCount)
   if (pins.length === 0 && KINDS[tag]?.pins === "from-props") {
     const message = `${id} has no pins: give it pinLabels, pinCount or a footprint with known pads`
     diagnostics.push(diagnostic("unsupported-element", "error", message, [id], origin.source))
@@ -80,12 +86,11 @@ export function buildPart(tag: string, id: string, props: Props, origin: PartOri
   const valueProp = KINDS[tag]?.valueProp
   const rawValue = valueProp ? props[valueProp] : undefined
   const mpn = reader.string("manufacturerPartNumber")
-  const footprint = reader.string("footprint")
   const component: Component = {
     id,
     kind: tag,
     ...(typeof rawValue === "string" || typeof rawValue === "number" ? { value: String(rawValue) } : {}),
-    ...(footprint ? { footprint } : {}),
+    ...(footprint.name ? { footprint: footprint.name } : {}),
     ...(mpn ? { mpn } : {}),
     supplierPartNumbers: supplierParts(props["supplierPartNumbers"]),
     ...(origin.library ? { library: origin.library } : {}),
