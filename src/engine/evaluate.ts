@@ -4,8 +4,8 @@ import { transformSync, type Loader, type Message } from "esbuild"
 import { createRuntime, isElement, type CfElement, type ComponentFunction } from "./jsx-runtime.js"
 
 export class CircuitCodeError extends Error {
-  constructor(message: string) {
-    super(message)
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options)
     this.name = "CircuitCodeError"
   }
 }
@@ -56,6 +56,17 @@ function esbuildFailure(path: string, error: unknown): Error {
   return new CircuitCodeError(where + first.text)
 }
 
+/** Runs circuit code; anything it throws becomes a host-realm CircuitCodeError that names the file. */
+function inFile<T>(path: string, task: () => T): T {
+  try {
+    return task()
+  } catch (error) {
+    if (error instanceof CircuitCodeError) throw error
+    const message = (error as { message?: unknown } | null)?.message
+    throw new CircuitCodeError(`${path}: ${typeof message === "string" ? message : String(error)}`, { cause: error })
+  }
+}
+
 function parseJson(path: string, text: string): unknown {
   try {
     return JSON.parse(text)
@@ -73,6 +84,9 @@ function resolveRelative(files: Readonly<Record<string, string>>, from: string, 
 
 export function evaluateCircuit(files: Readonly<Record<string, string>>, main: string): Evaluated {
   const entry = posix.normalize(main)
+  // A guard against mistakes, not a security boundary: circuit code gets no `process`, Node `require` or
+  // `fetch` by accident, but deliberately hostile code can still escape this context. There is no time
+  // limit here either; the caller enforces one.
   const context = createContext({ console })
   const runtime = createRuntime(files)
   const modules = new Map<string, ModuleRecord>()
@@ -93,7 +107,7 @@ export function evaluateCircuit(files: Readonly<Record<string, string>>, main: s
 
   function run(path: string, code: string, record: ModuleRecord): void {
     const fn = compileFunction(code, ["exports", "require", "module"], { filename: path, parsingContext: context })
-    fn(record.exports, (specifier: string) => requireFrom(path, specifier), record)
+    inFile(path, () => fn(record.exports, (specifier: string) => requireFrom(path, specifier), record))
   }
 
   function recordOrigins(path: string, exported: unknown): void {
@@ -108,7 +122,7 @@ export function evaluateCircuit(files: Readonly<Record<string, string>>, main: s
   }
 
   const exported = (load(entry) as Record<string, unknown>)["default"]
-  const root = typeof exported === "function" ? (exported as ComponentFunction)({}) : exported
+  const root = typeof exported === "function" ? inFile(entry, () => (exported as ComponentFunction)({})) : exported
   if (!isElement(root)) throw new CircuitCodeError(`${entry} must export default a function that returns <board>`)
   return { root, definedIn: (fn) => origins.get(fn) }
 }

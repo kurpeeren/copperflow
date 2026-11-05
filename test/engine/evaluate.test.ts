@@ -1,5 +1,5 @@
 import { expect, test } from "vitest"
-import { evaluateCircuit } from "../../src/engine/evaluate.js"
+import { CircuitCodeError, evaluateCircuit } from "../../src/engine/evaluate.js"
 import type { CfElement, ComponentFunction } from "../../src/engine/jsx-runtime.js"
 
 const board = (body: string) => `export default () => (\n  <board width="10mm" height="10mm">\n${body}\n  </board>\n)\n`
@@ -55,7 +55,20 @@ test("syntax errors name the file, line and column", () => {
 
 test("circuit code cannot reach Node", () => {
   const files = { "main.circuit.tsx": "export default () => { process.exit(1) }" }
-  expect(() => evaluateCircuit(files, "main.circuit.tsx")).toThrow(/process is not defined/)
+  const run = () => evaluateCircuit(files, "main.circuit.tsx")
+  expect(run).toThrow(/process is not defined/)
+  expect(run).toThrow(CircuitCodeError)
+  expect(run).toThrow(/^main\.circuit\.tsx: /)
+})
+
+test("a throw inside an imported module is prefixed with that module's path", () => {
+  const files = {
+    "parts/bad.ts": "throw new Error(\"boom\")",
+    "main.circuit.tsx": `import "./parts/bad"\n` + board(""),
+  }
+  const run = () => evaluateCircuit(files, "main.circuit.tsx")
+  expect(run).toThrow(CircuitCodeError)
+  expect(run).toThrow(/^parts\/bad\.ts: boom/)
 })
 
 test("the default export must be a component or an element", () => {
