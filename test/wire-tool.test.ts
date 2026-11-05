@@ -137,6 +137,37 @@ describe("pin selectors", () => {
   })
 })
 
+const TWO_GROUNDS = `export default () => (
+  <board width="30mm" height="18mm">
+    <chip name="U1" footprint="soic8" schX={0} schY={0} pinLabels={{ pin1: "GND", pin2: "VIN", pin3: "EN", pin4: "GND" }} />
+    <resistor name="R1" resistance="1k" footprint="0402" schX={6} schY={0} />
+    <resistor name="R2" resistance="1k" footprint="0402" schX={6} schY={2} />
+    <trace from=".U1 > .pin1" to=".R2 > .pin1" />
+  </board>
+)`
+const twoGrounds = buildDesign({ "main.circuit.tsx": TWO_GROUNDS }, "main.circuit.tsx")
+
+describe("a name that several pins of a part share", () => {
+  test("is not written; each of those pins is written as pin<n>, and a unique name still is", () => {
+    expect(endOf(twoGrounds, "U1.pin1").selector).toBe("U1.pin1")
+    expect(endOf(twoGrounds, "U1.pin4").selector).toBe("U1.pin4")
+    expect(endOf(twoGrounds, "U1.pin2").selector).toBe("U1.VIN")
+  })
+
+  test("a wire from the second GND pin is written from that pin", () => {
+    expect(wireEdits(twoGrounds, endOf(twoGrounds, "U1.pin4"), endOf(twoGrounds, "R1.pin1"), [])).toEqual([
+      { kind: "addTrace", from: "U1.pin4", to: "R1.pin1" },
+    ])
+  })
+
+  test("the clicked pin's own net decides whether the wire is needed, not the first pin with that name", () => {
+    expect(wireEdits(twoGrounds, endOf(twoGrounds, "U1.pin4"), endOf(twoGrounds, "R2.pin1"), [])).toEqual([
+      { kind: "addTrace", from: "U1.pin4", to: "R2.pin1" },
+    ])
+    expect(wireEdits(twoGrounds, endOf(twoGrounds, "U1.pin1"), endOf(twoGrounds, "R2.pin1"), [])).toEqual([])
+  })
+})
+
 describe("where a wire ends", () => {
   test("a net end adds its click point as the last corner", () => {
     const gnd: WireEnd = { selector: "net.GND", at: { x: 9, y: 9 }, label: "GND", net: "GND" }

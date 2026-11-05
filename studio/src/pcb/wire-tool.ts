@@ -16,6 +16,8 @@ export interface WireEnd {
   label: string
   /** The named net it is on, if any. */
   net?: string
+  /** The pin it stands for, e.g. `U1.pin4`, when it is a pin or the first pin of an unnamed net's wire. */
+  pin?: string
 }
 
 /** A ground or power symbol is small; pointing near it counts. */
@@ -35,11 +37,16 @@ function labelOf(props: Record<string, unknown>, number: number): string | undef
   return undefined
 }
 
-/** `<component>.<name>` with the pin's `pinLabels` name when it has one, else `pin<n>`. */
+/**
+ * `<component>.<name>` with the pin's `pinLabels` name when no other pin of the part has that name,
+ * else `pin<n>`: a name two pins share (two GND pins) would connect to the first of them.
+ */
 function pinSelector(design: Design, pin: Pin): string {
-  const props = design.circuit.components.find((component) => component.id === pin.component)?.props ?? {}
-  const name = labelOf(props, pin.number)
-  return `${pin.component}.${name !== undefined && SELECTOR_NAME.test(name) ? name : `pin${pin.number}`}`
+  const component = design.circuit.components.find((candidate) => candidate.id === pin.component)
+  const name = labelOf(component?.props ?? {}, pin.number)
+  const others = (component?.pins ?? []).filter((other) => other.id !== pin.id)
+  const unique = name !== undefined && SELECTOR_NAME.test(name) && !others.some((other) => other.names.includes(name))
+  return `${pin.component}.${unique ? name : `pin${pin.number}`}`
 }
 
 const allPins = (design: Design): Pin[] => design.circuit.components.flatMap((component) => component.pins)
@@ -49,7 +56,7 @@ const distance = (a: Point, b: Point): number => Math.hypot(a.x - b.x, a.y - b.y
 function pinEnd(design: Design, pin: Pin, at: Point): WireEnd {
   const name = netOfPin(design, pin.id)?.names[0]
   const selector = pinSelector(design, pin)
-  return { selector, at, label: selector, ...(name !== undefined ? { net: name } : {}) }
+  return { selector, at, label: selector, pin: pin.id, ...(name !== undefined ? { net: name } : {}) }
 }
 
 /** A pin with nothing connected: a click on it starts a wire without the wire tool. */
@@ -117,7 +124,7 @@ function netEnd(design: Design, netId: string, at: Point): WireEnd | undefined {
   if (name !== undefined) return { selector: `net.${name}`, at, label: name, net: name }
   const first = net?.pins[0] ?? (netId.startsWith("net:") ? netId.slice("net:".length) : undefined)
   const pin = allPins(design).find((candidate) => candidate.id === first)
-  return pin ? { selector: pinSelector(design, pin), at, label: pinSelector(design, pin) } : undefined
+  return pin ? { selector: pinSelector(design, pin), at, label: pinSelector(design, pin), pin: pin.id } : undefined
 }
 
 function closestOnSegment(p: Point, a: Point, b: Point): Point {
@@ -128,16 +135,23 @@ function closestOnSegment(p: Point, a: Point, b: Point): Point {
   return { x: a.x + t * dx, y: a.y + t * dy }
 }
 
-/** The net a selector is on, or undefined when it is on none yet. */
-function netOfSelector(design: Design, selector: string): Net | undefined {
+/** The net an end is on, or undefined when it is on none yet. A pin end is on the net of the pin clicked. */
+function netOfEnd(design: Design, end: WireEnd): Net | undefined {
+  if (end.pin !== undefined) return netOfPin(design, end.pin)
+  const { selector } = end
   if (selector.startsWith("net.")) return design.circuit.nets.find((net) => net.names.includes(selector.slice("net.".length)))
   const pin = allPins(design).find((candidate) => pinSelector(design, candidate) === selector)
   return pin && netOfPin(design, pin.id)
 }
 
+/** Two ends on the same pin, or with the same selector, are one end. */
+export function sameEnd(a: WireEnd, b: WireEnd): boolean {
+  return a.selector === b.selector || (a.pin !== undefined && a.pin === b.pin)
+}
+
 /** The two different named nets a wire between `start` and `end` would join, so the caller can ask first. */
 export function namedNetsJoined(design: Design, start: WireEnd, end: WireEnd): [string, string] | undefined {
-  const [a, b] = [netOfSelector(design, start.selector), netOfSelector(design, end.selector)]
+  const [a, b] = [netOfEnd(design, start), netOfEnd(design, end)]
   const [nameA, nameB] = [nameOf(start, a), nameOf(end, b)]
   if (!a || !b || a.id === b.id || nameA === undefined || nameB === undefined) return undefined
   return [nameA, nameB]
@@ -159,8 +173,8 @@ function endHint(end: WireEnd): Point[] {
 /** What the W tool writes: one addTrace, or nothing when the ends are already on one net or cannot be addressed. */
 export function wireEdits(design: Design, start: WireEnd, end: WireEnd, corners: Point[]): Edit[] {
   if (!addressable(start.selector) || !addressable(end.selector)) return []
-  const [a, b] = [netOfSelector(design, start.selector), netOfSelector(design, end.selector)]
-  if (start.selector === end.selector || (a !== undefined && a.id === b?.id)) return []
+  const [a, b] = [netOfEnd(design, start), netOfEnd(design, end)]
+  if (sameEnd(start, end) || (a !== undefined && a.id === b?.id)) return []
   const hints = dropRepeats([...endHint(start), ...corners, ...endHint(end)])
   return [{ kind: "addTrace", from: start.selector, to: end.selector, ...(hints.length > 0 ? { schematicRouteHints: hints } : {}) }]
 }

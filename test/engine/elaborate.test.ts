@@ -60,6 +60,22 @@ test("a mistyped pin is reported with the real pins", () => {
   expect(circuit.nets.map((n) => n.id)).toContain("net.VCC")
 })
 
+test("a pin name that several pins share connects to the first of them and warns once", () => {
+  const circuit = build(
+    [
+      `<chip name="U1" pinLabels={{ pin1: "GND", pin2: "VIN", pin3: "EN", pin4: "GND" }} />`,
+      `<trace from="U1.GND" to="net.GND" />`,
+      `<trace from="net.GND" to=".U1 > .GND" />`,
+      `<trace from="U1.VIN" to="net.VIN" />`,
+    ].join("\n"),
+  )
+  const ambiguous = circuit.diagnostics.filter((d) => d.code === "ambiguous-pin")
+  expect(ambiguous).toHaveLength(1)
+  expect(ambiguous[0]).toMatchObject({ severity: "warning", items: ["U1.GND"] })
+  expect(ambiguous[0]?.message).toBe("U1 has more than one pin named GND (pin1, pin4); U1.GND connects to pin1")
+  expect(circuit.nets.find((n) => n.id === "net.GND")?.pins).toEqual(["U1.pin1"])
+})
+
 test("group offsets add up", () => {
   const circuit = build(`<group pcbX={10} schY={2}>\n<resistor name="R1" pcbX={1} schX={3} />\n</group>`)
   expect(circuit.components[0]?.pcb).toEqual({ x: 11, y: 0, rotation: 0, side: "top" })

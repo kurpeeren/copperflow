@@ -5,7 +5,7 @@ import type { Design, Edit } from "../api"
 import type { Actions } from "../App"
 import { isCanvasKey } from "./canvas-common"
 import { rightAngles, snap, type Camera, type Point } from "./geometry"
-import { endAt, freePin, namedNetsJoined, pinAt, wireEdits, type WireEnd } from "./wire-tool"
+import { endAt, freePin, namedNetsJoined, pinAt, sameEnd, wireEdits, type WireEnd } from "./wire-tool"
 
 /** A wire being drawn: where it starts, the pin it starts on if any, and the corners clicked so far, on the grid. */
 export interface Drawing {
@@ -47,7 +47,7 @@ const sameUnder = (a: Under, b: Under) =>
 /** The edit for a wire from the drawing to `target`, or what to tell the person instead. */
 function planWire(design: Design, drawing: Drawing, target: WireEnd): WirePlan {
   const { start, corners } = drawing
-  if (target.selector === start.selector) return {}
+  if (sameEnd(target, start)) return {}
   const repeated = [start, target].find((end) => end.selector.split(".")[0]?.includes("~"))
   if (repeated) return { notice: `${repeated.label} has a repeated name and cannot be wired from the Studio` }
   const edits = wireEdits(design, start, target, corners)
