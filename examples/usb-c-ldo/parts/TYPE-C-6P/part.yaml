@@ -1,0 +1,39 @@
+title: USB Type-C receptacle, 6 pins, power only
+description: SMD right-angle receptacle with VBUS, GND and CC pins and no USB
+  data pins. The shell legs go into four plated slots.
+manufacturer: SHOU HAN
+mpn: TYPE-C 6P
+footprint: footprint.yaml
+pins:
+  "1":
+    name: GND2
+    type: ground
+    description: Contact B12 (GND)
+  "2":
+    name: VBUS2
+    type: power_out
+    description: Contact B9 (VBUS)
+  "3":
+    name: CC1
+    type: passive
+    description: Contact A5 (CC1)
+  "4":
+    name: CC2
+    type: passive
+    description: Contact B5 (CC2)
+  "5":
+    name: VBUS1
+    type: power_out
+    description: Contact A9 (VBUS)
+  "6":
+    name: GND1
+    type: ground
+    description: Contact A12 (GND)
+  "7":
+    name: EH
+    type: ground
+    description: Shell, four legs in plated slots
+suppliers:
+  jlcpcb: C456012
+datasheet:
+  url: https://datasheet.lcsc.com/datasheet/pdf/68548ae186bce8dcee36d39654e737cb.pdf?productCode=C456012

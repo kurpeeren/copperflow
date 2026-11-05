@@ -2,8 +2,9 @@
 
 Design circuits in code while a human and an AI agent edit the same files.
 
-copperflow sits on top of [tscircuit](https://github.com/tscircuit/tscircuit). Circuits are
-TSX files. You and your agent work on them together:
+Circuits are TSX files written with [tscircuit](https://github.com/tscircuit/tscircuit)'s
+elements, such as `<board>`, `<resistor>` and `<trace>`. copperflow builds and draws them with
+its own engine. You and your agent work on them together:
 
 - the agent changes the circuit through an MCP server, and every change is one undo step;
 - you lock the parts you have placed, and the agent cannot move or change them;
@@ -34,8 +35,9 @@ Try it on the example board:
 copperflow summary --root examples/usb-c-ldo index.circuit.tsx
 ```
 
-To build boards, and for `copperflow check`, you also need the tscircuit CLI:
-`npm install -g tscircuit`. Set `COPPERFLOW_TSCI` if it is not on your PATH.
+Only `copperflow check` (and the agent's `check_circuit`) still runs the tscircuit CLI, until
+copperflow's own rules and checks replace it in stage 2 of [the engine design](docs/engine-design.md#stages).
+For it, run `npm install -g tscircuit`, and set `COPPERFLOW_TSCI` if it is not on your PATH.
 
 ### Connect Claude Code
 
@@ -64,6 +66,11 @@ copperflow studio --root examples/usb-c-ldo
 Then open the address it prints. The address carries a key for this session, so other web
 pages and other programs on your computer cannot use the editor's API.
 
+The schematic and the PCB are drawn from the design copperflow's engine builds, with
+copperflow's own footprints and schematic symbols. The PCB shows the ratsnest, a straight line
+for each connection still to be made, until routing arrives: hand routing in stage 4 and the
+router in stage 5 of [the engine design](docs/engine-design.md#stages).
+
 Drag parts on the PCB (they snap to a 0.1, 0.5 or 1 mm grid), press R to rotate and Delete to
 remove, scroll to zoom, drag the background to pan, lock parts, change values in the inspector,
 move symbols in the schematic and draw wires as in KiCad (click a free pin, or press W over a pin,
@@ -72,10 +79,10 @@ leave marks for the agent and undo changes.
 Every edit is written back into the circuit file, and the drawing updates a few seconds later.
 When the agent changes the file, the editor updates by itself.
 
-The Library tab places parts from your library or tscircuit's built-in set. Selecting a
-library part shows its maker, MPN, supplier number, datasheet and checklist, and lets you
-mark it verified. With nothing selected, the right panel shows the bill of materials and
-exports it with the datasheets.
+The Library tab places parts from your library or the built-in parts (resistor, capacitor, LED
+and so on). Selecting a library part shows its maker, MPN, supplier number, datasheet and
+checklist, and lets you mark it verified. With nothing selected, the right panel shows the bill
+of materials and exports it with the datasheets.
 
 ## How it works
 
@@ -85,15 +92,19 @@ as `pcbX={4.5}` or `resistance="10k"`. Parts inside `.map()` or with spread prop
 expressions such as `pcbX={x + 2}`, are shown as read-only. Nothing else is restricted.
 
 **Locks and marks.** They live next to the circuit in `board.circuit.annotations.json`, so
-tscircuit never sees them and git keeps them. Only you lock and unlock. The agent's tools
+they stay out of the circuit code and git keeps them. Only you lock and unlock. The agent's tools
 refuse to touch locked parts, and every summary reports a locked part that was changed some
 other way.
 
-**Parts library.** Chips live in `parts/<id>/part.yaml` in your project: pins with names and
-electrical types, a tscircuit footprint string, MPN and supplier numbers. copperflow generates
-the tscircuit component from it. The agent creates parts from datasheets; they stay *not
-verified* until you check `verification.md` and run `copperflow parts verify`. Nobody writes
-pad coordinates: the footprint generator draws the pads.
+**Parts library.** Chips and connectors live in `parts/<id>/part.yaml` in your project: pins
+with names and electrical types, a footprint, MPN and supplier numbers. The footprint is either a
+string such as `sot23_5`, from which copperflow makes the pads (the strings it knows are listed in
+[editable-subset.md](skills/copperflow/references/editable-subset.md#footprint-strings)), or
+`footprint.yaml`, a file next to `part.yaml` with every pad transcribed from the datasheet's
+recommended land pattern; the example's USB-C connector has one. copperflow generates the part's
+component from `part.yaml`. The agent creates parts from datasheets; they stay *not verified*
+until you check `verification.md`, which covers `footprint.yaml` too, and run
+`copperflow parts verify`.
 
 **BOM and datasheet package.** `copperflow bom` groups parts by value, footprint and part
 number; `copperflow package` writes the BOM, the local datasheets and every library part's
@@ -116,7 +127,7 @@ The agent sees what you undid and does not repeat it.
 | `add_trace` / `remove_trace` | Connects or disconnects two ports or nets |
 | `check_circuit` | Builds the board with tscircuit and lists errors and warnings, such as overlapping parts |
 | `list_parts` / `part_info` | Shows the parts library and a part's data and checklist |
-| `create_part` | Adds a part from a datasheet: pins, footprint string, MPN, suppliers |
+| `create_part` | Adds a part from a datasheet: pins, footprint string or footprint file, MPN, suppliers |
 | `place_part` | Adds a library or built-in part to a circuit, with its import |
 | `bom` / `export_package` | Bill of materials; folder with BOM, datasheets and part status |
 | `recent_changes` | Recent changes by you and the agent, including undos |
@@ -164,5 +175,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). "copperflow" refers to this
 project; the license does not grant rights to the name.
 
-The visual editor bundles open-source packages, including tscircuit's drawing and schematic
-libraries (MIT). Their licences ship in `dist/app/THIRD_PARTY_LICENSES.txt`.
+The visual editor bundles open-source packages (React, MIT). Their licences ship in
+`dist/app/THIRD_PARTY_LICENSES.txt`.

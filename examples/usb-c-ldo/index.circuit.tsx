@@ -1,21 +1,12 @@
 // USB-C input regulated down to 3.3 V, with a power LED and a 2-pin output header.
 // Objects such as pinLabels are expressions, so copperflow shows them as read-only.
 import { AP2112K_3_3 } from "./parts/AP2112K-3.3/AP2112K_3_3"
+import { TYPE_C_6P } from "./parts/TYPE-C-6P/TYPE_C_6P"
 
 export default () => (
   <board width="30mm" height="18mm" schMaxTraceDistance={0.5}>
-    {/* Pinned part: without it the CLI picks a USB-C connector from the network */}
-    <connector
-      name="J1"
-      standard="usb_c"
-      supplierPartNumbers={{ jlcpcb: ["C456012"] }}
-      schWidth={1.575}
-      schX={0}
-      schY={0}
-      pcbX={-9.8}
-      pcbY={0}
-      pcbRotation={-90}
-    />
+    {/* Power-only USB-C receptacle from the parts library (parts/TYPE-C-6P), mating face toward the left edge */}
+    <TYPE_C_6P name="J1" schX={0} schY={0} pcbX={-9.8} pcbY={0} pcbRotation={-90} />
     {/* 5.1k pull-downs on CC tell a USB-C source to supply 5 V */}
     <resistor name="R1" resistance="5.1k" footprint="0402" schX={3.5} schY={-2.5} schRotation={-90} pcbX={-4.5} pcbY={4} />
     <resistor name="R2" resistance="5.1k" footprint="0402" schX={5} schY={-2.5} schRotation={-90} pcbX={-4.5} pcbY={-4} />

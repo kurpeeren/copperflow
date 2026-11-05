@@ -17,7 +17,8 @@ undoing their work.
    again unless they ask.
 3. Change existing parts and traces with `set_props`, `remove_part`, `add_trace` and
    `remove_trace`. These tools enforce locks and record history; editing the file directly does not.
-4. After any placement change, call `check_circuit`. Fix placement errors such as
+4. After any placement change, call `check_circuit`. It still builds the board with the
+   tscircuit CLI until copperflow's own checks replace it. Fix placement errors such as
    `pcb_courtyard_overlap_error` first: they stop autorouting, so the unrouted-port errors
    that follow them usually disappear once placement is fixed. Do not report success while
    the build fails.
