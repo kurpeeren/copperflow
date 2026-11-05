@@ -3,6 +3,7 @@
 import type { PlacedSymbol, SchematicLayout, NetLabel } from "../../../src/engine/schematic.js"
 import { groundSymbol, powerSymbol, type SchSymbol, type Shape } from "../../../src/engine/symbols/index.js"
 import { anchorAlignment, type Ctx } from "./ctx.js"
+import { labelTag, NET_LABEL_TEXT } from "./label-tag.js"
 import { worldToScreen, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
 
 export interface SchematicDrawOptions {
@@ -61,9 +62,6 @@ const ACTIVE_PIN_FACTOR = 1.6
 const MIN_JUNCTION = 0.04
 const JUNCTION_PX = 3
 const DASH: number[] = [0.1, 0.06]
-const NET_LABEL_TEXT = 0.16
-const TAG_THICKNESS = NET_LABEL_TEXT * 1.5
-const TAG_CHAR = 0.62
 const NUMBER_INSET = 0.1
 const NUMBER_RISE = 0.07
 const TEXT_COLORS: Record<Role, string> = {
@@ -222,19 +220,15 @@ function drawLabel(ctx: Ctx, label: NetLabel, line: (w: number) => number, texts
     drawShapes(ctx, shapes, { x: label.at.x, y: label.at.y, rotation: 0 }, SCHEMATIC_PALETTE.netLabel, texts)
     return
   }
-  const out = OUTWARD[label.side]
-  const length = label.text.length * NET_LABEL_TEXT * TAG_CHAR + TAG_THICKNESS
-  const upright = out.x === 0
-  const middle = { x: label.at.x + (out.x * length) / 2, y: label.at.y + (out.y * length) / 2 }
-  const [w, h] = upright ? [TAG_THICKNESS, length] : [length, TAG_THICKNESS]
+  const { middle, box, upright } = labelTag(label)
   ctx.fillStyle = SCHEMATIC_PALETTE.netLabelFill
   ctx.strokeStyle = SCHEMATIC_PALETTE.netLabel
   ctx.lineWidth = line(0.015)
   path(ctx, [
-    { x: middle.x - w / 2, y: middle.y - h / 2 },
-    { x: middle.x + w / 2, y: middle.y - h / 2 },
-    { x: middle.x + w / 2, y: middle.y + h / 2 },
-    { x: middle.x - w / 2, y: middle.y + h / 2 },
+    { x: box.minX, y: box.minY },
+    { x: box.maxX, y: box.minY },
+    { x: box.maxX, y: box.maxY },
+    { x: box.minX, y: box.maxY },
   ])
   ctx.closePath()
   ctx.fill()

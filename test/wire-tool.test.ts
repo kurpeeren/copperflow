@@ -35,7 +35,7 @@ describe("pinAt", () => {
 
 describe("endAt", () => {
   test("a pin gives its selector, label and net", () => {
-    expect(pin("R1.pin1")).toMatchObject({ selector: "R1.left", label: "R1.left", net: "GND" })
+    expect(pin("R1.pin1")).toMatchObject({ selector: "R1.pin1", label: "R1.pin1", net: "GND" })
   })
 
   test("a wire of net GND gives net.GND", () => {
@@ -56,7 +56,7 @@ describe("wireEdits", () => {
   test("R1.pin2 to R3.pin2 with one corner gives one addTrace carrying the corner", () => {
     const corner = { x: 4.5, y: 2 }
     const edits = wireEdits(design, pin("R1.pin2"), pin("R3.pin2"), [corner])
-    expect(edits).toEqual([{ kind: "addTrace", from: "R1.right", to: "R3.right", schematicRouteHints: [corner] }])
+    expect(edits).toEqual([{ kind: "addTrace", from: "R1.pin2", to: "R3.pin2", schematicRouteHints: [corner] }])
   })
 
   test("two pins already on one net give no edits", () => {
@@ -69,7 +69,7 @@ describe("wireEdits", () => {
     expect(edits).toEqual([
       {
         kind: "addTrace",
-        from: "R3.right",
+        from: "R3.pin2",
         to: "net.GND",
         schematicRouteHints: [
           { x: 9, y: 0 },
@@ -96,5 +96,89 @@ describe("namedNetsJoined", () => {
 
   test("is undefined inside one net", () => {
     expect(namedNetsJoined(design, pin("R1.pin1"), pin("R2.pin1"))).toBeUndefined()
+  })
+})
+
+const LABELLED = `export default () => (
+  <board width="30mm" height="18mm">
+    <led name="LED1" footprint="0603" schX={0} schY={0} pinLabels={{ pin1: "anode", pin2: "cathode" }} />
+    <chip name="U1" footprint="soic8" schX={4} schY={0} pinLabels={{ pin1: "VIN", pin2: ["GND", "VSS"] }} pinCount={3} />
+    <resistor name="R1" resistance="1k" footprint="0402" schX={8} schY={0} />
+    <trace from=".LED1 > .pin2" to=".R1 > .pin1" />
+  </board>
+)`
+const labelled = buildDesign({ "main.circuit.tsx": LABELLED }, "main.circuit.tsx")
+
+function endOf(d: typeof labelled, id: string): WireEnd {
+  const at = d.schematic.symbols.find((s) => s.pinEnds[id])?.pinEnds[id]
+  const end = at && endAt(d, at, 0.01)
+  if (!end) throw new Error(`no end ${id}`)
+  return end
+}
+
+describe("pin selectors", () => {
+  test("a pin named by pinLabels is written with that name", () => {
+    expect(endOf(labelled, "LED1.pin2").selector).toBe("LED1.cathode")
+    expect(endOf(labelled, "U1.pin1").selector).toBe("U1.VIN")
+    expect(endOf(labelled, "U1.pin2").selector).toBe("U1.GND")
+  })
+
+  test("a pin pinLabels does not name, and a kind alias, are written as pin<n>", () => {
+    expect(endOf(labelled, "U1.pin3").selector).toBe("U1.pin3")
+    expect(endOf(labelled, "R1.pin1").selector).toBe("R1.pin1")
+  })
+})
+
+describe("where a wire ends", () => {
+  test("a net end adds its click point as the last corner", () => {
+    const gnd: WireEnd = { selector: "net.GND", at: { x: 9, y: 9 }, label: "GND", net: "GND" }
+    const edits = wireEdits(labelled, endOf(labelled, "R1.pin2"), gnd, [{ x: 9, y: 0 }])
+    expect(edits[0]).toMatchObject({ schematicRouteHints: [{ x: 9, y: 0 }, { x: 9, y: 9 }] })
+  })
+
+  test("the click point is skipped when it equals the previous corner", () => {
+    const gnd: WireEnd = { selector: "net.GND", at: { x: 9, y: 0 }, label: "GND", net: "GND" }
+    const edits = wireEdits(labelled, endOf(labelled, "R1.pin2"), gnd, [{ x: 9, y: 0 }])
+    expect(edits[0]).toMatchObject({ schematicRouteHints: [{ x: 9, y: 0 }] })
+  })
+
+  test("a wire of an unnamed net resolves to its first pin and adds no corner", () => {
+    const wire = labelled.schematic.wires.find((w) => w.net.startsWith("net:"))
+    const a = wire?.points[0]
+    const b = wire?.points[1]
+    if (!a || !b) throw new Error("no unnamed wire")
+    const end = endAt(labelled, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, 0.05)
+    expect(end?.selector).toMatch(/^(LED1\.cathode|R1\.pin1)$/)
+    const edits = wireEdits(labelled, endOf(labelled, "U1.pin1"), end as WireEnd, [{ x: 6, y: 1 }])
+    expect(edits[0]).toMatchObject({ schematicRouteHints: [{ x: 6, y: 1 }] })
+  })
+})
+
+describe("label hit area", () => {
+  test("a click on the far end of a long label hits the label, not the wire beside it", () => {
+    const long = buildDesign(
+      {
+        "main.circuit.tsx": `export default () => (
+  <board width="30mm" height="18mm">
+    <resistor name="R1" resistance="1k" footprint="0402" schX={0} schY={0} />
+    <resistor name="R2" resistance="1k" footprint="0402" schX={20} schY={0} />
+    <trace from=".R1 > .pin1" to="net.SIGNAL_LONG_NAME_X" />
+    <trace from=".R2 > .pin1" to="net.SIGNAL_LONG_NAME_X" />
+    <resistor name="R3" resistance="1k" footprint="0402" schX={-2} schY={0.3} />
+    <resistor name="R4" resistance="1k" footprint="0402" schX={-2} schY={-0.3} />
+    <trace from=".R3 > .pin1" to=".R4 > .pin1" />
+  </board>
+)`,
+      },
+      "main.circuit.tsx",
+    )
+    const label = long.schematic.labels.find((l) => l.style === "label" && l.text === "SIGNAL_LONG_NAME_X")
+    if (!label) throw new Error("no tag label")
+    const far = { x: label.at.x + (label.side === "left" ? -1 : 1) * 2.0, y: label.at.y }
+    expect(long.schematic.wires.some((w) => w.points.some((q) => Math.abs(q.x - far.x) < 0.05))).toBe(true)
+    const end = endAt(long, far, 0.05)
+    expect(end).toMatchObject({ selector: "net.SIGNAL_LONG_NAME_X" })
+    expect(end?.at).toEqual(label.at)
+    expect(endAt(long, { x: label.at.x + (label.side === "left" ? -1 : 1) * 30, y: label.at.y }, 0.05)).toBeUndefined()
   })
 })

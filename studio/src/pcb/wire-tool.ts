@@ -2,8 +2,10 @@
 // Only types come from the engine: its runtime modules reach Node-only code the Studio bundle cannot hold.
 import type { Edit } from "../../../src/core/types.js"
 import type { Design } from "../../../src/engine/design.js"
+import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { Net, Pin } from "../../../src/engine/model.js"
 import type { Point } from "./geometry.js"
+import { labelTag } from "./label-tag.js"
 
 export interface WireEnd {
   /** What a trace writes: `R1.pin1` or `net.GND`. */
@@ -16,14 +18,27 @@ export interface WireEnd {
   net?: string
 }
 
-/** A net label is a small tag; pointing anywhere on it counts. */
-const LABEL_REACH = 0.2
+/** A ground or power symbol is small; pointing near it counts. */
+const SYMBOL_REACH = 0.2
 const SELECTOR_NAME = /^[\w-]+$/
 const SELECTOR_PART = /^[A-Za-z_][\w-]*$/
 
-/** `<component>.<name>`, with the pin's first label name when it has one, else `pin<n>`. */
-function pinSelector(pin: Pin): string {
-  const name = pin.names[1]
+/** The first name `pinLabels` gives pin `number`, if the part has one; kind aliases such as `left` are not labels. */
+function labelOf(props: Record<string, unknown>, number: number): string | undefined {
+  const labels = props["pinLabels"]
+  if (typeof labels !== "object" || labels === null) return undefined
+  for (const [key, value] of Object.entries(labels)) {
+    if (!new RegExp(`^(?:pin)?${number}$`).test(key)) continue
+    const first = (Array.isArray(value) ? value : [value]).find((name): name is string => typeof name === "string" && name !== "")
+    if (first !== undefined) return first
+  }
+  return undefined
+}
+
+/** `<component>.<name>` with the pin's `pinLabels` name when it has one, else `pin<n>`. */
+function pinSelector(design: Design, pin: Pin): string {
+  const props = design.circuit.components.find((component) => component.id === pin.component)?.props ?? {}
+  const name = labelOf(props, pin.number)
   return `${pin.component}.${name !== undefined && SELECTOR_NAME.test(name) ? name : `pin${pin.number}`}`
 }
 
@@ -33,7 +48,7 @@ const distance = (a: Point, b: Point): number => Math.hypot(a.x - b.x, a.y - b.y
 
 function pinEnd(design: Design, pin: Pin, at: Point): WireEnd {
   const name = netOfPin(design, pin.id)?.names[0]
-  const selector = pinSelector(pin)
+  const selector = pinSelector(design, pin)
   return { selector, at, label: selector, ...(name !== undefined ? { net: name } : {}) }
 }
 
@@ -62,10 +77,17 @@ function labelEnd(design: Design, p: Point, maxDistance: number): WireEnd | unde
   for (const label of design.schematic.labels) {
     const net = design.circuit.nets.find((candidate) => candidate.id === label.net)
     const name = net?.names.includes(label.text) ? label.text : net?.names[0]
-    const d = distance(label.at, p) - LABEL_REACH
+    const d = distanceToLabel(label, p)
     if (name !== undefined && d <= maxDistance && (!best || d < best.d)) best = { name, at: label.at, d }
   }
   return best && { selector: `net.${best.name}`, at: best.at, label: best.name, net: best.name }
+}
+
+/** How far `p` is from what the label draws: its tag, or for a ground or power symbol a small reach around it. */
+function distanceToLabel(label: NetLabel, p: Point): number {
+  if (label.style !== "label") return Math.max(distance(label.at, p) - SYMBOL_REACH, 0)
+  const { box } = labelTag(label)
+  return Math.hypot(Math.max(box.minX - p.x, 0, p.x - box.maxX), Math.max(box.minY - p.y, 0, p.y - box.maxY))
 }
 
 function wireEnd(design: Design, p: Point, maxDistance: number): WireEnd | undefined {
@@ -89,7 +111,7 @@ function netEnd(design: Design, netId: string, at: Point): WireEnd | undefined {
   if (name !== undefined) return { selector: `net.${name}`, at, label: name, net: name }
   const first = net?.pins[0] ?? (netId.startsWith("net:") ? netId.slice("net:".length) : undefined)
   const pin = allPins(design).find((candidate) => candidate.id === first)
-  return pin ? { selector: pinSelector(pin), at, label: pinSelector(pin) } : undefined
+  return pin ? { selector: pinSelector(design, pin), at, label: pinSelector(design, pin) } : undefined
 }
 
 function closestOnSegment(p: Point, a: Point, b: Point): Point {
@@ -103,7 +125,7 @@ function closestOnSegment(p: Point, a: Point, b: Point): Point {
 /** The net a selector is on, or undefined when it is on none yet. */
 function netOfSelector(design: Design, selector: string): Net | undefined {
   if (selector.startsWith("net.")) return design.circuit.nets.find((net) => net.names.includes(selector.slice("net.".length)))
-  const pin = allPins(design).find((candidate) => pinSelector(candidate) === selector)
+  const pin = allPins(design).find((candidate) => pinSelector(design, candidate) === selector)
   return pin && netOfPin(design, pin.id)
 }
 
