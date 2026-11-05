@@ -178,6 +178,21 @@ describe("library parts with a footprint file", () => {
     await expect(createPart(root, "USBX", USBX, { replace: true, footprintFile: USBX_FOOTPRINT, now: NOW })).rejects.toThrow(/verified/)
   })
 
+  test("LF and CRLF copies of one footprint file hash the same, and so does one with a byte order mark", () => {
+    const lf = text(USBX_FOOTPRINT)
+    expect(contentHash(USBX, lf.replace(/\n/g, "\r\n"))).toBe(contentHash(USBX, lf))
+    expect(contentHash(USBX, `﻿${lf}`)).toBe(contentHash(USBX, lf))
+    expect(contentHash(USBX, lf.replace("x: -1.5", "x: -1.4"))).not.toBe(contentHash(USBX, lf))
+  })
+
+  test("a verified part stays verified after its footprint file is rewritten with CRLF line endings", async () => {
+    const root = await project()
+    await verifyPart(root, "USBX", { by: "Eren", against: "USB-C datasheet p. 9" }, NOW)
+    const path = join(root, PATH)
+    await writeFile(path, (await readFile(path, "utf8")).replace(/\n/g, "\r\n"))
+    expect((await listParts(root))[0]?.verified).toBe(true)
+  })
+
   test("isVerified takes the footprint text into account", () => {
     const hashed = { ...USBX, verified: { by: "E", against: "d", date: NOW, hash: contentHash(USBX, "pads: a") } }
     expect(isVerified(hashed, "pads: a")).toBe(true)

@@ -106,12 +106,19 @@ export function partDir(root: string, id: string): string {
 /**
  * A hash of everything in part.yaml except the verification itself, and of the text of
  * footprint.yaml when the part has one. Without footprint text the hash is what it was before
- * footprint files existed, so parts verified earlier stay verified.
+ * footprint files existed, so parts verified earlier stay verified. The footprint text is hashed
+ * with LF line endings and without a byte order mark, so a checkout or an editor that changes
+ * either does not void a verification.
  */
 export function contentHash(part: Part, footprintText?: string): string {
   const { verified: _verified, ...content } = part
-  const hashed = footprintText === undefined ? content : { ...content, footprintFileText: footprintText }
+  const hashed = footprintText === undefined ? content : { ...content, footprintFileText: normalisedText(footprintText) }
   return createHash("sha256").update(stableJson(hashed)).digest("hex")
+}
+
+/** The text with a leading byte order mark removed and CRLF line endings turned into LF. */
+function normalisedText(text: string): string {
+  return text.replace(/^﻿/, "").replace(/\r\n/g, "\n")
 }
 
 /** Verified means a person checked exactly this content; any later change voids it. */

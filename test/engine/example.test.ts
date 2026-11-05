@@ -1,5 +1,8 @@
 import { beforeAll, describe, expect, test } from "vitest"
+import { readFile } from "node:fs/promises"
+import { join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { contentHash, libraryIds, readFootprintText, readPart } from "../../src/core/library.js"
 import { buildDesign, type Design } from "../../src/engine/design.js"
 import { FOOTPRINT_FILE } from "../../src/engine/engine.js"
 import { collectProjectFiles } from "../../src/engine/project-files.js"
@@ -56,5 +59,14 @@ describe("the usb-c-ldo example", () => {
     const slots = pads.filter((pad) => pad.layers === "through")
     expect(slots).toHaveLength(SHELL_SLOTS)
     expect(slots.every((pad) => pad.pin === j1Pin("EH") && pad.net === "net.GND" && pad.drill !== undefined)).toBe(true)
+  })
+
+  test("each part's verification.md shows the hash of the part as it is on disk, with LF line endings", async () => {
+    for (const id of await libraryIds(EXAMPLE)) {
+      const part = await readPart(EXAMPLE, id)
+      const footprint = (await readFootprintText(EXAMPLE, id, part))?.replace(/\r\n/g, "\n")
+      const checklist = await readFile(join(EXAMPLE, "parts", id, "verification.md"), "utf8")
+      expect(checklist).toContain(`Content: ${contentHash(part, footprint).slice(0, 12)} `)
+    }
   })
 })
