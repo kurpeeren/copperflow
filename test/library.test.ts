@@ -96,6 +96,12 @@ describe("generated component", () => {
     expect(code).toContain('supplierPartNumbers={{"jlcpcb":["C51118"]}}')
   })
 
+  test("library pins can name a side", () => {
+    const part = { ...LDO, pins: { ...LDO.pins, "3": { name: "EN", type: "input" as const, side: "right" as const } } }
+    expect(generateComponent("LDO", part)).toContain('pinSides={{"pin3":"right"}}')
+    expect(generateComponent("LDO", LDO)).not.toContain("pinSides")
+  })
+
   test("rebuild regenerates every component from part.yaml", async () => {
     await createPart(root, "LDO", LDO, { now: NOW })
     await writeFile(join(root, "parts", "LDO", "LDO.tsx"), "stale")

@@ -41,6 +41,8 @@ const PinSchema = z
   .object({
     name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "use letters, digits and _ (pin names become selectors)"),
     type: z.enum(PIN_TYPES),
+    /** The side of the schematic box this pin goes to; without it the pin type decides. */
+    side: z.enum(["left", "right", "top", "bottom"]).optional(),
     description: line(200).optional(),
   })
   .strict()
@@ -275,6 +277,7 @@ export function generateComponent(id: string, part: Part): string {
   const pins = Object.entries(part.pins).sort(([a], [b]) => Number(a) - Number(b))
   const labels = Object.fromEntries(pins.map(([number, pin]) => [`pin${number}`, pin.name]))
   const attributes = Object.fromEntries(pins.map(([number, pin]) => [`pin${number}`, PIN_ATTRIBUTES[pin.type]]))
+  const sides = Object.fromEntries(pins.flatMap(([number, pin]) => (pin.side ? [[`pin${number}`, pin.side]] : [])))
   const suppliers = part.suppliers
     ? Object.fromEntries(Object.entries(part.suppliers).map(([supplier, number]) => [supplier, [number]]))
     : undefined
@@ -284,6 +287,7 @@ export function generateComponent(id: string, part: Part): string {
     suppliers ? `supplierPartNumbers={${JSON.stringify(suppliers)}}` : undefined,
     `pinLabels={${JSON.stringify(labels)}}`,
     `pinAttributes={${JSON.stringify(attributes)}}`,
+    Object.keys(sides).length > 0 ? `pinSides={${JSON.stringify(sides)}}` : undefined,
     "{...props}",
   ].filter((entry): entry is string => entry !== undefined)
   return [

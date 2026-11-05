@@ -21,6 +21,8 @@ Passive parts (resistors, capacitors, LEDs, headers) are built in and need no en
      `power_in`, `power_out`, `ground`, `input`, `output`, `bidirectional`, `passive` or
      `no_connect`. Pin names become selectors, so use letters, digits and `_` only
      (write `VCC_3V3`, not `+3.3V`).
+     A pin may also name the schematic `side` it is drawn on (`left`, `right`, `top` or `bottom`);
+     without it the electrical type decides.
    - `suppliers` (for example `jlcpcb: C51118`) and `datasheet.url` when you know them.
 3. Tell the human the part is not verified and that `parts/<id>/verification.md` lists what to
    check, with the datasheet pages you used.

@@ -1,6 +1,6 @@
 import { diagnostic } from "./diagnostics.js"
 import { KINDS, pinSpecs, pinTypeFromAttributes } from "./kinds.js"
-import type { Component, Diagnostic, Pin, SourceRef } from "./model.js"
+import type { Component, Diagnostic, Pin, Side, SourceRef } from "./model.js"
 import { jsonProps, PropReader, type Props } from "./read-props.js"
 
 /** What a group adds to its children's positions. */
@@ -66,6 +66,23 @@ function makePins(tag: string, id: string, props: Props, padCount: number | unde
   })
 }
 
+const SIDES: readonly string[] = ["left", "right", "top", "bottom"]
+
+/** The sides `pinSides` ({ pin1: "left" }) names; an entry that is not a pin and a side is reported and dropped. */
+function readPinSides(id: string, props: Props, source: SourceRef): { sides: Record<number, Side>; diagnostics: Diagnostic[] } {
+  const sides: Record<number, Side> = {}
+  const diagnostics: Diagnostic[] = []
+  for (const [key, value] of Object.entries(record(props["pinSides"]) ?? {})) {
+    const number = /^pin([1-9][0-9]*)$/.exec(key)?.[1]
+    if (number !== undefined && typeof value === "string" && SIDES.includes(value)) sides[Number(number)] = value as Side
+    else {
+      const message = `${id}: pinSides.${key} must be a pin such as pin1 with one of left, right, top or bottom`
+      diagnostics.push(diagnostic("bad-value", "warning", message, [`${id}.pinSides.${key}`], source))
+    }
+  }
+  return { sides, diagnostics }
+}
+
 /** A part's footprint string, declared or implied by its kind, and how many pads it has, if known. */
 export interface PartFootprint {
   name: string | undefined
@@ -79,6 +96,7 @@ export function buildPart(tag: string, id: string, props: Props, origin: PartOri
   const pcb = pcbPlacement(reader, props, origin.offset)
   const sch = schPlacement(reader, id, origin, diagnostics)
   const pins = makePins(tag, id, props, footprint.padCount)
+  const pinSides = readPinSides(id, props, origin.source)
   if (pins.length === 0 && KINDS[tag]?.pins === "from-props") {
     const message = `${id} has no pins: give it pinLabels, pinCount or a footprint with known pads`
     diagnostics.push(diagnostic("unsupported-element", "error", message, [id], origin.source))
@@ -95,11 +113,11 @@ export function buildPart(tag: string, id: string, props: Props, origin: PartOri
     supplierPartNumbers: supplierParts(props["supplierPartNumbers"]),
     ...(origin.library ? { library: origin.library } : {}),
     pins,
-    pinSides: {},
+    pinSides: pinSides.sides,
     ...(sch ? { sch } : {}),
     ...(pcb ? { pcb } : {}),
     props: jsonProps(props),
     source: origin.source,
   }
-  return { component, diagnostics: [...reader.diagnostics, ...diagnostics] }
+  return { component, diagnostics: [...reader.diagnostics, ...pinSides.diagnostics, ...diagnostics] }
 }
