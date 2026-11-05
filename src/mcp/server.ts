@@ -174,7 +174,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "create_part",
     {
       description:
-        "Create a library part from a datasheet you have read: pins by number with names and electrical types, a tscircuit footprint string, MPN and supplier numbers. When no footprint string fits the package, set footprint to \"footprint.yaml\" and pass footprint_file with every pad transcribed from the datasheet's recommended land pattern (never estimate). The part starts NOT verified; tell the human to check verification.md.",
+        "Create a library part from a datasheet you have read: pins by number with names and electrical types, a copperflow footprint string such as sot23_5 or 0402, MPN and supplier numbers. When no footprint string fits the package, set footprint to \"footprint.yaml\" and pass footprint_file with every pad transcribed from the datasheet's recommended land pattern (never estimate). The part starts NOT verified; tell the human to check verification.md.",
       inputSchema: {
         id: z.string().describe("Folder name, e.g. AP2112K-3.3"),
         part: PartSchema.omit({ verified: true }),

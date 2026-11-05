@@ -8,6 +8,7 @@ import {
   createPart,
   generateComponent,
   listParts,
+  PartSchema,
   readPart,
   rebuildComponents,
   verifyPart,
@@ -56,6 +57,14 @@ describe("creating parts", () => {
     await expect(createPart(root, "X", bad, { now: NOW })).rejects.toThrow(/pins\.1\.name/)
     await expect(createPart(root, "X", { ...LDO, footprint: 'sot23"><x' }, { now: NOW })).rejects.toThrow(/footprint/)
     await expect(createPart(root, "X", { ...LDO, datasheet: { file: "../secret.pdf" } }, { now: NOW })).rejects.toThrow(/datasheet/)
+  })
+
+  test("a bad footprint names copperflow footprint strings and footprint.yaml, never the old toolkit", () => {
+    const parsed = PartSchema.safeParse({ ...LDO, footprint: "sot 23" })
+    const message = parsed.success ? "" : parsed.error.issues.map((issue) => issue.message).join("; ")
+    expect(message).toMatch(/sot23_5/)
+    expect(message).toMatch(/footprint\.yaml/)
+    expect(message.toLowerCase()).not.toContain("tscircuit")
   })
 
   test("an existing part is replaced only on request, and a verified part never", async () => {

@@ -54,6 +54,13 @@ describe("MCP server", () => {
     ])
   })
 
+  test("create_part describes copperflow footprints without naming the old toolkit", async () => {
+    const { tools } = await client.listTools()
+    const description = tools.find((t) => t.name === "create_part")?.description ?? ""
+    expect(description).toMatch(/sot23_5/)
+    expect(description.toLowerCase()).not.toContain("tscircuit")
+  })
+
   test("bom and export_package take no build input", async () => {
     const { tools } = await client.listTools()
     for (const name of ["bom", "export_package"]) {

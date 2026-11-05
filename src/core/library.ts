@@ -53,7 +53,7 @@ export const PartSchema = z
     description: z.string().max(2000).regex(/^[^\x00-\x08\x0b-\x1f\x7f]*$/, "no control characters").optional(),
     manufacturer: line(200).optional(),
     mpn: line(100).optional(),
-    footprint: z.string().regex(/^[A-Za-z0-9_.(),-]+$/, "use a tscircuit footprint string such as sot23_5"),
+    footprint: z.string().regex(/^[A-Za-z0-9_.(),-]+$/, "use a copperflow footprint string such as sot23_5 or 0402, or footprint.yaml for the part's own footprint file"),
     pins: z.record(z.string().regex(/^[1-9][0-9]*$/, "pin numbers start at 1"), PinSchema),
     suppliers: z
       .record(z.string().regex(/^[a-z0-9_]+$/).refine((key) => !RESERVED_KEYS.has(key), "reserved name"), line(100))
