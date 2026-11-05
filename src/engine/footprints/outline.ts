@@ -1,5 +1,5 @@
 import type { Point } from "../model.js"
-import { COURTYARD_EXCESS } from "./ipc7351.js"
+import { roundUpToStep, type GoalTable } from "./ipc7351.js"
 import type { Pad } from "./types.js"
 
 /** Half sizes of a box centred on the footprint origin. */
@@ -10,18 +10,11 @@ export interface Extent {
 
 /** Engine plan: silkscreen keeps this far from copper. */
 const SILK_CLEARANCE = 0.15
-/** Engine plan: the courtyard is rounded up to 0.01 mm. */
-const STEPS_PER_MM = 100
-const FLOAT_SLACK = 1e-6
 const TIDY = 1e6
 
 /** Removes floating-point noise below 1 nm. */
 function tidy(value: number): number {
   return Math.round(value * TIDY) / TIDY
-}
-
-function roundUp(value: number): number {
-  return Math.ceil(value * STEPS_PER_MM - FLOAT_SLACK) / STEPS_PER_MM
 }
 
 function padHalfSize(pad: Pad): Extent {
@@ -52,12 +45,18 @@ export function rectangle(half: Extent): Point[] {
   ]
 }
 
-/** A rectangle around the pads and the component, plus the courtyard excess, rounded up to 0.01 mm. */
-export function courtyard(pads: readonly Pad[], component: Extent): Point[] {
+/**
+ * A rectangle around the larger of the pads and the component, plus the table's courtyard excess,
+ * with each half size rounded up to the table's round-off step. [IPC-7351] §3.1.5.4 (p. 15) adds the
+ * excess to the larger extremity, rounds the courtyard up by the table's round-off and suggests
+ * keeping the size even so that the centre falls on the step; rounding each half up does both. The
+ * IPC-7351B wording was not seen.
+ */
+export function courtyard(pads: readonly Pad[], component: Extent, table: Readonly<GoalTable>): Point[] {
   const pad = padExtent(pads)
   return rectangle({
-    x: roundUp(Math.max(pad.x, component.x) + COURTYARD_EXCESS),
-    y: roundUp(Math.max(pad.y, component.y) + COURTYARD_EXCESS),
+    x: roundUpToStep(Math.max(pad.x, component.x) + table.courtyardExcess, table.roundOff),
+    y: roundUpToStep(Math.max(pad.y, component.y) + table.courtyardExcess, table.roundOff),
   })
 }
 

@@ -1,4 +1,4 @@
-import { chipGoals, IPC_TOLERANCES, landPattern, twoTerminalPads, type Range } from "./ipc7351.js"
+import { chipTable, IPC_TOLERANCES, landPattern, twoTerminalPads, type Range } from "./ipc7351.js"
 import { bodyOutline, courtyard, sideLines } from "./outline.js"
 import type { Footprint } from "./types.js"
 
@@ -49,12 +49,13 @@ export function chipFootprint(code: string): Footprint | undefined {
   if (!Object.hasOwn(CHIP_SIZES, code)) return undefined
   const size = CHIP_SIZES[code] as ChipSize
   const lead = { span: size.length, terminal: size.terminal, width: size.width }
-  const pads = twoTerminalPads(landPattern(lead, chipGoals(size.length), IPC_TOLERANCES))
+  const table = chipTable(size.length)
+  const pads = twoTerminalPads(landPattern(lead, table.goals, IPC_TOLERANCES), table.roundOff)
   const body = { x: size.length.max / 2, y: size.width.max / 2 }
   return {
     name: code,
     pads,
-    courtyard: courtyard(pads, body),
+    courtyard: courtyard(pads, body, table),
     silkscreen: sideLines(pads, body),
     fabrication: bodyOutline(body),
     origin: `IPC-7351B nominal, EIA ${code}`,
