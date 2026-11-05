@@ -1,6 +1,6 @@
 import { copyFile, mkdir, rm, stat, writeFile } from "node:fs/promises"
 import { join } from "node:path"
-import { isVerified, libraryIds, libraryImports, PARTS_DIR, readPart, type Part } from "./library.js"
+import { isPartVerified, libraryIds, libraryImports, PARTS_DIR, readPart, type Part } from "./library.js"
 import type { PartInfo } from "./types.js"
 import { loadCircuit, resolveInRoot } from "./workspace.js"
 
@@ -47,13 +47,18 @@ export async function buildBom(root: string, file: string, circuitJson?: unknown
   const { model, file: circuitFile } = await loadCircuit(root, file)
   const library = libraryImports(model, circuitFile, await libraryIds(root))
   const parts = new Map<string, Part>()
-  for (const id of new Set(library.values())) parts.set(id, await readPart(root, id))
+  const verified = new Map<string, boolean>()
+  for (const id of new Set(library.values())) {
+    const part = await readPart(root, id)
+    parts.set(id, part)
+    verified.set(id, await isPartVerified(root, id, part))
+  }
 
   const groups = new Map<string, BomLine>()
   for (const part of model.parts) {
     if (NOT_COMPONENTS.has(part.tag)) continue
     const libraryId = library.get(part.tag)
-    const line = libraryId ? libraryLine(part, libraryId, parts.get(libraryId) as Part) : builtinLine(part, circuitJson)
+    const line = libraryId ? libraryLine(part, libraryId, parts.get(libraryId) as Part, verified.get(libraryId) === true) : builtinLine(part, circuitJson)
     // Every prop except names and positions, so ratings, tolerances and expressions keep lines apart.
     const props = Object.entries(part.props)
       .filter(([key]) => key !== "key" && !key.startsWith("pcb") && !key.startsWith("sch"))
@@ -72,7 +77,7 @@ export async function buildBom(root: string, file: string, circuitJson?: unknown
     .sort((a, b) => natural(a.designators[0] ?? "", b.designators[0] ?? ""))
 }
 
-function libraryLine(part: PartInfo, id: string, library: Part): BomLine {
+function libraryLine(part: PartInfo, id: string, library: Part, verified: boolean): BomLine {
   const [supplier, number] = Object.entries(library.suppliers ?? {})[0] ?? []
   return {
     designators: [part.name],
@@ -85,7 +90,7 @@ function libraryLine(part: PartInfo, id: string, library: Part): BomLine {
     supplier: supplier ? `${supplier} ${number}` : "",
     datasheet: library.datasheet?.url ?? library.datasheet?.file ?? "",
     libraryPart: id,
-    verified: isVerified(library),
+    verified,
   }
 }
 

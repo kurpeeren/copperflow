@@ -27,6 +27,7 @@ import {
   undoChange,
   type Edit,
 } from "../core/index.js"
+import { FootprintFileSchema } from "../engine/footprints/file.js"
 import { VERSION } from "../version.js"
 
 const INSTRUCTIONS = `copperflow lets you edit tscircuit circuit files together with a human.
@@ -170,16 +171,23 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "create_part",
     {
       description:
-        "Create a library part from a datasheet you have read: pins by number with names and electrical types, a tscircuit footprint string (never pad coordinates), MPN and supplier numbers. The part starts NOT verified; tell the human to check verification.md.",
+        "Create a library part from a datasheet you have read: pins by number with names and electrical types, a tscircuit footprint string, MPN and supplier numbers. When no footprint string fits the package, set footprint to \"footprint.yaml\" and pass footprint_file with every pad transcribed from the datasheet's recommended land pattern (never estimate). The part starts NOT verified; tell the human to check verification.md.",
       inputSchema: {
         id: z.string().describe("Folder name, e.g. AP2112K-3.3"),
         part: PartSchema.omit({ verified: true }),
+        footprint_file: FootprintFileSchema.optional().describe(
+          'Pads in mm (y up, origin at the part centre) from the datasheet land pattern; requires part.footprint to be "footprint.yaml"',
+        ),
         replace: z.boolean().optional().describe("Overwrite an existing, unverified part"),
       },
     },
-    ({ id, part, replace }) =>
+    ({ id, part, footprint_file, replace }) =>
       run(async () => {
-        const result = await createPart(root, id, part, { replace: replace === true, now: new Date().toISOString() })
+        const result = await createPart(root, id, part, {
+          replace: replace === true,
+          ...(footprint_file ? { footprintFile: footprint_file } : {}),
+          now: new Date().toISOString(),
+        })
         return [
           `Created ${result.files.join(", ")}.`,
           `Use it with place_part (part "${id}"). It is NOT verified: ask the human to check parts/${id}/verification.md against the datasheet.`,

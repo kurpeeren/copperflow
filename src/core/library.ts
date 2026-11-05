@@ -3,10 +3,14 @@ import { mkdir, readdir, readFile, stat } from "node:fs/promises"
 import { join, posix } from "node:path"
 import { parse, stringify } from "yaml"
 import { z } from "zod"
+import { footprintFromFile, pinErrors, type FootprintFile } from "../engine/footprints/file.js"
 import { writeFileAtomic } from "./fs-utils.js"
 import type { CircuitModel } from "./types.js"
 
 export const PARTS_DIR = "parts"
+
+/** The file in a part folder that holds the pads, when `footprint` in part.yaml is this name. */
+export const FOOTPRINT_FILE = "footprint.yaml"
 
 export const PIN_TYPES = ["power_in", "power_out", "ground", "input", "output", "bidirectional", "passive", "no_connect"] as const
 export type PinType = (typeof PIN_TYPES)[number]
@@ -97,15 +101,36 @@ export function partDir(root: string, id: string): string {
   return join(root, PARTS_DIR, validatePartId(id))
 }
 
-/** A hash of everything in part.yaml except the verification itself. */
-export function contentHash(part: Part): string {
+/**
+ * A hash of everything in part.yaml except the verification itself, and of the text of
+ * footprint.yaml when the part has one. Without footprint text the hash is what it was before
+ * footprint files existed, so parts verified earlier stay verified.
+ */
+export function contentHash(part: Part, footprintText?: string): string {
   const { verified: _verified, ...content } = part
-  return createHash("sha256").update(stableJson(content)).digest("hex")
+  const hashed = footprintText === undefined ? content : { ...content, footprintFileText: footprintText }
+  return createHash("sha256").update(stableJson(hashed)).digest("hex")
 }
 
 /** Verified means a person checked exactly this content; any later change voids it. */
-export function isVerified(part: Part): boolean {
-  return part.verified?.hash === contentHash(part)
+export function isVerified(part: Part, footprintText?: string): boolean {
+  return part.verified?.hash === contentHash(part, footprintText)
+}
+
+/** The text of the part's footprint.yaml, or undefined when the part does not use one or it is missing. */
+export async function readFootprintText(root: string, id: string, part: Part): Promise<string | undefined> {
+  if (part.footprint !== FOOTPRINT_FILE) return undefined
+  try {
+    return await readFile(join(partDir(root, id), FOOTPRINT_FILE), "utf8")
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
+    throw error
+  }
+}
+
+/** Whether a person verified exactly what is on disk now: part.yaml and footprint.yaml. */
+export async function isPartVerified(root: string, id: string, part: Part): Promise<boolean> {
+  return isVerified(part, await readFootprintText(root, id, part))
 }
 
 /** Part ids exactly as their folders are named, for folders that hold a part.yaml. */
@@ -129,14 +154,15 @@ export async function listParts(root: string): Promise<PartSummary[]> {
   for (const id of await libraryIds(root)) {
     try {
       const part = await readPart(root, id)
+      const verified = await isPartVerified(root, id, part)
       summaries.push({
         id,
         title: part.title,
         ...(part.mpn ? { mpn: part.mpn } : {}),
         footprint: part.footprint,
         component: componentName(id),
-        verified: isVerified(part),
-        ...(isVerified(part) && part.verified ? { verifiedBy: part.verified.by } : {}),
+        verified,
+        ...(verified && part.verified ? { verifiedBy: part.verified.by } : {}),
       })
     } catch (error) {
       summaries.push({ id, title: "(invalid part.yaml)", footprint: "", component: componentName(id), verified: false, error: (error as Error).message })
@@ -147,7 +173,33 @@ export async function listParts(root: string): Promise<PartSummary[]> {
 
 export async function readPart(root: string, id: string): Promise<Part> {
   const path = join(partDir(root, id), "part.yaml")
-  return parsePart(await readFile(path, "utf8"), `${PARTS_DIR}/${id}/part.yaml`)
+  const part = parsePart(await readFile(path, "utf8"), `${PARTS_DIR}/${id}/part.yaml`)
+  if (part.footprint === FOOTPRINT_FILE) {
+    const text = await readFootprintText(root, id, part)
+    if (text === undefined) throw new Error(`Invalid ${PARTS_DIR}/${id}/${FOOTPRINT_FILE}: the file is missing`)
+    checkFootprintText(id, part, text)
+  }
+  return part
+}
+
+/** Throws when footprint.yaml is not a valid land pattern for this part's pins; the message names the pad. */
+function checkFootprintText(id: string, part: Part, text: string): void {
+  const path = `${PARTS_DIR}/${id}/${FOOTPRINT_FILE}`
+  const footprint = footprintFromFile(path, text)
+  if ("error" in footprint) throw new Error(`Invalid ${footprint.error}`)
+  const problems = pinErrors(footprint, part)
+  if (problems.length > 0) throw new Error(`Invalid ${path}: ${problems.join("; ")}`)
+}
+
+/** The text createPart writes to footprint.yaml, checked against the pins; undefined for a part without one. */
+function footprintFileText(id: string, part: Part, file: FootprintFile | undefined): string | undefined {
+  if ((part.footprint === FOOTPRINT_FILE) !== (file !== undefined)) {
+    throw new Error(`A part's footprint must be "${FOOTPRINT_FILE}" exactly when a footprint file is given (footprint is "${part.footprint}")`)
+  }
+  if (!file) return undefined
+  const text = stringify(file)
+  checkFootprintText(id, part, text)
+  return text
 }
 
 /** Maps component names imported from the parts library to their part ids. */
@@ -169,33 +221,40 @@ export async function createPart(
   root: string,
   id: string,
   input: unknown,
-  options: { replace?: boolean; now: string },
+  options: { replace?: boolean; footprintFile?: FootprintFile; now: string },
 ): Promise<{ part: Part; files: string[] }> {
   const dir = partDir(root, id)
   const { verified: _ignored, ...data } = validate(input, "part")
+  const footprintText = footprintFileText(id, data, options.footprintFile)
   const others = (await libraryIds(root)).filter((other) => other !== id)
   const clash = others.find((other) => other.toLowerCase() === id.toLowerCase() || componentName(other) === componentName(id))
   if (clash) throw new Error(`Part id "${id}" collides with the existing part "${clash}"; choose another id`)
   const yamlPath = join(dir, "part.yaml")
   if (await exists(yamlPath)) {
     if (!options.replace) throw new Error(`Part ${id} already exists; pass replace to overwrite it`)
-    if (isVerified(await readPart(root, id))) throw new Error(`Part ${id} is verified; only a human can change it`)
+    if (await isPartVerified(root, id, await readPart(root, id))) throw new Error(`Part ${id} is verified; only a human can change it`)
   }
   await mkdir(dir, { recursive: true })
+  if (footprintText !== undefined) await writeFileAtomic(join(dir, FOOTPRINT_FILE), footprintText)
   await writeFileAtomic(yamlPath, stringify(data))
   await writeFileAtomic(join(dir, `${componentName(id)}.tsx`), generateComponent(id, data))
   // Always rewritten, so the checklist describes the pins that are actually in part.yaml.
-  await writeFileAtomic(join(dir, "verification.md"), verificationTemplate(id, data))
+  await writeFileAtomic(join(dir, "verification.md"), verificationTemplate(id, data, footprintText))
   return {
     part: data,
-    files: [`${PARTS_DIR}/${id}/part.yaml`, `${PARTS_DIR}/${id}/${componentName(id)}.tsx`, `${PARTS_DIR}/${id}/verification.md`],
+    files: [
+      `${PARTS_DIR}/${id}/part.yaml`,
+      ...(footprintText === undefined ? [] : [`${PARTS_DIR}/${id}/${FOOTPRINT_FILE}`]),
+      `${PARTS_DIR}/${id}/${componentName(id)}.tsx`,
+      `${PARTS_DIR}/${id}/verification.md`,
+    ],
   }
 }
 
 /** Marks the current content of a part as checked by a person. Only the CLI and the Studio call this. */
 export async function verifyPart(root: string, id: string, check: { by: string; against: string }, now: string): Promise<Part> {
   const current = await readPart(root, id)
-  const part: Part = { ...current, verified: { by: check.by, against: check.against, date: now, hash: contentHash(current) } }
+  const part: Part = { ...current, verified: { by: check.by, against: check.against, date: now, hash: contentHash(current, await readFootprintText(root, id, current)) } }
   await writeFileAtomic(join(partDir(root, id), "part.yaml"), stringify(validate(part, `${id}/part.yaml`)))
   return part
 }
@@ -220,7 +279,7 @@ export function generateComponent(id: string, part: Part): string {
     ? Object.fromEntries(Object.entries(part.suppliers).map(([supplier, number]) => [supplier, [number]]))
     : undefined
   const props = [
-    `footprint={${JSON.stringify(part.footprint)}}`,
+    `footprint={${JSON.stringify(part.footprint === FOOTPRINT_FILE ? `${PARTS_DIR}/${id}/${FOOTPRINT_FILE}` : part.footprint)}}`,
     part.mpn ? `manufacturerPartNumber={${JSON.stringify(part.mpn)}}` : undefined,
     suppliers ? `supplierPartNumbers={${JSON.stringify(suppliers)}}` : undefined,
     `pinLabels={${JSON.stringify(labels)}}`,
@@ -238,19 +297,20 @@ export function generateComponent(id: string, part: Part): string {
   ].join("\n")
 }
 
-export function verificationTemplate(id: string, part: Part): string {
+export function verificationTemplate(id: string, part: Part, footprintText?: string): string {
   const pins = Object.entries(part.pins).sort(([a], [b]) => Number(a) - Number(b))
   return [
     `# Verification of ${part.title}`,
     "",
     "Status: not verified",
-    `Content: ${contentHash(part).slice(0, 12)} (changes when part.yaml changes)`,
+    `Content: ${contentHash(part, footprintText).slice(0, 12)} (changes when part.yaml${footprintText === undefined ? "" : " or footprint.yaml"} changes)`,
     "",
     "Check each item against the datasheet and write the page next to it. When everything is",
     `checked, run in a terminal: copperflow parts verify ${id} --by "<your name>" --against "<datasheet, revision, page>"`,
     "",
     ...pins.map(([number, pin]) => `- [ ] Pin ${number} is ${pin.name} (${pin.type.replace("_", " ")})`),
     `- [ ] Footprint ${part.footprint} matches the package drawing`,
+    ...(footprintText === undefined ? [] : ["- [ ] Every pad in footprint.yaml matches the recommended land pattern (position, size, drill)"]),
     ...Object.entries(part.suppliers ?? {}).map(([supplier, number]) => `- [ ] ${supplier} part ${number} is this exact part`),
     "",
   ].join("\n")

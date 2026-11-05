@@ -10,7 +10,13 @@ Passive parts (resistors, capacitors, LEDs, headers) are built in and need no en
    - `id`: the folder name, usually the part number, such as `AP2112K-3.3`.
    - `title`, `manufacturer`, `mpn` (the full orderable number, such as `AP2112K-3.3TRG1`).
    - `footprint`: a tscircuit footprint string for the package, such as `sot23_5`, `soic8`,
-     `qfn32_p0.5mm` or `tssop20`. Never invent pad coordinates.
+     `qfn32_p0.5mm` or `tssop20`. Use a footprint string whenever a family fits the package.
+     When none fits, set `footprint` to `footprint.yaml` and pass `footprint_file`: transcribe
+     every pad (number, shape, x, y, width, height, and a drill for through-hole pads) from the
+     datasheet's recommended land pattern, name the page you took it from, and never estimate a
+     coordinate. Each pad number must be a pin number; several pads may share one (a shell
+     with two legs). Every pin except `no_connect` needs a pad. The part stays unverified
+     until a human checks every pad against the datasheet.
    - `pins`: every pin by number, with the datasheet's name and an electrical type:
      `power_in`, `power_out`, `ground`, `input`, `output`, `bidirectional`, `passive` or
      `no_connect`. Pin names become selectors, so use letters, digits and `_` only

@@ -8,7 +8,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { createCopperflowServer } from "../src/mcp/server.js"
 import { loadCircuit, updateAnnotations } from "../src/core/workspace.js"
 import { addMark, lockParts } from "../src/core/annotations.js"
-import { BOARD, LDO } from "./fixtures.js"
+import { BOARD, LDO, USBX, USBX_FOOTPRINT } from "./fixtures.js"
 
 const FILE = "main.circuit.tsx"
 const FAKE_TSCI = [process.execPath, fileURLToPath(new URL("./fixtures/fake-tsci.mjs", import.meta.url))]
@@ -62,6 +62,17 @@ describe("MCP server", () => {
     expect(placed.text).toMatch(/Change c0001 applied: place U5/)
     expect(await readFile(join(root, FILE), "utf8")).toContain('<AP2112K_3_3 name="U5" pcbX={3} />')
     expect((await call("bom", { file: FILE })).text).toContain("| U5 | 1 | chip | AP2112K-3.3 LDO regulator | sot23_5 | Diodes Incorporated | AP2112K-3.3TRG1 | jlcpcb C51118 |")
+  })
+
+  test("create_part with footprint_file writes parts/<id>/footprint.yaml and lists it", async () => {
+    const created = await call("create_part", { id: "USBX", part: USBX, footprint_file: USBX_FOOTPRINT })
+    expect(created.isError).toBe(false)
+    expect(created.text).toContain("parts/USBX/footprint.yaml")
+    expect(await readFile(join(root, "parts", "USBX", "footprint.yaml"), "utf8")).toContain("pads:")
+    const bad = { pads: [{ number: "9", shape: "rect", x: 0, y: 0, width: 1, height: 1 }] }
+    const refused = await call("create_part", { id: "USBY", part: USBX, footprint_file: bad })
+    expect(refused.isError).toBe(true)
+    expect(refused.text).toMatch(/pad 9/)
   })
 
   test("invalid parts come back as tool errors", async () => {

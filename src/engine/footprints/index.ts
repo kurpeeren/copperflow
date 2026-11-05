@@ -1,5 +1,6 @@
 import { chipFootprint } from "./chip.js"
 import { dualFootprint } from "./dual.js"
+import { footprintFromFile } from "./file.js"
 import { parseFootprint, type ParsedFootprint } from "./parse.js"
 import { pinRowFootprint } from "./pinrow.js"
 import { quadFootprint } from "./quad.js"
@@ -29,19 +30,36 @@ const FAMILIES: readonly Family[] = [
 const MAX_CACHED = 512
 const cache = new Map<string, FootprintResult>()
 
+/** The only files a footprint is read from: the footprint.yaml inside a library part's folder. */
+const FILE_PATH = /^parts\/[A-Za-z0-9._-]+\/footprint\.yaml$/
+
+/** Footprint strings never contain "/"; anything that does names a file. */
+const isFilePath = (text: string) => text.includes("/")
+
 /**
  * The footprint for a footprint string such as "0603", "sod123", "soic8", "qfn32_ep" or
  * "pinrow4_p2.54mm", or an error naming the string.
- * Results are cached by text and frozen. `readFile` reads project files for footprints that come
- * from a file; the generated families here do not need it.
+ * Results for strings are cached by text and frozen. A string that is a path
+ * ("parts/<id>/footprint.yaml") is read through `readFile` every time, because the file can change
+ * while the text of the path does not.
  */
 export function generateFootprint(text: string, readFile?: (path: string) => string | undefined): FootprintResult {
+  if (isFilePath(text)) return deepFreeze(fromFile(text, readFile))
   const cached = cache.get(text)
   if (cached) return cached
   const result = deepFreeze(build(text))
   if (cache.size >= MAX_CACHED) cache.delete(cache.keys().next().value as string)
   cache.set(text, result)
   return result
+}
+
+function fromFile(path: string, readFile: ((path: string) => string | undefined) | undefined): FootprintResult {
+  if (!FILE_PATH.test(path) || path.split("/").some((part) => part.includes(".."))) {
+    return { error: `"${path}" is not a footprint file: only parts/<id>/footprint.yaml can be read` }
+  }
+  if (!readFile) return { error: `"${path}" is a footprint file and needs a way to read files` }
+  const source = readFile(path)
+  return source === undefined ? { error: `${path}: footprint file not found` } : footprintFromFile(path, source)
 }
 
 /** How many pads the footprint has, or undefined when copperflow cannot make it. */
