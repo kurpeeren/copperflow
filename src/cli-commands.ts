@@ -42,7 +42,7 @@ Usage:
   copperflow mcp                              start the MCP server on stdio
   copperflow studio [--port n]                open the visual editor at http://127.0.0.1:4777
   copperflow summary <file>                   print a circuit summary
-  copperflow check <file>                     build with tscircuit and list errors and warnings
+  copperflow check <file>                     list the engine's errors and warnings, then tscircuit's
   copperflow lock <file> <part...>            lock parts so the agent cannot change them
   copperflow unlock <file> <part...>          unlock parts
   copperflow mark <file> <text> [--pcb x,y | --sch x,y]
@@ -61,12 +61,13 @@ Usage:
   copperflow undo [id]                        undo the newest change, or the given one
 
 Every command accepts --root <dir> (default: the current directory).
-Set COPPERFLOW_TSCI to use a tscircuit CLI that is not on the PATH.`
+check also builds with the tscircuit CLI (tsci) until copperflow's own rule checks arrive;
+set COPPERFLOW_TSCI to use one that is not on the PATH.`
 
 export interface CliOptions {
   /** The tscircuit CLI for `check` and the MCP server; defaults to $COPPERFLOW_TSCI or `tsci`. */
   buildCommand?: string[]
-  /** Builds the design for bom and package; tests pass one that runs in this process. */
+  /** Builds the design for check, bom and package; tests pass one that runs in this process. */
   engine?: DesignSource
 }
 
@@ -90,7 +91,7 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
         return 0
       case "check": {
         const file = required(rest[0], "file")
-        const result = await checkCircuit(root, file, options.buildCommand ? { command: options.buildCommand } : {})
+        const result = await checkCircuit(root, file, { ...designOptions(options), ...(options.buildCommand ? { command: options.buildCommand } : {}) })
         io.out(formatCheck(file, result))
         return result.ok ? 0 : 1
       }

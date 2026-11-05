@@ -1,6 +1,9 @@
 import { spawn, spawnSync } from "node:child_process"
 import { readFile, realpath, stat } from "node:fs/promises"
 import { basename, resolve } from "node:path"
+import type { Diagnostic, Severity } from "../engine/model.js"
+import { buildWith, type DesignSource } from "./design-source.js"
+import { withoutFootprintFileErrors } from "./footprint-file-issues.js"
 import { serialized } from "./fs-utils.js"
 import { oneLine } from "./summary.js"
 import { isInside, resolveCircuit, resolveInRoot } from "./workspace.js"
@@ -23,6 +26,8 @@ export interface CheckOptions {
   /** The tscircuit CLI and any leading arguments; defaults to $COPPERFLOW_TSCI or `tsci`. */
   command?: string[]
   timeoutMs?: number
+  /** Builds the design whose diagnostics the check reports; without one, a new engine is started and stopped. */
+  engine?: DesignSource
 }
 
 interface RunResult {
@@ -48,12 +53,25 @@ const SH_NOT_FOUND = 127
 const buildQueues = new Map<string, Promise<void>>()
 
 /**
- * Builds a circuit with the tscircuit CLI and reads the errors and warnings from the
- * circuit JSON it writes: placement overlaps, unrouted ports, missing parts and so on.
- * Builds in one project run one at a time.
+ * Checks a circuit two ways until copperflow's own rule checks arrive. The engine builds the design
+ * the Studio, the BOM and the package use; its errors fail the check and its warnings are listed,
+ * grouped by code. The tscircuit CLI then builds the circuit and its errors and warnings are read
+ * from the circuit JSON it writes: placement overlaps, unrouted ports, missing parts and so on.
+ * Circuit code the engine cannot run is thrown as file:line:column. Builds in one project run one
+ * at a time.
  */
 export async function checkCircuit(root: string, file: string, options: CheckOptions = {}): Promise<CheckResult> {
-  return (await buildCircuit(root, file, options)).result
+  const circuit = await resolveCircuit(root, file)
+  const design = await buildWith(root, circuit.file, options.engine)
+  return withEngineDiagnostics((await buildCircuit(root, circuit.file, options)).result, design.diagnostics)
+}
+
+/** The tscircuit result with the engine's errors and warnings added as groups named by their codes. */
+export function withEngineDiagnostics(result: CheckResult, diagnostics: readonly Diagnostic[]): CheckResult {
+  const groups = (severity: Severity) =>
+    groupByType(diagnostics.filter((d) => d.severity === severity).map((d) => ({ type: d.code, message: d.message })))
+  const errors = groups("error")
+  return { ...result, ok: result.ok && errors.length === 0, errors: [...result.errors, ...errors], warnings: [...result.warnings, ...groups("warning")] }
 }
 
 /** Like checkCircuit, but also returns the circuit JSON for viewers. */
@@ -80,11 +98,17 @@ export async function buildCircuit(
   return { result: reportFromElements(elements, run.code), circuitJson: elements }
 }
 
-/** The errors and warnings in circuit JSON, grouped by type. */
+/**
+ * The errors and warnings in circuit JSON, grouped by type, without the errors that only say
+ * tscircuit cannot read a footprint file. When those were the only errors, the failing exit code
+ * they caused does not fail the check.
+ */
 export function reportFromElements(elements: unknown[], exitCode: number | null = 0): CheckResult {
-  const errors = groupIssues(elements, "_error")
-  const warnings = groupIssues(elements, "_warning")
-  return { ok: exitCode === 0 && errors.length === 0, exitCode, errors, warnings }
+  const kept = withoutFootprintFileErrors(elements)
+  const errors = groupIssues(kept, "_error")
+  const warnings = groupIssues(kept, "_warning")
+  const leftOut = kept.length < elements.length
+  return { ok: (exitCode === 0 || leftOut) && errors.length === 0, exitCode, errors, warnings }
 }
 
 export function formatCheck(file: string, result: CheckResult): string {
@@ -138,10 +162,18 @@ async function readCircuitJson(root: string, written: string): Promise<unknown[]
 }
 
 function groupIssues(elements: unknown[], suffix: string): IssueGroup[] {
+  return groupByType(
+    elements.flatMap((element) => {
+      const { type, message } = (element ?? {}) as { type?: unknown; message?: unknown }
+      return typeof type === "string" && type.endsWith(suffix) ? [{ type, message }] : []
+    }),
+  )
+}
+
+/** Issues grouped by type in the order types first appear, each with a count and its first few messages. */
+function groupByType(issues: readonly { type: string; message: unknown }[]): IssueGroup[] {
   const groups = new Map<string, IssueGroup>()
-  for (const element of elements) {
-    const { type, message } = (element ?? {}) as { type?: unknown; message?: unknown }
-    if (typeof type !== "string" || !type.endsWith(suffix)) continue
+  for (const { type, message } of issues) {
     const key = clip(type)
     const previous = groups.get(key) ?? { type: key, count: 0, messages: [] }
     const text = clip(typeof message === "string" ? message : "(no message)")

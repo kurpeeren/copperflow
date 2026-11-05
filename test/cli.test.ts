@@ -10,6 +10,13 @@ import { BOARD, LDO, SHARED } from "./fixtures.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
 
 const FILE = "main.circuit.tsx"
+/** A circuit the engine builds without errors or warnings. */
+const CLEAN = `export default () => (
+  <board width="10mm" height="10mm">
+    <resistor name="R1" resistance="1k" footprint="0402" pcbX={0} pcbY={0} schX={0} schY={0} />
+  </board>
+)
+`
 let root: string
 let out: string[]
 let err: string[]
@@ -51,12 +58,21 @@ describe("cli", () => {
 
   test("check prints the build report and fails when the build has errors", async () => {
     const fakeTsci = [process.execPath, fileURLToPath(new URL("./fixtures/fake-tsci.mjs", import.meta.url))]
+    const check = () => runCli(["check", FILE], root, io(), { buildCommand: fakeTsci, engine: inProcessEngine })
+    await writeFile(join(root, FILE), CLEAN)
     const elements = [{ type: "pcb_courtyard_overlap_error", message: "Courtyard of U1 overlaps with courtyard of C2" }]
     await writeFile(join(root, "main.circuit.fake.json"), JSON.stringify({ exitCode: 1, elements }))
-    expect(await runCli(["check", FILE], root, io(), { buildCommand: fakeTsci })).toBe(1)
+    expect(await check()).toBe(1)
     expect(out.join("\n")).toContain("pcb_courtyard_overlap_error")
     await writeFile(join(root, "main.circuit.fake.json"), JSON.stringify({ exitCode: 0, elements: [] }))
-    expect(await runCli(["check", FILE], root, io(), { buildCommand: fakeTsci })).toBe(0)
+    expect(await check()).toBe(0)
+  })
+
+  test("check fails on the engine's errors, such as BOARD's two parts named RX", async () => {
+    const fakeTsci = [process.execPath, fileURLToPath(new URL("./fixtures/fake-tsci.mjs", import.meta.url))]
+    await writeFile(join(root, "main.circuit.fake.json"), JSON.stringify({ exitCode: 0, elements: [] }))
+    expect(await runCli(["check", FILE], root, io(), { buildCommand: fakeTsci, engine: inProcessEngine })).toBe(1)
+    expect(out.join("\n")).toContain("duplicate-name: More than one part is named RX")
   })
 
   test("parts: list, rebuild and verify by a person", async () => {

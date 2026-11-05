@@ -1,8 +1,8 @@
 import { copyFile, mkdir, rm, stat, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import type { Design } from "../engine/design.js"
-import { Engine } from "../engine/engine.js"
 import type { Component } from "../engine/model.js"
+import { buildWith, type DesignSource } from "./design-source.js"
 import { isPartVerified, libraryValues, PARTS_DIR, readPart, type Part } from "./library.js"
 import { resolveCircuit, resolveInRoot } from "./workspace.js"
 
@@ -27,8 +27,7 @@ const COLUMNS = ["Designators", "Quantity", "Kind", "Value", "Footprint", "Manuf
 /** Props that name or place a part, or hold its children; they never keep two parts on separate lines. */
 const NON_IDENTITY_PROPS = new Set(["name", "key", "children"])
 
-/** What the BOM needs from an engine: it builds one circuit file into a design. */
-export type DesignSource = Pick<Engine, "build">
+export type { DesignSource } from "./design-source.js"
 
 export interface BomOptions {
   /** A design that is already built; no engine is used. */
@@ -39,14 +38,7 @@ export interface BomOptions {
 
 /** The given design, or one built by the given engine, or by a new engine that is stopped afterwards. */
 async function designFor(root: string, file: string, options: BomOptions): Promise<Design> {
-  if (options.design) return options.design
-  if (options.engine) return options.engine.build(root, file)
-  const engine = new Engine()
-  try {
-    return await engine.build(root, file)
-  } finally {
-    await engine.stop()
-  }
+  return options.design ?? buildWith(root, file, options.engine)
 }
 
 /** Builds a BOM from the design of a circuit file and the parts library. */

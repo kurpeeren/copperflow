@@ -47,7 +47,7 @@ const READ_ONLY = { readOnlyHint: true, destructiveHint: false }
 export interface ServerOptions {
   /** The tscircuit CLI used by check_circuit; defaults to $COPPERFLOW_TSCI or `tsci`. */
   buildCommand?: string[]
-  /** Builds the design for bom and export_package; tests pass one that runs in this process. */
+  /** Builds the design for check_circuit, bom and export_package; tests pass one that runs in this process. */
   engine?: DesignSource
 }
 
@@ -135,13 +135,13 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "check_circuit",
     {
       description:
-        "Build the circuit with the tscircuit CLI and report its errors and warnings: courtyard overlaps, unrouted ports, missing parts. Run it after every placement change; it can take a minute.",
+        "Check the circuit: the copperflow engine's errors and warnings (footprints it cannot make, unknown or ambiguous pins, library overrides), then the tscircuit CLI's (courtyard overlaps, unrouted ports, missing parts). Run it after every placement change; it can take a minute.",
       inputSchema: { file },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
     ({ file: circuit }) =>
       run(async () => {
-        const result = await checkCircuit(root, circuit, options.buildCommand ? { command: options.buildCommand } : {})
+        const result = await checkCircuit(root, circuit, { ...designOptions, ...(options.buildCommand ? { command: options.buildCommand } : {}) })
         return formatCheck(circuit, result)
       }),
   )

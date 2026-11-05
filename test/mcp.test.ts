@@ -137,13 +137,14 @@ describe("MCP server", () => {
     expect(await readFile(join(root, FILE), "utf8")).toBe(BOARD)
   })
 
-  test("check_circuit builds the board and reports placement errors", async () => {
+  test("check_circuit reports the engine's errors and the build's placement errors", async () => {
     const elements = [{ type: "pcb_courtyard_overlap_error", message: "Courtyard of U1 overlaps with courtyard of C2" }]
     await writeFile(join(root, "main.circuit.fake.json"), JSON.stringify({ exitCode: 1, elements }))
     const result = await call("check_circuit", { file: FILE })
     expect(result.isError).toBe(false)
-    expect(result.text).toContain("build failed, 1 error")
+    expect(result.text).toContain("build failed, 2 errors")
     expect(result.text).toContain("pcb_courtyard_overlap_error: Courtyard of U1 overlaps with courtyard of C2")
+    expect(result.text).toContain("duplicate-name: More than one part is named RX")
   })
 
   test("paths outside the project are rejected", async () => {
