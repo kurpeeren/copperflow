@@ -1,8 +1,8 @@
 import { existsSync, realpathSync } from "node:fs"
-import { readdir, readFile, stat } from "node:fs/promises"
 import { dirname, isAbsolute, join, resolve } from "node:path"
 import { Worker } from "node:worker_threads"
 import { resolveCircuit } from "../core/workspace.js"
+import { collectProjectFiles, MAX_PROJECT_BYTES } from "../engine/project-files.js"
 
 /**
  * Builds circuits with tscircuit's eval library in one long-lived worker thread. Starting the
@@ -54,11 +54,6 @@ interface Started {
 const DEFAULT_TIMEOUT_MS = 300_000
 const DEFAULT_BUILDS_PER_WORKER = 20
 const WORKER_HEAP_MB = 4096
-const MAX_PROJECT_BYTES = 32 * 1024 * 1024
-const MAX_PROJECT_FILES = 5000
-const SOURCE_FILE = /\.(tsx|ts|jsx|js|mjs|cjs|json)$/
-const SKIPPED_DIRS = new Set(["node_modules", "dist", "coverage"])
-const SKIPPED_FILES = new Set(["package-lock.json"])
 // The CLI applies this file's settings; the worker does not, so such projects use the CLI.
 const PROJECT_CONFIG = "tscircuit.config.json"
 // The eval library's words for an import it cannot resolve without node_modules or a CDN.
@@ -227,37 +222,4 @@ export function findTscircuitEval(env: NodeJS.ProcessEnv = process.env, platform
     }
   }
   return undefined
-}
-
-/**
- * The project's source and JSON files, keyed by path relative to the root with forward
- * slashes, as tscircuit's eval expects. Symbolic links are not followed.
- */
-export async function collectProjectFiles(
-  root: string,
-  limits: { maxBytes?: number; maxFiles?: number } = {},
-): Promise<Record<string, string>> {
-  const maxBytes = limits.maxBytes ?? MAX_PROJECT_BYTES
-  const maxFiles = limits.maxFiles ?? MAX_PROJECT_FILES
-  const files: Record<string, string> = {}
-  let bytes = 0
-  let count = 0
-  const tooLarge = () => new Error("The project is too large for the fast build")
-  const walk = async (dir: string, prefix: string): Promise<void> => {
-    for (const entry of await readdir(dir, { withFileTypes: true })) {
-      if (entry.isSymbolicLink() || entry.name.startsWith(".")) continue
-      const path = join(dir, entry.name)
-      if (entry.isDirectory()) {
-        if (!SKIPPED_DIRS.has(entry.name)) await walk(path, `${prefix}${entry.name}/`)
-        continue
-      }
-      if (!entry.isFile() || !SOURCE_FILE.test(entry.name) || SKIPPED_FILES.has(entry.name)) continue
-      bytes += (await stat(path)).size
-      count += 1
-      if (bytes > maxBytes || count > maxFiles) throw tooLarge()
-      files[`${prefix}${entry.name}`] = await readFile(path, "utf8")
-    }
-  }
-  await walk(resolve(root), "")
-  return files
 }

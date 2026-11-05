@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { collectProjectFiles, Evaluator, FastBuildUnavailable, findTscircuitEval, type EvalWorker } from "../src/studio/evaluator.js"
+import { Evaluator, FastBuildUnavailable, findTscircuitEval, type EvalWorker } from "../src/studio/evaluator.js"
 import { LiveProject } from "../src/studio/live.js"
 import { BOARD } from "./fixtures.js"
 
@@ -50,27 +50,6 @@ describe("findTscircuitEval", () => {
     await put(join("rel/node_modules/tscircuit/node_modules", ...EVAL))
     expect(findTscircuitEval({ PATH: "rel" }, "linux")).toBeUndefined()
     expect(findTscircuitEval({ PATH: join(root, "empty") }, "linux")).toBeUndefined()
-  })
-})
-
-describe("collectProjectFiles", () => {
-  test("takes source and JSON files, and skips build output, dependencies and hidden folders", async () => {
-    await put("index.circuit.tsx", "export default () => null")
-    await put("parts/U1/U1.tsx")
-    await put("parts/U1/part.yaml")
-    await put("tsconfig.json")
-    await put("package-lock.json")
-    await put("node_modules/a/index.js")
-    await put("dist/index/circuit.json")
-    await put(".copperflow/history/c0001.json")
-    const files = await collectProjectFiles(root)
-    expect(Object.keys(files).sort()).toEqual(["index.circuit.tsx", "parts/U1/U1.tsx", "tsconfig.json"])
-    expect(files["index.circuit.tsx"]).toBe("export default () => null")
-  })
-
-  test("refuses a project that is too large", async () => {
-    await put("a.tsx", "x".repeat(100))
-    await expect(collectProjectFiles(root, { maxBytes: 50 })).rejects.toThrow(/too large/)
   })
 })
 
