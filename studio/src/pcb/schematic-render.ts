@@ -1,6 +1,6 @@
 // copperflow's schematic renderer: wires, symbols, chip boxes with pins, net labels and text.
 import { worldToScreen, type Camera, type Point, type Size } from "./geometry.js"
-import { anchorAlignment, type Ctx } from "./render.js"
+import { anchorAlignment, type Ctx } from "./ctx.js"
 
 interface Element {
   type: string

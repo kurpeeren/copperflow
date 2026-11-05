@@ -1,29 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { buildNets, padAt } from "../studio/src/pcb/nets.js"
 import { drawPcb, SUPPORTED_TYPES } from "../studio/src/pcb/render.js"
-
-/** A 2D context that records what was drawn. */
-function recorder() {
-  const calls: string[] = []
-  const ctx = new Proxy(
-    { fillStyle: "", strokeStyle: "", lineWidth: 1, font: "", textAlign: "", textBaseline: "", globalAlpha: 1, lineCap: "", lineJoin: "" },
-    {
-      get(target, key) {
-        if (key in target) return target[key as keyof typeof target]
-        return (...args: unknown[]) => {
-          calls.push(String(key))
-          if (key === "measureText") return { width: 10 }
-          return undefined
-        }
-      },
-      set(target, key, value) {
-        ;(target as Record<string, unknown>)[key as string] = value
-        return true
-      },
-    },
-  )
-  return { ctx: ctx as unknown as CanvasRenderingContext2D, calls }
-}
+import { recorder } from "./helpers/fake-ctx.js"
 
 const VIEW = { camera: { cx: 0, cy: 0, scale: 20 }, size: { width: 800, height: 600 } }
 
