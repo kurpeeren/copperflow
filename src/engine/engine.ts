@@ -36,6 +36,8 @@ interface Started {
 
 const DEFAULT_TIMEOUT_MS = 30_000
 const WORKER_HEAP_MB = 2048
+/** The only non-source files a build reads: the footprint files of library parts. */
+const FOOTPRINT_FILE = /^parts\/[^/]+\/footprint\.yaml$/
 
 const defaultWorker = (): EngineWorker =>
   new Worker(new URL("./engine-worker.js", import.meta.url), { resourceLimits: { maxOldGenerationSizeMb: WORKER_HEAP_MB } })
@@ -68,7 +70,7 @@ export class Engine {
 
   private async run(root: string, file: string): Promise<Design> {
     const circuit = await resolveCircuit(root, file)
-    const files = await collectProjectFiles(root)
+    const files = await collectProjectFiles(root, { include: FOOTPRINT_FILE })
     if (this.stopped) throw new Error("The engine stopped")
     const started = this.start()
     const id = ++this.nextId

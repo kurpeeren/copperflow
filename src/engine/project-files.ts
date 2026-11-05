@@ -9,11 +9,12 @@ const SKIPPED_FILES = new Set(["package-lock.json"])
 
 /**
  * The project's source and JSON files, keyed by path relative to the root with forward
- * slashes. Symbolic links are not followed.
+ * slashes. `include` adds files whose relative path matches, beyond the source and JSON files.
+ * Symbolic links are not followed.
  */
 export async function collectProjectFiles(
   root: string,
-  limits: { maxBytes?: number; maxFiles?: number } = {},
+  limits: { maxBytes?: number; maxFiles?: number; include?: RegExp } = {},
 ): Promise<Record<string, string>> {
   const maxBytes = limits.maxBytes ?? MAX_PROJECT_BYTES
   const maxFiles = limits.maxFiles ?? MAX_PROJECT_FILES
@@ -29,11 +30,13 @@ export async function collectProjectFiles(
         if (!SKIPPED_DIRS.has(entry.name)) await walk(path, `${prefix}${entry.name}/`)
         continue
       }
-      if (!entry.isFile() || !SOURCE_FILE.test(entry.name) || SKIPPED_FILES.has(entry.name)) continue
+      const relative = `${prefix}${entry.name}`
+      const wanted = SOURCE_FILE.test(entry.name) || limits.include?.test(relative) === true
+      if (!entry.isFile() || !wanted || SKIPPED_FILES.has(entry.name)) continue
       bytes += (await stat(path)).size
       count += 1
       if (bytes > maxBytes || count > maxFiles) throw tooLarge()
-      files[`${prefix}${entry.name}`] = await readFile(path, "utf8")
+      files[relative] = await readFile(path, "utf8")
     }
   }
   await walk(resolve(root), "")

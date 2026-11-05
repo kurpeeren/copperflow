@@ -8,6 +8,9 @@ const SHARED = `export const regulatorProps = { footprint: "sot23_5", pinCount: 
 const chipWith = (path: string) =>
   `export default () => (<board width="10mm" height="10mm"><chip name="U1" footprint="${path}" pinCount={2} /></board>)`
 
+const three = () =>
+  `export default () => (<board width="10mm" height="10mm">${["U1", "U2", "U3"].map((n) => `<chip name="${n}" footprint="parts/x/footprint.yaml" pinCount={2} />`).join("")}</board>)`
+
 const FOOTPRINT_YAML = [
   "pads:",
   "  - { number: '1', shape: rect, x: -1, y: 0, width: 1, height: 1 }",
@@ -52,5 +55,16 @@ describe("buildDesign", () => {
   test("reports a footprint file that is not in the project files", () => {
     const built = buildDesign({ "m.circuit.tsx": chipWith("parts/x/footprint.yaml") }, "m.circuit.tsx")
     expect(built.diagnostics.some((d) => d.severity === "error" || d.severity === "warning")).toBe(true)
+  })
+
+  test("reads a footprint file once per build, however many parts use it", () => {
+    const reads: string[] = []
+    const files = new Proxy(
+      { "m.circuit.tsx": three(), "parts/x/footprint.yaml": FOOTPRINT_YAML } as Record<string, string>,
+      { get: (target, key) => (typeof key === "string" && key.endsWith(".yaml") ? (reads.push(key), target[key]) : target[key as string]) },
+    )
+    const built = buildDesign(files, "m.circuit.tsx")
+    expect(built.pcb.parts).toHaveLength(3)
+    expect(reads).toEqual(["parts/x/footprint.yaml"])
   })
 })

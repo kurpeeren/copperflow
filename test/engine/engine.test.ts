@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events"
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { beforeEach, describe, expect, test } from "vitest"
+import { beforeEach, describe, expect, test, vi } from "vitest"
 import { buildDesign } from "../../src/engine/design.js"
 import { Engine, type EngineWorker } from "../../src/engine/engine.js"
 import { CircuitCodeError } from "../../src/engine/evaluate.js"
@@ -47,7 +47,8 @@ function fakeWorkers(mode: "build" | "silent" | "internal" = "build") {
   return { created, factory }
 }
 
-const pause = (ms: number) => new Promise((done) => setTimeout(done, ms))
+/** Waits until the engine has started `count` workers. */
+const workersStarted = (created: readonly unknown[], count: number) => vi.waitFor(() => expect(created).toHaveLength(count))
 
 describe("Engine", () => {
   test("builds a file of the project and names it by its project path", async () => {
@@ -102,12 +103,11 @@ describe("Engine", () => {
     const { created, factory } = fakeWorkers("silent")
     const engine = new Engine({ createWorker: factory, timeoutMs: 5000 })
     const waiting = engine.build(root, "sub/main.circuit.tsx")
-    await pause(50)
+    await workersStarted(created, 1)
     created[0]?.emit("exit", 1)
     await expect(waiting).rejects.toThrow(/stopped/)
     const next = engine.build(root, "sub/main.circuit.tsx").catch(() => undefined)
-    await pause(50)
-    expect(created).toHaveLength(2)
+    await workersStarted(created, 2)
     await engine.stop()
     await next
   })
@@ -116,7 +116,7 @@ describe("Engine", () => {
     const { created, factory } = fakeWorkers("silent")
     const engine = new Engine({ createWorker: factory, timeoutMs: 5000 })
     const waiting = engine.build(root, "sub/main.circuit.tsx")
-    await pause(50)
+    await workersStarted(created, 1)
     created[0]?.emit("error", new Error("out of memory"))
     await expect(waiting).rejects.toThrow(/out of memory/)
     await engine.stop()
@@ -126,5 +126,19 @@ describe("Engine", () => {
     const engine = new Engine({ createWorker: fakeWorkers().factory })
     await engine.stop()
     await expect(engine.build(root, "sub/main.circuit.tsx")).rejects.toThrow(/stopped/)
+  })
+
+  test("reads the footprint file of a library part from disk", async () => {
+    const circuit = `export default () => (<board width="10mm" height="10mm"><chip name="U1" footprint="parts/X/footprint.yaml" pinCount={2} /></board>)`
+    const yaml = ["pads:", "  - { number: '1', shape: rect, x: -1, y: 0, width: 1, height: 1 }", "  - { number: '2', shape: rect, x: 1, y: 0, width: 1, height: 1 }", ""].join("\n")
+    await mkdir(join(root, "parts", "X"), { recursive: true })
+    await writeFile(join(root, "parts", "X", "part.yaml"), "title: X\n")
+    await writeFile(join(root, "parts", "X", "footprint.yaml"), yaml)
+    await writeFile(join(root, "disk.circuit.tsx"), circuit)
+    const engine = new Engine({ createWorker: fakeWorkers().factory })
+    const design = await engine.build(root, "disk.circuit.tsx")
+    expect(design.pcb.parts[0]?.pads).toHaveLength(2)
+    expect(design.diagnostics.filter((d) => d.code === "footprint")).toEqual([])
+    await engine.stop()
   })
 })
