@@ -1,0 +1,272 @@
+// copperflow's schematic renderer: draws the engine's sheet layout (symbols, wires, junctions, labels) onto a 2D canvas.
+// Only the symbol library comes from the engine at run time: its other modules reach Node-only code the Studio bundle cannot hold.
+import type { PlacedSymbol, SchematicLayout, NetLabel } from "../../../src/engine/schematic.js"
+import { groundSymbol, powerSymbol, type SchSymbol, type Shape } from "../../../src/engine/symbols/index.js"
+import { anchorAlignment, type Ctx } from "./ctx.js"
+import { worldToScreen, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
+
+export interface SchematicDrawOptions {
+  /** Device pixels per CSS pixel. */
+  ratio: number
+  /** Marks every pin, for wiring. */
+  showPins?: boolean
+  /** Pin ids to emphasise, e.g. the start of a wire being drawn and the pin under the pointer. */
+  activePins?: readonly string[]
+  /** The part being dragged and how far it has moved, in sheet units. */
+  moving?: { component: string; by: Point }
+  /** A wire waiting for its build, drawn dashed. */
+  pending?: readonly Point[]
+}
+
+export const SCHEMATIC_PALETTE = {
+  body: "#22262c",
+  outline: "#d9d4c7",
+  pinLabel: "#e9e6df",
+  pinNumber: "#959ca6",
+  reference: "#e0a46a",
+  value: "#959ca6",
+  wire: "#c98a4b",
+  junction: "#e0a46a",
+  netLabel: "#6ea8d6",
+  netLabelFill: "rgb(110 168 214 / 14%)",
+  port: "#6ea8d6",
+  activePort: "#ffd08a",
+}
+
+type View = { camera: Camera; size: Size }
+type Role = Extract<Shape, { type: "text" }>["role"]
+
+interface Frame {
+  x: number
+  y: number
+  rotation: number
+}
+
+interface Label {
+  text: string
+  at: Point
+  size: number
+  anchor: string
+  color: string
+  rotation?: number
+}
+
+const NO_SHIFT: Point = { x: 0, y: 0 }
+const WIRE_WIDTH = 0.02
+const SYMBOL_WIDTH = 0.02
+const MIN_LINE_PX = 1.2
+const MIN_TEXT_PX = 3
+const PIN_DOT_PX = 3.5
+const ACTIVE_PIN_FACTOR = 1.6
+const MIN_JUNCTION = 0.04
+const JUNCTION_PX = 3
+const DASH: number[] = [0.1, 0.06]
+const NET_LABEL_TEXT = 0.16
+const TAG_THICKNESS = NET_LABEL_TEXT * 1.5
+const TAG_CHAR = 0.62
+const NUMBER_INSET = 0.1
+const NUMBER_RISE = 0.07
+const TEXT_COLORS: Record<Role, string> = {
+  reference: SCHEMATIC_PALETTE.reference,
+  value: SCHEMATIC_PALETTE.value,
+  "pin-name": SCHEMATIC_PALETTE.pinLabel,
+  "pin-number": SCHEMATIC_PALETTE.pinNumber,
+}
+const OUTWARD: Record<NetLabel["side"], Point> = { right: { x: 1, y: 0 }, left: { x: -1, y: 0 }, top: { x: 0, y: 1 }, bottom: { x: 0, y: -1 } }
+
+const rad = (degrees: number) => (degrees * Math.PI) / 180
+
+/** Draws wires, then symbols, labels and pins, then all text upright in screen space. */
+export function drawSchematic(ctx: Ctx, layout: SchematicLayout, view: View, options: SchematicDrawOptions): void {
+  const { camera, size } = view
+  const px = 1 / camera.scale
+  const line = (width: number) => Math.max(width, MIN_LINE_PX * px)
+  const texts: Label[] = []
+  const shiftOf = (symbol: PlacedSymbol) => (options.moving?.component === symbol.component ? options.moving.by : NO_SHIFT)
+
+  ctx.save()
+  const s = camera.scale * options.ratio
+  ctx.setTransform(s, 0, 0, -s, (size.width / 2 - camera.cx * camera.scale) * options.ratio, (size.height / 2 + camera.cy * camera.scale) * options.ratio)
+  ctx.lineCap = "round"
+  ctx.lineJoin = "round"
+  drawWires(ctx, layout, options, px, line)
+  for (const symbol of layout.symbols) drawSymbol(ctx, symbol, shiftOf(symbol), line, texts)
+  for (const label of layout.labels) drawLabel(ctx, label, line, texts)
+  drawPins(ctx, layout, options, px, shiftOf)
+
+  // Text is drawn in screen space so it stays upright and readable at any zoom.
+  ctx.setTransform(options.ratio, 0, 0, options.ratio, 0, 0)
+  for (const label of texts) drawText(ctx, label, camera, size)
+  ctx.restore()
+}
+
+/** One box per symbol, from its bounds turned to the symbol's rotation; the id is the component. */
+export function sheetBoxes(layout: SchematicLayout): PartBox[] {
+  return layout.symbols.map((placed) => {
+    const { minX, minY, maxX, maxY } = placed.symbol.bounds
+    const corners = [
+      { x: minX, y: minY },
+      { x: maxX, y: minY },
+      { x: maxX, y: maxY },
+      { x: minX, y: maxY },
+    ].map((corner) => place(corner, placed))
+    const xs = corners.map((c) => c.x)
+    const ys = corners.map((c) => c.y)
+    const box = { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) }
+    return { name: placed.component, pcbComponentId: placed.component, center: { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 }, box }
+  })
+}
+
+/** A symbol-local point turned counter-clockwise by the frame's rotation, then moved to its origin. */
+function place(p: Point, frame: Frame): Point {
+  const angle = rad(frame.rotation)
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+  return { x: frame.x + p.x * cos - p.y * sin, y: frame.y + p.x * sin + p.y * cos }
+}
+
+function path(ctx: Ctx, points: readonly Point[]): void {
+  ctx.beginPath()
+  points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)))
+}
+
+function dot(ctx: Ctx, p: Point, r: number): void {
+  ctx.beginPath()
+  ctx.arc(p.x, p.y, Math.max(r, 0), 0, Math.PI * 2)
+}
+
+function drawWires(ctx: Ctx, layout: SchematicLayout, options: SchematicDrawOptions, px: number, line: (w: number) => number): void {
+  ctx.strokeStyle = SCHEMATIC_PALETTE.wire
+  ctx.fillStyle = SCHEMATIC_PALETTE.junction
+  ctx.lineWidth = line(WIRE_WIDTH)
+  for (const wire of layout.wires) {
+    path(ctx, wire.points)
+    ctx.stroke()
+  }
+  for (const junction of layout.junctions) {
+    dot(ctx, junction, Math.max(MIN_JUNCTION, JUNCTION_PX * px))
+    ctx.fill()
+  }
+  if (!options.pending || options.pending.length < 2) return
+  ctx.setLineDash(DASH)
+  path(ctx, options.pending)
+  ctx.stroke()
+  ctx.setLineDash([])
+}
+
+function drawSymbol(ctx: Ctx, placed: PlacedSymbol, shift: Point, line: (w: number) => number, texts: Label[]): void {
+  const frame = { x: placed.x + shift.x, y: placed.y + shift.y, rotation: placed.rotation }
+  ctx.lineWidth = line(SYMBOL_WIDTH)
+  drawShapes(ctx, placed.symbol.shapes, frame, SCHEMATIC_PALETTE.outline, texts)
+  if (placed.symbol.shapes.some((shape) => shape.type === "text" && shape.role === "pin-number")) return
+  for (const label of pinNumbers(placed.symbol, frame)) texts.push(label)
+}
+
+/** Numbers for symbols that do not draw their own: on the lead, just above it. */
+function pinNumbers(symbol: SchSymbol, frame: Frame): Label[] {
+  return symbol.pins.map((pin) => {
+    const inward = OUTWARD[pin.side]
+    const local = { x: pin.end.x - inward.x * NUMBER_INSET, y: pin.end.y - inward.y * NUMBER_INSET }
+    const alongLead = inward.x !== 0
+    const lifted = alongLead ? { x: local.x, y: local.y + NUMBER_RISE } : { x: local.x + NUMBER_RISE, y: local.y }
+    return { text: String(pin.number), at: place(lifted, frame), size: 0.1, anchor: "center", color: SCHEMATIC_PALETTE.pinNumber }
+  })
+}
+
+/** Draws shapes given in a symbol's own coordinates through the frame; text is queued for the screen pass. */
+function drawShapes(ctx: Ctx, shapes: readonly Shape[], frame: Frame, color: string, texts: Label[]): void {
+  ctx.save()
+  ctx.translate(frame.x, frame.y)
+  if (frame.rotation) ctx.rotate(rad(frame.rotation))
+  ctx.strokeStyle = color
+  ctx.fillStyle = color
+  for (const shape of shapes) {
+    if (shape.type === "text") texts.push(textLabel(shape, frame, color))
+    else paintShape(ctx, shape)
+  }
+  ctx.restore()
+}
+
+function paintShape(ctx: Ctx, shape: Exclude<Shape, { type: "text" }>): void {
+  if (shape.type === "polyline") {
+    path(ctx, shape.points)
+    if (shape.closed || shape.fill) ctx.closePath()
+    if (shape.fill) ctx.fill()
+    ctx.stroke()
+  } else if (shape.type === "circle") {
+    dot(ctx, shape.center, shape.radius)
+    if (shape.fill) ctx.fill()
+    ctx.stroke()
+  } else {
+    const end = shape.end < shape.start ? shape.end + 360 : shape.end
+    ctx.beginPath()
+    ctx.arc(shape.center.x, shape.center.y, shape.radius, rad(shape.start), rad(end))
+    ctx.stroke()
+  }
+}
+
+/** Where a text shape lands on the sheet, and which side of that point the upright text extends to. */
+function textLabel(shape: Extract<Shape, { type: "text" }>, frame: Frame, fallback: string): Label {
+  const along = shape.anchor === "left" ? 1 : shape.anchor === "right" ? -1 : 0
+  const angle = rad(frame.rotation)
+  const dx = along * Math.cos(angle)
+  const dy = along * Math.sin(angle)
+  const anchor = Math.abs(dx) > 0.5 ? (dx > 0 ? "left" : "right") : Math.abs(dy) > 0.5 ? (dy > 0 ? "bottom" : "top") : "center"
+  return { text: shape.text, at: place(shape.at, frame), size: shape.size, anchor, color: TEXT_COLORS[shape.role] ?? fallback }
+}
+
+function drawLabel(ctx: Ctx, label: NetLabel, line: (w: number) => number, texts: Label[]): void {
+  if (label.style !== "label") {
+    const shapes = label.style === "ground" ? groundSymbol() : powerSymbol(label.text)
+    ctx.lineWidth = line(SYMBOL_WIDTH)
+    drawShapes(ctx, shapes, { x: label.at.x, y: label.at.y, rotation: 0 }, SCHEMATIC_PALETTE.netLabel, texts)
+    return
+  }
+  const out = OUTWARD[label.side]
+  const length = label.text.length * NET_LABEL_TEXT * TAG_CHAR + TAG_THICKNESS
+  const upright = out.x === 0
+  const middle = { x: label.at.x + (out.x * length) / 2, y: label.at.y + (out.y * length) / 2 }
+  const [w, h] = upright ? [TAG_THICKNESS, length] : [length, TAG_THICKNESS]
+  ctx.fillStyle = SCHEMATIC_PALETTE.netLabelFill
+  ctx.strokeStyle = SCHEMATIC_PALETTE.netLabel
+  ctx.lineWidth = line(0.015)
+  path(ctx, [
+    { x: middle.x - w / 2, y: middle.y - h / 2 },
+    { x: middle.x + w / 2, y: middle.y - h / 2 },
+    { x: middle.x + w / 2, y: middle.y + h / 2 },
+    { x: middle.x - w / 2, y: middle.y + h / 2 },
+  ])
+  ctx.closePath()
+  ctx.fill()
+  ctx.stroke()
+  texts.push({ text: label.text, at: middle, size: NET_LABEL_TEXT, anchor: "center", color: SCHEMATIC_PALETTE.netLabel, rotation: upright ? 90 : 0 })
+}
+
+function drawPins(ctx: Ctx, layout: SchematicLayout, options: SchematicDrawOptions, px: number, shiftOf: (s: PlacedSymbol) => Point): void {
+  for (const symbol of layout.symbols) {
+    const shift = shiftOf(symbol)
+    for (const [id, end] of Object.entries(symbol.pinEnds)) {
+      const active = options.activePins?.includes(id) ?? false
+      if (!active && !options.showPins) continue
+      ctx.fillStyle = active ? SCHEMATIC_PALETTE.activePort : SCHEMATIC_PALETTE.port
+      dot(ctx, { x: end.x + shift.x, y: end.y + shift.y }, (active ? ACTIVE_PIN_FACTOR : 1) * PIN_DOT_PX * px)
+      ctx.fill()
+    }
+  }
+}
+
+function drawText(ctx: Ctx, label: Label, camera: Camera, size: Size): void {
+  const fontPx = label.size * camera.scale
+  if (fontPx < MIN_TEXT_PX || label.text === "") return
+  const p = worldToScreen(camera, size, label.at)
+  const [vertical, horizontal] = anchorAlignment(label.anchor)
+  ctx.save()
+  ctx.translate(p.x, p.y)
+  if (label.rotation) ctx.rotate(rad(-label.rotation))
+  ctx.fillStyle = label.color
+  ctx.font = `500 ${fontPx}px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif`
+  ctx.textAlign = horizontal
+  ctx.textBaseline = vertical
+  ctx.fillText(label.text, 0, 0)
+  ctx.restore()
+}
