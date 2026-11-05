@@ -82,6 +82,11 @@ export const KINDS: Readonly<Record<string, KindInfo>> = {
   connector: { prefix: "J", pins: "from-props" },
 }
 
+/** The built-in kind for a tag; a tag such as `constructor` that only an object's prototype has is none. */
+export function kindOf(tag: string): KindInfo | undefined {
+  return Object.hasOwn(KINDS, tag) ? KINDS[tag] : undefined
+}
+
 /** The inverse of PIN_ATTRIBUTES: `{ requiresPower: true }` is `power_in`. The default is `passive`. */
 export function pinTypeFromAttributes(attributes: Record<string, unknown> | undefined): PinType {
   if (!attributes) return "passive"
@@ -132,7 +137,7 @@ function countedPins(labelled: Map<number, string[]>, sources: PinSources): numb
 
 /** The pins of one part, or an empty list when the part has no way to know them. */
 export function pinSpecs(tag: string, sources: PinSources): PinSpec[] {
-  const info = KINDS[tag]
+  const info = kindOf(tag)
   if (!info) return []
   const labelled = labelledNames(sources.pinLabels)
   const aliases = new Map<number, string[]>()

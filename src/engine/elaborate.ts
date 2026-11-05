@@ -4,7 +4,7 @@ import { diagnostic } from "./diagnostics.js"
 import { CircuitCodeError, type Evaluated } from "./evaluate.js"
 import { PIN_ROW_DEFAULT_PITCH, pinRowName } from "./footprints/pinrow.js"
 import { Fragment, isElement, type CfElement, type ComponentFunction } from "./jsx-runtime.js"
-import { KINDS } from "./kinds.js"
+import { kindOf } from "./kinds.js"
 import type { Board, Circuit, Component, Diagnostic, SourceRef } from "./model.js"
 import { mergeNets } from "./nets.js"
 import { PropReader, type Props } from "./read-props.js"
@@ -94,7 +94,7 @@ class Elaboration {
       this.traces.push({ props: element.props, source })
       return
     }
-    if (tag in KINDS) return this.part(element, tag, frame, source)
+    if (kindOf(tag)) return this.part(element, tag, frame, source)
     const severity = LATER_STAGE.has(tag) ? "warning" : "error"
     const message = LATER_STAGE.has(tag) ? `<${tag}> is not supported yet and is ignored` : `<${tag}> is not a copperflow element`
     this.diagnostics.push(diagnostic("unsupported-element", severity, message, [tag], source))

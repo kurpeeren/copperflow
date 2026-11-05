@@ -42,7 +42,7 @@ function resolveEndpoint(prop: string, value: unknown, byId: ReadonlyMap<string,
 
 function unknownPin(component: Component, name: string, source: SourceRef): Diagnostic {
   const real = component.pins.map((p) => p.names[0] ?? "").sort(naturalCompare).join(", ")
-  const message = `${component.id} has no pin ${name} (pins: ${real})`
+  const message = `${component.id} has no pin ${name} (${real === "" ? "it has no pins" : `pins: ${real}`})`
   return diagnostic("unknown-pin", "error", message, [`${component.id}.${name}`], source)
 }
 

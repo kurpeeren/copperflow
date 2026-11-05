@@ -1,5 +1,5 @@
 import { diagnostic } from "./diagnostics.js"
-import { KINDS, pinSpecs, pinTypeFromAttributes } from "./kinds.js"
+import { kindOf, pinSpecs, pinTypeFromAttributes } from "./kinds.js"
 import type { Component, Diagnostic, Pin, Side, SourceRef } from "./model.js"
 import { jsonProps, PropReader, type Props } from "./read-props.js"
 
@@ -97,11 +97,11 @@ export function buildPart(tag: string, id: string, props: Props, origin: PartOri
   const sch = schPlacement(reader, id, origin, diagnostics)
   const pins = makePins(tag, id, props, footprint.padCount)
   const pinSides = readPinSides(id, props, origin.source)
-  if (pins.length === 0 && KINDS[tag]?.pins === "from-props") {
+  if (pins.length === 0 && kindOf(tag)?.pins === "from-props") {
     const message = `${id} has no pins: give it pinLabels, pinCount or a footprint with known pads`
     diagnostics.push(diagnostic("unsupported-element", "error", message, [id], origin.source))
   }
-  const valueProp = KINDS[tag]?.valueProp
+  const valueProp = kindOf(tag)?.valueProp
   const rawValue = valueProp ? props[valueProp] : undefined
   const mpn = reader.string("manufacturerPartNumber")
   const component: Component = {

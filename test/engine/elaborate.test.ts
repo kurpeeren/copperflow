@@ -115,6 +115,19 @@ test("unsupported elements are reported, not skipped", () => {
   ])
 })
 
+test("a tag named like an Object method is an unsupported element, not a crash", () => {
+  for (const tag of ["constructor", "toString", "hasOwnProperty", "valueOf"]) {
+    const circuit = build(`<${tag} name="x" />`)
+    expect(circuit.components).toEqual([])
+    expect(circuit.diagnostics).toMatchObject([{ code: "unsupported-element", severity: "error", items: [tag] }])
+  }
+})
+
+test("a pin asked of a part with no pins says it has none", () => {
+  const circuit = build(`<connector name="J1" />\n<trace from="J1.pin1" to="net.GND" />`)
+  expect(circuit.diagnostics.map((d) => d.message)).toContain("J1 has no pin pin1 (it has no pins)")
+})
+
 test("pinheader pins follow pinCount", () => {
   const circuit = build(`<pinheader name="J1" pinCount={3} />`)
   expect(circuit.components[0]?.pins.map((p) => p.id)).toEqual(["J1.pin1", "J1.pin2", "J1.pin3"])
