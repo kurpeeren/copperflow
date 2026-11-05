@@ -7,6 +7,23 @@ const SOURCE_FILE = /\.(tsx|ts|jsx|js|mjs|cjs|json)$/
 const SKIPPED_DIRS = new Set(["node_modules", "dist", "coverage"])
 const SKIPPED_FILES = new Set(["package-lock.json"])
 
+/** A folder the walk does not enter: hidden, build output or dependencies. */
+const skippedDir = (name: string): boolean => name.startsWith(".") || SKIPPED_DIRS.has(name)
+
+/** A file the walk takes: a source or JSON file, or one `include` names by its relative path. */
+const wantedFile = (name: string, relative: string, include: RegExp | undefined): boolean =>
+  !name.startsWith(".") && !SKIPPED_FILES.has(name) && (SOURCE_FILE.test(name) || include?.test(relative) === true)
+
+/**
+ * Whether collectProjectFiles with this `include` would take the file at `relative` (forward
+ * slashes, relative to the root), so a watcher can tell which changes a build reads.
+ */
+export function isProjectFile(relative: string, include?: RegExp): boolean {
+  const parts = relative.split("/")
+  const name = parts.pop() ?? ""
+  return parts.every((dir) => !skippedDir(dir)) && wantedFile(name, relative, include)
+}
+
 /**
  * The project's source and JSON files, keyed by path relative to the root with forward
  * slashes. `include` adds files whose relative path matches, beyond the source and JSON files.
@@ -24,15 +41,14 @@ export async function collectProjectFiles(
   const tooLarge = () => new Error("The project is too large for the fast build")
   const walk = async (dir: string, prefix: string): Promise<void> => {
     for (const entry of await readdir(dir, { withFileTypes: true })) {
-      if (entry.isSymbolicLink() || entry.name.startsWith(".")) continue
+      if (entry.isSymbolicLink()) continue
       const path = join(dir, entry.name)
       if (entry.isDirectory()) {
-        if (!SKIPPED_DIRS.has(entry.name)) await walk(path, `${prefix}${entry.name}/`)
+        if (!skippedDir(entry.name)) await walk(path, `${prefix}${entry.name}/`)
         continue
       }
       const relative = `${prefix}${entry.name}`
-      const wanted = SOURCE_FILE.test(entry.name) || limits.include?.test(relative) === true
-      if (!entry.isFile() || !wanted || SKIPPED_FILES.has(entry.name)) continue
+      if (!entry.isFile() || !wantedFile(entry.name, relative, limits.include)) continue
       bytes += (await stat(path)).size
       count += 1
       if (bytes > maxBytes || count > maxFiles) throw tooLarge()

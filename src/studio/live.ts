@@ -2,6 +2,8 @@ import { watch, type FSWatcher } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import type { Design } from "../engine/design.js"
+import { FOOTPRINT_FILE } from "../engine/engine.js"
+import { isProjectFile } from "../engine/project-files.js"
 
 export type BuildStatus = "idle" | "building" | "done" | "failed"
 
@@ -29,18 +31,29 @@ const IGNORED = /^(node_modules|dist|\.git|\.copperflow|coverage)\//
 const ANNOTATIONS = /\.circuit\.annotations\.json$/
 const PART_YAML = /^parts\/[^/]+\/part\.yaml$/
 const LIBRARY_TIMER = "\0library"
+const REBUILD_TIMER = "\0rebuild"
+const BUILT_CIRCUIT_TIMER = "\0built:"
 const DEBOUNCE_MS = 50
 const MAX_KEPT_BUILDS = 5
 
+/** What a kept build started from: the circuit text, and how many changes to the files the engine reads came before it. */
+interface BuildStart {
+  text: string | undefined
+  changes: number
+}
+
 /**
  * Watches a project for circuit and annotation changes, tells listeners about them and keeps
- * one build per circuit up to date. Circuits are rebuilt on change once a build was requested.
+ * one build per circuit up to date. Once a circuit was built, a change to any file the engine
+ * reads (circuit code, imported modules, part components, footprint files) builds it again.
  */
 export class LiveProject {
   private readonly listeners = new Set<Listener>()
   private readonly builds = new Map<string, BuildState>()
-  /** The circuit text each kept build started from, so a watcher event for a file already built is skipped. */
-  private readonly sources = new Map<string, string | undefined>()
+  /** What each kept build started from, so a watcher event for a circuit text already built is skipped. */
+  private readonly starts = new Map<string, BuildStart>()
+  /** How many changes to files the engine reads the watcher has seen. */
+  private changes = 0
   private readonly rerun = new Set<string>()
   private readonly timers = new Map<string, NodeJS.Timeout>()
   private watcher: FSWatcher | undefined
@@ -81,14 +94,15 @@ export class LiveProject {
   }
 
   /**
-   * The design of the last finished build of `file`, when the circuit file has not changed since
-   * that build started; otherwise nothing.
+   * The design of the last finished build of `file`, when neither the circuit file nor any other
+   * file the engine reads has changed since that build started; otherwise nothing.
    */
   async currentDesign(file: string): Promise<Design | undefined> {
     const { status, design } = this.getBuild(file)
-    if (status !== "done" || !design) return undefined
+    const start = this.starts.get(file)
+    if (status !== "done" || !design || start?.changes !== this.changes) return undefined
     const text = await this.readSource(file)
-    return text !== undefined && text === this.sources.get(file) ? design : undefined
+    return text !== undefined && text === start.text ? design : undefined
   }
 
   /** Builds `file` now, or once more after the build that is running. */
@@ -107,7 +121,8 @@ export class LiveProject {
   private async run(file: string, startedAt: string): Promise<void> {
     let next: BuildState
     try {
-      this.sources.set(file, await this.readSource(file))
+      const changes = this.changes
+      this.starts.set(file, { text: await this.readSource(file), changes })
       next = { status: "done", design: await this.builder.build(this.root, file) }
     } catch (error) {
       const { design } = this.getBuild(file)
@@ -128,7 +143,7 @@ export class LiveProject {
       if (this.builds.size <= MAX_KEPT_BUILDS) break
       if (build.status === "building") continue
       this.builds.delete(name)
-      this.sources.delete(name)
+      this.starts.delete(name)
     }
     this.emit("build", { file, status: state.status })
     if (this.rerun.delete(file)) this.requestBuild(file)
@@ -138,24 +153,33 @@ export class LiveProject {
     return readFile(join(this.root, file), "utf8").catch(() => undefined)
   }
 
-  /** The Studio builds its own edits at once; the watcher then sees the same text and does not build again. */
-  private async rebuildIfChanged(file: string): Promise<void> {
-    const text = await this.readSource(file)
-    if (text !== undefined && text === this.sources.get(file)) return
-    this.requestBuild(file)
-  }
-
   private onFileEvent(name: string): void {
     if (IGNORED.test(name)) return
-    if (PART_YAML.test(name)) {
-      this.debounce(LIBRARY_TIMER, () => this.emit("library", {}))
-      return
-    }
-    const file = ANNOTATIONS.test(name) ? name.replace(ANNOTATIONS, ".circuit.tsx") : name
-    if (!file.endsWith(".circuit.tsx")) return
-    this.debounce(file, () => {
-      this.emit("change", { file })
-      if (this.builds.has(file) && file === name) void this.rebuildIfChanged(file)
+    if (PART_YAML.test(name)) this.debounce(LIBRARY_TIMER, () => this.emit("library", {}))
+    const annotations = ANNOTATIONS.test(name)
+    const circuit = annotations ? name.replace(ANNOTATIONS, ".circuit.tsx") : name
+    if (circuit.endsWith(".circuit.tsx")) this.debounce(circuit, () => this.emit("change", { file: circuit }))
+    // The sidecar holds locks and marks, which the engine does not build from.
+    if (annotations || !isProjectFile(name, FOOTPRINT_FILE)) return
+    if (this.starts.has(name)) this.debounce(`${BUILT_CIRCUIT_TIMER}${name}`, () => void this.changedUnlessBuilt(name))
+    else this.engineFileChanged()
+  }
+
+  /** The Studio builds its own edits at once; the watcher then sees the text that build started from and does nothing. */
+  private async changedUnlessBuilt(file: string): Promise<void> {
+    const text = await this.readSource(file)
+    if (text === undefined || text !== this.starts.get(file)?.text) this.engineFileChanged()
+  }
+
+  /**
+   * A file the engine reads changed: every kept build is stale from now on, and every circuit that
+   * was built is built again once the changes settle. The engine writes nothing into the project,
+   * so a build never causes another.
+   */
+  private engineFileChanged(): void {
+    this.changes += 1
+    this.debounce(REBUILD_TIMER, () => {
+      for (const file of [...this.builds.keys()]) this.requestBuild(file)
     })
   }
 

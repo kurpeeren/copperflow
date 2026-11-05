@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
@@ -104,6 +104,58 @@ describe("LiveProject", () => {
     expect(build).toHaveBeenCalledTimes(1)
     await writeFile(join(root, FILE), `${TEXT}// changed\n`)
     await vi.waitFor(() => expect(build).toHaveBeenCalledTimes(2))
+  })
+
+  describe("files the engine reads besides the circuit", () => {
+    const FOOTPRINT = "parts/J/footprint.yaml"
+    const put = async (path: string, text: string) => {
+      await mkdir(join(root, path, ".."), { recursive: true })
+      await writeFile(join(root, path), text)
+    }
+
+    /** A watched project whose circuit has one finished, held build. */
+    async function built() {
+      await put(FOOTPRINT, "pads: []\n")
+      await put("shared.ts", "export const offset = 1\n")
+      await put("parts/J/J.tsx", "export const J = () => null\n")
+      await put("parts/J/part.yaml", "title: J\n")
+      const held = heldBuilder()
+      live = new LiveProject(root, held.builder)
+      live.start()
+      live.requestBuild(FILE)
+      await vi.waitFor(() => expect(held.build).toHaveBeenCalledTimes(1))
+      held.release()
+      await vi.waitFor(() => expect(live?.getBuild(FILE).status).toBe("done"))
+      expect(await live.currentDesign(FILE)).toBe(DESIGN)
+      return held
+    }
+
+    test.each([
+      ["a footprint file", FOOTPRINT, "pads: [1]\n"],
+      ["an imported module", "shared.ts", "export const offset = 2\n"],
+      ["a regenerated part component", "parts/J/J.tsx", "export const J = () => <chip />\n"],
+    ])("an edit to %s rebuilds the circuit, and currentDesign is undefined until that build finishes", async (_, path, text) => {
+      const held = await built()
+      await put(path, text)
+      await vi.waitFor(() => expect(held.build).toHaveBeenCalledTimes(2))
+      expect(await live?.currentDesign(FILE)).toBeUndefined()
+      held.release()
+      await vi.waitFor(() => expect(live?.getBuild(FILE).status).toBe("done"))
+      expect(await live?.currentDesign(FILE)).toBe(DESIGN)
+    })
+
+    test("files the engine does not read neither rebuild nor make the design stale", async () => {
+      const held = await built()
+      await put("parts/J/part.yaml", "title: J2\n")
+      await put("parts/J/verification.md", "# J\n")
+      await put("main.circuit.annotations.json", "{}\n")
+      await put("notes.txt", "x\n")
+      await put("dist/main/circuit.json", "[]\n")
+      await put("node_modules/x/index.js", "x\n")
+      await new Promise((r) => setTimeout(r, 300))
+      expect(held.build).toHaveBeenCalledTimes(1)
+      expect(await live?.currentDesign(FILE)).toBe(DESIGN)
+    })
   })
 
   test("nothing is built after the project stops", async () => {
