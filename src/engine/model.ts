@@ -49,6 +49,8 @@ export interface Component {
   pinSides: Record<number, Side>
   sch?: { x: number; y: number; rotation: number }
   pcb?: { x: number; y: number; rotation: number; side: "top" | "bottom" }
+  /** What the enclosing groups add to pcbX/pcbY and schX/schY; zero outside a group. */
+  groupOffset: { pcb: Point; sch: Point }
   /** Evaluated props that are JSON values; functions are dropped. */
   props: Record<string, unknown>
   /** The outermost element that produced it. */

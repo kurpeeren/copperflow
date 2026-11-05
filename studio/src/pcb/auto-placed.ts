@@ -2,8 +2,7 @@
 // Only types come from the engine: its runtime modules reach Node-only code the Studio bundle cannot hold.
 import type { Edit } from "../../../src/core/types.js"
 import type { Design } from "../../../src/engine/design.js"
-
-export type View = "pcb" | "schematic"
+import { partAnchors, VIEWS, type View } from "./positions.js"
 
 export interface Skipped {
   part: string
@@ -22,27 +21,23 @@ const REPEATED_NAME = "a repeated name cannot be addressed from the Studio"
 
 const round = (value: number) => Math.round(value * 100) / 100
 
-/** The parts the engine placed for itself in `view`, with where it put them. */
-export function autoPlacedParts(design: Design, view: View): { component: string; x: number; y: number }[] {
-  const placed = view === "pcb" ? design.pcb.parts : design.schematic.symbols
-  return placed.filter((part) => part.autoPlaced).map(({ component, x, y }) => ({ component, x, y }))
-}
-
 /**
  * The edits that keep every auto-placed part of `view` where it is now: pcbX/pcbY on the board,
- * schX/schY on the sheet, rounded to 0.01. `blocked` returns why a part may not be changed, or null.
+ * schX/schY on the sheet, relative to the part's groups and rounded to 0.01. `blocked` returns why
+ * a part may not be changed, or null.
  */
 export function keepPositions(design: Design, view: View, blocked: (name: string) => string | null = () => null): KeepPlan {
-  const [keyX, keyY] = view === "pcb" ? (["pcbX", "pcbY"] as const) : (["schX", "schY"] as const)
+  const [keyX, keyY] = VIEWS[view].position
   const edits: Edit[] = []
   const skipped: Skipped[] = []
-  for (const part of autoPlacedParts(design, view)) {
-    const reason = part.component.includes("~") ? REPEATED_NAME : blocked(part.component)
+  for (const [part, { origin, group, autoPlaced }] of partAnchors(design, view)) {
+    if (!autoPlaced) continue
+    const reason = part.includes("~") ? REPEATED_NAME : blocked(part)
     if (reason !== null) {
-      skipped.push({ part: part.component, reason })
+      skipped.push({ part, reason })
       continue
     }
-    edits.push({ kind: "setProps", part: part.component, props: { [keyX]: round(part.x), [keyY]: round(part.y) } })
+    edits.push({ kind: "setProps", part, props: { [keyX]: round(origin.x - group.x), [keyY]: round(origin.y - group.y) } })
   }
   return { edits, skipped }
 }

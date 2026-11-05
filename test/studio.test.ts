@@ -233,11 +233,14 @@ describe("builds and live updates", () => {
     await data(await api("/api/build", { file: FILE }))
     const before = await buildWhen(finished)
     const started = Date.now()
+    expect(Date.parse(before.startedAt)).toBeLessThanOrEqual(started)
     await data(await api("/api/edit", { file: FILE, summary: "move R1", edits: [{ kind: "setProps", part: "R1", props: { pcbX: 5 } }] }))
     const right = await data(await api(`/api/build?file=${FILE}`))
     expect(right.status === "building" || right.finishedAt !== before.finishedAt).toBe(true)
     const after = await buildWhen((b) => finished(b) && b.finishedAt !== before.finishedAt, 2000)
     expect(Date.now() - started).toBeLessThan(2000)
+    // The browser keeps a moved part's preview until a build that started after its edit was sent.
+    expect(Date.parse(after.startedAt)).toBeGreaterThanOrEqual(started)
     expect(after.design.pcb.parts.find((p: { component: string }) => p.component === "R1").x).toBe(5)
   })
 

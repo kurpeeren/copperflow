@@ -61,6 +61,8 @@ export interface BuildState {
   status: "idle" | "building" | "done" | "failed"
   design?: Design
   error?: string
+  /** When the last finished build started; it holds every change sent before then. */
+  startedAt?: string
   finishedAt?: string
 }
 

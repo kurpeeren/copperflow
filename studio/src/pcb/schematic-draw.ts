@@ -15,8 +15,8 @@ export interface SchematicDrawOptions {
   activePins?: readonly string[]
   /** The part being dragged and how far it has moved, in sheet units. */
   moving?: { component: string; by: Point }
-  /** A wire waiting for its build, drawn dashed. */
-  pending?: readonly Point[]
+  /** Wires waiting for their build, drawn dashed. */
+  pending?: readonly (readonly Point[])[]
 }
 
 export const SCHEMATIC_PALETTE = {
@@ -155,10 +155,13 @@ function drawWires(ctx: Ctx, layout: SchematicLayout, options: SchematicDrawOpti
     dot(ctx, junction, Math.max(MIN_JUNCTION, JUNCTION_PX * px))
     ctx.fill()
   }
-  if (!options.pending || options.pending.length < 2) return
+  const pending = (options.pending ?? []).filter((points) => points.length >= 2)
+  if (pending.length === 0) return
   ctx.setLineDash(DASH)
-  path(ctx, options.pending)
-  ctx.stroke()
+  for (const points of pending) {
+    path(ctx, points)
+    ctx.stroke()
+  }
   ctx.setLineDash([])
 }
 

@@ -56,14 +56,24 @@ describe("drawSchematic", () => {
     expect(strokes.length).toBe(labels * groundSymbol().length)
   })
 
-  test("a pending wire is drawn dashed", () => {
+  test("every pending wire is drawn dashed", () => {
     const rec = draw({
       pending: [
-        { x: 0, y: 0 },
-        { x: 1, y: 1 },
+        [
+          { x: 0, y: 0 },
+          { x: 1, y: 1 },
+        ],
+        [
+          { x: 2, y: 0 },
+          { x: 2, y: 1 },
+        ],
       ],
     })
     expect(rec.records.some((r) => r.name === "setLineDash" && (r.args[0] as number[]).length > 0)).toBe(true)
+    const starts = rec.records.filter((r) => r.name === "moveTo").map((r) => r.args)
+    expect(starts).toEqual(expect.arrayContaining([[0, 0], [2, 0]]))
+    const plain = draw().records.filter((r) => r.name === "moveTo").length
+    expect(rec.records.filter((r) => r.name === "moveTo").length - plain).toBe(2)
   })
 
   test("an auto-placed symbol is drawn at 60% alpha inside a dashed box", () => {

@@ -42,6 +42,26 @@ describe("LiveProject", () => {
     expect(live.getBuild(FILE).finishedAt! > first!).toBe(true)
   })
 
+  test("startedAt tells a build already running from the rerun that includes a later change", async () => {
+    const held = heldBuilder()
+    live = new LiveProject(root, held.builder)
+    live.requestBuild(FILE)
+    await vi.waitFor(() => expect(held.build).toHaveBeenCalledTimes(1))
+    await new Promise((r) => setTimeout(r, 5))
+    const changed = Date.now()
+    live.requestBuild(FILE)
+    held.release()
+    await vi.waitFor(() => expect(held.build).toHaveBeenCalledTimes(2))
+    const running = live.getBuild(FILE)
+    expect(running.status).toBe("building")
+    expect(Date.parse(running.startedAt ?? "")).toBeLessThan(changed)
+    held.release()
+    await vi.waitFor(() => expect(live?.getBuild(FILE).status).toBe("done"))
+    const rerun = live.getBuild(FILE)
+    expect(Date.parse(rerun.startedAt ?? "")).toBeGreaterThanOrEqual(changed)
+    expect(Date.parse(rerun.finishedAt ?? "")).toBeGreaterThanOrEqual(Date.parse(rerun.startedAt ?? ""))
+  })
+
   test("a failed build keeps the last design and does not show the project path", async () => {
     let fail = false
     live = new LiveProject(root, {

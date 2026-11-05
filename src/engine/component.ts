@@ -116,6 +116,7 @@ export function buildPart(tag: string, id: string, props: Props, origin: PartOri
     pinSides: pinSides.sides,
     ...(sch ? { sch } : {}),
     ...(pcb ? { pcb } : {}),
+    groupOffset: { pcb: { x: origin.offset.pcbX, y: origin.offset.pcbY }, sch: { x: origin.offset.schX, y: origin.offset.schY } },
     props: jsonProps(props),
     source: origin.source,
   }

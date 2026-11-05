@@ -15,6 +15,11 @@ export interface BuildState {
   /** The last design that built. A failed build keeps it, so the viewers still have something to draw. */
   design?: Design
   error?: string
+  /**
+   * When the last finished build started; it holds every change made before then. While a build
+   * runs, this and `finishedAt` still describe the last finished one.
+   */
+  startedAt?: string
   finishedAt?: string
 }
 
@@ -85,10 +90,10 @@ export class LiveProject {
     }
     this.builds.set(file, { ...previous, status: "building" })
     this.emit("build", { file, status: "building" })
-    void this.run(file)
+    void this.run(file, new Date().toISOString())
   }
 
-  private async run(file: string): Promise<void> {
+  private async run(file: string, startedAt: string): Promise<void> {
     let next: BuildState
     try {
       this.sources.set(file, await this.readSource(file))
@@ -98,7 +103,7 @@ export class LiveProject {
       const message = (error instanceof Error ? error.message : String(error)).split(this.root).join(".")
       next = { status: "failed", ...(design ? { design } : {}), error: message }
     }
-    this.finish(file, next)
+    this.finish(file, { ...next, startedAt })
   }
 
   private finish(file: string, state: BuildState): void {

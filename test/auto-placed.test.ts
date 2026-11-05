@@ -45,6 +45,29 @@ describe("keepPositions", () => {
     expect(keepNotice({ edits: [], skipped: plan.skipped })).toMatch(/^No auto-placed part could be kept\. Skipped RX~2/)
   })
 
+  test("a part inside an offset group gets positions relative to the group", () => {
+    const grouped = buildDesign(
+      {
+        "main.circuit.tsx": `export default () => (
+          <board width="30mm" height="18mm">
+            <group pcbX={10} schX={2}>
+              <resistor name="R5" resistance="1k" footprint="0402" />
+            </group>
+          </board>
+        )`,
+      },
+      "main.circuit.tsx",
+    )
+    const onBoard = grouped.pcb.parts.find((p) => p.component === "R5")
+    const onSheet = grouped.schematic.symbols.find((s) => s.component === "R5")
+    expect(keepPositions(grouped, "pcb").edits).toEqual([
+      { kind: "setProps", part: "R5", props: { pcbX: round((onBoard?.x ?? NaN) - 10), pcbY: round(onBoard?.y ?? NaN) } },
+    ])
+    expect(keepPositions(grouped, "schematic").edits).toEqual([
+      { kind: "setProps", part: "R5", props: { schX: round((onSheet?.x ?? NaN) - 2), schY: round(onSheet?.y ?? NaN) } },
+    ])
+  })
+
   test("gives nothing to do when every part has a position", () => {
     const placed = buildDesign(
       { "main.circuit.tsx": `export default () => (<board width="10mm" height="10mm"><resistor name="R1" resistance="1k" footprint="0402" pcbX={0} pcbY={0} /></board>)` },

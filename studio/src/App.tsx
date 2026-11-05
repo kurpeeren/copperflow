@@ -148,6 +148,8 @@ export function App() {
   }
 
   const design = build.design
+  // Previews of moves and wires sent before this time are in the design the canvases draw.
+  const builtFrom = build.startedAt ? Date.parse(build.startedAt) : Number.NEGATIVE_INFINITY
   if (!hasToken) {
     return (
       <p className="empty">
@@ -208,6 +210,7 @@ export function App() {
               key={file}
               design={design}
               buildId={build.finishedAt}
+              builtFrom={builtFrom}
               circuit={circuit}
               actions={actions}
               selected={selected}
@@ -219,6 +222,7 @@ export function App() {
               key={file}
               design={design}
               buildId={build.finishedAt}
+              builtFrom={builtFrom}
               circuit={circuit}
               actions={actions}
               selected={selected}

@@ -66,6 +66,15 @@ test("group offsets add up", () => {
   expect(circuit.components[0]?.sch).toEqual({ x: 3, y: 2, rotation: 0 })
 })
 
+test("each part carries what its groups add, and nothing outside a group", () => {
+  const circuit = build(
+    `<group pcbX={10} schY={2}>\n<group pcbY={-1} schX={0.5}>\n<resistor name="R1" />\n</group>\n</group>\n<resistor name="R2" pcbX={3} />`,
+  )
+  const offset = (id: string) => circuit.components.find((c) => c.id === id)?.groupOffset
+  expect(offset("R1")).toEqual({ pcb: { x: 10, y: -1 }, sch: { x: 0.5, y: 2 } })
+  expect(offset("R2")).toEqual({ pcb: { x: 0, y: 0 }, sch: { x: 0, y: 0 } })
+})
+
 test("library parts keep their call site", () => {
   const part = [
     `export const AP = (props: { name: string }) => (`,
