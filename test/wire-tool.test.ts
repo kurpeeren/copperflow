@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { buildDesign } from "../src/engine/design.js"
-import { endAt, namedNetsJoined, pinAt, wireEdits, type WireEnd } from "../studio/src/pcb/wire-tool.js"
+import { endAt, freePin, namedNetsJoined, pinAt, wireEdits, type WireEnd } from "../studio/src/pcb/wire-tool.js"
 
 const CIRCUIT = `export default () => (
   <board width="30mm" height="18mm">
@@ -30,6 +30,14 @@ describe("pinAt", () => {
     if (!at) throw new Error("no pin")
     expect(pinAt(design, { x: at.x + 0.1, y: at.y }, 0.12)?.pin).toBe("R1.pin1")
     expect(pinAt(design, { x: at.x + 0.13, y: at.y }, 0.12)).toBeUndefined()
+  })
+})
+
+describe("freePin", () => {
+  test("a pin on no net is free; a pin on a named net or joined to another pin is not", () => {
+    expect(freePin(design, "R3.pin2")).toBe(true)
+    expect(freePin(design, "R3.pin1")).toBe(false)
+    expect(freePin(design, "R1.pin2")).toBe(false)
   })
 })
 

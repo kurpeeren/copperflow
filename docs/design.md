@@ -121,61 +121,46 @@ rejected.
 
 `copperflow studio` starts a local web server and opens a browser editor for the project.
 
-- The server builds the selected circuit and serves the circuit JSON. It watches circuit and
-  annotation files, so changes made by the agent or in a code editor appear in the browser,
-  and rebuilds after each change. Starting the tscircuit CLI costs about 20 s per build, so the
-  server loads the eval library of the installed tscircuit CLI once, in a worker thread
-  (`src/studio/evaluator.ts`), and builds there: a change appears after a few seconds instead
-  of half a minute. The project's source files are passed to it; npm packages are never fetched
-  from a CDN. A mistake in the circuit code is reported at once. The server falls back to
-  `tsci build` when the library is not found, an import needs `node_modules`, the project has a
-  `tscircuit.config.json` (whose settings only the CLI applies), or the worker fails or times
-  out. The worker is replaced every 20 builds, because the library keeps memory between them.
-  `tsci build` stays the reference for `copperflow check` and the MCP tool. The
-  fast path is off when `COPPERFLOW_TSCI` names another CLI; `COPPERFLOW_TSCIRCUIT_EVAL` can
-  point at the library directly. While a build runs, the canvas shows "Updating…".
-- The PCB view is copperflow's own canvas with its own renderer (`studio/src/pcb/render.ts`):
-  board, pads of every shape, plated holes, holes, vias, traces on both layers, silkscreen
-  paths, lines, rectangles, circles and text, courtyards and fabrication notes, in layer order
-  and copperflow's palette. Element types it does not draw yet go to tscircuit's MIT drawer
-  (`circuit-to-canvas`) under the copper, and the status line names them. Hovering a pad
-  highlights its whole net and dims the rest; layers can be shown or hidden. copperflow owns
-  the camera (pan, zoom to the cursor, fit), the grid (dots on the minor grid, lines on the
-  major grid), selection and hover, dragging that snaps the part's centre to 0.1, 0.5 or 1 mm,
-  lock badges, notes drawn as pins, and keys (R rotates, Delete removes, F fits). A dragged part
-  is drawn by the same renderer with an offset, so it looks exactly like itself while it moves. Dropping it becomes a
-  `setProps` edit of `pcbX`/`pcbY`: the drag distance is added to the literal values, or the
-  new centre is written when the part had no position.
+- The server builds the selected circuit with copperflow's engine (`src/engine/engine.ts`), in a
+  worker thread, and serves the design: the circuit, the schematic and board layouts and the
+  diagnostics. It watches circuit and annotation files, so changes made by the agent or in a
+  code editor appear in the browser 50 ms after the last file event; the Studio's own edits,
+  placements and undos are built at once. A mistake in the circuit code fails the build at once
+  with the file, line and column; the viewers keep the last design. `tsci build` stays the
+  reference for `copperflow check` and the MCP tool until stage 2.
+- The PCB view is copperflow's own canvas with its own renderer (`studio/src/pcb/pcb-draw.ts`):
+  board outline, pads of every shape, drills, silkscreen, courtyards and fabrication lines in
+  layer order and copperflow's palette, then the ratsnest. Parts without a position are placed by
+  the engine and drawn at 60% alpha with a dashed courtyard; "Keep these positions" writes their
+  `pcbX`/`pcbY`, rounded to 0.01 mm, in one change. Hovering a pad highlights its whole net and
+  dims the rest; layers can be shown or hidden. copperflow owns the camera (pan, zoom to the
+  cursor, fit), the grid (dots on the minor grid, lines on the major grid), selection and hover,
+  dragging that snaps the part's origin to 0.1, 0.5 or 1 mm, lock badges, notes drawn as pins,
+  and keys (R rotates, Delete removes, F fits). A dragged part is drawn by the same renderer with
+  an offset, its ratsnest lines following it. Dropping it becomes a `setProps` edit of
+  `pcbX`/`pcbY`: the drag distance is added to the literal values, or the new origin is written
+  when the part had no position.
 - No vendor labels are shown on screen. The licences of every bundled package ship in
   `dist/app/THIRD_PARTY_LICENSES.txt`, generated at build time.
-- The schematic view is copperflow's own canvas and renderer too (`studio/src/pcb/schematic-render.ts`).
-  Passive parts are drawn from the symbol shapes in `schematic-symbols` with their designator and
-  value; chips are boxes with numbered, labelled pins; wires, junctions, net labels, power rails
-  and the circuit's own text and graphics are drawn in copperflow's palette. Element types it does
-  not draw yet are named in the status line. The same camera, grid, snapping, selection, lock
-  badges, notes and keys as the PCB apply. Dragging a symbol writes `schX`/`schY`; R writes
-  `schRotation`. Wires are drawn the way KiCad users expect: clicking a free pin, or pressing W
-  over any pin, starts a wire; an elbow follows the pointer on the grid; clicking the sheet
-  places a corner (Backspace removes the last one); clicking a pin, a net label or an existing
-  wire ends it, and Esc or a right click cancels. A wire or label stands for its net, so the new
-  trace goes to `net.NAME`. A wire that would join two named nets (GND and VCC, say) asks first.
-  Ends already on the same net are refused, and the core refuses a trace that repeats an
-  existing one. The new wire shows dashed until the build draws it. The Wire pins button (also
-  W away from a pin) marks every pin.
-- Hand-drawn corners. tscircuit lays out schematic wires itself and ignores the trace prop
-  `schematicRouteHints`, so copperflow keeps clicked corners there anyway (the file stays valid
-  tscircuit, and the corners take effect natively if tscircuit starts reading them) and draws
-  such a trace itself: from its pin through the corners to the other pin, with right-angle
-  bends. A wire that ends on another wire or a label keeps that point as its last corner and
-  gets a junction. tscircuit's own path between the same two pins is hidden; elsewhere its
-  layout is kept, so a wire to a net may also show tscircuit's net label for that net. Pin ends
-  follow their pins when parts move; the corners stay where they were clicked. tscircuit's own
-  viewers and exports still show tscircuit's paths.
+- The schematic view is copperflow's own canvas and renderer too
+  (`studio/src/pcb/schematic-draw.ts`), drawing the engine's symbols, wires, junctions, net
+  labels and power and ground symbols in copperflow's palette. Symbols the engine placed are
+  drawn at 60% alpha inside a dashed box, and "Keep these positions" writes their `schX`/`schY`.
+  The same camera, grid, snapping, selection, lock badges, notes and keys as the PCB apply.
+  Dragging a symbol writes `schX`/`schY`; R writes `schRotation`. Wires are drawn the way KiCad
+  users expect: clicking a free pin, or pressing W over any pin, starts a wire; an elbow follows
+  the pointer on the grid; clicking the sheet places a corner (Backspace removes the last one);
+  clicking a pin, a net label or an existing wire ends it, and Esc or a right click cancels. A
+  wire or label stands for its net, so the new trace goes to `net.NAME`. A wire that would join
+  two named nets (GND and VCC, say) asks first. Ends already on the same net are refused, and the
+  core refuses a trace that repeats an existing one. The new wire shows dashed until the build
+  draws it. The Wire pins button (also W away from a pin) marks every pin. Clicked corners are
+  kept in the trace prop `schematicRouteHints`, and the engine draws the trace through them.
 - A side panel lists parts (lock, rotate by 90°, remove), traces (remove), marks (add at the
-  selected part or at a box drawn on the PCB, remove), the build report and the history with
-  undo.
+  selected part or at a box drawn on the PCB, remove), the build's diagnostics grouped by code
+  and the history with undo.
 - The Library tab places library or built-in parts with the next free designator; built-in
-  parts get starting values tscircuit needs (a capacitor gets 100nF). The inspector shows a
+  parts get starting values (a capacitor gets 100nF). The inspector shows a
   library part's data, datasheet and checklist, and a person can mark it verified by typing the
   part id. With nothing selected, the inspector shows the BOM and exports the datasheet package.
 - An agent that starts the Studio itself sees the session key in its terminal; the Studio's

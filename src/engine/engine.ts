@@ -37,7 +37,7 @@ interface Started {
 const DEFAULT_TIMEOUT_MS = 30_000
 const WORKER_HEAP_MB = 2048
 /** The only non-source files a build reads: the footprint files of library parts. */
-const FOOTPRINT_FILE = /^parts\/[^/]+\/footprint\.yaml$/
+export const FOOTPRINT_FILE = /^parts\/[^/]+\/footprint\.yaml$/
 
 const defaultWorker = (): EngineWorker =>
   new Worker(new URL("./engine-worker.js", import.meta.url), { resourceLimits: { maxOldGenerationSizeMb: WORKER_HEAP_MB } })

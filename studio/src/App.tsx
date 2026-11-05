@@ -19,7 +19,7 @@ export interface Actions {
 
 type Tab = "pcb" | "schematic"
 
-/** Starting values for built-in parts tscircuit cannot build without, so a placed part builds at once. */
+/** Starting values for built-in parts, so a placed part has a value and a footprint at once. */
 const PLACE_DEFAULTS: Record<string, Record<string, string>> = {
   resistor: { resistance: "10k", footprint: "0402" },
   capacitor: { capacitance: "100nF", footprint: "0402" },
@@ -60,8 +60,8 @@ export function App() {
 
   const refreshBuild = useCallback(async (target: string) => {
     const next = await api<BuildState>(`/api/build?file=${encodeURIComponent(target)}`)
-    // Keep the same circuit JSON object while a build runs, so the viewers do not reset.
-    setBuild((previous) => (next.status === "building" && previous.circuitJson ? { ...next, circuitJson: previous.circuitJson } : next))
+    // Keep the same design object while a build runs, so the viewers do not redraw from scratch.
+    setBuild((previous) => (next.status === "building" && previous.design ? { ...next, design: previous.design } : next))
   }, [])
 
   useEffect(() => {
@@ -147,7 +147,7 @@ export function App() {
     }
   }
 
-  const json = build.circuitJson
+  const design = build.design
   if (!hasToken) {
     return (
       <p className="empty">
@@ -202,25 +202,23 @@ export function App() {
           />
         )}
         <section className="canvas">
-          {!json && <p className="empty">{build.status === "failed" ? build.error : "Building the circuit…"}</p>}
-          {json && circuit && tab === "pcb" && (
+          {!design && <p className="empty">{build.status === "failed" ? build.error : "Building the circuit…"}</p>}
+          {design && circuit && tab === "pcb" && (
             <PcbCanvas
               key={file}
-              json={json}
+              design={design}
               buildId={build.finishedAt}
-              building={build.status === "building"}
               circuit={circuit}
               actions={actions}
               selected={selected}
               onSelect={setSelected}
             />
           )}
-          {json && circuit && tab === "schematic" && (
+          {design && circuit && tab === "schematic" && (
             <SchematicCanvas
               key={file}
-              json={json}
+              design={design}
               buildId={build.finishedAt}
-              building={build.status === "building"}
               circuit={circuit}
               actions={actions}
               selected={selected}
@@ -231,7 +229,6 @@ export function App() {
         {circuit && (
           <Inspector
             circuit={circuit}
-            json={json}
             build={build}
             parts={parts}
             selected={selected}
@@ -249,16 +246,17 @@ export function App() {
   )
 }
 
+/** The error diagnostics of the last design. */
 function errorCount(build: BuildState): number {
-  return build.report?.errors.reduce((sum, g) => sum + g.count, 0) ?? 0
+  return build.design?.diagnostics.filter((d) => d.severity === "error").length ?? 0
 }
 
 function statusText(build: BuildState): string {
   if (build.status === "building") return "Building"
   if (build.status === "failed") return "Build failed"
-  if (build.status !== "done" || !build.report) return "Not built"
+  if (build.status !== "done" || !build.design) return "Not built"
   const errors = errorCount(build)
-  return errors === 0 ? "Build OK" : `${errors} errors`
+  return errors === 0 ? "Build OK" : `${errors} ${errors === 1 ? "error" : "errors"}`
 }
 
 function buildTone(build: BuildState): "busy" | "bad" | "good" | "idle" {

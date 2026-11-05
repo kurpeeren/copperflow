@@ -66,6 +66,31 @@ describe("drawSchematic", () => {
     expect(rec.records.some((r) => r.name === "setLineDash" && (r.args[0] as number[]).length > 0)).toBe(true)
   })
 
+  test("an auto-placed symbol is drawn at 60% alpha inside a dashed box", () => {
+    const auto = buildDesign(
+      {
+        "main.circuit.tsx": `export default () => (
+          <board width="30mm" height="18mm">
+            <resistor name="R1" resistance="1k" footprint="0402" schX={0} schY={0} />
+            <resistor name="R2" resistance="1k" footprint="0402" />
+          </board>
+        )`,
+      },
+      "main.circuit.tsx",
+    ).schematic
+    expect(auto.symbols.map((s) => [s.component, s.autoPlaced])).toEqual([
+      ["R1", false],
+      ["R2", true],
+    ])
+    const rec = recorder()
+    drawSchematic(rec.ctx as never, auto, VIEW, { ratio: 1 })
+    const outlines = rec.records.filter((r) => r.name === "stroke" && r.strokeStyle === SCHEMATIC_PALETTE.outline)
+    expect(new Set(outlines.map((r) => r.globalAlpha))).toEqual(new Set([1, 0.6]))
+    expect(rec.records.filter((r) => r.name === "stroke" && r.strokeStyle === SCHEMATIC_PALETTE.autoBox)).toHaveLength(1)
+    expect(rec.records.find((r) => r.name === "fillText" && r.args[0] === "R2")?.globalAlpha).toBe(0.6)
+    expect(rec.records.find((r) => r.name === "fillText" && r.args[0] === "R1")?.globalAlpha).toBe(1)
+  })
+
   test("the moving part is drawn shifted", () => {
     const r1 = layout.symbols.find((s) => s.component === "R1")
     const moved = draw({ moving: { component: "R1", by: { x: 1, y: 0 } } }).records.filter((r) => r.name === "translate")

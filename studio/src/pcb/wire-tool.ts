@@ -52,6 +52,12 @@ function pinEnd(design: Design, pin: Pin, at: Point): WireEnd {
   return { selector, at, label: selector, ...(name !== undefined ? { net: name } : {}) }
 }
 
+/** A pin with nothing connected: a click on it starts a wire without the wire tool. */
+export function freePin(design: Design, pinId: string): boolean {
+  const net = netOfPin(design, pinId)
+  return net === undefined || (net.pins.length < 2 && net.names.length === 0)
+}
+
 /** The pin whose end is nearest to `p` within `maxDistance`. */
 export function pinAt(design: Design, p: Point, maxDistance: number): { pin: string; at: Point } | undefined {
   let best: { pin: string; at: Point; d: number } | undefined

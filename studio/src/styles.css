@@ -605,15 +605,29 @@ ul {
 }
 
 .note.error,
-.issues li {
+.issues li.error {
   color: var(--danger);
+}
+
+.issues li.warning {
+  color: var(--copper-strong);
 }
 
 .issues li {
   padding: 3px 0;
 }
 
-.issues .more {
+.issues ul {
+  margin: 2px 0 0;
+  padding-left: 14px;
+}
+
+.issues .code {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.issues .items {
   color: var(--muted);
 }
 
@@ -837,14 +851,3 @@ ul {
   pointer-events: none;
 }
 
-.canvas-busy {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  padding: 4px 10px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: rgb(34 38 44 / 92%);
-  color: var(--muted);
-  pointer-events: none;
-}

@@ -79,11 +79,7 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
         return 0
       case "studio": {
         const [port] = takeOption(rest, "--port")
-        const studio = await startStudio({
-          root,
-          ...(port ? { port: positiveInt(port) } : {}),
-          ...(options.buildCommand ? { buildCommand: options.buildCommand } : {}),
-        })
+        const studio = await startStudio({ root, ...(port ? { port: positiveInt(port) } : {}) })
         io.out(`copperflow studio is running. Open this address (it contains a key for this session):\n${studio.openUrl}\nPress Ctrl+C to stop.`)
         return 0
       }

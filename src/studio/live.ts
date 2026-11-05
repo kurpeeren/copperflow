@@ -1,23 +1,21 @@
 import { watch, type FSWatcher } from "node:fs"
-import { buildCircuit, reportFromElements, type CheckResult } from "../core/check.js"
-import { FastBuildUnavailable } from "./evaluator.js"
+import { readFile } from "node:fs/promises"
+import { join } from "node:path"
+import type { Design } from "../engine/design.js"
 
 export type BuildStatus = "idle" | "building" | "done" | "failed"
 
-export interface BuildState {
-  status: BuildStatus
-  circuitJson?: unknown[]
-  report?: CheckResult
-  error?: string
-  finishedAt?: string
+/** Builds one circuit file of a project. The Studio uses the engine; `file` is a path inside `root`. */
+export interface DesignBuilder {
+  build(root: string, file: string): Promise<Design>
 }
 
-/**
- * Builds a circuit faster than the tscircuit CLI; see evaluator.ts. It rejects with
- * FastBuildUnavailable when the CLI should build instead.
- */
-export interface FastBuilder {
-  evaluate(root: string, file: string): Promise<unknown[]>
+export interface BuildState {
+  status: BuildStatus
+  /** The last design that built. A failed build keeps it, so the viewers still have something to draw. */
+  design?: Design
+  error?: string
+  finishedAt?: string
 }
 
 export type Listener = (event: "change" | "build" | "library", data: Record<string, unknown>) => void
@@ -26,7 +24,7 @@ const IGNORED = /^(node_modules|dist|\.git|\.copperflow|coverage)\//
 const ANNOTATIONS = /\.circuit\.annotations\.json$/
 const PART_YAML = /^parts\/[^/]+\/part\.yaml$/
 const LIBRARY_TIMER = "\0library"
-const DEBOUNCE_MS = 150
+const DEBOUNCE_MS = 50
 const MAX_KEPT_BUILDS = 5
 
 /**
@@ -36,15 +34,17 @@ const MAX_KEPT_BUILDS = 5
 export class LiveProject {
   private readonly listeners = new Set<Listener>()
   private readonly builds = new Map<string, BuildState>()
+  /** The circuit text each kept build started from, so a watcher event for a file already built is skipped. */
+  private readonly sources = new Map<string, string | undefined>()
   private readonly rerun = new Set<string>()
   private readonly timers = new Map<string, NodeJS.Timeout>()
   private watcher: FSWatcher | undefined
   private stopped = false
+  private lastFinished = 0
 
   constructor(
     private readonly root: string,
-    private readonly buildCommand?: string[],
-    private readonly fast?: FastBuilder,
+    private readonly builder: DesignBuilder,
   ) {}
 
   start(): void {
@@ -75,7 +75,9 @@ export class LiveProject {
     return this.builds.get(file) ?? { status: "idle" }
   }
 
+  /** Builds `file` now, or once more after the build that is running. */
   requestBuild(file: string): void {
+    if (this.stopped) return
     const previous = this.getBuild(file)
     if (previous.status === "building") {
       this.rerun.add(file)
@@ -83,65 +85,71 @@ export class LiveProject {
     }
     this.builds.set(file, { ...previous, status: "building" })
     this.emit("build", { file, status: "building" })
-    this.build(file)
-      .then(({ result, circuitJson }) => this.finish(file, { status: "done", circuitJson, report: result }))
-      .catch((error: Error) => this.finish(file, { ...this.getBuild(file), status: "failed", error: error.message }))
+    void this.run(file)
   }
 
-  /**
-   * The fast builder when there is one. A mistake in the circuit code fails the build at once;
-   * the tscircuit CLI builds instead only when the fast builder cannot (see FastBuildUnavailable).
-   */
-  private async build(file: string): Promise<{ result: CheckResult; circuitJson: unknown[] }> {
-    if (this.fast) {
-      try {
-        const circuitJson = await this.fast.evaluate(this.root, file)
-        return { result: reportFromElements(circuitJson), circuitJson }
-      } catch (error) {
-        // The eval library appends its debug log after a blank line.
-        const message = (error as Error).message.split("\n\n")[0] ?? ""
-        if (!(error instanceof FastBuildUnavailable)) throw new Error(message)
-        if (this.stopped) throw error
-        console.error(`copperflow studio: building ${file} with tsci build: ${message.split("\n")[0]}`)
-      }
+  private async run(file: string): Promise<void> {
+    let next: BuildState
+    try {
+      this.sources.set(file, await this.readSource(file))
+      next = { status: "done", design: await this.builder.build(this.root, file) }
+    } catch (error) {
+      const { design } = this.getBuild(file)
+      const message = (error instanceof Error ? error.message : String(error)).split(this.root).join(".")
+      next = { status: "failed", ...(design ? { design } : {}), error: message }
     }
-    return buildCircuit(this.root, file, this.buildCommand ? { command: this.buildCommand } : {})
+    this.finish(file, next)
   }
 
   private finish(file: string, state: BuildState): void {
+    if (this.stopped) return
+    // Strictly later than the last build, so the browser always sees a new build as new.
+    this.lastFinished = Math.max(Date.now(), this.lastFinished + 1)
     this.builds.delete(file)
-    this.builds.set(file, { ...state, finishedAt: new Date().toISOString() })
-    // Keep only the most recently built circuits; circuit JSON can be large.
+    this.builds.set(file, { ...state, finishedAt: new Date(this.lastFinished).toISOString() })
+    // Keep only the most recently built circuits; a design can be large.
     for (const [name, build] of this.builds) {
       if (this.builds.size <= MAX_KEPT_BUILDS) break
-      if (build.status !== "building") this.builds.delete(name)
+      if (build.status === "building") continue
+      this.builds.delete(name)
+      this.sources.delete(name)
     }
     this.emit("build", { file, status: state.status })
     if (this.rerun.delete(file)) this.requestBuild(file)
   }
 
+  private readSource(file: string): Promise<string | undefined> {
+    return readFile(join(this.root, file), "utf8").catch(() => undefined)
+  }
+
+  /** The Studio builds its own edits at once; the watcher then sees the same text and does not build again. */
+  private async rebuildIfChanged(file: string): Promise<void> {
+    const text = await this.readSource(file)
+    if (text !== undefined && text === this.sources.get(file)) return
+    this.requestBuild(file)
+  }
+
   private onFileEvent(name: string): void {
     if (IGNORED.test(name)) return
     if (PART_YAML.test(name)) {
-      clearTimeout(this.timers.get(LIBRARY_TIMER))
-      this.timers.set(
-        LIBRARY_TIMER,
-        setTimeout(() => {
-          this.timers.delete(LIBRARY_TIMER)
-          this.emit("library", {})
-        }, DEBOUNCE_MS),
-      )
+      this.debounce(LIBRARY_TIMER, () => this.emit("library", {}))
       return
     }
     const file = ANNOTATIONS.test(name) ? name.replace(ANNOTATIONS, ".circuit.tsx") : name
     if (!file.endsWith(".circuit.tsx")) return
-    clearTimeout(this.timers.get(file))
+    this.debounce(file, () => {
+      this.emit("change", { file })
+      if (this.builds.has(file) && file === name) void this.rebuildIfChanged(file)
+    })
+  }
+
+  private debounce(key: string, task: () => void): void {
+    clearTimeout(this.timers.get(key))
     this.timers.set(
-      file,
+      key,
       setTimeout(() => {
-        this.timers.delete(file)
-        this.emit("change", { file })
-        if (this.builds.has(file) && file === name) this.requestBuild(file)
+        this.timers.delete(key)
+        task()
       }, DEBOUNCE_MS),
     )
   }

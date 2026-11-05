@@ -28,17 +28,26 @@ const BOARD_EDGE_PX = 1.5
 const DEFAULT_CORNER = 0.25
 const DESIGNATOR_MM = 0.8
 const DESIGNATOR_GAP_PX = 2
+/** Parts the engine placed for itself are drawn faded, so the person sees they have no position yet. */
+const AUTO_PLACED_ALPHA = 0.6
 
 const rad = (degrees: number) => (degrees * Math.PI) / 180
+const alphaOf = (part: PlacedFootprint) => (part.autoPlaced ? AUTO_PLACED_ALPHA : 1)
 
-/** Draws the board, then the ratsnest. */
+/** Draws the board, then the ratsnest. Auto-placed parts are faded and always show their dashed courtyard. */
 export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDrawOptions): void {
   const layers = { ...DEFAULT_LAYERS, ...options.layers }
   const { camera, size } = view
   const px = 1 / camera.scale
   const shiftOf = (part: PlacedFootprint) => (options.moving?.component === part.component ? options.moving.by : NO_SHIFT)
   const each = (paint: (part: PlacedFootprint) => void) => {
-    for (const part of layout.parts) framed(ctx, shiftOf(part).x, shiftOf(part).y, 0, () => paint(part))
+    for (const part of layout.parts) {
+      framed(ctx, shiftOf(part).x, shiftOf(part).y, 0, () => {
+        ctx.globalAlpha = alphaOf(part)
+        paint(part)
+      })
+    }
+    ctx.globalAlpha = 1
   }
 
   ctx.save()
@@ -52,7 +61,7 @@ export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDra
   drawCopper(ctx, layers, options.highlight, each)
   drawDrills(ctx, each)
   if (layers.silkscreen) each((part) => drawPolylines(ctx, part.silkscreen, part.side === "top" ? PALETTE.topSilk : PALETTE.bottomSilk, SILK_WIDTH_MM, false))
-  if (layers.courtyard) drawCourtyards(ctx, each, px)
+  drawCourtyards(ctx, each, px, layers.courtyard)
   if (layers.fabrication) each((part) => drawPolylines(ctx, part.fabrication, PALETTE.fabrication, px, false))
   drawBoard(ctx, layout, () => {
     ctx.strokeStyle = PALETTE.boardEdge
@@ -165,7 +174,7 @@ function drawCopper(ctx: Ctx, layers: Layers, highlight: PcbDrawOptions["highlig
     each((part) => {
       for (const pad of part.pads.filter(wanted)) {
         const lit = highlight !== undefined && pad.net === highlight.net
-        ctx.globalAlpha = highlight && !lit ? DIM : 1
+        ctx.globalAlpha = (highlight && !lit ? DIM : 1) * alphaOf(part)
         ctx.fillStyle = padColor(pad, lit)
         padPath(ctx, pad)
         ctx.fill()
@@ -200,9 +209,12 @@ function drawPolylines(ctx: Ctx, lines: readonly (readonly Point[])[], color: st
   }
 }
 
-function drawCourtyards(ctx: Ctx, each: Each, px: number): void {
+/** Every courtyard when the layer is shown; an auto-placed part's courtyard always. */
+function drawCourtyards(ctx: Ctx, each: Each, px: number, all: boolean): void {
   ctx.setLineDash([4 * px, 3 * px])
-  each((part) => drawPolylines(ctx, [part.courtyard], PALETTE.courtyard, px, true))
+  each((part) => {
+    if (all || part.autoPlaced) drawPolylines(ctx, [part.courtyard], PALETTE.courtyard, px, true)
+  })
   ctx.setLineDash([])
 }
 
@@ -233,10 +245,12 @@ function drawDesignator(ctx: Ctx, part: PlacedFootprint, camera: Camera, size: S
   const box = courtyardBox(part)
   const p = worldToScreen(camera, size, { x: (box.minX + box.maxX) / 2 + shift.x, y: box.maxY + shift.y })
   ctx.fillStyle = PALETTE.topSilk
+  ctx.globalAlpha = alphaOf(part)
   ctx.font = `600 ${fontPx}px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif`
   ctx.textAlign = "center"
   ctx.textBaseline = "bottom"
   ctx.fillText(part.component, p.x, p.y - DESIGNATOR_GAP_PX)
+  ctx.globalAlpha = 1
 }
 
 function insidePad(pad: WorldPad, p: Point): boolean {

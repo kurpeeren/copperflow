@@ -1,31 +1,18 @@
-import { CircuitToCanvasDrawer } from "circuit-to-canvas"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { CircuitData, CircuitElement, Edit } from "../api"
+import type { CircuitData, Design } from "../api"
 import type { Actions } from "../App"
-import { buildNets, padAt } from "./nets"
-import { drawGrid, drawLockBadge, drawMark, drawOutline, drawSelectionBox } from "./overlays"
-import { drawPcb, isSupported, type Layers } from "./render"
-import {
-  boardBounds,
-  componentBoxes,
-  fitCamera,
-  hitTest,
-  screenToWorld,
-  snap,
-  toMatrix,
-  zoomAt,
-  type Camera,
-  type PartBox,
-  type Point,
-  type Size,
-} from "./geometry"
+import type { WorldPad } from "../../../src/engine/pcb.js"
+import { keepAutoPlaced } from "./auto-placed"
+import { movedTo, moveBlocker, nextRotation, prepareCanvas, toLocal, useElementSize, useWheelZoom } from "./canvas-common"
+import type { Layers } from "./ctx"
+import { drawLockBadge, drawMark, drawOutline, drawSelectionBox } from "./overlays"
+import { drawPcb, padAt, pcbBoxes } from "./pcb-draw"
+import { fitCamera, hitTest, pointBounds, screenToWorld, snap, unionBoxes, type Camera, type PartBox, type Point } from "./geometry"
 
 interface Props {
-  json: CircuitElement[]
+  design: Design
   /** Changes when a build finishes; a pending move is then part of the new build. */
   buildId: string | undefined
-  /** A build is running; the canvas shows that the drawing is about to change. */
-  building: boolean
   circuit: CircuitData
   actions: Actions
   selected: string | null
@@ -34,7 +21,7 @@ interface Props {
 
 type Gesture =
   | { kind: "pan"; start: Point; camera: Camera }
-  | { kind: "drag"; part: PartBox; start: Point; offset: Point; moved: boolean; allowed: string | null }
+  | { kind: "drag"; part: PartBox; start: Point; offset: Point; moved: boolean; blocker: string | null }
   | { kind: "box"; start: Point; current: Point }
 
 const SNAP_STEPS = [0.1, 0.5, 1]
@@ -44,37 +31,25 @@ const LAYER_BUTTONS = [
   ["silkscreen", "Silk"],
   ["courtyard", "Courtyard"],
 ] as const
-
-/** "U1.VIN" for a pcb_port id. */
-function pinLabel(json: CircuitElement[], pcbPortId: string): string | undefined {
-  const port = json.find((e) => e.type === "pcb_port" && e.pcb_port_id === pcbPortId)
-  const source = json.find((e) => e.type === "source_port" && e.source_port_id === port?.source_port_id)
-  const part = json.find((e) => e.type === "source_component" && e.source_component_id === source?.source_component_id)
-  return part && source ? `${String(part.name)}.${String(source.name)}` : undefined
-}
+const POSITION = ["pcbX", "pcbY"] as const
 const DRAG_THRESHOLD_PX = 3
+const BOX_MIN_PX = 6
 const BACKGROUND = "#121417"
 const round = (value: number) => Math.round(value * 1000) / 1000
 
-/**
- * A pointer position in the canvas's own CSS pixels. Browser zoom or a scaled page can make the
- * on-screen rectangle differ from the layout size, so the offset is divided by that ratio.
- */
-function toCanvasPoint(canvas: HTMLCanvasElement | null, size: Size, event: { clientX: number; clientY: number }): Point {
-  const rect = canvas?.getBoundingClientRect()
-  if (!rect || rect.width === 0 || rect.height === 0) return { x: 0, y: 0 }
-  return {
-    x: ((event.clientX - rect.left) * size.width) / rect.width,
-    y: ((event.clientY - rect.top) * size.height) / rect.height,
-  }
+/** "U1.VIN on GND" for the pad under the pointer: the pin's own name when it has one, and its named net. */
+function padLabel(design: Design, pad: WorldPad): string {
+  const pin = design.circuit.components.find((c) => c.id === pad.component)?.pins.find((p) => p.id === pad.pin)
+  const name = pin?.names.find((n) => !/^pin\d+$/.test(n)) ?? pin?.names[0]
+  const net = design.circuit.nets.find((n) => n.id === pad.net)?.names[0]
+  return `${name ? `${pad.component}.${name}` : pad.id}${net ? ` on ${net}` : ""}`
 }
 
 /** The PCB, drawn by copperflow's own renderer under its camera, grid and tools. */
-export function PcbCanvas({ json, buildId, building, circuit, actions, selected, onSelect }: Props) {
+export function PcbCanvas({ design, buildId, circuit, actions, selected, onSelect }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const drawerRef = useRef<CircuitToCanvasDrawer | null>(null)
-  const [size, setSize] = useState<Size>({ width: 0, height: 0 })
+  const size = useElementSize(wrapRef)
   const [camera, setCamera] = useState<Camera>()
   const [gesture, setGesture] = useState<Gesture>()
   const [hover, setHover] = useState<string>()
@@ -82,27 +57,18 @@ export function PcbCanvas({ json, buildId, building, circuit, actions, selected,
   const [step, setStep] = useState(0.5)
   const [pending, setPending] = useState<{ name: string; offset: Point }>()
   const [layers, setLayers] = useState<Layers>({ topCopper: true, bottomCopper: true, silkscreen: true, courtyard: true, fabrication: false })
-  const [hoverNet, setHoverNet] = useState<string>()
-  const [hoverPin, setHoverPin] = useState<string>()
-  const [unsupported, setUnsupported] = useState<string[]>([])
+  const [hoverPad, setHoverPad] = useState<WorldPad>()
 
-  const boxes = useMemo(() => componentBoxes(json), [json])
-  const nets = useMemo(() => buildNets(json), [json])
+  const layout = design.pcb
+  const boxes = useMemo(() => pcbBoxes(layout), [layout])
+  const origins = useMemo(() => new Map(layout.parts.map((p) => [p.component, { x: p.x, y: p.y }])), [layout])
+  const autoPlaced = useMemo(() => layout.parts.some((p) => p.autoPlaced), [layout])
   const locked = useMemo(() => new Set(circuit.annotations.locks.map((l) => l.part)), [circuit])
-  const bounds = useMemo(() => boardBounds(json), [json])
+  const bounds = useMemo(() => pointBounds(layout.board?.outline ?? []) ?? unionBoxes(boxes.map((b) => b.box)), [layout, boxes])
+  const blockerFor = useCallback((name: string) => moveBlocker(circuit, locked, name, POSITION), [circuit, locked])
 
   useEffect(() => setPending(undefined), [buildId])
-
-  // Follow the element's size; the canvas is drawn at device resolution.
-  useEffect(() => {
-    const wrap = wrapRef.current
-    if (!wrap) return
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry) setSize({ width: Math.floor(entry.contentRect.width), height: Math.floor(entry.contentRect.height) })
-    })
-    observer.observe(wrap)
-    return () => observer.disconnect()
-  }, [])
+  useWheelZoom(wrapRef, size, setCamera)
 
   const fit = useCallback(() => {
     if (bounds && size.width > 0) setCamera(fitCamera(bounds, size))
@@ -112,60 +78,19 @@ export function PcbCanvas({ json, buildId, building, circuit, actions, selected,
     if (!camera) fit()
   }, [camera, fit])
 
-  /** Why a part cannot be dragged, or null when it can. */
-  const dragBlocker = useCallback(
-    (name: string): string | null => {
-      const part = circuit.model.parts.find((p) => p.name === name)
-      if (!part) return "This part has no editable source element"
-      if (locked.has(name)) return `${name} is locked`
-      if (!part.editable) return `${name} is read-only (${part.readonlyReason})`
-      const expression = (["pcbX", "pcbY"] as const).find((key) => part.props[key] && !part.props[key]?.editable)
-      return expression ? `${name}.${expression} is an expression; change it in the code` : null
-    },
-    [circuit, locked],
-  )
-
   // Draw everything whenever anything visible changes.
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas || !camera || size.width === 0) return
-    const ratio = window.devicePixelRatio || 1
-    canvas.width = size.width * ratio
-    canvas.height = size.height * ratio
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-    drawerRef.current ??= new CircuitToCanvasDrawer(canvas)
-    const drawer = drawerRef.current
-
-    ctx.setTransform(1, 0, 0, 1, 0, 0)
-    ctx.fillStyle = BACKGROUND
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
-    drawGrid(ctx, camera, size)
-
-    const moving = gesture?.kind === "drag" && gesture.moved && !gesture.allowed ? { name: gesture.part.name, offset: gesture.offset } : pending
-    const movingId = moving ? boxes.find((b) => b.name === moving.name)?.pcbComponentId : undefined
-    const isMoving = (e: CircuitElement) => movingId !== undefined && e.pcb_component_id === movingId
-    const highlight = hoverNet ? { net: hoverNet, nets } : undefined
-    // Element types our renderer does not draw yet go to tscircuit's drawer, under the copper.
-    const fallback = json.filter((e) => !isSupported(e) && !isMoving(e))
-    const result = drawPcb(ctx, json.filter((e) => !isMoving(e)), { camera, size }, {
+    if (!camera) return
+    const prepared = prepareCanvas(canvasRef.current, size, camera, BACKGROUND)
+    if (!prepared) return
+    const { ctx, ratio } = prepared
+    const moving = gesture?.kind === "drag" && gesture.moved && !gesture.blocker ? { name: gesture.part.name, offset: gesture.offset } : pending
+    drawPcb(ctx, layout, { camera, size }, {
       ratio,
       layers,
-      ...(highlight ? { highlight } : {}),
-      underCopper: () => {
-        if (fallback.length === 0) return
-        drawer.realToCanvasMat = toMatrix(camera, size, ratio)
-        drawer.drawElements(fallback as Parameters<CircuitToCanvasDrawer["drawElements"]>[0], {
-          clipContextElements: json as Parameters<CircuitToCanvasDrawer["drawElements"]>[0],
-        })
-      },
+      ...(hoverPad?.net ? { highlight: { net: hoverPad.net } } : {}),
+      ...(moving ? { moving: { component: moving.name, by: moving.offset } } : {}),
     })
-    if (moving && movingId) {
-      drawPcb(ctx, json.filter(isMoving), { camera, size }, { ratio, layers, offset: moving.offset })
-    }
-    setUnsupported((current) => (current.join() === result.unsupported.join() ? current : result.unsupported))
-
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
     for (const part of boxes) {
       const offset = moving && part.name === moving.name ? moving.offset : { x: 0, y: 0 }
@@ -177,25 +102,15 @@ export function PcbCanvas({ json, buildId, building, circuit, actions, selected,
       if (mark.view === "pcb" && mark.x !== undefined && mark.y !== undefined) drawMark(ctx, camera, size, { x: mark.x, y: mark.y }, mark.id, mark.text)
     }
     if (gesture?.kind === "box") drawSelectionBox(ctx, gesture.start, gesture.current)
-  }, [json, camera, size, gesture, pending, boxes, hover, selected, locked, circuit, layers, hoverNet, nets])
+  }, [layout, camera, size, gesture, pending, boxes, hover, selected, locked, circuit, layers, hoverPad])
 
-  const local = useCallback(
-    (event: { clientX: number; clientY: number }): Point => toCanvasPoint(canvasRef.current, size, event),
-    [size],
-  )
+  const local = useCallback((event: { clientX: number; clientY: number }): Point => toLocal(canvasRef.current, size, event), [size])
 
   const commitMove = (part: PartBox, offset: Point) => {
-    const info = circuit.model.parts.find((p) => p.name === part.name)
-    if (!info || (offset.x === 0 && offset.y === 0)) return
-    const target = (key: "pcbX" | "pcbY", delta: number, absolute: number) => {
-      const current = info.props[key]?.literal
-      return round(typeof current === "number" ? current + delta : absolute)
-    }
-    const x = target("pcbX", offset.x, part.center.x + offset.x)
-    const y = target("pcbY", offset.y, part.center.y + offset.y)
+    if (offset.x === 0 && offset.y === 0) return
+    const [x, y] = movedTo(circuit, part.name, POSITION, origins.get(part.name) ?? part.center, offset)
     setPending({ name: part.name, offset })
-    const edit: Edit = { kind: "setProps", part: part.name, props: { pcbX: x, pcbY: y } }
-    void actions.edit([edit], `move ${part.name} to (${x}, ${y})`).then((ok) => {
+    void actions.edit([{ kind: "setProps", part: part.name, props: { pcbX: x, pcbY: y } }], `move ${part.name} to (${x}, ${y})`).then((ok) => {
       if (!ok) setPending(undefined)
     })
   }
@@ -204,21 +119,12 @@ export function PcbCanvas({ json, buildId, building, circuit, actions, selected,
     if (!camera) return
     event.currentTarget.setPointerCapture(event.pointerId)
     const point = local(event)
-    if (event.button === 1 || event.button === 2) {
-      setGesture({ kind: "pan", start: point, camera })
-      return
-    }
-    if (event.shiftKey) {
-      setGesture({ kind: "box", start: point, current: point })
-      return
-    }
+    if (event.button === 1 || event.button === 2) return setGesture({ kind: "pan", start: point, camera })
+    if (event.shiftKey) return setGesture({ kind: "box", start: point, current: point })
     const hit = hitTest(boxes, screenToWorld(camera, size, point))
-    if (hit) {
-      onSelect(hit.name)
-      setGesture({ kind: "drag", part: hit, start: point, offset: { x: 0, y: 0 }, moved: false, allowed: dragBlocker(hit.name) })
-    } else {
-      setGesture({ kind: "pan", start: point, camera })
-    }
+    if (!hit) return setGesture({ kind: "pan", start: point, camera })
+    onSelect(hit.name)
+    setGesture({ kind: "drag", part: hit, start: point, offset: { x: 0, y: 0 }, moved: false, blocker: blockerFor(hit.name) })
   }
 
   const onPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -228,23 +134,19 @@ export function PcbCanvas({ json, buildId, building, circuit, actions, selected,
     setCursor(world)
     if (!gesture) {
       setHover(hitTest(boxes, world)?.name)
-      const pad = padAt(json, world)
-      setHoverNet(pad ? nets.ofPort(pad) : undefined)
-      setHoverPin(pad ? pinLabel(json, pad) : undefined)
-      return
+      return setHoverPad(padAt(layout, world))
     }
     if (gesture.kind === "pan") {
       const dx = (point.x - gesture.start.x) / gesture.camera.scale
       const dy = (point.y - gesture.start.y) / gesture.camera.scale
       setCamera({ ...gesture.camera, cx: gesture.camera.cx - dx, cy: gesture.camera.cy + dy })
     } else if (gesture.kind === "drag") {
-      const far = Math.hypot(point.x - gesture.start.x, point.y - gesture.start.y) > DRAG_THRESHOLD_PX
-      if (!far && !gesture.moved) return
-      // Snap the part's centre to the grid, not the distance moved.
+      if (!gesture.moved && Math.hypot(point.x - gesture.start.x, point.y - gesture.start.y) <= DRAG_THRESHOLD_PX) return
+      // Snap the part's origin, where pcbX and pcbY put it, to the grid, not the distance moved.
+      const origin = origins.get(gesture.part.name) ?? gesture.part.center
       const startWorld = screenToWorld(camera, size, gesture.start)
-      const raw = { x: gesture.part.center.x + world.x - startWorld.x, y: gesture.part.center.y + world.y - startWorld.y }
-      const offset = { x: round(snap(raw.x, step) - gesture.part.center.x), y: round(snap(raw.y, step) - gesture.part.center.y) }
-      setGesture({ ...gesture, offset, moved: true })
+      const raw = { x: origin.x + world.x - startWorld.x, y: origin.y + world.y - startWorld.y }
+      setGesture({ ...gesture, moved: true, offset: { x: round(snap(raw.x, step) - origin.x), y: round(snap(raw.y, step) - origin.y) } })
     } else {
       setGesture({ ...gesture, current: point })
     }
@@ -256,49 +158,31 @@ export function PcbCanvas({ json, buildId, building, circuit, actions, selected,
     if (!done || !camera) return
     if (done.kind === "drag") {
       if (!done.moved) return
-      if (done.allowed) actions.notify(done.allowed)
+      if (done.blocker) actions.notify(done.blocker)
       else commitMove(done.part, done.offset)
     } else if (done.kind === "pan") {
-      const still = Math.hypot(done.camera.cx - camera.cx, done.camera.cy - camera.cy) * camera.scale < DRAG_THRESHOLD_PX
-      if (still) onSelect(null)
-    } else if (done.kind === "box") {
+      if (Math.hypot(done.camera.cx - camera.cx, done.camera.cy - camera.cy) * camera.scale < DRAG_THRESHOLD_PX) onSelect(null)
+    } else {
       const a = screenToWorld(camera, size, done.start)
       const b = screenToWorld(camera, size, done.current)
-      if (Math.abs(a.x - b.x) * camera.scale < 6 && Math.abs(a.y - b.y) * camera.scale < 6) return
+      if (Math.abs(a.x - b.x) * camera.scale < BOX_MIN_PX && Math.abs(a.y - b.y) * camera.scale < BOX_MIN_PX) return
       const text = window.prompt("Note for the agent, e.g. route ground here")
       if (text) void actions.mark(text, { view: "pcb", x: round((a.x + b.x) / 2), y: round((a.y + b.y) / 2) })
     }
   }
 
-  const onWheel = useCallback(
-    (event: WheelEvent) => {
-      event.preventDefault()
-      const point = local(event)
-      setCamera((current) => (current ? zoomAt(current, size, point, Math.exp(-event.deltaY * 0.0015)) : current))
-    },
-    [size, local],
-  )
-
-  // React's onWheel is passive, so preventDefault needs a native listener.
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    canvas.addEventListener("wheel", onWheel, { passive: false })
-    return () => canvas.removeEventListener("wheel", onWheel)
-  }, [onWheel])
-
   // R rotates and Delete removes the selected part; F fits the board.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLElement && event.target.closest("input, textarea, select")) return
+      if (event.ctrlKey || event.metaKey || event.altKey) return
       if (event.key === "f" || event.key === "F") return fit()
       if (!selected) return
-      const blocker = dragBlocker(selected)
+      const blocker = blockerFor(selected)
       if (event.key === "r" || event.key === "R") {
         if (blocker) return actions.notify(blocker)
-        const rotation = circuit.model.parts.find((p) => p.name === selected)?.props.pcbRotation?.literal
-        if (rotation !== undefined && typeof rotation !== "number") return actions.notify(`${selected}.pcbRotation is not a number`)
-        const next = ((((rotation ?? 0) as number) + 90) % 360 + 360) % 360
+        const next = nextRotation(circuit, selected, "pcbRotation")
+        if (typeof next === "string") return actions.notify(next)
         void actions.edit([{ kind: "setProps", part: selected, props: { pcbRotation: next } }], `rotate ${selected} to ${next}°`)
       }
       if (event.key === "Delete" || event.key === "Backspace") {
@@ -310,9 +194,9 @@ export function PcbCanvas({ json, buildId, building, circuit, actions, selected,
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [selected, dragBlocker, circuit, actions, onSelect, fit])
+  }, [selected, blockerFor, circuit, actions, onSelect, fit])
 
-  const cursorStyle = gesture?.kind === "pan" ? "grabbing" : gesture?.kind === "drag" ? (gesture.allowed ? "not-allowed" : "move") : hover ? "pointer" : "default"
+  const cursorStyle = gesture?.kind === "pan" ? "grabbing" : gesture?.kind === "drag" ? (gesture.blocker ? "not-allowed" : "move") : hover ? "pointer" : "default"
 
   return (
     <div className="pcb-canvas" ref={wrapRef}>
@@ -324,8 +208,7 @@ export function PcbCanvas({ json, buildId, building, circuit, actions, selected,
         onPointerUp={onPointerUp}
         onPointerLeave={() => {
           setHover(undefined)
-          setHoverNet(undefined)
-          setHoverPin(undefined)
+          setHoverPad(undefined)
         }}
         onContextMenu={(e) => e.preventDefault()}
         aria-label="PCB layout. Drag parts to move them, drag the background to pan, scroll to zoom."
@@ -357,17 +240,19 @@ export function PcbCanvas({ json, buildId, building, circuit, actions, selected,
             {label}
           </button>
         ))}
+        {autoPlaced && (
+          <>
+            <span className="tool-divider" aria-hidden="true" />
+            <button onClick={() => keepAutoPlaced(design, "pcb", blockerFor, actions)} title="Write the faded parts' positions into the code as pcbX and pcbY">
+              Keep these positions
+            </button>
+          </>
+        )}
       </div>
-      {building && (
-        <div className="canvas-busy" role="status">
-          Updating…
-        </div>
-      )}
       <div className="canvas-status" aria-live="off">
         {cursor ? `${cursor.x.toFixed(2)}, ${cursor.y.toFixed(2)} mm` : ""}
-        {hoverPin && `  ${hoverPin}`}
-        {gesture?.kind === "drag" && gesture.moved && !gesture.allowed && `  Δ ${gesture.offset.x}, ${gesture.offset.y}`}
-        {unsupported.length > 0 && `\nDrawn by the fallback renderer: ${unsupported.join(", ")}`}
+        {hoverPad && `  ${padLabel(design, hoverPad)}`}
+        {gesture?.kind === "drag" && gesture.moved && !gesture.blocker && `  Δ ${gesture.offset.x}, ${gesture.offset.y}`}
       </div>
     </div>
   )

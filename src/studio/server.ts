@@ -22,12 +22,14 @@ import {
   loadCircuit,
   lockParts,
   removeMark,
+  resolveCircuit,
   undoChange,
   unlockParts,
   updateAnnotations,
 } from "../core/index.js"
-import { Evaluator, findTscircuitEval } from "./evaluator.js"
-import { LiveProject } from "./live.js"
+import type { Design } from "../engine/design.js"
+import { Engine } from "../engine/engine.js"
+import { LiveProject, type DesignBuilder } from "./live.js"
 
 export interface StudioOptions {
   root: string
@@ -35,14 +37,10 @@ export interface StudioOptions {
   port?: number
   /** Folder with the built browser app; defaults to dist/app. */
   staticDir?: string
-  buildCommand?: string[]
-  /**
-   * Build with the installed tscircuit's eval library in a long-lived worker (seconds per build
-   * instead of the CLI's start-up). On by default unless a build command or COPPERFLOW_TSCI is set.
-   */
-  fastBuild?: boolean
   /** Open event streams allowed at once. */
   maxStreams?: number
+  /** Builds the designs the viewers draw; defaults to an Engine, which the Studio stops when it closes. */
+  builder?: DesignBuilder
 }
 
 export interface Studio {
@@ -110,7 +108,8 @@ const EditSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("removeTrace"), from: z.string(), to: z.string() }),
 ])
 const Bodies = {
-  edit: z.object({ file, summary: z.string().min(1).max(200), edits: z.array(EditSchema).min(1).max(50) }),
+  // "Keep these positions" writes every auto-placed part in one request.
+  edit: z.object({ file, summary: z.string().min(1).max(200), edits: z.array(EditSchema).min(1).max(500) }),
   lock: z.object({ file, parts: z.array(z.string()).min(1).max(200), locked: z.boolean() }),
   mark: z.object({
     file,
@@ -140,10 +139,8 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
   const root = resolve(options.root)
   const staticDir = resolve(options.staticDir ?? fileURLToPath(new URL("../app/", import.meta.url)))
   const token = randomBytes(24).toString("hex")
-  const customCli = options.buildCommand !== undefined || Boolean(process.env.COPPERFLOW_TSCI)
-  const evalEntry = (options.fastBuild ?? !customCli) ? findTscircuitEval() : undefined
-  const fast = evalEntry ? new Evaluator(evalEntry) : undefined
-  const live = new LiveProject(root, options.buildCommand, fast)
+  const building = builderFor(options.builder)
+  const live = new LiveProject(root, building.builder)
   const streams = new Set<ServerResponse>()
   const maxStreams = options.maxStreams ?? DEFAULT_MAX_STREAMS
   let port = 0
@@ -182,18 +179,20 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         const { model, annotations, violations, file: name } = await loadCircuit(root, query("file"))
         return send(res, { file: name, model, annotations, violations })
       }
+      // Builds name the file without parsing it: a file with a syntax error still has a (failed) build.
       case "GET /api/build":
-        return send(res, live.getBuild((await loadCircuit(root, query("file"))).file))
+        return send(res, live.getBuild((await resolveCircuit(root, query("file"))).file))
       case "GET /api/history":
         return send(res, await listEntries(root, Number(url.searchParams.get("limit") ?? 50) || 50))
       case "POST /api/build": {
         const body = Bodies.build.parse(await readJson(req))
-        live.requestBuild((await loadCircuit(root, body.file)).file)
+        live.requestBuild((await resolveCircuit(root, body.file)).file)
         return send(res, { status: "building" }, 202)
       }
       case "POST /api/edit": {
         const body = Bodies.edit.parse(await readJson(req))
         const result = await editCircuit(root, body.file, body.edits, { author: "human", summary: body.summary })
+        live.requestBuild(result.entry.file)
         return send(res, { entryId: result.entry.id, violations: result.violations })
       }
       case "POST /api/lock": {
@@ -230,6 +229,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       case "POST /api/place": {
         const { file: name, ...request } = Bodies.place.parse(await readJson(req))
         const result = await placePart(root, name, request, { author: "human" })
+        live.requestBuild(result.entry.file)
         return send(res, { entryId: result.entry.id, name: result.name })
       }
       case "POST /api/verify": {
@@ -241,16 +241,17 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       }
       case "GET /api/bom": {
         const circuit = (await loadCircuit(root, query("file"))).file
-        return send(res, await buildBom(root, circuit, live.getBuild(circuit).circuitJson))
+        return send(res, await buildBom(root, circuit, bomHints(live.getBuild(circuit).design)))
       }
       case "POST /api/package": {
         const circuit = (await loadCircuit(root, Bodies.build.parse(await readJson(req)).file)).file
-        const json = live.getBuild(circuit).circuitJson
-        return send(res, await exportPackage(root, circuit, json ? { circuitJson: json } : {}))
+        const hints = bomHints(live.getBuild(circuit).design)
+        return send(res, await exportPackage(root, circuit, hints ? { circuitJson: hints } : {}))
       }
       case "POST /api/undo": {
         const body = Bodies.undo.parse(await readJson(req))
         const entry = await undoChange(root, { author: "human", ...(body.id ? { id: body.id } : {}) })
+        live.requestBuild(entry.file)
         return send(res, { entryId: entry.id, summary: entry.summary })
       }
       default:
@@ -297,11 +298,13 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
   await new Promise<void>((done, fail) => {
     server.once("error", fail)
     server.listen(options.port ?? DEFAULT_PORT, "127.0.0.1", () => done())
+  }).catch(async (error: unknown) => {
+    await building.stop()
+    throw error
   })
   const address = server.address()
   port = typeof address === "object" && address ? address.port : 0
   live.start()
-  fast?.warm()
 
   return {
     url: `http://127.0.0.1:${port}`,
@@ -309,12 +312,32 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
     openUrl: `http://127.0.0.1:${port}/#token=${token}`,
     close: async () => {
       live.stop()
-      await fast?.stop()
+      await building.stop()
       for (const stream of streams) stream.end()
       server.closeAllConnections()
       await new Promise<void>((done) => server.close(() => done()))
     },
   }
+}
+
+/** The given builder, or a new engine that the Studio owns and so stops when it closes. */
+function builderFor(given: DesignBuilder | undefined): { builder: DesignBuilder; stop(): Promise<void> } {
+  if (given) return { builder: given, stop: async () => undefined }
+  const engine = new Engine()
+  return { builder: engine, stop: () => engine.stop() }
+}
+
+/**
+ * The part numbers the design carries, in the source_component shape the BOM reads from a build,
+ * so the BOM shows the manufacturer and supplier numbers written in the code.
+ */
+function bomHints(design: Design | undefined): unknown[] | undefined {
+  return design?.circuit.components.map((component) => ({
+    type: "source_component",
+    name: component.id,
+    supplier_part_numbers: component.supplierPartNumbers,
+    ...(component.mpn ? { manufacturer_part_number: component.mpn } : {}),
+  }))
 }
 
 function send(res: ServerResponse, data: unknown, status = 200): void {

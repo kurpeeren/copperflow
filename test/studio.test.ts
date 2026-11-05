@@ -3,13 +3,22 @@ import { request } from "node:http"
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { fileURLToPath } from "node:url"
+import { resolveCircuit } from "../src/core/workspace.js"
+import { buildDesign } from "../src/engine/design.js"
+import { FOOTPRINT_FILE } from "../src/engine/engine.js"
+import { collectProjectFiles } from "../src/engine/project-files.js"
+import type { DesignBuilder } from "../src/studio/live.js"
 import { startStudio, type Studio } from "../src/studio/server.js"
 import { createPart } from "../src/core/library.js"
 import { BOARD, LDO } from "./fixtures.js"
 
-const FAKE = [process.execPath, fileURLToPath(new URL("./fixtures/fake-tsci.mjs", import.meta.url))]
 const FILE = "main.circuit.tsx"
+const SHARED = `export const regulatorProps = { footprint: "sot23_5", pinCount: 5 }; export const offset = 1`
+/** Builds in this process, as the engine's worker does, so tests need no built worker file. */
+const builder: DesignBuilder = {
+  build: async (root, file) =>
+    buildDesign(await collectProjectFiles(root, { include: FOOTPRINT_FILE }), (await resolveCircuit(root, file)).file),
+}
 let root: string
 let studio: Studio
 
@@ -21,8 +30,8 @@ beforeEach(async () => {
   await writeFile(join(staticDir, "app.js"), "console.log(1)")
   await writeFile(join(root, "secret.txt"), "top secret")
   await writeFile(join(root, FILE), BOARD)
-  await writeFile(join(root, "main.circuit.fake.json"), JSON.stringify({ elements: [{ type: "pcb_board" }] }))
-  studio = await startStudio({ root, port: 0, staticDir, buildCommand: FAKE, maxStreams: 2 })
+  await writeFile(join(root, "shared.ts"), SHARED)
+  studio = await startStudio({ root, port: 0, staticDir, builder, maxStreams: 2 })
 })
 
 afterEach(() => studio.close())
@@ -87,7 +96,7 @@ describe("security", () => {
 
   test("a port that is already in use fails cleanly", async () => {
     const { port } = new URL(studio.url)
-    await expect(startStudio({ root, port: Number(port), buildCommand: FAKE })).rejects.toThrow(/EADDRINUSE/)
+    await expect(startStudio({ root, port: Number(port), builder })).rejects.toThrow(/EADDRINUSE/)
   })
 
   test("the number of open event streams is capped", async () => {
@@ -183,18 +192,60 @@ describe("parts library", () => {
   })
 })
 
+/** Polls the build until `done` says it is finished, for at most `ms`. */
+async function buildWhen(done: (build: any) => boolean, ms = 4000) {
+  const deadline = Date.now() + ms
+  let build: any
+  do {
+    build = await data(await api(`/api/build?file=${FILE}`))
+    if (done(build)) return build
+    await new Promise((r) => setTimeout(r, 20))
+  } while (Date.now() < deadline)
+  return build
+}
+
+const finished = (build: { status: string }) => build.status === "done" || build.status === "failed"
+const ids = (build: any): string[] => build.design?.circuit.components.map((c: { id: string }) => c.id) ?? []
+
 describe("builds and live updates", () => {
-  test("a build produces circuit JSON for the viewers", async () => {
+  test("a build produces the design for the viewers", async () => {
     await data(await api("/api/build", { file: FILE }))
-    let build: any
-    for (let i = 0; i < 50; i++) {
-      build = await data(await api(`/api/build?file=${FILE}`))
-      if (build.status === "done" || build.status === "failed") break
-      await new Promise((r) => setTimeout(r, 100))
-    }
+    const build = await buildWhen(finished)
     expect(build.status).toBe("done")
-    expect(build.circuitJson).toEqual([{ type: "pcb_board" }])
-    expect(build.report.ok).toBe(true)
+    expect(ids(build)).toContain("R1")
+    expect(build.design.pcb.parts.length).toBeGreaterThan(0)
+    expect(build.design.diagnostics.some((d: { severity: string }) => d.severity === "error")).toBe(true)
+  })
+
+  test("a failed build keeps the last design and says where the code is wrong", async () => {
+    await data(await api("/api/build", { file: FILE }))
+    const first = await buildWhen(finished)
+    await writeFile(join(root, FILE), "export default () => (<board")
+    await data(await api("/api/build", { file: FILE }))
+    const failed = await buildWhen((b) => b.status === "failed")
+    expect(failed.status).toBe("failed")
+    expect(failed.error).toMatch(/main\.circuit\.tsx:/)
+    expect(ids(failed)).toContain("R1")
+    expect(failed.finishedAt).not.toBe(first.finishedAt)
+  })
+
+  test("an edit is built at once, without waiting for the file watcher", async () => {
+    await data(await api("/api/build", { file: FILE }))
+    const before = await buildWhen(finished)
+    const started = Date.now()
+    await data(await api("/api/edit", { file: FILE, summary: "move R1", edits: [{ kind: "setProps", part: "R1", props: { pcbX: 5 } }] }))
+    const right = await data(await api(`/api/build?file=${FILE}`))
+    expect(right.status === "building" || right.finishedAt !== before.finishedAt).toBe(true)
+    const after = await buildWhen((b) => finished(b) && b.finishedAt !== before.finishedAt, 2000)
+    expect(Date.now() - started).toBeLessThan(2000)
+    expect(after.design.pcb.parts.find((p: { component: string }) => p.component === "R1").x).toBe(5)
+  })
+
+  test("one edit request can carry 120 changes", async () => {
+    const edits = Array.from({ length: 120 }, (_, i) => ({ kind: "setProps", part: "R1", props: { pcbX: i } }))
+    const response = await api("/api/edit", { file: FILE, summary: "Keep auto-placed positions", edits })
+    expect(response.status).toBe(200)
+    expect(await readFile(join(root, FILE), "utf8")).toContain("pcbX={119}")
   })
 
   test("a change to a circuit file is announced over server-sent events", async () => {

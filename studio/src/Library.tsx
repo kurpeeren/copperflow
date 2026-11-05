@@ -6,7 +6,7 @@ interface Props {
   onPlace(part: string): void
 }
 
-/** Parts that can be added to the board: the project's library and tscircuit's built-in parts. */
+/** Parts that can be added to the board: the project's library and the built-in parts. */
 export function Library({ parts, onPlace }: Props) {
   const [query, setQuery] = useState("")
   const needle = query.trim().toLowerCase()

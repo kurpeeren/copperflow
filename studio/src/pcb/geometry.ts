@@ -1,5 +1,6 @@
-// Pure geometry for the PCB canvas: camera, grid, snapping and part boxes. World units are
-// millimetres with y pointing up; screen units are CSS pixels with y pointing down.
+// Pure geometry for the PCB and schematic canvases: camera, grid, snapping, bounds and wire paths.
+// World units are millimetres (sheet units on the schematic) with y pointing up; screen units are
+// CSS pixels with y pointing down.
 
 export interface Point {
   x: number
@@ -25,25 +26,11 @@ export interface Camera {
   scale: number
 }
 
-export interface Matrix {
-  a: number
-  b: number
-  c: number
-  d: number
-  e: number
-  f: number
-}
-
 export interface PartBox {
   name: string
   pcbComponentId: string
   center: Point
   box: Box
-}
-
-interface Element {
-  type: string
-  [key: string]: unknown
 }
 
 const MIN_SCALE = 0.5
@@ -57,19 +44,6 @@ export function worldToScreen(camera: Camera, size: Size, p: Point): Point {
 
 export function screenToWorld(camera: Camera, size: Size, p: Point): Point {
   return { x: (p.x - size.width / 2) / camera.scale + camera.cx, y: -(p.y - size.height / 2) / camera.scale + camera.cy }
-}
-
-/** The world-to-canvas matrix for the drawer; the canvas has `pixelRatio` device pixels per CSS pixel. */
-export function toMatrix(camera: Camera, size: Size, pixelRatio: number): Matrix {
-  const s = camera.scale * pixelRatio
-  return {
-    a: s,
-    b: 0,
-    c: 0,
-    d: -s,
-    e: (size.width / 2 - camera.cx * camera.scale) * pixelRatio,
-    f: (size.height / 2 + camera.cy * camera.scale) * pixelRatio,
-  }
 }
 
 /** A camera that shows the whole box with a margin around it. */
@@ -105,28 +79,6 @@ export function snap(value: number, step: number): number {
   return Number((Math.round(value / step) * step).toFixed(decimals))
 }
 
-/** The box of every placed component that has a source name. */
-export function componentBoxes(json: Element[]): PartBox[] {
-  const names = new Map<unknown, string>()
-  for (const e of json) if (e.type === "source_component" && typeof e.name === "string") names.set(e.source_component_id, e.name)
-  const boxes: PartBox[] = []
-  for (const e of json) {
-    if (e.type !== "pcb_component") continue
-    const name = names.get(e.source_component_id)
-    const center = e.center as Point | undefined
-    if (!name || !center || typeof e.width !== "number" || typeof e.height !== "number") continue
-    const halfW = e.width / 2
-    const halfH = e.height / 2
-    boxes.push({
-      name,
-      pcbComponentId: String(e.pcb_component_id),
-      center,
-      box: { minX: center.x - halfW, minY: center.y - halfH, maxX: center.x + halfW, maxY: center.y + halfH },
-    })
-  }
-  return boxes
-}
-
 /** The smallest part box that contains the point. */
 export function hitTest(boxes: PartBox[], p: Point): PartBox | undefined {
   const area = (b: Box) => (b.maxX - b.minX) * (b.maxY - b.minY)
@@ -135,42 +87,28 @@ export function hitTest(boxes: PartBox[], p: Point): PartBox | undefined {
     .sort((a, b) => area(a.box) - area(b.box))[0]
 }
 
-/** The board outline's bounds, or the bounds of all parts when there is no board. */
-export function boardBounds(json: Element[]): Box | undefined {
-  const board = json.find((e) => e.type === "pcb_board")
-  const center = board?.center as Point | undefined
-  if (board && center && typeof board.width === "number" && typeof board.height === "number") {
-    return { minX: center.x - board.width / 2, minY: center.y - board.height / 2, maxX: center.x + board.width / 2, maxY: center.y + board.height / 2 }
-  }
-  const boxes = componentBoxes(json).map((b) => b.box)
-  if (boxes.length === 0) return undefined
-  return {
-    minX: Math.min(...boxes.map((b) => b.minX)),
-    minY: Math.min(...boxes.map((b) => b.minY)),
-    maxX: Math.max(...boxes.map((b) => b.maxX)),
-    maxY: Math.max(...boxes.map((b) => b.maxY)),
-  }
+/** The smallest box around the points, or undefined when there are none. */
+export function pointBounds(points: readonly Point[]): Box | undefined {
+  if (points.length === 0) return undefined
+  const xs = points.map((p) => p.x)
+  const ys = points.map((p) => p.y)
+  return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) }
 }
 
-/** Boxes of schematic symbols, from each schematic_component's centre and size. */
-export function schematicBoxes(json: Element[]): PartBox[] {
-  const names = new Map<unknown, string>()
-  for (const e of json) if (e.type === "source_component" && typeof e.name === "string") names.set(e.source_component_id, e.name)
-  const boxes: PartBox[] = []
-  for (const e of json) {
-    if (e.type !== "schematic_component") continue
-    const name = names.get(e.source_component_id)
-    const center = e.center as Point | undefined
-    const size = e.size as { width?: number; height?: number } | undefined
-    if (!name || !center || typeof size?.width !== "number" || typeof size.height !== "number") continue
-    boxes.push({
-      name,
-      pcbComponentId: String(e.schematic_component_id),
-      center,
-      box: { minX: center.x - size.width / 2, minY: center.y - size.height / 2, maxX: center.x + size.width / 2, maxY: center.y + size.height / 2 },
-    })
+/** The smallest box around all the boxes, or undefined when there are none. */
+export function unionBoxes(boxes: readonly Box[]): Box | undefined {
+  return pointBounds(boxes.flatMap((b) => [{ x: b.minX, y: b.minY }, { x: b.maxX, y: b.maxY }]))
+}
+
+/** A wire through the points that turns at right angles, going horizontally first; repeated points are dropped. */
+export function rightAngles(points: readonly Point[]): Point[] {
+  const path: Point[] = []
+  for (const p of points) {
+    const last = path[path.length - 1]
+    if (last && last.x !== p.x && last.y !== p.y) path.push({ x: p.x, y: last.y })
+    if (!last || last.x !== p.x || last.y !== p.y) path.push(p)
   }
-  return boxes
+  return path
 }
 
 function clampScale(scale: number): number {

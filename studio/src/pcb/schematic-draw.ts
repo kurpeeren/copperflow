@@ -4,7 +4,7 @@ import type { PlacedSymbol, SchematicLayout, NetLabel } from "../../../src/engin
 import { groundSymbol, powerSymbol, type SchSymbol, type Shape } from "../../../src/engine/symbols/index.js"
 import { anchorAlignment, type Ctx } from "./ctx.js"
 import { labelTag, NET_LABEL_TEXT } from "./label-tag.js"
-import { worldToScreen, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
+import { worldToScreen, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
 
 export interface SchematicDrawOptions {
   /** Device pixels per CSS pixel. */
@@ -32,6 +32,7 @@ export const SCHEMATIC_PALETTE = {
   netLabelFill: "rgb(110 168 214 / 14%)",
   port: "#6ea8d6",
   activePort: "#ffd08a",
+  autoBox: "rgb(217 212 199 / 45%)",
 }
 
 type View = { camera: Camera; size: Size }
@@ -50,6 +51,7 @@ interface Label {
   anchor: string
   color: string
   rotation?: number
+  alpha?: number
 }
 
 const NO_SHIFT: Point = { x: 0, y: 0 }
@@ -64,6 +66,9 @@ const JUNCTION_PX = 3
 const DASH: number[] = [0.1, 0.06]
 const NUMBER_INSET = 0.1
 const NUMBER_RISE = 0.07
+/** Symbols the engine placed for itself are drawn faded inside a dashed box, so the person sees they have no position yet. */
+const AUTO_PLACED_ALPHA = 0.6
+const AUTO_DASH_PX = [4, 3]
 const TEXT_COLORS: Record<Role, string> = {
   reference: SCHEMATIC_PALETTE.reference,
   value: SCHEMATIC_PALETTE.value,
@@ -88,7 +93,7 @@ export function drawSchematic(ctx: Ctx, layout: SchematicLayout, view: View, opt
   ctx.lineCap = "round"
   ctx.lineJoin = "round"
   drawWires(ctx, layout, options, px, line)
-  for (const symbol of layout.symbols) drawSymbol(ctx, symbol, shiftOf(symbol), line, texts)
+  for (const symbol of layout.symbols) drawSymbol(ctx, symbol, shiftOf(symbol), { line, px }, texts)
   for (const label of layout.labels) drawLabel(ctx, label, line, texts)
   drawPins(ctx, layout, options, px, shiftOf)
 
@@ -101,18 +106,23 @@ export function drawSchematic(ctx: Ctx, layout: SchematicLayout, view: View, opt
 /** One box per symbol, from its bounds turned to the symbol's rotation; the id is the component. */
 export function sheetBoxes(layout: SchematicLayout): PartBox[] {
   return layout.symbols.map((placed) => {
-    const { minX, minY, maxX, maxY } = placed.symbol.bounds
-    const corners = [
-      { x: minX, y: minY },
-      { x: maxX, y: minY },
-      { x: maxX, y: maxY },
-      { x: minX, y: maxY },
-    ].map((corner) => place(corner, placed))
-    const xs = corners.map((c) => c.x)
-    const ys = corners.map((c) => c.y)
-    const box = { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) }
+    const box = symbolBox(placed)
     return { name: placed.component, pcbComponentId: placed.component, center: { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 }, box }
   })
+}
+
+/** The symbol's bounds turned to its rotation, on the sheet. */
+function symbolBox(placed: PlacedSymbol): Box {
+  const { minX, minY, maxX, maxY } = placed.symbol.bounds
+  const corners = [
+    { x: minX, y: minY },
+    { x: maxX, y: minY },
+    { x: maxX, y: maxY },
+    { x: minX, y: maxY },
+  ].map((corner) => place(corner, placed))
+  const xs = corners.map((c) => c.x)
+  const ys = corners.map((c) => c.y)
+  return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) }
 }
 
 /** A symbol-local point turned counter-clockwise by the frame's rotation, then moved to its origin. */
@@ -152,12 +162,32 @@ function drawWires(ctx: Ctx, layout: SchematicLayout, options: SchematicDrawOpti
   ctx.setLineDash([])
 }
 
-function drawSymbol(ctx: Ctx, placed: PlacedSymbol, shift: Point, line: (w: number) => number, texts: Label[]): void {
+function drawSymbol(ctx: Ctx, placed: PlacedSymbol, shift: Point, pen: { line: (w: number) => number; px: number }, texts: Label[]): void {
   const frame = { x: placed.x + shift.x, y: placed.y + shift.y, rotation: placed.rotation }
-  ctx.lineWidth = line(SYMBOL_WIDTH)
-  drawShapes(ctx, placed.symbol.shapes, frame, SCHEMATIC_PALETTE.outline, texts)
-  if (placed.symbol.shapes.some((shape) => shape.type === "text" && shape.role === "pin-number")) return
-  for (const label of pinNumbers(placed.symbol, frame)) texts.push(label)
+  const alpha = placed.autoPlaced ? AUTO_PLACED_ALPHA : 1
+  const own: Label[] = []
+  ctx.globalAlpha = alpha
+  ctx.lineWidth = pen.line(SYMBOL_WIDTH)
+  drawShapes(ctx, placed.symbol.shapes, frame, SCHEMATIC_PALETTE.outline, own)
+  ctx.globalAlpha = 1
+  if (placed.autoPlaced) drawAutoBox(ctx, symbolBox(placed), shift, pen.px)
+  if (!placed.symbol.shapes.some((shape) => shape.type === "text" && shape.role === "pin-number")) own.push(...pinNumbers(placed.symbol, frame))
+  texts.push(...own.map((label) => ({ ...label, alpha })))
+}
+
+function drawAutoBox(ctx: Ctx, box: Box, shift: Point, px: number): void {
+  ctx.strokeStyle = SCHEMATIC_PALETTE.autoBox
+  ctx.lineWidth = px
+  ctx.setLineDash(AUTO_DASH_PX.map((dash) => dash * px))
+  path(ctx, [
+    { x: box.minX + shift.x, y: box.minY + shift.y },
+    { x: box.maxX + shift.x, y: box.minY + shift.y },
+    { x: box.maxX + shift.x, y: box.maxY + shift.y },
+    { x: box.minX + shift.x, y: box.maxY + shift.y },
+  ])
+  ctx.closePath()
+  ctx.stroke()
+  ctx.setLineDash([])
 }
 
 /** Numbers for symbols that do not draw their own: on the lead, just above it. */
@@ -257,6 +287,7 @@ function drawText(ctx: Ctx, label: Label, camera: Camera, size: Size): void {
   ctx.save()
   ctx.translate(p.x, p.y)
   if (label.rotation) ctx.rotate(rad(-label.rotation))
+  ctx.globalAlpha = label.alpha ?? 1
   ctx.fillStyle = label.color
   ctx.font = `500 ${fontPx}px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif`
   ctx.textAlign = horizontal
