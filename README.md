@@ -85,7 +85,7 @@ remove, scroll to zoom, drag the background to pan, lock parts, change values in
 move symbols in the schematic and draw wires as in KiCad (click a free pin, or press W over a pin,
 click the sheet for corners on the grid, then click a pin, a net label or a wire; Esc cancels),
 leave marks for the agent and undo changes.
-Every edit is written back into the circuit file, and the drawing updates a few seconds later.
+Every edit is written back into the circuit file and shows at once.
 When the agent changes the file, the editor updates by itself.
 
 The Library tab places parts from your library or the built-in parts (resistor, capacitor, LED

@@ -38,7 +38,7 @@ export async function collectProjectFiles(
   const files: Record<string, string> = {}
   let bytes = 0
   let count = 0
-  const tooLarge = () => new Error("The project is too large for the fast build")
+  const tooLarge = () => new Error("The project is too large to build")
   const walk = async (dir: string, prefix: string): Promise<void> => {
     for (const entry of await readdir(dir, { withFileTypes: true })) {
       if (entry.isSymbolicLink()) continue

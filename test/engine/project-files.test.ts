@@ -44,6 +44,6 @@ describe("collectProjectFiles", () => {
 
   test("refuses a project that is too large", async () => {
     await put("a.tsx", "x".repeat(100))
-    await expect(collectProjectFiles(root, { maxBytes: 50 })).rejects.toThrow(/too large/)
+    await expect(collectProjectFiles(root, { maxBytes: 50 })).rejects.toThrow("The project is too large to build")
   })
 })

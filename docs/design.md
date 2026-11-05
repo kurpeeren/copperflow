@@ -40,7 +40,8 @@ while a human and an AI agent work on the same design.
 
 - The AI silently overwrites a human change or a locked part.
 - A visual edit rewrites or reformats code the human wrote.
-- The AI writes pad coordinates or footprints by hand instead of using generated footprints.
+- The AI writes pad coordinates by hand when a generated footprint family fits, or a
+  hand-transcribed `footprint.yaml` counts as checked before a human has verified it.
 - An "ERC passed" result is presented as proof that a circuit is correct.
 
 ## Constraints
@@ -209,8 +210,11 @@ parts/AP2112K-3.3/
 - `part.yaml` lists pins by number with a name and an electrical type (`power_in`,
   `power_out`, `ground`, `input`, `output`, `bidirectional`, `passive`, `no_connect`).
   The types become tscircuit pin attributes, so the build can warn about unpowered parts.
-- The footprint is a tscircuit footprint string such as `sot23_5` or `soic8_p1.27mm`.
-  Nobody writes pad coordinates; the footprint generator draws the pads.
+- The footprint is a footprint string such as `sot23_5` or `soic8_p1.27mm`, and the footprint
+  generator draws the pads. When no generated family fits the package, the part carries a
+  `footprint.yaml` with its pads transcribed by hand from the datasheet's recommended land
+  pattern; a human checks every pad as part of verifying the part (see
+  [the engine design](engine-design.md)).
 - The agent creates a part by reading the datasheet itself and calling `create_part`. The
   part starts as *not verified*. Only a human marks it verified (`copperflow parts verify`),
   after checking the items in `verification.md`. The agent has no verify tool.
