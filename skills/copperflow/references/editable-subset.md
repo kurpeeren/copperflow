@@ -27,3 +27,27 @@ editor and in the tools.
 A part inside a component defined outside the board, such as
 `const Power = () => <group name="power">...</group>`, is editable. Editing it changes every
 place the component is used.
+
+## Pin names of the built-in kinds
+
+Every pin answers to `pin<n>` and to the aliases below, so `R1.pin1`, `LED1.anode` and
+`.LED1 > .pin1` all work. A `pinLabels` entry for a pin replaces the aliases of that pin; its names
+come after `pin<n>`. A label may be one name or a list of names.
+
+| Kind | Pins (number: names) |
+|---|---|
+| resistor, capacitor, inductor, fuse, crystal, switch | 1: pin1, left; 2: pin2, right |
+| capacitor with `polarized` | 1: pin1, pos, anode; 2: pin2, neg, cathode |
+| diode, led | 1: pin1, anode, pos; 2: pin2, cathode, neg |
+| battery | 1: pin1, pos; 2: pin2, neg |
+| potentiometer | 1: pin1; 2: pin2, wiper; 3: pin3 |
+| resonator | 1: pin1; 2: pin2, gnd; 3: pin3 |
+| pushbutton | 1 to 4: pin1 to pin4 |
+| testpoint | 1: pin1 |
+| transistor (`type` npn or pnp) | 1: pin1, B, base; 2: pin2, E, emitter; 3: pin3, C, collector |
+| mosfet | 1: pin1, G, gate; 2: pin2, S, source; 3: pin3, D, drain |
+| pinheader | 1 to `pinCount`: pin\<n\> |
+| chip, connector | the numbers in `pinLabels` plus 1 to `pinCount`; with neither, one pin per pad of `footprint` |
+
+A chip, connector or pinheader whose pins cannot be found this way (for example a connector with
+only `standard="usb_c"`) has no pins and is reported as an `unsupported-element` error.

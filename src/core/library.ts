@@ -15,7 +15,7 @@ export type PinType = (typeof PIN_TYPES)[number]
 export const LIBRARY_OWNED_PROPS = ["footprint", "manufacturerPartNumber", "supplierPartNumbers", "pinLabels", "pinAttributes"]
 
 /** tscircuit pin attributes for each electrical pin type. */
-const PIN_ATTRIBUTES: Record<PinType, Record<string, boolean>> = {
+export const PIN_ATTRIBUTES: Record<PinType, Record<string, boolean>> = {
   power_in: { requiresPower: true },
   power_out: { providesPower: true },
   ground: { requiresGround: true },
