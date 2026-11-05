@@ -7,7 +7,6 @@ import YAML from "yaml"
 import {
   BUILTIN_PARTS,
   buildBom,
-  buildCircuit,
   createPart,
   exportPackage,
   formatBomMarkdown,
@@ -27,6 +26,7 @@ import {
   undoChange,
   type Edit,
 } from "../core/index.js"
+import type { DesignSource } from "../core/bom.js"
 import { FootprintFileSchema } from "../engine/footprints/file.js"
 import { VERSION } from "../version.js"
 
@@ -47,10 +47,13 @@ const READ_ONLY = { readOnlyHint: true, destructiveHint: false }
 export interface ServerOptions {
   /** The tscircuit CLI used by check_circuit; defaults to $COPPERFLOW_TSCI or `tsci`. */
   buildCommand?: string[]
+  /** Builds the design for bom and export_package; tests pass one that runs in this process. */
+  engine?: DesignSource
 }
 
 export function createCopperflowServer(root: string, options: ServerOptions = {}): McpServer {
   const server = new McpServer({ name: "copperflow", version: VERSION }, { instructions: INSTRUCTIONS })
+  const designOptions = options.engine ? { engine: options.engine } : {}
 
   const edit = (circuit: string, edits: Edit[], summary: string) =>
     run(async () => {
@@ -216,29 +219,26 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
   server.registerTool(
     "bom",
     {
-      description: "Bill of materials for a circuit, grouped by part. With build: true it runs a build first to include supplier part numbers chosen by tscircuit.",
-      inputSchema: { file, build: z.boolean().optional() },
+      description: "Bill of materials for a circuit, grouped by part. It is read from the design the engine builds from the circuit code, so parts made in loops are counted.",
+      inputSchema: { file },
       annotations: READ_ONLY,
     },
-    ({ file: circuit, build }) =>
-      run(async () => formatBomMarkdown(await buildBom(root, circuit, build ? await builtJson(circuit) : undefined))),
+    ({ file: circuit }) => run(async () => formatBomMarkdown(await buildBom(root, circuit, designOptions))),
   )
 
   server.registerTool(
     "export_package",
     {
       description: "Write a folder with BOM.csv, BOM.md, the local datasheets and a list of library parts with their verification status.",
-      inputSchema: { file, build: z.boolean().optional() },
+      inputSchema: { file },
     },
-    ({ file: circuit, build }) =>
+    ({ file: circuit }) =>
       run(async () => {
-        const result = await exportPackage(root, circuit, build ? { circuitJson: await builtJson(circuit) } : {})
+        const result = await exportPackage(root, circuit, designOptions)
         return `Wrote ${result.files.length} files to ${result.outDir}:\n${result.files.join("\n")}`
       }),
   )
 
-  const builtJson = async (circuit: string) =>
-    (await buildCircuit(root, circuit, options.buildCommand ? { command: options.buildCommand } : {})).circuitJson
 
   server.registerTool(
     "recent_changes",

@@ -80,6 +80,17 @@ export class LiveProject {
     return this.builds.get(file) ?? { status: "idle" }
   }
 
+  /**
+   * The design of the last finished build of `file`, when the circuit file has not changed since
+   * that build started; otherwise nothing.
+   */
+  async currentDesign(file: string): Promise<Design | undefined> {
+    const { status, design } = this.getBuild(file)
+    if (status !== "done" || !design) return undefined
+    const text = await this.readSource(file)
+    return text !== undefined && text === this.sources.get(file) ? design : undefined
+  }
+
   /** Builds `file` now, or once more after the build that is running. */
   requestBuild(file: string): void {
     if (this.stopped) return

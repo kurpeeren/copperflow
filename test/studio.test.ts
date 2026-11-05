@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "vitest"
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { request } from "node:http"
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -10,10 +10,9 @@ import { collectProjectFiles } from "../src/engine/project-files.js"
 import type { DesignBuilder } from "../src/studio/live.js"
 import { startStudio, type Studio } from "../src/studio/server.js"
 import { createPart } from "../src/core/library.js"
-import { BOARD, LDO } from "./fixtures.js"
+import { BOARD, LDO, SHARED } from "./fixtures.js"
 
 const FILE = "main.circuit.tsx"
-const SHARED = `export const regulatorProps = { footprint: "sot23_5", pinCount: 5 }; export const offset = 1`
 /** Builds in this process, as the engine's worker does, so tests need no built worker file. */
 const builder: DesignBuilder = {
   build: async (root, file) =>
@@ -189,6 +188,23 @@ describe("parts library", () => {
     expect(lines.map((l: { designators: string[] }) => l.designators[0])).toContain("R1")
     const pkg = await data(await api("/api/package", { file: FILE }))
     expect(pkg.files).toContain("exports/main/BOM.csv")
+  })
+
+  test("the BOM reads the live design when it is current, and builds when it is not", async () => {
+    await data(await api("/api/build", { file: FILE }))
+    await buildWhen(finished)
+    const build = vi.spyOn(builder, "build")
+    await data(await api(`/api/bom?file=${FILE}`))
+    expect(build).not.toHaveBeenCalled()
+    await writeFile(join(root, FILE), BOARD.replace('"R1"', '"R7"'))
+    const lines = await data(await api(`/api/bom?file=${FILE}`))
+    expect(lines.map((l: { designators: string[] }) => l.designators[0])).toContain("R7")
+    build.mockRestore()
+  })
+
+  test("the BOM builds when no build has run yet", async () => {
+    const lines = await data(await api(`/api/bom?file=${FILE}`))
+    expect(lines.length).toBeGreaterThan(0)
   })
 })
 

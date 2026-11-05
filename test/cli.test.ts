@@ -6,19 +6,21 @@ import { fileURLToPath } from "node:url"
 import { runCli } from "../src/cli-commands.js"
 import { readAnnotations } from "../src/core/annotations.js"
 import { createPart } from "../src/core/library.js"
-import { BOARD, LDO } from "./fixtures.js"
+import { BOARD, LDO, SHARED } from "./fixtures.js"
+import { inProcessEngine } from "./helpers/in-process-engine.js"
 
 const FILE = "main.circuit.tsx"
 let root: string
 let out: string[]
 let err: string[]
 const io = () => ({ out: (s: string) => out.push(s), err: (s: string) => err.push(s) })
-const run = (...args: string[]) => runCli(args, root, io())
+const run = (...args: string[]) => runCli(args, root, io(), { engine: inProcessEngine })
 const sidecar = () => readAnnotations(join(root, "main.circuit.annotations.json"))
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "cf-cli-"))
   await writeFile(join(root, FILE), BOARD)
+  await writeFile(join(root, "shared.ts"), SHARED)
   out = []
   err = []
 })
@@ -82,6 +84,20 @@ describe("cli", () => {
     expect(out.join("\n")).toContain("exports/main/BOM.csv")
     // main.circuit.tsx sits at the project root, so its package folder is exports/main.
     expect(await run("place", FILE, "LDO", "U8", "broken")).toBe(1)
+  })
+
+  test("bom and package no longer take --build", async () => {
+    expect(await run("bom", FILE, "--build")).toBe(1)
+    expect(err.join("\n")).toContain("--build")
+    err = []
+    expect(await run("package", FILE, "--build")).toBe(1)
+    expect(err.join("\n")).toContain("--build")
+  })
+
+  test("a circuit-code error in a BOM build is reported as file:line:column", async () => {
+    await writeFile(join(root, FILE), "export default () => <board>\n")
+    expect(await run("bom", FILE)).toBe(1)
+    expect(err.join("\n")).toMatch(/main\.circuit\.tsx:\d+:\d+: /)
   })
 
   test("errors are reported with a non-zero exit code", async () => {

@@ -27,7 +27,6 @@ import {
   unlockParts,
   updateAnnotations,
 } from "../core/index.js"
-import type { Design } from "../engine/design.js"
 import { Engine } from "../engine/engine.js"
 import { LiveProject, type DesignBuilder } from "./live.js"
 
@@ -164,6 +163,9 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
     const given = req.headers["x-copperflow-token"]
     if (typeof given !== "string" || !sameToken(given, token)) throw new HttpError(403, "Missing or wrong session token")
 
+    /** The live design when it is current for the circuit file, else a fresh build. */
+    const designOf = async (circuit: string) => (await live.currentDesign(circuit)) ?? (await building.builder.build(root, circuit))
+
     const route = `${req.method} ${url.pathname}`
     const query = (name: string) => {
       const value = url.searchParams.get(name)
@@ -241,12 +243,11 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       }
       case "GET /api/bom": {
         const circuit = (await loadCircuit(root, query("file"))).file
-        return send(res, await buildBom(root, circuit, bomHints(live.getBuild(circuit).design)))
+        return send(res, await buildBom(root, circuit, { design: await designOf(circuit) }))
       }
       case "POST /api/package": {
         const circuit = (await loadCircuit(root, Bodies.build.parse(await readJson(req)).file)).file
-        const hints = bomHints(live.getBuild(circuit).design)
-        return send(res, await exportPackage(root, circuit, hints ? { circuitJson: hints } : {}))
+        return send(res, await exportPackage(root, circuit, { design: await designOf(circuit) }))
       }
       case "POST /api/undo": {
         const body = Bodies.undo.parse(await readJson(req))
@@ -325,19 +326,6 @@ function builderFor(given: DesignBuilder | undefined): { builder: DesignBuilder;
   if (given) return { builder: given, stop: async () => undefined }
   const engine = new Engine()
   return { builder: engine, stop: () => engine.stop() }
-}
-
-/**
- * The part numbers the design carries, in the source_component shape the BOM reads from a build,
- * so the BOM shows the manufacturer and supplier numbers written in the code.
- */
-function bomHints(design: Design | undefined): unknown[] | undefined {
-  return design?.circuit.components.map((component) => ({
-    type: "source_component",
-    name: component.id,
-    supplier_part_numbers: component.supplierPartNumbers,
-    ...(component.mpn ? { manufacturer_part_number: component.mpn } : {}),
-  }))
 }
 
 function send(res: ServerResponse, data: unknown, status = 200): void {

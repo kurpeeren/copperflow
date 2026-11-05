@@ -97,7 +97,9 @@ pad coordinates: the footprint generator draws the pads.
 
 **BOM and datasheet package.** `copperflow bom` groups parts by value, footprint and part
 number; `copperflow package` writes the BOM, the local datasheets and every library part's
-verification status into one folder.
+verification status into one folder. Both read the design copperflow builds from the circuit code,
+so parts made in loops are counted, and supplier numbers come from the code and the library; there
+is no `--build` option.
 
 **History.** Every change made through copperflow is stored in `.copperflow/history/` with
 who made it. `copperflow undo` reverts the newest change; the agent can undo only its own.
@@ -140,8 +142,8 @@ copperflow parts verify <id> --by <name> --against <datasheet, page>
                                             mark a part as checked against its datasheet
 copperflow place <file> <part> <name> [key=value ...]
                                             add a library or built-in part to a circuit
-copperflow bom <file> [--csv] [--build]     print the bill of materials
-copperflow package <file> [--out dir] [--build]
+copperflow bom <file> [--csv]               print the bill of materials
+copperflow package <file> [--out dir]
                                             write BOM, datasheets and part status to a folder
 copperflow history [--limit n]              list recent changes
 copperflow undo [id]                        undo the newest change, or the given one

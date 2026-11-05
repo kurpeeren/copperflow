@@ -26,6 +26,21 @@ function heldBuilder() {
 }
 
 describe("LiveProject", () => {
+  test("currentDesign is the finished design while the circuit file is unchanged, and nothing otherwise", async () => {
+    const held = heldBuilder()
+    live = new LiveProject(root, held.builder)
+    expect(await live.currentDesign(FILE)).toBeUndefined()
+    live.requestBuild(FILE)
+    await vi.waitFor(() => expect(held.build).toHaveBeenCalledTimes(1))
+    expect(await live.currentDesign(FILE)).toBeUndefined()
+    held.release()
+    await vi.waitFor(() => expect(live?.getBuild(FILE).status).toBe("done"))
+    expect(await live.currentDesign(FILE)).toBe(DESIGN)
+    await writeFile(join(root, FILE), `${TEXT}// edited
+`)
+    expect(await live.currentDesign(FILE)).toBeUndefined()
+  })
+
   test("a build requested while one runs runs once more afterwards, and finishes later", async () => {
     const held = heldBuilder()
     live = new LiveProject(root, held.builder)

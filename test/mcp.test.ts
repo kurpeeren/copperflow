@@ -8,7 +8,8 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { createCopperflowServer } from "../src/mcp/server.js"
 import { loadCircuit, updateAnnotations } from "../src/core/workspace.js"
 import { addMark, lockParts } from "../src/core/annotations.js"
-import { BOARD, LDO, USBX, USBX_FOOTPRINT } from "./fixtures.js"
+import { BOARD, LDO, SHARED, USBX, USBX_FOOTPRINT } from "./fixtures.js"
+import { inProcessEngine } from "./helpers/in-process-engine.js"
 
 const FILE = "main.circuit.tsx"
 const FAKE_TSCI = [process.execPath, fileURLToPath(new URL("./fixtures/fake-tsci.mjs", import.meta.url))]
@@ -18,7 +19,8 @@ let client: Client
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "cf-mcp-"))
   await writeFile(join(root, FILE), BOARD)
-  const server = createCopperflowServer(root, { buildCommand: FAKE_TSCI })
+  await writeFile(join(root, "shared.ts"), SHARED)
+  const server = createCopperflowServer(root, { buildCommand: FAKE_TSCI, engine: inProcessEngine })
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
   client = new Client({ name: "test", version: "0.0.0" })
   await Promise.all([server.connect(serverSide), client.connect(clientSide)])
@@ -50,6 +52,14 @@ describe("MCP server", () => {
       "set_props",
       "undo_change",
     ])
+  })
+
+  test("bom and export_package take no build input", async () => {
+    const { tools } = await client.listTools()
+    for (const name of ["bom", "export_package"]) {
+      const properties = tools.find((t) => t.name === name)?.inputSchema.properties ?? {}
+      expect(Object.keys(properties)).toEqual(["file"])
+    }
   })
 
   test("the agent creates a part from a datasheet, places it and sees it in the BOM", async () => {

@@ -41,6 +41,9 @@ export const USBX_FOOTPRINT: FootprintFile = {
   ],
 }
 
+/** The module BOARD imports. */
+export const SHARED = `export const regulatorProps = { footprint: "sot23_5", pinCount: 5 }; export const offset = 1`
+
 export const BOARD = `import { regulatorProps, offset } from "./shared"
 
 export default () => (
