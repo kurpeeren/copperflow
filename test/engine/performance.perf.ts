@@ -1,5 +1,6 @@
 import { expect, test } from "vitest"
 import { fastestMs } from "../helpers/fastest.js"
+import { checkDesign } from "../../src/engine/checks/index.js"
 import { buildDesign } from "../../src/engine/design.js"
 
 const COLUMNS = 20
@@ -38,4 +39,11 @@ test("builds a 200-part board quickly", () => {
   const fastest = fastestMs(() => void run(), 5)
   console.log(`buildDesign 200 parts, fastest of 5: ${fastest.toFixed(1)} ms`)
   expect(fastest).toBeLessThan(300)
+})
+
+test("checks a 200-part board in under a second", () => {
+  const built = buildDesign({ "big.circuit.tsx": bigBoard() }, "big.circuit.tsx")
+  const fastest = fastestMs(() => void checkDesign(built.circuit, built.schematic, built.pcb, built.rules), 5)
+  console.log(`checkDesign 200 parts, fastest of 5: ${fastest.toFixed(1)} ms`)
+  expect(fastest).toBeLessThan(1000)
 })

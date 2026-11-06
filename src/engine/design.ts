@@ -1,3 +1,5 @@
+import { checkDesign } from "./checks/index.js"
+import type { Violation } from "./checks/violation.js"
 import { elaborate } from "./elaborate.js"
 import { evaluateCircuit } from "./evaluate.js"
 import { generateFootprint, type FootprintResult } from "./footprints/index.js"
@@ -17,6 +19,8 @@ export interface Design {
   pcb: PcbLayout
   rules: Rules
   diagnostics: Diagnostic[]
+  /** Electrical and design-rule findings about the design itself, apart from the diagnostics about the code. */
+  violations: Violation[]
 }
 
 type Files = Readonly<Record<string, string>>
@@ -46,5 +50,5 @@ export function buildDesign(files: Files, main: string): Design {
   const loaded = loadRules(files)
   const classes = netClasses(loaded.rules, circuit.nets)
   const diagnostics = [...circuit.diagnostics, ...pcb.diagnostics, ...loaded.diagnostics, ...classes.diagnostics]
-  return { version: 1, file: main, circuit, schematic, pcb: pcb.layout, rules: loaded.rules, diagnostics }
+  return { version: 1, file: main, circuit, schematic, pcb: pcb.layout, rules: loaded.rules, diagnostics, violations: checkDesign(circuit, schematic, pcb.layout, loaded.rules) }
 }

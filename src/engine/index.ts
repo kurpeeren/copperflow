@@ -1,3 +1,4 @@
+export { checkDesign, type Violation } from "./checks/index.js"
 export { buildDesign, type Design } from "./design.js"
 export { Engine, type EngineOptions, type EngineWorker } from "./engine.js"
 export { CircuitCodeError } from "./evaluate.js"
