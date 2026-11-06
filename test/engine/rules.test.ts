@@ -187,6 +187,31 @@ describe("rules in a build", () => {
     expect(structuredClone(design)).toEqual(design)
   })
 
+  describe("the profile's copper layers against the board's", () => {
+    const circuit = (layers: number) =>
+      `export default () => (<board width="10mm" height="10mm" layers={${layers}}><resistor name="R1" footprint="0603" pcbX={0} pcbY={0} /></board>)`
+    const layerWarnings = (layers: number, rules?: string) =>
+      buildDesign({ "main.circuit.tsx": circuit(layers), ...(rules === undefined ? {} : { "rules.yaml": rules }) }, "main.circuit.tsx")
+        .diagnostics.filter((d) => d.code === "rules")
+
+    test("a 4-layer profile on a 2-layer board is a rules warning naming both numbers", () => {
+      const found = layerWarnings(2, "fabrication: { profile: jlcpcb-4layer }\n")
+      expect(found).toEqual([expect.objectContaining({ severity: "warning", items: ["rules.yaml"] })])
+      expect(found[0]?.message).toBe("The fabrication profile jlcpcb-4layer is for 4 copper layers, but the board has 2; choose a matching profile in rules.yaml")
+    })
+
+    test("the 2-layer profile on a 4-layer board is a rules warning naming both numbers, also without a rules file", () => {
+      const found = layerWarnings(4)
+      expect(found).toEqual([expect.objectContaining({ severity: "warning" })])
+      expect(found[0]?.message).toContain("jlcpcb-2layer is for 2 copper layers, but the board has 4")
+    })
+
+    test("a profile that matches the board gives no warning", () => {
+      expect(layerWarnings(2)).toEqual([])
+      expect(layerWarnings(4, "fabrication: { profile: jlcpcb-4layer }\n")).toEqual([])
+    })
+  })
+
   test("a broken rules.yaml is a diagnostic, not a failed build", () => {
     const design = buildDesign({ ...files, "rules.yaml": "netClasses: [" }, "main.circuit.tsx")
     expect(design.diagnostics.some((d) => d.code === "rules" && d.severity === "error")).toBe(true)

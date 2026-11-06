@@ -95,7 +95,8 @@ globalNets: [GND, V24, V3_3]
 - `globalNets` lists nets that are supplied from outside the circuit, such as ground and supply rails. The
   `no-power-source` check treats a net with one of these names as having a source.
 - Fabrication: start from a profile, then override single fields under `fabrication`. Without
-  `profile`, `jlcpcb-2layer` is used.
+  `profile`, `jlcpcb-2layer` is used. A profile made for another number of copper layers than the
+  board's `layers` gives a `rules` warning.
 
 The `usb-c-ldo` example keeps one class: `power` for `VBUS`, `V3_3` and `GND`, with a 0.4 mm
 track width and 0.2 mm clearance. It names no profile, so the default applies.

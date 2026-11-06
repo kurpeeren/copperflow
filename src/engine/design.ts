@@ -6,7 +6,7 @@ import { generateFootprint, type FootprintResult } from "./footprints/index.js"
 import type { Diagnostic, Circuit } from "./model.js"
 import { layoutPcb, type PcbLayout } from "./pcb.js"
 import { netClasses } from "./rules/classes.js"
-import { loadRules } from "./rules/load.js"
+import { layerCountWarnings, loadRules } from "./rules/load.js"
 import type { Rules } from "./rules/schema.js"
 import { layoutSchematic, type SchematicLayout } from "./schematic.js"
 
@@ -49,6 +49,7 @@ export function buildDesign(files: Files, main: string): Design {
   const pcb = layoutPcb(circuit, (component) => footprintOf(component.footprint as string))
   const loaded = loadRules(files)
   const classes = netClasses(loaded.rules, circuit.nets)
-  const diagnostics = [...circuit.diagnostics, ...pcb.diagnostics, ...loaded.diagnostics, ...classes.diagnostics]
+  const layers = layerCountWarnings(loaded.rules, circuit.board)
+  const diagnostics = [...circuit.diagnostics, ...pcb.diagnostics, ...loaded.diagnostics, ...layers, ...classes.diagnostics]
   return { version: 1, file: main, circuit, schematic, pcb: pcb.layout, rules: loaded.rules, diagnostics, violations: checkDesign(circuit, schematic, pcb.layout, loaded.rules) }
 }

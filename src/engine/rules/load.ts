@@ -1,6 +1,6 @@
 import { LineCounter, isNode, parseDocument, visit, type Document } from "yaml"
 import { diagnostic } from "../diagnostics.js"
-import type { Diagnostic } from "../model.js"
+import type { Board, Diagnostic } from "../model.js"
 import { DEFAULT_CLASS, DEFAULT_PROFILE, PROFILES } from "./profiles.js"
 import { RulesFileSchema, type FabricationProfile, type NetClass, type Rules, type RulesFile } from "./schema.js"
 
@@ -151,4 +151,12 @@ function resolveClass(name: string, written: NonNullable<RulesFile["netClasses"]
     via: { drill: written.via?.drill ?? DEFAULT_CLASS.via.drill, diameter: written.via?.diameter ?? DEFAULT_CLASS.via.diameter },
     patterns: written.nets,
   }
+}
+
+/** A `rules` warning when the fabrication profile is for another number of copper layers than the board has. */
+export function layerCountWarnings(rules: Rules, board: Board | undefined): Diagnostic[] {
+  const { name, copperLayers } = rules.fabrication
+  if (board === undefined || board.layers === copperLayers) return []
+  const message = `The fabrication profile ${name} is for ${copperLayers} copper layers, but the board has ${board.layers}; choose a matching profile in ${RULES_PATH}`
+  return [diagnostic("rules", "warning", message, [RULES_PATH])]
 }
