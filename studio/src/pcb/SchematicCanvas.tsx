@@ -188,7 +188,7 @@ export function SchematicCanvas({ design, buildId, builtFrom, circuit, actions, 
   const bounds = useMemo(() => sheetBounds(parts.boxes), [parts.boxes])
   const { camera, setCamera, fit } = useCamera(wrapRef, size, bounds, FIT_MARGIN)
   useCameraFocus("schematic", focus, camera, setCamera, onFocused)
-  const wire =useWireTool({ design, actions, camera, cursor, step, buildId, builtFrom })
+  const wire = useWireTool({ design, actions, camera, cursor, step, buildId, builtFrom })
   const palette = useLabelPalette({ design, circuit, actions, camera, cursor, builtFrom, onArm: wire.cancel })
   const common = { view: "schematic", circuit, actions, onSelect, blockerFor: parts.blockerFor } as const
   const labels = useLabelDrag({ design, circuit, actions, builtFrom })

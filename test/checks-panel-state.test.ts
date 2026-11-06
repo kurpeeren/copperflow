@@ -1,6 +1,17 @@
 import { describe, expect, test } from "vitest"
 import type { CheckRow } from "../studio/src/checks-list.js"
-import { checkPick, opensOnBuild } from "../studio/src/checks-panel-state.js"
+import { blursAfterClick, checkPick, opensOnBuild } from "../studio/src/checks-panel-state.js"
+
+describe("blursAfterClick", () => {
+  test("a pointer click on a row gives up focus, so keys go back to the canvas", () => {
+    expect(blursAfterClick({ detail: 1 })).toBe(true)
+    expect(blursAfterClick({ detail: 2 })).toBe(true)
+  })
+
+  test("Enter or Space on a row (a click with detail 0) keeps focus on the row", () => {
+    expect(blursAfterClick({ detail: 0 })).toBe(false)
+  })
+})
 
 const row = (extra: Partial<CheckRow>): CheckRow => ({ id: "x", severity: "error", code: "x", message: "", items: [], view: "pcb", ...extra })
 

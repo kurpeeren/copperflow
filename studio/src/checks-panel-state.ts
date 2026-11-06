@@ -1,4 +1,4 @@
-// What the Checks panel decides: when it opens by itself, and what clicking a row changes.
+// What the Checks panel decides: when it opens by itself, what clicking a row changes and when a click gives up focus.
 // Only types come from the engine: its runtime modules reach Node-only code the Studio bundle cannot hold.
 import type { Point } from "../../src/engine/model.js"
 import type { CheckRow } from "./checks-list.js"
@@ -34,4 +34,13 @@ export function checkPick(row: CheckRow): CheckPick {
     ...(view && row.at ? { focus: { view, at: row.at } } : {}),
     ...(row.part ? { select: row.part } : {}),
   }
+}
+
+/**
+ * True for a pointer click (`detail` counts the presses), which gives up focus so Space rotates
+ * the part instead of pressing the row again. Enter or Space on a focused row clicks with detail 0
+ * and keeps focus there, so the list can be walked from the keyboard.
+ */
+export function blursAfterClick(event: { detail: number }): boolean {
+  return event.detail > 0
 }
