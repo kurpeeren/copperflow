@@ -69,12 +69,16 @@ function onOutline(p: Point, outline: readonly Point[]): boolean {
   return segments(outline, true).some(([a, b]) => shapeToSegmentDistance(here, a, b) <= LENGTH_TOLERANCE)
 }
 
+const strictlyInside = (p: Point, polygon: readonly Point[]) => pointInPolygon(p, polygon) && !onOutline(p, polygon)
+
 /**
- * Inside means every corner is inside or on the outline and no outline edge crosses a courtyard edge,
- * so a courtyard cannot poke out between two corners of a concave outline.
+ * Inside means every corner is inside or on the outline, no outline edge crosses a courtyard edge
+ * and no outline corner lies strictly inside the courtyard. So a courtyard cannot poke out between
+ * two corners of a concave outline, even when its edges pass exactly through outline corners.
  */
 function insideOutline(courtyard: readonly Point[], outline: readonly Point[]): boolean {
   if (!courtyard.every((p) => pointInPolygon(p, outline) || onOutline(p, outline))) return false
+  if (outline.some((corner) => strictlyInside(corner, courtyard))) return false
   const edges = segments(outline, true)
   return !segments(courtyard, true).some(([p, q]) => edges.some(([r, s]) => segmentsCross(p, q, r, s)))
 }
@@ -195,7 +199,8 @@ function unplaced(parts: readonly PlacedFootprint[]): Violation[] {
 
 function unrouted(layout: PcbLayout): Violation[] {
   const count = layout.ratsnest.length
-  return count > 0 ? [violation("unrouted", "warning", `${count} connections are not routed yet`, [], "pcb")] : []
+  const message = count === 1 ? "1 connection is not routed yet" : `${count} connections are not routed yet`
+  return count > 0 ? [violation("unrouted", "warning", message, [], "pcb")] : []
 }
 
 function noOutline(): Violation {

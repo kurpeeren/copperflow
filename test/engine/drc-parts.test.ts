@@ -116,6 +116,25 @@ describe("outside-board", () => {
     expect(found.map((v) => v.items)).toEqual([["A"]])
   })
 
+  test("a courtyard whose edge passes through outline corners fails when an outline corner lies inside it", () => {
+    const ell = board([
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 5 },
+      { x: 5, y: 5 },
+      { x: 5, y: 10 },
+      { x: 0, y: 10 },
+    ])
+    const triangle: Point[] = [{ x: 10, y: 5 }, { x: 5, y: 10 }, { x: 4, y: 4 }]
+    const found = coded(partChecks(layoutOf([part("T1", { courtyard: triangle })], ell), RULES), "outside-board")
+    expect(found.map((v) => v.items)).toEqual([["T1"]])
+  })
+
+  test("a courtyard that shares a corner with the outline passes", () => {
+    const layout = layoutOf([part("A", { courtyard: rectangle(-10, -10, -8, -8) })], SQUARE)
+    expect(coded(partChecks(layout, RULES), "outside-board")).toEqual([])
+  })
+
   test("a part with no footprint uses the 1 x 1 mm fallback courtyard for overlap and the outline", () => {
     const built = design(
       `<resistor name="R1" footprint="0603" pcbX={0} pcbY={0} />\n<chip name="U1" pinCount={2} pcbX={0.3} pcbY={0} />\n<chip name="U2" pinCount={2} pcbX={10} pcbY={0} />`,
@@ -255,6 +274,12 @@ describe("unplaced, unrouted and unchecked", () => {
     expect(built.pcb.ratsnest.length).toBeGreaterThan(0)
     expect(found).toHaveLength(1)
     expect(found[0]).toMatchObject({ severity: "warning", items: [], message: `${built.pcb.ratsnest.length} connections are not routed yet` })
+  })
+
+  test("one ratsnest line is one connection, in the singular", () => {
+    const line = { net: "net.A", from: "A#1", to: "B#1", a: { x: 0, y: 0 }, b: { x: 1, y: 0 } }
+    const found = coded(partChecks({ ...layoutOf([part("A")], SQUARE), ratsnest: [line] }, RULES), "unrouted")
+    expect(found.map((v) => v.message)).toEqual(["1 connection is not routed yet"])
   })
 
   test("no ratsnest, no unrouted warning", () => {
