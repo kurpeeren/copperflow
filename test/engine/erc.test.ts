@@ -92,6 +92,24 @@ describe("output-conflict", () => {
     expect(found[0]).not.toHaveProperty("at")
   })
 
+  const dual = (name: string, type: "providesPower" | "isOutput") =>
+    `<chip name="${name}" footprint="sot23_5" pinLabels={{ pin1: "A", pin2: "B" }} pinAttributes={{ pin1: { ${type}: true }, pin2: { ${type}: true } }} />`
+  const tied = (name: string) => `<trace from="${name}.A" to="net.OUT" />\n<trace from="${name}.B" to="net.OUT" />`
+
+  test("two power_out pins of one part on one net are a single source", () => {
+    expect(coded(run(design(`${dual("U1", "providesPower")}\n${tied("U1")}`)), "output-conflict")).toEqual([])
+  })
+
+  test("two output pins of one part on one net are a conflict", () => {
+    const found = coded(run(design(`${dual("U1", "isOutput")}\n${tied("U1")}`)), "output-conflict")
+    expect(found).toMatchObject([{ severity: "error", items: ["U1.pin1", "U1.pin2"] }])
+  })
+
+  test("a paralleled supply plus another part's output is a conflict naming every pin", () => {
+    const body = `${dual("U1", "providesPower")}\n${ldo("U2")}\n${tied("U1")}\n<trace from="U2.VOUT" to="net.OUT" />`
+    expect(coded(run(design(body)), "output-conflict")).toMatchObject([{ items: ["U1.pin1", "U1.pin2", "U2.pin5"] }])
+  })
+
   test("one output per net is fine", () => {
     expect(coded(run(design(WIRED_LDO)), "output-conflict")).toEqual([])
   })
@@ -153,9 +171,7 @@ test("results are sorted by id", () => {
 })
 
 describe("the usb-c-ldo example", () => {
-  // Known: J1 declares VBUS1 and VBUS2 as power_out and the example ties both to net.VBUS, so output-conflict fires.
-  // Awaiting a ruling; this becomes a plain test once the example or the rule changes.
-  test.fails("has no ERC errors", async () => {
+  test("has no ERC errors", async () => {
     const built = buildDesign(await collectProjectFiles(EXAMPLE, { include: FOOTPRINT_FILE }), "index.circuit.tsx")
     expect(run(built).filter((v) => v.severity === "error")).toEqual([])
   })

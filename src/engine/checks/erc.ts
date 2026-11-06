@@ -67,9 +67,16 @@ function connectedNoConnect(context: Context, pin: Pin): Violation[] {
 
 // ---- nets ----
 
+/** Each `output` pin is a source; all `power_out` pins of one component are one, as paralleled supply pins. */
+function sourceCount(drivers: readonly Pin[]): number {
+  const outputs = drivers.filter((p) => p.type === "output").length
+  const supplies = new Set(drivers.filter((p) => p.type === "power_out").map((p) => p.component))
+  return outputs + supplies.size
+}
+
 function outputConflict(context: Context, net: Net): Violation[] {
   const drivers = pinsOn(context, net).filter((p) => DRIVERS.has(p.type))
-  if (drivers.length < 2) return []
+  if (sourceCount(drivers) < 2) return []
   const ids = drivers.map((p) => p.id)
   const message = `net ${netLabel(net)} is driven by more than one output: ${ids.join(", ")}`
   return [violation("output-conflict", "error", message, ids, "schematic", singleAt(context, ids))]
