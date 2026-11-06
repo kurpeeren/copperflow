@@ -22,7 +22,10 @@ describe("buildDesign violations", () => {
   test("every build carries them, from both the electrical and the placement checks", () => {
     const codes = new Set(CROWDED.violations.map((v) => v.code))
     expect(codes.has("pin-unconnected")).toBe(true)
-    expect([...codes].some((code) => CROWDED.violations.find((v) => v.code === code)?.view === "pcb")).toBe(true)
+    const pair = (code: string) => CROWDED.violations.filter((v) => v.code === code && v.items.some((item) => item.startsWith("R1")) && v.items.some((item) => item.startsWith("R2")))
+    expect(pair("courtyard-overlap")).toEqual([expect.objectContaining({ id: "courtyard-overlap:R1,R2", severity: "error", view: "pcb" })])
+    expect(pair("clearance").length).toBeGreaterThan(0)
+    expect(pair("clearance").every((v) => v.severity === "error" && v.view === "pcb")).toBe(true)
   })
 
   test("equal what checkDesign finds on the built parts", () => {

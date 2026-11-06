@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from "vitest"
 import { cp, mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { execSync } from "node:child_process"
+import { execFileSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 import { checkCircuit, formatCheck, type CheckResult } from "../src/core/check.js"
 import type { Violation } from "../src/engine/index.js"
@@ -82,17 +82,16 @@ const violation = (over: Partial<Violation>): Violation => ({
   view: "pcb",
   ...over,
 })
-const result = (over: Partial<CheckResult>): CheckResult => ({ ok: true, errors: [], warnings: [], violations: [], diagnostics: [], ...over })
 
 describe("formatCheck", () => {
   test("prints the positions of violations and the schematic as a place", async () => {
     const text = formatCheck(FILE, await checkFloating())
     expect(text.split("\n")[0]).toMatch(/^main\.circuit\.tsx: check failed, \d+ errors?, \d+ warnings?/)
     expect(text).toMatch(/U1\.pin3 \(EN\) is not connected at the schematic/)
-    const pcb = result({
-      warnings: [{ type: "unrouted", count: 1, messages: ["3 connections are not routed yet at 1.50, -2.25 mm"] }],
-    })
-    expect(formatCheck(FILE, pcb)).toContain("at 1.50, -2.25 mm")
+    const unrouted = violation({ code: "unrouted", severity: "warning", message: "3 connections are not routed yet", at: { x: 1.5, y: -2.25 } })
+    const engine = { build: async () => ({ violations: [unrouted], diagnostics: [] }) as never }
+    const lines = formatCheck(FILE, await checkCircuit(root, FILE, { engine })).split("\n")
+    expect(lines).toEqual([`${FILE}: check passed, 0 errors, 1 warning`, "Warnings:", "  unrouted:", "    3 connections are not routed yet at 1.50, -2.25 mm"])
   })
 
   test("shows at most three messages per group and counts the rest", async () => {
@@ -134,17 +133,20 @@ function manyViolations(n: number) {
 }
 
 describe("no tscircuit left in the code", () => {
-  const git = (args: string): string => {
+  /** Matching lines of `git grep -n`. No match (exit 1, nothing on stderr) is ""; anything else fails the test, so a missing git cannot pass it. */
+  const git = (args: readonly string[]): string => {
     try {
-      return execSync(`git grep -n ${args}`, { encoding: "utf8", cwd: ROOT })
-    } catch {
-      return "" // git grep exits 1 when nothing matches
+      return execFileSync("git", ["grep", "-n", ...args], { encoding: "utf8", cwd: ROOT, stdio: ["ignore", "pipe", "pipe"] })
+    } catch (error) {
+      const { status, stderr } = error as { status?: number | null; stderr?: string }
+      if (status === 1 && !stderr) return ""
+      throw new Error(`git grep could not search the repository, so this test cannot tell: ${(error as Error).message}`)
     }
   }
   const word = ["ts", "ci"].join("")
 
   test("only the --tsci rejection in the CLI names the old command", () => {
-    const hits = git(`-w ${word} -- src`).split("\n").filter(Boolean)
+    const hits = git(["-w", word, "--", "src"]).split("\n").filter(Boolean)
     expect(hits).toHaveLength(1)
     expect(hits[0]).toMatch(/^src\/cli-commands\.ts:\d+:/)
     expect(hits[0]).toContain(`--${word}`)
@@ -152,6 +154,6 @@ describe("no tscircuit left in the code", () => {
 
   test("the old build hooks and the fake CLI are gone", () => {
     const names = [["COPPERFLOW", "TSCI"].join("_"), ["build", "Command"].join(""), ["build", "Circuit"].join(""), ["fake", "tsci"].join("-")]
-    expect(git(`${names.map((n) => `-e ${n}`).join(" ")} -- src test`)).toBe("")
+    expect(git([...names.flatMap((n) => ["-e", n]), "--", "src", "test"])).toBe("")
   })
 })
