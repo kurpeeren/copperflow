@@ -115,6 +115,17 @@ describe("formatCheck", () => {
     const engine = { build: async () => ({ violations: [violation({ code: "overlap", message: "R1 overlaps R2", at })], diagnostics: [] }) as never }
     expect(formatCheck(FILE, await checkCircuit(root, FILE, { engine }))).toContain("R1 overlaps R2 at 12.30, 4.50 mm")
   })
+
+  test("a long message is clipped before its position, so the position is kept", async () => {
+    const long = "x".repeat(400)
+    const source = { file: FILE, line: 3, column: 7, offset: 0 }
+    const engine = {
+      build: async () => ({ violations: [violation({ message: long, at: { x: 1.5, y: -2.25 } })], diagnostics: [{ code: "d", severity: "error", message: long, items: [], source }] }) as never,
+    }
+    const lines = formatCheck(FILE, await checkCircuit(root, FILE, { engine })).split("\n")
+    expect(lines).toContain(`    ${"x".repeat(300)}… at 1.50, -2.25 mm`)
+    expect(lines).toContain(`    ${"x".repeat(300)}… at main.circuit.tsx:3:7`)
+  })
 })
 
 function manyViolations(n: number) {

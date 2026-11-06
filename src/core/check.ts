@@ -79,8 +79,9 @@ function formatGroup(group: IssueGroup): string[] {
   ]
 }
 
+/** The message is clipped, then its position added, so a long message never loses where it is. */
 function fromViolation(v: Violation): Issue {
-  return { severity: v.severity, code: v.code, text: `${v.message}${violationPlace(v)}` }
+  return { severity: v.severity, code: v.code, text: `${clip(v.message)}${violationPlace(v)}` }
 }
 
 function violationPlace(v: Violation): string {
@@ -90,7 +91,7 @@ function violationPlace(v: Violation): string {
 
 function fromDiagnostic(d: Diagnostic): Issue {
   const place = d.source ? ` at ${d.source.file}:${d.source.line}:${d.source.column}` : ""
-  return { severity: d.severity, code: d.code, text: `${d.message}${place}` }
+  return { severity: d.severity, code: d.code, text: `${clip(d.message)}${oneLine(place)}` }
 }
 
 /** Issues of one severity grouped by code in the order codes first appear, each with a count and its first few messages. */
@@ -99,7 +100,7 @@ function groupIssues(issues: readonly Issue[], severity: Severity): IssueGroup[]
   for (const issue of issues.filter((i) => i.severity === severity)) {
     const type = clip(issue.code)
     const previous = groups.get(type) ?? { type, count: 0, messages: [] }
-    const messages = previous.messages.length < MESSAGES_PER_GROUP ? [...previous.messages, clip(issue.text)] : previous.messages
+    const messages = previous.messages.length < MESSAGES_PER_GROUP ? [...previous.messages, issue.text] : previous.messages
     groups.set(type, { type, count: previous.count + 1, messages })
   }
   return [...groups.values()]
