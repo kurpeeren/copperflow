@@ -1,4 +1,30 @@
 /* The Checks panel under the canvas: groups of rows, each row a message and the items it names. */
+:root {
+  /* The canvases ring violations in these (PALETTE.error and PALETTE.warning). */
+  --check-error: #e5534b;
+  --check-warning: #e0a63a;
+}
+
+/* The status pill opens the Checks panel. */
+button.build {
+  border-color: transparent;
+  background: transparent;
+}
+
+/* The canvas with the Checks panel under it, between the side panels. */
+.center {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+@media (max-width: 960px) {
+  .center {
+    order: -1;
+  }
+}
+
 .checks {
   display: flex;
   flex-direction: column;
