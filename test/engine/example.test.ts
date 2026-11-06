@@ -4,18 +4,19 @@ import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { contentHash, libraryIds, readFootprintText, readPart } from "../../src/core/library.js"
 import { buildDesign, type Design } from "../../src/engine/design.js"
-import { FOOTPRINT_FILE } from "../../src/engine/engine.js"
+import { ENGINE_FILES } from "../../src/engine/engine.js"
 import { collectProjectFiles } from "../../src/engine/project-files.js"
 
 const EXAMPLE = fileURLToPath(new URL("../../examples/usb-c-ldo", import.meta.url))
 const TRACE_COUNT = 25
 const SIGNAL_PADS = 6
 const SHELL_SLOTS = 4
+const EXPECTED_CODES = ["unrouted"]
 
 let design: Design
 
 beforeAll(async () => {
-  design = buildDesign(await collectProjectFiles(EXAMPLE, { include: FOOTPRINT_FILE }), "index.circuit.tsx")
+  design = buildDesign(await collectProjectFiles(EXAMPLE, { include: ENGINE_FILES }), "index.circuit.tsx")
 })
 
 /** The id of J1's pin with this name, such as "J1.pin3" for "CC1". */
@@ -59,6 +60,15 @@ describe("the usb-c-ldo example", () => {
     const slots = pads.filter((pad) => pad.layers === "through")
     expect(slots).toHaveLength(SHELL_SLOTS)
     expect(slots.every((pad) => pad.pin === j1Pin("EH") && pad.net === "net.GND" && pad.drill !== undefined)).toBe(true)
+  })
+
+  test("rules.yaml gives the power nets one class and raises no rules problems", () => {
+    expect(design.rules.classes[0]?.name).toBe("power")
+    expect(design.diagnostics.filter((d) => d.code === "rules")).toEqual([])
+  })
+
+  test("its checks report exactly these violation codes", () => {
+    expect(design.violations.map((v) => v.code).sort()).toEqual(EXPECTED_CODES)
   })
 
   test("each part's verification.md shows the hash of the part as it is on disk, with LF line endings", async () => {

@@ -41,6 +41,8 @@ copperflow summary --root examples/usb-c-ldo index.circuit.tsx
 - the placement design-rule check (DRC): overlapping courtyards, parts off the board, pads and holes too close to each other;
 - problems in the code and the model, the same ones the Studio shows: a footprint it cannot make (`footprint`), a pin that does not exist (`unknown-pin`) or that several pins share (`ambiguous-pin`), an instance that overrides its library part (`library-override`) and so on.
 
+Design rules live in `rules.yaml` at the project root: a fabrication profile (JLCPCB 2-layer by default), net classes and global nets. The `usb-c-ldo` example shows a small one, and `skills/copperflow/references/design-rules.md` explains the format and every check.
+
 Findings are grouped by code, with their positions, and any error fails the check (exit code 1). Copper checks, such as clearances between tracks, come with routing.
 
 ### Connect Claude Code

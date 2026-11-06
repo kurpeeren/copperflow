@@ -87,6 +87,50 @@ globalNets: [GND, V24, V3_3]
 - Patterns are case-sensitive and match a net's names. `*` alone matches every net, named or not.
   An unnamed net is in no class otherwise.
 - A net that matches two classes is a `net-class-conflict` error and uses the class written first.
-  A pattern that matches no net is a warning.
+  A pattern that matches no net is a `rules` warning. A problem in the file itself (a bad key, a bad
+  length, invalid YAML) is a `rules` error with the file and line, and the default rules then apply.
 - Two classes need the largest of their own clearances, their `classClearance` entry (in either
   order) and the profile's `minClearance`.
+- `globalNets` lists nets that are supplied from outside the circuit, such as ground and supply rails. The
+  `no-power-source` check treats a net with one of these names as having a source.
+- Fabrication: start from a profile, then override single fields under `fabrication`. Without
+  `profile`, `jlcpcb-2layer` is used.
+
+The `usb-c-ldo` example keeps one class: `power` for `VBUS`, `V3_3` and `GND`, with a 0.4 mm
+track width and 0.2 mm clearance. It names no profile, so the default applies.
+
+## What the checks report
+
+`copperflow check`, the agent's `check_circuit` and the Studio Checks panel (the `\` key) show the
+same list. Errors come first, then warnings. Each violation has a code, an id, the items involved and a
+position. Anything a check cannot evaluate is reported as `unchecked`, never silently passed.
+
+| Code | Severity | Meaning |
+|------|----------|---------|
+| `pin-unconnected` | error for power-in, ground and input pins; warning for others | A pin shares its net with no other pin. A pin alone on a named net gets this and `single-pin-net`. |
+| `nc-connected` | error | A pin marked no-connect is wired to other pins. |
+| `output-conflict` | error | Several outputs drive one net. |
+| `no-power-source` | warning | A net has power inputs but no power output, connector, pin header or battery pin, and is not a global net. |
+| `single-pin-net` | warning | A named net has only one pin. |
+| `clearance` | error | Copper of two pads of different nets is closer than the larger clearance of their classes. |
+| `board-edge` | error | A pad or its hole is closer to the board edge than `boardEdgeClearance`, or outside the board. |
+| `drill-size` | error | A drill is below `minDrill`. |
+| `annular-ring` | error | The copper ring around a drill is below `minAnnularRing`. |
+| `hole-to-hole` | error | Two holes are closer than `minHoleToHole`. |
+| `courtyard-overlap` | error | Two part courtyards overlap. |
+| `keepout` | error | A part lies inside a keep-out area. |
+| `outside-board` | warning | A part is not inside the board outline. |
+| `silk-on-pad` | warning | Silkscreen lies on a pad, closer than `minSilkToPad`. |
+| `unplaced` | warning | Parts still on automatic placement. |
+| `unrouted` | warning | Connections are not routed yet. |
+| `unchecked` | warning | A check could not run: an unknown pad shape, no usable board outline, a part with no position, or a duplicate violation id. |
+
+Rules the checks follow:
+
+- A value exactly at a limit passes. Comparisons allow a tolerance of 1e-6 mm.
+- Pads of one part with the same number or pin are one conductor and are not checked against each other.
+- `power_out` pins of one part on one net count as one source, so they are not an `output-conflict`.
+- With no usable board outline, the edge and outside-board checks do not run, and an `unchecked`
+  warning says so.
+- Copper checks (track width, track clearance, vias) are not run yet. They come with routing in a later
+  stage; until then `unrouted` is the reminder that the copper is missing.
