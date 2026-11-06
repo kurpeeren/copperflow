@@ -79,6 +79,9 @@ Studio. No new runtime dependency.
 The 200-part speed test fails under full-suite load because it measures wall time while other
 test workers run.
 
+> Done differently: speed tests became `*.perf.ts` files that take the fastest of several runs
+> (`fastestMs` in `test/helpers/fastest.ts`) and run on their own with `npm run test:perf`.
+
 **Files:**
 - Modify: `test/engine/performance.test.ts`
 - Create: `test/helpers/cpu-time.ts`
@@ -440,6 +443,9 @@ component ids where noted.
 ---
 
 ### Task 8: Every build carries its violations
+
+> Done differently: the speed check lives in `test/engine/performance.perf.ts`, measured with
+> `fastestMs` against a 1 s budget and run by `npm run test:perf`, not in the `npm test` suite.
 
 **Files:**
 - Create: `src/engine/checks/index.ts`
