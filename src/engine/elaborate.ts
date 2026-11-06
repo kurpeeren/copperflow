@@ -5,8 +5,9 @@ import { diagnostic } from "./diagnostics.js"
 import { CircuitCodeError, type Evaluated } from "./evaluate.js"
 import { PIN_ROW_DEFAULT_PITCH, pinRowName } from "./footprints/pinrow.js"
 import { Fragment, isElement, type CfElement, type ComponentFunction } from "./jsx-runtime.js"
+import { buildKeepout } from "./keepout.js"
 import { kindOf } from "./kinds.js"
-import type { Board, Circuit, Component, Diagnostic, SourceRef } from "./model.js"
+import type { Board, Circuit, Component, Diagnostic, Keepout, SourceRef } from "./model.js"
 import { mergeNets } from "./nets.js"
 import { PropReader, type Props } from "./read-props.js"
 import { resolveTraces, type TraceDraft } from "./traces.js"
@@ -32,7 +33,7 @@ function footprintOf(tag: string, props: Props, reader: PropReader): string | un
 }
 
 /** Tags that are accepted but have no effect until their stage lands. */
-const LATER_STAGE = new Set(["via", "hole", "keepout", "copperpour", "port", "netlabel"])
+const LATER_STAGE = new Set(["via", "hole", "copperpour", "port", "netlabel"])
 const LIBRARY_PATH = /^parts\/([^/]+)\//
 const MAX_DEPTH = 200
 
@@ -49,6 +50,7 @@ class Elaboration {
   readonly traces: TraceDraft[] = []
   readonly diagnostics: Diagnostic[] = []
   board: Board | undefined
+  readonly keepouts: Keepout[] = []
   private readonly nameCounts = new Map<string, number>()
   private readonly duplicated = new Set<string>()
 
@@ -105,6 +107,7 @@ class Elaboration {
     if (tag === Fragment) return this.visit(element.children, frame)
     if (tag === "group") return this.group(element, frame, source)
     if (tag === "board") return this.boardElement(element, frame, source)
+    if (tag === "keepout") return this.keepout(element, frame, source)
     if (tag === "trace") {
       this.traces.push({ props: element.props, source })
       return
@@ -136,6 +139,16 @@ class Elaboration {
       this.diagnostics.push(...built.diagnostics)
     }
     this.visit(element.children, frame)
+  }
+
+  private keepout(element: CfElement, frame: Frame, source: SourceRef): void {
+    const built = buildKeepout(element.props, frame.offset, this.keepouts.length + 1, source)
+    this.diagnostics.push(...built.diagnostics)
+    if (!this.board) {
+      this.diagnostics.push(diagnostic("bad-value", "warning", "<keepout> needs a <board>; it is ignored", ["keepout"], source))
+      return
+    }
+    if (built.keepout) this.keepouts.push(built.keepout)
   }
 
   private part(element: CfElement, tag: string, frame: Frame, source: SourceRef): void {
@@ -178,7 +191,7 @@ export function elaborate(evaluated: Evaluated, file: string, options: Elaborate
     components: run.components,
     nets,
     connections: traces.connections,
-    ...(run.board ? { board: run.board } : {}),
+    ...(run.board ? { board: { ...run.board, keepouts: run.keepouts } } : {}),
     diagnostics: [...run.diagnostics, ...traces.diagnostics, ...joined],
   }
 }

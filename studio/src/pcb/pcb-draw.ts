@@ -25,6 +25,8 @@ const DIM = HIGHLIGHT_DIM
 const RATSNEST_ALPHA = 0.6
 const SILK_WIDTH_MM = 0.12
 const BOARD_EDGE_PX = 1.5
+const KEEPOUT_ALPHA = 0.7
+const KEEPOUT_HATCH_MM = 0.5
 const DEFAULT_CORNER = 0.25
 const DESIGNATOR_MM = 0.8
 const DESIGNATOR_GAP_PX = 2
@@ -58,6 +60,7 @@ export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDra
     ctx.fillStyle = PALETTE.board
     ctx.fill()
   })
+  drawKeepouts(ctx, layout, px)
   drawCopper(ctx, layers, options.highlight, each)
   drawDrills(ctx, each)
   if (layers.silkscreen) each((part) => drawPolylines(ctx, part.silkscreen, part.side === "top" ? PALETTE.topSilk : PALETTE.bottomSilk, SILK_WIDTH_MM, false))
@@ -145,6 +148,38 @@ function drawBoard(ctx: Ctx, layout: PcbLayout, paint: () => void): void {
   if (!outline || outline.length < 3) return
   polygon(ctx, outline)
   paint()
+}
+
+/** A dashed outline with diagonal hatch lines inside it, under the copper. */
+function drawKeepouts(ctx: Ctx, layout: PcbLayout, px: number): void {
+  const keepouts = layout.board?.keepouts ?? []
+  if (keepouts.length === 0) return
+  ctx.strokeStyle = PALETTE.keepout
+  ctx.globalAlpha = KEEPOUT_ALPHA
+  for (const keepout of keepouts) {
+    ctx.lineWidth = px
+    ctx.setLineDash([4 * px, 3 * px])
+    polygon(ctx, keepout.outline)
+    ctx.stroke()
+    ctx.setLineDash([])
+    ctx.save()
+    polygon(ctx, keepout.outline)
+    ctx.clip()
+    for (const [a, b] of hatchLines(keepout.outline)) drawLine(ctx, a, b)
+    ctx.restore()
+  }
+  ctx.globalAlpha = 1
+}
+
+/** 45 degree lines KEEPOUT_HATCH_MM apart that cover the polygon's bounding box. */
+function hatchLines(outline: readonly Point[]): Array<[Point, Point]> {
+  const xs = outline.map((p) => p.x)
+  const ys = outline.map((p) => p.y)
+  const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)]
+  const height = maxY - minY
+  const lines: Array<[Point, Point]> = []
+  for (let x = minX - height; x <= maxX; x += KEEPOUT_HATCH_MM) lines.push([{ x, y: minY }, { x: x + height, y: maxY }])
+  return lines
 }
 
 function padPath(ctx: Ctx, pad: WorldPad): void {

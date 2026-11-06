@@ -6,7 +6,7 @@ import { parseLength } from "./units.js"
 export const DEFAULT_THICKNESS = 1.6
 const MIN_OUTLINE_POINTS = 3
 
-function outlinePoints(value: unknown): Point[] | undefined {
+export function outlinePoints(value: unknown): Point[] | undefined {
   if (!Array.isArray(value) || value.length < MIN_OUTLINE_POINTS) return undefined
   const points = value.map((item) => {
     const x = parseLength((item as { x?: unknown } | null)?.x)
@@ -47,6 +47,7 @@ export function buildBoard(props: Props, source: SourceRef): { board: Board; dia
     outline,
     layers: layers === 4 ? 4 : 2,
     thickness: reader.length("thickness") ?? DEFAULT_THICKNESS,
+    keepouts: [],
     ...(maxTrace !== undefined ? { schMaxTraceDistance: maxTrace } : {}),
   }
   return { board, diagnostics: [...reader.diagnostics, ...diagnostics] }

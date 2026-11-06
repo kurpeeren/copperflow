@@ -26,6 +26,7 @@ export interface Ctx {
   fill(): void
   stroke(): void
   fillText(text: string, x: number, y: number): void
+  clip(): void
   setLineDash(segments: number[]): void
 }
 
@@ -53,6 +54,7 @@ export const PALETTE = {
   courtyard: "rgb(233 230 223 / 30%)",
   fabrication: "rgb(149 156 166 / 55%)",
   ratsnest: "#e9e6df",
+  keepout: "#c0504d",
 }
 
 /** Canvas baseline and alignment for anchors such as "top_left" or "center". */

@@ -73,11 +73,20 @@ export interface Connection {
   source: SourceRef
 }
 
+/** A region of the board that keeps pads and courtyards out. `id` is "keepout:<n>" in source order. */
+export interface Keepout {
+  id: string
+  outline: Point[]
+  layers: "top" | "bottom" | "all"
+  source: SourceRef
+}
+
 export interface Board {
   outline: Point[]
   layers: 2 | 4
   thickness: number
   schMaxTraceDistance?: number
+  keepouts: Keepout[]
 }
 
 export interface Circuit {

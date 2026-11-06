@@ -157,3 +157,24 @@ describe("pcbBoxes", () => {
     expect(r1?.center.x).toBeCloseTo(-4, 5)
   })
 })
+
+describe("keepouts", () => {
+  const withKeepout = buildDesign({ "main.circuit.tsx": CIRCUIT.replace("</board>", '<keepout pcbX={10} pcbY={0} width={4} height={4} /></board>') }, "main.circuit.tsx").pcb
+
+  test("a keepout is stroked in the keepout colour, dashed, before the copper", () => {
+    const { ctx, records } = recorder()
+    drawPcb(ctx, withKeepout, VIEW, { ratio: 1 })
+    const strokes = records.filter((r) => r.name === "stroke" && r.strokeStyle === PALETTE.keepout)
+    expect(strokes.length).toBeGreaterThan(1)
+    expect(strokes.every((r) => r.globalAlpha === 0.7)).toBe(true)
+    const first = records.findIndex((r) => r.name === "stroke" && r.strokeStyle === PALETTE.keepout)
+    const copper = records.findIndex((r) => r.name === "fill" && r.fillStyle === PALETTE.topCopper)
+    expect(first).toBeLessThan(copper)
+  })
+
+  test("a board without keepouts draws none", () => {
+    const { ctx, records } = recorder()
+    drawPcb(ctx, layout, VIEW, { ratio: 1 })
+    expect(records.some((r) => r.strokeStyle === PALETTE.keepout)).toBe(false)
+  })
+})
