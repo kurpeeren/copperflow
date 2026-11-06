@@ -1,7 +1,8 @@
 import { fileURLToPath } from "node:url"
 import { describe, expect, test } from "vitest"
 import { padChecks } from "../../src/engine/checks/drc-pads.js"
-import { breaksMinimum, LENGTH_TOLERANCE, usableOutline } from "../../src/engine/checks/limits.js"
+import { MIN_OUTLINE_POINTS, outlinePoints, usableOutline } from "../../src/engine/board.js"
+import { breaksMinimum, LENGTH_TOLERANCE } from "../../src/engine/checks/limits.js"
 import { violation, type Violation } from "../../src/engine/checks/violation.js"
 import { buildDesign, type Design } from "../../src/engine/design.js"
 import { ENGINE_FILES } from "../../src/engine/engine.js"
@@ -101,6 +102,15 @@ describe("limits", () => {
     expect(usableOutline({ ...SQUARE, outline: SQUARE.outline.slice(0, 2) })).toBe(false)
     expect(usableOutline({ ...SQUARE, outline: SQUARE.outline.slice(0, 3) })).toBe(true)
     expect(usableOutline(SQUARE)).toBe(true)
+  })
+
+  test("the board reader and the checks share one minimum number of outline corners", () => {
+    const corners = SQUARE.outline.slice(0, MIN_OUTLINE_POINTS)
+    expect(MIN_OUTLINE_POINTS).toBe(3)
+    expect(outlinePoints(corners.slice(0, -1))).toBeUndefined()
+    expect(outlinePoints(corners)).toEqual(corners)
+    expect(usableOutline({ ...SQUARE, outline: corners.slice(0, -1) })).toBe(false)
+    expect(usableOutline({ ...SQUARE, outline: corners })).toBe(true)
   })
 })
 

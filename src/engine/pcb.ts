@@ -1,5 +1,5 @@
-import { usableOutline } from "./checks/limits.js"
 import { boundsOf, findSpot, type Bounds } from "./autoplace.js"
+import { usableOutline } from "./board.js"
 import { diagnostic } from "./diagnostics.js"
 import type { Footprint, Pad } from "./footprints/types.js"
 import type { Board, Circuit, Component, Diagnostic, Point } from "./model.js"

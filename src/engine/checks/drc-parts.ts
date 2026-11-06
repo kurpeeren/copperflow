@@ -1,10 +1,11 @@
+import { MIN_OUTLINE_POINTS, usableOutline } from "../board.js"
 import type { Keepout, Point } from "../model.js"
 import { naturalCompare } from "../order.js"
 import type { PcbLayout, PlacedFootprint, WorldPad } from "../pcb.js"
 import type { Rules } from "../rules/schema.js"
 import { bounds, padShape, pointInPolygon, polygonsOverlap, shapeDistance, shapeToSegmentDistance, type Shape } from "./geometry.js"
 import { GridIndex, type Box } from "./grid-index.js"
-import { breaksMinimum, LENGTH_TOLERANCE, usableOutline } from "./limits.js"
+import { breaksMinimum, LENGTH_TOLERANCE } from "./limits.js"
 import { violation, type Violation } from "./violation.js"
 
 /**
@@ -16,7 +17,7 @@ import { violation, type Violation } from "./violation.js"
 /** Side of a cell in the courtyard index, in mm: about the size of a small part. */
 const CELL = 5
 
-const isPolygon = (points: readonly Point[]) => points.length >= 3
+const isPolygon = (points: readonly Point[]) => points.length >= MIN_OUTLINE_POINTS
 const mm = (value: number) => value.toFixed(3)
 const at = (part: PlacedFootprint): Point => ({ x: part.x, y: part.y })
 const byComponent = (a: PlacedFootprint, b: PlacedFootprint) => naturalCompare(a.component, b.component)

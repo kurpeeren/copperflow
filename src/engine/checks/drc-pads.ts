@@ -1,3 +1,4 @@
+import { usableOutline } from "../board.js"
 import type { Board, Point } from "../model.js"
 import { naturalCompare } from "../order.js"
 import type { PcbLayout, WorldPad } from "../pcb.js"
@@ -6,7 +7,7 @@ import { DEFAULT_CLASS } from "../rules/profiles.js"
 import type { Rules } from "../rules/schema.js"
 import { bounds, closestPoints, drillShape, padShape, pointInPolygon, shapeDistance, shapeToSegmentDistance, type Shape } from "./geometry.js"
 import { GridIndex, type Box } from "./grid-index.js"
-import { breaksMinimum, usableOutline } from "./limits.js"
+import { breaksMinimum } from "./limits.js"
 import { violation, type Violation } from "./violation.js"
 
 /**

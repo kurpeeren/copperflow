@@ -4,7 +4,14 @@ import { PropReader, type Props } from "./read-props.js"
 import { parseLength } from "./units.js"
 
 export const DEFAULT_THICKNESS = 1.6
-const MIN_OUTLINE_POINTS = 3
+
+/** An outline needs this many corners to enclose anything: the board reader, placement and the checks all use it. */
+export const MIN_OUTLINE_POINTS = 3
+
+/** True when there is a board whose outline has at least 3 corners, so placement and checks can measure against it. */
+export function usableOutline(board: Board | undefined): boolean {
+  return board !== undefined && board.outline.length >= MIN_OUTLINE_POINTS
+}
 
 export function outlinePoints(value: unknown): Point[] | undefined {
   if (!Array.isArray(value) || value.length < MIN_OUTLINE_POINTS) return undefined
