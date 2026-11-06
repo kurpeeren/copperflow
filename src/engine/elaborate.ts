@@ -51,6 +51,7 @@ class Elaboration {
   readonly diagnostics: Diagnostic[] = []
   board: Board | undefined
   readonly keepouts: Keepout[] = []
+  private readonly keepoutSources: SourceRef[] = []
   private readonly nameCounts = new Map<string, number>()
   private readonly duplicated = new Set<string>()
 
@@ -141,14 +142,18 @@ class Elaboration {
     this.visit(element.children, frame)
   }
 
+  /** Keepouts are collected wherever they are and given to the board after the walk, so a keepout may come before its board. */
   private keepout(element: CfElement, frame: Frame, source: SourceRef): void {
     const built = buildKeepout(element.props, frame.offset, this.keepouts.length + 1, source)
     this.diagnostics.push(...built.diagnostics)
-    if (!this.board) {
-      this.diagnostics.push(diagnostic("bad-value", "warning", "<keepout> needs a <board>; it is ignored", ["keepout"], source))
-      return
-    }
+    this.keepoutSources.push(source)
     if (built.keepout) this.keepouts.push(built.keepout)
+  }
+
+  /** One warning for each <keepout> of a circuit that has no <board>. */
+  boardlessKeepouts(): Diagnostic[] {
+    if (this.board) return []
+    return this.keepoutSources.map((source) => diagnostic("bad-value", "warning", "<keepout> needs a <board>; it is ignored", ["keepout"], source))
   }
 
   private part(element: CfElement, tag: string, frame: Frame, source: SourceRef): void {
@@ -192,6 +197,6 @@ export function elaborate(evaluated: Evaluated, file: string, options: Elaborate
     nets,
     connections: traces.connections,
     ...(run.board ? { board: { ...run.board, keepouts: run.keepouts } } : {}),
-    diagnostics: [...run.diagnostics, ...traces.diagnostics, ...joined],
+    diagnostics: [...run.diagnostics, ...run.boardlessKeepouts(), ...traces.diagnostics, ...joined],
   }
 }

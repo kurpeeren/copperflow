@@ -285,5 +285,15 @@ test("a keepout has no unsupported-element warning, and bad ones are warned abou
   expect(bad.board?.keepouts).toEqual([])
   const none = elaborate(evaluateCircuit({ [MAIN]: `export default () => (<keepout width={1} height={1} />)` }, MAIN), MAIN, noPads)
   expect(none.board).toBeUndefined()
-  expect(none.diagnostics).toMatchObject([{ code: "bad-value", severity: "warning" }])
+  expect(none.diagnostics).toMatchObject([{ code: "bad-value", severity: "warning", message: "<keepout> needs a <board>; it is ignored" }])
+})
+
+test("a keepout belongs to the board whether it comes before or after it in the file", () => {
+  const keepout = `<keepout pcbX={1} width={2} height={2} />`
+  const board = `<board width="10mm" height="10mm" />`
+  for (const body of [`${keepout}${board}`, `${board}${keepout}`]) {
+    const circuit = elaborate(evaluateCircuit({ [MAIN]: `export default () => (<group>${body}</group>)` }, MAIN), MAIN, noPads)
+    expect([body, circuit.diagnostics]).toEqual([body, []])
+    expect(circuit.board?.keepouts.map((k) => k.id)).toEqual(["keepout:1"])
+  }
 })
