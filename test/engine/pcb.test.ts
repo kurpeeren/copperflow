@@ -154,3 +154,12 @@ describe("footprints", () => {
     expect(l.ratsnest[0]).toMatchObject({ from: "R1#2", to: "R2#1" })
   })
 })
+
+describe("a board without a size", () => {
+  test("places a part with no position at a finite spot, like a part without a board", () => {
+    const circuit = build('<chip name="U1" footprint="sot23_5" />', "")
+    const placed = part(layout(circuit).layout.parts, "U1")
+    expect(Number.isFinite(placed.x)).toBe(true)
+    expect(Number.isFinite(placed.y)).toBe(true)
+  })
+})

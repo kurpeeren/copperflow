@@ -1,3 +1,4 @@
+import { usableOutline } from "./checks/limits.js"
 import { boundsOf, findSpot, type Bounds } from "./autoplace.js"
 import { diagnostic } from "./diagnostics.js"
 import type { Footprint, Pad } from "./footprints/types.js"
@@ -154,7 +155,7 @@ function placeAll(circuit: Circuit, resolved: readonly Resolved[], nets: Readonl
     byId.set(component.id, part)
     occupied.push(boundsOf(part.courtyard))
   }
-  const board = circuit.board ? boundsOf(circuit.board.outline) : undefined
+  const board = usableOutline(circuit.board) && circuit.board ? boundsOf(circuit.board.outline) : undefined
   const unplaced = resolved.filter(({ component }) => !component.pcb).sort((a, b) => naturalCompare(a.component.id, b.component.id))
   for (const { component, footprint } of unplaced) {
     const relative = boundsOf(footprint?.courtyard ?? FALLBACK_COURTYARD)

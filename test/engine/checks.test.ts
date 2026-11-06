@@ -50,9 +50,11 @@ describe("buildDesign violations", () => {
     expect(new Set(ids).size).toBe(ids.length)
   })
 
-  test("a part auto-placed on a board of no size is reported as unchecked, not thrown over", () => {
-    const built = buildDesign({ [MAIN]: `export default () => (<board><chip name="U1" footprint="sot23_5" /></board>)` }, MAIN)
-    expect(built.violations).toContainEqual(expect.objectContaining({ id: "unchecked:U1", severity: "warning", items: ["U1"] }))
+  test("a part with no finite position is reported as unchecked, not thrown over", () => {
+    const built = board(`<resistor name="R1" resistance="1k" footprint="0603" pcbX={0} pcbY={0} />`)
+    const broken = { ...built.pcb, parts: built.pcb.parts.map((p) => ({ ...p, x: Number.NaN })) }
+    const found = checkDesign(built.circuit, built.schematic, broken, built.rules)
+    expect(found).toContainEqual(expect.objectContaining({ id: "unchecked:R1", severity: "warning", items: ["R1"] }))
   })
 
   test("the usb-c-ldo example carries no checking failure of its own", async () => {
