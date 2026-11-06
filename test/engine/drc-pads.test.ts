@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url"
 import { describe, expect, test } from "vitest"
 import { padChecks } from "../../src/engine/checks/drc-pads.js"
+import { breaksMinimum, LENGTH_TOLERANCE, usableOutline } from "../../src/engine/checks/limits.js"
 import { violation, type Violation } from "../../src/engine/checks/violation.js"
 import { buildDesign, type Design } from "../../src/engine/design.js"
 import { ENGINE_FILES } from "../../src/engine/engine.js"
@@ -35,11 +36,11 @@ const pair = (x: number, traces = "") =>
 const NETS_A_B = `<trace from="R1.pin2" to="net.A" />\n<trace from="R2.pin1" to="net.B" />`
 
 /** U1 with a footprint file holding these pads, written as YAML flow mappings. */
-function withPads(pads: readonly string[], options: { traces?: string; rules?: string } = {}): Design {
+function withPads(pads: readonly string[], options: { rules?: string } = {}): Design {
   const pinCount = new Set(pads.map((p) => /number: '(\d+)'/.exec(p)?.[1])).size
   const yaml = ["pads:", ...pads.map((p) => `  - ${p}`), ""].join("\n")
   const files: Record<string, string> = { [PART]: yaml, ...(options.rules ? { "rules.yaml": options.rules } : {}) }
-  return design(`<chip name="U1" footprint="${PART}" pinCount={${pinCount}} pcbX={0} pcbY={0} />\n${options.traces ?? ""}`, files)
+  return design(`<chip name="U1" footprint="${PART}" pinCount={${pinCount}} pcbX={0} pcbY={0} />`, files)
 }
 
 // ---- hand-made layouts, for cases a circuit file cannot express ----
@@ -79,6 +80,30 @@ describe("violation", () => {
   })
 })
 
+describe("limits", () => {
+  test("a value breaks a minimum only when it is smaller by more than the tolerance", () => {
+    expect(LENGTH_TOLERANCE).toBe(1e-6)
+    expect(breaksMinimum(0.2, 0.2)).toBe(false)
+    expect(breaksMinimum(0.19999999999999996, 0.2)).toBe(false)
+    expect(breaksMinimum(0.2 - LENGTH_TOLERANCE / 2, 0.2)).toBe(false)
+    expect(breaksMinimum(0.199, 0.2)).toBe(true)
+    expect(breaksMinimum(-1, 0.2)).toBe(true)
+    expect(breaksMinimum(Infinity, 0.2)).toBe(false)
+  })
+
+  test("a value that is not a number breaks every minimum", () => {
+    expect(breaksMinimum(Number.NaN, 0.2)).toBe(true)
+  })
+
+  test("an outline is usable when the board has one with at least 3 corners", () => {
+    expect(usableOutline(undefined)).toBe(false)
+    expect(usableOutline({ ...SQUARE, outline: [] })).toBe(false)
+    expect(usableOutline({ ...SQUARE, outline: SQUARE.outline.slice(0, 2) })).toBe(false)
+    expect(usableOutline({ ...SQUARE, outline: SQUARE.outline.slice(0, 3) })).toBe(true)
+    expect(usableOutline(SQUARE)).toBe(true)
+  })
+})
+
 describe("pad clearance", () => {
   test("two 0603 resistors 0.1 mm apart on different nets give one error on the two closest pads", () => {
     const found = coded(check(design(pair(2.55, NETS_A_B))), "clearance")
@@ -90,7 +115,16 @@ describe("pad clearance", () => {
       view: "pcb",
       message: "R1#2 and R2#1 are 0.100 mm apart; default needs 0.200 mm",
     })
+    // The facing straight edges run from y = -0.25 to 0.25; the closest pair found first is at their lower end.
     expect(found[0]?.at?.x).toBeCloseTo(1.275, 9)
+    expect(found[0]?.at?.y).toBeCloseTo(-0.25, 9)
+  })
+
+  test("pads exactly at the clearance pass, and 0.001 mm closer fail", () => {
+    expect(coded(check(design(pair(2.65, NETS_A_B))), "clearance")).toEqual([])
+    expect(coded(check(design(pair(2.649, NETS_A_B))), "clearance").map((v) => v.message)).toEqual([
+      "R1#2 and R2#1 are 0.199 mm apart; default needs 0.200 mm",
+    ])
   })
 
   test("the same pads on one net are fine", () => {
@@ -120,6 +154,21 @@ ${NETS_A_B}`
     const traces = `<trace from="R1.pin2" to="net.GND" />\n<trace from="R2.pin1" to="net.SIG" />`
     const found = coded(check(design(pair(2.7, traces), { "rules.yaml": rules })), "clearance")
     expect(found.map((v) => v.message)).toEqual(["R1#2 and R2#1 are 0.250 mm apart; power–default needs 0.300 mm"])
+  })
+
+  test("a pad without a net near a power pad needs the power clearance", () => {
+    const rules = "netClasses:\n  power:\n    clearance: 0.3\n    nets: [GND]\n"
+    const found = coded(check(design(pair(2.7, `<trace from="R1.pin2" to="net.GND" />`), { "rules.yaml": rules })), "clearance")
+    expect(found.map((v) => v.message)).toEqual(["R1#2 and R2#1 are 0.250 mm apart; power–default needs 0.300 mm"])
+  })
+
+  test("pads of one pin are one conductor, even without a net", () => {
+    const overlapping = [0, 0.5].map((x) => `{ number: '1', shape: rect, x: ${x}, y: 0, width: 1, height: 1 }`)
+    expect(check(withPads(overlapping))).toEqual([])
+    const samePin = layoutOf([pad("U1#1", { pin: "U1.pin1" }), pad("U1#2", { number: "2", x: 0.5, pin: "U1.pin1" })])
+    expect(padChecks(samePin, RULES, asDefault)).toEqual([])
+    const otherParts = layoutOf([pad("U1#1"), pad("U2#1", { x: 0.5 })])
+    expect(padChecks(otherParts, RULES, asDefault).map((v) => v.id)).toEqual(["clearance:U1#1,U2#1"])
   })
 
   test("pads without a net differ from each other", () => {
@@ -175,10 +224,18 @@ ${NETS_A_B}`
     expect(padChecks(layout, RULES, asDefault).map((v) => v.id)).toEqual(["clearance:P1#1,P2#1", "clearance:P2#1,P3#1"])
   })
 
-  test("pads whose ids sort as equals are still compared", () => {
-    // R1 is turned half way, so its pad 2 faces R01's pad 2; "R01#2" and "R1#2" compare as equal.
+  test("pads whose ids differ only in leading zeros are still compared", () => {
+    // R1 is turned half way, so its pad 2 faces R01's pad 2; the collator alone ranks "R01#2" and "R1#2" equal.
     const body = `<resistor name="R01" resistance="1k" footprint="0603" pcbX={0} pcbY={0} />\n<resistor name="R1" resistance="1k" footprint="0603" pcbX={2.55} pcbY={0} pcbRotation={180} />`
     expect(coded(check(design(body)), "clearance").map((v) => v.items)).toEqual([["R01#2", "R1#2"]])
+  })
+
+  test("swapping two parts in the source keeps the violation ids", () => {
+    const r01 = `<resistor name="R01" resistance="1k" footprint="0603" pcbX={0} pcbY={0} />`
+    const r1 = `<resistor name="R1" resistance="1k" footprint="0603" pcbX={2.55} pcbY={0} pcbRotation={180} />`
+    const ids = (body: string) => check(design(body)).map((v) => v.id)
+    expect(ids(`${r01}\n${r1}`)).toEqual(["clearance:R01#2,R1#2"])
+    expect(ids(`${r1}\n${r01}`)).toEqual(["clearance:R01#2,R1#2"])
   })
 })
 
@@ -252,7 +309,7 @@ describe("holes", () => {
 
   test("two drills 0.3 mm apart are an error", () => {
     const pads = [-0.35, 0.35].map((x) => `{ number: '1', shape: circle, x: ${x}, y: 0, width: 1, height: 1, layers: through, drill: 0.4 }`)
-    const found = check(withPads(pads, { traces: `<trace from="U1.pin1" to="net.A" />` }))
+    const found = check(withPads(pads))
     expect(found).toHaveLength(1)
     expect(found[0]).toMatchObject({
       id: "hole-to-hole:U1#1,U1#1#2",
@@ -264,9 +321,10 @@ describe("holes", () => {
 
   test("drills on different nets are checked too", () => {
     const pads = ["1", "2"].map((n, i) => `{ number: '${n}', shape: circle, x: ${i * 0.7}, y: 0, width: 0.8, height: 0.8, layers: through, drill: 0.4 }`)
-    const codes = check(withPads(pads)).map((v) => v.code)
-    expect(codes).toContain("hole-to-hole")
-    expect(codes).toContain("clearance")
+    expect(check(withPads(pads)).map((v) => [v.code, v.items])).toEqual([
+      ["clearance", ["U1#1", "U1#2"]],
+      ["hole-to-hole", ["U1#1", "U1#2"]],
+    ])
   })
 
   test("a hole-to-hole limit wider than the clearance still finds the neighbour", () => {

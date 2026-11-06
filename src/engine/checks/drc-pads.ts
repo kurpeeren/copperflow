@@ -6,18 +6,17 @@ import { DEFAULT_CLASS } from "../rules/profiles.js"
 import type { Rules } from "../rules/schema.js"
 import { bounds, closestPoints, drillShape, padShape, pointInPolygon, shapeDistance, shapeToSegmentDistance, type Shape } from "./geometry.js"
 import { GridIndex, type Box } from "./grid-index.js"
+import { breaksMinimum, usableOutline } from "./limits.js"
 import { violation, type Violation } from "./violation.js"
 
 /**
  * Placement checks on pads and holes: copper clearance between nets, distance to the board edge,
  * drill size, annular ring and hole-to-hole spacing. Every limit is a minimum, so a value breaks it
- * when it is smaller; a value equal to the limit passes.
+ * when it is smaller (by more than LENGTH_TOLERANCE); a value equal to the limit passes.
  */
 
 /** Side of a cell in the pad index, in mm: about the size of a small pad. */
 const CELL = 1
-/** An outline needs this many corners to enclose anything. */
-const MIN_OUTLINE_POINTS = 3
 
 /** A pad with what the checks need, worked out once. `rank` is its place in natural id order. */
 interface CheckedPad {
@@ -40,8 +39,12 @@ const classPair = (a: string, b: string) => (a === b ? a : `${a}–${b}`)
 
 /** A through pad has copper on both sides; top and bottom pads only on their own. */
 const sharesCopper = (a: WorldPad["layers"], b: WorldPad["layers"]) => a === "through" || b === "through" || a === b
-/** A pad without a net is on a net of its own, different from every other pad's. */
-const onOneNet = (a: WorldPad, b: WorldPad) => a.net !== undefined && a.net === b.net
+/**
+ * Pads are one conductor when they share a net, or belong to one pin: the same pad number on one
+ * component, or the same pin. Otherwise a pad without a net stands alone, apart from every other pad.
+ */
+const oneConductor = (a: WorldPad, b: WorldPad) =>
+  (a.net !== undefined && a.net === b.net) || (a.component === b.component && a.number === b.number) || (a.pin !== undefined && a.pin === b.pin)
 
 /** Every pad in natural id order. A pad without a net is in the default class, whatever classOf says. */
 function checkedPads(layout: PcbLayout, classOf: (net: string | undefined) => string): CheckedPad[] {
@@ -68,7 +71,7 @@ function drillSize({ pad }: CheckedPad, rules: Rules): Violation | undefined {
   if (pad.drill === undefined) return undefined
   const narrow = Math.min(pad.drill.width, pad.drill.height)
   const minimum = rules.fabrication.minDrill
-  if (narrow >= minimum) return undefined
+  if (!breaksMinimum(narrow, minimum)) return undefined
   return violation("drill-size", "error", `${pad.id} has a ${mm(narrow)} mm drill; the minimum is ${mm(minimum)} mm`, [pad.id], "pcb", centre(pad))
 }
 
@@ -87,7 +90,7 @@ function annularRing({ pad, copper }: CheckedPad, rules: Rules): Violation | und
   if (pad.layers !== "through" || pad.drill === undefined || copper === undefined) return undefined
   const ring = ringWidth(pad, pad.drill)
   const minimum = rules.fabrication.minAnnularRing
-  if (ring >= minimum) return undefined
+  if (!breaksMinimum(ring, minimum)) return undefined
   const message =
     ring > 0
       ? `${pad.id} has a ${mm(ring)} mm annular ring; the minimum is ${mm(minimum)} mm`
@@ -99,14 +102,17 @@ function outlineDistance(shape: Shape, outline: readonly Point[]): number {
   return smallest(outline.map((p, i) => shapeToSegmentDistance(shape, p, outline[(i + 1) % outline.length] as Point)))
 }
 
-/** The pad's copper and its hole against every outline edge; a pad centred outside the board fails outright. */
+/**
+ * The pad's copper and its hole against every outline edge; a pad centred outside the board fails
+ * outright. Skipped without a usable outline, which the board checks report.
+ */
 function boardEdge({ pad, copper, hole }: CheckedPad, board: Board | undefined, rules: Rules): Violation | undefined {
-  if (board === undefined || board.outline.length < MIN_OUTLINE_POINTS) return undefined
+  if (board === undefined || !usableOutline(board)) return undefined
   const minimum = rules.fabrication.boardEdgeClearance
   const report = (message: string) => violation("board-edge", "error", message, [pad.id], "pcb", centre(pad))
   if (!pointInPolygon(centre(pad), board.outline)) return report(`${pad.id} is outside the board`)
   const distance = smallest([copper, hole].filter(isDefined).map((shape) => outlineDistance(shape, board.outline)))
-  if (distance >= minimum) return undefined
+  if (!breaksMinimum(distance, minimum)) return undefined
   return report(
     distance > 0
       ? `${pad.id} is ${mm(distance)} mm from the board edge; the minimum is ${mm(minimum)} mm`
@@ -122,10 +128,10 @@ function singleChecks(p: CheckedPad, board: Board | undefined, rules: Rules): Vi
 
 function clearance(a: CheckedPad, b: CheckedPad, rules: Rules): Violation | undefined {
   if (a.copper === undefined || b.copper === undefined) return undefined
-  if (!sharesCopper(a.pad.layers, b.pad.layers) || onOneNet(a.pad, b.pad)) return undefined
+  if (!sharesCopper(a.pad.layers, b.pad.layers) || oneConductor(a.pad, b.pad)) return undefined
   const required = requiredClearance(rules, a.className, b.className)
   const distance = shapeDistance(a.copper, b.copper)
-  if (distance >= required) return undefined
+  if (!breaksMinimum(distance, required)) return undefined
   const message = `${a.pad.id} and ${b.pad.id} are ${gap(distance)}; ${classPair(a.className, b.className)} needs ${mm(required)} mm`
   return violation("clearance", "error", message, [a.pad.id, b.pad.id], "pcb", midpoint(closestPoints(a.copper, b.copper)))
 }
@@ -135,7 +141,7 @@ function holeToHole(a: CheckedPad, b: CheckedPad, rules: Rules): Violation | und
   if (a.hole === undefined || b.hole === undefined) return undefined
   const minimum = rules.fabrication.minHoleToHole
   const distance = shapeDistance(a.hole, b.hole)
-  if (distance >= minimum) return undefined
+  if (!breaksMinimum(distance, minimum)) return undefined
   const message = `The holes of ${a.pad.id} and ${b.pad.id} are ${gap(distance)}; the minimum is ${mm(minimum)} mm`
   return violation("hole-to-hole", "error", message, [a.pad.id, b.pad.id], "pcb", midpoint(closestPoints(a.hole, b.hole)))
 }
