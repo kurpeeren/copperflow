@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api, hasToken, subscribe, type BuildState, type CircuitData, type Edit, type HistoryListing, type PartsData } from "./api"
 import { UndoIcon } from "./icons"
 import { Inspector } from "./Inspector"
 import { LeftPanel } from "./LeftPanel"
 import { PcbCanvas } from "./pcb/PcbCanvas"
 import { SchematicCanvas } from "./pcb/SchematicCanvas"
+import { remapHighlight } from "./pcb/highlight"
+import { useWorkspace } from "./use-workspace"
 
 /** Every action reports failures itself and resolves to whether it succeeded. */
 export interface Actions {
@@ -19,7 +21,7 @@ export interface Actions {
 
 type Tab = "pcb" | "schematic"
 
-/** Starting values for built-in parts tscircuit cannot build without, so a placed part builds at once. */
+/** Starting values for built-in parts, so a placed part has a value and a footprint at once. */
 const PLACE_DEFAULTS: Record<string, Record<string, string>> = {
   resistor: { resistance: "10k", footprint: "0402" },
   capacitor: { capacitance: "100nF", footprint: "0402" },
@@ -39,6 +41,8 @@ export function App() {
   const [tab, setTab] = useState<Tab>("pcb")
   const [message, setMessage] = useState<string | null>(null)
   const [parts, setParts] = useState<PartsData>({ library: [], builtin: [] })
+  const workspace = useWorkspace(tab)
+  const { setHighlight } = workspace
 
   const notify = useCallback((text: string) => {
     setMessage(text)
@@ -60,8 +64,8 @@ export function App() {
 
   const refreshBuild = useCallback(async (target: string) => {
     const next = await api<BuildState>(`/api/build?file=${encodeURIComponent(target)}`)
-    // Keep the same circuit JSON object while a build runs, so the viewers do not reset.
-    setBuild((previous) => (next.status === "building" && previous.circuitJson ? { ...next, circuitJson: previous.circuitJson } : next))
+    // Keep the same design object while a build runs, so the viewers do not redraw from scratch.
+    setBuild((previous) => (next.status === "building" && previous.design ? { ...next, design: previous.design } : next))
   }, [])
 
   useEffect(() => {
@@ -77,6 +81,7 @@ export function App() {
   useEffect(() => {
     if (!file) return
     setSelected(null)
+    setHighlight(null)
     refresh(file).catch((error: Error) => notify(error.message))
     api("/api/build", { file })
       .then(() => refreshBuild(file))
@@ -90,7 +95,7 @@ export function App() {
       const update = event === "change" ? refresh(file) : refreshBuild(file)
       update.catch((error: Error) => notify(error.message))
     })
-  }, [file, refresh, refreshBuild, refreshParts, notify])
+  }, [file, refresh, refreshBuild, refreshParts, notify, setHighlight])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -147,7 +152,16 @@ export function App() {
     }
   }
 
-  const json = build.circuitJson
+  const design = build.design
+  // A rebuild can rename or merge the highlighted net (an unnamed net that gets GND): follow it, or clear it.
+  const lastDesign = useRef<typeof design>(undefined)
+  useEffect(() => {
+    const before = lastDesign.current
+    lastDesign.current = design
+    if (design && design !== before) setHighlight((current) => remapHighlight(current, before, design))
+  }, [design, setHighlight])
+  // Previews of moves and wires sent before this time are in the design the canvases draw.
+  const builtFrom = build.startedAt ? Date.parse(build.startedAt) : Number.NEGATIVE_INFINITY
   if (!hasToken) {
     return (
       <p className="empty">
@@ -189,7 +203,7 @@ export function App() {
           Locked parts changed outside the editor: {circuit.violations.map((v) => `${v.part} (${v.detail})`).join(", ")}
         </div>
       )}
-      <main className="workspace">
+      <main className={`workspace${workspace.leftOpen ? "" : " no-left"}${workspace.rightOpen ? "" : " no-right"}`}>
         {circuit && (
           <LeftPanel
             circuit={circuit}
@@ -199,44 +213,60 @@ export function App() {
             selected={selected}
             onSelect={setSelected}
             actions={actions}
+            design={design}
+            tab={workspace.leftTab}
+            onTab={workspace.setLeftTab}
+            focusSearch={workspace.focusSearch}
+            onSearchFocused={workspace.searchFocused}
+            highlight={workspace.highlight}
+            onHighlight={workspace.setHighlight}
+            hidden={!workspace.leftOpen}
           />
         )}
         <section className="canvas">
-          {!json && <p className="empty">{build.status === "failed" ? build.error : "Building the circuit…"}</p>}
-          {json && circuit && tab === "pcb" && (
+          {!design && <p className="empty">{build.status === "failed" ? build.error : "Building the circuit…"}</p>}
+          {design && circuit && tab === "pcb" && (
             <PcbCanvas
               key={file}
-              json={json}
+              design={design}
               buildId={build.finishedAt}
-              building={build.status === "building"}
+              builtFrom={builtFrom}
               circuit={circuit}
               actions={actions}
               selected={selected}
               onSelect={setSelected}
+              highlight={workspace.highlight}
+              onHighlight={workspace.setHighlight}
+              unit={workspace.unit}
+              onToggleUnit={workspace.toggleUnit}
             />
           )}
-          {json && circuit && tab === "schematic" && (
+          {design && circuit && tab === "schematic" && (
             <SchematicCanvas
               key={file}
-              json={json}
+              design={design}
               buildId={build.finishedAt}
-              building={build.status === "building"}
+              builtFrom={builtFrom}
               circuit={circuit}
               actions={actions}
               selected={selected}
               onSelect={setSelected}
+              highlight={workspace.highlight}
+              onHighlight={workspace.setHighlight}
+              unit={workspace.unit}
+              onToggleUnit={workspace.toggleUnit}
             />
           )}
         </section>
         {circuit && (
           <Inspector
             circuit={circuit}
-            json={json}
             build={build}
             parts={parts}
             selected={selected}
             onSelect={setSelected}
             actions={actions}
+            hidden={!workspace.rightOpen}
           />
         )}
       </main>
@@ -249,16 +279,17 @@ export function App() {
   )
 }
 
+/** The error diagnostics of the last design. */
 function errorCount(build: BuildState): number {
-  return build.report?.errors.reduce((sum, g) => sum + g.count, 0) ?? 0
+  return build.design?.diagnostics.filter((d) => d.severity === "error").length ?? 0
 }
 
 function statusText(build: BuildState): string {
   if (build.status === "building") return "Building"
   if (build.status === "failed") return "Build failed"
-  if (build.status !== "done" || !build.report) return "Not built"
+  if (build.status !== "done" || !build.design) return "Not built"
   const errors = errorCount(build)
-  return errors === 0 ? "Build OK" : `${errors} errors`
+  return errors === 0 ? "Build OK" : `${errors} ${errors === 1 ? "error" : "errors"}`
 }
 
 function buildTone(build: BuildState): "busy" | "bad" | "good" | "idle" {

@@ -71,5 +71,7 @@ export type Edit =
   /** `schematicRouteHints` are the corners of a wire drawn by hand in the schematic. */
   | { kind: "addTrace"; from: string; to: string; props?: Record<string, Literal>; schematicRouteHints?: Point[] }
   | { kind: "removeTrace"; from: string; to: string }
+  /** Replaces the corners of a trace's hand-drawn schematic wire; an empty list removes them. */
+  | { kind: "setTraceHints"; from: string; to: string; schematicRouteHints: Point[] }
   /** `importFrom` adds `import { tag } from "<importFrom>"` when it is missing. */
   | { kind: "addPart"; tag: string; name: string; props?: Record<string, Literal>; importFrom?: string }

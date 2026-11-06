@@ -1,26 +1,25 @@
 import { describe, expect, test } from "vitest"
 import {
-  boardBounds,
-  componentBoxes,
   fitCamera,
   gridSteps,
   hitTest,
-  schematicBoxes,
+  pointBounds,
+  rightAngles,
   screenToWorld,
   snap,
-  toMatrix,
+  unionBoxes,
   worldToScreen,
   zoomAt,
+  type PartBox,
 } from "../studio/src/pcb/geometry.js"
 
 const SIZE = { width: 800, height: 600 }
-const JSON_ = [
-  { type: "pcb_board", center: { x: 0, y: 0 }, width: 30, height: 18 },
-  { type: "source_component", source_component_id: "s1", name: "R1" },
-  { type: "pcb_component", pcb_component_id: "p1", source_component_id: "s1", center: { x: -4, y: 2 }, width: 1.6, height: 0.8 },
-  { type: "source_component", source_component_id: "s2", name: "J1" },
-  { type: "pcb_component", pcb_component_id: "p2", source_component_id: "s2", center: { x: -5, y: 2 }, width: 10, height: 9 },
-]
+const box = (name: string, minX: number, minY: number, maxX: number, maxY: number): PartBox => ({
+  name,
+  pcbComponentId: name,
+  center: { x: (minX + maxX) / 2, y: (minY + maxY) / 2 },
+  box: { minX, minY, maxX, maxY },
+})
 
 describe("camera", () => {
   test("world and screen coordinates convert both ways, with y pointing up", () => {
@@ -28,11 +27,6 @@ describe("camera", () => {
     expect(worldToScreen(camera, SIZE, { x: 10, y: 5 })).toEqual({ x: 400, y: 300 })
     expect(worldToScreen(camera, SIZE, { x: 11, y: 6 })).toEqual({ x: 420, y: 280 })
     expect(screenToWorld(camera, SIZE, { x: 420, y: 280 })).toEqual({ x: 11, y: 6 })
-  })
-
-  test("the drawing matrix matches worldToScreen, scaled for the pixel ratio", () => {
-    const m = toMatrix({ cx: 10, cy: 5, scale: 20 }, SIZE, 2)
-    expect([m.a * 11 + m.e, m.d * 6 + m.f]).toEqual([840, 560])
   })
 
   test("fit shows the whole box with some margin", () => {
@@ -70,26 +64,26 @@ describe("grid and snapping", () => {
   })
 })
 
-describe("schematic", () => {
-  const SCH = [
-    { type: "source_component", source_component_id: "s1", name: "R1" },
-    { type: "schematic_component", schematic_component_id: "c1", source_component_id: "s1", center: { x: 2, y: 1 }, size: { width: 1, height: 0.4 } },
-  ]
+describe("wires", () => {
+  test("a wire through clicked points turns at right angles, horizontal first", () => {
+    expect(rightAngles([{ x: 0, y: 0 }, { x: 2, y: 1 }, { x: 2, y: 3 }])).toEqual([
+      { x: 0, y: 0 },
+      { x: 2, y: 0 },
+      { x: 2, y: 1 },
+      { x: 2, y: 3 },
+    ])
+  })
 
-  test("schematic parts have boxes from their centre and size", () => {
-    expect(schematicBoxes(SCH)).toEqual([{ name: "R1", pcbComponentId: "c1", center: { x: 2, y: 1 }, box: { minX: 1.5, minY: 0.8, maxX: 2.5, maxY: 1.2 } }])
+  test("repeated points are dropped", () => {
+    expect(rightAngles([{ x: 1, y: 1 }, { x: 1, y: 1 }, { x: 3, y: 1 }])).toEqual([
+      { x: 1, y: 1 },
+      { x: 3, y: 1 },
+    ])
   })
 })
 
 describe("parts on the board", () => {
-  const boxes = componentBoxes(JSON_)
-
-  test("every placed component has a named box", () => {
-    expect(boxes.map((b) => [b.name, b.box])).toEqual([
-      ["R1", { minX: -4.8, minY: 1.6, maxX: -3.2, maxY: 2.4 }],
-      ["J1", { minX: -10, minY: -2.5, maxX: 0, maxY: 6.5 }],
-    ])
-  })
+  const boxes = [box("R1", -4.8, 1.6, -3.2, 2.4), box("J1", -10, -2.5, 0, 6.5)]
 
   test("a click picks the smallest part under the cursor", () => {
     expect(hitTest(boxes, { x: -4, y: 2 })?.name).toBe("R1")
@@ -97,8 +91,11 @@ describe("parts on the board", () => {
     expect(hitTest(boxes, { x: 10, y: 0 })).toBeUndefined()
   })
 
-  test("board bounds come from the board, or from the parts without one", () => {
-    expect(boardBounds(JSON_)).toEqual({ minX: -15, minY: -9, maxX: 15, maxY: 9 })
-    expect(boardBounds(JSON_.filter((e) => e.type !== "pcb_board"))).toEqual({ minX: -10, minY: -2.5, maxX: 0, maxY: 6.5 })
+  test("bounds come from points, such as the board outline, or from part boxes", () => {
+    const outline = [{ x: -15, y: -9 }, { x: 15, y: -9 }, { x: 15, y: 9 }, { x: -15, y: 9 }]
+    expect(pointBounds(outline)).toEqual({ minX: -15, minY: -9, maxX: 15, maxY: 9 })
+    expect(pointBounds([])).toBeUndefined()
+    expect(unionBoxes(boxes.map((b) => b.box))).toEqual({ minX: -10, minY: -2.5, maxX: 0, maxY: 6.5 })
+    expect(unionBoxes([])).toBeUndefined()
   })
 })

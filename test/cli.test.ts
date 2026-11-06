@@ -6,19 +6,28 @@ import { fileURLToPath } from "node:url"
 import { runCli } from "../src/cli-commands.js"
 import { readAnnotations } from "../src/core/annotations.js"
 import { createPart } from "../src/core/library.js"
-import { BOARD, LDO } from "./fixtures.js"
+import { BOARD, LDO, SHARED } from "./fixtures.js"
+import { inProcessEngine } from "./helpers/in-process-engine.js"
 
 const FILE = "main.circuit.tsx"
+/** A circuit the engine builds without errors or warnings. */
+const CLEAN = `export default () => (
+  <board width="10mm" height="10mm">
+    <resistor name="R1" resistance="1k" footprint="0402" pcbX={0} pcbY={0} schX={0} schY={0} />
+  </board>
+)
+`
 let root: string
 let out: string[]
 let err: string[]
 const io = () => ({ out: (s: string) => out.push(s), err: (s: string) => err.push(s) })
-const run = (...args: string[]) => runCli(args, root, io())
+const run = (...args: string[]) => runCli(args, root, io(), { engine: inProcessEngine })
 const sidecar = () => readAnnotations(join(root, "main.circuit.annotations.json"))
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "cf-cli-"))
   await writeFile(join(root, FILE), BOARD)
+  await writeFile(join(root, "shared.ts"), SHARED)
   out = []
   err = []
 })
@@ -49,12 +58,21 @@ describe("cli", () => {
 
   test("check prints the build report and fails when the build has errors", async () => {
     const fakeTsci = [process.execPath, fileURLToPath(new URL("./fixtures/fake-tsci.mjs", import.meta.url))]
+    const check = () => runCli(["check", FILE], root, io(), { buildCommand: fakeTsci, engine: inProcessEngine })
+    await writeFile(join(root, FILE), CLEAN)
     const elements = [{ type: "pcb_courtyard_overlap_error", message: "Courtyard of U1 overlaps with courtyard of C2" }]
     await writeFile(join(root, "main.circuit.fake.json"), JSON.stringify({ exitCode: 1, elements }))
-    expect(await runCli(["check", FILE], root, io(), { buildCommand: fakeTsci })).toBe(1)
+    expect(await check()).toBe(1)
     expect(out.join("\n")).toContain("pcb_courtyard_overlap_error")
     await writeFile(join(root, "main.circuit.fake.json"), JSON.stringify({ exitCode: 0, elements: [] }))
-    expect(await runCli(["check", FILE], root, io(), { buildCommand: fakeTsci })).toBe(0)
+    expect(await check()).toBe(0)
+  })
+
+  test("check fails on the engine's errors, such as BOARD's two parts named RX", async () => {
+    const fakeTsci = [process.execPath, fileURLToPath(new URL("./fixtures/fake-tsci.mjs", import.meta.url))]
+    await writeFile(join(root, "main.circuit.fake.json"), JSON.stringify({ exitCode: 0, elements: [] }))
+    expect(await runCli(["check", FILE], root, io(), { buildCommand: fakeTsci, engine: inProcessEngine })).toBe(1)
+    expect(out.join("\n")).toContain("duplicate-name: More than one part is named RX")
   })
 
   test("parts: list, rebuild and verify by a person", async () => {
@@ -82,6 +100,20 @@ describe("cli", () => {
     expect(out.join("\n")).toContain("exports/main/BOM.csv")
     // main.circuit.tsx sits at the project root, so its package folder is exports/main.
     expect(await run("place", FILE, "LDO", "U8", "broken")).toBe(1)
+  })
+
+  test("bom and package no longer take --build", async () => {
+    expect(await run("bom", FILE, "--build")).toBe(1)
+    expect(err.join("\n")).toContain("--build")
+    err = []
+    expect(await run("package", FILE, "--build")).toBe(1)
+    expect(err.join("\n")).toContain("--build")
+  })
+
+  test("a circuit-code error in a BOM build is reported as file:line:column", async () => {
+    await writeFile(join(root, FILE), "export default () => <board>\n")
+    expect(await run("bom", FILE)).toBe(1)
+    expect(err.join("\n")).toMatch(/main\.circuit\.tsx:\d+:\d+: /)
   })
 
   test("errors are reported with a non-zero exit code", async () => {

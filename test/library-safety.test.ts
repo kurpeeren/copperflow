@@ -9,6 +9,7 @@ import { placePart } from "../src/core/place.js"
 import { editCircuit } from "../src/core/workspace.js"
 import { runCli } from "../src/cli-commands.js"
 import { LDO } from "./fixtures.js"
+import { inProcessEngine } from "./helpers/in-process-engine.js"
 
 const NOW = "2026-11-04T10:00:00.000Z"
 const FILE = "boards/main.circuit.tsx"
@@ -122,14 +123,14 @@ describe("BOM", () => {
     await createPart(root, "LDO", LDO, { now: NOW })
     await createPart(root, "LDOB", LDO, { now: NOW })
     await verifyPart(root, "LDO", { by: "Eren", against: "p.2" }, NOW)
-    const lines = await buildBom(root, FILE)
+    const lines = await buildBom(root, FILE, { engine: inProcessEngine })
     expect(lines.map((l) => l.designators.join(" "))).toEqual(["C1", "C2", "U1", "U2"])
   })
 
   test("datasheet links are encoded and the package folder follows the circuit path", async () => {
     await createPart(root, "LDO", { ...LDO, datasheet: { url: "http://a.com/x)|[evil](http://evil/|" } }, { now: NOW })
     await writeFile(join(root, FILE), 'import { LDO } from "../parts/LDO/LDO"\nexport default () => (\n  <board>\n    <LDO name="U1" />\n  </board>\n)\n')
-    const result = await exportPackage(root, FILE)
+    const result = await exportPackage(root, FILE, { engine: inProcessEngine })
     expect(result.outDir).toBe("exports/boards/main")
     const readme = await readFile(join(root, "exports", "boards", "main", "README.md"), "utf8")
     expect(readme).toContain("[datasheet](http://a.com/x%29%7C%5Bevil%5D%28http://evil/%7C)")

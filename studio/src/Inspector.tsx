@@ -1,29 +1,40 @@
 import { useEffect, useState } from "react"
-import type { BuildState, CircuitData, CircuitElement, Literal, PartInfo, PartsData, PropInfo } from "./api"
+import type { BuildState, CircuitData, Design, Diagnostic, Literal, PartInfo, PartsData, PropInfo } from "./api"
 import type { Actions } from "./App"
 import { BomSection } from "./BomSection"
 import { LibraryInfo } from "./LibraryInfo"
-import { pcbCenterOf } from "./circuit-json"
 import { CloseIcon, LockIcon, RotateIcon, TrashIcon, UnlockIcon } from "./icons"
 import { touches } from "./LeftPanel"
+import { pcbBoxes } from "./pcb/pcb-draw"
 
 interface Props {
   circuit: CircuitData
-  json: CircuitElement[] | undefined
   build: BuildState
   parts: PartsData
   selected: string | null
   onSelect(name: string | null): void
   actions: Actions
+  /** Hidden with the ] key; kept mounted so its fields keep what was typed. */
+  hidden: boolean
 }
 
 /** The selected part's properties, or the board's state when nothing is selected. */
 export function Inspector(props: Props) {
   const part = props.circuit.model.parts.find((p) => p.name === props.selected)
-  return <aside className="panel right">{part ? <PartView {...props} part={part} /> : <BoardView {...props} />}</aside>
+  return (
+    <aside className="panel right" hidden={props.hidden}>
+      {part ? <PartView {...props} part={part} /> : <BoardView {...props} />}
+    </aside>
+  )
 }
 
-function PartView({ circuit, json, parts, part, actions, onSelect }: Props & { part: PartInfo }) {
+/** The centre of the part on the board, where a note about it is placed. */
+function centreOnBoard(design: Design | undefined, name: string): { x: number; y: number } | undefined {
+  const box = design && pcbBoxes(design.pcb).find((b) => b.name === name)
+  return box && { x: Math.round(box.center.x * 1000) / 1000, y: Math.round(box.center.y * 1000) / 1000 }
+}
+
+function PartView({ circuit, build, parts, part, actions, onSelect }: Props & { part: PartInfo }) {
   const locked = circuit.annotations.locks.some((lock) => lock.part === part.name)
   const library = parts.library.find((p) => p.component === part.tag)
   const setProp = (key: string, value: Literal) =>
@@ -102,7 +113,7 @@ function PartView({ circuit, json, parts, part, actions, onSelect }: Props & { p
       )}
 
       <MarkForm label={`Note for the agent about ${part.name}`} onAdd={(text) => {
-        const at = json ? pcbCenterOf(json, part.name) : undefined
+        const at = centreOnBoard(build.design, part.name)
         return actions.mark(at ? text : `${part.name}: ${text}`, at ? { view: "pcb", ...at } : undefined)
       }} />
     </div>
@@ -228,8 +239,9 @@ function parseLike(current: Literal | undefined, text: string): Literal | undefi
 }
 
 function BoardView({ circuit, build, actions }: Props) {
-  const errors = build.report?.errors ?? []
-  const warnings = build.report?.warnings.reduce((sum, g) => sum + g.count, 0) ?? 0
+  const diagnostics = build.design?.diagnostics ?? []
+  const errors = diagnostics.filter((d) => d.severity === "error").length
+  const warnings = diagnostics.length - errors
   return (
     <div className="inspector">
       <header className="part-head">
@@ -244,17 +256,12 @@ function BoardView({ circuit, build, actions }: Props) {
       <h3>Build</h3>
       {build.status === "failed" && <p className="note error">{build.error}</p>}
       {build.status === "building" && <p className="note">Building…</p>}
-      {build.report && errors.length === 0 && <p className="note ok">No errors. {warnings} warnings.</p>}
-      {errors.length > 0 && (
-        <ul className="issues">
-          {errors.map((g) => (
-            <li key={g.type}>
-              {g.messages[0]}
-              {g.count > 1 && <span className="more"> and {g.count - 1} more like it</span>}
-            </li>
-          ))}
-        </ul>
+      {build.design && errors === 0 && (
+        <p className="note ok">
+          No errors. {warnings} {warnings === 1 ? "warning" : "warnings"}.
+        </p>
       )}
+      <CheckList diagnostics={diagnostics} />
 
       <h3>Notes for the agent</h3>
       {circuit.annotations.marks.length === 0 && <p className="note">Select a part to leave a note at it, or draw a box on the PCB.</p>}
@@ -273,6 +280,31 @@ function BoardView({ circuit, build, actions }: Props) {
       <BomSection file={circuit.file} buildId={build.finishedAt} actions={actions} />
       <p className="hint">Select a part to see and change its properties.</p>
     </div>
+  )
+}
+
+/** Diagnostics grouped by code, errors first; each shows its message and the parts or pins it names. */
+function CheckList({ diagnostics }: { diagnostics: Diagnostic[] }) {
+  const groups = new Map<string, Diagnostic[]>()
+  const ordered = [...diagnostics].sort((a, b) => Number(a.severity === "warning") - Number(b.severity === "warning"))
+  for (const diagnostic of ordered) groups.set(diagnostic.code, [...(groups.get(diagnostic.code) ?? []), diagnostic])
+  if (groups.size === 0) return null
+  return (
+    <ul className="issues">
+      {[...groups].map(([code, list]) => (
+        <li key={code} className={list.some((d) => d.severity === "error") ? "error" : "warning"}>
+          <span className="code">{code}</span>
+          <ul>
+            {list.map((d, i) => (
+              <li key={i}>
+                {d.message}
+                {d.items.length > 0 && <span className="items">: {d.items.join(", ")}</span>}
+              </li>
+            ))}
+          </ul>
+        </li>
+      ))}
+    </ul>
   )
 }
 

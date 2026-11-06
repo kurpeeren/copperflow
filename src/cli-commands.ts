@@ -2,7 +2,6 @@ import { resolve } from "node:path"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   buildBom,
-  buildCircuit,
   exportPackage,
   formatBomCsv,
   formatBomMarkdown,
@@ -25,6 +24,7 @@ import {
   updateAnnotations,
   type MarkInput,
 } from "./core/index.js"
+import type { DesignSource } from "./core/bom.js"
 import { createCopperflowServer } from "./mcp/server.js"
 import { startStudio } from "./studio/server.js"
 import { VERSION } from "./version.js"
@@ -42,7 +42,7 @@ Usage:
   copperflow mcp                              start the MCP server on stdio
   copperflow studio [--port n]                open the visual editor at http://127.0.0.1:4777
   copperflow summary <file>                   print a circuit summary
-  copperflow check <file>                     build with tscircuit and list errors and warnings
+  copperflow check <file>                     list the engine's errors and warnings, then tscircuit's
   copperflow lock <file> <part...>            lock parts so the agent cannot change them
   copperflow unlock <file> <part...>          unlock parts
   copperflow mark <file> <text> [--pcb x,y | --sch x,y]
@@ -54,18 +54,21 @@ Usage:
                                               mark a part as checked against its datasheet
   copperflow place <file> <part> <name> [key=value ...]
                                               add a library or built-in part to a circuit
-  copperflow bom <file> [--csv] [--build]     print the bill of materials
-  copperflow package <file> [--out dir] [--build]
+  copperflow bom <file> [--csv]               print the bill of materials
+  copperflow package <file> [--out dir]
                                               write BOM, datasheets and part status to a folder
   copperflow history [--limit n]              list recent changes
   copperflow undo [id]                        undo the newest change, or the given one
 
 Every command accepts --root <dir> (default: the current directory).
-Set COPPERFLOW_TSCI to use a tscircuit CLI that is not on the PATH.`
+check also builds with the tscircuit CLI (tsci) until copperflow's own rule checks arrive;
+set COPPERFLOW_TSCI to use one that is not on the PATH.`
 
 export interface CliOptions {
   /** The tscircuit CLI for `check` and the MCP server; defaults to $COPPERFLOW_TSCI or `tsci`. */
   buildCommand?: string[]
+  /** Builds the design for check, bom and package; tests pass one that runs in this process. */
+  engine?: DesignSource
 }
 
 export async function runCli(args: string[], cwd: string, io: CliIO, options: CliOptions = {}): Promise<number> {
@@ -79,11 +82,7 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
         return 0
       case "studio": {
         const [port] = takeOption(rest, "--port")
-        const studio = await startStudio({
-          root,
-          ...(port ? { port: positiveInt(port) } : {}),
-          ...(options.buildCommand ? { buildCommand: options.buildCommand } : {}),
-        })
+        const studio = await startStudio({ root, ...(port ? { port: positiveInt(port) } : {}) })
         io.out(`copperflow studio is running. Open this address (it contains a key for this session):\n${studio.openUrl}\nPress Ctrl+C to stop.`)
         return 0
       }
@@ -92,7 +91,7 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
         return 0
       case "check": {
         const file = required(rest[0], "file")
-        const result = await checkCircuit(root, file, options.buildCommand ? { command: options.buildCommand } : {})
+        const result = await checkCircuit(root, file, { ...designOptions(options), ...(options.buildCommand ? { command: options.buildCommand } : {}) })
         io.out(formatCheck(file, result))
         return result.ok ? 0 : 1
       }
@@ -124,20 +123,15 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
       }
       case "bom": {
         const [csv, withoutCsv] = takeFlag(rest, "--csv")
-        const [build, args] = takeFlag(withoutCsv, "--build")
-        const file = required(args[0], "file")
-        const lines = await buildBom(root, file, build ? await builtJson(root, file, options) : undefined)
+        const file = required(rejectBuildFlag(withoutCsv)[0], "file")
+        const lines = await buildBom(root, file, designOptions(options))
         io.out(csv ? formatBomCsv(lines) : formatBomMarkdown(lines))
         return 0
       }
       case "package": {
-        const [build, withoutBuild] = takeFlag(rest, "--build")
-        const [outDir, args] = takeOption(withoutBuild, "--out")
+        const [outDir, args] = takeOption(rejectBuildFlag(rest), "--out")
         const file = required(args[0], "file")
-        const result = await exportPackage(root, file, {
-          ...(outDir ? { outDir } : {}),
-          ...(build ? { circuitJson: await builtJson(root, file, options) } : {}),
-        })
+        const result = await exportPackage(root, file, { ...designOptions(options), ...(outDir ? { outDir } : {}) })
         io.out(`Wrote ${result.outDir}:\n${result.files.join("\n")}`)
         return 0
       }
@@ -241,8 +235,17 @@ function parseProps(args: string[]): Record<string, string | number | boolean> {
   )
 }
 
-async function builtJson(root: string, file: string, options: CliOptions): Promise<unknown[]> {
-  return (await buildCircuit(root, file, options.buildCommand ? { command: options.buildCommand } : {})).circuitJson
+/** The engine to build the design with, when one was given; otherwise the BOM starts its own. */
+function designOptions(options: CliOptions): { engine?: DesignSource } {
+  return options.engine ? { engine: options.engine } : {}
+}
+
+/** bom and package always read the design the engine builds from the code, so --build has nothing left to do. */
+function rejectBuildFlag(args: string[]): string[] {
+  if (args.includes("--build")) {
+    throw new Error("--build is no longer an option: bom and package read the design the engine builds from the circuit code")
+  }
+  return args
 }
 
 function takeFlag(args: string[], name: string): [boolean, string[]] {

@@ -1,0 +1,99 @@
+# SHOU HAN TYPE-C 6P (LCSC and JLCPCB C456012): the RECOMMENDED P.C.B. LAYOUT on page 1 of the
+# manufacturer's drawing "TYPE-C 6P", DWG NO. 1006-FGBXXX, REV. 1, 2021.8.2, sheet 1/1:
+# https://datasheet.lcsc.com/datasheet/pdf/68548ae186bce8dcee36d39654e737cb.pdf?productCode=C456012
+# mm, top view, y up, origin at the body centre (body 8.94 x 6.80); the mating face is at y = -3.4.
+pads:
+  - number: "1"
+    shape: rect
+    x: -2.7
+    y: 3.05
+    width: 0.8
+    height: 1
+  - number: "2"
+    shape: rect
+    x: -1.5
+    y: 3.05
+    width: 0.8
+    height: 1
+  - number: "3"
+    shape: rect
+    x: -0.5
+    y: 3.05
+    width: 0.7
+    height: 1
+  - number: "4"
+    shape: rect
+    x: 0.5
+    y: 3.05
+    width: 0.7
+    height: 1
+  - number: "5"
+    shape: rect
+    x: 1.5
+    y: 3.05
+    width: 0.8
+    height: 1
+  - number: "6"
+    shape: rect
+    x: 2.7
+    y: 3.05
+    width: 0.8
+    height: 1
+  - number: "7"
+    shape: oval
+    x: -4.32
+    y: 3
+    width: 1
+    height: 1.8
+    layers: through
+    drill:
+      width: 0.6
+      height: 1.4
+  - number: "7"
+    shape: oval
+    x: 4.32
+    y: 3
+    width: 1
+    height: 1.8
+    layers: through
+    drill:
+      width: 0.6
+      height: 1.4
+  - number: "7"
+    shape: oval
+    x: -4.32
+    y: -0.8
+    width: 1
+    height: 1.8
+    layers: through
+    drill:
+      width: 0.6
+      height: 1.4
+  - number: "7"
+    shape: oval
+    x: 4.32
+    y: -0.8
+    width: 1
+    height: 1.8
+    layers: through
+    drill:
+      width: 0.6
+      height: 1.4
+courtyard:
+  - - -5.07
+    - -3.65
+  - - 5.07
+    - -3.65
+  - - 5.07
+    - 4.15
+  - - -5.07
+    - 4.15
+body:
+  - - -4.47
+    - -3.4
+  - - 4.47
+    - -3.4
+  - - 4.47
+    - 3.4
+  - - -4.47
+    - 3.4

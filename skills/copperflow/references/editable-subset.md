@@ -21,9 +21,53 @@ editor and in the tools.
 - Literal selectors: `<trace from=".R1 > .pin1" to="net.GND" />` or `from="R1.pin1"`.
 - Put traces as direct children of `<board>`, after the parts, one per line.
 - Keep `</board>` on its own line so new traces can be added before it.
+- Write `schematicRouteHints` as a literal list of `{ x, y }` points; the editor moves net labels and ground or power symbols by rewriting it.
 
 ## Sub-components
 
 A part inside a component defined outside the board, such as
 `const Power = () => <group name="power">...</group>`, is editable. Editing it changes every
 place the component is used.
+
+## Pin names of the built-in kinds
+
+Every pin answers to `pin<n>` and to the aliases below, so `R1.pin1`, `LED1.anode` and
+`.LED1 > .pin1` all work. A `pinLabels` entry for a pin replaces the aliases of that pin; its names
+come after `pin<n>`. A label may be one name or a list of names.
+
+| Kind | Pins (number: names) |
+|---|---|
+| resistor, capacitor, inductor, fuse, crystal, switch | 1: pin1, left; 2: pin2, right |
+| capacitor with `polarized` | 1: pin1, pos, anode; 2: pin2, neg, cathode |
+| diode, led | 1: pin1, anode, pos; 2: pin2, cathode, neg |
+| battery | 1: pin1, pos; 2: pin2, neg |
+| potentiometer | 1: pin1; 2: pin2, wiper; 3: pin3 |
+| resonator | 1: pin1; 2: pin2, gnd; 3: pin3 |
+| pushbutton | 1 to 4: pin1 to pin4 |
+| testpoint | 1: pin1 |
+| transistor (`type` npn or pnp) | 1: pin1, B, base; 2: pin2, E, emitter; 3: pin3, C, collector |
+| mosfet | 1: pin1, G, gate; 2: pin2, S, source; 3: pin3, D, drain |
+| pinheader | 1 to `pinCount`: pin\<n\> |
+| chip, connector | the numbers in `pinLabels` plus 1 to `pinCount`; with neither, one pin per pad of `footprint` |
+
+A chip, connector or pinheader whose pins cannot be found this way (for example a connector with
+only `standard="usb_c"`) has no pins and is reported as an `unsupported-element` error.
+
+## Footprint strings
+
+copperflow makes the pads itself from these `footprint` strings (case does not matter):
+
+| Family | Strings |
+|---|---|
+| Chip resistors, capacitors, LEDs | `0201`, `0402`, `0603`, `0805`, `1206`, `1210`, `1812`, `2010`, `2512` |
+| Diodes | `sod123`, `sod323` |
+| SOT-23 | `sot23`, `sot23_5`, `sot23_6` |
+| SOIC, SOP, TSSOP | `soic8`, `soic14`, `soic16`, `sop8`, `tssop14`, `tssop16`, `tssop20` |
+| QFP | `qfp32`, `qfp48`, `qfp64`, `qfp100` |
+| QFN | `qfn16`, `qfn32`, `qfn48`, and with the exposed pad `qfn16_ep`, `qfn32_ep`, `qfn48_ep` |
+| Pin rows (through-hole) | `pinrow<N>`: N pins at 2.54 mm, or at a pitch `_p<pitch>` larger than the 1.7 mm pad, such as `pinrow4_p2mm` |
+
+A parameter such as `_p1.27mm` is accepted only when it matches the package. Any other string,
+such as `sod523` or `dip8`, gives the error `copperflow cannot make footprint "<string>" yet`.
+For a package no family fits, a library part carries its own `footprint.yaml` (see
+[parts-library.md](parts-library.md)).

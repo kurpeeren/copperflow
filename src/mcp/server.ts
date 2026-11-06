@@ -7,7 +7,6 @@ import YAML from "yaml"
 import {
   BUILTIN_PARTS,
   buildBom,
-  buildCircuit,
   createPart,
   exportPackage,
   formatBomMarkdown,
@@ -27,6 +26,8 @@ import {
   undoChange,
   type Edit,
 } from "../core/index.js"
+import type { DesignSource } from "../core/bom.js"
+import { FootprintFileSchema } from "../engine/footprints/file.js"
 import { VERSION } from "../version.js"
 
 const INSTRUCTIONS = `copperflow lets you edit tscircuit circuit files together with a human.
@@ -46,10 +47,13 @@ const READ_ONLY = { readOnlyHint: true, destructiveHint: false }
 export interface ServerOptions {
   /** The tscircuit CLI used by check_circuit; defaults to $COPPERFLOW_TSCI or `tsci`. */
   buildCommand?: string[]
+  /** Builds the design for check_circuit, bom and export_package; tests pass one that runs in this process. */
+  engine?: DesignSource
 }
 
 export function createCopperflowServer(root: string, options: ServerOptions = {}): McpServer {
   const server = new McpServer({ name: "copperflow", version: VERSION }, { instructions: INSTRUCTIONS })
+  const designOptions = options.engine ? { engine: options.engine } : {}
 
   const edit = (circuit: string, edits: Edit[], summary: string) =>
     run(async () => {
@@ -131,13 +135,13 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "check_circuit",
     {
       description:
-        "Build the circuit with the tscircuit CLI and report its errors and warnings: courtyard overlaps, unrouted ports, missing parts. Run it after every placement change; it can take a minute.",
+        "Check the circuit: the copperflow engine's errors and warnings (footprints it cannot make, unknown or ambiguous pins, library overrides), then the tscircuit CLI's (courtyard overlaps, unrouted ports, missing parts). Run it after every placement change; it can take a minute.",
       inputSchema: { file },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
     ({ file: circuit }) =>
       run(async () => {
-        const result = await checkCircuit(root, circuit, options.buildCommand ? { command: options.buildCommand } : {})
+        const result = await checkCircuit(root, circuit, { ...designOptions, ...(options.buildCommand ? { command: options.buildCommand } : {}) })
         return formatCheck(circuit, result)
       }),
   )
@@ -170,16 +174,23 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "create_part",
     {
       description:
-        "Create a library part from a datasheet you have read: pins by number with names and electrical types, a tscircuit footprint string (never pad coordinates), MPN and supplier numbers. The part starts NOT verified; tell the human to check verification.md.",
+        "Create a library part from a datasheet you have read: pins by number with names and electrical types, a copperflow footprint string such as sot23_5 or 0402, MPN and supplier numbers. When no footprint string fits the package, set footprint to \"footprint.yaml\" and pass footprint_file with every pad transcribed from the datasheet's recommended land pattern (never estimate). The part starts NOT verified; tell the human to check verification.md.",
       inputSchema: {
         id: z.string().describe("Folder name, e.g. AP2112K-3.3"),
         part: PartSchema.omit({ verified: true }),
+        footprint_file: FootprintFileSchema.optional().describe(
+          'Pads in mm (y up, origin at the part centre) from the datasheet land pattern; requires part.footprint to be "footprint.yaml"',
+        ),
         replace: z.boolean().optional().describe("Overwrite an existing, unverified part"),
       },
     },
-    ({ id, part, replace }) =>
+    ({ id, part, footprint_file, replace }) =>
       run(async () => {
-        const result = await createPart(root, id, part, { replace: replace === true, now: new Date().toISOString() })
+        const result = await createPart(root, id, part, {
+          replace: replace === true,
+          ...(footprint_file ? { footprintFile: footprint_file } : {}),
+          now: new Date().toISOString(),
+        })
         return [
           `Created ${result.files.join(", ")}.`,
           `Use it with place_part (part "${id}"). It is NOT verified: ask the human to check parts/${id}/verification.md against the datasheet.`,
@@ -208,29 +219,26 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
   server.registerTool(
     "bom",
     {
-      description: "Bill of materials for a circuit, grouped by part. With build: true it runs a build first to include supplier part numbers chosen by tscircuit.",
-      inputSchema: { file, build: z.boolean().optional() },
+      description: "Bill of materials for a circuit, grouped by part. It is read from the design the engine builds from the circuit code, so parts made in loops are counted.",
+      inputSchema: { file },
       annotations: READ_ONLY,
     },
-    ({ file: circuit, build }) =>
-      run(async () => formatBomMarkdown(await buildBom(root, circuit, build ? await builtJson(circuit) : undefined))),
+    ({ file: circuit }) => run(async () => formatBomMarkdown(await buildBom(root, circuit, designOptions))),
   )
 
   server.registerTool(
     "export_package",
     {
       description: "Write a folder with BOM.csv, BOM.md, the local datasheets and a list of library parts with their verification status.",
-      inputSchema: { file, build: z.boolean().optional() },
+      inputSchema: { file },
     },
-    ({ file: circuit, build }) =>
+    ({ file: circuit }) =>
       run(async () => {
-        const result = await exportPackage(root, circuit, build ? { circuitJson: await builtJson(circuit) } : {})
+        const result = await exportPackage(root, circuit, designOptions)
         return `Wrote ${result.files.length} files to ${result.outDir}:\n${result.files.join("\n")}`
       }),
   )
 
-  const builtJson = async (circuit: string) =>
-    (await buildCircuit(root, circuit, options.buildCommand ? { command: options.buildCommand } : {})).circuitJson
 
   server.registerTool(
     "recent_changes",

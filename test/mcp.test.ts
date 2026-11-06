@@ -8,7 +8,8 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { createCopperflowServer } from "../src/mcp/server.js"
 import { loadCircuit, updateAnnotations } from "../src/core/workspace.js"
 import { addMark, lockParts } from "../src/core/annotations.js"
-import { BOARD, LDO } from "./fixtures.js"
+import { BOARD, LDO, SHARED, USBX, USBX_FOOTPRINT } from "./fixtures.js"
+import { inProcessEngine } from "./helpers/in-process-engine.js"
 
 const FILE = "main.circuit.tsx"
 const FAKE_TSCI = [process.execPath, fileURLToPath(new URL("./fixtures/fake-tsci.mjs", import.meta.url))]
@@ -18,7 +19,8 @@ let client: Client
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "cf-mcp-"))
   await writeFile(join(root, FILE), BOARD)
-  const server = createCopperflowServer(root, { buildCommand: FAKE_TSCI })
+  await writeFile(join(root, "shared.ts"), SHARED)
+  const server = createCopperflowServer(root, { buildCommand: FAKE_TSCI, engine: inProcessEngine })
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
   client = new Client({ name: "test", version: "0.0.0" })
   await Promise.all([server.connect(serverSide), client.connect(clientSide)])
@@ -52,6 +54,21 @@ describe("MCP server", () => {
     ])
   })
 
+  test("create_part describes copperflow footprints without naming the old toolkit", async () => {
+    const { tools } = await client.listTools()
+    const description = tools.find((t) => t.name === "create_part")?.description ?? ""
+    expect(description).toMatch(/sot23_5/)
+    expect(description.toLowerCase()).not.toContain("tscircuit")
+  })
+
+  test("bom and export_package take no build input", async () => {
+    const { tools } = await client.listTools()
+    for (const name of ["bom", "export_package"]) {
+      const properties = tools.find((t) => t.name === name)?.inputSchema.properties ?? {}
+      expect(Object.keys(properties)).toEqual(["file"])
+    }
+  })
+
   test("the agent creates a part from a datasheet, places it and sees it in the BOM", async () => {
     const created = await call("create_part", { id: "AP2112K-3.3", part: LDO })
     expect(created.isError).toBe(false)
@@ -62,6 +79,17 @@ describe("MCP server", () => {
     expect(placed.text).toMatch(/Change c0001 applied: place U5/)
     expect(await readFile(join(root, FILE), "utf8")).toContain('<AP2112K_3_3 name="U5" pcbX={3} />')
     expect((await call("bom", { file: FILE })).text).toContain("| U5 | 1 | chip | AP2112K-3.3 LDO regulator | sot23_5 | Diodes Incorporated | AP2112K-3.3TRG1 | jlcpcb C51118 |")
+  })
+
+  test("create_part with footprint_file writes parts/<id>/footprint.yaml and lists it", async () => {
+    const created = await call("create_part", { id: "USBX", part: USBX, footprint_file: USBX_FOOTPRINT })
+    expect(created.isError).toBe(false)
+    expect(created.text).toContain("parts/USBX/footprint.yaml")
+    expect(await readFile(join(root, "parts", "USBX", "footprint.yaml"), "utf8")).toContain("pads:")
+    const bad = { pads: [{ number: "9", shape: "rect", x: 0, y: 0, width: 1, height: 1 }] }
+    const refused = await call("create_part", { id: "USBY", part: USBX, footprint_file: bad })
+    expect(refused.isError).toBe(true)
+    expect(refused.text).toMatch(/pad 9/)
   })
 
   test("invalid parts come back as tool errors", async () => {
@@ -109,13 +137,14 @@ describe("MCP server", () => {
     expect(await readFile(join(root, FILE), "utf8")).toBe(BOARD)
   })
 
-  test("check_circuit builds the board and reports placement errors", async () => {
+  test("check_circuit reports the engine's errors and the build's placement errors", async () => {
     const elements = [{ type: "pcb_courtyard_overlap_error", message: "Courtyard of U1 overlaps with courtyard of C2" }]
     await writeFile(join(root, "main.circuit.fake.json"), JSON.stringify({ exitCode: 1, elements }))
     const result = await call("check_circuit", { file: FILE })
     expect(result.isError).toBe(false)
-    expect(result.text).toContain("build failed, 1 error")
+    expect(result.text).toContain("build failed, 2 errors")
     expect(result.text).toContain("pcb_courtyard_overlap_error: Courtyard of U1 overlaps with courtyard of C2")
+    expect(result.text).toContain("duplicate-name: More than one part is named RX")
   })
 
   test("paths outside the project are rejected", async () => {

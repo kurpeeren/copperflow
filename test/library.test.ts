@@ -8,6 +8,7 @@ import {
   createPart,
   generateComponent,
   listParts,
+  PartSchema,
   readPart,
   rebuildComponents,
   verifyPart,
@@ -58,6 +59,14 @@ describe("creating parts", () => {
     await expect(createPart(root, "X", { ...LDO, datasheet: { file: "../secret.pdf" } }, { now: NOW })).rejects.toThrow(/datasheet/)
   })
 
+  test("a bad footprint names copperflow footprint strings and footprint.yaml, never the old toolkit", () => {
+    const parsed = PartSchema.safeParse({ ...LDO, footprint: "sot 23" })
+    const message = parsed.success ? "" : parsed.error.issues.map((issue) => issue.message).join("; ")
+    expect(message).toMatch(/sot23_5/)
+    expect(message).toMatch(/footprint\.yaml/)
+    expect(message.toLowerCase()).not.toContain("tscircuit")
+  })
+
   test("an existing part is replaced only on request, and a verified part never", async () => {
     await createPart(root, "LDO", LDO, { now: NOW })
     await expect(createPart(root, "LDO", LDO, { now: NOW })).rejects.toThrow(/already exists/)
@@ -94,6 +103,12 @@ describe("generated component", () => {
     expect(code).toContain('"pin1":{"requiresPower":true}')
     expect(code).toContain('"pin4":{"doNotConnect":true}')
     expect(code).toContain('supplierPartNumbers={{"jlcpcb":["C51118"]}}')
+  })
+
+  test("library pins can name a side", () => {
+    const part = { ...LDO, pins: { ...LDO.pins, "3": { name: "EN", type: "input" as const, side: "right" as const } } }
+    expect(generateComponent("LDO", part)).toContain('pinSides={{"pin3":"right"}}')
+    expect(generateComponent("LDO", LDO)).not.toContain("pinSides")
   })
 
   test("rebuild regenerates every component from part.yaml", async () => {

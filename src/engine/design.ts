@@ -1,0 +1,43 @@
+import { elaborate } from "./elaborate.js"
+import { evaluateCircuit } from "./evaluate.js"
+import { generateFootprint, type FootprintResult } from "./footprints/index.js"
+import type { Diagnostic, Circuit } from "./model.js"
+import { layoutPcb, type PcbLayout } from "./pcb.js"
+import { layoutSchematic, type SchematicLayout } from "./schematic.js"
+
+/** Everything the Studio draws from one circuit file. Only JSON values, so it crosses a worker and HTTP unchanged. */
+export interface Design {
+  version: 1
+  file: string
+  circuit: Circuit
+  schematic: SchematicLayout
+  pcb: PcbLayout
+  diagnostics: Diagnostic[]
+}
+
+type Files = Readonly<Record<string, string>>
+
+/** Makes each distinct footprint string once per build; a footprint file is read through the project files. */
+function footprintCache(files: Files): (text: string) => FootprintResult {
+  const results = new Map<string, FootprintResult>()
+  return (text) => {
+    const known = results.get(text)
+    if (known) return known
+    const made = generateFootprint(text, (path) => files[path])
+    results.set(text, made)
+    return made
+  }
+}
+
+/** Pads with one number are one pin, however many pads there are. */
+const pinPads = (footprint: FootprintResult): number | undefined =>
+  "error" in footprint ? undefined : new Set(footprint.pads.map((pad) => pad.number)).size
+
+/** Evaluates the circuit code in `main`, then lays out the schematic and the board. Throws CircuitCodeError. */
+export function buildDesign(files: Files, main: string): Design {
+  const footprintOf = footprintCache(files)
+  const circuit = elaborate(evaluateCircuit(files, main), main, { padCount: (text) => pinPads(footprintOf(text)) })
+  const schematic = layoutSchematic(circuit)
+  const pcb = layoutPcb(circuit, (component) => footprintOf(component.footprint as string))
+  return { version: 1, file: main, circuit, schematic, pcb: pcb.layout, diagnostics: [...circuit.diagnostics, ...pcb.diagnostics] }
+}

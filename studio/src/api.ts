@@ -1,9 +1,10 @@
 import type { Annotations, LockViolation } from "../../src/core/annotations.js"
-import type { CheckResult } from "../../src/core/check.js"
 import type { HistoryListing } from "../../src/core/history.js"
 import type { CircuitModel, Edit, Literal, PartInfo, PropInfo, TraceInfo } from "../../src/core/types.js"
+import type { Design } from "../../src/engine/design.js"
+import type { Diagnostic } from "../../src/engine/model.js"
 
-export type { Annotations, CheckResult, CircuitModel, Edit, HistoryListing, Literal, LockViolation, PartInfo, PropInfo, TraceInfo }
+export type { Annotations, CircuitModel, Design, Diagnostic, Edit, HistoryListing, Literal, LockViolation, PartInfo, PropInfo, TraceInfo }
 
 export interface CircuitData {
   file: string
@@ -55,18 +56,14 @@ export interface BomLine {
   verified?: boolean
 }
 
+/** What GET /api/build returns. A failed build keeps the last design and says why in `error`. */
 export interface BuildState {
   status: "idle" | "building" | "done" | "failed"
-  circuitJson?: CircuitElement[]
-  report?: CheckResult
+  design?: Design
   error?: string
+  /** When the last finished build started; it holds every change sent before then. */
+  startedAt?: string
   finishedAt?: string
-}
-
-/** The circuit JSON fields the Studio reads; everything else is passed through to the viewers. */
-export interface CircuitElement {
-  type: string
-  [key: string]: unknown
 }
 
 const TOKEN_KEY = "copperflow-token"

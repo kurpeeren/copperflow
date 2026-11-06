@@ -1,8 +1,10 @@
 import { copyFile, mkdir, rm, stat, writeFile } from "node:fs/promises"
 import { join } from "node:path"
-import { isVerified, libraryIds, libraryImports, PARTS_DIR, readPart, type Part } from "./library.js"
-import type { PartInfo } from "./types.js"
-import { loadCircuit, resolveInRoot } from "./workspace.js"
+import type { Design } from "../engine/design.js"
+import type { Component } from "../engine/model.js"
+import { buildWith, type DesignSource } from "./design-source.js"
+import { isPartVerified, libraryValues, PARTS_DIR, readPart, type Part } from "./library.js"
+import { resolveCircuit, resolveInRoot } from "./workspace.js"
 
 export interface BomLine {
   designators: string[]
@@ -16,55 +18,44 @@ export interface BomLine {
   supplier: string
   datasheet: string
   libraryPart?: string
+  /** True when a person verified the library part and this instance keeps its footprint, MPN and supplier numbers. */
   verified?: boolean
 }
 
-/** Named elements that are not components and so never appear in a BOM. */
-const NOT_COMPONENTS = new Set([
-  "group",
-  "subcircuit",
-  "schematicsheet",
-  "net",
-  "netlabel",
-  "port",
-  "via",
-  "hole",
-  "platedhole",
-  "smtpad",
-  "copperpour",
-  "cutout",
-  "footprint",
-  "constraint",
-])
 const VALUE_PROPS = ["resistance", "capacitance", "inductance", "frequency", "color", "voltage", "maxResistance", "standard"]
 const COLUMNS = ["Designators", "Quantity", "Kind", "Value", "Footprint", "Manufacturer", "MPN", "Supplier part", "Datasheet"]
+/** Props that name or place a part, or hold its children; they never keep two parts on separate lines. */
+const NON_IDENTITY_PROPS = new Set(["name", "key", "children"])
 
-/**
- * Builds a BOM from the circuit source and the parts library. The last build's circuit JSON,
- * when given, fills in supplier part numbers that the parts engine chose.
- */
-export async function buildBom(root: string, file: string, circuitJson?: unknown[]): Promise<BomLine[]> {
-  const { model, file: circuitFile } = await loadCircuit(root, file)
-  const library = libraryImports(model, circuitFile, await libraryIds(root))
-  const parts = new Map<string, Part>()
-  for (const id of new Set(library.values())) parts.set(id, await readPart(root, id))
+export type { DesignSource } from "./design-source.js"
 
+export interface BomOptions {
+  /** A design that is already built; no engine is used. */
+  design?: Design
+  /** Builds the design when none is given. Without one, a new engine is started and stopped afterwards. */
+  engine?: DesignSource
+}
+
+/** The given design, or one built by the given engine, or by a new engine that is stopped afterwards. */
+async function designFor(root: string, file: string, options: BomOptions): Promise<Design> {
+  return options.design ?? buildWith(root, file, options.engine)
+}
+
+/** Builds a BOM from the design of a circuit file and the parts library. */
+export async function buildBom(root: string, file: string, options: BomOptions = {}): Promise<BomLine[]> {
+  const { file: circuitFile } = await resolveCircuit(root, file)
+  return bomFromDesign(root, await designFor(root, circuitFile, options))
+}
+
+async function bomFromDesign(root: string, design: Design): Promise<BomLine[]> {
+  const library = await readLibraryParts(root, design)
   const groups = new Map<string, BomLine>()
-  for (const part of model.parts) {
-    if (NOT_COMPONENTS.has(part.tag)) continue
-    const libraryId = library.get(part.tag)
-    const line = libraryId ? libraryLine(part, libraryId, parts.get(libraryId) as Part) : builtinLine(part, circuitJson)
-    // Every prop except names and positions, so ratings, tolerances and expressions keep lines apart.
-    const props = Object.entries(part.props)
-      .filter(([key]) => key !== "key" && !key.startsWith("pcb") && !key.startsWith("sch"))
-      .sort(([a], [b]) => (a < b ? -1 : 1))
-      .map(([key, prop]) => `${key}=${prop.source}`)
-    const key = JSON.stringify([part.tag, libraryId ?? "", line.verified ?? "", line.supplier, ...props])
+  for (const component of design.circuit.components) {
+    const entry = component.library ? library.get(component.library) : undefined
+    const line = componentLine(component, entry)
+    const key = JSON.stringify([component.kind, component.library ?? "", line.value, line.footprint, line.mpn, line.supplier, line.verified ?? "", identityProps(component)])
     const existing = groups.get(key)
-    groups.set(
-      key,
-      existing ? { ...existing, designators: [...existing.designators, part.name], quantity: existing.quantity + 1 } : line,
-    )
+    groups.set(key, existing ? { ...existing, designators: [...existing.designators, component.id], quantity: existing.quantity + 1 } : line)
   }
   const natural = (a: string, b: string) => a.localeCompare(b, "en", { numeric: true })
   return [...groups.values()]
@@ -72,45 +63,67 @@ export async function buildBom(root: string, file: string, circuitJson?: unknown
     .sort((a, b) => natural(a.designators[0] ?? "", b.designators[0] ?? ""))
 }
 
-function libraryLine(part: PartInfo, id: string, library: Part): BomLine {
-  const [supplier, number] = Object.entries(library.suppliers ?? {})[0] ?? []
+interface LibraryEntry {
+  part: Part
+  verified: boolean
+}
+
+async function readLibraryParts(root: string, design: Design): Promise<Map<string, LibraryEntry>> {
+  const entries = new Map<string, LibraryEntry>()
+  for (const id of new Set(design.circuit.components.flatMap((c) => (c.library ? [c.library] : [])))) {
+    const part = await readPart(root, id)
+    entries.set(id, { part, verified: await isPartVerified(root, id, part) })
+  }
+  return entries
+}
+
+/** Every prop except names, positions and children, as JSON with sorted keys, so ratings and tolerances keep lines apart. */
+function identityProps(component: Component): string {
+  const entries = Object.entries(component.props)
+    .filter(([key]) => !NON_IDENTITY_PROPS.has(key) && !key.startsWith("pcb") && !key.startsWith("sch"))
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+  return JSON.stringify(entries)
+}
+
+function componentLine(component: Component, entry: LibraryEntry | undefined): BomLine {
+  const part = entry?.part
+  const [supplier, numbers] = Object.entries(component.supplierPartNumbers).find(([, list]) => list.length > 0) ?? []
+  const [libSupplier, libNumber] = Object.entries(part?.suppliers ?? {})[0] ?? []
   return {
-    designators: [part.name],
+    designators: [component.id],
     quantity: 1,
-    kind: "chip",
-    value: library.title,
-    footprint: library.footprint,
-    manufacturer: library.manufacturer ?? "",
-    mpn: library.mpn ?? "",
-    supplier: supplier ? `${supplier} ${number}` : "",
-    datasheet: library.datasheet?.url ?? library.datasheet?.file ?? "",
-    libraryPart: id,
-    verified: isVerified(library),
+    kind: component.kind,
+    value: part?.title ?? component.value ?? propValue(component),
+    footprint: component.footprint ?? part?.footprint ?? "",
+    manufacturer: part?.manufacturer ?? "",
+    mpn: component.mpn ?? part?.mpn ?? "",
+    supplier: supplier && numbers?.[0] ? `${supplier} ${numbers[0]}` : libSupplier ? `${libSupplier} ${libNumber}` : "",
+    datasheet: part?.datasheet?.url ?? part?.datasheet?.file ?? "",
+    ...(component.library && entry ? { libraryPart: component.library, verified: entry.verified && keepsLibraryValues(component, component.library, entry.part) } : {}),
   }
 }
 
-function builtinLine(part: PartInfo, circuitJson: unknown[] | undefined): BomLine {
-  const literal = (key: string) => {
-    const value = part.props[key]?.literal
-    return value === undefined ? "" : String(value)
-  }
-  const value = VALUE_PROPS.map(literal).find((v) => v !== "") ?? ""
-  const built = (circuitJson ?? []).find(
-    (e): e is { supplier_part_numbers?: Record<string, string[]>; manufacturer_part_number?: string } =>
-      typeof e === "object" && e !== null && (e as { type?: unknown }).type === "source_component" && (e as { name?: unknown }).name === part.name,
+/**
+ * Whether an instance builds with the footprint, MPN and supplier numbers its library part sets. A
+ * circuit can override them on the instance; the part a person verified is then not what is built.
+ */
+function keepsLibraryValues(component: Component, id: string, part: Part): boolean {
+  const expected = libraryValues(id, part)
+  const sorted = (numbers: Record<string, string[]>) => JSON.stringify(Object.entries(numbers).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+  return (
+    component.footprint === expected.footprint &&
+    component.mpn === expected.mpn &&
+    sorted(component.supplierPartNumbers) === sorted(expected.supplierPartNumbers)
   )
-  const [supplier, numbers] = Object.entries(built?.supplier_part_numbers ?? {})[0] ?? []
-  return {
-    designators: [part.name],
-    quantity: 1,
-    kind: part.tag,
-    value,
-    footprint: literal("footprint"),
-    manufacturer: "",
-    mpn: built?.manufacturer_part_number ?? "",
-    supplier: supplier && numbers?.[0] ? `${supplier} ${numbers[0]}` : "",
-    datasheet: "",
+}
+
+/** The first of the props that give a part its value, e.g. an LED's color. */
+function propValue(component: Component): string {
+  for (const key of VALUE_PROPS) {
+    const value = component.props[key]
+    if (typeof value === "string" || typeof value === "number") return String(value)
   }
+  return ""
 }
 
 export function formatBomCsv(lines: BomLine[]): string {
@@ -143,13 +156,13 @@ function markdownUrl(url: string): string {
 export async function exportPackage(
   root: string,
   file: string,
-  options: { outDir?: string; circuitJson?: unknown[] } = {},
+  options: BomOptions & { outDir?: string } = {},
 ): Promise<{ outDir: string; files: string[] }> {
-  const { file: circuitFile } = await loadCircuit(root, file)
+  const { file: circuitFile } = await resolveCircuit(root, file)
   // The circuit's own path, so boards/a/main and boards/b/main do not share a folder.
   const outDir = (options.outDir ?? `exports/${circuitFile.replace(/\.circuit\.tsx$/, "")}`).split("\\").join("/")
   const outPath = resolveInRoot(root, outDir)
-  const lines = await buildBom(root, file, options.circuitJson)
+  const lines = await bomFromDesign(root, await designFor(root, circuitFile, options))
   await rm(join(outPath, "datasheets"), { recursive: true, force: true })
   await mkdir(join(outPath, "datasheets"), { recursive: true })
   const files: string[] = []
