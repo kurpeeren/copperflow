@@ -9,7 +9,7 @@ import {
   shapeDistance,
   shapeToSegmentDistance,
 } from "../../src/engine/checks/geometry.js"
-import { GridIndex } from "../../src/engine/checks/grid-index.js"
+import { GridIndex, MAX_BOX_CELLS } from "../../src/engine/checks/grid-index.js"
 import type { WorldPad } from "../../src/engine/pcb.js"
 
 function pad(overrides: Partial<WorldPad>): WorldPad {
@@ -211,5 +211,32 @@ describe("GridIndex", () => {
     index.insert("a", { minX: 0, minY: 0, maxX: 1, maxY: 1 })
     index.insert("b", { minX: 20, minY: 20, maxX: 21, maxY: 21 })
     expect(index.query({ minX: -1, minY: -1, maxX: 2, maxY: 2 })).toEqual(["a"])
+  })
+
+  /** A square box of `side` cells of size 1, centred on the origin. */
+  const cells = (side: number) => ({ minX: -side / 2, minY: -side / 2, maxX: side / 2 - 0.5, maxY: side / 2 - 0.5 })
+  const overCap = Math.ceil(Math.sqrt(MAX_BOX_CELLS)) + 1
+
+  test("an item over more cells than the cap goes in a flat list that every query returns", () => {
+    const index = new GridIndex<string>(1)
+    index.insert("wide", cells(overCap))
+    index.insert("small", { minX: 0, minY: 0, maxX: 0.5, maxY: 0.5 })
+    expect(index.query({ minX: 1000, minY: 1000, maxX: 1001, maxY: 1001 })).toEqual(["wide"])
+    expect(index.query({ minX: 0, minY: 0, maxX: 0.2, maxY: 0.2 }).sort()).toEqual(["small", "wide"])
+  })
+
+  test("a query over more cells than the cap returns every item", () => {
+    const index = new GridIndex<string>(1)
+    index.insert("a", { minX: 0, minY: 0, maxX: 0.5, maxY: 0.5 })
+    index.insert("b", { minX: 5000, minY: 5000, maxX: 5000.5, maxY: 5000.5 })
+    expect(index.query(cells(overCap)).sort()).toEqual(["a", "b"])
+  })
+
+  test("a box a kilometre wide is inserted and queried at once", () => {
+    const index = new GridIndex<string>(1)
+    const started = Date.now()
+    index.insert("huge", { minX: -5e5, minY: -5e5, maxX: 5e5, maxY: 5e5 })
+    expect(index.query({ minX: -1e6, minY: -1e6, maxX: 1e6, maxY: 1e6 })).toEqual(["huge"])
+    expect(Date.now() - started).toBeLessThan(100)
   })
 })

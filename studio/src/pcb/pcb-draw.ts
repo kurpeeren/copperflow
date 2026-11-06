@@ -32,6 +32,10 @@ const SILK_WIDTH_MM = 0.12
 const BOARD_EDGE_PX = 1.5
 const KEEPOUT_ALPHA = 0.7
 const KEEPOUT_HATCH_MM = 0.5
+/** The most hatch lines one keepout gets, so a keepout of metres cannot stall a redraw. */
+export const MAX_HATCH_LINES = 400
+/** Lets the last line land on the box's edge despite rounding in span / step. */
+const HATCH_SLACK = 1e-9
 const DEFAULT_CORNER = 0.25
 const DESIGNATOR_MM = 0.8
 const DESIGNATOR_GAP_PX = 2
@@ -177,15 +181,24 @@ function drawKeepouts(ctx: Ctx, layout: PcbLayout, px: number): void {
   ctx.globalAlpha = 1
 }
 
-/** 45 degree lines KEEPOUT_HATCH_MM apart that cover the polygon's bounding box. */
-function hatchLines(outline: readonly Point[]): Array<[Point, Point]> {
+/**
+ * 45 degree lines KEEPOUT_HATCH_MM apart that cover the polygon's bounding box. A box too big for
+ * MAX_HATCH_LINES at that spacing gets them further apart; a box that is not finite gets none.
+ */
+export function hatchLines(outline: readonly Point[]): Array<[Point, Point]> {
   const xs = outline.map((p) => p.x)
   const ys = outline.map((p) => p.y)
   const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)]
+  if (![minX, maxX, minY, maxY].every(Number.isFinite)) return []
   const height = maxY - minY
-  const lines: Array<[Point, Point]> = []
-  for (let x = minX - height; x <= maxX; x += KEEPOUT_HATCH_MM) lines.push([{ x, y: minY }, { x: x + height, y: maxY }])
-  return lines
+  const start = minX - height
+  const span = maxX - start
+  const step = Math.max(KEEPOUT_HATCH_MM, span / (MAX_HATCH_LINES - 1))
+  const count = Math.floor(span / step + HATCH_SLACK) + 1
+  return Array.from({ length: count }, (_, i): [Point, Point] => {
+    const x = start + i * step
+    return [{ x, y: minY }, { x: x + height, y: maxY }]
+  })
 }
 
 function padPath(ctx: Ctx, pad: WorldPad): void {

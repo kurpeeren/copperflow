@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest"
 import { buildDesign } from "../src/engine/design.js"
 import { PALETTE } from "../studio/src/pcb/ctx.js"
 import { worldToScreen } from "../studio/src/pcb/geometry.js"
-import { drawPcb, padAt, pcbBoxes } from "../studio/src/pcb/pcb-draw.js"
+import { drawPcb, hatchLines, MAX_HATCH_LINES, padAt, pcbBoxes } from "../studio/src/pcb/pcb-draw.js"
 import { recorder } from "./helpers/fake-ctx.js"
 
 const CIRCUIT = `export default () => (
@@ -229,5 +229,34 @@ describe("keepouts", () => {
     const { ctx, records } = recorder()
     drawPcb(ctx, layout, VIEW, { ratio: 1 })
     expect(records.some((r) => r.strokeStyle === PALETTE.keepout)).toBe(false)
+  })
+})
+
+describe("hatchLines", () => {
+  const square = (side: number) => [
+    { x: 0, y: 0 },
+    { x: side, y: 0 },
+    { x: side, y: side },
+    { x: 0, y: side },
+  ]
+
+  test("a small keepout gets 45 degree lines 0.5 mm apart over its box", () => {
+    const lines = hatchLines(square(4))
+    expect(lines).toHaveLength(17)
+    expect(lines[0]).toEqual([{ x: -4, y: 0 }, { x: 0, y: 4 }])
+    expect(lines[1]?.[0].x).toBeCloseTo(-3.5, 9)
+    expect(lines.at(-1)).toEqual([{ x: 4, y: 0 }, { x: 8, y: 4 }])
+  })
+
+  test("a keepout ten metres wide gets at most MAX_HATCH_LINES lines, still across its whole box", () => {
+    const lines = hatchLines(square(10_000))
+    expect(lines.length).toBeLessThanOrEqual(MAX_HATCH_LINES)
+    expect(lines[0]?.[0].x).toBe(-10_000)
+    expect(lines.at(-1)?.[0].x).toBeCloseTo(10_000, 6)
+  })
+
+  test("a keepout with a corner that is not finite gets no lines", () => {
+    expect(hatchLines([...square(4), { x: Infinity, y: 0 }])).toEqual([])
+    expect(hatchLines([{ x: Number.NaN, y: 0 }, ...square(4)])).toEqual([])
   })
 })
