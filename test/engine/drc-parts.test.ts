@@ -207,6 +207,32 @@ describe("silk-on-pad", () => {
     const layout = layoutOf([part("A", { pads: [pad("A#1", { layers: "through" })], silkscreen: silk(0) })], SQUARE)
     expect(coded(partChecks(layout, RULES), "silk-on-pad")).toHaveLength(1)
   })
+
+  describe("against the pads of other parts", () => {
+    /** U1's silk runs along y = 1.3 from x = -1 to 4, past its courtyard and through R2's first pad. */
+    const across = (other: Partial<WorldPad> = {}) =>
+      layoutOf(
+        [
+          part("U1", { courtyard: rectangle(-1, -1, 1, 0.5), pads: [pad("U1#1", { width: 0.5, height: 0.5 })], silkscreen: [[{ x: -1, y: 1.3 }, { x: 4, y: 1.3 }]] }),
+          part("R2", { x: 3, y: 1.3, courtyard: rectangle(2, 0.55, 4, 2), pads: [pad("R2#1", { x: 3, y: 1.3, width: 0.8, height: 0.8, ...other })] }),
+        ],
+        SQUARE,
+      )
+
+    test("silk across a neighbour's pad names the part of the silk and that pad", () => {
+      const found = partChecks(across(), RULES)
+      expect(coded(found, "courtyard-overlap")).toEqual([])
+      expect(coded(found, "silk-on-pad")).toEqual([
+        expect.objectContaining({ id: "silk-on-pad:R2#1,U1", severity: "warning", items: ["R2#1", "U1"], at: { x: 3, y: 1.3 } }),
+      ])
+      expect(coded(found, "silk-on-pad")[0]?.message).toBe("Silkscreen of U1 is on R2#1; the minimum is 0.150 mm")
+    })
+
+    test("a neighbour's pad on the other side is ignored, its through pad is not", () => {
+      expect(coded(partChecks(across({ layers: "bottom" }), RULES), "silk-on-pad")).toEqual([])
+      expect(coded(partChecks(across({ layers: "through" }), RULES), "silk-on-pad").map((v) => v.items)).toEqual([["R2#1", "U1"]])
+    })
+  })
 })
 
 describe("unplaced, unrouted and unchecked", () => {

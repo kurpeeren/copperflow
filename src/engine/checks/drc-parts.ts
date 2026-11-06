@@ -123,24 +123,64 @@ function keepoutChecks(parts: readonly PlacedFootprint[], keepouts: readonly Kee
 
 // ---- silkscreen against pads ----
 
-const exposedOn = (pad: WorldPad, side: PlacedFootprint["side"]) => pad.layers === "through" || pad.layers === side
+/** Side of a cell in the pad index, in mm: about the size of a small pad. */
+const PAD_CELL = 1
 
-function nearestSilk(part: PlacedFootprint, shape: Shape): number {
-  const distances = part.silkscreen.flatMap((line) => segments(line, false).map(([a, b]) => shapeToSegmentDistance(shape, a, b)))
-  return distances.reduce((a, b) => Math.min(a, b), Infinity)
+interface ExposedPad {
+  pad: WorldPad
+  shape: Shape
 }
 
-function silkOnPad(part: PlacedFootprint, rules: Rules): Violation[] {
+type PadsBySide = Record<PlacedFootprint["side"], GridIndex<ExposedPad>>
+
+const exposedOn = (pad: WorldPad, side: PlacedFootprint["side"]) => pad.layers === "through" || pad.layers === side
+
+/** Every pad of every part with a known shape, indexed once per side it is exposed on; a through pad is on both. */
+function exposedPads(parts: readonly PlacedFootprint[]): PadsBySide {
+  const index = (side: PlacedFootprint["side"]) => {
+    const grid = new GridIndex<ExposedPad>(PAD_CELL)
+    for (const pad of parts.flatMap((p) => p.pads).filter((candidate) => exposedOn(candidate, side))) {
+      const shape = padShape(pad)
+      if (shape !== undefined) grid.insert({ pad, shape }, bounds(shape))
+    }
+    return grid
+  }
+  return { top: index("top"), bottom: index("bottom") }
+}
+
+const segmentBox = ([a, b]: [Point, Point], by: number): Box => ({
+  minX: Math.min(a.x, b.x) - by,
+  minY: Math.min(a.y, b.y) - by,
+  maxX: Math.max(a.x, b.x) + by,
+  maxY: Math.max(a.y, b.y) + by,
+})
+
+/** The nearest silk of `part` to each exposed pad on its side that comes within `minimum` of a silk segment's box. */
+function nearestSilk(part: PlacedFootprint, pads: GridIndex<ExposedPad>, minimum: number): Map<ExposedPad, number> {
+  const nearest = new Map<ExposedPad, number>()
+  for (const segment of part.silkscreen.flatMap((line) => segments(line, false))) {
+    for (const exposed of pads.query(segmentBox(segment, minimum))) {
+      const distance = shapeToSegmentDistance(exposed.shape, segment[0], segment[1])
+      nearest.set(exposed, Math.min(nearest.get(exposed) ?? Infinity, distance))
+    }
+  }
+  return nearest
+}
+
+/** A part's silkscreen against every exposed pad on its side, its own and its neighbours'. */
+function silkOnPad(part: PlacedFootprint, pads: PadsBySide, rules: Rules): Violation[] {
   const minimum = rules.fabrication.minSilkToPad
-  return part.pads.flatMap((pad) => {
-    const shape = padShape(pad)
-    if (shape === undefined || !exposedOn(pad, part.side)) return []
-    const distance = nearestSilk(part, shape)
+  return [...nearestSilk(part, pads[part.side], minimum)].flatMap(([{ pad }, distance]) => {
     if (!breaksMinimum(distance, minimum)) return []
     const how = distance > 0 ? `${mm(distance)} mm from` : "on"
     const message = `Silkscreen of ${part.component} is ${how} ${pad.id}; the minimum is ${mm(minimum)} mm`
     return [violation("silk-on-pad", "warning", message, [part.component, pad.id], "pcb", { x: pad.x, y: pad.y })]
   })
+}
+
+function silkChecks(parts: readonly PlacedFootprint[], rules: Rules): Violation[] {
+  const pads = exposedPads(parts)
+  return parts.flatMap((part) => silkOnPad(part, pads, rules))
 }
 
 // ---- board-level notes ----
@@ -170,7 +210,7 @@ export function partChecks(layout: PcbLayout, rules: Rules): Violation[] {
     ...courtyardOverlaps(parts),
     ...(outline ? outsideBoard(parts, outline) : [noOutline()]),
     ...keepoutChecks(parts, board?.keepouts ?? []),
-    ...parts.flatMap((p) => silkOnPad(p, rules)),
+    ...silkChecks(parts, rules),
     ...unplaced(parts),
     ...unrouted(layout),
   ]
