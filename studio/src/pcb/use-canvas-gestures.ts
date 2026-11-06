@@ -1,14 +1,17 @@
 // Pan, drag and note-box gestures shared by the PCB and schematic canvases, and the move a drag writes.
 import { useEffect, useMemo, useState, type PointerEvent, type RefObject } from "react"
 import type { CircuitData } from "../api"
+import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { Actions } from "../App"
 import { toLocal, type Moving } from "./canvas-common"
 import { hitTest, screenToWorld, snap, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import { movedTo, VIEWS, ZERO, type Anchor, type View } from "./positions"
+import type { LabelTools } from "./use-label-drag"
 
 export type Gesture =
   | { kind: "pan"; start: Point; camera: Camera }
   | { kind: "drag"; part: PartBox; start: Point; offset: Point; moved: boolean; blocker: string | null }
+  | { kind: "label"; label: NetLabel; start: Point; at: Point; moved: boolean; blocker: string | null }
   | { kind: "box"; start: Point; current: Point }
 
 export interface GestureInput {
@@ -25,6 +28,8 @@ export interface GestureInput {
   actions: Actions
   onSelect(name: string | null): void
   blockerFor(name: string): string | null
+  /** The schematic's net labels and power symbols, when they can be dragged. */
+  labels?: LabelTools
 }
 
 type Commit = (part: PartBox, offset: Point) => void
@@ -39,10 +44,17 @@ function startGesture(input: GestureInput, event: { button: number; shiftKey: bo
   if (!camera) return undefined
   if (event.button === 1 || event.button === 2) return { kind: "pan", start: point, camera }
   if (event.shiftKey) return { kind: "box", start: point, current: point }
-  const hit = hitTest(input.boxes, screenToWorld(camera, input.size, point))
-  if (!hit) return { kind: "pan", start: point, camera }
+  const world = screenToWorld(camera, input.size, point)
+  const hit = hitTest(input.boxes, world)
+  if (!hit) return pressLabel(input, world, point) ?? { kind: "pan", start: point, camera }
   input.onSelect(hit.name)
   return { kind: "drag", part: hit, start: point, offset: { x: 0, y: 0 }, moved: false, blocker: input.blockerFor(hit.name) }
+}
+
+/** A press on a net label or power symbol outside every part's box starts dragging it. */
+function pressLabel(input: GestureInput, world: Point, point: Point): Gesture | undefined {
+  const label = input.labels?.at(world)
+  return label && { kind: "label", label, start: point, at: label.at, moved: false, blocker: input.labels?.blocker(label.id) ?? null }
 }
 
 /** The gesture after the pointer moved to `point`; a pan moves the camera instead. */
@@ -54,6 +66,7 @@ function followGesture(input: GestureInput, gesture: Gesture, point: Point, came
     return undefined
   }
   if (gesture.kind === "box") return { ...gesture, current: point }
+  if (gesture.kind === "label") return followLabel(input, gesture, point, camera)
   if (!gesture.moved && Math.hypot(point.x - gesture.start.x, point.y - gesture.start.y) <= DRAG_THRESHOLD_PX) return undefined
   // Snap the part's origin, where its position props put it, to the grid, not the distance moved.
   const origin = input.anchors.get(gesture.part.name)?.origin ?? gesture.part.center
@@ -63,8 +76,22 @@ function followGesture(input: GestureInput, gesture: Gesture, point: Point, came
   return { ...gesture, moved: true, offset: { x: round(snap(raw.x, input.step) - origin.x), y: round(snap(raw.y, input.step) - origin.y) } }
 }
 
+/** A label follows the pointer, its anchor snapped to the grid like a part's origin. */
+function followLabel(input: GestureInput, gesture: Extract<Gesture, { kind: "label" }>, point: Point, camera: Camera): Gesture | undefined {
+  if (!gesture.moved && Math.hypot(point.x - gesture.start.x, point.y - gesture.start.y) <= DRAG_THRESHOLD_PX) return undefined
+  const world = screenToWorld(camera, input.size, point)
+  const startWorld = screenToWorld(camera, input.size, gesture.start)
+  const { at } = gesture.label
+  const snapped = (value: number) => round(snap(value, input.step))
+  return { ...gesture, moved: true, at: { x: snapped(at.x + world.x - startWorld.x), y: snapped(at.y + world.y - startWorld.y) } }
+}
+
 /** A drop writes the move, a still pan clears the selection, and a note box asks for the note. */
 function endGesture(input: GestureInput, done: Gesture, camera: Camera, commit: Commit): void {
+  if (done.kind === "label") {
+    if (!done.moved) return
+    return done.blocker ? input.actions.notify(done.blocker) : input.labels?.commit(done.label, done.at)
+  }
   if (done.kind === "drag") {
     if (!done.moved) return
     if (done.blocker) return input.actions.notify(done.blocker)
@@ -108,6 +135,12 @@ export function useCanvasGestures(input: GestureInput) {
     () => (gesture?.kind === "drag" && gesture.moved && !gesture.blocker ? { name: gesture.part.name, offset: gesture.offset } : pending),
     [gesture, pending],
   )
+  useEffect(() => {
+    if (gesture?.kind !== "label") return
+    const onKey = (event: KeyboardEvent) => event.key === "Escape" && setGesture(undefined)
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [gesture?.kind])
   const press = (event: { button: number; shiftKey: boolean }, point: Point) => {
     const next = startGesture(input, event, point)
     if (next) setGesture(next)
@@ -129,7 +162,7 @@ export function useCanvasGestures(input: GestureInput) {
 /** The pointer: grabbing while panning, move or not-allowed while dragging, else crosshair, pointer or default. */
 export function cursorFor(gesture: Gesture | undefined, crosshair: boolean, overPart: boolean): string {
   if (gesture?.kind === "pan") return "grabbing"
-  if (gesture?.kind === "drag") return gesture.blocker ? "not-allowed" : "move"
+  if (gesture?.kind === "drag" || gesture?.kind === "label") return gesture.blocker ? "not-allowed" : "move"
   if (crosshair) return "crosshair"
   return overPart ? "pointer" : "default"
 }

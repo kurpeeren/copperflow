@@ -21,6 +21,7 @@ editor and in the tools.
 - Literal selectors: `<trace from=".R1 > .pin1" to="net.GND" />` or `from="R1.pin1"`.
 - Put traces as direct children of `<board>`, after the parts, one per line.
 - Keep `</board>` on its own line so new traces can be added before it.
+- Write `schematicRouteHints` as a literal list of `{ x, y }` points; the editor moves net labels and ground or power symbols by rewriting it.
 
 ## Sub-components
 

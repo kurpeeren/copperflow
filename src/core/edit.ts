@@ -1,7 +1,7 @@
 import MagicString from "magic-string"
 import type { JSXAttribute, JSXElement } from "@babel/types"
 import { scanCircuit, type Scan } from "./analyze.js"
-import { formatLiteral, formatPointList, validateProp } from "./literals.js"
+import { formatLiteral, formatPointList, readPointList, validateProp } from "./literals.js"
 import { partsInSelector } from "./selectors.js"
 import type { Edit, Literal, PartInfo, Point } from "./types.js"
 
@@ -40,6 +40,9 @@ function applyEdit(source: string, edit: Edit, locked: ReadonlySet<string>): str
       break
     case "removeTrace":
       next = removeTrace(source, scan, edit.from, edit.to, locked)
+      break
+    case "setTraceHints":
+      next = setTraceHints(source, scan, edit, locked)
       break
     case "addPart":
       next = addPart(source, scan, edit)
@@ -163,6 +166,40 @@ function removeTrace(source: string, scan: Scan, from: string, to: string, locke
   const lockedEnd = traceEnds(trace).find((p) => locked.has(p))
   if (lockedEnd) throw new EditError("locked", `${lockedEnd} is locked; its traces cannot be removed`)
   return removeRange(source, trace.start, trace.end)
+}
+
+/** Sets, replaces or (for an empty list) removes the `schematicRouteHints` of the trace joining `from` and `to`. */
+function setTraceHints(
+  source: string,
+  scan: Scan,
+  edit: Extract<Edit, { kind: "setTraceHints" }>,
+  locked: ReadonlySet<string>,
+): string {
+  const { from, to } = edit
+  const index = scan.model.traces.findIndex((t) => (t.from === from && t.to === to) || (t.from === to && t.to === from))
+  const trace = scan.model.traces[index]
+  const node = scan.traceNodes[index]
+  if (!trace || !node) throw new EditError("not_found", `No trace between ${from} and ${to}`)
+  if (!trace.editable) throw new EditError("readonly", `The trace on line ${trace.line} is read-only (${trace.readonlyReason})`)
+  const lockedEnd = traceEnds(trace).find((p) => locked.has(p))
+  if (lockedEnd) throw new EditError("locked", `${lockedEnd} is locked; its traces cannot be changed`)
+  const corners = cornersOrThrow(edit.schematicRouteHints)
+  const attributes = node.openingElement.attributes.filter((a): a is JSXAttribute => a.type === "JSXAttribute")
+  const attribute = attributes.find((a) => source.slice(a.name.start ?? 0, a.name.end ?? 0) === "schematicRouteHints")
+  if (attribute && readPointList(attribute.value) === undefined) {
+    throw new EditError("readonly", `The corners of the trace on line ${trace.line} are an expression and cannot be edited`)
+  }
+  const out = new MagicString(source)
+  if (!attribute) {
+    const last = attributes[attributes.length - 1] as JSXAttribute
+    if (corners.length > 0) out.appendLeft(last.end ?? 0, `${attributeSeparator(source, node, last)}schematicRouteHints=${formatPointList(corners)}`)
+  } else if (corners.length === 0) {
+    const before = attributes[attributes.indexOf(attribute) - 1]
+    out.remove(before?.end ?? node.openingElement.name.end ?? 0, attribute.end ?? 0)
+  } else {
+    out.overwrite(attribute.value?.start ?? 0, attribute.value?.end ?? 0, formatPointList(corners))
+  }
+  return out.toString()
 }
 
 const TAG = /^[A-Za-z][A-Za-z0-9_]*$/

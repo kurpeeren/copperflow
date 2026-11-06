@@ -24,6 +24,8 @@ export interface WireEnd {
 const SYMBOL_REACH = 0.2
 const SELECTOR_NAME = /^[\w-]+$/
 const SELECTOR_PART = /^[A-Za-z_][\w-]*$/
+const WRITTEN_PIN = /^([A-Za-z_][\w-]*)\.([\w-]+)$/
+const CLASS_PIN = /^\.([A-Za-z_][\w-]*)\s*>\s*\.([\w-]+)$/
 
 /** The first name `pinLabels` gives pin `number`, if the part has one; kind aliases such as `left` are not labels. */
 function labelOf(props: Record<string, unknown>, number: number): string | undefined {
@@ -41,12 +43,20 @@ function labelOf(props: Record<string, unknown>, number: number): string | undef
  * `<component>.<name>` with the pin's `pinLabels` name when no other pin of the part has that name,
  * else `pin<n>`: a name two pins share (two GND pins) would connect to the first of them.
  */
-function pinSelector(design: Design, pin: Pin): string {
+export function pinSelector(design: Design, pin: Pin): string {
   const component = design.circuit.components.find((candidate) => candidate.id === pin.component)
   const name = labelOf(component?.props ?? {}, pin.number)
   const others = (component?.pins ?? []).filter((other) => other.id !== pin.id)
   const unique = name !== undefined && SELECTOR_NAME.test(name) && !others.some((other) => other.names.includes(name))
   return `${pin.component}.${unique ? name : `pin${pin.number}`}`
+}
+
+/** The pin a written selector (`R1.pin1`, `R1.anode` or `.R1 > .pin1`) names, by the engine's rule: the first pin of the part with that name. */
+export function pinOfSelector(design: Design, selector: string): Pin | undefined {
+  const text = selector.trim()
+  const parts = WRITTEN_PIN.exec(text) ?? CLASS_PIN.exec(text)
+  const component = parts && design.circuit.components.find((candidate) => candidate.id === parts[1])
+  return component?.pins.find((pin) => pin.names.includes(parts?.[2] ?? ""))
 }
 
 const allPins = (design: Design): Pin[] => design.circuit.components.flatMap((component) => component.pins)
@@ -160,7 +170,7 @@ export function namedNetsJoined(design: Design, start: WireEnd, end: WireEnd): [
 const nameOf = (end: WireEnd, net: Net | undefined): string | undefined =>
   end.selector.startsWith("net.") ? end.selector.slice("net.".length) : net?.names[0]
 
-function addressable(selector: string): boolean {
+export function addressable(selector: string): boolean {
   const part = selector.startsWith("net.") ? undefined : selector.split(".")[0]
   return part === undefined || (SELECTOR_PART.test(part) && !part.includes("~"))
 }

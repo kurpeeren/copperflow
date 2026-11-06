@@ -212,3 +212,59 @@ test("applies several edits in order", () => {
   expect(out).toContain("pcbX={0}")
   expect(out).not.toContain("LED1")
 })
+
+describe("setTraceHints", () => {
+  const WITH_HINTS = `<board>
+  <resistor name="R1" />
+  <trace from=".R1 > .pin1" to="net.GND" thickness="0.4mm" schematicRouteHints={[{ x: 1, y: 0 }, { x: 1, y: 2 }]} />
+  <trace from="R1.pin2" to="net.VCC" />
+</board>
+`
+  const corners = [
+    { x: 3.123456, y: 0 },
+    { x: 3, y: -2 },
+  ]
+  const set = (source: string, from: string, to: string, hints = corners, locked: ReadonlySet<string> = none) =>
+    applyEdits(source, [{ kind: "setTraceHints", from, to, schematicRouteHints: hints }], locked)
+
+  test("replaces existing hints and keeps every other attribute byte for byte", () => {
+    const out = set(WITH_HINTS, ".R1 > .pin1", "net.GND")
+    expect(out).toBe(WITH_HINTS.replace("[{ x: 1, y: 0 }, { x: 1, y: 2 }]", "[{ x: 3.1235, y: 0 }, { x: 3, y: -2 }]"))
+  })
+
+  test("adds hints to a trace without any, matching the trace in either direction", () => {
+    const out = set(WITH_HINTS, "net.VCC", "R1.pin2")
+    expect(out).toBe(WITH_HINTS.replace('to="net.VCC" />', 'to="net.VCC" schematicRouteHints={[{ x: 3.1235, y: 0 }, { x: 3, y: -2 }]} />'))
+  })
+
+  test("an empty list removes the attribute", () => {
+    const out = set(WITH_HINTS, ".R1 > .pin1", "net.GND", [])
+    expect(out).toBe(WITH_HINTS.replace(" schematicRouteHints={[{ x: 1, y: 0 }, { x: 1, y: 2 }]}", ""))
+    expect(set(WITH_HINTS, "R1.pin2", "net.VCC", [])).toBe(WITH_HINTS)
+  })
+
+  test("adds the attribute on its own line to a multi-line trace", () => {
+    const source = '<board>\n  <trace\n    from="R1.pin2"\n    to="net.VCC"\n  />\n</board>\n'
+    expect(set(source, "R1.pin2", "net.VCC")).toContain('    to="net.VCC"\n    schematicRouteHints={[')
+  })
+
+  test("refuses an unknown trace", () => {
+    expectEditError(() => set(WITH_HINTS, "R1.pin1", "net.VCC"), "not_found")
+  })
+
+  test("refuses a trace inside .map() or one whose hints are not literals", () => {
+    const inLoop = '<board>\n  {[1].map(() => <trace from=".A > .pin1" to="net.GND" />)}\n</board>'
+    expectEditError(() => set(inLoop, ".A > .pin1", "net.GND"), "readonly")
+    const computed = '<board>\n  <trace from="R1.pin2" to="net.VCC" schematicRouteHints={route} />\n</board>'
+    expectEditError(() => set(computed, "R1.pin2", "net.VCC"), "readonly")
+  })
+
+  test("validates the corners as addTrace does", () => {
+    expectEditError(() => set(WITH_HINTS, "R1.pin2", "net.VCC", [{ x: Number.NaN, y: 0 }]), "invalid")
+    expectEditError(() => set(WITH_HINTS, "R1.pin2", "net.VCC", Array.from({ length: 201 }, () => ({ x: 0, y: 0 }))), "invalid")
+  })
+
+  test("refuses a trace that touches a locked part", () => {
+    expectEditError(() => set(WITH_HINTS, "R1.pin2", "net.VCC", corners, new Set(["R1"])), "locked")
+  })
+})

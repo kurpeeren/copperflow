@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react"
+import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { CircuitData, Design } from "../api"
 import { WireIcon } from "../icons"
 import { keepAutoPlaced } from "./auto-placed"
 import { drawEditorLayer, prepareCanvas, useCamera, useElementSize, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
 import { CanvasStatus, KeepButton, SnapSelect } from "./CanvasTools"
 import { hitTest, unionBoxes, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry"
-import { drawWirePreview } from "./overlays"
+import { labelHitBox } from "./label-drag"
+import { drawOutline, drawWirePreview } from "./overlays"
 import { drawSchematic } from "./schematic-draw"
 import { cursorFor, pointerHandlers, useCanvasGestures, type Gesture } from "./use-canvas-gestures"
+import { useDraggedLabel, useLabelDrag, type MovingLabel } from "./use-label-drag"
 import { usePartKeys } from "./use-part-keys"
 import { useWireTool } from "./use-wire-tool"
 
@@ -30,11 +33,15 @@ interface SheetScene {
   locked: ReadonlySet<string>
   circuit: CircuitData
   gesture: Gesture | undefined
+  /** The net label or power symbol shown away from where the design has it. */
+  movingLabel: MovingLabel | undefined
+  /** The label under the pointer. */
+  hoverLabel: NetLabel | undefined
 }
 
 /** Draws the sheet, the wire being drawn and the editor layer; a sheet without parts gets a default view. */
 function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: SheetScene): void {
-  const { design, camera, size, moving, boxes, hover, selected, locked, circuit, gesture } = scene
+  const { design, camera, size, moving, boxes, hover, selected, locked, circuit, gesture, movingLabel, hoverLabel } = scene
   const { wiring, drawing, activePins, pendingWires, preview } = scene.wire
   useEffect(() => {
     const view = camera ?? EMPTY_SHEET_CAMERA
@@ -45,7 +52,8 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
       ratio,
       showPins: wiring || drawing !== null,
       activePins,
-      pending: pendingWires,
+      pending: movingLabel ? [...pendingWires, movingLabel.wire] : pendingWires,
+      ...(movingLabel ? { movingLabel } : {}),
       ...(moving ? { moving: { component: moving.name, by: moving.offset } } : {}),
     })
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
@@ -53,7 +61,8 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
     const noteBox = gesture?.kind === "box" ? gesture : undefined
     const shownHover = drawing ? undefined : hover
     drawEditorLayer(ctx, view, size, { view: "schematic", boxes, moving, hover: shownHover, selected, locked, marks: circuit.annotations.marks, noteBox })
-  }, [canvasRef, design, camera, size, wiring, drawing, activePins, pendingWires, preview, moving, boxes, hover, selected, locked, circuit, gesture])
+    if (hoverLabel && !drawing && !gesture) drawOutline(ctx, view, size, labelHitBox(hoverLabel), { x: 0, y: 0 }, "hover")
+  }, [canvasRef, design, camera, size, wiring, drawing, activePins, pendingWires, preview, moving, movingLabel, hoverLabel, boxes, hover, selected, locked, circuit, gesture])
 }
 
 /** The wire tool's switch, snap, fit and "Keep these positions". */
@@ -94,6 +103,7 @@ export function SchematicCanvas({ design, buildId, builtFrom, circuit, actions, 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const size = useElementSize(wrapRef)
   const [hover, setHover] = useState<string>()
+  const [hoverLabel, setHoverLabel] = useState<NetLabel>()
   const [cursor, setCursor] = useState<Point>()
   const [step, setStep] = useState(0.5)
   const parts = usePlacedParts(design, "schematic", circuit)
@@ -101,13 +111,18 @@ export function SchematicCanvas({ design, buildId, builtFrom, circuit, actions, 
   const { camera, setCamera, fit } = useCamera(wrapRef, size, bounds, FIT_MARGIN)
   const wire = useWireTool({ design, actions, camera, cursor, step, buildId, builtFrom })
   const common = { view: "schematic", circuit, actions, onSelect, blockerFor: parts.blockerFor } as const
-  const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom })
+  const labels = useLabelDrag({ design, circuit, actions, builtFrom })
+  const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom, labels: labels.tools })
   usePartKeys({ ...common, selected, paused: wire.drawing !== null, fit })
   const { moving, gesture } = gestures
-  useSheetPaint(canvasRef, { design, camera, size, wire, moving, boxes: parts.boxes, hover, selected, locked: parts.locked, circuit, gesture })
+  const dragged = useMemo(() => (gesture?.kind === "label" && gesture.moved && !gesture.blocker ? { id: gesture.label.id, at: gesture.at } : undefined), [gesture])
+  const movingLabel = useDraggedLabel(design, dragged) ?? labels.pending
+  useSheetPaint(canvasRef, { design, camera, size, wire, moving, boxes: parts.boxes, hover, selected, locked: parts.locked, circuit, gesture, movingLabel, hoverLabel })
   const hoverAt = (world: Point) => {
     wire.hover(world)
-    setHover(hitTest(parts.boxes, world)?.name)
+    const part = hitTest(parts.boxes, world)?.name
+    setHover(part)
+    setHoverLabel(part === undefined ? labels.tools.at(world) : undefined)
   }
   const pointer = pointerHandlers({ camera, size, element: wrapRef, gestures, setCursor, tool: wire.press, hover: hoverAt })
   const hint = wireHint(wire)
@@ -116,16 +131,17 @@ export function SchematicCanvas({ design, buildId, builtFrom, circuit, actions, 
     <div
       className="schematic-canvas"
       ref={wrapRef}
-      style={{ cursor: cursorFor(gesture, wire.drawing !== null || wire.overPin, hover !== undefined) }}
+      style={{ cursor: cursorFor(gesture, wire.drawing !== null || wire.overPin, hover !== undefined || hoverLabel !== undefined) }}
       {...pointer}
       onPointerLeave={() => {
         setHover(undefined)
+        setHoverLabel(undefined)
         wire.leave()
         setCursor(undefined)
       }}
       onContextMenu={(e) => e.preventDefault()}
       role="img"
-      aria-label="Schematic. Drag symbols to move them, drag the background to pan, scroll to zoom. Click a free pin or press W over a pin to draw a wire."
+      aria-label="Schematic. Drag symbols and net labels to move them, drag the background to pan, scroll to zoom. Click a free pin or press W over a pin to draw a wire."
     >
       <canvas ref={canvasRef} style={{ width: size.width, height: size.height }} />
       <SheetTools wire={wire} step={step} setStep={setStep} fit={fit} keep={{ show: parts.autoPlaced, onKeep: () => keepAutoPlaced(design, "schematic", parts.blockerFor, actions) }} />

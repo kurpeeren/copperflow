@@ -105,6 +105,14 @@ const EditSchema = z.discriminatedUnion("kind", [
       .optional(),
   }),
   z.object({ kind: z.literal("removeTrace"), from: z.string(), to: z.string() }),
+  z.object({
+    kind: z.literal("setTraceHints"),
+    from: z.string(),
+    to: z.string(),
+    schematicRouteHints: z
+      .array(z.object({ x: z.number().finite(), y: z.number().finite() }))
+      .max(200),
+  }),
 ])
 const Bodies = {
   // "Keep these positions" writes every auto-placed part in one request.
