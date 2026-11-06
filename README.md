@@ -35,18 +35,13 @@ Try it on the example board:
 copperflow summary --root examples/usb-c-ldo index.circuit.tsx
 ```
 
-`copperflow check` (and the agent's `check_circuit`) lists two kinds of problems until
-copperflow's own rules and checks arrive in stage 2 of [the engine design](docs/engine-design.md#stages):
+`copperflow check` (and the agent's `check_circuit`) runs copperflow's own rule checks and nothing else, so no other tool needs to be installed:
 
-- the engine's errors and warnings, the same ones the Studio shows, grouped by code: a footprint
-  it cannot make (`footprint`), a pin that does not exist (`unknown-pin`) or that several pins
-  share (`ambiguous-pin`), an instance that overrides its library part (`library-override`) and
-  so on. Engine errors fail the check;
-- the tscircuit CLI's errors and warnings, such as overlapping courtyards and unrouted ports.
-  tscircuit cannot read a part's `footprint.yaml`, so its errors about that footprint, and about
-  ports left unconnected because that part has no pads there, are left out.
+- the electrical rules check (ERC): pins left unconnected, outputs driven together, nets without a power source and so on;
+- the placement design-rule check (DRC): overlapping courtyards, parts off the board, pads and holes too close to each other;
+- problems in the code and the model, the same ones the Studio shows: a footprint it cannot make (`footprint`), a pin that does not exist (`unknown-pin`) or that several pins share (`ambiguous-pin`), an instance that overrides its library part (`library-override`) and so on.
 
-For the second part, run `npm install -g tscircuit`, and set `COPPERFLOW_TSCI` if it is not on your PATH.
+Findings are grouped by code, with their positions, and any error fails the check (exit code 1). Copper checks, such as clearances between tracks, come with routing.
 
 ### Connect Claude Code
 
@@ -144,7 +139,7 @@ The agent sees what you undid and does not repeat it.
 | `set_props` | Sets literal props: position, rotation, value, footprint |
 | `remove_part` | Removes a part and its traces |
 | `add_trace` / `remove_trace` | Connects or disconnects two ports or nets |
-| `check_circuit` | Lists the engine's errors and warnings, then those of a tscircuit build, such as overlapping parts |
+| `check_circuit` | Runs copperflow's own ERC and placement DRC and lists the errors and warnings by code, with positions |
 | `list_parts` / `part_info` | Shows the parts library and a part's data and checklist |
 | `create_part` | Adds a part from a datasheet: pins, footprint string or footprint file, MPN, suppliers |
 | `place_part` | Adds a library or built-in part to a circuit, with its import |
@@ -160,7 +155,7 @@ There is no unlock tool and no verify tool on purpose.
 copperflow mcp                              start the MCP server on stdio
 copperflow studio [--port n]                open the visual editor at http://127.0.0.1:4777
 copperflow summary <file>                   print a circuit summary
-copperflow check <file>                     list the engine's errors and warnings, then tscircuit's
+copperflow check <file>                     list the errors and warnings of copperflow's own rule checks
 copperflow lock <file> <part...>            lock parts so the agent cannot change them
 copperflow unlock <file> <part...>          unlock parts
 copperflow mark <file> <text> [--pcb x,y | --sch x,y]

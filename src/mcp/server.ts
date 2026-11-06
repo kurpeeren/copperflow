@@ -30,7 +30,7 @@ import type { DesignSource } from "../core/bom.js"
 import { FootprintFileSchema } from "../engine/footprints/file.js"
 import { VERSION } from "../version.js"
 
-const INSTRUCTIONS = `copperflow lets you edit tscircuit circuit files together with a human.
+const INSTRUCTIONS = `copperflow lets you edit circuit files together with a human.
 - Call circuit_summary before changing a circuit, and again when the human says they changed something.
 - Change existing parts and traces through these tools rather than rewriting the file, so locks and history apply.
 - After moving or adding parts, call check_circuit and fix placement errors before reporting success.
@@ -45,8 +45,6 @@ const literal = z.union([z.string(), z.number(), z.boolean()])
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false }
 
 export interface ServerOptions {
-  /** The tscircuit CLI used by check_circuit; defaults to $COPPERFLOW_TSCI or `tsci`. */
-  buildCommand?: string[]
   /** Builds the design for check_circuit, bom and export_package; tests pass one that runs in this process. */
   engine?: DesignSource
 }
@@ -135,13 +133,13 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "check_circuit",
     {
       description:
-        "Check the circuit: the copperflow engine's errors and warnings (footprints it cannot make, unknown or ambiguous pins, library overrides), then the tscircuit CLI's (courtyard overlaps, unrouted ports, missing parts). Run it after every placement change; it can take a minute.",
+        "Check the circuit with copperflow's own rules: electrical checks (pins left unconnected, outputs shorted together, power pins without a source) and placement checks (overlapping parts, parts off the board), plus problems in the code and the model (footprints it cannot make, unknown or ambiguous pins, library overrides). Errors and warnings come grouped by code, with their positions. Run it after every change and fix the errors before reporting success.",
       inputSchema: { file },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
     ({ file: circuit }) =>
       run(async () => {
-        const result = await checkCircuit(root, circuit, { ...designOptions, ...(options.buildCommand ? { command: options.buildCommand } : {}) })
+        const result = await checkCircuit(root, circuit, designOptions)
         return formatCheck(circuit, result)
       }),
   )

@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, test } from "vitest"
 import { mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { fileURLToPath } from "node:url"
 import { runCli } from "../src/cli-commands.js"
 import { readAnnotations } from "../src/core/annotations.js"
 import { createPart } from "../src/core/library.js"
@@ -14,6 +13,15 @@ const FILE = "main.circuit.tsx"
 const CLEAN = `export default () => (
   <board width="10mm" height="10mm">
     <resistor name="R1" resistance="1k" footprint="0402" pcbX={0} pcbY={0} schX={0} schY={0} />
+  </board>
+)
+`
+/** A chip whose EN pin is connected to nothing. */
+const FLOATING = `export default () => (
+  <board width="20mm" height="20mm">
+    <chip name="U1" footprint="soic8" pinLabels={{ pin1: "GND", pin2: "VIN", pin3: "EN", pin4: "GND" }} pinAttributes={{ EN: { isInput: true } }} pcbX={0} pcbY={0} schX={0} schY={0} />
+    <trace from="U1.pin1" to="net.GND" />
+    <trace from="U1.pin2" to="net.VIN" />
   </board>
 )
 `
@@ -56,23 +64,29 @@ describe("cli", () => {
     expect(out.join("\n")).toContain("copperflow mcp")
   })
 
-  test("check prints the build report and fails when the build has errors", async () => {
-    const fakeTsci = [process.execPath, fileURLToPath(new URL("./fixtures/fake-tsci.mjs", import.meta.url))]
-    const check = () => runCli(["check", FILE], root, io(), { buildCommand: fakeTsci, engine: inProcessEngine })
+  test("check exits 0 for a clean circuit and prints a passing report", async () => {
     await writeFile(join(root, FILE), CLEAN)
-    const elements = [{ type: "pcb_courtyard_overlap_error", message: "Courtyard of U1 overlaps with courtyard of C2" }]
-    await writeFile(join(root, "main.circuit.fake.json"), JSON.stringify({ exitCode: 1, elements }))
-    expect(await check()).toBe(1)
-    expect(out.join("\n")).toContain("pcb_courtyard_overlap_error")
-    await writeFile(join(root, "main.circuit.fake.json"), JSON.stringify({ exitCode: 0, elements: [] }))
-    expect(await check()).toBe(0)
+    expect(await run("check", FILE)).toBe(0)
+    expect(out.join("\n")).toMatch(/^main\.circuit\.tsx: check passed, 0 errors/)
+  })
+
+  test("check exits 1 and lists the errors for a circuit with a floating pin", async () => {
+    await writeFile(join(root, FILE), FLOATING)
+    expect(await run("check", FILE)).toBe(1)
+    expect(out.join("\n")).toMatch(/pin-unconnected:\n {4}U1\.pin3 \(EN\) is not connected/)
   })
 
   test("check fails on the engine's errors, such as BOARD's two parts named RX", async () => {
-    const fakeTsci = [process.execPath, fileURLToPath(new URL("./fixtures/fake-tsci.mjs", import.meta.url))]
-    await writeFile(join(root, "main.circuit.fake.json"), JSON.stringify({ exitCode: 0, elements: [] }))
-    expect(await runCli(["check", FILE], root, io(), { buildCommand: fakeTsci, engine: inProcessEngine })).toBe(1)
-    expect(out.join("\n")).toContain("duplicate-name: More than one part is named RX")
+    expect(await run("check", FILE)).toBe(1)
+    expect(out.join("\n")).toContain("duplicate-name")
+    expect(out.join("\n")).toContain("More than one part is named RX")
+  })
+
+  test("check rejects the old --tsci option and says why", async () => {
+    await writeFile(join(root, FILE), CLEAN)
+    expect(await run("check", FILE, "--tsci", "tsci")).toBe(1)
+    expect(err.join("\n")).toMatch(/--tsci is no longer an option/)
+    expect(out).toEqual([])
   })
 
   test("parts: list, rebuild and verify by a person", async () => {

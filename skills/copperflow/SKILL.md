@@ -17,16 +17,14 @@ undoing their work.
    again unless they ask.
 3. Change existing parts and traces with `set_props`, `remove_part`, `add_trace` and
    `remove_trace`. These tools enforce locks and record history; editing the file directly does not.
-4. After any placement change, call `check_circuit`. Until copperflow's own rule checks arrive
-   it reports two things. First, the engine's errors and warnings, grouped by code, the same
-   ones the Studio shows: `footprint` (a footprint it cannot make), `unknown-pin`,
-   `ambiguous-pin` (a name several pins share; write `pin<n>` instead), `library-override` (an
-   instance sets a prop its library part owns) and so on. Engine errors fail the check. Second,
-   a build with the tscircuit CLI. Fix its placement errors such as
-   `pcb_courtyard_overlap_error` first: they stop autorouting, so the unrouted-port errors
-   that follow them usually disappear once placement is fixed. tscircuit cannot read a
-   part's `footprint.yaml`; the check leaves out its errors about that. Do not report success
-   while the check fails.
+4. After any change, call `check_circuit`. It runs copperflow's own rule checks: the electrical
+   checks (`pin-unconnected`, `output-conflict`, `no-power-source`), the placement checks
+   (`courtyard-overlap`, `outside-board`) and the problems in the code and the model, grouped by code
+   with positions: `footprint` (a footprint it cannot make), `unknown-pin`, `ambiguous-pin` (a name
+   several pins share; write `pin<n>` instead), `library-override` (an instance sets a prop its
+   library part owns) and so on. Fix every error before you report success. Warnings such as
+   `unrouted` do not fail the check; mention them. Net classes and fabrication limits live in
+   `rules.yaml` at the project root; do not work around a rule in the circuit.
 5. Tell the human what you changed and the change ids, so they can undo a single step.
 
 ## Rules

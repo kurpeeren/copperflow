@@ -42,7 +42,7 @@ Usage:
   copperflow mcp                              start the MCP server on stdio
   copperflow studio [--port n]                open the visual editor at http://127.0.0.1:4777
   copperflow summary <file>                   print a circuit summary
-  copperflow check <file>                     list the engine's errors and warnings, then tscircuit's
+  copperflow check <file>                     list the errors and warnings of copperflow's own rule checks
   copperflow lock <file> <part...>            lock parts so the agent cannot change them
   copperflow unlock <file> <part...>          unlock parts
   copperflow mark <file> <text> [--pcb x,y | --sch x,y]
@@ -61,12 +61,9 @@ Usage:
   copperflow undo [id]                        undo the newest change, or the given one
 
 Every command accepts --root <dir> (default: the current directory).
-check also builds with the tscircuit CLI (tsci) until copperflow's own rule checks arrive;
-set COPPERFLOW_TSCI to use one that is not on the PATH.`
+check exits with 1 when the circuit has errors.`
 
 export interface CliOptions {
-  /** The tscircuit CLI for `check` and the MCP server; defaults to $COPPERFLOW_TSCI or `tsci`. */
-  buildCommand?: string[]
   /** Builds the design for check, bom and package; tests pass one that runs in this process. */
   engine?: DesignSource
 }
@@ -90,8 +87,8 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
         io.out(formatSummary(await loadCircuit(root, required(rest[0], "file"))))
         return 0
       case "check": {
-        const file = required(rest[0], "file")
-        const result = await checkCircuit(root, file, { ...designOptions(options), ...(options.buildCommand ? { command: options.buildCommand } : {}) })
+        const file = required(rejectOldBuildOption(rest)[0], "file")
+        const result = await checkCircuit(root, file, designOptions(options))
         io.out(formatCheck(file, result))
         return result.ok ? 0 : 1
       }
@@ -245,6 +242,12 @@ function rejectBuildFlag(args: string[]): string[] {
   if (args.includes("--build")) {
     throw new Error("--build is no longer an option: bom and package read the design the engine builds from the circuit code")
   }
+  return args
+}
+
+/** check runs copperflow's own rules, so the old option that chose another build tool has nothing left to do. */
+function rejectOldBuildOption(args: string[]): string[] {
+  if (args.includes("--tsci")) throw new Error("--tsci is no longer an option: check runs copperflow's own rules")
   return args
 }
 

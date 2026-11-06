@@ -2,17 +2,16 @@ import { beforeEach, describe, expect, test } from "vitest"
 import { mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { fileURLToPath } from "node:url"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { createCopperflowServer } from "../src/mcp/server.js"
 import { loadCircuit, updateAnnotations } from "../src/core/workspace.js"
 import { addMark, lockParts } from "../src/core/annotations.js"
+import { checkCircuit, formatCheck } from "../src/core/check.js"
 import { BOARD, LDO, SHARED, USBX, USBX_FOOTPRINT } from "./fixtures.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
 
 const FILE = "main.circuit.tsx"
-const FAKE_TSCI = [process.execPath, fileURLToPath(new URL("./fixtures/fake-tsci.mjs", import.meta.url))]
 let root: string
 let client: Client
 
@@ -20,7 +19,7 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "cf-mcp-"))
   await writeFile(join(root, FILE), BOARD)
   await writeFile(join(root, "shared.ts"), SHARED)
-  const server = createCopperflowServer(root, { buildCommand: FAKE_TSCI, engine: inProcessEngine })
+  const server = createCopperflowServer(root, { engine: inProcessEngine })
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
   client = new Client({ name: "test", version: "0.0.0" })
   await Promise.all([server.connect(serverSide), client.connect(clientSide)])
@@ -137,14 +136,19 @@ describe("MCP server", () => {
     expect(await readFile(join(root, FILE), "utf8")).toBe(BOARD)
   })
 
-  test("check_circuit reports the engine's errors and the build's placement errors", async () => {
-    const elements = [{ type: "pcb_courtyard_overlap_error", message: "Courtyard of U1 overlaps with courtyard of C2" }]
-    await writeFile(join(root, "main.circuit.fake.json"), JSON.stringify({ exitCode: 1, elements }))
+  test("check_circuit returns the same text as formatCheck", async () => {
     const result = await call("check_circuit", { file: FILE })
     expect(result.isError).toBe(false)
-    expect(result.text).toContain("build failed, 2 errors")
-    expect(result.text).toContain("pcb_courtyard_overlap_error: Courtyard of U1 overlaps with courtyard of C2")
-    expect(result.text).toContain("duplicate-name: More than one part is named RX")
+    expect(result.text).toBe(formatCheck(FILE, await checkCircuit(root, FILE, { engine: inProcessEngine })))
+    expect(result.text).toContain("check failed")
+    expect(result.text).toContain("More than one part is named RX")
+  })
+
+  test("check_circuit says what it checks and does not name the old toolkit", async () => {
+    const { tools } = await client.listTools()
+    const description = tools.find((t) => t.name === "check_circuit")?.description ?? ""
+    expect(description).toMatch(/connection|pin|placement/i)
+    expect(description.toLowerCase()).not.toContain("tscircuit")
   })
 
   test("paths outside the project are rejected", async () => {
