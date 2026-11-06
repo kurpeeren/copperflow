@@ -63,9 +63,7 @@ describe("placement", () => {
       for (const b of boxes.slice(i + 1)) expect(apart(a, b)).toBe(true)
     }
     expect(l.parts.every((p) => p.autoPlaced)).toBe(true)
-    expect(diagnostics.filter((d) => d.code === "auto-placed")).toEqual([
-      expect.objectContaining({ severity: "warning", items: ["R1", "R2", "R3", "R4", "R5"] }),
-    ])
+    expect(diagnostics.filter((d) => d.code === "auto-placed")).toEqual([])
   })
 
   test("an auto-placed part avoids a placed one", () => {

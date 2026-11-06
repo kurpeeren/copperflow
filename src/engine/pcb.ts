@@ -167,12 +167,9 @@ function placeAll(circuit: Circuit, resolved: readonly Resolved[], nets: Readonl
 
 export function layoutPcb(circuit: Circuit, footprintOf: FootprintOf): { layout: PcbLayout; diagnostics: Diagnostic[] } {
   const { resolved, diagnostics, missing } = resolveFootprints(circuit, footprintOf)
-  const { parts, autoPlaced } = placeAll(circuit, resolved, pinNets(circuit))
+  const { parts } = placeAll(circuit, resolved, pinNets(circuit))
   if (missing.length > 0) {
     diagnostics.push(diagnostic("no-footprint", "warning", "These parts have no footprint and are drawn as 1 x 1 mm squares without pads", missing))
-  }
-  if (autoPlaced.length > 0) {
-    diagnostics.push(diagnostic("auto-placed", "warning", "These parts have no position and were placed automatically", autoPlaced))
   }
   return { layout: { ...(circuit.board ? { board: circuit.board } : {}), parts, ratsnest: ratsnest(parts) }, diagnostics }
 }
