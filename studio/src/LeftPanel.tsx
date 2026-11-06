@@ -2,6 +2,7 @@ import { useState } from "react"
 import type { CircuitData, Design, HistoryListing, PartsData, TraceInfo } from "./api"
 import { Library } from "./Library"
 import { NetsList } from "./NetsList"
+import { blurButton } from "./pcb/CanvasTools"
 import type { Actions } from "./App"
 import type { LeftTab } from "./use-workspace"
 import { partsInSelector } from "../../src/core/selectors.js"
@@ -33,7 +34,7 @@ const TAB_NAMES: Record<LeftTab, string> = { parts: "Parts", library: "Library",
 export function LeftPanel(props: Props) {
   const { tab, onTab } = props
   return (
-    <aside className="panel left" hidden={props.hidden}>
+    <aside className="panel left" hidden={props.hidden} onClick={blurButton}>
       <div className="tabs" role="tablist">
         {(Object.keys(TAB_NAMES) as LeftTab[]).map((t) => (
           <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => onTab(t)}>

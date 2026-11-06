@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api, hasToken, subscribe, type BuildState, type CircuitData, type Edit, type HistoryListing, type PartsData } from "./api"
 import { UndoIcon } from "./icons"
 import { Inspector } from "./Inspector"
 import { LeftPanel } from "./LeftPanel"
 import { PcbCanvas } from "./pcb/PcbCanvas"
 import { SchematicCanvas } from "./pcb/SchematicCanvas"
+import { remapHighlight } from "./pcb/highlight"
 import { useWorkspace } from "./use-workspace"
 
 /** Every action reports failures itself and resolves to whether it succeeded. */
@@ -152,6 +153,13 @@ export function App() {
   }
 
   const design = build.design
+  // A rebuild can rename or merge the highlighted net (an unnamed net that gets GND): follow it, or clear it.
+  const lastDesign = useRef<typeof design>(undefined)
+  useEffect(() => {
+    const before = lastDesign.current
+    lastDesign.current = design
+    if (design && design !== before) setHighlight((current) => remapHighlight(current, before, design))
+  }, [design, setHighlight])
   // Previews of moves and wires sent before this time are in the design the canvases draw.
   const builtFrom = build.startedAt ? Date.parse(build.startedAt) : Number.NEGATIVE_INFINITY
   if (!hasToken) {

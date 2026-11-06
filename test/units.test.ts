@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { statusParts } from "../studio/src/pcb/status.js"
-import { formatLength, fromUnit, MM_PER_MIL, nextUnit, snapLabel, toUnit, zoomPercent } from "../studio/src/pcb/units.js"
+import { formatLength, fromUnit, MM_PER_MIL, nextUnit, PCB_ZOOM_REFERENCE_PX, SCHEMATIC_ZOOM_REFERENCE_PX, snapLabel, toUnit, zoomPercent } from "../studio/src/pcb/units.js"
 
 describe("units", () => {
   test("1 mil is 0.0254 mm", () => {
@@ -38,10 +38,11 @@ describe("units", () => {
     expect(nextUnit("mil")).toBe("mm")
   })
 
-  test("zoom is a percentage of a fixed 10 px per unit", () => {
-    expect(zoomPercent(10)).toBe(100)
-    expect(zoomPercent(25)).toBe(250)
-    expect(zoomPercent(0.5)).toBe(5)
+  test("zoom is a percentage of a fixed reference: 10 px per mm on the PCB, 60 px per unit on the schematic", () => {
+    expect(zoomPercent(10, PCB_ZOOM_REFERENCE_PX)).toBe(100)
+    expect(zoomPercent(25, PCB_ZOOM_REFERENCE_PX)).toBe(250)
+    expect(zoomPercent(0.5, PCB_ZOOM_REFERENCE_PX)).toBe(5)
+    expect(zoomPercent(60, SCHEMATIC_ZOOM_REFERENCE_PX)).toBe(100)
   })
 })
 
@@ -56,7 +57,7 @@ describe("statusParts", () => {
   })
 
   test("a sheet without a unit shows plain numbers", () => {
-    expect(statusParts({ cursor: { x: 1, y: 2 }, zoom: 10, unit: undefined, gesture: undefined }).position).toBe("Zoom 100%  X 1.00  Y 2.00")
+    expect(statusParts({ cursor: { x: 1, y: 2 }, zoom: 60, unit: undefined, gesture: undefined }).position).toBe("Zoom 100%  X 1.00  Y 2.00")
   })
 
   test("a part drag shows dX and dY from its start", () => {

@@ -155,6 +155,10 @@ export function useWireTool(input: WireInput) {
   }
   const press = (event: { button: number; shiftKey: boolean }, world: Point) =>
     pressWire({ design, camera, wiring, drawing, setDrawing, step, finish, underAt }, event, world)
+  const cancel = useCallback(() => {
+    setWiring(false)
+    setDrawing(null)
+  }, [])
   const overPin = under.end !== undefined && (wiring || drawing !== null || (under.pin !== undefined && freePin(design, under.pin)))
   return {
     wiring,
@@ -163,10 +167,7 @@ export function useWireTool(input: WireInput) {
       setDrawing(null)
     },
     /** Stops wiring and drops a wire in progress, e.g. when another tool takes over. */
-    cancel: () => {
-      setWiring(false)
-      setDrawing(null)
-    },
+    cancel,
     drawing,
     under,
     pendingWires: pending.visible,

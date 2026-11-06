@@ -20,7 +20,7 @@ export interface SchematicDrawOptions {
   /** A net label or ground or power symbol drawn dashed at `at`, in place of where the layout has it; `hideWire` is the wire it replaces. */
   movingLabels?: readonly { id: string; at: Point; side: NetLabel["side"]; hideWire?: string }[]
   /** One net to highlight, as on the PCB: its wires and labels are lit, everything else is dimmed. `pins` are the pins on it: they are marked, and their symbols are not dimmed. */
-  highlight?: { net: string; pins?: readonly string[] }
+  highlight?: { net: string; pins?: readonly string[]; aliases?: readonly string[] }
   /** Labels sent and waiting for their build, drawn dashed where they will be. */
   ghostLabels?: readonly NetLabel[]
 }
@@ -66,6 +66,9 @@ const SYMBOL_WIDTH = 0.02
 const MIN_LINE_PX = 1.2
 const MIN_TEXT_PX = 3
 const PIN_DOT_PX = 3.5
+/** A highlighted pin's marker is this big in sheet units, but never under 1.5 px or over a pin dot, so it stays smaller than a symbol at any zoom. */
+const LIT_PIN_WORLD = 0.06
+const LIT_PIN_MIN_PX = 1.5
 const ACTIVE_PIN_FACTOR = 1.6
 const MIN_JUNCTION = 0.04
 const JUNCTION_PX = 3
@@ -156,7 +159,7 @@ function dot(ctx: Ctx, p: Point, r: number): void {
 /** How a net's wires and labels are drawn: lit when it is the highlighted net, dimmed when another is, else as usual. */
 function toneOf(net: string, highlight: SchematicDrawOptions["highlight"]): { color: string | undefined; alpha: number } {
   if (!highlight) return { color: undefined, alpha: 1 }
-  return net === highlight.net ? { color: PALETTE.highlight, alpha: 1 } : { color: undefined, alpha: HIGHLIGHT_DIM }
+  return net === highlight.net || highlight.aliases?.includes(net) ? { color: PALETTE.highlight, alpha: 1 } : { color: undefined, alpha: HIGHLIGHT_DIM }
 }
 
 /** A symbol is dimmed while a net is highlighted, unless one of its pins is on that net. */
@@ -174,8 +177,8 @@ function onSegment(p: Point, a: Point, b: Point): boolean {
 }
 
 /** A junction is lit when a wire of the highlighted net passes through it. */
-function junctionLit(layout: SchematicLayout, junction: Point, net: string): boolean {
-  return layout.wires.some((wire) => wire.net === net && wire.points.some((b, i) => i > 0 && onSegment(junction, wire.points[i - 1] ?? b, b)))
+function junctionLit(layout: SchematicLayout, junction: Point, highlight: NonNullable<SchematicDrawOptions["highlight"]>): boolean {
+  return layout.wires.some((wire) => toneOf(wire.net, highlight).color !== undefined && wire.points.some((b, i) => i > 0 && onSegment(junction, wire.points[i - 1] ?? b, b)))
 }
 
 function drawWires(ctx: Ctx, layout: SchematicLayout, options: SchematicDrawOptions, px: number, line: (w: number) => number): void {
@@ -189,7 +192,7 @@ function drawWires(ctx: Ctx, layout: SchematicLayout, options: SchematicDrawOpti
     ctx.stroke()
   }
   for (const junction of layout.junctions) {
-    const lit = options.highlight !== undefined && junctionLit(layout, junction, options.highlight.net)
+    const lit = options.highlight !== undefined && junctionLit(layout, junction, options.highlight)
     ctx.fillStyle = lit ? PALETTE.highlight : SCHEMATIC_PALETTE.junction
     ctx.globalAlpha = options.highlight && !lit ? HIGHLIGHT_DIM : 1
     dot(ctx, junction, Math.max(MIN_JUNCTION, JUNCTION_PX * px))
@@ -338,7 +341,8 @@ function drawPins(ctx: Ctx, layout: SchematicLayout, options: SchematicDrawOptio
       const active = (options.activePins?.includes(id) ?? false) || lit
       if (!active && !options.showPins) continue
       ctx.fillStyle = lit ? PALETTE.highlight : active ? SCHEMATIC_PALETTE.activePort : SCHEMATIC_PALETTE.port
-      dot(ctx, { x: end.x + shift.x, y: end.y + shift.y }, (active ? ACTIVE_PIN_FACTOR : 1) * PIN_DOT_PX * px)
+      const radius = lit ? Math.min(PIN_DOT_PX * px, Math.max(LIT_PIN_WORLD, LIT_PIN_MIN_PX * px)) : (active ? ACTIVE_PIN_FACTOR : 1) * PIN_DOT_PX * px
+      dot(ctx, { x: end.x + shift.x, y: end.y + shift.y }, radius)
       ctx.fill()
     }
   }

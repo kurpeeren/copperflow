@@ -6,9 +6,11 @@ export const MM_PER_MIL = 0.0254
 
 /**
  * Zoom is shown against a fixed reference, not the fitted view, so it does not jump when the board
- * grows: 100% is 10 CSS pixels per mm (or per sheet unit).
+ * grows. 100% is 10 CSS pixels per mm on the PCB and 60 per sheet unit on the schematic, so the
+ * default views of each read near 100%.
  */
-export const ZOOM_REFERENCE_PX = 10
+export const PCB_ZOOM_REFERENCE_PX = 10
+export const SCHEMATIC_ZOOM_REFERENCE_PX = 60
 
 export const nextUnit = (unit: Unit): Unit => (unit === "mm" ? "mil" : "mm")
 
@@ -27,4 +29,4 @@ export function snapLabel(stepMm: number, unit: Unit): string {
   return `${Number(toUnit(stepMm, unit).toFixed(2))} ${unit}`
 }
 
-export const zoomPercent = (scale: number): number => Math.round((scale / ZOOM_REFERENCE_PX) * 100)
+export const zoomPercent = (scale: number, referencePx: number): number => Math.round((scale / referencePx) * 100)

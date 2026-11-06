@@ -6,6 +6,11 @@ import type { Gesture } from "./use-canvas-gestures"
 
 const SNAP_STEPS = [0.1, 0.5, 1]
 
+/** A clicked button gives up focus, so Space rotates the part instead of pressing the button again. Put on the toolbar, after the buttons' own handlers. */
+export function blurButton(event: { target: EventTarget }): void {
+  if (event.target instanceof HTMLElement) event.target.closest("button")?.blur()
+}
+
 /** The snap steps are in mm (sheet units on the schematic, which has no `unit`); only their labels follow the unit. */
 export function SnapSelect({ step, onChange, unit }: { step: number; onChange(step: number): void; unit: Unit | undefined }) {
   return (
@@ -53,7 +58,10 @@ export function CanvasStatus({ cursor, zoom, unit, onToggleUnit, detail, gesture
     <div className="canvas-status" aria-live="off">
       <span>{position}</span>
       {unit && (
-        <button className="unit-toggle" onClick={onToggleUnit} onPointerDown={(e) => e.stopPropagation()} title="Switch between mm and mil (Q)">
+        <button className="unit-toggle" onClick={(e) => {
+            onToggleUnit?.()
+            blurButton(e)
+          }} onPointerDown={(e) => e.stopPropagation()} title="Switch between mm and mil (Q)">
           {unit}
         </button>
       )}

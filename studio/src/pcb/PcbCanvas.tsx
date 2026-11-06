@@ -3,7 +3,7 @@ import type { CircuitData, Design } from "../api"
 import type { WorldPad } from "../../../src/engine/pcb.js"
 import { keepAutoPlaced } from "./auto-placed"
 import { drawEditorLayer, prepareCanvas, useCamera, useElementSize, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
-import { CanvasStatus, KeepButton, SnapSelect } from "./CanvasTools"
+import { blurButton, CanvasStatus, KeepButton, SnapSelect } from "./CanvasTools"
 import type { Layers } from "./ctx"
 import { hitTest, pointBounds, unionBoxes, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import { pcbNetAt } from "./highlight"
@@ -80,7 +80,7 @@ interface PcbToolsProps {
 /** Snap, fit, the layer switches and "Keep these positions". */
 function PcbTools({ unit, step, setStep, fit, layers, setLayers, keep }: PcbToolsProps) {
   return (
-    <div className="canvas-tools">
+    <div className="canvas-tools" onClick={blurButton}>
       <SnapSelect step={step} onChange={setStep} unit={unit} />
       <button onClick={fit} title="Fit the board (F or K)">
         Fit

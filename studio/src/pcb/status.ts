@@ -1,6 +1,6 @@
 // The words of the canvas status bar: zoom and pointer position, and how far a drag has moved.
 import type { Point } from "./geometry.js"
-import { formatLength, zoomPercent, type Unit } from "./units.js"
+import { formatLength, PCB_ZOOM_REFERENCE_PX, SCHEMATIC_ZOOM_REFERENCE_PX, zoomPercent, type Unit } from "./units.js"
 
 /** The parts of a canvas gesture the status bar reads (the canvases' Gesture fits it). */
 export type StatusGesture =
@@ -31,7 +31,7 @@ export function statusParts(input: StatusInput): { position: string; drag: strin
   const { cursor, zoom, unit } = input
   const delta = dragDelta(input.gesture)
   const position = [
-    zoom === undefined ? "" : `Zoom ${zoomPercent(zoom)}%`,
+    zoom === undefined ? "" : `Zoom ${zoomPercent(zoom, unit ? PCB_ZOOM_REFERENCE_PX : SCHEMATIC_ZOOM_REFERENCE_PX)}%`,
     cursor ? `X ${shown(cursor.x, unit)}  Y ${shown(cursor.y, unit)}` : "",
   ]
   return {

@@ -167,6 +167,48 @@ describe("highlight", () => {
     expect(lit(draw({ highlight: { net: "net:R1.pin2", pins: ["R1.pin2", "R2.pin2"] } })) - without).toBe(2)
   })
 
+  test("a label on another name of the highlighted net is lit through its aliases", () => {
+    const aliased = buildDesign(
+      {
+        [FILE]: `export default () => (
+  <board width="30mm" height="18mm">
+    <resistor name="R1" resistance="1k" footprint="0402" schX={0} schY={0} />
+    <resistor name="R2" resistance="1k" footprint="0402" schX={3} schY={0} />
+    <trace from=".R1 > .pin1" to="net.A" />
+    <trace from=".R1 > .pin1" to="net.B" />
+    <trace from=".R2 > .pin1" to="net.B" schematicRouteHints={[{ x: 2, y: 1 }]} />
+  </board>
+)`,
+      },
+      FILE,
+    ).schematic
+    const lit = (highlight: SchematicDrawOptions["highlight"]) => {
+      const rec = recorder()
+      drawSchematic(rec.ctx as never, aliased, VIEW, { ratio: 1, ...(highlight ? { highlight } : {}) })
+      return rec.records.filter((r) => r.name === "stroke" && r.strokeStyle === PALETTE.highlight).length
+    }
+    expect(lit({ net: "net.A" })).toBeLessThan(lit({ net: "net.A", aliases: ["net.A", "net.B"] }))
+    expect(lit({ net: "net.A", aliases: ["net.A", "net.B"] })).toBeGreaterThan(0)
+  })
+
+  test("pin markers stay small at low zoom", () => {
+    const radii = (scale: number, pins: string[]) => {
+      const rec = recorder()
+      drawSchematic(rec.ctx as never, layout, { camera: { cx: 1.5, cy: 0, scale }, size: VIEW.size }, { ratio: 1, highlight: { net: "net:R1.pin2", pins } })
+      return rec.records.filter((r) => r.name === "arc" && r.fillStyle === PALETTE.highlight).map((r) => (r.args[2] as number) * scale)
+    }
+    for (const scale of [10, 21, 100, 400]) {
+      const rest = radii(scale, [])
+      const extra = radii(scale, ["R1.pin2"]).filter((r) => {
+        const at = rest.findIndex((w) => Math.abs(w - r) < 1e-9)
+        if (at >= 0) rest.splice(at, 1)
+        return at < 0
+      })
+      expect(extra).toHaveLength(1)
+      expect(extra[0]).toBeLessThanOrEqual(3.5 + 1e-9)
+    }
+  })
+
   test("ghost labels are drawn dashed", () => {
     const rec = draw({ ghostLabels: [{ id: "g", net: "net.EN", text: "EN", at: { x: 5, y: 0 }, side: "right", style: "label" }] })
     expect(rec.records.some((r) => r.name === "fillText" && r.args[0] === "EN")).toBe(true)

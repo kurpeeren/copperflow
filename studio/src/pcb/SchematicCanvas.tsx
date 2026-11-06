@@ -4,9 +4,9 @@ import type { CircuitData, Design } from "../api"
 import { WireIcon } from "../icons"
 import { keepAutoPlaced } from "./auto-placed"
 import { drawEditorLayer, prepareCanvas, useCamera, useElementSize, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
-import { CanvasStatus, KeepButton, SnapSelect } from "./CanvasTools"
+import { blurButton, CanvasStatus, KeepButton, SnapSelect } from "./CanvasTools"
 import { hitTest, unionBoxes, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry"
-import { schematicNetAt } from "./highlight"
+import { highlightOf, schematicNetAt } from "./highlight"
 import { labelHitBox } from "./label-drag"
 import { NameInput, PaletteButtons, paletteHint } from "./LabelPalette"
 import { drawOutline, drawWirePreview } from "./overlays"
@@ -45,7 +45,7 @@ interface SheetScene {
   hoverLabel: NetLabel | undefined
   palette: Palette
   /** The highlighted net and the pins on it. */
-  highlight: { net: string; pins: readonly string[] } | undefined
+  highlight: ReturnType<typeof highlightOf>
 }
 
 /** Draws the sheet, the wire being drawn and the editor layer; a sheet without parts gets a default view. */
@@ -89,7 +89,7 @@ interface SheetToolsProps {
 /** The wire tool's switch, the Place tools, snap, fit and "Keep these positions". */
 function SheetTools({ wire, palette, step, setStep, fit, keep }: SheetToolsProps) {
   return (
-    <div className="canvas-tools" onPointerDown={(e) => e.stopPropagation()}>
+    <div className="canvas-tools" onPointerDown={(e) => e.stopPropagation()} onClick={blurButton}>
       <button
         className={wire.wiring ? "active" : ""}
         aria-pressed={wire.wiring}
@@ -125,9 +125,46 @@ function wireHint(wire: WireTool): string | undefined {
   return wire.wiring ? "Click a pin to start a wire. Esc stops wiring." : undefined
 }
 
-/** The highlighted net with the pins on it, so their symbols and pin ends can be drawn lit. */
+/** The highlighted net with its pins and the names its wires and labels may carry, so they can be drawn lit. */
 function useHighlight(design: Design, net: string | null): SheetScene["highlight"] {
-  return useMemo(() => (net === null ? undefined : { net, pins: design.circuit.nets.find((n) => n.id === net)?.pins ?? [] }), [design, net])
+  return useMemo(() => highlightOf(design, net), [design, net])
+}
+
+/** The label being dragged, then those moved and waiting for their build. */
+function useMovingLabels(design: Design, gesture: Gesture | undefined, pending: MovingLabel[]): MovingLabel[] {
+  const dragged = useMemo(() => (gesture?.kind === "label" && gesture.moved && !gesture.blocker ? { id: gesture.label.id, at: gesture.at } : undefined), [gesture])
+  const draggedLabel = useDraggedLabel(design, dragged)
+  return useMemo(() => (draggedLabel ? [draggedLabel, ...pending.filter((m) => m.id !== draggedLabel.id)] : pending), [draggedLabel, pending])
+}
+
+interface SheetKeysInput {
+  design: Design
+  camera: Camera | undefined
+  cursor: Point | undefined
+  fit(): void
+  wire: WireTool
+  palette: Palette
+  highlightNet: string | null
+  onHighlight(net: string | null): void
+  keys: Omit<Parameters<typeof usePartKeys>[0], "paused" | "fit" | "netUnderPointer" | "onHighlight">
+}
+
+/** The part keys with H over the sheet, and the hand-over between wiring and the Place tools; returns what to draw lit. */
+function useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNet, onHighlight, keys }: SheetKeysInput): SheetScene["highlight"] {
+  const cursorRef = useRef<Point | undefined>(undefined)
+  cursorRef.current = cursor
+  const netUnderPointer = useCallback(
+    () => (camera && cursorRef.current ? schematicNetAt(design, cursorRef.current, HIGHLIGHT_REACH_PX / camera.scale) : undefined),
+    [design, camera],
+  )
+  usePartKeys({ ...keys, paused: wire.drawing !== null, fit, netUnderPointer, onHighlight })
+  const { wiring, drawing } = wire
+  const { disarm } = palette
+  // Wiring takes over from a Place tool, as arming a Place tool stops wiring.
+  useEffect(() => {
+    if (wiring || drawing) disarm()
+  }, [wiring, drawing, disarm])
+  return useHighlight(design, highlightNet)
 }
 
 /**
@@ -150,24 +187,9 @@ export function SchematicCanvas({ design, buildId, builtFrom, circuit, actions, 
   const common = { view: "schematic", circuit, actions, onSelect, blockerFor: parts.blockerFor } as const
   const labels = useLabelDrag({ design, circuit, actions, builtFrom })
   const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom, labels: labels.tools })
-  const cursorRef = useRef<Point | undefined>(undefined)
-  cursorRef.current = cursor
-  const netUnderPointer = useCallback(
-    () => (camera && cursorRef.current ? schematicNetAt(design, cursorRef.current, HIGHLIGHT_REACH_PX / camera.scale) : undefined),
-    [design, camera],
-  )
-  usePartKeys({ ...common, selected, paused: wire.drawing !== null, fit, netUnderPointer, onHighlight })
-  const highlight = useHighlight(design, highlightNet)
-  const { wiring, drawing } = wire
-  const { disarm } = palette
-  // Wiring takes over from a Place tool, as arming a Place tool stops wiring.
-  useEffect(() => {
-    if (wiring || drawing) disarm()
-  }, [wiring, drawing, disarm])
+  const highlight = useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNet, onHighlight, keys: { ...common, selected } })
   const { moving, gesture } = gestures
-  const dragged = useMemo(() => (gesture?.kind === "label" && gesture.moved && !gesture.blocker ? { id: gesture.label.id, at: gesture.at } : undefined), [gesture])
-  const draggedLabel = useDraggedLabel(design, dragged)
-  const movingLabels = useMemo(() => (draggedLabel ? [draggedLabel, ...labels.pending.filter((m) => m.id !== draggedLabel.id)] : labels.pending), [draggedLabel, labels.pending])
+  const movingLabels = useMovingLabels(design, gesture, labels.pending)
   useSheetPaint(canvasRef, { design, camera, size, wire, moving, boxes: parts.boxes, hover, selected, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel, palette, highlight })
   const hoverAt = (world: Point) => {
     wire.hover(world)
@@ -196,8 +218,10 @@ export function SchematicCanvas({ design, buildId, builtFrom, circuit, actions, 
       aria-label="Schematic. Drag symbols and net labels to move them, drag the background to pan, scroll to zoom. Click a free pin or press W over a pin to draw a wire."
     >
       <canvas ref={canvasRef} style={{ width: size.width, height: size.height }} />
-      <SheetTools wire={wire} palette={palette} step={step} setStep={setStep} fit={fit} keep={{ show: parts.autoPlaced, onKeep: () => keepAutoPlaced(design, "schematic", parts.blockerFor, actions) }} />
-      {hint && <div className="canvas-hint">{hint}</div>}
+      <div className="canvas-top">
+        <SheetTools wire={wire} palette={palette} step={step} setStep={setStep} fit={fit} keep={{ show: parts.autoPlaced, onKeep: () => keepAutoPlaced(design, "schematic", parts.blockerFor, actions) }} />
+        {hint && <div className="canvas-hint">{hint}</div>}
+      </div>
       <NameInput palette={palette} camera={camera} size={size} />
       <CanvasStatus cursor={cursor} zoom={(camera ?? EMPTY_SHEET_CAMERA).scale} detail={wire.under.end?.label} gesture={gesture} />
       {!bounds && <p className="empty">This schematic has no parts yet.</p>}
