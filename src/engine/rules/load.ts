@@ -1,4 +1,4 @@
-import { LineCounter, isNode, parseDocument, type Document } from "yaml"
+import { LineCounter, isNode, parseDocument, visit, type Document } from "yaml"
 import { diagnostic } from "../diagnostics.js"
 import type { Diagnostic } from "../model.js"
 import { DEFAULT_CLASS, DEFAULT_PROFILE, PROFILES } from "./profiles.js"
@@ -35,12 +35,20 @@ export function loadRules(files: Readonly<Record<string, string>>): { rules: Rul
   const lines = new LineCounter()
   const document = parseDocument(text, { lineCounter: lines })
   const syntax = document.errors[0]
-  const locate = locator(document, lines)
   if (syntax) {
     const line = syntax.linePos?.[0]
     const problem: Problem = { message: syntax.message.split("\n")[0] ?? "not valid YAML", path: [] }
     return failed([report(problem, line ? { line: line.line, column: line.col, offset: syntax.pos[0] } : undefined)])
   }
+  try {
+    return readDocument(document, lines)
+  } catch (error) {
+    return failed([unreadable(error, document, lines)])
+  }
+}
+
+function readDocument(document: Document, lines: LineCounter): { rules: Rules; diagnostics: Diagnostic[] } {
+  const locate = locator(document, lines)
   const parsed = RulesFileSchema.safeParse(document.toJS() ?? {})
   const resolved = parsed.success ? resolve(parsed.data) : undefined
   const problems = resolved ? resolved.problems : schemaProblems(parsed.error?.issues ?? [])
@@ -51,6 +59,30 @@ export function loadRules(files: Readonly<Record<string, string>>): { rules: Rul
 const failed = (diagnostics: Diagnostic[]) => ({ rules: defaultRules(RULES_PATH), diagnostics })
 
 type Place = { line: number; column: number; offset: number } | undefined
+
+/**
+ * A file that parses but cannot be read, such as `nets: [*GND]`, where YAML takes `*GND` for an
+ * alias of an anchor that does not exist, or aliases that expand without end. Located at the first alias.
+ */
+function unreadable(error: unknown, document: Document, lines: LineCounter): Diagnostic {
+  const place = firstAlias(document, lines)
+  const text = (error instanceof Error ? error.message : String(error)).split("\n")[0] || "the file cannot be read"
+  const hint = place ? `; a pattern that starts with * must be in quotes, such as "*GND"` : ""
+  return report({ message: `${text}${hint}`, path: [] }, place)
+}
+
+function firstAlias(document: Document, lines: LineCounter): Place {
+  let offset: number | undefined
+  visit(document, {
+    Alias(_, node) {
+      offset = node.range?.[0]
+      return visit.BREAK
+    },
+  })
+  if (offset === undefined) return undefined
+  const { line, col } = lines.linePos(offset)
+  return { line, column: col, offset }
+}
 
 function report(problem: Problem, place: Place): Diagnostic {
   const where = place ? `${RULES_PATH}:${place.line}` : RULES_PATH

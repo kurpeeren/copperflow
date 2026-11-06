@@ -92,6 +92,27 @@ describe("loadRules", () => {
     expect(diagnostics[0]?.message).toContain("ghost")
   })
 
+  test("an unquoted pattern that starts with * is a rules error at the alias's line, and the defaults apply", () => {
+    const { rules, diagnostics } = load("netClasses:\n  power:\n    nets: [*GND]\n")
+    expect(diagnostics).toHaveLength(1)
+    expect(diagnostics[0]).toMatchObject({ code: "rules", severity: "error", items: ["rules.yaml"], source: { file: "rules.yaml", line: 3 } })
+    expect(diagnostics[0]?.message).toMatch(/^rules\.yaml:3: /)
+    expect(diagnostics[0]?.message).toContain('"*GND"')
+    expect(rules.classes).toEqual([])
+    expect(rules.fabrication.name).toBe("jlcpcb-2layer")
+  })
+
+  test("an alias bomb is one rules error, not a hang or a throw", () => {
+    const names = "abcdefghij".split("")
+    const lines = names.map((name, i) => `${name}: &${name} [${Array.from({ length: 9 }, () => (i === 0 ? "x" : `*${names[i - 1]}`)).join(", ")}]`)
+    const started = Date.now()
+    const { rules, diagnostics } = load(`${lines.join("\n")}\n`)
+    expect(Date.now() - started).toBeLessThan(1000)
+    expect(diagnostics).toHaveLength(1)
+    expect(diagnostics[0]).toMatchObject({ code: "rules", severity: "error", source: { line: 2 } })
+    expect(rules.classes).toEqual([])
+  })
+
   test("an empty file is the defaults", () => {
     const { rules, diagnostics } = load("# nothing yet\n")
     expect(diagnostics).toEqual([])
@@ -170,6 +191,13 @@ describe("rules in a build", () => {
     const design = buildDesign({ ...files, "rules.yaml": "netClasses: [" }, "main.circuit.tsx")
     expect(design.diagnostics.some((d) => d.code === "rules" && d.severity === "error")).toBe(true)
     expect(design.rules.classes).toEqual([])
+  })
+
+  test("an unquoted * pattern does not stop the build", () => {
+    const design = buildDesign({ ...files, "rules.yaml": "netClasses:\n  ground:\n    nets: [*GND]\n" }, "main.circuit.tsx")
+    expect(design.diagnostics.filter((d) => d.code === "rules")).toEqual([expect.objectContaining({ severity: "error", source: expect.objectContaining({ line: 3 }) })])
+    expect(design.rules.classes).toEqual([])
+    expect(design.circuit.components.length).toBeGreaterThan(0)
   })
 
   test("the engine file pattern takes rules.yaml and footprint files", async () => {

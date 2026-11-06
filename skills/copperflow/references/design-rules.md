@@ -86,6 +86,7 @@ globalNets: [GND, V24, V3_3]
   0.3 mm and diameter 0.6 mm. These are copperflow's own conservative choice, above the profile minimums.
 - Patterns are case-sensitive and match a net's names. `*` alone matches every net, named or not.
   An unnamed net is in no class otherwise.
+- A pattern that starts with `*` must be quoted (`"*GND"`): unquoted, YAML reads it as an alias.
 - A net that matches two classes is a `net-class-conflict` error and uses the class written first.
   A pattern that matches no net is a `rules` warning. A problem in the file itself (a bad key, a bad
   length, invalid YAML) is a `rules` error with the file and line, and the default rules then apply.
