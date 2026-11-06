@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { keyAction, type KeyInput, type KeyState } from "../studio/src/pcb/canvas-keys.js"
+import { escapeDisarms, keyAction, type KeyInput, type KeyState } from "../studio/src/pcb/canvas-keys.js"
 
 const SCHEMATIC: KeyState = { view: "schematic" }
 const PCB: KeyState = { view: "pcb" }
@@ -91,5 +91,19 @@ describe("keyAction", () => {
   test("other Alt combinations are ignored", () => {
     expect(keyAction(key("h", { altKey: true, code: "KeyH" }), PCB)).toBeNull()
     expect(keyAction(key("w", { altKey: true, shiftKey: true, code: "KeyW" }), SCHEMATIC)).toBeNull()
+  })
+})
+
+describe("escapeDisarms", () => {
+  test("Esc puts a Place tool away", () => {
+    expect(escapeDisarms(key("Escape"))).toBe(true)
+  })
+
+  test("Esc in a text field (the name input, an Inspector field) is left to the field", () => {
+    expect(escapeDisarms(key("Escape", { typing: true }))).toBe(false)
+  })
+
+  test("other keys do not put it away", () => {
+    expect(escapeDisarms(key("q"))).toBe(false)
   })
 })

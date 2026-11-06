@@ -98,3 +98,8 @@ export function keyAction(input: KeyInput, state: KeyState): KeyResult | null {
   if (input.key === "]") return act("toggleRightPanel")
   return letterAction(input.key.toLowerCase(), input, state)
 }
+
+/** Esc puts a Place tool away, unless focus is in a text field (the name input and the Inspector fields handle their own Esc). */
+export function escapeDisarms(input: KeyInput): boolean {
+  return input.key === "Escape" && !input.typing
+}

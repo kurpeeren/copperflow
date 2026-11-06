@@ -1,10 +1,10 @@
 // The schematic's Place tools (Net label, GND, VCC): which one is armed, its name, the inline name input, its keys,
 // and the labels waiting for their build. What an edit says is in label-palette.ts.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { CircuitData, Design } from "../api"
 import type { Actions } from "../App"
-import { keyAction, keyInput } from "./canvas-keys"
+import { escapeDisarms, keyAction, keyInput } from "./canvas-keys"
 import type { Camera, Point } from "./geometry"
 import { joinedNet, labelNameFor, nameProblem, pendingLabel, placeLabelEdits, placeSummary, type LabelTool, type PendingLabel } from "./label-palette"
 import { pinAt } from "./wire-tool"
@@ -48,13 +48,13 @@ function usePendingLabels(builtFrom: number) {
 
 /**
  * Esc puts the tool away, first, whatever is selected. It is captured and stopped so the same Escape does not
- * also clear the selection or stop wiring; the next Escape does. The name input handles its own Escape.
+ * also clear the selection or stop wiring; the next Escape does. Text fields keep their own Escape.
  */
 function useDisarmKey(armed: boolean, disarm: () => void): void {
   useEffect(() => {
     if (!armed) return
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || (event.target instanceof Element && event.target.closest(".label-name"))) return
+      if (!escapeDisarms(keyInput(event))) return
       event.stopPropagation()
       disarm()
     }
