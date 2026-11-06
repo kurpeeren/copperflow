@@ -36,6 +36,7 @@
     "build": "tsc -p tsconfig.build.json && vite build --config studio/vite.config.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p studio/tsconfig.json",
     "test": "vitest run",
+    "test:perf": "vitest run --mode perf --no-file-parallelism --silent=false",
     "coverage": "vitest run --coverage"
   },
   "dependencies": {
