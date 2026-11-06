@@ -33,7 +33,7 @@ import { VERSION } from "../version.js"
 const INSTRUCTIONS = `copperflow lets you edit circuit files together with a human.
 - Call circuit_summary before changing a circuit, and again when the human says they changed something.
 - Change existing parts and traces through these tools rather than rewriting the file, so locks and history apply.
-- After moving or adding parts, call check_circuit and fix placement errors before reporting success.
+- After every change, call check_circuit and fix every error before reporting success.
 - Never change, move or remove a part marked [LOCKED]. If a summary lists lock violations, restore those parts.
 - "Marks from the human" are instructions placed on the board; follow them.
 - recent_changes shows what the human undid; do not redo an undone change unless asked.
@@ -135,7 +135,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
       description:
         "Check the circuit with copperflow's own rules: electrical checks (pins left unconnected, outputs shorted together, power pins without a source) and placement checks (overlapping parts, parts off the board), plus problems in the code and the model (footprints it cannot make, unknown or ambiguous pins, library overrides). Errors and warnings come grouped by code, with their positions. Run it after every change and fix the errors before reporting success.",
       inputSchema: { file },
-      annotations: { readOnlyHint: false, destructiveHint: false },
+      annotations: READ_ONLY,
     },
     ({ file: circuit }) =>
       run(async () => {

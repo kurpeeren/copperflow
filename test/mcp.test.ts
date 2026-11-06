@@ -151,6 +151,17 @@ describe("MCP server", () => {
     expect(description.toLowerCase()).not.toContain("tscircuit")
   })
 
+  test("check_circuit only reads, so clients need not ask before it runs", async () => {
+    const { tools } = await client.listTools()
+    expect(tools.find((t) => t.name === "check_circuit")?.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false })
+  })
+
+  test("the instructions say to check after every change and fix every error, as the tool description does", async () => {
+    const instructions = client.getInstructions() ?? ""
+    expect(instructions).toContain("After every change, call check_circuit and fix every error before reporting success.")
+    expect(instructions).not.toMatch(/placement errors/)
+  })
+
   test("paths outside the project are rejected", async () => {
     const result = await call("circuit_summary", { file: "../outside.circuit.tsx" })
     expect(result.isError).toBe(true)
