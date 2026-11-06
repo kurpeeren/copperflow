@@ -31,6 +31,9 @@ export class GridIndex<T> {
   }
 
   private forEachCell(box: Box, visit: (key: string) => void): void {
+    if (![box.minX, box.minY, box.maxX, box.maxY].every(Number.isFinite)) {
+      throw new Error(`Grid box must have finite bounds, got ${JSON.stringify(box)}`)
+    }
     const x0 = Math.floor(box.minX / this.cell)
     const x1 = Math.floor(box.maxX / this.cell)
     const y0 = Math.floor(box.minY / this.cell)

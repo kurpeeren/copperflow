@@ -78,6 +78,7 @@ describe("shapeDistance", () => {
     const plain = shapeOf({ width: 2, height: 2 })
     const rounded = shapeOf({ shape: "roundrect", width: 2, height: 2, cornerRadius: 0.5 })
     expect(shapeDistance(rounded, circle)).toBeGreaterThan(shapeDistance(plain, circle) + 0.1)
+    expect(shapeDistance(rounded, circle)).toBeCloseTo(1.5 * Math.SQRT2 - 1, 9)
   })
 
   test("a roundrect without cornerRadius behaves like a rect", () => {
@@ -124,6 +125,14 @@ describe("padShape and drillShape", () => {
   })
 })
 
+describe("capsules", () => {
+  test("a slot drill and an oval pad keep an exact gap", () => {
+    const hole = drillShape(pad({ drill: { width: 0.6, height: 1.6 } }))
+    const oval = shapeOf({ shape: "oval", x: 3, y: 2, width: 3, height: 1 })
+    expect(shapeDistance(hole!, oval)).toBeCloseTo(2.5 - 0.8, 9)
+  })
+})
+
 describe("closestPoints and shapeToSegmentDistance", () => {
   test("closest points of two separated circles lie on their facing edges", () => {
     const a = shapeOf({ shape: "circle" })
@@ -166,6 +175,12 @@ describe("polygons", () => {
     expect(pointInPolygon({ x: 1.5, y: 0.5 }, square(0))).toBe(false)
   })
 
+  test("a square strictly inside a bigger one overlaps it", () => {
+    const big = [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 4 }, { x: 0, y: 4 }]
+    const small = [{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 2, y: 2 }, { x: 1, y: 2 }]
+    expect(polygonsOverlap(big, small)).toBe(true)
+  })
+
   test("bounds include the radius", () => {
     const box = bounds(shapeOf({ shape: "circle", x: 1, y: 2, width: 1, height: 1 }))
     expect(box).toEqual({ minX: 0.5, minY: 1.5, maxX: 1.5, maxY: 2.5 })
@@ -177,6 +192,18 @@ describe("GridIndex", () => {
     const index = new GridIndex<string>(2)
     index.insert("a", { minX: 1, minY: 1, maxX: 3, maxY: 3 })
     expect(index.query({ minX: 0, minY: 0, maxX: 4, maxY: 4 })).toEqual(["a"])
+  })
+
+  test("an item at negative coordinates is found", () => {
+    const index = new GridIndex<string>(2)
+    index.insert("n", { minX: -5.5, minY: -3.2, maxX: -4.5, maxY: -2.8 })
+    expect(index.query({ minX: -6, minY: -4, maxX: -4, maxY: -2 })).toEqual(["n"])
+  })
+
+  test("a box with a non-finite bound is refused", () => {
+    const index = new GridIndex<string>(2)
+    expect(() => index.query({ minX: 0, minY: 0, maxX: Infinity, maxY: 1 })).toThrow(/finite/)
+    expect(() => index.insert("a", { minX: NaN, minY: 0, maxX: 1, maxY: 1 })).toThrow(/finite/)
   })
 
   test("far away items are not returned", () => {

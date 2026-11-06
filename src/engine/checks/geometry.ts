@@ -2,7 +2,10 @@ import type { Point } from "../model.js"
 import type { WorldPad } from "../pcb.js"
 import type { Box } from "./grid-index.js"
 
-/** A convex core (a point, a segment or a convex polygon) grown by a radius. */
+/**
+ * A convex core (a point, a segment or a convex polygon) grown by a radius.
+ * Every function here relies on the cores being convex.
+ */
 export interface Shape {
   core: Point[]
   radius: number
@@ -146,7 +149,10 @@ function coreClosest(a: readonly Point[], b: readonly Point[]): Closest {
   return best!
 }
 
-/** Edge-to-edge gap between two shapes; negative when they overlap. */
+/**
+ * Edge-to-edge gap between two shapes. It is 0 or negative when they touch or overlap, and exactly 0
+ * when two radius-0 cores overlap. Use `polygonsOverlap` when an overlap test is needed.
+ */
 export function shapeDistance(a: Shape, b: Shape): number {
   return coreClosest(a.core, b.core).distance - a.radius - b.radius
 }
