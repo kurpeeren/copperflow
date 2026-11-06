@@ -26,7 +26,7 @@ export interface LabelPreview {
 }
 
 /** A ground or power symbol is small; pointing near its drawing counts. */
-const SYMBOL_REACH = 0.1
+const LABEL_REACH = 0.1
 const NET_SELECTOR = /^net\.([\w-]+)$/
 const round = (value: number): number => Math.round(value * 1000) / 1000 || 0
 
@@ -43,10 +43,10 @@ export function labelHitBox(label: NetLabel): Box {
   if (label.style === "label") return labelTag(label).box
   const bounds = boundsOf(label.style === "ground" ? groundSymbol() : powerSymbol(label.text), [])
   return {
-    minX: label.at.x + bounds.minX - SYMBOL_REACH,
-    minY: label.at.y + bounds.minY - SYMBOL_REACH,
-    maxX: label.at.x + bounds.maxX + SYMBOL_REACH,
-    maxY: label.at.y + bounds.maxY + SYMBOL_REACH,
+    minX: label.at.x + bounds.minX - LABEL_REACH,
+    minY: label.at.y + bounds.minY - LABEL_REACH,
+    maxX: label.at.x + bounds.maxX + LABEL_REACH,
+    maxY: label.at.y + bounds.maxY + LABEL_REACH,
   }
 }
 
@@ -135,10 +135,20 @@ function traceBlocker(trace: TraceInfo): string | undefined {
 
 type Target = { anchor: Anchor; trace?: TraceInfo } | { blocked: string }
 
-function targetOf(design: Design, source: SourceCircuit, labelId: string): Target {
+const NO_LOCKS: ReadonlySet<string> = new Set()
+
+/** The locked part among the label's pin and the ends of its trace, as `core/edit` would refuse it. */
+function lockedPart(design: Design, anchor: Anchor, trace: TraceInfo | undefined, locked: ReadonlySet<string>): string | undefined {
+  const ends = [trace?.from, trace?.to].flatMap((end) => (end === undefined ? [] : [pinOfSelector(design, end)?.component ?? ""]))
+  return [anchor.pin.component, ...ends].find((name) => locked.has(name))
+}
+
+function targetOf(design: Design, source: SourceCircuit, labelId: string, locked: ReadonlySet<string>): Target {
   const anchor = anchorOf(design, labelId)
   if (!anchor) return { blocked: "This label is not attached to a pin the Studio can find" }
   const trace = traceOf(design, source, anchor)
+  const lockedName = lockedPart(design, anchor, trace, locked)
+  if (lockedName !== undefined) return { blocked: `${lockedName} is locked` }
   const blocker = trace ? traceBlocker(trace) : undefined
   if (blocker) return { blocked: blocker }
   if (!trace && anchor.connection) return { blocked: "The wire of this label is not written in a trace the Studio can find" }
@@ -147,8 +157,8 @@ function targetOf(design: Design, source: SourceCircuit, labelId: string): Targe
 }
 
 /** Why the label cannot be dragged, or null when it can. */
-export function labelBlocker(design: Design, source: SourceCircuit, labelId: string): string | null {
-  const target = targetOf(design, source, labelId)
+export function labelBlocker(design: Design, source: SourceCircuit, labelId: string, locked: ReadonlySet<string> = NO_LOCKS): string | null {
+  const target = targetOf(design, source, labelId, locked)
   return "blocked" in target ? target.blocked : null
 }
 
@@ -162,8 +172,8 @@ function netSelector(design: Design, label: NetLabel): string {
  * The edit that moves a label to `drop`: new corners on the trace that joins its pin to the net, or
  * a new trace from the pin to the net when there is none. Nothing when the label would not move.
  */
-export function labelDragEdits(design: Design, source: SourceCircuit, labelId: string, drop: Point): LabelDrag {
-  const target = targetOf(design, source, labelId)
+export function labelDragEdits(design: Design, source: SourceCircuit, labelId: string, drop: Point, locked: ReadonlySet<string> = NO_LOCKS): LabelDrag {
+  const target = targetOf(design, source, labelId, locked)
   if ("blocked" in target) return target
   const { anchor, trace } = target
   const corners = cornersTo(anchor, tidy(drop)).map(tidy)

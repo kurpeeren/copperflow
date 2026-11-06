@@ -126,6 +126,48 @@ describe("labelDragEdits", () => {
   })
 })
 
+describe("selector resolution and locks", () => {
+  const Q = { x: 2, y: -1.5 }
+
+  test("a trace written with a pin alias is found", () => {
+    const source = wrap(`    <led name="D1" footprint="0603" schX={0} schY={4} />
+    <trace from="D1.anode" to="net.VCC" />`)
+    const { design, model } = setup(source)
+    const id = design.schematic.labels.find((l) => l.net === "net.VCC")?.id ?? ""
+    expect(id).toBe("label:net.VCC:D1.pin1")
+    expect(labelDragEdits(design, model, id, Q)).toMatchObject([{ kind: "setTraceHints", from: "D1.anode", to: "net.VCC" }])
+  })
+
+  test("a name several pins share resolves to the first pin; the other pin gets an addTrace with pin<n>", () => {
+    const body = `    <trace from="IC1.GND" to="net.GND" />
+    <trace from="IC1.pin4" to=".R2 > .pin1" />
+    <trace from=".R2 > .pin1" to="net.GND" />`
+    const source = wrap(body).replace("<board ", "<board schMaxTraceDistance={0.01} ")
+    const { design, model } = setup(source)
+    expect(design.schematic.labels.map((l) => l.id)).toEqual(expect.arrayContaining(["label:net.GND:IC1.pin2", "label:net.GND:IC1.pin4"]))
+    expect(labelDragEdits(design, model, "label:net.GND:IC1.pin2", Q)).toMatchObject([{ kind: "setTraceHints", from: "IC1.GND", to: "net.GND" }])
+    expect(labelDragEdits(design, model, "label:net.GND:IC1.pin4", Q)).toMatchObject([{ kind: "addTrace", from: "IC1.pin4", to: "net.GND" }])
+  })
+
+  test("a label with no findable pin, such as one on a repeated name (RX~2), is blocked", () => {
+    const { design, model } = setup(DIRECT)
+    expect(labelDragEdits(design, model, "label:net.GND:RX~2.pin1", Q)).toEqual({ blocked: expect.any(String) })
+  })
+
+  test("a locked part blocks the drag with the Studio's wording, and an unlocked one does not", () => {
+    const { design, model } = setup(DIRECT)
+    const id = "label:net.GND:R1.pin2"
+    expect(labelBlocker(design, model, id, new Set(["R1"]))).toBe("R1 is locked")
+    expect(labelDragEdits(design, model, id, Q, new Set(["R1"]))).toEqual({ blocked: "R1 is locked" })
+    expect(labelBlocker(design, model, id, new Set(["R2"]))).toBeNull()
+  })
+
+  test("a locked part at the far end of the trace blocks it too", () => {
+    const { design, model } = setup(wrap('    <trace from="net.GND" to=".R1 > .pin2" />'))
+    expect(labelBlocker(design, model, "label:net.GND:R1.pin2", new Set(["R1"]))).toBe("R1 is locked")
+  })
+})
+
 describe("engine round trip", () => {
   const Q = { x: 2, y: -1.5 }
 

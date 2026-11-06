@@ -34,14 +34,14 @@ interface SheetScene {
   circuit: CircuitData
   gesture: Gesture | undefined
   /** The net label or power symbol shown away from where the design has it. */
-  movingLabel: MovingLabel | undefined
+  movingLabels: MovingLabel[]
   /** The label under the pointer. */
   hoverLabel: NetLabel | undefined
 }
 
 /** Draws the sheet, the wire being drawn and the editor layer; a sheet without parts gets a default view. */
 function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: SheetScene): void {
-  const { design, camera, size, moving, boxes, hover, selected, locked, circuit, gesture, movingLabel, hoverLabel } = scene
+  const { design, camera, size, moving, boxes, hover, selected, locked, circuit, gesture, movingLabels, hoverLabel } = scene
   const { wiring, drawing, activePins, pendingWires, preview } = scene.wire
   useEffect(() => {
     const view = camera ?? EMPTY_SHEET_CAMERA
@@ -52,8 +52,8 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
       ratio,
       showPins: wiring || drawing !== null,
       activePins,
-      pending: movingLabel ? [...pendingWires, movingLabel.wire] : pendingWires,
-      ...(movingLabel ? { movingLabel } : {}),
+      pending: [...pendingWires, ...movingLabels.map((m) => m.wire)],
+      movingLabels,
       ...(moving ? { moving: { component: moving.name, by: moving.offset } } : {}),
     })
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
@@ -62,7 +62,7 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
     const shownHover = drawing ? undefined : hover
     drawEditorLayer(ctx, view, size, { view: "schematic", boxes, moving, hover: shownHover, selected, locked, marks: circuit.annotations.marks, noteBox })
     if (hoverLabel && !drawing && !gesture) drawOutline(ctx, view, size, labelHitBox(hoverLabel), { x: 0, y: 0 }, "hover")
-  }, [canvasRef, design, camera, size, wiring, drawing, activePins, pendingWires, preview, moving, movingLabel, hoverLabel, boxes, hover, selected, locked, circuit, gesture])
+  }, [canvasRef, design, camera, size, wiring, drawing, activePins, pendingWires, preview, moving, movingLabels, hoverLabel, boxes, hover, selected, locked, circuit, gesture])
 }
 
 /** The wire tool's switch, snap, fit and "Keep these positions". */
@@ -116,8 +116,9 @@ export function SchematicCanvas({ design, buildId, builtFrom, circuit, actions, 
   usePartKeys({ ...common, selected, paused: wire.drawing !== null, fit })
   const { moving, gesture } = gestures
   const dragged = useMemo(() => (gesture?.kind === "label" && gesture.moved && !gesture.blocker ? { id: gesture.label.id, at: gesture.at } : undefined), [gesture])
-  const movingLabel = useDraggedLabel(design, dragged) ?? labels.pending
-  useSheetPaint(canvasRef, { design, camera, size, wire, moving, boxes: parts.boxes, hover, selected, locked: parts.locked, circuit, gesture, movingLabel, hoverLabel })
+  const draggedLabel = useDraggedLabel(design, dragged)
+  const movingLabels = useMemo(() => (draggedLabel ? [draggedLabel, ...labels.pending.filter((m) => m.id !== draggedLabel.id)] : labels.pending), [draggedLabel, labels.pending])
+  useSheetPaint(canvasRef, { design, camera, size, wire, moving, boxes: parts.boxes, hover, selected, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel })
   const hoverAt = (world: Point) => {
     wire.hover(world)
     const part = hitTest(parts.boxes, world)?.name

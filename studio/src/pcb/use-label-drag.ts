@@ -1,5 +1,5 @@
 // What the schematic needs to drag net labels and ground or power symbols: the pure label logic bound to
-// the design and the actions, and the label drawn at its new place while its edit waits for the build.
+// the design and the actions, and the labels drawn at their new places while their edits wait for the build.
 import { useEffect, useMemo, useState } from "react"
 import type { CircuitData, Design } from "../api"
 import type { Actions } from "../App"
@@ -30,24 +30,27 @@ interface Input {
   builtFrom: number
 }
 
-/** The last label move sent, kept drawn until a build that started after it was sent has finished. */
-export function useLabelDrag({ design, circuit, actions, builtFrom }: Input): { tools: LabelTools; pending: MovingLabel | undefined } {
-  const [sent, setSent] = useState<MovingLabel & { sentAt: number }>()
-  useEffect(() => setSent((current) => (current && current.sentAt > builtFrom ? current : undefined)), [builtFrom])
+type Sent = MovingLabel & { sentAt: number }
+
+/** Every label move sent, each kept drawn until a build that started after it was sent has finished; a newer move of a label replaces its older one. */
+export function useLabelDrag({ design, circuit, actions, builtFrom }: Input): { tools: LabelTools; pending: MovingLabel[] } {
+  const [sent, setSent] = useState<Sent[]>([])
+  useEffect(() => setSent((list) => (list.every((m) => m.sentAt > builtFrom) ? list : list.filter((m) => m.sentAt > builtFrom))), [builtFrom])
+  const locked = useMemo(() => new Set(circuit.annotations.locks.map((l) => l.part)), [circuit])
   const tools: LabelTools = {
     at: (world) => labelAt(design, world),
-    blocker: (id) => labelBlocker(design, circuit, id),
+    blocker: (id) => labelBlocker(design, circuit, id, locked),
     commit: (label, drop) => {
-      const edits = labelDragEdits(design, circuit, label.id, drop)
+      const edits = labelDragEdits(design, circuit, label.id, drop, locked)
       if (!Array.isArray(edits)) return actions.notify(edits.blocked)
       const preview = labelPreview(design, label.id, drop)
       if (edits.length === 0 || !preview) return
       const move = { id: label.id, ...preview, sentAt: Date.now() }
-      setSent(move)
-      void actions.edit(edits, `Move ${label.text} label`).then((ok) => ok || setSent((current) => (current === move ? undefined : current)))
+      setSent((list) => [...list.filter((m) => m.id !== label.id), move])
+      void actions.edit(edits, `Move ${label.text} label`).then((ok) => ok || setSent((list) => list.filter((m) => m !== move)))
     },
   }
-  const pending = useMemo(() => (sent && sent.sentAt > builtFrom ? sent : undefined), [sent, builtFrom])
+  const pending = useMemo(() => sent.filter((m) => m.sentAt > builtFrom), [sent, builtFrom])
   return { tools, pending }
 }
 

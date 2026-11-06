@@ -18,7 +18,7 @@ export interface SchematicDrawOptions {
   /** Wires waiting for their build, drawn dashed. */
   pending?: readonly (readonly Point[])[]
   /** A net label or ground or power symbol drawn dashed at `at`, in place of where the layout has it; `hideWire` is the wire it replaces. */
-  movingLabel?: { id: string; at: Point; side: NetLabel["side"]; hideWire?: string }
+  movingLabels?: readonly { id: string; at: Point; side: NetLabel["side"]; hideWire?: string }[]
 }
 
 export const SCHEMATIC_PALETTE = {
@@ -96,7 +96,7 @@ export function drawSchematic(ctx: Ctx, layout: SchematicLayout, view: View, opt
   ctx.lineJoin = "round"
   drawWires(ctx, layout, options, px, line)
   for (const symbol of layout.symbols) drawSymbol(ctx, symbol, shiftOf(symbol), { line, px }, texts)
-  for (const label of layout.labels) drawLabel(ctx, movedLabel(label, options), line, texts, label.id === options.movingLabel?.id)
+  for (const label of layout.labels) drawLabel(ctx, movedLabel(label, options), line, texts, options.movingLabels?.some((m) => m.id === label.id) ?? false)
   drawPins(ctx, layout, options, px, shiftOf)
 
   // Text is drawn in screen space so it stays upright and readable at any zoom.
@@ -150,7 +150,7 @@ function drawWires(ctx: Ctx, layout: SchematicLayout, options: SchematicDrawOpti
   ctx.fillStyle = SCHEMATIC_PALETTE.junction
   ctx.lineWidth = line(WIRE_WIDTH)
   for (const wire of layout.wires) {
-    if (wire.id === options.movingLabel?.hideWire) continue
+    if (options.movingLabels?.some((m) => m.hideWire === wire.id)) continue
     path(ctx, wire.points)
     ctx.stroke()
   }
@@ -251,8 +251,8 @@ function textLabel(shape: Extract<Shape, { type: "text" }>, frame: Frame, fallba
 
 /** The label where it is dragged to, or as the layout has it. */
 function movedLabel(label: NetLabel, options: SchematicDrawOptions): NetLabel {
-  const moving = options.movingLabel
-  return moving?.id === label.id ? { ...label, at: moving.at, side: moving.side } : label
+  const moving = options.movingLabels?.find((m) => m.id === label.id)
+  return moving ? { ...label, at: moving.at, side: moving.side } : label
 }
 
 function drawLabel(ctx: Ctx, label: NetLabel, line: (w: number) => number, texts: Label[], moving: boolean): void {

@@ -137,9 +137,14 @@ export function useCanvasGestures(input: GestureInput) {
   )
   useEffect(() => {
     if (gesture?.kind !== "label") return
-    const onKey = (event: KeyboardEvent) => event.key === "Escape" && setGesture(undefined)
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
+    // Captured and stopped, so the same Escape does not also clear the selection or stop wiring.
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return
+      event.stopPropagation()
+      setGesture(undefined)
+    }
+    window.addEventListener("keydown", onKey, true)
+    return () => window.removeEventListener("keydown", onKey, true)
   }, [gesture?.kind])
   const press = (event: { button: number; shiftKey: boolean }, point: Point) => {
     const next = startGesture(input, event, point)

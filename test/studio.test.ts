@@ -131,6 +131,15 @@ describe("editing", () => {
     expect(history[0]).toMatchObject({ author: "human", summary: "move R1" })
   })
 
+  test("setTraceHints is accepted and writes the corners; malformed corners are refused", async () => {
+    const hints = [{ x: 1, y: 0.5 }, { x: 1, y: 0 }]
+    await data(await api("/api/edit", { file: FILE, summary: "Move GND label", edits: [{ kind: "setTraceHints", from: ".R1 > .pin1", to: "net.GND", schematicRouteHints: hints }] }))
+    expect(await readFile(join(root, FILE), "utf8")).toContain('to="net.GND" schematicRouteHints={[{ x: 1, y: 0.5 }, { x: 1, y: 0 }]} />')
+    const edit = (schematicRouteHints: unknown) => api("/api/edit", { file: FILE, summary: "x", edits: [{ kind: "setTraceHints", from: ".R1 > .pin1", to: "net.GND", schematicRouteHints }] })
+    expect((await edit([{ x: "1", y: 0 }])).status).toBe(400)
+    expect((await edit(Array.from({ length: 201 }, () => ({ x: 0, y: 0 })))).status).toBe(400)
+  })
+
   test("locked parts cannot be edited until they are unlocked", async () => {
     await data(await api("/api/lock", { file: FILE, parts: ["R1"], locked: true }))
     const refused = await api("/api/edit", { file: FILE, summary: "x", edits: [{ kind: "setProps", part: "R1", props: { pcbX: 5 } }] })
