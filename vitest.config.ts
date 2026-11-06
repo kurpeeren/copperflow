@@ -3,6 +3,8 @@ import { defineConfig } from "vitest/config"
 export default defineConfig({
   test: {
     include: ["test/**/*.test.ts"],
+    // Separate processes: the CPU-time speed tests rely on process.cpuUsage() being per test file.
+    pool: "forks",
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],
