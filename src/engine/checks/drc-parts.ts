@@ -90,10 +90,13 @@ function outsideBoard(parts: readonly PlacedFootprint[], outline: readonly Point
 const onKeepoutLayer = (layers: WorldPad["layers"] | PlacedFootprint["side"], keepout: Keepout) =>
   keepout.layers === "all" || layers === "through" || layers === keepout.layers
 
-/** A positive-area overlap: touching the edge of a keepout is allowed. */
+/**
+ * A positive-area overlap: touching the edge of a keepout is allowed. `polygonsOverlap` is convex-only:
+ * for a concave keepout or courtyard it may over-report, but it never misses an overlap.
+ */
 function overlapsKeepout(shape: Shape, keepout: Keepout): boolean {
   if (shape.radius === 0 && isPolygon(shape.core)) return polygonsOverlap(shape.core, keepout.outline)
-  return shapeDistance(shape, { core: keepout.outline, radius: 0 }) < 0 || shape.core.some((p) => pointInPolygon(p, keepout.outline))
+  return shapeDistance(shape, { core: keepout.outline, radius: 0 }) < -LENGTH_TOLERANCE || shape.core.some((p) => pointInPolygon(p, keepout.outline))
 }
 
 /** Where the part meets the keepout: a pad first, otherwise the courtyard. */

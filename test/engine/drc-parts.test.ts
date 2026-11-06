@@ -101,10 +101,41 @@ describe("outside-board", () => {
     const found = coded(partChecks(layout, RULES), "outside-board")
     expect(found.map((v) => v.items)).toEqual([["A"]])
   })
+
+  test("a courtyard with every corner inside the L outline fails when an edge crosses the notch", () => {
+    const ell = board([
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 4 },
+      { x: 4, y: 4 },
+      { x: 4, y: 10 },
+      { x: 0, y: 10 },
+    ])
+    const triangle: Point[] = [{ x: 1, y: 9 }, { x: 9, y: 1 }, { x: 1, y: 1 }]
+    const found = coded(partChecks(layoutOf([part("A", { courtyard: triangle })], ell), RULES), "outside-board")
+    expect(found.map((v) => v.items)).toEqual([["A"]])
+  })
+
+  test("a part with no footprint uses the 1 x 1 mm fallback courtyard for overlap and the outline", () => {
+    const built = design(
+      `<resistor name="R1" footprint="0603" pcbX={0} pcbY={0} />\n<chip name="U1" pinCount={2} pcbX={0.3} pcbY={0} />\n<chip name="U2" pinCount={2} pcbX={10} pcbY={0} />`,
+    )
+    const found = run(built)
+    expect(built.pcb.parts.find((p) => p.component === "U1")?.pads).toEqual([])
+    expect(coded(found, "courtyard-overlap").map((v) => v.items)).toEqual([["R1", "U1"]])
+    expect(coded(found, "outside-board").map((v) => v.items)).toEqual([["U2"]])
+  })
 })
 
 describe("keepout", () => {
   const body = (layer: string) => `<keepout pcbX={0} pcbY={0} width={4} height={4} layers="top" />\n${resistor("R1", 0, layer)}`
+
+  test("a round pad tangent to a keepout edge is fine", () => {
+    const keepout: Keepout = { id: "keepout:1", outline: rectangle(0, 0, 2, 2), layers: "all", source: {} as Keepout["source"] }
+    const round = pad("A#1", { shape: "circle", x: -0.5, y: 1, width: 1, height: 1 })
+    const layout = layoutOf([part("A", { pads: [round] })], board(SQUARE.outline, [keepout]))
+    expect(coded(partChecks(layout, RULES), "keepout")).toEqual([])
+  })
 
   test("a pad inside a top keepout is an error naming the part and the keepout", () => {
     const found = coded(run(design(body("top"))), "keepout")

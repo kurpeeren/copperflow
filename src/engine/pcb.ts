@@ -145,7 +145,7 @@ function pinNets(circuit: Circuit): Map<string, string> {
 }
 
 /** Places every part; parts without a position go to the first free spot, in id order. */
-function placeAll(circuit: Circuit, resolved: readonly Resolved[], nets: ReadonlyMap<string, string>): { parts: PlacedFootprint[]; autoPlaced: string[] } {
+function placeAll(circuit: Circuit, resolved: readonly Resolved[], nets: ReadonlyMap<string, string>): { parts: PlacedFootprint[] } {
   const byId = new Map<string, PlacedFootprint>()
   const occupied: Bounds[] = []
   for (const { component, footprint } of resolved) {
@@ -162,7 +162,7 @@ function placeAll(circuit: Circuit, resolved: readonly Resolved[], nets: Readonl
     byId.set(component.id, part)
     occupied.push(boundsOf(part.courtyard))
   }
-  return { parts: circuit.components.map((c) => byId.get(c.id) as PlacedFootprint), autoPlaced: unplaced.map((u) => u.component.id) }
+  return { parts: circuit.components.map((c) => byId.get(c.id) as PlacedFootprint) }
 }
 
 export function layoutPcb(circuit: Circuit, footprintOf: FootprintOf): { layout: PcbLayout; diagnostics: Diagnostic[] } {
