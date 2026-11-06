@@ -16,7 +16,7 @@ export interface CheckRow {
   /** Where the row points: a canvas, or the code for a diagnostic. */
   view: "pcb" | "schematic" | "code"
   at?: Point
-  /** The component the row names first, which clicking the row selects. */
+  /** The component the row names first, when the design has it; clicking the row selects it. */
   part?: string
 }
 
@@ -46,22 +46,38 @@ export function partOf(row: Pick<CheckRow, "items">): string | undefined {
   return part ? part : undefined
 }
 
-function withPart(row: CheckRow): CheckRow {
+/**
+ * `partOf(row)` when the design has a component with that id, otherwise nothing: items such as
+ * `rules.yaml`, a net class's name, `board` or `keepout` read like components but are not.
+ */
+export function selectablePart(row: Pick<CheckRow, "items">, components: ReadonlySet<string>): string | undefined {
   const part = partOf(row)
+  return part !== undefined && components.has(part) ? part : undefined
+}
+
+function withPart(row: CheckRow, components: ReadonlySet<string>): CheckRow {
+  const part = selectablePart(row, components)
   return part === undefined ? row : { ...row, part }
 }
 
 function violationRow(v: Violation): CheckRow {
   const row: CheckRow = { id: v.id, severity: v.severity, code: v.code, message: v.message, items: v.items, view: v.view }
-  return withPart(v.at ? { ...row, at: v.at } : row)
+  return v.at ? { ...row, at: v.at } : row
 }
 
-const diagnosticRow = (d: Diagnostic, index: number): CheckRow =>
-  withPart({ id: `diagnostic:${index}`, severity: d.severity, code: d.code, message: d.message, items: d.items, view: "code" })
+const diagnosticRow = (d: Diagnostic, index: number): CheckRow => ({
+  id: `diagnostic:${index}`,
+  severity: d.severity,
+  code: d.code,
+  message: d.message,
+  items: d.items,
+  view: "code",
+})
 
 /** Violations, then diagnostics (view `code`), with every error before every warning. */
 export function checkRows(design: Design): CheckRow[] {
-  const rows = [...design.violations.map(violationRow), ...design.diagnostics.map(diagnosticRow)]
+  const components = new Set(design.circuit.components.map((component) => component.id))
+  const rows = [...design.violations.map(violationRow), ...design.diagnostics.map(diagnosticRow)].map((row) => withPart(row, components))
   return rows.sort((a, b) => rank(a.severity) - rank(b.severity))
 }
 

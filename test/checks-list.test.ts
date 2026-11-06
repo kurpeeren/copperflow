@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest"
 import type { Violation } from "../src/engine/checks/violation.js"
 import { buildDesign, type Design } from "../src/engine/design.js"
 import type { Diagnostic, Point, Severity } from "../src/engine/model.js"
-import { checkCounts, checkGroups, checkRows, checkSummary, markersFor, partOf, type CheckRow } from "../studio/src/checks-list.js"
+import { checkCounts, checkGroups, checkRows, checkSummary, markersFor, partOf, selectablePart, type CheckRow } from "../studio/src/checks-list.js"
 
 const FILE = "main.circuit.tsx"
 
@@ -11,7 +11,9 @@ function violation(code: string, severity: Severity, items: string[], view: "pcb
 }
 
 const diagnostic = (code: string, severity: Severity, items: string[]): Diagnostic => ({ code, severity, message: `${code} message`, items })
-const designWith = (violations: Violation[], diagnostics: Diagnostic[]) => ({ violations, diagnostics }) as unknown as Design
+const PARTS = ["R1", "R2", "R3", "U1"]
+const designWith = (violations: Violation[], diagnostics: Diagnostic[], parts = PARTS) =>
+  ({ violations, diagnostics, circuit: { components: parts.map((id) => ({ id })) } }) as unknown as Design
 const rowOf = (items: string[], extra: Partial<CheckRow> = {}): CheckRow => ({ id: "x", severity: "error", code: "x", message: "", items, view: "pcb", ...extra })
 
 describe("checkRows", () => {
@@ -57,6 +59,16 @@ describe("checkRows", () => {
 
   test("a row without a component has no part", () => {
     expect(checkRows(design).find((r) => r.code === "unrouted")).not.toHaveProperty("part")
+  })
+
+  test("a row whose first item names no component of the design has no part", () => {
+    const rows = checkRows(
+      designWith(
+        [violation("courtyard-overlap", "error", ["R9", "R1"], "pcb")],
+        [diagnostic("rules", "error", ["rules.yaml"]), diagnostic("rules", "warning", ["power"]), diagnostic("bad-value", "warning", ["board"])],
+      ),
+    )
+    expect(rows.map((r) => r.part)).toEqual([undefined, undefined, undefined, undefined])
   })
 
   test("two parts on one spot give a courtyard-overlap error with a position, among the errors first", () => {
@@ -139,6 +151,25 @@ describe("partOf", () => {
 
   test("a row without items has no part", () => {
     expect(partOf(rowOf([]))).toBeUndefined()
+  })
+})
+
+describe("selectablePart", () => {
+  const parts = new Set(["R1", "U1"])
+
+  test("is the row's part when the design has that component", () => {
+    expect(selectablePart(rowOf(["R1#1", "R2#2"]), parts)).toBe("R1")
+    expect(selectablePart(rowOf(["net.GND", "U1.pin3"]), parts)).toBe("U1")
+  })
+
+  test("is nothing for rules.yaml, a class name, a board or keepout item, or a part the design lacks", () => {
+    for (const items of [["rules.yaml"], ["power"], ["board"], ["keepout"], ["R2#1"]]) {
+      expect([items, selectablePart(rowOf(items), parts)]).toEqual([items, undefined])
+    }
+  })
+
+  test("leaves partOf as it is", () => {
+    expect(partOf(rowOf(["rules.yaml"]))).toBe("rules")
   })
 })
 
