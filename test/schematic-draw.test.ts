@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { buildDesign } from "../src/engine/design.js"
 import { groundSymbol } from "../src/engine/symbols/index.js"
+import { HIGHLIGHT_DIM, PALETTE } from "../studio/src/pcb/ctx.js"
 import { SCHEMATIC_PALETTE, drawSchematic, sheetBoxes, type SchematicDrawOptions } from "../studio/src/pcb/schematic-draw.js"
 import { recorder } from "./helpers/fake-ctx.js"
 
@@ -11,6 +12,17 @@ const CIRCUIT = `export default () => (
     <trace from=".R1 > .pin1" to="net.GND" />
     <trace from=".R2 > .pin1" to="net.GND" />
     <trace from=".R1 > .pin2" to=".R2 > .pin2" />
+  </board>
+)`
+
+const FILE = "main.circuit.tsx"
+const LABELLED = `export default () => (
+  <board width="30mm" height="18mm">
+    <resistor name="R1" resistance="1k" footprint="0402" schX={0} schY={0} />
+    <resistor name="R2" resistance="1k" footprint="0402" schX={3} schY={0} />
+    <trace from=".R1 > .pin1" to="net.GND" />
+    <trace from=".R2 > .pin1" to="net.GND" schematicRouteHints={[{ x: 2, y: 1 }]} />
+    <trace from=".R1 > .pin2" to="net.EN" schematicRouteHints={[{ x: 1, y: 1 }]} />
   </board>
 )`
 
@@ -105,6 +117,61 @@ describe("drawSchematic", () => {
     const r1 = layout.symbols.find((s) => s.component === "R1")
     const moved = draw({ moving: { component: "R1", by: { x: 1, y: 0 } } }).records.filter((r) => r.name === "translate")
     expect(moved.some((r) => r.args[0] === (r1?.x ?? 0) + 1)).toBe(true)
+  })
+})
+
+describe("highlight", () => {
+  const wiresOf = (net: string) => layout.wires.filter((w) => w.net === net).length
+  const strokes = (rec: ReturnType<typeof draw>, color: unknown) => rec.records.filter((r) => r.name === "stroke" && r.strokeStyle === color)
+
+  test("wires of the net use the highlight colour and the others are dimmed", () => {
+    const rec = draw({ highlight: { net: "net:R1.pin2" } })
+    expect(strokes(rec, PALETTE.highlight).filter((r) => r.globalAlpha === 1)).toHaveLength(wiresOf("net:R1.pin2"))
+    const others = strokes(rec, SCHEMATIC_PALETTE.wire)
+    expect(others).toHaveLength(layout.wires.length - wiresOf("net:R1.pin2"))
+    expect(others.every((r) => r.globalAlpha === HIGHLIGHT_DIM)).toBe(true)
+  })
+
+  test("the dimmed alpha is the one the PCB uses", () => {
+    expect(HIGHLIGHT_DIM).toBe(0.3)
+  })
+
+  test("without a highlight nothing is dimmed or lit", () => {
+    const rec = draw()
+    expect(strokes(rec, PALETTE.highlight)).toHaveLength(0)
+    expect(strokes(rec, SCHEMATIC_PALETTE.wire).every((r) => r.globalAlpha === 1)).toBe(true)
+  })
+
+  test("labels of the net are lit and other labels are dimmed", () => {
+    const power = buildDesign({ [FILE]: LABELLED }, FILE).schematic
+    const rec = recorder()
+    drawSchematic(rec.ctx as never, power, VIEW, { ratio: 1, highlight: { net: "net.GND" } })
+    const lit = rec.records.filter((r) => r.name === "stroke" && r.strokeStyle === PALETTE.highlight)
+    const dim = rec.records.filter((r) => r.name === "stroke" && r.strokeStyle === SCHEMATIC_PALETTE.netLabel)
+    expect(lit.length).toBeGreaterThan(0)
+    expect(dim.length).toBeGreaterThan(0)
+    expect(dim.every((r) => r.globalAlpha === HIGHLIGHT_DIM)).toBe(true)
+    expect(rec.records.find((r) => r.name === "fillText" && r.args[0] === "EN")?.globalAlpha).toBe(HIGHLIGHT_DIM)
+  })
+
+  test("symbols are dimmed, except those with a pin on the net", () => {
+    const outline = (rec: ReturnType<typeof draw>) => new Set(strokes(rec, SCHEMATIC_PALETTE.outline).map((r) => r.globalAlpha))
+    expect(outline(draw({ highlight: { net: "net.GND" } }))).toEqual(new Set([HIGHLIGHT_DIM]))
+    expect(outline(draw({ highlight: { net: "net.GND", pins: ["R1.pin1"] } }))).toEqual(new Set([1, HIGHLIGHT_DIM]))
+    expect(draw({ highlight: { net: "net.GND" } }).records.find((r) => r.name === "fillText" && r.args[0] === "R1")?.globalAlpha).toBe(HIGHLIGHT_DIM)
+  })
+
+  test("pins on the net are marked even when pins are not shown", () => {
+    const lit = (rec: ReturnType<typeof draw>) => rec.records.filter((r) => r.name === "fill" && r.fillStyle === PALETTE.highlight).length
+    const without = lit(draw({ highlight: { net: "net:R1.pin2" } }))
+    expect(lit(draw({ highlight: { net: "net:R1.pin2", pins: ["R1.pin2", "R2.pin2"] } })) - without).toBe(2)
+  })
+
+  test("ghost labels are drawn dashed", () => {
+    const rec = draw({ ghostLabels: [{ id: "g", net: "net.EN", text: "EN", at: { x: 5, y: 0 }, side: "right", style: "label" }] })
+    expect(rec.records.some((r) => r.name === "fillText" && r.args[0] === "EN")).toBe(true)
+    const dashes = rec.records.filter((r) => r.name === "setLineDash" && (r.args[0] as number[]).length > 0)
+    expect(dashes.length).toBeGreaterThan(0)
   })
 })
 

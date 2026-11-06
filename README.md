@@ -86,6 +86,15 @@ move symbols in the schematic and draw wires as in KiCad (click a free pin, or p
 click the sheet for corners on the grid, then click a pin, a net label or a wire; Esc cancels),
 leave marks for the agent and undo changes.
 Drag a net label or a ground or power symbol in the schematic and its wire follows, written as `schematicRouteHints` on the trace (Esc cancels the drag).
+The Place tools in the schematic toolbar (Net label, GND, VCC) put a label on a pin you click, written as a trace with one corner, and stay armed until Esc; Tab names a label before you click.
+The Nets tab lists every net and highlights it in both views.
+
+Keys, ignored while you type in a field:
+
+- `W` or `Alt+W` wires, `Alt+N` places a net label, `Space` or `R` rotates, `Delete` removes, `F` or `K` fits
+- `H` highlights the net under the pointer, `Shift+H` clears it
+- `Q` switches the PCB between mm and mil (display only), `[` and `]` hide the left and right panels, `Shift+F` searches the library
+
 Every edit is written back into the circuit file and shows at once.
 When the agent changes the file, the editor updates by itself.
 

@@ -1,7 +1,9 @@
 import { useState } from "react"
-import type { CircuitData, HistoryListing, PartsData, TraceInfo } from "./api"
+import type { CircuitData, Design, HistoryListing, PartsData, TraceInfo } from "./api"
 import { Library } from "./Library"
+import { NetsList } from "./NetsList"
 import type { Actions } from "./App"
+import type { LeftTab } from "./use-workspace"
 import { partsInSelector } from "../../src/core/selectors.js"
 import { CloseIcon, LockIcon, UndoIcon } from "./icons"
 
@@ -13,27 +15,36 @@ interface Props {
   selected: string | null
   onSelect(name: string | null): void
   actions: Actions
+  /** The built design, for the Nets tab. */
+  design: Design | undefined
+  tab: LeftTab
+  onTab(tab: LeftTab): void
+  /** Shift+F asked for the Library search field. */
+  focusSearch: boolean
+  onSearchFocused(): void
+  highlight: string | null
+  onHighlight(net: string | null): void
+  hidden: boolean
 }
 
-type Tab = "parts" | "library" | "connections" | "history"
+const TAB_NAMES: Record<LeftTab, string> = { parts: "Parts", library: "Library", nets: "Nets", connections: "Wires", history: "History" }
 
-const TAB_NAMES: Record<Tab, string> = { parts: "Parts", library: "Library", connections: "Wires", history: "History" }
-
-/** The object tree: parts grouped by kind, every connection, and the change history. */
+/** The object tree: parts grouped by kind, every net and connection, and the change history. */
 export function LeftPanel(props: Props) {
-  const [tab, setTab] = useState<Tab>("parts")
+  const { tab, onTab } = props
   return (
-    <aside className="panel left">
+    <aside className="panel left" hidden={props.hidden}>
       <div className="tabs" role="tablist">
-        {(Object.keys(TAB_NAMES) as Tab[]).map((t) => (
-          <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
+        {(Object.keys(TAB_NAMES) as LeftTab[]).map((t) => (
+          <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => onTab(t)}>
             {TAB_NAMES[t]}
           </button>
         ))}
       </div>
       <div className="panel-body">
         {tab === "parts" && <PartsTree {...props} />}
-        {tab === "library" && <Library parts={props.parts} onPlace={props.onPlace} />}
+        {tab === "library" && <Library parts={props.parts} onPlace={props.onPlace} focus={props.focusSearch} onFocused={props.onSearchFocused} />}
+        {tab === "nets" && <NetsList design={props.design} highlight={props.highlight} onHighlight={props.onHighlight} />}
         {tab === "connections" && <Connections {...props} />}
         {tab === "history" && <History history={props.history} actions={props.actions} />}
       </div>

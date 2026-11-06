@@ -1,7 +1,7 @@
 // copperflow's PCB renderer: draws the engine's board layout onto a 2D canvas in layer order.
 // Only types come from the engine: its runtime modules reach Node-only code the Studio bundle cannot hold.
 import type { PcbLayout, PlacedFootprint, WorldPad } from "../../../src/engine/pcb.js"
-import { PALETTE, type Ctx, type Layers } from "./ctx.js"
+import { HIGHLIGHT_DIM, PALETTE, type Ctx, type Layers } from "./ctx.js"
 import { worldToScreen, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
 
 export interface PcbDrawOptions {
@@ -21,7 +21,7 @@ type View = { camera: Camera; size: Size }
 const DEFAULT_LAYERS: Layers = { topCopper: true, bottomCopper: true, silkscreen: true, courtyard: true, fabrication: false }
 const NO_SHIFT: Point = { x: 0, y: 0 }
 const MIN_TEXT_PX = 3
-const DIM = 0.3
+const DIM = HIGHLIGHT_DIM
 const RATSNEST_ALPHA = 0.6
 const SILK_WIDTH_MM = 0.12
 const BOARD_EDGE_PX = 1.5

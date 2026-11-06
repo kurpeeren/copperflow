@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type 
 import type { Design, Edit } from "../api"
 import type { Actions } from "../App"
 import { isCanvasKey } from "./canvas-common"
+import { keyAction, keyInput } from "./canvas-keys"
 import { rightAngles, snap, type Camera, type Point } from "./geometry"
 import { endAt, freePin, namedNetsJoined, pinAt, sameEnd, wireEdits, type WireEnd } from "./wire-tool"
 
@@ -94,16 +95,20 @@ function useWireKeys(
 ): void {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      const hit = keyAction(keyInput(event), { view: "schematic", drawing: drawing !== null })
+      if (hit?.action === "wire") {
+        if (hit.preventDefault) event.preventDefault()
+        if (drawing) return
+        const { end, pin } = underRef.current
+        if (end) return setDrawing({ start: end, ...(pin ? { pin } : {}), corners: [] })
+        return setWiring((on) => !on)
+      }
       if (!isCanvasKey(event)) return
       if (event.key === "Escape") return drawing ? setDrawing(null) : setWiring(false)
       if (event.key === "Backspace" && drawing) {
         event.preventDefault()
         return setDrawing({ ...drawing, corners: drawing.corners.slice(0, -1) })
       }
-      if ((event.key !== "w" && event.key !== "W") || drawing) return
-      const { end, pin } = underRef.current
-      if (end) return setDrawing({ start: end, ...(pin ? { pin } : {}), corners: [] })
-      setWiring((on) => !on)
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
@@ -155,6 +160,11 @@ export function useWireTool(input: WireInput) {
     wiring,
     toggleWiring: () => {
       setWiring(!wiring)
+      setDrawing(null)
+    },
+    /** Stops wiring and drops a wire in progress, e.g. when another tool takes over. */
+    cancel: () => {
+      setWiring(false)
       setDrawing(null)
     },
     drawing,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react"
 import type { CircuitData, Design } from "../api"
 import type { WorldPad } from "../../../src/engine/pcb.js"
 import { keepAutoPlaced } from "./auto-placed"
@@ -6,7 +6,9 @@ import { drawEditorLayer, prepareCanvas, useCamera, useElementSize, usePlacedPar
 import { CanvasStatus, KeepButton, SnapSelect } from "./CanvasTools"
 import type { Layers } from "./ctx"
 import { hitTest, pointBounds, unionBoxes, type Camera, type PartBox, type Point, type Size } from "./geometry"
+import { pcbNetAt } from "./highlight"
 import { drawPcb, padAt } from "./pcb-draw"
+import type { Unit } from "./units"
 import { cursorFor, pointerHandlers, useCanvasGestures, type Gesture } from "./use-canvas-gestures"
 import { usePartKeys } from "./use-part-keys"
 
@@ -40,11 +42,14 @@ interface PcbScene {
   locked: ReadonlySet<string>
   circuit: CircuitData
   gesture: Gesture | undefined
+  /** The net highlighted by the Nets tab or the H key; the net of the pad under the pointer shows when there is none. */
+  highlightNet: string | null
 }
 
 /** Draws the board, then the editor layer, whenever anything visible changes. */
 function usePcbPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: PcbScene): void {
-  const { design, camera, size, layers, hoverPad, moving, boxes, hover, selected, locked, circuit, gesture } = scene
+  const { design, camera, size, layers, hoverPad, moving, boxes, hover, selected, locked, circuit, gesture, highlightNet } = scene
+  const litNet = highlightNet ?? hoverPad?.net ?? null
   useEffect(() => {
     if (!camera) return
     const prepared = prepareCanvas(canvasRef.current, size, camera, BACKGROUND)
@@ -53,16 +58,17 @@ function usePcbPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: PcbS
     drawPcb(ctx, design.pcb, { camera, size }, {
       ratio,
       layers,
-      ...(hoverPad?.net ? { highlight: { net: hoverPad.net } } : {}),
+      ...(litNet ? { highlight: { net: litNet } } : {}),
       ...(moving ? { moving: { component: moving.name, by: moving.offset } } : {}),
     })
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
     const noteBox = gesture?.kind === "box" ? gesture : undefined
     drawEditorLayer(ctx, camera, size, { view: "pcb", boxes, moving, hover, selected, locked, marks: circuit.annotations.marks, noteBox })
-  }, [canvasRef, design, camera, size, layers, hoverPad, moving, boxes, hover, selected, locked, circuit, gesture])
+  }, [canvasRef, design, camera, size, layers, litNet, moving, boxes, hover, selected, locked, circuit, gesture])
 }
 
 interface PcbToolsProps {
+  unit: Unit
   step: number
   setStep(step: number): void
   fit(): void
@@ -72,11 +78,11 @@ interface PcbToolsProps {
 }
 
 /** Snap, fit, the layer switches and "Keep these positions". */
-function PcbTools({ step, setStep, fit, layers, setLayers, keep }: PcbToolsProps) {
+function PcbTools({ unit, step, setStep, fit, layers, setLayers, keep }: PcbToolsProps) {
   return (
     <div className="canvas-tools">
-      <SnapSelect step={step} onChange={setStep} unit=" mm" />
-      <button onClick={fit} title="Fit the board (F)">
+      <SnapSelect step={step} onChange={setStep} unit={unit} />
+      <button onClick={fit} title="Fit the board (F or K)">
         Fit
       </button>
       <span className="tool-divider" aria-hidden="true" />
@@ -97,7 +103,7 @@ function PcbTools({ step, setStep, fit, layers, setLayers, keep }: PcbToolsProps
 }
 
 /** The PCB, drawn by copperflow's own renderer under its camera, grid and tools. */
-export function PcbCanvas({ design, builtFrom, circuit, actions, selected, onSelect }: CanvasProps) {
+export function PcbCanvas({ design, builtFrom, circuit, actions, selected, onSelect, highlight, onHighlight, unit, onToggleUnit }: CanvasProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const size = useElementSize(wrapRef)
@@ -111,9 +117,12 @@ export function PcbCanvas({ design, builtFrom, circuit, actions, selected, onSel
   const { camera, setCamera, fit } = useCamera(wrapRef, size, bounds)
   const common = { view: "pcb", circuit, actions, onSelect, blockerFor: parts.blockerFor } as const
   const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom })
-  usePartKeys({ ...common, selected, paused: false, fit })
+  const cursorRef = useRef<Point | undefined>(undefined)
+  cursorRef.current = cursor
+  const netUnderPointer = useCallback(() => (cursorRef.current ? pcbNetAt(design.pcb, cursorRef.current) : undefined), [design])
+  usePartKeys({ ...common, selected, paused: false, fit, netUnderPointer, onHighlight })
   const { moving, gesture } = gestures
-  usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad, moving, boxes: parts.boxes, hover, selected, locked: parts.locked, circuit, gesture })
+  usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad, moving, boxes: parts.boxes, hover, selected, locked: parts.locked, circuit, gesture, highlightNet: highlight })
   const hoverAt = (world: Point) => {
     setHover(hitTest(parts.boxes, world)?.name)
     setHoverPad(padAt(design.pcb, world))
@@ -129,13 +138,14 @@ export function PcbCanvas({ design, builtFrom, circuit, actions, selected, onSel
         onPointerLeave={() => {
           setHover(undefined)
           setHoverPad(undefined)
+          setCursor(undefined)
         }}
         onContextMenu={(e) => e.preventDefault()}
         aria-label="PCB layout. Drag parts to move them, drag the background to pan, scroll to zoom."
         role="img"
       />
-      <PcbTools step={step} setStep={setStep} fit={fit} layers={layers} setLayers={setLayers} keep={{ show: parts.autoPlaced, onKeep: () => keepAutoPlaced(design, "pcb", parts.blockerFor, actions) }} />
-      <CanvasStatus cursor={cursor} unit=" mm" detail={hoverPad && padLabel(design, hoverPad)} gesture={gesture} />
+      <PcbTools unit={unit} step={step} setStep={setStep} fit={fit} layers={layers} setLayers={setLayers} keep={{ show: parts.autoPlaced, onKeep: () => keepAutoPlaced(design, "pcb", parts.blockerFor, actions) }} />
+      <CanvasStatus cursor={cursor} zoom={camera?.scale} unit={unit} onToggleUnit={onToggleUnit} detail={hoverPad && padLabel(design, hoverPad)} gesture={gesture} />
     </div>
   )
 }

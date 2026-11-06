@@ -14,12 +14,18 @@ interface Props {
   selected: string | null
   onSelect(name: string | null): void
   actions: Actions
+  /** Hidden with the ] key; kept mounted so its fields keep what was typed. */
+  hidden: boolean
 }
 
 /** The selected part's properties, or the board's state when nothing is selected. */
 export function Inspector(props: Props) {
   const part = props.circuit.model.parts.find((p) => p.name === props.selected)
-  return <aside className="panel right">{part ? <PartView {...props} part={part} /> : <BoardView {...props} />}</aside>
+  return (
+    <aside className="panel right" hidden={props.hidden}>
+      {part ? <PartView {...props} part={part} /> : <BoardView {...props} />}
+    </aside>
+  )
 }
 
 /** The centre of the part on the board, where a note about it is placed. */

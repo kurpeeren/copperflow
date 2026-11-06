@@ -37,6 +37,9 @@ export interface Layers {
   fabrication: boolean
 }
 
+/** The alpha of everything outside a highlighted net, on the PCB and the schematic alike. */
+export const HIGHLIGHT_DIM = 0.3
+
 export const PALETTE = {
   board: "#15231b",
   boardEdge: "rgb(233 230 223 / 55%)",

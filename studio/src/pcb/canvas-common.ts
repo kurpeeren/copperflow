@@ -7,6 +7,7 @@ import { drawGrid, drawLockBadge, drawMark, drawOutline, drawSelectionBox } from
 import { fitCamera, zoomAt, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import { pcbBoxes } from "./pcb-draw"
 import { moveBlocker, partAnchors, type View } from "./positions"
+import type { Unit } from "./units"
 import { sheetBoxes } from "./schematic-draw"
 
 export interface CanvasProps {
@@ -19,6 +20,12 @@ export interface CanvasProps {
   actions: Actions
   selected: string | null
   onSelect(name: string | null): void
+  /** The highlighted net's id, shared by both views. */
+  highlight: string | null
+  onHighlight(net: string | null): void
+  /** The PCB's display unit; the model stays in mm. */
+  unit: Unit
+  onToggleUnit(): void
 }
 
 /** A part drawn away from where the design has it: being dragged, or moved and waiting for its build. */

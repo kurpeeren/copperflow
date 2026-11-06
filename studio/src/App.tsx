@@ -5,6 +5,7 @@ import { Inspector } from "./Inspector"
 import { LeftPanel } from "./LeftPanel"
 import { PcbCanvas } from "./pcb/PcbCanvas"
 import { SchematicCanvas } from "./pcb/SchematicCanvas"
+import { useWorkspace } from "./use-workspace"
 
 /** Every action reports failures itself and resolves to whether it succeeded. */
 export interface Actions {
@@ -39,6 +40,8 @@ export function App() {
   const [tab, setTab] = useState<Tab>("pcb")
   const [message, setMessage] = useState<string | null>(null)
   const [parts, setParts] = useState<PartsData>({ library: [], builtin: [] })
+  const workspace = useWorkspace(tab)
+  const { setHighlight } = workspace
 
   const notify = useCallback((text: string) => {
     setMessage(text)
@@ -77,6 +80,7 @@ export function App() {
   useEffect(() => {
     if (!file) return
     setSelected(null)
+    setHighlight(null)
     refresh(file).catch((error: Error) => notify(error.message))
     api("/api/build", { file })
       .then(() => refreshBuild(file))
@@ -90,7 +94,7 @@ export function App() {
       const update = event === "change" ? refresh(file) : refreshBuild(file)
       update.catch((error: Error) => notify(error.message))
     })
-  }, [file, refresh, refreshBuild, refreshParts, notify])
+  }, [file, refresh, refreshBuild, refreshParts, notify, setHighlight])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -191,7 +195,7 @@ export function App() {
           Locked parts changed outside the editor: {circuit.violations.map((v) => `${v.part} (${v.detail})`).join(", ")}
         </div>
       )}
-      <main className="workspace">
+      <main className={`workspace${workspace.leftOpen ? "" : " no-left"}${workspace.rightOpen ? "" : " no-right"}`}>
         {circuit && (
           <LeftPanel
             circuit={circuit}
@@ -201,6 +205,14 @@ export function App() {
             selected={selected}
             onSelect={setSelected}
             actions={actions}
+            design={design}
+            tab={workspace.leftTab}
+            onTab={workspace.setLeftTab}
+            focusSearch={workspace.focusSearch}
+            onSearchFocused={workspace.searchFocused}
+            highlight={workspace.highlight}
+            onHighlight={workspace.setHighlight}
+            hidden={!workspace.leftOpen}
           />
         )}
         <section className="canvas">
@@ -215,6 +227,10 @@ export function App() {
               actions={actions}
               selected={selected}
               onSelect={setSelected}
+              highlight={workspace.highlight}
+              onHighlight={workspace.setHighlight}
+              unit={workspace.unit}
+              onToggleUnit={workspace.toggleUnit}
             />
           )}
           {design && circuit && tab === "schematic" && (
@@ -227,6 +243,10 @@ export function App() {
               actions={actions}
               selected={selected}
               onSelect={setSelected}
+              highlight={workspace.highlight}
+              onHighlight={workspace.setHighlight}
+              unit={workspace.unit}
+              onToggleUnit={workspace.toggleUnit}
             />
           )}
         </section>
@@ -238,6 +258,7 @@ export function App() {
             selected={selected}
             onSelect={setSelected}
             actions={actions}
+            hidden={!workspace.rightOpen}
           />
         )}
       </main>

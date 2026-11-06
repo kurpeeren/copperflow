@@ -226,6 +226,22 @@ input:disabled {
   min-height: 0;
 }
 
+.workspace.no-left {
+  grid-template-columns: minmax(0, 1fr) 300px;
+}
+
+.workspace.no-right {
+  grid-template-columns: 248px minmax(0, 1fr);
+}
+
+.workspace.no-left.no-right {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.panel[hidden] {
+  display: none;
+}
+
 .canvas {
   position: relative;
   min-width: 0;
@@ -271,6 +287,8 @@ input:disabled {
   position: absolute;
   top: 10px;
   left: 10px;
+  max-width: calc(100% - 20px);
+  flex-wrap: wrap;
   display: flex;
   gap: 6px;
   align-items: center;
@@ -291,6 +309,7 @@ input:disabled {
 .canvas-tools select,
 .canvas-tools button {
   height: 26px;
+  white-space: nowrap;
 }
 
 .tool-divider {
@@ -308,6 +327,37 @@ input:disabled {
   font-size: 11px;
   white-space: pre;
   pointer-events: none;
+}
+
+.canvas-status .unit-toggle {
+  height: 18px;
+  margin: 0 2px;
+  padding: 0 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  pointer-events: auto;
+}
+
+.label-name {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--copper);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.label-name input {
+  width: 140px;
+  height: 26px;
+}
+
+.label-name [role="alert"] {
+  max-width: 220px;
+  color: var(--copper-strong);
+  font-size: 12px;
 }
 
 .canvas-tools button.active {
@@ -342,12 +392,15 @@ input:disabled {
 
 .tabs {
   display: flex;
-  gap: 2px;
+  gap: 0;
   padding: 6px 6px 0;
   border-bottom: 1px solid var(--line);
 }
 
 .tabs button {
+  flex: 1 1 auto;
+  justify-content: center;
+  padding: 0 5px;
   height: 30px;
   border: 0;
   border-radius: 6px 6px 0 0;
@@ -712,6 +765,18 @@ ul {
 
 .badge.verified {
   color: var(--mask);
+}
+
+.badge.ground {
+  color: var(--muted);
+}
+
+.badge.power {
+  color: var(--copper-strong);
+}
+
+.nets .row .badge {
+  margin-left: 6px;
 }
 
 .badge.unverified {

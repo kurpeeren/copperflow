@@ -1,14 +1,23 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { PartsData } from "./api"
 
 interface Props {
   parts: PartsData
   onPlace(part: string): void
+  /** Focus the search field now (Shift+F); `onFocused` says it has been done. */
+  focus: boolean
+  onFocused(): void
 }
 
 /** Parts that can be added to the board: the project's library and the built-in parts. */
-export function Library({ parts, onPlace }: Props) {
+export function Library({ parts, onPlace, focus, onFocused }: Props) {
   const [query, setQuery] = useState("")
+  const search = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (!focus) return
+    search.current?.focus()
+    onFocused()
+  }, [focus, onFocused])
   const needle = query.trim().toLowerCase()
   const matches = (...texts: (string | undefined)[]) => needle === "" || texts.some((t) => t?.toLowerCase().includes(needle))
   const library = parts.library.filter((p) => matches(p.id, p.title, p.mpn, p.footprint))
@@ -17,6 +26,7 @@ export function Library({ parts, onPlace }: Props) {
   return (
     <div className="library">
       <input
+        ref={search}
         className="search"
         type="search"
         placeholder="Search parts"
