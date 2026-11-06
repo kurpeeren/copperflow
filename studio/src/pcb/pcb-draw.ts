@@ -3,6 +3,7 @@
 import type { PcbLayout, PlacedFootprint, WorldPad } from "../../../src/engine/pcb.js"
 import { HIGHLIGHT_DIM, PALETTE, type Ctx, type Layers } from "./ctx.js"
 import { worldToScreen, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
+import { drawViolationMarkers, type ViolationMarker } from "./markers.js"
 
 export interface PcbDrawOptions {
   /** Device pixels per CSS pixel. */
@@ -14,6 +15,10 @@ export interface PcbDrawOptions {
   moving?: { component: string; by: Point }
   /** Defaults to true. */
   ratsnest?: boolean
+  /** Violations with a position, ringed above everything else. */
+  violations?: readonly ViolationMarker[]
+  /** The violation picked in the Checks panel, whose ring is thicker. */
+  activeViolation?: string
 }
 
 type View = { camera: Camera; size: Size }
@@ -36,7 +41,7 @@ const AUTO_PLACED_ALPHA = 0.6
 const rad = (degrees: number) => (degrees * Math.PI) / 180
 const alphaOf = (part: PlacedFootprint) => (part.autoPlaced ? AUTO_PLACED_ALPHA : 1)
 
-/** Draws the board, then the ratsnest. Auto-placed parts are faded and always show their dashed courtyard. */
+/** Draws the board, then the ratsnest and the violation rings. Auto-placed parts are faded and always show their dashed courtyard. */
 export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDrawOptions): void {
   const layers = { ...DEFAULT_LAYERS, ...options.layers }
   const { camera, size } = view
@@ -76,6 +81,7 @@ export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDra
   // Text is drawn in screen space so it stays upright and readable at any zoom.
   ctx.setTransform(options.ratio, 0, 0, options.ratio, 0, 0)
   if (layers.silkscreen) for (const part of layout.parts) drawDesignator(ctx, part, camera, size, shiftOf(part))
+  drawViolationMarkers(ctx, view, options.violations ?? [], options.activeViolation)
   ctx.restore()
 }
 

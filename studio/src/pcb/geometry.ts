@@ -54,6 +54,11 @@ export function fitCamera(box: Box, size: Size, margin = 0.12): Camera {
   return { cx: (box.minX + box.maxX) / 2, cy: (box.minY + box.maxY) / 2, scale: clampScale(scale) }
 }
 
+/** The same zoom, with `at` in the middle of the view. */
+export function centredCamera(camera: Camera, at: Point): Camera {
+  return { ...camera, cx: at.x, cy: at.y }
+}
+
 /** Zooms by `factor`, keeping the world point under `cursor` where it is on screen. */
 export function zoomAt(camera: Camera, size: Size, cursor: Point, factor: number): Camera {
   const anchor = screenToWorld(camera, size, cursor)

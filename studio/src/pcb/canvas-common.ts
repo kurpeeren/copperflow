@@ -1,10 +1,12 @@
-// What the PCB and schematic canvases share: their props, size, camera, pointer position, the
-// background and the editor layer drawn over the circuit.
+// What the PCB and schematic canvases share: their props, size, camera (and centring it on a
+// picked check), pointer position, the background and the editor layer drawn over the circuit.
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type RefObject, type SetStateAction } from "react"
 import type { Annotations, CircuitData, Design } from "../api"
 import type { Actions } from "../App"
+import type { FocusRequest } from "../checks-panel-state"
 import { drawGrid, drawLockBadge, drawMark, drawOutline, drawSelectionBox } from "./overlays"
-import { fitCamera, zoomAt, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry"
+import { centredCamera, fitCamera, zoomAt, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry"
+import type { ViolationMarker } from "./markers"
 import { pcbBoxes } from "./pcb-draw"
 import { moveBlocker, partAnchors, type View } from "./positions"
 import type { Unit } from "./units"
@@ -26,6 +28,13 @@ export interface CanvasProps {
   /** The PCB's display unit; the model stays in mm. */
   unit: Unit
   onToggleUnit(): void
+  /** This view's violations that have a position, ringed on the canvas. */
+  markers: readonly ViolationMarker[]
+  /** The violation picked in the Checks panel. */
+  activeViolation: string | null
+  /** A point to centre the camera on; the canvas calls onFocused once it has. */
+  focus: FocusRequest | null
+  onFocused(): void
 }
 
 /** A part drawn away from where the design has it: being dragged, or moved and waiting for its build. */
@@ -82,6 +91,15 @@ export function useCamera(ref: RefObject<HTMLElement | null>, size: Size, bounds
     if (!camera) fit()
   }, [camera, fit])
   return { camera, setCamera, fit }
+}
+
+/** Centres the camera on a focus request for this view, at the current zoom, as soon as the camera is ready. */
+export function useCameraFocus(view: View, focus: FocusRequest | null, camera: Camera | undefined, setCamera: (camera: Camera) => void, onFocused: () => void): void {
+  useEffect(() => {
+    if (!focus || focus.view !== view || !camera) return
+    setCamera(centredCamera(camera, focus.at))
+    onFocused()
+  }, [view, focus, camera, setCamera, onFocused])
 }
 
 /** React's onWheel is passive, so preventDefault needs a native listener. */

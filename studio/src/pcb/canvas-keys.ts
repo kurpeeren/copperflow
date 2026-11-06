@@ -1,6 +1,6 @@
 // The keys the canvases and the app share, as a pure map from a key press to an action. The hooks that
 // listen for keys read the browser event once (keyInput) and ask this module what it means.
-// Our own keys stay as they are; the EasyEDA ones sit beside them. `\` is reserved for the bottom panel.
+// Our own keys stay as they are; the EasyEDA ones sit beside them.
 import type { View } from "./positions.js"
 
 export type KeyActionName =
@@ -13,6 +13,7 @@ export type KeyActionName =
   | "toggleUnit"
   | "toggleLeftPanel"
   | "toggleRightPanel"
+  | "toggleBottomPanel"
   | "openLibrary"
 
 /** What a key event says, apart from the browser: modifiers, whether it came from a field, and the key. */
@@ -96,6 +97,7 @@ export function keyAction(input: KeyInput, state: KeyState): KeyResult | null {
   if (input.key === " ") return state.drawing || input.onButton ? null : act("rotate", true)
   if (input.key === "[") return act("toggleLeftPanel")
   if (input.key === "]") return act("toggleRightPanel")
+  if (input.key === "\\") return act("toggleBottomPanel")
   return letterAction(input.key.toLowerCase(), input, state)
 }
 

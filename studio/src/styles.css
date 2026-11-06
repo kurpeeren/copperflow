@@ -12,6 +12,9 @@
   --mask: #4f9a6c;
   --agent: #6ea8d6;
   --danger: #e5675e;
+  /* The canvases ring violations in these (PALETTE.error and PALETTE.warning). */
+  --check-error: #e5534b;
+  --check-warning: #e0a63a;
   --mono: "Cascadia Mono", "JetBrains Mono", ui-monospace, Consolas, monospace;
   --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
   color-scheme: dark;
@@ -183,6 +186,12 @@ input:disabled {
   color: var(--muted);
 }
 
+/* The status pill opens the Checks panel. */
+button.build {
+  border-color: transparent;
+  background: transparent;
+}
+
 .build .dot {
   width: 8px;
   height: 8px;
@@ -240,6 +249,14 @@ input:disabled {
 
 .panel[hidden] {
   display: none;
+}
+
+/* The canvas with the Checks panel under it, between the side panels. */
+.center {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
 }
 
 .canvas {
@@ -679,31 +696,12 @@ ul {
   color: var(--mask);
 }
 
-.note.error,
-.issues li.error {
+.note.error {
   color: var(--danger);
 }
 
-.issues li.warning {
-  color: var(--copper-strong);
-}
-
-.issues li {
-  padding: 3px 0;
-}
-
-.issues ul {
-  margin: 2px 0 0;
-  padding-left: 14px;
-}
-
-.issues .code {
-  font-family: var(--mono);
-  font-size: 11px;
-}
-
-.issues .items {
-  color: var(--muted);
+.check-counts button {
+  margin-top: 6px;
 }
 
 .mark-form {
@@ -906,8 +904,11 @@ ul {
     overflow-y: auto;
   }
 
-  .canvas {
+  .center {
     order: -1;
+  }
+
+  .canvas {
     min-height: 320px;
   }
 

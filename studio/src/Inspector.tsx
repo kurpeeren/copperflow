@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react"
-import type { BuildState, CircuitData, Design, Diagnostic, Literal, PartInfo, PartsData, PropInfo } from "./api"
+import type { BuildState, CircuitData, Design, Literal, PartInfo, PartsData, PropInfo } from "./api"
 import type { Actions } from "./App"
 import { BomSection } from "./BomSection"
+import { checkSummary, type CheckCounts } from "./checks-list"
 import { LibraryInfo } from "./LibraryInfo"
 import { CloseIcon, LockIcon, RotateIcon, TrashIcon, UnlockIcon } from "./icons"
 import { touches } from "./LeftPanel"
@@ -14,6 +15,9 @@ interface Props {
   selected: string | null
   onSelect(name: string | null): void
   actions: Actions
+  /** The last build's errors and warnings, as the Checks panel counts them. */
+  counts: CheckCounts
+  onShowChecks(): void
   /** Hidden with the ] key; kept mounted so its fields keep what was typed. */
   hidden: boolean
 }
@@ -238,10 +242,7 @@ function parseLike(current: Literal | undefined, text: string): Literal | undefi
   return text
 }
 
-function BoardView({ circuit, build, actions }: Props) {
-  const diagnostics = build.design?.diagnostics ?? []
-  const errors = diagnostics.filter((d) => d.severity === "error").length
-  const warnings = diagnostics.length - errors
+function BoardView({ circuit, build, actions, counts, onShowChecks }: Props) {
   return (
     <div className="inspector">
       <header className="part-head">
@@ -256,12 +257,7 @@ function BoardView({ circuit, build, actions }: Props) {
       <h3>Build</h3>
       {build.status === "failed" && <p className="note error">{build.error}</p>}
       {build.status === "building" && <p className="note">Building…</p>}
-      {build.design && errors === 0 && (
-        <p className="note ok">
-          No errors. {warnings} {warnings === 1 ? "warning" : "warnings"}.
-        </p>
-      )}
-      <CheckList diagnostics={diagnostics} />
+      {build.design && <CheckCountsNote counts={counts} onShowChecks={onShowChecks} />}
 
       <h3>Notes for the agent</h3>
       {circuit.annotations.marks.length === 0 && <p className="note">Select a part to leave a note at it, or draw a box on the PCB.</p>}
@@ -283,28 +279,18 @@ function BoardView({ circuit, build, actions }: Props) {
   )
 }
 
-/** Diagnostics grouped by code, errors first; each shows its message and the parts or pins it names. */
-function CheckList({ diagnostics }: { diagnostics: Diagnostic[] }) {
-  const groups = new Map<string, Diagnostic[]>()
-  const ordered = [...diagnostics].sort((a, b) => Number(a.severity === "warning") - Number(b.severity === "warning"))
-  for (const diagnostic of ordered) groups.set(diagnostic.code, [...(groups.get(diagnostic.code) ?? []), diagnostic])
-  if (groups.size === 0) return null
+/** The check counts the Checks panel shows, and a way to open it; the list itself lives in the panel. */
+function CheckCountsNote({ counts, onShowChecks }: { counts: CheckCounts; onShowChecks(): void }) {
+  const tone = counts.errors > 0 ? "error" : counts.warnings > 0 ? "warn" : "ok"
   return (
-    <ul className="issues">
-      {[...groups].map(([code, list]) => (
-        <li key={code} className={list.some((d) => d.severity === "error") ? "error" : "warning"}>
-          <span className="code">{code}</span>
-          <ul>
-            {list.map((d, i) => (
-              <li key={i}>
-                {d.message}
-                {d.items.length > 0 && <span className="items">: {d.items.join(", ")}</span>}
-              </li>
-            ))}
-          </ul>
-        </li>
-      ))}
-    </ul>
+    <div className="check-counts">
+      <p className={`note ${tone}`}>{checkSummary(counts)}</p>
+      {counts.errors + counts.warnings > 0 && (
+        <button onClick={onShowChecks} title="Open the Checks panel (\)">
+          Show checks
+        </button>
+      )}
+    </div>
   )
 }
 

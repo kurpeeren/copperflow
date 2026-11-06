@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { buildDesign } from "../src/engine/design.js"
 import { PALETTE } from "../studio/src/pcb/ctx.js"
+import { worldToScreen } from "../studio/src/pcb/geometry.js"
 import { drawPcb, padAt, pcbBoxes } from "../studio/src/pcb/pcb-draw.js"
 import { recorder } from "./helpers/fake-ctx.js"
 
@@ -123,6 +124,58 @@ describe("drawPcb", () => {
     drawPcb(ctx, { parts: [], ratsnest: [] }, VIEW, { ratio: 1 })
     expect(calls).toContain("save")
     expect(calls).toContain("restore")
+  })
+})
+
+describe("violation markers", () => {
+  const AT = { x: 4, y: -2 }
+  const rings = (records: ReturnType<typeof recorder>["records"], color: string) => records.filter((r) => r.name === "arc" && r.strokeStyle === color)
+
+  test("an error violation strokes a 6 px ring in the error colour at its position", () => {
+    const { ctx, records } = recorder()
+    drawPcb(ctx, layout, VIEW, { ratio: 1, violations: [{ id: "courtyard-overlap:R1,R2", at: AT, severity: "error" }] })
+    const p = worldToScreen(VIEW.camera, VIEW.size, AT)
+    expect(rings(records, PALETTE.error).map((r) => r.args.slice(0, 3))).toEqual([[p.x, p.y, 6]])
+    expect(records.filter((r) => r.name === "stroke" && r.strokeStyle === PALETTE.error)).toHaveLength(1)
+  })
+
+  test("the ring is 6 px on screen at any zoom", () => {
+    for (const scale of [2, 20, 400]) {
+      const { ctx, records } = recorder()
+      drawPcb(ctx, layout, { ...VIEW, camera: { ...VIEW.camera, scale } }, { ratio: 1, violations: [{ id: "v", at: AT, severity: "error" }] })
+      expect(rings(records, PALETTE.error).map((r) => r.args[2])).toEqual([6])
+    }
+  })
+
+  test("a warning is amber, and the active violation is drawn thicker", () => {
+    const { ctx, records } = recorder()
+    const violations = [
+      { id: "a", at: AT, severity: "warning" as const },
+      { id: "b", at: { x: 0, y: 0 }, severity: "warning" as const },
+    ]
+    drawPcb(ctx, layout, VIEW, { ratio: 1, violations, activeViolation: "b" })
+    const strokes = records.filter((r) => r.name === "stroke" && r.strokeStyle === PALETTE.warning)
+    expect(strokes).toHaveLength(2)
+    const [plain, active] = strokes.map((r) => r.lineWidth)
+    expect(active).toBeGreaterThan(plain ?? Infinity)
+  })
+
+  test("markers are drawn after the copper", () => {
+    const { ctx, records } = recorder()
+    drawPcb(ctx, layout, VIEW, { ratio: 1, violations: [{ id: "v", at: AT, severity: "error" }] })
+    const copper = records.map((r) => r.name === "fill" && r.fillStyle === PALETTE.topCopper).lastIndexOf(true)
+    const ring = records.findIndex((r) => r.name === "stroke" && r.strokeStyle === PALETTE.error)
+    expect(ring).toBeGreaterThan(copper)
+  })
+
+  test("error, warning and keepout colours differ", () => {
+    expect(new Set([PALETTE.error, PALETTE.warning, PALETTE.keepout]).size).toBe(3)
+  })
+
+  test("without violations no ring is drawn", () => {
+    const { ctx, records } = recorder()
+    drawPcb(ctx, layout, VIEW, { ratio: 1 })
+    expect(records.some((r) => r.strokeStyle === PALETTE.error || r.strokeStyle === PALETTE.warning)).toBe(false)
   })
 })
 

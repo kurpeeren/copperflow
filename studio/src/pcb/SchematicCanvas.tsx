@@ -3,12 +3,13 @@ import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { CircuitData, Design } from "../api"
 import { WireIcon } from "../icons"
 import { keepAutoPlaced } from "./auto-placed"
-import { drawEditorLayer, prepareCanvas, useCamera, useElementSize, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
+import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
 import { blurButton, CanvasStatus, KeepButton, SnapSelect } from "./CanvasTools"
 import { hitTest, unionBoxes, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import { highlightOf, schematicNetAt } from "./highlight"
 import { labelHitBox } from "./label-drag"
 import { NameInput, PaletteButtons, paletteHint } from "./LabelPalette"
+import type { ViolationMarker } from "./markers"
 import { drawOutline, drawWirePreview } from "./overlays"
 import { drawSchematic } from "./schematic-draw"
 import { cursorFor, pointerHandlers, useCanvasGestures, type Gesture } from "./use-canvas-gestures"
@@ -46,11 +47,13 @@ interface SheetScene {
   palette: Palette
   /** The highlighted net and the pins on it. */
   highlight: ReturnType<typeof highlightOf>
+  markers: readonly ViolationMarker[]
+  activeViolation: string | null
 }
 
-/** Draws the sheet, the wire being drawn and the editor layer; a sheet without parts gets a default view. */
+/** Draws the sheet and its violation rings, the wire being drawn and the editor layer; a sheet without parts gets a default view. */
 function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: SheetScene): void {
-  const { design, camera, size, moving, boxes, hover, selected, locked, circuit, gesture, movingLabels, hoverLabel, palette, highlight } = scene
+  const { design, camera, size, moving, boxes, hover, selected, locked, circuit, gesture, movingLabels, hoverLabel, palette, highlight, markers, activeViolation } = scene
   const { wiring, drawing, activePins, pendingWires, preview } = scene.wire
   const { ghosts, ghostWires, armed } = palette
   useEffect(() => {
@@ -67,6 +70,8 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
       ghostLabels: ghosts,
       ...(highlight ? { highlight } : {}),
       ...(moving ? { moving: { component: moving.name, by: moving.offset } } : {}),
+      violations: markers,
+      ...(activeViolation ? { activeViolation } : {}),
     })
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
     if (preview) drawWirePreview(ctx, view, size, preview, "drawing")
@@ -74,7 +79,7 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
     const shownHover = drawing ? undefined : hover
     drawEditorLayer(ctx, view, size, { view: "schematic", boxes, moving, hover: shownHover, selected, locked, marks: circuit.annotations.marks, noteBox })
     if (hoverLabel && !drawing && !gesture) drawOutline(ctx, view, size, labelHitBox(hoverLabel), { x: 0, y: 0 }, "hover")
-  }, [canvasRef, design, camera, size, wiring, drawing, activePins, pendingWires, preview, moving, movingLabels, hoverLabel, boxes, hover, selected, locked, circuit, gesture, ghosts, ghostWires, armed, highlight])
+  }, [canvasRef, design, camera, size, wiring, drawing, activePins, pendingWires, preview, moving, movingLabels, hoverLabel, boxes, hover, selected, locked, circuit, gesture, ghosts, ghostWires, armed, highlight, markers, activeViolation])
 }
 
 interface SheetToolsProps {
@@ -171,7 +176,7 @@ function useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNet
  * The schematic, drawn by copperflow's own renderer under its camera, grid and tools, with the
  * wire tool (see useWireTool) and the Place tools (see useLabelPalette).
  */
-export function SchematicCanvas({ design, buildId, builtFrom, circuit, actions, selected, onSelect, highlight: highlightNet, onHighlight }: CanvasProps) {
+export function SchematicCanvas({ design, buildId, builtFrom, circuit, actions, selected, onSelect, highlight: highlightNet, onHighlight, markers, activeViolation, focus, onFocused }: CanvasProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const size = useElementSize(wrapRef)
@@ -182,7 +187,8 @@ export function SchematicCanvas({ design, buildId, builtFrom, circuit, actions, 
   const parts = usePlacedParts(design, "schematic", circuit)
   const bounds = useMemo(() => sheetBounds(parts.boxes), [parts.boxes])
   const { camera, setCamera, fit } = useCamera(wrapRef, size, bounds, FIT_MARGIN)
-  const wire = useWireTool({ design, actions, camera, cursor, step, buildId, builtFrom })
+  useCameraFocus("schematic", focus, camera, setCamera, onFocused)
+  const wire =useWireTool({ design, actions, camera, cursor, step, buildId, builtFrom })
   const palette = useLabelPalette({ design, circuit, actions, camera, cursor, builtFrom, onArm: wire.cancel })
   const common = { view: "schematic", circuit, actions, onSelect, blockerFor: parts.blockerFor } as const
   const labels = useLabelDrag({ design, circuit, actions, builtFrom })
@@ -190,7 +196,7 @@ export function SchematicCanvas({ design, buildId, builtFrom, circuit, actions, 
   const highlight = useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNet, onHighlight, keys: { ...common, selected } })
   const { moving, gesture } = gestures
   const movingLabels = useMovingLabels(design, gesture, labels.pending)
-  useSheetPaint(canvasRef, { design, camera, size, wire, moving, boxes: parts.boxes, hover, selected, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel, palette, highlight })
+  useSheetPaint(canvasRef, { design, camera, size, wire, moving, boxes: parts.boxes, hover, selected, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel, palette, highlight, markers, activeViolation })
   const hoverAt = (world: Point) => {
     wire.hover(world)
     const part = hitTest(parts.boxes, world)?.name

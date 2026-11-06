@@ -55,6 +55,9 @@ export const PALETTE = {
   fabrication: "rgb(149 156 166 / 55%)",
   ratsnest: "#e9e6df",
   keepout: "#c0504d",
+  /** Violation markers, on both canvases. */
+  error: "#e5534b",
+  warning: "#e0a63a",
 }
 
 /** Canvas baseline and alignment for anchors such as "top_left" or "center". */

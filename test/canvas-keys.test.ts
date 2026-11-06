@@ -74,12 +74,12 @@ describe("keyAction", () => {
     expect(keyAction(key("F", { shiftKey: true }), SCHEMATIC)?.action).toBe("openLibrary")
   })
 
-  test("backslash is reserved and bound to nothing", () => {
-    expect(keyAction(key("\\"), PCB)).toBeNull()
+  test("backslash toggles the bottom panel in both views", () => {
+    for (const state of [SCHEMATIC, PCB]) expect(keyAction(key("\\"), state)).toEqual({ action: "toggleBottomPanel", preventDefault: false })
   })
 
   test("every key is ignored while typing in a field", () => {
-    for (const name of ["w", " ", "k", "h", "q", "[", "]", "f", "r"]) expect(keyAction(key(name, { typing: true }), SCHEMATIC)).toBeNull()
+    for (const name of ["w", " ", "k", "h", "q", "[", "]", "\\", "f", "r"]) expect(keyAction(key(name, { typing: true }), SCHEMATIC)).toBeNull()
     expect(keyAction(key("w", { altKey: true, code: "KeyW", typing: true }), SCHEMATIC)).toBeNull()
   })
 

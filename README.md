@@ -83,12 +83,13 @@ leave marks for the agent and undo changes.
 Drag a net label or a ground or power symbol in the schematic and its wire follows, written as `schematicRouteHints` on the trace (Esc cancels the drag).
 The Place tools in the schematic toolbar (Net label, GND, VCC) put a label on a pin you click, written as a trace with one corner, and stay armed until Esc; Tab names a label before you click.
 The Nets tab lists every net and highlights it in both views.
+The Checks panel under the canvas lists the build's errors and warnings, which are ringed on the canvas; click one to go to it.
 
 Keys, ignored while you type in a field:
 
 - `W` or `Alt+W` wires, `Alt+N` places a net label, `Space` or `R` rotates, `Delete` removes, `F` or `K` fits
 - `H` highlights the net under the pointer, `Shift+H` clears it
-- `Q` switches the PCB between mm and mil (display only), `[` and `]` hide the left and right panels, `Shift+F` searches the library
+- `Q` switches the PCB between mm and mil (display only), `[` and `]` hide the left and right panels, `\` shows the Checks panel, `Shift+F` searches the library
 
 Every edit is written back into the circuit file and shows at once.
 When the agent changes the file, the editor updates by itself.
