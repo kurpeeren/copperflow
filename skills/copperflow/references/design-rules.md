@@ -54,3 +54,39 @@ Source: device datasheets.
 
 Source: tscircuit build output; IPC-7351, *Generic Requirements for Surface Mount Design and
 Land Pattern Standard*, for courtyard definitions.
+
+## The rules.yaml file
+
+A project can state its fabrication limits and net classes in `rules.yaml` at the project root.
+Without the file, the `jlcpcb-2layer` profile and the default class apply. Unknown keys are errors.
+
+```yaml
+fabrication:
+  profile: jlcpcb-2layer    # a built-in profile (jlcpcb-2layer, jlcpcb-4layer); optional
+  minClearance: 0.15        # any profile field can be overridden
+netClasses:
+  power:
+    trackWidth: 0.5
+    clearance: 0.3
+    via: { drill: 0.4, diameter: 0.8 }
+    nets: [GND, VBUS, "V*"]  # net names or patterns with * and ?
+  field:
+    nets: ["IN*", V24]
+classClearance:
+  - [field, default, 2.5]   # the gap between any copper of these two classes, in mm
+globalNets: [GND, V24, V3_3]
+```
+
+- Lengths are millimetres, or a number with a unit such as `6mil`.
+- Profile fields: `minTrackWidth`, `minClearance`, `minDrill`, `minAnnularRing`,
+  `boardEdgeClearance`, `minHoleToHole`, `minSilkToPad`.
+- The built-in profiles are JLCPCB's published standard capabilities in 1 oz copper; each profile's
+  `source` names the page, its sections and the date it was read.
+- A class field left out takes the default class's value: track 0.25 mm, clearance 0.2 mm, via drill
+  0.3 mm and diameter 0.6 mm. These are copperflow's own conservative choice, above the profile minimums.
+- Patterns are case-sensitive and match a net's names. `*` alone matches every net, named or not.
+  An unnamed net is in no class otherwise.
+- A net that matches two classes is a `net-class-conflict` error and uses the class written first.
+  A pattern that matches no net is a warning.
+- Two classes need the largest of their own clearances, their `classClearance` entry (in either
+  order) and the profile's `minClearance`.

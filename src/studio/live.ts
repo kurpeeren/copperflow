@@ -2,7 +2,7 @@ import { watch, type FSWatcher } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import type { Design } from "../engine/design.js"
-import { FOOTPRINT_FILE } from "../engine/engine.js"
+import { ENGINE_FILES } from "../engine/engine.js"
 import { isProjectFile } from "../engine/project-files.js"
 
 export type BuildStatus = "idle" | "building" | "done" | "failed"
@@ -160,7 +160,7 @@ export class LiveProject {
     const circuit = annotations ? name.replace(ANNOTATIONS, ".circuit.tsx") : name
     if (circuit.endsWith(".circuit.tsx")) this.debounce(circuit, () => this.emit("change", { file: circuit }))
     // The sidecar holds locks and marks, which the engine does not build from.
-    if (annotations || !isProjectFile(name, FOOTPRINT_FILE)) return
+    if (annotations || !isProjectFile(name, ENGINE_FILES)) return
     if (this.starts.has(name)) this.debounce(`${BUILT_CIRCUIT_TIMER}${name}`, () => void this.changedUnlessBuilt(name))
     else this.engineFileChanged()
   }

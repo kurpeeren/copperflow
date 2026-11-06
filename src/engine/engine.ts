@@ -2,7 +2,7 @@ import { Worker } from "node:worker_threads"
 import { resolveCircuit } from "../core/workspace.js"
 import type { Design } from "./design.js"
 import { CircuitCodeError } from "./evaluate.js"
-import { collectProjectFiles } from "./project-files.js"
+import { collectProjectFiles, RULES_FILE } from "./project-files.js"
 
 /**
  * Builds designs in a worker thread, so circuit code that never ends costs one build, not the
@@ -36,8 +36,10 @@ interface Started {
 
 const DEFAULT_TIMEOUT_MS = 30_000
 const WORKER_HEAP_MB = 2048
-/** The only non-source files a build reads: the footprint files of library parts. */
+/** The footprint files of library parts. */
 export const FOOTPRINT_FILE = /^parts\/[^/]+\/footprint\.yaml$/
+/** The only non-source files a build reads: footprint files and the design rules. */
+export const ENGINE_FILES = new RegExp(`${FOOTPRINT_FILE.source}|${RULES_FILE.source}`)
 
 const defaultWorker = (): EngineWorker =>
   new Worker(new URL("./engine-worker.js", import.meta.url), { resourceLimits: { maxOldGenerationSizeMb: WORKER_HEAP_MB } })
@@ -70,7 +72,7 @@ export class Engine {
 
   private async run(root: string, file: string): Promise<Design> {
     const circuit = await resolveCircuit(root, file)
-    const files = await collectProjectFiles(root, { include: FOOTPRINT_FILE })
+    const files = await collectProjectFiles(root, { include: ENGINE_FILES })
     if (this.stopped) throw new Error("The engine stopped")
     const started = this.start()
     const id = ++this.nextId
