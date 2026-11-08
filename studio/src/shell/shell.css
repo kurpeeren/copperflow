@@ -168,3 +168,11 @@
   width: 110px;
   color: var(--muted);
 }
+
+button.menu-title:hover:not(:disabled) {
+  background: var(--strip);
+}
+
+button.menu-title.open:hover:not(:disabled) {
+  background: var(--copper-wash);
+}

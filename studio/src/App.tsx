@@ -259,7 +259,7 @@ export function App() {
         )}
         <div className="center">
           <DocTabs file={file} view={tab} onView={setTab} />
-          <section className="canvas">
+          <section className="canvas" id="doc-panel" role="tabpanel" aria-labelledby={`doc-tab-${tab}`}>
             {!design && <p className="empty">{build.status === "failed" ? build.error : "Building the circuit…"}</p>}
             {canvas && tab === "pcb" && <PcbCanvas key={file} {...canvas} markers={checks.markers.pcb} />}
             {canvas && tab === "schematic" && <SchematicCanvas key={file} {...canvas} markers={checks.markers.schematic} />}

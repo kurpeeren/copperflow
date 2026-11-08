@@ -169,3 +169,18 @@
   }
 
 }
+
+/* The global button:hover would repaint these; keep the resting and on looks while hovered. */
+button.side-tab:hover:not(:disabled),
+button.sub-tab:hover:not(:disabled) {
+  background: transparent;
+}
+
+button.side-tab.on:hover:not(:disabled),
+button.sub-tab.on:hover:not(:disabled) {
+  background: var(--panel);
+}
+
+.page-tree .tree-row.doc.active:hover {
+  background: var(--copper-wash);
+}

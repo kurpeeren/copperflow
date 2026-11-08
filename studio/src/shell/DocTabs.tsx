@@ -25,14 +25,16 @@ export function DocTabs({ file, view, onView }: Props) {
         <button
           key={tab.view}
           role="tab"
+          id={`doc-tab-${tab.view}`}
           data-view={tab.view}
+          aria-controls="doc-panel"
           aria-selected={tab.active}
           tabIndex={tab.active ? 0 : -1}
           className={`doc-tab${tab.active ? " on" : ""}`}
           title={tab.title}
           onClick={() => onView(tab.view)}
         >
-          {tab.title}
+          <span className="doc-tab-label">{tab.title}</span>
         </button>
       ))}
     </div>

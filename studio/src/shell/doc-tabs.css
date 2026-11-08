@@ -41,3 +41,23 @@
   height: 2px;
   background: var(--copper);
 }
+
+.doc-tab-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.doc-tab:hover:not(:disabled) {
+  background: var(--raised);
+}
+
+button.doc-tab.on:hover:not(:disabled) {
+  background: var(--copper-wash);
+}
+
+.doc-tab:focus-visible {
+  outline-offset: -2px;
+}
