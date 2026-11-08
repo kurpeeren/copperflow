@@ -217,16 +217,27 @@ export interface MenuState {
   open: string | null
 }
 
-export type MenuEvent = { type: "click"; title: string } | { type: "hover"; title: string } | { type: "escape" } | { type: "outside" } | { type: "run" }
+export type MenuEvent =
+  | { type: "click"; title: string }
+  | { type: "hover"; title: string }
+  | { type: "set"; title: string | null }
+  | { type: "escape" }
+  | { type: "outside" }
+  | { type: "run" }
 
-/** A click opens a menu or closes the open one; hovering switches only while one is open; Esc, outside and run close. */
+/** A click opens a menu or closes the open one; hovering switches only while one is open; a key sets the open menu; Esc, outside and run close. */
 export function menuReducer(state: MenuState, event: MenuEvent): MenuState {
   switch (event.type) {
     case "click":
       return { open: state.open === event.title ? null : event.title }
     case "hover":
       return state.open === null || state.open === event.title ? state : { open: event.title }
+    case "set":
+      return state.open === event.title ? state : { open: event.title }
     default:
       return state.open === null ? state : { open: null }
   }
 }
+
+/** Each menu's entries as the menu keys see them: true for an item, false for a separator. */
+export const MENU_SHAPES: readonly (readonly boolean[])[] = MENUS.map((menu) => menu.entries.map((entry) => entry !== "separator"))
