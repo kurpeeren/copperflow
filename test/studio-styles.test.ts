@@ -34,6 +34,8 @@ describe("Studio style sheets", () => {
       line: token("--line"),
       accent: token("--copper"),
       strip: token("--strip"),
-    }).toEqual({ text: "#333333", panel: "#ffffff", line: "#d1d1d1", accent: "#1890ff", strip: "#f0f0f0" })
+      muted: token("--muted"),
+      disabled: token("--disabled"),
+    }).toEqual({ text: "#333333", panel: "#ffffff", line: "#d1d1d1", accent: "#1890ff", strip: "#f0f0f0", muted: "#666666", disabled: "#999999" })
   })
 })

@@ -29,7 +29,8 @@ The look is matched by layout, sizes and colours. No EasyEDA code, icons, logos,
 |---|---|---|
 | font | 12px Arial, "Microsoft YaHei", Helvetica, sans-serif | everything |
 | text | `#333333` | text |
-| muted | `#999999` | secondary text, disabled items |
+| muted | `#666666` | secondary text (EasyEDA uses `#999999`, which is too faint to read at 12px on white) |
+| disabled | `#999999` | disabled items |
 | panel | `#ffffff` | panels, menu bar, toolbar |
 | strip | `#f0f0f0` | vertical tab strips, document tab bar, bottom tab strip |
 | tab | `#eeeeee` | inactive document tab |
