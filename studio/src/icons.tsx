@@ -51,6 +51,12 @@ export const CloseIcon = (p: IconProps) => (
   </Icon>
 )
 
+export const ChevronIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="m6 4.5 3.5 3.5L6 11.5" />
+  </Icon>
+)
+
 function ToolIcon({ children, ...props }: IconProps) {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>

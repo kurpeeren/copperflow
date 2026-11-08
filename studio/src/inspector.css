@@ -1,0 +1,137 @@
+/* The Properties panel: a header line, then collapsible sections of 32px rows. */
+.insp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+  margin: -4px 0 4px;
+  color: var(--muted);
+}
+
+.insp-file {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspector-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+
+.insp-section {
+  margin: 0 -14px;
+}
+
+.insp-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--strip);
+  font-weight: 600;
+  text-align: left;
+}
+
+.insp-head:hover:not(:disabled) {
+  background: var(--raised);
+}
+
+.insp-head:focus-visible {
+  outline: 1px solid var(--copper);
+  outline-offset: -1px;
+}
+
+.insp-title {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.insp-chevron {
+  flex: none;
+  transform: rotate(90deg);
+  transition: transform 0.1s;
+}
+
+.collapsed .insp-chevron {
+  transform: none;
+}
+
+.insp-body[hidden] {
+  display: none;
+}
+
+.insp-body {
+  padding: 4px 14px 8px;
+}
+
+.insp-row {
+  display: grid;
+  grid-template-columns: 40% 60%;
+  align-items: center;
+  min-height: 32px;
+}
+
+.insp-label {
+  display: block;
+  min-width: 0;
+  padding-right: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.insp-label span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.insp-value {
+  min-width: 0;
+}
+
+.insp-value input:not([type="checkbox"]) {
+  width: 100%;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--panel);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.insp-value input:focus {
+  outline: 1px solid var(--copper);
+  outline-offset: -1px;
+}
+
+.insp-value input.new-prop {
+  border-style: dashed;
+}
+
+.insp-value .static,
+.insp-value .expr {
+  display: block;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.insp-value .static {
+  color: var(--text);
+}
