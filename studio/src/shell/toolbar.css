@@ -48,14 +48,37 @@
   margin-left: auto;
 }
 
-/* The canvas rows keep their buttons, but sit flat in the toolbar rather than floating over the canvas. */
-.toolbar-view-slot .canvas-tools {
-  position: static;
-  max-width: none;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  flex-wrap: nowrap;
+/* The open canvas's own controls (snap, layers, Keep these positions), flat in the toolbar and as tall as its buttons. */
+.canvas-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.canvas-tools label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 6px;
+  color: var(--muted);
+}
+
+.canvas-tools select,
+.canvas-tools button {
+  height: 24px;
+  white-space: nowrap;
+}
+
+.canvas-tools button.active {
+  border-color: var(--copper);
+  background: var(--copper-wash);
+  color: var(--text);
+}
+
+.tool-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--line);
 }
 
 button.toolbar-button:hover:not(:disabled) {

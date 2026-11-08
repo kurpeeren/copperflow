@@ -1,8 +1,4 @@
 /* The document tab bar above the canvas. */
-.workspace > .center {
-  grid-template-rows: auto minmax(0, 1fr) auto;
-}
-
 .doc-tabs {
   display: flex;
   height: 24px;

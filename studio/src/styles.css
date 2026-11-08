@@ -173,11 +173,6 @@ input:disabled {
   background: #fff1f0;
 }
 
-.workspace {
-  flex: 1;
-  min-height: 0;
-}
-
 .panel[hidden] {
   display: none;
 }
@@ -212,7 +207,7 @@ input:disabled {
   display: block;
 }
 
-/* The schematic's toolbar rows with the hint under them, so a wrapped toolbar never covers the hint. */
+/* The schematic's hint, over the canvas's top left corner, as EasyEDA shows its tips. */
 .canvas-top {
   position: absolute;
   top: 10px;
@@ -221,58 +216,14 @@ input:disabled {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 6px;
   pointer-events: none;
-}
-
-.canvas-top .canvas-hint {
-  position: static;
 }
 
 .canvas-hint {
-  position: absolute;
-  top: 54px;
-  left: 10px;
   padding: 4px 10px;
-  border-radius: 6px;
+  border-radius: 2px;
   background: var(--copper-wash);
   color: var(--text);
-  pointer-events: none;
-}
-
-.canvas-tools {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  max-width: calc(100% - 20px);
-  flex-wrap: wrap;
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  padding: 4px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgb(255 255 255 / 92%);
-}
-
-.canvas-tools label {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  padding-left: 6px;
-  color: var(--muted);
-}
-
-.canvas-tools select,
-.canvas-tools button {
-  height: 26px;
-  white-space: nowrap;
-}
-
-.tool-divider {
-  width: 1px;
-  height: 18px;
-  background: var(--line);
 }
 
 .canvas-status {
@@ -304,7 +255,7 @@ input:disabled {
   gap: 4px;
   padding: 6px;
   border: 1px solid var(--copper);
-  border-radius: 8px;
+  border-radius: 2px;
   background: var(--panel);
 }
 
@@ -317,12 +268,6 @@ input:disabled {
   max-width: 220px;
   color: var(--copper-strong);
   font-size: 12px;
-}
-
-.canvas-tools button.active {
-  border-color: var(--copper);
-  background: var(--copper-wash);
-  color: var(--text);
 }
 
 .empty {
@@ -376,7 +321,7 @@ ul {
   width: 100%;
   height: 28px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 2px;
   background: transparent;
   border-left: 2px solid transparent;
 }
@@ -419,7 +364,7 @@ ul {
   gap: 6px;
   min-height: 28px;
   padding: 0 4px 0 6px;
-  border-radius: 6px;
+  border-radius: 2px;
 }
 
 .connections li.selected {
@@ -563,7 +508,7 @@ ul {
   align-items: center;
   gap: 8px;
   padding: 6px;
-  border-radius: 6px;
+  border-radius: 2px;
 }
 
 .library-item:hover {
@@ -597,13 +542,13 @@ ul {
 
 .chip-button {
   height: 26px;
-  border-radius: 13px;
+  border-radius: 2px;
 }
 
 .badge {
   flex: none;
   padding: 1px 7px;
-  border-radius: 10px;
+  border-radius: 2px;
   font-size: 11px;
   border: 1px solid currentColor;
 }
@@ -710,7 +655,7 @@ ul {
   padding: 10px 14px;
   border: 1px solid var(--line);
   border-left: 3px solid var(--copper);
-  border-radius: 8px;
+  border-radius: 2px;
   background: var(--raised);
   box-shadow: 0 4px 12px rgb(0 0 0 / 20%);
   cursor: pointer;

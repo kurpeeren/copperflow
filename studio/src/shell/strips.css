@@ -1,21 +1,4 @@
-/* The vertical tab strips at the window's edges and the Project Design panel's sub-tabs. */
-/* One flex row: strip, panel, canvas, panel, strip. A collapsed panel is display:none and drops out, so the
-   canvas (flex: 1) always fills what the strips and open panels leave. */
-.workspace {
-  display: flex;
-}
-
-.workspace > .center {
-  flex: 1 1 0;
-  min-width: 0;
-}
-
-.side-strip,
-.panel.left,
-.panel.right {
-  flex: none;
-}
-
+/* The vertical tab strips at the window's edges, the side panels' widths and the Project Design panel's sub-tabs. */
 .side-strip {
   display: flex;
   flex-direction: column;
@@ -34,7 +17,10 @@
 
 .side-tab {
   position: relative;
+  flex: none;
   width: 24px;
+  /* As tall as its label: the global button rule would make it a 24px square and the rotated text would overflow it. */
+  height: auto;
   padding: 8px 0;
   border: 0;
   border-radius: 0;
@@ -47,6 +33,11 @@
 
 .side-tab:hover {
   color: var(--text);
+}
+
+/* Drawn inside the tab, because the strip clips what sticks out of it. */
+.side-tab:focus-visible {
+  outline-offset: -2px;
 }
 
 .side-tab.on {
@@ -146,16 +137,6 @@
 }
 
 @media (max-width: 960px) {
-  .workspace {
-    flex-direction: column;
-    overflow-y: auto;
-  }
-
-  .workspace > .center {
-    flex: none;
-    min-height: 320px;
-  }
-
   .panel.left,
   .panel.right {
     width: auto;
@@ -167,7 +148,6 @@
   .side-strip {
     display: none;
   }
-
 }
 
 /* The global button:hover would repaint these; keep the resting and on looks while hovered. */

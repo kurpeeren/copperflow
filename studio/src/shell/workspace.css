@@ -1,0 +1,35 @@
+/* The workspace under the toolbar: one flex row of strip, panel, centre column, panel and strip. A collapsed panel
+   is display:none and drops out, so the centre column (flex: 1) always fills what the strips and open panels leave.
+   The centre column stacks the document tabs, the canvas and the bottom panel. */
+.workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.side-strip,
+.panel.left,
+.panel.right {
+  flex: none;
+}
+
+.workspace > .center {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+@media (max-width: 960px) {
+  .workspace {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .workspace > .center {
+    order: -1;
+    flex: none;
+    min-height: 320px;
+  }
+}

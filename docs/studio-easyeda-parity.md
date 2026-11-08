@@ -41,7 +41,7 @@ The look is matched by layout, sizes and colours. No EasyEDA code, icons, logos,
 | error | `#f5222d` | |
 | warning | `#faad14` | |
 
-Corners are square or 2px. There are no drop shadows except on menus and dialogs.
+Corners are square or 2px. There are no drop shadows except on menus, dialogs and the toast.
 
 ## 3. Menu bar
 

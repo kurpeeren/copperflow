@@ -18,6 +18,7 @@ import { Toolbar } from "./shell/ToolbarRow"
 import { useAppCommands } from "./shell/use-app-commands"
 import { useChecks } from "./use-checks"
 import { useWorkspace } from "./use-workspace"
+import "./shell/workspace.css"
 
 /** Every action reports failures itself and resolves to whether it succeeded. */
 export interface Actions {
