@@ -11,7 +11,7 @@ import { StudioDialog, type DialogName } from "./shell/Dialogs"
 import { MenuBar } from "./shell/MenuBar"
 import { buildPageTree, type DocView } from "./shell/page-tree"
 import { SideStrip } from "./shell/SideStrip"
-import type { LeftStrip } from "./shell/strip-state"
+import type { LeftStrip, RightStrip } from "./shell/strip-state"
 import { Toolbar } from "./shell/ToolbarRow"
 import { useAppCommands } from "./shell/use-app-commands"
 import { useChecks } from "./use-checks"
@@ -34,7 +34,7 @@ const LEFT_STRIP: ReadonlyArray<{ id: LeftStrip; label: string }> = [
   { id: "design", label: "Project Design" },
   { id: "library", label: "Common Library" },
 ]
-const RIGHT_STRIP = [{ id: "properties", label: "Properties" }]
+const RIGHT_STRIP: ReadonlyArray<{ id: RightStrip; label: string }> = [{ id: "properties", label: "Properties" }]
 
 /** Starting values for built-in parts, so a placed part has a value and a footprint at once. */
 const PLACE_DEFAULTS: Record<string, Record<string, string>> = {
@@ -291,7 +291,7 @@ export function App() {
             hidden={!workspace.rightOpen}
           />
         )}
-        <SideStrip side="right" tabs={RIGHT_STRIP} active="properties" open={workspace.rightOpen} onClick={workspace.clickRight} />
+        <SideStrip side="right" tabs={RIGHT_STRIP} active={workspace.right.active} open={workspace.right.open} onClick={workspace.clickRight} />
       </main>
       {message && (
         <div className="toast" role="status" onClick={() => setMessage(null)}>

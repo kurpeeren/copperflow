@@ -8,6 +8,10 @@ import {
   INITIAL_LEFT,
   clickLeftStrip,
   clickStrip,
+  toggleStripOpen,
+  INITIAL_RIGHT,
+  type RightStrip,
+  type StripState,
   showDesignSub,
   showLibrary,
   toggleLeftOpen,
@@ -23,7 +27,7 @@ const WORKSPACE_ACTIONS: ReadonlySet<KeyActionName> = new Set(["toggleLeftPanel"
 
 export function useWorkspace(view: View) {
   const [left, setLeft] = useState<LeftState>(INITIAL_LEFT)
-  const [rightOpen, setRightOpen] = useState(true)
+  const [right, setRight] = useState<StripState<RightStrip>>(INITIAL_RIGHT)
   /** The Checks panel under the canvas; it starts closed. */
   const [bottomOpen, setBottomOpen] = useState(false)
   const [focusSearch, setFocusSearch] = useState(false)
@@ -33,7 +37,7 @@ export function useWorkspace(view: View) {
   /** Runs one of the workspace's own actions, for a key or a menu item. */
   const run = useCallback((action: KeyActionName) => {
     if (action === "toggleLeftPanel") setLeft(toggleLeftOpen)
-    if (action === "toggleRightPanel") setRightOpen((open) => !open)
+    if (action === "toggleRightPanel") setRight(toggleStripOpen)
     if (action === "toggleBottomPanel") setBottomOpen((open) => !open)
     if (action === "toggleUnit") setUnit(nextUnit)
     if (action === "clearHighlight") setHighlight(null)
@@ -55,10 +59,10 @@ export function useWorkspace(view: View) {
   }, [view, run])
 
   const clickLeft = useCallback((strip: LeftStrip) => setLeft((state) => clickLeftStrip(state, strip)), [])
-  const clickRight = useCallback(() => setRightOpen((open) => clickStrip({ active: "properties", open }, "properties").open), [])
+  const clickRight = useCallback((tab: RightStrip) => setRight((state) => clickStrip(state, tab)), [])
   const showSub = useCallback((sub: DesignSub) => setLeft(showDesignSub(sub)), [])
 
   const toggleUnit = useCallback(() => setUnit(nextUnit), [])
   const searchFocused = useCallback(() => setFocusSearch(false), [])
-  return { left, leftOpen: left.open, rightOpen, bottomOpen, setBottomOpen, clickLeft, clickRight, showSub, focusSearch, searchFocused, unit, toggleUnit, highlight, setHighlight, run }
+  return { left, leftOpen: left.open, right, rightOpen: right.open, bottomOpen, setBottomOpen, clickLeft, clickRight, showSub, focusSearch, searchFocused, unit, toggleUnit, highlight, setHighlight, run }
 }

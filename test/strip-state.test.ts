@@ -6,6 +6,8 @@ import {
   showDesignSub,
   showLibrary,
   toggleLeftOpen,
+  toggleStripOpen,
+  INITIAL_RIGHT,
 } from "../studio/src/shell/strip-state.js"
 
 describe("strip toggle rule", () => {
@@ -48,5 +50,18 @@ describe("left panel state", () => {
     const closed = toggleLeftOpen({ ...INITIAL_LEFT, sub: "object" })
     expect(closed).toEqual({ strip: "design", sub: "object", open: false })
     expect(toggleLeftOpen(closed).open).toBe(true)
+  })
+})
+
+describe("right strip state", () => {
+  test("starts on Properties, open, and follows the same click rule", () => {
+    expect(INITIAL_RIGHT).toEqual({ active: "properties", open: true })
+    const closed = clickStrip(INITIAL_RIGHT, "properties")
+    expect(closed.open).toBe(false)
+    expect(clickStrip(closed, "properties").open).toBe(true)
+  })
+
+  test("] toggles the panel and keeps the active tab", () => {
+    expect(toggleStripOpen(INITIAL_RIGHT)).toEqual({ active: "properties", open: false })
   })
 })

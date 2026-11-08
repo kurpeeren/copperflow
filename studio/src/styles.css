@@ -197,7 +197,6 @@ input:disabled {
 
 .workspace {
   flex: 1;
-  display: grid;
   min-height: 0;
 }
 
@@ -813,22 +812,10 @@ ul {
 }
 
 @media (max-width: 960px) {
-  .workspace {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(320px, 1fr) auto auto;
-    overflow-y: auto;
-  }
-
   .canvas {
     min-height: 320px;
   }
 
-  .panel.left,
-  .panel.right {
-    border: 0;
-    border-top: 1px solid var(--line);
-    max-height: none;
-  }
 }
 
 .schematic-canvas .empty {

@@ -1,6 +1,19 @@
 /* The vertical tab strips at the window's edges and the Project Design panel's sub-tabs. */
+/* One flex row: strip, panel, canvas, panel, strip. A collapsed panel is display:none and drops out, so the
+   canvas (flex: 1) always fills what the strips and open panels leave. */
 .workspace {
-  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  display: flex;
+}
+
+.workspace > .center {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.side-strip,
+.panel.left,
+.panel.right {
+  flex: none;
 }
 
 .side-strip {
@@ -134,11 +147,19 @@
 
 @media (max-width: 960px) {
   .workspace {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .workspace > .center {
+    flex: none;
+    min-height: 320px;
   }
 
   .panel.left,
   .panel.right {
+    width: auto;
+    max-height: none;
     border: 0;
     border-top: 1px solid var(--line);
   }
@@ -147,8 +168,4 @@
     display: none;
   }
 
-  .panel.left,
-  .panel.right {
-    width: auto;
-  }
 }
