@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api, hasToken, subscribe, type BuildState, type CircuitData, type Edit, type HistoryListing, type PartsData } from "./api"
 import { ChecksPanel } from "./ChecksPanel"
-import { UndoIcon } from "./icons"
 import { Inspector } from "./Inspector"
 import { LeftPanel } from "./LeftPanel"
 import type { CanvasProps } from "./pcb/canvas-common"
@@ -220,9 +219,6 @@ export function App() {
           ))}
         </select>
         <StatusPill build={build} errors={checks.counts.errors} onOpen={openChecks} />
-        <button onClick={() => void actions.undo()} title="Undo the last change (Ctrl+Z)">
-          <UndoIcon /> Undo
-        </button>
       </MenuBar>
       <Toolbar view={tab} run={runCommand} />
       {dialog && <StudioDialog name={dialog} onClose={closeDialog} />}

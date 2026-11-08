@@ -1,39 +1,9 @@
-// The schematic toolbar's Place group (Net label, GND, VCC) and the small name input that opens at a pin.
+// The hint while a Place tool is armed and the small name input that opens at a pin.
 import { useState } from "react"
 import { worldToScreen, type Camera, type Size } from "./geometry"
-import type { LabelTool } from "./label-palette"
 import type { useLabelPalette } from "./use-label-palette"
 
 type Palette = ReturnType<typeof useLabelPalette>
-
-const TOOLS: { tool: LabelTool; label: string; title: string }[] = [
-  { tool: "label", label: "Net label", title: "Place a net label on a pin (Alt+N). Tab names it before you click." },
-  { tool: "gnd", label: "GND", title: "Place a ground symbol on a pin" },
-  { tool: "vcc", label: "VCC", title: "Place a power symbol on a pin. Tab to give it another name, such as V3_3." },
-]
-
-/** Choosing a tool arms it; choosing the armed tool again puts it away. */
-export function PaletteButtons({ palette }: { palette: Palette }) {
-  return (
-    <>
-      <span className="tool-divider" aria-hidden="true" />
-      {TOOLS.map(({ tool, label, title }) => (
-        <button
-          key={tool}
-          className={palette.tool === tool ? "active" : ""}
-          aria-pressed={palette.tool === tool}
-          title={title}
-          onClick={() => {
-            if (palette.tool === tool) palette.disarm()
-            else palette.arm(tool)
-          }}
-        >
-          {label}
-        </button>
-      ))}
-    </>
-  )
-}
 
 /** The hint under the toolbar while a tool is armed. */
 export function paletteHint(palette: Palette): string | undefined {

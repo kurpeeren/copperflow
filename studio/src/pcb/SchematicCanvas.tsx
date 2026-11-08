@@ -170,19 +170,18 @@ function useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNet
 
 /** Tells the toolbar which tool is armed, and how to put it away. */
 function useArmedTool(wire: WireTool, palette: Palette): void {
-  const { wiring } = wire
+  const { wiring, cancel } = wire
   const { tool, disarm } = palette
-  const { toggleWiring } = wire
   const active = armedCommand(wiring, tool)
   useEffect(() => {
     setToolState({
       active,
       stop: () => {
         disarm()
-        if (wiring) toggleWiring()
+        cancel()
       },
     })
-  }, [active, wiring, disarm, toggleWiring])
+  }, [active, disarm, cancel])
   useEffect(() => clearToolState, [])
 }
 

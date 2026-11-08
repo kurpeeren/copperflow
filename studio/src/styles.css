@@ -261,11 +261,6 @@ input:disabled {
   pointer-events: none;
 }
 
-.canvas-top .canvas-tools {
-  position: static;
-  pointer-events: auto;
-}
-
 .canvas-top .canvas-hint {
   position: static;
 }

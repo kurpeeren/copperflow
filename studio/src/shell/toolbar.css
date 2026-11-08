@@ -1,5 +1,5 @@
 /* The toolbar under the menu bar: 24px icon buttons, and the open canvas's own tools at the right. */
-.toolbar {
+.studio-toolbar {
   display: flex;
   align-items: center;
   gap: 2px;

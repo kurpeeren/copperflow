@@ -18,7 +18,7 @@ interface Props {
 export function Toolbar({ view, run }: Props) {
   const tools = useToolState()
   return (
-    <div className="toolbar" role="toolbar" aria-label="Tools">
+    <div className="studio-toolbar" role="toolbar" aria-label="Tools">
       {toolbarGroups(view).map((group, i) => (
         <Fragment key={group[0]?.group}>
           {i > 0 && <span className="toolbar-separator" role="separator" aria-orientation="vertical" />}

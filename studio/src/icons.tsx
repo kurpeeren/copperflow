@@ -45,14 +45,6 @@ export const UndoIcon = (p: IconProps) => (
   </Icon>
 )
 
-export const WireIcon = (p: IconProps) => (
-  <Icon {...p}>
-    <circle cx="3.5" cy="12.5" r="1.5" />
-    <circle cx="12.5" cy="3.5" r="1.5" />
-    <path d="M5 12.5h3.5V3.5H11" />
-  </Icon>
-)
-
 export const CloseIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="m4.5 4.5 7 7M11.5 4.5l-7 7" />

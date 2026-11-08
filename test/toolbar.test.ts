@@ -52,6 +52,7 @@ describe("armed tools", () => {
     expect(clickAction("wire", { active: "wire", stop })).toBe("stop")
     expect(clickAction("wire", { active: "netLabel", stop })).toBe("run")
     expect(clickAction("fit", { active: null, stop: null })).toBe("run")
+    expect(clickAction("wire", { active: "wire", stop: null })).toBe("run")
   })
 
   test("the shared state is set and cleared", () => {
