@@ -271,6 +271,7 @@ export function App() {
               history={history}
               actions={actions}
               built={design !== undefined}
+              buildError={build.status === "failed" ? (build.error ?? "The build failed.") : undefined}
               rows={checks.rows}
               counts={checks.counts}
               active={checks.active}
@@ -293,7 +294,7 @@ export function App() {
         )}
         <SideStrip side="right" tabs={RIGHT_STRIP} active={workspace.right.active} open={workspace.right.open} onClick={workspace.clickRight} />
       </main>
-      <BottomStrip state={workspace.bottom} onClick={workspace.clickBottomTab} />
+      <BottomStrip state={workspace.bottom} onClick={workspace.clickBottomTab} onOpen={workspace.openBottom} />
       {message && (
         <div className="toast" role="status" onClick={() => setMessage(null)}>
           {message}

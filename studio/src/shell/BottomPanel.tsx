@@ -4,6 +4,7 @@ import { ChecksPanel } from "../ChecksPanel"
 import type { CheckCounts, CheckRow } from "../checks-list"
 import { HistoryList } from "../HistoryList"
 import { Library } from "../Library"
+import { blursAfterClick } from "../checks-panel-state"
 import { blurButton } from "../pcb/CanvasTools"
 import type { BottomTab } from "./bottom-state"
 import "./bottom.css"
@@ -15,6 +16,8 @@ interface Props {
   history: HistoryListing[]
   actions: Actions
   built: boolean
+  /** Why the build failed, when it did and no design exists yet. */
+  buildError?: string
   rows: readonly CheckRow[]
   counts: CheckCounts
   active: string | null
@@ -24,7 +27,7 @@ interface Props {
 /** The open bottom panel: the content of the chosen tab, above the strip. */
 export function BottomPanel(props: Props) {
   return (
-    <div className="bottom-panel" onClick={blurButton}>
+    <div className="bottom-panel" onClick={(event) => blursAfterClick(event) && blurButton(event)}>
       <Content {...props} />
     </div>
   )
@@ -47,7 +50,7 @@ function Content(props: Props) {
         </div>
       )
     case "drc":
-      if (!props.built) return <p className="note bottom-note">Building the circuit…</p>
+      if (!props.built) return <p className="note bottom-note">{props.buildError ?? "Building the circuit…"}</p>
       return <ChecksPanel rows={props.rows} counts={props.counts} active={props.active} onPick={props.onPick} />
     case "find":
       return <p className="note bottom-note">Press Ctrl+F to find a part or a net.</p>

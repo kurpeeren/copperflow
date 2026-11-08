@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { BOTTOM_TABS, INITIAL_BOTTOM, clickBottom, openBottomTab, toggleBottom } from "../studio/src/shell/bottom-state.js"
+import { BOTTOM_TABS, INITIAL_BOTTOM, bottomTabAfterKey, clickBottom, openBottomTab, toggleBottom } from "../studio/src/shell/bottom-state.js"
 
 describe("bottom panel state", () => {
   test("starts closed on the DRC tab", () => {
@@ -36,5 +36,24 @@ describe("bottom panel state", () => {
     expect(openBottomTab(INITIAL_BOTTOM, "drc")).toEqual({ open: true, tab: "drc" })
     expect(openBottomTab({ open: true, tab: "drc" }, "drc")).toEqual({ open: true, tab: "drc" })
     expect(openBottomTab({ open: true, tab: "log" }, "drc")).toEqual({ open: true, tab: "drc" })
+  })
+})
+
+describe("bottom tab keys", () => {
+  test("arrows wrap around, Home and End jump to the ends, other keys do nothing", () => {
+    expect(bottomTabAfterKey("ArrowRight", "log")).toBe("drc")
+    expect(bottomTabAfterKey("ArrowRight", "find")).toBe("library")
+    expect(bottomTabAfterKey("ArrowLeft", "library")).toBe("find")
+    expect(bottomTabAfterKey("Home", "drc")).toBe("library")
+    expect(bottomTabAfterKey("End", "drc")).toBe("find")
+    expect(bottomTabAfterKey("a", "drc")).toBeNull()
+  })
+})
+
+describe("bottom panel focus", () => {
+  test("a pointer click blurs the button; Enter or Space on a check row keeps focus", async () => {
+    const { blursAfterClick } = await import("../studio/src/checks-panel-state.js")
+    expect(blursAfterClick({ detail: 1 })).toBe(true)
+    expect(blursAfterClick({ detail: 0 })).toBe(false)
   })
 })
