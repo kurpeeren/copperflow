@@ -1,0 +1,78 @@
+/* The bottom tab strip across the window and the 240px panel it opens above the canvas. */
+.bottom-strip {
+  display: flex;
+  flex: none;
+  height: 24px;
+  box-sizing: border-box;
+  overflow: hidden;
+  border-top: 1px solid var(--line);
+  background: var(--strip);
+}
+
+.bottom-tab {
+  position: relative;
+  flex: none;
+  height: 23px;
+  padding: 0 12px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--tab);
+  color: var(--muted);
+}
+
+.bottom-tab-label {
+  display: block;
+  white-space: nowrap;
+}
+
+.bottom-tab.on {
+  background: var(--panel);
+  color: var(--text);
+}
+
+.bottom-tab.on::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 2px;
+  background: var(--copper);
+}
+
+button.bottom-tab:hover:not(:disabled) {
+  background: var(--raised);
+}
+
+button.bottom-tab.on:hover:not(:disabled) {
+  background: var(--panel);
+}
+
+.bottom-tab:focus-visible {
+  outline-offset: -2px;
+}
+
+.bottom-panel {
+  display: flex;
+  flex-direction: column;
+  height: 240px;
+  min-height: 0;
+  box-sizing: border-box;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.bottom-panel > .checks {
+  flex: 1;
+  min-height: 0;
+}
+
+.bottom-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 12px;
+}
+
+.bottom-note {
+  margin: 12px;
+}

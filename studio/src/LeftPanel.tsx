@@ -1,5 +1,5 @@
 import { useState } from "react"
-import type { CircuitData, Design, HistoryListing, PartsData, TraceInfo } from "./api"
+import type { CircuitData, Design, PartsData, TraceInfo } from "./api"
 import { Library } from "./Library"
 import { NetsList } from "./NetsList"
 import { blurButton } from "./pcb/CanvasTools"
@@ -8,11 +8,10 @@ import { PageTree } from "./shell/PageTree"
 import type { PageTree as PageTreeData, DocView } from "./shell/page-tree"
 import type { DesignSub, LeftState } from "./shell/strip-state"
 import { partsInSelector } from "../../src/core/selectors.js"
-import { CloseIcon, LockIcon, UndoIcon } from "./icons"
+import { CloseIcon, LockIcon } from "./icons"
 
 interface Props {
   circuit: CircuitData
-  history: HistoryListing[]
   parts: PartsData
   onPlace(part: string): void
   selected: string | null
@@ -32,7 +31,7 @@ interface Props {
   hidden: boolean
 }
 
-const SUB_NAMES: Record<DesignSub, string> = { page: "Page", net: "Net", component: "Component", object: "Object", history: "History" }
+const SUB_NAMES: Record<DesignSub, string> = { page: "Page", net: "Net", component: "Component", object: "Object" }
 
 /** Project Design (Page, Net, Component, Object) or Common Library, depending on the strip. */
 export function LeftPanel(props: Props) {
@@ -66,8 +65,6 @@ function DesignBody(props: Props) {
       return <PartsTree {...props} />
     case "object":
       return <Connections {...props} />
-    case "history":
-      return <History history={props.history} actions={props.actions} />
   }
 }
 
@@ -178,23 +175,4 @@ function Connections({ circuit, selected, actions }: Props) {
 export function touches(trace: TraceInfo, part: string | null): boolean {
   if (!part) return false
   return [trace.from, trace.to].some((end) => end !== undefined && partsInSelector(end).includes(part))
-}
-
-function History({ history, actions }: { history: HistoryListing[]; actions: Actions }) {
-  if (history.length === 0) return <p className="note">Changes from you and the agent appear here.</p>
-  return (
-    <ul className="history">
-      {history.map((entry) => (
-        <li key={entry.id} className={entry.undone ? "undone" : ""}>
-          <span className={`who ${entry.author}`}>{entry.author === "ai" ? "Agent" : "You"}</span>
-          <span className="what">{entry.summary}</span>
-          {!entry.undone && !entry.undoOf && (
-            <button className="icon" aria-label={`Undo ${entry.summary}`} onClick={() => void actions.undo(entry.id)}>
-              <UndoIcon />
-            </button>
-          )}
-        </li>
-      ))}
-    </ul>
-  )
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api, hasToken, subscribe, type BuildState, type CircuitData, type Edit, type HistoryListing, type PartsData } from "./api"
-import { ChecksPanel } from "./ChecksPanel"
+import { BottomPanel } from "./shell/BottomPanel"
+import { BottomStrip } from "./shell/BottomStrip"
 import { DocTabs } from "./shell/DocTabs"
 import { Inspector } from "./Inspector"
 import { LeftPanel } from "./LeftPanel"
@@ -59,9 +60,8 @@ export function App() {
   const [message, setMessage] = useState<string | null>(null)
   const [parts, setParts] = useState<PartsData>({ library: [], builtin: [] })
   const workspace = useWorkspace(tab)
-  const { setHighlight, setBottomOpen } = workspace
-  const openChecks = useCallback(() => setBottomOpen(true), [setBottomOpen])
-  const closeChecks = useCallback(() => setBottomOpen(false), [setBottomOpen])
+  const { setHighlight, openBottom } = workspace
+  const openChecks = useCallback(() => openBottom("drc"), [openBottom])
   const checks = useChecks({ file, build, onTab: setTab, onSelect: setSelected, onOpen: openChecks })
 
   const notify = useCallback((text: string) => {
@@ -239,7 +239,6 @@ export function App() {
         {circuit && (
           <LeftPanel
             circuit={circuit}
-            history={history}
             parts={parts}
             onPlace={(part) => void place(part)}
             selected={selected}
@@ -264,8 +263,19 @@ export function App() {
             {canvas && tab === "pcb" && <PcbCanvas key={file} {...canvas} markers={checks.markers.pcb} />}
             {canvas && tab === "schematic" && <SchematicCanvas key={file} {...canvas} markers={checks.markers.schematic} />}
           </section>
-          {workspace.bottomOpen && design && (
-            <ChecksPanel rows={checks.rows} counts={checks.counts} active={checks.active} onPick={checks.pick} onClose={closeChecks} />
+          {workspace.bottom.open && (
+            <BottomPanel
+              tab={workspace.bottom.tab}
+              parts={parts}
+              onPlace={(part) => void place(part)}
+              history={history}
+              actions={actions}
+              built={design !== undefined}
+              rows={checks.rows}
+              counts={checks.counts}
+              active={checks.active}
+              onPick={checks.pick}
+            />
           )}
         </div>
         {circuit && (
@@ -283,6 +293,7 @@ export function App() {
         )}
         <SideStrip side="right" tabs={RIGHT_STRIP} active={workspace.right.active} open={workspace.right.open} onClick={workspace.clickRight} />
       </main>
+      <BottomStrip state={workspace.bottom} onClick={workspace.clickBottomTab} />
       {message && (
         <div className="toast" role="status" onClick={() => setMessage(null)}>
           {message}

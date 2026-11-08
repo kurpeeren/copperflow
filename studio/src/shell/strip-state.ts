@@ -1,8 +1,8 @@
 // The vertical tab strips and the left panel's tab state, as plain functions so they can be tested without a DOM.
 
 export type LeftStrip = "design" | "library"
-/** The sub-tabs of Project Design. History is temporary here until the bottom panel's Log tab takes it over. */
-export type DesignSub = "page" | "net" | "component" | "object" | "history"
+/** The sub-tabs of Project Design. */
+export type DesignSub = "page" | "net" | "component" | "object"
 
 export interface LeftState {
   strip: LeftStrip

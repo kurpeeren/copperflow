@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { keyAction, keyInput, type KeyActionName } from "./pcb/canvas-keys"
 import type { View } from "./pcb/positions"
+import { INITIAL_BOTTOM, clickBottom, openBottomTab, toggleBottom, type BottomState, type BottomTab } from "./shell/bottom-state"
 import { nextUnit, type Unit } from "./pcb/units"
 import {
   INITIAL_LEFT,
@@ -28,8 +29,8 @@ const WORKSPACE_ACTIONS: ReadonlySet<KeyActionName> = new Set(["toggleLeftPanel"
 export function useWorkspace(view: View) {
   const [left, setLeft] = useState<LeftState>(INITIAL_LEFT)
   const [right, setRight] = useState<StripState<RightStrip>>(INITIAL_RIGHT)
-  /** The Checks panel under the canvas; it starts closed. */
-  const [bottomOpen, setBottomOpen] = useState(false)
+  /** The bottom tab strip and the panel above it; the panel starts closed. */
+  const [bottom, setBottom] = useState<BottomState>(INITIAL_BOTTOM)
   const [focusSearch, setFocusSearch] = useState(false)
   const [unit, setUnit] = useState<Unit>("mm")
   const [highlight, setHighlight] = useState<string | null>(null)
@@ -38,7 +39,7 @@ export function useWorkspace(view: View) {
   const run = useCallback((action: KeyActionName) => {
     if (action === "toggleLeftPanel") setLeft(toggleLeftOpen)
     if (action === "toggleRightPanel") setRight(toggleStripOpen)
-    if (action === "toggleBottomPanel") setBottomOpen((open) => !open)
+    if (action === "toggleBottomPanel") setBottom(toggleBottom)
     if (action === "toggleUnit") setUnit(nextUnit)
     if (action === "clearHighlight") setHighlight(null)
     if (action === "openLibrary") {
@@ -60,9 +61,11 @@ export function useWorkspace(view: View) {
 
   const clickLeft = useCallback((strip: LeftStrip) => setLeft((state) => clickLeftStrip(state, strip)), [])
   const clickRight = useCallback((tab: RightStrip) => setRight((state) => clickStrip(state, tab)), [])
+  const clickBottomTab = useCallback((tab: BottomTab) => setBottom((state) => clickBottom(state, tab)), [])
+  const openBottom = useCallback((tab: BottomTab) => setBottom((state) => openBottomTab(state, tab)), [])
   const showSub = useCallback((sub: DesignSub) => setLeft(showDesignSub(sub)), [])
 
   const toggleUnit = useCallback(() => setUnit(nextUnit), [])
   const searchFocused = useCallback(() => setFocusSearch(false), [])
-  return { left, leftOpen: left.open, right, rightOpen: right.open, bottomOpen, setBottomOpen, clickLeft, clickRight, showSub, focusSearch, searchFocused, unit, toggleUnit, highlight, setHighlight, run }
+  return { left, leftOpen: left.open, right, rightOpen: right.open, bottom, clickBottomTab, openBottom, clickLeft, clickRight, showSub, focusSearch, searchFocused, unit, toggleUnit, highlight, setHighlight, run }
 }

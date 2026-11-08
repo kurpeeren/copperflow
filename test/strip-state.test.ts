@@ -38,8 +38,8 @@ describe("left panel state", () => {
   })
 
   test("showing a sub-tab goes to Project Design and opens the panel", () => {
-    const state = showDesignSub("history")
-    expect(state).toEqual({ strip: "design", sub: "history", open: true })
+    const state = showDesignSub("component")
+    expect(state).toEqual({ strip: "design", sub: "component", open: true })
   })
 
   test("Shift+F opens Common Library even from a collapsed panel", () => {
