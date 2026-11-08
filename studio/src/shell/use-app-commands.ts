@@ -6,7 +6,7 @@ import { bomCsv, bomFileName } from "./bom-csv"
 import type { Actions } from "../App"
 import { keyAction, keyInput, type KeyActionName } from "../pcb/canvas-keys"
 import type { View } from "../pcb/positions"
-import type { LeftTab } from "../use-workspace"
+import type { DesignSub } from "../use-workspace"
 import { send } from "./commands"
 import type { DialogName } from "./Dialogs"
 import type { CommandId } from "./menus"
@@ -30,7 +30,7 @@ interface Input {
   setView(view: View): void
   selected: string | null
   actions: Actions
-  workspace: { run(action: KeyActionName): void; showLeftTab(tab: LeftTab): void }
+  workspace: { run(action: KeyActionName): void; showSub(sub: DesignSub): void }
   openChecks(): void
   openDialog(name: DialogName): void
 }
@@ -74,7 +74,7 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     checkDrc: input.openChecks,
     lock: () => lockSelected(input, true),
     unlock: () => lockSelected(input, false),
-    history: () => input.workspace.showLeftTab("history"),
+    history: () => input.workspace.showSub("history"),
     keys: () => input.openDialog("keys"),
     about: () => input.openDialog("about"),
   }

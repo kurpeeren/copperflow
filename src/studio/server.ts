@@ -1,7 +1,7 @@
 import { randomBytes, timingSafeEqual } from "node:crypto"
 import { readFile, stat } from "node:fs/promises"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
-import { extname, resolve } from "node:path"
+import { basename, extname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { z, ZodError } from "zod"
 import {
@@ -185,6 +185,8 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         return openEvents(res)
       case "GET /api/circuits":
         return send(res, await listCircuits(root))
+      case "GET /api/project":
+        return send(res, { name: basename(root) })
       case "GET /api/circuit": {
         const { model, annotations, violations, file: name } = await loadCircuit(root, query("file"))
         return send(res, { file: name, model, annotations, violations })

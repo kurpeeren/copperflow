@@ -4,7 +4,9 @@ import { Library } from "./Library"
 import { NetsList } from "./NetsList"
 import { blurButton } from "./pcb/CanvasTools"
 import type { Actions } from "./App"
-import type { LeftTab } from "./use-workspace"
+import { PageTree } from "./shell/PageTree"
+import type { PageTree as PageTreeData, DocView } from "./shell/page-tree"
+import type { DesignSub, LeftState } from "./shell/strip-state"
 import { partsInSelector } from "../../src/core/selectors.js"
 import { CloseIcon, LockIcon, UndoIcon } from "./icons"
 
@@ -18,8 +20,10 @@ interface Props {
   actions: Actions
   /** The built design, for the Nets tab. */
   design: Design | undefined
-  tab: LeftTab
-  onTab(tab: LeftTab): void
+  left: LeftState
+  onSub(sub: DesignSub): void
+  pageTree: PageTreeData
+  onOpenDocument(file: string, view: DocView): void
   /** Shift+F asked for the Library search field. */
   focusSearch: boolean
   onSearchFocused(): void
@@ -28,29 +32,43 @@ interface Props {
   hidden: boolean
 }
 
-const TAB_NAMES: Record<LeftTab, string> = { parts: "Parts", library: "Library", nets: "Nets", connections: "Wires", history: "History" }
+const SUB_NAMES: Record<DesignSub, string> = { page: "Page", net: "Net", component: "Component", object: "Object", history: "History" }
 
-/** The object tree: parts grouped by kind, every net and connection, and the change history. */
+/** Project Design (Page, Net, Component, Object) or Common Library, depending on the strip. */
 export function LeftPanel(props: Props) {
-  const { tab, onTab } = props
+  const { left, onSub } = props
   return (
     <aside className="panel left" hidden={props.hidden} onClick={blurButton}>
-      <div className="tabs" role="tablist">
-        {(Object.keys(TAB_NAMES) as LeftTab[]).map((t) => (
-          <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => onTab(t)}>
-            {TAB_NAMES[t]}
-          </button>
-        ))}
-      </div>
+      {left.strip === "design" && (
+        <div className="sub-tabs" role="tablist">
+          {(Object.keys(SUB_NAMES) as DesignSub[]).map((t) => (
+            <button key={t} role="tab" aria-selected={left.sub === t} className={`sub-tab${left.sub === t ? " on" : ""}`} onClick={() => onSub(t)}>
+              {SUB_NAMES[t]}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="panel-body">
-        {tab === "parts" && <PartsTree {...props} />}
-        {tab === "library" && <Library parts={props.parts} onPlace={props.onPlace} focus={props.focusSearch} onFocused={props.onSearchFocused} />}
-        {tab === "nets" && <NetsList design={props.design} highlight={props.highlight} onHighlight={props.onHighlight} />}
-        {tab === "connections" && <Connections {...props} />}
-        {tab === "history" && <History history={props.history} actions={props.actions} />}
+        {left.strip === "library" && <Library parts={props.parts} onPlace={props.onPlace} focus={props.focusSearch} onFocused={props.onSearchFocused} />}
+        {left.strip === "design" && <DesignBody {...props} />}
       </div>
     </aside>
   )
+}
+
+function DesignBody(props: Props) {
+  switch (props.left.sub) {
+    case "page":
+      return <PageTree tree={props.pageTree} onOpen={props.onOpenDocument} />
+    case "net":
+      return <NetsList design={props.design} highlight={props.highlight} onHighlight={props.onHighlight} />
+    case "component":
+      return <PartsTree {...props} />
+    case "object":
+      return <Connections {...props} />
+    case "history":
+      return <History history={props.history} actions={props.actions} />
+  }
 }
 
 function PartsTree({ circuit, parts: library, selected, onSelect }: Props) {

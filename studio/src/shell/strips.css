@@ -1,0 +1,154 @@
+/* The vertical tab strips at the window's edges and the Project Design panel's sub-tabs. */
+.workspace {
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+}
+
+.side-strip {
+  display: flex;
+  flex-direction: column;
+  width: 24px;
+  background: var(--strip);
+  overflow: hidden;
+}
+
+.side-strip.left {
+  border-right: 1px solid var(--line);
+}
+
+.side-strip.right {
+  border-left: 1px solid var(--line);
+}
+
+.side-tab {
+  position: relative;
+  width: 24px;
+  padding: 8px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  writing-mode: vertical-rl;
+  white-space: nowrap;
+  justify-content: center;
+}
+
+.side-tab:hover {
+  color: var(--text);
+}
+
+.side-tab.on {
+  background: var(--panel);
+  color: var(--text);
+}
+
+.side-tab.on::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--copper);
+}
+
+.side-strip.left .side-tab.on::before {
+  left: 0;
+}
+
+.side-strip.right .side-tab.on::before {
+  right: 0;
+}
+
+.panel.left {
+  width: 231px;
+  border-right: 1px solid var(--line);
+}
+
+.panel.right {
+  width: 262px;
+  border-left: 1px solid var(--line);
+}
+
+.sub-tabs {
+  display: flex;
+  height: 24px;
+  flex: none;
+  background: var(--strip);
+  border-bottom: 1px solid var(--line);
+}
+
+.sub-tab {
+  flex: 1 1 auto;
+  height: 24px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  justify-content: center;
+}
+
+.sub-tab.on {
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--copper);
+}
+
+.page-tree {
+  font-size: 12px;
+}
+
+.page-tree .tree-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 24px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  justify-content: flex-start;
+}
+
+.page-tree .tree-row.project {
+  font-weight: 600;
+}
+
+.page-tree .tree-row.file {
+  padding-left: 12px;
+  color: var(--muted);
+}
+
+.page-tree .tree-row.doc {
+  padding-left: 28px;
+}
+
+.page-tree .tree-row.doc:hover {
+  background: var(--raised);
+}
+
+.page-tree .tree-row.doc.active {
+  background: var(--copper-wash);
+  color: var(--copper-strong);
+}
+
+@media (max-width: 960px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .panel.left,
+  .panel.right {
+    border: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .side-strip {
+    display: none;
+  }
+
+  .panel.left,
+  .panel.right {
+    width: auto;
+  }
+}

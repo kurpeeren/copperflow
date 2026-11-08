@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { request } from "node:http"
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { basename, join } from "node:path"
 import { resolveCircuit } from "../src/core/workspace.js"
 import { buildDesign } from "../src/engine/design.js"
 import { FOOTPRINT_FILE } from "../src/engine/engine.js"
@@ -130,6 +130,11 @@ describe("editing", () => {
     const circuit = await data(await api(`/api/circuit?file=${FILE}`))
     expect(circuit.model.parts.map((p: { name: string }) => p.name)).toContain("R1")
     expect(circuit.violations).toEqual([])
+  })
+
+  test("names the project folder", async () => {
+    const { name } = await data(await api("/api/project"))
+    expect(name).toBe(basename(root))
   })
 
   test("edits are written to the file as the human", async () => {

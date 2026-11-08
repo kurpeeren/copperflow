@@ -9,6 +9,9 @@ import { SchematicCanvas } from "./pcb/SchematicCanvas"
 import { remapHighlight } from "./pcb/highlight"
 import { StudioDialog, type DialogName } from "./shell/Dialogs"
 import { MenuBar } from "./shell/MenuBar"
+import { buildPageTree, type DocView } from "./shell/page-tree"
+import { SideStrip } from "./shell/SideStrip"
+import type { LeftStrip } from "./shell/strip-state"
 import { Toolbar } from "./shell/ToolbarRow"
 import { useAppCommands } from "./shell/use-app-commands"
 import { useChecks } from "./use-checks"
@@ -27,6 +30,12 @@ export interface Actions {
 
 type Tab = "pcb" | "schematic"
 
+const LEFT_STRIP: ReadonlyArray<{ id: LeftStrip; label: string }> = [
+  { id: "design", label: "Project Design" },
+  { id: "library", label: "Common Library" },
+]
+const RIGHT_STRIP = [{ id: "properties", label: "Properties" }]
+
 /** Starting values for built-in parts, so a placed part has a value and a footprint at once. */
 const PLACE_DEFAULTS: Record<string, Record<string, string>> = {
   resistor: { resistance: "10k", footprint: "0402" },
@@ -39,6 +48,7 @@ const PLACE_DEFAULTS: Record<string, Record<string, string>> = {
 
 export function App() {
   const [files, setFiles] = useState<string[]>([])
+  const [project, setProject] = useState<string>()
   const [file, setFile] = useState<string>()
   const [circuit, setCircuit] = useState<CircuitData>()
   const [build, setBuild] = useState<BuildState>({ status: "idle" })
@@ -83,6 +93,9 @@ export function App() {
         setFiles(list)
         setFile((current) => current ?? list[0])
       })
+      .catch((error: Error) => notify(error.message))
+    api<{ name: string }>("/api/project")
+      .then((info) => setProject(info.name))
       .catch((error: Error) => notify(error.message))
     refreshParts().catch((error: Error) => notify(error.message))
   }, [notify, refreshParts])
@@ -163,6 +176,11 @@ export function App() {
 
   const [dialog, setDialog] = useState<DialogName | null>(null)
   const closeDialog = useCallback(() => setDialog(null), [])
+  const pageTree = useMemo(() => buildPageTree(project, files, file, tab), [project, files, file, tab])
+  const openDocument = useCallback((target: string, view: DocView) => {
+    setFile(target)
+    setTab(view)
+  }, [])
   const runCommand = useAppCommands({ file, view: tab, setView: setTab, selected, actions, workspace, openChecks, openDialog: setDialog })
 
   const design = build.design
@@ -227,7 +245,8 @@ export function App() {
           Locked parts changed outside the editor: {circuit.violations.map((v) => `${v.part} (${v.detail})`).join(", ")}
         </div>
       )}
-      <main className={`workspace${workspace.leftOpen ? "" : " no-left"}${workspace.rightOpen ? "" : " no-right"}`}>
+      <main className="workspace">
+        <SideStrip side="left" tabs={LEFT_STRIP} active={workspace.left.strip} open={workspace.left.open} onClick={workspace.clickLeft} />
         {circuit && (
           <LeftPanel
             circuit={circuit}
@@ -238,8 +257,10 @@ export function App() {
             onSelect={setSelected}
             actions={actions}
             design={design}
-            tab={workspace.leftTab}
-            onTab={workspace.setLeftTab}
+            left={workspace.left}
+            onSub={workspace.showSub}
+            pageTree={pageTree}
+            onOpenDocument={openDocument}
             focusSearch={workspace.focusSearch}
             onSearchFocused={workspace.searchFocused}
             highlight={workspace.highlight}
@@ -270,6 +291,7 @@ export function App() {
             hidden={!workspace.rightOpen}
           />
         )}
+        <SideStrip side="right" tabs={RIGHT_STRIP} active="properties" open={workspace.rightOpen} onClick={workspace.clickRight} />
       </main>
       {message && (
         <div className="toast" role="status" onClick={() => setMessage(null)}>
