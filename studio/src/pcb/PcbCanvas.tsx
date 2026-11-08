@@ -4,7 +4,6 @@ import type { WorldPad } from "../../../src/engine/pcb.js"
 import { keepAutoPlaced } from "./auto-placed"
 import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
 import { ViewTools } from "../shell/ViewTools"
-import { blurAfterPointerClick } from "../shell/focus"
 import { CanvasStatus, KeepButton, SnapSelect } from "./CanvasTools"
 import type { Layers } from "./ctx"
 import { hitTest, pointBounds, unionBoxes, type Camera, type PartBox, type Point, type Size } from "./geometry"
@@ -87,22 +86,20 @@ interface PcbToolsProps {
 function PcbTools({ unit, step, setStep, layers, setLayers, keep }: PcbToolsProps) {
   return (
     <ViewTools>
-      <div className="canvas-tools" onClick={blurAfterPointerClick}>
-        <SnapSelect step={step} onChange={setStep} unit={unit} />
-        <span className="tool-divider" aria-hidden="true" />
-        {LAYER_BUTTONS.map(([key, label]) => (
-          <button
-            key={key}
-            className={layers[key] ? "active" : ""}
-            aria-pressed={layers[key]}
-            onClick={() => setLayers({ ...layers, [key]: !layers[key] })}
-            title={`Show or hide ${label.toLowerCase()}`}
-          >
-            {label}
-          </button>
-        ))}
-        <KeepButton {...keep} title="Write the faded parts' positions into the code as pcbX and pcbY" />
-      </div>
+      <SnapSelect step={step} onChange={setStep} unit={unit} />
+      <span className="tool-divider" aria-hidden="true" />
+      {LAYER_BUTTONS.map(([key, label]) => (
+        <button
+          key={key}
+          className={layers[key] ? "active" : ""}
+          aria-pressed={layers[key]}
+          onClick={() => setLayers({ ...layers, [key]: !layers[key] })}
+          title={`Show or hide ${label.toLowerCase()}`}
+        >
+          {label}
+        </button>
+      ))}
+      <KeepButton {...keep} title="Write the faded parts' positions into the code as pcbX and pcbY" />
     </ViewTools>
   )
 }

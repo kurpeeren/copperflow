@@ -8,7 +8,6 @@ import { clearToolState, setToolState } from "../shell/tool-state"
 import { ViewTools } from "../shell/ViewTools"
 import { keepAutoPlaced } from "./auto-placed"
 import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
-import { blurAfterPointerClick } from "../shell/focus"
 import { CanvasStatus, KeepButton, SnapSelect } from "./CanvasTools"
 import { hitTest, unionBoxes, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import { highlightOf, schematicNetAt } from "./highlight"
@@ -18,7 +17,7 @@ import type { ViolationMarker } from "./markers"
 import { drawOutline, drawWirePreview } from "./overlays"
 import { drawSchematic } from "./schematic-draw"
 import { cursorFor, pointerHandlers, useCanvasGestures, type Gesture } from "./use-canvas-gestures"
-import { useDraggedLabel, useLabelDrag, type MovingLabel } from "./use-label-drag"
+import { useDraggedLabel, useLabelDrag, type LabelTools, type MovingLabel } from "./use-label-drag"
 import { useLabelPalette } from "./use-label-palette"
 import { usePartKeys } from "./use-part-keys"
 import { useWireTool } from "./use-wire-tool"
@@ -93,15 +92,74 @@ interface SheetToolsProps {
   keep: { show: boolean; onKeep(): void }
 }
 
-/** Snap and "Keep these positions", in the toolbar's right side. */
+/** Snap and "Keep these positions", in the toolbar's right side; rendered beside the sheet, not inside its pointer handlers. */
 function SheetTools({ step, setStep, keep }: SheetToolsProps) {
   return (
     <ViewTools>
-      <div className="canvas-tools" onPointerDown={(e) => e.stopPropagation()} onClick={blurAfterPointerClick}>
-        <SnapSelect step={step} onChange={setStep} unit={undefined} />
-        <KeepButton {...keep} title="Write the faded symbols' positions into the code as schX and schY" />
-      </div>
+      <SnapSelect step={step} onChange={setStep} unit={undefined} />
+      <KeepButton {...keep} title="Write the faded symbols' positions into the code as schX and schY" />
     </ViewTools>
+  )
+}
+
+/** The part or the net label under the pointer, and the wire tool's view of it. */
+function useSheetHover(boxes: PartBox[], wire: WireTool, labels: LabelTools) {
+  const [part, setPart] = useState<string>()
+  const [label, setLabel] = useState<NetLabel>()
+  const at = (world: Point) => {
+    wire.hover(world)
+    const hit = hitTest(boxes, world)?.name
+    setPart(hit)
+    setLabel(hit === undefined ? labels.at(world) : undefined)
+  }
+  const leave = () => {
+    setPart(undefined)
+    setLabel(undefined)
+    wire.leave()
+  }
+  return { part, label, at, leave }
+}
+
+interface SheetViewProps {
+  wrapRef: RefObject<HTMLDivElement | null>
+  canvasRef: RefObject<HTMLCanvasElement | null>
+  size: Size
+  camera: Camera | undefined
+  cursor: Point | undefined
+  pointer: ReturnType<typeof pointerHandlers>
+  /** The pointer left the sheet. */
+  onLeave(): void
+  cursorStyle: string
+  wire: WireTool
+  palette: Palette
+  gesture: Gesture | undefined
+  empty: boolean
+}
+
+/** The sheet's element: the canvas under the hint, the label name field and the status line. */
+function SheetView({ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave, cursorStyle, wire, palette, gesture, empty }: SheetViewProps) {
+  const hint = wireHint(wire) ?? paletteHint(palette)
+  return (
+    <div
+      className="schematic-canvas"
+      ref={wrapRef}
+      style={{ cursor: cursorStyle }}
+      {...pointer}
+      onPointerLeave={onLeave}
+      onContextMenu={(e) => e.preventDefault()}
+      role="img"
+      aria-label="Schematic. Drag symbols and net labels to move them, drag the background to pan, scroll to zoom. Click a free pin or press W over a pin to draw a wire."
+    >
+      <canvas ref={canvasRef} style={{ width: size.width, height: size.height }} />
+      {hint && (
+        <div className="canvas-top">
+          <div className="canvas-hint">{hint}</div>
+        </div>
+      )}
+      <NameInput palette={palette} camera={camera} size={size} />
+      <CanvasStatus cursor={cursor} zoom={(camera ?? EMPTY_SHEET_CAMERA).scale} detail={wire.under.end?.label} gesture={gesture} />
+      {empty && <p className="empty">This schematic has no parts yet.</p>}
+    </div>
   )
 }
 
@@ -196,8 +254,6 @@ export function SchematicCanvas({ design, buildId, builtFrom, circuit, actions, 
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const size = useElementSize(wrapRef)
-  const [hover, setHover] = useState<string>()
-  const [hoverLabel, setHoverLabel] = useState<NetLabel>()
   const [cursor, setCursor] = useState<Point>()
   const [step, setStep] = useState(0.5)
   const parts = usePlacedParts(design, "schematic", circuit)
@@ -210,45 +266,22 @@ export function SchematicCanvas({ design, buildId, builtFrom, circuit, actions, 
   const labels = useLabelDrag({ design, circuit, actions, builtFrom })
   const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom, labels: labels.tools })
   const highlight = useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNet, onHighlight, keys: { ...common, selected } })
+  const hover = useSheetHover(parts.boxes, wire, labels.tools)
   const { moving, gesture } = gestures
   const movingLabels = useMovingLabels(design, gesture, labels.pending)
-  useSheetPaint(canvasRef, { design, camera, size, wire, moving, boxes: parts.boxes, hover, selected, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel, palette, highlight, markers, activeViolation })
-  const hoverAt = (world: Point) => {
-    wire.hover(world)
-    const part = hitTest(parts.boxes, world)?.name
-    setHover(part)
-    setHoverLabel(part === undefined ? labels.tools.at(world) : undefined)
-  }
+  useSheetPaint(canvasRef, { design, camera, size, wire, moving, boxes: parts.boxes, hover: hover.part, selected, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel: hover.label, palette, highlight, markers, activeViolation })
   const press = (event: { button: number; shiftKey: boolean }, world: Point) => palette.press(event, world) || wire.press(event, world)
-  const pointer = pointerHandlers({ camera, size, element: wrapRef, gestures, setCursor, tool: press, hover: hoverAt })
-  const hint = wireHint(wire) ?? paletteHint(palette)
-
+  const pointer = pointerHandlers({ camera, size, element: wrapRef, gestures, setCursor, tool: press, hover: hover.at })
+  const cursorStyle = cursorFor(gesture, wire.drawing !== null || wire.overPin || palette.armed, hover.part !== undefined || hover.label !== undefined)
+  const onLeave = () => {
+    hover.leave()
+    setCursor(undefined)
+  }
+  // The toolbar's controls sit beside the sheet: inside it, their portal's events would reach the sheet's handlers.
   return (
-    <div
-      className="schematic-canvas"
-      ref={wrapRef}
-      style={{ cursor: cursorFor(gesture, wire.drawing !== null || wire.overPin || palette.armed, hover !== undefined || hoverLabel !== undefined) }}
-      {...pointer}
-      onPointerLeave={() => {
-        setHover(undefined)
-        setHoverLabel(undefined)
-        wire.leave()
-        setCursor(undefined)
-      }}
-      onContextMenu={(e) => e.preventDefault()}
-      role="img"
-      aria-label="Schematic. Drag symbols and net labels to move them, drag the background to pan, scroll to zoom. Click a free pin or press W over a pin to draw a wire."
-    >
-      <canvas ref={canvasRef} style={{ width: size.width, height: size.height }} />
+    <>
       <SheetTools step={step} setStep={setStep} keep={{ show: parts.autoPlaced, onKeep: () => keepAutoPlaced(design, "schematic", parts.blockerFor, actions) }} />
-      {hint && (
-        <div className="canvas-top">
-          <div className="canvas-hint">{hint}</div>
-        </div>
-      )}
-      <NameInput palette={palette} camera={camera} size={size} />
-      <CanvasStatus cursor={cursor} zoom={(camera ?? EMPTY_SHEET_CAMERA).scale} detail={wire.under.end?.label} gesture={gesture} />
-      {!bounds && <p className="empty">This schematic has no parts yet.</p>}
-    </div>
+      <SheetView {...{ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave, cursorStyle, wire, palette, gesture }} empty={!bounds} />
+    </>
   )
 }
