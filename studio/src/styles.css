@@ -130,28 +130,6 @@ input:disabled {
   height: 100%;
 }
 
-.views {
-  display: flex;
-  padding: 2px;
-  border: 1px solid var(--line);
-  border-radius: 2px;
-  background: var(--strip);
-}
-
-.views button {
-  height: 26px;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  padding: 0 14px;
-}
-
-.views button.on {
-  background: var(--raised);
-  color: var(--text);
-  box-shadow: inset 0 -2px 0 var(--copper);
-}
-
 .build {
   display: inline-flex;
   align-items: center;

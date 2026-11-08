@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api, hasToken, subscribe, type BuildState, type CircuitData, type Edit, type HistoryListing, type PartsData } from "./api"
 import { ChecksPanel } from "./ChecksPanel"
+import { DocTabs } from "./shell/DocTabs"
 import { Inspector } from "./Inspector"
 import { LeftPanel } from "./LeftPanel"
 import type { CanvasProps } from "./pcb/canvas-common"
@@ -224,18 +225,6 @@ export function App() {
   return (
     <div className="app">
       <MenuBar run={runCommand}>
-        <div className="views" role="tablist" aria-label="View">
-          {(["schematic", "pcb"] as const).map((t) => (
-            <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
-              {t === "pcb" ? "PCB" : "Schematic"}
-            </button>
-          ))}
-        </div>
-        <select value={file ?? ""} onChange={(e) => setFile(e.target.value)} aria-label="Circuit file">
-          {files.map((f) => (
-            <option key={f}>{f}</option>
-          ))}
-        </select>
         <StatusPill build={build} errors={checks.counts.errors} onOpen={openChecks} />
       </MenuBar>
       <Toolbar view={tab} run={runCommand} />
@@ -269,6 +258,7 @@ export function App() {
           />
         )}
         <div className="center">
+          <DocTabs file={file} view={tab} onView={setTab} />
           <section className="canvas">
             {!design && <p className="empty">{build.status === "failed" ? build.error : "Building the circuit…"}</p>}
             {canvas && tab === "pcb" && <PcbCanvas key={file} {...canvas} markers={checks.markers.pcb} />}

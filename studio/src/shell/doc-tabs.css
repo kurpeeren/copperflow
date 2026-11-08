@@ -1,0 +1,43 @@
+/* The document tab bar above the canvas. */
+.workspace > .center {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.doc-tabs {
+  display: flex;
+  height: 24px;
+  box-sizing: border-box;
+  overflow: hidden;
+  border-bottom: 1px solid var(--line);
+  background: var(--strip);
+}
+
+.doc-tab {
+  position: relative;
+  flex: none;
+  width: 160px;
+  height: 24px;
+  padding: 0 10px;
+  overflow: hidden;
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--tab);
+  color: var(--muted);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-tab.on {
+  background: var(--copper-wash);
+  color: var(--text);
+}
+
+.doc-tab.on::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: var(--copper);
+}
