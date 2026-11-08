@@ -1,7 +1,6 @@
-import { useMemo, type MouseEvent } from "react"
+import { useMemo } from "react"
 import { checkGroups, checkSummary, NO_PROBLEMS, type CheckCounts, type CheckGroup, type CheckRow } from "./checks-list"
-import { blursAfterClick } from "./checks-panel-state"
-import { blurButton } from "./pcb/CanvasTools"
+import { blurAfterPointerClick } from "./shell/focus"
 import "./checks-panel.css"
 
 interface Props {
@@ -14,16 +13,11 @@ interface Props {
 
 const ROW_TITLES: Record<CheckRow["view"], string> = { pcb: "Show on the PCB", schematic: "Show on the schematic", code: "From the code" }
 
-/** A pointer click gives up focus; Enter on a row keeps it on the row. */
-function blurAfterPointer(event: MouseEvent<HTMLElement>): void {
-  if (blursAfterClick(event)) blurButton(event)
-}
-
 /** The DRC tab of the bottom panel: the last build's checks grouped by code, errors first. */
 export function ChecksPanel({ rows, counts, active, onPick }: Props) {
   const groups = useMemo(() => checkGroups(rows), [rows])
   return (
-    <section className="checks" aria-label="Checks" onClick={blurAfterPointer}>
+    <section className="checks" aria-label="Checks" onClick={blurAfterPointerClick}>
       <header className="checks-head">
         <h2>Checks</h2>
         {rows.length > 0 && <span className="count">{checkSummary(counts)}</span>}

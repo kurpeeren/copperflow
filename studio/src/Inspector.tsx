@@ -9,6 +9,7 @@ import { LibraryInfo } from "./LibraryInfo"
 import { CloseIcon, LockIcon, RotateIcon, TrashIcon, UnlockIcon } from "./icons"
 import { touches } from "./LeftPanel"
 import { pcbBoxes } from "./pcb/pcb-draw"
+import { sideTabId, stripPanelId } from "./shell/SideStrip"
 import "./inspector.css"
 
 interface Props {
@@ -43,7 +44,7 @@ export function Inspector(props: Props) {
       return next
     })
   return (
-    <aside className="panel right" hidden={props.hidden}>
+    <aside className="panel right" id={stripPanelId("right")} role="tabpanel" aria-labelledby={sideTabId("properties")} hidden={props.hidden}>
       {part ? <PartView {...props} collapsed={collapsed} toggle={toggle} part={part} /> : <BoardView {...props} collapsed={collapsed} toggle={toggle} />}
     </aside>
   )

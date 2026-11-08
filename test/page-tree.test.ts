@@ -17,6 +17,17 @@ describe("page tree", () => {
     expect(active).toEqual(["b.circuit.tsx:schematic"])
   })
 
+  test("remembers the open view, so a file row opens its file there", () => {
+    expect(buildPageTree("demo", ["a.circuit.tsx"], "a.circuit.tsx", "schematic").view).toBe("schematic")
+  })
+
+  test("the document tabs list the same documents in the same order", async () => {
+    const { DOC_VIEWS } = await import("../studio/src/shell/page-tree.js")
+    const { DOC_TAB_ORDER } = await import("../studio/src/shell/doc-tabs.js")
+    expect(DOC_TAB_ORDER).toEqual(DOC_VIEWS.map((v) => v.view))
+    expect(buildPageTree("demo", ["a.circuit.tsx"], undefined, "pcb").files[0]?.documents.map((d) => d.view)).toEqual(DOC_TAB_ORDER)
+  })
+
   test("falls back to Project when the server gave no name", () => {
     expect(buildPageTree(undefined, [], undefined, "pcb").project).toBe("Project")
     expect(buildPageTree("", [], undefined, "pcb").project).toBe("Project")

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest"
-import { docTabs, tabAfterKey } from "../studio/src/shell/doc-tabs.js"
+import { DOC_TAB_ORDER, docTabs } from "../studio/src/shell/doc-tabs.js"
+import { tabAfterKey } from "../studio/src/shell/tab-keys.js"
 
 describe("document tabs", () => {
   test("titles drop the circuit extension, Schematic first", () => {
@@ -16,11 +17,11 @@ describe("document tabs", () => {
   })
 
   test("arrow keys move between the two tabs", () => {
-    expect(tabAfterKey("ArrowRight", "schematic")).toBe("pcb")
-    expect(tabAfterKey("ArrowRight", "pcb")).toBe("schematic")
-    expect(tabAfterKey("ArrowLeft", "schematic")).toBe("pcb")
-    expect(tabAfterKey("Home", "pcb")).toBe("schematic")
-    expect(tabAfterKey("End", "schematic")).toBe("pcb")
-    expect(tabAfterKey("a", "pcb")).toBeNull()
+    expect(tabAfterKey(DOC_TAB_ORDER, "schematic", "ArrowRight")).toBe("pcb")
+    expect(tabAfterKey(DOC_TAB_ORDER, "pcb", "ArrowRight")).toBe("schematic")
+    expect(tabAfterKey(DOC_TAB_ORDER, "schematic", "ArrowLeft")).toBe("pcb")
+    expect(tabAfterKey(DOC_TAB_ORDER, "pcb", "Home")).toBe("schematic")
+    expect(tabAfterKey(DOC_TAB_ORDER, "schematic", "End")).toBe("pcb")
+    expect(tabAfterKey(DOC_TAB_ORDER, "pcb", "a")).toBeNull()
   })
 })

@@ -4,7 +4,8 @@ import type { WorldPad } from "../../../src/engine/pcb.js"
 import { keepAutoPlaced } from "./auto-placed"
 import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
 import { ViewTools } from "../shell/ViewTools"
-import { blurButton, CanvasStatus, KeepButton, SnapSelect } from "./CanvasTools"
+import { blurAfterPointerClick } from "../shell/focus"
+import { CanvasStatus, KeepButton, SnapSelect } from "./CanvasTools"
 import type { Layers } from "./ctx"
 import { hitTest, pointBounds, unionBoxes, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import { pcbNetAt } from "./highlight"
@@ -86,7 +87,7 @@ interface PcbToolsProps {
 function PcbTools({ unit, step, setStep, layers, setLayers, keep }: PcbToolsProps) {
   return (
     <ViewTools>
-      <div className="canvas-tools" onClick={blurButton}>
+      <div className="canvas-tools" onClick={blurAfterPointerClick}>
         <SnapSelect step={step} onChange={setStep} unit={unit} />
         <span className="tool-divider" aria-hidden="true" />
         {LAYER_BUTTONS.map(([key, label]) => (

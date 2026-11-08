@@ -98,7 +98,7 @@ export function Workspace(props: WorkspaceProps) {
   const pageTree = useMemo(() => buildPageTree(project, files, file, view), [project, files, file, view])
   return (
     <main className="workspace">
-      <SideStrip side="left" tabs={LEFT_STRIP} active={workspace.left.strip} open={workspace.left.open} onClick={workspace.clickLeft} />
+      <SideStrip side="left" tabs={LEFT_STRIP} active={workspace.left.strip} open={workspace.left.open} onClick={workspace.clickLeft} onSelect={workspace.selectLeft} />
       {circuit && (
         <LeftPanel
           circuit={circuit}
@@ -114,6 +114,8 @@ export function Workspace(props: WorkspaceProps) {
           onOpenDocument={props.onOpenDocument}
           focusSearch={workspace.focusSearch}
           onSearchFocused={workspace.searchFocused}
+          focusPage={workspace.focusPage}
+          onPageFocused={workspace.pageFocused}
           highlight={workspace.highlight}
           onHighlight={workspace.setHighlight}
           hidden={!workspace.leftOpen}
@@ -133,7 +135,7 @@ export function Workspace(props: WorkspaceProps) {
           hidden={!workspace.rightOpen}
         />
       )}
-      <SideStrip side="right" tabs={RIGHT_STRIP} active={workspace.right.active} open={workspace.right.open} onClick={workspace.clickRight} />
+      <SideStrip side="right" tabs={RIGHT_STRIP} active={workspace.right.active} open={workspace.right.open} onClick={workspace.clickRight} onSelect={workspace.selectRight} />
     </main>
   )
 }

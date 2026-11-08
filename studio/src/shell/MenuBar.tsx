@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useRef, type ReactNode } from "react"
 import { MENUS, menuReducer, type CommandId, type Menu, type MenuEntry } from "./menus"
-import { blurButton } from "../pcb/CanvasTools"
+import { blurButton } from "./focus"
 import "./shell.css"
 
 interface Props {

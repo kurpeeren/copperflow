@@ -4,9 +4,8 @@ import { ChecksPanel } from "../ChecksPanel"
 import type { CheckCounts, CheckRow } from "../checks-list"
 import { HistoryList } from "../HistoryList"
 import { Library } from "../Library"
-import { blursAfterClick } from "../checks-panel-state"
-import { blurButton } from "../pcb/CanvasTools"
-import type { BottomTab } from "./bottom-state"
+import { BOTTOM_PANEL_ID, bottomTabId, type BottomTab } from "./bottom-state"
+import { blurAfterPointerClick } from "./focus"
 import "./bottom.css"
 
 interface Props {
@@ -27,7 +26,7 @@ interface Props {
 /** The open bottom panel: the content of the chosen tab, above the strip. */
 export function BottomPanel(props: Props) {
   return (
-    <div className="bottom-panel" onClick={(event) => blursAfterClick(event) && blurButton(event)}>
+    <div className="bottom-panel" id={BOTTOM_PANEL_ID} role="tabpanel" aria-labelledby={bottomTabId(props.tab)} onClick={blurAfterPointerClick}>
       <Content {...props} />
     </div>
   )

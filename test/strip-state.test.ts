@@ -3,6 +3,8 @@ import {
   INITIAL_LEFT,
   clickLeftStrip,
   clickStrip,
+  selectLeftStrip,
+  selectStrip,
   showDesignSub,
   showLibrary,
   toggleLeftOpen,
@@ -22,6 +24,19 @@ describe("strip toggle rule", () => {
 
   test("clicking the active tab of a collapsed panel opens it", () => {
     expect(clickStrip({ active: "a", open: false }, "a")).toEqual({ active: "a", open: true })
+  })
+})
+
+describe("strip keys", () => {
+  test("Enter or Space on the open tab keeps its panel open; on another tab it switches", () => {
+    expect(selectStrip({ active: "a", open: true }, "a")).toEqual({ active: "a", open: true })
+    expect(selectStrip({ active: "a", open: true }, "b")).toEqual({ active: "b", open: true })
+    expect(selectStrip({ active: "a", open: false }, "a")).toEqual({ active: "a", open: true })
+  })
+
+  test("on the left strip it keeps the sub-tab", () => {
+    expect(selectLeftStrip({ ...INITIAL_LEFT, sub: "net" }, "design")).toEqual({ strip: "design", sub: "net", open: true })
+    expect(selectLeftStrip({ ...INITIAL_LEFT, open: false }, "library")).toEqual({ strip: "library", sub: "page", open: true })
   })
 })
 

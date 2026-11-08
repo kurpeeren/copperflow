@@ -1,35 +1,43 @@
+import { useEffect, useRef } from "react"
 import type { PageTree as Tree, DocView } from "./page-tree"
 
 interface Props {
   tree: Tree
   onOpen(file: string, view: DocView): void
+  /** Move the focus to the first file now (Ctrl+O); `onFocused` says it has been done. */
+  focus: boolean
+  onFocused(): void
 }
 
-/** Project folder -> circuit files -> Schematic and PCB; clicking a document opens it. */
-export function PageTree({ tree, onOpen }: Props) {
+/** Project folder, then each circuit file with its Schematic and PCB; a file opens in the open view, a document as itself. */
+export function PageTree({ tree, onOpen, focus, onFocused }: Props) {
+  const list = useRef<HTMLUListElement>(null)
+  useEffect(() => {
+    if (!focus) return
+    list.current?.querySelector<HTMLElement>(".tree-row.file")?.focus()
+    onFocused()
+  }, [focus, onFocused])
   return (
-    <div className="page-tree" role="tree">
-      <div className="tree-row project" role="treeitem" aria-expanded="true">
-        {tree.project}
-      </div>
-      {tree.files.map((entry) => (
-        <div key={entry.file} role="group">
-          <div className="tree-row file" role="treeitem" aria-expanded="true" title={entry.file}>
-            {entry.file}
-          </div>
-          {entry.documents.map((doc) => (
-            <button
-              key={doc.view}
-              role="treeitem"
-              aria-selected={doc.active}
-              className={`tree-row doc${doc.active ? " active" : ""}`}
-              onClick={() => onOpen(entry.file, doc.view)}
-            >
-              {doc.label}
+    <nav className="page-tree" aria-label="Pages">
+      <div className="tree-row project">{tree.project}</div>
+      <ul ref={list}>
+        {tree.files.map((entry) => (
+          <li key={entry.file}>
+            <button className="tree-row file" title={`Open ${entry.file}`} onClick={() => onOpen(entry.file, tree.view)}>
+              {entry.file}
             </button>
-          ))}
-        </div>
-      ))}
-    </div>
+            <ul>
+              {entry.documents.map((doc) => (
+                <li key={doc.view}>
+                  <button className={`tree-row doc${doc.active ? " active" : ""}`} aria-current={doc.active ? "page" : undefined} onClick={() => onOpen(entry.file, doc.view)}>
+                    {doc.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </nav>
   )
 }

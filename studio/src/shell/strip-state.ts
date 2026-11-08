@@ -33,9 +33,18 @@ export function toggleStripOpen<T>(state: StripState<T>): StripState<T> {
   return { ...state, open: !state.open }
 }
 
+/** Enter, Space or an arrow key on a tab shows it; unlike a click, it never collapses the panel. */
+export function selectStrip<T>(_state: StripState<T>, selected: T): StripState<T> {
+  return { active: selected, open: true }
+}
+
 export function clickLeftStrip(state: LeftState, clicked: LeftStrip): LeftState {
   const next = clickStrip({ active: state.strip, open: state.open }, clicked)
   return { ...state, strip: next.active, open: next.open }
+}
+
+export function selectLeftStrip(state: LeftState, selected: LeftStrip): LeftState {
+  return { ...state, strip: selected, open: true }
 }
 
 /** Shows one sub-tab of Project Design, opening the panel if it was collapsed. */

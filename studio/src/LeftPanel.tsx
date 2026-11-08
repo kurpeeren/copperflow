@@ -2,11 +2,13 @@ import { useState } from "react"
 import type { CircuitData, Design, PartsData, TraceInfo } from "./api"
 import { Library } from "./Library"
 import { NetsList } from "./NetsList"
-import { blurButton } from "./pcb/CanvasTools"
 import type { Actions } from "./App"
+import { blurAfterPointerClick } from "./shell/focus"
 import { PageTree } from "./shell/PageTree"
 import type { PageTree as PageTreeData, DocView } from "./shell/page-tree"
+import { sideTabId, stripPanelId } from "./shell/SideStrip"
 import type { DesignSub, LeftState } from "./shell/strip-state"
+import { useTabList } from "./shell/use-tab-list"
 import { partsInSelector } from "../../src/core/selectors.js"
 import { CloseIcon, LockIcon } from "./icons"
 
@@ -26,30 +28,42 @@ interface Props {
   /** Shift+F asked for the Library search field. */
   focusSearch: boolean
   onSearchFocused(): void
+  /** Ctrl+O asked for the first file of the Page tree. */
+  focusPage: boolean
+  onPageFocused(): void
   highlight: string | null
   onHighlight(net: string | null): void
   hidden: boolean
 }
 
 const SUB_NAMES: Record<DesignSub, string> = { page: "Page", net: "Net", component: "Component", object: "Object" }
+const SUBS = Object.keys(SUB_NAMES) as DesignSub[]
+const DESIGN_PANEL_ID = "design-panel"
+
+/** Page, Net, Component and Object across the top of Project Design. */
+function SubTabs({ sub, onSub }: { sub: DesignSub; onSub(sub: DesignSub): void }) {
+  const list = useTabList({ ids: SUBS, current: sub, onSelect: onSub })
+  return (
+    <div className="sub-tabs" role="tablist" aria-label="Project Design" onKeyDown={list.onKeyDown}>
+      {SUBS.map((t) => (
+        <button key={t} role="tab" id={`sub-tab-${t}`} aria-controls={DESIGN_PANEL_ID} aria-selected={sub === t} className={`sub-tab${sub === t ? " on" : ""}`} {...list.tab(t)}>
+          {SUB_NAMES[t]}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 /** Project Design (Page, Net, Component, Object) or Common Library, depending on the strip. */
 export function LeftPanel(props: Props) {
   const { left, onSub } = props
+  const design = left.strip === "design"
   return (
-    <aside className="panel left" hidden={props.hidden} onClick={blurButton}>
-      {left.strip === "design" && (
-        <div className="sub-tabs" role="tablist">
-          {(Object.keys(SUB_NAMES) as DesignSub[]).map((t) => (
-            <button key={t} role="tab" aria-selected={left.sub === t} className={`sub-tab${left.sub === t ? " on" : ""}`} onClick={() => onSub(t)}>
-              {SUB_NAMES[t]}
-            </button>
-          ))}
-        </div>
-      )}
-      <div className="panel-body">
-        {left.strip === "library" && <Library parts={props.parts} onPlace={props.onPlace} focus={props.focusSearch} onFocused={props.onSearchFocused} />}
-        {left.strip === "design" && <DesignBody {...props} />}
+    <aside className="panel left" id={stripPanelId("left")} role="tabpanel" aria-labelledby={sideTabId(left.strip)} hidden={props.hidden} onClick={blurAfterPointerClick}>
+      {design && <SubTabs sub={left.sub} onSub={onSub} />}
+      <div className="panel-body" {...(design ? { id: DESIGN_PANEL_ID, role: "tabpanel", "aria-labelledby": `sub-tab-${left.sub}` } : {})}>
+        {!design && <Library parts={props.parts} onPlace={props.onPlace} focus={props.focusSearch} onFocused={props.onSearchFocused} />}
+        {design && <DesignBody {...props} />}
       </div>
     </aside>
   )
@@ -58,7 +72,7 @@ export function LeftPanel(props: Props) {
 function DesignBody(props: Props) {
   switch (props.left.sub) {
     case "page":
-      return <PageTree tree={props.pageTree} onOpen={props.onOpenDocument} />
+      return <PageTree tree={props.pageTree} onOpen={props.onOpenDocument} focus={props.focusPage} onFocused={props.onPageFocused} />
     case "net":
       return <NetsList design={props.design} highlight={props.highlight} onHighlight={props.onHighlight} />
     case "component":

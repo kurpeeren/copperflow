@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest"
-import { BOTTOM_TABS, INITIAL_BOTTOM, bottomTabAfterKey, clickBottom, openBottomTab, toggleBottom } from "../studio/src/shell/bottom-state.js"
+import { BOTTOM_PANEL_ID, BOTTOM_TABS, INITIAL_BOTTOM, bottomTabId, clickBottom, openBottomTab, toggleBottom } from "../studio/src/shell/bottom-state.js"
+import { tabAfterKey } from "../studio/src/shell/tab-keys.js"
 
 describe("bottom panel state", () => {
   test("starts closed on the DRC tab", () => {
@@ -40,20 +41,18 @@ describe("bottom panel state", () => {
 })
 
 describe("bottom tab keys", () => {
+  const ids = BOTTOM_TABS.map((t) => t.id)
   test("arrows wrap around, Home and End jump to the ends, other keys do nothing", () => {
-    expect(bottomTabAfterKey("ArrowRight", "log")).toBe("drc")
-    expect(bottomTabAfterKey("ArrowRight", "find")).toBe("library")
-    expect(bottomTabAfterKey("ArrowLeft", "library")).toBe("find")
-    expect(bottomTabAfterKey("Home", "drc")).toBe("library")
-    expect(bottomTabAfterKey("End", "drc")).toBe("find")
-    expect(bottomTabAfterKey("a", "drc")).toBeNull()
+    expect(tabAfterKey(ids, "log", "ArrowRight")).toBe("drc")
+    expect(tabAfterKey(ids, "find", "ArrowRight")).toBe("library")
+    expect(tabAfterKey(ids, "library", "ArrowLeft")).toBe("find")
+    expect(tabAfterKey(ids, "drc", "Home")).toBe("library")
+    expect(tabAfterKey(ids, "drc", "End")).toBe("find")
+    expect(tabAfterKey(ids, "drc", "a")).toBeNull()
   })
-})
 
-describe("bottom panel focus", () => {
-  test("a pointer click blurs the button; Enter or Space on a check row keeps focus", async () => {
-    const { blursAfterClick } = await import("../studio/src/checks-panel-state.js")
-    expect(blursAfterClick({ detail: 1 })).toBe(true)
-    expect(blursAfterClick({ detail: 0 })).toBe(false)
+  test("each tab names the panel it controls, which names the tab back", () => {
+    expect(bottomTabId("log")).toBe("bottom-tab-log")
+    expect(BOTTOM_PANEL_ID).toBe("bottom-panel")
   })
 })

@@ -1,5 +1,6 @@
-// What a menu or toolbar command does: the app's own commands run here, the rest go to the open canvas over the
-// command bus. Schematic-only commands sent while the PCB is open switch to the schematic first.
+// What a menu or toolbar command does: the app's own commands run here, the workspace's run as their keys do, and
+// the rest go to the open canvas over the command bus (command-owners.ts says which is which). Schematic-only
+// commands sent while the PCB is open switch to the schematic first.
 import { useCallback, useEffect, useState } from "react"
 import { api, type BomLine } from "../api"
 import { bomCsv, bomFileName } from "./bom-csv"
@@ -7,21 +8,19 @@ import type { Actions } from "../App"
 import { keyAction, keyInput, type KeyActionName } from "../pcb/canvas-keys"
 import type { View } from "../pcb/positions"
 import type { BottomTab } from "./bottom-state"
+import { SHEET_COMMANDS, WORKSPACE_COMMANDS, type AppCommand } from "./command-owners"
 import { send } from "./commands"
 import type { DialogName } from "./Dialogs"
 import type { CommandId } from "./menus"
 
-/** Commands only the schematic canvas answers. */
-const SCHEMATIC_ONLY: ReadonlySet<CommandId> = new Set(["wire", "netLabel", "groundFlag", "powerFlag"])
+const SCHEMATIC_ONLY: ReadonlySet<CommandId> = new Set(SHEET_COMMANDS)
+const WORKSPACE: Partial<Record<CommandId, KeyActionName>> = WORKSPACE_COMMANDS
 
-/** Commands the workspace runs as it runs their keys. */
-const WORKSPACE: Partial<Record<CommandId, KeyActionName>> = {
-  toggleUnit: "toggleUnit",
-  toggleLeftPanel: "toggleLeftPanel",
-  toggleRightPanel: "toggleRightPanel",
-  toggleBottomPanel: "toggleBottomPanel",
-  clearHighlight: "clearHighlight",
-  placeComponent: "openLibrary",
+/** The workspace functions the commands use; each is stable across renders. */
+interface WorkspaceCommands {
+  run(action: KeyActionName): void
+  openBottom(tab: BottomTab): void
+  openPageTree(): void
 }
 
 interface Input {
@@ -30,7 +29,7 @@ interface Input {
   setView(view: View): void
   selected: string | null
   actions: Actions
-  workspace: { run(action: KeyActionName): void; openBottom(tab: BottomTab): void }
+  workspace: WorkspaceCommands
   openChecks(): void
   openDialog(name: DialogName): void
 }
@@ -66,8 +65,8 @@ function lockSelected(input: Input, locked: boolean): void {
 function appCommand(input: Input, command: CommandId): (() => void) | undefined {
   const action = WORKSPACE[command]
   if (action) return () => input.workspace.run(action)
-  const table: Partial<Record<CommandId, () => void>> = {
-    openFile: () => document.querySelector<HTMLSelectElement>("select[aria-label='Circuit file']")?.focus(),
+  const table: Record<AppCommand, () => void> = {
+    openFile: input.workspace.openPageTree,
     exportBom: () => exportBom(input.file, input.actions),
     exportPackage: () => exportPackage(input.file, input.actions),
     undo: () => void input.actions.undo(),
@@ -78,10 +77,10 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     keys: () => input.openDialog("keys"),
     about: () => input.openDialog("about"),
   }
-  return table[command]
+  return (table as Partial<Record<CommandId, () => void>>)[command]
 }
 
-/** Ctrl+Z undoes and Ctrl+O goes to the file list, outside text fields (keyAction decides). */
+/** Ctrl+Z undoes and Ctrl+O goes to the Page tree, outside text fields (keyAction decides). */
 function useAppKeys(runCommand: (command: CommandId) => void, view: View): void {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -95,12 +94,12 @@ function useAppKeys(runCommand: (command: CommandId) => void, view: View): void 
   }, [runCommand, view])
 }
 
-/** Returns the function the menu bar and toolbar call. */
+/** Returns the function the menu bar and toolbar call; it changes only when what the commands read changes. */
 export function useAppCommands(input: Input): (command: CommandId) => void {
   const [waiting, setWaiting] = useState<CommandId | null>(null)
   const { file, view, setView, selected, actions, openChecks, openDialog } = input
-  // The workspace object is new on every render, but these two functions are stable.
-  const { run, openBottom } = input.workspace
+  // The workspace object is new on every render, but its functions are stable.
+  const { run, openBottom, openPageTree } = input.workspace
   // A command waiting for the schematic runs once the schematic canvas has mounted and subscribed.
   useEffect(() => {
     if (!waiting || view !== "schematic") return
@@ -112,7 +111,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
   }, [waiting, view, actions])
   const runCommand = useCallback(
     (command: CommandId) => {
-      const own = appCommand({ file, view, setView, selected, actions, workspace: { run, openBottom }, openChecks, openDialog }, command)
+      const own = appCommand({ file, view, setView, selected, actions, workspace: { run, openBottom, openPageTree }, openChecks, openDialog }, command)
       if (own) return own()
       if (SCHEMATIC_ONLY.has(command) && view !== "schematic") {
         setView("schematic")
@@ -121,7 +120,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
       }
       if (!send(command)) actions.notify("Wait for the build to finish, then try again.")
     },
-    [file, view, setView, selected, actions, run, openBottom, openChecks, openDialog],
+    [file, view, setView, selected, actions, run, openBottom, openPageTree, openChecks, openDialog],
   )
   useAppKeys(runCommand, view)
   return runCommand

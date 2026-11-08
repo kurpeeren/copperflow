@@ -14,6 +14,10 @@ export const BOTTOM_TABS: ReadonlyArray<{ id: BottomTab; label: string }> = [
   { id: "find", label: "Find Results" },
 ]
 
+/** The panel the bottom tabs control, and each tab's own id, so the panel can name the tab that labels it. */
+export const BOTTOM_PANEL_ID = "bottom-panel"
+export const bottomTabId = (tab: BottomTab) => `bottom-tab-${tab}`
+
 export const INITIAL_BOTTOM: BottomState = { open: false, tab: "drc" }
 
 /** Clicking the open tab closes the panel; clicking any other tab (or the remembered tab of a closed panel) opens it there. */
@@ -27,18 +31,7 @@ export function toggleBottom(state: BottomState): BottomState {
   return { ...state, open: !state.open }
 }
 
-/** Opens one tab, for the checks opening by themselves, the status pill and the menu. */
+/** Opens one tab, for the tab keys, the checks opening by themselves, the status pill and the menu. */
 export function openBottomTab(_state: BottomState, tab: BottomTab): BottomState {
   return { open: true, tab }
-}
-
-/** The tab an arrow, Home or End key moves to from the current one, or null for any other key. */
-export function bottomTabAfterKey(key: string, tab: BottomTab): BottomTab | null {
-  const last = BOTTOM_TABS.length - 1
-  if (key === "Home") return BOTTOM_TABS[0]!.id
-  if (key === "End") return BOTTOM_TABS[last]!.id
-  if (key !== "ArrowLeft" && key !== "ArrowRight" && key !== "ArrowUp" && key !== "ArrowDown") return null
-  const step = key === "ArrowLeft" || key === "ArrowUp" ? -1 : 1
-  const index = BOTTOM_TABS.findIndex((t) => t.id === tab)
-  return BOTTOM_TABS[(index + step + BOTTOM_TABS.length) % BOTTOM_TABS.length]!.id
 }

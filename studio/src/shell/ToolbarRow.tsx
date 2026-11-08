@@ -1,6 +1,6 @@
 import { Fragment } from "react"
 import { TOOL_ICONS } from "../icons"
-import { blurButton } from "../pcb/CanvasTools"
+import { blurAfterPointerClick } from "./focus"
 import type { View } from "../pcb/positions"
 import type { CommandId } from "./menus"
 import { isToolCommand, toolbarGroups } from "./toolbar"
@@ -34,7 +34,7 @@ export function Toolbar({ view, run }: Props) {
                 aria-pressed={isToolCommand(item.command) ? pressed : undefined}
                 data-pressed={pressed || undefined}
                 onClick={(event) => {
-                  blurButton(event)
+                  blurAfterPointerClick(event)
                   if (clickAction(item.command, tools) === "stop") tools.stop?.()
                   else run(item.command)
                 }}

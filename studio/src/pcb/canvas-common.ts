@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type Dispatch, type RefObjec
 import type { Annotations, CircuitData, Design } from "../api"
 import type { Actions } from "../App"
 import type { FocusRequest } from "../checks-panel-state"
+import type { CameraCommand } from "../shell/command-owners"
 import { useCommands } from "../shell/commands"
 import { drawGrid, drawLockBadge, drawMark, drawOutline, drawSelectionBox } from "./overlays"
 import { centredCamera, fitCamera, zoomAt, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry"
@@ -94,7 +95,7 @@ export function useCamera(ref: RefObject<HTMLElement | null>, size: Size, bounds
     if (!camera) fit()
   }, [camera, fit])
   const zoomBy = (factor: number) => () => setCamera((current) => (current ? zoomAt(current, size, { x: size.width / 2, y: size.height / 2 }, factor) : current))
-  useCommands({ zoomIn: zoomBy(MENU_ZOOM), zoomOut: zoomBy(1 / MENU_ZOOM) })
+  useCommands({ zoomIn: zoomBy(MENU_ZOOM), zoomOut: zoomBy(1 / MENU_ZOOM) } satisfies Record<CameraCommand, () => void>)
   return { camera, setCamera, fit }
 }
 

@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react"
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { CircuitData, Design } from "../api"
+import type { SheetCommand } from "../shell/command-owners"
 import { useCommands } from "../shell/commands"
 import { armedCommand } from "../shell/toolbar"
 import { clearToolState, setToolState } from "../shell/tool-state"
 import { ViewTools } from "../shell/ViewTools"
 import { keepAutoPlaced } from "./auto-placed"
 import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
-import { blurButton, CanvasStatus, KeepButton, SnapSelect } from "./CanvasTools"
+import { blurAfterPointerClick } from "../shell/focus"
+import { CanvasStatus, KeepButton, SnapSelect } from "./CanvasTools"
 import { hitTest, unionBoxes, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import { highlightOf, schematicNetAt } from "./highlight"
 import { labelHitBox } from "./label-drag"
@@ -95,7 +97,7 @@ interface SheetToolsProps {
 function SheetTools({ step, setStep, keep }: SheetToolsProps) {
   return (
     <ViewTools>
-      <div className="canvas-tools" onPointerDown={(e) => e.stopPropagation()} onClick={blurButton}>
+      <div className="canvas-tools" onPointerDown={(e) => e.stopPropagation()} onClick={blurAfterPointerClick}>
         <SnapSelect step={step} onChange={setStep} unit={undefined} />
         <KeepButton {...keep} title="Write the faded symbols' positions into the code as schX and schY" />
       </div>
@@ -156,7 +158,7 @@ function useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNet
     if (wiring || drawing) disarm()
   }, [wiring, drawing, disarm])
   useArmedTool(wire, palette)
-  useCommands({
+  const tools: Record<SheetCommand, () => void> = {
     wire: () => {
       disarm()
       if (!wiring) wire.toggleWiring()
@@ -164,7 +166,8 @@ function useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNet
     netLabel: () => palette.arm("label"),
     groundFlag: () => palette.arm("gnd"),
     powerFlag: () => palette.arm("vcc"),
-  })
+  }
+  useCommands(tools)
   return useHighlight(design, highlightNet)
 }
 

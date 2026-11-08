@@ -91,6 +91,11 @@
   justify-content: center;
 }
 
+.sub-tab:focus-visible,
+.page-tree .tree-row:focus-visible {
+  outline-offset: -2px;
+}
+
 .sub-tab.on {
   background: var(--panel);
   color: var(--text);

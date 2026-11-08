@@ -3,6 +3,7 @@
 import { useEffect } from "react"
 import type { CircuitData } from "../api"
 import type { Actions } from "../App"
+import type { PartCommand } from "../shell/command-owners"
 import { useCommands } from "../shell/commands"
 import { keyAction, keyInput } from "./canvas-keys"
 import { isCanvasKey } from "./canvas-common"
@@ -57,7 +58,7 @@ function usePartCommands(input: PartKeysInput): void {
     if (input.selected) then(input.selected)
     else input.actions.notify("Select a part first.")
   }
-  useCommands({
+  const table: Record<PartCommand, () => void> = {
     fit: input.fit,
     rotate: withSelection((name) => rotatePart(input, name)),
     delete: withSelection((name) => removePart(input, name)),
@@ -66,7 +67,8 @@ function usePartCommands(input: PartKeysInput): void {
       if (net !== undefined) input.onHighlight(net)
       else input.actions.notify("Point at a pin, a wire or a pad and press H to highlight its net.")
     },
-  })
+  }
+  useCommands(table)
 }
 
 export function usePartKeys(input: PartKeysInput): void {
