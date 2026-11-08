@@ -98,7 +98,9 @@ function useAppKeys(runCommand: (command: CommandId) => void, view: View): void 
 /** Returns the function the menu bar and toolbar call. */
 export function useAppCommands(input: Input): (command: CommandId) => void {
   const [waiting, setWaiting] = useState<CommandId | null>(null)
-  const { view, setView, actions } = input
+  const { file, view, setView, selected, actions, openChecks, openDialog } = input
+  // The workspace object is new on every render, but these two functions are stable.
+  const { run, openBottom } = input.workspace
   // A command waiting for the schematic runs once the schematic canvas has mounted and subscribed.
   useEffect(() => {
     if (!waiting || view !== "schematic") return
@@ -110,7 +112,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
   }, [waiting, view, actions])
   const runCommand = useCallback(
     (command: CommandId) => {
-      const own = appCommand(input, command)
+      const own = appCommand({ file, view, setView, selected, actions, workspace: { run, openBottom }, openChecks, openDialog }, command)
       if (own) return own()
       if (SCHEMATIC_ONLY.has(command) && view !== "schematic") {
         setView("schematic")
@@ -119,8 +121,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
       }
       if (!send(command)) actions.notify("Wait for the build to finish, then try again.")
     },
-    // The input object is new on every render; its parts are what matter.
-    [input.file, input.selected, view, setView, actions, input.workspace, input.openChecks, input.openDialog],
+    [file, view, setView, selected, actions, run, openBottom, openChecks, openDialog],
   )
   useAppKeys(runCommand, view)
   return runCommand

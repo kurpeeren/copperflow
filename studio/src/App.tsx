@@ -1,126 +1,36 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { api, hasToken, subscribe, type BuildState, type CircuitData, type Edit, type HistoryListing, type PartsData } from "./api"
-import { BottomPanel } from "./shell/BottomPanel"
-import { BottomStrip } from "./shell/BottomStrip"
-import { DocTabs } from "./shell/DocTabs"
-import { Inspector } from "./Inspector"
-import { LeftPanel } from "./LeftPanel"
-import type { CanvasProps } from "./pcb/canvas-common"
-import { PcbCanvas } from "./pcb/PcbCanvas"
-import { SchematicCanvas } from "./pcb/SchematicCanvas"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { hasToken, type Design } from "./api"
 import { remapHighlight } from "./pcb/highlight"
+import { BottomStrip } from "./shell/BottomStrip"
 import { StudioDialog, type DialogName } from "./shell/Dialogs"
 import { MenuBar } from "./shell/MenuBar"
-import { buildPageTree, type DocView } from "./shell/page-tree"
-import { SideStrip } from "./shell/SideStrip"
-import type { LeftStrip, RightStrip } from "./shell/strip-state"
+import type { DocView } from "./shell/page-tree"
+import { StatusPill } from "./shell/StatusPill"
 import { Toolbar } from "./shell/ToolbarRow"
 import { useAppCommands } from "./shell/use-app-commands"
+import { Workspace } from "./shell/Workspace"
+import { useActions, usePlace } from "./use-actions"
 import { useChecks } from "./use-checks"
+import { useStudioData } from "./use-studio-data"
 import { useWorkspace } from "./use-workspace"
-import "./shell/workspace.css"
 
-/** Every action reports failures itself and resolves to whether it succeeded. */
-export interface Actions {
-  edit(edits: Edit[], summary: string): Promise<boolean>
-  lock(parts: string[], locked: boolean): Promise<boolean>
-  mark(text: string, at?: { view: "pcb" | "schematic"; x: number; y: number }): Promise<boolean>
-  unmark(id: string): Promise<boolean>
-  undo(id?: string): Promise<boolean>
-  verify(id: string, by: string, against: string, confirm: string): Promise<boolean>
-  notify(text: string): void
-}
+export type { Actions } from "./use-actions"
 
 type Tab = "pcb" | "schematic"
 
-const LEFT_STRIP: ReadonlyArray<{ id: LeftStrip; label: string }> = [
-  { id: "design", label: "Project Design" },
-  { id: "library", label: "Common Library" },
-]
-const RIGHT_STRIP: ReadonlyArray<{ id: RightStrip; label: string }> = [{ id: "properties", label: "Properties" }]
-
-/** Starting values for built-in parts, so a placed part has a value and a footprint at once. */
-const PLACE_DEFAULTS: Record<string, Record<string, string>> = {
-  resistor: { resistance: "10k", footprint: "0402" },
-  capacitor: { capacitance: "100nF", footprint: "0402" },
-  inductor: { inductance: "10uH", footprint: "0805" },
-  led: { color: "red", footprint: "0603" },
-  crystal: { frequency: "16MHz" },
-  fuse: { currentRating: "500mA", footprint: "1206" },
-}
-
-export function App() {
-  const [files, setFiles] = useState<string[]>([])
-  const [project, setProject] = useState<string>()
-  const [file, setFile] = useState<string>()
-  const [circuit, setCircuit] = useState<CircuitData>()
-  const [build, setBuild] = useState<BuildState>({ status: "idle" })
-  const [history, setHistory] = useState<HistoryListing[]>([])
-  const [selected, setSelected] = useState<string | null>(null)
-  const [tab, setTab] = useState<Tab>("pcb")
+/** A message at the bottom of the window that goes after six seconds or a click. */
+function useToast() {
   const [message, setMessage] = useState<string | null>(null)
-  const [parts, setParts] = useState<PartsData>({ library: [], builtin: [] })
-  const workspace = useWorkspace(tab)
-  const { setHighlight, openBottom } = workspace
-  const openChecks = useCallback(() => openBottom("drc"), [openBottom])
-  const checks = useChecks({ file, build, onTab: setTab, onSelect: setSelected, onOpen: openChecks })
-
   const notify = useCallback((text: string) => {
     setMessage(text)
     window.setTimeout(() => setMessage((current) => (current === text ? null : current)), 6000)
   }, [])
+  const dismiss = useCallback(() => setMessage(null), [])
+  return { message, notify, dismiss }
+}
 
-  const refresh = useCallback(async (target: string) => {
-    const [data, entries] = await Promise.all([
-      api<CircuitData>(`/api/circuit?file=${encodeURIComponent(target)}`),
-      api<HistoryListing[]>("/api/history?limit=30"),
-    ])
-    setCircuit(data)
-    setHistory(entries)
-  }, [])
-
-  const refreshParts = useCallback(async () => {
-    setParts(await api<PartsData>("/api/parts"))
-  }, [])
-
-  const refreshBuild = useCallback(async (target: string) => {
-    const next = await api<BuildState>(`/api/build?file=${encodeURIComponent(target)}`)
-    // Keep the same design object while a build runs, so the viewers do not redraw from scratch.
-    setBuild((previous) => (next.status === "building" && previous.design ? { ...next, design: previous.design } : next))
-  }, [])
-
-  useEffect(() => {
-    api<string[]>("/api/circuits")
-      .then((list) => {
-        setFiles(list)
-        setFile((current) => current ?? list[0])
-      })
-      .catch((error: Error) => notify(error.message))
-    api<{ name: string }>("/api/project")
-      .then((info) => setProject(info.name))
-      .catch((error: Error) => notify(error.message))
-    refreshParts().catch((error: Error) => notify(error.message))
-  }, [notify, refreshParts])
-
-  useEffect(() => {
-    if (!file) return
-    setSelected(null)
-    setHighlight(null)
-    refresh(file).catch((error: Error) => notify(error.message))
-    api("/api/build", { file })
-      .then(() => refreshBuild(file))
-      .catch((error: Error) => notify(error.message))
-    return subscribe((event, changed) => {
-      if (event === "library") {
-        refreshParts().catch((error: Error) => notify(error.message))
-        return
-      }
-      if (changed !== file) return
-      const update = event === "change" ? refresh(file) : refreshBuild(file)
-      update.catch((error: Error) => notify(error.message))
-    })
-  }, [file, refresh, refreshBuild, refreshParts, notify, setHighlight])
-
+/** Esc clears the selection, outside text fields. */
+function useEscapeClearsSelection(setSelected: (name: string | null) => void): void {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const typing = event.target instanceof HTMLElement && event.target.closest("input, textarea, select")
@@ -128,101 +38,57 @@ export function App() {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [])
+  }, [setSelected])
+}
 
-  const run = useCallback(
-    async (task: () => Promise<unknown>): Promise<boolean> => {
-      try {
-        await task()
-        return true
-      } catch (error) {
-        notify((error as Error).message)
-        return false
-      } finally {
-        if (file) await refresh(file).catch(() => undefined)
-      }
-    },
-    [file, refresh, notify],
-  )
-
-  // Memoised so panels can depend on it in effects without refetching on every render.
-  const actions: Actions = useMemo(
-    () => ({
-      edit: (edits, summary) => run(() => api("/api/edit", { file, edits, summary })),
-      lock: (parts, locked) => run(() => api("/api/lock", { file, parts, locked })),
-      mark: (text, at) => run(() => api("/api/mark", { file, text, ...at })),
-      unmark: (id) => run(() => api("/api/unmark", { file, id })),
-      undo: (id) => run(() => api("/api/undo", id ? { id } : {})),
-      verify: async (id, by, against, confirm) => {
-        const ok = await run(() => api("/api/verify", { id, by, against, confirm }))
-        if (ok) await refreshParts()
-        return ok
-      },
-      notify,
-    }),
-    [file, run, notify, refreshParts],
-  )
-
-  const place = async (part: string) => {
-    try {
-      const props = PLACE_DEFAULTS[part]
-      const result = await api<{ name: string }>("/api/place", { file, part, ...(props ? { props } : {}) })
-      setSelected(result.name)
-      notify(`Placed ${result.name}${props ? " with a starting value; change it on the right" : ""}. Drag it into position on the PCB.`)
-    } catch (error) {
-      notify((error as Error).message)
-    } finally {
-      if (file) await refresh(file).catch(() => undefined)
-    }
-  }
-
-  const [dialog, setDialog] = useState<DialogName | null>(null)
-  const closeDialog = useCallback(() => setDialog(null), [])
-  const pageTree = useMemo(() => buildPageTree(project, files, file, tab), [project, files, file, tab])
-  const openDocument = useCallback((target: string, view: DocView) => {
-    setFile(target)
-    setTab(view)
-  }, [])
-  const runCommand = useAppCommands({ file, view: tab, setView: setTab, selected, actions, workspace, openChecks, openDialog: setDialog })
-
-  const design = build.design
-  // A rebuild can rename or merge the highlighted net (an unnamed net that gets GND): follow it, or clear it.
-  const lastDesign = useRef<typeof design>(undefined)
+/** A rebuild can rename or merge the highlighted net (an unnamed net that gets GND): follow it, or clear it. */
+function useHighlightFollowsBuild(design: Design | undefined, setHighlight: ReturnType<typeof useWorkspace>["setHighlight"]): void {
+  const lastDesign = useRef<Design | undefined>(undefined)
   useEffect(() => {
     const before = lastDesign.current
     lastDesign.current = design
     if (design && design !== before) setHighlight((current) => remapHighlight(current, before, design))
   }, [design, setHighlight])
-  // Previews of moves and wires sent before this time are in the design the canvases draw.
-  const builtFrom = build.startedAt ? Date.parse(build.startedAt) : Number.NEGATIVE_INFINITY
-  // What both canvases take; each adds the rings of its own view.
-  const canvas: Omit<CanvasProps, "markers"> | undefined =
-    design && circuit
-      ? {
-          design,
-          buildId: build.finishedAt,
-          builtFrom,
-          circuit,
-          actions,
-          selected,
-          onSelect: setSelected,
-          highlight: workspace.highlight,
-          onHighlight: workspace.setHighlight,
-          unit: workspace.unit,
-          onToggleUnit: workspace.toggleUnit,
-          activeViolation: checks.active,
-          focus: checks.focus,
-          onFocused: checks.focused,
-        }
-      : undefined
-  if (!hasToken) {
-    return (
-      <p className="empty">
-        Open the address that <code>copperflow studio</code> printed in the terminal. It contains a key for this
-        session.
-      </p>
-    )
-  }
+}
+
+function NoToken() {
+  return (
+    <p className="empty">
+      Open the address that <code>copperflow studio</code> printed in the terminal. It contains a key for this session.
+    </p>
+  )
+}
+
+export function App() {
+  const { message, notify, dismiss } = useToast()
+  const [selected, setSelected] = useState<string | null>(null)
+  const [tab, setTab] = useState<Tab>("pcb")
+  const [dialog, setDialog] = useState<DialogName | null>(null)
+  const workspace = useWorkspace(tab)
+  const { setHighlight, openBottom } = workspace
+  const onFile = useCallback(() => {
+    setSelected(null)
+    setHighlight(null)
+  }, [setHighlight])
+  const data = useStudioData(notify, onFile)
+  const { file, setFile, build, circuit } = data
+  const actions = useActions({ file, refresh: data.refresh, refreshParts: data.refreshParts, notify })
+  const place = usePlace({ file, refresh: data.refresh, refreshParts: data.refreshParts, notify }, setSelected)
+  const openChecks = useCallback(() => openBottom("drc"), [openBottom])
+  const checks = useChecks({ file, build, onTab: setTab, onSelect: setSelected, onOpen: openChecks })
+  useEscapeClearsSelection(setSelected)
+  useHighlightFollowsBuild(build.design, setHighlight)
+  const closeDialog = useCallback(() => setDialog(null), [])
+  const openDocument = useCallback(
+    (target: string, view: DocView) => {
+      setFile(target)
+      setTab(view)
+    },
+    [setFile],
+  )
+  const runCommand = useAppCommands({ file, view: tab, setView: setTab, selected, actions, workspace, openChecks, openDialog: setDialog })
+
+  if (!hasToken) return <NoToken />
   return (
     <div className="app">
       <MenuBar run={runCommand}>
@@ -235,95 +101,25 @@ export function App() {
           Locked parts changed outside the editor: {circuit.violations.map((v) => `${v.part} (${v.detail})`).join(", ")}
         </div>
       )}
-      <main className="workspace">
-        <SideStrip side="left" tabs={LEFT_STRIP} active={workspace.left.strip} open={workspace.left.open} onClick={workspace.clickLeft} />
-        {circuit && (
-          <LeftPanel
-            circuit={circuit}
-            parts={parts}
-            onPlace={(part) => void place(part)}
-            selected={selected}
-            onSelect={setSelected}
-            actions={actions}
-            design={design}
-            left={workspace.left}
-            onSub={workspace.showSub}
-            pageTree={pageTree}
-            onOpenDocument={openDocument}
-            focusSearch={workspace.focusSearch}
-            onSearchFocused={workspace.searchFocused}
-            highlight={workspace.highlight}
-            onHighlight={workspace.setHighlight}
-            hidden={!workspace.leftOpen}
-          />
-        )}
-        <div className="center">
-          <DocTabs file={file} view={tab} onView={setTab} />
-          <section className="canvas" id="doc-panel" role="tabpanel" aria-labelledby={`doc-tab-${tab}`}>
-            {!design && <p className="empty">{build.status === "failed" ? build.error : "Building the circuit…"}</p>}
-            {canvas && tab === "pcb" && <PcbCanvas key={file} {...canvas} markers={checks.markers.pcb} />}
-            {canvas && tab === "schematic" && <SchematicCanvas key={file} {...canvas} markers={checks.markers.schematic} />}
-          </section>
-          {workspace.bottom.open && (
-            <BottomPanel
-              tab={workspace.bottom.tab}
-              parts={parts}
-              onPlace={(part) => void place(part)}
-              history={history}
-              actions={actions}
-              built={design !== undefined}
-              buildError={build.status === "failed" ? (build.error ?? "The build failed.") : undefined}
-              rows={checks.rows}
-              counts={checks.counts}
-              active={checks.active}
-              onPick={checks.pick}
-            />
-          )}
-        </div>
-        {circuit && (
-          <Inspector
-            circuit={circuit}
-            build={build}
-            parts={parts}
-            selected={selected}
-            onSelect={setSelected}
-            actions={actions}
-            counts={checks.counts}
-            onShowChecks={openChecks}
-            hidden={!workspace.rightOpen}
-          />
-        )}
-        <SideStrip side="right" tabs={RIGHT_STRIP} active={workspace.right.active} open={workspace.right.open} onClick={workspace.clickRight} />
-      </main>
+      <Workspace
+        data={data}
+        workspace={workspace}
+        checks={checks}
+        view={tab}
+        onView={setTab}
+        selected={selected}
+        onSelect={setSelected}
+        actions={actions}
+        onPlace={place}
+        onOpenDocument={openDocument}
+        openChecks={openChecks}
+      />
       <BottomStrip state={workspace.bottom} onClick={workspace.clickBottomTab} onOpen={workspace.openBottom} />
       {message && (
-        <div className="toast" role="status" onClick={() => setMessage(null)}>
+        <div className="toast" role="status" onClick={dismiss}>
           {message}
         </div>
       )}
     </div>
   )
-}
-
-/** The build state and its error count (error violations and error diagnostics); clicking it opens the Checks panel. */
-function StatusPill({ build, errors, onOpen }: { build: BuildState; errors: number; onOpen(): void }) {
-  return (
-    <button className={`build ${buildTone(build, errors)}`} onClick={onOpen} title="Show the checks (\)">
-      <span className="dot" aria-hidden="true" />
-      <span role="status">{statusText(build, errors)}</span>
-    </button>
-  )
-}
-
-function statusText(build: BuildState, errors: number): string {
-  if (build.status === "building") return "Building"
-  if (build.status === "failed") return "Build failed"
-  if (build.status !== "done" || !build.design) return "Not built"
-  return errors === 0 ? "Build OK" : `${errors} ${errors === 1 ? "error" : "errors"}`
-}
-
-function buildTone(build: BuildState, errors: number): "busy" | "bad" | "good" | "idle" {
-  if (build.status === "building") return "busy"
-  if (build.status === "failed" || errors > 0) return "bad"
-  return build.status === "done" ? "good" : "idle"
 }
