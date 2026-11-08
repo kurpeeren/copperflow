@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react"
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { CircuitData, Design } from "../api"
-import { WireIcon } from "../icons"
 import { useCommands } from "../shell/commands"
+import { armedCommand } from "../shell/toolbar"
+import { clearToolState, setToolState } from "../shell/tool-state"
+import { ViewTools } from "../shell/ViewTools"
 import { keepAutoPlaced } from "./auto-placed"
 import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
 import { blurButton, CanvasStatus, KeepButton, SnapSelect } from "./CanvasTools"
 import { hitTest, unionBoxes, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import { highlightOf, schematicNetAt } from "./highlight"
 import { labelHitBox } from "./label-drag"
-import { NameInput, PaletteButtons, paletteHint } from "./LabelPalette"
+import { NameInput, paletteHint } from "./LabelPalette"
 import type { ViolationMarker } from "./markers"
 import { drawOutline, drawWirePreview } from "./overlays"
 import { drawSchematic } from "./schematic-draw"
@@ -84,37 +86,20 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
 }
 
 interface SheetToolsProps {
-  wire: WireTool
-  palette: Palette
   step: number
   setStep(step: number): void
-  fit(): void
   keep: { show: boolean; onKeep(): void }
 }
 
-/** The wire tool's switch, the Place tools, snap, fit and "Keep these positions". */
-function SheetTools({ wire, palette, step, setStep, fit, keep }: SheetToolsProps) {
+/** Snap and "Keep these positions", in the toolbar's right side. */
+function SheetTools({ step, setStep, keep }: SheetToolsProps) {
   return (
-    <div className="canvas-tools" onPointerDown={(e) => e.stopPropagation()} onClick={blurButton}>
-      <button
-        className={wire.wiring ? "active" : ""}
-        aria-pressed={wire.wiring}
-        onClick={() => {
-          palette.disarm()
-          wire.toggleWiring()
-        }}
-        title="Wire pins (W or Alt+W)"
-      >
-        <WireIcon /> {wire.wiring ? "Stop wiring" : "Wire pins"}
-      </button>
-      <PaletteButtons palette={palette} />
-      <span className="tool-divider" aria-hidden="true" />
-      <SnapSelect step={step} onChange={setStep} unit={undefined} />
-      <button onClick={fit} title="Fit the schematic (F or K)">
-        Fit
-      </button>
-      <KeepButton {...keep} title="Write the faded symbols' positions into the code as schX and schY" />
-    </div>
+    <ViewTools>
+      <div className="canvas-tools" onPointerDown={(e) => e.stopPropagation()} onClick={blurButton}>
+        <SnapSelect step={step} onChange={setStep} unit={undefined} />
+        <KeepButton {...keep} title="Write the faded symbols' positions into the code as schX and schY" />
+      </div>
+    </ViewTools>
   )
 }
 
@@ -170,6 +155,7 @@ function useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNet
   useEffect(() => {
     if (wiring || drawing) disarm()
   }, [wiring, drawing, disarm])
+  useArmedTool(wire, palette)
   useCommands({
     wire: () => {
       disarm()
@@ -180,6 +166,24 @@ function useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNet
     powerFlag: () => palette.arm("vcc"),
   })
   return useHighlight(design, highlightNet)
+}
+
+/** Tells the toolbar which tool is armed, and how to put it away. */
+function useArmedTool(wire: WireTool, palette: Palette): void {
+  const { wiring } = wire
+  const { tool, disarm } = palette
+  const { toggleWiring } = wire
+  const active = armedCommand(wiring, tool)
+  useEffect(() => {
+    setToolState({
+      active,
+      stop: () => {
+        disarm()
+        if (wiring) toggleWiring()
+      },
+    })
+  }, [active, wiring, disarm, toggleWiring])
+  useEffect(() => clearToolState, [])
 }
 
 /**
@@ -234,10 +238,12 @@ export function SchematicCanvas({ design, buildId, builtFrom, circuit, actions, 
       aria-label="Schematic. Drag symbols and net labels to move them, drag the background to pan, scroll to zoom. Click a free pin or press W over a pin to draw a wire."
     >
       <canvas ref={canvasRef} style={{ width: size.width, height: size.height }} />
-      <div className="canvas-top">
-        <SheetTools wire={wire} palette={palette} step={step} setStep={setStep} fit={fit} keep={{ show: parts.autoPlaced, onKeep: () => keepAutoPlaced(design, "schematic", parts.blockerFor, actions) }} />
-        {hint && <div className="canvas-hint">{hint}</div>}
-      </div>
+      <SheetTools step={step} setStep={setStep} keep={{ show: parts.autoPlaced, onKeep: () => keepAutoPlaced(design, "schematic", parts.blockerFor, actions) }} />
+      {hint && (
+        <div className="canvas-top">
+          <div className="canvas-hint">{hint}</div>
+        </div>
+      )}
       <NameInput palette={palette} camera={camera} size={size} />
       <CanvasStatus cursor={cursor} zoom={(camera ?? EMPTY_SHEET_CAMERA).scale} detail={wire.under.end?.label} gesture={gesture} />
       {!bounds && <p className="empty">This schematic has no parts yet.</p>}

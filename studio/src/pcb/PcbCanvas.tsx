@@ -3,6 +3,7 @@ import type { CircuitData, Design } from "../api"
 import type { WorldPad } from "../../../src/engine/pcb.js"
 import { keepAutoPlaced } from "./auto-placed"
 import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
+import { ViewTools } from "../shell/ViewTools"
 import { blurButton, CanvasStatus, KeepButton, SnapSelect } from "./CanvasTools"
 import type { Layers } from "./ctx"
 import { hitTest, pointBounds, unionBoxes, type Camera, type PartBox, type Point, type Size } from "./geometry"
@@ -76,34 +77,32 @@ interface PcbToolsProps {
   unit: Unit
   step: number
   setStep(step: number): void
-  fit(): void
   layers: Layers
   setLayers(layers: Layers): void
   keep: { show: boolean; onKeep(): void }
 }
 
-/** Snap, fit, the layer switches and "Keep these positions". */
-function PcbTools({ unit, step, setStep, fit, layers, setLayers, keep }: PcbToolsProps) {
+/** Snap, the layer switches and "Keep these positions", in the toolbar's right side. */
+function PcbTools({ unit, step, setStep, layers, setLayers, keep }: PcbToolsProps) {
   return (
-    <div className="canvas-tools" onClick={blurButton}>
-      <SnapSelect step={step} onChange={setStep} unit={unit} />
-      <button onClick={fit} title="Fit the board (F or K)">
-        Fit
-      </button>
-      <span className="tool-divider" aria-hidden="true" />
-      {LAYER_BUTTONS.map(([key, label]) => (
-        <button
-          key={key}
-          className={layers[key] ? "active" : ""}
-          aria-pressed={layers[key]}
-          onClick={() => setLayers({ ...layers, [key]: !layers[key] })}
-          title={`Show or hide ${label.toLowerCase()}`}
-        >
-          {label}
-        </button>
-      ))}
-      <KeepButton {...keep} title="Write the faded parts' positions into the code as pcbX and pcbY" />
-    </div>
+    <ViewTools>
+      <div className="canvas-tools" onClick={blurButton}>
+        <SnapSelect step={step} onChange={setStep} unit={unit} />
+        <span className="tool-divider" aria-hidden="true" />
+        {LAYER_BUTTONS.map(([key, label]) => (
+          <button
+            key={key}
+            className={layers[key] ? "active" : ""}
+            aria-pressed={layers[key]}
+            onClick={() => setLayers({ ...layers, [key]: !layers[key] })}
+            title={`Show or hide ${label.toLowerCase()}`}
+          >
+            {label}
+          </button>
+        ))}
+        <KeepButton {...keep} title="Write the faded parts' positions into the code as pcbX and pcbY" />
+      </div>
+    </ViewTools>
   )
 }
 
@@ -150,7 +149,7 @@ export function PcbCanvas({ design, builtFrom, circuit, actions, selected, onSel
         aria-label="PCB layout. Drag parts to move them, drag the background to pan, scroll to zoom."
         role="img"
       />
-      <PcbTools unit={unit} step={step} setStep={setStep} fit={fit} layers={layers} setLayers={setLayers} keep={{ show: parts.autoPlaced, onKeep: () => keepAutoPlaced(design, "pcb", parts.blockerFor, actions) }} />
+      <PcbTools unit={unit} step={step} setStep={setStep} layers={layers} setLayers={setLayers} keep={{ show: parts.autoPlaced, onKeep: () => keepAutoPlaced(design, "pcb", parts.blockerFor, actions) }} />
       <CanvasStatus cursor={cursor} zoom={camera?.scale} unit={unit} onToggleUnit={onToggleUnit} detail={hoverPad && padLabel(design, hoverPad)} gesture={gesture} />
     </div>
   )

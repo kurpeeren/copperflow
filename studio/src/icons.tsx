@@ -1,4 +1,5 @@
 import type { SVGProps } from "react"
+import type { ToolIconName } from "./shell/toolbar"
 
 type IconProps = SVGProps<SVGSVGElement>
 
@@ -57,3 +58,82 @@ export const CloseIcon = (p: IconProps) => (
     <path d="m4.5 4.5 7 7M11.5 4.5l-7 7" />
   </Icon>
 )
+
+function ToolIcon({ children, ...props }: IconProps) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+      {children}
+    </svg>
+  )
+}
+
+const undo = (p: IconProps) => (
+  <ToolIcon {...p}>
+    <path d="M8 5 4 9l4 4" />
+    <path d="M4 9h10a6 6 0 0 1 0 12h-4" />
+  </ToolIcon>
+)
+const zoomIn = (p: IconProps) => (
+  <ToolIcon {...p}>
+    <circle cx="10.5" cy="10.5" r="6" />
+    <path d="m15 15 5 5M10.5 8v5M8 10.5h5" />
+  </ToolIcon>
+)
+const zoomOut = (p: IconProps) => (
+  <ToolIcon {...p}>
+    <circle cx="10.5" cy="10.5" r="6" />
+    <path d="m15 15 5 5M8 10.5h5" />
+  </ToolIcon>
+)
+const fit = (p: IconProps) => (
+  <ToolIcon {...p}>
+    <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />
+    <rect x="9" y="9" width="6" height="6" />
+  </ToolIcon>
+)
+const component = (p: IconProps) => (
+  <ToolIcon {...p}>
+    <rect x="7" y="6" width="10" height="12" rx="1" />
+    <path d="M3 9.5h4M3 14.5h4M17 9.5h4M17 14.5h4" />
+  </ToolIcon>
+)
+const wire = (p: IconProps) => (
+  <ToolIcon {...p}>
+    <circle cx="5" cy="18" r="2" />
+    <circle cx="19" cy="6" r="2" />
+    <path d="M7 18h6V6h4" />
+  </ToolIcon>
+)
+const netLabel = (p: IconProps) => (
+  <ToolIcon {...p}>
+    <path d="M3 12h5" />
+    <path d="M8 7h12v10H8l-3-5z" />
+    <path d="M12 12h5" />
+  </ToolIcon>
+)
+const ground = (p: IconProps) => (
+  <ToolIcon {...p}>
+    <path d="M12 4v8M5 12h14M8 16h8M10.5 20h3" />
+  </ToolIcon>
+)
+const power = (p: IconProps) => (
+  <ToolIcon {...p}>
+    <path d="M12 21V8M6 8h12M12 3v5" />
+    <path d="M6 8l6-5 6 5" />
+  </ToolIcon>
+)
+const rotate = (p: IconProps) => (
+  <ToolIcon {...p}>
+    <path d="M19 12a7 7 0 1 1-2.2-5.1" />
+    <path d="M19 4v4.5h-4.5" />
+  </ToolIcon>
+)
+const check = (p: IconProps) => (
+  <ToolIcon {...p}>
+    <path d="M12 3 4 6v6c0 4.5 3.2 7.8 8 9 4.8-1.2 8-4.5 8-9V6z" />
+    <path d="m8.5 12 2.5 2.5 4.5-5" />
+  </ToolIcon>
+)
+
+/** The toolbar's icons, by the name toolbar.ts gives each button. */
+export const TOOL_ICONS: Record<ToolIconName, (props: IconProps) => React.JSX.Element> = { undo, zoomIn, zoomOut, fit, component, wire, netLabel, ground, power, rotate, check }

@@ -1,0 +1,59 @@
+/* The toolbar under the menu bar: 24px icon buttons, and the open canvas's own tools at the right. */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  flex: none;
+}
+
+.toolbar-button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--text);
+  flex: none;
+}
+
+.toolbar-button:hover {
+  background: var(--raised);
+}
+
+.toolbar-button[aria-pressed="true"] {
+  background: var(--copper-wash);
+  color: var(--copper-strong);
+}
+
+.toolbar-separator {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--line);
+  flex: none;
+}
+
+.toolbar-view-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-left: auto;
+}
+
+/* The canvas rows keep their buttons, but sit flat in the toolbar rather than floating over the canvas. */
+.toolbar-view-slot .canvas-tools {
+  position: static;
+  max-width: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  flex-wrap: nowrap;
+}

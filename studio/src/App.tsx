@@ -10,6 +10,7 @@ import { SchematicCanvas } from "./pcb/SchematicCanvas"
 import { remapHighlight } from "./pcb/highlight"
 import { StudioDialog, type DialogName } from "./shell/Dialogs"
 import { MenuBar } from "./shell/MenuBar"
+import { Toolbar } from "./shell/ToolbarRow"
 import { useAppCommands } from "./shell/use-app-commands"
 import { useChecks } from "./use-checks"
 import { useWorkspace } from "./use-workspace"
@@ -223,6 +224,7 @@ export function App() {
           <UndoIcon /> Undo
         </button>
       </MenuBar>
+      <Toolbar view={tab} run={runCommand} />
       {dialog && <StudioDialog name={dialog} onClose={closeDialog} />}
       {circuit && circuit.violations.length > 0 && (
         <div className="banner" role="alert">
