@@ -1,5 +1,6 @@
 import { useEffect, useReducer, useRef, type ReactNode } from "react"
 import { MENUS, menuReducer, type CommandId, type Menu, type MenuEntry } from "./menus"
+import { blurButton } from "../pcb/CanvasTools"
 import "./shell.css"
 
 interface Props {
@@ -37,9 +38,12 @@ function Entry({ entry, onRun }: { entry: MenuEntry; onRun(command: CommandId): 
       <button
         role="menuitem"
         className="menu-item"
-        disabled={!command}
+        aria-disabled={command ? undefined : true}
         title={pending}
-        onClick={() => command && onRun(command)}
+        onClick={(event) => {
+          blurButton(event)
+          if (command) onRun(command)
+        }}
       >
         <span>{label}</span>
         {shortcut && <kbd>{shortcut}</kbd>}
@@ -70,7 +74,7 @@ export function MenuBar({ run, children }: Props) {
   }
   return (
     <header className="menubar" ref={bar}>
-      <span className="brand">copperflow</span>
+      <span className="brand" title="copperflow">copperflow</span>
       <nav className="menus" role="menubar" aria-label="Menu">
         {MENUS.map((menu) => (
           <div key={menu.title} className="menu">
@@ -79,7 +83,10 @@ export function MenuBar({ run, children }: Props) {
               aria-haspopup="menu"
               aria-expanded={state.open === menu.title}
               className={`menu-title${state.open === menu.title ? " open" : ""}`}
-              onClick={() => dispatch({ type: "click", title: menu.title })}
+              onClick={(event) => {
+                blurButton(event)
+                dispatch({ type: "click", title: menu.title })
+              }}
               onPointerEnter={() => dispatch({ type: "hover", title: menu.title })}
             >
               {menu.title}

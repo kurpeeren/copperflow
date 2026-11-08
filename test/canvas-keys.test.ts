@@ -9,6 +9,20 @@ function key(name: string, extra: Partial<KeyInput> = {}): KeyInput {
 }
 
 describe("keyAction", () => {
+  test("Ctrl+Z undoes and Ctrl+O opens the file list, by the character the key produces", () => {
+    expect(keyAction(key("z", { ctrlKey: true, code: "KeyY" }), PCB)).toEqual({ action: "undo", preventDefault: true })
+    expect(keyAction(key("Z", { metaKey: true }), SCHEMATIC)?.action).toBe("undo")
+    expect(keyAction(key("o", { ctrlKey: true }), PCB)).toEqual({ action: "openFile", preventDefault: true })
+    expect(keyAction(key("y", { ctrlKey: true, code: "KeyZ" }), PCB)).toBeNull()
+  })
+
+  test("Ctrl+Z is not ours with Shift, Alt, AltGr or in a text field", () => {
+    expect(keyAction(key("Z", { ctrlKey: true, shiftKey: true }), PCB)).toBeNull()
+    expect(keyAction(key("z", { ctrlKey: true, altKey: true }), PCB)).toBeNull()
+    expect(keyAction(key("z", { ctrlKey: true, altGraph: true }), PCB)).toBeNull()
+    expect(keyAction(key("z", { ctrlKey: true, typing: true }), PCB)).toBeNull()
+  })
+
   test("Alt+W starts the wire tool on the schematic and prevents the default", () => {
     expect(keyAction(key("w", { altKey: true, code: "KeyW" }), SCHEMATIC)).toEqual({ action: "wire", preventDefault: true })
   })

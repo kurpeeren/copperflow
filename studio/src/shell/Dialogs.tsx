@@ -1,10 +1,20 @@
-import { useEffect, type ReactNode } from "react"
+import { useEffect, useRef, type ReactNode } from "react"
 import { CloseIcon } from "../icons"
 import { shortcutList } from "./menus"
 
 export type DialogName = "keys" | "about"
 
 function Dialog({ title, onClose, children }: { title: string; onClose(): void; children: ReactNode }) {
+  const box = useRef<HTMLElement>(null)
+  // Focus moves into the dialog on open and goes back to what had it on close.
+  useEffect(() => {
+    const before = document.activeElement
+    const first = box.current?.querySelector<HTMLElement>("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])")
+    ;(first ?? box.current)?.focus()
+    return () => {
+      if (before instanceof HTMLElement && before.isConnected) before.focus()
+    }
+  }, [])
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return
@@ -16,7 +26,7 @@ function Dialog({ title, onClose, children }: { title: string; onClose(): void; 
   }, [onClose])
   return (
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
-      <section className="dialog" role="dialog" aria-modal="true" aria-label={title}>
+      <section ref={box} tabIndex={-1} className="dialog" role="dialog" aria-modal="true" aria-label={title}>
         <header>
           <h2>{title}</h2>
           <button className="icon" aria-label="Close" onClick={onClose}>

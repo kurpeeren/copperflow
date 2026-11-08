@@ -103,7 +103,7 @@ button.primary:hover:not(:disabled) {
 
 button.danger:hover:not(:disabled) {
   border-color: var(--danger);
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 input,
@@ -874,17 +874,6 @@ ul {
     border: 0;
     border-top: 1px solid var(--line);
     max-height: none;
-  }
-
-  .topbar {
-    grid-template-columns: auto 1fr;
-    height: auto;
-    padding: 6px 10px;
-  }
-
-  .topbar .end {
-    grid-column: 1 / -1;
-    justify-content: flex-start;
   }
 }
 

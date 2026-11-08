@@ -4,6 +4,7 @@ import type { KeyActionName } from "../pcb/canvas-keys.js"
 
 export type CommandId =
   | "openFile"
+  | "exportBom"
   | "exportPackage"
   | "undo"
   | "delete"
@@ -53,6 +54,7 @@ const STAGE_4 = "Comes with routing (stage 4)"
 const STAGE_5 = "Comes with the autorouter (stage 5)"
 const STAGE_6 = "Comes with fabrication outputs (stage 6)"
 const SELECTION = "Comes with multi-selection"
+const CLIPBOARD = "Comes with the engine (stages 3 to 5)"
 const FIND = "Comes with Find"
 const THEME = "Comes with the canvas theme"
 const SETTINGS = "Settings are not in Studio yet"
@@ -64,7 +66,8 @@ export const MENUS: readonly Menu[] = [
       run("Open circuit file", "openFile", "Ctrl+O"),
       later("New circuit", "Create a .circuit.tsx file in the project folder"),
       "separator",
-      run("Export BOM and datasheets", "exportPackage"),
+      run("Export BOM", "exportBom"),
+      run("Export package", "exportPackage"),
       later("Export Gerber", STAGE_6),
       later("Print", STAGE_6),
     ],
@@ -75,8 +78,8 @@ export const MENUS: readonly Menu[] = [
       run("Undo", "undo", "Ctrl+Z"),
       later("Redo", "Undo is kept as history; redo comes later", "Ctrl+Y"),
       "separator",
-      later("Copy", SELECTION, "Ctrl+C"),
-      later("Paste", SELECTION, "Ctrl+V"),
+      later("Copy", CLIPBOARD, "Ctrl+C"),
+      later("Paste", CLIPBOARD, "Ctrl+V"),
       run("Delete", "delete", "Delete"),
       "separator",
       later("Select all", SELECTION, "Ctrl+A"),
@@ -91,7 +94,7 @@ export const MENUS: readonly Menu[] = [
       run("Zoom in", "zoomIn"),
       run("Zoom out", "zoomOut"),
       "separator",
-      run("Unit (PCB)", "toggleUnit", "Q"),
+      run("Unit", "toggleUnit", "Q"),
       later("Grid style", THEME),
       "separator",
       run("Left panel", "toggleLeftPanel", "["),
@@ -145,8 +148,8 @@ export const MENUS: readonly Menu[] = [
       run("Lock", "lock"),
       run("Unlock", "unlock"),
       "separator",
-      later("Align", STAGE_3, "Ctrl+Shift+L"),
-      later("Distribute", STAGE_3, "Ctrl+Shift+H"),
+      later("Align left", STAGE_3, "Ctrl+Shift+L"),
+      later("Distribute horizontally", STAGE_3, "Ctrl+Shift+H"),
     ],
   },
   {
@@ -155,7 +158,7 @@ export const MENUS: readonly Menu[] = [
   },
   {
     title: "Export",
-    entries: [run("BOM and datasheets", "exportPackage"), later("Gerber", STAGE_6), later("Pick and place (CPL)", STAGE_6), later("PDF", STAGE_6)],
+    entries: [run("BOM", "exportBom"), run("Package", "exportPackage"), later("Gerber", STAGE_6), later("Pick and place (CPL)", STAGE_6), later("PDF", STAGE_6)],
   },
   {
     title: "Settings",
@@ -163,7 +166,7 @@ export const MENUS: readonly Menu[] = [
   },
   {
     title: "Help",
-    entries: [run("Keys", "keys"), run("About copperflow", "about")],
+    entries: [run("Keys", "keys"), run("About", "about")],
   },
 ]
 
@@ -175,6 +178,8 @@ export function menuItems(menu: Menu): MenuItem[] {
 
 /** The key action that does what each keyed command does; a test checks the shown shortcut against it. */
 export const COMMAND_KEY_ACTIONS: Partial<Record<CommandId, KeyActionName>> = {
+  undo: "undo",
+  openFile: "openFile",
   fit: "fit",
   toggleUnit: "toggleUnit",
   toggleLeftPanel: "toggleLeftPanel",

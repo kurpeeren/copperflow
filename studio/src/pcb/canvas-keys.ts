@@ -15,6 +15,8 @@ export type KeyActionName =
   | "toggleRightPanel"
   | "toggleBottomPanel"
   | "openLibrary"
+  | "undo"
+  | "openFile"
 
 /** What a key event says, apart from the browser: modifiers, whether it came from a field, and the key. */
 export interface KeyInput {
@@ -104,12 +106,20 @@ const PANEL_KEYS: ReadonlyMap<string, KeyActionName> = new Map([
 const plainOrAltGr = (input: KeyInput): boolean =>
   !input.metaKey && (input.altGraph === true || (input.ctrlKey && input.altKey) || (!input.ctrlKey && !input.altKey))
 
+/** Ctrl (or Cmd) with Z or O, by the character the key produces; AltGr and Shift combinations are not ours. */
+function ctrlAction(input: KeyInput): KeyResult | null {
+  if (input.altKey || input.shiftKey || input.altGraph) return null
+  const letter = input.key.toLowerCase()
+  if (letter === "z") return act("undo", true)
+  return letter === "o" ? act("openFile", true) : null
+}
+
 /** What the key press means in this view, or null when it is not ours (or belongs to a field or a browser shortcut). */
 export function keyAction(input: KeyInput, state: KeyState): KeyResult | null {
   if (input.typing) return null
   const panel = PANEL_KEYS.get(input.key)
   if (panel && plainOrAltGr(input)) return act(panel)
-  if (input.ctrlKey || input.metaKey) return null
+  if (input.ctrlKey || input.metaKey) return ctrlAction(input)
   if (input.altKey) return altAction(input, state)
   if (input.key === " ") return state.drawing || input.onButton ? null : act("rotate", true)
   return letterAction(input.key.toLowerCase(), input, state)
