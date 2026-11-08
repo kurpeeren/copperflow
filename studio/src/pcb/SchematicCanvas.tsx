@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { CircuitData, Design } from "../api"
 import { WireIcon } from "../icons"
+import { useCommands } from "../shell/commands"
 import { keepAutoPlaced } from "./auto-placed"
 import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
 import { blurButton, CanvasStatus, KeepButton, SnapSelect } from "./CanvasTools"
@@ -169,6 +170,15 @@ function useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNet
   useEffect(() => {
     if (wiring || drawing) disarm()
   }, [wiring, drawing, disarm])
+  useCommands({
+    wire: () => {
+      disarm()
+      if (!wiring) wire.toggleWiring()
+    },
+    netLabel: () => palette.arm("label"),
+    groundFlag: () => palette.arm("gnd"),
+    powerFlag: () => palette.arm("vcc"),
+  })
   return useHighlight(design, highlightNet)
 }
 

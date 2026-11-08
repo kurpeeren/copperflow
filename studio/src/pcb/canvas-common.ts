@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type Dispatch, type RefObjec
 import type { Annotations, CircuitData, Design } from "../api"
 import type { Actions } from "../App"
 import type { FocusRequest } from "../checks-panel-state"
+import { useCommands } from "../shell/commands"
 import { drawGrid, drawLockBadge, drawMark, drawOutline, drawSelectionBox } from "./overlays"
 import { centredCamera, fitCamera, zoomAt, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import type { ViolationMarker } from "./markers"
@@ -44,6 +45,8 @@ export interface Moving {
 }
 
 const WHEEL_ZOOM = 0.0015
+/** View → Zoom in and Zoom out scale the camera by this much about the canvas centre. */
+const MENU_ZOOM = 1.25
 
 /** The parts of one view: their boxes and anchors, whether any is auto-placed, the locks, and why a part may not move. */
 export function usePlacedParts(design: Design, view: View, circuit: CircuitData) {
@@ -90,6 +93,8 @@ export function useCamera(ref: RefObject<HTMLElement | null>, size: Size, bounds
   useEffect(() => {
     if (!camera) fit()
   }, [camera, fit])
+  const zoomBy = (factor: number) => () => setCamera((current) => (current ? zoomAt(current, size, { x: size.width / 2, y: size.height / 2 }, factor) : current))
+  useCommands({ zoomIn: zoomBy(MENU_ZOOM), zoomOut: zoomBy(1 / MENU_ZOOM) })
   return { camera, setCamera, fit }
 }
 

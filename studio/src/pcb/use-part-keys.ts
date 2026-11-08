@@ -3,6 +3,7 @@
 import { useEffect } from "react"
 import type { CircuitData } from "../api"
 import type { Actions } from "../App"
+import { useCommands } from "../shell/commands"
 import { keyAction, keyInput } from "./canvas-keys"
 import { isCanvasKey } from "./canvas-common"
 import { nextRotation, VIEWS, type View } from "./positions"
@@ -49,7 +50,27 @@ function runKey(input: PartKeysInput, action: string): void {
   if (action === "rotate" && input.selected && !input.paused) rotatePart(input, input.selected)
 }
 
+/** The same actions for the menu bar and the toolbar, which have no pointer over the canvas. */
+function usePartCommands(input: PartKeysInput): void {
+  const withSelection = (then: (name: string) => void) => () => {
+    if (input.paused) return
+    if (input.selected) then(input.selected)
+    else input.actions.notify("Select a part first.")
+  }
+  useCommands({
+    fit: input.fit,
+    rotate: withSelection((name) => rotatePart(input, name)),
+    delete: withSelection((name) => removePart(input, name)),
+    highlight: () => {
+      const net = input.netUnderPointer()
+      if (net !== undefined) input.onHighlight(net)
+      else input.actions.notify("Point at a pin, a wire or a pad and press H to highlight its net.")
+    },
+  })
+}
+
 export function usePartKeys(input: PartKeysInput): void {
+  usePartCommands(input)
   const { view, selected, paused, circuit, actions, onSelect, blockerFor, fit, netUnderPointer, onHighlight } = input
   useEffect(() => {
     const keys: PartKeysInput = { view, selected, paused, circuit, actions, onSelect, blockerFor, fit, netUnderPointer, onHighlight }

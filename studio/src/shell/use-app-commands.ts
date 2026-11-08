@@ -1,0 +1,113 @@
+// What a menu or toolbar command does: the app's own commands run here, the rest go to the open canvas over the
+// command bus. Schematic-only commands sent while the PCB is open switch to the schematic first.
+import { useCallback, useEffect, useState } from "react"
+import { api } from "../api"
+import type { Actions } from "../App"
+import type { KeyActionName } from "../pcb/canvas-keys"
+import type { View } from "../pcb/positions"
+import type { LeftTab } from "../use-workspace"
+import { send } from "./commands"
+import type { DialogName } from "./Dialogs"
+import type { CommandId } from "./menus"
+
+/** Commands only the schematic canvas answers. */
+const SCHEMATIC_ONLY: ReadonlySet<CommandId> = new Set(["wire", "netLabel", "groundFlag", "powerFlag"])
+
+/** Commands the workspace runs as it runs their keys. */
+const WORKSPACE: Partial<Record<CommandId, KeyActionName>> = {
+  toggleUnit: "toggleUnit",
+  toggleLeftPanel: "toggleLeftPanel",
+  toggleRightPanel: "toggleRightPanel",
+  toggleBottomPanel: "toggleBottomPanel",
+  clearHighlight: "clearHighlight",
+  placeComponent: "openLibrary",
+}
+
+interface Input {
+  file: string | undefined
+  view: View
+  setView(view: View): void
+  selected: string | null
+  actions: Actions
+  workspace: { run(action: KeyActionName): void; showLeftTab(tab: LeftTab): void }
+  openChecks(): void
+  openDialog(name: DialogName): void
+}
+
+function exportPackage(file: string | undefined, actions: Actions): void {
+  if (!file) return
+  actions.notify("Exporting the BOM and datasheets…")
+  api<{ outDir: string; files: string[] }>("/api/package", { file })
+    .then((result) => actions.notify(`Exported ${result.files.length} files to ${result.outDir}`))
+    .catch((error: Error) => actions.notify(error.message))
+}
+
+function lockSelected(input: Input, locked: boolean): void {
+  if (!input.selected) return input.actions.notify("Select a part first.")
+  void input.actions.lock([input.selected], locked)
+}
+
+/** The app's own commands; undefined for the ones the canvases answer. */
+function appCommand(input: Input, command: CommandId): (() => void) | undefined {
+  const action = WORKSPACE[command]
+  if (action) return () => input.workspace.run(action)
+  const table: Partial<Record<CommandId, () => void>> = {
+    openFile: () => document.querySelector<HTMLSelectElement>("select[aria-label='Circuit file']")?.focus(),
+    exportPackage: () => exportPackage(input.file, input.actions),
+    undo: () => void input.actions.undo(),
+    checkDrc: input.openChecks,
+    lock: () => lockSelected(input, true),
+    unlock: () => lockSelected(input, false),
+    history: () => input.workspace.showLeftTab("history"),
+    keys: () => input.openDialog("keys"),
+    about: () => input.openDialog("about"),
+  }
+  return table[command]
+}
+
+/** Ctrl+Z undoes and Ctrl+O goes to the file list, outside text fields. */
+function useAppKeys(runCommand: (command: CommandId) => void): void {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const typing = event.target instanceof HTMLElement && event.target.closest("input, textarea, select, [contenteditable='true']")
+      if (typing || !(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return
+      const letter = event.code === "KeyZ" ? "z" : event.code === "KeyO" ? "o" : null
+      if (!letter) return
+      event.preventDefault()
+      runCommand(letter === "z" ? "undo" : "openFile")
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [runCommand])
+}
+
+/** Returns the function the menu bar and toolbar call. */
+export function useAppCommands(input: Input): (command: CommandId) => void {
+  const [waiting, setWaiting] = useState<CommandId | null>(null)
+  const { view, setView, actions } = input
+  // A command waiting for the schematic runs once the schematic canvas has mounted and subscribed.
+  useEffect(() => {
+    if (!waiting || view !== "schematic") return
+    const id = window.setTimeout(() => {
+      setWaiting(null)
+      if (!send(waiting)) actions.notify("The schematic is still building; try again in a moment.")
+    }, 0)
+    return () => window.clearTimeout(id)
+  }, [waiting, view, actions])
+  const runCommand = useCallback(
+    (command: CommandId) => {
+      const own = appCommand(input, command)
+      if (own) return own()
+      if (SCHEMATIC_ONLY.has(command) && view !== "schematic") {
+        setView("schematic")
+        setWaiting(command)
+        return
+      }
+      if (!send(command)) actions.notify("Wait for the build to finish, then try again.")
+    },
+    // The input object is new on every render; its parts are what matter.
+    [input.file, input.selected, view, setView, actions, input.workspace, input.openChecks, input.openDialog],
+  )
+  useAppKeys(runCommand)
+  return runCommand
+}

@@ -20,27 +20,37 @@ export function useWorkspace(view: View) {
   const [unit, setUnit] = useState<Unit>("mm")
   const [highlight, setHighlight] = useState<string | null>(null)
 
+  /** Runs one of the workspace's own actions, for a key or a menu item. */
+  const run = useCallback((action: KeyActionName) => {
+    if (action === "toggleLeftPanel") setLeftOpen((open) => !open)
+    if (action === "toggleRightPanel") setRightOpen((open) => !open)
+    if (action === "toggleBottomPanel") setBottomOpen((open) => !open)
+    if (action === "toggleUnit") setUnit(nextUnit)
+    if (action === "clearHighlight") setHighlight(null)
+    if (action === "openLibrary") {
+      setLeftOpen(true)
+      setLeftTab("library")
+      setFocusSearch(true)
+    }
+  }, [])
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const hit = keyAction(keyInput(event), { view })
       if (!hit || !WORKSPACE_ACTIONS.has(hit.action)) return
       if (hit.preventDefault) event.preventDefault()
-      if (hit.action === "toggleLeftPanel") setLeftOpen((open) => !open)
-      if (hit.action === "toggleRightPanel") setRightOpen((open) => !open)
-      if (hit.action === "toggleBottomPanel") setBottomOpen((open) => !open)
-      if (hit.action === "toggleUnit") setUnit(nextUnit)
-      if (hit.action === "clearHighlight") setHighlight(null)
-      if (hit.action === "openLibrary") {
-        setLeftOpen(true)
-        setLeftTab("library")
-        setFocusSearch(true)
-      }
+      run(hit.action)
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [view])
+  }, [view, run])
+
+  const showLeftTab = useCallback((next: LeftTab) => {
+    setLeftOpen(true)
+    setLeftTab(next)
+  }, [])
 
   const toggleUnit = useCallback(() => setUnit(nextUnit), [])
   const searchFocused = useCallback(() => setFocusSearch(false), [])
-  return { leftOpen, rightOpen, bottomOpen, setBottomOpen, leftTab, setLeftTab, focusSearch, searchFocused, unit, toggleUnit, highlight, setHighlight }
+  return { leftOpen, rightOpen, bottomOpen, setBottomOpen, leftTab, setLeftTab, showLeftTab, focusSearch, searchFocused, unit, toggleUnit, highlight, setHighlight, run }
 }

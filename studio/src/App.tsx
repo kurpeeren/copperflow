@@ -8,6 +8,9 @@ import type { CanvasProps } from "./pcb/canvas-common"
 import { PcbCanvas } from "./pcb/PcbCanvas"
 import { SchematicCanvas } from "./pcb/SchematicCanvas"
 import { remapHighlight } from "./pcb/highlight"
+import { StudioDialog, type DialogName } from "./shell/Dialogs"
+import { MenuBar } from "./shell/MenuBar"
+import { useAppCommands } from "./shell/use-app-commands"
 import { useChecks } from "./use-checks"
 import { useWorkspace } from "./use-workspace"
 
@@ -158,6 +161,10 @@ export function App() {
     }
   }
 
+  const [dialog, setDialog] = useState<DialogName | null>(null)
+  const closeDialog = useCallback(() => setDialog(null), [])
+  const runCommand = useAppCommands({ file, view: tab, setView: setTab, selected, actions, workspace, openChecks, openDialog: setDialog })
+
   const design = build.design
   // A rebuild can rename or merge the highlighted net (an unnamed net that gets GND): follow it, or clear it.
   const lastDesign = useRef<typeof design>(undefined)
@@ -198,15 +205,7 @@ export function App() {
   }
   return (
     <div className="app">
-      <header className="topbar">
-        <div className="start">
-          <span className="brand">copperflow</span>
-          <select value={file ?? ""} onChange={(e) => setFile(e.target.value)} aria-label="Circuit file">
-            {files.map((f) => (
-              <option key={f}>{f}</option>
-            ))}
-          </select>
-        </div>
+      <MenuBar run={runCommand}>
         <div className="views" role="tablist" aria-label="View">
           {(["schematic", "pcb"] as const).map((t) => (
             <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
@@ -214,13 +213,17 @@ export function App() {
             </button>
           ))}
         </div>
-        <div className="end">
-          <StatusPill build={build} errors={checks.counts.errors} onOpen={openChecks} />
-          <button onClick={() => void actions.undo()} title="Undo the last change">
-            <UndoIcon /> Undo
-          </button>
-        </div>
-      </header>
+        <select value={file ?? ""} onChange={(e) => setFile(e.target.value)} aria-label="Circuit file">
+          {files.map((f) => (
+            <option key={f}>{f}</option>
+          ))}
+        </select>
+        <StatusPill build={build} errors={checks.counts.errors} onOpen={openChecks} />
+        <button onClick={() => void actions.undo()} title="Undo the last change (Ctrl+Z)">
+          <UndoIcon /> Undo
+        </button>
+      </MenuBar>
+      {dialog && <StudioDialog name={dialog} onClose={closeDialog} />}
       {circuit && circuit.violations.length > 0 && (
         <div className="banner" role="alert">
           Locked parts changed outside the editor: {circuit.violations.map((v) => `${v.part} (${v.detail})`).join(", ")}

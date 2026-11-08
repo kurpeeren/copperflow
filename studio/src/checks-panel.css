@@ -109,7 +109,7 @@ button.build {
 }
 
 .check-row.error .message {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 .check-row .items {
