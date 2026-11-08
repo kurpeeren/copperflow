@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react"
+import { useEffect, useId, useState, type ReactNode } from "react"
 import type { Literal, PropInfo } from "./api"
 import { ChevronIcon } from "./icons"
 
@@ -125,6 +125,7 @@ export function parseLike(current: Literal | undefined, text: string): Literal |
 
 export function MarkForm({ label, onAdd }: { label: string; onAdd(text: string): Promise<boolean> }) {
   const [text, setText] = useState("")
+  const id = useId()
   return (
     <form
       className="mark-form"
@@ -133,9 +134,9 @@ export function MarkForm({ label, onAdd }: { label: string; onAdd(text: string):
         if (text.trim()) void onAdd(text.trim()).then((ok) => ok && setText(""))
       }}
     >
-      <label htmlFor="mark-text">{label}</label>
+      <label htmlFor={id}>{label}</label>
       <div className="inline">
-        <input id="mark-text" value={text} onChange={(e) => setText(e.target.value)} placeholder="Route ground under this part" />
+        <input id={id} value={text} onChange={(e) => setText(e.target.value)} placeholder="Route ground under this part" />
         <button type="submit">Add</button>
       </div>
     </form>

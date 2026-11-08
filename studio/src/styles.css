@@ -490,28 +490,6 @@ ul {
   padding: 12px 14px 16px;
 }
 
-.part-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  padding-left: 10px;
-  border-left: 3px solid var(--copper);
-}
-
-.part-head h2 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  word-break: break-all;
-}
-
-.part-head .kind {
-  margin: 2px 0 0;
-  color: var(--muted);
-}
-
 .toggle.on {
   border-color: var(--mask);
   color: var(--mask);

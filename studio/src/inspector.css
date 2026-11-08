@@ -135,3 +135,9 @@
 .insp-value .static {
   color: var(--text);
 }
+
+.insp-value input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+}

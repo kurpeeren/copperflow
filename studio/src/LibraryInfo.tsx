@@ -17,12 +17,11 @@ export function LibraryInfo({ id, verified, actions }: Props) {
       .catch((error: Error) => actions.notify(error.message))
   }, [id, verified, actions])
 
-  if (!details) return null
+  if (!details) return <p className="note">Loading…</p>
   const { part } = details
   const checklist = details.checklist.split("\n").filter((line) => line.startsWith("- ["))
   return (
     <>
-      <h3>Library part</h3>
       <dl className="facts">
         <dt>Part</dt>
         <dd>{part.title}</dd>

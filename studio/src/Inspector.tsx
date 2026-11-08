@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useId, useState } from "react"
 import type { BuildState, CircuitData, Design, Literal, PartInfo, PartsData } from "./api"
 import type { Actions } from "./App"
 import { BomSection } from "./BomSection"
@@ -145,9 +145,10 @@ function PartActions({ part, locked, canEdit, actions, onSelect }: {
 }
 
 function LockRow({ locked, onChange }: { locked: boolean; onChange(on: boolean): void }) {
+  const id = useId()
   return (
-    <Row label="Locked" htmlFor="prop-locked">
-      <input id="prop-locked" type="checkbox" checked={locked} onChange={(e) => onChange(e.target.checked)} />
+    <Row label="Locked" htmlFor={id}>
+      <input id={id} type="checkbox" checked={locked} onChange={(e) => onChange(e.target.checked)} />
     </Row>
   )
 }
