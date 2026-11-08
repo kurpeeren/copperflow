@@ -1,6 +1,6 @@
 // The keys the canvases and the app share, as a pure map from a key press to an action. The hooks that
 // listen for keys read the browser event once (keyInput) and ask this module what it means.
-// Our own keys stay as they are; the EasyEDA ones sit beside them. `\` is reserved for the bottom panel.
+// Our own keys stay as they are; the EasyEDA ones sit beside them.
 import type { View } from "./positions.js"
 
 export type KeyActionName =
@@ -13,6 +13,7 @@ export type KeyActionName =
   | "toggleUnit"
   | "toggleLeftPanel"
   | "toggleRightPanel"
+  | "toggleBottomPanel"
   | "openLibrary"
 
 /** What a key event says, apart from the browser: modifiers, whether it came from a field, and the key. */
@@ -24,6 +25,8 @@ export interface KeyInput {
   altKey: boolean
   ctrlKey: boolean
   metaKey: boolean
+  /** AltGr is held (the browser's AltGraph modifier); Windows also reports it as Ctrl+Alt. */
+  altGraph?: boolean
   /** Focus is in a text field, where every key is the field's. */
   typing: boolean
   /** Focus is on a button, which Space presses. */
@@ -53,6 +56,7 @@ export function keyInput(event: KeyboardEvent): KeyInput {
     altKey: event.altKey,
     ctrlKey: event.ctrlKey,
     metaKey: event.metaKey,
+    altGraph: event.getModifierState?.("AltGraph") ?? false,
     typing: target?.closest("input, textarea, select, [contenteditable='true']") != null,
     onButton: target?.closest("button, a[href], summary") != null,
   }
@@ -89,13 +93,25 @@ function letterAction(letter: string, input: KeyInput, state: KeyState): KeyResu
   }
 }
 
+/** Keys bound by the character they produce; on many layouts (Turkish Q, German) that character needs AltGr. */
+const PANEL_KEYS: ReadonlyMap<string, KeyActionName> = new Map([
+  ["[", "toggleLeftPanel"],
+  ["]", "toggleRightPanel"],
+  ["\\", "toggleBottomPanel"],
+])
+
+/** No modifier, or only AltGr, which Windows sends as Ctrl+Alt; Ctrl alone stays a browser shortcut. */
+const plainOrAltGr = (input: KeyInput): boolean =>
+  !input.metaKey && (input.altGraph === true || (input.ctrlKey && input.altKey) || (!input.ctrlKey && !input.altKey))
+
 /** What the key press means in this view, or null when it is not ours (or belongs to a field or a browser shortcut). */
 export function keyAction(input: KeyInput, state: KeyState): KeyResult | null {
-  if (input.typing || input.ctrlKey || input.metaKey) return null
+  if (input.typing) return null
+  const panel = PANEL_KEYS.get(input.key)
+  if (panel && plainOrAltGr(input)) return act(panel)
+  if (input.ctrlKey || input.metaKey) return null
   if (input.altKey) return altAction(input, state)
   if (input.key === " ") return state.drawing || input.onButton ? null : act("rotate", true)
-  if (input.key === "[") return act("toggleLeftPanel")
-  if (input.key === "]") return act("toggleRightPanel")
   return letterAction(input.key.toLowerCase(), input, state)
 }
 

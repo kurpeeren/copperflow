@@ -3,6 +3,7 @@
 import type { PcbLayout, PlacedFootprint, WorldPad } from "../../../src/engine/pcb.js"
 import { HIGHLIGHT_DIM, PALETTE, type Ctx, type Layers } from "./ctx.js"
 import { worldToScreen, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
+import { drawViolationMarkers, type ViolationMarker } from "./markers.js"
 
 export interface PcbDrawOptions {
   /** Device pixels per CSS pixel. */
@@ -14,6 +15,10 @@ export interface PcbDrawOptions {
   moving?: { component: string; by: Point }
   /** Defaults to true. */
   ratsnest?: boolean
+  /** Violations with a position, ringed above everything else. */
+  violations?: readonly ViolationMarker[]
+  /** The violation picked in the Checks panel, whose ring is thicker. */
+  activeViolation?: string
 }
 
 type View = { camera: Camera; size: Size }
@@ -25,6 +30,12 @@ const DIM = HIGHLIGHT_DIM
 const RATSNEST_ALPHA = 0.6
 const SILK_WIDTH_MM = 0.12
 const BOARD_EDGE_PX = 1.5
+const KEEPOUT_ALPHA = 0.7
+const KEEPOUT_HATCH_MM = 0.5
+/** The most hatch lines one keepout gets, so a keepout of metres cannot stall a redraw. */
+export const MAX_HATCH_LINES = 400
+/** Lets the last line land on the box's edge despite rounding in span / step. */
+const HATCH_SLACK = 1e-9
 const DEFAULT_CORNER = 0.25
 const DESIGNATOR_MM = 0.8
 const DESIGNATOR_GAP_PX = 2
@@ -34,7 +45,7 @@ const AUTO_PLACED_ALPHA = 0.6
 const rad = (degrees: number) => (degrees * Math.PI) / 180
 const alphaOf = (part: PlacedFootprint) => (part.autoPlaced ? AUTO_PLACED_ALPHA : 1)
 
-/** Draws the board, then the ratsnest. Auto-placed parts are faded and always show their dashed courtyard. */
+/** Draws the board, then the ratsnest and the violation rings. Auto-placed parts are faded and always show their dashed courtyard. */
 export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDrawOptions): void {
   const layers = { ...DEFAULT_LAYERS, ...options.layers }
   const { camera, size } = view
@@ -58,6 +69,7 @@ export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDra
     ctx.fillStyle = PALETTE.board
     ctx.fill()
   })
+  drawKeepouts(ctx, layout, px)
   drawCopper(ctx, layers, options.highlight, each)
   drawDrills(ctx, each)
   if (layers.silkscreen) each((part) => drawPolylines(ctx, part.silkscreen, part.side === "top" ? PALETTE.topSilk : PALETTE.bottomSilk, SILK_WIDTH_MM, false))
@@ -73,6 +85,7 @@ export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDra
   // Text is drawn in screen space so it stays upright and readable at any zoom.
   ctx.setTransform(options.ratio, 0, 0, options.ratio, 0, 0)
   if (layers.silkscreen) for (const part of layout.parts) drawDesignator(ctx, part, camera, size, shiftOf(part))
+  drawViolationMarkers(ctx, view, options.violations ?? [], options.activeViolation)
   ctx.restore()
 }
 
@@ -145,6 +158,47 @@ function drawBoard(ctx: Ctx, layout: PcbLayout, paint: () => void): void {
   if (!outline || outline.length < 3) return
   polygon(ctx, outline)
   paint()
+}
+
+/** A dashed outline with diagonal hatch lines inside it, under the copper. */
+function drawKeepouts(ctx: Ctx, layout: PcbLayout, px: number): void {
+  const keepouts = layout.board?.keepouts ?? []
+  if (keepouts.length === 0) return
+  ctx.strokeStyle = PALETTE.keepout
+  ctx.globalAlpha = KEEPOUT_ALPHA
+  for (const keepout of keepouts) {
+    ctx.lineWidth = px
+    ctx.setLineDash([4 * px, 3 * px])
+    polygon(ctx, keepout.outline)
+    ctx.stroke()
+    ctx.setLineDash([])
+    ctx.save()
+    polygon(ctx, keepout.outline)
+    ctx.clip()
+    for (const [a, b] of hatchLines(keepout.outline)) drawLine(ctx, a, b)
+    ctx.restore()
+  }
+  ctx.globalAlpha = 1
+}
+
+/**
+ * 45 degree lines KEEPOUT_HATCH_MM apart that cover the polygon's bounding box. A box too big for
+ * MAX_HATCH_LINES at that spacing gets them further apart; a box that is not finite gets none.
+ */
+export function hatchLines(outline: readonly Point[]): Array<[Point, Point]> {
+  const xs = outline.map((p) => p.x)
+  const ys = outline.map((p) => p.y)
+  const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)]
+  if (![minX, maxX, minY, maxY].every(Number.isFinite)) return []
+  const height = maxY - minY
+  const start = minX - height
+  const span = maxX - start
+  const step = Math.max(KEEPOUT_HATCH_MM, span / (MAX_HATCH_LINES - 1))
+  const count = Math.floor(span / step + HATCH_SLACK) + 1
+  return Array.from({ length: count }, (_, i): [Point, Point] => {
+    const x = start + i * step
+    return [{ x, y: minY }, { x: x + height, y: maxY }]
+  })
 }
 
 function padPath(ctx: Ctx, pad: WorldPad): void {

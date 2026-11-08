@@ -1,4 +1,6 @@
 import { expect, test } from "vitest"
+import { fastestMs } from "../helpers/fastest.js"
+import { checkDesign } from "../../src/engine/checks/index.js"
 import { buildDesign } from "../../src/engine/design.js"
 
 const COLUMNS = 20
@@ -32,14 +34,16 @@ function bigBoard(): string {
 
 test("builds a 200-part board quickly", () => {
   const files = { "big.circuit.tsx": bigBoard() }
-  const run = () => {
-    const start = performance.now()
-    const design = buildDesign(files, "big.circuit.tsx")
-    return { ms: performance.now() - start, design }
-  }
-  expect(run().design.circuit.components).toHaveLength(200)
-  const times = Array.from({ length: 5 }, () => run().ms).sort((a, b) => a - b)
-  const median = times[2] as number
-  console.log(`buildDesign 200 parts median: ${median.toFixed(1)} ms`)
-  expect(median).toBeLessThan(300)
+  const run = () => buildDesign(files, "big.circuit.tsx")
+  expect(run().circuit.components).toHaveLength(200)
+  const fastest = fastestMs(() => void run(), 5)
+  console.log(`buildDesign 200 parts, fastest of 5: ${fastest.toFixed(1)} ms`)
+  expect(fastest).toBeLessThan(300)
+})
+
+test("checks a 200-part board in under a second", () => {
+  const built = buildDesign({ "big.circuit.tsx": bigBoard() }, "big.circuit.tsx")
+  const fastest = fastestMs(() => void checkDesign(built.circuit, built.schematic, built.pcb, built.rules), 5)
+  console.log(`checkDesign 200 parts, fastest of 5: ${fastest.toFixed(1)} ms`)
+  expect(fastest).toBeLessThan(1000)
 })

@@ -1,4 +1,5 @@
 import { boundsOf, findSpot, type Bounds } from "./autoplace.js"
+import { usableOutline } from "./board.js"
 import { diagnostic } from "./diagnostics.js"
 import type { Footprint, Pad } from "./footprints/types.js"
 import type { Board, Circuit, Component, Diagnostic, Point } from "./model.js"
@@ -145,7 +146,7 @@ function pinNets(circuit: Circuit): Map<string, string> {
 }
 
 /** Places every part; parts without a position go to the first free spot, in id order. */
-function placeAll(circuit: Circuit, resolved: readonly Resolved[], nets: ReadonlyMap<string, string>): { parts: PlacedFootprint[]; autoPlaced: string[] } {
+function placeAll(circuit: Circuit, resolved: readonly Resolved[], nets: ReadonlyMap<string, string>): { parts: PlacedFootprint[] } {
   const byId = new Map<string, PlacedFootprint>()
   const occupied: Bounds[] = []
   for (const { component, footprint } of resolved) {
@@ -154,7 +155,7 @@ function placeAll(circuit: Circuit, resolved: readonly Resolved[], nets: Readonl
     byId.set(component.id, part)
     occupied.push(boundsOf(part.courtyard))
   }
-  const board = circuit.board ? boundsOf(circuit.board.outline) : undefined
+  const board = usableOutline(circuit.board) && circuit.board ? boundsOf(circuit.board.outline) : undefined
   const unplaced = resolved.filter(({ component }) => !component.pcb).sort((a, b) => naturalCompare(a.component.id, b.component.id))
   for (const { component, footprint } of unplaced) {
     const relative = boundsOf(footprint?.courtyard ?? FALLBACK_COURTYARD)
@@ -162,17 +163,14 @@ function placeAll(circuit: Circuit, resolved: readonly Resolved[], nets: Readonl
     byId.set(component.id, part)
     occupied.push(boundsOf(part.courtyard))
   }
-  return { parts: circuit.components.map((c) => byId.get(c.id) as PlacedFootprint), autoPlaced: unplaced.map((u) => u.component.id) }
+  return { parts: circuit.components.map((c) => byId.get(c.id) as PlacedFootprint) }
 }
 
 export function layoutPcb(circuit: Circuit, footprintOf: FootprintOf): { layout: PcbLayout; diagnostics: Diagnostic[] } {
   const { resolved, diagnostics, missing } = resolveFootprints(circuit, footprintOf)
-  const { parts, autoPlaced } = placeAll(circuit, resolved, pinNets(circuit))
+  const { parts } = placeAll(circuit, resolved, pinNets(circuit))
   if (missing.length > 0) {
     diagnostics.push(diagnostic("no-footprint", "warning", "These parts have no footprint and are drawn as 1 x 1 mm squares without pads", missing))
-  }
-  if (autoPlaced.length > 0) {
-    diagnostics.push(diagnostic("auto-placed", "warning", "These parts have no position and were placed automatically", autoPlaced))
   }
   return { layout: { ...(circuit.board ? { board: circuit.board } : {}), parts, ratsnest: ratsnest(parts) }, diagnostics }
 }

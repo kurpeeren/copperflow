@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api, hasToken, subscribe, type BuildState, type CircuitData, type Edit, type HistoryListing, type PartsData } from "./api"
+import { ChecksPanel } from "./ChecksPanel"
 import { UndoIcon } from "./icons"
 import { Inspector } from "./Inspector"
 import { LeftPanel } from "./LeftPanel"
+import type { CanvasProps } from "./pcb/canvas-common"
 import { PcbCanvas } from "./pcb/PcbCanvas"
 import { SchematicCanvas } from "./pcb/SchematicCanvas"
 import { remapHighlight } from "./pcb/highlight"
+import { useChecks } from "./use-checks"
 import { useWorkspace } from "./use-workspace"
 
 /** Every action reports failures itself and resolves to whether it succeeded. */
@@ -42,7 +45,10 @@ export function App() {
   const [message, setMessage] = useState<string | null>(null)
   const [parts, setParts] = useState<PartsData>({ library: [], builtin: [] })
   const workspace = useWorkspace(tab)
-  const { setHighlight } = workspace
+  const { setHighlight, setBottomOpen } = workspace
+  const openChecks = useCallback(() => setBottomOpen(true), [setBottomOpen])
+  const closeChecks = useCallback(() => setBottomOpen(false), [setBottomOpen])
+  const checks = useChecks({ file, build, onTab: setTab, onSelect: setSelected, onOpen: openChecks })
 
   const notify = useCallback((text: string) => {
     setMessage(text)
@@ -162,6 +168,26 @@ export function App() {
   }, [design, setHighlight])
   // Previews of moves and wires sent before this time are in the design the canvases draw.
   const builtFrom = build.startedAt ? Date.parse(build.startedAt) : Number.NEGATIVE_INFINITY
+  // What both canvases take; each adds the rings of its own view.
+  const canvas: Omit<CanvasProps, "markers"> | undefined =
+    design && circuit
+      ? {
+          design,
+          buildId: build.finishedAt,
+          builtFrom,
+          circuit,
+          actions,
+          selected,
+          onSelect: setSelected,
+          highlight: workspace.highlight,
+          onHighlight: workspace.setHighlight,
+          unit: workspace.unit,
+          onToggleUnit: workspace.toggleUnit,
+          activeViolation: checks.active,
+          focus: checks.focus,
+          onFocused: checks.focused,
+        }
+      : undefined
   if (!hasToken) {
     return (
       <p className="empty">
@@ -189,10 +215,7 @@ export function App() {
           ))}
         </div>
         <div className="end">
-          <span className={`build ${buildTone(build)}`} role="status">
-            <span className="dot" aria-hidden="true" />
-            {statusText(build)}
-          </span>
+          <StatusPill build={build} errors={checks.counts.errors} onOpen={openChecks} />
           <button onClick={() => void actions.undo()} title="Undo the last change">
             <UndoIcon /> Undo
           </button>
@@ -223,41 +246,16 @@ export function App() {
             hidden={!workspace.leftOpen}
           />
         )}
-        <section className="canvas">
-          {!design && <p className="empty">{build.status === "failed" ? build.error : "Building the circuit…"}</p>}
-          {design && circuit && tab === "pcb" && (
-            <PcbCanvas
-              key={file}
-              design={design}
-              buildId={build.finishedAt}
-              builtFrom={builtFrom}
-              circuit={circuit}
-              actions={actions}
-              selected={selected}
-              onSelect={setSelected}
-              highlight={workspace.highlight}
-              onHighlight={workspace.setHighlight}
-              unit={workspace.unit}
-              onToggleUnit={workspace.toggleUnit}
-            />
+        <div className="center">
+          <section className="canvas">
+            {!design && <p className="empty">{build.status === "failed" ? build.error : "Building the circuit…"}</p>}
+            {canvas && tab === "pcb" && <PcbCanvas key={file} {...canvas} markers={checks.markers.pcb} />}
+            {canvas && tab === "schematic" && <SchematicCanvas key={file} {...canvas} markers={checks.markers.schematic} />}
+          </section>
+          {workspace.bottomOpen && design && (
+            <ChecksPanel rows={checks.rows} counts={checks.counts} active={checks.active} onPick={checks.pick} onClose={closeChecks} />
           )}
-          {design && circuit && tab === "schematic" && (
-            <SchematicCanvas
-              key={file}
-              design={design}
-              buildId={build.finishedAt}
-              builtFrom={builtFrom}
-              circuit={circuit}
-              actions={actions}
-              selected={selected}
-              onSelect={setSelected}
-              highlight={workspace.highlight}
-              onHighlight={workspace.setHighlight}
-              unit={workspace.unit}
-              onToggleUnit={workspace.toggleUnit}
-            />
-          )}
-        </section>
+        </div>
         {circuit && (
           <Inspector
             circuit={circuit}
@@ -266,6 +264,8 @@ export function App() {
             selected={selected}
             onSelect={setSelected}
             actions={actions}
+            counts={checks.counts}
+            onShowChecks={openChecks}
             hidden={!workspace.rightOpen}
           />
         )}
@@ -279,21 +279,25 @@ export function App() {
   )
 }
 
-/** The error diagnostics of the last design. */
-function errorCount(build: BuildState): number {
-  return build.design?.diagnostics.filter((d) => d.severity === "error").length ?? 0
+/** The build state and its error count (error violations and error diagnostics); clicking it opens the Checks panel. */
+function StatusPill({ build, errors, onOpen }: { build: BuildState; errors: number; onOpen(): void }) {
+  return (
+    <button className={`build ${buildTone(build, errors)}`} onClick={onOpen} title="Show the checks (\)">
+      <span className="dot" aria-hidden="true" />
+      <span role="status">{statusText(build, errors)}</span>
+    </button>
+  )
 }
 
-function statusText(build: BuildState): string {
+function statusText(build: BuildState, errors: number): string {
   if (build.status === "building") return "Building"
   if (build.status === "failed") return "Build failed"
   if (build.status !== "done" || !build.design) return "Not built"
-  const errors = errorCount(build)
   return errors === 0 ? "Build OK" : `${errors} ${errors === 1 ? "error" : "errors"}`
 }
 
-function buildTone(build: BuildState): "busy" | "bad" | "good" | "idle" {
+function buildTone(build: BuildState, errors: number): "busy" | "bad" | "good" | "idle" {
   if (build.status === "building") return "busy"
-  if (build.status === "failed" || errorCount(build) > 0) return "bad"
+  if (build.status === "failed" || errors > 0) return "bad"
   return build.status === "done" ? "good" : "idle"
 }

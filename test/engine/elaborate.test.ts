@@ -215,6 +215,7 @@ test("the board is a rectangle or an outline, and there is only one", () => {
     ],
     layers: 2,
     thickness: 1.6,
+    keepouts: [],
   })
   const files = {
     [MAIN]: `export default () => (\n<board outline={[{x:0,y:0},{x:4,y:0},{x:0,y:3}]} layers={4} thickness="1mm" pcbX={2} schMaxTraceDistance={5}>\n<board width={1} height={1} />\n</board>\n)`,
@@ -229,6 +230,7 @@ test("the board is a rectangle or an outline, and there is only one", () => {
     layers: 4,
     thickness: 1,
     schMaxTraceDistance: 5,
+    keepouts: [],
   })
   expect(circuit.diagnostics).toMatchObject([{ code: "two-boards", severity: "error" }])
 })
@@ -240,4 +242,58 @@ test("errors thrown by a function component name its file", () => {
   }
   const evaluated = evaluateCircuit(files, MAIN)
   expect(() => elaborate(evaluated, MAIN, noPads)).toThrow(/^parts\/B\/B\.tsx: boom/)
+})
+
+test("a keepout is a rectangle or an outline on one layer or all of them", () => {
+  const circuit = build(`<keepout pcbX={5} pcbY={0} width={4} height={2} />
+<keepout layers="top" outline={[{x:0,y:0},{x:2,y:0},{x:0,y:2}]} />`)
+  expect(circuit.diagnostics).toEqual([])
+  const [rect, tri] = circuit.board?.keepouts ?? []
+  expect(rect).toMatchObject({ id: "keepout:1", layers: "all" })
+  expect(rect?.outline).toEqual([
+    { x: 3, y: -1 },
+    { x: 7, y: -1 },
+    { x: 7, y: 1 },
+    { x: 3, y: 1 },
+  ])
+  expect(tri).toMatchObject({ id: "keepout:2", layers: "top" })
+  expect(tri?.outline).toHaveLength(3)
+  expect(rect?.source.line).toBeGreaterThan(0)
+})
+
+test("a keepout in a group is shifted by the group offset, outline points too", () => {
+  const circuit = build(`<group pcbX={10} pcbY={1}>
+<keepout pcbX={5} width={4} height={2} />
+<keepout outline={[{x:0,y:0},{x:2,y:0},{x:0,y:2}]} />
+</group>`)
+  const [rect, tri] = circuit.board?.keepouts ?? []
+  expect(rect?.outline.map((p) => p.x)).toEqual([13, 17, 17, 13])
+  expect(rect?.outline.map((p) => p.y)).toEqual([0, 0, 2, 2])
+  expect(tri?.outline).toEqual([
+    { x: 10, y: 1 },
+    { x: 12, y: 1 },
+    { x: 10, y: 3 },
+  ])
+})
+
+test("a keepout has no unsupported-element warning, and bad ones are warned about and ignored", () => {
+  const bad = build(`<keepout outline={[{x:0,y:0},{x:1,y:1}]} />
+<keepout width={1} />
+<keepout width={1} height={1} layers="inner" />`)
+  expect(bad.diagnostics.map((d) => d.code)).not.toContain("unsupported-element")
+  expect(bad.diagnostics.filter((d) => d.code === "bad-value")).toHaveLength(3)
+  expect(bad.board?.keepouts).toEqual([])
+  const none = elaborate(evaluateCircuit({ [MAIN]: `export default () => (<keepout width={1} height={1} />)` }, MAIN), MAIN, noPads)
+  expect(none.board).toBeUndefined()
+  expect(none.diagnostics).toMatchObject([{ code: "bad-value", severity: "warning", message: "<keepout> needs a <board>; it is ignored" }])
+})
+
+test("a keepout belongs to the board whether it comes before or after it in the file", () => {
+  const keepout = `<keepout pcbX={1} width={2} height={2} />`
+  const board = `<board width="10mm" height="10mm" />`
+  for (const body of [`${keepout}${board}`, `${board}${keepout}`]) {
+    const circuit = elaborate(evaluateCircuit({ [MAIN]: `export default () => (<group>${body}</group>)` }, MAIN), MAIN, noPads)
+    expect([body, circuit.diagnostics]).toEqual([body, []])
+    expect(circuit.board?.keepouts.map((k) => k.id)).toEqual(["keepout:1"])
+  }
 })

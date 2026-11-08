@@ -132,6 +132,7 @@ describe("LiveProject", () => {
 
     test.each([
       ["a footprint file", FOOTPRINT, "pads: [1]\n"],
+      ["the rules file", "rules.yaml", "globalNets: [GND]\n"],
       ["an imported module", "shared.ts", "export const offset = 2\n"],
       ["a regenerated part component", "parts/J/J.tsx", "export const J = () => <chip />\n"],
     ])("an edit to %s rebuilds the circuit, and currentDesign is undefined until that build finishes", async (_, path, text) => {

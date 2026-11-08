@@ -5,6 +5,7 @@ import { groundSymbol, powerSymbol, type SchSymbol, type Shape } from "../../../
 import { anchorAlignment, HIGHLIGHT_DIM, PALETTE, type Ctx } from "./ctx.js"
 import { labelTag, NET_LABEL_TEXT } from "./label-tag.js"
 import { worldToScreen, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
+import { drawViolationMarkers, type ViolationMarker } from "./markers.js"
 
 export interface SchematicDrawOptions {
   /** Device pixels per CSS pixel. */
@@ -23,6 +24,10 @@ export interface SchematicDrawOptions {
   highlight?: { net: string; pins?: readonly string[]; aliases?: readonly string[] }
   /** Labels sent and waiting for their build, drawn dashed where they will be. */
   ghostLabels?: readonly NetLabel[]
+  /** Violations with a position, ringed above everything else. */
+  violations?: readonly ViolationMarker[]
+  /** The violation picked in the Checks panel, whose ring is thicker. */
+  activeViolation?: string
 }
 
 export const SCHEMATIC_PALETTE = {
@@ -88,7 +93,7 @@ const OUTWARD: Record<NetLabel["side"], Point> = { right: { x: 1, y: 0 }, left: 
 
 const rad = (degrees: number) => (degrees * Math.PI) / 180
 
-/** Draws wires, then symbols, labels and pins, then all text upright in screen space. */
+/** Draws wires, then symbols, labels and pins, then all text upright in screen space, then the violation rings. */
 export function drawSchematic(ctx: Ctx, layout: SchematicLayout, view: View, options: SchematicDrawOptions): void {
   const { camera, size } = view
   const px = 1 / camera.scale
@@ -113,6 +118,7 @@ export function drawSchematic(ctx: Ctx, layout: SchematicLayout, view: View, opt
   // Text is drawn in screen space so it stays upright and readable at any zoom.
   ctx.setTransform(options.ratio, 0, 0, options.ratio, 0, 0)
   for (const label of texts) drawText(ctx, label, camera, size)
+  drawViolationMarkers(ctx, view, options.violations ?? [], options.activeViolation)
   ctx.restore()
 }
 

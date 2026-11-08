@@ -8,6 +8,7 @@ Thank you for helping. Issues and pull requests are welcome.
 npm install
 npm test            # run the tests
 npm run coverage    # tests with the 80% coverage gate
+npm run test:perf   # speed tests (test/**/*.perf.ts), on their own and one file at a time
 npm run typecheck
 npm run build
 ```

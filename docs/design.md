@@ -110,7 +110,7 @@ human undid.
 | `remove_part` | remove a part and the traces connected to it |
 | `add_trace` | add a trace between two selectors |
 | `remove_trace` | remove a trace |
-| `check_circuit` | build with the tscircuit CLI and report errors and warnings from the circuit JSON |
+| `check_circuit` | build with copperflow's engine and report its electrical and placement violations and its diagnostics, errors and warnings grouped by code with positions (read-only) |
 | `recent_changes` | recent history entries, including undos |
 | `undo_change` | undo one of the agent's own changes |
 
@@ -127,8 +127,9 @@ rejected.
   diagnostics. It watches circuit and annotation files, so changes made by the agent or in a
   code editor appear in the browser 50 ms after the last file event; the Studio's own edits,
   placements and undos are built at once. A mistake in the circuit code fails the build at once
-  with the file, line and column; the viewers keep the last design. `tsci build` stays the
-  reference for `copperflow check` and the MCP tool until stage 2.
+  with the file, line and column; the viewers keep the last design. `copperflow check` and the
+  MCP tool build with the same engine and report the same violations and diagnostics as the
+  Studio's Checks panel; any error fails the check.
 - The PCB view is copperflow's own canvas with its own renderer (`studio/src/pcb/pcb-draw.ts`):
   board outline, pads of every shape, drills, silkscreen, courtyards and fabrication lines in
   layer order and copperflow's palette, then the ratsnest. Parts without a position are placed by

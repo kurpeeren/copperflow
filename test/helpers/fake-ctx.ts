@@ -5,6 +5,7 @@ export interface DrawCall {
   strokeStyle: unknown
   fillStyle: unknown
   globalAlpha: number
+  lineWidth: number
 }
 
 /** A 2D context that records what was drawn. `calls` holds the call names; `records` holds the details. */
@@ -17,7 +18,7 @@ export function recorder() {
       if (key in target) return target[key as keyof typeof target]
       return (...args: unknown[]) => {
         calls.push(String(key))
-        records.push({ name: String(key), args, strokeStyle: target.strokeStyle, fillStyle: target.fillStyle, globalAlpha: target.globalAlpha })
+        records.push({ name: String(key), args, strokeStyle: target.strokeStyle, fillStyle: target.fillStyle, globalAlpha: target.globalAlpha, lineWidth: target.lineWidth })
         if (key === "measureText") return { width: 10 }
         return undefined
       }

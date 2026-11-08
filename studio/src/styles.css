@@ -679,31 +679,12 @@ ul {
   color: var(--mask);
 }
 
-.note.error,
-.issues li.error {
+.note.error {
   color: var(--danger);
 }
 
-.issues li.warning {
-  color: var(--copper-strong);
-}
-
-.issues li {
-  padding: 3px 0;
-}
-
-.issues ul {
-  margin: 2px 0 0;
-  padding-left: 14px;
-}
-
-.issues .code {
-  font-family: var(--mono);
-  font-size: 11px;
-}
-
-.issues .items {
-  color: var(--muted);
+.check-counts button {
+  margin-top: 6px;
 }
 
 .mark-form {
@@ -907,7 +888,6 @@ ul {
   }
 
   .canvas {
-    order: -1;
     min-height: 320px;
   }
 

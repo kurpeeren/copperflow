@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest"
 import {
+  centredCamera,
   fitCamera,
   gridSteps,
   hitTest,
@@ -45,6 +46,15 @@ describe("camera", () => {
     expect(after.x).toBeCloseTo(before.x)
     expect(after.y).toBeCloseTo(before.y)
     expect(zoomAt(camera, SIZE, cursor, 1e9).scale).toBeLessThanOrEqual(2000)
+  })
+
+  test("centring puts the point in the middle of the view at the same zoom", () => {
+    const camera = { cx: 10, cy: 5, scale: 37 }
+    const at = { x: -3, y: 8 }
+    const centred = centredCamera(camera, at)
+    expect(centred).toEqual({ cx: -3, cy: 8, scale: 37 })
+    expect(worldToScreen(centred, SIZE, at)).toEqual({ x: 400, y: 300 })
+    expect(camera).toEqual({ cx: 10, cy: 5, scale: 37 })
   })
 })
 

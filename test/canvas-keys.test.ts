@@ -74,12 +74,41 @@ describe("keyAction", () => {
     expect(keyAction(key("F", { shiftKey: true }), SCHEMATIC)?.action).toBe("openLibrary")
   })
 
-  test("backslash is reserved and bound to nothing", () => {
-    expect(keyAction(key("\\"), PCB)).toBeNull()
+  test("backslash toggles the bottom panel in both views", () => {
+    for (const state of [SCHEMATIC, PCB]) expect(keyAction(key("\\"), state)).toEqual({ action: "toggleBottomPanel", preventDefault: false })
+  })
+
+  test("the panel keys work with AltGr, which Windows sends as Ctrl+Alt", () => {
+    const altGr = { ctrlKey: true, altKey: true }
+    expect(keyAction(key("\\", altGr), PCB)?.action).toBe("toggleBottomPanel")
+    expect(keyAction(key("[", altGr), SCHEMATIC)?.action).toBe("toggleLeftPanel")
+    expect(keyAction(key("]", altGr), PCB)?.action).toBe("toggleRightPanel")
+  })
+
+  test("the panel keys work when the browser reports the AltGraph modifier, whatever else it sets", () => {
+    expect(keyAction(key("\\", { altGraph: true, altKey: true }), SCHEMATIC)?.action).toBe("toggleBottomPanel")
+    expect(keyAction(key("[", { altGraph: true, ctrlKey: true, altKey: true }), PCB)?.action).toBe("toggleLeftPanel")
+  })
+
+  test("Ctrl alone with a panel key is left to the browser", () => {
+    expect(keyAction(key("[", { ctrlKey: true }), PCB)).toBeNull()
+    expect(keyAction(key("\\", { ctrlKey: true }), PCB)).toBeNull()
+  })
+
+  test("AltGr does not turn letters into shortcuts", () => {
+    expect(keyAction(key("q", { ctrlKey: true, altKey: true, code: "KeyQ" }), PCB)).toBeNull()
+    expect(keyAction(key("w", { ctrlKey: true, altKey: true, code: "KeyW" }), SCHEMATIC)).toBeNull()
+  })
+
+  test("an AltGr panel key typed in a field is the field's", () => {
+    for (const name of ["[", "]", "\\"]) {
+      expect(keyAction(key(name, { ctrlKey: true, altKey: true, typing: true }), PCB)).toBeNull()
+      expect(keyAction(key(name, { altGraph: true, typing: true }), PCB)).toBeNull()
+    }
   })
 
   test("every key is ignored while typing in a field", () => {
-    for (const name of ["w", " ", "k", "h", "q", "[", "]", "f", "r"]) expect(keyAction(key(name, { typing: true }), SCHEMATIC)).toBeNull()
+    for (const name of ["w", " ", "k", "h", "q", "[", "]", "\\", "f", "r"]) expect(keyAction(key(name, { typing: true }), SCHEMATIC)).toBeNull()
     expect(keyAction(key("w", { altKey: true, code: "KeyW", typing: true }), SCHEMATIC)).toBeNull()
   })
 

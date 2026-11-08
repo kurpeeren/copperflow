@@ -8,11 +8,13 @@ import { nextUnit, type Unit } from "./pcb/units"
 export type LeftTab = "parts" | "library" | "nets" | "connections" | "history"
 
 /** The key actions this hook answers; the canvases answer the rest. */
-const WORKSPACE_ACTIONS: ReadonlySet<KeyActionName> = new Set(["toggleLeftPanel", "toggleRightPanel", "toggleUnit", "clearHighlight", "openLibrary"])
+const WORKSPACE_ACTIONS: ReadonlySet<KeyActionName> = new Set(["toggleLeftPanel", "toggleRightPanel", "toggleBottomPanel", "toggleUnit", "clearHighlight", "openLibrary"])
 
 export function useWorkspace(view: View) {
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
+  /** The Checks panel under the canvas; it starts closed. */
+  const [bottomOpen, setBottomOpen] = useState(false)
   const [leftTab, setLeftTab] = useState<LeftTab>("parts")
   const [focusSearch, setFocusSearch] = useState(false)
   const [unit, setUnit] = useState<Unit>("mm")
@@ -25,6 +27,7 @@ export function useWorkspace(view: View) {
       if (hit.preventDefault) event.preventDefault()
       if (hit.action === "toggleLeftPanel") setLeftOpen((open) => !open)
       if (hit.action === "toggleRightPanel") setRightOpen((open) => !open)
+      if (hit.action === "toggleBottomPanel") setBottomOpen((open) => !open)
       if (hit.action === "toggleUnit") setUnit(nextUnit)
       if (hit.action === "clearHighlight") setHighlight(null)
       if (hit.action === "openLibrary") {
@@ -39,5 +42,5 @@ export function useWorkspace(view: View) {
 
   const toggleUnit = useCallback(() => setUnit(nextUnit), [])
   const searchFocused = useCallback(() => setFocusSearch(false), [])
-  return { leftOpen, rightOpen, leftTab, setLeftTab, focusSearch, searchFocused, unit, toggleUnit, highlight, setHighlight }
+  return { leftOpen, rightOpen, bottomOpen, setBottomOpen, leftTab, setLeftTab, focusSearch, searchFocused, unit, toggleUnit, highlight, setHighlight }
 }

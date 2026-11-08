@@ -1,7 +1,8 @@
 import { describe, expect, test } from "vitest"
 import { buildDesign } from "../src/engine/design.js"
 import { PALETTE } from "../studio/src/pcb/ctx.js"
-import { drawPcb, padAt, pcbBoxes } from "../studio/src/pcb/pcb-draw.js"
+import { worldToScreen } from "../studio/src/pcb/geometry.js"
+import { drawPcb, hatchLines, MAX_HATCH_LINES, padAt, pcbBoxes } from "../studio/src/pcb/pcb-draw.js"
 import { recorder } from "./helpers/fake-ctx.js"
 
 const CIRCUIT = `export default () => (
@@ -126,6 +127,58 @@ describe("drawPcb", () => {
   })
 })
 
+describe("violation markers", () => {
+  const AT = { x: 4, y: -2 }
+  const rings = (records: ReturnType<typeof recorder>["records"], color: string) => records.filter((r) => r.name === "arc" && r.strokeStyle === color)
+
+  test("an error violation strokes a 6 px ring in the error colour at its position", () => {
+    const { ctx, records } = recorder()
+    drawPcb(ctx, layout, VIEW, { ratio: 1, violations: [{ id: "courtyard-overlap:R1,R2", at: AT, severity: "error" }] })
+    const p = worldToScreen(VIEW.camera, VIEW.size, AT)
+    expect(rings(records, PALETTE.error).map((r) => r.args.slice(0, 3))).toEqual([[p.x, p.y, 6]])
+    expect(records.filter((r) => r.name === "stroke" && r.strokeStyle === PALETTE.error)).toHaveLength(1)
+  })
+
+  test("the ring is 6 px on screen at any zoom", () => {
+    for (const scale of [2, 20, 400]) {
+      const { ctx, records } = recorder()
+      drawPcb(ctx, layout, { ...VIEW, camera: { ...VIEW.camera, scale } }, { ratio: 1, violations: [{ id: "v", at: AT, severity: "error" }] })
+      expect(rings(records, PALETTE.error).map((r) => r.args[2])).toEqual([6])
+    }
+  })
+
+  test("a warning is amber, and the active violation is drawn thicker", () => {
+    const { ctx, records } = recorder()
+    const violations = [
+      { id: "a", at: AT, severity: "warning" as const },
+      { id: "b", at: { x: 0, y: 0 }, severity: "warning" as const },
+    ]
+    drawPcb(ctx, layout, VIEW, { ratio: 1, violations, activeViolation: "b" })
+    const strokes = records.filter((r) => r.name === "stroke" && r.strokeStyle === PALETTE.warning)
+    expect(strokes).toHaveLength(2)
+    const [plain, active] = strokes.map((r) => r.lineWidth)
+    expect(active).toBeGreaterThan(plain ?? Infinity)
+  })
+
+  test("markers are drawn after the copper", () => {
+    const { ctx, records } = recorder()
+    drawPcb(ctx, layout, VIEW, { ratio: 1, violations: [{ id: "v", at: AT, severity: "error" }] })
+    const copper = records.map((r) => r.name === "fill" && r.fillStyle === PALETTE.topCopper).lastIndexOf(true)
+    const ring = records.findIndex((r) => r.name === "stroke" && r.strokeStyle === PALETTE.error)
+    expect(ring).toBeGreaterThan(copper)
+  })
+
+  test("error, warning and keepout colours differ", () => {
+    expect(new Set([PALETTE.error, PALETTE.warning, PALETTE.keepout]).size).toBe(3)
+  })
+
+  test("without violations no ring is drawn", () => {
+    const { ctx, records } = recorder()
+    drawPcb(ctx, layout, VIEW, { ratio: 1 })
+    expect(records.some((r) => r.strokeStyle === PALETTE.error || r.strokeStyle === PALETTE.warning)).toBe(false)
+  })
+})
+
 describe("padAt", () => {
   test("finds R1 pad 1 at its centre and nothing 5 mm away", () => {
     const p = pad("R1#1")
@@ -155,5 +208,55 @@ describe("pcbBoxes", () => {
     const part = layout.parts.find((p) => p.component === "R1")
     expect(r1?.box.minX).toBe(Math.min(...(part?.courtyard.map((c) => c.x) ?? [])))
     expect(r1?.center.x).toBeCloseTo(-4, 5)
+  })
+})
+
+describe("keepouts", () => {
+  const withKeepout = buildDesign({ "main.circuit.tsx": CIRCUIT.replace("</board>", '<keepout pcbX={10} pcbY={0} width={4} height={4} /></board>') }, "main.circuit.tsx").pcb
+
+  test("a keepout is stroked in the keepout colour, dashed, before the copper", () => {
+    const { ctx, records } = recorder()
+    drawPcb(ctx, withKeepout, VIEW, { ratio: 1 })
+    const strokes = records.filter((r) => r.name === "stroke" && r.strokeStyle === PALETTE.keepout)
+    expect(strokes.length).toBeGreaterThan(1)
+    expect(strokes.every((r) => r.globalAlpha === 0.7)).toBe(true)
+    const first = records.findIndex((r) => r.name === "stroke" && r.strokeStyle === PALETTE.keepout)
+    const copper = records.findIndex((r) => r.name === "fill" && r.fillStyle === PALETTE.topCopper)
+    expect(first).toBeLessThan(copper)
+  })
+
+  test("a board without keepouts draws none", () => {
+    const { ctx, records } = recorder()
+    drawPcb(ctx, layout, VIEW, { ratio: 1 })
+    expect(records.some((r) => r.strokeStyle === PALETTE.keepout)).toBe(false)
+  })
+})
+
+describe("hatchLines", () => {
+  const square = (side: number) => [
+    { x: 0, y: 0 },
+    { x: side, y: 0 },
+    { x: side, y: side },
+    { x: 0, y: side },
+  ]
+
+  test("a small keepout gets 45 degree lines 0.5 mm apart over its box", () => {
+    const lines = hatchLines(square(4))
+    expect(lines).toHaveLength(17)
+    expect(lines[0]).toEqual([{ x: -4, y: 0 }, { x: 0, y: 4 }])
+    expect(lines[1]?.[0].x).toBeCloseTo(-3.5, 9)
+    expect(lines.at(-1)).toEqual([{ x: 4, y: 0 }, { x: 8, y: 4 }])
+  })
+
+  test("a keepout ten metres wide gets at most MAX_HATCH_LINES lines, still across its whole box", () => {
+    const lines = hatchLines(square(10_000))
+    expect(lines.length).toBeLessThanOrEqual(MAX_HATCH_LINES)
+    expect(lines[0]?.[0].x).toBe(-10_000)
+    expect(lines.at(-1)?.[0].x).toBeCloseTo(10_000, 6)
+  })
+
+  test("a keepout with a corner that is not finite gets no lines", () => {
+    expect(hatchLines([...square(4), { x: Infinity, y: 0 }])).toEqual([])
+    expect(hatchLines([{ x: Number.NaN, y: 0 }, ...square(4)])).toEqual([])
   })
 })

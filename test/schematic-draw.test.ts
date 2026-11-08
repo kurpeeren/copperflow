@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest"
 import { buildDesign } from "../src/engine/design.js"
 import { groundSymbol } from "../src/engine/symbols/index.js"
 import { HIGHLIGHT_DIM, PALETTE } from "../studio/src/pcb/ctx.js"
+import { worldToScreen } from "../studio/src/pcb/geometry.js"
 import { SCHEMATIC_PALETTE, drawSchematic, sheetBoxes, type SchematicDrawOptions } from "../studio/src/pcb/schematic-draw.js"
 import { recorder } from "./helpers/fake-ctx.js"
 
@@ -214,6 +215,27 @@ describe("highlight", () => {
     expect(rec.records.some((r) => r.name === "fillText" && r.args[0] === "EN")).toBe(true)
     const dashes = rec.records.filter((r) => r.name === "setLineDash" && (r.args[0] as number[]).length > 0)
     expect(dashes.length).toBeGreaterThan(0)
+  })
+})
+
+describe("violation markers", () => {
+  test("an error violation strokes a 6 px ring in the error colour at its position", () => {
+    const at = { x: 1, y: 0.5 }
+    const rec = draw({ violations: [{ id: "pin-unconnected:R1.pin1", at, severity: "error" }] })
+    const p = worldToScreen(VIEW.camera, VIEW.size, at)
+    const rings = rec.records.filter((r) => r.name === "arc" && r.strokeStyle === PALETTE.error)
+    expect(rings.map((r) => r.args.slice(0, 3))).toEqual([[p.x, p.y, 6]])
+    expect(rec.records.filter((r) => r.name === "stroke" && r.strokeStyle === PALETTE.error)).toHaveLength(1)
+  })
+
+  test("the active violation is drawn thicker", () => {
+    const violations = [
+      { id: "a", at: { x: 0, y: 0 }, severity: "warning" as const },
+      { id: "b", at: { x: 1, y: 0 }, severity: "warning" as const },
+    ]
+    const strokes = draw({ violations, activeViolation: "a" }).records.filter((r) => r.name === "stroke" && r.strokeStyle === PALETTE.warning)
+    const [active, plain] = strokes.map((r) => r.lineWidth)
+    expect(active).toBeGreaterThan(plain ?? Infinity)
   })
 })
 

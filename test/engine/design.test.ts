@@ -65,6 +65,6 @@ describe("buildDesign", () => {
     )
     const built = buildDesign(files, "m.circuit.tsx")
     expect(built.pcb.parts).toHaveLength(3)
-    expect(reads).toEqual(["parts/x/footprint.yaml"])
+    expect(reads.filter((path) => path !== "rules.yaml")).toEqual(["parts/x/footprint.yaml"])
   })
 })

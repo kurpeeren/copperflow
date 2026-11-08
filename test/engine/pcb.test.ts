@@ -63,9 +63,7 @@ describe("placement", () => {
       for (const b of boxes.slice(i + 1)) expect(apart(a, b)).toBe(true)
     }
     expect(l.parts.every((p) => p.autoPlaced)).toBe(true)
-    expect(diagnostics.filter((d) => d.code === "auto-placed")).toEqual([
-      expect.objectContaining({ severity: "warning", items: ["R1", "R2", "R3", "R4", "R5"] }),
-    ])
+    expect(diagnostics.filter((d) => d.code === "auto-placed")).toEqual([])
   })
 
   test("an auto-placed part avoids a placed one", () => {
@@ -154,5 +152,14 @@ describe("footprints", () => {
     const { layout: l } = layout(build(body))
     expect(l.ratsnest).toHaveLength(1)
     expect(l.ratsnest[0]).toMatchObject({ from: "R1#2", to: "R2#1" })
+  })
+})
+
+describe("a board without a size", () => {
+  test("places a part with no position at a finite spot, like a part without a board", () => {
+    const circuit = build('<chip name="U1" footprint="sot23_5" />', "")
+    const placed = part(layout(circuit).layout.parts, "U1")
+    expect(Number.isFinite(placed.x)).toBe(true)
+    expect(Number.isFinite(placed.y)).toBe(true)
   })
 })

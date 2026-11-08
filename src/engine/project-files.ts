@@ -7,6 +7,9 @@ const SOURCE_FILE = /\.(tsx|ts|jsx|js|mjs|cjs|json)$/
 const SKIPPED_DIRS = new Set(["node_modules", "dist", "coverage"])
 const SKIPPED_FILES = new Set(["package-lock.json"])
 
+/** The project's design rules, at the root: a build reads it although it is not a source file. */
+export const RULES_FILE = /^rules\.yaml$/
+
 /** A folder the walk does not enter: hidden, build output or dependencies. */
 const skippedDir = (name: string): boolean => name.startsWith(".") || SKIPPED_DIRS.has(name)
 

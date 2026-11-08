@@ -1,0 +1,8 @@
+# Design rules for the USB-C to 3.3 V board.
+# Without a fabrication section the default profile (jlcpcb-2layer) applies.
+netClasses:
+  power:
+    trackWidth: 0.4   # matches the 0.4 mm power traces
+    clearance: 0.2
+    nets: [VBUS, V3_3, GND]
+globalNets: [GND, VBUS, V3_3]
