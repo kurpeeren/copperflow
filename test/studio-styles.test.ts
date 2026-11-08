@@ -24,4 +24,16 @@ describe("Studio style sheets", () => {
   test("styles.css has not grown", () => {
     expect(lineCount(read("styles.css"))).toBeLessThanOrEqual(STYLES_BEFORE_CHECKS)
   })
+
+  test("the :root tokens carry the light chrome colours", () => {
+    const root = /:root\s*{([^}]*)}/.exec(read("styles.css"))?.[1] ?? ""
+    const token = (name: string) => new RegExp(`${name}: *([^;]+);`).exec(root)?.[1]
+    expect({
+      text: token("--text"),
+      panel: token("--panel"),
+      line: token("--line"),
+      accent: token("--copper"),
+      strip: token("--strip"),
+    }).toEqual({ text: "#333333", panel: "#ffffff", line: "#d1d1d1", accent: "#1890ff", strip: "#f0f0f0" })
+  })
 })

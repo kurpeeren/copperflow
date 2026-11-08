@@ -1,20 +1,23 @@
-/* Dark workspace built from board materials: graphite mask, silkscreen text, copper accent. */
+/* Light workspace in the EasyEDA Pro manner: white panels, grey strips, blue accent. */
 :root {
-  --ground: #1b1e23;
-  --panel: #22262c;
-  --raised: #2b3037;
-  --line: #30353d;
-  --text: #e9e6df;
-  --muted: #959ca6;
-  --copper: #c98a4b;
-  --copper-strong: #e0a46a;
-  --copper-wash: rgb(201 138 75 / 14%);
-  --mask: #4f9a6c;
-  --agent: #6ea8d6;
-  --danger: #e5675e;
+  --ground: #cccccc;
+  --panel: #ffffff;
+  --raised: #f5f5f5;
+  --strip: #f0f0f0;
+  --tab: #eeeeee;
+  --line: #d1d1d1;
+  --text: #333333;
+  --muted: #999999;
+  --copper: #1890ff;
+  --copper-strong: #096dd9;
+  --copper-wash: #e6f7ff;
+  --mask: #389e0d;
+  --agent: #1890ff;
+  --danger: #f5222d;
+  --warning: #faad14;
   --mono: "Cascadia Mono", "JetBrains Mono", ui-monospace, Consolas, monospace;
-  --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
-  color-scheme: dark;
+  --sans: Arial, "Microsoft YaHei", Helvetica, sans-serif;
+  color-scheme: light;
 }
 
 * {
@@ -31,7 +34,7 @@ body,
 body {
   background: var(--ground);
   color: var(--text);
-  font: 13px/1.45 var(--sans);
+  font: 12px/1.5 var(--sans);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -51,17 +54,16 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 28px;
+  height: 24px;
   padding: 0 10px;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--raised);
+  border-radius: 2px;
+  background: #fff;
   cursor: pointer;
 }
 
 button:hover:not(:disabled) {
-  border-color: #3d434c;
-  background: #323840;
+  background: #f5f5f5;
 }
 
 button:disabled {
@@ -87,7 +89,7 @@ button.icon:hover:not(:disabled) {
 button.primary {
   border-color: var(--copper);
   background: var(--copper);
-  color: #1b1e23;
+  color: #fff;
   font-weight: 600;
 }
 
@@ -103,11 +105,11 @@ button.danger:hover:not(:disabled) {
 
 input,
 select {
-  height: 28px;
+  height: 24px;
   padding: 0 8px;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--ground);
+  border-radius: 2px;
+  background: #fff;
 }
 
 input:disabled {
@@ -158,8 +160,8 @@ input:disabled {
   display: flex;
   padding: 2px;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--ground);
+  border-radius: 2px;
+  background: var(--strip);
 }
 
 .views button {
@@ -216,7 +218,7 @@ input:disabled {
 .banner {
   padding: 6px 12px;
   border-bottom: 1px solid var(--danger);
-  background: rgb(229 103 94 / 12%);
+  background: #fff1f0;
 }
 
 .workspace {
@@ -245,14 +247,14 @@ input:disabled {
 .canvas {
   position: relative;
   min-width: 0;
-  background: #000;
+  background: var(--ground);
 }
 
 .pcb-canvas {
   position: relative;
   height: 100%;
   overflow: hidden;
-  background: #121417;
+  background: #000000;
 }
 
 .pcb-canvas canvas {
@@ -265,7 +267,7 @@ input:disabled {
   height: 100%;
   overflow: hidden;
   touch-action: none;
-  background: var(--ground);
+  background: #fffcf8;
 }
 
 .schematic-canvas canvas {
@@ -317,7 +319,7 @@ input:disabled {
   padding: 4px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgb(34 38 44 / 92%);
+  background: rgb(255 255 255 / 92%);
 }
 
 .canvas-tools label {
@@ -344,7 +346,9 @@ input:disabled {
   position: absolute;
   left: 10px;
   bottom: 8px;
-  color: var(--muted);
+  padding: 0 4px;
+  background: rgb(255 255 255 / 85%);
+  color: #666;
   font-family: var(--mono);
   font-size: 11px;
   white-space: pre;
@@ -613,7 +617,7 @@ ul {
 .toggle.on {
   border-color: var(--mask);
   color: var(--mask);
-  background: rgb(79 154 108 / 12%);
+  background: #f6ffed;
 }
 
 .inspector h3 {
@@ -870,7 +874,7 @@ ul {
   border-left: 3px solid var(--copper);
   border-radius: 8px;
   background: var(--raised);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 40%);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 20%);
   cursor: pointer;
 }
 
