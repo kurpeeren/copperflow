@@ -4,7 +4,7 @@ import { useCallback, useMemo } from "react"
 import type { CircuitData, Design } from "../api"
 import type { SchematicDrawing } from "../../../src/engine/model.js"
 import type { RemoveDrawings } from "./delete-plan"
-import { drawingOrigin, drawingsRemoval } from "./drawing-actions"
+import { drawingMoveBlocker, drawingOrigin, drawingsRemoval } from "./drawing-actions"
 import { drawingAreas, drawingAt } from "./drawing-hit"
 import type { Camera, Point } from "./geometry"
 import type { GestureDrawings } from "./gestures"
@@ -23,14 +23,18 @@ export function useSheetDrawings({ design, circuit, camera, locked }: SheetDrawi
   const hits = useMemo<GestureDrawings>(
     () => ({
       // A pointer reaches a drawing as it reaches a wire, from its line's edge.
-      at: (world: Point) => (camera ? drawingAt(drawings, world, WIRE_REACH_PX / camera.scale) : undefined),
+      at: (world: Point) => (camera ? drawingAt(drawings, world, WIRE_REACH_PX / camera.scale, camera.scale) : undefined),
       boxes: drawingAreas(drawings),
       origin: (id: string) => {
         const drawing = drawingOf(id)
         return drawing && drawingOrigin(drawing)
       },
+      blocker: (id: string) => {
+        const drawing = drawingOf(id)
+        return drawing ? drawingMoveBlocker(circuit.model, locked, drawing) : null
+      },
     }),
-    [drawings, camera, drawingOf],
+    [drawings, camera, drawingOf, circuit.model, locked],
   )
   const removal = useCallback<RemoveDrawings>((ids) => drawingsRemoval(circuit.model, drawings, locked)(ids), [circuit.model, drawings, locked])
   return { hits, removal, drawingOf }

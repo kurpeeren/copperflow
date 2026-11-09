@@ -50,9 +50,16 @@ describe("hitting a drawing", () => {
     expect(drawingPlace(wrapped, p(14 + Math.SQRT1_2, Math.SQRT1_2), REACH)).toBeUndefined()
   })
 
-  test("a text is hit anywhere on its box", () => {
+  test("a text is hit anywhere on its box, and within the pointer's reach of it", () => {
     expect(drawingPlace(text, p(20.1, 0.05), REACH)).toBe("line")
+    expect(drawingPlace(text, p(19.97, 0), REACH)).toBe("line")
     expect(drawingPlace(text, p(19.9, 0), REACH)).toBeUndefined()
+  })
+
+  test("a text too small to be drawn at this zoom cannot be hit", () => {
+    expect(drawingAt([text], p(20.1, 0), REACH, 100)).toEqual({ id: "G6", place: "line" })
+    expect(drawingAt([text], p(20.1, 0), REACH, 10)).toBeUndefined()
+    expect(drawingAt([path], p(1, 0), REACH, 10)).toEqual({ id: "G1", place: "line" })
   })
 
   test("a bus is hit across its three-wire width", () => {

@@ -7,6 +7,8 @@ import { schematicTheme } from "./schematic-theme.js"
 export const WIRE_WIDTH = 0.02
 /** A bus is drawn three times as wide as a wire, in the wire's colour. */
 export const BUS_WIDTH = 3 * WIRE_WIDTH
+/** Text smaller than this on screen, in CSS pixels, is not written, and so cannot be picked either. */
+export const MIN_TEXT_PX = 3
 /** A filled rectangle or circle is washed with its colour at this alpha, as two hex digits (0.2 × 255 = 51). */
 export const FILL_ALPHA_HEX = "33"
 

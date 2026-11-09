@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { hasToken, type CircuitData, type Design } from "./api"
 import { NO_HIGHLIGHT, remapHighlight } from "./pcb/highlight"
 import { pickLayersOf } from "./pcb/layers"
+import { drawingAfterBuild, stableDrawings } from "./pcb/drawing-selection"
 import { labelAfterBuild } from "./pcb/label-selection"
 import { shownSelection, wireAfterBuild, withEndPins } from "./pcb/wire-selection"
 import { goneFrom, Selection, type SelectionChange } from "./selection"
@@ -63,9 +64,11 @@ function usePruneSelection(circuit: CircuitData | undefined, select: (change: Se
 
 /**
  * Drops the selected wires a rebuild took away or re-pointed (wire-selection.ts), so they are not selected again when
- * they come back, keeps the selected labels under their new ids (label-selection.ts), and drops the drawings it took away.
+ * they come back, keeps the selected labels under their new ids (label-selection.ts), and drops the drawings it took
+ * away or whose ids now name other drawings (drawing-selection.ts). Returns the design it last saw: while a render
+ * shows a new design, that is still the one before it.
  */
-function usePruneWire(design: Design | undefined, select: (change: SelectionChange) => void): void {
+function usePruneWire(design: Design | undefined, select: (change: SelectionChange) => void): { readonly current: Design | undefined } {
   const before = useRef<Design | undefined>(undefined)
   useEffect(() => {
     if (!design || design === before.current) return
@@ -73,18 +76,24 @@ function usePruneWire(design: Design | undefined, select: (change: SelectionChan
     before.current = design
     select((current) => {
       const wires = current.wireCount === 0 ? current : wireAfterBuild(current, previous && withEndPins(previous.schematic), withEndPins(design.schematic))
-      return labelAfterBuild(wires, previous, design).keepDrawings(design.schematic.drawings.map((drawing) => drawing.id))
+      return drawingAfterBuild(labelAfterBuild(wires, previous, design), previous?.schematic.drawings, design.schematic.drawings)
     })
   }, [design, select])
+  return before
 }
 
-/** What the canvases and panels are shown (wire-selection.ts): no part the circuit lacks, no wire or label the open sheet lacks. */
-function useShownSelection(selection: Selection, circuit: CircuitData | undefined, design: Design | undefined, view: Tab): Selection {
+/**
+ * What the canvases and panels are shown (wire-selection.ts): no part the circuit lacks, no wire or label the open
+ * sheet lacks, and no drawing whose id now names another one than in the design `before` (drawing-selection.ts), so a
+ * new design is never drawn with a stale drawing selected while the pruning catches up.
+ */
+function useShownSelection(selection: Selection, circuit: CircuitData | undefined, design: Design | undefined, view: Tab, before: Design | undefined): Selection {
   return useMemo(() => {
     const sheet = design?.schematic
     const ids = <T extends { id: string }>(items: readonly T[] | undefined) => items?.map((item) => item.id)
-    return shownSelection(selection, { view, parts: circuit?.model.parts.map((part) => part.name), wires: ids(sheet?.wires), labels: ids(sheet?.labels), drawings: ids(sheet?.drawings) })
-  }, [selection, circuit, design, view])
+    const drawings = sheet && stableDrawings(before?.schematic.drawings, sheet.drawings)
+    return shownSelection(selection, { view, parts: circuit?.model.parts.map((part) => part.name), wires: ids(sheet?.wires), labels: ids(sheet?.labels), drawings })
+  }, [selection, circuit, design, view, before])
 }
 
 /** A rebuild can rename or merge the highlighted net (an unnamed net that gets GND): follow it, or clear it. */
@@ -147,8 +156,8 @@ function useStudio() {
   const data = useFileData(toast.notify, select, workspace.setHighlight)
   const { file, setFile, build, circuit } = data
   usePruneSelection(circuit, select)
-  usePruneWire(build.design, select)
-  const selection = useShownSelection(picked, circuit, build.design, tab)
+  const seen = usePruneWire(build.design, select)
+  const selection = useShownSelection(picked, circuit, build.design, tab, seen.current)
   const actions = useActions({ file, refresh: data.refresh, refreshParts: data.refreshParts, notify: toast.notify })
   const place = usePlace({ file, refresh: data.refresh, refreshParts: data.refreshParts, notify: toast.notify }, selectOnly)
   const { checks, find, openChecks } = useChecksAndFind({ data, tab, setTab, select, selectOnly, workspace })

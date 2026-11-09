@@ -8,7 +8,6 @@ import { Row, Section } from "./InspectorRows"
 import { CloseIcon, TrashIcon } from "./icons"
 import { drawingBlocker, drawingInfo } from "./pcb/drawing-actions"
 import { drawingFieldEdit, drawingRows, type DrawingRow } from "./pcb/drawing-props"
-
 import type { CommandId } from "./shell/menus"
 
 interface DrawingViewProps {

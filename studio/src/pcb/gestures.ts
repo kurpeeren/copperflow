@@ -4,8 +4,8 @@
 // events; use-canvas-gestures.ts draws it. Plain TypeScript with .js imports, so the tests can run it.
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { Selection, SelectionChange } from "../selection.js"
-import { areasInBox, boxMode, boxSelection, labelsInBox, partsInBox, wiresInBox } from "./box-select.js"
-import type { DrawingHit } from "./drawing-hit.js"
+import { boxMode, boxSelection, labelsInBox, partsInBox, wiresInBox } from "./box-select.js"
+import { drawingsInBox, type DrawingHit } from "./drawing-hit.js"
 import { hitsAt, roundPosition, screenToWorld, snapPosition, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
 import type { PickLayers } from "./layers.js"
 import type { PickFilter } from "./pick-filter.js"
@@ -86,6 +86,8 @@ export interface GestureDrawings {
   boxes?: readonly { id: string; box: Box }[]
   /** Where the drawing's position puts it (its corner, centre or first point), which a drag snaps to the grid. */
   origin?(id: string): Point | undefined
+  /** Why the drawing cannot move (locked, read-only, its position an expression), or null. */
+  blocker?(id: string): string | null
 }
 
 export interface GestureInput {
@@ -327,7 +329,7 @@ function dragged(input: GestureInput, pressed: Pressed, group: boolean): Dragged
 function startDrag(input: GestureInput, pressed: Pressed, start: GestureStart, point: Point, still: StillRelease): Gesture {
   const moves = dragged(input, pressed, start === "moveGroup")
   const movable = moves.names.filter((name) => input.blockerFor(name) === null)
-  const blocker = "part" in pressed ? input.blockerFor(pressed.part.name) : null
+  const blocker = "part" in pressed ? input.blockerFor(pressed.part.name) : "drawing" in pressed ? (input.drawings?.blocker?.(pressed.drawing) ?? null) : null
   const origin = "drawing" in pressed ? input.drawings?.origin?.(pressed.drawing) : undefined
   return { kind: "drag", ...pressed, ...(origin ? { origin } : {}), ...moves, movable, start: point, offset: ZERO, moved: false, blocker, still }
 }
@@ -346,6 +348,11 @@ export function followGesture(input: GestureInput, gesture: Gesture, point: Poin
   const startWorld = screenToWorld(camera, input.size, gesture.start)
   const moved = { x: world.x - startWorld.x, y: world.y - startWorld.y }
   if (gesture.kind === "reshape") return followReshape(gesture, moved, { step: input.step, snap: input.snap !== false }, (text) => input.actions.notify(text))
+  // A drawing that cannot move says why as soon as the drag starts, as a wire's reshape does, and then stays put.
+  if (gesture.kind === "drag" && gesture.drawing !== undefined && gesture.blocker) {
+    if (!gesture.moved) input.actions.notify(gesture.blocker)
+    return gesture.moved ? undefined : { ...gesture, moved: true }
+  }
   const snapped = (value: number) => snapPosition(value, input.step, input.snap !== false)
   if (gesture.kind === "label") {
     const { at } = gesture.label
@@ -382,7 +389,7 @@ function endDrag(input: GestureInput, done: Extract<Gesture, { kind: "drag" }>, 
     if (done.still === "selectAlone") input.onSelect(aloneAfter(done))
     return
   }
-  if (done.blocker) return input.actions.notify(done.blocker)
+  if (done.blocker) return done.drawing === undefined ? input.actions.notify(done.blocker) : undefined
   commit(done.names, done.offset, done.wires, done.labels, done.drawings)
 }
 
@@ -413,7 +420,7 @@ function endBox(input: GestureInput, done: Extract<Gesture, { kind: "box" }>, ca
     parts: partsInBox(input.boxes, corners[0], corners[1], mode),
     wires: wiresInBox(input.wires?.lines ?? [], corners[0], corners[1], mode),
     labels: labelsInBox(input.labels?.boxes ?? [], corners[0], corners[1], mode),
-    drawings: areasInBox(input.drawings?.boxes ?? [], corners[0], corners[1], mode),
+    drawings: drawingsInBox(input.drawings?.boxes ?? [], corners[0], corners[1], mode),
   }
   input.onSelect(boxSelection(found, done.adds, input.tool.armed, input.layers, input.filter))
 }

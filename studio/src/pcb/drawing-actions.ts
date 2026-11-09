@@ -33,6 +33,10 @@ export function drawingBlocker(model: CircuitModel, locked: ReadonlySet<string>,
   return expression ? `${id}.${expression} is an expression; change it in the code` : null
 }
 
+/** Why the drawing cannot move (drawingBlocker on its position props), or null. */
+export const drawingMoveBlocker = (model: CircuitModel, locked: ReadonlySet<string>, drawing: SchematicDrawing): string | null =>
+  drawingBlocker(model, locked, drawing.id, positionKeys(drawing))
+
 /** Where a drawing's position puts it on the sheet: a shape's or text's x and y, a line's first point. A drag snaps it. */
 export function drawingOrigin(drawing: SchematicDrawing): Point {
   if (drawing.kind === "path" || drawing.kind === "bus") return drawing.points[0] ?? { x: 0, y: 0 }
@@ -87,7 +91,7 @@ function drawingMove(model: CircuitModel, sheet: readonly SchematicDrawing[], id
   const drawing = sheet.find((one) => one.id === id)
   const info = drawingInfo(model, id)
   if (!drawing) return { id, blocker: `${id} is not on the sheet` }
-  const blocker = drawingBlocker(model, locked, id, positionKeys(drawing))
+  const blocker = drawingMoveBlocker(model, locked, drawing)
   if (blocker || !info) return { id, blocker: blocker ?? `${id} has no editable source element` }
   return { id, drawing, placed: movedProps(info, drawing, offset) }
 }
@@ -118,8 +122,9 @@ export interface DrawingsRemoval {
  */
 export function drawingsRemoval(model: CircuitModel, sheet: readonly SchematicDrawing[], locked: ReadonlySet<string>): (ids: readonly string[]) => DrawingsRemoval {
   return (ids) => {
-    const skipped = ids.flatMap((id) => drawingBlocker(model, locked, id) ?? [])
-    const removed = ids.filter((id) => drawingBlocker(model, locked, id) === null)
+    const blockers = ids.map((id) => ({ id, blocker: drawingBlocker(model, locked, id) }))
+    const skipped = blockers.flatMap((one) => one.blocker ?? [])
+    const removed = blockers.flatMap((one) => (one.blocker === null ? [one.id] : []))
     const start = (id: string) => drawingInfo(model, id)?.start ?? 0
     const backwards = [...removed].sort((a, b) => start(b) - start(a))
     const drawn = removed.flatMap((id) => sheet.find((drawing) => drawing.id === id) ?? [])

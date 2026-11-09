@@ -6,7 +6,7 @@ import { drawingBounds } from "../../../src/engine/drawing-kinds.js"
 import type { SchematicDrawing } from "../../../src/engine/model.js"
 import { areasInBox, type BoxMode } from "./box-select.js"
 import type { Box, Point } from "./geometry.js"
-import { isFilled, strokeWidthOf } from "./drawing-style.js"
+import { isFilled, MIN_TEXT_PX, strokeWidthOf } from "./drawing-style.js"
 import { distanceToSegment } from "./wire-hit.js"
 
 /** Where a point is on a drawing: on what it draws (its line or text), or inside a filled shape's wash. */
@@ -48,6 +48,9 @@ function toArc(drawing: Extract<SchematicDrawing, { kind: "arc" }>, p: Point): n
 
 const within = (box: Box, p: Point): boolean => p.x >= box.minX && p.x <= box.maxX && p.y >= box.minY && p.y <= box.maxY
 
+/** The distance from `p` to a box: 0 anywhere on it. */
+const toBox = (box: Box, p: Point): number => Math.hypot(Math.max(box.minX - p.x, 0, p.x - box.maxX), Math.max(box.minY - p.y, 0, p.y - box.maxY))
+
 /** The distance from `p` to what the drawing draws; a text is at distance 0 anywhere on its box. */
 function distanceTo(drawing: SchematicDrawing, p: Point): number {
   switch (drawing.kind) {
@@ -63,7 +66,7 @@ function distanceTo(drawing: SchematicDrawing, p: Point): number {
     case "arc":
       return toArc(drawing, p)
     case "text":
-      return within(drawingBounds(drawing), p) ? 0 : Number.POSITIVE_INFINITY
+      return toBox(drawingBounds(drawing), p)
   }
 }
 
@@ -83,11 +86,18 @@ export function drawingPlace(drawing: SchematicDrawing, p: Point, reach: number)
   return insideFill(drawing, p) ? "inside" : undefined
 }
 
-/** The drawing under `p`: the one drawn last (on top) whose line is hit, else the one drawn last whose fill holds `p`. */
-export function drawingAt(drawings: readonly SchematicDrawing[], p: Point, reach: number): DrawingHit | undefined {
+/** Whether the drawing is drawn at this zoom (`scale`, CSS pixels per sheet unit): a text too small to write is not. */
+const shownAt = (drawing: SchematicDrawing, scale: number | undefined): boolean => drawing.kind !== "text" || scale === undefined || drawing.fontSize * scale >= MIN_TEXT_PX
+
+/**
+ * The drawing under `p`: the one drawn last (on top) whose line is hit, else the one drawn last whose fill holds `p`.
+ * With the zoom's `scale`, a text too small to be drawn is passed over.
+ */
+export function drawingAt(drawings: readonly SchematicDrawing[], p: Point, reach: number, scale?: number): DrawingHit | undefined {
   let inside: DrawingHit | undefined
   for (let i = drawings.length - 1; i >= 0; i--) {
     const drawing = drawings[i] as SchematicDrawing
+    if (!shownAt(drawing, scale)) continue
     const place = drawingPlace(drawing, p, reach)
     if (place === "line") return { id: drawing.id, place }
     if (place === "inside" && !inside) inside = { id: drawing.id, place }

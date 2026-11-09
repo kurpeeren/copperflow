@@ -113,7 +113,12 @@ function canvas(start: readonly string[] = [], options: CanvasOptions = {}) {
     onContextMenu: (target, at) => void menus.push({ target, at }),
     wires: wires(),
     labels: { at: flagAt, blocker: () => null, commit: (label, at) => void labelMoves.push({ id: label.id, at }), boxes: [{ id: FLAG.id, box: FLAG_BOX }] },
-    drawings: { at: drawingAt, boxes: [{ id: "G1", box: G1_BOX }], origin: (id) => (id === "G1" ? { x: 0.25, y: -3 } : undefined) },
+    drawings: {
+      at: drawingAt,
+      boxes: [{ id: "G1", box: G1_BOX }],
+      origin: (id) => (id === "G1" ? { x: 0.25, y: -3 } : undefined),
+      blocker: (id) => (options.locked?.includes(id) ? `${id} is locked` : null),
+    },
     ...(options.filter ? { filter: options.filter } : {}),
   })
   /** Presses at `from`, moves through `path` and lets go at the last point, as the hook does. */
@@ -310,6 +315,18 @@ describe("drawings in the selection", () => {
     const c = canvas(["R1"], { drawings: ["G1"] })
     c.gesture({}, screen(1), screen(2))
     expect(c.commits).toEqual([{ names: ["R1"], offset: { x: 1, y: 0 }, drawings: ["G1"] }])
+  })
+
+  test("a drag on a locked drawing says why at its first move, once, and writes nothing", () => {
+    const c = canvas([], { locked: ["G1"] })
+    const session = c.session()
+    session.press(press(), screen(1, -3))
+    expect(c.calls).toEqual([])
+    session.move(screen(2, -3), 1)
+    session.move(screen(3, -3), 1)
+    session.release({ x: 0, y: 0 })
+    expect(c.calls).toEqual(["notify G1 is locked"])
+    expect(c.commits).toEqual([])
   })
 
   test("Shift or Ctrl on a drawing toggles it and starts nothing", () => {

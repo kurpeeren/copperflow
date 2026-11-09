@@ -4,7 +4,7 @@
 // move takes is drawn where the move puts it. schematic-draw.ts calls both passes.
 import type { SchematicDrawing } from "../../../src/engine/model.js"
 import { anchorAlignment, CANVAS_FONT_FAMILY, HIGHLIGHT_DIM, type Ctx } from "./ctx.js"
-import { colorOf, dashOf, drawnWidth, fillOf, isFilled, lineStyleOf, strokeWidthOf } from "./drawing-style.js"
+import { colorOf, dashOf, drawnWidth, fillOf, isFilled, lineStyleOf, MIN_TEXT_PX, strokeWidthOf } from "./drawing-style.js"
 import { worldToScreen, type Camera, type Size } from "./geometry.js"
 import { schematicTheme } from "./schematic-theme.js"
 
@@ -16,8 +16,6 @@ export interface DrawingPaint {
   dim?: boolean
 }
 
-/** Text smaller than this on screen, in CSS pixels, is not written. */
-const MIN_TEXT_PX = 3
 
 const rad = (degrees: number): number => (degrees * Math.PI) / 180
 
