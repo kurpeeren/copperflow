@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { drawGrid, drawLockBadge, drawSelectionBox, drawWirePreview, PCB_LOOK } from "../studio/src/pcb/overlays.js"
+import { drawGrid, drawLockBadge, drawMark, drawSelectionBox, drawWirePreview, PCB_LOOK } from "../studio/src/pcb/overlays.js"
 import { sheetArt, sheetFor } from "../studio/src/pcb/sheet.js"
 import { drawSheetBorder } from "../studio/src/pcb/sheet-draw.js"
 import { drawWireHandles, SHEET_WIRE_LOOK } from "../studio/src/pcb/wire-overlay.js"
@@ -89,6 +89,16 @@ describe("painters at ratio 1.1", () => {
     }
   })
 
+  test("a note's text is a whole device pixel size on a device pixel", () => {
+    const { ctx, calls, set } = record()
+    set.measureText = () => ({ width: 40 })
+    drawMark(ctx, { cx: 0.3, cy: 0.1, scale: 37 }, size, { at: { x: 0.11, y: 0.07 }, id: "N1", text: "here" }, PCB_LOOK, 1.25)
+    const text = calls.find((c) => c.name === "fillText")
+    expect(text).toBeDefined()
+    for (const v of (text?.args ?? []).slice(1) as number[]) expect(close(v * 1.25, Math.round(v * 1.25))).toBe(true)
+    expect(String(set.font).startsWith("12px")).toBe(true)
+  })
+
   test("the selection box edges are on device pixel centres", () => {
     const { ctx, calls } = record()
     drawSelectionBox(ctx, { x: 10.2, y: 20.7 }, { x: 60.4, y: 41.1 }, PCB_LOOK, "inside", RATIO)
@@ -107,7 +117,7 @@ describe("handles, border, lock badge and wire preview at ratio 1.1", () => {
   const onCentre = (v: number) => close((((v * RATIO) % 1) + 1) % 1, 0.5)
   const record = () => {
     const calls: { name: string; args: number[]; lineWidth: number }[] = []
-    const state: Record<string, unknown> = { lineWidth: 1 }
+    const state: Record<string, unknown> = { lineWidth: 1, measureText: (text: string) => ({ width: text.length * 6 }) }
     const ctx = new Proxy(state, {
       get: (t, name: string) => (name in t ? t[name] : (...args: number[]) => void calls.push({ name, args, lineWidth: t.lineWidth as number })),
       set: (t, name: string, value) => ((t[name] = value), true),

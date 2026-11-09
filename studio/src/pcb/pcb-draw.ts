@@ -1,11 +1,12 @@
 // copperflow's PCB renderer: draws the engine's board layout onto a 2D canvas in layer order.
 // Only types come from the engine: its runtime modules reach Node-only code the Studio bundle cannot hold.
 import type { PcbLayout, PlacedFootprint, WorldPad } from "../../../src/engine/pcb.js"
-import { baselineAt, devicePixelIn } from "./crisp.js"
+import { devicePixelIn } from "./crisp.js"
 import { canvasFont, PALETTE, TEXT_WEIGHT, type Ctx } from "./ctx.js"
 import { worldToScreen, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
 import { DEFAULT_LAYERS, padLayer, type LayerVisibility } from "./layers.js"
 import { drawViolationMarkers, type ViolationMarker } from "./markers.js"
+import { devicePxFor, sharpenText, textAnchorAt, textShown } from "./text-level.js"
 
 export interface PcbDrawOptions {
   /** Device pixels per CSS pixel. */
@@ -27,7 +28,6 @@ export interface PcbDrawOptions {
 type View = { camera: Camera; size: Size }
 
 const NO_SHIFT: Point = { x: 0, y: 0 }
-const MIN_TEXT_PX = 3
 /** Alpha of everything outside a highlighted net; high enough that dimmed pure blue still reads on black. */
 export const PCB_DIM = 0.5
 /** The dashed courtyard of an auto-placed part stays at full alpha and a little thicker, so it reads on black. */
@@ -101,6 +101,7 @@ export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDra
 
   // Text is drawn in screen space so it stays upright and readable at any zoom.
   ctx.setTransform(options.ratio, 0, 0, options.ratio, 0, 0)
+  sharpenText(ctx)
   for (const part of layout.parts) if (shownOn(layers, part, "Silk")) drawDesignator(ctx, part, camera, size, shiftOf(part), options.ratio)
   drawViolationMarkers(ctx, view, options.violations ?? [], options.activeViolation, true)
   ctx.restore()
@@ -328,18 +329,19 @@ function drawLine(ctx: Ctx, a: Point, b: Point): void {
   ctx.stroke()
 }
 
-/** The component id as silkscreen text, centred above the courtyard's top edge. */
+/** The component id as silkscreen text, centred above the courtyard's top edge, from 7 device pixels (text-level.ts). */
 function drawDesignator(ctx: Ctx, part: PlacedFootprint, camera: Camera, size: Size, shift: Point, ratio: number): void {
-  const fontPx = DESIGNATOR_MM * camera.scale
-  if (fontPx < MIN_TEXT_PX) return
+  const devicePx = devicePxFor(DESIGNATOR_MM, camera.scale, ratio)
+  if (!textShown("name", devicePx, devicePx)) return
   const box = courtyardBox(part)
-  const p = worldToScreen(camera, size, { x: (box.minX + box.maxX) / 2 + shift.x, y: box.maxY + shift.y })
+  const top = worldToScreen(camera, size, { x: (box.minX + box.maxX) / 2 + shift.x, y: box.maxY + shift.y })
+  const p = textAnchorAt({ x: top.x, y: top.y - DESIGNATOR_GAP_PX }, ratio)
   ctx.fillStyle = part.side === "top" ? PALETTE.topSilk : PALETTE.bottomSilk
   ctx.globalAlpha = alphaOf(part)
-  ctx.font = canvasFont(TEXT_WEIGHT.strong, fontPx)
+  ctx.font = canvasFont(TEXT_WEIGHT.strong, devicePx / ratio)
   ctx.textAlign = "center"
   ctx.textBaseline = "bottom"
-  ctx.fillText(part.component, p.x, baselineAt(p.y - DESIGNATOR_GAP_PX, ratio))
+  ctx.fillText(part.component, p.x, p.y)
   ctx.globalAlpha = 1
 }
 

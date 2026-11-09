@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { drawGrid } from "../studio/src/pcb/overlays.js"
-import { INITIAL_GRID_STEPS, INITIAL_GRID_STYLES, PCB_DEFAULT_STEP, PCB_GRID_STEPS, SHEET_DEFAULT_STEP, SHEET_GRID_STEPS, gridStepOptions, nextGridStyle, planGrid, setGridStep, toggleGridStyle } from "../studio/src/pcb/grid.js"
+import { GRID_HIDDEN_BELOW_PX, GRID_MINOR_FROM_PX, INITIAL_GRID_STEPS, INITIAL_GRID_STYLES, PCB_DEFAULT_STEP, PCB_GRID_STEPS, SHEET_DEFAULT_STEP, SHEET_GRID_STEPS, gridStepOptions, nextGridStyle, planGrid, setGridStep, toggleGridStyle } from "../studio/src/pcb/grid.js"
 import { drawSchematicGrid, SHEET_DOT_PX } from "../studio/src/pcb/schematic-grid.js"
 import { schematicTheme } from "../studio/src/pcb/schematic-theme.js"
 import { gridStepLabel } from "../studio/src/pcb/units.js"
@@ -183,5 +183,52 @@ describe("schematic grid painting", () => {
     drawSchematicGrid(ctx, camera, SIZE, { step: 0.1, style: "lines" }, 1)
     expect(new Set(records.filter((r) => r.name === "stroke").map((r) => r.style))).toEqual(new Set(["#F0F0EB"]))
     expect(schematicTheme.grid).toBe("#F0F0EB")
+  })
+})
+
+describe("grid fade with the zoom, in device pixels", () => {
+  const at = (scale: number) => ({ cx: 0, cy: 0, scale })
+
+  test("thresholds: minor lines from 6 device px, every line goes below 3", () => {
+    expect([GRID_MINOR_FROM_PX, GRID_HIDDEN_BELOW_PX]).toEqual([6, 3])
+  })
+
+  test("minor lines are drawn from 6 device px; between 3 and 6 only the fifth lines stay", () => {
+    expect(planGrid(at(20), SIZE, 0.5)).toMatchObject({ spacing: 0.5, minor: true })
+    expect(planGrid(at(20), SIZE, 0.3)).toMatchObject({ spacing: 0.3, minor: true })
+    expect(planGrid(at(20), SIZE, 0.25)).toMatchObject({ spacing: 0.25, minor: false })
+    expect(planGrid(at(20), SIZE, 0.15)).toMatchObject({ spacing: 0.15, minor: false })
+  })
+
+  test("below 3 device px the step is stepped up by 5", () => {
+    expect(planGrid(at(20), SIZE, 0.1)).toMatchObject({ spacing: expect.closeTo(0.5, 9), minor: true })
+  })
+
+  test("the device pixel ratio counts: at ratio 2 a 4 CSS px step is 8 device px", () => {
+    expect(planGrid(at(20), SIZE, 0.2, 1)).toMatchObject({ minor: false })
+    expect(planGrid(at(20), SIZE, 0.2, 2)).toMatchObject({ minor: true })
+    expect(planGrid(at(20), SIZE, 0.1, 2)).toMatchObject({ spacing: 0.1, minor: false })
+  })
+
+  test("with the minor lines gone only every fifth line is stroked, on both canvases", () => {
+    const camera = at(20)
+    for (const paint of [drawGrid, drawSchematicGrid]) {
+      const { ctx, records } = recorder()
+      paint(ctx, camera, SIZE, { step: 0.25, style: "lines" }, 1)
+      const plan = planGrid(camera, SIZE, 0.25)
+      const fifths = (plan?.columns ?? []).filter((i) => i % 5 === 0).length + (plan?.rows ?? []).filter((i) => i % 5 === 0).length
+      expect(records.filter((r) => r.name === "moveTo")).toHaveLength(fifths)
+      const xs = records.filter((r) => r.name === "moveTo" && r.args[1] === 0).map((r) => r.args[0] as number).sort((a, b) => a - b)
+      expect((xs[1] as number) - (xs[0] as number)).toBeCloseTo(25)
+    }
+  })
+
+  test("with the minor dots gone only the fifth crossings are dotted", () => {
+    const camera = at(20)
+    const { ctx, records } = recorder()
+    drawSchematicGrid(ctx, camera, SIZE, { step: 0.25, style: "dots" }, 1)
+    const plan = planGrid(camera, SIZE, 0.25)
+    const count = (indices: number[] = []) => indices.filter((i) => i % 5 === 0).length
+    expect(records.filter((r) => r.name === "rect")).toHaveLength(count(plan?.columns) * count(plan?.rows))
   })
 })

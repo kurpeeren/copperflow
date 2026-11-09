@@ -6,8 +6,10 @@ import { paintGrid, type GridLook, type GridPaint } from "./grid.js"
 import { worldToScreen, type Box, type Camera, type Point, type Size } from "./geometry.js"
 import { deviceWidth, hairlineWidth, squareAt, squareSide, strokeBoxAt } from "./crisp.js"
 import { schematicTheme } from "./schematic-theme.js"
+import { fontPxFor, sharpenText, textAnchorAt } from "./text-level.js"
 
-const FONT = `12px ${CANVAS_FONT_FAMILY}`
+/** A note's text size in CSS pixels; it is drawn at the nearest whole device pixel size. */
+const NOTE_TEXT_PX = 12
 const MAX_LABEL = 32
 
 const PCB_GRID_COLOURS = { minor: PALETTE.grid, fifth: PALETTE.gridFifth }
@@ -131,13 +133,15 @@ export function drawMark(ctx: CanvasRenderingContext2D, camera: Camera, size: Si
   const p = worldToScreen(camera, size, at)
   const label = `${id}  ${text.length > MAX_LABEL ? `${text.slice(0, MAX_LABEL - 1)}…` : text}`
   ctx.save()
-  ctx.font = FONT
+  sharpenText(ctx)
+  ctx.font = `${fontPxFor(NOTE_TEXT_PX, 1, ratio)}px ${CANVAS_FONT_FAMILY}`
   const width = ctx.measureText(label).width + 12
   ctx.fillStyle = look.markPanel
   roundRect(ctx, p.x + 10, p.y - 22, width, 20, 4)
   ctx.fill()
   ctx.fillStyle = look.markText
-  ctx.fillText(label, p.x + 16, p.y - 8)
+  const anchor = textAnchorAt({ x: p.x + 16, y: p.y - 8 }, ratio)
+  ctx.fillText(label, anchor.x, anchor.y)
   ctx.strokeStyle = look.markPin
   ctx.lineWidth = deviceWidth(1.5, ratio) / ratio
   ctx.beginPath()

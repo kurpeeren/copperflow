@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { CANVAS_FONT_FAMILY } from "../studio/src/pcb/ctx.js"
-import { drawSheetBorder, MIN_ZONE_LABEL_PX, showZoneLabels, ZONE_TEXT } from "../studio/src/pcb/sheet-draw.js"
+import { drawSheetBorder, showZoneLabels, ZONE_TEXT } from "../studio/src/pcb/sheet-draw.js"
+import { ALL_TEXT_FROM, SHEET_LEVEL_SIZE } from "../studio/src/pcb/text-level.js"
 import { drawingExtents } from "../studio/src/pcb/drawing-extents.js"
 import { worldToScreen, type Box } from "../studio/src/pcb/geometry.js"
 import { firstDrawing, keepSheet, SHEET_MARGIN, SHEET_SIZES, sheetArt, sheetDate, sheetFor, sheetHolds, titleBlock, zoneDividers, zoneLabels, ZONE_BAND } from "../studio/src/pcb/sheet.js"
@@ -130,9 +131,11 @@ describe("zones", () => {
     expect(xs[0]).toBeCloseTo(sheet.inner.minX + (sheet.inner.maxX - sheet.inner.minX) / 6)
   })
 
-  test("zone labels are skipped when they would draw under 6 px", () => {
-    expect(showZoneLabels(MIN_ZONE_LABEL_PX / ZONE_TEXT)).toBe(true)
-    expect(showZoneLabels(MIN_ZONE_LABEL_PX / ZONE_TEXT - 1)).toBe(false)
+  test("zone labels, like all sheet text, wait for the sheet's all level: designators (0.16 in) at 9 device px", () => {
+    expect(showZoneLabels(ALL_TEXT_FROM / SHEET_LEVEL_SIZE, 1)).toBe(true)
+    expect(showZoneLabels(8.4 / SHEET_LEVEL_SIZE, 1)).toBe(false)
+    expect(showZoneLabels(8.4 / SHEET_LEVEL_SIZE, 1.1)).toBe(true)
+    expect(ZONE_TEXT).toBe(0.12)
   })
 })
 
@@ -304,14 +307,21 @@ describe("drawSheetBorder", () => {
   function textRecorder() {
     const fonts: string[] = []
     const texts: string[] = []
+    const fillArgs: unknown[][] = []
+    const px = () => Number(/([\d.]+)px/.exec(fonts.at(-1) ?? "")?.[1] ?? 10)
+    const call = (name: string) => {
+      if (name === "fillText") return (...args: unknown[]) => void (texts.push(args[0] as string), fillArgs.push(args))
+      if (name === "measureText") return (text: string) => ({ width: text.length * px() * 0.6 })
+      return () => undefined
+    }
     const ctx = new Proxy({} as Record<string, unknown>, {
-      get: (_, name: string) => (name === "fillText" ? (value: string) => void texts.push(value) : () => undefined),
+      get: (_, name: string) => call(name),
       set: (_, name: string, value: string) => {
         if (name === "font") fonts.push(value)
         return true
       },
     }) as unknown as CanvasRenderingContext2D
-    return { ctx, fonts, texts }
+    return { ctx, fonts, texts, fillArgs }
   }
   const sheet = sheetFor(around(3, 2))
   const art = sheetArt(sheet, VALUES)
@@ -324,6 +334,26 @@ describe("drawSheetBorder", () => {
     expect(fonts).toHaveLength(3)
     expect(new Set(fonts).size).toBe(3)
     for (const font of fonts) expect(font.endsWith(CANVAS_FONT_FAMILY)).toBe(true)
+  })
+
+  test("fonts are whole device pixels, shown at the all level while they are 5 device px themselves", () => {
+    const at = (scale: number, ratio: number) => {
+      const { ctx, fonts } = textRecorder()
+      drawSheetBorder(ctx, { ...camera, scale }, SCREEN, art, ratio)
+      return fonts.map((font) => Number(/([\d.]+)px/.exec(font)?.[1]) * ratio)
+    }
+    for (const device of at(93.7, 1.25)) expect(Math.abs(device - Math.round(device))).toBeLessThan(1e-9)
+    // at 60 px per inch (designators 10 px) the title labels (0.09 in) are 5 px and drawn; at 50 (8 px) nothing is
+    expect(at(60, 1).sort((a, b) => a - b)).toEqual([5, 7, 8])
+    expect(at(50, 1)).toEqual([])
+  })
+
+  test("a value too long for its cell is shortened with an ellipsis at its size, never squeezed", () => {
+    const long = sheetArt(sheet, { ...VALUES, project: "a very long project name that cannot fit in its title block cell" })
+    const { ctx, texts, fillArgs } = textRecorder()
+    drawSheetBorder(ctx, camera, SCREEN, long, 1)
+    expect(texts.some((t) => t.startsWith("a very") && t.endsWith("…"))).toBe(true)
+    expect(fillArgs.every((args) => args.length === 3)).toBe(true)
   })
 
   test("text too small to read is left out, and so is its font", () => {

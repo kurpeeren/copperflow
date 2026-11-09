@@ -26,6 +26,7 @@ export interface Ctx {
   fill(): void
   stroke(): void
   fillText(text: string, x: number, y: number): void
+  measureText(text: string): { width: number; actualBoundingBoxAscent?: number; actualBoundingBoxDescent?: number }
   clip(): void
   setLineDash(segments: number[]): void
 }

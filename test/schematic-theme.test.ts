@@ -68,20 +68,21 @@ describe("schematicTheme", () => {
 })
 
 describe("schematic grid", () => {
-  test("a grid step of 8 px or more gets a line each", () => {
-    expect(gridLineSpacing(SHEET_GRID, 80)).toBe(SHEET_GRID)
+  test("a grid step of 3 device px or more gets a line each", () => {
+    expect(gridLineSpacing(SHEET_GRID, 30)).toBe(SHEET_GRID)
     expect(gridLineSpacing(SHEET_GRID, 100)).toBe(SHEET_GRID)
+    expect(gridLineSpacing(SHEET_GRID, 20, 1.5)).toBe(SHEET_GRID)
   })
 
-  test("a closer step is stepped up by 5 until it is 8 px apart", () => {
-    expect(gridLineSpacing(SHEET_GRID, 79)).toBeCloseTo(0.5)
-    expect(gridLineSpacing(SHEET_GRID, 16)).toBeCloseTo(0.5)
-    expect(gridLineSpacing(SHEET_GRID, 15)).toBeCloseTo(2.5)
-    expect(gridLineSpacing(SHEET_GRID, 3.2)).toBeCloseTo(2.5)
+  test("a closer step is stepped up by 5 until it is 3 device px apart", () => {
+    expect(gridLineSpacing(SHEET_GRID, 29)).toBeCloseTo(0.5)
+    expect(gridLineSpacing(SHEET_GRID, 6)).toBeCloseTo(0.5)
+    expect(gridLineSpacing(SHEET_GRID, 5.9)).toBeCloseTo(2.5)
+    expect(gridLineSpacing(SHEET_GRID, 1.2)).toBeCloseTo(2.5)
   })
 
-  test("no grid when even 25 steps are under 8 px", () => {
-    expect(gridLineSpacing(SHEET_GRID, 3)).toBeNull()
+  test("no grid when even 25 steps are under 3 device px", () => {
+    expect(gridLineSpacing(SHEET_GRID, 1.19)).toBeNull()
     expect(planGrid({ cx: 0, cy: 0, scale: 0.5 }, { width: 800, height: 600 }, SHEET_GRID)).toBeNull()
   })
 

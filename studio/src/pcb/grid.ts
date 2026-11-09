@@ -46,28 +46,38 @@ export const nextGridStyle = (style: GridStyle): GridStyle => (style === "lines"
 
 export const toggleGridStyle = (styles: GridStyles, view: View): GridStyles => ({ ...styles, [view]: nextGridStyle(styles[view]) })
 
-const MIN_LINE_GAP_PX = 8
+/** Minor lines are drawn while they are at least this many device pixels apart; closer, only every fifth line stays. */
+export const GRID_MINOR_FROM_PX = 6
+/** Lines closer than this many device pixels are not drawn: the step is stepped up by 5 instead. */
+export const GRID_HIDDEN_BELOW_PX = 3
 const COARSE_FACTOR = 5
 const MAX_COARSENING = 2
 /** Every fifth line (or, for dots, every fifth crossing in both directions) is drawn stronger. */
 export const GRID_EVERY = 5
 
-/** The distance between drawn lines: the step, stepped up by 5 until it is at least 8 px on screen; null when even 25 steps are closer than that. */
-export function gridLineSpacing(step: number, scale: number): number | null {
+/**
+ * The distance between lines: the step, stepped up by 5 until it is at least 3 device pixels on screen (`scale` CSS
+ * pixels per world unit, `ratio` device pixels per CSS pixel); null when even 25 steps are closer than that.
+ */
+export function gridLineSpacing(step: number, scale: number, ratio = 1): number | null {
   let spacing = step
-  for (let i = 0; i <= MAX_COARSENING; i++, spacing *= COARSE_FACTOR) if (spacing * scale >= MIN_LINE_GAP_PX) return spacing
+  for (let i = 0; i <= MAX_COARSENING; i++, spacing *= COARSE_FACTOR) if (spacing * scale * ratio >= GRID_HIDDEN_BELOW_PX) return spacing
   return null
 }
 
-/** The grid in the view: its spacing and the indices (world position / spacing) of the columns and rows that fall in it. */
+/**
+ * The grid in the view: its spacing, the indices (world position / spacing) of the columns and rows that fall in it,
+ * and whether the minor lines are drawn (false: only every fifth line or crossing is).
+ */
 export interface GridPlan {
   spacing: number
   columns: number[]
   rows: number[]
+  minor: boolean
 }
 
-export function planGrid(camera: Camera, size: Size, step: number): GridPlan | null {
-  const spacing = gridLineSpacing(step, camera.scale)
+export function planGrid(camera: Camera, size: Size, step: number, ratio = 1): GridPlan | null {
+  const spacing = gridLineSpacing(step, camera.scale, ratio)
   if (spacing === null) return null
   const a = screenToWorld(camera, size, { x: 0, y: 0 })
   const b = screenToWorld(camera, size, { x: size.width, y: size.height })
@@ -76,8 +86,13 @@ export function planGrid(camera: Camera, size: Size, step: number): GridPlan | n
     for (let i = Math.floor(Math.min(p, q) / spacing); i <= Math.ceil(Math.max(p, q) / spacing); i++) indices.push(i)
     return indices
   }
-  return { spacing, columns: between(a.x, b.x), rows: between(a.y, b.y) }
+  return { spacing, columns: between(a.x, b.x), rows: between(a.y, b.y), minor: spacing * camera.scale * ratio >= GRID_MINOR_FROM_PX }
 }
+
+const isFifth = (index: number) => index % GRID_EVERY === 0
+
+/** The plan with only its fifth columns and rows, for when the minor lines have faded out. */
+const fifthsOnly = (plan: GridPlan): GridPlan => ({ ...plan, columns: plan.columns.filter(isFifth), rows: plan.rows.filter(isFifth) })
 
 export interface GridLook {
   step: number
@@ -95,8 +110,6 @@ export interface GridPaint {
   lines: GridColours
   dots: GridColours & { px: number }
 }
-
-const isFifth = (index: number) => index % GRID_EVERY === 0
 
 function paintLines(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, plan: GridPlan, colours: GridColours, ratio: number): void {
   const { spacing } = plan
@@ -159,10 +172,11 @@ function paintDots(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, pl
   if (dots.fifth) fillSquares(ctx, strong, dots.fifth, side)
 }
 
-/** Paints the grid at the look's step, as hairlines or as square dots at their crossings, in CSS pixels, sharp at the device pixel `ratio`. */
+/** Paints the grid at the look's step (only every fifth line when the minor ones are too close), as hairlines or as square dots at their crossings, in CSS pixels, sharp at the device pixel `ratio`. */
 export function paintGrid(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, look: GridLook, paint: GridPaint, ratio: number): void {
-  const plan = planGrid(camera, size, look.step)
-  if (!plan) return
+  const planned = planGrid(camera, size, look.step, ratio)
+  if (!planned) return
+  const plan = planned.minor ? planned : fifthsOnly(planned)
   ctx.save()
   if (look.style === "dots") paintDots(ctx, camera, size, plan, paint.dots, ratio)
   else paintLines(ctx, camera, size, plan, paint.lines, ratio)
