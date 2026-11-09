@@ -8,6 +8,7 @@ import type { Actions } from "../App"
 import type { Selection, SelectionChange } from "../selection"
 import type { PartCommand } from "../shell/command-owners"
 import { useCommands } from "../shell/commands"
+import { ALIGN_COMMANDS, isAlignCommand, type AlignCommand } from "./align-rules"
 import { keyAction, keyInput, type KeyResult } from "./canvas-keys"
 import { removeEach, removeQuestion, sendGroupEdit, type Layout } from "./group-edits"
 import { claimsKey, type BuildStatus } from "./key-burst"
@@ -54,9 +55,10 @@ function removeSelection(input: PartKeysInput): void {
   void sendGroupEdit(plan, input.actions).then((ok) => ok && input.onSelect((current) => current.without(plan.parts)))
 }
 
-/** Runs the canvas actions of a key press: fit, highlight, rotate, nudge, delete. */
+/** Runs the canvas actions of a key press: fit, highlight, rotate, nudge, align, delete. */
 function runKey(input: PartKeysInput, hit: KeyResult, edits: KeyEdits, repeat: boolean): void {
   const { action } = hit
+  if (isAlignCommand(action)) return input.paused || repeat ? undefined : edits.align(input, action)
   if (action.startsWith("nudge")) return input.paused ? undefined : edits.nudge(input, hit)
   if (action === "fit") return input.fit()
   if (action === "delete") return input.selection.size > 0 && !input.paused ? removeSelection(input) : undefined
@@ -80,7 +82,9 @@ function usePartCommands(input: PartKeysInput, edits: KeyEdits): void {
     if (input.selection.size > 0) then(input)
     else input.actions.notify("Select a part first.")
   }
+  const aligns = Object.fromEntries(ALIGN_COMMANDS.map((command) => [command, () => (input.paused ? undefined : edits.align(input, command))])) as Record<AlignCommand, () => void>
   const table: Record<PartCommand, () => void> = {
+    ...aligns,
     fit: input.fit,
     rotate: withSelection((chosen) => edits.rotate(chosen, false)),
     delete: withSelection(removeSelection),

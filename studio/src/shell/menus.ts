@@ -1,6 +1,7 @@
 // The menu bar as data: EasyEDA Pro's menus, the items Studio can run, and the items still to come, each with the
 // engine stage (docs/engine-design.md) or the Studio round (docs/studio-easyeda-parity.md §10) that brings it. The
 // keys beside a command are the keys canvas-keys.ts binds; a test holds them together.
+import { ALIGN_COMMANDS, alignDisabledReason, type AlignCommand } from "../pcb/align-rules.js"
 import type { KeyActionName } from "../pcb/canvas-keys.js"
 import type { View } from "../pcb/positions.js"
 
@@ -30,6 +31,7 @@ export type CommandId =
   | "highlight"
   | "clearHighlight"
   | "rotate"
+  | AlignCommand
   | "find"
   | "lock"
   | "unlock"
@@ -157,8 +159,15 @@ export const MENUS: readonly Menu[] = [
       run("Lock", "lock"),
       run("Unlock", "unlock"),
       "separator",
-      later("Align left", STAGE_3, "Ctrl+Shift+L"),
-      later("Distribute horizontally", STAGE_3, "Ctrl+Shift+H"),
+      run("Align left", "alignLeft", "Ctrl+Shift+L"),
+      run("Align right", "alignRight"),
+      run("Align top", "alignTop"),
+      run("Align bottom", "alignBottom"),
+      run("Align horizontal centres", "alignHCentres"),
+      run("Align vertical centres", "alignVCentres"),
+      "separator",
+      run("Distribute horizontally", "distributeH", "Ctrl+Shift+H"),
+      run("Distribute vertically", "distributeV"),
     ],
   },
   {
@@ -181,13 +190,20 @@ export const MENUS: readonly Menu[] = [
 
 export const MENU_TITLES: readonly string[] = MENUS.map((menu) => menu.title)
 
+const isAlign = (command: CommandId): command is AlignCommand => ALIGN_COMMAND_IDS.has(command)
+const ALIGN_COMMAND_IDS: ReadonlySet<string> = new Set(ALIGN_COMMANDS)
+
 const ONLY_REASON: Record<View, string> = { pcb: "PCB only", schematic: "Schematic only" }
 
-/** Whether an item runs in the open view, and the tooltip that says why it does not. */
-export function itemState(item: MenuItem, view: View): { enabled: boolean; reason?: string } {
+/**
+ * Whether an item runs in the open view with `selected` parts selected, and the tooltip that says why it does not.
+ * Without a count the selection is not considered.
+ */
+export function itemState(item: MenuItem, view: View, selected?: number): { enabled: boolean; reason?: string } {
   if (!item.command) return item.pending ? { enabled: false, reason: item.pending } : { enabled: false }
   if (item.only && item.only !== view) return { enabled: false, reason: ONLY_REASON[item.only] }
-  return { enabled: true }
+  const short = selected === undefined || !isAlign(item.command) ? null : alignDisabledReason(item.command, selected)
+  return short ? { enabled: false, reason: short } : { enabled: true }
 }
 
 export function menuItems(menu: Menu): MenuItem[] {
@@ -213,6 +229,8 @@ export const COMMAND_KEY_ACTIONS: Partial<Record<CommandId, KeyActionName>> = {
   selectAll: "selectAll",
   find: "find",
   delete: "delete",
+  alignLeft: "alignLeft",
+  distributeH: "distributeH",
 }
 
 /** Keys that no menu item shows: the canvas keys, and the second key of a command. */
@@ -266,6 +284,6 @@ export function menuReducer(state: MenuState, event: MenuEvent): MenuState {
 }
 
 /** Each menu's entries as the menu keys see them in the open view: items that run, disabled items and separators. */
-export function menuShapes(view: View): readonly (readonly ("item" | "disabled" | "separator")[])[] {
-  return MENUS.map((menu) => menu.entries.map((entry) => (entry === "separator" ? "separator" : itemState(entry, view).enabled ? "item" : "disabled")))
+export function menuShapes(view: View, selected?: number): readonly (readonly ("item" | "disabled" | "separator")[])[] {
+  return MENUS.map((menu) => menu.entries.map((entry) => (entry === "separator" ? "separator" : itemState(entry, view, selected).enabled ? "item" : "disabled")))
 }

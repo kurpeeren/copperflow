@@ -189,7 +189,7 @@ export function releaseArrows(
 }
 
 /** The actions the canvas's key listener runs (runKey in use-part-keys.ts). */
-const CANVAS_RUNS: ReadonlySet<string> = new Set(["fit", "highlight", "contextMenu", "delete", "rotate", "nudgeLeft", "nudgeRight", "nudgeUp", "nudgeDown"])
+const CANVAS_RUNS: ReadonlySet<string> = new Set(["fit", "highlight", "contextMenu", "delete", "rotate", "nudgeLeft", "nudgeRight", "nudgeUp", "nudgeDown", "alignLeft", "distributeH"])
 
 /**
  * Whether the canvas takes the key press (and so keeps it from the page and the later listeners): only an action it
@@ -199,5 +199,6 @@ const CANVAS_RUNS: ReadonlySet<string> = new Set(["fit", "highlight", "contextMe
 export function claimsKey(action: string, selectionSize: number, paused: boolean, preventDefault: boolean): boolean {
   if (!preventDefault || !CANVAS_RUNS.has(action)) return false
   if (action.startsWith("nudge") || action === "rotate") return selectionSize > 0 && !paused
+  if (action === "alignLeft" || action === "distributeH") return !paused
   return true
 }

@@ -87,6 +87,7 @@ function bench(start: SourceCircuit, names: readonly string[], options: { hidden
     notes,
     input,
     circuit: () => circuit,
+    session,
     rotate: (repeat = false) => session.rotate(input(), repeat),
     nudge: (steps: number) => session.nudge(input(), { action: "nudgeRight", preventDefault: true, steps }),
     /** The app sends an Undo or Redo that leaves the circuit as `to`, or fails without one; the server answers it in turn. */
@@ -400,5 +401,47 @@ describe("arrow keys and parts outside the view", () => {
     studio.nudge(1)
     expect(studio.sent).toEqual([])
     expect(studio.notes).toEqual(["C1 is not in this view"])
+  })
+})
+
+describe("align through the key session", () => {
+  const start = circuitOf([part("R1", 0, 0), part("R2", 4, 3), part("R3", 8, 6)])
+
+  test("align left goes now when the gate is open, as one edit", async () => {
+    const studio = bench(start, ["R1", "R2", "R3"])
+    studio.session.align(studio.input(), "alignLeft")
+    expect(studio.sent).toEqual(["align R2 and R3 left"])
+    await studio.answer()
+    expect([at(studio.circuit(), "R2"), at(studio.circuit(), "R3")]).toEqual([[0, 3, 0], [0, 6, 0]])
+  })
+
+  test("a second align pressed before the first one's build is held, then computed from the new positions", async () => {
+    const studio = bench(start, ["R1", "R2", "R3"])
+    studio.session.align(studio.input(), "alignLeft")
+    await studio.answer()
+    studio.session.align(studio.input(), "alignTop")
+    expect(studio.sent).toEqual(["align R2 and R3 left"])
+    studio.build()
+    expect(studio.sent).toEqual(["align R2 and R3 left", "align R1 and R2 top"])
+    await studio.answer()
+    expect([at(studio.circuit(), "R1"), at(studio.circuit(), "R2"), at(studio.circuit(), "R3")]).toEqual([[0, 6, 0], [0, 6, 0], [0, 6, 0]])
+  })
+
+  test("an align pressed while a rotate is held keeps its place in the queue", async () => {
+    const studio = bench(start, ["R1", "R2", "R3"])
+    studio.rotate()
+    studio.session.align(studio.input(), "alignLeft")
+    expect(studio.sent).toHaveLength(1)
+    await studio.answer()
+    studio.build()
+    expect(studio.sent).toHaveLength(2)
+    expect(studio.sent[1]).toContain("align")
+  })
+
+  test("with one part selected nothing is sent and the reason is told", () => {
+    const studio = bench(start, ["R1"])
+    studio.session.align(studio.input(), "alignLeft")
+    expect(studio.sent).toEqual([])
+    expect(studio.notes[0]).toContain("Align needs 2")
   })
 })

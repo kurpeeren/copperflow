@@ -51,7 +51,7 @@ export function useContextMenu(input: Input): ContextMenuState {
     const locked = new Set(circuit?.annotations.locks.map((lock) => lock.part))
     // The selection the click leaves, which the items act on.
     const after = contextSelection(selection, request.target)
-    return { entries: contextItems(request.target, { allLocked: allLocked(after.names, locked) }), at: request.at }
+    return { entries: contextItems(request.target, { allLocked: allLocked(after.names, locked), selected: after.size }), at: request.at }
   }, [request, circuit, selection])
   const runItem = useCallback(
     (item: ContextItem) => {

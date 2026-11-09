@@ -12,30 +12,44 @@ const part = { kind: "part", name: "R1" } as const
 
 describe("context menu items", () => {
   test("a part gets Properties, Rotate, Lock, Highlight its nets and Delete", () => {
-    expect(names(contextItems(part, { allLocked: false }))).toEqual(["Properties", "-", "Rotate", "Lock", "Highlight its nets", "-", "Delete"])
+    expect(names(contextItems(part, { allLocked: false, selected: 1 }))).toEqual(["Properties", "-", "Rotate", "Lock", "Highlight its nets", "-", "Delete"])
+  })
+
+  test("two or more selected parts add the align items, and distribute waits for three", () => {
+    const two = contextItems(part, { allLocked: false, selected: 2 })
+    expect(names(two)).toEqual([
+      "Properties", "-", "Rotate", "Lock", "Highlight its nets", "-",
+      "Align left", "Align right", "Align top", "Align bottom", "Align horizontal centres", "Align vertical centres", "-",
+      "Distribute horizontally", "Distribute vertically", "-", "Delete",
+    ])
+    const spread = two.find((e) => e !== "separator" && e.label === "Distribute horizontally")
+    expect(spread).toMatchObject({ command: "distributeH", pending: "Select three or more parts", shortcut: "Ctrl+Shift+H" })
+    const three = contextItems(part, { allLocked: false, selected: 3 })
+    expect(three.find((e) => e !== "separator" && e.label === "Distribute vertically")).toEqual({ label: "Distribute vertically", command: "distributeV" })
+    expect(two.find((e) => e !== "separator" && e.label === "Align left")).toEqual({ label: "Align left", command: "alignLeft", shortcut: "Ctrl+Shift+L" })
   })
 
   test("Lock becomes Unlock when every selected part is locked", () => {
-    const items = contextItems(part, { allLocked: true })
+    const items = contextItems(part, { allLocked: true, selected: 1 })
     expect(names(items)).toContain("Unlock")
     expect(names(items)).not.toContain("Lock")
   })
 
   test("empty canvas gets Fit all, Grid style, zoom and a pending Paste", () => {
-    const items = contextItems({ kind: "canvas" }, { allLocked: false })
+    const items = contextItems({ kind: "canvas" }, { allLocked: false, selected: 1 })
     expect(names(items)).toEqual(["Fit all", "Grid style", "-", "Zoom in", "Zoom out", "-", "Paste"])
     expect(items.at(-1)).toMatchObject({ label: "Paste", pending: ENGINE })
     expect(contextShape(items).at(-1)).toBe("disabled")
   })
 
   test("a net label gets Rename and Highlight net", () => {
-    expect(names(contextItems({ kind: "label", label }, { allLocked: false }))).toEqual(["Rename", "Highlight net"])
+    expect(names(contextItems({ kind: "label", label }, { allLocked: false, selected: 1 }))).toEqual(["Rename", "Highlight net"])
   })
 
   test("every command item has someone to run it", () => {
     for (const target of [part, { kind: "canvas" }] as const) {
       for (const locked of [false, true]) {
-        for (const entry of contextItems(target, { allLocked: locked })) {
+        for (const entry of contextItems(target, { allLocked: locked, selected: 3 })) {
           if (entry !== "separator" && entry.command) expect(commandOwner(entry.command)).toBeDefined()
         }
       }
@@ -43,7 +57,7 @@ describe("context menu items", () => {
   })
 
   test("the shape marks separators", () => {
-    expect(contextShape(contextItems(part, { allLocked: false }))).toEqual(["item", "separator", "item", "item", "item", "separator", "item"])
+    expect(contextShape(contextItems(part, { allLocked: false, selected: 1 }))).toEqual(["item", "separator", "item", "item", "item", "separator", "item"])
   })
 })
 

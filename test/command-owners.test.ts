@@ -48,6 +48,12 @@ describe("command owners", () => {
     expect(commandOwner("noteBox")).toBe("canvas")
   })
 
+  test("the eight align and distribute commands are answered by either canvas", () => {
+    for (const command of ["alignLeft", "alignRight", "alignTop", "alignBottom", "alignHCentres", "alignVCentres", "distributeH", "distributeV"] as const) {
+      expect([command, commandOwner(command)]).toEqual([command, "canvas"])
+    }
+  })
+
   test("the schematic's tools are the schematic's alone", () => {
     expect(SHEET_COMMANDS.map(commandOwner)).toEqual(["schematic", "schematic", "schematic", "schematic"])
   })

@@ -28,6 +28,8 @@ export type KeyActionName =
   | "contextMenu"
   | "delete"
   | "removeCorner"
+  | "alignLeft"
+  | "distributeH"
 
 /** What a key event says, apart from the browser: modifiers, whether it came from a field, and the key. */
 export interface KeyInput {
@@ -172,9 +174,13 @@ const CTRL_KEYS: ReadonlyMap<string, KeyActionName> = new Map([
 ])
 
 /** Ctrl (or Cmd) and Shift with these letters, by the character: Ctrl+Shift+Z redoes, as Ctrl+Y does. */
-const CTRL_SHIFT_KEYS: ReadonlyMap<string, KeyActionName> = new Map([["z", "redo"]])
+const CTRL_SHIFT_KEYS: ReadonlyMap<string, KeyActionName> = new Map([
+  ["z", "redo"],
+  ["l", "alignLeft"],
+  ["h", "distributeH"],
+])
 
-/** Ctrl (or Cmd) with Z, Y, O, A or F, or with Shift and Z; AltGr combinations are not ours. */
+/** Ctrl (or Cmd) with Z, Y, O, A or F, or with Shift and Z (redo), L (align left) or H (distribute horizontally); AltGr combinations are not ours. */
 function ctrlAction(input: KeyInput): KeyResult | null {
   if (input.altKey || input.altGraph) return null
   const action = (input.shiftKey ? CTRL_SHIFT_KEYS : CTRL_KEYS).get(input.key.toLowerCase())

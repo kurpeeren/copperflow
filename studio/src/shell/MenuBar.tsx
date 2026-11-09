@@ -11,6 +11,8 @@ interface Props {
   run(command: CommandId): void
   /** The open document, for the items that work in one view only. */
   view: View
+  /** How many parts are selected, for the items that need two or three. */
+  selected: number
   /** The build status, at the right end of the bar. */
   children?: ReactNode
 }
@@ -47,11 +49,11 @@ function useFocusMover(bar: RefObject<HTMLElement | null>): (target: MenuFocus) 
   )
 }
 
-function Entry({ entry, menu, index, view, onRun }: { entry: MenuEntry; menu: number; index: number; view: View; onRun: OnRun }) {
+function Entry({ entry, menu, index, view, selected, onRun }: { entry: MenuEntry; menu: number; index: number; view: View; selected: number; onRun: OnRun }) {
   if (entry === "separator") return <li className="menu-separator" role="separator" />
   const { label, shortcut, command } = entry
   // Disabled items take the focus, so the arrow keys reach them, but do nothing.
-  const { enabled, reason } = itemState(entry, view)
+  const { enabled, reason } = itemState(entry, view, selected)
   return (
     <li role="none">
       <MenuItemButton label={label} {...(shortcut ? { shortcut } : {})} menu={menu} index={index} enabled={enabled} {...(reason ? { reason } : {})} onActivate={(keyboard) => command && onRun(command, menu, keyboard)} />
@@ -59,11 +61,11 @@ function Entry({ entry, menu, index, view, onRun }: { entry: MenuEntry; menu: nu
   )
 }
 
-function Dropdown({ menu, index, view, onRun }: { menu: Menu; index: number; view: View; onRun: OnRun }) {
+function Dropdown({ menu, index, view, selected, onRun }: { menu: Menu; index: number; view: View; selected: number; onRun: OnRun }) {
   return (
     <ul className="menu-dropdown" role="menu" aria-label={menu.title}>
       {menu.entries.map((entry, i) => (
-        <Entry key={entry === "separator" ? `sep${i}` : entry.label} entry={entry} menu={index} index={i} view={view} onRun={onRun} />
+        <Entry key={entry === "separator" ? `sep${i}` : entry.label} entry={entry} menu={index} index={i} view={view} selected={selected} onRun={onRun} />
       ))}
     </ul>
   )
@@ -81,10 +83,11 @@ interface TitleProps {
   /** Enter or Space: opens the menu with the focus on its first item. */
   onKeyboard(next: MenuKeyResult): void
   view: View
+  selected: number
   onRun: OnRun
 }
 
-function MenuTitle({ menu, index, open, current, onPointer, onHover, onKeyboard, view, onRun }: TitleProps) {
+function MenuTitle({ menu, index, open, current, onPointer, onHover, onKeyboard, view, selected, onRun }: TitleProps) {
   return (
     <div className="menu">
       <button
@@ -95,7 +98,7 @@ function MenuTitle({ menu, index, open, current, onPointer, onHover, onKeyboard,
         tabIndex={current ? 0 : -1}
         className={`menu-title${open ? " open" : ""}`}
         onClick={(event) => {
-          if (!isPointerClick(event)) return onKeyboard({ open: index, focus: { menu: index, item: firstMenuItem(menuShapes(view)[index]) }, preventDefault: true })
+          if (!isPointerClick(event)) return onKeyboard({ open: index, focus: { menu: index, item: firstMenuItem(menuShapes(view, selected)[index]) }, preventDefault: true })
           blurButton(event)
           onPointer(index)
         }}
@@ -103,19 +106,19 @@ function MenuTitle({ menu, index, open, current, onPointer, onHover, onKeyboard,
       >
         {menu.title}
       </button>
-      {open && <Dropdown menu={menu} index={index} view={view} onRun={onRun} />}
+      {open && <Dropdown menu={menu} index={index} view={view} selected={selected} onRun={onRun} />}
     </div>
   )
 }
 
 /** EasyEDA's menu bar: brand, File … Help, and Studio's build status at the right end. The keys are menu-keys.ts. */
-export function MenuBar({ run, view, children }: Props) {
+export function MenuBar({ run, view, selected, children }: Props) {
   const [state, dispatch] = useReducer(menuReducer, { open: null })
   const [current, setCurrent] = useState(0)
   const bar = useRef<HTMLElement>(null)
   const moveFocus = useFocusMover(bar)
   const open = state.open === null ? null : MENUS.findIndex((m) => m.title === state.open)
-  const shapes = useMemo(() => menuShapes(view), [view])
+  const shapes = useMemo(() => menuShapes(view, selected), [view, selected])
   const apply = (next: MenuKeyResult) => {
     dispatch({ type: "set", title: next.open === null ? null : (MENUS[next.open]?.title ?? null) })
     if (next.focus === "keep") return
@@ -149,7 +152,7 @@ export function MenuBar({ run, view, children }: Props) {
       </span>
       <nav className="menus" role="menubar" aria-label="Menu" onKeyDown={(event) => onKey(event) && event.stopPropagation()}>
         {MENUS.map((menu, i) => (
-          <MenuTitle key={menu.title} menu={menu} index={i} open={open === i} current={current === i} onPointer={onPointer} onHover={onHover} onKeyboard={apply} view={view} onRun={onRun} />
+          <MenuTitle key={menu.title} menu={menu} index={i} open={open === i} current={current === i} onPointer={onPointer} onHover={onHover} onKeyboard={apply} view={view} selected={selected} onRun={onRun} />
         ))}
       </nav>
       <div className="menubar-end">{children}</div>

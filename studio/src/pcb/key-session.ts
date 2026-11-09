@@ -1,11 +1,14 @@
 // What the arrow keys and Rotate send, apart from React. Arrow presses merge into bursts (key-burst.ts) and move only
 // the parts the open view draws; a Rotate press waits at the turn gate until the design shows where the last edit put
-// the parts, so two quick presses turn the group twice about the same centre. After an Undo or Redo from the app
+// the parts, so two quick presses turn the group twice about the same centre. Align and distribute wait at the same
+// gate (each is computed from the parts' positions), so two quick ones do not scatter the parts. After an Undo or Redo from the app
 // (history-writes.ts) both wait for the build that read it. use-key-edits.ts holds one session per canvas. Plain
 // TypeScript with .js imports, so the tests can run it.
 import type { WriteOutcome } from "../history-writes.js"
 import type { Selection } from "../selection.js"
 import { nudgeDirection, type KeyResult } from "./canvas-keys.js"
+import { alignPlan } from "./align.js"
+import type { AlignCommand } from "./align-rules.js"
 import { nudgeOffset, nudgePlan, rotatePlan, sendGroupEditMarked, type GroupEdit, type GroupEditActions, type Layout } from "./group-edits.js"
 import {
   editSent,
@@ -43,6 +46,8 @@ export interface KeySession {
   nudge(input: EditInput, hit: KeyResult): void
   /** R, Space, or the Rotate command; `repeat` when the key is held down. */
   rotate(input: EditInput, repeat: boolean): void
+  /** An align or distribute command, from its key, the menu, the toolbar or the context menu. */
+  align(input: EditInput, command: AlignCommand): void
   /** The canvas has drawn a new design, circuit or resolved edit: held presses go when the gate is open. */
   settle(input: EditInput): void
   /** The app sent an Undo or Redo, which resolves to `outcome`; the keys wait for the build that reads it. */
@@ -61,6 +66,8 @@ interface State {
   gate: TurnGate
   /** Whether the canvas was last told that a press is held. */
   told: boolean
+  /** What each press held at the gate will do, in order (the gate counts them). */
+  queue: Press[]
   burst?: Burst<SourceCircuit>
   /** Where the parts sat when the burst began. */
   layout?: Layout
@@ -68,8 +75,12 @@ interface State {
   arrows?: HeldArrows
 }
 
+/** What a press at the gate does once it goes. */
+type Press = "rotate" | AlignCommand
+
 /** Tells the canvas when a press starts or stops being held, so its status line can say so. */
 function tell(state: State, events: SessionEvents): void {
+  if (!state.gate.held) state.queue = []
   const held = state.gate.held !== undefined || state.arrows !== undefined
   if (held === state.told) return
   state.told = held
@@ -94,6 +105,28 @@ function turn(state: State, events: SessionEvents, input: EditInput): void {
   const plan = rotatePlan(input.circuit, input.selection.names, input.view, input.layout, input.blockerFor)
   if ("message" in plan) return input.actions.notify(plan.message)
   void send(state, events, plan, input)
+}
+
+/** Aligns or distributes the selection as the design draws it. */
+function alignSelection(state: State, events: SessionEvents, input: EditInput, command: AlignCommand): void {
+  const plan = alignPlan(input.circuit, input.selection.names, input.view, input.layout, command, input.blockerFor)
+  if ("message" in plan) return input.actions.notify(plan.message)
+  void send(state, events, plan, input)
+}
+
+/** Does what a press at the gate asked for. */
+function perform(state: State, events: SessionEvents, input: EditInput, press: Press): void {
+  if (press === "rotate") turn(state, events, input)
+  else alignSelection(state, events, input, press)
+}
+
+/** A press at the gate: it goes now, or is held with what it will do. */
+function press(state: State, events: SessionEvents, input: EditInput, what: Press, repeat: boolean): void {
+  const step = pressTurn(state.gate, input.selection.names, repeat, input)
+  state.gate = step.gate
+  if (step.send) perform(state, events, input, what)
+  else if (!repeat) state.queue = (state.gate.held?.count ?? 0) > 1 ? [...state.queue, what] : [what]
+  tell(state, events)
 }
 
 /** Writes the burst's total offset from where it began; when that resolves, sends what was merged meanwhile. */
@@ -135,7 +168,7 @@ function historyWrite(state: State, events: SessionEvents, outcome: Promise<Writ
 }
 
 export function keySession(events: SessionEvents): KeySession {
-  const state: State = { gate: OPEN_GATE, told: false }
+  const state: State = { gate: OPEN_GATE, told: false, queue: [] }
   return {
     nudge(input, hit) {
       const direction = nudgeDirection(hit.action)
@@ -148,15 +181,15 @@ export function keySession(events: SessionEvents): KeySession {
       tell(state, events)
     },
     rotate(input, repeat) {
-      const step = pressTurn(state.gate, input.selection.names, repeat, input)
-      state.gate = step.gate
-      if (step.send) turn(state, events, input)
-      tell(state, events)
+      press(state, events, input, "rotate", repeat)
+    },
+    align(input, command) {
+      press(state, events, input, command, false)
     },
     settle(input) {
       const step = releaseTurn(state.gate, input.selection.names, input)
       state.gate = step.gate
-      if (step.send) turn(state, events, input)
+      if (step.send) perform(state, events, input, state.queue.shift() ?? "rotate")
       const arrows = releaseArrows(state.gate, state.arrows, input.selection.names, input)
       state.gate = arrows.gate
       state.arrows = arrows.held

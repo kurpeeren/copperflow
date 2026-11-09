@@ -5,6 +5,7 @@ import type { ContextTarget } from "../pcb/press.js"
 import type { Point } from "../pcb/geometry.js"
 import type { Selection } from "../selection.js"
 import type { MenuShape } from "./menu-keys.js"
+import { ALIGN_COMMANDS, alignDisabledReason, type AlignCommand } from "../pcb/align-rules.js"
 import { ENGINE, type CommandId } from "./menus.js"
 
 /** What an item does besides running a command: open Properties, rename a label's net, highlight a label's net. */
@@ -25,17 +26,43 @@ export type ContextEntry = ContextItem | "separator"
 export interface ContextState {
   /** Every selected part is locked, so the item offers Unlock. */
   allLocked: boolean
+  /** How many parts are selected; two or more add the align and distribute items. */
+  selected: number
 }
 
 const run = (label: string, command: CommandId, shortcut?: string): ContextItem => (shortcut ? { label, command, shortcut } : { label, command })
 
-function partItems({ allLocked }: ContextState): ContextEntry[] {
+const ALIGN_LABELS: Record<AlignCommand, string> = {
+  alignLeft: "Align left",
+  alignRight: "Align right",
+  alignTop: "Align top",
+  alignBottom: "Align bottom",
+  alignHCentres: "Align horizontal centres",
+  alignVCentres: "Align vertical centres",
+  distributeH: "Distribute horizontally",
+  distributeV: "Distribute vertically",
+}
+const ALIGN_KEYS: Partial<Record<AlignCommand, string>> = { alignLeft: "Ctrl+Shift+L", distributeH: "Ctrl+Shift+H" }
+
+/** The align and distribute items of a multi-selection; one that needs more parts than are selected is disabled, with the reason. */
+function alignItems(selected: number): ContextEntry[] {
+  if (selected < 2) return []
+  const item = (command: AlignCommand): ContextItem => {
+    const reason = alignDisabledReason(command, selected)
+    const shortcut = ALIGN_KEYS[command]
+    return { label: ALIGN_LABELS[command], command, ...(shortcut ? { shortcut } : {}), ...(reason ? { pending: reason } : {}) }
+  }
+  return ["separator", ...ALIGN_COMMANDS.slice(0, 6).map(item), "separator", ...ALIGN_COMMANDS.slice(6).map(item)]
+}
+
+function partItems({ allLocked, selected }: ContextState): ContextEntry[] {
   return [
     { label: "Properties", special: "properties" },
     "separator",
     run("Rotate", "rotate", "Space"),
     allLocked ? run("Unlock", "unlock") : run("Lock", "lock"),
     run("Highlight its nets", "highlight", "H"),
+    ...alignItems(selected),
     "separator",
     run("Delete", "delete", "Delete"),
   ]

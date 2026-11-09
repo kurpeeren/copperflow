@@ -75,6 +75,45 @@ describe("menus", () => {
     expect(shortcutList()).toContainEqual({ keys: "Ctrl+Shift+Z", label: "Redo" })
   })
 
+  test("Layout holds the eight align and distribute commands in EasyEDA's order, with the two keys", () => {
+    const layout = MENUS.find((menu) => menu.title === "Layout")?.entries ?? []
+    expect(layout.slice(6)).toEqual([
+      { label: "Align left", command: "alignLeft", shortcut: "Ctrl+Shift+L" },
+      { label: "Align right", command: "alignRight" },
+      { label: "Align top", command: "alignTop" },
+      { label: "Align bottom", command: "alignBottom" },
+      { label: "Align horizontal centres", command: "alignHCentres" },
+      { label: "Align vertical centres", command: "alignVCentres" },
+      "separator",
+      { label: "Distribute horizontally", command: "distributeH", shortcut: "Ctrl+Shift+H" },
+      { label: "Distribute vertically", command: "distributeV" },
+    ])
+  })
+
+  test("the align items are disabled with the reason until enough parts are selected, in both views", () => {
+    const find = (label: string) => MENUS.flatMap(menuItems).find((item) => item.label === label) as MenuItem
+    for (const view of ["pcb", "schematic"] as const) {
+      expect(itemState(find("Align left"), view, 1)).toEqual({ enabled: false, reason: "Select two or more parts" })
+      expect(itemState(find("Align left"), view, 2)).toEqual({ enabled: true })
+      expect(itemState(find("Distribute vertically"), view, 2)).toEqual({ enabled: false, reason: "Select three or more parts" })
+      expect(itemState(find("Distribute vertically"), view, 3)).toEqual({ enabled: true })
+    }
+    expect(itemState(find("Rotate"), "pcb", 0)).toEqual({ enabled: true })
+  })
+
+  test("Ctrl+Shift+L and Ctrl+Shift+H are the canvas's, by the character, and not with Alt or in a field", () => {
+    for (const view of ["pcb", "schematic"] as const) {
+      expect(keyAction(pressOf("Ctrl+Shift+L"), { view })).toEqual({ action: "alignLeft", preventDefault: true })
+      expect(keyAction(pressOf("Ctrl+Shift+H"), { view })).toEqual({ action: "distributeH", preventDefault: true })
+    }
+    expect(keyAction({ ...pressOf("Ctrl+Shift+L"), altKey: true }, { view: "pcb" })).toBeNull()
+    expect(keyAction({ ...pressOf("Ctrl+Shift+L"), typing: true }, { view: "pcb" })).toBeNull()
+    // In a widget that owns its keys (a table row) the shortcut still works.
+    expect(keyAction({ ...pressOf("Ctrl+Shift+H"), ownsKeys: true }, { view: "pcb" })?.action).toBe("distributeH")
+    // Plain Shift+H keeps its highlight meaning.
+    expect(keyAction(pressOf("Shift+H"), { view: "pcb" })?.action).toBe("clearHighlight")
+  })
+
   test("View → Unit works on the PCB and shows disabled, PCB only, on the schematic", () => {
     const unit = MENUS.flatMap(menuItems).find((item) => item.command === "toggleUnit") as MenuItem
     expect(itemState(unit, "pcb")).toEqual({ enabled: true })

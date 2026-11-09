@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { MENUS, menuItems } from "../studio/src/shell/menus.js"
-import { TOOLBARS, armedCommand, isToolCommand, titleKey, toolbarGroups } from "../studio/src/shell/toolbar.js"
+import { TOOLBARS, armedCommand, buttonState, isToolCommand, titleKey, toolbarGroups } from "../studio/src/shell/toolbar.js"
 import { clearToolState, clickAction, getToolState, setToolState } from "../studio/src/shell/tool-state.js"
 
 const ids = (view: "schematic" | "pcb") => TOOLBARS[view].map((b) => b.id)
@@ -8,13 +8,13 @@ const menuByCommand = new Map(MENUS.flatMap(menuItems).flatMap((item) => (item.c
 
 describe("toolbar", () => {
   test("the schematic row is in EasyEDA's order", () => {
-    expect(ids("schematic")).toEqual(["undo", "redo", "zoomIn", "zoomOut", "fit", "gridStyle", "component", "wire", "netLabel", "ground", "power", "rotate", "checkDrc"])
-    expect(toolbarGroups("schematic").map((g) => g.length)).toEqual([2, 3, 1, 5, 1, 1])
+    expect(ids("schematic")).toEqual(["undo", "redo", "zoomIn", "zoomOut", "fit", "gridStyle", "component", "wire", "netLabel", "ground", "power", "rotate", "alignLeft", "distributeH", "checkDrc"])
+    expect(toolbarGroups("schematic").map((g) => g.length)).toEqual([2, 3, 1, 5, 1, 2, 1])
   })
 
   test("the PCB row is in EasyEDA's order", () => {
-    expect(ids("pcb")).toEqual(["undo", "redo", "zoomIn", "zoomOut", "fit", "gridStyle", "unit", "rotate", "checkDrc"])
-    expect(toolbarGroups("pcb").map((g) => g.length)).toEqual([2, 3, 2, 1, 1])
+    expect(ids("pcb")).toEqual(["undo", "redo", "zoomIn", "zoomOut", "fit", "gridStyle", "unit", "rotate", "alignLeft", "distributeH", "checkDrc"])
+    expect(toolbarGroups("pcb").map((g) => g.length)).toEqual([2, 3, 2, 1, 2, 1])
   })
 
   test("Redo sits beside Undo in both rows and runs the Edit menu's Redo", () => {
@@ -55,6 +55,30 @@ describe("toolbar", () => {
   test("titleKey reads the last bracketed key only", () => {
     expect(titleKey("Wire (Alt+W)")).toBe("Alt+W")
     expect(titleKey("Check DRC")).toBeUndefined()
+  })
+})
+
+describe("the Align group", () => {
+  const button = (id: string) => TOOLBARS.pcb.find((b) => b.id === id)
+  test("both rows have Align left and Distribute horizontally, after Rotate, with the menu's keys", () => {
+    for (const view of ["schematic", "pcb"] as const) {
+      expect(TOOLBARS[view].find((b) => b.id === "alignLeft")).toMatchObject({ title: "Align left (Ctrl+Shift+L)", icon: "alignLeft", command: "alignLeft" })
+      expect(TOOLBARS[view].find((b) => b.id === "distributeH")).toMatchObject({ title: "Distribute horizontally (Ctrl+Shift+H)", icon: "distributeH", command: "distributeH" })
+    }
+  })
+  test("a button is disabled, with the reason in its tooltip, until enough parts are selected", () => {
+    const left = button("alignLeft")
+    const spread = button("distributeH")
+    if (!left || !spread) throw new Error("missing buttons")
+    expect(buttonState(left, 1)).toEqual({ enabled: false, title: "Align left (Ctrl+Shift+L): Select two or more parts" })
+    expect(buttonState(left, 2)).toEqual({ enabled: true, title: "Align left (Ctrl+Shift+L)" })
+    expect(buttonState(spread, 2)).toEqual({ enabled: false, title: "Distribute horizontally (Ctrl+Shift+H): Select three or more parts" })
+    expect(buttonState(spread, 3).enabled).toBe(true)
+  })
+  test("other buttons ignore the selection", () => {
+    const undo = button("undo")
+    if (!undo) throw new Error("missing")
+    expect(buttonState(undo, 0)).toEqual({ enabled: true, title: "Undo (Ctrl+Z)" })
   })
 })
 

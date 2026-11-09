@@ -1,6 +1,7 @@
 // Who answers each command the menu bar and the toolbar send: the app itself, the workspace (panels, unit,
 // highlight) as its keys do, or the open canvas over the command bus. Each handler table is typed by its list here,
 // so a test can check that every command shown has someone to run it.
+import { ALIGN_COMMANDS } from "../pcb/align-rules.js"
 import type { KeyActionName } from "../pcb/canvas-keys.js"
 import type { CommandId } from "./menus.js"
 
@@ -24,7 +25,7 @@ export const CAMERA_COMMANDS = ["zoomIn", "zoomOut"] as const satisfies readonly
 export type CameraCommand = (typeof CAMERA_COMMANDS)[number]
 
 /** Answered by either canvas: the selection, its parts and their nets (use-part-keys.ts). */
-export const PART_COMMANDS = ["fit", "rotate", "delete", "highlight"] as const satisfies readonly CommandId[]
+export const PART_COMMANDS = ["fit", "rotate", "delete", "highlight", ...ALIGN_COMMANDS] as const satisfies readonly CommandId[]
 export type PartCommand = (typeof PART_COMMANDS)[number]
 
 /** Answered by either canvas: the tools both views have, such as Place → Note box (use-note-tool.ts). */

@@ -100,3 +100,15 @@ button.toolbar-button[aria-pressed="true"]:hover:not(:disabled) {
 button.toolbar-button:active:not(:disabled) {
   background: var(--line);
 }
+
+/* Disabled by the selection (aria-disabled keeps the tooltip and the focus): dim, and no hover or pressed fill. */
+button.toolbar-button[aria-disabled="true"] {
+  color: var(--muted);
+  opacity: 0.45;
+  cursor: default;
+}
+
+button.toolbar-button[aria-disabled="true"]:hover,
+button.toolbar-button[aria-disabled="true"]:active {
+  background: transparent;
+}
