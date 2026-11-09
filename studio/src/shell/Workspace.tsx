@@ -3,8 +3,6 @@ import type { Actions } from "../use-actions"
 import { Inspector } from "../Inspector"
 import { LeftPanel } from "../LeftPanel"
 import type { CanvasProps } from "../pcb/canvas-common"
-import type { ContextTarget } from "../pcb/press"
-import type { Point } from "../pcb/geometry"
 import { PcbCanvas } from "../pcb/PcbCanvas"
 import type { View } from "../pcb/positions"
 import { SchematicCanvas } from "../pcb/SchematicCanvas"
@@ -13,10 +11,12 @@ import type { useChecks } from "../use-checks"
 import type { StudioData } from "../use-studio-data"
 import type { useWorkspace } from "../use-workspace"
 import { BottomPanel } from "./BottomPanel"
+import { ContextMenu } from "./ContextMenu"
 import { DocTabs } from "./DocTabs"
 import type { CommandId } from "./menus"
 import { buildPageTree, type DocView } from "./page-tree"
 import { SideStrip } from "./SideStrip"
+import { useContextMenu, type ContextMenuState } from "./use-context-menu"
 import type { LeftStrip, RightStrip } from "./strip-state"
 import "./workspace.css"
 
@@ -42,11 +42,8 @@ export interface WorkspaceProps {
   openChecks(): void
 }
 
-/** A right click on a canvas; the context menu answers it in the next task. */
-const NO_CONTEXT_MENU = (_target: ContextTarget, _at: Point): void => undefined
-
 /** What both canvases take, once there is a design to draw; each adds the rings of its own view. */
-function canvasProps({ data, workspace, checks, selection, onSelect, actions }: WorkspaceProps): Omit<CanvasProps, "markers" | "gridStyle" | "gridStep" | "onGridStep"> | undefined {
+function canvasProps({ data, workspace, checks, selection, onSelect, actions }: WorkspaceProps, onContextMenu: ContextMenuState["show"]): Omit<CanvasProps, "markers" | "gridStyle" | "gridStep" | "onGridStep"> | undefined {
   const { build, circuit } = data
   if (!build.design || !circuit) return undefined
   return {
@@ -66,7 +63,7 @@ function canvasProps({ data, workspace, checks, selection, onSelect, actions }: 
     activeViolation: checks.active,
     focus: checks.focus,
     onFocused: checks.focused,
-    onContextMenu: NO_CONTEXT_MENU,
+    onContextMenu,
     onOpenProperties: (part) => {
       onSelect((current) => current.only(part))
       workspace.openProperties()
@@ -80,10 +77,10 @@ function gridProps(workspace: WorkspaceProps["workspace"], view: View) {
 }
 
 /** The document tabs, the open document's canvas and the bottom panel, between the side panels. */
-function CenterColumn(props: WorkspaceProps) {
+function CenterColumn(props: WorkspaceProps & { onContextMenu: ContextMenuState["show"] }) {
   const { data, workspace, checks, view } = props
   const { build } = data
-  const canvas = canvasProps(props)
+  const canvas = canvasProps(props, props.onContextMenu)
   return (
     <div className="center">
       <DocTabs file={data.file} view={view} onView={props.onView} />
@@ -115,6 +112,7 @@ function CenterColumn(props: WorkspaceProps) {
 export function Workspace(props: WorkspaceProps) {
   const { data, workspace, view, selection, onSelect, actions } = props
   const { circuit, build, project, files, file } = data
+  const contextMenu = useContextMenu({ circuit, design: build.design, selection, onSelect, run: props.run, openProperties: workspace.openProperties, onHighlight: workspace.setHighlight })
   const pageTree = useMemo(() => buildPageTree(project, files, file, view), [project, files, file, view])
   return (
     <main className="workspace">
@@ -141,7 +139,7 @@ export function Workspace(props: WorkspaceProps) {
           hidden={!workspace.leftOpen}
         />
       )}
-      <CenterColumn {...props} />
+      <CenterColumn {...props} onContextMenu={contextMenu.show} />
       {circuit && (
         <Inspector
           circuit={circuit}
@@ -159,6 +157,7 @@ export function Workspace(props: WorkspaceProps) {
         />
       )}
       <SideStrip side="right" tabs={RIGHT_STRIP} active={workspace.right.active} open={workspace.right.open} onClick={workspace.clickRight} onSelect={workspace.selectRight} />
+      {contextMenu.open && <ContextMenu entries={contextMenu.open.entries} at={contextMenu.open.at} onRun={contextMenu.runItem} onClose={contextMenu.close} />}
     </main>
   )
 }

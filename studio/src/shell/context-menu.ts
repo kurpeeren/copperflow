@@ -1,0 +1,96 @@
+// The right-click menu as data: its items for each target (a part, a net label on the schematic, the empty canvas),
+// where it opens so it stays inside the window, and what a right click does to the selection. Items that have a
+// command run it through the same path as the menu bar; the few that need the canvas or the target are "special".
+import type { ContextTarget } from "../pcb/press.js"
+import type { Point } from "../pcb/geometry.js"
+import type { Selection } from "../selection.js"
+import type { MenuShape } from "./menu-keys.js"
+import { ENGINE, type CommandId } from "./menus.js"
+
+/** What an item does besides running a command: open Properties, rename a label's net, highlight a label's net. */
+export type ContextSpecial = "properties" | "rename" | "highlightNet"
+
+export interface ContextItem {
+  label: string
+  shortcut?: string
+  command?: CommandId
+  special?: ContextSpecial
+  /** Why the item cannot run yet. */
+  pending?: string
+}
+
+export type ContextEntry = ContextItem | "separator"
+
+/** What the items depend on besides the target. */
+export interface ContextState {
+  /** Every selected part is locked, so the item offers Unlock. */
+  allLocked: boolean
+}
+
+const run = (label: string, command: CommandId, shortcut?: string): ContextItem => (shortcut ? { label, command, shortcut } : { label, command })
+
+function partItems({ allLocked }: ContextState): ContextEntry[] {
+  return [
+    { label: "Properties", special: "properties" },
+    "separator",
+    run("Rotate", "rotate", "Space"),
+    allLocked ? run("Unlock", "unlock") : run("Lock", "lock"),
+    run("Highlight its nets", "highlight", "H"),
+    "separator",
+    run("Delete", "delete", "Delete"),
+  ]
+}
+
+const CANVAS_ITEMS: readonly ContextEntry[] = [
+  run("Fit all", "fit", "K"),
+  run("Grid style", "gridStyle"),
+  "separator",
+  run("Zoom in", "zoomIn"),
+  run("Zoom out", "zoomOut"),
+  "separator",
+  { label: "Paste", shortcut: "Ctrl+V", pending: ENGINE },
+]
+
+const LABEL_ITEMS: readonly ContextEntry[] = [
+  { label: "Rename", special: "rename" },
+  { label: "Highlight net", special: "highlightNet" },
+]
+
+/** The items for a right click on `target`. */
+export function contextItems(target: ContextTarget, state: ContextState): ContextEntry[] {
+  if (target.kind === "part") return partItems(state)
+  return [...(target.kind === "label" ? LABEL_ITEMS : CANVAS_ITEMS)]
+}
+
+/** The slots the menu keys step through (menu-keys.ts): pending items take the focus but do nothing. */
+export function contextShape(entries: readonly ContextEntry[]): MenuShape {
+  return entries.map((entry) => (entry === "separator" ? "separator" : entry.pending ? "disabled" : "item"))
+}
+
+/** A right click on a part that is not selected selects it alone; on a selected part the group stays. */
+export function contextSelection(selection: Selection, target: ContextTarget): Selection {
+  return target.kind === "part" && !selection.has(target.name) ? selection.only(target.name) : selection
+}
+
+export interface Size {
+  width: number
+  height: number
+}
+
+const ITEM_HEIGHT = 28
+const SEPARATOR_HEIGHT = 9
+/** The dropdown's padding (4px) top and bottom plus its 1px borders. */
+const BOX_EXTRA = 10
+export const MENU_WIDTH = 240
+
+/** The menu's size, from its items (the dropdown CSS has 28px items, 9px separators and a 240px minimum width). */
+export function contextSize(entries: readonly ContextEntry[]): Size {
+  const rows = entries.reduce((sum, entry) => sum + (entry === "separator" ? SEPARATOR_HEIGHT : ITEM_HEIGHT), 0)
+  return { width: MENU_WIDTH, height: rows + BOX_EXTRA }
+}
+
+/** Where the menu's top-left corner goes: at the pointer, flipped to the left and up when it would leave the window. */
+export function placeMenu(at: Point, menu: Size, window: Size): Point {
+  const flip = (pointer: number, length: number, room: number) => Math.max(0, pointer + length > room ? pointer - length : pointer)
+  return { x: flip(at.x, menu.width, window.width), y: flip(at.y, menu.height, window.height) }
+}

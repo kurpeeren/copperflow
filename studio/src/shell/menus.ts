@@ -60,7 +60,7 @@ const STAGE_3 = "Comes with blocks and sheets (stage 3)"
 const STAGE_4 = "Comes with routing (stage 4)"
 const STAGE_5 = "Comes with the autorouter (stage 5)"
 const STAGE_6 = "Comes with fabrication outputs (stage 6)"
-const ENGINE = "Comes with the engine (stages 3 to 5)"
+export const ENGINE = "Comes with the engine (stages 3 to 5)"
 const FIND = "Comes with Find (round 3)"
 const SETTINGS = "Comes in round 5, after the side-by-side check with EasyEDA"
 
