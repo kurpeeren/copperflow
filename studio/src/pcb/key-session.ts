@@ -1,11 +1,30 @@
 // What the arrow keys and Rotate send, apart from React. Arrow presses merge into bursts (key-burst.ts) and move only
 // the parts the open view draws; a Rotate press waits at the turn gate until the design shows where the last edit put
-// the parts, so two quick presses turn the group twice about the same centre. use-key-edits.ts holds one session per
-// canvas. Plain TypeScript with .js imports, so the tests can run it.
+// the parts, so two quick presses turn the group twice about the same centre. After an Undo or Redo from the app
+// (history-writes.ts) both wait for the build that read it. use-key-edits.ts holds one session per canvas. Plain
+// TypeScript with .js imports, so the tests can run it.
+import type { WriteOutcome } from "../history-writes.js"
 import type { Selection } from "../selection.js"
 import { nudgeDirection, type KeyResult } from "./canvas-keys.js"
 import { nudgeOffset, nudgePlan, rotatePlan, sendGroupEditMarked, type GroupEdit, type GroupEditActions, type Layout } from "./group-edits.js"
-import { editSent, editSettled, OPEN_GATE, pressNudge, pressTurn, releaseTurn, settleNudge, type Burst, type DesignState, type TurnGate } from "./key-burst.js"
+import {
+  editSent,
+  editSettled,
+  historySent,
+  historySettled,
+  holdNudge,
+  OPEN_GATE,
+  pressArrow,
+  pressNudge,
+  pressTurn,
+  releaseArrows,
+  releaseTurn,
+  settleNudge,
+  type Burst,
+  type DesignState,
+  type HeldArrows,
+  type TurnGate,
+} from "./key-burst.js"
 import type { Point } from "./geometry.js"
 import type { SourceCircuit, View } from "./positions.js"
 
@@ -24,15 +43,17 @@ export interface KeySession {
   nudge(input: EditInput, hit: KeyResult): void
   /** R, Space, or the Rotate command; `repeat` when the key is held down. */
   rotate(input: EditInput, repeat: boolean): void
-  /** The canvas has drawn a new design, circuit or resolved edit: a held Rotate goes when the gate is open. */
+  /** The canvas has drawn a new design, circuit or resolved edit: held presses go when the gate is open. */
   settle(input: EditInput): void
+  /** The app sent an Undo or Redo, which resolves to `outcome`; the keys wait for the build that reads it. */
+  historyWrite(outcome: Promise<WriteOutcome>): void
 }
 
 /** What the session tells the canvas. */
 interface SessionEvents {
   /** An edit resolved; the canvas calls settle once it has drawn what came with it. */
   resolved(): void
-  /** A Rotate press is held at the gate (true) or none is (false), told when that changes. */
+  /** A Rotate or arrow press is held at the gate (true) or none is (false), told when that changes. */
   holding(on: boolean): void
 }
 
@@ -43,11 +64,13 @@ interface State {
   burst?: Burst<SourceCircuit>
   /** Where the parts sat when the burst began. */
   layout?: Layout
+  /** Arrow presses held while an Undo or Redo is waited for. */
+  arrows?: HeldArrows
 }
 
 /** Tells the canvas when a press starts or stops being held, so its status line can say so. */
 function tell(state: State, events: SessionEvents): void {
-  const held = state.gate.held !== undefined
+  const held = state.gate.held !== undefined || state.arrows !== undefined
   if (held === state.told) return
   state.told = held
   events.holding(held)
@@ -66,44 +89,77 @@ function send(state: State, events: SessionEvents, plan: GroupEdit, input: EditI
   })
 }
 
+/** Turns the selection about its centre as the design draws it. */
+function turn(state: State, events: SessionEvents, input: EditInput): void {
+  const plan = rotatePlan(input.circuit, input.selection.names, input.view, input.layout, input.blockerFor)
+  if ("message" in plan) return input.actions.notify(plan.message)
+  void send(state, events, plan, input)
+}
+
+/** Writes the burst's total offset from where it began; when that resolves, sends what was merged meanwhile. */
+function sendNudge(state: State, events: SessionEvents, input: EditInput, total: Point): void {
+  const { burst, layout } = state
+  if (!burst || !layout) return
+  void send(state, events, nudgePlan(burst.base, burst.names, input.view, layout, total, input.blockerFor), input).then((ok) => {
+    if (state.burst !== burst && state.burst?.base !== burst.base) return
+    const next = state.burst ? settleNudge(state.burst, ok) : undefined
+    state.burst = next?.burst
+    if (next?.send) sendNudge(state, events, input, next.send)
+  })
+}
+
+/** Moves the selection by `delta`: the press joins the burst, or begins one from the circuit as it is now. */
+function arrow(state: State, events: SessionEvents, input: EditInput, delta: Point): void {
+  const step = pressNudge(state.burst, input.circuit, input.selection.names, delta)
+  state.burst = step.burst
+  if (step.fresh) state.layout = input.layout
+  if (step.send) sendNudge(state, events, input, step.send)
+}
+
+/** An Undo or Redo went out: the gate waits for it, and the burst ends, so the next arrow moves from what it left. */
+function historyWrite(state: State, events: SessionEvents, outcome: Promise<WriteOutcome>): void {
+  const before = state.gate.waiting
+  state.gate = historySent(state.gate)
+  state.burst = undefined
+  const { seq } = state.gate
+  void outcome
+    .catch((): WriteOutcome => ({ ok: false }))
+    .then(({ ok, mark }) => {
+      state.gate = historySettled(state.gate, ok, seq, before, mark)
+      tell(state, events)
+      events.resolved()
+    })
+}
+
 export function keySession(events: SessionEvents): KeySession {
   const state: State = { gate: OPEN_GATE, told: false }
-  const turn = (input: EditInput) => {
-    const plan = rotatePlan(input.circuit, input.selection.names, input.view, input.layout, input.blockerFor)
-    if ("message" in plan) return input.actions.notify(plan.message)
-    void send(state, events, plan, input)
-  }
-  /** Writes the burst's total offset from where it began; when that resolves, sends what was merged meanwhile. */
-  const sendNudge = (input: EditInput, total: Point): void => {
-    const { burst, layout } = state
-    if (!burst || !layout) return
-    void send(state, events, nudgePlan(burst.base, burst.names, input.view, layout, total, input.blockerFor), input).then((ok) => {
-      if (state.burst !== burst && state.burst?.base !== burst.base) return
-      const next = state.burst ? settleNudge(state.burst, ok) : undefined
-      state.burst = next?.burst
-      if (next?.send) sendNudge(input, next.send)
-    })
-  }
   return {
     nudge(input, hit) {
       const direction = nudgeDirection(hit.action)
       if (!direction || input.selection.size === 0) return
-      const step = pressNudge(state.burst, input.circuit, input.selection.names, nudgeOffset(direction, input.layout.step, hit.steps ?? 1))
-      state.burst = step.burst
-      if (step.fresh) state.layout = input.layout
-      if (step.send) sendNudge(input, step.send)
+      const delta = nudgeOffset(direction, input.layout.step, hit.steps ?? 1)
+      const press = pressArrow(state.gate, input)
+      state.gate = press.gate
+      if (press.send) arrow(state, events, input, delta)
+      else state.arrows = holdNudge(state.arrows, input.selection.names, delta)
+      tell(state, events)
     },
     rotate(input, repeat) {
       const step = pressTurn(state.gate, input.selection.names, repeat, input)
       state.gate = step.gate
-      if (step.send) turn(input)
+      if (step.send) turn(state, events, input)
       tell(state, events)
     },
     settle(input) {
       const step = releaseTurn(state.gate, input.selection.names, input)
       state.gate = step.gate
-      if (step.send) turn(input)
+      if (step.send) turn(state, events, input)
+      const arrows = releaseArrows(state.gate, state.arrows, input.selection.names, input)
+      state.gate = arrows.gate
+      state.arrows = arrows.held
+      if (arrows.send) arrow(state, events, input, arrows.send)
       tell(state, events)
     },
+    historyWrite: (outcome) => historyWrite(state, events, outcome),
   }
 }

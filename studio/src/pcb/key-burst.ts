@@ -69,9 +69,14 @@ export interface TurnGate {
   written: number
   /** The presses held meanwhile, and the selection they were made on. */
   held: { names: readonly string[]; count: number } | undefined
+  /**
+   * The last Undo or Redo sent (the app's, through history-writes.ts), until the gate opens after it. It is waited
+   * for as a key edit is, and the arrows wait for it too (pressArrow).
+   */
+  history: { seq: number } | undefined
 }
 
-export const OPEN_GATE: TurnGate = { inFlight: 0, seq: 0, waiting: undefined, written: 0, held: undefined }
+export const OPEN_GATE: TurnGate = { inFlight: 0, seq: 0, waiting: undefined, written: 0, held: undefined, history: undefined }
 
 /** What the gate looks at besides itself: the shown build's start mark and the build status, and whether a dragged move waits for its build. */
 export interface DesignState {
@@ -88,7 +93,8 @@ export function gateOpen(gate: TurnGate, design: DesignState): boolean {
 }
 
 /** The gate once it is open: nothing is waited for any more, so a later failed build leaves it open. */
-const settled = (gate: TurnGate, design: DesignState): TurnGate => (gate.waiting && gateOpen(gate, design) ? { ...gate, waiting: undefined } : gate)
+const settled = (gate: TurnGate, design: DesignState): TurnGate =>
+  gate.waiting && gateOpen(gate, design) ? { ...gate, waiting: undefined, history: undefined } : gate
 
 const sameNames = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((name, i) => name === b[i])
 
@@ -124,6 +130,56 @@ export function editSettled(gate: TurnGate, ok: boolean, seq: number, before: Tu
   const inFlight = Math.max(0, gate.inFlight - 1)
   if (ok) return { ...gate, inFlight, written: Math.max(gate.written, mark ?? 0) }
   return { ...gate, inFlight, waiting: gate.waiting?.seq === seq ? before : gate.waiting, held: undefined }
+}
+
+/** An Undo or Redo went out: the gate waits for it as for a key edit, and the arrows wait for it too. */
+export function historySent(gate: TurnGate): TurnGate {
+  const sent = editSent(gate)
+  return { ...sent, history: { seq: sent.seq } }
+}
+
+/**
+ * Undo or Redo number `seq` resolved, written at server mark `mark`. A failed one wrote nothing: the gate waits again
+ * for what it waited for before, and, unlike a failed key edit, keeps the presses that were held only for it.
+ */
+export function historySettled(gate: TurnGate, ok: boolean, seq: number, before: TurnGate["waiting"], mark?: number): TurnGate {
+  if (ok) return editSettled(gate, true, seq, before, mark)
+  const mine = (pending: { seq: number } | undefined) => pending?.seq === seq
+  const inFlight = Math.max(0, gate.inFlight - 1)
+  return { ...gate, inFlight, waiting: mine(gate.waiting) ? before : gate.waiting, history: mine(gate.history) ? undefined : gate.history }
+}
+
+/**
+ * An arrow press. Arrows move from the code's literals, so they never wait for their own edits' builds; after an Undo
+ * or Redo they wait for the gate to open, as Rotate does, so they move the parts from where it put them.
+ */
+export function pressArrow(gate: TurnGate, design: DesignState): { gate: TurnGate; send: boolean } {
+  if (gate.history === undefined) return { gate, send: true }
+  return gateOpen(gate, design) ? { gate: settled(gate, design), send: true } : { gate, send: false }
+}
+
+/** Arrow presses held while an Undo or Redo is waited for: their summed offset, and the selection they were made on. */
+export interface HeldArrows {
+  names: readonly string[]
+  total: Point
+}
+
+/** One more held arrow press: added to the held ones on the same selection, else it replaces them. */
+export function holdNudge(held: HeldArrows | undefined, names: readonly string[], delta: Point): HeldArrows {
+  return held && sameNames(held.names, names) ? { names, total: sum(held.total, delta) } : { names, total: delta }
+}
+
+/** The design caught up: the held arrow presses go as one move once the arrows may, on the selection they were made on. */
+export function releaseArrows(
+  gate: TurnGate,
+  held: HeldArrows | undefined,
+  names: readonly string[],
+  design: DesignState,
+): { gate: TurnGate; held: HeldArrows | undefined; send: Point | null } {
+  if (!held) return { gate, held, send: null }
+  const press = pressArrow(gate, design)
+  if (!press.send) return { gate, held, send: null }
+  return { gate: press.gate, held: undefined, send: sameNames(held.names, names) ? held.total : null }
 }
 
 /** The actions the canvas's key listener runs (runKey in use-part-keys.ts). */

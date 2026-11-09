@@ -263,18 +263,20 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         const circuit = (await loadCircuit(root, Bodies.build.parse(await readJson(req)).file)).file
         return send(res, await exportPackage(root, circuit, { design: await designOf(circuit) }))
       }
+      // Undo and redo write the file too: their write mark, as an edit's, lets the keys wait for the build that read them.
       case "POST /api/undo": {
         const body = Bodies.undo.parse(await readJson(req))
         const entry = await undoChange(root, { author: "human", ...(body.id ? { id: body.id } : {}) })
+        const writeMark = live.nextMark()
         live.requestBuild(entry.file)
-        return send(res, { entryId: entry.id, summary: entry.summary })
+        return send(res, { entryId: entry.id, summary: entry.summary, writeMark })
       }
-      // Like undo, no write mark: the key session orders only its own edits against builds.
       case "POST /api/redo": {
         const body = Bodies.redo.parse(await readJson(req))
         const entry = await redoChange(root, { author: "human", ...(body.id ? { id: body.id } : {}) })
+        const writeMark = live.nextMark()
         live.requestBuild(entry.file)
-        return send(res, { entryId: entry.id, summary: entry.summary })
+        return send(res, { entryId: entry.id, summary: entry.summary, writeMark })
       }
       default:
         throw new HttpError(404, `No route ${route}`)

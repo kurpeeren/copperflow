@@ -1,6 +1,7 @@
 // The edits Studio sends to its server. Each one reports a failure itself, then reloads the open file.
 import { useCallback, useMemo } from "react"
 import { api, type Edit } from "./api"
+import { announceHistoryWrite } from "./history-writes"
 import { PLACE_DEFAULTS } from "./place-defaults"
 
 /** Every action reports failures itself and resolves to whether it succeeded. */
@@ -11,9 +12,10 @@ export interface Actions {
   lock(parts: string[], locked: boolean): Promise<boolean>
   mark(text: string, at?: { view: "pcb" | "schematic"; x: number; y: number }): Promise<boolean>
   unmark(id: string): Promise<boolean>
-  undo(id?: string): Promise<boolean>
-  /** Redoes the newest undone change, or the named one (POST /api/redo). */
-  redo(id?: string): Promise<boolean>
+  /** Undoes the newest change, or the named one; the open canvas's keys wait for the build that reads it (history-writes.ts). */
+  undo(id?: string): Promise<EditOutcome>
+  /** Redoes the newest undone change, or the named one, announced as undo is. */
+  redo(id?: string): Promise<EditOutcome>
   verify(id: string, by: string, against: string, confirm: string): Promise<boolean>
   notify(text: string): void
 }
@@ -47,16 +49,18 @@ export function useActions({ file, refresh, refreshParts, notify }: ActionsInput
     },
     [file, refresh, notify],
   )
-  const editMarked = useCallback(
-    async (edits: Edit[], summary: string): Promise<EditOutcome> => {
+  /** Posts a request that writes the circuit file, and gives the server's mark of the write with the outcome. */
+  const postMarked = useCallback(
+    async (path: string, body: unknown): Promise<EditOutcome> => {
       let mark: number | undefined
       const ok = await run(async () => {
-        mark = (await api<{ writeMark?: number }>("/api/edit", { file, edits, summary })).writeMark
+        mark = (await api<{ writeMark?: number }>(path, body)).writeMark
       })
       return { ok, mark }
     },
-    [file, run],
+    [run],
   )
+  const editMarked = useCallback((edits: Edit[], summary: string) => postMarked("/api/edit", { file, edits, summary }), [file, postMarked])
   return useMemo(
     () => ({
       edit: async (edits, summary) => (await editMarked(edits, summary)).ok,
@@ -64,8 +68,8 @@ export function useActions({ file, refresh, refreshParts, notify }: ActionsInput
       lock: (parts, locked) => run(() => api("/api/lock", { file, parts, locked })),
       mark: (text, at) => run(() => api("/api/mark", { file, text, ...at })),
       unmark: (id) => run(() => api("/api/unmark", { file, id })),
-      undo: (id) => run(() => api("/api/undo", id ? { id } : {})),
-      redo: (id) => run(() => api("/api/redo", id ? { id } : {})),
+      undo: (id) => announceHistoryWrite(postMarked("/api/undo", id ? { id } : {})),
+      redo: (id) => announceHistoryWrite(postMarked("/api/redo", id ? { id } : {})),
       verify: async (id, by, against, confirm) => {
         const ok = await run(() => api("/api/verify", { id, by, against, confirm }))
         if (ok) await refreshParts()
@@ -73,7 +77,7 @@ export function useActions({ file, refresh, refreshParts, notify }: ActionsInput
       },
       notify,
     }),
-    [file, run, notify, refreshParts, editMarked],
+    [file, run, notify, refreshParts, editMarked, postMarked],
   )
 }
 

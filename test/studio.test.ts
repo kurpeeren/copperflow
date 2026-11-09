@@ -184,7 +184,7 @@ describe("editing", () => {
     const edited = await readFile(join(root, FILE), "utf8")
     const undo = await data(await api("/api/undo", {}))
     const redo = await data(await api("/api/redo", {}))
-    expect(redo).toEqual({ entryId: "c0003", summary: "Redo: remove LED1" })
+    expect(redo).toEqual({ entryId: "c0003", summary: "Redo: remove LED1", writeMark: expect.any(Number) })
     expect(await readFile(join(root, FILE), "utf8")).toBe(edited)
     const history = await data(await api("/api/history"))
     expect(history.slice(0, 2)).toMatchObject([
@@ -215,6 +215,20 @@ describe("editing", () => {
     await data(await api("/api/redo", {}))
     const after = await buildWhen((b) => finished(b) && b.finishedAt !== before.finishedAt && !ids(b).includes("LED1"))
     expect(ids(after)).not.toContain("LED1")
+  })
+
+  test("undo and redo return the mark of their write, so a build that started after it read them", async () => {
+    const edit = await data(await api("/api/edit", { file: FILE, summary: "remove LED1", edits: [{ kind: "removePart", part: "LED1" }] }))
+    const undo = await data(await api("/api/undo", {}))
+    expect(undo.writeMark).toBeGreaterThan(edit.writeMark)
+    const restored = await buildWhen((b) => finished(b) && b.startMark > undo.writeMark)
+    expect(restored.status).toBe("done")
+    expect(ids(restored)).toContain("LED1")
+    const redo = await data(await api("/api/redo", {}))
+    expect(redo.writeMark).toBeGreaterThan(undo.writeMark)
+    const removed = await buildWhen((b) => finished(b) && b.startMark > redo.writeMark)
+    expect(removed.status).toBe("done")
+    expect(ids(removed)).not.toContain("LED1")
   })
 })
 

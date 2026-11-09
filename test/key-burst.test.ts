@@ -4,9 +4,14 @@ import {
   editSent,
   editSettled,
   gateOpen,
+  historySent,
+  historySettled,
+  holdNudge,
   OPEN_GATE,
+  pressArrow,
   pressNudge,
   pressTurn,
+  releaseArrows,
   releaseTurn,
   settleNudge,
   type Burst,
@@ -157,6 +162,52 @@ describe("the turn gate", () => {
   test("a failure does not undo the wait for an edit sent after it", () => {
     const two = editSent(editSent(OPEN_GATE))
     expect(editSettled(two, false, 1, undefined)).toMatchObject({ inFlight: 1, waiting: { seq: 2 }, held: undefined })
+  })
+})
+
+describe("the gate and an Undo or Redo", () => {
+  // The undo under test was written at server mark 5; builds started at 3 (before it) and 7 (after it).
+  const stale: DesignState = { builtMark: 3, buildStatus: "done", moveWaiting: false }
+  const fresh: DesignState = { builtMark: 7, buildStatus: "done", moveWaiting: false }
+  const undone = () => historySettled(historySent(OPEN_GATE), true, 1, undefined, 5)
+
+  test("a Rotate after an undo is held until a build that started after the undo's write has succeeded", () => {
+    expect(pressTurn(historySent(OPEN_GATE), NAMES, false, fresh).send).toBe(false)
+    const held = pressTurn(undone(), NAMES, false, stale)
+    expect(held).toMatchObject({ send: false, gate: { held: { names: NAMES, count: 1 } } })
+    expect(releaseTurn(held.gate, NAMES, stale).send).toBe(false)
+    expect(releaseTurn(held.gate, NAMES, { builtMark: 5, buildStatus: "done", moveWaiting: false }).send).toBe(false)
+    const released = releaseTurn(held.gate, NAMES, fresh)
+    expect(released.send).toBe(true)
+    expect(released.gate).toMatchObject({ held: undefined, waiting: undefined, history: undefined })
+  })
+
+  test("arrow presses wait for an undo too, until the same build; key edits alone never hold them", () => {
+    expect(pressArrow(editSettled(editSent(OPEN_GATE), true, 1, undefined, 5), stale).send).toBe(true)
+    expect(pressArrow(historySent(OPEN_GATE), fresh).send).toBe(false)
+    expect(pressArrow(undone(), stale).send).toBe(false)
+    const open = pressArrow(undone(), fresh)
+    expect(open).toMatchObject({ send: true, gate: { history: undefined, waiting: undefined } })
+    expect(pressArrow(editSent(open.gate), stale).send).toBe(true)
+  })
+
+  test("held arrow presses add up on one selection, and go as one move once the build has read the undo", () => {
+    const once = holdNudge(undefined, NAMES, right)
+    expect(holdNudge(once, NAMES, right)).toEqual({ names: NAMES, total: { x: 1, y: 0 } })
+    expect(holdNudge(once, ["R2"], right)).toEqual({ names: ["R2"], total: right })
+    const waiting = undone()
+    expect(releaseArrows(waiting, once, NAMES, stale)).toEqual({ gate: waiting, held: once, send: null })
+    expect(releaseArrows(waiting, once, NAMES, fresh)).toMatchObject({ gate: { history: undefined }, held: undefined, send: right })
+    expect(releaseArrows(waiting, once, ["R2"], fresh)).toMatchObject({ held: undefined, send: null })
+    expect(releaseArrows(waiting, undefined, NAMES, fresh)).toEqual({ gate: waiting, held: undefined, send: null })
+  })
+
+  test("a failed undo wrote nothing: the gate waits again for what it waited for before, and keeps the held presses", () => {
+    const held = pressTurn(historySent(OPEN_GATE), NAMES, false, fresh).gate
+    const failed = historySettled(held, false, 1, undefined)
+    expect(failed).toMatchObject({ inFlight: 0, waiting: undefined, history: undefined, held: { count: 1 } })
+    expect(releaseTurn(failed, NAMES, stale).send).toBe(true)
+    expect(pressArrow(failed, stale).send).toBe(true)
   })
 })
 

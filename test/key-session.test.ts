@@ -89,6 +89,19 @@ function bench(start: SourceCircuit, names: readonly string[], options: { hidden
     circuit: () => circuit,
     rotate: (repeat = false) => session.rotate(input(), repeat),
     nudge: (steps: number) => session.nudge(input(), { action: "nudgeRight", preventDefault: true, steps }),
+    /** The app sends an Undo or Redo that leaves the circuit as `to`, or fails without one; the server answers it in turn. */
+    history(to?: SourceCircuit) {
+      session.historyWrite(
+        new Promise((resolve) => {
+          answers.push(() => {
+            if (!to) return resolve({ ok: false })
+            circuit = to
+            lastWrite = ++marks
+            resolve({ ok: true, mark: lastWrite })
+          })
+        }),
+      )
+    },
     /** The server answers the oldest edit; the circuit reloads, and the canvas settles. */
     async answer() {
       answers.shift()?.()
@@ -235,6 +248,74 @@ describe("the held rotate and the build id", () => {
     expect(studio.holding).toEqual([true])
     await studio.answer()
     expect(studio.holding).toEqual([true, false])
+  })
+})
+
+describe("an Undo or Redo from the app", () => {
+  const start = circuitOf([part("R1", 0, 0), part("R2", 4, 0)])
+
+  test("a rotate pressed after it waits for the build that read it, then turns the parts where it put them", async () => {
+    const studio = bench(start, ["R1", "R2"])
+    studio.nudge(1)
+    await studio.answer()
+    studio.build()
+    studio.history(start)
+    studio.rotate()
+    expect(studio.holding).toEqual([true])
+    await studio.answer()
+    expect(studio.sent).toEqual(["move R1 and R2 by (1, 0)"])
+    studio.build()
+    expect(studio.sent).toEqual(["move R1 and R2 by (1, 0)", "rotate R1 and R2 by 90°"])
+    expect(studio.holding).toEqual([true, false])
+    await studio.answer()
+    expect(at(studio.circuit(), "R1")).toEqual([2, -2, 90])
+    expect(at(studio.circuit(), "R2")).toEqual([2, 2, 90])
+  })
+
+  test("arrow presses after it are held until that build, then move the parts from where it put them", async () => {
+    const studio = bench(start, ["R1", "R2"])
+    studio.nudge(1)
+    await studio.answer()
+    studio.build()
+    studio.history(start)
+    studio.nudge(1)
+    studio.nudge(1)
+    expect(studio.holding).toEqual([true])
+    await studio.answer()
+    expect(studio.sent).toHaveLength(1)
+    studio.build()
+    expect(studio.sent).toEqual(["move R1 and R2 by (1, 0)", "move R1 and R2 by (2, 0)"])
+    await studio.answer()
+    expect(at(studio.circuit(), "R1")).toEqual([2, 0, 0])
+    expect(at(studio.circuit(), "R2")).toEqual([6, 0, 0])
+  })
+
+  test("arrow presses merged into a burst in flight when it is sent are not sent after it", async () => {
+    const studio = bench(start, ["R1", "R2"])
+    studio.nudge(1)
+    studio.nudge(1)
+    studio.history(start)
+    await studio.answer()
+    await studio.answer()
+    studio.build()
+    expect(studio.sent).toEqual(["move R1 and R2 by (1, 0)"])
+    expect(at(studio.circuit(), "R1")).toEqual([0, 0, 0])
+  })
+
+  test("a failed one lets a press held behind it go at once", async () => {
+    const turn = bench(start, ["R1", "R2"])
+    turn.history()
+    turn.rotate()
+    expect(turn.sent).toEqual([])
+    await turn.answer()
+    expect(turn.sent).toEqual(["rotate R1 and R2 by 90°"])
+    const move = bench(start, ["R1", "R2"])
+    move.history()
+    move.nudge(1)
+    expect(move.sent).toEqual([])
+    await move.answer()
+    expect(move.sent).toEqual(["move R1 and R2 by (1, 0)"])
+    expect(move.holding).toEqual([true, false])
   })
 })
 
