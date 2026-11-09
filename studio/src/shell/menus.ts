@@ -10,6 +10,7 @@ export type CommandId =
   | "exportPackage"
   | "undo"
   | "delete"
+  | "selectAll"
   | "fit"
   | "zoomIn"
   | "zoomOut"
@@ -58,7 +59,6 @@ const STAGE_3 = "Comes with blocks and sheets (stage 3)"
 const STAGE_4 = "Comes with routing (stage 4)"
 const STAGE_5 = "Comes with the autorouter (stage 5)"
 const STAGE_6 = "Comes with fabrication outputs (stage 6)"
-const SELECTION = "Comes with multi-selection (round 3)"
 const ENGINE = "Comes with the engine (stages 3 to 5)"
 const FIND = "Comes with Find (round 3)"
 const SETTINGS = "Comes in round 5, after the side-by-side check with EasyEDA"
@@ -86,7 +86,7 @@ export const MENUS: readonly Menu[] = [
       later("Paste", ENGINE, "Ctrl+V"),
       run("Delete", "delete", "Delete"),
       "separator",
-      later("Select all", SELECTION, "Ctrl+A"),
+      run("Select all", "selectAll", "Ctrl+A"),
       later("Find", FIND, "Ctrl+F"),
       later("Find similar objects", FIND, "Ctrl+Shift+F"),
     ],
@@ -204,6 +204,7 @@ export const COMMAND_KEY_ACTIONS: Partial<Record<CommandId, KeyActionName>> = {
   highlight: "highlight",
   clearHighlight: "clearHighlight",
   rotate: "rotate",
+  selectAll: "selectAll",
 }
 
 /** Keys that work on the canvases without a menu item. */

@@ -1,5 +1,5 @@
-// The keys both canvases share: F and K fit, R and Space rotate the selected parts, Delete removes them, and H
-// highlights the net under the pointer (the menu's Highlight net, the selected parts' nets).
+// The keys both canvases share: F and K fit, R and Space rotate the selected parts, Delete removes them, Ctrl+A
+// selects every part, and H highlights the net under the pointer (the menu's Highlight net, the selected parts' nets).
 // What a key means is decided in canvas-keys.ts; what Rotate and Delete do to several parts, in group-edits.ts.
 import { useEffect } from "react"
 import type { CircuitData } from "../api"
@@ -16,6 +16,8 @@ import type { View } from "./positions"
 export interface PartKeysInput {
   view: View
   selection: Selection
+  /** Every part drawn in this view, which Select all selects. */
+  parts: readonly string[]
   /** R, Space and Delete wait while another tool, such as a wire being drawn, uses the keys. */
   paused: boolean
   circuit: CircuitData
@@ -48,9 +50,12 @@ function removeSelection(input: PartKeysInput): void {
   void input.actions.edit(plan.edits, plan.summary).then((ok) => ok && input.onSelect((current) => current.without(plan.parts)))
 }
 
-/** Runs the canvas actions of a key press: fit, highlight, rotate. */
+const selectAll = (input: PartKeysInput) => input.onSelect((current) => current.all(input.parts))
+
+/** Runs the canvas actions of a key press: fit, select all, highlight, rotate. */
 function runKey(input: PartKeysInput, action: string): void {
   if (action === "fit") return input.fit()
+  if (action === "selectAll") return selectAll(input)
   if (action === "highlight") {
     const net = input.netUnderPointer()
     if (net !== undefined) input.onHighlight([net])
@@ -70,6 +75,7 @@ function usePartCommands(input: PartKeysInput): void {
     fit: input.fit,
     rotate: withSelection(rotateSelection),
     delete: withSelection(removeSelection),
+    selectAll: () => selectAll(input),
     highlight: () => {
       const result = menuHighlight(input.selection.names, input.netsOf)
       if ("nets" in result) input.onHighlight(result.nets)
@@ -81,9 +87,9 @@ function usePartCommands(input: PartKeysInput): void {
 
 export function usePartKeys(input: PartKeysInput): void {
   usePartCommands(input)
-  const { view, selection, paused, circuit, actions, onSelect, blockerFor, fit, netUnderPointer, netsOf, onHighlight } = input
+  const { view, selection, parts, paused, circuit, actions, onSelect, blockerFor, fit, netUnderPointer, netsOf, onHighlight } = input
   useEffect(() => {
-    const keys: PartKeysInput = { view, selection, paused, circuit, actions, onSelect, blockerFor, fit, netUnderPointer, netsOf, onHighlight }
+    const keys: PartKeysInput = { view, selection, parts, paused, circuit, actions, onSelect, blockerFor, fit, netUnderPointer, netsOf, onHighlight }
     const onKey = (event: KeyboardEvent) => {
       const hit = keyAction(keyInput(event), { view, drawing: paused })
       if (hit) {
@@ -95,5 +101,5 @@ export function usePartKeys(input: PartKeysInput): void {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [view, selection, paused, circuit, actions, onSelect, blockerFor, fit, netUnderPointer, netsOf, onHighlight])
+  }, [view, selection, parts, paused, circuit, actions, onSelect, blockerFor, fit, netUnderPointer, netsOf, onHighlight])
 }

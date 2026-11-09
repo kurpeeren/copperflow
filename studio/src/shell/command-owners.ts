@@ -24,7 +24,7 @@ export const CAMERA_COMMANDS = ["zoomIn", "zoomOut"] as const satisfies readonly
 export type CameraCommand = (typeof CAMERA_COMMANDS)[number]
 
 /** Answered by either canvas: the selection, its parts and their nets (use-part-keys.ts). */
-export const PART_COMMANDS = ["fit", "rotate", "delete", "highlight"] as const satisfies readonly CommandId[]
+export const PART_COMMANDS = ["fit", "rotate", "delete", "highlight", "selectAll"] as const satisfies readonly CommandId[]
 export type PartCommand = (typeof PART_COMMANDS)[number]
 
 /** Answered by the schematic only (SchematicCanvas.tsx); sent while the PCB is open, they switch to the schematic first. */

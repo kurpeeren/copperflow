@@ -43,7 +43,13 @@ describe("menus", () => {
     const find = (label: string) => MENUS.flatMap(menuItems).find((item) => item.label === label)
     expect(find("Flip")?.pending).toBe("Comes with the engine (stages 3 to 5)")
     expect(find("Find")?.pending).toBe("Comes with Find (round 3)")
-    expect(find("Select all")?.pending).toBe("Comes with multi-selection (round 3)")
+  })
+
+  test("Edit → Select all runs, with Ctrl+A beside it", () => {
+    const item = MENUS.find((menu) => menu.title === "Edit")?.entries.find((entry) => entry !== "separator" && entry.label === "Select all")
+    expect(item).toEqual({ label: "Select all", command: "selectAll", shortcut: "Ctrl+A" })
+    expect(COMMAND_KEY_ACTIONS.selectAll).toBe("selectAll")
+    expect(shortcutList()).toContainEqual({ keys: "Ctrl+A", label: "Select all" })
   })
 
   test("View → Unit works on the PCB and shows disabled, PCB only, on the schematic", () => {

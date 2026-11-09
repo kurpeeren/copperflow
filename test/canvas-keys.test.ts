@@ -16,6 +16,20 @@ describe("keyAction", () => {
     expect(keyAction(key("y", { ctrlKey: true, code: "KeyZ" }), PCB)).toBeNull()
   })
 
+  test("Ctrl+A selects every part in both views, by the character, and keeps the browser from selecting the page", () => {
+    for (const state of [PCB, SCHEMATIC]) expect(keyAction(key("a", { ctrlKey: true, code: "KeyQ" }), state)).toEqual({ action: "selectAll", preventDefault: true })
+    expect(keyAction(key("A", { metaKey: true }), PCB)?.action).toBe("selectAll")
+    expect(keyAction(key("q", { ctrlKey: true, code: "KeyA" }), PCB)).toBeNull()
+  })
+
+  test("Ctrl+A is not ours while typing, with Shift, Alt or AltGr, and a plain A is nothing", () => {
+    expect(keyAction(key("a", { ctrlKey: true, typing: true }), PCB)).toBeNull()
+    expect(keyAction(key("A", { ctrlKey: true, shiftKey: true }), PCB)).toBeNull()
+    expect(keyAction(key("a", { ctrlKey: true, altKey: true }), PCB)).toBeNull()
+    expect(keyAction(key("a", { ctrlKey: true, altGraph: true }), PCB)).toBeNull()
+    expect(keyAction(key("a"), PCB)).toBeNull()
+  })
+
   test("Ctrl+Z is not ours with Shift, Alt, AltGr or in a text field", () => {
     expect(keyAction(key("Z", { ctrlKey: true, shiftKey: true }), PCB)).toBeNull()
     expect(keyAction(key("z", { ctrlKey: true, altKey: true }), PCB)).toBeNull()

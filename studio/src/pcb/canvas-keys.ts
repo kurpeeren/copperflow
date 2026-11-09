@@ -18,6 +18,7 @@ export type KeyActionName =
   | "openLibrary"
   | "undo"
   | "openFile"
+  | "selectAll"
 
 /** What a key event says, apart from the browser: modifiers, whether it came from a field, and the key. */
 export interface KeyInput {
@@ -107,12 +108,18 @@ const PANEL_KEYS: ReadonlyMap<string, KeyActionName> = new Map([
 const plainOrAltGr = (input: KeyInput): boolean =>
   !input.metaKey && (input.altGraph === true || (input.ctrlKey && input.altKey) || (!input.ctrlKey && !input.altKey))
 
-/** Ctrl (or Cmd) with Z or O, by the character the key produces; AltGr and Shift combinations are not ours. */
+/** Ctrl (or Cmd) with these letters, by the character the key produces; prevented, so the browser's own does not run too. */
+const CTRL_KEYS: ReadonlyMap<string, KeyActionName> = new Map([
+  ["z", "undo"],
+  ["o", "openFile"],
+  ["a", "selectAll"],
+])
+
+/** Ctrl (or Cmd) with Z, O or A; AltGr and Shift combinations are not ours. */
 function ctrlAction(input: KeyInput): KeyResult | null {
   if (input.altKey || input.shiftKey || input.altGraph) return null
-  const letter = input.key.toLowerCase()
-  if (letter === "z") return act("undo", true)
-  return letter === "o" ? act("openFile", true) : null
+  const action = CTRL_KEYS.get(input.key.toLowerCase())
+  return action ? act(action, true) : null
 }
 
 /** What the key press means in this view, or null when it is not ours (or belongs to a field or a browser shortcut). */
