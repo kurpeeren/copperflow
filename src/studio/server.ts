@@ -21,6 +21,7 @@ import {
   listEntries,
   loadCircuit,
   lockParts,
+  redoChange,
   removeMark,
   resolveCircuit,
   undoChange,
@@ -127,6 +128,7 @@ const Bodies = {
   }),
   unmark: z.object({ file, id: z.string() }),
   undo: z.object({ id: z.string().optional() }),
+  redo: z.object({ id: z.string().optional() }),
   build: z.object({ file }),
   place: z.object({ file, part: z.string().min(1).max(64), name: z.string().max(40).optional(), props: props.optional() }),
   verify: z.object({ id: z.string().min(1).max(64), by: z.string().min(1).max(100), against: z.string().min(1).max(300), confirm: z.string() }),
@@ -264,6 +266,13 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       case "POST /api/undo": {
         const body = Bodies.undo.parse(await readJson(req))
         const entry = await undoChange(root, { author: "human", ...(body.id ? { id: body.id } : {}) })
+        live.requestBuild(entry.file)
+        return send(res, { entryId: entry.id, summary: entry.summary })
+      }
+      // Like undo, no write mark: the key session orders only its own edits against builds.
+      case "POST /api/redo": {
+        const body = Bodies.redo.parse(await readJson(req))
+        const entry = await redoChange(root, { author: "human", ...(body.id ? { id: body.id } : {}) })
         live.requestBuild(entry.file)
         return send(res, { entryId: entry.id, summary: entry.summary })
       }

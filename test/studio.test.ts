@@ -178,6 +178,44 @@ describe("editing", () => {
     await data(await api("/api/undo", {}))
     expect(await readFile(join(root, FILE), "utf8")).toBe(BOARD)
   })
+
+  test("redo re-applies the undone change as the human, and the history marks the undo redone", async () => {
+    await data(await api("/api/edit", { file: FILE, summary: "remove LED1", edits: [{ kind: "removePart", part: "LED1" }] }))
+    const edited = await readFile(join(root, FILE), "utf8")
+    const undo = await data(await api("/api/undo", {}))
+    const redo = await data(await api("/api/redo", {}))
+    expect(redo).toEqual({ entryId: "c0003", summary: "Redo: remove LED1" })
+    expect(await readFile(join(root, FILE), "utf8")).toBe(edited)
+    const history = await data(await api("/api/history"))
+    expect(history.slice(0, 2)).toMatchObject([
+      { id: "c0003", author: "human", redoOf: undo.entryId, redone: false },
+      { id: undo.entryId, redone: true },
+    ])
+    const again = await api("/api/redo", {})
+    expect(again.status).toBe(400)
+    expect((await again.json()).error).toBe("Nothing to redo")
+  })
+
+  test("redo takes a change id, refuses a malformed one and needs the token", async () => {
+    const edit = await data(await api("/api/edit", { file: FILE, summary: "remove LED1", edits: [{ kind: "removePart", part: "LED1" }] }))
+    await data(await api("/api/undo", {}))
+    expect((await api("/api/redo", { id: 7 })).status).toBe(400)
+    const noToken = await reach(`${studio.url}/api/redo`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })
+    expect(noToken.status).toBe(403)
+    expect(await readFile(join(root, FILE), "utf8")).toBe(BOARD)
+    expect((await data(await api("/api/redo", { id: edit.entryId }))).summary).toBe("Redo: remove LED1")
+    expect(await readFile(join(root, FILE), "utf8")).not.toContain("LED1")
+  })
+
+  test("a redo is built at once, like an edit", async () => {
+    await data(await api("/api/edit", { file: FILE, summary: "remove LED1", edits: [{ kind: "removePart", part: "LED1" }] }))
+    await data(await api("/api/undo", {}))
+    await data(await api("/api/build", { file: FILE }))
+    const before = await buildWhen((b) => finished(b) && ids(b).includes("LED1"))
+    await data(await api("/api/redo", {}))
+    const after = await buildWhen((b) => finished(b) && b.finishedAt !== before.finishedAt && !ids(b).includes("LED1"))
+    expect(ids(after)).not.toContain("LED1")
+  })
 })
 
 describe("parts library", () => {
