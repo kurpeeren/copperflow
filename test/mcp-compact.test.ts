@@ -259,6 +259,23 @@ describe("connect_nets", () => {
     expect(text).toContain("both A and B")
   })
 
+  test("the same pin under two spellings on two nets is refused", async () => {
+    const { text, isError } = await call("connect_nets", { file: FILE, nets: { GND: ["C1.pin2"], VCC: ["C1.pin2"] } })
+    expect(isError).toBe(true)
+    const alias = await call("connect_nets", { file: FILE, nets: { GND: ["R1.left"], VCC: ["R1.pin1"] } })
+    expect(alias.isError).toBe(true)
+    expect(alias.text).toContain("both GND and VCC")
+    expect(text).toContain("both GND and VCC")
+  })
+
+  test("a circuit that does not build is refused and nothing is written", async () => {
+    await writeFile(join(root, "broken.circuit.tsx"), 'export default () => { throw new Error("boom") }')
+    const { text, isError } = await call("connect_nets", { file: "broken.circuit.tsx", nets: { GND: ["R1.pin1"] } })
+    expect(isError).toBe(true)
+    expect(text).toContain("The circuit does not build, so connect_nets cannot tell which pins are already connected")
+    expect(await listEntries(root, 10)).toHaveLength(0)
+  })
+
   test("rejects a bad net name or pin", async () => {
     expect((await call("connect_nets", { file: FILE, nets: { "a b": ["R1.pin1"] } })).isError).toBe(true)
     expect((await call("connect_nets", { file: FILE, nets: { GND: ["R1"] } })).isError).toBe(true)

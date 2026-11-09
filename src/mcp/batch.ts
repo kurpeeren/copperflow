@@ -13,7 +13,7 @@ import {
 import { buildWith, type DesignSource } from "../core/design-source.js"
 import { parseSelector } from "../engine/selectors.js"
 import type { Circuit, Component } from "../engine/model.js"
-import { netsOf, pinName } from "./compact.js"
+import { pinName } from "./compact.js"
 
 type LoadedModel = Awaited<ReturnType<typeof loadCircuit>>["model"]
 
@@ -126,30 +126,29 @@ function resolvePin(circuit: Circuit, selector: string): string | undefined {
   return component?.pins.find((pin) => pin.names.includes(parsed.pin))?.id
 }
 
-/** Which pins are on each named net, as the built design resolves them; the source traces when the build fails. */
-async function pinsOnNets(root: string, file: string, engine: DesignSource | undefined): Promise<{ onNet: (name: string, pin: string) => boolean }> {
+/** The built design's circuit; connect_nets cannot tell what is connected without it. */
+async function builtCircuit(root: string, file: string, engine: DesignSource | undefined): Promise<Circuit> {
   try {
-    const { circuit } = await buildWith(root, file, engine)
-    return { onNet: (name, pin) => {
-      const id = resolvePin(circuit, pin)
-      return id !== undefined && circuit.nets.some((net) => net.names.includes(name) && net.pins.includes(id))
-    } }
+    return (await buildWith(root, file, engine)).circuit
   } catch {
-    const existing = netsOf((await loadCircuit(root, file)).model.traces)
-    return { onNet: (name, pin) => existing.some((net) => net.names.includes(name) && net.pins.includes(pinName(pin))) }
+    throw new Error("The circuit does not build, so connect_nets cannot tell which pins are already connected: fix the build errors first (check_circuit)")
   }
 }
 
 /** One connect per pin on each named net, skipping pins already on that net. */
 export async function planNets(root: string, file: string, nets: Record<string, string[]>, engine?: DesignSource): Promise<NetPlan> {
-  const { onNet } = await pinsOnNets(root, file, engine)
+  const circuit = await builtCircuit(root, file, engine)
+  const onNet = (name: string, pin: string) => {
+    const id = resolvePin(circuit, pin)
+    return id !== undefined && circuit.nets.some((net) => net.names.includes(name) && net.pins.includes(id))
+  }
   const plan: NetPlan = { edits: [], added: {}, skipped: 0 }
   const claimed = new Map<string, string>()
   for (const [name, pins] of Object.entries(nets)) {
     if (!NET_NAME.test(name)) throw new Error(`"${name}" is not a net name; use letters, digits, _ and -, e.g. GND`)
     for (const pin of new Set(pins.map((p) => p.trim()))) {
       if (!PIN.test(pin)) throw new Error(`"${pin}" is not a pin selector; write PART.pin, e.g. R1.pin2 or U1.VOUT`)
-      const key = pinName(pin)
+      const key = resolvePin(circuit, pin) ?? pinName(pin)
       const other = claimed.get(key)
       if (other !== undefined && other !== name) throw new Error(`${pin} is given for both ${other} and ${name}; that would short the two nets`)
       claimed.set(key, name)
