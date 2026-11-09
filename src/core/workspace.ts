@@ -132,12 +132,73 @@ export function undoChange(root: string, options: { author: Author; id?: string 
     return writeWithHistory(root, loaded, target.before, {
       author: options.author,
       file: loaded.file,
-      summary: `Undo: ${target.summary}`,
+      // An undo of a redo reads as an undo of the change itself.
+      summary: `Undo: ${target.redoOf ? target.summary.replace(/^Redo: /, "") : target.summary}`,
       before: target.after,
       after: target.before,
       undoOf: target.id,
     })
   })
+}
+
+/**
+ * Redoes one undone change: the newest undo that can still be redone, or the one named (by the undone change's id
+ * or by the undo's own). An undo can be redone once, and only until a new change (not an undo or a redo) is made to
+ * its file, as in any editor. The agent (`ai`) may only redo its own undos. Refuses when the file changed since the
+ * undo, or when the redo would change a part that is locked now. The redo is an ordinary change, so it can be undone.
+ */
+export function redoChange(root: string, options: { author: Author; id?: string }): Promise<HistoryEntry> {
+  return serialized(projectQueues, resolve(root), async () => {
+    const undo = redoTarget(await readEntries(root), options)
+    const loaded = await loadCircuit(root, undo.file)
+    if (loaded.source !== undo.after) {
+      throw new Error(`${undo.file} has changed since ${undo.id}; redo it by hand or with git`)
+    }
+    const touched = changedLockedParts(loaded, analyzeCircuit(undo.before))
+    if (touched.length > 0) throw new Error(`Redoing ${undo.undoOf} would change the locked part ${touched.join(", ")}; unlock it first`)
+
+    return writeWithHistory(root, loaded, undo.before, {
+      author: options.author,
+      file: loaded.file,
+      summary: `Redo: ${undo.summary.replace(/^Undo: /, "")}`,
+      before: undo.after,
+      after: undo.before,
+      redoOf: undo.id,
+    })
+  })
+}
+
+/** The undo a redo takes back: the named one, else the newest one that can be redone (and, for the agent, is its own). */
+function redoTarget(entries: readonly HistoryEntry[], options: { author: Author; id?: string }): HistoryEntry {
+  const redoable = redoableUndos(entries)
+  const own = (e: HistoryEntry) => options.author === "human" || e.author === "ai"
+  if (!options.id) {
+    const newest = redoable.find(own)
+    if (!newest) throw new Error("Nothing to redo")
+    return newest
+  }
+  const named = entries.find((e) => e.id === options.id)
+  if (!named) throw new Error(`No change with id ${options.id}`)
+  const undo = named.undoOf ? named : entries.find((e) => e.undoOf === named.id)
+  if (!undo) throw new Error(`${named.id} is not undone, so there is nothing to redo`)
+  if (!redoable.includes(undo)) {
+    const redone = entries.some((e) => e.redoOf === undo.id)
+    throw new Error(redone ? `${undo.id} is already redone` : `A newer change to ${undo.file} came after ${undo.id}, so it cannot be redone`)
+  }
+  if (!own(undo)) throw new Error("The agent can only redo its own undos")
+  return undo
+}
+
+/** The undos that can be redone, newest first: not redone yet, and no new change to their file after them. */
+function redoableUndos(entries: readonly HistoryEntry[]): HistoryEntry[] {
+  const redone = new Set(entries.flatMap((e) => (e.redoOf ? [e.redoOf] : [])))
+  const changedAfter = new Set<string>()
+  const found: HistoryEntry[] = []
+  for (const entry of [...entries].reverse()) {
+    if (!entry.undoOf && !entry.redoOf) changedAfter.add(entry.file)
+    else if (entry.undoOf && !redone.has(entry.id) && !changedAfter.has(entry.file)) found.push(entry)
+  }
+  return found
 }
 
 /** Reads a circuit's annotations, applies `change` and writes the result. */

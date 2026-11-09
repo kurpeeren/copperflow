@@ -13,13 +13,18 @@ const EntrySchema = z.object({
   after: z.string(),
   /** Set on entries that undo an earlier entry. */
   undoOf: z.string().optional(),
+  /** Set on entries that redo an earlier undo: the undo's id. A redo is an ordinary change, which can be undone. */
+  redoOf: z.string().optional(),
 })
 
 export type HistoryEntry = z.infer<typeof EntrySchema>
 export type Author = HistoryEntry["author"]
 
 export interface HistoryListing extends Omit<HistoryEntry, "before" | "after"> {
+  /** A later entry undid this one. */
   undone: boolean
+  /** This is an undo that a later entry redid. */
+  redone: boolean
 }
 
 const ENTRY_FILE = /^c(\d{4,})\.json$/
@@ -62,10 +67,11 @@ export async function readEntries(root: string): Promise<HistoryEntry[]> {
 export async function listEntries(root: string, limit: number): Promise<HistoryListing[]> {
   const entries = await readEntries(root)
   const undone = new Set(entries.flatMap((e) => (e.undoOf ? [e.undoOf] : [])))
+  const redone = new Set(entries.flatMap((e) => (e.redoOf ? [e.redoOf] : [])))
   return entries
     .slice(-limit)
     .reverse()
-    .map(({ before: _before, after: _after, ...rest }) => ({ ...rest, undone: undone.has(rest.id) }))
+    .map(({ before: _before, after: _after, ...rest }) => ({ ...rest, undone: undone.has(rest.id), redone: redone.has(rest.id) }))
 }
 
 async function readEntry(root: string, id: string): Promise<HistoryEntry> {

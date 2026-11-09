@@ -37,11 +37,22 @@ test("multi-line props and marks cannot forge summary lines", () => {
 
 test("history shows who changed what and what was undone", () => {
   const text = formatHistory([
-    { id: "c0002", time: "2026-11-03T10:01:00.000Z", author: "human", file: "a.circuit.tsx", summary: "Undo: remove D3", undoOf: "c0001", undone: false },
-    { id: "c0001", time: "2026-11-03T10:00:00.000Z", author: "ai", file: "a.circuit.tsx", summary: "remove D3", undone: true },
+    { id: "c0002", time: "2026-11-03T10:01:00.000Z", author: "human", file: "a.circuit.tsx", summary: "Undo: remove D3", undoOf: "c0001", undone: false, redone: false },
+    { id: "c0001", time: "2026-11-03T10:00:00.000Z", author: "ai", file: "a.circuit.tsx", summary: "remove D3", undone: true, redone: false },
   ])
   expect(text.split("\n")).toEqual([
     "c0002  2026-11-03T10:01:00.000Z  human  Undo: remove D3  (a.circuit.tsx)",
     "c0001  2026-11-03T10:00:00.000Z  ai  remove D3  (a.circuit.tsx) [undone]",
+  ])
+})
+
+test("history shows which undo was redone", () => {
+  const text = formatHistory([
+    { id: "c0003", time: "2026-11-03T10:02:00.000Z", author: "human", file: "a.circuit.tsx", summary: "Redo: remove D3", redoOf: "c0002", undone: false, redone: false },
+    { id: "c0002", time: "2026-11-03T10:01:00.000Z", author: "human", file: "a.circuit.tsx", summary: "Undo: remove D3", undoOf: "c0001", undone: false, redone: true },
+  ])
+  expect(text.split("\n")).toEqual([
+    "c0003  2026-11-03T10:02:00.000Z  human  Redo: remove D3  (a.circuit.tsx)",
+    "c0002  2026-11-03T10:01:00.000Z  human  Undo: remove D3  (a.circuit.tsx) [redone]",
   ])
 })

@@ -6,6 +6,7 @@ import {
   editCircuit,
   listCircuits,
   loadCircuit,
+  redoChange,
   resolveInRoot,
   undoChange,
   updateAnnotations,
@@ -157,5 +158,136 @@ describe("editing and history", () => {
     await writeFile(join(root, FILE), BOARD.replace("pcbX={-4}", "pcbX={0}"))
     const loaded = await loadCircuit(root, FILE)
     expect(loaded.violations).toEqual([{ part: "R1", kind: "changed", detail: "pcbX was {-4}, now {0}" }])
+  })
+})
+
+describe("redo", () => {
+  const OTHER = "boards/other.circuit.tsx"
+  const removeLed = (author: "ai" | "human" = "ai") =>
+    editCircuit(root, FILE, [{ kind: "removePart", part: "LED1" }], { author, summary: "remove LED1" })
+  const move = (file: string, part: string, pcbX: number) =>
+    editCircuit(root, file, [{ kind: "setProps", part, props: { pcbX } }], { author: "human", summary: `move ${part}` })
+
+  test("redo re-applies the newest undone change and is logged", async () => {
+    await removeLed()
+    const edited = await read()
+    const undo = await undoChange(root, { author: "human" })
+    const redo = await redoChange(root, { author: "human" })
+    expect(await read()).toBe(edited)
+    expect(redo).toMatchObject({ author: "human", file: FILE, summary: "Redo: remove LED1", redoOf: undo.id, before: BOARD, after: edited })
+    const entries = await listEntries(root, 10)
+    expect(entries.map((e) => [e.summary, e.undone, e.redone])).toEqual([
+      ["Redo: remove LED1", false, false],
+      ["Undo: remove LED1", false, true],
+      ["remove LED1", true, false],
+    ])
+    await expect(redoChange(root, { author: "human" })).rejects.toThrow(/Nothing to redo/)
+  })
+
+  test("an undo of a redo works like any undo, and that undo can be redone too", async () => {
+    await removeLed()
+    const edited = await read()
+    await undoChange(root, { author: "human" })
+    await redoChange(root, { author: "human" })
+    const again = await undoChange(root, { author: "human" })
+    expect(await read()).toBe(BOARD)
+    expect(again.summary).toBe("Undo: remove LED1")
+    const redo = await redoChange(root, { author: "human" })
+    expect(await read()).toBe(edited)
+    expect(redo).toMatchObject({ summary: "Redo: remove LED1", redoOf: again.id })
+  })
+
+  test("redo walks back up the undo stack in order", async () => {
+    await move(FILE, "R1", 1)
+    const first = await read()
+    await move(FILE, "C1", 2)
+    const second = await read()
+    await undoChange(root, { author: "human" })
+    await undoChange(root, { author: "human" })
+    expect(await read()).toBe(BOARD)
+    expect((await redoChange(root, { author: "human" })).summary).toBe("Redo: move R1")
+    expect(await read()).toBe(first)
+    expect((await redoChange(root, { author: "human" })).summary).toBe("Redo: move C1")
+    expect(await read()).toBe(second)
+  })
+
+  test("a named change is redone, by its own id or by the id of the undo that undid it", async () => {
+    await writeFile(join(root, OTHER), BOARD)
+    await move(FILE, "R1", 1)
+    const other = await move(OTHER, "R1", 3)
+    await undoChange(root, { author: "human" })
+    const undoFirst = await undoChange(root, { author: "human" })
+    const redoOther = await redoChange(root, { author: "human", id: other.entry.id })
+    expect(redoOther).toMatchObject({ file: OTHER, summary: "Redo: move R1" })
+    expect(await readFile(join(root, OTHER), "utf8")).toContain("pcbX={3}")
+    expect(await read()).toBe(BOARD)
+    expect((await redoChange(root, { author: "human", id: undoFirst.id })).redoOf).toBe(undoFirst.id)
+    expect(await read()).toContain("pcbX={1}")
+  })
+
+  test("redo refuses when the file changed after the undo", async () => {
+    await removeLed()
+    await undoChange(root, { author: "human" })
+    await writeFile(join(root, FILE), BOARD + "\n// edited by hand\n")
+    await expect(redoChange(root, { author: "human" })).rejects.toThrow(/changed since/)
+    expect(await read()).toBe(BOARD + "\n// edited by hand\n")
+  })
+
+  test("redo refuses to change a part the human locked after the undo", async () => {
+    await editCircuit(root, FILE, [{ kind: "setProps", part: "R1", props: { resistance: "9k" } }], { author: "ai", summary: "R1 9k" })
+    await undoChange(root, { author: "human" })
+    const { model } = await loadCircuit(root, FILE)
+    await updateAnnotations(root, FILE, (ann) => lockParts(ann, model, ["R1"], "2026-11-03T10:00:00.000Z"))
+    await expect(redoChange(root, { author: "human" })).rejects.toThrow(/locked part R1/)
+    expect(await read()).toBe(BOARD)
+    expect((await listEntries(root, 10)).map((e) => e.summary)).toEqual(["Undo: R1 9k", "R1 9k"])
+  })
+
+  test("there is nothing to redo before any undo", async () => {
+    await expect(redoChange(root, { author: "human" })).rejects.toThrow(/Nothing to redo/)
+    const edit = await removeLed()
+    await expect(redoChange(root, { author: "human" })).rejects.toThrow(/Nothing to redo/)
+    await expect(redoChange(root, { author: "human", id: edit.entry.id })).rejects.toThrow(/is not undone/)
+    await expect(redoChange(root, { author: "human", id: "c0099" })).rejects.toThrow(/No change with id c0099/)
+  })
+
+  test("a new change to the file clears the redo chain", async () => {
+    const edit = await removeLed()
+    await undoChange(root, { author: "human" })
+    await move(FILE, "R1", 1)
+    const moved = await read()
+    await expect(redoChange(root, { author: "human" })).rejects.toThrow(/Nothing to redo/)
+    await expect(redoChange(root, { author: "human", id: edit.entry.id })).rejects.toThrow(/newer change/)
+    expect(await read()).toBe(moved)
+  })
+
+  test("a change to another file leaves the redo chain alone", async () => {
+    await writeFile(join(root, OTHER), BOARD)
+    await removeLed()
+    const edited = await read()
+    await undoChange(root, { author: "human" })
+    await move(OTHER, "R1", 1)
+    await redoChange(root, { author: "human" })
+    expect(await read()).toBe(edited)
+  })
+
+  test("an undo that is redone cannot be redone twice", async () => {
+    await removeLed()
+    const undo = await undoChange(root, { author: "human" })
+    await redoChange(root, { author: "human" })
+    await expect(redoChange(root, { author: "human", id: undo.id })).rejects.toThrow(/already redone/)
+  })
+
+  test("the agent can only redo its own undos; the human may redo any", async () => {
+    await removeLed()
+    const human = await undoChange(root, { author: "human" })
+    await expect(redoChange(root, { author: "ai" })).rejects.toThrow(/Nothing to redo/)
+    await expect(redoChange(root, { author: "ai", id: human.id })).rejects.toThrow(/only redo its own/)
+    expect(await read()).toBe(BOARD)
+    await editCircuit(root, FILE, [{ kind: "setProps", part: "C1", props: { pcbX: 2 } }], { author: "ai", summary: "move C1" })
+    const own = await undoChange(root, { author: "ai" })
+    expect((await redoChange(root, { author: "ai" })).redoOf).toBe(own.id)
+    const agents = await undoChange(root, { author: "ai" })
+    expect((await redoChange(root, { author: "human" })).redoOf).toBe(agents.id)
   })
 })
