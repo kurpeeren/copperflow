@@ -4,6 +4,7 @@ import { Library } from "./Library"
 import { NetsList } from "./NetsList"
 import type { Highlight } from "./pcb/highlight"
 import type { Actions } from "./App"
+import { clicked, type Selection, type SelectionChange } from "./selection"
 import { blurAfterPointerClick } from "./shell/focus"
 import { PageTree } from "./shell/PageTree"
 import type { PageTree as PageTreeData, DocView } from "./shell/page-tree"
@@ -17,8 +18,8 @@ interface Props {
   circuit: CircuitData
   parts: PartsData
   onPlace(part: string): void
-  selected: string | null
-  onSelect(name: string | null): void
+  selection: Selection
+  onSelect(change: SelectionChange): void
   actions: Actions
   /** The built design, for the Net tab. */
   design: Design | undefined
@@ -83,7 +84,8 @@ function DesignBody(props: Props) {
   }
 }
 
-function PartsTree({ circuit, parts: library, selected, onSelect }: Props) {
+/** The parts by kind; every selected one is highlighted, a click selects one, and Ctrl+click (or Shift+click) toggles one. */
+function PartsTree({ circuit, parts: library, selection, onSelect }: Props) {
   const locked = new Set(circuit.annotations.locks.map((lock) => lock.part))
   const title = (tag: string) => library.library.find((p) => p.component === tag)?.title ?? tag
   const groups = new Map<string, typeof circuit.model.parts>()
@@ -99,8 +101,8 @@ function PartsTree({ circuit, parts: library, selected, onSelect }: Props) {
             {parts.map((part) => (
               <li key={part.name}>
                 <button
-                  className={`row${selected === part.name ? " selected" : ""}${part.editable ? "" : " readonly"}`}
-                  onClick={() => onSelect(selected === part.name ? null : part.name)}
+                  className={`row${selection.has(part.name) ? " selected" : ""}${part.editable ? "" : " readonly"}`}
+                  onClick={(event) => onSelect(clicked(part.name, event))}
                   title={part.readonlyReason ? `Read-only: ${part.readonlyReason}` : undefined}
                 >
                   <span className="name">{part.name}</span>
@@ -130,14 +132,14 @@ function summaryValue(props: CircuitData["model"]["parts"][number]["props"]): st
   return ""
 }
 
-function Connections({ circuit, selected, actions }: Props) {
+function Connections({ circuit, selection, actions }: Props) {
   const [from, setFrom] = useState("")
   const [to, setTo] = useState("")
   return (
     <div className="connections">
       <ul>
         {circuit.model.traces.map((trace, index) => (
-          <li key={`${trace.from}-${trace.to}-${index}`} className={touches(trace, selected) ? "selected" : ""}>
+          <li key={`${trace.from}-${trace.to}-${index}`} className={selection.names.some((part) => touches(trace, part)) ? "selected" : ""}>
             <code>{trace.editable ? trace.from : `line ${trace.line}`}</code>
             <span className="arrow" aria-hidden="true">
               —

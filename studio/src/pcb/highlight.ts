@@ -4,6 +4,7 @@ import type { Design } from "../../../src/engine/design.js"
 import type { Net } from "../../../src/engine/model.js"
 import type { PcbLayout } from "../../../src/engine/pcb.js"
 import type { Point } from "./geometry.js"
+import { nameList } from "./group-edits.js"
 import { labelAt } from "./label-drag.js"
 import { padAt } from "./pcb-draw.js"
 import { pinAt } from "./wire-tool.js"
@@ -76,10 +77,11 @@ export function partNets(design: Design, part: string): Highlight {
   return [...new Set(nets)]
 }
 
-/** What Design → Highlight net does, where no pointer is over the canvas: light the selected part's nets, or say how. */
-export function menuHighlight(selected: string | null, nets: Highlight): { nets: Highlight } | { message: string } {
-  if (selected === null) return { message: "Point at a net and press H." }
-  return nets.length > 0 ? { nets } : { message: `${selected} is on no net.` }
+/** What Design → Highlight net does, where no pointer is over the canvas: light every net of the selected parts, or say how. */
+export function menuHighlight(parts: readonly string[], netsOf: (part: string) => Highlight): { nets: Highlight } | { message: string } {
+  if (parts.length === 0) return { message: "Point at a net and press H." }
+  const nets = [...new Set(parts.flatMap(netsOf))]
+  return nets.length > 0 ? { nets } : { message: `${nameList(parts)} ${parts.length === 1 ? "is" : "are"} on no net.` }
 }
 
 /** One net after a rebuild: the same id when the net still exists, else the net that now holds its first pin, else none. */

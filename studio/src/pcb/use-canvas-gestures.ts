@@ -3,9 +3,11 @@ import { useEffect, useMemo, useState, type PointerEvent, type RefObject } from 
 import type { CircuitData } from "../api"
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { Actions } from "../App"
+import type { SelectionChange } from "../selection"
 import { toLocal, type Moving } from "./canvas-common"
 import { hitTest, roundPosition, screenToWorld, snap, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import { movedTo, VIEWS, ZERO, type Anchor, type View } from "./positions"
+import { pressKind, type Press } from "./press"
 import type { LabelTools } from "./use-label-drag"
 
 export type Gesture =
@@ -13,6 +15,8 @@ export type Gesture =
   | { kind: "drag"; part: PartBox; start: Point; offset: Point; moved: boolean; blocker: string | null }
   | { kind: "label"; label: NetLabel; start: Point; at: Point; moved: boolean; blocker: string | null }
   | { kind: "box"; start: Point; current: Point }
+
+export type { Press }
 
 export interface GestureInput {
   view: View
@@ -26,7 +30,7 @@ export interface GestureInput {
   builtFrom: number
   circuit: CircuitData
   actions: Actions
-  onSelect(name: string | null): void
+  onSelect(change: SelectionChange): void
   blockerFor(name: string): string | null
   /** The schematic's net labels and power symbols, when they can be dragged. */
   labels?: LabelTools
@@ -38,16 +42,21 @@ const DRAG_THRESHOLD_PX = 3
 const BOX_MIN_PX = 6
 const round = roundPosition
 
-/** The pointer press starts a pan (middle or right button), a note box (Shift), a part drag or a pan. */
-function startGesture(input: GestureInput, event: { button: number; shiftKey: boolean }, point: Point): Gesture | undefined {
+/** The gesture a press starts, as press.ts decides; a Shift or Ctrl press on a part only toggles it in or out of the selection. */
+function startGesture(input: GestureInput, event: Press, point: Point): Gesture | undefined {
   const { camera } = input
   if (!camera) return undefined
-  if (event.button === 1 || event.button === 2) return { kind: "pan", start: point, camera }
-  if (event.shiftKey) return { kind: "box", start: point, current: point }
   const world = screenToWorld(camera, input.size, point)
   const hit = hitTest(input.boxes, world)
+  const kind = pressKind(event, hit !== undefined)
+  if (kind === "pan") return { kind: "pan", start: point, camera }
+  if (kind === "note") return { kind: "box", start: point, current: point }
   if (!hit) return pressLabel(input, world, point) ?? { kind: "pan", start: point, camera }
-  input.onSelect(hit.name)
+  if (kind === "toggle") {
+    input.onSelect((current) => current.toggle(hit.name))
+    return undefined
+  }
+  input.onSelect((current) => current.only(hit.name))
   return { kind: "drag", part: hit, start: point, offset: { x: 0, y: 0 }, moved: false, blocker: input.blockerFor(hit.name) }
 }
 
@@ -98,7 +107,7 @@ function endGesture(input: GestureInput, done: Gesture, camera: Camera, commit: 
     return commit(done.part, done.offset)
   }
   if (done.kind === "pan") {
-    if (Math.hypot(done.camera.cx - camera.cx, done.camera.cy - camera.cy) * camera.scale < DRAG_THRESHOLD_PX) input.onSelect(null)
+    if (Math.hypot(done.camera.cx - camera.cx, done.camera.cy - camera.cy) * camera.scale < DRAG_THRESHOLD_PX) input.onSelect((current) => current.clear())
     return
   }
   const a = screenToWorld(camera, input.size, done.start)
@@ -146,7 +155,7 @@ export function useCanvasGestures(input: GestureInput) {
     window.addEventListener("keydown", onKey, true)
     return () => window.removeEventListener("keydown", onKey, true)
   }, [gesture?.kind])
-  const press = (event: { button: number; shiftKey: boolean }, point: Point) => {
+  const press = (event: Press, point: Point) => {
     const next = startGesture(input, event, point)
     if (next) setGesture(next)
   }
@@ -171,8 +180,6 @@ export function cursorFor(gesture: Gesture | undefined, crosshair: boolean, over
   if (crosshair) return "crosshair"
   return overPart ? "pointer" : "default"
 }
-
-type Press = { button: number; shiftKey: boolean }
 
 export interface PointerInput {
   camera: Camera | undefined

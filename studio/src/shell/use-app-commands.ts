@@ -2,11 +2,13 @@
 // the rest go to the open canvas over the command bus (command-owners.ts says which is which). Schematic-only
 // commands sent while the PCB is open switch to the schematic first.
 import { useCallback, useEffect, useState } from "react"
-import { api, type BomLine } from "../api"
+import { api, type BomLine, type CircuitData } from "../api"
 import { bomCsv, bomFileName } from "./bom-csv"
 import type { Actions } from "../App"
 import { keyAction, keyInput, type KeyActionName } from "../pcb/canvas-keys"
+import { lockChange } from "../pcb/group-edits"
 import type { View } from "../pcb/positions"
+import type { Selection } from "../selection"
 import type { BottomTab } from "./bottom-state"
 import { SHEET_COMMANDS, WORKSPACE_COMMANDS, type AppCommand } from "./command-owners"
 import { send } from "./commands"
@@ -27,7 +29,9 @@ interface Input {
   file: string | undefined
   view: View
   setView(view: View): void
-  selected: string | null
+  selection: Selection
+  /** The open circuit, whose locks Lock and Unlock read. */
+  circuit: CircuitData | undefined
   actions: Actions
   workspace: WorkspaceCommands
   openChecks(): void
@@ -56,9 +60,12 @@ function exportBom(file: string | undefined, actions: Actions): void {
     .catch((error: Error) => actions.notify(error.message))
 }
 
-function lockSelected(input: Input, locked: boolean): void {
-  if (!input.selected) return input.actions.notify("Select a part first.")
-  void input.actions.lock([input.selected], locked)
+/** Locks or unlocks every selected part that is not so already, in one call. */
+function lockSelection(input: Input, locked: boolean): void {
+  const now = new Set(input.circuit?.annotations.locks.map((lock) => lock.part))
+  const change = lockChange(input.selection.names, now, locked)
+  if ("message" in change) return input.actions.notify(change.message)
+  void input.actions.lock(change.parts, locked)
 }
 
 /** The app's own commands; undefined for the ones the canvases answer. */
@@ -71,8 +78,8 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     exportPackage: () => exportPackage(input.file, input.actions),
     undo: () => void input.actions.undo(),
     checkDrc: input.openChecks,
-    lock: () => lockSelected(input, true),
-    unlock: () => lockSelected(input, false),
+    lock: () => lockSelection(input, true),
+    unlock: () => lockSelection(input, false),
     history: () => input.workspace.openBottom("log"),
     keys: () => input.openDialog("keys"),
     about: () => input.openDialog("about"),
@@ -97,7 +104,7 @@ function useAppKeys(runCommand: (command: CommandId) => void, view: View): void 
 /** Returns the function the menu bar and toolbar call; it changes only when what the commands read changes. */
 export function useAppCommands(input: Input): (command: CommandId) => void {
   const [waiting, setWaiting] = useState<CommandId | null>(null)
-  const { file, view, setView, selected, actions, openChecks, openDialog } = input
+  const { file, view, setView, selection, circuit, actions, openChecks, openDialog } = input
   // The workspace object is new on every render, but its functions are stable.
   const { run, openBottom, openPageTree } = input.workspace
   // A command waiting for the schematic runs once the schematic canvas has mounted and subscribed.
@@ -111,7 +118,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
   }, [waiting, view, actions])
   const runCommand = useCallback(
     (command: CommandId) => {
-      const own = appCommand({ file, view, setView, selected, actions, workspace: { run, openBottom, openPageTree }, openChecks, openDialog }, command)
+      const own = appCommand({ file, view, setView, selection, circuit, actions, workspace: { run, openBottom, openPageTree }, openChecks, openDialog }, command)
       if (own) return own()
       if (SCHEMATIC_ONLY.has(command) && view !== "schematic") {
         setView("schematic")
@@ -120,7 +127,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
       }
       if (!send(command)) actions.notify("Wait for the build to finish, then try again.")
     },
-    [file, view, setView, selected, actions, run, openBottom, openPageTree, openChecks, openDialog],
+    [file, view, setView, selection, circuit, actions, run, openBottom, openPageTree, openChecks, openDialog],
   )
   useAppKeys(runCommand, view)
   return runCommand

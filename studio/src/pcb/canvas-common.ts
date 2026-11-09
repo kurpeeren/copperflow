@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type Dispatch, type RefObjec
 import type { Annotations, CircuitData, Design } from "../api"
 import type { Actions } from "../App"
 import type { FocusRequest } from "../checks-panel-state"
+import type { Selection, SelectionChange } from "../selection"
 import type { Highlight } from "./highlight"
 import type { CameraCommand } from "../shell/command-owners"
 import { useCommands } from "../shell/commands"
@@ -27,8 +28,9 @@ export interface CanvasProps {
   builtFrom: number
   circuit: CircuitData
   actions: Actions
-  selected: string | null
-  onSelect(name: string | null): void
+  /** The selected parts, which both views and the panels share. */
+  selection: Selection
+  onSelect(change: SelectionChange): void
   /** The highlighted nets' ids, shared by both views. */
   highlight: Highlight
   onHighlight(nets: Highlight): void
@@ -163,7 +165,7 @@ export interface EditorLayer {
   moving: Moving | undefined
   /** The part under the pointer, when its hover outline should show. */
   hover: string | undefined
-  selected: string | null
+  selection: Selection
   locked: ReadonlySet<string>
   marks: Annotations["marks"]
   /** The note box being drawn, in screen pixels. */
@@ -177,8 +179,9 @@ export function drawEditorLayer(ctx: CanvasRenderingContext2D, camera: Camera, s
   const { look } = layer
   for (const part of layer.boxes) {
     const offset = layer.moving && part.name === layer.moving.name ? layer.moving.offset : { x: 0, y: 0 }
-    if (part.name === layer.hover && part.name !== layer.selected) drawOutline(ctx, camera, size, part.box, offset, "hover", look)
-    if (part.name === layer.selected) drawOutline(ctx, camera, size, part.box, offset, "selected", look)
+    const selected = layer.selection.has(part.name)
+    if (part.name === layer.hover && !selected) drawOutline(ctx, camera, size, part.box, offset, "hover", look)
+    if (selected) drawOutline(ctx, camera, size, part.box, offset, "selected", look)
     if (layer.locked.has(part.name)) drawLockBadge(ctx, camera, size, part.box, look)
   }
   for (const mark of layer.marks) {

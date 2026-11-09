@@ -116,9 +116,18 @@ describe("highlighting a part's nets", () => {
   })
 
   test("the menu lights the selected part's nets and never pretends without a part", () => {
-    expect(menuHighlight("R1", ["net.GND"])).toEqual({ nets: ["net.GND"] })
-    expect(menuHighlight(null, [])).toEqual({ message: "Point at a net and press H." })
-    expect(menuHighlight("R3", [])).toEqual({ message: "R3 is on no net." })
+    const nets: Record<string, readonly string[]> = { R1: ["net.GND"], R2: ["net.GND", "net.VCC"], C1: ["net.VCC", "net.OUT"] }
+    const netsOf = (part: string) => nets[part] ?? []
+    expect(menuHighlight(["R1"], netsOf)).toEqual({ nets: ["net.GND"] })
+    expect(menuHighlight([], netsOf)).toEqual({ message: "Point at a net and press H." })
+    expect(menuHighlight(["R3"], netsOf)).toEqual({ message: "R3 is on no net." })
+  })
+
+  test("with several parts selected the menu lights all their nets, each once", () => {
+    const nets: Record<string, readonly string[]> = { R1: ["net.GND"], R2: ["net.GND", "net.VCC"], C1: ["net.VCC", "net.OUT"] }
+    const netsOf = (part: string) => nets[part] ?? []
+    expect(menuHighlight(["R1", "R2", "C1"], netsOf)).toEqual({ nets: ["net.GND", "net.VCC", "net.OUT"] })
+    expect(menuHighlight(["R3", "R4"], netsOf)).toEqual({ message: "R3 and R4 are on no net." })
   })
 })
 

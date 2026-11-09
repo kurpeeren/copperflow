@@ -3,12 +3,15 @@ import type { BuildState, CircuitData, Design, Literal, PartInfo, PartsData } fr
 import type { Actions } from "./App"
 import { BomSection } from "./BomSection"
 import { checkSummary, type CheckCounts } from "./checks-list"
-import { boardSections, inspectorSections, SUGGESTED_PROPS } from "./inspector-sections"
+import { propertiesView, SUGGESTED_PROPS, type PropertiesView } from "./inspector-sections"
+import { GroupView } from "./InspectorGroup"
 import { MarkForm, NewPropRow, PropRow, Row, Section } from "./InspectorRows"
 import { LibraryInfo } from "./LibraryInfo"
 import { CloseIcon, LockIcon, RotateIcon, TrashIcon, UnlockIcon } from "./icons"
 import { touches } from "./LeftPanel"
 import { pcbBoxes } from "./pcb/pcb-draw"
+import type { Selection, SelectionChange } from "./selection"
+import type { CommandId } from "./shell/menus"
 import { sideTabId, stripPanelId } from "./shell/SideStrip"
 import "./inspector.css"
 
@@ -16,9 +19,11 @@ interface Props {
   circuit: CircuitData
   build: BuildState
   parts: PartsData
-  selected: string | null
-  onSelect(name: string | null): void
+  selection: Selection
+  onSelect(change: SelectionChange): void
   actions: Actions
+  /** Runs a menu command; the actions for several parts go through it, so they do what the menu does. */
+  run(command: CommandId): void
   /** The last build's errors and warnings, as the DRC tab counts them. */
   counts: CheckCounts
   onShowChecks(): void
@@ -26,15 +31,25 @@ interface Props {
   hidden: boolean
 }
 
-/** Which sections are collapsed, and the way to flip one. */
+/** Which sections are collapsed, the way to flip one, and what Properties shows. */
 interface SectionState {
   collapsed: ReadonlySet<string>
   toggle(title: string): void
+  view: PropertiesView
 }
 
-/** The selected part's properties, or the board's state when nothing is selected. */
+/** The selected parts in the order they were picked, as the circuit has them now. */
+function selectedParts(circuit: CircuitData, selection: Selection): PartInfo[] {
+  return selection.names.flatMap((name) => circuit.model.parts.find((part) => part.name === name) ?? [])
+}
+
+/** The board's state with nothing selected, a part's properties with one, the shared actions with several. */
 export function Inspector(props: Props) {
-  const part = props.circuit.model.parts.find((p) => p.name === props.selected)
+  const parts = selectedParts(props.circuit, props.selection)
+  const [part] = parts
+  const library = parts.length === 1 && part ? props.parts.library.find((p) => p.component === part.tag) : undefined
+  const view = propertiesView(parts, { library: library !== undefined })
+  const locked = new Set(props.circuit.annotations.locks.map((lock) => lock.part))
   // Collapsed sections are kept by title for as long as Studio is open.
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const toggle = (title: string) =>
@@ -45,7 +60,9 @@ export function Inspector(props: Props) {
     })
   return (
     <aside className="panel right" id={stripPanelId("right")} role="tabpanel" aria-labelledby={sideTabId("properties")} hidden={props.hidden}>
-      {part ? <PartView {...props} collapsed={collapsed} toggle={toggle} part={part} /> : <BoardView {...props} collapsed={collapsed} toggle={toggle} />}
+      {parts.length > 1 && <GroupView view={view} parts={parts} locked={locked} run={props.run} onClear={() => props.onSelect((current) => current.clear())} collapsed={collapsed} toggle={toggle} />}
+      {parts.length === 1 && part && <PartView {...props} view={view} collapsed={collapsed} toggle={toggle} part={part} />}
+      {parts.length === 0 && <BoardView {...props} view={view} collapsed={collapsed} toggle={toggle} />}
     </aside>
   )
 }
@@ -56,7 +73,7 @@ function centreOnBoard(design: Design | undefined, name: string): { x: number; y
   return box && { x: Math.round(box.center.x * 1000) / 1000, y: Math.round(box.center.y * 1000) / 1000 }
 }
 
-function PartView({ circuit, build, parts, part, actions, onSelect, collapsed, toggle }: Props & SectionState & { part: PartInfo }) {
+function PartView({ circuit, build, parts, part, actions, onSelect, view, collapsed, toggle }: Props & SectionState & { part: PartInfo }) {
   const locked = circuit.annotations.locks.some((lock) => lock.part === part.name)
   const library = parts.library.find((p) => p.component === part.tag)
   const setProp = (key: string, value: Literal) =>
@@ -90,15 +107,15 @@ function PartView({ circuit, build, parts, part, actions, onSelect, collapsed, t
   return (
     <div className="inspector">
       <header className="insp-header">
-        <span>Selected objects: 1</span>
-        <button className="icon" aria-label="Close" onClick={() => onSelect(null)}>
+        <span>{view.header}</span>
+        <button className="icon" aria-label="Close" onClick={() => onSelect((current) => current.clear())}>
           <CloseIcon />
         </button>
       </header>
       <PartActions part={part} locked={locked} canEdit={canEdit} actions={actions} onSelect={onSelect} />
       {locked && <p className="note locked">Locked. The agent cannot move or change this part.</p>}
       {part.readonlyReason && <p className="note">Read-only here: {part.readonlyReason}. Change it in the code.</p>}
-      {inspectorSections(part, { library: library !== undefined }).map((section) => (
+      {view.sections.map((section) => (
         <Section key={section.title} title={section.title} open={!collapsed.has(section.title)} onToggle={() => toggle(section.title)}>
           {section.rows.map(renderRow)}
         </Section>
@@ -113,7 +130,7 @@ function PartActions({ part, locked, canEdit, actions, onSelect }: {
   locked: boolean
   canEdit: boolean
   actions: Actions
-  onSelect(name: string | null): void
+  onSelect(change: SelectionChange): void
 }) {
   const rotation = part.props.pcbRotation?.literal
   return (
@@ -136,7 +153,7 @@ function PartActions({ part, locked, canEdit, actions, onSelect }: {
         disabled={!canEdit}
         onClick={() => {
           if (!window.confirm(`Remove ${part.name} and its connections?`)) return
-          void actions.edit([{ kind: "removePart", part: part.name }], `remove ${part.name}`).then((ok) => ok && onSelect(null))
+          void actions.edit([{ kind: "removePart", part: part.name }], `remove ${part.name}`).then((ok) => ok && onSelect((current) => current.without([part.name])))
         }}
       >
         <TrashIcon /> Remove
@@ -167,7 +184,7 @@ function Connections({ traces }: { traces: CircuitData["model"]["traces"] }) {
   )
 }
 
-function BoardView({ circuit, build, actions, counts, onShowChecks, collapsed, toggle }: Props & SectionState) {
+function BoardView({ circuit, build, actions, counts, onShowChecks, view, collapsed, toggle }: Props & SectionState) {
   const renderRow = (id: string) =>
     id === "build" ? (
       <div key={id}>
@@ -194,12 +211,12 @@ function BoardView({ circuit, build, actions, counts, onShowChecks, collapsed, t
   return (
     <div className="inspector">
       <header className="insp-header">
-        <span>Selected objects: 0</span>
+        <span>{view.header}</span>
         <span className="insp-file">
           {circuit.file}: {circuit.model.parts.length} parts, {circuit.model.traces.length} connections
         </span>
       </header>
-      {boardSections().map((section) => (
+      {view.sections.map((section) => (
         <Section key={section.title} title={section.title} open={!collapsed.has(section.title)} onToggle={() => toggle(section.title)}>
           {section.rows.map(renderRow)}
         </Section>

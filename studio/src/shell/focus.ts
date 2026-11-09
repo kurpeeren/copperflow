@@ -1,5 +1,5 @@
 // One rule for the focus after a click, everywhere in the chrome: a pointer click gives the focus up, so Space goes
-// back to rotating the selected part; Enter or Space on a focused control clicks with detail 0 and keeps the focus
+// back to rotating the selected parts; Enter or Space on a focused control clicks with detail 0 and keeps the focus
 // there, so the menus, tabs and lists can be walked from the keyboard.
 
 /** True for a pointer click: `detail` counts the presses, and is 0 for a click made with Enter or Space. */

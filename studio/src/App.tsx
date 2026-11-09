@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react"
-import { hasToken, type Design } from "./api"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { hasToken, type CircuitData, type Design } from "./api"
 import { NO_HIGHLIGHT, remapHighlight } from "./pcb/highlight"
+import { Selection, type SelectionChange } from "./selection"
 import { BottomStrip } from "./shell/BottomStrip"
 import { StudioDialog, type DialogName } from "./shell/Dialogs"
 import { MenuBar } from "./shell/MenuBar"
@@ -30,15 +31,20 @@ function useToast() {
 }
 
 /** Esc clears the selection, outside text fields. */
-function useEscapeClearsSelection(setSelected: (name: string | null) => void): void {
+function useEscapeClearsSelection(select: (change: SelectionChange) => void): void {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const typing = event.target instanceof HTMLElement && event.target.closest("input, textarea, select")
-      if (event.key === "Escape" && !typing) setSelected(null)
+      if (event.key === "Escape" && !typing) select((current) => current.clear())
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [setSelected])
+  }, [select])
+}
+
+/** What the canvases and panels are shown: the selection less any part the circuit no longer has (removed in the code, say). */
+function useShownSelection(selection: Selection, circuit: CircuitData | undefined): Selection {
+  return useMemo(() => (circuit ? selection.keep(circuit.model.parts.map((part) => part.name)) : selection), [selection, circuit])
 }
 
 /** A rebuild can rename or merge the highlighted net (an unnamed net that gets GND): follow it, or clear it. */
@@ -61,22 +67,24 @@ function NoToken() {
 
 export function App() {
   const { message, notify, dismiss } = useToast()
-  const [selected, setSelected] = useState<string | null>(null)
+  const [picked, select] = useState<Selection>(Selection.none)
+  const selectOnly = useCallback((name: string) => select((current) => current.only(name)), [])
   const [tab, setTab] = useState<Tab>("pcb")
   const [dialog, setDialog] = useState<DialogName | null>(null)
   const workspace = useWorkspace(tab)
   const { setHighlight, openBottom } = workspace
   const onFile = useCallback(() => {
-    setSelected(null)
+    select(Selection.none)
     setHighlight(NO_HIGHLIGHT)
   }, [setHighlight])
   const data = useStudioData(notify, onFile)
   const { file, setFile, build, circuit } = data
+  const selection = useShownSelection(picked, circuit)
   const actions = useActions({ file, refresh: data.refresh, refreshParts: data.refreshParts, notify })
-  const place = usePlace({ file, refresh: data.refresh, refreshParts: data.refreshParts, notify }, setSelected)
+  const place = usePlace({ file, refresh: data.refresh, refreshParts: data.refreshParts, notify }, selectOnly)
   const openChecks = useCallback(() => openBottom("drc"), [openBottom])
-  const checks = useChecks({ file, build, onTab: setTab, onSelect: setSelected, onOpen: openChecks })
-  useEscapeClearsSelection(setSelected)
+  const checks = useChecks({ file, build, onTab: setTab, onSelect: selectOnly, onOpen: openChecks })
+  useEscapeClearsSelection(select)
   useHighlightFollowsBuild(build.design, setHighlight)
   const closeDialog = useCallback(() => setDialog(null), [])
   const openDocument = useCallback(
@@ -86,7 +94,7 @@ export function App() {
     },
     [setFile],
   )
-  const runCommand = useAppCommands({ file, view: tab, setView: setTab, selected, actions, workspace, openChecks, openDialog: setDialog })
+  const runCommand = useAppCommands({ file, view: tab, setView: setTab, selection, circuit, actions, workspace, openChecks, openDialog: setDialog })
 
   if (!hasToken) return <NoToken />
   return (
@@ -107,9 +115,10 @@ export function App() {
         checks={checks}
         view={tab}
         onView={setTab}
-        selected={selected}
-        onSelect={setSelected}
+        selection={selection}
+        onSelect={select}
         actions={actions}
+        run={runCommand}
         onPlace={place}
         onOpenDocument={openDocument}
         openChecks={openChecks}

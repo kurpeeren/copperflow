@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react"
 import type { CircuitData, Design } from "../api"
+import type { Selection } from "../selection"
 import type { WorldPad } from "../../../src/engine/pcb.js"
 import { keepAutoPlaced } from "./auto-placed"
 import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
@@ -42,7 +43,7 @@ interface PcbScene {
   moving: Moving | undefined
   boxes: PartBox[]
   hover: string | undefined
-  selected: string | null
+  selection: Selection
   locked: ReadonlySet<string>
   circuit: CircuitData
   gesture: Gesture | undefined
@@ -56,7 +57,7 @@ interface PcbScene {
 
 /** Draws the board and its violation rings, then the editor layer, whenever anything visible changes. */
 function usePcbPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: PcbScene): void {
-  const { design, camera, size, layers, hoverPad, moving, boxes, hover, selected, locked, circuit, gesture, highlightNets, markers, activeViolation, grid } = scene
+  const { design, camera, size, layers, hoverPad, moving, boxes, hover, selection, locked, circuit, gesture, highlightNets, markers, activeViolation, grid } = scene
   const litNets = useMemo(() => (highlightNets.length > 0 ? highlightNets : hoverPad?.net ? [hoverPad.net] : NO_HIGHLIGHT), [highlightNets, hoverPad])
   useEffect(() => {
     if (!camera) return
@@ -73,8 +74,8 @@ function usePcbPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: PcbS
     })
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
     const noteBox = gesture?.kind === "box" ? gesture : undefined
-    drawEditorLayer(ctx, camera, size, { view: "pcb", boxes, moving, hover, selected, locked, marks: circuit.annotations.marks, noteBox, look: PCB_LOOK })
-  }, [canvasRef, design, camera, size, layers, litNets, moving, boxes, hover, selected, locked, circuit, gesture, markers, activeViolation, grid])
+    drawEditorLayer(ctx, camera, size, { view: "pcb", boxes, moving, hover, selection, locked, marks: circuit.annotations.marks, noteBox, look: PCB_LOOK })
+  }, [canvasRef, design, camera, size, layers, litNets, moving, boxes, hover, selection, locked, circuit, gesture, markers, activeViolation, grid])
 }
 
 interface PcbToolsProps {
@@ -164,7 +165,7 @@ function useBoardBounds(design: Design, boxes: PartBox[]) {
 }
 
 /** The PCB, drawn by copperflow's own renderer under its camera, grid and tools. */
-export function PcbCanvas({ design, builtFrom, circuit, actions, selected, onSelect, highlight, onHighlight, unit, onToggleUnit, gridStyle, gridStep: step, onGridStep: setStep, markers, activeViolation, focus, onFocused }: CanvasProps) {
+export function PcbCanvas({ design, builtFrom, circuit, actions, selection, onSelect, highlight, onHighlight, unit, onToggleUnit, gridStyle, gridStep: step, onGridStep: setStep, markers, activeViolation, focus, onFocused }: CanvasProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const size = useElementSize(wrapRef)
@@ -177,10 +178,10 @@ export function PcbCanvas({ design, builtFrom, circuit, actions, selected, onSel
   useCameraFocus("pcb", focus, camera, setCamera, onFocused)
   const common = { view: "pcb", circuit, actions, onSelect, blockerFor: parts.blockerFor } as const
   const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom })
-  usePcbKeys(design, cursor, { ...common, selected, fit, onHighlight })
+  usePcbKeys(design, cursor, { ...common, selection, fit, onHighlight })
   const hover = usePcbHover(design, parts.boxes)
   const { moving, gesture } = gestures
-  usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad: hover.pad, moving, boxes: parts.boxes, hover: hover.part, selected, locked: parts.locked, circuit, gesture, highlightNets: highlight, markers, activeViolation, grid })
+  usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad: hover.pad, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, highlightNets: highlight, markers, activeViolation, grid })
   const pointer = pointerHandlers({ camera, size, element: canvasRef, gestures, setCursor, hover: hover.at })
   const onLeave = () => {
     hover.leave()

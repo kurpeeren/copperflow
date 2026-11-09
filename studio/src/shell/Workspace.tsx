@@ -6,11 +6,13 @@ import type { CanvasProps } from "../pcb/canvas-common"
 import { PcbCanvas } from "../pcb/PcbCanvas"
 import type { View } from "../pcb/positions"
 import { SchematicCanvas } from "../pcb/SchematicCanvas"
+import type { Selection, SelectionChange } from "../selection"
 import type { useChecks } from "../use-checks"
 import type { StudioData } from "../use-studio-data"
 import type { useWorkspace } from "../use-workspace"
 import { BottomPanel } from "./BottomPanel"
 import { DocTabs } from "./DocTabs"
+import type { CommandId } from "./menus"
 import { buildPageTree, type DocView } from "./page-tree"
 import { SideStrip } from "./SideStrip"
 import type { LeftStrip, RightStrip } from "./strip-state"
@@ -28,16 +30,18 @@ export interface WorkspaceProps {
   checks: ReturnType<typeof useChecks>
   view: View
   onView(view: View): void
-  selected: string | null
-  onSelect(name: string | null): void
+  selection: Selection
+  onSelect(change: SelectionChange): void
   actions: Actions
+  /** Runs a menu command, as the menu bar does. */
+  run(command: CommandId): void
   onPlace(part: string): void
   onOpenDocument(file: string, view: DocView): void
   openChecks(): void
 }
 
 /** What both canvases take, once there is a design to draw; each adds the rings of its own view. */
-function canvasProps({ data, workspace, checks, selected, onSelect, actions }: WorkspaceProps): Omit<CanvasProps, "markers" | "gridStyle" | "gridStep" | "onGridStep"> | undefined {
+function canvasProps({ data, workspace, checks, selection, onSelect, actions }: WorkspaceProps): Omit<CanvasProps, "markers" | "gridStyle" | "gridStep" | "onGridStep"> | undefined {
   const { build, circuit } = data
   if (!build.design || !circuit) return undefined
   return {
@@ -48,7 +52,7 @@ function canvasProps({ data, workspace, checks, selected, onSelect, actions }: W
     builtFrom: build.startedAt ? Date.parse(build.startedAt) : Number.NEGATIVE_INFINITY,
     circuit,
     actions,
-    selected,
+    selection,
     onSelect,
     highlight: workspace.highlight,
     onHighlight: workspace.setHighlight,
@@ -99,7 +103,7 @@ function CenterColumn(props: WorkspaceProps) {
 
 /** The row under the toolbar: the strips at the edges, the side panels, and the centre column. */
 export function Workspace(props: WorkspaceProps) {
-  const { data, workspace, view, selected, onSelect, actions } = props
+  const { data, workspace, view, selection, onSelect, actions } = props
   const { circuit, build, project, files, file } = data
   const pageTree = useMemo(() => buildPageTree(project, files, file, view), [project, files, file, view])
   return (
@@ -110,7 +114,7 @@ export function Workspace(props: WorkspaceProps) {
           circuit={circuit}
           parts={data.parts}
           onPlace={props.onPlace}
-          selected={selected}
+          selection={selection}
           onSelect={onSelect}
           actions={actions}
           design={build.design}
@@ -133,9 +137,10 @@ export function Workspace(props: WorkspaceProps) {
           circuit={circuit}
           build={build}
           parts={data.parts}
-          selected={selected}
+          selection={selection}
           onSelect={onSelect}
           actions={actions}
+          run={props.run}
           counts={props.checks.counts}
           onShowChecks={props.openChecks}
           hidden={!workspace.rightOpen}
