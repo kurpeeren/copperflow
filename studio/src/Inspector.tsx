@@ -19,7 +19,7 @@ interface Props {
   selected: string | null
   onSelect(name: string | null): void
   actions: Actions
-  /** The last build's errors and warnings, as the Checks panel counts them. */
+  /** The last build's errors and warnings, as the DRC tab counts them. */
   counts: CheckCounts
   onShowChecks(): void
   /** Hidden with the ] key; kept mounted so its fields keep what was typed. */
@@ -210,14 +210,14 @@ function BoardView({ circuit, build, actions, counts, onShowChecks, collapsed, t
   )
 }
 
-/** The check counts the Checks panel shows, and a way to open it; the list itself lives in the panel. */
+/** The check counts the DRC tab shows, and a way to open it; the list itself lives in the tab. */
 function CheckCountsNote({ counts, onShowChecks }: { counts: CheckCounts; onShowChecks(): void }) {
   const tone = counts.errors > 0 ? "error" : counts.warnings > 0 ? "warn" : "ok"
   return (
     <div className="check-counts">
       <p className={`note ${tone}`}>{checkSummary(counts)}</p>
       {counts.errors + counts.warnings > 0 && (
-        <button onClick={onShowChecks} title="Open the Checks panel (\)">
+        <button onClick={onShowChecks} title="DRC (\)">
           Show checks
         </button>
       )}

@@ -1,4 +1,4 @@
-// The rows of the Nets tab: every net of the built design, named nets first.
+// The rows of the Net tab: every net of the built design, named nets first.
 // Only types come from the engine: its runtime modules reach Node-only code the Studio bundle cannot hold.
 import type { Design } from "../../src/engine/design.js"
 

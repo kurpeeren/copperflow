@@ -1,4 +1,4 @@
-// The rows of the Checks panel: the build's violations and diagnostics, errors first, grouped by code,
+// The rows of the DRC tab: the build's violations and diagnostics, errors first, grouped by code,
 // and the violations each canvas marks.
 // Only types come from the engine: its runtime modules reach Node-only code the Studio bundle cannot hold.
 import type { Violation } from "../../src/engine/checks/violation.js"

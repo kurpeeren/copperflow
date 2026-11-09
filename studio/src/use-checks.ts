@@ -1,4 +1,4 @@
-// The Checks panel's state: its rows and counts, the rings for each canvas, the row picked last and
+// The DRC tab's state: its rows and counts, the rings for each canvas, the row picked last and
 // the camera focus it asks for, and the panel opening by itself when a build first reports errors.
 // What these mean is decided in checks-list.ts and checks-panel-state.ts.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"

@@ -33,7 +33,7 @@ export interface CanvasProps {
   onToggleUnit(): void
   /** This view's violations that have a position, ringed on the canvas. */
   markers: readonly ViolationMarker[]
-  /** The violation picked in the Checks panel. */
+  /** The violation picked in the DRC tab. */
   activeViolation: string | null
   /** A point to centre the camera on; the canvas calls onFocused once it has. */
   focus: FocusRequest | null

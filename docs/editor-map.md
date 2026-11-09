@@ -67,39 +67,39 @@ Source: EasyEDA Pro V3.2.209, the "Example_Quick Start" project, observed 2026-1
 
 ## 4. Map onto copperflow
 
-Legend: ✅ there today · ◐ partly · ✗ missing. "Stage" is where the engine design puts the item.
+Legend: ✅ there today · ◐ partly · ✗ missing. "Stage" is where the engine design puts the item; a "round" is a round of the Studio work in [studio-easyeda-parity.md](studio-easyeda-parity.md) §10. The "today" column is as of round 1 (the shell).
 
 | Area | EasyEDA | copperflow Studio today | Stage |
 |---|---|---|---|
-| Project tree | Project → Board → sheets + PCB | One file selector; no sheets | ◐ — stage 3 (hierarchical sheets, block tree) |
-| Documents | Tabs for each sheet and the PCB | Schematic/PCB tabs for one circuit | ◐ — stage 3 |
-| Left panel | Page, Net, Component, Object | Parts, Library, Wires, History | ◐ — **add a Net tab** (net list with highlight) now |
-| Right panel | Properties of the selection or the page | Inspector with editable props, BOM, notes | ✅ |
-| Bottom panel | Library, Log, DRC, Find Results, Property List | Library is a left tab; build errors in the Inspector | ◐ — stage 2: **DRC list in a bottom panel** |
-| Status bar | X/Y, dX/dY, zoom, grid, snap, unit | Coordinates at the bottom left; snap select | ◐ — add zoom %, unit toggle (`Q`), dX/dY |
-| Place a part | `Shift+F` dialog, bottom library | Library tab, Place button | ◐ — add the `Shift+F` shortcut and search |
-| Wire | `Alt+W` | `W` and the Wire pins button | ✅ — also accept `Alt+W` |
-| Net label / power flags | `Alt+N`, VCC/GND flags, floating tool | Labels come from the engine; dragging moves them (8b0252b) | ◐ — **add Place → Net label / GND / VCC** that writes `pin → net.X` |
-| Rename a net while placing | `Tab`, double click | Not yet | ✗ — with the item above |
-| Rotate / flip | `Space` / `X` `Y` | `R` rotates; no flip | ◐ — accept `Space`; add `X`/`Y` once the model supports mirroring |
-| Highlight a net | `H`, `Shift+H` | Pad hover highlights a net on the PCB | ◐ — add `H` in both views |
-| Fit | `K` | `F` and the Fit button | ✅ — also accept `K` |
-| Panels | `[` `]` `\` | Fixed | ✗ — cheap to add |
-| Find | `Ctrl+F`, Find Similar | Not yet | ✗ — stage 2 |
+| Project tree | Project → Board → sheets + PCB | Project Design → Page: the project, its circuit files, each with Schematic and PCB; `Ctrl+O` goes there; no sheets | ◐ — stage 3 (hierarchical sheets, block tree) |
+| Documents | Tabs for each sheet and the PCB | Document tabs above the canvas: the open file's Schematic and PCB | ◐ — stage 3 |
+| Left panel | Page, Net, Component, Object | A vertical strip with Project Design (Page, Net, Component, Object) and Common Library | ✅ |
+| Right panel | Properties of the selection or the page | Properties on a vertical strip: the selection in Basic, Footprint, Position, Connections, Library and Notes; with nothing selected the build, notes and BOM | ✅ — Layer and Filter in round 4 |
+| Bottom panel | Library, Log, DRC, Find Results, Property List | A bottom strip with Library, Log, DRC and Find Results | ◐ — Find in round 3, the Library table in round 4 |
+| Status bar | X/Y, dX/dY, zoom, grid, snap, unit | Zoom, X/Y, dX/dY while dragging and the PCB's unit at the bottom left; snap in the toolbar | ◐ — grid style in round 2 |
+| Place a part | `Shift+F` dialog, bottom library | `Shift+F`, Place → Component and the toolbar open Common Library with its search; the bottom Library places too | ✅ |
+| Wire | `Alt+W` | `W`, `Alt+W`, Place → Wire and the toolbar | ✅ |
+| Net label / power flags | `Alt+N`, VCC/GND flags, floating tool | Place → Net label (`Alt+N`), Ground flag and Power flag, in the toolbar too; they stay armed until Esc; dragging moves a label | ✅ |
+| Rename a net while placing | `Tab`, double click | `Tab` names a label before it is placed; no double click | ◐ — double click in round 3 |
+| Rotate / flip | `Space` / `X` `Y` | `Space`, `R`, Layout → Rotate and the toolbar rotate; no flip | ◐ — `X`/`Y` once the model supports mirroring (stages 3 to 5) |
+| Highlight a net | `H`, `Shift+H` | `H` and `Shift+H` in both views, the Net tab, and Design → Highlight net for the selected part's nets | ✅ |
+| Fit | `K` | `F`, `K`, View → Fit all and the toolbar | ✅ |
+| Panels | `[` `]` `\` | `[` `]` `\` and the strips at the window's edges | ✅ |
+| Find | `Ctrl+F`, Find Similar | Not yet; the menu items and the Find Results tab are there | ✗ — round 3 |
 | Align / distribute | Toolbar and Layout menu | Not yet | ✗ — stage 3 (block layout needs it) |
 | Annotate designators | Design → Annotate | The engine reports duplicates; placement picks the next free name | ◐ |
 | Design rules | Design Rule dialog, net classes | `rules.yaml` planned | ✗ — stage 2 (`rules.yaml` + a Rules panel) |
-| DRC | Check DRC, Real-Time DRC, DFM | Engine diagnostics only | ◐ — stage 2 (live checks were already the plan) |
+| DRC | Check DRC, Real-Time DRC, DFM | Design → Check DRC and the DRC tab: every build's checks, ringed on the canvas | ◐ — DFM with fabrication (stage 6) |
 | Schematic → PCB | `Alt+I` Update/Convert | Not needed: one model, always in step | ✅ (by design) |
 | Cross probe | `Shift+X` | Same selection in both views | ✅ — the selection is shared |
 | Placement transfer | `Ctrl+Shift+X` | Auto-placement packs around the board centre | ✗ — **fits the block-by-block workflow**; stage 3 |
 | Reuse block / block symbol | Reuse Block, Generate Block Symbol | Blocks and instances designed | ✗ — stage 3 |
-| Layer manager | Grouped layers, colours, eye, filters | Top / Bottom / Silk / Courtyard toggles | ◐ — stage 4, when copper and 4 layers arrive |
+| Layer manager | Grouped layers, colours, eye, filters | Top / Bottom / Silk / Courtyard toggles in the toolbar | ◐ — the Layer panel in round 4; more layers with copper (stage 4) |
 | Routing | `Alt+W` single, `L` corner, `Alt+V` via, `Shift+W` stretch, width | Ratsnest only | ✗ — stage 4 (by hand), stage 5 (router) |
 | Regions | Copper, fill, slot, keepout, outline | Board outline from TSX | ✗ — stages 2–4 |
 | Auto routing / fanout | Route menu | Planned on request | ✗ — stage 5 |
-| Outputs | Gerber, CPL, BOM, PDF/SVG, order | BOM and package | ◐ — stage 6 |
-| History | Historical Records, Version Control | History + undo for every change | ✅ |
+| Outputs | Gerber, CPL, BOM, PDF/SVG, order | Export → BOM (a CSV file) and Package | ◐ — stage 6 |
+| History | Historical Records, Version Control | The Log tab: every change, with undo; `Ctrl+Z` | ✅ |
 | Scripts | Run Script, Extensions | Code-first files and MCP for the agent | ✅ (different approach) |
 
 ## 5. What to do next, in order

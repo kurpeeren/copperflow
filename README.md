@@ -77,29 +77,51 @@ copperflow's own footprints and schematic symbols. The PCB shows the ratsnest, a
 for each connection still to be made, until routing arrives: hand routing in stage 4 and the
 router in stage 5 of [the engine design](docs/engine-design.md#stages).
 
+The window is laid out like a desktop EDA editor:
+
+- The menu bar (File, Edit, View, Place, Design, Route, Layout, Tools, Export, Settings, Help) runs
+  every command Studio has, and shows the ones still to come greyed out, with the stage or round
+  that brings them. The build status sits at its right end; click it to see the checks.
+- The toolbar under it holds the open document's tools: undo, zoom and fit, the schematic's Place
+  tools (component, wire, net label, ground, power), rotate, Check DRC and the PCB's unit, and at
+  its right end the snap grid, the PCB's layer switches and Keep these positions.
+- The strip at the left edge opens Project Design or Common Library. Project Design has four
+  tabs: Page (the project's circuit files, each with its Schematic and PCB), Net (every net; click
+  one to highlight it in both views), Component (the parts) and Object (the connections).
+- The strip at the right edge opens Properties: the selected part in Basic, Footprint, Position,
+  Connections, Library and Notes sections, or, with nothing selected, the build, the notes for the
+  agent and the bill of materials, which it exports with the datasheets.
+- Document tabs above the canvas switch between the open file's Schematic and PCB.
+- The strip at the bottom opens Library, Log (the history, with undo), DRC (the build's errors and
+  warnings, which are ringed on the canvas; click one to go to it) and Find Results.
+
 Drag parts on the PCB (they snap to a 0.1, 0.5 or 1 mm grid), press R to rotate and Delete to
-remove, scroll to zoom, drag the background to pan, lock parts, change values in the inspector,
+remove, scroll to zoom, drag the background to pan, lock parts, change values in Properties,
 move symbols in the schematic and draw wires as in KiCad (click a free pin, or press W over a pin,
 click the sheet for corners on the grid, then click a pin, a net label or a wire; Esc cancels),
 leave marks for the agent and undo changes.
 Drag a net label or a ground or power symbol in the schematic and its wire follows, written as `schematicRouteHints` on the trace (Esc cancels the drag).
-The Place tools in the schematic toolbar (Net label, GND, VCC) put a label on a pin you click, written as a trace with one corner, and stay armed until Esc; Tab names a label before you click.
-The Nets tab lists every net and highlights it in both views.
-The Checks panel under the canvas lists the build's errors and warnings, which are ringed on the canvas; click one to go to it.
+The Place tools in the schematic toolbar (Net label, Ground flag, Power flag) put a label on a pin you click, written as a trace with one corner, and stay armed until Esc; Tab names a label before you click.
+Design → Highlight net lights every net of the selected part.
 
 Keys, ignored while you type in a field:
 
 - `W` or `Alt+W` wires, `Alt+N` places a net label, `Space` or `R` rotates, `Delete` removes, `F` or `K` fits
 - `H` highlights the net under the pointer, `Shift+H` clears it
-- `Q` switches the PCB between mm and mil (display only), `[` and `]` hide the left and right panels, `\` shows the Checks panel, `Shift+F` searches the library
+- `Q` switches the PCB between mm and mil (display only), `Shift+F` searches the library
+- `[`, `]` and `\` hide and show the left, right and bottom panels; the bottom panel comes back on the tab it had
+- `Ctrl+Z` undoes the last change, `Ctrl+O` goes to the circuit files under Project Design → Page
+- `Esc` clears the selection and puts the tools away
+- In the menu bar the arrow keys move between the menus and their items, Enter or Space runs an
+  item and Esc closes the menu; in every row of tabs the arrow keys move between the tabs.
+  Help → Keys lists every key.
 
 Every edit is written back into the circuit file and shows at once.
 When the agent changes the file, the editor updates by itself.
 
-The Library tab places parts from your library or the built-in parts (resistor, capacitor, LED
-and so on). Selecting a library part shows its maker, MPN, supplier number, datasheet and
-checklist, and lets you mark it verified. With nothing selected, the right panel shows the bill
-of materials and exports it with the datasheets.
+The Library, in Common Library and in the bottom strip, places parts from your library or the
+built-in parts (resistor, capacitor, LED and so on). Selecting a library part shows its maker,
+MPN, supplier number, datasheet and checklist in Properties, and lets you mark it verified.
 
 ## How it works
 

@@ -20,7 +20,7 @@ interface Props {
   selected: string | null
   onSelect(name: string | null): void
   actions: Actions
-  /** The built design, for the Nets tab. */
+  /** The built design, for the Net tab. */
   design: Design | undefined
   left: LeftState
   onSub(sub: DesignSub): void

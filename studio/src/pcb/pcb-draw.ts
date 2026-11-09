@@ -17,7 +17,7 @@ export interface PcbDrawOptions {
   ratsnest?: boolean
   /** Violations with a position, ringed above everything else. */
   violations?: readonly ViolationMarker[]
-  /** The violation picked in the Checks panel, whose ring is thicker. */
+  /** The violation picked in the DRC tab, whose ring is thicker. */
   activeViolation?: string
 }
 
