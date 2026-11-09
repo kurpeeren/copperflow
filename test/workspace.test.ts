@@ -144,6 +144,20 @@ describe("editing and history", () => {
     expect(await readFile(join(root, "package.json"), "utf8")).toBe("{}")
   })
 
+  test("a crafted loop of undos and redos does not hang the history list", async () => {
+    await mkdir(join(root, ".copperflow", "history"), { recursive: true })
+    const base = { time: "t", author: "human", file: FILE, before: BOARD, after: BOARD }
+    const entries = [
+      { ...base, id: "c0001", summary: "a", redoOf: "c0002" },
+      { ...base, id: "c0002", summary: "b", undoOf: "c0001" },
+    ]
+    for (const entry of entries) await writeFile(join(root, ".copperflow", "history", `${entry.id}.json`), JSON.stringify(entry))
+    expect((await listEntries(root, 10)).map((e) => [e.id, e.undone, e.redoneAs ?? null])).toEqual([
+      ["c0002", false, "c0001"],
+      ["c0001", true, null],
+    ])
+  })
+
   test("a damaged history file is named in the error and does not block new edits", async () => {
     await mkdir(join(root, ".copperflow", "history"), { recursive: true })
     await writeFile(join(root, ".copperflow", "history", "c0001.json"), '{"id": "c00')
@@ -176,10 +190,10 @@ describe("redo", () => {
     expect(await read()).toBe(edited)
     expect(redo).toMatchObject({ author: "human", file: FILE, summary: "Redo: remove LED1", redoOf: undo.id, before: BOARD, after: edited })
     const entries = await listEntries(root, 10)
-    expect(entries.map((e) => [e.summary, e.undone, e.redone])).toEqual([
-      ["Redo: remove LED1", false, false],
-      ["Undo: remove LED1", false, true],
-      ["remove LED1", true, false],
+    expect(entries.map((e) => [e.summary, e.undone, e.redoneAs])).toEqual([
+      ["Redo: remove LED1", false, undefined],
+      ["Undo: remove LED1", false, redo.id],
+      ["remove LED1", false, redo.id],
     ])
     await expect(redoChange(root, { author: "human" })).rejects.toThrow(/Nothing to redo/)
   })
@@ -195,6 +209,39 @@ describe("redo", () => {
     const redo = await redoChange(root, { author: "human" })
     expect(await read()).toBe(edited)
     expect(redo).toMatchObject({ summary: "Redo: remove LED1", redoOf: again.id })
+  })
+
+  test("the history shows a redone change as redone, as the redo it lives on as, and as undone once that is undone", async () => {
+    const edit = await removeLed()
+    const undo = await undoChange(root, { author: "human" })
+    const redo = await redoChange(root, { author: "human" })
+    const marks = async () => (await listEntries(root, 10)).map((e) => [e.id, e.undone, e.redoneAs])
+    const undoAgain = await undoChange(root, { author: "human" })
+    expect(await marks()).toEqual([
+      [undoAgain.id, false, undefined],
+      [redo.id, true, undefined],
+      [undo.id, false, redo.id],
+      [edit.entry.id, true, undefined],
+    ])
+    const redoAgain = await redoChange(root, { author: "human" })
+    expect(await marks()).toEqual([
+      [redoAgain.id, false, undefined],
+      [undoAgain.id, false, redoAgain.id],
+      [redo.id, false, redoAgain.id],
+      [undo.id, false, redo.id],
+      [edit.entry.id, false, redoAgain.id],
+    ])
+  })
+
+  test("undoing a change that was redone names the redo to undo instead", async () => {
+    const edit = await removeLed()
+    await undoChange(root, { author: "human" })
+    const redo = await redoChange(root, { author: "human" })
+    await expect(undoChange(root, { author: "human", id: edit.entry.id })).rejects.toThrow(
+      `${edit.entry.id} was undone and redone as ${redo.id}; undo ${redo.id} instead`,
+    )
+    await undoChange(root, { author: "human", id: redo.id })
+    await expect(undoChange(root, { author: "human", id: edit.entry.id })).rejects.toThrow(/already undone/)
   })
 
   test("redo walks back up the undo stack in order", async () => {

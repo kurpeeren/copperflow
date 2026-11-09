@@ -37,8 +37,8 @@ test("multi-line props and marks cannot forge summary lines", () => {
 
 test("history shows who changed what and what was undone", () => {
   const text = formatHistory([
-    { id: "c0002", time: "2026-11-03T10:01:00.000Z", author: "human", file: "a.circuit.tsx", summary: "Undo: remove D3", undoOf: "c0001", undone: false, redone: false },
-    { id: "c0001", time: "2026-11-03T10:00:00.000Z", author: "ai", file: "a.circuit.tsx", summary: "remove D3", undone: true, redone: false },
+    { id: "c0002", time: "2026-11-03T10:01:00.000Z", author: "human", file: "a.circuit.tsx", summary: "Undo: remove D3", undoOf: "c0001", undone: false },
+    { id: "c0001", time: "2026-11-03T10:00:00.000Z", author: "ai", file: "a.circuit.tsx", summary: "remove D3", undone: true },
   ])
   expect(text.split("\n")).toEqual([
     "c0002  2026-11-03T10:01:00.000Z  human  Undo: remove D3  (a.circuit.tsx)",
@@ -46,13 +46,15 @@ test("history shows who changed what and what was undone", () => {
   ])
 })
 
-test("history shows which undo was redone", () => {
+test("history names the redo on the undo it took back and on the change it brought back", () => {
   const text = formatHistory([
-    { id: "c0003", time: "2026-11-03T10:02:00.000Z", author: "human", file: "a.circuit.tsx", summary: "Redo: remove D3", redoOf: "c0002", undone: false, redone: false },
-    { id: "c0002", time: "2026-11-03T10:01:00.000Z", author: "human", file: "a.circuit.tsx", summary: "Undo: remove D3", undoOf: "c0001", undone: false, redone: true },
+    { id: "c0003", time: "2026-11-03T10:02:00.000Z", author: "human", file: "a.circuit.tsx", summary: "Redo: remove D3", redoOf: "c0002", undone: false },
+    { id: "c0002", time: "2026-11-03T10:01:00.000Z", author: "human", file: "a.circuit.tsx", summary: "Undo: remove D3", undoOf: "c0001", undone: false, redoneAs: "c0003" },
+    { id: "c0001", time: "2026-11-03T10:00:00.000Z", author: "ai", file: "a.circuit.tsx", summary: "remove D3", undone: false, redoneAs: "c0003" },
   ])
   expect(text.split("\n")).toEqual([
     "c0003  2026-11-03T10:02:00.000Z  human  Redo: remove D3  (a.circuit.tsx)",
-    "c0002  2026-11-03T10:01:00.000Z  human  Undo: remove D3  (a.circuit.tsx) [redone]",
+    "c0002  2026-11-03T10:01:00.000Z  human  Undo: remove D3  (a.circuit.tsx) [redone as c0003]",
+    "c0001  2026-11-03T10:00:00.000Z  ai  remove D3  (a.circuit.tsx) [redone as c0003]",
   ])
 })

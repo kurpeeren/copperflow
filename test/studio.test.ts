@@ -179,7 +179,7 @@ describe("editing", () => {
     expect(await readFile(join(root, FILE), "utf8")).toBe(BOARD)
   })
 
-  test("redo re-applies the undone change as the human, and the history marks the undo redone", async () => {
+  test("redo re-applies the undone change as the human, and the history names the redo on the undo and the change", async () => {
     await data(await api("/api/edit", { file: FILE, summary: "remove LED1", edits: [{ kind: "removePart", part: "LED1" }] }))
     const edited = await readFile(join(root, FILE), "utf8")
     const undo = await data(await api("/api/undo", {}))
@@ -187,10 +187,12 @@ describe("editing", () => {
     expect(redo).toEqual({ entryId: "c0003", summary: "Redo: remove LED1", writeMark: expect.any(Number) })
     expect(await readFile(join(root, FILE), "utf8")).toBe(edited)
     const history = await data(await api("/api/history"))
-    expect(history.slice(0, 2)).toMatchObject([
-      { id: "c0003", author: "human", redoOf: undo.entryId, redone: false },
-      { id: undo.entryId, redone: true },
+    expect(history.map((e: { id: string; undone: boolean; redoneAs?: string }) => [e.id, e.undone, e.redoneAs ?? null])).toEqual([
+      ["c0003", false, null],
+      [undo.entryId, false, "c0003"],
+      ["c0001", false, "c0003"],
     ])
+    expect(history[0]).toMatchObject({ author: "human", redoOf: undo.entryId })
     const again = await api("/api/redo", {})
     expect(again.status).toBe(400)
     expect((await again.json()).error).toBe("Nothing to redo")

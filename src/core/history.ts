@@ -21,10 +21,52 @@ export type HistoryEntry = z.infer<typeof EntrySchema>
 export type Author = HistoryEntry["author"]
 
 export interface HistoryListing extends Omit<HistoryEntry, "before" | "after"> {
-  /** A later entry undid this one. */
+  /** A later undo took this change back, and no redo has brought it back since. */
   undone: boolean
-  /** This is an undo that a later entry redid. */
-  redone: boolean
+  /**
+   * The redo that brought this back. On an undo, the redo that took it back; on a change that was undone, the redo it
+   * lives on as now, at the end of its chain of undos and redos.
+   */
+  redoneAs?: string
+}
+
+/** Who took each entry back: the undo of each change, and the redo of each undo. */
+interface Links {
+  undoneBy: ReadonlyMap<string, string>
+  redoneBy: ReadonlyMap<string, string>
+}
+
+function linksOf(entries: readonly HistoryEntry[]): Links {
+  const undoneBy = new Map<string, string>()
+  const redoneBy = new Map<string, string>()
+  for (const entry of entries) {
+    if (entry.undoOf) undoneBy.set(entry.undoOf, entry.id)
+    if (entry.redoOf) redoneBy.set(entry.redoOf, entry.id)
+  }
+  return { undoneBy, redoneBy }
+}
+
+/** The end of a change's chain of undos and redos when that is a redo in effect; ids grow along it, so a crafted loop ends. */
+function livesOn(links: Links, id: string): string | undefined {
+  let current = id
+  for (;;) {
+    const undo = links.undoneBy.get(current)
+    if (!undo) return current === id ? undefined : current
+    const redo = links.redoneBy.get(undo)
+    if (!redo || idNumber(redo) <= idNumber(current)) return undefined
+    current = redo
+  }
+}
+
+/** For a change that was undone and then redone, and is in effect again: the redo it lives on as. */
+export function livesOnAs(entries: readonly HistoryEntry[], id: string): string | undefined {
+  return livesOn(linksOf(entries), id)
+}
+
+function listing(entry: Omit<HistoryEntry, "before" | "after">, links: Links): HistoryListing {
+  const redoneAs = entry.undoOf ? links.redoneBy.get(entry.id) : livesOn(links, entry.id)
+  const undone = links.undoneBy.has(entry.id) && redoneAs === undefined
+  return redoneAs ? { ...entry, undone, redoneAs } : { ...entry, undone }
 }
 
 const ENTRY_FILE = /^c(\d{4,})\.json$/
@@ -66,12 +108,11 @@ export async function readEntries(root: string): Promise<HistoryEntry[]> {
 /** The newest entries first, without file contents. */
 export async function listEntries(root: string, limit: number): Promise<HistoryListing[]> {
   const entries = await readEntries(root)
-  const undone = new Set(entries.flatMap((e) => (e.undoOf ? [e.undoOf] : [])))
-  const redone = new Set(entries.flatMap((e) => (e.redoOf ? [e.redoOf] : [])))
+  const links = linksOf(entries)
   return entries
     .slice(-limit)
     .reverse()
-    .map(({ before: _before, after: _after, ...rest }) => ({ ...rest, undone: undone.has(rest.id), redone: redone.has(rest.id) }))
+    .map(({ before: _before, after: _after, ...rest }) => listing(rest, links))
 }
 
 async function readEntry(root: string, id: string): Promise<HistoryEntry> {

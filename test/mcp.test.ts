@@ -5,7 +5,7 @@ import { join } from "node:path"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { createCopperflowServer } from "../src/mcp/server.js"
-import { loadCircuit, updateAnnotations } from "../src/core/workspace.js"
+import { loadCircuit, redoChange, undoChange, updateAnnotations } from "../src/core/workspace.js"
 import { addMark, lockParts } from "../src/core/annotations.js"
 import { checkCircuit, formatCheck } from "../src/core/check.js"
 import { BOARD, LDO, SHARED, USBX, USBX_FOOTPRINT } from "./fixtures.js"
@@ -125,6 +125,25 @@ describe("MCP server", () => {
     const result = await call("remove_part", { file: FILE, part: "R1" })
     expect(result.isError).toBe(true)
     expect(result.text).toContain("R1 is locked")
+  })
+
+  test("a human's redo of the agent's change shows in recent_changes, and undo_change says the agent cannot undo it", async () => {
+    const { tools } = await client.listTools()
+    const description = tools.find((t) => t.name === "undo_change")?.description ?? ""
+    expect(description).toMatch(/"Redo:"/)
+    expect(description).toMatch(/cannot undo/)
+    expect(tools.find((t) => t.name === "recent_changes")?.description).toMatch(/redos/)
+    expect((await call("remove_part", { file: FILE, part: "LED1" })).isError).toBe(false)
+    await undoChange(root, { author: "human" })
+    await redoChange(root, { author: "human" })
+    const history = (await call("recent_changes")).text.split("\n")
+    expect(history[0]).toContain("human  Redo: remove LED1")
+    expect(history[1]).toMatch(/Undo: remove LED1 .*\[redone as c0003\]$/)
+    expect(history[2]).toMatch(/ai  remove LED1 .*\[redone as c0003\]$/)
+    const refused = await call("undo_change", { id: "c0001" })
+    expect(refused).toMatchObject({ isError: true })
+    expect(refused.text).toContain("redone as c0003")
+    expect((await call("undo_change", { id: "c0003" })).text).toContain("only undo its own")
   })
 
   test("traces, history and undo work end to end", async () => {

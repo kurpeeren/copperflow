@@ -241,7 +241,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
   server.registerTool(
     "recent_changes",
     {
-      description: "List recent changes by the agent and the human, newest first, including undos.",
+      description: "List recent changes by the agent and the human, newest first, including undos and redos.",
       inputSchema: { limit: z.number().int().min(1).max(200).optional() },
       annotations: READ_ONLY,
     },
@@ -251,7 +251,8 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
   server.registerTool(
     "undo_change",
     {
-      description: "Undo one of your own changes: the newest one, or the given change id.",
+      description:
+        'Undo one of your own changes: the newest one, or the given change id. When the human redoes an undone change, it comes back as the human\'s own "Redo:" entry, which you cannot undo.',
       inputSchema: { id: z.string().optional().describe("Change id such as c0003") },
     },
     ({ id }) =>

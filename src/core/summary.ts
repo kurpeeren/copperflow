@@ -42,7 +42,7 @@ export function formatSummary(circuit: LoadedCircuit): string {
 export function formatHistory(entries: HistoryListing[]): string {
   if (entries.length === 0) return "No changes recorded yet."
   return entries
-    .map((e) => `${e.id}  ${e.time}  ${e.author}  ${e.summary}  (${e.file})${e.undone ? " [undone]" : ""}${e.redone ? " [redone]" : ""}`)
+    .map((e) => `${e.id}  ${e.time}  ${e.author}  ${e.summary}  (${e.file})${e.undone ? " [undone]" : ""}${e.redoneAs ? ` [redone as ${e.redoneAs}]` : ""}`)
     .join("\n")
 }
 

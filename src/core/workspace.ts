@@ -11,7 +11,7 @@ import {
 } from "./annotations.js"
 import { applyEdits, EditError } from "./edit.js"
 import { serialized, writeFileAtomic } from "./fs-utils.js"
-import { readEntries, recordEntry, removeEntry, type Author, type HistoryEntry } from "./history.js"
+import { livesOnAs, readEntries, recordEntry, removeEntry, type Author, type HistoryEntry } from "./history.js"
 import { LIBRARY_OWNED_PROPS, libraryIds, libraryImports, PARTS_DIR } from "./library.js"
 import { partsInSelector } from "./selectors.js"
 import type { CircuitModel, Edit } from "./types.js"
@@ -119,6 +119,8 @@ export function undoChange(root: string, options: { author: Author; id?: string 
       ? entries.find((e) => e.id === options.id)
       : entries.filter((e) => undoable(e) && (options.author === "human" || e.author === "ai")).pop()
     if (!target) throw new Error(options.id ? `No change with id ${options.id}` : "Nothing to undo")
+    const back = livesOnAs(entries, target.id)
+    if (back) throw new Error(`${target.id} was undone and redone as ${back}; undo ${back} instead`)
     if (!undoable(target)) throw new Error(`${target.id} is already undone or is itself an undo`)
     if (options.author === "ai" && target.author !== "ai") throw new Error("The agent can only undo its own changes")
 
