@@ -54,7 +54,8 @@ const TOUCH_TOLERANCE = 1e-9
 const padOnLayer = (pad: WorldPad, layer: CopperLayer) => pad.layers === "through" || pad.layers === layer
 const pointShape = (p: Point): Shape => ({ core: [p], radius: 0 })
 
-function viaSpan(via: ViaRecord): Set<CopperLayer> {
+/** Every layer a via joins: the stack from its first listed layer to its last. */
+export function viaSpan(via: Pick<ViaRecord, "layers">): Set<CopperLayer> {
   const indices = via.layers.map((layer) => STACK.indexOf(layer))
   return new Set(STACK.slice(Math.min(...indices), Math.max(...indices) + 1))
 }

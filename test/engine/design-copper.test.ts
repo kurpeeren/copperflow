@@ -44,11 +44,33 @@ describe("the design reads the layout file", () => {
     expect(unrouted(layout)).toBe("1 connection is not routed yet")
   })
 
-  test("a track joining two nets is a short in the diagnostics", () => {
-    const design = build(trackLine("t0001", padOf("R1#1"), padOf("R1#2")))
-    expect(design.diagnostics.filter((d) => d.code === "short")).toEqual([
-      expect.objectContaining({ severity: "error", items: ["net.GND", "net.SIG", "t0001"] }),
+  test("a track joining two nets is a short among the violations, at the track, and not a diagnostic", () => {
+    const a = padOf("R1#1")
+    const design = build(trackLine("t0001", a, padOf("R1#2")))
+    expect(design.violations.filter((v) => v.code === "short")).toEqual([
+      expect.objectContaining({ id: "short:net.GND,net.SIG,t0001", severity: "error", items: ["net.GND", "net.SIG", "t0001"], view: "pcb", at: { x: a.x, y: a.y } }),
     ])
+    expect(design.diagnostics.filter((d) => d.code === "short")).toEqual([])
+  })
+
+  test("floating copper and a named net the pads contradict are warnings among the violations", () => {
+    const floating = `${JSON.stringify({ t: "via", id: "v0001", at: { x: 0, y: -6 }, drill: 0.3, diameter: 0.8, layers: ["top", "bottom"], locked: false, by: "human" })}
+`
+    const design = build(floating + trackLine("t0001", padOf("R1#1"), padOf("R2#1"), "GND"))
+    const found = design.violations.filter((v) => v.code === "floating" || v.code === "mismatch")
+    expect(found.map((v) => [v.id, v.severity, v.at])).toEqual([
+      ["floating:v0001", "warning", { x: 0, y: -6 }],
+      ["mismatch:t0001", "warning", { x: padOf("R1#1").x, y: padOf("R1#1").y }],
+    ])
+    expect(design.diagnostics.filter((d) => d.code === "floating" || d.code === "mismatch")).toEqual([])
+  })
+
+  test("copper too close to a pad of another net is a clearance violation of the design", () => {
+    const r3 = padOf("R3#2")
+    const near = `${JSON.stringify({ t: "track", id: "t0001", net: "SIG", layer: "top", width: 0.25, points: [{ x: r3.x - 2, y: r3.y + r3.height / 2 + 0.225 }, { x: r3.x + 2, y: r3.y + r3.height / 2 + 0.225 }], locked: false, by: "human" })}
+`
+    const design = build(trackLine("t0002", padOf("R1#1"), padOf("R3#1")) + near)
+    expect(design.violations.map((v) => v.id)).toContain("copper-clearance:R3#2|t0001")
   })
 
   test("a bad line in the layout file is an error naming the file, and the good lines still count", () => {

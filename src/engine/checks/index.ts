@@ -1,10 +1,12 @@
-import type { Circuit } from "../model.js"
+import type { Circuit, Diagnostic } from "../model.js"
 import { naturalCompare } from "../order.js"
 import type { PcbLayout } from "../pcb.js"
 import { netClasses } from "../rules/classes.js"
 import { DEFAULT_CLASS } from "../rules/profiles.js"
 import type { Rules } from "../rules/schema.js"
 import type { SchematicLayout } from "../schematic.js"
+import { copperNoteChecks } from "./copper-notes.js"
+import { copperChecks } from "./drc-copper.js"
 import { padChecks } from "./drc-pads.js"
 import { partChecks } from "./drc-parts.js"
 import { electricalChecks } from "./erc.js"
@@ -42,11 +44,27 @@ const hasPosition = (part: PcbLayout["parts"][number]): boolean => Number.isFini
 const unplaced = (part: PcbLayout["parts"][number]): Violation =>
   violation("unchecked", "warning", `${part.component} has no position on the board, so its placement is not checked`, [part.component], "pcb")
 
-/** Every electrical and design-rule violation of one build, in report order. */
-export function checkDesign(circuit: Circuit, schematic: SchematicLayout, layout: PcbLayout, rules: Rules): Violation[] {
+/**
+ * Every electrical and design-rule violation of one build, in report order. `copperNotes` are the
+ * layout's short, floating and mismatch findings (from resolving its copper), reported here too.
+ */
+export function checkDesign(
+  circuit: Circuit,
+  schematic: SchematicLayout,
+  layout: PcbLayout,
+  rules: Rules,
+  copperNotes: readonly Diagnostic[] = [],
+): Violation[] {
   const byNet = netClasses(rules, circuit.nets).byNet
   const classOf = (net: string | undefined): string => (net === undefined ? DEFAULT_CLASS.name : (byNet.get(net) ?? DEFAULT_CLASS.name))
   const placed = { ...layout, parts: layout.parts.filter(hasPosition) }
   const skipped = layout.parts.filter((part) => !hasPosition(part)).map(unplaced)
-  return mergeViolations([...electricalChecks(circuit, schematic, rules), ...padChecks(placed, rules, classOf), ...partChecks(placed, rules), ...skipped])
+  return mergeViolations([
+    ...electricalChecks(circuit, schematic, rules),
+    ...padChecks(placed, rules, classOf),
+    ...partChecks(placed, rules),
+    ...copperChecks(placed, rules, classOf),
+    ...copperNoteChecks(copperNotes, layout),
+    ...skipped,
+  ])
 }

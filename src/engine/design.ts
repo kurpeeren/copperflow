@@ -1,4 +1,5 @@
 import { layoutPathFor, parseLayout, type LayoutRecord } from "../core/layout-file.js"
+import { isCopperNote } from "./checks/copper-notes.js"
 import { checkDesign } from "./checks/index.js"
 import type { Violation } from "./checks/violation.js"
 import { elaborate } from "./elaborate.js"
@@ -62,6 +63,9 @@ export function buildDesign(files: Files, main: string): Design {
   const loaded = loadRules(files)
   const classes = netClasses(loaded.rules, circuit.nets)
   const layers = layerCountWarnings(loaded.rules, circuit.board)
-  const diagnostics = [...circuit.diagnostics, ...wiring, ...copper.diagnostics, ...pcb.diagnostics, ...loaded.diagnostics, ...layers, ...classes.diagnostics]
-  return { version: 1, file: main, circuit, schematic, pcb: pcb.layout, rules: loaded.rules, diagnostics, violations: checkDesign(circuit, schematic, pcb.layout, loaded.rules) }
+  const notes = pcb.diagnostics.filter(isCopperNote)
+  const placement = pcb.diagnostics.filter((d) => !isCopperNote(d))
+  const diagnostics = [...circuit.diagnostics, ...wiring, ...copper.diagnostics, ...placement, ...loaded.diagnostics, ...layers, ...classes.diagnostics]
+  const violations = checkDesign(circuit, schematic, pcb.layout, loaded.rules, notes)
+  return { version: 1, file: main, circuit, schematic, pcb: pcb.layout, rules: loaded.rules, diagnostics, violations }
 }
