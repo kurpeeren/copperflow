@@ -44,15 +44,15 @@ describe("drawPcb", () => {
     expect(hole.map((r) => r.args[2])).toEqual([0.5, 0.5].map((_, i) => (pad(i === 0 ? "J1#1" : "J1#2").drill?.width ?? 0) / 2))
   })
 
-  test("highlighting a net dims the other copper to 0.3", () => {
+  test("highlighting a net dims the other copper to 0.5 and keeps lit pads in their layer colour with a white wash", () => {
     const { ctx, records } = recorder()
     drawPcb(ctx, layout, VIEW, { ratio: 1, highlight: { nets: ["net.GND"] } })
     const copper = records.filter((r) => r.name === "fill" && r.fillStyle === PALETTE.topCopper)
     const lit = records.filter((r) => r.name === "fill" && r.fillStyle === PALETTE.highlight)
     expect(copper.length).toBeGreaterThan(0)
-    expect(copper.every((r) => r.globalAlpha === 0.3)).toBe(true)
+    expect(copper.some((r) => r.globalAlpha === 0.5)).toBe(true)
     expect(lit.length).toBe(2)
-    expect(lit.every((r) => r.globalAlpha === 1)).toBe(true)
+    expect(lit.every((r) => r.globalAlpha === 0.35)).toBe(true)
   })
 
   test("highlighting several nets, as for a part's nets, lights the copper of each", () => {
