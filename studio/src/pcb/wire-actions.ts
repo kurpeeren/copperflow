@@ -53,7 +53,7 @@ const endName = (end: string): string => (end.startsWith("net.") ? `net ${end.sl
 /** The wire's two ends: a hand-drawn wire's connection as written, a wire Studio draws between two pins. */
 function wireEnds(design: Design, shape: WireShape): [string, string] | undefined {
   const { writer } = shape
-  if (writer.kind === "engine") return [pinOfSelector(design, writer.from)?.id ?? writer.from, pinOfSelector(design, writer.to)?.id ?? writer.to]
+  if (writer.kind === "engine") return [pinOfSelector(design, writer.from)?.id ?? endName(writer.from), pinOfSelector(design, writer.to)?.id ?? endName(writer.to)]
   const wire = design.schematic.wires.find((candidate) => candidate.id === shape.id)
   const connection = design.circuit.connections.find((candidate) => candidate.id === wire?.connection)
   return connection ? [endName(connection.from), endName(connection.to)] : undefined
@@ -210,7 +210,7 @@ export function wireReasons(design: Design, source: SourceCircuit, wireId: strin
 
 function kindOf(shape: WireShape): string {
   if (shape.writer.kind === "trace") return `Trace, line ${shape.writer.trace.line}`
-  return shape.writer.kind === "engine" ? "Drawn by Studio on its own" : "Not found in the code"
+  return shape.writer.kind === "engine" ? "Routed by Studio" : "Not found in the code"
 }
 
 /** The Wire section of Properties: net, ends, corners and kind, and why its buttons are off; undefined for a wire gone. */

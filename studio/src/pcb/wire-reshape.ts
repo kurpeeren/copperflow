@@ -2,7 +2,7 @@
 // to draw until the build, and the id the wire has after it. A drag sends the dragged path; a double click on a corner
 // handle sends the path without that corner. Both work from the shape shown, which is a new shape still waiting for
 // its build when there is one. Pure; only types come from the engine.
-import type { Edit } from "../../../src/core/types.js"
+import type { Edit, TraceInfo } from "../../../src/core/types.js"
 import type { Design } from "../../../src/engine/design.js"
 import type { SelectionChange } from "../selection.js"
 import type { Point } from "./geometry.js"
@@ -40,11 +40,24 @@ export function newTraceWireId(connections: readonly { from: string; to: string 
   return before === 0 ? `wire:${from}|${to}` : `wire:${from}|${to}#${before + 1}`
 }
 
+/** A trace end as the engine names it in a connection: a pin's id, or the net selector as written. */
+const endId = (design: Design, end: string): string | undefined => (end.startsWith("net.") ? end : pinOfSelector(design, end)?.id)
+
+/** The id of the wire a trace that is the first between its ends gets once it has corners. */
+const traceWireId = (design: Design, trace: TraceInfo): string | undefined => {
+  const [from, to] = [endId(design, trace.from ?? ""), endId(design, trace.to ?? "")]
+  return from && to ? `wire:${from}|${to}` : undefined
+}
+
 /** What the wire is once the edit is built: a trace's wire keeps its id; a wire Studio drew becomes a new trace's. */
 function after(design: Design, shape: WireShape): ShapeAfter {
   const { writer } = shape
   if (writer.kind !== "engine") return { newTrace: false, wire: shape.id }
-  const [from, to] = [pinOfSelector(design, writer.from)?.id, pinOfSelector(design, writer.to)?.id]
+  if (writer.onWire?.trace) {
+    const wire = traceWireId(design, writer.onWire.trace)
+    return wire ? { newTrace: true, wire } : { newTrace: true }
+  }
+  const [from, to] = [endId(design, writer.from), endId(design, writer.to)]
   return from && to ? { newTrace: true, wire: newTraceWireId(design.circuit.connections, from, to) } : { newTrace: true }
 }
 

@@ -2,7 +2,8 @@
 // fixed, which trace writes them, and the edit that saves a new shape. Pure; the canvas gestures call it.
 // A hand-drawn wire is written as `schematicRouteHints` on its trace. A wire the engine drew on its
 // own (between near pins of a named net) gets a new trace between its two pins, which changes no
-// connection (both pins are on the net already) and only fixes the shape.
+// connection (both pins are on the net already) and only fixes the shape. One it routed from a pin to
+// another wire of its net is written from the pin to the net (wire-on-wire.ts).
 import type { Edit, TraceInfo } from "../../../src/core/types.js"
 import type { Design } from "../../../src/engine/design.js"
 import type { Connection, Pin } from "../../../src/engine/model.js"
@@ -10,6 +11,7 @@ import type { Point } from "./geometry.js"
 import type { SourceCircuit } from "./positions.js"
 import { endMatches, lockedPart, netNames, NO_LOCKS, pickRepeat, repeatBlocker, traceBlocker, tracesBetween, type EndMatch } from "./trace-source.js"
 import { tidy } from "./wire-geometry.js"
+import { bareTrace, onNetWire, onWireEdits, type OnWire } from "./wire-on-wire.js"
 import { addressable, pinOfSelector, pinSelector } from "./wire-tool.js"
 
 export { carryPath, dragCorner, dragSegment, removeCorner, tidy, type MovingEnds } from "./wire-geometry.js"
@@ -32,8 +34,11 @@ type TraceWriter = {
 /** What writes a wire's corners. */
 export type WireWriter =
   | TraceWriter
-  /** A wire the engine drew between two pins; saving the shape adds a trace between them. */
-  | { kind: "engine"; from: string; to: string; components: string[]; unaddressable?: string }
+  /**
+   * A wire the engine drew between two pins; saving the shape adds a trace between them. With `onWire` it runs from a
+   * pin (`from`) to a point on another wire of its net (`to` names the net), and saving writes a trace between those.
+   */
+  | { kind: "engine"; from: string; to: string; components: string[]; unaddressable?: string; onWire?: OnWire }
   | { kind: "none"; reason: string }
 
 export interface WireShape {
@@ -78,19 +83,29 @@ function pinAtEnd(design: Design, pins: readonly string[], p: Point): Pin | unde
   return id === undefined ? undefined : pinById(design, id)
 }
 
-function engineDrawn(design: Design, id: string, points: Point[], netId: string): WireShape {
+const unaddressableOf = (design: Design, pins: readonly Pin[]): { unaddressable?: string } => {
+  const pin = pins.find((candidate) => !addressable(pinSelector(design, candidate)))
+  return pin ? { unaddressable: `${pin.id} has a repeated name and cannot be wired from the Studio` } : {}
+}
+
+/** A wire from a pin to a point on another wire of its named net, or undefined when the wire is not one. */
+function toNetWire(design: Design, source: SourceCircuit, id: string, points: Point[], pin: Pin, pinLast: boolean, netId: string): WireShape | undefined {
+  const name = design.circuit.nets.find((candidate) => candidate.id === netId)?.names[0]
+  const meeting = pinLast ? points[0] : points[points.length - 1]
+  if (name === undefined || !meeting || !onNetWire(design, id, netId, meeting)) return undefined
+  const trace = bareTrace(design, source, pin, netId)
+  const onWire: OnWire = trace ? { pinLast, trace } : { pinLast }
+  return shape(id, points, { kind: "engine", from: pinSelector(design, pin), to: `net.${name}`, components: [pin.component], ...unaddressableOf(design, [pin]), onWire })
+}
+
+function engineDrawn(design: Design, source: SourceCircuit, id: string, points: Point[], netId: string): WireShape {
   const net = design.circuit.nets.find((candidate) => candidate.id === netId)
   const [first, last] = [points[0], points[points.length - 1]]
   const [a, b] = first && last && net ? [pinAtEnd(design, net.pins, first), pinAtEnd(design, net.pins, last)] : []
+  const onWire = a && !b ? toNetWire(design, source, id, points, a, false, netId) : !a && b ? toNetWire(design, source, id, points, b, true, netId) : undefined
+  if (onWire) return onWire
   if (!a || !b) return shape(id, points, { kind: "none", reason: "The pins of this wire are not on the sheet" })
-  const unaddressable = [a, b].find((pin) => !addressable(pinSelector(design, pin)))
-  return shape(id, points, {
-    kind: "engine",
-    from: pinSelector(design, a),
-    to: pinSelector(design, b),
-    components: [a.component, b.component],
-    ...(unaddressable ? { unaddressable: `${unaddressable.id} has a repeated name and cannot be wired from the Studio` } : {}),
-  })
+  return shape(id, points, { kind: "engine", from: pinSelector(design, a), to: pinSelector(design, b), components: [a.component, b.component], ...unaddressableOf(design, [a, b]) })
 }
 
 /** The wire `wireId` as the Studio can reshape it; undefined when the sheet has no such wire. */
@@ -100,7 +115,7 @@ export function wireOf(design: Design, source: SourceCircuit, wireId: string): W
   const points = wire.points.map((p) => ({ x: p.x, y: p.y }))
   const connection = design.circuit.connections.find((candidate) => candidate.id === wire.connection)
   if (connection) return handDrawn(design, source, wire.id, points, connection)
-  if (ENGINE_WIRE.test(wire.id)) return engineDrawn(design, wire.id, points, wire.net)
+  if (ENGINE_WIRE.test(wire.id)) return engineDrawn(design, source, wire.id, points, wire.net)
   return shape(wire.id, points, { kind: "none", reason: "This wire is not drawn from the code" })
 }
 
@@ -145,6 +160,7 @@ export function wireShapeEdits(design: Design, wire: WireShape, path: readonly P
     return [{ kind: "setTraceHints", from: writer.trace.from ?? "", to: writer.trace.to ?? "", schematicRouteHints: cornersOf(next, writer) }]
   }
   if (writer.kind !== "engine") return []
+  if (writer.onWire) return onWireEdits(writer.onWire, writer.from, writer.to, next)
   const corners = next.slice(1, -1)
   return [{ kind: "addTrace", from: writer.from, to: writer.to, ...(corners.length > 0 ? { schematicRouteHints: corners } : {}) }]
 }

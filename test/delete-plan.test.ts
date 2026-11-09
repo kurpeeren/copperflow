@@ -126,9 +126,8 @@ describe("what Delete cannot remove", () => {
     expect(result.plan.skipped).toEqual(["R4 is locked"])
   })
 
-  // Studio follow-up: GND_2 now ends on GND's wire (R6.pin1 carries both), and the Studio cannot yet name a wire
-  // Studio draws whose end is on a wire of its net. This passes once it can; remove `.fails` then.
-  test.fails("several wires Studio draws are counted in one sentence, not named one by one", () => {
+  // GND_2 ends on GND's wire (R6.pin1 carries both): a wire Studio draws to a wire of its net is counted too.
+  test("several wires Studio draws are counted in one sentence, not named one by one", () => {
     const result = plan(Selection.none.addWires([GND, GND_2, R3_VCC]))
     if ("message" in result) throw new Error(result.message)
     expect(result.plan.skipped).toEqual(["2 wires have no trace of their own: Studio draws them for their nets"])

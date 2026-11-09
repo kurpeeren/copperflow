@@ -141,7 +141,7 @@ describe("the Wire section of Properties", () => {
       ["From", "R5.pin1"],
       ["To", "R6.pin1"],
       ["Corners", "0"],
-      ["Kind", "Drawn by Studio on its own"],
+      ["Kind", "Routed by Studio"],
     ])
     expect(wireProperties(design, model, "wire:net.GND:1")).toMatchObject({ net: "net.GND", remove: ENGINE, removeCorners: ENGINE })
   })
