@@ -3,7 +3,7 @@ import type { NetLabel } from "../src/engine/schematic.js"
 import { boxSelection } from "../studio/src/pcb/box-select.js"
 import type { PartBox } from "../studio/src/pcb/geometry.js"
 import { targetAt } from "../studio/src/pcb/gestures.js"
-import { ALL_LAYERS_SHOWN, type PickLayers } from "../studio/src/pcb/layers.js"
+import { DEFAULT_LAYERS, type PickLayers } from "../studio/src/pcb/layers.js"
 import { canPick, pickNames, picks, selectAll, type PickContext } from "../studio/src/pcb/pick.js"
 import { Selection } from "../studio/src/selection.js"
 
@@ -60,7 +60,7 @@ describe("every pick goes through canPick", () => {
 })
 
 describe("hidden layers", () => {
-  const visible = { ...ALL_LAYERS_SHOWN, top: false, topAssembly: false }
+  const visible = { ...DEFAULT_LAYERS, top: false, topAssembly: false }
   const layers: PickLayers = { visible, of: (part) => (part === "R1" ? ["top", "topAssembly"] : ["top", "multiLayer"]) }
   const hiding: PickContext = { ...free, layers }
 

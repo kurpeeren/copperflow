@@ -4,7 +4,7 @@
 import type { PlacedFootprint } from "../../../src/engine/pcb.js"
 import { PALETTE } from "./ctx.js"
 
-export const LAYER_IDS = ["top", "bottom", "topSilk", "bottomSilk", "topAssembly", "bottomAssembly", "boardOutline", "multiLayer", "hole", "ratline", "keepout"] as const
+export const LAYER_IDS = ["top", "bottom", "topSilk", "bottomSilk", "topAssembly", "bottomAssembly", "courtyard", "boardOutline", "multiLayer", "hole", "ratline", "keepout"] as const
 export type LayerId = (typeof LAYER_IDS)[number]
 
 export type LayerGroup = "copper" | "non-copper"
@@ -26,6 +26,7 @@ const LAYER_ROWS: readonly LayerRow[] = [
   { id: "bottomSilk", name: "Bottom Silkscreen", group: "non-copper", color: PALETTE.bottomSilk },
   { id: "topAssembly", name: "Top Assembly", group: "non-copper", color: PALETTE.topAssembly },
   { id: "bottomAssembly", name: "Bottom Assembly", group: "non-copper", color: PALETTE.bottomAssembly },
+  { id: "courtyard", name: "Courtyard", group: "non-copper", color: PALETTE.topAssembly },
   { id: "boardOutline", name: "Board Outline", group: "non-copper", color: PALETTE.boardEdge },
   { id: "multiLayer", name: "Multi-Layer", group: "copper", color: PALETTE.multiLayer },
   { id: "hole", name: "Hole", group: "non-copper", color: PALETTE.drill },
@@ -40,20 +41,26 @@ export function layerRows(hasKeepouts: boolean, filter: LayerFilter): LayerRow[]
 
 export type LayerVisibility = Readonly<Record<LayerId, boolean>>
 
-export const ALL_LAYERS_SHOWN: LayerVisibility = Object.fromEntries(LAYER_IDS.map((id) => [id, true])) as Record<LayerId, boolean>
+/** Every layer is shown at first except the two assembly layers (fabrication outlines), so the board looks as it always has. */
+export const DEFAULT_LAYERS: LayerVisibility = {
+  ...(Object.fromEntries(LAYER_IDS.map((id) => [id, true])) as Record<LayerId, boolean>),
+  topAssembly: false,
+  bottomAssembly: false,
+}
 
 /** A new record with `id` switched. */
 export function toggleLayer(visibility: LayerVisibility, id: LayerId): LayerVisibility {
   return { ...visibility, [id]: !visibility[id] }
 }
 
-/** The part as far as its layers go. Courtyards and fabrication outlines are drawn on the assembly layer of the side. */
-type LayeredPart = Pick<PlacedFootprint, "side" | "pads" | "silkscreen">
+/** The part as far as its layers go. Fabrication outlines are drawn on the assembly layer of the side; courtyards on their own layer. */
+type LayeredPart = Pick<PlacedFootprint, "side" | "pads" | "silkscreen" | "fabrication">
 
 /** The layers a part draws on. */
 export function partLayers(part: LayeredPart): LayerId[] {
   const top = part.side === "top"
-  const layers = new Set<LayerId>([top ? "topAssembly" : "bottomAssembly"])
+  const layers = new Set<LayerId>(["courtyard"])
+  if (part.fabrication.length > 0) layers.add(top ? "topAssembly" : "bottomAssembly")
   if (part.silkscreen.length > 0) layers.add(top ? "topSilk" : "bottomSilk")
   for (const pad of part.pads) {
     layers.add(pad.layers === "through" ? "multiLayer" : pad.layers === "bottom" ? "bottom" : "top")

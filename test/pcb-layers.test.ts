@@ -3,7 +3,7 @@ import { buildDesign } from "../src/engine/design.js"
 import { PALETTE } from "../studio/src/pcb/ctx.js"
 import { drawPcb } from "../studio/src/pcb/pcb-draw.js"
 import {
-  ALL_LAYERS_SHOWN,
+  DEFAULT_LAYERS,
   anyLayerShown,
   layerRows,
   partLayers,
@@ -29,10 +29,10 @@ const part = (name: string) => {
 }
 
 describe("the layer list", () => {
-  test("lists the ten layers the PCB draws, in the panel's order, with their palette colours", () => {
+  test("lists the eleven layers the PCB draws, in the panel's order, with their palette colours", () => {
     const rows = layerRows(false, "all")
     expect(rows.map((row) => row.name)).toEqual([
-      "Top Layer", "Bottom Layer", "Top Silkscreen", "Bottom Silkscreen", "Top Assembly", "Bottom Assembly", "Board Outline", "Multi-Layer", "Hole", "Ratline",
+      "Top Layer", "Bottom Layer", "Top Silkscreen", "Bottom Silkscreen", "Top Assembly", "Bottom Assembly", "Courtyard", "Board Outline", "Multi-Layer", "Hole", "Ratline",
     ])
     expect(rows.find((row) => row.id === "top")?.color).toBe(PALETTE.topCopper)
     expect(rows.find((row) => row.id === "boardOutline")?.color).toBe(PALETTE.boardEdge)
@@ -47,23 +47,24 @@ describe("the layer list", () => {
   test("Copper holds the two copper layers and Multi-Layer; Non-copper holds the rest", () => {
     expect(layerRows(true, "copper").map((row) => row.name)).toEqual(["Top Layer", "Bottom Layer", "Multi-Layer"])
     const other = layerRows(true, "non-copper").map((row) => row.name)
-    expect(other).toEqual(["Top Silkscreen", "Bottom Silkscreen", "Top Assembly", "Bottom Assembly", "Board Outline", "Hole", "Ratline", "Keepout"])
-    expect(layerRows(true, "all")).toHaveLength(11)
+    expect(other).toEqual(["Top Silkscreen", "Bottom Silkscreen", "Top Assembly", "Bottom Assembly", "Courtyard", "Board Outline", "Hole", "Ratline", "Keepout"])
+    expect(layerRows(true, "all")).toHaveLength(12)
   })
 })
 
 describe("layer visibility", () => {
-  test("every layer starts shown", () => {
-    expect(Object.values(ALL_LAYERS_SHOWN).every(Boolean)).toBe(true)
+  test("every layer starts shown except the two assembly layers, so the board looks as it always has", () => {
+    expect(Object.entries(DEFAULT_LAYERS).filter(([, shown]) => !shown).map(([id]) => id)).toEqual(["topAssembly", "bottomAssembly"])
+    expect(DEFAULT_LAYERS.courtyard).toBe(true)
   })
 
   test("toggling one layer returns a new record and leaves the rest", () => {
-    const hidden = toggleLayer(ALL_LAYERS_SHOWN, "topSilk")
-    expect(hidden).not.toBe(ALL_LAYERS_SHOWN)
+    const hidden = toggleLayer(DEFAULT_LAYERS, "topSilk")
+    expect(hidden).not.toBe(DEFAULT_LAYERS)
     expect(hidden.topSilk).toBe(false)
-    expect(ALL_LAYERS_SHOWN.topSilk).toBe(true)
-    expect(Object.entries(hidden).filter(([, shown]) => !shown)).toHaveLength(1)
-    expect(toggleLayer(hidden, "topSilk")).toEqual(ALL_LAYERS_SHOWN)
+    expect(DEFAULT_LAYERS.topSilk).toBe(true)
+    expect(Object.entries(hidden).filter(([, shown]) => !shown)).toHaveLength(3)
+    expect(toggleLayer(hidden, "topSilk")).toEqual(DEFAULT_LAYERS)
   })
 })
 
@@ -79,9 +80,13 @@ describe("the layers a part draws", () => {
     expect(partLayers(part("J1"))).toEqual(expect.arrayContaining<LayerId>(["multiLayer", "hole"]))
   })
 
+  test("every part draws its courtyard, and fabrication only where it has an outline", () => {
+    expect(partLayers(part("R1"))).toContain("courtyard")
+  })
+
   test("a part shows while any layer it draws is shown", () => {
     const layers = partLayers(part("R1"))
-    const hiddenAll = Object.fromEntries(Object.keys(ALL_LAYERS_SHOWN).map((id) => [id, false])) as typeof ALL_LAYERS_SHOWN
+    const hiddenAll = Object.fromEntries(Object.keys(DEFAULT_LAYERS).map((id) => [id, false])) as typeof DEFAULT_LAYERS
     expect(anyLayerShown(layers, hiddenAll)).toBe(false)
     expect(anyLayerShown(layers, { ...hiddenAll, top: true })).toBe(true)
   })
@@ -116,7 +121,7 @@ describe("what each layer hides in the draw", () => {
   test("silkscreen, assembly, the board outline and the ratline each follow their own layer", () => {
     const cases: Array<[LayerId, string]> = [
       ["topSilk", PALETTE.topSilk],
-      ["topAssembly", PALETTE.topAssembly],
+      ["courtyard", PALETTE.topAssembly],
       ["boardOutline", PALETTE.boardEdge],
       ["ratline", PALETTE.ratsnest],
     ]
@@ -124,6 +129,15 @@ describe("what each layer hides in the draw", () => {
       expect([id, strokesOf(colour).length > 0]).toEqual([id, true])
       expect([id, strokesOf(colour, { [id]: false }).length]).toEqual([id, 0])
     }
+  })
+
+  test("Top Assembly draws only the fabrication outlines, which are off at first; the courtyards are on the Courtyard layer", () => {
+    const strokes = (layers?: Partial<Record<LayerId, boolean>>) => strokesOf(PALETTE.topAssembly, layers).length
+    const courtyards = strokes()
+    expect(courtyards).toBeGreaterThan(0)
+    expect(strokes({ topAssembly: true })).toBeGreaterThan(courtyards)
+    expect(strokes({ courtyard: false, topAssembly: true })).toBeGreaterThan(0)
+    expect(strokes({ courtyard: false })).toBe(0)
   })
 
   test("a hidden Top Silkscreen also hides the designators", () => {

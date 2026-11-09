@@ -3,7 +3,7 @@
 import type { PcbLayout, PlacedFootprint, WorldPad } from "../../../src/engine/pcb.js"
 import { CANVAS_FONT_FAMILY, PALETTE, type Ctx } from "./ctx.js"
 import { worldToScreen, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
-import { ALL_LAYERS_SHOWN, type LayerVisibility } from "./layers.js"
+import { DEFAULT_LAYERS, type LayerVisibility } from "./layers.js"
 import { drawViolationMarkers, type ViolationMarker } from "./markers.js"
 
 export interface PcbDrawOptions {
@@ -56,7 +56,7 @@ const assemblyColor = (part: PlacedFootprint) => (part.side === "top" ? PALETTE.
 
 /** Draws the board, then the ratsnest and the violation rings. Auto-placed parts are faded and always show their dashed courtyard. */
 export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDrawOptions): void {
-  const layers: LayerVisibility = { ...ALL_LAYERS_SHOWN, ...options.layers }
+  const layers: LayerVisibility = { ...DEFAULT_LAYERS, ...options.layers }
   const { camera, size } = view
   const px = 1 / camera.scale
   const shiftOf = (part: PlacedFootprint) => (options.moving?.components.includes(part.component) ? options.moving.by : NO_SHIFT)
@@ -80,7 +80,7 @@ export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDra
   each((part) => {
     if (shownOn(layers, part, "Silk")) drawPolylines(ctx, part.silkscreen, part.side === "top" ? PALETTE.topSilk : PALETTE.bottomSilk, SILK_WIDTH_MM, false)
   })
-  drawCourtyards(ctx, each, px, (part) => shownOn(layers, part, "Assembly"))
+  if (layers.courtyard) drawCourtyards(ctx, each, px)
   each((part) => {
     if (shownOn(layers, part, "Assembly")) drawPolylines(ctx, part.fabrication, assemblyColor(part), px, false)
   })
@@ -287,11 +287,10 @@ function drawPolylines(ctx: Ctx, lines: readonly (readonly Point[])[], color: st
   }
 }
 
-/** The courtyards of the parts whose assembly layer is shown; an auto-placed part's courtyard always. */
-function drawCourtyards(ctx: Ctx, each: Each, px: number, shown: (part: PlacedFootprint) => boolean): void {
+/** Every courtyard, dashed; an auto-placed part's is a little thicker. */
+function drawCourtyards(ctx: Ctx, each: Each, px: number): void {
   ctx.setLineDash([4 * px, 3 * px])
   each((part) => {
-    if (!shown(part) && !part.autoPlaced) return
     ctx.globalAlpha = 1
     drawPolylines(ctx, [part.courtyard], assemblyColor(part), part.autoPlaced ? AUTO_COURTYARD_PX * px : px, true)
   })

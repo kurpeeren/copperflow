@@ -100,7 +100,7 @@ describe("drawPcb", () => {
     expect(records.some((r) => r.name === "fillText")).toBe(false)
   })
 
-  test("an auto-placed part is drawn at 60% alpha with its courtyard dashed, even with courtyards hidden", () => {
+  test("an auto-placed part is drawn at 60% alpha with its courtyard dashed and thicker, and no courtyard when the Courtyard layer is hidden", () => {
     const auto = buildDesign(
       {
         "main.circuit.tsx": `export default () => (
@@ -117,11 +117,15 @@ describe("drawPcb", () => {
       ["R2", true],
     ])
     const { ctx, records } = recorder()
-    drawPcb(ctx, auto, VIEW, { ratio: 1, layers: { topAssembly: false } })
+    drawPcb(ctx, auto, VIEW, { ratio: 1 })
     const copper = records.filter((r) => r.name === "fill" && r.fillStyle === PALETTE.topCopper)
     expect(copper.map((r) => r.globalAlpha).sort()).toEqual([0.6, 0.6, 1, 1])
     const courtyards = records.filter((r) => r.name === "stroke" && r.strokeStyle === PALETTE.topAssembly)
-    expect(courtyards).toHaveLength(1)
+    expect(courtyards).toHaveLength(2)
+    expect(Math.max(...courtyards.map((r) => r.lineWidth))).toBeGreaterThan(Math.min(...courtyards.map((r) => r.lineWidth)))
+    const hidden = recorder()
+    drawPcb(hidden.ctx, auto, VIEW, { ratio: 1, layers: { courtyard: false } })
+    expect(hidden.records.filter((r) => r.name === "stroke" && r.strokeStyle === PALETTE.topAssembly)).toHaveLength(0)
     expect(records.some((r) => r.name === "setLineDash" && (r.args[0] as number[]).length > 0)).toBe(true)
     const r2 = records.find((r) => r.name === "fillText" && r.args[0] === "R2")
     expect(r2?.globalAlpha).toBe(0.6)
