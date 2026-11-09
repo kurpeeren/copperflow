@@ -155,6 +155,23 @@ describe("editing", () => {
     expect((await edit(Array.from({ length: 201 }, () => ({ x: 0, y: 0 })))).status).toBe(400)
   })
 
+  test("drawing edits are accepted: add, change and remove a drawing; malformed ones are refused", async () => {
+    const rect = { kind: "addDrawing", tag: "schematicrect", name: "G1", props: { x: 1, y: 2, width: 3, height: 1 } }
+    await data(await api("/api/edit", { file: FILE, summary: "add G1", edits: [rect] }))
+    expect(await readFile(join(root, FILE), "utf8")).toContain('<schematicrect name="G1" x={1} y={2} width={3} height={1} />')
+    const points = [{ x: 0, y: 0 }, { x: 1, y: 0 }]
+    await data(await api("/api/edit", { file: FILE, summary: "add path", edits: [{ kind: "addDrawing", tag: "schematicpath", name: "G2", props: { points } }] }))
+    await data(await api("/api/edit", { file: FILE, summary: "move G1", edits: [{ kind: "setDrawingProps", id: "G1", props: { x: 2, lineStyle: "dashed" } }] }))
+    expect(await readFile(join(root, FILE), "utf8")).toContain('<schematicrect name="G1" x={2}')
+    await data(await api("/api/edit", { file: FILE, summary: "remove G2", edits: [{ kind: "removeDrawing", id: "G2" }] }))
+    expect(await readFile(join(root, FILE), "utf8")).not.toContain("G2")
+    const edit = (one: unknown) => api("/api/edit", { file: FILE, summary: "x", edits: [one] })
+    expect((await edit({ kind: "setDrawingProps", id: "G1", props: { points: [{ x: "1", y: 0 }] } })).status).toBe(400)
+    expect((await edit({ kind: "setDrawingProps", id: "G1", props: { points: Array.from({ length: 1001 }, () => ({ x: 0, y: 0 })) } })).status).toBe(400)
+    expect((await edit({ kind: "removeDrawing" })).status).toBe(400)
+    expect((await edit({ kind: "addDrawing", tag: "schematicrect", props: { x: { y: 1 } } })).status).toBe(400)
+  })
+
   test("locked parts cannot be edited until they are unlocked", async () => {
     await data(await api("/api/lock", { file: FILE, parts: ["R1"], locked: true }))
     const refused = await api("/api/edit", { file: FILE, summary: "x", edits: [{ kind: "setProps", part: "R1", props: { pcbX: 5 } }] })

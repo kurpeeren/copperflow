@@ -13,6 +13,8 @@ export interface Burst<Base extends object = object> {
   wires?: readonly string[]
   /** The selected net labels and flags the burst takes along, when there are any. */
   labels?: readonly string[]
+  /** The selected drawings the burst takes along, when there are any. */
+  drawings?: readonly string[]
   /** The sum of every press so far. */
   total: Point
   inFlight: boolean
@@ -30,19 +32,27 @@ export interface BurstStep<Base extends object> {
 
 const sum = (a: Point, b: Point): Point => ({ x: a.x + b.x, y: a.y + b.y })
 
-/** The wires and labels as a burst or held presses keep them: each list only when it has any. */
-const withObjects = (wires: readonly string[], labels: readonly string[]): { wires?: readonly string[]; labels?: readonly string[] } => ({
+/** The selected objects besides the parts that a burst or held presses keep: each list only when it has any. */
+interface Objects {
+  wires?: readonly string[]
+  labels?: readonly string[]
+  drawings?: readonly string[]
+}
+
+/** The wires, labels and drawings as a burst or held presses keep them: each list only when it has any. */
+const withObjects = (wires: readonly string[], labels: readonly string[], drawings: readonly string[]): Objects => ({
   ...(wires.length > 0 ? { wires } : {}),
   ...(labels.length > 0 ? { labels } : {}),
+  ...(drawings.length > 0 ? { drawings } : {}),
 })
 
-/** Whether a burst or held presses were made on these parts, wires and labels. */
-const sameObjects = (kept: { names: readonly string[]; wires?: readonly string[]; labels?: readonly string[] }, names: readonly string[], wires: readonly string[], labels: readonly string[]): boolean =>
-  sameList(kept.names, names) && sameList(kept.wires ?? [], wires) && sameList(kept.labels ?? [], labels)
+/** Whether a burst or held presses were made on these parts, wires, labels and drawings. */
+const sameObjects = (kept: Objects & { names: readonly string[] }, names: readonly string[], wires: readonly string[], labels: readonly string[], drawings: readonly string[]): boolean =>
+  sameList(kept.names, names) && sameList(kept.wires ?? [], wires) && sameList(kept.labels ?? [], labels) && sameList(kept.drawings ?? [], drawings)
 
 /**
- * A press of `delta` on the parts `names`, the selected `wires` and the selected `labels`. It joins the burst while the
- * edit is in flight or the circuit has not reloaded; else, or on another selection, it starts a new one.
+ * A press of `delta` on the parts `names` and the selected `wires`, `labels` and `drawings`. It joins the burst while
+ * the edit is in flight or the circuit has not reloaded; else, or on another selection, it starts a new one.
  */
 export function pressNudge<Base extends object>(
   burst: Burst<Base> | undefined,
@@ -51,8 +61,9 @@ export function pressNudge<Base extends object>(
   delta: Point,
   wires: readonly string[] = [],
   labels: readonly string[] = [],
+  drawings: readonly string[] = [],
 ): BurstStep<Base> {
-  const same = burst !== undefined && sameObjects(burst, names, wires, labels)
+  const same = burst !== undefined && sameObjects(burst, names, wires, labels, drawings)
   if (burst && same && burst.inFlight) {
     return { burst: { ...burst, total: sum(burst.total, delta), dirty: true }, send: null, fresh: false }
   }
@@ -60,7 +71,7 @@ export function pressNudge<Base extends object>(
     const total = sum(burst.total, delta)
     return { burst: { ...burst, total, inFlight: true, dirty: false }, send: total, fresh: false }
   }
-  return { burst: { base, names, ...withObjects(wires, labels), total: delta, inFlight: true, dirty: false }, send: delta, fresh: true }
+  return { burst: { base, names, ...withObjects(wires, labels, drawings), total: delta, inFlight: true, dirty: false }, send: delta, fresh: true }
 }
 
 /** The edit resolved: send what was merged meanwhile, else let go; a failure ends the burst. */
@@ -190,15 +201,24 @@ export function pressArrow(gate: TurnGate, design: DesignState): { gate: TurnGat
 /** Arrow presses held while an Undo or Redo is waited for: their summed offset, and the selection they were made on. */
 export interface HeldArrows {
   names: readonly string[]
-  /** The selected wires and labels, each list when it has any. */
+  /** The selected wires, labels and drawings, each list when it has any. */
   wires?: readonly string[]
   labels?: readonly string[]
+  drawings?: readonly string[]
   total: Point
 }
 
-/** One more held arrow press: added to the held ones on the same selection (parts, wires and labels), else it replaces them. */
-export function holdNudge(held: HeldArrows | undefined, names: readonly string[], delta: Point, wires: readonly string[] = [], labels: readonly string[] = []): HeldArrows {
-  return { names, ...withObjects(wires, labels), total: held && sameObjects(held, names, wires, labels) ? sum(held.total, delta) : delta }
+/** One more held arrow press: added to the held ones on the same selection (parts, wires, labels and drawings), else it replaces them. */
+export function holdNudge(
+  held: HeldArrows | undefined,
+  names: readonly string[],
+  delta: Point,
+  wires: readonly string[] = [],
+  labels: readonly string[] = [],
+  drawings: readonly string[] = [],
+): HeldArrows {
+  const same = held !== undefined && sameObjects(held, names, wires, labels, drawings)
+  return { names, ...withObjects(wires, labels, drawings), total: held && same ? sum(held.total, delta) : delta }
 }
 
 /** The design caught up: the held arrow presses go as one move once the arrows may, on the selection they were made on. */
@@ -209,11 +229,12 @@ export function releaseArrows(
   design: DesignState,
   wires: readonly string[] = [],
   labels: readonly string[] = [],
+  drawings: readonly string[] = [],
 ): { gate: TurnGate; held: HeldArrows | undefined; send: Point | null } {
   if (!held) return { gate, held, send: null }
   const press = pressArrow(gate, design)
   if (!press.send) return { gate, held, send: null }
-  return { gate: press.gate, held: undefined, send: sameObjects(held, names, wires, labels) ? held.total : null }
+  return { gate: press.gate, held: undefined, send: sameObjects(held, names, wires, labels, drawings) ? held.total : null }
 }
 
 /** The actions the canvas's key listener runs (runKey in use-part-keys.ts). */
@@ -222,7 +243,7 @@ const CANVAS_RUNS: ReadonlySet<string> = new Set(["fit", "highlight", "contextMe
 /**
  * Whether the canvas takes the key press (and so keeps it from the page and the later listeners): only an action it
  * runs, and a nudge or a turn only with a selection and no tool using the keys. A turn needs parts (`selectionSize`);
- * a nudge moves any object selected (`objects`: parts, wires and labels). Ctrl+Z, Shift+F, Alt+W and the other keys that the
+ * a nudge moves any object selected (`objects`: parts, wires, labels and drawings). Ctrl+Z, Shift+F, Alt+W and the other keys that the
  * app, the workspace or a tool runs are left to that listener, which prevents them itself.
  */
 export function claimsKey(action: string, selectionSize: number, paused: boolean, preventDefault: boolean, objects = selectionSize): boolean {

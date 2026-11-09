@@ -53,7 +53,13 @@ interface CanvasOptions {
   noDrag?: boolean
   /** Labels selected with the parts in `start`. */
   labels?: string[]
+  /** Drawings selected with the parts in `start`. */
+  drawings?: string[]
 }
+
+// A drawn line G1 along y = -3 from x 0 to 6, below both parts; its first point (0.25, -3) sits off the grid.
+const G1_BOX = { minX: 0, minY: -3.05, maxX: 6, maxY: -2.95 }
+const drawingAt = (p: Point) => (Math.abs(p.y + 3) < 0.1 && p.x >= 0 && p.x <= 6 ? { id: "G1", place: "line" as const } : undefined)
 
 // A ground flag at (9, 0), right of R2; it answers from x 8.5 to 9.5 and y -0.5 to 0.5.
 const FLAG: NetLabel = { id: "label:net.GND:R2.pin2", net: "net.GND", text: "GND", at: { x: 9, y: 0 }, side: "right", style: "ground" }
@@ -64,16 +70,16 @@ const flagAt = (p: Point) => (p.x >= FLAG_BOX.minX && p.x <= FLAG_BOX.maxX && p.
 function canvas(start: readonly string[] = [], options: CanvasOptions = {}) {
   const calls: string[] = []
   const state = {
-    selection: options.wire ? Selection.none.onlyWire(options.wire) : Selection.none.add(start).addWires(options.wires ?? []).addLabels(options.labels ?? []),
+    selection: options.wire ? Selection.none.onlyWire(options.wire) : Selection.none.add(start).addWires(options.wires ?? []).addLabels(options.labels ?? []).addDrawings(options.drawings ?? []),
     camera: CAMERA,
     /** Wire W's points as shown; a build can change them, or take the wire away. */
     wirePoints: W_POINTS as readonly Point[] | undefined,
     /** The drag tools go while the W tool is wiring. */
     noDrag: options.noDrag ?? false,
   }
-  const commits: { names: readonly string[]; offset: Point; wires?: readonly string[]; labels?: readonly string[] }[] = []
-  const commit = (names: readonly string[], offset: Point, wires: readonly string[] = [], labels: readonly string[] = []) =>
-    void commits.push({ names, offset, ...(wires.length > 0 ? { wires } : {}), ...(labels.length > 0 ? { labels } : {}) })
+  const commits: { names: readonly string[]; offset: Point; wires?: readonly string[]; labels?: readonly string[]; drawings?: readonly string[] }[] = []
+  const commit = (names: readonly string[], offset: Point, wires: readonly string[] = [], labels: readonly string[] = [], drawings: readonly string[] = []) =>
+    void commits.push({ names, offset, ...(wires.length > 0 ? { wires } : {}), ...(labels.length > 0 ? { labels } : {}), ...(drawings.length > 0 ? { drawings } : {}) })
   const labelMoves: { id: string; at: Point }[] = []
   const shapes: { id: string; path: readonly Point[] }[] = []
   const drag: GestureWires["drag"] = {
@@ -107,6 +113,7 @@ function canvas(start: readonly string[] = [], options: CanvasOptions = {}) {
     onContextMenu: (target, at) => void menus.push({ target, at }),
     wires: wires(),
     labels: { at: flagAt, blocker: () => null, commit: (label, at) => void labelMoves.push({ id: label.id, at }), boxes: [{ id: FLAG.id, box: FLAG_BOX }] },
+    drawings: { at: drawingAt, boxes: [{ id: "G1", box: G1_BOX }], origin: (id) => (id === "G1" ? { x: 0.25, y: -3 } : undefined) },
     ...(options.filter ? { filter: options.filter } : {}),
   })
   /** Presses at `from`, moves through `path` and lets go at the last point, as the hook does. */
@@ -281,6 +288,61 @@ describe("net labels and flags in the selection", () => {
     const off = canvas([], { filter: { ...ALL_PICKABLE, labels: false } })
     off.gesture({}, screen(-2, 2), screen(10, -2))
     expect(off.state.selection).toMatchObject({ names: ["R1", "R2"], labels: [] })
+  })
+})
+
+describe("drawings in the selection", () => {
+  test("a press on a drawing not selected selects it alone and drags it alone, its first point onto the grid", () => {
+    const c = canvas(["R1"])
+    c.gesture({}, screen(1, -3), screen(2, -3))
+    expect(c.state.selection).toMatchObject({ names: [], drawings: ["G1"] })
+    expect(c.commits).toEqual([{ names: [], offset: { x: 1.25, y: 0 }, drawings: ["G1"] }])
+  })
+
+  test("a drag on a selected drawing moves the whole selection, parts, wires and drawings, in one commit", () => {
+    const c = canvas(["R1"], { wires: ["wire:W"], drawings: ["G1"] })
+    c.gesture({}, screen(1, -3), screen(1, -2))
+    // The pressed drawing's first point (0.25, -3) lands on the grid, as a pressed part's origin does.
+    expect(c.commits).toEqual([{ names: ["R1"], offset: { x: 0.25, y: 1 }, wires: ["wire:W"], drawings: ["G1"] }])
+  })
+
+  test("a drag on a selected part takes the selected drawings along", () => {
+    const c = canvas(["R1"], { drawings: ["G1"] })
+    c.gesture({}, screen(1), screen(2))
+    expect(c.commits).toEqual([{ names: ["R1"], offset: { x: 1, y: 0 }, drawings: ["G1"] }])
+  })
+
+  test("Shift or Ctrl on a drawing toggles it and starts nothing", () => {
+    const c = canvas(["R1"])
+    expect(c.gesture({ shiftKey: true }, screen(1, -3), screen(3, -3))).toBeUndefined()
+    expect(c.state.selection).toMatchObject({ names: ["R1"], drawings: ["G1"] })
+    c.gesture({ ctrlKey: true }, screen(1, -3))
+    expect(c.state.selection).toMatchObject({ names: ["R1"], drawings: [] })
+    expect(c.commits).toEqual([])
+  })
+
+  test("a still click on a drawing of the selection selects it alone", () => {
+    const c = canvas(["R1"], { drawings: ["G1"] })
+    c.gesture({}, screen(1, -3))
+    expect(c.state.selection).toMatchObject({ names: [], drawings: ["G1"] })
+  })
+
+  test("a box takes the drawings by its direction, and none while the Drawings row is off", () => {
+    const c = canvas()
+    c.gesture({}, screen(-1, -4), screen(7, -2))
+    expect(c.state.selection.drawings).toEqual(["G1"])
+    const touching = canvas()
+    touching.gesture({}, screen(3, -2), screen(2, -4))
+    expect(touching.state.selection.drawings).toEqual(["G1"])
+    const off = canvas([], { filter: { ...ALL_PICKABLE, drawings: false } })
+    off.gesture({}, screen(-1, -4), screen(7, -2))
+    expect(off.state.selection.drawings).toEqual([])
+  })
+
+  test("a drawing is what a right click or a double click is on, and a double click opens its Properties", () => {
+    expect(targetAt(BOXES, undefined, { x: 1, y: -3 }, PICK, undefined, { at: drawingAt })).toEqual({ kind: "drawing", id: "G1" })
+    const action = doubleClickAction({ busy: false, handle: undefined, target: { kind: "drawing", id: "G1" }, selectedBefore: undefined })
+    expect(action).toEqual({ kind: "properties", target: { kind: "drawing", id: "G1" } })
   })
 })
 

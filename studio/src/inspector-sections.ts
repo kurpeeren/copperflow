@@ -85,27 +85,28 @@ export interface PropertiesView {
 }
 
 /**
- * What Properties shows for a selection of `parts` parts, `wires` wires and `labels` net labels and flags: the board,
- * one part's, one wire's, one label's, or the group's.
+ * What Properties shows for a selection of `parts` parts, `wires` wires, `labels` net labels and flags and `drawings`
+ * drawings: the board, one part's, one wire's, one label's, one drawing's, or the group's.
  */
-export type PropertiesKind = "board" | "part" | "wire" | "label" | "group"
+export type PropertiesKind = "board" | "part" | "wire" | "label" | "drawing" | "group"
 
-export function propertiesKind(parts: number, wires: number, labels = 0): PropertiesKind {
-  const total = parts + wires + labels
+export function propertiesKind(parts: number, wires: number, labels = 0, drawings = 0): PropertiesKind {
+  const total = parts + wires + labels + drawings
   if (total === 0) return "board"
   if (total > 1) return "group"
   if (parts === 1) return "part"
-  return wires === 1 ? "wire" : "label"
+  if (wires === 1) return "wire"
+  return labels === 1 ? "label" : "drawing"
 }
 
 /** The kinds of object a selection counts, and how Properties names them. */
-export type ObjectKind = "parts" | "wires" | "labels"
+export type ObjectKind = "parts" | "wires" | "labels" | "drawings"
 
-export const KIND_LABELS: Record<ObjectKind, string> = { parts: "Parts", wires: "Wires", labels: "Net labels and flags" }
+export const KIND_LABELS: Record<ObjectKind, string> = { parts: "Parts", wires: "Wires", labels: "Net labels and flags", drawings: "Drawings" }
 
-const KIND_ROW = /^kind:(parts|wires|labels):(\d+)$/
+const KIND_ROW = /^kind:(parts|wires|labels|drawings):(\d+)$/
 
-/** A "kind:<parts|wires|labels>:<count>" row read back; undefined for any other row. */
+/** A "kind:<parts|wires|labels|drawings>:<count>" row read back; undefined for any other row. */
 export function kindRow(id: string): { kind: ObjectKind; count: number } | undefined {
   const match = KIND_ROW.exec(id)
   return match ? { kind: match[1] as ObjectKind, count: Number(match[2]) } : undefined
@@ -113,16 +114,16 @@ export function kindRow(id: string): { kind: ObjectKind; count: number } | undef
 
 /**
  * The board's sections with nothing selected, a part's own with one, and the Selection section listing several; with
- * wires or labels among them (`wires`, `labels`, how many), the section first counts each kind present. The header
- * counts every object.
+ * wires, labels or drawings among them (`wires`, `labels`, `drawings`, how many), the section first counts each kind
+ * present. The header counts every object.
  */
-export function propertiesView(parts: readonly SelectedPart[], opts: { library: boolean }, wires = 0, labels = 0): PropertiesView {
-  const header = `Selected objects: ${parts.length + wires + labels}`
+export function propertiesView(parts: readonly SelectedPart[], opts: { library: boolean }, wires = 0, labels = 0, drawings = 0): PropertiesView {
+  const header = `Selected objects: ${parts.length + wires + labels + drawings}`
   const [first] = parts
   const listed = parts.map((part) => `part:${part.name}`)
-  const present: [ObjectKind, number][] = [["parts", parts.length], ["wires", wires], ["labels", labels]]
+  const present: [ObjectKind, number][] = [["parts", parts.length], ["wires", wires], ["labels", labels], ["drawings", drawings]]
   const counts = present.flatMap(([kind, count]) => (count > 0 ? [`kind:${kind}:${count}`] : []))
-  if (wires + labels > 0) return { header, sections: [{ title: "Selection", rows: [...counts, ...listed] }] }
+  if (wires + labels + drawings > 0) return { header, sections: [{ title: "Selection", rows: [...counts, ...listed] }] }
   if (!first) return { header, sections: boardSections() }
   if (parts.length === 1) return { header, sections: inspectorSections(first, opts) }
   return { header, sections: [{ title: "Selection", rows: listed }] }
@@ -141,7 +142,7 @@ export type GroupCommand = (typeof GROUP_ACTIONS)[number]["command"]
 /**
  * Whether a group action has something to change: Lock an unlocked part (or a locked one changed outside the editor),
  * Unlock a locked one, Rotate an editable part that is not locked, Delete such a part or any of the `others` selected,
- * wires and labels (Delete names those it cannot remove). Rotate, Lock and Unlock act on the parts only.
+ * wires, labels and drawings (Delete names those it cannot remove). Rotate, Lock and Unlock act on the parts only.
  */
 export function groupActionEnabled(
   command: GroupCommand,

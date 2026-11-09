@@ -1,10 +1,11 @@
 // The steps of a pointer gesture on either canvas, from press to release. press.ts decides what a press starts; these
-// follow the pointer and finish the gesture: a pan, a drag of the selection (its parts and wires), of a net label or of
+// follow the pointer and finish the gesture: a pan, a drag of the selection (its parts, wires, labels and drawings), of a net label or of
 // a wire's segment or corner (wire-drag.ts), a selection box, or the armed Note box tool's box. gestureSession holds the gesture between
 // events; use-canvas-gestures.ts draws it. Plain TypeScript with .js imports, so the tests can run it.
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { Selection, SelectionChange } from "../selection.js"
-import { boxMode, boxSelection, labelsInBox, partsInBox, wiresInBox } from "./box-select.js"
+import { areasInBox, boxMode, boxSelection, labelsInBox, partsInBox, wiresInBox } from "./box-select.js"
+import type { DrawingHit } from "./drawing-hit.js"
 import { hitsAt, roundPosition, screenToWorld, snapPosition, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
 import type { PickLayers } from "./layers.js"
 import type { PickFilter } from "./pick-filter.js"
@@ -28,12 +29,16 @@ export type Gesture =
       /** Or the selected wire or label pressed; then the offset itself is whole grid steps. */
       wire?: string
       label?: string
+      /** Or the drawing pressed; its origin (`origin`) snaps to the grid, as a part's does. */
+      drawing?: string
+      origin?: Point
       /** Every part the drag moves, and those of them that may move. */
       names: readonly string[]
       movable: readonly string[]
-      /** The selected wires the drag carries along (wire-follow.ts), and the selected net labels and flags. */
+      /** The selected wires the drag carries along (wire-follow.ts), the selected net labels and flags, and the selected drawings. */
       wires: readonly string[]
       labels: readonly string[]
+      drawings: readonly string[]
       start: Point
       offset: Point
       moved: boolean
@@ -73,6 +78,16 @@ export interface GestureWires {
   drag?: WireDrag
 }
 
+/** What a gesture asks of the schematic's drawings (drawing-hit.ts). */
+export interface GestureDrawings {
+  /** The drawing under the point, if any: on its line (over the parts) or inside its fill (under them). */
+  at(world: Point): DrawingHit | undefined
+  /** Each drawing's box, which a selection box takes by its direction rule. */
+  boxes?: readonly { id: string; box: Box }[]
+  /** Where the drawing's position puts it (its corner, centre or first point), which a drag snaps to the grid. */
+  origin?(id: string): Point | undefined
+}
+
 export interface GestureInput {
   view: View
   camera: Camera | undefined
@@ -94,6 +109,8 @@ export interface GestureInput {
   labels?: GestureLabels
   /** The schematic's wires, which a click selects. */
   wires?: GestureWires
+  /** The schematic's drawings, which a click selects and a drag moves. */
+  drawings?: GestureDrawings
   /** The schematic's sheet, whose hand-drawn wires follow a moved part; the PCB has none. */
   follow?: WireFollow
   /** The PCB's layers, which decide what a click or a box may pick; the schematic has none. */
@@ -106,8 +123,8 @@ export interface GestureInput {
   onContextMenu(target: ContextTarget, at: Point): void
 }
 
-/** Writes the move of `names`, the selected `wires` and the selected `labels` by `offset`. */
-export type Commit = (names: readonly string[], offset: Point, wires?: readonly string[], labels?: readonly string[]) => void
+/** Writes the move of `names`, the selected `wires`, `labels` and `drawings` by `offset`. */
+export type Commit = (names: readonly string[], offset: Point, wires?: readonly string[], labels?: readonly string[], drawings?: readonly string[]) => void
 
 /**
  * The edit that moves `names`, the selected `wires` and the selected `labels` by `offset`, and the shapes it gives the
@@ -115,14 +132,21 @@ export type Commit = (names: readonly string[], offset: Point, wires?: readonly 
  * the centre of its box. On the schematic the wires at the moved pins keep their first segments square, and the
  * selected wires and labels move with the parts, in the same edit list (wire-follow.ts).
  */
-export function moveWithWires(input: GestureInput, names: readonly string[], offset: Point, wires: readonly string[] = [], labels: readonly string[] = []): MovedWires {
+export function moveWithWires(
+  input: GestureInput,
+  names: readonly string[],
+  offset: Point,
+  wires: readonly string[] = [],
+  labels: readonly string[] = [],
+  drawings: readonly string[] = [],
+): MovedWires {
   const plan = moveEach(input.circuit, names, input.view, anchorLookup(input.anchors, input.boxes), offset, input.blockerFor)
-  return withMovedWires(plan, input.circuit, input.follow, { wires, labels, offset })
+  return withMovedWires(plan, input.circuit, input.follow, { wires, labels, drawings, offset })
 }
 
 /** The edit of a move (moveWithWires) without the shapes. */
-export function movePlan(input: GestureInput, names: readonly string[], offset: Point, wires: readonly string[] = [], labels: readonly string[] = []): GroupEdit {
-  return moveWithWires(input, names, offset, wires, labels).plan
+export function movePlan(input: GestureInput, names: readonly string[], offset: Point, wires: readonly string[] = [], labels: readonly string[] = [], drawings: readonly string[] = []): GroupEdit {
+  return moveWithWires(input, names, offset, wires, labels, drawings).plan
 }
 
 /** A box smaller than this on both sides, in CSS pixels, is a click. */
@@ -130,25 +154,37 @@ const BOX_MIN_PX = 6
 const round = roundPosition
 
 /**
- * What is at a world point and may be picked there (pick.ts): a net label, else a wire, else the smallest part box,
- * else nothing. A label or wire drawn over a symbol is the thing picked there, not the symbol under it.
+ * What is at a world point and may be picked there (pick.ts): a net label, else a wire, else a drawing's line or text,
+ * else the smallest part box, else a filled drawing's inside, else nothing. A label, wire or drawn line over a symbol
+ * is the thing picked there, not the symbol under it; a symbol over a filled shape is.
  */
-export function targetAt(boxes: readonly PartBox[], labels: GestureLabels | undefined, world: Point, context: PickContext, wires?: GestureWires): ContextTarget {
+export function targetAt(
+  boxes: readonly PartBox[],
+  labels: GestureLabels | undefined,
+  world: Point,
+  context: PickContext,
+  wires?: Pick<GestureWires, "at">,
+  drawings?: Pick<GestureDrawings, "at">,
+): ContextTarget {
   const label = labels?.at(world)
   const wire = wires?.at(world)
+  const drawn = drawings?.at(world)
+  const drawing = (place: DrawingHit["place"]): Pickable[] => (drawn?.place === place ? [{ kind: "drawing", id: drawn.id }] : [])
   const candidates: Pickable[] = [
     ...(label ? [{ kind: "label" as const, label }] : []),
     ...(wire !== undefined ? [{ kind: "wire" as const, id: wire }] : []),
+    ...drawing("line"),
     ...hitsAt(boxes, world).map((box): Pickable => ({ kind: "part", name: box.name })),
+    ...drawing("inside"),
   ]
   const [first] = picks(candidates, context)
   return first ?? { kind: "canvas" }
 }
 
-/** What a double click does: remove a corner, open Properties on a part or a wire, rename a label's net, or nothing. */
+/** What a double click does: remove a corner, open Properties on a part, a wire or a drawing, rename a label's net, or nothing. */
 export type DoubleClick =
   | { kind: "removeCorner"; id: string; index: number }
-  | { kind: "properties"; target: Extract<ContextTarget, { kind: "part" | "wire" }> }
+  | { kind: "properties"; target: Extract<ContextTarget, { kind: "part" | "wire" | "drawing" }> }
   | { kind: "rename"; label: NetLabel }
   | { kind: "none" }
 
@@ -171,7 +207,7 @@ export interface DoubleClickInput {
 export function doubleClickAction({ busy, handle, target, selectedBefore }: DoubleClickInput): DoubleClick {
   if (busy) return { kind: "none" }
   if (handle) return handle.id === selectedBefore ? { kind: "removeCorner", ...handle } : { kind: "properties", target: { kind: "wire", id: handle.id } }
-  if (target.kind === "part" || target.kind === "wire") return { kind: "properties", target }
+  if (target.kind === "part" || target.kind === "wire" || target.kind === "drawing") return { kind: "properties", target }
   return target.kind === "label" ? { kind: "rename", label: target.label } : { kind: "none" }
 }
 
@@ -182,6 +218,7 @@ function underOf(target: ContextTarget, selection: Selection): Under {
   if (target.kind === "part") return selection.has(target.name) ? "selectedPart" : "part"
   if (target.kind === "wire") return selection.hasWire(target.id) && selection.total > 1 ? "selectedWire" : "wire"
   if (target.kind === "label") return selection.hasLabel(target.label.id) && selection.total > 1 ? "selectedLabel" : "label"
+  if (target.kind === "drawing") return selection.hasDrawing(target.id) ? "selectedDrawing" : "drawing"
   return "empty"
 }
 
@@ -189,7 +226,7 @@ function underOf(target: ContextTarget, selection: Selection): Under {
 function pressedAt(input: GestureInput, world: Point, camera: Camera): { target: ContextTarget; under: Under; corner?: number } {
   const handle = handleUnder(input.wires?.drag, pickContext(input), world, camera.scale)
   if (handle) return { target: { kind: "wire", id: handle.id }, under: "wireCorner", corner: handle.index }
-  const target = targetAt(input.boxes, input.labels, world, pickContext(input), input.wires)
+  const target = targetAt(input.boxes, input.labels, world, pickContext(input), input.wires, input.drawings)
   return { target, under: underOf(target, input.selection) }
 }
 
@@ -218,6 +255,7 @@ export function startGesture(input: GestureInput, event: Press, point: Point): G
   if (start === "box" || start === "addBox") return { kind: "box", start: point, current: point, adds: start === "addBox", still }
   if (target.kind === "label") return pressOnLabel(input, target.label, start, point, still)
   if (target.kind === "wire") return pressOnWire(input, target.id, start, { world, point, still, ...(corner === undefined ? {} : { corner }) }, camera)
+  if (target.kind === "drawing") return pressOnDrawing(input, target.id, start, point, still)
   const part = target.kind === "part" ? input.boxes.find((box) => box.name === target.name) : undefined
   if (!part) return undefined
   if (start === "toggle") {
@@ -239,6 +277,15 @@ function pressOnLabel(input: GestureInput, label: NetLabel, start: GestureStart,
   return { kind: "label", label, start: point, at: label.at, moved: false, blocker: input.labels?.blocker(label.id) ?? null }
 }
 
+/** A press on a drawing: Shift or Ctrl toggles it, else it is dragged, alone (selected first) or with the selection it is in. */
+function pressOnDrawing(input: GestureInput, id: string, start: GestureStart, point: Point, still: StillRelease): Gesture | undefined {
+  if (start === "toggle") {
+    input.onSelect((current) => current.toggleDrawing(id))
+    return undefined
+  }
+  return start === "move" || start === "moveGroup" ? startDrag(input, { drawing: id }, start, point, still) : undefined
+}
+
 /** A press on a wire: Shift or Ctrl toggles it, one selected with other things drags the selection, else it is selected (and reshaped). */
 function pressOnWire(input: GestureInput, id: string, start: GestureStart, at: { world: Point; point: Point; still: StillRelease; corner?: number }, camera: Camera): Gesture | undefined {
   if (start === "toggle") {
@@ -249,20 +296,40 @@ function pressOnWire(input: GestureInput, id: string, start: GestureStart, at: {
   return WIRE_STARTS.has(start) ? pressWire(input, id, start, at, camera) : undefined
 }
 
+type Pressed = { part: PartBox } | { wire: string } | { label: string } | { drawing: string }
+type Dragged = Pick<Extract<Gesture, { kind: "drag" }>, "names" | "wires" | "labels" | "drawings">
+
+const NOTHING_DRAGGED: Dragged = { names: [], wires: [], labels: [], drawings: [] }
+
+/** What a drag moves: the whole selection (its parts those this view draws), or the pressed part or drawing alone, selected first. */
+function dragged(input: GestureInput, pressed: Pressed, group: boolean): Dragged {
+  if (group) {
+    const drawn = new Set(input.boxes.map((box) => box.name))
+    const { names, wires, labels, drawings } = input.selection
+    return { names: names.filter((name) => drawn.has(name)), wires, labels, drawings }
+  }
+  if ("part" in pressed) {
+    const { name } = pressed.part
+    input.onSelect((current) => current.only(name))
+    return { ...NOTHING_DRAGGED, names: [name] }
+  }
+  if (!("drawing" in pressed)) return NOTHING_DRAGGED
+  const { drawing } = pressed
+  input.onSelect((current) => current.onlyDrawing(drawing))
+  return { ...NOTHING_DRAGGED, drawings: [drawing] }
+}
+
 /**
- * A drag of the pressed part alone (selected first), or of the whole selection: the parts this view draws, the selected
- * wires and labels. A press on a part that cannot move stops the drag; a press on a wire or label stops nothing.
+ * A drag of the pressed part or drawing alone (selected first), or of the whole selection: the parts this view draws,
+ * the selected wires, labels and drawings. A press on a part that cannot move stops the drag; a press on anything
+ * else stops nothing.
  */
-function startDrag(input: GestureInput, pressed: { part: PartBox } | { wire: string } | { label: string }, start: GestureStart, point: Point, still: StillRelease): Gesture {
-  const group = start === "moveGroup"
-  const alone = group ? undefined : "part" in pressed ? pressed.part.name : undefined
-  if (alone !== undefined) input.onSelect((current) => current.only(alone))
-  const drawn = new Set(input.boxes.map((box) => box.name))
-  const names = alone !== undefined ? [alone] : input.selection.names.filter((name) => drawn.has(name))
-  const movable = names.filter((name) => input.blockerFor(name) === null)
-  const [wires, labels] = group ? [input.selection.wires, input.selection.labels] : [[], []]
+function startDrag(input: GestureInput, pressed: Pressed, start: GestureStart, point: Point, still: StillRelease): Gesture {
+  const moves = dragged(input, pressed, start === "moveGroup")
+  const movable = moves.names.filter((name) => input.blockerFor(name) === null)
   const blocker = "part" in pressed ? input.blockerFor(pressed.part.name) : null
-  return { kind: "drag", ...pressed, names, movable, wires, labels, start: point, offset: ZERO, moved: false, blocker, still }
+  const origin = "drawing" in pressed ? input.drawings?.origin?.(pressed.drawing) : undefined
+  return { kind: "drag", ...pressed, ...(origin ? { origin } : {}), ...moves, movable, start: point, offset: ZERO, moved: false, blocker, still }
 }
 
 /** The gesture after the pointer moved to `point`; undefined when it stays the same. A pan moves the camera. */
@@ -284,10 +351,10 @@ export function followGesture(input: GestureInput, gesture: Gesture, point: Poin
     const { at } = gesture.label
     return { ...gesture, moved: true, at: { x: snapped(at.x + moved.x), y: snapped(at.y + moved.y) } }
   }
-  // Snap the pressed part's origin, where its position props put it, to the grid, not the distance moved; a press on a
-  // wire moves by whole grid steps.
+  // Snap the pressed part's or drawing's origin, where its position props put it, to the grid, not the distance moved;
+  // a press on a wire or a label moves by whole grid steps.
   const { part } = gesture
-  const origin = part ? (input.anchors.get(part.name)?.origin ?? part.center) : ZERO
+  const origin = part ? (input.anchors.get(part.name)?.origin ?? part.center) : (gesture.origin ?? ZERO)
   return { ...gesture, moved: true, offset: { x: round(snapped(origin.x + moved.x) - origin.x), y: round(snapped(origin.y + moved.y) - origin.y) } }
 }
 
@@ -316,14 +383,15 @@ function endDrag(input: GestureInput, done: Extract<Gesture, { kind: "drag" }>, 
     return
   }
   if (done.blocker) return input.actions.notify(done.blocker)
-  commit(done.names, done.offset, done.wires, done.labels)
+  commit(done.names, done.offset, done.wires, done.labels, done.drawings)
 }
 
-/** What a still click on one thing of the selection leaves: that part, wire or label alone. */
-function aloneAfter({ part, wire, label }: Extract<Gesture, { kind: "drag" }>): SelectionChange {
+/** What a still click on one thing of the selection leaves: that part, wire, label or drawing alone. */
+function aloneAfter({ part, wire, label, drawing }: Extract<Gesture, { kind: "drag" }>): SelectionChange {
   return (current) => {
     if (part) return current.only(part.name)
     if (wire !== undefined) return current.onlyWire(wire)
+    if (drawing !== undefined) return current.onlyDrawing(drawing)
     return label !== undefined ? current.onlyLabel(label) : current
   }
 }
@@ -345,6 +413,7 @@ function endBox(input: GestureInput, done: Extract<Gesture, { kind: "box" }>, ca
     parts: partsInBox(input.boxes, corners[0], corners[1], mode),
     wires: wiresInBox(input.wires?.lines ?? [], corners[0], corners[1], mode),
     labels: labelsInBox(input.labels?.boxes ?? [], corners[0], corners[1], mode),
+    drawings: areasInBox(input.drawings?.boxes ?? [], corners[0], corners[1], mode),
   }
   input.onSelect(boxSelection(found, done.adds, input.tool.armed, input.layers, input.filter))
 }

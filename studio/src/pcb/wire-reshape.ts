@@ -67,7 +67,7 @@ export function shapesBuilt<S extends SentShape & { sentAt: number }>(sent: read
   const moved = done.filter((shape) => shape.newTrace && shape.wire !== undefined && drawn.has(shape.wire))
   const follow: SelectionChange = (current) => {
     const renamed = current.wires.map((id) => moved.find((shape) => shape.id === id)?.wire ?? id)
-    return current.all(current.names, renamed, current.labels)
+    return current.all(current.names, renamed, current.labels, current.drawings)
   }
   return { waiting, follow }
 }

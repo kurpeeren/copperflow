@@ -1,5 +1,6 @@
 // copperflow's schematic renderer: draws the engine's sheet layout (symbols, wires, junctions, labels) onto a 2D canvas.
 // Only the symbol library comes from the engine at run time: its other modules reach Node-only code the Studio bundle cannot hold.
+import type { SchematicDrawing } from "../../../src/engine/model.js"
 import type { PlacedSymbol, SchematicLayout, NetLabel } from "../../../src/engine/schematic.js"
 import { groundSymbol, powerSymbol, type SchSymbol, type Shape } from "../../../src/engine/symbols/index.js"
 import { anchorAlignment, CANVAS_FONT_FAMILY, HIGHLIGHT_DIM, type Ctx } from "./ctx.js"
@@ -7,6 +8,8 @@ import { labelTag, NET_LABEL_TEXT } from "./label-tag.js"
 import { worldToScreen, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
 import { drawViolationMarkers, type ViolationMarker } from "./markers.js"
 import { schematicTheme as theme } from "./schematic-theme.js"
+import { WIRE_WIDTH } from "./drawing-style.js"
+import { drawDrawings, drawDrawingTexts, shownDrawings, type DrawingPaint } from "./drawing-draw.js"
 
 export interface SchematicDrawOptions {
   /** Device pixels per CSS pixel. */
@@ -25,6 +28,10 @@ export interface SchematicDrawOptions {
   selectedWires?: readonly string[]
   /** The selected net labels' and flags' ids: drawn in the selection colour too. */
   selectedLabels?: readonly string[]
+  /** The selected drawings' ids: drawn in the selection colour too. */
+  selectedDrawings?: readonly string[]
+  /** Drawings a move takes, drawn where it puts them in place of where the layout has them. */
+  movingDrawings?: readonly SchematicDrawing[]
   /** One net to highlight, as on the PCB: its wires and labels are lit, everything else is dimmed. `pins` are the pins on it: they are marked, and their symbols are not dimmed. */
   highlight?: { net: string; pins?: readonly string[]; aliases?: readonly string[] }
   /** Labels sent and waiting for their build, drawn dashed where they will be. */
@@ -55,7 +62,6 @@ interface Label {
 }
 
 const NO_SHIFT: Point = { x: 0, y: 0 }
-const WIRE_WIDTH = 0.02
 const SYMBOL_WIDTH = 0.02
 const MIN_LINE_PX = 1.2
 const MIN_TEXT_PX = 3
@@ -85,7 +91,7 @@ const rad = (degrees: number) => (degrees * Math.PI) / 180
 /** How wide a wire is drawn at this zoom (pixels per sheet unit), in CSS pixels: its width, never under the thinnest line. */
 export const wireStrokePx = (scale: number): number => Math.max(WIRE_WIDTH * scale, MIN_LINE_PX)
 
-/** Draws wires, then symbols, labels and pins, then all text upright in screen space, then the violation rings. */
+/** Draws wires and drawings, then symbols, labels and pins, then all text upright in screen space, then the violation rings. */
 export function drawSchematic(ctx: Ctx, layout: SchematicLayout, view: View, options: SchematicDrawOptions): void {
   const { camera, size } = view
   const px = 1 / camera.scale
@@ -99,6 +105,9 @@ export function drawSchematic(ctx: Ctx, layout: SchematicLayout, view: View, opt
   ctx.lineCap = "round"
   ctx.lineJoin = "round"
   drawWires(ctx, layout, options, px, line)
+  const drawings = shownDrawings(layout.drawings, options.movingDrawings)
+  const paint: DrawingPaint = { ...(options.selectedDrawings ? { selected: options.selectedDrawings } : {}), dim: options.highlight !== undefined }
+  drawDrawings(ctx, drawings, px / options.ratio, paint)
   for (const symbol of layout.symbols) drawSymbol(ctx, symbol, shiftOf(symbol), { line, px, fade: symbolFade(symbol, options.highlight) }, texts)
   for (const label of layout.labels) {
     const moving = options.movingLabels?.some((m) => m.id === label.id) ?? false
@@ -111,6 +120,7 @@ export function drawSchematic(ctx: Ctx, layout: SchematicLayout, view: View, opt
   // Text is drawn in screen space so it stays upright and readable at any zoom.
   ctx.setTransform(options.ratio, 0, 0, options.ratio, 0, 0)
   for (const label of texts) drawText(ctx, label, camera, size)
+  drawDrawingTexts(ctx, drawings, camera, size, paint)
   drawViolationMarkers(ctx, view, options.violations ?? [], options.activeViolation, false)
   ctx.restore()
 }

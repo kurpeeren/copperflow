@@ -1,4 +1,4 @@
-// Properties for several selected objects (parts, schematic wires and net labels): their count, the actions that apply to all
+// Properties for several selected objects (parts, schematic wires, net labels and drawings): their count, the actions that apply to all
 // of them (Delete; Rotate, Lock and Unlock act on the parts), and the Selection section with the count of each kind and
 // the parts by name. Each action runs the menu's command, so it does what Layout → Rotate or Edit → Delete does.
 import type { PartInfo } from "./api"
@@ -12,7 +12,7 @@ const ACTION_ICONS = { rotate: RotateIcon, lock: LockIcon, unlock: UnlockIcon, d
 interface GroupProps {
   view: PropertiesView
   parts: readonly PartInfo[]
-  /** How many schematic wires and labels are selected with the parts. */
+  /** How many schematic wires, labels and drawings are selected with the parts. */
   others: number
   /** The locked parts, and those of them changed outside the editor. */
   locks: { locked: ReadonlySet<string>; violated: ReadonlySet<string> }

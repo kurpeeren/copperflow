@@ -5,6 +5,8 @@ export const schematicTheme = {
   grid: "#F0F0EB",
   wire: "#008800",
   bus: "#008800",
+  /** Lines, shapes and texts drawn on the sheet (Place → Polyline, Rectangle, …) unless they give their own colour. */
+  drawing: "#000080",
   junction: "#CC0000",
   /** Symbol outlines and the ground and power flags; symbols have no fill. */
   symbolOutline: "#A00000",

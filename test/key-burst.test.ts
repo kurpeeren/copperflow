@@ -79,6 +79,17 @@ describe("pressNudge", () => {
     expect(holdNudge(held, NAMES, right)).toEqual({ names: NAMES, total: right })
   })
 
+  test("the selected drawings are kept like the labels: other drawings start afresh, the same join", () => {
+    const burst = pressNudge(undefined, circuit, NAMES, right, [], [], ["G1"]).burst
+    expect(burst.drawings).toEqual(["G1"])
+    expect(burst.labels).toBeUndefined()
+    expect(pressNudge(burst, circuit, NAMES, right, [], [], ["G1"])).toMatchObject({ send: null, fresh: false })
+    expect(pressNudge(burst, circuit, NAMES, right, [], [], ["G2"])).toMatchObject({ send: right, fresh: true })
+    const held = holdNudge(undefined, NAMES, right, [], [], ["G1"])
+    expect(held).toEqual({ names: NAMES, drawings: ["G1"], total: right })
+    expect(releaseArrows(OPEN_GATE, held, NAMES, { builtMark: 1, buildStatus: "done", moveWaiting: false }, [], [], ["G2"]).send).toBeNull()
+  })
+
   test("a failed edit ends the burst", () => {
     expect(settleNudge(pressNudge(undefined, circuit, NAMES, right).burst, false)).toBeUndefined()
   })

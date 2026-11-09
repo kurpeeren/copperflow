@@ -73,6 +73,13 @@ describe("context menu items", () => {
     expect(locked.find((e) => e !== "separator" && e.label === "Delete")).toMatchObject({ pending: "R1 is locked" })
   })
 
+  test("a drawing gets Properties and Delete, Delete on the menus' own command", () => {
+    const entries = contextItems({ kind: "drawing", id: "G1" }, { allLocked: false, selected: 0 })
+    expect(names(entries)).toEqual(["Properties", "-", "Delete"])
+    expect(entries[0]).toMatchObject({ special: "properties" })
+    expect(entries[2]).toMatchObject({ command: "delete", shortcut: "Delete" })
+  })
+
   test("every command item has someone to run it", () => {
     for (const target of [part, wire, { kind: "canvas" }] as const) {
       for (const locked of [false, true]) {
@@ -128,6 +135,12 @@ describe("the selection on right click", () => {
   test("empty canvas leaves the selection alone", () => {
     const current = Selection.none.add(["R1"])
     expect(contextSelection(current, { kind: "canvas" })).toBe(current)
+  })
+  test("a drawing outside the selection is selected alone; a selected one keeps the whole selection", () => {
+    const current = Selection.none.add(["R1"])
+    expect(contextSelection(current, { kind: "drawing", id: "G1" })).toMatchObject({ names: [], drawings: ["G1"] })
+    const group = current.addDrawings(["G1"])
+    expect(contextSelection(group, { kind: "drawing", id: "G1" })).toBe(group)
   })
   test("a label outside the selection is selected alone; a selected one keeps the whole selection", () => {
     const current = Selection.none.add(["R1"])

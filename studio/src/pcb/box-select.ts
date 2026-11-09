@@ -1,10 +1,10 @@
 // The selection box, as EasyEDA draws it: its direction decides what it takes. Dragged left to right (a solid outline)
-// it takes the parts, wires and net labels wholly inside it; right to left (a dashed outline), every one it touches.
+// it takes the parts, wires, net labels and drawings wholly inside it; right to left (a dashed outline), every one it touches.
 import type { SelectionChange } from "../selection.js"
 import { pointBounds, type Box, type PartBox, type Point } from "./geometry.js"
 import type { PickLayers } from "./layers.js"
 import type { PickFilter } from "./pick-filter.js"
-import { pickLabels, pickNames, pickWires } from "./pick.js"
+import { pickDrawings, pickLabels, pickNames, pickWires } from "./pick.js"
 import type { ArmedTool } from "./press.js"
 import type { WireLine } from "./wire-hit.js"
 
@@ -20,7 +20,7 @@ const contains = (outer: Box, inner: Box): boolean => inner.minX >= outer.minX &
 const overlaps = (a: Box, b: Box): boolean => a.minX <= b.maxX && b.minX <= a.maxX && a.minY <= b.maxY && b.minY <= a.maxY
 
 /** The ids of the areas the box from `a` to `b` takes by the direction rule, in their order. */
-function areasInBox(areas: readonly { id: string; box: Box }[], a: Point, b: Point, mode: BoxMode): string[] {
+export function areasInBox(areas: readonly { id: string; box: Box }[], a: Point, b: Point, mode: BoxMode): string[] {
   const area = pointBounds([a, b])
   if (!area) return []
   const takes = mode === "inside" ? (box: Box) => contains(area, box) : (box: Box) => overlaps(area, box)
@@ -60,21 +60,23 @@ export function wiresInBox(wires: readonly WireLine[], a: Point, b: Point, mode:
   return wires.filter((wire) => takes(wire.points)).map((wire) => wire.id)
 }
 
-/** What a box found: the parts (partsInBox) and, on the schematic, the wires (wiresInBox) and labels (labelsInBox). */
+/** What a box found: the parts (partsInBox) and, on the schematic, the wires (wiresInBox), labels (labelsInBox) and drawings (drawing-hit.ts drawingsInBox). */
 export interface BoxFound {
   parts: readonly string[]
   wires?: readonly string[]
   labels?: readonly string[]
+  drawings?: readonly string[]
 }
 
 /**
- * The selection after a box: just the parts, wires and labels in it that may be picked (pick.ts), or, with Shift or Ctrl held,
+ * The selection after a box: just the parts, wires, labels and drawings in it that may be picked (pick.ts), or, with Shift or Ctrl held,
  * those added to what was selected. `armed` is the canvas tool armed while the box was drawn, `layers` the PCB's.
  */
 export function boxSelection(found: BoxFound, adds: boolean, armed: ArmedTool = null, layers?: PickLayers, filter?: PickFilter): SelectionChange {
   return (current) => {
     const context = { selection: current, armed, layers, filter }
     const [parts, wires, labels] = [pickNames(found.parts, context), pickWires(found.wires ?? [], context), pickLabels(found.labels ?? [], context)]
-    return adds ? current.add(parts).addWires(wires).addLabels(labels) : current.all(parts, wires, labels)
+    const drawings = pickDrawings(found.drawings ?? [], context)
+    return adds ? current.add(parts).addWires(wires).addLabels(labels).addDrawings(drawings) : current.all(parts, wires, labels, drawings)
   }
 }

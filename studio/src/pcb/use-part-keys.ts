@@ -12,7 +12,7 @@ import type { PartCommand } from "../shell/command-owners"
 import { useCommands } from "../shell/commands"
 import { ALIGN_COMMANDS, isAlignCommand, type AlignCommand } from "./align-rules"
 import { keyAction, keyInput, type KeyResult } from "./canvas-keys"
-import { deletePlan } from "./delete-plan"
+import { deletePlan, type RemoveDrawings } from "./delete-plan"
 import { sendGroupEdit, type Layout } from "./group-edits"
 import { claimsKey, type BuildStatus } from "./key-burst"
 import { useKeyEdits, type KeyEdits, type KeyMove } from "./use-key-edits"
@@ -53,6 +53,8 @@ export interface PartKeysInput {
   onContextMenu(target: ContextTarget, at: Point): void
   /** The schematic's selected wires: their Delete and their nets. The PCB has none. */
   wire?: WireKeys
+  /** The schematic's selected drawings' Delete. The PCB has none. */
+  drawings?: RemoveDrawings
   /** The schematic's sheet, whose hand-drawn wires follow the parts the arrows and align move. The PCB has none. */
   follow?: WireFollow
 }
@@ -64,11 +66,12 @@ export interface PartKeysInput {
  */
 function removeSelection(input: PartKeysInput, fromKey: boolean): void {
   if (input.paused) return
-  const result = deletePlan(input.selection, input.blockerFor, input.wire?.removal, input.wire?.labelRemoval)
+  const result = deletePlan(input.selection, input.blockerFor, input.wire?.removal, input.wire?.labelRemoval, input.drawings)
   if ("message" in result) return fromKey ? undefined : input.actions.notify(result.message)
-  const { plan, wires, labels, question } = result
+  const { plan, wires, labels, drawings, question } = result
   if (question && !window.confirm(question)) return
-  void sendGroupEdit(plan, input.actions).then((ok) => ok && input.onSelect((current) => current.without(plan.parts).withoutWires(wires).withoutLabels(labels)))
+  const left = (current: Selection) => current.without(plan.parts).withoutWires(wires).withoutLabels(labels).withoutDrawings(drawings)
+  void sendGroupEdit(plan, input.actions).then((ok) => ok && input.onSelect(left))
 }
 
 /** Runs the canvas actions of a key press: fit, highlight, rotate, nudge, align, delete. */
@@ -121,9 +124,9 @@ function usePartCommands(input: PartKeysInput, edits: KeyEdits): void {
 export function usePartKeys(input: PartKeysInput): { rotateHeld: boolean; keyMove: KeyMove | undefined } {
   const { edits, held, moved } = useKeyEdits(input)
   usePartCommands(input, edits)
-  const { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, follow } = input
+  const { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, drawings, follow } = input
   useEffect(() => {
-    const keys: PartKeysInput = { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, follow }
+    const keys: PartKeysInput = { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, drawings, follow }
     const onKey = (event: KeyboardEvent) => {
       const hit = keyAction(keyInput(event), { view, drawing: paused })
       if (!hit) return
@@ -132,6 +135,6 @@ export function usePartKeys(input: PartKeysInput): { rotateHeld: boolean; keyMov
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [edits, view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, follow])
+  }, [edits, view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, drawings, follow])
   return { rotateHeld: held, keyMove: moved }
 }

@@ -78,7 +78,10 @@ function canvasProps({ data, workspace, checks, selection, onSelect, actions }: 
     pickFilter: workspace.pickFilter,
     onContextMenu,
     onOpenProperties: (target) => {
-      onSelect((current) => (target.kind === "wire" ? current.onlyWire(target.id) : current.only(target.name)))
+      onSelect((current) => {
+        if (target.kind === "wire") return current.onlyWire(target.id)
+        return target.kind === "drawing" ? current.onlyDrawing(target.id) : current.only(target.name)
+      })
       workspace.openProperties()
     },
   }

@@ -54,13 +54,23 @@ export function wireAfterBuild(selection: Selection, before: readonly SheetWire[
   return selection.withoutWires(selection.wires.filter((id) => goneAfterBuild(id, before, after)))
 }
 
+/** What the open view draws: its view, the circuit's parts, and on the schematic the sheet's wires, labels and drawings. */
+export interface ShownSheet {
+  view: View
+  parts?: Iterable<string>
+  wires?: Iterable<string>
+  labels?: Iterable<string>
+  drawings?: Iterable<string>
+}
+
 /**
  * What the canvases and panels are shown: the selection less any part the loaded circuit does not have (yet), and less
- * the wires and labels the open sheet does not draw. The PCB shows no wire or label, so those selected on the
- * schematic wait there.
+ * the wires, labels and drawings the open sheet does not draw. The PCB shows no wire, label or drawing, so those
+ * selected on the schematic wait there.
  */
-export function shownSelection(selection: Selection, sheet: { view: View; parts?: Iterable<string>; wires?: Iterable<string>; labels?: Iterable<string> }): Selection {
+export function shownSelection(selection: Selection, sheet: ShownSheet): Selection {
   const kept = sheet.parts ? selection.keep(sheet.parts) : selection
   const onSheet = sheet.view === "schematic"
-  return kept.keepWires(onSheet ? (sheet.wires ?? []) : []).keepLabels(onSheet ? (sheet.labels ?? []) : [])
+  const drawn = (ids: Iterable<string> | undefined): Iterable<string> => (onSheet ? (ids ?? []) : [])
+  return kept.keepWires(drawn(sheet.wires)).keepLabels(drawn(sheet.labels)).keepDrawings(drawn(sheet.drawings))
 }

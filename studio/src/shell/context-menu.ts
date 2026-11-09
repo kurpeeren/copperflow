@@ -1,4 +1,4 @@
-// The right-click menu as data: its items for each target (a part, a net label or a wire on the schematic, the empty canvas),
+// The right-click menu as data: its items for each target (a part, a net label, a wire or a drawing on the schematic, the empty canvas),
 // where it opens so it stays inside the window, and what a right click does to the selection. Items that have a
 // command run it through the same path as the menu bar; the few that need the canvas or the target are "special".
 import type { ContextTarget } from "../pcb/press.js"
@@ -98,6 +98,8 @@ function wireItems(reasons: WireReasons | undefined): ContextEntry[] {
   ]
 }
 
+const DRAWING_ITEMS: readonly ContextEntry[] = [{ label: "Properties", special: "properties" }, "separator", run("Delete", "delete", "Delete")]
+
 const LABEL_ITEMS: readonly ContextEntry[] = [
   { label: "Rename", special: "rename" },
   { label: "Highlight net", special: "highlightNet" },
@@ -107,6 +109,7 @@ const LABEL_ITEMS: readonly ContextEntry[] = [
 export function contextItems(target: ContextTarget, state: ContextState): ContextEntry[] {
   if (target.kind === "part") return partItems(state)
   if (target.kind === "wire") return wireItems(state.wire)
+  if (target.kind === "drawing") return [...DRAWING_ITEMS]
   return [...(target.kind === "label" ? LABEL_ITEMS : CANVAS_ITEMS)]
 }
 
@@ -120,8 +123,9 @@ export function allLocked(names: readonly string[], locked: ReadonlySet<string>)
   return names.length > 0 && names.every((name) => locked.has(name))
 }
 
-/** A right click on a part, a wire or a label that is not selected selects it alone; on a selected one the group stays. */
+/** A right click on a part, a wire, a label or a drawing that is not selected selects it alone; on a selected one the group stays. */
 export function contextSelection(selection: Selection, target: ContextTarget): Selection {
+  if (target.kind === "drawing") return selection.hasDrawing(target.id) ? selection : selection.onlyDrawing(target.id)
   if (target.kind === "wire") return selection.hasWire(target.id) ? selection : selection.onlyWire(target.id)
   if (target.kind === "label") return selection.hasLabel(target.label.id) ? selection : selection.onlyLabel(target.label.id)
   return target.kind === "part" && !selection.has(target.name) ? selection.only(target.name) : selection

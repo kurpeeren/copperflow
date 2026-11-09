@@ -60,6 +60,7 @@ describe("Delete on wires alone", () => {
       plan: { edits: [{ kind: "removeTrace", from: ".R3 > .pin1", to: "net.VCC" }], summary: "remove the wire from R3.pin1 to net VCC", parts: [], skipped: [], done: "removed" },
       wires: [R3_VCC],
       labels: [],
+      drawings: [],
     })
   })
 

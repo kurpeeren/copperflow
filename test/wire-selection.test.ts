@@ -81,6 +81,12 @@ describe("the selection shown", () => {
     expect(shownSelection(mix, { view: "schematic", wires: [ENGINE] })).toMatchObject({ names: ["R1"], wires: [ENGINE] })
   })
 
+  test("drawings show on the schematic while the sheet draws them, never on the PCB", () => {
+    const mix = Selection.none.add(["R1"]).addDrawings(["G1", "G2"])
+    expect(shownSelection(mix, { view: "schematic", drawings: ["G2"] })).toMatchObject({ names: ["R1"], drawings: ["G2"] })
+    expect(shownSelection(mix, { view: "pcb", drawings: ["G1", "G2"] })).toMatchObject({ names: ["R1"], drawings: [] })
+  })
+
   test("parts the loaded circuit does not have yet are not shown; without a circuit every part is", () => {
     const two = Selection.none.add(["R1", "R9"])
     expect(shownSelection(two, { view: "pcb", parts: ["R1", "R2"] }).names).toEqual(["R1"])

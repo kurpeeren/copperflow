@@ -22,7 +22,7 @@ export function labelAfterBuild(selection: Selection, before: Design | undefined
   if (selection.labelCount === 0) return selection
   const drawn = new Set(after.schematic.labels.map((label) => label.id))
   const labels = selection.labels.flatMap((id) => idAfter(id, before, after, drawn) ?? [])
-  return selection.all(selection.names, selection.wires, labels)
+  return selection.all(selection.names, selection.wires, labels, selection.drawings)
 }
 
 /** What Delete does to the selected labels: the hand-drawn ones with their wires, those on a pin of a part that goes, and why the others stay. */

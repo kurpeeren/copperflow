@@ -11,17 +11,17 @@ export type { Gesture, GestureInput } from "./gestures"
 export type { Press }
 
 /**
- * The last group move sent (its parts and the selected wires and labels it carries), its parts, the wires' new shapes
- * and the labels kept drawn until a build that started after it was sent has finished.
+ * The last group move sent (its parts and the selected wires, labels and drawings it carries), its parts, the wires'
+ * new shapes, the labels and the drawings kept drawn until a build that started after it was sent has finished.
  */
 function usePendingMove(input: GestureInput): { pending: Moving | undefined; commit: Commit } {
   const { actions, builtFrom } = input
   const [pending, setPending] = useState<Moving & { sentAt: number }>()
   useEffect(() => setPending((current) => (current && current.sentAt > builtFrom ? current : undefined)), [builtFrom])
-  const commit: Commit = (names, offset, wires = [], selectedLabels = []) => {
+  const commit: Commit = (names, offset, wires = [], selectedLabels = [], selectedDrawings = []) => {
     if (offset.x === 0 && offset.y === 0) return
-    const { plan, lines, labels } = moveWithWires(input, names, offset, wires, selectedLabels)
-    const sent = plan.edits.length > 0 ? { names: plan.parts, offset, wires: lines, labels, sentAt: Date.now() } : undefined
+    const { plan, lines, labels, drawings } = moveWithWires(input, names, offset, wires, selectedLabels, selectedDrawings)
+    const sent = plan.edits.length > 0 ? { names: plan.parts, offset, wires: lines, labels, drawings, sentAt: Date.now() } : undefined
     if (sent) setPending(sent)
     void sendGroupEdit(plan, actions).then((ok) => ok || setPending((current) => (current === sent ? undefined : current)))
   }
@@ -43,7 +43,7 @@ function useEscapeCancelsDrag(kind: Gesture["kind"] | undefined, cancel: () => v
   }, [kind, cancel])
 }
 
-/** The group being dragged, with the shapes the drag gives the wires and labels (the same edits a drop would write), live. */
+/** The group being dragged, with the shapes the drag gives the wires, labels and drawings (the same edits a drop would write), live. */
 function useDragged(input: GestureInput, gesture: Gesture | undefined): Moving | undefined {
   const dragged = gesture?.kind === "drag" && gesture.moved && !gesture.blocker ? gesture : undefined
   const { follow, circuit } = input
@@ -52,8 +52,8 @@ function useDragged(input: GestureInput, gesture: Gesture | undefined): Moving |
   return useMemo(() => {
     if (!dragged) return undefined
     if (!follow) return { names: dragged.movable, offset: dragged.offset, wires: [] }
-    const { lines, labels } = moveWithWires(input, dragged.names, dragged.offset, dragged.wires, dragged.labels)
-    return { names: dragged.movable, offset: dragged.offset, wires: lines, labels }
+    const { lines, labels, drawings } = moveWithWires(input, dragged.names, dragged.offset, dragged.wires, dragged.labels, dragged.drawings)
+    return { names: dragged.movable, offset: dragged.offset, wires: lines, labels, drawings }
   }, [dragged, follow, circuit])
 }
 

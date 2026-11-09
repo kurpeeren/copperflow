@@ -63,7 +63,7 @@ function usePruneSelection(circuit: CircuitData | undefined, select: (change: Se
 
 /**
  * Drops the selected wires a rebuild took away or re-pointed (wire-selection.ts), so they are not selected again when
- * they come back, and keeps the selected labels under their new ids (label-selection.ts).
+ * they come back, keeps the selected labels under their new ids (label-selection.ts), and drops the drawings it took away.
  */
 function usePruneWire(design: Design | undefined, select: (change: SelectionChange) => void): void {
   const before = useRef<Design | undefined>(undefined)
@@ -73,7 +73,7 @@ function usePruneWire(design: Design | undefined, select: (change: SelectionChan
     before.current = design
     select((current) => {
       const wires = current.wireCount === 0 ? current : wireAfterBuild(current, previous && withEndPins(previous.schematic), withEndPins(design.schematic))
-      return labelAfterBuild(wires, previous, design)
+      return labelAfterBuild(wires, previous, design).keepDrawings(design.schematic.drawings.map((drawing) => drawing.id))
     })
   }, [design, select])
 }
@@ -82,7 +82,8 @@ function usePruneWire(design: Design | undefined, select: (change: SelectionChan
 function useShownSelection(selection: Selection, circuit: CircuitData | undefined, design: Design | undefined, view: Tab): Selection {
   return useMemo(() => {
     const sheet = design?.schematic
-    return shownSelection(selection, { view, parts: circuit?.model.parts.map((part) => part.name), wires: sheet?.wires.map((wire) => wire.id), labels: sheet?.labels.map((label) => label.id) })
+    const ids = <T extends { id: string }>(items: readonly T[] | undefined) => items?.map((item) => item.id)
+    return shownSelection(selection, { view, parts: circuit?.model.parts.map((part) => part.name), wires: ids(sheet?.wires), labels: ids(sheet?.labels), drawings: ids(sheet?.drawings) })
   }, [selection, circuit, design, view])
 }
 
@@ -166,7 +167,9 @@ function useStudio() {
   const sheet = build.design?.schematic
   const sheetWires = useMemo(() => (tab === "schematic" && sheet ? sheet.wires.map((wire) => wire.id) : []), [tab, sheet])
   const sheetLabels = useMemo(() => (tab === "schematic" && sheet ? sheet.labels.map((label) => label.id) : []), [tab, sheet])
-  const runCommand = useAppCommands({ file, view: tab, setView: setTab, selection, select, circuit, actions, pickLayers, pickFilter: workspace.pickFilter, sheetWires, sheetLabels, workspace, openChecks, openFind: find.open, openDialog: setDialog })
+  const sheetDrawings = useMemo(() => (tab === "schematic" && sheet ? sheet.drawings.map((drawing) => drawing.id) : []), [tab, sheet])
+  const sheetIds = { sheetWires, sheetLabels, sheetDrawings }
+  const runCommand = useAppCommands({ file, view: tab, setView: setTab, selection, select, circuit, actions, pickLayers, pickFilter: workspace.pickFilter, ...sheetIds, workspace, openChecks, openFind: find.open, openDialog: setDialog })
   return { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, actions, place, checks, find, openChecks, openDocument, runCommand }
 }
 

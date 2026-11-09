@@ -104,9 +104,10 @@ describe("hidden layers", () => {
 })
 
 describe("the Filter tab", () => {
-  const noParts = { parts: false, labels: true, wires: true }
-  const noLabels = { parts: true, labels: false, wires: true }
-  const noWires = { parts: true, labels: true, wires: false }
+  const noParts = { ...ALL_PICKABLE, parts: false }
+  const noLabels = { ...ALL_PICKABLE, labels: false }
+  const noWires = { ...ALL_PICKABLE, wires: false }
+  const noDrawings = { ...ALL_PICKABLE, drawings: false }
 
   test("a kind switched off cannot be picked; the other can", () => {
     expect(canPick({ kind: "part", name: "R1" }, { ...free, filter: noParts })).toBe(false)
@@ -145,6 +146,24 @@ describe("the Filter tab", () => {
     expect(selectAll(["R1"])(every).labels).toEqual([])
   })
 
+  test("a drawing is picked unless the Drawings row is off; its line sits over the parts, its fill under them", () => {
+    expect(canPick({ kind: "drawing", id: "G1" }, free)).toBe(true)
+    expect(canPick({ kind: "drawing", id: "G1" }, note)).toBe(false)
+    expect(canPick({ kind: "drawing", id: "G1" }, { ...free, filter: noDrawings })).toBe(false)
+    const line = { at: () => ({ id: "G1", place: "line" as const }) }
+    const fill = { at: () => ({ id: "G2", place: "inside" as const }) }
+    expect(targetAt(BOXES, undefined, { x: 1.5, y: 0 }, free, undefined, line)).toEqual({ kind: "drawing", id: "G1" })
+    expect(targetAt(BOXES, undefined, { x: 1.5, y: 0 }, free, undefined, fill)).toEqual({ kind: "part", name: "C1" })
+    expect(targetAt(BOXES, undefined, { x: 6, y: 0 }, free, undefined, fill)).toEqual({ kind: "drawing", id: "G2" })
+    expect(targetAt(BOXES, undefined, { x: 1.5, y: 0 }, { ...free, filter: noDrawings }, undefined, line)).toEqual({ kind: "part", name: "C1" })
+    expect(targetAt(BOXES, labels, { x: 9, y: 0 }, free, undefined, line)).toEqual({ kind: "label", label })
+  })
+
+  test("Select all takes the schematic's drawings, but none while the Drawings row is off", () => {
+    expect(selectAll(["R1"], undefined, undefined, [], [], ["G1", "G2"])(Selection.none)).toMatchObject({ names: ["R1"], drawings: ["G1", "G2"] })
+    expect(selectAll(["R1"], undefined, noDrawings, [], [], ["G1"])(Selection.none)).toMatchObject({ names: ["R1"], drawings: [] })
+  })
+
   test("Select all takes no parts while Parts is off", () => {
     expect(selectAll(["R1", "C1"], undefined, noParts)(Selection.none)).toBe(Selection.none)
     expect(selectAll(["R1", "C1"], undefined, noLabels)(Selection.none).names).toEqual(["R1", "C1"])
@@ -156,14 +175,15 @@ describe("the Filter tab", () => {
   })
 
   test("toggling gives a new filter, the rows follow the view, and a missing filter allows everything", () => {
-    expect(ALL_PICKABLE).toEqual({ parts: true, labels: true, wires: true })
+    expect(ALL_PICKABLE).toEqual({ parts: true, labels: true, wires: true, drawings: true })
     const off = togglePickKind(ALL_PICKABLE, "labels")
-    expect(off).toEqual({ parts: true, labels: false, wires: true })
+    expect(off).toEqual({ parts: true, labels: false, wires: true, drawings: true })
     expect(ALL_PICKABLE.labels).toBe(true)
     expect(togglePickKind(off, "labels")).toEqual(ALL_PICKABLE)
     expect(kindPickable(undefined, "parts")).toBe(true)
     expect(pickKindRows("pcb").map((row) => row.label)).toEqual(["Parts"])
-    expect(pickKindRows("schematic").map((row) => row.label)).toEqual(["Parts", "Wires", "Net labels and flags"])
+    expect(pickKindRows("schematic").map((row) => row.label)).toEqual(["Parts", "Wires", "Net labels and flags", "Drawings"])
+    expect(pickKindRows("schematic").find((row) => row.label === "Drawings")?.kind).toBe("drawings")
     expect(pickKindRows("schematic").find((row) => row.label === "Wires")?.kind).toBe("wires")
   })
 })

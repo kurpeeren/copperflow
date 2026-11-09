@@ -92,6 +92,9 @@ const TYPES: Record<string, string> = {
 const literal = z.union([z.string().max(500), z.number(), z.boolean()])
 const props = z.record(z.string().max(64), literal)
 const file = z.string().min(1).max(500)
+const point = z.object({ x: z.number().finite(), y: z.number().finite() })
+/** A drawing prop: `points` takes a point list (the core checks which key may), every other prop a literal. */
+const drawingProps = z.record(z.string().max(64), z.union([literal, z.array(point).max(1000)]))
 const EditSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("setProps"), part: z.string(), props }),
   z.object({ kind: z.literal("removePart"), part: z.string() }),
@@ -114,6 +117,9 @@ const EditSchema = z.discriminatedUnion("kind", [
       .array(z.object({ x: z.number().finite(), y: z.number().finite() }))
       .max(200),
   }),
+  z.object({ kind: z.literal("addDrawing"), tag: z.string().max(64), name: z.string().max(64).optional(), props: drawingProps }),
+  z.object({ kind: z.literal("removeDrawing"), id: z.string().max(200) }),
+  z.object({ kind: z.literal("setDrawingProps"), id: z.string().max(200), props: drawingProps }),
 ])
 const Bodies = {
   // "Keep these positions" writes every auto-placed part in one request.

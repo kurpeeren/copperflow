@@ -243,6 +243,78 @@ describe("net labels and flags in the selection", () => {
   })
 })
 
+describe("drawings in the selection", () => {
+  const W = "wire:R1.pin2|R2.pin1"
+  const L = "label:c3"
+  const D = "G1"
+  const E = "drawing:path:1"
+  const drawing = Selection.none.onlyDrawing(D)
+  const mix = of("R1").addWires([W]).addLabels([L]).addDrawings([D, E])
+
+  test("a drawing alone: one object in all, and it is the sole drawing", () => {
+    expect(drawing.drawings).toEqual([D])
+    expect(drawing.drawingCount).toBe(1)
+    expect(drawing.total).toBe(1)
+    expect(drawing.soleDrawing).toBe(D)
+    expect(drawing.soleWire).toBeUndefined()
+    expect(drawing.soleLabel).toBeUndefined()
+    expect(Selection.none.drawings).toEqual([])
+    expect(Selection.none.soleDrawing).toBeUndefined()
+  })
+
+  test("drawings are held with parts, wires and labels in pick order and counted in the total", () => {
+    expect(mix.drawings).toEqual([D, E])
+    expect(mix.total).toBe(5)
+    expect(mix.hasDrawing(E)).toBe(true)
+    expect(mix.hasDrawing("G9")).toBe(false)
+    expect(mix.soleDrawing).toBeUndefined()
+    expect(Selection.none.onlyLabel(L).addDrawings([D]).soleLabel).toBeUndefined()
+  })
+
+  test("onlyDrawing selects that drawing alone; again changes nothing", () => {
+    expect(mix.onlyDrawing(D)).toMatchObject({ names: [], wires: [], labels: [], drawings: [D] })
+    expect(drawing.onlyDrawing(D)).toBe(drawing)
+  })
+
+  test("toggleDrawing adds a drawing and takes it out, keeping the rest", () => {
+    expect(of("R1").toggleDrawing(D).toggleDrawing(E)).toMatchObject({ names: ["R1"], drawings: [D, E] })
+    expect(mix.toggleDrawing(D)).toMatchObject({ names: ["R1"], wires: [W], labels: [L], drawings: [E] })
+    expect(drawing.toggleDrawing(D)).toBe(Selection.none)
+  })
+
+  test("part, wire and label changes keep the drawings; only, onlyWire, onlyLabel, clear and all without drawings do not", () => {
+    expect(mix.toggle("C1").drawings).toEqual([D, E])
+    expect(mix.toggleWire(W).drawings).toEqual([D, E])
+    expect(mix.toggleLabel(L).drawings).toEqual([D, E])
+    expect(mix.add(["C1"]).addWires(["wire:x"]).addLabels(["label:x"]).drawings).toEqual([D, E])
+    expect(mix.without(["R1"]).withoutWires([W]).withoutLabels([L]).drawings).toEqual([D, E])
+    expect(mix.keep([]).keepWires([]).keepLabels([]).drawings).toEqual([D, E])
+    expect(mix.only("R1").drawings).toEqual([])
+    expect(mix.onlyWire(W).drawings).toEqual([])
+    expect(mix.onlyLabel(L).drawings).toEqual([])
+    expect(mix.all(["R1"], [W], [L]).drawings).toEqual([])
+  })
+
+  test("all replaces the four lists, each once", () => {
+    expect(Selection.none.all(["R1"], [W], [L], [D, E, D])).toMatchObject({ names: ["R1"], wires: [W], labels: [L], drawings: [D, E] })
+    expect(mix.all(["R1"], [W], [L], [D, E])).toBe(mix)
+    expect(drawing.all([], [], [], [D])).toBe(drawing)
+  })
+
+  test("addDrawings, withoutDrawings and keepDrawings; a change of nothing is the same selection", () => {
+    expect(mix.addDrawings([E, "G3"]).drawings).toEqual([D, E, "G3"])
+    expect(mix.addDrawings([D])).toBe(mix)
+    expect(mix.withoutDrawings([D])).toMatchObject({ names: ["R1"], wires: [W], labels: [L], drawings: [E] })
+    expect(mix.withoutDrawings(["G9"])).toBe(mix)
+    expect(mix.keepDrawings([E, "G9"]).drawings).toEqual([E])
+    expect(mix.keepDrawings([D, E])).toBe(mix)
+    expect(drawing.keepDrawings([])).toBe(Selection.none)
+    expect(drawing.withoutDrawings([D])).toBe(Selection.none)
+    expect(drawing.without(["R1"]).keepWires([]).keepLabels([])).toBe(drawing)
+    expect(Object.isFrozen(mix.drawings)).toBe(true)
+  })
+})
+
 describe("a click on a part", () => {
   test("selects that part alone", () => {
     expect(clicked("C1", plain)(of("R1", "R2")).names).toEqual(["C1"])

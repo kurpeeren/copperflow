@@ -4,6 +4,7 @@
 // an earlier press that lands meanwhile does not move them twice. Pure; use-key-edits.ts keeps the latest arrow move
 // until its build lands, and the canvas draws a drag's the same way.
 import type { Design } from "../../../src/engine/design.js"
+import type { SchematicDrawing } from "../../../src/engine/model.js"
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import { roundPosition, type Point } from "./geometry.js"
 import type { GroupEdit } from "./group-edits.js"
@@ -11,23 +12,28 @@ import { sideOf, type LabelMove } from "./label-drag.js"
 import { ZERO, type Anchor } from "./positions.js"
 import type { WireLine } from "./wire-hit.js"
 
-/** A move waiting for its build: where each moved part's origin goes on the sheet, the wires' new shapes, and the labels moved on their own. */
+/**
+ * A move waiting for its build: where each moved part's origin goes on the sheet, the wires' new shapes, the labels
+ * moved on their own, and the drawings where the move puts them.
+ */
 export interface MovePreview {
   parts: { name: string; to: Point }[]
   wires: readonly WireLine[]
   labels?: readonly LabelMove[]
+  drawings?: readonly SchematicDrawing[]
 }
 
-/** A move as the canvas draws it: the parts shifted by one offset, the wires' new shapes, and the labels moved on their own. */
+/** A move as the canvas draws it: the parts shifted by one offset, the wires' new shapes, the labels moved on their own, and the drawings moved. */
 export interface MoveShown {
   names: readonly string[]
   offset: Point
   wires?: readonly WireLine[]
   labels?: readonly LabelMove[]
+  drawings?: readonly SchematicDrawing[]
 }
 
-/** The preview of a move's plan on the schematic: each part's new schX and schY plus its groups' offset, the wires' shapes and the labels'. */
-export function movePreview(design: Design, plan: GroupEdit, wires: readonly WireLine[], labels: readonly LabelMove[] = []): MovePreview {
+/** The preview of a move's plan on the schematic: each part's new schX and schY plus its groups' offset, the wires' shapes, the labels' and the drawings'. */
+export function movePreview(design: Design, plan: GroupEdit, wires: readonly WireLine[], labels: readonly LabelMove[] = [], drawings: readonly SchematicDrawing[] = []): MovePreview {
   const parts = plan.edits.flatMap((edit) => {
     if (edit.kind !== "setProps") return []
     const { schX, schY } = edit.props
@@ -35,7 +41,7 @@ export function movePreview(design: Design, plan: GroupEdit, wires: readonly Wir
     const group = design.circuit.components.find((component) => component.id === edit.part)?.groupOffset.sch ?? ZERO
     return [{ name: edit.part, to: { x: roundPosition(schX + group.x), y: roundPosition(schY + group.y) } }]
   })
-  return { parts, wires, ...(labels.length > 0 ? { labels } : {}) }
+  return { parts, wires, ...(labels.length > 0 ? { labels } : {}), ...(drawings.length > 0 ? { drawings } : {}) }
 }
 
 /** The preview as the canvas draws a move: the parts shifted from where the sheet has them now (the move is one offset for all), and the wires. */
@@ -43,7 +49,8 @@ export function previewMoving(preview: MovePreview, anchors: ReadonlyMap<string,
   const placed = preview.parts.find((part) => anchors.has(part.name))
   const from = placed && anchors.get(placed.name)?.origin
   const offset = placed && from ? { x: roundPosition(placed.to.x - from.x), y: roundPosition(placed.to.y - from.y) } : ZERO
-  return { names: preview.parts.map((part) => part.name), offset, wires: preview.wires, ...(preview.labels ? { labels: preview.labels } : {}) }
+  const { labels, drawings } = preview
+  return { names: preview.parts.map((part) => part.name), offset, wires: preview.wires, ...(labels ? { labels } : {}), ...(drawings ? { drawings } : {}) }
 }
 
 const spot = (p: Point): string => `${p.x},${p.y}`

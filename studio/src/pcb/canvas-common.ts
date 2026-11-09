@@ -7,6 +7,7 @@ import type { FocusRequest } from "../checks-panel-state"
 import type { Selection, SelectionChange } from "../selection"
 import type { Highlight } from "./highlight"
 import type { LabelMove } from "./label-drag"
+import type { SchematicDrawing } from "../../../src/engine/model.js"
 import type { CameraCommand } from "../shell/command-owners"
 import { useCommands } from "../shell/commands"
 import { drawLockBadge, drawMark, drawNoteBox, drawOutline, drawSelectionBox, type OverlayLook } from "./overlays"
@@ -76,7 +77,7 @@ export interface CanvasProps {
 }
 
 /** What a double click opens Properties on. */
-export type PropertiesTarget = Extract<ContextTarget, { kind: "part" | "wire" }>
+export type PropertiesTarget = Extract<ContextTarget, { kind: "part" | "wire" | "drawing" }>
 
 /**
  * Parts drawn away from where the design has them: being dragged, or moved and waiting for their build. On the
@@ -88,6 +89,8 @@ export interface Moving {
   offset: Point
   wires?: readonly WireLine[]
   labels?: readonly LabelMove[]
+  /** The drawings a move takes, where it puts them. */
+  drawings?: readonly SchematicDrawing[]
 }
 
 const WHEEL_ZOOM = 0.0015
