@@ -4,7 +4,8 @@ import { gridLineSpacing, gridLinePositions, SHEET_GRID } from "../studio/src/pc
 import { schematicTheme } from "../studio/src/pcb/schematic-theme.js"
 
 const SPEC = readFileSync(new URL("../docs/studio-easyeda-parity.md", import.meta.url), "utf8")
-const TABLE = SPEC.slice(SPEC.indexOf("**Schematic**"), SPEC.indexOf("**PCB**"))
+const START = SPEC.indexOf("**Schematic**")
+const TABLE = SPEC.slice(START, SPEC.indexOf("**PCB**"))
 
 /** The spec's row for an item, as its colours in the order they appear. */
 function specColours(item: string): string[] {
@@ -14,6 +15,19 @@ function specColours(item: string): string[] {
 }
 
 describe("schematicTheme", () => {
+  test("the spec table is found", () => {
+    expect(START).toBeGreaterThanOrEqual(0)
+    expect(TABLE).toContain("| background |")
+  })
+
+  test("fixed values, whatever the doc says", () => {
+    expect(schematicTheme).toMatchObject({
+      background: "#FFFCF8", grid: "#F0F0EB", wire: "#008800", bus: "#008800", junction: "#CC0000", symbolOutline: "#A00000",
+      pin: "#880000", pinName: "#000000", pinNumber: "#000000", designator: "#0000FF", netName: "#0000FF", value: "#000080",
+      noConnect: "#33CC33", selection: "#FF0000", highlight: "#FF9933", border: "#A00000", titleText: "#000080",
+    })
+  })
+
   const rows: [string, (keyof typeof schematicTheme)[]][] = [
     ["background", ["background"]],
     ["grid", ["grid"]],
@@ -52,15 +66,23 @@ describe("schematic grid", () => {
     expect(gridLineSpacing(SHEET_GRID, 100)).toBe(SHEET_GRID)
   })
 
-  test("a smaller step gets a line every fifth step", () => {
+  test("a closer step is stepped up by 5 until it is 8 px apart", () => {
     expect(gridLineSpacing(SHEET_GRID, 79)).toBeCloseTo(0.5)
+    expect(gridLineSpacing(SHEET_GRID, 16)).toBeCloseTo(0.5)
+    expect(gridLineSpacing(SHEET_GRID, 15)).toBeCloseTo(2.5)
+    expect(gridLineSpacing(SHEET_GRID, 3.2)).toBeCloseTo(2.5)
+  })
+
+  test("no grid when even 25 steps are under 8 px", () => {
+    expect(gridLineSpacing(SHEET_GRID, 3)).toBeNull()
+    expect(gridLinePositions({ cx: 0, cy: 0, scale: 0.5 }, { width: 800, height: 600 }, SHEET_GRID)).toEqual({ xs: [], ys: [] })
   })
 
   test("lines cover the view at the chosen spacing", () => {
     const { xs, ys } = gridLinePositions({ cx: 0, cy: 0, scale: 100 }, { width: 200, height: 100 }, SHEET_GRID)
     expect(xs[0]).toBeLessThanOrEqual(-1)
     expect(xs[xs.length - 1]).toBeGreaterThanOrEqual(1)
-    expect(xs[1] as number - (xs[0] as number)).toBeCloseTo(SHEET_GRID)
+    expect((xs[1] as number) - (xs[0] as number)).toBeCloseTo(SHEET_GRID)
     expect(ys.length).toBeGreaterThan(5)
   })
 })

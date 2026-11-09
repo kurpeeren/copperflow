@@ -6,15 +6,19 @@ import { schematicTheme } from "./schematic-theme.js"
 export const SHEET_GRID = 0.1
 const MIN_LINE_GAP_PX = 8
 const COARSE_FACTOR = 5
+const MAX_COARSENING = 2
 
-/** The distance between drawn lines: every grid step once it is at least 8 px on screen, else every fifth step. */
-export function gridLineSpacing(step: number, scale: number): number {
-  return step * scale >= MIN_LINE_GAP_PX ? step : step * COARSE_FACTOR
+/** The distance between drawn lines: the grid step, stepped up by 5 until it is at least 8 px on screen; null when even 25 steps are closer than that. */
+export function gridLineSpacing(step: number, scale: number): number | null {
+  let spacing = step
+  for (let i = 0; i <= MAX_COARSENING; i++, spacing *= COARSE_FACTOR) if (spacing * scale >= MIN_LINE_GAP_PX) return spacing
+  return null
 }
 
 /** World positions of the vertical and horizontal lines that fall in the view. */
 export function gridLinePositions(camera: Camera, size: Size, step: number): { xs: number[]; ys: number[] } {
   const spacing = gridLineSpacing(step, camera.scale)
+  if (spacing === null) return { xs: [], ys: [] }
   const topLeft = screenToWorld(camera, size, { x: 0, y: 0 })
   const bottomRight = screenToWorld(camera, size, { x: size.width, y: size.height })
   const between = (a: number, b: number) => {

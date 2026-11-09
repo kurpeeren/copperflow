@@ -70,7 +70,7 @@ export function drawOutline(
   box: Box,
   offset: Point,
   kind: "selected" | "hover",
-  look: OverlayLook = PCB_LOOK,
+  look: OverlayLook,
 ): void {
   const a = worldToScreen(camera, size, { x: box.minX + offset.x, y: box.maxY + offset.y })
   const b = worldToScreen(camera, size, { x: box.maxX + offset.x, y: box.minY + offset.y })
@@ -128,7 +128,7 @@ export function drawMark(ctx: CanvasRenderingContext2D, camera: Camera, size: Si
 }
 
 /** The box drawn with Shift-drag to place a note. */
-export function drawSelectionBox(ctx: CanvasRenderingContext2D, a: Point, b: Point, look: OverlayLook = PCB_LOOK): void {
+export function drawSelectionBox(ctx: CanvasRenderingContext2D, a: Point, b: Point, look: OverlayLook): void {
   ctx.save()
   ctx.fillStyle = look.noteFill
   ctx.strokeStyle = look.noteStroke

@@ -66,8 +66,12 @@ describe("drawSchematic", () => {
   test("a ground label draws the ground shape", () => {
     expect(layout.labels.some((l) => l.style === "ground")).toBe(true)
     const labels = layout.labels.filter((l) => l.style === "ground").length
-    const strokes = draw().records.filter((r) => r.name === "stroke" && r.strokeStyle === schematicTheme.symbolOutline)
-    expect(strokes.length).toBeGreaterThanOrEqual(labels * groundSymbol().length)
+    const outlines = (l: typeof layout) => {
+      const rec = recorder()
+      drawSchematic(rec.ctx as never, l, VIEW, { ratio: 1 })
+      return rec.records.filter((r) => r.name === "stroke" && r.strokeStyle === schematicTheme.symbolOutline).length
+    }
+    expect(outlines(layout) - outlines({ ...layout, labels: layout.labels.filter((l) => l.style !== "ground") })).toBe(labels * groundSymbol().length)
   })
 
   test("every pending wire is drawn dashed", () => {
@@ -131,9 +135,12 @@ describe("schematic colours", () => {
     const labelled = buildDesign({ [FILE]: LABELLED }, FILE).schematic
     const rec = recorder()
     drawSchematic(rec.ctx as never, labelled, VIEW, { ratio: 1 })
-    const fills = rec.records.filter((r) => r.name === "fill").map((r) => String(r.fillStyle))
-    expect(fills.every((f) => f === schematicTheme.junction)).toBe(true)
-    expect(texts(rec, "EN")[0]?.fillStyle).toBe(schematicTheme.netName)
+    const label = texts(rec, "EN")
+    expect(label).toHaveLength(1)
+    expect(label[0]?.fillStyle).toBe(schematicTheme.netName)
+    const fills = rec.records.filter((r) => r.name === "fill")
+    expect(fills.length).toBeGreaterThan(0)
+    expect(fills.every((f) => f.fillStyle === schematicTheme.junction)).toBe(true)
   })
 
   test("designators are blue, values navy, pin numbers black", () => {
@@ -166,8 +173,11 @@ describe("schematic colours", () => {
     expect(rec.records.filter((r) => r.name === "fill" && r.fillStyle === schematicTheme.junction)).toHaveLength(layout.junctions.length)
   })
 
-  test("a lit net uses the highlight colour, not the PCB's", () => {
-    expect(schematicTheme.highlight).toBe("#FF9933")
+  test("a lit net is drawn in the schematic highlight colour, never the PCB's", () => {
+    const rec = draw({ highlight: { net: "net:R1.pin2", pins: ["R1.pin2"] } })
+    expect(strokes(rec, "#FF9933").length).toBeGreaterThan(0)
+    expect(rec.records.some((r) => r.name === "fill" && r.fillStyle === "#FF9933")).toBe(true)
+    expect(rec.records.some((r) => r.strokeStyle === PALETTE.highlight || r.fillStyle === PALETTE.highlight)).toBe(false)
   })
 })
 
