@@ -231,12 +231,31 @@ describe("widgets that own their keys", () => {
     expect(keyAction(key("ArrowDown"), PCB)?.action).toBe("nudgeDown")
   })
 
-  test("no canvas key fires in such a widget or for an event already handled", () => {
-    expect(keyAction(key("r", { ownsKeys: true }), PCB)).toBeNull()
-    expect(keyAction(key("z", { ctrlKey: true, ownsKeys: true }), PCB)).toBeNull()
+  test("navigation and activation keys do nothing on the canvas from such a widget or once a widget took them", () => {
+    for (const name of ["ArrowUp", "ArrowRight", "Home", "End", "PageUp", "PageDown", "Enter", " ", "r", "f", "k", "h", "w", "q"]) {
+      for (const state of [PCB, SCHEMATIC]) expect([name, keyAction(key(name, { ownsKeys: true }), state)]).toEqual([name, null])
+    }
+    expect(keyAction(key("F", { shiftKey: true, ownsKeys: true }), PCB)).toBeNull()
     expect(keyAction(key("ArrowUp", { handled: true }), PCB)).toBeNull()
     expect(keyAction(key("r", { handled: true }), PCB)).toBeNull()
     expect(keyAction(key("r"), PCB)?.action).toBe("rotate")
+  })
+
+  test("Ctrl and Cmd shortcuts, the panel keys, the Alt tools and Shift+F10 still work in such a widget", () => {
+    const owns = { ownsKeys: true }
+    expect(keyAction(key("z", { ctrlKey: true, ...owns }), PCB)?.action).toBe("undo")
+    expect(keyAction(key("Z", { metaKey: true, ...owns }), SCHEMATIC)?.action).toBe("undo")
+    expect(keyAction(key("a", { ctrlKey: true, ...owns }), PCB)?.action).toBe("selectAll")
+    expect(keyAction(key("f", { ctrlKey: true, ...owns }), PCB)?.action).toBe("find")
+    expect(keyAction(key("o", { ctrlKey: true, ...owns }), SCHEMATIC)?.action).toBe("openFile")
+    expect(keyAction(key("[", owns), PCB)?.action).toBe("toggleLeftPanel")
+    expect(keyAction(key("]", owns), SCHEMATIC)?.action).toBe("toggleRightPanel")
+    expect(keyAction(key("\\", owns), PCB)?.action).toBe("toggleBottomPanel")
+    expect(keyAction(key("\\", { altGraph: true, ctrlKey: true, altKey: true, ...owns }), PCB)?.action).toBe("toggleBottomPanel")
+    expect(keyAction(key("[", { altGraph: true, ...owns }), SCHEMATIC)?.action).toBe("toggleLeftPanel")
+    expect(keyAction(key("w", { altKey: true, code: "KeyW", ...owns }), SCHEMATIC)?.action).toBe("wire")
+    expect(keyAction(key("n", { altKey: true, code: "KeyN", ...owns }), SCHEMATIC)?.action).toBe("armNetLabel")
+    expect(keyAction(key("F10", { shiftKey: true, ...owns }), PCB)?.action).toBe("contextMenu")
   })
 })
 
