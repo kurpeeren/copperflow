@@ -35,8 +35,6 @@ export interface PartBox {
 
 const MIN_SCALE = 0.5
 const MAX_SCALE = 2000
-const GRID_STEPS = [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 25, 50, 100]
-const MIN_GRID_PX = 8
 
 export function worldToScreen(camera: Camera, size: Size, p: Point): Point {
   return { x: (p.x - camera.cx) * camera.scale + size.width / 2, y: -(p.y - camera.cy) * camera.scale + size.height / 2 }
@@ -70,13 +68,8 @@ export function zoomAt(camera: Camera, size: Size, cursor: Point, factor: number
   }
 }
 
-/** Minor and major grid spacing in millimetres, so minor lines stay at least 8 px apart. */
-export function gridSteps(scale: number): { minor: number; major: number } {
-  const minor = GRID_STEPS.find((step) => step * scale >= MIN_GRID_PX) ?? (GRID_STEPS[GRID_STEPS.length - 1] as number)
-  const index = GRID_STEPS.indexOf(minor)
-  const major = GRID_STEPS.slice(index + 1).find((step) => step / minor >= 4) ?? minor * 10
-  return { minor, major }
-}
+/** Rounds a position in mm to 4 decimals, so the 2 mil step (0.0508) stays exact. */
+export const roundPosition = (value: number): number => Math.round(value * 10000) / 10000
 
 /** Rounds to the nearest multiple of `step`, without floating-point noise such as 0.30000000000000004. */
 export function snap(value: number, step: number): number {

@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest"
 import {
   centredCamera,
   fitCamera,
-  gridSteps,
+  roundPosition,
   hitTest,
   pointBounds,
   rightAngles,
@@ -59,12 +59,13 @@ describe("camera", () => {
 })
 
 describe("grid and snapping", () => {
-  test("grid spacing stays readable at every zoom", () => {
-    for (const scale of [2, 10, 40, 200]) {
-      const { minor, major } = gridSteps(scale)
-      expect(minor * scale).toBeGreaterThanOrEqual(8)
-      expect(major / minor).toBeGreaterThanOrEqual(4)
+  test("a 2 mil step lands on the visible grid after rounding", () => {
+    const step = 0.0508
+    for (const raw of [0.07, 1.234, -3.3, 12.9]) {
+      const written = roundPosition(snap(raw, step))
+      expect(Math.abs(written / step - Math.round(written / step))).toBeLessThan(1e-9)
     }
+    expect(roundPosition(0.3)).toBe(0.3)
   })
 
   test("snap rounds to the step without floating-point noise", () => {

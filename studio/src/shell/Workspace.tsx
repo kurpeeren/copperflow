@@ -37,7 +37,7 @@ export interface WorkspaceProps {
 }
 
 /** What both canvases take, once there is a design to draw; each adds the rings of its own view. */
-function canvasProps({ data, workspace, checks, selected, onSelect, actions }: WorkspaceProps): Omit<CanvasProps, "markers" | "gridStyle"> | undefined {
+function canvasProps({ data, workspace, checks, selected, onSelect, actions }: WorkspaceProps): Omit<CanvasProps, "markers" | "gridStyle" | "gridStep"> | undefined {
   const { build, circuit } = data
   if (!build.design || !circuit) return undefined
   return {
@@ -54,6 +54,7 @@ function canvasProps({ data, workspace, checks, selected, onSelect, actions }: W
     onHighlight: workspace.setHighlight,
     unit: workspace.unit,
     onToggleUnit: workspace.toggleUnit,
+    onGridStep: workspace.changeGridStep,
     activeViolation: checks.active,
     focus: checks.focus,
     onFocused: checks.focused,
@@ -70,8 +71,8 @@ function CenterColumn(props: WorkspaceProps) {
       <DocTabs file={data.file} view={view} onView={props.onView} />
       <section className="canvas" id="doc-panel" role="tabpanel" aria-labelledby={`doc-tab-${view}`}>
         {!build.design && <p className="empty">{build.status === "failed" ? build.error : "Building the circuit…"}</p>}
-        {canvas && view === "pcb" && <PcbCanvas key={data.file} {...canvas} gridStyle={workspace.gridStyles.pcb} markers={checks.markers.pcb} />}
-        {canvas && view === "schematic" && <SchematicCanvas key={data.file} {...canvas} gridStyle={workspace.gridStyles.schematic} markers={checks.markers.schematic} />}
+        {canvas && view === "pcb" && <PcbCanvas key={data.file} {...canvas} gridStyle={workspace.gridStyles.pcb} gridStep={workspace.gridSteps.pcb} markers={checks.markers.pcb} />}
+        {canvas && view === "schematic" && <SchematicCanvas key={data.file} {...canvas} gridStyle={workspace.gridStyles.schematic} gridStep={workspace.gridSteps.schematic} markers={checks.markers.schematic} />}
       </section>
       {workspace.bottom.open && (
         <BottomPanel

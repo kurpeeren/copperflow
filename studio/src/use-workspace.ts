@@ -5,7 +5,7 @@ import { keyAction, keyInput, type KeyActionName } from "./pcb/canvas-keys"
 import type { View } from "./pcb/positions"
 import { INITIAL_BOTTOM, clickBottom, openBottomTab, toggleBottom, type BottomState, type BottomTab } from "./shell/bottom-state"
 import { NO_HIGHLIGHT, type Highlight } from "./pcb/highlight"
-import { INITIAL_GRID_STYLES, toggleGridStyle, type GridStyles } from "./pcb/grid"
+import { INITIAL_GRID_STEPS, INITIAL_GRID_STYLES, setGridStep, toggleGridStyle, type GridSteps, type GridStyles } from "./pcb/grid"
 import { nextUnit, type Unit } from "./pcb/units"
 import {
   INITIAL_LEFT,
@@ -62,6 +62,7 @@ export function useWorkspace(view: View) {
   const [highlight, setHighlight] = useState<Highlight>(NO_HIGHLIGHT)
   /** Each document keeps its grid style while the tabs switch. */
   const [gridStyles, setGridStyles] = useState<GridStyles>(INITIAL_GRID_STYLES)
+  const [gridSteps, setGridSteps] = useState<GridSteps>(INITIAL_GRID_STEPS)
   const openView = useRef(view)
   openView.current = view
 
@@ -98,7 +99,8 @@ export function useWorkspace(view: View) {
     return () => window.removeEventListener("keydown", onKey)
   }, [view, run])
 
+  const changeGridStep = useCallback((step: number) => setGridSteps((steps) => setGridStep(steps, openView.current, step)), [])
   const toggleUnit = useCallback(() => setUnit(nextUnit), [])
   const { left, right } = strips
-  return { ...strips, leftOpen: left.open, rightOpen: right.open, focusSearch, searchFocused, focusPage, pageFocused, openPageTree, unit, toggleUnit, gridStyles, highlight, setHighlight, run }
+  return { ...strips, leftOpen: left.open, rightOpen: right.open, focusSearch, searchFocused, focusPage, pageFocused, openPageTree, unit, toggleUnit, gridStyles, gridSteps, changeGridStep, highlight, setHighlight, run }
 }

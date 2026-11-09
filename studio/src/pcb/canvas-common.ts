@@ -36,6 +36,9 @@ export interface CanvasProps {
   onToggleUnit(): void
   /** This document's grid style (lines or dots). */
   gridStyle: GridStyle
+  /** This document's Grid step: the grid and the snap. */
+  gridStep: number
+  onGridStep(step: number): void
   /** This view's violations that have a position, ringed on the canvas. */
   markers: readonly ViolationMarker[]
   /** The violation picked in the DRC tab. */

@@ -5,7 +5,7 @@ import type { Design, Edit } from "../api"
 import type { Actions } from "../App"
 import { isCanvasKey } from "./canvas-common"
 import { keyAction, keyInput } from "./canvas-keys"
-import { rightAngles, snap, type Camera, type Point } from "./geometry"
+import { rightAngles, roundPosition, snap, type Camera, type Point } from "./geometry"
 import { endAt, freePin, namedNetsJoined, pinAt, sameEnd, wireEdits, type WireEnd } from "./wire-tool"
 
 /** A wire being drawn: where it starts, the pin it starts on if any, and the corners clicked so far, on the grid. */
@@ -41,7 +41,7 @@ interface PendingWire {
 type WirePlan = { edits: Edit[]; points: Point[]; summary: string } | { notice?: string }
 
 const PORT_HIT_PX = 12
-const round = (value: number) => Math.round(value * 1000) / 1000
+const round = roundPosition
 const sameUnder = (a: Under, b: Under) =>
   a.pin === b.pin && a.end?.selector === b.end?.selector && a.end?.at.x === b.end?.at.x && a.end?.at.y === b.end?.at.y
 

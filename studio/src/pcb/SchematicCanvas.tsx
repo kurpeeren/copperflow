@@ -9,7 +9,7 @@ import { ViewTools } from "../shell/ViewTools"
 import { keepAutoPlaced } from "./auto-placed"
 import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
 import { CanvasStatus, GridSelect, KeepButton } from "./CanvasTools"
-import { SHEET_DEFAULT_STEP, gridStepOptions, type GridLook } from "./grid"
+import { gridStepOptions, type GridLook } from "./grid"
 import { hitTest, unionBoxes, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import { highlightOf, partNets, schematicNetAt, type Highlight } from "./highlight"
 import { labelHitBox } from "./label-drag"
@@ -275,12 +275,11 @@ function useArmedTool(wire: WireTool, palette: Palette): void {
  * The schematic, drawn by copperflow's own renderer under its camera, grid and tools, with the
  * wire tool (see useWireTool) and the Place tools (see useLabelPalette).
  */
-export function SchematicCanvas({ design, buildId, project, builtFrom, circuit, actions, selected, onSelect, highlight: highlightNets, onHighlight, gridStyle, markers, activeViolation, focus, onFocused }: CanvasProps) {
+export function SchematicCanvas({ design, buildId, project, builtFrom, circuit, actions, selected, onSelect, highlight: highlightNets, onHighlight, gridStyle, gridStep: step, onGridStep: setStep, markers, activeViolation, focus, onFocused }: CanvasProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const size = useElementSize(wrapRef)
   const [cursor, setCursor] = useState<Point>()
-  const [step, setStep] = useState(SHEET_DEFAULT_STEP)
   const grid = useMemo<GridLook>(() => ({ step, style: gridStyle }), [step, gridStyle])
   const parts = usePlacedParts(design, "schematic", circuit)
   const sheet = useHeldSheet(design)

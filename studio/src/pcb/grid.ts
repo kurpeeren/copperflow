@@ -16,6 +16,13 @@ export const SHEET_DEFAULT_STEP = 0.1
 
 export const defaultStep = (view: View): number => (view === "pcb" ? PCB_DEFAULT_STEP : SHEET_DEFAULT_STEP)
 
+/** Each document keeps its own Grid step. */
+export type GridSteps = Readonly<Record<View, number>>
+
+export const INITIAL_GRID_STEPS: GridSteps = { schematic: SHEET_DEFAULT_STEP, pcb: PCB_DEFAULT_STEP }
+
+export const setGridStep = (steps: GridSteps, view: View, step: number): GridSteps => ({ ...steps, [view]: step })
+
 export interface StepOption {
   value: number
   label: string

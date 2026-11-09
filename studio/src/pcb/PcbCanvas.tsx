@@ -6,7 +6,7 @@ import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSi
 import { ViewTools } from "../shell/ViewTools"
 import { CanvasStatus, GridSelect, KeepButton } from "./CanvasTools"
 import { PALETTE, type Layers } from "./ctx"
-import { PCB_DEFAULT_STEP, gridStepOptions, type GridLook } from "./grid"
+import { gridStepOptions, type GridLook } from "./grid"
 import { hitTest, pointBounds, unionBoxes, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import { NO_HIGHLIGHT, partNets, pcbNetAt, type Highlight } from "./highlight"
 import type { ViolationMarker } from "./markers"
@@ -109,13 +109,12 @@ function PcbTools({ unit, step, setStep, layers, setLayers, keep }: PcbToolsProp
 }
 
 /** The PCB, drawn by copperflow's own renderer under its camera, grid and tools. */
-export function PcbCanvas({ design, builtFrom, circuit, actions, selected, onSelect, highlight, onHighlight, unit, onToggleUnit, gridStyle, markers, activeViolation, focus, onFocused }: CanvasProps) {
+export function PcbCanvas({ design, builtFrom, circuit, actions, selected, onSelect, highlight, onHighlight, unit, onToggleUnit, gridStyle, gridStep: step, onGridStep: setStep, markers, activeViolation, focus, onFocused }: CanvasProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const size = useElementSize(wrapRef)
   const [hover, setHover] = useState<string>()
   const [cursor, setCursor] = useState<Point>()
-  const [step, setStep] = useState(PCB_DEFAULT_STEP)
   const grid = useMemo<GridLook>(() => ({ step, style: gridStyle }), [step, gridStyle])
   const [layers, setLayers] = useState<Layers>(DEFAULT_LAYERS)
   const [hoverPad, setHoverPad] = useState<WorldPad>()

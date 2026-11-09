@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { drawGrid } from "../studio/src/pcb/overlays.js"
-import { INITIAL_GRID_STYLES, PCB_DEFAULT_STEP, PCB_GRID_STEPS, SHEET_DEFAULT_STEP, SHEET_GRID_STEPS, gridStepOptions, nextGridStyle, planGrid, toggleGridStyle } from "../studio/src/pcb/grid.js"
+import { INITIAL_GRID_STEPS, INITIAL_GRID_STYLES, PCB_DEFAULT_STEP, PCB_GRID_STEPS, SHEET_DEFAULT_STEP, SHEET_GRID_STEPS, gridStepOptions, nextGridStyle, planGrid, setGridStep, toggleGridStyle } from "../studio/src/pcb/grid.js"
 import { drawSchematicGrid } from "../studio/src/pcb/schematic-grid.js"
 import { snapLabel } from "../studio/src/pcb/units.js"
 
@@ -72,6 +72,22 @@ describe("grid style", () => {
     expect(dotted).toEqual({ schematic: "lines", pcb: "dots" })
     expect(INITIAL_GRID_STYLES.pcb).toBe("lines")
     expect(toggleGridStyle(dotted, "pcb")).toEqual(INITIAL_GRID_STYLES)
+  })
+})
+
+describe("grid step per document", () => {
+  test("each document starts at its default and keeps its own step", () => {
+    expect(INITIAL_GRID_STEPS).toEqual({ schematic: 0.1, pcb: 0.5 })
+    const changed = setGridStep(INITIAL_GRID_STEPS, "pcb", 0.127)
+    expect(changed).toEqual({ schematic: 0.1, pcb: 0.127 })
+    expect(INITIAL_GRID_STEPS.pcb).toBe(0.5)
+  })
+
+  test("switching views and back, or changing the file, keeps both steps (the record lives above the canvases)", () => {
+    let steps = setGridStep(INITIAL_GRID_STEPS, "pcb", 0.254)
+    steps = setGridStep(steps, "schematic", 0.2)
+    expect([steps.pcb, steps.schematic]).toEqual([0.254, 0.2])
+    expect(setGridStep(steps, "schematic", 0.05).pcb).toBe(0.254)
   })
 })
 

@@ -4,7 +4,7 @@ import type { CircuitData } from "../api"
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { Actions } from "../App"
 import { toLocal, type Moving } from "./canvas-common"
-import { hitTest, screenToWorld, snap, type Camera, type PartBox, type Point, type Size } from "./geometry"
+import { hitTest, roundPosition, screenToWorld, snap, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import { movedTo, VIEWS, ZERO, type Anchor, type View } from "./positions"
 import type { LabelTools } from "./use-label-drag"
 
@@ -36,7 +36,7 @@ type Commit = (part: PartBox, offset: Point) => void
 
 const DRAG_THRESHOLD_PX = 3
 const BOX_MIN_PX = 6
-const round = (value: number) => Math.round(value * 1000) / 1000
+const round = roundPosition
 
 /** The pointer press starts a pan (middle or right button), a note box (Shift), a part drag or a pan. */
 function startGesture(input: GestureInput, event: { button: number; shiftKey: boolean }, point: Point): Gesture | undefined {

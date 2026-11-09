@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { buildDesign } from "../src/engine/design.js"
-import { gridSteps } from "../studio/src/pcb/geometry.js"
+import { planGrid } from "../studio/src/pcb/grid.js"
 import { PALETTE } from "../studio/src/pcb/ctx.js"
 import { drawGrid, drawOutline, PCB_LOOK } from "../studio/src/pcb/overlays.js"
 import { drawPcb } from "../studio/src/pcb/pcb-draw.js"
@@ -117,7 +117,7 @@ describe("PCB colours (spec section 6)", () => {
     const { ctx, records } = recorder()
     const camera = { cx: 0, cy: 0, scale: 20 }
     drawGrid(ctx, camera, { width: 400, height: 300 })
-    const minor = gridSteps(camera.scale).minor * camera.scale
+    const minor = (planGrid(camera, { width: 400, height: 300 }, 0.5)?.spacing ?? 0) * camera.scale
     const verticals = records.filter((r) => r.name === "moveTo" && r.args[1] === 0)
     const strong = verticals.filter((r) => r.strokeStyle === "rgb(255 255 255 / 50%)").map((r) => (r.args[0] as number) - 0.5)
     expect(strong.length).toBeGreaterThan(0)

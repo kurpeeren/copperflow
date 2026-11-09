@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import { describe, expect, test } from "vitest"
-import { gridLineSpacing, gridLinePositions, SHEET_GRID } from "../studio/src/pcb/schematic-grid.js"
+import { SHEET_DEFAULT_STEP as SHEET_GRID, gridLineSpacing, planGrid } from "../studio/src/pcb/grid.js"
 import { schematicTheme } from "../studio/src/pcb/schematic-theme.js"
 
 const SPEC = readFileSync(new URL("../docs/studio-easyeda-parity.md", import.meta.url), "utf8")
@@ -75,11 +75,13 @@ describe("schematic grid", () => {
 
   test("no grid when even 25 steps are under 8 px", () => {
     expect(gridLineSpacing(SHEET_GRID, 3)).toBeNull()
-    expect(gridLinePositions({ cx: 0, cy: 0, scale: 0.5 }, { width: 800, height: 600 }, SHEET_GRID)).toEqual({ xs: [], ys: [] })
+    expect(planGrid({ cx: 0, cy: 0, scale: 0.5 }, { width: 800, height: 600 }, SHEET_GRID)).toBeNull()
   })
 
   test("lines cover the view at the chosen spacing", () => {
-    const { xs, ys } = gridLinePositions({ cx: 0, cy: 0, scale: 100 }, { width: 200, height: 100 }, SHEET_GRID)
+    const plan = planGrid({ cx: 0, cy: 0, scale: 100 }, { width: 200, height: 100 }, SHEET_GRID)
+    const xs = (plan?.columns ?? []).map((i) => i * SHEET_GRID)
+    const ys = plan?.rows ?? []
     expect(xs[0]).toBeLessThanOrEqual(-1)
     expect(xs[xs.length - 1]).toBeGreaterThanOrEqual(1)
     expect((xs[1] as number) - (xs[0] as number)).toBeCloseTo(SHEET_GRID)
