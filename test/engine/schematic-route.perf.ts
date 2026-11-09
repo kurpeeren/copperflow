@@ -16,19 +16,23 @@ const trace = (from: string, to: string): string => `<trace from="${from}" to="$
 
 const LONG = 60
 
-/** 200 placed resistors in a 20 x 10 grid. */
-function gridParts(): string[] {
+/** 200 resistors in a 20 x 10 grid, or with no position at all so the engine places them. */
+function gridParts(placed: boolean): string[] {
   const parts: string[] = []
   for (let row = 0; row < ROWS; row++) {
-    for (let column = 0; column < COLUMNS; column++) parts.push(`<resistor name="${name(row, column)}" schX={${column * PITCH_X}} schY={${-row * PITCH_Y}} />`)
+    for (let column = 0; column < COLUMNS; column++) {
+      const at = placed ? ` schX={${column * PITCH_X}} schY={${-row * PITCH_Y}}` : ""
+      parts.push(`<resistor name="${name(row, column)}"${at} />`)
+    }
   }
   return parts
 }
 
-const sheet = (traces: readonly string[]): string => `export default () => (<board width="100mm" height="60mm">${gridParts().join("")}${traces.join("")}</board>)`
+const sheet = (traces: readonly string[], placed = true): string =>
+  `export default () => (<board width="100mm" height="60mm">${gridParts(placed).join("")}${traces.join("")}</board>)`
 
 /** The grid with 400 traces: along each row, down each column, and 30 more between columns. */
-function bigSheet(): string {
+function bigSheet(placed = true): string {
   const traces: string[] = []
   for (let row = 0; row < ROWS; row++) {
     for (let column = 0; column < COLUMNS; column++) {
@@ -37,7 +41,7 @@ function bigSheet(): string {
     }
   }
   for (let i = 0; i < EXTRA; i++) traces.push(trace(`${name(i % (ROWS - 1), i % COLUMNS)}.pin2`, `${name((i % (ROWS - 1)) + 1, i % COLUMNS)}.pin2`))
-  return sheet(traces)
+  return sheet(traces, placed)
 }
 
 /** The grid with 60 traces between far parts, as code with no corners writes them: part a to part (37a + 101) mod 200. */
@@ -63,4 +67,8 @@ test("routes a 200-part, 400-trace schematic in under 50 ms", () => {
 
 test("routes 60 traces across a 200-part schematic in under 50 ms", () => {
   expect(measure("60 long traces", longSheet(), LONG)).toBeLessThan(50)
+})
+
+test("places and routes the same 200 parts and 400 traces with no position given in under 50 ms", () => {
+  expect(measure("400 near traces, nothing placed", bigSheet(false), 400)).toBeLessThan(50)
 })

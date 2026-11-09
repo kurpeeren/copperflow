@@ -34,11 +34,17 @@ const samePins = (drawing: Drawing, pins: readonly Pin[]): boolean => {
   return drawn.length === wanted.length && drawn.every((number, index) => number === wanted[index])
 }
 
-function drawingFor(component: Component): Drawing {
+/** The kind's own drawing, when it has one that fits the component's pins. */
+function ownDrawing(component: Component): Drawing | undefined {
   const draw = Object.hasOwn(DRAWINGS, component.kind) ? DRAWINGS[component.kind] : undefined
   const drawing = draw?.(component)
-  return drawing && samePins(drawing, component.pins) ? drawing : boxDrawing(component)
+  return drawing && samePins(drawing, component.pins) ? drawing : undefined
 }
+
+const drawingFor = (component: Component): Drawing => ownDrawing(component) ?? boxDrawing(component)
+
+/** Whether the component is drawn as a box with its pins on the sides, as chips and connectors are. */
+export const drawnAsBox = (component: Component): boolean => ownDrawing(component) === undefined
 
 /** The reference above the body and the value below it, centred on the body. */
 function labelShapes(component: Component, body: Shape[], pins: SymbolPin[]): Shape[] {

@@ -1,9 +1,9 @@
 import type { Circuit, Component, Connection, Diagnostic, Point, Side } from "./model.js"
-import { naturalCompare } from "./order.js"
 import { junctionsOf, labelName, labelStyle, layoutNets, type Drawn, type PinSpot } from "./schematic-nets.js"
 import { routeWires, type FixedWire, type RouteRequest, type SheetBox } from "./schematic-route.js"
-import { symbolFor, type Bounds, type SchSymbol } from "./symbols/index.js"
-import { clean } from "./symbols/types.js"
+import { rotateSide, sheetBounds, sheetPoint, type Spot } from "./schematic-geometry.js"
+import { placeLoose } from "./schematic-place.js"
+import { symbolFor, type SchSymbol } from "./symbols/index.js"
 
 export interface PlacedSymbol {
   component: string
@@ -40,98 +40,23 @@ export interface SchematicLayout {
   junctions: Point[]
 }
 
-/** Gap between the placed symbols and the column of auto-placed ones. */
-const COLUMN_GAP = 1.0
-/** Gap between stacked auto-placed symbols. */
-const STACK_GAP = 0.4
-const GRID = 0.1
-/** Counter-clockwise order, so a quarter turn moves one step on. */
-const SIDES: readonly Side[] = ["right", "top", "left", "bottom"]
-
-/** Removes floating-point noise and negative zero so that coordinates compare exactly. */
-const tidy = (value: number): number => clean(value) + 0
-
-const turnsOf = (rotation: number): number => Math.round((((rotation % 360) + 360) % 360) / 90) % 4
-
-/** Counter-clockwise quarter turns, y up. */
-function rotatePoint(p: Point, rotation: number): Point {
-  switch (turnsOf(rotation)) {
-    case 1:
-      return { x: tidy(-p.y), y: tidy(p.x) }
-    case 2:
-      return { x: tidy(-p.x), y: tidy(-p.y) }
-    case 3:
-      return { x: tidy(p.y), y: tidy(-p.x) }
-    default:
-      return { x: tidy(p.x), y: tidy(p.y) }
-  }
-}
-
-function rotateSide(side: Side, rotation: number): Side {
-  return SIDES[(SIDES.indexOf(side) + turnsOf(rotation)) % 4] ?? side
-}
-
-function sheetPoint(p: Point, at: { x: number; y: number; rotation: number }): Point {
-  const turned = rotatePoint(p, at.rotation)
-  return { x: tidy(at.x + turned.x), y: tidy(at.y + turned.y) }
-}
-
-/** The box around the rotated corners of the bounds, relative to the origin. */
-function turnedBounds(bounds: Bounds, rotation: number): Bounds {
-  const corners = [
-    { x: bounds.minX, y: bounds.minY },
-    { x: bounds.maxX, y: bounds.minY },
-    { x: bounds.maxX, y: bounds.maxY },
-    { x: bounds.minX, y: bounds.maxY },
-  ].map((corner) => rotatePoint(corner, rotation))
-  const xs = corners.map((c) => c.x)
-  const ys = corners.map((c) => c.y)
-  return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) }
-}
-
-const snapDown = (value: number): number => tidy(Math.floor(value / GRID + 1e-9) * GRID)
-const snapUp = (value: number): number => tidy(Math.ceil(value / GRID - 1e-9) * GRID)
-
-interface Origin {
-  x: number
-  y: number
-  rotation: number
+interface Origin extends Spot {
   autoPlaced: boolean
 }
 
-/** Right edge of the placed symbols, or undefined when none is placed. */
-function placedRight(components: readonly Component[], symbols: ReadonlyMap<string, SchSymbol>): number | undefined {
-  const edges = components.flatMap((component) => {
-    const symbol = symbols.get(component.id)
-    return component.sch && symbol ? [component.sch.x + turnedBounds(symbol.bounds, component.sch.rotation).maxX] : []
-  })
-  return edges.length > 0 ? Math.max(...edges) : undefined
-}
-
-/** Placed symbols keep their spot; the rest stack downward in a column right of them. */
-function origins(components: readonly Component[], symbols: ReadonlyMap<string, SchSymbol>): Map<string, Origin> {
+/** Placed symbols keep their spot; the rest are placed by connectivity (schematic-place.ts). */
+function origins(circuit: Circuit, symbols: ReadonlyMap<string, SchSymbol>): Map<string, Origin> {
   const result = new Map<string, Origin>()
-  for (const component of components) {
+  for (const component of circuit.components) {
     if (component.sch) result.set(component.id, { ...component.sch, autoPlaced: false })
   }
-  const loose = components.filter((c) => !c.sch).sort((a, b) => naturalCompare(a.id, b.id))
-  const right = placedRight(components, symbols)
-  const reach = Math.max(0, ...loose.map((c) => -(symbols.get(c.id)?.bounds.minX ?? 0)))
-  const x = right === undefined ? 0 : snapUp(right + COLUMN_GAP + reach)
-  let cursor = 0
-  for (const component of loose) {
-    const bounds = symbols.get(component.id)?.bounds
-    if (!bounds) continue
-    const y = snapDown(cursor - bounds.maxY)
-    result.set(component.id, { x, y, rotation: 0, autoPlaced: true })
-    cursor = tidy(y + bounds.minY - STACK_GAP)
-  }
+  for (const [name, spot] of placeLoose(circuit, symbols)) result.set(name, { ...spot, autoPlaced: true })
   return result
 }
 
 function placeSymbols(circuit: Circuit): { symbols: PlacedSymbol[]; spots: Map<string, PinSpot> } {
   const drawn = new Map(circuit.components.map((component) => [component.id, symbolFor(component)]))
-  const where = origins(circuit.components, drawn)
+  const where = origins(circuit, drawn)
   const spots = new Map<string, PinSpot>()
   const symbols = circuit.components.flatMap((component): PlacedSymbol[] => {
     const symbol = drawn.get(component.id)
@@ -220,11 +145,7 @@ function handDrawn(circuit: Circuit, spots: ReadonlyMap<string, PinSpot>): HandD
 
 /** The symbols' bounds on the sheet and the pins each owns, for the router. */
 function sheetBoxes(symbols: readonly PlacedSymbol[]): SheetBox[] {
-  return symbols.map((placed) => {
-    const turned = turnedBounds(placed.symbol.bounds, placed.rotation)
-    const bounds = { minX: placed.x + turned.minX, maxX: placed.x + turned.maxX, minY: placed.y + turned.minY, maxY: placed.y + turned.maxY }
-    return { bounds, pins: Object.keys(placed.pinEnds) }
-  })
+  return symbols.map((placed) => ({ bounds: sheetBounds(placed.symbol.bounds, placed), pins: Object.keys(placed.pinEnds) }))
 }
 
 const isRequest = (slot: Wire | RouteRequest): slot is RouteRequest => !("points" in slot)
