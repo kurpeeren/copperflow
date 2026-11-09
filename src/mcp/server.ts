@@ -17,7 +17,6 @@ import {
   readPart,
   checkCircuit,
   editCircuit,
-  formatCheck,
   formatHistory,
   formatSummary,
   listCircuits,
@@ -29,11 +28,15 @@ import {
 import type { DesignSource } from "../core/bom.js"
 import { FootprintFileSchema } from "../engine/footprints/file.js"
 import { VERSION } from "../version.js"
+import { batchSummary, describeRefusal, editItem, firstRefusal, planNets, toEdit } from "./batch.js"
+import { formatCompactCheck, formatCompactSummary } from "./compact.js"
 
 const INSTRUCTIONS = `copperflow lets you edit circuit files together with a human.
-- Call circuit_summary before changing a circuit, and again when the human says they changed something.
+- Write parts and connections, not positions or wire corners. The program places the parts and routes the wires; leave schX, schY, pcbX, pcbY and schematicRouteHints alone unless the human asks for a position.
+- Call circuit_summary before changing a circuit, and again when the human says they changed something. The default answer is compact (one line per part and per net); use detail "full" only when you need every prop.
+- Make several changes in one call: edit_circuit takes a list of edits (one history entry, nothing written if one is refused), connect_nets wires whole nets at once, e.g. { "GND": ["R1.pin2", "C1.pin2"] }.
 - Change existing parts and traces through these tools rather than rewriting the file, so locks and history apply.
-- After every change, call check_circuit and fix every error before reporting success.
+- Call check_circuit once at the end, then fix every error before reporting success. It shows the first 20 findings; use its filter (errors, warnings, a part or a net) for the rest.
 - Never change, move or remove a part marked [LOCKED]. If a summary lists lock violations, restore those parts.
 - "Marks from the human" are instructions placed on the board; follow them.
 - recent_changes shows what the human undid; do not redo an undone change unless asked.
@@ -53,12 +56,12 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
   const server = new McpServer({ name: "copperflow", version: VERSION }, { instructions: INSTRUCTIONS })
   const designOptions = options.engine ? { engine: options.engine } : {}
 
-  const edit = (circuit: string, edits: Edit[], summary: string) =>
-    run(async () => {
-      const result = await editCircuit(root, circuit, edits, { author: "ai", summary })
-      const warnings = result.violations.map((v) => `Lock violation: ${v.part} ${v.kind}: ${v.detail}`)
-      return [`Change ${result.entry.id} applied: ${summary}`, ...warnings].join("\n")
-    })
+  const apply = async (circuit: string, edits: Edit[], summary: string, note = summary) => {
+    const result = await editCircuit(root, circuit, edits, { author: "ai", summary })
+    const warnings = result.violations.map((v) => `Lock violation: ${v.part} ${v.kind}: ${v.detail}`)
+    return [`Change ${result.entry.id} applied: ${note}`, ...warnings].join("\n")
+  }
+  const edit = (circuit: string, edits: Edit[], summary: string) => run(() => apply(circuit, edits, summary))
 
   server.registerTool(
     "list_circuits",
@@ -70,11 +73,15 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "circuit_summary",
     {
       description:
-        "Summarize a circuit: parts with their props, traces, locked parts, read-only parts, marks left by the human and lock violations.",
-      inputSchema: { file },
+        'Summarize a circuit. The default is compact: one line per part (name, type, value, footprint, positions) and per net, then locked parts, marks from the human and lock violations; long lists end with "… and N more". detail "full" lists every prop and trace.',
+      inputSchema: { file, detail: z.enum(["compact", "full"]).optional().describe('"compact" (default) or "full"') },
       annotations: READ_ONLY,
     },
-    ({ file: circuit }) => run(async () => formatSummary(await loadCircuit(root, circuit))),
+    ({ file: circuit, detail }) =>
+      run(async () => {
+        const loaded = await loadCircuit(root, circuit)
+        return detail === "full" ? formatSummary(loaded) : formatCompactSummary(loaded)
+      }),
   )
 
   server.registerTool(
@@ -133,14 +140,57 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "check_circuit",
     {
       description:
-        "Check the circuit with copperflow's own rules: electrical checks (pins left unconnected, outputs shorted together, power pins without a source) and placement checks (overlapping parts, parts off the board), plus problems in the code and the model (footprints it cannot make, unknown or ambiguous pins, library overrides). Errors and warnings come grouped by code, with their positions. Run it after every change and fix the errors before reporting success.",
-      inputSchema: { file },
+        "Check the circuit with copperflow's own rules: electrical checks (pins left unconnected, outputs shorted together, power pins without a source) and placement checks (overlapping parts, parts off the board), plus problems in the code and the model (footprints it cannot make, unknown or ambiguous pins, library overrides). Answers with the error and warning counts, then up to 20 findings, one line each. Run it once at the end and fix the errors before reporting success; filter narrows it to errors, warnings, a part or a net.",
+      inputSchema: { file, filter: z.string().optional().describe('"errors", "warnings", a part name or a net name') },
       annotations: READ_ONLY,
     },
-    ({ file: circuit }) =>
+    ({ file: circuit, filter }) =>
+      run(async () => formatCompactCheck(circuit, await checkCircuit(root, circuit, designOptions), filter)),
+  )
+
+  server.registerTool(
+    "edit_circuit",
+    {
+      description:
+        "Apply several edits in order as ONE change (one history entry). Each edit has exactly one key: set_props { part, props }, connect { from, to }, disconnect { from, to }, place_part { part, name, props? } or remove_part { part }. If an edit is refused, nothing is written and the answer says which edit failed and why.",
+      inputSchema: { file, edits: z.array(editItem).min(1).max(100) },
+    },
+    ({ file: circuit, edits }) =>
       run(async () => {
-        const result = await checkCircuit(root, circuit, designOptions)
-        return formatCheck(circuit, result)
+        const converted = []
+        for (const [index, item] of edits.entries()) {
+          try {
+            converted.push(await toEdit(root, circuit, item))
+          } catch (error) {
+            throw new Error(describeRefusal({ index, reason: (error as Error).message }, edits.length, Object.keys(item)[0] ?? "edit"))
+          }
+        }
+        const list = converted.map((c) => c.edit)
+        const summary = batchSummary(converted.map((c) => c.label))
+        try {
+          return await apply(circuit, list, summary, `${edits.length} edit${edits.length === 1 ? "" : "s"}: ${summary.slice(5)}`)
+        } catch (error) {
+          const refusal = await firstRefusal(root, circuit, list)
+          if (!refusal) throw error
+          throw new Error(describeRefusal(refusal, edits.length, Object.keys(edits[refusal.index] ?? {})[0] ?? "edit"))
+        }
+      }),
+  )
+
+  server.registerTool(
+    "connect_nets",
+    {
+      description:
+        'Connect pins to named nets in one change, e.g. { "GND": ["R1.pin2", "C1.pin2"], "V3_3": ["U1.VOUT"] }. Writes one connection per pin and skips pins already on that net.',
+      inputSchema: { file, nets: z.record(z.string(), z.array(z.string()).min(1)) },
+    },
+    ({ file: circuit, nets }) =>
+      run(async () => {
+        const plan = await planNets(root, circuit, nets)
+        const counts = Object.entries(plan.added).map(([name, n]) => `${name} +${n}`).join(", ")
+        if (plan.edits.length === 0) return `Nothing to do: all ${plan.skipped} pins are already on their nets.`
+        const skipped = plan.skipped > 0 ? `; ${plan.skipped} already connected` : ""
+        return apply(circuit, plan.edits, `connect nets ${counts}`, `connected ${plan.edits.length} pins (${counts}${skipped})`)
       }),
   )
 

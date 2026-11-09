@@ -175,11 +175,13 @@ The agent sees what you undid and does not repeat it.
 | Tool | What it does |
 |------|--------------|
 | `list_circuits` | Lists the `*.circuit.tsx` files in the project |
-| `circuit_summary` | Parts, props, traces, locks, marks and lock violations of one file |
+| `circuit_summary` | Compact by default (a line per part and net, locks, marks, lock violations); `detail: "full"` lists every prop and trace |
 | `set_props` | Sets literal props: position, rotation, value, footprint |
 | `remove_part` | Removes a part and its traces |
 | `add_trace` / `remove_trace` | Connects or disconnects two ports or nets |
-| `check_circuit` | Runs copperflow's own ERC and placement DRC and lists the errors and warnings by code, with positions |
+| `check_circuit` | Runs copperflow's own ERC and placement DRC: counts, then up to 20 findings, one line each; `filter` narrows by severity, part or net |
+| `edit_circuit` | Several edits in one call, applied as one change (one history entry); stops at the first refused edit and writes nothing |
+| `connect_nets` | Connects many pins to named nets in one call, e.g. `{ "GND": ["R1.pin2", "C1.pin2"] }` |
 | `list_parts` / `part_info` | Shows the parts library and a part's data and checklist |
 | `create_part` | Adds a part from a datasheet: pins, footprint string or footprint file, MPN, suppliers |
 | `place_part` | Adds a library or built-in part to a circuit, with its import |

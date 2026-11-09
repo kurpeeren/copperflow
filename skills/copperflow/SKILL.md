@@ -11,13 +11,18 @@ undoing their work.
 
 ## Every task
 
-1. Call `circuit_summary` for the file before changing it. Read it fully: `[LOCKED]` parts,
+1. Call `circuit_summary` for the file before changing it (the default answer is compact; use
+   `detail: "full"` only when you need every prop). Read it fully: `[LOCKED]` parts,
    `[read-only: ...]` parts, "Marks from the human" and lock violations.
 2. Call `recent_changes`. A change marked `[undone]` was rejected by the human: do not make it
    again unless they ask.
-3. Change existing parts and traces with `set_props`, `remove_part`, `add_trace` and
-   `remove_trace`. These tools enforce locks and record history; editing the file directly does not.
-4. After any change, call `check_circuit`. It runs copperflow's own rule checks: the electrical
+3. Write parts and connections, not positions or wire corners: the program places and routes.
+   Change existing parts and traces with `set_props`, `remove_part`, `add_trace` and
+   `remove_trace`, or several at once with `edit_circuit` (one history entry; nothing is written
+   if one edit is refused) and `connect_nets` (`{ GND: ["R1.pin2", "C1.pin2"] }`). These tools
+   enforce locks and record history; editing the file directly does not.
+4. Call `check_circuit` once at the end (it lists the first 20 findings; `filter` takes `errors`,
+   `warnings`, a part or a net). It runs copperflow's own rule checks: the electrical
    checks (`pin-unconnected`, `output-conflict`, `no-power-source`), the placement checks
    (`courtyard-overlap`, `outside-board`) and the problems in the code and the model, grouped by code
    with positions: `footprint` (a footprint it cannot make), `unknown-pin`, `ambiguous-pin` (a name

@@ -105,12 +105,14 @@ human undid.
 | Tool | Purpose |
 |------|---------|
 | `list_circuits` | circuit files in the project |
-| `circuit_summary` | parts, props, traces, locks, marks, read-only reasons, lock violations |
+| `circuit_summary` | compact by default: a line per part and per net, locks, marks, lock violations (lists cut at 20); `detail: "full"` gives every prop and trace |
 | `set_props` | change literal props of a part (position, rotation, value, footprint) |
 | `remove_part` | remove a part and the traces connected to it |
 | `add_trace` | add a trace between two selectors |
 | `remove_trace` | remove a trace |
-| `check_circuit` | build with copperflow's engine and report its electrical and placement violations and its diagnostics, errors and warnings grouped by code with positions (read-only) |
+| `check_circuit` | build with copperflow's engine; error and warning counts, then up to 20 findings one per line; `filter` takes `errors`, `warnings`, a part or a net (read-only) |
+| `edit_circuit` | several edits (`set_props`, `connect`, `disconnect`, `place_part`, `remove_part`) applied in order as one change; a refused edit stops the batch, writes nothing and is named in the answer |
+| `connect_nets` | `{ NET: [pins] }`: one connection per pin, pins already on the net skipped, one change |
 | `recent_changes` | recent history entries, including undos |
 | `undo_change` | undo one of the agent's own changes |
 
