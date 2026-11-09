@@ -102,7 +102,7 @@ export function App() {
   const openChecks = useCallback(() => openBottom("drc"), [openBottom])
   const checks = useChecks({ file, build, onTab: setTab, onSelect: selectOnly, onOpen: openChecks })
   const openFindResults = useCallback(() => openBottom("find"), [openBottom])
-  const find = useFind({ circuit, design: build.design, view: tab, onSelect: select, onHighlight: setHighlight, requestFocus: checks.requestFocus, openResults: openFindResults })
+  const find = useFind({ file, circuit, library: data.parts.library, design: build.design, view: tab, onSelect: select, onHighlight: setHighlight, requestFocus: checks.requestFocus, openResults: openFindResults })
   useEscapeClearsSelection(select)
   useHighlightFollowsBuild(build.design, setHighlight)
   const closeDialog = useCallback(() => setDialog(null), [])

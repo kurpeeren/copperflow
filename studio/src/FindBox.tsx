@@ -19,8 +19,14 @@ function focusCanvas(): void {
 export function FindBox({ text, seq, onText, onSearch, onClose }: Props) {
   const field = useRef<HTMLInputElement>(null)
   useEffect(() => {
-    field.current?.focus()
-    field.current?.select()
+    const focusField = () => {
+      field.current?.focus()
+      field.current?.select()
+    }
+    focusField()
+    // A menu item run from the keyboard gives the focus back to the menu's title after the command: focus again once it has.
+    const later = window.setTimeout(focusField, 0)
+    return () => window.clearTimeout(later)
   }, [seq])
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") onSearch(text)

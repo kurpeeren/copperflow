@@ -1,15 +1,17 @@
 // Find: which parts and nets a typed query hits, the rows the Find Results tab lists, and what clicking a row changes.
 // Plain functions, so they are tested without a DOM. Only types come from the engine, as in net-rows.ts.
 import type { Design } from "../../src/engine/design.js"
+import type { LibraryPart } from "./api.js"
 import type { PartInfo } from "../../src/core/types.js"
 import type { FocusRequest } from "./checks-panel-state.js"
 import { netRows } from "./net-rows.js"
 import { partAnchors, type View } from "./pcb/positions.js"
 
-/** The part prop names that hold a value a person would search for. */
-const VALUE_PROPS = ["value", "resistance", "capacitance", "inductance", "voltage", "frequency", "mpn"] as const
+/** Props that say where a part sits, not what it is; the name is searched as the name. */
+const NOT_SEARCHED: ReadonlySet<string> = new Set(["name", "pcbX", "pcbY", "pcbRotation", "schX", "schY", "schRotation", "layer", "side"])
 
-export type MatchField = "name" | "value" | "footprint" | "net name"
+/** "name" and "net name" stand alone; any other field is a prop name, "kind" (the tag) or a library entry's "title". */
+export type MatchField = string
 
 /** One piece of text that matched, and which field of the part or net it came from. */
 export interface FindMatch {
@@ -23,7 +25,7 @@ export interface FindRow {
   kind: "part" | "net"
   /** The part's name, or the net's label. */
   name: string
-  /** What matched, in the order name, value, footprint. */
+  /** What matched, one entry per field. */
   matches: FindMatch[]
   /** The net's id in the design, which the highlight is keyed by. */
   net?: string
@@ -49,15 +51,27 @@ export function findNets(design: Design): FindNet[] {
 
 const textOf = (literal: unknown): string | undefined => (typeof literal === "string" || typeof literal === "number" ? String(literal) : undefined)
 
-function partMatches(part: PartInfo, needle: string): FindMatch[] {
-  const candidates: FindMatch[] = [{ field: "name", text: part.name }]
-  for (const key of VALUE_PROPS) {
-    const text = textOf(part.props[key]?.literal)
-    if (text !== undefined) candidates.push({ field: "value", text })
+/** The library entry a placed part comes from: its component is the part's tag. */
+function libraryOf(part: PartInfo, library: readonly LibraryPart[]): LibraryPart | undefined {
+  return library.find((entry) => entry.component === part.tag)
+}
+
+function partCandidates(part: PartInfo, library: readonly LibraryPart[]): FindMatch[] {
+  const candidates: FindMatch[] = [{ field: "name", text: part.name }, { field: "kind", text: part.tag }]
+  for (const [key, prop] of Object.entries(part.props)) {
+    const text = NOT_SEARCHED.has(key) ? undefined : textOf(prop.literal)
+    if (text !== undefined) candidates.push({ field: key, text })
   }
-  const footprint = textOf(part.props.footprint?.literal)
-  if (footprint !== undefined) candidates.push({ field: "footprint", text: footprint })
-  return candidates.filter((candidate) => candidate.text.toLowerCase().includes(needle))
+  const entry = libraryOf(part, library)
+  if (entry?.mpn) candidates.push({ field: "mpn", text: entry.mpn })
+  if (entry) candidates.push({ field: "title", text: entry.title })
+  return candidates
+}
+
+/** Every piece of text of the part that holds the needle, one per field. */
+function partMatches(part: PartInfo, library: readonly LibraryPart[], needle: string): FindMatch[] {
+  const hits = partCandidates(part, library).filter((candidate) => candidate.text.toLowerCase().includes(needle))
+  return hits.filter((hit, index) => hits.findIndex((other) => other.field === hit.field) === index)
 }
 
 function netMatches(net: FindNet, needle: string): FindMatch[] {
@@ -67,11 +81,11 @@ function netMatches(net: FindNet, needle: string): FindMatch[] {
 const byName = (a: FindRow, b: FindRow): number => collator.compare(a.name, b.name)
 
 /** Parts first by natural name order, then nets by label; case-insensitive substrings; an empty query finds nothing. */
-export function findResults(query: string, parts: readonly PartInfo[], nets: readonly FindNet[]): FindRow[] {
+export function findResults(query: string, parts: readonly PartInfo[], nets: readonly FindNet[], library: readonly LibraryPart[] = []): FindRow[] {
   const needle = query.trim().toLowerCase()
   if (needle === "") return []
   const partRows = parts
-    .map((part): FindRow => ({ id: `part:${part.name}`, kind: "part", name: part.name, matches: partMatches(part, needle) }))
+    .map((part): FindRow => ({ id: `part:${part.name}`, kind: "part", name: part.name, matches: partMatches(part, library, needle) }))
     .filter((row) => row.matches.length > 0)
     .sort(byName)
   const netHits = nets
