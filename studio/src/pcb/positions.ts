@@ -2,7 +2,7 @@
 // Only types come from the engine: its runtime modules reach Node-only code the Studio bundle cannot hold.
 import type { CircuitModel } from "../../../src/core/types.js"
 import type { Design } from "../../../src/engine/design.js"
-import type { Point } from "./geometry.js"
+import { roundPosition, type Point } from "./geometry.js"
 
 /** The circuit's source model, as GET /api/circuit sends it. */
 export interface SourceCircuit {
@@ -30,7 +30,6 @@ export interface Anchor {
 }
 
 export const ZERO: Point = { x: 0, y: 0 }
-const round = (value: number) => Math.round(value * 1000) / 1000
 
 /** Every placed part of `view` by component id. A position prop is `origin - group`. */
 export function partAnchors(design: Design, view: View): Map<string, Anchor> {
@@ -66,7 +65,7 @@ export function movedTo(circuit: SourceCircuit, name: string, view: View, anchor
   const [keyX, keyY] = VIEWS[view].position
   const target = (key: string, delta: number, origin: number, group: number) => {
     const current = props?.[key]?.literal
-    return round(typeof current === "number" ? current + delta : origin + delta - group)
+    return roundPosition(typeof current === "number" ? current + delta : origin + delta - group)
   }
   return [target(keyX, offset.x, anchor.origin.x, anchor.group.x), target(keyY, offset.y, anchor.origin.y, anchor.group.y)]
 }

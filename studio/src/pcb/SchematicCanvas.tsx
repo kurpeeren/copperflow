@@ -105,7 +105,7 @@ interface SheetToolsProps {
 function SheetTools({ step, setStep, keep }: SheetToolsProps) {
   return (
     <ViewTools>
-      <GridSelect step={step} options={gridStepOptions("schematic", "mm")} onChange={setStep} />
+      <GridSelect step={step} options={gridStepOptions("schematic")} onChange={setStep} />
       <KeepButton {...keep} title="Write the faded symbols' positions into the code as schX and schY" />
     </ViewTools>
   )

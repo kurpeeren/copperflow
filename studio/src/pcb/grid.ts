@@ -2,7 +2,7 @@
 // document keeps, and the painting both canvases share.
 import { screenToWorld, worldToScreen, type Camera, type Size } from "./geometry.js"
 import type { View } from "./positions.js"
-import { snapLabel, type Unit } from "./units.js"
+import { gridStepLabel, type Unit } from "./units.js"
 
 const MIL = 0.0254
 
@@ -13,8 +13,6 @@ export const PCB_DEFAULT_STEP = 0.5
 /** The sheet's steps in sheet units (inches). */
 export const SHEET_GRID_STEPS: readonly number[] = [0.05, 0.1, 0.2]
 export const SHEET_DEFAULT_STEP = 0.1
-
-export const defaultStep = (view: View): number => (view === "pcb" ? PCB_DEFAULT_STEP : SHEET_DEFAULT_STEP)
 
 /** Each document keeps its own Grid step. */
 export type GridSteps = Readonly<Record<View, number>>
@@ -28,10 +26,13 @@ export interface StepOption {
   label: string
 }
 
-/** The Grid select's options: the PCB's follow the unit, the sheet's are always inches. */
-export function gridStepOptions(view: View, unit: Unit): StepOption[] {
+/** The Grid select's options: the PCB's follow its display unit; the sheet has no unit to choose and is always in inches. */
+export function gridStepOptions(view: "schematic"): StepOption[]
+export function gridStepOptions(view: "pcb", unit: Unit): StepOption[]
+export function gridStepOptions(view: View, unit?: Unit): StepOption[] {
   if (view === "schematic") return SHEET_GRID_STEPS.map((value) => ({ value, label: `${value} in` }))
-  return PCB_GRID_STEPS.map((value) => ({ value, label: snapLabel(value, unit) }))
+  if (!unit) throw new Error("The PCB's Grid steps need its display unit")
+  return PCB_GRID_STEPS.map((value) => ({ value, label: gridStepLabel(value, unit) }))
 }
 
 export type GridStyle = "lines" | "dots"

@@ -3,7 +3,7 @@ import { drawGrid } from "../studio/src/pcb/overlays.js"
 import { INITIAL_GRID_STEPS, INITIAL_GRID_STYLES, PCB_DEFAULT_STEP, PCB_GRID_STEPS, SHEET_DEFAULT_STEP, SHEET_GRID_STEPS, gridStepOptions, nextGridStyle, planGrid, setGridStep, toggleGridStyle } from "../studio/src/pcb/grid.js"
 import { drawSchematicGrid, SHEET_DOT_PX } from "../studio/src/pcb/schematic-grid.js"
 import { schematicTheme } from "../studio/src/pcb/schematic-theme.js"
-import { snapLabel } from "../studio/src/pcb/units.js"
+import { gridStepLabel } from "../studio/src/pcb/units.js"
 
 const SIZE = { width: 400, height: 300 }
 const MINOR = "rgb(255 255 255 / 30%)"
@@ -50,14 +50,15 @@ describe("grid steps", () => {
     expect(gridStepOptions("pcb", "mil").map((o) => o.label)).toEqual(["2 mil", "3.94 mil", "5 mil", "10 mil", "19.69 mil", "20 mil", "25 mil", "39.37 mil", "50 mil", "100 mil"])
   })
 
-  test("the option values are the steps in mm, and the labels follow snapLabel", () => {
+  test("the option values are the steps in mm, and the labels follow gridStepLabel", () => {
     const options = gridStepOptions("pcb", "mil")
     expect(options.map((o) => o.value)).toEqual([...PCB_GRID_STEPS])
-    expect(options[1]?.label).toBe(snapLabel(0.1, "mil"))
+    expect(options[1]?.label).toBe(gridStepLabel(0.1, "mil"))
   })
 
-  test("the schematic labels are in inches whatever the PCB unit", () => {
-    for (const unit of ["mm", "mil"] as const) expect(gridStepOptions("schematic", unit).map((o) => o.label)).toEqual(["0.05 in", "0.1 in", "0.2 in"])
+  test("the schematic takes no unit: its labels are always in inches", () => {
+    expect(gridStepOptions("schematic").map((o) => o.label)).toEqual(["0.05 in", "0.1 in", "0.2 in"])
+    expect(gridStepOptions("schematic").map((o) => o.value)).toEqual([...SHEET_GRID_STEPS])
   })
 })
 
@@ -84,7 +85,7 @@ describe("grid step per document", () => {
     expect(INITIAL_GRID_STEPS.pcb).toBe(0.5)
   })
 
-  test("switching views and back, or changing the file, keeps both steps (the record lives above the canvases)", () => {
+  test("setting one view's step, in any order, leaves the other view's step as it was", () => {
     let steps = setGridStep(INITIAL_GRID_STEPS, "pcb", 0.254)
     steps = setGridStep(steps, "schematic", 0.2)
     expect([steps.pcb, steps.schematic]).toEqual([0.254, 0.2])

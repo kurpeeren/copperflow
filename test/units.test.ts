@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { statusParts } from "../studio/src/pcb/status.js"
-import { formatLength, fromUnit, MM_PER_MIL, nextUnit, PCB_ZOOM_REFERENCE_PX, SCHEMATIC_ZOOM_REFERENCE_PX, snapLabel, toUnit, zoomPercent } from "../studio/src/pcb/units.js"
+import { formatLength, fromUnit, MM_PER_MIL, nextUnit, PCB_ZOOM_REFERENCE_PX, SCHEMATIC_ZOOM_REFERENCE_PX, gridStepLabel, toUnit, zoomPercent } from "../studio/src/pcb/units.js"
 
 describe("units", () => {
   test("1 mil is 0.0254 mm", () => {
@@ -24,13 +24,13 @@ describe("units", () => {
     expect(formatLength(-0.001, "mm")).toBe("0.00")
   })
 
-  test("snap labels follow the unit while the step stays in mm", () => {
-    expect(snapLabel(0.1, "mm")).toBe("0.1 mm")
-    expect(snapLabel(0.5, "mm")).toBe("0.5 mm")
-    expect(snapLabel(1, "mm")).toBe("1 mm")
-    expect(snapLabel(0.1, "mil")).toBe("3.94 mil")
-    expect(snapLabel(0.5, "mil")).toBe("19.69 mil")
-    expect(snapLabel(1, "mil")).toBe("39.37 mil")
+  test("Grid step labels follow the unit while the step stays in mm", () => {
+    expect(gridStepLabel(0.1, "mm")).toBe("0.1 mm")
+    expect(gridStepLabel(0.5, "mm")).toBe("0.5 mm")
+    expect(gridStepLabel(1, "mm")).toBe("1 mm")
+    expect(gridStepLabel(0.1, "mil")).toBe("3.94 mil")
+    expect(gridStepLabel(0.5, "mil")).toBe("19.69 mil")
+    expect(gridStepLabel(1, "mil")).toBe("39.37 mil")
   })
 
   test("the unit toggles between mm and mil", () => {

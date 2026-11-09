@@ -54,40 +54,20 @@ function useFocusRequest() {
   return [requested, request, done] as const
 }
 
-export function useWorkspace(view: View) {
-  const { setLeft, setRight, setBottom, ...strips } = useStrips()
-  const [focusSearch, requestSearch, searchFocused] = useFocusRequest()
-  const [focusPage, requestPage, pageFocused] = useFocusRequest()
-  const [unit, setUnit] = useState<Unit>("mm")
-  const [highlight, setHighlight] = useState<Highlight>(NO_HIGHLIGHT)
-  /** Each document keeps its grid style while the tabs switch. */
+/**
+ * Each document's grid style and Grid step. They live here, above the canvases, so switching tabs or files (which
+ * remounts the canvas) keeps them; every change names the view it is for.
+ */
+function useGridSettings() {
   const [gridStyles, setGridStyles] = useState<GridStyles>(INITIAL_GRID_STYLES)
   const [gridSteps, setGridSteps] = useState<GridSteps>(INITIAL_GRID_STEPS)
-  const openView = useRef(view)
-  openView.current = view
+  const changeGridStep = useCallback((view: View, step: number) => setGridSteps((steps) => setGridStep(steps, view, step)), [])
+  const toggleGridStyleOf = useCallback((view: View) => setGridStyles((styles) => toggleGridStyle(styles, view)), [])
+  return { gridStyles, gridSteps, changeGridStep, toggleGridStyleOf }
+}
 
-  /** Runs one of the workspace's own actions, for a key or a menu item. */
-  const run = useCallback(
-    (action: KeyActionName) => {
-      if (action === "toggleLeftPanel") setLeft(toggleLeftOpen)
-      if (action === "toggleRightPanel") setRight(toggleStripOpen)
-      if (action === "toggleBottomPanel") setBottom(toggleBottom)
-      if (action === "toggleUnit") setUnit(nextUnit)
-      if (action === "toggleGridStyle") setGridStyles((styles) => toggleGridStyle(styles, openView.current))
-      if (action === "clearHighlight") setHighlight(NO_HIGHLIGHT)
-      if (action === "openLibrary") {
-        setLeft(showLibrary)
-        requestSearch()
-      }
-    },
-    [setLeft, setRight, setBottom, requestSearch],
-  )
-  /** File → Open circuit file and Ctrl+O: Project Design → Page, with the focus on the first file. */
-  const openPageTree = useCallback(() => {
-    setLeft(showDesignSub("page"))
-    requestPage()
-  }, [setLeft, requestPage])
-
+/** Answers the workspace's own keys, as they mean in the open view. */
+function useWorkspaceKeys(view: View, run: (action: KeyActionName) => void): void {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const hit = keyAction(keyInput(event), { view })
@@ -98,9 +78,43 @@ export function useWorkspace(view: View) {
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [view, run])
+}
 
-  const changeGridStep = useCallback((step: number) => setGridSteps((steps) => setGridStep(steps, openView.current, step)), [])
+export function useWorkspace(view: View) {
+  const { setLeft, setRight, setBottom, ...strips } = useStrips()
+  const [focusSearch, requestSearch, searchFocused] = useFocusRequest()
+  const [focusPage, requestPage, pageFocused] = useFocusRequest()
+  const [unit, setUnit] = useState<Unit>("mm")
+  const [highlight, setHighlight] = useState<Highlight>(NO_HIGHLIGHT)
+  const { toggleGridStyleOf, ...grid } = useGridSettings()
+  /** The Grid style command acts on the open view; a ref keeps `run` the same function while the tabs switch. */
+  const openView = useRef(view)
+  openView.current = view
+
+  /** Runs one of the workspace's own actions, for a key or a menu item. */
+  const run = useCallback(
+    (action: KeyActionName) => {
+      if (action === "toggleLeftPanel") setLeft(toggleLeftOpen)
+      if (action === "toggleRightPanel") setRight(toggleStripOpen)
+      if (action === "toggleBottomPanel") setBottom(toggleBottom)
+      if (action === "toggleUnit") setUnit(nextUnit)
+      if (action === "toggleGridStyle") toggleGridStyleOf(openView.current)
+      if (action === "clearHighlight") setHighlight(NO_HIGHLIGHT)
+      if (action === "openLibrary") {
+        setLeft(showLibrary)
+        requestSearch()
+      }
+    },
+    [setLeft, setRight, setBottom, requestSearch, toggleGridStyleOf],
+  )
+  /** File → Open circuit file and Ctrl+O: Project Design → Page, with the focus on the first file. */
+  const openPageTree = useCallback(() => {
+    setLeft(showDesignSub("page"))
+    requestPage()
+  }, [setLeft, requestPage])
+  useWorkspaceKeys(view, run)
+
   const toggleUnit = useCallback(() => setUnit(nextUnit), [])
   const { left, right } = strips
-  return { ...strips, leftOpen: left.open, rightOpen: right.open, focusSearch, searchFocused, focusPage, pageFocused, openPageTree, unit, toggleUnit, gridStyles, gridSteps, changeGridStep, highlight, setHighlight, run }
+  return { ...strips, ...grid, leftOpen: left.open, rightOpen: right.open, focusSearch, searchFocused, focusPage, pageFocused, openPageTree, unit, toggleUnit, highlight, setHighlight, run }
 }

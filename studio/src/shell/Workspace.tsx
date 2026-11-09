@@ -37,7 +37,7 @@ export interface WorkspaceProps {
 }
 
 /** What both canvases take, once there is a design to draw; each adds the rings of its own view. */
-function canvasProps({ data, workspace, checks, selected, onSelect, actions }: WorkspaceProps): Omit<CanvasProps, "markers" | "gridStyle" | "gridStep"> | undefined {
+function canvasProps({ data, workspace, checks, selected, onSelect, actions }: WorkspaceProps): Omit<CanvasProps, "markers" | "gridStyle" | "gridStep" | "onGridStep"> | undefined {
   const { build, circuit } = data
   if (!build.design || !circuit) return undefined
   return {
@@ -54,11 +54,15 @@ function canvasProps({ data, workspace, checks, selected, onSelect, actions }: W
     onHighlight: workspace.setHighlight,
     unit: workspace.unit,
     onToggleUnit: workspace.toggleUnit,
-    onGridStep: workspace.changeGridStep,
     activeViolation: checks.active,
     focus: checks.focus,
     onFocused: checks.focused,
   }
+}
+
+/** A canvas's own grid style and Grid step, and the setter bound to its view. */
+function gridProps(workspace: WorkspaceProps["workspace"], view: View) {
+  return { gridStyle: workspace.gridStyles[view], gridStep: workspace.gridSteps[view], onGridStep: (step: number) => workspace.changeGridStep(view, step) }
 }
 
 /** The document tabs, the open document's canvas and the bottom panel, between the side panels. */
@@ -71,8 +75,8 @@ function CenterColumn(props: WorkspaceProps) {
       <DocTabs file={data.file} view={view} onView={props.onView} />
       <section className="canvas" id="doc-panel" role="tabpanel" aria-labelledby={`doc-tab-${view}`}>
         {!build.design && <p className="empty">{build.status === "failed" ? build.error : "Building the circuit…"}</p>}
-        {canvas && view === "pcb" && <PcbCanvas key={data.file} {...canvas} gridStyle={workspace.gridStyles.pcb} gridStep={workspace.gridSteps.pcb} markers={checks.markers.pcb} />}
-        {canvas && view === "schematic" && <SchematicCanvas key={data.file} {...canvas} gridStyle={workspace.gridStyles.schematic} gridStep={workspace.gridSteps.schematic} markers={checks.markers.schematic} />}
+        {canvas && view === "pcb" && <PcbCanvas key={data.file} {...canvas} {...gridProps(workspace, "pcb")} markers={checks.markers.pcb} />}
+        {canvas && view === "schematic" && <SchematicCanvas key={data.file} {...canvas} {...gridProps(workspace, "schematic")} markers={checks.markers.schematic} />}
       </section>
       {workspace.bottom.open && (
         <BottomPanel

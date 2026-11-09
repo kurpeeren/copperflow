@@ -14,7 +14,7 @@ import { drawGrid, PCB_LOOK } from "./overlays"
 import { drawPcb, padAt } from "./pcb-draw"
 import type { Unit } from "./units"
 import { cursorFor, pointerHandlers, useCanvasGestures, type Gesture } from "./use-canvas-gestures"
-import { usePartKeys } from "./use-part-keys"
+import { usePartKeys, type PartKeysInput } from "./use-part-keys"
 
 const LAYER_BUTTONS = [
   ["topCopper", "Top"],
@@ -108,52 +108,89 @@ function PcbTools({ unit, step, setStep, layers, setLayers, keep }: PcbToolsProp
   )
 }
 
+/** The part and the pad under the pointer. */
+function usePcbHover(design: Design, boxes: PartBox[]) {
+  const [part, setPart] = useState<string>()
+  const [pad, setPad] = useState<WorldPad>()
+  const at = (world: Point) => {
+    setPart(hitTest(boxes, world)?.name)
+    setPad(padAt(design.pcb, world))
+  }
+  const leave = () => {
+    setPart(undefined)
+    setPad(undefined)
+  }
+  return { part, pad, at, leave }
+}
+
+type PcbKeysInput = Omit<PartKeysInput, "paused" | "netUnderPointer" | "netsOf">
+
+/** The part keys, with H lighting the net under the pointer. */
+function usePcbKeys(design: Design, cursor: Point | undefined, keys: PcbKeysInput): void {
+  const cursorRef = useRef<Point | undefined>(undefined)
+  cursorRef.current = cursor
+  const netUnderPointer = useCallback(() => (cursorRef.current ? pcbNetAt(design.pcb, cursorRef.current) : undefined), [design])
+  const netsOf = useCallback((part: string) => partNets(design, part), [design])
+  usePartKeys({ ...keys, paused: false, netUnderPointer, netsOf })
+}
+
+interface PcbSurfaceProps {
+  canvasRef: RefObject<HTMLCanvasElement | null>
+  size: Size
+  cursorStyle: string
+  pointer: ReturnType<typeof pointerHandlers>
+  /** The pointer left the board. */
+  onLeave(): void
+}
+
+/** The canvas element the board is painted on, with its pointer handlers. */
+function PcbSurface({ canvasRef, size, cursorStyle, pointer, onLeave }: PcbSurfaceProps) {
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{ width: size.width, height: size.height, cursor: cursorStyle }}
+      {...pointer}
+      onPointerLeave={onLeave}
+      onContextMenu={(e) => e.preventDefault()}
+      aria-label="PCB layout. Drag parts to move them, drag the background to pan, scroll to zoom."
+      role="img"
+    />
+  )
+}
+
+/** The board outline's bounds, or the parts' when there is no outline. */
+function useBoardBounds(design: Design, boxes: PartBox[]) {
+  return useMemo(() => pointBounds(design.pcb.board?.outline ?? []) ?? unionBoxes(boxes.map((b) => b.box)), [design, boxes])
+}
+
 /** The PCB, drawn by copperflow's own renderer under its camera, grid and tools. */
 export function PcbCanvas({ design, builtFrom, circuit, actions, selected, onSelect, highlight, onHighlight, unit, onToggleUnit, gridStyle, gridStep: step, onGridStep: setStep, markers, activeViolation, focus, onFocused }: CanvasProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const size = useElementSize(wrapRef)
-  const [hover, setHover] = useState<string>()
   const [cursor, setCursor] = useState<Point>()
   const grid = useMemo<GridLook>(() => ({ step, style: gridStyle }), [step, gridStyle])
   const [layers, setLayers] = useState<Layers>(DEFAULT_LAYERS)
-  const [hoverPad, setHoverPad] = useState<WorldPad>()
   const parts = usePlacedParts(design, "pcb", circuit)
-  const bounds = useMemo(() => pointBounds(design.pcb.board?.outline ?? []) ?? unionBoxes(parts.boxes.map((b) => b.box)), [design, parts.boxes])
+  const bounds = useBoardBounds(design, parts.boxes)
   const { camera, setCamera, fit } = useCamera(wrapRef, size, bounds)
   useCameraFocus("pcb", focus, camera, setCamera, onFocused)
   const common = { view: "pcb", circuit, actions, onSelect, blockerFor: parts.blockerFor } as const
   const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom })
-  const cursorRef = useRef<Point | undefined>(undefined)
-  cursorRef.current = cursor
-  const netUnderPointer = useCallback(() => (cursorRef.current ? pcbNetAt(design.pcb, cursorRef.current) : undefined), [design])
-  const netsOf = useCallback((part: string) => partNets(design, part), [design])
-  usePartKeys({ ...common, selected, paused: false, fit, netUnderPointer, netsOf, onHighlight })
+  usePcbKeys(design, cursor, { ...common, selected, fit, onHighlight })
+  const hover = usePcbHover(design, parts.boxes)
   const { moving, gesture } = gestures
-  usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad, moving, boxes: parts.boxes, hover, selected, locked: parts.locked, circuit, gesture, highlightNets: highlight, markers, activeViolation, grid })
-  const hoverAt = (world: Point) => {
-    setHover(hitTest(parts.boxes, world)?.name)
-    setHoverPad(padAt(design.pcb, world))
+  usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad: hover.pad, moving, boxes: parts.boxes, hover: hover.part, selected, locked: parts.locked, circuit, gesture, highlightNets: highlight, markers, activeViolation, grid })
+  const pointer = pointerHandlers({ camera, size, element: canvasRef, gestures, setCursor, hover: hover.at })
+  const onLeave = () => {
+    hover.leave()
+    setCursor(undefined)
   }
-  const pointer = pointerHandlers({ camera, size, element: canvasRef, gestures, setCursor, hover: hoverAt })
-
   return (
     <div className="pcb-canvas" ref={wrapRef}>
-      <canvas
-        ref={canvasRef}
-        style={{ width: size.width, height: size.height, cursor: cursorFor(gesture, false, hover !== undefined) }}
-        {...pointer}
-        onPointerLeave={() => {
-          setHover(undefined)
-          setHoverPad(undefined)
-          setCursor(undefined)
-        }}
-        onContextMenu={(e) => e.preventDefault()}
-        aria-label="PCB layout. Drag parts to move them, drag the background to pan, scroll to zoom."
-        role="img"
-      />
+      <PcbSurface canvasRef={canvasRef} size={size} cursorStyle={cursorFor(gesture, false, hover.part !== undefined)} pointer={pointer} onLeave={onLeave} />
       <PcbTools unit={unit} step={step} setStep={setStep} layers={layers} setLayers={setLayers} keep={{ show: parts.autoPlaced, onKeep: () => keepAutoPlaced(design, "pcb", parts.blockerFor, actions) }} />
-      <CanvasStatus cursor={cursor} zoom={camera?.scale} unit={unit} onToggleUnit={onToggleUnit} detail={hoverPad && padLabel(design, hoverPad)} gesture={gesture} />
+      <CanvasStatus cursor={cursor} zoom={camera?.scale} unit={unit} onToggleUnit={onToggleUnit} detail={hover.pad && padLabel(design, hover.pad)} gesture={gesture} />
     </div>
   )
 }

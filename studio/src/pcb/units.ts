@@ -1,4 +1,4 @@
-// The PCB's display unit. The model, the snap steps and every edit stay in mm; only what is shown changes.
+// The PCB's display unit. The model, the Grid steps and every edit stay in mm; only what is shown changes.
 
 export type Unit = "mm" | "mil"
 
@@ -25,7 +25,7 @@ export function formatLength(mm: number, unit: Unit): string {
 }
 
 /** The Grid select's label for a step in mm: "0.1 mm" or "3.94 mil"; mm keeps four decimals so 0.5 and 0.508 differ. */
-export function snapLabel(stepMm: number, unit: Unit): string {
+export function gridStepLabel(stepMm: number, unit: Unit): string {
   return `${Number(toUnit(stepMm, unit).toFixed(unit === "mm" ? 4 : 2))} ${unit}`
 }
 
