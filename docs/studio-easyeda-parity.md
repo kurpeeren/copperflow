@@ -148,6 +148,26 @@ The sheet has a drawing border with zone labels (1, 2, 3… across, A, B, C… d
 - Double click on a part opens its properties; on a net label it renames the net.
 - Hovering a part or a wire outlines it.
 
+### 7.1 Schematic wires
+
+What EasyEDA Pro does, from its guide's wire, hotkey and settings pages and a check in its example project (V3.2.209):
+
+- Wire (`Alt+W`): click to start, click to place corners, end on a pin, label or wire. `Space` flips the path's bend while drawing, `Backspace` steps back, `Esc` or a right click cancels.
+- One click on a wire selects one segment, a second click the whole wire, and `Tab` switches between them. The selected wire turns red and Properties shows a Wire section (net, colour, width, style).
+- Dragging a wire reshapes it. Moving a part keeps its wires attached (the "wire follows" setting, on by default).
+- `Delete` removes the selected wire.
+
+What Studio does:
+
+- A wire is one trace's path from its first end through its corners (`schematicRouteHints`) to its last end, or a wire Studio draws on its own between two pins of a named net.
+- The wire saved is the wire previewed while drawing: every segment horizontal or vertical. `Space` flips the bend of the leg to the pointer.
+- A click on a wire selects the whole wire, drawn red, with square handles on its corners. Its ends sit on pins and labels and do not move: a trace always joins two things, so a wire end cannot be left loose, and one segment cannot be deleted on its own.
+- Dragging a segment moves it across its own direction, and its neighbours stretch to stay attached. A segment that ends on a pin or label gets a new short segment there, so it never leaves the pin. Dragging a corner handle moves the corner, and both its segments stay horizontal or vertical. A double click on a corner handle removes the corner. A double click elsewhere on a wire opens Properties on its Wire section.
+- Dragging a wire Studio drew on its own turns it into a trace of its own between its two pins, with the new shape.
+- `Delete` removes the selected wire's trace. A wire Studio drew on its own has no trace to delete, and says so.
+- Moving parts (dragging, arrow keys, align and distribute) keeps the first segment of each of their wires horizontal or vertical, in the same history entry.
+- Hovering a wire outlines it. The Filter tab has a Wires row. The context menu on a wire has Properties, Highlight net, Remove corners and Delete.
+
 ## 8. Keys
 
 All of `docs/editor-map.md` §2's keys, plus: `Ctrl+Z` undo, `Delete` delete, `Ctrl+A` select all, `Esc` clears the selection and puts tools away, arrow keys nudge the selection one grid step (`Shift` for ten), `Ctrl+F` find. Our own keys (`W`, `R`, `F`) keep working beside them. Keys go by the character they produce, so they work on a Turkish Q keyboard; Alt combinations go by the physical key.
@@ -165,6 +185,7 @@ Each round ends with tests passing, a check in the browser and a commit.
 3. **Mouse and keys.** Right-drag pan, context menu, multi-selection with box select, arrow nudge, select all, find.
 4. **Panels in depth.** Layer manager, Filter, the Library table, Find Results.
 5. **Then:** whatever a side-by-side comparison with EasyEDA still shows, and the items that wait on the engine (flip, copy and paste, routing).
+6. **Wires.** Drawing, selecting and reshaping schematic wires as in §7.1.
 
 ## 11. Out of scope here
 
