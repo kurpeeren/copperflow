@@ -38,7 +38,7 @@ Facts:
 ## Task 3: context menu
 
 - New `studio/src/shell/context-menu.ts` (items as data, per target) and `ContextMenu.tsx`, drawn like the menu bar's dropdowns (same CSS) at the pointer, kept inside the window.
-- On a part (it joins the selection if it was not in it): Properties, Rotate (Space), Lock or Unlock, Highlight its nets (H), Delete (Delete). On empty canvas: Fit all (K), Grid style, Zoom in, Zoom out, Paste (pending: "Comes with the engine (stages 3 to 5)"). On a net label (schematic): Rename, Highlight net.
+- On a part (it is selected alone if it was not selected; on a selected part the selection stays): Properties, Rotate (Space), Lock or Unlock, Highlight its nets (H), Delete (Delete). On empty canvas: Fit all (K), Grid style, Zoom in, Zoom out, Paste (pending: "Comes with the engine (stages 3 to 5)"). On a net label (schematic): Rename, Highlight net.
 - Items run the same `CommandId`s as the menu bar. Esc, a click elsewhere, or running an item closes it. Arrow keys move through it, as in the menu bar.
 - Tests: the items for each target; placement inside the window.
 

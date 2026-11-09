@@ -121,6 +121,11 @@ Keys, ignored while you type in a field:
 - `Q` switches the PCB between mm and mil (display only), `Shift+F` searches the library
 - `[`, `]` and `\` hide and show the left, right and bottom panels; the bottom panel comes back on the tab it had
 - `Ctrl+Z` undoes the last change, `Ctrl+O` goes to the circuit files under Project Design → Page
+- `Ctrl+A` selects every part, `Ctrl+F` opens the find box (Enter lists what matches in Find Results)
+- The arrow keys move the selection one grid step, `Shift` and an arrow ten steps
+- With several parts selected, `Space` or `R` turns them together about the centre of the selection
+- A right click without moving opens the context menu on a part, a net label or the empty canvas;
+  `Shift+F10` or the menu key opens it on the selected part from the keyboard
 - `Esc` clears the selection and puts the tools away
 - In the menu bar the arrow keys move between the menus and their items, Enter or Space runs an
   item and Esc closes the menu; in every row of tabs the arrow keys move between the tabs.

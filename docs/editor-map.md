@@ -67,7 +67,7 @@ Source: EasyEDA Pro V3.2.209, the "Example_Quick Start" project, observed 2026-1
 
 ## 4. Map onto copperflow
 
-Legend: ✅ there today · ◐ partly · ✗ missing. "Stage" is where the engine design puts the item; a "round" is a round of the Studio work in [studio-easyeda-parity.md](studio-easyeda-parity.md) §10. The "today" column is as of round 1 (the shell).
+Legend: ✅ there today · ◐ partly · ✗ missing. "Stage" is where the engine design puts the item; a "round" is a round of the Studio work in [studio-easyeda-parity.md](studio-easyeda-parity.md) §10. The "today" column is as of round 3 (mouse, keys and Find).
 
 | Area | EasyEDA | copperflow Studio today | Stage |
 |---|---|---|---|
@@ -75,17 +75,20 @@ Legend: ✅ there today · ◐ partly · ✗ missing. "Stage" is where the engin
 | Documents | Tabs for each sheet and the PCB | Document tabs above the canvas: the open file's Schematic and PCB | ◐ — stage 3 |
 | Left panel | Page, Net, Component, Object | A vertical strip with Project Design (Page, Net, Component, Object) and Common Library | ✅ |
 | Right panel | Properties of the selection or the page | Properties on a vertical strip: the selection in Basic, Footprint, Position, Connections, Library and Notes; with nothing selected the build, notes and BOM | ✅ — Layer and Filter in round 4 |
-| Bottom panel | Library, Log, DRC, Find Results, Property List | A bottom strip with Library, Log, DRC and Find Results | ◐ — Find in round 3, the Library table in round 4 |
+| Bottom panel | Library, Log, DRC, Find Results, Property List | A bottom strip with Library, Log, DRC and Find Results (what `Ctrl+F` found) | ◐ — the Library table in round 4 |
 | Status bar | X/Y, dX/dY, zoom, grid, snap, unit | Zoom, X/Y, dX/dY while dragging and the PCB's unit at the bottom left; snap in the toolbar | ◐ — grid style in round 2 |
 | Place a part | `Shift+F` dialog, bottom library | `Shift+F`, Place → Component and the toolbar open Common Library with its search; the bottom Library places too | ✅ |
 | Wire | `Alt+W` | `W`, `Alt+W`, Place → Wire and the toolbar | ✅ |
 | Net label / power flags | `Alt+N`, VCC/GND flags, floating tool | Place → Net label (`Alt+N`), Ground flag and Power flag, in the toolbar too; they stay armed until Esc; dragging moves a label | ✅ |
 | Rename a net while placing | `Tab`, double click | `Tab` names a label before it is placed; a double click on a label renames its net | ✅ |
-| Rotate / flip | `Space` / `X` `Y` | `Space`, `R`, Layout → Rotate and the toolbar rotate; no flip | ◐ — `X`/`Y` once the model supports mirroring (stages 3 to 5) |
+| Rotate / flip | `Space` / `X` `Y` | `Space`, `R`, Layout → Rotate, the toolbar, the context menu and Properties rotate; several parts turn together about the centre of the selection; no flip | ◐ — `X`/`Y` once the model supports mirroring (stages 3 to 5) |
+| Selection and mouse | Click, Shift or Ctrl+click, box select by direction, right drag pans, `Ctrl+A` | The same, in both views: a box dragged left to right takes the parts inside it, right to left the parts it touches; a drag on a selected part moves the whole selection; `Ctrl+A` selects every part; a double click opens Properties, or renames a net label's net | ◐ — the Filter tab (what a click can select) in round 4 |
+| Context menu | Right click on an object or the canvas | A right click without moving: on a part Properties, Rotate, Lock or Unlock, Highlight its nets, Delete; on a net label Rename and Highlight net; on the canvas Fit all, Grid style, zoom and Paste (disabled); `Shift+F10` or the menu key opens it from the keyboard | ✅ — Paste with copy and paste (engine) |
+| Nudge | Arrow keys, `Shift` for more | The arrow keys move the selection one grid step, `Shift` ten, as one change in the history | ✅ |
 | Highlight a net | `H`, `Shift+H` | `H` and `Shift+H` in both views, the Net tab, and Design → Highlight net for the selected part's nets | ✅ |
 | Fit | `K` | `F`, `K`, View → Fit all and the toolbar | ✅ |
 | Panels | `[` `]` `\` | `[` `]` `\` and the strips at the window's edges | ✅ |
-| Find | `Ctrl+F`, Find Similar | Not yet; the menu items and the Find Results tab are there | ✗ — round 3 |
+| Find | `Ctrl+F`, Find Similar | `Ctrl+F` opens a find box over the canvas; Enter lists the parts (name, kind, values, library MPN and title) and nets that match in Find Results, where a row selects the part or lights the net | ◐ — Find Similar later |
 | Align / distribute | Toolbar and Layout menu | Not yet | ✗ — stage 3 (block layout needs it) |
 | Annotate designators | Design → Annotate | The engine reports duplicates; placement picks the next free name | ◐ |
 | Design rules | Design Rule dialog, net classes | `rules.yaml` planned | ✗ — stage 2 (`rules.yaml` + a Rules panel) |
@@ -108,8 +111,7 @@ Legend: ✅ there today · ◐ partly · ✗ missing. "Stage" is where the engin
 2. **Now, medium:** Place → Net label / GND / VCC from a small floating palette, with `Tab` to name the net. It writes `pin → net.X` with the label at the click point, the same rule label dragging uses.
 3. **Stage 2:**
    - a bottom panel with a DRC list that jumps to each violation;
-   - a Rules panel backed by `rules.yaml` (net classes, clearances);
-   - Find (`Ctrl+F`).
+   - a Rules panel backed by `rules.yaml` (net classes, clearances).
 4. **Stage 3:**
    - a project tree with sheets and blocks, and document tabs;
    - Align/Distribute;
