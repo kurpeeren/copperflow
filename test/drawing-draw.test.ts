@@ -106,6 +106,18 @@ describe("drawing the texts", () => {
     expect(whole(Number(/([\d.]+)px/.exec(text?.font ?? "")?.[1]) * 1.25)).toBe(true)
   })
 
+  test("a text the level allows is still skipped when it is itself under 5 device px", () => {
+    const small = drawings.map((d) => (d.kind === "text" ? { ...d, fontSize: 0.06 } : d))
+    const at = (scale: number) => {
+      const rec = recorder()
+      drawDrawingTexts(rec.ctx, small, { ...CAMERA, scale }, SIZE, {}, 1)
+      return rec.records.filter((r) => r.name === "fillText")
+    }
+    // designators (0.16 in) are 13 px at 80 px/in and 11 px at 70: both "all"; the 0.06 in text is 5 px, then 4
+    expect(at(80)).toHaveLength(1)
+    expect(at(70)).toEqual([])
+  })
+
   test("too small to read, it is not written", () => {
     const rec = recorder()
     drawDrawingTexts(rec.ctx, drawings, { ...CAMERA, scale: 10 }, SIZE, {}, 1)

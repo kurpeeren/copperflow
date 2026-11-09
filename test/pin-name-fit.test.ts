@@ -93,7 +93,7 @@ describe("fitPinNames", () => {
   })
 
   test("names stacked on one side far enough apart are all kept", () => {
-    const names = [name("A", -30, 12, "left"), name("B", -30, 0, "left"), name("C", -30, -12, "left")]
+    const names = [name("A", -30, 16, "left"), name("B", -30, 0, "left"), name("C", -30, -16, "left")]
     expect(fitPinNames(names, measure, 4)).toEqual([full("A"), full("B"), full("C")])
   })
 
@@ -116,6 +116,22 @@ describe("fitPinNames", () => {
     const caps = name("GPIO", -40, 0, "left", { ascent: 4, descent: 3 })
     expect(fitPinNames([lower, below], measure, 4)).toEqual([null, null])
     expect(fitPinNames([caps, below], measure, 4)).toEqual([full("GPIO"), full("EH")])
+  })
+
+  test("on a box turned 90°, side names wider than their pitch are drawn smaller, then shortened, not dropped", () => {
+    // side names 20 px apart run across the screen: band 20 - 4 = 16; the lone right name has no neighbour
+    const names = [turned("VOUT", -40, 20, "left"), turned("SENSE", -40, 0, "left"), turned("GND", -40, -20, "left"), turned("SENSE", 40, 0, "right")]
+    expect(fitPinNames(names, measure, 4)).toEqual([smaller("VO…", 0.7), smaller("SE…", 0.7), smaller("GND", 16 / 18), full("SENSE")])
+  })
+
+  test("on a box turned 90°, a top name running into the bottom name across is drawn smaller", () => {
+    // top and bottom names on one pin line, 40 px apart across the body: each may reach 18 px toward the other
+    const names = [turned("ABCDEFGH", 0, 20, "top"), turned("STUVWXYZ", 0, -20, "bottom")]
+    expect(fitPinNames(names, measure, 4)).toEqual([smaller("ABCDEFGH", 0.75), smaller("STUVWXYZ", 0.75)])
+  })
+
+  test("the least scale can be given, as the whole device pixel size at or above 70%", () => {
+    expect(fitPinNames([name("ABCDEFGH", -10, 0, "left")], measure, 4, 0.8)).toEqual([smaller("AB…", 0.8)])
   })
 
   test.each([90, 270])("on a box turned %i°, names on every side that fit are all kept", (degrees) => {

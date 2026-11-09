@@ -76,11 +76,12 @@ describe("schematic text levels", () => {
     expect(texts).toEqual(expect.arrayContaining(["CC1", "VBUS2", "EN", "VOUT"]))
   })
 
-  test("a text the level allows is still skipped when it is itself under 5 device px", () => {
-    // at 57 px/in designators are 9 px (all) and pin names 7 px; J1's bottom names, shortened at 70%, are 4 px and go alone
-    const texts = textsOf(draw(demo.schematic, 57, 1, 8).records)
-    expect(texts).toEqual(expect.arrayContaining(["J1", "VBUS2", "EH"]))
-    expect(texts.filter((t) => t.endsWith("…"))).toEqual([])
+  test("a shortened pin name is drawn at the whole device pixel size at or just above 70%", () => {
+    // at 57 px/in designators are 9 px (all) and pin names 7 px; J1's bottom names, shortened, are 5 px (70% is 4.9)
+    const { records } = draw(demo.schematic, 57, 1, 8)
+    const short = written(records).filter((r) => (r.args[0] as string).endsWith("…"))
+    expect(short.length).toBeGreaterThan(0)
+    for (const r of short) expect(fontPx(r.font)).toBe(5)
   })
 
   test("text anchors are on device pixels in x and on the baseline", () => {
@@ -101,6 +102,51 @@ const turnedChip = (degrees: number) => `export default () => (
   </board>
 )`
 const ALL_NAMES = ["T1", "T2", "T3", "B1", "B2", "B3", "IN", "EN", "OUT", "PG"]
+
+/** A chip turned 90° whose left and right names are wider than the 0.2 in pitch they run across. */
+const TURNED_WIDE = `export default () => (
+  <board width="30mm" height="18mm">
+    <chip name="U2" schX={0} schY={0} schRotation={90}
+      pinLabels={{ pin1: "VOUT", pin2: "SENSE", pin3: "GND", pin4: "VIN", pin5: "FB", pin6: "PGOOD" }}
+      pinSides={{ pin1: "left", pin2: "left", pin3: "left", pin4: "right", pin5: "right", pin6: "right" }} />
+  </board>
+)`
+const WIDE_NAMES = ["VOUT", "SENSE", "GND", "VIN", "FB", "PGOOD"]
+/** The name as written: itself, or its start with an ellipsis. */
+const writtenAs = (texts: readonly string[], name: string) => texts.find((t) => t === name || (t.endsWith("…") && name.startsWith(t.slice(0, -1))))
+
+function noOverlap(records: readonly DrawCall[], names: readonly string[]): void {
+  const boxes = writtenBoxes(records).filter((b) => names.some((n) => writtenAs([b.text], n)))
+  for (const [i, a] of boxes.entries()) for (const b of boxes.slice(i + 1)) expect([a.text, b.text, overlaps(a, b)]).toEqual([a.text, b.text, false])
+}
+
+describe("side names of a box turned 90°", () => {
+  const chip = () => buildDesign({ [FILE]: TURNED_WIDE }, FILE).schematic
+
+  test("at 100% every name is kept, drawn smaller or shortened, and none overlap", () => {
+    const { records } = draw(chip(), SCHEMATIC_ZOOM_REFERENCE_PX, 1, 0)
+    const texts = textsOf(records)
+    expect(WIDE_NAMES.filter((n) => !writtenAs(texts, n))).toEqual([])
+    expect(texts.some((t) => t.endsWith("…"))).toBe(true)
+    noOverlap(records, WIDE_NAMES)
+  })
+
+  test("at 70% none overlap: at ratio 1 pin names wait for the level, at ratio 1.5 they are fitted", () => {
+    const scale = 0.7 * SCHEMATIC_ZOOM_REFERENCE_PX
+    expect(WIDE_NAMES.filter((n) => writtenAs(textsOf(draw(chip(), scale, 1, 0).records), n))).toEqual([])
+    const { records } = draw(chip(), scale, 1.5, 0)
+    expect(WIDE_NAMES.filter((n) => writtenAs(textsOf(records), n)).length).toBeGreaterThan(0)
+    noOverlap(records, WIDE_NAMES)
+  })
+
+  test("at any zoom the short names are written in full and the long ones shortened, as the pitch grows with the zoom", () => {
+    for (const scale of [60, 120, 400]) {
+      const texts = textsOf(draw(chip(), scale, 1, 0).records)
+      expect([scale, ["VIN", "FB", "GND"].filter((n) => !texts.includes(n))]).toEqual([scale, []])
+      expect([scale, ["VOUT", "SENSE", "PGOOD"].filter((n) => !writtenAs(texts, n))]).toEqual([scale, []])
+    }
+  })
+})
 
 describe("pin names never overprint", () => {
   test.each([0, 90, 180, 270])("a box turned %i° keeps every name that fits, on every side", (degrees) => {

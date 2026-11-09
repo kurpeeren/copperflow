@@ -1,8 +1,9 @@
-// Pin names inside a symbol never print over each other. Rooms are found in the symbol's own (unturned) frame: a
-// side name gets its share of the row up to the name facing it across the body, a top or bottom name its pitch band
-// between its neighbours on that side. A name larger than its room is first drawn smaller, down to 70% of the pin-name
-// size, then shortened with an ellipsis at that size, and only dropped when fewer than two characters fit. Then two
-// names whose ink still overlaps on screen are both left out. All in CSS pixels.
+// Pin names inside a symbol never print over each other. Rooms are found in the symbol's own (unturned) frame, and
+// every name has two: along the line into the body, its share of the room up to the name across (or its mirror
+// through the centre), and along its pitch, the band to its nearest neighbour on its side. On screen the name spans
+// its width or its height along each, as the symbol is turned. A name larger than its rooms is first drawn smaller,
+// down to 70% of the pin-name size, then shortened with an ellipsis at that size, and only dropped when fewer than two
+// characters fit. Then two names whose ink still overlaps on screen are both left out. All in CSS pixels.
 import type { Point } from "./geometry.js"
 
 export type PinSide = "left" | "right" | "top" | "bottom"
@@ -49,16 +50,27 @@ export function fitText(text: string, maxWidth: number, measure: Measure): strin
   return null
 }
 
-/** The name at full size if it fits, else smaller (not under MIN_NAME_SCALE), else shortened at that size, else null. */
-export function fitName(text: string, maxWidth: number, measure: Measure): FittedName | null {
-  const width = measure(text)
-  if (width <= maxWidth) return { text, scale: 1 }
-  if (width * MIN_NAME_SCALE <= maxWidth) return { text, scale: maxWidth / width }
-  const short = fitText(text, maxWidth, (t) => measure(t) * MIN_NAME_SCALE)
-  return short === null ? null : { text: short, scale: MIN_NAME_SCALE }
+/**
+ * The name at full size if `scaleFor` (the largest scale a text may be drawn at) allows it, else smaller (not under
+ * `least`), else shortened with an ellipsis at `least`, else null.
+ */
+function fitScaled(text: string, scaleFor: (text: string) => number, least: number): FittedName | null {
+  const scale = scaleFor(text)
+  if (scale >= 1) return { text, scale: 1 }
+  if (scale >= least) return { text, scale }
+  for (let keep = text.length - 1; keep >= MIN_CHARACTERS; keep--) {
+    const short = text.slice(0, keep) + ELLIPSIS
+    if (scaleFor(short) >= least) return { text: short, scale: least }
+  }
+  return null
 }
 
-/** How wide each of two facing names may be in `room`: both as they are when they fit, else the short one keeps its width. */
+/** The name at full size if it fits `maxWidth`, else smaller (not under MIN_NAME_SCALE), else shortened at that size, else null. */
+export function fitName(text: string, maxWidth: number, measure: Measure): FittedName | null {
+  return fitScaled(text, (t) => maxWidth / measure(t), MIN_NAME_SCALE)
+}
+
+/** How far each of two facing names may reach in `room`: both as they are when they fit, else the short one keeps its reach. */
 function allot(room: number, mine: number, theirs: number): number {
   if (mine + theirs <= room) return mine
   const half = room / 2
@@ -66,33 +78,45 @@ function allot(room: number, mine: number, theirs: number): number {
   return theirs <= half ? room - theirs : half
 }
 
-/** How far the text reaches along the frame's x axis (the run of a side name, the pitch of a top or bottom one). */
-const runOf = (name: PinName, text: string, measure: Measure) => (name.quarter ? name.size : measure(text))
-/** How far it reaches along the frame's y axis. */
-const acrossOf = (name: PinName, measure: Measure) => (name.quarter ? measure(name.text) : name.size)
+type Axis = "x" | "y"
 
-const OPPOSITE: Partial<Record<PinSide, PinSide>> = { left: "right", right: "left" }
+/** How far a text reaches along the frame's axis on screen: its width where the axis runs across the screen, else its height. */
+const extentOn = (name: PinName, axis: Axis, text: string, measure: Measure) => ((axis === "x") === name.quarter ? name.size : measure(text))
 
-/** The nearest name across from a side name on its row, or a name of no width at its mirror through the body centre. */
-function facing(name: PinName, names: readonly PinName[], measure: Measure): { x: number; run: number } {
-  const toward = name.side === "left" ? 1 : -1
-  const sameRow = (other: PinName) => Math.abs(other.local.y - name.local.y) < (acrossOf(name, measure) + acrossOf(other, measure)) / 2
-  const across = names.filter((other) => other.side === OPPOSITE[name.side] && sameRow(other) && (other.local.x - name.local.x) * toward > 0)
-  const nearest = across.sort((a, b) => Math.abs(a.local.x - name.local.x) - Math.abs(b.local.x - name.local.x))[0]
-  return nearest ? { x: nearest.local.x, run: runOf(nearest, nearest.text, measure) } : { x: -name.local.x, run: 0 }
+const isSide = (name: PinName) => name.side === "left" || name.side === "right"
+/** The axis a name runs into the body along (x for side names, y for top and bottom ones), and the axis its pins are pitched on. */
+const inwardOf = (name: PinName): Axis => (isSide(name) ? "x" : "y")
+const pitchOf = (name: PinName): Axis => (isSide(name) ? "y" : "x")
+/** A side name starts at its pin and runs inward; a top or bottom name is centred on its anchor, so half of it reaches in. */
+const reachShare = (name: PinName) => (isSide(name) ? 1 : 0.5)
+
+const OPPOSITE: Record<PinSide, PinSide> = { left: "right", right: "left", top: "bottom", bottom: "top" }
+
+/** The most the name may reach toward the name across the body on its line, or toward its own mirror through the centre. */
+function inwardLimit(name: PinName, names: readonly PinName[], measure: Measure, gap: number): number {
+  const [inward, pitch] = [inwardOf(name), pitchOf(name)]
+  const toward = name.side === "left" || name.side === "bottom" ? 1 : -1
+  const reach = (n: PinName) => extentOn(n, inward, n.text, measure) * reachShare(n)
+  const sameLine = (other: PinName) => Math.abs(other.local[pitch] - name.local[pitch]) < (extentOn(name, pitch, name.text, measure) + extentOn(other, pitch, other.text, measure)) / 2
+  const across = names.filter((other) => other.side === OPPOSITE[name.side] && sameLine(other) && (other.local[inward] - name.local[inward]) * toward > 0)
+  const nearest = across.sort((p, q) => Math.abs(p.local[inward] - name.local[inward]) - Math.abs(q.local[inward] - name.local[inward]))[0]
+  const room = Math.abs((nearest ? nearest.local[inward] : -name.local[inward]) - name.local[inward]) - gap
+  return allot(room, reach(name), nearest ? reach(nearest) : 0) / reachShare(name)
 }
 
-/** A top or bottom name's band: the distance to its nearest neighbour on its side, less the gap; unlimited without one. */
-function band(name: PinName, names: readonly PinName[], gap: number): number {
-  const pitches = names.filter((other) => other !== name && other.side === name.side).map((other) => Math.abs(other.local.x - name.local.x))
+/** The most the name may span along its pitch: the distance to its nearest neighbour on its side, less the gap; unlimited without one. */
+function pitchLimit(name: PinName, names: readonly PinName[], gap: number): number {
+  const pitch = pitchOf(name)
+  const pitches = names.filter((other) => other !== name && other.side === name.side).map((other) => Math.abs(other.local[pitch] - name.local[pitch]))
   return pitches.length === 0 ? Infinity : Math.min(...pitches) - gap
 }
 
-/** The most the name may reach along the frame's x axis. */
-function roomFor(name: PinName, names: readonly PinName[], measure: Measure, gap: number): number {
-  if (name.side === "top" || name.side === "bottom") return band(name, names, gap)
-  const other = facing(name, names, measure)
-  return allot(Math.abs(other.x - name.local.x) - gap, runOf(name, name.text, measure), other.run)
+/** The name fitted to both limits: along the line into the body and along its pitch. */
+function fitBoth(name: PinName, names: readonly PinName[], measure: Measure, gap: number, least: number): FittedName | null {
+  const inward = inwardLimit(name, names, measure, gap)
+  const pitch = pitchLimit(name, names, gap)
+  const scaleFor = (text: string) => Math.min(inward / extentOn(name, inwardOf(name), text, measure), pitch / extentOn(name, pitchOf(name), text, measure))
+  return fitScaled(name.text, scaleFor, least)
 }
 
 interface Span {
@@ -124,11 +148,11 @@ function overlapping(spans: readonly (Span | null)[], pair: (i: number, j: numbe
 
 /**
  * How each pin name of one symbol is drawn, or null where it is left out; `gap` is the least room kept between two
- * names. Neighbours on one side that still overlap go first; a name that still overlaps another (a side name against
+ * names and `least` the smallest scale a name is drawn at (70%, or the whole device pixel size just above it). Neighbours on one side that still overlap go first; a name that still overlaps another (a side name against
  * a top or bottom one) goes with it.
  */
-export function fitPinNames(names: readonly PinName[], measure: Measure, gap: number): (FittedName | null)[] {
-  const fitted = names.map((name) => fitName(name.text, roomFor(name, names, measure, gap), (text) => runOf(name, text, measure)))
+export function fitPinNames(names: readonly PinName[], measure: Measure, gap: number, least = MIN_NAME_SCALE): (FittedName | null)[] {
+  const fitted = names.map((name) => fitBoth(name, names, measure, gap, least))
   const spans = fitted.map((fit, i) => (fit === null ? null : spanOf(names[i] as PinName, fit, measure)))
   const sameSide = overlapping(spans, (i, j) => names[i]?.side === names[j]?.side)
   const left = spans.map((span, i) => (sameSide.has(i) ? null : span))

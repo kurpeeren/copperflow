@@ -4,7 +4,7 @@
 // symbol are fitted first, drawn smaller or shortened, so they never print over each other (pin-name-fit.ts).
 import { anchorAlignment, canvasFont, CANVAS_MONO_FAMILY, TEXT_WEIGHT, type Ctx } from "./ctx.js"
 import { worldToScreen, type Camera, type Point, type Size } from "./geometry.js"
-import { fitPinNames, type PinName, type PinSide } from "./pin-name-fit.js"
+import { fitPinNames, MIN_NAME_SCALE, type PinName, type PinSide } from "./pin-name-fit.js"
 import { capToWidth, devicePxFor, sharpenText, sheetLevelPx, textAnchorAt, textShown, type TextKind } from "./text-level.js"
 
 /** One text on the sheet, in sheet units, waiting for the screen pass. */
@@ -86,11 +86,13 @@ function fitSymbol(ctx: Ctx, names: Sized[], paint: Paint): Sized[] {
   ctx.font = fontOf(first.label, first.devicePx, paint.ratio)
   const onScreen = names.map((sized) => pinName(ctx, sized, paint)).filter((name): name is PinName => name !== null)
   if (onScreen.length !== names.length) return names
-  const fits = fitPinNames(onScreen, (text) => ctx.measureText(text).width, (first.devicePx / paint.ratio) * NAME_GAP)
+  // the smallest a name is drawn: the whole device pixel size at or just above 70%, so the fit holds for that size
+  const least = Math.ceil(first.devicePx * MIN_NAME_SCALE) / first.devicePx
+  const fits = fitPinNames(onScreen, (text) => ctx.measureText(text).width, (first.devicePx / paint.ratio) * NAME_GAP, least)
   return names.flatMap((sized, i) => {
     const fit = fits[i]
     if (!fit) return []
-    const devicePx = fit.scale < 1 ? Math.floor(sized.devicePx * fit.scale) : sized.devicePx
+    const devicePx = fit.scale < 1 ? Math.floor(sized.devicePx * fit.scale + 1e-9) : sized.devicePx
     return [{ label: { ...sized.label, text: fit.text }, devicePx }]
   })
 }
