@@ -13,6 +13,8 @@ export interface GroupEdit {
   parts: string[]
   /** Why each part left out was left out, e.g. "R1 is locked". */
   skipped: string[]
+  /** What was done to the others, for the note about those left out: "Not moved: R2 is locked". */
+  done: "moved" | "rotated" | "removed"
 }
 
 /** How many names a message spells out before it counts the rest. */
@@ -39,7 +41,7 @@ export function rotateEach(circuit: SourceCircuit, names: readonly string[], vie
   const parts = turned.map((turn) => turn.name)
   const [single] = turned
   const summary = turned.length === 1 && single ? `rotate ${single.name}${where} to ${single.to}°` : `rotate ${nameList(parts)}${where} by 90°`
-  return { edits: turned.map((turn) => ({ kind: "setProps", part: turn.name, props: { [rotation]: turn.to } })), summary, parts, skipped }
+  return { edits: turned.map((turn) => ({ kind: "setProps", part: turn.name, props: { [rotation]: turn.to } })), summary, parts, skipped, done: "rotated" }
 }
 
 /**
@@ -64,14 +66,14 @@ export function moveEach(
     moves.length === 1 && single
       ? `move ${single.name}${where} to (${single.to[0]}, ${single.to[1]})`
       : `move ${nameList(parts)}${where} by (${roundPosition(offset.x)}, ${roundPosition(offset.y)})`
-  return { edits: moves.map(({ name, to }) => ({ kind: "setProps", part: name, props: { [keyX]: to[0], [keyY]: to[1] } })), summary, parts, skipped }
+  return { edits: moves.map(({ name, to }) => ({ kind: "setProps", part: name, props: { [keyX]: to[0], [keyY]: to[1] } })), summary, parts, skipped, done: "moved" }
 }
 
 /** One removePart edit for every part that may go. */
 export function removeEach(names: readonly string[], blockerFor: (name: string) => string | null): GroupEdit {
   const skipped = names.flatMap((name) => blockerFor(name) ?? [])
   const parts = names.filter((name) => blockerFor(name) === null)
-  return { edits: parts.map((name) => ({ kind: "removePart", part: name })), summary: `remove ${nameList(parts)}`, parts, skipped }
+  return { edits: parts.map((name) => ({ kind: "removePart", part: name })), summary: `remove ${nameList(parts)}`, parts, skipped, done: "removed" }
 }
 
 /** The question asked before the parts are removed. */
@@ -79,11 +81,11 @@ export function removeQuestion(parts: readonly string[]): string {
   return parts.length === 1 ? `Remove ${parts[0]} and its connections?` : `Remove ${parts.length} parts (${nameList(parts)}) and their connections?`
 }
 
-/** What to tell about the parts left out: the reason alone when nothing was done (as for one part), else which were skipped. */
+/** What to tell about the parts left out: the reason alone when nothing was done (as for one part), else what was not done to which. */
 export function skippedNote(plan: GroupEdit): string | undefined {
   if (plan.skipped.length === 0) return undefined
   const reasons = plan.skipped.join("; ")
-  return plan.edits.length === 0 ? reasons : `Skipped: ${reasons}`
+  return plan.edits.length === 0 ? reasons : `Not ${plan.done}: ${reasons}`
 }
 
 /**

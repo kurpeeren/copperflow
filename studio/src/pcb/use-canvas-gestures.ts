@@ -1,25 +1,23 @@
 // The canvas gestures' state, shared by the PCB and schematic canvases: the gesture under way (gestures.ts says what
 // each step does), the group move waiting for its build, the pointer handlers and the cursor.
-import { useCallback, useEffect, useMemo, useState, type MouseEvent, type PointerEvent, type RefObject } from "react"
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type RefObject } from "react"
 import { toLocal, type Moving } from "./canvas-common"
 import { screenToWorld, type Camera, type Point, type Size } from "./geometry"
-import { endGesture, followGesture, startGesture, type Commit, type Gesture, type GestureInput } from "./gestures"
-import { moveEach, sendGroupEdit } from "./group-edits"
-import { ZERO } from "./positions"
-import type { Press } from "./press"
+import { gestureSession, movePlan, type Commit, type Gesture, type GestureInput } from "./gestures"
+import { sendGroupEdit } from "./group-edits"
+import { opensOnDoubleClick, type Press } from "./press"
 
 export type { Gesture, GestureInput } from "./gestures"
 export type { Press }
 
 /** The last group move sent, kept drawn until a build that started after it was sent has finished. */
 function usePendingMove(input: GestureInput): { pending: Moving | undefined; commit: Commit } {
-  const { view, circuit, actions, anchors, boxes, blockerFor, builtFrom } = input
+  const { actions, builtFrom } = input
   const [pending, setPending] = useState<Moving & { sentAt: number }>()
   useEffect(() => setPending((current) => (current && current.sentAt > builtFrom ? current : undefined)), [builtFrom])
   const commit: Commit = (names, offset) => {
     if (offset.x === 0 && offset.y === 0) return
-    const anchorOf = (name: string) => anchors.get(name) ?? { origin: boxes.find((box) => box.name === name)?.center ?? ZERO, group: ZERO }
-    const plan = moveEach(circuit, names, view, anchorOf, offset, blockerFor)
+    const plan = movePlan(input, names, offset)
     const sent = plan.edits.length > 0 ? { names: plan.parts, offset, sentAt: Date.now() } : undefined
     if (sent) setPending(sent)
     void sendGroupEdit(plan, actions).then((ok) => ok || setPending((current) => (current === sent ? undefined : current)))
@@ -42,33 +40,23 @@ function useEscapeCancelsLabel(kind: Gesture["kind"] | undefined, cancel: () => 
   }, [kind, cancel])
 }
 
-/** The canvas gestures: `moving` is the group being dragged, else the one whose move waits for its build. */
+/**
+ * The canvas gestures: one session holds the gesture from press to release (gestureSession), and `gesture` is what
+ * React draws of it; `moving` is the group being dragged, else the one whose move waits for its build.
+ */
 export function useCanvasGestures(input: GestureInput) {
   const [gesture, setGesture] = useState<Gesture>()
   const { pending, commit } = usePendingMove(input)
+  // The session reads the latest canvas input and commit through this ref; it is set on every render.
+  const latest = useRef({ input, commit })
+  latest.current = { input, commit }
+  const [session] = useState(() => gestureSession(() => latest.current, setGesture))
   const moving = useMemo(
     () => (gesture?.kind === "drag" && gesture.moved && !gesture.blocker ? { names: gesture.movable, offset: gesture.offset } : pending),
     [gesture, pending],
   )
-  const cancel = useCallback(() => setGesture(undefined), [])
-  useEscapeCancelsLabel(gesture?.kind, cancel)
-  const press = (event: Press, point: Point) => {
-    const next = startGesture(input, event, point)
-    if (next) setGesture(next)
-  }
-  /** Follows the pointer; false when no gesture is running, so the canvas can update its hover instead. */
-  const move = (point: Point): boolean => {
-    if (!gesture || !input.camera) return false
-    const next = followGesture(input, gesture, point, input.camera)
-    if (next) setGesture(next)
-    return true
-  }
-  /** Ends the gesture; `at` is where the pointer was let go, in client pixels, for the context menu. */
-  const release = (at: Point) => {
-    setGesture(undefined)
-    if (gesture && input.camera) endGesture(input, gesture, input.camera, commit, at)
-  }
-  return { gesture, moving, press, move, release }
+  useEscapeCancelsLabel(gesture?.kind, session.cancel)
+  return { gesture, moving, press: session.press, move: session.move, release: session.release }
 }
 
 /** The pointer: grabbing while panning, move or not-allowed while dragging, crosshair for a tool, else pointer or default. */
@@ -112,10 +100,8 @@ export function pointerHandlers(input: PointerInput) {
       if (!input.gestures.move(point)) input.hover(world)
     },
     onPointerUp: (event: PointerEvent<Element>) => input.gestures.release({ x: event.clientX, y: event.clientY }),
-    // Only on the drawing itself: a double click in the label's name input selects a word there.
     onDoubleClick: (event: MouseEvent<Element>) => {
-      if (!input.camera || event.button !== 0 || !(event.target instanceof HTMLCanvasElement)) return
-      input.open?.(screenToWorld(input.camera, input.size, local(event)))
+      if (input.camera && opensOnDoubleClick(event)) input.open?.(screenToWorld(input.camera, input.size, local(event)))
     },
   }
 }

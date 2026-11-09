@@ -1,12 +1,12 @@
 // The steps of a pointer gesture on either canvas, from press to release. press.ts decides what a press starts; these
 // follow the pointer and finish the gesture: a pan, a drag of the selection or of a net label, a selection box, or
-// the armed Note box tool's box. The React state lives in use-canvas-gestures.ts.
+// the armed Note box tool's box. gestureSession holds the gesture between events; use-canvas-gestures.ts draws it.
 // Plain TypeScript with .js imports, so the tests can run it.
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { Selection, SelectionChange } from "../selection.js"
 import { boxMode, boxSelection, partsInBox } from "./box-select.js"
 import { hitTest, roundPosition, screenToWorld, snap, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
-import type { GroupEditActions } from "./group-edits.js"
+import { moveEach, type GroupEdit, type GroupEditActions } from "./group-edits.js"
 import { VIEWS, ZERO, type Anchor, type SourceCircuit, type View } from "./positions.js"
 import { gestureStart, hasMoved, stillRelease, type ArmedTool, type ContextTarget, type GestureStart, type Press, type StillRelease, type Under } from "./press.js"
 
@@ -70,6 +70,12 @@ export interface GestureInput {
 
 /** Writes the move of `names` by `offset`. */
 export type Commit = (names: readonly string[], offset: Point) => void
+
+/** The edit that moves `names` by `offset`; a part with no anchor in this view moves from the centre of its box. */
+export function movePlan(input: GestureInput, names: readonly string[], offset: Point): GroupEdit {
+  const anchorOf = (name: string) => input.anchors.get(name) ?? { origin: input.boxes.find((box) => box.name === name)?.center ?? ZERO, group: ZERO }
+  return moveEach(input.circuit, names, input.view, anchorOf, offset, input.blockerFor)
+}
 
 /** A box smaller than this on both sides, in CSS pixels, is a click. */
 const BOX_MIN_PX = 6
@@ -194,4 +200,43 @@ function endNote(input: GestureInput, done: Extract<Gesture, { kind: "note" }>, 
   input.tool.disarm()
   const text = window.prompt(VIEWS[input.view].notePrompt)
   if (text) void input.actions.mark(text, { view: input.view, x: round((a.x + b.x) / 2), y: round((a.y + b.y) / 2) })
+}
+
+/**
+ * The gesture under way, held here from press to release rather than read back from what React last drew: a pointer
+ * can send its moves and its release before React has drawn a single move (Chrome does, for a quick drag or for events
+ * sent by a script), and the release must still see the moved gesture. `read` gives the latest canvas input and
+ * commit; `show` hands each new gesture to React to draw.
+ */
+export function gestureSession(read: () => { input: GestureInput; commit: Commit }, show: (gesture: Gesture | undefined) => void) {
+  let current: Gesture | undefined
+  const set = (next: Gesture | undefined) => {
+    current = next
+    show(next)
+  }
+  return {
+    press(event: Press, point: Point): void {
+      const next = startGesture(read().input, event, point)
+      if (next) set(next)
+    },
+    /** Follows the pointer; false when no gesture is running, so the canvas can update its hover instead. */
+    move(point: Point): boolean {
+      const { input } = read()
+      if (!current || !input.camera) return false
+      const next = followGesture(input, current, point, input.camera)
+      if (next) set(next)
+      return true
+    },
+    /** Ends the gesture; `at` is where the pointer was let go, in client pixels, for the context menu. */
+    release(at: Point): void {
+      const done = current
+      set(undefined)
+      const { input, commit } = read()
+      if (done && input.camera) endGesture(input, done, input.camera, commit, at)
+    },
+    /** Drops the gesture without finishing it (Esc while a label is dragged). */
+    cancel(): void {
+      set(undefined)
+    },
+  }
 }

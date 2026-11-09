@@ -78,7 +78,7 @@ describe("removeEach", () => {
   })
 
   test("one part keeps today's summary", () => {
-    expect(removeEach(["R2"], blockers([]))).toEqual({ edits: [{ kind: "removePart", part: "R2" }], summary: "remove R2", parts: ["R2"], skipped: [] })
+    expect(removeEach(["R2"], blockers([]))).toEqual({ edits: [{ kind: "removePart", part: "R2" }], summary: "remove R2", parts: ["R2"], skipped: [], done: "removed" })
   })
 
   test("locked parts stay, and are named", () => {
@@ -103,8 +103,9 @@ describe("skippedNote", () => {
     expect(skippedNote(removeEach(["R1", "R2"], blockers(["R1", "R2"])))).toBe("R1 is locked; R2 is locked")
   })
 
-  test("with some done it names the ones left out", () => {
-    expect(skippedNote(removeEach(["R1", "R2"], blockers(["R1"])))).toBe("Skipped: R1 is locked")
+  test("with some done it names the ones left out and what was not done to them", () => {
+    expect(skippedNote(removeEach(["R1", "R2"], blockers(["R1"])))).toBe("Not removed: R1 is locked")
+    expect(skippedNote(rotateEach(circuit, ["R1", "R2"], "pcb", blockers(["R1"])))).toBe("Not rotated: R1 is locked")
   })
 })
 
@@ -150,7 +151,7 @@ describe("sendGroupEdit", () => {
   test("sends the edits as one change and names the parts left out once it has gone through", async () => {
     const { calls, actions } = recorder(true)
     expect(await sendGroupEdit(removeEach(["R1", "R2"], blockers(["R1"])), actions)).toBe(true)
-    expect(calls).toEqual(["edit 1: remove R2", "notify Skipped: R1 is locked"])
+    expect(calls).toEqual(["edit 1: remove R2", "notify Not removed: R1 is locked"])
   })
 
   test("a failed edit keeps its own message: the parts left out are not told over it", async () => {
@@ -237,7 +238,7 @@ describe("moveEach", () => {
     expect(plan.edits).toEqual([{ kind: "setProps", part: "R1", props: { pcbX: 1.5, pcbY: 1 } }])
     expect(plan.parts).toEqual(["R1"])
     expect(plan.skipped).toEqual(["U1 is read-only (inside a callback)", "R2 is locked"])
-    expect(skippedNote(plan)).toBe("Skipped: U1 is read-only (inside a callback); R2 is locked")
+    expect(skippedNote(plan)).toBe("Not moved: U1 is read-only (inside a callback); R2 is locked")
   })
 
   test("with every part locked nothing is sent and the reason is today's message", () => {
@@ -261,6 +262,6 @@ describe("moveEach", () => {
       notify: (text) => void calls.push(`notify ${text}`),
     }
     await sendGroupEdit(moveEach(placed, ["R1", "R2", "C1", "U1"], "pcb", anchorOf, by, movers([])), actions)
-    expect(calls).toEqual(["edit 3: move R1, R2 and C1 by (0.5, -1)", "notify Skipped: U1 is read-only (inside a callback)"])
+    expect(calls).toEqual(["edit 3: move R1, R2 and C1 by (0.5, -1)", "notify Not moved: U1 is read-only (inside a callback)"])
   })
 })

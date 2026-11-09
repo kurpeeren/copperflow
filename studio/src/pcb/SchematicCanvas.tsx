@@ -24,7 +24,7 @@ import { drawingExtents } from "./drawing-extents"
 import { drawSheetBorder } from "./sheet-draw"
 import { firstDrawing, keepSheet, sheetArt, sheetDate, type Sheet, type SheetArt } from "./sheet"
 import { targetAt } from "./gestures"
-import { cursorFor, pointerHandlers, useCanvasGestures, type Gesture, type PointerInput, type Press } from "./use-canvas-gestures"
+import { cursorFor, pointerHandlers, useCanvasGestures, type Gesture, type GestureInput, type PointerInput, type Press } from "./use-canvas-gestures"
 import { useDraggedLabel, useLabelDrag, type LabelTools, type MovingLabel } from "./use-label-drag"
 import { useLabelPalette } from "./use-label-palette"
 import { useNoteTool } from "./use-note-tool"
@@ -290,6 +290,17 @@ function useSheetNoteTool(wire: WireTool, palette: Palette): NoteTool {
   return note
 }
 
+/** What the gestures see armed: the note tool, or a Place tool, with which an empty left drag pans as before (R26). */
+function useArmedForGestures(note: NoteTool, palette: Palette): GestureInput["tool"] {
+  const { disarm: putNoteAway } = note
+  const { disarm: putPlaceAway } = palette
+  const disarm = useCallback(() => {
+    putNoteAway()
+    putPlaceAway()
+  }, [putNoteAway, putPlaceAway])
+  return { armed: note.tool ?? (palette.armed ? "place" : null), disarm }
+}
+
 interface SheetPointerInput extends Omit<PointerInput, "tool" | "open"> {
   boxes: PartBox[]
   labels: LabelTools
@@ -336,7 +347,7 @@ export function SchematicCanvas(props: CanvasProps) {
   const note = useSheetNoteTool(wire, palette)
   const common = { view: "schematic", circuit, actions, onSelect, blockerFor: parts.blockerFor } as const
   const labels = useLabelDrag({ design, circuit, actions, builtFrom })
-  const tool = { armed: note.tool, disarm: note.disarm }
+  const tool = useArmedForGestures(note, palette)
   const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom, labels: labels.tools, selection, tool, onContextMenu: props.onContextMenu })
   const highlight = useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys: { ...common, selection } })
   const hover = useSheetHover(parts.boxes, wire, labels.tools)

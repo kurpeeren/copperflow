@@ -16,13 +16,17 @@ export interface Press {
 /** What is under the pointer at a press: a part, one already selected, a net label (schematic) or nothing. */
 export type Under = "part" | "selectedPart" | "label" | "empty"
 
-/** The canvas tool that takes a left press while it is armed: Place → Note box. */
-export type ArmedTool = "note" | null
+/**
+ * The armed canvas tool, as far as a press is concerned: Place → Note box takes every left press; a schematic Place
+ * tool (net label, ground or power flag) leaves an empty left drag to pan, as before the selection box.
+ */
+export type ArmedTool = "note" | "place" | null
 
 /**
  * - "pan": the middle button pans.
  * - "rightPress": the right button pans once it moves; released without moving, it opens the context menu.
  * - "note": with the Note box tool armed, a left drag draws the note box.
+ *   With a Place tool armed, a left press on empty canvas is a "pan" (its click is the tool's, on a pin).
  * - "toggle": Shift or Ctrl on a part toggles it in or out of the selection and starts nothing.
  * - "move": on a part not selected: selects it alone and drags it.
  * - "moveGroup": on a selected part: drags the whole selection; released without moving, selects that part alone.
@@ -42,6 +46,7 @@ export function gestureStart(press: Press, under: Under, armed: ArmedTool): Gest
   if (press.button === RIGHT) return "rightPress"
   if (press.button !== LEFT) return "none"
   if (armed === "note") return "note"
+  if (armed === "place" && under === "empty") return "pan"
   const onPart = under === "part" || under === "selectedPart"
   if (togglesSelection(press)) return onPart ? "toggle" : "addBox"
   if (under === "part") return "move"
@@ -63,6 +68,19 @@ export const DRAG_THRESHOLD_PX = 3
 
 export function hasMoved(from: { x: number; y: number }, to: { x: number; y: number }): boolean {
   return Math.hypot(to.x - from.x, to.y - from.y) >= DRAG_THRESHOLD_PX
+}
+
+/** Fields and buttons inside a canvas keep their own double click: the label's name input, the unit button. */
+const CONTROLS = "input, textarea, select, form, button"
+
+/**
+ * Whether a double click opens Properties (or renames a net): the left button, anywhere on the drawing. The handlers
+ * sit on the canvas on the PCB and on the sheet's wrapper on the schematic, so the target is not always the canvas.
+ */
+export function opensOnDoubleClick(event: { button: number; target: unknown }): boolean {
+  if (event.button !== LEFT) return false
+  const target = event.target as { closest?: (selector: string) => unknown } | null
+  return typeof target?.closest !== "function" || !target.closest(CONTROLS)
 }
 
 /** What a right click (or a double click) is on: a part, a net label in the schematic, or the empty canvas. */

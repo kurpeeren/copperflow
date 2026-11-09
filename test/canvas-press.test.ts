@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { gestureStart, hasMoved, stillRelease, type GestureStart, type Press, type Under } from "../studio/src/pcb/press.js"
+import { gestureStart, hasMoved, opensOnDoubleClick, stillRelease, type GestureStart, type Press, type Under } from "../studio/src/pcb/press.js"
 
 const press = (held: Partial<Press> = {}): Press => ({ button: 0, shiftKey: false, ctrlKey: false, metaKey: false, ...held })
 const UNDER: readonly Under[] = ["part", "selectedPart", "label", "empty"]
@@ -50,6 +50,15 @@ describe("what a press on the canvas starts", () => {
     }
   })
 
+  test("with a Place tool armed, a left drag on empty canvas pans as before; parts and labels keep their press", () => {
+    expect(gestureStart(press(), "empty", "place")).toBe("pan")
+    expect(gestureStart(press({ shiftKey: true }), "empty", "place")).toBe("pan")
+    expect(gestureStart(press(), "part", "place")).toBe("move")
+    expect(gestureStart(press(), "selectedPart", "place")).toBe("moveGroup")
+    expect(gestureStart(press(), "label", "place")).toBe("label")
+    expect(gestureStart(press({ ctrlKey: true }), "part", "place")).toBe("toggle")
+  })
+
   test("the back and forward buttons start nothing", () => {
     for (const button of [3, 4]) expect(gestureStart(press({ button }), "part", null)).toBe("none")
   })
@@ -76,6 +85,10 @@ describe("a release that did not move", () => {
     expect(stillRelease("rightPress", "note")).toBe("disarm")
   })
 
+  test("with a Place tool armed, a still click on empty canvas leaves the selection alone", () => {
+    expect(stillRelease(gestureStart(press(), "empty", "place"), "place")).toBe("none")
+  })
+
   test("a Shift or Ctrl press on a selected part toggles it and does not then select it alone", () => {
     const start = gestureStart(press({ ctrlKey: true }), "selectedPart", null)
     expect(stillRelease(start, null)).toBe("none")
@@ -89,5 +102,33 @@ describe("how far the pointer must go to count as moved", () => {
     expect(hasMoved(at, { x: 12, y: 12 })).toBe(false)
     expect(hasMoved(at, { x: 13, y: 10 })).toBe(true)
     expect(hasMoved(at, { x: 10, y: 6 })).toBe(true)
+  })
+})
+
+describe("which double clicks open Properties or rename a net", () => {
+  /** A stand-in for the element clicked: `inControl` says whether it sits in a field or a button. */
+  const target = (inControl: boolean, asked: string[] = []) => ({
+    closest: (selector: string) => {
+      asked.push(selector)
+      return inControl ? {} : null
+    },
+  })
+
+  test("one on the drawing does, whichever element carries the handlers", () => {
+    expect(opensOnDoubleClick({ button: 0, target: target(false) })).toBe(true)
+  })
+
+  test("one in the label's name input, another field or a button does not", () => {
+    const asked: string[] = []
+    expect(opensOnDoubleClick({ button: 0, target: target(true, asked) })).toBe(false)
+    for (const tag of ["input", "textarea", "select", "form", "button"]) expect([tag, asked[0]?.includes(tag)]).toEqual([tag, true])
+  })
+
+  test("only the left button counts", () => {
+    expect(opensOnDoubleClick({ button: 2, target: target(false) })).toBe(false)
+  })
+
+  test("a target that is not an element counts as the drawing", () => {
+    expect(opensOnDoubleClick({ button: 0, target: null })).toBe(true)
   })
 })

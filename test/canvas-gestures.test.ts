@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test, vi } from "vitest"
 import type { NetLabel } from "../src/engine/schematic.js"
-import { endGesture, followGesture, startGesture, targetAt, type Gesture, type GestureInput } from "../studio/src/pcb/gestures.js"
+import { endGesture, followGesture, gestureSession, movePlan, startGesture, targetAt, type Gesture, type GestureInput } from "../studio/src/pcb/gestures.js"
+import { sendGroupEdit } from "../studio/src/pcb/group-edits.js"
+import { moveBlocker } from "../studio/src/pcb/positions.js"
 import { worldToScreen, type Camera, type PartBox, type Point } from "../studio/src/pcb/geometry.js"
 import type { ArmedTool, ContextTarget, Press } from "../studio/src/pcb/press.js"
 import { Selection, type SelectionChange } from "../studio/src/selection.js"
@@ -197,5 +199,74 @@ describe("what a right click or a double click is on", () => {
 
   test("the PCB has no labels, so there is only a part or the canvas", () => {
     expect(targetAt(BOXES, undefined, { x: 9, y: 0 })).toEqual({ kind: "canvas" })
+  })
+})
+
+describe("a group drag as the browser sends it", () => {
+  // Nine parts in a row, 2 mm apart, each with its position written in the code, as in the check project.
+  const NAMES = ["J1", "R1", "R2", "C1", "U1", "C2", "R3", "LED1", "J2"]
+  const row = NAMES.map((name, i) => partBox(name, i * 3, i * 3 + 2))
+  const prop = (literal: number) => ({ literal, source: `{${literal}}`, editable: true })
+  const source = {
+    model: {
+      parts: NAMES.map((name, i) => ({ name, tag: "resistor", line: 1, props: { pcbX: prop(i * 3 + 1), pcbY: prop(0) }, editable: true, start: 0, end: 0 })),
+      traces: [],
+      skipped: [],
+      imports: [],
+    },
+  }
+
+  /**
+   * A canvas held the way the hook holds it: one session for every event, which React draws later, so the press,
+   * the moves and the release can all arrive before it draws once (the way Chrome sent them).
+   */
+  function nineParts() {
+    const state = { selection: Selection.none.all(NAMES), drawn: 0 }
+    const edits: string[] = []
+    const actions = {
+      edit: async (list: unknown[], summary: string) => (edits.push(`${list.length}: ${summary}`), true),
+      notify: (text: string) => void edits.push(`notify ${text}`),
+      mark: async () => true,
+    }
+    const input: GestureInput = {
+      view: "pcb",
+      camera: CAMERA,
+      setCamera: () => undefined,
+      size: SIZE,
+      boxes: row,
+      anchors: new Map(),
+      step: 0.5,
+      builtFrom: 0,
+      circuit: source,
+      actions,
+      selection: state.selection,
+      onSelect: (change: SelectionChange) => void (state.selection = change(state.selection)),
+      blockerFor: (name) => moveBlocker(source, new Set(), name, "pcb"),
+      tool: { armed: null, disarm: () => undefined },
+      onContextMenu: () => undefined,
+    }
+    const commit = (names: readonly string[], offset: Point) => void sendGroupEdit(movePlan(input, names, offset), actions)
+    const session = gestureSession(() => ({ input, commit }), () => void (state.drawn += 1))
+    return { state, edits, session }
+  }
+
+  test("press on C1, eight moves of 5 px, release: all nine move in one edit and stay selected", async () => {
+    const { state, edits, session } = nineParts()
+    const c1 = screen(10)
+    session.press(press(), c1)
+    for (let step = 1; step <= 8; step++) session.move({ x: c1.x + 5 * step, y: c1.y })
+    session.release({ x: c1.x + 40, y: c1.y })
+    await Promise.resolve()
+    expect(edits).toEqual(["9: move J1, R1, R2 and 6 more by (4, 0)"])
+    expect(state.selection.names).toEqual(NAMES)
+  })
+
+  test("a release without moving still selects the pressed part alone", () => {
+    const { state, edits, session } = nineParts()
+    session.press(press(), screen(10))
+    session.move({ x: screen(10).x + 1, y: screen(10).y })
+    session.release(screen(10))
+    expect(edits).toEqual([])
+    expect(state.selection.names).toEqual(["C1"])
   })
 })
