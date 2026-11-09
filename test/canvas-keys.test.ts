@@ -328,3 +328,28 @@ describe("Delete and Backspace", () => {
     expect(claimsKey("removeCorner", 1, true, true)).toBe(false)
   })
 })
+
+describe("rows that are placed parts (the Component tree)", () => {
+  const tree = { ownsKeys: true, partRows: true }
+
+  test("Delete and Backspace on a focused row act on the selection, as EasyEDA's tree does", () => {
+    expect(keyAction(key("Delete", tree), PCB)).toEqual({ action: "delete", preventDefault: false })
+    expect(keyAction(key("Backspace", tree), SCHEMATIC)?.action).toBe("delete")
+    expect(keyAction(key("Delete", { ...tree, onButton: true }), PCB)?.action).toBe("delete")
+  })
+
+  test("the tree still keeps its other navigation and activation keys", () => {
+    for (const name of ["ArrowDown", "Home", "End", "Enter", " ", "r", "h"]) expect([name, keyAction(key(name, tree), PCB)]).toEqual([name, null])
+  })
+
+  test("rows that are not placed parts keep blocking Delete and Backspace", () => {
+    for (const name of ["Delete", "Backspace"]) expect(keyAction(key(name, { ownsKeys: true }), PCB)).toBeNull()
+  })
+
+  test("while a wire is drawn, Backspace on a tree row takes no corner back, and a prevented Delete stays prevented", () => {
+    const drawing: KeyState = { view: "schematic", drawing: true }
+    expect(keyAction(key("Backspace", tree), drawing)).toBeNull()
+    expect(keyAction(key("Delete", tree), drawing)).toBeNull()
+    expect(keyAction(key("Delete", { ...tree, handled: true }), PCB)).toBeNull()
+  })
+})

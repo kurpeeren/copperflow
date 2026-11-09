@@ -100,7 +100,8 @@ function PartsTree({ circuit, parts: library, selection, onSelect }: Props) {
           <h3 title={tag}>
             {title(tag)} <span className="count">{parts.length}</span>
           </h3>
-          <ul role="listbox" aria-multiselectable="true" aria-label={title(tag)}>
+          {/* The rows are placed parts: Delete and Backspace on a focused row remove the selected parts (canvas-keys.ts). */}
+          <ul role="listbox" aria-multiselectable="true" aria-label={title(tag)} data-keys="parts">
             {parts.map((part) => (
               <li key={part.name} role="none">
                 <button

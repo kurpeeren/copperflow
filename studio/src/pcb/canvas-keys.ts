@@ -45,6 +45,8 @@ export interface KeyInput {
   onButton?: boolean
   /** Focus is in a widget that handles its own keys (a table row, listbox, tree, tab, menu); shortcuts still work there. */
   ownsKeys?: boolean
+  /** That widget's rows are placed parts (the Component tree, `data-keys="parts"`): Delete and Backspace still remove the selection. */
+  partRows?: boolean
   /** A widget already handled the event (defaultPrevented); this counts only for its navigation and activation keys. */
   handled?: boolean
 }
@@ -95,6 +97,8 @@ const OWN_KEYS = "tr, [role='row'], [role='gridcell'], [role='grid'], [role='lis
 /** Fields that take every key: text inputs, text areas, selects and editable text. A checkbox is pressed like a button. */
 const FIELDS = "input:not([type='checkbox']):not([type='radio']), textarea, select, [contenteditable='true']"
 const PRESSABLE = "button, a[href], summary, input[type='checkbox'], input[type='radio']"
+/** A list whose rows are placed parts, as EasyEDA's tree: Delete there removes the selected parts. */
+const PART_ROWS = "[data-keys='parts']"
 
 /** A key event as plain data. */
 export function keyInput(event: KeyboardEvent): KeyInput {
@@ -110,6 +114,7 @@ export function keyInput(event: KeyboardEvent): KeyInput {
     typing: target?.closest(FIELDS) != null,
     onButton: target?.closest(PRESSABLE) != null,
     ownsKeys: target?.closest(OWN_KEYS) != null,
+    partRows: target?.closest(PART_ROWS) != null,
     handled: event.defaultPrevented,
   }
 }
@@ -174,8 +179,14 @@ function ctrlAction(input: KeyInput): KeyResult | null {
 /** Delete or Backspace removes the selected parts; while a wire is drawn, Backspace takes back its last corner instead. */
 function removeAction(input: KeyInput, state: KeyState): KeyResult | null {
   if (!state.drawing) return act("delete")
-  return input.key === "Backspace" ? act("removeCorner", true) : null
+  // Taking back a corner is the canvas's alone, not a focused row's.
+  return input.key === "Backspace" && !input.ownsKeys ? act("removeCorner", true) : null
 }
+
+const removes = (input: KeyInput): boolean => input.key === "Delete" || input.key === "Backspace"
+
+/** A focused widget keeps its navigation and activation keys, except Delete and Backspace on rows that are placed parts. */
+const widgetKeeps = (input: KeyInput): boolean => input.ownsKeys === true && !(input.partRows === true && removes(input))
 
 /** Shift+F10 or the menu key opens the context menu, as a right click does; prevented, so the browser's own does not open. */
 const opensMenu = (input: KeyInput): boolean =>
@@ -192,10 +203,10 @@ export function keyAction(input: KeyInput, state: KeyState): KeyResult | null {
   // The navigation and activation keys (arrows, Space, Delete, Backspace, the letters) belong to a focused table row,
   // list, tree, tab or menu, and one that a widget already took is not the canvas's too; the shortcuts above still
   // work there.
-  if (input.ownsKeys || input.handled) return null
+  if (input.handled || widgetKeeps(input)) return null
   const arrow = arrowAction(input)
   if (arrow) return arrow
-  if (input.key === "Delete" || input.key === "Backspace") return removeAction(input, state)
+  if (removes(input)) return removeAction(input, state)
   if (input.key === " ") return state.drawing || input.onButton ? null : act("rotate", true)
   return letterAction(input.key.toLowerCase(), input, state)
 }
