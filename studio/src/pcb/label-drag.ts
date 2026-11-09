@@ -43,16 +43,18 @@ interface Anchor {
   connection?: Connection
 }
 
-/** The area a label answers to: the drawn tag of a net label, the drawn bounds plus a little reach for a symbol. */
-export function labelHitBox(label: NetLabel): Box {
+/** What a label draws: the tag of a net label, the symbol's bounds for a ground or power flag. A selection box takes a label by this. */
+export function labelDrawnBox(label: NetLabel): Box {
   if (label.style === "label") return labelTag(label).box
   const bounds = boundsOf(label.style === "ground" ? groundSymbol() : powerSymbol(label.text), [])
-  return {
-    minX: label.at.x + bounds.minX - LABEL_REACH,
-    minY: label.at.y + bounds.minY - LABEL_REACH,
-    maxX: label.at.x + bounds.maxX + LABEL_REACH,
-    maxY: label.at.y + bounds.maxY + LABEL_REACH,
-  }
+  return { minX: label.at.x + bounds.minX, minY: label.at.y + bounds.minY, maxX: label.at.x + bounds.maxX, maxY: label.at.y + bounds.maxY }
+}
+
+/** The area a label answers to a click: the drawn tag of a net label, the drawn bounds plus a little reach for a symbol. */
+export function labelHitBox(label: NetLabel): Box {
+  const drawn = labelDrawnBox(label)
+  if (label.style === "label") return drawn
+  return { minX: drawn.minX - LABEL_REACH, minY: drawn.minY - LABEL_REACH, maxX: drawn.maxX + LABEL_REACH, maxY: drawn.maxY + LABEL_REACH }
 }
 
 const inside = (box: Box, p: Point): boolean => p.x >= box.minX && p.x <= box.maxX && p.y >= box.minY && p.y <= box.maxY

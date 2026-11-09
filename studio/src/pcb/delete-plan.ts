@@ -60,6 +60,7 @@ export function deletePlan(selection: Selection, blockerFor: (name: string) => s
     plan,
     wires: selection.wires.filter((id) => gone.has(id)),
     labels: selection.labels.filter((id) => goneLabels.has(id)),
-    ...(parts.parts.length > 0 ? { question: removeQuestion(parts.parts, wires?.removed.length ?? 0) } : {}),
+    // The question counts the wires selected; a selected label's wire is the label's, not "a wire".
+    ...(parts.parts.length > 0 ? { question: removeQuestion(parts.parts, (wires?.removed ?? []).filter((id) => selection.hasWire(id)).length) } : {}),
   }
 }

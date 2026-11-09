@@ -15,7 +15,7 @@ import type { Design } from "../../../src/engine/design.js"
 import { roundPosition, type Point } from "./geometry.js"
 import { nameList, wireWords, type GroupEdit } from "./group-edits.js"
 import type { LabelMove } from "./label-drag.js"
-import { labelNames, labelWords, ownLabelMoves, sortLabels, type LabelSort } from "./label-follow.js"
+import { labelNames, labelWords, namedLabelReason, ownLabelMoves, sortLabels, type LabelSort } from "./label-follow.js"
 import { sourcePosition, VIEWS, ZERO, type SourceCircuit } from "./positions.js"
 import { NO_LOCKS } from "./trace-source.js"
 import { describeWire, namedWireReason } from "./wire-actions.js"
@@ -254,7 +254,9 @@ export interface MovedWires {
 /** What the selected wires and labels do in a move: each selected wire's outcome, and those of the wires the selected labels ride on. */
 interface Carried {
   outcomes: CarryOutcome[]
+  /** The outcomes of the wires only selected labels ride on, and those wires' ids, in the same order. */
   riding: CarryOutcome[]
+  ridingIds: string[]
   sort: LabelSort
 }
 
@@ -263,7 +265,22 @@ function carriedWires(follow: WireFollow, source: SourceCircuit, carry: Carry | 
   const sort = sortLabels(follow.design, carry?.labels ?? [], (part) => moves.has(part), wires)
   const outcomeOf = (id: string) => carryOutcome(follow, source, id, { offset: carry?.offset ?? ZERO, labelEnd: sort.riding.has(id) }, moves)
   const extra = [...sort.riding.keys()].filter((id) => !wires.includes(id))
-  return { outcomes: wires.map(outcomeOf), riding: extra.map(outcomeOf), sort }
+  return { outcomes: wires.map(outcomeOf), riding: extra.map(outcomeOf), ridingIds: extra, sort }
+}
+
+/**
+ * Why a label riding on a wire not selected stays: the wire cannot be carried (its trace is read-only, its corners an
+ * expression, a part locked). Named as the label, since the label is what was selected; a reason already said is not.
+ */
+function ridingNotes(follow: WireFollow, source: SourceCircuit, carried: Carried, said: readonly string[]): string[] {
+  return carried.riding.flatMap((outcome, i) => {
+    if (outcome.kind === "carry" || outcome.kind === "follow") return []
+    const id = carried.ridingIds[i] ?? ""
+    const wire = wireOf(follow.design, source, id)
+    const reason = outcome.kind === "blocked" ? outcome.reason : wire && wireBlocker(follow.design, wire, follow.locked)
+    const label = follow.design.schematic.labels.find((candidate) => candidate.id === carried.sort.riding.get(id))
+    return reason && !said.includes(reason) ? [namedLabelReason(label, reason)] : []
+  })
 }
 
 /** The selected labels the move takes along: on a moved pin, or riding on a wire that moved. */
@@ -290,7 +307,7 @@ export function withMovedWires(plan: GroupEdit, source: SourceCircuit, follow: W
   const names = changedNames(carried.outcomes, new Set(following.map((move) => move.line.id)))
   const labels = [...labelNames(follow.design, labelsTaken(carried)), ...own.names]
   const nothingMoved = plan.edits.length === 0 && wireMoves.length === 0 && own.edits.length === 0
-  const notes = [...carryNotes([...carried.outcomes, ...carried.riding], plan.skipped, nothingMoved), ...own.notes]
+  const notes = [...carryNotes(carried.outcomes, plan.skipped, nothingMoved), ...ridingNotes(follow, source, carried, plan.skipped), ...own.notes]
   const lines = wireMoves.map((move) => move.line)
   if (wireMoves.length === 0 && own.edits.length === 0 && names.length + labels.length + notes.length === 0) return { plan, lines, labels: own.shown }
   const summary = carry && names.length + labels.length > 0 ? carriedSummary(plan.parts, names, labels, carry.offset) : plan.summary

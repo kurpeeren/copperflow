@@ -6,7 +6,7 @@ import { buildDesign, type Design } from "../src/engine/design.js"
 import { moveWithWires, type GestureInput } from "../studio/src/pcb/gestures.js"
 import type { GroupEditActions } from "../studio/src/pcb/group-edits.js"
 import { keySession, type EditInput } from "../studio/src/pcb/key-session.js"
-import { labelDragEdits } from "../studio/src/pcb/label-drag.js"
+import { labelDragEdits, labelDrawnBox, labelHitBox } from "../studio/src/pcb/label-drag.js"
 import { deletePlan } from "../studio/src/pcb/delete-plan.js"
 import { labelAfterBuild, labelProperties, labelsRemoval } from "../studio/src/pcb/label-selection.js"
 import { wiresRemoval } from "../studio/src/pcb/wire-actions.js"
@@ -146,6 +146,24 @@ describe("labels moved with a selection", () => {
     expect(shown.labels).toMatchObject([{ id: OUT, at: plus(labelAt(design, OUT), offset) }])
   })
 
+  test("a label whose part is locked and selected too is not named again: the part already said why", () => {
+    const locked = inputFor(SOURCE, new Set(["R3"]))
+    const { plan } = moveWithWires(locked.input, ["R3"], p(0, 1), [], [OUT])
+    expect(plan.skipped).toEqual(["R3 is locked"])
+    expect(plan.edits).toEqual([])
+  })
+
+  test("a label riding on a wire that cannot be carried is named as the label", () => {
+    const written = SOURCE.replace("schematicRouteHints={[{ x: 1.5, y: 4 }, { x: 1.5, y: 5 }]}", "schematicRouteHints={OUT_CORNERS}").replace(
+      "export default",
+      "const OUT_CORNERS = [{ x: 1.5, y: 4 }, { x: 1.5, y: 5 }]\nexport default",
+    )
+    const { input: expressed } = inputFor(written)
+    const { plan } = moveWithWires(expressed, ["R3"], p(0, 1), [], [OUT])
+    expect(plan.skipped).toHaveLength(1)
+    expect(plan.skipped[0]).toMatch(/^The OUT label: /)
+  })
+
   test("a label whose part is locked is named once among those left out; the rest still moves", () => {
     const locked = inputFor(SOURCE, new Set(["R3"]))
     const { plan } = moveWithWires(locked.input, [], p(0, 1), [], [OUT, FLAG])
@@ -206,6 +224,12 @@ describe("Delete with labels selected", () => {
     })
   })
 
+  test("the question counts only the wires selected, not the wire of a selected label", () => {
+    const result = remove(Selection.none.all(["R1"], [], [OUT]))
+    expect(result).toMatchObject({ question: "Remove R1 and its connections?" })
+    expect(remove(Selection.none.all(["R1"], [OUT_WIRE], [OUT]))).toMatchObject({ question: "Remove R1 and its connections, and 1 wire?" })
+  })
+
   test("labels of a removed part go with it, with nothing sent twice and nothing refused", () => {
     const result = remove(Selection.none.all(["R1"], [], [FLAG, SIG]))
     expect(result).toMatchObject({ plan: { edits: [{ kind: "removePart", part: "R1" }], skipped: [] }, labels: [FLAG, SIG] })
@@ -224,5 +248,18 @@ describe("Properties of one label", () => {
     })
     expect(labelProperties(design, OUT)?.rows.at(-1)).toEqual({ label: "Kind", value: "Hand-drawn" })
     expect(labelProperties(design, "label:gone")).toBeUndefined()
+  })
+})
+
+describe("the area a box takes a flag by", () => {
+  test("is the flag's drawn symbol; a click still reaches a little past it", () => {
+    const flag = design.schematic.labels.find((label) => label.id === FLAG)
+    if (!flag) throw new Error("no flag")
+    const drawn = labelDrawnBox(flag)
+    const hit = labelHitBox(flag)
+    expect(hit.minX).toBeCloseTo(drawn.minX - 0.1)
+    expect(hit.maxY).toBeCloseTo(drawn.maxY + 0.1)
+    const sig = design.schematic.labels.find((label) => label.id === SIG)
+    if (sig) expect(labelDrawnBox(sig)).toEqual(labelHitBox(sig))
   })
 })

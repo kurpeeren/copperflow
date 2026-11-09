@@ -161,6 +161,11 @@ describe("when the build with a new shape arrives", () => {
     expect(follow(Selection.none.only("R1").addWires([U, ENGINE, Z]))).toMatchObject({ names: ["R1"], wires: [U, NEW, Z] })
   })
 
+  test("the selected labels stay when a wire is renamed", () => {
+    const { follow } = shapesBuilt(sent, 200, new Set([NEW, U, Z]))
+    expect(follow(Selection.none.addWires([ENGINE]).addLabels(["label:A", "label:B"]))).toMatchObject({ wires: [NEW], labels: ["label:A", "label:B"] })
+  })
+
   test("nothing is passed on when the sheet does not draw the new wire (the build failed), or it could not be named", () => {
     const { follow } = shapesBuilt(sent, 200, new Set([U, Z]))
     const engine = Selection.none.onlyWire(ENGINE)

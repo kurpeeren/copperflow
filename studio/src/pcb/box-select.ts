@@ -32,7 +32,7 @@ export function partsInBox(boxes: readonly PartBox[], a: Point, b: Point, mode: 
   return areasInBox(boxes.map((part) => ({ id: part.name, box: part.box })), a, b, mode)
 }
 
-/** The ids of the net labels and flags the box takes, by the area each answers to (label-drag.ts labelHitBox). */
+/** The ids of the net labels and flags the box takes, by what each draws (label-drag.ts labelDrawnBox). */
 export function labelsInBox(labels: readonly { id: string; box: Box }[], a: Point, b: Point, mode: BoxMode): string[] {
   return areasInBox(labels, a, b, mode)
 }

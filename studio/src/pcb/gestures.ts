@@ -60,7 +60,7 @@ export interface GestureLabels {
   blocker(id: string): string | null
   /** Writes the move to `drop`. */
   commit(label: NetLabel, drop: Point): void
-  /** The area each label answers to (label-drag.ts labelHitBox), which a selection box takes by its direction rule. */
+  /** What each label draws (label-drag.ts labelDrawnBox), which a selection box takes by its direction rule. */
   boxes?: readonly { id: string; box: Box }[]
 }
 
