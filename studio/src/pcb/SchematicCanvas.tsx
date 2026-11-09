@@ -285,7 +285,7 @@ function wireHint(wire: WireTool): string | undefined {
   if (wire.drawing) {
     return `From ${wire.drawing.start.label}: click the sheet for a corner, then a pin, a wire, a bus or a net label to finish. Backspace removes a corner, Esc cancels.`
   }
-  return wire.wiring ? "Click a pin to start a wire. Esc stops wiring." : undefined
+  return wire.wiring ? "Click a pin or a bus to start a wire. Esc stops wiring." : undefined
 }
 
 /** The highlighted nets with their pins and the names their wires and labels may carry, so they can be drawn lit. */

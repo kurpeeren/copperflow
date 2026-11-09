@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { buildDesign } from "../src/engine/design.js"
-import { drawingAfterBuild, stableDrawings } from "../studio/src/pcb/drawing-selection.js"
+import { drawingAfterBuild, renamedAfterBuild, stableDrawings } from "../studio/src/pcb/drawing-selection.js"
 import { shownSelection } from "../studio/src/pcb/wire-selection.js"
 import { Selection } from "../studio/src/selection.js"
 
@@ -44,5 +44,26 @@ describe("selected drawings after a build", () => {
     const after = sheet(B, G1)
     const shown = shownSelection(Selection.none.addDrawings([FIRST, "G1"]), { view: "schematic", drawings: stableDrawings(before, after) })
     expect(shown.drawings).toEqual(["G1"])
+  })
+})
+
+describe("a renamed drawing after its build", () => {
+  const P1 = `<bus name="D[0:7]" points={[{ x: 0, y: 4 }, { x: 2, y: 4 }]} />`
+  const P2 = `<bus name="D[0:7]" points={[{ x: 0, y: 6 }, { x: 2, y: 6 }]} />`
+  const pieces = sheet(P1, P2, G1)
+  const renamed = sheet(P1.replace("D[0:7]", "A[3:0]"), P2, G1)
+
+  test("the renamed piece stays selected under its new id; the piece that took its old id is not selected", () => {
+    const selection = Selection.none.addDrawings(["D[0:7]", "G1"])
+    const { selection: next, waiting } = renamedAfterBuild(selection, [{ from: "D[0:7]", to: "A[3:0]" }], renamed)
+    expect(waiting).toEqual([])
+    expect(drawingAfterBuild(next, pieces, renamed).drawings.slice().sort()).toEqual(["A[3:0]", "G1"])
+  })
+
+  test("a rename whose build has not come keeps waiting; one not selected changes nothing", () => {
+    const selection = Selection.none.addDrawings(["D[0:7]"])
+    expect(renamedAfterBuild(selection, [{ from: "D[0:7]", to: "A[3:0]" }], pieces)).toEqual({ selection, waiting: [{ from: "D[0:7]", to: "A[3:0]" }] })
+    const other = Selection.none.addDrawings(["G1"])
+    expect(renamedAfterBuild(other, [{ from: "D[0:7]", to: "A[3:0]" }], renamed)).toEqual({ selection: other, waiting: [] })
   })
 })

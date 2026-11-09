@@ -13,6 +13,7 @@ import type { useChecks } from "../use-checks"
 import type { FindState } from "../use-find"
 import type { StudioData } from "../use-studio-data"
 import type { useWorkspace } from "../use-workspace"
+import type { DrawingRename } from "../pcb/drawing-selection"
 import { BottomPanel } from "./BottomPanel"
 import { ContextMenu } from "./ContextMenu"
 import { DocTabs } from "./DocTabs"
@@ -43,6 +44,8 @@ export interface WorkspaceProps {
   onView(view: View): void
   selection: Selection
   onSelect(change: SelectionChange): void
+  /** A drawing renamed in Properties: the selection follows it to its new id once its build lands; the result forgets it. */
+  onRenameDrawing(rename: DrawingRename): () => void
   actions: Actions
   /** Runs a menu command, as the menu bar does. */
   run(command: CommandId): void
@@ -156,7 +159,7 @@ function LeftSide({ data, workspace, view, selection, onSelect, actions, onPlace
 }
 
 /** The right panel: Properties, the Layer panel (PCB only) or the Filter panel, once the circuit has loaded. Properties stays mounted behind the Layer tab, so its open sections are kept. */
-function RightSide({ data, workspace, checks, selection, onSelect, actions, run, openChecks, view }: WorkspaceProps) {
+function RightSide({ data, workspace, checks, selection, onSelect, onRenameDrawing, actions, run, openChecks, view }: WorkspaceProps) {
   if (!data.circuit) return null
   const { right } = workspace
   const layerOpen = right.open && right.active === "layer"
@@ -170,6 +173,7 @@ function RightSide({ data, workspace, checks, selection, onSelect, actions, run,
         parts={data.parts}
         selection={selection}
         onSelect={onSelect}
+        onRenameDrawing={onRenameDrawing}
         actions={actions}
         run={run}
         counts={checks.counts}

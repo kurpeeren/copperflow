@@ -169,9 +169,15 @@ function underAtPoint(design: Design, camera: Camera | undefined, active: boolea
   return { ...(end ? { end } : {}), ...(pin ? { pin } : {}) }
 }
 
-/** The bus member list: opened at a bus (a one-member bus needs none), then the member picked starts or ends the wire. */
-function usePicking(drawing: Drawing | null, setDrawing: (drawing: Drawing) => void, finish: (drawing: Drawing, target: WireEnd) => void) {
+/**
+ * The bus member list: opened at a bus (a one-member bus needs none), then the member picked starts or ends the wire.
+ * A build without that bus (an undo, say) closes it.
+ */
+function usePicking(design: Design, drawing: Drawing | null, setDrawing: (drawing: Drawing) => void, finish: (drawing: Drawing, target: WireEnd) => void) {
   const [picking, setPicking] = useState<Picking | null>(null)
+  useEffect(() => {
+    if (picking && !design.schematic.drawings.some((d) => `bus:${d.id}` === picking.bus.selector)) setPicking(null)
+  }, [design, picking])
   const use = (bus: WireEnd, role: Picking["role"], member: string) => {
     const end = memberEnd(bus, member)
     if (role === "start") setDrawing(newDrawing(end, undefined))
@@ -216,7 +222,7 @@ export function useWireTool(input: WireInput) {
   const { under, setUnder, underRef } = useUnder(input.buildId)
   const pending = usePendingWires(input.builtFrom)
   const finish = useFinish(design, input.actions, pending, setDrawing)
-  const picks = usePicking(drawing, setDrawing, finish)
+  const picks = usePicking(design, drawing, setDrawing, finish)
   const escape = () => (picks.picking ? picks.cancelPick() : drawing ? setDrawing(null) : setWiring(false))
   useWireKeys({ drawing, setDrawing, setWiring, underRef, start: picks.start, escape })
   const aimed = useMemo(() => (picks.picking?.role === "end" ? { end: picks.picking.bus } : under), [picks.picking, under])

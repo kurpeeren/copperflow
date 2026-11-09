@@ -3,7 +3,7 @@ import { analyzeCircuit } from "../src/core/analyze.js"
 import { applyEdits } from "../src/core/edit.js"
 import { busMembers } from "../src/engine/drawing-kinds.js"
 import { buildDesign } from "../src/engine/design.js"
-import { busNameProblem, membersText, newDrawingId, nextBusName } from "../studio/src/pcb/bus-tool.js"
+import { busNameProblem, membersText, newDrawingId, nextBusName, renamedId } from "../studio/src/pcb/bus-tool.js"
 import { drawHint, drawingEdit, drawStep, drawSummary, idleState, keepsFocus, previewDrawing, sentDrawing, type DrawEvent, type DrawState } from "../studio/src/pcb/draw-tools.js"
 
 const FILE = "main.circuit.tsx"
@@ -71,6 +71,21 @@ describe("the bus name", () => {
   test("the id a new drawing will get: its name, or name~n for one more piece of a bus", () => {
     expect(newDrawingId(model, "A[3:0]")).toBe("A[3:0]")
     expect(newDrawingId(model, "D[0:7]")).toBe("D[0:7]~2")
+    expect(newDrawingId(model, "D[0:7]", ["D[0:7]"])).toBe("D[0:7]~3")
+  })
+
+  test("the id a renamed drawing gets is the one the engine gives it, even when a later piece takes the old id", () => {
+    const source = SOURCE.replace("<schematicrect", `<bus name="D[0:7]" points={[{ x: 0, y: 9 }, { x: 4, y: 9 }]} />
+    <schematicrect`)
+    const pieces = analyzeCircuit(source)
+    const idAfter = (id: string, name: string, y: number) => {
+      const built = buildDesign({ [FILE]: applyEdits(source, [{ kind: "setDrawingProps", id, props: { name } }], new Set()) }, FILE)
+      return built.schematic.drawings.find((d) => d.kind === "bus" && d.points[0]?.y === y)?.id
+    }
+    for (const [id, name, y] of [["D[0:7]", "A[3:0]", 8], ["D[0:7]", "BUS1", 8], ["D[0:7]~2", "BUS1", 9], ["D[0:7]~2", "CLK", 9]] as const) {
+      expect([id, name, renamedId(pieces, id, name)]).toEqual([id, name, idAfter(id, name, y)])
+    }
+    expect(renamedId(pieces, "D[0:7]", "BUS1")).toBe("BUS1~2")
   })
 })
 

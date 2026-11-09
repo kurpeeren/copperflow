@@ -34,6 +34,24 @@ export function stableDrawings(before: readonly SchematicDrawing[] | undefined, 
   })
 }
 
+/** A drawing renamed in Properties: its id before, and the id its build gives it (bus-tool.ts renamedId). */
+export interface DrawingRename {
+  from: string
+  to: string
+}
+
+/**
+ * The selection once a build has the renamed drawings: a selected one is selected under its new id (so the drawing
+ * that takes its old id, another piece of the same bus, is not). Renames whose build has not come keep `waiting`.
+ * Run before drawingAfterBuild.
+ */
+export function renamedAfterBuild(selection: Selection, renames: readonly DrawingRename[], after: readonly SchematicDrawing[]): { selection: Selection; waiting: DrawingRename[] } {
+  const built = (rename: DrawingRename) => after.some((drawing) => drawing.id === rename.to)
+  const done = renames.filter(built)
+  const next = done.reduce((current, { from, to }) => (current.hasDrawing(from) ? current.withoutDrawings([from]).addDrawings([to]) : current), selection)
+  return { selection: next, waiting: renames.filter((rename) => !built(rename)) }
+}
+
 /** The selection after a build: the selected drawings that are gone, or whose id now names another drawing, leave it. */
 export function drawingAfterBuild(selection: Selection, before: readonly SchematicDrawing[] | undefined, after: readonly SchematicDrawing[]): Selection {
   return selection.drawingCount === 0 ? selection : selection.keepDrawings(stableDrawings(before, after))

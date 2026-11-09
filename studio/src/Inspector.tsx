@@ -13,6 +13,7 @@ import { LibraryInfo } from "./LibraryInfo"
 import { CloseIcon, LockIcon, RotateIcon, TrashIcon, UnlockIcon } from "./icons"
 import { touches } from "./LeftPanel"
 import { pcbBoxes } from "./pcb/pcb-draw"
+import type { DrawingRename } from "./pcb/drawing-selection"
 import type { Selection, SelectionChange } from "./selection"
 import type { CommandId } from "./shell/menus"
 import { sideTabId, stripPanelId } from "./shell/SideStrip"
@@ -24,6 +25,7 @@ interface Props {
   parts: PartsData
   selection: Selection
   onSelect(change: SelectionChange): void
+  onRenameDrawing(rename: DrawingRename): () => void
   actions: Actions
   /** Runs a menu command; the actions for several parts go through it, so they do what the menu does. */
   run(command: CommandId): void
@@ -89,7 +91,7 @@ export function Inspector(props: Props) {
     <aside ref={panel} className="panel right" id={props.hidden ? undefined : stripPanelId("right")} role="tabpanel" aria-labelledby={sideTabId("properties")} hidden={props.hidden}>
       {kind === "wire" && wire !== undefined && design && <WireView design={design} circuit={props.circuit} wire={wire} locked={locks.locked} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
       {kind === "label" && label !== undefined && design && <LabelView design={design} label={label} run={props.run} notify={props.actions.notify} onClear={clear} collapsed={collapsed} toggle={toggle} />}
-      {kind === "drawing" && drawing !== undefined && design && <DrawingView design={design} circuit={props.circuit} drawing={drawing} locked={locks.locked} actions={props.actions} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
+      {kind === "drawing" && drawing !== undefined && design && <DrawingView design={design} circuit={props.circuit} drawing={drawing} locked={locks.locked} actions={props.actions} onRename={props.onRenameDrawing} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
       {kind === "group" && <GroupView view={view} parts={parts} others={wireCount + labelCount + drawingCount} locks={locks} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
       {kind === "part" && part && <PartView {...props} view={view} collapsed={collapsed} toggle={toggle} part={part} locks={locks} />}
       {kind === "board" && <BoardView {...props} view={view} collapsed={collapsed} toggle={toggle} />}

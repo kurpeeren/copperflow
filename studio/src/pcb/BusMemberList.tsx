@@ -1,22 +1,20 @@
 // The small list of a bus's members the W tool opens where a wire meets a bus: the arrows move, Enter or a click picks
-// the member, Esc closes it (bus-pick.ts). The wire is written to the member picked (use-wire-tool.ts).
+// the member, Esc or moving the focus away closes it; it opens inside the canvas (bus-pick.ts). The wire is written to the member picked (use-wire-tool.ts).
 import { useEffect, useRef, useState } from "react"
 import "./bus-members.css"
-import { memberKey } from "./bus-pick"
+import { listPlace, memberKey } from "./bus-pick"
 import { worldToScreen, type Camera, type Size } from "./geometry"
 import type { useWireTool } from "./use-wire-tool"
 
 type WireTool = ReturnType<typeof useWireTool>
 
-/** Where the list opens, beside the point where the wire meets the bus. */
-const OFFSET_PX = 12
-
 export function BusMemberList({ wire, camera, size }: { wire: WireTool; camera: Camera | undefined; size: Size }) {
   const { picking } = wire
   if (!picking || !camera) return null
-  const at = worldToScreen(camera, size, picking.bus.at)
+  const members = picking.bus.members ?? []
+  const { left, top } = listPlace(worldToScreen(camera, size, picking.bus.at), size, members.length)
   const key = `${picking.bus.selector}:${picking.bus.at.x}:${picking.bus.at.y}`
-  return <MemberList key={key} left={at.x + OFFSET_PX} top={at.y + OFFSET_PX} name={picking.bus.label} members={picking.bus.members ?? []} wire={wire} />
+  return <MemberList key={key} left={left} top={top} name={picking.bus.label} members={members} wire={wire} />
 }
 
 interface ListProps {
@@ -46,14 +44,18 @@ function MemberList({ left, top, name, members, wire }: ListProps) {
       tabIndex={0}
       style={{ left, top }}
       onPointerDown={(e) => e.stopPropagation()}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) wire.cancelPick()
+      }}
       onKeyDown={(e) => {
         const action = memberKey(index, members.length, e.key)
         if (!action) return
         e.preventDefault()
         e.stopPropagation()
         if ("index" in action) return setIndex(action.index)
-        if ("pick" in action) return wire.pick(members[action.pick] ?? "")
-        wire.cancelPick()
+        if ("cancel" in action) return wire.cancelPick()
+        const member = members[action.pick]
+        if (member !== undefined) wire.pick(member)
       }}
     >
       {members.map((member, i) => (

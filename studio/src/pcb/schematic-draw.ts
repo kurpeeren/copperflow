@@ -112,9 +112,12 @@ export function drawSchematic(ctx: Ctx, layout: SchematicLayout, view: View, opt
   ctx.lineCap = "round"
   ctx.lineJoin = "round"
   drawWires(ctx, layout, options, px, line)
-  const drawings = [...shownDrawings(layout.drawings, options.movingDrawings), ...(options.pendingDrawings ?? [])]
+  const shown = shownDrawings(layout.drawings, options.movingDrawings)
+  const pending = options.pendingDrawings ?? []
+  const drawings = [...shown, ...pending]
   const paint: DrawingPaint = { ...(options.selectedDrawings ? { selected: options.selectedDrawings } : {}), dim: options.highlight !== undefined }
-  drawDrawings(ctx, drawings, px / options.ratio, paint)
+  drawDrawings(ctx, shown, px / options.ratio, paint)
+  drawDrawings(ctx, pending, px / options.ratio, { pending: true, dim: paint.dim })
   for (const symbol of layout.symbols) drawSymbol(ctx, symbol, shiftOf(symbol), { line, px, fade: symbolFade(symbol, options.highlight) }, texts)
   for (const label of layout.labels) {
     const moving = options.movingLabels?.some((m) => m.id === label.id) ?? false

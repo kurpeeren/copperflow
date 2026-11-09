@@ -176,7 +176,7 @@ function useToolState(onArm: () => void, write: (tool: DrawTool, drawing: NewDra
  */
 function useWrite(input: Input, sent: ReturnType<typeof useSentDrawings>) {
   const { circuit, actions } = input
-  const { add, drop } = sent
+  const { add, drop, visible } = sent
   const { wait, forget } = useSelectWhenBuilt(input.design, input.onSelect)
   const taken = useRef<string[]>([])
   const write = useCallback(
@@ -185,7 +185,8 @@ function useWrite(input: Input, sent: ReturnType<typeof useSentDrawings>) {
       taken.current = taken.current.filter((name) => !model.drawings.some((d) => d.name === name || d.id === name))
       const edit = drawingEdit(drawing, model, taken.current)
       const name = edit.name ?? ""
-      const id = newDrawingId(model, name)
+      // Pieces of the same bus still waiting for their build come before this one.
+      const id = newDrawingId(model, name, visible.flatMap((d) => (d.kind === "bus" ? [d.name] : [])))
       taken.current = [...taken.current, name]
       const entry = add(sentDrawing(drawing, id))
       wait(id)
@@ -200,7 +201,7 @@ function useWrite(input: Input, sent: ReturnType<typeof useSentDrawings>) {
           forget(id)
         })
     },
-    [circuit, actions, wait, forget, add, drop],
+    [circuit, actions, wait, forget, add, drop, visible],
   )
   return { write, taken }
 }

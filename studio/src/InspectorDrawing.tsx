@@ -7,7 +7,9 @@ import type { Actions } from "./App"
 import { Row, Section } from "./InspectorRows"
 import { CloseIcon, TrashIcon } from "./icons"
 import { drawingBlocker, drawingInfo } from "./pcb/drawing-actions"
+import { renamedId } from "./pcb/bus-tool"
 import { drawingFieldEdit, drawingRows, type DrawingRow } from "./pcb/drawing-props"
+import type { DrawingRename } from "./pcb/drawing-selection"
 import type { CommandId } from "./shell/menus"
 
 interface DrawingViewProps {
@@ -17,6 +19,8 @@ interface DrawingViewProps {
   drawing: string
   locked: ReadonlySet<string>
   actions: Actions
+  /** Tells the selection a bus is being renamed, so it follows the bus to its new id; the result forgets it. */
+  onRename(rename: DrawingRename): () => void
   run(command: CommandId): void
   onClear(): void
   collapsed: ReadonlySet<string>
@@ -25,7 +29,7 @@ interface DrawingViewProps {
 
 const SECTION = "Drawing"
 
-export function DrawingView({ design, circuit, drawing: id, locked, actions, run, onClear, collapsed, toggle }: DrawingViewProps) {
+export function DrawingView({ design, circuit, drawing: id, locked, actions, onRename, run, onClear, collapsed, toggle }: DrawingViewProps) {
   const drawing = design.schematic.drawings.find((one) => one.id === id)
   if (!drawing) return null
   const blocker = drawingBlocker(circuit.model, locked, id)
@@ -36,7 +40,13 @@ export function DrawingView({ design, circuit, drawing: id, locked, actions, run
       actions.notify(result.message)
       return Promise.resolve(false)
     }
-    return actions.edit([result.edit], result.summary)
+    const { edit } = result
+    const name = edit.kind === "setDrawingProps" ? edit.props["name"] : undefined
+    const forget = typeof name === "string" ? onRename({ from: id, to: renamedId(circuit.model, id, name) }) : undefined
+    return actions.edit([edit], result.summary).then((ok) => {
+      if (!ok) forget?.()
+      return ok
+    })
   }
   return (
     <div className="inspector">

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { applyEdits } from "../src/core/edit.js"
 import { buildDesign } from "../src/engine/design.js"
-import { memberKey } from "../studio/src/pcb/bus-pick.js"
+import { LIST_MAX_HEIGHT_PX, LIST_WIDTH_PX, listHeight, listPlace, memberKey } from "../studio/src/pcb/bus-pick.js"
 import { endAt, memberEnd, wireEdits, type WireEnd } from "../studio/src/pcb/wire-tool.js"
 
 const FILE = "main.circuit.tsx"
@@ -102,5 +102,16 @@ describe("the member list's keys", () => {
     expect(memberKey(3, 8, "Enter")).toEqual({ pick: 3 })
     expect(memberKey(3, 8, "Escape")).toEqual({ cancel: true })
     expect(memberKey(3, 8, "a")).toBeUndefined()
+  })
+})
+
+describe("where the member list opens", () => {
+  test("beside the meeting point, kept inside the canvas", () => {
+    expect(listPlace({ x: 100, y: 100 }, { width: 800, height: 600 }, 8)).toEqual({ left: 112, top: 112 })
+    const near = listPlace({ x: 790, y: 590 }, { width: 800, height: 600 }, 8)
+    expect(near.left + LIST_WIDTH_PX).toBeLessThanOrEqual(800)
+    expect(near.top + listHeight(8)).toBeLessThanOrEqual(600)
+    expect(listHeight(100)).toBe(LIST_MAX_HEIGHT_PX)
+    expect(listPlace({ x: 5, y: 5 }, { width: 50, height: 50 }, 100)).toEqual({ left: 0, top: 0 })
   })
 })

@@ -118,4 +118,16 @@ describe("the schematic with drawings", () => {
     expect(strokes(rec.records).some((r) => r.strokeStyle === schematicTheme.drawing)).toBe(true)
     expect(rec.records.some((r) => r.name === "fillText" && r.args[0] === "Waiting")).toBe(true)
   })
+
+  test("a pending bus is drawn dashed in the bus colour, a built one solid", () => {
+    const bus = sentDrawing({ tag: "bus", name: "D[0:3]", props: { points: [{ x: 20, y: 20 }, { x: 22, y: 20 }] } }, "D[0:3]")
+    const rec = recorder()
+    drawSchematic(rec.ctx, { ...design.schematic, drawings: [] }, { camera: CAMERA, size: SIZE }, { ratio: 1, pendingDrawings: [bus] })
+    const dashes = rec.records.filter((r) => r.name === "setLineDash").map((r) => r.args[0] as number[])
+    expect(dashes.some((dash) => dash.length === 2)).toBe(true)
+    expect(strokes(rec.records).some((r) => r.strokeStyle === schematicTheme.bus)).toBe(true)
+    const built = recorder()
+    drawSchematic(built.ctx, { ...design.schematic, drawings: [bus] }, { camera: CAMERA, size: SIZE }, { ratio: 1 })
+    expect(built.records.filter((r) => r.name === "setLineDash").every((r) => (r.args[0] as number[]).length === 0)).toBe(true)
+  })
 })

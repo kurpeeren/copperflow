@@ -14,6 +14,8 @@ export interface DrawingPaint {
   selected?: readonly string[]
   /** A net is highlighted: the drawings, which are on no net, are dimmed. */
   dim?: boolean
+  /** Shapes waiting for their build (or in progress): drawn dashed whatever their style, a bus too. */
+  pending?: boolean
 }
 
 
@@ -68,7 +70,7 @@ export function drawDrawings(ctx: Ctx, drawings: readonly SchematicDrawing[], de
     ctx.globalAlpha = alpha
     ctx.lineWidth = width
     ctx.strokeStyle = color
-    ctx.setLineDash(dashOf(lineStyleOf(drawing), width))
+    ctx.setLineDash(dashOf(paint.pending ? "dashed" : lineStyleOf(drawing), width))
     outline(ctx, drawing)
     if (isFilled(drawing)) {
       ctx.fillStyle = fillOf(color)

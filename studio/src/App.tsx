@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { hasToken, type CircuitData, type Design } from "./api"
 import { NO_HIGHLIGHT, remapHighlight } from "./pcb/highlight"
 import { pickLayersOf } from "./pcb/layers"
-import { drawingAfterBuild, stableDrawings } from "./pcb/drawing-selection"
+import { drawingAfterBuild, renamedAfterBuild, stableDrawings, type DrawingRename } from "./pcb/drawing-selection"
 import { labelAfterBuild } from "./pcb/label-selection"
 import { shownSelection, wireAfterBuild, withEndPins } from "./pcb/wire-selection"
 import { goneFrom, Selection, type SelectionChange } from "./selection"
@@ -64,22 +64,33 @@ function usePruneSelection(circuit: CircuitData | undefined, select: (change: Se
 
 /**
  * Drops the selected wires a rebuild took away or re-pointed (wire-selection.ts), so they are not selected again when
- * they come back, keeps the selected labels under their new ids (label-selection.ts), and drops the drawings it took
- * away or whose ids now name other drawings (drawing-selection.ts). Returns the design it last saw: while a render
- * shows a new design, that is still the one before it.
+ * they come back, keeps the selected labels under their new ids (label-selection.ts), follows a renamed drawing to its
+ * new id, and drops the drawings it took away or whose ids now name other drawings (drawing-selection.ts). Returns the
+ * design it last saw (while a render shows a new design, that is still the one before it) and how to announce a rename.
  */
-function usePruneWire(design: Design | undefined, select: (change: SelectionChange) => void): { readonly current: Design | undefined } {
+function usePruneWire(design: Design | undefined, select: (change: SelectionChange) => void) {
   const before = useRef<Design | undefined>(undefined)
+  const renames = useRef<readonly DrawingRename[]>([])
   useEffect(() => {
     if (!design || design === before.current) return
     const previous = before.current
     before.current = design
+    const drawings = design.schematic.drawings
+    const waiting = renames.current
+    renames.current = renamedAfterBuild(Selection.none, waiting, drawings).waiting
     select((current) => {
       const wires = current.wireCount === 0 ? current : wireAfterBuild(current, previous && withEndPins(previous.schematic), withEndPins(design.schematic))
-      return drawingAfterBuild(labelAfterBuild(wires, previous, design), previous?.schematic.drawings, design.schematic.drawings)
+      const renamed = renamedAfterBuild(labelAfterBuild(wires, previous, design), waiting, drawings).selection
+      return drawingAfterBuild(renamed, previous?.schematic.drawings, drawings)
     })
   }, [design, select])
-  return before
+  const onRenameDrawing = useCallback((rename: DrawingRename) => {
+    renames.current = [...renames.current, rename]
+    return () => {
+      renames.current = renames.current.filter((other) => other !== rename)
+    }
+  }, [])
+  return { seen: before, onRenameDrawing }
 }
 
 /**
@@ -156,7 +167,7 @@ function useStudio() {
   const data = useFileData(toast.notify, select, workspace.setHighlight)
   const { file, setFile, build, circuit } = data
   usePruneSelection(circuit, select)
-  const seen = usePruneWire(build.design, select)
+  const { seen, onRenameDrawing } = usePruneWire(build.design, select)
   const selection = useShownSelection(picked, circuit, build.design, tab, seen.current)
   const actions = useActions({ file, refresh: data.refresh, refreshParts: data.refreshParts, notify: toast.notify })
   const place = usePlace({ file, refresh: data.refresh, refreshParts: data.refreshParts, notify: toast.notify }, selectOnly)
@@ -179,11 +190,11 @@ function useStudio() {
   const sheetDrawings = useMemo(() => (tab === "schematic" && sheet ? sheet.drawings.map((drawing) => drawing.id) : []), [tab, sheet])
   const sheetIds = { sheetWires, sheetLabels, sheetDrawings }
   const runCommand = useAppCommands({ file, view: tab, setView: setTab, selection, select, circuit, actions, pickLayers, pickFilter: workspace.pickFilter, ...sheetIds, workspace, openChecks, openFind: find.open, openDialog: setDialog })
-  return { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, actions, place, checks, find, openChecks, openDocument, runCommand }
+  return { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, runCommand }
 }
 
 export function App() {
-  const { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, actions, place, checks, find, openChecks, openDocument, runCommand } = useStudio()
+  const { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, runCommand } = useStudio()
   const { build, circuit } = data
   const { message, dismiss } = toast
   const toggles = { snap: workspace.snap }
@@ -209,6 +220,7 @@ export function App() {
         onView={setTab}
         selection={selection}
         onSelect={select}
+        onRenameDrawing={onRenameDrawing}
         actions={actions}
         run={runCommand}
         onPlace={place}

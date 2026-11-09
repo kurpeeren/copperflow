@@ -2,7 +2,8 @@
 .bus-members {
   position: absolute;
   z-index: 5;
-  min-width: 80px;
+  min-width: 100px;
+  box-sizing: border-box;
   max-height: 220px;
   margin: 0;
   padding: 2px 0;
