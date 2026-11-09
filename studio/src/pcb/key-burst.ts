@@ -127,7 +127,7 @@ export function editSettled(gate: TurnGate, ok: boolean, seq: number, before: Tu
 }
 
 /** The actions the canvas's key listener runs (runKey in use-part-keys.ts). */
-const CANVAS_RUNS: ReadonlySet<string> = new Set(["fit", "highlight", "contextMenu", "rotate", "nudgeLeft", "nudgeRight", "nudgeUp", "nudgeDown"])
+const CANVAS_RUNS: ReadonlySet<string> = new Set(["fit", "highlight", "contextMenu", "delete", "rotate", "nudgeLeft", "nudgeRight", "nudgeUp", "nudgeDown"])
 
 /**
  * Whether the canvas takes the key press (and so keeps it from the page and the later listeners): only an action it

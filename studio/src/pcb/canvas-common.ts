@@ -225,7 +225,7 @@ export function drawEditorLayer(ctx: CanvasRenderingContext2D, camera: Camera, s
   if (gesture?.kind === "note") drawNoteBox(ctx, gesture.start, gesture.current, look)
 }
 
-/** A key meant for the canvas: not typed into a field, and not a browser shortcut such as Ctrl+R. */
+/** An Esc meant for the canvas: not typed into a field, and without Ctrl, Alt or Cmd. The other keys go by keyAction. */
 export function isCanvasKey(event: KeyboardEvent): boolean {
   if (event.target instanceof HTMLElement && event.target.closest("input, textarea, select")) return false
   return !(event.ctrlKey || event.metaKey || event.altKey)

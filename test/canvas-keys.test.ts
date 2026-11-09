@@ -232,7 +232,7 @@ describe("widgets that own their keys", () => {
   })
 
   test("navigation and activation keys do nothing on the canvas from such a widget or once a widget took them", () => {
-    for (const name of ["ArrowUp", "ArrowRight", "Home", "End", "PageUp", "PageDown", "Enter", " ", "r", "f", "k", "h", "w", "q"]) {
+    for (const name of ["ArrowUp", "ArrowRight", "Home", "End", "PageUp", "PageDown", "Enter", " ", "Delete", "Backspace", "r", "f", "k", "h", "w", "q"]) {
       for (const state of [PCB, SCHEMATIC]) expect([name, keyAction(key(name, { ownsKeys: true }), state)]).toEqual([name, null])
     }
     expect(keyAction(key("F", { shiftKey: true, ownsKeys: true }), PCB)).toBeNull()
@@ -292,5 +292,39 @@ describe("keys another listener already prevented", () => {
     expect(afterCanvas(key("ArrowLeft"), PCB, 1).handled).toBe(true)
     expect(afterCanvas(key(" "), PCB, 1).handled).toBe(true)
     expect(afterCanvas(key("ArrowLeft"), PCB, 0).handled).toBe(false)
+  })
+})
+
+describe("Delete and Backspace", () => {
+  test("remove the selected parts from the canvas in both views, also with Shift", () => {
+    expect(keyAction(key("Delete"), PCB)).toEqual({ action: "delete", preventDefault: false })
+    expect(keyAction(key("Backspace"), SCHEMATIC)).toEqual({ action: "delete", preventDefault: false })
+    expect(keyAction(key("Delete", { shiftKey: true }), SCHEMATIC)?.action).toBe("delete")
+  })
+
+  test("on a focused Library row, list or tab, or in a field, they remove nothing", () => {
+    for (const name of ["Delete", "Backspace"]) {
+      expect(keyAction(key(name, { ownsKeys: true }), PCB)).toBeNull()
+      expect(keyAction(key(name, { typing: true }), SCHEMATIC)).toBeNull()
+      expect(keyAction(key(name, { handled: true }), PCB)).toBeNull()
+    }
+  })
+
+  test("with Ctrl, Alt or Cmd they are not ours", () => {
+    for (const extra of [{ ctrlKey: true }, { altKey: true }, { metaKey: true }]) expect(keyAction(key("Delete", extra), PCB)).toBeNull()
+  })
+
+  test("while a wire is drawn, Backspace takes back the last corner only from the canvas, and Delete does nothing", () => {
+    const drawing: KeyState = { view: "schematic", drawing: true }
+    expect(keyAction(key("Backspace"), drawing)).toEqual({ action: "removeCorner", preventDefault: true })
+    expect(keyAction(key("Delete"), drawing)).toBeNull()
+    expect(keyAction(key("Backspace", { ownsKeys: true }), drawing)).toBeNull()
+    expect(keyAction(key("Backspace", { typing: true }), drawing)).toBeNull()
+  })
+
+  test("the canvas runs Delete without keeping it from the page; the wire tool, not the canvas, takes Backspace while drawing", () => {
+    expect(afterCanvas(key("Delete"), PCB, 1).handled).toBe(false)
+    expect(afterCanvas(key("Backspace"), { view: "schematic", drawing: true }, 1).handled).toBe(false)
+    expect(claimsKey("removeCorner", 1, true, true)).toBe(false)
   })
 })

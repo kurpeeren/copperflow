@@ -103,12 +103,12 @@ function useWireKeys(
         if (end) return setDrawing({ start: end, ...(pin ? { pin } : {}), corners: [] })
         return setWiring((on) => !on)
       }
-      if (!isCanvasKey(event)) return
-      if (event.key === "Escape") return drawing ? setDrawing(null) : setWiring(false)
-      if (event.key === "Backspace" && drawing) {
+      // Backspace goes by the canvas key rule, so it does nothing in a field or on a focused table row or list.
+      if (hit?.action === "removeCorner" && drawing) {
         event.preventDefault()
         return setDrawing({ ...drawing, corners: drawing.corners.slice(0, -1) })
       }
+      if (event.key === "Escape" && isCanvasKey(event)) return drawing ? setDrawing(null) : setWiring(false)
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)

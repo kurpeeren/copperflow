@@ -210,6 +210,7 @@ export const COMMAND_KEY_ACTIONS: Partial<Record<CommandId, KeyActionName>> = {
   rotate: "rotate",
   selectAll: "selectAll",
   find: "find",
+  delete: "delete",
 }
 
 /** Keys that work on the canvases without a menu item. */

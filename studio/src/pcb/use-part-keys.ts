@@ -1,4 +1,4 @@
-// The keys both canvases share: F and K fit, R and Space turn the selection about its centre, the arrows move it, Delete removes them, H
+// The keys both canvases share: F and K fit, R and Space turn the selection about its centre, the arrows move it, Delete or Backspace removes them, H
 // highlights the net under the pointer (the menu's Highlight net, the selected parts' nets), and Shift+F10 or the menu
 // key opens the context menu. What a key means is decided in canvas-keys.ts; what Rotate and Delete do to several
 // parts, in group-edits.ts. Ctrl+A is the app's.
@@ -9,7 +9,6 @@ import type { Selection, SelectionChange } from "../selection"
 import type { PartCommand } from "../shell/command-owners"
 import { useCommands } from "../shell/commands"
 import { keyAction, keyInput, type KeyResult } from "./canvas-keys"
-import { isCanvasKey } from "./canvas-common"
 import { removeEach, removeQuestion, sendGroupEdit, type Layout } from "./group-edits"
 import { claimsKey, type BuildStatus } from "./key-burst"
 import { useKeyEdits, type KeyEdits } from "./use-key-edits"
@@ -52,11 +51,12 @@ function removeSelection(input: PartKeysInput): void {
   void sendGroupEdit(plan, input.actions).then((ok) => ok && input.onSelect((current) => current.without(plan.parts)))
 }
 
-/** Runs the canvas actions of a key press: fit, highlight, rotate, nudge. */
+/** Runs the canvas actions of a key press: fit, highlight, rotate, nudge, delete. */
 function runKey(input: PartKeysInput, hit: KeyResult, edits: KeyEdits, repeat: boolean): void {
   const { action } = hit
   if (action.startsWith("nudge")) return input.paused ? undefined : edits.nudge(input, hit)
   if (action === "fit") return input.fit()
+  if (action === "delete") return input.selection.size > 0 && !input.paused ? removeSelection(input) : undefined
   if (action === "contextMenu") {
     if (input.paused) return
     const { target, at } = input.menuPlace()
@@ -99,12 +99,9 @@ export function usePartKeys(input: PartKeysInput): { rotateHeld: boolean } {
     const keys: PartKeysInput = { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu }
     const onKey = (event: KeyboardEvent) => {
       const hit = keyAction(keyInput(event), { view, drawing: paused })
-      if (hit) {
-        if (claimsKey(hit.action, selection.size, paused, hit.preventDefault)) event.preventDefault()
-        return runKey(keys, hit, edits, event.repeat)
-      }
-      if (!isCanvasKey(event) || selection.size === 0 || paused) return
-      if (event.key === "Delete" || event.key === "Backspace") removeSelection(keys)
+      if (!hit) return
+      if (claimsKey(hit.action, selection.size, paused, hit.preventDefault)) event.preventDefault()
+      runKey(keys, hit, edits, event.repeat)
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)

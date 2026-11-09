@@ -25,6 +25,8 @@ export type KeyActionName =
   | "nudgeUp"
   | "nudgeDown"
   | "contextMenu"
+  | "delete"
+  | "removeCorner"
 
 /** What a key event says, apart from the browser: modifiers, whether it came from a field, and the key. */
 export interface KeyInput {
@@ -165,6 +167,12 @@ function ctrlAction(input: KeyInput): KeyResult | null {
   return action ? act(action, true) : null
 }
 
+/** Delete or Backspace removes the selected parts; while a wire is drawn, Backspace takes back its last corner instead. */
+function removeAction(input: KeyInput, state: KeyState): KeyResult | null {
+  if (!state.drawing) return act("delete")
+  return input.key === "Backspace" ? act("removeCorner", true) : null
+}
+
 /** Shift+F10 or the menu key opens the context menu, as a right click does; prevented, so the browser's own does not open. */
 const opensMenu = (input: KeyInput): boolean =>
   input.key === "ContextMenu" || (input.key === "F10" && input.shiftKey && !input.ctrlKey && !input.altKey && !input.metaKey)
@@ -177,11 +185,12 @@ export function keyAction(input: KeyInput, state: KeyState): KeyResult | null {
   if (panel && plainOrAltGr(input)) return act(panel)
   if (input.ctrlKey || input.metaKey) return ctrlAction(input)
   if (input.altKey) return altAction(input, state)
-  // The navigation and activation keys (arrows, Space, the letters) belong to a focused table row, list, tree, tab or
+  // The navigation and activation keys (arrows, Space, Delete, Backspace, the letters) belong to a focused table row, list, tree, tab or
   // menu, and one that a widget already took is not the canvas's too; the shortcuts above still work there.
   if (input.ownsKeys || input.handled) return null
   const arrow = arrowAction(input)
   if (arrow) return arrow
+  if (input.key === "Delete" || input.key === "Backspace") return removeAction(input, state)
   if (input.key === " ") return state.drawing || input.onButton ? null : act("rotate", true)
   return letterAction(input.key.toLowerCase(), input, state)
 }
