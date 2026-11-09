@@ -20,6 +20,8 @@ export interface CopperPiece {
   shapes: Shape[]
   /** Where to point at the piece alone: a track's first point, a via's or a pad's centre. */
   at: Point
+  /** For a track, the pads copper.ts joined it to. */
+  pads?: readonly string[]
 }
 
 export type ClassOf = (net: string | undefined) => string
@@ -46,7 +48,7 @@ function segments(track: PcbTrack): Shape[] {
 
 function trackPiece(track: PcbTrack, classOf: ClassOf): CopperPiece {
   const at = track.points[0] ?? { x: 0, y: 0 }
-  return { id: track.id, kind: "track", ...withNet(track.net), className: classOf(track.net), layers: [track.layer], shapes: segments(track), at }
+  return { id: track.id, kind: "track", ...withNet(track.net), className: classOf(track.net), layers: [track.layer], shapes: segments(track), at, pads: track.pads }
 }
 
 function viaPiece(via: PcbVia, classOf: ClassOf): CopperPiece {

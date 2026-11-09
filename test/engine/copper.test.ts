@@ -218,3 +218,27 @@ describe("copper near many pads", () => {
     expect(result.diagnostics.map((d) => d.code)).toEqual(["floating"])
   })
 })
+
+describe("copper crossing mid-segment", () => {
+  const up = (id: string, x: number, net: string) => track(id, [[x, 0], [x, 5]], { net })
+
+  test("a floating track crossing a GND track and a VCC track mid-segment shorts the two nets", () => {
+    const result = copper([up("t0001", 0, "GND"), up("t0002", 30, "VCC"), track("t0003", [[-1, 3], [31, 3]])])
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ code: "short", severity: "error", items: ["net.GND", "net.VCC", "t0001", "t0002", "t0003"] }),
+    ])
+  })
+
+  test("parallel tracks whose copper overlaps join though no point of one lies on the other's centre line", () => {
+    const a = track("t0001", [[0, 0], [0, 5]])
+    const b = track("t0002", [[0.2, 1], [0.2, 4]], { width: 0.2 })
+    expect(copper([a, b]).tracks.map((t) => t.net)).toEqual(["net.GND", "net.GND"])
+  })
+
+  test("a via whose ring overlaps a track's copper joins it; copper a hair apart or on another layer does not", () => {
+    expect(copper([up("t0001", 0, "GND"), via("v0001", 0.42, 3)]).vias[0]?.net).toBe("net.GND")
+    expect(copper([up("t0001", 0, "GND"), via("v0001", 0.43, 3)]).vias[0]?.net).toBeUndefined()
+    const bottom = track("t0003", [[-1, 3], [31, 3]], { layer: "bottom" })
+    expect(copper([up("t0001", 0, "GND"), up("t0002", 30, "VCC"), bottom]).diagnostics.map((d) => d.code)).toEqual(["floating"])
+  })
+})

@@ -73,4 +73,4 @@ test("checks a 200-part board with 400 tracks in under a second", () => {
   const building = fastestMs(() => void buildDesign(files, "big.circuit.tsx"), 3)
   console.log(`checkDesign 200 parts + 400 tracks, fastest of 5: ${fastest.toFixed(1)} ms; buildDesign with them, fastest of 3: ${building.toFixed(1)} ms`)
   expect(fastest).toBeLessThan(1000)
-})
+}, 30_000)

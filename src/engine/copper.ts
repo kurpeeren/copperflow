@@ -72,28 +72,30 @@ export function padsUnder(parts: readonly PlacedFootprint[], at: Point, layer: C
   return parts.flatMap((part) => part.pads.filter((pad) => padOnLayer(pad, layer) && inPad(pad, padShape(pad), at)))
 }
 
-function distanceToPolyline(p: Point, points: readonly Point[]): number {
-  let best = Infinity
-  for (let i = 1; i < points.length; i++) {
-    const a = points[i - 1] as Point
-    const b = points[i] as Point
-    best = Math.min(best, shapeDistance(pointShape(p), { core: [a, b], radius: 0 }))
-  }
-  return best
+/** The copper of a track, one shape per segment: the centre line grown by half the width. */
+function trackCopper(track: TrackRecord): Shape[] {
+  const radius = track.width / 2
+  if (track.points.length < 2) return track.points.map((p) => ({ core: [p], radius }))
+  return track.points.slice(1).map((p, i) => ({ core: [track.points[i] as Point, p], radius }))
 }
 
-/** A point of one track within half the width of the other, both ways round. */
+/** Copper that overlaps or touches, anywhere: the check that joins copper and the clearance check's "joined" agree on it. */
+export function copperTouches(a: Shape, b: Shape): boolean {
+  return shapeDistance(a, b) <= TOUCH_TOLERANCE
+}
+
+/** Two tracks on one layer whose copper meets, at an end or mid-segment. */
 function tracksTouch(a: TrackRecord, b: TrackRecord): boolean {
   if (a.layer !== b.layer) return false
-  const reaches = (from: TrackRecord, to: TrackRecord) => from.points.some((p) => distanceToPolyline(p, to.points) <= to.width / 2 + TOUCH_TOLERANCE)
-  return reaches(a, b) || reaches(b, a)
+  const other = trackCopper(b)
+  return trackCopper(a).some((sa) => other.some((sb) => copperTouches(sa, sb)))
 }
 
-/** A track point within the via's ring, or the via's centre within half the track's width. */
+/** A track whose copper meets the via's ring, on a layer the via spans. */
 function trackTouchesVia(track: TrackRecord, via: ViaRecord, span: ReadonlySet<CopperLayer>): boolean {
   if (!span.has(track.layer)) return false
-  const near = (p: Point) => Math.hypot(p.x - via.at.x, p.y - via.at.y) <= via.diameter / 2 + TOUCH_TOLERANCE
-  return track.points.some(near) || distanceToPolyline(via.at, track.points) <= track.width / 2 + TOUCH_TOLERANCE
+  const ring: Shape = { core: [via.at], radius: via.diameter / 2 }
+  return trackCopper(track).some((segment) => copperTouches(segment, ring))
 }
 
 class Groups {

@@ -131,9 +131,41 @@ describe("clearance to pads", () => {
     expect(ids(run({ pads: [padB, pad("Q#1", { x: 1.1, net: "net.C" })] }), "copper-clearance")).toEqual([])
   })
 
-  test("copper on no net does not clash with what it touches; copper.ts reports it", () => {
-    const shorted = [track("t0001", [{ x: 0, y: 0 }, { x: 3, y: 0 }], { net: undefined })]
+  test("copper joined to a pad (the pad is among its pads) is one conductor with it, net or no net; copper.ts reports any short", () => {
+    const shorted = [track("t0001", [{ x: 0, y: 0 }, { x: 3, y: 0 }], { net: undefined, pads: ["P#1"] })]
     expect(ids(run({ pads: [padB], tracks: shorted }), "copper-clearance")).toEqual([])
+  })
+
+  test("copper over a pad it is not joined to is a clearance error, whatever its net", () => {
+    const over = (net: string | undefined) => [track("t0001", [{ x: -2, y: 0.3 }, { x: 2, y: 0.3 }], { net })]
+    expect(coded(run({ pads: [padB], tracks: over("net.A") }), "copper-clearance").map((v) => v.message)).toEqual([
+      "P#1 and t0001 are touching or overlapping; default needs 0.200 mm",
+    ])
+    expect(ids(run({ pads: [padB], tracks: over(undefined) }), "copper-clearance")).toEqual(["copper-clearance:P#1|t0001"])
+  })
+
+  test("a pad with no net is never one conductor with copper: a track ending on it is a clearance error", () => {
+    const loose = pad("U#5")
+    const onto = [track("t0001", [{ x: 0, y: 0 }, { x: 3, y: 0 }], { pads: ["U#5"] })]
+    expect(ids(run({ pads: [loose], tracks: onto }), "copper-clearance")).toEqual(["copper-clearance:t0001|U#5"])
+  })
+
+  test("a via joins a pad when its centre is on the pad, else it clashes", () => {
+    expect(ids(run({ pads: [padB], vias: [via("v0001", { x: 0.4, y: 0 }, { net: undefined })] }), "copper-clearance")).toEqual([])
+    expect(ids(run({ pads: [padB], vias: [via("v0001", { x: 0.6, y: 0 }, { net: undefined })] }), "copper-clearance")).toEqual(["copper-clearance:P#1|v0001"])
+  })
+})
+
+describe("copper on no net", () => {
+  test("a floating track passing a hair from tracks of two nets is a clearance error with each (crossing joins them: a short)", () => {
+    const a = track("t0001", [{ x: 0, y: -2 }, { x: 0, y: 2 }])
+    const b = track("t0002", [{ x: 5, y: -2 }, { x: 5, y: 2 }], { net: "net.B" })
+    const bridge = track("t0003", [{ x: -1, y: 0 }, { x: 6, y: 0 }], { net: undefined })
+    expect(ids(run({ tracks: [a, b, { ...bridge, width: 0.01, points: [{ x: -1, y: 3 }, { x: 6, y: 3 }] }] }), "copper-clearance")).toEqual([])
+    expect(ids(run({ tracks: [a, b, { ...bridge, points: [{ x: -1, y: 2.3 }, { x: 6, y: 2.3 }] }] }), "copper-clearance")).toEqual([
+      "copper-clearance:t0001|t0003",
+      "copper-clearance:t0002|t0003",
+    ])
   })
 })
 
@@ -155,6 +187,26 @@ describe("clearance of vias", () => {
   })
 })
 
+describe("exact limits", () => {
+  test("a gap of exactly the clearance passes, a hair less fails", () => {
+    expect(ids(run({ tracks: [BASE, across(0.45)] }), "copper-clearance")).toEqual([])
+    expect(ids(run({ tracks: [BASE, across(0.449)] }), "copper-clearance")).toEqual(["copper-clearance:t0001|t0002"])
+  })
+
+  test("a track exactly the class width and a via ring exactly the minimum pass", () => {
+    expect(ids(run({ tracks: [{ ...BASE, width: 0.25 }] }), "track-width")).toEqual([])
+    expect(ids(run({ tracks: [{ ...BASE, width: 0.249 }] }), "track-width")).toEqual(["track-width:t0001"])
+    expect(ids(run({ vias: [via("v0001", { x: 0, y: 0 }, { drill: 0.3, diameter: 0.66 })] }), "via-ring")).toEqual([])
+    expect(ids(run({ vias: [via("v0001", { x: 0, y: 0 }, { drill: 0.3, diameter: 0.659 })] }), "via-ring")).toEqual(["via-ring:v0001"])
+  })
+
+  test("a pair straddling grid cells at negative coordinates is found", () => {
+    const left = track("t0001", [{ x: -4.1, y: -2.05 }, { x: -4.1, y: -6 }])
+    const right = track("t0002", [{ x: -3.75, y: -1.95 }, { x: -3.75, y: 1 }], { net: "net.B" })
+    expect(ids(run({ tracks: [left, right] }), "copper-clearance")).toEqual(["copper-clearance:t0001|t0002"])
+  })
+})
+
 describe("class clearances", () => {
   const rules = loadRules({ "rules.yaml": "netClasses:\n  power:\n    nets: [A]\nclassClearance:\n  - [power, default, 0.5]\n" }).rules
   const classOf = (net: string | undefined) => (net === "net.A" ? "power" : "default")
@@ -162,6 +214,17 @@ describe("class clearances", () => {
   test("the class-to-class entry sets the gap between the two classes", () => {
     const found = run({ tracks: [BASE, across(0.55)] }, rules, classOf)
     expect(coded(found, "copper-clearance").map((v) => v.message)).toEqual(["t0001 and t0002 are 0.300 mm apart; power–default needs 0.500 mm"])
+  })
+
+  test("the pair is named in the order the rule writes it, whichever piece comes first", () => {
+    const flipped = run({ tracks: [{ ...BASE, net: "net.B" }, across(0.55, { net: "net.A" })] }, rules, classOf)
+    expect(coded(flipped, "copper-clearance").map((v) => v.message)).toEqual(["t0001 and t0002 are 0.300 mm apart; power–default needs 0.500 mm"])
+  })
+
+  test("when the fabrication minimum is the largest, the message names it", () => {
+    const strict = loadRules({ "rules.yaml": ["fabrication:", "  minClearance: 0.3", ""].join("\n") }).rules
+    const found = run({ tracks: [BASE, across(0.5)] }, strict)
+    expect(coded(found, "copper-clearance").map((v) => v.message)).toEqual(["t0001 and t0002 are 0.250 mm apart; the fabrication minimum is 0.300 mm"])
   })
 
   test("two default nets keep the default gap", () => {
@@ -225,6 +288,11 @@ describe("the board edge", () => {
     expect(coded(outside, "copper-edge").map((v) => v.message)).toEqual(["t0001 runs outside the board"])
     const crossing = run({ vias: [via("v0001", { x: 9.9, y: 0 })] })
     expect(coded(crossing, "copper-edge").map((v) => v.message)).toEqual(["v0001 crosses the board edge; the minimum gap to it is 0.200 mm"])
+  })
+
+  test("a track ending exactly on the edge crosses it rather than running outside", () => {
+    const found = run({ tracks: [track("t0001", [{ x: 8, y: 0 }, { x: 10, y: 0 }])] })
+    expect(coded(found, "copper-edge").map((v) => v.message)).toEqual(["t0001 crosses the board edge; the minimum gap to it is 0.200 mm"])
   })
 
   test("no outline, no edge check", () => {

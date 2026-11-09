@@ -70,10 +70,15 @@ function nearestEdge(shapes: readonly Shape[], outline: readonly Point[]): Neare
   return best
 }
 
+/** Outside the outline and not on it: a point exactly on the edge crosses it, it does not leave the board. */
+function strictlyOutside(p: Point, outline: readonly Point[]): boolean {
+  return !pointInPolygon(p, outline) && nearestEdge([{ core: [p], radius: 0 }], outline).distance > LENGTH_TOLERANCE
+}
+
 function boardEdge(piece: CopperPiece, outline: readonly Point[], rules: Rules): Violation | undefined {
   const minimum = rules.fabrication.boardEdgeClearance
   const report = (message: string, at: Point) => copperViolation("copper-edge", message, [piece.id], [piece.id], at)
-  const outside = piece.shapes.flatMap((shape) => shape.core).find((p) => !pointInPolygon(p, outline))
+  const outside = piece.shapes.flatMap((shape) => shape.core).find((p) => strictlyOutside(p, outline))
   if (outside !== undefined) return report(`${piece.id} ${piece.kind === "track" ? "runs" : "is"} outside the board`, outside)
   const { distance, at } = nearestEdge(piece.shapes, outline)
   if (!breaksMinimum(distance, minimum)) return undefined

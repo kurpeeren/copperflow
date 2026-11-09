@@ -64,6 +64,21 @@ describe("the design reads the layout file", () => {
     expect(design.diagnostics.filter((d) => d.code === "floating" || d.code === "mismatch")).toEqual([])
   })
 
+  test("a floating track crossing a GND track and a SIG track mid-segment is a short error", () => {
+    const [gnd, sig] = [padOf("R1#2"), padOf("R2#1")]
+    const up = (id: string, p: WorldPad, net: string) => trackLine(id, p, { ...p, y: p.y - 3 } as WorldPad, net)
+    const bridge = trackLine("t0003", { ...gnd, x: gnd.x - 1, y: gnd.y - 2 } as WorldPad, { ...sig, x: sig.x + 1, y: sig.y - 2 } as WorldPad)
+    const design = build(up("t0001", gnd, "GND") + up("t0002", sig, "SIG") + bridge.replace(',"net":"SIG"', ""))
+    expect(design.violations.filter((v) => v.code === "short").map((v) => [v.severity, v.items])).toEqual([
+      ["error", ["net.GND", "net.SIG", "t0001", "t0002", "t0003"]],
+    ])
+  })
+
+  test("a SIG track ending on a pad with no net is a clearance error", () => {
+    const design = build(trackLine("t0001", padOf("R1#1"), padOf("R3#2")))
+    expect(design.violations.filter((v) => v.code === "copper-clearance").map((v) => v.id)).toEqual(["copper-clearance:R3#2|t0001"])
+  })
+
   test("copper too close to a pad of another net is a clearance violation of the design", () => {
     const r3 = padOf("R3#2")
     const near = `${JSON.stringify({ t: "track", id: "t0001", net: "SIG", layer: "top", width: 0.25, points: [{ x: r3.x - 2, y: r3.y + r3.height / 2 + 0.225 }, { x: r3.x + 2, y: r3.y + r3.height / 2 + 0.225 }], locked: false, by: "human" })}\n`

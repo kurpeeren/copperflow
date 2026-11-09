@@ -1,4 +1,5 @@
 import { COPPER_LAYERS, type CopperLayer } from "../../core/layout-file.js"
+import { copperTouches } from "../copper.js"
 import type { Point } from "../model.js"
 import { naturalCompare } from "../order.js"
 import { requiredClearance } from "../rules/classes.js"
@@ -6,7 +7,7 @@ import type { Rules } from "../rules/schema.js"
 import type { CopperPiece } from "./copper-pieces.js"
 import { bounds, closestPoints, shapeDistance, type Shape } from "./geometry.js"
 import { GridIndex, type Box } from "./grid-index.js"
-import { breaksMinimum, LENGTH_TOLERANCE } from "./limits.js"
+import { breaksMinimum } from "./limits.js"
 import { copperViolation, gap, mm } from "./copper-violation.js"
 import type { Violation } from "./violation.js"
 
@@ -36,7 +37,6 @@ interface Nearest {
 
 const grow = (box: Box, by: number): Box => ({ minX: box.minX - by, minY: box.minY - by, maxX: box.maxX + by, maxY: box.maxY + by })
 const midpoint = ([a, b]: [Point, Point]): Point => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })
-const classPair = (a: string, b: string) => (a === b ? a : `${a}–${b}`)
 const sameNet = (a: CopperPiece, b: CopperPiece) => a.net !== undefined && a.net === b.net
 
 function slotsOf(pieces: readonly CopperPiece[], rankOf: (piece: CopperPiece) => number): Slot[] {
@@ -77,15 +77,43 @@ function measureLayer(slots: readonly Slot[], reach: number, cell: number, found
 }
 
 /**
- * Copper on no net (floating, or joining two nets) touching another piece is joined to it, and
- * copper.ts reports that as floating or a short; only a gap between them is measured.
+ * True when copper.ts made the two one conductor: copper whose copper meets, a track that lists the pad, a via
+ * centred on the pad. A pad with no net is never one conductor with copper, so copper on it is always reported.
  */
-function judge({ a, b, distance }: Nearest, rules: Rules): Violation | undefined {
-  const unnamed = a.piece.net === undefined || b.piece.net === undefined
-  if (unnamed && distance <= LENGTH_TOLERANCE) return undefined
+function joined({ a, b }: Nearest): boolean {
+  if (a.piece.kind !== "pad" && b.piece.kind !== "pad") return copperTouches(a.shape, b.shape)
+  const [pad, other] = a.piece.kind === "pad" ? [a, b] : [b, a]
+  if (pad.piece.net === undefined) return false
+  if (other.piece.kind === "track") return other.piece.pads?.includes(pad.piece.id) ?? false
+  return other.shape.core.some((centre) => copperTouches(pad.shape, { core: [centre], radius: 0 }))
+}
+
+/** The two classes as the rules write them: a class-to-class entry's order, else the pieces' order. */
+function pairName(rules: Rules, a: string, b: string): string {
+  if (a === b) return a
+  const entry = rules.classClearance.find((e) => (e.a === a && e.b === b) || (e.a === b && e.b === a))
+  return entry === undefined ? `${a}–${b}` : `${entry.a}–${entry.b}`
+}
+
+/** What sets the gap: the classes (their clearances and their pair entry), or the fabrication minimum when it is larger. */
+function ruleText(rules: Rules, a: string, b: string, required: number): string {
+  const byClasses = requiredClearance({ ...rules, fabrication: { ...rules.fabrication, minClearance: 0 } }, a, b)
+  return byClasses < required ? `the fabrication minimum is ${mm(required)} mm` : `${pairName(rules, a, b)} needs ${mm(required)} mm`
+}
+
+/** Two named nets that differ: copper.ts never leaves joined copper so, unless the copper touches no pad. */
+const twoNets = ({ a, b }: Nearest) => a.piece.net !== undefined && b.piece.net !== undefined && a.piece.net !== b.piece.net
+
+/**
+ * Pieces copper.ts joined are one conductor, and it reports a short or floating copper; every other pair is
+ * measured, and so is joined copper still carrying two nets (floating copper naming different nets).
+ */
+function judge(nearest: Nearest, rules: Rules): Violation | undefined {
+  if (joined(nearest) && !twoNets(nearest)) return undefined
+  const { a, b, distance } = nearest
   const required = requiredClearance(rules, a.piece.className, b.piece.className)
   if (!breaksMinimum(distance, required)) return undefined
-  const message = `${a.piece.id} and ${b.piece.id} are ${gap(distance)}; ${classPair(a.piece.className, b.piece.className)} needs ${mm(required)} mm`
+  const message = `${a.piece.id} and ${b.piece.id} are ${gap(distance)}; ${ruleText(rules, a.piece.className, b.piece.className, required)}`
   return copperViolation("copper-clearance", message, [a.piece.id, b.piece.id], [a.piece.id, b.piece.id], midpoint(closestPoints(a.shape, b.shape)))
 }
 
