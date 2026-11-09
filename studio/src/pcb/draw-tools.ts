@@ -77,6 +77,14 @@ export function isDoubleClick(last: { at: Point; time: number } | undefined, now
   return now.time - last.time <= DOUBLE_CLICK_MS && Math.hypot(now.at.x - last.at.x, now.at.y - last.at.y) <= DOUBLE_CLICK_PX
 }
 
+/**
+ * Whether a press must keep the focus from the canvas: a left press of the Text tool opens or moves its field, and the
+ * browser's default for that press (focus to the canvas) would take the focus out of the field just opened.
+ */
+export function keepsFocus(state: DrawState | null, button: number): boolean {
+  return state?.tool === "text" && button === 0
+}
+
 /** The polyline's corners with the leg to `to` added: squared with Shift (with the leg's bend), else straight. */
 function withLeg(state: DrawState, to: Point, shift: boolean): Point[] {
   const last = state.points.at(-1)

@@ -1,6 +1,6 @@
 // The Text tool's small field, open where the sheet was clicked: Enter writes the text, Esc closes it, an empty text
-// writes nothing (draw-tools.ts).
-import { useState } from "react"
+// writes nothing (draw-tools.ts). A second click moves the field and keeps what was typed.
+import { useEffect, useRef, useState } from "react"
 import { CANVAS_FONT_FAMILY } from "./ctx"
 import { worldToScreen, type Camera, type Size } from "./geometry"
 import type { useDrawTools } from "./use-draw-tools"
@@ -15,11 +15,17 @@ export function DrawTextInput({ draw, camera, size }: { draw: DrawTools; camera:
   const at = draw.state?.tool === "text" ? draw.state.points[0] : undefined
   if (!at || !camera) return null
   const screen = worldToScreen(camera, size, at)
-  return <TextForm key={`${at.x}:${at.y}`} left={screen.x - FRAME_PX} top={screen.y - HALF_FIELD_PX} draw={draw} />
+  return <TextForm left={screen.x - FRAME_PX} top={screen.y - HALF_FIELD_PX} draw={draw} />
 }
 
 function TextForm({ left, top, draw }: { left: number; top: number; draw: DrawTools }) {
   const [text, setText] = useState("")
+  const field = useRef<HTMLInputElement>(null)
+  // Focus the field when it opens or moves, after the click that did it is over, so the canvas never keeps the keys.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => field.current?.focus())
+    return () => cancelAnimationFrame(frame)
+  }, [left, top])
   return (
     <form
       className="label-name"
@@ -31,6 +37,7 @@ function TextForm({ left, top, draw }: { left: number; top: number; draw: DrawTo
       }}
     >
       <input
+        ref={field}
         autoFocus
         aria-label="Text"
         placeholder="Text"

@@ -10,7 +10,7 @@ import { Selection, type SelectionChange } from "../selection"
 import { useCommands } from "../shell/commands"
 import { escapeDisarms, keyAction, keyInput, type KeyActionName } from "./canvas-keys"
 import { DRAW_COMMAND_TOOL, DRAW_COMMANDS, isDrawCommand, type DrawCommand } from "./draw-commands"
-import { drawingEdit, drawStep, drawSummary, idleState, isDoubleClick, previewDrawing, sentDrawing, toolPoint, type DrawEvent, type DrawState, type DrawTool, type NewDrawing } from "./draw-tools"
+import { drawingEdit, drawStep, drawSummary, idleState, isDoubleClick, keepsFocus, previewDrawing, sentDrawing, toolPoint, type DrawEvent, type DrawState, type DrawTool, type NewDrawing } from "./draw-tools"
 import type { Camera, Point } from "./geometry"
 import type { Press } from "./press"
 
@@ -52,15 +52,21 @@ function useSentDrawings(builtFrom: number) {
   return { visible, add, drop }
 }
 
-/** Selects the drawing named `waiting` alone as soon as the sheet has it, then stops waiting. */
+/**
+ * Selects the drawings sent and waiting for their build as soon as the sheet has them (those of one build together,
+ * alone), then stops waiting for them; `forget` drops one whose edit failed.
+ */
 function useSelectWhenBuilt(design: Design, onSelect: Input["onSelect"]) {
-  const [waiting, setWaiting] = useState<string>()
+  const [waiting, setWaiting] = useState<readonly string[]>([])
   useEffect(() => {
-    if (waiting === undefined || !design.schematic.drawings.some((drawing) => drawing.id === waiting)) return
-    onSelect(() => Selection.none.onlyDrawing(waiting))
-    setWaiting(undefined)
+    const built = waiting.filter((name) => design.schematic.drawings.some((drawing) => drawing.id === name))
+    if (built.length === 0) return
+    onSelect(() => Selection.none.addDrawings(built))
+    setWaiting((list) => list.filter((name) => !built.includes(name)))
   }, [design, waiting, onSelect])
-  return setWaiting
+  const wait = useCallback((name: string) => setWaiting((list) => [...list, name]), [])
+  const forget = useCallback((name: string) => setWaiting((list) => list.filter((other) => other !== name)), [])
+  return { wait, forget }
 }
 
 /** Shift held, for a polyline's squared leg; forgotten when the window loses focus. */
@@ -169,7 +175,7 @@ function useToolState(onArm: () => void, write: (tool: DrawTool, drawing: NewDra
 function useWrite(input: Input, sent: ReturnType<typeof useSentDrawings>) {
   const { circuit, actions } = input
   const { add, drop } = sent
-  const selectWhenBuilt = useSelectWhenBuilt(input.design, input.onSelect)
+  const { wait, forget } = useSelectWhenBuilt(input.design, input.onSelect)
   const taken = useRef<string[]>([])
   return useCallback(
     (tool: DrawTool, drawing: NewDrawing) => {
@@ -179,15 +185,19 @@ function useWrite(input: Input, sent: ReturnType<typeof useSentDrawings>) {
       const name = edit.name ?? ""
       taken.current = [...taken.current, name]
       const entry = add(sentDrawing(drawing, name))
-      selectWhenBuilt(name)
-      void actions.edit([edit], drawSummary(tool, name)).then((ok) => {
-        if (ok) return
-        taken.current = taken.current.filter((other) => other !== name)
-        drop(entry)
-        selectWhenBuilt(undefined)
-      })
+      wait(name)
+      // A rejected edit counts as a failed one: the dashed drawing, its name and its selection are dropped.
+      void actions
+        .edit([edit], drawSummary(tool, name))
+        .catch(() => false)
+        .then((ok) => {
+          if (ok) return
+          taken.current = taken.current.filter((other) => other !== name)
+          drop(entry)
+          forget(name)
+        })
     },
-    [circuit, actions, selectWhenBuilt, add, drop],
+    [circuit, actions, wait, forget, add, drop],
   )
 }
 
@@ -203,8 +213,10 @@ export function useDrawTools(input: Input) {
   const preview = useMemo(() => (state && cursor ? previewDrawing(state, toolPoint(cursor, step, snap), shift) : undefined), [state, cursor, step, snap, shift])
 
   /** A left press is a click of the tool (a double click's second press finishes a polyline); a right press cancels; the middle button pans. */
-  const press = (event: Press, world: Point): boolean => {
+  const press = (event: Press & { preventDefault?(): void }, world: Point): boolean => {
     if (!state || !camera || event.button === 1) return false
+    // The press that opens or moves the text field keeps the focus there, not on the canvas (and its mousedown too).
+    if (keepsFocus(state, event.button)) event.preventDefault?.()
     if (event.button === 2) {
       send({ type: "cancel" })
       return true

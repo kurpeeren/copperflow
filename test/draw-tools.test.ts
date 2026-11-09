@@ -10,6 +10,7 @@ import {
   drawStep,
   idleState,
   isDoubleClick,
+  keepsFocus,
   previewDrawing,
   toolPoint,
   type DrawEvent,
@@ -175,6 +176,16 @@ describe("the text", () => {
     expect(run("text", [press(1, 2), { type: "text", text: "  " }])).toEqual({ state: idleState("text"), written: [] })
     expect(run("text", [press(1, 2), { type: "cancel" }]).state).toEqual(idleState("text"))
     expect(run("text", [press(1, 2), press(3, 3)]).state?.points).toEqual([p(3, 3)])
+  })
+})
+
+describe("keepsFocus", () => {
+  test("the left press that opens or moves the text field keeps the focus from the canvas; other presses do not", () => {
+    expect(keepsFocus(idleState("text"), 0)).toBe(true)
+    expect(keepsFocus(run("text", [press(1, 1)]).state, 0)).toBe(true)
+    expect(keepsFocus(idleState("text"), 2)).toBe(false)
+    expect(keepsFocus(idleState("polyline"), 0)).toBe(false)
+    expect(keepsFocus(null, 0)).toBe(false)
   })
 })
 
