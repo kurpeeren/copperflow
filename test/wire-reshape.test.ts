@@ -11,18 +11,18 @@ import { Selection } from "../studio/src/selection.js"
 const FILE = "main.circuit.tsx"
 
 // R1.pin2 (0.5, 0) to R2.pin1 (2.5, 0) as a U through y = 1; R3.pin2 (6.5, 0) to R4.pin1 (8.5, 3) as a Z through x = 7.5;
-// R5.pin1 (-0.5, 6) and R6.pin1 (2.5, 6) on GND, joined by a wire Studio draws on its own; R7.pin2 (12.5, 0) to
-// R8.pin1 (14.5, 3) as an L whose elbow the code does not write.
+// R5.pin1 (-0.5, 6, facing right) and R6.pin1 (2.5, 6) on GND, joined by a wire Studio draws on its own; R7.pin2
+// (12.5, 0) to R8.pin1 (14.5, 3, facing down) as an L whose elbow the code does not write.
 const SOURCE = `export default () => (
   <board width="30mm" height="18mm">
     <resistor name="R1" resistance="1k" footprint="0402" schX={0} schY={0} />
     <resistor name="R2" resistance="1k" footprint="0402" schX={3} schY={0} />
     <resistor name="R3" resistance="1k" footprint="0402" schX={6} schY={0} />
     <resistor name="R4" resistance="1k" footprint="0402" schX={9} schY={3} />
-    <resistor name="R5" resistance="1k" footprint="0402" schX={0} schY={6} />
+    <resistor name="R5" resistance="1k" footprint="0402" schX={-1} schY={6} schRotation={180} />
     <resistor name="R6" resistance="1k" footprint="0402" schX={3} schY={6} />
     <resistor name="R7" resistance="1k" footprint="0402" schX={12} schY={0} />
-    <resistor name="R8" resistance="1k" footprint="0402" schX={15} schY={3} />
+    <resistor name="R8" resistance="1k" footprint="0402" schX={14.5} schY={3.5} schRotation={90} />
     <trace from=".R1 > .pin2" to=".R2 > .pin1" schematicRouteHints={[{ x: 0.5, y: 1 }, { x: 2.5, y: 1 }]} />
     <trace from=".R3 > .pin2" to=".R4 > .pin1" schematicRouteHints={[{ x: 7.5, y: 0 }, { x: 7.5, y: 3 }]} />
     <trace from=".R5 > .pin1" to="net.GND" />

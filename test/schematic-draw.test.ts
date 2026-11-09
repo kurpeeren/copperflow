@@ -188,9 +188,16 @@ describe("schematic colours", () => {
   })
 
   test("junctions are filled red dots", () => {
-    const rec = draw()
-    expect(layout.junctions.length).toBeGreaterThan(0)
-    expect(rec.records.filter((r) => r.name === "fill" && r.fillStyle === schematicTheme.junction)).toHaveLength(layout.junctions.length)
+    const joined = buildDesign(
+      { [FILE]: CIRCUIT.replace("  </board>", `    <resistor name="R3" resistance="1k" footprint="0402" schX={1.5} schY={-1.5} schRotation={90} />
+    <trace from=".R3 > .pin2" to=".R2 > .pin2" />
+  </board>`) },
+      FILE,
+    ).schematic
+    const rec = recorder()
+    drawSchematic(rec.ctx as never, joined, VIEW, { ratio: 1 })
+    expect(joined.junctions.length).toBeGreaterThan(0)
+    expect(rec.records.filter((r) => r.name === "fill" && r.fillStyle === schematicTheme.junction)).toHaveLength(joined.junctions.length)
   })
 
   test("wireStrokePx is the width wires are drawn at, in CSS pixels, at any zoom", () => {

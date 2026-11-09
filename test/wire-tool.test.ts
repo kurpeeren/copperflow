@@ -16,6 +16,13 @@ const CIRCUIT = `export default () => (
 
 const design = buildDesign({ "main.circuit.tsx": CIRCUIT }, "main.circuit.tsx")
 
+/** The ends of a wire's longest segment, away from its pins. */
+function longestSegment(points: readonly { x: number; y: number }[] | undefined): [{ x: number; y: number }, { x: number; y: number }] | [] {
+  const segments = (points ?? []).slice(1).map((b, i) => [points?.[i] ?? b, b] as [{ x: number; y: number }, { x: number; y: number }])
+  const length = ([a, b]: [{ x: number; y: number }, { x: number; y: number }]) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y)
+  return segments.reduce<[{ x: number; y: number }, { x: number; y: number }] | []>((best, segment) => (best.length === 0 || length(segment) > length(best) ? segment : best), [])
+}
+
 function pin(id: string): WireEnd {
   const at = design.schematic.symbols.find((s) => s.pinEnds[id])?.pinEnds[id]
   if (!at) throw new Error(`no pin ${id}`)
@@ -47,11 +54,9 @@ describe("endAt", () => {
   })
 
   test("a wire of net GND gives net.GND", () => {
-    const wire = design.schematic.wires.find((w) => w.net === "net.GND")
-    const a = wire?.points[0]
-    const b = wire?.points[1]
+    const [a, b] = longestSegment(design.schematic.wires.find((w) => w.net === "net.GND")?.points)
     if (!a || !b) throw new Error("no GND wire")
-    const end = endAt(design, { x: a.x + 0.1 * (b.x - a.x), y: a.y + 0.1 * (b.y - a.y) + 0.03 }, 0.05)
+    const end = endAt(design, { x: (a.x + b.x) / 2 + (a.y === b.y ? 0 : 0.03), y: (a.y + b.y) / 2 + (a.y === b.y ? 0.03 : 0) }, 0.05)
     expect(end).toMatchObject({ selector: "net.GND", net: "GND" })
   })
 
@@ -239,14 +244,12 @@ describe("where a wire ends", () => {
   })
 
   test("a wire of an unnamed net resolves to its first pin and adds no net point", () => {
-    const wire = labelled.schematic.wires.find((w) => w.net.startsWith("net:"))
-    const a = wire?.points[0]
-    const b = wire?.points[1]
+    const [a, b] = longestSegment(labelled.schematic.wires.find((w) => w.net.startsWith("net:"))?.points)
     if (!a || !b) throw new Error("no unnamed wire")
     const end = endAt(labelled, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, 0.05)
     expect(end?.selector).toMatch(/^(LED1\.cathode|R1\.pin1)$/)
     const edits = wireEdits(labelled, endOf(labelled, "U1.pin1"), end as WireEnd, [{ x: 6, y: 1 }])
-    expect(edits[0]).toMatchObject({ schematicRouteHints: [{ x: 6, y: 0.2 }, { x: 6, y: 1 }, { x: 4, y: 1 }] })
+    expect(edits[0]).toMatchObject({ schematicRouteHints: [{ x: 6, y: 0.2 }, { x: 6, y: 1 }, { x: end?.at.x, y: 1 }] })
   })
 })
 

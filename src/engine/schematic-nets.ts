@@ -1,5 +1,6 @@
 import type { Circuit, Net, Point, Side } from "./model.js"
 import { naturalCompare } from "./order.js"
+import type { RouteRequest } from "./schematic-route.js"
 import type { NetLabel, Wire } from "./schematic.js"
 import { clean } from "./symbols/types.js"
 
@@ -44,7 +45,7 @@ export function labelName(net: Net): string | undefined {
   return net.names.find((name) => labelStyle(name) !== "label") ?? net.names[0]
 }
 
-class Groups {
+export class Groups {
   private readonly parent = new Map<string, string>()
 
   find(id: string): string {
@@ -115,12 +116,12 @@ function labelsFor(net: Net, name: string, clusters: readonly string[][], spots:
   })
 }
 
-/** Wires between near pins of each named net, and the labels and ground or power symbols of the rest. */
-export function layoutNets(circuit: Circuit, spots: ReadonlyMap<string, PinSpot>, drawn: Drawn): { wires: Wire[]; labels: NetLabel[] } {
+/** The wires to route between near pins of each named net, and the labels and ground or power symbols of the rest. */
+export function layoutNets(circuit: Circuit, spots: ReadonlyMap<string, PinSpot>, drawn: Drawn): { wires: RouteRequest[]; labels: NetLabel[] } {
   const maxLength = circuit.board?.schMaxTraceDistance ?? DEFAULT_MAX_TRACE_DISTANCE
   const groups = new Groups()
   for (const [a, b] of drawn.joins) groups.join(a, b)
-  const wires: Wire[] = []
+  const wires: RouteRequest[] = []
   const labels: NetLabel[] = []
   for (const net of circuit.nets) {
     const name = labelName(net)
@@ -128,10 +129,7 @@ export function layoutNets(circuit: Circuit, spots: ReadonlyMap<string, PinSpot>
     const pins = net.pins.filter((pin) => spots.has(pin)).sort(naturalCompare)
     const drawnEdges = treeEdges(pins, spots, drawn.joins).filter((edge) => edge.length <= maxLength + EPSILON)
     for (const edge of drawnEdges) groups.join(edge.a, edge.b)
-    drawnEdges.forEach((edge, index) => {
-      const points = rightAngle(spots.get(edge.a)?.end ?? { x: 0, y: 0 }, spots.get(edge.b)?.end ?? { x: 0, y: 0 })
-      if (points.length > 0) wires.push({ id: `wire:${net.id}:${index + 1}`, net: net.id, points })
-    })
+    drawnEdges.forEach((edge, index) => wires.push({ id: `wire:${net.id}:${index + 1}`, net: net.id, from: edge.a, to: edge.b }))
     labels.push(...labelsFor(net, name, clustersOf(pins, groups), spots, drawn))
   }
   return { wires, labels }
@@ -152,6 +150,24 @@ const isInside = (p: Point, wire: Wire): boolean => {
   return points.some((q, i) => i > 0 && onSegment(p, points[i - 1] ?? q, q))
 }
 
+/** A wire with the box around its points, so most wires are ruled out without looking at their segments. */
+interface Boxed {
+  wire: Wire
+  minX: number
+  minY: number
+  maxX: number
+  maxY: number
+}
+
+function boxed(wire: Wire): Boxed {
+  const xs = wire.points.map((p) => p.x)
+  const ys = wire.points.map((p) => p.y)
+  return { wire, minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) }
+}
+
+const insideAny = (p: Point, boxes: readonly Boxed[]): boolean =>
+  boxes.some((b) => p.x >= b.minX && p.x <= b.maxX && p.y >= b.minY && p.y <= b.maxY && isInside(p, b.wire))
+
 /** Points where three or more wire or pin ends meet, or where a wire ends inside another wire. */
 export function junctionsOf(wires: readonly Wire[], spots: ReadonlyMap<string, PinSpot>): Point[] {
   const counts = new Map<string, { point: Point; ends: number; wireEnds: number }>()
@@ -165,8 +181,9 @@ export function junctionsOf(wires: readonly Wire[], spots: ReadonlyMap<string, P
     if (last) add(last, true)
   }
   for (const spot of spots.values()) add(spot.end, false)
+  const boxes = wires.map(boxed)
   return [...counts.values()]
-    .filter((entry) => entry.wireEnds > 0 && (entry.ends >= 3 || wires.some((wire) => isInside(entry.point, wire))))
+    .filter((entry) => entry.wireEnds > 0 && (entry.ends >= 3 || insideAny(entry.point, boxes)))
     .map((entry) => entry.point)
     .sort((a, b) => a.x - b.x || a.y - b.y)
 }

@@ -8,7 +8,7 @@ import { layoutPcb, type PcbLayout } from "./pcb.js"
 import { netClasses } from "./rules/classes.js"
 import { layerCountWarnings, loadRules } from "./rules/load.js"
 import type { Rules } from "./rules/schema.js"
-import { layoutSchematic, type SchematicLayout } from "./schematic.js"
+import { layoutSchematicWithDiagnostics, type SchematicLayout } from "./schematic.js"
 
 /** Everything the Studio draws from one circuit file. Only JSON values, so it crosses a worker and HTTP unchanged. */
 export interface Design {
@@ -45,11 +45,11 @@ const pinPads = (footprint: FootprintResult): number | undefined =>
 export function buildDesign(files: Files, main: string): Design {
   const footprintOf = footprintCache(files)
   const circuit = elaborate(evaluateCircuit(files, main), main, { padCount: (text) => pinPads(footprintOf(text)) })
-  const schematic = layoutSchematic(circuit)
+  const { layout: schematic, diagnostics: wiring } = layoutSchematicWithDiagnostics(circuit)
   const pcb = layoutPcb(circuit, (component) => footprintOf(component.footprint as string))
   const loaded = loadRules(files)
   const classes = netClasses(loaded.rules, circuit.nets)
   const layers = layerCountWarnings(loaded.rules, circuit.board)
-  const diagnostics = [...circuit.diagnostics, ...pcb.diagnostics, ...loaded.diagnostics, ...layers, ...classes.diagnostics]
+  const diagnostics = [...circuit.diagnostics, ...wiring, ...pcb.diagnostics, ...loaded.diagnostics, ...layers, ...classes.diagnostics]
   return { version: 1, file: main, circuit, schematic, pcb: pcb.layout, rules: loaded.rules, diagnostics, violations: checkDesign(circuit, schematic, pcb.layout, loaded.rules) }
 }

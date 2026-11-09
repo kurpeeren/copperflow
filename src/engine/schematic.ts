@@ -1,6 +1,7 @@
-import type { Circuit, Component, Connection, Point, Side } from "./model.js"
+import type { Circuit, Component, Connection, Diagnostic, Point, Side } from "./model.js"
 import { naturalCompare } from "./order.js"
-import { junctionsOf, labelName, labelStyle, layoutNets, rightAngle, type Drawn, type PinSpot } from "./schematic-nets.js"
+import { junctionsOf, labelName, labelStyle, layoutNets, type Drawn, type PinSpot } from "./schematic-nets.js"
+import { routeWires, type FixedWire, type RouteRequest, type SheetBox } from "./schematic-route.js"
 import { symbolFor, type Bounds, type SchSymbol } from "./symbols/index.js"
 import { clean } from "./symbols/types.js"
 
@@ -166,18 +167,29 @@ function labelAtEnd(circuit: Circuit, connection: Connection, netEnd: string, po
 const netIdOf = (circuit: Circuit, pin: string): string => circuit.nets.find((net) => net.pins.includes(pin))?.id ?? `net:${pin}`
 
 interface HandDrawn {
-  wires: Wire[]
+  /** One per drawn connection, in source order: a hand-drawn wire, or a wire still to route. */
+  slots: (Wire | RouteRequest)[]
+  fixed: FixedWire[]
   labels: NetLabel[]
   joins: [string, string][]
   labeled: Set<string>
+  spots: ReadonlyMap<string, PinSpot>
 }
 
-function drawPinToPin(circuit: Circuit, connection: Connection, from: PinSpot, to: PinSpot, into: HandDrawn): void {
-  const bends = connection.corners ?? []
-  const points = bends.length > 0 ? [from.end, ...bends, to.end] : rightAngle(from.end, to.end)
-  if (points.length < 2) return
-  into.wires.push({ id: `wire:${connection.id}`, net: netIdOf(circuit, connection.from), points, connection: connection.id })
-  into.joins.push([connection.from, connection.to])
+/** A wire between two pins: drawn through its corners, or routed later when it has none. */
+function drawPinToPin(circuit: Circuit, connection: Connection, into: HandDrawn): void {
+  const { id, from, to, source } = connection
+  const [bends, net] = [connection.corners ?? [], netIdOf(circuit, from)]
+  into.joins.push([from, to])
+  if (bends.length === 0) {
+    into.slots.push({ id: `wire:${id}`, net, from, to, connection: id, source })
+    return
+  }
+  const [a, b] = [into.spots.get(from)?.end, into.spots.get(to)?.end]
+  if (!a || !b) return
+  const wire: Wire = { id: `wire:${id}`, net, points: [a, ...bends, b], connection: id }
+  into.slots.push(wire)
+  into.fixed.push({ wire, pins: [from, to] })
 }
 
 /** A wire from a pin through its corners to a named net stops at the last corner, where the label sits. */
@@ -187,29 +199,57 @@ function drawPinToNet(circuit: Circuit, connection: Connection, pinFirst: boolea
   if (bends.length === 0 || !netEnd.startsWith("net.")) return
   const points = [spot.end, ...(pinFirst ? bends : [...bends].reverse())]
   const label = labelAtEnd(circuit, connection, netEnd, points)
-  into.wires.push({ id: `wire:${connection.id}`, net: netEnd, points, connection: connection.id })
+  const wire: Wire = { id: `wire:${connection.id}`, net: netEnd, points, connection: connection.id }
+  into.slots.push(wire)
+  into.fixed.push({ wire, pins: [pin] })
   if (label) into.labels.push(label)
   into.labeled.add(pin)
 }
 
 function handDrawn(circuit: Circuit, spots: ReadonlyMap<string, PinSpot>): HandDrawn {
-  const result: HandDrawn = { wires: [], labels: [], joins: [], labeled: new Set() }
+  const result: HandDrawn = { slots: [], fixed: [], labels: [], joins: [], labeled: new Set(), spots }
   for (const connection of circuit.connections) {
     const from = spots.get(connection.from)
     const to = spots.get(connection.to)
-    if (from && to) drawPinToPin(circuit, connection, from, to, result)
+    if (from && to) drawPinToPin(circuit, connection, result)
     else if (from) drawPinToNet(circuit, connection, true, from, result)
     else if (to) drawPinToNet(circuit, connection, false, to, result)
   }
   return result
 }
 
-/** Where every symbol, wire, label and junction of the schematic goes. */
-export function layoutSchematic(circuit: Circuit): SchematicLayout {
+/** The symbols' bounds on the sheet and the pins each owns, for the router. */
+function sheetBoxes(symbols: readonly PlacedSymbol[]): SheetBox[] {
+  return symbols.map((placed) => {
+    const turned = turnedBounds(placed.symbol.bounds, placed.rotation)
+    const bounds = { minX: placed.x + turned.minX, maxX: placed.x + turned.maxX, minY: placed.y + turned.minY, maxY: placed.y + turned.maxY }
+    return { bounds, pins: Object.keys(placed.pinEnds) }
+  })
+}
+
+const isRequest = (slot: Wire | RouteRequest): slot is RouteRequest => !("points" in slot)
+
+/**
+ * Where every symbol, wire, label and junction of the schematic goes, and a warning for each wire that could not
+ * avoid other things. Wires without corners are routed in source order, then the near pins of each named net.
+ */
+export function layoutSchematicWithDiagnostics(circuit: Circuit): { layout: SchematicLayout; diagnostics: Diagnostic[] } {
   const { symbols, spots } = placeSymbols(circuit)
   const hand = handDrawn(circuit, spots)
   const drawn: Drawn = { joins: hand.joins, labeled: hand.labeled }
   const nets = layoutNets(circuit, spots, drawn)
-  const wires = [...hand.wires, ...nets.wires]
-  return { symbols, wires, labels: [...hand.labels, ...nets.labels], junctions: junctionsOf(wires, spots) }
+  const requests = [...hand.slots.filter(isRequest), ...nets.wires]
+  const routed = routeWires({ boxes: sheetBoxes(symbols), spots }, hand.fixed, requests)
+  const byRequest = new Map(requests.map((request, index) => [request, routed.wires[index]]))
+  const wires = [...hand.slots, ...nets.wires].flatMap((slot) => {
+    const wire = isRequest(slot) ? byRequest.get(slot) : slot
+    return wire ? [wire] : []
+  })
+  const layout = { symbols, wires, labels: [...hand.labels, ...nets.labels], junctions: junctionsOf(wires, spots) }
+  return { layout, diagnostics: routed.diagnostics }
+}
+
+/** Where every symbol, wire, label and junction of the schematic goes. */
+export function layoutSchematic(circuit: Circuit): SchematicLayout {
+  return layoutSchematicWithDiagnostics(circuit).layout
 }

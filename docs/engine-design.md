@@ -227,8 +227,10 @@ uses stable ids so the Studio, history and checks can follow an item across edit
   deterministic rule on their own sheet, never overlapping, and the Studio marks them as
   auto-placed until someone moves them.
 - A trace with `schematicRouteHints` is drawn through its corners, as today, but natively.
-  A trace without corners is drawn as a right-angle wire between its pins; a pin on a named net
-  far from its partners gets a net label instead. Nothing the user drew is re-routed.
+  A trace without corners, and the near pins of a named net, are routed as orthogonal wires on the
+  0.1 grid around symbols, hand-drawn wires and other nets' wires (`schematic-route.ts`); a wire
+  that cannot get round is drawn with one elbow and the design warns (`auto-route`). A pin on a
+  named net far from its partners gets a net label instead. Nothing the user drew is re-routed.
 - Schematic units stay the numbers used today, so existing positions keep their meaning.
 
 ### 6. PCB placement and ratsnest

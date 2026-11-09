@@ -58,9 +58,9 @@ describe("wires", () => {
     expect(layout.wires[0]?.points).toEqual([{ x: 0.5, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 2 }, { x: 2.5, y: 2 }])
   })
 
-  test("pin-to-pin wires turn once", () => {
+  test("pin-to-pin wires enter the far pin from outside its symbol", () => {
     const layout = layoutSchematic(build(`${resistor("R1", -0.5, 0)}\n${resistor("R2", 2.5, 1)}\n<trace from="R1.pin2" to="R2.pin1" />`))
-    expect(layout.wires[0]?.points).toEqual([{ x: 0, y: 0 }, { x: 2, y: 0 }, { x: 2, y: 1 }])
+    expect(layout.wires[0]?.points).toEqual([{ x: 0, y: 0 }, { x: 1.8, y: 0 }, { x: 1.8, y: 1 }, { x: 2, y: 1 }])
   })
 
   test("aligned pins give one straight segment", () => {
@@ -122,10 +122,10 @@ describe("named nets", () => {
 })
 
 describe("junctions", () => {
-  test("three wires meeting make a junction", () => {
+  test("a second wire from a pin joins the first wire with a junction", () => {
     const body = [resistor("R1", 0, 0), resistor("R2", 4, 3), resistor("R3", 4, -3), `<trace from="R1.pin2" to="R2.pin1" />`, `<trace from="R1.pin2" to="R3.pin1" />`].join("\n")
     const layout = layoutSchematic(build(body))
-    expect(layout.junctions).toEqual([{ x: 0.5, y: 0 }])
+    expect(layout.junctions).toEqual([{ x: 3.3, y: 0 }])
   })
 
   test("two wires meeting make none", () => {
@@ -138,7 +138,7 @@ describe("junctions", () => {
       resistor("R1", 0, 0),
       resistor("R2", 4, 0),
       resistor("R3", 2, 2, " schRotation={90}"),
-      `<trace from="R1.pin2" to="R2.pin1" />`,
+      `<trace from="R1.pin2" to="R2.pin1" schematicRouteHints={[{ x: 2, y: 0 }]} />`,
       `<trace from="R3.pin1" to="net.TAP" schematicRouteHints={[{ x: 2, y: 0 }]} />`,
     ].join("\n")
     const layout = layoutSchematic(build(body))
