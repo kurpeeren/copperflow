@@ -206,3 +206,30 @@ describe("checkCounts and checkSummary", () => {
     expect(checkSummary({ errors: 2, warnings: 1 })).toBe("2 errors, 1 warning")
   })
 })
+
+describe("copper rows", () => {
+  const withCopper = (violations: Violation[]) =>
+    ({ ...designWith(violations, []), pcb: { tracks: [{ id: "t0001" }], vias: [{ id: "v0001" }] } }) as unknown as Design
+  const clearance = violation("copper-clearance", "error", ["R1#1", "t0001"], "pcb", { x: 1, y: 2 })
+
+  test("a row names the tracks and vias of the design among its items, and selects them instead of a part", () => {
+    const [row] = checkRows(withCopper([clearance]))
+    expect(row).toMatchObject({ id: "copper-clearance:R1#1,t0001", copper: ["t0001"], at: { x: 1, y: 2 } })
+    expect(row?.part).toBeUndefined()
+  })
+
+  test("both pieces of a copper pair are named; copper the design no longer has is not", () => {
+    const pair = violation("copper-clearance", "error", ["t0001", "t0009", "v0001"], "pcb", { x: 0, y: 0 })
+    expect(checkRows(withCopper([pair]))[0]?.copper).toEqual(["t0001", "v0001"])
+  })
+
+  test("a copper violation rings the board like any other", () => {
+    expect(markersFor(checkRows(withCopper([clearance])), "pcb")).toEqual([{ id: clearance.id, at: { x: 1, y: 2 }, severity: "error" }])
+  })
+
+  test("rows without copper keep selecting their part", () => {
+    const overlap = violation("courtyard-overlap", "error", ["R1", "R2"], "pcb", { x: 1, y: 2 })
+    expect(checkRows(withCopper([overlap]))[0]).toMatchObject({ part: "R1" })
+    expect(checkRows(withCopper([overlap]))[0]?.copper).toBeUndefined()
+  })
+})

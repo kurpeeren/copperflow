@@ -18,6 +18,8 @@ export interface CheckRow {
   at?: Point
   /** The component the row names first, when the design has it; clicking the row selects it. */
   part?: string
+  /** The design's tracks and vias the row names, in item order; clicking the row selects them instead of a part. */
+  copper?: string[]
 }
 
 export interface CheckGroup {
@@ -55,9 +57,18 @@ export function selectablePart(row: Pick<CheckRow, "items">, components: Readonl
   return part !== undefined && components.has(part) ? part : undefined
 }
 
-function withPart(row: CheckRow, components: ReadonlySet<string>): CheckRow {
+/** A row naming copper selects that copper; any other row selects the part it names. */
+function withPart(row: CheckRow, components: ReadonlySet<string>, copperIds: ReadonlySet<string>): CheckRow {
+  const copper = row.items.filter((item) => copperIds.has(item))
+  if (copper.length > 0) return { ...row, copper }
   const part = selectablePart(row, components)
   return part === undefined ? row : { ...row, part }
+}
+
+/** The ids of the design's tracks and vias. */
+function copperIdsOf(design: Design): Set<string> {
+  const pcb = design.pcb as Design["pcb"] | undefined
+  return new Set([...(pcb?.tracks ?? []), ...(pcb?.vias ?? [])].map((item) => item.id))
 }
 
 function violationRow(v: Violation): CheckRow {
@@ -77,7 +88,8 @@ const diagnosticRow = (d: Diagnostic, index: number): CheckRow => ({
 /** Violations, then diagnostics (view `code`), with every error before every warning. */
 export function checkRows(design: Design): CheckRow[] {
   const components = new Set(design.circuit.components.map((component) => component.id))
-  const rows = [...design.violations.map(violationRow), ...design.diagnostics.map(diagnosticRow)].map((row) => withPart(row, components))
+  const copperIds = copperIdsOf(design)
+  const rows = [...design.violations.map(violationRow), ...design.diagnostics.map(diagnosticRow)].map((row) => withPart(row, components, copperIds))
   return rows.sort((a, b) => rank(a.severity) - rank(b.severity))
 }
 

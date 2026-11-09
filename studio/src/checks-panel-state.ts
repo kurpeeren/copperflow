@@ -11,11 +11,12 @@ export interface FocusRequest {
   at: Point
 }
 
-/** What clicking a row changes: the view to show, where to centre it, and the part to select. */
+/** What clicking a row changes: the view to show, where to centre it, and the part or the copper to select. */
 export interface CheckPick {
   tab?: View
   focus?: FocusRequest
   select?: string
+  selectCopper?: string[]
 }
 
 /**
@@ -27,12 +28,12 @@ export function opensOnBuild(previousErrors: number | undefined, errors: number)
   return previousErrors === 0 && errors > 0
 }
 
-/** A canvas row shows its view and centres on its position, when it has one; any row selects the part it names. */
+/** A canvas row shows its view and centres on its position, when it has one; any row selects the copper or else the part it names. */
 export function checkPick(row: CheckRow): CheckPick {
   const view = row.view === "code" ? undefined : row.view
   return {
     ...(view ? { tab: view } : {}),
     ...(view && row.at ? { focus: { view, at: row.at } } : {}),
-    ...(row.part ? { select: row.part } : {}),
+    ...(row.copper && row.copper.length > 0 ? { selectCopper: row.copper } : row.part ? { select: row.part } : {}),
   }
 }

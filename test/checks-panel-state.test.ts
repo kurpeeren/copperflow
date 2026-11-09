@@ -35,6 +35,11 @@ describe("checkPick", () => {
     expect(checkPick(row({ view: "code", part: "U1" }))).toEqual({ select: "U1" })
   })
 
+  test("a copper row selects its tracks and vias, not a part", () => {
+    const at = { x: 1, y: 2 }
+    expect(checkPick(row({ view: "pcb", at, copper: ["t0001", "v0001"] }))).toEqual({ tab: "pcb", focus: { view: "pcb", at }, selectCopper: ["t0001", "v0001"] })
+  })
+
   test("a row that names no part leaves the selection alone", () => {
     expect(checkPick(row({ view: "pcb" }))).toEqual({ tab: "pcb" })
     expect(checkPick(row({ view: "code" }))).toEqual({})

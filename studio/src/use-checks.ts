@@ -12,10 +12,11 @@ interface ChecksInput {
   build: BuildState
   onTab(view: View): void
   onSelect(part: string): void
+  onSelectCopper(ids: readonly string[]): void
   onOpen(): void
 }
 
-export function useChecks({ file, build, onTab, onSelect, onOpen }: ChecksInput) {
+export function useChecks({ file, build, onTab, onSelect, onSelectCopper, onOpen }: ChecksInput) {
   const design = build.design
   const rows = useMemo(() => (design ? checkRows(design) : []), [design])
   const counts = useMemo(() => checkCounts(rows), [rows])
@@ -30,8 +31,9 @@ export function useChecks({ file, build, onTab, onSelect, onOpen }: ChecksInput)
       if (step.tab) onTab(step.tab)
       if (step.focus) setFocus(step.focus)
       if (step.select) onSelect(step.select)
+      if (step.selectCopper) onSelectCopper(step.selectCopper)
     },
-    [onTab, onSelect],
+    [onTab, onSelect, onSelectCopper],
   )
   const focused = useCallback(() => setFocus(null), [])
   return { rows, counts, markers, active, focus, pick, focused, requestFocus: setFocus }
