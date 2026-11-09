@@ -1,6 +1,7 @@
 // The menu bar's keys, as the WAI-ARIA menubar pattern has them. The titles are one tab stop: Left and Right move
-// between them (and switch the open menu), Down, Enter or Space open a menu at its first item, Up at its last. In an
-// open menu Up and Down step through the items, skipping separators and wrapping; Home and End jump to the ends; Esc
+// between them (and switch the open menu), Down, Enter or Space open a menu at its first enabled item, Up at its last
+// (a menu with none opens at its first or last item). In an open menu Up and Down step through the items, disabled
+// ones too, skipping separators and wrapping; Home and End jump to the ends; Esc
 // closes it and goes back to its title; Tab closes it and lets the focus move on. Enter and Space on an item are the
 // item's own click, so they are not decided here.
 
@@ -19,24 +20,30 @@ export interface MenuKeyResult {
   preventDefault: boolean
 }
 
-/** Each menu's entries: true for an item (disabled ones too, which take the focus but do nothing), false for a separator. */
-export type MenuShape = readonly boolean[]
+/** One entry of a menu: an item that runs, a disabled item (it takes the focus but does nothing), or a separator. */
+export type MenuSlot = "item" | "disabled" | "separator"
+export type MenuShape = readonly MenuSlot[]
 
 const wrap = (index: number, count: number) => (index + count) % count
+const anyItem = (slot: MenuSlot | undefined) => slot === "item" || slot === "disabled"
 
-/** The item `step` places from `from`, skipping separators; from null, the first (step 1) or last (step -1) item. */
-function stepItem(shape: MenuShape, from: number | null, step: 1 | -1): number | null {
+/** The entry `step` places from `from` that `wanted` accepts; from null, the first (step 1) or last (step -1) one. */
+function stepItem(shape: MenuShape, from: number | null, step: 1 | -1, wanted: (slot: MenuSlot | undefined) => boolean = anyItem): number | null {
   const count = shape.length
   let index = from ?? (step === 1 ? -1 : count)
   for (let tries = 0; tries < count; tries++) {
     index = wrap(index + step, count)
-    if (shape[index]) return index
+    if (wanted(shape[index])) return index
   }
   return null
 }
 
 const firstItem = (shape: MenuShape | undefined) => (shape ? stepItem(shape, null, 1) : null)
 const lastItem = (shape: MenuShape | undefined) => (shape ? stepItem(shape, null, -1) : null)
+/** Where a menu opens: its first (or last) enabled item, else its first (or last) item. */
+const openingItem = (shape: MenuShape | undefined, step: 1 | -1) => (shape ? (stepItem(shape, null, step, (slot) => slot === "item") ?? stepItem(shape, null, step)) : null)
+const firstOpen = (shape: MenuShape | undefined) => openingItem(shape, 1)
+const lastOpen = (shape: MenuShape | undefined) => openingItem(shape, -1)
 const result = (open: number | null, focus: MenuFocus | "keep", preventDefault = true): MenuKeyResult => ({ open, focus, preventDefault })
 /** Opens `menu` with the focus on `item`, or on its title when it has no items. */
 const openAt = (menu: number, item: number | null) => result(menu, { menu, item })
@@ -46,8 +53,8 @@ function onTitle(key: string, menu: number, open: number | null, menus: readonly
   const sideways: Record<string, number> = { ArrowLeft: wrap(menu - 1, count), ArrowRight: wrap(menu + 1, count), Home: 0, End: count - 1 }
   const to = sideways[key]
   if (to !== undefined) return result(open === null ? null : to, { menu: to, item: null })
-  if (key === "ArrowDown") return openAt(menu, firstItem(menus[menu]))
-  if (key === "ArrowUp") return openAt(menu, lastItem(menus[menu]))
+  if (key === "ArrowDown") return openAt(menu, firstOpen(menus[menu]))
+  if (key === "ArrowUp") return openAt(menu, lastOpen(menus[menu]))
   if (open === null) return null
   if (key === "Escape") return result(null, { menu, item: null })
   return key === "Tab" ? result(null, "keep", false) : null
@@ -65,7 +72,7 @@ function onItem(key: string, at: { menu: number; item: number }, menus: readonly
   if (key in within) return openAt(at.menu, within[key] ?? null)
   if (key === "ArrowLeft" || key === "ArrowRight") {
     const to = wrap(at.menu + (key === "ArrowLeft" ? -1 : 1), count)
-    return openAt(to, firstItem(menus[to]))
+    return openAt(to, firstOpen(menus[to]))
   }
   if (key === "Escape") return result(null, { menu: at.menu, item: null })
   // Back to the title first, so Tab's own move starts from the menu bar and leaves it.
@@ -76,8 +83,8 @@ function onItem(key: string, at: { menu: number; item: number }, menus: readonly
 function fromOutside(key: string, open: number, menus: readonly MenuShape[]): MenuKeyResult | null {
   if (key === "Escape") return result(null, "keep")
   if (key === "Tab") return result(null, "keep", false)
-  if (key === "ArrowDown" || key === "Home") return openAt(open, firstItem(menus[open]))
-  if (key === "ArrowUp" || key === "End") return openAt(open, lastItem(menus[open]))
+  if (key === "ArrowDown" || key === "Home") return openAt(open, firstOpen(menus[open]))
+  if (key === "ArrowUp" || key === "End") return openAt(open, lastOpen(menus[open]))
   if (key === "ArrowLeft" || key === "ArrowRight") return result(wrap(open + (key === "ArrowLeft" ? -1 : 1), menus.length), "keep")
   return null
 }
@@ -90,7 +97,7 @@ export function menuKey(key: string, at: MenuFocus | null, open: number | null, 
   return onItem(key, { menu: at.menu, item: at.item }, menus)
 }
 
-/** The first item of a menu, for a title opened with Enter or Space. */
+/** Where a menu opened with Enter or Space on its title puts the focus. */
 export function firstMenuItem(shape: MenuShape | undefined): number | null {
-  return firstItem(shape)
+  return firstOpen(shape)
 }

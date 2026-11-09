@@ -1,11 +1,11 @@
 import { describe, expect, test } from "vitest"
 import { dialogKey, trapStep } from "../studio/src/shell/dialog-keys.js"
 import { createKeyGate } from "../studio/src/shell/key-gate.js"
-import { firstMenuItem, menuKey } from "../studio/src/shell/menu-keys.js"
-import { MENUS, MENU_SHAPES, menuReducer } from "../studio/src/shell/menus.js"
+import { firstMenuItem, menuKey, type MenuShape } from "../studio/src/shell/menu-keys.js"
+import { MENUS, menuReducer, menuShapes } from "../studio/src/shell/menus.js"
 
 // Three menus: [item, separator, item, item], [separator, item], [item].
-const SHAPES = [[true, false, true, true], [false, true], [true]]
+const SHAPES: MenuShape[] = [["item", "separator", "item", "item"], ["separator", "item"], ["item"]]
 const title = (menu: number) => ({ menu, item: null })
 const item = (menu: number, at: number) => ({ menu, item: at })
 
@@ -65,6 +65,27 @@ describe("menu bar keys in an open menu", () => {
   })
 })
 
+describe("menu bar keys with disabled items", () => {
+  // [disabled, item, separator, disabled] and a menu with no enabled item at all.
+  const shapes: MenuShape[] = [["disabled", "item", "separator", "disabled"], ["disabled", "disabled"]]
+
+  test("Down, Enter or Space open at the first enabled item, Up at the last enabled one", () => {
+    expect(menuKey("ArrowDown", title(0), null, shapes)?.focus).toEqual(item(0, 1))
+    expect(menuKey("ArrowUp", title(0), null, shapes)?.focus).toEqual(item(0, 1))
+    expect(firstMenuItem(shapes[0])).toBe(1)
+  })
+
+  test("a menu with no enabled item opens at its first item", () => {
+    expect(menuKey("ArrowDown", title(1), null, shapes)?.focus).toEqual(item(1, 0))
+    expect(firstMenuItem(shapes[1])).toBe(0)
+  })
+
+  test("in an open menu the disabled items take the focus too", () => {
+    expect(menuKey("ArrowDown", item(0, 1), 0, shapes)?.focus).toEqual(item(0, 3))
+    expect(menuKey("ArrowDown", item(0, 3), 0, shapes)?.focus).toEqual(item(0, 0))
+  })
+})
+
 describe("menu bar keys while the focus is outside the bar", () => {
   test("nothing is ours while no menu is open", () => {
     expect(menuKey("ArrowDown", null, null, SHAPES)).toBeNull()
@@ -80,10 +101,31 @@ describe("menu bar keys while the focus is outside the bar", () => {
 
 describe("the real menus", () => {
   test("every menu opens at an item, never at a separator", () => {
-    for (const [i, shape] of MENU_SHAPES.entries()) {
-      const first = firstMenuItem(shape)
-      expect([MENUS[i]?.title, first !== null && MENUS[i]?.entries[first] !== "separator"]).toEqual([MENUS[i]?.title, true])
+    for (const view of ["pcb", "schematic"] as const) {
+      for (const [i, shape] of menuShapes(view).entries()) {
+        const first = firstMenuItem(shape)
+        expect([view, MENUS[i]?.title, first !== null && MENUS[i]?.entries[first] !== "separator"]).toEqual([view, MENUS[i]?.title, true])
+      }
     }
+  })
+
+  test("a menu opens at its first enabled item; Route and Settings, with none, at their first", () => {
+    const opening = (title: string) => {
+      const i = MENUS.findIndex((m) => m.title === title)
+      const at = firstMenuItem(menuShapes("schematic")[i])
+      const entry = at === null ? undefined : MENUS[i]?.entries[at]
+      return entry === "separator" ? "separator" : entry?.label
+    }
+    expect(opening("File")).toBe("Open circuit file")
+    expect(opening("Route")).toBe("Single routing")
+    expect(opening("Settings")).toBe("System")
+  })
+
+  test("on the schematic, Unit is a disabled stop in View; on the PCB it runs", () => {
+    const view = MENUS.findIndex((m) => m.title === "View")
+    const unit = MENUS[view]?.entries.findIndex((e) => e !== "separator" && e.command === "toggleUnit") ?? -1
+    expect(menuShapes("schematic")[view]?.[unit]).toBe("disabled")
+    expect(menuShapes("pcb")[view]?.[unit]).toBe("item")
   })
 
   test("a key sets the open menu; setting the same one changes nothing", () => {

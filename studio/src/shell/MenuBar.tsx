@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react"
 import { blurButton, isPointerClick } from "./focus"
 import { useKeyHold } from "./key-gate"
 import { firstMenuItem, menuKey, type MenuFocus, type MenuKeyResult } from "./menu-keys"
-import { MENUS, MENU_SHAPES, itemState, menuReducer, type CommandId, type Menu, type MenuEntry } from "./menus"
+import { MENUS, itemState, menuReducer, menuShapes, type CommandId, type Menu, type MenuEntry } from "./menus"
 import type { View } from "../pcb/positions"
 import "./shell.css"
 
@@ -122,7 +122,7 @@ function MenuTitle({ menu, index, open, current, onPointer, onHover, onKeyboard,
         tabIndex={current ? 0 : -1}
         className={`menu-title${open ? " open" : ""}`}
         onClick={(event) => {
-          if (!isPointerClick(event)) return onKeyboard({ open: index, focus: { menu: index, item: firstMenuItem(MENU_SHAPES[index]) }, preventDefault: true })
+          if (!isPointerClick(event)) return onKeyboard({ open: index, focus: { menu: index, item: firstMenuItem(menuShapes(view)[index]) }, preventDefault: true })
           blurButton(event)
           onPointer(index)
         }}
@@ -142,6 +142,7 @@ export function MenuBar({ run, view, children }: Props) {
   const bar = useRef<HTMLElement>(null)
   const moveFocus = useFocusMover(bar)
   const open = state.open === null ? null : MENUS.findIndex((m) => m.title === state.open)
+  const shapes = useMemo(() => menuShapes(view), [view])
   const apply = (next: MenuKeyResult) => {
     dispatch({ type: "set", title: next.open === null ? null : (MENUS[next.open]?.title ?? null) })
     if (next.focus === "keep") return
@@ -149,7 +150,7 @@ export function MenuBar({ run, view, children }: Props) {
     moveFocus(next.focus)
   }
   const onKey = (event: KeyboardEvent | ReactKeyboardEvent): boolean => {
-    const next = menuKey(event.key, focusOf(bar.current, document.activeElement), open, MENU_SHAPES)
+    const next = menuKey(event.key, focusOf(bar.current, document.activeElement), open, shapes)
     if (!next) return false
     if (next.preventDefault) event.preventDefault()
     apply(next)

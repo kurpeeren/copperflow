@@ -252,5 +252,7 @@ export function menuReducer(state: MenuState, event: MenuEvent): MenuState {
   }
 }
 
-/** Each menu's entries as the menu keys see them: true for an item, false for a separator. */
-export const MENU_SHAPES: readonly (readonly boolean[])[] = MENUS.map((menu) => menu.entries.map((entry) => entry !== "separator"))
+/** Each menu's entries as the menu keys see them in the open view: items that run, disabled items and separators. */
+export function menuShapes(view: View): readonly (readonly ("item" | "disabled" | "separator")[])[] {
+  return MENUS.map((menu) => menu.entries.map((entry) => (entry === "separator" ? "separator" : itemState(entry, view).enabled ? "item" : "disabled")))
+}
