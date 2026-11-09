@@ -37,7 +37,7 @@ export interface SchematicLayout {
   wires: Wire[]
   labels: NetLabel[]
   junctions: Point[]
-  /** The circuit's drawings as they are: already on the sheet, with the groups' offsets added. */
+  /** The circuit's drawings as they are, in an array of their own: already on the sheet, with the groups' offsets added. */
   drawings: SchematicDrawing[]
 }
 
@@ -213,5 +213,5 @@ export function layoutSchematic(circuit: Circuit): SchematicLayout {
   const drawn: Drawn = { joins: hand.joins, labeled: hand.labeled }
   const nets = layoutNets(circuit, spots, drawn)
   const wires = [...hand.wires, ...nets.wires]
-  return { symbols, wires, labels: [...hand.labels, ...nets.labels], junctions: junctionsOf(wires, spots), drawings: circuit.drawings }
+  return { symbols, wires, labels: [...hand.labels, ...nets.labels], junctions: junctionsOf(wires, spots), drawings: [...circuit.drawings] }
 }

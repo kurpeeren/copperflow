@@ -1,6 +1,9 @@
 export type ParsedSelector = { kind: "net"; name: string } | { kind: "pin"; part: string; pin: string }
 
-const NET = /^net\.([\w-]+)$/
+/** A net's name, unanchored: ASCII letters, digits, "_" and "-". `net.<name>` selectors and bus members share it. */
+export const NET_NAME = /[\w-]+/
+
+const NET = new RegExp(String.raw`^net\.(${NET_NAME.source})$`)
 const DOTTED = /^([A-Za-z_][\w-]*)\.([\w-]+)$/
 const CLASSES = /^\.([A-Za-z_][\w-]*)\s*>\s*\.([\w-]+)$/
 

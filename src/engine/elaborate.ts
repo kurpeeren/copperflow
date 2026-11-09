@@ -160,7 +160,7 @@ class Elaboration {
   private drawing(element: CfElement, kind: DrawingKind, frame: Frame, source: SourceRef): void {
     const index = (this.drawingCounts.get(kind) ?? 0) + 1
     this.drawingCounts.set(kind, index)
-    const built = buildDrawing(kind, element.props, { offset: frame.offset, index, source })
+    const built = buildDrawing(kind, element.props, element.children.length, { offset: frame.offset, index, source })
     this.diagnostics.push(...built.diagnostics)
     if (built.drawing) this.drawings.push(built.drawing)
   }

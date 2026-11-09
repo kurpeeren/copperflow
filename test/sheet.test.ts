@@ -271,18 +271,31 @@ describe("drawingExtents", () => {
     expect(e!.maxY).toBeGreaterThanOrEqual(6)
   })
 
-  test("drawings count by their whole shape", () => {
-    const source = { file: "a.circuit.tsx", line: 1, column: 1, offset: 0 }
-    const stroke = { strokeWidth: 0.01, lineStyle: "solid", groupOffset: { x: 0, y: 0 }, source }
+  const at = { groupOffset: { x: 0, y: 0 }, source: { file: "a.circuit.tsx", line: 1, column: 1, offset: 0 } }
+
+  test("drawings count by their whole shape, lines by half their width beyond it", () => {
+    const line = (strokeWidth: number) => ({ strokeWidth, lineStyle: "solid", ...at })
     const e = drawingExtents(
       layout({
         drawings: [
-          { id: "G1", kind: "circle", x: 10, y: 10, radius: 2, filled: false, ...stroke },
-          { id: "G2", kind: "rect", x: -4, y: -5, width: 1, height: 1, filled: false, ...stroke },
+          { id: "G1", kind: "circle", x: 10, y: 10, radius: 2, filled: false, ...line(0.5) },
+          { id: "G2", kind: "rect", x: -4, y: -5, width: 1, height: 1, filled: false, ...line(0) },
         ],
       }),
     )
-    expect(e).toEqual({ minX: -4, minY: -5, maxX: 12, maxY: 12 })
+    expect(e).toEqual({ minX: -4, minY: -5, maxX: 12.25, maxY: 12.25 })
+  })
+
+  test("texts and buses count by their shape alone", () => {
+    const e = drawingExtents(
+      layout({
+        drawings: [
+          { id: "T", kind: "text", x: 0, y: 0, text: "AB", fontSize: 0.5, anchor: "left", ...at },
+          { id: "CLK", kind: "bus", name: "CLK", members: ["CLK"], points: [{ x: 0, y: -2 }, { x: 3, y: -2 }], ...at },
+        ],
+      }),
+    )
+    expect(e).toEqual({ minX: 0, minY: -2, maxX: 3, maxY: 0.25 })
   })
 })
 

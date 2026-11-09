@@ -41,8 +41,8 @@ const LEFT_OUT = "the drawing is left out"
 /**
  * Reads one drawing's props. A value that is there but unusable, or missing where the drawing needs one,
  * is a bad-value warning and leaves the drawing out (`usable` turns false); every call still returns a
- * placeholder, so a shape can be put together before that is checked. A prop no call read is an
- * unknown-prop warning and does not stop the drawing.
+ * placeholder, so a shape can be put together before that is checked. A prop no call read, and any
+ * child of the tag, is an unknown-prop warning and does not stop the drawing.
  */
 export class DrawingReader {
   readonly diagnostics: Diagnostic[] = []
@@ -100,6 +100,11 @@ export class DrawingReader {
   choice<T extends string>(key: string, options: readonly T[], fallback: T): T {
     const known: Parse<T> = (value) => options.find((option) => option === value)
     return this.optional(key, known, oneOf(options), fallback)
+  }
+
+  /** Reports that the tag's children are ignored: a drawing holds no other elements and no text. */
+  reportChildren(tag: string): void {
+    this.warn("unknown-prop", `${this.owner}: <${tag}> takes no children; they are ignored`, "children")
   }
 
   /** Reports every prop that no call read. */

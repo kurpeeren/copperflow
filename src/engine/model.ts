@@ -93,31 +93,36 @@ export type DrawingKind = "path" | "rect" | "circle" | "arc" | "text" | "bus"
 export type LineStyle = "solid" | "dashed" | "dotted"
 export type TextAnchor = "left" | "center" | "right"
 
-/** How a drawing's line looks. Without a `color` ("#RRGGBB") the Studio uses the theme's drawing colour. */
-export interface DrawingStroke {
+/** A drawing's colour, "#RRGGBB"; without one the Studio uses the theme's drawing colour. */
+export interface DrawingColor {
+  color?: string
+}
+
+/** How a drawing's line looks. */
+export interface DrawingStroke extends DrawingColor {
   strokeWidth: number
   lineStyle: LineStyle
-  color?: string
 }
 
 /**
  * What a drawing is, in sheet units (1 = 1 inch, y up). A rectangle stands on its lower-left corner; an
- * arc runs counter-clockwise from `startAngle` to `endAngle` (degrees from +x, as written); a text's
- * `y` is the middle of its height, as for symbol text. A bus is a line with a name such as "D[0:7]";
- * `members` are the names of its nets ("D0" … "D7"), and it joins none of them.
+ * arc runs counter-clockwise from `startAngle` to `endAngle` (degrees from +x, as written). A text has a
+ * colour but no line, and its `y` is the middle of its height, as for symbol text. A bus is a line with
+ * a name such as "D[0:7]"; `members` are the names of its nets ("D0" … "D7"), and it joins none of them.
  */
 export type DrawingShape =
   | ({ kind: "path"; points: Point[] } & DrawingStroke)
   | ({ kind: "rect"; x: number; y: number; width: number; height: number; filled: boolean } & DrawingStroke)
   | ({ kind: "circle"; x: number; y: number; radius: number; filled: boolean } & DrawingStroke)
   | ({ kind: "arc"; x: number; y: number; radius: number; startAngle: number; endAngle: number } & DrawingStroke)
-  | ({ kind: "text"; x: number; y: number; text: string; fontSize: number; anchor: TextAnchor } & DrawingStroke)
+  | ({ kind: "text"; x: number; y: number; text: string; fontSize: number; anchor: TextAnchor } & DrawingColor)
   | { kind: "bus"; name: string; points: Point[]; members: string[] }
 
 /**
  * A schematic-only drawing. `id` is its name, or "drawing:<kind>:<n>" for the n-th tag of that kind in
- * source order when it has none; a repeated name gets "~2", "~3" and so on. Coordinates are on the
- * sheet with the groups' offsets added: a coordinate prop is the sheet value minus `groupOffset`.
+ * source order when it has none. A repeated name gets "~2", "~3" and so on in source order; a bus may
+ * repeat its name quietly (one bus drawn in pieces), any other repeat is warned about. Coordinates are
+ * on the sheet with the groups' offsets added: a coordinate prop is the sheet value minus `groupOffset`.
  */
 export type SchematicDrawing = DrawingShape & {
   id: string

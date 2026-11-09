@@ -1,5 +1,6 @@
 // Facts about schematic drawings that the engine, the core and the Studio share. Pure: the Studio bundle imports it.
 import type { DrawingKind, DrawingShape, LineStyle, Point, TextAnchor } from "./model.js"
+import { NET_NAME } from "./selectors.js"
 import { CHAR_WIDTH, clean, type Bounds } from "./symbols/types.js"
 
 const KIND_BY_TAG: Readonly<Record<string, DrawingKind>> = {
@@ -37,12 +38,13 @@ export function drawingTag(kind: DrawingKind): string {
   return TAG_BY_KIND[kind]
 }
 
-const NET_NAME = /^[\w-]+$/
-const RANGE = /^([\w-]+)\[(\d+):(\d+)\]$/
+/** Exactly the names `net.<name>` accepts, so every member is a net a trace can name. */
+const PLAIN = new RegExp(String.raw`^${NET_NAME.source}$`)
+const RANGE = new RegExp(String.raw`^(${NET_NAME.source})\[(\d+):(\d+)\]$`)
 
 /** The nets a bus name stands for: "D[0:7]" is D0 … D7, "A[3:0]" is A3 … A0, a plain net name is itself. Anything else is undefined. */
 export function busMembers(name: string): string[] | undefined {
-  if (NET_NAME.test(name)) return [name]
+  if (PLAIN.test(name)) return [name]
   const range = RANGE.exec(name)
   if (!range) return undefined
   const [prefix, first, last] = [range[1] as string, Number(range[2]), Number(range[3])]
