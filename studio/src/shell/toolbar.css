@@ -1,4 +1,5 @@
-/* The toolbar under the menu bar: 24px icon buttons, and the open canvas's own tools at the right. */
+/* The toolbar under the menu bar: 24px icon buttons (16px icons, icon-shapes.ts) in a 32px row, and the open canvas's
+   own tools at the right. Pressed is the copper wash with a copper icon; disabled is the disabled grey. */
 .studio-toolbar {
   display: flex;
   align-items: center;
@@ -20,6 +21,7 @@
   background: transparent;
   color: var(--text);
   flex: none;
+  transition: background-color var(--ease), color var(--ease);
 }
 
 .toolbar-button.text {
@@ -30,13 +32,13 @@
   font-size: 12px;
 }
 
-.toolbar-button:hover {
-  background: var(--raised);
+.toolbar-button svg {
+  display: block;
 }
 
-.toolbar-button[aria-pressed="true"] {
+button.toolbar-button[aria-pressed="true"] {
   background: var(--copper-wash);
-  color: var(--copper-strong);
+  color: var(--copper);
 }
 
 /* Hairlines: one device pixel at any display scale (hairline.css). */
@@ -81,7 +83,7 @@
 .canvas-tools button.active {
   border-color: var(--copper);
   background: var(--copper-wash);
-  color: var(--text);
+  color: var(--copper-strong);
 }
 
 .tool-divider {
@@ -97,16 +99,16 @@ button.toolbar-button:hover:not(:disabled) {
 
 button.toolbar-button[aria-pressed="true"]:hover:not(:disabled) {
   background: var(--copper-wash);
+  color: var(--copper);
 }
 
 button.toolbar-button:active:not(:disabled) {
   background: var(--line);
 }
 
-/* Disabled by the selection (aria-disabled keeps the tooltip and the focus): dim, and no hover or pressed fill. */
+/* Disabled by the selection (aria-disabled keeps the tooltip and the focus): grey, and no hover or pressed fill. */
 button.toolbar-button[aria-disabled="true"] {
-  color: var(--muted);
-  opacity: 0.45;
+  color: var(--disabled);
   cursor: default;
 }
 
