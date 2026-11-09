@@ -11,7 +11,7 @@ import type { Point } from "./geometry.js"
 import type { SourceCircuit } from "./positions.js"
 import { endMatches, lockedPart, netNames, NO_LOCKS, pickRepeat, repeatBlocker, traceBlocker, tracesBetween, type EndMatch } from "./trace-source.js"
 import { tidy } from "./wire-geometry.js"
-import { bareTrace, onNetWire, onWireEdits, type OnWire } from "./wire-on-wire.js"
+import { onNetWire, pinTrace, onWireEdits, type OnWire } from "./wire-on-wire.js"
 import { addressable, pinOfSelector, pinSelector } from "./wire-tool.js"
 
 export { carryPath, dragCorner, dragSegment, removeCorner, tidy, type MovingEnds } from "./wire-geometry.js"
@@ -93,8 +93,7 @@ function toNetWire(design: Design, source: SourceCircuit, id: string, points: Po
   const name = design.circuit.nets.find((candidate) => candidate.id === netId)?.names[0]
   const meeting = pinLast ? points[0] : points[points.length - 1]
   if (name === undefined || !meeting || !onNetWire(design, id, netId, meeting)) return undefined
-  const trace = bareTrace(design, source, pin, netId)
-  const onWire: OnWire = trace ? { pinLast, trace } : { pinLast }
+  const onWire: OnWire = { pinLast, ...pinTrace(design, source, pin, netId) }
   return shape(id, points, { kind: "engine", from: pinSelector(design, pin), to: `net.${name}`, components: [pin.component], ...unaddressableOf(design, [pin]), onWire })
 }
 
@@ -125,7 +124,7 @@ export function wireBlocker(design: Design, wire: WireShape, locked: ReadonlySet
   if (writer.kind === "none") return writer.reason
   const lockedName = lockedPart(design, writer.components, writer.kind === "trace" ? writer.trace : undefined, locked)
   if (lockedName !== undefined) return `${lockedName} is locked`
-  if (writer.kind === "engine") return writer.unaddressable ?? null
+  if (writer.kind === "engine") return writer.unaddressable ?? writer.onWire?.blocked ?? null
   return writer.repeat ?? traceBlocker(writer.trace) ?? null
 }
 

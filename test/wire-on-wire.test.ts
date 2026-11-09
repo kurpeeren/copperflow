@@ -80,6 +80,15 @@ describe("a wire Studio routes from a pin to a wire of its net", () => {
     expect(wireShapeEdits(design, bare, pulled)).toEqual([{ kind: "addTrace", from: "R7.pin1", to: "net.GND", schematicRouteHints: corners }])
   })
 
+  test("a pin with several traces to the net is refused rather than given yet another", () => {
+    const text = SOURCE.replace(R7_TRACE, `${R7_TRACE}
+    ${R7_TRACE}`)
+    const found = wireIn(text, GND_2)
+    const reason = "The pin of this wire has several traces to its net; change its corners in the code"
+    expect(wireBlocker(setup(text).design, found)).toBe(reason)
+    expect(wireShapeEdits(setup(text).design, found, dragSegment(found.points, 0, p(0, 0.6)))).toEqual({ blocked: reason })
+  })
+
   test("a locked part at its pin blocks it", () => {
     expect(wireBlocker(design, routed, new Set(["R7"]))).toBe("R7 is locked")
   })

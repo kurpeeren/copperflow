@@ -1,6 +1,7 @@
 // A wire Studio routes from a pin to a point on another wire of its net (where the pin had no other way out, say):
 // it is written as a trace from the pin to the net, the meeting point being its last corner, as a wire the W tool ends
-// on a wire is. The pin's own trace to the net takes the corners when it has none yet; else a new trace is added.
+// on a wire is. The pin's own trace to the net takes the corners when it has none yet; with no such trace a new one is
+// added; with several, or one that cannot change, the shape is refused rather than repeating them.
 // Pure; only types come from the engine.
 import type { Edit, TraceInfo } from "../../../src/core/types.js"
 import type { Design } from "../../../src/engine/design.js"
@@ -15,7 +16,11 @@ export interface OnWire {
   pinLast: boolean
   /** The pin's trace to the net, with no corners yet. */
   trace?: TraceInfo
+  /** Why the shape cannot be written: the pin's traces to the net cannot take it, and another would repeat them. */
+  blocked?: string
 }
+
+const SEVERAL = "The pin of this wire has several traces to its net; change its corners in the code"
 
 const NEAR = 1e-6
 
@@ -34,12 +39,17 @@ export function onNetWire(design: Design, wireId: string, netId: string, p: Poin
   return design.schematic.wires.some((wire) => wire.id !== wireId && wire.net === netId && onLine(wire.points, p))
 }
 
-/** The pin's one trace to the net that has no corners and can take them; undefined when there is none such. */
-export function bareTrace(design: Design, source: SourceCircuit, pin: Pin, netId: string): TraceInfo | undefined {
+/**
+ * Where the pin's corners go: its one trace to the net, when it has no corners and can take them; nowhere yet (a new
+ * trace is added) when it has none; else refused, since a further trace would only repeat those already there.
+ */
+export function pinTrace(design: Design, source: SourceCircuit, pin: Pin, netId: string): Omit<OnWire, "pinLast"> {
   const traces = tracesBetween(design, source, { pin: pin.id }, { net: netNames(design, netId) })
   const [trace] = traces
-  if (traces.length !== 1 || !trace || trace.props["schematicRouteHints"]) return undefined
-  return traceBlocker(trace) === undefined && repeatBlocker(source, trace) === undefined ? trace : undefined
+  if (!trace) return {}
+  if (traces.length > 1 || trace.props["schematicRouteHints"]) return { blocked: SEVERAL }
+  const blocked = traceBlocker(trace) ?? repeatBlocker(source, trace)
+  return blocked === undefined ? { trace } : { blocked }
 }
 
 /**

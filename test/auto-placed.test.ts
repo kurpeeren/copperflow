@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest"
+import { analyzeCircuit } from "../src/core/analyze.js"
 import { buildDesign } from "../src/engine/design.js"
 import { autoPlacedParts, keepNotice, keepPositions, NOTHING_TO_TIDY, NOT_BUILT, TIDY_SUMMARY, tidyNotice, tidyPlan, tidyReason } from "../studio/src/pcb/auto-placed.js"
 
@@ -86,6 +87,25 @@ describe("keepPositions", () => {
     expect(c1?.rotation).not.toBe(0)
     const edit = keepPositions(turned, "schematic").edits.find((e) => e.kind === "setProps" && e.part === "C1")
     expect(edit).toEqual({ kind: "setProps", part: "C1", props: { schX: round(c1?.x ?? NaN), schY: round(c1?.y ?? NaN), schRotation: c1?.rotation } })
+  })
+
+  test("writes the rotation it is drawn with, 0 included, when the source has a rotation the engine ignored, in both views", () => {
+    const text = `export default () => (
+  <board width="30mm" height="18mm">
+    <resistor name="R9" resistance="1k" footprint="0402" schRotation={90} pcbRotation={90} />
+  </board>
+)`
+    const turned = buildDesign({ "main.circuit.tsx": text }, "main.circuit.tsx")
+    const source = { model: analyzeCircuit(text) }
+    const r9 = { sch: turned.schematic.symbols.find((s) => s.component === "R9"), pcb: turned.pcb.parts.find((p) => p.component === "R9") }
+    expect([r9.sch?.rotation, r9.pcb?.rotation]).toEqual([0, 0])
+    expect(keepPositions(turned, "schematic", undefined, source).edits).toEqual([
+      { kind: "setProps", part: "R9", props: { schX: round(r9.sch?.x ?? NaN), schY: round(r9.sch?.y ?? NaN), schRotation: 0 } },
+    ])
+    expect(keepPositions(turned, "pcb", undefined, source).edits).toEqual([
+      { kind: "setProps", part: "R9", props: { pcbX: round(r9.pcb?.x ?? NaN), pcbY: round(r9.pcb?.y ?? NaN), pcbRotation: 0 } },
+    ])
+    expect(tidyPlan(turned, undefined, source)).toEqual(keepPositions(turned, "schematic", undefined, source))
   })
 
   test("gives nothing to do when every part has a position", () => {

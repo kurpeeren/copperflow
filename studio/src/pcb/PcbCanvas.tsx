@@ -197,7 +197,7 @@ export function PcbCanvas(props: CanvasProps) {
   return (
     <div className="pcb-canvas" ref={wrapRef}>
       <PcbSurface canvasRef={canvasRef} size={size} cursorStyle={cursorFor(gesture, note.armed, hover.part !== undefined)} pointer={pointer} onLeave={onLeave} hint={note.hint} />
-      <PcbTools unit={unit} step={step} setStep={setStep} keep={{ show: parts.autoPlaced, onKeep: () => keepAutoPlaced(design, "pcb", parts.blockerFor, actions) }} />
+      <PcbTools unit={unit} step={step} setStep={setStep} keep={{ show: parts.autoPlaced, onKeep: () => keepAutoPlaced(design, "pcb", parts.blockerFor, actions, circuit) }} />
       <CanvasStatus cursor={cursor} zoom={camera?.scale} unit={unit} onToggleUnit={onToggleUnit} detail={hover.pad && padLabel(design, hover.pad)} gesture={gesture} rotateHeld={rotateHeld} snap={snap} />
     </div>
   )

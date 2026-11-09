@@ -360,7 +360,7 @@ function useSheetKeys({ design, builtFrom, camera, cursor, fit, wire, palette, d
   }
   useCommands(tools)
   // Layout → Tidy sheet writes where Studio placed its parts, leaving out those that may not change.
-  useCommands({ tidySheet: () => tidySheet(design, keys.blockerFor, keys.actions) } satisfies Record<SheetLayoutCommand, () => void>)
+  useCommands({ tidySheet: () => tidySheet(design, keys.blockerFor, keys.actions, keys.circuit) } satisfies Record<SheetLayoutCommand, () => void>)
   return { highlight: useHighlight(design, highlightNets), rotateHeld, keyMoving: useKeyMoving(keyMove, builtFrom, keys.layout.anchors) }
 }
 
@@ -522,7 +522,7 @@ export function SchematicCanvas(props: CanvasProps) {
   // The toolbar's controls sit beside the sheet: inside it, their portal's events would reach the sheet's handlers.
   return (
     <>
-      <SheetTools step={step} setStep={setStep} keep={{ show: parts.autoPlaced, onKeep: () => keepAutoPlaced(design, "schematic", parts.blockerFor, actions) }} />
+      <SheetTools step={step} setStep={setStep} keep={{ show: parts.autoPlaced, onKeep: () => keepAutoPlaced(design, "schematic", parts.blockerFor, actions, circuit) }} />
       <SheetView {...{ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave: hover.leave, cursorStyle, wire, palette, note, draw, gesture, rotateHeld, snap }} empty={parts.boxes.length === 0} />
     </>
   )
