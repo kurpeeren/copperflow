@@ -1,5 +1,6 @@
-// The 0.1 sheet grid the schematic router searches on: cells are integer tenths of a unit, and
-// a search works on a small box of them whose flags say what each grid point holds.
+// The 0.1 sheet grid the schematic router searches on: cells are integer tenths of a unit. One
+// grid covers the whole sheet; drawn wires are added to it for good, and what one search needs
+// (its ends, its pins' ways out) is patched in and undone afterwards.
 import type { Point } from "./model.js"
 import type { Bounds } from "./symbols/index.js"
 import { clean } from "./symbols/types.js"
@@ -10,7 +11,7 @@ const ON_GRID = 1e-6
 /** Off-grid and slanted segments are sampled at this step, in cells, and the grid points around each sample blocked. */
 const SAMPLE_STEP = 0.5
 
-/** Nothing may pass or end here. */
+/** A wire's end or corner, or a segment off the grid: nothing may pass or end here. */
 export const BLOCK = 1
 /** Inside a straight wire of another net: a wire may cross it at a right angle, but not turn or end there. */
 export const CROSS = 2
@@ -20,6 +21,10 @@ export const EDGE_EAST = 4
 export const EDGE_NORTH = 8
 export const SOURCE = 16
 export const TARGET = 32
+/** Inside a symbol's margin, or a pin's landing point: closed to wires that do not leave or reach that pin. */
+export const SYMBOL = 64
+/** On a wire already joined to both routed pins: a wire may run along it. */
+export const PASS = 128
 
 /** Integer cell ranges, both ends included. */
 export interface CellRect {
@@ -105,29 +110,31 @@ export function wireMarks(points: readonly Point[]): WireMarks {
   return { ...result, rect: extentOf(result.marks) }
 }
 
-/** The flags of the grid points in one search box. */
-export class LocalGrid {
+/** The flags of every grid point on the sheet, and how many symbol margins cover each. */
+export class SheetGrid {
   readonly width: number
   readonly height: number
   readonly flags: Uint8Array
-  /** The SOURCE points, as local indices in the order they were marked. */
-  readonly sources: number[] = []
-  /** The extent of the TARGET points, in local cells; empty while there is none. */
-  readonly goal: CellRect = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
+  readonly margins: Uint8Array
+  /** Patched points and their flags before, as flat index, value pairs, so `undo` restores them. */
+  private readonly patched: number[] = []
 
-  constructor(
-    readonly box: CellRect,
-    buffer: Uint8Array,
-  ) {
+  constructor(readonly box: CellRect) {
     this.width = box.maxX - box.minX + 1
     this.height = box.maxY - box.minY + 1
-    this.flags = buffer.subarray(0, this.width * this.height)
-    this.flags.fill(0)
+    this.flags = new Uint8Array(this.width * this.height)
+    this.margins = new Uint8Array(this.width * this.height)
   }
 
-  /** The index of a sheet cell, or -1 outside the box. */
+  /** The index of a sheet cell, or -1 off the sheet. */
   indexOf(x: number, y: number): number {
     return holds(this.box, x, y) ? (y - this.box.minY) * this.width + (x - this.box.minX) : -1
+  }
+
+  /** How many symbol margins cover the cell; 0 off the sheet. */
+  marginsAt(x: number, y: number): number {
+    const index = this.indexOf(x, y)
+    return index < 0 ? 0 : (this.margins[index] as number)
   }
 
   add(x: number, y: number, flag: number): void {
@@ -135,39 +142,35 @@ export class LocalGrid {
     if (index >= 0) this.flags[index] = (this.flags[index] as number) | flag
   }
 
-  /** Marks a SOURCE or TARGET point and keeps the source list and the goal extent up to date. */
-  addEnd(x: number, y: number, flag: typeof SOURCE | typeof TARGET): void {
-    const index = this.indexOf(x, y)
-    if (index < 0 || (this.flags[index] as number) & flag) return
-    this.flags[index] = (this.flags[index] as number) | flag
-    if (flag === SOURCE) {
-      this.sources.push(index)
-      return
-    }
-    const [lx, ly] = [x - this.box.minX, y - this.box.minY]
-    this.goal.minX = Math.min(this.goal.minX, lx)
-    this.goal.maxX = Math.max(this.goal.maxX, lx)
-    this.goal.minY = Math.min(this.goal.minY, ly)
-    this.goal.maxY = Math.max(this.goal.maxY, ly)
-  }
-
-  remove(x: number, y: number, flag: number): void {
-    const index = this.indexOf(x, y)
-    if (index >= 0) this.flags[index] = (this.flags[index] as number) & ~flag
-  }
-
-  fill(rect: CellRect, flag: number): void {
+  /** Covers a symbol's margin. */
+  cover(rect: CellRect): void {
     const [x0, x1] = [Math.max(rect.minX, this.box.minX), Math.min(rect.maxX, this.box.maxX)]
     const [y0, y1] = [Math.max(rect.minY, this.box.minY), Math.min(rect.maxY, this.box.maxY)]
     for (let y = y0; y <= y1; y++) {
       const row = (y - this.box.minY) * this.width - this.box.minX
-      for (let x = x0; x <= x1; x++) this.flags[row + x] = (this.flags[row + x] as number) | flag
+      for (let x = x0; x <= x1; x++) {
+        this.flags[row + x] = (this.flags[row + x] as number) | SYMBOL
+        this.margins[row + x] = Math.min(255, (this.margins[row + x] as number) + 1)
+      }
     }
   }
 
   apply(wire: WireMarks): void {
-    if (!overlaps(wire.rect, this.box)) return
     const { marks } = wire
     for (let i = 0; i < marks.length; i += 3) this.add(marks[i] as number, marks[i + 1] as number, marks[i + 2] as number)
+  }
+
+  /** Sets and clears flags until `undo`. */
+  patch(x: number, y: number, set: number, clear = 0): void {
+    const index = this.indexOf(x, y)
+    if (index < 0) return
+    const before = this.flags[index] as number
+    this.patched.push(index, before)
+    this.flags[index] = (before | set) & ~clear
+  }
+
+  undo(): void {
+    for (let i = this.patched.length - 2; i >= 0; i -= 2) this.flags[this.patched[i] as number] = this.patched[i + 1] as number
+    this.patched.length = 0
   }
 }

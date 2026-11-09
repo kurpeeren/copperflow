@@ -244,12 +244,12 @@ describe("where a wire ends", () => {
   })
 
   test("a wire of an unnamed net resolves to its first pin and adds no net point", () => {
-    const [a, b] = longestSegment(labelled.schematic.wires.find((w) => w.net.startsWith("net:"))?.points)
-    if (!a || !b) throw new Error("no unnamed wire")
-    const end = endAt(labelled, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, 0.05)
+    // The wire runs below U1 from (3, -0.5) to (7.3, -0.5); the click is in the middle of that run.
+    expect(longestSegment(labelled.schematic.wires.find((w) => w.net.startsWith("net:"))?.points)).toEqual([{ x: 3, y: -0.5 }, { x: 7.3, y: -0.5 }])
+    const end = endAt(labelled, { x: 5.15, y: -0.5 }, 0.05)
     expect(end?.selector).toMatch(/^(LED1\.cathode|R1\.pin1)$/)
     const edits = wireEdits(labelled, endOf(labelled, "U1.pin1"), end as WireEnd, [{ x: 6, y: 1 }])
-    expect(edits[0]).toMatchObject({ schematicRouteHints: [{ x: 6, y: 0.2 }, { x: 6, y: 1 }, { x: end?.at.x, y: 1 }] })
+    expect(edits[0]).toMatchObject({ schematicRouteHints: [{ x: 6, y: 0.2 }, { x: 6, y: 1 }, { x: 5.15, y: 1 }] })
   })
 })
 

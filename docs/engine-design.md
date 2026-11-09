@@ -228,8 +228,9 @@ uses stable ids so the Studio, history and checks can follow an item across edit
   auto-placed until someone moves them.
 - A trace with `schematicRouteHints` is drawn through its corners, as today, but natively.
   A trace without corners, and the near pins of a named net, are routed as orthogonal wires on the
-  0.1 grid around symbols, hand-drawn wires and other nets' wires (`schematic-route.ts`); a wire
-  that cannot get round is drawn with one elbow and the design warns (`auto-route`). A pin on a
+  0.1 grid around symbols, hand-drawn wires and other nets' wires (`schematic-route.ts`), each
+  with a bounded search (exact A*, then A* with the estimate weighted 5/4); a wire that cannot get
+  round is drawn with one elbow and the design warns (`auto-route`). A pin on a
   named net far from its partners gets a net label instead. Nothing the user drew is re-routed.
 - Schematic units stay the numbers used today, so existing positions keep their meaning.
 

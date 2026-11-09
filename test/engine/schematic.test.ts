@@ -122,6 +122,21 @@ describe("named nets", () => {
 })
 
 describe("junctions", () => {
+  test("three wire ends meeting at one point make a junction there", () => {
+    const corner = " schematicRouteHints={[{ x: 1, y: 0 }]}"
+    const body = [
+      resistor("R1", -3, 0),
+      resistor("R2", 5, 0),
+      resistor("R3", 1, 4, " schRotation={90}"),
+      `<trace from="R1.pin2" to="net.TAP"${corner} />`,
+      `<trace from="R2.pin1" to="net.TAP"${corner} />`,
+      `<trace from="R3.pin1" to="net.TAP"${corner} />`,
+    ].join("\n")
+    const layout = layoutSchematic(build(body))
+    expect(layout.wires.map((wire) => wire.points[wire.points.length - 1])).toEqual([{ x: 1, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 0 }])
+    expect(layout.junctions).toEqual([{ x: 1, y: 0 }])
+  })
+
   test("a second wire from a pin joins the first wire with a junction", () => {
     const body = [resistor("R1", 0, 0), resistor("R2", 4, 3), resistor("R3", 4, -3), `<trace from="R1.pin2" to="R2.pin1" />`, `<trace from="R1.pin2" to="R3.pin1" />`].join("\n")
     const layout = layoutSchematic(build(body))

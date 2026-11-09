@@ -2,7 +2,9 @@ import { describe, expect, test } from "vitest"
 import { buildDesign } from "../../src/engine/design.js"
 import { elaborate } from "../../src/engine/elaborate.js"
 import { evaluateCircuit } from "../../src/engine/evaluate.js"
-import type { Circuit, Point } from "../../src/engine/model.js"
+import type { Circuit, Point, Side } from "../../src/engine/model.js"
+import type { PinSpot } from "../../src/engine/schematic-nets.js"
+import { routeWires } from "../../src/engine/schematic-route.js"
 import { layoutSchematic, type PlacedSymbol, type SchematicLayout, type Wire } from "../../src/engine/schematic.js"
 
 const MAIN = "main.circuit.tsx"
@@ -167,11 +169,67 @@ describe("determinism", () => {
 })
 
 describe("pins already joined", () => {
-  test("a trace between pins that other wires already join keeps today's elbow and gives no warning", () => {
+  const symbolBoxes = (layout: SchematicLayout) => layout.symbols.map((symbol) => ({ name: symbol.component, ...boxOf(symbol) }))
+  /** Grid points of the wire strictly inside a symbol's bounds, its own two ends left out. */
+  const throughSymbols = (layout: SchematicLayout, wire: Wire) => {
+    const [first, last] = [wire.points[0], wire.points[wire.points.length - 1]]
+    const ends = [first, last].map((p) => `${Math.round((p?.x ?? 0) * 10)},${Math.round((p?.y ?? 0) * 10)}`)
+    return latticePoints(wire).filter(
+      (p) => !ends.includes(`${p.x},${p.y}`) && symbolBoxes(layout).some((b) => p.x / 10 >= b.minX && p.x / 10 <= b.maxX && p.y / 10 >= b.minY && p.y / 10 <= b.maxY),
+    )
+  }
+
+  test("a trace closing a loop is routed, never drawn straight through a symbol, and gives no warning", () => {
     const body = [resistor("R1", 0, 0), resistor("R2", 3, 0), resistor("R3", 1.5, 2, " schRotation={90}")]
     const traces = [trace("R1.pin2", "R2.pin1"), trace("R3.pin1", "R2.pin1"), trace("R3.pin1", "R1.pin2")]
     const design = buildDesign({ [MAIN]: source([...body, ...traces].join("\n")) }, MAIN)
-    expect(wireOf(design.schematic, "wire:R3.pin1|R1.pin2").points).toEqual([{ x: 1.5, y: 1.5 }, { x: 0.5, y: 1.5 }, { x: 0.5, y: 0 }])
+    const loop = wireOf(design.schematic, "wire:R3.pin1|R1.pin2")
+    expect(loop.points[0]).toEqual({ x: 1.5, y: 1.5 })
+    expect(loop.points[loop.points.length - 1]).toEqual({ x: 0.5, y: 0 })
+    expect(isOrthogonal(loop)).toBe(true)
+    expect(throughSymbols(design.schematic, loop)).toEqual([])
     expect(design.diagnostics.filter((d) => d.code === "auto-route")).toEqual([])
+  })
+
+  test("a repeated trace gets a wire of its own that goes around a symbol in the way, like the first", () => {
+    const body = [resistor("R1", 0, 0), resistor("R2", 4, 0), resistor("R3", 2, 0), trace("R1.pin2", "R2.pin1"), trace("R1.pin2", "R2.pin1")]
+    const layout = layoutSchematic(build(body.join("\n")))
+    expect(layout.wires).toHaveLength(2)
+    for (const wire of layout.wires) expect(throughSymbols(layout, wire)).toEqual([])
+  })
+})
+
+describe("the router on its own", () => {
+  const box = (minX: number, minY: number, maxX: number, maxY: number, pins: string[] = []) => ({ bounds: { minX, minY, maxX, maxY }, pins })
+  const spot = (x: number, y: number, side: Side): PinSpot => ({ end: { x, y }, side })
+  const inside = (p: Point, b: { minX: number; minY: number; maxX: number; maxY: number }, margin: number) =>
+    p.x >= b.minX - margin - 1e-9 && p.x <= b.maxX + margin + 1e-9 && p.y >= b.minY - margin - 1e-9 && p.y <= b.maxY + margin + 1e-9
+
+  test("a pin whose only way out lands in another symbol's margin is not routed through it, and warns", () => {
+    const boxes = [box(-0.5, -0.2, 0.5, 0.2, ["A.p"]), box(0.8, 0.1, 1.8, 0.5, ["B.p"]), box(3, -1.2, 4, -0.8, ["C.p"])]
+    const spots = new Map([["A.p", spot(0.5, 0, "right")], ["B.p", spot(1.8, 0.3, "right")], ["C.p", spot(3, -1, "left")]])
+    const routed = routeWires({ boxes, spots }, [], [{ id: "w", net: "n", from: "A.p", to: "C.p" }])
+    expect(routed.diagnostics.map((d) => d.code)).toEqual(["auto-route"])
+  })
+
+  test("a wire of the group running inside a symbol's margin is not a place to end on", () => {
+    const s = { minX: 1, minY: -0.2, maxX: 2, maxY: 0.2 }
+    const boxes = [box(s.minX, s.minY, s.maxX, s.maxY), box(5, -0.2, 6, 0.2, ["B.p"]), box(1, -2.2, 2, -1.8, ["A.p"])]
+    const spots = new Map([["B.p", spot(5, 0, "left")], ["A.p", spot(1.5, -1.8, "top")]])
+    const along = { wire: { id: "hand", net: "n", points: [{ x: 5, y: 0 }, { x: 4.5, y: 0 }, { x: 4.5, y: -0.3 }, { x: 1.2, y: -0.3 }] }, pins: ["B.p"] }
+    const routed = routeWires({ boxes, spots }, [along], [{ id: "w", net: "n", from: "A.p", to: "B.p" }])
+    const points = routed.wires[0]?.points ?? []
+    expect(routed.diagnostics).toEqual([])
+    expect(inside(points[points.length - 1] as Point, s, 0.1)).toBe(false)
+  })
+
+  test("a search that runs past its cap falls back with the warning", () => {
+    const boxes = [box(-0.5, -0.2, 0.5, 0.2, ["A.p"]), box(4, -0.2, 5, 0.2, ["B.p"]), box(2, -1, 2.4, 1)]
+    const spots = new Map([["A.p", spot(0.5, 0, "right")], ["B.p", spot(4, 0, "left")]])
+    const request = { id: "w", net: "n", from: "A.p", to: "B.p" }
+    expect(routeWires({ boxes, spots }, [], [request]).diagnostics).toEqual([])
+    const capped = routeWires({ boxes, spots }, [], [request], { maxExpansions: 10 })
+    expect(capped.diagnostics.map((d) => d.code)).toEqual(["auto-route"])
+    expect(capped.wires[0]?.points).toEqual([{ x: 0.5, y: 0 }, { x: 4, y: 0 }])
   })
 })
