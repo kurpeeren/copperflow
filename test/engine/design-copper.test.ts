@@ -54,8 +54,7 @@ describe("the design reads the layout file", () => {
   })
 
   test("floating copper and a named net the pads contradict are warnings among the violations", () => {
-    const floating = `${JSON.stringify({ t: "via", id: "v0001", at: { x: 0, y: -6 }, drill: 0.3, diameter: 0.8, layers: ["top", "bottom"], locked: false, by: "human" })}
-`
+    const floating = `${JSON.stringify({ t: "via", id: "v0001", at: { x: 0, y: -6 }, drill: 0.3, diameter: 0.8, layers: ["top", "bottom"], locked: false, by: "human" })}\n`
     const design = build(floating + trackLine("t0001", padOf("R1#1"), padOf("R2#1"), "GND"))
     const found = design.violations.filter((v) => v.code === "floating" || v.code === "mismatch")
     expect(found.map((v) => [v.id, v.severity, v.at])).toEqual([
@@ -67,8 +66,7 @@ describe("the design reads the layout file", () => {
 
   test("copper too close to a pad of another net is a clearance violation of the design", () => {
     const r3 = padOf("R3#2")
-    const near = `${JSON.stringify({ t: "track", id: "t0001", net: "SIG", layer: "top", width: 0.25, points: [{ x: r3.x - 2, y: r3.y + r3.height / 2 + 0.225 }, { x: r3.x + 2, y: r3.y + r3.height / 2 + 0.225 }], locked: false, by: "human" })}
-`
+    const near = `${JSON.stringify({ t: "track", id: "t0001", net: "SIG", layer: "top", width: 0.25, points: [{ x: r3.x - 2, y: r3.y + r3.height / 2 + 0.225 }, { x: r3.x + 2, y: r3.y + r3.height / 2 + 0.225 }], locked: false, by: "human" })}\n`
     const design = build(trackLine("t0002", padOf("R1#1"), padOf("R3#1")) + near)
     expect(design.violations.map((v) => v.id)).toContain("copper-clearance:R3#2|t0001")
   })

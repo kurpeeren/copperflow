@@ -46,6 +46,18 @@ describe("checkCircuit", () => {
     expect(result.warnings.map((g) => g.type)).toContain("unrouted")
   })
 
+  test("copper too close to another net fails the check with a copper-clearance group naming both", async () => {
+    const resistor = '    <resistor name="R1" resistance="1k" footprint="0603" pcbX={0} pcbY={0} />'
+    await writeFile(join(root, FILE), board([resistor, '    <trace from="R1.pin1" to="net.A" />'].join("\n")))
+    const record = (id: string, y: number) =>
+      JSON.stringify({ t: "track", id, layer: "top", width: 0.25, points: [{ x: -5, y }, { x: -3, y }], locked: false, by: "human" })
+    await writeFile(join(root, "main.circuit.layout.json"), [record("t0001", 3), record("t0002", 3.4), ""].join("\n"))
+    const result = await checkCircuit(root, FILE, { engine: inProcessEngine })
+    expect(result.ok).toBe(false)
+    expect(result.errors.find((g) => g.type === "copper-clearance")?.messages.join(" ")).toContain("t0001 and t0002 are 0.150 mm apart")
+    expect(result.warnings.find((g) => g.type === "floating")?.count).toBe(2)
+  })
+
   test("a floating EN pin fails the check with a pin-unconnected group naming U1.pin3", async () => {
     const result = await checkFloating()
     expect(result.ok).toBe(false)
