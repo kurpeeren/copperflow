@@ -3,7 +3,8 @@ import { buildDesign } from "../src/engine/design.js"
 import { groundSymbol } from "../src/engine/symbols/index.js"
 import { HIGHLIGHT_DIM, PALETTE } from "../studio/src/pcb/ctx.js"
 import { worldToScreen } from "../studio/src/pcb/geometry.js"
-import { SCHEMATIC_PALETTE, drawSchematic, sheetBoxes, type SchematicDrawOptions } from "../studio/src/pcb/schematic-draw.js"
+import { schematicTheme } from "../studio/src/pcb/schematic-theme.js"
+import { drawSchematic, sheetBoxes, type SchematicDrawOptions } from "../studio/src/pcb/schematic-draw.js"
 import { recorder } from "./helpers/fake-ctx.js"
 
 const CIRCUIT = `export default () => (
@@ -52,12 +53,12 @@ describe("drawSchematic", () => {
 
   test("an active pin is drawn in activePort", () => {
     const { records } = draw({ activePins: ["R1.pin1"] })
-    expect(records.some((r) => r.name === "fill" && r.fillStyle === SCHEMATIC_PALETTE.activePort)).toBe(true)
-    expect(draw().records.some((r) => r.fillStyle === SCHEMATIC_PALETTE.activePort)).toBe(false)
+    expect(records.some((r) => r.name === "fill" && r.fillStyle === schematicTheme.highlight)).toBe(true)
+    expect(draw().records.some((r) => r.fillStyle === schematicTheme.highlight)).toBe(false)
   })
 
   test("showPins marks every pin", () => {
-    const fills = (rec: ReturnType<typeof draw>) => rec.records.filter((r) => r.name === "fill" && r.fillStyle === SCHEMATIC_PALETTE.port).length
+    const fills = (rec: ReturnType<typeof draw>) => rec.records.filter((r) => r.name === "fill" && r.fillStyle === schematicTheme.pin).length
     expect(fills(draw({ showPins: true }))).toBe(4)
     expect(fills(draw())).toBe(0)
   })
@@ -65,8 +66,8 @@ describe("drawSchematic", () => {
   test("a ground label draws the ground shape", () => {
     expect(layout.labels.some((l) => l.style === "ground")).toBe(true)
     const labels = layout.labels.filter((l) => l.style === "ground").length
-    const strokes = draw().records.filter((r) => r.name === "stroke" && r.strokeStyle === SCHEMATIC_PALETTE.netLabel)
-    expect(strokes.length).toBe(labels * groundSymbol().length)
+    const strokes = draw().records.filter((r) => r.name === "stroke" && r.strokeStyle === schematicTheme.symbolOutline)
+    expect(strokes.length).toBeGreaterThanOrEqual(labels * groundSymbol().length)
   })
 
   test("every pending wire is drawn dashed", () => {
@@ -107,9 +108,9 @@ describe("drawSchematic", () => {
     ])
     const rec = recorder()
     drawSchematic(rec.ctx as never, auto, VIEW, { ratio: 1 })
-    const outlines = rec.records.filter((r) => r.name === "stroke" && r.strokeStyle === SCHEMATIC_PALETTE.outline)
+    const outlines = rec.records.filter((r) => r.name === "stroke" && r.strokeStyle === schematicTheme.symbolOutline)
     expect(new Set(outlines.map((r) => r.globalAlpha))).toEqual(new Set([1, 0.6]))
-    expect(rec.records.filter((r) => r.name === "stroke" && r.strokeStyle === SCHEMATIC_PALETTE.autoBox)).toHaveLength(1)
+    expect(rec.records.filter((r) => r.name === "stroke" && r.strokeStyle === schematicTheme.autoBox)).toHaveLength(1)
     expect(rec.records.find((r) => r.name === "fillText" && r.args[0] === "R2")?.globalAlpha).toBe(0.6)
     expect(rec.records.find((r) => r.name === "fillText" && r.args[0] === "R1")?.globalAlpha).toBe(1)
   })
@@ -121,14 +122,63 @@ describe("drawSchematic", () => {
   })
 })
 
+describe("schematic colours", () => {
+  const strokes = (rec: ReturnType<typeof draw>, color: string) => rec.records.filter((r) => r.name === "stroke" && r.strokeStyle === color)
+  const texts = (rec: ReturnType<typeof draw>, text: string) => rec.records.filter((r) => r.name === "fillText" && r.args[0] === text)
+
+  test("wires are green and the sheet has no net label box", () => {
+    expect(strokes(draw(), schematicTheme.wire)).toHaveLength(layout.wires.length)
+    const labelled = buildDesign({ [FILE]: LABELLED }, FILE).schematic
+    const rec = recorder()
+    drawSchematic(rec.ctx as never, labelled, VIEW, { ratio: 1 })
+    const fills = rec.records.filter((r) => r.name === "fill").map((r) => String(r.fillStyle))
+    expect(fills.every((f) => f === schematicTheme.junction)).toBe(true)
+    expect(texts(rec, "EN")[0]?.fillStyle).toBe(schematicTheme.netName)
+  })
+
+  test("designators are blue, values navy, pin numbers black", () => {
+    const rec = draw()
+    expect(texts(rec, "R1")[0]?.fillStyle).toBe(schematicTheme.designator)
+    expect(texts(rec, "1k")[0]?.fillStyle).toBe(schematicTheme.value)
+    expect(texts(rec, "1")[0]?.fillStyle).toBe(schematicTheme.pinNumber)
+  })
+
+  test("symbols are outlined in the symbol colour and nothing is filled with it", () => {
+    const rec = draw()
+    expect(strokes(rec, schematicTheme.symbolOutline).length).toBeGreaterThan(0)
+    expect(rec.records.some((r) => r.name === "fill" && r.fillStyle === schematicTheme.symbolOutline)).toBe(false)
+  })
+
+  test("the flag of a power net is drawn in the symbol colour with its name in the net colour", () => {
+    const power = buildDesign(
+      { [FILE]: LABELLED.replace("net.EN", "net.VCC").replace("</board>", `<trace from=".R2 > .pin2" to="net.VCC" schematicRouteHints={[{ x: 2, y: 2 }]} /></board>`) },
+      FILE,
+    ).schematic
+    const rec = recorder()
+    drawSchematic(rec.ctx as never, power, VIEW, { ratio: 1 })
+    const name = rec.records.find((r) => r.name === "fillText" && r.args[0] === "VCC")
+    expect(name?.fillStyle).toBe(schematicTheme.netName)
+  })
+
+  test("junctions are filled red dots", () => {
+    const rec = draw()
+    expect(layout.junctions.length).toBeGreaterThan(0)
+    expect(rec.records.filter((r) => r.name === "fill" && r.fillStyle === schematicTheme.junction)).toHaveLength(layout.junctions.length)
+  })
+
+  test("a lit net uses the highlight colour, not the PCB's", () => {
+    expect(schematicTheme.highlight).toBe("#FF9933")
+  })
+})
+
 describe("highlight", () => {
   const wiresOf = (net: string) => layout.wires.filter((w) => w.net === net).length
   const strokes = (rec: ReturnType<typeof draw>, color: unknown) => rec.records.filter((r) => r.name === "stroke" && r.strokeStyle === color)
 
   test("wires of the net use the highlight colour and the others are dimmed", () => {
     const rec = draw({ highlight: { net: "net:R1.pin2" } })
-    expect(strokes(rec, PALETTE.highlight).filter((r) => r.globalAlpha === 1)).toHaveLength(wiresOf("net:R1.pin2"))
-    const others = strokes(rec, SCHEMATIC_PALETTE.wire)
+    expect(strokes(rec, schematicTheme.highlight).filter((r) => r.globalAlpha === 1)).toHaveLength(wiresOf("net:R1.pin2"))
+    const others = strokes(rec, schematicTheme.wire)
     expect(others).toHaveLength(layout.wires.length - wiresOf("net:R1.pin2"))
     expect(others.every((r) => r.globalAlpha === HIGHLIGHT_DIM)).toBe(true)
   })
@@ -139,16 +189,16 @@ describe("highlight", () => {
 
   test("without a highlight nothing is dimmed or lit", () => {
     const rec = draw()
-    expect(strokes(rec, PALETTE.highlight)).toHaveLength(0)
-    expect(strokes(rec, SCHEMATIC_PALETTE.wire).every((r) => r.globalAlpha === 1)).toBe(true)
+    expect(strokes(rec, schematicTheme.highlight)).toHaveLength(0)
+    expect(strokes(rec, schematicTheme.wire).every((r) => r.globalAlpha === 1)).toBe(true)
   })
 
   test("labels of the net are lit and other labels are dimmed", () => {
     const power = buildDesign({ [FILE]: LABELLED }, FILE).schematic
     const rec = recorder()
     drawSchematic(rec.ctx as never, power, VIEW, { ratio: 1, highlight: { net: "net.GND" } })
-    const lit = rec.records.filter((r) => r.name === "stroke" && r.strokeStyle === PALETTE.highlight)
-    const dim = rec.records.filter((r) => r.name === "stroke" && r.strokeStyle === SCHEMATIC_PALETTE.netLabel)
+    const lit = rec.records.filter((r) => r.name === "stroke" && r.strokeStyle === schematicTheme.highlight)
+    const dim = rec.records.filter((r) => r.name === "stroke" && r.strokeStyle === schematicTheme.symbolOutline)
     expect(lit.length).toBeGreaterThan(0)
     expect(dim.length).toBeGreaterThan(0)
     expect(dim.every((r) => r.globalAlpha === HIGHLIGHT_DIM)).toBe(true)
@@ -156,14 +206,14 @@ describe("highlight", () => {
   })
 
   test("symbols are dimmed, except those with a pin on the net", () => {
-    const outline = (rec: ReturnType<typeof draw>) => new Set(strokes(rec, SCHEMATIC_PALETTE.outline).map((r) => r.globalAlpha))
+    const outline = (rec: ReturnType<typeof draw>) => new Set(strokes(rec, schematicTheme.symbolOutline).map((r) => r.globalAlpha))
     expect(outline(draw({ highlight: { net: "net.GND" } }))).toEqual(new Set([HIGHLIGHT_DIM]))
     expect(outline(draw({ highlight: { net: "net.GND", pins: ["R1.pin1"] } }))).toEqual(new Set([1, HIGHLIGHT_DIM]))
     expect(draw({ highlight: { net: "net.GND" } }).records.find((r) => r.name === "fillText" && r.args[0] === "R1")?.globalAlpha).toBe(HIGHLIGHT_DIM)
   })
 
   test("pins on the net are marked even when pins are not shown", () => {
-    const lit = (rec: ReturnType<typeof draw>) => rec.records.filter((r) => r.name === "fill" && r.fillStyle === PALETTE.highlight).length
+    const lit = (rec: ReturnType<typeof draw>) => rec.records.filter((r) => r.name === "fill" && r.fillStyle === schematicTheme.highlight).length
     const without = lit(draw({ highlight: { net: "net:R1.pin2" } }))
     expect(lit(draw({ highlight: { net: "net:R1.pin2", pins: ["R1.pin2", "R2.pin2"] } })) - without).toBe(2)
   })
@@ -186,7 +236,7 @@ describe("highlight", () => {
     const lit = (highlight: SchematicDrawOptions["highlight"]) => {
       const rec = recorder()
       drawSchematic(rec.ctx as never, aliased, VIEW, { ratio: 1, ...(highlight ? { highlight } : {}) })
-      return rec.records.filter((r) => r.name === "stroke" && r.strokeStyle === PALETTE.highlight).length
+      return rec.records.filter((r) => r.name === "stroke" && r.strokeStyle === schematicTheme.highlight).length
     }
     expect(lit({ net: "net.A" })).toBeLessThan(lit({ net: "net.A", aliases: ["net.A", "net.B"] }))
     expect(lit({ net: "net.A", aliases: ["net.A", "net.B"] })).toBeGreaterThan(0)
@@ -196,7 +246,7 @@ describe("highlight", () => {
     const radii = (scale: number, pins: string[]) => {
       const rec = recorder()
       drawSchematic(rec.ctx as never, layout, { camera: { cx: 1.5, cy: 0, scale }, size: VIEW.size }, { ratio: 1, highlight: { net: "net:R1.pin2", pins } })
-      return rec.records.filter((r) => r.name === "arc" && r.fillStyle === PALETTE.highlight).map((r) => (r.args[2] as number) * scale)
+      return rec.records.filter((r) => r.name === "arc" && r.fillStyle === schematicTheme.highlight).map((r) => (r.args[2] as number) * scale)
     }
     for (const scale of [10, 21, 100, 400]) {
       const rest = radii(scale, [])

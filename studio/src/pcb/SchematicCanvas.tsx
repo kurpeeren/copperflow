@@ -14,7 +14,9 @@ import { highlightOf, partNets, schematicNetAt, type Highlight } from "./highlig
 import { labelHitBox } from "./label-drag"
 import { NameInput, paletteHint } from "./LabelPalette"
 import type { ViolationMarker } from "./markers"
-import { drawOutline, drawWirePreview } from "./overlays"
+import { drawOutline, drawWirePreview, type OverlayLook } from "./overlays"
+import { drawSchematicGrid } from "./schematic-grid"
+import { schematicTheme } from "./schematic-theme"
 import { drawSchematic } from "./schematic-draw"
 import { cursorFor, pointerHandlers, useCanvasGestures, type Gesture } from "./use-canvas-gestures"
 import { useDraggedLabel, useLabelDrag, type LabelTools, type MovingLabel } from "./use-label-drag"
@@ -22,7 +24,7 @@ import { useLabelPalette } from "./use-label-palette"
 import { usePartKeys } from "./use-part-keys"
 import { useWireTool } from "./use-wire-tool"
 
-const BACKGROUND = "#1b1e23"
+const SHEET_LOOK: OverlayLook = { selected: schematicTheme.selection, hover: schematicTheme.hover, noteStroke: schematicTheme.selection, noteFill: schematicTheme.selectionFill }
 const EMPTY_SHEET_CAMERA: Camera = { cx: 0, cy: 0, scale: 60 }
 const FIT_MARGIN = 0.06
 const SHEET_MARGIN = 1
@@ -62,7 +64,7 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
   const { ghosts, ghostWires, armed } = palette
   useEffect(() => {
     const view = camera ?? EMPTY_SHEET_CAMERA
-    const prepared = prepareCanvas(canvasRef.current, size, view, BACKGROUND)
+    const prepared = prepareCanvas(canvasRef.current, size, view, schematicTheme.background, drawSchematicGrid)
     if (!prepared) return
     const { ctx, ratio } = prepared
     drawSchematic(ctx, design.schematic, { camera: view, size }, {
@@ -78,11 +80,11 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
       ...(activeViolation ? { activeViolation } : {}),
     })
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
-    if (preview) drawWirePreview(ctx, view, size, preview, "drawing")
+    if (preview) drawWirePreview(ctx, view, size, preview, "drawing", schematicTheme.wire)
     const noteBox = gesture?.kind === "box" ? gesture : undefined
     const shownHover = drawing ? undefined : hover
-    drawEditorLayer(ctx, view, size, { view: "schematic", boxes, moving, hover: shownHover, selected, locked, marks: circuit.annotations.marks, noteBox })
-    if (hoverLabel && !drawing && !gesture) drawOutline(ctx, view, size, labelHitBox(hoverLabel), { x: 0, y: 0 }, "hover")
+    drawEditorLayer(ctx, view, size, { view: "schematic", boxes, moving, hover: shownHover, selected, locked, marks: circuit.annotations.marks, noteBox, look: SHEET_LOOK })
+    if (hoverLabel && !drawing && !gesture) drawOutline(ctx, view, size, labelHitBox(hoverLabel), { x: 0, y: 0 }, "hover", SHEET_LOOK)
   }, [canvasRef, design, camera, size, wiring, drawing, activePins, pendingWires, preview, moving, movingLabels, hoverLabel, boxes, hover, selected, locked, circuit, gesture, ghosts, ghostWires, armed, highlight, markers, activeViolation])
 }
 

@@ -1,0 +1,66 @@
+import { readFileSync } from "node:fs"
+import { describe, expect, test } from "vitest"
+import { gridLineSpacing, gridLinePositions, SHEET_GRID } from "../studio/src/pcb/schematic-grid.js"
+import { schematicTheme } from "../studio/src/pcb/schematic-theme.js"
+
+const SPEC = readFileSync(new URL("../docs/studio-easyeda-parity.md", import.meta.url), "utf8")
+const TABLE = SPEC.slice(SPEC.indexOf("**Schematic**"), SPEC.indexOf("**PCB**"))
+
+/** The spec's row for an item, as its colours in the order they appear. */
+function specColours(item: string): string[] {
+  const row = TABLE.split("\n").find((line) => line.startsWith(`| ${item} |`))
+  if (!row) throw new Error(`no spec row for ${item}`)
+  return [...row.matchAll(/`(#[0-9A-Fa-f]{6})`/g)].map((m) => (m[1] as string).toUpperCase())
+}
+
+describe("schematicTheme", () => {
+  const rows: [string, (keyof typeof schematicTheme)[]][] = [
+    ["background", ["background"]],
+    ["grid", ["grid"]],
+    ["wire, bus", ["wire", "bus"]],
+    ["junction", ["junction"]],
+    ["symbol outline", ["symbolOutline"]],
+    ["pin", ["pin"]],
+    ["pin name, pin number", ["pinName", "pinNumber"]],
+    ["designator, net name", ["designator", "netName"]],
+    ["value and other properties", ["value"]],
+    ["no-connect flag", ["noConnect"]],
+    ["selection", ["selection"]],
+    ["highlight", ["highlight"]],
+  ]
+  test.each(rows)("%s matches the spec table", (item, keys) => {
+    const [colour] = specColours(item)
+    for (const key of keys) expect(schematicTheme[key].toUpperCase()).toBe(colour)
+  })
+
+  test("the drawing border is the line colour and the title text the second colour", () => {
+    const [lines, text] = specColours("drawing border, title block")
+    expect(schematicTheme.border.toUpperCase()).toBe(lines)
+    expect(schematicTheme.titleText.toUpperCase()).toBe(text)
+  })
+
+  test("the sheet's CSS background is the same colour", () => {
+    const css = readFileSync(new URL("../studio/src/styles.css", import.meta.url), "utf8")
+    const block = css.slice(css.indexOf(".schematic-canvas {"))
+    expect(block.slice(0, block.indexOf("}")).toUpperCase()).toContain(schematicTheme.background)
+  })
+})
+
+describe("schematic grid", () => {
+  test("a grid step of 8 px or more gets a line each", () => {
+    expect(gridLineSpacing(SHEET_GRID, 80)).toBe(SHEET_GRID)
+    expect(gridLineSpacing(SHEET_GRID, 100)).toBe(SHEET_GRID)
+  })
+
+  test("a smaller step gets a line every fifth step", () => {
+    expect(gridLineSpacing(SHEET_GRID, 79)).toBeCloseTo(0.5)
+  })
+
+  test("lines cover the view at the chosen spacing", () => {
+    const { xs, ys } = gridLinePositions({ cx: 0, cy: 0, scale: 100 }, { width: 200, height: 100 }, SHEET_GRID)
+    expect(xs[0]).toBeLessThanOrEqual(-1)
+    expect(xs[xs.length - 1]).toBeGreaterThanOrEqual(1)
+    expect(xs[1] as number - (xs[0] as number)).toBeCloseTo(SHEET_GRID)
+    expect(ys.length).toBeGreaterThan(5)
+  })
+})

@@ -50,7 +50,19 @@ export function drawGrid(ctx: CanvasRenderingContext2D, camera: Camera, size: Si
   ctx.stroke()
 }
 
-/** A selection outline (copper) or hover outline (dashed) around a part, shifted by a drag. */
+/** The colours of the overlays that differ between the canvases. */
+export interface OverlayLook {
+  selected: string
+  hover: string
+  /** Stroke and fill of the note box. */
+  noteStroke: string
+  noteFill: string
+}
+
+/** The PCB's look: copper selection, pale hover. */
+export const PCB_LOOK: OverlayLook = { selected: COPPER, hover: "rgb(233 230 223 / 45%)", noteStroke: COPPER, noteFill: "rgb(201 138 75 / 10%)" }
+
+/** A selection outline or hover outline (dashed) around a part, shifted by a drag. */
 export function drawOutline(
   ctx: CanvasRenderingContext2D,
   camera: Camera,
@@ -58,13 +70,14 @@ export function drawOutline(
   box: Box,
   offset: Point,
   kind: "selected" | "hover",
+  look: OverlayLook = PCB_LOOK,
 ): void {
   const a = worldToScreen(camera, size, { x: box.minX + offset.x, y: box.maxY + offset.y })
   const b = worldToScreen(camera, size, { x: box.maxX + offset.x, y: box.minY + offset.y })
   const pad = 3
   ctx.save()
   ctx.lineWidth = kind === "selected" ? 1.5 : 1
-  ctx.strokeStyle = kind === "selected" ? COPPER : "rgb(233 230 223 / 45%)"
+  ctx.strokeStyle = kind === "selected" ? look.selected : look.hover
   ctx.setLineDash(kind === "selected" ? [] : [4, 3])
   ctx.strokeRect(a.x - pad, a.y - pad, b.x - a.x + pad * 2, b.y - a.y + pad * 2)
   ctx.restore()
@@ -115,10 +128,10 @@ export function drawMark(ctx: CanvasRenderingContext2D, camera: Camera, size: Si
 }
 
 /** The box drawn with Shift-drag to place a note. */
-export function drawSelectionBox(ctx: CanvasRenderingContext2D, a: Point, b: Point): void {
+export function drawSelectionBox(ctx: CanvasRenderingContext2D, a: Point, b: Point, look: OverlayLook = PCB_LOOK): void {
   ctx.save()
-  ctx.fillStyle = "rgb(201 138 75 / 10%)"
-  ctx.strokeStyle = COPPER
+  ctx.fillStyle = look.noteFill
+  ctx.strokeStyle = look.noteStroke
   ctx.setLineDash([5, 4])
   ctx.fillRect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y))
   ctx.strokeRect(Math.min(a.x, b.x) + 0.5, Math.min(a.y, b.y) + 0.5, Math.abs(b.x - a.x), Math.abs(b.y - a.y))
@@ -145,12 +158,12 @@ function range(from: number, to: number): number[] {
  * A wire being drawn (solid, ending in a ring) or one waiting for the build (dashed), along
  * `points` in world units.
  */
-export function drawWirePreview(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, points: Point[], kind: "drawing" | "pending"): void {
+export function drawWirePreview(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, points: Point[], kind: "drawing" | "pending", color: string = COPPER): void {
   const screen = points.map((p) => worldToScreen(camera, size, p))
   const last = screen[screen.length - 1]
   if (!last) return
   ctx.save()
-  ctx.strokeStyle = COPPER
+  ctx.strokeStyle = color
   ctx.lineWidth = 2
   ctx.lineCap = "round"
   ctx.lineJoin = "round"

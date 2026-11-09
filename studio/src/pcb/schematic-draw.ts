@@ -2,10 +2,11 @@
 // Only the symbol library comes from the engine at run time: its other modules reach Node-only code the Studio bundle cannot hold.
 import type { PlacedSymbol, SchematicLayout, NetLabel } from "../../../src/engine/schematic.js"
 import { groundSymbol, powerSymbol, type SchSymbol, type Shape } from "../../../src/engine/symbols/index.js"
-import { anchorAlignment, HIGHLIGHT_DIM, PALETTE, type Ctx } from "./ctx.js"
+import { anchorAlignment, HIGHLIGHT_DIM, type Ctx } from "./ctx.js"
 import { labelTag, NET_LABEL_TEXT } from "./label-tag.js"
 import { worldToScreen, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
 import { drawViolationMarkers, type ViolationMarker } from "./markers.js"
+import { schematicTheme as theme } from "./schematic-theme.js"
 
 export interface SchematicDrawOptions {
   /** Device pixels per CSS pixel. */
@@ -28,22 +29,6 @@ export interface SchematicDrawOptions {
   violations?: readonly ViolationMarker[]
   /** The violation picked in the DRC tab, whose ring is thicker. */
   activeViolation?: string
-}
-
-export const SCHEMATIC_PALETTE = {
-  body: "#22262c",
-  outline: "#d9d4c7",
-  pinLabel: "#e9e6df",
-  pinNumber: "#959ca6",
-  reference: "#e0a46a",
-  value: "#959ca6",
-  wire: "#c98a4b",
-  junction: "#e0a46a",
-  netLabel: "#6ea8d6",
-  netLabelFill: "rgb(110 168 214 / 14%)",
-  port: "#6ea8d6",
-  activePort: "#ffd08a",
-  autoBox: "rgb(217 212 199 / 45%)",
 }
 
 type View = { camera: Camera; size: Size }
@@ -84,10 +69,10 @@ const NUMBER_RISE = 0.07
 const AUTO_PLACED_ALPHA = 0.6
 const AUTO_DASH_PX = [4, 3]
 const TEXT_COLORS: Record<Role, string> = {
-  reference: SCHEMATIC_PALETTE.reference,
-  value: SCHEMATIC_PALETTE.value,
-  "pin-name": SCHEMATIC_PALETTE.pinLabel,
-  "pin-number": SCHEMATIC_PALETTE.pinNumber,
+  reference: theme.designator,
+  value: theme.value,
+  "pin-name": theme.pinName,
+  "pin-number": theme.pinNumber,
 }
 const OUTWARD: Record<NetLabel["side"], Point> = { right: { x: 1, y: 0 }, left: { x: -1, y: 0 }, top: { x: 0, y: 1 }, bottom: { x: 0, y: -1 } }
 
@@ -165,7 +150,7 @@ function dot(ctx: Ctx, p: Point, r: number): void {
 /** How a net's wires and labels are drawn: lit when it is the highlighted net, dimmed when another is, else as usual. */
 function toneOf(net: string, highlight: SchematicDrawOptions["highlight"]): { color: string | undefined; alpha: number } {
   if (!highlight) return { color: undefined, alpha: 1 }
-  return net === highlight.net || highlight.aliases?.includes(net) ? { color: PALETTE.highlight, alpha: 1 } : { color: undefined, alpha: HIGHLIGHT_DIM }
+  return net === highlight.net || highlight.aliases?.includes(net) ? { color: theme.highlight, alpha: 1 } : { color: undefined, alpha: HIGHLIGHT_DIM }
 }
 
 /** A symbol is dimmed while a net is highlighted, unless one of its pins is on that net. */
@@ -192,20 +177,20 @@ function drawWires(ctx: Ctx, layout: SchematicLayout, options: SchematicDrawOpti
   for (const wire of layout.wires) {
     if (options.movingLabels?.some((m) => m.hideWire === wire.id)) continue
     const tone = toneOf(wire.net, options.highlight)
-    ctx.strokeStyle = tone.color ?? SCHEMATIC_PALETTE.wire
+    ctx.strokeStyle = tone.color ?? theme.wire
     ctx.globalAlpha = tone.alpha
     path(ctx, wire.points)
     ctx.stroke()
   }
   for (const junction of layout.junctions) {
     const lit = options.highlight !== undefined && junctionLit(layout, junction, options.highlight)
-    ctx.fillStyle = lit ? PALETTE.highlight : SCHEMATIC_PALETTE.junction
+    ctx.fillStyle = lit ? theme.highlight : theme.junction
     ctx.globalAlpha = options.highlight && !lit ? HIGHLIGHT_DIM : 1
     dot(ctx, junction, Math.max(MIN_JUNCTION, JUNCTION_PX * px))
     ctx.fill()
   }
   ctx.globalAlpha = 1
-  ctx.strokeStyle = SCHEMATIC_PALETTE.wire
+  ctx.strokeStyle = theme.wire
   const pending = (options.pending ?? []).filter((points) => points.length >= 2)
   if (pending.length === 0) return
   ctx.setLineDash(DASH)
@@ -222,7 +207,7 @@ function drawSymbol(ctx: Ctx, placed: PlacedSymbol, shift: Point, pen: { line: (
   const own: Label[] = []
   ctx.globalAlpha = alpha
   ctx.lineWidth = pen.line(SYMBOL_WIDTH)
-  drawShapes(ctx, placed.symbol.shapes, frame, SCHEMATIC_PALETTE.outline, own)
+  drawShapes(ctx, placed.symbol.shapes, frame, theme.symbolOutline, own)
   ctx.globalAlpha = 1
   if (placed.autoPlaced) drawAutoBox(ctx, symbolBox(placed), shift, pen.px)
   if (!placed.symbol.shapes.some((shape) => shape.type === "text" && shape.role === "pin-number")) own.push(...pinNumbers(placed.symbol, frame))
@@ -230,7 +215,7 @@ function drawSymbol(ctx: Ctx, placed: PlacedSymbol, shift: Point, pen: { line: (
 }
 
 function drawAutoBox(ctx: Ctx, box: Box, shift: Point, px: number): void {
-  ctx.strokeStyle = SCHEMATIC_PALETTE.autoBox
+  ctx.strokeStyle = theme.autoBox
   ctx.lineWidth = px
   ctx.setLineDash(AUTO_DASH_PX.map((dash) => dash * px))
   path(ctx, [
@@ -251,7 +236,7 @@ function pinNumbers(symbol: SchSymbol, frame: Frame): Label[] {
     const local = { x: pin.end.x - inward.x * NUMBER_INSET, y: pin.end.y - inward.y * NUMBER_INSET }
     const alongLead = inward.x !== 0
     const lifted = alongLead ? { x: local.x, y: local.y + NUMBER_RISE } : { x: local.x + NUMBER_RISE, y: local.y }
-    return { text: String(pin.number), at: place(lifted, frame), size: 0.1, anchor: "center", color: SCHEMATIC_PALETTE.pinNumber }
+    return { text: String(pin.number), at: place(lifted, frame), size: 0.1, anchor: "center", color: theme.pinNumber }
   })
 }
 
@@ -314,29 +299,16 @@ function drawLabel(ctx: Ctx, label: NetLabel, line: (w: number) => number, texts
 }
 
 function drawLabelShape(ctx: Ctx, label: NetLabel, line: (w: number) => number, texts: Label[], tone: Tone): void {
-  const color = tone.color ?? SCHEMATIC_PALETTE.netLabel
   if (label.style !== "label") {
     const shapes = label.style === "ground" ? groundSymbol() : powerSymbol(label.text)
     ctx.lineWidth = line(SYMBOL_WIDTH)
     const first = texts.length
-    drawShapes(ctx, shapes, { x: label.at.x, y: label.at.y, rotation: 0 }, color, texts)
-    for (let i = first; i < texts.length; i++) texts[i] = { ...(texts[i] as Label), alpha: tone.alpha }
+    drawShapes(ctx, shapes, { x: label.at.x, y: label.at.y, rotation: 0 }, tone.color ?? theme.symbolOutline, texts)
+    for (let i = first; i < texts.length; i++) texts[i] = { ...(texts[i] as Label), color: tone.color ?? theme.netName, alpha: tone.alpha }
     return
   }
-  const { middle, box, upright } = labelTag(label)
-  ctx.fillStyle = SCHEMATIC_PALETTE.netLabelFill
-  ctx.strokeStyle = color
-  ctx.lineWidth = line(0.015)
-  path(ctx, [
-    { x: box.minX, y: box.minY },
-    { x: box.maxX, y: box.minY },
-    { x: box.maxX, y: box.maxY },
-    { x: box.minX, y: box.maxY },
-  ])
-  ctx.closePath()
-  ctx.fill()
-  ctx.stroke()
-  texts.push({ text: label.text, at: middle, size: NET_LABEL_TEXT, anchor: "center", color, rotation: upright ? 90 : 0, alpha: tone.alpha })
+  const { middle, upright } = labelTag(label)
+  texts.push({ text: label.text, at: middle, size: NET_LABEL_TEXT, anchor: "center", color: tone.color ?? theme.netName, rotation: upright ? 90 : 0, alpha: tone.alpha })
 }
 
 function drawPins(ctx: Ctx, layout: SchematicLayout, options: SchematicDrawOptions, px: number, shiftOf: (s: PlacedSymbol) => Point): void {
@@ -346,7 +318,7 @@ function drawPins(ctx: Ctx, layout: SchematicLayout, options: SchematicDrawOptio
       const lit = options.highlight?.pins?.includes(id) ?? false
       const active = (options.activePins?.includes(id) ?? false) || lit
       if (!active && !options.showPins) continue
-      ctx.fillStyle = lit ? PALETTE.highlight : active ? SCHEMATIC_PALETTE.activePort : SCHEMATIC_PALETTE.port
+      ctx.fillStyle = active ? theme.highlight : theme.pin
       const radius = lit ? Math.min(PIN_DOT_PX * px, Math.max(LIT_PIN_WORLD, LIT_PIN_MIN_PX * px)) : (active ? ACTIVE_PIN_FACTOR : 1) * PIN_DOT_PX * px
       dot(ctx, { x: end.x + shift.x, y: end.y + shift.y }, radius)
       ctx.fill()

@@ -7,7 +7,7 @@ import type { FocusRequest } from "../checks-panel-state"
 import type { Highlight } from "./highlight"
 import type { CameraCommand } from "../shell/command-owners"
 import { useCommands } from "../shell/commands"
-import { drawGrid, drawLockBadge, drawMark, drawOutline, drawSelectionBox } from "./overlays"
+import { drawGrid, drawLockBadge, drawMark, drawOutline, drawSelectionBox, PCB_LOOK, type OverlayLook } from "./overlays"
 import { centredCamera, fitCamera, zoomAt, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import type { ViolationMarker } from "./markers"
 import { pcbBoxes } from "./pcb-draw"
@@ -133,6 +133,7 @@ export function prepareCanvas(
   size: Size,
   camera: Camera,
   background: string,
+  grid: (ctx: CanvasRenderingContext2D, camera: Camera, size: Size) => void = drawGrid,
 ): { ctx: CanvasRenderingContext2D; ratio: number } | null {
   if (!canvas || size.width === 0) return null
   const ratio = window.devicePixelRatio || 1
@@ -144,7 +145,7 @@ export function prepareCanvas(
   ctx.fillStyle = background
   ctx.fillRect(0, 0, canvas.width, canvas.height)
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
-  drawGrid(ctx, camera, size)
+  grid(ctx, camera, size)
   return { ctx, ratio }
 }
 
@@ -159,20 +160,23 @@ export interface EditorLayer {
   marks: Annotations["marks"]
   /** The note box being drawn, in screen pixels. */
   noteBox: { start: Point; current: Point } | undefined
+  /** Overlay colours; the PCB's when absent. */
+  look?: OverlayLook
 }
 
 /** Hover and selection outlines, lock badges, the view's notes and the note box, in CSS pixels. */
 export function drawEditorLayer(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, layer: EditorLayer): void {
+  const look = layer.look ?? PCB_LOOK
   for (const part of layer.boxes) {
     const offset = layer.moving && part.name === layer.moving.name ? layer.moving.offset : { x: 0, y: 0 }
-    if (part.name === layer.hover && part.name !== layer.selected) drawOutline(ctx, camera, size, part.box, offset, "hover")
-    if (part.name === layer.selected) drawOutline(ctx, camera, size, part.box, offset, "selected")
+    if (part.name === layer.hover && part.name !== layer.selected) drawOutline(ctx, camera, size, part.box, offset, "hover", look)
+    if (part.name === layer.selected) drawOutline(ctx, camera, size, part.box, offset, "selected", look)
     if (layer.locked.has(part.name)) drawLockBadge(ctx, camera, size, part.box)
   }
   for (const mark of layer.marks) {
     if (mark.view === layer.view && mark.x !== undefined && mark.y !== undefined) drawMark(ctx, camera, size, { x: mark.x, y: mark.y }, mark.id, mark.text)
   }
-  if (layer.noteBox) drawSelectionBox(ctx, layer.noteBox.start, layer.noteBox.current)
+  if (layer.noteBox) drawSelectionBox(ctx, layer.noteBox.start, layer.noteBox.current, look)
 }
 
 /** A key meant for the canvas: not typed into a field, and not a browser shortcut such as Ctrl+R. */
