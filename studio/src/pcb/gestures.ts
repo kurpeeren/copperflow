@@ -1,7 +1,7 @@
 // The steps of a pointer gesture on either canvas, from press to release. press.ts decides what a press starts; these
-// follow the pointer and finish the gesture: a pan, a drag of the selection or of a net label, a selection box, or
-// the armed Note box tool's box. gestureSession holds the gesture between events; use-canvas-gestures.ts draws it.
-// Plain TypeScript with .js imports, so the tests can run it.
+// follow the pointer and finish the gesture: a pan, a drag of the selection, of a net label or of a wire's segment or
+// corner (wire-drag.ts), a selection box, or the armed Note box tool's box. gestureSession holds the gesture between
+// events; use-canvas-gestures.ts draws it. Plain TypeScript with .js imports, so the tests can run it.
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { Selection, SelectionChange } from "../selection.js"
 import { boxMode, boxSelection, partsInBox } from "./box-select.js"
@@ -12,7 +12,10 @@ import { anchorLookup, moveEach, type GroupEdit, type GroupEditActions } from ".
 import { VIEWS, ZERO, type Anchor, type SourceCircuit, type View } from "./positions.js"
 import { areaCamera } from "./view-fit.js"
 import { picks, type Pickable, type PickContext } from "./pick.js"
-import { gestureStart, hasMoved, stillRelease, type ArmedTool, type ContextTarget, type GestureStart, type Press, type StillRelease, type Under } from "./press.js"
+import { gestureStart, hasMoved, rightButtonHeld, stillRelease, type ArmedTool, type ContextTarget, type GestureStart, type Press, type StillRelease, type Under } from "./press.js"
+import { endReshape, followReshape, gripOf, handleUnder, startReshape, type ReshapeGesture, type WireDrag } from "./wire-drag.js"
+
+export type { ReshapeGesture } from "./wire-drag.js"
 
 export type Gesture =
   | { kind: "pan"; start: Point; camera: Camera; moved: boolean; still: StillRelease; target: ContextTarget }
@@ -31,6 +34,7 @@ export type Gesture =
       still: StillRelease
     }
   | { kind: "label"; label: NetLabel; start: Point; at: Point; moved: boolean; blocker: string | null }
+  | ReshapeGesture
   | { kind: "box"; start: Point; current: Point; adds: boolean; still: StillRelease }
   | { kind: "note"; start: Point; current: Point }
   | { kind: "zoom"; start: Point; current: Point }
@@ -50,9 +54,11 @@ export interface GestureLabels {
   commit(label: NetLabel, drop: Point): void
 }
 
-/** What a gesture asks of the schematic's wires: the id of the one under a point (wire-hit.ts), if any. */
+/** What a gesture asks of the schematic's wires: the id of the one under a point (wire-hit.ts), if any, and how to reshape them. */
 export interface GestureWires {
   at(world: Point): string | undefined
+  /** Absent, a press on a wire only selects it. */
+  drag?: WireDrag
 }
 
 export interface GestureInput {
@@ -123,13 +129,33 @@ function underOf(target: ContextTarget, selection: Selection): Under {
   return target.kind === "label" ? "label" : "empty"
 }
 
+/** What a press is on: a corner handle of the selected wire, drawn over everything, else what targetAt finds. */
+function pressedAt(input: GestureInput, world: Point, camera: Camera): { target: ContextTarget; under: Under; corner?: number } {
+  const handle = handleUnder(input.wires?.drag, pickContext(input), world, camera.scale)
+  if (handle) return { target: { kind: "wire", id: handle.id }, under: "wireCorner", corner: handle.index }
+  const target = targetAt(input.boxes, input.labels, world, pickContext(input), input.wires)
+  return { target, under: underOf(target, input.selection) }
+}
+
+const WIRE_STARTS: ReadonlySet<GestureStart> = new Set(["wire", "wireSegment", "wireCorner"])
+
+/** A press on a wire selects it alone; unless a Place tool is armed, it also grabs the corner handle or the segment pressed. */
+function pressWire(input: GestureInput, id: string, start: GestureStart, at: { world: Point; point: Point; corner?: number }, camera: Camera): Gesture | undefined {
+  input.onSelect((current) => current.onlyWire(id))
+  if (start === "wire") return undefined
+  const drag = input.wires?.drag
+  const points = drag?.points(id)
+  const grip = points && gripOf(points, at.world, camera.scale, start === "wireCorner" ? at.corner : undefined)
+  return grip && startReshape(drag, id, grip, at.point)
+}
+
 /** The gesture a press starts, as press.ts decides; a toggle changes the selection and starts nothing. */
 export function startGesture(input: GestureInput, event: Press, point: Point): Gesture | undefined {
   const { camera } = input
   if (!camera) return undefined
   const world = screenToWorld(camera, input.size, point)
-  const target = targetAt(input.boxes, input.labels, world, pickContext(input), input.wires)
-  const start = gestureStart(event, underOf(target, input.selection), input.tool.armed)
+  const { target, under, corner } = pressedAt(input, world, camera)
+  const start = gestureStart(event, under, input.tool.armed)
   const still = stillRelease(start, input.tool.armed)
   if (start === "pan" || start === "rightPress") return { kind: "pan", start: point, camera, moved: false, still, target }
   if (start === "note" || start === "zoom") return { kind: start, start: point, current: point }
@@ -137,10 +163,7 @@ export function startGesture(input: GestureInput, event: Press, point: Point): G
   if (target.kind === "label" && start === "label") {
     return { kind: "label", label: target.label, start: point, at: target.label.at, moved: false, blocker: input.labels?.blocker(target.label.id) ?? null }
   }
-  if (target.kind === "wire" && start === "wire") {
-    input.onSelect((current) => current.onlyWire(target.id))
-    return undefined
-  }
+  if (target.kind === "wire" && WIRE_STARTS.has(start)) return pressWire(input, target.id, start, { world, point, ...(corner === undefined ? {} : { corner }) }, camera)
   const part = target.kind === "part" ? input.boxes.find((box) => box.name === target.name) : undefined
   if (!part) return undefined
   if (start === "toggle") {
@@ -173,6 +196,7 @@ export function followGesture(input: GestureInput, gesture: Gesture, point: Poin
   const world = screenToWorld(camera, input.size, point)
   const startWorld = screenToWorld(camera, input.size, gesture.start)
   const moved = { x: world.x - startWorld.x, y: world.y - startWorld.y }
+  if (gesture.kind === "reshape") return followReshape(gesture, moved, { step: input.step, snap: input.snap !== false }, (text) => input.actions.notify(text))
   const snapped = (value: number) => snapPosition(value, input.step, input.snap !== false)
   if (gesture.kind === "label") {
     const { at } = gesture.label
@@ -190,6 +214,7 @@ export function endGesture(input: GestureInput, done: Gesture, camera: Camera, c
     return done.blocker ? input.actions.notify(done.blocker) : input.labels?.commit(done.label, done.at)
   }
   if (done.kind === "drag") return endDrag(input, done, commit)
+  if (done.kind === "reshape") return endReshape(input.wires?.drag, done)
   if (done.kind === "pan") {
     if (done.moved) return
     if (done.still === "menu") input.onContextMenu(done.target, at)
@@ -244,6 +269,11 @@ function endNote(input: GestureInput, done: Extract<Gesture, { kind: "note" }>, 
   if (text) void input.actions.mark(text, { view: input.view, x: round((a.x + b.x) / 2), y: round((a.y + b.y) / 2) })
 }
 
+/** Whether a move's `buttons` end the gesture without finishing it: none held (the release was lost), or the right button during a reshape. */
+function endsUnfinished(gesture: Gesture, buttons: number): boolean {
+  return buttons === 0 || (gesture.kind === "reshape" && rightButtonHeld(buttons))
+}
+
 /**
  * The gesture under way, held here from press to release rather than read back from what React last drew: a pointer
  * can send its moves and its release before React has drawn a single move (Chrome does, for a quick drag or for events
@@ -264,11 +294,12 @@ export function gestureSession(read: () => { input: GestureInput; commit: Commit
     /**
      * Follows the pointer; false when no gesture is running, so the canvas can update its hover instead. A move with
      * no button held (`buttons` 0) means the release was lost, say to a dialog: the gesture ends without finishing.
+     * So does a wire's reshape when the right button joins the left (cancelled, nothing written).
      */
     move(point: Point, buttons?: number): boolean {
       const { input } = read()
       if (!current || !input.camera) return false
-      if (buttons === 0) {
+      if (buttons !== undefined && endsUnfinished(current, buttons)) {
         set(undefined)
         return false
       }
@@ -283,7 +314,7 @@ export function gestureSession(read: () => { input: GestureInput; commit: Commit
       const { input, commit } = read()
       if (done && input.camera) endGesture(input, done, input.camera, commit, at)
     },
-    /** Drops the gesture without finishing it: Esc while a label is dragged, or the browser took the pointer away. A release after it does nothing. */
+    /** Drops the gesture without finishing it: Esc while a label or a wire is dragged, or the browser took the pointer away. A release after it does nothing. */
     cancel(): void {
       set(undefined)
     },

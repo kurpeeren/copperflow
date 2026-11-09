@@ -1,17 +1,21 @@
 // The schematic's wires on the canvas: which one is under the pointer at this zoom (wire-hit.ts), the selected one's
-// line for its handles and the keyboard menu, and the selected wire's commands. Delete and Highlight net are the part
-// keys' commands, which call `keys` for a wire; Remove corners is the schematic's own command. What each command
-// writes, or why it refuses, is wire-actions.ts.
+// line for its handles and the keyboard menu, the selected wire's commands, and reshaping (use-wire-reshape.ts): a
+// drag through the gestures, a double click on a corner handle here. Delete and Highlight net are the part keys'
+// commands, which call `keys` for a wire; Remove corners is the schematic's own command. What each command writes, or
+// why it refuses, is wire-actions.ts. A wire whose new shape waits for its build is drawn, hit and dragged in that shape.
 import { useCallback, useMemo } from "react"
 import type { CircuitData, Design } from "../api"
 import type { Actions } from "../App"
 import type { Selection, SelectionChange } from "../selection"
 import type { WireCommand } from "../shell/command-owners"
 import { useCommands } from "../shell/commands"
-import type { Camera } from "./geometry"
+import type { Camera, Point } from "./geometry"
 import type { GestureWires } from "./gestures"
+import type { PickContext } from "./pick"
 import { cornerRemoval, wireNet, wireRemoval, type WireEdit } from "./wire-actions"
+import { handleUnder, withShapes } from "./wire-drag"
 import { wireAt, wireReachPx, type WireLine } from "./wire-hit"
+import { useWireReshape } from "./use-wire-reshape"
 
 /** What the part keys ask of a selected wire: its net for Highlight net, and its removal for Delete. */
 export interface WireKeys {
@@ -27,6 +31,10 @@ interface SheetWiresInput {
   camera: Camera | undefined
   selection: Selection
   onSelect(change: SelectionChange): void
+  /** When the build behind the shown design started (ms). */
+  builtFrom: number
+  /** The W tool is wiring or drawing: presses are its own, so a press on a wire that reaches the gestures only selects it. */
+  wiring: boolean
 }
 
 /** Sends a wire command's edit as one history entry, or says why it cannot run; resolves to whether it was written. */
@@ -55,11 +63,21 @@ function useWireCommands({ design, circuit, actions, locked, selection, onSelect
 }
 
 export function useSheetWires(input: SheetWiresInput) {
-  const { design, camera, selection } = input
-  const wires = design.schematic.wires
-  const hits = useMemo<GestureWires>(() => ({ at: (world) => (camera ? wireAt(wires, world, wireReachPx(camera.scale) / camera.scale) : undefined) }), [wires, camera])
+  const { design, camera, selection, wiring } = input
+  const { pending, blocker, commit, dropCorner } = useWireReshape(input)
+  const wires = useMemo(() => withShapes(design.schematic.wires, pending), [design.schematic.wires, pending])
   const lineOf = useCallback((id: string | undefined): WireLine | undefined => (id === undefined ? undefined : wires.find((wire) => wire.id === id)), [wires])
+  const hits = useMemo<GestureWires>(() => {
+    const at = (world: Point) => (camera ? wireAt(wires, world, wireReachPx(camera.scale) / camera.scale) : undefined)
+    return wiring ? { at } : { at, drag: { points: (id) => lineOf(id)?.points, blocker, commit } }
+  }, [wires, camera, lineOf, blocker, commit, wiring])
+  /** A double click on a corner handle of the selected wire removes that corner; false when it is not on one. */
+  const dropCornerAt = (world: Point, picking: PickContext): boolean => {
+    const handle = camera ? handleUnder(hits.drag, picking, world, camera.scale) : undefined
+    if (handle) dropCorner(handle.id, handle.index)
+    return handle !== undefined
+  }
   const selected = useMemo(() => lineOf(selection.wire), [lineOf, selection.wire])
   const keys = useWireCommands(input)
-  return { hits, selected, lineOf, keys }
+  return { hits, selected, lineOf, keys, pending, dropCornerAt }
 }

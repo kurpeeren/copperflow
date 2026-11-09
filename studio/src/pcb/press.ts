@@ -13,8 +13,11 @@ export interface Press {
   metaKey: boolean
 }
 
-/** What is under the pointer at a press: a part, one already selected, a net label or a wire (schematic) or nothing. */
-export type Under = "part" | "selectedPart" | "label" | "wire" | "empty"
+/**
+ * What is under the pointer at a press: a part, one already selected, a net label, a wire, a corner handle of the
+ * selected wire (schematic) or nothing.
+ */
+export type Under = "part" | "selectedPart" | "label" | "wire" | "wireCorner" | "empty"
 
 /**
  * The armed canvas tool, as far as a press is concerned: Place → Note box and View → Fit area take every left press; a schematic Place
@@ -32,16 +35,36 @@ export type ArmedTool = "note" | "zoom" | "place" | null
  * - "move": on a part not selected: selects it alone and drags it.
  * - "moveGroup": on a selected part: drags the whole selection; released without moving, selects that part alone.
  * - "label": on a net label: drags it.
- * - "wire": on a schematic wire: selects that wire alone (the parts go) and starts nothing.
+ * - "wireSegment": on a schematic wire: selects that wire alone (the parts go) and drags the segment under the press.
+ * - "wireCorner": on a corner handle of the selected wire: drags that corner.
+ * - "wire": on a wire or its corner handle with a Place tool armed: selects the wire and starts nothing.
  * - "box": on empty canvas: a selection box that replaces the selection; released without moving, clears it.
  * - "addBox": Shift or Ctrl anywhere but on a part: a selection box that adds parts to the selection.
  * - "none": any other button.
+ * A wire's drag reshapes it; released without moving, the press has only selected it.
  */
-export type GestureStart = "pan" | "rightPress" | "note" | "zoom" | "toggle" | "move" | "moveGroup" | "label" | "wire" | "box" | "addBox" | "none"
+export type GestureStart =
+  | "pan"
+  | "rightPress"
+  | "note"
+  | "zoom"
+  | "toggle"
+  | "move"
+  | "moveGroup"
+  | "label"
+  | "wireSegment"
+  | "wireCorner"
+  | "wire"
+  | "box"
+  | "addBox"
+  | "none"
 
 const LEFT = 0
 const MIDDLE = 1
 const RIGHT = 2
+
+/** What a plain left press on a wire or on the selected wire's corner handle starts while no tool is armed. */
+const WIRE_PRESS: Record<"wire" | "wireCorner", GestureStart> = { wire: "wireSegment", wireCorner: "wireCorner" }
 
 export function gestureStart(press: Press, under: Under, armed: ArmedTool): GestureStart {
   if (press.button === MIDDLE) return "pan"
@@ -54,8 +77,19 @@ export function gestureStart(press: Press, under: Under, armed: ArmedTool): Gest
   if (togglesSelection(press)) return onPart ? "toggle" : "addBox"
   if (under === "part") return "move"
   if (under === "selectedPart") return "moveGroup"
-  if (under === "wire") return "wire"
+  if (under === "wire" || under === "wireCorner") return armed === null ? WIRE_PRESS[under] : "wire"
   return under === "label" ? "label" : "box"
+}
+
+/** The right button's bit in a pointer event's `buttons`. */
+const RIGHT_BUTTON_BIT = 2
+
+/**
+ * Whether the right button is held, from a pointer event's `buttons`. A right press while the left button drags comes
+ * as a pointer move with both bits set, not as a press; it cancels a wire's reshape.
+ */
+export function rightButtonHeld(buttons: number): boolean {
+  return (buttons & RIGHT_BUTTON_BIT) !== 0
 }
 
 /** What a release does when the pointer has not moved: select the pressed part alone, clear, open the menu, put the tool away, or nothing. */

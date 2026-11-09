@@ -39,6 +39,7 @@ import { useWireTool } from "./use-wire-tool"
 import { useSheetWires } from "./use-sheet-wires"
 import type { WireLine } from "./wire-hit"
 import { drawWireHandles, drawWireHover, SHEET_WIRE_LOOK } from "./wire-overlay"
+import { liveShapes, withShapes } from "./wire-drag"
 
 const EMPTY_SHEET_CAMERA: Camera = { cx: 0, cy: 0, scale: 60 }
 const FIT_MARGIN = 0.06
@@ -70,6 +71,8 @@ interface SheetScene {
   /** The wire under the pointer, and the selected wire: red, with its handles. */
   hoverWire: WireLine | undefined
   selectedWire: WireLine | undefined
+  /** Wires drawn in a new shape: the one being dragged, then those waiting for their build. */
+  wireShapes: readonly WireLine[]
   palette: Palette
   /** The highlighted nets and the pins on them. */
   highlight: ReturnType<typeof highlightOf>
@@ -79,18 +82,26 @@ interface SheetScene {
   grid: GridLook
 }
 
+/** The sheet with the wires in `shapes` drawn in their new shapes, and the selected wire's line in its own. */
+function useShapedSheet(design: Design, selectedWire: WireLine | undefined, shapes: readonly WireLine[]) {
+  const sheet = useMemo(() => (shapes.length === 0 ? design.schematic : { ...design.schematic, wires: [...withShapes(design.schematic.wires, shapes)] }), [design.schematic, shapes])
+  const selected = useMemo(() => selectedWire && withShapes([selectedWire], shapes)[0], [selectedWire, shapes])
+  return { sheet, selected }
+}
+
 /** Draws the sheet and its violation rings, the wire being drawn and the editor layer; a sheet without parts gets a default view. */
 function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: SheetScene): void {
-  const { design, border, camera, size, moving, boxes, hover, selection, locked, circuit, gesture, movingLabels, hoverLabel, hoverWire, selectedWire, palette, highlight, markers, activeViolation, grid } = scene
+  const { design, border, camera, size, moving, boxes, hover, selection, locked, circuit, gesture, movingLabels, hoverLabel, hoverWire, palette, highlight, markers, activeViolation, grid } = scene
   const { wiring, drawing, activePins, pendingWires, preview } = scene.wire
   const { ghosts, ghostWires, armed } = palette
+  const { sheet, selected: selectedWire } = useShapedSheet(design, scene.selectedWire, scene.wireShapes)
   useEffect(() => {
     const view = camera ?? EMPTY_SHEET_CAMERA
     const prepared = prepareCanvas(canvasRef.current, size, view, schematicTheme.background, (c, cam, s) => drawSchematicGrid(c, cam, s, grid))
     if (!prepared) return
     const { ctx, ratio } = prepared
     drawSheetBorder(ctx, view, size, border)
-    drawSchematic(ctx, design.schematic, { camera: view, size }, {
+    drawSchematic(ctx, sheet, { camera: view, size }, {
       ratio,
       showPins: wiring || drawing !== null || armed,
       activePins,
@@ -111,7 +122,7 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
     if (hoverWire && hoverWire.id !== selectedWire?.id && !wiring && !drawing && !gesture) drawWireHover(ctx, view, size, hoverWire.points, SHEET_WIRE_LOOK)
     // A net label dragged off the selected wire hides its line, so its handles go too.
     if (selectedWire && !movingLabels.some((m) => m.hideWire === selectedWire.id)) drawWireHandles(ctx, view, size, selectedWire.points, SHEET_WIRE_LOOK)
-  }, [canvasRef, design, border, camera, size, wiring, drawing, activePins, pendingWires, preview, moving, movingLabels, hoverLabel, hoverWire, selectedWire, boxes, hover, selection, locked, circuit, gesture, ghosts, ghostWires, armed, highlight, markers, activeViolation, grid])
+  }, [canvasRef, sheet, border, camera, size, wiring, drawing, activePins, pendingWires, preview, moving, movingLabels, hoverLabel, hoverWire, selectedWire, boxes, hover, selection, locked, circuit, gesture, ghosts, ghostWires, armed, highlight, markers, activeViolation, grid])
 }
 
 interface SheetToolsProps {
@@ -184,7 +195,7 @@ function SheetView({ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave,
         ref={canvasRef}
         style={{ width: size.width, height: size.height }}
         role="img"
-        aria-label="Schematic. Drag symbols and net labels to move them, click a wire to select it, drag the background to select, drag with the right button to pan, scroll to zoom. Double click a net label to rename its net. Click a free pin or press W over a pin to draw a wire."
+        aria-label="Schematic. Drag symbols and net labels to move them, click a wire to select it, drag a wire or its corner handles to reshape it, drag the background to select, drag with the right button to pan, scroll to zoom. Double click a net label to rename its net. Click a free pin or press W over a pin to draw a wire."
       />
       {hint && (
         <div className="canvas-top">
@@ -237,6 +248,11 @@ function wireHint(wire: WireTool): string | undefined {
 /** The highlighted nets with their pins and the names their wires and labels may carry, so they can be drawn lit. */
 function useHighlight(design: Design, nets: Highlight): SheetScene["highlight"] {
   return useMemo(() => highlightOf(design, nets), [design, nets])
+}
+
+/** The wire being reshaped, then those reshaped and waiting for their build. */
+function useWireShapes(gesture: Gesture | undefined, pending: readonly WireLine[]): readonly WireLine[] {
+  return useMemo(() => liveShapes(gesture?.kind === "reshape" ? gesture : undefined, pending), [gesture, pending])
 }
 
 /** The label being dragged, then those moved and waiting for their build. */
@@ -337,6 +353,8 @@ interface SheetPointerInput extends Omit<PointerInput, "tool" | "open"> {
   boxes: PartBox[]
   labels: LabelTools
   wires: GestureWires
+  /** Removes the corner whose handle of the selected wire is under the point; false when none is. */
+  dropCornerAt(world: Point, picking: PickContext): boolean
   wire: WireTool
   palette: Palette
   note: NoteTool
@@ -347,12 +365,13 @@ interface SheetPointerInput extends Omit<PointerInput, "tool" | "open"> {
 
 /**
  * The sheet's pointer: the wire tool and the Place tools see a press first, unless the note tool is armed; a double
- * click opens Properties on a part or a wire, or renames the net of a label, while no tool is armed.
+ * click removes the corner of the selected wire under it, else opens Properties on a part or a wire, or renames the
+ * net of a label, while no tool is armed.
  */
-function sheetPointer({ boxes, labels, wires, wire, palette, note, picking, onOpenProperties, ...input }: SheetPointerInput) {
+function sheetPointer({ boxes, labels, wires, dropCornerAt, wire, palette, note, picking, onOpenProperties, ...input }: SheetPointerInput) {
   const tool = (event: Press, world: Point) => !note.armed && (palette.press(event, world) || wire.press(event, world))
   const open = (world: Point) => {
-    if (note.armed || palette.armed || wire.wiring || wire.drawing) return
+    if (note.armed || palette.armed || wire.wiring || wire.drawing || dropCornerAt(world, picking)) return
     const target = targetAt(boxes, labels, world, picking, wires)
     if (target.kind === "part" || target.kind === "wire") onOpenProperties(target)
     if (target.kind === "label") palette.rename(target.label)
@@ -383,7 +402,7 @@ export function SchematicCanvas(props: CanvasProps) {
   const note = useSheetNoteTool(wire, palette)
   const common = { view: "schematic", circuit, actions, onSelect, blockerFor: parts.blockerFor } as const
   const labels = useLabelDrag({ design, circuit, actions, builtFrom })
-  const wires = useSheetWires({ design, circuit, actions, locked: parts.locked, camera, selection, onSelect })
+  const wires = useSheetWires({ design, circuit, actions, locked: parts.locked, camera, selection, onSelect, builtFrom, wiring: wire.wiring || wire.drawing !== null })
   const tool = useArmedForGestures(note, palette)
   useArmedTool(wire, palette, note)
   const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, snap, builtFrom, labels: labels.tools, wires: wires.hits, selection, tool, filter: props.pickFilter, onContextMenu: props.onContextMenu })
@@ -397,8 +416,9 @@ export function SchematicCanvas(props: CanvasProps) {
   const movingLabels = useMovingLabels(design, gesture, labels.pending)
   const { lineOf } = wires
   const hoverWire = useMemo(() => lineOf(hover.wire), [lineOf, hover.wire])
-  useSheetPaint(canvasRef, { design, border, camera, size, wire, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel: hover.label, hoverWire, selectedWire: wires.selected, palette, highlight, markers, activeViolation, grid })
-  const pointer = sheetPointer({ camera, size, element: wrapRef, gestures, setCursor, hover: hover.at, boxes: parts.boxes, labels: labels.tools, wires: wires.hits, wire, palette, note, picking: { selection, armed: tool.armed, filter: props.pickFilter }, onOpenProperties: props.onOpenProperties })
+  const wireShapes = useWireShapes(gesture, wires.pending)
+  useSheetPaint(canvasRef, { design, border, camera, size, wire, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel: hover.label, hoverWire, selectedWire: wires.selected, wireShapes, palette, highlight, markers, activeViolation, grid })
+  const pointer = sheetPointer({ camera, size, element: wrapRef, gestures, setCursor, hover: hover.at, boxes: parts.boxes, labels: labels.tools, wires: wires.hits, dropCornerAt: wires.dropCornerAt, wire, palette, note, picking: { selection, armed: tool.armed, filter: props.pickFilter }, onOpenProperties: props.onOpenProperties })
   const cursorStyle = cursorFor(gesture, wire.drawing !== null || wire.overPin || palette.armed || note.armed, hover.part !== undefined || hover.label !== undefined || hover.wire !== undefined)
   const onLeave = () => {
     hover.leave()

@@ -26,7 +26,8 @@ export interface WireProperties extends WireReasons {
   rows: { label: string; value: string }[]
 }
 
-const GONE = "This wire is no longer on the sheet"
+/** What a command on a wire the sheet no longer draws says. */
+export const WIRE_GONE = "This wire is no longer on the sheet"
 const NO_CORNERS = "This wire has no corners"
 const STUDIO_CORNER = "Studio draws this wire's corner; the code has none to remove"
 const DELETE_REPEAT = "This wire repeats another between the same ends; delete it in the code"
@@ -59,7 +60,8 @@ function wireEnds(design: Design, shape: WireShape): [string, string] | undefine
   return connection ? [endName(connection.from), endName(connection.to)] : undefined
 }
 
-function describe(design: Design, shape: WireShape): string {
+/** How the history names a wire: by its two ends. */
+export function describeWire(design: Design, shape: WireShape): string {
   const ends = wireEnds(design, shape)
   return ends ? `the wire from ${ends[0]} to ${ends[1]}` : "the wire"
 }
@@ -97,13 +99,13 @@ function traceEnds(shape: WireShape): { from: string; to: string } {
 function removalFor(design: Design, shape: WireShape, locked: ReadonlySet<string>): WireEdit {
   const blocked = removeBlocker(design, shape, locked)
   if (blocked !== null) return { blocked }
-  return { edits: [{ kind: "removeTrace", ...traceEnds(shape) }], summary: `remove ${describe(design, shape)}` }
+  return { edits: [{ kind: "removeTrace", ...traceEnds(shape) }], summary: `remove ${describeWire(design, shape)}` }
 }
 
 function cornerRemovalFor(design: Design, shape: WireShape, locked: ReadonlySet<string>): WireEdit {
   const blocked = cornerBlocker(design, shape, locked)
   if (blocked !== null) return { blocked }
-  return { edits: [{ kind: "setTraceHints", ...traceEnds(shape), schematicRouteHints: [] }], summary: `remove the corners of ${describe(design, shape)}` }
+  return { edits: [{ kind: "setTraceHints", ...traceEnds(shape), schematicRouteHints: [] }], summary: `remove the corners of ${describeWire(design, shape)}` }
 }
 
 const reasonOf = (result: WireEdit): string | null => ("blocked" in result ? result.blocked : null)
@@ -115,19 +117,19 @@ function reasonsFor(design: Design, shape: WireShape, locked: ReadonlySet<string
 /** Delete on a selected wire: remove its trace, in one edit. */
 export function wireRemoval(design: Design, source: SourceCircuit, wireId: string, locked: ReadonlySet<string> = NO_LOCKS): WireEdit {
   const shape = wireOf(design, source, wireId)
-  return shape ? removalFor(design, shape, locked) : { blocked: GONE }
+  return shape ? removalFor(design, shape, locked) : { blocked: WIRE_GONE }
 }
 
 /** Remove corners on a selected wire: empty its trace's corners, so Studio draws it with at most one elbow. */
 export function cornerRemoval(design: Design, source: SourceCircuit, wireId: string, locked: ReadonlySet<string> = NO_LOCKS): WireEdit {
   const shape = wireOf(design, source, wireId)
-  return shape ? cornerRemovalFor(design, shape, locked) : { blocked: GONE }
+  return shape ? cornerRemovalFor(design, shape, locked) : { blocked: WIRE_GONE }
 }
 
 /** Why Delete and Remove corners cannot run on the wire, for the context menu and Properties. */
 export function wireReasons(design: Design, source: SourceCircuit, wireId: string, locked: ReadonlySet<string> = NO_LOCKS): WireReasons {
   const shape = wireOf(design, source, wireId)
-  return shape ? reasonsFor(design, shape, locked) : { remove: GONE, removeCorners: GONE }
+  return shape ? reasonsFor(design, shape, locked) : { remove: WIRE_GONE, removeCorners: WIRE_GONE }
 }
 
 function kindOf(shape: WireShape): string {

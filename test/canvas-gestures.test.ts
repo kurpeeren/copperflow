@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, test, vi } from "vitest"
 import type { NetLabel } from "../src/engine/schematic.js"
-import { endGesture, followGesture, gestureSession, movePlan, startGesture, targetAt, type Gesture, type GestureInput } from "../studio/src/pcb/gestures.js"
+import { endGesture, followGesture, gestureSession, movePlan, startGesture, targetAt, type Gesture, type GestureInput, type GestureWires } from "../studio/src/pcb/gestures.js"
 import { sendGroupEdit } from "../studio/src/pcb/group-edits.js"
 import { moveBlocker } from "../studio/src/pcb/positions.js"
 import { worldToScreen, type Camera, type PartBox, type Point } from "../studio/src/pcb/geometry.js"
 import type { PickContext } from "../studio/src/pcb/pick.js"
+import { ALL_PICKABLE, type PickFilter } from "../studio/src/pcb/pick-filter.js"
 import type { ArmedTool, ContextTarget, Press } from "../studio/src/pcb/press.js"
 import { Selection, type SelectionChange } from "../studio/src/selection.js"
 
@@ -21,14 +22,34 @@ const BOXES = [partBox("R1", 0, 2), partBox("R2", 4, 6)]
 const screen = (x: number, y = 0): Point => worldToScreen(CAMERA, SIZE, { x, y })
 const PICK: PickContext = { selection: Selection.none, armed: null }
 const press = (held: Partial<Press> = {}): Press => ({ button: 0, shiftKey: false, ctrlKey: false, metaKey: false, ...held })
-// A wire along y = 3, above both parts and clear of the boxes the other tests draw.
-const WIRES = { at: (p: Point) => (Math.abs(p.y - 3) < 0.1 ? "wire:W" : undefined) }
+// A wire along y = 3, above both parts and clear of the boxes the other tests draw: up from (-1, 5), across at y = 3, down to (7, 5).
+const W_POINTS: readonly Point[] = [{ x: -1, y: 5 }, { x: -1, y: 3 }, { x: 7, y: 3 }, { x: 7, y: 5 }]
+const wireAt = (p: Point) => (Math.abs(p.y - 3) < 0.1 ? "wire:W" : undefined)
+
+interface CanvasOptions {
+  locked?: string[]
+  armed?: ArmedTool
+  snap?: boolean
+  wire?: string
+  /** Why wire W cannot be reshaped. */
+  wireBlocker?: string
+  filter?: PickFilter
+  /** The wires come without their drag tools, as while the W tool is wiring. */
+  noDrag?: boolean
+}
 
 /** A canvas with R1 and R2: what the steps told it, and the selection they left. */
-function canvas(start: readonly string[] = [], options: { locked?: string[]; armed?: ArmedTool; snap?: boolean; wire?: string } = {}) {
+function canvas(start: readonly string[] = [], options: CanvasOptions = {}) {
   const calls: string[] = []
   const state = { selection: options.wire ? Selection.none.onlyWire(options.wire) : Selection.none.add(start), camera: CAMERA }
   const commits: { names: readonly string[]; offset: Point }[] = []
+  const shapes: { id: string; path: readonly Point[] }[] = []
+  const drag: GestureWires["drag"] = {
+    points: (id) => (id === "wire:W" ? W_POINTS : undefined),
+    blocker: () => options.wireBlocker ?? null,
+    commit: (id, path) => void shapes.push({ id, path }),
+  }
+  const wires: GestureWires = options.noDrag ? { at: wireAt } : { at: wireAt, drag }
   const menus: { target: ContextTarget; at: Point }[] = []
   const actions = {
     notify: (text: string) => void calls.push(`notify ${text}`),
@@ -51,7 +72,8 @@ function canvas(start: readonly string[] = [], options: { locked?: string[]; arm
     blockerFor: (name) => (options.locked?.includes(name) ? `${name} is locked` : null),
     tool: { armed: options.armed ?? null, disarm: () => void calls.push("disarm") },
     onContextMenu: (target, at) => void menus.push({ target, at }),
-    wires: WIRES,
+    wires,
+    ...(options.filter ? { filter: options.filter } : {}),
   })
   /** Presses at `from`, moves through `path` and lets go at the last point, as the hook does. */
   const gesture = (held: Partial<Press>, from: Point, ...path: Point[]) => {
@@ -61,7 +83,8 @@ function canvas(start: readonly string[] = [], options: { locked?: string[]; arm
     if (current) endGesture(input(), current, CAMERA, (names, offset) => void commits.push({ names, offset }), { x: 640, y: 480 })
     return started
   }
-  return { state, calls, commits, menus, gesture }
+  const session = () => gestureSession(() => ({ input: input(), commit: (names, offset) => void commits.push({ names, offset }) }), () => undefined)
+  return { state, calls, commits, shapes, menus, gesture, session }
 }
 
 afterEach(() => vi.unstubAllGlobals())
@@ -113,10 +136,11 @@ describe("dragging parts", () => {
 describe("a wire", () => {
   test("a click on a wire selects it alone, drops the parts and moves nothing", () => {
     const c = canvas(["R1", "R2"])
-    expect(c.gesture({}, screen(1, 3), screen(3, 3))).toBeUndefined()
+    expect(c.gesture({}, screen(1, 3), screen(1, 3))).toMatchObject({ kind: "reshape", wire: "wire:W" })
     expect(c.state.selection.wire).toBe("wire:W")
     expect(c.state.selection.names).toEqual([])
     expect(c.commits).toEqual([])
+    expect(c.shapes).toEqual([])
   })
 
   test("a click on a part, or on empty canvas, drops the selected wire", () => {
@@ -132,6 +156,109 @@ describe("a wire", () => {
     const c = canvas()
     c.gesture({ button: 2 }, screen(5, 3), screen(5, 3))
     expect(c.menus).toEqual([{ target: { kind: "wire", id: "wire:W" }, at: { x: 640, y: 480 } }])
+  })
+})
+
+describe("reshaping a wire", () => {
+  // The step is 0.5 here; at 10 px a unit a corner handle reaches 0.3 each way.
+  test("a drag on a wire moves the segment under the press onto the grid, selects the wire and writes the new shape once", () => {
+    const c = canvas(["R1"])
+    expect(c.gesture({}, screen(1, 3), screen(1, 3.2), screen(1, 3.53))).toMatchObject({ kind: "reshape", grip: { kind: "segment", index: 1 } })
+    expect(c.state.selection.wire).toBe("wire:W")
+    expect(c.shapes).toEqual([{ id: "wire:W", path: [{ x: -1, y: 5 }, { x: -1, y: 3.5 }, { x: 7, y: 3.5 }, { x: 7, y: 5 }] }])
+    expect(c.commits).toEqual([])
+  })
+
+  test("with Snap off the segment lands where the pointer let go, rounded", () => {
+    const c = canvas([], { snap: false })
+    c.gesture({}, screen(1, 3), screen(1, 3.53))
+    expect(c.shapes).toEqual([{ id: "wire:W", path: [{ x: -1, y: 5 }, { x: -1, y: 3.53 }, { x: 7, y: 3.53 }, { x: 7, y: 5 }] }])
+  })
+
+  test("a drag on a corner handle of the selected wire moves that corner to a grid point", () => {
+    const c = canvas([], { wire: "wire:W" })
+    expect(c.gesture({}, screen(7.2, 3.1), screen(7.8, 3.15))).toMatchObject({ kind: "reshape", grip: { kind: "corner", index: 2 } })
+    expect(c.shapes).toEqual([{ id: "wire:W", path: [{ x: -1, y: 5 }, { x: -1, y: 3 }, { x: 7.5, y: 3 }, { x: 7.5, y: 5 }, { x: 7, y: 5 }] }])
+    expect(c.state.selection.wire).toBe("wire:W")
+  })
+
+  test("a press on that corner of a wire not selected drags the segment there instead", () => {
+    const c = canvas()
+    expect(c.gesture({}, screen(6.9, 3), screen(6.9, 3.6))).toMatchObject({ kind: "reshape", grip: { kind: "segment", index: 1 } })
+  })
+
+  test("a drag along a segment's own direction writes nothing", () => {
+    const c = canvas()
+    c.gesture({}, screen(1, 3), screen(3, 3))
+    expect(c.shapes).toEqual([])
+  })
+
+  test("a blocked wire does not move: its reason is told once, on the first move, and nothing is written", () => {
+    const c = canvas([], { wireBlocker: "R1 is locked" })
+    c.gesture({}, screen(1, 3), screen(1, 3.1), screen(1, 3.6), screen(1, 4))
+    expect(c.calls).toEqual(["notify R1 is locked"])
+    expect(c.shapes).toEqual([])
+    expect(c.state.selection.wire).toBe("wire:W")
+  })
+
+  test("a still click on a blocked wire tells nothing", () => {
+    const c = canvas([], { wireBlocker: "R1 is locked" })
+    c.gesture({}, screen(1, 3), screen(1, 3))
+    expect(c.calls).toEqual([])
+  })
+
+  test("with a Place tool armed a press on a wire only selects it", () => {
+    const c = canvas([], { armed: "place" })
+    expect(c.gesture({}, screen(1, 3), screen(1, 4))).toBeUndefined()
+    expect(c.state.selection.wire).toBe("wire:W")
+    expect(c.shapes).toEqual([])
+  })
+
+  test("without drag tools (the W tool is wiring) a press on a wire or its handle only selects it", () => {
+    const c = canvas([], { wire: "wire:W", noDrag: true })
+    expect(c.gesture({}, screen(1, 3), screen(1, 4))).toBeUndefined()
+    expect(c.gesture({}, screen(7, 3), screen(7.8, 3))).toBeUndefined()
+    expect(c.state.selection.wire).toBe("wire:W")
+    expect(c.shapes).toEqual([])
+  })
+
+  test("with Wires off in the Filter, the selected wire's handle grabs nothing", () => {
+    const c = canvas([], { wire: "wire:W", filter: { ...ALL_PICKABLE, wires: false } })
+    expect(c.gesture({}, screen(7, 3), screen(7.8, 3))).toMatchObject({ kind: "box" })
+    expect(c.shapes).toEqual([])
+  })
+
+  test("cancelling the drag (Esc) writes nothing and keeps the wire selected", () => {
+    const c = canvas()
+    const session = c.session()
+    session.press(press(), screen(1, 3))
+    session.move(screen(1, 3.6), 1)
+    session.cancel()
+    session.release(screen(1, 3.6))
+    expect(c.shapes).toEqual([])
+    expect(c.state.selection.wire).toBe("wire:W")
+  })
+
+  test("a right press during the drag cancels it; letting both buttons go writes nothing and opens no menu", () => {
+    const c = canvas()
+    const session = c.session()
+    session.press(press(), screen(1, 3))
+    session.move(screen(1, 3.6), 1)
+    expect(session.move(screen(1, 3.6), 3)).toBe(false)
+    session.move(screen(1, 3.6), 2)
+    session.release(screen(1, 3.6))
+    expect(c.shapes).toEqual([])
+    expect(c.menus).toEqual([])
+  })
+
+  test("a right press while parts are dragged does not cancel the part drag", () => {
+    const c = canvas()
+    const session = c.session()
+    session.press(press(), screen(1))
+    session.move(screen(2), 1)
+    expect(session.move(screen(2), 3)).toBe(true)
+    session.release(screen(2))
+    expect(c.commits).toEqual([{ names: ["R1"], offset: { x: 1, y: 0 } }])
   })
 })
 

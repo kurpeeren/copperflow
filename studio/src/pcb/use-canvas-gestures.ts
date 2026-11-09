@@ -26,10 +26,13 @@ function usePendingMove(input: GestureInput): { pending: Moving | undefined; com
   return { pending: visible, commit }
 }
 
-/** Esc while a net label is dragged drops the drag; captured and stopped, so it does not also clear the selection or stop wiring. */
-function useEscapeCancelsLabel(kind: Gesture["kind"] | undefined, cancel: () => void): void {
+/** The drags Esc drops: a net label's and a wire's reshape. */
+const ESC_CANCELS: ReadonlySet<Gesture["kind"]> = new Set(["label", "reshape"])
+
+/** Esc while a net label or a wire is dragged drops the drag; captured and stopped, so it does not also clear the selection or stop wiring. */
+function useEscapeCancelsDrag(kind: Gesture["kind"] | undefined, cancel: () => void): void {
   useEffect(() => {
-    if (kind !== "label") return
+    if (!kind || !ESC_CANCELS.has(kind)) return
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return
       event.stopPropagation()
@@ -55,14 +58,14 @@ export function useCanvasGestures(input: GestureInput) {
     () => (gesture?.kind === "drag" && gesture.moved && !gesture.blocker ? { names: gesture.movable, offset: gesture.offset } : pending),
     [gesture, pending],
   )
-  useEscapeCancelsLabel(gesture?.kind, session.cancel)
+  useEscapeCancelsDrag(gesture?.kind, session.cancel)
   return { gesture, moving, pending, press: session.press, move: session.move, release: session.release, cancel: session.cancel }
 }
 
 /** The pointer: grabbing while panning, move or not-allowed while dragging, crosshair for a tool, else pointer or default. */
 export function cursorFor(gesture: Gesture | undefined, crosshair: boolean, overPart: boolean): string {
   if (gesture?.kind === "pan" && (gesture.moved || gesture.still === "none")) return "grabbing"
-  if (gesture?.kind === "drag" || gesture?.kind === "label") return gesture.blocker ? "not-allowed" : "move"
+  if (gesture?.kind === "drag" || gesture?.kind === "label" || gesture?.kind === "reshape") return gesture.blocker ? "not-allowed" : "move"
   if (crosshair || gesture?.kind === "note" || gesture?.kind === "zoom") return "crosshair"
   return overPart ? "pointer" : "default"
 }
