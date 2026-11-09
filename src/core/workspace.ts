@@ -16,8 +16,9 @@ import { drawingKeeper } from "./drawing-identity.js"
 import { applyEdits, EditError } from "./edit.js"
 import { inProjectQueue, isInside, readIfThere, writeNew, writeWithHistory } from "./file-writes.js"
 import { livesOnAs, readEntries, recordEntry, removeEntry, type Author, type HistoryEntry } from "./history.js"
-import { circuitPathFor, isLayoutFile, layoutPathFor, parseLayout } from "./layout-file.js"
-import { lockedRecordChanges } from "./layout-records.js"
+import { circuitPathFor, isLayoutFile, layoutPathFor } from "./layout-file.js"
+import { lockedPartsAt, lockedStart, type LayoutDesign } from "./layout-locks.js"
+import { lockedPartChanges, lockedRecordChanges } from "./layout-records.js"
 import { LIBRARY_OWNED_PROPS, libraryIds, libraryImports, PARTS_DIR } from "./library.js"
 import { partsInSelector } from "./selectors.js"
 import type { CircuitModel, Edit } from "./types.js"
@@ -110,12 +111,22 @@ export function editCircuit(
   })
 }
 
+export interface HistoryOptions {
+  author: Author
+  id?: string
+  /**
+   * The circuit's built design, for undoing or redoing a layout file change: a track starting on a locked part's pad
+   * counts as locked. Without it such a change is refused while the circuit has locked parts.
+   */
+  design?: LayoutDesign
+}
+
 /**
  * Undoes one change: the given id, or the newest change that is not undone yet.
  * The agent (`ai`) may only undo its own changes. Refuses when the file changed since,
  * or when the undo would change a part that is locked now.
  */
-export function undoChange(root: string, options: { author: Author; id?: string }): Promise<HistoryEntry> {
+export function undoChange(root: string, options: HistoryOptions): Promise<HistoryEntry> {
   return inProjectQueue(root, async () => {
     const entries = await readEntries(root)
     const undone = new Set(entries.flatMap((e) => (e.undoOf ? [e.undoOf] : [])))
@@ -129,7 +140,7 @@ export function undoChange(root: string, options: { author: Author; id?: string 
     if (!undoable(target)) throw new Error(`${target.id} is already undone or is itself an undo`)
     if (options.author === "ai" && target.author !== "ai") throw new Error("The agent can only undo its own changes")
 
-    const loaded = await loadTracked(root, target.file)
+    const loaded = await loadTracked(root, target.file, options.design)
     if (loaded.source !== target.after) {
       throw new Error(`${target.file} has changed since ${target.id}; undo it by hand or with git`)
     }
@@ -155,11 +166,11 @@ export function undoChange(root: string, options: { author: Author; id?: string 
  * its file, as in any editor. The agent (`ai`) may only redo its own undos. Refuses when the file changed since the
  * undo, or when the redo would change a part that is locked now. The redo is an ordinary change, so it can be undone.
  */
-export function redoChange(root: string, options: { author: Author; id?: string }): Promise<HistoryEntry> {
+export function redoChange(root: string, options: HistoryOptions): Promise<HistoryEntry> {
   return inProjectQueue(root, async () => {
     const undo = redoTarget(await readEntries(root), options)
     if (undo.absent === "after") return recreate(root, undo, options.author)
-    const loaded = await loadTracked(root, undo.file)
+    const loaded = await loadTracked(root, undo.file, options.design)
     if (loaded.source !== undo.after) {
       throw new Error(`${undo.file} has changed since ${undo.id}; redo it by hand or with git`)
     }
@@ -192,19 +203,29 @@ interface Tracked {
  * The layout file of a circuit, by the layout file's project-relative name: the circuit must exist, and the path
  * and name follow the circuit's real spelling, so a crafted name cannot reach another file.
  */
-export async function resolveLayoutFile(root: string, file: string): Promise<{ path: string; file: string; circuit: string }> {
+export async function resolveLayoutFile(
+  root: string,
+  file: string,
+): Promise<{ path: string; file: string; circuit: string; circuitPath: string }> {
   const circuit = await resolveCircuit(root, circuitPathFor(file))
-  return { path: layoutPathFor(circuit.path), file: layoutPathFor(circuit.file), circuit: circuit.file }
+  return { path: layoutPathFor(circuit.path), file: layoutPathFor(circuit.file), circuit: circuit.file, circuitPath: circuit.path }
 }
 
-async function loadTracked(root: string, file: string): Promise<Tracked> {
-  if (isLayoutFile(file)) {
-    const layout = await resolveLayoutFile(root, file)
-    const source = await readIfThere(layout.path)
-    if (source === undefined) throw new Error(`${layout.file} does not exist`)
-    const locked = parseLayout(source).records.find((r) => r.locked)
-    return { ...layout, source, lockChange: (next) => lockedRecordChanges(source, next), firstLock: () => locked && `${locked.t} ${locked.id}` }
+/** A layout file's locks: its locked records, and tracks starting on a locked part's pad. */
+async function loadTrackedLayout(root: string, file: string, design: LayoutDesign | undefined): Promise<Tracked> {
+  const { path, file: name, circuitPath } = await resolveLayoutFile(root, file)
+  const source = await readIfThere(path)
+  if (source === undefined) throw new Error(`${name} does not exist`)
+  const onPart = lockedStart(await lockedPartsAt(circuitPath), design)
+  const lockChange = (next: string) => {
+    const found = [lockedRecordChanges(source, next), lockedPartChanges(source, next, onPart)].filter((text) => text !== undefined)
+    return found.length === 0 ? undefined : found.join(", ")
   }
+  return { path, file: name, source, lockChange, firstLock: () => lockChange("") }
+}
+
+async function loadTracked(root: string, file: string, design?: LayoutDesign): Promise<Tracked> {
+  if (isLayoutFile(file)) return loadTrackedLayout(root, file, design)
   const loaded = await loadCircuit(root, file)
   const lock = loaded.annotations.locks[0]
   return { ...loaded, lockChange: (next) => changedLocks(loaded, next), firstLock: () => lock && `${lockKind(lock)} ${lock.part}` }

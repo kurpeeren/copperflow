@@ -7,7 +7,7 @@ import { lockParts } from "../src/core/annotations.js"
 import { listEntries } from "../src/core/history.js"
 import { applyLayoutEdits } from "../src/core/layout-edits.js"
 import type { LayoutEdit } from "../src/core/layout-records.js"
-import { loadCircuit, redoChange, undoChange, updateAnnotations } from "../src/core/workspace.js"
+import { editCircuit, loadCircuit, redoChange, undoChange, updateAnnotations } from "../src/core/workspace.js"
 import { buildDesign, type Design } from "../src/engine/design.js"
 
 const FILE = "boards/main.circuit.tsx"
@@ -77,6 +77,16 @@ describe("applyLayoutEdits", () => {
     await expect(applyLayoutEdits(root, FILE, [addTrack()], human)).rejects.toThrow(`${LAYOUT}: line 1 is not valid JSON`)
   })
 
+  test("a file that is neither a circuit nor a layout file is refused as an edit error", async () => {
+    await expect(applyLayoutEdits(root, "boards/main.tsx", [addTrack()], human)).rejects.toMatchObject({ name: "EditError", code: "invalid" })
+  })
+
+  test("removing the highest id does not hand it out again", async () => {
+    await applyLayoutEdits(root, FILE, [addTrack(), addTrack()], human)
+    await applyLayoutEdits(root, FILE, [{ kind: "removeTrack", id: "t0002" }], human)
+    expect((await applyLayoutEdits(root, FILE, [addTrack()], human)).created).toEqual(["t0003"])
+  })
+
   test("a circuit that does not exist is refused", async () => {
     await expect(applyLayoutEdits(root, "boards/none.circuit.tsx", [addTrack()], human)).rejects.toThrow(/does not exist/)
   })
@@ -108,11 +118,37 @@ describe("locked parts", () => {
     await expect(applyLayoutEdits(root, FILE, [{ kind: "removeTrack", id: "t0001" }], human)).rejects.toThrow(/built design/)
   })
 
-  test("a track that only ends on a locked part, and new tracks, are free", async () => {
+  test("a new track starting on a locked part is refused; one that only ends there is free", async () => {
     await lockR1()
+    await expect(applyLayoutEdits(root, FILE, [addTrack()], { ...human, design })).rejects.toThrow(/t0001 starts on the locked part R1/)
     const reversed: LayoutEdit = { kind: "addTrack", layer: "top", width: 0.25, points: [pad("R2#1"), pad("R1#1")] }
-    await applyLayoutEdits(root, FILE, [reversed, addTrack()], human)
+    await applyLayoutEdits(root, FILE, [reversed], { ...human, design })
     await expect(applyLayoutEdits(root, FILE, [{ kind: "setTrack", id: "t0001", width: 0.3 }], { ...human, design })).resolves.toBeDefined()
+  })
+
+  test("undo of a track on a part locked since is refused, and needs the design to tell", async () => {
+    await applyLayoutEdits(root, FILE, [addTrack()], { author: "ai" })
+    await lockR1()
+    await expect(undoChange(root, { author: "ai", design })).rejects.toThrow(
+      "would remove the locked track t0001 (on the locked part R1); unlock it first",
+    )
+    await expect(undoChange(root, { author: "ai" })).rejects.toThrow(/built design/)
+  })
+
+  test("redo that brings back a track on a part locked since is refused", async () => {
+    await applyLayoutEdits(root, FILE, [{ kind: "addVia", at: pad("R2#1"), drill: 0.3, diameter: 0.6 }], human)
+    await applyLayoutEdits(root, FILE, [addTrack()], human)
+    await undoChange(root, { author: "human", design })
+    await lockR1()
+    await expect(redoChange(root, { author: "human", design })).rejects.toThrow(/Redoing .* would change the locked track t0001 \(on the locked part R1\)/)
+  })
+
+  test("undo of copper elsewhere goes through while a part is locked", async () => {
+    await applyLayoutEdits(root, FILE, [addTrack()], human)
+    await lockR1()
+    await applyLayoutEdits(root, FILE, [{ kind: "addVia", at: pad("R2#1"), drill: 0.3, diameter: 0.6 }], { ...human, design })
+    await undoChange(root, { author: "human", design })
+    expect(await layoutText()).not.toContain("v0001")
   })
 })
 
@@ -179,5 +215,25 @@ describe("undo and redo of layout edits", () => {
     const entry = { id: "c0001", time: "t", author: "ai", file: "other.circuit.layout.json", summary: "x", before: "a", after: "" }
     await writeFile(join(root, ".copperflow", "history", "c0001.json"), JSON.stringify(entry))
     await expect(undoChange(root, { author: "human" })).rejects.toThrow(/does not exist/)
+  })
+
+  test("the agent cannot undo a person's layout change", async () => {
+    const { entry } = await applyLayoutEdits(root, FILE, [addTrack()], human)
+    await expect(undoChange(root, { author: "ai" })).rejects.toThrow(/Nothing to undo/)
+    await expect(undoChange(root, { author: "ai", id: entry.id })).rejects.toThrow(/only undo its own/)
+  })
+
+  test("circuit and layout changes share one history and undo newest first", async () => {
+    await applyLayoutEdits(root, FILE, [addTrack()], human)
+    const layoutAfterAdd = await layoutText()
+    await editCircuit(root, FILE, [{ kind: "setProps", part: "R2", props: { pcbY: 1 } }], { author: "human", summary: "move R2" })
+    await applyLayoutEdits(root, FILE, [{ kind: "setTrack", id: "t0001", width: 0.5 }], human)
+    expect((await listEntries(root, 10)).map((e) => e.file)).toEqual([LAYOUT, FILE, LAYOUT])
+    await undoChange(root, { author: "human" })
+    expect(await layoutText()).toBe(layoutAfterAdd)
+    await undoChange(root, { author: "human" })
+    expect(await readFile(join(root, FILE), "utf8")).toBe(CIRCUIT)
+    await undoChange(root, { author: "human" })
+    expect(existsSync(join(root, LAYOUT))).toBe(false)
   })
 })

@@ -1,11 +1,10 @@
-import type { PlacedFootprint } from "../engine/pcb.js"
-import { padsUnder } from "../engine/copper.js"
 import { EditError } from "./edit-error.js"
 import { inProjectQueue, readIfThere, writeNew, writeWithHistory } from "./file-writes.js"
 import type { Author, HistoryEntry } from "./history.js"
-import { isLayoutFile, layoutPathFor, readLayoutText, serializeLayout, type LayoutRecord, type TrackRecord } from "./layout-file.js"
+import { EMPTY_LAYOUT, isLayoutFile, layoutPathFor, readLayoutText, serializeLayout, type LayoutRecord } from "./layout-file.js"
+import { lockedPartsAt, lockedStart, type LayoutDesign } from "./layout-locks.js"
 import { applyLayoutRecordEdits, type LayoutEdit } from "./layout-records.js"
-import { loadCircuit, resolveLayoutFile } from "./workspace.js"
+import { resolveLayoutFile } from "./workspace.js"
 
 export interface LayoutEditOptions {
   author: Author
@@ -15,7 +14,9 @@ export interface LayoutEditOptions {
    * The circuit's built design (its PCB parts are enough). A track that starts on a pad of a locked part counts as
    * locked; without the design that cannot be told, so changing or removing a track is refused while parts are locked.
    */
-  design?: { pcb: { parts: readonly PlacedFootprint[] } }
+  design?: LayoutDesign
+  /** Set only by the router's code path: new records are marked `router`. */
+  router?: boolean
 }
 
 export interface LayoutEditResult {
@@ -45,20 +46,14 @@ export function describeLayoutEdits(edits: readonly LayoutEdit[], created: reado
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
-/** Who a track's first point belongs to, when that part is locked; refuses to guess without the design. */
-function lockedStart(lockedParts: ReadonlySet<string>, design: LayoutEditOptions["design"]): (track: TrackRecord) => string | undefined {
-  return (track) => {
-    if (lockedParts.size === 0) return undefined
-    if (!design) throw new EditError("invalid", `Changing ${track.id} needs the built design, because the circuit has locked parts`)
-    const start = track.points[0]
-    if (!start) return undefined
-    return padsUnder(design.pcb.parts, start, track.layer).find((pad) => lockedParts.has(pad.component))?.component
+/** The layout file a name means: the layout file itself, or the one beside a circuit file. */
+function layoutNameFor(file: string): string {
+  if (isLayoutFile(file)) return file
+  try {
+    return layoutPathFor(file)
+  } catch (error) {
+    throw new EditError("invalid", (error as Error).message)
   }
-}
-
-async function lockedPartsOf(root: string, circuit: string): Promise<Set<string>> {
-  const { annotations } = await loadCircuit(root, circuit)
-  return new Set(annotations.locks.filter((lock) => !lock.drawing).map((lock) => lock.part))
 }
 
 /**
@@ -68,12 +63,14 @@ async function lockedPartsOf(root: string, circuit: string): Promise<Set<string>
  */
 export function applyLayoutEdits(root: string, file: string, edits: readonly LayoutEdit[], options: LayoutEditOptions): Promise<LayoutEditResult> {
   return inProjectQueue(root, async () => {
-    const layout = await resolveLayoutFile(root, isLayoutFile(file) ? file : layoutPathFor(file))
+    const layout = await resolveLayoutFile(root, layoutNameFor(file))
     const source = await readIfThere(layout.path)
-    const before = source === undefined ? [] : readLayoutText(source, layout.file)
-    const context = { author: options.author, lockedPartAtStart: lockedStart(await lockedPartsOf(root, layout.circuit), options.design) }
-    const { records, created } = applyLayoutRecordEdits(before, edits, context)
-    const text = serializeLayout(records)
+    const before = source === undefined ? EMPTY_LAYOUT : readLayoutText(source, layout.file)
+    const lockedParts = await lockedPartsAt(layout.circuitPath)
+    const context = { author: options.author, ...(options.router ? { router: true } : {}), lockedPartAtStart: lockedStart(lockedParts, options.design) }
+    const { doc, created } = applyLayoutRecordEdits(before, edits, context)
+    const records = doc.records
+    const text = serializeLayout(doc)
     if (text === (source ?? "")) throw new EditError("invalid", "The edit made no change")
     const summary = options.summary ?? describeLayoutEdits(edits, created)
     const entry =

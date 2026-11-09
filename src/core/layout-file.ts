@@ -127,12 +127,43 @@ export function checkRecord(raw: unknown): { record: LayoutRecord } | { problems
   return problems.length > 0 ? { problems, id: raw.id } : { record: canonical(raw) }
 }
 
-function parseLine(line: string, number: number): { record: LayoutRecord } | { error: string } {
+/** The number each kind's next id gets: ids handed out once are never handed out again in the file. */
+export interface LayoutCounters {
+  track: number
+  via: number
+}
+
+/** A layout file's content: the counters (the file's first line, when any id was ever given) and the records in order. */
+export interface LayoutDoc {
+  next: LayoutCounters
+  records: LayoutRecord[]
+}
+
+const isCount = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 1
+
+/** `{"t":"meta","next":{"track":12,"via":3}}`, or the problem with it. */
+function checkMeta(raw: Record<string, unknown>): LayoutCounters | string {
+  const next = raw.next
+  const extra = Object.keys(raw).find((key) => key !== "t" && key !== "next")
+  if (extra !== undefined) return `unknown field ${extra}`
+  if (!isObject(next) || Object.keys(next).some((key) => key !== "track" && key !== "via") || !isCount(next.track) || !isCount(next.via)) {
+    return "next must be {track, via} with whole numbers from 1"
+  }
+  return { track: next.track, via: next.via }
+}
+
+type ParsedLine = { record: LayoutRecord } | { meta: LayoutCounters } | { error: string }
+
+function parseLine(line: string, number: number): ParsedLine {
   let raw: unknown
   try {
     raw = JSON.parse(line)
   } catch {
     return { error: `line ${number} is not valid JSON` }
+  }
+  if (isObject(raw) && raw.t === "meta") {
+    const meta = checkMeta(raw)
+    return typeof meta === "string" ? { error: `line ${number} (meta): ${meta}` } : { meta }
   }
   const checked = checkRecord(raw)
   if ("record" in checked) return checked
@@ -140,33 +171,48 @@ function parseLine(line: string, number: number): { record: LayoutRecord } | { e
   return { error: `${where}: ${checked.problems.join("; ")}` }
 }
 
-/** Reads every valid record in file order and names each problem by its line; a repeated id keeps the first. */
-export function parseLayout(text: string): { records: LayoutRecord[]; errors: string[] } {
+const idNumber = (record: LayoutRecord) => Number(ID_PATTERN[record.t].exec(record.id)?.[1] ?? 0)
+
+/** The counters: the meta line's, raised past every id in the file, so a hand edit cannot make an id come back. */
+function countersFor(records: readonly LayoutRecord[], meta: LayoutCounters | undefined): LayoutCounters {
+  const after = (kind: LayoutRecord["t"]) => Math.max(meta?.[kind] ?? 1, ...records.filter((r) => r.t === kind).map((r) => idNumber(r) + 1))
+  return { track: after("track"), via: after("via") }
+}
+
+/**
+ * Reads every valid record in file order and names each problem by its line; a repeated id keeps the first. The
+ * meta line may only be the first line.
+ */
+export function parseLayout(text: string): LayoutDoc & { errors: string[] } {
   const records: LayoutRecord[] = []
   const errors: string[] = []
   const seen = new Set<string>()
+  let meta: LayoutCounters | undefined
   text.split(/\r?\n/).forEach((line, index) => {
     if (line.trim() === "") return
     const parsed = parseLine(line, index + 1)
     if ("error" in parsed) errors.push(parsed.error)
-    else if (seen.has(parsed.record.id)) errors.push(`line ${index + 1}: ${parsed.record.id} is used twice`)
+    else if ("meta" in parsed) {
+      if (seen.size > 0 || meta !== undefined || errors.length > 0) errors.push(`line ${index + 1}: the meta line must be the first line`)
+      else meta = parsed.meta
+    } else if (seen.has(parsed.record.id)) errors.push(`line ${index + 1}: ${parsed.record.id} is used twice`)
     else {
       seen.add(parsed.record.id)
       records.push(parsed.record)
     }
   })
-  return { records, errors }
+  return { next: countersFor(records, meta), records, errors }
 }
 
 /** Reads a layout file that must be valid throughout; the error names the file and every problem. */
-export function readLayoutText(text: string, file = "The layout file"): LayoutRecord[] {
-  const { records, errors } = parseLayout(text)
+export function readLayoutText(text: string, file = "The layout file"): LayoutDoc {
+  const { next, records, errors } = parseLayout(text)
   if (errors.length > 0) throw new Error(`${file}: ${errors.join("; ")}`)
-  return records
+  return { next, records }
 }
 
-/** One line per record, fields in a fixed order, a newline after each; no records is the empty text. */
-export function serializeLayout(records: readonly LayoutRecord[]): string {
+/** The records alone, one line each, fields in a fixed order, a newline after each. */
+export function serializeRecords(records: readonly LayoutRecord[]): string {
   return records
     .map((record) => {
       const fields: readonly string[] = record.t === "track" ? TRACK_FIELDS : VIA_FIELDS
@@ -176,8 +222,16 @@ export function serializeLayout(records: readonly LayoutRecord[]): string {
     .join("")
 }
 
-/** The id after the highest of that kind in the file: t0001, t0002, … */
-export function nextLayoutId(records: readonly LayoutRecord[], kind: LayoutRecord["t"]): string {
-  const numbers = records.filter((r) => r.t === kind).map((r) => Number(ID_PATTERN[kind].exec(r.id)?.[1] ?? 0))
-  return `${ID_PREFIX[kind]}${String(Math.max(0, ...numbers) + 1).padStart(ID_DIGITS, "0")}`
+/** The file's text: the meta line once any id was given (it stays when every record is removed), then the records. */
+export function serializeLayout(doc: LayoutDoc): string {
+  const used = doc.next.track > 1 || doc.next.via > 1
+  const meta = used ? `${JSON.stringify({ t: "meta", next: { track: doc.next.track, via: doc.next.via } })}\n` : ""
+  return meta + serializeRecords(doc.records)
 }
+
+/** The id the next record of that kind gets: t0001, t0002, … */
+export function nextLayoutId(doc: LayoutDoc, kind: LayoutRecord["t"]): string {
+  return `${ID_PREFIX[kind]}${String(doc.next[kind]).padStart(ID_DIGITS, "0")}`
+}
+
+export const EMPTY_LAYOUT: LayoutDoc = { next: { track: 1, via: 1 }, records: [] }

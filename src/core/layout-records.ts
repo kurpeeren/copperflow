@@ -4,8 +4,9 @@ import {
   checkRecord,
   nextLayoutId,
   parseLayout,
-  serializeLayout,
+  serializeRecords,
   type CopperLayer,
+  type LayoutDoc,
   type LayoutMaker,
   type LayoutPoint,
   type LayoutRecord,
@@ -13,19 +14,34 @@ import {
   type ViaRecord,
 } from "./layout-file.js"
 
-/** What the core can do to the layout file. Adds take the next free id; `by` defaults to who makes the edit. */
+/**
+ * What the core can do to the layout file. Adds take the next free id; who made a record (`by`) comes from the
+ * applier, never from the edit. Only the fields listed here are taken from an edit; anything else is refused.
+ */
 export type LayoutEdit =
-  | { kind: "addTrack"; net?: string; layer: CopperLayer; width: number; points: LayoutPoint[]; locked?: boolean; by?: LayoutMaker }
-  | { kind: "setTrack"; id: string; net?: string; layer?: CopperLayer; width?: number; points?: LayoutPoint[]; locked?: boolean }
+  | { kind: "addTrack"; net?: string; layer: CopperLayer; width: number; points: LayoutPoint[]; locked?: boolean }
+  | { kind: "setTrack"; id: string; layer?: CopperLayer; width?: number; points?: LayoutPoint[]; locked?: boolean }
   | { kind: "removeTrack"; id: string }
-  | { kind: "addVia"; net?: string; at: LayoutPoint; drill: number; diameter: number; layers?: CopperLayer[]; locked?: boolean; by?: LayoutMaker }
-  | { kind: "setVia"; id: string; net?: string; at?: LayoutPoint; drill?: number; diameter?: number; layers?: CopperLayer[]; locked?: boolean }
+  | { kind: "addVia"; net?: string; at: LayoutPoint; drill: number; diameter: number; layers?: CopperLayer[]; locked?: boolean }
+  | { kind: "setVia"; id: string; at?: LayoutPoint; drill?: number; diameter?: number; layers?: CopperLayer[]; locked?: boolean }
   | { kind: "removeVia"; id: string }
 
 export interface LayoutEditContext {
   author: Author
+  /** Set by the router's own code path: its records are marked `router` instead of the author's mark. */
+  router?: boolean
   /** The locked part whose pad the track's first point lies on, if any; such a track counts as locked. */
   lockedPartAtStart?: (track: TrackRecord) => string | undefined
+}
+
+/** The fields each edit kind may carry, besides `kind`. */
+const EDIT_FIELDS: Record<LayoutEdit["kind"], readonly string[]> = {
+  addTrack: ["net", "layer", "width", "points", "locked"],
+  setTrack: ["id", "layer", "width", "points", "locked"],
+  removeTrack: ["id"],
+  addVia: ["net", "at", "drill", "diameter", "layers", "locked"],
+  setVia: ["id", "at", "drill", "diameter", "layers", "locked"],
+  removeVia: ["id"],
 }
 
 const MAKER: Record<Author, LayoutMaker> = { human: "human", ai: "agent" }
@@ -37,18 +53,32 @@ function checked(record: Record<string, unknown>): LayoutRecord {
   throw new EditError("invalid", `${result.id ?? "The new record"}: ${result.problems.join("; ")}`)
 }
 
+/** Refuses an unknown edit kind and any field the kind may not set (`by` among them). */
+function refuseUnknownFields(edit: LayoutEdit): void {
+  const allowed = EDIT_FIELDS[edit.kind] as readonly string[] | undefined
+  if (allowed === undefined) throw new EditError("invalid", `Unknown layout edit ${String(edit.kind)}`)
+  const extra = Object.keys(edit).find((key) => key !== "kind" && !allowed.includes(key))
+  if (extra !== undefined) throw new EditError("invalid", `${edit.kind} cannot set ${extra}; it takes ${allowed.join(", ")}`)
+}
+
 function refuseLocking(edit: LayoutEdit, context: LayoutEditContext): void {
   if (context.author === "ai" && "locked" in edit && edit.locked !== undefined) {
     throw new EditError("locked", "Only a person locks or unlocks copper; ask the human to do it")
   }
 }
 
-/** Refuses changing or removing a locked record; a person may still change only its lock. */
-function refuseLocked(record: LayoutRecord, edit: LayoutEdit, context: LayoutEditContext): void {
-  const onlyLock = edit.kind.startsWith("set") && Object.keys(edit).every((key) => key === "kind" || key === "id" || key === "locked")
-  if (record.locked && !onlyLock) throw new EditError("locked", `${record.id} is locked; ask the human to unlock it`)
+function refuseLockedPart(record: LayoutRecord, context: LayoutEditContext): void {
   const part = record.t === "track" ? context.lockedPartAtStart?.(record) : undefined
   if (part !== undefined) throw new EditError("locked", `${record.id} starts on the locked part ${part}; ask the human to unlock it`)
+}
+
+const onlyLock = (edit: LayoutEdit) => edit.kind.startsWith("set") && Object.keys(edit).every((key) => key === "kind" || key === "id" || key === "locked")
+
+/** Refuses changing or removing a locked record or a track on a locked part; a person may still change only its lock. */
+function refuseLocked(record: LayoutRecord, edit: LayoutEdit, context: LayoutEditContext): void {
+  if (onlyLock(edit)) return
+  if (record.locked) throw new EditError("locked", `${record.id} is locked; ask the human to unlock it`)
+  refuseLockedPart(record, context)
 }
 
 function find(records: readonly LayoutRecord[], kind: LayoutRecord["t"], id: string): number {
@@ -57,46 +87,48 @@ function find(records: readonly LayoutRecord[], kind: LayoutRecord["t"], id: str
   return index
 }
 
-function added(records: readonly LayoutRecord[], edit: Extract<LayoutEdit, { kind: "addTrack" | "addVia" }>, author: Author): LayoutRecord {
+function addOne(doc: LayoutDoc, edit: Extract<LayoutEdit, { kind: "addTrack" | "addVia" }>, context: LayoutEditContext): LayoutDoc {
   const { kind, ...fields } = edit
   const t = kind === "addTrack" ? "track" : "via"
-  return checked({ t, id: nextLayoutId(records, t), ...fields, locked: edit.locked ?? false, by: edit.by ?? MAKER[author] })
+  const by = context.router ? "router" : MAKER[context.author]
+  const record = checked({ t, id: nextLayoutId(doc, t), ...fields, locked: edit.locked ?? false, by })
+  refuseLockedPart(record, context)
+  return { next: { ...doc.next, [t]: doc.next[t] + 1 }, records: [...doc.records, record] }
 }
 
-function changed(record: LayoutRecord, edit: Extract<LayoutEdit, { kind: "setTrack" | "setVia" }>): LayoutRecord {
+function setOne(doc: LayoutDoc, index: number, edit: Extract<LayoutEdit, { kind: "setTrack" | "setVia" }>, context: LayoutEditContext): LayoutDoc {
   const { kind: _kind, id: _id, ...fields } = edit
   const defined = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined))
-  return checked({ ...record, ...defined })
+  const record = checked({ ...doc.records[index], ...defined })
+  if (!onlyLock(edit)) refuseLockedPart(record, context)
+  return { ...doc, records: doc.records.map((r, i) => (i === index ? record : r)) }
 }
 
-function applyOne(records: readonly LayoutRecord[], edit: LayoutEdit, context: LayoutEditContext): { records: LayoutRecord[]; created?: string } {
+function applyOne(doc: LayoutDoc, edit: LayoutEdit, context: LayoutEditContext): LayoutDoc {
+  refuseUnknownFields(edit)
   refuseLocking(edit, context)
-  if (edit.kind === "addTrack" || edit.kind === "addVia") {
-    const record = added(records, edit, context.author)
-    return { records: [...records, record], created: record.id }
-  }
-  const index = find(records, edit.kind.endsWith("Track") ? "track" : "via", edit.id)
-  const record = records[index] as LayoutRecord
-  refuseLocked(record, edit, context)
-  if (edit.kind === "removeTrack" || edit.kind === "removeVia") return { records: records.filter((_, i) => i !== index) }
-  return { records: records.map((r, i) => (i === index ? changed(record, edit) : r)) }
+  if (edit.kind === "addTrack" || edit.kind === "addVia") return addOne(doc, edit, context)
+  const index = find(doc.records, edit.kind.endsWith("Track") ? "track" : "via", edit.id)
+  refuseLocked(doc.records[index] as LayoutRecord, edit, context)
+  if (edit.kind === "removeTrack" || edit.kind === "removeVia") return { ...doc, records: doc.records.filter((_, i) => i !== index) }
+  return setOne(doc, index, edit, context)
 }
 
-/** Applies the edits in order to new records; the old ones stay as they were. Throws EditError. */
+/** Applies the edits in order to a new layout; the old one stays as it was. Throws EditError. */
 export function applyLayoutRecordEdits(
-  records: readonly LayoutRecord[],
+  doc: LayoutDoc,
   edits: readonly LayoutEdit[],
   context: LayoutEditContext,
-): { records: LayoutRecord[]; created: string[] } {
+): { doc: LayoutDoc; created: string[] } {
   if (edits.length === 0) throw new EditError("invalid", "No layout edits were given")
-  let current = [...records]
+  let current = doc
   const created: string[] = []
   for (const edit of edits) {
-    const result = applyOne(current, edit, context)
-    current = result.records
-    if (result.created) created.push(result.created)
+    const count = current.records.length
+    current = applyOne(current, edit, context)
+    if (edit.kind === "addTrack" || edit.kind === "addVia") created.push((current.records[count] as LayoutRecord).id)
   }
-  return { records: current, created }
+  return { doc: current, created }
 }
 
 /**
@@ -109,10 +141,34 @@ export function lockedRecordChanges(before: string, after: string): string | und
   const changedIds = parseLayout(before)
     .records.filter((r) => {
       const later = next.get(r.id)
-      return r.locked && (later === undefined || (later.locked && serializeLayout([later]) !== serializeLayout([r])))
+      return r.locked && (later === undefined || (later.locked && serializeRecords([later]) !== serializeRecords([r])))
     })
     .map((r) => `${r.t} ${r.id}`)
   return changedIds.length === 0 ? undefined : changedIds.join(", ")
+}
+
+/**
+ * The tracks on a locked part that `after` would change, add or remove compared with `before`, as
+ * "track t0001 (on the locked part R1)"; undefined when none. Both versions of a changed track are judged.
+ */
+export function lockedPartChanges(
+  before: string,
+  after: string,
+  lockedPartAtStart: (track: TrackRecord) => string | undefined,
+): string | undefined {
+  const [old, fresh] = [parseLayout(before).records, parseLayout(after).records]
+  const textOf = (records: readonly LayoutRecord[]) => new Map(records.map((r) => [r.id, serializeRecords([r])]))
+  const [oldText, freshText] = [textOf(old), textOf(fresh)]
+  const found: string[] = []
+  const seen = new Set<string>()
+  for (const track of [...old, ...fresh]) {
+    if (track.t !== "track" || seen.has(track.id) || oldText.get(track.id) === freshText.get(track.id)) continue
+    const part = lockedPartAtStart(track)
+    if (part === undefined) continue
+    seen.add(track.id)
+    found.push(`track ${track.id} (on the locked part ${part})`)
+  }
+  return found.length === 0 ? undefined : found.join(", ")
 }
 
 export type { TrackRecord, ViaRecord }
