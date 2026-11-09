@@ -2,8 +2,9 @@
 // the parts the open view draws; a Rotate press waits at the turn gate until the design shows where the last edit put
 // the parts, so two quick presses turn the group twice about the same centre. Align and distribute wait at the same
 // gate (each is computed from the parts' positions), so two quick ones do not scatter the parts. After an Undo or Redo from the app
-// (history-writes.ts) both wait for the build that read it. use-key-edits.ts holds one session per canvas. Plain
-// TypeScript with .js imports, so the tests can run it.
+// (history-writes.ts) both wait for the build that read it. On the schematic an arrow move or an align carries the
+// corners of the wires at the moved pins in its own edit (wire-follow.ts). use-key-edits.ts holds one session per
+// canvas. Plain TypeScript with .js imports, so the tests can run it.
 import type { WriteOutcome } from "../history-writes.js"
 import type { Selection } from "../selection.js"
 import { nudgeDirection, type KeyResult } from "./canvas-keys.js"
@@ -30,6 +31,7 @@ import {
 } from "./key-burst.js"
 import type { Point } from "./geometry.js"
 import type { SourceCircuit, Turn, View } from "./positions.js"
+import { withFollowingWires, type WireFollow } from "./wire-follow.js"
 
 /** What an edit from a key needs, as the canvas has it at this press. */
 export interface EditInput extends DesignState {
@@ -39,6 +41,8 @@ export interface EditInput extends DesignState {
   actions: GroupEditActions
   blockerFor(name: string): string | null
   layout: Layout
+  /** The schematic's sheet, whose hand-drawn wires follow a nudge or an align; the PCB has none. */
+  follow?: WireFollow
 }
 
 export interface KeySession {
@@ -113,7 +117,7 @@ function turn(state: State, events: SessionEvents, input: EditInput, quarter: Tu
 function alignSelection(state: State, events: SessionEvents, input: EditInput, command: AlignCommand): void {
   const plan = alignPlan(input.circuit, input.selection.names, input.view, input.layout, command, input.blockerFor)
   if ("message" in plan) return input.actions.notify(plan.message)
-  void send(state, events, plan, input)
+  void send(state, events, withFollowingWires(plan, input.circuit, input.follow), input)
 }
 
 /** Does what a press at the gate asked for. */
@@ -136,7 +140,8 @@ function press(state: State, events: SessionEvents, input: EditInput, what: Pres
 function sendNudge(state: State, events: SessionEvents, input: EditInput, total: Point): void {
   const { burst, layout } = state
   if (!burst || !layout) return
-  void send(state, events, nudgePlan(burst.base, burst.names, input.view, layout, total, input.blockerFor), input).then((ok) => {
+  const plan = withFollowingWires(nudgePlan(burst.base, burst.names, input.view, layout, total, input.blockerFor), burst.base, input.follow)
+  void send(state, events, plan, input).then((ok) => {
     if (state.burst !== burst && state.burst?.base !== burst.base) return
     const next = state.burst ? settleNudge(state.burst, ok) : undefined
     state.burst = next?.burst

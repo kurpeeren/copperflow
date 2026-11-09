@@ -403,7 +403,9 @@ export function SchematicCanvas(props: CanvasProps) {
   const wire = useWireTool({ design, actions, camera, cursor, step, snap, buildId, builtFrom })
   const palette = useLabelPalette({ design, circuit, actions, camera, cursor, builtFrom, onArm: wire.cancel })
   const note = useSheetNoteTool(wire, palette)
-  const common = { view: "schematic", circuit, actions, onSelect, blockerFor: parts.blockerFor } as const
+  // Parts moved here take the hand-drawn wires at their pins along (wire-follow.ts), in the move's own edit.
+  const follow = useMemo(() => ({ design, locked: parts.locked }), [design, parts.locked])
+  const common = { view: "schematic", circuit, actions, onSelect, blockerFor: parts.blockerFor, follow } as const
   const labels = useLabelDrag({ design, circuit, actions, builtFrom })
   const wires = useSheetWires({ design, circuit, actions, locked: parts.locked, camera, selection, onSelect, builtFrom, wiring: wire.wiring || wire.drawing !== null })
   const tool = useArmedForGestures(note, palette)

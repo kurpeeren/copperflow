@@ -20,6 +20,7 @@ import type { View } from "./positions"
 import type { ContextTarget } from "./press"
 import type { WireKeys } from "./use-sheet-wires"
 import { deleteTarget } from "./wire-selection"
+import type { WireFollow } from "./wire-follow"
 
 export interface PartKeysInput {
   view: View
@@ -51,6 +52,8 @@ export interface PartKeysInput {
   onContextMenu(target: ContextTarget, at: Point): void
   /** The schematic's selected wire: its Delete and its net. The PCB has none. */
   wire?: WireKeys
+  /** The schematic's sheet, whose hand-drawn wires follow the parts the arrows and align move. The PCB has none. */
+  follow?: WireFollow
 }
 
 /**
@@ -118,9 +121,9 @@ function usePartCommands(input: PartKeysInput, edits: KeyEdits): void {
 export function usePartKeys(input: PartKeysInput): { rotateHeld: boolean } {
   const { edits, held } = useKeyEdits(input)
   usePartCommands(input, edits)
-  const { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire } = input
+  const { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, follow } = input
   useEffect(() => {
-    const keys: PartKeysInput = { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire }
+    const keys: PartKeysInput = { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, follow }
     const onKey = (event: KeyboardEvent) => {
       const hit = keyAction(keyInput(event), { view, drawing: paused })
       if (!hit) return
@@ -129,6 +132,6 @@ export function usePartKeys(input: PartKeysInput): { rotateHeld: boolean } {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [edits, view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire])
+  }, [edits, view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, follow])
   return { rotateHeld: held }
 }

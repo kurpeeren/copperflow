@@ -9,9 +9,10 @@ const EPSILON = 1e-9
 const ZERO: Point = { x: 0, y: 0 }
 const nearly = (a: number, b: number): boolean => Math.abs(a - b) < EPSILON
 
-type Direction = "horizontal" | "vertical" | "slanted"
+export type Direction = "horizontal" | "vertical" | "slanted"
 
-function directionOf(a: Point, b: Point): Direction {
+/** Which way the segment from `a` to `b` runs; two points at the same spot count as horizontal. */
+export function directionOf(a: Point, b: Point): Direction {
   if (nearly(a.y, b.y)) return "horizontal"
   return nearly(a.x, b.x) ? "vertical" : "slanted"
 }

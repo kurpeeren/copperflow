@@ -14,6 +14,7 @@ import { areaCamera } from "./view-fit.js"
 import { picks, type Pickable, type PickContext } from "./pick.js"
 import { gestureStart, hasMoved, rightButtonHeld, stillRelease, type ArmedTool, type ContextTarget, type GestureStart, type Press, type StillRelease, type Under } from "./press.js"
 import { endReshape, followReshape, gripOf, handleUnder, startReshape, type ReshapeGesture, type WireDrag } from "./wire-drag.js"
+import { withFollowingWires, type WireFollow } from "./wire-follow.js"
 
 export type { ReshapeGesture } from "./wire-drag.js"
 
@@ -82,6 +83,8 @@ export interface GestureInput {
   labels?: GestureLabels
   /** The schematic's wires, which a click selects. */
   wires?: GestureWires
+  /** The schematic's sheet, whose hand-drawn wires follow a moved part; the PCB has none. */
+  follow?: WireFollow
   /** The PCB's layers, which decide what a click or a box may pick; the schematic has none. */
   layers?: PickLayers
   /** The Filter tab: the kinds a click or a box may pick. */
@@ -95,9 +98,13 @@ export interface GestureInput {
 /** Writes the move of `names` by `offset`. */
 export type Commit = (names: readonly string[], offset: Point) => void
 
-/** The edit that moves `names` by `offset`; a part with no anchor in this view moves from the centre of its box. */
+/**
+ * The edit that moves `names` by `offset`; a part with no anchor in this view moves from the centre of its box. On the
+ * schematic the wires at the moved pins keep their first segments square, in the same edit list (wire-follow.ts).
+ */
 export function movePlan(input: GestureInput, names: readonly string[], offset: Point): GroupEdit {
-  return moveEach(input.circuit, names, input.view, anchorLookup(input.anchors, input.boxes), offset, input.blockerFor)
+  const plan = moveEach(input.circuit, names, input.view, anchorLookup(input.anchors, input.boxes), offset, input.blockerFor)
+  return withFollowingWires(plan, input.circuit, input.follow)
 }
 
 /** A box smaller than this on both sides, in CSS pixels, is a click. */
