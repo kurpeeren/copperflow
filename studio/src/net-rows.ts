@@ -1,6 +1,7 @@
 // The rows of the Net tab: every net of the built design, named nets first.
 // Only types come from the engine: its runtime modules reach Node-only code the Studio bundle cannot hold.
 import type { Design } from "../../src/engine/design.js"
+import type { Net } from "../../src/engine/model.js"
 
 export type NetBadge = "ground" | "power"
 
@@ -37,13 +38,18 @@ export function netBadge(names: readonly string[]): NetBadge | undefined {
 /** The name the engine draws for a net: a ground or power name when it has one, else the first. */
 const nameOf = (names: readonly string[]): string | undefined => names.find((name) => badgeOf(name)) ?? names[0]
 
+/** How the Net tab and Properties name a net: the name the engine draws, or its first pin when it has no name. */
+export function netLabel(net: Net): string {
+  return nameOf(net.names) ?? `(unnamed) ${net.pins[0] ?? net.id}`
+}
+
 export function netRows(design: Design): NetRow[] {
   const rows = design.circuit.nets.map((net): NetRow => {
     const name = nameOf(net.names)
     const badge = netBadge(net.names)
     return {
       id: net.id,
-      label: name ?? `(unnamed) ${net.pins[0] ?? net.id}`,
+      label: netLabel(net),
       pins: net.pins.length,
       named: name !== undefined,
       ...(badge ? { badge } : {}),

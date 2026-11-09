@@ -5,11 +5,13 @@
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { Selection, SelectionChange } from "../selection.js"
 import { anyLayerShown, type PickLayers } from "./layers.js"
-import { kindPickable, type PickFilter } from "./pick-filter.js"
+import { kindPickable, type PickFilter, type PickKind } from "./pick-filter.js"
 import type { ArmedTool } from "./press.js"
 
-/** Something a pick can take: a part, by name, or a net label on the schematic. */
-export type Pickable = { kind: "part"; name: string } | { kind: "label"; label: NetLabel }
+/** Something a pick can take: a part, by name, or a net label or a wire (by its id) on the schematic. */
+export type Pickable = { kind: "part"; name: string } | { kind: "label"; label: NetLabel } | { kind: "wire"; id: string }
+
+const KINDS: Record<Pickable["kind"], PickKind> = { part: "parts", label: "labels", wire: "wires" }
 
 /** What a pick is made with. */
 export interface PickContext {
@@ -26,11 +28,11 @@ export interface PickContext {
 /**
  * Whether `candidate` may be picked. With the Note box tool armed a press draws the note box, so nothing is picked
  * under it (and a double click opens nothing); a kind the Filter tab switched off cannot be picked; a PCB part needs one
- * of its layers shown; otherwise every part and net label may be.
+ * of its layers shown; otherwise every part, net label and wire may be.
  */
 export function canPick(candidate: Pickable, context: PickContext): boolean {
   if (context.armed === "note" || context.armed === "zoom") return false
-  if (!kindPickable(context.filter, candidate.kind === "part" ? "parts" : "labels")) return false
+  if (!kindPickable(context.filter, KINDS[candidate.kind])) return false
   const { layers } = context
   const drawn = candidate.kind === "part" ? layers?.of(candidate.name) : undefined
   return !layers || !drawn || anyLayerShown(drawn, layers.visible)

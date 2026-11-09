@@ -36,6 +36,7 @@ export type CommandId =
   | "clearHighlight"
   | "rotate"
   | "rotateRight"
+  | "removeCorners"
   | AlignCommand
   | "find"
   | "lock"

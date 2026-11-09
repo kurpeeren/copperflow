@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest"
 import { gestureStart, hasMoved, opensOnDoubleClick, stillRelease, type GestureStart, type Press, type Under } from "../studio/src/pcb/press.js"
 
 const press = (held: Partial<Press> = {}): Press => ({ button: 0, shiftKey: false, ctrlKey: false, metaKey: false, ...held })
-const UNDER: readonly Under[] = ["part", "selectedPart", "label", "empty"]
+const UNDER: readonly Under[] = ["part", "selectedPart", "label", "wire", "empty"]
 const MODIFIERS = [{ shiftKey: true }, { ctrlKey: true }, { metaKey: true }, { shiftKey: true, ctrlKey: true }]
 
 describe("what a press on the canvas starts", () => {
@@ -13,6 +13,14 @@ describe("what a press on the canvas starts", () => {
 
   test("a left press on a net label drags the label", () => {
     expect(gestureStart(press(), "label", null)).toBe("label")
+  })
+
+  test("a left press on a wire selects the wire; with Shift or Ctrl it adds parts with a box, as on a label", () => {
+    expect(gestureStart(press(), "wire", null)).toBe("wire")
+    expect(gestureStart(press(), "wire", "place")).toBe("wire")
+    for (const held of MODIFIERS) expect(gestureStart(press(held), "wire", null)).toBe("addBox")
+    expect(gestureStart(press({ button: 2 }), "wire", null)).toBe("rightPress")
+    expect(gestureStart(press(), "wire", "note")).toBe("note")
   })
 
   test("a left press on empty canvas draws a selection box instead of panning", () => {
@@ -74,6 +82,7 @@ describe("a release that did not move", () => {
     ["rightPress", "menu"],
     ["pan", "none"],
     ["label", "none"],
+    ["wire", "none"],
     ["note", "none"],
   ]
   test.each(cases)("after %s does %s", (start, expected) => {

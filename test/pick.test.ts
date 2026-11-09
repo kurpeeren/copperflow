@@ -14,6 +14,9 @@ const partBox = (name: string, minX: number, maxX: number): PartBox => ({ name, 
 const BOXES = [partBox("R1", 0, 4), partBox("C1", 1, 2)]
 const labels = { at: (world: { x: number }) => (world.x > 8 ? label : undefined), blocker: () => null, commit: () => undefined }
 
+// A wire runs along y = 0.5, across both parts and out to the label.
+const wires = { at: (world: { x: number; y: number }) => (Math.abs(world.y - 0.5) < 0.1 ? "wire:W" : undefined) }
+
 const free: PickContext = { selection: Selection.none, armed: null }
 const note: PickContext = { selection: Selection.none, armed: "note" }
 
@@ -44,6 +47,15 @@ describe("every pick goes through canPick", () => {
     expect(targetAt(BOXES, labels, { x: 9, y: 0 }, free)).toEqual({ kind: "label", label })
     expect(targetAt(BOXES, labels, { x: 1.5, y: 0 }, note)).toEqual({ kind: "canvas" })
     expect(targetAt(BOXES, labels, { x: 9, y: 0 }, note)).toEqual({ kind: "canvas" })
+  })
+
+  test("a net label wins over a wire, and a wire over the part body under it", () => {
+    const everywhere = { ...labels, at: () => label }
+    expect(targetAt(BOXES, labels, { x: 1.5, y: 0.5 }, free, wires)).toEqual({ kind: "wire", id: "wire:W" })
+    expect(targetAt(BOXES, everywhere, { x: 1.5, y: 0.5 }, free, wires)).toEqual({ kind: "label", label })
+    expect(targetAt(BOXES, labels, { x: 1.5, y: 0 }, free, wires)).toEqual({ kind: "part", name: "C1" })
+    expect(targetAt(BOXES, labels, { x: 6, y: 0.5 }, free, wires)).toEqual({ kind: "wire", id: "wire:W" })
+    expect(targetAt(BOXES, labels, { x: 1.5, y: 0.5 }, note, wires)).toEqual({ kind: "canvas" })
   })
 
   test("the parts a box takes", () => {
@@ -85,8 +97,9 @@ describe("hidden layers", () => {
 })
 
 describe("the Filter tab", () => {
-  const noParts = { parts: false, labels: true }
-  const noLabels = { parts: true, labels: false }
+  const noParts = { parts: false, labels: true, wires: true }
+  const noLabels = { parts: true, labels: false, wires: true }
+  const noWires = { parts: true, labels: true, wires: false }
 
   test("a kind switched off cannot be picked; the other can", () => {
     expect(canPick({ kind: "part", name: "R1" }, { ...free, filter: noParts })).toBe(false)
@@ -99,10 +112,16 @@ describe("the Filter tab", () => {
     expect(targetAt(BOXES, labels, { x: 1.5, y: 0 }, { ...free, filter: noParts })).toEqual({ kind: "canvas" })
     expect(targetAt(BOXES, labels, { x: 9, y: 0 }, { ...free, filter: noLabels })).toEqual({ kind: "canvas" })
     expect(targetAt(BOXES, labels, { x: 9, y: 0 }, { ...free, filter: noParts })).toEqual({ kind: "label", label })
-    // A label over a part (the sheet hover asks the same): the part while Parts is on, else the label.
+    // A label over a part (the sheet hover asks the same): the label while Net labels is on, else the part.
     const everywhere = { ...labels, at: () => label }
-    expect(targetAt(BOXES, everywhere, { x: 1.5, y: 0 }, free)).toEqual({ kind: "part", name: "C1" })
-    expect(targetAt(BOXES, everywhere, { x: 1.5, y: 0 }, { ...free, filter: noParts })).toEqual({ kind: "label", label })
+    expect(targetAt(BOXES, everywhere, { x: 1.5, y: 0 }, free)).toEqual({ kind: "label", label })
+    expect(targetAt(BOXES, everywhere, { x: 1.5, y: 0 }, { ...free, filter: noLabels })).toEqual({ kind: "part", name: "C1" })
+  })
+
+  test("a wire switched off is not picked: the click goes to the part under it", () => {
+    expect(canPick({ kind: "wire", id: "wire:W" }, { ...free, filter: noWires })).toBe(false)
+    expect(canPick({ kind: "wire", id: "wire:W" }, { ...free, filter: noParts })).toBe(true)
+    expect(targetAt(BOXES, labels, { x: 1.5, y: 0.5 }, { ...free, filter: noWires }, wires)).toEqual({ kind: "part", name: "C1" })
   })
 
   test("a box takes no parts while Parts is off, and keeps the selection when it adds", () => {
@@ -123,13 +142,14 @@ describe("the Filter tab", () => {
   })
 
   test("toggling gives a new filter, the rows follow the view, and a missing filter allows everything", () => {
-    expect(ALL_PICKABLE).toEqual({ parts: true, labels: true })
+    expect(ALL_PICKABLE).toEqual({ parts: true, labels: true, wires: true })
     const off = togglePickKind(ALL_PICKABLE, "labels")
-    expect(off).toEqual({ parts: true, labels: false })
+    expect(off).toEqual({ parts: true, labels: false, wires: true })
     expect(ALL_PICKABLE.labels).toBe(true)
     expect(togglePickKind(off, "labels")).toEqual(ALL_PICKABLE)
     expect(kindPickable(undefined, "parts")).toBe(true)
     expect(pickKindRows("pcb").map((row) => row.label)).toEqual(["Parts"])
-    expect(pickKindRows("schematic").map((row) => row.label)).toEqual(["Parts", "Net labels and flags"])
+    expect(pickKindRows("schematic").map((row) => row.label)).toEqual(["Parts", "Wires", "Net labels and flags"])
+    expect(pickKindRows("schematic").find((row) => row.label === "Wires")?.kind).toBe("wires")
   })
 })

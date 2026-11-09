@@ -1,4 +1,4 @@
-// The right-click menu as data: its items for each target (a part, a net label on the schematic, the empty canvas),
+// The right-click menu as data: its items for each target (a part, a net label or a wire on the schematic, the empty canvas),
 // where it opens so it stays inside the window, and what a right click does to the selection. Items that have a
 // command run it through the same path as the menu bar; the few that need the canvas or the target are "special".
 import type { ContextTarget } from "../pcb/press.js"
@@ -6,6 +6,7 @@ import type { Point } from "../pcb/geometry.js"
 import type { Selection } from "../selection.js"
 import type { MenuShape } from "./menu-keys.js"
 import { ALIGN_COMMANDS, alignDisabledReason, type AlignCommand } from "../pcb/align-rules.js"
+import type { WireReasons } from "../pcb/wire-actions.js"
 import { ENGINE, type CommandId } from "./menus.js"
 
 /** What an item does besides running a command: open Properties, rename a label's net, highlight a label's net. */
@@ -28,6 +29,8 @@ export interface ContextState {
   allLocked: boolean
   /** How many parts are selected; two or more add the align and distribute items. */
   selected: number
+  /** On a wire: why Delete and Remove corners cannot run (wire-actions.ts), shown as their disabled reason. */
+  wire?: WireReasons
 }
 
 const run = (label: string, command: CommandId, shortcut?: string): ContextItem => (shortcut ? { label, command, shortcut } : { label, command })
@@ -78,6 +81,20 @@ const CANVAS_ITEMS: readonly ContextEntry[] = [
   { label: "Paste", shortcut: "Ctrl+V", pending: ENGINE },
 ]
 
+/** A command item, disabled with `reason` when there is one. */
+const runUnless = (item: ContextItem, reason: string | null | undefined): ContextItem => (reason ? { ...item, pending: reason } : item)
+
+function wireItems(reasons: WireReasons | undefined): ContextEntry[] {
+  return [
+    { label: "Properties", special: "properties" },
+    "separator",
+    run("Highlight net", "highlight", "H"),
+    runUnless(run("Remove corners", "removeCorners"), reasons?.removeCorners),
+    "separator",
+    runUnless(run("Delete", "delete", "Delete"), reasons?.remove),
+  ]
+}
+
 const LABEL_ITEMS: readonly ContextEntry[] = [
   { label: "Rename", special: "rename" },
   { label: "Highlight net", special: "highlightNet" },
@@ -86,6 +103,7 @@ const LABEL_ITEMS: readonly ContextEntry[] = [
 /** The items for a right click on `target`. */
 export function contextItems(target: ContextTarget, state: ContextState): ContextEntry[] {
   if (target.kind === "part") return partItems(state)
+  if (target.kind === "wire") return wireItems(state.wire)
   return [...(target.kind === "label" ? LABEL_ITEMS : CANVAS_ITEMS)]
 }
 
@@ -99,8 +117,9 @@ export function allLocked(names: readonly string[], locked: ReadonlySet<string>)
   return names.length > 0 && names.every((name) => locked.has(name))
 }
 
-/** A right click on a part that is not selected selects it alone; on a selected part the group stays. */
+/** A right click on a part that is not selected selects it alone; on a selected part the group stays; on a wire, the wire alone. */
 export function contextSelection(selection: Selection, target: ContextTarget): Selection {
+  if (target.kind === "wire") return selection.onlyWire(target.id)
   return target.kind === "part" && !selection.has(target.name) ? selection.only(target.name) : selection
 }
 

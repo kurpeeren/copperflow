@@ -1,9 +1,10 @@
-// The state of the right-click menu: what was clicked, where, and what each item does. A right click on a part
-// first changes the selection (context-menu.ts), then the items act on it through the one command path.
+// The state of the right-click menu: what was clicked, where, and what each item does. A right click on a part or a
+// wire first changes the selection (context-menu.ts), then the items act on it through the one command path.
 import { useCallback, useMemo, useState } from "react"
 import type { CircuitData } from "../api"
 import { canonicalNet, type Highlight } from "../pcb/highlight"
 import type { Point } from "../pcb/geometry"
+import { wireReasons } from "../pcb/wire-actions"
 import type { ContextTarget } from "../pcb/press"
 import type { Design } from "../../../src/engine/design.js"
 import type { Selection, SelectionChange } from "../selection"
@@ -51,8 +52,11 @@ export function useContextMenu(input: Input): ContextMenuState {
     const locked = new Set(circuit?.annotations.locks.map((lock) => lock.part))
     // The selection the click leaves, which the items act on.
     const after = contextSelection(selection, request.target)
-    return { entries: contextItems(request.target, { allLocked: allLocked(after.names, locked), selected: after.size }), at: request.at }
-  }, [request, circuit, selection])
+    const { target } = request
+    // On a wire, Delete and Remove corners show why they cannot run.
+    const wire = target.kind === "wire" && design && circuit ? wireReasons(design, circuit, target.id, locked) : undefined
+    return { entries: contextItems(target, { allLocked: allLocked(after.names, locked), selected: after.size, wire }), at: request.at }
+  }, [request, circuit, design, selection])
   const runItem = useCallback(
     (item: ContextItem) => {
       if (item.command) return run(item.command)

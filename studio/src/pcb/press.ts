@@ -13,8 +13,8 @@ export interface Press {
   metaKey: boolean
 }
 
-/** What is under the pointer at a press: a part, one already selected, a net label (schematic) or nothing. */
-export type Under = "part" | "selectedPart" | "label" | "empty"
+/** What is under the pointer at a press: a part, one already selected, a net label or a wire (schematic) or nothing. */
+export type Under = "part" | "selectedPart" | "label" | "wire" | "empty"
 
 /**
  * The armed canvas tool, as far as a press is concerned: Place → Note box and View → Fit area take every left press; a schematic Place
@@ -32,11 +32,12 @@ export type ArmedTool = "note" | "zoom" | "place" | null
  * - "move": on a part not selected: selects it alone and drags it.
  * - "moveGroup": on a selected part: drags the whole selection; released without moving, selects that part alone.
  * - "label": on a net label: drags it.
+ * - "wire": on a schematic wire: selects that wire alone (the parts go) and starts nothing.
  * - "box": on empty canvas: a selection box that replaces the selection; released without moving, clears it.
- * - "addBox": Shift or Ctrl anywhere but on a part: a selection box that adds to the selection.
+ * - "addBox": Shift or Ctrl anywhere but on a part: a selection box that adds parts to the selection.
  * - "none": any other button.
  */
-export type GestureStart = "pan" | "rightPress" | "note" | "zoom" | "toggle" | "move" | "moveGroup" | "label" | "box" | "addBox" | "none"
+export type GestureStart = "pan" | "rightPress" | "note" | "zoom" | "toggle" | "move" | "moveGroup" | "label" | "wire" | "box" | "addBox" | "none"
 
 const LEFT = 0
 const MIDDLE = 1
@@ -53,6 +54,7 @@ export function gestureStart(press: Press, under: Under, armed: ArmedTool): Gest
   if (togglesSelection(press)) return onPart ? "toggle" : "addBox"
   if (under === "part") return "move"
   if (under === "selectedPart") return "moveGroup"
+  if (under === "wire") return "wire"
   return under === "label" ? "label" : "box"
 }
 
@@ -85,5 +87,5 @@ export function opensOnDoubleClick(event: { button: number; target: unknown }): 
   return typeof target?.closest !== "function" || !target.closest(CONTROLS)
 }
 
-/** What a right click (or a double click) is on: a part, a net label in the schematic, or the empty canvas. */
-export type ContextTarget = { kind: "part"; name: string } | { kind: "label"; label: NetLabel } | { kind: "canvas" }
+/** What a right click (or a double click) is on: a part, a net label or a wire (by its id) in the schematic, or the empty canvas. */
+export type ContextTarget = { kind: "part"; name: string } | { kind: "label"; label: NetLabel } | { kind: "wire"; id: string } | { kind: "canvas" }

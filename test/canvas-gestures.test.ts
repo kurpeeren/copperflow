@@ -21,11 +21,13 @@ const BOXES = [partBox("R1", 0, 2), partBox("R2", 4, 6)]
 const screen = (x: number, y = 0): Point => worldToScreen(CAMERA, SIZE, { x, y })
 const PICK: PickContext = { selection: Selection.none, armed: null }
 const press = (held: Partial<Press> = {}): Press => ({ button: 0, shiftKey: false, ctrlKey: false, metaKey: false, ...held })
+// A wire along y = 3, above both parts and clear of the boxes the other tests draw.
+const WIRES = { at: (p: Point) => (Math.abs(p.y - 3) < 0.1 ? "wire:W" : undefined) }
 
 /** A canvas with R1 and R2: what the steps told it, and the selection they left. */
-function canvas(start: readonly string[] = [], options: { locked?: string[]; armed?: ArmedTool; snap?: boolean } = {}) {
+function canvas(start: readonly string[] = [], options: { locked?: string[]; armed?: ArmedTool; snap?: boolean; wire?: string } = {}) {
   const calls: string[] = []
-  const state = { selection: Selection.none.add(start), camera: CAMERA }
+  const state = { selection: options.wire ? Selection.none.onlyWire(options.wire) : Selection.none.add(start), camera: CAMERA }
   const commits: { names: readonly string[]; offset: Point }[] = []
   const menus: { target: ContextTarget; at: Point }[] = []
   const actions = {
@@ -49,6 +51,7 @@ function canvas(start: readonly string[] = [], options: { locked?: string[]; arm
     blockerFor: (name) => (options.locked?.includes(name) ? `${name} is locked` : null),
     tool: { armed: options.armed ?? null, disarm: () => void calls.push("disarm") },
     onContextMenu: (target, at) => void menus.push({ target, at }),
+    wires: WIRES,
   })
   /** Presses at `from`, moves through `path` and lets go at the last point, as the hook does. */
   const gesture = (held: Partial<Press>, from: Point, ...path: Point[]) => {
@@ -104,6 +107,31 @@ describe("dragging parts", () => {
     const started = c.gesture({}, screen(1), screen(3))
     expect(started).toMatchObject({ kind: "drag", names: ["R1", "R2"], movable: ["R1"], blocker: null })
     expect(c.commits).toEqual([{ names: ["R1", "R2"], offset: { x: 2, y: 0 } }])
+  })
+})
+
+describe("a wire", () => {
+  test("a click on a wire selects it alone, drops the parts and moves nothing", () => {
+    const c = canvas(["R1", "R2"])
+    expect(c.gesture({}, screen(1, 3), screen(3, 3))).toBeUndefined()
+    expect(c.state.selection.wire).toBe("wire:W")
+    expect(c.state.selection.names).toEqual([])
+    expect(c.commits).toEqual([])
+  })
+
+  test("a click on a part, or on empty canvas, drops the selected wire", () => {
+    const onPart = canvas([], { wire: "wire:W" })
+    onPart.gesture({}, screen(1), screen(1))
+    expect(onPart.state.selection).toMatchObject({ names: ["R1"], wire: undefined })
+    const onEmpty = canvas([], { wire: "wire:W" })
+    onEmpty.gesture({}, screen(3), screen(3))
+    expect(onEmpty.state.selection).toBe(Selection.none)
+  })
+
+  test("a still right click on a wire opens the menu on that wire", () => {
+    const c = canvas()
+    c.gesture({ button: 2 }, screen(5, 3), screen(5, 3))
+    expect(c.menus).toEqual([{ target: { kind: "wire", id: "wire:W" }, at: { x: 640, y: 480 } }])
   })
 })
 

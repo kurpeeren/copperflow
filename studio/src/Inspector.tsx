@@ -5,6 +5,7 @@ import { BomSection } from "./BomSection"
 import { checkSummary, type CheckCounts } from "./checks-list"
 import { FIRST_FIELD, groupActionEnabled, partLockButton, propertiesView, SUGGESTED_PROPS, type PropertiesView } from "./inspector-sections"
 import { GroupView } from "./InspectorGroup"
+import { WireView } from "./InspectorWire"
 import { MarkForm, NewPropRow, PropRow, Row, Section } from "./InspectorRows"
 import { LibraryInfo } from "./LibraryInfo"
 import { CloseIcon, LockIcon, RotateIcon, TrashIcon, UnlockIcon } from "./icons"
@@ -58,7 +59,7 @@ function useFieldFocus(panel: RefObject<HTMLElement | null>, requested: boolean,
   }, [panel, requested, done])
 }
 
-/** The board's state with nothing selected, a part's properties with one, the shared actions with several. */
+/** The board's state with nothing selected, a part's properties with one, the shared actions with several, a wire's own. */
 export function Inspector(props: Props) {
   const panel = useRef<HTMLElement>(null)
   useFieldFocus(panel, props.focusField, props.onFieldFocused)
@@ -75,11 +76,15 @@ export function Inspector(props: Props) {
       if (!next.delete(title)) next.add(title)
       return next
     })
+  const clear = () => props.onSelect((current) => current.clear())
+  const { wire } = props.selection
+  const design = props.build.design
   return (
     <aside ref={panel} className="panel right" id={props.hidden ? undefined : stripPanelId("right")} role="tabpanel" aria-labelledby={sideTabId("properties")} hidden={props.hidden}>
-      {parts.length > 1 && <GroupView view={view} parts={parts} locks={locks} run={props.run} onClear={() => props.onSelect((current) => current.clear())} collapsed={collapsed} toggle={toggle} />}
+      {wire !== undefined && design && <WireView design={design} circuit={props.circuit} wire={wire} locked={locks.locked} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
+      {parts.length > 1 && <GroupView view={view} parts={parts} locks={locks} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
       {parts.length === 1 && part && <PartView {...props} view={view} collapsed={collapsed} toggle={toggle} part={part} locks={locks} />}
-      {parts.length === 0 && <BoardView {...props} view={view} collapsed={collapsed} toggle={toggle} />}
+      {parts.length === 0 && wire === undefined && <BoardView {...props} view={view} collapsed={collapsed} toggle={toggle} />}
     </aside>
   )
 }

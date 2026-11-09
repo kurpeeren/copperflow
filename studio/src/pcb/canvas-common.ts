@@ -25,6 +25,7 @@ import type { LayerVisibility } from "./layers"
 import type { PickFilter } from "./pick-filter"
 import type { Unit } from "./units"
 import { sheetBoxes } from "./schematic-draw"
+import type { WireLine } from "./wire-hit"
 
 export interface CanvasProps {
   design: Design
@@ -67,11 +68,14 @@ export interface CanvasProps {
   /** A point to centre the camera on; the canvas calls onFocused once it has. */
   focus: FocusRequest | null
   onFocused(): void
-  /** A right click that did not move, on a part, a net label or the empty canvas; `at` is in client pixels */
+  /** A right click that did not move, on a part, a net label, a wire or the empty canvas; `at` is in client pixels */
   onContextMenu(target: ContextTarget, at: Point): void
-  /** A double click on a part: Properties, open on it. */
-  onOpenProperties(part: string): void
+  /** A double click on a part, or on a schematic wire: Properties, open on it. */
+  onOpenProperties(target: PropertiesTarget): void
 }
+
+/** What a double click opens Properties on. */
+export type PropertiesTarget = Extract<ContextTarget, { kind: "part" | "wire" }>
 
 /** Parts drawn away from where the design has them: being dragged, or moved and waiting for their build. */
 export interface Moving {
@@ -99,12 +103,12 @@ export function useLayout(parts: Pick<Layout, "anchors" | "boxes">, step: number
   return useMemo(() => ({ anchors, boxes, step, snap }), [anchors, boxes, step, snap])
 }
 
-/** Where Shift+F10 or the menu key opens the context menu on this canvas: at the primary selected part, else the canvas centre. */
-export function useKeyMenuPlace(element: RefObject<Element | null>, primary: string | undefined, boxes: readonly PartBox[], camera: Camera | undefined, size: Size) {
+/** Where Shift+F10 or the menu key opens the context menu on this canvas: at the selected wire, the primary selected part, else the canvas centre. */
+export function useKeyMenuPlace(element: RefObject<Element | null>, primary: string | undefined, boxes: readonly PartBox[], camera: Camera | undefined, size: Size, wire?: WireLine) {
   return useCallback(() => {
     const rect = element.current?.getBoundingClientRect() ?? { left: 0, top: 0, width: size.width, height: size.height }
-    return keyMenuPlace(primary, boxes, camera, size, rect)
-  }, [element, primary, boxes, camera, size])
+    return keyMenuPlace(primary, boxes, camera, size, rect, wire)
+  }, [element, primary, boxes, camera, size, wire])
 }
 
 /** Follows the element's size in whole CSS pixels. */

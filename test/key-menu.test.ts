@@ -26,6 +26,11 @@ describe("keyMenuPlace", () => {
     expect(keyMenuPlace(undefined, BOXES, CAMERA, SIZE, { left: 0, top: 0, width: 400, height: 200 }).at).toEqual({ x: 200, y: 100 })
   })
 
+  test("on a selected wire, opens the wire's menu at the middle of its middle segment", () => {
+    const wire = { id: "wire:W", points: [{ x: 0, y: 2 }, { x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: -2 }] }
+    expect(keyMenuPlace(undefined, BOXES, CAMERA, SIZE, RECT, wire)).toEqual({ target: { kind: "wire", id: "wire:W" }, at: { x: 50 + 120, y: 20 + 50 } })
+  })
+
   test("Help → Keys names Shift+F10", () => {
     expect(shortcutList().map((row) => row.keys)).toContain("Shift+F10")
   })

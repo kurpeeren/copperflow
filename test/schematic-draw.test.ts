@@ -193,6 +193,16 @@ describe("schematic colours", () => {
     expect(rec.records.filter((r) => r.name === "fill" && r.fillStyle === schematicTheme.junction)).toHaveLength(layout.junctions.length)
   })
 
+  test("a selected wire is drawn in the selection colour, over a highlight; the others keep theirs", () => {
+    const id = layout.wires[0]?.id ?? ""
+    const rec = draw({ selectedWire: id })
+    expect(schematicTheme.selection).toBe("#FF0000")
+    expect(strokes(rec, schematicTheme.selection)).toHaveLength(1)
+    expect(strokes(rec, schematicTheme.wire)).toHaveLength(layout.wires.length - 1)
+    const lit = draw({ selectedWire: id, highlight: { net: layout.wires[0]?.net ?? "" } })
+    expect(strokes(lit, schematicTheme.selection).map((r) => r.globalAlpha)).toEqual([1])
+  })
+
   test("a lit net is drawn in the schematic highlight colour, never the PCB's", () => {
     const rec = draw({ highlight: { net: "net:R1.pin2", pins: ["R1.pin2"] } })
     expect(strokes(rec, "#FF9933").length).toBeGreaterThan(0)

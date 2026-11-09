@@ -59,9 +59,22 @@ function usePruneSelection(circuit: CircuitData | undefined, select: (change: Se
   }, [circuit, select])
 }
 
-/** What the canvases and panels are shown: the selection less any part the loaded circuit does not have (yet). */
-function useShownSelection(selection: Selection, circuit: CircuitData | undefined): Selection {
-  return useMemo(() => (circuit ? selection.keep(circuit.model.parts.map((part) => part.name)) : selection), [selection, circuit])
+/** Drops a selected wire the sheet no longer draws (deleted, undone), so it is not selected again when it comes back. */
+function usePruneWire(design: Design | undefined, select: (change: SelectionChange) => void): void {
+  useEffect(() => {
+    if (design) select((current) => current.keepWire(design.schematic.wires.map((wire) => wire.id)))
+  }, [design, select])
+}
+
+/**
+ * What the canvases and panels are shown: the selection less any part the loaded circuit does not have (yet), and less
+ * a wire the open sheet does not draw; the PCB shows no wire, so a wire selected on the schematic waits there.
+ */
+function useShownSelection(selection: Selection, circuit: CircuitData | undefined, design: Design | undefined, view: Tab): Selection {
+  return useMemo(() => {
+    const parts = circuit ? selection.keep(circuit.model.parts.map((part) => part.name)) : selection
+    return parts.keepWire(view === "schematic" ? (design?.schematic.wires.map((wire) => wire.id) ?? []) : [])
+  }, [selection, circuit, design, view])
 }
 
 /** A rebuild can rename or merge the highlighted net (an unnamed net that gets GND): follow it, or clear it. */
@@ -124,7 +137,8 @@ function useStudio() {
   const data = useFileData(toast.notify, select, workspace.setHighlight)
   const { file, setFile, build, circuit } = data
   usePruneSelection(circuit, select)
-  const selection = useShownSelection(picked, circuit)
+  usePruneWire(build.design, select)
+  const selection = useShownSelection(picked, circuit, build.design, tab)
   const actions = useActions({ file, refresh: data.refresh, refreshParts: data.refreshParts, notify: toast.notify })
   const place = usePlace({ file, refresh: data.refresh, refreshParts: data.refreshParts, notify: toast.notify }, selectOnly)
   const { checks, find, openChecks } = useChecksAndFind({ data, tab, setTab, select, selectOnly, workspace })

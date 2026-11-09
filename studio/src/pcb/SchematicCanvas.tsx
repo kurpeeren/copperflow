@@ -9,7 +9,7 @@ import { armedCommand } from "../shell/toolbar"
 import { clearToolState, setToolState } from "../shell/tool-state"
 import { ViewTools } from "../shell/ViewTools"
 import { keepAutoPlaced } from "./auto-placed"
-import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, useKeyMenuPlace, useLayout, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
+import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, useKeyMenuPlace, useLayout, usePlacedParts, type CanvasProps, type Moving, type PropertiesTarget } from "./canvas-common"
 import { CanvasStatus, GridSelect, KeepButton } from "./CanvasTools"
 import { gridStepOptions, type GridLook } from "./grid"
 import { unionBoxes, type Camera, type PartBox, type Point, type Size } from "./geometry"
@@ -24,7 +24,7 @@ import { drawSchematic } from "./schematic-draw"
 import { drawingExtents } from "./drawing-extents"
 import { drawSheetBorder } from "./sheet-draw"
 import { firstDrawing, keepSheet, sheetArt, sheetDate, type Sheet, type SheetArt } from "./sheet"
-import { targetAt } from "./gestures"
+import { targetAt, type GestureWires } from "./gestures"
 import type { PickContext } from "./pick"
 import type { PickFilter } from "./pick-filter"
 import { cursorFor, pointerHandlers, useCanvasGestures, type Gesture, type GestureInput, type PointerInput, type Press } from "./use-canvas-gestures"
@@ -36,6 +36,9 @@ import { useFitSelection } from "./use-fit-selection"
 import { useNoteTool } from "./use-note-tool"
 import { usePartKeys } from "./use-part-keys"
 import { useWireTool } from "./use-wire-tool"
+import { useSheetWires } from "./use-sheet-wires"
+import type { WireLine } from "./wire-hit"
+import { drawWireHandles, drawWireHover, SHEET_WIRE_LOOK } from "./wire-overlay"
 
 const EMPTY_SHEET_CAMERA: Camera = { cx: 0, cy: 0, scale: 60 }
 const FIT_MARGIN = 0.06
@@ -64,6 +67,9 @@ interface SheetScene {
   movingLabels: MovingLabel[]
   /** The label under the pointer. */
   hoverLabel: NetLabel | undefined
+  /** The wire under the pointer, and the selected wire: red, with its handles. */
+  hoverWire: WireLine | undefined
+  selectedWire: WireLine | undefined
   palette: Palette
   /** The highlighted nets and the pins on them. */
   highlight: ReturnType<typeof highlightOf>
@@ -75,7 +81,7 @@ interface SheetScene {
 
 /** Draws the sheet and its violation rings, the wire being drawn and the editor layer; a sheet without parts gets a default view. */
 function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: SheetScene): void {
-  const { design, border, camera, size, moving, boxes, hover, selection, locked, circuit, gesture, movingLabels, hoverLabel, palette, highlight, markers, activeViolation, grid } = scene
+  const { design, border, camera, size, moving, boxes, hover, selection, locked, circuit, gesture, movingLabels, hoverLabel, hoverWire, selectedWire, palette, highlight, markers, activeViolation, grid } = scene
   const { wiring, drawing, activePins, pendingWires, preview } = scene.wire
   const { ghosts, ghostWires, armed } = palette
   useEffect(() => {
@@ -91,6 +97,7 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
       pending: [...pendingWires, ...ghostWires, ...movingLabels.map((m) => m.wire)],
       movingLabels,
       ghostLabels: ghosts,
+      ...(selectedWire ? { selectedWire: selectedWire.id } : {}),
       ...(highlight ? { highlight } : {}),
       ...(moving ? { moving: { components: moving.names, by: moving.offset } } : {}),
       violations: markers,
@@ -101,7 +108,9 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
     const shownHover = drawing ? undefined : hover
     drawEditorLayer(ctx, view, size, { view: "schematic", boxes, moving, hover: shownHover, selection, locked, marks: circuit.annotations.marks, gesture, look: SHEET_LOOK })
     if (hoverLabel && !drawing && !gesture) drawOutline(ctx, view, size, labelHitBox(hoverLabel), { x: 0, y: 0 }, "hover", SHEET_LOOK)
-  }, [canvasRef, design, border, camera, size, wiring, drawing, activePins, pendingWires, preview, moving, movingLabels, hoverLabel, boxes, hover, selection, locked, circuit, gesture, ghosts, ghostWires, armed, highlight, markers, activeViolation, grid])
+    if (hoverWire && hoverWire.id !== selectedWire?.id && !wiring && !drawing && !gesture) drawWireHover(ctx, view, size, hoverWire.points, SHEET_WIRE_LOOK)
+    if (selectedWire) drawWireHandles(ctx, view, size, selectedWire.points, SHEET_WIRE_LOOK)
+  }, [canvasRef, design, border, camera, size, wiring, drawing, activePins, pendingWires, preview, moving, movingLabels, hoverLabel, hoverWire, selectedWire, boxes, hover, selection, locked, circuit, gesture, ghosts, ghostWires, armed, highlight, markers, activeViolation, grid])
 }
 
 interface SheetToolsProps {
@@ -120,23 +129,26 @@ function SheetTools({ step, setStep, keep }: SheetToolsProps) {
   )
 }
 
-/** The part or the net label under the pointer, and the wire tool's view of it. */
-function useSheetHover(boxes: PartBox[], wire: WireTool, labels: LabelTools, filter: PickFilter) {
+/** The part, net label or wire under the pointer, and the wire tool's view of it. */
+function useSheetHover(boxes: PartBox[], wire: WireTool, labels: LabelTools, filter: PickFilter, wires: GestureWires) {
   const [part, setPart] = useState<string>()
   const [label, setLabel] = useState<NetLabel>()
+  const [wireId, setWireId] = useState<string>()
   const at = (world: Point) => {
     wire.hover(world)
     // What a click may not pick (pick.ts: the Filter tab) is not outlined under the pointer either.
-    const target = targetAt(boxes, labels, world, { selection: Selection.none, armed: null, filter })
+    const target = targetAt(boxes, labels, world, { selection: Selection.none, armed: null, filter }, wires)
     setPart(target.kind === "part" ? target.name : undefined)
     setLabel(target.kind === "label" ? target.label : undefined)
+    setWireId(target.kind === "wire" ? target.id : undefined)
   }
   const leave = () => {
     setPart(undefined)
     setLabel(undefined)
+    setWireId(undefined)
     wire.leave()
   }
-  return { part, label, at, leave }
+  return { part, label, wire: wireId, at, leave }
 }
 
 interface SheetViewProps {
@@ -171,7 +183,7 @@ function SheetView({ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave,
         ref={canvasRef}
         style={{ width: size.width, height: size.height }}
         role="img"
-        aria-label="Schematic. Drag symbols and net labels to move them, drag the background to select, drag with the right button to pan, scroll to zoom. Double click a net label to rename its net. Click a free pin or press W over a pin to draw a wire."
+        aria-label="Schematic. Drag symbols and net labels to move them, click a wire to select it, drag the background to select, drag with the right button to pan, scroll to zoom. Double click a net label to rename its net. Click a free pin or press W over a pin to draw a wire."
       />
       {hint && (
         <div className="canvas-top">
@@ -323,24 +335,25 @@ function useArmedForGestures(note: NoteTool, palette: Palette): GestureInput["to
 interface SheetPointerInput extends Omit<PointerInput, "tool" | "open"> {
   boxes: PartBox[]
   labels: LabelTools
+  wires: GestureWires
   wire: WireTool
   palette: Palette
   note: NoteTool
   /** What a double click picks with: the selection and the armed tool. */
   picking: PickContext
-  onOpenProperties(part: string): void
+  onOpenProperties(target: PropertiesTarget): void
 }
 
 /**
  * The sheet's pointer: the wire tool and the Place tools see a press first, unless the note tool is armed; a double
- * click opens Properties on a part, or renames the net of a label, while no tool is armed.
+ * click opens Properties on a part or a wire, or renames the net of a label, while no tool is armed.
  */
-function sheetPointer({ boxes, labels, wire, palette, note, picking, onOpenProperties, ...input }: SheetPointerInput) {
+function sheetPointer({ boxes, labels, wires, wire, palette, note, picking, onOpenProperties, ...input }: SheetPointerInput) {
   const tool = (event: Press, world: Point) => !note.armed && (palette.press(event, world) || wire.press(event, world))
   const open = (world: Point) => {
     if (note.armed || palette.armed || wire.wiring || wire.drawing) return
-    const target = targetAt(boxes, labels, world, picking)
-    if (target.kind === "part") onOpenProperties(target.name)
+    const target = targetAt(boxes, labels, world, picking, wires)
+    if (target.kind === "part" || target.kind === "wire") onOpenProperties(target)
     if (target.kind === "label") palette.rename(target.label)
   }
   return pointerHandlers({ ...input, tool, open })
@@ -369,20 +382,22 @@ export function SchematicCanvas(props: CanvasProps) {
   const note = useSheetNoteTool(wire, palette)
   const common = { view: "schematic", circuit, actions, onSelect, blockerFor: parts.blockerFor } as const
   const labels = useLabelDrag({ design, circuit, actions, builtFrom })
+  const wires = useSheetWires({ design, circuit, actions, locked: parts.locked, camera, selection, onSelect })
   const tool = useArmedForGestures(note, palette)
   useArmedTool(wire, palette, note)
-  const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, snap, builtFrom, labels: labels.tools, selection, tool, filter: props.pickFilter, onContextMenu: props.onContextMenu })
+  const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, snap, builtFrom, labels: labels.tools, wires: wires.hits, selection, tool, filter: props.pickFilter, onContextMenu: props.onContextMenu })
   useLabelRenameAction(design, palette, actions)
   const layout = useLayout(parts, step, snap)
-  const menuPlace = useKeyMenuPlace(wrapRef, selection.primary, parts.boxes, camera, size)
-  const keys = { ...common, selection, layout, builtMark, buildStatus, moveWaiting: gestures.pending !== undefined, menuPlace, onContextMenu: props.onContextMenu }
+  const menuPlace = useKeyMenuPlace(wrapRef, selection.primary, parts.boxes, camera, size, wires.selected)
+  const keys = { ...common, selection, layout, builtMark, buildStatus, moveWaiting: gestures.pending !== undefined, menuPlace, onContextMenu: props.onContextMenu, wire: wires.keys }
   const { highlight, rotateHeld } = useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys })
-  const hover = useSheetHover(parts.boxes, wire, labels.tools, props.pickFilter)
+  const hover = useSheetHover(parts.boxes, wire, labels.tools, props.pickFilter, wires.hits)
   const { moving, gesture } = gestures
   const movingLabels = useMovingLabels(design, gesture, labels.pending)
-  useSheetPaint(canvasRef, { design, border, camera, size, wire, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel: hover.label, palette, highlight, markers, activeViolation, grid })
-  const pointer = sheetPointer({ camera, size, element: wrapRef, gestures, setCursor, hover: hover.at, boxes: parts.boxes, labels: labels.tools, wire, palette, note, picking: { selection, armed: tool.armed, filter: props.pickFilter }, onOpenProperties: props.onOpenProperties })
-  const cursorStyle = cursorFor(gesture, wire.drawing !== null || wire.overPin || palette.armed || note.armed, hover.part !== undefined || hover.label !== undefined)
+  const hoverWire = useMemo(() => wires.lineOf(hover.wire), [wires, hover.wire])
+  useSheetPaint(canvasRef, { design, border, camera, size, wire, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel: hover.label, hoverWire, selectedWire: wires.selected, palette, highlight, markers, activeViolation, grid })
+  const pointer = sheetPointer({ camera, size, element: wrapRef, gestures, setCursor, hover: hover.at, boxes: parts.boxes, labels: labels.tools, wires: wires.hits, wire, palette, note, picking: { selection, armed: tool.armed, filter: props.pickFilter }, onOpenProperties: props.onOpenProperties })
+  const cursorStyle = cursorFor(gesture, wire.drawing !== null || wire.overPin || palette.armed || note.armed, hover.part !== undefined || hover.label !== undefined || hover.wire !== undefined)
   const onLeave = () => {
     hover.leave()
     setCursor(undefined)

@@ -77,8 +77,8 @@ function canvasProps({ data, workspace, checks, selection, onSelect, actions }: 
     layers: workspace.layerVisibility,
     pickFilter: workspace.pickFilter,
     onContextMenu,
-    onOpenProperties: (part) => {
-      onSelect((current) => current.only(part))
+    onOpenProperties: (target) => {
+      onSelect((current) => (target.kind === "wire" ? current.onlyWire(target.id) : current.only(target.name)))
       workspace.openProperties()
     },
   }

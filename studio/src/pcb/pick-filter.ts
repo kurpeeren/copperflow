@@ -3,12 +3,12 @@
 import type { View } from "./positions.js"
 
 /** The kinds a pick can be limited to. Notes are not here: a note's mark is drawn but has no hit area on either canvas. */
-export type PickKind = "parts" | "labels"
+export type PickKind = "parts" | "labels" | "wires"
 
 /** Which kinds may be picked. */
 export type PickFilter = Readonly<Record<PickKind, boolean>>
 
-export const ALL_PICKABLE: PickFilter = { parts: true, labels: true }
+export const ALL_PICKABLE: PickFilter = { parts: true, labels: true, wires: true }
 
 /** The filter with `kind` switched on or off, as a new value. */
 export function togglePickKind(filter: PickFilter, kind: PickKind): PickFilter {
@@ -20,8 +20,8 @@ export function kindPickable(filter: PickFilter | undefined, kind: PickKind): bo
   return filter === undefined || filter[kind]
 }
 
-/** The rows the Filter tab shows for a view: net labels and flags exist only on the schematic. */
+/** The rows the Filter tab shows for a view: wires, net labels and flags exist only on the schematic. */
 export function pickKindRows(view: View): ReadonlyArray<{ kind: PickKind; label: string }> {
   const parts = { kind: "parts" as const, label: "Parts" }
-  return view === "schematic" ? [parts, { kind: "labels", label: "Net labels and flags" }] : [parts]
+  return view === "schematic" ? [parts, { kind: "wires", label: "Wires" }, { kind: "labels", label: "Net labels and flags" }] : [parts]
 }

@@ -1,6 +1,8 @@
 // The selection: the parts picked, in the order they were picked, so the last one (the primary) can stand for the
-// rest where only one part makes sense, such as the Properties of a single part or centring the camera. A value:
-// every change returns a new selection, or the same one when nothing changed, so React sees what changed.
+// rest where only one part makes sense, such as the Properties of a single part or centring the camera; or one wire
+// of the schematic, never both. A value: every change returns a new selection, or the same one when nothing changed,
+// so React sees what changed. The part counts (`names`, `size`) count parts only, so part commands wait while a wire
+// is selected, and every part change drops the wire.
 
 /** A change to the selection, from what it is to what it becomes; the canvases, panels and keys send these. */
 export type SelectionChange = (current: Selection) => Selection
@@ -12,9 +14,24 @@ export class Selection {
   /** The part names, each once, oldest pick first. */
   readonly names: readonly string[]
 
-  private constructor(names: readonly string[]) {
+  /** The schematic wire selected, by its id in the sheet's layout; undefined when parts (or nothing) are. */
+  readonly wire: string | undefined
+
+  private constructor(names: readonly string[], wire?: string) {
     this.names = Object.freeze([...names])
+    this.wire = wire
     Object.freeze(this)
+  }
+
+  /** Just this wire, without any part. */
+  onlyWire(id: string): Selection {
+    return this.wire === id ? this : new Selection([], id)
+  }
+
+  /** The selection less its wire when the sheet has no wire with that id (deleted, or undone), as gone parts leave. */
+  keepWire(ids: Iterable<string>): Selection {
+    if (this.wire === undefined) return this
+    return new Set(ids).has(this.wire) ? this : Selection.none
   }
 
   private static from(names: readonly string[]): Selection {
@@ -54,10 +71,10 @@ export class Selection {
     return Selection.none
   }
 
-  /** Every one of these parts, each once, and nothing else. */
+  /** Every one of these parts, each once, and nothing else (no wire either). */
   all(names: readonly string[]): Selection {
     const every = [...new Set(names)]
-    const same = every.length === this.names.length && every.every((name, i) => name === this.names[i])
+    const same = this.wire === undefined && every.length === this.names.length && every.every((name, i) => name === this.names[i])
     return same ? this : Selection.from(every)
   }
 

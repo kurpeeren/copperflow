@@ -25,8 +25,10 @@ export const schematicTheme = {
   gridDot: "#D9D9D2",
   /** The dashed box round a symbol the engine placed for itself. */
   autoBox: "rgb(160 0 0 / 55%)",
-  /** Outline of the part or label under the pointer. */
+  /** Outline of the part, label or wire under the pointer. */
   hover: "rgb(255 0 0 / 45%)",
+  /** Fill of the square handles on a selected wire's corners; they are outlined in the selection colour. */
+  handleFill: "#FFFFFF",
   /** Fill of the note box drawn with Place → Note box. */
   selectionFill: "rgb(255 0 0 / 8%)",
   /** The selection box dragged on the sheet: blue, as EasyEDA draws it, and its wash. */

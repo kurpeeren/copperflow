@@ -9,6 +9,9 @@ import { Selection } from "../studio/src/selection.js"
 const label = { id: "l1", net: "net.VCC", text: "VCC", at: { x: 0, y: 0 }, side: "left", style: "label" } as NetLabel
 const names = (entries: ContextEntry[]) => entries.map((e) => (e === "separator" ? "-" : e.label))
 const part = { kind: "part", name: "R1" } as const
+const wire = { kind: "wire", id: "wire:R1.pin2|R2.pin1" } as const
+const FREE_WIRE = { remove: null, removeCorners: null }
+const STUDIO_WIRE = "This wire has no trace of its own: Studio draws it for net GND"
 
 describe("context menu items", () => {
   test("a part gets Properties, Rotate, Lock, Highlight its nets and Delete", () => {
@@ -46,10 +49,28 @@ describe("context menu items", () => {
     expect(names(contextItems({ kind: "label", label }, { allLocked: false, selected: 1 }))).toEqual(["Rename", "Highlight net"])
   })
 
+  test("a wire gets Properties, Highlight net, Remove corners and Delete, on the menus' own commands", () => {
+    const items = contextItems(wire, { allLocked: false, selected: 0, wire: FREE_WIRE })
+    expect(names(items)).toEqual(["Properties", "-", "Highlight net", "Remove corners", "-", "Delete"])
+    expect(items[0]).toEqual({ label: "Properties", special: "properties" })
+    expect(items).toContainEqual({ label: "Highlight net", command: "highlight", shortcut: "H" })
+    expect(items).toContainEqual({ label: "Remove corners", command: "removeCorners" })
+    expect(items).toContainEqual({ label: "Delete", command: "delete", shortcut: "Delete" })
+  })
+
+  test("a wire's Remove corners and Delete are disabled with the reason they cannot run", () => {
+    const items = contextItems(wire, { allLocked: false, selected: 0, wire: { remove: STUDIO_WIRE, removeCorners: STUDIO_WIRE } })
+    expect(items).toContainEqual({ label: "Remove corners", command: "removeCorners", pending: STUDIO_WIRE })
+    expect(items).toContainEqual({ label: "Delete", command: "delete", shortcut: "Delete", pending: STUDIO_WIRE })
+    expect(contextShape(items)).toEqual(["item", "separator", "item", "disabled", "separator", "disabled"])
+    const locked = contextItems(wire, { allLocked: false, selected: 0, wire: { remove: "R1 is locked", removeCorners: "R1 is locked" } })
+    expect(locked.find((e) => e !== "separator" && e.label === "Delete")).toMatchObject({ pending: "R1 is locked" })
+  })
+
   test("every command item has someone to run it", () => {
-    for (const target of [part, { kind: "canvas" }] as const) {
+    for (const target of [part, wire, { kind: "canvas" }] as const) {
       for (const locked of [false, true]) {
-        for (const entry of contextItems(target, { allLocked: locked, selected: 3 })) {
+        for (const entry of contextItems(target, { allLocked: locked, selected: 3, wire: FREE_WIRE })) {
           if (entry !== "separator" && entry.command) expect(commandOwner(entry.command)).toBeDefined()
         }
       }
@@ -86,6 +107,13 @@ describe("the selection on right click", () => {
   test("a selected part keeps the whole selection", () => {
     const current = Selection.none.add(["R1", "R2"])
     expect(contextSelection(current, { kind: "part", name: "R2" })).toBe(current)
+  })
+  test("a wire is selected alone, and the parts go", () => {
+    const current = Selection.none.add(["R1", "R2"])
+    const after = contextSelection(current, wire)
+    expect(after.wire).toBe(wire.id)
+    expect(after.names).toEqual([])
+    expect(contextSelection(after, wire)).toBe(after)
   })
   test("a label or empty canvas leaves the selection alone", () => {
     const current = Selection.none.add(["R1"])

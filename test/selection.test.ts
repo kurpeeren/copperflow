@@ -87,6 +87,57 @@ describe("Selection", () => {
   })
 })
 
+describe("a selected wire", () => {
+  const W = "wire:R1.pin2|R2.pin1"
+  const wire = Selection.none.onlyWire(W)
+
+  test("is held alone: no parts, no primary, and the part counts stay at zero", () => {
+    expect(wire.wire).toBe(W)
+    expect(wire.names).toEqual([])
+    expect(wire.size).toBe(0)
+    expect(wire.primary).toBeUndefined()
+    expect(Selection.none.wire).toBeUndefined()
+    expect(of("R1").wire).toBeUndefined()
+  })
+
+  test("selecting a wire drops the parts, and selecting it again changes nothing", () => {
+    const fromParts = of("R1", "R2").onlyWire(W)
+    expect(fromParts.names).toEqual([])
+    expect(fromParts.wire).toBe(W)
+    expect(wire.onlyWire(W)).toBe(wire)
+    expect(wire.onlyWire("wire:other").wire).toBe("wire:other")
+  })
+
+  test("every part change drops the wire", () => {
+    expect(wire.only("R1")).toMatchObject({ names: ["R1"], wire: undefined })
+    expect(wire.toggle("R1")).toMatchObject({ names: ["R1"], wire: undefined })
+    expect(wire.add(["R1", "C1"])).toMatchObject({ names: ["R1", "C1"], wire: undefined })
+    expect(wire.all(["R1"])).toMatchObject({ names: ["R1"], wire: undefined })
+  })
+
+  test("Esc and Select all with no part to pick clear it", () => {
+    expect(wire.clear()).toBe(Selection.none)
+    expect(wire.all([])).toBe(Selection.none)
+  })
+
+  test("taking parts out or keeping parts leaves it alone", () => {
+    expect(wire.without(["R1"])).toBe(wire)
+    expect(wire.keep(["R1"])).toBe(wire)
+    expect(wire.add([])).toBe(wire)
+  })
+
+  test("keepWire drops it once the sheet has no wire with its id, as gone parts drop", () => {
+    expect(wire.keepWire([W, "wire:other"])).toBe(wire)
+    expect(wire.keepWire(["wire:other"])).toBe(Selection.none)
+    const parts = of("R1")
+    expect(parts.keepWire([])).toBe(parts)
+  })
+
+  test("is frozen like any selection", () => {
+    expect(Object.isFrozen(wire)).toBe(true)
+  })
+})
+
 describe("a click on a part", () => {
   test("selects that part alone", () => {
     expect(clicked("C1", plain)(of("R1", "R2")).names).toEqual(["C1"])

@@ -50,6 +50,11 @@ export interface GestureLabels {
   commit(label: NetLabel, drop: Point): void
 }
 
+/** What a gesture asks of the schematic's wires: the id of the one under a point (wire-hit.ts), if any. */
+export interface GestureWires {
+  at(world: Point): string | undefined
+}
+
 export interface GestureInput {
   view: View
   camera: Camera | undefined
@@ -69,6 +74,8 @@ export interface GestureInput {
   blockerFor(name: string): string | null
   /** The schematic's net labels and power symbols, when they can be dragged. */
   labels?: GestureLabels
+  /** The schematic's wires, which a click selects. */
+  wires?: GestureWires
   /** The PCB's layers, which decide what a click or a box may pick; the schematic has none. */
   layers?: PickLayers
   /** The Filter tab: the kinds a click or a box may pick. */
@@ -91,11 +98,19 @@ export function movePlan(input: GestureInput, names: readonly string[], offset: 
 const BOX_MIN_PX = 6
 const round = roundPosition
 
-/** What is at a world point and may be picked there (pick.ts): the smallest part box, else a net label, else nothing. */
-export function targetAt(boxes: readonly PartBox[], labels: GestureLabels | undefined, world: Point, context: PickContext): ContextTarget {
-  const parts = hitsAt(boxes, world).map((box): Pickable => ({ kind: "part", name: box.name }))
+/**
+ * What is at a world point and may be picked there (pick.ts): a net label, else a wire, else the smallest part box,
+ * else nothing. A label or wire drawn over a symbol is the thing picked there, not the symbol under it.
+ */
+export function targetAt(boxes: readonly PartBox[], labels: GestureLabels | undefined, world: Point, context: PickContext, wires?: GestureWires): ContextTarget {
   const label = labels?.at(world)
-  const [first] = picks(label ? [...parts, { kind: "label", label }] : parts, context)
+  const wire = wires?.at(world)
+  const candidates: Pickable[] = [
+    ...(label ? [{ kind: "label" as const, label }] : []),
+    ...(wire !== undefined ? [{ kind: "wire" as const, id: wire }] : []),
+    ...hitsAt(boxes, world).map((box): Pickable => ({ kind: "part", name: box.name })),
+  ]
+  const [first] = picks(candidates, context)
   return first ?? { kind: "canvas" }
 }
 
@@ -104,6 +119,7 @@ const pickContext = (input: GestureInput): PickContext => ({ selection: input.se
 
 function underOf(target: ContextTarget, selection: Selection): Under {
   if (target.kind === "part") return selection.has(target.name) ? "selectedPart" : "part"
+  if (target.kind === "wire") return "wire"
   return target.kind === "label" ? "label" : "empty"
 }
 
@@ -112,7 +128,7 @@ export function startGesture(input: GestureInput, event: Press, point: Point): G
   const { camera } = input
   if (!camera) return undefined
   const world = screenToWorld(camera, input.size, point)
-  const target = targetAt(input.boxes, input.labels, world, pickContext(input))
+  const target = targetAt(input.boxes, input.labels, world, pickContext(input), input.wires)
   const start = gestureStart(event, underOf(target, input.selection), input.tool.armed)
   const still = stillRelease(start, input.tool.armed)
   if (start === "pan" || start === "rightPress") return { kind: "pan", start: point, camera, moved: false, still, target }
@@ -120,6 +136,10 @@ export function startGesture(input: GestureInput, event: Press, point: Point): G
   if (start === "box" || start === "addBox") return { kind: "box", start: point, current: point, adds: start === "addBox", still }
   if (target.kind === "label" && start === "label") {
     return { kind: "label", label: target.label, start: point, at: target.label.at, moved: false, blocker: input.labels?.blocker(target.label.id) ?? null }
+  }
+  if (target.kind === "wire" && start === "wire") {
+    input.onSelect((current) => current.onlyWire(target.id))
+    return undefined
   }
   const part = target.kind === "part" ? input.boxes.find((box) => box.name === target.name) : undefined
   if (!part) return undefined
