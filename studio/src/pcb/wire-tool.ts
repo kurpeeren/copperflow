@@ -93,38 +93,74 @@ export function pinAt(design: Design, p: Point, maxDistance: number): { pin: str
   return best && { pin: best.pin, at: best.at }
 }
 
+/**
+ * Where a wire meets a bus or a wire: along the line on the grid `step` while `snap` is on, and on the axis of the
+ * wire's last corner `from` when the pointer is within reach of it, so the written wire has no small jog.
+ */
+export interface Meet {
+  step?: number
+  snap?: boolean
+  from?: Point
+}
+
 /** The pin, net label, bus or wire nearest to `p` within `maxDistance`, in that order of preference. */
-export function endAt(design: Design, p: Point, maxDistance: number): WireEnd | undefined {
+export function endAt(design: Design, p: Point, maxDistance: number, meet: Meet = {}): WireEnd | undefined {
   const hit = pinAt(design, p, maxDistance)
   const pin = hit && allPins(design).find((candidate) => candidate.id === hit.pin)
   if (hit && pin) return pinEnd(design, pin, hit.at)
-  return labelEnd(design, p, maxDistance) ?? busEnd(design, p, maxDistance) ?? wireEnd(design, p, maxDistance)
+  return labelEnd(design, p, maxDistance) ?? busEnd(design, p, maxDistance, meet) ?? wireEnd(design, p, maxDistance, meet)
 }
 
-/** The point of a line (a wire's or a bus's points) nearest to `p`, and how far it is. */
-function nearestOnLine(points: readonly Point[], p: Point): { at: Point; d: number } | undefined {
-  let best: { at: Point; d: number } | undefined
+interface Near {
+  at: Point
+  d: number
+  a: Point
+  b: Point
+}
+
+/** The point of a line (a wire's or a bus's points) nearest to `p`, how far it is, and the segment it is on. */
+function nearestOnLine(points: readonly Point[], p: Point): Near | undefined {
+  let best: Near | undefined
   for (let i = 1; i < points.length; i++) {
     const [a, b] = [points[i - 1], points[i]]
     if (!a || !b) continue
     const at = closestOnSegment(p, a, b)
     const d = distance(at, p)
-    if (!best || d < best.d) best = { at, d }
+    if (!best || d < best.d) best = { at, d, a, b }
   }
   return best
 }
 
 const round = (value: number): number => Math.round(value * 10000) / 10000 || 0
 
+/** One coordinate along a segment from `lo` to `hi`: the corner's axis in reach, else on the grid, else as it is. */
+function along(value: number, pointer: number, range: [number, number], reach: number, fixed: number | undefined, meet: Meet): number {
+  const inside = (v: number) => v >= range[0] && v <= range[1]
+  if (fixed !== undefined && Math.abs(pointer - fixed) <= reach && inside(fixed)) return fixed
+  if (!meet.snap || !meet.step) return value
+  const snapped = round(Math.round(value / meet.step) * meet.step)
+  return inside(snapped) ? snapped : value
+}
+
+/** The meeting point on a horizontal or vertical segment, by the Meet rules; a slanted segment keeps the nearest point. */
+function meetingPoint(near: Near, p: Point, reach: number, meet: Meet): Point {
+  const { a, b, at } = near
+  const axis = a.y === b.y && a.x !== b.x ? "x" : a.x === b.x && a.y !== b.y ? "y" : undefined
+  if (!axis) return at
+  const value = along(at[axis], p[axis], [Math.min(a[axis], b[axis]), Math.max(a[axis], b[axis])], reach, meet.from?.[axis], meet)
+  return axis === "x" ? { x: value, y: a.y } : { x: a.x, y: value }
+}
+
 /** The bus nearest to `p` within `maxDistance`, met at the nearest point of its line. */
-function busEnd(design: Design, p: Point, maxDistance: number): WireEnd | undefined {
-  let best: { id: string; name: string; members: readonly string[]; at: Point; d: number } | undefined
+function busEnd(design: Design, p: Point, maxDistance: number, meet: Meet): WireEnd | undefined {
+  let best: { id: string; name: string; members: readonly string[]; near: Near } | undefined
   for (const drawing of design.schematic.drawings) {
     if (drawing.kind !== "bus") continue
     const near = nearestOnLine(drawing.points, p)
-    if (near && near.d <= maxDistance && (!best || near.d < best.d)) best = { id: drawing.id, name: drawing.name, members: drawing.members, ...near }
+    if (near && near.d <= maxDistance && (!best || near.d < best.near.d)) best = { id: drawing.id, name: drawing.name, members: drawing.members, near }
   }
-  return best && { selector: `bus:${best.id}`, at: { x: round(best.at.x), y: round(best.at.y) }, label: best.name, members: best.members }
+  const at = best && meetingPoint(best.near, p, maxDistance, meet)
+  return best && at && { selector: `bus:${best.id}`, at: { x: round(at.x), y: round(at.y) }, label: best.name, members: best.members }
 }
 
 /** The member picked from a bus end: its net, met where the wire meets the bus, so the label sits on the bus. */
@@ -150,13 +186,13 @@ function distanceToLabel(label: NetLabel, p: Point): number {
   return Math.hypot(Math.max(box.minX - p.x, 0, p.x - box.maxX), Math.max(box.minY - p.y, 0, p.y - box.maxY))
 }
 
-function wireEnd(design: Design, p: Point, maxDistance: number): WireEnd | undefined {
-  let best: { net: string; at: Point; d: number } | undefined
+function wireEnd(design: Design, p: Point, maxDistance: number, meet: Meet): WireEnd | undefined {
+  let best: { net: string; near: Near } | undefined
   for (const wire of design.schematic.wires) {
     const near = nearestOnLine(wire.points, p)
-    if (near && near.d <= maxDistance && (!best || near.d < best.d)) best = { net: wire.net, ...near }
+    if (near && near.d <= maxDistance && (!best || near.d < best.near.d)) best = { net: wire.net, near }
   }
-  return best && netEnd(design, best.net, best.at)
+  return best && netEnd(design, best.net, meetingPoint(best.near, p, maxDistance, meet))
 }
 
 /** A wire stands for its net: `net.<name>` when the net is named, else its first pin. */

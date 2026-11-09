@@ -7,7 +7,7 @@ import { isCanvasKey } from "./canvas-common"
 import { keyAction, keyInput } from "./canvas-keys"
 import { snapPoint, type Camera, type Point } from "./geometry"
 import { wirePath } from "./wire-path"
-import { endAt, freePin, memberEnd, namedNetsJoined, pinAt, sameEnd, wireEdits, type WireEnd } from "./wire-tool"
+import { endAt, freePin, memberEnd, type Meet, namedNetsJoined, pinAt, sameEnd, wireEdits, type WireEnd } from "./wire-tool"
 
 /**
  * A wire being drawn: where it starts, the pin it starts on if any, the corners clicked so far (on the grid)
@@ -159,13 +159,16 @@ function usePreview(drawing: Drawing | null, under: Under, cursor: Point | undef
   }, [drawing, under, cursor, step, snap])
 }
 
+/** How a wire meets a bus or a wire: on the grid while Snap is on, and on the axis of the wire's last corner. */
+const meetOf = (drawing: Drawing | null, step: number, snap: boolean): Meet => ({ step, snap, ...(drawing ? { from: drawing.corners.at(-1) ?? drawing.start.at } : {}) })
+
 /** What is under `world`: any pin, label, bus or wire while wiring or drawing (`active`), else only a pin. */
-function underAtPoint(design: Design, camera: Camera | undefined, active: boolean, world: Point): Under {
+function underAtPoint(design: Design, camera: Camera | undefined, active: boolean, world: Point, meet: Meet): Under {
   if (!camera) return {}
   const reach = PORT_HIT_PX / camera.scale
   const pin = pinAt(design, world, reach)?.pin
   if (!active && !pin) return {}
-  const end = endAt(design, world, reach)
+  const end = endAt(design, world, reach, meet)
   return { ...(end ? { end } : {}), ...(pin ? { pin } : {}) }
 }
 
@@ -228,7 +231,7 @@ export function useWireTool(input: WireInput) {
   const aimed = useMemo(() => (picks.picking?.role === "end" ? { end: picks.picking.bus } : under), [picks.picking, under])
   const preview = usePreview(drawing, aimed, input.cursor, step, snap)
   const activePins = useMemo(() => [drawing?.pin, under.pin].filter((id): id is string => id !== undefined), [drawing, under])
-  const underAt = (world: Point): Under => underAtPoint(design, camera, wiring || drawing !== null, world)
+  const underAt = (world: Point): Under => underAtPoint(design, camera, wiring || drawing !== null, world, meetOf(drawing, step, snap))
   const press = (event: { button: number; shiftKey: boolean }, world: Point) =>
     pressWire({ design, camera, wiring, drawing, setDrawing, step, snap, finish, underAt, picks }, event, world)
   const cancel = useCallback(() => {
@@ -288,7 +291,7 @@ function pressWire(c: PressContext, event: { button: number; shiftKey: boolean }
   }
   if (event.button === 1 || event.button === 2 || event.shiftKey) return false
   if (c.drawing) {
-    const target = endAt(c.design, world, PORT_HIT_PX / c.camera.scale)
+    const target = endAt(c.design, world, PORT_HIT_PX / c.camera.scale, meetOf(c.drawing, c.step, c.snap))
     if (target?.members) c.picks.open(target, "end")
     else if (target) c.finish(c.drawing, target)
     else addCorner(c.drawing, world, c, c.setDrawing)

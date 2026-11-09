@@ -115,3 +115,31 @@ describe("where the member list opens", () => {
     expect(listPlace({ x: 5, y: 5 }, { width: 50, height: 50 }, 100)).toEqual({ left: 0, top: 0 })
   })
 })
+
+describe("where a wire meets a bus or a wire", () => {
+  const grid = { step: 0.1, snap: true }
+
+  test("on a bus: snapped along the bus to the grid while Snap is on, kept on the bus line; exact with Snap off", () => {
+    expect(endAt(design, { x: 1.2346, y: 3.05 }, 0.2, grid)?.at).toEqual({ x: 1.2, y: 3 })
+    expect(endAt(design, { x: 6.05, y: 4.27 }, 0.2, grid)?.at).toEqual({ x: 6, y: 4.3 })
+    expect(endAt(design, { x: 1.2346, y: 3.05 }, 0.2, { step: 0.1, snap: false })?.at).toEqual({ x: 1.2346, y: 3 })
+  })
+
+  test("in reach of the last corner's axis, the meeting point takes that axis, so no small jog is written", () => {
+    const from = { x: 1.23, y: 0 }
+    expect(endAt(design, { x: 1.2357, y: 3.05 }, 0.2, { ...grid, from })?.at).toEqual({ x: 1.23, y: 3 })
+    expect(endAt(design, { x: 1.6, y: 3.05 }, 0.2, { ...grid, from })?.at).toEqual({ x: 1.6, y: 3 })
+    const edits = wireEdits(design, { ...pin("R1.pin2"), at: from }, memberEnd(endAt(design, { x: 1.2357, y: 3.05 }, 0.2, { ...grid, from }) as WireEnd, "D1"), [])
+    expect(edits).toMatchObject([{ schematicRouteHints: [{ x: 1.23, y: 3 }] }])
+  })
+
+  test("the same rule on a plain wire", () => {
+    const wired = buildDesign({ [FILE]: SOURCE.replace("</board>", `<trace from=".R1 > .pin1" to=".R2 > .pin2" schematicRouteHints={[{ x: -1, y: -1 }, { x: 5, y: -1 }]} />\n  </board>`) }, FILE)
+    const wire = wired.schematic.wires[0]
+    if (!wire) throw new Error("no wire")
+    const run = wire.points.findIndex((point, i) => i > 0 && wire.points[i - 1]?.y === point.y && point.y === -1)
+    expect(run).toBeGreaterThan(0)
+    expect(endAt(wired, { x: 2.3456, y: -1.04 }, 0.2, grid)?.at).toEqual({ x: 2.3, y: -1 })
+    expect(endAt(wired, { x: 2.3456, y: -1.04 }, 0.2, { ...grid, from: { x: 2.3333, y: 5 } })?.at).toEqual({ x: 2.3333, y: -1 })
+  })
+})
