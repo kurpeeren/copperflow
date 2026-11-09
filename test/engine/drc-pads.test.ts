@@ -52,7 +52,7 @@ function pad(id: string, overrides: Partial<WorldPad> = {}): WorldPad {
 
 function layoutOf(pads: WorldPad[], board?: Board): PcbLayout {
   const part: PlacedFootprint = { component: "X", x: 0, y: 0, rotation: 0, side: "top", autoPlaced: false, pads, courtyard: [], silkscreen: [], fabrication: [] }
-  return { ...(board ? { board } : {}), parts: [part], ratsnest: [] }
+  return { ...(board ? { board } : {}), parts: [part], ratsnest: [], tracks: [], vias: [] }
 }
 
 const SQUARE: Board = {

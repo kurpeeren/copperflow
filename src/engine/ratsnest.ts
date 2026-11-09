@@ -3,14 +3,26 @@ import { naturalCompare } from "./order.js"
 import type { PlacedFootprint, RatsnestLine, WorldPad } from "./pcb.js"
 
 interface Edge {
+  /** Centre distance; -1 between pads that copper already joins, so the tree takes those first and draws no line. */
   d: number
   from: WorldPad
   to: WorldPad
 }
 
+/** Which pads copper joins: pads with the same number are connected. */
+export type PadIslands = ReadonlyMap<string, number>
+
+const JOINED = -1
+
 const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y)
 const compareEdge = (a: Edge, b: Edge) => a.d - b.d || naturalCompare(a.from.id, b.from.id) || naturalCompare(a.to.id, b.to.id)
-const edgeBetween = (from: WorldPad, to: WorldPad): Edge => ({ d: distance(from, to), from, to })
+const joined = (islands: PadIslands, a: WorldPad, b: WorldPad) => {
+  const island = islands.get(a.id)
+  return island !== undefined && island === islands.get(b.id)
+}
+const edgeMaker =
+  (islands: PadIslands) =>
+  (from: WorldPad, to: WorldPad): Edge => ({ d: joined(islands, from, to) ? JOINED : distance(from, to), from, to })
 
 function padsByNet(parts: readonly PlacedFootprint[]): Map<string, WorldPad[]> {
   const nets = new Map<string, WorldPad[]>()
@@ -29,14 +41,15 @@ function padsByNet(parts: readonly PlacedFootprint[]): Map<string, WorldPad[]> {
  * Prim's tree over the pads of one net: the shortest edge from the tree to a pad outside it, ties by pad id.
  * Each pad outside keeps its best edge into the tree, so a step costs one pass over the pads left.
  */
-function spanningTree(net: string, pads: readonly WorldPad[]): RatsnestLine[] {
+function spanningTree(net: string, pads: readonly WorldPad[], islands: PadIslands): RatsnestLine[] {
+  const edgeBetween = edgeMaker(islands)
   const [first, ...rest] = [...pads].sort((a, b) => naturalCompare(a.id, b.id))
   if (!first) return []
   let outside = rest.map((pad) => edgeBetween(first, pad))
   const lines: RatsnestLine[] = []
   while (outside.length > 0) {
     const best = outside.reduce((a, b) => (compareEdge(b, a) < 0 ? b : a))
-    lines.push({ net, from: best.from.id, to: best.to.id, a: { x: best.from.x, y: best.from.y }, b: { x: best.to.x, y: best.to.y } })
+    if (best.d !== JOINED) lines.push({ net, from: best.from.id, to: best.to.id, a: { x: best.from.x, y: best.from.y }, b: { x: best.to.x, y: best.to.y } })
     outside = outside
       .filter((edge) => edge.to !== best.to)
       .map((edge) => {
@@ -47,8 +60,11 @@ function spanningTree(net: string, pads: readonly WorldPad[]): RatsnestLine[] {
   return lines
 }
 
-/** The airwires: for each net, a minimum spanning tree over its pads by centre distance. */
-export function ratsnest(parts: PlacedFootprint[]): RatsnestLine[] {
+/**
+ * The airwires: for each net, a minimum spanning tree over its pads by centre distance, where pads that copper
+ * already joins (`islands`) cost nothing and get no line, so only the connections still missing are drawn.
+ */
+export function ratsnest(parts: readonly PlacedFootprint[], islands: PadIslands = new Map()): RatsnestLine[] {
   const nets = padsByNet(parts)
-  return [...nets.keys()].sort(naturalCompare).flatMap((net) => spanningTree(net, nets.get(net) ?? []))
+  return [...nets.keys()].sort(naturalCompare).flatMap((net) => spanningTree(net, nets.get(net) ?? [], islands))
 }

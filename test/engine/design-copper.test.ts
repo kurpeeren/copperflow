@@ -1,0 +1,66 @@
+import { describe, expect, test } from "vitest"
+import { buildDesign } from "../../src/engine/design.js"
+import type { WorldPad } from "../../src/engine/pcb.js"
+
+const MAIN = "boards/main.circuit.tsx"
+const LAYOUT = "boards/main.circuit.layout.json"
+const CIRCUIT = `export default () => (
+  <board width="30mm" height="20mm">
+    <resistor name="R1" resistance="1k" footprint="0603" pcbX={-5} pcbY={0} />
+    <resistor name="R2" resistance="1k" footprint="0603" pcbX={5} pcbY={0} />
+    <resistor name="R3" resistance="1k" footprint="0603" pcbX={0} pcbY={6} />
+    <trace from=".R1 > .pin1" to="net.SIG" />
+    <trace from=".R2 > .pin1" to="net.SIG" />
+    <trace from=".R3 > .pin1" to="net.SIG" />
+    <trace from=".R1 > .pin2" to="net.GND" />
+  </board>
+)
+`
+
+const build = (layout?: string) => buildDesign({ [MAIN]: CIRCUIT, ...(layout === undefined ? {} : { [LAYOUT]: layout }) }, MAIN)
+const padOf = (id: string): WorldPad => {
+  const found = build().pcb.parts.flatMap((p) => p.pads).find((p) => p.id === id)
+  if (!found) throw new Error(`no pad ${id}`)
+  return found
+}
+const trackLine = (id: string, a: WorldPad, b: WorldPad, net = "SIG") =>
+  `${JSON.stringify({ t: "track", id, net, layer: "top", width: 0.25, points: [{ x: a.x, y: a.y }, { x: b.x, y: b.y }], locked: false, by: "human" })}\n`
+const unrouted = (layout?: string) => build(layout).violations.find((v) => v.code === "unrouted")?.message
+
+describe("the design reads the layout file", () => {
+  test("without a layout file there is no copper", () => {
+    const design = build()
+    expect(design.pcb.tracks).toEqual([])
+    expect(design.pcb.vias).toEqual([])
+    expect(design.pcb.ratsnest).toHaveLength(2)
+    expect(unrouted()).toBe("2 connections are not routed yet")
+  })
+
+  test("a track between two pads of the net carries it and its connection leaves the ratsnest", () => {
+    const layout = trackLine("t0001", padOf("R1#1"), padOf("R2#1"))
+    const design = build(layout)
+    expect(design.pcb.tracks).toEqual([expect.objectContaining({ id: "t0001", net: "net.SIG", pads: ["R1#1", "R2#1"] })])
+    expect(design.pcb.ratsnest).toHaveLength(1)
+    expect(unrouted(layout)).toBe("1 connection is not routed yet")
+  })
+
+  test("a track joining two nets is a short in the diagnostics", () => {
+    const design = build(trackLine("t0001", padOf("R1#1"), padOf("R1#2")))
+    expect(design.diagnostics.filter((d) => d.code === "short")).toEqual([
+      expect.objectContaining({ severity: "error", items: ["net.GND", "net.SIG"] }),
+    ])
+  })
+
+  test("a bad line in the layout file is an error naming the file, and the good lines still count", () => {
+    const design = build(`not json\n${trackLine("t0001", padOf("R1#1"), padOf("R2#1"))}`)
+    expect(design.diagnostics.filter((d) => d.code === "layout-file").map((d) => d.message)).toEqual([`${LAYOUT}: line 1 is not valid JSON`])
+    expect(design.pcb.tracks).toHaveLength(1)
+  })
+
+  test("the same files build the same copper", () => {
+    const layout = trackLine("t0002", padOf("R2#1"), padOf("R3#1")) + trackLine("t0001", padOf("R1#1"), padOf("R2#1"))
+    expect(JSON.stringify(build(layout).pcb)).toBe(JSON.stringify(build(layout).pcb))
+    expect(build(layout).pcb.tracks.map((t) => t.id)).toEqual(["t0002", "t0001"])
+    expect(build(layout).pcb.ratsnest).toEqual([])
+  })
+})
