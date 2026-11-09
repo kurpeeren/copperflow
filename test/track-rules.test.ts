@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest"
 import type { Net } from "../src/engine/model.js"
 import { DEFAULT_CLASS, PROFILES } from "../src/engine/rules/profiles.js"
 import type { Rules } from "../src/engine/rules/schema.js"
-import { netName, routeNet, trackWidth, viaSize } from "../studio/src/pcb/track-rules.js"
+import { defaultVia, netName, routeNet, trackWidth, viaSize } from "../studio/src/pcb/track-rules.js"
 
 const net = (id: string, names: string[]): Net => ({ id, names, pins: [] }) as unknown as Net
 const rules = (classes: Rules["classes"] = []): Rules => ({ fabrication: PROFILES["jlcpcb-2layer"] as Rules["fabrication"], classes, classClearance: [], globalNets: [] })
@@ -14,10 +14,29 @@ describe("the track tool's width rule", () => {
     expect(viaSize(rules([power]), net("net.VBUS", ["VBUS"]))).toEqual({ drill: 0.4, diameter: 0.8 })
   })
 
+  test("a via on no net gets the default class's via, grown the same way", () => {
+    expect(defaultVia(rules())).toEqual({ drill: 0.3, diameter: 0.66 })
+    expect(defaultVia({ ...rules(), fabrication: PROFILES["jlcpcb-4layer"] as Rules["fabrication"] })).toEqual({ drill: 0.3, diameter: 0.6 })
+  })
+
   test("any other net takes the design rules' default width and via", () => {
     expect(trackWidth(rules([power]), net("net.GND", ["GND"]))).toBe(DEFAULT_CLASS.trackWidth)
     expect(trackWidth(rules(), net("net.GND", ["GND"]))).toBe(0.25)
-    expect(viaSize(rules(), net("net.GND", ["GND"]))).toEqual({ drill: 0.3, diameter: 0.6 })
+    expect(viaSize(rules(), net("net.GND", ["GND"]))).toEqual({ drill: 0.3, diameter: 0.66 })
+  })
+
+  test("the via is never smaller than its drill plus the profile's annular ring on both sides", () => {
+    const ring = PROFILES["jlcpcb-2layer"]!.minAnnularRing
+    const via = viaSize(rules(), net("net.GND", ["GND"]))
+    expect((via.diameter - via.drill) / 2).toBeCloseTo(ring, 9)
+    const loose = { ...rules(), fabrication: { ...rules().fabrication, minAnnularRing: 0.1 } }
+    expect(viaSize(loose, net("net.GND", ["GND"]))).toEqual({ drill: 0.3, diameter: 0.6 })
+    expect(viaSize(rules([power]), net("net.VBUS", ["VBUS"]))).toEqual({ drill: 0.4, diameter: 0.8 })
+  })
+
+  test("a via on no net gets the default class's via, grown the same way", () => {
+    expect(defaultVia(rules())).toEqual({ drill: 0.3, diameter: 0.66 })
+    expect(defaultVia({ ...rules(), fabrication: PROFILES["jlcpcb-4layer"] as Rules["fabrication"] })).toEqual({ drill: 0.3, diameter: 0.6 })
   })
 
   test("routeNet gathers the net's id, its name, the width and the via; an unknown id gives none", () => {

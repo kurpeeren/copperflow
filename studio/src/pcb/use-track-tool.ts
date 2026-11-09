@@ -16,7 +16,7 @@ import type { ActiveLayer, LayerVisibility } from "./layers"
 import type { Press } from "./press"
 import { routingStatus } from "./status"
 import { cornerModeName } from "./track-corners"
-import { routeNet } from "./track-rules"
+import { defaultVia, routeNet } from "./track-rules"
 import { routeTargetAt, type TargetSource } from "./track-targets"
 import {
   addRouteCorner,
@@ -220,7 +220,7 @@ function useTrackKeys(latest: RefObject<Latest>): void {
 function placeVia(latest: Latest, world: Point, send: Send): void {
   const { input } = latest
   const target = latest.targetAt(world, true)
-  const placed = placeViaAt(target, snapPoint(world, input.step, input.snap), (id) => routeNet(input.design, id))
+  const placed = placeViaAt(target, snapPoint(world, input.step, input.snap), (id) => routeNet(input.design, id), defaultVia(input.design.rules))
   if ("message" in placed) return input.actions.notify(placed.message)
   send(placed, target?.net)
 }

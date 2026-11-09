@@ -221,6 +221,12 @@ describe("Route → Via", () => {
     })
   })
 
+  test("a via placed on nothing takes the fallback size it is given", () => {
+    expect(placeViaAt(undefined, p(1, 1), () => undefined, { drill: 0.3, diameter: 0.66 })).toMatchObject({
+      edits: [{ kind: "addVia", at: p(1, 1), drill: 0.3, diameter: 0.66 }],
+    })
+  })
+
   test("a via on nothing has no net and the default size", () => {
     expect(viaPlacement(p(1, 1), undefined, { drill: 0.3, diameter: 0.6 })).toMatchObject({
       edits: [{ kind: "addVia", at: p(1, 1), drill: 0.3, diameter: 0.6, layers: ["top", "bottom"] }],

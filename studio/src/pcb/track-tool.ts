@@ -192,12 +192,17 @@ export function finishRoute(route: Route, target: RouteTarget): Finished | Messa
 
 /**
  * Route → Via at a click: on a pad at its centre and on a track at the meeting point, taking their net; on nothing at
- * the grid point `snapped`, with no net; refused on a via.
+ * the grid point `snapped`, with no net and the `fallback` size; refused on a via.
  */
-export function placeViaAt(target: RouteTarget | undefined, snapped: Point, netOf: (id: string) => RouteNet | undefined): Finished | Message {
+export function placeViaAt(
+  target: RouteTarget | undefined,
+  snapped: Point,
+  netOf: (id: string) => RouteNet | undefined,
+  fallback: RouteNet["via"] = DEFAULT_CLASS.via,
+): Finished | Message {
   if (target?.kind === "via") return { message: `Via ${target.id} is already there` }
   const net = target?.net === undefined ? undefined : netOf(target.net)
-  return viaPlacement(target ? target.at : snapped, net)
+  return viaPlacement(target ? target.at : snapped, net, fallback)
 }
 
 /** Route → Via: a via at `at` on the net under it (none when nothing is), sized by that net's class. */
