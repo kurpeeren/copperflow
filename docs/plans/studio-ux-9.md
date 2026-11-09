@@ -32,6 +32,18 @@ The round 1–8 constraints hold (English; one-line commits; no new dependencies
 - Toolbar buttons 24×24 with the icon centred; pressed state is the copper wash with a copper icon; disabled is `--disabled`.
 - Tests: every icon's viewBox is `0 0 16 16` and its stroke width 1.5 (parse the rendered SVG strings).
 
-## Task 3: browser check (controller)
+## Task 3: text on the canvases that reads
+
+The maintainer's screenshot (2026-11-09, the demo at about 70%) shows the real blur: canvas text 6–8 px tall at fractional sizes and positions, pin names of a small connector overprinting each other, values and designators smeared. Rules, after what EasyEDA and KiCad do:
+
+- **Device-pixel text.** Every canvas text is drawn at an integer device-pixel font size (round the world size × scale × ratio; never below 1) and its anchor is snapped to device pixels (x and baseline), with `ctx.textRendering = "geometricPrecision"` where the browser has it.
+- **Level of detail.** Below 7 device px no text is drawn at all; between 7 and 9 px only designators and net names (values, pin names and pin numbers wait); from 9 px everything. Pin numbers appear only from 11 px. The thresholds are constants in one module with a pure `textLevel(px)` function.
+- **No overprinting.** Pin names inside a symbol are drawn only if they fit between the pin and the opposite side's names (measure with `measureText`; else shorten with an ellipsis, else drop); labels of neighbouring pins on the same side that would overlap vertically are dropped from the shorter pitch, never drawn over each other. Designator and value of a two-pin part never overlap the body: they sit outside it as today, but their size is capped so the text is not wider than 2.5 symbol lengths.
+- **Strokes.** Symbol bodies, pins and wires are at least one device pixel and at most their world width; the hairline rule from round 7 applies to every stroke that is thinner than 1 px on screen.
+- **Grid.** Minor grid lines fade out below 6 device px spacing (only the fifth lines stay), and all grid lines go below 3 px.
+- Applies to both canvases (the PCB's silkscreen text and designators too).
+- Tests: `textLevel` thresholds; font-size rounding; the fit/ellipsis/drop rule for pin names; the grid fade thresholds; a schematic drawn at 70% on the demo calls fillText with only integer font sizes and no pin numbers.
+
+## Task 4: browser check (controller)
 
 On the 110% screen: sample a panel edge and a tab strip edge (one device pixel), the active tab underline, a toolbar icon's stroke (no half-tone row wider than 2 device pixels), read the computed fonts of a section header, a field and the status line; check 100% and 125% too. Fix what fails before the round ends.
