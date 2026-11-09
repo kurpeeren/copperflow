@@ -3,7 +3,7 @@
 import type { PlacedSymbol, SchematicLayout, NetLabel } from "../../../src/engine/schematic.js"
 import { groundSymbol, powerSymbol, type SchSymbol, type Shape } from "../../../src/engine/symbols/index.js"
 import { baselineAt } from "./crisp.js"
-import { anchorAlignment, CANVAS_FONT_FAMILY, HIGHLIGHT_DIM, type Ctx } from "./ctx.js"
+import { anchorAlignment, canvasFont, CANVAS_MONO_FAMILY, HIGHLIGHT_DIM, TEXT_WEIGHT, type Ctx } from "./ctx.js"
 import { labelTag, NET_LABEL_TEXT } from "./label-tag.js"
 import { worldToScreen, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
 import { drawViolationMarkers, type ViolationMarker } from "./markers.js"
@@ -51,6 +51,10 @@ interface Label {
   color: string
   rotation?: number
   alpha?: number
+  /** Designators and net names are bolder than values and pin names. */
+  strong?: boolean
+  /** Pin numbers are in the mono family. */
+  mono?: boolean
 }
 
 const NO_SHIFT: Point = { x: 0, y: 0 }
@@ -242,7 +246,7 @@ function pinNumbers(symbol: SchSymbol, frame: Frame): Label[] {
     const local = { x: pin.end.x - inward.x * NUMBER_INSET, y: pin.end.y - inward.y * NUMBER_INSET }
     const alongLead = inward.x !== 0
     const lifted = alongLead ? { x: local.x, y: local.y + NUMBER_RISE } : { x: local.x + NUMBER_RISE, y: local.y }
-    return { text: String(pin.number), at: place(lifted, frame), size: 0.1, anchor: "center", color: theme.pinNumber }
+    return { text: String(pin.number), at: place(lifted, frame), size: 0.1, anchor: "center", color: theme.pinNumber, mono: true }
   })
 }
 
@@ -285,7 +289,7 @@ function textLabel(shape: Extract<Shape, { type: "text" }>, frame: Frame, fallba
   const dx = along * Math.cos(angle)
   const dy = along * Math.sin(angle)
   const anchor = Math.abs(dx) > 0.5 ? (dx > 0 ? "left" : "right") : Math.abs(dy) > 0.5 ? (dy > 0 ? "bottom" : "top") : "center"
-  return { text: shape.text, at: place(shape.at, frame), size: shape.size, anchor, color: TEXT_COLORS[shape.role] ?? fallback }
+  return { text: shape.text, at: place(shape.at, frame), size: shape.size, anchor, color: TEXT_COLORS[shape.role] ?? fallback, ...(shape.role === "reference" ? { strong: true } : {}), ...(shape.role === "pin-number" ? { mono: true } : {}) }
 }
 
 /** The label where it is dragged to, or as the layout has it. */
@@ -310,11 +314,11 @@ function drawLabelShape(ctx: Ctx, label: NetLabel, line: (w: number) => number, 
     ctx.lineWidth = line(SYMBOL_WIDTH)
     const first = texts.length
     drawShapes(ctx, shapes, { x: label.at.x, y: label.at.y, rotation: 0 }, tone.color ?? theme.symbolOutline, texts)
-    for (let i = first; i < texts.length; i++) texts[i] = { ...(texts[i] as Label), color: tone.color ?? theme.netName, alpha: tone.alpha }
+    for (let i = first; i < texts.length; i++) texts[i] = { ...(texts[i] as Label), strong: true, color: tone.color ?? theme.netName, alpha: tone.alpha }
     return
   }
   const { middle, upright } = labelTag(label)
-  texts.push({ text: label.text, at: middle, size: NET_LABEL_TEXT, anchor: "center", color: tone.color ?? theme.netName, rotation: upright ? 90 : 0, alpha: tone.alpha })
+  texts.push({ text: label.text, at: middle, size: NET_LABEL_TEXT, anchor: "center", strong: true, color: tone.color ?? theme.netName, rotation: upright ? 90 : 0, alpha: tone.alpha })
 }
 
 function drawPins(ctx: Ctx, layout: SchematicLayout, options: SchematicDrawOptions, px: number, shiftOf: (s: PlacedSymbol) => Point): void {
@@ -342,7 +346,7 @@ function drawText(ctx: Ctx, label: Label, camera: Camera, size: Size, ratio: num
   if (label.rotation) ctx.rotate(rad(-label.rotation))
   ctx.globalAlpha = label.alpha ?? 1
   ctx.fillStyle = label.color
-  ctx.font = `500 ${fontPx}px ${CANVAS_FONT_FAMILY}`
+  ctx.font = canvasFont(label.strong ? TEXT_WEIGHT.strong : TEXT_WEIGHT.regular, fontPx, label.mono ? CANVAS_MONO_FAMILY : undefined)
   ctx.textAlign = horizontal
   ctx.textBaseline = vertical
   ctx.fillText(label.text, 0, 0)

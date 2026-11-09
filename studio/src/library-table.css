@@ -39,6 +39,7 @@
 
 .lib-table th,
 .lib-table td {
+  font-size: 13px;
   height: 28px;
   box-sizing: border-box;
   padding: 0 8px;

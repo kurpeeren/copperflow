@@ -19,7 +19,7 @@
   --danger-text: #cf1322;
   --warning: #faad14;
   --mono: "Cascadia Mono", "JetBrains Mono", ui-monospace, Consolas, monospace;
-  --sans: Arial, "Microsoft YaHei", Helvetica, sans-serif;
+  --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
   color-scheme: light;
 }
 
@@ -38,7 +38,7 @@ body {
   background: var(--ground);
   color: var(--text);
   font: 12px/1.5 var(--sans);
-  -webkit-font-smoothing: antialiased;
+  -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums;
 }
 
 code {

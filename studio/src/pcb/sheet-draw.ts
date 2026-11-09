@@ -1,5 +1,5 @@
 // Paints the schematic's drawing border and title block (geometry in sheet.ts) in CSS pixels.
-import { CANVAS_FONT_FAMILY } from "./ctx.js"
+import { canvasFont, TEXT_WEIGHT } from "./ctx.js"
 import { baselineAt, deviceWidth, hairlineAt, hairlineWidth, strokeBoxAt } from "./crisp.js"
 import { worldToScreen, type Box, type Camera, type Point, type Size } from "./geometry.js"
 import { schematicTheme } from "./schematic-theme.js"
@@ -47,7 +47,7 @@ function line(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, from: P
 function setTextHeight(ctx: CanvasRenderingContext2D, camera: Camera, height: number): boolean {
   const px = height * camera.scale
   if (px < MIN_ZONE_LABEL_PX) return false
-  ctx.font = `${px}px ${CANVAS_FONT_FAMILY}`
+  ctx.font = canvasFont(TEXT_WEIGHT.regular, px)
   return true
 }
 

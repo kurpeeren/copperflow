@@ -2,7 +2,7 @@
 // Only types come from the engine: its runtime modules reach Node-only code the Studio bundle cannot hold.
 import type { PcbLayout, PlacedFootprint, WorldPad } from "../../../src/engine/pcb.js"
 import { atLeastOnePixel, baselineAt } from "./crisp.js"
-import { CANVAS_FONT_FAMILY, PALETTE, type Ctx } from "./ctx.js"
+import { canvasFont, PALETTE, TEXT_WEIGHT, type Ctx } from "./ctx.js"
 import { worldToScreen, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
 import { DEFAULT_LAYERS, padLayer, type LayerVisibility } from "./layers.js"
 import { drawViolationMarkers, type ViolationMarker } from "./markers.js"
@@ -336,7 +336,7 @@ function drawDesignator(ctx: Ctx, part: PlacedFootprint, camera: Camera, size: S
   const p = worldToScreen(camera, size, { x: (box.minX + box.maxX) / 2 + shift.x, y: box.maxY + shift.y })
   ctx.fillStyle = part.side === "top" ? PALETTE.topSilk : PALETTE.bottomSilk
   ctx.globalAlpha = alphaOf(part)
-  ctx.font = `600 ${fontPx}px ${CANVAS_FONT_FAMILY}`
+  ctx.font = canvasFont(TEXT_WEIGHT.strong, fontPx)
   ctx.textAlign = "center"
   ctx.textBaseline = "bottom"
   ctx.fillText(part.component, p.x, baselineAt(p.y - DESIGNATOR_GAP_PX, ratio))

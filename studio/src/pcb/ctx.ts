@@ -36,8 +36,20 @@ export interface Ctx {
  */
 export const HIGHLIGHT_DIM = 0.3
 
+/** The interface's text stack: `--sans` in styles.css and the canvases' font family are this one string. */
+export const UI_FONT_STACK = '"Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif'
+
 /** The font family of all canvas text; each painter sets its own size and weight. */
-export const CANVAS_FONT_FAMILY = '"Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif'
+export const CANVAS_FONT_FAMILY = UI_FONT_STACK
+
+/** `--mono` in styles.css: for ids, code and the schematic's pin numbers (its digits are all one width). */
+export const CANVAS_MONO_FAMILY = '"Cascadia Mono", "JetBrains Mono", ui-monospace, Consolas, monospace'
+
+/** Designators and net names read a step bolder than values and pin names. */
+export const TEXT_WEIGHT = { strong: 600, regular: 400 } as const
+
+/** A canvas font string. */
+export const canvasFont = (weight: number, px: number, family: string = CANVAS_FONT_FAMILY): string => `${weight} ${px}px ${family}`
 
 /**
  * EasyEDA's default PCB theme, and every other colour the PCB draws in: the one source of them (PCB_LOOK in
