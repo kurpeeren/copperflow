@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest"
 import { gestureStart, hasMoved, opensOnDoubleClick, rightButtonHeld, stillRelease, type GestureStart, type Press, type Under } from "../studio/src/pcb/press.js"
 
 const press = (held: Partial<Press> = {}): Press => ({ button: 0, shiftKey: false, ctrlKey: false, metaKey: false, ...held })
-const UNDER: readonly Under[] = ["part", "selectedPart", "label", "wire", "selectedWire", "wireCorner", "empty"]
+const UNDER: readonly Under[] = ["part", "selectedPart", "label", "selectedLabel", "wire", "selectedWire", "wireCorner", "empty"]
 const MODIFIERS = [{ shiftKey: true }, { ctrlKey: true }, { metaKey: true }, { shiftKey: true, ctrlKey: true }]
 
 describe("what a press on the canvas starts", () => {
@@ -13,6 +13,14 @@ describe("what a press on the canvas starts", () => {
 
   test("a left press on a net label drags the label", () => {
     expect(gestureStart(press(), "label", null)).toBe("label")
+  })
+
+  test("a label selected with other things drags the whole selection; Shift or Ctrl toggles a label in or out", () => {
+    expect(gestureStart(press(), "selectedLabel", null)).toBe("moveGroup")
+    for (const held of MODIFIERS) {
+      expect(gestureStart(press(held), "label", null)).toBe("toggle")
+      expect(gestureStart(press(held), "selectedLabel", null)).toBe("toggle")
+    }
   })
 
   test("a left press on a wire selects the wire and drags the segment under it; with Shift or Ctrl it toggles the wire, as on a part", () => {
@@ -51,7 +59,6 @@ describe("what a press on the canvas starts", () => {
       expect(gestureStart(press(held), "part", null)).toBe("toggle")
       expect(gestureStart(press(held), "selectedPart", null)).toBe("toggle")
       expect(gestureStart(press(held), "empty", null)).toBe("addBox")
-      expect(gestureStart(press(held), "label", null)).toBe("addBox")
     }
   })
 

@@ -68,6 +68,17 @@ describe("pressNudge", () => {
     expect(pressNudge(burst, circuit, NAMES, right)).toMatchObject({ send: right, fresh: true })
   })
 
+  test("the selected labels are kept like the wires: other labels start afresh, the same join", () => {
+    const burst = pressNudge(undefined, circuit, NAMES, right, [], ["label:A"]).burst
+    expect(burst.labels).toEqual(["label:A"])
+    expect(burst.wires).toBeUndefined()
+    expect(pressNudge(burst, circuit, NAMES, right, [], ["label:A"])).toMatchObject({ send: null, fresh: false })
+    expect(pressNudge(burst, circuit, NAMES, right, [], ["label:B"])).toMatchObject({ send: right, fresh: true })
+    const held = holdNudge(undefined, NAMES, right, [], ["label:A"])
+    expect(held).toEqual({ names: NAMES, labels: ["label:A"], total: right })
+    expect(holdNudge(held, NAMES, right)).toEqual({ names: NAMES, total: right })
+  })
+
   test("a failed edit ends the burst", () => {
     expect(settleNudge(pressNudge(undefined, circuit, NAMES, right).burst, false)).toBeUndefined()
   })

@@ -271,6 +271,21 @@ describe("highlight", () => {
     expect(rec.records.find((r) => r.name === "fillText" && r.args[0] === "EN")?.globalAlpha).toBe(HIGHLIGHT_DIM)
   })
 
+  test("a selected net label or flag is drawn in the selection colour, over a highlight; the others keep theirs", () => {
+    const sheet = buildDesign({ [FILE]: LABELLED }, FILE).schematic
+    const en = sheet.labels.find((label) => label.text === "EN")
+    const flag = sheet.labels.find((label) => label.style === "ground")
+    const drawn = (options: Partial<SchematicDrawOptions>) => {
+      const rec = recorder()
+      drawSchematic(rec.ctx as never, sheet, VIEW, { ratio: 1, ...options })
+      return rec.records
+    }
+    const records = drawn({ selectedLabels: [en?.id ?? "", flag?.id ?? ""], highlight: { net: "net.VCC" } })
+    expect(records.find((r) => r.name === "fillText" && r.args[0] === "EN")).toMatchObject({ fillStyle: schematicTheme.selection, globalAlpha: 1 })
+    expect(records.filter((r) => r.name === "stroke" && r.strokeStyle === schematicTheme.selection)).toHaveLength(groundSymbol().length)
+    expect(drawn({}).find((r) => r.name === "fillText" && r.args[0] === "EN")?.fillStyle).toBe(schematicTheme.netName)
+  })
+
   test("symbols are dimmed, except those with a pin on the net", () => {
     const outline = (rec: ReturnType<typeof draw>) => new Set(strokes(rec, schematicTheme.symbolOutline).map((r) => r.globalAlpha))
     expect(outline(draw({ highlight: { net: "net.GND" } }))).toEqual(new Set([HIGHLIGHT_DIM]))

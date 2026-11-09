@@ -58,17 +58,17 @@ export interface PartKeysInput {
 }
 
 /**
- * Delete (delete-plan.ts): the selected wires' traces and every selected part that may go, in one change, after asking
+ * Delete (delete-plan.ts): the selected wires' and hand-drawn labels' traces and every selected part that may go, in one change, after asking
  * when parts go; what may not go is named and stays selected. With nothing selected the key does nothing and a command
  * says what to select.
  */
 function removeSelection(input: PartKeysInput, fromKey: boolean): void {
   if (input.paused) return
-  const result = deletePlan(input.selection, input.blockerFor, input.wire?.removal)
+  const result = deletePlan(input.selection, input.blockerFor, input.wire?.removal, input.wire?.labelRemoval)
   if ("message" in result) return fromKey ? undefined : input.actions.notify(result.message)
-  const { plan, wires, question } = result
+  const { plan, wires, labels, question } = result
   if (question && !window.confirm(question)) return
-  void sendGroupEdit(plan, input.actions).then((ok) => ok && input.onSelect((current) => current.without(plan.parts).withoutWires(wires)))
+  void sendGroupEdit(plan, input.actions).then((ok) => ok && input.onSelect((current) => current.without(plan.parts).withoutWires(wires).withoutLabels(labels)))
 }
 
 /** Runs the canvas actions of a key press: fit, highlight, rotate, nudge, align, delete. */
@@ -93,7 +93,7 @@ function runKey(input: PartKeysInput, hit: KeyResult, edits: KeyEdits, repeat: b
 
 /** Design → Highlight net with no pointer over the canvas (highlight.ts selectionHighlight). */
 function highlightSelection(input: PartKeysInput): void {
-  const result = selectionHighlight(input.selection, (id) => input.wire?.net(id), input.netsOf)
+  const result = selectionHighlight(input.selection, (id) => input.wire?.net(id), input.netsOf, (id) => input.wire?.labelNet(id))
   if ("nets" in result) input.onHighlight(result.nets)
   else input.actions.notify(result.message)
 }

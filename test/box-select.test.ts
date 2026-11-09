@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { boxMode, boxSelection, partsInBox, wiresInBox } from "../studio/src/pcb/box-select.js"
+import { boxMode, boxSelection, labelsInBox, partsInBox, wiresInBox } from "../studio/src/pcb/box-select.js"
 import type { PartBox } from "../studio/src/pcb/geometry.js"
 import { ALL_PICKABLE } from "../studio/src/pcb/pick-filter.js"
 import { Selection } from "../studio/src/selection.js"
@@ -94,5 +94,26 @@ describe("the selection after a box", () => {
     const found = { parts: ["R1"], wires: ["IN"] }
     expect(boxSelection(found, false, null, undefined, { ...ALL_PICKABLE, wires: false })(before)).toMatchObject({ names: ["R1"], wires: [] })
     expect(boxSelection(found, false, null, undefined, { ...ALL_PICKABLE, parts: false })(before)).toMatchObject({ names: [], wires: ["IN"] })
+  })
+})
+
+describe("the net labels and flags a box takes", () => {
+  const LABELS = [
+    { id: "label:IN", box: { minX: 1, minY: 1, maxX: 2, maxY: 1.2 } },
+    { id: "label:HALF", box: { minX: 9, minY: 1, maxX: 11, maxY: 1.2 } },
+    { id: "label:OUT", box: { minX: 20, minY: 20, maxX: 21, maxY: 20.2 } },
+  ]
+
+  test("left to right takes the labels wholly inside; right to left every label it touches", () => {
+    expect(labelsInBox(LABELS, p(0, 0), p(10, 10), "inside")).toEqual(["label:IN"])
+    expect(labelsInBox(LABELS, p(10, 10), p(0, 0), "touching")).toEqual(["label:IN", "label:HALF"])
+  })
+
+  test("the selection after a box holds its labels, added with Shift or Ctrl, left out while the Filter's labels row is off", () => {
+    const before = Selection.none.addLabels(["label:OLD"])
+    expect(boxSelection({ parts: ["R1"], labels: ["label:IN"] }, false)(before)).toMatchObject({ names: ["R1"], labels: ["label:IN"] })
+    expect(boxSelection({ parts: [], labels: ["label:IN", "label:OLD"] }, true)(before).labels).toEqual(["label:OLD", "label:IN"])
+    expect(boxSelection({ parts: ["R1"], labels: ["label:IN"] }, false, null, undefined, { ...ALL_PICKABLE, labels: false })(before)).toMatchObject({ names: ["R1"], labels: [] })
+    expect(boxSelection({ parts: [], labels: ["label:IN"] }, false, "note")(before)).toBe(Selection.none)
   })
 })

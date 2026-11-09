@@ -168,6 +168,81 @@ describe("parts and wires together", () => {
   })
 })
 
+describe("net labels and flags in the selection", () => {
+  const W = "wire:R1.pin2|R2.pin1"
+  const L = "label:c3"
+  const G = "label:n1:R1.pin1"
+  const label = Selection.none.onlyLabel(L)
+  const mix = of("R1").addWires([W]).addLabels([L, G])
+
+  test("a label alone: no parts or wires, one object in all, and it is the sole label", () => {
+    expect(label.labels).toEqual([L])
+    expect(label.labelCount).toBe(1)
+    expect(label.total).toBe(1)
+    expect(label.soleLabel).toBe(L)
+    expect(label.soleWire).toBeUndefined()
+    expect(Selection.none.labels).toEqual([])
+    expect(Selection.none.soleLabel).toBeUndefined()
+  })
+
+  test("labels are held with parts and wires in pick order and counted in the total", () => {
+    expect(mix.labels).toEqual([L, G])
+    expect(mix.total).toBe(4)
+    expect(mix.hasLabel(G)).toBe(true)
+    expect(mix.hasLabel("label:other")).toBe(false)
+    expect(mix.soleLabel).toBeUndefined()
+    expect(Selection.none.onlyWire(W).addLabels([L]).soleWire).toBeUndefined()
+  })
+
+  test("onlyLabel selects that label alone; again changes nothing", () => {
+    expect(mix.onlyLabel(L)).toMatchObject({ names: [], wires: [], labels: [L] })
+    expect(label.onlyLabel(L)).toBe(label)
+  })
+
+  test("toggleLabel adds a label and takes it out, keeping the rest", () => {
+    expect(of("R1").toggleLabel(L).toggleLabel(G)).toMatchObject({ names: ["R1"], labels: [L, G] })
+    expect(mix.toggleLabel(L)).toMatchObject({ names: ["R1"], wires: [W], labels: [G] })
+    expect(label.toggleLabel(L)).toBe(Selection.none)
+  })
+
+  test("part and wire changes keep the labels; only, onlyWire, clear and all without labels do not", () => {
+    expect(mix.toggle("C1").labels).toEqual([L, G])
+    expect(mix.toggleWire(W).labels).toEqual([L, G])
+    expect(mix.add(["C1"]).labels).toEqual([L, G])
+    expect(mix.addWires(["wire:x"]).labels).toEqual([L, G])
+    expect(mix.without(["R1"]).labels).toEqual([L, G])
+    expect(mix.withoutWires([W]).labels).toEqual([L, G])
+    expect(mix.keep([]).labels).toEqual([L, G])
+    expect(mix.keepWires([]).labels).toEqual([L, G])
+    expect(mix.only("R1").labels).toEqual([])
+    expect(mix.onlyWire(W).labels).toEqual([])
+    expect(mix.all(["R1"], [W]).labels).toEqual([])
+  })
+
+  test("all replaces the three lists, each once", () => {
+    expect(Selection.none.all(["R1"], [W], [L, G, L])).toMatchObject({ names: ["R1"], wires: [W], labels: [L, G] })
+    expect(mix.all(["R1"], [W], [L, G])).toBe(mix)
+    expect(label.all([], [], [L])).toBe(label)
+  })
+
+  test("addLabels, withoutLabels and keepLabels; a change of nothing is the same selection", () => {
+    expect(mix.addLabels([G, "label:new"]).labels).toEqual([L, G, "label:new"])
+    expect(mix.addLabels([L])).toBe(mix)
+    expect(mix.withoutLabels([L])).toMatchObject({ names: ["R1"], wires: [W], labels: [G] })
+    expect(mix.withoutLabels(["label:other"])).toBe(mix)
+    expect(mix.keepLabels([G, "label:other"]).labels).toEqual([G])
+    expect(mix.keepLabels([L, G])).toBe(mix)
+    expect(label.keepLabels([])).toBe(Selection.none)
+    expect(label.withoutLabels([L])).toBe(Selection.none)
+  })
+
+  test("a selection of only labels is not empty for the part and wire lists either", () => {
+    expect(label.without(["R1"])).toBe(label)
+    expect(label.keepWires([])).toBe(label)
+    expect(Object.isFrozen(mix.labels)).toBe(true)
+  })
+})
+
 describe("a click on a part", () => {
   test("selects that part alone", () => {
     expect(clicked("C1", plain)(of("R1", "R2")).names).toEqual(["C1"])

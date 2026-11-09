@@ -31,11 +31,16 @@ export interface PickContext {
  * of its layers shown; otherwise every part, net label and wire may be.
  */
 export function canPick(candidate: Pickable, context: PickContext): boolean {
-  if (context.armed === "note" || context.armed === "zoom") return false
-  if (!kindPickable(context.filter, KINDS[candidate.kind])) return false
+  if (!kindAllowed(KINDS[candidate.kind], context)) return false
   const { layers } = context
   const drawn = candidate.kind === "part" ? layers?.of(candidate.name) : undefined
   return !layers || !drawn || anyLayerShown(drawn, layers.visible)
+}
+
+/** Whether things of this kind may be picked at all: not under the Note box or Fit area tool, nor while the Filter tab has the kind off. */
+function kindAllowed(kind: PickKind, context: PickContext): boolean {
+  if (context.armed === "note" || context.armed === "zoom") return false
+  return kindPickable(context.filter, kind)
 }
 
 /** The candidates that may be picked, in their order: what is under the pointer (smallest first), in a box, or in the circuit. */
@@ -53,13 +58,19 @@ export function pickWires(ids: readonly string[], context: PickContext): string[
   return picks(ids.map((id) => ({ kind: "wire" as const, id })), context).map((wire) => wire.id)
 }
 
+/** The net labels and flags among `ids` that may be picked, in their order; whether one may does not depend on which it is. */
+export function pickLabels(ids: readonly string[], context: PickContext): string[] {
+  return kindAllowed("labels", context) ? [...ids] : []
+}
+
 /**
  * Select all: every part of the circuit that may be picked, each once; on the PCB, not those on hidden layers, none
- * while Parts is off. On the schematic `wires` are the sheet's wires, and every one that may be picked joins them.
+ * while Parts is off. On the schematic `wires` and `labels` are the sheet's wires and its net labels and flags, and
+ * every one that may be picked joins them.
  */
-export function selectAll(names: readonly string[], layers?: PickLayers, filter?: PickFilter, wires: readonly string[] = []): SelectionChange {
+export function selectAll(names: readonly string[], layers?: PickLayers, filter?: PickFilter, wires: readonly string[] = [], labels: readonly string[] = []): SelectionChange {
   return (current) => {
     const context = { selection: current, armed: null, layers, filter }
-    return current.all(pickNames(names, context), pickWires(wires, context))
+    return current.all(pickNames(names, context), pickWires(wires, context), pickLabels(labels, context))
   }
 }

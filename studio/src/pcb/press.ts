@@ -14,10 +14,11 @@ export interface Press {
 }
 
 /**
- * What is under the pointer at a press: a part, one already selected, a net label, a wire, a wire selected with other
- * things (parts or other wires), a corner handle of the wire selected alone (schematic) or nothing.
+ * What is under the pointer at a press: a part, one already selected, a net label, a label selected with other things,
+ * a wire, a wire selected with other things (parts, labels or other wires), a corner handle of the wire selected alone
+ * (schematic) or nothing.
  */
-export type Under = "part" | "selectedPart" | "label" | "wire" | "selectedWire" | "wireCorner" | "empty"
+export type Under = "part" | "selectedPart" | "label" | "selectedLabel" | "wire" | "selectedWire" | "wireCorner" | "empty"
 
 /**
  * The armed canvas tool, as far as a press is concerned: Place → Note box and View → Fit area take every left press; a schematic Place
@@ -31,17 +32,17 @@ export type ArmedTool = "note" | "zoom" | "place" | null
  * - "note": with the Note box tool armed, a left drag draws the note box.
  * - "zoom": with the Fit area tool armed, a left drag draws the box the camera fits.
  *   With a Place tool armed, a left press on empty canvas is a "pan" (its click is the tool's, on a pin).
- * - "toggle": Shift or Ctrl on a part or a wire toggles it in or out of the selection and starts nothing.
+ * - "toggle": Shift or Ctrl on a part, a net label or a wire toggles it in or out of the selection and starts nothing.
  * - "move": on a part not selected: selects it alone and drags it.
- * - "moveGroup": on a selected part, or a wire selected with other things: drags the whole selection; released without
- *   moving, selects that part or wire alone.
- * - "label": on a net label: drags it.
+ * - "moveGroup": on a selected part, or a wire or label selected with other things: drags the whole selection; released
+ *   without moving, selects that part, wire or label alone.
+ * - "label": on a net label not selected, or selected alone: selects it alone and drags it.
  * - "wireSegment": on a schematic wire not selected, or selected alone: selects it alone (the parts go) and drags the
  *   segment under the press.
  * - "wireCorner": on a corner handle of the wire selected alone: drags that corner.
  * - "wire": on a wire or its corner handle with a Place tool armed: selects the wire and starts nothing.
  * - "box": on empty canvas: a selection box that replaces the selection; released without moving, clears it.
- * - "addBox": Shift or Ctrl anywhere but on a part or a wire: a selection box that adds to the selection.
+ * - "addBox": Shift or Ctrl anywhere but on a part, a label or a wire: a selection box that adds to the selection.
  * - "none": any other button.
  * A wire's drag reshapes it; released without moving, the press has only selected it.
  */
@@ -61,8 +62,11 @@ export type GestureStart =
   | "addBox"
   | "none"
 
-/** What Shift or Ctrl toggles in or out of the selection: a part or a wire, also through its corner handle. */
-const TOGGLES: ReadonlySet<Under> = new Set(["part", "selectedPart", "wire", "selectedWire", "wireCorner"])
+/** What Shift or Ctrl toggles in or out of the selection: a part, a net label or a wire, also through its corner handle. */
+const TOGGLES: ReadonlySet<Under> = new Set(["part", "selectedPart", "label", "selectedLabel", "wire", "selectedWire", "wireCorner"])
+
+/** What a plain press drags with the whole selection: a selected part, or a wire or label selected with other things. */
+const GROUP: ReadonlySet<Under> = new Set(["selectedPart", "selectedWire", "selectedLabel"])
 
 const LEFT = 0
 const MIDDLE = 1
@@ -80,7 +84,7 @@ export function gestureStart(press: Press, under: Under, armed: ArmedTool): Gest
   if (armed === "place" && under === "empty") return "pan"
   if (togglesSelection(press)) return TOGGLES.has(under) ? "toggle" : "addBox"
   if (under === "part") return "move"
-  if (under === "selectedPart" || under === "selectedWire") return "moveGroup"
+  if (GROUP.has(under)) return "moveGroup"
   if (under === "wire" || under === "wireCorner") return armed === null ? WIRE_PRESS[under] : "wire"
   return under === "label" ? "label" : "box"
 }

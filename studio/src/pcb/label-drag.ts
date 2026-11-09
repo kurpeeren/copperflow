@@ -26,6 +26,11 @@ export interface LabelPreview {
   hideWire?: string
 }
 
+/** A label drawn away from where the design has it while its move waits: a drag of its own, or one it makes with a selection. */
+export interface LabelMove extends LabelPreview {
+  id: string
+}
+
 /** A ground or power symbol is small; pointing near its drawing counts. */
 const LABEL_REACH = 0.1
 const round = (value: number): number => Math.round(value * 1000) / 1000 || 0
@@ -75,6 +80,29 @@ function anchorOf(design: Design, labelId: string): Anchor | undefined {
   const pin = design.circuit.components.flatMap((component) => component.pins).find((candidate) => candidate.id === pinId)
   const end = pin && pinEnd(design, pin.id)
   return pin && end ? { label, pin, end, ...(connection ? { connection } : {}) } : undefined
+}
+
+/**
+ * What a label hangs on: the part of its pin, and for a hand-drawn label (the last corner of a pin-to-net trace) the
+ * id of that wire on the sheet. Undefined when the label has no pin the Studio can find.
+ */
+export function labelHolder(design: Design, labelId: string): { part: string; wire?: string } | undefined {
+  const anchor = anchorOf(design, labelId)
+  return anchor && { part: anchor.pin.component, ...(anchor.connection ? { wire: `wire:${anchor.connection.id}` } : {}) }
+}
+
+/**
+ * What a label stands for whatever its id: its net and its pin. A label Studio placed on a pin and the one at the end
+ * of a hand-drawn wire from that pin to that net are the same label under two ids, as a drag turns one into the other.
+ */
+export function labelKey(design: Design, labelId: string): string | undefined {
+  const anchor = anchorOf(design, labelId)
+  return anchor && `${anchor.label.net}|${anchor.pin.id}`
+}
+
+/** How the history names a label: "the GND flag" for a ground or power flag, "the SDA label" for a net label. */
+export function labelName(label: Pick<NetLabel, "text" | "style">): string {
+  return `the ${label.text} ${label.style === "label" ? "label" : "flag"}`
 }
 
 /** The corners a hand-drawn label's wire has now, running from its pin. */

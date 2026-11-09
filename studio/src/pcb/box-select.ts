@@ -1,10 +1,10 @@
 // The selection box, as EasyEDA draws it: its direction decides what it takes. Dragged left to right (a solid outline)
-// it takes the parts and wires wholly inside it; right to left (a dashed outline), every part and wire it touches.
+// it takes the parts, wires and net labels wholly inside it; right to left (a dashed outline), every one it touches.
 import type { SelectionChange } from "../selection.js"
 import { pointBounds, type Box, type PartBox, type Point } from "./geometry.js"
 import type { PickLayers } from "./layers.js"
 import type { PickFilter } from "./pick-filter.js"
-import { pickNames, pickWires } from "./pick.js"
+import { pickLabels, pickNames, pickWires } from "./pick.js"
 import type { ArmedTool } from "./press.js"
 import type { WireLine } from "./wire-hit.js"
 
@@ -19,12 +19,22 @@ const contains = (outer: Box, inner: Box): boolean => inner.minX >= outer.minX &
 
 const overlaps = (a: Box, b: Box): boolean => a.minX <= b.maxX && b.minX <= a.maxX && a.minY <= b.maxY && b.minY <= a.maxY
 
-/** The names of the parts the box from `a` to `b` (world units, any two opposite corners) takes, in the view's order. */
-export function partsInBox(boxes: readonly PartBox[], a: Point, b: Point, mode: BoxMode): string[] {
+/** The ids of the areas the box from `a` to `b` takes by the direction rule, in their order. */
+function areasInBox(areas: readonly { id: string; box: Box }[], a: Point, b: Point, mode: BoxMode): string[] {
   const area = pointBounds([a, b])
   if (!area) return []
   const takes = mode === "inside" ? (box: Box) => contains(area, box) : (box: Box) => overlaps(area, box)
-  return boxes.filter((part) => takes(part.box)).map((part) => part.name)
+  return areas.filter((one) => takes(one.box)).map((one) => one.id)
+}
+
+/** The names of the parts the box from `a` to `b` (world units, any two opposite corners) takes, in the view's order. */
+export function partsInBox(boxes: readonly PartBox[], a: Point, b: Point, mode: BoxMode): string[] {
+  return areasInBox(boxes.map((part) => ({ id: part.name, box: part.box })), a, b, mode)
+}
+
+/** The ids of the net labels and flags the box takes, by the area each answers to (label-drag.ts labelHitBox). */
+export function labelsInBox(labels: readonly { id: string; box: Box }[], a: Point, b: Point, mode: BoxMode): string[] {
+  return areasInBox(labels, a, b, mode)
 }
 
 const inBox = (area: Box, p: Point): boolean => p.x >= area.minX && p.x <= area.maxX && p.y >= area.minY && p.y <= area.maxY
@@ -50,20 +60,21 @@ export function wiresInBox(wires: readonly WireLine[], a: Point, b: Point, mode:
   return wires.filter((wire) => takes(wire.points)).map((wire) => wire.id)
 }
 
-/** What a box found: the parts (partsInBox) and, on the schematic, the wires (wiresInBox). */
+/** What a box found: the parts (partsInBox) and, on the schematic, the wires (wiresInBox) and labels (labelsInBox). */
 export interface BoxFound {
   parts: readonly string[]
   wires?: readonly string[]
+  labels?: readonly string[]
 }
 
 /**
- * The selection after a box: just the parts and wires in it that may be picked (pick.ts), or, with Shift or Ctrl held,
+ * The selection after a box: just the parts, wires and labels in it that may be picked (pick.ts), or, with Shift or Ctrl held,
  * those added to what was selected. `armed` is the canvas tool armed while the box was drawn, `layers` the PCB's.
  */
 export function boxSelection(found: BoxFound, adds: boolean, armed: ArmedTool = null, layers?: PickLayers, filter?: PickFilter): SelectionChange {
   return (current) => {
     const context = { selection: current, armed, layers, filter }
-    const [parts, wires] = [pickNames(found.parts, context), pickWires(found.wires ?? [], context)]
-    return adds ? current.add(parts).addWires(wires) : current.all(parts, wires)
+    const [parts, wires, labels] = [pickNames(found.parts, context), pickWires(found.wires ?? [], context), pickLabels(found.labels ?? [], context)]
+    return adds ? current.add(parts).addWires(wires).addLabels(labels) : current.all(parts, wires, labels)
   }
 }

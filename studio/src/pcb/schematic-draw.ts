@@ -23,6 +23,8 @@ export interface SchematicDrawOptions {
   movingLabels?: readonly { id: string; at: Point; side: NetLabel["side"]; hideWire?: string }[]
   /** The selected wires' ids: they are drawn in the selection colour, over a highlight. */
   selectedWires?: readonly string[]
+  /** The selected net labels' and flags' ids: drawn in the selection colour too. */
+  selectedLabels?: readonly string[]
   /** One net to highlight, as on the PCB: its wires and labels are lit, everything else is dimmed. `pins` are the pins on it: they are marked, and their symbols are not dimmed. */
   highlight?: { net: string; pins?: readonly string[]; aliases?: readonly string[] }
   /** Labels sent and waiting for their build, drawn dashed where they will be. */
@@ -100,7 +102,8 @@ export function drawSchematic(ctx: Ctx, layout: SchematicLayout, view: View, opt
   for (const symbol of layout.symbols) drawSymbol(ctx, symbol, shiftOf(symbol), { line, px, fade: symbolFade(symbol, options.highlight) }, texts)
   for (const label of layout.labels) {
     const moving = options.movingLabels?.some((m) => m.id === label.id) ?? false
-    drawLabel(ctx, movedLabel(label, options), line, texts, moving, toneOf(label.net, options.highlight))
+    const tone = options.selectedLabels?.includes(label.id) ? { color: theme.selection, alpha: 1 } : toneOf(label.net, options.highlight)
+    drawLabel(ctx, movedLabel(label, options), line, texts, moving, tone)
   }
   for (const ghost of options.ghostLabels ?? []) drawLabel(ctx, ghost, line, texts, true, toneOf(ghost.net, undefined))
   drawPins(ctx, layout, options, px, shiftOf)

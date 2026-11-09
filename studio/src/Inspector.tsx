@@ -5,6 +5,7 @@ import { BomSection } from "./BomSection"
 import { checkSummary, type CheckCounts } from "./checks-list"
 import { FIRST_FIELD, groupActionEnabled, partLockButton, propertiesKind, propertiesView, SUGGESTED_PROPS, type PropertiesView } from "./inspector-sections"
 import { GroupView } from "./InspectorGroup"
+import { LabelView } from "./InspectorLabel"
 import { WireView } from "./InspectorWire"
 import { MarkForm, NewPropRow, PropRow, Row, Section } from "./InspectorRows"
 import { LibraryInfo } from "./LibraryInfo"
@@ -60,18 +61,18 @@ function useFieldFocus(panel: RefObject<HTMLElement | null>, requested: boolean,
 }
 
 /**
- * The board's state with nothing selected, a part's properties with one, a wire's own with one wire alone, and the
- * counts by kind with the shared actions for several (parts, wires or both).
+ * The board's state with nothing selected, a part's properties with one, a wire's or a label's own with one alone, and
+ * the counts by kind with the shared actions for several (parts, wires and labels).
  */
 export function Inspector(props: Props) {
   const panel = useRef<HTMLElement>(null)
   useFieldFocus(panel, props.focusField, props.onFieldFocused)
   const parts = selectedParts(props.circuit, props.selection)
   const [part] = parts
-  const { wireCount, soleWire: wire } = props.selection
-  const kind = propertiesKind(parts.length, wireCount)
+  const { wireCount, labelCount, soleWire: wire, soleLabel: label } = props.selection
+  const kind = propertiesKind(parts.length, wireCount, labelCount)
   const library = kind === "part" && part ? props.parts.library.find((p) => p.component === part.tag) : undefined
-  const view = propertiesView(parts, { library: library !== undefined }, wireCount)
+  const view = propertiesView(parts, { library: library !== undefined }, wireCount, labelCount)
   const locks = { locked: new Set(props.circuit.annotations.locks.map((lock) => lock.part)), violated: new Set(props.circuit.violations.map((v) => v.part)) }
   // Collapsed sections are kept by title for as long as Studio is open.
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
@@ -86,7 +87,8 @@ export function Inspector(props: Props) {
   return (
     <aside ref={panel} className="panel right" id={props.hidden ? undefined : stripPanelId("right")} role="tabpanel" aria-labelledby={sideTabId("properties")} hidden={props.hidden}>
       {kind === "wire" && wire !== undefined && design && <WireView design={design} circuit={props.circuit} wire={wire} locked={locks.locked} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
-      {kind === "group" && <GroupView view={view} parts={parts} wires={wireCount} locks={locks} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
+      {kind === "label" && label !== undefined && design && <LabelView design={design} label={label} run={props.run} notify={props.actions.notify} onClear={clear} collapsed={collapsed} toggle={toggle} />}
+      {kind === "group" && <GroupView view={view} parts={parts} others={wireCount + labelCount} locks={locks} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
       {kind === "part" && part && <PartView {...props} view={view} collapsed={collapsed} toggle={toggle} part={part} locks={locks} />}
       {kind === "board" && <BoardView {...props} view={view} collapsed={collapsed} toggle={toggle} />}
     </aside>

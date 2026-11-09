@@ -141,6 +141,15 @@ describe("highlighting a part's nets", () => {
     expect(selectionHighlight(Selection.none.add(["R2"]).addWires(["wire:V"]), wireNet, netsOf)).toEqual({ nets: ["net.OUT"] })
   })
 
+  test("with labels selected the menu lights their nets too, after the wires' and before the parts'", () => {
+    const netsOf = (part: string) => (part === "R1" ? ["net.GND"] : [])
+    const wireNet = (id: string) => (id === "wire:W" ? "net.VCC" : undefined)
+    const labelNet = (id: string): string | undefined => ({ "label:A": "net.SDA", "label:B": "net.VCC" })[id]
+    expect(selectionHighlight(Selection.none.onlyLabel("label:A"), wireNet, netsOf, labelNet)).toEqual({ nets: ["net.SDA"] })
+    const mix = Selection.none.add(["R1"]).addWires(["wire:W"]).addLabels(["label:B", "label:A"])
+    expect(selectionHighlight(mix, wireNet, netsOf, labelNet)).toEqual({ nets: ["net.VCC", "net.SDA", "net.GND"] })
+  })
+
   test("with several parts selected the menu lights all their nets, each once", () => {
     const nets: Record<string, readonly string[]> = { R1: ["net.GND"], R2: ["net.GND", "net.VCC"], C1: ["net.VCC", "net.OUT"] }
     const netsOf = (part: string) => nets[part] ?? []

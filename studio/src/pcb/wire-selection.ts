@@ -56,9 +56,11 @@ export function wireAfterBuild(selection: Selection, before: readonly SheetWire[
 
 /**
  * What the canvases and panels are shown: the selection less any part the loaded circuit does not have (yet), and less
- * the wires the open sheet does not draw. The PCB shows no wire, so the wires selected on the schematic wait there.
+ * the wires and labels the open sheet does not draw. The PCB shows no wire or label, so those selected on the
+ * schematic wait there.
  */
-export function shownSelection(selection: Selection, sheet: { view: View; parts?: Iterable<string>; wires?: Iterable<string> }): Selection {
+export function shownSelection(selection: Selection, sheet: { view: View; parts?: Iterable<string>; wires?: Iterable<string>; labels?: Iterable<string> }): Selection {
   const kept = sheet.parts ? selection.keep(sheet.parts) : selection
-  return kept.keepWires(sheet.view === "schematic" ? (sheet.wires ?? []) : [])
+  const onSheet = sheet.view === "schematic"
+  return kept.keepWires(onSheet ? (sheet.wires ?? []) : []).keepLabels(onSheet ? (sheet.labels ?? []) : [])
 }

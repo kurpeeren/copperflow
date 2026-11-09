@@ -125,10 +125,15 @@ describe("the selection on right click", () => {
     const current = Selection.none.add(["R1"]).addWires([wire.id])
     expect(contextSelection(current, wire)).toBe(current)
   })
-  test("a label or empty canvas leaves the selection alone", () => {
+  test("empty canvas leaves the selection alone", () => {
     const current = Selection.none.add(["R1"])
     expect(contextSelection(current, { kind: "canvas" })).toBe(current)
-    expect(contextSelection(current, { kind: "label", label })).toBe(current)
+  })
+  test("a label outside the selection is selected alone; a selected one keeps the whole selection", () => {
+    const current = Selection.none.add(["R1"])
+    expect(contextSelection(current, { kind: "label", label })).toMatchObject({ names: [], labels: [label.id] })
+    const group = current.addLabels([label.id])
+    expect(contextSelection(group, { kind: "label", label })).toBe(group)
   })
 })
 

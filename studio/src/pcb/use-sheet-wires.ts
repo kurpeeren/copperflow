@@ -13,7 +13,9 @@ import { useCommands } from "../shell/commands"
 import type { Camera, Point } from "./geometry"
 import type { GestureWires } from "./gestures"
 import type { PickContext } from "./pick"
-import type { RemoveWires } from "./delete-plan"
+import type { RemoveLabels, RemoveWires } from "./delete-plan"
+import { canonicalNet } from "./highlight"
+import { labelsRemoval } from "./label-selection"
 import { cornerRemoval, wireNet, wiresRemoval, type WireEdit } from "./wire-actions"
 import { handleUnder, withShapes } from "./wire-drag"
 import { wireAt, wireReachPx, type WireLine } from "./wire-hit"
@@ -27,10 +29,13 @@ export interface SheetCorners {
   drop(id: string, index: number): void
 }
 
-/** What the part keys ask of the selected wires: a wire's net for Highlight net, and their removal for Delete (delete-plan.ts). */
+/** What the part keys ask of the selected wires: a wire's net for Highlight net, and their removal and the selected labels' for Delete (delete-plan.ts). */
 export interface WireKeys {
   net(id: string): string | undefined
   removal: RemoveWires
+  labelRemoval: RemoveLabels
+  /** A selected label's net, for Highlight net. */
+  labelNet(id: string): string | undefined
 }
 
 interface SheetWiresInput {
@@ -59,14 +64,19 @@ async function sendWireEdit(result: WireEdit, actions: Actions): Promise<boolean
 /** The selected wires' Delete and Highlight net for the part keys, and Remove corners (on a wire selected alone) on the command bus. */
 function useWireCommands({ design, circuit, actions, locked, selection }: SheetWiresInput): WireKeys {
   const removal = useCallback<RemoveWires>((ids, parts, said) => wiresRemoval(design, circuit, ids, parts, locked, said), [design, circuit, locked])
+  const labelRemoval = useCallback<RemoveLabels>((ids, parts) => labelsRemoval(design, ids, parts), [design])
   const net = useCallback((id: string) => wireNet(design, id), [design])
+  const labelNet = useCallback((id: string) => {
+    const label = design.schematic.labels.find((candidate) => candidate.id === id)
+    return label && canonicalNet(design.circuit.nets, label.net)
+  }, [design])
   const removeCorners = () => {
     const wire = selection.soleWire
     if (wire === undefined) return actions.notify("Select one wire first.")
     void sendWireEdit(cornerRemoval(design, circuit, wire, locked), actions)
   }
   useCommands({ removeCorners } satisfies Record<WireCommand, () => void>)
-  return useMemo(() => ({ net, removal }), [net, removal])
+  return useMemo(() => ({ net, removal, labelRemoval, labelNet }), [net, removal, labelRemoval, labelNet])
 }
 
 export function useSheetWires(input: SheetWiresInput) {

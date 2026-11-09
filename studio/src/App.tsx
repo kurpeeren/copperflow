@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { hasToken, type CircuitData, type Design } from "./api"
 import { NO_HIGHLIGHT, remapHighlight } from "./pcb/highlight"
 import { pickLayersOf } from "./pcb/layers"
+import { labelAfterBuild } from "./pcb/label-selection"
 import { shownSelection, wireAfterBuild, withEndPins } from "./pcb/wire-selection"
 import { goneFrom, Selection, type SelectionChange } from "./selection"
 import { BottomStrip } from "./shell/BottomStrip"
@@ -60,23 +61,29 @@ function usePruneSelection(circuit: CircuitData | undefined, select: (change: Se
   }, [circuit, select])
 }
 
-/** Drops the selected wires a rebuild took away or re-pointed (wire-selection.ts), so they are not selected again when they come back. */
+/**
+ * Drops the selected wires a rebuild took away or re-pointed (wire-selection.ts), so they are not selected again when
+ * they come back, and keeps the selected labels under their new ids (label-selection.ts).
+ */
 function usePruneWire(design: Design | undefined, select: (change: SelectionChange) => void): void {
   const before = useRef<Design | undefined>(undefined)
   useEffect(() => {
     if (!design || design === before.current) return
     const previous = before.current
     before.current = design
-    select((current) => (current.wireCount === 0 ? current : wireAfterBuild(current, previous && withEndPins(previous.schematic), withEndPins(design.schematic))))
+    select((current) => {
+      const wires = current.wireCount === 0 ? current : wireAfterBuild(current, previous && withEndPins(previous.schematic), withEndPins(design.schematic))
+      return labelAfterBuild(wires, previous, design)
+    })
   }, [design, select])
 }
 
-/** What the canvases and panels are shown (wire-selection.ts): no part the circuit lacks, no wire the open sheet lacks. */
+/** What the canvases and panels are shown (wire-selection.ts): no part the circuit lacks, no wire or label the open sheet lacks. */
 function useShownSelection(selection: Selection, circuit: CircuitData | undefined, design: Design | undefined, view: Tab): Selection {
-  return useMemo(
-    () => shownSelection(selection, { view, parts: circuit?.model.parts.map((part) => part.name), wires: design?.schematic.wires.map((wire) => wire.id) }),
-    [selection, circuit, design, view],
-  )
+  return useMemo(() => {
+    const sheet = design?.schematic
+    return shownSelection(selection, { view, parts: circuit?.model.parts.map((part) => part.name), wires: sheet?.wires.map((wire) => wire.id), labels: sheet?.labels.map((label) => label.id) })
+  }, [selection, circuit, design, view])
 }
 
 /** A rebuild can rename or merge the highlighted net (an unnamed net that gets GND): follow it, or clear it. */
@@ -158,7 +165,8 @@ function useStudio() {
   const pickLayers = useMemo(() => (tab === "pcb" && pcb ? pickLayersOf(pcb.parts, workspace.layerVisibility) : undefined), [tab, pcb, workspace.layerVisibility])
   const sheet = build.design?.schematic
   const sheetWires = useMemo(() => (tab === "schematic" && sheet ? sheet.wires.map((wire) => wire.id) : []), [tab, sheet])
-  const runCommand = useAppCommands({ file, view: tab, setView: setTab, selection, select, circuit, actions, pickLayers, pickFilter: workspace.pickFilter, sheetWires, workspace, openChecks, openFind: find.open, openDialog: setDialog })
+  const sheetLabels = useMemo(() => (tab === "schematic" && sheet ? sheet.labels.map((label) => label.id) : []), [tab, sheet])
+  const runCommand = useAppCommands({ file, view: tab, setView: setTab, selection, select, circuit, actions, pickLayers, pickFilter: workspace.pickFilter, sheetWires, sheetLabels, workspace, openChecks, openFind: find.open, openDialog: setDialog })
   return { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, actions, place, checks, find, openChecks, openDocument, runCommand }
 }
 

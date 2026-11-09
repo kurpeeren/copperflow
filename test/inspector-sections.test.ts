@@ -87,8 +87,15 @@ describe("propertiesView", () => {
     expect(kindRow("kind:wires:3")).toEqual({ kind: "wires", count: 3 })
     expect(kindRow("kind:parts:2")).toEqual({ kind: "parts", count: 2 })
     expect(kindRow("part:R1")).toBeUndefined()
-    expect(kindRow("kind:labels:1")).toBeUndefined()
-    expect(KIND_LABELS).toEqual({ parts: "Parts", wires: "Wires" })
+    expect(kindRow("kind:labels:1")).toEqual({ kind: "labels", count: 1 })
+    expect(kindRow("kind:notes:1")).toBeUndefined()
+    expect(KIND_LABELS).toEqual({ parts: "Parts", wires: "Wires", labels: "Net labels and flags" })
+  })
+
+  test("with labels in the mix the header counts them and the section counts each kind present", () => {
+    const view = propertiesView([named("R1")], { library: false }, 1, 2)
+    expect(view).toEqual({ header: "Selected objects: 4", sections: [{ title: "Selection", rows: ["kind:parts:1", "kind:wires:1", "kind:labels:2", "part:R1"] }] })
+    expect(propertiesView([], { library: false }, 0, 3)).toEqual({ header: "Selected objects: 3", sections: [{ title: "Selection", rows: ["kind:labels:3"] }] })
   })
 
   test("several parts get Rotate, Lock, Unlock and Delete, each run as the menu's command", () => {
@@ -109,6 +116,13 @@ describe("propertiesKind", () => {
     expect(propertiesKind(2, 0)).toBe("group")
     expect(propertiesKind(1, 1)).toBe("group")
     expect(propertiesKind(0, 2)).toBe("group")
+  })
+
+  test("a label's own with one label alone; with anything else, the group", () => {
+    expect(propertiesKind(0, 0, 1)).toBe("label")
+    expect(propertiesKind(1, 0, 1)).toBe("group")
+    expect(propertiesKind(0, 1, 1)).toBe("group")
+    expect(propertiesKind(0, 0, 2)).toBe("group")
   })
 })
 

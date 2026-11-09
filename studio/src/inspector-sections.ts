@@ -84,23 +84,28 @@ export interface PropertiesView {
   sections: InspectorSection[]
 }
 
-/** What Properties shows for a selection of `parts` parts and `wires` wires: the board, one part's, one wire's, or the group's. */
-export type PropertiesKind = "board" | "part" | "wire" | "group"
+/**
+ * What Properties shows for a selection of `parts` parts, `wires` wires and `labels` net labels and flags: the board,
+ * one part's, one wire's, one label's, or the group's.
+ */
+export type PropertiesKind = "board" | "part" | "wire" | "label" | "group"
 
-export function propertiesKind(parts: number, wires: number): PropertiesKind {
-  if (parts + wires === 0) return "board"
-  if (parts + wires > 1) return "group"
-  return parts === 1 ? "part" : "wire"
+export function propertiesKind(parts: number, wires: number, labels = 0): PropertiesKind {
+  const total = parts + wires + labels
+  if (total === 0) return "board"
+  if (total > 1) return "group"
+  if (parts === 1) return "part"
+  return wires === 1 ? "wire" : "label"
 }
 
 /** The kinds of object a selection counts, and how Properties names them. */
-export type ObjectKind = "parts" | "wires"
+export type ObjectKind = "parts" | "wires" | "labels"
 
-export const KIND_LABELS: Record<ObjectKind, string> = { parts: "Parts", wires: "Wires" }
+export const KIND_LABELS: Record<ObjectKind, string> = { parts: "Parts", wires: "Wires", labels: "Net labels and flags" }
 
-const KIND_ROW = /^kind:(parts|wires):(\d+)$/
+const KIND_ROW = /^kind:(parts|wires|labels):(\d+)$/
 
-/** A "kind:<parts|wires>:<count>" row read back; undefined for any other row. */
+/** A "kind:<parts|wires|labels>:<count>" row read back; undefined for any other row. */
 export function kindRow(id: string): { kind: ObjectKind; count: number } | undefined {
   const match = KIND_ROW.exec(id)
   return match ? { kind: match[1] as ObjectKind, count: Number(match[2]) } : undefined
@@ -108,14 +113,16 @@ export function kindRow(id: string): { kind: ObjectKind; count: number } | undef
 
 /**
  * The board's sections with nothing selected, a part's own with one, and the Selection section listing several; with
- * wires among them (`wires`, how many), the section first counts each kind present. The header counts every object.
+ * wires or labels among them (`wires`, `labels`, how many), the section first counts each kind present. The header
+ * counts every object.
  */
-export function propertiesView(parts: readonly SelectedPart[], opts: { library: boolean }, wires = 0): PropertiesView {
-  const header = `Selected objects: ${parts.length + wires}`
+export function propertiesView(parts: readonly SelectedPart[], opts: { library: boolean }, wires = 0, labels = 0): PropertiesView {
+  const header = `Selected objects: ${parts.length + wires + labels}`
   const [first] = parts
   const listed = parts.map((part) => `part:${part.name}`)
-  const counts = [...(parts.length > 0 ? [`kind:parts:${parts.length}`] : []), `kind:wires:${wires}`]
-  if (wires > 0) return { header, sections: [{ title: "Selection", rows: [...counts, ...listed] }] }
+  const present: [ObjectKind, number][] = [["parts", parts.length], ["wires", wires], ["labels", labels]]
+  const counts = present.flatMap(([kind, count]) => (count > 0 ? [`kind:${kind}:${count}`] : []))
+  if (wires + labels > 0) return { header, sections: [{ title: "Selection", rows: [...counts, ...listed] }] }
   if (!first) return { header, sections: boardSections() }
   if (parts.length === 1) return { header, sections: inspectorSections(first, opts) }
   return { header, sections: [{ title: "Selection", rows: listed }] }
@@ -133,18 +140,18 @@ export type GroupCommand = (typeof GROUP_ACTIONS)[number]["command"]
 
 /**
  * Whether a group action has something to change: Lock an unlocked part (or a locked one changed outside the editor),
- * Unlock a locked one, Rotate an editable part that is not locked, Delete such a part or any of the `wires` selected
- * (Delete names the wires it cannot remove). Rotate, Lock and Unlock act on the parts only.
+ * Unlock a locked one, Rotate an editable part that is not locked, Delete such a part or any of the `others` selected,
+ * wires and labels (Delete names those it cannot remove). Rotate, Lock and Unlock act on the parts only.
  */
 export function groupActionEnabled(
   command: GroupCommand,
   parts: readonly { name: string; editable: boolean }[],
   locks: { locked: ReadonlySet<string>; violated: ReadonlySet<string> },
-  wires = 0,
+  others = 0,
 ): boolean {
   const names = parts.map((part) => part.name)
   if (command === "lock" || command === "unlock") return "parts" in lockChange(names, locks.locked, command === "lock", locks.violated)
-  if (command === "delete" && wires > 0) return true
+  if (command === "delete" && others > 0) return true
   return parts.some((part) => part.editable && !locks.locked.has(part.name))
 }
 

@@ -6,6 +6,7 @@ import type { Actions } from "../App"
 import type { FocusRequest } from "../checks-panel-state"
 import type { Selection, SelectionChange } from "../selection"
 import type { Highlight } from "./highlight"
+import type { LabelMove } from "./label-drag"
 import type { CameraCommand } from "../shell/command-owners"
 import { useCommands } from "../shell/commands"
 import { drawLockBadge, drawMark, drawNoteBox, drawOutline, drawSelectionBox, type OverlayLook } from "./overlays"
@@ -80,12 +81,13 @@ export type PropertiesTarget = Extract<ContextTarget, { kind: "part" | "wire" }>
 /**
  * Parts drawn away from where the design has them: being dragged, or moved and waiting for their build. On the
  * schematic, `wires` are the shapes the move gives the wires at the moved pins and the selected wires, drawn in place
- * of their own meanwhile.
+ * of their own meanwhile, and `labels` the selected labels the move takes on their own (label-follow.ts).
  */
 export interface Moving {
   names: readonly string[]
   offset: Point
   wires?: readonly WireLine[]
+  labels?: readonly LabelMove[]
 }
 
 const WHEEL_ZOOM = 0.0015

@@ -1,19 +1,24 @@
-// What Delete does to the selection, parts and wires together: one change, so one history entry, that removes the
-// selected wires' traces first and then the selected parts. A wire whose trace ends on a part being removed is left to
-// that part (core's removePart takes the part's traces with it), so no trace is removed twice. What cannot go is named
-// in one note and the rest goes ahead. Pure; use-part-keys.ts sends it.
+// What Delete does to the selection, parts, wires and net labels together: one change, so one history entry, that
+// removes the selected wires' traces first and then the selected parts. A hand-drawn label is removed by removing its
+// trace, through the wires' own removal, so its wire also selected is not removed twice; a label Studio placed on a
+// pin goes only with its part. A wire whose trace ends on a part being removed is left to that part (core's removePart
+// takes the part's traces with it), so no trace is removed twice. What cannot go is named in one note and the rest
+// goes ahead. Pure; use-part-keys.ts sends it.
 import type { Selection } from "../selection.js"
 import { nameList, removeEach, removeQuestion, wireWords, type GroupEdit } from "./group-edits.js"
+import type { LabelsRemoval } from "./label-selection.js"
 import type { WiresRemoval } from "./wire-actions.js"
 
 /** What Delete says with nothing selected. */
 export const NOTHING_TO_DELETE = "Select a part or a wire first."
 
-/** Delete's change, the wires that leave the sheet with it, and the question asked first when parts go. */
+/** Delete's change, the wires and labels that leave the sheet with it, and the question asked first when parts go. */
 export interface DeletePlan {
   plan: GroupEdit
   /** The wires the change takes away: those whose traces it removes and those that go with their parts. */
   wires: string[]
+  /** The labels the change takes away: with their wires, or with their parts. */
+  labels: string[]
   /** Asked before parts go, since they take their connections; wires alone go without asking, as in EasyEDA. */
   question?: string
 }
@@ -24,18 +29,37 @@ export interface DeletePlan {
  */
 export type RemoveWires = (ids: readonly string[], parts: ReadonlySet<string>, said: ReadonlySet<string>) => WiresRemoval
 
-export function deletePlan(selection: Selection, blockerFor: (name: string) => string | null, removeWires?: RemoveWires): DeletePlan | { message: string } {
+/** How the selected labels go when `parts` go too (label-selection.ts labelsRemoval); the PCB has none. */
+export type RemoveLabels = (ids: readonly string[], parts: ReadonlySet<string>) => LabelsRemoval
+
+const unique = (items: readonly string[]): string[] => [...new Set(items)]
+
+/** The selected labels the change takes away: those on a part that goes, and the hand-drawn ones whose wire goes. */
+function labelsGone(labels: LabelsRemoval | undefined, wiresGone: ReadonlySet<string>): Set<string> {
+  const withWires = labels?.withWires.filter((one) => wiresGone.has(one.wire)).map((one) => one.label) ?? []
+  return new Set([...(labels?.withParts ?? []), ...withWires])
+}
+
+export function deletePlan(selection: Selection, blockerFor: (name: string) => string | null, removeWires?: RemoveWires, removeLabels?: RemoveLabels): DeletePlan | { message: string } {
   if (selection.total === 0) return { message: NOTHING_TO_DELETE }
   const parts = removeEach(selection.names, blockerFor)
-  const wires = removeWires && selection.wireCount > 0 ? removeWires(selection.wires, new Set(parts.parts), new Set(parts.skipped)) : undefined
+  const going = new Set(parts.parts)
+  const labels = removeLabels && selection.labelCount > 0 ? removeLabels(selection.labels, going) : undefined
+  const wireIds = unique([...selection.wires, ...(labels?.withWires.map((one) => one.wire) ?? [])])
+  const wires = removeWires && wireIds.length > 0 ? removeWires(wireIds, going, new Set(parts.skipped)) : undefined
   const plan: GroupEdit = {
     edits: [...(wires?.edits ?? []), ...parts.edits],
     summary: `remove ${nameList([...parts.parts, ...wireWords(wires?.names ?? [])])}`,
     parts: parts.parts,
-    skipped: [...parts.skipped, ...(wires?.skipped ?? [])],
+    skipped: [...parts.skipped, ...(wires?.skipped ?? []), ...(labels?.skipped ?? [])],
     done: "removed",
   }
-  const gone = [...(wires?.removed ?? []), ...(wires?.withParts ?? [])]
-  const ordered = selection.wires.filter((id) => gone.includes(id))
-  return { plan, wires: ordered, ...(parts.parts.length > 0 ? { question: removeQuestion(parts.parts, wires?.removed.length ?? 0) } : {}) }
+  const gone = new Set([...(wires?.removed ?? []), ...(wires?.withParts ?? [])])
+  const goneLabels = labelsGone(labels, gone)
+  return {
+    plan,
+    wires: selection.wires.filter((id) => gone.has(id)),
+    labels: selection.labels.filter((id) => goneLabels.has(id)),
+    ...(parts.parts.length > 0 ? { question: removeQuestion(parts.parts, wires?.removed.length ?? 0) } : {}),
+  }
 }

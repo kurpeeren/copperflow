@@ -119,6 +119,7 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
       movingLabels,
       ghostLabels: ghosts,
       selectedWires: selection.wires,
+      selectedLabels: selection.labels,
       ...(highlight ? { highlight } : {}),
       ...(moving ? { moving: { components: moving.names, by: moving.offset } } : {}),
       violations: markers,
@@ -205,7 +206,7 @@ function SheetView({ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave,
         ref={canvasRef}
         style={{ width: size.width, height: size.height }}
         role="img"
-        aria-label="Schematic. Drag symbols and net labels to move them, click a wire to select it, Shift or Ctrl click parts and wires to add them, drag a wire or its corner handles to reshape it, drag the background to select, drag with the right button to pan, scroll to zoom. Double click a net label to rename its net. Click a free pin or press W over a pin to draw a wire."
+        aria-label="Schematic. Drag symbols and net labels to move them, click a wire to select it, Shift or Ctrl click parts, wires and net labels to add them, drag a wire or its corner handles to reshape it, drag the background to select, drag with the right button to pan, scroll to zoom. Double click a net label to rename its net. Click a free pin or press W over a pin to draw a wire."
       />
       {hint && (
         <div className="canvas-top">
@@ -273,11 +274,14 @@ function useKeyMoving(keyMove: KeyMove | undefined, builtFrom: number, anchors: 
   return useMemo(() => (keyMove && keyMove.sentAt > builtFrom ? previewMoving(keyMove, anchors) : undefined), [keyMove, builtFrom, anchors])
 }
 
-/** The label being dragged, then those moved and waiting for their build. */
-function useMovingLabels(design: Design, gesture: Gesture | undefined, pending: MovingLabel[]): MovingLabel[] {
+/** The label being dragged, then those a selection's move takes on their own, then those moved and waiting for their build. */
+function useMovingLabels(design: Design, gesture: Gesture | undefined, pending: MovingLabel[], moved: readonly MovingLabel[] | undefined): MovingLabel[] {
   const dragged = useMemo(() => (gesture?.kind === "label" && gesture.moved && !gesture.blocker ? { id: gesture.label.id, at: gesture.at } : undefined), [gesture])
   const draggedLabel = useDraggedLabel(design, dragged)
-  return useMemo(() => (draggedLabel ? [draggedLabel, ...pending.filter((m) => m.id !== draggedLabel.id)] : pending), [draggedLabel, pending])
+  return useMemo(() => {
+    const first = [...(draggedLabel ? [draggedLabel] : []), ...(moved ?? [])]
+    return first.length === 0 ? pending : [...first, ...pending.filter((m) => !first.some((f) => f.id === m.id))]
+  }, [draggedLabel, pending, moved])
 }
 
 interface SheetKeysInput {
@@ -439,7 +443,7 @@ export function SchematicCanvas(props: CanvasProps) {
   const hover = useSheetHover(parts.boxes, wire, labels.tools, props.pickFilter, wires.hits)
   const { gesture } = gestures
   const moving = gestures.moving ?? keyMoving
-  const movingLabels = useMovingLabels(design, gesture, labels.pending)
+  const movingLabels = useMovingLabels(design, gesture, labels.pending, moving?.labels)
   const hoverWire = useMemo(() => wires.lineOf(hover.wire), [wires.lineOf, hover.wire])
   const wireShapes = useWireShapes(gesture, wires.pending, moving?.wires)
   useSheetPaint(canvasRef, { design, border, camera, size, wire, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel: hover.label, hoverWire, selectedWire: wires.selected, wireShapes, palette, highlight, markers, activeViolation, grid })

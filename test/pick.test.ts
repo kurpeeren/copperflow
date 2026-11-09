@@ -138,6 +138,13 @@ describe("the Filter tab", () => {
     expect(boxSelection({ parts: ["R1", "C1"] }, false, null, undefined, noLabels)(before).names).toEqual(["R1", "C1"])
   })
 
+  test("Select all takes the schematic's net labels and flags, but none while the Filter's labels row is off", () => {
+    const every = selectAll(["R1"], undefined, undefined, ["wire:A"], ["label:A", "label:B"])(Selection.none)
+    expect(every).toMatchObject({ names: ["R1"], wires: ["wire:A"], labels: ["label:A", "label:B"] })
+    expect(selectAll(["R1"], undefined, noLabels, [], ["label:A"])(Selection.none)).toMatchObject({ names: ["R1"], labels: [] })
+    expect(selectAll(["R1"])(every).labels).toEqual([])
+  })
+
   test("Select all takes no parts while Parts is off", () => {
     expect(selectAll(["R1", "C1"], undefined, noParts)(Selection.none)).toBe(Selection.none)
     expect(selectAll(["R1", "C1"], undefined, noLabels)(Selection.none).names).toEqual(["R1", "C1"])

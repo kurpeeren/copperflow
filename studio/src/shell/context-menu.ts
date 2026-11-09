@@ -120,9 +120,10 @@ export function allLocked(names: readonly string[], locked: ReadonlySet<string>)
   return names.length > 0 && names.every((name) => locked.has(name))
 }
 
-/** A right click on a part or a wire that is not selected selects it alone; on a selected one the group stays. */
+/** A right click on a part, a wire or a label that is not selected selects it alone; on a selected one the group stays. */
 export function contextSelection(selection: Selection, target: ContextTarget): Selection {
   if (target.kind === "wire") return selection.hasWire(target.id) ? selection : selection.onlyWire(target.id)
+  if (target.kind === "label") return selection.hasLabel(target.label.id) ? selection : selection.onlyLabel(target.label.id)
   return target.kind === "part" && !selection.has(target.name) ? selection.only(target.name) : selection
 }
 

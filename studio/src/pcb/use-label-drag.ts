@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from "react"
 import type { CircuitData, Design } from "../api"
 import type { Actions } from "../App"
 import type { NetLabel } from "../../../src/engine/schematic.js"
-import type { Point } from "./geometry"
-import { labelAt, labelBlocker, labelDragEdits, labelPreview, type LabelPreview } from "./label-drag"
+import type { Box, Point } from "./geometry"
+import { labelAt, labelBlocker, labelDragEdits, labelHitBox, labelPreview, type LabelMove } from "./label-drag"
 
 /** What a canvas gesture asks of labels. */
 export interface LabelTools {
@@ -15,12 +15,12 @@ export interface LabelTools {
   blocker(id: string): string | null
   /** Writes the move to `drop`. */
   commit(label: NetLabel, drop: Point): void
+  /** The area each label answers to, which a selection box takes by its direction rule. */
+  boxes: readonly { id: string; box: Box }[]
 }
 
 /** A label drawn away from where the design has it: being dragged, or moved and waiting for its build. */
-export interface MovingLabel extends LabelPreview {
-  id: string
-}
+export type MovingLabel = LabelMove
 
 interface Input {
   design: Design
@@ -37,7 +37,9 @@ export function useLabelDrag({ design, circuit, actions, builtFrom }: Input): { 
   const [sent, setSent] = useState<Sent[]>([])
   useEffect(() => setSent((list) => (list.every((m) => m.sentAt > builtFrom) ? list : list.filter((m) => m.sentAt > builtFrom))), [builtFrom])
   const locked = useMemo(() => new Set(circuit.annotations.locks.map((l) => l.part)), [circuit])
+  const boxes = useMemo(() => design.schematic.labels.map((label) => ({ id: label.id, box: labelHitBox(label) })), [design.schematic.labels])
   const tools: LabelTools = {
+    boxes,
     at: (world) => labelAt(design, world),
     blocker: (id) => labelBlocker(design, circuit, id, locked),
     commit: (label, drop) => {

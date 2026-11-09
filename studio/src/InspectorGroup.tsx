@@ -1,4 +1,4 @@
-// Properties for several selected objects (parts, schematic wires or both): their count, the actions that apply to all
+// Properties for several selected objects (parts, schematic wires and net labels): their count, the actions that apply to all
 // of them (Delete; Rotate, Lock and Unlock act on the parts), and the Selection section with the count of each kind and
 // the parts by name. Each action runs the menu's command, so it does what Layout → Rotate or Edit → Delete does.
 import type { PartInfo } from "./api"
@@ -12,8 +12,8 @@ const ACTION_ICONS = { rotate: RotateIcon, lock: LockIcon, unlock: UnlockIcon, d
 interface GroupProps {
   view: PropertiesView
   parts: readonly PartInfo[]
-  /** How many schematic wires are selected with the parts. */
-  wires: number
+  /** How many schematic wires and labels are selected with the parts. */
+  others: number
   /** The locked parts, and those of them changed outside the editor. */
   locks: { locked: ReadonlySet<string>; violated: ReadonlySet<string> }
   run(command: CommandId): void
@@ -22,7 +22,7 @@ interface GroupProps {
   toggle(title: string): void
 }
 
-export function GroupView({ view, parts, wires, locks, run, onClear, collapsed, toggle }: GroupProps) {
+export function GroupView({ view, parts, others, locks, run, onClear, collapsed, toggle }: GroupProps) {
   const { locked } = locks
   const byName = new Map(parts.map((part) => [part.name, part]))
   const renderRow = (id: string) => {
@@ -57,7 +57,7 @@ export function GroupView({ view, parts, wires, locks, run, onClear, collapsed, 
         {GROUP_ACTIONS.map(({ label, command }) => {
           const Icon = ACTION_ICONS[command]
           return (
-            <button key={command} className={command === "delete" ? "danger" : undefined} disabled={!groupActionEnabled(command, parts, locks, wires)} onClick={() => run(command)}>
+            <button key={command} className={command === "delete" ? "danger" : undefined} disabled={!groupActionEnabled(command, parts, locks, others)} onClick={() => run(command)}>
               <Icon /> {label}
             </button>
           )

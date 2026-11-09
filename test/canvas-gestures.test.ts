@@ -51,21 +51,30 @@ interface CanvasOptions {
   filter?: PickFilter
   /** The wires come without their drag tools, as while the W tool is wiring. */
   noDrag?: boolean
+  /** Labels selected with the parts in `start`. */
+  labels?: string[]
 }
+
+// A ground flag at (9, 0), right of R2; it answers from x 8.5 to 9.5 and y -0.5 to 0.5.
+const FLAG: NetLabel = { id: "label:net.GND:R2.pin2", net: "net.GND", text: "GND", at: { x: 9, y: 0 }, side: "right", style: "ground" }
+const FLAG_BOX = { minX: 8.5, minY: -0.5, maxX: 9.5, maxY: 0.5 }
+const flagAt = (p: Point) => (p.x >= FLAG_BOX.minX && p.x <= FLAG_BOX.maxX && p.y >= FLAG_BOX.minY && p.y <= FLAG_BOX.maxY ? FLAG : undefined)
 
 /** A canvas with R1 and R2: what the steps told it, and the selection they left. */
 function canvas(start: readonly string[] = [], options: CanvasOptions = {}) {
   const calls: string[] = []
   const state = {
-    selection: options.wire ? Selection.none.onlyWire(options.wire) : Selection.none.add(start).addWires(options.wires ?? []),
+    selection: options.wire ? Selection.none.onlyWire(options.wire) : Selection.none.add(start).addWires(options.wires ?? []).addLabels(options.labels ?? []),
     camera: CAMERA,
     /** Wire W's points as shown; a build can change them, or take the wire away. */
     wirePoints: W_POINTS as readonly Point[] | undefined,
     /** The drag tools go while the W tool is wiring. */
     noDrag: options.noDrag ?? false,
   }
-  const commits: { names: readonly string[]; offset: Point; wires?: readonly string[] }[] = []
-  const commit = (names: readonly string[], offset: Point, wires: readonly string[] = []) => void commits.push(wires.length > 0 ? { names, offset, wires } : { names, offset })
+  const commits: { names: readonly string[]; offset: Point; wires?: readonly string[]; labels?: readonly string[] }[] = []
+  const commit = (names: readonly string[], offset: Point, wires: readonly string[] = [], labels: readonly string[] = []) =>
+    void commits.push({ names, offset, ...(wires.length > 0 ? { wires } : {}), ...(labels.length > 0 ? { labels } : {}) })
+  const labelMoves: { id: string; at: Point }[] = []
   const shapes: { id: string; path: readonly Point[] }[] = []
   const drag: GestureWires["drag"] = {
     points: (id) => (id === "wire:W" ? state.wirePoints : undefined),
@@ -97,6 +106,7 @@ function canvas(start: readonly string[] = [], options: CanvasOptions = {}) {
     tool: { armed: options.armed ?? null, disarm: () => void calls.push("disarm") },
     onContextMenu: (target, at) => void menus.push({ target, at }),
     wires: wires(),
+    labels: { at: flagAt, blocker: () => null, commit: (label, at) => void labelMoves.push({ id: label.id, at }), boxes: [{ id: FLAG.id, box: FLAG_BOX }] },
     ...(options.filter ? { filter: options.filter } : {}),
   })
   /** Presses at `from`, moves through `path` and lets go at the last point, as the hook does. */
@@ -108,7 +118,7 @@ function canvas(start: readonly string[] = [], options: CanvasOptions = {}) {
     return started
   }
   const session = () => gestureSession(() => ({ input: input(), commit }), () => undefined)
-  return { state, calls, commits, shapes, menus, gesture, session, input }
+  return { state, calls, commits, shapes, menus, labelMoves, gesture, session, input }
 }
 
 afterEach(() => vi.unstubAllGlobals())
@@ -225,6 +235,52 @@ describe("parts and wires in one selection", () => {
     const c = canvas(["R1"], { wires: ["wire:W"] })
     expect(c.gesture({}, screen(7, 3), screen(7.6, 3))).toMatchObject({ kind: "drag", wire: "wire:W" })
     expect(c.shapes).toEqual([])
+  })
+})
+
+describe("net labels and flags in the selection", () => {
+  test("a plain press on a label selects it alone and drags it alone", () => {
+    const c = canvas(["R1"])
+    expect(c.gesture({}, screen(9), screen(9.6), screen(10))).toMatchObject({ kind: "label" })
+    expect(c.state.selection).toMatchObject({ names: [], wires: [], labels: [FLAG.id] })
+    expect(c.labelMoves).toEqual([{ id: FLAG.id, at: { x: 10, y: 0 } }])
+    expect(c.commits).toEqual([])
+  })
+
+  test("Shift or Ctrl on a label adds it to the selection, and again takes it out", () => {
+    const c = canvas(["R1"])
+    expect(c.gesture({ shiftKey: true }, screen(9), screen(9))).toBeUndefined()
+    expect(c.state.selection).toMatchObject({ names: ["R1"], labels: [FLAG.id] })
+    c.gesture({ ctrlKey: true }, screen(9), screen(9))
+    expect(c.state.selection).toMatchObject({ names: ["R1"], labels: [] })
+    expect(c.labelMoves).toEqual([])
+  })
+
+  test("a drag on a selected part takes the selected labels along, in one commit", () => {
+    const c = canvas(["R1"], { labels: [FLAG.id] })
+    c.gesture({}, screen(1), screen(1.4), screen(2.1))
+    expect(c.commits).toEqual([{ names: ["R1"], offset: { x: 1, y: 0 }, labels: [FLAG.id] }])
+  })
+
+  test("a drag on a label selected with other things moves the whole selection; a still click selects the label alone", () => {
+    const c = canvas(["R1"], { wires: ["wire:W"], labels: [FLAG.id] })
+    expect(c.gesture({}, screen(9), screen(9, 0.4), screen(9, 1))).toMatchObject({ kind: "drag", label: FLAG.id })
+    expect(c.commits).toEqual([{ names: ["R1"], offset: { x: 0, y: 1 }, wires: ["wire:W"], labels: [FLAG.id] }])
+    expect(c.labelMoves).toEqual([])
+    c.gesture({}, screen(9), screen(9))
+    expect(c.state.selection).toMatchObject({ names: [], wires: [], labels: [FLAG.id] })
+  })
+
+  test("a box takes the labels by the direction rule, and none while the Filter's labels row is off", () => {
+    const inside = canvas()
+    inside.gesture({}, screen(-2, 2), screen(10, -2))
+    expect(inside.state.selection).toMatchObject({ names: ["R1", "R2"], labels: [FLAG.id] })
+    const touching = canvas()
+    touching.gesture({}, screen(10, 2), screen(9, -2))
+    expect(touching.state.selection).toMatchObject({ names: [], labels: [FLAG.id] })
+    const off = canvas([], { filter: { ...ALL_PICKABLE, labels: false } })
+    off.gesture({}, screen(-2, 2), screen(10, -2))
+    expect(off.state.selection).toMatchObject({ names: ["R1", "R2"], labels: [] })
   })
 })
 

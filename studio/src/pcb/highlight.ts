@@ -70,15 +70,16 @@ export function menuHighlight(parts: readonly string[], netsOf: (part: string) =
 }
 
 /**
- * What Design → Highlight net does with no pointer over the canvas: light the selected wires' nets and every net of
- * the selected parts (menuHighlight), each once, or say how.
+ * What Design → Highlight net does with no pointer over the canvas: light the selected wires' and labels' nets and
+ * every net of the selected parts (menuHighlight), each once, or say how.
  */
 export function selectionHighlight(
   selection: Selection,
   wireNet: (id: string) => string | undefined,
   netsOf: (part: string) => Highlight,
+  labelNet: (id: string) => string | undefined = () => undefined,
 ): { nets: Highlight } | { message: string } {
-  const ofWires = [...new Set(selection.wires.flatMap((id) => wireNet(id) ?? []))]
+  const ofWires = [...new Set([...selection.wires.flatMap((id) => wireNet(id) ?? []), ...selection.labels.flatMap((id) => labelNet(id) ?? [])])]
   const ofParts = menuHighlight(selection.names, netsOf)
   if ("nets" in ofParts) return { nets: [...new Set([...ofWires, ...ofParts.nets])] }
   return ofWires.length > 0 ? { nets: ofWires } : ofParts
