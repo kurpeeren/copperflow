@@ -49,7 +49,7 @@ export function useActions({ file, refresh, refreshParts, notify }: ActionsInput
     async (edits: Edit[], summary: string): Promise<EditOutcome> => {
       let mark: number | undefined
       const ok = await run(async () => {
-        mark = (await api<{ writtenAt?: number }>("/api/edit", { file, edits, summary })).writtenAt
+        mark = (await api<{ writeMark?: number }>("/api/edit", { file, edits, summary })).writeMark
       })
       return { ok, mark }
     },

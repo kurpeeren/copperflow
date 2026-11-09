@@ -1,4 +1,4 @@
-import { filterRows, type PickFilter, type PickKind } from "../pcb/pick-filter"
+import { pickKindRows, type PickFilter, type PickKind } from "../pcb/pick-filter"
 import type { View } from "../pcb/positions"
 import { blurAfterPointerClick } from "./focus"
 import { sideTabId, stripPanelId } from "./SideStrip"
@@ -16,7 +16,7 @@ export function FilterPanel({ view, filter, onToggle }: Props) {
     <aside className="panel right filter-panel" id={stripPanelId("right")} role="tabpanel" aria-labelledby={sideTabId("filter")} onClick={blurAfterPointerClick}>
       <h3 className="filter-head">Pick</h3>
       <ul className="filter-list">
-        {filterRows(view).map((row) => (
+        {pickKindRows(view).map((row) => (
           <li key={row.kind}>
             <label className="filter-row">
               <input type="checkbox" checked={filter[row.kind]} onChange={() => onToggle(row.kind)} />

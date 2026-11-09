@@ -205,9 +205,9 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         const body = Bodies.edit.parse(await readJson(req))
         const result = await editCircuit(root, body.file, body.edits, { author: "human", summary: body.summary })
         // After the write and before the build it asks for: a build with a larger start mark read this change.
-        const writtenAt = live.nextMark()
+        const writeMark = live.nextMark()
         live.requestBuild(result.entry.file)
-        return send(res, { entryId: result.entry.id, violations: result.violations, writtenAt })
+        return send(res, { entryId: result.entry.id, violations: result.violations, writeMark })
       }
       case "POST /api/lock": {
         const body = Bodies.lock.parse(await readJson(req))

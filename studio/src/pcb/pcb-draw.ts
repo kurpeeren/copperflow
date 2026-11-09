@@ -54,7 +54,10 @@ const shownOn = (layers: LayerVisibility, part: PlacedFootprint, kind: "Silk" | 
 const alphaOf = (part: PlacedFootprint) => (part.autoPlaced ? AUTO_PLACED_ALPHA : 1)
 const assemblyColor = (part: PlacedFootprint) => (part.side === "top" ? PALETTE.topAssembly : PALETTE.bottomAssembly)
 
-/** Draws the board, then the ratsnest and the violation rings. Auto-placed parts are faded and always show their dashed courtyard. */
+/**
+ * Draws the board, then the ratsnest and the violation rings. Auto-placed parts are faded, and their dashed courtyard
+ * is a little thicker; it follows the Courtyard layer, as every courtyard does.
+ */
 export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDrawOptions): void {
   const layers: LayerVisibility = { ...DEFAULT_LAYERS, ...options.layers }
   const { camera, size } = view

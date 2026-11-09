@@ -28,7 +28,10 @@ export interface PartKeysInput {
   blockerFor(name: string): string | null
   /** Where the parts sit and the open view's Grid step, for the arrow keys and the turn about the selection's centre. */
   layout: Layout
-  /** The shown build's id and the build status; a Rotate waits for a build that succeeds after the last move. */
+  /**
+   * The shown build's start mark (the server's mark when that build started) and the build status; a Rotate waits
+   * for a build that started after the last move was written, and succeeded.
+   */
   builtMark: number | undefined
   buildStatus: BuildStatus
   /** A dragged group's move waits for its build, so a Rotate waits too. */

@@ -4,7 +4,7 @@ import { boxSelection } from "../studio/src/pcb/box-select.js"
 import type { PartBox } from "../studio/src/pcb/geometry.js"
 import { targetAt } from "../studio/src/pcb/gestures.js"
 import { DEFAULT_LAYERS, type PickLayers } from "../studio/src/pcb/layers.js"
-import { ALL_PICKABLE, filterRows, kindPickable, togglePickKind } from "../studio/src/pcb/pick-filter.js"
+import { ALL_PICKABLE, pickKindRows, kindPickable, togglePickKind } from "../studio/src/pcb/pick-filter.js"
 import { canPick, pickNames, picks, selectAll, type PickContext } from "../studio/src/pcb/pick.js"
 import { Selection } from "../studio/src/selection.js"
 
@@ -129,7 +129,7 @@ describe("the Filter tab", () => {
     expect(ALL_PICKABLE.labels).toBe(true)
     expect(togglePickKind(off, "labels")).toEqual(ALL_PICKABLE)
     expect(kindPickable(undefined, "parts")).toBe(true)
-    expect(filterRows("pcb").map((row) => row.label)).toEqual(["Parts"])
-    expect(filterRows("schematic").map((row) => row.label)).toEqual(["Parts", "Net labels and flags"])
+    expect(pickKindRows("pcb").map((row) => row.label)).toEqual(["Parts"])
+    expect(pickKindRows("schematic").map((row) => row.label)).toEqual(["Parts", "Net labels and flags"])
   })
 })

@@ -149,5 +149,5 @@ export function useWorkspace(view: View) {
   const run = useWorkspaceRun(view, { strips: { setLeft, setRight, setBottom }, setUnit, setHighlight, toggleGridStyleOf, requestSearch })
   useWorkspaceKeys(view, run)
   const toggleUnit = useCallback(() => setUnit(nextUnit), [])
-  return { ...strips, ...grid, ...layers, ...filter, ...focus, leftOpen: strips.left.open, rightOpen: strips.right.open, unit, toggleUnit, highlight, setHighlight, run }
+  return { ...strips, ...grid, ...layers, ...filter, ...focus, leftOpen: strips.left.open, unit, toggleUnit, highlight, setHighlight, run }
 }

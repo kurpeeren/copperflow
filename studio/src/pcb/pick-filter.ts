@@ -21,7 +21,7 @@ export function kindPickable(filter: PickFilter | undefined, kind: PickKind): bo
 }
 
 /** The rows the Filter tab shows for a view: net labels and flags exist only on the schematic. */
-export function filterRows(view: View): ReadonlyArray<{ kind: PickKind; label: string }> {
+export function pickKindRows(view: View): ReadonlyArray<{ kind: PickKind; label: string }> {
   const parts = { kind: "parts" as const, label: "Parts" }
   return view === "schematic" ? [parts, { kind: "labels", label: "Net labels and flags" }] : [parts]
 }

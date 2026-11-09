@@ -28,7 +28,8 @@ export interface KeySession {
   settle(input: EditInput): void
 }
 
-interface Clock {
+/** What the session tells the canvas. */
+interface SessionEvents {
   /** An edit resolved; the canvas calls settle once it has drawn what came with it. */
   resolved(): void
   /** A Rotate press is held at the gate (true) or none is (false), told when that changes. */
@@ -44,37 +45,39 @@ interface State {
   layout?: Layout
 }
 
-export function keySession(clock: Clock): KeySession {
+/** Tells the canvas when a press starts or stops being held, so its status line can say so. */
+function tell(state: State, events: SessionEvents): void {
+  const held = state.gate.held !== undefined
+  if (held === state.told) return
+  state.told = held
+  events.holding(held)
+}
+
+/** Sends a position edit through the gate, so a Rotate after it waits for its build; resolves to whether it went through. */
+function send(state: State, events: SessionEvents, plan: GroupEdit, input: EditInput): Promise<boolean> {
+  const before = state.gate.waiting
+  if (plan.edits.length > 0) state.gate = editSent(state.gate)
+  const { seq } = state.gate
+  return sendGroupEditMarked(plan, input.actions).then(({ ok, mark }) => {
+    if (plan.edits.length > 0) state.gate = editSettled(state.gate, ok, seq, before, mark)
+    tell(state, events)
+    events.resolved()
+    return ok
+  })
+}
+
+export function keySession(events: SessionEvents): KeySession {
   const state: State = { gate: OPEN_GATE, told: false }
-  /** Tells the canvas when a press starts or stops being held, so its status line can say so. */
-  const tell = () => {
-    const held = state.gate.held !== undefined
-    if (held === state.told) return
-    state.told = held
-    clock.holding(held)
-  }
-  /** Sends a position edit through the gate, so a Rotate after it waits for its build; resolves to whether it went through. */
-  const send = (plan: GroupEdit, input: EditInput): Promise<boolean> => {
-    const before = state.gate.waiting
-    if (plan.edits.length > 0) state.gate = editSent(state.gate)
-    const { seq } = state.gate
-    return sendGroupEditMarked(plan, input.actions).then(({ ok, mark }) => {
-      if (plan.edits.length > 0) state.gate = editSettled(state.gate, ok, seq, before, mark)
-      tell()
-      clock.resolved()
-      return ok
-    })
-  }
   const turn = (input: EditInput) => {
     const plan = rotatePlan(input.circuit, input.selection.names, input.view, input.layout, input.blockerFor)
     if ("message" in plan) return input.actions.notify(plan.message)
-    void send(plan, input)
+    void send(state, events, plan, input)
   }
   /** Writes the burst's total offset from where it began; when that resolves, sends what was merged meanwhile. */
   const sendNudge = (input: EditInput, total: Point): void => {
     const { burst, layout } = state
     if (!burst || !layout) return
-    void send(nudgePlan(burst.base, burst.names, input.view, layout, total, input.blockerFor), input).then((ok) => {
+    void send(state, events, nudgePlan(burst.base, burst.names, input.view, layout, total, input.blockerFor), input).then((ok) => {
       if (state.burst !== burst && state.burst?.base !== burst.base) return
       const next = state.burst ? settleNudge(state.burst, ok) : undefined
       state.burst = next?.burst
@@ -94,13 +97,13 @@ export function keySession(clock: Clock): KeySession {
       const step = pressTurn(state.gate, input.selection.names, repeat, input)
       state.gate = step.gate
       if (step.send) turn(input)
-      tell()
+      tell(state, events)
     },
     settle(input) {
       const step = releaseTurn(state.gate, input.selection.names, input)
       state.gate = step.gate
       if (step.send) turn(input)
-      tell()
+      tell(state, events)
     },
   }
 }
