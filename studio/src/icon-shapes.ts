@@ -61,6 +61,19 @@ export const ICONS = {
   ground: [path("M8 2.5v6M3 8.5h10M5 11h6M7 13.5h2")],
   power: [path("M8 14V5.5M3.5 5.5h9"), path("M3.5 5.5 8 2l4.5 3.5")],
 
+  /** A pin end with a cross at its tip: the pin is left unconnected on purpose. */
+  noConnect: [path("M2 8h5"), path("M9 5.5l5 5M14 5.5l-5 5")],
+  /** A round pad with a drilled hole. */
+  via: [circle(8, 8, 5.5), circle(8, 8, 2)],
+  /** A board's outline with one corner cut. */
+  boardOutline: [path("M2.5 3.5h8l3 3v6h-11z")],
+  /** A frame with a hatched copper pour inside. */
+  copperArea: [rect(2.5, 2.5, 11, 11, 1), path("M5.5 10.5l5-5M5.5 7.5l2-2M8.5 10.5l2-2")],
+  /** A pad at the start of a track that bends. */
+  singleRouting: [circle(3.5, 12.5, 1.5), path("M5 12.5h3.5L12 9V3.5")],
+  /** A layer stack: three sheets, one above the other. */
+  gerber: [path("M8 2.5 2.5 5 8 7.5 13.5 5z"), path("M2.5 8 8 10.5 13.5 8"), path("M2.5 11 8 13.5 13.5 11")],
+
   // Edit
   /** A counter-clockwise turn: the arrow runs round from the left and ends at the top, pointing left. */
   rotate: [path("M3 8a5 5 0 1 0 5-5"), path("M9.5 1.5 8 3l1.5 1.5")],

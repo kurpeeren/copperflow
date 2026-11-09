@@ -44,4 +44,10 @@ export const TOOL_ICONS: Record<ToolIconName, (props: IconProps) => JSX.Element>
   rectangle: tool("rectangle"),
   text: tool("text"),
   bus: tool("bus"),
+  noConnect: tool("noConnect"),
+  via: tool("via"),
+  boardOutline: tool("boardOutline"),
+  copperArea: tool("copperArea"),
+  singleRouting: tool("singleRouting"),
+  gerber: tool("gerber"),
 }

@@ -5,22 +5,31 @@ import { commandDisabledReason } from "../pcb/selection-rules.js"
 import { DRAW_COMMANDS, DRAW_TOOL_COMMAND } from "../pcb/draw-commands.js"
 import type { DrawTool } from "../pcb/draw-tools.js"
 import type { CommandId, Toggles } from "./menus.js"
+import { WAITS_FOR_BLOCKS, WAITS_FOR_FABRICATION, WAITS_FOR_ROUTING } from "./pending.js"
 
-export type ToolIconName = "undo" | "redo" | "zoomIn" | "zoomOut" | "fit" | "fitSelection" | "fitArea" | "component" | "wire" | "netLabel" | "ground" | "power" | "rotate" | "rotateRight" | "snap" | "check" | "grid" | "alignLeft" | "distributeH" | "polyline" | "arc" | "circle" | "rectangle" | "text" | "bus"
+export type ToolIconName = "undo" | "redo" | "zoomIn" | "zoomOut" | "fit" | "fitSelection" | "fitArea" | "component" | "wire" | "netLabel" | "ground" | "power" | "rotate" | "rotateRight" | "snap" | "check" | "grid" | "alignLeft" | "distributeH" | "polyline" | "arc" | "circle" | "rectangle" | "text" | "bus" | "noConnect" | "via" | "boardOutline" | "copperArea" | "singleRouting" | "gerber"
 
 interface ToolbarButtonBase {
   id: string
   /** `Name (key)`, or just `Name` when the command has no key. */
   title: string
-  command: CommandId
   /** Buttons with the same group number sit together; a separator goes between groups. */
   group: number
 }
 
 /** A button shows its icon, or (the PCB's Unit) the unit it switches, mm or mil, as its text. */
-export type ToolbarButton = ToolbarButtonBase & ({ icon: ToolIconName; text?: undefined } | { text: "unit"; icon?: undefined })
+type Face = { icon: ToolIconName; text?: undefined } | { text: "unit"; icon?: undefined }
+
+/** A button that sends the command the menu item of the same name sends. */
+type WorkingButton = ToolbarButtonBase & Face & { command: CommandId; pending?: undefined }
+
+/** A button for a tool that waits for a later engine stage: always disabled, with the reason in its tooltip. */
+type PendingButton = ToolbarButtonBase & { icon: ToolIconName; text?: undefined; command?: undefined; pending: string }
+
+export type ToolbarButton = WorkingButton | PendingButton
 
 const button = (id: string, title: string, icon: ToolIconName, command: CommandId, group: number): ToolbarButton => ({ id, title, icon, command, group })
+const later = (id: string, title: string, icon: ToolIconName, pending: string, group: number): ToolbarButton => ({ id, title, icon, pending, group })
 
 const HISTORY = [button("undo", "Undo (Ctrl+Z)", "undo", "undo", 0), button("redo", "Redo (Ctrl+Y)", "redo", "redo", 0)]
 const ZOOM = [button("zoomIn", "Zoom in", "zoomIn", "zoomIn", 1), button("zoomOut", "Zoom out", "zoomOut", "zoomOut", 1), button("fit", "Fit all (K)", "fit", "fit", 1),
@@ -46,6 +55,7 @@ export const TOOLBARS: Readonly<Record<View, readonly ToolbarButton[]>> = {
     button("netLabel", "Net label (Alt+N)", "netLabel", "netLabel", 3),
     button("ground", "Ground flag", "ground", "groundFlag", 3),
     button("power", "Power flag", "power", "powerFlag", 3),
+    later("noConnect", "No connect flag", "noConnect", WAITS_FOR_BLOCKS, 3),
     button("polyline", "Polyline (Alt+L)", "polyline", "drawPolyline", 4),
     button("arc", "Arc (Alt+A)", "arc", "drawArc", 4),
     button("circle", "Circle (Alt+C)", "circle", "drawCircle", 4),
@@ -55,11 +65,45 @@ export const TOOLBARS: Readonly<Record<View, readonly ToolbarButton[]>> = {
     ...ALIGN(6),
     CHECK(7),
   ],
-  pcb: [...HISTORY, ...ZOOM, ...GRID(2), { id: "unit", title: "Unit (Q)", text: "unit", command: "toggleUnit", group: 2 }, ...ROTATE(3), ...ALIGN(4), CHECK(5)],
+  pcb: [
+    ...HISTORY,
+    ...ZOOM,
+    { id: "unit", title: "Unit (Q)", text: "unit", command: "toggleUnit", group: 2 },
+    ...GRID(2),
+    later("via", "Via", "via", WAITS_FOR_ROUTING, 3),
+    later("boardOutline", "Board outline", "boardOutline", WAITS_FOR_ROUTING, 3),
+    later("copperArea", "Copper area", "copperArea", WAITS_FOR_ROUTING, 3),
+    CHECK(4),
+    later("singleRouting", "Single routing", "singleRouting", WAITS_FOR_ROUTING, 5),
+    ...ALIGN(6),
+    ...ROTATE(7),
+    later("gerber", "Gerber", "gerber", WAITS_FOR_FABRICATION, 8),
+  ],
 }
 
-/** Whether a button runs with `selected` parts selected, and its tooltip: the title, with the reason after it when it cannot. */
+const PADDING = 16
+const BUTTON_PX = 24
+const TEXT_BUTTON_PX = 40
+const GAP_PX = 2
+const SEPARATOR_PX = 13
+
+/** The width of the browser window the toolbar must fit in one row at. */
+export const ROW_FIT_WIDTH = 1280
+/** Room kept at the row's right for the open canvas's own tools (the grid select and the Keep button). */
+export const VIEW_SLOT_RESERVE = 360
+
+/** The width of a toolbar row in px: the padding, the buttons, the separators between groups and the gaps between all of them. */
+export function rowWidth(view: View, buttons: readonly ToolbarButton[] = TOOLBARS[view]): number {
+  const groups = new Set(buttons.map((item) => item.group)).size
+  const separators = Math.max(groups - 1, 0)
+  const items = buttons.length + separators
+  const faces = buttons.reduce((sum, item) => sum + (item.text ? TEXT_BUTTON_PX : BUTTON_PX), 0)
+  return PADDING + faces + separators * SEPARATOR_PX + Math.max(items - 1, 0) * GAP_PX
+}
+
+/** Whether a button runs with `selected` parts selected, and its tooltip: the title, with the reason after it when it cannot (a pending button never can). */
 export function buttonState(item: ToolbarButton, selected: number): { enabled: boolean; title: string } {
+  if (item.pending !== undefined) return { enabled: false, title: `${item.title}: ${item.pending}` }
   const reason = commandDisabledReason(item.command, selected)
   return reason ? { enabled: false, title: `${item.title}: ${reason}` } : { enabled: true, title: item.title }
 }

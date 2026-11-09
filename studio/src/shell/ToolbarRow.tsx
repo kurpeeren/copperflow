@@ -36,7 +36,7 @@ export function Toolbar({ view, unit, selected, toggles, run }: Props) {
         <Fragment key={group[0]?.group}>
           {i > 0 && <span className="toolbar-separator" role="separator" aria-orientation="vertical" />}
           {group.map((item) => {
-            const pressed = buttonPressed(item.command, tools.active, toggles)
+            const pressed = item.command !== undefined && buttonPressed(item.command, tools.active, toggles)
             const state = buttonState(item, selected)
             return (
               <button
@@ -45,11 +45,11 @@ export function Toolbar({ view, unit, selected, toggles, run }: Props) {
                 title={state.title}
                 aria-label={item.text === "unit" ? `${item.title}, now ${unit}` : state.title}
                 aria-disabled={state.enabled ? undefined : true}
-                aria-pressed={hasPressedState(item.command) ? pressed : undefined}
+                aria-pressed={item.command !== undefined && hasPressedState(item.command) ? pressed : undefined}
                 data-pressed={pressed || undefined}
                 onClick={(event) => {
                   blurAfterPointerClick(event)
-                  if (!state.enabled) return
+                  if (!state.enabled || item.command === undefined) return
                   if (clickAction(item.command, tools) === "stop") tools.stop?.()
                   else run(item.command)
                 }}

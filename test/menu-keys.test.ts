@@ -125,8 +125,7 @@ describe("the real menus", () => {
       }
     }
   })
-
-  test("a menu opens at its first enabled item; Route and Settings, with none, at their first", () => {
+  test("a menu opens at its first enabled item; Route, with none, at its first, and Settings at Hotkeys", () => {
     const opening = (title: string) => {
       const i = MENUS.findIndex((m) => m.title === title)
       const at = firstMenuItem(menuShapes("schematic")[i])
@@ -135,7 +134,7 @@ describe("the real menus", () => {
     }
     expect(opening("File")).toBe("Open circuit file")
     expect(opening("Route")).toBe("Single routing")
-    expect(opening("Settings")).toBe("System")
+    expect(opening("Settings")).toBe("Hotkeys")
   })
 
   test("on the schematic, Unit is a disabled stop in View; on the PCB it runs", () => {

@@ -32,17 +32,31 @@ describe("menus", () => {
     }
   })
 
-  test("every item still to come names the engine stage or the Studio round that brings it", () => {
+  test("every item still to come names the engine stage that brings it, or says it comes later", () => {
     for (const item of MENUS.flatMap(menuItems)) {
       if (item.pending === undefined) continue
-      expect([item.label, /\((stage|stages|round) \d|\bround \d/.test(item.pending)]).toEqual([item.label, true])
+      expect([item.label, /\((engine )?stages? \d|^Comes later/.test(item.pending)]).toEqual([item.label, true])
     }
+  })
+
+  test("the honest reasons: Design rules, Annotate, Footprint manager, No connect flag and Junction", () => {
+    const find = (label: string) => MENUS.flatMap(menuItems).find((item) => item.label === label)
+    expect(find("Design rules")?.pending).toContain("(engine stage 4)")
+    expect(find("Annotate designators")?.pending).toContain("(engine stage 3)")
+    expect(find("Footprint manager")?.pending).toContain("(engine stage 3)")
+    expect(find("No connect flag")?.pending).toContain("(engine stage 3)")
+    expect(find("Junction")?.pending).toMatch(/^Comes later/)
+  })
+
+  test("Settings → Hotkeys opens the Keys dialog", () => {
+    const hotkeys = MENUS.find((m) => m.title === "Settings")?.entries.find((e) => e !== "separator" && e.label === "Hotkeys")
+    expect(hotkeys).toEqual({ label: "Hotkeys", command: "keys" })
   })
 
   test("Flip waits for the engine, and Find similar objects for Find", () => {
     const find = (label: string) => MENUS.flatMap(menuItems).find((item) => item.label === label)
     expect(find("Flip")?.pending).toBe("Comes with the engine (stages 3 to 5)")
-    expect(find("Find similar objects")?.pending).toBe("Comes with Find (round 3)")
+    expect(find("Find similar objects")?.pending).toMatch(/^Comes later/)
   })
 
   test("Edit → Find runs the find command, with Ctrl+F beside it", () => {
@@ -134,11 +148,11 @@ describe("menus", () => {
     for (const menu of MENUS) expect([menu.title, menuItems(menu).length <= 14]).toEqual([menu.title, true])
   })
 
-  test("Route and Settings hold only items that are still to come", () => {
-    for (const title of ["Route", "Settings"]) {
-      const menu = MENUS.find((m) => m.title === title)
-      expect(menu && menuItems(menu).every((item) => item.pending !== undefined)).toBe(true)
-    }
+  test("Route holds only items that are still to come; Settings only System", () => {
+    const route = MENUS.find((m) => m.title === "Route")
+    expect(route && menuItems(route).every((item) => item.pending !== undefined)).toBe(true)
+    const settings = MENUS.find((m) => m.title === "Settings")
+    expect(settings && menuItems(settings).filter((item) => item.pending !== undefined).map((item) => item.label)).toEqual(["System"])
   })
 
   test("a shortcut shown beside a command does what the key does", () => {

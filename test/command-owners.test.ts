@@ -6,8 +6,7 @@ import { buildTone, statusText } from "../studio/src/shell/status-pill.js"
 
 const shown: CommandId[] = [
   ...MENUS.flatMap(menuItems).flatMap((item) => (item.command ? [item.command] : [])),
-  ...TOOLBARS.schematic.map((b) => b.command),
-  ...TOOLBARS.pcb.map((b) => b.command),
+  ...[...TOOLBARS.schematic, ...TOOLBARS.pcb].flatMap((b) => (b.command ? [b.command] : [])),
 ]
 
 describe("command owners", () => {

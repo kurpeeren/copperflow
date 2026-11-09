@@ -1,10 +1,11 @@
 // The menu bar as data: EasyEDA Pro's menus, the items Studio can run, and the items still to come, each with the
-// engine stage (docs/engine-design.md) or the Studio round (docs/studio-easyeda-parity.md §10) that brings it. The
-// keys beside a command are the keys canvas-keys.ts binds; a test holds them together.
+// engine stage (docs/engine-design.md) that brings it, or "later". The keys beside a command are the keys
+// canvas-keys.ts binds; a test holds them together.
 import type { AlignCommand } from "../pcb/align-rules.js"
 import type { KeyActionName } from "../pcb/canvas-keys.js"
 import type { View } from "../pcb/positions.js"
 import { commandDisabledReason } from "../pcb/selection-rules.js"
+import { WAITS_FOR_AUTOROUTER, WAITS_FOR_BLOCKS, WAITS_FOR_ENGINE, WAITS_FOR_FABRICATION, WAITS_FOR_ROUTING } from "./pending.js"
 
 export type CommandId =
   | "openFile"
@@ -79,25 +80,21 @@ export interface Menu {
 const run = (label: string, command: CommandId, shortcut?: string): MenuItem => (shortcut ? { label, command, shortcut } : { label, command })
 const later = (label: string, pending: string, shortcut?: string): MenuItem => (shortcut ? { label, pending, shortcut } : { label, pending })
 
-const STAGE_3 = "Comes with blocks and sheets (stage 3)"
-const STAGE_4 = "Comes with routing (stage 4)"
-const STAGE_5 = "Comes with the autorouter (stage 5)"
-const STAGE_6 = "Comes with fabrication outputs (stage 6)"
-export const ENGINE = "Comes with the engine (stages 3 to 5)"
-const FIND = "Comes with Find (round 3)"
-const SETTINGS = "Comes in round 5, after the side-by-side check with EasyEDA"
+export const ENGINE = WAITS_FOR_ENGINE
+const FIND = "Comes later; for now Find (Ctrl+F) looks up parts and nets"
+const SETTINGS = "Comes later, with the Studio preferences"
 
 export const MENUS: readonly Menu[] = [
   {
     title: "File",
     entries: [
       run("Open circuit file", "openFile", "Ctrl+O"),
-      later("New circuit", "Comes in round 5; for now create a .circuit.tsx file in the project folder"),
+      later("New circuit", "Comes later; for now create a .circuit.tsx file in the project folder"),
       "separator",
       run("Export BOM", "exportBom"),
       run("Export package", "exportPackage"),
-      later("Export Gerber", STAGE_6),
-      later("Print", STAGE_6),
+      later("Export Gerber", WAITS_FOR_FABRICATION),
+      later("Print", WAITS_FOR_FABRICATION),
     ],
   },
   {
@@ -145,8 +142,8 @@ export const MENUS: readonly Menu[] = [
       run("Note box", "noteBox"),
       "separator",
       run("Bus", "drawBus", "Alt+B"),
-      later("No connect flag", "Comes with the schematic flags (round 5)"),
-      later("Junction", "Comes in round 5; for now junctions are drawn where wires meet", "Alt+J"),
+      later("No connect flag", WAITS_FOR_BLOCKS),
+      later("Junction", "Comes later; for now junctions are drawn where wires meet", "Alt+J"),
       "separator",
       run("Polyline", "drawPolyline", "Alt+L"),
       run("Arc", "drawArc", "Alt+A"),
@@ -159,22 +156,22 @@ export const MENUS: readonly Menu[] = [
     title: "Design",
     entries: [
       run("Check DRC", "checkDrc"),
-      later("Design rules", "Comes in round 5; for now edit rules.yaml in the project"),
+      later("Design rules", `${WAITS_FOR_ROUTING}; for now edit rules.yaml in the project`),
       "separator",
       run("Highlight net", "highlight", "H"),
       run("Clear highlight", "clearHighlight", "Shift+H"),
       "separator",
-      later("Annotate designators", "Comes in round 5; for now Studio picks the next free name when placing"),
-      later("Placement transfer", STAGE_3, "Ctrl+Shift+X"),
+      later("Annotate designators", `${WAITS_FOR_BLOCKS}; for now Studio picks the next free name when placing`),
+      later("Placement transfer", WAITS_FOR_BLOCKS, "Ctrl+Shift+X"),
     ],
   },
   {
     title: "Route",
     entries: [
-      later("Single routing", STAGE_4, "Alt+W"),
-      later("Via", STAGE_4, "Alt+V"),
-      later("Routing corner", STAGE_4, "L"),
-      later("Auto routing", STAGE_5),
+      later("Single routing", WAITS_FOR_ROUTING, "Alt+W"),
+      later("Via", WAITS_FOR_ROUTING, "Alt+V"),
+      later("Routing corner", WAITS_FOR_ROUTING, "L"),
+      later("Auto routing", WAITS_FOR_AUTOROUTER),
     ],
   },
   {
@@ -202,15 +199,15 @@ export const MENUS: readonly Menu[] = [
   },
   {
     title: "Tools",
-    entries: [run("History", "history"), later("Footprint manager", "Comes in round 5; for now edit footprint.yaml files in the project")],
+    entries: [run("History", "history"), later("Footprint manager", `${WAITS_FOR_BLOCKS}; for now edit footprint.yaml files in the project`)],
   },
   {
     title: "Export",
-    entries: [run("BOM", "exportBom"), run("Package", "exportPackage"), later("Gerber", STAGE_6), later("Pick and place (CPL)", STAGE_6), later("PDF", STAGE_6)],
+    entries: [run("BOM", "exportBom"), run("Package", "exportPackage"), later("Gerber", WAITS_FOR_FABRICATION), later("Pick and place (CPL)", WAITS_FOR_FABRICATION), later("PDF", WAITS_FOR_FABRICATION)],
   },
   {
     title: "Settings",
-    entries: [later("System", SETTINGS), later("Hotkeys", SETTINGS)],
+    entries: [later("System", SETTINGS), run("Hotkeys", "keys")],
   },
   {
     title: "Help",

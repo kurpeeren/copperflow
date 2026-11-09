@@ -1,20 +1,23 @@
 import { describe, expect, test } from "vitest"
 import { MENUS, menuItems } from "../studio/src/shell/menus.js"
-import { TOOLBARS, armedCommand, drawToolCommand, buttonPressed, buttonState, hasPressedState, isToolCommand, titleKey, toolbarGroups } from "../studio/src/shell/toolbar.js"
+import { readFileSync } from "node:fs"
+import { TOOLBARS, ROW_FIT_WIDTH, VIEW_SLOT_RESERVE, armedCommand, drawToolCommand, buttonPressed, buttonState, hasPressedState, isToolCommand, rowWidth, titleKey, toolbarGroups, type ToolbarButton } from "../studio/src/shell/toolbar.js"
 import { clearToolState, clickAction, getToolState, setToolState } from "../studio/src/shell/tool-state.js"
 
 const ids = (view: "schematic" | "pcb") => TOOLBARS[view].map((b) => b.id)
+/** The buttons that run a command; the others are pending and carry a reason. */
+const working = (view: "schematic" | "pcb") => TOOLBARS[view].filter((b) => b.command !== undefined)
 const menuByCommand = new Map(MENUS.flatMap(menuItems).flatMap((item) => (item.command ? [[item.command, item] as const] : [])))
 
 describe("toolbar", () => {
   test("the schematic row is in EasyEDA's order", () => {
-    expect(ids("schematic")).toEqual(["undo", "redo", "zoomIn", "zoomOut", "fit", "fitSelection", "fitArea", "gridStyle", "snap", "component", "wire", "bus", "netLabel", "ground", "power", "polyline", "arc", "circle", "rectangle", "text", "rotate", "rotateRight", "alignLeft", "distributeH", "checkDrc"])
-    expect(toolbarGroups("schematic").map((g) => g.length)).toEqual([2, 5, 2, 6, 5, 2, 2, 1])
+    expect(ids("schematic")).toEqual(["undo", "redo", "zoomIn", "zoomOut", "fit", "fitSelection", "fitArea", "gridStyle", "snap", "component", "wire", "bus", "netLabel", "ground", "power", "noConnect", "polyline", "arc", "circle", "rectangle", "text", "rotate", "rotateRight", "alignLeft", "distributeH", "checkDrc"])
+    expect(toolbarGroups("schematic").map((g) => g.length)).toEqual([2, 5, 2, 7, 5, 2, 2, 1])
   })
 
   test("the PCB row is in EasyEDA's order", () => {
-    expect(ids("pcb")).toEqual(["undo", "redo", "zoomIn", "zoomOut", "fit", "fitSelection", "fitArea", "gridStyle", "snap", "unit", "rotate", "rotateRight", "alignLeft", "distributeH", "checkDrc"])
-    expect(toolbarGroups("pcb").map((g) => g.length)).toEqual([2, 5, 3, 2, 2, 1])
+    expect(ids("pcb")).toEqual(["undo", "redo", "zoomIn", "zoomOut", "fit", "fitSelection", "fitArea", "unit", "gridStyle", "snap", "via", "boardOutline", "copperArea", "checkDrc", "singleRouting", "alignLeft", "distributeH", "rotate", "rotateRight", "gerber"])
+    expect(toolbarGroups("pcb").map((g) => g.length)).toEqual([2, 5, 3, 3, 1, 1, 2, 2, 1])
   })
 
   test("Redo sits beside Undo in both rows and runs the Edit menu's Redo", () => {
@@ -27,6 +30,7 @@ describe("toolbar", () => {
   test("the PCB's Unit button shows the unit as its text and runs the menu's Unit", () => {
     const unit = TOOLBARS.pcb.find((b) => b.id === "unit")
     expect(unit).toEqual({ id: "unit", title: "Unit (Q)", text: "unit", command: "toggleUnit", group: 2 })
+    expect(ids("pcb")[ids("pcb").indexOf("unit") + 1]).toBe("gridStyle")
     expect(TOOLBARS.schematic.some((b) => b.command === "toggleUnit")).toBe(false)
   })
 
@@ -43,12 +47,12 @@ describe("toolbar", () => {
   })
 
   test("every button runs a command the menu has", () => {
-    for (const item of [...TOOLBARS.schematic, ...TOOLBARS.pcb]) expect([item.id, menuByCommand.has(item.command)]).toEqual([item.id, true])
+    for (const item of [...working("schematic"), ...working("pcb")]) expect([item.id, item.command !== undefined && menuByCommand.has(item.command)]).toEqual([item.id, true])
   })
 
   test("a title that names a key names the key the menu shows", () => {
-    for (const item of [...TOOLBARS.schematic, ...TOOLBARS.pcb]) {
-      expect([item.id, titleKey(item.title)]).toEqual([item.id, menuByCommand.get(item.command)?.shortcut])
+    for (const item of [...working("schematic"), ...working("pcb")]) {
+      expect([item.id, titleKey(item.title)]).toEqual([item.id, item.command === undefined ? "?" : menuByCommand.get(item.command)?.shortcut])
     }
   })
 
@@ -178,7 +182,7 @@ describe("the drawing tools", () => {
       ["Rectangle (Alt+R)", "rectangle", "drawRectangle"],
       ["Text (Alt+T)", "text", "drawText"],
     ])
-    expect(TOOLBARS.pcb.some((b) => b.command.startsWith("draw"))).toBe(false)
+    expect(TOOLBARS.pcb.some((b) => b.command?.startsWith("draw"))).toBe(false)
   })
 
   test("each shows pressed while armed, and a second click puts it away", () => {
@@ -190,5 +194,72 @@ describe("the drawing tools", () => {
     expect(drawToolCommand("bus")).toBe("drawBus")
     expect(drawToolCommand("text")).toBe("drawText")
     expect(drawToolCommand(null)).toBeNull()
+  })
+})
+
+const PENDING_STAGE = /\(engine stage \d\)/
+type Pending = ToolbarButton & { pending: string }
+const pendingOf = (view: "schematic" | "pcb"): Pending[] => TOOLBARS[view].filter((b): b is Pending => b.pending !== undefined)
+
+describe("the pending buttons", () => {
+  test("the schematic waits only on the No connect flag; the PCB on Via, Board outline, Copper area, Single routing and Gerber", () => {
+    expect(pendingOf("schematic").map((b) => b.id)).toEqual(["noConnect"])
+    expect(pendingOf("pcb").map((b) => b.id)).toEqual(["via", "boardOutline", "copperArea", "singleRouting", "gerber"])
+  })
+
+  test("every pending button has an icon, no command, and a reason that names the engine stage it waits for", () => {
+    for (const item of [...pendingOf("schematic"), ...pendingOf("pcb")]) {
+      expect([item.id, item.command, item.icon !== undefined, PENDING_STAGE.test(item.pending)]).toEqual([item.id, undefined, true, true])
+    }
+  })
+
+  test("routing and copper wait for hand routing (stage 4), Gerber for fabrication outputs (stage 6), the flag for blocks and sheets (stage 3)", () => {
+    const reason = (id: string) => pendingOf("pcb").find((b) => b.id === id)?.pending
+    for (const id of ["via", "boardOutline", "copperArea", "singleRouting"]) expect(reason(id)).toBe("Comes with hand routing (engine stage 4)")
+    expect(reason("gerber")).toBe("Comes with fabrication outputs (engine stage 6)")
+    expect(pendingOf("schematic")[0]?.pending).toBe("Comes with blocks and sheets (engine stage 3)")
+  })
+
+  test("a pending button is disabled whatever is selected, and its tooltip carries the reason", () => {
+    const via = pendingOf("pcb").find((b) => b.id === "via")
+    if (!via) throw new Error("no Via button")
+    expect(buttonState(via, 5)).toEqual({ enabled: false, title: "Via: Comes with hand routing (engine stage 4)" })
+    expect(hasPressedState("undo")).toBe(false)
+  })
+
+  test("a pending button that has a menu item of the same name says the same thing", () => {
+    const byLabel = new Map(MENUS.flatMap(menuItems).map((item) => [item.label.toLowerCase(), item] as const))
+    let matched = 0
+    for (const item of [...pendingOf("schematic"), ...pendingOf("pcb")]) {
+      const entry = byLabel.get(item.title.toLowerCase())
+      if (!entry) continue
+      matched++
+      expect([item.id, entry.pending]).toEqual([item.id, item.pending])
+    }
+    expect(matched).toBeGreaterThanOrEqual(3)
+  })
+
+  test("no text in the menus or the toolbar names a round", () => {
+    for (const file of ["menus.ts", "toolbar.ts"]) {
+      const source = readFileSync(new URL(`../studio/src/shell/${file}`, import.meta.url), "utf8")
+      expect([file, /\bround\s+(\d|N\b)/i.test(source)]).toEqual([file, false])
+    }
+  })
+})
+
+describe("the row at 1280 px", () => {
+  test("each row, with room kept for the canvas's own tools, fits in one row", () => {
+    for (const view of ["schematic", "pcb"] as const) {
+      expect([view, rowWidth(view) + VIEW_SLOT_RESERVE <= ROW_FIT_WIDTH]).toEqual([view, true])
+    }
+  })
+
+  test("the width counts 24px buttons, 2px gaps, 13px separators and the 16px padding", () => {
+    const two: ToolbarButton[] = [
+      { id: "a", title: "A", icon: "undo", command: "undo", group: 0 },
+      { id: "b", title: "B", icon: "redo", command: "redo", group: 1 },
+    ]
+    // padding, two buttons, the gaps either side of the separator, the separator itself.
+    expect(rowWidth("schematic", two)).toBe(16 + 2 * 24 + 2 * 2 + 13)
   })
 })
