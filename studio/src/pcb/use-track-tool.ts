@@ -15,19 +15,22 @@ import { snapPoint, type Camera, type Point } from "./geometry"
 import type { ActiveLayer, LayerVisibility } from "./layers"
 import type { Press } from "./press"
 import { routingStatus } from "./status"
+import { cornerModeName } from "./track-corners"
 import { routeNet } from "./track-rules"
 import { routeTargetAt, type TargetSource } from "./track-targets"
 import {
   addRouteCorner,
   finishRoute,
+  lastPoint,
   layerName,
   nextRouteMode,
   otherLayer,
+  placeViaAt,
   removeRouteCorner,
+  routeCorner,
   routeDrawing,
   startRoute,
   switchRouteLayer,
-  viaPlacement,
   type Finished,
   type Route,
   type RouteDrawing,
@@ -62,17 +65,35 @@ export interface TrackToolInput {
   onArm(): void
 }
 
-/** The armed tool; its own hook, so the canvas's other tools can put it away before the track tool is made. */
+/**
+ * The armed tool and the route being drawn; their own hook, so the canvas's other tools can put the tool away, and the
+ * copper's arrow keys can wait while a route is drawn, before the track tool is made.
+ */
 export function useTrackArm() {
   const [armed, setArmed] = useState<TrackArm>(null)
+  const [route, setRoute] = useState<Route | null>(null)
   const disarm = useCallback(() => setArmed(null), [])
-  return { armed, setArmed, disarm }
+  return { armed, setArmed, disarm, route, setRoute }
 }
 
 interface PendingRoute {
   id: number
   drawing: RouteDrawing
+  /** The net id, so a route may end on (or start from) copper still waiting for its build. */
+  net?: string
   mark?: number
+}
+
+/** The id a target on copper still waiting for its build has (it has no record id yet). */
+const NEW_COPPER = "new"
+
+/** The pending copper as targets: tracks and vias with their net, under the id "new". */
+function pendingCopper(list: readonly PendingRoute[]): TargetSource["copper"] {
+  const of = (entry: PendingRoute) => (entry.net === undefined ? {} : { net: entry.net })
+  return {
+    tracks: list.flatMap((entry) => entry.drawing.tracks.map((track) => ({ id: NEW_COPPER, ...of(entry), ...track }))),
+    vias: list.flatMap((entry) => entry.drawing.vias.map((via) => ({ id: NEW_COPPER, ...of(entry), at: via.at, diameter: via.diameter }))),
+  }
 }
 
 /** Tracks and vias sent and drawn at 70% until the build that reads them is shown; a failed edit's go at once. */
@@ -80,20 +101,24 @@ function usePendingRoutes(builtMark: number | undefined, actions: Actions) {
   const [list, setList] = useState<readonly PendingRoute[]>([])
   const counter = useRef(0)
   useEffect(() => setList((current) => settlePending(current, builtMark)), [builtMark])
-  const drawings = useMemo(() => settlePending(list, builtMark).map((entry) => ({ drawing: entry.drawing, alpha: PENDING_ROUTE_ALPHA })), [list, builtMark])
+  const waiting = useMemo(() => settlePending(list, builtMark), [list, builtMark])
+  const drawings = useMemo(() => waiting.map((entry) => ({ drawing: entry.drawing, alpha: PENDING_ROUTE_ALPHA })), [waiting])
+  const copper = useMemo(() => pendingCopper(waiting), [waiting])
   const send = useCallback(
-    (finished: Finished) => {
+    (finished: Finished, net: string | undefined) => {
       counter.current += 1
       const id = counter.current
-      setList((current) => [...current, { id, drawing: finished.drawing }])
+      setList((current) => [...current, { id, drawing: finished.drawing, ...(net === undefined ? {} : { net }) }])
       void actions.editLayout(finished.edits, finished.summary).then((outcome) =>
         setList((current) => (outcome.ok && outcome.mark !== undefined ? markPending(current, id, outcome.mark) : dropPending(current, id))),
       )
     },
     [actions],
   )
-  return { drawings, send }
+  return { drawings, copper, send }
 }
+
+type Send = (finished: Finished, net: string | undefined) => void
 
 /** What the handlers read on each event: the latest input and route, and the steps they take. */
 interface Latest {
@@ -102,21 +127,31 @@ interface Latest {
   setRoute: Dispatch<SetStateAction<Route | null>>
   /** Sets the route and keeps the active layer on its layer. */
   put(next: Route): void
-  targetAt(world: Point): RouteTarget | undefined
+  /** What is under `world`: tracks on the route's layer only while routing, else (or with `anyLayer`) on any shown layer. */
+  targetAt(world: Point, anyLayer?: boolean): RouteTarget | undefined
   start(target: RouteTarget): void
   changeLayer(next: ActiveLayer): void
   arm(kind: Exclude<TrackArm, null>): void
+  /** Esc or a right click: drops the route, else puts the tool away. */
+  cancel(): void
 }
 
-function targetSource(input: TrackToolInput): TargetSource {
-  return { design: input.design, copper: input.copper, visible: input.layers }
+/** The design's copper (as shown) and the copper sent and waiting for its build. */
+function targetSource(input: TrackToolInput, pending: TargetSource["copper"]): TargetSource {
+  const copper = { tracks: [...input.copper.tracks, ...pending.tracks], vias: [...input.copper.vias, ...pending.vias] }
+  return { design: input.design, copper, visible: input.layers }
 }
 
 /** The steps the keys and the press share, read through `latest`. */
-function useSteps(input: TrackToolInput, route: Route | null, setRoute: Dispatch<SetStateAction<Route | null>>): Latest {
+function useSteps(input: TrackToolInput, pending: TargetSource["copper"]): Latest {
   const { design, actions, onActiveLayer, arm: armState, onArm } = input
-  const targetAt = (world: Point) =>
-    input.camera ? routeTargetAt(targetSource(input), world, TARGET_REACH_PX / input.camera.scale, route?.layer ?? input.activeLayer, { step: input.step, snap: input.snap }) : undefined
+  const { route, setRoute } = armState
+  // Before a route starts, a track on either shown layer may start it (its layer becomes the route's).
+  const targetAt = (world: Point, anyLayer = route === null) => {
+    if (!input.camera) return undefined
+    const layer = anyLayer ? undefined : (route?.layer ?? input.activeLayer)
+    return routeTargetAt(targetSource(input, pending), world, TARGET_REACH_PX / input.camera.scale, layer, { step: input.step, snap: input.snap })
+  }
   const put = (next: Route) => {
     setRoute(next)
     if (next.layer !== input.activeLayer) onActiveLayer(next.layer)
@@ -137,12 +172,13 @@ function useSteps(input: TrackToolInput, route: Route | null, setRoute: Dispatch
     setRoute(null)
     armState.setArmed(kind)
   }
-  return { input, route, setRoute, put, targetAt, start, changeLayer, arm }
+  const cancel = () => (route ? setRoute(null) : armState.disarm())
+  return { input, route, setRoute, put, targetAt, start, changeLayer, arm, cancel }
 }
 
 /** W or Alt+W arms routing (and over a pad starts there), Alt+V the via; while routing Space, V, Backspace and Esc. */
 function onTrackKey(latest: Latest, event: KeyboardEvent): void {
-  const { input, route, setRoute } = latest
+  const { input, route } = latest
   const press = keyInput(event)
   const take = () => {
     event.preventDefault()
@@ -150,7 +186,7 @@ function onTrackKey(latest: Latest, event: KeyboardEvent): void {
   }
   if (escapeDisarms(press) && (route || input.arm.armed)) {
     take()
-    return route ? setRoute(null) : input.arm.disarm()
+    return latest.cancel()
   }
   const hit = keyAction(press, { view: "pcb", drawing: route !== null })
   if (!hit) return
@@ -159,7 +195,7 @@ function onTrackKey(latest: Latest, event: KeyboardEvent): void {
     if (route) return
     latest.arm(hit.action === "route" ? "route" : "via")
     const under = hit.action === "route" && input.cursor ? latest.targetAt(input.cursor) : undefined
-    if (under?.kind === "pad") latest.start(under)
+    if (under) latest.start(under)
     return
   }
   if (hit.action === "switchLayer") {
@@ -180,40 +216,39 @@ function useTrackKeys(latest: RefObject<Latest>): void {
   }, [latest])
 }
 
-/** Route → Via: a via at the grid point under the press, on the net of the pad or track there, if any. */
-function placeVia(latest: Latest, world: Point, send: (finished: Finished) => void): void {
+/** Route → Via: a via on the pad or track under the pointer (taking its net), else at the grid point with none. */
+function placeVia(latest: Latest, world: Point, send: Send): void {
   const { input } = latest
-  const at = snapPoint(world, input.step, input.snap)
-  const under = routeTargetAt(targetSource(input), at, 0, undefined)
-  const net = under?.net === undefined ? undefined : routeNet(input.design, under.net)
-  send(viaPlacement(at, net))
+  const target = latest.targetAt(world, true)
+  const placed = placeViaAt(target, snapPoint(world, input.step, input.snap), (id) => routeNet(input.design, id))
+  if ("message" in placed) return input.actions.notify(placed.message)
+  send(placed, target?.net)
 }
 
 /** A click while routing: a pad, track or via finishes the route (or says why it cannot), else a corner goes on the grid. */
-function clickRoute(latest: Latest, world: Point, send: (finished: Finished) => void): void {
+function clickRoute(latest: Latest, world: Point, send: Send): void {
   const { input, route } = latest
   const target = latest.targetAt(world)
   if (!route) {
     if (target) latest.start(target)
     return
   }
-  if (!target) return latest.put(addRouteCorner(route, snapPoint(world, input.step, input.snap)))
+  if (!target) return latest.put(addRouteCorner(route, routeCorner(lastPoint(route), world, input)))
   const end = finishRoute(route, target)
   if (!end) return
   if ("message" in end) return input.actions.notify(end.message)
   latest.setRoute(null)
-  send(end)
+  send(end, route.net.id)
 }
 
-/** A press for the tools; false when it is not theirs (nothing armed, or the middle button), so the canvas pans or picks. */
-function pressTrack(latest: Latest, event: Press, world: Point, send: (finished: Finished) => void): boolean {
-  const { input, route } = latest
-  if (!input.arm.armed || (event.button !== 0 && event.button !== 2)) return false
-  // A right click drops the route, else puts the tool away, as Esc does.
-  if (event.button === 2) {
-    if (route) latest.setRoute(null)
-    else input.arm.disarm()
-  } else if (input.arm.armed === "via") placeVia(latest, world, send)
+/**
+ * A left press for the tools; false when it is not theirs (nothing armed, or another button), so the canvas pans or
+ * picks. The right button pans as ever; its click without a move is the canvas's menu, which `cancel` takes instead.
+ */
+function pressTrack(latest: Latest, event: Press, world: Point, send: Send): boolean {
+  const { input } = latest
+  if (!input.arm.armed || event.button !== 0) return false
+  if (input.arm.armed === "via") placeVia(latest, world, send)
   else clickRoute(latest, world, send)
   return true
 }
@@ -222,18 +257,18 @@ function pressTrack(latest: Latest, event: Press, world: Point, send: (finished:
 function previewOf(latest: Latest, cursor: Point | undefined): RouteDrawing | undefined {
   const { route, input } = latest
   if (!route || !cursor) return undefined
-  return routeDrawing(route, latest.targetAt(cursor)?.at ?? snapPoint(cursor, input.step, input.snap))
+  return routeDrawing(route, latest.targetAt(cursor)?.at ?? routeCorner(lastPoint(route), cursor, input))
 }
 
 const hintOf = (armed: TrackArm, route: Route | null, active: ActiveLayer): string | undefined => {
   if (armed === "via") return "Via: click to place one; it takes the net of the pad or track under it. Esc to stop."
-  return armed === "route" && !route ? `Single routing: click a pad to start a track on the ${layerName(active)}. Esc to stop.` : undefined
+  return armed === "route" && !route ? `Single routing: click a pad, a track or a via to start a track on the ${layerName(active)}. Esc to stop.` : undefined
 }
 
 export function useTrackTool(input: TrackToolInput) {
-  const [route, setRoute] = useState<Route | null>(null)
+  const { route, setRoute } = input.arm
   const pending = usePendingRoutes(input.builtMark, input.actions)
-  const steps = useSteps(input, route, setRoute)
+  const steps = useSteps(input, pending.copper)
   const latest = useRef(steps)
   latest.current = steps
   useTrackKeys(latest)
@@ -242,7 +277,7 @@ export function useTrackTool(input: TrackToolInput) {
   // Putting the tool away drops the route; the Layer panel's select changes the route's layer as V does.
   useEffect(() => {
     if (armed !== "route") setRoute(null)
-  }, [armed])
+  }, [armed, setRoute])
   useEffect(() => {
     if (route && route.layer !== input.activeLayer) latest.current.changeLayer(input.activeLayer)
   }, [route, input.activeLayer])
@@ -254,8 +289,10 @@ export function useTrackTool(input: TrackToolInput) {
     routing: route !== null,
     command,
     routes,
-    status: route ? routingStatus(route.net.name, layerName(route.layer), route.net.width) : undefined,
+    status: route ? routingStatus(route.net.name, layerName(route.layer), route.net.width, cornerModeName(route.mode)) : undefined,
     hint: hintOf(armed, route, input.activeLayer),
     press: (event: Press, world: Point) => pressTrack(latest.current, event, world, pending.send),
+    /** A right click without a move while a tool is armed: drops the route, else puts the tool away (no menu). */
+    cancel: () => latest.current.cancel(),
   }
 }

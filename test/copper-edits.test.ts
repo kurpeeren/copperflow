@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { copperLock, copperRemoval, mergeShapes, moveCopper, reshapeEdit, withShapes, type CopperRecords } from "../studio/src/pcb/copper-edits.js"
+import { copperLock, copperNudges, copperRemoval, mergeShapes, moveCopper, reshapeEdit, withShapes, type CopperRecords } from "../studio/src/pcb/copper-edits.js"
 import type { Point } from "../studio/src/pcb/geometry.js"
 
 const p = (x: number, y: number) => ({ x, y })
@@ -117,5 +117,14 @@ describe("copperLock", () => {
     })
     expect(copperLock(records({ locked: ["t0002"] }), ["t0001", "t0002"], false)).toEqual({ edits: [{ kind: "setTrack", id: "t0002", locked: false }], summary: "Unlock t0002" })
     expect(copperLock(records(), ["t0001"], false)).toEqual({ message: "The selected copper is already unlocked." })
+  })
+})
+
+describe("copperNudges", () => {
+  test("the arrows move copper selected on its own, but not while a track is drawn", () => {
+    expect(copperNudges({ copper: ["t0001"], total: 1 }, false)).toBe(true)
+    expect(copperNudges({ copper: ["t0001"], total: 1 }, true)).toBe(false)
+    expect(copperNudges({ copper: ["t0001"], total: 2 }, false)).toBe(false)
+    expect(copperNudges({ copper: [], total: 0 }, false)).toBe(false)
   })
 })

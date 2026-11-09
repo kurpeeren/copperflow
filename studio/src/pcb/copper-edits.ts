@@ -140,3 +140,8 @@ export function copperLock(records: CopperRecords, ids: readonly string[], locke
   if (edits.length === 0) return { message: `The selected copper is already ${locked ? "locked" : "unlocked"}.` }
   return { edits, summary: `${locked ? "Lock" : "Unlock"} ${nameList([...tracks, ...vias].map((item) => item.id))}` }
 }
+
+/** Whether the arrow keys move the selected copper: copper alone is selected and no track is being drawn. */
+export function copperNudges(selection: { copper: readonly string[]; total: number }, routing: boolean): boolean {
+  return !routing && selection.copper.length > 0 && selection.total === selection.copper.length
+}

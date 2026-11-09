@@ -10,7 +10,7 @@ import { Selection, togglesSelection, type SelectionChange } from "../selection"
 import { keyAction, keyInput, nudgeDirection } from "./canvas-keys"
 import { toLocal } from "./canvas-common"
 import type { CopperScene } from "./copper-draw"
-import { copperRemoval, moveCopper, NO_SHAPES, withShapes, type OnPad } from "./copper-edits"
+import { copperNudges, copperRemoval, moveCopper, NO_SHAPES, withShapes, type OnPad } from "./copper-edits"
 import { addPending, dropPending, inFlight, markPending, pendingMoving, pendingShapes, settlePending, type PendingCopper } from "./copper-pending"
 import { copperDragShapes, endCopperDrag, followCopperDrag, groupParts, startCopperDrag, startGroupDrag, type CopperChange, type CopperDrag } from "./copper-gesture"
 import { copperAt } from "./copper-hit"
@@ -49,6 +49,8 @@ export interface CopperInput {
   actions: Actions
   step: number
   snap: boolean
+  /** A track is being drawn: the arrow keys leave the copper alone, as the wire tool's do on the schematic. */
+  routing?: boolean
 }
 
 type Shown = ReturnType<typeof withShapes<Design["pcb"]["tracks"][number], Design["pcb"]["vias"][number]>>
@@ -99,8 +101,8 @@ function useCopperKeys(latest: RefObject<Latest>): void {
     const onKey = (event: KeyboardEvent) => {
       const { input, shown, onPad, send, cancel, inFlight: busy } = latest.current
       if (event.key === "Escape" && cancel()) return event.stopPropagation()
-      const { copper, total } = input.selection
-      if (copper.length === 0 || total !== copper.length) return
+      const { copper } = input.selection
+      if (!copperNudges(input.selection, input.routing === true)) return
       const hit = keyAction(keyInput(event), { view: "pcb" })
       const direction = hit && nudgeDirection(hit.action)
       if (!hit || !direction) return

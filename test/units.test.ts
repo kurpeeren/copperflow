@@ -94,7 +94,7 @@ describe("statusParts and snap", () => {
 
 describe("routingStatus", () => {
   test("names the net, the layer and the width, and the keys", () => {
-    expect(routingStatus("VBUS", "Top Layer", 0.25)).toBe("Routing VBUS on Top Layer, 0.25 mm — Space corner, V layer+via, Esc")
-    expect(routingStatus("GND", "Bottom Layer", 0.6)).toBe("Routing GND on Bottom Layer, 0.6 mm — Space corner, V layer+via, Esc")
+    expect(routingStatus("VBUS", "Top Layer", 0.25, "45°")).toBe("Routing VBUS on Top Layer, 0.25 mm, 45° — Space corner, V layer+via, Esc")
+    expect(routingStatus("GND", "Bottom Layer", 0.6, "90°")).toBe("Routing GND on Bottom Layer, 0.6 mm, 90° — Space corner, V layer+via, Esc")
   })
 })

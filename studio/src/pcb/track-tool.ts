@@ -6,7 +6,7 @@
 import type { LayoutEdit } from "../../../src/core/layout-records.js"
 import type { CopperLayer } from "../../../src/core/layout-file.js"
 import { DEFAULT_CLASS } from "../../../src/engine/rules/profiles.js"
-import type { Point } from "./geometry.js"
+import { snapPosition, type Point } from "./geometry.js"
 import { nextCornerMode, routePoints, type CornerMode } from "./track-corners.js"
 import type { RouteNet } from "./track-rules.js"
 
@@ -49,7 +49,7 @@ export interface Route {
 
 export interface StartContext {
   activeLayer: RouteLayer
-  /** The locked parts: a track may not start on their pads (the core's rule). */
+  /** The locked parts: a track may not start on their pads (the core refuses it too: src/core/layout-locks.ts lockedStart). */
   locked: ReadonlySet<string>
   netOf(id: string): RouteNet | undefined
 }
@@ -62,17 +62,40 @@ export interface RouteDrawing {
 
 export type Message = { message: string }
 
-export function startRoute(target: RouteTarget, context: StartContext): { route: Route } | Message {
-  if (target.kind !== "pad") return { message: "Start a track on a pad" }
-  if (context.locked.has(target.part)) return { message: `${target.part} is locked: a track may not start on its pads. Unlock it first.` }
-  const net = target.net === undefined ? undefined : context.netOf(target.net)
-  if (!net) return { message: `${target.label} is on no net; connect it in the schematic first` }
-  const through = target.layer === "through"
-  const layer = target.layer === "through" ? context.activeLayer : target.layer
-  return { route: { net, start: { label: target.label, at: target.at, through }, layer, mode: "45", corners: [] } }
+/** Where a route may start, or why not: a pad, a track (at the meeting point) or a via, on a net. */
+function startOf(target: RouteTarget, context: StartContext): { start: RouteStart; layer: RouteLayer } | Message {
+  if (target.kind === "pad") {
+    if (context.locked.has(target.part)) return { message: `${target.part} is locked: a track may not start on its pads. Unlock it first.` }
+    const through = target.layer === "through"
+    return { start: { label: target.label, at: target.at, through }, layer: target.layer === "through" ? context.activeLayer : target.layer }
+  }
+  const label = `${target.kind} ${target.id}`
+  if (target.kind === "via") return { start: { label, at: target.at, through: true }, layer: context.activeLayer }
+  if (target.layer !== "top" && target.layer !== "bottom") return { message: `${label} is on ${layerName(target.layer)}, which cannot be routed yet` }
+  return { start: { label, at: target.at, through: false }, layer: target.layer }
 }
 
-const lastPoint = (route: Route): Point => route.corners.at(-1)?.at ?? route.start.at
+/** A route from a pad, a track or a via, on its net (the net's width) and layer. */
+export function startRoute(target: RouteTarget, context: StartContext): { route: Route } | Message {
+  const net = target.net === undefined ? undefined : context.netOf(target.net)
+  const name = target.kind === "pad" ? target.label : `${target.kind} ${target.id}`
+  if (!net) return { message: `${name} is on no net; connect it in the schematic first` }
+  const from = startOf(target, context)
+  if ("message" in from) return from
+  return { route: { net, start: from.start, layer: from.layer, mode: "45", corners: [] } }
+}
+
+/**
+ * Where a click (or the pointer) puts the next corner: on the grid while Snap is on, but on the last point's x or y
+ * when the pointer is within half a grid step of it, so a leg from an off-grid pad centre runs straight, with no jog.
+ */
+export function routeCorner(last: Point, world: Point, grid: { step: number; snap: boolean }): Point {
+  if (!grid.snap) return world
+  const axis = (a: "x" | "y") => (Math.abs(world[a] - last[a]) < grid.step / 2 ? last[a] : snapPosition(world[a], grid.step))
+  return { x: axis("x"), y: axis("y") }
+}
+
+export const lastPoint = (route: Route): Point => route.corners.at(-1)?.at ?? route.start.at
 const samePoint = (a: Point, b: Point): boolean => a.x === b.x && a.y === b.y
 
 export function addRouteCorner(route: Route, at: Point): Route {
@@ -124,7 +147,11 @@ export function routeDrawing(route: Route, end: Point): RouteDrawing {
   return drawing
 }
 
-/** The layout edits of a drawing, in path order: each track, then the via at its end. */
+/**
+ * The layout edits of a drawing, in path order: each track, then the via at its end. `vias[i]` sits at the end of
+ * `tracks[i]` because no run but the last can be empty: addRouteCorner refuses a repeated point, so every run before
+ * a layer change has a leg of its own (the last run, ended where its via is, is the only one dropped).
+ */
 export function drawingEdits(drawing: RouteDrawing, net: string | undefined): LayoutEdit[] {
   const named = net === undefined ? {} : { net }
   const at = (i: number): LayoutEdit[] => {
@@ -161,6 +188,16 @@ export function finishRoute(route: Route, target: RouteTarget): Finished | Messa
   if (why) return { message: why }
   const drawing = routeDrawing(route, target.at)
   return { edits: drawingEdits(drawing, route.net.name), summary: `Route ${route.net.name} from ${route.start.label} to ${targetName(target)}`, drawing }
+}
+
+/**
+ * Route → Via at a click: on a pad at its centre and on a track at the meeting point, taking their net; on nothing at
+ * the grid point `snapped`, with no net; refused on a via.
+ */
+export function placeViaAt(target: RouteTarget | undefined, snapped: Point, netOf: (id: string) => RouteNet | undefined): Finished | Message {
+  if (target?.kind === "via") return { message: `Via ${target.id} is already there` }
+  const net = target?.net === undefined ? undefined : netOf(target.net)
+  return viaPlacement(target ? target.at : snapped, net)
 }
 
 /** Route → Via: a via at `at` on the net under it (none when nothing is), sized by that net's class. */
