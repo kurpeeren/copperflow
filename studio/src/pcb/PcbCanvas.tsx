@@ -23,7 +23,9 @@ import { useFitSelection } from "./use-fit-selection"
 import { useBoxToolState, useNoteTool } from "./use-note-tool"
 import { usePartKeys, type PartKeysInput } from "./use-part-keys"
 import type { CopperScene } from "./copper-draw"
-import { copperCursor, copperPress, hoverCopper, useCopper, withCopperDrag } from "./use-copper"
+import { copperBoxes } from "./copper-hit"
+import { copperCursor, copperIdAt, copperPress, hoverCopper, useCopper, withCopperDrag, type CopperParts } from "./use-copper"
+import { anchorLookup, moveEach, sendGroupEditMarked } from "./group-edits"
 
 const BACKGROUND = PALETTE.background
 
@@ -160,6 +162,32 @@ function PcbSurface({ canvasRef, size, cursorStyle, pointer, onLeave, hint }: Pc
   )
 }
 
+interface CopperPartsInput {
+  parts: ReturnType<typeof usePlacedParts>
+  circuit: CircuitData
+  actions: CanvasProps["actions"]
+  selection: Selection
+  armed: PickContext["armed"]
+  pick: PickLayers
+  pickFilter: PickFilter
+}
+
+/** What a drag of parts and copper together asks of the board's parts (use-copper.ts CopperParts). */
+function useCopperParts({ parts, circuit, actions, selection, armed, pick, pickFilter }: CopperPartsInput): CopperParts {
+  return useMemo(
+    () => ({
+      selectedAt: (world: Point) => {
+        const target = targetAt(parts.boxes, undefined, world, { selection, armed, layers: pick, filter: pickFilter })
+        return target.kind === "part" && selection.has(target.name) ? target.name : undefined
+      },
+      originOf: (name: string) => parts.anchors.get(name)?.origin ?? parts.boxes.find((box) => box.name === name)?.center ?? { x: 0, y: 0 },
+      blockerFor: parts.blockerFor,
+      move: (names: readonly string[], offset: Point) => sendGroupEditMarked(moveEach(circuit, names, "pcb", anchorLookup(parts.anchors, parts.boxes), offset, parts.blockerFor), actions),
+    }),
+    [parts, circuit, actions, selection, armed, pick, pickFilter],
+  )
+}
+
 /** The board outline's bounds, or the parts' when there is no outline. */
 function useBoardBounds(design: Design, boxes: PartBox[]) {
   return useMemo(() => pointBounds(design.pcb.board?.outline ?? []) ?? unionBoxes(boxes.map((b) => b.box)), [design, boxes])
@@ -183,13 +211,16 @@ export function PcbCanvas(props: CanvasProps) {
   const note = useNoteTool()
   useBoxToolState(note.which, note.disarm)
   const tool = { armed: note.tool, disarm: note.disarm }
-  const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, snap, builtFrom, selection, tool, layers: pick, filter: pickFilter, onContextMenu: props.onContextMenu })
-  const copper = useCopper({ design, builtFrom, camera, size, canvas: canvasRef, layers, filter: pickFilter, armed: note.tool, selection, onSelect, actions, step, snap })
+  const copperParts = useCopperParts({ parts, circuit, actions, selection, armed: note.tool, pick, pickFilter })
+  const copper = useCopper({ design, builtMark, parts: copperParts, camera, size, canvas: canvasRef, layers, filter: pickFilter, armed: note.tool, selection, onSelect, actions, step, snap })
+  const copperAreas = useMemo(() => copperBoxes(copper.shown, layers), [copper.shown, layers])
+  const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, snap, builtFrom, selection, tool, layers: pick, copper: copperAreas, copperAt: (world) => copperIdAt(copper, world), filter: pickFilter, onContextMenu: props.onContextMenu })
   const layout = useLayout(parts, step, snap)
   const menuPlace = useKeyMenuPlace(canvasRef, selection.primary, parts.boxes, camera, size)
   const { rotateHeld } = usePcbKeys(design, cursor, layers, { ...common, selection, layout, builtMark, buildStatus, moveWaiting: gestures.pending !== undefined, fit, onHighlight, menuPlace, onContextMenu: props.onContextMenu, copper: copper.keys })
   const hover = usePcbHover(design, parts.boxes, pick, pickFilter)
-  const { moving, gesture } = gestures
+  const { gesture } = gestures
+  const moving = copper.moving ? { names: copper.moving.names, offset: copper.moving.offset } : gestures.moving
   usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad: hover.pad, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, highlightNets: highlight, markers, activeViolation, grid, copper: copper.scene })
   // Copper is above the pads and parts: what is under the pointer there is the track or via.
   const open = (world: Point) => {

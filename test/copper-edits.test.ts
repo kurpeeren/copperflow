@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { copperRemoval, mergeShapes, moveCopper, reshapeEdit, withShapes, type CopperRecords } from "../studio/src/pcb/copper-edits.js"
+import { copperLock, copperRemoval, mergeShapes, moveCopper, reshapeEdit, withShapes, type CopperRecords } from "../studio/src/pcb/copper-edits.js"
 import type { Point } from "../studio/src/pcb/geometry.js"
 
 const p = (x: number, y: number) => ({ x, y })
@@ -103,5 +103,19 @@ describe("shapes in place of the records' own", () => {
     expect(shown.tracks[0]).toMatchObject({ id: "t0001", layer: "top", points: [p(0, 0), p(2, 2)] })
     expect(shown.tracks[1]?.points).toEqual([p(10, 5), p(20, 5), p(20, 0)])
     expect(shown.vias[0]).toMatchObject({ id: "v0001", at: p(1, 1), diameter: 0.6 })
+  })
+})
+
+describe("copperLock", () => {
+  test("Lock sets locked on each selected track and via not locked yet; Unlock the reverse; nothing to change says so", () => {
+    expect(copperLock(records({ locked: ["t0002"] }), ["t0001", "t0002", "v0001"], true)).toEqual({
+      edits: [
+        { kind: "setTrack", id: "t0001", locked: true },
+        { kind: "setVia", id: "v0001", locked: true },
+      ],
+      summary: "Lock t0001 and v0001",
+    })
+    expect(copperLock(records({ locked: ["t0002"] }), ["t0001", "t0002"], false)).toEqual({ edits: [{ kind: "setTrack", id: "t0002", locked: false }], summary: "Unlock t0002" })
+    expect(copperLock(records(), ["t0001"], false)).toEqual({ message: "The selected copper is already unlocked." })
   })
 })

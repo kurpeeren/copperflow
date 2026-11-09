@@ -78,6 +78,12 @@ function CopperRowView({ row, locked, onCommit }: { row: CopperRow; locked: bool
               {choice.label}
             </option>
           ))}
+          {/* An inner layer has no Layer panel row yet: it is shown, and can be left, but not chosen. */}
+          {!LAYER_CHOICES.some((choice) => choice.value === row.value) && (
+            <option value={row.value} disabled>
+              {row.value === "inner1" ? "Inner Layer 1" : "Inner Layer 2"}
+            </option>
+          )}
         </select>
       </Row>
     )

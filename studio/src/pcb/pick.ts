@@ -74,6 +74,11 @@ export function pickDrawings(ids: readonly string[], context: PickContext): stri
   return kindAllowed("drawings", context) ? [...ids] : []
 }
 
+/** The tracks and vias among `items` that may be picked (the Filter tab's Tracks and Vias rows), as ids in their order. */
+export function pickCopper(items: readonly { kind: "track" | "via"; id: string }[], context: PickContext): string[] {
+  return picks(items.map(({ kind, id }) => ({ kind, id })), context).map((item) => item.id)
+}
+
 /**
  * Select all: every part of the circuit that may be picked, each once; on the PCB, not those on hidden layers, none
  * while Parts is off. On the schematic `wires`, `labels` and `drawings` are the sheet's wires, its net labels and flags
@@ -86,9 +91,10 @@ export function selectAll(
   wires: readonly string[] = [],
   labels: readonly string[] = [],
   drawings: readonly string[] = [],
+  copper: readonly { kind: "track" | "via"; id: string }[] = [],
 ): SelectionChange {
   return (current) => {
     const context = { selection: current, armed: null, layers, filter }
-    return current.all(pickNames(names, context), pickWires(wires, context), pickLabels(labels, context), pickDrawings(drawings, context))
+    return current.all(pickNames(names, context), pickWires(wires, context), pickLabels(labels, context), pickDrawings(drawings, context), pickCopper(copper, context))
   }
 }

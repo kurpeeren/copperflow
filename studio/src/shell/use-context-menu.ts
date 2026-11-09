@@ -45,6 +45,12 @@ function wireMenuReasons(id: string, after: Selection, design: Design | undefine
   return design && circuit ? wireReasons(design, circuit, id, locked) : undefined
 }
 
+/** Whether every selected track and via is locked, so the menu offers Unlock. */
+function copperAllLocked(design: Design | undefined, ids: readonly string[]): boolean {
+  const items = [...(design?.pcb.tracks ?? []), ...(design?.pcb.vias ?? [])].filter((item) => ids.includes(item.id))
+  return items.length > 0 && items.every((item) => item.locked)
+}
+
 export function useContextMenu(input: Input): ContextMenuState {
   const { circuit, design, selection, onSelect, run, openProperties, onHighlight } = input
   const [request, setRequest] = useState<Request | null>(null)
@@ -63,7 +69,8 @@ export function useContextMenu(input: Input): ContextMenuState {
     const after = contextSelection(selection, request.target)
     const { target } = request
     const wire = target.kind === "wire" ? wireMenuReasons(target.id, after, design, circuit, locked) : undefined
-    return { entries: contextItems(target, { allLocked: allLocked(after.names, locked), selected: after.size, wire }), at: request.at }
+    const copperLocked = target.kind === "copper" && copperAllLocked(design, after.copper)
+    return { entries: contextItems(target, { allLocked: allLocked(after.names, locked), selected: after.size, wire, copperLocked }), at: request.at }
   }, [request, circuit, design, selection])
   const runItem = useCallback(
     (item: ContextItem) => {

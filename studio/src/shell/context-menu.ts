@@ -1,4 +1,5 @@
-// The right-click menu as data: its items for each target (a part, a net label, a wire or a drawing on the schematic, the empty canvas),
+// The right-click menu as data: its items for each target (a part, a net label, a wire or a drawing on the schematic, a
+// track or via on the PCB, the empty canvas),
 // where it opens so it stays inside the window, and what a right click does to the selection. Items that have a
 // command run it through the same path as the menu bar; the few that need the canvas or the target are "special".
 import type { ContextTarget } from "../pcb/press.js"
@@ -31,6 +32,8 @@ export interface ContextState {
   selected: number
   /** On a wire: why Delete and Remove corners cannot run (wire-actions.ts), shown as their disabled reason. */
   wire?: WireReasons
+  /** On copper: every selected track and via is locked, so the item offers Unlock. */
+  copperLocked?: boolean
 }
 
 const run = (label: string, command: CommandId, shortcut?: string): ContextItem => (shortcut ? { label, command, shortcut } : { label, command })
@@ -105,9 +108,15 @@ const LABEL_ITEMS: readonly ContextEntry[] = [
   { label: "Highlight net", special: "highlightNet" },
 ]
 
+/** On a track or via: Properties, Lock or Unlock (the selected copper), Delete. */
+function copperItems(locked: boolean | undefined): ContextEntry[] {
+  return [{ label: "Properties", special: "properties" }, "separator", locked ? run("Unlock", "unlock") : run("Lock", "lock"), "separator", run("Delete", "delete", "Delete")]
+}
+
 /** The items for a right click on `target`. */
 export function contextItems(target: ContextTarget, state: ContextState): ContextEntry[] {
   if (target.kind === "part") return partItems(state)
+  if (target.kind === "copper") return copperItems(state.copperLocked)
   if (target.kind === "wire") return wireItems(state.wire)
   if (target.kind === "drawing") return [...DRAWING_ITEMS]
   return [...(target.kind === "label" ? LABEL_ITEMS : CANVAS_ITEMS)]
@@ -128,6 +137,7 @@ export function contextSelection(selection: Selection, target: ContextTarget): S
   if (target.kind === "drawing") return selection.hasDrawing(target.id) ? selection : selection.onlyDrawing(target.id)
   if (target.kind === "wire") return selection.hasWire(target.id) ? selection : selection.onlyWire(target.id)
   if (target.kind === "label") return selection.hasLabel(target.label.id) ? selection : selection.onlyLabel(target.label.id)
+  if (target.kind === "copper") return selection.hasCopper(target.id) ? selection : selection.onlyCopper(target.id)
   return target.kind === "part" && !selection.has(target.name) ? selection.only(target.name) : selection
 }
 

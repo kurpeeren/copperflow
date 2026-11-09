@@ -5,6 +5,7 @@
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { Selection, SelectionChange } from "../selection.js"
 import { boxMode, boxSelection, labelsInBox, partsInBox, wiresInBox } from "./box-select.js"
+import { copperInBox, type CopperArea } from "./copper-hit.js"
 import { drawingsInBox, type DrawingHit } from "./drawing-hit.js"
 import { hitsAt, roundPosition, screenToWorld, snapPosition, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
 import type { PickLayers } from "./layers.js"
@@ -117,6 +118,10 @@ export interface GestureInput {
   follow?: WireFollow
   /** The PCB's layers, which decide what a click or a box may pick; the schematic has none. */
   layers?: PickLayers
+  /** The PCB's shown tracks and vias with their boxes, which a selection box takes by its direction rule. */
+  copper?: readonly CopperArea[]
+  /** The PCB's track or via under a point, which a right click's menu is for (the left press on copper is the canvas's own). */
+  copperAt?(world: Point): string | undefined
   /** The Filter tab: the kinds a click or a box may pick. */
   filter?: PickFilter
   /** The canvas tool that takes a left press while armed, and how to put it away. */
@@ -231,6 +236,9 @@ function underOf(target: ContextTarget, selection: Selection): Under {
 function pressedAt(input: GestureInput, world: Point, camera: Camera): { target: ContextTarget; under: Under; corner?: number } {
   const handle = handleUnder(input.wires?.drag, pickContext(input), world, camera.scale)
   if (handle) return { target: { kind: "wire", id: handle.id }, under: "wireCorner", corner: handle.index }
+  const copper = input.copperAt?.(world)
+  // Only a right or middle press reaches here on copper; for those, "empty" is what the press does (pan or the menu).
+  if (copper !== undefined) return { target: { kind: "copper", id: copper }, under: "empty" }
   const target = targetAt(input.boxes, input.labels, world, pickContext(input), input.wires, input.drawings)
   return { target, under: underOf(target, input.selection) }
 }
@@ -424,6 +432,7 @@ function endBox(input: GestureInput, done: Extract<Gesture, { kind: "box" }>, ca
     wires: wiresInBox(input.wires?.lines ?? [], corners[0], corners[1], mode),
     labels: labelsInBox(input.labels?.boxes ?? [], corners[0], corners[1], mode),
     drawings: drawingsInBox(input.drawings?.boxes ?? [], corners[0], corners[1], mode),
+    copper: copperInBox(input.copper ?? [], corners[0], corners[1], mode),
   }
   input.onSelect(boxSelection(found, done.adds, input.tool.armed, input.layers, input.filter))
 }

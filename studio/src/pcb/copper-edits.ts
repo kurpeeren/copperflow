@@ -5,6 +5,7 @@ import type { LayoutEdit } from "../../../src/core/layout-records.js"
 import type { PcbTrack, PcbVia } from "../../../src/engine/pcb.js"
 import type { Point } from "./geometry.js"
 import { tidyTrack } from "./copper-geometry.js"
+import { nameList } from "./group-edits.js"
 import { carryPath } from "./wire-geometry.js"
 
 /** The copper as these edits need it. */
@@ -128,4 +129,14 @@ export function withShapes<T extends { id: string; points: readonly Point[] }, V
       return at ? { ...via, at } : via
     }),
   }
+}
+
+/** Lock or Unlock on the selected tracks and vias: one change for those not so already, or why there is nothing to do. */
+export function copperLock(records: CopperRecords, ids: readonly string[], locked: boolean): { edits: LayoutEdit[]; summary: string } | { message: string } {
+  const chosen = new Set(ids)
+  const tracks = records.tracks.filter((track) => chosen.has(track.id) && track.locked !== locked)
+  const vias = records.vias.filter((via) => chosen.has(via.id) && via.locked !== locked)
+  const edits: LayoutEdit[] = [...tracks.map((t): LayoutEdit => ({ kind: "setTrack", id: t.id, locked })), ...vias.map((v): LayoutEdit => ({ kind: "setVia", id: v.id, locked }))]
+  if (edits.length === 0) return { message: `The selected copper is already ${locked ? "locked" : "unlocked"}.` }
+  return { edits, summary: `${locked ? "Lock" : "Unlock"} ${nameList([...tracks, ...vias].map((item) => item.id))}` }
 }

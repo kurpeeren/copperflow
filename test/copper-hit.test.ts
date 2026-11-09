@@ -1,8 +1,9 @@
 import { describe, expect, test } from "vitest"
-import { copperAt, copperGrip, copperShown, type CopperShapes } from "../studio/src/pcb/copper-hit.js"
+import { boxSelection } from "../studio/src/pcb/box-select.js"
+import { copperAt, copperBoxes, copperGrip, copperInBox, copperShown, type CopperShapes } from "../studio/src/pcb/copper-hit.js"
 import { DEFAULT_LAYERS } from "../studio/src/pcb/layers.js"
 import { ALL_PICKABLE } from "../studio/src/pcb/pick-filter.js"
-import type { PickContext } from "../studio/src/pcb/pick.js"
+import { selectAll, type PickContext } from "../studio/src/pcb/pick.js"
 import { Selection } from "../studio/src/selection.js"
 
 // 10 px per mm: the 6 px reach is 0.6 mm from a track's edge or a via's ring.
@@ -69,5 +70,34 @@ describe("copperGrip", () => {
 
   test("nothing when the press is off the track", () => {
     expect(copperGrip(points, { x: 5, y: 5 }, SCALE, true)).toBeUndefined()
+  })
+})
+
+describe("copper in a selection box and in Select all", () => {
+  test("each shown track and via has its box, its copper's width included", () => {
+    expect(copperBoxes(shapes, DEFAULT_LAYERS)).toEqual([
+      { kind: "track", id: "t0001", box: { minX: -0.1, minY: -0.1, maxX: 10.1, maxY: 10.1 } },
+      { kind: "track", id: "t0002", box: { minX: -0.1, minY: 1.9, maxX: 10.1, maxY: 2.1 } },
+      { kind: "via", id: "v0001", box: { minX: 9.7, minY: -0.3, maxX: 10.3, maxY: 0.3 } },
+    ])
+    expect(copperBoxes(shapes, { ...DEFAULT_LAYERS, bottom: false, multiLayer: false }).map((item) => item.id)).toEqual(["t0001"])
+  })
+
+  test("a box takes copper by the direction rule, and the Filter rows decide what it may take", () => {
+    const items = copperBoxes(shapes, DEFAULT_LAYERS)
+    const found = { parts: [], copper: copperInBox(items, { x: -1, y: 1 }, { x: 11, y: 3 }, "inside") }
+    expect(found.copper).toEqual([{ kind: "track", id: "t0002" }])
+    expect(boxSelection(found, false)(Selection.none).copper).toEqual(["t0002"])
+    const touching = copperInBox(items, { x: 11, y: -1 }, { x: 9, y: 1 }, "touching").map((item) => item.id)
+    expect(touching).toEqual(["t0001", "v0001"])
+    const noVias = boxSelection({ parts: [], copper: copperInBox(items, { x: 11, y: -1 }, { x: 9, y: 1 }, "touching") }, true, null, undefined, { ...ALL_PICKABLE, vias: false })
+    expect(noVias(Selection.none.all(["R1"])).copper).toEqual(["t0001"])
+    expect(noVias(Selection.none.all(["R1"])).names).toEqual(["R1"])
+  })
+
+  test("Select all takes the copper it is given, less the kinds the Filter tab has off", () => {
+    const copper = [{ kind: "track" as const, id: "t0001" }, { kind: "via" as const, id: "v0001" }]
+    expect(selectAll(["R1"], undefined, undefined, [], [], [], copper)(Selection.none).copper).toEqual(["t0001", "v0001"])
+    expect(selectAll(["R1"], undefined, { ...ALL_PICKABLE, tracks: false }, [], [], [], copper)(Selection.none).copper).toEqual(["v0001"])
   })
 })

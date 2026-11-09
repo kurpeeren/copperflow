@@ -4,7 +4,8 @@ import type { SelectionChange } from "../selection.js"
 import { pointBounds, type Box, type PartBox, type Point } from "./geometry.js"
 import type { PickLayers } from "./layers.js"
 import type { PickFilter } from "./pick-filter.js"
-import { pickDrawings, pickLabels, pickNames, pickWires } from "./pick.js"
+import type { CopperHit } from "./copper-hit.js"
+import { pickCopper, pickDrawings, pickLabels, pickNames, pickWires } from "./pick.js"
 import type { ArmedTool } from "./press.js"
 import type { WireLine } from "./wire-hit.js"
 
@@ -66,6 +67,8 @@ export interface BoxFound {
   wires?: readonly string[]
   labels?: readonly string[]
   drawings?: readonly string[]
+  /** On the PCB, the tracks and vias (copper-hit.ts copperInBox). */
+  copper?: readonly CopperHit[]
 }
 
 /**
@@ -77,6 +80,7 @@ export function boxSelection(found: BoxFound, adds: boolean, armed: ArmedTool = 
     const context = { selection: current, armed, layers, filter }
     const [parts, wires, labels] = [pickNames(found.parts, context), pickWires(found.wires ?? [], context), pickLabels(found.labels ?? [], context)]
     const drawings = pickDrawings(found.drawings ?? [], context)
-    return adds ? current.add(parts).addWires(wires).addLabels(labels).addDrawings(drawings) : current.all(parts, wires, labels, drawings)
+    const copper = pickCopper(found.copper ?? [], context)
+    return adds ? current.add(parts).addWires(wires).addLabels(labels).addDrawings(drawings).addCopper(copper) : current.all(parts, wires, labels, drawings, copper)
   }
 }

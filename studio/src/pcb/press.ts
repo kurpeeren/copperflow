@@ -129,10 +129,11 @@ export function opensOnDoubleClick(event: { button: number; target: unknown }): 
   return typeof target?.closest !== "function" || !target.closest(CONTROLS)
 }
 
-/** What a right click (or a double click) is on: a part, a net label, a wire or a drawing (by its id) in the schematic, or the empty canvas. */
+/** What a right click (or a double click) is on: a part, a net label, a wire or a drawing (by its id) in the schematic, a track or via on the PCB, or the empty canvas. */
 export type ContextTarget =
   | { kind: "part"; name: string }
   | { kind: "label"; label: NetLabel }
   | { kind: "wire"; id: string }
   | { kind: "drawing"; id: string }
+  | { kind: "copper"; id: string }
   | { kind: "canvas" }

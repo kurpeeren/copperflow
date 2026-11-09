@@ -6,6 +6,7 @@ import { api, type BomLine, type CircuitData } from "../api"
 import { bomCsv, bomFileName } from "./bom-csv"
 import type { Actions } from "../App"
 import { keyAction, keyInput, type KeyActionName } from "../pcb/canvas-keys"
+import { copperLock, type CopperRecords } from "../pcb/copper-edits"
 import { lockChange } from "../pcb/group-edits"
 import type { PickLayers } from "../pcb/layers"
 import { selectAll } from "../pcb/pick"
@@ -47,6 +48,10 @@ interface Input {
   sheetLabels: readonly string[]
   /** On the schematic, the ids of its drawings, which Select all takes too; none on the PCB. */
   sheetDrawings: readonly string[]
+  /** On the PCB, the tracks and vias on shown layers, which Select all takes too; none on the schematic. */
+  pcbCopper: readonly { kind: "track" | "via"; id: string }[]
+  /** On the PCB, the layout file's tracks and vias, which Lock and Unlock change for the copper selected. */
+  copperRecords: CopperRecords | undefined
   workspace: WorkspaceCommands
   openChecks(): void
   /** Opens the find box and focuses its field, or selects the text of the field when the box is open. */
@@ -76,8 +81,20 @@ function exportBom(file: string | undefined, actions: Actions): void {
     .catch((error: Error) => actions.notify(error.message))
 }
 
-/** Locks or unlocks every selected part that is not so already (or, for Lock, was changed outside the editor), in one call. */
+/** Locks or unlocks the selected copper (one layout edit), then the selected parts. */
 function lockSelection(input: Input, locked: boolean): void {
+  const { copper } = input.selection
+  if (copper.length > 0 && input.copperRecords) {
+    const change = copperLock(input.copperRecords, copper, locked)
+    if ("message" in change) input.actions.notify(change.message)
+    else void input.actions.editLayout(change.edits, change.summary)
+    if (input.selection.size === 0) return
+  }
+  lockParts(input, locked)
+}
+
+/** Locks or unlocks every selected part that is not so already (or, for Lock, was changed outside the editor), in one call. */
+function lockParts(input: Input, locked: boolean): void {
   const now = new Set(input.circuit?.annotations.locks.map((lock) => lock.part))
   const violated = new Set(input.circuit?.violations.map((violation) => violation.part))
   const change = lockChange(input.selection.names, now, locked, violated)
@@ -97,7 +114,7 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     redo: () => void input.actions.redo(),
     // Every part of the circuit that may be picked (both views show the same parts, and the circuit is there before a
     // canvas is), and on the schematic every wire of the sheet.
-    selectAll: () => input.select(selectAll(input.circuit?.model.parts.map((part) => part.name) ?? [], input.pickLayers, input.pickFilter, input.sheetWires, input.sheetLabels, input.sheetDrawings)),
+    selectAll: () => input.select(selectAll(input.circuit?.model.parts.map((part) => part.name) ?? [], input.pickLayers, input.pickFilter, input.sheetWires, input.sheetLabels, input.sheetDrawings, input.pcbCopper)),
     find: input.openFind,
     checkDrc: input.openChecks,
     lock: () => lockSelection(input, true),
@@ -133,7 +150,7 @@ function useAppKeys(runCommand: (command: CommandId) => void, view: View): void 
 /** Returns the function the menu bar and toolbar call; it changes only when what the commands read changes. */
 export function useAppCommands(input: Input): (command: CommandId) => void {
   const [waiting, setWaiting] = useState<CommandId | null>(null)
-  const { file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, openChecks, openFind, openDialog } = input
+  const { file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, openChecks, openFind, openDialog } = input
   // The workspace object is new on every render, but its functions are stable.
   const { run, openBottom, openPageTree } = input.workspace
   // A command waiting for the schematic runs once the schematic canvas has mounted and subscribed.
@@ -147,7 +164,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
   }, [waiting, view, actions])
   const runCommand = useCallback(
     (command: CommandId) => {
-      const own = appCommand({ file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, workspace: { run, openBottom, openPageTree }, openChecks, openFind, openDialog }, command)
+      const own = appCommand({ file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, workspace: { run, openBottom, openPageTree }, openChecks, openFind, openDialog }, command)
       if (own) return own()
       if (SCHEMATIC_ONLY.has(command) && view !== "schematic") {
         setView("schematic")
@@ -156,7 +173,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
       }
       if (!send(command)) actions.notify("Wait for the build to finish, then try again.")
     },
-    [file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, run, openBottom, openPageTree, openChecks, openFind, openDialog],
+    [file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, run, openBottom, openPageTree, openChecks, openFind, openDialog],
   )
   useAppKeys(runCommand, view)
   return runCommand

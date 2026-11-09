@@ -181,3 +181,20 @@ describe("target actions", () => {
     expect(createTargetActions().send({ kind: "renameLabel", labelId: "l1" })).toBe(false)
   })
 })
+
+describe("the menu on copper", () => {
+  const track = { kind: "copper" as const, id: "t0001" }
+  test("Properties, Lock (or Unlock when all the selected copper is locked) and Delete", () => {
+    expect(names(contextItems(track, { allLocked: false, selected: 0 }))).toEqual(["Properties", "-", "Lock", "-", "Delete"])
+    const locked = contextItems(track, { allLocked: false, selected: 0, copperLocked: true })
+    expect(names(locked)).toEqual(["Properties", "-", "Unlock", "-", "Delete"])
+    expect(locked.find((entry) => entry !== "separator" && entry.label === "Unlock")).toMatchObject({ command: "unlock" })
+  })
+
+  test("a right click on copper not selected selects it alone; on selected copper the group stays", () => {
+    const group = Selection.none.all(["R1"]).addCopper(["t0001"])
+    expect(contextSelection(group, track)).toBe(group)
+    expect(contextSelection(Selection.none.all(["R1"]), track).copper).toEqual(["t0001"])
+    expect(contextSelection(Selection.none.all(["R1"]), track).names).toEqual([])
+  })
+})

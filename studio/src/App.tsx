@@ -3,6 +3,7 @@ import { hasToken, type CircuitData, type Design } from "./api"
 import { tidyReason } from "./pcb/auto-placed"
 import { NO_HIGHLIGHT, remapHighlight } from "./pcb/highlight"
 import { pickLayersOf } from "./pcb/layers"
+import { copperBoxes } from "./pcb/copper-hit"
 import { drawingAfterBuild, renamedAfterBuild, stableDrawings, type DrawingRename } from "./pcb/drawing-selection"
 import { labelAfterBuild } from "./pcb/label-selection"
 import { shownSelection, wireAfterBuild, withEndPins } from "./pcb/wire-selection"
@@ -192,7 +193,9 @@ function useStudio() {
   const sheetWires = useMemo(() => (tab === "schematic" && sheet ? sheet.wires.map((wire) => wire.id) : []), [tab, sheet])
   const sheetLabels = useMemo(() => (tab === "schematic" && sheet ? sheet.labels.map((label) => label.id) : []), [tab, sheet])
   const sheetDrawings = useMemo(() => (tab === "schematic" && sheet ? sheet.drawings.map((drawing) => drawing.id) : []), [tab, sheet])
-  const sheetIds = { sheetWires, sheetLabels, sheetDrawings }
+  const pcbCopper = useMemo(() => (tab === "pcb" && pcb ? copperBoxes(pcb, workspace.layerVisibility).map(({ kind, id }) => ({ kind, id })) : []), [tab, pcb, workspace.layerVisibility])
+  const copperRecords = tab === "pcb" ? pcb : undefined
+  const sheetIds = { sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords }
   const runCommand = useAppCommands({ file, view: tab, setView: setTab, selection, select, circuit, actions, pickLayers, pickFilter: workspace.pickFilter, ...sheetIds, workspace, openChecks, openFind: find.open, openDialog: setDialog })
   return { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, runCommand }
 }

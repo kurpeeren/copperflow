@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { copperDragShapes, endCopperDrag, followCopperDrag, startCopperDrag } from "../studio/src/pcb/copper-gesture.js"
+import { copperDragShapes, endCopperDrag, followCopperDrag, groupParts, startCopperDrag, startGroupDrag } from "../studio/src/pcb/copper-gesture.js"
 import type { CopperRecords } from "../studio/src/pcb/copper-edits.js"
 
 const p = (x: number, y: number) => ({ x, y })
@@ -75,5 +75,29 @@ describe("a via's drag", () => {
     if (!drag) throw new Error("no drag")
     const moved = followCopperDrag(drag, p(1, 1), GRID, () => undefined)
     expect(endCopperDrag(moved, records(["t0002"]), noPad)).toEqual({ message: "v0001 has the locked track t0002 on it" })
+  })
+})
+
+describe("a drag of parts and copper together", () => {
+  test("pressed on copper, the offset is whole grid steps; the copper moves by it in one change, the parts are named for theirs", () => {
+    const drag = startGroupDrag({ names: ["R1"], copper: ["v0001"], start: p(10, 0) })
+    const moved = followCopperDrag(drag, p(1.3, -0.6), GRID, () => undefined)
+    expect(moved.offset).toEqual(p(1, -1))
+    expect(copperDragShapes(moved, records(), noPad).vias.get("v0001")).toEqual(p(11, -1))
+    expect(groupParts(moved)).toEqual({ names: ["R1"], offset: p(1, -1) })
+    const end = endCopperDrag(moved, records(), noPad)
+    expect(end).toMatchObject({ summary: "Move v0001 by (1, -1)" })
+    expect(end && "edits" in end ? end.edits.map((edit) => ("id" in edit ? edit.id : "")) : []).toEqual(["v0001", "t0001", "t0002"])
+  })
+
+  test("pressed on a part, the part's origin lands on the grid", () => {
+    const drag = startGroupDrag({ names: ["R1"], copper: ["t0001"], start: p(0, 0), origin: p(0.25, 0) })
+    expect(followCopperDrag(drag, p(1, 0), GRID, () => undefined).offset).toEqual(p(0.75, 0))
+  })
+
+  test("not moved, nothing is written for either", () => {
+    const drag = startGroupDrag({ names: ["R1"], copper: ["v0001"], start: p(0, 0) })
+    expect(groupParts(drag)).toBeUndefined()
+    expect(endCopperDrag(drag, records(), noPad)).toBeUndefined()
   })
 })

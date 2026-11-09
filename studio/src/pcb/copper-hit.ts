@@ -4,7 +4,8 @@
 // where it is drawn wider. The Layer panel's rows and the Filter tab decide what may be picked. Plain TypeScript with
 // .js imports, so the tests can run it.
 import type { PcbTrack, PcbVia } from "../../../src/engine/pcb.js"
-import type { Point } from "./geometry.js"
+import { areasInBox, type BoxMode } from "./box-select.js"
+import { roundPosition, type Box, type Point } from "./geometry.js"
 import type { LayerVisibility } from "./layers.js"
 import { canPick, type PickContext } from "./pick.js"
 import { cornerAt, distanceToSegment, segmentAt, WIRE_REACH_PX } from "./wire-hit.js"
@@ -79,4 +80,30 @@ export function copperGrip(points: readonly Point[], p: Point, scale: number, so
   if (corner !== undefined) return { kind: "corner", index: corner }
   const index = segmentAt(points, p, copperReach(width, scale))
   return index === undefined ? undefined : { kind: "segment", index }
+}
+
+/** A shown track or via with the box its copper covers, for a selection box. */
+export type CopperArea = CopperHit & { box: Box }
+
+const padded = (points: readonly Point[], half: number): Box => {
+  const xs = points.map((p) => p.x)
+  const ys = points.map((p) => p.y)
+  const r = (value: number) => roundPosition(value)
+  return { minX: r(Math.min(...xs) - half), minY: r(Math.min(...ys) - half), maxX: r(Math.max(...xs) + half), maxY: r(Math.max(...ys) + half) }
+}
+
+/** The box of each shown track (its points widened by half its width) and via (its ring), tracks first, in file order. */
+export function copperBoxes(shapes: CopperShapes, visible: LayerVisibility): CopperArea[] {
+  const tracks = shapes.tracks.filter((track) => copperShown({ kind: "track", layer: track.layer }, visible))
+  const vias = copperShown({ kind: "via" }, visible) ? shapes.vias : []
+  return [
+    ...tracks.map((track): CopperArea => ({ kind: "track", id: track.id, box: padded(track.points, track.width / 2) })),
+    ...vias.map((via): CopperArea => ({ kind: "via", id: via.id, box: padded([via.at], via.diameter / 2) })),
+  ]
+}
+
+/** The copper a selection box from `a` to `b` takes by the direction rule (box-select.ts), in order. */
+export function copperInBox(areas: readonly CopperArea[], a: Point, b: Point, mode: BoxMode): CopperHit[] {
+  const taken = new Set(areasInBox(areas, a, b, mode))
+  return areas.filter((area) => taken.has(area.id)).map(({ kind, id }) => ({ kind, id }))
 }
