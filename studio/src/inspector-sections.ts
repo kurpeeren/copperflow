@@ -18,6 +18,12 @@ export interface InspectorSection {
   rows: string[]
 }
 
+/**
+ * Where the focus goes when a double click opens Properties on a part: the first property field that can be typed
+ * in, in a section that is open. A locked or read-only part has none, and the focus stays where it was.
+ */
+export const FIRST_FIELD = ".insp-body:not([hidden]) .insp-value input:not([disabled]):not([type=\"checkbox\"])"
+
 /** The props people usually set on each built-in part, with an example value. */
 export const SUGGESTED_PROPS: Record<string, [string, string][]> = {
   resistor: [["resistance", "10k"], ["footprint", "0402"]],

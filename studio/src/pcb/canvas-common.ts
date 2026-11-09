@@ -54,6 +54,8 @@ export interface CanvasProps {
   onFocused(): void
   /** A right click that did not move, on a part, a net label or the empty canvas; `at` is in client pixels. */
   onContextMenu(target: ContextTarget, at: Point): void
+  /** A double click on a part: Properties, open on it. */
+  onOpenProperties(part: string): void
 }
 
 /** Parts drawn away from where the design has them: being dragged, or moved and waiting for their build. */

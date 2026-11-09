@@ -13,12 +13,12 @@ export function paletteHint(palette: Palette): string | undefined {
   return `Click a pin to place ${what}.${naming} Esc or a right click stops.`
 }
 
-/** Opens at a pin (or the pointer) and asks for a net name; Enter places, Esc closes. */
+/** Opens at a pin (or the pointer, or a label to rename its net) and asks for a net name; Enter places or renames, Esc closes. */
 export function NameInput({ palette, camera, size }: { palette: Palette; camera: Camera | undefined; size: Size }) {
   const { editing } = palette
   if (!editing || !camera) return null
   const at = worldToScreen(camera, size, editing.at)
-  return <NameForm key={`${editing.pin ?? "tab"}:${editing.at.x}:${editing.at.y}`} at={at} initial={editing.initial} palette={palette} />
+  return <NameForm key={`${editing.pin ?? editing.rename?.id ?? "tab"}:${editing.at.x}:${editing.at.y}`} at={at} initial={editing.initial} palette={palette} />
 }
 
 function NameForm({ at, initial, palette }: { at: { x: number; y: number }; initial: string; palette: Palette }) {
@@ -39,6 +39,7 @@ function NameForm({ at, initial, palette }: { at: { x: number; y: number }; init
         aria-label="Net name"
         placeholder="Net name"
         value={text}
+        onFocus={(e) => e.currentTarget.select()}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Tab") e.preventDefault()

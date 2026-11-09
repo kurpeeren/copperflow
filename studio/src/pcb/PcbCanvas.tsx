@@ -194,7 +194,11 @@ export function PcbCanvas(props: CanvasProps) {
   const hover = usePcbHover(design, parts.boxes)
   const { moving, gesture } = gestures
   usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad: hover.pad, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, highlightNets: highlight, markers, activeViolation, grid })
-  const pointer = pointerHandlers({ camera, size, element: canvasRef, gestures, setCursor, hover: hover.at })
+  const open = (world: Point) => {
+    const hit = note.armed ? undefined : hitTest(parts.boxes, world)
+    if (hit) props.onOpenProperties(hit.name)
+  }
+  const pointer = pointerHandlers({ camera, size, element: canvasRef, gestures, setCursor, hover: hover.at, open })
   const onLeave = () => {
     hover.leave()
     setCursor(undefined)

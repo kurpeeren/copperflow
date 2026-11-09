@@ -1,9 +1,9 @@
-import { useId, useState } from "react"
+import { useEffect, useId, useRef, useState, type RefObject } from "react"
 import type { BuildState, CircuitData, Design, Literal, PartInfo, PartsData } from "./api"
 import type { Actions } from "./App"
 import { BomSection } from "./BomSection"
 import { checkSummary, type CheckCounts } from "./checks-list"
-import { propertiesView, SUGGESTED_PROPS, type PropertiesView } from "./inspector-sections"
+import { FIRST_FIELD, propertiesView, SUGGESTED_PROPS, type PropertiesView } from "./inspector-sections"
 import { GroupView } from "./InspectorGroup"
 import { MarkForm, NewPropRow, PropRow, Row, Section } from "./InspectorRows"
 import { LibraryInfo } from "./LibraryInfo"
@@ -29,6 +29,9 @@ interface Props {
   onShowChecks(): void
   /** Hidden with the ] key; kept mounted so its fields keep what was typed. */
   hidden: boolean
+  /** Asked for by a double click on a part: move the focus to its first field, then call onFieldFocused. */
+  focusField: boolean
+  onFieldFocused(): void
 }
 
 /** Which sections are collapsed, the way to flip one, and what Properties shows. */
@@ -43,8 +46,19 @@ function selectedParts(circuit: CircuitData, selection: Selection): PartInfo[] {
   return selection.names.flatMap((name) => circuit.model.parts.find((part) => part.name === name) ?? [])
 }
 
+/** Moves the focus to the first property field once one is asked for and the panel shows. */
+function useFieldFocus(panel: RefObject<HTMLElement | null>, requested: boolean, done: () => void): void {
+  useEffect(() => {
+    if (!requested) return
+    panel.current?.querySelector<HTMLInputElement>(FIRST_FIELD)?.focus()
+    done()
+  }, [panel, requested, done])
+}
+
 /** The board's state with nothing selected, a part's properties with one, the shared actions with several. */
 export function Inspector(props: Props) {
+  const panel = useRef<HTMLElement>(null)
+  useFieldFocus(panel, props.focusField, props.onFieldFocused)
   const parts = selectedParts(props.circuit, props.selection)
   const [part] = parts
   const library = parts.length === 1 && part ? props.parts.library.find((p) => p.component === part.tag) : undefined
@@ -59,7 +73,7 @@ export function Inspector(props: Props) {
       return next
     })
   return (
-    <aside className="panel right" id={stripPanelId("right")} role="tabpanel" aria-labelledby={sideTabId("properties")} hidden={props.hidden}>
+    <aside ref={panel} className="panel right" id={stripPanelId("right")} role="tabpanel" aria-labelledby={sideTabId("properties")} hidden={props.hidden}>
       {parts.length > 1 && <GroupView view={view} parts={parts} locks={locks} run={props.run} onClear={() => props.onSelect((current) => current.clear())} collapsed={collapsed} toggle={toggle} />}
       {parts.length === 1 && part && <PartView {...props} view={view} collapsed={collapsed} toggle={toggle} part={part} />}
       {parts.length === 0 && <BoardView {...props} view={view} collapsed={collapsed} toggle={toggle} />}

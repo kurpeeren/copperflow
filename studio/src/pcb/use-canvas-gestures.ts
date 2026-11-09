@@ -1,6 +1,6 @@
 // The canvas gestures' state, shared by the PCB and schematic canvases: the gesture under way (gestures.ts says what
 // each step does), the group move waiting for its build, the pointer handlers and the cursor.
-import { useCallback, useEffect, useMemo, useState, type PointerEvent, type RefObject } from "react"
+import { useCallback, useEffect, useMemo, useState, type MouseEvent, type PointerEvent, type RefObject } from "react"
 import { toLocal, type Moving } from "./canvas-common"
 import { screenToWorld, type Camera, type Point, type Size } from "./geometry"
 import { endGesture, followGesture, startGesture, type Commit, type Gesture, type GestureInput } from "./gestures"
@@ -90,6 +90,8 @@ export interface PointerInput {
   hover(world: Point): void
   /** The view's own tool sees a press first; true when it used it. */
   tool?(event: Press, world: Point): boolean
+  /** A left double click, at a world point. */
+  open?(world: Point): void
 }
 
 /** Pointer handlers: a press goes to the view's tool, else starts a gesture; a move follows the gesture, else updates the hover. */
@@ -110,5 +112,10 @@ export function pointerHandlers(input: PointerInput) {
       if (!input.gestures.move(point)) input.hover(world)
     },
     onPointerUp: (event: PointerEvent<Element>) => input.gestures.release({ x: event.clientX, y: event.clientY }),
+    // Only on the drawing itself: a double click in the label's name input selects a word there.
+    onDoubleClick: (event: MouseEvent<Element>) => {
+      if (!input.camera || event.button !== 0 || !(event.target instanceof HTMLCanvasElement)) return
+      input.open?.(screenToWorld(input.camera, input.size, local(event)))
+    },
   }
 }

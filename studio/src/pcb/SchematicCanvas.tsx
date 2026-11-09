@@ -23,6 +23,7 @@ import { drawSchematic } from "./schematic-draw"
 import { drawingExtents } from "./drawing-extents"
 import { drawSheetBorder } from "./sheet-draw"
 import { firstDrawing, keepSheet, sheetArt, sheetDate, type Sheet, type SheetArt } from "./sheet"
+import { targetAt } from "./gestures"
 import { cursorFor, pointerHandlers, useCanvasGestures, type Gesture, type PointerInput, type Press } from "./use-canvas-gestures"
 import { useDraggedLabel, useLabelDrag, type LabelTools, type MovingLabel } from "./use-label-drag"
 import { useLabelPalette } from "./use-label-palette"
@@ -160,7 +161,7 @@ function SheetView({ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave,
       onPointerLeave={onLeave}
       onContextMenu={(e) => e.preventDefault()}
       role="img"
-      aria-label="Schematic. Drag symbols and net labels to move them, drag the background to select, drag with the right button to pan, scroll to zoom. Click a free pin or press W over a pin to draw a wire."
+      aria-label="Schematic. Drag symbols and net labels to move them, drag the background to select, drag with the right button to pan, scroll to zoom. Double click a net label to rename its net. Click a free pin or press W over a pin to draw a wire."
     >
       <canvas ref={canvasRef} style={{ width: size.width, height: size.height }} />
       {hint && (
@@ -289,16 +290,28 @@ function useSheetNoteTool(wire: WireTool, palette: Palette): NoteTool {
   return note
 }
 
-interface SheetPointerInput extends Omit<PointerInput, "tool"> {
+interface SheetPointerInput extends Omit<PointerInput, "tool" | "open"> {
+  boxes: PartBox[]
+  labels: LabelTools
   wire: WireTool
   palette: Palette
   note: NoteTool
+  onOpenProperties(part: string): void
 }
 
-/** The sheet's pointer: the wire tool and the Place tools see a press first, unless the note tool is armed. */
-function sheetPointer({ wire, palette, note, ...input }: SheetPointerInput) {
+/**
+ * The sheet's pointer: the wire tool and the Place tools see a press first, unless the note tool is armed; a double
+ * click opens Properties on a part, or renames the net of a label, while no tool is armed.
+ */
+function sheetPointer({ boxes, labels, wire, palette, note, onOpenProperties, ...input }: SheetPointerInput) {
   const tool = (event: Press, world: Point) => !note.armed && (palette.press(event, world) || wire.press(event, world))
-  return pointerHandlers({ ...input, tool })
+  const open = (world: Point) => {
+    if (note.armed || palette.armed || wire.wiring || wire.drawing) return
+    const target = targetAt(boxes, labels, world)
+    if (target.kind === "part") onOpenProperties(target.name)
+    if (target.kind === "label") palette.rename(target.label)
+  }
+  return pointerHandlers({ ...input, tool, open })
 }
 
 /**
@@ -330,7 +343,7 @@ export function SchematicCanvas(props: CanvasProps) {
   const { moving, gesture } = gestures
   const movingLabels = useMovingLabels(design, gesture, labels.pending)
   useSheetPaint(canvasRef, { design, border, camera, size, wire, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel: hover.label, palette, highlight, markers, activeViolation, grid })
-  const pointer = sheetPointer({ camera, size, element: wrapRef, gestures, setCursor, hover: hover.at, wire, palette, note })
+  const pointer = sheetPointer({ camera, size, element: wrapRef, gestures, setCursor, hover: hover.at, boxes: parts.boxes, labels: labels.tools, wire, palette, note, onOpenProperties: props.onOpenProperties })
   const cursorStyle = cursorFor(gesture, wire.drawing !== null || wire.overPin || palette.armed || note.armed, hover.part !== undefined || hover.label !== undefined)
   const onLeave = () => {
     hover.leave()

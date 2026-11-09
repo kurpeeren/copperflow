@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest"
-import { endGesture, followGesture, startGesture, type Gesture, type GestureInput } from "../studio/src/pcb/gestures.js"
+import type { NetLabel } from "../src/engine/schematic.js"
+import { endGesture, followGesture, startGesture, targetAt, type Gesture, type GestureInput } from "../studio/src/pcb/gestures.js"
 import { worldToScreen, type Camera, type PartBox, type Point } from "../studio/src/pcb/geometry.js"
 import type { ArmedTool, ContextTarget, Press } from "../studio/src/pcb/press.js"
 import { Selection, type SelectionChange } from "../studio/src/selection.js"
@@ -181,5 +182,20 @@ describe("the Note box tool", () => {
     const c = canvas()
     expect(c.gesture({ shiftKey: true }, screen(-1, 2), screen(3, -2))).toMatchObject({ kind: "box", adds: true })
     expect(c.state.selection.names).toEqual(["R1"])
+  })
+})
+
+describe("what a right click or a double click is on", () => {
+  const label: NetLabel = { id: "label:net.GND:R2.pin2", net: "net.GND", text: "GND", at: { x: 9, y: 0 }, side: "right", style: "ground" }
+  const labels = { at: (p: Point) => (p.x > 8 ? label : undefined), blocker: () => null, commit: () => undefined }
+
+  test("a part, else a net label, else the empty canvas", () => {
+    expect(targetAt(BOXES, labels, { x: 1, y: 0 })).toEqual({ kind: "part", name: "R1" })
+    expect(targetAt(BOXES, labels, { x: 9, y: 0 })).toEqual({ kind: "label", label })
+    expect(targetAt(BOXES, labels, { x: 7, y: 0 })).toEqual({ kind: "canvas" })
+  })
+
+  test("the PCB has no labels, so there is only a part or the canvas", () => {
+    expect(targetAt(BOXES, undefined, { x: 9, y: 0 })).toEqual({ kind: "canvas" })
   })
 })

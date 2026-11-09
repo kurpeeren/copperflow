@@ -67,6 +67,10 @@ function canvasProps({ data, workspace, checks, selection, onSelect, actions }: 
     focus: checks.focus,
     onFocused: checks.focused,
     onContextMenu: NO_CONTEXT_MENU,
+    onOpenProperties: (part) => {
+      onSelect((current) => current.only(part))
+      workspace.openProperties()
+    },
   }
 }
 
@@ -150,6 +154,8 @@ export function Workspace(props: WorkspaceProps) {
           counts={props.checks.counts}
           onShowChecks={props.openChecks}
           hidden={!workspace.rightOpen}
+          focusField={workspace.focusField}
+          onFieldFocused={workspace.fieldFocused}
         />
       )}
       <SideStrip side="right" tabs={RIGHT_STRIP} active={workspace.right.active} open={workspace.right.open} onClick={workspace.clickRight} onSelect={workspace.selectRight} />

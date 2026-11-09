@@ -1,5 +1,6 @@
 // The schematic's Place tools (Net label, GND, VCC): which one is armed, its name, the inline name input, its keys,
-// and the labels waiting for their build. What an edit says is in label-palette.ts.
+// and the labels waiting for their build; the same name input renames a label's net after a double click. What an
+// edit says is in label-palette.ts and label-rename.ts.
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { CircuitData, Design } from "../api"
@@ -7,16 +8,18 @@ import type { Actions } from "../App"
 import { keyAction, keyInput } from "./canvas-keys"
 import type { Camera, Point } from "./geometry"
 import { joinedNet, labelNameFor, nameProblem, pendingLabel, placeLabelEdits, placeSummary, type LabelTool, type PendingLabel } from "./label-palette"
+import { labelRenameEdits } from "./label-rename"
 import { useDisarmKey } from "./use-disarm-key"
 import { pinAt } from "./wire-tool"
 
 const PIN_HIT_PX = 12
 
-/** The name input, open at `at` (sheet units): for a click on `pin`, or before any click when `pin` is undefined. */
+/** The name input, open at `at` (sheet units): for a click on `pin`, to rename the net of `rename`, or before any click when neither is set. */
 export interface NameEditing {
   at: Point
   initial: string
   pin?: string
+  rename?: NetLabel
 }
 
 interface Input {
@@ -99,10 +102,24 @@ function usePlace({ design, circuit, actions, pending, setTyped }: PlaceInput) {
   }
 }
 
-/** The pointer and the name input: a press on a pin places the tool or asks for a name; Enter in the input places or keeps the name. */
+/** Renames the label's net to the name typed (label-rename.ts), after the question a join of two named nets asks. */
+function useRename({ design, circuit, actions }: Input) {
+  const locked = useMemo(() => new Set(circuit.annotations.locks.map((l) => l.part)), [circuit])
+  return (label: NetLabel, typed: string): void => {
+    const plan = labelRenameEdits(design, circuit, label, typed, locked)
+    if ("blocked" in plan) return actions.notify(plan.blocked)
+    if (plan.edits.length === 0) return
+    const question = `This joins ${label.text} and ${plan.joins} into one net, a short circuit if they carry different voltages. Rename anyway?`
+    if (plan.joins && !window.confirm(question)) return
+    void actions.edit(plan.edits, plan.summary)
+  }
+}
+
+/** The pointer and the name input: a press on a pin places the tool or asks for a name; Enter in the input places, keeps the name or renames the net. */
 function useClicks(input: PlaceInput) {
   const { tool, typed, camera, design, setTyped, setEditing } = input
   const place = usePlace(input)
+  const rename = useRename(input)
   const open = setEditing
   const press = (event: { button: number; shiftKey: boolean }, world: Point, disarm: () => void): boolean => {
     if (!tool || !camera) return false
@@ -120,7 +137,13 @@ function useClicks(input: PlaceInput) {
   const submitName = (text: string, current: NameEditing | null): string | undefined => {
     const name = text.trim()
     const problem = nameProblem(name)
-    if (problem || !tool || !current) return problem
+    if (problem || !current) return problem
+    if (current.rename) {
+      open(null)
+      rename(current.rename, name)
+      return undefined
+    }
+    if (!tool) return undefined
     open(null)
     if (current.pin) place(tool, current.pin, name)
     else setTyped(name)
@@ -162,7 +185,13 @@ export function useLabelPalette(input: Input) {
     armed: tool !== null,
     arm,
     disarm,
-    press: (event: { button: number; shiftKey: boolean }, world: Point) => clicks.press(event, world, disarm),
+    press: (event: { button: number; shiftKey: boolean }, world: Point) => {
+      // A press on the sheet gives up a rename; presses in the name input stop at its form.
+      if (editing?.rename) setEditing(null)
+      return clicks.press(event, world, disarm)
+    },
+    /** Opens the name input at the label, holding its name, to rename its net. */
+    rename: (label: NetLabel) => setEditing({ at: label.at, initial: label.text, rename: label }),
     editing,
     cancelName: () => clicks.open(null),
     submitName: (text: string) => clicks.submitName(text, editing),

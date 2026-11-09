@@ -84,6 +84,7 @@ export function useWorkspace(view: View) {
   const { setLeft, setRight, setBottom, ...strips } = useStrips()
   const [focusSearch, requestSearch, searchFocused] = useFocusRequest()
   const [focusPage, requestPage, pageFocused] = useFocusRequest()
+  const [focusField, requestField, fieldFocused] = useFocusRequest()
   const [unit, setUnit] = useState<Unit>("mm")
   const [highlight, setHighlight] = useState<Highlight>(NO_HIGHLIGHT)
   const { toggleGridStyleOf, ...grid } = useGridSettings()
@@ -112,9 +113,32 @@ export function useWorkspace(view: View) {
     setLeft(showDesignSub("page"))
     requestPage()
   }, [setLeft, requestPage])
+  /** A double click on a part: the right panel on Properties, with the focus in its first field. */
+  const openProperties = useCallback(() => {
+    setRight((state) => selectStrip(state, "properties"))
+    requestField()
+  }, [setRight, requestField])
   useWorkspaceKeys(view, run)
 
   const toggleUnit = useCallback(() => setUnit(nextUnit), [])
   const { left, right } = strips
-  return { ...strips, ...grid, leftOpen: left.open, rightOpen: right.open, focusSearch, searchFocused, focusPage, pageFocused, openPageTree, unit, toggleUnit, highlight, setHighlight, run }
+  return {
+    ...strips,
+    ...grid,
+    leftOpen: left.open,
+    rightOpen: right.open,
+    focusSearch,
+    searchFocused,
+    focusPage,
+    pageFocused,
+    openPageTree,
+    focusField,
+    fieldFocused,
+    openProperties,
+    unit,
+    toggleUnit,
+    highlight,
+    setHighlight,
+    run,
+  }
 }

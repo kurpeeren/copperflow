@@ -80,7 +80,7 @@ Legend: ✅ there today · ◐ partly · ✗ missing. "Stage" is where the engin
 | Place a part | `Shift+F` dialog, bottom library | `Shift+F`, Place → Component and the toolbar open Common Library with its search; the bottom Library places too | ✅ |
 | Wire | `Alt+W` | `W`, `Alt+W`, Place → Wire and the toolbar | ✅ |
 | Net label / power flags | `Alt+N`, VCC/GND flags, floating tool | Place → Net label (`Alt+N`), Ground flag and Power flag, in the toolbar too; they stay armed until Esc; dragging moves a label | ✅ |
-| Rename a net while placing | `Tab`, double click | `Tab` names a label before it is placed; no double click | ◐ — double click in round 3 |
+| Rename a net while placing | `Tab`, double click | `Tab` names a label before it is placed; a double click on a label renames its net | ✅ |
 | Rotate / flip | `Space` / `X` `Y` | `Space`, `R`, Layout → Rotate and the toolbar rotate; no flip | ◐ — `X`/`Y` once the model supports mirroring (stages 3 to 5) |
 | Highlight a net | `H`, `Shift+H` | `H` and `Shift+H` in both views, the Net tab, and Design → Highlight net for the selected part's nets | ✅ |
 | Fit | `K` | `F`, `K`, View → Fit all and the toolbar | ✅ |
