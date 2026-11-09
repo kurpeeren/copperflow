@@ -3,6 +3,7 @@
 import type { Design } from "../../../src/engine/design.js"
 import type { Net } from "../../../src/engine/model.js"
 import type { PcbLayout } from "../../../src/engine/pcb.js"
+import type { Selection } from "../selection.js"
 import type { Point } from "./geometry.js"
 import type { LayerVisibility } from "./layers.js"
 import { nameList } from "./group-edits.js"
@@ -66,6 +67,19 @@ export function menuHighlight(parts: readonly string[], netsOf: (part: string) =
   if (parts.length === 0) return { message: "Point at a net and press H." }
   const nets = [...new Set(parts.flatMap(netsOf))]
   return nets.length > 0 ? { nets } : { message: `${nameList(parts)} ${parts.length === 1 ? "is" : "are"} on no net.` }
+}
+
+/**
+ * What Design → Highlight net does with no pointer over the canvas: light the selected wire's net, else every net of
+ * the selected parts (menuHighlight), or say how.
+ */
+export function selectionHighlight(
+  selection: Selection,
+  wireNet: (id: string) => string | undefined,
+  netsOf: (part: string) => Highlight,
+): { nets: Highlight } | { message: string } {
+  const net = selection.wire === undefined ? undefined : wireNet(selection.wire)
+  return net !== undefined ? { nets: [net] } : menuHighlight(selection.names, netsOf)
 }
 
 /** One net after a rebuild: the same id when the net still exists, else the net that now holds its first pin, else none. */

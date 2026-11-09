@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { hasToken, type CircuitData, type Design } from "./api"
 import { NO_HIGHLIGHT, remapHighlight } from "./pcb/highlight"
 import { pickLayersOf } from "./pcb/layers"
+import { shownSelection, wireAfterBuild } from "./pcb/wire-selection"
 import { goneFrom, Selection, type SelectionChange } from "./selection"
 import { BottomStrip } from "./shell/BottomStrip"
 import { StudioDialog, type DialogName } from "./shell/Dialogs"
@@ -59,22 +60,23 @@ function usePruneSelection(circuit: CircuitData | undefined, select: (change: Se
   }, [circuit, select])
 }
 
-/** Drops a selected wire the sheet no longer draws (deleted, undone), so it is not selected again when it comes back. */
+/** Drops a selected wire a rebuild took away or re-pointed (wire-selection.ts), so it is not selected again when it comes back. */
 function usePruneWire(design: Design | undefined, select: (change: SelectionChange) => void): void {
+  const before = useRef<Design | undefined>(undefined)
   useEffect(() => {
-    if (design) select((current) => current.keepWire(design.schematic.wires.map((wire) => wire.id)))
+    if (!design || design === before.current) return
+    const wires = before.current?.schematic.wires
+    before.current = design
+    select((current) => wireAfterBuild(current, wires, design.schematic.wires))
   }, [design, select])
 }
 
-/**
- * What the canvases and panels are shown: the selection less any part the loaded circuit does not have (yet), and less
- * a wire the open sheet does not draw; the PCB shows no wire, so a wire selected on the schematic waits there.
- */
+/** What the canvases and panels are shown (wire-selection.ts): no part the circuit lacks, no wire the open sheet lacks. */
 function useShownSelection(selection: Selection, circuit: CircuitData | undefined, design: Design | undefined, view: Tab): Selection {
-  return useMemo(() => {
-    const parts = circuit ? selection.keep(circuit.model.parts.map((part) => part.name)) : selection
-    return parts.keepWire(view === "schematic" ? (design?.schematic.wires.map((wire) => wire.id) ?? []) : [])
-  }, [selection, circuit, design, view])
+  return useMemo(
+    () => shownSelection(selection, { view, parts: circuit?.model.parts.map((part) => part.name), wires: design?.schematic.wires.map((wire) => wire.id) }),
+    [selection, circuit, design, view],
+  )
 }
 
 /** A rebuild can rename or merge the highlighted net (an unnamed net that gets GND): follow it, or clear it. */

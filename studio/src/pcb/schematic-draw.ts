@@ -80,6 +80,9 @@ const OUTWARD: Record<NetLabel["side"], Point> = { right: { x: 1, y: 0 }, left: 
 
 const rad = (degrees: number) => (degrees * Math.PI) / 180
 
+/** How wide a wire is drawn at this zoom (pixels per sheet unit), in CSS pixels: its width, never under the thinnest line. */
+export const wireStrokePx = (scale: number): number => Math.max(WIRE_WIDTH * scale, MIN_LINE_PX)
+
 /** Draws wires, then symbols, labels and pins, then all text upright in screen space, then the violation rings. */
 export function drawSchematic(ctx: Ctx, layout: SchematicLayout, view: View, options: SchematicDrawOptions): void {
   const { camera, size } = view

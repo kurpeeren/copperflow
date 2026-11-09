@@ -11,7 +11,7 @@ import { useCommands } from "../shell/commands"
 import type { Camera } from "./geometry"
 import type { GestureWires } from "./gestures"
 import { cornerRemoval, wireNet, wireRemoval, type WireEdit } from "./wire-actions"
-import { WIRE_REACH_PX, wireAt, type WireLine } from "./wire-hit"
+import { wireAt, wireReachPx, type WireLine } from "./wire-hit"
 
 /** What the part keys ask of a selected wire: its net for Highlight net, and its removal for Delete. */
 export interface WireKeys {
@@ -57,7 +57,7 @@ function useWireCommands({ design, circuit, actions, locked, selection, onSelect
 export function useSheetWires(input: SheetWiresInput) {
   const { design, camera, selection } = input
   const wires = design.schematic.wires
-  const hits = useMemo<GestureWires>(() => ({ at: (world) => (camera ? wireAt(wires, world, WIRE_REACH_PX / camera.scale) : undefined) }), [wires, camera])
+  const hits = useMemo<GestureWires>(() => ({ at: (world) => (camera ? wireAt(wires, world, wireReachPx(camera.scale) / camera.scale) : undefined) }), [wires, camera])
   const lineOf = useCallback((id: string | undefined): WireLine | undefined => (id === undefined ? undefined : wires.find((wire) => wire.id === id)), [wires])
   const selected = useMemo(() => lineOf(selection.wire), [lineOf, selection.wire])
   const keys = useWireCommands(input)

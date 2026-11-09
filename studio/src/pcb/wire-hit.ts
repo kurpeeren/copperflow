@@ -2,9 +2,20 @@
 // (squares on its corners, its two ends apart since they stay on their pins). The canvas, the hover and the H key share
 // this one rule. Plain TypeScript with .js imports, so the tests can run it.
 import type { Point } from "./geometry.js"
+import { wireStrokePx } from "./schematic-draw.js"
 
-/** How close to a wire's segment the pointer must be to pick the wire, in CSS pixels. */
+/** How close to a wire's segment the pointer must be to pick the wire, in CSS pixels, while the wire is drawn thinner. */
 export const WIRE_REACH_PX = 6
+/** How far past the drawn stroke's edge the pointer still reaches the wire. */
+const PAST_STROKE_PX = 2
+
+/** `least` CSS pixels from a wire's centre line, or 2 past its drawn stroke's edge where the stroke is wider (deep zoom). */
+export function pastStrokePx(least: number, scale: number): number {
+  return Math.max(least, wireStrokePx(scale) / 2 + PAST_STROKE_PX)
+}
+
+/** The reach at this zoom, in CSS pixels: 6, or half the drawn stroke and 2 when the stroke is wider. */
+export const wireReachPx = (scale: number): number => pastStrokePx(WIRE_REACH_PX, scale)
 
 /** A wire as the hit test sees it: its id and its points, first to last. */
 export interface WireLine {
@@ -37,7 +48,7 @@ export function segmentAt(points: readonly Point[], p: Point, reach: number): nu
   return nearest && nearest.distance <= reach ? nearest.index : undefined
 }
 
-/** The id of the wire nearest to `p` within `reach`, in sheet units (WIRE_REACH_PX over the camera's scale). */
+/** The id of the wire nearest to `p` within `reach`, in sheet units (wireReachPx over the camera's scale). */
 export function wireAt(wires: readonly WireLine[], p: Point, reach: number): string | undefined {
   let best: { id: string; distance: number } | undefined
   for (const wire of wires) {

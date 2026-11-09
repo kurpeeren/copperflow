@@ -109,7 +109,8 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
     drawEditorLayer(ctx, view, size, { view: "schematic", boxes, moving, hover: shownHover, selection, locked, marks: circuit.annotations.marks, gesture, look: SHEET_LOOK })
     if (hoverLabel && !drawing && !gesture) drawOutline(ctx, view, size, labelHitBox(hoverLabel), { x: 0, y: 0 }, "hover", SHEET_LOOK)
     if (hoverWire && hoverWire.id !== selectedWire?.id && !wiring && !drawing && !gesture) drawWireHover(ctx, view, size, hoverWire.points, SHEET_WIRE_LOOK)
-    if (selectedWire) drawWireHandles(ctx, view, size, selectedWire.points, SHEET_WIRE_LOOK)
+    // A net label dragged off the selected wire hides its line, so its handles go too.
+    if (selectedWire && !movingLabels.some((m) => m.hideWire === selectedWire.id)) drawWireHandles(ctx, view, size, selectedWire.points, SHEET_WIRE_LOOK)
   }, [canvasRef, design, border, camera, size, wiring, drawing, activePins, pendingWires, preview, moving, movingLabels, hoverLabel, hoverWire, selectedWire, boxes, hover, selection, locked, circuit, gesture, ghosts, ghostWires, armed, highlight, markers, activeViolation, grid])
 }
 
@@ -394,7 +395,8 @@ export function SchematicCanvas(props: CanvasProps) {
   const hover = useSheetHover(parts.boxes, wire, labels.tools, props.pickFilter, wires.hits)
   const { moving, gesture } = gestures
   const movingLabels = useMovingLabels(design, gesture, labels.pending)
-  const hoverWire = useMemo(() => wires.lineOf(hover.wire), [wires, hover.wire])
+  const { lineOf } = wires
+  const hoverWire = useMemo(() => lineOf(hover.wire), [lineOf, hover.wire])
   useSheetPaint(canvasRef, { design, border, camera, size, wire, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel: hover.label, hoverWire, selectedWire: wires.selected, palette, highlight, markers, activeViolation, grid })
   const pointer = sheetPointer({ camera, size, element: wrapRef, gestures, setCursor, hover: hover.at, boxes: parts.boxes, labels: labels.tools, wires: wires.hits, wire, palette, note, picking: { selection, armed: tool.armed, filter: props.pickFilter }, onOpenProperties: props.onOpenProperties })
   const cursorStyle = cursorFor(gesture, wire.drawing !== null || wire.overPin || palette.armed || note.armed, hover.part !== undefined || hover.label !== undefined || hover.wire !== undefined)

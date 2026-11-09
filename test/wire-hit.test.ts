@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { cornerAt, distanceToSegment, segmentAt, WIRE_REACH_PX, wireAt, wireHandles } from "../studio/src/pcb/wire-hit.js"
+import { cornerAt, distanceToSegment, segmentAt, WIRE_REACH_PX, wireAt, wireHandles, wireReachPx } from "../studio/src/pcb/wire-hit.js"
 
 const p = (x: number, y: number) => ({ x, y })
 // An L from (0,0) right to (2,0), then up to (2,3); a straight wire below it.
@@ -35,6 +35,16 @@ describe("the wire under the pointer", () => {
     const at = p(1, 0.05)
     expect(wireAt(WIRES, at, WIRE_REACH_PX / 100)).toBe("wire:L")
     expect(wireAt(WIRES, at, WIRE_REACH_PX / 200)).toBeUndefined()
+  })
+
+  test("past 6 px the reach follows the drawn stroke, half its width and 2 px, so its visible edge still hits at deep zoom", () => {
+    expect(wireReachPx(10)).toBe(6)
+    expect(wireReachPx(100)).toBe(6)
+    // 0.02 sheet units at 2000 px a unit: a 40 px stroke.
+    expect(wireReachPx(2000)).toBe(22)
+    const edge = p(1, 0.0105)
+    expect(wireAt(WIRES, edge, WIRE_REACH_PX / 2000)).toBeUndefined()
+    expect(wireAt(WIRES, edge, wireReachPx(2000) / 2000)).toBe("wire:L")
   })
 
   test("a wire with a single point has no segment to hit", () => {

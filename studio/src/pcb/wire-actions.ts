@@ -7,6 +7,7 @@ import type { Design } from "../../../src/engine/design.js"
 import { netLabel } from "../net-rows.js"
 import { canonicalNet } from "./highlight.js"
 import type { SourceCircuit } from "./positions.js"
+import { lockedPart } from "./trace-source.js"
 import { wireBlocker, wireOf, type WireShape } from "./wire-shape.js"
 import { pinOfSelector } from "./wire-tool.js"
 
@@ -28,6 +29,7 @@ export interface WireProperties extends WireReasons {
 const GONE = "This wire is no longer on the sheet"
 const NO_CORNERS = "This wire has no corners"
 const STUDIO_CORNER = "Studio draws this wire's corner; the code has none to remove"
+const DELETE_REPEAT = "This wire repeats another between the same ends; delete it in the code"
 const NO_LOCKS: ReadonlySet<string> = new Set()
 
 /** The net a wire is on, by its id in `circuit.nets`; undefined when the sheet has no such wire. */
@@ -62,15 +64,22 @@ function describe(design: Design, shape: WireShape): string {
   return ends ? `the wire from ${ends[0]} to ${ends[1]}` : "the wire"
 }
 
-/** Why the wire's trace cannot be removed: it has none, or wire-shape's reason (a repeat, a lock, read-only code). */
+/**
+ * Why Delete cannot remove the wire's trace: it has none (Studio draws the wire), a part at an end is locked, it
+ * repeats another (core removes the first match), or its code is read-only. Corners written as an expression do not
+ * matter here: the whole trace goes.
+ */
 function removeBlocker(design: Design, shape: WireShape, locked: ReadonlySet<string>): string | null {
   const { writer } = shape
   if (writer.kind === "none") return writer.reason
   if (writer.kind === "engine") return engineReason(design, shape.id)
-  return wireBlocker(design, shape, locked)
+  const lockedName = lockedPart(design, writer.components, writer.trace, locked)
+  if (lockedName !== undefined) return `${lockedName} is locked`
+  if (writer.repeat) return DELETE_REPEAT
+  return writer.trace.editable ? null : `This wire is read-only (${writer.trace.readonlyReason}); delete it in the code`
 }
 
-/** Why the wire's corners cannot be removed: none to remove, or the same reasons as Delete. */
+/** Why the wire's corners cannot be removed: none to remove, or wire-shape's reasons for changing its corners. */
 function cornerBlocker(design: Design, shape: WireShape, locked: ReadonlySet<string>): string | null {
   if (shape.writer.kind !== "trace") return removeBlocker(design, shape, locked)
   if (shape.points.length <= 2) return NO_CORNERS

@@ -3,7 +3,7 @@
 // squares on its corners and hollow squares on its two ends, which stay on their pins. Plain TypeScript, so the tests can run it.
 import { worldToScreen, type Camera, type Point, type Size } from "./geometry.js"
 import { schematicTheme } from "./schematic-theme.js"
-import { wireHandles } from "./wire-hit.js"
+import { pastStrokePx, wireHandles } from "./wire-hit.js"
 
 /** The colours of a wire's hover outline and handles. */
 export interface WireLook {
@@ -16,8 +16,11 @@ export const SHEET_WIRE_LOOK: WireLook = { hover: schematicTheme.hover, selected
 
 /** The side of a handle, in CSS pixels. */
 export const WIRE_HANDLE_PX = 6
-/** How far the hover outline stands off the wire, as a hovered part's outline does. */
+/** How far the hover outline stands off the wire, as a hovered part's outline does; at deep zoom, off the stroke's edge. */
 const OUTLINE_PAD_PX = 3
+
+/** The hover outline's distance from the wire's centre line at this zoom, in CSS pixels. */
+export const wireHoverPadPx = (scale: number): number => pastStrokePx(OUTLINE_PAD_PX, scale)
 const OUTLINE_DASH = [4, 3]
 
 const unit = (a: Point, b: Point): Point => {
@@ -50,7 +53,7 @@ export function wireOutline(points: readonly Point[], pad: number): Point[] {
 
 /** The dashed hover outline round a wire whose points are in sheet units. */
 export function drawWireHover(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, points: readonly Point[], look: WireLook): void {
-  const outline = wireOutline(points.map((p) => worldToScreen(camera, size, p)), OUTLINE_PAD_PX)
+  const outline = wireOutline(points.map((p) => worldToScreen(camera, size, p)), wireHoverPadPx(camera.scale))
   if (outline.length === 0) return
   ctx.save()
   ctx.strokeStyle = look.hover

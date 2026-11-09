@@ -14,11 +14,12 @@ import { keyAction, keyInput, type KeyResult } from "./canvas-keys"
 import { removeEach, removeQuestion, sendGroupEdit, type Layout } from "./group-edits"
 import { claimsKey, type BuildStatus } from "./key-burst"
 import { useKeyEdits, type KeyEdits } from "./use-key-edits"
-import { menuHighlight, type Highlight } from "./highlight"
+import { selectionHighlight, type Highlight } from "./highlight"
 import type { Point } from "./geometry"
 import type { View } from "./positions"
 import type { ContextTarget } from "./press"
 import type { WireKeys } from "./use-sheet-wires"
+import { deleteTarget } from "./wire-selection"
 
 export interface PartKeysInput {
   view: View
@@ -52,16 +53,17 @@ export interface PartKeysInput {
   wire?: WireKeys
 }
 
-/** Whether anything is selected that Delete can act on: parts, or a wire. */
-const hasSelection = (selection: Selection): boolean => selection.size > 0 || selection.wire !== undefined
-
 /**
- * Removes the selected wire's trace, or every selected part that may go, in one change, after asking for parts; the
- * parts that may not go are named and stay selected.
+ * Delete (wire-selection.ts says on what): the selected wire's trace, or every selected part that may go, in one
+ * change, after asking for parts; the parts that may not go are named and stay selected. With nothing selected the key
+ * does nothing and a command says what to select.
  */
-function removeSelection(input: PartKeysInput): void {
-  if (input.selection.wire !== undefined) return input.wire?.remove(input.selection.wire)
-  const plan = removeEach(input.selection.names, input.blockerFor)
+function removeSelection(input: PartKeysInput, fromKey: boolean): void {
+  if (input.paused) return
+  const target = deleteTarget(input.selection)
+  if (target.kind === "wire") return input.wire?.remove(target.id)
+  if (target.kind === "nothing") return fromKey ? undefined : input.actions.notify(target.message)
+  const plan = removeEach(target.names, input.blockerFor)
   if (plan.edits.length > 0 && !window.confirm(removeQuestion(plan.parts))) return
   void sendGroupEdit(plan, input.actions).then((ok) => ok && input.onSelect((current) => current.without(plan.parts)))
 }
@@ -72,7 +74,7 @@ function runKey(input: PartKeysInput, hit: KeyResult, edits: KeyEdits, repeat: b
   if (isAlignCommand(action)) return input.paused || repeat ? undefined : edits.align(input, action)
   if (action.startsWith("nudge")) return input.paused ? undefined : edits.nudge(input, hit)
   if (action === "fit") return input.fit()
-  if (action === "delete") return hasSelection(input.selection) && !input.paused ? removeSelection(input) : undefined
+  if (action === "delete") return removeSelection(input, true)
   if (action === "contextMenu") {
     if (input.paused) return
     const { target, at } = input.menuPlace()
@@ -86,12 +88,9 @@ function runKey(input: PartKeysInput, hit: KeyResult, edits: KeyEdits, repeat: b
   if (action === "rotate" && input.selection.size > 0 && !input.paused) edits.rotate(input, repeat)
 }
 
-/** Design → Highlight net with no pointer over the canvas: the selected wire's net, else every net of the selected parts. */
+/** Design → Highlight net with no pointer over the canvas (highlight.ts selectionHighlight). */
 function highlightSelection(input: PartKeysInput): void {
-  const { wire } = input.selection
-  const net = wire === undefined ? undefined : input.wire?.net(wire)
-  if (net !== undefined) return input.onHighlight([net])
-  const result = menuHighlight(input.selection.names, input.netsOf)
+  const result = selectionHighlight(input.selection, (id) => input.wire?.net(id), input.netsOf)
   if ("nets" in result) input.onHighlight(result.nets)
   else input.actions.notify(result.message)
 }
@@ -109,11 +108,7 @@ function usePartCommands(input: PartKeysInput, edits: KeyEdits): void {
     fit: input.fit,
     rotate: withSelection((chosen) => edits.rotate(chosen, false)),
     rotateRight: withSelection((chosen) => edits.rotateRight(chosen)),
-    delete: () => {
-      if (input.paused) return
-      if (hasSelection(input.selection)) removeSelection(input)
-      else input.actions.notify("Select a part first.")
-    },
+    delete: () => removeSelection(input, false),
     highlight: () => highlightSelection(input),
   }
   useCommands(table)

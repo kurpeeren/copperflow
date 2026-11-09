@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { buildDesign } from "../src/engine/design.js"
-import { NO_HIGHLIGHT, canonicalNet, highlightOf, menuHighlight, partNets, pcbNetAt, remapHighlight, schematicNetAt } from "../studio/src/pcb/highlight.js"
+import { Selection } from "../studio/src/selection.js"
+import { NO_HIGHLIGHT, canonicalNet, highlightOf, menuHighlight, partNets, pcbNetAt, remapHighlight, schematicNetAt, selectionHighlight } from "../studio/src/pcb/highlight.js"
 
 const FILE = "main.circuit.tsx"
 const SOURCE = `export default () => (
@@ -121,6 +122,14 @@ describe("highlighting a part's nets", () => {
     expect(menuHighlight(["R1"], netsOf)).toEqual({ nets: ["net.GND"] })
     expect(menuHighlight([], netsOf)).toEqual({ message: "Point at a net and press H." })
     expect(menuHighlight(["R3"], netsOf)).toEqual({ message: "R3 is on no net." })
+  })
+
+  test("with a wire selected the menu lights the wire's net; without one it lights the parts' nets", () => {
+    const netsOf = (part: string) => (part === "R1" ? ["net.GND"] : [])
+    const wireNet = (id: string) => (id === "wire:W" ? "net.VCC" : undefined)
+    expect(selectionHighlight(Selection.none.onlyWire("wire:W"), wireNet, netsOf)).toEqual({ nets: ["net.VCC"] })
+    expect(selectionHighlight(Selection.none.onlyWire("wire:gone"), wireNet, netsOf)).toEqual({ message: "Point at a net and press H." })
+    expect(selectionHighlight(Selection.none.add(["R1"]), wireNet, netsOf)).toEqual({ nets: ["net.GND"] })
   })
 
   test("with several parts selected the menu lights all their nets, each once", () => {

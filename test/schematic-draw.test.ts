@@ -5,7 +5,7 @@ import { HIGHLIGHT_DIM, PALETTE } from "../studio/src/pcb/ctx.js"
 import { drawPcb, PCB_DIM } from "../studio/src/pcb/pcb-draw.js"
 import { worldToScreen } from "../studio/src/pcb/geometry.js"
 import { schematicTheme } from "../studio/src/pcb/schematic-theme.js"
-import { drawSchematic, sheetBoxes, type SchematicDrawOptions } from "../studio/src/pcb/schematic-draw.js"
+import { drawSchematic, sheetBoxes, wireStrokePx, type SchematicDrawOptions } from "../studio/src/pcb/schematic-draw.js"
 import { recorder } from "./helpers/fake-ctx.js"
 
 const CIRCUIT = `export default () => (
@@ -191,6 +191,15 @@ describe("schematic colours", () => {
     const rec = draw()
     expect(layout.junctions.length).toBeGreaterThan(0)
     expect(rec.records.filter((r) => r.name === "fill" && r.fillStyle === schematicTheme.junction)).toHaveLength(layout.junctions.length)
+  })
+
+  test("wireStrokePx is the width wires are drawn at, in CSS pixels, at any zoom", () => {
+    for (const scale of [10, 100, 1000]) {
+      const rec = recorder()
+      drawSchematic(rec.ctx as never, layout, { ...VIEW, camera: { ...VIEW.camera, scale } }, { ratio: 1 })
+      const wire = strokes(rec, schematicTheme.wire)[0]
+      expect([scale, (wire?.lineWidth ?? 0) * scale]).toEqual([scale, expect.closeTo(wireStrokePx(scale), 9)])
+    }
   })
 
   test("a selected wire is drawn in the selection colour, over a highlight; the others keep theirs", () => {

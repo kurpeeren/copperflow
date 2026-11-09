@@ -41,7 +41,7 @@ describe("canPick", () => {
 })
 
 describe("every pick goes through canPick", () => {
-  test("the target under the pointer: the smallest part, else a label, else the canvas", () => {
+  test("the target under the pointer: a label, else the smallest part, else the canvas", () => {
     expect(targetAt(BOXES, labels, { x: 1.5, y: 0 }, free)).toEqual({ kind: "part", name: "C1" })
     expect(targetAt(BOXES, labels, { x: 3, y: 0 }, free)).toEqual({ kind: "part", name: "R1" })
     expect(targetAt(BOXES, labels, { x: 9, y: 0 }, free)).toEqual({ kind: "label", label })

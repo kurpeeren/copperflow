@@ -31,6 +31,7 @@ function setup(source = SOURCE) {
 
 const { design, model } = setup()
 const ENGINE = "This wire has no trace of its own: Studio draws it for net GND"
+const EXPRESSION = SOURCE.replace(`schematicRouteHints={[{ x: 7, y: 1 }, { x: 7, y: 2 }]}`, `schematicRouteHints={hints}`).replace("export default", "const hints = [{ x: 7, y: 1 }, { x: 7, y: 2 }]\nexport default")
 const wireIds = (source: string) => setup(source).design.schematic.wires.map((w) => w.id)
 
 describe("Delete on a wire", () => {
@@ -55,13 +56,21 @@ describe("Delete on a wire", () => {
     expect(wireRemoval(design, model, "wire:net.GND:1")).toEqual({ blocked: ENGINE })
   })
 
-  test("a repeated wire, a locked end, a read-only trace and expression corners are refused with their reason", () => {
-    expect(wireRemoval(design, model, "wire:R1.pin2|R2.pin1#2")).toEqual({ blocked: "This wire repeats another between the same ends; change its corners in the code" })
+  test("a repeated wire, a locked end and a read-only trace are refused with a reason about deleting", () => {
+    expect(wireRemoval(design, model, "wire:R1.pin2|R2.pin1#2")).toEqual({ blocked: "This wire repeats another between the same ends; delete it in the code" })
     expect(wireRemoval(design, model, "wire:R1.pin2|R2.pin1", new Set(["R2"]))).toEqual({ blocked: "R2 is locked" })
+    expect(wireRemoval(design, model, "wire:net.VCC|R4.pin1", new Set(["R4"]))).toEqual({ blocked: "R4 is locked" })
     const looped = setup(SOURCE.replace(`<trace from=".R3 > .pin2" to=".R4 > .pin2" />`, `{[1].map(() => <trace from=".R3 > .pin2" to=".R4 > .pin2" />)}`))
-    expect(wireRemoval(looped.design, looped.model, "wire:R3.pin2|R4.pin2")).toMatchObject({ blocked: expect.stringMatching(/read-only/) })
-    const expression = setup(SOURCE.replace(`schematicRouteHints={[{ x: 7, y: 1 }, { x: 7, y: 2 }]}`, `schematicRouteHints={hints}`).replace("export default", "const hints = [{ x: 7, y: 1 }, { x: 7, y: 2 }]\nexport default"))
-    expect(wireRemoval(expression.design, expression.model, "wire:R3.pin1|net.VCC")).toEqual({ blocked: "The corners of this wire are an expression; change them in the code" })
+    expect(wireRemoval(looped.design, looped.model, "wire:R3.pin2|R4.pin2")).toMatchObject({ blocked: expect.stringMatching(/^This wire is read-only \(.+\); delete it in the code$/) })
+  })
+
+  test("corners written as an expression do not stop Delete, as core removes the whole trace", () => {
+    const source = EXPRESSION
+    const { design: d, model: m } = setup(source)
+    const removal = wireRemoval(d, m, "wire:R3.pin1|net.VCC")
+    expect(removal).toEqual({ edits: [{ kind: "removeTrace", from: ".R3 > .pin1", to: "net.VCC" }], summary: "remove the wire from R3.pin1 to net VCC" })
+    if (!("edits" in removal)) throw new Error(removal.blocked)
+    expect(wireIds(applyEdits(source, removal.edits, new Set()))).not.toContain("wire:R3.pin1|net.VCC")
   })
 
   test("a wire no longer on the sheet is refused", () => {
@@ -93,6 +102,14 @@ describe("Remove corners", () => {
 
   test("is refused the same way as Delete for a locked end", () => {
     expect(cornerRemoval(design, model, "wire:R3.pin1|net.VCC", new Set(["R3"]))).toEqual({ blocked: "R3 is locked" })
+  })
+
+  test("keeps the reshaping reasons: corners written as an expression, and a repeat named for its corners", () => {
+    const expression = setup(EXPRESSION)
+    expect(cornerRemoval(expression.design, expression.model, "wire:R3.pin1|net.VCC")).toEqual({ blocked: "The corners of this wire are an expression; change them in the code" })
+    const twice = `<trace from=".R1 > .pin2" to=".R2 > .pin1" schematicRouteHints={[{ x: 1, y: 1 }, { x: 2, y: 1 }]} />`
+    const repeated = setup(SOURCE.replace(`<trace from=".R1 > .pin2" to=".R2 > .pin1" />`, twice.replace("y: 1 }, { x: 2, y: 1", "y: 2 }, { x: 2, y: 2")))
+    expect(cornerRemoval(repeated.design, repeated.model, "wire:R1.pin2|R2.pin1#2")).toEqual({ blocked: "This wire repeats another between the same ends; change its corners in the code" })
   })
 })
 

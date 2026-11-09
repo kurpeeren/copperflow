@@ -222,7 +222,7 @@ describe("what a right click or a double click is on", () => {
   const label: NetLabel = { id: "label:net.GND:R2.pin2", net: "net.GND", text: "GND", at: { x: 9, y: 0 }, side: "right", style: "ground" }
   const labels = { at: (p: Point) => (p.x > 8 ? label : undefined), blocker: () => null, commit: () => undefined }
 
-  test("a part, else a net label, else the empty canvas", () => {
+  test("a net label, else a part, else the empty canvas", () => {
     expect(targetAt(BOXES, labels, { x: 1, y: 0 }, PICK)).toEqual({ kind: "part", name: "R1" })
     expect(targetAt(BOXES, labels, { x: 9, y: 0 }, PICK)).toEqual({ kind: "label", label })
     expect(targetAt(BOXES, labels, { x: 7, y: 0 }, PICK)).toEqual({ kind: "canvas" })
