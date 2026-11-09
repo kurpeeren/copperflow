@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { escapeDisarms, keyAction, nudgeDirection, type KeyInput, type KeyState } from "../studio/src/pcb/canvas-keys.js"
+import { claimsKey } from "../studio/src/pcb/key-burst.js"
 
 const SCHEMATIC: KeyState = { view: "schematic" }
 const PCB: KeyState = { view: "pcb" }
@@ -236,5 +237,41 @@ describe("widgets that own their keys", () => {
     expect(keyAction(key("ArrowUp", { handled: true }), PCB)).toBeNull()
     expect(keyAction(key("r", { handled: true }), PCB)).toBeNull()
     expect(keyAction(key("r"), PCB)?.action).toBe("rotate")
+  })
+})
+
+/** What a later window listener reads after the canvas's listener ran first with `selected` parts selected (use-part-keys.ts). */
+function afterCanvas(input: KeyInput, state: KeyState, selected: number): KeyInput {
+  const hit = keyAction(input, state)
+  return { ...input, handled: hit !== null && claimsKey(hit.action, selected, false, hit.preventDefault) }
+}
+
+describe("keys another listener already prevented", () => {
+  test("Ctrl+Z, Ctrl+A, Ctrl+F, Ctrl+O and the Alt tools still resolve for an event already prevented", () => {
+    expect(keyAction(key("z", { ctrlKey: true, handled: true }), PCB)?.action).toBe("undo")
+    expect(keyAction(key("a", { ctrlKey: true, handled: true }), PCB)?.action).toBe("selectAll")
+    expect(keyAction(key("f", { ctrlKey: true, handled: true }), PCB)?.action).toBe("find")
+    expect(keyAction(key("o", { ctrlKey: true, handled: true }), PCB)?.action).toBe("openFile")
+    expect(keyAction(key("w", { altKey: true, code: "KeyW", handled: true }), SCHEMATIC)?.action).toBe("wire")
+  })
+
+  test("with a part selected and the canvas listening first, the app's, the workspace's and the tools' keys reach their listener", () => {
+    const cases: [KeyInput, KeyState, string][] = [
+      [key("z", { ctrlKey: true }), PCB, "undo"],
+      [key("a", { ctrlKey: true }), PCB, "selectAll"],
+      [key("f", { ctrlKey: true }), PCB, "find"],
+      [key("o", { ctrlKey: true }), PCB, "openFile"],
+      [key("F", { shiftKey: true }), PCB, "openLibrary"],
+      [key("F", { shiftKey: true }), SCHEMATIC, "openLibrary"],
+      [key("w", { altKey: true, code: "KeyW" }), SCHEMATIC, "wire"],
+      [key("n", { altKey: true, code: "KeyN" }), SCHEMATIC, "armNetLabel"],
+    ]
+    for (const [input, state, action] of cases) expect([input.key, keyAction(afterCanvas(input, state, 1), state)?.action]).toEqual([input.key, action])
+  })
+
+  test("the canvas still keeps its own arrows and Space while parts are selected", () => {
+    expect(afterCanvas(key("ArrowLeft"), PCB, 1).handled).toBe(true)
+    expect(afterCanvas(key(" "), PCB, 1).handled).toBe(true)
+    expect(afterCanvas(key("ArrowLeft"), PCB, 0).handled).toBe(false)
   })
 })

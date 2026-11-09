@@ -126,8 +126,16 @@ export function editSettled(gate: TurnGate, ok: boolean, seq: number, before: Tu
   return { ...gate, inFlight, waiting: gate.waiting?.seq === seq ? before : gate.waiting, held: undefined }
 }
 
-/** The key press the canvas takes (and so keeps from the page): a nudge or a turn needs a selection and no tool using the keys. */
+/** The actions the canvas's key listener runs (runKey in use-part-keys.ts). */
+const CANVAS_RUNS: ReadonlySet<string> = new Set(["fit", "highlight", "contextMenu", "rotate", "nudgeLeft", "nudgeRight", "nudgeUp", "nudgeDown"])
+
+/**
+ * Whether the canvas takes the key press (and so keeps it from the page and the later listeners): only an action it
+ * runs, and a nudge or a turn only with a selection and no tool using the keys. Ctrl+Z, Shift+F, Alt+W and the other
+ * keys that the app, the workspace or a tool runs are left to that listener, which prevents them itself.
+ */
 export function claimsKey(action: string, selectionSize: number, paused: boolean, preventDefault: boolean): boolean {
-  if (!action.startsWith("nudge") && action !== "rotate") return preventDefault
-  return selectionSize > 0 && !paused && preventDefault
+  if (!preventDefault || !CANVAS_RUNS.has(action)) return false
+  if (action.startsWith("nudge") || action === "rotate") return selectionSize > 0 && !paused
+  return true
 }

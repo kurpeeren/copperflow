@@ -43,7 +43,7 @@ export interface KeyInput {
   onButton?: boolean
   /** Focus is in a widget that handles its own keys (a table row, listbox, tree, tab, menu). */
   ownsKeys?: boolean
-  /** Something already handled the event (defaultPrevented). */
+  /** A widget already handled the event (defaultPrevented); this counts only for its navigation and activation keys. */
   handled?: boolean
 }
 
@@ -171,12 +171,14 @@ const opensMenu = (input: KeyInput): boolean =>
 
 /** What the key press means in this view, or null when it is not ours (or belongs to a field or a browser shortcut). */
 export function keyAction(input: KeyInput, state: KeyState): KeyResult | null {
-  if (input.typing || input.ownsKeys || input.handled) return null
+  if (input.typing || input.ownsKeys) return null
   if (opensMenu(input)) return act("contextMenu", true)
   const panel = PANEL_KEYS.get(input.key)
   if (panel && plainOrAltGr(input)) return act(panel)
   if (input.ctrlKey || input.metaKey) return ctrlAction(input)
   if (input.altKey) return altAction(input, state)
+  // An arrow, Space or a letter that a widget already took (a table row's own arrow) is not the canvas's too.
+  if (input.handled) return null
   const arrow = arrowAction(input)
   if (arrow) return arrow
   if (input.key === " ") return state.drawing || input.onButton ? null : act("rotate", true)

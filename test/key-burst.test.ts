@@ -172,6 +172,13 @@ describe("claimsKey", () => {
     expect(claimsKey("rotate", 1, true, true)).toBe(false)
     expect(claimsKey("rotate", 1, false, true)).toBe(true)
     expect(claimsKey("fit", 0, false, false)).toBe(false)
-    expect(claimsKey("openLibrary", 0, false, true)).toBe(true)
+    expect(claimsKey("contextMenu", 0, false, true)).toBe(true)
+  })
+
+  test("a key the canvas does not run is never claimed, so the app, the workspace or the tool that runs it still sees it", () => {
+    for (const action of ["undo", "selectAll", "find", "openFile", "openLibrary", "wire", "armNetLabel"]) {
+      expect([action, claimsKey(action, 1, false, true)]).toEqual([action, false])
+      expect([action, claimsKey(action, 0, false, true)]).toEqual([action, false])
+    }
   })
 })
