@@ -6,7 +6,21 @@ export interface DrawCall {
   fillStyle: unknown
   globalAlpha: number
   lineWidth: number
+  /** The font when the call was made, so a test can read the size a text was written at. */
+  font: string
 }
+
+/** Width per character of the fake font, in font sizes. */
+export const FAKE_CHAR_WIDTH = 0.6
+
+/** The fake measure: each character is FAKE_CHAR_WIDTH of the font's px size (10 px when no size is set). */
+export function fakeTextWidth(text: string, font: string): number {
+  const px = Number(/([\d.]+)px/.exec(font)?.[1] ?? 10)
+  return text.length * px * FAKE_CHAR_WIDTH
+}
+
+/** The px size of a font string, such as 7 for "600 7px Segoe UI". */
+export const fontPx = (font: string): number => Number(/([\d.]+)px/.exec(font)?.[1] ?? NaN)
 
 /** A 2D context that records what was drawn. `calls` holds the call names; `records` holds the details. */
 export function recorder() {
@@ -18,8 +32,8 @@ export function recorder() {
       if (key in target) return target[key as keyof typeof target]
       return (...args: unknown[]) => {
         calls.push(String(key))
-        records.push({ name: String(key), args, strokeStyle: target.strokeStyle, fillStyle: target.fillStyle, globalAlpha: target.globalAlpha, lineWidth: target.lineWidth })
-        if (key === "measureText") return { width: 10 }
+        records.push({ name: String(key), args, strokeStyle: target.strokeStyle, fillStyle: target.fillStyle, globalAlpha: target.globalAlpha, lineWidth: target.lineWidth, font: target.font })
+        if (key === "measureText") return { width: fakeTextWidth(String(args[0]), target.font) }
         return undefined
       }
     },
