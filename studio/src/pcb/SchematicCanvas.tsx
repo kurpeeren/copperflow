@@ -9,7 +9,7 @@ import { ViewTools } from "../shell/ViewTools"
 import { keepAutoPlaced } from "./auto-placed"
 import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
 import { CanvasStatus, KeepButton, SnapSelect } from "./CanvasTools"
-import { hitTest, unionBoxes, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry"
+import { hitTest, unionBoxes, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import { highlightOf, partNets, schematicNetAt, type Highlight } from "./highlight"
 import { labelHitBox } from "./label-drag"
 import { NameInput, paletteHint } from "./LabelPalette"
@@ -18,6 +18,8 @@ import { drawOutline, drawWirePreview, type OverlayLook } from "./overlays"
 import { drawSchematicGrid } from "./schematic-grid"
 import { schematicTheme } from "./schematic-theme"
 import { drawSchematic } from "./schematic-draw"
+import { drawSheetBorder } from "./sheet-draw"
+import { sheetDate, sheetFor, type Sheet, type TitleValues } from "./sheet"
 import { cursorFor, pointerHandlers, useCanvasGestures, type Gesture } from "./use-canvas-gestures"
 import { useDraggedLabel, useLabelDrag, type LabelTools, type MovingLabel } from "./use-label-drag"
 import { useLabelPalette } from "./use-label-palette"
@@ -27,7 +29,6 @@ import { useWireTool } from "./use-wire-tool"
 const SHEET_LOOK: OverlayLook = { selected: schematicTheme.selection, hover: schematicTheme.hover, noteStroke: schematicTheme.selection, noteFill: schematicTheme.selectionFill }
 const EMPTY_SHEET_CAMERA: Camera = { cx: 0, cy: 0, scale: 60 }
 const FIT_MARGIN = 0.06
-const SHEET_MARGIN = 1
 /** How close to a pin end, wire or label the pointer must be for the H key, in CSS pixels. */
 const HIGHLIGHT_REACH_PX = 12
 
@@ -36,6 +37,8 @@ type Palette = ReturnType<typeof useLabelPalette>
 
 interface SheetScene {
   design: Design
+  /** The drawing border and its title block. */
+  border: { sheet: Sheet; title: TitleValues }
   camera: Camera | undefined
   size: Size
   wire: WireTool
@@ -59,7 +62,7 @@ interface SheetScene {
 
 /** Draws the sheet and its violation rings, the wire being drawn and the editor layer; a sheet without parts gets a default view. */
 function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: SheetScene): void {
-  const { design, camera, size, moving, boxes, hover, selected, locked, circuit, gesture, movingLabels, hoverLabel, palette, highlight, markers, activeViolation } = scene
+  const { design, border, camera, size, moving, boxes, hover, selected, locked, circuit, gesture, movingLabels, hoverLabel, palette, highlight, markers, activeViolation } = scene
   const { wiring, drawing, activePins, pendingWires, preview } = scene.wire
   const { ghosts, ghostWires, armed } = palette
   useEffect(() => {
@@ -67,6 +70,7 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
     const prepared = prepareCanvas(canvasRef.current, size, view, schematicTheme.background, drawSchematicGrid)
     if (!prepared) return
     const { ctx, ratio } = prepared
+    drawSheetBorder(ctx, view, size, border.sheet, border.title)
     drawSchematic(ctx, design.schematic, { camera: view, size }, {
       ratio,
       showPins: wiring || drawing !== null || armed,
@@ -85,7 +89,7 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
     const shownHover = drawing ? undefined : hover
     drawEditorLayer(ctx, view, size, { view: "schematic", boxes, moving, hover: shownHover, selected, locked, marks: circuit.annotations.marks, noteBox, look: SHEET_LOOK })
     if (hoverLabel && !drawing && !gesture) drawOutline(ctx, view, size, labelHitBox(hoverLabel), { x: 0, y: 0 }, "hover", SHEET_LOOK)
-  }, [canvasRef, design, camera, size, wiring, drawing, activePins, pendingWires, preview, moving, movingLabels, hoverLabel, boxes, hover, selected, locked, circuit, gesture, ghosts, ghostWires, armed, highlight, markers, activeViolation])
+  }, [canvasRef, design, border, camera, size, wiring, drawing, activePins, pendingWires, preview, moving, movingLabels, hoverLabel, boxes, hover, selected, locked, circuit, gesture, ghosts, ghostWires, armed, highlight, markers, activeViolation])
 }
 
 interface SheetToolsProps {
@@ -165,10 +169,10 @@ function SheetView({ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave,
   )
 }
 
-/** Every symbol with a margin around them, or undefined for an empty sheet. */
-function sheetBounds(boxes: PartBox[]): Box | undefined {
-  const all = unionBoxes(boxes.map((b) => b.box))
-  return all && { minX: all.minX - SHEET_MARGIN, minY: all.minY - SHEET_MARGIN, maxX: all.maxX + SHEET_MARGIN, maxY: all.maxY + SHEET_MARGIN }
+/** The sheet that holds the drawing, and the title block's values. */
+function useBorder(boxes: PartBox[], project: string | undefined, file: string, buildId: string | undefined): SheetScene["border"] {
+  const sheet = useMemo(() => sheetFor(unionBoxes(boxes.map((b) => b.box))), [boxes])
+  return useMemo(() => ({ sheet, title: { project: project ?? "", page: "Schematic", file, date: sheetDate(buildId), rev: "" } }), [sheet, project, file, buildId])
 }
 
 function wireHint(wire: WireTool): string | undefined {
@@ -253,15 +257,15 @@ function useArmedTool(wire: WireTool, palette: Palette): void {
  * The schematic, drawn by copperflow's own renderer under its camera, grid and tools, with the
  * wire tool (see useWireTool) and the Place tools (see useLabelPalette).
  */
-export function SchematicCanvas({ design, buildId, builtFrom, circuit, actions, selected, onSelect, highlight: highlightNets, onHighlight, markers, activeViolation, focus, onFocused }: CanvasProps) {
+export function SchematicCanvas({ design, buildId, project, builtFrom, circuit, actions, selected, onSelect, highlight: highlightNets, onHighlight, markers, activeViolation, focus, onFocused }: CanvasProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const size = useElementSize(wrapRef)
   const [cursor, setCursor] = useState<Point>()
   const [step, setStep] = useState(0.5)
   const parts = usePlacedParts(design, "schematic", circuit)
-  const bounds = useMemo(() => sheetBounds(parts.boxes), [parts.boxes])
-  const { camera, setCamera, fit } = useCamera(wrapRef, size, bounds, FIT_MARGIN)
+  const border = useBorder(parts.boxes, project, circuit.file, buildId)
+  const { camera, setCamera, fit } = useCamera(wrapRef, size, border.sheet.outer, FIT_MARGIN)
   useCameraFocus("schematic", focus, camera, setCamera, onFocused)
   const wire = useWireTool({ design, actions, camera, cursor, step, buildId, builtFrom })
   const palette = useLabelPalette({ design, circuit, actions, camera, cursor, builtFrom, onArm: wire.cancel })
@@ -272,7 +276,7 @@ export function SchematicCanvas({ design, buildId, builtFrom, circuit, actions, 
   const hover = useSheetHover(parts.boxes, wire, labels.tools)
   const { moving, gesture } = gestures
   const movingLabels = useMovingLabels(design, gesture, labels.pending)
-  useSheetPaint(canvasRef, { design, camera, size, wire, moving, boxes: parts.boxes, hover: hover.part, selected, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel: hover.label, palette, highlight, markers, activeViolation })
+  useSheetPaint(canvasRef, { design, border, camera, size, wire, moving, boxes: parts.boxes, hover: hover.part, selected, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel: hover.label, palette, highlight, markers, activeViolation })
   const press = (event: { button: number; shiftKey: boolean }, world: Point) => palette.press(event, world) || wire.press(event, world)
   const pointer = pointerHandlers({ camera, size, element: wrapRef, gestures, setCursor, tool: press, hover: hover.at })
   const cursorStyle = cursorFor(gesture, wire.drawing !== null || wire.overPin || palette.armed, hover.part !== undefined || hover.label !== undefined)
@@ -284,7 +288,7 @@ export function SchematicCanvas({ design, buildId, builtFrom, circuit, actions, 
   return (
     <>
       <SheetTools step={step} setStep={setStep} keep={{ show: parts.autoPlaced, onKeep: () => keepAutoPlaced(design, "schematic", parts.blockerFor, actions) }} />
-      <SheetView {...{ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave, cursorStyle, wire, palette, gesture }} empty={!bounds} />
+      <SheetView {...{ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave, cursorStyle, wire, palette, gesture }} empty={parts.boxes.length === 0} />
     </>
   )
 }

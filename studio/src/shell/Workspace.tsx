@@ -43,6 +43,7 @@ function canvasProps({ data, workspace, checks, selected, onSelect, actions }: W
   return {
     design: build.design,
     buildId: build.finishedAt,
+    project: data.project,
     // Previews of moves and wires sent before this time are in the design the canvases draw.
     builtFrom: build.startedAt ? Date.parse(build.startedAt) : Number.NEGATIVE_INFINITY,
     circuit,

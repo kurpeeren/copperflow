@@ -19,6 +19,8 @@ export interface CanvasProps {
   design: Design
   /** Changes when a build finishes. */
   buildId: string | undefined
+  /** The Studio folder's name, for the schematic's title block. */
+  project: string | undefined
   /** When the build behind the shown design started (ms); a preview sent before then is in the design. */
   builtFrom: number
   circuit: CircuitData
