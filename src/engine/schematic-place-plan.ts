@@ -150,19 +150,27 @@ function seriesAttachment(part: string, pins: readonly Pin[], options: (pin: Pin
   return lone ? { kind: "series", part, hook: lone } : undefined
 }
 
-/** Where a two-pin passive hangs, or undefined when no chip pin shares a net with it. */
-export function attachmentOf(passive: Component, netlist: Netlist, byNet: ReadonlyMap<string, AnchorPin[]>): Attachment | undefined {
-  const pins = [...passive.pins].sort((a, b) => a.number - b.number)
+/**
+ * Where a two-ended part hangs: a passive, or a chain of them given by its two outer pins. To ground it hangs
+ * below a chip pin on its other net, to power it stands above the chip pin on its signal net, otherwise it goes in
+ * line (or between two chips). With `fallback`, a part whose own rule finds no chip pin goes in line with any
+ * chip pin on one of its nets. Undefined when it hangs from nothing; `name` keys the result.
+ */
+export function attachmentOf(name: string, ends: readonly Pin[], netlist: Netlist, byNet: ReadonlyMap<string, AnchorPin[]>, fallback = false): Attachment | undefined {
   const options = (pin: Pin): AnchorPin[] => {
     const net = netlist.netOf.get(pin.id)
     return net === undefined ? [] : (byNet.get(net) ?? [])
   }
-  const kinds = pins.map((pin) => kindAt(pin, netlist))
+  const kinds = ends.map((pin) => kindAt(pin, netlist))
   const grounded = kinds.filter((kind) => kind === "ground").length
-  if (grounded === 2) return undefined
+  if (ends.length !== 2 || grounded === 2) return undefined
   const shunt = grounded === 1 ? "ground" : kinds.includes("power") && kinds.includes("signal") ? "power" : undefined
-  if (shunt === undefined) return seriesAttachment(passive.id, pins, options)
-  const own = pins[shunt === "ground" ? kinds.findIndex((kind) => kind !== "ground") : kinds.indexOf("signal")]
+  if (shunt === undefined) return seriesAttachment(name, ends, options)
+  const own = ends[shunt === "ground" ? kinds.findIndex((kind) => kind !== "ground") : kinds.indexOf("signal")]
   const at = own ? options(own)[0] : undefined
-  return own && at ? { kind: shunt, part: passive.id, hook: { own, at } } : undefined
+  if (own && at) return { kind: shunt, part: name, hook: { own, at } }
+  if (!fallback || shunt === "ground") return undefined
+  const power = ends[kinds.indexOf("power")]
+  const powerAt = power ? options(power)[0] : undefined
+  return power && powerAt ? { kind: "series", part: name, hook: { own: power, at: powerAt } } : undefined
 }

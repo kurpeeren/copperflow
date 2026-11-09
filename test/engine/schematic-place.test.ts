@@ -168,6 +168,58 @@ describe("placement by connectivity", () => {
     expect(r2!.pinEnds["R2.pin2"]!.x).toBeLessThan(r2!.pinEnds["R2.pin1"]!.x)
   })
 
+  test("a chain between two chips lands between them, in line", () => {
+    const circuit = build(
+      [
+        chip("U1", { pin1: ["IN", "isInput"], pin2: ["OUT", "isOutput"], pin3: ["GND", "requiresGround"] }),
+        chip("U2", { pin1: ["IN", "isInput"], pin2: ["OUT", "isOutput"], pin3: ["GND", "requiresGround"] }),
+        `<resistor name="R1" resistance="1k" />`,
+        `<resistor name="R2" resistance="1k" />`,
+        traces([["U1.OUT", "R1.pin1"], ["R1.pin2", "R2.pin1"], ["R2.pin2", "U2.IN"], ["U1.GND", "net.GND"], ["U2.GND", "net.GND"]]),
+      ].join("\n"),
+    )
+    const { symbols } = layoutSchematic(circuit)
+    const [u1, u2] = ["U1", "U2"].map((name) => boxOf(symbolOf(symbols, name)))
+    for (const name of ["R1", "R2"]) {
+      const box = boxOf(symbolOf(symbols, name))
+      expect(box.minX).toBeGreaterThan(u1!.maxX)
+      expect(box.maxX).toBeLessThan(u2!.minX)
+    }
+    expect(symbolOf(symbols, "R1").y).toBe(symbolOf(symbols, "R2").y)
+    expect(symbolOf(symbols, "R2").pinEnds["R2.pin1"]!.x - symbolOf(symbols, "R1").pinEnds["R1.pin2"]!.x).toBeCloseTo(0.4)
+    expect(crowded(symbols)).toEqual([])
+  })
+
+  test("a resistor from a chip's power pin to a net no chip is on stands in line with that pin", () => {
+    const circuit = build(
+      [
+        chip("U1", { pin1: ["VDD", "requiresPower"], pin2: ["IO", "isInput"], pin3: ["GND", "requiresGround"] }),
+        `<resistor name="R1" resistance="10k" />`,
+        traces([["U1.VDD", "net.V3_3"], ["R1.pin1", "net.V3_3"], ["R1.pin2", "net.SPARE"], ["U1.GND", "net.GND"]]),
+      ].join("\n"),
+    )
+    const { symbols } = layoutSchematic(circuit)
+    const [u1, r1] = [symbolOf(symbols, "U1"), symbolOf(symbols, "R1")]
+    expect(boxOf(r1).minY).toBeGreaterThanOrEqual(boxOf(u1).maxY + 0.3 - EPSILON)
+    expect(r1.pinEnds["R1.pin1"]!.x).toBe(u1.pinEnds["U1.pin1"]!.x)
+  })
+
+  test("series parts on neighbouring pins both stay level with their pins", () => {
+    const circuit = build(
+      [
+        chip("U1", { pin1: ["OUT1", "isOutput"], pin2: ["OUT2", "isOutput"], pin3: ["GND", "requiresGround"] }),
+        `<resistor name="R1" resistance="33" />`,
+        `<resistor name="R2" resistance="33" />`,
+        traces([["R1.pin1", "U1.OUT1"], ["R1.pin2", "net.TX1"], ["R2.pin1", "U1.OUT2"], ["R2.pin2", "net.TX2"], ["U1.GND", "net.GND"]]),
+      ].join("\n"),
+    )
+    const { symbols } = layoutSchematic(circuit)
+    const u1 = symbolOf(symbols, "U1")
+    expect(symbolOf(symbols, "R1").pinEnds["R1.pin1"]!.y).toBe(u1.pinEnds["U1.pin1"]!.y)
+    expect(symbolOf(symbols, "R2").pinEnds["R2.pin1"]!.y).toBe(u1.pinEnds["U1.pin2"]!.y)
+    expect(crowded(symbols)).toEqual([])
+  })
+
   test("placed parts do not move and nothing auto-placed crowds them", () => {
     const fixed = `<resistor name="R9" schX={6} schY={0} />\n${chip("U9", { pin1: ["A", "isInput"], pin2: ["B", "isOutput"], pin3: ["C", "isPassive"] }, " schX={-3} schY={-1}")}`
     const { symbols } = layoutSchematic(build(`${REGULATOR}\n${fixed}`))
@@ -216,6 +268,19 @@ describe("the usb-c-ldo example without positions", () => {
   test("with every near pin wired, every wire still avoids the symbols", () => {
     expect(wired.board?.schMaxTraceDistance).toBeUndefined()
     expect(layoutSchematicWithDiagnostics(wired).diagnostics).toEqual([])
+  })
+
+  test("the LED branch and the output header hang beside the regulator's output, after its capacitor", () => {
+    const { symbols } = layoutSchematic(circuit)
+    const [u1, c2, r3, led1, j2] = ["U1", "C2", "R3", "LED1", "J2"].map((name) => symbolOf(symbols, name))
+    for (const part of [r3!, led1!, j2!]) {
+      expect(part.x).toBeGreaterThan(c2!.x)
+      expect(boxOf(part).minX - boxOf(u1!).maxX).toBeLessThan(4)
+      expect(boxOf(part).maxY).toBeLessThan(boxOf(u1!).minY)
+    }
+    expect(r3!.x).toBe(led1!.x)
+    expect(r3!.y).toBeGreaterThan(led1!.y)
+    expect(led1!.pinEnds["LED1.pin1"]!.y).toBeLessThan(led1!.pinEnds["LED1.pin2"]!.y)
   })
 
   test("the USB connector is left of the regulator, with the regulator's capacitors below it", () => {

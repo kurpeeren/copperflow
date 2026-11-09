@@ -1,6 +1,6 @@
 // Chains of the parts no chip claims: two-pin parts joined end to end, by a trace of their own or by a net of
 // just the two pins, line up left to right as a person draws a series chain. Every other part is a chain of one.
-import type { Circuit, Component, Side } from "./model.js"
+import type { Circuit, Component, Pin, Side } from "./model.js"
 import { naturalCompare } from "./order.js"
 import type { SchSymbol } from "./symbols/index.js"
 
@@ -44,11 +44,23 @@ interface Chaining {
   used: Set<string>
 }
 
-/** The id of the part's pin that faces `side` when the part is turned by `rotation`. */
-function pinFacing(part: Component, side: Side, rotation: 0 | 180, chaining: Chaining): string | undefined {
-  const out = chaining.symbols.get(part.id)?.pins.find((pin) => facing(pin.side, rotation) === side)
-  return out && part.pins.find((pin) => pin.number === out.number)?.id
+/** The part's pin that faces `side` when the part is turned by `rotation`. */
+export function pinFacing(part: Component, side: Side, rotation: 0 | 180, symbols: Symbols): Pin | undefined {
+  const out = symbols.get(part.id)?.pins.find((pin) => facing(pin.side, rotation) === side)
+  return out && part.pins.find((pin) => pin.number === out.number)
 }
+
+/** The two outer pins of a chain, left end first; a lone part that is not a pair gives its pins when it has two. */
+export function chainEnds(chain: readonly Link[], symbols: Symbols): Pin[] | undefined {
+  const [first, last] = [chain[0], chain[chain.length - 1]]
+  if (!first || !last) return undefined
+  if (!isPair(symbols.get(first.part.id))) return chain.length === 1 && first.part.pins.length === 2 ? [...first.part.pins] : undefined
+  const ends = [pinFacing(first.part, "left", first.rotation, symbols), pinFacing(last.part, "right", last.rotation, symbols)]
+  return ends.every((pin) => pin !== undefined) ? (ends as Pin[]) : undefined
+}
+
+/** The chain turned end for end. */
+export const reversed = (chain: readonly Link[]): Link[] => [...chain].reverse().map((link) => ({ ...link, rotation: link.rotation === 0 ? 180 : 0 }))
 
 /**
  * A pin joined to this one whose part is a free two-pin part, and that part. Parts named after `from` come first,
@@ -64,7 +76,7 @@ function freePartner(pin: string | undefined, from: string, chaining: Chaining):
 
 /** The free two-pin part joined to the link's right-facing pin, turned so the joined pin faces left. */
 function nextLink(link: Link, chaining: Chaining): Link | undefined {
-  const found = freePartner(pinFacing(link.part, "right", link.rotation, chaining), link.part.id, chaining)
+  const found = freePartner(pinFacing(link.part, "right", link.rotation, chaining.symbols)?.id, link.part.id, chaining)
   if (!found) return undefined
   const number = found.owner.pins.find((pin) => pin.id === found.pin)?.number
   const side = chaining.symbols.get(found.owner.id)?.pins.find((pin) => pin.number === number)?.side
@@ -74,8 +86,8 @@ function nextLink(link: Link, chaining: Chaining): Link | undefined {
 /** A part that can start a chain: one end joined to no free two-pin part, turned so that end faces left. */
 function headOf(part: Component, chaining: Chaining): Link | undefined {
   if (!isPair(chaining.symbols.get(part.id))) return { part, rotation: 0 }
-  if (!freePartner(pinFacing(part, "left", 0, chaining), part.id, chaining)) return { part, rotation: 0 }
-  if (!freePartner(pinFacing(part, "right", 0, chaining), part.id, chaining)) return { part, rotation: 180 }
+  if (!freePartner(pinFacing(part, "left", 0, chaining.symbols)?.id, part.id, chaining)) return { part, rotation: 0 }
+  if (!freePartner(pinFacing(part, "right", 0, chaining.symbols)?.id, part.id, chaining)) return { part, rotation: 180 }
   return undefined
 }
 

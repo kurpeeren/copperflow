@@ -3,7 +3,7 @@ import { buildDesign } from "../../src/engine/design.js"
 import { elaborate } from "../../src/engine/elaborate.js"
 import { evaluateCircuit } from "../../src/engine/evaluate.js"
 import type { Circuit, Point, Side } from "../../src/engine/model.js"
-import type { PinSpot } from "../../src/engine/schematic-nets.js"
+import { junctionsOf, type PinSpot } from "../../src/engine/schematic-nets.js"
 import { routeWires } from "../../src/engine/schematic-route.js"
 import { layoutSchematic, type PlacedSymbol, type SchematicLayout, type Wire } from "../../src/engine/schematic.js"
 
@@ -230,7 +230,11 @@ describe("the router on its own", () => {
     const down = { wire: { id: "c", net: "n", points: [{ x: 2, y: -1 }, { x: 2, y: 1 }] }, pins: ["C.p"] }
     const routed = routeWires({ boxes, spots }, [across, down], [{ id: "w", net: "n", from: "A.p", to: "C.p" }])
     expect(routed.diagnostics).toEqual([])
-    expect(routed.wires[0]?.points.length).toBeGreaterThanOrEqual(2)
+    const joining = routed.wires[0]
+    expect(joining?.points.length).toBeGreaterThanOrEqual(2)
+    const ends = [joining?.points[0], joining?.points[(joining?.points.length ?? 1) - 1]]
+    const junctions = junctionsOf([across.wire, down.wire, ...(joining ? [joining] : [])], spots)
+    for (const end of ends) expect(junctions).toContainEqual(end)
   })
 
   test("a search that runs past its cap falls back with the warning", () => {

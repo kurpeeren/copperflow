@@ -72,3 +72,23 @@ test("routes 60 traces across a 200-part schematic in under 50 ms", () => {
 test("places and routes the same 200 parts and 400 traces with no position given in under 50 ms", () => {
   expect(measure("400 near traces, nothing placed", bigSheet(false), 400)).toBeLessThan(50)
 })
+
+const CHIPS = 50
+const pins = `pinLabels={{ pin1: "VDD", pin2: "GND", pin3: "IN", pin4: "OUT" }} pinAttributes={{ pin1: { requiresPower: true }, pin2: { requiresGround: true }, pin3: { isInput: true }, pin4: { isOutput: true } }}`
+
+/** 50 chips with nothing placed, each with a decoupling capacitor, a pull-up on its input and a series resistor to the next chip. */
+function chipSheet(): string {
+  const parts: string[] = []
+  const traces: string[] = []
+  for (let i = 1; i <= CHIPS; i++) {
+    parts.push(`<chip name="U${i}" ${pins} />`, `<capacitor name="C${i}" capacitance="100nF" />`, `<resistor name="RP${i}" resistance="10k" />`, `<resistor name="RS${i}" resistance="33" />`)
+    const next = i < CHIPS ? `U${i + 1}.IN` : "net.END"
+    const pairs = [[`U${i}.VDD`, "net.V3_3"], [`U${i}.GND`, "net.GND"], [`C${i}.pin1`, "net.V3_3"], [`C${i}.pin2`, "net.GND"], [`RP${i}.pin1`, `U${i}.IN`], [`RP${i}.pin2`, "net.V3_3"], [`RS${i}.pin1`, `U${i}.OUT`], [`RS${i}.pin2`, next]]
+    traces.push(...pairs.map(([from, to]) => trace(from as string, to as string)))
+  }
+  return `export default () => (<board width="100mm" height="60mm">${parts.join("")}${traces.join("")}</board>)`
+}
+
+test("places and routes 50 chips with their passives, nothing placed, in under 50 ms", () => {
+  expect(measure("50 chips with passives, nothing placed", chipSheet(), CHIPS * 8)).toBeLessThan(50)
+})

@@ -152,6 +152,10 @@ class Router {
       this.markGroup(ends, request.from, SOURCE)
       this.markGroup(ends, request.to, TARGET)
     }
+    if (ends.goal.minX === Infinity) {
+      this.grid.undo()
+      return undefined
+    }
     const window = { grid: this.grid, box, sources: ends.sources, goal: ends.goal }
     const exact = findPath({ ...window, maxExpansions: Math.min(EXACT_EXPANSIONS, this.maxExpansions), weighted: false }, this.scratch)
     const cells = exact ?? findPath({ ...window, maxExpansions: this.maxExpansions, weighted: true }, this.scratch)
