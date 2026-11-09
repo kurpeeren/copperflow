@@ -56,6 +56,11 @@ export function toggleLayer(visibility: LayerVisibility, id: LayerId): LayerVisi
 /** The part as far as its layers go. Fabrication outlines are drawn on the assembly layer of the side; courtyards on their own layer. */
 type LayeredPart = Pick<PlacedFootprint, "side" | "pads" | "silkscreen" | "fabrication">
 
+/** The copper layer a pad is drawn on: through-hole pads are on Multi-Layer. */
+export function padLayer(pad: Pick<PlacedFootprint["pads"][number], "layers">): LayerId {
+  return pad.layers === "through" ? "multiLayer" : pad.layers === "bottom" ? "bottom" : "top"
+}
+
 /** The layers a part draws on. */
 export function partLayers(part: LayeredPart): LayerId[] {
   const top = part.side === "top"
@@ -63,7 +68,7 @@ export function partLayers(part: LayeredPart): LayerId[] {
   if (part.fabrication.length > 0) layers.add(top ? "topAssembly" : "bottomAssembly")
   if (part.silkscreen.length > 0) layers.add(top ? "topSilk" : "bottomSilk")
   for (const pad of part.pads) {
-    layers.add(pad.layers === "through" ? "multiLayer" : pad.layers === "bottom" ? "bottom" : "top")
+    layers.add(padLayer(pad))
     if (pad.drill) layers.add("hole")
   }
   return [...layers]

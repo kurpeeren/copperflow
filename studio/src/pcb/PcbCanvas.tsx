@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react"
 import type { CircuitData, Design } from "../api"
-import type { Selection } from "../selection"
+import { Selection } from "../selection"
 import type { WorldPad } from "../../../src/engine/pcb.js"
 import { keepAutoPlaced } from "./auto-placed"
 import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, useKeyMenuPlace, useLayout, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
 import { ViewTools } from "../shell/ViewTools"
 import { CanvasStatus, GridSelect, KeepButton } from "./CanvasTools"
 import { PALETTE } from "./ctx"
-import { pickLayersOf, type LayerVisibility } from "./layers"
+import { pickLayersOf, type LayerVisibility, type PickLayers } from "./layers"
 import { gridStepOptions, type GridLook } from "./grid"
-import { hitTest, pointBounds, unionBoxes, type Camera, type PartBox, type Point, type Size } from "./geometry"
+import { pointBounds, unionBoxes, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import { NO_HIGHLIGHT, partNets, pcbNetAt, type Highlight } from "./highlight"
 import type { ViolationMarker } from "./markers"
 import { drawGrid, PCB_LOOK } from "./overlays"
@@ -91,12 +91,14 @@ function PcbTools({ unit, step, setStep, keep }: PcbToolsProps) {
 }
 
 /** The part and the pad under the pointer. */
-function usePcbHover(design: Design, boxes: PartBox[]) {
+function usePcbHover(design: Design, boxes: PartBox[], pick: PickLayers) {
   const [part, setPart] = useState<string>()
   const [pad, setPad] = useState<WorldPad>()
+  // Parts and pads on hidden layers are not there to hover, as they are not there to pick.
   const at = (world: Point) => {
-    setPart(hitTest(boxes, world)?.name)
-    setPad(padAt(design.pcb, world))
+    const target = targetAt(boxes, undefined, world, { selection: Selection.none, armed: null, layers: pick })
+    setPart(target.kind === "part" ? target.name : undefined)
+    setPad(padAt(design.pcb, world, pick.visible))
   }
   const leave = () => {
     setPart(undefined)
@@ -108,10 +110,10 @@ function usePcbHover(design: Design, boxes: PartBox[]) {
 type PcbKeysInput = Omit<PartKeysInput, "paused" | "netUnderPointer" | "netsOf">
 
 /** The part keys, with H lighting the net under the pointer. */
-function usePcbKeys(design: Design, cursor: Point | undefined, keys: PcbKeysInput): { rotateHeld: boolean } {
+function usePcbKeys(design: Design, cursor: Point | undefined, visible: LayerVisibility, keys: PcbKeysInput): { rotateHeld: boolean } {
   const cursorRef = useRef<Point | undefined>(undefined)
   cursorRef.current = cursor
-  const netUnderPointer = useCallback(() => (cursorRef.current ? pcbNetAt(design.pcb, cursorRef.current) : undefined), [design])
+  const netUnderPointer = useCallback(() => (cursorRef.current ? pcbNetAt(design.pcb, cursorRef.current, visible) : undefined), [design, visible])
   const netsOf = useCallback((part: string) => partNets(design, part), [design])
   return usePartKeys({ ...keys, paused: false, netUnderPointer, netsOf })
 }
@@ -173,8 +175,8 @@ export function PcbCanvas(props: CanvasProps) {
   const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom, selection, tool, layers: pick, onContextMenu: props.onContextMenu })
   const layout = useLayout(parts, step)
   const menuPlace = useKeyMenuPlace(canvasRef, selection.primary, parts.boxes, camera, size)
-  const { rotateHeld } = usePcbKeys(design, cursor, { ...common, selection, layout, builtMark, buildStatus, moveWaiting: gestures.pending !== undefined, fit, onHighlight, menuPlace, onContextMenu: props.onContextMenu })
-  const hover = usePcbHover(design, parts.boxes)
+  const { rotateHeld } = usePcbKeys(design, cursor, layers, { ...common, selection, layout, builtMark, buildStatus, moveWaiting: gestures.pending !== undefined, fit, onHighlight, menuPlace, onContextMenu: props.onContextMenu })
+  const hover = usePcbHover(design, parts.boxes, pick)
   const { moving, gesture } = gestures
   usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad: hover.pad, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, highlightNets: highlight, markers, activeViolation, grid })
   const open = (world: Point) => {

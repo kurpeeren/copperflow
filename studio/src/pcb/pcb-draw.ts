@@ -3,7 +3,7 @@
 import type { PcbLayout, PlacedFootprint, WorldPad } from "../../../src/engine/pcb.js"
 import { CANVAS_FONT_FAMILY, PALETTE, type Ctx } from "./ctx.js"
 import { worldToScreen, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
-import { DEFAULT_LAYERS, type LayerVisibility } from "./layers.js"
+import { DEFAULT_LAYERS, padLayer, type LayerVisibility } from "./layers.js"
 import { drawViolationMarkers, type ViolationMarker } from "./markers.js"
 
 export interface PcbDrawOptions {
@@ -100,10 +100,10 @@ export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDra
   ctx.restore()
 }
 
-/** The pad under a point, or undefined. Pads of the same part are tried in order. */
-export function padAt(layout: PcbLayout, p: Point): WorldPad | undefined {
+/** The pad under a point, or undefined. Pads of the same part are tried in order; with `visible`, pads on hidden layers are skipped. */
+export function padAt(layout: PcbLayout, p: Point, visible?: LayerVisibility): WorldPad | undefined {
   for (const part of layout.parts) {
-    const hit = part.pads.find((pad) => insidePad(pad, p))
+    const hit = part.pads.find((pad) => (!visible || visible[padLayer(pad)]) && insidePad(pad, p))
     if (hit) return hit
   }
   return undefined

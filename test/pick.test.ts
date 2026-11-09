@@ -70,6 +70,11 @@ describe("hidden layers", () => {
     expect(canPick({ kind: "label", label }, hiding)).toBe(true)
   })
 
+  test("Select all leaves out the parts that are only on hidden layers", () => {
+    expect(selectAll(["R1", "C1"], layers)(Selection.none).names).toEqual(["C1"])
+    expect(selectAll(["R1", "C1"])(Selection.none).names).toEqual(["R1", "C1"])
+  })
+
   test("a click goes through to the shown part under it, and a box takes only the shown parts", () => {
     expect(targetAt(BOXES, undefined, { x: 3, y: 0 }, hiding)).toEqual({ kind: "canvas" })
     expect(targetAt(BOXES, undefined, { x: 1.5, y: 0 }, hiding)).toEqual({ kind: "part", name: "C1" })

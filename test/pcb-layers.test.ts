@@ -1,11 +1,13 @@
 import { describe, expect, test } from "vitest"
 import { buildDesign } from "../src/engine/design.js"
 import { PALETTE } from "../studio/src/pcb/ctx.js"
-import { drawPcb } from "../studio/src/pcb/pcb-draw.js"
+import { pcbNetAt } from "../studio/src/pcb/highlight.js"
+import { drawPcb, padAt } from "../studio/src/pcb/pcb-draw.js"
 import {
   DEFAULT_LAYERS,
   anyLayerShown,
   layerRows,
+  padLayer,
   partLayers,
   toggleLayer,
   type LayerId,
@@ -148,5 +150,23 @@ describe("what each layer hides in the draw", () => {
     }
     expect(text()).toBeGreaterThan(0)
     expect(text({ topSilk: false })).toBe(0)
+  })
+})
+
+describe("what the pointer finds on hidden layers", () => {
+  const pad = layout.parts.flatMap((p) => p.pads).find((p) => p.id === "R1#1")!
+  const at = { x: pad.x, y: pad.y }
+
+  test("a pad on a hidden layer is not under the pointer, and its net is not found", () => {
+    expect(padAt(layout, at)?.id).toBe("R1#1")
+    expect(padAt(layout, at, DEFAULT_LAYERS)?.id).toBe("R1#1")
+    expect(padAt(layout, at, { ...DEFAULT_LAYERS, top: false })).toBeUndefined()
+    expect(pcbNetAt(layout, at, { ...DEFAULT_LAYERS, top: false })).toBeUndefined()
+  })
+
+  test("a through pad follows Multi-Layer", () => {
+    const through = layout.parts.flatMap((p) => p.pads).find((p) => p.id === "J1#2")!
+    expect(padAt(layout, { x: through.x, y: through.y }, { ...DEFAULT_LAYERS, multiLayer: false })).toBeUndefined()
+    expect(padLayer(through)).toBe("multiLayer")
   })
 })

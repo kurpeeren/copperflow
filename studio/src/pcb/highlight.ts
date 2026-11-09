@@ -4,6 +4,7 @@ import type { Design } from "../../../src/engine/design.js"
 import type { Net } from "../../../src/engine/model.js"
 import type { PcbLayout } from "../../../src/engine/pcb.js"
 import type { Point } from "./geometry.js"
+import type { LayerVisibility } from "./layers.js"
 import { nameList } from "./group-edits.js"
 import { labelAt } from "./label-drag.js"
 import { padAt } from "./pcb-draw.js"
@@ -102,6 +103,6 @@ export function remapHighlight(ids: Highlight, before: Design | undefined, after
 }
 
 /** The id of the net of the pad at `p`, if the pad is on one. */
-export function pcbNetAt(layout: PcbLayout, p: Point): string | undefined {
-  return padAt(layout, p)?.net ?? undefined
+export function pcbNetAt(layout: PcbLayout, p: Point, visible?: LayerVisibility): string | undefined {
+  return padAt(layout, p, visible)?.net ?? undefined
 }

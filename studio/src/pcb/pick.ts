@@ -41,7 +41,7 @@ export function pickNames(names: readonly string[], context: PickContext): strin
   return picks(names.map((name) => ({ kind: "part" as const, name })), context).map((part) => part.name)
 }
 
-/** Select all: every part of the circuit that may be picked, each once. */
-export function selectAll(names: readonly string[]): SelectionChange {
-  return (current) => current.all(pickNames(names, { selection: current, armed: null }))
+/** Select all: every part of the circuit that may be picked, each once; on the PCB, not those on hidden layers. */
+export function selectAll(names: readonly string[], layers?: PickLayers): SelectionChange {
+  return (current) => current.all(pickNames(names, { selection: current, armed: null, layers }))
 }
