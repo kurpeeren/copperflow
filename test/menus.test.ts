@@ -148,9 +148,14 @@ describe("menus", () => {
     for (const menu of MENUS) expect([menu.title, menuItems(menu).length <= 14]).toEqual([menu.title, true])
   })
 
-  test("Route holds only items that are still to come; Settings only System", () => {
+  test("Route runs Single routing (Alt+W) and Via (Alt+V); Routing corner and Auto routing are still to come; Settings only System", () => {
     const route = MENUS.find((m) => m.title === "Route")
-    expect(route && menuItems(route).every((item) => item.pending !== undefined)).toBe(true)
+    expect(route && menuItems(route).slice(0, 2)).toEqual([
+      { label: "Single routing", command: "singleRouting", shortcut: "Alt+W" },
+      { label: "Via", command: "placeVia", shortcut: "Alt+V" },
+    ])
+    expect(route && menuItems(route).slice(2).every((item) => item.pending !== undefined)).toBe(true)
+    expect(shortcutList()).toContainEqual({ keys: "V (PCB)", label: "Change the active layer; while routing, a via at the last corner" })
     const settings = MENUS.find((m) => m.title === "Settings")
     expect(settings && menuItems(settings).filter((item) => item.pending !== undefined).map((item) => item.label)).toEqual(["System"])
   })

@@ -112,3 +112,16 @@ button.layer-eye:hover:not(:disabled) {
 button.layer-eye:active:not(:disabled) {
   background: var(--line);
 }
+
+.layer-active {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 10px;
+}
+
+.layer-active select {
+  flex: 1;
+  min-width: 0;
+}

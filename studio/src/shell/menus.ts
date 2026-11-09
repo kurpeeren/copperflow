@@ -38,6 +38,8 @@ export type CommandId =
   | "drawCircle"
   | "drawRectangle"
   | "drawText"
+  | "singleRouting"
+  | "placeVia"
   | "checkDrc"
   | "highlight"
   | "clearHighlight"
@@ -168,8 +170,8 @@ export const MENUS: readonly Menu[] = [
   {
     title: "Route",
     entries: [
-      later("Single routing", WAITS_FOR_ROUTING, "Alt+W"),
-      later("Via", WAITS_FOR_ROUTING, "Alt+V"),
+      run("Single routing", "singleRouting", "Alt+W"),
+      run("Via", "placeVia", "Alt+V"),
       later("Routing corner", WAITS_FOR_ROUTING, "L"),
       later("Auto routing", WAITS_FOR_AUTOROUTER),
     ],
@@ -258,6 +260,8 @@ export const COMMAND_KEY_ACTIONS: Partial<Record<CommandId, KeyActionName>> = {
   drawCircle: "drawCircle",
   drawRectangle: "drawRectangle",
   drawText: "drawText",
+  singleRouting: "route",
+  placeVia: "placeVia",
   highlight: "highlight",
   clearHighlight: "clearHighlight",
   rotate: "rotate",
@@ -272,7 +276,9 @@ export const COMMAND_KEY_ACTIONS: Partial<Record<CommandId, KeyActionName>> = {
 /** Keys that no menu item shows: the canvas keys, and the second key of a command. */
 const EXTRA_KEYS = [
   { keys: "Ctrl+Shift+Z", label: "Redo" },
-  { keys: "W", label: "Wire (schematic)" },
+  { keys: "W", label: "Wire (schematic), Single routing (PCB)" },
+  { keys: "V (PCB)", label: "Change the active layer; while routing, a via at the last corner" },
+  { keys: "Space (while routing)", label: "Step the corner mode: 45°, 45° reversed, 90°" },
   { keys: "R", label: "Rotate" },
   { keys: "Space (while drawing a wire)", label: "Flip the bend of the leg to the pointer" },
   { keys: "Shift (while drawing a polyline)", label: "Keep the leg horizontal or vertical; Space flips its bend" },

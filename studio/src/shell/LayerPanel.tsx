@@ -1,5 +1,5 @@
 import { EyeIcon } from "../icons"
-import { layerRows, swatchBackground, type LayerFilter, type LayerId, type LayerVisibility } from "../pcb/layers"
+import { ACTIVE_LAYERS, layerRows, swatchBackground, type ActiveLayer, type LayerFilter, type LayerId, type LayerVisibility } from "../pcb/layers"
 import { blurAfterPointerClick } from "./focus"
 import { sideTabId, stripPanelId } from "./SideStrip"
 import { useTabList } from "./use-tab-list"
@@ -19,6 +19,25 @@ interface Props {
   hasKeepouts: boolean
   onFilter(filter: LayerFilter): void
   onToggle(id: LayerId): void
+  /** The copper layer tracks are drawn on; V changes it too. */
+  active: ActiveLayer
+  onActive(layer: ActiveLayer): void
+}
+
+/** The active copper layer, as EasyEDA's layer select: tracks are drawn on it, and V switches it. */
+function ActiveLayerSelect({ active, onActive }: Pick<Props, "active" | "onActive">) {
+  return (
+    <label className="layer-active hairline-b" title="The layer tracks are drawn on (V)">
+      Active layer
+      <select value={active} onChange={(event) => onActive(event.target.value as ActiveLayer)}>
+        {ACTIVE_LAYERS.map((layer) => (
+          <option key={layer.id} value={layer.id}>
+            {layer.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
 }
 
 /** All, Copper or Non-copper, one of three as a radio group: the arrow keys move the choice, Tab reaches the chosen one. */
@@ -35,11 +54,12 @@ function LayerFilters({ filter, onFilter }: Pick<Props, "filter" | "onFilter">) 
   )
 }
 
-/** The PCB's layers: the filters at the top, then a 28px row for each layer with its colour, its name and an eye. */
-export function LayerPanel({ visibility, filter, hasKeepouts, onFilter, onToggle }: Props) {
+/** The PCB's layers: the filters at the top, the active layer, then a 28px row for each layer with its colour, its name and an eye. */
+export function LayerPanel({ visibility, filter, hasKeepouts, onFilter, onToggle, active, onActive }: Props) {
   return (
     <aside className="panel right layer-panel" id={stripPanelId("right")} role="tabpanel" aria-labelledby={sideTabId("layer")} onClick={blurAfterPointerClick}>
       <LayerFilters filter={filter} onFilter={onFilter} />
+      <ActiveLayerSelect active={active} onActive={onActive} />
       <ul className="layer-list">
         {layerRows(hasKeepouts, filter).map((row) => {
           const shown = visibility[row.id]

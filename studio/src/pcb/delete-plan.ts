@@ -23,6 +23,15 @@ export function splitCopper(selection: Selection, copperOn: boolean): { copper: 
   return { copper: selection.copper, rest: rest.total === 0 ? undefined : rest }
 }
 
+/**
+ * Delete when the rest of the selection may not go (`message` says why): selected copper still goes, and the reason
+ * is told; with no copper, a key stays quiet and a command says why, as before.
+ */
+export function restBlocked(copper: number, message: string, fromKey: boolean): { removeCopper: boolean; notice?: string } {
+  if (copper > 0) return { removeCopper: true, notice: message }
+  return fromKey ? { removeCopper: false } : { removeCopper: false, notice: message }
+}
+
 /** What Delete says with nothing selected. */
 export const NOTHING_TO_DELETE = "Select a part or a wire first."
 

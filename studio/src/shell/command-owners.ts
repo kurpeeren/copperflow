@@ -53,7 +53,11 @@ export type SheetLayoutCommand = (typeof SHEET_LAYOUT_COMMANDS)[number]
 export const WIRE_COMMANDS = ["removeCorners"] as const satisfies readonly CommandId[]
 export type WireCommand = (typeof WIRE_COMMANDS)[number]
 
-export type CommandOwner = "app" | "workspace" | "canvas" | "schematic"
+/** Answered by the PCB only (use-track-tool.ts); sent while the schematic is open, they switch to the PCB first. */
+export const PCB_COMMANDS = ["singleRouting", "placeVia"] as const satisfies readonly CommandId[]
+export type PcbCommand = (typeof PCB_COMMANDS)[number]
+
+export type CommandOwner = "app" | "workspace" | "canvas" | "schematic" | "pcb"
 
 const has = (list: readonly CommandId[], command: CommandId) => list.includes(command)
 
@@ -62,5 +66,6 @@ export function commandOwner(command: CommandId): CommandOwner | undefined {
   if (has(APP_COMMANDS, command)) return "app"
   if (command in WORKSPACE_COMMANDS) return "workspace"
   if (has(CAMERA_COMMANDS, command) || has(FIT_COMMANDS, command) || has(PART_COMMANDS, command) || has(CANVAS_TOOL_COMMANDS, command)) return "canvas"
+  if (has(PCB_COMMANDS, command)) return "pcb"
   return has(SHEET_COMMANDS, command) || has(SHEET_LAYOUT_COMMANDS, command) || has(WIRE_COMMANDS, command) ? "schematic" : undefined
 }

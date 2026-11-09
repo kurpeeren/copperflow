@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import type { Camera, PartBox } from "../studio/src/pcb/geometry.js"
-import { keyMenuPlace } from "../studio/src/pcb/key-menu.js"
+import { keyMenuPlace, selectedCopperLine } from "../studio/src/pcb/key-menu.js"
 import { returnsFocus } from "../studio/src/shell/focus.js"
 import { shortcutList } from "../studio/src/shell/menus.js"
 
@@ -29,6 +29,20 @@ describe("keyMenuPlace", () => {
   test("on a selected wire, opens the wire's menu at the middle of its middle segment", () => {
     const wire = { id: "wire:W", points: [{ x: 0, y: 2 }, { x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: -2 }] }
     expect(keyMenuPlace(undefined, BOXES, CAMERA, SIZE, RECT, wire)).toEqual({ target: { kind: "wire", id: "wire:W" }, at: { x: 50 + 120, y: 20 + 50 } })
+  })
+
+  test("with only copper selected, opens the copper menu: on a track's middle segment, on a via's centre", () => {
+    const track = { id: "t0001", points: [{ x: 0, y: 2 }, { x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: -2 }] }
+    expect(keyMenuPlace(undefined, BOXES, CAMERA, SIZE, RECT, undefined, track)).toEqual({ target: { kind: "copper", id: "t0001" }, at: { x: 50 + 120, y: 20 + 50 } })
+    expect(keyMenuPlace(undefined, BOXES, CAMERA, SIZE, RECT, undefined, { id: "v0001", points: [{ x: 1, y: 1 }] })).toEqual({ target: { kind: "copper", id: "v0001" }, at: { x: 50 + 110, y: 20 + 40 } })
+  })
+
+  test("selectedCopperLine: the first selected copper, only when nothing but copper is selected", () => {
+    const shapes = { tracks: [{ id: "t0001", points: [{ x: 0, y: 0 }, { x: 1, y: 0 }] }], vias: [{ id: "v0001", at: { x: 2, y: 2 } }] }
+    expect(selectedCopperLine(["v0001", "t0001"], 2, shapes)).toEqual({ id: "v0001", points: [{ x: 2, y: 2 }] })
+    expect(selectedCopperLine(["t0001"], 1, shapes)).toEqual({ id: "t0001", points: shapes.tracks[0]?.points })
+    expect(selectedCopperLine(["t0001"], 2, shapes)).toBeUndefined()
+    expect(selectedCopperLine([], 0, shapes)).toBeUndefined()
   })
 
   test("Help → Keys names Shift+F10", () => {

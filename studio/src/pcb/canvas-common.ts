@@ -14,7 +14,7 @@ import { drawLockBadge, drawMark, drawNoteBox, drawOutline, drawSelectionBox, ty
 import { boxMode } from "./box-select"
 import type { Gesture } from "./gestures"
 import type { Layout } from "./group-edits"
-import { keyMenuPlace } from "./key-menu"
+import { keyMenuPlace, type CopperLine } from "./key-menu"
 import type { ContextTarget } from "./press"
 import { centredCamera, fitCamera, zoomAt, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import type { ViolationMarker } from "./markers"
@@ -114,11 +114,11 @@ export function useLayout(parts: Pick<Layout, "anchors" | "boxes">, step: number
 }
 
 /** Where Shift+F10 or the menu key opens the context menu on this canvas: at the selected wire, the primary selected part, else the canvas centre. */
-export function useKeyMenuPlace(element: RefObject<Element | null>, primary: string | undefined, boxes: readonly PartBox[], camera: Camera | undefined, size: Size, wire?: WireLine) {
+export function useKeyMenuPlace(element: RefObject<Element | null>, primary: string | undefined, boxes: readonly PartBox[], camera: Camera | undefined, size: Size, wire?: WireLine, copper?: CopperLine) {
   return useCallback(() => {
     const rect = element.current?.getBoundingClientRect() ?? { left: 0, top: 0, width: size.width, height: size.height }
-    return keyMenuPlace(primary, boxes, camera, size, rect, wire)
-  }, [element, primary, boxes, camera, size, wire])
+    return keyMenuPlace(primary, boxes, camera, size, rect, wire, copper)
+  }, [element, primary, boxes, camera, size, wire, copper])
 }
 
 /** Follows the element's size in whole CSS pixels. */

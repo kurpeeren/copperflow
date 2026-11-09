@@ -8,6 +8,13 @@ export const LAYER_IDS = ["top", "bottom", "topSilk", "bottomSilk", "topAssembly
 export type LayerId = (typeof LAYER_IDS)[number]
 
 export type LayerGroup = "copper" | "non-copper"
+
+/** The copper layer being worked on: tracks are drawn on it, and it is drawn over the other (copper-draw.ts). */
+export type ActiveLayer = "top" | "bottom"
+export const ACTIVE_LAYERS: readonly { id: ActiveLayer; name: string }[] = [
+  { id: "top", name: "Top Layer" },
+  { id: "bottom", name: "Bottom Layer" },
+]
 /** The Layer panel's filter buttons. */
 export type LayerFilter = "all" | LayerGroup
 

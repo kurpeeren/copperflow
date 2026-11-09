@@ -67,11 +67,29 @@ describe("keyAction", () => {
     expect(keyAction(key("∑", { altKey: true, code: "KeyW" }), SCHEMATIC)?.action).toBe("wire")
   })
 
-  test("W alone still starts the wire tool, and only on the schematic", () => {
+  test("W alone starts the wire tool on the schematic, and single routing on the PCB", () => {
     expect(keyAction(key("w"), SCHEMATIC)).toEqual({ action: "wire", preventDefault: false })
     expect(keyAction(key("W", { shiftKey: true }), SCHEMATIC)?.action).toBe("wire")
-    expect(keyAction(key("w"), PCB)).toBeNull()
-    expect(keyAction(key("w", { altKey: true, code: "KeyW" }), PCB)).toBeNull()
+    expect(keyAction(key("w"), PCB)).toEqual({ action: "route", preventDefault: false })
+    expect(keyAction(key("w", { altKey: true, code: "KeyW" }), PCB)).toEqual({ action: "route", preventDefault: true })
+  })
+
+  test("Alt+V arms Route → Via on the PCB only, by its physical key", () => {
+    expect(keyAction(key("√", { altKey: true, code: "KeyV" }), PCB)).toEqual({ action: "placeVia", preventDefault: true })
+    expect(keyAction(key("v", { altKey: true, code: "KeyV" }), SCHEMATIC)).toBeNull()
+  })
+
+  test("V changes the active layer on the PCB (and while routing places a via); nothing on the schematic", () => {
+    expect(keyAction(key("v"), PCB)).toEqual({ action: "switchLayer", preventDefault: true })
+    expect(keyAction(key("V", { shiftKey: true }), PCB)?.action).toBe("switchLayer")
+    expect(keyAction(key("v"), { view: "pcb", drawing: true })?.action).toBe("switchLayer")
+    expect(keyAction(key("v"), SCHEMATIC)).toBeNull()
+    expect(keyAction(key("v", { typing: true }), PCB)).toBeNull()
+  })
+
+  test("while a track is drawn, Space steps its corner mode and Backspace takes back a corner", () => {
+    expect(keyAction(key(" "), { view: "pcb", drawing: true })).toEqual({ action: "flipBend", preventDefault: true })
+    expect(keyAction(key("Backspace"), { view: "pcb", drawing: true })).toEqual({ action: "removeCorner", preventDefault: true })
   })
 
   test("Alt+N arms the net label tool on the schematic only", () => {

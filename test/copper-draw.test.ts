@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { drawCopperItems, INACTIVE_COPPER_ALPHA, type CopperScene } from "../studio/src/pcb/copper-draw.js"
+import { drawCopperItems, INACTIVE_COPPER_ALPHA, PENDING_ROUTE_ALPHA, type CopperScene } from "../studio/src/pcb/copper-draw.js"
 import { PALETTE } from "../studio/src/pcb/ctx.js"
 import { DEFAULT_LAYERS } from "../studio/src/pcb/layers.js"
 import { drawPcb } from "../studio/src/pcb/pcb-draw.js"
@@ -18,6 +18,15 @@ const scene = (over: Partial<CopperScene> = {}): CopperScene => ({
 const strokes = (records: ReturnType<typeof recorder>["records"], color: string) => records.filter((r) => r.name === "stroke" && r.strokeStyle === color)
 
 describe("drawCopperItems", () => {
+  test("a route being drawn is solid in its layer's colour; one waiting for its build at 70%; with its vias", () => {
+    const { ctx, records } = recorder()
+    const drawing = { tracks: [{ layer: "bottom" as const, width: 0.5, points: [{ x: 0, y: 4 }, { x: 5, y: 4 }] }], vias: [{ at: { x: 5, y: 4 }, drill: 0.3, diameter: 0.6 }] }
+    drawCopperItems(ctx, scene({ tracks: [], vias: [], routes: [{ drawing, alpha: 1 }, { drawing, alpha: PENDING_ROUTE_ALPHA }] }), DEFAULT_LAYERS, undefined, PX)
+    expect(strokes(records, PALETTE.bottomCopper)).toMatchObject([{ lineWidth: 0.5, globalAlpha: 1 }, { lineWidth: 0.5, globalAlpha: 0.7 }])
+    expect(records.filter((r) => r.name === "fill" && r.fillStyle === PALETTE.viaRing).map((r) => r.globalAlpha)).toEqual([1, 0.7])
+    expect(PENDING_ROUTE_ALPHA).toBe(0.7)
+  })
+
   test("tracks are stroked in their layer's colour at their width, the inactive layer first and dimmed to 40%", () => {
     const { ctx, records } = recorder()
     drawCopperItems(ctx, scene(), DEFAULT_LAYERS, undefined, PX)

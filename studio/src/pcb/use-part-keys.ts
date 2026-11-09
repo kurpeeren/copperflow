@@ -12,7 +12,7 @@ import type { PartCommand } from "../shell/command-owners"
 import { useCommands } from "../shell/commands"
 import { ALIGN_COMMANDS, isAlignCommand, type AlignCommand } from "./align-rules"
 import { keyAction, keyInput, type KeyResult } from "./canvas-keys"
-import { deletePlan, splitCopper, TWO_FILES_DELETE, type RemoveDrawings } from "./delete-plan"
+import { deletePlan, restBlocked, splitCopper, TWO_FILES_DELETE, type RemoveDrawings } from "./delete-plan"
 import { sendGroupEdit, type Layout } from "./group-edits"
 import { claimsKey, type BuildStatus } from "./key-burst"
 import { useKeyEdits, type KeyEdits, type KeyMove } from "./use-key-edits"
@@ -73,7 +73,11 @@ function removeSelection(input: PartKeysInput, fromKey: boolean): void {
   const removeCopper = () => (copper.length > 0 ? input.copper?.remove(copper) : undefined)
   if (!rest) return removeCopper()
   const result = deletePlan(rest, input.blockerFor, input.wire?.removal, input.wire?.labelRemoval, input.drawings)
-  if ("message" in result) return fromKey ? undefined : input.actions.notify(result.message)
+  if ("message" in result) {
+    const blocked = restBlocked(copper.length, result.message, fromKey)
+    if (blocked.removeCopper) removeCopper()
+    return blocked.notice === undefined ? undefined : input.actions.notify(blocked.notice)
+  }
   const { plan, wires, labels, drawings, question } = result
   if (question && !window.confirm(question)) return
   removeCopper()

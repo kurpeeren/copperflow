@@ -5,6 +5,9 @@ import type { View } from "./positions.js"
 
 export type KeyActionName =
   | "wire"
+  | "route"
+  | "placeVia"
+  | "switchLayer"
   | "armNetLabel"
   | "drawBus"
   | "drawPolyline"
@@ -146,11 +149,17 @@ const SHEET_ALT_KEYS: ReadonlyMap<string, KeyActionName> = new Map([
   ["t", "drawText"],
 ])
 
+/** The PCB's Alt combinations, by the physical key's letter: Route → Single routing and Route → Via, as EasyEDA. */
+const PCB_ALT_KEYS: ReadonlyMap<string, KeyActionName> = new Map([
+  ["w", "route"],
+  ["v", "placeVia"],
+])
+
 function altAction(input: KeyInput, state: KeyState): KeyResult | null {
   if (input.shiftKey) return null
   const letter = altLetter(input)
   if (letter === "s") return act("toggleSnap", true)
-  const action = state.view === "schematic" ? SHEET_ALT_KEYS.get(letter) : undefined
+  const action = (state.view === "schematic" ? SHEET_ALT_KEYS : PCB_ALT_KEYS).get(letter)
   return action ? act(action, true) : null
 }
 
@@ -158,7 +167,10 @@ function altAction(input: KeyInput, state: KeyState): KeyResult | null {
 function letterAction(letter: string, input: KeyInput, state: KeyState): KeyResult | null {
   switch (letter) {
     case "w":
-      return state.view === "schematic" ? act("wire") : null
+      return act(state.view === "schematic" ? "wire" : "route")
+    case "v":
+      // The PCB's active layer; while a track is drawn, with a via at its last corner.
+      return state.view === "pcb" ? act("switchLayer", true) : null
     case "r":
       return act("rotate")
     case "k":

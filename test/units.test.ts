@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { statusParts } from "../studio/src/pcb/status.js"
+import { routingStatus, statusParts } from "../studio/src/pcb/status.js"
 import { formatLength, fromUnit, MM_PER_MIL, nextUnit, PCB_ZOOM_REFERENCE_PX, SCHEMATIC_ZOOM_REFERENCE_PX, gridStepLabel, toUnit, zoomPercent } from "../studio/src/pcb/units.js"
 
 describe("units", () => {
@@ -89,5 +89,12 @@ describe("statusParts and snap", () => {
     expect(statusParts({ ...base, snap: false }).snap).toBe("Snap off")
     expect(statusParts({ ...base, snap: true }).snap).toBe("")
     expect(statusParts(base).snap).toBe("")
+  })
+})
+
+describe("routingStatus", () => {
+  test("names the net, the layer and the width, and the keys", () => {
+    expect(routingStatus("VBUS", "Top Layer", 0.25)).toBe("Routing VBUS on Top Layer, 0.25 mm — Space corner, V layer+via, Esc")
+    expect(routingStatus("GND", "Bottom Layer", 0.6)).toBe("Routing GND on Bottom Layer, 0.6 mm — Space corner, V layer+via, Esc")
   })
 })

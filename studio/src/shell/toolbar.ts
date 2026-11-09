@@ -70,11 +70,11 @@ export const TOOLBARS: Readonly<Record<View, readonly ToolbarButton[]>> = {
     ...ZOOM,
     { id: "unit", title: "Unit (Q)", text: "unit", command: "toggleUnit", group: 2 },
     ...GRID(2),
-    later("via", "Via", "via", WAITS_FOR_ROUTING, 3),
+    button("via", "Via (Alt+V)", "via", "placeVia", 3),
     later("boardOutline", "Board outline", "boardOutline", WAITS_FOR_ROUTING, 3),
     later("copperArea", "Copper area", "copperArea", WAITS_FOR_ROUTING, 3),
     CHECK(4),
-    later("singleRouting", "Single routing", "singleRouting", WAITS_FOR_ROUTING, 5),
+    button("singleRouting", "Single routing (Alt+W)", "singleRouting", "singleRouting", 5),
     ...ALIGN(6),
     ...ROTATE(7),
     later("gerber", "Gerber", "gerber", WAITS_FOR_FABRICATION, 8),
@@ -125,7 +125,7 @@ export function titleKey(title: string): string | undefined {
 }
 
 /** The commands that switch a tool on and stay on until it is put away. */
-const TOOL_COMMANDS: ReadonlySet<CommandId> = new Set(["wire", "netLabel", "groundFlag", "powerFlag", "fitArea", ...DRAW_COMMANDS])
+const TOOL_COMMANDS: ReadonlySet<CommandId> = new Set(["wire", "netLabel", "groundFlag", "powerFlag", "fitArea", "singleRouting", "placeVia", ...DRAW_COMMANDS])
 
 export function isToolCommand(command: CommandId): boolean {
   return TOOL_COMMANDS.has(command)

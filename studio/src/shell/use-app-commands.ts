@@ -1,6 +1,6 @@
 // What a menu or toolbar command does: the app's own commands run here, the workspace's run as their keys do, and
-// the rest go to the open canvas over the command bus (command-owners.ts says which is which). Schematic-only
-// commands sent while the PCB is open switch to the schematic first.
+// the rest go to the open canvas over the command bus (command-owners.ts says which is which). A view's own commands
+// (the schematic's tools, the PCB's routing) sent while the other view is open switch to it first.
 import { useCallback, useEffect, useState } from "react"
 import { api, type BomLine, type CircuitData } from "../api"
 import { bomCsv, bomFileName } from "./bom-csv"
@@ -14,12 +14,16 @@ import type { PickFilter } from "../pcb/pick-filter"
 import type { View } from "../pcb/positions"
 import type { Selection, SelectionChange } from "../selection"
 import type { BottomTab } from "./bottom-state"
-import { SHEET_COMMANDS, WORKSPACE_COMMANDS, type AppCommand } from "./command-owners"
+import { PCB_COMMANDS, SHEET_COMMANDS, WORKSPACE_COMMANDS, type AppCommand } from "./command-owners"
 import { send } from "./commands"
 import type { DialogName } from "./Dialogs"
 import type { CommandId } from "./menus"
 
 const SCHEMATIC_ONLY: ReadonlySet<CommandId> = new Set(SHEET_COMMANDS)
+const PCB_ONLY: ReadonlySet<CommandId> = new Set(PCB_COMMANDS)
+
+/** The one view a command runs in, if it is a view's own (the other view switches to it first). */
+const viewOf = (command: CommandId): View | undefined => (SCHEMATIC_ONLY.has(command) ? "schematic" : PCB_ONLY.has(command) ? "pcb" : undefined)
 const WORKSPACE: Partial<Record<CommandId, KeyActionName>> = WORKSPACE_COMMANDS
 
 /** The workspace functions the commands use; each is stable across renders. */
@@ -149,16 +153,16 @@ function useAppKeys(runCommand: (command: CommandId) => void, view: View): void 
 
 /** Returns the function the menu bar and toolbar call; it changes only when what the commands read changes. */
 export function useAppCommands(input: Input): (command: CommandId) => void {
-  const [waiting, setWaiting] = useState<CommandId | null>(null)
+  const [waiting, setWaiting] = useState<{ command: CommandId; view: View } | null>(null)
   const { file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, openChecks, openFind, openDialog } = input
   // The workspace object is new on every render, but its functions are stable.
   const { run, openBottom, openPageTree } = input.workspace
-  // A command waiting for the schematic runs once the schematic canvas has mounted and subscribed.
+  // A command waiting for its view runs once that view's canvas has mounted and subscribed.
   useEffect(() => {
-    if (!waiting || view !== "schematic") return
+    if (!waiting || view !== waiting.view) return
     const id = window.setTimeout(() => {
       setWaiting(null)
-      if (!send(waiting)) actions.notify("The schematic is still building; try again in a moment.")
+      if (!send(waiting.command)) actions.notify(`The ${waiting.view === "pcb" ? "PCB" : "schematic"} is still building; try again in a moment.`)
     }, 0)
     return () => window.clearTimeout(id)
   }, [waiting, view, actions])
@@ -166,9 +170,10 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
     (command: CommandId) => {
       const own = appCommand({ file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, workspace: { run, openBottom, openPageTree }, openChecks, openFind, openDialog }, command)
       if (own) return own()
-      if (SCHEMATIC_ONLY.has(command) && view !== "schematic") {
-        setView("schematic")
-        setWaiting(command)
+      const only = viewOf(command)
+      if (only && view !== only) {
+        setView(only)
+        setWaiting({ command, view: only })
         return
       }
       if (!send(command)) actions.notify("Wait for the build to finish, then try again.")

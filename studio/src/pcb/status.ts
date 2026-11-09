@@ -51,3 +51,8 @@ export function statusParts(input: StatusInput): { position: string; drag: strin
     snap: input.snap === false ? SNAP_OFF : "",
   }
 }
+
+/** What the status line says while a track is drawn: its net, its layer and its width, and the keys. */
+export function routingStatus(net: string, layer: string, width: number): string {
+  return `Routing ${net} on ${layer}, ${width} mm — Space corner, V layer+via, Esc`
+}

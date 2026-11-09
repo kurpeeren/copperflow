@@ -202,9 +202,15 @@ type Pending = ToolbarButton & { pending: string }
 const pendingOf = (view: "schematic" | "pcb"): Pending[] => TOOLBARS[view].filter((b): b is Pending => b.pending !== undefined)
 
 describe("the pending buttons", () => {
-  test("the schematic waits only on the No connect flag; the PCB on Via, Board outline, Copper area, Single routing and Gerber", () => {
+  test("the schematic waits only on the No connect flag; the PCB on Board outline, Copper area and Gerber", () => {
     expect(pendingOf("schematic").map((b) => b.id)).toEqual(["noConnect"])
-    expect(pendingOf("pcb").map((b) => b.id)).toEqual(["via", "boardOutline", "copperArea", "singleRouting", "gerber"])
+    expect(pendingOf("pcb").map((b) => b.id)).toEqual(["boardOutline", "copperArea", "gerber"])
+  })
+
+  test("Via and Single routing run the Route menu's tools, with their keys, and show pressed while armed", () => {
+    expect(TOOLBARS.pcb.find((b) => b.id === "via")).toEqual({ id: "via", title: "Via (Alt+V)", icon: "via", command: "placeVia", group: 3 })
+    expect(TOOLBARS.pcb.find((b) => b.id === "singleRouting")).toEqual({ id: "singleRouting", title: "Single routing (Alt+W)", icon: "singleRouting", command: "singleRouting", group: 5 })
+    expect(isToolCommand("singleRouting") && isToolCommand("placeVia")).toBe(true)
   })
 
   test("every pending button has an icon, no command, and a reason that names the engine stage it waits for", () => {
@@ -215,15 +221,15 @@ describe("the pending buttons", () => {
 
   test("routing and copper wait for hand routing (stage 4), Gerber for fabrication outputs (stage 6), the flag for blocks and sheets (stage 3)", () => {
     const reason = (id: string) => pendingOf("pcb").find((b) => b.id === id)?.pending
-    for (const id of ["via", "boardOutline", "copperArea", "singleRouting"]) expect(reason(id)).toBe("Comes with hand routing (engine stage 4)")
+    for (const id of ["boardOutline", "copperArea"]) expect(reason(id)).toBe("Comes with hand routing (engine stage 4)")
     expect(reason("gerber")).toBe("Comes with fabrication outputs (engine stage 6)")
     expect(pendingOf("schematic")[0]?.pending).toBe("Comes with blocks and sheets (engine stage 3)")
   })
 
   test("a pending button is disabled whatever is selected, and its tooltip carries the reason", () => {
-    const via = pendingOf("pcb").find((b) => b.id === "via")
-    if (!via) throw new Error("no Via button")
-    expect(buttonState(via, 5)).toEqual({ enabled: false, title: "Via: Comes with hand routing (engine stage 4)" })
+    const outline = pendingOf("pcb").find((b) => b.id === "boardOutline")
+    if (!outline) throw new Error("no Board outline button")
+    expect(buttonState(outline, 5)).toEqual({ enabled: false, title: "Board outline: Comes with hand routing (engine stage 4)" })
     expect(hasPressedState("undo")).toBe(false)
   })
 
@@ -236,7 +242,7 @@ describe("the pending buttons", () => {
       matched++
       expect([item.id, entry.pending]).toEqual([item.id, item.pending])
     }
-    expect(matched).toBeGreaterThanOrEqual(3)
+    expect(matched).toBeGreaterThanOrEqual(2)
   })
 
   test("no text in the menus or the toolbar names a round", () => {

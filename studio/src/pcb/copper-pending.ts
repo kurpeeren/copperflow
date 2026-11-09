@@ -5,28 +5,31 @@
 import type { Point } from "./geometry.js"
 import { mergeShapes, NO_SHAPES, type CopperShapesById } from "./copper-edits.js"
 
-export interface PendingCopper {
+/** An entry sent to the server: its own id, and the server's mark of the write once it answered. */
+export interface Marked {
   id: number
-  shapes: CopperShapesById
-  parts?: { names: readonly string[]; offset: Point }
-  /** The server's mark of the write, once it answered. */
   mark?: number
 }
 
+export interface PendingCopper extends Marked {
+  shapes: CopperShapesById
+  parts?: { names: readonly string[]; offset: Point }
+}
+
 /** Whether the shown build (start mark `built`) has not read the edit yet. */
-const waiting = (entry: PendingCopper, built: number | undefined): boolean => entry.mark === undefined || built === undefined || built <= entry.mark
+const waiting = (entry: Marked, built: number | undefined): boolean => entry.mark === undefined || built === undefined || built <= entry.mark
 
 export const addPending = (list: readonly PendingCopper[], id: number, entry: Omit<PendingCopper, "id" | "mark">): PendingCopper[] => [...list, { ...entry, id }]
 
-export const markPending = (list: readonly PendingCopper[], id: number, mark: number): PendingCopper[] => list.map((entry) => (entry.id === id ? { ...entry, mark } : entry))
+export const markPending = <T extends Marked>(list: readonly T[], id: number, mark: number): T[] => list.map((entry) => (entry.id === id ? { ...entry, mark } : entry))
 
-export const dropPending = (list: readonly PendingCopper[], id: number): PendingCopper[] => list.filter((entry) => entry.id !== id)
+export const dropPending = <T extends Marked>(list: readonly T[], id: number): T[] => list.filter((entry) => entry.id !== id)
 
 /** The entries the shown build has not read yet. */
-export const settlePending = (list: readonly PendingCopper[], built: number | undefined): PendingCopper[] => list.filter((entry) => waiting(entry, built))
+export const settlePending = <T extends Marked>(list: readonly T[], built: number | undefined): T[] => list.filter((entry) => waiting(entry, built))
 
 /** Whether an edit is still waiting for the server's answer (an arrow key's repeat waits for it). */
-export const inFlight = (list: readonly PendingCopper[]): boolean => list.some((entry) => entry.mark === undefined)
+export const inFlight = (list: readonly Marked[]): boolean => list.some((entry) => entry.mark === undefined)
 
 /** The shapes to draw in place of the copper's own, the later edit's winning. */
 export function pendingShapes(list: readonly PendingCopper[], built: number | undefined): CopperShapesById {
