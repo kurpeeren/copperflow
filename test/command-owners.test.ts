@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { APP_COMMANDS, CAMERA_COMMANDS, CANVAS_TOOL_COMMANDS, FIT_COMMANDS, PART_COMMANDS, SHEET_COMMANDS, WIRE_COMMANDS, WORKSPACE_COMMANDS, commandOwner } from "../studio/src/shell/command-owners.js"
+import { APP_COMMANDS, CAMERA_COMMANDS, CANVAS_TOOL_COMMANDS, FIT_COMMANDS, PART_COMMANDS, SHEET_COMMANDS, SHEET_LAYOUT_COMMANDS, WIRE_COMMANDS, WORKSPACE_COMMANDS, commandOwner } from "../studio/src/shell/command-owners.js"
 import { MENUS, menuItems, type CommandId } from "../studio/src/shell/menus.js"
 import { TOOLBARS } from "../studio/src/shell/toolbar.js"
 import { buildTone, statusText } from "../studio/src/shell/status-pill.js"
@@ -16,7 +16,7 @@ describe("command owners", () => {
   })
 
   test("no command has two owners", () => {
-    const all: string[] = [...APP_COMMANDS, ...Object.keys(WORKSPACE_COMMANDS), ...CAMERA_COMMANDS, ...FIT_COMMANDS, ...PART_COMMANDS, ...CANVAS_TOOL_COMMANDS, ...SHEET_COMMANDS, ...WIRE_COMMANDS]
+    const all: string[] = [...APP_COMMANDS, ...Object.keys(WORKSPACE_COMMANDS), ...CAMERA_COMMANDS, ...FIT_COMMANDS, ...PART_COMMANDS, ...CANVAS_TOOL_COMMANDS, ...SHEET_COMMANDS, ...SHEET_LAYOUT_COMMANDS, ...WIRE_COMMANDS]
     expect(new Set(all).size).toBe(all.length)
   })
 
@@ -62,6 +62,11 @@ describe("command owners", () => {
   test("the schematic's tools are the schematic's alone", () => {
     expect(SHEET_COMMANDS.map(commandOwner)).toEqual(SHEET_COMMANDS.map(() => "schematic"))
     expect(SHEET_COMMANDS).toHaveLength(10)
+  })
+
+  test("Tidy sheet is the schematic's, which knows its parts and their locks", () => {
+    expect(SHEET_LAYOUT_COMMANDS).toEqual(["tidySheet"])
+    expect(commandOwner("tidySheet")).toBe("schematic")
   })
 
   test("Remove corners is the schematic's, which holds the selected wire; Delete and Highlight net stay the canvas's", () => {

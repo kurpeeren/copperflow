@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { hasToken, type CircuitData, type Design } from "./api"
+import { tidyReason } from "./pcb/auto-placed"
 import { NO_HIGHLIGHT, remapHighlight } from "./pcb/highlight"
 import { pickLayersOf } from "./pcb/layers"
 import { drawingAfterBuild, renamedAfterBuild, stableDrawings, type DrawingRename } from "./pcb/drawing-selection"
@@ -10,6 +11,7 @@ import { BottomStrip } from "./shell/BottomStrip"
 import { watchDpr } from "./shell/dpr"
 import { StudioDialog, type DialogName } from "./shell/Dialogs"
 import { MenuBar } from "./shell/MenuBar"
+import type { CommandsOff } from "./shell/menus"
 import type { DocView } from "./shell/page-tree"
 import { StatusPill } from "./shell/StatusPill"
 import { Toolbar } from "./shell/ToolbarRow"
@@ -194,17 +196,26 @@ function useStudio() {
   return { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, runCommand }
 }
 
+/** The menu commands the build turns off for now, with the reason: Tidy sheet while Studio placed nothing on the sheet. */
+function useCommandsOff(design: Design | undefined): CommandsOff {
+  return useMemo(() => {
+    const reason = tidyReason(design)
+    return reason === null ? {} : { tidySheet: reason }
+  }, [design])
+}
+
 export function App() {
   const { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, runCommand } = useStudio()
   const { build, circuit } = data
   const { message, dismiss } = toast
   const toggles = { snap: workspace.snap }
+  const off = useCommandsOff(build.design)
   // Hairlines stay one device pixel through zoom and display-scale changes.
   useEffect(() => watchDpr(window), [])
   if (!hasToken) return <NoToken />
   return (
     <div className="app">
-      <MenuBar run={runCommand} view={tab} selected={selection.size} toggles={toggles}>
+      <MenuBar run={runCommand} view={tab} selected={selection.size} toggles={toggles} off={off}>
         <StatusPill build={build} errors={checks.counts.errors} onOpen={openChecks} />
       </MenuBar>
       <Toolbar view={tab} unit={workspace.unit} selected={selection.size} toggles={toggles} run={runCommand} />

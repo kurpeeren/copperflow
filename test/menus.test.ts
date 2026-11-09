@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { keyAction, type KeyInput } from "../studio/src/pcb/canvas-keys.js"
-import { COMMAND_KEY_ACTIONS, MENUS, MENU_TITLES, itemState, menuItems, menuReducer, shortcutList, type MenuItem } from "../studio/src/shell/menus.js"
+import { COMMAND_KEY_ACTIONS, MENUS, MENU_TITLES, itemState, menuItems, menuReducer, menuShapes, shortcutList, type MenuItem } from "../studio/src/shell/menus.js"
 import { send, subscribe } from "../studio/src/shell/commands.js"
 
 /** A key press as `keyAction` reads it, from a shortcut as the menu shows it, e.g. "Alt+W" or "Shift+H". */
@@ -78,7 +78,7 @@ describe("menus", () => {
 
   test("Layout holds the eight align and distribute commands in EasyEDA's order, with the two keys", () => {
     const layout = MENUS.find((menu) => menu.title === "Layout")?.entries ?? []
-    expect(layout.slice(7)).toEqual([
+    expect(layout.slice(7, 16)).toEqual([
       { label: "Align left", command: "alignLeft", shortcut: "Ctrl+Shift+L" },
       { label: "Align right", command: "alignRight" },
       { label: "Align top", command: "alignTop" },
@@ -121,13 +121,13 @@ describe("menus", () => {
     expect(itemState(unit, "schematic")).toEqual({ enabled: false, reason: "PCB only" })
   })
 
-  test("an item still to come is disabled in both views with its reason; the rest work in both", () => {
+  test("an item still to come is disabled in both views with its reason; the rest work in both but Tidy sheet and Unit", () => {
     const later = { label: "Bus", pending: "Comes with blocks and sheets (stage 3)" }
     expect(itemState(later, "pcb")).toEqual({ enabled: false, reason: later.pending })
     const views = (["pcb", "schematic"] as const).map((view) =>
       MENUS.flatMap(menuItems).filter((item) => item.command && !itemState(item, view).enabled).map((item) => item.label),
     )
-    expect(views).toEqual([[], ["Unit"]])
+    expect(views).toEqual([["Tidy sheet"], ["Unit"]])
   })
 
   test("no menu has more than 14 items", () => {
@@ -234,6 +234,27 @@ describe("the view and layout tools", () => {
       expect(itemState(find("Fit area"), view, 0)).toEqual({ enabled: true })
       expect(itemState(find("Snap"), view, 0)).toEqual({ enabled: true })
     }
+  })
+})
+
+describe("Layout → Tidy sheet", () => {
+  const tidy = MENUS.flatMap(menuItems).find((item) => item.label === "Tidy sheet") as MenuItem
+
+  test("ends the Layout menu, after a separator, and works on the schematic only", () => {
+    const layout = MENUS.find((menu) => menu.title === "Layout")?.entries ?? []
+    expect(layout.slice(-2)).toEqual(["separator", { label: "Tidy sheet", command: "tidySheet", only: "schematic" }])
+    expect(itemState(tidy, "pcb", 0)).toEqual({ enabled: false, reason: "Schematic only" })
+  })
+
+  test("is disabled with the reason the app gives, and needs no selection", () => {
+    expect(itemState(tidy, "schematic", 0)).toEqual({ enabled: true })
+    expect(itemState(tidy, "schematic", 0, { tidySheet: "Every part on the sheet has a position of its own" })).toEqual({ enabled: false, reason: "Every part on the sheet has a position of its own" })
+  })
+
+  test("the menu keys skip it while it is off", () => {
+    const layout = MENUS.findIndex((menu) => menu.title === "Layout")
+    expect(menuShapes("schematic", 0, { tidySheet: "off" })[layout]?.at(-1)).toBe("disabled")
+    expect(menuShapes("schematic", 0)[layout]?.at(-1)).toBe("item")
   })
 })
 

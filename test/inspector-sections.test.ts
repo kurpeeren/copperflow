@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { GROUP_ACTIONS, groupActionEnabled, inspectorSections, boardSections, KIND_LABELS, kindRow, partLockButton, propertiesKind, propertiesView, type InspectorPart } from "../studio/src/inspector-sections.js"
+import { PLACED_ROW, GROUP_ACTIONS, groupActionEnabled, inspectorSections, boardSections, KIND_LABELS, kindRow, partLockButton, propertiesKind, propertiesView, type InspectorPart } from "../studio/src/inspector-sections.js"
 
 const prop = (literal: string | number) => ({ literal, source: String(literal), editable: true })
 
@@ -47,6 +47,14 @@ describe("inspectorSections", () => {
     const [basic, position] = inspectorSections({ tag: "net", props: {} }, { library: false })
     expect(basic?.rows).toEqual(["name", "kind"])
     expect(position?.rows).toEqual(["lock"])
+  })
+
+  test("a part Studio placed in the open view says so first in Position, until it is moved or kept", () => {
+    const bare: InspectorPart = { tag: "resistor", props: {} }
+    const position = (autoPlaced: boolean) => inspectorSections(bare, { library: false, autoPlaced }).find((s) => s.title === "Position")?.rows
+    expect(position(true)).toEqual(["placed", "lock"])
+    expect(position(false)).toEqual(["lock"])
+    expect(PLACED_ROW).toEqual({ label: "Placement", value: "Placed by Studio" })
   })
 
   test("Connections, Library and Notes each hold one row", () => {

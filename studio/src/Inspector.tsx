@@ -3,7 +3,7 @@ import type { BuildState, CircuitData, Design, Literal, PartInfo, PartsData } fr
 import type { Actions } from "./App"
 import { BomSection } from "./BomSection"
 import { checkSummary, type CheckCounts } from "./checks-list"
-import { FIRST_FIELD, groupActionEnabled, partLockButton, propertiesKind, propertiesView, SUGGESTED_PROPS, type PropertiesView } from "./inspector-sections"
+import { FIRST_FIELD, groupActionEnabled, partLockButton, PLACED_ROW, propertiesKind, propertiesView, SUGGESTED_PROPS, type PropertiesView } from "./inspector-sections"
 import { GroupView } from "./InspectorGroup"
 import { LabelView } from "./InspectorLabel"
 import { DrawingView } from "./InspectorDrawing"
@@ -12,7 +12,9 @@ import { MarkForm, NewPropRow, PropRow, Row, Section } from "./InspectorRows"
 import { LibraryInfo } from "./LibraryInfo"
 import { CloseIcon, LockIcon, RotateIcon, TrashIcon, UnlockIcon } from "./icons"
 import { touches } from "./LeftPanel"
+import { autoPlacedParts } from "./pcb/auto-placed"
 import { pcbBoxes } from "./pcb/pcb-draw"
+import type { View } from "./pcb/positions"
 import type { DrawingRename } from "./pcb/drawing-selection"
 import type { Selection, SelectionChange } from "./selection"
 import type { CommandId } from "./shell/menus"
@@ -23,6 +25,8 @@ interface Props {
   circuit: CircuitData
   build: BuildState
   parts: PartsData
+  /** The open view: a part Studio placed there says so. */
+  openView: View
   selection: Selection
   onSelect(change: SelectionChange): void
   onRenameDrawing(rename: DrawingRename): () => void
@@ -75,7 +79,8 @@ export function Inspector(props: Props) {
   const { wireCount, labelCount, drawingCount, soleWire: wire, soleLabel: label, soleDrawing: drawing } = props.selection
   const kind = propertiesKind(parts.length, wireCount, labelCount, drawingCount)
   const library = kind === "part" && part ? props.parts.library.find((p) => p.component === part.tag) : undefined
-  const view = propertiesView(parts, { library: library !== undefined }, wireCount, labelCount, drawingCount)
+  const autoPlaced = kind === "part" && part !== undefined && autoPlacedParts(props.build.design, props.openView).has(part.name)
+  const view = propertiesView(parts, { library: library !== undefined, autoPlaced }, wireCount, labelCount, drawingCount)
   const locks = { locked: new Set(props.circuit.annotations.locks.map((lock) => lock.part)), violated: new Set(props.circuit.violations.map((v) => v.part)) }
   // Collapsed sections are kept by title for as long as Studio is open.
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
@@ -117,6 +122,7 @@ function PartView({ circuit, build, parts, part, locks, actions, onSelect, run, 
     const prop = part.props[key]
     if (kind === "name") return <Row key={id} label="Name"><span className="static">{part.name}</span></Row>
     if (kind === "kind") return <Row key={id} label="Kind"><span className="static">{part.tag}, line {part.line}</span></Row>
+    if (kind === "placed") return <Row key={id} label={PLACED_ROW.label}><span className="static">{PLACED_ROW.value}</span></Row>
     if (kind === "prop" && prop) return <PropRow key={id} name={key} prop={prop} disabled={!canEdit} onCommit={(value) => setProp(key, value)} notify={actions.notify} />
     if (kind === "suggest") {
       const example = SUGGESTED_PROPS[part.tag]?.find(([name]) => name === key)?.[1] ?? ""

@@ -9,7 +9,7 @@ export interface InspectorPart {
 }
 
 /**
- * A row names what the component draws in it: "name", "kind", "lock", "connections", "library", "notes",
+ * A row names what the component draws in it: "name", "kind", "placed", "lock", "connections", "library", "notes",
  * "prop:<key>" for a prop the part has, "suggest:<key>" for a usual prop it does not have yet,
  * "part:<name>" for one part of a selection of several, and "kind:<parts|wires>:<count>" for how many of each kind.
  */
@@ -48,8 +48,17 @@ function footprintRows(part: InspectorPart, suggested: readonly string[]): strin
   return suggested.includes(FOOTPRINT) ? [`suggest:${FOOTPRINT}`] : []
 }
 
+/** The row of a part the engine placed in the open view (it has no position there of its own yet). */
+export const PLACED_ROW = { label: "Placement", value: "Placed by Studio" } as const
+
+/** What the sections show besides the part: a Library section, and whether Studio placed the part in the open view. */
+export interface SectionOptions {
+  library: boolean
+  autoPlaced?: boolean
+}
+
 /** The sections of a selected part and the rows each holds. */
-export function inspectorSections(part: InspectorPart, opts: { library: boolean }): InspectorSection[] {
+export function inspectorSections(part: InspectorPart, opts: SectionOptions): InspectorSection[] {
   const valueKeys = Object.keys(part.props).filter((key) => !POSITION_PROPS.includes(key) && key !== FOOTPRINT)
   const suggested = (SUGGESTED_PROPS[part.tag] ?? []).map(([key]) => key).filter((key) => !(key in part.props))
   const missing = suggested.filter((key) => key !== FOOTPRINT)
@@ -58,7 +67,7 @@ export function inspectorSections(part: InspectorPart, opts: { library: boolean 
   return [
     { title: "Basic", rows: ["name", "kind", ...valueKeys.map((k) => `prop:${k}`), ...missing.map((k) => `suggest:${k}`)] },
     ...(footprint.length > 0 ? [{ title: "Footprint", rows: footprint }] : []),
-    { title: "Position", rows: [...placed.map((k) => `prop:${k}`), "lock"] },
+    { title: "Position", rows: [...(opts.autoPlaced ? ["placed"] : []), ...placed.map((k) => `prop:${k}`), "lock"] },
     { title: "Connections", rows: ["connections"] },
     ...(opts.library ? [{ title: "Library", rows: ["library"] }] : []),
     { title: "Notes", rows: ["notes"] },
@@ -117,7 +126,7 @@ export function kindRow(id: string): { kind: ObjectKind; count: number } | undef
  * wires, labels or drawings among them (`wires`, `labels`, `drawings`, how many), the section first counts each kind
  * present. The header counts every object.
  */
-export function propertiesView(parts: readonly SelectedPart[], opts: { library: boolean }, wires = 0, labels = 0, drawings = 0): PropertiesView {
+export function propertiesView(parts: readonly SelectedPart[], opts: SectionOptions, wires = 0, labels = 0, drawings = 0): PropertiesView {
   const header = `Selected objects: ${parts.length + wires + labels + drawings}`
   const [first] = parts
   const listed = parts.map((part) => `part:${part.name}`)

@@ -3,6 +3,7 @@ import type { Actions } from "../use-actions"
 import { Inspector } from "../Inspector"
 import { LeftPanel } from "../LeftPanel"
 import type { CanvasProps } from "../pcb/canvas-common"
+import { autoPlacedParts } from "../pcb/auto-placed"
 import { PcbCanvas } from "../pcb/PcbCanvas"
 import type { View } from "../pcb/positions"
 import { SchematicCanvas } from "../pcb/SchematicCanvas"
@@ -133,6 +134,7 @@ function CenterColumn(props: WorkspaceProps & { onContextMenu: ContextMenuState[
 function LeftSide({ data, workspace, view, selection, onSelect, actions, onPlace, onOpenDocument }: WorkspaceProps) {
   const { circuit, build, project, files, file } = data
   const pageTree = useMemo(() => buildPageTree(project, files, file, view), [project, files, file, view])
+  const autoPlaced = useMemo(() => autoPlacedParts(build.design, view), [build.design, view])
   if (!circuit) return null
   return (
     <LeftPanel
@@ -143,6 +145,7 @@ function LeftSide({ data, workspace, view, selection, onSelect, actions, onPlace
       onSelect={onSelect}
       actions={actions}
       design={build.design}
+      autoPlaced={autoPlaced}
       left={workspace.left}
       onSub={workspace.showSub}
       pageTree={pageTree}
@@ -171,6 +174,7 @@ function RightSide({ data, workspace, checks, selection, onSelect, onRenameDrawi
         circuit={data.circuit}
         build={data.build}
         parts={data.parts}
+        openView={view}
         selection={selection}
         onSelect={onSelect}
         onRenameDrawing={onRenameDrawing}

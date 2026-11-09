@@ -3,12 +3,12 @@ import type { Actions } from "../App"
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { CircuitData, Design } from "../api"
 import { Selection } from "../selection"
-import type { SheetCommand } from "../shell/command-owners"
+import type { SheetCommand, SheetLayoutCommand } from "../shell/command-owners"
 import { useCommands } from "../shell/commands"
 import { armedCommand, drawToolCommand } from "../shell/toolbar"
 import { clearToolState, setToolState } from "../shell/tool-state"
 import { ViewTools } from "../shell/ViewTools"
-import { keepAutoPlaced } from "./auto-placed"
+import { keepAutoPlaced, tidySheet } from "./auto-placed"
 import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, useKeyMenuPlace, useLayout, usePlacedParts, type CanvasProps, type Moving, type PropertiesTarget } from "./canvas-common"
 import { CanvasStatus, GridSelect, KeepButton } from "./CanvasTools"
 import { gridStepOptions, type GridLook } from "./grid"
@@ -359,6 +359,8 @@ function useSheetKeys({ design, builtFrom, camera, cursor, fit, wire, palette, d
     powerFlag: () => palette.arm("vcc"),
   }
   useCommands(tools)
+  // Layout → Tidy sheet writes where Studio placed its parts, leaving out those that may not change.
+  useCommands({ tidySheet: () => tidySheet(design, keys.blockerFor, keys.actions) } satisfies Record<SheetLayoutCommand, () => void>)
   return { highlight: useHighlight(design, highlightNets), rotateHeld, keyMoving: useKeyMoving(keyMove, builtFrom, keys.layout.anchors) }
 }
 

@@ -42,6 +42,10 @@ export type CanvasToolCommand = (typeof CANVAS_TOOL_COMMANDS)[number]
 export const SHEET_COMMANDS = ["wire", "netLabel", "groundFlag", "powerFlag", ...DRAW_COMMANDS] as const satisfies readonly CommandId[]
 export type SheetCommand = (typeof SHEET_COMMANDS)[number]
 
+/** Answered by the schematic only, which knows its parts and their locks: Layout → Tidy sheet (auto-placed.ts). */
+export const SHEET_LAYOUT_COMMANDS = ["tidySheet"] as const satisfies readonly CommandId[]
+export type SheetLayoutCommand = (typeof SHEET_LAYOUT_COMMANDS)[number]
+
 /**
  * Answered by the schematic only, for its selected wire (use-sheet-wires.ts): the context menu and Properties send
  * them. Delete and Highlight net are the part commands, which act on a selected wire too.
@@ -58,5 +62,5 @@ export function commandOwner(command: CommandId): CommandOwner | undefined {
   if (has(APP_COMMANDS, command)) return "app"
   if (command in WORKSPACE_COMMANDS) return "workspace"
   if (has(CAMERA_COMMANDS, command) || has(FIT_COMMANDS, command) || has(PART_COMMANDS, command) || has(CANVAS_TOOL_COMMANDS, command)) return "canvas"
-  return has(SHEET_COMMANDS, command) || has(WIRE_COMMANDS, command) ? "schematic" : undefined
+  return has(SHEET_COMMANDS, command) || has(SHEET_LAYOUT_COMMANDS, command) || has(WIRE_COMMANDS, command) ? "schematic" : undefined
 }

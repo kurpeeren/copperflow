@@ -13,6 +13,8 @@ import type { DesignSub, LeftState } from "./shell/strip-state"
 import { useTabList } from "./shell/use-tab-list"
 import { partsInSelector } from "../../src/core/selectors.js"
 import { CloseIcon, LockIcon } from "./icons"
+import { PLACED_ROW } from "./inspector-sections"
+import "./left-panel.css"
 
 interface Props {
   circuit: CircuitData
@@ -23,6 +25,8 @@ interface Props {
   actions: Actions
   /** The built design, for the Net tab. */
   design: Design | undefined
+  /** The parts Studio placed in the open view, which the Component tree marks until they are moved or kept. */
+  autoPlaced: ReadonlySet<string>
   left: LeftState
   onSub(sub: DesignSub): void
   pageTree: PageTreeData
@@ -88,7 +92,7 @@ function DesignBody(props: Props) {
  * The parts by kind; every selected one is highlighted (and marked selected for assistive tech), a click selects one,
  * and Ctrl+click (or Shift+click) toggles one.
  */
-function PartsTree({ circuit, parts: library, selection, onSelect }: Props) {
+function PartsTree({ circuit, parts: library, selection, onSelect, autoPlaced }: Props) {
   const locked = new Set(circuit.annotations.locks.map((lock) => lock.part))
   const title = (tag: string) => library.library.find((p) => p.component === tag)?.title ?? tag
   const groups = new Map<string, typeof circuit.model.parts>()
@@ -113,6 +117,7 @@ function PartsTree({ circuit, parts: library, selection, onSelect }: Props) {
                 >
                   <span className="name">{part.name}</span>
                   <span className="value">{summaryValue(part.props)}</span>
+                  {autoPlaced.has(part.name) && <span className="placed-dot" role="img" aria-label={PLACED_ROW.value} title={PLACED_ROW.value} />}
                   {locked.has(part.name) && <LockIcon className="locked-icon" aria-label="Locked" />}
                 </button>
               </li>

@@ -43,6 +43,7 @@ export type CommandId =
   | "rotate"
   | "rotateRight"
   | "removeCorners"
+  | "tidySheet"
   | AlignCommand
   | "find"
   | "lock"
@@ -195,6 +196,8 @@ export const MENUS: readonly Menu[] = [
       "separator",
       run("Distribute horizontally", "distributeH", "Ctrl+Shift+H"),
       run("Distribute vertically", "distributeV"),
+      "separator",
+      { label: "Tidy sheet", command: "tidySheet", only: "schematic" },
     ],
   },
   {
@@ -219,13 +222,18 @@ export const MENU_TITLES: readonly string[] = MENUS.map((menu) => menu.title)
 
 const ONLY_REASON: Record<View, string> = { pcb: "PCB only", schematic: "Schematic only" }
 
+/** Commands the app has turned off for now, each with the reason, such as Tidy sheet with nothing placed by Studio. */
+export type CommandsOff = Partial<Record<CommandId, string>>
+
 /**
  * Whether an item runs in the open view with `selected` parts selected, and the tooltip that says why it does not.
- * Without a count the selection is not considered.
+ * Without a count the selection is not considered. A command in `off` is disabled with its reason.
  */
-export function itemState(item: MenuItem, view: View, selected?: number): { enabled: boolean; reason?: string } {
+export function itemState(item: MenuItem, view: View, selected?: number, off: CommandsOff = {}): { enabled: boolean; reason?: string } {
   if (!item.command) return item.pending ? { enabled: false, reason: item.pending } : { enabled: false }
   if (item.only && item.only !== view) return { enabled: false, reason: ONLY_REASON[item.only] }
+  const why = off[item.command]
+  if (why !== undefined) return { enabled: false, reason: why }
   const short = selected === undefined ? null : commandDisabledReason(item.command, selected)
   return short ? { enabled: false, reason: short } : { enabled: true }
 }
@@ -319,6 +327,6 @@ export function menuReducer(state: MenuState, event: MenuEvent): MenuState {
 }
 
 /** Each menu's entries as the menu keys see them in the open view: items that run, disabled items and separators. */
-export function menuShapes(view: View, selected?: number): readonly (readonly ("item" | "disabled" | "separator")[])[] {
-  return MENUS.map((menu) => menu.entries.map((entry) => (entry === "separator" ? "separator" : itemState(entry, view, selected).enabled ? "item" : "disabled")))
+export function menuShapes(view: View, selected?: number, off: CommandsOff = {}): readonly (readonly ("item" | "disabled" | "separator")[])[] {
+  return MENUS.map((menu) => menu.entries.map((entry) => (entry === "separator" ? "separator" : itemState(entry, view, selected, off).enabled ? "item" : "disabled")))
 }

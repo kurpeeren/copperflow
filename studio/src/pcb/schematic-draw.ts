@@ -70,9 +70,6 @@ const JUNCTION_PX = 3
 const DASH: number[] = [0.1, 0.06]
 const NUMBER_INSET = 0.1
 const NUMBER_RISE = 0.07
-/** Symbols the engine placed for itself are drawn faded inside a dashed box, so the person sees they have no position yet. */
-const AUTO_PLACED_ALPHA = 0.6
-const AUTO_DASH_PX = [4, 3]
 /** A two-pin part's designator and value are at most this many symbol lengths wide. */
 const TWO_PIN_TEXT_LENGTHS = 2.5
 const TEXT_KINDS: Record<Role, TextKind> = { reference: "name", value: "detail", "pin-name": "detail", "pin-number": "pin-number" }
@@ -226,14 +223,13 @@ function drawWires(ctx: Ctx, layout: SchematicLayout, options: SchematicDrawOpti
 
 function drawSymbol(ctx: Ctx, placed: PlacedSymbol, shift: Point, pen: { line: (w: number) => number; px: number; fade: number }, texts: Label[]): void {
   const frame = { x: placed.x + shift.x, y: placed.y + shift.y, rotation: placed.rotation }
-  const alpha = (placed.autoPlaced ? AUTO_PLACED_ALPHA : 1) * pen.fade
+  // A part Studio placed is drawn as any other, as EasyEDA does; Properties and the Component tree say who placed it.
+  const alpha = pen.fade
   const own: Label[] = []
   ctx.globalAlpha = alpha
   ctx.lineWidth = pen.line(SYMBOL_WIDTH)
   drawShapes(ctx, placed.symbol.shapes, frame, theme.symbolOutline, own)
   ctx.globalAlpha = 1
-  const box = symbolBox(placed)
-  if (placed.autoPlaced) drawAutoBox(ctx, box, shift, pen.px)
   if (!placed.symbol.shapes.some((shape) => shape.type === "text" && shape.role === "pin-number")) own.push(...pinNumbers(placed.symbol, frame))
   texts.push(...own.map((label) => ({ ...label, alpha, ...textBounds(label, placed) })))
 }
@@ -246,20 +242,6 @@ function textBounds(label: Label, placed: PlacedSymbol): Partial<Label> {
   return a && b ? { maxWidth: TWO_PIN_TEXT_LENGTHS * Math.hypot(a.end.x - b.end.x, a.end.y - b.end.y) } : {}
 }
 
-function drawAutoBox(ctx: Ctx, box: Box, shift: Point, px: number): void {
-  ctx.strokeStyle = theme.autoBox
-  ctx.lineWidth = px
-  ctx.setLineDash(AUTO_DASH_PX.map((dash) => dash * px))
-  path(ctx, [
-    { x: box.minX + shift.x, y: box.minY + shift.y },
-    { x: box.maxX + shift.x, y: box.minY + shift.y },
-    { x: box.maxX + shift.x, y: box.maxY + shift.y },
-    { x: box.minX + shift.x, y: box.maxY + shift.y },
-  ])
-  ctx.closePath()
-  ctx.stroke()
-  ctx.setLineDash([])
-}
 
 /** Numbers for symbols that do not draw their own: on the lead, just above it. */
 function pinNumbers(symbol: SchSymbol, frame: Frame): Label[] {

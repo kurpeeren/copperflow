@@ -29,7 +29,7 @@ const LABELLED = `export default () => (
   </board>
 )`
 
-/** The same circuit with PCB positions, so no part is drawn faded as auto-placed. */
+/** The same circuit with every position given, so no part is placed by Studio. */
 const PLACED = `export default () => (
   <board width="30mm" height="18mm">
     <resistor name="R1" resistance="1k" footprint="0402" pcbX={-4} pcbY={2} schX={0} schY={0} />
@@ -109,7 +109,7 @@ describe("drawSchematic", () => {
     expect(rec.records.filter((r) => r.name === "moveTo").length - plain).toBe(2)
   })
 
-  test("an auto-placed symbol is drawn at 60% alpha inside a dashed box", () => {
+  test("an auto-placed symbol is drawn as any other: full alpha, no box around it (Properties says who placed it)", () => {
     const auto = buildDesign(
       {
         "main.circuit.tsx": `export default () => (
@@ -128,9 +128,9 @@ describe("drawSchematic", () => {
     const rec = recorder()
     drawSchematic(rec.ctx as never, auto, VIEW, { ratio: 1 })
     const outlines = rec.records.filter((r) => r.name === "stroke" && r.strokeStyle === schematicTheme.symbolOutline)
-    expect(new Set(outlines.map((r) => r.globalAlpha))).toEqual(new Set([1, 0.6]))
-    expect(rec.records.filter((r) => r.name === "stroke" && r.strokeStyle === schematicTheme.autoBox)).toHaveLength(1)
-    expect(rec.records.find((r) => r.name === "fillText" && r.args[0] === "R2")?.globalAlpha).toBe(0.6)
+    expect(new Set(outlines.map((r) => r.globalAlpha))).toEqual(new Set([1]))
+    expect(rec.records.some((r) => r.name === "setLineDash" && (r.args[0] as number[]).length > 0)).toBe(false)
+    expect(rec.records.find((r) => r.name === "fillText" && r.args[0] === "R2")?.globalAlpha).toBe(1)
     expect(rec.records.find((r) => r.name === "fillText" && r.args[0] === "R1")?.globalAlpha).toBe(1)
   })
 

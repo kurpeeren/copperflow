@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { buildDesign } from "../src/engine/design.js"
-import { keepNotice, keepPositions } from "../studio/src/pcb/auto-placed.js"
+import { autoPlacedParts, keepNotice, keepPositions, NOTHING_TO_TIDY, NOT_BUILT, TIDY_SUMMARY, tidyNotice, tidyPlan, tidyReason } from "../studio/src/pcb/auto-placed.js"
 
 const CIRCUIT = `export default () => (
   <board width="30mm" height="18mm">
@@ -10,6 +10,18 @@ const CIRCUIT = `export default () => (
     {[1, 2].map(() => (
       <resistor name="RX" resistance="1k" footprint="0402" />
     ))}
+  </board>
+)`
+
+/** A chip with a decoupling capacitor, which the engine stands upright beside it. */
+const REGULATOR = `export default () => (
+  <board width="30mm" height="18mm">
+    <chip name="U1" pinLabels={{ pin1: "VIN", pin2: "GND", pin3: "VOUT" }} pinAttributes={{ pin1: { requiresPower: true }, pin2: { requiresGround: true }, pin3: { providesPower: true } }} />
+    <capacitor name="C1" capacitance="1uF" />
+    <trace from="U1.VIN" to="net.VIN" />
+    <trace from="C1.pin1" to="net.VIN" />
+    <trace from="C1.pin2" to="net.GND" />
+    <trace from="U1.GND" to="net.GND" />
   </board>
 )`
 
@@ -68,11 +80,54 @@ describe("keepPositions", () => {
     ])
   })
 
+  test("writes schRotation too for a part the engine turned, so it is kept as it stands", () => {
+    const turned = buildDesign({ "main.circuit.tsx": REGULATOR }, "main.circuit.tsx")
+    const c1 = turned.schematic.symbols.find((s) => s.component === "C1")
+    expect(c1?.rotation).not.toBe(0)
+    const edit = keepPositions(turned, "schematic").edits.find((e) => e.kind === "setProps" && e.part === "C1")
+    expect(edit).toEqual({ kind: "setProps", part: "C1", props: { schX: round(c1?.x ?? NaN), schY: round(c1?.y ?? NaN), schRotation: c1?.rotation } })
+  })
+
   test("gives nothing to do when every part has a position", () => {
     const placed = buildDesign(
       { "main.circuit.tsx": `export default () => (<board width="10mm" height="10mm"><resistor name="R1" resistance="1k" footprint="0402" pcbX={0} pcbY={0} /></board>)` },
       "main.circuit.tsx",
     )
     expect(keepPositions(placed, "pcb")).toEqual({ edits: [], skipped: [] })
+  })
+})
+
+describe("Layout → Tidy sheet", () => {
+  test("writes the positions, and rotations, of the parts Studio placed on the sheet, and of no other", () => {
+    const placedHere = autoPlacedParts(design, "schematic")
+    const { edits } = tidyPlan(design)
+    const parts = edits.map((e) => (e.kind === "setProps" ? e.part : ""))
+    expect(parts).toEqual(["R2", "C1", "RX"])
+    expect(parts.every((part) => placedHere.has(part))).toBe(true)
+    expect(parts).not.toContain("R1")
+    expect(edits.every((e) => e.kind === "setProps" && Object.keys(e.props).every((key) => key.startsWith("sch")))).toBe(true)
+    expect(tidyPlan(design)).toEqual(keepPositions(design, "schematic"))
+  })
+
+  test("is one entry in the history, and says what it wrote", () => {
+    expect(TIDY_SUMMARY).toBe("Tidy sheet")
+    expect(tidyNotice(tidyPlan(design))).toBe("Tidied the sheet: wrote the positions of 3 parts Studio placed. Skipped RX~2 (a repeated name cannot be addressed from the Studio).")
+    expect(tidyNotice({ edits: [], skipped: [] })).toBe("Tidied the sheet: no part Studio placed could be written.")
+  })
+
+  test("is off, with the reason, when nothing on the sheet was placed by Studio or there is no build yet", () => {
+    const placed = buildDesign({ "main.circuit.tsx": `export default () => (<board width="10mm" height="10mm"><resistor name="R1" resistance="1k" footprint="0402" schX={0} schY={0} /></board>)` }, "main.circuit.tsx")
+    expect(tidyReason(design)).toBeNull()
+    expect(tidyReason(placed)).toBe(NOTHING_TO_TIDY)
+    expect(NOTHING_TO_TIDY).toBe("Every part on the sheet has a position of its own")
+    expect(tidyReason(undefined)).toBe(NOT_BUILT)
+  })
+})
+
+describe("autoPlacedParts", () => {
+  test("names the parts the engine placed in the view", () => {
+    expect([...autoPlacedParts(design, "schematic")]).toEqual(["R2", "C1", "RX", "RX~2"])
+    expect([...autoPlacedParts(design, "pcb")]).toEqual(["R2", "RX", "RX~2"])
+    expect(autoPlacedParts(undefined, "pcb").size).toBe(0)
   })
 })

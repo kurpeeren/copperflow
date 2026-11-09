@@ -1,0 +1,8 @@
+/* The Component tree's mark beside a part Studio placed itself, shown until the part is moved or kept. */
+.placed-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--copper);
+}
