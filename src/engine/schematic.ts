@@ -1,4 +1,4 @@
-import type { Circuit, Component, Connection, Point, Side } from "./model.js"
+import type { Circuit, Component, Connection, Point, SchematicDrawing, Side } from "./model.js"
 import { naturalCompare } from "./order.js"
 import { junctionsOf, labelName, labelStyle, layoutNets, rightAngle, type Drawn, type PinSpot } from "./schematic-nets.js"
 import { symbolFor, type Bounds, type SchSymbol } from "./symbols/index.js"
@@ -37,6 +37,8 @@ export interface SchematicLayout {
   wires: Wire[]
   labels: NetLabel[]
   junctions: Point[]
+  /** The circuit's drawings as they are: already on the sheet, with the groups' offsets added. */
+  drawings: SchematicDrawing[]
 }
 
 /** Gap between the placed symbols and the column of auto-placed ones. */
@@ -204,12 +206,12 @@ function handDrawn(circuit: Circuit, spots: ReadonlyMap<string, PinSpot>): HandD
   return result
 }
 
-/** Where every symbol, wire, label and junction of the schematic goes. */
+/** Where every symbol, wire, label, junction and drawing of the schematic goes. */
 export function layoutSchematic(circuit: Circuit): SchematicLayout {
   const { symbols, spots } = placeSymbols(circuit)
   const hand = handDrawn(circuit, spots)
   const drawn: Drawn = { joins: hand.joins, labeled: hand.labeled }
   const nets = layoutNets(circuit, spots, drawn)
   const wires = [...hand.wires, ...nets.wires]
-  return { symbols, wires, labels: [...hand.labels, ...nets.labels], junctions: junctionsOf(wires, spots) }
+  return { symbols, wires, labels: [...hand.labels, ...nets.labels], junctions: junctionsOf(wires, spots), drawings: circuit.drawings }
 }

@@ -250,7 +250,7 @@ describe("keepSheet", () => {
 })
 
 describe("drawingExtents", () => {
-  const layout = (over: object) => ({ symbols: [], wires: [], labels: [], junctions: [], ...over }) as never
+  const layout = (over: object) => ({ symbols: [], wires: [], labels: [], junctions: [], drawings: [], ...over }) as never
 
   test("an empty schematic has none", () => {
     expect(drawingExtents(layout({}))).toBeUndefined()
@@ -269,6 +269,20 @@ describe("drawingExtents", () => {
     expect(e!.minY).toBeLessThanOrEqual(-3)
     expect(e!.maxX).toBeGreaterThanOrEqual(8)
     expect(e!.maxY).toBeGreaterThanOrEqual(6)
+  })
+
+  test("drawings count by their whole shape", () => {
+    const source = { file: "a.circuit.tsx", line: 1, column: 1, offset: 0 }
+    const stroke = { strokeWidth: 0.01, lineStyle: "solid", groupOffset: { x: 0, y: 0 }, source }
+    const e = drawingExtents(
+      layout({
+        drawings: [
+          { id: "G1", kind: "circle", x: 10, y: 10, radius: 2, filled: false, ...stroke },
+          { id: "G2", kind: "rect", x: -4, y: -5, width: 1, height: 1, filled: false, ...stroke },
+        ],
+      }),
+    )
+    expect(e).toEqual({ minX: -4, minY: -5, maxX: 12, maxY: 12 })
   })
 })
 
