@@ -1,14 +1,16 @@
 // copperflow's PCB renderer: draws the engine's board layout onto a 2D canvas in layer order.
 // Only types come from the engine: its runtime modules reach Node-only code the Studio bundle cannot hold.
 import type { PcbLayout, PlacedFootprint, WorldPad } from "../../../src/engine/pcb.js"
-import { CANVAS_FONT_FAMILY, PALETTE, type Ctx, type Layers } from "./ctx.js"
+import { CANVAS_FONT_FAMILY, PALETTE, type Ctx } from "./ctx.js"
 import { worldToScreen, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
+import { ALL_LAYERS_SHOWN, type LayerVisibility } from "./layers.js"
 import { drawViolationMarkers, type ViolationMarker } from "./markers.js"
 
 export interface PcbDrawOptions {
   /** Device pixels per CSS pixel. */
   ratio: number
-  layers?: Partial<Layers>
+  /** Which layers are drawn; every layer is by default. */
+  layers?: Partial<LayerVisibility>
   /** The nets to highlight; other copper is dimmed. */
   highlight?: { nets: readonly string[] }
   /** The parts being dragged and how far they have moved, in mm. */
@@ -23,7 +25,6 @@ export interface PcbDrawOptions {
 
 type View = { camera: Camera; size: Size }
 
-const DEFAULT_LAYERS: Layers = { topCopper: true, bottomCopper: true, silkscreen: true, courtyard: true, fabrication: false }
 const NO_SHIFT: Point = { x: 0, y: 0 }
 const MIN_TEXT_PX = 3
 /** Alpha of everything outside a highlighted net; high enough that dimmed pure blue still reads on black. */
@@ -48,12 +49,14 @@ const DESIGNATOR_GAP_PX = 2
 const AUTO_PLACED_ALPHA = 0.6
 
 const rad = (degrees: number) => (degrees * Math.PI) / 180
+/** Whether the layer of `kind` (Silk or Assembly) on the part's side is shown. */
+const shownOn = (layers: LayerVisibility, part: PlacedFootprint, kind: "Silk" | "Assembly") => layers[`${part.side === "top" ? "top" : "bottom"}${kind}`]
 const alphaOf = (part: PlacedFootprint) => (part.autoPlaced ? AUTO_PLACED_ALPHA : 1)
 const assemblyColor = (part: PlacedFootprint) => (part.side === "top" ? PALETTE.topAssembly : PALETTE.bottomAssembly)
 
 /** Draws the board, then the ratsnest and the violation rings. Auto-placed parts are faded and always show their dashed courtyard. */
 export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDrawOptions): void {
-  const layers = { ...DEFAULT_LAYERS, ...options.layers }
+  const layers: LayerVisibility = { ...ALL_LAYERS_SHOWN, ...options.layers }
   const { camera, size } = view
   const px = 1 / camera.scale
   const shiftOf = (part: PlacedFootprint) => (options.moving?.components.includes(part.component) ? options.moving.by : NO_SHIFT)
@@ -71,22 +74,28 @@ export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDra
   ctx.setTransform(...worldMatrix(view, options.ratio))
   ctx.lineCap = "round"
   ctx.lineJoin = "round"
-  drawKeepouts(ctx, layout, px)
+  if (layers.keepout) drawKeepouts(ctx, layout, px)
   drawCopper(ctx, layers, options.highlight, each, px)
-  drawDrills(ctx, each)
-  if (layers.silkscreen) each((part) => drawPolylines(ctx, part.silkscreen, part.side === "top" ? PALETTE.topSilk : PALETTE.bottomSilk, SILK_WIDTH_MM, false))
-  drawCourtyards(ctx, each, px, layers.courtyard)
-  if (layers.fabrication) each((part) => drawPolylines(ctx, part.fabrication, assemblyColor(part), px, false))
-  drawBoard(ctx, layout, () => {
-    ctx.strokeStyle = PALETTE.boardEdge
-    ctx.lineWidth = BOARD_EDGE_PX * px
-    ctx.stroke()
+  if (layers.hole) drawDrills(ctx, each)
+  each((part) => {
+    if (shownOn(layers, part, "Silk")) drawPolylines(ctx, part.silkscreen, part.side === "top" ? PALETTE.topSilk : PALETTE.bottomSilk, SILK_WIDTH_MM, false)
   })
-  if (options.ratsnest !== false) drawRatsnest(ctx, layout, options, px)
+  drawCourtyards(ctx, each, px, (part) => shownOn(layers, part, "Assembly"))
+  each((part) => {
+    if (shownOn(layers, part, "Assembly")) drawPolylines(ctx, part.fabrication, assemblyColor(part), px, false)
+  })
+  if (layers.boardOutline) {
+    drawBoard(ctx, layout, () => {
+      ctx.strokeStyle = PALETTE.boardEdge
+      ctx.lineWidth = BOARD_EDGE_PX * px
+      ctx.stroke()
+    })
+  }
+  if (options.ratsnest !== false && layers.ratline) drawRatsnest(ctx, layout, options, px)
 
   // Text is drawn in screen space so it stays upright and readable at any zoom.
   ctx.setTransform(options.ratio, 0, 0, options.ratio, 0, 0)
-  if (layers.silkscreen) for (const part of layout.parts) drawDesignator(ctx, part, camera, size, shiftOf(part))
+  for (const part of layout.parts) if (shownOn(layers, part, "Silk")) drawDesignator(ctx, part, camera, size, shiftOf(part))
   drawViolationMarkers(ctx, view, options.violations ?? [], options.activeViolation, true)
   ctx.restore()
 }
@@ -219,11 +228,11 @@ function padColor(pad: WorldPad): string {
 type Each = (paint: (part: PlacedFootprint) => void) => void
 
 /** Bottom copper first, then top copper; through pads count as both. */
-function drawCopper(ctx: Ctx, layers: Layers, highlight: PcbDrawOptions["highlight"], each: Each, px: number): void {
+function drawCopper(ctx: Ctx, layers: LayerVisibility, highlight: PcbDrawOptions["highlight"], each: Each, px: number): void {
   const passes: Array<[boolean, (pad: WorldPad) => boolean]> = [
-    [layers.bottomCopper, (pad) => pad.layers === "bottom"],
-    [layers.topCopper, (pad) => pad.layers === "top"],
-    [layers.topCopper || layers.bottomCopper, (pad) => pad.layers === "through"],
+    [layers.bottom, (pad) => pad.layers === "bottom"],
+    [layers.top, (pad) => pad.layers === "top"],
+    [layers.multiLayer, (pad) => pad.layers === "through"],
   ]
   for (const [visible, wanted] of passes) {
     if (!visible) continue
@@ -278,11 +287,11 @@ function drawPolylines(ctx: Ctx, lines: readonly (readonly Point[])[], color: st
   }
 }
 
-/** Every courtyard when the layer is shown; an auto-placed part's courtyard always. */
-function drawCourtyards(ctx: Ctx, each: Each, px: number, all: boolean): void {
+/** The courtyards of the parts whose assembly layer is shown; an auto-placed part's courtyard always. */
+function drawCourtyards(ctx: Ctx, each: Each, px: number, shown: (part: PlacedFootprint) => boolean): void {
   ctx.setLineDash([4 * px, 3 * px])
   each((part) => {
-    if (!all && !part.autoPlaced) return
+    if (!shown(part) && !part.autoPlaced) return
     ctx.globalAlpha = 1
     drawPolylines(ctx, [part.courtyard], assemblyColor(part), part.autoPlaced ? AUTO_COURTYARD_PX * px : px, true)
   })

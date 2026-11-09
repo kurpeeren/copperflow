@@ -6,6 +6,7 @@ import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { Selection, SelectionChange } from "../selection.js"
 import { boxMode, boxSelection, partsInBox } from "./box-select.js"
 import { hitsAt, roundPosition, screenToWorld, snap, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
+import type { PickLayers } from "./layers.js"
 import { anchorLookup, moveEach, type GroupEdit, type GroupEditActions } from "./group-edits.js"
 import { VIEWS, ZERO, type Anchor, type SourceCircuit, type View } from "./positions.js"
 import { picks, type Pickable, type PickContext } from "./pick.js"
@@ -63,6 +64,8 @@ export interface GestureInput {
   blockerFor(name: string): string | null
   /** The schematic's net labels and power symbols, when they can be dragged. */
   labels?: GestureLabels
+  /** The PCB's layers, which decide what a click or a box may pick; the schematic has none. */
+  layers?: PickLayers
   /** The canvas tool that takes a left press while armed, and how to put it away. */
   tool: { armed: ArmedTool; disarm(): void }
   /** A right click that did not move: what it was on, and where on the screen (client pixels). */
@@ -90,7 +93,7 @@ export function targetAt(boxes: readonly PartBox[], labels: GestureLabels | unde
 }
 
 /** What a pick on this canvas is made with: its selection and its armed tool. */
-const pickContext = (input: GestureInput): PickContext => ({ selection: input.selection, armed: input.tool.armed })
+const pickContext = (input: GestureInput): PickContext => ({ selection: input.selection, armed: input.tool.armed, layers: input.layers })
 
 function underOf(target: ContextTarget, selection: Selection): Under {
   if (target.kind === "part") return selection.has(target.name) ? "selectedPart" : "part"
@@ -192,7 +195,7 @@ function endBox(input: GestureInput, done: Extract<Gesture, { kind: "box" }>, ca
     return
   }
   const names = partsInBox(input.boxes, corners[0], corners[1], boxMode(done.start, done.current))
-  input.onSelect(boxSelection(names, done.adds, input.tool.armed))
+  input.onSelect(boxSelection(names, done.adds, input.tool.armed, input.layers))
 }
 
 /** A drawn note box asks for the note, places it at the box's centre, and puts the tool away; a click keeps it armed. */

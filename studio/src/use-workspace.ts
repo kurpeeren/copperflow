@@ -7,6 +7,7 @@ import { INITIAL_BOTTOM, clickBottom, openBottomTab, toggleBottom, type BottomSt
 import { NO_HIGHLIGHT, type Highlight } from "./pcb/highlight"
 import { INITIAL_GRID_STEPS, INITIAL_GRID_STYLES, setGridStep, toggleGridStyle, type GridSteps, type GridStyles } from "./pcb/grid"
 import { nextUnit, type Unit } from "./pcb/units"
+import { useLayers } from "./use-layers"
 import {
   INITIAL_LEFT,
   clickLeftStrip,
@@ -15,6 +16,7 @@ import {
   selectStrip,
   toggleStripOpen,
   INITIAL_RIGHT,
+  rightFor,
   type RightStrip,
   type StripState,
   showDesignSub,
@@ -31,14 +33,16 @@ export type { DesignSub, LeftStrip } from "./shell/strip-state"
 const WORKSPACE_ACTIONS: ReadonlySet<KeyActionName> = new Set(["toggleLeftPanel", "toggleRightPanel", "toggleBottomPanel", "toggleUnit", "clearHighlight", "openLibrary"])
 
 /** The two side strips and the bottom strip: a click toggles the open tab's panel, a key (or a command) only shows. */
-function useStrips() {
+function useStrips(view: View) {
   const [left, setLeft] = useState<LeftState>(INITIAL_LEFT)
-  const [right, setRight] = useState<StripState<RightStrip>>(INITIAL_RIGHT)
+  const [rightTab, setRight] = useState<StripState<RightStrip>>(INITIAL_RIGHT)
+  // The Layer tab exists only on the PCB: on the schematic Properties shows, and a click acts on what is shown.
+  const right = rightFor(rightTab, view)
   /** The bottom tab strip and the panel above it; the panel starts closed. */
   const [bottom, setBottom] = useState<BottomState>(INITIAL_BOTTOM)
   const clickLeft = useCallback((strip: LeftStrip) => setLeft((state) => clickLeftStrip(state, strip)), [])
   const selectLeft = useCallback((strip: LeftStrip) => setLeft((state) => selectLeftStrip(state, strip)), [])
-  const clickRight = useCallback((tab: RightStrip) => setRight((state) => clickStrip(state, tab)), [])
+  const clickRight = useCallback((tab: RightStrip) => setRight((state) => clickStrip(rightFor(state, view), tab)), [view])
   const selectRight = useCallback((tab: RightStrip) => setRight((state) => selectStrip(state, tab)), [])
   const clickBottomTab = useCallback((tab: BottomTab) => setBottom((state) => clickBottom(state, tab)), [])
   const openBottom = useCallback((tab: BottomTab) => setBottom((state) => openBottomTab(state, tab)), [])
@@ -134,13 +138,14 @@ function useWorkspaceRun(view: View, { strips, setUnit, setHighlight, toggleGrid
 }
 
 export function useWorkspace(view: View) {
-  const { setLeft, setRight, setBottom, ...strips } = useStrips()
+  const { setLeft, setRight, setBottom, ...strips } = useStrips(view)
   const { requestSearch, ...focus } = usePanelFocus(setLeft, setRight)
   const [unit, setUnit] = useState<Unit>("mm")
   const [highlight, setHighlight] = useState<Highlight>(NO_HIGHLIGHT)
   const { toggleGridStyleOf, ...grid } = useGridSettings()
+  const layers = useLayers()
   const run = useWorkspaceRun(view, { strips: { setLeft, setRight, setBottom }, setUnit, setHighlight, toggleGridStyleOf, requestSearch })
   useWorkspaceKeys(view, run)
   const toggleUnit = useCallback(() => setUnit(nextUnit), [])
-  return { ...strips, ...grid, ...focus, leftOpen: strips.left.open, rightOpen: strips.right.open, unit, toggleUnit, highlight, setHighlight, run }
+  return { ...strips, ...grid, ...layers, ...focus, leftOpen: strips.left.open, rightOpen: strips.right.open, unit, toggleUnit, highlight, setHighlight, run }
 }

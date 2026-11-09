@@ -30,14 +30,6 @@ export interface Ctx {
   setLineDash(segments: number[]): void
 }
 
-export interface Layers {
-  topCopper: boolean
-  bottomCopper: boolean
-  silkscreen: boolean
-  courtyard: boolean
-  fabrication: boolean
-}
-
 /**
  * The alpha of everything outside a highlighted net on the schematic. The PCB dims less, to PCB_DIM (pcb-draw.ts),
  * so its layer colours, pure blue among them, still read on black.

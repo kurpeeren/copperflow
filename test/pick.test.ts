@@ -3,6 +3,7 @@ import type { NetLabel } from "../src/engine/schematic.js"
 import { boxSelection } from "../studio/src/pcb/box-select.js"
 import type { PartBox } from "../studio/src/pcb/geometry.js"
 import { targetAt } from "../studio/src/pcb/gestures.js"
+import { ALL_LAYERS_SHOWN, type PickLayers } from "../studio/src/pcb/layers.js"
 import { canPick, pickNames, picks, selectAll, type PickContext } from "../studio/src/pcb/pick.js"
 import { Selection } from "../studio/src/selection.js"
 
@@ -55,5 +56,24 @@ describe("every pick goes through canPick", () => {
     const all = selectAll(["R1", "C1", "R1"])(Selection.none)
     expect(all.names).toEqual(["R1", "C1"])
     expect(selectAll(["R1", "C1"])(all)).toBe(all)
+  })
+})
+
+describe("hidden layers", () => {
+  const visible = { ...ALL_LAYERS_SHOWN, top: false, topAssembly: false }
+  const layers: PickLayers = { visible, of: (part) => (part === "R1" ? ["top", "topAssembly"] : ["top", "multiLayer"]) }
+  const hiding: PickContext = { ...free, layers }
+
+  test("a part whose drawn layers are all hidden cannot be picked; one with a shown layer can", () => {
+    expect(canPick({ kind: "part", name: "R1" }, hiding)).toBe(false)
+    expect(canPick({ kind: "part", name: "C1" }, hiding)).toBe(true)
+    expect(canPick({ kind: "label", label }, hiding)).toBe(true)
+  })
+
+  test("a click goes through to the shown part under it, and a box takes only the shown parts", () => {
+    expect(targetAt(BOXES, undefined, { x: 3, y: 0 }, hiding)).toEqual({ kind: "canvas" })
+    expect(targetAt(BOXES, undefined, { x: 1.5, y: 0 }, hiding)).toEqual({ kind: "part", name: "C1" })
+    expect(boxSelection(["R1", "C1"], false, null, layers)(Selection.none).names).toEqual(["C1"])
+    expect(pickNames(["R1", "C1"], hiding)).toEqual(["C1"])
   })
 })

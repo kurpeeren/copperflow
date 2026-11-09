@@ -1,4 +1,5 @@
 // The vertical tab strips and the left panel's tab state, as plain functions so they can be tested without a DOM.
+import type { View } from "../pcb/positions.js"
 
 export type LeftStrip = "design" | "library"
 /** The sub-tabs of Project Design. */
@@ -15,8 +16,19 @@ export interface StripState<T> {
   open: boolean
 }
 
-/** The right strip's tabs; Filter and Layer join Properties in later rounds. */
-export type RightStrip = "properties"
+/** The right strip's tabs; Filter joins them in a later round. Layer exists only while the PCB is open. */
+export type RightStrip = "properties" | "layer"
+
+/** The tabs the right strip shows for the open document. */
+export function rightTabIds(view: View): RightStrip[] {
+  return view === "pcb" ? ["properties", "layer"] : ["properties"]
+}
+
+/** The strip as the open document shows it: the Layer tab does not exist on the schematic, so Properties takes its place. */
+export function rightFor(state: StripState<RightStrip>, view: View): StripState<RightStrip> {
+  if (state.active !== "layer" || view === "pcb") return state
+  return { ...state, active: "properties" }
+}
 
 export const INITIAL_RIGHT: StripState<RightStrip> = { active: "properties", open: true }
 

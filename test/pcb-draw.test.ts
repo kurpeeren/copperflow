@@ -117,7 +117,7 @@ describe("drawPcb", () => {
       ["R2", true],
     ])
     const { ctx, records } = recorder()
-    drawPcb(ctx, auto, VIEW, { ratio: 1, layers: { courtyard: false } })
+    drawPcb(ctx, auto, VIEW, { ratio: 1, layers: { topAssembly: false } })
     const copper = records.filter((r) => r.name === "fill" && r.fillStyle === PALETTE.topCopper)
     expect(copper.map((r) => r.globalAlpha).sort()).toEqual([0.6, 0.6, 1, 1])
     const courtyards = records.filter((r) => r.name === "stroke" && r.strokeStyle === PALETTE.topAssembly)

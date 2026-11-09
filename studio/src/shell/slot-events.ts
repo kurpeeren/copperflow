@@ -1,4 +1,4 @@
-// The open canvas renders its own controls (snap, layers, Keep these positions) into the toolbar through a portal.
+// The open canvas renders its own controls (snap, Keep these positions) into the toolbar through a portal.
 // React passes a portal's events up the React tree, not the page's, so without a stop at the slot a pointer move over
 // Snap would reach the canvas's pointer handlers (its hover, the wire tool, the H key's cursor) and a right click
 // would lose the browser's menu. These are the events stopped there; clicks, changes and keys go on as usual.

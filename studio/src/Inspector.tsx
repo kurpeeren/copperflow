@@ -76,7 +76,7 @@ export function Inspector(props: Props) {
       return next
     })
   return (
-    <aside ref={panel} className="panel right" id={stripPanelId("right")} role="tabpanel" aria-labelledby={sideTabId("properties")} hidden={props.hidden}>
+    <aside ref={panel} className="panel right" id={props.hidden ? undefined : stripPanelId("right")} role="tabpanel" aria-labelledby={sideTabId("properties")} hidden={props.hidden}>
       {parts.length > 1 && <GroupView view={view} parts={parts} locks={locks} run={props.run} onClear={() => props.onSelect((current) => current.clear())} collapsed={collapsed} toggle={toggle} />}
       {parts.length === 1 && part && <PartView {...props} view={view} collapsed={collapsed} toggle={toggle} part={part} locks={locks} />}
       {parts.length === 0 && <BoardView {...props} view={view} collapsed={collapsed} toggle={toggle} />}

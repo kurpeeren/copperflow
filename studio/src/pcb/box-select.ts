@@ -2,6 +2,7 @@
 // it takes the parts wholly inside it; right to left (a dashed outline), every part it touches.
 import type { SelectionChange } from "../selection.js"
 import { pointBounds, type Box, type PartBox, type Point } from "./geometry.js"
+import type { PickLayers } from "./layers.js"
 import { pickNames } from "./pick.js"
 import type { ArmedTool } from "./press.js"
 
@@ -26,11 +27,11 @@ export function partsInBox(boxes: readonly PartBox[], a: Point, b: Point, mode: 
 
 /**
  * The selection after a box: just the parts in it that may be picked (pick.ts), or, with Shift or Ctrl held, those
- * added to what was selected. `armed` is the canvas tool armed while the box was drawn.
+ * added to what was selected. `armed` is the canvas tool armed while the box was drawn, `layers` the PCB's.
  */
-export function boxSelection(names: readonly string[], adds: boolean, armed: ArmedTool = null): SelectionChange {
+export function boxSelection(names: readonly string[], adds: boolean, armed: ArmedTool = null, layers?: PickLayers): SelectionChange {
   return (current) => {
-    const picked = pickNames(names, { selection: current, armed })
+    const picked = pickNames(names, { selection: current, armed, layers })
     return adds ? current.add(picked) : current.all(picked)
   }
 }

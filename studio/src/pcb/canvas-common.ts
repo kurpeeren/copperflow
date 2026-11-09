@@ -20,6 +20,7 @@ import { pcbBoxes } from "./pcb-draw"
 import { moveBlocker, partAnchors, type View } from "./positions"
 import { fitBackingStore, resetContext } from "./canvas-surface"
 import type { GridStyle } from "./grid"
+import type { LayerVisibility } from "./layers"
 import type { Unit } from "./units"
 import { sheetBoxes } from "./schematic-draw"
 
@@ -47,6 +48,8 @@ export interface CanvasProps {
   /** This document's Grid step: the grid and the snap. */
   gridStep: number
   onGridStep(step: number): void
+  /** Which PCB layers are shown (the Layer panel); the schematic has none. */
+  layers: LayerVisibility
   /** This view's violations that have a position, ringed on the canvas. */
   markers: readonly ViolationMarker[]
   /** The violation picked in the DRC tab. */

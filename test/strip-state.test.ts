@@ -10,6 +10,8 @@ import {
   toggleLeftOpen,
   toggleStripOpen,
   INITIAL_RIGHT,
+  rightFor,
+  rightTabIds,
 } from "../studio/src/shell/strip-state.js"
 
 describe("strip toggle rule", () => {
@@ -78,5 +80,26 @@ describe("right strip state", () => {
 
   test("] toggles the panel and keeps the active tab", () => {
     expect(toggleStripOpen(INITIAL_RIGHT)).toEqual({ active: "properties", open: false })
+  })
+})
+
+describe("the Layer tab", () => {
+  test("exists only while the PCB is open", () => {
+    expect(rightTabIds("pcb")).toEqual(["properties", "layer"])
+    expect(rightTabIds("schematic")).toEqual(["properties"])
+  })
+
+  test("is the right strip's tab on the PCB, and clicking it opens it and a second click collapses the panel", () => {
+    const layer = clickStrip(INITIAL_RIGHT, "layer")
+    expect(layer).toEqual({ active: "layer", open: true })
+    expect(rightFor(layer, "pcb")).toBe(layer)
+    expect(clickStrip(layer, "layer").open).toBe(false)
+  })
+
+  test("falls back to Properties, keeping the panel open or closed, when the schematic opens", () => {
+    expect(rightFor({ active: "layer", open: true }, "schematic")).toEqual({ active: "properties", open: true })
+    expect(rightFor({ active: "layer", open: false }, "schematic")).toEqual({ active: "properties", open: false })
+    const properties = { active: "properties" as const, open: true }
+    expect(rightFor(properties, "schematic")).toBe(properties)
   })
 })

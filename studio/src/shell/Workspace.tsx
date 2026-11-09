@@ -18,16 +18,20 @@ import { ContextMenu } from "./ContextMenu"
 import { DocTabs } from "./DocTabs"
 import type { CommandId } from "./menus"
 import { buildPageTree, type DocView } from "./page-tree"
+import { LayerPanel } from "./LayerPanel"
 import { SideStrip } from "./SideStrip"
 import { useContextMenu, type ContextMenuState } from "./use-context-menu"
-import type { LeftStrip, RightStrip } from "./strip-state"
+import { rightTabIds, type LeftStrip, type RightStrip } from "./strip-state"
 import "./workspace.css"
 
 const LEFT_STRIP: ReadonlyArray<{ id: LeftStrip; label: string }> = [
   { id: "design", label: "Project Design" },
   { id: "library", label: "Common Library" },
 ]
-const RIGHT_STRIP: ReadonlyArray<{ id: RightStrip; label: string }> = [{ id: "properties", label: "Properties" }]
+const RIGHT_LABELS: Record<RightStrip, string> = { properties: "Properties", layer: "Layer" }
+
+/** The right strip's tabs for the open document: Layer only on the PCB. */
+const rightStrip = (view: View) => rightTabIds(view).map((id) => ({ id, label: RIGHT_LABELS[id] }))
 
 export interface WorkspaceProps {
   data: StudioData
@@ -67,6 +71,7 @@ function canvasProps({ data, workspace, checks, selection, onSelect, actions }: 
     activeViolation: checks.active,
     focus: checks.focus,
     onFocused: checks.focused,
+    layers: workspace.layerVisibility,
     onContextMenu,
     onOpenProperties: (part) => {
       onSelect((current) => current.only(part))
@@ -143,24 +148,30 @@ function LeftSide({ data, workspace, view, selection, onSelect, actions, onPlace
   )
 }
 
-/** The right panel (Properties), once the circuit has loaded. */
+/** The right panel: Properties, or on the PCB the Layer panel, once the circuit has loaded. Properties stays mounted behind the Layer tab, so its open sections are kept. */
 function RightSide({ data, workspace, checks, selection, onSelect, actions, run, openChecks }: WorkspaceProps) {
   if (!data.circuit) return null
+  const { right } = workspace
+  const layerOpen = right.open && right.active === "layer"
+  const keepouts = data.build.design?.pcb.board?.keepouts ?? []
   return (
-    <Inspector
-      circuit={data.circuit}
-      build={data.build}
-      parts={data.parts}
-      selection={selection}
-      onSelect={onSelect}
-      actions={actions}
-      run={run}
-      counts={checks.counts}
-      onShowChecks={openChecks}
-      hidden={!workspace.rightOpen}
-      focusField={workspace.focusField}
-      onFieldFocused={workspace.fieldFocused}
-    />
+    <>
+      <Inspector
+        circuit={data.circuit}
+        build={data.build}
+        parts={data.parts}
+        selection={selection}
+        onSelect={onSelect}
+        actions={actions}
+        run={run}
+        counts={checks.counts}
+        onShowChecks={openChecks}
+        hidden={!right.open || right.active !== "properties"}
+        focusField={workspace.focusField}
+        onFieldFocused={workspace.fieldFocused}
+      />
+      {layerOpen && <LayerPanel visibility={workspace.layerVisibility} filter={workspace.layerFilter} hasKeepouts={keepouts.length > 0} onFilter={workspace.setLayerFilter} onToggle={workspace.toggleLayerShown} />}
+    </>
   )
 }
 
@@ -174,7 +185,7 @@ export function Workspace(props: WorkspaceProps) {
       <LeftSide {...props} />
       <CenterColumn {...props} onContextMenu={contextMenu.show} />
       <RightSide {...props} />
-      <SideStrip side="right" tabs={RIGHT_STRIP} active={workspace.right.active} open={workspace.right.open} onClick={workspace.clickRight} onSelect={workspace.selectRight} />
+      <SideStrip side="right" tabs={rightStrip(props.view)} active={workspace.right.active} open={workspace.right.open} onClick={workspace.clickRight} onSelect={workspace.selectRight} />
       {contextMenu.open && <ContextMenu entries={contextMenu.open.entries} at={contextMenu.open.at} onRun={contextMenu.runItem} onClose={contextMenu.close} />}
     </main>
   )
