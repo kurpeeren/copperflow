@@ -17,7 +17,7 @@ import { applyEdits, EditError } from "./edit.js"
 import { inProjectQueue, isInside, readIfThere, writeNew, writeWithHistory } from "./file-writes.js"
 import { livesOnAs, readEntries, recordEntry, removeEntry, type Author, type HistoryEntry } from "./history.js"
 import { circuitPathFor, isLayoutFile, layoutPathFor } from "./layout-file.js"
-import { lockedPartsAt, lockedStart, type LayoutDesign } from "./layout-locks.js"
+import { designFor, lockedPartsAt, lockedStart, type DesignSource } from "./layout-locks.js"
 import { lockedPartChanges, lockedRecordChanges } from "./layout-records.js"
 import { LIBRARY_OWNED_PROPS, libraryIds, libraryImports, PARTS_DIR } from "./library.js"
 import { partsInSelector } from "./selectors.js"
@@ -116,9 +116,10 @@ export interface HistoryOptions {
   id?: string
   /**
    * The circuit's built design, for undoing or redoing a layout file change: a track starting on a locked part's pad
-   * counts as locked. Without it such a change is refused while the circuit has locked parts.
+   * counts as locked. Without it such a change is refused while the circuit has locked parts. A function is called with
+   * the circuit file only when the circuit has locked parts.
    */
-  design?: LayoutDesign
+  design?: DesignSource
 }
 
 /**
@@ -212,11 +213,12 @@ export async function resolveLayoutFile(
 }
 
 /** A layout file's locks: its locked records, and tracks starting on a locked part's pad. */
-async function loadTrackedLayout(root: string, file: string, design: LayoutDesign | undefined): Promise<Tracked> {
-  const { path, file: name, circuitPath } = await resolveLayoutFile(root, file)
+async function loadTrackedLayout(root: string, file: string, design: DesignSource | undefined): Promise<Tracked> {
+  const { path, file: name, circuit, circuitPath } = await resolveLayoutFile(root, file)
   const source = await readIfThere(path)
   if (source === undefined) throw new Error(`${name} does not exist`)
-  const onPart = lockedStart(await lockedPartsAt(circuitPath), design)
+  const lockedParts = await lockedPartsAt(circuitPath)
+  const onPart = lockedStart(lockedParts, await designFor(design, circuit, lockedParts))
   const lockChange = (next: string) => {
     const found = [lockedRecordChanges(source, next), lockedPartChanges(source, next, onPart)].filter((text) => text !== undefined)
     return found.length === 0 ? undefined : found.join(", ")
@@ -224,7 +226,7 @@ async function loadTrackedLayout(root: string, file: string, design: LayoutDesig
   return { path, file: name, source, lockChange, firstLock: () => lockChange("") }
 }
 
-async function loadTracked(root: string, file: string, design?: LayoutDesign): Promise<Tracked> {
+async function loadTracked(root: string, file: string, design?: DesignSource): Promise<Tracked> {
   if (isLayoutFile(file)) return loadTrackedLayout(root, file, design)
   const loaded = await loadCircuit(root, file)
   const lock = loaded.annotations.locks[0]

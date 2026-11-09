@@ -14,9 +14,12 @@ import {
   readPart,
   verifyPart,
   addMark,
+  applyLayoutEdits,
+  circuitPathFor,
   editCircuit,
   EditError,
   isInside,
+  isLayoutFile,
   listCircuits,
   listEntries,
   loadCircuit,
@@ -29,6 +32,7 @@ import {
   updateAnnotations,
 } from "../core/index.js"
 import { Engine } from "../engine/engine.js"
+import { LayoutBody } from "./layout-schema.js"
 import { LiveProject, type DesignBuilder } from "./live.js"
 
 export interface StudioOptions {
@@ -140,6 +144,9 @@ const Bodies = {
   verify: z.object({ id: z.string().min(1).max(64), by: z.string().min(1).max(100), against: z.string().min(1).max(300), confirm: z.string() }),
 }
 
+/** The circuit a history entry's file builds: itself, or the circuit beside a layout file. */
+const builtFrom = (file: string): string => (isLayoutFile(file) ? circuitPathFor(file) : file)
+
 class HttpError extends Error {
   constructor(
     readonly status: number,
@@ -217,6 +224,14 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         live.requestBuild(result.entry.file)
         return send(res, { entryId: result.entry.id, violations: result.violations, writeMark })
       }
+      // Copper goes to the layout file beside the circuit; the built design tells which tracks start on locked parts.
+      case "POST /api/layout": {
+        const body = LayoutBody.parse(await readJson(req))
+        const result = await applyLayoutEdits(root, body.file, body.edits, { author: "human", summary: body.summary, design: designOf })
+        const writeMark = live.nextMark()
+        live.requestBuild(circuitPathFor(result.file))
+        return send(res, { entryId: result.entry.id, created: result.created, writeMark })
+      }
       case "POST /api/lock": {
         const body = Bodies.lock.parse(await readJson(req))
         const { model } = await loadCircuit(root, body.file)
@@ -272,16 +287,16 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       // Undo and redo write the file too: their write mark, as an edit's, lets the keys wait for the build that read them.
       case "POST /api/undo": {
         const body = Bodies.undo.parse(await readJson(req))
-        const entry = await undoChange(root, { author: "human", ...(body.id ? { id: body.id } : {}) })
+        const entry = await undoChange(root, { author: "human", design: designOf, ...(body.id ? { id: body.id } : {}) })
         const writeMark = live.nextMark()
-        live.requestBuild(entry.file)
+        live.requestBuild(builtFrom(entry.file))
         return send(res, { entryId: entry.id, summary: entry.summary, writeMark })
       }
       case "POST /api/redo": {
         const body = Bodies.redo.parse(await readJson(req))
-        const entry = await redoChange(root, { author: "human", ...(body.id ? { id: body.id } : {}) })
+        const entry = await redoChange(root, { author: "human", design: designOf, ...(body.id ? { id: body.id } : {}) })
         const writeMark = live.nextMark()
-        live.requestBuild(entry.file)
+        live.requestBuild(builtFrom(entry.file))
         return send(res, { entryId: entry.id, summary: entry.summary, writeMark })
       }
       default:

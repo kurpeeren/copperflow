@@ -143,6 +143,22 @@ describe("locked parts", () => {
     await expect(redoChange(root, { author: "human", design })).rejects.toThrow(/Redoing .* would change the locked track t0001 \(on the locked part R1\)/)
   })
 
+  test("the design may be given as a function of the circuit file, asked for only when parts are locked", async () => {
+    const asked: string[] = []
+    const designFor = async (circuit: string) => {
+      asked.push(circuit)
+      return design
+    }
+    await applyLayoutEdits(root, FILE, [addTrack()], { ...human, design: designFor })
+    expect(asked).toEqual([])
+    await lockR1()
+    await expect(applyLayoutEdits(root, FILE, [{ kind: "removeTrack", id: "t0001" }], { ...human, design: designFor })).rejects.toThrow(
+      /t0001 starts on the locked part R1/,
+    )
+    await expect(undoChange(root, { author: "human", design: designFor })).rejects.toThrow(/locked track t0001/)
+    expect(asked).toEqual([FILE, FILE])
+  })
+
   test("undo of copper elsewhere goes through while a part is locked", async () => {
     await applyLayoutEdits(root, FILE, [addTrack()], human)
     await lockR1()

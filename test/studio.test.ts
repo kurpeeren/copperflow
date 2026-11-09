@@ -251,6 +251,48 @@ describe("editing", () => {
   })
 })
 
+describe("layout edits", () => {
+  const LAYOUT = "main.circuit.layout.json"
+  /** The centre of a pad of the circuit as built. */
+  const padAt = async (id: string) => {
+    const design = await builder.build(root, FILE)
+    const pad = design.pcb.parts.flatMap((part) => part.pads).find((one) => one.id === id)
+    if (!pad) throw new Error(`no pad ${id}`)
+    return { x: pad.x, y: pad.y }
+  }
+  const track = async () => ({ kind: "addTrack", layer: "top", width: 0.25, points: [await padAt("R1#1"), { x: 0, y: 0 }] })
+
+  test("copper edits go to the layout file as one history entry naming it, and undo takes them back", async () => {
+    const result = await data(await api("/api/layout", { file: FILE, summary: "Add track", edits: [await track()] }))
+    expect(result).toEqual({ entryId: "c0001", created: ["t0001"], writeMark: expect.any(Number) })
+    expect(await readFile(join(root, LAYOUT), "utf8")).toContain('"id":"t0001"')
+    const history = await data(await api("/api/history"))
+    expect(history[0]).toMatchObject({ id: "c0001", file: LAYOUT, author: "human", summary: "Add track" })
+    const undo = await data(await api("/api/undo", {}))
+    expect(undo.summary).toBe("Undo: Add track")
+    await expect(readFile(join(root, LAYOUT), "utf8")).rejects.toThrow()
+    await data(await api("/api/redo", {}))
+    expect(await readFile(join(root, LAYOUT), "utf8")).toContain('"id":"t0001"')
+  })
+
+  test("copper on a locked part is refused with the built design, for edits and for undo", async () => {
+    await data(await api("/api/layout", { file: FILE, summary: "Add track", edits: [await track()] }))
+    await data(await api("/api/lock", { file: FILE, parts: ["R1"], locked: true }))
+    const refused = await api("/api/layout", { file: FILE, summary: "x", edits: [{ kind: "removeTrack", id: "t0001" }] })
+    expect(refused.status).toBe(409)
+    expect((await refused.json()).error).toContain("t0001 starts on the locked part R1")
+    const undo = await api("/api/undo", {})
+    expect((await undo.json()).error).toContain("locked track t0001 (on the locked part R1)")
+  })
+
+  test("a layout edit that is not one is refused before it reaches the file", async () => {
+    const response = await api("/api/layout", { file: FILE, summary: "x", edits: [{ kind: "setTrack", id: "t0001", by: "router" }] })
+    expect(response.status).toBe(400)
+    const unknown = await api("/api/layout", { file: FILE, summary: "x", edits: [{ kind: "removePart", part: "R1" }] })
+    expect(unknown.status).toBe(400)
+  })
+})
+
 describe("parts library", () => {
   test("lists library and built-in parts and shows one part", async () => {
     await createPart(root, "LDO", LDO, { now: "t" })

@@ -11,7 +11,10 @@ import type { PlacedFootprint, WorldPad } from "./pcb.js"
  */
 export interface PcbTrack {
   id: string
+  /** The net id the copper carries, from the pads it joins or the net its record names. */
   net?: string
+  /** The net as the record names it, kept as written (a name or a net id). */
+  named?: string
   layer: CopperLayer
   width: number
   points: Point[]
@@ -23,7 +26,10 @@ export interface PcbTrack {
 
 export interface PcbVia {
   id: string
+  /** The net id the copper carries, from the pads it joins or the net its record names. */
   net?: string
+  /** The net as the record names it, kept as written (a name or a net id). */
+  named?: string
   at: Point
   drill: number
   diameter: number

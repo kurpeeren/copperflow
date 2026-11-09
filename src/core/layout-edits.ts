@@ -2,7 +2,7 @@ import { EditError } from "./edit-error.js"
 import { inProjectQueue, readIfThere, writeNew, writeWithHistory } from "./file-writes.js"
 import type { Author, HistoryEntry } from "./history.js"
 import { EMPTY_LAYOUT, isLayoutFile, layoutPathFor, readLayoutText, serializeLayout, type LayoutRecord } from "./layout-file.js"
-import { lockedPartsAt, lockedStart, type LayoutDesign } from "./layout-locks.js"
+import { designFor, lockedPartsAt, lockedStart, type DesignSource } from "./layout-locks.js"
 import { applyLayoutRecordEdits, type LayoutEdit } from "./layout-records.js"
 import { resolveLayoutFile } from "./workspace.js"
 
@@ -13,8 +13,9 @@ export interface LayoutEditOptions {
   /**
    * The circuit's built design (its PCB parts are enough). A track that starts on a pad of a locked part counts as
    * locked; without the design that cannot be told, so changing or removing a track is refused while parts are locked.
+   * A function is called with the circuit file only when the circuit has locked parts.
    */
-  design?: LayoutDesign
+  design?: DesignSource
   /** Set only by the router's code path: new records are marked `router`. */
   router?: boolean
 }
@@ -67,7 +68,7 @@ export function applyLayoutEdits(root: string, file: string, edits: readonly Lay
     const source = await readIfThere(layout.path)
     const before = source === undefined ? EMPTY_LAYOUT : readLayoutText(source, layout.file)
     const lockedParts = await lockedPartsAt(layout.circuitPath)
-    const context = { author: options.author, ...(options.router ? { router: true } : {}), lockedPartAtStart: lockedStart(lockedParts, options.design) }
+    const context = { author: options.author, ...(options.router ? { router: true } : {}), lockedPartAtStart: lockedStart(lockedParts, await designFor(options.design, layout.circuit, lockedParts)) }
     const { doc, created } = applyLayoutRecordEdits(before, edits, context)
     const records = doc.records
     const text = serializeLayout(doc)

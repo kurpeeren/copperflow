@@ -10,6 +10,18 @@ export interface LayoutDesign {
 }
 
 /**
+ * The design, or a way to get it for a circuit file (project-relative) that is asked only when the circuit has locked
+ * parts, so a caller need not build the design for every copper edit.
+ */
+export type DesignSource = LayoutDesign | ((circuitFile: string) => Promise<LayoutDesign | undefined>)
+
+/** The design a lock check needs: none while no part is locked, else the one given or the one the function gives. */
+export async function designFor(source: DesignSource | undefined, circuitFile: string, lockedParts: ReadonlySet<string>): Promise<LayoutDesign | undefined> {
+  if (lockedParts.size === 0 || source === undefined) return undefined
+  return typeof source === "function" ? source(circuitFile) : source
+}
+
+/**
  * Who a track's first point belongs to, when that part is locked. Without the design that cannot be told, so while
  * the circuit has locked parts a track's change is refused rather than guessed.
  */
