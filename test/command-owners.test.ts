@@ -32,6 +32,10 @@ describe("command owners", () => {
     expect(commandOwner("selectAll")).toBe("app")
   })
 
+  test("Find is the app's own, so Ctrl+F opens the Find Results tab before a canvas has mounted", () => {
+    expect(commandOwner("find")).toBe("app")
+  })
+
   test("Place → Note box is answered by either canvas, which arms its note tool", () => {
     const item = MENUS.find((menu) => menu.title === "Place")?.entries.find((entry) => entry !== "separator" && entry.label === "Note box")
     expect(item).toMatchObject({ command: "noteBox" })

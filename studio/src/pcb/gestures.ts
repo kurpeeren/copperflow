@@ -6,7 +6,7 @@ import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { Selection, SelectionChange } from "../selection.js"
 import { boxMode, boxSelection, partsInBox } from "./box-select.js"
 import { hitTest, roundPosition, screenToWorld, snap, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
-import { moveEach, type GroupEdit, type GroupEditActions } from "./group-edits.js"
+import { anchorLookup, moveEach, type GroupEdit, type GroupEditActions } from "./group-edits.js"
 import { VIEWS, ZERO, type Anchor, type SourceCircuit, type View } from "./positions.js"
 import { gestureStart, hasMoved, stillRelease, type ArmedTool, type ContextTarget, type GestureStart, type Press, type StillRelease, type Under } from "./press.js"
 
@@ -73,8 +73,7 @@ export type Commit = (names: readonly string[], offset: Point) => void
 
 /** The edit that moves `names` by `offset`; a part with no anchor in this view moves from the centre of its box. */
 export function movePlan(input: GestureInput, names: readonly string[], offset: Point): GroupEdit {
-  const anchorOf = (name: string) => input.anchors.get(name) ?? { origin: input.boxes.find((box) => box.name === name)?.center ?? ZERO, group: ZERO }
-  return moveEach(input.circuit, names, input.view, anchorOf, offset, input.blockerFor)
+  return moveEach(input.circuit, names, input.view, anchorLookup(input.anchors, input.boxes), offset, input.blockerFor)
 }
 
 /** A box smaller than this on both sides, in CSS pixels, is a click. */

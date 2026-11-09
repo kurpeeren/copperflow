@@ -1,8 +1,8 @@
 // What Move, Rotate, Delete, Lock and Unlock do to the whole selection, as plain data: the edits for one history
 // entry, the parts left out and why. A part is left out for the reason that would stop the same action on it alone.
 import type { Edit } from "../../../src/core/types.js"
-import { roundPosition, type Point } from "./geometry.js"
-import { movedTo, nextRotation, VIEWS, type Anchor, type SourceCircuit, type View } from "./positions.js"
+import { roundPosition, snap, unionBoxes, type Box, type PartBox, type Point } from "./geometry.js"
+import { movedTo, nextRotation, VIEWS, ZERO, type Anchor, type SourceCircuit, type View } from "./positions.js"
 
 /** One change for several parts. */
 export interface GroupEdit {
@@ -67,6 +67,60 @@ export function moveEach(
       ? `move ${single.name}${where} to (${single.to[0]}, ${single.to[1]})`
       : `move ${nameList(parts)}${where} by (${roundPosition(offset.x)}, ${roundPosition(offset.y)})`
   return { edits: moves.map(({ name, to }) => ({ kind: "setProps", part: name, props: { [keyX]: to[0], [keyY]: to[1] } })), summary, parts, skipped, done: "moved" }
+}
+
+/** Where each part sits, for moves: its anchor in the view, else the centre of its box with no group offset. */
+export function anchorLookup(anchors: ReadonlyMap<string, Anchor>, boxes: readonly PartBox[]): (name: string) => Pick<Anchor, "origin" | "group"> {
+  return (name) => anchors.get(name) ?? { origin: boxes.find((box) => box.name === name)?.center ?? ZERO, group: ZERO }
+}
+
+/** How far an arrow key pushes: `steps` grid steps along the unit direction, rounded like any position. */
+export function nudgeOffset(direction: { dx: number; dy: number }, step: number, steps: number): Point {
+  return { x: roundPosition(direction.dx * step * steps), y: roundPosition(direction.dy * step * steps) }
+}
+
+/** The centre of the box around the selection's parts, snapped to the grid; undefined when there are no boxes. */
+export function selectionCentre(boxes: readonly Box[], step: number): Point | undefined {
+  const bounds = unionBoxes(boxes)
+  return bounds ? { x: snap((bounds.minX + bounds.maxX) / 2, step), y: snap((bounds.minY + bounds.maxY) / 2, step) } : undefined
+}
+
+/** Where a point goes when turned 90 degrees counter-clockwise (y up) about `centre`. */
+export function turnedAbout(point: Point, centre: Point): Point {
+  return { x: centre.x - (point.y - centre.y), y: centre.y + (point.x - centre.x) }
+}
+
+/**
+ * A quarter turn counter-clockwise for the whole selection about `centre`: every part that may turn moves round the
+ * centre and adds 90 degrees to its rotation, so the group keeps its shape. One part turns in place, as rotateEach does.
+ */
+export function rotateAbout(
+  circuit: SourceCircuit,
+  names: readonly string[],
+  view: View,
+  anchorOf: (name: string) => Pick<Anchor, "origin" | "group">,
+  centre: Point,
+  blockerFor: (name: string) => string | null,
+): GroupEdit {
+  if (names.length === 1) return rotateEach(circuit, names, view, blockerFor)
+  const { rotation, position, where } = VIEWS[view]
+  const edits: Edit[] = []
+  const parts: string[] = []
+  const skipped: string[] = []
+  for (const name of names) {
+    const next = blockerFor(name) ?? nextRotation(circuit, name, view)
+    if (typeof next === "string") {
+      skipped.push(next)
+      continue
+    }
+    const anchor = anchorOf(name)
+    const from = anchor.origin
+    const to = turnedAbout(from, centre)
+    const [x, y] = movedTo(circuit, name, view, anchor, { x: to.x - from.x, y: to.y - from.y })
+    edits.push({ kind: "setProps", part: name, props: { [position[0]]: x, [position[1]]: y, [rotation]: next } })
+    parts.push(name)
+  }
+  return { edits, summary: `rotate ${nameList(parts)}${where} by 90°`, parts, skipped, done: "rotated" }
 }
 
 /** One removePart edit for every part that may go. */

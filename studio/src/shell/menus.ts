@@ -29,6 +29,7 @@ export type CommandId =
   | "highlight"
   | "clearHighlight"
   | "rotate"
+  | "find"
   | "lock"
   | "unlock"
   | "history"
@@ -88,7 +89,7 @@ export const MENUS: readonly Menu[] = [
       run("Delete", "delete", "Delete"),
       "separator",
       run("Select all", "selectAll", "Ctrl+A"),
-      later("Find", FIND, "Ctrl+F"),
+      run("Find", "find", "Ctrl+F"),
       later("Find similar objects", FIND, "Ctrl+Shift+F"),
     ],
   },
@@ -208,6 +209,7 @@ export const COMMAND_KEY_ACTIONS: Partial<Record<CommandId, KeyActionName>> = {
   clearHighlight: "clearHighlight",
   rotate: "rotate",
   selectAll: "selectAll",
+  find: "find",
 }
 
 /** Keys that work on the canvases without a menu item. */
@@ -216,6 +218,8 @@ const CANVAS_KEYS = [
   { keys: "R", label: "Rotate" },
   { keys: "F", label: "Fit all" },
   { keys: "Esc", label: "Clear the selection, put tools away" },
+  { keys: "Arrow keys", label: "Move the selection one grid step" },
+  { keys: "Shift+Arrow keys", label: "Move the selection ten grid steps" },
 ]
 
 /** Every shortcut of a working command, once, then the canvas-only keys: the Help → Keys list. */

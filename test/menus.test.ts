@@ -39,10 +39,21 @@ describe("menus", () => {
     }
   })
 
-  test("Flip waits for the engine, and Find for round 3", () => {
+  test("Flip waits for the engine, and Find similar objects for Find", () => {
     const find = (label: string) => MENUS.flatMap(menuItems).find((item) => item.label === label)
     expect(find("Flip")?.pending).toBe("Comes with the engine (stages 3 to 5)")
-    expect(find("Find")?.pending).toBe("Comes with Find (round 3)")
+    expect(find("Find similar objects")?.pending).toBe("Comes with Find (round 3)")
+  })
+
+  test("Edit → Find runs the find command, with Ctrl+F beside it", () => {
+    const item = MENUS.flatMap(menuItems).find((entry) => entry.label === "Find")
+    expect(item).toEqual({ label: "Find", command: "find", shortcut: "Ctrl+F" })
+  })
+
+  test("Help → Keys lists the arrow keys", () => {
+    const keys = shortcutList().map((row) => row.keys)
+    expect(keys).toContain("Arrow keys")
+    expect(keys).toContain("Shift+Arrow keys")
   })
 
   test("Edit → Select all runs, with Ctrl+A beside it", () => {

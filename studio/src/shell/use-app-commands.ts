@@ -81,6 +81,8 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     undo: () => void input.actions.undo(),
     // Every part of the circuit: both views show the same parts, and the circuit is there before a canvas is.
     selectAll: () => input.select((current) => current.all(input.circuit?.model.parts.map((part) => part.name) ?? [])),
+    // Find opens the Find Results tab until the find box arrives.
+    find: () => input.workspace.openBottom("find"),
     checkDrc: input.openChecks,
     lock: () => lockSelection(input, true),
     unlock: () => lockSelection(input, false),
@@ -92,10 +94,10 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
 }
 
 /** The keys the app answers itself, with or without a canvas; each one's action is also its command. */
-const APP_KEYS = ["undo", "openFile", "selectAll"] as const satisfies readonly (KeyActionName & CommandId)[]
+const APP_KEYS = ["undo", "openFile", "selectAll", "find"] as const satisfies readonly (KeyActionName & CommandId)[]
 const isAppKey = (action: KeyActionName | undefined): action is (typeof APP_KEYS)[number] => (APP_KEYS as readonly string[]).includes(action ?? "")
 
-/** Ctrl+Z undoes, Ctrl+O goes to the Page tree and Ctrl+A selects every part, outside text fields (keyAction decides). */
+/** Ctrl+Z undoes, Ctrl+O goes to the Page tree and Ctrl+A selects every part and Ctrl+F opens Find, outside text fields (keyAction decides). */
 function useAppKeys(runCommand: (command: CommandId) => void, view: View): void {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

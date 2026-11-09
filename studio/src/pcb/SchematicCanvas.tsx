@@ -361,7 +361,7 @@ export function SchematicCanvas(props: CanvasProps) {
   const tool = useArmedForGestures(note, palette)
   const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom, labels: labels.tools, selection, tool, onContextMenu: props.onContextMenu })
   useLabelRenameAction(design, palette, actions)
-  const highlight = useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys: { ...common, selection } })
+  const highlight = useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys: { ...common, selection, layout: { anchors: parts.anchors, boxes: parts.boxes, step } } })
   const hover = useSheetHover(parts.boxes, wire, labels.tools)
   const { moving, gesture } = gestures
   const movingLabels = useMovingLabels(design, gesture, labels.pending)

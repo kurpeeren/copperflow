@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import type { PartInfo } from "../src/core/types.js"
-import { lockChange, moveEach, nameList, removeEach, removeQuestion, rotateEach, sendGroupEdit, skippedNote, type GroupEditActions } from "../studio/src/pcb/group-edits.js"
+import { anchorLookup, lockChange, moveEach, nudgeOffset, rotateAbout, selectionCentre, turnedAbout, nameList, removeEach, removeQuestion, rotateEach, sendGroupEdit, skippedNote, type GroupEditActions } from "../studio/src/pcb/group-edits.js"
 import { moveBlocker, ZERO, type Anchor, type SourceCircuit, type View } from "../studio/src/pcb/positions.js"
 
 const prop = (literal: string | number) => ({ literal, source: JSON.stringify(literal), editable: true })
@@ -263,5 +263,111 @@ describe("moveEach", () => {
     }
     await sendGroupEdit(moveEach(placed, ["R1", "R2", "C1", "U1"], "pcb", anchorOf, by, movers([])), actions)
     expect(calls).toEqual(["edit 3: move R1, R2 and C1 by (0.5, -1)", "notify Not moved: U1 is read-only (inside a callback)"])
+  })
+})
+
+const anchorsAt = (points: Record<string, [number, number]>) => (name: string): Pick<Anchor, "origin" | "group"> => ({
+  origin: { x: points[name]?.[0] ?? 0, y: points[name]?.[1] ?? 0 },
+  group: ZERO,
+})
+
+describe("nudgeOffset", () => {
+  test("is the step times the count along the direction, rounded", () => {
+    expect(nudgeOffset({ dx: 1, dy: 0 }, 0.5, 1)).toEqual({ x: 0.5, y: 0 })
+    expect(nudgeOffset({ dx: 0, dy: -1 }, 0.0508, 10)).toEqual({ x: 0, y: -0.508 })
+    expect(nudgeOffset({ dx: 0, dy: 1 }, 0.1, 3)).toEqual({ x: 0, y: 0.3 })
+  })
+
+  test("moves the whole selection in one change and leaves a locked part, named", () => {
+    const where = anchorsAt({ R1: [1, 1], R2: [3, 1], C1: [5, 5] })
+    const plan = moveEach(circuit, ["R1", "R2", "C1"], "pcb", where, nudgeOffset({ dx: 1, dy: 0 }, 0.5, 10), blockers(["R2"]))
+    expect(plan.parts).toEqual(["R1", "C1"])
+    expect(plan.edits).toEqual([
+      { kind: "setProps", part: "R1", props: { pcbX: 6, pcbY: 1 } },
+      { kind: "setProps", part: "C1", props: { pcbX: 10, pcbY: 5 } },
+    ])
+    expect(plan.skipped).toEqual(["R2 is locked"])
+    expect(skippedNote(plan)).toBe("Not moved: R2 is locked")
+  })
+
+  test("a locked part alone is refused with its reason", () => {
+    const plan = moveEach(circuit, ["R1"], "pcb", anchorsAt({ R1: [1, 1] }), nudgeOffset({ dx: 0, dy: 1 }, 0.5, 1), blockers(["R1"]))
+    expect(plan.edits).toEqual([])
+    expect(skippedNote(plan)).toBe("R1 is locked")
+  })
+})
+
+describe("selectionCentre and turnedAbout", () => {
+  test("the centre is the middle of the boxes, snapped to the step", () => {
+    const boxes = [
+      { minX: 0, minY: 0, maxX: 2, maxY: 2 },
+      { minX: 4, minY: 1, maxX: 6.2, maxY: 3 },
+    ]
+    expect(selectionCentre(boxes, 0.5)).toEqual({ x: 3, y: 1.5 })
+    expect(selectionCentre(boxes, 1)).toEqual({ x: 3, y: 2 })
+    expect(selectionCentre([], 1)).toBeUndefined()
+  })
+
+  test("a quarter turn counter-clockwise sends east to north, in a y-up world", () => {
+    expect(turnedAbout({ x: 3, y: 1 }, { x: 1, y: 1 })).toEqual({ x: 1, y: 3 })
+    expect(turnedAbout({ x: 1, y: 3 }, { x: 1, y: 1 })).toEqual({ x: -1, y: 1 })
+  })
+})
+
+describe("rotateAbout", () => {
+  const centre = { x: 2, y: 1 }
+
+  test("moves each part round the centre and adds 90 degrees to its rotation, in one change", () => {
+    const where = anchorsAt({ R1: [1, 1], R2: [3, 1] })
+    const plan = rotateAbout(circuit, ["R1", "R2"], "pcb", where, centre, blockers([]))
+    expect(plan.edits).toEqual([
+      { kind: "setProps", part: "R1", props: { pcbX: 2, pcbY: 0, pcbRotation: 180 } },
+      { kind: "setProps", part: "R2", props: { pcbX: 2, pcbY: 2, pcbRotation: 90 } },
+    ])
+    expect(plan.summary).toBe("rotate R1 and R2 by 90°")
+    expect(plan.skipped).toEqual([])
+  })
+
+  test("uses the schematic's props in the schematic", () => {
+    const where = anchorsAt({ R1: [1, 1], R2: [3, 1] })
+    const plan = rotateAbout(circuit, ["R1", "R2"], "schematic", where, centre, blockers([], "schematic"))
+    expect(plan.edits[0]).toEqual({ kind: "setProps", part: "R1", props: { schX: 2, schY: 0, schRotation: 0 } })
+    expect(plan.summary).toBe("rotate R1 and R2 in the schematic by 90°")
+  })
+
+  test("rounds the new positions to four decimals", () => {
+    const where = anchorsAt({ R1: [0.1, 0.2], R2: [0.30000000000000004, 0.2] })
+    const plan = rotateAbout(circuit, ["R1", "R2"], "pcb", where, { x: 0.2, y: 0.2 }, blockers([]))
+    expect(plan.edits[0]).toMatchObject({ props: { pcbX: 0.2, pcbY: 0.1 } })
+    expect(plan.edits[1]).toMatchObject({ props: { pcbX: 0.2, pcbY: 0.3 } })
+  })
+
+  test("a locked member stays where it is and is named", () => {
+    const where = anchorsAt({ R1: [1, 1], R2: [3, 1], C1: [2, 3] })
+    const plan = rotateAbout(circuit, ["R1", "R2", "C1"], "pcb", where, centre, blockers(["R2"]))
+    expect(plan.parts).toEqual(["R1", "C1"])
+    expect(plan.edits.map((edit) => (edit.kind === "setProps" ? edit.part : ""))).toEqual(["R1", "C1"])
+    expect(skippedNote(plan)).toBe("Not rotated: R2 is locked")
+  })
+
+  test("a part with a non-numeric rotation is left out with the reason", () => {
+    const plan = rotateAbout(circuit, ["R1", "D1"], "pcb", anchorsAt({ R1: [1, 1], D1: [3, 1] }), centre, blockers([]))
+    expect(plan.parts).toEqual(["R1"])
+    expect(plan.skipped).toEqual(["D1.pcbRotation is not a number"])
+  })
+
+  test("one part turns in place, as rotateEach does", () => {
+    const plan = rotateAbout(circuit, ["R1"], "pcb", anchorsAt({ R1: [1, 1] }), centre, blockers([]))
+    expect(plan).toEqual(rotateEach(circuit, ["R1"], "pcb", blockers([])))
+    expect(plan.edits).toEqual([{ kind: "setProps", part: "R1", props: { pcbRotation: 180 } }])
+  })
+})
+
+describe("anchorLookup", () => {
+  test("falls back to the centre of the part's box", () => {
+    const box = { minX: 0, minY: 0, maxX: 2, maxY: 2 }
+    const lookup = anchorLookup(new Map(), [{ name: "R1", pcbComponentId: "x", center: { x: 1, y: 1 }, box }])
+    expect(lookup("R1")).toEqual({ origin: { x: 1, y: 1 }, group: ZERO })
+    expect(lookup("R9")).toEqual({ origin: ZERO, group: ZERO })
   })
 })

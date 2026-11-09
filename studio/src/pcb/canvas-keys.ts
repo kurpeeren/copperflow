@@ -19,6 +19,11 @@ export type KeyActionName =
   | "undo"
   | "openFile"
   | "selectAll"
+  | "find"
+  | "nudgeLeft"
+  | "nudgeRight"
+  | "nudgeUp"
+  | "nudgeDown"
 
 /** What a key event says, apart from the browser: modifiers, whether it came from a field, and the key. */
 export interface KeyInput {
@@ -46,9 +51,36 @@ export interface KeyState {
 export interface KeyResult {
   action: KeyActionName
   preventDefault: boolean
+  /** For the arrow keys: how many grid steps the key moves (1, or 10 with Shift). */
+  steps?: number
 }
 
 const act = (action: KeyActionName, preventDefault = false): KeyResult => ({ action, preventDefault })
+
+/** Grid steps an arrow key moves, and with Shift. */
+export const NUDGE_STEPS = 1
+export const NUDGE_STEPS_SHIFT = 10
+
+/** The arrow keys and the direction they push in the world, where y points up. */
+const ARROWS: ReadonlyMap<string, { action: KeyActionName; dx: number; dy: number }> = new Map([
+  ["ArrowLeft", { action: "nudgeLeft", dx: -1, dy: 0 }],
+  ["ArrowRight", { action: "nudgeRight", dx: 1, dy: 0 }],
+  ["ArrowUp", { action: "nudgeUp", dx: 0, dy: 1 }],
+  ["ArrowDown", { action: "nudgeDown", dx: 0, dy: -1 }],
+])
+
+/** The world direction of a nudge action, as a unit step; undefined for any other action. */
+export function nudgeDirection(action: KeyActionName): { dx: number; dy: number } | undefined {
+  for (const arrow of ARROWS.values()) if (arrow.action === action) return { dx: arrow.dx, dy: arrow.dy }
+  return undefined
+}
+
+/** An arrow key, bare or with Shift; a focused button or tab keeps its own arrows. */
+function arrowAction(input: KeyInput): KeyResult | null {
+  const arrow = ARROWS.get(input.key)
+  if (!arrow || input.onButton || input.ctrlKey || input.metaKey || input.altKey) return null
+  return { action: arrow.action, preventDefault: true, steps: input.shiftKey ? NUDGE_STEPS_SHIFT : NUDGE_STEPS }
+}
 
 /** A key event as plain data. */
 export function keyInput(event: KeyboardEvent): KeyInput {
@@ -113,9 +145,10 @@ const CTRL_KEYS: ReadonlyMap<string, KeyActionName> = new Map([
   ["z", "undo"],
   ["o", "openFile"],
   ["a", "selectAll"],
+  ["f", "find"],
 ])
 
-/** Ctrl (or Cmd) with Z, O or A; AltGr and Shift combinations are not ours. */
+/** Ctrl (or Cmd) with Z, O, A or F; AltGr and Shift combinations are not ours. */
 function ctrlAction(input: KeyInput): KeyResult | null {
   if (input.altKey || input.shiftKey || input.altGraph) return null
   const action = CTRL_KEYS.get(input.key.toLowerCase())
@@ -129,6 +162,8 @@ export function keyAction(input: KeyInput, state: KeyState): KeyResult | null {
   if (panel && plainOrAltGr(input)) return act(panel)
   if (input.ctrlKey || input.metaKey) return ctrlAction(input)
   if (input.altKey) return altAction(input, state)
+  const arrow = arrowAction(input)
+  if (arrow) return arrow
   if (input.key === " ") return state.drawing || input.onButton ? null : act("rotate", true)
   return letterAction(input.key.toLowerCase(), input, state)
 }

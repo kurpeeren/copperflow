@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { escapeDisarms, keyAction, type KeyInput, type KeyState } from "../studio/src/pcb/canvas-keys.js"
+import { escapeDisarms, keyAction, nudgeDirection, type KeyInput, type KeyState } from "../studio/src/pcb/canvas-keys.js"
 
 const SCHEMATIC: KeyState = { view: "schematic" }
 const PCB: KeyState = { view: "pcb" }
@@ -162,5 +162,46 @@ describe("escapeDisarms", () => {
 
   test("other keys do not put it away", () => {
     expect(escapeDisarms(key("q"))).toBe(false)
+  })
+})
+
+describe("arrow keys", () => {
+  test("move the selection one step, or ten with Shift, and are prevented so the page does not scroll", () => {
+    for (const state of [PCB, SCHEMATIC]) {
+      expect(keyAction(key("ArrowLeft"), state)).toEqual({ action: "nudgeLeft", preventDefault: true, steps: 1 })
+      expect(keyAction(key("ArrowUp", { shiftKey: true }), state)).toEqual({ action: "nudgeUp", preventDefault: true, steps: 10 })
+    }
+    expect(keyAction(key("ArrowRight"), PCB)?.action).toBe("nudgeRight")
+    expect(keyAction(key("ArrowDown"), PCB)?.action).toBe("nudgeDown")
+  })
+
+  test("push in world directions, where y points up", () => {
+    expect(nudgeDirection("nudgeUp")).toEqual({ dx: 0, dy: 1 })
+    expect(nudgeDirection("nudgeDown")).toEqual({ dx: 0, dy: -1 })
+    expect(nudgeDirection("nudgeLeft")).toEqual({ dx: -1, dy: 0 })
+    expect(nudgeDirection("nudgeRight")).toEqual({ dx: 1, dy: 0 })
+    expect(nudgeDirection("rotate")).toBeUndefined()
+  })
+
+  test("are not ours in a field, on a focused button, or with Ctrl, Alt or Cmd", () => {
+    expect(keyAction(key("ArrowLeft", { typing: true }), PCB)).toBeNull()
+    expect(keyAction(key("ArrowLeft", { onButton: true }), PCB)).toBeNull()
+    expect(keyAction(key("ArrowLeft", { ctrlKey: true }), PCB)).toBeNull()
+    expect(keyAction(key("ArrowLeft", { altKey: true }), PCB)).toBeNull()
+    expect(keyAction(key("ArrowLeft", { metaKey: true }), PCB)).toBeNull()
+  })
+})
+
+describe("Ctrl+F", () => {
+  test("is Find, by the character, in both views", () => {
+    for (const state of [PCB, SCHEMATIC]) expect(keyAction(key("f", { ctrlKey: true, code: "KeyF" }), state)).toEqual({ action: "find", preventDefault: true })
+    expect(keyAction(key("F", { metaKey: true }), PCB)?.action).toBe("find")
+  })
+
+  test("is not Find in a field, with Shift or Alt, or bare (bare F still fits)", () => {
+    expect(keyAction(key("f", { ctrlKey: true, typing: true }), PCB)).toBeNull()
+    expect(keyAction(key("F", { ctrlKey: true, shiftKey: true }), PCB)).toBeNull()
+    expect(keyAction(key("f", { ctrlKey: true, altKey: true }), PCB)).toBeNull()
+    expect(keyAction(key("f"), PCB)?.action).toBe("fit")
   })
 })
