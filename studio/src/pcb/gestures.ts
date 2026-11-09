@@ -5,11 +5,12 @@
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { Selection, SelectionChange } from "../selection.js"
 import { boxMode, boxSelection, partsInBox } from "./box-select.js"
-import { hitsAt, roundPosition, screenToWorld, snap, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
+import { hitsAt, roundPosition, screenToWorld, snapPosition, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
 import type { PickLayers } from "./layers.js"
 import type { PickFilter } from "./pick-filter.js"
 import { anchorLookup, moveEach, type GroupEdit, type GroupEditActions } from "./group-edits.js"
 import { VIEWS, ZERO, type Anchor, type SourceCircuit, type View } from "./positions.js"
+import { areaCamera } from "./view-fit.js"
 import { picks, type Pickable, type PickContext } from "./pick.js"
 import { gestureStart, hasMoved, stillRelease, type ArmedTool, type ContextTarget, type GestureStart, type Press, type StillRelease, type Under } from "./press.js"
 
@@ -32,6 +33,7 @@ export type Gesture =
   | { kind: "label"; label: NetLabel; start: Point; at: Point; moved: boolean; blocker: string | null }
   | { kind: "box"; start: Point; current: Point; adds: boolean; still: StillRelease }
   | { kind: "note"; start: Point; current: Point }
+  | { kind: "zoom"; start: Point; current: Point }
 
 /** What the gestures ask of Studio's actions: the edit of a move, the toast, and a note for the agent. */
 export interface GestureActions extends GroupEditActions {
@@ -56,6 +58,8 @@ export interface GestureInput {
   boxes: PartBox[]
   anchors: ReadonlyMap<string, Anchor>
   step: number
+  /** Whether a drag lands on the grid (View → Snap); off, it lands where the pointer puts it, rounded to 4 decimals. Absent means on. */
+  snap?: boolean
   /** When the build behind the shown design started (ms). */
   builtFrom: number
   circuit: SourceCircuit
@@ -112,7 +116,7 @@ export function startGesture(input: GestureInput, event: Press, point: Point): G
   const start = gestureStart(event, underOf(target, input.selection), input.tool.armed)
   const still = stillRelease(start, input.tool.armed)
   if (start === "pan" || start === "rightPress") return { kind: "pan", start: point, camera, moved: false, still, target }
-  if (start === "note") return { kind: "note", start: point, current: point }
+  if (start === "note" || start === "zoom") return { kind: start, start: point, current: point }
   if (start === "box" || start === "addBox") return { kind: "box", start: point, current: point, adds: start === "addBox", still }
   if (target.kind === "label" && start === "label") {
     return { kind: "label", label: target.label, start: point, at: target.label.at, moved: false, blocker: input.labels?.blocker(target.label.id) ?? null }
@@ -144,12 +148,12 @@ export function followGesture(input: GestureInput, gesture: Gesture, point: Poin
     input.setCamera({ ...gesture.camera, cx: gesture.camera.cx - dx, cy: gesture.camera.cy + dy })
     return !gesture.moved && hasMoved(gesture.start, point) ? { ...gesture, moved: true } : undefined
   }
-  if (gesture.kind === "box" || gesture.kind === "note") return { ...gesture, current: point }
+  if (gesture.kind === "box" || gesture.kind === "note" || gesture.kind === "zoom") return { ...gesture, current: point }
   if (!gesture.moved && !hasMoved(gesture.start, point)) return undefined
   const world = screenToWorld(camera, input.size, point)
   const startWorld = screenToWorld(camera, input.size, gesture.start)
   const moved = { x: world.x - startWorld.x, y: world.y - startWorld.y }
-  const snapped = (value: number) => round(snap(value, input.step))
+  const snapped = (value: number) => snapPosition(value, input.step, input.snap !== false)
   if (gesture.kind === "label") {
     const { at } = gesture.label
     return { ...gesture, moved: true, at: { x: snapped(at.x + moved.x), y: snapped(at.y + moved.y) } }
@@ -173,6 +177,7 @@ export function endGesture(input: GestureInput, done: Gesture, camera: Camera, c
     return
   }
   if (done.kind === "box") return endBox(input, done, camera)
+  if (done.kind === "zoom") return endZoom(input, done, camera)
   endNote(input, done, camera)
 }
 
@@ -199,6 +204,14 @@ function endBox(input: GestureInput, done: Extract<Gesture, { kind: "box" }>, ca
   }
   const names = partsInBox(input.boxes, corners[0], corners[1], boxMode(done.start, done.current))
   input.onSelect(boxSelection(names, done.adds, input.tool.armed, input.layers, input.filter))
+}
+
+/** A drawn Fit area box puts the camera on it and puts the tool away; a click keeps the tool armed. */
+function endZoom(input: GestureInput, done: Extract<Gesture, { kind: "zoom" }>, camera: Camera): void {
+  const corners = worldBox(input, done, camera)
+  if (!corners) return
+  input.tool.disarm()
+  input.setCamera(areaCamera(corners[0], corners[1], input.size))
 }
 
 /** A drawn note box asks for the note, places it at the box's centre, and puts the tool away; a click keeps it armed. */

@@ -148,13 +148,14 @@ export function App() {
   const { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, actions, place, checks, find, openChecks, openDocument, runCommand } = useStudio()
   const { build, circuit } = data
   const { message, dismiss } = toast
+  const toggles = { snap: workspace.snap }
   if (!hasToken) return <NoToken />
   return (
     <div className="app">
-      <MenuBar run={runCommand} view={tab} selected={selection.size}>
+      <MenuBar run={runCommand} view={tab} selected={selection.size} toggles={toggles}>
         <StatusPill build={build} errors={checks.counts.errors} onOpen={openChecks} />
       </MenuBar>
-      <Toolbar view={tab} unit={workspace.unit} selected={selection.size} run={runCommand} />
+      <Toolbar view={tab} unit={workspace.unit} selected={selection.size} toggles={toggles} run={runCommand} />
       {dialog && <StudioDialog name={dialog} onClose={closeDialog} />}
       {circuit && circuit.violations.length > 0 && (
         <div className="banner" role="alert">

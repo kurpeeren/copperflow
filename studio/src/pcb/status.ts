@@ -6,7 +6,7 @@ import { formatLength, PCB_ZOOM_REFERENCE_PX, SCHEMATIC_ZOOM_REFERENCE_PX, zoomP
 export type StatusGesture =
   | { kind: "drag"; offset: Point; moved: boolean; blocker: string | null }
   | { kind: "label"; label: { at: Point }; at: Point; moved: boolean; blocker: string | null }
-  | { kind: "pan" | "box" | "note" }
+  | { kind: "pan" | "box" | "note" | "zoom" }
 
 export interface StatusInput {
   cursor: Point | undefined
@@ -17,10 +17,15 @@ export interface StatusInput {
   gesture: StatusGesture | undefined
   /** A Rotate press is held until the next build (key-burst.ts TurnGate). */
   rotateHeld?: boolean
+  /** Snap is off (View → Snap): drags, arrow keys and wire corners are not put on the grid. Absent means on. */
+  snap?: boolean
 }
 
 /** What the status line says while a held Rotate waits for the design. */
 export const WAITING_FOR_BUILD = "Waiting for the build…"
+
+/** What the status line says while snap is off. */
+export const SNAP_OFF = "Snap off"
 
 /** How far the part or label being dragged is from where it started; undefined when nothing visible is dragged. */
 function dragDelta(gesture: StatusGesture | undefined): Point | undefined {
@@ -32,7 +37,7 @@ function dragDelta(gesture: StatusGesture | undefined): Point | undefined {
 /** Lengths shown in `unit`; a sheet without a unit shows its own numbers. */
 const shown = (value: number, unit: Unit | undefined): string => formatLength(value, unit ?? "mm")
 
-export function statusParts(input: StatusInput): { position: string; drag: string; notice: string } {
+export function statusParts(input: StatusInput): { position: string; drag: string; notice: string; snap: string } {
   const { cursor, zoom, unit } = input
   const delta = dragDelta(input.gesture)
   const position = [
@@ -43,5 +48,6 @@ export function statusParts(input: StatusInput): { position: string; drag: strin
     position: position.filter((part) => part !== "").join("  "),
     drag: delta ? `dX ${shown(delta.x, unit)}  dY ${shown(delta.y, unit)}` : "",
     notice: input.rotateHeld ? WAITING_FOR_BUILD : "",
+    snap: input.snap === false ? SNAP_OFF : "",
   }
 }

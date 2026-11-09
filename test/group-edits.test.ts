@@ -429,3 +429,77 @@ describe("nudgePlan and parts outside the view", () => {
     expect(skippedNote(plan)).toBe("C1 is not in this view; R1 is locked")
   })
 })
+
+describe("Rotate right", () => {
+  const centre = { x: 2, y: 1 }
+  const where = anchorsAt({ R1: [1, 1], R2: [3, 1] })
+
+  test("turns the point clockwise about the centre, in a y-up world: east goes to south", () => {
+    expect(turnedAbout({ x: 3, y: 1 }, { x: 1, y: 1 }, -90)).toEqual({ x: 1, y: -1 })
+    expect(turnedAbout({ x: 1, y: 3 }, { x: 1, y: 1 }, -90)).toEqual({ x: 3, y: 1 })
+  })
+
+  test("a clockwise turn undoes a counter-clockwise one", () => {
+    const there = turnedAbout({ x: 5, y: 2 }, centre, 90)
+    expect(turnedAbout(there, centre, -90)).toEqual({ x: 5, y: 2 })
+  })
+
+  test("moves each part clockwise round the centre and takes 90 degrees off its rotation, in one change", () => {
+    const plan = rotateAbout(circuit, ["R1", "R2"], "pcb", where, centre, blockers([]), () => true, -90)
+    expect(plan.edits).toEqual([
+      { kind: "setProps", part: "R1", props: { pcbX: 2, pcbY: 2, pcbRotation: 0 } },
+      { kind: "setProps", part: "R2", props: { pcbX: 2, pcbY: 0, pcbRotation: 270 } },
+    ])
+    expect(plan.summary).toBe("rotate R1 and R2 by -90°")
+  })
+
+  test("a locked member stays where it is and is named; a part without a numeric rotation is named too", () => {
+    const three = anchorsAt({ R1: [1, 1], R2: [3, 1], C1: [2, 3] })
+    const plan = rotateAbout(circuit, ["R1", "R2", "C1"], "pcb", three, centre, blockers(["R2"]), () => true, -90)
+    expect(plan.parts).toEqual(["R1", "C1"])
+    expect(plan.skipped).toEqual(["R2 is locked"])
+    const odd = rotateAbout(circuit, ["R1", "D1"], "pcb", anchorsAt({ R1: [1, 1], D1: [3, 1] }), centre, blockers([]), () => true, -90)
+    expect(odd.parts).toEqual(["R1"])
+    expect(odd.skipped).toEqual(["D1.pcbRotation is not a number"])
+  })
+
+  test("one part turns in place, clockwise, with the summary a single rotate writes", () => {
+    const plan = rotateEach(circuit, ["R1"], "pcb", blockers([]), -90)
+    expect(plan.edits).toEqual([{ kind: "setProps", part: "R1", props: { pcbRotation: 0 } }])
+    expect(plan.summary).toBe("rotate R1 to 0°")
+    expect(rotateEach(circuit, ["R2"], "pcb", blockers([]), -90).edits).toEqual([{ kind: "setProps", part: "R2", props: { pcbRotation: 270 } }])
+  })
+
+  test("rotatePlan turns about the selection's centre, clockwise, and says so when none is in the view", () => {
+    const layout = {
+      anchors: new Map([
+        ["R1", { origin: { x: 1, y: 1 }, group: ZERO, autoPlaced: false }],
+        ["R2", { origin: { x: 3, y: 1 }, group: ZERO, autoPlaced: false }],
+      ]),
+      boxes: [
+        { name: "R1", pcbComponentId: "R1", center: { x: 1, y: 1 }, box: { minX: 0.5, minY: 0.5, maxX: 1.5, maxY: 1.5 } },
+        { name: "R2", pcbComponentId: "R2", center: { x: 3, y: 1 }, box: { minX: 2.5, minY: 0.5, maxX: 3.5, maxY: 1.5 } },
+      ],
+      step: 1,
+    }
+    const plan = rotatePlan(circuit, ["R1", "R2"], "pcb", layout, blockers([]), -90)
+    expect("edits" in plan && plan.edits).toEqual([
+      { kind: "setProps", part: "R1", props: { pcbX: 2, pcbY: 2, pcbRotation: 0 } },
+      { kind: "setProps", part: "R2", props: { pcbX: 2, pcbY: 0, pcbRotation: 270 } },
+    ])
+    expect(rotatePlan(circuit, ["R1", "R2"], "pcb", { ...layout, anchors: new Map(), boxes: [] }, blockers([]), -90)).toEqual({ message: "None of the selected parts is in this view." })
+  })
+})
+
+describe("nudgeOffset with snap off", () => {
+  test("moves a tenth of a grid step, rounded to four decimals", () => {
+    expect(nudgeOffset({ dx: 1, dy: 0 }, 0.5, 1, false)).toEqual({ x: 0.05, y: 0 })
+    expect(nudgeOffset({ dx: 0, dy: -1 }, 0.0508, 10, false)).toEqual({ x: 0, y: -0.0508 })
+    expect(nudgeOffset({ dx: 1, dy: 0 }, 0.0508, 1, false)).toEqual({ x: 0.0051, y: 0 })
+  })
+
+  test("on, or when snap is not said, it is the whole step", () => {
+    expect(nudgeOffset({ dx: 1, dy: 0 }, 0.5, 1, true)).toEqual({ x: 0.5, y: 0 })
+    expect(nudgeOffset({ dx: 1, dy: 0 }, 0.5, 1)).toEqual({ x: 0.5, y: 0 })
+  })
+})

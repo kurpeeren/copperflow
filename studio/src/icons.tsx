@@ -105,6 +105,21 @@ const fit = (p: IconProps) => (
     <rect x="9" y="9" width="6" height="6" />
   </ToolIcon>
 )
+/** Fit all's corners round a small box: the selection alone, filled. */
+const fitSelection = (p: IconProps) => (
+  <ToolIcon {...p}>
+    <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />
+    <rect x="9" y="9" width="6" height="6" fill="currentColor" />
+  </ToolIcon>
+)
+/** A dashed box with a corner arrow: drag a box to zoom to it. */
+const fitArea = (p: IconProps) => (
+  <ToolIcon {...p}>
+    <path d="M4 8V4h4M12 4h4M20 8V4h-4M4 12v4M20 12v4" strokeDasharray="0.1 3.4" />
+    <rect x="4" y="4" width="16" height="16" strokeDasharray="3 3" />
+    <path d="m11 11 7 7M18 13v5h-5" />
+  </ToolIcon>
+)
 const component = (p: IconProps) => (
   <ToolIcon {...p}>
     <rect x="7" y="6" width="10" height="12" rx="1" />
@@ -142,6 +157,20 @@ const rotate = (p: IconProps) => (
     <path d="M19 4v4.5h-4.5" />
   </ToolIcon>
 )
+/** Rotate's arrow, mirrored: a clockwise turn. */
+const rotateRight = (p: IconProps) => (
+  <ToolIcon {...p}>
+    <path d="M5 12a7 7 0 1 0 2.2-5.1" />
+    <path d="M5 4v4.5h4.5" />
+  </ToolIcon>
+)
+/** A magnet over grid dots: positions are drawn to the grid. */
+const snap = (p: IconProps) => (
+  <ToolIcon {...p}>
+    <path d="M6 4v8a6 6 0 0 0 12 0V4h-4v8a2 2 0 0 1-4 0V4z" />
+    <path d="M6 7.5h4M14 7.5h4" />
+  </ToolIcon>
+)
 const grid = (p: IconProps) => (
   <ToolIcon {...p}>
     <path d="M6 6h.01M12 6h.01M18 6h.01M6 12h.01M12 12h.01M18 12h.01M6 18h.01M12 18h.01M18 18h.01" strokeWidth="2.5" />
@@ -168,4 +197,4 @@ const check = (p: IconProps) => (
 )
 
 /** The toolbar's icons, by the name toolbar.ts gives each button. */
-export const TOOL_ICONS: Record<ToolIconName, (props: IconProps) => React.JSX.Element> = { undo, redo, zoomIn, zoomOut, fit, component, wire, netLabel, ground, power, rotate, check, grid, alignLeft, distributeH }
+export const TOOL_ICONS: Record<ToolIconName, (props: IconProps) => React.JSX.Element> = { undo, redo, zoomIn, zoomOut, fit, fitSelection, fitArea, component, wire, netLabel, ground, power, rotate, rotateRight, snap, check, grid, alignLeft, distributeH }

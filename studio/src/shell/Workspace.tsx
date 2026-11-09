@@ -52,7 +52,7 @@ export interface WorkspaceProps {
 }
 
 /** What both canvases take, once there is a design to draw; each adds the rings of its own view. */
-function canvasProps({ data, workspace, checks, selection, onSelect, actions }: WorkspaceProps, onContextMenu: ContextMenuState["show"]): Omit<CanvasProps, "markers" | "gridStyle" | "gridStep" | "onGridStep"> | undefined {
+function canvasProps({ data, workspace, checks, selection, onSelect, actions }: WorkspaceProps, onContextMenu: ContextMenuState["show"]): Omit<CanvasProps, "markers" | "gridStyle" | "gridStep" | "snap" | "onGridStep"> | undefined {
   const { build, circuit } = data
   if (!build.design || !circuit) return undefined
   return {
@@ -86,7 +86,7 @@ function canvasProps({ data, workspace, checks, selection, onSelect, actions }: 
 
 /** A canvas's own grid style and Grid step, and the setter bound to its view. */
 function gridProps(workspace: WorkspaceProps["workspace"], view: View) {
-  return { gridStyle: workspace.gridStyles[view], gridStep: workspace.gridSteps[view], onGridStep: (step: number) => workspace.changeGridStep(view, step) }
+  return { gridStyle: workspace.gridStyles[view], gridStep: workspace.gridSteps[view], snap: workspace.snap, onGridStep: (step: number) => workspace.changeGridStep(view, step) }
 }
 
 /** The document tabs, the open document's canvas and the bottom panel, between the side panels. */

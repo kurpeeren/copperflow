@@ -29,7 +29,7 @@ import {
   type TurnGate,
 } from "./key-burst.js"
 import type { Point } from "./geometry.js"
-import type { SourceCircuit, View } from "./positions.js"
+import type { SourceCircuit, Turn, View } from "./positions.js"
 
 /** What an edit from a key needs, as the canvas has it at this press. */
 export interface EditInput extends DesignState {
@@ -46,6 +46,8 @@ export interface KeySession {
   nudge(input: EditInput, hit: KeyResult): void
   /** R, Space, or the Rotate command; `repeat` when the key is held down. */
   rotate(input: EditInput, repeat: boolean): void
+  /** Rotate right, from the menu or the toolbar: a clockwise quarter turn, through the same gate as Rotate. */
+  rotateRight(input: EditInput): void
   /** An align or distribute command, from its key, the menu, the toolbar or the context menu. */
   align(input: EditInput, command: AlignCommand): void
   /** The canvas has drawn a new design, circuit or resolved edit: held presses go when the gate is open. */
@@ -76,7 +78,7 @@ interface State {
 }
 
 /** What a press at the gate does once it goes. */
-type Press = "rotate" | AlignCommand
+type Press = "rotate" | "rotateRight" | AlignCommand
 
 /** Tells the canvas when a press starts or stops being held, so its status line can say so. */
 function tell(state: State, events: SessionEvents): void {
@@ -101,8 +103,8 @@ function send(state: State, events: SessionEvents, plan: GroupEdit, input: EditI
 }
 
 /** Turns the selection about its centre as the design draws it. */
-function turn(state: State, events: SessionEvents, input: EditInput): void {
-  const plan = rotatePlan(input.circuit, input.selection.names, input.view, input.layout, input.blockerFor)
+function turn(state: State, events: SessionEvents, input: EditInput, quarter: Turn): void {
+  const plan = rotatePlan(input.circuit, input.selection.names, input.view, input.layout, input.blockerFor, quarter)
   if ("message" in plan) return input.actions.notify(plan.message)
   void send(state, events, plan, input)
 }
@@ -116,7 +118,8 @@ function alignSelection(state: State, events: SessionEvents, input: EditInput, c
 
 /** Does what a press at the gate asked for. */
 function perform(state: State, events: SessionEvents, input: EditInput, press: Press): void {
-  if (press === "rotate") turn(state, events, input)
+  if (press === "rotate") turn(state, events, input, 90)
+  else if (press === "rotateRight") turn(state, events, input, -90)
   else alignSelection(state, events, input, press)
 }
 
@@ -173,7 +176,7 @@ export function keySession(events: SessionEvents): KeySession {
     nudge(input, hit) {
       const direction = nudgeDirection(hit.action)
       if (!direction || input.selection.size === 0) return
-      const delta = nudgeOffset(direction, input.layout.step, hit.steps ?? 1)
+      const delta = nudgeOffset(direction, input.layout.step, hit.steps ?? 1, input.layout.snap !== false)
       const press = pressArrow(state.gate, input)
       state.gate = press.gate
       if (press.send) arrow(state, events, input, delta)
@@ -182,6 +185,9 @@ export function keySession(events: SessionEvents): KeySession {
     },
     rotate(input, repeat) {
       press(state, events, input, "rotate", repeat)
+    },
+    rotateRight(input) {
+      press(state, events, input, "rotateRight", false)
     },
     align(input, command) {
       press(state, events, input, command, false)

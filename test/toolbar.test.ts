@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { MENUS, menuItems } from "../studio/src/shell/menus.js"
-import { TOOLBARS, armedCommand, buttonState, isToolCommand, titleKey, toolbarGroups } from "../studio/src/shell/toolbar.js"
+import { TOOLBARS, armedCommand, buttonPressed, buttonState, hasPressedState, isToolCommand, titleKey, toolbarGroups } from "../studio/src/shell/toolbar.js"
 import { clearToolState, clickAction, getToolState, setToolState } from "../studio/src/shell/tool-state.js"
 
 const ids = (view: "schematic" | "pcb") => TOOLBARS[view].map((b) => b.id)
@@ -8,13 +8,13 @@ const menuByCommand = new Map(MENUS.flatMap(menuItems).flatMap((item) => (item.c
 
 describe("toolbar", () => {
   test("the schematic row is in EasyEDA's order", () => {
-    expect(ids("schematic")).toEqual(["undo", "redo", "zoomIn", "zoomOut", "fit", "gridStyle", "component", "wire", "netLabel", "ground", "power", "rotate", "alignLeft", "distributeH", "checkDrc"])
-    expect(toolbarGroups("schematic").map((g) => g.length)).toEqual([2, 3, 1, 5, 1, 2, 1])
+    expect(ids("schematic")).toEqual(["undo", "redo", "zoomIn", "zoomOut", "fit", "fitSelection", "fitArea", "gridStyle", "snap", "component", "wire", "netLabel", "ground", "power", "rotate", "rotateRight", "alignLeft", "distributeH", "checkDrc"])
+    expect(toolbarGroups("schematic").map((g) => g.length)).toEqual([2, 5, 2, 5, 2, 2, 1])
   })
 
   test("the PCB row is in EasyEDA's order", () => {
-    expect(ids("pcb")).toEqual(["undo", "redo", "zoomIn", "zoomOut", "fit", "gridStyle", "unit", "rotate", "alignLeft", "distributeH", "checkDrc"])
-    expect(toolbarGroups("pcb").map((g) => g.length)).toEqual([2, 3, 2, 1, 2, 1])
+    expect(ids("pcb")).toEqual(["undo", "redo", "zoomIn", "zoomOut", "fit", "fitSelection", "fitArea", "gridStyle", "snap", "unit", "rotate", "rotateRight", "alignLeft", "distributeH", "checkDrc"])
+    expect(toolbarGroups("pcb").map((g) => g.length)).toEqual([2, 5, 3, 2, 2, 1])
   })
 
   test("Redo sits beside Undo in both rows and runs the Edit menu's Redo", () => {
@@ -109,5 +109,56 @@ describe("armed tools", () => {
     expect(getToolState().active).toBe("wire")
     clearToolState()
     expect(getToolState().active).toBeNull()
+  })
+})
+
+describe("the view tools", () => {
+  const button = (id: string) => TOOLBARS.pcb.find((b) => b.id === id)
+  const need = (id: string) => {
+    const found = button(id)
+    if (!found) throw new Error(`no ${id} button`)
+    return found
+  }
+
+  test("Fit selection and Fit area sit beside Fit all, in both rows, and run the View menu's items", () => {
+    for (const view of ["schematic", "pcb"] as const) {
+      const ids = TOOLBARS[view].map((b) => b.id)
+      expect(ids.slice(ids.indexOf("fit"), ids.indexOf("fit") + 3)).toEqual(["fit", "fitSelection", "fitArea"])
+    }
+    expect(menuByCommand.get("fitSelection")?.label).toBe("Fit selection")
+    expect(menuByCommand.get("fitArea")?.label).toBe("Fit area")
+  })
+
+  test("Rotate right sits beside Rotate and has no key", () => {
+    for (const view of ["schematic", "pcb"] as const) {
+      const ids = TOOLBARS[view].map((b) => b.id)
+      expect(ids[ids.indexOf("rotate") + 1]).toBe("rotateRight")
+    }
+    expect(need("rotateRight").title).toBe("Rotate right")
+    expect(menuByCommand.get("rotateRight")?.shortcut).toBeUndefined()
+  })
+
+  test("Fit selection and Rotate right are disabled until a part is selected, with the reason", () => {
+    expect(buttonState(need("fitSelection"), 0)).toEqual({ enabled: false, title: "Fit selection: Select a part first" })
+    expect(buttonState(need("fitSelection"), 1)).toEqual({ enabled: true, title: "Fit selection" })
+    expect(buttonState(need("rotateRight"), 0)).toEqual({ enabled: false, title: "Rotate right: Select a part first" })
+    expect(buttonState(need("rotateRight"), 3).enabled).toBe(true)
+    expect(buttonState(need("fitArea"), 0).enabled).toBe(true)
+  })
+
+  test("Snap is a switch in the grid group: pressed while snap is on, with Alt+S in its title and the menu item", () => {
+    expect(need("snap")).toMatchObject({ title: "Snap (Alt+S)", icon: "snap", command: "snap", group: need("gridStyle").group })
+    expect(menuByCommand.get("snap")).toMatchObject({ label: "Snap", shortcut: "Alt+S", toggle: "snap" })
+    expect(buttonPressed("snap", null, { snap: true })).toBe(true)
+    expect(buttonPressed("snap", "fitArea", { snap: false })).toBe(false)
+    expect(hasPressedState("snap")).toBe(true)
+  })
+
+  test("Fit area shows pressed while its tool is armed and a second click puts it away", () => {
+    expect(isToolCommand("fitArea")).toBe(true)
+    expect(buttonPressed("fitArea", "fitArea", { snap: true })).toBe(true)
+    expect(buttonPressed("fitArea", null, { snap: true })).toBe(false)
+    expect(clickAction("fitArea", { active: "fitArea", stop: () => {} })).toBe("stop")
+    expect(hasPressedState("fit")).toBe(false)
   })
 })

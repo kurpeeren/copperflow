@@ -3,7 +3,7 @@ import { blurButton, isPointerClick } from "./focus"
 import { useKeyHold } from "./key-gate"
 import { MenuItemButton, useCloseOnOutsidePress } from "./menu-parts"
 import { firstMenuItem, menuKey, type MenuFocus, type MenuKeyResult } from "./menu-keys"
-import { MENUS, itemState, menuReducer, menuShapes, type CommandId, type Menu, type MenuEntry } from "./menus"
+import { MENUS, itemState, menuReducer, menuShapes, type CommandId, type Menu, type MenuEntry, type Toggles } from "./menus"
 import type { View } from "../pcb/positions"
 import "./shell.css"
 
@@ -13,6 +13,8 @@ interface Props {
   view: View
   /** How many parts are selected, for the items that need two or three. */
   selected: number
+  /** The settings the checked items show. */
+  toggles: Toggles
   /** The build status, at the right end of the bar. */
   children?: ReactNode
 }
@@ -49,23 +51,23 @@ function useFocusMover(bar: RefObject<HTMLElement | null>): (target: MenuFocus) 
   )
 }
 
-function Entry({ entry, menu, index, view, selected, onRun }: { entry: MenuEntry; menu: number; index: number; view: View; selected: number; onRun: OnRun }) {
+function Entry({ entry, menu, index, view, selected, toggles, onRun }: { entry: MenuEntry; menu: number; index: number; view: View; selected: number; toggles: Toggles; onRun: OnRun }) {
   if (entry === "separator") return <li className="menu-separator" role="separator" />
-  const { label, shortcut, command } = entry
+  const { label, shortcut, command, toggle } = entry
   // Disabled items take the focus, so the arrow keys reach them, but do nothing.
   const { enabled, reason } = itemState(entry, view, selected)
   return (
     <li role="none">
-      <MenuItemButton label={label} {...(shortcut ? { shortcut } : {})} menu={menu} index={index} enabled={enabled} {...(reason ? { reason } : {})} onActivate={(keyboard) => command && onRun(command, menu, keyboard)} />
+      <MenuItemButton label={label} {...(shortcut ? { shortcut } : {})} {...(toggle ? { checked: toggles[toggle] } : {})} menu={menu} index={index} enabled={enabled} {...(reason ? { reason } : {})} onActivate={(keyboard) => command && onRun(command, menu, keyboard)} />
     </li>
   )
 }
 
-function Dropdown({ menu, index, view, selected, onRun }: { menu: Menu; index: number; view: View; selected: number; onRun: OnRun }) {
+function Dropdown({ menu, index, view, selected, toggles, onRun }: { menu: Menu; index: number; view: View; selected: number; toggles: Toggles; onRun: OnRun }) {
   return (
     <ul className="menu-dropdown" role="menu" aria-label={menu.title}>
       {menu.entries.map((entry, i) => (
-        <Entry key={entry === "separator" ? `sep${i}` : entry.label} entry={entry} menu={index} index={i} view={view} selected={selected} onRun={onRun} />
+        <Entry key={entry === "separator" ? `sep${i}` : entry.label} entry={entry} menu={index} index={i} view={view} selected={selected} toggles={toggles} onRun={onRun} />
       ))}
     </ul>
   )
@@ -84,10 +86,11 @@ interface TitleProps {
   onKeyboard(next: MenuKeyResult): void
   view: View
   selected: number
+  toggles: Toggles
   onRun: OnRun
 }
 
-function MenuTitle({ menu, index, open, current, onPointer, onHover, onKeyboard, view, selected, onRun }: TitleProps) {
+function MenuTitle({ menu, index, open, current, onPointer, onHover, onKeyboard, view, selected, toggles, onRun }: TitleProps) {
   return (
     <div className="menu">
       <button
@@ -106,13 +109,13 @@ function MenuTitle({ menu, index, open, current, onPointer, onHover, onKeyboard,
       >
         {menu.title}
       </button>
-      {open && <Dropdown menu={menu} index={index} view={view} selected={selected} onRun={onRun} />}
+      {open && <Dropdown menu={menu} index={index} view={view} selected={selected} toggles={toggles} onRun={onRun} />}
     </div>
   )
 }
 
 /** EasyEDA's menu bar: brand, File … Help, and Studio's build status at the right end. The keys are menu-keys.ts. */
-export function MenuBar({ run, view, selected, children }: Props) {
+export function MenuBar({ run, view, selected, toggles, children }: Props) {
   const [state, dispatch] = useReducer(menuReducer, { open: null })
   const [current, setCurrent] = useState(0)
   const bar = useRef<HTMLElement>(null)
@@ -152,7 +155,7 @@ export function MenuBar({ run, view, selected, children }: Props) {
       </span>
       <nav className="menus" role="menubar" aria-label="Menu" onKeyDown={(event) => onKey(event) && event.stopPropagation()}>
         {MENUS.map((menu, i) => (
-          <MenuTitle key={menu.title} menu={menu} index={i} open={open === i} current={current === i} onPointer={onPointer} onHover={onHover} onKeyboard={apply} view={view} selected={selected} onRun={onRun} />
+          <MenuTitle key={menu.title} menu={menu} index={i} open={open === i} current={current === i} onPointer={onPointer} onHover={onHover} onKeyboard={apply} view={view} selected={selected} toggles={toggles} onRun={onRun} />
         ))}
       </nav>
       <div className="menubar-end">{children}</div>

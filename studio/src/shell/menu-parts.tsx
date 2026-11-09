@@ -9,17 +9,20 @@ interface ItemProps {
   menu?: number
   index: number
   enabled: boolean
+  /** For an item that switches a setting: whether it is on. */
+  checked?: boolean
   /** Why the item cannot run, shown as its title. */
   reason?: string
   /** A click on an enabled item; `keyboard` when it was Enter or Space. Disabled items take the focus but do nothing. */
   onActivate(keyboard: boolean): void
 }
 
-export function MenuItemButton({ label, shortcut, menu, index, enabled, reason, onActivate }: ItemProps) {
+export function MenuItemButton({ label, shortcut, menu, index, enabled, checked, reason, onActivate }: ItemProps) {
   return (
     <button
-      role="menuitem"
-      className="menu-item"
+      role={checked === undefined ? "menuitem" : "menuitemcheckbox"}
+      aria-checked={checked}
+      className={checked ? "menu-item checked" : "menu-item"}
       {...(menu === undefined ? {} : { "data-menu": menu })}
       data-item={index}
       tabIndex={-1}

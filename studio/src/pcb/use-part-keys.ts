@@ -87,6 +87,7 @@ function usePartCommands(input: PartKeysInput, edits: KeyEdits): void {
     ...aligns,
     fit: input.fit,
     rotate: withSelection((chosen) => edits.rotate(chosen, false)),
+    rotateRight: withSelection((chosen) => edits.rotateRight(chosen)),
     delete: withSelection(removeSelection),
     highlight: () => {
       const result = menuHighlight(input.selection.names, input.netsOf)

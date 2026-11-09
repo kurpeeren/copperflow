@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { APP_COMMANDS, CAMERA_COMMANDS, CANVAS_TOOL_COMMANDS, PART_COMMANDS, SHEET_COMMANDS, WORKSPACE_COMMANDS, commandOwner } from "../studio/src/shell/command-owners.js"
+import { APP_COMMANDS, CAMERA_COMMANDS, CANVAS_TOOL_COMMANDS, FIT_COMMANDS, PART_COMMANDS, SHEET_COMMANDS, WORKSPACE_COMMANDS, commandOwner } from "../studio/src/shell/command-owners.js"
 import { MENUS, menuItems, type CommandId } from "../studio/src/shell/menus.js"
 import { TOOLBARS } from "../studio/src/shell/toolbar.js"
 import { buildTone, statusText } from "../studio/src/shell/status-pill.js"
@@ -16,7 +16,7 @@ describe("command owners", () => {
   })
 
   test("no command has two owners", () => {
-    const all: string[] = [...APP_COMMANDS, ...Object.keys(WORKSPACE_COMMANDS), ...CAMERA_COMMANDS, ...PART_COMMANDS, ...CANVAS_TOOL_COMMANDS, ...SHEET_COMMANDS]
+    const all: string[] = [...APP_COMMANDS, ...Object.keys(WORKSPACE_COMMANDS), ...CAMERA_COMMANDS, ...FIT_COMMANDS, ...PART_COMMANDS, ...CANVAS_TOOL_COMMANDS, ...SHEET_COMMANDS]
     expect(new Set(all).size).toBe(all.length)
   })
 
@@ -52,6 +52,11 @@ describe("command owners", () => {
     for (const command of ["alignLeft", "alignRight", "alignTop", "alignBottom", "alignHCentres", "alignVCentres", "distributeH", "distributeV"] as const) {
       expect([command, commandOwner(command)]).toEqual([command, "canvas"])
     }
+  })
+
+  test("Fit selection, Fit area and Rotate right are answered by either canvas, Snap by the workspace", () => {
+    for (const command of ["fitSelection", "fitArea", "rotateRight"] as const) expect([command, commandOwner(command)]).toEqual([command, "canvas"])
+    expect(commandOwner("snap")).toBe("workspace")
   })
 
   test("the schematic's tools are the schematic's alone", () => {

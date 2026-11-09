@@ -2,7 +2,7 @@
 // entry, the parts left out and why. A part is left out for the reason that would stop the same action on it alone.
 import type { Edit } from "../../../src/core/types.js"
 import { roundPosition, snap, unionBoxes, type Box, type PartBox, type Point } from "./geometry.js"
-import { movedTo, nextRotation, VIEWS, ZERO, type Anchor, type SourceCircuit, type View } from "./positions.js"
+import { movedTo, nextRotation, VIEWS, ZERO, type Anchor, type SourceCircuit, type Turn, type View } from "./positions.js"
 
 /** One change for several parts. */
 export interface GroupEdit {
@@ -27,20 +27,23 @@ export function nameList(names: readonly string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`
 }
 
+/** "by 90°" for a counter-clockwise turn, "by -90°" for a clockwise one. */
+const turnText = (turn: Turn): string => `by ${turn}°`
+
 /** A quarter turn for every part in place, in `view`; one part keeps the summary a single rotate writes. */
-export function rotateEach(circuit: SourceCircuit, names: readonly string[], view: View, blockerFor: (name: string) => string | null): GroupEdit {
+export function rotateEach(circuit: SourceCircuit, names: readonly string[], view: View, blockerFor: (name: string) => string | null, turn: Turn = 90): GroupEdit {
   const { rotation, where } = VIEWS[view]
   const turned: { name: string; to: number }[] = []
   const skipped: string[] = []
   for (const name of names) {
     const blocker = blockerFor(name)
-    const next = blocker ?? nextRotation(circuit, name, view)
+    const next = blocker ?? nextRotation(circuit, name, view, turn)
     if (typeof next === "string") skipped.push(next)
     else turned.push({ name, to: next })
   }
   const parts = turned.map((turn) => turn.name)
   const [single] = turned
-  const summary = turned.length === 1 && single ? `rotate ${single.name}${where} to ${single.to}°` : `rotate ${nameList(parts)}${where} by 90°`
+  const summary = turned.length === 1 && single ? `rotate ${single.name}${where} to ${single.to}°` : `rotate ${nameList(parts)}${where} ${turnText(turn)}`
   return { edits: turned.map((turn) => ({ kind: "setProps", part: turn.name, props: { [rotation]: turn.to } })), summary, parts, skipped, done: "rotated" }
 }
 
@@ -74,9 +77,16 @@ export function anchorLookup(anchors: ReadonlyMap<string, Anchor>, boxes: readon
   return (name) => anchors.get(name) ?? { origin: boxes.find((box) => box.name === name)?.center ?? ZERO, group: ZERO }
 }
 
-/** How far an arrow key pushes: `steps` grid steps along the unit direction, rounded like any position. */
-export function nudgeOffset(direction: { dx: number; dy: number }, step: number, steps: number): Point {
-  return { x: roundPosition(direction.dx * step * steps), y: roundPosition(direction.dy * step * steps) }
+/** With snap off an arrow key moves a tenth of a grid step, for fine placing between the grid lines. */
+export const FREE_NUDGE_DIVISOR = 10
+
+/**
+ * How far an arrow key pushes: `steps` grid steps along the unit direction, rounded like any position; with snap off
+ * (`snapOn` false) a tenth of that, since the grid no longer decides where a part may sit.
+ */
+export function nudgeOffset(direction: { dx: number; dy: number }, step: number, steps: number, snapOn = true): Point {
+  const stride = snapOn ? step : step / FREE_NUDGE_DIVISOR
+  return { x: roundPosition(direction.dx * stride * steps), y: roundPosition(direction.dy * stride * steps) }
 }
 
 /** The centre of the box around the selection's parts, snapped to the grid; undefined when there are no boxes. */
@@ -85,9 +95,10 @@ export function selectionCentre(boxes: readonly Box[], step: number): Point | un
   return bounds ? { x: snap((bounds.minX + bounds.maxX) / 2, step), y: snap((bounds.minY + bounds.maxY) / 2, step) } : undefined
 }
 
-/** Where a point goes when turned 90 degrees counter-clockwise (y up) about `centre`. */
-export function turnedAbout(point: Point, centre: Point): Point {
-  return { x: centre.x - (point.y - centre.y), y: centre.y + (point.x - centre.x) }
+/** Where a point goes when turned a quarter about `centre` (y up): counter-clockwise for 90, clockwise for -90. */
+export function turnedAbout(point: Point, centre: Point, turn: Turn = 90): Point {
+  const sign = turn > 0 ? 1 : -1
+  return { x: centre.x - sign * (point.y - centre.y), y: centre.y + sign * (point.x - centre.x) }
 }
 
 /**
@@ -102,8 +113,9 @@ export function rotateAbout(
   centre: Point,
   blockerFor: (name: string) => string | null,
   placed: (name: string) => boolean = () => true,
+  turn: Turn = 90,
 ): GroupEdit {
-  if (names.length === 1) return rotateEach(circuit, names, view, blockerFor)
+  if (names.length === 1) return rotateEach(circuit, names, view, blockerFor, turn)
   const { rotation, position, where } = VIEWS[view]
   const edits: Edit[] = []
   const parts: string[] = []
@@ -113,19 +125,19 @@ export function rotateAbout(
       skipped.push(`${name} is not in this view`)
       continue
     }
-    const next = blockerFor(name) ?? nextRotation(circuit, name, view)
+    const next = blockerFor(name) ?? nextRotation(circuit, name, view, turn)
     if (typeof next === "string") {
       skipped.push(next)
       continue
     }
     const anchor = anchorOf(name)
     const from = anchor.origin
-    const to = turnedAbout(from, centre)
+    const to = turnedAbout(from, centre, turn)
     const [x, y] = movedTo(circuit, name, view, anchor, { x: to.x - from.x, y: to.y - from.y })
     edits.push({ kind: "setProps", part: name, props: { [position[0]]: x, [position[1]]: y, [rotation]: next } })
     parts.push(name)
   }
-  return { edits, summary: `rotate ${nameList(parts)}${where} by 90°`, parts, skipped, done: "rotated" }
+  return { edits, summary: `rotate ${nameList(parts)}${where} ${turnText(turn)}`, parts, skipped, done: "rotated" }
 }
 
 /** Where the parts sit in the open view and its Grid step. */
@@ -133,6 +145,8 @@ export interface Layout {
   anchors: ReadonlyMap<string, Anchor>
   boxes: readonly PartBox[]
   step: number
+  /** Whether snap is on (View → Snap); absent means on. */
+  snap?: boolean
 }
 
 /** Whether the open view draws the part: it has a box or an anchor there. */
@@ -141,18 +155,19 @@ export function inView(layout: Pick<Layout, "anchors" | "boxes">): (name: string
   return (name) => shown.has(name) || layout.anchors.has(name)
 }
 
-/** What Rotate does to the selection: the edit, or a message when no selected part is in this view. */
+/** What Rotate (counter-clockwise) or Rotate right (turn -90) does to the selection: the edit, or a message when no selected part is in this view. */
 export function rotatePlan(
   circuit: SourceCircuit,
   names: readonly string[],
   view: View,
   layout: Layout,
   blockerFor: (name: string) => string | null,
+  turn: Turn = 90,
 ): GroupEdit | { message: string } {
-  if (names.length === 1) return rotateEach(circuit, names, view, blockerFor)
+  if (names.length === 1) return rotateEach(circuit, names, view, blockerFor, turn)
   const centre = selectionCentre(layout.boxes.filter((part) => names.includes(part.name)).map((part) => part.box), layout.step)
   if (!centre) return { message: "None of the selected parts is in this view." }
-  return rotateAbout(circuit, names, view, anchorLookup(layout.anchors, layout.boxes), centre, blockerFor, inView(layout))
+  return rotateAbout(circuit, names, view, anchorLookup(layout.anchors, layout.boxes), centre, blockerFor, inView(layout), turn)
 }
 
 /**

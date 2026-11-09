@@ -29,7 +29,7 @@ export interface PickContext {
  * of its layers shown; otherwise every part and net label may be.
  */
 export function canPick(candidate: Pickable, context: PickContext): boolean {
-  if (context.armed === "note") return false
+  if (context.armed === "note" || context.armed === "zoom") return false
   if (!kindPickable(context.filter, candidate.kind === "part" ? "parts" : "labels")) return false
   const { layers } = context
   const drawn = candidate.kind === "part" ? layers?.of(candidate.name) : undefined

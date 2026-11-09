@@ -48,12 +48,15 @@ export function moveBlocker(circuit: SourceCircuit, locked: ReadonlySet<string>,
   return expression ? `${name}.${expression} is an expression; change it in the code` : null
 }
 
+/** A quarter turn: 90 is counter-clockwise (the Rotate key), -90 clockwise (Rotate right). */
+export type Turn = 90 | -90
+
 /** The next quarter turn of the part's rotation prop in `view`, or a message when that prop is not a number. */
-export function nextRotation(circuit: SourceCircuit, name: string, view: View): number | string {
+export function nextRotation(circuit: SourceCircuit, name: string, view: View, turn: Turn = 90): number | string {
   const key = VIEWS[view].rotation
   const rotation = circuit.model.parts.find((p) => p.name === name)?.props[key]?.literal
   if (rotation !== undefined && typeof rotation !== "number") return `${name}.${key} is not a number`
-  return ((((rotation ?? 0) as number) + 90) % 360 + 360) % 360
+  return ((((rotation ?? 0) as number) + turn) % 360 + 360) % 360
 }
 
 /**

@@ -82,3 +82,12 @@ describe("statusParts", () => {
     expect(statusParts({ cursor: undefined, zoom: 10, unit: "mm", gesture: blocked }).drag).toBe("")
   })
 })
+
+describe("statusParts and snap", () => {
+  const base = { cursor: undefined, zoom: undefined, unit: undefined, gesture: undefined }
+  test("says Snap off while snap is off, and nothing while it is on or not said", () => {
+    expect(statusParts({ ...base, snap: false }).snap).toBe("Snap off")
+    expect(statusParts({ ...base, snap: true }).snap).toBe("")
+    expect(statusParts(base).snap).toBe("")
+  })
+})

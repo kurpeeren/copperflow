@@ -23,7 +23,7 @@ const PICK: PickContext = { selection: Selection.none, armed: null }
 const press = (held: Partial<Press> = {}): Press => ({ button: 0, shiftKey: false, ctrlKey: false, metaKey: false, ...held })
 
 /** A canvas with R1 and R2: what the steps told it, and the selection they left. */
-function canvas(start: readonly string[] = [], options: { locked?: string[]; armed?: ArmedTool } = {}) {
+function canvas(start: readonly string[] = [], options: { locked?: string[]; armed?: ArmedTool; snap?: boolean } = {}) {
   const calls: string[] = []
   const state = { selection: Selection.none.add(start), camera: CAMERA }
   const commits: { names: readonly string[]; offset: Point }[] = []
@@ -40,6 +40,7 @@ function canvas(start: readonly string[] = [], options: { locked?: string[]; arm
     boxes: BOXES,
     anchors: new Map(),
     step: 0.5,
+    ...(options.snap === undefined ? {} : { snap: options.snap }),
     builtFrom: 0,
     circuit: { model: { parts: [], traces: [], skipped: [], imports: [] } },
     actions,
@@ -294,5 +295,78 @@ describe("a group drag as the browser sends it", () => {
     session.release(screen(10))
     expect(edits).toEqual([])
     expect(state.selection.names).toEqual(["C1"])
+  })
+})
+
+describe("the Fit area tool", () => {
+  test("a drag draws a box the selection box looks like, fits the camera to it and puts the tool away", () => {
+    const c = canvas(["R1"], { armed: "zoom" })
+    // The box from (0, 2) to (4, -2) in world units, 40 by 40 px on a 200 by 200 view.
+    expect(c.gesture({}, screen(0, 2), screen(4, -2))).toMatchObject({ kind: "zoom" })
+    expect(c.calls).toEqual(["disarm"])
+    expect(c.state.camera).toEqual({ cx: 2, cy: 0, scale: 50 })
+    expect(c.state.selection.names).toEqual(["R1"])
+  })
+
+  test("the box fits the same from any corner to its opposite", () => {
+    const forward = canvas([], { armed: "zoom" })
+    forward.gesture({}, screen(0, 2), screen(4, -2))
+    const backward = canvas([], { armed: "zoom" })
+    backward.gesture({}, screen(4, -2), screen(0, 2))
+    expect(backward.state.camera).toEqual(forward.state.camera)
+  })
+
+  test("a click keeps the tool armed and leaves the camera where it was", () => {
+    const c = canvas([], { armed: "zoom" })
+    c.gesture({}, screen(8))
+    expect(c.calls).toEqual([])
+    expect(c.state.camera).toEqual(CAMERA)
+  })
+
+  test("a left press on a part draws the box too: nothing is picked or dragged while the tool is armed", () => {
+    const c = canvas([], { armed: "zoom" })
+    expect(c.gesture({}, screen(1), screen(5, 1))).toMatchObject({ kind: "zoom" })
+    expect(c.state.selection.names).toEqual([])
+    expect(c.commits).toEqual([])
+  })
+
+  test("a right click puts the tool away without moving the camera", () => {
+    const c = canvas([], { armed: "zoom" })
+    c.gesture({ button: 2 }, screen(8))
+    expect(c.calls).toEqual(["disarm"])
+    expect(c.state.camera).toEqual(CAMERA)
+  })
+
+  test("the middle button still pans", () => {
+    const c = canvas([], { armed: "zoom" })
+    expect(c.gesture({ button: 1 }, screen(8), screen(9))).toMatchObject({ kind: "pan" })
+  })
+})
+
+describe("snap while dragging", () => {
+  // R1 sits with its centre at x=1; the grid step is 0.5. A drag of 0.3 lands on the grid, or where the pointer is.
+  const dragBy = (c: ReturnType<typeof canvas>, dx: number) => c.gesture({}, screen(1), screen(1 + dx))
+
+  test("on (and by default), the pressed part's origin goes to the grid", () => {
+    for (const options of [{}, { snap: true }]) {
+      const c = canvas([], options)
+      dragBy(c, 0.3)
+      expect(c.commits).toEqual([{ names: ["R1"], offset: { x: 0.5, y: 0 } }])
+    }
+  })
+
+  test("off, the part moves exactly with the pointer, rounded to four decimals", () => {
+    const c = canvas([], { snap: false })
+    dragBy(c, 0.3)
+    expect(c.commits).toEqual([{ names: ["R1"], offset: { x: 0.3, y: 0 } }])
+    const fine = canvas([], { snap: false })
+    dragBy(fine, 0.654321)
+    expect(fine.commits[0]?.offset.x).toBe(0.6543)
+  })
+
+  test("off, a group still moves by one offset, so it keeps its shape", () => {
+    const c = canvas(["R1", "R2"], { snap: false })
+    dragBy(c, 0.3)
+    expect(c.commits).toEqual([{ names: ["R1", "R2"], offset: { x: 0.3, y: 0 } }])
   })
 })

@@ -53,6 +53,8 @@ export interface CanvasProps {
   gridStyle: GridStyle
   /** This document's Grid step: the grid and the snap. */
   gridStep: number
+  /** Whether drags, arrow keys and wire corners go to the grid (View → Snap). */
+  snap: boolean
   onGridStep(step: number): void
   /** Which PCB layers are shown (the Layer panel); the schematic has none. */
   layers: LayerVisibility
@@ -92,9 +94,9 @@ export function usePlacedParts(design: Design, view: View, circuit: CircuitData)
 }
 
 /** The parts' anchors and boxes with the Grid step, as one object that stays the same until one of them changes. */
-export function useLayout(parts: Pick<Layout, "anchors" | "boxes">, step: number): Layout {
+export function useLayout(parts: Pick<Layout, "anchors" | "boxes">, step: number, snap: boolean): Layout {
   const { anchors, boxes } = parts
-  return useMemo(() => ({ anchors, boxes, step }), [anchors, boxes, step])
+  return useMemo(() => ({ anchors, boxes, step, snap }), [anchors, boxes, step, snap])
 }
 
 /** Where Shift+F10 or the menu key opens the context menu on this canvas: at the primary selected part, else the canvas centre. */
@@ -222,6 +224,7 @@ export function drawEditorLayer(ctx: CanvasRenderingContext2D, camera: Camera, s
     if (mark.view === layer.view && mark.x !== undefined && mark.y !== undefined) drawMark(ctx, camera, size, { at: { x: mark.x, y: mark.y }, id: mark.id, text: mark.text }, look)
   }
   if (gesture?.kind === "box") drawSelectionBox(ctx, gesture.start, gesture.current, look, boxMode(gesture.start, gesture.current))
+  if (gesture?.kind === "zoom") drawSelectionBox(ctx, gesture.start, gesture.current, look, boxMode(gesture.start, gesture.current))
   if (gesture?.kind === "note") drawNoteBox(ctx, gesture.start, gesture.current, look)
 }
 

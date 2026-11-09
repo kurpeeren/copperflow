@@ -1,9 +1,10 @@
 // The menu bar as data: EasyEDA Pro's menus, the items Studio can run, and the items still to come, each with the
 // engine stage (docs/engine-design.md) or the Studio round (docs/studio-easyeda-parity.md §10) that brings it. The
 // keys beside a command are the keys canvas-keys.ts binds; a test holds them together.
-import { ALIGN_COMMANDS, alignDisabledReason, type AlignCommand } from "../pcb/align-rules.js"
+import type { AlignCommand } from "../pcb/align-rules.js"
 import type { KeyActionName } from "../pcb/canvas-keys.js"
 import type { View } from "../pcb/positions.js"
+import { commandDisabledReason } from "../pcb/selection-rules.js"
 
 export type CommandId =
   | "openFile"
@@ -14,6 +15,9 @@ export type CommandId =
   | "delete"
   | "selectAll"
   | "fit"
+  | "fitSelection"
+  | "fitArea"
+  | "snap"
   | "zoomIn"
   | "zoomOut"
   | "toggleUnit"
@@ -31,6 +35,7 @@ export type CommandId =
   | "highlight"
   | "clearHighlight"
   | "rotate"
+  | "rotateRight"
   | AlignCommand
   | "find"
   | "lock"
@@ -48,7 +53,13 @@ export interface MenuItem {
   pending?: string
   /** The one view the item works in; in the other it shows disabled. */
   only?: View
+  /** A setting the item switches: the menu shows a check beside it while the setting is on. */
+  toggle?: ToggleId
 }
+
+/** The settings a menu item or toolbar button can switch and show. */
+export type ToggleId = "snap"
+export type Toggles = Readonly<Record<ToggleId, boolean>>
 
 export type MenuEntry = MenuItem | "separator"
 
@@ -100,11 +111,14 @@ export const MENUS: readonly Menu[] = [
     title: "View",
     entries: [
       run("Fit all", "fit", "K"),
+      run("Fit selection", "fitSelection"),
+      run("Fit area", "fitArea"),
       run("Zoom in", "zoomIn"),
       run("Zoom out", "zoomOut"),
       "separator",
       { ...run("Unit", "toggleUnit", "Q"), only: "pcb" },
       run("Grid style", "gridStyle"),
+      { ...run("Snap", "snap", "Alt+S"), toggle: "snap" },
       "separator",
       run("Left panel", "toggleLeftPanel", "["),
       run("Right panel", "toggleRightPanel", "]"),
@@ -154,6 +168,7 @@ export const MENUS: readonly Menu[] = [
     title: "Layout",
     entries: [
       run("Rotate", "rotate", "Space"),
+      run("Rotate right", "rotateRight"),
       later("Flip", ENGINE, "X"),
       "separator",
       run("Lock", "lock"),
@@ -190,9 +205,6 @@ export const MENUS: readonly Menu[] = [
 
 export const MENU_TITLES: readonly string[] = MENUS.map((menu) => menu.title)
 
-const ALIGN_COMMAND_IDS: ReadonlySet<string> = new Set(ALIGN_COMMANDS)
-const isAlign = (command: CommandId): command is AlignCommand => ALIGN_COMMAND_IDS.has(command)
-
 const ONLY_REASON: Record<View, string> = { pcb: "PCB only", schematic: "Schematic only" }
 
 /**
@@ -202,7 +214,7 @@ const ONLY_REASON: Record<View, string> = { pcb: "PCB only", schematic: "Schemat
 export function itemState(item: MenuItem, view: View, selected?: number): { enabled: boolean; reason?: string } {
   if (!item.command) return item.pending ? { enabled: false, reason: item.pending } : { enabled: false }
   if (item.only && item.only !== view) return { enabled: false, reason: ONLY_REASON[item.only] }
-  const short = selected === undefined || !isAlign(item.command) ? null : alignDisabledReason(item.command, selected)
+  const short = selected === undefined ? null : commandDisabledReason(item.command, selected)
   return short ? { enabled: false, reason: short } : { enabled: true }
 }
 
@@ -226,6 +238,7 @@ export const COMMAND_KEY_ACTIONS: Partial<Record<CommandId, KeyActionName>> = {
   highlight: "highlight",
   clearHighlight: "clearHighlight",
   rotate: "rotate",
+  snap: "toggleSnap",
   selectAll: "selectAll",
   find: "find",
   delete: "delete",

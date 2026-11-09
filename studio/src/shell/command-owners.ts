@@ -13,6 +13,7 @@ export type AppCommand = (typeof APP_COMMANDS)[number]
 export const WORKSPACE_COMMANDS = {
   toggleUnit: "toggleUnit",
   gridStyle: "toggleGridStyle",
+  snap: "toggleSnap",
   toggleLeftPanel: "toggleLeftPanel",
   toggleRightPanel: "toggleRightPanel",
   toggleBottomPanel: "toggleBottomPanel",
@@ -24,12 +25,16 @@ export const WORKSPACE_COMMANDS = {
 export const CAMERA_COMMANDS = ["zoomIn", "zoomOut"] as const satisfies readonly CommandId[]
 export type CameraCommand = (typeof CAMERA_COMMANDS)[number]
 
+/** Answered by either canvas: the camera fitted to the selection (use-fit-selection.ts). */
+export const FIT_COMMANDS = ["fitSelection"] as const satisfies readonly CommandId[]
+export type FitCommand = (typeof FIT_COMMANDS)[number]
+
 /** Answered by either canvas: the selection, its parts and their nets (use-part-keys.ts). */
-export const PART_COMMANDS = ["fit", "rotate", "delete", "highlight", ...ALIGN_COMMANDS] as const satisfies readonly CommandId[]
+export const PART_COMMANDS = ["fit", "rotate", "rotateRight", "delete", "highlight", ...ALIGN_COMMANDS] as const satisfies readonly CommandId[]
 export type PartCommand = (typeof PART_COMMANDS)[number]
 
 /** Answered by either canvas: the tools both views have, such as Place → Note box (use-note-tool.ts). */
-export const CANVAS_TOOL_COMMANDS = ["noteBox"] as const satisfies readonly CommandId[]
+export const CANVAS_TOOL_COMMANDS = ["noteBox", "fitArea"] as const satisfies readonly CommandId[]
 export type CanvasToolCommand = (typeof CANVAS_TOOL_COMMANDS)[number]
 
 /** Answered by the schematic only (SchematicCanvas.tsx); sent while the PCB is open, they switch to the schematic first. */
@@ -44,6 +49,6 @@ const has = (list: readonly CommandId[], command: CommandId) => list.includes(co
 export function commandOwner(command: CommandId): CommandOwner | undefined {
   if (has(APP_COMMANDS, command)) return "app"
   if (command in WORKSPACE_COMMANDS) return "workspace"
-  if (has(CAMERA_COMMANDS, command) || has(PART_COMMANDS, command) || has(CANVAS_TOOL_COMMANDS, command)) return "canvas"
+  if (has(CAMERA_COMMANDS, command) || has(FIT_COMMANDS, command) || has(PART_COMMANDS, command) || has(CANVAS_TOOL_COMMANDS, command)) return "canvas"
   return has(SHEET_COMMANDS, command) ? "schematic" : undefined
 }

@@ -12,6 +12,7 @@ export type KeyActionName =
   | "clearHighlight"
   | "toggleUnit"
   | "toggleGridStyle"
+  | "toggleSnap"
   | "toggleLeftPanel"
   | "toggleRightPanel"
   | "toggleBottomPanel"
@@ -95,7 +96,7 @@ function arrowAction(input: KeyInput): KeyResult | null {
 }
 
 /** Widgets that handle their own keys: their arrows, Enter, Space, Delete and letters never reach the canvas. */
-const OWN_KEYS = "tr, [role='row'], [role='gridcell'], [role='grid'], [role='listbox'], [role='option'], [role='tree'], [role='treeitem'], [role='tablist'], [role='tab'], [role='radiogroup'], [role='menu'], [role='menubar'], [role='menuitem'], [data-keys='own']"
+const OWN_KEYS = "tr, [role='row'], [role='gridcell'], [role='grid'], [role='listbox'], [role='option'], [role='tree'], [role='treeitem'], [role='tablist'], [role='tab'], [role='radiogroup'], [role='menu'], [role='menubar'], [role='menuitem'], [role='menuitemcheckbox'], [data-keys='own']"
 
 /** Fields that take every key: text inputs, text areas, selects and editable text. A checkbox is pressed like a button. */
 const FIELDS = "input:not([type='checkbox']):not([type='radio']), textarea, select, [contenteditable='true']"
@@ -126,8 +127,10 @@ export function keyInput(event: KeyboardEvent): KeyInput {
 const altLetter = (input: KeyInput): string => (input.code?.startsWith("Key") ? input.code.slice(3).toLowerCase() : input.key.toLowerCase())
 
 function altAction(input: KeyInput, state: KeyState): KeyResult | null {
-  if (input.shiftKey || state.view !== "schematic") return null
+  if (input.shiftKey) return null
   const letter = altLetter(input)
+  if (letter === "s") return act("toggleSnap", true)
+  if (state.view !== "schematic") return null
   if (letter === "w") return act("wire", true)
   return letter === "n" ? act("armNetLabel", true) : null
 }

@@ -77,6 +77,12 @@ export function snap(value: number, step: number): number {
   return Number((Math.round(value / step) * step).toFixed(decimals))
 }
 
+/** `value` on the grid of `step` while snap is on; with snap off it stays where it is, still rounded to 4 decimals. */
+export const snapPosition = (value: number, step: number, on = true): number => roundPosition(on ? snap(value, step) : value)
+
+/** A point put through snapPosition. */
+export const snapPoint = (p: Point, step: number, on = true): Point => ({ x: snapPosition(p.x, step, on), y: snapPosition(p.y, step, on) })
+
 /** Every part box that contains the point, the smallest first. */
 export function hitsAt(boxes: readonly PartBox[], p: Point): PartBox[] {
   const area = (b: Box) => (b.maxX - b.minX) * (b.maxY - b.minY)
@@ -112,6 +118,6 @@ export function rightAngles(points: readonly Point[]): Point[] {
   return path
 }
 
-function clampScale(scale: number): number {
+export function clampScale(scale: number): number {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale))
 }

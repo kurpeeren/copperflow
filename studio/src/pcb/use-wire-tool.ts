@@ -5,7 +5,7 @@ import type { Design, Edit } from "../api"
 import type { Actions } from "../App"
 import { isCanvasKey } from "./canvas-common"
 import { keyAction, keyInput } from "./canvas-keys"
-import { rightAngles, roundPosition, snap, type Camera, type Point } from "./geometry"
+import { rightAngles, snapPoint, type Camera, type Point } from "./geometry"
 import { endAt, freePin, namedNetsJoined, pinAt, sameEnd, wireEdits, type WireEnd } from "./wire-tool"
 
 /** A wire being drawn: where it starts, the pin it starts on if any, and the corners clicked so far, on the grid. */
@@ -27,6 +27,8 @@ export interface WireInput {
   camera: Camera | undefined
   cursor: Point | undefined
   step: number
+  /** Whether corners go to the grid (View → Snap). */
+  snap: boolean
   /** Changes when a build finishes; pins may have moved. */
   buildId: string | undefined
   /** When the build behind the shown design started (ms). */
@@ -41,7 +43,6 @@ interface PendingWire {
 type WirePlan = { edits: Edit[]; points: Point[]; summary: string } | { notice?: string }
 
 const PORT_HIT_PX = 12
-const round = roundPosition
 const sameUnder = (a: Under, b: Under) =>
   a.pin === b.pin && a.end?.selector === b.end?.selector && a.end?.at.x === b.end?.at.x && a.end?.at.y === b.end?.at.y
 
@@ -116,11 +117,11 @@ function useWireKeys(
 }
 
 /** The wire being drawn as it would run to the pointer: to the end under it, else to the grid point under it. */
-function usePreview(drawing: Drawing | null, under: Under, cursor: Point | undefined, step: number): Point[] | undefined {
+function usePreview(drawing: Drawing | null, under: Under, cursor: Point | undefined, step: number, snap: boolean): Point[] | undefined {
   return useMemo(() => {
-    const to = under.end?.at ?? (cursor && { x: round(snap(cursor.x, step)), y: round(snap(cursor.y, step)) })
+    const to = under.end?.at ?? (cursor && snapPoint(cursor, step, snap))
     return drawing && to ? rightAngles([drawing.start.at, ...drawing.corners, to]) : undefined
-  }, [drawing, under, cursor, step])
+  }, [drawing, under, cursor, step, snap])
 }
 
 /**
@@ -128,13 +129,13 @@ function usePreview(drawing: Drawing | null, under: Under, cursor: Point | undef
  * a pin, a net label or a wire to connect; clicks on the sheet place corners; Esc or a right click cancels.
  */
 export function useWireTool(input: WireInput) {
-  const { design, actions, camera, step } = input
+  const { design, actions, camera, step, snap } = input
   const [wiring, setWiring] = useState(false)
   const [drawing, setDrawing] = useState<Drawing | null>(null)
   const { under, setUnder, underRef } = useUnder(input.buildId)
   const pending = usePendingWires(input.builtFrom)
   useWireKeys(drawing, setDrawing, setWiring, underRef)
-  const preview = usePreview(drawing, under, input.cursor, step)
+  const preview = usePreview(drawing, under, input.cursor, step, snap)
   const activePins = useMemo(() => [drawing?.pin, under.pin].filter((id): id is string => id !== undefined), [drawing, under])
 
   /** Any pin, label or wire while wiring or drawing, else only a pin. */
@@ -154,7 +155,7 @@ export function useWireTool(input: WireInput) {
     void actions.edit(plan.edits, plan.summary).then((ok) => ok || pending.drop(sent))
   }
   const press = (event: { button: number; shiftKey: boolean }, world: Point) =>
-    pressWire({ design, camera, wiring, drawing, setDrawing, step, finish, underAt }, event, world)
+    pressWire({ design, camera, wiring, drawing, setDrawing, step, snap, finish, underAt }, event, world)
   const cancel = useCallback(() => {
     setWiring(false)
     setDrawing(null)
@@ -187,6 +188,7 @@ interface PressContext {
   drawing: Drawing | null
   setDrawing(drawing: Drawing | null): void
   step: number
+  snap: boolean
   finish(drawing: Drawing, target: WireEnd): void
   underAt(world: Point): Under
 }
@@ -202,7 +204,7 @@ function pressWire(c: PressContext, event: { button: number; shiftKey: boolean }
   if (c.drawing) {
     const target = endAt(c.design, world, PORT_HIT_PX / c.camera.scale)
     if (target) c.finish(c.drawing, target)
-    else addCorner(c.drawing, world, c.step, c.setDrawing)
+    else addCorner(c.drawing, world, c, c.setDrawing)
     return true
   }
   const { end, pin } = c.underAt(world)
@@ -211,9 +213,9 @@ function pressWire(c: PressContext, event: { button: number; shiftKey: boolean }
   return true
 }
 
-/** A click on empty sheet places a corner on the grid. */
-function addCorner(drawing: Drawing, world: Point, step: number, setDrawing: (drawing: Drawing) => void): void {
-  const corner = { x: round(snap(world.x, step)), y: round(snap(world.y, step)) }
+/** A click on empty sheet places a corner, on the grid while snap is on. */
+function addCorner(drawing: Drawing, world: Point, grid: { step: number; snap: boolean }, setDrawing: (drawing: Drawing) => void): void {
+  const corner = snapPoint(world, grid.step, grid.snap)
   const last = drawing.corners[drawing.corners.length - 1] ?? drawing.start.at
   if (corner.x !== last.x || corner.y !== last.y) setDrawing({ ...drawing, corners: [...drawing.corners, corner] })
 }

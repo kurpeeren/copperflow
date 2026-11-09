@@ -17,15 +17,16 @@ export interface Press {
 export type Under = "part" | "selectedPart" | "label" | "empty"
 
 /**
- * The armed canvas tool, as far as a press is concerned: Place → Note box takes every left press; a schematic Place
+ * The armed canvas tool, as far as a press is concerned: Place → Note box and View → Fit area take every left press; a schematic Place
  * tool (net label, ground or power flag) leaves an empty left drag to pan, as before the selection box.
  */
-export type ArmedTool = "note" | "place" | null
+export type ArmedTool = "note" | "zoom" | "place" | null
 
 /**
  * - "pan": the middle button pans.
  * - "rightPress": the right button pans once it moves; released without moving, it opens the context menu.
  * - "note": with the Note box tool armed, a left drag draws the note box.
+ * - "zoom": with the Fit area tool armed, a left drag draws the box the camera fits.
  *   With a Place tool armed, a left press on empty canvas is a "pan" (its click is the tool's, on a pin).
  * - "toggle": Shift or Ctrl on a part toggles it in or out of the selection and starts nothing.
  * - "move": on a part not selected: selects it alone and drags it.
@@ -35,7 +36,7 @@ export type ArmedTool = "note" | "place" | null
  * - "addBox": Shift or Ctrl anywhere but on a part: a selection box that adds to the selection.
  * - "none": any other button.
  */
-export type GestureStart = "pan" | "rightPress" | "note" | "toggle" | "move" | "moveGroup" | "label" | "box" | "addBox" | "none"
+export type GestureStart = "pan" | "rightPress" | "note" | "zoom" | "toggle" | "move" | "moveGroup" | "label" | "box" | "addBox" | "none"
 
 const LEFT = 0
 const MIDDLE = 1
@@ -46,6 +47,7 @@ export function gestureStart(press: Press, under: Under, armed: ArmedTool): Gest
   if (press.button === RIGHT) return "rightPress"
   if (press.button !== LEFT) return "none"
   if (armed === "note") return "note"
+  if (armed === "zoom") return "zoom"
   if (armed === "place" && under === "empty") return "pan"
   const onPart = under === "part" || under === "selectedPart"
   if (togglesSelection(press)) return onPart ? "toggle" : "addBox"

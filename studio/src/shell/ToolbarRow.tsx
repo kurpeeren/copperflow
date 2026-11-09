@@ -3,8 +3,8 @@ import { TOOL_ICONS } from "../icons"
 import { blurAfterPointerClick } from "./focus"
 import type { View } from "../pcb/positions"
 import type { Unit } from "../pcb/units"
-import type { CommandId } from "./menus"
-import { buttonState, isToolCommand, toolbarGroups, type ToolbarButton } from "./toolbar"
+import type { CommandId, Toggles } from "./menus"
+import { buttonPressed, buttonState, hasPressedState, toolbarGroups, type ToolbarButton } from "./toolbar"
 import { clickAction, useToolState } from "./tool-state"
 import { VIEW_SLOT_ID } from "./ViewTools"
 import "./toolbar.css"
@@ -15,6 +15,8 @@ interface Props {
   unit: Unit
   /** How many parts are selected, for the buttons that need two or three. */
   selected: number
+  /** The settings the switch buttons show: pressed while on. */
+  toggles: Toggles
   /** The function the menu bar runs its items with. */
   run(command: CommandId): void
 }
@@ -26,7 +28,7 @@ function ButtonFace({ item, unit }: { item: ToolbarButton; unit: Unit }) {
 }
 
 /** EasyEDA's toolbar: 24px icon buttons in groups, and at the right the open canvas's own tools. */
-export function Toolbar({ view, unit, selected, run }: Props) {
+export function Toolbar({ view, unit, selected, toggles, run }: Props) {
   const tools = useToolState()
   return (
     <div className="studio-toolbar" role="toolbar" aria-label="Tools">
@@ -34,7 +36,7 @@ export function Toolbar({ view, unit, selected, run }: Props) {
         <Fragment key={group[0]?.group}>
           {i > 0 && <span className="toolbar-separator" role="separator" aria-orientation="vertical" />}
           {group.map((item) => {
-            const pressed = tools.active === item.command
+            const pressed = buttonPressed(item.command, tools.active, toggles)
             const state = buttonState(item, selected)
             return (
               <button
@@ -43,7 +45,7 @@ export function Toolbar({ view, unit, selected, run }: Props) {
                 title={state.title}
                 aria-label={item.text === "unit" ? `${item.title}, now ${unit}` : state.title}
                 aria-disabled={state.enabled ? undefined : true}
-                aria-pressed={isToolCommand(item.command) ? pressed : undefined}
+                aria-pressed={hasPressedState(item.command) ? pressed : undefined}
                 data-pressed={pressed || undefined}
                 onClick={(event) => {
                   blurAfterPointerClick(event)

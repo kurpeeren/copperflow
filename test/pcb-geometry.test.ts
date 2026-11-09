@@ -8,6 +8,8 @@ import {
   rightAngles,
   screenToWorld,
   snap,
+  snapPoint,
+  snapPosition,
   unionBoxes,
   worldToScreen,
   zoomAt,
@@ -108,5 +110,24 @@ describe("parts on the board", () => {
     expect(pointBounds([])).toBeUndefined()
     expect(unionBoxes(boxes.map((b) => b.box))).toEqual({ minX: -10, minY: -2.5, maxX: 0, maxY: 6.5 })
     expect(unionBoxes([])).toBeUndefined()
+  })
+})
+
+describe("snapPosition and snapPoint", () => {
+  test("on, a value goes to the nearest grid line, without floating-point noise", () => {
+    expect(snapPosition(0.31, 0.1)).toBe(0.3)
+    expect(snapPosition(1.3, 0.5)).toBe(1.5)
+    expect(snapPoint({ x: 0.74, y: -0.26 }, 0.5)).toEqual({ x: 0.5, y: -0.5 })
+  })
+
+  test("off, a value stays where it is and is rounded to four decimals", () => {
+    expect(snapPosition(0.31, 0.1, false)).toBe(0.31)
+    expect(snapPosition(1.234567, 0.5, false)).toBe(1.2346)
+    expect(snapPoint({ x: 0.74, y: -0.26 }, 0.5, false)).toEqual({ x: 0.74, y: -0.26 })
+  })
+
+  test("the 2 mil step stays exact either way", () => {
+    expect(snapPosition(0.1, 0.0508)).toBe(0.1016)
+    expect(snapPosition(0.1, 0.0508, false)).toBe(0.1)
   })
 })

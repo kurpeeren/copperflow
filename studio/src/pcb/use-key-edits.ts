@@ -6,7 +6,7 @@ import { onHistoryWrite } from "../history-writes"
 import { keySession, type EditInput, type KeySession } from "./key-session"
 
 export type { EditInput } from "./key-session"
-export type KeyEdits = Pick<KeySession, "nudge" | "rotate" | "align">
+export type KeyEdits = Pick<KeySession, "nudge" | "rotate" | "rotateRight" | "align">
 
 /**
  * `input` is what the canvas has now; a held Rotate or arrow press is computed from it once the design has caught up.

@@ -31,7 +31,7 @@ import {
 export type { DesignSub, LeftStrip } from "./shell/strip-state"
 
 /** The key actions this hook answers; the canvases answer the rest. */
-const WORKSPACE_ACTIONS: ReadonlySet<KeyActionName> = new Set(["toggleLeftPanel", "toggleRightPanel", "toggleBottomPanel", "toggleUnit", "clearHighlight", "openLibrary"])
+const WORKSPACE_ACTIONS: ReadonlySet<KeyActionName> = new Set(["toggleLeftPanel", "toggleRightPanel", "toggleBottomPanel", "toggleUnit", "clearHighlight", "openLibrary", "toggleSnap"])
 
 /** The two side strips and the bottom strip: a click toggles the open tab's panel, a key (or a command) only shows. */
 function useStrips(view: View) {
@@ -69,6 +69,13 @@ function useGridSettings() {
   const changeGridStep = useCallback((view: View, step: number) => setGridSteps((steps) => setGridStep(steps, view, step)), [])
   const toggleGridStyleOf = useCallback((view: View) => setGridStyles((styles) => toggleGridStyle(styles, view)), [])
   return { gridStyles, gridSteps, changeGridStep, toggleGridStyleOf }
+}
+
+/** Whether drags, arrow keys and wire corners go to the grid (View → Snap, Alt+S); on until switched off. */
+function useSnap() {
+  const [snap, setSnap] = useState(true)
+  const toggleSnap = useCallback(() => setSnap((on) => !on), [])
+  return { snap, toggleSnap }
 }
 
 /** Answers the workspace's own keys, as they mean in the open view. */
@@ -112,11 +119,12 @@ interface RunTargets {
   setUnit(change: (unit: Unit) => Unit): void
   setHighlight(highlight: Highlight): void
   toggleGridStyleOf(view: View): void
+  toggleSnap(): void
   requestSearch(): void
 }
 
 /** Runs one of the workspace's own actions, for a key or a menu item; the Grid style acts on the open view. */
-function useWorkspaceRun(view: View, { strips, setUnit, setHighlight, toggleGridStyleOf, requestSearch }: RunTargets): (action: KeyActionName) => void {
+function useWorkspaceRun(view: View, { strips, setUnit, setHighlight, toggleGridStyleOf, toggleSnap, requestSearch }: RunTargets): (action: KeyActionName) => void {
   const { setLeft, setRight, setBottom } = strips
   // A ref keeps `run` the same function while the tabs switch.
   const openView = useRef(view)
@@ -128,13 +136,14 @@ function useWorkspaceRun(view: View, { strips, setUnit, setHighlight, toggleGrid
       if (action === "toggleBottomPanel") setBottom(toggleBottom)
       if (action === "toggleUnit") setUnit(nextUnit)
       if (action === "toggleGridStyle") toggleGridStyleOf(openView.current)
+      if (action === "toggleSnap") toggleSnap()
       if (action === "clearHighlight") setHighlight(NO_HIGHLIGHT)
       if (action === "openLibrary") {
         setLeft(showLibrary)
         requestSearch()
       }
     },
-    [setLeft, setRight, setBottom, setUnit, setHighlight, requestSearch, toggleGridStyleOf],
+    [setLeft, setRight, setBottom, setUnit, setHighlight, requestSearch, toggleGridStyleOf, toggleSnap],
   )
 }
 
@@ -144,10 +153,11 @@ export function useWorkspace(view: View) {
   const [unit, setUnit] = useState<Unit>("mm")
   const [highlight, setHighlight] = useState<Highlight>(NO_HIGHLIGHT)
   const { toggleGridStyleOf, ...grid } = useGridSettings()
+  const { snap, toggleSnap } = useSnap()
   const layers = useLayers()
   const filter = usePickFilter()
-  const run = useWorkspaceRun(view, { strips: { setLeft, setRight, setBottom }, setUnit, setHighlight, toggleGridStyleOf, requestSearch })
+  const run = useWorkspaceRun(view, { strips: { setLeft, setRight, setBottom }, setUnit, setHighlight, toggleGridStyleOf, toggleSnap, requestSearch })
   useWorkspaceKeys(view, run)
   const toggleUnit = useCallback(() => setUnit(nextUnit), [])
-  return { ...strips, ...grid, ...layers, ...filter, ...focus, leftOpen: strips.left.open, unit, toggleUnit, highlight, setHighlight, run }
+  return { ...strips, ...grid, snap, ...layers, ...filter, ...focus, leftOpen: strips.left.open, unit, toggleUnit, highlight, setHighlight, run }
 }

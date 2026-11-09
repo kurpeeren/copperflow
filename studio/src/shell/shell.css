@@ -92,6 +92,18 @@
   color: var(--disabled);
 }
 
+/* A switch item keeps a column for its check, and shows the check while the setting is on. */
+.menu-item[aria-checked] > span::before {
+  display: inline-block;
+  width: 16px;
+  content: "";
+  color: var(--copper-strong);
+}
+
+.menu-item[aria-checked="true"] > span::before {
+  content: "¹3";
+}
+
 .menu-separator {
   height: 1px;
   margin: 4px 0;

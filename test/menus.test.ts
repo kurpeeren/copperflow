@@ -77,7 +77,7 @@ describe("menus", () => {
 
   test("Layout holds the eight align and distribute commands in EasyEDA's order, with the two keys", () => {
     const layout = MENUS.find((menu) => menu.title === "Layout")?.entries ?? []
-    expect(layout.slice(6)).toEqual([
+    expect(layout.slice(7)).toEqual([
       { label: "Align left", command: "alignLeft", shortcut: "Ctrl+Shift+L" },
       { label: "Align right", command: "alignRight" },
       { label: "Align top", command: "alignTop" },
@@ -198,5 +198,40 @@ describe("command bus", () => {
     stopA()
     stopB()
     expect(send("fit")).toBe(false)
+  })
+})
+
+describe("the view and layout tools", () => {
+  const find = (label: string) => MENUS.flatMap(menuItems).find((item) => item.label === label) as MenuItem
+
+  test("View holds Fit selection, Fit area and a checked Snap with Alt+S", () => {
+    const view = MENUS.find((menu) => menu.title === "View")?.entries ?? []
+    const labels = view.flatMap((entry) => (entry === "separator" ? [] : [entry.label]))
+    expect(labels.slice(0, 5)).toEqual(["Fit all", "Fit selection", "Fit area", "Zoom in", "Zoom out"])
+    expect(find("Snap")).toEqual({ label: "Snap", command: "snap", shortcut: "Alt+S", toggle: "snap" })
+    expect(COMMAND_KEY_ACTIONS.snap).toBe("toggleSnap")
+  })
+
+  test("Alt+S, by its physical key, switches snap in both views and is listed in Help → Keys", () => {
+    for (const view of ["pcb", "schematic"] as const) {
+      expect(keyAction({ ...pressOf("Alt+S"), key: "ß" }, { view })).toEqual({ action: "toggleSnap", preventDefault: true })
+    }
+    expect(shortcutList()).toContainEqual({ keys: "Alt+S", label: "Snap" })
+  })
+
+  test("Layout → Rotate right follows Rotate and has no key", () => {
+    const layout = MENUS.find((menu) => menu.title === "Layout")?.entries ?? []
+    expect(layout.slice(0, 2)).toEqual([{ label: "Rotate", command: "rotate", shortcut: "Space" }, { label: "Rotate right", command: "rotateRight" }])
+  })
+
+  test("Fit selection and Rotate right are disabled with nothing selected, in both views; Fit area never is", () => {
+    for (const view of ["pcb", "schematic"] as const) {
+      expect(itemState(find("Fit selection"), view, 0)).toEqual({ enabled: false, reason: "Select a part first" })
+      expect(itemState(find("Fit selection"), view, 1)).toEqual({ enabled: true })
+      expect(itemState(find("Rotate right"), view, 0)).toEqual({ enabled: false, reason: "Select a part first" })
+      expect(itemState(find("Rotate right"), view, 2)).toEqual({ enabled: true })
+      expect(itemState(find("Fit area"), view, 0)).toEqual({ enabled: true })
+      expect(itemState(find("Snap"), view, 0)).toEqual({ enabled: true })
+    }
   })
 })

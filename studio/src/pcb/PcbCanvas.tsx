@@ -19,7 +19,8 @@ import { drawPcb, padAt } from "./pcb-draw"
 import type { Unit } from "./units"
 import { targetAt } from "./gestures"
 import { cursorFor, pointerHandlers, useCanvasGestures, type Gesture } from "./use-canvas-gestures"
-import { useNoteTool } from "./use-note-tool"
+import { useFitSelection } from "./use-fit-selection"
+import { useBoxToolState, useNoteTool } from "./use-note-tool"
 import { usePartKeys, type PartKeysInput } from "./use-part-keys"
 
 const BACKGROUND = PALETTE.background
@@ -161,7 +162,7 @@ function useBoardBounds(design: Design, boxes: PartBox[]) {
 
 /** The PCB, drawn by copperflow's own renderer under its camera, grid and tools. */
 export function PcbCanvas(props: CanvasProps) {
-  const { design, builtFrom, builtMark, buildStatus, circuit, actions, selection, onSelect, highlight, onHighlight, unit, onToggleUnit, gridStyle, gridStep: step, onGridStep: setStep, markers, activeViolation, focus, onFocused, layers, pickFilter } = props
+  const { design, builtFrom, builtMark, buildStatus, circuit, actions, selection, onSelect, highlight, onHighlight, unit, onToggleUnit, gridStyle, gridStep: step, snap, onGridStep: setStep, markers, activeViolation, focus, onFocused, layers, pickFilter } = props
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const size = useElementSize(wrapRef)
@@ -172,11 +173,13 @@ export function PcbCanvas(props: CanvasProps) {
   const bounds = useBoardBounds(design, parts.boxes)
   const { camera, setCamera, fit } = useCamera(wrapRef, size, bounds)
   useCameraFocus("pcb", focus, camera, setCamera, onFocused)
+  useFitSelection({ selection, boxes: parts.boxes, size, setCamera, notify: actions.notify })
   const common = { view: "pcb", circuit, actions, onSelect, blockerFor: parts.blockerFor } as const
   const note = useNoteTool()
+  useBoxToolState(note.which, note.disarm)
   const tool = { armed: note.tool, disarm: note.disarm }
-  const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom, selection, tool, layers: pick, filter: pickFilter, onContextMenu: props.onContextMenu })
-  const layout = useLayout(parts, step)
+  const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, snap, builtFrom, selection, tool, layers: pick, filter: pickFilter, onContextMenu: props.onContextMenu })
+  const layout = useLayout(parts, step, snap)
   const menuPlace = useKeyMenuPlace(canvasRef, selection.primary, parts.boxes, camera, size)
   const { rotateHeld } = usePcbKeys(design, cursor, layers, { ...common, selection, layout, builtMark, buildStatus, moveWaiting: gestures.pending !== undefined, fit, onHighlight, menuPlace, onContextMenu: props.onContextMenu })
   const hover = usePcbHover(design, parts.boxes, pick, pickFilter)
@@ -195,7 +198,7 @@ export function PcbCanvas(props: CanvasProps) {
     <div className="pcb-canvas" ref={wrapRef}>
       <PcbSurface canvasRef={canvasRef} size={size} cursorStyle={cursorFor(gesture, note.armed, hover.part !== undefined)} pointer={pointer} onLeave={onLeave} hint={note.hint} />
       <PcbTools unit={unit} step={step} setStep={setStep} keep={{ show: parts.autoPlaced, onKeep: () => keepAutoPlaced(design, "pcb", parts.blockerFor, actions) }} />
-      <CanvasStatus cursor={cursor} zoom={camera?.scale} unit={unit} onToggleUnit={onToggleUnit} detail={hover.pad && padLabel(design, hover.pad)} gesture={gesture} rotateHeld={rotateHeld} />
+      <CanvasStatus cursor={cursor} zoom={camera?.scale} unit={unit} onToggleUnit={onToggleUnit} detail={hover.pad && padLabel(design, hover.pad)} gesture={gesture} rotateHeld={rotateHeld} snap={snap} />
     </div>
   )
 }

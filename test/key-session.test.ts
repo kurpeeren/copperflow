@@ -462,3 +462,40 @@ describe("align through the key session", () => {
     expect(studio.notes[0]).toContain("Align needs 2")
   })
 })
+
+describe("Rotate right through the gate", () => {
+  const start = circuitOf([part("R1", 0, 0), part("R2", 4, 0)])
+
+  test("turns the group clockwise about its centre as one change", async () => {
+    const studio = bench(start, ["R1", "R2"])
+    studio.session.rotateRight(studio.input())
+    await studio.answer()
+    expect(at(studio.circuit(), "R1")).toEqual([2, 2, 270])
+    expect(at(studio.circuit(), "R2")).toEqual([2, -2, 270])
+    expect(studio.sent).toEqual(["rotate R1 and R2 by -90°"])
+  })
+
+  test("a Rotate right after a Rotate waits for the build, then turns back: the two cancel", async () => {
+    const studio = bench(start, ["R1", "R2"])
+    studio.rotate()
+    studio.session.rotateRight(studio.input())
+    await studio.answer()
+    expect(studio.sent).toHaveLength(1)
+    studio.build()
+    expect(studio.sent).toHaveLength(2)
+    await studio.answer()
+    expect(at(studio.circuit(), "R1")).toEqual([0, 0, 0])
+    expect(at(studio.circuit(), "R2")).toEqual([4, 0, 0])
+  })
+
+  test("two quick presses are held and each runs as what it was", async () => {
+    const studio = bench(start, ["R1", "R2"])
+    studio.session.rotateRight(studio.input())
+    studio.session.rotateRight(studio.input())
+    await studio.answer()
+    studio.build()
+    await studio.answer()
+    expect(studio.sent).toEqual(["rotate R1 and R2 by -90°", "rotate R1 and R2 by -90°"])
+    expect(at(studio.circuit(), "R1")).toEqual([4, 0, 180])
+  })
+})
