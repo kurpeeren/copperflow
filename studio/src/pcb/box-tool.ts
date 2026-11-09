@@ -10,7 +10,7 @@ export const NOTE_HINT = "Drag a box where the note for the agent goes. Esc or a
 export const FIT_AREA_HINT = "Drag a box to zoom to it. Esc or a right click stops."
 
 /** Arming a tool puts the other away: the one armed last is the one that is. */
-export const armBoxTool = (_current: BoxTool | null, tool: BoxTool): BoxTool => tool
+export const armBoxTool = (tool: BoxTool): BoxTool => tool
 
 export const boxToolHint = (tool: BoxTool | null): string | undefined => (tool === "note" ? NOTE_HINT : tool === "zoom" ? FIT_AREA_HINT : undefined)
 

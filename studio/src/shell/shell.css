@@ -101,7 +101,7 @@
 }
 
 .menu-item[aria-checked="true"] > span::before {
-  content: "¹3";
+  content: "\2713";
 }
 
 .menu-separator {

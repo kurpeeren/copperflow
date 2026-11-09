@@ -23,9 +23,9 @@ describe("commandDisabledReason", () => {
 
 describe("the box tools", () => {
   test("arming one puts the other away", () => {
-    expect(armBoxTool(null, "zoom")).toBe("zoom")
-    expect(armBoxTool("note", "zoom")).toBe("zoom")
-    expect(armBoxTool("zoom", "note")).toBe("note")
+    expect(armBoxTool("zoom")).toBe("zoom")
+    expect(armBoxTool("zoom")).toBe("zoom")
+    expect(armBoxTool("note")).toBe("note")
   })
 
   test("each has its hint, and only Fit area shows pressed on the toolbar", () => {

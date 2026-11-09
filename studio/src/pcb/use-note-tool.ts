@@ -19,7 +19,7 @@ export function useNoteTool(onArm?: () => void) {
   const arm = useCallback(
     (tool: BoxTool) => {
       onArm?.()
-      setWhich((current) => armBoxTool(current, tool))
+      setWhich(armBoxTool(tool))
     },
     [onArm],
   )

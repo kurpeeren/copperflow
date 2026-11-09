@@ -253,8 +253,8 @@ const EXTRA_KEYS = [
   { keys: "R", label: "Rotate" },
   { keys: "F", label: "Fit all" },
   { keys: "Esc", label: "Clear the selection, put tools away" },
-  { keys: "Arrow keys", label: "Move the selection one grid step" },
-  { keys: "Shift+Arrow keys", label: "Move the selection ten grid steps" },
+  { keys: "Arrow keys", label: "Move the selection one grid step (a tenth with Snap off)" },
+  { keys: "Shift+Arrow keys", label: "Move the selection ten grid steps (ten tenths with Snap off)" },
   { keys: "Shift+F10", label: "Open the context menu (also the menu key)" },
 ]
 
