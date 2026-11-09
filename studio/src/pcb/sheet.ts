@@ -1,5 +1,6 @@
 // The schematic sheet's drawing border: the paper size that holds the drawing, the zone labels in the band inside the
 // outer line, and the title block in the bottom-right corner. Pure geometry in sheet units (inches); sheet-draw.ts paints it.
+// The sheet is y-up like the rest of the schematic: minY is the bottom of the screen and maxY the top.
 import type { Box } from "./geometry.js"
 
 export interface SheetSize {
@@ -56,10 +57,10 @@ function sheetOn(size: SheetSize, extents: Box | undefined): Sheet {
   return { size, outer, inner, empty: extents === undefined }
 }
 
-/** The title block's rectangle on a sheet. */
+/** The title block's rectangle on a sheet: in the inner line's bottom-right corner, so on its minY edge. */
 function blockBox(sheet: Sheet): Box {
   const { inner } = sheet
-  return { minX: inner.maxX - TITLE_BLOCK_WIDTH, minY: inner.maxY - TITLE_BLOCK_HEIGHT, maxX: inner.maxX, maxY: inner.maxY }
+  return { minX: inner.maxX - TITLE_BLOCK_WIDTH, minY: inner.minY, maxX: inner.maxX, maxY: inner.minY + TITLE_BLOCK_HEIGHT }
 }
 
 const overlaps = (a: Box, b: Box): boolean => a.minX < b.maxX && b.minX < a.maxX && a.minY < b.maxY && b.minY < a.maxY
@@ -105,7 +106,10 @@ export interface ZoneLabel {
   y: number
 }
 
-/** 1, 2, 3 across the top and bottom, A, B, C down the left and right, each centred in its zone inside the band. */
+/**
+ * 1, 2, 3 left to right across the top and bottom, A, B, C from the top down the left and right, each centred in its
+ * zone inside the band. The top band comes first, then the bottom one, then the left and right columns.
+ */
 export function zoneLabels(sheet: Sheet): ZoneLabel[] {
   const { size, inner, outer } = sheet
   const labels: ZoneLabel[] = []
@@ -113,10 +117,10 @@ export function zoneLabels(sheet: Sheet): ZoneLabel[] {
   const stepY = (inner.maxY - inner.minY) / size.zonesY
   for (let i = 0; i < size.zonesX; i++) {
     const x = inner.minX + (i + 0.5) * stepX
-    labels.push({ text: String(i + 1), x, y: (outer.minY + inner.minY) / 2 }, { text: String(i + 1), x, y: (outer.maxY + inner.maxY) / 2 })
+    labels.push({ text: String(i + 1), x, y: (outer.maxY + inner.maxY) / 2 }, { text: String(i + 1), x, y: (outer.minY + inner.minY) / 2 })
   }
   for (let j = 0; j < size.zonesY; j++) {
-    const y = inner.minY + (j + 0.5) * stepY
+    const y = inner.maxY - (j + 0.5) * stepY
     const text = String.fromCharCode(65 + j)
     labels.push({ text, x: (outer.minX + inner.minX) / 2, y }, { text, x: (outer.maxX + inner.maxX) / 2, y })
   }
@@ -157,14 +161,17 @@ const ROWS: ReadonlyArray<[string, keyof TitleValues]> = [
   ["Rev", "rev"],
 ]
 
-/** The title block in the bottom-right corner of the inner line: a label cell and a value cell on each of its five rows. */
+/**
+ * The title block in the bottom-right corner of the inner line: a label cell and a value cell on each of its five rows,
+ * which read from the top down in ROWS order (Project on top, Rev at the bottom).
+ */
 export function titleBlock(sheet: Sheet, values: TitleValues): TitleBlock {
   const box = blockBox(sheet)
   const rowHeight = TITLE_BLOCK_HEIGHT / ROWS.length
   const split = box.minX + LABEL_COLUMN
   const cells = ROWS.flatMap(([label, key], i): TitleCell[] => {
-    const minY = box.minY + i * rowHeight
-    const maxY = minY + rowHeight
+    const maxY = box.maxY - i * rowHeight
+    const minY = maxY - rowHeight
     return [
       { box: { minX: box.minX, minY, maxX: split, maxY }, text: label, kind: "label" },
       { box: { minX: split, minY, maxX: box.maxX, maxY }, text: values[key], kind: "value" },

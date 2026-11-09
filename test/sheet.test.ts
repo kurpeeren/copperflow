@@ -1,11 +1,22 @@
 import { describe, expect, test } from "vitest"
 import { MIN_ZONE_LABEL_PX, showZoneLabels, ZONE_TEXT } from "../studio/src/pcb/sheet-draw.js"
 import { drawingExtents } from "../studio/src/pcb/drawing-extents.js"
+import { worldToScreen, type Box } from "../studio/src/pcb/geometry.js"
 import { firstDrawing, keepSheet, SHEET_MARGIN, SHEET_SIZES, sheetArt, sheetDate, sheetFor, sheetHolds, titleBlock, zoneDividers, zoneLabels, ZONE_BAND } from "../studio/src/pcb/sheet.js"
 
 const around = (w: number, h: number, x = 0, y = 0) => ({ minX: x, minY: y, maxX: x + w, maxY: y + h })
 const VALUES = { project: "board", page: "Schematic", file: "a.circuit.ts", date: "2026-11-09", rev: "" }
 const onGrid = (v: number) => Math.abs(v * 10 - Math.round(v * 10)) < 1e-9
+const SCREEN = { width: 800, height: 600 }
+
+/** Where a sheet's points land on screen with the sheet centred: y grows downwards there, as on the canvas. */
+function onScreen(sheet: { outer: Box }) {
+  const camera = { cx: (sheet.outer.minX + sheet.outer.maxX) / 2, cy: (sheet.outer.minY + sheet.outer.maxY) / 2, scale: 50 }
+  const at = (x: number, y: number) => worldToScreen(camera, SCREEN, { x, y })
+  /** A box's screen edges: top is the smaller y. */
+  const edges = (box: Box) => ({ left: at(box.minX, 0).x, right: at(box.maxX, 0).x, top: at(0, box.maxY).y, bottom: at(0, box.minY).y })
+  return { at, edges }
+}
 
 describe("sheetFor", () => {
   test("a small drawing gets A4", () => {
@@ -67,21 +78,41 @@ describe("zones", () => {
     expect(size && [size.zonesX, size.zonesY]).toEqual([across, down])
   })
 
-  test("labels run 1.. across the top and bottom and A.. down the sides", () => {
+  test("on screen, numbers run 1.. left to right in the top and the bottom band", () => {
     const sheet = sheetFor(around(3, 2))
-    const labels = zoneLabels(sheet)
+    const { at, edges } = onScreen(sheet)
+    const inner = edges(sheet.inner)
+    const labels = zoneLabels(sheet).map((l) => ({ text: l.text, ...at(l.x, l.y) }))
     expect(labels).toHaveLength(2 * 6 + 2 * 4)
-    const top = labels.filter((l) => l.y < sheet.inner.minY)
-    expect(top.map((l) => l.text)).toEqual(["1", "2", "3", "4", "5", "6"])
-    expect(labels.filter((l) => l.x < sheet.inner.minX).map((l) => l.text)).toEqual(["A", "B", "C", "D"])
-    expect(labels.filter((l) => l.x > sheet.inner.maxX).map((l) => l.text)).toEqual(["A", "B", "C", "D"])
+    const leftToRight = (row: typeof labels) => [...row].sort((a, b) => a.x - b.x).map((l) => l.text)
+    expect(leftToRight(labels.filter((l) => l.y < inner.top))).toEqual(["1", "2", "3", "4", "5", "6"])
+    expect(leftToRight(labels.filter((l) => l.y > inner.bottom))).toEqual(["1", "2", "3", "4", "5", "6"])
+  })
+
+  test("on screen, letters run A.. from the top down the left and the right side", () => {
+    const sheet = sheetFor(around(3, 2))
+    const { at, edges } = onScreen(sheet)
+    const inner = edges(sheet.inner)
+    const labels = zoneLabels(sheet).map((l) => ({ text: l.text, ...at(l.x, l.y) }))
+    const topDown = (column: typeof labels) => [...column].sort((a, b) => a.y - b.y).map((l) => l.text)
+    expect(topDown(labels.filter((l) => l.x < inner.left))).toEqual(["A", "B", "C", "D"])
+    expect(topDown(labels.filter((l) => l.x > inner.right))).toEqual(["A", "B", "C", "D"])
+    const zoneHeight = (inner.bottom - inner.top) / 4
+    for (const a of labels.filter((l) => l.text === "A")) {
+      expect(a.y).toBeGreaterThan(inner.top)
+      expect(a.y).toBeLessThan(inner.top + zoneHeight)
+    }
   })
 
   test("labels sit in the middle of the band and of their zone", () => {
     const sheet = sheetFor(around(3, 2))
     const first = zoneLabels(sheet)[0]
-    expect(first?.y).toBeCloseTo(sheet.outer.minY + ZONE_BAND / 2)
+    expect(first?.text).toBe("1")
+    expect(first?.y).toBeCloseTo(sheet.outer.maxY - ZONE_BAND / 2)
     expect(first?.x).toBeCloseTo(sheet.inner.minX + (sheet.inner.maxX - sheet.inner.minX) / 12)
+    const a = zoneLabels(sheet).find((l) => l.text === "A")
+    expect(a?.y).toBeCloseTo(sheet.inner.maxY - (sheet.inner.maxY - sheet.inner.minY) / 8)
+    expect(a?.x).toBeCloseTo(sheet.outer.minX + ZONE_BAND / 2)
   })
 
   test("a large sheet labels up to 24 across and P down", () => {
@@ -108,11 +139,22 @@ describe("titleBlock", () => {
   const sheet = sheetFor(around(3, 2))
   const block = titleBlock(sheet, VALUES)
 
-  test("it is 4.0 x 1.2 in the bottom-right corner of the inner line", () => {
-    expect(block.box.maxX).toBeCloseTo(sheet.inner.maxX)
-    expect(block.box.maxY).toBeCloseTo(sheet.inner.maxY)
+  test("on screen, it is 4.0 x 1.2 in the bottom-right corner of the inner line", () => {
+    const { edges } = onScreen(sheet)
+    const box = edges(block.box)
+    const inner = edges(sheet.inner)
+    expect(box.bottom).toBeCloseTo(inner.bottom)
+    expect(box.right).toBeCloseTo(inner.right)
+    expect(box.top).toBeGreaterThan((inner.top + inner.bottom) / 2)
     expect(block.box.maxX - block.box.minX).toBeCloseTo(4.0)
     expect(block.box.maxY - block.box.minY).toBeCloseTo(1.2)
+  })
+
+  test("on screen, its rows read Project, Page, File, Date and Rev from the top down", () => {
+    const { edges } = onScreen(sheet)
+    const labels = block.cells.filter((c) => c.kind === "label").map((c) => ({ text: c.text, top: edges(c.box).top }))
+    expect([...labels].sort((a, b) => a.top - b.top).map((l) => l.text)).toEqual(["Project", "Page", "File", "Date", "Rev"])
+    expect(labels[0]?.top).toBeCloseTo(edges(block.box).top)
   })
 
   test("it has five rows with the project, page, file, date and an empty Rev", () => {
@@ -125,6 +167,8 @@ describe("titleBlock", () => {
     expect(area).toBeCloseTo(4.0 * 1.2)
     for (const c of block.cells) {
       expect(c.box.minX).toBeGreaterThanOrEqual(block.box.minX - 1e-9)
+      expect(c.box.maxX).toBeLessThanOrEqual(block.box.maxX + 1e-9)
+      expect(c.box.minY).toBeGreaterThanOrEqual(block.box.minY - 1e-9)
       expect(c.box.maxY).toBeLessThanOrEqual(block.box.maxY + 1e-9)
     }
   })
@@ -173,10 +217,18 @@ describe("keepSheet", () => {
     expect(small.size.name).toBe("A3")
   })
 
-  test("a drawing under the title block is not held", () => {
+  test("a drawing under the title block, in the bottom-right corner, is not held", () => {
     const first = sheetFor(around(3, 2))
-    const under = { minX: first.inner.maxX - 2, minY: first.inner.maxY - 0.5, maxX: first.inner.maxX - 1, maxY: first.inner.maxY - 0.2 }
+    const under = { minX: first.inner.maxX - 2, minY: first.inner.minY + 0.2, maxX: first.inner.maxX - 1, maxY: first.inner.minY + 0.5 }
     expect(sheetHolds(first, under)).toBe(false)
+    expect(keepSheet(first, under)).not.toBe(first)
+  })
+
+  test("the top-right corner is free paper", () => {
+    const first = sheetFor(around(3, 2))
+    const corner = { minX: first.inner.maxX - 2, minY: first.inner.maxY - 1, maxX: first.inner.maxX - 1, maxY: first.inner.maxY - 0.6 }
+    expect(sheetHolds(first, corner)).toBe(true)
+    expect(keepSheet(first, corner)).toBe(first)
   })
 
   test("without a drawing the previous sheet stays, or an empty A4 appears", () => {
