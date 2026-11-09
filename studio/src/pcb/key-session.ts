@@ -3,7 +3,7 @@
 // the parts, so two quick presses turn the group twice about the same centre. Align and distribute wait at the same
 // gate (each is computed from the parts' positions), so two quick ones do not scatter the parts. After an Undo or Redo from the app
 // (history-writes.ts) both wait for the build that read it. On the schematic an arrow move or an align carries the
-// corners of the wires at the moved pins in its own edit (wire-follow.ts). use-key-edits.ts holds one session per
+// corners of the wires at the moved pins in its own edit, and an arrow move carries the selected wires (wire-follow.ts). use-key-edits.ts holds one session per
 // canvas. Plain TypeScript with .js imports, so the tests can run it.
 import type { WriteOutcome } from "../history-writes.js"
 import type { Selection } from "../selection.js"
@@ -136,11 +136,12 @@ function press(state: State, events: SessionEvents, input: EditInput, what: Pres
   tell(state, events)
 }
 
-/** Writes the burst's total offset from where it began; when that resolves, sends what was merged meanwhile. */
+/** Writes the burst's total offset from where it began, its parts and wires; when that resolves, sends what was merged meanwhile. */
 function sendNudge(state: State, events: SessionEvents, input: EditInput, total: Point): void {
   const { burst, layout } = state
   if (!burst || !layout) return
-  const plan = withFollowingWires(nudgePlan(burst.base, burst.names, input.view, layout, total, input.blockerFor), burst.base, input.follow)
+  const parts = nudgePlan(burst.base, burst.names, input.view, layout, total, input.blockerFor)
+  const plan = withFollowingWires(parts, burst.base, input.follow, { wires: burst.wires ?? [], offset: total })
   void send(state, events, plan, input).then((ok) => {
     if (state.burst !== burst && state.burst?.base !== burst.base) return
     const next = state.burst ? settleNudge(state.burst, ok) : undefined
@@ -151,7 +152,7 @@ function sendNudge(state: State, events: SessionEvents, input: EditInput, total:
 
 /** Moves the selection by `delta`: the press joins the burst, or begins one from the circuit as it is now. */
 function arrow(state: State, events: SessionEvents, input: EditInput, delta: Point): void {
-  const step = pressNudge(state.burst, input.circuit, input.selection.names, delta)
+  const step = pressNudge(state.burst, input.circuit, input.selection.names, delta, input.selection.wires)
   state.burst = step.burst
   if (step.fresh) state.layout = input.layout
   if (step.send) sendNudge(state, events, input, step.send)
@@ -180,12 +181,12 @@ export function keySession(events: SessionEvents): KeySession {
   return {
     nudge(input, hit) {
       const direction = nudgeDirection(hit.action)
-      if (!direction || input.selection.size === 0) return
+      if (!direction || input.selection.total === 0) return
       const delta = nudgeOffset(direction, input.layout.step, hit.steps ?? 1, input.layout.snap !== false)
       const press = pressArrow(state.gate, input)
       state.gate = press.gate
       if (press.send) arrow(state, events, input, delta)
-      else state.arrows = holdNudge(state.arrows, input.selection.names, delta)
+      else state.arrows = holdNudge(state.arrows, input.selection.names, delta, input.selection.wires)
       tell(state, events)
     },
     rotate(input, repeat) {
@@ -201,7 +202,7 @@ export function keySession(events: SessionEvents): KeySession {
       const step = releaseTurn(state.gate, input.selection.names, input)
       state.gate = step.gate
       if (step.send) perform(state, events, input, state.queue.shift() ?? "rotate")
-      const arrows = releaseArrows(state.gate, state.arrows, input.selection.names, input)
+      const arrows = releaseArrows(state.gate, state.arrows, input.selection.names, input, input.selection.wires)
       state.gate = arrows.gate
       state.arrows = arrows.held
       if (arrows.send) arrow(state, events, input, arrows.send)

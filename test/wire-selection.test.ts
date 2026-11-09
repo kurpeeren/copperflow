@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { deleteTarget, NOTHING_TO_DELETE, shownSelection, wireAfterBuild } from "../studio/src/pcb/wire-selection.js"
+import { shownSelection, wireAfterBuild } from "../studio/src/pcb/wire-selection.js"
 import { Selection } from "../studio/src/selection.js"
 
 const p = (x: number, y: number) => ({ x, y })
@@ -37,6 +37,13 @@ describe("the selection after a build", () => {
     expect(wireAfterBuild(sel, undefined, [engine([p(9, 9), p(9, 8)])])).toBe(sel)
     expect(wireAfterBuild(parts, [hand()], [])).toBe(parts)
   })
+
+  test("with parts and several wires, only the wires gone or re-pointed leave; the parts and the rest stay", () => {
+    const mix = parts.addWires([HAND, ENGINE])
+    expect(wireAfterBuild(mix, [hand(), engine()], [engine([p(3, 5), p(6, 5)])])).toMatchObject({ names: ["R1"], wires: [] })
+    expect(wireAfterBuild(mix, [hand(), engine()], [hand(), engine([p(3, 5), p(6, 5)])])).toMatchObject({ names: ["R1"], wires: [HAND] })
+    expect(wireAfterBuild(mix, [hand(), engine()], [hand(), engine()])).toBe(mix)
+  })
 })
 
 describe("the selection shown", () => {
@@ -52,18 +59,15 @@ describe("the selection shown", () => {
     expect(shownSelection(wire, { view: "pcb", wires: [HAND] })).toBe(Selection.none)
   })
 
+  test("with parts and wires, the PCB shows the parts and the schematic the wires it draws", () => {
+    const mix = Selection.none.add(["R1"]).addWires([HAND, ENGINE])
+    expect(shownSelection(mix, { view: "pcb", wires: [HAND, ENGINE] })).toMatchObject({ names: ["R1"], wires: [] })
+    expect(shownSelection(mix, { view: "schematic", wires: [ENGINE] })).toMatchObject({ names: ["R1"], wires: [ENGINE] })
+  })
+
   test("parts the loaded circuit does not have yet are not shown; without a circuit every part is", () => {
     const two = Selection.none.add(["R1", "R9"])
     expect(shownSelection(two, { view: "pcb", parts: ["R1", "R2"] }).names).toEqual(["R1"])
     expect(shownSelection(two, { view: "schematic" })).toBe(two)
-  })
-})
-
-describe("what Delete removes", () => {
-  test("the selected wire first, else the selected parts, else nothing, with what to do", () => {
-    expect(deleteTarget(Selection.none.onlyWire(HAND))).toEqual({ kind: "wire", id: HAND })
-    expect(deleteTarget(Selection.none.add(["R1", "C1"]))).toEqual({ kind: "parts", names: ["R1", "C1"] })
-    expect(deleteTarget(Selection.none)).toEqual({ kind: "nothing", message: NOTHING_TO_DELETE })
-    expect(NOTHING_TO_DELETE).toBe("Select a part or a wire first.")
   })
 })

@@ -1,7 +1,7 @@
-// What the selected schematic wire's commands do: Delete removes its trace, Remove corners empties the trace's
-// corners, Highlight net lights its net, and the Wire section of Properties describes it. Each answers with the edit
-// (one history entry) or the reason it cannot run. A wire Studio draws on its own has no trace, so it says which net
-// draws it. Pure; only types come from the engine.
+// What the selected schematic wires' commands do: Delete removes their traces (wiresRemoval, with the parts going
+// too), Remove corners empties a trace's corners, Highlight net lights a wire's net, and the Wire section of Properties
+// describes one. Each answers with the edit (one history entry) or the reason it cannot run. A wire Studio draws on its
+// own has no trace, so it says which net draws it. Pure; only types come from the engine.
 import type { Edit } from "../../../src/core/types.js"
 import type { Design } from "../../../src/engine/design.js"
 import { netLabel } from "../net-rows.js"
@@ -120,6 +120,56 @@ function reasonsFor(design: Design, shape: WireShape, locked: ReadonlySet<string
 export function wireRemoval(design: Design, source: SourceCircuit, wireId: string, locked: ReadonlySet<string> = NO_LOCKS): WireEdit {
   const shape = wireOf(design, source, wireId)
   return shape ? removalFor(design, shape, locked) : { blocked: WIRE_GONE }
+}
+
+/**
+ * A reason about one wire, said where several things are named: "This wire ..." becomes "The wire from A to B ...",
+ * and any other reason is put after the wire's name.
+ */
+export function namedWireReason(design: Design, shape: WireShape | undefined, reason: string): string {
+  const described = shape ? describeWire(design, shape) : "the wire"
+  const name = described.charAt(0).toUpperCase() + described.slice(1)
+  return reason.startsWith("This wire") ? `${name}${reason.slice("This wire".length)}` : `${name}: ${reason}`
+}
+
+/** What Delete does to the selected wires: the edits, the wires they remove (and their names), those left to their parts, and why the rest stay. */
+export interface WiresRemoval {
+  edits: Edit[]
+  removed: string[]
+  /** How the history names each wire removed. */
+  names: string[]
+  /** The wires whose trace ends on a part being removed: the part takes them. */
+  withParts: string[]
+  skipped: string[]
+}
+
+type WireOutcome = { id: string } & ({ kind: "withParts" } | { kind: "removed"; edits: Edit[]; name: string } | { kind: "skipped"; reason: string })
+
+/** Whether a wire ends on one of `parts`, so it goes when they go: a trace's or a wire Studio draws between pins. */
+const endsOn = (shape: WireShape, parts: ReadonlySet<string>): boolean => shape.writer.kind !== "none" && shape.writer.components.some((name) => parts.has(name))
+
+function wireOutcome(design: Design, source: SourceCircuit, id: string, parts: ReadonlySet<string>, locked: ReadonlySet<string>): WireOutcome {
+  const shape = wireOf(design, source, id)
+  if (shape && endsOn(shape, parts)) return { id, kind: "withParts" }
+  const removal = shape ? removalFor(design, shape, locked) : { blocked: WIRE_GONE }
+  if ("blocked" in removal) return { id, kind: "skipped", reason: namedWireReason(design, shape, removal.blocked) }
+  return { id, kind: "removed", edits: removal.edits, name: shape ? describeWire(design, shape) : "the wire" }
+}
+
+/**
+ * Delete on several wires while `parts` are removed with them: each wire's trace goes, in their order, except a wire
+ * that ends on one of those parts (core removes a part's traces with it) and a wire that cannot go, which is named.
+ */
+export function wiresRemoval(design: Design, source: SourceCircuit, ids: readonly string[], parts: ReadonlySet<string>, locked: ReadonlySet<string> = NO_LOCKS): WiresRemoval {
+  const outcomes = ids.map((id) => wireOutcome(design, source, id, parts, locked))
+  const removed = outcomes.flatMap((outcome) => (outcome.kind === "removed" ? [outcome] : []))
+  return {
+    edits: removed.flatMap((outcome) => outcome.edits),
+    removed: removed.map((outcome) => outcome.id),
+    names: removed.map((outcome) => outcome.name),
+    withParts: outcomes.flatMap((outcome) => (outcome.kind === "withParts" ? [outcome.id] : [])),
+    skipped: outcomes.flatMap((outcome) => (outcome.kind === "skipped" ? [outcome.reason] : [])),
+  }
 }
 
 /** Remove corners on a selected wire: empty its trace's corners, so Studio draws it with at most one elbow. */

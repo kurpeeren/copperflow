@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import type { NetLabel } from "../src/engine/schematic.js"
-import { allLocked, contextItems, contextShape, contextSelection, contextSize, placeMenu, type ContextEntry } from "../studio/src/shell/context-menu.js"
+import { allLocked, contextItems, contextShape, contextSelection, contextSize, placeMenu, WIRE_IN_GROUP, type ContextEntry } from "../studio/src/shell/context-menu.js"
 import { ENGINE } from "../studio/src/shell/menus.js"
 import { commandOwner } from "../studio/src/shell/command-owners.js"
 import { createTargetActions, latestHandler } from "../studio/src/shell/target-actions.js"
@@ -58,6 +58,12 @@ describe("context menu items", () => {
     expect(items).toContainEqual({ label: "Delete", command: "delete", shortcut: "Delete" })
   })
 
+  test("a wire selected with other things: Delete acts on all of them, Remove corners waits for the wire alone", () => {
+    const items = contextItems(wire, { allLocked: false, selected: 1, wire: WIRE_IN_GROUP })
+    expect(items).toContainEqual({ label: "Delete", command: "delete", shortcut: "Delete" })
+    expect(items).toContainEqual({ label: "Remove corners", command: "removeCorners", pending: "Select this wire alone to remove its corners" })
+  })
+
   test("a wire's Remove corners and Delete are disabled with the reason they cannot run", () => {
     const items = contextItems(wire, { allLocked: false, selected: 0, wire: { remove: STUDIO_WIRE, removeCorners: STUDIO_WIRE } })
     expect(items).toContainEqual({ label: "Remove corners", command: "removeCorners", pending: STUDIO_WIRE })
@@ -111,9 +117,13 @@ describe("the selection on right click", () => {
   test("a wire is selected alone, and the parts go", () => {
     const current = Selection.none.add(["R1", "R2"])
     const after = contextSelection(current, wire)
-    expect(after.wire).toBe(wire.id)
+    expect(after.wires).toEqual([wire.id])
     expect(after.names).toEqual([])
     expect(contextSelection(after, wire)).toBe(after)
+  })
+  test("a wire selected with parts or other wires keeps the whole selection, as a selected part does", () => {
+    const current = Selection.none.add(["R1"]).addWires([wire.id])
+    expect(contextSelection(current, wire)).toBe(current)
   })
   test("a label or empty canvas leaves the selection alone", () => {
     const current = Selection.none.add(["R1"])

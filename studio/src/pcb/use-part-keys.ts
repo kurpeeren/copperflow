@@ -1,8 +1,9 @@
 // The keys both canvases share: F and K fit, R and Space turn the selection about its centre, the arrows move it, Delete or Backspace removes them, H
 // highlights the net under the pointer (the menu's Highlight net, the selected parts' nets), and Shift+F10 or the menu
-// key opens the context menu. What a key means is decided in canvas-keys.ts; what Rotate and Delete do to several
-// parts, in group-edits.ts. Ctrl+A is the app's. A wire selected on the schematic is deleted and highlighted through
-// the schematic's own `wire` (use-sheet-wires.ts), on the same keys and commands.
+// key opens the context menu. What a key means is decided in canvas-keys.ts; what Rotate does to several parts, in
+// group-edits.ts; what Delete does to parts and wires, in delete-plan.ts. Ctrl+A is the app's. The wires selected on
+// the schematic are deleted and highlighted through the schematic's own `wire` (use-sheet-wires.ts), on the same keys
+// and commands.
 import { useEffect } from "react"
 import type { CircuitData } from "../api"
 import type { Actions } from "../App"
@@ -11,7 +12,8 @@ import type { PartCommand } from "../shell/command-owners"
 import { useCommands } from "../shell/commands"
 import { ALIGN_COMMANDS, isAlignCommand, type AlignCommand } from "./align-rules"
 import { keyAction, keyInput, type KeyResult } from "./canvas-keys"
-import { removeEach, removeQuestion, sendGroupEdit, type Layout } from "./group-edits"
+import { deletePlan } from "./delete-plan"
+import { sendGroupEdit, type Layout } from "./group-edits"
 import { claimsKey, type BuildStatus } from "./key-burst"
 import { useKeyEdits, type KeyEdits } from "./use-key-edits"
 import { selectionHighlight, type Highlight } from "./highlight"
@@ -19,7 +21,6 @@ import type { Point } from "./geometry"
 import type { View } from "./positions"
 import type { ContextTarget } from "./press"
 import type { WireKeys } from "./use-sheet-wires"
-import { deleteTarget } from "./wire-selection"
 import type { WireFollow } from "./wire-follow"
 
 export interface PartKeysInput {
@@ -50,25 +51,24 @@ export interface PartKeysInput {
   /** Where Shift+F10 or the menu key opens the context menu (key-menu.ts), and the way to open it. */
   menuPlace(): { target: ContextTarget; at: Point }
   onContextMenu(target: ContextTarget, at: Point): void
-  /** The schematic's selected wire: its Delete and its net. The PCB has none. */
+  /** The schematic's selected wires: their Delete and their nets. The PCB has none. */
   wire?: WireKeys
   /** The schematic's sheet, whose hand-drawn wires follow the parts the arrows and align move. The PCB has none. */
   follow?: WireFollow
 }
 
 /**
- * Delete (wire-selection.ts says on what): the selected wire's trace, or every selected part that may go, in one
- * change, after asking for parts; the parts that may not go are named and stay selected. With nothing selected the key
- * does nothing and a command says what to select.
+ * Delete (delete-plan.ts): the selected wires' traces and every selected part that may go, in one change, after asking
+ * when parts go; what may not go is named and stays selected. With nothing selected the key does nothing and a command
+ * says what to select.
  */
 function removeSelection(input: PartKeysInput, fromKey: boolean): void {
   if (input.paused) return
-  const target = deleteTarget(input.selection)
-  if (target.kind === "wire") return input.wire?.remove(target.id)
-  if (target.kind === "nothing") return fromKey ? undefined : input.actions.notify(target.message)
-  const plan = removeEach(target.names, input.blockerFor)
-  if (plan.edits.length > 0 && !window.confirm(removeQuestion(plan.parts))) return
-  void sendGroupEdit(plan, input.actions).then((ok) => ok && input.onSelect((current) => current.without(plan.parts)))
+  const result = deletePlan(input.selection, input.blockerFor, input.wire?.removal)
+  if ("message" in result) return fromKey ? undefined : input.actions.notify(result.message)
+  const { plan, wires, question } = result
+  if (question && !window.confirm(question)) return
+  void sendGroupEdit(plan, input.actions).then((ok) => ok && input.onSelect((current) => current.without(plan.parts).withoutWires(wires)))
 }
 
 /** Runs the canvas actions of a key press: fit, highlight, rotate, nudge, align, delete. */
@@ -127,7 +127,7 @@ export function usePartKeys(input: PartKeysInput): { rotateHeld: boolean } {
     const onKey = (event: KeyboardEvent) => {
       const hit = keyAction(keyInput(event), { view, drawing: paused })
       if (!hit) return
-      if (claimsKey(hit.action, selection.size, paused, hit.preventDefault)) event.preventDefault()
+      if (claimsKey(hit.action, selection.size, paused, hit.preventDefault, selection.total)) event.preventDefault()
       runKey(keys, hit, edits, event.repeat)
     }
     window.addEventListener("keydown", onKey)

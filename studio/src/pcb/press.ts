@@ -1,7 +1,7 @@
 // What a pointer press on a canvas starts, from its button, its modifiers, what is under the pointer and the armed
 // tool, and what a release that did not move then does. EasyEDA's mouse: a left drag on empty canvas draws a
-// selection box, a left drag on a selected part moves the whole selection, and the right button pans or, released
-// without moving, opens the context menu.
+// selection box, a left drag on a selected part or wire moves the whole selection, and the right button pans or,
+// released without moving, opens the context menu.
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import { togglesSelection } from "../selection.js"
 
@@ -14,10 +14,10 @@ export interface Press {
 }
 
 /**
- * What is under the pointer at a press: a part, one already selected, a net label, a wire, a corner handle of the
- * selected wire (schematic) or nothing.
+ * What is under the pointer at a press: a part, one already selected, a net label, a wire, a wire selected with other
+ * things (parts or other wires), a corner handle of the wire selected alone (schematic) or nothing.
  */
-export type Under = "part" | "selectedPart" | "label" | "wire" | "wireCorner" | "empty"
+export type Under = "part" | "selectedPart" | "label" | "wire" | "selectedWire" | "wireCorner" | "empty"
 
 /**
  * The armed canvas tool, as far as a press is concerned: Place → Note box and View → Fit area take every left press; a schematic Place
@@ -31,15 +31,17 @@ export type ArmedTool = "note" | "zoom" | "place" | null
  * - "note": with the Note box tool armed, a left drag draws the note box.
  * - "zoom": with the Fit area tool armed, a left drag draws the box the camera fits.
  *   With a Place tool armed, a left press on empty canvas is a "pan" (its click is the tool's, on a pin).
- * - "toggle": Shift or Ctrl on a part toggles it in or out of the selection and starts nothing.
+ * - "toggle": Shift or Ctrl on a part or a wire toggles it in or out of the selection and starts nothing.
  * - "move": on a part not selected: selects it alone and drags it.
- * - "moveGroup": on a selected part: drags the whole selection; released without moving, selects that part alone.
+ * - "moveGroup": on a selected part, or a wire selected with other things: drags the whole selection; released without
+ *   moving, selects that part or wire alone.
  * - "label": on a net label: drags it.
- * - "wireSegment": on a schematic wire: selects that wire alone (the parts go) and drags the segment under the press.
- * - "wireCorner": on a corner handle of the selected wire: drags that corner.
+ * - "wireSegment": on a schematic wire not selected, or selected alone: selects it alone (the parts go) and drags the
+ *   segment under the press.
+ * - "wireCorner": on a corner handle of the wire selected alone: drags that corner.
  * - "wire": on a wire or its corner handle with a Place tool armed: selects the wire and starts nothing.
  * - "box": on empty canvas: a selection box that replaces the selection; released without moving, clears it.
- * - "addBox": Shift or Ctrl anywhere but on a part: a selection box that adds parts to the selection.
+ * - "addBox": Shift or Ctrl anywhere but on a part or a wire: a selection box that adds to the selection.
  * - "none": any other button.
  * A wire's drag reshapes it; released without moving, the press has only selected it.
  */
@@ -59,6 +61,9 @@ export type GestureStart =
   | "addBox"
   | "none"
 
+/** What Shift or Ctrl toggles in or out of the selection: a part or a wire, also through its corner handle. */
+const TOGGLES: ReadonlySet<Under> = new Set(["part", "selectedPart", "wire", "selectedWire", "wireCorner"])
+
 const LEFT = 0
 const MIDDLE = 1
 const RIGHT = 2
@@ -73,10 +78,9 @@ export function gestureStart(press: Press, under: Under, armed: ArmedTool): Gest
   if (armed === "note") return "note"
   if (armed === "zoom") return "zoom"
   if (armed === "place" && under === "empty") return "pan"
-  const onPart = under === "part" || under === "selectedPart"
-  if (togglesSelection(press)) return onPart ? "toggle" : "addBox"
+  if (togglesSelection(press)) return TOGGLES.has(under) ? "toggle" : "addBox"
   if (under === "part") return "move"
-  if (under === "selectedPart") return "moveGroup"
+  if (under === "selectedPart" || under === "selectedWire") return "moveGroup"
   if (under === "wire" || under === "wireCorner") return armed === null ? WIRE_PRESS[under] : "wire"
   return under === "label" ? "label" : "box"
 }

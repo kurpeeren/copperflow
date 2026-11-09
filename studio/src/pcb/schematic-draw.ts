@@ -21,8 +21,8 @@ export interface SchematicDrawOptions {
   pending?: readonly (readonly Point[])[]
   /** A net label or ground or power symbol drawn dashed at `at`, in place of where the layout has it; `hideWire` is the wire it replaces. */
   movingLabels?: readonly { id: string; at: Point; side: NetLabel["side"]; hideWire?: string }[]
-  /** The selected wire's id: it is drawn in the selection colour, over a highlight. */
-  selectedWire?: string
+  /** The selected wires' ids: they are drawn in the selection colour, over a highlight. */
+  selectedWires?: readonly string[]
   /** One net to highlight, as on the PCB: its wires and labels are lit, everything else is dimmed. `pins` are the pins on it: they are marked, and their symbols are not dimmed. */
   highlight?: { net: string; pins?: readonly string[]; aliases?: readonly string[] }
   /** Labels sent and waiting for their build, drawn dashed where they will be. */
@@ -181,7 +181,7 @@ function drawWires(ctx: Ctx, layout: SchematicLayout, options: SchematicDrawOpti
   ctx.lineWidth = line(WIRE_WIDTH)
   for (const wire of layout.wires) {
     if (options.movingLabels?.some((m) => m.hideWire === wire.id)) continue
-    const tone = wire.id === options.selectedWire ? { color: theme.selection, alpha: 1 } : toneOf(wire.net, options.highlight)
+    const tone = options.selectedWires?.includes(wire.id) ? { color: theme.selection, alpha: 1 } : toneOf(wire.net, options.highlight)
     ctx.strokeStyle = tone.color ?? theme.wire
     ctx.globalAlpha = tone.alpha
     path(ctx, wire.points)

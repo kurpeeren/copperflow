@@ -60,7 +60,7 @@ function usePruneSelection(circuit: CircuitData | undefined, select: (change: Se
   }, [circuit, select])
 }
 
-/** Drops a selected wire a rebuild took away or re-pointed (wire-selection.ts), so it is not selected again when it comes back. */
+/** Drops the selected wires a rebuild took away or re-pointed (wire-selection.ts), so they are not selected again when they come back. */
 function usePruneWire(design: Design | undefined, select: (change: SelectionChange) => void): void {
   const before = useRef<Design | undefined>(undefined)
   useEffect(() => {
@@ -156,7 +156,9 @@ function useStudio() {
   )
   const pcb = build.design?.pcb
   const pickLayers = useMemo(() => (tab === "pcb" && pcb ? pickLayersOf(pcb.parts, workspace.layerVisibility) : undefined), [tab, pcb, workspace.layerVisibility])
-  const runCommand = useAppCommands({ file, view: tab, setView: setTab, selection, select, circuit, actions, pickLayers, pickFilter: workspace.pickFilter, workspace, openChecks, openFind: find.open, openDialog: setDialog })
+  const sheet = build.design?.schematic
+  const sheetWires = useMemo(() => (tab === "schematic" && sheet ? sheet.wires.map((wire) => wire.id) : []), [tab, sheet])
+  const runCommand = useAppCommands({ file, view: tab, setView: setTab, selection, select, circuit, actions, pickLayers, pickFilter: workspace.pickFilter, sheetWires, workspace, openChecks, openFind: find.open, openDialog: setDialog })
   return { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, actions, place, checks, find, openChecks, openDocument, runCommand }
 }
 

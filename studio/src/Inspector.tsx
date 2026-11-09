@@ -3,7 +3,7 @@ import type { BuildState, CircuitData, Design, Literal, PartInfo, PartsData } fr
 import type { Actions } from "./App"
 import { BomSection } from "./BomSection"
 import { checkSummary, type CheckCounts } from "./checks-list"
-import { FIRST_FIELD, groupActionEnabled, partLockButton, propertiesView, SUGGESTED_PROPS, type PropertiesView } from "./inspector-sections"
+import { FIRST_FIELD, groupActionEnabled, partLockButton, propertiesKind, propertiesView, SUGGESTED_PROPS, type PropertiesView } from "./inspector-sections"
 import { GroupView } from "./InspectorGroup"
 import { WireView } from "./InspectorWire"
 import { MarkForm, NewPropRow, PropRow, Row, Section } from "./InspectorRows"
@@ -59,14 +59,19 @@ function useFieldFocus(panel: RefObject<HTMLElement | null>, requested: boolean,
   }, [panel, requested, done])
 }
 
-/** The board's state with nothing selected, a part's properties with one, the shared actions with several, a wire's own. */
+/**
+ * The board's state with nothing selected, a part's properties with one, a wire's own with one wire alone, and the
+ * counts by kind with the shared actions for several (parts, wires or both).
+ */
 export function Inspector(props: Props) {
   const panel = useRef<HTMLElement>(null)
   useFieldFocus(panel, props.focusField, props.onFieldFocused)
   const parts = selectedParts(props.circuit, props.selection)
   const [part] = parts
-  const library = parts.length === 1 && part ? props.parts.library.find((p) => p.component === part.tag) : undefined
-  const view = propertiesView(parts, { library: library !== undefined })
+  const { wireCount, soleWire: wire } = props.selection
+  const kind = propertiesKind(parts.length, wireCount)
+  const library = kind === "part" && part ? props.parts.library.find((p) => p.component === part.tag) : undefined
+  const view = propertiesView(parts, { library: library !== undefined }, wireCount)
   const locks = { locked: new Set(props.circuit.annotations.locks.map((lock) => lock.part)), violated: new Set(props.circuit.violations.map((v) => v.part)) }
   // Collapsed sections are kept by title for as long as Studio is open.
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
@@ -77,14 +82,13 @@ export function Inspector(props: Props) {
       return next
     })
   const clear = () => props.onSelect((current) => current.clear())
-  const { wire } = props.selection
   const design = props.build.design
   return (
     <aside ref={panel} className="panel right" id={props.hidden ? undefined : stripPanelId("right")} role="tabpanel" aria-labelledby={sideTabId("properties")} hidden={props.hidden}>
-      {wire !== undefined && design && <WireView design={design} circuit={props.circuit} wire={wire} locked={locks.locked} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
-      {parts.length > 1 && <GroupView view={view} parts={parts} locks={locks} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
-      {parts.length === 1 && part && <PartView {...props} view={view} collapsed={collapsed} toggle={toggle} part={part} locks={locks} />}
-      {parts.length === 0 && wire === undefined && <BoardView {...props} view={view} collapsed={collapsed} toggle={toggle} />}
+      {kind === "wire" && wire !== undefined && design && <WireView design={design} circuit={props.circuit} wire={wire} locked={locks.locked} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
+      {kind === "group" && <GroupView view={view} parts={parts} wires={wireCount} locks={locks} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
+      {kind === "part" && part && <PartView {...props} view={view} collapsed={collapsed} toggle={toggle} part={part} locks={locks} />}
+      {kind === "board" && <BoardView {...props} view={view} collapsed={collapsed} toggle={toggle} />}
     </aside>
   )
 }

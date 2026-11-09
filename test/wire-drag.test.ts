@@ -124,6 +124,11 @@ describe("the selected wire's corner handle, as a pick", () => {
     expect(handleUnder(drag, { selection: Selection.none, armed: null }, p(2.5, 1), 10)).toBeUndefined()
   })
 
+  test("is not, while the wire is selected with parts or other wires: handles are for a wire selected alone", () => {
+    expect(handleUnder(drag, { selection: selected.add(["R1"]), armed: null }, p(2.5, 1), 10)).toBeUndefined()
+    expect(handleUnder(drag, { selection: selected.addWires(["wire:B"]), armed: null }, p(2.5, 1), 10)).toBeUndefined()
+  })
+
   test("is not, with Wires off in the Filter or the Note box or Fit area tool armed", () => {
     expect(handleUnder(drag, { selection: selected, armed: null, filter: { ...ALL_PICKABLE, wires: false } }, p(2.5, 1), 10)).toBeUndefined()
     expect(handleUnder(drag, { selection: selected, armed: "note" }, p(2.5, 1), 10)).toBeUndefined()

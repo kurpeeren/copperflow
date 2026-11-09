@@ -4,11 +4,11 @@ import { useCallback, useMemo, useState } from "react"
 import type { CircuitData } from "../api"
 import { canonicalNet, type Highlight } from "../pcb/highlight"
 import type { Point } from "../pcb/geometry"
-import { wireReasons } from "../pcb/wire-actions"
+import { wireReasons, type WireReasons } from "../pcb/wire-actions"
 import type { ContextTarget } from "../pcb/press"
 import type { Design } from "../../../src/engine/design.js"
 import type { Selection, SelectionChange } from "../selection"
-import { allLocked, contextItems, contextSelection, type ContextEntry, type ContextItem } from "./context-menu"
+import { allLocked, contextItems, contextSelection, WIRE_IN_GROUP, type ContextEntry, type ContextItem } from "./context-menu"
 import type { CommandId } from "./menus"
 import { targetActions } from "./target-actions"
 
@@ -36,6 +36,15 @@ export interface ContextMenuState {
   runItem(item: ContextItem): void
 }
 
+/**
+ * On a wire selected alone, why its Delete and Remove corners cannot run; on one selected with other things, Delete acts
+ * on all of them and Remove corners waits for the wire alone.
+ */
+function wireMenuReasons(id: string, after: Selection, design: Design | undefined, circuit: CircuitData | undefined, locked: ReadonlySet<string>): WireReasons | undefined {
+  if (after.total > 1) return WIRE_IN_GROUP
+  return design && circuit ? wireReasons(design, circuit, id, locked) : undefined
+}
+
 export function useContextMenu(input: Input): ContextMenuState {
   const { circuit, design, selection, onSelect, run, openProperties, onHighlight } = input
   const [request, setRequest] = useState<Request | null>(null)
@@ -53,8 +62,7 @@ export function useContextMenu(input: Input): ContextMenuState {
     // The selection the click leaves, which the items act on.
     const after = contextSelection(selection, request.target)
     const { target } = request
-    // On a wire, Delete and Remove corners show why they cannot run.
-    const wire = target.kind === "wire" && design && circuit ? wireReasons(design, circuit, target.id, locked) : undefined
+    const wire = target.kind === "wire" ? wireMenuReasons(target.id, after, design, circuit, locked) : undefined
     return { entries: contextItems(target, { allLocked: allLocked(after.names, locked), selected: after.size, wire }), at: request.at }
   }, [request, circuit, design, selection])
   const runItem = useCallback(

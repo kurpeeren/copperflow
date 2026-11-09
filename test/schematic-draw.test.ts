@@ -204,12 +204,20 @@ describe("schematic colours", () => {
 
   test("a selected wire is drawn in the selection colour, over a highlight; the others keep theirs", () => {
     const id = layout.wires[0]?.id ?? ""
-    const rec = draw({ selectedWire: id })
+    const rec = draw({ selectedWires: [id] })
     expect(schematicTheme.selection).toBe("#FF0000")
     expect(strokes(rec, schematicTheme.selection)).toHaveLength(1)
     expect(strokes(rec, schematicTheme.wire)).toHaveLength(layout.wires.length - 1)
-    const lit = draw({ selectedWire: id, highlight: { net: layout.wires[0]?.net ?? "" } })
+    const lit = draw({ selectedWires: [id], highlight: { net: layout.wires[0]?.net ?? "" } })
     expect(strokes(lit, schematicTheme.selection).map((r) => r.globalAlpha)).toEqual([1])
+  })
+
+  test("every selected wire is drawn in the selection colour", () => {
+    const ids = layout.wires.slice(0, 2).map((wire) => wire.id)
+    expect(ids).toHaveLength(2)
+    const rec = draw({ selectedWires: ids })
+    expect(strokes(rec, schematicTheme.selection)).toHaveLength(2)
+    expect(strokes(rec, schematicTheme.wire)).toHaveLength(layout.wires.length - 2)
   })
 
   test("a lit net is drawn in the schematic highlight colour, never the PCB's", () => {

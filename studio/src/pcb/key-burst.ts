@@ -8,6 +8,8 @@ export interface Burst<Base extends object = object> {
   /** The circuit (or anything else that changes identity when the file reloads) the burst began on. */
   base: Base
   names: readonly string[]
+  /** The selected wires the burst carries along, when there are any. */
+  wires?: readonly string[]
   /** The sum of every press so far. */
   total: Point
   inFlight: boolean
@@ -25,9 +27,17 @@ export interface BurstStep<Base extends object> {
 
 const sum = (a: Point, b: Point): Point => ({ x: a.x + b.x, y: a.y + b.y })
 
-/** A press of `delta`. It joins the burst while the edit is in flight or the circuit has not reloaded; else it starts a new one. */
-export function pressNudge<Base extends object>(burst: Burst<Base> | undefined, base: Base, names: readonly string[], delta: Point): BurstStep<Base> {
-  const same = burst !== undefined && burst.names.length === names.length && burst.names.every((name, i) => name === names[i])
+const sameNames = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((name, i) => name === b[i])
+
+/** The wires as a burst or held presses keep them: only when there are any. */
+const withWires = (wires: readonly string[]): { wires?: readonly string[] } => (wires.length > 0 ? { wires } : {})
+
+/**
+ * A press of `delta` on the parts `names` and the selected `wires`. It joins the burst while the edit is in flight or
+ * the circuit has not reloaded; else, or on another selection, it starts a new one.
+ */
+export function pressNudge<Base extends object>(burst: Burst<Base> | undefined, base: Base, names: readonly string[], delta: Point, wires: readonly string[] = []): BurstStep<Base> {
+  const same = burst !== undefined && sameNames(burst.names, names) && sameNames(burst.wires ?? [], wires)
   if (burst && same && burst.inFlight) {
     return { burst: { ...burst, total: sum(burst.total, delta), dirty: true }, send: null, fresh: false }
   }
@@ -35,7 +45,7 @@ export function pressNudge<Base extends object>(burst: Burst<Base> | undefined, 
     const total = sum(burst.total, delta)
     return { burst: { ...burst, total, inFlight: true, dirty: false }, send: total, fresh: false }
   }
-  return { burst: { base, names, total: delta, inFlight: true, dirty: false }, send: delta, fresh: true }
+  return { burst: { base, names, ...withWires(wires), total: delta, inFlight: true, dirty: false }, send: delta, fresh: true }
 }
 
 /** The edit resolved: send what was merged meanwhile, else let go; a failure ends the burst. */
@@ -95,8 +105,6 @@ export function gateOpen(gate: TurnGate, design: DesignState): boolean {
 /** The gate once it is open: nothing is waited for any more, so a later failed build leaves it open. */
 const settled = (gate: TurnGate, design: DesignState): TurnGate =>
   gate.waiting && gateOpen(gate, design) ? { ...gate, waiting: undefined, history: undefined } : gate
-
-const sameNames = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((name, i) => name === b[i])
 
 /** A Rotate press: it goes now when the gate is open, else it is held; a repeating key is ignored. */
 export function pressTurn(gate: TurnGate, names: readonly string[], repeat: boolean, design: DesignState): { gate: TurnGate; send: boolean } {
@@ -167,12 +175,16 @@ export function pressArrow(gate: TurnGate, design: DesignState): { gate: TurnGat
 /** Arrow presses held while an Undo or Redo is waited for: their summed offset, and the selection they were made on. */
 export interface HeldArrows {
   names: readonly string[]
+  /** The selected wires, when there are any. */
+  wires?: readonly string[]
   total: Point
 }
 
-/** One more held arrow press: added to the held ones on the same selection, else it replaces them. */
-export function holdNudge(held: HeldArrows | undefined, names: readonly string[], delta: Point): HeldArrows {
-  return held && sameNames(held.names, names) ? { names, total: sum(held.total, delta) } : { names, total: delta }
+const sameHeld = (held: HeldArrows, names: readonly string[], wires: readonly string[]) => sameNames(held.names, names) && sameNames(held.wires ?? [], wires)
+
+/** One more held arrow press: added to the held ones on the same selection (parts and wires), else it replaces them. */
+export function holdNudge(held: HeldArrows | undefined, names: readonly string[], delta: Point, wires: readonly string[] = []): HeldArrows {
+  return { names, ...withWires(wires), total: held && sameHeld(held, names, wires) ? sum(held.total, delta) : delta }
 }
 
 /** The design caught up: the held arrow presses go as one move once the arrows may, on the selection they were made on. */
@@ -181,11 +193,12 @@ export function releaseArrows(
   held: HeldArrows | undefined,
   names: readonly string[],
   design: DesignState,
+  wires: readonly string[] = [],
 ): { gate: TurnGate; held: HeldArrows | undefined; send: Point | null } {
   if (!held) return { gate, held, send: null }
   const press = pressArrow(gate, design)
   if (!press.send) return { gate, held, send: null }
-  return { gate: press.gate, held: undefined, send: sameNames(held.names, names) ? held.total : null }
+  return { gate: press.gate, held: undefined, send: sameHeld(held, names, wires) ? held.total : null }
 }
 
 /** The actions the canvas's key listener runs (runKey in use-part-keys.ts). */
@@ -193,12 +206,14 @@ const CANVAS_RUNS: ReadonlySet<string> = new Set(["fit", "highlight", "contextMe
 
 /**
  * Whether the canvas takes the key press (and so keeps it from the page and the later listeners): only an action it
- * runs, and a nudge or a turn only with a selection and no tool using the keys. Ctrl+Z, Shift+F, Alt+W and the other
- * keys that the app, the workspace or a tool runs are left to that listener, which prevents them itself.
+ * runs, and a nudge or a turn only with a selection and no tool using the keys. A turn needs parts (`selectionSize`);
+ * a nudge moves any object selected (`objects`, parts and wires). Ctrl+Z, Shift+F, Alt+W and the other keys that the
+ * app, the workspace or a tool runs are left to that listener, which prevents them itself.
  */
-export function claimsKey(action: string, selectionSize: number, paused: boolean, preventDefault: boolean): boolean {
+export function claimsKey(action: string, selectionSize: number, paused: boolean, preventDefault: boolean, objects = selectionSize): boolean {
   if (!preventDefault || !CANVAS_RUNS.has(action)) return false
-  if (action.startsWith("nudge") || action === "rotate") return selectionSize > 0 && !paused
+  if (action.startsWith("nudge")) return objects > 0 && !paused
+  if (action === "rotate") return selectionSize > 0 && !paused
   if (action === "alignLeft" || action === "distributeH") return !paused
   return true
 }

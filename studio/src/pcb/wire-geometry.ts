@@ -1,6 +1,6 @@
-// Reshaping a schematic wire: dragging one of its segments or corners, and removing a corner. Pure
-// geometry on a list of points. The first and last points are the wire's ends and never move: a
-// segment that touches an end (or whose neighbour would turn slanted) gets a new segment there.
+// Reshaping a schematic wire: dragging one of its segments or corners, carrying it whole, and removing a corner. Pure
+// geometry on a list of points. The first and last points are the wire's ends and stay (a carried wire's end moves only
+// with its part): a segment that touches an end (or whose neighbour would turn slanted) gets a new segment there.
 import type { Point } from "./geometry.js"
 import { squarePath, tidyPath, type Bends } from "./wire-path.js"
 
@@ -85,6 +85,27 @@ export function dragCorner(path: readonly Point[], index: number, to: Point): Po
       [index, allowedShift(directionOf(corner, after), delta)],
     ]),
   )
+}
+
+/** Which ends of a wire move with their parts when the whole wire is carried. */
+export interface MovingEnds {
+  start: boolean
+  end: boolean
+}
+
+const shifted = (p: Point, d: Point): Point => ({ x: p.x + d.x, y: p.y + d.y })
+
+/**
+ * The path carried by `delta` as a whole, as when its wire moves with the selection: every corner moves by it. An end
+ * whose part moves (`moving`) goes along; an end that stays keeps its point and gets a new segment across its own, as a
+ * segment drag gives it, so the path stays square. Returns the tidied path.
+ */
+export function carryPath(path: readonly Point[], delta: Point, moving: MovingEnds): Point[] {
+  const [first, second, beforeLast, last] = [path[0], path[1], path[path.length - 2], path[path.length - 1]]
+  if (!first || !second || !beforeLast || !last) return tidyPath(path)
+  const head = moving.start ? [shifted(first, delta)] : [first, shifted(first, allowedShift(directionOf(first, second), delta))]
+  const tail = moving.end ? [shifted(last, delta)] : [shifted(last, allowedShift(directionOf(beforeLast, last), delta)), last]
+  return tidyPath([...head, ...path.slice(1, -1).map((p) => shifted(p, delta)), ...tail])
 }
 
 /**

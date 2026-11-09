@@ -149,10 +149,16 @@ describe("when the build with a new shape arrives", () => {
 
   test("a wire Studio drew on its own, still selected, passes the selection to its new trace's wire", () => {
     const { follow } = shapesBuilt(sent, 200, new Set([NEW, U, Z]))
-    expect(follow(Selection.none.onlyWire(ENGINE)).wire).toBe(NEW)
-    expect(follow(Selection.none.onlyWire(U)).wire).toBe(U)
+    expect(follow(Selection.none.onlyWire(ENGINE)).wires).toEqual([NEW])
+    const u = Selection.none.onlyWire(U)
+    expect(follow(u)).toBe(u)
     const parts = Selection.none.only("R1")
     expect(follow(parts)).toBe(parts)
+  })
+
+  test("among parts and other wires, the wire Studio drew is renamed in its place and the rest stay", () => {
+    const { follow } = shapesBuilt(sent, 200, new Set([NEW, U, Z]))
+    expect(follow(Selection.none.only("R1").addWires([U, ENGINE, Z]))).toMatchObject({ names: ["R1"], wires: [U, NEW, Z] })
   })
 
   test("nothing is passed on when the sheet does not draw the new wire (the build failed), or it could not be named", () => {

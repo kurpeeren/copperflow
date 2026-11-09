@@ -10,8 +10,8 @@ export interface InspectorPart {
 
 /**
  * A row names what the component draws in it: "name", "kind", "lock", "connections", "library", "notes",
- * "prop:<key>" for a prop the part has, "suggest:<key>" for a usual prop it does not have yet, and
- * "part:<name>" for one part of a selection of several.
+ * "prop:<key>" for a prop the part has, "suggest:<key>" for a usual prop it does not have yet,
+ * "part:<name>" for one part of a selection of several, and "kind:<parts|wires>:<count>" for how many of each kind.
  */
 export interface InspectorSection {
   title: string
@@ -84,13 +84,27 @@ export interface PropertiesView {
   sections: InspectorSection[]
 }
 
-/** The board's sections with nothing selected, a part's own with one, and the Selection section listing several. */
-export function propertiesView(parts: readonly SelectedPart[], opts: { library: boolean }): PropertiesView {
-  const header = `Selected objects: ${parts.length}`
+/** What Properties shows for a selection of `parts` parts and `wires` wires: the board, one part's, one wire's, or the group's. */
+export type PropertiesKind = "board" | "part" | "wire" | "group"
+
+export function propertiesKind(parts: number, wires: number): PropertiesKind {
+  if (parts + wires === 0) return "board"
+  if (parts + wires > 1) return "group"
+  return parts === 1 ? "part" : "wire"
+}
+
+/**
+ * The board's sections with nothing selected, a part's own with one, and the Selection section listing several; with
+ * wires among them (`wires`, how many), the section counts each kind first. The header counts every object.
+ */
+export function propertiesView(parts: readonly SelectedPart[], opts: { library: boolean }, wires = 0): PropertiesView {
+  const header = `Selected objects: ${parts.length + wires}`
   const [first] = parts
+  const listed = parts.map((part) => `part:${part.name}`)
+  if (wires > 0) return { header, sections: [{ title: "Selection", rows: [`kind:parts:${parts.length}`, `kind:wires:${wires}`, ...listed] }] }
   if (!first) return { header, sections: boardSections() }
   if (parts.length === 1) return { header, sections: inspectorSections(first, opts) }
-  return { header, sections: [{ title: "Selection", rows: parts.map((part) => `part:${part.name}`) }] }
+  return { header, sections: [{ title: "Selection", rows: listed }] }
 }
 
 /** What applies to every part of a selection of several; each runs the menu command, so it is one change in the history. */
@@ -104,16 +118,19 @@ export const GROUP_ACTIONS = [
 export type GroupCommand = (typeof GROUP_ACTIONS)[number]["command"]
 
 /**
- * Whether a group action has a part to change: Lock an unlocked part (or a locked one changed outside the editor),
- * Unlock a locked one, Rotate and Delete an editable part that is not locked.
+ * Whether a group action has something to change: Lock an unlocked part (or a locked one changed outside the editor),
+ * Unlock a locked one, Rotate an editable part that is not locked, Delete such a part or any of the `wires` selected
+ * (Delete names the wires it cannot remove). Rotate, Lock and Unlock act on the parts only.
  */
 export function groupActionEnabled(
   command: GroupCommand,
   parts: readonly { name: string; editable: boolean }[],
   locks: { locked: ReadonlySet<string>; violated: ReadonlySet<string> },
+  wires = 0,
 ): boolean {
   const names = parts.map((part) => part.name)
   if (command === "lock" || command === "unlock") return "parts" in lockChange(names, locks.locked, command === "lock", locks.violated)
+  if (command === "delete" && wires > 0) return true
   return parts.some((part) => part.editable && !locks.locked.has(part.name))
 }
 

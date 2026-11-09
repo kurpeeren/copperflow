@@ -1,11 +1,12 @@
 // The selection box, as EasyEDA draws it: its direction decides what it takes. Dragged left to right (a solid outline)
-// it takes the parts wholly inside it; right to left (a dashed outline), every part it touches.
+// it takes the parts and wires wholly inside it; right to left (a dashed outline), every part and wire it touches.
 import type { SelectionChange } from "../selection.js"
 import { pointBounds, type Box, type PartBox, type Point } from "./geometry.js"
 import type { PickLayers } from "./layers.js"
 import type { PickFilter } from "./pick-filter.js"
-import { pickNames } from "./pick.js"
+import { pickNames, pickWires } from "./pick.js"
 import type { ArmedTool } from "./press.js"
+import type { WireLine } from "./wire-hit.js"
 
 export type BoxMode = "inside" | "touching"
 
@@ -26,13 +27,43 @@ export function partsInBox(boxes: readonly PartBox[], a: Point, b: Point, mode: 
   return boxes.filter((part) => takes(part.box)).map((part) => part.name)
 }
 
+const inBox = (area: Box, p: Point): boolean => p.x >= area.minX && p.x <= area.maxX && p.y >= area.minY && p.y <= area.maxY
+
+/** Whether the segment from `a` to `b` touches the box: an end inside, or the line through the box between its corners. */
+function segmentTouches(area: Box, a: Point, b: Point): boolean {
+  if (inBox(area, a) || inBox(area, b)) return true
+  const bounds = pointBounds([a, b])
+  if (!bounds || !overlaps(area, bounds)) return false
+  const corners = [{ x: area.minX, y: area.minY }, { x: area.maxX, y: area.minY }, { x: area.minX, y: area.maxY }, { x: area.maxX, y: area.maxY }]
+  const sides = corners.map((c) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x))
+  return sides.some((side) => side >= 0) && sides.some((side) => side <= 0)
+}
+
+/** The ids of the wires the box from `a` to `b` takes, by the parts' rule: every point inside it, or any segment touching it. */
+export function wiresInBox(wires: readonly WireLine[], a: Point, b: Point, mode: BoxMode): string[] {
+  const area = pointBounds([a, b])
+  if (!area) return []
+  const takes =
+    mode === "inside"
+      ? (points: readonly Point[]) => points.every((p) => inBox(area, p))
+      : (points: readonly Point[]) => points.some((p, i) => segmentTouches(area, points[i - 1] ?? p, p))
+  return wires.filter((wire) => takes(wire.points)).map((wire) => wire.id)
+}
+
+/** What a box found: the parts (partsInBox) and, on the schematic, the wires (wiresInBox). */
+export interface BoxFound {
+  parts: readonly string[]
+  wires?: readonly string[]
+}
+
 /**
- * The selection after a box: just the parts in it that may be picked (pick.ts), or, with Shift or Ctrl held, those
- * added to what was selected. `armed` is the canvas tool armed while the box was drawn, `layers` the PCB's.
+ * The selection after a box: just the parts and wires in it that may be picked (pick.ts), or, with Shift or Ctrl held,
+ * those added to what was selected. `armed` is the canvas tool armed while the box was drawn, `layers` the PCB's.
  */
-export function boxSelection(names: readonly string[], adds: boolean, armed: ArmedTool = null, layers?: PickLayers, filter?: PickFilter): SelectionChange {
+export function boxSelection(found: BoxFound, adds: boolean, armed: ArmedTool = null, layers?: PickLayers, filter?: PickFilter): SelectionChange {
   return (current) => {
-    const picked = pickNames(names, { selection: current, armed, layers, filter })
-    return adds ? current.add(picked) : current.all(picked)
+    const context = { selection: current, armed, layers, filter }
+    const [parts, wires] = [pickNames(found.parts, context), pickWires(found.wires ?? [], context)]
+    return adds ? current.add(parts).addWires(wires) : current.all(parts, wires)
   }
 }

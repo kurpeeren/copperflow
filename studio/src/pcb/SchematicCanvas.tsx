@@ -68,7 +68,7 @@ interface SheetScene {
   movingLabels: MovingLabel[]
   /** The label under the pointer. */
   hoverLabel: NetLabel | undefined
-  /** The wire under the pointer, and the selected wire: red, with its handles. */
+  /** The wire under the pointer, and the wire selected alone, which gets its handles; every selected wire is red. */
   hoverWire: WireLine | undefined
   selectedWire: WireLine | undefined
   /** Wires drawn in a new shape: the one being dragged, then those waiting for their build. */
@@ -108,7 +108,7 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
       pending: [...pendingWires, ...ghostWires, ...movingLabels.map((m) => m.wire)],
       movingLabels,
       ghostLabels: ghosts,
-      ...(selectedWire ? { selectedWire: selectedWire.id } : {}),
+      selectedWires: selection.wires,
       ...(highlight ? { highlight } : {}),
       ...(moving ? { moving: { components: moving.names, by: moving.offset } } : {}),
       violations: markers,
@@ -119,7 +119,7 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
     const shownHover = drawing ? undefined : hover
     drawEditorLayer(ctx, view, size, { view: "schematic", boxes, moving, hover: shownHover, selection, locked, marks: circuit.annotations.marks, gesture, look: SHEET_LOOK })
     if (hoverLabel && !drawing && !gesture) drawOutline(ctx, view, size, labelHitBox(hoverLabel), { x: 0, y: 0 }, "hover", SHEET_LOOK)
-    if (hoverWire && hoverWire.id !== selectedWire?.id && !wiring && !drawing && !gesture) drawWireHover(ctx, view, size, hoverWire.points, SHEET_WIRE_LOOK)
+    if (hoverWire && !selection.hasWire(hoverWire.id) && !wiring && !drawing && !gesture) drawWireHover(ctx, view, size, hoverWire.points, SHEET_WIRE_LOOK)
     // A net label dragged off the selected wire hides its line, so its handles go too.
     if (selectedWire && !movingLabels.some((m) => m.hideWire === selectedWire.id)) drawWireHandles(ctx, view, size, selectedWire.points, SHEET_WIRE_LOOK)
   }, [canvasRef, sheet, border, camera, size, wiring, drawing, activePins, pendingWires, preview, moving, movingLabels, hoverLabel, hoverWire, selectedWire, boxes, hover, selection, locked, circuit, gesture, ghosts, ghostWires, armed, highlight, markers, activeViolation, grid])
@@ -195,7 +195,7 @@ function SheetView({ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave,
         ref={canvasRef}
         style={{ width: size.width, height: size.height }}
         role="img"
-        aria-label="Schematic. Drag symbols and net labels to move them, click a wire to select it, drag a wire or its corner handles to reshape it, drag the background to select, drag with the right button to pan, scroll to zoom. Double click a net label to rename its net. Click a free pin or press W over a pin to draw a wire."
+        aria-label="Schematic. Drag symbols and net labels to move them, click a wire to select it, Shift or Ctrl click parts and wires to add them, drag a wire or its corner handles to reshape it, drag the background to select, drag with the right button to pan, scroll to zoom. Double click a net label to rename its net. Click a free pin or press W over a pin to draw a wire."
       />
       {hint && (
         <div className="canvas-top">
@@ -413,7 +413,7 @@ export function SchematicCanvas(props: CanvasProps) {
   const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, snap, builtFrom, labels: labels.tools, wires: wires.hits, selection, tool, filter: props.pickFilter, onContextMenu: props.onContextMenu })
   useLabelRenameAction(design, palette, actions)
   const layout = useLayout(parts, step, snap)
-  const menuPlace = useKeyMenuPlace(wrapRef, selection.primary, parts.boxes, camera, size, wires.selected)
+  const menuPlace = useKeyMenuPlace(wrapRef, selection.primary, parts.boxes, camera, size, wires.menuWire)
   const keys = { ...common, selection, layout, builtMark, buildStatus, moveWaiting: gestures.pending !== undefined, menuPlace, onContextMenu: props.onContextMenu, wire: wires.keys }
   const { highlight, rotateHeld } = useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys })
   const hover = useSheetHover(parts.boxes, wire, labels.tools, props.pickFilter, wires.hits)

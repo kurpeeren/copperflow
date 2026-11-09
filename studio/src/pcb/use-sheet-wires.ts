@@ -1,8 +1,9 @@
-// The schematic's wires on the canvas: which one is under the pointer at this zoom (wire-hit.ts), the selected one's
-// line for its handles and the keyboard menu, the selected wire's commands, and reshaping (use-wire-reshape.ts): a
-// drag through the gestures, a double click on a corner handle here. Delete and Highlight net are the part keys'
-// commands, which call `keys` for a wire; Remove corners is the schematic's own command. What each command writes, or
-// why it refuses, is wire-actions.ts. A wire whose new shape waits for its build is drawn, hit and dragged in that shape.
+// The schematic's wires on the canvas: which one is under the pointer at this zoom (wire-hit.ts), the lines the
+// selection box looks at, the selected wires' lines (drawn red; a wire selected alone also gets its handles and the
+// keyboard menu), the wire commands, and reshaping (use-wire-reshape.ts): a drag through the gestures, a double click on
+// a corner handle here. Delete and Highlight net are the part keys' commands, which call `keys` for the wires; Remove
+// corners is the schematic's own command. What each command writes, or why it refuses, is wire-actions.ts. A wire whose
+// new shape waits for its build is drawn, hit and dragged in that shape.
 import { useCallback, useMemo } from "react"
 import type { CircuitData, Design } from "../api"
 import type { Actions } from "../App"
@@ -12,7 +13,8 @@ import { useCommands } from "../shell/commands"
 import type { Camera, Point } from "./geometry"
 import type { GestureWires } from "./gestures"
 import type { PickContext } from "./pick"
-import { cornerRemoval, wireNet, wireRemoval, type WireEdit } from "./wire-actions"
+import type { RemoveWires } from "./delete-plan"
+import { cornerRemoval, wireNet, wiresRemoval, type WireEdit } from "./wire-actions"
 import { handleUnder, withShapes } from "./wire-drag"
 import { wireAt, wireReachPx, type WireLine } from "./wire-hit"
 import { useWireReshape } from "./use-wire-reshape"
@@ -25,10 +27,10 @@ export interface SheetCorners {
   drop(id: string, index: number): void
 }
 
-/** What the part keys ask of a selected wire: its net for Highlight net, and its removal for Delete. */
+/** What the part keys ask of the selected wires: a wire's net for Highlight net, and their removal for Delete (delete-plan.ts). */
 export interface WireKeys {
   net(id: string): string | undefined
-  remove(id: string): void
+  removal: RemoveWires
 }
 
 interface SheetWiresInput {
@@ -54,20 +56,17 @@ async function sendWireEdit(result: WireEdit, actions: Actions): Promise<boolean
   return actions.edit(result.edits, result.summary)
 }
 
-/** The selected wire's Delete and Highlight net for the part keys, and Remove corners on the command bus. */
-function useWireCommands({ design, circuit, actions, locked, selection, onSelect }: SheetWiresInput): WireKeys {
-  const remove = useCallback(
-    (id: string) =>
-      void sendWireEdit(wireRemoval(design, circuit, id, locked), actions).then((ok) => ok && onSelect((current) => (current.wire === id ? current.clear() : current))),
-    [design, circuit, locked, actions, onSelect],
-  )
+/** The selected wires' Delete and Highlight net for the part keys, and Remove corners (on a wire selected alone) on the command bus. */
+function useWireCommands({ design, circuit, actions, locked, selection }: SheetWiresInput): WireKeys {
+  const removal = useCallback<RemoveWires>((ids, parts) => wiresRemoval(design, circuit, ids, parts, locked), [design, circuit, locked])
   const net = useCallback((id: string) => wireNet(design, id), [design])
   const removeCorners = () => {
-    if (selection.wire === undefined) return actions.notify("Select a wire first.")
-    void sendWireEdit(cornerRemoval(design, circuit, selection.wire, locked), actions)
+    const wire = selection.soleWire
+    if (wire === undefined) return actions.notify("Select one wire first.")
+    void sendWireEdit(cornerRemoval(design, circuit, wire, locked), actions)
   }
   useCommands({ removeCorners } satisfies Record<WireCommand, () => void>)
-  return useMemo(() => ({ net, remove }), [net, remove])
+  return useMemo(() => ({ net, removal }), [net, removal])
 }
 
 export function useSheetWires(input: SheetWiresInput) {
@@ -77,14 +76,16 @@ export function useSheetWires(input: SheetWiresInput) {
   const lineOf = useCallback((id: string | undefined): WireLine | undefined => (id === undefined ? undefined : wires.find((wire) => wire.id === id)), [wires])
   const hits = useMemo<GestureWires>(() => {
     const at = (world: Point) => (camera ? wireAt(wires, world, wireReachPx(camera.scale) / camera.scale) : undefined)
-    return wiring ? { at } : { at, drag: { points: (id) => lineOf(id)?.points, blocker, commit } }
+    return wiring ? { at, lines: wires } : { at, lines: wires, drag: { points: (id) => lineOf(id)?.points, blocker, commit } }
   }, [wires, camera, lineOf, blocker, commit, wiring])
   /** The selected wire's corner handles for a double click: the one under a point, and removing a corner. */
   const corners: SheetCorners = {
     at: (world, picking) => (camera ? handleUnder(hits.drag, picking, world, camera.scale) : undefined),
     drop: dropCorner,
   }
-  const selected = useMemo(() => lineOf(selection.wire), [lineOf, selection.wire])
+  const selected = useMemo(() => lineOf(selection.soleWire), [lineOf, selection.soleWire])
+  // Shift+F10 opens the menu of the wire picked last when no part is selected (key-menu.ts).
+  const menuWire = useMemo(() => (selection.size === 0 ? lineOf(selection.wires.at(-1)) : undefined), [lineOf, selection])
   const keys = useWireCommands(input)
-  return { hits, selected, lineOf, keys, pending, corners }
+  return { hits, selected, menuWire, lineOf, keys, pending, corners }
 }

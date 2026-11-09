@@ -3,7 +3,7 @@ import { analyzeCircuit } from "../src/core/analyze.js"
 import { applyEdits } from "../src/core/edit.js"
 import type { Edit } from "../src/core/types.js"
 import { buildDesign, type Design } from "../src/engine/design.js"
-import { dragCorner, dragSegment, removeCorner, tidy, wireBlocker, wireOf, wireShapeEdits, type WireShape } from "../studio/src/pcb/wire-shape.js"
+import { carryPath, dragCorner, dragSegment, removeCorner, tidy, wireBlocker, wireOf, wireShapeEdits, type WireShape } from "../studio/src/pcb/wire-shape.js"
 
 const FILE = "main.circuit.tsx"
 const p = (x: number, y: number) => ({ x, y })
@@ -84,6 +84,28 @@ describe("dragSegment", () => {
   test("a bad index or no movement leaves the path as it is", () => {
     expect(dragSegment(Z, 7, p(1, 1))).toEqual(Z)
     expect(dragSegment(Z, 1, p(3, 0))).toEqual(Z)
+  })
+})
+
+describe("carryPath", () => {
+  const Z = [p(0, 0), p(0, 1), p(2, 1), p(2, 3)]
+  const STAY = { start: false, end: false }
+
+  test("ends that stay keep their points and get a new segment across their own; every corner moves by the whole delta", () => {
+    expect(carryPath(Z, p(0.5, 0.5), STAY)).toEqual([p(0, 0), p(0.5, 0), p(0.5, 1.5), p(2.5, 1.5), p(2.5, 3), p(2, 3)])
+  })
+
+  test("an end whose part moves goes along, so it needs no new segment", () => {
+    expect(carryPath(Z, p(0.5, 0.5), { start: true, end: false })).toEqual([p(0.5, 0.5), p(0.5, 1.5), p(2.5, 1.5), p(2.5, 3), p(2, 3)])
+    expect(carryPath(Z, p(0.5, 0.5), { start: true, end: true })).toEqual([p(0.5, 0.5), p(0.5, 1.5), p(2.5, 1.5), p(2.5, 3.5)])
+  })
+
+  test("a delta along the end segments stretches them, as a segment drag does", () => {
+    expect(carryPath(Z, p(0, 0.5), STAY)).toEqual(dragSegment(Z, 1, p(0, 0.5)))
+  })
+
+  test("a straight wire carried sideways becomes a U, its ends staying on their pins", () => {
+    expect(carryPath([p(0, 0), p(4, 0)], p(1, 1), STAY)).toEqual([p(0, 0), p(0, 1), p(4, 1), p(4, 0)])
   })
 })
 

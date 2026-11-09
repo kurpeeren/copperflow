@@ -10,14 +10,14 @@ import { opensOnDoubleClick, type Press } from "./press"
 export type { Gesture, GestureInput } from "./gestures"
 export type { Press }
 
-/** The last group move sent, kept drawn until a build that started after it was sent has finished. */
+/** The last group move sent (its parts and the selected wires it carries), its parts kept drawn moved until a build that started after it was sent has finished. */
 function usePendingMove(input: GestureInput): { pending: Moving | undefined; commit: Commit } {
   const { actions, builtFrom } = input
   const [pending, setPending] = useState<Moving & { sentAt: number }>()
   useEffect(() => setPending((current) => (current && current.sentAt > builtFrom ? current : undefined)), [builtFrom])
-  const commit: Commit = (names, offset) => {
+  const commit: Commit = (names, offset, wires = []) => {
     if (offset.x === 0 && offset.y === 0) return
-    const plan = movePlan(input, names, offset)
+    const plan = movePlan(input, names, offset, wires)
     const sent = plan.edits.length > 0 ? { names: plan.parts, offset, sentAt: Date.now() } : undefined
     if (sent) setPending(sent)
     void sendGroupEdit(plan, actions).then((ok) => ok || setPending((current) => (current === sent ? undefined : current)))

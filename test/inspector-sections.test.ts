@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { GROUP_ACTIONS, groupActionEnabled, inspectorSections, boardSections, partLockButton, propertiesView, type InspectorPart } from "../studio/src/inspector-sections.js"
+import { GROUP_ACTIONS, groupActionEnabled, inspectorSections, boardSections, partLockButton, propertiesKind, propertiesView, type InspectorPart } from "../studio/src/inspector-sections.js"
 
 const prop = (literal: string | number) => ({ literal, source: String(literal), editable: true })
 
@@ -77,6 +77,12 @@ describe("propertiesView", () => {
     expect(view).toEqual({ header: "Selected objects: 3", sections: [{ title: "Selection", rows: ["part:R2", "part:C1", "part:R1"] }] })
   })
 
+  test("with parts and wires: the count of both, and the Selection section with the counts by kind before the parts", () => {
+    const view = propertiesView([named("R2"), named("R1")], { library: false }, 3)
+    expect(view).toEqual({ header: "Selected objects: 5", sections: [{ title: "Selection", rows: ["kind:parts:2", "kind:wires:3", "part:R2", "part:R1"] }] })
+    expect(propertiesView([], { library: false }, 2)).toEqual({ header: "Selected objects: 2", sections: [{ title: "Selection", rows: ["kind:parts:0", "kind:wires:2"] }] })
+  })
+
   test("several parts get Rotate, Lock, Unlock and Delete, each run as the menu's command", () => {
     expect(GROUP_ACTIONS.map((action) => [action.label, action.command])).toEqual([
       ["Rotate", "rotate"],
@@ -84,6 +90,17 @@ describe("propertiesView", () => {
       ["Unlock", "unlock"],
       ["Delete", "delete"],
     ])
+  })
+})
+
+describe("propertiesKind", () => {
+  test("the board with nothing, a part's own with one part, a wire's own with one wire alone, the group otherwise", () => {
+    expect(propertiesKind(0, 0)).toBe("board")
+    expect(propertiesKind(1, 0)).toBe("part")
+    expect(propertiesKind(0, 1)).toBe("wire")
+    expect(propertiesKind(2, 0)).toBe("group")
+    expect(propertiesKind(1, 1)).toBe("group")
+    expect(propertiesKind(0, 2)).toBe("group")
   })
 })
 
@@ -107,6 +124,13 @@ describe("groupActionEnabled", () => {
   test("with every editable part locked: only Unlock, and Lock while one of them was changed outside the editor", () => {
     expect(enabled(["R1", "R2", "U1"])).toEqual([["rotate", false], ["lock", false], ["unlock", true], ["delete", false]])
     expect(enabled(["R1", "R2", "U1"], ["R2"])).toEqual([["rotate", false], ["lock", true], ["unlock", true], ["delete", false]])
+  })
+
+  test("with wires selected Delete is on, while Rotate, Lock and Unlock act on the parts alone", () => {
+    const actions = (of: { name: string; editable: boolean }[], wires: number) =>
+      GROUP_ACTIONS.map(({ command }) => [command, groupActionEnabled(command, of, { locked: new Set(["R1"]), violated: new Set() }, wires)])
+    expect(actions([], 2)).toEqual([["rotate", false], ["lock", false], ["unlock", false], ["delete", true]])
+    expect(actions([{ name: "R1", editable: true }], 1)).toEqual([["rotate", false], ["lock", false], ["unlock", true], ["delete", true]])
   })
 
   test("read-only parts alone cannot be rotated or deleted, but can be locked", () => {

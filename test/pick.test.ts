@@ -60,15 +60,22 @@ describe("every pick goes through canPick", () => {
 
   test("the parts a box takes", () => {
     const before = Selection.none.add(["U1"])
-    expect(boxSelection(["R1", "C1"], false)(before).names).toEqual(["R1", "C1"])
-    expect(boxSelection(["R1", "C1"], false, "note")(before)).toBe(Selection.none)
-    expect(boxSelection(["R1", "C1"], true, "note")(before)).toBe(before)
+    expect(boxSelection({ parts: ["R1", "C1"] }, false)(before).names).toEqual(["R1", "C1"])
+    expect(boxSelection({ parts: ["R1", "C1"] }, false, "note")(before)).toBe(Selection.none)
+    expect(boxSelection({ parts: ["R1", "C1"] }, true, "note")(before)).toBe(before)
   })
 
   test("Select all takes every part of the circuit, each once, and keeps the selection when it already is that", () => {
     const all = selectAll(["R1", "C1", "R1"])(Selection.none)
     expect(all.names).toEqual(["R1", "C1"])
     expect(selectAll(["R1", "C1"])(all)).toBe(all)
+  })
+
+  test("Select all on the schematic also takes every wire it is given, and the Filter's Wires row can leave them out", () => {
+    const every = selectAll(["R1", "C1"], undefined, undefined, ["wire:A", "wire:B"])(Selection.none.onlyWire("wire:B"))
+    expect(every).toMatchObject({ names: ["R1", "C1"], wires: ["wire:A", "wire:B"] })
+    expect(selectAll(["R1"], undefined, { ...ALL_PICKABLE, wires: false }, ["wire:A"])(Selection.none)).toMatchObject({ names: ["R1"], wires: [] })
+    expect(selectAll(["R1"])(every)).toMatchObject({ names: ["R1"], wires: [] })
   })
 })
 
@@ -91,7 +98,7 @@ describe("hidden layers", () => {
   test("a click goes through to the shown part under it, and a box takes only the shown parts", () => {
     expect(targetAt(BOXES, undefined, { x: 3, y: 0 }, hiding)).toEqual({ kind: "canvas" })
     expect(targetAt(BOXES, undefined, { x: 1.5, y: 0 }, hiding)).toEqual({ kind: "part", name: "C1" })
-    expect(boxSelection(["R1", "C1"], false, null, layers)(Selection.none).names).toEqual(["C1"])
+    expect(boxSelection({ parts: ["R1", "C1"] }, false, null, layers)(Selection.none).names).toEqual(["C1"])
     expect(pickNames(["R1", "C1"], hiding)).toEqual(["C1"])
   })
 })
@@ -126,9 +133,9 @@ describe("the Filter tab", () => {
 
   test("a box takes no parts while Parts is off, and keeps the selection when it adds", () => {
     const before = Selection.none.add(["U1"])
-    expect(boxSelection(["R1", "C1"], false, null, undefined, noParts)(before)).toBe(Selection.none)
-    expect(boxSelection(["R1", "C1"], true, null, undefined, noParts)(before)).toBe(before)
-    expect(boxSelection(["R1", "C1"], false, null, undefined, noLabels)(before).names).toEqual(["R1", "C1"])
+    expect(boxSelection({ parts: ["R1", "C1"] }, false, null, undefined, noParts)(before)).toBe(Selection.none)
+    expect(boxSelection({ parts: ["R1", "C1"] }, true, null, undefined, noParts)(before)).toBe(before)
+    expect(boxSelection({ parts: ["R1", "C1"] }, false, null, undefined, noLabels)(before).names).toEqual(["R1", "C1"])
   })
 
   test("Select all takes no parts while Parts is off", () => {

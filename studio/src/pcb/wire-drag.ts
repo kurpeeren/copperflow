@@ -57,12 +57,12 @@ export function cornerHandleAt(drag: WireDrag | undefined, selected: string | un
 }
 
 /**
- * The selected wire's corner handle under `world`, when a pick made with `context` may take a wire (pick.ts): not with
- * Wires off in the Filter tab, nor with the Note box or Fit area tool armed. Handles are drawn over everything, so they
- * come before what else is under the pointer.
+ * The corner handle under `world` of the wire selected alone, when a pick made with `context` may take a wire (pick.ts):
+ * not with Wires off in the Filter tab, nor with the Note box or Fit area tool armed. A wire selected with parts or other
+ * wires has no handles. Handles are drawn over everything, so they come before what else is under the pointer.
  */
 export function handleUnder(drag: WireDrag | undefined, context: PickContext, world: Point, scale: number): { id: string; index: number } | undefined {
-  const id = context.selection.wire
+  const id = context.selection.soleWire
   if (id === undefined || !canPick({ kind: "wire", id }, context)) return undefined
   return cornerHandleAt(drag, id, world, scale)
 }

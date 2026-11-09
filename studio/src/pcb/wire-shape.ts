@@ -12,7 +12,7 @@ import { endMatches, lockedPart, netNames, NO_LOCKS, pickRepeat, repeatBlocker, 
 import { tidy } from "./wire-geometry.js"
 import { addressable, pinOfSelector, pinSelector } from "./wire-tool.js"
 
-export { dragCorner, dragSegment, removeCorner, tidy } from "./wire-geometry.js"
+export { carryPath, dragCorner, dragSegment, removeCorner, tidy, type MovingEnds } from "./wire-geometry.js"
 
 /** Edits that save the shape, or the reason they cannot be written. Same shape as a label drag's result. */
 export type WireShapeResult = Edit[] | { blocked: string }

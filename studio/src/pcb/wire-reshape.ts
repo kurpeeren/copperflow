@@ -59,15 +59,15 @@ export function sentBlocker(sent: readonly SentShape[], wireId: string): string 
 /**
  * What a build that started at `builtFrom` (ms) does to the shapes sent: those sent before it are in it and done, the
  * rest keep waiting (`waiting` is `sent` itself when none is done). And the selection change that hands a wire Studio
- * drew on its own, still selected, to its new trace's wire, when the sheet (`drawn`) now has it.
+ * drew on its own, still selected, to its new trace's wire in its place, when the sheet (`drawn`) now has it.
  */
 export function shapesBuilt<S extends SentShape & { sentAt: number }>(sent: readonly S[], builtFrom: number, drawn: ReadonlySet<string>): { waiting: readonly S[]; follow: SelectionChange } {
   const done = sent.filter((shape) => shape.sentAt <= builtFrom)
   const waiting = done.length === 0 ? sent : sent.filter((shape) => shape.sentAt > builtFrom)
   const moved = done.filter((shape) => shape.newTrace && shape.wire !== undefined && drawn.has(shape.wire))
   const follow: SelectionChange = (current) => {
-    const shape = moved.find((candidate) => candidate.id === current.wire)
-    return shape?.wire ? current.onlyWire(shape.wire) : current
+    const renamed = current.wires.map((id) => moved.find((shape) => shape.id === id)?.wire ?? id)
+    return current.all(current.names, renamed)
   }
   return { waiting, follow }
 }

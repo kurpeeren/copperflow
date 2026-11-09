@@ -48,7 +48,18 @@ export function pickNames(names: readonly string[], context: PickContext): strin
   return picks(names.map((name) => ({ kind: "part" as const, name })), context).map((part) => part.name)
 }
 
-/** Select all: every part of the circuit that may be picked, each once; on the PCB, not those on hidden layers, none while Parts is off. */
-export function selectAll(names: readonly string[], layers?: PickLayers, filter?: PickFilter): SelectionChange {
-  return (current) => current.all(pickNames(names, { selection: current, armed: null, layers, filter }))
+/** The wires among `ids` that may be picked, in their order. */
+export function pickWires(ids: readonly string[], context: PickContext): string[] {
+  return picks(ids.map((id) => ({ kind: "wire" as const, id })), context).map((wire) => wire.id)
+}
+
+/**
+ * Select all: every part of the circuit that may be picked, each once; on the PCB, not those on hidden layers, none
+ * while Parts is off. On the schematic `wires` are the sheet's wires, and every one that may be picked joins them.
+ */
+export function selectAll(names: readonly string[], layers?: PickLayers, filter?: PickFilter, wires: readonly string[] = []): SelectionChange {
+  return (current) => {
+    const context = { selection: current, armed: null, layers, filter }
+    return current.all(pickNames(names, context), pickWires(wires, context))
+  }
 }

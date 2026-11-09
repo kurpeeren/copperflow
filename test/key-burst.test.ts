@@ -60,6 +60,14 @@ describe("pressNudge", () => {
     expect(pressNudge(settled, circuit, ["R2"], right)).toMatchObject({ send: right, fresh: true })
   })
 
+  test("a press on the same parts with other wires selected starts afresh; the same wires join the burst", () => {
+    const burst = pressNudge(undefined, circuit, NAMES, right, ["wire:A"]).burst
+    expect(burst.wires).toEqual(["wire:A"])
+    expect(pressNudge(burst, circuit, NAMES, right, ["wire:A"])).toMatchObject({ send: null, fresh: false })
+    expect(pressNudge(burst, circuit, NAMES, right, ["wire:B"])).toMatchObject({ send: right, fresh: true })
+    expect(pressNudge(burst, circuit, NAMES, right)).toMatchObject({ send: right, fresh: true })
+  })
+
   test("a failed edit ends the burst", () => {
     expect(settleNudge(pressNudge(undefined, circuit, NAMES, right).burst, false)).toBeUndefined()
   })
@@ -204,6 +212,14 @@ describe("the gate and an Undo or Redo", () => {
     expect(releaseArrows(waiting, undefined, NAMES, fresh)).toEqual({ gate: waiting, held: undefined, send: null })
   })
 
+  test("held arrow presses keep the wires they were made with: other wires replace them, and go nowhere", () => {
+    const withWire = holdNudge(undefined, NAMES, right, ["wire:A"])
+    expect(holdNudge(withWire, NAMES, right, ["wire:A"])).toEqual({ names: NAMES, wires: ["wire:A"], total: { x: 1, y: 0 } })
+    expect(holdNudge(withWire, NAMES, right)).toEqual({ names: NAMES, total: right })
+    expect(releaseArrows(undone(), withWire, NAMES, fresh, ["wire:A"])).toMatchObject({ send: right })
+    expect(releaseArrows(undone(), withWire, NAMES, fresh)).toMatchObject({ held: undefined, send: null })
+  })
+
   test("a failed undo wrote nothing: the gate waits again for what it waited for before, and keeps the held presses", () => {
     const held = pressTurn(historySent(OPEN_GATE), NAMES, false, fresh).gate
     const failed = historySettled(held, false, 1, NOTHING)
@@ -227,6 +243,11 @@ describe("claimsKey", () => {
     expect(claimsKey("nudgeLeft", 0, false, true)).toBe(false)
     expect(claimsKey("nudgeLeft", 2, true, true)).toBe(false)
     expect(claimsKey("nudgeLeft", 2, false, true)).toBe(true)
+  })
+
+  test("arrows are kept from the page with only wires selected: they count every object, Rotate the parts", () => {
+    expect(claimsKey("nudgeLeft", 0, false, true, 1)).toBe(true)
+    expect(claimsKey("rotate", 0, false, true, 1)).toBe(false)
   })
 
   test("Rotate is kept from the page only with a selection and no tool; other keys follow the key map", () => {

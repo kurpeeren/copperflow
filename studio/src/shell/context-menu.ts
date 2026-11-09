@@ -81,6 +81,9 @@ const CANVAS_ITEMS: readonly ContextEntry[] = [
   { label: "Paste", shortcut: "Ctrl+V", pending: ENGINE },
 ]
 
+/** On a wire selected with other things: Delete acts on all of them (naming what stays), Remove corners on a wire alone. */
+export const WIRE_IN_GROUP: WireReasons = { remove: null, removeCorners: "Select this wire alone to remove its corners" }
+
 /** A command item, disabled with `reason` when there is one. */
 const runUnless = (item: ContextItem, reason: string | null | undefined): ContextItem => (reason ? { ...item, pending: reason } : item)
 
@@ -117,9 +120,9 @@ export function allLocked(names: readonly string[], locked: ReadonlySet<string>)
   return names.length > 0 && names.every((name) => locked.has(name))
 }
 
-/** A right click on a part that is not selected selects it alone; on a selected part the group stays; on a wire, the wire alone. */
+/** A right click on a part or a wire that is not selected selects it alone; on a selected one the group stays. */
 export function contextSelection(selection: Selection, target: ContextTarget): Selection {
-  if (target.kind === "wire") return selection.onlyWire(target.id)
+  if (target.kind === "wire") return selection.hasWire(target.id) ? selection : selection.onlyWire(target.id)
   return target.kind === "part" && !selection.has(target.name) ? selection.only(target.name) : selection
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest"
-import { boxMode, boxSelection, partsInBox } from "../studio/src/pcb/box-select.js"
+import { boxMode, boxSelection, partsInBox, wiresInBox } from "../studio/src/pcb/box-select.js"
 import type { PartBox } from "../studio/src/pcb/geometry.js"
+import { ALL_PICKABLE } from "../studio/src/pcb/pick-filter.js"
 import { Selection } from "../studio/src/selection.js"
 
 const partBox = (name: string, minX: number, minY: number, maxX: number, maxY: number): PartBox => ({
@@ -45,19 +46,53 @@ describe("the parts a box takes", () => {
   })
 })
 
-describe("the selection after a box", () => {
-  const before = Selection.none.add(["U1"])
+const p = (x: number, y: number) => ({ x, y })
+// Against the box (0,0)-(10,10): IN lies wholly inside, EDGE on its edge, ACROSS crosses it with no point inside,
+// HALF has one end inside, OUT runs beside it, SLANT (an old file's slanted segment) passes its corner without touching.
+const WIRES = [
+  { id: "IN", points: [p(1, 1), p(1, 5), p(6, 5)] },
+  { id: "EDGE", points: [p(0, 10), p(10, 10)] },
+  { id: "ACROSS", points: [p(-5, 3), p(15, 3)] },
+  { id: "HALF", points: [p(5, 5), p(5, 15), p(20, 15)] },
+  { id: "OUT", points: [p(-5, -1), p(15, -1)] },
+  { id: "SLANT", points: [p(9, 12), p(12, 9)] },
+]
 
-  test("without Shift or Ctrl it becomes just the parts in the box", () => {
-    expect(boxSelection(["R1", "D1"], false)(before).names).toEqual(["R1", "D1"])
+describe("the wires a box takes", () => {
+  test("left to right: only the wires wholly inside it, edges included", () => {
+    expect(wiresInBox(WIRES, p(0, 0), p(10, 10), "inside")).toEqual(["IN", "EDGE"])
+  })
+
+  test("right to left: every wire it touches, by a point or across a segment", () => {
+    expect(wiresInBox(WIRES, p(10, 10), p(0, 0), "touching")).toEqual(["IN", "EDGE", "ACROSS", "HALF"])
+  })
+
+  test("a slanted segment that only passes near the box is not touched; one through its corner is", () => {
+    expect(wiresInBox([{ id: "THROUGH", points: [p(8, 12), p(12, 8)] }], p(0, 0), p(10, 10), "touching")).toEqual(["THROUGH"])
+    expect(wiresInBox(WIRES.filter((wire) => wire.id === "SLANT"), p(0, 0), p(10, 10), "touching")).toEqual([])
+  })
+})
+
+describe("the selection after a box", () => {
+  const before = Selection.none.add(["U1"]).addWires(["OLD"])
+
+  test("without Shift or Ctrl it becomes just the parts and wires in the box", () => {
+    expect(boxSelection({ parts: ["R1", "D1"] }, false)(before)).toMatchObject({ names: ["R1", "D1"], wires: [] })
+    expect(boxSelection({ parts: ["R1"], wires: ["IN", "EDGE"] }, false)(before)).toMatchObject({ names: ["R1"], wires: ["IN", "EDGE"] })
   })
 
   test("with Shift or Ctrl it adds them to what was selected", () => {
-    expect(boxSelection(["R1", "U1"], true)(before).names).toEqual(["U1", "R1"])
+    expect(boxSelection({ parts: ["R1", "U1"], wires: ["IN", "OLD"] }, true)(before)).toMatchObject({ names: ["U1", "R1"], wires: ["OLD", "IN"] })
   })
 
   test("an empty box without Shift or Ctrl clears the selection; with them it changes nothing", () => {
-    expect(boxSelection([], false)(before)).toBe(Selection.none)
-    expect(boxSelection([], true)(before)).toBe(before)
+    expect(boxSelection({ parts: [] }, false)(before)).toBe(Selection.none)
+    expect(boxSelection({ parts: [], wires: [] }, true)(before)).toBe(before)
+  })
+
+  test("the Filter tab's Wires row off leaves the wires out, as Parts off leaves the parts", () => {
+    const found = { parts: ["R1"], wires: ["IN"] }
+    expect(boxSelection(found, false, null, undefined, { ...ALL_PICKABLE, wires: false })(before)).toMatchObject({ names: ["R1"], wires: [] })
+    expect(boxSelection(found, false, null, undefined, { ...ALL_PICKABLE, parts: false })(before)).toMatchObject({ names: [], wires: ["IN"] })
   })
 })

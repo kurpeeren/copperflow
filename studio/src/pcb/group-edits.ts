@@ -27,6 +27,9 @@ export function nameList(names: readonly string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`
 }
 
+/** How the history names wires among other things: the one wire by its name ("the wire from R1.pin2 to R2.pin1"), or how many. */
+export const wireWords = (names: readonly string[]): string[] => (names.length > 1 ? [`${names.length} wires`] : [...names])
+
 /** "by 90°" for a counter-clockwise turn, "by -90°" for a clockwise one. */
 const turnText = (turn: Turn): string => `by ${turn}°`
 
@@ -195,9 +198,10 @@ export function removeEach(names: readonly string[], blockerFor: (name: string) 
   return { edits: parts.map((name) => ({ kind: "removePart", part: name })), summary: `remove ${nameList(parts)}`, parts, skipped, done: "removed" }
 }
 
-/** The question asked before the parts are removed. */
-export function removeQuestion(parts: readonly string[]): string {
-  return parts.length === 1 ? `Remove ${parts[0]} and its connections?` : `Remove ${parts.length} parts (${nameList(parts)}) and their connections?`
+/** The question asked before the parts are removed, and the `wires` removed with them when there are any. */
+export function removeQuestion(parts: readonly string[], wires = 0): string {
+  const these = parts.length === 1 ? `${parts[0]} and its connections` : `${parts.length} parts (${nameList(parts)}) and their connections`
+  return wires === 0 ? `Remove ${these}?` : `Remove ${these}, and ${wires} ${wires === 1 ? "wire" : "wires"}?`
 }
 
 /** What to tell about the parts left out: the reason alone when nothing was done (as for one part), else what was not done to which. */

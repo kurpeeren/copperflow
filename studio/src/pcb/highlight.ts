@@ -70,16 +70,18 @@ export function menuHighlight(parts: readonly string[], netsOf: (part: string) =
 }
 
 /**
- * What Design → Highlight net does with no pointer over the canvas: light the selected wire's net, else every net of
- * the selected parts (menuHighlight), or say how.
+ * What Design → Highlight net does with no pointer over the canvas: light the selected wires' nets and every net of
+ * the selected parts (menuHighlight), each once, or say how.
  */
 export function selectionHighlight(
   selection: Selection,
   wireNet: (id: string) => string | undefined,
   netsOf: (part: string) => Highlight,
 ): { nets: Highlight } | { message: string } {
-  const net = selection.wire === undefined ? undefined : wireNet(selection.wire)
-  return net !== undefined ? { nets: [net] } : menuHighlight(selection.names, netsOf)
+  const ofWires = [...new Set(selection.wires.flatMap((id) => wireNet(id) ?? []))]
+  const ofParts = menuHighlight(selection.names, netsOf)
+  if ("nets" in ofParts) return { nets: [...new Set([...ofWires, ...ofParts.nets])] }
+  return ofWires.length > 0 ? { nets: ofWires } : ofParts
 }
 
 /** One net after a rebuild: the same id when the net still exists, else the net that now holds its first pin, else none. */

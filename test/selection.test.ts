@@ -87,54 +87,84 @@ describe("Selection", () => {
   })
 })
 
-describe("a selected wire", () => {
+describe("parts and wires together", () => {
   const W = "wire:R1.pin2|R2.pin1"
+  const V = "wire:R3.pin1|R4.pin2"
   const wire = Selection.none.onlyWire(W)
+  const mix = of("R1", "R2").addWires([W, V])
 
-  test("is held alone: no parts, no primary, and the part counts stay at zero", () => {
-    expect(wire.wire).toBe(W)
+  test("a wire alone: no parts, no primary, the part counts at zero, and one object in all", () => {
+    expect(wire.wires).toEqual([W])
+    expect(wire.wireCount).toBe(1)
     expect(wire.names).toEqual([])
     expect(wire.size).toBe(0)
     expect(wire.primary).toBeUndefined()
-    expect(Selection.none.wire).toBeUndefined()
-    expect(of("R1").wire).toBeUndefined()
+    expect(wire.total).toBe(1)
+    expect(wire.soleWire).toBe(W)
+    expect(Selection.none.wires).toEqual([])
+    expect(Selection.none.total).toBe(0)
   })
 
-  test("selecting a wire drops the parts, and selecting it again changes nothing", () => {
-    const fromParts = of("R1", "R2").onlyWire(W)
-    expect(fromParts.names).toEqual([])
-    expect(fromParts.wire).toBe(W)
+  test("parts and wires are held together, each in pick order; the part counts count parts only", () => {
+    expect(mix.names).toEqual(["R1", "R2"])
+    expect(mix.wires).toEqual([W, V])
+    expect(mix.size).toBe(2)
+    expect(mix.primary).toBe("R2")
+    expect(mix.wireCount).toBe(2)
+    expect(mix.total).toBe(4)
+    expect(mix.hasWire(V)).toBe(true)
+    expect(mix.hasWire("wire:other")).toBe(false)
+    expect(mix.soleWire).toBeUndefined()
+    expect(of("R1").addWires([W]).soleWire).toBeUndefined()
+    expect(Selection.none.onlyWire(W).addWires([V]).soleWire).toBeUndefined()
+  })
+
+  test("onlyWire selects that wire alone, dropping the parts; again changes nothing", () => {
+    expect(mix.onlyWire(W)).toMatchObject({ names: [], wires: [W] })
     expect(wire.onlyWire(W)).toBe(wire)
-    expect(wire.onlyWire("wire:other").wire).toBe("wire:other")
+    expect(wire.onlyWire(V).wires).toEqual([V])
   })
 
-  test("every part change drops the wire", () => {
-    expect(wire.only("R1")).toMatchObject({ names: ["R1"], wire: undefined })
-    expect(wire.toggle("R1")).toMatchObject({ names: ["R1"], wire: undefined })
-    expect(wire.add(["R1", "C1"])).toMatchObject({ names: ["R1", "C1"], wire: undefined })
-    expect(wire.all(["R1"])).toMatchObject({ names: ["R1"], wire: undefined })
+  test("toggleWire adds a wire after the others and takes it out again, keeping the parts", () => {
+    const added = of("R1").toggleWire(W).toggleWire(V)
+    expect(added).toMatchObject({ names: ["R1"], wires: [W, V] })
+    expect(added.toggleWire(W)).toMatchObject({ names: ["R1"], wires: [V] })
+    expect(wire.toggleWire(W)).toBe(Selection.none)
   })
 
-  test("Esc and Select all with no part to pick clear it", () => {
-    expect(wire.clear()).toBe(Selection.none)
+  test("part changes keep the wires; only, clear and all do not", () => {
+    expect(mix.toggle("C1")).toMatchObject({ names: ["R1", "R2", "C1"], wires: [W, V] })
+    expect(mix.toggle("R1")).toMatchObject({ names: ["R2"], wires: [W, V] })
+    expect(mix.add(["C1"])).toMatchObject({ names: ["R1", "R2", "C1"], wires: [W, V] })
+    expect(mix.without(["R1", "R2"])).toMatchObject({ names: [], wires: [W, V] })
+    expect(mix.keep(["R2"])).toMatchObject({ names: ["R2"], wires: [W, V] })
+    expect(mix.only("R1")).toMatchObject({ names: ["R1"], wires: [] })
+    expect(mix.clear()).toBe(Selection.none)
+  })
+
+  test("all replaces both lists, each name once; the wires may be left out", () => {
+    expect(mix.all(["C1"])).toMatchObject({ names: ["C1"], wires: [] })
+    expect(Selection.none.all(["R1", "R1"], [V, W, V])).toMatchObject({ names: ["R1"], wires: [V, W] })
+    expect(mix.all(["R1", "R2"], [W, V])).toBe(mix)
     expect(wire.all([])).toBe(Selection.none)
+    expect(wire.all([], [W])).toBe(wire)
   })
 
-  test("taking parts out or keeping parts leaves it alone", () => {
-    expect(wire.without(["R1"])).toBe(wire)
-    expect(wire.keep(["R1"])).toBe(wire)
-    expect(wire.add([])).toBe(wire)
-  })
-
-  test("keepWire drops it once the sheet has no wire with its id, as gone parts drop", () => {
-    expect(wire.keepWire([W, "wire:other"])).toBe(wire)
-    expect(wire.keepWire(["wire:other"])).toBe(Selection.none)
+  test("addWires appends new wires, withoutWires and keepWires take them out; a change of nothing is the same selection", () => {
+    expect(mix.addWires([V, "wire:new"]).wires).toEqual([W, V, "wire:new"])
+    expect(mix.addWires([W])).toBe(mix)
+    expect(mix.withoutWires([W])).toMatchObject({ names: ["R1", "R2"], wires: [V] })
+    expect(mix.withoutWires(["wire:other"])).toBe(mix)
+    expect(mix.keepWires([V, "wire:other"])).toMatchObject({ names: ["R1", "R2"], wires: [V] })
+    expect(mix.keepWires([W, V])).toBe(mix)
+    expect(wire.keepWires([])).toBe(Selection.none)
     const parts = of("R1")
-    expect(parts.keepWire([])).toBe(parts)
+    expect(parts.keepWires([])).toBe(parts)
   })
 
-  test("is frozen like any selection", () => {
-    expect(Object.isFrozen(wire)).toBe(true)
+  test("is frozen like any selection, its wire list too", () => {
+    expect(Object.isFrozen(mix)).toBe(true)
+    expect(Object.isFrozen(mix.wires)).toBe(true)
   })
 })
 

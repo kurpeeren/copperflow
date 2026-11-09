@@ -169,6 +169,64 @@ describe("movesOf", () => {
   })
 })
 
+const Z = "wire:R1.pin2|R2.pin1"
+/** Whether every segment of the path is horizontal or vertical. */
+const square = (points: readonly { x: number; y: number }[]) => points.slice(1).every((b, i) => points[i]?.x === b.x || points[i]?.y === b.y)
+
+describe("selected wires in a move of the selection", () => {
+  const input = (locked: ReadonlySet<string> = new Set()) =>
+    ({
+      view: "schematic",
+      circuit: sheet.source,
+      anchors: partAnchors(sheet.design, "schematic"),
+      boxes: sheetBoxes(sheet.design.schematic),
+      blockerFor: (name: string) => moveBlocker(sheet.source, locked, name, "schematic"),
+      follow: { design: sheet.design, locked },
+    }) as unknown as GestureInput
+
+  test("a selected wire whose ends stay moves its corners by the offset, with a new segment at each end", () => {
+    const plan = movePlan(input(), [], p(0.5, 0.5), [Z])
+    expect(plan.edits).toEqual([hints(".R1 > .pin2", ".R2 > .pin1", [p(0.5, 0.5), p(2.5, 0.5), p(2.5, 2.5), p(3.5, 2.5)])])
+    expect(plan.summary).toBe("move the wire from R1.pin2 to R2.pin1 in the schematic by (0.5, 0.5)")
+    const rebuilt = pointsOf(setup(applyEdits(SOURCE, plan.edits, new Set())).design, Z)
+    expect(rebuilt).toEqual([p(0.5, 0), p(0.5, 0.5), p(2.5, 0.5), p(2.5, 2.5), p(3.5, 2.5), p(3.5, 2)])
+  })
+
+  test("a selected wire with one end's part moving: that end goes along, the other end gets the new segment, in one edit for the trace", () => {
+    const plan = movePlan(input(), ["R1"], p(0, 0.5), [Z])
+    expect(plan.edits).toEqual([{ kind: "setProps", part: "R1", props: { schX: 0, schY: 0.5 } }, hints(".R1 > .pin2", ".R2 > .pin1", [p(2, 0.5), p(2, 2.5), p(3.5, 2.5)])])
+    expect(plan.summary).toBe("move R1 and the wire from R1.pin2 to R2.pin1 in the schematic by (0, 0.5)")
+    expect(square(pointsOf(setup(applyEdits(SOURCE, plan.edits, new Set())).design, Z) ?? [])).toBe(true)
+  })
+
+  test("a selected wire whose two end parts both move is moved whole by the parts, with one edit for its trace", () => {
+    const plan = movePlan(input(), ["R1", "R2"], p(1, 1), [Z])
+    expect(plan.edits.filter((edit) => edit.kind === "setTraceHints")).toEqual([hints(".R1 > .pin2", ".R2 > .pin1", [p(3, 1), p(3, 3)])])
+    expect(plan.summary).toBe("move R1, R2 and the wire from R1.pin2 to R2.pin1 in the schematic by (1, 1)")
+  })
+
+  test("two selected wires are counted in the history", () => {
+    expect(movePlan(input(), [], p(0.5, 0), [Z, "wire:R3.pin2|R4.pin1"]).summary).toBe("move 2 wires in the schematic by (0.5, 0)")
+  })
+
+  test("a pin-to-net wire keeps its label end, which gets the new segment", () => {
+    expect(movePlan(input(), [], p(0.5, 0), ["wire:R7.pin2|net.VCC"]).edits).toEqual([hints(".R7 > .pin2", "net.VCC", [p(2, 11), p(2, 12), p(1.5, 12)])])
+  })
+
+  test("a selected wire that cannot move is named, and the rest of the selection still moves", () => {
+    const plan = movePlan(input(new Set(["R2"])), ["R1", "R2"], p(0, 0.5), [Z])
+    expect(plan.edits).toEqual([{ kind: "setProps", part: "R1", props: { schX: 0, schY: 0.5 } }])
+    expect(plan.skipped).toEqual(["R2 is locked", "The wire from R1.pin2 to R2.pin1: R2 is locked"])
+  })
+
+  test("a wire Studio draws the shape of (a trace without corners) is left as it is: Studio draws it again", () => {
+    const plan = movePlan(input(), ["R1"], p(0, 0.5), ["wire:R1.pin1|R3.pin1"])
+    expect(plan.edits.map((edit) => edit.kind)).toEqual(["setProps", "setTraceHints"])
+    expect(plan.summary).toBe("move R1 in the schematic to (0, 0.5)")
+    expect(movePlan(input(), [], p(0, 0.5), ["wire:R1.pin1|R3.pin1"]).edits).toEqual([])
+  })
+})
+
 /** Studio's edit call, kept: every call's edits and summary; each edit is written to the source when `answer` says. */
 function server(start = SOURCE) {
   let text = start
@@ -238,13 +296,13 @@ describe("the move and its wires are one history entry", () => {
     expect(withFollowingWires(plan, sheet.source, undefined)).toBe(plan)
   })
 
-  function keys(studio: ReturnType<typeof server>, names: readonly string[], design = sheet.design) {
+  function keys(studio: ReturnType<typeof server>, names: readonly string[], design = sheet.design, wires: readonly string[] = []) {
     const session = keySession({ resolved: () => undefined, holding: () => undefined })
     const input = (): EditInput => {
       const circuit = studio.source()
       return {
         view: "schematic",
-        selection: Selection.none.all(names),
+        selection: Selection.none.all(names, wires),
         circuit,
         actions: studio.actions,
         blockerFor: (name) => moveBlocker(circuit, new Set(), name, "schematic"),
@@ -289,6 +347,31 @@ describe("the move and its wires are one history entry", () => {
     expect(studio.calls[1]?.edits).toEqual([{ kind: "setProps", part: "R1", props: { schX: 0, schY: 0.2 } }, hints(".R1 > .pin2", ".R2 > .pin1", [p(2, 0.2), p(2, 2)])])
     await studio.answer()
     expect(pointsOf(setup(studio.text()).design, "wire:R1.pin2|R2.pin1")).toEqual([p(0.5, 0.2), p(2, 0.2), p(2, 2), p(3.5, 2)])
+  })
+
+  test("arrow keys with parts and wires selected carry the wires in the nudge's one edit call, and a press in flight sends the total", async () => {
+    const studio = server()
+    const { session, input } = keys(studio, ["R1"], sheet.design, [Z])
+    session.nudge(input(), { action: "nudgeUp", preventDefault: true, steps: 1 })
+    session.nudge(input(), { action: "nudgeUp", preventDefault: true, steps: 1 })
+    await studio.answer()
+    expect(studio.calls[0]).toEqual({
+      edits: [{ kind: "setProps", part: "R1", props: { schX: 0, schY: 0.1 } }, hints(".R1 > .pin2", ".R2 > .pin1", [p(2, 0.1), p(2, 2.1), p(3.5, 2.1)])],
+      summary: "move R1 and the wire from R1.pin2 to R2.pin1 in the schematic by (0, 0.1)",
+    })
+    expect(studio.calls[1]?.edits).toEqual([{ kind: "setProps", part: "R1", props: { schX: 0, schY: 0.2 } }, hints(".R1 > .pin2", ".R2 > .pin1", [p(2, 0.2), p(2, 2.2), p(3.5, 2.2)])])
+    await studio.answer()
+    expect(square(pointsOf(setup(studio.text()).design, Z) ?? [])).toBe(true)
+  })
+
+  test("arrow keys with only a wire selected move that wire", async () => {
+    const studio = server()
+    const { session, input } = keys(studio, [], sheet.design, [Z])
+    session.nudge(input(), { action: "nudgeRight", preventDefault: true, steps: 1 })
+    await studio.answer()
+    expect(studio.calls).toEqual([
+      { edits: [hints(".R1 > .pin2", ".R2 > .pin1", [p(2.1, 0), p(2.1, 2)])], summary: "move the wire from R1.pin2 to R2.pin1 in the schematic by (0.1, 0)" },
+    ])
   })
 
   test("align sends the moves of every part and the corner edits in one edit call", async () => {

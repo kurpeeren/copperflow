@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest"
 import { gestureStart, hasMoved, opensOnDoubleClick, rightButtonHeld, stillRelease, type GestureStart, type Press, type Under } from "../studio/src/pcb/press.js"
 
 const press = (held: Partial<Press> = {}): Press => ({ button: 0, shiftKey: false, ctrlKey: false, metaKey: false, ...held })
-const UNDER: readonly Under[] = ["part", "selectedPart", "label", "wire", "wireCorner", "empty"]
+const UNDER: readonly Under[] = ["part", "selectedPart", "label", "wire", "selectedWire", "wireCorner", "empty"]
 const MODIFIERS = [{ shiftKey: true }, { ctrlKey: true }, { metaKey: true }, { shiftKey: true, ctrlKey: true }]
 
 describe("what a press on the canvas starts", () => {
@@ -15,19 +15,26 @@ describe("what a press on the canvas starts", () => {
     expect(gestureStart(press(), "label", null)).toBe("label")
   })
 
-  test("a left press on a wire selects the wire and drags the segment under it; with Shift or Ctrl it adds parts with a box, as on a label", () => {
+  test("a left press on a wire selects the wire and drags the segment under it; with Shift or Ctrl it toggles the wire, as on a part", () => {
     expect(gestureStart(press(), "wire", null)).toBe("wireSegment")
-    for (const held of MODIFIERS) expect(gestureStart(press(held), "wire", null)).toBe("addBox")
+    for (const held of MODIFIERS) expect(gestureStart(press(held), "wire", null)).toBe("toggle")
     expect(gestureStart(press({ button: 2 }), "wire", null)).toBe("rightPress")
     expect(gestureStart(press(), "wire", "note")).toBe("note")
   })
 
-  test("a left press on a corner handle of the selected wire drags that corner; Shift or Ctrl there adds with a box", () => {
+  test("a left press on a corner handle of the selected wire drags that corner; Shift or Ctrl there toggles the wire", () => {
     expect(gestureStart(press(), "wireCorner", null)).toBe("wireCorner")
-    for (const held of MODIFIERS) expect(gestureStart(press(held), "wireCorner", null)).toBe("addBox")
+    for (const held of MODIFIERS) expect(gestureStart(press(held), "wireCorner", null)).toBe("toggle")
     expect(gestureStart(press({ button: 1 }), "wireCorner", null)).toBe("pan")
     expect(gestureStart(press({ button: 2 }), "wireCorner", null)).toBe("rightPress")
     expect(gestureStart(press(), "wireCorner", "zoom")).toBe("zoom")
+  })
+
+  test("a left press on a wire selected with other things drags the whole selection, as on a selected part; Shift or Ctrl toggles it", () => {
+    expect(gestureStart(press(), "selectedWire", null)).toBe("moveGroup")
+    expect(gestureStart(press(), "selectedWire", "place")).toBe("moveGroup")
+    for (const held of MODIFIERS) expect(gestureStart(press(held), "selectedWire", null)).toBe("toggle")
+    expect(stillRelease("moveGroup", null)).toBe("selectAlone")
   })
 
   test("with a Place tool armed, a press on a wire or its corner handle only selects the wire", () => {
