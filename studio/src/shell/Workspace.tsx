@@ -58,6 +58,7 @@ function canvasProps({ data, workspace, checks, selection, onSelect, actions }: 
     design: build.design,
     buildId: build.finishedAt,
     buildStatus: build.status,
+    builtMark: build.startMark,
     project: data.project,
     // Previews of moves and wires sent before this time are in the design the canvases draw.
     builtFrom: build.startedAt ? Date.parse(build.startedAt) : Number.NEGATIVE_INFINITY,

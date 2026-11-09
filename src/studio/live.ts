@@ -22,6 +22,11 @@ export interface BuildState {
    * runs, this and `finishedAt` still describe the last finished one.
    */
   startedAt?: string
+  /**
+   * The mark (nextMark) taken when the last finished build started. A change written with a smaller mark is in the
+   * build; one written with a larger mark may not be.
+   */
+  startMark?: number
   finishedAt?: string
 }
 
@@ -59,6 +64,7 @@ export class LiveProject {
   private watcher: FSWatcher | undefined
   private stopped = false
   private lastFinished = 0
+  private marks = 0
 
   constructor(
     private readonly root: string,
@@ -105,6 +111,15 @@ export class LiveProject {
     return text !== undefined && text === start.text ? design : undefined
   }
 
+  /**
+   * The next mark of one counter shared by build starts and file writes, so the two can be ordered without a clock:
+   * a build whose start mark is larger than a write's mark started after the write and read it.
+   */
+  nextMark(): number {
+    this.marks += 1
+    return this.marks
+  }
+
   /** Builds `file` now, or once more after the build that is running. */
   requestBuild(file: string): void {
     if (this.stopped) return
@@ -115,10 +130,10 @@ export class LiveProject {
     }
     this.builds.set(file, { ...previous, status: "building" })
     this.emit("build", { file, status: "building" })
-    void this.run(file, new Date().toISOString())
+    void this.run(file, new Date().toISOString(), this.nextMark())
   }
 
-  private async run(file: string, startedAt: string): Promise<void> {
+  private async run(file: string, startedAt: string, startMark: number): Promise<void> {
     let next: BuildState
     try {
       const changes = this.changes
@@ -129,7 +144,7 @@ export class LiveProject {
       const message = (error instanceof Error ? error.message : String(error)).split(this.root).join(".")
       next = { status: "failed", ...(design ? { design } : {}), error: message }
     }
-    this.finish(file, { ...next, startedAt })
+    this.finish(file, { ...next, startedAt, startMark })
   }
 
   private finish(file: string, state: BuildState): void {

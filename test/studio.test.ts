@@ -140,6 +140,7 @@ describe("editing", () => {
   test("edits are written to the file as the human", async () => {
     const result = await data(await api("/api/edit", { file: FILE, summary: "move R1", edits: [{ kind: "setProps", part: "R1", props: { pcbX: 5 } }] }))
     expect(result.entryId).toBe("c0001")
+    expect(result.writtenAt).toBeTypeOf("number")
     expect(await readFile(join(root, FILE), "utf8")).toContain("pcbX={5}")
     const history = await data(await api("/api/history"))
     expect(history[0]).toMatchObject({ author: "human", summary: "move R1" })

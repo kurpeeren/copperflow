@@ -63,6 +63,8 @@ export interface BuildState {
   error?: string
   /** When the last finished build started; it holds every change sent before then. */
   startedAt?: string
+  /** The server's mark when that build started; an edit response's writtenAt below it is in the build. */
+  startMark?: number
   finishedAt?: string
 }
 

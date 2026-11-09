@@ -345,7 +345,7 @@ function sheetPointer({ boxes, labels, wire, palette, note, picking, onOpenPrope
  * wire tool (see useWireTool), the Place tools (see useLabelPalette) and the note tool (see useNoteTool).
  */
 export function SchematicCanvas(props: CanvasProps) {
-  const { design, buildId, buildStatus, project, builtFrom, circuit, actions, selection, onSelect, highlight: highlightNets, onHighlight, gridStyle, gridStep: step, onGridStep: setStep, markers, activeViolation, focus, onFocused } = props
+  const { design, buildId, builtMark, buildStatus, project, builtFrom, circuit, actions, selection, onSelect, highlight: highlightNets, onHighlight, gridStyle, gridStep: step, onGridStep: setStep, markers, activeViolation, focus, onFocused } = props
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const size = useElementSize(wrapRef)
@@ -367,7 +367,7 @@ export function SchematicCanvas(props: CanvasProps) {
   useLabelRenameAction(design, palette, actions)
   const layout = useLayout(parts, step)
   const menuPlace = useKeyMenuPlace(wrapRef, selection.primary, parts.boxes, camera, size)
-  const keys = { ...common, selection, layout, buildId, buildStatus, moveWaiting: gestures.pending !== undefined, menuPlace, onContextMenu: props.onContextMenu }
+  const keys = { ...common, selection, layout, builtMark, buildStatus, moveWaiting: gestures.pending !== undefined, menuPlace, onContextMenu: props.onContextMenu }
   const { highlight, rotateHeld } = useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys })
   const hover = useSheetHover(parts.boxes, wire, labels.tools)
   const { moving, gesture } = gestures

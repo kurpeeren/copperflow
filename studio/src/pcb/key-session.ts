@@ -4,7 +4,7 @@
 // canvas. Plain TypeScript with .js imports, so the tests can run it.
 import type { Selection } from "../selection.js"
 import { nudgeDirection, type KeyResult } from "./canvas-keys.js"
-import { nudgeOffset, nudgePlan, rotatePlan, sendGroupEdit, type GroupEdit, type GroupEditActions, type Layout } from "./group-edits.js"
+import { nudgeOffset, nudgePlan, rotatePlan, sendGroupEditMarked, type GroupEdit, type GroupEditActions, type Layout } from "./group-edits.js"
 import { editSent, editSettled, OPEN_GATE, pressNudge, pressTurn, releaseTurn, settleNudge, type Burst, type DesignState, type TurnGate } from "./key-burst.js"
 import type { Point } from "./geometry.js"
 import type { SourceCircuit, View } from "./positions.js"
@@ -56,10 +56,10 @@ export function keySession(clock: Clock): KeySession {
   /** Sends a position edit through the gate, so a Rotate after it waits for its build; resolves to whether it went through. */
   const send = (plan: GroupEdit, input: EditInput): Promise<boolean> => {
     const before = state.gate.waiting
-    if (plan.edits.length > 0) state.gate = editSent(state.gate, input.buildId)
+    if (plan.edits.length > 0) state.gate = editSent(state.gate)
     const { seq } = state.gate
-    return sendGroupEdit(plan, input.actions).then((ok) => {
-      if (plan.edits.length > 0) state.gate = editSettled(state.gate, ok, seq, before)
+    return sendGroupEditMarked(plan, input.actions).then(({ ok, mark }) => {
+      if (plan.edits.length > 0) state.gate = editSettled(state.gate, ok, seq, before, mark)
       tell()
       clock.resolved()
       return ok

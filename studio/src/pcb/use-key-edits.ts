@@ -14,8 +14,8 @@ export function useKeyEdits(input: EditInput): { edits: KeyEdits; held: boolean 
   const [resolvedCount, setResolvedCount] = useState(0)
   const [held, setHeld] = useState(false)
   const [session] = useState(() => keySession({ resolved: () => setResolvedCount((count) => count + 1), holding: setHeld }))
-  const { buildId, buildStatus, moveWaiting, circuit } = input
+  const { builtMark, buildStatus, moveWaiting, circuit } = input
   // After the render that drew the new build, circuit or resolved edit, so a held turn reads them as they are now.
-  useEffect(() => session.settle(input), [session, buildId, buildStatus, moveWaiting, circuit, resolvedCount])
+  useEffect(() => session.settle(input), [session, builtMark, buildStatus, moveWaiting, circuit, resolvedCount])
   return { edits: session, held }
 }

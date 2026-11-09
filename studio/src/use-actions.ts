@@ -5,12 +5,20 @@ import { api, type Edit } from "./api"
 /** Every action reports failures itself and resolves to whether it succeeded. */
 export interface Actions {
   edit(edits: Edit[], summary: string): Promise<boolean>
+  /** Like edit, and also gives the server's mark of the write, which orders it against builds (LiveProject.nextMark). */
+  editMarked(edits: Edit[], summary: string): Promise<EditOutcome>
   lock(parts: string[], locked: boolean): Promise<boolean>
   mark(text: string, at?: { view: "pcb" | "schematic"; x: number; y: number }): Promise<boolean>
   unmark(id: string): Promise<boolean>
   undo(id?: string): Promise<boolean>
   verify(id: string, by: string, against: string, confirm: string): Promise<boolean>
   notify(text: string): void
+}
+
+/** Whether an edit went through, and the mark the server took when it wrote it. */
+export interface EditOutcome {
+  ok: boolean
+  mark?: number
 }
 
 interface ActionsInput {
@@ -46,9 +54,20 @@ export function useActions({ file, refresh, refreshParts, notify }: ActionsInput
     },
     [file, refresh, notify],
   )
+  const editMarked = useCallback(
+    async (edits: Edit[], summary: string): Promise<EditOutcome> => {
+      let mark: number | undefined
+      const ok = await run(async () => {
+        mark = (await api<{ writtenAt?: number }>("/api/edit", { file, edits, summary })).writtenAt
+      })
+      return { ok, mark }
+    },
+    [file, run],
+  )
   return useMemo(
     () => ({
-      edit: (edits, summary) => run(() => api("/api/edit", { file, edits, summary })),
+      edit: async (edits, summary) => (await editMarked(edits, summary)).ok,
+      editMarked,
       lock: (parts, locked) => run(() => api("/api/lock", { file, parts, locked })),
       mark: (text, at) => run(() => api("/api/mark", { file, text, ...at })),
       unmark: (id) => run(() => api("/api/unmark", { file, id })),
@@ -60,7 +79,7 @@ export function useActions({ file, refresh, refreshParts, notify }: ActionsInput
       },
       notify,
     }),
-    [file, run, notify, refreshParts],
+    [file, run, notify, refreshParts, editMarked],
   )
 }
 

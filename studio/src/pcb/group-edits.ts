@@ -213,6 +213,8 @@ export function lockChange(
 /** What sending a group edit needs: Studio's `actions.edit`, which reports its own failure, and the toast. */
 export interface GroupEditActions {
   edit(edits: Edit[], summary: string): Promise<boolean>
+  /** Like edit, with the server's write mark; the key session needs it to order its edits against builds. */
+  editMarked?(edits: Edit[], summary: string): Promise<{ ok: boolean; mark?: number }>
   notify(text: string): void
 }
 
@@ -221,12 +223,17 @@ export interface GroupEditActions {
  * own message is not covered by them; with nothing to send, only the reasons are given. Resolves to whether it sent.
  */
 export async function sendGroupEdit(plan: GroupEdit, actions: GroupEditActions): Promise<boolean> {
+  return (await sendGroupEditMarked(plan, actions)).ok
+}
+
+/** Like sendGroupEdit, and also the server's mark of the write when the actions give it. */
+export async function sendGroupEditMarked(plan: GroupEdit, actions: GroupEditActions): Promise<{ ok: boolean; mark?: number }> {
   const note = skippedNote(plan)
   if (plan.edits.length === 0) {
     if (note) actions.notify(note)
-    return false
+    return { ok: false }
   }
-  const ok = await actions.edit(plan.edits, plan.summary)
-  if (ok && note) actions.notify(note)
-  return ok
+  const outcome = actions.editMarked ? await actions.editMarked(plan.edits, plan.summary) : { ok: await actions.edit(plan.edits, plan.summary) }
+  if (outcome.ok && note) actions.notify(note)
+  return outcome
 }

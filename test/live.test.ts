@@ -57,6 +57,38 @@ describe("LiveProject", () => {
     expect(live.getBuild(FILE).finishedAt! > first!).toBe(true)
   })
 
+  test("a write's mark is smaller than the start mark of every build that started after it, and larger than one running during it", async () => {
+    const held = heldBuilder()
+    live = new LiveProject(root, held.builder)
+    live.requestBuild(FILE)
+    await vi.waitFor(() => expect(held.build).toHaveBeenCalledTimes(1))
+    // An edit lands while that build runs: its mark is taken, then a build is requested and queued.
+    const written = live.nextMark()
+    live.requestBuild(FILE)
+    held.release()
+    await vi.waitFor(() => expect(held.build).toHaveBeenCalledTimes(2))
+    // The build that ran during the edit finished with a new id, but it started before the write.
+    const running = live.getBuild(FILE)
+    expect(running.status).toBe("building")
+    expect(running.startMark! < written).toBe(true)
+    held.release()
+    await vi.waitFor(() => expect(live?.getBuild(FILE).status).toBe("done"))
+    expect(live.getBuild(FILE).startMark! > written).toBe(true)
+  })
+
+  test("startMark keeps its value while a build runs and after a failed one", async () => {
+    const held = heldBuilder()
+    live = new LiveProject(root, held.builder)
+    live.requestBuild(FILE)
+    await vi.waitFor(() => expect(held.build).toHaveBeenCalledTimes(1))
+    held.release()
+    await vi.waitFor(() => expect(live?.getBuild(FILE).status).toBe("done"))
+    const first = live.getBuild(FILE).startMark
+    expect(first).toBeTypeOf("number")
+    live.requestBuild(FILE)
+    expect(live.getBuild(FILE)).toMatchObject({ status: "building", startMark: first })
+  })
+
   test("startedAt tells a build already running from the rerun that includes a later change", async () => {
     const held = heldBuilder()
     live = new LiveProject(root, held.builder)

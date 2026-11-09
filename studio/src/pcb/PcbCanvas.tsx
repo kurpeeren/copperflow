@@ -156,7 +156,7 @@ function useBoardBounds(design: Design, boxes: PartBox[]) {
 
 /** The PCB, drawn by copperflow's own renderer under its camera, grid and tools. */
 export function PcbCanvas(props: CanvasProps) {
-  const { design, builtFrom, buildId, buildStatus, circuit, actions, selection, onSelect, highlight, onHighlight, unit, onToggleUnit, gridStyle, gridStep: step, onGridStep: setStep, markers, activeViolation, focus, onFocused, layers } = props
+  const { design, builtFrom, builtMark, buildStatus, circuit, actions, selection, onSelect, highlight, onHighlight, unit, onToggleUnit, gridStyle, gridStep: step, onGridStep: setStep, markers, activeViolation, focus, onFocused, layers } = props
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const size = useElementSize(wrapRef)
@@ -173,7 +173,7 @@ export function PcbCanvas(props: CanvasProps) {
   const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom, selection, tool, layers: pick, onContextMenu: props.onContextMenu })
   const layout = useLayout(parts, step)
   const menuPlace = useKeyMenuPlace(canvasRef, selection.primary, parts.boxes, camera, size)
-  const { rotateHeld } = usePcbKeys(design, cursor, { ...common, selection, layout, buildId, buildStatus, moveWaiting: gestures.pending !== undefined, fit, onHighlight, menuPlace, onContextMenu: props.onContextMenu })
+  const { rotateHeld } = usePcbKeys(design, cursor, { ...common, selection, layout, builtMark, buildStatus, moveWaiting: gestures.pending !== undefined, fit, onHighlight, menuPlace, onContextMenu: props.onContextMenu })
   const hover = usePcbHover(design, parts.boxes)
   const { moving, gesture } = gestures
   usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad: hover.pad, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, highlightNets: highlight, markers, activeViolation, grid })

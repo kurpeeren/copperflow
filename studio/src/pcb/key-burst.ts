@@ -51,27 +51,31 @@ export type BuildStatus = "idle" | "building" | "done" | "failed"
 /**
  * The Rotate presses waiting for the design. A group turns about the centre of its parts as the design draws them,
  * and writes positions relative to the code's literals; the two agree only once every position edit sent from the
- * keys has resolved, no dragged move waits for its build, and a build that finished after the last edit was sent has
- * succeeded: the build id (which changes with each finished build) differs from the one shown at the send, and the
- * status is done, so a failed build keeps the gate shut until a successful one. A press before then is held, and
- * goes when that build lands. No clock is compared: the browser's and the server's need not agree.
+ * keys has resolved, no dragged move waits for its build, and a build that started after the last edit was written
+ * has succeeded. The server orders the two with one counter (LiveProject.nextMark): the edit's response carries the
+ * mark taken when it was written, and each build state the mark taken when that build started. A build whose start
+ * mark is larger read the edit; the status must be done, so a failed build keeps the gate shut until a successful
+ * one. A press before then is held, and goes when that build lands. No clock is compared, and a build that finished
+ * after the edit but started before it cannot open the gate.
  */
 export interface TurnGate {
   /** Position edits sent from the keys that have not resolved. */
   inFlight: number
   /** How many edits have been sent; names each one. */
   seq: number
-  /** The build id shown when the last edit was sent, and which edit that was, until a later build has succeeded. */
-  waiting: { from: string | undefined; seq: number } | undefined
+  /** The last edit sent, until a build that started after the edits has succeeded. */
+  waiting: { seq: number } | undefined
+  /** The largest write mark among the resolved edits. */
+  written: number
   /** The presses held meanwhile, and the selection they were made on. */
   held: { names: readonly string[]; count: number } | undefined
 }
 
-export const OPEN_GATE: TurnGate = { inFlight: 0, seq: 0, waiting: undefined, held: undefined }
+export const OPEN_GATE: TurnGate = { inFlight: 0, seq: 0, waiting: undefined, written: 0, held: undefined }
 
-/** What the gate looks at besides itself: the shown build's id and the build status, and whether a dragged move waits for its build. */
+/** What the gate looks at besides itself: the shown build's start mark and the build status, and whether a dragged move waits for its build. */
 export interface DesignState {
-  buildId: string | undefined
+  builtMark: number | undefined
   buildStatus: BuildStatus
   moveWaiting: boolean
 }
@@ -79,7 +83,8 @@ export interface DesignState {
 /** Whether a turn computed now sees where the last edit put the parts. */
 export function gateOpen(gate: TurnGate, design: DesignState): boolean {
   if (gate.inFlight > 0 || design.moveWaiting) return false
-  return gate.waiting === undefined || (design.buildId !== gate.waiting.from && design.buildStatus === "done")
+  if (gate.waiting === undefined) return true
+  return design.buildStatus === "done" && design.builtMark !== undefined && design.builtMark > gate.written
 }
 
 /** The gate once it is open: nothing is waited for any more, so a later failed build leaves it open. */
@@ -104,19 +109,20 @@ export function releaseTurn(gate: TurnGate, names: readonly string[], design: De
   return { gate: { ...open, held: held.count > 1 ? { ...held, count: held.count - 1 } : undefined }, send: true }
 }
 
-/** A position edit went out while the design showed build `buildId`. */
-export function editSent(gate: TurnGate, buildId: string | undefined): TurnGate {
+/** A position edit went out. */
+export function editSent(gate: TurnGate): TurnGate {
   const seq = gate.seq + 1
-  return { ...gate, inFlight: gate.inFlight + 1, seq, waiting: { from: buildId, seq } }
+  return { ...gate, inFlight: gate.inFlight + 1, seq, waiting: { seq } }
 }
 
 /**
- * Edit number `seq` resolved. A failed one wrote nothing, so no build follows it: unless a later edit was sent,
- * the gate waits again for what it waited for before (`before`), and the held presses are dropped.
+ * Edit number `seq` resolved, written at server mark `mark`. A failed one wrote nothing, so no build follows it:
+ * unless a later edit was sent, the gate waits again for what it waited for before (`before`), and the held presses
+ * are dropped.
  */
-export function editSettled(gate: TurnGate, ok: boolean, seq: number, before: TurnGate["waiting"]): TurnGate {
+export function editSettled(gate: TurnGate, ok: boolean, seq: number, before: TurnGate["waiting"], mark?: number): TurnGate {
   const inFlight = Math.max(0, gate.inFlight - 1)
-  if (ok) return { ...gate, inFlight }
+  if (ok) return { ...gate, inFlight, written: Math.max(gate.written, mark ?? 0) }
   return { ...gate, inFlight, waiting: gate.waiting?.seq === seq ? before : gate.waiting, held: undefined }
 }
 

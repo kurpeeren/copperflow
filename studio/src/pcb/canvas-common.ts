@@ -31,6 +31,8 @@ export interface CanvasProps {
   buildId: string | undefined
   /** The server's build status: a failed build keeps the last design, so a Rotate waits for a build that succeeds. */
   buildStatus: BuildStatus
+  /** The shown build's start mark (the server's counter, shared with edit writes). */
+  builtMark: number | undefined
   /** The Studio folder's name, for the schematic's title block. */
   project: string | undefined
   /** When the build behind the shown design started (ms); a preview sent before then is in the design. */

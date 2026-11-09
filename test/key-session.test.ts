@@ -47,20 +47,24 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 function bench(start: SourceCircuit, names: readonly string[], options: { hidden?: readonly string[]; fail?: boolean } = {}) {
   let circuit = start
   let layout = built(start, options.hidden)
-  let builds = 0
-  let buildId = "b0"
+  /** The server's one counter: edit writes and build starts take their marks from it. */
+  let marks = 0
+  let lastWrite = 0
+  let builtMark: number | undefined = 0
   let build: BuildStatus = "done"
   const holding: boolean[] = []
   const answers: (() => void)[] = []
   const sent: string[] = []
   const notes: string[] = []
   const actions: GroupEditActions = {
-    edit: (edits, summary) =>
+    edit: async (edits, summary) => (await actions.editMarked?.(edits, summary))?.ok ?? false,
+    editMarked: (edits, summary) =>
       new Promise((resolve) => {
         sent.push(summary)
         answers.push(() => {
           if (!options.fail) circuit = applied(circuit, edits)
-          resolve(!options.fail)
+          if (!options.fail) lastWrite = ++marks
+          resolve({ ok: !options.fail, mark: options.fail ? undefined : lastWrite })
         })
       }),
     notify: (text) => void notes.push(text),
@@ -73,7 +77,7 @@ function bench(start: SourceCircuit, names: readonly string[], options: { hidden
     actions,
     blockerFor: (name) => moveBlocker(circuit, new Set(), name, "pcb"),
     layout,
-    buildId,
+    builtMark,
     buildStatus: build,
     moveWaiting: false,
   })
@@ -91,10 +95,12 @@ function bench(start: SourceCircuit, names: readonly string[], options: { hidden
       await flush()
       session.settle(input())
     },
-    /** A build finishes with a new id, drawing the circuit as it is then; a failed one keeps the design it had. */
-    build(ok = true) {
-      builds += 1
-      buildId = `b${builds}`
+    /**
+     * A build finishes, drawing the circuit as it is then; a failed one keeps the design it had. It started after
+     * everything written so far, or with `early` before the last write (it ran while the edit was written).
+     */
+    build(ok = true, early = false) {
+      builtMark = early ? lastWrite - 1 : ++marks
       build = ok ? "done" : "failed"
       if (ok) layout = built(circuit, options.hidden)
       session.settle(input())
@@ -179,7 +185,7 @@ describe("two quick group rotates", () => {
 describe("the held rotate and the build id", () => {
   const start = circuitOf([part("R1", 0, 0), part("R2", 4, 0)])
 
-  test("a held rotate is released by a new build id", async () => {
+  test("a held rotate is released by a build that started after the edit was written", async () => {
     const studio = bench(start, ["R1", "R2"])
     studio.rotate()
     await studio.answer()
@@ -195,6 +201,17 @@ describe("the held rotate and the build id", () => {
     await studio.answer()
     studio.rotate()
     studio.build(false)
+    expect(studio.sent).toHaveLength(1)
+    studio.build()
+    expect(studio.sent).toHaveLength(2)
+  })
+
+  test("a build that finished after the edit but started before it does not release the held rotate", async () => {
+    const studio = bench(start, ["R1", "R2"])
+    studio.rotate()
+    await studio.answer()
+    studio.rotate()
+    studio.build(true, true)
     expect(studio.sent).toHaveLength(1)
     studio.build()
     expect(studio.sent).toHaveLength(2)
@@ -240,7 +257,7 @@ describe("a rotate while a drag waits", () => {
       actions,
       blockerFor: () => null,
       layout: built(start),
-      buildId: "b0",
+      builtMark: 0,
       buildStatus: "done",
       moveWaiting: true,
     }
