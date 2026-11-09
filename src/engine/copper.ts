@@ -5,7 +5,10 @@ import type { Diagnostic, Net, Point } from "./model.js"
 import { naturalCompare } from "./order.js"
 import type { PlacedFootprint, WorldPad } from "./pcb.js"
 
-/** A track on the board. `net` is the net id it carries: the one its pads give, else the one it names; none on a short. */
+/**
+ * A track on the board. `net` is the net id it carries: the one its pads give, else the one it (or its island) names
+ * when the circuit has that net; none on a short.
+ */
 export interface PcbTrack {
   id: string
   net?: string
@@ -123,11 +126,18 @@ function joinPads(graph: Graph): void {
   })
 }
 
+/** Vias whose rings overlap on a layer they share. */
+function viasTouch(a: ViaRecord, b: ViaRecord): boolean {
+  const spanB = viaSpan(b)
+  const shared = [...viaSpan(a)].some((layer) => spanB.has(layer))
+  return shared && Math.hypot(a.at.x - b.at.x, a.at.y - b.at.y) <= (a.diameter + b.diameter) / 2 + TOUCH_TOLERANCE
+}
+
 function recordsTouch(a: LayoutRecord, b: LayoutRecord): boolean {
   if (a.t === "track" && b.t === "track") return tracksTouch(a, b)
   if (a.t === "track" && b.t === "via") return trackTouchesVia(a, b, viaSpan(b))
   if (a.t === "via" && b.t === "track") return trackTouchesVia(b, a, viaSpan(a))
-  return false
+  return viasTouch(a as ViaRecord, b as ViaRecord)
 }
 
 function joinRecords(graph: Graph): void {
@@ -142,13 +152,14 @@ function joinRecords(graph: Graph): void {
 
 /** Copper joined together, in the order its first record comes in the file. */
 interface Island {
+  root: number
   records: number[]
   /** The nets of the pads it touches, natural order, each once. */
   nets: string[]
   touchesPad: boolean
 }
 
-function islandsOf(graph: Graph): Island[] {
+function padNetsByRoot(graph: Graph): Map<number, Set<string>> {
   const padNets = new Map<number, Set<string>>()
   graph.pads.forEach((pad, p) => {
     const root = graph.groups.find(p)
@@ -156,6 +167,11 @@ function islandsOf(graph: Graph): Island[] {
     if (pad.net !== undefined) nets.add(pad.net)
     padNets.set(root, nets)
   })
+  return padNets
+}
+
+function islandsOf(graph: Graph): Island[] {
+  const padNets = padNetsByRoot(graph)
   const islands: Island[] = []
   const byRoot = new Map<number, Island>()
   graph.records.forEach((_, r) => {
@@ -166,19 +182,21 @@ function islandsOf(graph: Graph): Island[] {
       return
     }
     const nets = padNets.get(root)
-    const island: Island = { records: [r], nets: [...(nets ?? [])].sort(naturalCompare), touchesPad: nets !== undefined }
+    const island: Island = { root, records: [r], nets: [...(nets ?? [])].sort(naturalCompare), touchesPad: nets !== undefined }
     byRoot.set(root, island)
     islands.push(island)
   })
   return islands
 }
 
-/** A net a record names, by id or by name, as its id; a name no net has stays as written. */
-function netNamer(nets: readonly Net[]): (name: string | undefined) => string | undefined {
+type Namer = (name: string | undefined) => string | undefined
+
+/** The id of the net a record names, by id or by name; undefined for no name or a name the circuit lacks. */
+function netNamer(nets: readonly Net[]): Namer {
   const ids = new Map<string, string>()
   for (const net of nets) for (const name of net.names) if (!ids.has(name)) ids.set(name, net.id)
   for (const net of nets) ids.set(net.id, net.id)
-  return (name) => (name === undefined ? undefined : (ids.get(name) ?? name))
+  return (name) => (name === undefined ? undefined : ids.get(name))
 }
 
 const listed = (words: readonly string[]) => (words.length < 2 ? words.join("") : `${words.slice(0, -1).join(", ")} and ${words.at(-1)}`)
@@ -187,33 +205,58 @@ function islandDiagnostic(island: Island, records: readonly LayoutRecord[]): Dia
   const ids = island.records.map((r) => (records[r] as LayoutRecord).id)
   const one = ids.length === 1
   if (island.nets.length > 1) {
-    return diagnostic("short", "error", `${ids.join(", ")} ${one ? "joins" : "join"} the nets ${listed(island.nets)}`, island.nets)
+    return diagnostic("short", "error", `${ids.join(", ")} ${one ? "joins" : "join"} the nets ${listed(island.nets)}`, [...island.nets, ...ids])
   }
   if (!island.touchesPad) return diagnostic("floating", "warning", `${ids.join(", ")} ${one ? "touches" : "touch"} no pad`, ids)
   return undefined
 }
 
+/** A record naming a net the circuit lacks, or naming one net while its pads give another. */
+function recordDiagnostic(record: LayoutRecord, island: Island, named: Namer): Diagnostic | undefined {
+  if (record.net === undefined) return undefined
+  const id = named(record.net)
+  if (id === undefined) return diagnostic("unknown-net", "warning", `${record.id} names the net ${record.net}, which the circuit does not have`, [record.id])
+  const carried = island.nets.length === 1 ? island.nets[0] : undefined
+  if (carried === undefined || carried === id) return undefined
+  return diagnostic("mismatch", "warning", `${record.id} names the net ${id} but touches pads of ${carried}, so it carries ${carried}`, [record.id])
+}
+
+function diagnosticsOf(islands: readonly Island[], records: readonly LayoutRecord[], named: Namer): Diagnostic[] {
+  return islands.flatMap((island) => [
+    ...island.records.flatMap((r) => recordDiagnostic(records[r] as LayoutRecord, island, named) ?? []),
+    ...[islandDiagnostic(island, records)].filter((d): d is Diagnostic => d !== undefined),
+  ])
+}
+
 /** Each record's net: its pads' net; on a short none; otherwise the one it names, else the first its island names. */
-function islandNets(island: Island, records: readonly LayoutRecord[], named: (name: string | undefined) => string | undefined): Map<number, string | undefined> {
-  const firstNamed = island.records.map((r) => named((records[r] as LayoutRecord).net)).find((net) => net !== undefined)
+function islandNets(island: Island, records: readonly LayoutRecord[], named: Namer): [number, string | undefined][] {
+  const own = (r: number) => named((records[r] as LayoutRecord).net)
+  const firstNamed = island.records.map(own).find((net) => net !== undefined)
+  return island.records.map((r) => [r, island.nets.length > 1 ? undefined : (island.nets[0] ?? own(r) ?? firstNamed)])
+}
+
+function copperItem(record: LayoutRecord, net: string | undefined, pads: readonly string[]): PcbTrack | PcbVia {
+  const extra = { ...(net === undefined ? {} : { net }), ...(record.net === undefined ? {} : { named: record.net }) }
+  const { locked, by } = record
+  if (record.t === "track") return { id: record.id, ...extra, layer: record.layer, width: record.width, points: record.points, locked, by, pads: [...pads] }
+  return { id: record.id, ...extra, at: record.at, drill: record.drill, diameter: record.diameter, layers: record.layers, locked, by }
+}
+
+/** Each pad's group for the ratsnest; pads joined only through a short stay apart, so their airwires remain. */
+function padIslands(graph: Graph, islands: readonly Island[]): Map<string, number> {
+  const shorted = new Set(islands.filter((island) => island.nets.length > 1).map((island) => island.root))
   return new Map(
-    island.records.map((r) => {
-      if (island.nets.length > 1) return [r, undefined]
-      return [r, island.nets[0] ?? named((records[r] as LayoutRecord).net) ?? firstNamed]
+    graph.pads.map((pad, p) => {
+      const root = graph.groups.find(p)
+      return [pad.id, shorted.has(root) ? -1 - p : root]
     }),
   )
 }
 
-function copperItem(record: LayoutRecord, net: string | undefined, pads: readonly string[]): PcbTrack | PcbVia {
-  const withNet = net === undefined ? {} : { net }
-  const { locked, by } = record
-  if (record.t === "track") return { id: record.id, ...withNet, layer: record.layer, width: record.width, points: record.points, locked, by, pads: [...pads] }
-  return { id: record.id, ...withNet, at: record.at, drill: record.drill, diameter: record.diameter, layers: record.layers, locked, by }
-}
-
 /**
  * Resolves the layout file's copper against the placed pads: which pads and copper touch, the net each piece carries,
- * shorts (copper joining pads of two nets) and floating copper (touching no pad). Records keep their file order.
+ * shorts (copper joining pads of two nets), floating copper (touching no pad), and records whose named net is unknown
+ * or differs from their pads' net. Records keep their file order.
  */
 export function resolveCopper(parts: readonly PlacedFootprint[], records: readonly LayoutRecord[], nets: readonly Net[]): Copper {
   const pads = parts.flatMap((part) => part.pads)
@@ -222,12 +265,12 @@ export function resolveCopper(parts: readonly PlacedFootprint[], records: readon
   joinRecords(graph)
   const named = netNamer(nets)
   const islands = islandsOf(graph)
-  const netOf = new Map(islands.flatMap((island) => [...islandNets(island, records, named)]))
+  const netOf = new Map(islands.flatMap((island) => islandNets(island, records, named)))
   const items = records.map((record, r) => copperItem(record, netOf.get(r), (graph.touched.get(r) ?? []).map((p) => (pads[p] as WorldPad).id)))
   return {
     tracks: items.filter((item): item is PcbTrack => "points" in item),
     vias: items.filter((item): item is PcbVia => "at" in item),
-    islands: new Map(pads.map((pad, p) => [pad.id, graph.groups.find(p)])),
-    diagnostics: islands.flatMap((island) => islandDiagnostic(island, records) ?? []),
+    islands: padIslands(graph, islands),
+    diagnostics: diagnosticsOf(islands, records, named),
   }
 }

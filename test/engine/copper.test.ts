@@ -39,7 +39,7 @@ const lines = (records: LayoutRecord[]) => ratsnest(PARTS, copper(records).islan
 
 describe("nets from copper", () => {
   test("a track between two pads takes their net and lists the pads", () => {
-    const result = copper([track("t0001", [[0, 0], [10, 0]], { net: "VCC" })])
+    const result = copper([track("t0001", [[0, 0], [10, 0]], { net: "GND" })])
     expect(result.tracks).toEqual([expect.objectContaining({ id: "t0001", net: "net.GND", pads: ["A#1", "B#1"] })])
     expect(result.diagnostics).toEqual([])
   })
@@ -83,12 +83,31 @@ describe("nets from copper", () => {
 })
 
 describe("short and floating", () => {
-  test("copper touching pads of two nets is a short naming both nets", () => {
+  test("copper touching pads of two nets is a short naming both nets and the copper", () => {
     const result = copper([track("t0001", [[20, 0], [30, 0]])])
     expect(result.diagnostics).toEqual([
-      { code: "short", severity: "error", message: "t0001 joins the nets net.GND and net.VCC", items: ["net.GND", "net.VCC"] },
+      { code: "short", severity: "error", message: "t0001 joins the nets net.GND and net.VCC", items: ["net.GND", "net.VCC", "t0001"] },
     ])
     expect(result.tracks[0]?.net).toBeUndefined()
+  })
+
+  test("pads joined only through a short keep their airwires", () => {
+    expect(lines([track("t0001", [[0, 0], [5, 5]]), track("t0002", [[5, 5], [10, 0]]), track("t0003", [[10, 0], [30, 0]])])).toEqual([
+      "A#1-B#1",
+      "B#1-C#1",
+    ])
+  })
+
+  test("a record naming one net that touches only pads of another carries theirs, with a warning", () => {
+    const result = copper([track("t0001", [[0, 0], [10, 0]], { net: "VCC" })])
+    expect(result.tracks[0]).toMatchObject({ net: "net.GND", named: "VCC" })
+    expect(result.diagnostics).toEqual([
+      { code: "mismatch", severity: "warning", message: "t0001 names the net net.VCC but touches pads of net.GND, so it carries net.GND", items: ["t0001"] },
+    ])
+  })
+
+  test("a record naming the net its pads carry has no warning", () => {
+    expect(copper([track("t0001", [[0, 0], [10, 0]], { net: "GND" })]).diagnostics).toEqual([])
   })
 
   test("a short through two tracks names every piece of copper", () => {
@@ -105,11 +124,24 @@ describe("short and floating", () => {
     ])
   })
 
-  test("a floating record naming an unknown net keeps the name as written; without a name it has no net", () => {
+  test("a record naming a net the circuit lacks carries none and is warned about; without a name it has no net", () => {
     const result = copper([track("t0001", [[50, 50], [60, 50]], { net: "SPARE" }), via("v0001", 80, 80)])
-    expect(result.tracks[0]?.net).toBe("SPARE")
+    expect(result.tracks[0]).toMatchObject({ named: "SPARE" })
+    expect(result.tracks[0]?.net).toBeUndefined()
     expect(result.vias[0]?.net).toBeUndefined()
-    expect(result.diagnostics.map((d) => d.items)).toEqual([["t0001"], ["v0001"]])
+    expect(result.diagnostics.map((d) => [d.code, d.items])).toEqual([
+      ["unknown-net", ["t0001"]],
+      ["floating", ["t0001"]],
+      ["floating", ["v0001"]],
+    ])
+    expect(result.diagnostics[0]?.message).toBe("t0001 names the net SPARE, which the circuit does not have")
+  })
+
+  test("overlapping vias join, so a via stacked on a routed via is not floating", () => {
+    const result = copper([track("t0001", [[0, 0], [5, 5]]), via("v0001", 5, 5), via("v0002", 5.4, 5)])
+    expect(result.vias.map((v) => v.net)).toEqual(["net.GND", "net.GND"])
+    expect(result.diagnostics).toEqual([])
+    expect(copper([via("v0001", 50, 50), via("v0002", 51, 50)]).diagnostics).toHaveLength(2)
   })
 
   test("a net id in the record is understood as well as a name", () => {
@@ -137,5 +169,36 @@ describe("pads under a point", () => {
     expect(padsUnder(PARTS, { x: 10.3, y: 0.2 }, "top").map((p) => p.id)).toEqual(["B#1"])
     expect(padsUnder(PARTS, { x: 10, y: 0 }, "bottom")).toEqual([])
     expect(padsUnder(PARTS, { x: 20, y: 0 }, "inner1").map((p) => p.id)).toEqual(["C#1"])
+  })
+})
+
+describe("pad shapes", () => {
+  const shaped = (shape: WorldPad["shape"], width: number, height: number, rotation = 0): PlacedFootprint[] => [
+    part("P", [{ ...pad("P", "1", 0, "net.GND"), shape, width, height, rotation }]),
+  ]
+  const hit = (parts: PlacedFootprint[], x: number, y: number) => padsUnder(parts, { x, y }, "top").length === 1
+
+  test("a rotated rectangle is judged in its turned frame", () => {
+    const turned = shaped("rect", 2, 0.5, 90)
+    expect(hit(turned, 0, 0.9)).toBe(true)
+    expect(hit(turned, 0.9, 0)).toBe(false)
+  })
+
+  test("a circle holds what is within its radius", () => {
+    const circle = shaped("circle", 1, 1)
+    expect(hit(circle, 0.3, 0.3)).toBe(true)
+    expect(hit(circle, 0.4, 0.4)).toBe(false)
+  })
+
+  test("an oval holds its rounded ends but not their corners", () => {
+    const oval = shaped("oval", 2, 1)
+    expect(hit(oval, 0.9, 0)).toBe(true)
+    expect(hit(oval, 0.9, 0.45)).toBe(false)
+  })
+
+  test("a track touching a rotated pad joins it", () => {
+    const parts = [...shaped("rect", 2, 0.5, 90), part("Q", [pad("Q", "1", 10, "net.GND")])]
+    const result = resolveCopper(parts, [track("t0001", [[0, 0.9], [10, 0]])], NETS)
+    expect(result.tracks[0]?.pads).toEqual(["P#1", "Q#1"])
   })
 })

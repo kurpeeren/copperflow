@@ -47,7 +47,7 @@ describe("the design reads the layout file", () => {
   test("a track joining two nets is a short in the diagnostics", () => {
     const design = build(trackLine("t0001", padOf("R1#1"), padOf("R1#2")))
     expect(design.diagnostics.filter((d) => d.code === "short")).toEqual([
-      expect.objectContaining({ severity: "error", items: ["net.GND", "net.SIG"] }),
+      expect.objectContaining({ severity: "error", items: ["net.GND", "net.SIG", "t0001"] }),
     ])
   })
 
