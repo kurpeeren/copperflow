@@ -1,9 +1,11 @@
+import { readFileSync } from "node:fs"
 import { describe, expect, test } from "vitest"
 import { buildDesign } from "../src/engine/design.js"
-import { planGrid } from "../studio/src/pcb/grid.js"
+import { PCB_DEFAULT_STEP, planGrid } from "../studio/src/pcb/grid.js"
 import { PALETTE } from "../studio/src/pcb/ctx.js"
-import { drawGrid, drawOutline, PCB_LOOK } from "../studio/src/pcb/overlays.js"
+import { drawGrid, drawLockBadge, drawMark, drawOutline, drawSelectionBox, PCB_LOOK, SHEET_LOOK, type OverlayLook } from "../studio/src/pcb/overlays.js"
 import { drawPcb } from "../studio/src/pcb/pcb-draw.js"
+import { schematicTheme } from "../studio/src/pcb/schematic-theme.js"
 import { recorder } from "./helpers/fake-ctx.js"
 
 const CIRCUIT = `export default () => (
@@ -30,6 +32,20 @@ const BOTTOM = `export default () => (
 const wired = buildDesign({ "main.circuit.tsx": WIRED }, "main.circuit.tsx").pcb
 const bottom = buildDesign({ "main.circuit.tsx": BOTTOM }, "main.circuit.tsx").pcb
 const VIEW = { camera: { cx: 0, cy: 0, scale: 20 }, size: { width: 800, height: 600 } }
+const PCB_GRID = { step: PCB_DEFAULT_STEP, style: "lines" } as const
+/** The old warm overlay colours, from before the PCB took EasyEDA's theme. */
+const OLD_WARM = ["#e0a46a", "#4f9a6c", "#e9e6df", "rgb(34 38 44 / 92%)"]
+
+/** The colours a look's lock badge, note and note box are drawn in. */
+function overlayColours(look: OverlayLook): Set<unknown> {
+  const { ctx, records } = recorder()
+  const camera = { cx: 0, cy: 0, scale: 20 }
+  const size = { width: 400, height: 300 }
+  drawLockBadge(ctx, camera, size, { minX: 0, minY: 0, maxX: 1, maxY: 1 }, look)
+  drawMark(ctx, camera, size, { at: { x: 2, y: 2 }, id: "N1", text: "route ground here" }, look)
+  drawSelectionBox(ctx, { x: 10, y: 10 }, { x: 60, y: 40 }, look)
+  return new Set(records.flatMap((r) => (r.name === "fill" || r.name === "fillRect" || r.name === "fillText" ? [r.fillStyle] : r.name === "stroke" || r.name === "strokeRect" ? [r.strokeStyle] : [])))
+}
 
 describe("PCB colours (spec section 6)", () => {
   test("the palette holds EasyEDA's default PCB theme", () => {
@@ -48,19 +64,56 @@ describe("PCB colours (spec section 6)", () => {
       bottomAssembly: "#5555ff",
       ratsnest: "#6464ff",
       keepout: "#f022f0",
+      document: "#ffffff",
+      grid: "rgb(255 255 255 / 30%)",
+      gridFifth: "rgb(255 255 255 / 50%)",
+      selection: "#ffffff",
+      selectionFill: "rgb(255 255 255 / 50%)",
+      hover: "rgb(255 255 255 / 60%)",
+      selectionBox: "#00ffff",
+      selectionBoxFill: "rgb(0 255 255 / 10%)",
+      notePanel: "rgb(0 0 0 / 80%)",
+      ringHaloOuter: "#ffffff",
+      ringHaloInner: "#000000",
     })
   })
 
-  test("the overlay look is white selection with a cyan dotted box", () => {
-    expect(PCB_LOOK.selected).toBe("#ffffff")
-    expect(PCB_LOOK.selectedFill).toBe("rgb(255 255 255 / 50%)")
-    expect(PCB_LOOK.noteStroke).toBe("#00ffff")
-    expect(PCB_LOOK.noteDash).toEqual([1, 3])
+  test("the overlay look is white selection with a cyan dotted box, and notes and locks in white", () => {
+    expect(PCB_LOOK).toEqual({
+      selected: "#ffffff",
+      selectedFill: "rgb(255 255 255 / 50%)",
+      hover: "rgb(255 255 255 / 60%)",
+      noteStroke: "#00ffff",
+      noteFill: "rgb(0 255 255 / 10%)",
+      noteDash: [1, 3],
+      lockFill: "#ffffff",
+      lockGlyph: "#000000",
+      markPin: "#ffffff",
+      markPanel: "rgb(0 0 0 / 80%)",
+      markText: "#ffffff",
+    })
+  })
+
+  test("every PCB overlay colour comes from the palette", () => {
+    const colours = Object.values(PCB_LOOK).filter((v): v is string => typeof v === "string")
+    for (const colour of colours) expect(Object.values(PALETTE)).toContain(colour)
+  })
+
+  test("the lock badge, note and note box draw in the PCB look, none in the old warm colours", () => {
+    const colours = overlayColours(PCB_LOOK)
+    expect(colours).toEqual(new Set([PALETTE.document, PALETTE.background, PALETTE.notePanel, PALETTE.selectionBox, PALETTE.selectionBoxFill]))
+    for (const old of OLD_WARM) expect(colours.has(old)).toBe(false)
+  })
+
+  test("the PCB's CSS background is the palette's", () => {
+    const css = readFileSync(new URL("../studio/src/styles.css", import.meta.url), "utf8")
+    const block = css.slice(css.indexOf(".pcb-canvas {"))
+    expect(block.slice(0, block.indexOf("}")).toLowerCase()).toContain(`background: ${PALETTE.background}`)
   })
 
   test("the grid is white, 30% on minor lines and 50% on every fifth", () => {
     const { ctx, records } = recorder()
-    drawGrid(ctx, { cx: 0, cy: 0, scale: 20 }, { width: 400, height: 300 })
+    drawGrid(ctx, { cx: 0, cy: 0, scale: 20 }, { width: 400, height: 300 }, PCB_GRID)
     const colours = new Set(records.filter((r) => r.name === "stroke").map((r) => r.strokeStyle))
     expect(colours).toEqual(new Set(["rgb(255 255 255 / 30%)", "rgb(255 255 255 / 50%)"]))
   })
@@ -116,7 +169,7 @@ describe("PCB colours (spec section 6)", () => {
   test("every fifth grid line is the 50% one", () => {
     const { ctx, records } = recorder()
     const camera = { cx: 0, cy: 0, scale: 20 }
-    drawGrid(ctx, camera, { width: 400, height: 300 })
+    drawGrid(ctx, camera, { width: 400, height: 300 }, PCB_GRID)
     const minor = (planGrid(camera, { width: 400, height: 300 }, 0.5)?.spacing ?? 0) * camera.scale
     const verticals = records.filter((r) => r.name === "moveTo" && r.args[1] === 0)
     const strong = verticals.filter((r) => r.strokeStyle === "rgb(255 255 255 / 50%)").map((r) => (r.args[0] as number) - 0.5)
@@ -131,5 +184,40 @@ describe("PCB colours (spec section 6)", () => {
     const arcs = records.filter((r) => r.name === "arc" && [r.strokeStyle].some((c) => c === "#ffffff" || c === "#000000" || c === "#e5534b"))
     expect(arcs.map((r) => r.strokeStyle)).toEqual(["#ffffff", "#000000", "#e5534b"])
     expect(arcs.map((r) => r.args[2] as number)).toEqual([6 + 1.25, 6 - 1.25, 6])
+  })
+})
+
+describe("schematic overlay look", () => {
+  test("red selection and note box with a dashed edge, and the sheet's own hover, lock and note colours", () => {
+    expect(SHEET_LOOK).toEqual({
+      selected: "#FF0000",
+      hover: "rgb(255 0 0 / 45%)",
+      noteStroke: "#FF0000",
+      noteFill: "rgb(255 0 0 / 8%)",
+      noteDash: [5, 4],
+      lockFill: "#4f9a6c",
+      lockGlyph: "#ffffff",
+      markPin: "#e0a46a",
+      markPanel: "rgb(34 38 44 / 92%)",
+      markText: "#e9e6df",
+    })
+    expect(SHEET_LOOK.selectedFill).toBeUndefined()
+  })
+
+  test("every schematic overlay colour comes from the theme", () => {
+    const colours = Object.values(SHEET_LOOK).filter((v): v is string => typeof v === "string")
+    for (const colour of colours) expect(Object.values(schematicTheme)).toContain(colour)
+  })
+
+  test("the lock badge, note and note box draw in the sheet look, never in the PCB's white", () => {
+    const colours = overlayColours(SHEET_LOOK)
+    expect(colours).toEqual(new Set([schematicTheme.lockBadge, schematicTheme.lockGlyph, schematicTheme.notePanel, schematicTheme.noteText, schematicTheme.notePin, schematicTheme.selection, schematicTheme.selectionFill]))
+  })
+
+  test("a schematic selection outline is red with no wash", () => {
+    const { ctx, records } = recorder()
+    drawOutline(ctx, { cx: 0, cy: 0, scale: 20 }, { width: 400, height: 300 }, { minX: 0, minY: 0, maxX: 1, maxY: 1 }, { x: 0, y: 0 }, "selected", SHEET_LOOK)
+    expect(records.some((r) => r.name === "fillRect")).toBe(false)
+    expect(records.find((r) => r.name === "strokeRect")?.strokeStyle).toBe(schematicTheme.selection)
   })
 })

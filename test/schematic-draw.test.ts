@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest"
 import { buildDesign } from "../src/engine/design.js"
 import { groundSymbol } from "../src/engine/symbols/index.js"
 import { HIGHLIGHT_DIM, PALETTE } from "../studio/src/pcb/ctx.js"
+import { drawPcb, PCB_DIM } from "../studio/src/pcb/pcb-draw.js"
 import { worldToScreen } from "../studio/src/pcb/geometry.js"
 import { schematicTheme } from "../studio/src/pcb/schematic-theme.js"
 import { drawSchematic, sheetBoxes, type SchematicDrawOptions } from "../studio/src/pcb/schematic-draw.js"
@@ -25,6 +26,17 @@ const LABELLED = `export default () => (
     <trace from=".R1 > .pin1" to="net.GND" />
     <trace from=".R2 > .pin1" to="net.GND" schematicRouteHints={[{ x: 2, y: 1 }]} />
     <trace from=".R1 > .pin2" to="net.EN" schematicRouteHints={[{ x: 1, y: 1 }]} />
+  </board>
+)`
+
+/** The same circuit with PCB positions, so no part is drawn faded as auto-placed. */
+const PLACED = `export default () => (
+  <board width="30mm" height="18mm">
+    <resistor name="R1" resistance="1k" footprint="0402" pcbX={-4} pcbY={2} schX={0} schY={0} />
+    <resistor name="R2" resistance="1k" footprint="0402" pcbX={4} pcbY={-2} schX={3} schY={0} />
+    <trace from=".R1 > .pin1" to="net.GND" />
+    <trace from=".R2 > .pin1" to="net.GND" />
+    <trace from=".R1 > .pin2" to=".R2 > .pin2" />
   </board>
 )`
 
@@ -193,8 +205,17 @@ describe("highlight", () => {
     expect(others.every((r) => r.globalAlpha === HIGHLIGHT_DIM)).toBe(true)
   })
 
-  test("the dimmed alpha is the one the PCB uses", () => {
-    expect(HIGHLIGHT_DIM).toBe(0.3)
+  test("the schematic dims to 0.3, the PCB less, to its own PCB_DIM of 0.5", () => {
+    const sheetDim = strokes(draw({ highlight: { net: "net:R1.pin2" } }), schematicTheme.wire)
+    expect(sheetDim.length).toBeGreaterThan(0)
+    expect(new Set(sheetDim.map((r) => r.globalAlpha))).toEqual(new Set([0.3]))
+    const board = buildDesign({ [FILE]: PLACED }, FILE).pcb
+    const rec = recorder()
+    drawPcb(rec.ctx as never, board, { camera: { cx: 0, cy: 0, scale: 20 }, size: { width: 800, height: 600 } }, { ratio: 1, highlight: { nets: ["net.GND"] } })
+    const pcbDim = rec.records.filter((r) => r.name === "fill" && r.fillStyle === PALETTE.topCopper && r.globalAlpha < 1)
+    expect(pcbDim.length).toBeGreaterThan(0)
+    expect(new Set(pcbDim.map((r) => r.globalAlpha))).toEqual(new Set([0.5]))
+    expect(PCB_DIM).toBe(0.5)
   })
 
   test("without a highlight nothing is dimmed or lit", () => {

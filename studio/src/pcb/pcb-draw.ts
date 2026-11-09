@@ -1,7 +1,7 @@
 // copperflow's PCB renderer: draws the engine's board layout onto a 2D canvas in layer order.
 // Only types come from the engine: its runtime modules reach Node-only code the Studio bundle cannot hold.
 import type { PcbLayout, PlacedFootprint, WorldPad } from "../../../src/engine/pcb.js"
-import { PALETTE, type Ctx, type Layers } from "./ctx.js"
+import { CANVAS_FONT_FAMILY, PALETTE, type Ctx, type Layers } from "./ctx.js"
 import { worldToScreen, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
 import { drawViolationMarkers, type ViolationMarker } from "./markers.js"
 
@@ -28,7 +28,6 @@ const NO_SHIFT: Point = { x: 0, y: 0 }
 const MIN_TEXT_PX = 3
 /** Alpha of everything outside a highlighted net; high enough that dimmed pure blue still reads on black. */
 export const PCB_DIM = 0.5
-const DIM = PCB_DIM
 /** The dashed courtyard of an auto-placed part stays at full alpha and a little thicker, so it reads on black. */
 const AUTO_COURTYARD_PX = 1.5
 const LIT_WASH_ALPHA = 0.35
@@ -231,7 +230,7 @@ function drawCopper(ctx: Ctx, layers: Layers, highlight: PcbDrawOptions["highlig
     each((part) => {
       for (const pad of part.pads.filter(wanted)) {
         const lit = highlight !== undefined && pad.net !== undefined && highlight.nets.includes(pad.net)
-        ctx.globalAlpha = (highlight && !lit ? DIM : 1) * alphaOf(part)
+        ctx.globalAlpha = (highlight && !lit ? PCB_DIM : 1) * alphaOf(part)
         ctx.fillStyle = padColor(pad)
         padPath(ctx, pad)
         ctx.fill()
@@ -298,7 +297,7 @@ function drawRatsnest(ctx: Ctx, layout: PcbLayout, options: PcbDrawOptions, px: 
   for (const line of layout.ratsnest) {
     const lit = options.highlight?.nets.includes(line.net) ?? false
     ctx.strokeStyle = lit ? PALETTE.highlight : PALETTE.ratsnest
-    ctx.globalAlpha = lit ? 1 : options.highlight ? RATSNEST_ALPHA * DIM : RATSNEST_ALPHA
+    ctx.globalAlpha = lit ? 1 : options.highlight ? RATSNEST_ALPHA * PCB_DIM : RATSNEST_ALPHA
     drawLine(ctx, end(line.a, line.from), end(line.b, line.to))
   }
   ctx.globalAlpha = 1
@@ -319,7 +318,7 @@ function drawDesignator(ctx: Ctx, part: PlacedFootprint, camera: Camera, size: S
   const p = worldToScreen(camera, size, { x: (box.minX + box.maxX) / 2 + shift.x, y: box.maxY + shift.y })
   ctx.fillStyle = part.side === "top" ? PALETTE.topSilk : PALETTE.bottomSilk
   ctx.globalAlpha = alphaOf(part)
-  ctx.font = `600 ${fontPx}px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif`
+  ctx.font = `600 ${fontPx}px ${CANVAS_FONT_FAMILY}`
   ctx.textAlign = "center"
   ctx.textBaseline = "bottom"
   ctx.fillText(part.component, p.x, p.y - DESIGNATOR_GAP_PX)

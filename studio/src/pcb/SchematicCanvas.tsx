@@ -15,7 +15,7 @@ import { highlightOf, partNets, schematicNetAt, type Highlight } from "./highlig
 import { labelHitBox } from "./label-drag"
 import { NameInput, paletteHint } from "./LabelPalette"
 import type { ViolationMarker } from "./markers"
-import { drawOutline, drawWirePreview, type OverlayLook } from "./overlays"
+import { drawOutline, drawWirePreview, SHEET_LOOK } from "./overlays"
 import { drawSchematicGrid } from "./schematic-grid"
 import { schematicTheme } from "./schematic-theme"
 import { drawSchematic } from "./schematic-draw"
@@ -28,7 +28,6 @@ import { useLabelPalette } from "./use-label-palette"
 import { usePartKeys } from "./use-part-keys"
 import { useWireTool } from "./use-wire-tool"
 
-const SHEET_LOOK: OverlayLook = { selected: schematicTheme.selection, hover: schematicTheme.hover, noteStroke: schematicTheme.selection, noteFill: schematicTheme.selectionFill }
 const EMPTY_SHEET_CAMERA: Camera = { cx: 0, cy: 0, scale: 60 }
 const FIT_MARGIN = 0.06
 /** How close to a pin end, wire or label the pointer must be for the H key, in CSS pixels. */

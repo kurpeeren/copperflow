@@ -15,11 +15,12 @@ const RING_PX = 6
 const RING_WIDTH_PX = 1.5
 const ACTIVE_WIDTH_PX = 3
 const HALO_PX = 1
-const HALO_OUTER = "#ffffff"
-const HALO_INNER = "#000000"
 
-/** One ring per violation (with a white outer and black inner halo on the PCB's black ground when `halo` is set): red for errors, amber for warnings, thicker for the active one. Expects a CSS-pixel transform. */
-export function drawViolationMarkers(ctx: Ctx, view: { camera: Camera; size: Size }, markers: readonly ViolationMarker[], active: string | undefined, halo = false): void {
+/**
+ * One ring per violation: red for errors, amber for warnings, thicker for the active one. `halo` adds a white outer
+ * and black inner halo, which the PCB's black ground needs and the light sheet does not. Expects a CSS-pixel transform.
+ */
+export function drawViolationMarkers(ctx: Ctx, view: { camera: Camera; size: Size }, markers: readonly ViolationMarker[], active: string | undefined, halo: boolean): void {
   if (markers.length === 0) return
   ctx.globalAlpha = 1
   ctx.setLineDash([])
@@ -42,8 +43,8 @@ function ring(ctx: Ctx, p: Point, radius: number, width: number): void {
 /** A 1px white ring just outside the marker's ring and a 1px black ring just inside, to separate it from copper and silk. */
 function ringHalos(ctx: Ctx, p: Point, width: number): void {
   const edge = (width + HALO_PX) / 2
-  ctx.strokeStyle = HALO_OUTER
+  ctx.strokeStyle = PALETTE.ringHaloOuter
   ring(ctx, p, RING_PX + edge, HALO_PX)
-  ctx.strokeStyle = HALO_INNER
+  ctx.strokeStyle = PALETTE.ringHaloInner
   ring(ctx, p, RING_PX - edge, HALO_PX)
 }

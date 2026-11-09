@@ -2,7 +2,7 @@
 // Only the symbol library comes from the engine at run time: its other modules reach Node-only code the Studio bundle cannot hold.
 import type { PlacedSymbol, SchematicLayout, NetLabel } from "../../../src/engine/schematic.js"
 import { groundSymbol, powerSymbol, type SchSymbol, type Shape } from "../../../src/engine/symbols/index.js"
-import { anchorAlignment, HIGHLIGHT_DIM, type Ctx } from "./ctx.js"
+import { anchorAlignment, CANVAS_FONT_FAMILY, HIGHLIGHT_DIM, type Ctx } from "./ctx.js"
 import { labelTag, NET_LABEL_TEXT } from "./label-tag.js"
 import { worldToScreen, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
 import { drawViolationMarkers, type ViolationMarker } from "./markers.js"
@@ -103,7 +103,7 @@ export function drawSchematic(ctx: Ctx, layout: SchematicLayout, view: View, opt
   // Text is drawn in screen space so it stays upright and readable at any zoom.
   ctx.setTransform(options.ratio, 0, 0, options.ratio, 0, 0)
   for (const label of texts) drawText(ctx, label, camera, size)
-  drawViolationMarkers(ctx, view, options.violations ?? [], options.activeViolation)
+  drawViolationMarkers(ctx, view, options.violations ?? [], options.activeViolation, false)
   ctx.restore()
 }
 
@@ -336,7 +336,7 @@ function drawText(ctx: Ctx, label: Label, camera: Camera, size: Size): void {
   if (label.rotation) ctx.rotate(rad(-label.rotation))
   ctx.globalAlpha = label.alpha ?? 1
   ctx.fillStyle = label.color
-  ctx.font = `500 ${fontPx}px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif`
+  ctx.font = `500 ${fontPx}px ${CANVAS_FONT_FAMILY}`
   ctx.textAlign = horizontal
   ctx.textBaseline = vertical
   ctx.fillText(label.text, 0, 0)

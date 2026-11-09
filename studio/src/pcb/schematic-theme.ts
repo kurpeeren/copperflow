@@ -27,6 +27,13 @@ export const schematicTheme = {
   hover: "rgb(255 0 0 / 45%)",
   /** Fill of the note box drawn with Shift-drag. */
   selectionFill: "rgb(255 0 0 / 8%)",
+  /** The lock badge's ground and its padlock. */
+  lockBadge: "#4f9a6c",
+  lockGlyph: "#ffffff",
+  /** A note for the agent: its pin and leader, the panel behind its text, and the text. */
+  notePin: "#e0a46a",
+  notePanel: "rgb(34 38 44 / 92%)",
+  noteText: "#e9e6df",
 } as const
 
 export type SchematicTheme = typeof schematicTheme

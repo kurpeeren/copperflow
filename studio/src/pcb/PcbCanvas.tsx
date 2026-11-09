@@ -10,7 +10,7 @@ import { gridStepOptions, type GridLook } from "./grid"
 import { hitTest, pointBounds, unionBoxes, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import { NO_HIGHLIGHT, partNets, pcbNetAt, type Highlight } from "./highlight"
 import type { ViolationMarker } from "./markers"
-import { drawGrid } from "./overlays"
+import { drawGrid, PCB_LOOK } from "./overlays"
 import { drawPcb, padAt } from "./pcb-draw"
 import type { Unit } from "./units"
 import { cursorFor, pointerHandlers, useCanvasGestures, type Gesture } from "./use-canvas-gestures"
@@ -73,7 +73,7 @@ function usePcbPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: PcbS
     })
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
     const noteBox = gesture?.kind === "box" ? gesture : undefined
-    drawEditorLayer(ctx, camera, size, { view: "pcb", boxes, moving, hover, selected, locked, marks: circuit.annotations.marks, noteBox })
+    drawEditorLayer(ctx, camera, size, { view: "pcb", boxes, moving, hover, selected, locked, marks: circuit.annotations.marks, noteBox, look: PCB_LOOK })
   }, [canvasRef, design, camera, size, layers, litNets, moving, boxes, hover, selected, locked, circuit, gesture, markers, activeViolation, grid])
 }
 

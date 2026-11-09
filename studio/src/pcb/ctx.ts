@@ -38,10 +38,19 @@ export interface Layers {
   fabrication: boolean
 }
 
-/** The alpha of everything outside a highlighted net, on the PCB and the schematic alike. */
+/**
+ * The alpha of everything outside a highlighted net on the schematic. The PCB dims less, to PCB_DIM (pcb-draw.ts),
+ * so its layer colours, pure blue among them, still read on black.
+ */
 export const HIGHLIGHT_DIM = 0.3
 
-/** EasyEDA's default PCB theme. The board area has no fill: it stays the black background. */
+/** The font family of all canvas text; each painter sets its own size and weight. */
+export const CANVAS_FONT_FAMILY = '"Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif'
+
+/**
+ * EasyEDA's default PCB theme, and every other colour the PCB draws in: the one source of them (PCB_LOOK in
+ * overlays.ts picks its overlay colours from here). The board area has no fill: it stays the black background.
+ */
 export const PALETTE = {
   background: "#000000",
   boardEdge: "#ff00ff",
@@ -60,9 +69,26 @@ export const PALETTE = {
   bottomAssembly: "#5555ff",
   ratsnest: "#6464ff",
   keepout: "#f022f0",
+  /** The document layer: our notes for the agent and the lock badges. */
+  document: "#ffffff",
+  /** The grid: white at 30% on minor lines and crossings, 50% on every fifth. */
+  grid: "rgb(255 255 255 / 30%)",
+  gridFifth: "rgb(255 255 255 / 50%)",
+  /** The selection outline and its wash, and the dashed hover outline. */
+  selection: "#ffffff",
+  selectionFill: "rgb(255 255 255 / 50%)",
+  hover: "rgb(255 255 255 / 60%)",
+  /** The selection box, dotted, and its wash. */
+  selectionBox: "#00ffff",
+  selectionBoxFill: "rgb(0 255 255 / 10%)",
+  /** Behind a note's text, so it reads over copper. */
+  notePanel: "rgb(0 0 0 / 80%)",
   /** Violation markers, on both canvases. */
   error: "#e5534b",
   warning: "#e0a63a",
+  /** The halos just outside and just inside a violation ring, on the PCB only. */
+  ringHaloOuter: "#ffffff",
+  ringHaloInner: "#000000",
 }
 
 /** Canvas baseline and alignment for anchors such as "top_left" or "center". */
