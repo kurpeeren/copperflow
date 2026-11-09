@@ -101,6 +101,7 @@ export function rotateAbout(
   anchorOf: (name: string) => Pick<Anchor, "origin" | "group">,
   centre: Point,
   blockerFor: (name: string) => string | null,
+  placed: (name: string) => boolean = () => true,
 ): GroupEdit {
   if (names.length === 1) return rotateEach(circuit, names, view, blockerFor)
   const { rotation, position, where } = VIEWS[view]
@@ -108,6 +109,10 @@ export function rotateAbout(
   const parts: string[] = []
   const skipped: string[] = []
   for (const name of names) {
+    if (!placed(name)) {
+      skipped.push(`${name} is not in this view`)
+      continue
+    }
     const next = blockerFor(name) ?? nextRotation(circuit, name, view)
     if (typeof next === "string") {
       skipped.push(next)
@@ -121,6 +126,29 @@ export function rotateAbout(
     parts.push(name)
   }
   return { edits, summary: `rotate ${nameList(parts)}${where} by 90°`, parts, skipped, done: "rotated" }
+}
+
+/** Where the parts sit in the open view and its Grid step. */
+export interface Layout {
+  anchors: ReadonlyMap<string, Anchor>
+  boxes: readonly PartBox[]
+  step: number
+}
+
+/** What Rotate does to the selection: the edit, or a message when no selected part is in this view. */
+export function rotatePlan(
+  circuit: SourceCircuit,
+  names: readonly string[],
+  view: View,
+  layout: Layout,
+  blockerFor: (name: string) => string | null,
+): GroupEdit | { message: string } {
+  if (names.length === 1) return rotateEach(circuit, names, view, blockerFor)
+  const shown = new Set(layout.boxes.map((part) => part.name))
+  const placed = (name: string) => shown.has(name) || layout.anchors.has(name)
+  const centre = selectionCentre(layout.boxes.filter((part) => names.includes(part.name)).map((part) => part.box), layout.step)
+  if (!centre) return { message: "None of the selected parts is in this view." }
+  return rotateAbout(circuit, names, view, anchorLookup(layout.anchors, layout.boxes), centre, blockerFor, placed)
 }
 
 /** One removePart edit for every part that may go. */

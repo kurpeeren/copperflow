@@ -87,7 +87,7 @@ function centreOnBoard(design: Design | undefined, name: string): { x: number; y
   return box && { x: Math.round(box.center.x * 1000) / 1000, y: Math.round(box.center.y * 1000) / 1000 }
 }
 
-function PartView({ circuit, build, parts, part, actions, onSelect, view, collapsed, toggle }: Props & SectionState & { part: PartInfo }) {
+function PartView({ circuit, build, parts, part, actions, onSelect, run, view, collapsed, toggle }: Props & SectionState & { part: PartInfo }) {
   const locked = circuit.annotations.locks.some((lock) => lock.part === part.name)
   const library = parts.library.find((p) => p.component === part.tag)
   const setProp = (key: string, value: Literal) =>
@@ -126,7 +126,7 @@ function PartView({ circuit, build, parts, part, actions, onSelect, view, collap
           <CloseIcon />
         </button>
       </header>
-      <PartActions part={part} locked={locked} canEdit={canEdit} actions={actions} onSelect={onSelect} />
+      <PartActions part={part} locked={locked} canEdit={canEdit} actions={actions} onSelect={onSelect} onRotate={() => run("rotate")} />
       {locked && <p className="note locked">Locked. The agent cannot move or change this part.</p>}
       {part.readonlyReason && <p className="note">Read-only here: {part.readonlyReason}. Change it in the code.</p>}
       {view.sections.map((section) => (
@@ -139,27 +139,22 @@ function PartView({ circuit, build, parts, part, actions, onSelect, view, collap
 }
 
 /** Lock, rotate and remove, in a row under the header. */
-function PartActions({ part, locked, canEdit, actions, onSelect }: {
+function PartActions({ part, locked, canEdit, actions, onSelect, onRotate }: {
   part: PartInfo
   locked: boolean
   canEdit: boolean
   actions: Actions
   onSelect(change: SelectionChange): void
+  /** Turns the part in the open view, as R and Space do. */
+  onRotate(): void
 }) {
-  const rotation = part.props.pcbRotation?.literal
   return (
     <div className="inspector-actions">
       <button className={locked ? "toggle on" : "toggle"} aria-pressed={locked} onClick={() => void actions.lock([part.name], !locked)}>
         {locked ? <LockIcon /> : <UnlockIcon />}
         {locked ? "Locked" : "Lock"}
       </button>
-      <button
-        disabled={!canEdit || (rotation !== undefined && typeof rotation !== "number")}
-        onClick={() => {
-          const next = ((((typeof rotation === "number" ? rotation : 0) + 90) % 360) + 360) % 360
-          void actions.edit([{ kind: "setProps", part: part.name, props: { pcbRotation: next } }], `rotate ${part.name} to ${next}°`)
-        }}
-      >
+      <button disabled={!canEdit} onClick={onRotate}>
         <RotateIcon /> Rotate
       </button>
       <button

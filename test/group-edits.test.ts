@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import type { PartInfo } from "../src/core/types.js"
-import { anchorLookup, lockChange, moveEach, nudgeOffset, rotateAbout, selectionCentre, turnedAbout, nameList, removeEach, removeQuestion, rotateEach, sendGroupEdit, skippedNote, type GroupEditActions } from "../studio/src/pcb/group-edits.js"
+import { anchorLookup, lockChange, moveEach, nudgeOffset, rotateAbout, rotatePlan, selectionCentre, turnedAbout, nameList, removeEach, removeQuestion, rotateEach, sendGroupEdit, skippedNote, type GroupEditActions } from "../studio/src/pcb/group-edits.js"
 import { moveBlocker, ZERO, type Anchor, type SourceCircuit, type View } from "../studio/src/pcb/positions.js"
 
 const prop = (literal: string | number) => ({ literal, source: JSON.stringify(literal), editable: true })
@@ -369,5 +369,35 @@ describe("anchorLookup", () => {
     const lookup = anchorLookup(new Map(), [{ name: "R1", pcbComponentId: "x", center: { x: 1, y: 1 }, box }])
     expect(lookup("R1")).toEqual({ origin: { x: 1, y: 1 }, group: ZERO })
     expect(lookup("R9")).toEqual({ origin: ZERO, group: ZERO })
+  })
+})
+
+describe("rotatePlan and parts outside the view", () => {
+  const box = (name: string, x: number, y: number) => ({ name, pcbComponentId: name, center: { x, y }, box: { minX: x - 0.5, minY: y - 0.5, maxX: x + 0.5, maxY: y + 0.5 } })
+  const anchors = new Map<string, Anchor>([
+    ["R1", { origin: { x: 1, y: 1 }, group: ZERO, autoPlaced: false }],
+    ["R2", { origin: { x: 3, y: 1 }, group: ZERO, autoPlaced: false }],
+  ])
+  const layout = { anchors, boxes: [box("R1", 1, 1), box("R2", 3, 1)], step: 1 }
+
+  test("a selected part with no box in this view is skipped and named, not turned from the origin", () => {
+    const plan = rotatePlan(circuit, ["R1", "R2", "C1"], "pcb", layout, blockers([]))
+    if ("message" in plan) throw new Error(plan.message)
+    expect(plan.parts).toEqual(["R1", "R2"])
+    expect(plan.skipped).toEqual(["C1 is not in this view"])
+    expect(skippedNote(plan)).toBe("Not rotated: C1 is not in this view")
+  })
+
+  test("with none of the selected parts in the view it gives a message", () => {
+    expect(rotatePlan(circuit, ["C1", "D1"], "pcb", layout, blockers([]))).toEqual({ message: "None of the selected parts is in this view." })
+  })
+
+  test("one part turns in place, in the open view's own rotation prop", () => {
+    const plan = rotatePlan(circuit, ["R1"], "schematic", layout, blockers([], "schematic"))
+    if ("message" in plan) throw new Error(plan.message)
+    expect(plan.edits).toEqual([{ kind: "setProps", part: "R1", props: { schRotation: 0 } }])
+    const pcb = rotatePlan(circuit, ["R1"], "pcb", layout, blockers([]))
+    if ("message" in pcb) throw new Error(pcb.message)
+    expect(pcb.edits).toEqual([{ kind: "setProps", part: "R1", props: { pcbRotation: 180 } }])
   })
 })
