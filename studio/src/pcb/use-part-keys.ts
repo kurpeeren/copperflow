@@ -11,7 +11,7 @@ import { useCommands } from "../shell/commands"
 import { keyAction, keyInput, type KeyResult } from "./canvas-keys"
 import { isCanvasKey } from "./canvas-common"
 import { removeEach, removeQuestion, sendGroupEdit, type Layout } from "./group-edits"
-import { claimsKey } from "./key-burst"
+import { claimsKey, type BuildStatus } from "./key-burst"
 import { useKeyEdits, type KeyEdits } from "./use-key-edits"
 import { menuHighlight, type Highlight } from "./highlight"
 import type { Point } from "./geometry"
@@ -29,8 +29,9 @@ export interface PartKeysInput {
   blockerFor(name: string): string | null
   /** Where the parts sit and the open view's Grid step, for the arrow keys and the turn about the selection's centre. */
   layout: Layout
-  /** When the build behind the shown design started (ms); a Rotate waits for a build after the last move. */
-  builtFrom: number
+  /** The shown build's id and the build status; a Rotate waits for a build that succeeds after the last move. */
+  buildId: string | undefined
+  buildStatus: BuildStatus
   /** A dragged group's move waits for its build, so a Rotate waits too. */
   moveWaiting: boolean
   fit(): void
@@ -89,12 +90,13 @@ function usePartCommands(input: PartKeysInput, edits: KeyEdits): void {
   useCommands(table)
 }
 
-export function usePartKeys(input: PartKeysInput): void {
-  const edits = useKeyEdits(input)
+/** Wires the part keys and commands; returns whether a Rotate press is held until the next build. */
+export function usePartKeys(input: PartKeysInput): { rotateHeld: boolean } {
+  const { edits, held } = useKeyEdits(input)
   usePartCommands(input, edits)
-  const { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtFrom, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu } = input
+  const { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, buildId, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu } = input
   useEffect(() => {
-    const keys: PartKeysInput = { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtFrom, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu }
+    const keys: PartKeysInput = { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, buildId, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu }
     const onKey = (event: KeyboardEvent) => {
       const hit = keyAction(keyInput(event), { view, drawing: paused })
       if (hit) {
@@ -106,5 +108,6 @@ export function usePartKeys(input: PartKeysInput): void {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [edits, view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtFrom, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu])
+  }, [edits, view, selection, paused, circuit, actions, onSelect, blockerFor, layout, buildId, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu])
+  return { rotateHeld: held }
 }

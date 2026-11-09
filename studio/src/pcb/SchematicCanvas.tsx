@@ -149,6 +149,8 @@ interface SheetViewProps {
   palette: Palette
   note: NoteTool
   gesture: Gesture | undefined
+  /** A Rotate press is held until the next build. */
+  rotateHeld: boolean
   empty: boolean
 }
 
@@ -156,7 +158,7 @@ interface SheetViewProps {
  * The sheet's element: the canvas under the hint, the label name field and the status line; the browser's own menu
  * never shows. The canvas alone is the image, so the name field beside it stays a field to assistive tech.
  */
-function SheetView({ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave, cursorStyle, wire, palette, note, gesture, empty }: SheetViewProps) {
+function SheetView({ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave, cursorStyle, wire, palette, note, gesture, rotateHeld, empty }: SheetViewProps) {
   const hint = wireHint(wire) ?? paletteHint(palette) ?? note.hint
   return (
     <div className="schematic-canvas" ref={wrapRef} style={{ cursor: cursorStyle }} {...pointer} onPointerLeave={onLeave} onContextMenu={(e) => e.preventDefault()}>
@@ -172,7 +174,7 @@ function SheetView({ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave,
         </div>
       )}
       <NameInput palette={palette} camera={camera} size={size} />
-      <CanvasStatus cursor={cursor} zoom={(camera ?? EMPTY_SHEET_CAMERA).scale} detail={wire.under.end?.label} gesture={gesture} />
+      <CanvasStatus cursor={cursor} zoom={(camera ?? EMPTY_SHEET_CAMERA).scale} detail={wire.under.end?.label} gesture={gesture} rotateHeld={rotateHeld} />
       {empty && <p className="empty">This schematic has no parts yet.</p>}
     </div>
   )
@@ -239,7 +241,7 @@ interface SheetKeysInput {
 }
 
 /** The part keys with H over the sheet, and the hand-over between wiring and the Place tools; returns what to draw lit. */
-function useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys }: SheetKeysInput): SheetScene["highlight"] {
+function useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys }: SheetKeysInput): { highlight: SheetScene["highlight"]; rotateHeld: boolean } {
   const cursorRef = useRef<Point | undefined>(undefined)
   cursorRef.current = cursor
   const netUnderPointer = useCallback(
@@ -247,7 +249,7 @@ function useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNet
     [design, camera],
   )
   const netsOf = useCallback((part: string) => partNets(design, part), [design])
-  usePartKeys({ ...keys, paused: wire.drawing !== null, fit, netUnderPointer, netsOf, onHighlight })
+  const { rotateHeld } = usePartKeys({ ...keys, paused: wire.drawing !== null, fit, netUnderPointer, netsOf, onHighlight })
   const { wiring, drawing } = wire
   const { disarm } = palette
   // Wiring takes over from a Place tool, as arming a Place tool stops wiring.
@@ -265,7 +267,7 @@ function useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNet
     powerFlag: () => palette.arm("vcc"),
   }
   useCommands(tools)
-  return useHighlight(design, highlightNets)
+  return { highlight: useHighlight(design, highlightNets), rotateHeld }
 }
 
 /** Tells the toolbar which tool is armed, and how to put it away. */
@@ -343,7 +345,7 @@ function sheetPointer({ boxes, labels, wire, palette, note, picking, onOpenPrope
  * wire tool (see useWireTool), the Place tools (see useLabelPalette) and the note tool (see useNoteTool).
  */
 export function SchematicCanvas(props: CanvasProps) {
-  const { design, buildId, project, builtFrom, circuit, actions, selection, onSelect, highlight: highlightNets, onHighlight, gridStyle, gridStep: step, onGridStep: setStep, markers, activeViolation, focus, onFocused } = props
+  const { design, buildId, buildStatus, project, builtFrom, circuit, actions, selection, onSelect, highlight: highlightNets, onHighlight, gridStyle, gridStep: step, onGridStep: setStep, markers, activeViolation, focus, onFocused } = props
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const size = useElementSize(wrapRef)
@@ -365,8 +367,8 @@ export function SchematicCanvas(props: CanvasProps) {
   useLabelRenameAction(design, palette, actions)
   const layout = useLayout(parts, step)
   const menuPlace = useKeyMenuPlace(wrapRef, selection.primary, parts.boxes, camera, size)
-  const keys = { ...common, selection, layout, builtFrom, moveWaiting: gestures.pending !== undefined, menuPlace, onContextMenu: props.onContextMenu }
-  const highlight = useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys })
+  const keys = { ...common, selection, layout, buildId, buildStatus, moveWaiting: gestures.pending !== undefined, menuPlace, onContextMenu: props.onContextMenu }
+  const { highlight, rotateHeld } = useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys })
   const hover = useSheetHover(parts.boxes, wire, labels.tools)
   const { moving, gesture } = gestures
   const movingLabels = useMovingLabels(design, gesture, labels.pending)
@@ -381,7 +383,7 @@ export function SchematicCanvas(props: CanvasProps) {
   return (
     <>
       <SheetTools step={step} setStep={setStep} keep={{ show: parts.autoPlaced, onKeep: () => keepAutoPlaced(design, "schematic", parts.blockerFor, actions) }} />
-      <SheetView {...{ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave, cursorStyle, wire, palette, note, gesture }} empty={parts.boxes.length === 0} />
+      <SheetView {...{ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave, cursorStyle, wire, palette, note, gesture, rotateHeld }} empty={parts.boxes.length === 0} />
     </>
   )
 }

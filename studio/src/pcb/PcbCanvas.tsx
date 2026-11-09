@@ -108,12 +108,12 @@ function usePcbHover(design: Design, boxes: PartBox[]) {
 type PcbKeysInput = Omit<PartKeysInput, "paused" | "netUnderPointer" | "netsOf">
 
 /** The part keys, with H lighting the net under the pointer. */
-function usePcbKeys(design: Design, cursor: Point | undefined, keys: PcbKeysInput): void {
+function usePcbKeys(design: Design, cursor: Point | undefined, keys: PcbKeysInput): { rotateHeld: boolean } {
   const cursorRef = useRef<Point | undefined>(undefined)
   cursorRef.current = cursor
   const netUnderPointer = useCallback(() => (cursorRef.current ? pcbNetAt(design.pcb, cursorRef.current) : undefined), [design])
   const netsOf = useCallback((part: string) => partNets(design, part), [design])
-  usePartKeys({ ...keys, paused: false, netUnderPointer, netsOf })
+  return usePartKeys({ ...keys, paused: false, netUnderPointer, netsOf })
 }
 
 interface PcbSurfaceProps {
@@ -156,7 +156,7 @@ function useBoardBounds(design: Design, boxes: PartBox[]) {
 
 /** The PCB, drawn by copperflow's own renderer under its camera, grid and tools. */
 export function PcbCanvas(props: CanvasProps) {
-  const { design, builtFrom, circuit, actions, selection, onSelect, highlight, onHighlight, unit, onToggleUnit, gridStyle, gridStep: step, onGridStep: setStep, markers, activeViolation, focus, onFocused, layers } = props
+  const { design, builtFrom, buildId, buildStatus, circuit, actions, selection, onSelect, highlight, onHighlight, unit, onToggleUnit, gridStyle, gridStep: step, onGridStep: setStep, markers, activeViolation, focus, onFocused, layers } = props
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const size = useElementSize(wrapRef)
@@ -173,7 +173,7 @@ export function PcbCanvas(props: CanvasProps) {
   const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom, selection, tool, layers: pick, onContextMenu: props.onContextMenu })
   const layout = useLayout(parts, step)
   const menuPlace = useKeyMenuPlace(canvasRef, selection.primary, parts.boxes, camera, size)
-  usePcbKeys(design, cursor, { ...common, selection, layout, builtFrom, moveWaiting: gestures.pending !== undefined, fit, onHighlight, menuPlace, onContextMenu: props.onContextMenu })
+  const { rotateHeld } = usePcbKeys(design, cursor, { ...common, selection, layout, buildId, buildStatus, moveWaiting: gestures.pending !== undefined, fit, onHighlight, menuPlace, onContextMenu: props.onContextMenu })
   const hover = usePcbHover(design, parts.boxes)
   const { moving, gesture } = gestures
   usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad: hover.pad, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, highlightNets: highlight, markers, activeViolation, grid })
@@ -190,7 +190,7 @@ export function PcbCanvas(props: CanvasProps) {
     <div className="pcb-canvas" ref={wrapRef}>
       <PcbSurface canvasRef={canvasRef} size={size} cursorStyle={cursorFor(gesture, note.armed, hover.part !== undefined)} pointer={pointer} onLeave={onLeave} hint={note.hint} />
       <PcbTools unit={unit} step={step} setStep={setStep} keep={{ show: parts.autoPlaced, onKeep: () => keepAutoPlaced(design, "pcb", parts.blockerFor, actions) }} />
-      <CanvasStatus cursor={cursor} zoom={camera?.scale} unit={unit} onToggleUnit={onToggleUnit} detail={hover.pad && padLabel(design, hover.pad)} gesture={gesture} />
+      <CanvasStatus cursor={cursor} zoom={camera?.scale} unit={unit} onToggleUnit={onToggleUnit} detail={hover.pad && padLabel(design, hover.pad)} gesture={gesture} rotateHeld={rotateHeld} />
     </div>
   )
 }

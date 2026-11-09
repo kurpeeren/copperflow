@@ -20,6 +20,7 @@ import { pcbBoxes } from "./pcb-draw"
 import { moveBlocker, partAnchors, type View } from "./positions"
 import { fitBackingStore, resetContext } from "./canvas-surface"
 import type { GridStyle } from "./grid"
+import type { BuildStatus } from "./key-burst"
 import type { LayerVisibility } from "./layers"
 import type { Unit } from "./units"
 import { sheetBoxes } from "./schematic-draw"
@@ -28,6 +29,8 @@ export interface CanvasProps {
   design: Design
   /** Changes when a build finishes. */
   buildId: string | undefined
+  /** The server's build status: a failed build keeps the last design, so a Rotate waits for a build that succeeds. */
+  buildStatus: BuildStatus
   /** The Studio folder's name, for the schematic's title block. */
   project: string | undefined
   /** When the build behind the shown design started (ms); a preview sent before then is in the design. */

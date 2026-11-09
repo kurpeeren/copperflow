@@ -6,12 +6,16 @@ import { keySession, type EditInput, type KeySession } from "./key-session"
 export type { EditInput } from "./key-session"
 export type KeyEdits = Pick<KeySession, "nudge" | "rotate">
 
-/** `input` is what the canvas has now; a held Rotate is computed from it once the design has caught up. */
-export function useKeyEdits(input: EditInput): KeyEdits {
+/**
+ * `input` is what the canvas has now; a held Rotate is computed from it once the design has caught up. `held` is
+ * whether a Rotate press waits for the next build, for the status line.
+ */
+export function useKeyEdits(input: EditInput): { edits: KeyEdits; held: boolean } {
   const [resolvedCount, setResolvedCount] = useState(0)
-  const [session] = useState(() => keySession({ now: Date.now, resolved: () => setResolvedCount((count) => count + 1) }))
-  const { builtFrom, moveWaiting, circuit } = input
+  const [held, setHeld] = useState(false)
+  const [session] = useState(() => keySession({ resolved: () => setResolvedCount((count) => count + 1), holding: setHeld }))
+  const { buildId, buildStatus, moveWaiting, circuit } = input
   // After the render that drew the new build, circuit or resolved edit, so a held turn reads them as they are now.
-  useEffect(() => session.settle(input), [session, builtFrom, moveWaiting, circuit, resolvedCount])
-  return session
+  useEffect(() => session.settle(input), [session, buildId, buildStatus, moveWaiting, circuit, resolvedCount])
+  return { edits: session, held }
 }

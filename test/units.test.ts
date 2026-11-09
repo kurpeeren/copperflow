@@ -60,6 +60,11 @@ describe("statusParts", () => {
     expect(statusParts({ cursor: { x: 1, y: 2 }, zoom: 60, unit: undefined, gesture: undefined }).position).toBe("Zoom 100%  X 1.00  Y 2.00")
   })
 
+  test("says it is waiting for the build while a Rotate press is held", () => {
+    expect(statusParts({ cursor: undefined, zoom: 10, unit: "mm", gesture: undefined }).notice).toBe("")
+    expect(statusParts({ cursor: undefined, zoom: 10, unit: "mm", gesture: undefined, rotateHeld: true }).notice).toBe("Waiting for the build…")
+  })
+
   test("a part drag shows dX and dY from its start", () => {
     const gesture = { kind: "drag", offset: { x: 1, y: -0.5 }, moved: true, blocker: null } as never
     expect(statusParts({ cursor: undefined, zoom: 10, unit: "mm", gesture }).drag).toBe("dX 1.00  dY -0.50")

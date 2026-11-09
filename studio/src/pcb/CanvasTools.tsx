@@ -44,11 +44,13 @@ interface StatusProps {
   onToggleUnit?(): void
   detail: string | undefined
   gesture: Gesture | undefined
+  /** A Rotate press is held until the next build. */
+  rotateHeld?: boolean
 }
 
 /** Zoom, the pointer position (and the PCB unit), how far a drag has moved the part, and what is under the pointer. */
-export function CanvasStatus({ cursor, zoom, unit, onToggleUnit, detail, gesture }: StatusProps) {
-  const { position, drag } = statusParts({ cursor, zoom, unit, gesture })
+export function CanvasStatus({ cursor, zoom, unit, onToggleUnit, detail, gesture, rotateHeld }: StatusProps) {
+  const { position, drag, notice } = statusParts({ cursor, zoom, unit, gesture, rotateHeld })
   return (
     <div className="canvas-status" aria-live="off">
       <span>{position}</span>
@@ -62,6 +64,7 @@ export function CanvasStatus({ cursor, zoom, unit, onToggleUnit, detail, gesture
       )}
       {drag && <span>{`  ${drag}`}</span>}
       {detail && <span>{`  ${detail}`}</span>}
+      {notice && <span>{`  ${notice}`}</span>}
     </div>
   )
 }

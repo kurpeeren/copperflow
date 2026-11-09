@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest"
 import type { Edit, PartInfo } from "../src/core/types.js"
 import type { PartBox } from "../studio/src/pcb/geometry.js"
 import type { GroupEditActions, Layout } from "../studio/src/pcb/group-edits.js"
+import type { BuildStatus } from "../studio/src/pcb/key-burst.js"
 import { keySession, type EditInput } from "../studio/src/pcb/key-session.js"
 import { moveBlocker, ZERO, type Anchor, type SourceCircuit } from "../studio/src/pcb/positions.js"
 import { Selection } from "../studio/src/selection.js"
@@ -46,8 +47,10 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 function bench(start: SourceCircuit, names: readonly string[], options: { hidden?: readonly string[]; fail?: boolean } = {}) {
   let circuit = start
   let layout = built(start, options.hidden)
-  let builtFrom = 0
-  let clock = 10
+  let builds = 0
+  let buildId = "b0"
+  let build: BuildStatus = "done"
+  const holding: boolean[] = []
   const answers: (() => void)[] = []
   const sent: string[] = []
   const notes: string[] = []
@@ -62,7 +65,7 @@ function bench(start: SourceCircuit, names: readonly string[], options: { hidden
       }),
     notify: (text) => void notes.push(text),
   }
-  const session = keySession({ now: () => clock, resolved: () => undefined })
+  const session = keySession({ resolved: () => undefined, holding: (on) => void holding.push(on) })
   const input = (): EditInput => ({
     view: "pcb",
     selection: Selection.none.all(names),
@@ -70,11 +73,13 @@ function bench(start: SourceCircuit, names: readonly string[], options: { hidden
     actions,
     blockerFor: (name) => moveBlocker(circuit, new Set(), name, "pcb"),
     layout,
-    builtFrom,
+    buildId,
+    buildStatus: build,
     moveWaiting: false,
   })
   return {
     sent,
+    holding,
     notes,
     input,
     circuit: () => circuit,
@@ -86,11 +91,12 @@ function bench(start: SourceCircuit, names: readonly string[], options: { hidden
       await flush()
       session.settle(input())
     },
-    /** A build that started after everything sent so far lands. */
-    build() {
-      clock += 5
-      builtFrom = clock
-      layout = built(circuit, options.hidden)
+    /** A build finishes with a new id, drawing the circuit as it is then; a failed one keeps the design it had. */
+    build(ok = true) {
+      builds += 1
+      buildId = `b${builds}`
+      build = ok ? "done" : "failed"
+      if (ok) layout = built(circuit, options.hidden)
       session.settle(input())
     },
   }
@@ -170,10 +176,55 @@ describe("two quick group rotates", () => {
   })
 })
 
+describe("the held rotate and the build id", () => {
+  const start = circuitOf([part("R1", 0, 0), part("R2", 4, 0)])
+
+  test("a held rotate is released by a new build id", async () => {
+    const studio = bench(start, ["R1", "R2"])
+    studio.rotate()
+    await studio.answer()
+    studio.rotate()
+    expect(studio.sent).toHaveLength(1)
+    studio.build()
+    expect(studio.sent).toHaveLength(2)
+  })
+
+  test("after a failed build the rotate stays held until a build succeeds", async () => {
+    const studio = bench(start, ["R1", "R2"])
+    studio.rotate()
+    await studio.answer()
+    studio.rotate()
+    studio.build(false)
+    expect(studio.sent).toHaveLength(1)
+    studio.build()
+    expect(studio.sent).toHaveLength(2)
+  })
+
+  test("tells the canvas while a rotate is held and when it is let go", async () => {
+    const studio = bench(start, ["R1", "R2"])
+    studio.rotate()
+    expect(studio.holding).toEqual([])
+    studio.rotate()
+    expect(studio.holding).toEqual([true])
+    await studio.answer()
+    studio.build()
+    expect(studio.holding).toEqual([true, false])
+  })
+
+  test("a failed rotate drops the press held behind it and tells the canvas it is no longer held", async () => {
+    const studio = bench(start, ["R1", "R2"], { fail: true })
+    studio.rotate()
+    studio.rotate()
+    expect(studio.holding).toEqual([true])
+    await studio.answer()
+    expect(studio.holding).toEqual([true, false])
+  })
+})
+
 describe("a rotate while a drag waits", () => {
   test("is held until the dragged move's build has landed", async () => {
     const start = circuitOf([part("R1", 0, 0), part("R2", 4, 0)])
-    const session = keySession({ now: () => 10, resolved: () => undefined })
+    const session = keySession({ resolved: () => undefined, holding: () => undefined })
     const sent: string[] = []
     const actions: GroupEditActions = {
       edit: async (_edits, summary) => {
@@ -189,7 +240,8 @@ describe("a rotate while a drag waits", () => {
       actions,
       blockerFor: () => null,
       layout: built(start),
-      builtFrom: 0,
+      buildId: "b0",
+      buildStatus: "done",
       moveWaiting: true,
     }
     session.rotate(input, false)

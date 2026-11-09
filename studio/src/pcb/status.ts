@@ -15,7 +15,12 @@ export interface StatusInput {
   /** The PCB's unit; undefined on the schematic, whose sheet units have no name. */
   unit: Unit | undefined
   gesture: StatusGesture | undefined
+  /** A Rotate press is held until the next build (key-burst.ts TurnGate). */
+  rotateHeld?: boolean
 }
+
+/** What the status line says while a held Rotate waits for the design. */
+export const WAITING_FOR_BUILD = "Waiting for the build…"
 
 /** How far the part or label being dragged is from where it started; undefined when nothing visible is dragged. */
 function dragDelta(gesture: StatusGesture | undefined): Point | undefined {
@@ -27,7 +32,7 @@ function dragDelta(gesture: StatusGesture | undefined): Point | undefined {
 /** Lengths shown in `unit`; a sheet without a unit shows its own numbers. */
 const shown = (value: number, unit: Unit | undefined): string => formatLength(value, unit ?? "mm")
 
-export function statusParts(input: StatusInput): { position: string; drag: string } {
+export function statusParts(input: StatusInput): { position: string; drag: string; notice: string } {
   const { cursor, zoom, unit } = input
   const delta = dragDelta(input.gesture)
   const position = [
@@ -37,5 +42,6 @@ export function statusParts(input: StatusInput): { position: string; drag: strin
   return {
     position: position.filter((part) => part !== "").join("  "),
     drag: delta ? `dX ${shown(delta.x, unit)}  dY ${shown(delta.y, unit)}` : "",
+    notice: input.rotateHeld ? WAITING_FOR_BUILD : "",
   }
 }

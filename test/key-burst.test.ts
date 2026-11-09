@@ -61,8 +61,10 @@ describe("pressNudge", () => {
 })
 
 describe("the turn gate", () => {
-  const before: DesignState = { builtFrom: 5, moveWaiting: false }
-  const after: DesignState = { builtFrom: 20, moveWaiting: false }
+  const before: DesignState = { buildId: "b1", buildStatus: "done", moveWaiting: false }
+  const after: DesignState = { buildId: "b2", buildStatus: "done", moveWaiting: false }
+  const failed: DesignState = { buildId: "b2", buildStatus: "failed", moveWaiting: false }
+  const running: DesignState = { buildId: "b1", buildStatus: "building", moveWaiting: false }
 
   test("is open with nothing sent; a repeating key is ignored", () => {
     expect(gateOpen(OPEN_GATE, before)).toBe(true)
@@ -70,21 +72,33 @@ describe("the turn gate", () => {
     expect(pressTurn(OPEN_GATE, NAMES, true, before)).toEqual({ gate: OPEN_GATE, send: false })
   })
 
-  test("stays shut while an edit is in flight, and after it until a build that started later has finished", () => {
-    const sent = editSent(OPEN_GATE, 10)
+  test("stays shut while an edit is in flight, and after it until a build with another id has finished", () => {
+    const sent = editSent(OPEN_GATE, "b1")
     expect(gateOpen(sent, after)).toBe(false)
-    const resolved = editSettled(sent, true, 10, undefined)
+    const resolved = editSettled(sent, true, sent.seq, undefined)
     expect(gateOpen(resolved, before)).toBe(false)
-    expect(gateOpen(resolved, { builtFrom: 10, moveWaiting: false })).toBe(false)
+    expect(gateOpen(resolved, running)).toBe(false)
     expect(gateOpen(resolved, after)).toBe(true)
   })
 
+  test("an edit sent before any build has an id waits for the first build", () => {
+    const resolved = editSettled(editSent(OPEN_GATE, undefined), true, 1, undefined)
+    expect(gateOpen(resolved, { buildId: undefined, buildStatus: "idle", moveWaiting: false })).toBe(false)
+    expect(gateOpen(resolved, before)).toBe(true)
+  })
+
+  test("stays shut after a failed build until a successful one", () => {
+    const resolved = editSettled(editSent(OPEN_GATE, "b1"), true, 1, undefined)
+    expect(gateOpen(resolved, failed)).toBe(false)
+    expect(gateOpen(resolved, { buildId: "b3", buildStatus: "done", moveWaiting: false })).toBe(true)
+  })
+
   test("stays shut while a dragged move waits for its build", () => {
-    expect(gateOpen(OPEN_GATE, { builtFrom: 20, moveWaiting: true })).toBe(false)
+    expect(gateOpen(OPEN_GATE, { ...after, moveWaiting: true })).toBe(false)
   })
 
   test("holds the presses made while shut and lets them go one at a time once open", () => {
-    let gate = editSettled(editSent(OPEN_GATE, 10), true, 10, undefined)
+    let gate = editSettled(editSent(OPEN_GATE, "b1"), true, 1, undefined)
     for (let i = 0; i < 2; i++) {
       const press = pressTurn(gate, NAMES, false, before)
       expect(press.send).toBe(false)
@@ -97,21 +111,40 @@ describe("the turn gate", () => {
     expect(releaseTurn(first.gate, NAMES, after)).toMatchObject({ send: true, gate: { held: undefined } })
   })
 
+  test("a failed build does not release the held presses; the next successful one does", () => {
+    const gate = pressTurn(editSettled(editSent(OPEN_GATE, "b1"), true, 1, undefined), NAMES, false, before).gate
+    expect(releaseTurn(gate, NAMES, failed)).toEqual({ gate, send: false })
+    expect(releaseTurn(gate, NAMES, { buildId: "b3", buildStatus: "done", moveWaiting: false })).toMatchObject({ send: true })
+  })
+
+  test("once open the gate stays open: a later failed build does not shut it again", () => {
+    const gate = editSettled(editSent(OPEN_GATE, "b1"), true, 1, undefined)
+    const open = releaseTurn(gate, NAMES, after).gate
+    expect(gateOpen(open, failed)).toBe(true)
+    expect(pressTurn(open, NAMES, false, failed).send).toBe(true)
+  })
+
   test("drops the held presses when the selection changed meanwhile", () => {
-    const gate = pressTurn(editSent(OPEN_GATE, 10), NAMES, false, before).gate
-    expect(releaseTurn(editSettled(gate, true, 10, undefined), ["R2"], after)).toEqual({ gate: { inFlight: 0, sentAt: 10, held: undefined }, send: false })
+    const gate = pressTurn(editSent(OPEN_GATE, "b1"), NAMES, false, before).gate
+    expect(releaseTurn(editSettled(gate, true, 1, undefined), ["R2"], after)).toEqual({ gate: { ...OPEN_GATE, seq: 1 }, send: false })
   })
 
   test("a failed edit writes nothing, so the gate waits again for what it waited for before, and drops the held presses", () => {
-    const held = pressTurn(editSent(editSettled(editSent(OPEN_GATE, 4), true, 4, undefined), 10), NAMES, false, after).gate
-    const failed = editSettled(held, false, 10, 4)
-    expect(failed).toEqual({ inFlight: 0, sentAt: 4, held: undefined })
-    expect(gateOpen(failed, before)).toBe(true)
+    const first = editSettled(editSent(OPEN_GATE, "b0"), true, 1, undefined)
+    const held = pressTurn(editSent(first, "b1"), NAMES, false, after).gate
+    const waited = editSettled(held, false, 2, first.waiting)
+    expect(waited).toMatchObject({ inFlight: 0, waiting: { from: "b0", seq: 1 }, held: undefined })
+    expect(gateOpen(waited, before)).toBe(true)
+  })
+
+  test("a failed edit that waited for nothing leaves the gate open", () => {
+    const failedEdit = editSettled(editSent(OPEN_GATE, "b1"), false, 1, undefined)
+    expect(gateOpen(failedEdit, before)).toBe(true)
   })
 
   test("a failure does not undo the wait for an edit sent after it", () => {
-    const two = editSent(editSent(OPEN_GATE, 10), 12)
-    expect(editSettled(two, false, 10, undefined)).toEqual({ inFlight: 1, sentAt: 12, held: undefined })
+    const two = editSent(editSent(OPEN_GATE, "b1"), "b1")
+    expect(editSettled(two, false, 1, undefined)).toMatchObject({ inFlight: 1, waiting: { from: "b1", seq: 2 }, held: undefined })
   })
 })
 
