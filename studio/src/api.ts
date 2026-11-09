@@ -3,6 +3,7 @@ import type { HistoryListing } from "../../src/core/history.js"
 import type { CircuitModel, Edit, Literal, PartInfo, PropInfo, TraceInfo } from "../../src/core/types.js"
 import type { Design } from "../../src/engine/design.js"
 import type { Diagnostic } from "../../src/engine/model.js"
+import { requestErrorText } from "./request-error.js"
 
 export type { Annotations, CircuitModel, Design, Diagnostic, Edit, HistoryListing, Literal, LockViolation, PartInfo, PropInfo, TraceInfo }
 
@@ -109,7 +110,7 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
   const json = (await response.json()) as { ok: boolean; data: T; error?: string }
-  if (!json.ok) throw new Error(json.error ?? `Request failed (${response.status})`)
+  if (!json.ok) throw new Error(requestErrorText(response.status, json.error))
   return json.data
 }
 

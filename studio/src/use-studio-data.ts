@@ -2,6 +2,7 @@
 // the parts; kept in step with the server's change events.
 import { useCallback, useEffect, useState } from "react"
 import { api, subscribe, type BuildState, type CircuitData, type HistoryListing, type PartsData } from "./api"
+import { isStaleKey } from "./request-error"
 
 export interface StudioData {
   files: string[]
@@ -47,6 +48,14 @@ export function useStudioData(notify: (text: string) => void, onFile: () => void
   const [build, setBuild] = useState<BuildState>({ status: "idle" })
   const [history, setHistory] = useState<HistoryListing[]>([])
   const [parts, setParts] = useState<PartsData>({ library: [], builtin: [] })
+  // An out of date key stops every request, so the canvas says so instead of waiting for a build forever.
+  const report = useCallback(
+    (text: string) => {
+      if (isStaleKey(text)) setBuild({ status: "failed", error: text })
+      notify(text)
+    },
+    [notify],
+  )
 
   const refresh = useCallback(async (target: string) => {
     const [data, entries] = await Promise.all([
@@ -67,25 +76,25 @@ export function useStudioData(notify: (text: string) => void, onFile: () => void
     setBuild((previous) => (next.status === "building" && previous.design ? { ...next, design: previous.design } : next))
   }, [])
 
-  const { files, project } = useProject(notify, setFile, refreshParts)
+  const { files, project } = useProject(report, setFile, refreshParts)
 
   useEffect(() => {
     if (!file) return
     onFile()
-    refresh(file).catch((error: Error) => notify(error.message))
+    refresh(file).catch((error: Error) => report(error.message))
     api("/api/build", { file })
       .then(() => refreshBuild(file))
-      .catch((error: Error) => notify(error.message))
+      .catch((error: Error) => report(error.message))
     return subscribe((event, changed) => {
       if (event === "library") {
-        refreshParts().catch((error: Error) => notify(error.message))
+        refreshParts().catch((error: Error) => report(error.message))
         return
       }
       if (changed !== file) return
       const update = event === "change" ? refresh(file) : refreshBuild(file)
-      update.catch((error: Error) => notify(error.message))
+      update.catch((error: Error) => report(error.message))
     })
-  }, [file, refresh, refreshBuild, refreshParts, notify, onFile])
+  }, [file, refresh, refreshBuild, refreshParts, report, onFile])
 
   return { files, project, file, setFile, circuit, build, history, parts, refresh, refreshParts }
 }
