@@ -5,7 +5,7 @@ import { FindResults } from "../FindResults"
 import type { FindResultsProps } from "../use-find"
 import type { CheckCounts, CheckRow } from "../checks-list"
 import { HistoryList } from "../HistoryList"
-import { Library } from "../Library"
+import { LibraryTable } from "../LibraryTable"
 import { BOTTOM_PANEL_ID, bottomTabId, type BottomTab } from "./bottom-state"
 import { blurAfterPointerClick } from "./focus"
 import "./bottom.css"
@@ -35,15 +35,11 @@ export function BottomPanel(props: Props) {
   )
 }
 
-function noop(): void {}
-
 function Content(props: Props) {
   switch (props.tab) {
     case "library":
       return (
-        <div className="bottom-scroll">
-          <Library parts={props.parts} onPlace={props.onPlace} focus={false} onFocused={noop} />
-        </div>
+        <LibraryTable parts={props.parts} onPlace={props.onPlace} />
       )
     case "log":
       return (
