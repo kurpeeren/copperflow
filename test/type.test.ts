@@ -24,7 +24,8 @@ describe("the interface's type", () => {
 
   test("numbers line up: the body uses tabular figures and the inputs inherit them", () => {
     const styles = read("styles.css")
-    expect(read("shell/shell.css")).toMatch(/body [{][^}]*font-variant-numeric: tabular-nums;/)
+    // `html body` outranks styles.css's `body { font: … }`, whose shorthand would reset the figures to normal.
+    expect(read("shell/shell.css")).toMatch(/html body [{][^}]*font-variant-numeric: tabular-nums;/)
     expect(styles).not.toContain("tabular-nums")
     expect(styles).toMatch(/button,\s*input,\s*select \{\s*font: inherit;/)
   })
