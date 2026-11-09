@@ -13,7 +13,7 @@ import { Workspace } from "./shell/Workspace"
 import { useActions, usePlace } from "./use-actions"
 import { useChecks } from "./use-checks"
 import { useFind } from "./use-find"
-import { useStudioData } from "./use-studio-data"
+import { useStudioData, type StudioData } from "./use-studio-data"
 import { useWorkspace } from "./use-workspace"
 
 export type { Actions } from "./use-actions"
@@ -81,30 +81,54 @@ function NoToken() {
   )
 }
 
-export function App() {
-  const { message, notify, dismiss } = useToast()
+/** The open file's data; opening another file drops the selection and the highlight. */
+function useFileData(notify: (text: string) => void, select: (change: Selection) => void, setHighlight: WorkspaceState["setHighlight"]) {
+  const onFile = useCallback(() => {
+    select(Selection.none)
+    setHighlight(NO_HIGHLIGHT)
+  }, [select, setHighlight])
+  return useStudioData(notify, onFile)
+}
+
+type WorkspaceState = ReturnType<typeof useWorkspace>
+
+interface PanelsInput {
+  data: StudioData
+  tab: Tab
+  setTab(tab: Tab): void
+  select(change: SelectionChange): void
+  selectOnly(name: string): void
+  workspace: WorkspaceState
+}
+
+/** The DRC checks and Find: each selects parts, opens its bottom tab and can centre the camera on what it found. */
+function useChecksAndFind({ data, tab, setTab, select, selectOnly, workspace }: PanelsInput) {
+  const { file, build } = data
+  const { setHighlight, openBottom } = workspace
+  const openChecks = useCallback(() => openBottom("drc"), [openBottom])
+  const checks = useChecks({ file, build, onTab: setTab, onSelect: selectOnly, onOpen: openChecks })
+  const openFindResults = useCallback(() => openBottom("find"), [openBottom])
+  const find = useFind({ file, circuit: data.circuit, library: data.parts.library, design: build.design, view: tab, onSelect: select, onHighlight: setHighlight, requestFocus: checks.requestFocus, openResults: openFindResults })
+  return { checks, find, openChecks }
+}
+
+/** Everything the window shows, wired together: the server's data, the selection, the panels, the checks and Find. */
+function useStudio() {
+  const toast = useToast()
   const [picked, select] = useState<Selection>(Selection.none)
   const selectOnly = useCallback((name: string) => select((current) => current.only(name)), [])
   const [tab, setTab] = useState<Tab>("pcb")
   const [dialog, setDialog] = useState<DialogName | null>(null)
   const workspace = useWorkspace(tab)
-  const { setHighlight, openBottom } = workspace
-  const onFile = useCallback(() => {
-    select(Selection.none)
-    setHighlight(NO_HIGHLIGHT)
-  }, [setHighlight])
-  const data = useStudioData(notify, onFile)
+  const data = useFileData(toast.notify, select, workspace.setHighlight)
   const { file, setFile, build, circuit } = data
   usePruneSelection(circuit, select)
   const selection = useShownSelection(picked, circuit)
-  const actions = useActions({ file, refresh: data.refresh, refreshParts: data.refreshParts, notify })
-  const place = usePlace({ file, refresh: data.refresh, refreshParts: data.refreshParts, notify }, selectOnly)
-  const openChecks = useCallback(() => openBottom("drc"), [openBottom])
-  const checks = useChecks({ file, build, onTab: setTab, onSelect: selectOnly, onOpen: openChecks })
-  const openFindResults = useCallback(() => openBottom("find"), [openBottom])
-  const find = useFind({ file, circuit, library: data.parts.library, design: build.design, view: tab, onSelect: select, onHighlight: setHighlight, requestFocus: checks.requestFocus, openResults: openFindResults })
+  const actions = useActions({ file, refresh: data.refresh, refreshParts: data.refreshParts, notify: toast.notify })
+  const place = usePlace({ file, refresh: data.refresh, refreshParts: data.refreshParts, notify: toast.notify }, selectOnly)
+  const { checks, find, openChecks } = useChecksAndFind({ data, tab, setTab, select, selectOnly, workspace })
   useEscapeClearsSelection(select)
-  useHighlightFollowsBuild(build.design, setHighlight)
+  useHighlightFollowsBuild(build.design, workspace.setHighlight)
   const closeDialog = useCallback(() => setDialog(null), [])
   const openDocument = useCallback(
     (target: string, view: DocView) => {
@@ -114,7 +138,13 @@ export function App() {
     [setFile],
   )
   const runCommand = useAppCommands({ file, view: tab, setView: setTab, selection, select, circuit, actions, workspace, openChecks, openFind: find.open, openDialog: setDialog })
+  return { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, actions, place, checks, find, openChecks, openDocument, runCommand }
+}
 
+export function App() {
+  const { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, actions, place, checks, find, openChecks, openDocument, runCommand } = useStudio()
+  const { build, circuit } = data
+  const { message, dismiss } = toast
   if (!hasToken) return <NoToken />
   return (
     <div className="app">

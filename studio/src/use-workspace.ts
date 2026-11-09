@@ -80,20 +80,43 @@ function useWorkspaceKeys(view: View, run: (action: KeyActionName) => void): voi
   }, [view, run])
 }
 
-export function useWorkspace(view: View) {
-  const { setLeft, setRight, setBottom, ...strips } = useStrips()
+type Strips = ReturnType<typeof useStrips>
+
+/**
+ * The requests to move the focus into a panel, and the commands that open a panel with the focus in it: File → Open
+ * circuit file and Ctrl+O on the Page tree's first file, a double click on a part in Properties' first field.
+ */
+function usePanelFocus(setLeft: Strips["setLeft"], setRight: Strips["setRight"]) {
   const [focusSearch, requestSearch, searchFocused] = useFocusRequest()
   const [focusPage, requestPage, pageFocused] = useFocusRequest()
   const [focusField, requestField, fieldFocused] = useFocusRequest()
-  const [unit, setUnit] = useState<Unit>("mm")
-  const [highlight, setHighlight] = useState<Highlight>(NO_HIGHLIGHT)
-  const { toggleGridStyleOf, ...grid } = useGridSettings()
-  /** The Grid style command acts on the open view; a ref keeps `run` the same function while the tabs switch. */
+  const openPageTree = useCallback(() => {
+    setLeft(showDesignSub("page"))
+    requestPage()
+  }, [setLeft, requestPage])
+  const openProperties = useCallback(() => {
+    setRight((state) => selectStrip(state, "properties"))
+    requestField()
+  }, [setRight, requestField])
+  return { focusSearch, requestSearch, searchFocused, focusPage, pageFocused, openPageTree, focusField, fieldFocused, openProperties }
+}
+
+/** What the workspace's own actions change. */
+interface RunTargets {
+  strips: Pick<Strips, "setLeft" | "setRight" | "setBottom">
+  setUnit(change: (unit: Unit) => Unit): void
+  setHighlight(highlight: Highlight): void
+  toggleGridStyleOf(view: View): void
+  requestSearch(): void
+}
+
+/** Runs one of the workspace's own actions, for a key or a menu item; the Grid style acts on the open view. */
+function useWorkspaceRun(view: View, { strips, setUnit, setHighlight, toggleGridStyleOf, requestSearch }: RunTargets): (action: KeyActionName) => void {
+  const { setLeft, setRight, setBottom } = strips
+  // A ref keeps `run` the same function while the tabs switch.
   const openView = useRef(view)
   openView.current = view
-
-  /** Runs one of the workspace's own actions, for a key or a menu item. */
-  const run = useCallback(
+  return useCallback(
     (action: KeyActionName) => {
       if (action === "toggleLeftPanel") setLeft(toggleLeftOpen)
       if (action === "toggleRightPanel") setRight(toggleStripOpen)
@@ -106,39 +129,18 @@ export function useWorkspace(view: View) {
         requestSearch()
       }
     },
-    [setLeft, setRight, setBottom, requestSearch, toggleGridStyleOf],
+    [setLeft, setRight, setBottom, setUnit, setHighlight, requestSearch, toggleGridStyleOf],
   )
-  /** File → Open circuit file and Ctrl+O: Project Design → Page, with the focus on the first file. */
-  const openPageTree = useCallback(() => {
-    setLeft(showDesignSub("page"))
-    requestPage()
-  }, [setLeft, requestPage])
-  /** A double click on a part: the right panel on Properties, with the focus in its first field. */
-  const openProperties = useCallback(() => {
-    setRight((state) => selectStrip(state, "properties"))
-    requestField()
-  }, [setRight, requestField])
-  useWorkspaceKeys(view, run)
+}
 
+export function useWorkspace(view: View) {
+  const { setLeft, setRight, setBottom, ...strips } = useStrips()
+  const { requestSearch, ...focus } = usePanelFocus(setLeft, setRight)
+  const [unit, setUnit] = useState<Unit>("mm")
+  const [highlight, setHighlight] = useState<Highlight>(NO_HIGHLIGHT)
+  const { toggleGridStyleOf, ...grid } = useGridSettings()
+  const run = useWorkspaceRun(view, { strips: { setLeft, setRight, setBottom }, setUnit, setHighlight, toggleGridStyleOf, requestSearch })
+  useWorkspaceKeys(view, run)
   const toggleUnit = useCallback(() => setUnit(nextUnit), [])
-  const { left, right } = strips
-  return {
-    ...strips,
-    ...grid,
-    leftOpen: left.open,
-    rightOpen: right.open,
-    focusSearch,
-    searchFocused,
-    focusPage,
-    pageFocused,
-    openPageTree,
-    focusField,
-    fieldFocused,
-    openProperties,
-    unit,
-    toggleUnit,
-    highlight,
-    setHighlight,
-    run,
-  }
+  return { ...strips, ...grid, ...focus, leftOpen: strips.left.open, rightOpen: strips.right.open, unit, toggleUnit, highlight, setHighlight, run }
 }

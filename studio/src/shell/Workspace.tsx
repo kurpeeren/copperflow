@@ -114,54 +114,66 @@ function CenterColumn(props: WorkspaceProps & { onContextMenu: ContextMenuState[
   )
 }
 
+/** The left panel (Project Design or Common Library), once the circuit has loaded. */
+function LeftSide({ data, workspace, view, selection, onSelect, actions, onPlace, onOpenDocument }: WorkspaceProps) {
+  const { circuit, build, project, files, file } = data
+  const pageTree = useMemo(() => buildPageTree(project, files, file, view), [project, files, file, view])
+  if (!circuit) return null
+  return (
+    <LeftPanel
+      circuit={circuit}
+      parts={data.parts}
+      onPlace={onPlace}
+      selection={selection}
+      onSelect={onSelect}
+      actions={actions}
+      design={build.design}
+      left={workspace.left}
+      onSub={workspace.showSub}
+      pageTree={pageTree}
+      onOpenDocument={onOpenDocument}
+      focusSearch={workspace.focusSearch}
+      onSearchFocused={workspace.searchFocused}
+      focusPage={workspace.focusPage}
+      onPageFocused={workspace.pageFocused}
+      highlight={workspace.highlight}
+      onHighlight={workspace.setHighlight}
+      hidden={!workspace.leftOpen}
+    />
+  )
+}
+
+/** The right panel (Properties), once the circuit has loaded. */
+function RightSide({ data, workspace, checks, selection, onSelect, actions, run, openChecks }: WorkspaceProps) {
+  if (!data.circuit) return null
+  return (
+    <Inspector
+      circuit={data.circuit}
+      build={data.build}
+      parts={data.parts}
+      selection={selection}
+      onSelect={onSelect}
+      actions={actions}
+      run={run}
+      counts={checks.counts}
+      onShowChecks={openChecks}
+      hidden={!workspace.rightOpen}
+      focusField={workspace.focusField}
+      onFieldFocused={workspace.fieldFocused}
+    />
+  )
+}
+
 /** The row under the toolbar: the strips at the edges, the side panels, and the centre column. */
 export function Workspace(props: WorkspaceProps) {
-  const { data, workspace, view, selection, onSelect, actions } = props
-  const { circuit, build, project, files, file } = data
-  const contextMenu = useContextMenu({ circuit, design: build.design, selection, onSelect, run: props.run, openProperties: workspace.openProperties, onHighlight: workspace.setHighlight })
-  const pageTree = useMemo(() => buildPageTree(project, files, file, view), [project, files, file, view])
+  const { data, workspace, selection, onSelect } = props
+  const contextMenu = useContextMenu({ circuit: data.circuit, design: data.build.design, selection, onSelect, run: props.run, openProperties: workspace.openProperties, onHighlight: workspace.setHighlight })
   return (
     <main className="workspace">
       <SideStrip side="left" tabs={LEFT_STRIP} active={workspace.left.strip} open={workspace.left.open} onClick={workspace.clickLeft} onSelect={workspace.selectLeft} />
-      {circuit && (
-        <LeftPanel
-          circuit={circuit}
-          parts={data.parts}
-          onPlace={props.onPlace}
-          selection={selection}
-          onSelect={onSelect}
-          actions={actions}
-          design={build.design}
-          left={workspace.left}
-          onSub={workspace.showSub}
-          pageTree={pageTree}
-          onOpenDocument={props.onOpenDocument}
-          focusSearch={workspace.focusSearch}
-          onSearchFocused={workspace.searchFocused}
-          focusPage={workspace.focusPage}
-          onPageFocused={workspace.pageFocused}
-          highlight={workspace.highlight}
-          onHighlight={workspace.setHighlight}
-          hidden={!workspace.leftOpen}
-        />
-      )}
+      <LeftSide {...props} />
       <CenterColumn {...props} onContextMenu={contextMenu.show} />
-      {circuit && (
-        <Inspector
-          circuit={circuit}
-          build={build}
-          parts={data.parts}
-          selection={selection}
-          onSelect={onSelect}
-          actions={actions}
-          run={props.run}
-          counts={props.checks.counts}
-          onShowChecks={props.openChecks}
-          hidden={!workspace.rightOpen}
-          focusField={workspace.focusField}
-          onFieldFocused={workspace.fieldFocused}
-        />
-      )}
+      <RightSide {...props} />
       <SideStrip side="right" tabs={RIGHT_STRIP} active={workspace.right.active} open={workspace.right.open} onClick={workspace.clickRight} onSelect={workspace.selectRight} />
       {contextMenu.open && <ContextMenu entries={contextMenu.open.entries} at={contextMenu.open.at} onRun={contextMenu.runItem} onClose={contextMenu.close} />}
     </main>

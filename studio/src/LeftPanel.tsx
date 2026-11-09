@@ -137,9 +137,8 @@ function summaryValue(props: CircuitData["model"]["parts"][number]["props"]): st
   return ""
 }
 
+/** The connections, each with its remove button; those that touch a selected part are highlighted. */
 function Connections({ circuit, selection, actions }: Props) {
-  const [from, setFrom] = useState("")
-  const [to, setTo] = useState("")
   return (
     <div className="connections">
       <ul>
@@ -165,32 +164,41 @@ function Connections({ circuit, selection, actions }: Props) {
           </li>
         ))}
       </ul>
-      <form
-        className="add-connection"
-        onSubmit={(e) => {
-          e.preventDefault()
-          if (!from || !to) return
-          void actions.edit([{ kind: "addTrace", from, to }], `add trace ${from} -> ${to}`).then((ok) => {
-            if (ok) {
-              setFrom("")
-              setTo("")
-            }
-          })
-        }}
-      >
-        <label>
-          From
-          <input placeholder=".R1 > .pin1" value={from} onChange={(e) => setFrom(e.target.value)} />
-        </label>
-        <label>
-          To
-          <input placeholder="net.GND" value={to} onChange={(e) => setTo(e.target.value)} />
-        </label>
-        <button type="submit" className="primary">
-          Connect
-        </button>
-      </form>
+      <AddConnection actions={actions} />
     </div>
+  )
+}
+
+/** Two selectors and Connect: adds a connection between them, then empties the fields. */
+function AddConnection({ actions }: { actions: Actions }) {
+  const [from, setFrom] = useState("")
+  const [to, setTo] = useState("")
+  return (
+    <form
+      className="add-connection"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (!from || !to) return
+        void actions.edit([{ kind: "addTrace", from, to }], `add trace ${from} -> ${to}`).then((ok) => {
+          if (ok) {
+            setFrom("")
+            setTo("")
+          }
+        })
+      }}
+    >
+      <label>
+        From
+        <input placeholder=".R1 > .pin1" value={from} onChange={(e) => setFrom(e.target.value)} />
+      </label>
+      <label>
+        To
+        <input placeholder="net.GND" value={to} onChange={(e) => setTo(e.target.value)} />
+      </label>
+      <button type="submit" className="primary">
+        Connect
+      </button>
+    </form>
   )
 }
 

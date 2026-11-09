@@ -152,13 +152,12 @@ function useClicks(input: PlaceInput) {
   return { press, submitName, open }
 }
 
-export function useLabelPalette(input: Input) {
-  const { camera, cursor, onArm } = input
+/** The armed Place tool, the name typed for it and the open name input; arming one tool or putting it away clears the rest. */
+function useArmedLabelTool(onArm: () => void) {
   const [tool, setTool] = useState<LabelTool | null>(null)
   /** The name typed with Tab before a click; a net label asks again after each placement, VCC keeps it. */
   const [typed, setTyped] = useState("")
   const [editing, setEditing] = useState<NameEditing | null>(null)
-  const pending = usePendingLabels(input.builtFrom)
   const disarm = useCallback(() => {
     setTool(null)
     setTyped("")
@@ -173,6 +172,13 @@ export function useLabelPalette(input: Input) {
     },
     [onArm],
   )
+  return { tool, typed, setTyped, editing, setEditing, arm, disarm }
+}
+
+export function useLabelPalette(input: Input) {
+  const { camera, cursor } = input
+  const { tool, typed, setTyped, editing, setEditing, arm, disarm } = useArmedLabelTool(input.onArm)
+  const pending = usePendingLabels(input.builtFrom)
   const clicks = useClicks({ ...input, tool, typed, setTyped, setEditing, pending })
   const where = useMemo(() => cursor ?? { x: camera?.cx ?? 0, y: camera?.cy ?? 0 }, [cursor, camera])
   useNameKey(tool, typed, where, clicks.open)
