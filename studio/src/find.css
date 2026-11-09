@@ -140,7 +140,13 @@ button.find-row.active:hover:not(:disabled) {
 }
 
 .find-row .kind.net {
-  color: var(--copper-strong);
+  color: var(--copper-text);
+}
+
+/* Muted text is too light on the copper wash: an active row's text is the text colour. */
+button.find-row.active .kind,
+button.find-row.active .matched {
+  color: var(--text);
 }
 
 .find-row .name {

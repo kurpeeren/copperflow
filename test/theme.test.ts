@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs"
 import { join, relative } from "node:path"
 import { fileURLToPath } from "node:url"
 import { describe, expect, test } from "vitest"
+import { contrastRatio } from "../studio/src/shell/contrast.js"
 import { dprStyle, watchDpr } from "../studio/src/shell/dpr.js"
 
 const SRC = fileURLToPath(new URL("../studio/src/", import.meta.url))
@@ -227,3 +228,70 @@ function fakeWindow(ratio: number) {
   }
   return { window, props, listeners, queries, zoom }
 }
+
+describe("text contrast", () => {
+  /** A token's hex value, following one `var(--x)` alias. */
+  const hex = (name: string): string => {
+    const value = token(name) ?? ""
+    const alias = /^var\((--[\w-]+)\)$/.exec(value)?.[1]
+    return alias ? hex(alias) : value
+  }
+
+  test("contrastRatio is WCAG's: black on white 21, a colour on itself 1, symmetric", () => {
+    expect(contrastRatio("#000000", "#FFFFFF")).toBeCloseTo(21, 5)
+    expect(contrastRatio("#C8702A", "#C8702A")).toBeCloseTo(1, 5)
+    expect(contrastRatio("#C8702A", "#FFFFFF")).toBeCloseTo(contrastRatio("#FFFFFF", "#C8702A"), 9)
+    expect(contrastRatio("#777777", "#FFFFFF")).toBeCloseTo(4.48, 2)
+    expect(contrastRatio("#fff", "#000")).toBeCloseTo(21, 5)
+  })
+
+  test("contrastRatio refuses what is not a hex colour", () => {
+    expect(() => contrastRatio("var(--copper)", "#FFFFFF")).toThrow(/hex colour/)
+  })
+
+  /** [text, background] pairs the chrome sets text in. */
+  const TEXT_PAIRS: [string, string][] = [
+    ["--on-copper", "--copper-strong"], // the primary button
+    ["--on-copper", "--copper-text"], // the primary button, hovered
+    ["--copper-text", "--panel"], // links, badges, history "who", the brand
+    ["--copper-text", "--copper-wash"], // the layer filter that is on, the active page-tree row, canvas tool toggles
+    ["--agent", "--panel"],
+    ["--text", "--copper-wash"], // selected and active rows
+    ["--text", "--panel"],
+    ["--text", "--strip"],
+    ["--muted", "--panel"],
+    ["--muted", "--strip"],
+    ["--danger-text", "--panel"],
+    ["--danger-text", "--danger-wash"],
+    ["--mask", "--panel"],
+    ["--mask", "--good-wash"],
+  ]
+
+  test("every text pair is at least 4.5:1", () => {
+    for (const [text, background] of TEXT_PAIRS) {
+      const ratio = contrastRatio(hex(text), hex(background))
+      expect([text, background, ratio >= 4.5]).toEqual([text, background, true])
+    }
+  })
+
+  test("the copper accents that are not text are at least 3:1: the underline and the pressed icon", () => {
+    expect(contrastRatio(hex("--copper"), hex("--panel"))).toBeGreaterThanOrEqual(3)
+    expect(contrastRatio(hex("--copper"), hex("--copper-wash"))).toBeGreaterThanOrEqual(3)
+  })
+
+  test("copper text is --copper-text: the lighter coppers colour no text", () => {
+    for (const sheet of sheets()) {
+      const css = read(sheet)
+      const bare = [...css.matchAll(/\n([^\n{}]+) \{([^}]*)\}/g)].filter((m) => /(^|\n)\s*color: var\(--copper(-strong)?\);/.test(m[2] ?? "")).map((m) => m[1])
+      // The pressed toolbar icon is a graphic, not text: --copper on the wash, 3:1.
+      expect([sheet, bare.filter((selector) => !selector?.includes("toolbar-button"))]).toEqual([sheet, []])
+    }
+  })
+
+  test("muted text never sits on the copper wash: selected and active rows turn it to --text", () => {
+    const styles = read("styles.css")
+    expect(styles).toMatch(/\.row\.selected \.value,[^{]*\{\s*color: var\(--text\);/)
+    expect(read("find.css")).toMatch(/button\.find-row\.active \.kind,\s*button\.find-row\.active \.matched \{\s*color: var\(--text\);/)
+    expect(read("checks-panel.css")).toMatch(/\.check-row\.active \.items \{\s*color: var\(--text\);/)
+  })
+})

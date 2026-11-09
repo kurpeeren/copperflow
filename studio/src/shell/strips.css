@@ -142,7 +142,7 @@
 
 .page-tree .tree-row.doc.active {
   background: var(--copper-wash);
-  color: var(--copper-strong);
+  color: var(--copper-text);
 }
 
 @media (max-width: 960px) {

@@ -18,7 +18,7 @@ html body {
 .brand {
   margin-right: 8px;
   font-weight: 700;
-  color: var(--copper-strong);
+  color: var(--copper-text);
 }
 
 .menus {
@@ -100,7 +100,7 @@ html body {
   display: inline-block;
   width: 16px;
   content: "";
-  color: var(--copper);
+  color: var(--copper-text);
 }
 
 .menu-item[aria-checked="true"] > span::before {

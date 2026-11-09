@@ -96,6 +96,11 @@ button.build {
   font-size: 12px;
 }
 
+/* Muted text is too light on the copper wash: an active row's items are the text colour. */
+.check-row.active .items {
+  color: var(--text);
+}
+
 .check-row.active,
 .check-row.active:hover:not(:disabled) {
   background: var(--copper-wash);

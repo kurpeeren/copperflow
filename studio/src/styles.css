@@ -73,15 +73,15 @@ button.icon:hover:not(:disabled) {
 }
 
 button.primary {
-  border-color: var(--copper);
-  background: var(--copper);
+  border-color: var(--copper-strong);
+  background: var(--copper-strong);
   color: var(--on-copper);
   font-weight: 600;
 }
 
 button.primary:hover:not(:disabled) {
-  background: var(--copper-strong);
-  border-color: var(--copper-strong);
+  background: var(--copper-text);
+  border-color: var(--copper-text);
 }
 
 button.danger:hover:not(:disabled) {
@@ -249,7 +249,7 @@ input:disabled {
 
 .label-name [role="alert"] {
   max-width: 220px;
-  color: var(--copper-strong);
+  color: var(--copper-text);
   font-size: 12px;
 }
 
@@ -325,6 +325,13 @@ ul {
   color: var(--muted);
 }
 
+/* Muted text is too light on the copper wash: in a selected row it is the text colour. */
+.row.selected .value,
+.row.selected.readonly .name,
+.connections li.selected .arrow {
+  color: var(--text);
+}
+
 .row.readonly .name {
   color: var(--muted);
   font-weight: 400;
@@ -395,7 +402,7 @@ ul {
   flex: none;
   min-width: 46px;
   font-size: 12px;
-  color: var(--copper);
+  color: var(--copper-text);
 }
 
 .history .who.ai {
@@ -548,7 +555,7 @@ ul {
 }
 
 .badge.power {
-  color: var(--copper-strong);
+  color: var(--copper-text);
 }
 
 .nets .row .badge {
@@ -557,7 +564,7 @@ ul {
 
 .badge.unverified {
   margin-left: 6px;
-  color: var(--copper-strong);
+  color: var(--copper-text);
 }
 
 .facts {
@@ -582,11 +589,11 @@ ul {
 }
 
 .facts a {
-  color: var(--copper-strong);
+  color: var(--copper-text);
 }
 
 .note.warn {
-  color: var(--copper-strong);
+  color: var(--copper-text);
 }
 
 .checklist {

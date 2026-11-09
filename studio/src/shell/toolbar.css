@@ -83,7 +83,7 @@ button.toolbar-button[aria-pressed="true"] {
 .canvas-tools button.active {
   border-color: var(--copper);
   background: var(--copper-wash);
-  color: var(--copper-strong);
+  color: var(--copper-text);
 }
 
 .tool-divider {

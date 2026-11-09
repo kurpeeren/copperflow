@@ -44,7 +44,7 @@ button.layer-filter.on:active:not(:disabled) {
   position: relative;
   border-color: var(--copper);
   background: var(--copper-wash);
-  color: var(--copper-strong);
+  color: var(--copper-text);
 }
 
 .layer-list {

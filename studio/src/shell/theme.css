@@ -2,9 +2,13 @@
    One accent, copper; cool, quiet neutrals. The canvases keep their own palettes (PALETTE, schematicTheme); the two
    canvas backgrounds and the violation colours below only repeat theirs for the CSS. */
 :root {
-  /* The accent: the selected tab, the pressed tool, focus rings, the primary button, links and the active row. */
+  /* The accent: the selected tab, the pressed tool, focus rings, the primary button, links and the active row.
+     --copper is for marks that are not text (underlines, outlines, the pressed icon: 3:1 on white and on the wash).
+     Text in copper is --copper-text (4.5:1 on white and on the wash); the primary button fills with --copper-strong
+     (white text 4.6:1) and darkens to --copper-text on hover. contrast.ts and a test hold these. */
   --copper: #C8702A;
   --copper-strong: #B0601F;
+  --copper-text: #9A4E12;
   --copper-wash: #F7EAD9;
   --on-copper: #FFFFFF;
 
@@ -25,8 +29,9 @@
   --danger: #CF222E;
   --danger-text: #B62324;
   --danger-wash: #FFEBE9;
+  /* Not for text: --warning (3.1:1 on white) and --check-warning (2.2:1) colour marks only. */
   --warning: #BF8700;
-  --agent: var(--copper);
+  --agent: var(--copper-text);
 
   /* The canvases' own colours, as their palettes have them. */
   --pcb-background: #000000;
