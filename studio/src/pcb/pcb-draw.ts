@@ -44,6 +44,7 @@ const AUTO_PLACED_ALPHA = 0.6
 
 const rad = (degrees: number) => (degrees * Math.PI) / 180
 const alphaOf = (part: PlacedFootprint) => (part.autoPlaced ? AUTO_PLACED_ALPHA : 1)
+const assemblyColor = (part: PlacedFootprint) => (part.side === "top" ? PALETTE.topAssembly : PALETTE.bottomAssembly)
 
 /** Draws the board, then the ratsnest and the violation rings. Auto-placed parts are faded and always show their dashed courtyard. */
 export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDrawOptions): void {
@@ -65,16 +66,12 @@ export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDra
   ctx.setTransform(...worldMatrix(view, options.ratio))
   ctx.lineCap = "round"
   ctx.lineJoin = "round"
-  drawBoard(ctx, layout, () => {
-    ctx.fillStyle = PALETTE.board
-    ctx.fill()
-  })
   drawKeepouts(ctx, layout, px)
   drawCopper(ctx, layers, options.highlight, each)
   drawDrills(ctx, each)
   if (layers.silkscreen) each((part) => drawPolylines(ctx, part.silkscreen, part.side === "top" ? PALETTE.topSilk : PALETTE.bottomSilk, SILK_WIDTH_MM, false))
   drawCourtyards(ctx, each, px, layers.courtyard)
-  if (layers.fabrication) each((part) => drawPolylines(ctx, part.fabrication, PALETTE.fabrication, px, false))
+  if (layers.fabrication) each((part) => drawPolylines(ctx, part.fabrication, assemblyColor(part), px, false))
   drawBoard(ctx, layout, () => {
     ctx.strokeStyle = PALETTE.boardEdge
     ctx.lineWidth = BOARD_EDGE_PX * px
@@ -211,6 +208,7 @@ function padPath(ctx: Ctx, pad: WorldPad): void {
 
 function padColor(pad: WorldPad, lit: boolean): string {
   if (lit) return PALETTE.highlight
+  if (pad.layers === "through") return PALETTE.multiLayer
   return pad.layers === "bottom" ? PALETTE.bottomCopper : PALETTE.topCopper
 }
 
@@ -267,7 +265,7 @@ function drawPolylines(ctx: Ctx, lines: readonly (readonly Point[])[], color: st
 function drawCourtyards(ctx: Ctx, each: Each, px: number, all: boolean): void {
   ctx.setLineDash([4 * px, 3 * px])
   each((part) => {
-    if (all || part.autoPlaced) drawPolylines(ctx, [part.courtyard], PALETTE.courtyard, px, true)
+    if (all || part.autoPlaced) drawPolylines(ctx, [part.courtyard], assemblyColor(part), px, true)
   })
   ctx.setLineDash([])
 }
@@ -298,7 +296,7 @@ function drawDesignator(ctx: Ctx, part: PlacedFootprint, camera: Camera, size: S
   if (fontPx < MIN_TEXT_PX) return
   const box = courtyardBox(part)
   const p = worldToScreen(camera, size, { x: (box.minX + box.maxX) / 2 + shift.x, y: box.maxY + shift.y })
-  ctx.fillStyle = PALETTE.topSilk
+  ctx.fillStyle = part.side === "top" ? PALETTE.topSilk : PALETTE.bottomSilk
   ctx.globalAlpha = alphaOf(part)
   ctx.font = `600 ${fontPx}px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif`
   ctx.textAlign = "center"

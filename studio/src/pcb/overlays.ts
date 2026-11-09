@@ -1,5 +1,5 @@
 // Everything copperflow draws on top of the board, in CSS pixels.
-import { gridSteps, screenToWorld, worldToScreen, type Box, type Camera, type Point, type Size } from "./geometry"
+import { gridSteps, screenToWorld, worldToScreen, type Box, type Camera, type Point, type Size } from "./geometry.js"
 
 const COPPER = "#e0a46a"
 const MASK = "#4f9a6c"
@@ -8,46 +8,39 @@ const PANEL = "rgb(34 38 44 / 92%)"
 const FONT = '12px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif'
 const MAX_LABEL = 32
 
-/** Dots on the minor grid, faint lines on the major grid, and the origin axes. */
+const GRID_MINOR = "rgb(255 255 255 / 30%)"
+const GRID_FIFTH = "rgb(255 255 255 / 50%)"
+/** Every fifth grid line is drawn stronger. */
+export const GRID_EVERY = 5
+
+/** White grid lines: 30% on the minor grid, 50% on every fifth line. */
 export function drawGrid(ctx: CanvasRenderingContext2D, camera: Camera, size: Size): void {
-  const { minor, major } = gridSteps(camera.scale)
+  const { minor } = gridSteps(camera.scale)
   const topLeft = screenToWorld(camera, size, { x: 0, y: 0 })
   const bottomRight = screenToWorld(camera, size, { x: size.width, y: size.height })
-  const columns = (step: number) => range(Math.floor(topLeft.x / step), Math.ceil(bottomRight.x / step)).map((i) => i * step)
-  const rows = (step: number) => range(Math.floor(bottomRight.y / step), Math.ceil(topLeft.y / step)).map((i) => i * step)
-
-  ctx.fillStyle = "rgb(233 230 223 / 13%)"
-  if (minor * camera.scale >= 10) {
-    for (const x of columns(minor)) {
-      for (const y of rows(minor)) {
-        const p = worldToScreen(camera, size, { x, y })
-        ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 1)
+  const columns = range(Math.floor(topLeft.x / minor), Math.ceil(bottomRight.x / minor))
+  const rows = range(Math.floor(bottomRight.y / minor), Math.ceil(topLeft.y / minor))
+  const lines = (indices: number[], at: (i: number) => [number, number, number, number]) => {
+    for (const [colour, wanted] of [[GRID_MINOR, false], [GRID_FIFTH, true]] as const) {
+      ctx.strokeStyle = colour
+      ctx.beginPath()
+      for (const i of indices.filter((n) => (n % GRID_EVERY === 0) === wanted)) {
+        const [x1, y1, x2, y2] = at(i)
+        ctx.moveTo(x1, y1)
+        ctx.lineTo(x2, y2)
       }
+      ctx.stroke()
     }
   }
-  ctx.strokeStyle = "rgb(233 230 223 / 7%)"
   ctx.lineWidth = 1
-  ctx.beginPath()
-  for (const x of columns(major)) {
-    const sx = Math.round(worldToScreen(camera, size, { x, y: 0 }).x) + 0.5
-    ctx.moveTo(sx, 0)
-    ctx.lineTo(sx, size.height)
-  }
-  for (const y of rows(major)) {
-    const sy = Math.round(worldToScreen(camera, size, { x: 0, y }).y) + 0.5
-    ctx.moveTo(0, sy)
-    ctx.lineTo(size.width, sy)
-  }
-  ctx.stroke()
-
-  const origin = worldToScreen(camera, size, { x: 0, y: 0 })
-  ctx.strokeStyle = "rgb(201 138 75 / 28%)"
-  ctx.beginPath()
-  ctx.moveTo(Math.round(origin.x) + 0.5, 0)
-  ctx.lineTo(Math.round(origin.x) + 0.5, size.height)
-  ctx.moveTo(0, Math.round(origin.y) + 0.5)
-  ctx.lineTo(size.width, Math.round(origin.y) + 0.5)
-  ctx.stroke()
+  lines(columns, (i) => {
+    const sx = Math.round(worldToScreen(camera, size, { x: i * minor, y: 0 }).x) + 0.5
+    return [sx, 0, sx, size.height]
+  })
+  lines(rows, (i) => {
+    const sy = Math.round(worldToScreen(camera, size, { x: 0, y: i * minor }).y) + 0.5
+    return [0, sy, size.width, sy]
+  })
 }
 
 /** The colours of the overlays that differ between the canvases. */
@@ -57,10 +50,21 @@ export interface OverlayLook {
   /** Stroke and fill of the note box. */
   noteStroke: string
   noteFill: string
+  /** Wash inside the selection outline, when there is one. */
+  selectedFill?: string
+  /** Dash pattern of the note box; defaults to dashes. */
+  noteDash?: number[]
 }
 
-/** The PCB's look: copper selection, pale hover. */
-export const PCB_LOOK: OverlayLook = { selected: COPPER, hover: "rgb(233 230 223 / 45%)", noteStroke: COPPER, noteFill: "rgb(201 138 75 / 10%)" }
+/** The PCB's look: white selection with a 50% wash, white hover, cyan dotted selection box. */
+export const PCB_LOOK: OverlayLook = {
+  selected: "#ffffff",
+  selectedFill: "rgb(255 255 255 / 50%)",
+  hover: "rgb(255 255 255 / 60%)",
+  noteStroke: "#00ffff",
+  noteFill: "rgb(0 255 255 / 10%)",
+  noteDash: [1, 3],
+}
 
 /** A selection outline or hover outline (dashed) around a part, shifted by a drag. */
 export function drawOutline(
@@ -79,6 +83,10 @@ export function drawOutline(
   ctx.lineWidth = kind === "selected" ? 1.5 : 1
   ctx.strokeStyle = kind === "selected" ? look.selected : look.hover
   ctx.setLineDash(kind === "selected" ? [] : [4, 3])
+  if (kind === "selected" && look.selectedFill) {
+    ctx.fillStyle = look.selectedFill
+    ctx.fillRect(a.x - pad, a.y - pad, b.x - a.x + pad * 2, b.y - a.y + pad * 2)
+  }
   ctx.strokeRect(a.x - pad, a.y - pad, b.x - a.x + pad * 2, b.y - a.y + pad * 2)
   ctx.restore()
 }
@@ -132,7 +140,7 @@ export function drawSelectionBox(ctx: CanvasRenderingContext2D, a: Point, b: Poi
   ctx.save()
   ctx.fillStyle = look.noteFill
   ctx.strokeStyle = look.noteStroke
-  ctx.setLineDash([5, 4])
+  ctx.setLineDash(look.noteDash ?? [5, 4])
   ctx.fillRect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y))
   ctx.strokeRect(Math.min(a.x, b.x) + 0.5, Math.min(a.y, b.y) + 0.5, Math.abs(b.x - a.x), Math.abs(b.y - a.y))
   ctx.restore()

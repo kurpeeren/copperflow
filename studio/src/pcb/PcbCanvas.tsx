@@ -5,7 +5,7 @@ import { keepAutoPlaced } from "./auto-placed"
 import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
 import { ViewTools } from "../shell/ViewTools"
 import { CanvasStatus, KeepButton, SnapSelect } from "./CanvasTools"
-import type { Layers } from "./ctx"
+import { PALETTE, type Layers } from "./ctx"
 import { hitTest, pointBounds, unionBoxes, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import { NO_HIGHLIGHT, partNets, pcbNetAt, type Highlight } from "./highlight"
 import type { ViolationMarker } from "./markers"
@@ -21,7 +21,7 @@ const LAYER_BUTTONS = [
   ["courtyard", "Courtyard"],
 ] as const
 const DEFAULT_LAYERS: Layers = { topCopper: true, bottomCopper: true, silkscreen: true, courtyard: true, fabrication: false }
-const BACKGROUND = "#121417"
+const BACKGROUND = PALETTE.background
 
 /** "U1.VIN on GND" for the pad under the pointer: the pin's own name when it has one, and its named net. */
 function padLabel(design: Design, pad: WorldPad): string {

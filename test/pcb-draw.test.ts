@@ -120,7 +120,7 @@ describe("drawPcb", () => {
     drawPcb(ctx, auto, VIEW, { ratio: 1, layers: { courtyard: false } })
     const copper = records.filter((r) => r.name === "fill" && r.fillStyle === PALETTE.topCopper)
     expect(copper.map((r) => r.globalAlpha).sort()).toEqual([0.6, 0.6, 1, 1])
-    const courtyards = records.filter((r) => r.name === "stroke" && r.strokeStyle === PALETTE.courtyard)
+    const courtyards = records.filter((r) => r.name === "stroke" && r.strokeStyle === PALETTE.topAssembly)
     expect(courtyards).toHaveLength(1)
     expect(records.some((r) => r.name === "setLineDash" && (r.args[0] as number[]).length > 0)).toBe(true)
     const r2 = records.find((r) => r.name === "fillText" && r.args[0] === "R2")

@@ -41,20 +41,25 @@ export interface Layers {
 /** The alpha of everything outside a highlighted net, on the PCB and the schematic alike. */
 export const HIGHLIGHT_DIM = 0.3
 
+/** EasyEDA's default PCB theme. The board area has no fill: it stays the black background. */
 export const PALETTE = {
-  board: "#15231b",
-  boardEdge: "rgb(233 230 223 / 55%)",
-  topCopper: "#d0874a",
-  bottomCopper: "#4f7fc4",
-  highlight: "#ffd08a",
-  drill: "#0c0e11",
-  viaRing: "#c9a36a",
-  topSilk: "#ece6da",
-  bottomSilk: "#8d9aab",
-  courtyard: "rgb(233 230 223 / 30%)",
-  fabrication: "rgb(149 156 166 / 55%)",
-  ratsnest: "#e9e6df",
-  keepout: "#c0504d",
+  background: "#000000",
+  boardEdge: "#ff00ff",
+  topCopper: "#ff0000",
+  bottomCopper: "#0000ff",
+  /** Pads of plated through-holes and via rings. */
+  multiLayer: "#c0c0c0",
+  viaRing: "#c0c0c0",
+  /** A highlighted net, drawn in white over its layer colour. */
+  highlight: "#ffffff",
+  drill: "#222222",
+  topSilk: "#ffcc00",
+  bottomSilk: "#66cc33",
+  /** Courtyards and fabrication outlines follow the assembly layers. */
+  topAssembly: "#33cc99",
+  bottomAssembly: "#5555ff",
+  ratsnest: "#6464ff",
+  keepout: "#f022f0",
   /** Violation markers, on both canvases. */
   error: "#e5534b",
   warning: "#e0a63a",
