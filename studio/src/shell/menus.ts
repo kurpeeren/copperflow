@@ -251,6 +251,7 @@ const EXTRA_KEYS = [
   { keys: "Ctrl+Shift+Z", label: "Redo" },
   { keys: "W", label: "Wire (schematic)" },
   { keys: "R", label: "Rotate" },
+  { keys: "Space (while drawing a wire)", label: "Flip the bend of the leg to the pointer" },
   { keys: "F", label: "Fit all" },
   { keys: "Esc", label: "Clear the selection, put tools away" },
   { keys: "Arrow keys", label: "Move the selection one grid step (a tenth with Snap off)" },

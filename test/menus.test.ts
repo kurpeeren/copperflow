@@ -54,6 +54,7 @@ describe("menus", () => {
     const keys = shortcutList().map((row) => row.keys)
     expect(keys).toContain("Arrow keys")
     expect(keys).toContain("Shift+Arrow keys")
+    expect(shortcutList()).toContainEqual({ keys: "Space (while drawing a wire)", label: "Flip the bend of the leg to the pointer" })
   })
 
   test("Edit → Select all runs, with Ctrl+A beside it", () => {

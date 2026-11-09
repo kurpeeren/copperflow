@@ -83,8 +83,19 @@ describe("keyAction", () => {
     for (const state of [SCHEMATIC, PCB]) expect(keyAction(key(" "), state)).toEqual({ action: "rotate", preventDefault: true })
   })
 
-  test("Space does nothing while the wire tool is drawing", () => {
-    expect(keyAction(key(" "), { view: "schematic", drawing: true })).toBeNull()
+  test("Space flips the bend of the leg to the pointer while the wire tool is drawing", () => {
+    expect(keyAction(key(" "), { view: "schematic", drawing: true })).toEqual({ action: "flipBend", preventDefault: true })
+  })
+
+  test("the wire's Space follows the key ownership rules: not in a field, on a button or on a focused row", () => {
+    const drawing: KeyState = { view: "schematic", drawing: true }
+    for (const extra of [{ typing: true }, { onButton: true }, { ownsKeys: true }, { handled: true }]) {
+      expect([extra, keyAction(key(" ", extra), drawing)]).toEqual([extra, null])
+    }
+  })
+
+  test("Space with a modifier does not flip", () => {
+    expect(keyAction(key(" ", { ctrlKey: true }), { view: "schematic", drawing: true })).toBeNull()
   })
 
   test("Space on a focused button is left to the button", () => {

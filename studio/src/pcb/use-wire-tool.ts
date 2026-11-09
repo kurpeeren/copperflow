@@ -5,15 +5,30 @@ import type { Design, Edit } from "../api"
 import type { Actions } from "../App"
 import { isCanvasKey } from "./canvas-common"
 import { keyAction, keyInput } from "./canvas-keys"
-import { rightAngles, snapPoint, type Camera, type Point } from "./geometry"
+import { snapPoint, type Camera, type Point } from "./geometry"
+import { wirePath } from "./wire-path"
 import { endAt, freePin, namedNetsJoined, pinAt, sameEnd, wireEdits, type WireEnd } from "./wire-tool"
 
-/** A wire being drawn: where it starts, the pin it starts on if any, and the corners clicked so far, on the grid. */
+/**
+ * A wire being drawn: where it starts, the pin it starts on if any, the corners clicked so far (on the grid)
+ * and the bend each of their legs was clicked with, then the bend the leg to the pointer has now (`flip`).
+ * A bend is true when the leg runs vertically first.
+ */
 export interface Drawing {
   start: WireEnd
   pin?: string
   corners: Point[]
+  bends: boolean[]
+  flip: boolean
 }
+
+const newDrawing = (start: WireEnd, pin: string | undefined, flip = false): Drawing => ({ start, ...(pin ? { pin } : {}), corners: [], bends: [], flip })
+
+/** The bend of every leg, the last being the leg to the pointer. */
+const legBends = (drawing: Drawing): boolean[] => [...drawing.bends, drawing.flip]
+
+/** The wire as it is saved and drawn, from its start through the clicked corners to `to`. */
+const drawnPath = (drawing: Drawing, to: Point): Point[] => wirePath([drawing.start.at, ...drawing.corners, to], legBends(drawing))
 
 /** What is under the pointer: the end a wire would use there, and the pin, if it is a pin. */
 export interface Under {
@@ -52,13 +67,13 @@ function planWire(design: Design, drawing: Drawing, target: WireEnd): WirePlan {
   if (sameEnd(target, start)) return {}
   const repeated = [start, target].find((end) => end.selector.split(".")[0]?.includes("~"))
   if (repeated) return { notice: `${repeated.label} has a repeated name and cannot be wired from the Studio` }
-  const edits = wireEdits(design, start, target, corners)
+  const edits = wireEdits(design, start, target, corners, legBends(drawing))
   if (edits.length === 0) return { notice: `${start.label} and ${target.label} are already connected` }
   const nets = namedNetsJoined(design, start, target)
   if (nets && !window.confirm(`This wire joins ${nets[0]} and ${nets[1]} into one net, a short circuit if they carry different voltages. Connect them anyway?`)) {
     return {}
   }
-  return { edits, points: rightAngles([start.at, ...corners, target.at]), summary: `connect ${start.label} to ${target.label}` }
+  return { edits, points: drawnPath(drawing, target.at), summary: `connect ${start.label} to ${target.label}` }
 }
 
 /** What is under the pointer, kept as the same object while it does not change so the sheet is not redrawn; reset by each build. */
@@ -87,7 +102,7 @@ function usePendingWires(builtFrom: number) {
   return { visible, add, drop }
 }
 
-/** W starts a wire at the pin under the pointer, or turns wiring on and off; Esc cancels; Backspace removes a corner. */
+/** W starts a wire at the pin under the pointer, or turns wiring on and off; Esc cancels; Backspace removes a corner; Space flips the bend. */
 function useWireKeys(
   drawing: Drawing | null,
   setDrawing: Dispatch<SetStateAction<Drawing | null>>,
@@ -101,13 +116,18 @@ function useWireKeys(
         if (hit.preventDefault) event.preventDefault()
         if (drawing) return
         const { end, pin } = underRef.current
-        if (end) return setDrawing({ start: end, ...(pin ? { pin } : {}), corners: [] })
+        if (end) return setDrawing(newDrawing(end, pin))
         return setWiring((on) => !on)
       }
       // Backspace goes by the canvas key rule, so it does nothing in a field or on a focused table row or list.
       if (hit?.action === "removeCorner" && drawing) {
         event.preventDefault()
-        return setDrawing({ ...drawing, corners: drawing.corners.slice(0, -1) })
+        return setDrawing({ ...drawing, corners: drawing.corners.slice(0, -1), bends: drawing.bends.slice(0, -1) })
+      }
+      // Space turns the leg to the pointer the other way round; the corners already clicked keep theirs.
+      if (hit?.action === "flipBend" && drawing) {
+        event.preventDefault()
+        return setDrawing({ ...drawing, flip: !drawing.flip })
       }
       if (event.key === "Escape" && isCanvasKey(event)) return drawing ? setDrawing(null) : setWiring(false)
     }
@@ -120,7 +140,7 @@ function useWireKeys(
 function usePreview(drawing: Drawing | null, under: Under, cursor: Point | undefined, step: number, snap: boolean): Point[] | undefined {
   return useMemo(() => {
     const to = under.end?.at ?? (cursor && snapPoint(cursor, step, snap))
-    return drawing && to ? rightAngles([drawing.start.at, ...drawing.corners, to]) : undefined
+    return drawing && to ? drawnPath(drawing, to) : undefined
   }, [drawing, under, cursor, step, snap])
 }
 
@@ -209,7 +229,7 @@ function pressWire(c: PressContext, event: { button: number; shiftKey: boolean }
   }
   const { end, pin } = c.underAt(world)
   if (!end || (!c.wiring && !(pin && freePin(c.design, pin)))) return false
-  c.setDrawing({ start: end, ...(pin ? { pin } : {}), corners: [] })
+  c.setDrawing(newDrawing(end, pin))
   return true
 }
 
@@ -217,5 +237,5 @@ function pressWire(c: PressContext, event: { button: number; shiftKey: boolean }
 function addCorner(drawing: Drawing, world: Point, grid: { step: number; snap: boolean }, setDrawing: (drawing: Drawing) => void): void {
   const corner = snapPoint(world, grid.step, grid.snap)
   const last = drawing.corners[drawing.corners.length - 1] ?? drawing.start.at
-  if (corner.x !== last.x || corner.y !== last.y) setDrawing({ ...drawing, corners: [...drawing.corners, corner] })
+  if (corner.x !== last.x || corner.y !== last.y) setDrawing({ ...drawing, corners: [...drawing.corners, corner], bends: [...drawing.bends, drawing.flip] })
 }

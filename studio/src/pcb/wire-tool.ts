@@ -6,6 +6,7 @@ import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { Net, Pin } from "../../../src/engine/model.js"
 import type { Point } from "./geometry.js"
 import { labelTag } from "./label-tag.js"
+import { wirePath, type Bends } from "./wire-path.js"
 
 export interface WireEnd {
   /** What a trace writes: `R1.pin1` or `net.GND`. */
@@ -176,19 +177,22 @@ export function addressable(selector: string): boolean {
 }
 
 /** A point on a net's wire or label is kept as a corner, so the wire stops there. */
-function endHint(end: WireEnd): Point[] {
-  return end.selector.startsWith("net.") ? [end.at] : []
+const keepsEnd = (end: WireEnd): boolean => end.selector.startsWith("net.")
+
+/**
+ * The corners a wire is saved with: the interior points of the squared, tidied path from `start` to `end`
+ * through `corners`, with each leg's bend. A net end keeps its own point.
+ */
+export function savedCorners(start: WireEnd, end: WireEnd, corners: Point[], bends: Bends = []): Point[] {
+  const path = wirePath([start.at, ...corners, end.at], bends)
+  return path.slice(keepsEnd(start) ? 0 : 1, keepsEnd(end) ? path.length : path.length - 1)
 }
 
 /** What the W tool writes: one addTrace, or nothing when the ends are already on one net or cannot be addressed. */
-export function wireEdits(design: Design, start: WireEnd, end: WireEnd, corners: Point[]): Edit[] {
+export function wireEdits(design: Design, start: WireEnd, end: WireEnd, corners: Point[], bends: Bends = []): Edit[] {
   if (!addressable(start.selector) || !addressable(end.selector)) return []
   const [a, b] = [netOfEnd(design, start), netOfEnd(design, end)]
   if (sameEnd(start, end) || (a !== undefined && a.id === b?.id)) return []
-  const hints = dropRepeats([...endHint(start), ...corners, ...endHint(end)])
+  const hints = savedCorners(start, end, corners, bends)
   return [{ kind: "addTrace", from: start.selector, to: end.selector, ...(hints.length > 0 ? { schematicRouteHints: hints } : {}) }]
-}
-
-function dropRepeats(points: Point[]): Point[] {
-  return points.filter((p, i) => i === 0 || p.x !== points[i - 1]?.x || p.y !== points[i - 1]?.y)
 }

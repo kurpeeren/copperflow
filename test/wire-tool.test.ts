@@ -61,10 +61,20 @@ describe("endAt", () => {
 })
 
 describe("wireEdits", () => {
-  test("R1.pin2 to R3.pin2 with one corner gives one addTrace carrying the corner", () => {
-    const corner = { x: 4.5, y: 2 }
-    const edits = wireEdits(design, pin("R1.pin2"), pin("R3.pin2"), [corner])
-    expect(edits).toEqual([{ kind: "addTrace", from: "R1.pin2", to: "R3.pin2", schematicRouteHints: [corner] }])
+  test("R1.pin2 to R3.pin2 with one corner gives one addTrace carrying the corner and the elbows around it (no slanted leg)", () => {
+    const edits = wireEdits(design, pin("R1.pin2"), pin("R3.pin2"), [{ x: 4.5, y: 2 }])
+    expect(edits).toEqual([
+      {
+        kind: "addTrace",
+        from: "R1.pin2",
+        to: "R3.pin2",
+        schematicRouteHints: [
+          { x: 4.5, y: 0 },
+          { x: 4.5, y: 2 },
+          { x: 6.5, y: 2 },
+        ],
+      },
+    ])
   })
 
   test("two pins already on one net give no edits", () => {
@@ -80,7 +90,7 @@ describe("wireEdits", () => {
         from: "R3.pin2",
         to: "net.GND",
         schematicRouteHints: [
-          { x: 9, y: 0 },
+          { x: 9, y: 1.2 },
           { x: 9, y: 9 },
         ],
       },
@@ -90,6 +100,53 @@ describe("wireEdits", () => {
   test("a part with a duplicate name cannot be addressed", () => {
     const dup: WireEnd = { selector: "R1~2.pin1", at: { x: 0, y: 0 }, label: "R1~2.pin1" }
     expect(wireEdits(design, dup, pin("R3.pin2"), [])).toEqual([])
+  })
+})
+
+describe("the corners a wire saves", () => {
+  const at = (id: string, x: number, y: number): WireEnd => ({ ...pin(id), at: { x, y } })
+  const hints = (edits: ReturnType<typeof wireEdits>) => (edits[0] as { schematicRouteHints?: unknown }).schematicRouteHints
+
+  test("a corner off the axis of the previous point also writes the elbow, so every segment is horizontal or vertical", () => {
+    const edits = wireEdits(design, at("R1.pin2", 0, 0), at("R3.pin2", 2, 2), [{ x: 1, y: 1 }])
+    expect(hints(edits)).toEqual([{ x: 1, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 1 }])
+  })
+
+  test("a wire with no bend needed writes no hints", () => {
+    expect(hints(wireEdits(design, at("R1.pin2", 0, 0), at("R3.pin2", 3, 0), []))).toBeUndefined()
+    expect(hints(wireEdits(design, at("R1.pin2", 0, 0), at("R3.pin2", 3, 0), [{ x: 1, y: 0 }]))).toBeUndefined()
+  })
+
+  test("repeated points and points in the middle of a straight run are dropped", () => {
+    const edits = wireEdits(design, at("R1.pin2", 0, 0), at("R3.pin2", 4, 2), [{ x: 2, y: 0 }, { x: 2, y: 0 }, { x: 4, y: 0 }])
+    expect(hints(edits)).toEqual([{ x: 4, y: 0 }])
+  })
+
+  test("positions are rounded to 4 decimals", () => {
+    const edits = wireEdits(design, at("R1.pin2", 0, 0), at("R3.pin2", 2.000001, 1.00004), [])
+    expect(hints(edits)).toEqual([{ x: 2, y: 0 }])
+  })
+
+  test("the bend of each leg decides the elbow: vertical first writes the other corner", () => {
+    const start = at("R1.pin2", 0, 0)
+    const end = at("R3.pin2", 2, 1)
+    expect(hints(wireEdits(design, start, end, [], [true]))).toEqual([{ x: 0, y: 1 }])
+    expect(hints(wireEdits(design, start, end, [], [false]))).toEqual([{ x: 2, y: 0 }])
+  })
+
+  test("each leg keeps its own bend; a corner in the middle of a straight run is dropped", () => {
+    const edits = wireEdits(design, at("R1.pin2", 0, 0), at("R3.pin2", 3, 3), [{ x: 1, y: 1 }], [true, false])
+    expect(hints(edits)).toEqual([{ x: 0, y: 1 }, { x: 3, y: 1 }])
+  })
+
+  test("a net end keeps its point as the last corner, after the elbows", () => {
+    const gnd: WireEnd = { selector: "net.GND", at: { x: 2, y: 2 }, label: "GND", net: "GND" }
+    expect(hints(wireEdits(design, at("R3.pin2", 0, 0), gnd, []))).toEqual([{ x: 2, y: 0 }, { x: 2, y: 2 }])
+  })
+
+  test("a net start keeps its point as the first corner", () => {
+    const gnd: WireEnd = { selector: "net.GND", at: { x: 2, y: 2 }, label: "GND", net: "GND" }
+    expect(hints(wireEdits(design, gnd, at("R3.pin2", 0, 0), [], [true]))).toEqual([{ x: 2, y: 2 }, { x: 2, y: 0 }])
   })
 })
 
@@ -156,13 +213,13 @@ describe("a name that several pins of a part share", () => {
 
   test("a wire from the second GND pin is written from that pin", () => {
     expect(wireEdits(twoGrounds, endOf(twoGrounds, "U1.pin4"), endOf(twoGrounds, "R1.pin1"), [])).toEqual([
-      { kind: "addTrace", from: "U1.pin4", to: "R1.pin1" },
+      { kind: "addTrace", from: "U1.pin4", to: "R1.pin1", schematicRouteHints: [{ x: 5.5, y: -0.3 }] },
     ])
   })
 
   test("the clicked pin's own net decides whether the wire is needed, not the first pin with that name", () => {
     expect(wireEdits(twoGrounds, endOf(twoGrounds, "U1.pin4"), endOf(twoGrounds, "R2.pin1"), [])).toEqual([
-      { kind: "addTrace", from: "U1.pin4", to: "R2.pin1" },
+      { kind: "addTrace", from: "U1.pin4", to: "R2.pin1", schematicRouteHints: [{ x: 5.5, y: -0.3 }] },
     ])
     expect(wireEdits(twoGrounds, endOf(twoGrounds, "U1.pin1"), endOf(twoGrounds, "R2.pin1"), [])).toEqual([])
   })
@@ -181,7 +238,7 @@ describe("where a wire ends", () => {
     expect(edits[0]).toMatchObject({ schematicRouteHints: [{ x: 9, y: 0 }] })
   })
 
-  test("a wire of an unnamed net resolves to its first pin and adds no corner", () => {
+  test("a wire of an unnamed net resolves to its first pin and adds no net point", () => {
     const wire = labelled.schematic.wires.find((w) => w.net.startsWith("net:"))
     const a = wire?.points[0]
     const b = wire?.points[1]
@@ -189,7 +246,7 @@ describe("where a wire ends", () => {
     const end = endAt(labelled, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, 0.05)
     expect(end?.selector).toMatch(/^(LED1\.cathode|R1\.pin1)$/)
     const edits = wireEdits(labelled, endOf(labelled, "U1.pin1"), end as WireEnd, [{ x: 6, y: 1 }])
-    expect(edits[0]).toMatchObject({ schematicRouteHints: [{ x: 6, y: 1 }] })
+    expect(edits[0]).toMatchObject({ schematicRouteHints: [{ x: 6, y: 0.2 }, { x: 6, y: 1 }, { x: 4, y: 1 }] })
   })
 })
 

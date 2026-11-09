@@ -29,6 +29,7 @@ export type KeyActionName =
   | "contextMenu"
   | "delete"
   | "removeCorner"
+  | "flipBend"
   | "alignLeft"
   | "distributeH"
 
@@ -221,7 +222,8 @@ export function keyAction(input: KeyInput, state: KeyState): KeyResult | null {
   const arrow = arrowAction(input)
   if (arrow) return arrow
   if (removes(input)) return removeAction(input, state)
-  if (input.key === " ") return state.drawing || input.onButton ? null : act("rotate", true)
+  // Space presses a focused button; otherwise it flips the wire being drawn, or rotates.
+  if (input.key === " ") return input.onButton ? null : act(state.drawing ? "flipBend" : "rotate", true)
   return letterAction(input.key.toLowerCase(), input, state)
 }
 
