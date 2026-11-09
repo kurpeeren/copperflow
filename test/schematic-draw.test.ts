@@ -5,7 +5,7 @@ import { HIGHLIGHT_DIM, PALETTE } from "../studio/src/pcb/ctx.js"
 import { drawPcb, PCB_DIM } from "../studio/src/pcb/pcb-draw.js"
 import { worldToScreen } from "../studio/src/pcb/geometry.js"
 import { schematicTheme } from "../studio/src/pcb/schematic-theme.js"
-import { drawSchematic, sheetBoxes, wireStrokePx, type SchematicDrawOptions } from "../studio/src/pcb/schematic-draw.js"
+import { drawSchematic, sheetBoxes, wireDrawnPx, wireStrokePx, type SchematicDrawOptions } from "../studio/src/pcb/schematic-draw.js"
 import { recorder } from "./helpers/fake-ctx.js"
 
 const CIRCUIT = `export default () => (
@@ -44,15 +44,18 @@ const design = buildDesign({ "main.circuit.tsx": CIRCUIT }, "main.circuit.tsx")
 const layout = design.schematic
 const VIEW = { camera: { cx: 1.5, cy: 0, scale: 100 }, size: { width: 800, height: 600 } }
 
-function draw(options: Partial<SchematicDrawOptions> = {}) {
+/** Pin numbers (0.1 in) are written from 11 device pixels: this view is 12. */
+const CLOSE = { ...VIEW, camera: { ...VIEW.camera, scale: 120 } }
+
+function draw(options: Partial<SchematicDrawOptions> = {}, view = VIEW) {
   const rec = recorder()
-  drawSchematic(rec.ctx as never, layout, VIEW, { ratio: 1, ...options })
+  drawSchematic(rec.ctx as never, layout, view, { ratio: 1, ...options })
   return rec
 }
 
 describe("drawSchematic", () => {
-  test("draws a resistor polyline and both pin numbers", () => {
-    const { calls, records } = draw()
+  test("draws a resistor polyline and, close enough for pin numbers, both of them", () => {
+    const { calls, records } = draw({}, CLOSE)
     expect(calls).toContain("lineTo")
     const texts = records.filter((r) => r.name === "fillText").map((r) => r.args[0])
     expect(texts).toEqual(expect.arrayContaining(["1", "2"]))
@@ -164,7 +167,7 @@ describe("schematic colours", () => {
   })
 
   test("designators are blue, values navy, pin numbers black", () => {
-    const rec = draw()
+    const rec = draw({}, CLOSE)
     expect(texts(rec, "R1")[0]?.fillStyle).toBe(schematicTheme.designator)
     expect(texts(rec, "1k")[0]?.fillStyle).toBe(schematicTheme.value)
     expect(texts(rec, "1")[0]?.fillStyle).toBe(schematicTheme.pinNumber)
@@ -193,13 +196,14 @@ describe("schematic colours", () => {
     expect(rec.records.filter((r) => r.name === "fill" && r.fillStyle === schematicTheme.junction)).toHaveLength(layout.junctions.length)
   })
 
-  test("wireStrokePx is the width wires are drawn at, in CSS pixels, at any zoom", () => {
+  test("wireDrawnPx is the width wires are drawn at, in CSS pixels, at any zoom; the hit test keeps wireStrokePx", () => {
     for (const scale of [10, 100, 1000]) {
       const rec = recorder()
       drawSchematic(rec.ctx as never, layout, { ...VIEW, camera: { ...VIEW.camera, scale } }, { ratio: 1 })
       const wire = strokes(rec, schematicTheme.wire)[0]
-      expect([scale, (wire?.lineWidth ?? 0) * scale]).toEqual([scale, expect.closeTo(wireStrokePx(scale), 9)])
+      expect([scale, (wire?.lineWidth ?? 0) * scale]).toEqual([scale, expect.closeTo(wireDrawnPx(scale, 1), 9)])
     }
+    expect(wireStrokePx(10)).toBeCloseTo(1.2)
   })
 
   test("a selected wire is drawn in the selection colour, over a highlight; the others keep theirs", () => {

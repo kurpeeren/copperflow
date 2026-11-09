@@ -4,7 +4,8 @@
 // move takes is drawn where the move puts it. schematic-draw.ts calls both passes.
 import type { SchematicDrawing } from "../../../src/engine/model.js"
 import { anchorAlignment, CANVAS_FONT_FAMILY, HIGHLIGHT_DIM, type Ctx } from "./ctx.js"
-import { colorOf, dashOf, drawnWidth, fillOf, isFilled, lineStyleOf, MIN_TEXT_PX, strokeWidthOf } from "./drawing-style.js"
+import { colorOf, dashOf, drawnWidth, fillOf, isFilled, lineStyleOf, strokeWidthOf } from "./drawing-style.js"
+import { devicePxFor, textAnchorAt, textShown } from "./text-level.js"
 import { worldToScreen, type Camera, type Size } from "./geometry.js"
 import { schematicTheme } from "./schematic-theme.js"
 
@@ -80,14 +81,18 @@ export function drawDrawings(ctx: Ctx, drawings: readonly SchematicDrawing[], de
   ctx.globalAlpha = 1
 }
 
-/** Writes the drawings' texts upright at their anchors, in CSS pixels (the context's transform is the device ratio). */
-export function drawDrawingTexts(ctx: Ctx, drawings: readonly SchematicDrawing[], camera: Camera, size: Size, paint: DrawingPaint): void {
+/**
+ * Writes the drawings' texts upright at their anchors, in CSS pixels (the context's transform is the device `ratio`),
+ * at whole device pixel sizes on device pixels; like values, they wait until they are 9 device pixels tall.
+ */
+export function drawDrawingTexts(ctx: Ctx, drawings: readonly SchematicDrawing[], camera: Camera, size: Size, paint: DrawingPaint, ratio: number): void {
   for (const drawing of drawings) {
     if (drawing.kind !== "text" || drawing.text === "") continue
-    const fontPx = drawing.fontSize * camera.scale
-    if (fontPx < MIN_TEXT_PX) continue
+    const devicePx = devicePxFor(drawing.fontSize, camera.scale, ratio)
+    if (!textShown("detail", devicePx)) continue
+    const fontPx = devicePx / ratio
     const { color, alpha } = toneOf(drawing, paint)
-    const at = worldToScreen(camera, size, drawing)
+    const at = textAnchorAt(worldToScreen(camera, size, drawing), ratio)
     const [, horizontal] = anchorAlignment(drawing.anchor)
     ctx.globalAlpha = alpha
     ctx.fillStyle = color

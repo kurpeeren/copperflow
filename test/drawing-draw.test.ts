@@ -84,7 +84,7 @@ describe("drawing the drawings", () => {
 describe("drawing the texts", () => {
   test("a text is written upright at its anchor in the canvas font, sized by its fontSize", () => {
     const rec = recorder()
-    drawDrawingTexts(rec.ctx, drawings, CAMERA, SIZE, {})
+    drawDrawingTexts(rec.ctx, drawings, CAMERA, SIZE, {}, 1)
     const text = rec.records.find((r) => r.name === "fillText")
     expect(text?.args).toEqual(["Power", worldToScreen(CAMERA, SIZE, { x: 9, y: 0 }).x, worldToScreen(CAMERA, SIZE, { x: 9, y: 0 }).y])
     expect(text?.fillStyle).toBe("#000080")
@@ -92,9 +92,23 @@ describe("drawing the texts", () => {
     expect((rec.ctx as unknown as { textAlign: string }).textAlign).toBe("center")
   })
 
+  test("it waits until it is 9 device pixels tall, then is written at a whole device pixel size on a device pixel", () => {
+    const at = (scale: number, ratio: number) => {
+      const rec = recorder()
+      drawDrawingTexts(rec.ctx, drawings, { ...CAMERA, scale }, SIZE, {}, ratio)
+      return rec.records.filter((r) => r.name === "fillText")
+    }
+    expect(at(42, 1)).toEqual([])
+    expect(at(42, 1.1)).toHaveLength(1)
+    const [text] = at(51.3, 1.25)
+    const whole = (v: number) => Math.abs(v - Math.round(v)) < 1e-9
+    expect([whole((text?.args[1] as number) * 1.25), whole((text?.args[2] as number) * 1.25)]).toEqual([true, true])
+    expect(whole(Number(/([\d.]+)px/.exec(text?.font ?? "")?.[1]) * 1.25)).toBe(true)
+  })
+
   test("too small to read, it is not written", () => {
     const rec = recorder()
-    drawDrawingTexts(rec.ctx, drawings, { ...CAMERA, scale: 10 }, SIZE, {})
+    drawDrawingTexts(rec.ctx, drawings, { ...CAMERA, scale: 10 }, SIZE, {}, 1)
     expect(rec.records.filter((r) => r.name === "fillText")).toEqual([])
   })
 })

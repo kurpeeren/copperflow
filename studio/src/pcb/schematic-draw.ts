@@ -3,14 +3,15 @@
 import type { SchematicDrawing } from "../../../src/engine/model.js"
 import type { PlacedSymbol, SchematicLayout, NetLabel } from "../../../src/engine/schematic.js"
 import { groundSymbol, powerSymbol, type SchSymbol, type Shape } from "../../../src/engine/symbols/index.js"
-import { baselineAt } from "./crisp.js"
-import { anchorAlignment, canvasFont, CANVAS_MONO_FAMILY, HIGHLIGHT_DIM, TEXT_WEIGHT, type Ctx } from "./ctx.js"
+import { HIGHLIGHT_DIM, type Ctx } from "./ctx.js"
 import { labelTag, NET_LABEL_TEXT } from "./label-tag.js"
-import { worldToScreen, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
+import { type Box, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
 import { drawViolationMarkers, type ViolationMarker } from "./markers.js"
 import { schematicTheme as theme } from "./schematic-theme.js"
 import { WIRE_WIDTH } from "./drawing-style.js"
 import { drawDrawings, drawDrawingTexts, shownDrawings, type DrawingPaint } from "./drawing-draw.js"
+import { drawSheetTexts, type SheetText } from "./schematic-text.js"
+import type { TextKind } from "./text-level.js"
 
 export interface SchematicDrawOptions {
   /** Device pixels per CSS pixel. */
@@ -52,24 +53,11 @@ interface Frame {
   rotation: number
 }
 
-interface Label {
-  text: string
-  at: Point
-  size: number
-  anchor: string
-  color: string
-  rotation?: number
-  alpha?: number
-  /** Designators and net names are bolder than values and pin names. */
-  strong?: boolean
-  /** Pin numbers are in the mono family. */
-  mono?: boolean
-}
+type Label = SheetText
 
 const NO_SHIFT: Point = { x: 0, y: 0 }
 const SYMBOL_WIDTH = 0.02
 const MIN_LINE_PX = 1.2
-const MIN_TEXT_PX = 3
 const PIN_DOT_PX = 3.5
 /** A highlighted pin's marker is this big in sheet units, but never under 1.5 px or over a pin dot, so it stays smaller than a symbol at any zoom. */
 const LIT_PIN_WORLD = 0.06
@@ -83,6 +71,9 @@ const NUMBER_RISE = 0.07
 /** Symbols the engine placed for itself are drawn faded inside a dashed box, so the person sees they have no position yet. */
 const AUTO_PLACED_ALPHA = 0.6
 const AUTO_DASH_PX = [4, 3]
+/** A two-pin part's designator and value are at most this many symbol lengths wide. */
+const TWO_PIN_TEXT_LENGTHS = 2.5
+const TEXT_KINDS: Record<Role, TextKind> = { reference: "name", value: "detail", "pin-name": "detail", "pin-number": "pin-number" }
 const TEXT_COLORS: Record<Role, string> = {
   reference: theme.designator,
   value: theme.value,
@@ -93,14 +84,18 @@ const OUTWARD: Record<NetLabel["side"], Point> = { right: { x: 1, y: 0 }, left: 
 
 const rad = (degrees: number) => (degrees * Math.PI) / 180
 
-/** How wide a wire is drawn at this zoom (pixels per sheet unit), in CSS pixels: its width, never under the thinnest line. */
+/** How wide the hit test counts a wire at this zoom (pixels per sheet unit), in CSS pixels: its width, never under 1.2. */
 export const wireStrokePx = (scale: number): number => Math.max(WIRE_WIDTH * scale, MIN_LINE_PX)
+
+/** How wide a wire is drawn, in CSS pixels: its width on the sheet, but never under one device pixel. */
+export const wireDrawnPx = (scale: number, ratio: number): number => Math.max(WIRE_WIDTH * scale, 1 / ratio)
 
 /** Draws wires and drawings, then symbols, labels and pins, then all text upright in screen space, then the violation rings. */
 export function drawSchematic(ctx: Ctx, layout: SchematicLayout, view: View, options: SchematicDrawOptions): void {
   const { camera, size } = view
   const px = 1 / camera.scale
-  const line = (width: number) => Math.max(width, MIN_LINE_PX * px)
+  /** Every stroke is its width on the sheet, never under one device pixel. */
+  const line = (width: number) => Math.max(width, px / options.ratio)
   const texts: Label[] = []
   const shiftOf = (symbol: PlacedSymbol) => (options.moving?.components.includes(symbol.component) ? options.moving.by : NO_SHIFT)
 
@@ -124,8 +119,8 @@ export function drawSchematic(ctx: Ctx, layout: SchematicLayout, view: View, opt
 
   // Text is drawn in screen space so it stays upright and readable at any zoom.
   ctx.setTransform(options.ratio, 0, 0, options.ratio, 0, 0)
-  for (const label of texts) drawText(ctx, label, camera, size, options.ratio)
-  drawDrawingTexts(ctx, drawings, camera, size, paint)
+  drawSheetTexts(ctx, texts, camera, size, options.ratio)
+  drawDrawingTexts(ctx, drawings, camera, size, paint, options.ratio)
   drawViolationMarkers(ctx, view, options.violations ?? [], options.activeViolation, false)
   ctx.restore()
 }
@@ -232,9 +227,19 @@ function drawSymbol(ctx: Ctx, placed: PlacedSymbol, shift: Point, pen: { line: (
   ctx.lineWidth = pen.line(SYMBOL_WIDTH)
   drawShapes(ctx, placed.symbol.shapes, frame, theme.symbolOutline, own)
   ctx.globalAlpha = 1
-  if (placed.autoPlaced) drawAutoBox(ctx, symbolBox(placed), shift, pen.px)
+  const box = symbolBox(placed)
+  if (placed.autoPlaced) drawAutoBox(ctx, box, shift, pen.px)
   if (!placed.symbol.shapes.some((shape) => shape.type === "text" && shape.role === "pin-number")) own.push(...pinNumbers(placed.symbol, frame))
-  texts.push(...own.map((label) => ({ ...label, alpha })))
+  const centre = { x: (box.minX + box.maxX) / 2 + shift.x, y: (box.minY + box.maxY) / 2 + shift.y }
+  texts.push(...own.map((label) => ({ ...label, alpha, ...textBounds(label, placed, centre) })))
+}
+
+/** A pin name's symbol, for fitting the names; a two-pin part's designator and value, their widest (the symbol's length is from pin end to pin end). */
+function textBounds(label: Label, placed: PlacedSymbol, centre: Point): Partial<Label> {
+  if (label.role === "pin-name") return { pinOf: { symbol: placed.component, centre } }
+  if ((label.role !== "reference" && label.role !== "value") || placed.symbol.pins.length !== 2) return {}
+  const [a, b] = placed.symbol.pins
+  return a && b ? { maxWidth: TWO_PIN_TEXT_LENGTHS * Math.hypot(a.end.x - b.end.x, a.end.y - b.end.y) } : {}
 }
 
 function drawAutoBox(ctx: Ctx, box: Box, shift: Point, px: number): void {
@@ -259,7 +264,7 @@ function pinNumbers(symbol: SchSymbol, frame: Frame): Label[] {
     const local = { x: pin.end.x - inward.x * NUMBER_INSET, y: pin.end.y - inward.y * NUMBER_INSET }
     const alongLead = inward.x !== 0
     const lifted = alongLead ? { x: local.x, y: local.y + NUMBER_RISE } : { x: local.x + NUMBER_RISE, y: local.y }
-    return { text: String(pin.number), at: place(lifted, frame), size: 0.1, anchor: "center", color: theme.pinNumber, mono: true }
+    return { text: String(pin.number), at: place(lifted, frame), size: 0.1, anchor: "center", color: theme.pinNumber, mono: true, kind: "pin-number" }
   })
 }
 
@@ -302,7 +307,8 @@ function textLabel(shape: Extract<Shape, { type: "text" }>, frame: Frame, fallba
   const dx = along * Math.cos(angle)
   const dy = along * Math.sin(angle)
   const anchor = Math.abs(dx) > 0.5 ? (dx > 0 ? "left" : "right") : Math.abs(dy) > 0.5 ? (dy > 0 ? "bottom" : "top") : "center"
-  return { text: shape.text, at: place(shape.at, frame), size: shape.size, anchor, color: TEXT_COLORS[shape.role] ?? fallback, ...(shape.role === "reference" ? { strong: true } : {}), ...(shape.role === "pin-number" ? { mono: true } : {}) }
+  const role = { role: shape.role, kind: TEXT_KINDS[shape.role], ...(shape.role === "reference" ? { strong: true } : {}), ...(shape.role === "pin-number" ? { mono: true } : {}) }
+  return { text: shape.text, at: place(shape.at, frame), size: shape.size, anchor, color: TEXT_COLORS[shape.role] ?? fallback, ...role }
 }
 
 /** The label where it is dragged to, or as the layout has it. */
@@ -327,11 +333,11 @@ function drawLabelShape(ctx: Ctx, label: NetLabel, line: (w: number) => number, 
     ctx.lineWidth = line(SYMBOL_WIDTH)
     const first = texts.length
     drawShapes(ctx, shapes, { x: label.at.x, y: label.at.y, rotation: 0 }, tone.color ?? theme.symbolOutline, texts)
-    for (let i = first; i < texts.length; i++) texts[i] = { ...(texts[i] as Label), strong: true, color: tone.color ?? theme.netName, alpha: tone.alpha }
+    for (let i = first; i < texts.length; i++) texts[i] = { ...(texts[i] as Label), strong: true, kind: "name", color: tone.color ?? theme.netName, alpha: tone.alpha }
     return
   }
   const { middle, upright } = labelTag(label)
-  texts.push({ text: label.text, at: middle, size: NET_LABEL_TEXT, anchor: "center", strong: true, color: tone.color ?? theme.netName, rotation: upright ? 90 : 0, alpha: tone.alpha })
+  texts.push({ text: label.text, at: middle, size: NET_LABEL_TEXT, anchor: "center", strong: true, kind: "name", color: tone.color ?? theme.netName, rotation: upright ? 90 : 0, alpha: tone.alpha })
 }
 
 function drawPins(ctx: Ctx, layout: SchematicLayout, options: SchematicDrawOptions, px: number, shiftOf: (s: PlacedSymbol) => Point): void {
@@ -347,21 +353,4 @@ function drawPins(ctx: Ctx, layout: SchematicLayout, options: SchematicDrawOptio
       ctx.fill()
     }
   }
-}
-
-function drawText(ctx: Ctx, label: Label, camera: Camera, size: Size, ratio: number): void {
-  const fontPx = label.size * camera.scale
-  if (fontPx < MIN_TEXT_PX || label.text === "") return
-  const p = worldToScreen(camera, size, label.at)
-  const [vertical, horizontal] = anchorAlignment(label.anchor)
-  ctx.save()
-  ctx.translate(p.x, label.rotation ? p.y : baselineAt(p.y, ratio))
-  if (label.rotation) ctx.rotate(rad(-label.rotation))
-  ctx.globalAlpha = label.alpha ?? 1
-  ctx.fillStyle = label.color
-  ctx.font = canvasFont(label.strong ? TEXT_WEIGHT.strong : TEXT_WEIGHT.regular, fontPx, label.mono ? CANVAS_MONO_FAMILY : undefined)
-  ctx.textAlign = horizontal
-  ctx.textBaseline = vertical
-  ctx.fillText(label.text, 0, 0)
-  ctx.restore()
 }

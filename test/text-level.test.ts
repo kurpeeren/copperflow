@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { ALL_TEXT_FROM, devicePxFor, fontPxFor, PIN_NUMBERS_FROM, sharpenText, textAnchorAt, textLevel, textShown, TEXT_FROM } from "../studio/src/pcb/text-level.js"
+import { ALL_TEXT_FROM, capToWidth, devicePxFor, fontPxFor, PIN_NUMBERS_FROM, sharpenText, textAnchorAt, textLevel, textShown, TEXT_FROM } from "../studio/src/pcb/text-level.js"
 
 const RATIOS = [1, 1.1, 1.25, 1.5, 2]
 const whole = (v: number) => Math.abs(v - Math.round(v)) < 1e-9
@@ -42,6 +42,18 @@ describe("font sizes in whole device pixels", () => {
     const at = textAnchorAt({ x: 41.37, y: 12.61 }, ratio)
     expect(whole(at.x * ratio)).toBe(true)
     expect(whole(at.y * ratio)).toBe(true)
+  })
+})
+
+describe("capToWidth", () => {
+  test("a text that fits keeps its size", () => {
+    expect(capToWidth(12, 50, 60)).toBe(12)
+  })
+
+  test("a wider one is made smaller, to the whole device pixel that fits", () => {
+    expect(capToWidth(12, 120, 60)).toBe(6)
+    expect(capToWidth(12, 100, 60)).toBe(7)
+    expect(capToWidth(3, 1000, 1)).toBe(1)
   })
 })
 

@@ -42,3 +42,7 @@ export const textAnchorAt = (p: Point, ratio: number): Point => ({ x: squareAt(p
 export function sharpenText(ctx: object): void {
   if ("textRendering" in ctx) (ctx as { textRendering: string }).textRendering = "geometricPrecision"
 }
+
+/** A size in device pixels made smaller, to a whole pixel, so a text `width` wide at it is at most `maxWidth`. */
+export const capToWidth = (devicePx: number, width: number, maxWidth: number): number =>
+  width <= maxWidth || width <= 0 ? devicePx : Math.max(1, Math.floor((devicePx * maxWidth) / width))

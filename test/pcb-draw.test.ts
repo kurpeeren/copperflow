@@ -94,6 +94,22 @@ describe("drawPcb", () => {
     expect(texts.every((r) => r.fillStyle === PALETTE.topSilk)).toBe(true)
   })
 
+  test("designators are written at whole device pixel sizes on device pixels, from 7 device px", () => {
+    const at = (scale: number, ratio: number) => {
+      const { ctx, records } = recorder()
+      drawPcb(ctx, layout, { ...VIEW, camera: { cx: 0.37, cy: -0.21, scale } }, { ratio })
+      return records.filter((r) => r.name === "fillText")
+    }
+    // 0.8 mm at 10.1 px/mm is 8 device px and is drawn; at 8 px/mm it is 6 and is not
+    expect(at(10.1, 1)).toHaveLength(3)
+    expect(at(8, 1)).toEqual([])
+    const whole = (v: number) => Math.abs(v - Math.round(v)) < 1e-9
+    for (const text of at(13.37, 1.25)) {
+      expect(whole(Number(/([\d.]+)px/.exec(text.font)?.[1]) * 1.25)).toBe(true)
+      expect([whole((text.args[1] as number) * 1.25), whole((text.args[2] as number) * 1.25)]).toEqual([true, true])
+    }
+  })
+
   test("designators are skipped when they would be too small to read", () => {
     const { ctx, records } = recorder()
     drawPcb(ctx, layout, { ...VIEW, camera: { ...VIEW.camera, scale: 1 } }, { ratio: 1 })

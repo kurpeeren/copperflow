@@ -68,18 +68,31 @@ function spanOf(name: PinName, width: number): Span {
 
 const overlap = (a: Span, b: Span) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1
 
+/** Which side of the body a name is on: left- and right-running names by their run, centred ones above or below the origin. */
+const sideOf = (name: PinName, origin: Point) => (name.align === "center" ? (name.y < origin.y ? "top" : "bottom") : name.align)
+
+/** The indices of names whose boxes overlap another's among those `pair` allows; both of each pair are dropped. */
+function overlapping(spans: readonly (Span | null)[], pair: (i: number, j: number) => boolean): Set<number> {
+  const dropped = new Set<number>()
+  spans.forEach((a, i) => {
+    spans.forEach((b, j) => {
+      if (j > i && a && b && pair(i, j) && overlap(a, b)) dropped.add(i).add(j)
+    })
+  })
+  return dropped
+}
+
 /**
  * The text each pin name of one symbol is drawn with, or null where it is left out. `origin` is the body's centre on
- * screen; `gap` is the least room kept between two facing names.
+ * screen; `gap` is the least room kept between two facing names. Neighbours on one side that overlap go first; a
+ * name that still overlaps another (a side name against a top or bottom one) goes with it.
  */
 export function fitPinNames(names: readonly PinName[], origin: Point, measure: Measure, gap: number): (string | null)[] {
   const fitted = names.map((name) => fitAcross(name, names, origin, measure, gap))
   const spans = fitted.map((text, i) => (text === null ? null : spanOf(names[i] as PinName, measure(text))))
-  const dropped = new Set<number>()
-  spans.forEach((a, i) => {
-    spans.forEach((b, j) => {
-      if (j > i && a && b && overlap(a, b)) dropped.add(i).add(j)
-    })
-  })
-  return fitted.map((text, i) => (dropped.has(i) ? null : text))
+  const sides = names.map((name) => sideOf(name, origin))
+  const sameSide = overlapping(spans, (i, j) => sides[i] === sides[j])
+  const left = spans.map((span, i) => (sameSide.has(i) ? null : span))
+  const crossing = overlapping(left, () => true)
+  return fitted.map((text, i) => (sameSide.has(i) || crossing.has(i) ? null : text))
 }

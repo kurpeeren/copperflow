@@ -64,4 +64,12 @@ describe("fitPinNames", () => {
     const names = [name("A", 0, 0, "left"), name("B", 0, 8, "left")]
     expect(fitPinNames(names, { x: 30, y: 4 }, measure, 4)).toEqual([null, null])
   })
+
+  test("a side name next to a bottom row that is dropped stays; one that still overlaps another goes with it", () => {
+    // CC2 runs right from x 0 at y 0; the bottom names sit 6 px lower, centred, and overlap each other and CC2
+    const names = [name("CC2", 0, 0, "left"), name("GND2", 10, 6, "center"), name("GND1", 22, 6, "center")]
+    expect(fitPinNames(names, { x: 40, y: -20 }, measure, 4)).toEqual(["CC2", null, null])
+    const lone = [name("CC2", 0, 0, "left"), name("EH", 10, 6, "center")]
+    expect(fitPinNames(lone, { x: 40, y: -20 }, measure, 4)).toEqual([null, null])
+  })
 })

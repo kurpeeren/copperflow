@@ -61,7 +61,8 @@ const design = buildDesign({ "main.circuit.tsx": CIRCUIT }, "main.circuit.tsx")
 const SIZE = { width: 800, height: 600 }
 
 describe("canvas text weights", () => {
-  const sheet = fontsOf((ctx) => drawSchematic(ctx as never, design.schematic, { camera: { cx: 1.5, cy: 0, scale: 100 }, size: SIZE }, { ratio: 1 }))
+  // 120 px per inch: pin numbers (0.1 in) are 12 device px, past the 11 they wait for
+  const sheet = fontsOf((ctx) => drawSchematic(ctx as never, design.schematic, { camera: { cx: 1.5, cy: 0, scale: 120 }, size: SIZE }, { ratio: 1 }))
 
   test("schematic designators and net names are 600; values are 400", () => {
     expect(sheet.get("R1")).toMatch(/^600 [\d.]+px /)

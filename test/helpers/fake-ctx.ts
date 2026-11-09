@@ -8,6 +8,7 @@ export interface DrawCall {
   lineWidth: number
   /** The font when the call was made, so a test can read the size a text was written at. */
   font: string
+  textAlign: string
 }
 
 /** Width per character of the fake font, in font sizes. */
@@ -32,7 +33,7 @@ export function recorder() {
       if (key in target) return target[key as keyof typeof target]
       return (...args: unknown[]) => {
         calls.push(String(key))
-        records.push({ name: String(key), args, strokeStyle: target.strokeStyle, fillStyle: target.fillStyle, globalAlpha: target.globalAlpha, lineWidth: target.lineWidth, font: target.font })
+        records.push({ name: String(key), args, strokeStyle: target.strokeStyle, fillStyle: target.fillStyle, globalAlpha: target.globalAlpha, lineWidth: target.lineWidth, font: target.font, textAlign: target.textAlign })
         if (key === "measureText") return { width: fakeTextWidth(String(args[0]), target.font) }
         return undefined
       }
