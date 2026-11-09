@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { GROUP_ACTIONS, inspectorSections, boardSections, propertiesView, type InspectorPart } from "../studio/src/inspector-sections.js"
+import { GROUP_ACTIONS, groupActionEnabled, inspectorSections, boardSections, propertiesView, type InspectorPart } from "../studio/src/inspector-sections.js"
 
 const prop = (literal: string | number) => ({ literal, source: String(literal), editable: true })
 
@@ -84,5 +84,33 @@ describe("propertiesView", () => {
       ["Unlock", "unlock"],
       ["Delete", "delete"],
     ])
+  })
+})
+
+describe("groupActionEnabled", () => {
+  const parts = [
+    { name: "R1", editable: true },
+    { name: "R2", editable: true },
+    { name: "U1", editable: false },
+  ]
+  const enabled = (locked: string[], violated: string[] = [], of = parts) =>
+    GROUP_ACTIONS.map(({ command }) => [command, groupActionEnabled(command, of, { locked: new Set(locked), violated: new Set(violated) })])
+
+  test("with nothing locked: Rotate, Lock and Delete on, Unlock off", () => {
+    expect(enabled([])).toEqual([["rotate", true], ["lock", true], ["unlock", false], ["delete", true]])
+  })
+
+  test("with some locked every action has a part to change", () => {
+    expect(enabled(["R1"])).toEqual([["rotate", true], ["lock", true], ["unlock", true], ["delete", true]])
+  })
+
+  test("with every editable part locked: only Unlock, and Lock while one of them was changed outside the editor", () => {
+    expect(enabled(["R1", "R2", "U1"])).toEqual([["rotate", false], ["lock", false], ["unlock", true], ["delete", false]])
+    expect(enabled(["R1", "R2", "U1"], ["R2"])).toEqual([["rotate", false], ["lock", true], ["unlock", true], ["delete", false]])
+  })
+
+  test("read-only parts alone cannot be rotated or deleted, but can be locked", () => {
+    const readOnly = [{ name: "U1", editable: false }, { name: "U2", editable: false }]
+    expect(enabled([], [], readOnly)).toEqual([["rotate", false], ["lock", true], ["unlock", false], ["delete", false]])
   })
 })

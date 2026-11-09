@@ -28,6 +28,10 @@ describe("command owners", () => {
     expect(commandOwner("openFile")).toBe("app")
   })
 
+  test("Select all is the app's own, so Ctrl+A selects the circuit's parts before a canvas has mounted", () => {
+    expect(commandOwner("selectAll")).toBe("app")
+  })
+
   test("the schematic's tools are the schematic's alone", () => {
     expect(SHEET_COMMANDS.map(commandOwner)).toEqual(["schematic", "schematic", "schematic", "schematic"])
   })

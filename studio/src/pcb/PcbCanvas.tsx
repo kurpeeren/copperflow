@@ -178,7 +178,7 @@ export function PcbCanvas({ design, builtFrom, circuit, actions, selection, onSe
   useCameraFocus("pcb", focus, camera, setCamera, onFocused)
   const common = { view: "pcb", circuit, actions, onSelect, blockerFor: parts.blockerFor } as const
   const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom })
-  usePcbKeys(design, cursor, { ...common, selection, parts: parts.names, fit, onHighlight })
+  usePcbKeys(design, cursor, { ...common, selection, fit, onHighlight })
   const hover = usePcbHover(design, parts.boxes)
   const { moving, gesture } = gestures
   usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad: hover.pad, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, highlightNets: highlight, markers, activeViolation, grid })

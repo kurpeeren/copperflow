@@ -5,7 +5,7 @@ import type { KeyActionName } from "../pcb/canvas-keys.js"
 import type { CommandId } from "./menus.js"
 
 /** Run by use-app-commands.ts. */
-export const APP_COMMANDS = ["openFile", "exportBom", "exportPackage", "undo", "checkDrc", "lock", "unlock", "history", "keys", "about"] as const satisfies readonly CommandId[]
+export const APP_COMMANDS = ["openFile", "exportBom", "exportPackage", "undo", "selectAll", "checkDrc", "lock", "unlock", "history", "keys", "about"] as const satisfies readonly CommandId[]
 export type AppCommand = (typeof APP_COMMANDS)[number]
 
 /** Run by the workspace, as the key with the same action is. */
@@ -24,7 +24,7 @@ export const CAMERA_COMMANDS = ["zoomIn", "zoomOut"] as const satisfies readonly
 export type CameraCommand = (typeof CAMERA_COMMANDS)[number]
 
 /** Answered by either canvas: the selection, its parts and their nets (use-part-keys.ts). */
-export const PART_COMMANDS = ["fit", "rotate", "delete", "highlight", "selectAll"] as const satisfies readonly CommandId[]
+export const PART_COMMANDS = ["fit", "rotate", "delete", "highlight"] as const satisfies readonly CommandId[]
 export type PartCommand = (typeof PART_COMMANDS)[number]
 
 /** Answered by the schematic only (SchematicCanvas.tsx); sent while the PCB is open, they switch to the schematic first. */

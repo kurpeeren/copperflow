@@ -8,7 +8,7 @@ import type { Actions } from "../App"
 import { keyAction, keyInput, type KeyActionName } from "../pcb/canvas-keys"
 import { lockChange } from "../pcb/group-edits"
 import type { View } from "../pcb/positions"
-import type { Selection } from "../selection"
+import type { Selection, SelectionChange } from "../selection"
 import type { BottomTab } from "./bottom-state"
 import { SHEET_COMMANDS, WORKSPACE_COMMANDS, type AppCommand } from "./command-owners"
 import { send } from "./commands"
@@ -30,7 +30,8 @@ interface Input {
   view: View
   setView(view: View): void
   selection: Selection
-  /** The open circuit, whose locks Lock and Unlock read. */
+  select(change: SelectionChange): void
+  /** The open circuit: its parts for Select all, its locks for Lock and Unlock. */
   circuit: CircuitData | undefined
   actions: Actions
   workspace: WorkspaceCommands
@@ -60,10 +61,11 @@ function exportBom(file: string | undefined, actions: Actions): void {
     .catch((error: Error) => actions.notify(error.message))
 }
 
-/** Locks or unlocks every selected part that is not so already, in one call. */
+/** Locks or unlocks every selected part that is not so already (or, for Lock, was changed outside the editor), in one call. */
 function lockSelection(input: Input, locked: boolean): void {
   const now = new Set(input.circuit?.annotations.locks.map((lock) => lock.part))
-  const change = lockChange(input.selection.names, now, locked)
+  const violated = new Set(input.circuit?.violations.map((violation) => violation.part))
+  const change = lockChange(input.selection.names, now, locked, violated)
   if ("message" in change) return input.actions.notify(change.message)
   void input.actions.lock(change.parts, locked)
 }
@@ -77,6 +79,8 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     exportBom: () => exportBom(input.file, input.actions),
     exportPackage: () => exportPackage(input.file, input.actions),
     undo: () => void input.actions.undo(),
+    // Every part of the circuit: both views show the same parts, and the circuit is there before a canvas is.
+    selectAll: () => input.select((current) => current.all(input.circuit?.model.parts.map((part) => part.name) ?? [])),
     checkDrc: input.openChecks,
     lock: () => lockSelection(input, true),
     unlock: () => lockSelection(input, false),
@@ -87,14 +91,18 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
   return (table as Partial<Record<CommandId, () => void>>)[command]
 }
 
-/** Ctrl+Z undoes and Ctrl+O goes to the Page tree, outside text fields (keyAction decides). */
+/** The keys the app answers itself, with or without a canvas; each one's action is also its command. */
+const APP_KEYS = ["undo", "openFile", "selectAll"] as const satisfies readonly (KeyActionName & CommandId)[]
+const isAppKey = (action: KeyActionName | undefined): action is (typeof APP_KEYS)[number] => (APP_KEYS as readonly string[]).includes(action ?? "")
+
+/** Ctrl+Z undoes, Ctrl+O goes to the Page tree and Ctrl+A selects every part, outside text fields (keyAction decides). */
 function useAppKeys(runCommand: (command: CommandId) => void, view: View): void {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      const hit = keyAction(keyInput(event), { view })
-      if (hit?.action !== "undo" && hit?.action !== "openFile") return
+      const action = keyAction(keyInput(event), { view })?.action
+      if (!isAppKey(action)) return
       event.preventDefault()
-      runCommand(hit.action)
+      runCommand(action)
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
@@ -104,7 +112,7 @@ function useAppKeys(runCommand: (command: CommandId) => void, view: View): void 
 /** Returns the function the menu bar and toolbar call; it changes only when what the commands read changes. */
 export function useAppCommands(input: Input): (command: CommandId) => void {
   const [waiting, setWaiting] = useState<CommandId | null>(null)
-  const { file, view, setView, selection, circuit, actions, openChecks, openDialog } = input
+  const { file, view, setView, selection, select, circuit, actions, openChecks, openDialog } = input
   // The workspace object is new on every render, but its functions are stable.
   const { run, openBottom, openPageTree } = input.workspace
   // A command waiting for the schematic runs once the schematic canvas has mounted and subscribed.
@@ -118,7 +126,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
   }, [waiting, view, actions])
   const runCommand = useCallback(
     (command: CommandId) => {
-      const own = appCommand({ file, view, setView, selection, circuit, actions, workspace: { run, openBottom, openPageTree }, openChecks, openDialog }, command)
+      const own = appCommand({ file, view, setView, selection, select, circuit, actions, workspace: { run, openBottom, openPageTree }, openChecks, openDialog }, command)
       if (own) return own()
       if (SCHEMATIC_ONLY.has(command) && view !== "schematic") {
         setView("schematic")
@@ -127,7 +135,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
       }
       if (!send(command)) actions.notify("Wait for the build to finish, then try again.")
     },
-    [file, view, setView, selection, circuit, actions, run, openBottom, openPageTree, openChecks, openDialog],
+    [file, view, setView, selection, select, circuit, actions, run, openBottom, openPageTree, openChecks, openDialog],
   )
   useAppKeys(runCommand, view)
   return runCommand

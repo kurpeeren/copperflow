@@ -1,6 +1,6 @@
-// The keys both canvases share: F and K fit, R and Space rotate the selected parts, Delete removes them, Ctrl+A
-// selects every part, and H highlights the net under the pointer (the menu's Highlight net, the selected parts' nets).
-// What a key means is decided in canvas-keys.ts; what Rotate and Delete do to several parts, in group-edits.ts.
+// The keys both canvases share: F and K fit, R and Space rotate the selected parts, Delete removes them, and H
+// highlights the net under the pointer (the menu's Highlight net, the selected parts' nets). What a key means is
+// decided in canvas-keys.ts; what Rotate and Delete do to several parts, in group-edits.ts. Ctrl+A is the app's.
 import { useEffect } from "react"
 import type { CircuitData } from "../api"
 import type { Actions } from "../App"
@@ -9,15 +9,13 @@ import type { PartCommand } from "../shell/command-owners"
 import { useCommands } from "../shell/commands"
 import { keyAction, keyInput } from "./canvas-keys"
 import { isCanvasKey } from "./canvas-common"
-import { removeEach, removeQuestion, rotateEach, skippedNote } from "./group-edits"
+import { removeEach, removeQuestion, rotateEach, sendGroupEdit } from "./group-edits"
 import { menuHighlight, type Highlight } from "./highlight"
 import type { View } from "./positions"
 
 export interface PartKeysInput {
   view: View
   selection: Selection
-  /** Every part drawn in this view, which Select all selects. */
-  parts: readonly string[]
   /** R, Space and Delete wait while another tool, such as a wire being drawn, uses the keys. */
   paused: boolean
   circuit: CircuitData
@@ -34,28 +32,19 @@ export interface PartKeysInput {
 
 /** A quarter turn for every selected part that may turn, in one change; the rest are named. */
 function rotateSelection(input: PartKeysInput): void {
-  const plan = rotateEach(input.circuit, input.selection.names, input.view, input.blockerFor)
-  const note = skippedNote(plan)
-  if (note) input.actions.notify(note)
-  if (plan.edits.length > 0) void input.actions.edit(plan.edits, plan.summary)
+  void sendGroupEdit(rotateEach(input.circuit, input.selection.names, input.view, input.blockerFor), input.actions)
 }
 
 /** Removes every selected part that may go, in one change, after asking; the rest are named and stay selected. */
 function removeSelection(input: PartKeysInput): void {
   const plan = removeEach(input.selection.names, input.blockerFor)
-  const note = skippedNote(plan)
-  if (plan.edits.length === 0) return note ? input.actions.notify(note) : undefined
-  if (!window.confirm(removeQuestion(plan.parts))) return
-  if (note) input.actions.notify(note)
-  void input.actions.edit(plan.edits, plan.summary).then((ok) => ok && input.onSelect((current) => current.without(plan.parts)))
+  if (plan.edits.length > 0 && !window.confirm(removeQuestion(plan.parts))) return
+  void sendGroupEdit(plan, input.actions).then((ok) => ok && input.onSelect((current) => current.without(plan.parts)))
 }
 
-const selectAll = (input: PartKeysInput) => input.onSelect((current) => current.all(input.parts))
-
-/** Runs the canvas actions of a key press: fit, select all, highlight, rotate. */
+/** Runs the canvas actions of a key press: fit, highlight, rotate. */
 function runKey(input: PartKeysInput, action: string): void {
   if (action === "fit") return input.fit()
-  if (action === "selectAll") return selectAll(input)
   if (action === "highlight") {
     const net = input.netUnderPointer()
     if (net !== undefined) input.onHighlight([net])
@@ -75,7 +64,6 @@ function usePartCommands(input: PartKeysInput): void {
     fit: input.fit,
     rotate: withSelection(rotateSelection),
     delete: withSelection(removeSelection),
-    selectAll: () => selectAll(input),
     highlight: () => {
       const result = menuHighlight(input.selection.names, input.netsOf)
       if ("nets" in result) input.onHighlight(result.nets)
@@ -87,9 +75,9 @@ function usePartCommands(input: PartKeysInput): void {
 
 export function usePartKeys(input: PartKeysInput): void {
   usePartCommands(input)
-  const { view, selection, parts, paused, circuit, actions, onSelect, blockerFor, fit, netUnderPointer, netsOf, onHighlight } = input
+  const { view, selection, paused, circuit, actions, onSelect, blockerFor, fit, netUnderPointer, netsOf, onHighlight } = input
   useEffect(() => {
-    const keys: PartKeysInput = { view, selection, parts, paused, circuit, actions, onSelect, blockerFor, fit, netUnderPointer, netsOf, onHighlight }
+    const keys: PartKeysInput = { view, selection, paused, circuit, actions, onSelect, blockerFor, fit, netUnderPointer, netsOf, onHighlight }
     const onKey = (event: KeyboardEvent) => {
       const hit = keyAction(keyInput(event), { view, drawing: paused })
       if (hit) {
@@ -101,5 +89,5 @@ export function usePartKeys(input: PartKeysInput): void {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [view, selection, parts, paused, circuit, actions, onSelect, blockerFor, fit, netUnderPointer, netsOf, onHighlight])
+  }, [view, selection, paused, circuit, actions, onSelect, blockerFor, fit, netUnderPointer, netsOf, onHighlight])
 }

@@ -91,3 +91,9 @@ export function clicked(name: string, modifiers: ClickModifiers): SelectionChang
   const toggle = togglesSelection(modifiers)
   return (current) => (toggle ? current.toggle(name) : current.only(name))
 }
+
+/** The parts `before` had that `after` has no longer, in their order; a name `before` never had is not among them. */
+export function goneFrom(before: readonly string[], after: readonly string[]): string[] {
+  const kept = new Set(after)
+  return before.filter((name) => !kept.has(name))
+}

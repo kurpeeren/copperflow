@@ -61,15 +61,14 @@ const WHEEL_ZOOM = 0.0015
 /** View → Zoom in and Zoom out scale the camera by this much about the canvas centre. */
 const MENU_ZOOM = 1.25
 
-/** The parts of one view: their boxes, names and anchors, whether any is auto-placed, the locks, and why a part may not move. */
+/** The parts of one view: their boxes and anchors, whether any is auto-placed, the locks, and why a part may not move. */
 export function usePlacedParts(design: Design, view: View, circuit: CircuitData) {
   const boxes = useMemo(() => (view === "pcb" ? pcbBoxes(design.pcb) : sheetBoxes(design.schematic)), [design, view])
-  const names = useMemo(() => boxes.map((box) => box.name), [boxes])
   const anchors = useMemo(() => partAnchors(design, view), [design, view])
   const autoPlaced = useMemo(() => [...anchors.values()].some((anchor) => anchor.autoPlaced), [anchors])
   const locked = useMemo(() => new Set(circuit.annotations.locks.map((l) => l.part)), [circuit])
   const blockerFor = useCallback((name: string) => moveBlocker(circuit, locked, name, view), [circuit, locked, view])
-  return { boxes, names, anchors, autoPlaced, locked, blockerFor }
+  return { boxes, anchors, autoPlaced, locked, blockerFor }
 }
 
 /** Follows the element's size in whole CSS pixels. */

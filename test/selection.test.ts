@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { clicked, Selection, togglesSelection } from "../studio/src/selection.js"
+import { clicked, goneFrom, Selection, togglesSelection } from "../studio/src/selection.js"
 
 const of = (...names: string[]) => Selection.none.all(names)
 const plain = { shiftKey: false, ctrlKey: false, metaKey: false }
@@ -100,5 +100,16 @@ describe("a click on a part", () => {
       expect(clicked("R1", modifiers)(of("R1", "C1")).names).toEqual(["C1"])
     }
     expect(togglesSelection(plain)).toBe(false)
+  })
+})
+
+describe("goneFrom", () => {
+  test("names the parts the circuit had before and has no longer, in their order", () => {
+    expect(goneFrom(["R1", "R2", "C1", "C2"], ["C1", "R1", "R9"])).toEqual(["R2", "C2"])
+  })
+
+  test("a part that was never in the circuit (placed and not built yet) is not gone", () => {
+    expect(goneFrom(["R1"], ["R1"])).toEqual([])
+    expect(goneFrom([], ["R1"])).toEqual([])
   })
 })

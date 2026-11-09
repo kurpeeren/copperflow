@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { hasToken, type CircuitData, type Design } from "./api"
 import { NO_HIGHLIGHT, remapHighlight } from "./pcb/highlight"
-import { Selection, type SelectionChange } from "./selection"
+import { goneFrom, Selection, type SelectionChange } from "./selection"
 import { BottomStrip } from "./shell/BottomStrip"
 import { StudioDialog, type DialogName } from "./shell/Dialogs"
 import { MenuBar } from "./shell/MenuBar"
@@ -42,7 +42,22 @@ function useEscapeClearsSelection(select: (change: SelectionChange) => void): vo
   }, [select])
 }
 
-/** What the canvases and panels are shown: the selection less any part the circuit no longer has (removed in the code, say). */
+/**
+ * Takes the parts that left the circuit (removed in the code, say) out of the selection when the circuit changes, so a
+ * part that comes back (an undo) is not selected again. A part placed and not yet in a loaded circuit stays.
+ */
+function usePruneSelection(circuit: CircuitData | undefined, select: (change: SelectionChange) => void): void {
+  const before = useRef<readonly string[]>([])
+  useEffect(() => {
+    if (!circuit) return
+    const names = circuit.model.parts.map((part) => part.name)
+    const gone = goneFrom(before.current, names)
+    before.current = names
+    if (gone.length > 0) select((current) => current.without(gone))
+  }, [circuit, select])
+}
+
+/** What the canvases and panels are shown: the selection less any part the loaded circuit does not have (yet). */
 function useShownSelection(selection: Selection, circuit: CircuitData | undefined): Selection {
   return useMemo(() => (circuit ? selection.keep(circuit.model.parts.map((part) => part.name)) : selection), [selection, circuit])
 }
@@ -79,6 +94,7 @@ export function App() {
   }, [setHighlight])
   const data = useStudioData(notify, onFile)
   const { file, setFile, build, circuit } = data
+  usePruneSelection(circuit, select)
   const selection = useShownSelection(picked, circuit)
   const actions = useActions({ file, refresh: data.refresh, refreshParts: data.refreshParts, notify })
   const place = usePlace({ file, refresh: data.refresh, refreshParts: data.refreshParts, notify }, selectOnly)
@@ -94,7 +110,7 @@ export function App() {
     },
     [setFile],
   )
-  const runCommand = useAppCommands({ file, view: tab, setView: setTab, selection, circuit, actions, workspace, openChecks, openDialog: setDialog })
+  const runCommand = useAppCommands({ file, view: tab, setView: setTab, selection, select, circuit, actions, workspace, openChecks, openDialog: setDialog })
 
   if (!hasToken) return <NoToken />
   return (
@@ -106,7 +122,7 @@ export function App() {
       {dialog && <StudioDialog name={dialog} onClose={closeDialog} />}
       {circuit && circuit.violations.length > 0 && (
         <div className="banner" role="alert">
-          Locked parts changed outside the editor: {circuit.violations.map((v) => `${v.part} (${v.detail})`).join(", ")}
+          Locked parts changed outside the editor: {circuit.violations.map((v) => `${v.part} (${v.detail})`).join(", ")}. Lock them again to accept the change, or undo it in the code.
         </div>
       )}
       <Workspace

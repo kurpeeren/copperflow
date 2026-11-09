@@ -49,7 +49,7 @@ export function Inspector(props: Props) {
   const [part] = parts
   const library = parts.length === 1 && part ? props.parts.library.find((p) => p.component === part.tag) : undefined
   const view = propertiesView(parts, { library: library !== undefined })
-  const locked = new Set(props.circuit.annotations.locks.map((lock) => lock.part))
+  const locks = { locked: new Set(props.circuit.annotations.locks.map((lock) => lock.part)), violated: new Set(props.circuit.violations.map((v) => v.part)) }
   // Collapsed sections are kept by title for as long as Studio is open.
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const toggle = (title: string) =>
@@ -60,7 +60,7 @@ export function Inspector(props: Props) {
     })
   return (
     <aside className="panel right" id={stripPanelId("right")} role="tabpanel" aria-labelledby={sideTabId("properties")} hidden={props.hidden}>
-      {parts.length > 1 && <GroupView view={view} parts={parts} locked={locked} run={props.run} onClear={() => props.onSelect((current) => current.clear())} collapsed={collapsed} toggle={toggle} />}
+      {parts.length > 1 && <GroupView view={view} parts={parts} locks={locks} run={props.run} onClear={() => props.onSelect((current) => current.clear())} collapsed={collapsed} toggle={toggle} />}
       {parts.length === 1 && part && <PartView {...props} view={view} collapsed={collapsed} toggle={toggle} part={part} />}
       {parts.length === 0 && <BoardView {...props} view={view} collapsed={collapsed} toggle={toggle} />}
     </aside>

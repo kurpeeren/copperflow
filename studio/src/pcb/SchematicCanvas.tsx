@@ -292,7 +292,7 @@ export function SchematicCanvas({ design, buildId, project, builtFrom, circuit, 
   const common = { view: "schematic", circuit, actions, onSelect, blockerFor: parts.blockerFor } as const
   const labels = useLabelDrag({ design, circuit, actions, builtFrom })
   const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom, labels: labels.tools })
-  const highlight = useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys: { ...common, selection, parts: parts.names } })
+  const highlight = useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys: { ...common, selection } })
   const hover = useSheetHover(parts.boxes, wire, labels.tools)
   const { moving, gesture } = gestures
   const movingLabels = useMovingLabels(design, gesture, labels.pending)

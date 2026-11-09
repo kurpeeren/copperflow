@@ -1,4 +1,5 @@
 import type { PropInfo } from "../../src/core/types.js"
+import { lockChange } from "./pcb/group-edits.js"
 import type { CommandId } from "./shell/menus.js"
 
 /** What the sections need to know about a part. */
@@ -93,3 +94,19 @@ export const GROUP_ACTIONS = [
   { label: "Unlock", command: "unlock" },
   { label: "Delete", command: "delete" },
 ] as const satisfies readonly { label: string; command: CommandId }[]
+
+export type GroupCommand = (typeof GROUP_ACTIONS)[number]["command"]
+
+/**
+ * Whether a group action has a part to change: Lock an unlocked part (or a locked one changed outside the editor),
+ * Unlock a locked one, Rotate and Delete an editable part that is not locked.
+ */
+export function groupActionEnabled(
+  command: GroupCommand,
+  parts: readonly { name: string; editable: boolean }[],
+  locks: { locked: ReadonlySet<string>; violated: ReadonlySet<string> },
+): boolean {
+  const names = parts.map((part) => part.name)
+  if (command === "lock" || command === "unlock") return "parts" in lockChange(names, locks.locked, command === "lock", locks.violated)
+  return parts.some((part) => part.editable && !locks.locked.has(part.name))
+}

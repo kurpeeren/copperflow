@@ -60,11 +60,41 @@ export function skippedNote(plan: GroupEdit): string | undefined {
   return plan.edits.length === 0 ? reasons : `Skipped: ${reasons}`
 }
 
-/** The parts Lock (on) or Unlock (off) changes, or what to say when it changes none. */
-export function lockChange(names: readonly string[], locked: ReadonlySet<string>, on: boolean): { parts: string[] } | { message: string } {
+/**
+ * The parts Lock (on) or Unlock (off) changes, or what to say when it changes none. Lock takes the unlocked parts and
+ * the locked ones changed outside the editor (`violated`): locking those again takes their new props as the lock, which
+ * is how the banner's outside change is accepted.
+ */
+export function lockChange(
+  names: readonly string[],
+  locked: ReadonlySet<string>,
+  on: boolean,
+  violated: ReadonlySet<string> = new Set(),
+): { parts: string[] } | { message: string } {
   if (names.length === 0) return { message: "Select a part first." }
-  const parts = names.filter((name) => locked.has(name) !== on)
+  const parts = names.filter((name) => (on ? !locked.has(name) || violated.has(name) : locked.has(name)))
   if (parts.length > 0) return { parts }
   const verb = names.length === 1 ? "is" : "are"
   return { message: `${nameList(names)} ${verb} ${on ? "already locked" : "not locked"}.` }
+}
+
+/** What sending a group edit needs: Studio's `actions.edit`, which reports its own failure, and the toast. */
+export interface GroupEditActions {
+  edit(edits: Edit[], summary: string): Promise<boolean>
+  notify(text: string): void
+}
+
+/**
+ * Sends the plan's edits as one change. The parts left out are named once the edit has gone through, so a failure's
+ * own message is not covered by them; with nothing to send, only the reasons are given. Resolves to whether it sent.
+ */
+export async function sendGroupEdit(plan: GroupEdit, actions: GroupEditActions): Promise<boolean> {
+  const note = skippedNote(plan)
+  if (plan.edits.length === 0) {
+    if (note) actions.notify(note)
+    return false
+  }
+  const ok = await actions.edit(plan.edits, plan.summary)
+  if (ok && note) actions.notify(note)
+  return ok
 }
