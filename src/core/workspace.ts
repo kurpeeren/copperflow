@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, realpath, rm } from "node:fs/promises"
+import { mkdir, readdir, readFile, realpath, rm, rmdir, stat } from "node:fs/promises"
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { analyzeCircuit } from "./analyze.js"
 import {
@@ -179,7 +179,7 @@ async function removeCreated(root: string, loaded: LoadedCircuit, target: Histor
   const entry = await recordEntry(root, {
     author,
     file: loaded.file,
-    summary: `Undo: ${target.summary}`,
+    summary: `Undo: ${target.redoOf ? target.summary.replace(/^Redo: /, "") : target.summary}`,
     before: target.after,
     after: "",
     absent: "after",
@@ -198,7 +198,7 @@ async function removeCreated(root: string, loaded: LoadedCircuit, target: Histor
 async function recreate(root: string, undo: HistoryEntry, author: Author): Promise<HistoryEntry> {
   const path = resolveInRoot(root, undo.file)
   if (await readIfThere(path) !== undefined) throw new Error(`${undo.file} exists again since ${undo.id}; redo it by hand or with git`)
-  return writeNew(root, path, undo.file, undo.before, {
+  return writeNew(root, path, undo.before, {
     author,
     summary: `Redo: ${undo.summary.replace(/^Undo: /, "")}`,
     redoOf: undo.id,
@@ -251,22 +251,46 @@ async function readIfThere(path: string): Promise<string | undefined> {
 async function writeNew(
   root: string,
   path: string,
-  file: string,
   text: string,
   meta: { author: Author; summary: string; redoOf?: string },
 ): Promise<HistoryEntry> {
+  const place = await newFilePlace(root, path)
   await mkdir(dirname(path), { recursive: true })
-  const folder = await realpath(dirname(path))
-  const realRoot = await realpath(resolve(root))
-  if (folder !== realRoot && !isInside(realRoot, folder)) throw new Error(`${file} is outside the project root`)
-  const entry = await recordEntry(root, { ...meta, file, before: "", after: text, absent: "before" })
+  let entry: HistoryEntry | undefined
   try {
+    entry = await recordEntry(root, { ...meta, file: place.file, before: "", after: text, absent: "before" })
     await writeFileAtomic(path, text)
+    return entry
   } catch (error) {
-    await removeEntry(root, entry.id)
+    if (entry) await removeEntry(root, entry.id)
+    for (const folder of place.created) await rmdir(folder).catch(() => undefined)
     throw error
   }
-  return entry
+}
+
+/**
+ * Where a file that does not exist yet would land, found before anything is created: the project-relative name in the
+ * spelling later edits record (the real folder plus the file name), and the folders that are missing, deepest first.
+ * Refuses a place whose nearest existing folder is outside the project, symlinks followed.
+ */
+async function newFilePlace(root: string, path: string): Promise<{ file: string; created: string[] }> {
+  const missing: string[] = []
+  let folder = dirname(path)
+  while (!(await stat(folder).then(() => true, () => false))) {
+    missing.push(folder)
+    folder = dirname(folder)
+  }
+  const realRoot = await realpath(resolve(root))
+  const realFolder = await realpath(folder)
+  if (realFolder !== realRoot && !isInside(realRoot, realFolder)) throw new Error(`${relative(resolve(root), path).split(sep).join("/")} is outside the project root`)
+  const below = [...missing].reverse().map((dir) => basename(dir))
+  const file = relative(realRoot, join(realFolder, ...below, basename(path))).split(sep).join("/")
+  return { file, created: missing }
+}
+
+/** The project-relative path with `/` that a circuit file name means, whatever way it was written; refuses a path outside the project. */
+export function projectPath(root: string, file: string): string {
+  return relative(resolve(root), resolveInRoot(root, file)).split(sep).join("/")
 }
 
 /**
@@ -284,7 +308,7 @@ export function createCircuitFile(
     const path = resolveInRoot(root, file)
     if (!CIRCUIT_FILE.test(basename(path))) throw new Error(`${file} must end in .circuit.tsx`)
     const source = await readIfThere(path)
-    if (source === undefined) return writeNew(root, path, relative(resolve(root), path).split(sep).join("/"), text, meta)
+    if (source === undefined) return writeNew(root, path, text, meta)
     if (!meta.replace) throw new Error(`${file} already exists; pass replace: true to overwrite it, or choose another file name`)
     const existing = await resolveCircuit(root, file)
     const locks = (await readAnnotations(annotationsPathFor(existing.path))).locks

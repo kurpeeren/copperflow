@@ -1,9 +1,10 @@
+import { generateFootprint } from "../engine/footprints/index.js"
 import { kindOf, pinSpecs } from "../engine/kinds.js"
 import { analyzeCircuit } from "./analyze.js"
 import { applyEdits } from "./edit.js"
 import { libraryIds, readPart } from "./library.js"
 import { BUILTIN_PARTS, placeEdit } from "./place.js"
-import type { Edit, Literal } from "./types.js"
+import type { CircuitModel, Edit, Literal } from "./types.js"
 
 export interface NewPart {
   name: string
@@ -14,7 +15,8 @@ export interface NewPart {
   /** The kind's main value: resistance, capacitance, ... */
   value?: Literal
   footprint?: string
-  props?: Record<string, Literal>
+  /** Literal props, and `pinLabels` as an object (`{ pin1: "cathode" }`) to rename the pins of a built-in part. */
+  props?: Record<string, Literal | Record<string, string>>
 }
 
 export interface NewCircuit {
@@ -29,6 +31,8 @@ const PART_NAME = /^[A-Za-z][A-Za-z0-9_]{0,31}$/
 const NET_NAME = /^[A-Za-z_][\w-]*$/
 const PIN_SELECTOR = /^([A-Za-z][A-Za-z0-9_]*)\.([\w-]+)$/
 const MAX_BOARD = 1000
+/** Kinds without a library entry. A chip or connector has the pins its pinLabels, pinCount or footprint give it. */
+const PLAIN_KINDS: readonly string[] = [...BUILTIN_PARTS, "chip", "connector"]
 
 /** What a part is, and the names each of its pins answers to (pin 1 first). */
 interface PartPins {
@@ -51,14 +55,32 @@ function checkKind(part: NewPart): void {
   if ((part.kind === undefined) === (part.part === undefined)) {
     throw new Error(`${part.name}: give exactly one of kind (a built-in part) or part (a library part id)`)
   }
-  if (part.kind !== undefined && !(BUILTIN_PARTS as readonly string[]).includes(part.kind)) {
-    throw new Error(`${part.name}: unknown kind "${part.kind}"; use one of ${BUILTIN_PARTS.join(", ")}, or part for a library part from list_parts`)
+  if (part.kind !== undefined && !PLAIN_KINDS.includes(part.kind)) {
+    throw new Error(`${part.name}: unknown kind "${part.kind}"; use one of ${PLAIN_KINDS.join(", ")}, or part for a library part from list_parts`)
   }
 }
 
+interface PartProps {
+  props: Record<string, Literal>
+  pinLabels?: Record<string, string>
+}
+
+/** Splits props into literals and pinLabels; an object is accepted for pinLabels only. */
+function splitProps(part: NewPart): PartProps {
+  const props: Record<string, Literal> = {}
+  let pinLabels: Record<string, string> | undefined
+  for (const [key, value] of Object.entries(part.props ?? {})) {
+    if (typeof value !== "object") props[key] = value
+    else if (key !== "pinLabels") throw new Error(`${part.name}: props.${key} must be a string, number or boolean; only pinLabels takes an object`)
+    else if (part.part !== undefined) throw new Error(`${part.name}: pin names come from parts/${part.part}/part.yaml; change them there`)
+    else pinLabels = value
+  }
+  return pinLabels ? { props, pinLabels } : { props }
+}
+
 /** The props a part gets: its value, footprint and literal props, checked against each other. */
-function propsOf(part: NewPart): Record<string, Literal> {
-  const props: Record<string, Literal> = { ...part.props }
+function propsOf(part: NewPart): PartProps {
+  const { props, ...rest } = splitProps(part)
   if (part.value !== undefined) {
     const prop = part.kind === undefined ? undefined : kindOf(part.kind)?.valueProp
     if (!prop) throw new Error(`${part.name}: ${part.kind ?? "a library part"} has no value; use props for anything else`)
@@ -69,12 +91,21 @@ function propsOf(part: NewPart): Record<string, Literal> {
     if (part.part !== undefined) throw new Error(`${part.name}: the footprint comes from parts/${part.part}/part.yaml; change it there`)
     props.footprint = part.footprint
   }
-  return props
+  return { props, ...rest }
 }
 
-async function pinsOf(root: string, part: NewPart, props: Record<string, Literal>): Promise<PartPins> {
+/** How many pins the engine gives a footprint: pads with one number are one pin. */
+function footprintPins(footprint: Literal | undefined): number | undefined {
+  if (typeof footprint !== "string") return undefined
+  const made = generateFootprint(footprint)
+  return "error" in made ? undefined : new Set(made.pads.map((pad) => pad.number)).size
+}
+
+async function pinsOf(root: string, part: NewPart, own: PartProps): Promise<PartPins> {
   if (part.kind !== undefined) {
-    const specs = pinSpecs(part.kind, { pinLabels: undefined, pinCount: props.pinCount, polarized: props.polarized === true, padCount: undefined })
+    const { props, pinLabels } = own
+    const padCount = footprintPins(props.footprint)
+    const specs = pinSpecs(part.kind, { pinLabels, pinCount: props.pinCount, polarized: props.polarized === true, padCount })
     return { description: part.kind, pins: specs.map((spec) => spec.names) }
   }
   const id = part.part as string
@@ -89,9 +120,9 @@ async function pinsOf(root: string, part: NewPart, props: Record<string, Literal
   }
 }
 
-async function checkParts(root: string, parts: NewPart[]): Promise<{ table: PinTable; props: Map<string, Record<string, Literal>> }> {
+async function checkParts(root: string, parts: NewPart[]): Promise<{ table: PinTable; props: Map<string, PartProps> }> {
   const table: PinTable = new Map()
-  const props = new Map<string, Record<string, Literal>>()
+  const props = new Map<string, PartProps>()
   for (const part of parts) {
     if (!PART_NAME.test(part.name)) throw new Error(`"${part.name}" is not a valid part name; use letters, digits and _, starting with a letter, e.g. R1`)
     if (table.has(part.name)) throw new Error(`Two parts are named ${part.name}; names must be unique`)
@@ -110,8 +141,9 @@ function pinNumber(table: PinTable, selector: string): { part: string; number: n
   const [, part = "", pin = ""] = match
   const known = table.get(part)
   if (!known) throw new Error(`${selector}: there is no part ${part}; the parts are ${[...table.keys()].join(", ")}`)
-  const index = known.pins.findIndex((names) => names.includes(pin))
-  if (index >= 0) return { part, number: index + 1 }
+  const found = known.pins.flatMap((names, index) => (names.includes(pin) ? [index + 1] : []))
+  if (found.length > 1) throw new Error(`${selector}: ${part} has several pins named ${pin} (${found.map((n) => `pin${n}`).join(", ")}); write pin<n> instead`)
+  if (found[0] !== undefined) return { part, number: found[0] }
   const real = known.pins.length > 0 ? known.pins.map((names) => names.join("/")).join(", ") : "none yet (give props.pinCount)"
   throw new Error(`${selector}: ${part} (${known.description}) has no pin "${pin}"; its pins are ${real}`)
 }
@@ -136,7 +168,15 @@ function checkNets(table: PinTable, nets: Record<string, string[]>): Map<string,
   return clean
 }
 
-/** The text of a new circuit file, or throws why the netlist cannot be written. Reads the parts library, writes nothing. */
+/** The edit that adds one part. A chip or connector has no library entry, so it is added directly. */
+async function partEdit(root: string, circuit: { file: string; model: CircuitModel }, part: NewPart, own: PartProps): Promise<Edit> {
+  const labels = own.pinLabels ? { pinLabels: own.pinLabels } : {}
+  if (part.kind === "chip" || part.kind === "connector") return { kind: "addPart", tag: part.kind, name: part.name, props: own.props, ...labels }
+  const { edit } = await placeEdit(root, circuit, { part: part.kind ?? (part.part as string), name: part.name, props: own.props })
+  return { ...edit, ...labels }
+}
+
+/** The text of a new circuit file (`file` is its project-relative path, with `/`), or throws why the netlist cannot be written. Reads the parts library, writes nothing. */
 export async function generateCircuit(root: string, file: string, spec: NewCircuit): Promise<{ text: string; traces: number }> {
   const board = spec.board ?? DEFAULT_BOARD
   checkBoard(board)
@@ -146,10 +186,7 @@ export async function generateCircuit(root: string, file: string, spec: NewCircu
   const skeleton = boardSkeleton(board)
   const circuit = { file, model: analyzeCircuit(skeleton) }
   const edits: Edit[] = []
-  for (const part of spec.parts) {
-    const request = { part: part.kind ?? (part.part as string), name: part.name, props: props.get(part.name) ?? {} }
-    edits.push((await placeEdit(root, circuit, request)).edit)
-  }
+  for (const part of spec.parts) edits.push(await partEdit(root, circuit, part, props.get(part.name) ?? { props: {} }))
   const traces: Edit[] = [...nets].flatMap(([net, selectors]) => selectors.map((from): Edit => ({ kind: "addTrace", from, to: `net.${net}` })))
   return { text: applyEdits(skeleton, [...edits, ...traces], new Set()), traces: traces.length }
 }

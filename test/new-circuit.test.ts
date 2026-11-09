@@ -10,9 +10,10 @@ import { listCircuits, listEntries, loadCircuit, redoChange, undoChange, updateA
 import { lockParts } from "../src/core/annotations.js"
 import { BOARD } from "./fixtures.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
+import { DEMO } from "./helpers/new-circuit-demo.js"
 
 const EXAMPLE = fileURLToPath(new URL("../examples/usb-c-ldo", import.meta.url))
-const FILE = "rebuilt.circuit.tsx"
+const FILE = DEMO.file
 let root: string
 let client: Client
 
@@ -24,29 +25,6 @@ async function call(name: string, args: Record<string, unknown> = {}) {
 
 const exists = (file: string) => stat(join(root, file)).then(() => true, () => false)
 
-const DEMO = {
-  file: FILE,
-  board: { width: 30, height: 18 },
-  parts: [
-    { name: "J1", part: "TYPE-C-6P" },
-    { name: "R1", kind: "resistor", value: "5.1k", footprint: "0402" },
-    { name: "R2", kind: "resistor", value: "5.1k", footprint: "0402" },
-    { name: "C1", kind: "capacitor", value: "1uF", footprint: "0603" },
-    { name: "U1", part: "AP2112K-3.3" },
-    { name: "C2", kind: "capacitor", value: "1uF", footprint: "0603" },
-    { name: "R3", kind: "resistor", value: "1k", footprint: "0402" },
-    { name: "LED1", kind: "led", props: { color: "red" }, footprint: "0603" },
-    { name: "J2", kind: "pinheader", props: { pinCount: 2, pitch: "2.54mm" } },
-  ],
-  nets: {
-    VBUS: ["J1.VBUS1", "J1.VBUS2", "C1.pin1", "U1.VIN", "U1.EN"],
-    GND: ["J1.GND1", "J1.GND2", "J1.EH", "R1.pin2", "R2.pin2", "C1.pin2", "U1.GND", "C2.pin2", "LED1.cathode", "J2.pin2"],
-    CC1: ["J1.CC1", "R1.pin1"],
-    CC2: ["J1.CC2", "R2.pin1"],
-    V3_3: ["U1.VOUT", "C2.pin1", "R3.pin1", "J2.pin1"],
-    LED_A: ["R3.pin2", "LED1.anode"],
-  },
-}
 const TRACES = Object.values(DEMO.nets).reduce((sum, pins) => sum + pins.length, 0)
 
 beforeEach(async () => {
@@ -79,7 +57,7 @@ describe("new_circuit", () => {
     expect(text).toContain('import { AP2112K_3_3 } from "./parts/AP2112K-3.3/AP2112K_3_3"')
     expect(text).toContain('<board width="30mm" height="18mm">')
     expect(text).toContain('<resistor name="R1" resistance="5.1k" footprint="0402" />')
-    expect(text).toContain('<led name="LED1" color="red" footprint="0603" />')
+    expect(text).toContain('<led name="LED1" color="red" footprint="0603" pinLabels={{ pin1: "cathode", pin2: "anode" }} />')
     expect(text).toContain('<trace from="J1.VBUS1" to="net.VBUS" />')
     expect(text).toContain('<trace from="LED1.anode" to="net.LED_A" />')
     expect(text.match(/<trace /g)).toHaveLength(TRACES)

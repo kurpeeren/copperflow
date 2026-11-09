@@ -1,5 +1,6 @@
 import { z } from "zod"
-import { BUILTIN_PARTS, createCircuitFile, generateCircuit, type NewCircuit } from "../core/index.js"
+import { access } from "node:fs/promises"
+import { annotationsPathFor, BUILTIN_PARTS, createCircuitFile, generateCircuit, projectPath, readAnnotations, resolveInRoot, type NewCircuit } from "../core/index.js"
 
 const literal = z.union([z.string(), z.number(), z.boolean()])
 
@@ -9,11 +10,14 @@ export const newCircuitInput = {
     .array(
       z.object({
         name: z.string().describe("Designator, e.g. R1 or U1"),
-        kind: z.string().optional().describe(`Built-in part: ${BUILTIN_PARTS.join(", ")}`),
+        kind: z.string().optional().describe(`Built-in part: ${BUILTIN_PARTS.join(", ")}, chip or connector`),
         part: z.string().optional().describe("Library part id from list_parts (instead of kind)"),
         value: literal.optional().describe('The main value of a built-in part: resistance "10k", capacitance "100nF", ...'),
         footprint: z.string().optional().describe('Footprint of a built-in part, e.g. "0402"'),
-        props: z.record(z.string(), literal).optional().describe('Other literal props, e.g. { "pinCount": 4 }'),
+        props: z
+          .record(z.string(), z.union([literal, z.record(z.string(), z.string())]))
+          .optional()
+          .describe('Other props, e.g. { "pinCount": 4 } or { "pinLabels": { "pin1": "cathode", "pin2": "anode" } } to name the pins of a built-in part (a chip or connector needs pinLabels, pinCount or a footprint with known pads)'),
       }),
     )
     .min(1)
@@ -26,10 +30,21 @@ export const newCircuitInput = {
 export const NEW_CIRCUIT_DESCRIPTION =
   "Write a whole new circuit file from a netlist in one call: the parts (no positions) and the nets (pin lists, no wire corners). The program places the parts and routes the wires. Nothing is written if a name, kind, library id or pin is wrong; the answer then lists the real pin names. One history entry; undo removes the file. An existing file is refused unless replace is true. Call check_circuit once afterwards."
 
+/** Marks and locks left from an earlier file of this name, as a line for the answer; they apply to the new file. */
+async function leftovers(root: string, file: string): Promise<string | undefined> {
+  const path = resolveInRoot(root, file)
+  if (await access(path).then(() => true, () => false)) return undefined
+  const { marks, locks } = await readAnnotations(annotationsPathFor(path))
+  if (marks.length + locks.length === 0) return undefined
+  return `Note: ${marks.length} marks and ${locks.length} locks from an earlier ${file} still exist and apply to this file.`
+}
+
 /** Writes the circuit and answers in three lines. */
 export async function newCircuit(root: string, input: { file: string; replace?: boolean } & NewCircuit): Promise<string> {
-  const { file, replace, ...spec } = input
+  const { file: written, replace, ...spec } = input
+  const file = projectPath(root, written)
   const { text, traces } = await generateCircuit(root, file, spec)
+  const left = await leftovers(root, file)
   const entry = await createCircuitFile(root, file, text, {
     author: "ai",
     summary: `${replace ? "replace" : "create"} ${file} (${spec.parts.length} parts, ${Object.keys(spec.nets).length} nets)`,
@@ -39,6 +54,7 @@ export async function newCircuit(root: string, input: { file: string; replace?: 
     `Change ${entry.id}: wrote ${entry.file}`,
     `${spec.parts.length} parts`,
     `${Object.keys(spec.nets).length} nets, ${traces} traces`,
+    ...(left ? [left] : []),
     "Now call check_circuit once.",
   ].join("\n")
 }
