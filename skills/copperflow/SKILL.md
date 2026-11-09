@@ -24,8 +24,8 @@ undoing their work.
 4. Call `check_circuit` once at the end (it lists the first 20 findings; `filter` takes `errors`,
    `warnings`, a part or a net). It runs copperflow's own rule checks: the electrical
    checks (`pin-unconnected`, `output-conflict`, `no-power-source`), the placement checks
-   (`courtyard-overlap`, `outside-board`) and the problems in the code and the model, grouped by code
-   with positions: `footprint` (a footprint it cannot make), `unknown-pin`, `ambiguous-pin` (a name
+   (`courtyard-overlap`, `outside-board`) and the problems in the code and the model, one line each
+   with the rule, the items and the position: `footprint` (a footprint it cannot make), `unknown-pin`, `ambiguous-pin` (a name
    several pins share; write `pin<n>` instead), `library-override` (an instance sets a prop its
    library part owns) and so on. Fix every error before you report success. Warnings such as
    `unrouted` do not fail the check; mention them. Net classes and fabrication limits live in

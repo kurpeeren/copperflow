@@ -43,7 +43,7 @@ copperflow summary --root examples/usb-c-ldo index.circuit.tsx
 
 Design rules live in `rules.yaml` at the project root: a fabrication profile (JLCPCB 2-layer by default), net classes and global nets. The `usb-c-ldo` example shows a small one, and `skills/copperflow/references/design-rules.md` explains the format and every check.
 
-Findings are grouped by code, with their positions, and any error fails the check (exit code 1). Copper checks, such as clearances between tracks, come with routing.
+The CLI groups findings by code, with their positions; the agent's `check_circuit` lists them one per line, errors first. Any error fails the check (exit code 1). Copper checks, such as clearances between tracks, come with routing.
 
 ### Connect Claude Code
 

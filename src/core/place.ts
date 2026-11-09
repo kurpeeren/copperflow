@@ -1,7 +1,7 @@
 import { posix } from "node:path"
 import { componentName, LIBRARY_OWNED_PROPS, libraryIds, PARTS_DIR } from "./library.js"
 import type { Author } from "./history.js"
-import type { CircuitModel, Literal } from "./types.js"
+import type { CircuitModel, Edit, Literal } from "./types.js"
 import { editCircuit, loadCircuit, type EditResult } from "./workspace.js"
 
 /** tscircuit parts that need no library entry. */
@@ -60,22 +60,16 @@ export function suggestName(model: CircuitModel, part: string, isLibraryPart: bo
   return `${prefix}${highest + 1}`
 }
 
-/** Adds a library or built-in part to a circuit; a library part also gets its import. */
-export async function placePart(
+/** The edit that adds a part, and the designator it uses; a library part also gets its import. Reads nothing it writes. */
+export async function placeEdit(
   root: string,
-  file: string,
+  circuit: { file: string; model: CircuitModel },
   request: PlaceRequest,
-  meta: { author: Author },
-): Promise<EditResult & { name: string }> {
-  const circuit = await loadCircuit(root, file)
+): Promise<{ edit: Edit; name: string }> {
   const builtin = (BUILTIN_PARTS as readonly string[]).includes(request.part)
   const name = request.name ?? suggestName(circuit.model, request.part, !builtin)
   const props = request.props ? { props: request.props } : {}
-  const summary = `place ${name} (${request.part})`
-  if (builtin) {
-    const result = await editCircuit(root, file, [{ kind: "addPart", tag: request.part, name, ...props }], { ...meta, summary })
-    return { ...result, name }
-  }
+  if (builtin) return { edit: { kind: "addPart", tag: request.part, name, ...props }, name }
   // Exact folder names, so "ldo" does not match "LDO" on a case-insensitive disk.
   if (!(await libraryIds(root)).includes(request.part)) {
     throw new Error(`Unknown part "${request.part}": use a library part id from list_parts or one of ${BUILTIN_PARTS.join(", ")}`)
@@ -86,6 +80,18 @@ export async function placePart(
   // Both paths are project-relative, so the import does not depend on how the root is spelled.
   let importFrom = posix.relative(posix.dirname(circuit.file), `${PARTS_DIR}/${request.part}/${tag}`)
   if (!importFrom.startsWith(".")) importFrom = `./${importFrom}`
-  const result = await editCircuit(root, file, [{ kind: "addPart", tag, name, importFrom, ...props }], { ...meta, summary })
+  return { edit: { kind: "addPart", tag, name, importFrom, ...props }, name }
+}
+
+/** Adds a library or built-in part to a circuit; a library part also gets its import. */
+export async function placePart(
+  root: string,
+  file: string,
+  request: PlaceRequest,
+  meta: { author: Author },
+): Promise<EditResult & { name: string }> {
+  const circuit = await loadCircuit(root, file)
+  const { edit, name } = await placeEdit(root, circuit, request)
+  const result = await editCircuit(root, file, [edit], { ...meta, summary: `place ${name} (${request.part})` })
   return { ...result, name }
 }

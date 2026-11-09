@@ -85,7 +85,10 @@ export function formatCompactSummary(circuit: LoadedCircuit): string {
   lines.push(...capped(model.parts.map((part) => partLine(part, locked))))
   lines.push(...capped(nets.map(netLine)))
   if (model.skipped.length > 0) lines.push(`Not editable: ${model.skipped.length} elements (detail: "full")`)
-  if (lockedNames.length > 0) lines.push(`Locked: ${lockedNames.join(" ")}`)
+  if (lockedNames.length > 0) {
+    const more = lockedNames.length - COMPACT_LIMIT
+    lines.push(`Locked: ${lockedNames.slice(0, COMPACT_LIMIT).join(" ")}${more > 0 ? ` … and ${more} more (detail: "full")` : ""}`)
+  }
   const marks = annotations.marks.map((mark) => `Mark ${mark.id}${mark.view ? ` (${mark.view} ${mark.x ?? "?"}, ${mark.y ?? "?"})` : ""}: ${oneLine(mark.text)}`)
   lines.push(...capped(marks))
   const broken = circuit.violations.map((v) => `  ${v.part} ${v.kind}: ${oneLine(v.detail)}`)
@@ -117,7 +120,8 @@ function matches(finding: Finding, filter: string | undefined): boolean {
   if (filter === "errors") return finding.severity === "error"
   if (filter === "warnings") return finding.severity === "warning"
   const needle = filter.toLowerCase()
-  return finding.items.some((item) => item.toLowerCase().includes(needle))
+  const whole = (item: string) => item.toLowerCase() === needle || item.toLowerCase().startsWith(`${needle}.`)
+  return finding.items.some((item) => whole(item) || whole(item.replace(/^net[.:]/, "")))
 }
 
 function findingLine(f: Finding): string {

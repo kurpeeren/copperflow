@@ -9,7 +9,7 @@ import { createCopperflowServer } from "../src/mcp/server.js"
 import { loadCircuit, updateAnnotations } from "../src/core/workspace.js"
 import { listEntries } from "../src/core/index.js"
 import { addMark, lockParts } from "../src/core/annotations.js"
-import { BOARD, SHARED } from "./fixtures.js"
+import { BOARD, LDO, SHARED } from "./fixtures.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
 
 const FILE = "main.circuit.tsx"
@@ -61,13 +61,25 @@ describe("compact circuit_summary", () => {
 
   test("shows locks and marks, one line each", async () => {
     await lock("R1")
-    const { model } = await loadCircuit(root, FILE)
-    void model
     await updateAnnotations(root, FILE, (a) => addMark(a, { text: "keep\nclear", view: "pcb", x: 1, y: 2 }, NOW).annotations)
     const { text } = await call("circuit_summary", { file: FILE })
     expect(text).toContain("R1 resistor 5.1k 0402 pcb(-4,2) [LOCKED]")
     expect(text).toContain("Locked: R1")
     expect(text).toMatch(/Mark \S+ \(pcb 1, 2\): keep clear/)
+  })
+
+  test("the Locked line is cut at 20 names", async () => {
+    const parts = Array.from({ length: 25 }, (_, i) => `<resistor name="R${i + 1}" resistance="1k" />`).join("\n")
+    await writeFile(join(root, "big.circuit.tsx"), `export default () => (
+<board>
+${parts}
+</board>
+)
+`)
+    const { model } = await loadCircuit(root, "big.circuit.tsx")
+    await updateAnnotations(root, "big.circuit.tsx", (a) => lockParts(a, model, model.parts.map((p) => p.name), NOW))
+    const locked = (await call("circuit_summary", { file: "big.circuit.tsx" })).text.split("\n").find((l) => l.startsWith("Locked:"))
+    expect(locked).toContain('… and 5 more (detail: "full")')
   })
 
   test("the demo circuit fits a screen", async () => {
@@ -115,6 +127,14 @@ describe("compact check_circuit", () => {
     expect(part[1]).toContain("R1.pin1")
   })
 
+  test("a part or net filter matches whole designators, so R1 does not match R10", async () => {
+    await connect(engine([...many(1, "warning", "a", () => "R1.pin1"), ...many(1, "warning", "b", () => "R10.pin1"), ...many(1, "warning", "c", () => "net.GND")]))
+    const lines = (await call("check_circuit", { file: FILE, filter: "R1" })).text.split("\n")
+    expect(lines).toHaveLength(2)
+    expect(lines[1]).toContain("R1.pin1")
+    expect((await call("check_circuit", { file: FILE, filter: "GND" })).text.split("\n")).toHaveLength(2)
+  })
+
   test("a clean circuit says so in one line", async () => {
     await connect(engine([]))
     expect((await call("check_circuit", { file: FILE })).text).toBe("main.circuit.tsx: 0 errors, 0 warnings")
@@ -156,9 +176,32 @@ describe("edit_circuit", () => {
     expect(isError).toBe(true)
     expect(text).toContain("Edit 2 of 3 (remove_part) was refused")
     expect(text).toMatch(/C1/)
-    expect(text).toContain("1 edit before it were fine")
+    expect(text).toContain("1 edit before it was fine")
     expect(await readFile(join(root, FILE), "utf8")).toBe(before)
     expect(await listEntries(root, 10)).toHaveLength(0)
+  })
+
+  test("a batch that sets a library-owned prop names the edit instead of a raw error", async () => {
+    await call("create_part", { id: "AP2112K-3.3", part: LDO })
+    await call("place_part", { file: FILE, part: "AP2112K-3.3", name: "U5" })
+    const before = await readFile(join(root, FILE), "utf8")
+    const { text, isError } = await call("edit_circuit", {
+      file: FILE,
+      edits: [{ set_props: { part: "R1", props: { resistance: "10k" } } }, { set_props: { part: "U5", props: { footprint: "0402" } } }],
+    })
+    expect(isError).toBe(true)
+    expect(text).toContain("Edit 2 of 2 (set_props) was refused: footprint comes from")
+    expect(text).toContain("1 edit before it was fine")
+    expect(await readFile(join(root, FILE), "utf8")).toBe(before)
+  })
+
+  test("a refusal found while converting uses the same wording", async () => {
+    const { text } = await call("edit_circuit", {
+      file: FILE,
+      edits: [{ set_props: { part: "R1", props: { resistance: "10k" } } }, { set_props: { part: "C1", props: { capacitance: "2uF" } } }, { place_part: { part: "nonsense", name: "X1" } }],
+    })
+    expect(text).toContain("Edit 3 of 3 (place_part) was refused: Unknown part")
+    expect(text).toContain("2 edits before it were fine, and nothing was written")
   })
 
   test("refuses an unknown part before touching the file", async () => {
@@ -191,6 +234,29 @@ describe("connect_nets", () => {
     const again = await call("connect_nets", { file: FILE, nets: { GND: ["C1.pin2"] } })
     expect(again.text).toMatch(/^Nothing to do/)
     expect(await listEntries(root, 10)).toHaveLength(1)
+  })
+
+  test("pins are resolved through the built design: an alias and a trace inside map() count as connected", async () => {
+    const source = `export default () => (
+  <board width="20mm" height="20mm">
+    <resistor name="R1" resistance="1k" footprint="0402" pcbX={0} pcbY={0} />
+    <resistor name="R2" resistance="1k" footprint="0402" pcbX={5} pcbY={0} />
+    <trace from=".R1 > .pin1" to="net.GND" />
+    {[1].map((i) => (<trace from=".R2 > .pin1" to="net.VCC" />))}
+  </board>
+)
+`
+    await writeFile(join(root, "alias.circuit.tsx"), source)
+    const alias = await call("connect_nets", { file: "alias.circuit.tsx", nets: { GND: ["R1.left"], VCC: ["R2.pin1", ".R2 > .pin1"] } })
+    expect(alias.text).toMatch(/^Nothing to do/)
+    const fresh = await call("connect_nets", { file: "alias.circuit.tsx", nets: { GND: ["R1.left", "R2.right"] } })
+    expect(fresh.text).toContain("connected 1 pins (GND +1; 1 already connected)")
+  })
+
+  test("the same pin on two nets in one call is refused", async () => {
+    const { text, isError } = await call("connect_nets", { file: FILE, nets: { A: ["C1.pin2"], B: ["C1.pin2"] } })
+    expect(isError).toBe(true)
+    expect(text).toContain("both A and B")
   })
 
   test("rejects a bad net name or pin", async () => {

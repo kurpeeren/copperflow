@@ -171,7 +171,8 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
           return await apply(circuit, list, summary, `${edits.length} edit${edits.length === 1 ? "" : "s"}: ${summary.slice(5)}`)
         } catch (error) {
           const refusal = await firstRefusal(root, circuit, list)
-          if (!refusal) throw error
+          if (!refusal) throw new Error(`The batch was refused as a whole: ${(error as Error).message}
+Nothing was written.`)
           throw new Error(describeRefusal(refusal, edits.length, Object.keys(edits[refusal.index] ?? {})[0] ?? "edit"))
         }
       }),
@@ -186,7 +187,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     },
     ({ file: circuit, nets }) =>
       run(async () => {
-        const plan = await planNets(root, circuit, nets)
+        const plan = await planNets(root, circuit, nets, options.engine)
         const counts = Object.entries(plan.added).map(([name, n]) => `${name} +${n}`).join(", ")
         if (plan.edits.length === 0) return `Nothing to do: all ${plan.skipped} pins are already on their nets.`
         const skipped = plan.skipped > 0 ? `; ${plan.skipped} already connected` : ""
@@ -260,7 +261,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     ({ file: circuit, part, name, props }) =>
       run(async () => {
         const result = await placePart(root, circuit, { part, name, ...(props ? { props } : {}) }, { author: "ai" })
-        return `Change ${result.entry.id} applied: ${result.entry.summary}. Connect it with add_trace, then run check_circuit.`
+        return `Change ${result.entry.id} applied: ${result.entry.summary}. Connect it with add_trace or connect_nets; run check_circuit once at the end.`
       }),
   )
 
