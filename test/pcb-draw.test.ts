@@ -46,13 +46,21 @@ describe("drawPcb", () => {
 
   test("highlighting a net dims the other copper to 0.3", () => {
     const { ctx, records } = recorder()
-    drawPcb(ctx, layout, VIEW, { ratio: 1, highlight: { net: "net.GND" } })
+    drawPcb(ctx, layout, VIEW, { ratio: 1, highlight: { nets: ["net.GND"] } })
     const copper = records.filter((r) => r.name === "fill" && r.fillStyle === PALETTE.topCopper)
     const lit = records.filter((r) => r.name === "fill" && r.fillStyle === PALETTE.highlight)
     expect(copper.length).toBeGreaterThan(0)
     expect(copper.every((r) => r.globalAlpha === 0.3)).toBe(true)
     expect(lit.length).toBe(2)
     expect(lit.every((r) => r.globalAlpha === 1)).toBe(true)
+  })
+
+  test("highlighting several nets, as for a part's nets, lights the copper of each", () => {
+    const { ctx, records } = recorder()
+    const other = pad("R1#2").net
+    expect(other).toBeDefined()
+    drawPcb(ctx, layout, VIEW, { ratio: 1, highlight: { nets: ["net.GND", other ?? ""] } })
+    expect(records.filter((r) => r.name === "fill" && r.fillStyle === PALETTE.highlight)).toHaveLength(4)
   })
 
   test("ratsnest lines are drawn by default and left out when switched off", () => {

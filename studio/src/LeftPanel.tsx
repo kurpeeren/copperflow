@@ -2,6 +2,7 @@ import { useState } from "react"
 import type { CircuitData, Design, PartsData, TraceInfo } from "./api"
 import { Library } from "./Library"
 import { NetsList } from "./NetsList"
+import type { Highlight } from "./pcb/highlight"
 import type { Actions } from "./App"
 import { blurAfterPointerClick } from "./shell/focus"
 import { PageTree } from "./shell/PageTree"
@@ -31,8 +32,8 @@ interface Props {
   /** Ctrl+O asked for the first file of the Page tree. */
   focusPage: boolean
   onPageFocused(): void
-  highlight: string | null
-  onHighlight(net: string | null): void
+  highlight: Highlight
+  onHighlight(nets: Highlight): void
   hidden: boolean
 }
 

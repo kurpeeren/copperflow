@@ -7,7 +7,7 @@ import { ViewTools } from "../shell/ViewTools"
 import { CanvasStatus, KeepButton, SnapSelect } from "./CanvasTools"
 import type { Layers } from "./ctx"
 import { hitTest, pointBounds, unionBoxes, type Camera, type PartBox, type Point, type Size } from "./geometry"
-import { pcbNetAt } from "./highlight"
+import { NO_HIGHLIGHT, partNets, pcbNetAt, type Highlight } from "./highlight"
 import type { ViolationMarker } from "./markers"
 import { drawPcb, padAt } from "./pcb-draw"
 import type { Unit } from "./units"
@@ -44,16 +44,16 @@ interface PcbScene {
   locked: ReadonlySet<string>
   circuit: CircuitData
   gesture: Gesture | undefined
-  /** The net highlighted by the Nets tab or the H key; the net of the pad under the pointer shows when there is none. */
-  highlightNet: string | null
+  /** The nets highlighted by the Net tab, the H key or the menu; the net of the pad under the pointer shows when there are none. */
+  highlightNets: Highlight
   markers: readonly ViolationMarker[]
   activeViolation: string | null
 }
 
 /** Draws the board and its violation rings, then the editor layer, whenever anything visible changes. */
 function usePcbPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: PcbScene): void {
-  const { design, camera, size, layers, hoverPad, moving, boxes, hover, selected, locked, circuit, gesture, highlightNet, markers, activeViolation } = scene
-  const litNet = highlightNet ?? hoverPad?.net ?? null
+  const { design, camera, size, layers, hoverPad, moving, boxes, hover, selected, locked, circuit, gesture, highlightNets, markers, activeViolation } = scene
+  const litNets = useMemo(() => (highlightNets.length > 0 ? highlightNets : hoverPad?.net ? [hoverPad.net] : NO_HIGHLIGHT), [highlightNets, hoverPad])
   useEffect(() => {
     if (!camera) return
     const prepared = prepareCanvas(canvasRef.current, size, camera, BACKGROUND)
@@ -62,7 +62,7 @@ function usePcbPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: PcbS
     drawPcb(ctx, design.pcb, { camera, size }, {
       ratio,
       layers,
-      ...(litNet ? { highlight: { net: litNet } } : {}),
+      ...(litNets.length > 0 ? { highlight: { nets: litNets } } : {}),
       ...(moving ? { moving: { component: moving.name, by: moving.offset } } : {}),
       violations: markers,
       ...(activeViolation ? { activeViolation } : {}),
@@ -70,7 +70,7 @@ function usePcbPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: PcbS
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
     const noteBox = gesture?.kind === "box" ? gesture : undefined
     drawEditorLayer(ctx, camera, size, { view: "pcb", boxes, moving, hover, selected, locked, marks: circuit.annotations.marks, noteBox })
-  }, [canvasRef, design, camera, size, layers, litNet, moving, boxes, hover, selected, locked, circuit, gesture, markers, activeViolation])
+  }, [canvasRef, design, camera, size, layers, litNets, moving, boxes, hover, selected, locked, circuit, gesture, markers, activeViolation])
 }
 
 interface PcbToolsProps {
@@ -123,9 +123,10 @@ export function PcbCanvas({ design, builtFrom, circuit, actions, selected, onSel
   const cursorRef = useRef<Point | undefined>(undefined)
   cursorRef.current = cursor
   const netUnderPointer = useCallback(() => (cursorRef.current ? pcbNetAt(design.pcb, cursorRef.current) : undefined), [design])
-  usePartKeys({ ...common, selected, paused: false, fit, netUnderPointer, onHighlight })
+  const netsOf = useCallback((part: string) => partNets(design, part), [design])
+  usePartKeys({ ...common, selected, paused: false, fit, netUnderPointer, netsOf, onHighlight })
   const { moving, gesture } = gestures
-  usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad, moving, boxes: parts.boxes, hover, selected, locked: parts.locked, circuit, gesture, highlightNet: highlight, markers, activeViolation })
+  usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad, moving, boxes: parts.boxes, hover, selected, locked: parts.locked, circuit, gesture, highlightNets: highlight, markers, activeViolation })
   const hoverAt = (world: Point) => {
     setHover(hitTest(parts.boxes, world)?.name)
     setHoverPad(padAt(design.pcb, world))

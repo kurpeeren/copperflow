@@ -5,15 +5,17 @@ import type { CommandId } from "./menus.js"
 
 export type ToolIconName = "undo" | "zoomIn" | "zoomOut" | "fit" | "component" | "wire" | "netLabel" | "ground" | "power" | "rotate" | "check"
 
-export interface ToolbarButton {
+interface ToolbarButtonBase {
   id: string
   /** `Name (key)`, or just `Name` when the command has no key. */
   title: string
-  icon: ToolIconName
   command: CommandId
   /** Buttons with the same group number sit together; a separator goes between groups. */
   group: number
 }
+
+/** A button shows its icon, or (the PCB's Unit) the unit it switches, mm or mil, as its text. */
+export type ToolbarButton = ToolbarButtonBase & ({ icon: ToolIconName; text?: undefined } | { text: "unit"; icon?: undefined })
 
 const button = (id: string, title: string, icon: ToolIconName, command: CommandId, group: number): ToolbarButton => ({ id, title, icon, command, group })
 
@@ -34,7 +36,7 @@ export const TOOLBARS: Readonly<Record<View, readonly ToolbarButton[]>> = {
     ROTATE(3),
     CHECK(4),
   ],
-  pcb: [UNDO, ...ZOOM, ROTATE(2), CHECK(3)],
+  pcb: [UNDO, ...ZOOM, { id: "unit", title: "Unit (Q)", text: "unit", command: "toggleUnit", group: 2 }, ROTATE(3), CHECK(4)],
 }
 
 /** The buttons of a view split into its groups, in order. */

@@ -1,5 +1,6 @@
 // The keys both canvases share: F and K fit, R and Space rotate the selected part, Delete removes it, and
-// H highlights the net under the pointer. What a key means is decided in canvas-keys.ts.
+// H highlights the net under the pointer (the menu's Highlight net, the selected part's nets). What a key means is
+// decided in canvas-keys.ts.
 import { useEffect } from "react"
 import type { CircuitData } from "../api"
 import type { Actions } from "../App"
@@ -7,6 +8,7 @@ import type { PartCommand } from "../shell/command-owners"
 import { useCommands } from "../shell/commands"
 import { keyAction, keyInput } from "./canvas-keys"
 import { isCanvasKey } from "./canvas-common"
+import { menuHighlight, type Highlight } from "./highlight"
 import { nextRotation, VIEWS, type View } from "./positions"
 
 export interface PartKeysInput {
@@ -21,7 +23,9 @@ export interface PartKeysInput {
   fit(): void
   /** The net under the pointer, if any. */
   netUnderPointer(): string | undefined
-  onHighlight(net: string | null): void
+  /** The nets a part's pins are on. */
+  netsOf(part: string): Highlight
+  onHighlight(nets: Highlight): void
 }
 
 function rotatePart(input: PartKeysInput, name: string): void {
@@ -45,7 +49,7 @@ function runKey(input: PartKeysInput, action: string): void {
   if (action === "fit") return input.fit()
   if (action === "highlight") {
     const net = input.netUnderPointer()
-    if (net !== undefined) input.onHighlight(net)
+    if (net !== undefined) input.onHighlight([net])
     return
   }
   if (action === "rotate" && input.selected && !input.paused) rotatePart(input, input.selected)
@@ -63,9 +67,9 @@ function usePartCommands(input: PartKeysInput): void {
     rotate: withSelection((name) => rotatePart(input, name)),
     delete: withSelection((name) => removePart(input, name)),
     highlight: () => {
-      const net = input.netUnderPointer()
-      if (net !== undefined) input.onHighlight(net)
-      else input.actions.notify("Point at a pin, a wire or a pad and press H to highlight its net.")
+      const result = menuHighlight(input.selected, input.selected ? input.netsOf(input.selected) : [])
+      if ("nets" in result) input.onHighlight(result.nets)
+      else input.actions.notify(result.message)
     },
   }
   useCommands(table)
@@ -73,9 +77,9 @@ function usePartCommands(input: PartKeysInput): void {
 
 export function usePartKeys(input: PartKeysInput): void {
   usePartCommands(input)
-  const { view, selected, paused, circuit, actions, onSelect, blockerFor, fit, netUnderPointer, onHighlight } = input
+  const { view, selected, paused, circuit, actions, onSelect, blockerFor, fit, netUnderPointer, netsOf, onHighlight } = input
   useEffect(() => {
-    const keys: PartKeysInput = { view, selected, paused, circuit, actions, onSelect, blockerFor, fit, netUnderPointer, onHighlight }
+    const keys: PartKeysInput = { view, selected, paused, circuit, actions, onSelect, blockerFor, fit, netUnderPointer, netsOf, onHighlight }
     const onKey = (event: KeyboardEvent) => {
       const hit = keyAction(keyInput(event), { view, drawing: paused })
       if (hit) {
@@ -87,5 +91,5 @@ export function usePartKeys(input: PartKeysInput): void {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [view, selected, paused, circuit, actions, onSelect, blockerFor, fit, netUnderPointer, onHighlight])
+  }, [view, selected, paused, circuit, actions, onSelect, blockerFor, fit, netUnderPointer, netsOf, onHighlight])
 }

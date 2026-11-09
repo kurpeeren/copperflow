@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { keyAction, type KeyInput } from "../studio/src/pcb/canvas-keys.js"
-import { COMMAND_KEY_ACTIONS, MENUS, MENU_TITLES, menuItems, menuReducer, shortcutList } from "../studio/src/shell/menus.js"
+import { COMMAND_KEY_ACTIONS, MENUS, MENU_TITLES, itemState, menuItems, menuReducer, shortcutList, type MenuItem } from "../studio/src/shell/menus.js"
 import { send, subscribe } from "../studio/src/shell/commands.js"
 
 /** A key press as `keyAction` reads it, from a shortcut as the menu shows it, e.g. "Alt+W" or "Shift+H". */
@@ -30,6 +30,35 @@ describe("menus", () => {
     for (const item of MENUS.flatMap(menuItems)) {
       expect([item.label, (item.command === undefined) !== (item.pending === undefined)]).toEqual([item.label, true])
     }
+  })
+
+  test("every item still to come names the engine stage or the Studio round that brings it", () => {
+    for (const item of MENUS.flatMap(menuItems)) {
+      if (item.pending === undefined) continue
+      expect([item.label, /\((stage|stages|round) \d|\bround \d/.test(item.pending)]).toEqual([item.label, true])
+    }
+  })
+
+  test("Flip waits for the engine, and Find for round 3", () => {
+    const find = (label: string) => MENUS.flatMap(menuItems).find((item) => item.label === label)
+    expect(find("Flip")?.pending).toBe("Comes with the engine (stages 3 to 5)")
+    expect(find("Find")?.pending).toBe("Comes with Find (round 3)")
+    expect(find("Select all")?.pending).toBe("Comes with multi-selection (round 3)")
+  })
+
+  test("View → Unit works on the PCB and shows disabled, PCB only, on the schematic", () => {
+    const unit = MENUS.flatMap(menuItems).find((item) => item.command === "toggleUnit") as MenuItem
+    expect(itemState(unit, "pcb")).toEqual({ enabled: true })
+    expect(itemState(unit, "schematic")).toEqual({ enabled: false, reason: "PCB only" })
+  })
+
+  test("an item still to come is disabled in both views with its reason; the rest work in both", () => {
+    const later = { label: "Bus", pending: "Comes with blocks and sheets (stage 3)" }
+    expect(itemState(later, "pcb")).toEqual({ enabled: false, reason: later.pending })
+    const views = (["pcb", "schematic"] as const).map((view) =>
+      MENUS.flatMap(menuItems).filter((item) => item.command && !itemState(item, view).enabled).map((item) => item.label),
+    )
+    expect(views).toEqual([[], ["Unit"]])
   })
 
   test("no menu has more than 14 items", () => {

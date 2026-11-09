@@ -2,11 +2,14 @@ import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState, 
 import { blurButton, isPointerClick } from "./focus"
 import { useKeyHold } from "./key-gate"
 import { firstMenuItem, menuKey, type MenuFocus, type MenuKeyResult } from "./menu-keys"
-import { MENUS, MENU_SHAPES, menuReducer, type CommandId, type Menu, type MenuEntry } from "./menus"
+import { MENUS, MENU_SHAPES, itemState, menuReducer, type CommandId, type Menu, type MenuEntry } from "./menus"
+import type { View } from "../pcb/positions"
 import "./shell.css"
 
 interface Props {
   run(command: CommandId): void
+  /** The open document, for the items that work in one view only. */
+  view: View
   /** The build status, at the right end of the bar. */
   children?: ReactNode
 }
@@ -55,9 +58,11 @@ function useCloseOnOutsidePress(open: boolean, bar: RefObject<HTMLElement | null
   }, [open, bar, close])
 }
 
-function Entry({ entry, menu, index, onRun }: { entry: MenuEntry; menu: number; index: number; onRun: OnRun }) {
+function Entry({ entry, menu, index, view, onRun }: { entry: MenuEntry; menu: number; index: number; view: View; onRun: OnRun }) {
   if (entry === "separator") return <li className="menu-separator" role="separator" />
-  const { label, shortcut, command, pending } = entry
+  const { label, shortcut, command } = entry
+  // Disabled items take the focus, so the arrow keys reach them, but do nothing.
+  const { enabled, reason } = itemState(entry, view)
   return (
     <li role="none">
       <button
@@ -66,12 +71,12 @@ function Entry({ entry, menu, index, onRun }: { entry: MenuEntry; menu: number; 
         data-menu={menu}
         data-item={index}
         tabIndex={-1}
-        aria-disabled={command ? undefined : true}
-        title={pending}
+        aria-disabled={enabled ? undefined : true}
+        title={reason}
         onClick={(event) => {
           const keyboard = !isPointerClick(event)
           if (!keyboard) blurButton(event)
-          if (command) onRun(command, menu, keyboard)
+          if (command && enabled) onRun(command, menu, keyboard)
         }}
       >
         <span>{label}</span>
@@ -81,11 +86,11 @@ function Entry({ entry, menu, index, onRun }: { entry: MenuEntry; menu: number; 
   )
 }
 
-function Dropdown({ menu, index, onRun }: { menu: Menu; index: number; onRun: OnRun }) {
+function Dropdown({ menu, index, view, onRun }: { menu: Menu; index: number; view: View; onRun: OnRun }) {
   return (
     <ul className="menu-dropdown" role="menu" aria-label={menu.title}>
       {menu.entries.map((entry, i) => (
-        <Entry key={entry === "separator" ? `sep${i}` : entry.label} entry={entry} menu={index} index={i} onRun={onRun} />
+        <Entry key={entry === "separator" ? `sep${i}` : entry.label} entry={entry} menu={index} index={i} view={view} onRun={onRun} />
       ))}
     </ul>
   )
@@ -102,10 +107,11 @@ interface TitleProps {
   onHover(index: number): void
   /** Enter or Space: opens the menu with the focus on its first item. */
   onKeyboard(next: MenuKeyResult): void
+  view: View
   onRun: OnRun
 }
 
-function MenuTitle({ menu, index, open, current, onPointer, onHover, onKeyboard, onRun }: TitleProps) {
+function MenuTitle({ menu, index, open, current, onPointer, onHover, onKeyboard, view, onRun }: TitleProps) {
   return (
     <div className="menu">
       <button
@@ -124,13 +130,13 @@ function MenuTitle({ menu, index, open, current, onPointer, onHover, onKeyboard,
       >
         {menu.title}
       </button>
-      {open && <Dropdown menu={menu} index={index} onRun={onRun} />}
+      {open && <Dropdown menu={menu} index={index} view={view} onRun={onRun} />}
     </div>
   )
 }
 
 /** EasyEDA's menu bar: brand, File … Help, and Studio's build status at the right end. The keys are menu-keys.ts. */
-export function MenuBar({ run, children }: Props) {
+export function MenuBar({ run, view, children }: Props) {
   const [state, dispatch] = useReducer(menuReducer, { open: null })
   const [current, setCurrent] = useState(0)
   const bar = useRef<HTMLElement>(null)
@@ -169,7 +175,7 @@ export function MenuBar({ run, children }: Props) {
       </span>
       <nav className="menus" role="menubar" aria-label="Menu" onKeyDown={(event) => onKey(event) && event.stopPropagation()}>
         {MENUS.map((menu, i) => (
-          <MenuTitle key={menu.title} menu={menu} index={i} open={open === i} current={current === i} onPointer={onPointer} onHover={onHover} onKeyboard={apply} onRun={onRun} />
+          <MenuTitle key={menu.title} menu={menu} index={i} open={open === i} current={current === i} onPointer={onPointer} onHover={onHover} onKeyboard={apply} view={view} onRun={onRun} />
         ))}
       </nav>
       <div className="menubar-end">{children}</div>

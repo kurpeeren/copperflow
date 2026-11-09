@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { keyAction, keyInput, type KeyActionName } from "./pcb/canvas-keys"
 import type { View } from "./pcb/positions"
 import { INITIAL_BOTTOM, clickBottom, openBottomTab, toggleBottom, type BottomState, type BottomTab } from "./shell/bottom-state"
+import { NO_HIGHLIGHT, type Highlight } from "./pcb/highlight"
 import { nextUnit, type Unit } from "./pcb/units"
 import {
   INITIAL_LEFT,
@@ -57,7 +58,7 @@ export function useWorkspace(view: View) {
   const [focusSearch, requestSearch, searchFocused] = useFocusRequest()
   const [focusPage, requestPage, pageFocused] = useFocusRequest()
   const [unit, setUnit] = useState<Unit>("mm")
-  const [highlight, setHighlight] = useState<string | null>(null)
+  const [highlight, setHighlight] = useState<Highlight>(NO_HIGHLIGHT)
 
   /** Runs one of the workspace's own actions, for a key or a menu item. */
   const run = useCallback(
@@ -66,7 +67,7 @@ export function useWorkspace(view: View) {
       if (action === "toggleRightPanel") setRight(toggleStripOpen)
       if (action === "toggleBottomPanel") setBottom(toggleBottom)
       if (action === "toggleUnit") setUnit(nextUnit)
-      if (action === "clearHighlight") setHighlight(null)
+      if (action === "clearHighlight") setHighlight(NO_HIGHLIGHT)
       if (action === "openLibrary") {
         setLeft(showLibrary)
         requestSearch()

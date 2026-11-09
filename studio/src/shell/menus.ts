@@ -1,6 +1,8 @@
 // The menu bar as data: EasyEDA Pro's menus, the items Studio can run, and the items still to come, each with the
-// stage that brings it. The keys beside a command are the keys canvas-keys.ts binds; a test holds them together.
+// engine stage (docs/engine-design.md) or the Studio round (docs/studio-easyeda-parity.md §10) that brings it. The
+// keys beside a command are the keys canvas-keys.ts binds; a test holds them together.
 import type { KeyActionName } from "../pcb/canvas-keys.js"
+import type { View } from "../pcb/positions.js"
 
 export type CommandId =
   | "openFile"
@@ -37,6 +39,8 @@ export interface MenuItem {
   command?: CommandId
   /** Why the item cannot run yet. */
   pending?: string
+  /** The one view the item works in; in the other it shows disabled. */
+  only?: View
 }
 
 export type MenuEntry = MenuItem | "separator"
@@ -53,18 +57,18 @@ const STAGE_3 = "Comes with blocks and sheets (stage 3)"
 const STAGE_4 = "Comes with routing (stage 4)"
 const STAGE_5 = "Comes with the autorouter (stage 5)"
 const STAGE_6 = "Comes with fabrication outputs (stage 6)"
-const SELECTION = "Comes with multi-selection"
-const CLIPBOARD = "Comes with the engine (stages 3 to 5)"
-const FIND = "Comes with Find"
-const THEME = "Comes with the canvas theme"
-const SETTINGS = "Settings are not in Studio yet"
+const SELECTION = "Comes with multi-selection (round 3)"
+const ENGINE = "Comes with the engine (stages 3 to 5)"
+const FIND = "Comes with Find (round 3)"
+const THEME = "Comes with the canvas theme (round 2)"
+const SETTINGS = "Comes in round 5, after the side-by-side check with EasyEDA"
 
 export const MENUS: readonly Menu[] = [
   {
     title: "File",
     entries: [
       run("Open circuit file", "openFile", "Ctrl+O"),
-      later("New circuit", "Create a .circuit.tsx file in the project folder"),
+      later("New circuit", "Comes in round 5; for now create a .circuit.tsx file in the project folder"),
       "separator",
       run("Export BOM", "exportBom"),
       run("Export package", "exportPackage"),
@@ -76,10 +80,10 @@ export const MENUS: readonly Menu[] = [
     title: "Edit",
     entries: [
       run("Undo", "undo", "Ctrl+Z"),
-      later("Redo", "Undo is kept as history; redo comes later", "Ctrl+Y"),
+      later("Redo", "Comes in round 5; for now every change is kept in the Log, where it can be undone", "Ctrl+Y"),
       "separator",
-      later("Copy", CLIPBOARD, "Ctrl+C"),
-      later("Paste", CLIPBOARD, "Ctrl+V"),
+      later("Copy", ENGINE, "Ctrl+C"),
+      later("Paste", ENGINE, "Ctrl+V"),
       run("Delete", "delete", "Delete"),
       "separator",
       later("Select all", SELECTION, "Ctrl+A"),
@@ -94,7 +98,7 @@ export const MENUS: readonly Menu[] = [
       run("Zoom in", "zoomIn"),
       run("Zoom out", "zoomOut"),
       "separator",
-      run("Unit", "toggleUnit", "Q"),
+      { ...run("Unit", "toggleUnit", "Q"), only: "pcb" },
       later("Grid style", THEME),
       "separator",
       run("Left panel", "toggleLeftPanel", "["),
@@ -112,21 +116,21 @@ export const MENUS: readonly Menu[] = [
       run("Power flag", "powerFlag"),
       "separator",
       later("Bus", STAGE_3, "Alt+B"),
-      later("No connect flag", "Comes with schematic flags"),
-      later("Junction", "Junctions are drawn where wires meet", "Alt+J"),
-      later("Text", "Comes with drawing tools", "Alt+T"),
+      later("No connect flag", "Comes with the schematic flags (round 5)"),
+      later("Junction", "Comes in round 5; for now junctions are drawn where wires meet", "Alt+J"),
+      later("Text", "Comes with the drawing tools (round 5)", "Alt+T"),
     ],
   },
   {
     title: "Design",
     entries: [
       run("Check DRC", "checkDrc"),
-      later("Design rules", "Edit rules.yaml in the project for now"),
+      later("Design rules", "Comes in round 5; for now edit rules.yaml in the project"),
       "separator",
       run("Highlight net", "highlight", "H"),
       run("Clear highlight", "clearHighlight", "Shift+H"),
       "separator",
-      later("Annotate designators", "Studio picks the next free name when placing"),
+      later("Annotate designators", "Comes in round 5; for now Studio picks the next free name when placing"),
       later("Placement transfer", STAGE_3, "Ctrl+Shift+X"),
     ],
   },
@@ -143,7 +147,7 @@ export const MENUS: readonly Menu[] = [
     title: "Layout",
     entries: [
       run("Rotate", "rotate", "Space"),
-      later("Flip", "Comes with mirrored parts", "X"),
+      later("Flip", ENGINE, "X"),
       "separator",
       run("Lock", "lock"),
       run("Unlock", "unlock"),
@@ -154,7 +158,7 @@ export const MENUS: readonly Menu[] = [
   },
   {
     title: "Tools",
-    entries: [run("History", "history"), later("Footprint manager", "Edit footprint.yaml files in the project for now")],
+    entries: [run("History", "history"), later("Footprint manager", "Comes in round 5; for now edit footprint.yaml files in the project")],
   },
   {
     title: "Export",
@@ -171,6 +175,15 @@ export const MENUS: readonly Menu[] = [
 ]
 
 export const MENU_TITLES: readonly string[] = MENUS.map((menu) => menu.title)
+
+const ONLY_REASON: Record<View, string> = { pcb: "PCB only", schematic: "Schematic only" }
+
+/** Whether an item runs in the open view, and the tooltip that says why it does not. */
+export function itemState(item: MenuItem, view: View): { enabled: boolean; reason?: string } {
+  if (!item.command) return item.pending ? { enabled: false, reason: item.pending } : { enabled: false }
+  if (item.only && item.only !== view) return { enabled: false, reason: ONLY_REASON[item.only] }
+  return { enabled: true }
+}
 
 export function menuItems(menu: Menu): MenuItem[] {
   return menu.entries.filter((entry): entry is MenuItem => entry !== "separator")

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { buildDesign } from "../src/engine/design.js"
-import { canonicalNet, highlightOf, pcbNetAt, remapHighlight, schematicNetAt } from "../studio/src/pcb/highlight.js"
+import { NO_HIGHLIGHT, canonicalNet, highlightOf, menuHighlight, partNets, pcbNetAt, remapHighlight, schematicNetAt } from "../studio/src/pcb/highlight.js"
 
 const FILE = "main.circuit.tsx"
 const SOURCE = `export default () => (
@@ -91,8 +91,34 @@ describe("nets with two names", () => {
   })
 
   test("highlightOf lists the pins and every raw id the net's wires and labels may carry", () => {
-    expect(highlightOf(aliased, "net.A")).toEqual({ net: "net.A", pins: ["R1.pin1", "R2.pin1"], aliases: ["net.A", "net.B"] })
-    expect(highlightOf(aliased, null)).toBeUndefined()
+    expect(highlightOf(aliased, ["net.A"])).toEqual({ net: "net.A", pins: ["R1.pin1", "R2.pin1"], aliases: ["net.A", "net.B"] })
+    expect(highlightOf(aliased, NO_HIGHLIGHT)).toBeUndefined()
+  })
+})
+
+describe("highlighting a part's nets", () => {
+  test("a part's nets come in pin order, each once; a part on no net has none", () => {
+    expect(partNets(design, "R1")).toEqual(["net.GND", "net:R1.pin2"])
+    expect(partNets(design, "R3")).toEqual([])
+    expect(partNets(design, "nope")).toEqual([])
+  })
+
+  test("several nets light together: their pins and ids are all in the highlight", () => {
+    const lit = highlightOf(design, ["net.GND", "net:R1.pin2"])
+    expect(lit?.net).toBe("net.GND")
+    expect(lit?.pins).toEqual(expect.arrayContaining(["R1.pin1", "R2.pin1", "R1.pin2", "R2.pin2"]))
+    expect(lit?.aliases).toEqual(expect.arrayContaining(["net.GND", "net:R1.pin2"]))
+  })
+
+  test("an id that is not in the design is skipped", () => {
+    expect(highlightOf(design, ["net:nope", "net.GND"])?.net).toBe("net.GND")
+    expect(highlightOf(design, ["net:nope"])).toBeUndefined()
+  })
+
+  test("the menu lights the selected part's nets and never pretends without a part", () => {
+    expect(menuHighlight("R1", ["net.GND"])).toEqual({ nets: ["net.GND"] })
+    expect(menuHighlight(null, [])).toEqual({ message: "Point at a net and press H." })
+    expect(menuHighlight("R3", [])).toEqual({ message: "R3 is on no net." })
   })
 })
 
@@ -101,20 +127,22 @@ describe("remapHighlight", () => {
   const withGnd = buildDesign({ [FILE]: SOURCE.replace("</board>", `<trace from=".R1 > .pin2" to="net.GND" /></board>`) }, FILE)
 
   test("an id that still exists is kept", () => {
-    expect(remapHighlight("net.GND", before, withGnd)).toBe("net.GND")
+    const kept = ["net.GND"]
+    expect(remapHighlight(kept, before, withGnd)).toBe(kept)
   })
 
   test("an unnamed net that was named follows its first pin", () => {
     expect(before.circuit.nets.some((n) => n.id === "net:R1.pin2")).toBe(true)
-    expect(remapHighlight("net:R1.pin2", before, withGnd)).toBe("net.GND")
+    expect(remapHighlight(["net:R1.pin2"], before, withGnd)).toEqual(["net.GND"])
+    expect(remapHighlight(["net.GND", "net:R1.pin2"], before, withGnd)).toEqual(["net.GND"])
   })
 
-  test("a net that is gone is cleared, and null stays null", () => {
-    expect(remapHighlight("net:nope", before, withGnd)).toBeNull()
-    expect(remapHighlight(null, before, withGnd)).toBeNull()
+  test("a net that is gone is cleared, and no highlight stays none", () => {
+    expect(remapHighlight(["net:nope"], before, withGnd)).toBe(NO_HIGHLIGHT)
+    expect(remapHighlight(NO_HIGHLIGHT, before, withGnd)).toBe(NO_HIGHLIGHT)
   })
 
   test("with no earlier design an unknown id is cleared", () => {
-    expect(remapHighlight("net:R1.pin2", undefined, buildDesign({ [FILE]: "export default () => <board />" }, FILE))).toBeNull()
+    expect(remapHighlight(["net:R1.pin2"], undefined, buildDesign({ [FILE]: "export default () => <board />" }, FILE))).toBe(NO_HIGHLIGHT)
   })
 })

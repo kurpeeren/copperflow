@@ -13,8 +13,18 @@ describe("toolbar", () => {
   })
 
   test("the PCB row is in EasyEDA's order", () => {
-    expect(ids("pcb")).toEqual(["undo", "zoomIn", "zoomOut", "fit", "rotate", "checkDrc"])
-    expect(toolbarGroups("pcb").map((g) => g.length)).toEqual([1, 3, 1, 1])
+    expect(ids("pcb")).toEqual(["undo", "zoomIn", "zoomOut", "fit", "unit", "rotate", "checkDrc"])
+    expect(toolbarGroups("pcb").map((g) => g.length)).toEqual([1, 3, 1, 1, 1])
+  })
+
+  test("the PCB's Unit button shows the unit as its text and runs the menu's Unit", () => {
+    const unit = TOOLBARS.pcb.find((b) => b.id === "unit")
+    expect(unit).toEqual({ id: "unit", title: "Unit (Q)", text: "unit", command: "toggleUnit", group: 2 })
+    expect(TOOLBARS.schematic.some((b) => b.command === "toggleUnit")).toBe(false)
+  })
+
+  test("every other button has an icon", () => {
+    for (const item of [...TOOLBARS.schematic, ...TOOLBARS.pcb]) expect([item.id, item.text === "unit" || item.icon !== undefined]).toEqual([item.id, true])
   })
 
   test("every button runs a command the menu has", () => {

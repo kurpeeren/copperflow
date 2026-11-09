@@ -9,8 +9,8 @@ export interface PcbDrawOptions {
   /** Device pixels per CSS pixel. */
   ratio: number
   layers?: Partial<Layers>
-  /** One net to highlight; other copper is dimmed. */
-  highlight?: { net: string }
+  /** The nets to highlight; other copper is dimmed. */
+  highlight?: { nets: readonly string[] }
   /** The part being dragged and how far it has moved, in mm. */
   moving?: { component: string; by: Point }
   /** Defaults to true. */
@@ -227,7 +227,7 @@ function drawCopper(ctx: Ctx, layers: Layers, highlight: PcbDrawOptions["highlig
     if (!visible) continue
     each((part) => {
       for (const pad of part.pads.filter(wanted)) {
-        const lit = highlight !== undefined && pad.net === highlight.net
+        const lit = highlight !== undefined && pad.net !== undefined && highlight.nets.includes(pad.net)
         ctx.globalAlpha = (highlight && !lit ? DIM : 1) * alphaOf(part)
         ctx.fillStyle = padColor(pad, lit)
         padPath(ctx, pad)
@@ -279,7 +279,7 @@ function drawRatsnest(ctx: Ctx, layout: PcbLayout, options: PcbDrawOptions, px: 
   ctx.strokeStyle = PALETTE.ratsnest
   ctx.lineWidth = px
   for (const line of layout.ratsnest) {
-    ctx.globalAlpha = options.highlight && options.highlight.net !== line.net ? RATSNEST_ALPHA * DIM : RATSNEST_ALPHA
+    ctx.globalAlpha = options.highlight && !options.highlight.nets.includes(line.net) ? RATSNEST_ALPHA * DIM : RATSNEST_ALPHA
     drawLine(ctx, end(line.a, line.from), end(line.b, line.to))
   }
   ctx.globalAlpha = 1

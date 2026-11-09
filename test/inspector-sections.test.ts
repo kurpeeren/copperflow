@@ -9,30 +9,37 @@ const resistor: InspectorPart = {
 }
 
 describe("inspectorSections", () => {
-  test("a part's sections come in the order Basic, Position, Connections, Notes", () => {
-    expect(inspectorSections(resistor, { library: false }).map((s) => s.title)).toEqual(["Basic", "Position", "Connections", "Notes"])
+  test("a part's sections come in the order Basic, Footprint, Position, Connections, Notes", () => {
+    expect(inspectorSections(resistor, { library: false }).map((s) => s.title)).toEqual(["Basic", "Footprint", "Position", "Connections", "Notes"])
   })
 
   test("a library part gets a Library section between Connections and Notes", () => {
-    expect(inspectorSections(resistor, { library: true }).map((s) => s.title)).toEqual(["Basic", "Position", "Connections", "Library", "Notes"])
+    expect(inspectorSections(resistor, { library: true }).map((s) => s.title)).toEqual(["Basic", "Footprint", "Position", "Connections", "Library", "Notes"])
   })
 
-  test("Basic holds name, kind and the value props; position props move to Position", () => {
-    const [basic, position] = inspectorSections(resistor, { library: false })
-    expect(basic?.rows).toEqual(["name", "kind", "prop:resistance", "prop:footprint"])
+  test("Basic holds name, kind and the value props; the footprint has its own section; position props move to Position", () => {
+    const [basic, footprint, position] = inspectorSections(resistor, { library: false })
+    expect(basic?.rows).toEqual(["name", "kind", "prop:resistance"])
+    expect(footprint?.rows).toEqual(["prop:footprint"])
     expect(position?.rows).toEqual(["prop:pcbX", "prop:pcbY", "prop:pcbRotation", "lock"])
   })
 
-  test("usual props the part lacks are offered in Basic, position props never are", () => {
+  test("usual props the part lacks are offered, the footprint in Footprint, position props never", () => {
     const bare: InspectorPart = { tag: "resistor", props: { pcbX: prop(1) } }
-    const [basic, position] = inspectorSections(bare, { library: false })
-    expect(basic?.rows).toEqual(["name", "kind", "suggest:resistance", "suggest:footprint"])
+    const [basic, footprint, position] = inspectorSections(bare, { library: false })
+    expect(basic?.rows).toEqual(["name", "kind", "suggest:resistance"])
+    expect(footprint).toEqual({ title: "Footprint", rows: ["suggest:footprint"] })
     expect(position?.rows).toEqual(["prop:pcbX", "lock"])
+  })
+
+  test("a part with no footprint and none to offer has no Footprint section", () => {
+    const header: InspectorPart = { tag: "pinheader", props: { pinCount: prop(4) } }
+    expect(inspectorSections(header, { library: false }).map((s) => s.title)).toEqual(["Basic", "Position", "Connections", "Notes"])
   })
 
   test("schematic position, side and layer props are positions too", () => {
     const part: InspectorPart = { tag: "diode", props: { layer: prop("bottom"), schY: prop(2), schX: prop(1), side: prop("top") } }
-    const [, position] = inspectorSections(part, { library: false })
+    const position = inspectorSections(part, { library: false }).find((s) => s.title === "Position")
     expect(position?.rows).toEqual(["prop:schX", "prop:schY", "prop:side", "prop:layer", "lock"])
   })
 
@@ -43,7 +50,7 @@ describe("inspectorSections", () => {
   })
 
   test("Connections, Library and Notes each hold one row", () => {
-    const rest = inspectorSections(resistor, { library: true }).slice(2)
+    const rest = inspectorSections(resistor, { library: true }).slice(3)
     expect(rest.map((s) => s.rows)).toEqual([["connections"], ["library"], ["notes"]])
   })
 })

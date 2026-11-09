@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type Dispatch, type RefObjec
 import type { Annotations, CircuitData, Design } from "../api"
 import type { Actions } from "../App"
 import type { FocusRequest } from "../checks-panel-state"
+import type { Highlight } from "./highlight"
 import type { CameraCommand } from "../shell/command-owners"
 import { useCommands } from "../shell/commands"
 import { drawGrid, drawLockBadge, drawMark, drawOutline, drawSelectionBox } from "./overlays"
@@ -24,9 +25,9 @@ export interface CanvasProps {
   actions: Actions
   selected: string | null
   onSelect(name: string | null): void
-  /** The highlighted net's id, shared by both views. */
-  highlight: string | null
-  onHighlight(net: string | null): void
+  /** The highlighted nets' ids, shared by both views. */
+  highlight: Highlight
+  onHighlight(nets: Highlight): void
   /** The PCB's display unit; the model stays in mm. */
   unit: Unit
   onToggleUnit(): void

@@ -10,7 +10,7 @@ import { keepAutoPlaced } from "./auto-placed"
 import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
 import { CanvasStatus, KeepButton, SnapSelect } from "./CanvasTools"
 import { hitTest, unionBoxes, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry"
-import { highlightOf, schematicNetAt } from "./highlight"
+import { highlightOf, partNets, schematicNetAt, type Highlight } from "./highlight"
 import { labelHitBox } from "./label-drag"
 import { NameInput, paletteHint } from "./LabelPalette"
 import type { ViolationMarker } from "./markers"
@@ -49,7 +49,7 @@ interface SheetScene {
   /** The label under the pointer. */
   hoverLabel: NetLabel | undefined
   palette: Palette
-  /** The highlighted net and the pins on it. */
+  /** The highlighted nets and the pins on them. */
   highlight: ReturnType<typeof highlightOf>
   markers: readonly ViolationMarker[]
   activeViolation: string | null
@@ -176,9 +176,9 @@ function wireHint(wire: WireTool): string | undefined {
   return wire.wiring ? "Click a pin to start a wire. Esc stops wiring." : undefined
 }
 
-/** The highlighted net with its pins and the names its wires and labels may carry, so they can be drawn lit. */
-function useHighlight(design: Design, net: string | null): SheetScene["highlight"] {
-  return useMemo(() => highlightOf(design, net), [design, net])
+/** The highlighted nets with their pins and the names their wires and labels may carry, so they can be drawn lit. */
+function useHighlight(design: Design, nets: Highlight): SheetScene["highlight"] {
+  return useMemo(() => highlightOf(design, nets), [design, nets])
 }
 
 /** The label being dragged, then those moved and waiting for their build. */
@@ -195,20 +195,21 @@ interface SheetKeysInput {
   fit(): void
   wire: WireTool
   palette: Palette
-  highlightNet: string | null
-  onHighlight(net: string | null): void
-  keys: Omit<Parameters<typeof usePartKeys>[0], "paused" | "fit" | "netUnderPointer" | "onHighlight">
+  highlightNets: Highlight
+  onHighlight(nets: Highlight): void
+  keys: Omit<Parameters<typeof usePartKeys>[0], "paused" | "fit" | "netUnderPointer" | "netsOf" | "onHighlight">
 }
 
 /** The part keys with H over the sheet, and the hand-over between wiring and the Place tools; returns what to draw lit. */
-function useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNet, onHighlight, keys }: SheetKeysInput): SheetScene["highlight"] {
+function useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys }: SheetKeysInput): SheetScene["highlight"] {
   const cursorRef = useRef<Point | undefined>(undefined)
   cursorRef.current = cursor
   const netUnderPointer = useCallback(
     () => (camera && cursorRef.current ? schematicNetAt(design, cursorRef.current, HIGHLIGHT_REACH_PX / camera.scale) : undefined),
     [design, camera],
   )
-  usePartKeys({ ...keys, paused: wire.drawing !== null, fit, netUnderPointer, onHighlight })
+  const netsOf = useCallback((part: string) => partNets(design, part), [design])
+  usePartKeys({ ...keys, paused: wire.drawing !== null, fit, netUnderPointer, netsOf, onHighlight })
   const { wiring, drawing } = wire
   const { disarm } = palette
   // Wiring takes over from a Place tool, as arming a Place tool stops wiring.
@@ -226,7 +227,7 @@ function useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNet
     powerFlag: () => palette.arm("vcc"),
   }
   useCommands(tools)
-  return useHighlight(design, highlightNet)
+  return useHighlight(design, highlightNets)
 }
 
 /** Tells the toolbar which tool is armed, and how to put it away. */
@@ -250,7 +251,7 @@ function useArmedTool(wire: WireTool, palette: Palette): void {
  * The schematic, drawn by copperflow's own renderer under its camera, grid and tools, with the
  * wire tool (see useWireTool) and the Place tools (see useLabelPalette).
  */
-export function SchematicCanvas({ design, buildId, builtFrom, circuit, actions, selected, onSelect, highlight: highlightNet, onHighlight, markers, activeViolation, focus, onFocused }: CanvasProps) {
+export function SchematicCanvas({ design, buildId, builtFrom, circuit, actions, selected, onSelect, highlight: highlightNets, onHighlight, markers, activeViolation, focus, onFocused }: CanvasProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const size = useElementSize(wrapRef)
@@ -265,7 +266,7 @@ export function SchematicCanvas({ design, buildId, builtFrom, circuit, actions, 
   const common = { view: "schematic", circuit, actions, onSelect, blockerFor: parts.blockerFor } as const
   const labels = useLabelDrag({ design, circuit, actions, builtFrom })
   const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom, labels: labels.tools })
-  const highlight = useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNet, onHighlight, keys: { ...common, selected } })
+  const highlight = useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys: { ...common, selected } })
   const hover = useSheetHover(parts.boxes, wire, labels.tools)
   const { moving, gesture } = gestures
   const movingLabels = useMovingLabels(design, gesture, labels.pending)

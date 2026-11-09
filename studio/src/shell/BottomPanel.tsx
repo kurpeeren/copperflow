@@ -52,6 +52,6 @@ function Content(props: Props) {
       if (!props.built) return <p className="note bottom-note">{props.buildError ?? "Building the circuit…"}</p>
       return <ChecksPanel rows={props.rows} counts={props.counts} active={props.active} onPick={props.onPick} />
     case "find":
-      return <p className="note bottom-note">Press Ctrl+F to find a part or a net.</p>
+      return <p className="note bottom-note">Find comes in a later round. Its results will be listed here.</p>
   }
 }

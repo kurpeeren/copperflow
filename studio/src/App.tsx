@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { hasToken, type Design } from "./api"
-import { remapHighlight } from "./pcb/highlight"
+import { NO_HIGHLIGHT, remapHighlight } from "./pcb/highlight"
 import { BottomStrip } from "./shell/BottomStrip"
 import { StudioDialog, type DialogName } from "./shell/Dialogs"
 import { MenuBar } from "./shell/MenuBar"
@@ -68,7 +68,7 @@ export function App() {
   const { setHighlight, openBottom } = workspace
   const onFile = useCallback(() => {
     setSelected(null)
-    setHighlight(null)
+    setHighlight(NO_HIGHLIGHT)
   }, [setHighlight])
   const data = useStudioData(notify, onFile)
   const { file, setFile, build, circuit } = data
@@ -91,10 +91,10 @@ export function App() {
   if (!hasToken) return <NoToken />
   return (
     <div className="app">
-      <MenuBar run={runCommand}>
+      <MenuBar run={runCommand} view={tab}>
         <StatusPill build={build} errors={checks.counts.errors} onOpen={openChecks} />
       </MenuBar>
-      <Toolbar view={tab} run={runCommand} />
+      <Toolbar view={tab} unit={workspace.unit} run={runCommand} />
       {dialog && <StudioDialog name={dialog} onClose={closeDialog} />}
       {circuit && circuit.violations.length > 0 && (
         <div className="banner" role="alert">
