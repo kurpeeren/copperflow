@@ -44,7 +44,7 @@ const design = buildDesign({ "main.circuit.tsx": CIRCUIT }, "main.circuit.tsx")
 const layout = design.schematic
 const VIEW = { camera: { cx: 1.5, cy: 0, scale: 100 }, size: { width: 800, height: 600 } }
 
-/** Pin numbers (0.1 in) are written from 11 device pixels: this view is 12. */
+/** A closer view: pin numbers are written once designators (0.16 in) are 11 device px; here they are 19. */
 const CLOSE = { ...VIEW, camera: { ...VIEW.camera, scale: 120 } }
 
 function draw(options: Partial<SchematicDrawOptions> = {}, view = VIEW) {

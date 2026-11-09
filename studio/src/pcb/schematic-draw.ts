@@ -230,13 +230,12 @@ function drawSymbol(ctx: Ctx, placed: PlacedSymbol, shift: Point, pen: { line: (
   const box = symbolBox(placed)
   if (placed.autoPlaced) drawAutoBox(ctx, box, shift, pen.px)
   if (!placed.symbol.shapes.some((shape) => shape.type === "text" && shape.role === "pin-number")) own.push(...pinNumbers(placed.symbol, frame))
-  const centre = { x: (box.minX + box.maxX) / 2 + shift.x, y: (box.minY + box.maxY) / 2 + shift.y }
-  texts.push(...own.map((label) => ({ ...label, alpha, ...textBounds(label, placed, centre) })))
+  texts.push(...own.map((label) => ({ ...label, alpha, ...textBounds(label, placed) })))
 }
 
-/** A pin name's symbol, for fitting the names; a two-pin part's designator and value, their widest (the symbol's length is from pin end to pin end). */
-function textBounds(label: Label, placed: PlacedSymbol, centre: Point): Partial<Label> {
-  if (label.role === "pin-name") return { pinOf: { symbol: placed.component, centre } }
+/** A pin name's symbol (the names are fitted symbol by symbol); a two-pin part's designator and value, their widest (the symbol's length is from pin end to pin end). */
+function textBounds(label: Label, placed: PlacedSymbol): Partial<Label> {
+  if (label.pinOf) return { pinOf: { ...label.pinOf, symbol: placed.component } }
   if ((label.role !== "reference" && label.role !== "value") || placed.symbol.pins.length !== 2) return {}
   const [a, b] = placed.symbol.pins
   return a && b ? { maxWidth: TWO_PIN_TEXT_LENGTHS * Math.hypot(a.end.x - b.end.x, a.end.y - b.end.y) } : {}
@@ -307,8 +306,14 @@ function textLabel(shape: Extract<Shape, { type: "text" }>, frame: Frame, fallba
   const dx = along * Math.cos(angle)
   const dy = along * Math.sin(angle)
   const anchor = Math.abs(dx) > 0.5 ? (dx > 0 ? "left" : "right") : Math.abs(dy) > 0.5 ? (dy > 0 ? "bottom" : "top") : "center"
-  const role = { role: shape.role, kind: TEXT_KINDS[shape.role], ...(shape.role === "reference" ? { strong: true } : {}), ...(shape.role === "pin-number" ? { mono: true } : {}) }
+  const role = { role: shape.role, kind: TEXT_KINDS[shape.role], ...(shape.role === "pin-name" ? { pinOf: pinFrame(shape, frame) } : {}), ...(shape.role === "reference" ? { strong: true } : {}), ...(shape.role === "pin-number" ? { mono: true } : {}) }
   return { text: shape.text, at: place(shape.at, frame), size: shape.size, anchor, color: TEXT_COLORS[shape.role] ?? fallback, ...role }
+}
+
+/** Where a pin name sits in its symbol's own frame: the side its anchor faces, and whether the symbol is turned a quarter. */
+function pinFrame(shape: Extract<Shape, { type: "text" }>, frame: Frame): NonNullable<Label["pinOf"]> {
+  const side = shape.anchor === "left" ? "left" : shape.anchor === "right" ? "right" : shape.at.y > 0 ? "top" : "bottom"
+  return { symbol: "", local: shape.at, side, quarter: Math.abs(Math.sin(rad(frame.rotation))) > 0.5 }
 }
 
 /** The label where it is dragged to, or as the layout has it. */

@@ -1,17 +1,29 @@
-// Pin names inside a symbol never print over each other. Each name gets a room: a left- or right-running name its
-// share of the row up to the name facing it across the body, a centred (top or bottom) name its pitch band between its
-// neighbours. A name wider than its room is first drawn smaller, down to 70% of the pin-name size, then shortened with
-// an ellipsis at that size, and only dropped when fewer than two characters fit. Two names whose boxes still overlap
-// are both left out. All in CSS pixels on screen.
+// Pin names inside a symbol never print over each other. Rooms are found in the symbol's own (unturned) frame: a
+// side name gets its share of the row up to the name facing it across the body, a top or bottom name its pitch band
+// between its neighbours on that side. A name larger than its room is first drawn smaller, down to 70% of the pin-name
+// size, then shortened with an ellipsis at that size, and only dropped when fewer than two characters fit. Then two
+// names whose ink still overlaps on screen are both left out. All in CSS pixels.
 import type { Point } from "./geometry.js"
 
-/** A pin name on screen: its anchor, which way it runs from the anchor, and the height of its ink at full size. */
+export type PinSide = "left" | "right" | "top" | "bottom"
+
+/** A pin name: where and how it is written on screen, and where it sits in its symbol's own frame. */
 export interface PinName {
   text: string
+  /** The anchor on screen and the text's alignment there. */
   x: number
   y: number
   align: "left" | "right" | "center"
-  height: number
+  /** The ink above and below the anchor at full size (the font's real metrics for this text). */
+  ascent: number
+  descent: number
+  /** The full font size. */
+  size: number
+  /** The anchor in the symbol's frame, in CSS px with y up and the body centre at 0, and the body side it is on. */
+  local: Point
+  side: PinSide
+  /** The symbol is turned a quarter: along the frame's x axis the text spans its height, not its width. */
+  quarter: boolean
 }
 
 /** The text a name is drawn with and its size as a share of the pin-name size (1, or down to MIN_NAME_SCALE). */
@@ -54,31 +66,33 @@ function allot(room: number, mine: number, theirs: number): number {
   return theirs <= half ? room - theirs : half
 }
 
-const rowsOverlap = (a: PinName, b: PinName) => Math.abs(a.y - b.y) < (a.height + b.height) / 2
+/** How far the text reaches along the frame's x axis (the run of a side name, the pitch of a top or bottom one). */
+const runOf = (name: PinName, text: string, measure: Measure) => (name.quarter ? name.size : measure(text))
+/** How far it reaches along the frame's y axis. */
+const acrossOf = (name: PinName, measure: Measure) => (name.quarter ? measure(name.text) : name.size)
 
-/** Which side of the body a name is on: left- and right-running names by their run, centred ones above or below the origin. */
-const sideOf = (name: PinName, origin: Point) => (name.align === "center" ? (name.y < origin.y ? "top" : "bottom") : name.align)
+const OPPOSITE: Partial<Record<PinSide, PinSide>> = { left: "right", right: "left" }
 
-/** The nearest name across from `name` on its row, or a name of no width at its mirror through the origin. */
-function facing(name: PinName, names: readonly PinName[], origin: Point): { x: number; text: string } {
-  const toward = name.align === "left" ? 1 : -1
-  const across = names.filter((other) => other.align !== name.align && other.align !== "center" && rowsOverlap(name, other) && (other.x - name.x) * toward > 0)
-  const nearest = across.sort((a, b) => Math.abs(a.x - name.x) - Math.abs(b.x - name.x))[0]
-  return nearest ?? { x: 2 * origin.x - name.x, text: "" }
+/** The nearest name across from a side name on its row, or a name of no width at its mirror through the body centre. */
+function facing(name: PinName, names: readonly PinName[], measure: Measure): { x: number; run: number } {
+  const toward = name.side === "left" ? 1 : -1
+  const sameRow = (other: PinName) => Math.abs(other.local.y - name.local.y) < (acrossOf(name, measure) + acrossOf(other, measure)) / 2
+  const across = names.filter((other) => other.side === OPPOSITE[name.side] && sameRow(other) && (other.local.x - name.local.x) * toward > 0)
+  const nearest = across.sort((a, b) => Math.abs(a.local.x - name.local.x) - Math.abs(b.local.x - name.local.x))[0]
+  return nearest ? { x: nearest.local.x, run: runOf(nearest, nearest.text, measure) } : { x: -name.local.x, run: 0 }
 }
 
-/** A centred name's band: the distance to its nearest neighbour on its side, less the gap; unlimited without one. */
-function band(name: PinName, names: readonly PinName[], origin: Point, gap: number): number {
-  const pitches = names.filter((other) => other !== name && sideOf(other, origin) === sideOf(name, origin)).map((other) => Math.abs(other.x - name.x))
+/** A top or bottom name's band: the distance to its nearest neighbour on its side, less the gap; unlimited without one. */
+function band(name: PinName, names: readonly PinName[], gap: number): number {
+  const pitches = names.filter((other) => other !== name && other.side === name.side).map((other) => Math.abs(other.local.x - name.local.x))
   return pitches.length === 0 ? Infinity : Math.min(...pitches) - gap
 }
 
-/** The widest the name may be drawn. */
-function roomFor(name: PinName, names: readonly PinName[], origin: Point, measure: Measure, gap: number): number {
-  if (name.align === "center") return band(name, names, origin, gap)
-  const other = facing(name, names, origin)
-  const room = Math.abs(other.x - name.x) - gap
-  return allot(room, measure(name.text), other.text === "" ? 0 : measure(other.text))
+/** The most the name may reach along the frame's x axis. */
+function roomFor(name: PinName, names: readonly PinName[], measure: Measure, gap: number): number {
+  if (name.side === "top" || name.side === "bottom") return band(name, names, gap)
+  const other = facing(name, names, measure)
+  return allot(Math.abs(other.x - name.local.x) - gap, runOf(name, name.text, measure), other.run)
 }
 
 interface Span {
@@ -88,14 +102,16 @@ interface Span {
   y1: number
 }
 
-function spanOf(name: PinName, width: number, height: number): Span {
+/** The name's ink on screen, drawn at `scale` of its size. */
+function spanOf(name: PinName, fit: FittedName, measure: Measure): Span {
+  const width = measure(fit.text) * fit.scale
   const x0 = name.align === "left" ? name.x : name.align === "right" ? name.x - width : name.x - width / 2
-  return { x0, x1: x0 + width, y0: name.y - height / 2, y1: name.y + height / 2 }
+  return { x0, x1: x0 + width, y0: name.y - name.ascent * fit.scale, y1: name.y + name.descent * fit.scale }
 }
 
 const overlap = (a: Span, b: Span) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1
 
-/** The indices of names whose boxes overlap another's among those `pair` allows; both of each pair are dropped. */
+/** The indices of names whose ink overlaps another's among those `pair` allows; both of each pair are dropped. */
 function overlapping(spans: readonly (Span | null)[], pair: (i: number, j: number) => boolean): Set<number> {
   const dropped = new Set<number>()
   spans.forEach((a, i) => {
@@ -107,15 +123,14 @@ function overlapping(spans: readonly (Span | null)[], pair: (i: number, j: numbe
 }
 
 /**
- * How each pin name of one symbol is drawn, or null where it is left out. `origin` is the body's centre on screen;
- * `gap` is the least room kept between two names. Neighbours on one side that still overlap go first; a name that
- * still overlaps another (a side name against a top or bottom one) goes with it.
+ * How each pin name of one symbol is drawn, or null where it is left out; `gap` is the least room kept between two
+ * names. Neighbours on one side that still overlap go first; a name that still overlaps another (a side name against
+ * a top or bottom one) goes with it.
  */
-export function fitPinNames(names: readonly PinName[], origin: Point, measure: Measure, gap: number): (FittedName | null)[] {
-  const fitted = names.map((name) => fitName(name.text, roomFor(name, names, origin, measure, gap), measure))
-  const spans = fitted.map((fit, i) => (fit === null ? null : spanOf(names[i] as PinName, measure(fit.text) * fit.scale, (names[i] as PinName).height * fit.scale)))
-  const sides = names.map((name) => sideOf(name, origin))
-  const sameSide = overlapping(spans, (i, j) => sides[i] === sides[j])
+export function fitPinNames(names: readonly PinName[], measure: Measure, gap: number): (FittedName | null)[] {
+  const fitted = names.map((name) => fitName(name.text, roomFor(name, names, measure, gap), (text) => runOf(name, text, measure)))
+  const spans = fitted.map((fit, i) => (fit === null ? null : spanOf(names[i] as PinName, fit, measure)))
+  const sameSide = overlapping(spans, (i, j) => names[i]?.side === names[j]?.side)
   const left = spans.map((span, i) => (sameSide.has(i) ? null : span))
   const crossing = overlapping(left, () => true)
   return fitted.map((fit, i) => (sameSide.has(i) || crossing.has(i) ? null : fit))

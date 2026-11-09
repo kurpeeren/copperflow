@@ -4,7 +4,7 @@
 // symbol are fitted first, drawn smaller or shortened, so they never print over each other (pin-name-fit.ts).
 import { anchorAlignment, canvasFont, CANVAS_MONO_FAMILY, TEXT_WEIGHT, type Ctx } from "./ctx.js"
 import { worldToScreen, type Camera, type Point, type Size } from "./geometry.js"
-import { fitPinNames, type PinName } from "./pin-name-fit.js"
+import { fitPinNames, type PinName, type PinSide } from "./pin-name-fit.js"
 import { capToWidth, devicePxFor, sharpenText, sheetLevelPx, textAnchorAt, textShown, type TextKind } from "./text-level.js"
 
 /** One text on the sheet, in sheet units, waiting for the screen pass. */
@@ -23,8 +23,8 @@ export interface SheetText {
   strong?: boolean
   /** Pin numbers are in the mono family. */
   mono?: boolean
-  /** A pin name: the symbol it belongs to and the centre of that symbol's body on the sheet. */
-  pinOf?: { symbol: string; centre: Point }
+  /** A pin name: its symbol, where it sits in the symbol's own frame (sheet units), its side, and whether the symbol is turned a quarter. */
+  pinOf?: { symbol: string; local: Point; side: PinSide; quarter: boolean }
   /** The widest the text may be on the sheet; a larger text is drawn smaller. */
   maxWidth?: number
 }
@@ -33,8 +33,11 @@ type Paint = { camera: Camera; size: Size; ratio: number }
 
 /** The gap kept between two pin names, as a share of their font size. */
 const NAME_GAP = 0.25
-/** How tall a pin name's ink is, as a share of its font size: capitals and digits, which pin names are, reach about 0.75. */
-const NAME_INK_HEIGHT = 0.8
+/** Where a text's ink runs above and below the alphabetic baseline when the browser does not say: 0.8 and 0.2 of its size. */
+const FALLBACK_ASCENT = 0.8
+const FALLBACK_DESCENT = 0.2
+/** How far below the anchor the alphabetic baseline lies for each textBaseline, in sizes, by the fallback metrics. */
+const BASELINE_DROP: Record<string, number> = { top: FALLBACK_ASCENT, middle: (FALLBACK_ASCENT - FALLBACK_DESCENT) / 2, bottom: -FALLBACK_DESCENT }
 
 /** A text with its size in device pixels, ready to write. */
 interface Sized {
@@ -53,18 +56,37 @@ function sizeOf(ctx: Ctx, label: SheetText, { camera, ratio }: Paint): number {
   return capToWidth(devicePx, ctx.measureText(label.text).width, label.maxWidth * camera.scale)
 }
 
+/** The ink above and below the anchor of a text in the current font: the font's own metrics, else the fallback. */
+function inkOf(ctx: Ctx, text: string, baseline: string, size: number): { ascent: number; descent: number } {
+  ctx.textBaseline = baseline
+  const metrics = ctx.measureText(text)
+  const drop = (BASELINE_DROP[baseline] ?? 0) * size
+  return {
+    ascent: metrics.actualBoundingBoxAscent ?? FALLBACK_ASCENT * size - drop,
+    descent: metrics.actualBoundingBoxDescent ?? FALLBACK_DESCENT * size + drop,
+  }
+}
+
+/** A pin name as the fit sees it: on screen with its ink, and in its symbol's own frame. */
+function pinName(ctx: Ctx, { label, devicePx }: Sized, paint: Paint): PinName | null {
+  const pin = label.pinOf
+  if (!pin) return null
+  const size = devicePx / paint.ratio
+  const p = worldToScreen(paint.camera, paint.size, label.at)
+  const [vertical, horizontal] = anchorAlignment(label.anchor)
+  const local = { x: pin.local.x * paint.camera.scale, y: pin.local.y * paint.camera.scale }
+  const ink = inkOf(ctx, label.text, vertical, size)
+  return { text: label.text, x: p.x, y: p.y, align: horizontal as PinName["align"], size, ...ink, local, side: pin.side, quarter: pin.quarter }
+}
+
 /** The pin names of one symbol with the text and size each is written with; a name that does not fit is left out. */
 function fitSymbol(ctx: Ctx, names: Sized[], paint: Paint): Sized[] {
   const first = names[0]
-  if (!first?.label.pinOf) return names
+  if (!first) return names
   ctx.font = fontOf(first.label, first.devicePx, paint.ratio)
-  const onScreen: PinName[] = names.map(({ label, devicePx }) => {
-    const p = worldToScreen(paint.camera, paint.size, label.at)
-    const align = anchorAlignment(label.anchor)[1] as PinName["align"]
-    return { text: label.text, x: p.x, y: p.y, align, height: (devicePx / paint.ratio) * NAME_INK_HEIGHT }
-  })
-  const origin = worldToScreen(paint.camera, paint.size, first.label.pinOf.centre)
-  const fits = fitPinNames(onScreen, origin, (text) => ctx.measureText(text).width, (first.devicePx / paint.ratio) * NAME_GAP)
+  const onScreen = names.map((sized) => pinName(ctx, sized, paint)).filter((name): name is PinName => name !== null)
+  if (onScreen.length !== names.length) return names
+  const fits = fitPinNames(onScreen, (text) => ctx.measureText(text).width, (first.devicePx / paint.ratio) * NAME_GAP)
   return names.flatMap((sized, i) => {
     const fit = fits[i]
     if (!fit) return []

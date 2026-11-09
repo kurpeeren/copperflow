@@ -307,14 +307,21 @@ describe("drawSheetBorder", () => {
   function textRecorder() {
     const fonts: string[] = []
     const texts: string[] = []
+    const fillArgs: unknown[][] = []
+    const px = () => Number(/([\d.]+)px/.exec(fonts.at(-1) ?? "")?.[1] ?? 10)
+    const call = (name: string) => {
+      if (name === "fillText") return (...args: unknown[]) => void (texts.push(args[0] as string), fillArgs.push(args))
+      if (name === "measureText") return (text: string) => ({ width: text.length * px() * 0.6 })
+      return () => undefined
+    }
     const ctx = new Proxy({} as Record<string, unknown>, {
-      get: (_, name: string) => (name === "fillText" ? (value: string) => void texts.push(value) : () => undefined),
+      get: (_, name: string) => call(name),
       set: (_, name: string, value: string) => {
         if (name === "font") fonts.push(value)
         return true
       },
     }) as unknown as CanvasRenderingContext2D
-    return { ctx, fonts, texts }
+    return { ctx, fonts, texts, fillArgs }
   }
   const sheet = sheetFor(around(3, 2))
   const art = sheetArt(sheet, VALUES)
@@ -339,6 +346,14 @@ describe("drawSheetBorder", () => {
     // at 60 px per inch (designators 10 px) the title labels (0.09 in) are 5 px and drawn; at 50 (8 px) nothing is
     expect(at(60, 1).sort((a, b) => a - b)).toEqual([5, 7, 8])
     expect(at(50, 1)).toEqual([])
+  })
+
+  test("a value too long for its cell is shortened with an ellipsis at its size, never squeezed", () => {
+    const long = sheetArt(sheet, { ...VALUES, project: "a very long project name that cannot fit in its title block cell" })
+    const { ctx, texts, fillArgs } = textRecorder()
+    drawSheetBorder(ctx, camera, SCREEN, long, 1)
+    expect(texts.some((t) => t.startsWith("a very") && t.endsWith("…"))).toBe(true)
+    expect(fillArgs.every((args) => args.length === 3)).toBe(true)
   })
 
   test("text too small to read is left out, and so is its font", () => {

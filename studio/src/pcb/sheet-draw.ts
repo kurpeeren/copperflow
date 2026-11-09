@@ -4,6 +4,7 @@ import { deviceWidth, hairlineAt, hairlineWidth, strokeBoxAt } from "./crisp.js"
 import { worldToScreen, type Box, type Camera, type Point, type Size } from "./geometry.js"
 import { schematicTheme } from "./schematic-theme.js"
 import type { SheetArt } from "./sheet.js"
+import { fitText } from "./pin-name-fit.js"
 import { devicePxFor, sharpenText, sheetLevelPx, textAnchorAt, textShown } from "./text-level.js"
 
 /** Text heights in inches. */
@@ -54,12 +55,13 @@ function setTextHeight(ctx: CanvasRenderingContext2D, camera: Camera, height: nu
   return true
 }
 
-/** One string at `at` in the current font, squeezed into `width` inches when given. */
+/** One string at `at` in the current font; when `width` inches are given, shortened with an ellipsis to fit them (or left out). */
 function text(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, at: Point, value: string, ratio: number, width?: number): void {
   if (!value) return
+  const shown = width === undefined ? value : fitText(value, width * camera.scale, (t) => ctx.measureText(t).width)
+  if (shown === null) return
   const p = textAnchorAt(worldToScreen(camera, size, at), ratio)
-  if (width === undefined) ctx.fillText(value, p.x, p.y)
-  else ctx.fillText(value, p.x, p.y, Math.max(1, width * camera.scale))
+  ctx.fillText(shown, p.x, p.y)
 }
 
 function drawZones(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, art: SheetArt, ratio: number): void {

@@ -117,7 +117,7 @@ describe("handles, border, lock badge and wire preview at ratio 1.1", () => {
   const onCentre = (v: number) => close((((v * RATIO) % 1) + 1) % 1, 0.5)
   const record = () => {
     const calls: { name: string; args: number[]; lineWidth: number }[] = []
-    const state: Record<string, unknown> = { lineWidth: 1 }
+    const state: Record<string, unknown> = { lineWidth: 1, measureText: (text: string) => ({ width: text.length * 6 }) }
     const ctx = new Proxy(state, {
       get: (t, name: string) => (name in t ? t[name] : (...args: number[]) => void calls.push({ name, args, lineWidth: t.lineWidth as number })),
       set: (t, name: string, value) => ((t[name] = value), true),

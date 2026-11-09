@@ -6,7 +6,7 @@ import type { SchematicLayout } from "../src/engine/schematic.js"
 import { drawSchematic, wireDrawnPx } from "../studio/src/pcb/schematic-draw.js"
 import { schematicTheme } from "../studio/src/pcb/schematic-theme.js"
 import { SCHEMATIC_ZOOM_REFERENCE_PX } from "../studio/src/pcb/units.js"
-import { fakeTextWidth, fontPx, recorder, type DrawCall } from "./helpers/fake-ctx.js"
+import { fakeInk, fakeTextWidth, fontPx, recorder, type DrawCall } from "./helpers/fake-ctx.js"
 
 const DEMO = new URL("../examples/usb-c-ldo", import.meta.url)
 const SIZE = { width: 1600, height: 900 }
@@ -92,7 +92,27 @@ describe("schematic text levels", () => {
   })
 })
 
+/** A chip with names on every side: three on top, three at the bottom, two left, two right; turned by `degrees`. */
+const turnedChip = (degrees: number) => `export default () => (
+  <board width="30mm" height="18mm">
+    <chip name="U1" schX={0} schY={0} schRotation={${degrees}}
+      pinLabels={{ pin1: "T1", pin2: "T2", pin3: "T3", pin4: "B1", pin5: "B2", pin6: "B3", pin7: "IN", pin8: "EN", pin9: "OUT", pin10: "PG" }}
+      pinSides={{ pin1: "top", pin2: "top", pin3: "top", pin4: "bottom", pin5: "bottom", pin6: "bottom", pin7: "left", pin8: "left", pin9: "right", pin10: "right" }} />
+  </board>
+)`
+const ALL_NAMES = ["T1", "T2", "T3", "B1", "B2", "B3", "IN", "EN", "OUT", "PG"]
+
 describe("pin names never overprint", () => {
+  test.each([0, 90, 180, 270])("a box turned %i° keeps every name that fits, on every side", (degrees) => {
+    const chip = buildDesign({ [FILE]: turnedChip(degrees) }, FILE).schematic
+    for (const scale of [80, 120, 200]) {
+      const { records } = draw(chip, scale, 1, 0)
+      expect([scale, ALL_NAMES.filter((n) => !textsOf(records).includes(n))]).toEqual([scale, []])
+      const boxes = writtenBoxes(records).filter((b) => ALL_NAMES.includes(b.text))
+      for (const [i, a] of boxes.entries()) for (const b of boxes.slice(i + 1)) expect([a.text, b.text, overlaps(a, b)]).toEqual([a.text, b.text, false])
+    }
+  })
+
   test("J1's bottom names, wider than their pitch, are drawn smaller and shortened rather than left out", () => {
     const { records } = draw(demo.schematic, 120, 1, 0)
     const texts = textsOf(records)
@@ -173,10 +193,10 @@ function writtenBoxes(records: readonly DrawCall[]): Written[] {
     if (r.name !== "fillText") continue
     const text = r.args[0] as string
     const width = fakeTextWidth(text, r.font)
-    // the ink of capitals and digits, as the fit counts it (schematic-text.ts NAME_INK_HEIGHT)
-    const height = fontPx(r.font) * 0.8
+    // the ink from the text's own baseline, by the fake font metrics
+    const ink = fakeInk(text, r.font, r.textBaseline)
     const x0 = r.textAlign === "left" ? at.x : r.textAlign === "right" ? at.x - width : at.x - width / 2
-    boxes.push({ text, x0, x1: x0 + width, y0: at.y - height / 2, y1: at.y + height / 2 })
+    boxes.push({ text, x0, x1: x0 + width, y0: at.y - ink.ascent, y1: at.y + ink.descent })
   }
   return boxes
 }

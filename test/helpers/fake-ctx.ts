@@ -9,6 +9,7 @@ export interface DrawCall {
   /** The font when the call was made, so a test can read the size a text was written at. */
   font: string
   textAlign: string
+  textBaseline: string
 }
 
 /** Width per character of the fake font, in font sizes. */
@@ -18,6 +19,19 @@ export const FAKE_CHAR_WIDTH = 0.6
 export function fakeTextWidth(text: string, font: string): number {
   const px = Number(/([\d.]+)px/.exec(font)?.[1] ?? 10)
   return text.length * px * FAKE_CHAR_WIDTH
+}
+
+/** How far below the anchor the alphabetic baseline lies for each textBaseline, in font sizes. */
+const BASELINE_DROP: Record<string, number> = { top: 0.8, middle: 0.3, bottom: -0.2 }
+
+/**
+ * The fake ink of a text, as measureText's actualBoundingBox gives it (from the anchor at the current textBaseline):
+ * capitals and digits 0.72 of the size above the baseline, descenders 0.22 below it.
+ */
+export function fakeInk(text: string, font: string, baseline: string): { ascent: number; descent: number } {
+  const px = Number(/([\d.]+)px/.exec(font)?.[1] ?? 10)
+  const drop = (BASELINE_DROP[baseline] ?? 0) * px
+  return { ascent: 0.72 * px - drop, descent: (/[gjpqy]/.test(text) ? 0.22 * px : 0) + drop }
 }
 
 /** The px size of a font string, such as 7 for "600 7px Segoe UI". */
@@ -33,8 +47,11 @@ export function recorder() {
       if (key in target) return target[key as keyof typeof target]
       return (...args: unknown[]) => {
         calls.push(String(key))
-        records.push({ name: String(key), args, strokeStyle: target.strokeStyle, fillStyle: target.fillStyle, globalAlpha: target.globalAlpha, lineWidth: target.lineWidth, font: target.font, textAlign: target.textAlign })
-        if (key === "measureText") return { width: fakeTextWidth(String(args[0]), target.font) }
+        records.push({ name: String(key), args, strokeStyle: target.strokeStyle, fillStyle: target.fillStyle, globalAlpha: target.globalAlpha, lineWidth: target.lineWidth, font: target.font, textAlign: target.textAlign, textBaseline: target.textBaseline })
+        if (key === "measureText") {
+          const ink = fakeInk(String(args[0]), target.font, target.textBaseline)
+          return { width: fakeTextWidth(String(args[0]), target.font), actualBoundingBoxAscent: ink.ascent, actualBoundingBoxDescent: ink.descent }
+        }
         return undefined
       }
     },
