@@ -71,6 +71,15 @@ Asked by the user after Task 3 (2026-11-09): a box over parts and wires selects 
 - Dragging a selected part or a selected wire moves the whole selection: parts move as today (wires follow, Task 5); a selected wire whose two end parts both move moves with them; a selected wire whose ends stay moves its corners by the drag with jogs at its ends (`dragSegment`'s fixed-end rule), all in one history entry. Arrow-key nudges do the same.
 - Tests: the selection helpers with mixed contents; box selection of wires in both directions; Ctrl+A; the Delete batch (dedupe, refusals); the mixed move edits.
 
+## Task 8: net labels and flags in the selection
+
+Asked by the user after Task 6 (2026-11-09): a box over parts, wires, net labels and ground or power flags, dragged, moves only the parts (and their wires); in EasyEDA everything in the box moves together.
+
+- Net labels and ground/power flags can be picked like parts and wires: click, Shift/Ctrl+click, the box (same direction rule), Ctrl+A, the Filter's labels row; drawn in the selected colour when selected.
+- Moving a selection moves its labels by the same offset in the same history entry: a hand-drawn label (the last corner of its pin-to-net wire) moves with its wire's end, through label drag's own edit (`labelDragEdits`), and its wire keeps right angles; an engine-placed label at a pin end moves only when its part moves (it sits on the pin), otherwise moving it writes a short pin-to-net wire with the label at the new place, as label drag does today.
+- Delete with labels selected removes a hand-drawn label's trace (the pin leaves the net); an engine-placed label cannot be deleted on its own and says why.
+- Tests: picking, box selection, the move and delete edits with labels in the mix.
+
 ## Task 7: browser check (controller)
 
 In Chrome on the demo: draw a wire with an off-axis corner and see right angles after the build, flip with Space; click, hover and double-click a wire; drag a segment and a corner (neighbours stretch, ends stay on pins); remove a corner; delete a wire and undo; reshape an engine-drawn wire; move a part and see its wires follow; the Filter row; a box over parts and wires, Shift+click a wire, Delete and move a mixed selection. Fix what fails before the round ends.
