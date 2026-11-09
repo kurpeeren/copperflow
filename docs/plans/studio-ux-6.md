@@ -59,6 +59,18 @@ New `studio/src/pcb/wire-shape.ts`, no React:
 - Rotation is not covered in this round.
 - Tests: one end moved (horizontal and vertical first segments), both ends moved, a pin-to-net wire, a read-only trace, the single history entry.
 
-## Task 6: browser check (controller)
+## Task 6: parts and wires in one selection
 
-In Chrome on the demo: draw a wire with an off-axis corner and see right angles after the build, flip with Space; click, hover and double-click a wire; drag a segment and a corner (neighbours stretch, ends stay on pins); remove a corner; delete a wire and undo; reshape an engine-drawn wire; move a part and see its wires follow; the Filter row. Fix what fails before the round ends.
+Asked by the user after Task 3 (2026-11-09): a box over parts and wires selects only the parts, and Shift+click does not add a wire. In EasyEDA a selection holds any objects. This task replaces Task 3's "parts or one wire, never both" rule.
+
+- The selection holds part names and wire ids together, each kept in pick order; the part counts and part commands keep meaning parts, and "Selected objects: N" counts both.
+- Shift+click or Ctrl+click toggles a wire in or out, as for parts. A plain click on a wire selects it alone.
+- A box selects wires too, by the same direction rule as parts: left to right takes wires fully inside the box, right to left takes wires it touches. The Filter's Wires row still decides whether wires can be picked. `Ctrl+A` on the schematic selects every part and every wire.
+- Properties with parts and wires: the counts by kind, and the actions that apply to all (Delete; Rotate, Lock and Unlock act on the parts).
+- `Delete` removes the selected parts and the selected wires' traces in one history entry. A wire whose trace ends on a part being removed is left to the part (core's `removePart` already removes its traces), so no edit is sent twice. Wires that cannot be deleted are named and the rest go ahead, as for locked parts.
+- Dragging a selected part or a selected wire moves the whole selection: parts move as today (wires follow, Task 5); a selected wire whose two end parts both move moves with them; a selected wire whose ends stay moves its corners by the drag with jogs at its ends (`dragSegment`'s fixed-end rule), all in one history entry. Arrow-key nudges do the same.
+- Tests: the selection helpers with mixed contents; box selection of wires in both directions; Ctrl+A; the Delete batch (dedupe, refusals); the mixed move edits.
+
+## Task 7: browser check (controller)
+
+In Chrome on the demo: draw a wire with an off-axis corner and see right angles after the build, flip with Space; click, hover and double-click a wire; drag a segment and a corner (neighbours stretch, ends stay on pins); remove a corner; delete a wire and undo; reshape an engine-drawn wire; move a part and see its wires follow; the Filter row; a box over parts and wires, Shift+click a wire, Delete and move a mixed selection. Fix what fails before the round ends.

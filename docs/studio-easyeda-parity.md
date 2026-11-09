@@ -161,7 +161,7 @@ What Studio does:
 
 - A wire is one trace's path from its first end through its corners (`schematicRouteHints`) to its last end, or a wire Studio draws on its own between two pins of a named net.
 - The wire saved is the wire previewed while drawing: every segment horizontal or vertical. `Space` flips the bend of the leg to the pointer.
-- A click on a wire selects the whole wire, drawn red, with square handles on its corners. Its ends sit on pins and labels and do not move: a trace always joins two things, so a wire end cannot be left loose, and one segment cannot be deleted on its own.
+- A click on a wire selects the whole wire, drawn red, with square handles on its corners. A selection holds parts and wires together: Shift or Ctrl + click adds or removes a wire, a box takes wires by the same direction rule as parts, `Ctrl+A` takes every part and wire, and Delete and dragging act on all of it. Its ends sit on pins and labels and do not move: a trace always joins two things, so a wire end cannot be left loose, and one segment cannot be deleted on its own.
 - Dragging a segment moves it across its own direction, and its neighbours stretch to stay attached. A segment that ends on a pin or label gets a new short segment there, so it never leaves the pin. Dragging a corner handle moves the corner, and both its segments stay horizontal or vertical. A double click on a corner handle removes the corner. A double click elsewhere on a wire opens Properties on its Wire section.
 - Dragging a wire Studio drew on its own turns it into a trace of its own between its two pins, with the new shape.
 - `Delete` removes the selected wire's trace. A wire Studio drew on its own has no trace to delete, and says so.
