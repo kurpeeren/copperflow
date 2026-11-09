@@ -12,7 +12,7 @@ import type { PartCommand } from "../shell/command-owners"
 import { useCommands } from "../shell/commands"
 import { ALIGN_COMMANDS, isAlignCommand, type AlignCommand } from "./align-rules"
 import { keyAction, keyInput, type KeyResult } from "./canvas-keys"
-import { deletePlan, type RemoveDrawings } from "./delete-plan"
+import { deletePlan, splitCopper, TWO_FILES_DELETE, type RemoveDrawings } from "./delete-plan"
 import { sendGroupEdit, type Layout } from "./group-edits"
 import { claimsKey, type BuildStatus } from "./key-burst"
 import { useKeyEdits, type KeyEdits, type KeyMove } from "./use-key-edits"
@@ -68,19 +68,21 @@ export interface PartKeysInput {
  */
 function removeSelection(input: PartKeysInput, fromKey: boolean): void {
   if (input.paused) return
-  // Copper lives in the layout file, so it goes in its own change; the rest of the selection goes as before.
-  const { copper } = input.selection
-  if (copper.length > 0 && input.copper) {
-    input.copper.remove(copper)
-    if (input.selection.total === copper.length) return
-  }
-  const rest = input.copper ? input.selection.withoutCopper(copper) : input.selection
+  // Copper lives in the layout file, so it goes in its own change, sent only once the rest (and its question) is settled.
+  const { copper, rest } = splitCopper(input.selection, input.copper !== undefined)
+  const removeCopper = () => (copper.length > 0 ? input.copper?.remove(copper) : undefined)
+  if (!rest) return removeCopper()
   const result = deletePlan(rest, input.blockerFor, input.wire?.removal, input.wire?.labelRemoval, input.drawings)
   if ("message" in result) return fromKey ? undefined : input.actions.notify(result.message)
   const { plan, wires, labels, drawings, question } = result
   if (question && !window.confirm(question)) return
+  removeCopper()
   const left = (current: Selection) => current.without(plan.parts).withoutWires(wires).withoutLabels(labels).withoutDrawings(drawings)
-  void sendGroupEdit(plan, input.actions).then((ok) => ok && input.onSelect(left))
+  void sendGroupEdit(plan, input.actions).then((ok) => {
+    if (!ok) return
+    input.onSelect(left)
+    if (copper.length > 0) input.actions.notify(TWO_FILES_DELETE)
+  })
 }
 
 /** Runs the canvas actions of a key press: fit, highlight, rotate, nudge, align, delete. */

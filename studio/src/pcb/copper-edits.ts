@@ -56,10 +56,12 @@ function carriedTrack(track: Track, delta: Point, vias: readonly Via[], moving: 
   return tidyTrack(carryPath(track.points, delta, { start: goes(first), end: goes(last) }))
 }
 
-/** An unselected track whose end is on a moving via: that end follows the via. */
-function followingTrack(track: Track, delta: Point, moving: readonly Via[]): Point[] {
+/** An unselected track whose end is on a moving via: that end follows the via. Any other track keeps its own points untouched. */
+function followingTrack(track: Track, delta: Point, moving: readonly Via[]): readonly Point[] {
   const last = track.points.length - 1
-  return tidyTrack(track.points.map((p, i) => ((i === 0 || i === last) && moving.some((via) => onVia(via, p)) ? shifted(p, delta) : p)))
+  const follows = (p: Point, i: number) => (i === 0 || i === last) && moving.some((via) => onVia(via, p))
+  if (!track.points.some(follows)) return track.points
+  return tidyTrack(track.points.map((p, i) => (follows(p, i) ? shifted(p, delta) : p)))
 }
 
 /**
@@ -72,7 +74,7 @@ export function moveCopper(records: CopperRecords, ids: readonly string[], delta
   if (delta.x === 0 && delta.y === 0) return { edits: [], shapes: NO_SHAPES, skipped }
   const chosen = new Set(ids)
   const vias = movingVias(records, chosen, skipped)
-  const tracks = new Map<string, Point[]>()
+  const tracks = new Map<string, readonly Point[]>()
   for (const track of records.tracks) {
     if (chosen.has(track.id) && track.locked) skipped.push(`${track.id} is locked`)
     const path = chosen.has(track.id) && !track.locked ? carriedTrack(track, delta, records.vias, vias, onPad) : followingTrack(track, delta, vias)
@@ -81,7 +83,7 @@ export function moveCopper(records: CopperRecords, ids: readonly string[], delta
   const viaShapes = new Map(vias.map((via) => [via.id, shifted(via.at, delta)]))
   const edits: LayoutEdit[] = [
     ...[...viaShapes].map(([id, at]): LayoutEdit => ({ kind: "setVia", id, at })),
-    ...[...tracks].map(([id, points]): LayoutEdit => ({ kind: "setTrack", id, points })),
+    ...[...tracks].map(([id, points]): LayoutEdit => ({ kind: "setTrack", id, points: [...points] })),
   ]
   return { edits, shapes: { tracks, vias: viaShapes }, skipped }
 }

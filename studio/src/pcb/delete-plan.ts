@@ -10,6 +10,19 @@ import { nameList, removeEach, removeQuestion, wireWords, type GroupEdit } from 
 import type { LabelsRemoval } from "./label-selection.js"
 import type { WiresRemoval } from "./wire-actions.js"
 
+/** What Delete says when it removed copper and other things together: two history entries, one per file. */
+export const TWO_FILES_DELETE = "Deleted in two changes: the copper in the layout file, the rest in the circuit file."
+
+/**
+ * Delete's split on the PCB: the copper (removed through the layout file) and the rest of the selection, undefined when
+ * nothing else is selected. The rest's plan, and the question it asks, come first; the copper goes only after it.
+ */
+export function splitCopper(selection: Selection, copperOn: boolean): { copper: readonly string[]; rest: Selection | undefined } {
+  if (!copperOn) return { copper: [], rest: selection }
+  const rest = selection.withoutCopper(selection.copper)
+  return { copper: selection.copper, rest: rest.total === 0 ? undefined : rest }
+}
+
 /** What Delete says with nothing selected. */
 export const NOTHING_TO_DELETE = "Select a part or a wire first."
 

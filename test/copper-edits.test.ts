@@ -52,6 +52,17 @@ describe("moveCopper", () => {
     expect(via).toMatchObject({ edits: [], skipped: ["v0001 has the locked track t0002 on it"] })
   })
 
+  test("a track with no end on the moving via gets no edit, even when its record is not tidy", () => {
+    const untidy: CopperRecords = {
+      ...records(),
+      tracks: [...records().tracks, { id: "t0004", layer: "top", points: [p(0, 0), p(1, 0), p(2.123456, 0)], locked: true }],
+    }
+    const result = moveCopper(untidy, ["v0001"], p(0, 2), onPad)
+    expect(result.edits.map((edit) => ("id" in edit ? edit.id : ""))).toEqual(["v0001", "t0001", "t0002"])
+    expect(result.skipped).toEqual([])
+    expect(moveCopper(untidy, ["t0003"], p(1, 0), onPad).edits.map((edit) => ("id" in edit ? edit.id : ""))).toEqual(["t0003"])
+  })
+
   test("no move, no edits", () => {
     expect(moveCopper(records(), ["v0001"], p(0, 0), onPad).edits).toEqual([])
   })
