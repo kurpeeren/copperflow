@@ -8,7 +8,7 @@ import type { Actions } from "../App"
 import { keyAction, keyInput } from "./canvas-keys"
 import type { Camera, Point } from "./geometry"
 import { joinedNet, labelNameFor, nameProblem, pendingLabel, placeLabelEdits, placeSummary, type LabelTool, type PendingLabel } from "./label-palette"
-import { labelRenameEdits } from "./label-rename"
+import { labelRenameEdits, renameQuestion } from "./label-rename"
 import { useDisarmKey } from "./use-disarm-key"
 import { pinAt } from "./wire-tool"
 
@@ -190,8 +190,12 @@ export function useLabelPalette(input: Input) {
       if (editing?.rename) setEditing(null)
       return clicks.press(event, world, disarm)
     },
-    /** Opens the name input at the label, holding its name, to rename its net. */
-    rename: (label: NetLabel) => setEditing({ at: label.at, initial: label.text, rename: label }),
+    /** Opens the name input at the label, holding its name, to rename its net; a ground or power flag asks first. */
+    rename: (label: NetLabel) => {
+      const question = renameQuestion(input.circuit, label)
+      if (question && !window.confirm(question)) return
+      setEditing({ at: label.at, initial: label.text, rename: label })
+    },
     editing,
     cancelName: () => clicks.open(null),
     submitName: (text: string) => clicks.submitName(text, editing),

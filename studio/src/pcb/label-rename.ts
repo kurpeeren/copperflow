@@ -17,6 +17,17 @@ const HINTS = "schematicRouteHints"
 
 const namesNet = (selector: string | undefined, name: string): boolean => NET_SELECTOR.exec(selector?.trim() ?? "")?.[1] === name
 
+/** The traces written to `net.<name>`, which a rename writes again. */
+const tracesTo = (source: SourceCircuit, name: string): TraceInfo[] => source.model.traces.filter((trace) => namesNet(trace.from, name) || namesNet(trace.to, name))
+
+/** Why a pin end stops the rename: its part is locked, or the Studio cannot find the pin, which might be a locked part's. */
+function pinBlocker(design: Design, end: string, old: string, locked: ReadonlySet<string>): string | undefined {
+  if (end.trim().startsWith("net.")) return undefined
+  const part = pinOfSelector(design, end)?.component
+  if (part === undefined) return `${end} is not a pin the Studio can find; rename ${old} in the code`
+  return locked.has(part) ? `${part} is locked` : undefined
+}
+
 /** Why this trace cannot be written again under the new name, or undefined when it can. */
 function traceBlocker(design: Design, trace: TraceInfo, old: string, locked: ReadonlySet<string>): string | undefined {
   const inCode = `rename ${old} in the code`
@@ -24,8 +35,7 @@ function traceBlocker(design: Design, trace: TraceInfo, old: string, locked: Rea
   if (trace.parent !== undefined && trace.parent !== "board") return `The trace on line ${trace.line} is inside <${trace.parent}>; ${inCode}`
   const expression = Object.entries(trace.props).some(([key, prop]) => prop.literal === undefined && !(key === HINTS && trace.schematicRouteHints))
   if (expression) return `The trace on line ${trace.line} has an expression; ${inCode}`
-  const part = [trace.from, trace.to].flatMap((end) => (end === undefined ? [] : [pinOfSelector(design, end)?.component ?? ""])).find((name) => locked.has(name))
-  return part === undefined ? undefined : `${part} is locked`
+  return [trace.from, trace.to].map((end) => (end === undefined ? undefined : pinBlocker(design, end, old, locked))).find((why) => why !== undefined)
 }
 
 /** The same trace with its net end renamed, keeping its corners and its other literal props. */
@@ -57,7 +67,7 @@ export function labelRenameEdits(design: Design, source: SourceCircuit, label: N
   const summary = `Rename net ${old} to ${name}`
   if (name === old) return { edits: [], summary }
   if (design.circuit.nets.find((net) => net.id === label.net)?.names.includes(name)) return { blocked: `${old} and ${name} already name this net` }
-  const traces = source.model.traces.filter((trace) => namesNet(trace.from, old) || namesNet(trace.to, old))
+  const traces = tracesTo(source, old)
   if (traces.length === 0) return { blocked: `${old} is not written on a trace the Studio can change; rename it in the code` }
   const blocker = traces.map((trace) => traceBlocker(design, trace, old, locked)).find((why) => why !== undefined)
   if (blocker) return { blocked: blocker }
@@ -65,4 +75,14 @@ export function labelRenameEdits(design: Design, source: SourceCircuit, label: N
   const adds = traces.map((trace) => renamed(trace, old, name))
   const joins = otherNames(design, label).includes(name) ? { joins: name } : {}
   return { edits: [...removes, ...adds], summary, ...joins }
+}
+
+/**
+ * What to ask before a double click renames the net of a ground or power flag, which every GND or VCC on the sheet
+ * shares: "Rename the GND net everywhere (3 connections)?". A plain net label asks nothing.
+ */
+export function renameQuestion(source: SourceCircuit, label: NetLabel): string | undefined {
+  if (label.style === "label") return undefined
+  const count = tracesTo(source, label.text).length
+  return `Rename the ${label.text} net everywhere (${count} ${count === 1 ? "connection" : "connections"})?`
 }

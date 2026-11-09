@@ -4,7 +4,7 @@ import { applyEdits } from "../src/core/edit.js"
 import type { Edit } from "../src/core/types.js"
 import { buildDesign, type Design } from "../src/engine/design.js"
 import type { NetLabel } from "../src/engine/schematic.js"
-import { labelRenameEdits } from "../studio/src/pcb/label-rename.js"
+import { labelRenameEdits, renameQuestion } from "../studio/src/pcb/label-rename.js"
 
 const FILE = "main.circuit.tsx"
 const wrap = (body: string) => `export default () => (
@@ -113,9 +113,36 @@ describe("renaming a net from its label", () => {
     expect(labelRenameEdits(design, model, labelNamed(design, "GND"), "AGND", NONE)).toEqual({ blocked: expect.stringContaining("read-only") })
   })
 
+  test("a trace whose pin the Studio cannot find blocks the rename, as a locked part would", () => {
+    const { design, model } = setup(DIRECT)
+    const [trace] = model.model.traces
+    if (!trace) throw new Error("no trace")
+    const lost = { model: { ...model.model, traces: [{ ...trace, from: ".Q9 > .pin1" }] } }
+    expect(labelRenameEdits(design, lost, labelNamed(design, "GND"), "AGND", NONE)).toEqual({ blocked: expect.stringContaining(".Q9 > .pin1") })
+  })
+
   test("a name written on no trace has to be renamed in the code", () => {
     const { design, model } = setup(DIRECT)
     const bare = { model: { ...model.model, traces: [] } }
     expect(labelRenameEdits(design, bare, labelNamed(design, "GND"), "AGND", NONE)).toEqual({ blocked: expect.stringContaining("in the code") })
+  })
+})
+
+describe("the question before a ground or power flag renames its net", () => {
+  test("asks to rename the net everywhere, with the connections counted", () => {
+    const one = setup(DIRECT)
+    expect(renameQuestion(one.model, labelNamed(one.design, "GND"))).toBe("Rename the GND net everywhere (1 connection)?")
+    const two = setup(TWO)
+    expect(renameQuestion(two.model, labelNamed(two.design, "GND"))).toBe("Rename the GND net everywhere (2 connections)?")
+  })
+
+  test("a power flag asks too", () => {
+    const { design, model } = setup(DRAWN)
+    expect(renameQuestion(model, labelNamed(design, "VCC"))).toBe("Rename the VCC net everywhere (1 connection)?")
+  })
+
+  test("a plain net label asks nothing", () => {
+    const { design, model } = setup(DIRECT)
+    expect(renameQuestion(model, { ...labelNamed(design, "GND"), style: "label" })).toBeUndefined()
   })
 })

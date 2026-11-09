@@ -95,16 +95,23 @@ The window is laid out like a desktop EDA editor:
 - The strip at the bottom opens Library, Log (the history, with undo), DRC (the build's errors and
   warnings, which are ringed on the canvas; click one to go to it) and Find Results.
 
-Drag parts on the PCB (they snap to a 0.1, 0.5 or 1 mm grid), press R to rotate and Delete to
-remove, scroll to zoom, drag with the right (or middle) button to pan, lock parts, change values in Properties,
-draw a selection box by dragging the background (left to right takes the parts inside it, right to left the
-parts it touches, Shift or Ctrl adds), drag a selected part to move the whole selection, double click a part
-to edit it in Properties,
-move symbols in the schematic and draw wires as in KiCad (click a free pin, or press W over a pin,
-click the sheet for corners on the grid, then click a pin, a net label or a wire; Esc cancels),
-leave marks for the agent (Place → Note box, then drag a box) and undo changes.
+The mouse, in both views:
+
+- Click a part to select it; Shift or Ctrl and click adds it or takes it out.
+- Drag the background to draw a selection box: left to right takes the parts inside it, right to left
+  the parts it touches; with Shift or Ctrl held it adds to the selection.
+- Drag a part to move it, or a selected part to move the whole selection; parts snap to the grid
+  (0.1, 0.5 or 1 mm on the PCB).
+- Drag with the right (or middle) button to pan, and scroll to zoom.
+- Double click a part to edit it in Properties.
+- Place → Note box, then drag a box, leaves a note for the agent.
+
+Press R to rotate and Delete to remove, lock parts, change values in Properties, draw wires in the
+schematic as in KiCad (click a free pin, or press W over a pin, click the sheet for corners on the grid,
+then click a pin, a net label or a wire; Esc cancels) and undo changes.
 Drag a net label or a ground or power symbol in the schematic and its wire follows, written as `schematicRouteHints` on the trace (Esc cancels the drag).
-The Place tools in the schematic toolbar (Net label, Ground flag, Power flag) put a label on a pin you click, written as a trace with one corner, and stay armed until Esc; Tab names a label before you click, and a double click on a label renames its net.
+The Place tools in the schematic toolbar (Net label, Ground flag, Power flag) put a label on a pin you click, written as a trace with one corner, and stay armed until Esc (while one is armed, dragging the background pans); Tab names a label before you click.
+A double click on a net label renames its net everywhere; on a ground or power flag it asks first.
 Design → Highlight net lights every net of the selected part.
 
 Keys, ignored while you type in a field:
