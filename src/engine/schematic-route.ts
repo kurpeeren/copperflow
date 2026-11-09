@@ -171,6 +171,8 @@ class Router {
   private markEnd(ends: Ends, x: number, y: number, flag: number): void {
     const index = this.grid.indexOf(x, y)
     if (index < 0 || !holds(ends.box, x, y) || ((this.grid.flags[index] as number) & flag) !== 0) return
+    // Where the two groups' wires already cross, a path of one point would draw nothing: end beside it instead.
+    if (flag === TARGET && ((this.grid.flags[index] as number) & SOURCE) !== 0) return
     this.grid.patch(x, y, flag)
     const [lx, ly] = [x - ends.box.minX, y - ends.box.minY]
     if (flag === SOURCE) ends.sources.push(ly * (ends.box.maxX - ends.box.minX + 1) + lx)

@@ -223,6 +223,16 @@ describe("the router on its own", () => {
     expect(inside(points[points.length - 1] as Point, s, 0.1)).toBe(false)
   })
 
+  test("two groups of one net whose wires cross are joined by a short wire, not a warning", () => {
+    const boxes = [box(-0.5, -0.2, 0.5, 0.2, ["A.p"]), box(1.5, -1.4, 2.5, -1, ["C.p"])]
+    const spots = new Map([["A.p", spot(0.5, 0, "right")], ["C.p", spot(2, -1, "top")]])
+    const across = { wire: { id: "a", net: "n", points: [{ x: 0.5, y: 0 }, { x: 3, y: 0 }] }, pins: ["A.p"] }
+    const down = { wire: { id: "c", net: "n", points: [{ x: 2, y: -1 }, { x: 2, y: 1 }] }, pins: ["C.p"] }
+    const routed = routeWires({ boxes, spots }, [across, down], [{ id: "w", net: "n", from: "A.p", to: "C.p" }])
+    expect(routed.diagnostics).toEqual([])
+    expect(routed.wires[0]?.points.length).toBeGreaterThanOrEqual(2)
+  })
+
   test("a search that runs past its cap falls back with the warning", () => {
     const boxes = [box(-0.5, -0.2, 0.5, 0.2, ["A.p"]), box(4, -0.2, 5, 0.2, ["B.p"]), box(2, -1, 2.4, 1)]
     const spots = new Map([["A.p", spot(0.5, 0, "right")], ["B.p", spot(4, 0, "left")]])
