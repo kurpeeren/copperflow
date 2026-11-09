@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type RefObject } from "react"
 import { toLocal, type Moving } from "./canvas-common"
 import { screenToWorld, type Camera, type Point, type Size } from "./geometry"
-import { gestureSession, movePlan, type Commit, type Gesture, type GestureInput } from "./gestures"
+import { cancelsOnEscape, gestureLost, gestureSession, movePlan, type Commit, type Gesture, type GestureInput } from "./gestures"
 import { sendGroupEdit } from "./group-edits"
 import { opensOnDoubleClick, type Press } from "./press"
 
@@ -26,13 +26,10 @@ function usePendingMove(input: GestureInput): { pending: Moving | undefined; com
   return { pending: visible, commit }
 }
 
-/** The drags Esc drops: a net label's and a wire's reshape. */
-const ESC_CANCELS: ReadonlySet<Gesture["kind"]> = new Set(["label", "reshape"])
-
-/** Esc while a net label or a wire is dragged drops the drag; captured and stopped, so it does not also clear the selection or stop wiring. */
+/** Esc while a net label or a wire is dragged drops the drag (cancelsOnEscape); captured and stopped, so it does not also clear the selection or stop wiring. */
 function useEscapeCancelsDrag(kind: Gesture["kind"] | undefined, cancel: () => void): void {
   useEffect(() => {
-    if (!kind || !ESC_CANCELS.has(kind)) return
+    if (!cancelsOnEscape(kind)) return
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return
       event.stopPropagation()
@@ -59,7 +56,12 @@ export function useCanvasGestures(input: GestureInput) {
     [gesture, pending],
   )
   useEscapeCancelsDrag(gesture?.kind, session.cancel)
-  return { gesture, moving, pending, press: session.press, move: session.move, release: session.release, cancel: session.cancel }
+  // Pressing W during a wire's drag takes its drag tools away: the drag is dropped at once, so the wire goes back.
+  useEffect(() => {
+    if (gesture && gestureLost(gesture, input.wires)) session.cancel()
+  }, [gesture, input.wires, session])
+  const { press, move, release, cancel, wireBeforeDoubleClick } = session
+  return { gesture, moving, pending, press, move, release, cancel, wireBeforeDoubleClick }
 }
 
 /** The pointer: grabbing while panning, move or not-allowed while dragging, crosshair for a tool, else pointer or default. */

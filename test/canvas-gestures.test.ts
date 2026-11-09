@@ -1,6 +1,19 @@
 import { afterEach, describe, expect, test, vi } from "vitest"
 import type { NetLabel } from "../src/engine/schematic.js"
-import { endGesture, followGesture, gestureSession, movePlan, startGesture, targetAt, type Gesture, type GestureInput, type GestureWires } from "../studio/src/pcb/gestures.js"
+import {
+  cancelsOnEscape,
+  doubleClickAction,
+  endGesture,
+  followGesture,
+  gestureLost,
+  gestureSession,
+  movePlan,
+  startGesture,
+  targetAt,
+  type Gesture,
+  type GestureInput,
+  type GestureWires,
+} from "../studio/src/pcb/gestures.js"
 import { sendGroupEdit } from "../studio/src/pcb/group-edits.js"
 import { moveBlocker } from "../studio/src/pcb/positions.js"
 import { worldToScreen, type Camera, type PartBox, type Point } from "../studio/src/pcb/geometry.js"
@@ -41,15 +54,22 @@ interface CanvasOptions {
 /** A canvas with R1 and R2: what the steps told it, and the selection they left. */
 function canvas(start: readonly string[] = [], options: CanvasOptions = {}) {
   const calls: string[] = []
-  const state = { selection: options.wire ? Selection.none.onlyWire(options.wire) : Selection.none.add(start), camera: CAMERA }
+  const state = {
+    selection: options.wire ? Selection.none.onlyWire(options.wire) : Selection.none.add(start),
+    camera: CAMERA,
+    /** Wire W's points as shown; a build can change them, or take the wire away. */
+    wirePoints: W_POINTS as readonly Point[] | undefined,
+    /** The drag tools go while the W tool is wiring. */
+    noDrag: options.noDrag ?? false,
+  }
   const commits: { names: readonly string[]; offset: Point }[] = []
   const shapes: { id: string; path: readonly Point[] }[] = []
   const drag: GestureWires["drag"] = {
-    points: (id) => (id === "wire:W" ? W_POINTS : undefined),
+    points: (id) => (id === "wire:W" ? state.wirePoints : undefined),
     blocker: () => options.wireBlocker ?? null,
     commit: (id, path) => void shapes.push({ id, path }),
   }
-  const wires: GestureWires = options.noDrag ? { at: wireAt } : { at: wireAt, drag }
+  const wires = (): GestureWires => (state.noDrag ? { at: wireAt } : { at: wireAt, drag })
   const menus: { target: ContextTarget; at: Point }[] = []
   const actions = {
     notify: (text: string) => void calls.push(`notify ${text}`),
@@ -72,7 +92,7 @@ function canvas(start: readonly string[] = [], options: CanvasOptions = {}) {
     blockerFor: (name) => (options.locked?.includes(name) ? `${name} is locked` : null),
     tool: { armed: options.armed ?? null, disarm: () => void calls.push("disarm") },
     onContextMenu: (target, at) => void menus.push({ target, at }),
-    wires,
+    wires: wires(),
     ...(options.filter ? { filter: options.filter } : {}),
   })
   /** Presses at `from`, moves through `path` and lets go at the last point, as the hook does. */
@@ -84,7 +104,7 @@ function canvas(start: readonly string[] = [], options: CanvasOptions = {}) {
     return started
   }
   const session = () => gestureSession(() => ({ input: input(), commit: (names, offset) => void commits.push({ names, offset }) }), () => undefined)
-  return { state, calls, commits, shapes, menus, gesture, session }
+  return { state, calls, commits, shapes, menus, gesture, session, input }
 }
 
 afterEach(() => vi.unstubAllGlobals())
@@ -251,6 +271,53 @@ describe("reshaping a wire", () => {
     expect(c.menus).toEqual([])
   })
 
+  test("a build that changes the wire during the drag: the release writes nothing and says why, once", () => {
+    const c = canvas()
+    const session = c.session()
+    session.press(press(), screen(1, 3))
+    session.move(screen(1, 3.6), 1)
+    c.state.wirePoints = [{ x: -1, y: 5 }, { x: -1, y: 2 }, { x: 7, y: 2 }, { x: 7, y: 5 }]
+    session.move(screen(1, 3.7), 1)
+    session.release(screen(1, 3.7))
+    expect(c.shapes).toEqual([])
+    expect(c.calls).toEqual(["notify The wire changed while you dragged it; try again"])
+  })
+
+  test("a wire gone from the sheet during the drag is not written either", () => {
+    const c = canvas()
+    const session = c.session()
+    session.press(press(), screen(1, 3))
+    session.move(screen(1, 3.6), 1)
+    c.state.wirePoints = undefined
+    session.release(screen(1, 3.6))
+    expect(c.shapes).toEqual([])
+    expect(c.calls).toEqual(["notify The wire changed while you dragged it; try again"])
+  })
+
+  test("W pressed during the drag takes the drag tools away: the drag is dropped, so the wire goes back, and nothing is written", () => {
+    const c = canvas()
+    const session = c.session()
+    session.press(press(), screen(1, 3))
+    session.move(screen(1, 3.6), 1)
+    const dragged = startGesture(c.input(), press(), screen(1, 3))
+    c.state.noDrag = true
+    if (!dragged) throw new Error("no gesture")
+    expect(gestureLost(dragged, c.input().wires)).toBe(true)
+    expect(session.move(screen(1, 3.7), 1)).toBe(false)
+    session.release(screen(1, 3.7))
+    expect(c.shapes).toEqual([])
+    expect(c.calls).toEqual([])
+  })
+
+  test("only a reshape is lost with the drag tools; other gestures and a reshape that keeps them go on", () => {
+    const c = canvas()
+    const reshape = startGesture(c.input(), press(), screen(1, 3))
+    const part = startGesture(c.input(), press(), screen(1))
+    if (!reshape || !part) throw new Error("no gesture")
+    expect(gestureLost(reshape, c.input().wires)).toBe(false)
+    expect(gestureLost(part, { at: wireAt })).toBe(false)
+  })
+
   test("a right press while parts are dragged does not cancel the part drag", () => {
     const c = canvas()
     const session = c.session()
@@ -259,6 +326,53 @@ describe("reshaping a wire", () => {
     expect(session.move(screen(2), 3)).toBe(true)
     session.release(screen(2))
     expect(c.commits).toEqual([{ names: ["R1"], offset: { x: 1, y: 0 } }])
+  })
+})
+
+describe("what a double click does", () => {
+  const label: NetLabel = { id: "label:net.GND:R2.pin2", net: "net.GND", text: "GND", at: { x: 9, y: 0 }, side: "right", style: "ground" }
+  const handle = { id: "wire:W", index: 2 }
+  const wire = { kind: "wire", id: "wire:W" } as const
+  const rows: [string, Parameters<typeof doubleClickAction>[0], ReturnType<typeof doubleClickAction>][] = [
+    ["on a corner handle of a wire selected before it began: removes that corner", { busy: false, handle, target: wire, selectedBefore: "wire:W" }, { kind: "removeCorner", id: "wire:W", index: 2 }],
+    ["on a corner handle of a wire the first click selected: Properties on that wire", { busy: false, handle, target: wire, selectedBefore: undefined }, { kind: "properties", target: wire }],
+    ["on a handle while another wire was selected before: Properties", { busy: false, handle, target: wire, selectedBefore: "wire:other" }, { kind: "properties", target: wire }],
+    ["elsewhere on a wire: Properties on its Wire section", { busy: false, handle: undefined, target: wire, selectedBefore: "wire:W" }, { kind: "properties", target: wire }],
+    ["on a part: Properties", { busy: false, handle: undefined, target: { kind: "part", name: "R1" }, selectedBefore: undefined }, { kind: "properties", target: { kind: "part", name: "R1" } }],
+    ["on a net label: renames its net", { busy: false, handle: undefined, target: { kind: "label", label }, selectedBefore: undefined }, { kind: "rename", label }],
+    ["on empty canvas: nothing", { busy: false, handle: undefined, target: { kind: "canvas" }, selectedBefore: undefined }, { kind: "none" }],
+    ["with a tool armed or wiring: nothing, even on a handle", { busy: true, handle, target: wire, selectedBefore: "wire:W" }, { kind: "none" }],
+  ]
+  test.each(rows)("%s", (_, input, expected) => {
+    expect(doubleClickAction(input)).toEqual(expected)
+  })
+
+  test("the session remembers which wire was selected before the double click's first press", () => {
+    const fresh = canvas()
+    const session = fresh.session()
+    expect(session.wireBeforeDoubleClick()).toBeUndefined()
+    for (let click = 0; click < 2; click++) {
+      session.press(press(), screen(7, 3))
+      session.release(screen(7, 3))
+    }
+    expect(fresh.state.selection.wire).toBe("wire:W")
+    expect(session.wireBeforeDoubleClick()).toBeUndefined()
+    const selected = canvas([], { wire: "wire:W" })
+    const again = selected.session()
+    for (let click = 0; click < 2; click++) {
+      again.press(press(), screen(7, 3))
+      again.release(screen(7, 3))
+    }
+    expect(again.wireBeforeDoubleClick()).toBe("wire:W")
+  })
+})
+
+describe("Esc during a gesture", () => {
+  test("drops a net label's drag and a wire's reshape, and leaves the others to Esc's own work", () => {
+    expect(cancelsOnEscape("label")).toBe(true)
+    expect(cancelsOnEscape("reshape")).toBe(true)
+    for (const kind of ["drag", "box", "pan", "note", "zoom"] as const) expect(cancelsOnEscape(kind)).toBe(false)
+    expect(cancelsOnEscape(undefined)).toBe(false)
   })
 })
 

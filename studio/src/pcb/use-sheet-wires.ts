@@ -17,6 +17,14 @@ import { handleUnder, withShapes } from "./wire-drag"
 import { wireAt, wireReachPx, type WireLine } from "./wire-hit"
 import { useWireReshape } from "./use-wire-reshape"
 
+/** The selected wire's corner handles, for a double click (gestures.ts doubleClickAction). */
+export interface SheetCorners {
+  /** The handle under `world`, when a pick made with `picking` may take a wire. */
+  at(world: Point, picking: PickContext): { id: string; index: number } | undefined
+  /** Removes corner `index` of the wire's shape as shown, in one history entry. */
+  drop(id: string, index: number): void
+}
+
 /** What the part keys ask of a selected wire: its net for Highlight net, and its removal for Delete. */
 export interface WireKeys {
   net(id: string): string | undefined
@@ -71,13 +79,12 @@ export function useSheetWires(input: SheetWiresInput) {
     const at = (world: Point) => (camera ? wireAt(wires, world, wireReachPx(camera.scale) / camera.scale) : undefined)
     return wiring ? { at } : { at, drag: { points: (id) => lineOf(id)?.points, blocker, commit } }
   }, [wires, camera, lineOf, blocker, commit, wiring])
-  /** A double click on a corner handle of the selected wire removes that corner; false when it is not on one. */
-  const dropCornerAt = (world: Point, picking: PickContext): boolean => {
-    const handle = camera ? handleUnder(hits.drag, picking, world, camera.scale) : undefined
-    if (handle) dropCorner(handle.id, handle.index)
-    return handle !== undefined
+  /** The selected wire's corner handles for a double click: the one under a point, and removing a corner. */
+  const corners: SheetCorners = {
+    at: (world, picking) => (camera ? handleUnder(hits.drag, picking, world, camera.scale) : undefined),
+    drop: dropCorner,
   }
   const selected = useMemo(() => lineOf(selection.wire), [lineOf, selection.wire])
   const keys = useWireCommands(input)
-  return { hits, selected, lineOf, keys, pending, dropCornerAt }
+  return { hits, selected, lineOf, keys, pending, corners }
 }

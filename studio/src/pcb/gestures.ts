@@ -120,6 +120,36 @@ export function targetAt(boxes: readonly PartBox[], labels: GestureLabels | unde
   return first ?? { kind: "canvas" }
 }
 
+/** What a double click does: remove a corner, open Properties on a part or a wire, rename a label's net, or nothing. */
+export type DoubleClick =
+  | { kind: "removeCorner"; id: string; index: number }
+  | { kind: "properties"; target: Extract<ContextTarget, { kind: "part" | "wire" }> }
+  | { kind: "rename"; label: NetLabel }
+  | { kind: "none" }
+
+export interface DoubleClickInput {
+  /** A canvas tool is armed, or the W tool is wiring or drawing: the double click is the tool's. */
+  busy: boolean
+  /** The selected wire's corner handle under the pointer (wire-drag.ts handleUnder). */
+  handle: { id: string; index: number } | undefined
+  /** What else is under the pointer (targetAt). */
+  target: ContextTarget
+  /** The wire selected before the double click's first press (gestureSession). */
+  selectedBefore: string | undefined
+}
+
+/**
+ * A double click on a corner handle removes that corner only when its wire was selected before the double click
+ * began. On a wire the first click selected it opens Properties, as anywhere else on a wire or on a part: wires are
+ * double-clicked to pick them. On a net label it renames the label's net.
+ */
+export function doubleClickAction({ busy, handle, target, selectedBefore }: DoubleClickInput): DoubleClick {
+  if (busy) return { kind: "none" }
+  if (handle) return handle.id === selectedBefore ? { kind: "removeCorner", ...handle } : { kind: "properties", target: { kind: "wire", id: handle.id } }
+  if (target.kind === "part" || target.kind === "wire") return { kind: "properties", target }
+  return target.kind === "label" ? { kind: "rename", label: target.label } : { kind: "none" }
+}
+
 /** What a pick on this canvas is made with: its selection and its armed tool. */
 const pickContext = (input: GestureInput): PickContext => ({ selection: input.selection, armed: input.tool.armed, layers: input.layers, filter: input.filter })
 
@@ -214,7 +244,7 @@ export function endGesture(input: GestureInput, done: Gesture, camera: Camera, c
     return done.blocker ? input.actions.notify(done.blocker) : input.labels?.commit(done.label, done.at)
   }
   if (done.kind === "drag") return endDrag(input, done, commit)
-  if (done.kind === "reshape") return endReshape(input.wires?.drag, done)
+  if (done.kind === "reshape") return endReshape(input.wires?.drag, done, (text) => input.actions.notify(text))
   if (done.kind === "pan") {
     if (done.moved) return
     if (done.still === "menu") input.onContextMenu(done.target, at)
@@ -269,9 +299,23 @@ function endNote(input: GestureInput, done: Extract<Gesture, { kind: "note" }>, 
   if (text) void input.actions.mark(text, { view: input.view, x: round((a.x + b.x) / 2), y: round((a.y + b.y) / 2) })
 }
 
-/** Whether a move's `buttons` end the gesture without finishing it: none held (the release was lost), or the right button during a reshape. */
-function endsUnfinished(gesture: Gesture, buttons: number): boolean {
-  return buttons === 0 || (gesture.kind === "reshape" && rightButtonHeld(buttons))
+/** A reshape whose wires lost their drag tools (the W tool started wiring) cannot go on: it is dropped, and the wire goes back. */
+export function gestureLost(gesture: Gesture, wires: GestureWires | undefined): boolean {
+  return gesture.kind === "reshape" && !wires?.drag
+}
+
+/** The drags Esc drops: a net label's and a wire's reshape. Any other gesture leaves Esc to its own work. */
+export const ESC_CANCELS: ReadonlySet<Gesture["kind"]> = new Set(["label", "reshape"])
+
+export const cancelsOnEscape = (kind: Gesture["kind"] | undefined): boolean => kind !== undefined && ESC_CANCELS.has(kind)
+
+/**
+ * Whether a move ends the gesture without finishing it: no button held (the release was lost), the right button
+ * during a reshape, or a reshape that lost its drag tools.
+ */
+function endsUnfinished(gesture: Gesture, buttons: number | undefined, wires: GestureWires | undefined): boolean {
+  if (gestureLost(gesture, wires)) return true
+  return buttons !== undefined && (buttons === 0 || (gesture.kind === "reshape" && rightButtonHeld(buttons)))
 }
 
 /**
@@ -282,24 +326,31 @@ function endsUnfinished(gesture: Gesture, buttons: number): boolean {
  */
 export function gestureSession(read: () => { input: GestureInput; commit: Commit }, show: (gesture: Gesture | undefined) => void) {
   let current: Gesture | undefined
+  /** The wire selected before each of the last two presses, the two of a double click. */
+  let wiresBefore: (string | undefined)[] = []
   const set = (next: Gesture | undefined) => {
     current = next
     show(next)
   }
   return {
     press(event: Press, point: Point): void {
-      const next = startGesture(read().input, event, point)
+      const { input } = read()
+      wiresBefore = [...wiresBefore, input.selection.wire].slice(-2)
+      const next = startGesture(input, event, point)
       if (next) set(next)
     },
+    /** The wire selected before the first press of the double click just made, if any. */
+    wireBeforeDoubleClick: (): string | undefined => (wiresBefore.length === 2 ? wiresBefore[0] : undefined),
     /**
      * Follows the pointer; false when no gesture is running, so the canvas can update its hover instead. A move with
      * no button held (`buttons` 0) means the release was lost, say to a dialog: the gesture ends without finishing.
-     * So does a wire's reshape when the right button joins the left (cancelled, nothing written).
+     * So does a wire's reshape when the right button joins the left, or when the W tool took its drag tools away
+     * (cancelled, nothing written).
      */
     move(point: Point, buttons?: number): boolean {
       const { input } = read()
       if (!current || !input.camera) return false
-      if (buttons !== undefined && endsUnfinished(current, buttons)) {
+      if (endsUnfinished(current, buttons, input.wires)) {
         set(undefined)
         return false
       }

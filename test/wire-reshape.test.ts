@@ -4,14 +4,15 @@ import { applyEdits } from "../src/core/edit.js"
 import { buildDesign } from "../src/engine/design.js"
 import type { Point } from "../studio/src/pcb/geometry.js"
 import { draggedPath } from "../studio/src/pcb/wire-drag.js"
-import { cornerDrop, reshapeBlocker, sentBlocker, shapesBuilt, wireReshape } from "../studio/src/pcb/wire-reshape.js"
+import { cornerDrop, newTraceWireId, reshapeBlocker, sentBlocker, shapesBuilt, wireReshape } from "../studio/src/pcb/wire-reshape.js"
 import { removeCorner } from "../studio/src/pcb/wire-shape.js"
 import { Selection } from "../studio/src/selection.js"
 
 const FILE = "main.circuit.tsx"
 
 // R1.pin2 (0.5, 0) to R2.pin1 (2.5, 0) as a U through y = 1; R3.pin2 (6.5, 0) to R4.pin1 (8.5, 3) as a Z through x = 7.5;
-// R5.pin1 (-0.5, 6) and R6.pin1 (2.5, 6) on GND, joined by a wire Studio draws on its own.
+// R5.pin1 (-0.5, 6) and R6.pin1 (2.5, 6) on GND, joined by a wire Studio draws on its own; R7.pin2 (12.5, 0) to
+// R8.pin1 (14.5, 3) as an L whose elbow the code does not write.
 const SOURCE = `export default () => (
   <board width="30mm" height="18mm">
     <resistor name="R1" resistance="1k" footprint="0402" schX={0} schY={0} />
@@ -20,16 +21,20 @@ const SOURCE = `export default () => (
     <resistor name="R4" resistance="1k" footprint="0402" schX={9} schY={3} />
     <resistor name="R5" resistance="1k" footprint="0402" schX={0} schY={6} />
     <resistor name="R6" resistance="1k" footprint="0402" schX={3} schY={6} />
+    <resistor name="R7" resistance="1k" footprint="0402" schX={12} schY={0} />
+    <resistor name="R8" resistance="1k" footprint="0402" schX={15} schY={3} />
     <trace from=".R1 > .pin2" to=".R2 > .pin1" schematicRouteHints={[{ x: 0.5, y: 1 }, { x: 2.5, y: 1 }]} />
     <trace from=".R3 > .pin2" to=".R4 > .pin1" schematicRouteHints={[{ x: 7.5, y: 0 }, { x: 7.5, y: 3 }]} />
     <trace from=".R5 > .pin1" to="net.GND" />
     <trace from=".R6 > .pin1" to="net.GND" />
+    <trace from=".R7 > .pin2" to=".R8 > .pin1" />
   </board>
 )`
 
 const U = "wire:R1.pin2|R2.pin1"
 const Z = "wire:R3.pin2|R4.pin1"
 const ENGINE = "wire:net.GND:1"
+const L = "wire:R7.pin2|R8.pin1"
 const SNAP = { step: 0.1, snap: true }
 const p = (x: number, y: number): Point => ({ x, y })
 
@@ -56,6 +61,7 @@ describe("the edit a segment drag sends", () => {
       edits: [{ kind: "setTraceHints", from: ".R1 > .pin2", to: ".R2 > .pin1", schematicRouteHints: [p(0.5, 1.5), p(2.5, 1.5)] }],
       summary: "reshape the wire from R1.pin2 to R2.pin1",
       points: [p(0.5, 0), p(0.5, 1.5), p(2.5, 1.5), p(2.5, 0)],
+      newTrace: false,
       wire: U,
     })
     expect(pointsOf(U, rebuilt(result))).toEqual([p(0.5, 0), p(0.5, 1.5), p(2.5, 1.5), p(2.5, 0)])
@@ -69,6 +75,7 @@ describe("the edit a segment drag sends", () => {
       edits: [{ kind: "addTrace", from: "R5.pin1", to: "R6.pin1", schematicRouteHints: [p(-0.5, 6.5), p(2.5, 6.5)] }],
       summary: "reshape the wire from R5.pin1 to R6.pin1",
       points: [p(-0.5, 6), p(-0.5, 6.5), p(2.5, 6.5), p(2.5, 6)],
+      newTrace: true,
       wire: "wire:R5.pin1|R6.pin1",
     })
     expect(pointsOf("wire:R5.pin1|R6.pin1", rebuilt(result))).toEqual([p(-0.5, 6), p(-0.5, 6.5), p(2.5, 6.5), p(2.5, 6)])
@@ -76,6 +83,15 @@ describe("the edit a segment drag sends", () => {
 
   test("a shape that did not change sends nothing", () => {
     expect(wireReshape(design, model, U, pointsOf(U))).toMatchObject({ edits: [] })
+  })
+
+  test("it is compared with the shape shown: a drag back to the built shape while a new one waits for its build restores the built corners", () => {
+    const shown = [p(0.5, 0), p(0.5, 1.5), p(2.5, 1.5), p(2.5, 0)]
+    expect(wireReshape(design, model, U, pointsOf(U), undefined, shown)).toMatchObject({
+      edits: [{ kind: "setTraceHints", from: ".R1 > .pin2", to: ".R2 > .pin1", schematicRouteHints: [p(0.5, 1), p(2.5, 1)] }],
+      points: pointsOf(U),
+    })
+    expect(wireReshape(design, model, U, shown, undefined, shown)).toMatchObject({ edits: [] })
   })
 
   test("a blocked wire, or one gone from the sheet, says why and sends nothing", () => {
@@ -93,23 +109,37 @@ describe("the edit a segment drag sends", () => {
 })
 
 describe("a wire whose new shape is on its way", () => {
+  const WAIT = "This wire's new trace is still being built; reshape it again when the build is done"
+
   test("a wire Studio drew on its own waits for its new trace before another shape, which would add a second trace", () => {
-    const sent = [{ id: ENGINE, wire: "wire:R5.pin1|R6.pin1" }]
-    expect(sentBlocker(sent, ENGINE)).toBe("This wire's new trace is still being built; reshape it again when the build is done")
+    expect(sentBlocker([{ id: ENGINE, newTrace: true, wire: "wire:R5.pin1|R6.pin1" }], ENGINE)).toBe(WAIT)
+    // Even when the new trace's wire could not be named.
+    expect(sentBlocker([{ id: ENGINE, newTrace: true }], ENGINE)).toBe(WAIT)
   })
 
   test("a trace's wire may be reshaped again at once: its corners are written whole each time", () => {
-    expect(sentBlocker([{ id: U, wire: U }], U)).toBeNull()
-    expect(sentBlocker([{ id: ENGINE, wire: "wire:R5.pin1|R6.pin1" }], U)).toBeNull()
+    expect(sentBlocker([{ id: U, newTrace: false, wire: U }], U)).toBeNull()
+    expect(sentBlocker([{ id: ENGINE, newTrace: true, wire: "wire:R5.pin1|R6.pin1" }], U)).toBeNull()
+  })
+})
+
+describe("the wire a new trace will have", () => {
+  const connection = (from: string, to: string, n = 1) => ({ id: n === 1 ? `${from}|${to}` : `${from}|${to}#${n}`, from, to })
+
+  test("is named as the engine names the connection: its pins in written order, with #n after traces between them the same way", () => {
+    expect(newTraceWireId([], "R5.pin1", "R6.pin1")).toBe("wire:R5.pin1|R6.pin1")
+    expect(newTraceWireId([connection("R5.pin1", "R6.pin1")], "R5.pin1", "R6.pin1")).toBe("wire:R5.pin1|R6.pin1#2")
+    expect(newTraceWireId([connection("R5.pin1", "R6.pin1"), connection("R5.pin1", "R6.pin1", 2)], "R5.pin1", "R6.pin1")).toBe("wire:R5.pin1|R6.pin1#3")
+    expect(newTraceWireId([connection("R6.pin1", "R5.pin1")], "R5.pin1", "R6.pin1")).toBe("wire:R5.pin1|R6.pin1")
   })
 })
 
 describe("when the build with a new shape arrives", () => {
   const NEW = "wire:R5.pin1|R6.pin1"
   const sent = [
-    { id: ENGINE, wire: NEW, sentAt: 100 },
-    { id: U, wire: U, sentAt: 100 },
-    { id: Z, wire: Z, sentAt: 300 },
+    { id: ENGINE, newTrace: true, wire: NEW, sentAt: 100 },
+    { id: U, newTrace: false, wire: U, sentAt: 100 },
+    { id: Z, newTrace: false, wire: Z, sentAt: 300 },
   ]
 
   test("the shapes it includes are done; a later one keeps waiting", () => {
@@ -125,10 +155,12 @@ describe("when the build with a new shape arrives", () => {
     expect(follow(parts)).toBe(parts)
   })
 
-  test("nothing is passed on when the sheet does not draw the new wire (the build failed)", () => {
+  test("nothing is passed on when the sheet does not draw the new wire (the build failed), or it could not be named", () => {
     const { follow } = shapesBuilt(sent, 200, new Set([U, Z]))
     const engine = Selection.none.onlyWire(ENGINE)
     expect(follow(engine)).toBe(engine)
+    const unnamed = shapesBuilt([{ id: ENGINE, newTrace: true, sentAt: 100 }], 200, new Set([NEW]))
+    expect(unnamed.follow(engine)).toBe(engine)
   })
 })
 
@@ -154,9 +186,24 @@ describe("a double click on a corner handle", () => {
       edits: [{ kind: "setTraceHints", from: ".R3 > .pin2", to: ".R4 > .pin1", schematicRouteHints: expected.slice(1, -1) }],
       summary: "remove a corner of the wire from R3.pin2 to R4.pin1",
       points: expected,
+      newTrace: false,
       wire: Z,
     })
     expect(pointsOf(Z, rebuilt(result))).toEqual(expected)
+  })
+
+  test("while a new shape waits for its build, the corner is taken from the shape shown", () => {
+    const shown = [p(6.5, 0), p(8, 0), p(8, 3.5), p(8.5, 3.5), p(8.5, 3)]
+    const expected = removeCorner(shown, 3)
+    const result = cornerDrop(design, model, Z, 3, undefined, shown)
+    expect(result).toMatchObject({ edits: [{ kind: "setTraceHints", schematicRouteHints: expected.slice(1, -1) }], points: expected })
+    expect(pointsOf(Z, rebuilt(result))).toEqual(expected)
+  })
+
+  test("an elbow the code does not write refuses as Remove corners does, and writes nothing", () => {
+    expect(pointsOf(L)).toEqual([p(12.5, 0), p(14.5, 0), p(14.5, 3)])
+    expect(cornerDrop(design, model, L, 1)).toEqual({ blocked: "Studio draws this wire's corner; the code has none to remove" })
+    expect(cornerDrop(design, model, ENGINE, 1)).toEqual({ blocked: "This wire has no trace of its own: Studio draws it for net GND" })
   })
 
   test("an end is not a corner: nothing is sent", () => {

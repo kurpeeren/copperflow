@@ -7,7 +7,7 @@ import type { Design } from "../../../src/engine/design.js"
 import { netLabel } from "../net-rows.js"
 import { canonicalNet } from "./highlight.js"
 import type { SourceCircuit } from "./positions.js"
-import { lockedPart } from "./trace-source.js"
+import { lockedPart, NO_LOCKS } from "./trace-source.js"
 import { wireBlocker, wireOf, type WireShape } from "./wire-shape.js"
 import { pinOfSelector } from "./wire-tool.js"
 
@@ -31,7 +31,6 @@ export const WIRE_GONE = "This wire is no longer on the sheet"
 const NO_CORNERS = "This wire has no corners"
 const STUDIO_CORNER = "Studio draws this wire's corner; the code has none to remove"
 const DELETE_REPEAT = "This wire repeats another between the same ends; delete it in the code"
-const NO_LOCKS: ReadonlySet<string> = new Set()
 
 /** The net a wire is on, by its id in `circuit.nets`; undefined when the sheet has no such wire. */
 export function wireNet(design: Design, wireId: string): string | undefined {
@@ -81,8 +80,11 @@ function removeBlocker(design: Design, shape: WireShape, locked: ReadonlySet<str
   return writer.trace.editable ? null : `This wire is read-only (${writer.trace.readonlyReason}); delete it in the code`
 }
 
-/** Why the wire's corners cannot be removed: none to remove, or wire-shape's reasons for changing its corners. */
-function cornerBlocker(design: Design, shape: WireShape, locked: ReadonlySet<string>): string | null {
+/**
+ * Why the wire's corners cannot be removed: Studio draws the wire or its corner (the code writes none), none to
+ * remove, or wire-shape's reasons for changing its corners. Remove corners and a double click on a corner share it.
+ */
+export function cornerBlocker(design: Design, shape: WireShape, locked: ReadonlySet<string>): string | null {
   if (shape.writer.kind !== "trace") return removeBlocker(design, shape, locked)
   if (shape.points.length <= 2) return NO_CORNERS
   const blocked = wireBlocker(design, shape, locked)

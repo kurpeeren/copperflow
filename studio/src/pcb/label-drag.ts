@@ -11,7 +11,7 @@ import { boundsOf } from "../../../src/engine/symbols/types.js"
 import { rightAngles, type Box, type Point } from "./geometry.js"
 import { labelTag } from "./label-tag.js"
 import type { SourceCircuit } from "./positions.js"
-import { lockedPart, netNames, pickRepeat, repeatBlocker, traceBlocker, tracesBetween } from "./trace-source.js"
+import { lockedPart, netNames, NO_LOCKS, pickRepeat, repeatBlocker, traceBlocker, tracesBetween } from "./trace-source.js"
 import { addressable, pinOfSelector, pinSelector } from "./wire-tool.js"
 
 export type LabelDrag = Edit[] | { blocked: string }
@@ -118,8 +118,6 @@ function traceOf(design: Design, source: SourceCircuit, anchor: Anchor): TraceIn
 }
 
 type Target = { anchor: Anchor; trace?: TraceInfo } | { blocked: string }
-
-const NO_LOCKS: ReadonlySet<string> = new Set()
 
 function targetOf(design: Design, source: SourceCircuit, labelId: string, locked: ReadonlySet<string>): Target {
   const anchor = anchorOf(design, labelId)

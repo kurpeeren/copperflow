@@ -7,6 +7,9 @@ import { pinOfSelector } from "./wire-tool.js"
 
 const NET_SELECTOR = /^net\.([\w-]+)$/
 
+/** No part is locked: the default for the label and wire edits that take the locked parts. */
+export const NO_LOCKS: ReadonlySet<string> = new Set()
+
 /** What one end of a trace must be: a given pin, or any of the names of a net. */
 export type EndMatch = { pin: string } | { net: readonly string[] }
 

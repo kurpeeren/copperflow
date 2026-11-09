@@ -8,7 +8,7 @@ import type { Design } from "../../../src/engine/design.js"
 import type { Connection, Pin } from "../../../src/engine/model.js"
 import type { Point } from "./geometry.js"
 import type { SourceCircuit } from "./positions.js"
-import { endMatches, lockedPart, netNames, pickRepeat, repeatBlocker, traceBlocker, tracesBetween, type EndMatch } from "./trace-source.js"
+import { endMatches, lockedPart, netNames, NO_LOCKS, pickRepeat, repeatBlocker, traceBlocker, tracesBetween, type EndMatch } from "./trace-source.js"
 import { tidy } from "./wire-geometry.js"
 import { addressable, pinOfSelector, pinSelector } from "./wire-tool.js"
 
@@ -46,7 +46,6 @@ export interface WireShape {
 }
 
 const ENGINE_WIRE = /^wire:.+:\d+$/
-const NO_LOCKS: ReadonlySet<string> = new Set()
 const isNet = (end: string): boolean => end.startsWith("net.")
 const sameSpot = (a: Point, b: Point): boolean => a.x === b.x && a.y === b.y
 const pinById = (design: Design, id: string): Pin | undefined => design.circuit.components.flatMap((c) => c.pins).find((pin) => pin.id === id)
@@ -127,18 +126,20 @@ function sameEnds(path: readonly Point[], wire: WireShape): boolean {
   return first !== undefined && last !== undefined && start !== undefined && end !== undefined && sameSpot(first, start) && sameSpot(last, end)
 }
 
-const samePath = (a: readonly Point[], b: readonly Point[]): boolean => a.length === b.length && a.every((p, i) => sameSpot(p, b[i] as Point))
+/** Whether two paths have the same points, in the same order. */
+export const samePath = (a: readonly Point[], b: readonly Point[]): boolean => a.length === b.length && a.every((p, i) => sameSpot(p, b[i] as Point))
 
 /**
  * The edit that saves `path` as the wire's shape: new corners on its trace, or a new trace between
- * the two pins of an engine-drawn wire. Nothing when the shape did not change.
+ * the two pins of an engine-drawn wire. Nothing when the shape is the one `shown`: the wire as built,
+ * or a new shape still waiting for its build (then a path back to the built shape is written, to restore it).
  */
-export function wireShapeEdits(design: Design, wire: WireShape, path: readonly Point[], locked: ReadonlySet<string> = NO_LOCKS): WireShapeResult {
+export function wireShapeEdits(design: Design, wire: WireShape, path: readonly Point[], locked: ReadonlySet<string> = NO_LOCKS, shown: readonly Point[] = wire.points): WireShapeResult {
   const blocked = wireBlocker(design, wire, locked)
   if (blocked !== null) return { blocked }
   const next = tidy(path)
   if (!sameEnds(next, wire)) return { blocked: "The ends of a wire stay on their pins" }
-  if (samePath(next, tidy(wire.points))) return []
+  if (samePath(next, tidy(shown))) return []
   const { writer } = wire
   if (writer.kind === "trace") {
     return [{ kind: "setTraceHints", from: writer.trace.from ?? "", to: writer.trace.to ?? "", schematicRouteHints: cornersOf(next, writer) }]

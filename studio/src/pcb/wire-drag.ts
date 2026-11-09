@@ -5,6 +5,7 @@
 import { snapPosition, type Point } from "./geometry.js"
 import { canPick, type PickContext } from "./pick.js"
 import { dragCorner, dragSegment, tidy } from "./wire-geometry.js"
+import { samePath } from "./wire-shape.js"
 import { cornerAt, segmentAt, wireReachPx, type WireLine } from "./wire-hit.js"
 import { WIRE_HANDLE_PX } from "./wire-overlay.js"
 
@@ -102,12 +103,20 @@ export function followReshape(gesture: ReshapeGesture, moved: Point, grid: DragG
   return { ...gesture, moved: true, path: draggedPath(gesture.points, gesture.grip, moved, grid) }
 }
 
-const samePath = (a: readonly Point[], b: readonly Point[]): boolean => a.length === b.length && a.every((p, i) => p.x === b[i]?.x && p.y === b[i]?.y)
+/** What a release says when the wire is no longer the one pressed. */
+export const WIRE_CHANGED = "The wire changed while you dragged it; try again"
 
-/** Finishes a reshape: a moved, unblocked wire whose path changed is written; anything else writes nothing. */
-export function endReshape(drag: WireDrag | undefined, done: ReshapeGesture): void {
-  if (!done.moved || done.blocker || samePath(done.path, tidy(done.points))) return
-  drag?.commit(done.wire, done.path)
+/**
+ * Finishes a reshape: a moved, unblocked wire whose path changed is written; anything else writes nothing. A build
+ * that landed during the drag can change the wire under its id (a wire Studio draws is named by its place among its
+ * net's wires), so a wire whose shown points are no longer those pressed is not written, and the release says why.
+ * Without drag tools (the W tool took over) the drag was dropped and nothing is said.
+ */
+export function endReshape(drag: WireDrag | undefined, done: ReshapeGesture, notify: (text: string) => void): void {
+  if (!drag || !done.moved || done.blocker || samePath(done.path, tidy(done.points))) return
+  const now = drag.points(done.wire)
+  if (!now || !samePath(now, done.points)) return notify(WIRE_CHANGED)
+  drag.commit(done.wire, done.path)
 }
 
 /** The shapes drawn in place of the wires' own: the wire being dragged (once it moved, unless blocked), then those sent and waiting for their build. */

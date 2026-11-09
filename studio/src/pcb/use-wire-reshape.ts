@@ -35,30 +35,36 @@ function useBuiltShapes(sent: readonly Sent[], setSent: Dispatch<SetStateAction<
   }, [sent, setSent, design, builtFrom, onSelect])
 }
 
-/** Sends a new shape as one history entry and draws it until its build; a refusal is told, an unchanged shape sends nothing. */
+/**
+ * Sends a new shape as one history entry and draws it until its build; a refusal is told, a shape equal to the one
+ * shown sends nothing. A drag and a double click work from the shape shown: a shape still waiting for its build when
+ * there is one, so the double click's corner and the "unchanged" check match what is on the sheet.
+ */
 export function useWireReshape(input: ReshapeInput) {
   const { design, circuit, actions, locked, builtFrom } = input
   const [sent, setSent] = useState<Sent[]>([])
   useBuiltShapes(sent, setSent, input)
+  const pending = useMemo<WireLine[]>(() => sent.filter((shape) => shape.sentAt > builtFrom).map(({ id, points }) => ({ id, points })), [sent, builtFrom])
   const blocker = useCallback((id: string) => sentBlocker(sent, id) ?? reshapeBlocker(design, circuit, id, locked), [sent, design, circuit, locked])
   const send = useCallback(
     (id: string, result: WireReshape) => {
       if ("blocked" in result) return actions.notify(result.blocked)
       if (result.edits.length === 0) return
-      const shape: Sent = { id, wire: result.wire, points: result.points, sentAt: Date.now() }
+      const { edits, summary, ...drawn } = result
+      const shape: Sent = { id, ...drawn, sentAt: Date.now() }
       setSent((list) => [...list.filter((other) => other.id !== id), shape])
-      void actions.edit(result.edits, result.summary).then((ok) => ok || setSent((list) => list.filter((other) => other !== shape)))
+      void actions.edit(edits, summary).then((ok) => ok || setSent((list) => list.filter((other) => other !== shape)))
     },
     [actions],
   )
-  const commit = useCallback((id: string, path: readonly Point[]) => send(id, wireReshape(design, circuit, id, path, locked)), [send, design, circuit, locked])
+  const shownOf = useCallback((id: string) => pending.find((shape) => shape.id === id)?.points, [pending])
+  const commit = useCallback((id: string, path: readonly Point[]) => send(id, wireReshape(design, circuit, id, path, locked, shownOf(id))), [send, design, circuit, locked, shownOf])
   const dropCorner = useCallback(
     (id: string, index: number) => {
       const waiting = sentBlocker(sent, id)
-      send(id, waiting ? { blocked: waiting } : cornerDrop(design, circuit, id, index, locked))
+      send(id, waiting ? { blocked: waiting } : cornerDrop(design, circuit, id, index, locked, shownOf(id)))
     },
-    [send, sent, design, circuit, locked],
+    [send, sent, design, circuit, locked, shownOf],
   )
-  const pending = useMemo<WireLine[]>(() => sent.filter((shape) => shape.sentAt > builtFrom).map(({ id, points }) => ({ id, points })), [sent, builtFrom])
   return { pending, blocker, commit, dropCorner }
 }

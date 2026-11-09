@@ -24,7 +24,7 @@ import { drawSchematic } from "./schematic-draw"
 import { drawingExtents } from "./drawing-extents"
 import { drawSheetBorder } from "./sheet-draw"
 import { firstDrawing, keepSheet, sheetArt, sheetDate, type Sheet, type SheetArt } from "./sheet"
-import { targetAt, type GestureWires } from "./gestures"
+import { doubleClickAction, targetAt, type GestureWires } from "./gestures"
 import type { PickContext } from "./pick"
 import type { PickFilter } from "./pick-filter"
 import { cursorFor, pointerHandlers, useCanvasGestures, type Gesture, type GestureInput, type PointerInput, type Press } from "./use-canvas-gestures"
@@ -36,7 +36,7 @@ import { useFitSelection } from "./use-fit-selection"
 import { useNoteTool } from "./use-note-tool"
 import { usePartKeys } from "./use-part-keys"
 import { useWireTool } from "./use-wire-tool"
-import { useSheetWires } from "./use-sheet-wires"
+import { useSheetWires, type SheetCorners } from "./use-sheet-wires"
 import type { WireLine } from "./wire-hit"
 import { drawWireHandles, drawWireHover, SHEET_WIRE_LOOK } from "./wire-overlay"
 import { liveShapes, withShapes } from "./wire-drag"
@@ -349,12 +349,14 @@ function useArmedForGestures(note: NoteTool, palette: Palette): GestureInput["to
   return { armed: note.tool ?? (palette.armed ? "place" : null), disarm }
 }
 
-interface SheetPointerInput extends Omit<PointerInput, "tool" | "open"> {
+interface SheetPointerInput extends Omit<PointerInput, "tool" | "open" | "gestures"> {
+  /** The gestures, and which wire was selected before a double click's first press. */
+  gestures: PointerInput["gestures"] & { wireBeforeDoubleClick(): string | undefined }
   boxes: PartBox[]
   labels: LabelTools
   wires: GestureWires
-  /** Removes the corner whose handle of the selected wire is under the point; false when none is. */
-  dropCornerAt(world: Point, picking: PickContext): boolean
+  /** The selected wire's corner handles. */
+  corners: SheetCorners
   wire: WireTool
   palette: Palette
   note: NoteTool
@@ -364,17 +366,18 @@ interface SheetPointerInput extends Omit<PointerInput, "tool" | "open"> {
 }
 
 /**
- * The sheet's pointer: the wire tool and the Place tools see a press first, unless the note tool is armed; a double
- * click removes the corner of the selected wire under it, else opens Properties on a part or a wire, or renames the
- * net of a label, while no tool is armed.
+ * The sheet's pointer: the wire tool and the Place tools see a press first, unless the note tool is armed. A double
+ * click does what doubleClickAction says: removes a corner of a wire selected before it began, else opens Properties
+ * on a part or a wire, or renames the net of a label, while no tool is armed.
  */
-function sheetPointer({ boxes, labels, wires, dropCornerAt, wire, palette, note, picking, onOpenProperties, ...input }: SheetPointerInput) {
+function sheetPointer({ boxes, labels, wires, corners, wire, palette, note, picking, onOpenProperties, ...input }: SheetPointerInput) {
   const tool = (event: Press, world: Point) => !note.armed && (palette.press(event, world) || wire.press(event, world))
   const open = (world: Point) => {
-    if (note.armed || palette.armed || wire.wiring || wire.drawing || dropCornerAt(world, picking)) return
-    const target = targetAt(boxes, labels, world, picking, wires)
-    if (target.kind === "part" || target.kind === "wire") onOpenProperties(target)
-    if (target.kind === "label") palette.rename(target.label)
+    const busy = note.armed || palette.armed || wire.wiring || wire.drawing !== null
+    const action = doubleClickAction({ busy, handle: corners.at(world, picking), target: targetAt(boxes, labels, world, picking, wires), selectedBefore: input.gestures.wireBeforeDoubleClick() })
+    if (action.kind === "removeCorner") corners.drop(action.id, action.index)
+    if (action.kind === "properties") onOpenProperties(action.target)
+    if (action.kind === "rename") palette.rename(action.label)
   }
   return pointerHandlers({ ...input, tool, open })
 }
@@ -418,7 +421,7 @@ export function SchematicCanvas(props: CanvasProps) {
   const hoverWire = useMemo(() => lineOf(hover.wire), [lineOf, hover.wire])
   const wireShapes = useWireShapes(gesture, wires.pending)
   useSheetPaint(canvasRef, { design, border, camera, size, wire, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel: hover.label, hoverWire, selectedWire: wires.selected, wireShapes, palette, highlight, markers, activeViolation, grid })
-  const pointer = sheetPointer({ camera, size, element: wrapRef, gestures, setCursor, hover: hover.at, boxes: parts.boxes, labels: labels.tools, wires: wires.hits, dropCornerAt: wires.dropCornerAt, wire, palette, note, picking: { selection, armed: tool.armed, filter: props.pickFilter }, onOpenProperties: props.onOpenProperties })
+  const pointer = sheetPointer({ camera, size, element: wrapRef, gestures, setCursor, hover: hover.at, boxes: parts.boxes, labels: labels.tools, wires: wires.hits, corners: wires.corners, wire, palette, note, picking: { selection, armed: tool.armed, filter: props.pickFilter }, onOpenProperties: props.onOpenProperties })
   const cursorStyle = cursorFor(gesture, wire.drawing !== null || wire.overPin || palette.armed || note.armed, hover.part !== undefined || hover.label !== undefined || hover.wire !== undefined)
   const onLeave = () => {
     hover.leave()
