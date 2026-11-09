@@ -58,7 +58,7 @@ async function sendWireEdit(result: WireEdit, actions: Actions): Promise<boolean
 
 /** The selected wires' Delete and Highlight net for the part keys, and Remove corners (on a wire selected alone) on the command bus. */
 function useWireCommands({ design, circuit, actions, locked, selection }: SheetWiresInput): WireKeys {
-  const removal = useCallback<RemoveWires>((ids, parts) => wiresRemoval(design, circuit, ids, parts, locked), [design, circuit, locked])
+  const removal = useCallback<RemoveWires>((ids, parts, said) => wiresRemoval(design, circuit, ids, parts, locked, said), [design, circuit, locked])
   const net = useCallback((id: string) => wireNet(design, id), [design])
   const removeCorners = () => {
     const wire = selection.soleWire

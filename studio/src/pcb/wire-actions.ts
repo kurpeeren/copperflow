@@ -143,24 +143,48 @@ export interface WiresRemoval {
   skipped: string[]
 }
 
-type WireOutcome = { id: string } & ({ kind: "withParts" } | { kind: "removed"; edits: Edit[]; name: string } | { kind: "skipped"; reason: string })
+type Refusal = { kind: "skipped"; reason: string; named: string; studio: boolean }
+type WireOutcome = { id: string } & ({ kind: "withParts" } | { kind: "removed"; edits: Edit[]; name: string } | Refusal)
 
-/** Whether a wire ends on one of `parts`, so it goes when they go: a trace's or a wire Studio draws between pins. */
-const endsOn = (shape: WireShape, parts: ReadonlySet<string>): boolean => shape.writer.kind !== "none" && shape.writer.components.some((name) => parts.has(name))
+/** The parts at a wire's pin ends: from its trace or Studio's pins, else from the connection of a wire whose trace was not found. */
+function partsAtEnds(design: Design, shape: WireShape): string[] {
+  if (shape.writer.kind !== "none") return shape.writer.components
+  const connection = design.circuit.connections.find((candidate) => candidate.id === design.schematic.wires.find((wire) => wire.id === shape.id)?.connection)
+  const pins = connection ? [connection.from, connection.to] : []
+  return design.circuit.components.filter((component) => component.pins.some((pin) => pins.includes(pin.id))).map((component) => component.id)
+}
 
 function wireOutcome(design: Design, source: SourceCircuit, id: string, parts: ReadonlySet<string>, locked: ReadonlySet<string>): WireOutcome {
   const shape = wireOf(design, source, id)
-  if (shape && endsOn(shape, parts)) return { id, kind: "withParts" }
+  if (shape && partsAtEnds(design, shape).some((name) => parts.has(name))) return { id, kind: "withParts" }
   const removal = shape ? removalFor(design, shape, locked) : { blocked: WIRE_GONE }
-  if ("blocked" in removal) return { id, kind: "skipped", reason: namedWireReason(design, shape, removal.blocked) }
+  if ("blocked" in removal) return { id, kind: "skipped", reason: removal.blocked, named: namedWireReason(design, shape, removal.blocked), studio: shape?.writer.kind === "engine" }
   return { id, kind: "removed", edits: removal.edits, name: shape ? describeWire(design, shape) : "the wire" }
+}
+
+const studioWires = (count: number): string => `${count} wires have no trace of their own: Studio draws them for their nets`
+
+/** Why the wires that stay were not removed: each named, but the wires Studio draws counted when there are several, and a reason a part already gave left out. */
+function refusals(outcomes: readonly WireOutcome[], said: ReadonlySet<string>): string[] {
+  const refused = outcomes.flatMap((outcome) => (outcome.kind === "skipped" && !said.has(outcome.reason) ? [outcome] : []))
+  const studio = refused.filter((outcome) => outcome.studio)
+  const others = refused.filter((outcome) => !outcome.studio).map((outcome) => outcome.named)
+  return [...others, ...(studio.length > 1 ? [studioWires(studio.length)] : studio.map((outcome) => outcome.named))]
 }
 
 /**
  * Delete on several wires while `parts` are removed with them: each wire's trace goes, in their order, except a wire
- * that ends on one of those parts (core removes a part's traces with it) and a wire that cannot go, which is named.
+ * that ends on one of those parts (core removes a part's traces with it) and a wire that cannot go, which is named,
+ * unless its reason is among those already `said` (a locked part's own).
  */
-export function wiresRemoval(design: Design, source: SourceCircuit, ids: readonly string[], parts: ReadonlySet<string>, locked: ReadonlySet<string> = NO_LOCKS): WiresRemoval {
+export function wiresRemoval(
+  design: Design,
+  source: SourceCircuit,
+  ids: readonly string[],
+  parts: ReadonlySet<string>,
+  locked: ReadonlySet<string> = NO_LOCKS,
+  said: ReadonlySet<string> = new Set(),
+): WiresRemoval {
   const outcomes = ids.map((id) => wireOutcome(design, source, id, parts, locked))
   const removed = outcomes.flatMap((outcome) => (outcome.kind === "removed" ? [outcome] : []))
   return {
@@ -168,7 +192,7 @@ export function wiresRemoval(design: Design, source: SourceCircuit, ids: readonl
     removed: removed.map((outcome) => outcome.id),
     names: removed.map((outcome) => outcome.name),
     withParts: outcomes.flatMap((outcome) => (outcome.kind === "withParts" ? [outcome.id] : [])),
-    skipped: outcomes.flatMap((outcome) => (outcome.kind === "skipped" ? [outcome.reason] : [])),
+    skipped: refusals(outcomes, said),
   }
 }
 

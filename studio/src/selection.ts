@@ -8,7 +8,8 @@
 export type SelectionChange = (current: Selection) => Selection
 
 const unique = (items: readonly string[]): string[] => [...new Set(items)]
-const sameList = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((item, i) => item === b[i])
+/** Whether two lists hold the same items in the same order. */
+export const sameList = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((item, i) => item === b[i])
 
 export class Selection {
   /** Nothing selected. */

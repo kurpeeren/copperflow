@@ -2,13 +2,12 @@
 // of them (Delete; Rotate, Lock and Unlock act on the parts), and the Selection section with the count of each kind and
 // the parts by name. Each action runs the menu's command, so it does what Layout → Rotate or Edit → Delete does.
 import type { PartInfo } from "./api"
-import { GROUP_ACTIONS, groupActionEnabled, type PropertiesView } from "./inspector-sections"
+import { GROUP_ACTIONS, groupActionEnabled, KIND_LABELS, kindRow, type PropertiesView } from "./inspector-sections"
 import { Row, Section } from "./InspectorRows"
 import { CloseIcon, LockIcon, RotateIcon, TrashIcon, UnlockIcon } from "./icons"
 import type { CommandId } from "./shell/menus"
 
 const ACTION_ICONS = { rotate: RotateIcon, lock: LockIcon, unlock: UnlockIcon, delete: TrashIcon } as const
-const KIND_LABELS: Record<string, string> = { parts: "Parts", wires: "Wires" }
 
 interface GroupProps {
   view: PropertiesView
@@ -27,11 +26,11 @@ export function GroupView({ view, parts, wires, locks, run, onClear, collapsed, 
   const { locked } = locks
   const byName = new Map(parts.map((part) => [part.name, part]))
   const renderRow = (id: string) => {
-    const [kind = "", rest = "", count = ""] = id.split(":")
-    if (kind === "kind") {
+    const counted = kindRow(id)
+    if (counted) {
       return (
-        <Row key={id} label={KIND_LABELS[rest] ?? rest}>
-          <span className="static">{count}</span>
+        <Row key={id} label={KIND_LABELS[counted.kind]}>
+          <span className="static">{counted.count}</span>
         </Row>
       )
     }

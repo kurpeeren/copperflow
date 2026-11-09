@@ -2,6 +2,7 @@
 // is sent when it resolves. Every edit is computed from the circuit the burst began on and the sum of its presses,
 // so a held key moves the selection further each time and never repeats an edit it already sent. Rotate presses wait
 // at a gate until the design shows where the last edit put the parts (TurnGate).
+import { sameList } from "../selection.js"
 import type { Point } from "./geometry.js"
 
 export interface Burst<Base extends object = object> {
@@ -27,8 +28,6 @@ export interface BurstStep<Base extends object> {
 
 const sum = (a: Point, b: Point): Point => ({ x: a.x + b.x, y: a.y + b.y })
 
-const sameNames = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((name, i) => name === b[i])
-
 /** The wires as a burst or held presses keep them: only when there are any. */
 const withWires = (wires: readonly string[]): { wires?: readonly string[] } => (wires.length > 0 ? { wires } : {})
 
@@ -37,7 +36,7 @@ const withWires = (wires: readonly string[]): { wires?: readonly string[] } => (
  * the circuit has not reloaded; else, or on another selection, it starts a new one.
  */
 export function pressNudge<Base extends object>(burst: Burst<Base> | undefined, base: Base, names: readonly string[], delta: Point, wires: readonly string[] = []): BurstStep<Base> {
-  const same = burst !== undefined && sameNames(burst.names, names) && sameNames(burst.wires ?? [], wires)
+  const same = burst !== undefined && sameList(burst.names, names) && sameList(burst.wires ?? [], wires)
   if (burst && same && burst.inFlight) {
     return { burst: { ...burst, total: sum(burst.total, delta), dirty: true }, send: null, fresh: false }
   }
@@ -110,7 +109,7 @@ const settled = (gate: TurnGate, design: DesignState): TurnGate =>
 export function pressTurn(gate: TurnGate, names: readonly string[], repeat: boolean, design: DesignState): { gate: TurnGate; send: boolean } {
   if (repeat) return { gate, send: false }
   if (gateOpen(gate, design) && !gate.held) return { gate: settled(gate, design), send: true }
-  const count = gate.held && sameNames(gate.held.names, names) ? gate.held.count + 1 : 1
+  const count = gate.held && sameList(gate.held.names, names) ? gate.held.count + 1 : 1
   return { gate: { ...gate, held: { names, count } }, send: false }
 }
 
@@ -119,7 +118,7 @@ export function releaseTurn(gate: TurnGate, names: readonly string[], design: De
   const { held } = gate
   if (!held || !gateOpen(gate, design)) return { gate: held ? gate : settled(gate, design), send: false }
   const open = settled(gate, design)
-  if (!sameNames(held.names, names)) return { gate: { ...open, held: undefined }, send: false }
+  if (!sameList(held.names, names)) return { gate: { ...open, held: undefined }, send: false }
   return { gate: { ...open, held: held.count > 1 ? { ...held, count: held.count - 1 } : undefined }, send: true }
 }
 
@@ -180,7 +179,7 @@ export interface HeldArrows {
   total: Point
 }
 
-const sameHeld = (held: HeldArrows, names: readonly string[], wires: readonly string[]) => sameNames(held.names, names) && sameNames(held.wires ?? [], wires)
+const sameHeld = (held: HeldArrows, names: readonly string[], wires: readonly string[]) => sameList(held.names, names) && sameList(held.wires ?? [], wires)
 
 /** One more held arrow press: added to the held ones on the same selection (parts and wires), else it replaces them. */
 export function holdNudge(held: HeldArrows | undefined, names: readonly string[], delta: Point, wires: readonly string[] = []): HeldArrows {

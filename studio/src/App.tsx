@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { hasToken, type CircuitData, type Design } from "./api"
 import { NO_HIGHLIGHT, remapHighlight } from "./pcb/highlight"
 import { pickLayersOf } from "./pcb/layers"
-import { shownSelection, wireAfterBuild } from "./pcb/wire-selection"
+import { shownSelection, wireAfterBuild, withEndPins } from "./pcb/wire-selection"
 import { goneFrom, Selection, type SelectionChange } from "./selection"
 import { BottomStrip } from "./shell/BottomStrip"
 import { StudioDialog, type DialogName } from "./shell/Dialogs"
@@ -65,9 +65,9 @@ function usePruneWire(design: Design | undefined, select: (change: SelectionChan
   const before = useRef<Design | undefined>(undefined)
   useEffect(() => {
     if (!design || design === before.current) return
-    const wires = before.current?.schematic.wires
+    const previous = before.current
     before.current = design
-    select((current) => wireAfterBuild(current, wires, design.schematic.wires))
+    select((current) => (current.wireCount === 0 ? current : wireAfterBuild(current, previous && withEndPins(previous.schematic), withEndPins(design.schematic))))
   }, [design, select])
 }
 

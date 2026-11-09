@@ -5,18 +5,33 @@ import type { Selection } from "../selection.js"
 import type { Point } from "./geometry.js"
 import type { View } from "./positions.js"
 
-/** A wire as these rules see it: its id, its points, and the connection of a hand-drawn wire. */
+/** A wire as these rules see it: its id, its points, the connection of a hand-drawn wire, and the pins a wire Studio draws joins. */
 export interface SheetWire {
   id: string
   points: readonly Point[]
   connection?: string
+  ends?: readonly string[]
+}
+
+const spot = (p: Point): string => `${p.x},${p.y}`
+
+/** The sheet's wires, each wire Studio draws with the pins at its two ends (withEndPins), so a moved part does not lose it. */
+export function withEndPins(sheet: { wires: readonly SheetWire[]; symbols: readonly { pinEnds: Record<string, Point> }[] }): SheetWire[] {
+  const pins = new Map(sheet.symbols.flatMap((symbol) => Object.entries(symbol.pinEnds).map(([pin, at]) => [spot(at), pin] as const)))
+  return sheet.wires.map((wire) => {
+    const [first, last] = [wire.points[0], wire.points[wire.points.length - 1]]
+    const ends = first && last ? [pins.get(spot(first)), pins.get(spot(last))] : []
+    const both = ends.length === 2 && ends.every((pin) => pin !== undefined)
+    return wire.connection === undefined && both ? { ...wire, ends: ends as string[] } : wire
+  })
 }
 
 const sameSpot = (a: Point, b: Point): boolean => a.x === b.x && a.y === b.y
 
-/** Whether the two wires join the same two points, whichever way round. */
-function sameEnds(a: readonly Point[], b: readonly Point[]): boolean {
-  const [a0, a1, b0, b1] = [a[0], a[a.length - 1], b[0], b[b.length - 1]]
+/** Whether the two wires join the same two pins (when both name them), else the same two points, whichever way round. */
+function sameEnds(a: SheetWire, b: SheetWire): boolean {
+  if (a.ends && b.ends) return a.ends.length === b.ends.length && a.ends.every((pin) => b.ends?.includes(pin))
+  const [a0, a1, b0, b1] = [a.points[0], a.points[a.points.length - 1], b.points[0], b.points[b.points.length - 1]]
   if (!a0 || !a1 || !b0 || !b1) return false
   return (sameSpot(a0, b0) && sameSpot(a1, b1)) || (sameSpot(a0, b1) && sameSpot(a1, b0))
 }
@@ -26,14 +41,14 @@ function goneAfterBuild(id: string, before: readonly SheetWire[] | undefined, af
   const now = after.find((wire) => wire.id === id)
   const then = before?.find((wire) => wire.id === id)
   if (!now) return true
-  return now.connection === undefined && then !== undefined && !sameEnds(then.points, now.points)
+  return now.connection === undefined && then !== undefined && !sameEnds(then, now)
 }
 
 /**
  * The selection after a build. A wire the sheet no longer draws goes (deleted, undone), so it is not selected again
  * when it comes back. A wire Studio draws on its own is named by its place among its net's wires, so it also goes when
- * that id now joins other ends; a hand-drawn wire's id names its trace, so it stays wherever its ends went. The parts
- * and the other wires stay.
+ * that id now joins other pins (or, without its pins, other points); a hand-drawn wire's id names its trace, so it
+ * stays wherever its ends went. The parts and the other wires stay.
  */
 export function wireAfterBuild(selection: Selection, before: readonly SheetWire[] | undefined, after: readonly SheetWire[]): Selection {
   return selection.withoutWires(selection.wires.filter((id) => goneAfterBuild(id, before, after)))

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { shownSelection, wireAfterBuild } from "../studio/src/pcb/wire-selection.js"
+import { shownSelection, wireAfterBuild, withEndPins } from "../studio/src/pcb/wire-selection.js"
 import { Selection } from "../studio/src/selection.js"
 
 const p = (x: number, y: number) => ({ x, y })
@@ -36,6 +36,22 @@ describe("the selection after a build", () => {
     const sel = Selection.none.onlyWire(ENGINE)
     expect(wireAfterBuild(sel, undefined, [engine([p(9, 9), p(9, 8)])])).toBe(sel)
     expect(wireAfterBuild(parts, [hand()], [])).toBe(parts)
+  })
+
+  test("a wire Studio draws stays while its two pins are still its ends, though a moved part took them elsewhere", () => {
+    const sel = Selection.none.add(["R1"]).addWires([ENGINE])
+    const before = [{ ...engine(), ends: ["R1.pin1", "R2.pin1"] }]
+    expect(wireAfterBuild(sel, before, [{ ...engine([p(1, 6), p(3, 5)]), ends: ["R2.pin1", "R1.pin1"] }])).toBe(sel)
+    expect(wireAfterBuild(sel, before, [{ ...engine([p(0, 5), p(3, 5)]), ends: ["R2.pin1", "R3.pin1"] }])).toMatchObject({ names: ["R1"], wires: [] })
+  })
+
+  test("the end pins come from the symbols' pin ends, for the wires Studio draws only", () => {
+    const symbols: { pinEnds: Record<string, { x: number; y: number }> }[] = [{ pinEnds: { "R1.pin1": p(0, 5), "R1.pin2": p(1, 5) } }, { pinEnds: { "R2.pin1": p(3, 5) } }]
+    expect(withEndPins({ wires: [engine(), hand(), { id: "wire:net.GND:2", points: [p(0, 5), p(9, 9)] }], symbols })).toEqual([
+      { ...engine(), ends: ["R1.pin1", "R2.pin1"] },
+      hand(),
+      { id: "wire:net.GND:2", points: [p(0, 5), p(9, 9)] },
+    ])
   })
 
   test("with parts and several wires, only the wires gone or re-pointed leave; the parts and the rest stay", () => {

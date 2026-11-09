@@ -98,6 +98,7 @@ describe("carryPath", () => {
   test("an end whose part moves goes along, so it needs no new segment", () => {
     expect(carryPath(Z, p(0.5, 0.5), { start: true, end: false })).toEqual([p(0.5, 0.5), p(0.5, 1.5), p(2.5, 1.5), p(2.5, 3), p(2, 3)])
     expect(carryPath(Z, p(0.5, 0.5), { start: true, end: true })).toEqual([p(0.5, 0.5), p(0.5, 1.5), p(2.5, 1.5), p(2.5, 3.5)])
+    expect(carryPath(Z, p(0.5, 0.5), { start: false, end: true })).toEqual([p(0, 0), p(0.5, 0), p(0.5, 1.5), p(2.5, 1.5), p(2.5, 3.5)])
   })
 
   test("a delta along the end segments stretches them, as a segment drag does", () => {

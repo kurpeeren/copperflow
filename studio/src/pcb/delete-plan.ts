@@ -18,13 +18,16 @@ export interface DeletePlan {
   question?: string
 }
 
-/** How the selected wires are removed when `parts` go too (wire-actions.ts wiresRemoval); the PCB has none. */
-export type RemoveWires = (ids: readonly string[], parts: ReadonlySet<string>) => WiresRemoval
+/**
+ * How the selected wires are removed when `parts` go too (wire-actions.ts wiresRemoval), leaving out the reasons the
+ * parts already gave (`said`); the PCB has none.
+ */
+export type RemoveWires = (ids: readonly string[], parts: ReadonlySet<string>, said: ReadonlySet<string>) => WiresRemoval
 
 export function deletePlan(selection: Selection, blockerFor: (name: string) => string | null, removeWires?: RemoveWires): DeletePlan | { message: string } {
   if (selection.total === 0) return { message: NOTHING_TO_DELETE }
   const parts = removeEach(selection.names, blockerFor)
-  const wires = removeWires && selection.wireCount > 0 ? removeWires(selection.wires, new Set(parts.parts)) : undefined
+  const wires = removeWires && selection.wireCount > 0 ? removeWires(selection.wires, new Set(parts.parts), new Set(parts.skipped)) : undefined
   const plan: GroupEdit = {
     edits: [...(wires?.edits ?? []), ...parts.edits],
     summary: `remove ${nameList([...parts.parts, ...wireWords(wires?.names ?? [])])}`,

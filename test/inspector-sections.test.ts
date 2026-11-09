@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { GROUP_ACTIONS, groupActionEnabled, inspectorSections, boardSections, partLockButton, propertiesKind, propertiesView, type InspectorPart } from "../studio/src/inspector-sections.js"
+import { GROUP_ACTIONS, groupActionEnabled, inspectorSections, boardSections, KIND_LABELS, kindRow, partLockButton, propertiesKind, propertiesView, type InspectorPart } from "../studio/src/inspector-sections.js"
 
 const prop = (literal: string | number) => ({ literal, source: String(literal), editable: true })
 
@@ -80,7 +80,15 @@ describe("propertiesView", () => {
   test("with parts and wires: the count of both, and the Selection section with the counts by kind before the parts", () => {
     const view = propertiesView([named("R2"), named("R1")], { library: false }, 3)
     expect(view).toEqual({ header: "Selected objects: 5", sections: [{ title: "Selection", rows: ["kind:parts:2", "kind:wires:3", "part:R2", "part:R1"] }] })
-    expect(propertiesView([], { library: false }, 2)).toEqual({ header: "Selected objects: 2", sections: [{ title: "Selection", rows: ["kind:parts:0", "kind:wires:2"] }] })
+    expect(propertiesView([], { library: false }, 2)).toEqual({ header: "Selected objects: 2", sections: [{ title: "Selection", rows: ["kind:wires:2"] }] })
+  })
+
+  test("a kind row is read back as its kind and count; other rows are not kind rows", () => {
+    expect(kindRow("kind:wires:3")).toEqual({ kind: "wires", count: 3 })
+    expect(kindRow("kind:parts:2")).toEqual({ kind: "parts", count: 2 })
+    expect(kindRow("part:R1")).toBeUndefined()
+    expect(kindRow("kind:labels:1")).toBeUndefined()
+    expect(KIND_LABELS).toEqual({ parts: "Parts", wires: "Wires" })
   })
 
   test("several parts get Rotate, Lock, Unlock and Delete, each run as the menu's command", () => {

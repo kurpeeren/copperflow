@@ -4,7 +4,7 @@ import { applyEdits } from "../src/core/edit.js"
 import type { Edit } from "../src/core/types.js"
 import { buildDesign, type Design } from "../src/engine/design.js"
 import { movePlan, moveWithWires, type GestureInput } from "../studio/src/pcb/gestures.js"
-import { sendGroupEdit, type GroupEditActions, type Layout } from "../studio/src/pcb/group-edits.js"
+import { sendGroupEdit, skippedNote, type GroupEditActions, type Layout } from "../studio/src/pcb/group-edits.js"
 import { keySession, type EditInput } from "../studio/src/pcb/key-session.js"
 import { movePreview, previewMoving, type MovePreview } from "../studio/src/pcb/move-preview.js"
 import { moveBlocker, partAnchors, type SourceCircuit } from "../studio/src/pcb/positions.js"
@@ -215,9 +215,25 @@ describe("selected wires in a move of the selection", () => {
   })
 
   test("a selected wire that cannot move is named, and the rest of the selection still moves", () => {
-    const plan = movePlan(input(new Set(["R2"])), ["R1", "R2"], p(0, 0.5), [Z])
+    const plan = movePlan(input(new Set(["R2"])), ["R1"], p(0, 0.5), [Z])
     expect(plan.edits).toEqual([{ kind: "setProps", part: "R1", props: { schX: 0, schY: 0.5 } }])
-    expect(plan.skipped).toEqual(["R2 is locked", "The wire from R1.pin2 to R2.pin1: R2 is locked"])
+    expect(plan.skipped).toEqual(["The wire from R1.pin2 to R2.pin1: R2 is locked"])
+  })
+
+  test("a wire held by a locked part already named is not named again", () => {
+    expect(movePlan(input(new Set(["R2"])), ["R1", "R2"], p(0, 0.5), [Z]).skipped).toEqual(["R2 is locked"])
+  })
+
+  test("the history names only the selected wires the move changes", () => {
+    const along = "wire:R11.pin2|net.V3"
+    expect(movePlan(input(), ["R3"], p(0.5, 0), [along]).summary).toBe("move R3 in the schematic to (0.5, -4)")
+    expect(movePlan(input(), ["R3"], p(0.5, 0), [along, Z]).summary).toBe("move R3 and the wire from R1.pin2 to R2.pin1 in the schematic by (0.5, 0)")
+  })
+
+  test("the far end's part moving alone takes that end along; the near end gets the new segment", () => {
+    const plan = movePlan(input(), ["R2"], p(0, 0.5), [Z])
+    expect(plan.edits).toEqual([{ kind: "setProps", part: "R2", props: { schX: 4, schY: 2.5 } }, hints(".R1 > .pin2", ".R2 > .pin1", [p(0.5, 0.5), p(2, 0.5), p(2, 2.5)])])
+    expect(square(pointsOf(setup(applyEdits(SOURCE, plan.edits, new Set())).design, Z) ?? [])).toBe(true)
   })
 
   test("a wire Studio draws the shape of (a trace without corners) is left as it is: Studio draws it again", () => {
@@ -225,6 +241,12 @@ describe("selected wires in a move of the selection", () => {
     expect(plan.edits.map((edit) => edit.kind)).toEqual(["setProps", "setTraceHints"])
     expect(plan.summary).toBe("move R1 in the schematic to (0, 0.5)")
     expect(movePlan(input(), [], p(0, 0.5), ["wire:R1.pin1|R3.pin1"]).edits).toEqual([])
+  })
+
+  test("a move of only such wires says why nothing moved", () => {
+    const one = movePlan(input(), [], p(0, 0.5), ["wire:R1.pin1|R3.pin1"])
+    expect(skippedNote(one)).toBe("Studio draws this wire's shape between its pins; drag one of its segments to give it corners first")
+    expect(movePlan(input(), ["R1"], p(0, 0.5), ["wire:R1.pin1|R3.pin1"]).skipped).toEqual([])
   })
 })
 

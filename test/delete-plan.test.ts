@@ -10,7 +10,7 @@ import { Selection } from "../studio/src/selection.js"
 
 const FILE = "main.circuit.tsx"
 
-// R5 and R6 are on GND with no wire of their own, so Studio draws the wire between them.
+// R5, R6 and R7 are on GND with no wire of their own, so Studio draws the wires between them (GND, then GND_2).
 const SOURCE = `export default () => (
   <board width="30mm" height="18mm">
     <resistor name="R1" resistance="1k" footprint="0402" schX={0} schY={0} />
@@ -19,12 +19,14 @@ const SOURCE = `export default () => (
     <resistor name="R4" resistance="1k" footprint="0402" schX={0} schY={3} />
     <resistor name="R5" resistance="1k" footprint="0402" schX={0} schY={6} />
     <resistor name="R6" resistance="1k" footprint="0402" schX={3} schY={6} />
+    <resistor name="R7" resistance="1k" footprint="0402" schX={6} schY={6} />
     <trace from=".R1 > .pin2" to=".R2 > .pin1" schematicRouteHints={[{ x: 1, y: 1 }, { x: 2, y: 1 }]} />
     <trace from=".R3 > .pin1" to="net.VCC" schematicRouteHints={[{ x: 7, y: 1 }, { x: 7, y: 2 }]} />
     <trace from="net.VCC" to=".R4 > .pin1" schematicRouteHints={[{ x: -2, y: 4 }, { x: -2, y: 2 }]} />
     <trace from=".R3 > .pin2" to=".R4 > .pin2" />
     <trace from=".R5 > .pin1" to="net.GND" />
     <trace from=".R6 > .pin1" to="net.GND" />
+    <trace from=".R7 > .pin1" to="net.GND" />
   </board>
 )`
 
@@ -32,6 +34,7 @@ const R1_R2 = "wire:R1.pin2|R2.pin1"
 const R3_VCC = "wire:R3.pin1|net.VCC"
 const VCC_R4 = "wire:net.VCC|R4.pin1"
 const GND = "wire:net.GND:1"
+const GND_2 = "wire:net.GND:2"
 
 const design = buildDesign({ [FILE]: SOURCE }, FILE)
 const source = { model: analyzeCircuit(SOURCE) }
@@ -39,7 +42,7 @@ const source = { model: analyzeCircuit(SOURCE) }
 /** Delete on `selection`, with these parts locked. */
 function plan(selection: Selection, locked: ReadonlySet<string> = new Set()) {
   const blockerFor = (name: string) => moveBlocker(source, locked, name, "schematic")
-  return deletePlan(selection, blockerFor, (ids, parts) => wiresRemoval(design, source, ids, parts, locked))
+  return deletePlan(selection, blockerFor, (ids, parts, said) => wiresRemoval(design, source, ids, parts, locked, said))
 }
 
 const wireIds = (text: string) => buildDesign({ [FILE]: text }, FILE).schematic.wires.map((wire) => wire.id)
@@ -111,8 +114,28 @@ describe("what Delete cannot remove", () => {
     expect(result.question).toBeUndefined()
     expect(result.wires).toEqual([R3_VCC])
     expect(skippedNote(result.plan)).toBe(
-      "Not removed: R2 is locked; The wire from R5.pin1 to R6.pin1 has no trace of its own: Studio draws it for net GND; The wire from net VCC to R4.pin1: R4 is locked",
+      "Not removed: R2 is locked; The wire from net VCC to R4.pin1: R4 is locked; The wire from R5.pin1 to R6.pin1 has no trace of its own: Studio draws it for net GND",
     )
+  })
+
+  test("a wire held by a locked part already named is not named again", () => {
+    const result = plan(Selection.none.add(["R3", "R4"]).addWires([VCC_R4]), new Set(["R4"]))
+    if ("message" in result) throw new Error(result.message)
+    expect(result.plan.skipped).toEqual(["R4 is locked"])
+  })
+
+  test("several wires Studio draws are counted in one sentence, not named one by one", () => {
+    const result = plan(Selection.none.addWires([GND, GND_2, R3_VCC]))
+    if ("message" in result) throw new Error(result.message)
+    expect(result.plan.skipped).toEqual(["2 wires have no trace of their own: Studio draws them for their nets"])
+  })
+
+  test("a wire whose trace Studio cannot find still goes with its removed part, without a word", () => {
+    const missing = { model: analyzeCircuit(SOURCE.replace(`<trace from=".R1 > .pin2" to=".R2 > .pin1" schematicRouteHints={[{ x: 1, y: 1 }, { x: 2, y: 1 }]} />`, "")) }
+    const result = deletePlan(Selection.none.only("R1").addWires([R1_R2]), (name) => moveBlocker(missing, new Set(), name, "schematic"), (ids, parts, said) =>
+      wiresRemoval(design, missing, ids, parts, new Set(), said),
+    )
+    expect(result).toMatchObject({ plan: { edits: [{ kind: "removePart", part: "R1" }], skipped: [] }, wires: [R1_R2] })
   })
 
   test("with nothing that can go, the note is the reasons alone", () => {

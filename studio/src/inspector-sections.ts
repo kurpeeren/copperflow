@@ -93,15 +93,29 @@ export function propertiesKind(parts: number, wires: number): PropertiesKind {
   return parts === 1 ? "part" : "wire"
 }
 
+/** The kinds of object a selection counts, and how Properties names them. */
+export type ObjectKind = "parts" | "wires"
+
+export const KIND_LABELS: Record<ObjectKind, string> = { parts: "Parts", wires: "Wires" }
+
+const KIND_ROW = /^kind:(parts|wires):(\d+)$/
+
+/** A "kind:<parts|wires>:<count>" row read back; undefined for any other row. */
+export function kindRow(id: string): { kind: ObjectKind; count: number } | undefined {
+  const match = KIND_ROW.exec(id)
+  return match ? { kind: match[1] as ObjectKind, count: Number(match[2]) } : undefined
+}
+
 /**
  * The board's sections with nothing selected, a part's own with one, and the Selection section listing several; with
- * wires among them (`wires`, how many), the section counts each kind first. The header counts every object.
+ * wires among them (`wires`, how many), the section first counts each kind present. The header counts every object.
  */
 export function propertiesView(parts: readonly SelectedPart[], opts: { library: boolean }, wires = 0): PropertiesView {
   const header = `Selected objects: ${parts.length + wires}`
   const [first] = parts
   const listed = parts.map((part) => `part:${part.name}`)
-  if (wires > 0) return { header, sections: [{ title: "Selection", rows: [`kind:parts:${parts.length}`, `kind:wires:${wires}`, ...listed] }] }
+  const counts = [...(parts.length > 0 ? [`kind:parts:${parts.length}`] : []), `kind:wires:${wires}`]
+  if (wires > 0) return { header, sections: [{ title: "Selection", rows: [...counts, ...listed] }] }
   if (!first) return { header, sections: boardSections() }
   if (parts.length === 1) return { header, sections: inspectorSections(first, opts) }
   return { header, sections: [{ title: "Selection", rows: listed }] }
