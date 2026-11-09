@@ -232,6 +232,15 @@ describe("bad values are reported and the drawing is left out", () => {
     const circuit = build(`<schematicrect width={-1} height={1} />\n<schematicrect width={1} height={1} />`)
     expect(circuit.drawings.map((d) => d.id)).toEqual(["drawing:rect:2"])
   })
+
+  test("a bad drawing keeps its name, so the ids after it do not shift while it is being fixed", () => {
+    const circuit = build(`<schematicrect name="G1" width={-1} height={1} />\n<schematiccircle name="G1" radius={1} />`)
+    expect(circuit.drawings.map((d) => d.id)).toEqual(["G1~2"])
+    expect(circuit.diagnostics.map((d) => [d.code, d.items])).toEqual([
+      ["bad-value", ["G1.width"]],
+      ["duplicate-name", ["G1"]],
+    ])
+  })
 })
 
 describe("unknown props", () => {

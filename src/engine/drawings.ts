@@ -1,5 +1,6 @@
 import type { Offset } from "./component.js"
 import { diagnostic } from "./diagnostics.js"
+import { drawingIds, drawingName, indexId, type DrawingId } from "./drawing-ids.js"
 import { busMembers, DEFAULT_FONT_SIZE, DEFAULT_STROKE_WIDTH, drawingTag, LINE_STYLES, TEXT_ANCHORS } from "./drawing-kinds.js"
 import { DrawingReader, nonEmpty, pointList, type Parse } from "./drawing-reader.js"
 import type { Component, Diagnostic, DrawingColor, DrawingKind, DrawingShape, DrawingStroke, Point, SchematicDrawing, SourceRef } from "./model.js"
@@ -16,6 +17,14 @@ export interface DrawingOrigin {
 export interface BuiltDrawing {
   drawing?: SchematicDrawing
   diagnostics: Diagnostic[]
+}
+
+/** A drawing tag met in the walk: what the id rule needs, and the drawing when its values were usable. */
+export interface DrawingEntry {
+  kind: DrawingKind
+  name: string | undefined
+  source: SourceRef
+  drawing?: SchematicDrawing
 }
 
 const COLOUR = /^#[0-9a-fA-F]{6}$/
@@ -73,19 +82,13 @@ const SHAPES: Readonly<Record<DrawingKind, ShapeOf>> = {
   },
 }
 
-/** The name the file gives, when it is one this kind accepts: any non-empty string, or for a bus one that names its nets. */
-function givenName(kind: DrawingKind, props: Props): string | undefined {
-  const name = nonEmpty(props["name"])
-  return name !== undefined && (kind !== "bus" || busMembers(name) !== undefined) ? name : undefined
-}
-
 /**
  * Builds one drawing from its tag's props and how many children the tag has. A bad or missing value is
  * reported and leaves the drawing out; an unknown prop or a child is reported and ignored.
  */
 export function buildDrawing(kind: DrawingKind, props: Props, children: number, origin: DrawingOrigin): BuiltDrawing {
-  const name = givenName(kind, props)
-  const id = name ?? `drawing:${kind}:${origin.index}`
+  const name = drawingName(kind, props["name"])
+  const id = name ?? indexId(kind, origin.index)
   const reader = new DrawingReader(props, id, origin.source)
   // A bus reads its name with its shape; for the other kinds a name is optional, but a given one must be usable.
   if (kind !== "bus") reader.optional("name", nonEmpty, "a non-empty string", undefined)
@@ -98,37 +101,23 @@ export function buildDrawing(kind: DrawingKind, props: Props, children: number, 
   return { drawing, diagnostics: reader.diagnostics }
 }
 
-/** The first of name~2, name~3 … that nothing has taken. */
-function freeId(taken: ReadonlySet<string>, name: string): string {
-  let count = 2
-  while (taken.has(`${name}~${count}`)) count++
-  return `${name}~${count}`
-}
-
 /**
- * Makes every drawing's id one that no part and no earlier drawing has: a repeated name gets "~2", "~3"
- * and so on in source order. A bus repeating a name a bus took first is a piece of the same bus and is
- * quiet; any other repeat gets one duplicate-name warning per name. Parts keep their ids whatever the order.
+ * Gives each drawing its id by the shared rule (drawing-ids.ts), over every drawing tag in source order, the
+ * ones a bad value left out included. A repeated name gets one duplicate-name warning; a bus repeating an
+ * earlier bus's name is a piece of the same bus and is quiet.
  */
-export function uniqueDrawingIds(drawings: readonly SchematicDrawing[], parts: readonly Component[]): { drawings: SchematicDrawing[]; diagnostics: Diagnostic[] } {
-  const taken = new Set(parts.map((part) => part.id))
-  const buses = new Set<string>()
+export function uniqueDrawingIds(entries: readonly DrawingEntry[], parts: readonly Component[]): { drawings: SchematicDrawing[]; diagnostics: Diagnostic[] } {
+  const ids = drawingIds(entries, parts.map((part) => part.id))
   const warned = new Set<string>()
   const diagnostics: Diagnostic[] = []
-  const unique = drawings.map((drawing) => {
-    if (!taken.has(drawing.id)) {
-      taken.add(drawing.id)
-      if (drawing.kind === "bus") buses.add(drawing.id)
-      return drawing
+  const drawings: SchematicDrawing[] = []
+  entries.forEach((entry, index) => {
+    const { id, base, repeat } = ids[index] as DrawingId
+    if (repeat === "duplicate" && !warned.has(base)) {
+      warned.add(base)
+      diagnostics.push(diagnostic("duplicate-name", "warning", `More than one part or drawing is named ${base}`, [base], entry.source))
     }
-    const piece = drawing.kind === "bus" && buses.has(drawing.id)
-    if (!piece && !warned.has(drawing.id)) {
-      warned.add(drawing.id)
-      diagnostics.push(diagnostic("duplicate-name", "warning", `More than one part or drawing is named ${drawing.id}`, [drawing.id], drawing.source))
-    }
-    const id = freeId(taken, drawing.id)
-    taken.add(id)
-    return { ...drawing, id }
+    if (entry.drawing) drawings.push(entry.drawing.id === id ? entry.drawing : { ...entry.drawing, id })
   })
-  return { drawings: unique, diagnostics }
+  return { drawings, diagnostics }
 }
