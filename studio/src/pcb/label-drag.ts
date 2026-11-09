@@ -96,7 +96,8 @@ const sameCorners = (a: readonly Point[], b: readonly Point[]): boolean =>
 
 const tidy = (p: Point): Point => ({ x: round(p.x), y: round(p.y) })
 
-function sideOf(from: Point | undefined, to: Point): Side {
+/** Which way a label at the end of a wire faces, from the wire's last segment, as the engine places it. */
+export function sideOf(from: Point | undefined, to: Point): Side {
   if (!from) return "right"
   if (to.x !== from.x) return to.x > from.x ? "right" : "left"
   return to.y < from.y ? "bottom" : "top"

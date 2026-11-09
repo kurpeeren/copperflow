@@ -36,7 +36,7 @@ import { useFitSelection } from "./use-fit-selection"
 import { useNoteTool } from "./use-note-tool"
 import { usePartKeys } from "./use-part-keys"
 import type { KeyMove } from "./use-key-edits"
-import { previewMoving } from "./move-preview"
+import { labelsAfterMove, previewMoving } from "./move-preview"
 import type { Anchor } from "./positions"
 import { useWireTool } from "./use-wire-tool"
 import { useSheetWires, type SheetCorners } from "./use-sheet-wires"
@@ -85,9 +85,16 @@ interface SheetScene {
   grid: GridLook
 }
 
-/** The sheet with the wires in `shapes` drawn in their new shapes, and the selected wire's line in its own. */
-function useShapedSheet(design: Design, selectedWire: WireLine | undefined, shapes: readonly WireLine[]) {
-  const sheet = useMemo(() => (shapes.length === 0 ? design.schematic : { ...design.schematic, wires: [...withShapes(design.schematic.wires, shapes)] }), [design.schematic, shapes])
+/**
+ * The sheet with the wires in `shapes` drawn in their new shapes and the labels a move takes along at their new places
+ * (move-preview.ts), and the selected wire's line in its own.
+ */
+function useShapedSheet(design: Design, selectedWire: WireLine | undefined, shapes: readonly WireLine[], moving: Moving | undefined) {
+  const sheet = useMemo(() => {
+    const labels = labelsAfterMove(design.schematic, moving)
+    if (shapes.length === 0 && labels === design.schematic.labels) return design.schematic
+    return { ...design.schematic, wires: [...withShapes(design.schematic.wires, shapes)], labels: [...labels] }
+  }, [design.schematic, shapes, moving])
   const selected = useMemo(() => selectedWire && withShapes([selectedWire], shapes)[0], [selectedWire, shapes])
   return { sheet, selected }
 }
@@ -97,7 +104,7 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
   const { design, border, camera, size, moving, boxes, hover, selection, locked, circuit, gesture, movingLabels, hoverLabel, hoverWire, palette, highlight, markers, activeViolation, grid } = scene
   const { wiring, drawing, activePins, pendingWires, preview } = scene.wire
   const { ghosts, ghostWires, armed } = palette
-  const { sheet, selected: selectedWire } = useShapedSheet(design, scene.selectedWire, scene.wireShapes)
+  const { sheet, selected: selectedWire } = useShapedSheet(design, scene.selectedWire, scene.wireShapes, moving)
   useEffect(() => {
     const view = camera ?? EMPTY_SHEET_CAMERA
     const prepared = prepareCanvas(canvasRef.current, size, view, schematicTheme.background, (c, cam, s) => drawSchematicGrid(c, cam, s, grid))
