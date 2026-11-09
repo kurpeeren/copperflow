@@ -1,16 +1,19 @@
 // Everything copperflow draws on top of the board, in CSS pixels. Each view passes its own look: PCB_LOOK takes its
 // colours from PALETTE and SHEET_LOOK from schematicTheme, so nothing here falls back to the other view's colours.
 import { CANVAS_FONT_FAMILY, PALETTE } from "./ctx.js"
-import { paintGrid, type GridLook } from "./grid.js"
+import { paintGrid, type GridLook, type GridPaint } from "./grid.js"
 import { worldToScreen, type Box, type Camera, type Point, type Size } from "./geometry.js"
 import { schematicTheme } from "./schematic-theme.js"
 
 const FONT = `12px ${CANVAS_FONT_FAMILY}`
 const MAX_LABEL = 32
 
-/** White grid lines or dots at the chosen step: 30% on the minor grid, 50% on every fifth line (or fifth crossing). */
+const PCB_GRID_COLOURS = { minor: PALETTE.grid, fifth: PALETTE.gridFifth }
+const PCB_GRID: GridPaint = { lines: PCB_GRID_COLOURS, dots: { ...PCB_GRID_COLOURS, px: 1 } }
+
+/** White grid lines or 1 px dots at the chosen step: 30% on the minor grid, 50% on every fifth line (or fifth crossing). */
 export function drawGrid(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, look: GridLook): void {
-  paintGrid(ctx, camera, size, look, { minor: PALETTE.grid, fifth: PALETTE.gridFifth })
+  paintGrid(ctx, camera, size, look, PCB_GRID)
 }
 
 /** The colours of the overlays that differ between the canvases. */

@@ -1,4 +1,5 @@
 // Paints the schematic's drawing border and title block (geometry in sheet.ts) in CSS pixels.
+import { CANVAS_FONT_FAMILY } from "./ctx.js"
 import { worldToScreen, type Box, type Camera, type Point, type Size } from "./geometry.js"
 import { schematicTheme } from "./schematic-theme.js"
 import type { SheetArt } from "./sheet.js"
@@ -11,6 +12,11 @@ const CELL_PADDING = 0.06
 /** Zone labels smaller than this on screen are left out; the border stays. */
 export const MIN_ZONE_LABEL_PX = 6
 const OUTER_LINE_PX = 2
+/** The title block's text heights by cell kind, so each size sets the font once. */
+const CELL_TEXT = [
+  ["label", LABEL_TEXT],
+  ["value", VALUE_TEXT],
+] as const
 
 export function showZoneLabels(scale: number): boolean {
   return ZONE_TEXT * scale >= MIN_ZONE_LABEL_PX
@@ -29,11 +35,18 @@ function line(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, from: P
   ctx.lineTo(b.x, b.y)
 }
 
-function text(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, at: Point, value: string, height: number, align: CanvasTextAlign, width?: number): void {
-  if (!value || height * camera.scale < MIN_ZONE_LABEL_PX) return
+/** Sets the font for text `height` inches tall, once for all the text of that size; false when it would draw under MIN_ZONE_LABEL_PX, so that text is left out. */
+function setTextHeight(ctx: CanvasRenderingContext2D, camera: Camera, height: number): boolean {
+  const px = height * camera.scale
+  if (px < MIN_ZONE_LABEL_PX) return false
+  ctx.font = `${px}px ${CANVAS_FONT_FAMILY}`
+  return true
+}
+
+/** One string at `at` in the current font, squeezed into `width` inches when given. */
+function text(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, at: Point, value: string, width?: number): void {
+  if (!value) return
   const p = worldToScreen(camera, size, at)
-  ctx.font = `${height * camera.scale}px sans-serif`
-  ctx.textAlign = align
   if (width === undefined) ctx.fillText(value, p.x, p.y)
   else ctx.fillText(value, p.x, p.y, Math.max(1, width * camera.scale))
 }
@@ -50,10 +63,11 @@ function drawZones(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, ar
     line(ctx, camera, size, { x: sheet.inner.maxX, y }, { x: sheet.outer.maxX, y })
   }
   ctx.stroke()
-  if (!showZoneLabels(camera.scale)) return
+  if (!showZoneLabels(camera.scale) || !setTextHeight(ctx, camera, ZONE_TEXT)) return
   ctx.fillStyle = schematicTheme.titleText
   ctx.textBaseline = "middle"
-  for (const label of art.labels) text(ctx, camera, size, label, label.text, ZONE_TEXT, "center")
+  ctx.textAlign = "center"
+  for (const label of art.labels) text(ctx, camera, size, label, label.text)
 }
 
 function drawTitleBlock(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, art: SheetArt): void {
@@ -63,9 +77,14 @@ function drawTitleBlock(ctx: CanvasRenderingContext2D, camera: Camera, size: Siz
   for (const cell of block.cells) strokeBox(ctx, camera, size, cell.box)
   ctx.fillStyle = schematicTheme.titleText
   ctx.textBaseline = "middle"
-  for (const cell of block.cells) {
-    const at = { x: cell.box.minX + CELL_PADDING, y: (cell.box.minY + cell.box.maxY) / 2 }
-    text(ctx, camera, size, at, cell.text, cell.kind === "label" ? LABEL_TEXT : VALUE_TEXT, "left", cell.box.maxX - cell.box.minX - 2 * CELL_PADDING)
+  ctx.textAlign = "left"
+  for (const [kind, height] of CELL_TEXT) {
+    if (!setTextHeight(ctx, camera, height)) continue
+    for (const cell of block.cells) {
+      if (cell.kind !== kind) continue
+      const at = { x: cell.box.minX + CELL_PADDING, y: (cell.box.minY + cell.box.maxY) / 2 }
+      text(ctx, camera, size, at, cell.text, cell.box.maxX - cell.box.minX - 2 * CELL_PADDING)
+    }
   }
 }
 

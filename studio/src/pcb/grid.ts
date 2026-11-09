@@ -88,6 +88,12 @@ export interface GridColours {
   fifth?: string
 }
 
+/** How a view paints its grid: the line colours, and the dot colours with the side of a dot in CSS pixels. */
+export interface GridPaint {
+  lines: GridColours
+  dots: GridColours & { px: number }
+}
+
 const isFifth = (index: number) => index % GRID_EVERY === 0
 
 function paintLines(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, plan: GridPlan, colours: GridColours): void {
@@ -116,25 +122,46 @@ function paintLines(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, p
   })
 }
 
-function paintDots(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, plan: GridPlan, colours: GridColours): void {
-  const { spacing } = plan
-  const xs = plan.columns.map((i) => [i, Math.round(worldToScreen(camera, size, { x: i * spacing, y: 0 }).x)] as const)
-  const ys = plan.rows.map((j) => [j, Math.round(worldToScreen(camera, size, { x: 0, y: j * spacing }).y)] as const)
-  for (const [colour, wanted] of [[colours.minor, false], [colours.fifth ?? colours.minor, true]] as const) {
-    ctx.fillStyle = colour
-    ctx.beginPath()
-    for (const [i, x] of xs) for (const [j, y] of ys) if (!colours.fifth || (isFifth(i) && isFifth(j)) === wanted) ctx.rect(x, y, 1, 1)
-    ctx.fill()
-    if (!colours.fifth) return
-  }
+/** The screen positions of the dots' top-left corners along one axis, and which of them fall on a fifth line. */
+function dotAxis(indices: number[], at: (i: number) => number, px: number) {
+  const offset = Math.floor((px - 1) / 2)
+  return indices.map((i) => ({ at: Math.round(at(i)) - offset, fifth: isFifth(i) }))
 }
 
-/** Paints the grid at the look's step, as lines or as 1 px dots at their crossings, in CSS pixels. */
-export function paintGrid(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, look: GridLook, colours: GridColours): void {
+function fillSquares(ctx: CanvasRenderingContext2D, corners: readonly number[], colour: string, px: number): void {
+  ctx.fillStyle = colour
+  ctx.beginPath()
+  for (let k = 0; k + 1 < corners.length; k += 2) ctx.rect(corners[k] as number, corners[k + 1] as number, px, px)
+  ctx.fill()
+}
+
+/**
+ * One square per crossing, in one walk over the crossings: the minor ones go straight into one path and the fifth
+ * crossings (1 in 25) are kept for a second path, so the grid costs one rect per dot and one fill per colour.
+ */
+function paintDots(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, plan: GridPlan, dots: GridPaint["dots"]): void {
+  const { spacing } = plan
+  const columns = dotAxis(plan.columns, (i) => worldToScreen(camera, size, { x: i * spacing, y: 0 }).x, dots.px)
+  const rows = dotAxis(plan.rows, (j) => worldToScreen(camera, size, { x: 0, y: j * spacing }).y, dots.px)
+  const strong: number[] = []
+  ctx.fillStyle = dots.minor
+  ctx.beginPath()
+  for (const column of columns) {
+    for (const row of rows) {
+      if (dots.fifth && column.fifth && row.fifth) strong.push(column.at, row.at)
+      else ctx.rect(column.at, row.at, dots.px, dots.px)
+    }
+  }
+  ctx.fill()
+  if (dots.fifth) fillSquares(ctx, strong, dots.fifth, dots.px)
+}
+
+/** Paints the grid at the look's step, as lines or as square dots at their crossings, in CSS pixels. */
+export function paintGrid(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, look: GridLook, paint: GridPaint): void {
   const plan = planGrid(camera, size, look.step)
   if (!plan) return
   ctx.save()
-  if (look.style === "dots") paintDots(ctx, camera, size, plan, colours)
-  else paintLines(ctx, camera, size, plan, colours)
+  if (look.style === "dots") paintDots(ctx, camera, size, plan, paint.dots)
+  else paintLines(ctx, camera, size, plan, paint.lines)
   ctx.restore()
 }

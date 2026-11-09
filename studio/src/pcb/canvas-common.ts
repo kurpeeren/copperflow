@@ -12,6 +12,7 @@ import { centredCamera, fitCamera, zoomAt, type Box, type Camera, type PartBox, 
 import type { ViolationMarker } from "./markers"
 import { pcbBoxes } from "./pcb-draw"
 import { moveBlocker, partAnchors, type View } from "./positions"
+import { fitBackingStore, resetContext } from "./canvas-surface"
 import type { GridStyle } from "./grid"
 import type { Unit } from "./units"
 import { sheetBoxes } from "./schematic-draw"
@@ -145,11 +146,10 @@ export function prepareCanvas(
 ): { ctx: CanvasRenderingContext2D; ratio: number } | null {
   if (!canvas || size.width === 0) return null
   const ratio = window.devicePixelRatio || 1
-  canvas.width = size.width * ratio
-  canvas.height = size.height * ratio
+  fitBackingStore(canvas, size, ratio)
   const ctx = canvas.getContext("2d")
   if (!ctx) return null
-  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  resetContext(ctx)
   ctx.fillStyle = background
   ctx.fillRect(0, 0, canvas.width, canvas.height)
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0)

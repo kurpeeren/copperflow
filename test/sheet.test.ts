@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest"
-import { MIN_ZONE_LABEL_PX, showZoneLabels, ZONE_TEXT } from "../studio/src/pcb/sheet-draw.js"
+import { CANVAS_FONT_FAMILY } from "../studio/src/pcb/ctx.js"
+import { drawSheetBorder, MIN_ZONE_LABEL_PX, showZoneLabels, ZONE_TEXT } from "../studio/src/pcb/sheet-draw.js"
 import { drawingExtents } from "../studio/src/pcb/drawing-extents.js"
 import { worldToScreen, type Box } from "../studio/src/pcb/geometry.js"
 import { firstDrawing, keepSheet, SHEET_MARGIN, SHEET_SIZES, sheetArt, sheetDate, sheetFor, sheetHolds, titleBlock, zoneDividers, zoneLabels, ZONE_BAND } from "../studio/src/pcb/sheet.js"
@@ -268,6 +269,41 @@ describe("drawingExtents", () => {
     expect(e!.minY).toBeLessThanOrEqual(-3)
     expect(e!.maxX).toBeGreaterThanOrEqual(8)
     expect(e!.maxY).toBeGreaterThanOrEqual(6)
+  })
+})
+
+describe("drawSheetBorder", () => {
+  /** A context that keeps every font set and every string drawn. */
+  function textRecorder() {
+    const fonts: string[] = []
+    const texts: string[] = []
+    const ctx = new Proxy({} as Record<string, unknown>, {
+      get: (_, name: string) => (name === "fillText" ? (value: string) => void texts.push(value) : () => undefined),
+      set: (_, name: string, value: string) => {
+        if (name === "font") fonts.push(value)
+        return true
+      },
+    }) as unknown as CanvasRenderingContext2D
+    return { ctx, fonts, texts }
+  }
+  const sheet = sheetFor(around(3, 2))
+  const art = sheetArt(sheet, VALUES)
+  const camera = { cx: 0, cy: 0, scale: 100 }
+
+  test("sets the font once per text size, in the canvas font family", () => {
+    const { ctx, fonts, texts } = textRecorder()
+    drawSheetBorder(ctx, camera, SCREEN, art)
+    expect(texts).toHaveLength(20 + 9)
+    expect(fonts).toHaveLength(3)
+    expect(new Set(fonts).size).toBe(3)
+    for (const font of fonts) expect(font.endsWith(CANVAS_FONT_FAMILY)).toBe(true)
+  })
+
+  test("text too small to read is left out, and so is its font", () => {
+    const { ctx, fonts, texts } = textRecorder()
+    drawSheetBorder(ctx, { ...camera, scale: 10 }, SCREEN, art)
+    expect(texts).toHaveLength(0)
+    expect(fonts).toHaveLength(0)
   })
 })
 

@@ -53,6 +53,11 @@ describe("schematicTheme", () => {
     expect(schematicTheme.titleText.toUpperCase()).toBe(text)
   })
 
+  test("the grid's dots are #D9D9D2, darker than its #F0F0EB lines (R20)", () => {
+    expect(schematicTheme.gridDot).toBe("#D9D9D2")
+    expect(schematicTheme.grid).toBe("#F0F0EB")
+  })
+
   test("the sheet's CSS background is the same colour", () => {
     const css = readFileSync(new URL("../studio/src/styles.css", import.meta.url), "utf8")
     const block = css.slice(css.indexOf(".schematic-canvas {"))

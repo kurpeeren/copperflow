@@ -1,7 +1,8 @@
 import { describe, expect, test } from "vitest"
 import { drawGrid } from "../studio/src/pcb/overlays.js"
 import { INITIAL_GRID_STEPS, INITIAL_GRID_STYLES, PCB_DEFAULT_STEP, PCB_GRID_STEPS, SHEET_DEFAULT_STEP, SHEET_GRID_STEPS, gridStepOptions, nextGridStyle, planGrid, setGridStep, toggleGridStyle } from "../studio/src/pcb/grid.js"
-import { drawSchematicGrid } from "../studio/src/pcb/schematic-grid.js"
+import { drawSchematicGrid, SHEET_DOT_PX } from "../studio/src/pcb/schematic-grid.js"
+import { schematicTheme } from "../studio/src/pcb/schematic-theme.js"
 import { snapLabel } from "../studio/src/pcb/units.js"
 
 const SIZE = { width: 400, height: 300 }
@@ -137,6 +138,21 @@ describe("PCB grid painting", () => {
     const strong = records.filter((r) => r.name === "rect" && r.style === FIFTH)
     expect(strong.length).toBeGreaterThan(0)
     expect(strong.length).toBeLessThan(squares.length / 10)
+    for (const s of strong) {
+      expect(Math.abs((((s.args[0] as number) - 200) / 100) % 1)).toBeLessThan(0.01)
+      expect(Math.abs((((s.args[1] as number) - 150) / 100) % 1)).toBeLessThan(0.01)
+    }
+  })
+
+  test("dots: one square per crossing and one path per colour", () => {
+    const { ctx, records } = recorder()
+    drawGrid(ctx, camera, SIZE, { step: 1, style: "dots" })
+    const plan = planGrid(camera, SIZE, 1)
+    const squares = records.filter((r) => r.name === "rect")
+    expect(squares).toHaveLength((plan?.columns.length ?? 0) * (plan?.rows.length ?? 0))
+    expect(new Set(squares.map((s) => `${s.args[0]},${s.args[1]}`)).size).toBe(squares.length)
+    expect(records.filter((r) => r.name === "beginPath")).toHaveLength(2)
+    expect(records.filter((r) => r.name === "fill")).toHaveLength(2)
   })
 })
 
@@ -150,11 +166,21 @@ describe("schematic grid painting", () => {
     expect((xs[1] as number) - (xs[0] as number)).toBeCloseTo(20)
   })
 
-  test("dots are 1px squares in the one grid colour", () => {
+  test("dots are 2 x 2 px squares in #D9D9D2, in one path (R20)", () => {
     const { ctx, records } = recorder()
     drawSchematicGrid(ctx, camera, SIZE, { step: 0.1, style: "dots" })
     expect(records.some((r) => r.name === "lineTo")).toBe(false)
-    expect(records.filter((r) => r.name === "rect").length).toBeGreaterThan(100)
-    expect(new Set(records.filter((r) => r.name === "fill").map((r) => r.style)).size).toBe(1)
+    const squares = records.filter((r) => r.name === "rect")
+    expect(squares.length).toBeGreaterThan(100)
+    expect(SHEET_DOT_PX).toBe(2)
+    for (const s of squares) expect([s.args[2], s.args[3], s.style]).toEqual([2, 2, "#D9D9D2"])
+    expect(records.filter((r) => r.name === "fill").map((r) => r.style)).toEqual(["#D9D9D2"])
+  })
+
+  test("the lines stay #F0F0EB, the dots' darker tint is for dots only", () => {
+    const { ctx, records } = recorder()
+    drawSchematicGrid(ctx, camera, SIZE, { step: 0.1, style: "lines" })
+    expect(new Set(records.filter((r) => r.name === "stroke").map((r) => r.style))).toEqual(new Set(["#F0F0EB"]))
+    expect(schematicTheme.grid).toBe("#F0F0EB")
   })
 })

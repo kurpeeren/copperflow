@@ -21,6 +21,8 @@ export const schematicTheme = {
   border: "#A00000",
   titleText: "#000080",
   // Not in the table: they have to read on the light sheet.
+  /** The grid's dots, darker than its lines: lone dots in the line colour (about 1.1:1) look like no grid. */
+  gridDot: "#D9D9D2",
   /** The dashed box round a symbol the engine placed for itself. */
   autoBox: "rgb(160 0 0 / 55%)",
   /** Outline of the part or label under the pointer. */
