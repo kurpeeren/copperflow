@@ -11,7 +11,7 @@ import type { Edit } from "../../../src/core/types.js"
 import type { Design } from "../../../src/engine/design.js"
 import { roundPosition, type Point } from "./geometry.js"
 import type { GroupEdit } from "./group-edits.js"
-import type { SourceCircuit } from "./positions.js"
+import { sourcePosition, ZERO, type SourceCircuit } from "./positions.js"
 import { NO_LOCKS } from "./trace-source.js"
 import { directionOf } from "./wire-geometry.js"
 import { tidy, wireOf, wireShapeEdits, type WireShape, type WireWriter } from "./wire-shape.js"
@@ -39,22 +39,17 @@ interface PinEnd {
   by: Point
 }
 
-const ZERO: Point = { x: 0, y: 0 }
 const plus = (p: Point, d: Point): Point => ({ x: roundPosition(p.x + d.x), y: roundPosition(p.y + d.y) })
 const same = (a: Point, b: Point): boolean => a.x === b.x && a.y === b.y
 const movedEnd = (end: PinEnd): Point => plus(end.at, end.by)
 
-/** The part's position props as the source has them (the literals, else where the sheet draws it less its groups), and how far ahead of the sheet that puts it. */
+/** The part's position props as the source has them (positions.ts sourcePosition), and how far ahead of the sheet that puts it. */
 function sourcePlace(design: Design, source: SourceCircuit, name: string): SourcePlace | undefined {
   const symbol = design.schematic.symbols.find((placed) => placed.component === name)
   if (!symbol) return undefined
   const group = design.circuit.components.find((component) => component.id === name)?.groupOffset.sch ?? ZERO
-  const literals = source.model.parts.find((part) => part.name === name)?.props
-  const prop = (key: "schX" | "schY", drawn: number, offset: number): number => {
-    const literal = literals?.[key]?.literal
-    return typeof literal === "number" ? literal : roundPosition(drawn - offset)
-  }
-  const props = { x: prop("schX", symbol.x, group.x), y: prop("schY", symbol.y, group.y) }
+  const at = sourcePosition(source, name, "schematic", { origin: symbol, group })
+  const props = { x: roundPosition(at.x), y: roundPosition(at.y) }
   return { props, ahead: { x: roundPosition(props.x + group.x - symbol.x), y: roundPosition(props.y + group.y - symbol.y) } }
 }
 
@@ -118,7 +113,9 @@ function followWire(design: Design, source: SourceCircuit, wire: WireShape, move
   if (!ends) return []
   const [start, end] = ends
   const tail = end ? [movedEnd(end)] : []
-  const next = tidy([movedEnd(start), ...followCorners(start, corners, end), ...tail])
+  // The corner next to each pin is picked on the tidied path, so a point in the middle of a run is not taken for it.
+  const current = tidy([start.at, ...corners, ...(end ? [end.at] : [])]).slice(1, end ? -1 : undefined)
+  const next = tidy([movedEnd(start), ...followCorners(start, current, end), ...tail])
   if (next.length < 2) return []
   const result = wireShapeEdits(design, { ...wire, points: next }, next, locked, [movedEnd(start), ...corners, ...tail])
   return Array.isArray(result) ? result : []

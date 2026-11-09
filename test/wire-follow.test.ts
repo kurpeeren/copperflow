@@ -134,6 +134,15 @@ describe("wireFollowEdits", () => {
     expect(follow([["R1", p(0, 0.5)], ["R7", p(0, 0.5)]], new Set(["R2"]))).toEqual([hints(".R7 > .pin2", "net.VCC", [p(1.5, 11.5), p(1.5, 12)])])
   })
 
+  test("a trace with a point in the middle of its first run follows the tidied path, so no segment turns slanted", () => {
+    const text = SOURCE.replace(Z_HINTS, `schematicRouteHints={[{ x: 1, y: 0 }, { x: 2, y: 0 }, { x: 2, y: 2 }]}`)
+    const edits = follow([["R1", p(0, 0.5)]], new Set(), setup(text))
+    expect(edits).toEqual([hints(".R1 > .pin2", ".R2 > .pin1", [p(2, 0.5), p(2, 2)])])
+    const moved = applyEdits(text, [{ kind: "setProps", part: "R1", props: { schY: 0.5 } }, ...edits], new Set())
+    const points = pointsOf(setup(moved).design, "wire:R1.pin2|R2.pin1") ?? []
+    expect(points.slice(1).every((b, i) => points[i]?.x === b.x || points[i]?.y === b.y)).toBe(true)
+  })
+
   test("after core writes the move and the corners, the rebuilt wire leaves its pins square", () => {
     const edits: Edit[] = [{ kind: "setProps", part: "R1", props: { schX: 0.3, schY: 0.5 } }, ...follow([["R1", p(0.3, 0.5)]])]
     const rebuilt = setup(applyEdits(SOURCE, edits, new Set()))
@@ -212,6 +221,18 @@ describe("the move and its wires are one history entry", () => {
     ])
   })
 
+  test("a wire that cannot follow (a locked part at its other end) leaves the move's own edit to go alone", () => {
+    const input = {
+      view: "schematic",
+      circuit: sheet.source,
+      anchors: partAnchors(sheet.design, "schematic"),
+      boxes: sheetBoxes(sheet.design.schematic),
+      blockerFor: (name: string) => moveBlocker(sheet.source, new Set(["R2"]), name, "schematic"),
+      follow: { design: sheet.design, locked: new Set(["R2"]) },
+    } as unknown as GestureInput
+    expect(movePlan(input, ["R1"], p(0, 0.5)).edits).toEqual([{ kind: "setProps", part: "R1", props: { schX: 0, schY: 0.5 } }])
+  })
+
   test("without the sheet's wires (the PCB) a move sends only the move", () => {
     const plan = { edits: [{ kind: "setProps" as const, part: "R1", props: { schX: 0, schY: 0.5 } }], summary: "move R1", parts: ["R1"], skipped: [], done: "moved" as const }
     expect(withFollowingWires(plan, sheet.source, undefined)).toBe(plan)
@@ -255,6 +276,18 @@ describe("the move and its wires are one history entry", () => {
     session.nudge(input(), { action: "nudgeUp", preventDefault: true, steps: 1 })
     await studio.answer()
     expect(studio.calls[1]?.edits).toEqual([{ kind: "setProps", part: "R1", props: { schX: 0, schY: 0.2 } }, hints(".R1 > .pin2", ".R2 > .pin1", [p(2, 0.2), p(2, 2)])])
+    expect(pointsOf(setup(studio.text()).design, "wire:R1.pin2|R2.pin1")).toEqual([p(0.5, 0.2), p(2, 0.2), p(2, 2), p(3.5, 2)])
+  })
+
+  test("a second arrow press while the first is in flight is sent next with the total, and the corner moves with it", async () => {
+    const studio = server()
+    const { session, input } = keys(studio, ["R1"])
+    session.nudge(input(), { action: "nudgeUp", preventDefault: true, steps: 1 })
+    session.nudge(input(), { action: "nudgeUp", preventDefault: true, steps: 1 })
+    expect(studio.calls).toHaveLength(1)
+    await studio.answer()
+    expect(studio.calls[1]?.edits).toEqual([{ kind: "setProps", part: "R1", props: { schX: 0, schY: 0.2 } }, hints(".R1 > .pin2", ".R2 > .pin1", [p(2, 0.2), p(2, 2)])])
+    await studio.answer()
     expect(pointsOf(setup(studio.text()).design, "wire:R1.pin2|R2.pin1")).toEqual([p(0.5, 0.2), p(2, 0.2), p(2, 2), p(3.5, 2)])
   })
 

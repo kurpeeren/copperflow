@@ -60,15 +60,24 @@ export function nextRotation(circuit: SourceCircuit, name: string, view: View, t
 }
 
 /**
+ * A part's position props in `view` as the source has them: each literal, or, when the part has none, where it sits
+ * less what its groups add. Not rounded.
+ */
+export function sourcePosition(circuit: SourceCircuit, name: string, view: View, anchor: Pick<Anchor, "origin" | "group">): Point {
+  const props = circuit.model.parts.find((p) => p.name === name)?.props
+  const [keyX, keyY] = VIEWS[view].position
+  const prop = (key: string, origin: number, group: number) => {
+    const current = props?.[key]?.literal
+    return typeof current === "number" ? current : origin - group
+  }
+  return { x: prop(keyX, anchor.origin.x, anchor.group.x), y: prop(keyY, anchor.origin.y, anchor.group.y) }
+}
+
+/**
  * The position props that move a part by `offset` in `view`: a literal plus the offset, or, when
  * the part has no literal, where it sits plus the offset, less what its groups add.
  */
 export function movedTo(circuit: SourceCircuit, name: string, view: View, anchor: Pick<Anchor, "origin" | "group">, offset: Point): [number, number] {
-  const props = circuit.model.parts.find((p) => p.name === name)?.props
-  const [keyX, keyY] = VIEWS[view].position
-  const target = (key: string, delta: number, origin: number, group: number) => {
-    const current = props?.[key]?.literal
-    return roundPosition(typeof current === "number" ? current + delta : origin + delta - group)
-  }
-  return [target(keyX, offset.x, anchor.origin.x, anchor.group.x), target(keyY, offset.y, anchor.origin.y, anchor.group.y)]
+  const at = sourcePosition(circuit, name, view, anchor)
+  return [roundPosition(at.x + offset.x), roundPosition(at.y + offset.y)]
 }
