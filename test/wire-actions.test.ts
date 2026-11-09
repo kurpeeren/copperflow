@@ -12,7 +12,7 @@ const SOURCE = `export default () => (
     <resistor name="R2" resistance="1k" footprint="0402" schX={3} schY={0} />
     <resistor name="R3" resistance="1k" footprint="0402" schX={6} schY={0} />
     <resistor name="R4" resistance="1k" footprint="0402" schX={0} schY={3} />
-    <resistor name="R5" resistance="1k" footprint="0402" schX={0} schY={6} />
+    <resistor name="R5" resistance="1k" footprint="0402" schX={-1} schY={6} schRotation={180} />
     <resistor name="R6" resistance="1k" footprint="0402" schX={3} schY={6} />
     <trace from=".R1 > .pin2" to=".R2 > .pin1" schematicRouteHints={[{ x: 1, y: 1 }, { x: 2, y: 1 }]} />
     <trace from=".R1 > .pin2" to=".R2 > .pin1" />

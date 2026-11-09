@@ -1,8 +1,9 @@
-import type { Circuit, Component, Connection, Point, SchematicDrawing, Side } from "./model.js"
-import { naturalCompare } from "./order.js"
-import { junctionsOf, labelName, labelStyle, layoutNets, rightAngle, type Drawn, type PinSpot } from "./schematic-nets.js"
-import { symbolFor, type Bounds, type SchSymbol } from "./symbols/index.js"
-import { clean } from "./symbols/types.js"
+import type { Circuit, Component, Connection, Diagnostic, Point, SchematicDrawing, Side } from "./model.js"
+import { junctionsOf, labelName, labelStyle, layoutNets, type Drawn, type PinSpot } from "./schematic-nets.js"
+import { routeWires, type FixedWire, type RouteRequest, type SheetBox } from "./schematic-route.js"
+import { rotateSide, sheetBounds, sheetPoint, type Spot } from "./schematic-geometry.js"
+import { placeLoose } from "./schematic-place.js"
+import { symbolFor, type SchSymbol } from "./symbols/index.js"
 
 export interface PlacedSymbol {
   component: string
@@ -41,98 +42,23 @@ export interface SchematicLayout {
   drawings: SchematicDrawing[]
 }
 
-/** Gap between the placed symbols and the column of auto-placed ones. */
-const COLUMN_GAP = 1.0
-/** Gap between stacked auto-placed symbols. */
-const STACK_GAP = 0.4
-const GRID = 0.1
-/** Counter-clockwise order, so a quarter turn moves one step on. */
-const SIDES: readonly Side[] = ["right", "top", "left", "bottom"]
-
-/** Removes floating-point noise and negative zero so that coordinates compare exactly. */
-const tidy = (value: number): number => clean(value) + 0
-
-const turnsOf = (rotation: number): number => Math.round((((rotation % 360) + 360) % 360) / 90) % 4
-
-/** Counter-clockwise quarter turns, y up. */
-function rotatePoint(p: Point, rotation: number): Point {
-  switch (turnsOf(rotation)) {
-    case 1:
-      return { x: tidy(-p.y), y: tidy(p.x) }
-    case 2:
-      return { x: tidy(-p.x), y: tidy(-p.y) }
-    case 3:
-      return { x: tidy(p.y), y: tidy(-p.x) }
-    default:
-      return { x: tidy(p.x), y: tidy(p.y) }
-  }
-}
-
-function rotateSide(side: Side, rotation: number): Side {
-  return SIDES[(SIDES.indexOf(side) + turnsOf(rotation)) % 4] ?? side
-}
-
-function sheetPoint(p: Point, at: { x: number; y: number; rotation: number }): Point {
-  const turned = rotatePoint(p, at.rotation)
-  return { x: tidy(at.x + turned.x), y: tidy(at.y + turned.y) }
-}
-
-/** The box around the rotated corners of the bounds, relative to the origin. */
-function turnedBounds(bounds: Bounds, rotation: number): Bounds {
-  const corners = [
-    { x: bounds.minX, y: bounds.minY },
-    { x: bounds.maxX, y: bounds.minY },
-    { x: bounds.maxX, y: bounds.maxY },
-    { x: bounds.minX, y: bounds.maxY },
-  ].map((corner) => rotatePoint(corner, rotation))
-  const xs = corners.map((c) => c.x)
-  const ys = corners.map((c) => c.y)
-  return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) }
-}
-
-const snapDown = (value: number): number => tidy(Math.floor(value / GRID + 1e-9) * GRID)
-const snapUp = (value: number): number => tidy(Math.ceil(value / GRID - 1e-9) * GRID)
-
-interface Origin {
-  x: number
-  y: number
-  rotation: number
+interface Origin extends Spot {
   autoPlaced: boolean
 }
 
-/** Right edge of the placed symbols, or undefined when none is placed. */
-function placedRight(components: readonly Component[], symbols: ReadonlyMap<string, SchSymbol>): number | undefined {
-  const edges = components.flatMap((component) => {
-    const symbol = symbols.get(component.id)
-    return component.sch && symbol ? [component.sch.x + turnedBounds(symbol.bounds, component.sch.rotation).maxX] : []
-  })
-  return edges.length > 0 ? Math.max(...edges) : undefined
-}
-
-/** Placed symbols keep their spot; the rest stack downward in a column right of them. */
-function origins(components: readonly Component[], symbols: ReadonlyMap<string, SchSymbol>): Map<string, Origin> {
+/** Placed symbols keep their spot; the rest are placed by connectivity (schematic-place.ts). */
+function origins(circuit: Circuit, symbols: ReadonlyMap<string, SchSymbol>): Map<string, Origin> {
   const result = new Map<string, Origin>()
-  for (const component of components) {
+  for (const component of circuit.components) {
     if (component.sch) result.set(component.id, { ...component.sch, autoPlaced: false })
   }
-  const loose = components.filter((c) => !c.sch).sort((a, b) => naturalCompare(a.id, b.id))
-  const right = placedRight(components, symbols)
-  const reach = Math.max(0, ...loose.map((c) => -(symbols.get(c.id)?.bounds.minX ?? 0)))
-  const x = right === undefined ? 0 : snapUp(right + COLUMN_GAP + reach)
-  let cursor = 0
-  for (const component of loose) {
-    const bounds = symbols.get(component.id)?.bounds
-    if (!bounds) continue
-    const y = snapDown(cursor - bounds.maxY)
-    result.set(component.id, { x, y, rotation: 0, autoPlaced: true })
-    cursor = tidy(y + bounds.minY - STACK_GAP)
-  }
+  for (const [name, spot] of placeLoose(circuit, symbols)) result.set(name, { ...spot, autoPlaced: true })
   return result
 }
 
 function placeSymbols(circuit: Circuit): { symbols: PlacedSymbol[]; spots: Map<string, PinSpot> } {
   const drawn = new Map(circuit.components.map((component) => [component.id, symbolFor(component)]))
-  const where = origins(circuit.components, drawn)
+  const where = origins(circuit, drawn)
   const spots = new Map<string, PinSpot>()
   const symbols = circuit.components.flatMap((component): PlacedSymbol[] => {
     const symbol = drawn.get(component.id)
@@ -168,18 +94,29 @@ function labelAtEnd(circuit: Circuit, connection: Connection, netEnd: string, po
 const netIdOf = (circuit: Circuit, pin: string): string => circuit.nets.find((net) => net.pins.includes(pin))?.id ?? `net:${pin}`
 
 interface HandDrawn {
-  wires: Wire[]
+  /** One per drawn connection, in source order: a hand-drawn wire, or a wire still to route. */
+  slots: (Wire | RouteRequest)[]
+  fixed: FixedWire[]
   labels: NetLabel[]
   joins: [string, string][]
   labeled: Set<string>
+  spots: ReadonlyMap<string, PinSpot>
 }
 
-function drawPinToPin(circuit: Circuit, connection: Connection, from: PinSpot, to: PinSpot, into: HandDrawn): void {
-  const bends = connection.corners ?? []
-  const points = bends.length > 0 ? [from.end, ...bends, to.end] : rightAngle(from.end, to.end)
-  if (points.length < 2) return
-  into.wires.push({ id: `wire:${connection.id}`, net: netIdOf(circuit, connection.from), points, connection: connection.id })
-  into.joins.push([connection.from, connection.to])
+/** A wire between two pins: drawn through its corners, or routed later when it has none. */
+function drawPinToPin(circuit: Circuit, connection: Connection, into: HandDrawn): void {
+  const { id, from, to, source } = connection
+  const [bends, net] = [connection.corners ?? [], netIdOf(circuit, from)]
+  into.joins.push([from, to])
+  if (bends.length === 0) {
+    into.slots.push({ id: `wire:${id}`, net, from, to, connection: id, source })
+    return
+  }
+  const [a, b] = [into.spots.get(from)?.end, into.spots.get(to)?.end]
+  if (!a || !b) return
+  const wire: Wire = { id: `wire:${id}`, net, points: [a, ...bends, b], connection: id }
+  into.slots.push(wire)
+  into.fixed.push({ wire, pins: [from, to] })
 }
 
 /** A wire from a pin through its corners to a named net stops at the last corner, where the label sits. */
@@ -189,29 +126,53 @@ function drawPinToNet(circuit: Circuit, connection: Connection, pinFirst: boolea
   if (bends.length === 0 || !netEnd.startsWith("net.")) return
   const points = [spot.end, ...(pinFirst ? bends : [...bends].reverse())]
   const label = labelAtEnd(circuit, connection, netEnd, points)
-  into.wires.push({ id: `wire:${connection.id}`, net: netEnd, points, connection: connection.id })
+  const wire: Wire = { id: `wire:${connection.id}`, net: netEnd, points, connection: connection.id }
+  into.slots.push(wire)
+  into.fixed.push({ wire, pins: [pin] })
   if (label) into.labels.push(label)
   into.labeled.add(pin)
 }
 
 function handDrawn(circuit: Circuit, spots: ReadonlyMap<string, PinSpot>): HandDrawn {
-  const result: HandDrawn = { wires: [], labels: [], joins: [], labeled: new Set() }
+  const result: HandDrawn = { slots: [], fixed: [], labels: [], joins: [], labeled: new Set(), spots }
   for (const connection of circuit.connections) {
     const from = spots.get(connection.from)
     const to = spots.get(connection.to)
-    if (from && to) drawPinToPin(circuit, connection, from, to, result)
+    if (from && to) drawPinToPin(circuit, connection, result)
     else if (from) drawPinToNet(circuit, connection, true, from, result)
     else if (to) drawPinToNet(circuit, connection, false, to, result)
   }
   return result
 }
 
-/** Where every symbol, wire, label, junction and drawing of the schematic goes. */
-export function layoutSchematic(circuit: Circuit): SchematicLayout {
+/** The symbols' bounds on the sheet and the pins each owns, for the router. */
+function sheetBoxes(symbols: readonly PlacedSymbol[]): SheetBox[] {
+  return symbols.map((placed) => ({ bounds: sheetBounds(placed.symbol.bounds, placed), pins: Object.keys(placed.pinEnds) }))
+}
+
+const isRequest = (slot: Wire | RouteRequest): slot is RouteRequest => !("points" in slot)
+
+/**
+ * Where every symbol, wire, label and junction of the schematic goes, and a warning for each wire that could not
+ * avoid other things. Wires without corners are routed in source order, then the near pins of each named net.
+ */
+export function layoutSchematicWithDiagnostics(circuit: Circuit): { layout: SchematicLayout; diagnostics: Diagnostic[] } {
   const { symbols, spots } = placeSymbols(circuit)
   const hand = handDrawn(circuit, spots)
   const drawn: Drawn = { joins: hand.joins, labeled: hand.labeled }
   const nets = layoutNets(circuit, spots, drawn)
-  const wires = [...hand.wires, ...nets.wires]
-  return { symbols, wires, labels: [...hand.labels, ...nets.labels], junctions: junctionsOf(wires, spots), drawings: [...circuit.drawings] }
+  const requests = [...hand.slots.filter(isRequest), ...nets.wires]
+  const routed = routeWires({ boxes: sheetBoxes(symbols), spots }, hand.fixed, requests)
+  const byRequest = new Map(requests.map((request, index) => [request, routed.wires[index]]))
+  const wires = [...hand.slots, ...nets.wires].flatMap((slot) => {
+    const wire = isRequest(slot) ? byRequest.get(slot) : slot
+    return wire ? [wire] : []
+  })
+  const layout = { symbols, wires, labels: [...hand.labels, ...nets.labels], junctions: junctionsOf(wires, spots), drawings: [...circuit.drawings] }
+  return { layout, diagnostics: routed.diagnostics }
+}
+
+/** Where every symbol, wire, label and junction of the schematic goes. */
+export function layoutSchematic(circuit: Circuit): SchematicLayout {
+  return layoutSchematicWithDiagnostics(circuit).layout
 }

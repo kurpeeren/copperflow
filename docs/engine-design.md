@@ -223,12 +223,19 @@ uses stable ids so the Studio, history and checks can follow an item across edit
     labels, with no wire to a box.
   - ERC works on the whole connected circuit. A violation inside a block names the instance and
     points to the place on the block's sheet.
-- Parts with `schX`/`schY` stay exactly there. Parts without a position are placed by a simple,
-  deterministic rule on their own sheet, never overlapping, and the Studio marks them as
-  auto-placed until someone moves them.
+- Parts with `schX`/`schY` stay exactly there. Parts without a position are placed by
+  connectivity (`schematic-place.ts`), deterministically and never closer than 0.2 to another
+  symbol: chips stand in one row in signal-flow order, a two-pin passive or a chain of them hangs
+  beside the chip pin it serves (to ground below, to power above, in series in line, between two
+  chips in the gap), and only parts that share no net with a chip pin line up right of them, one
+  chain of joined two-pin parts per row. The Studio marks them as auto-placed until
+  someone moves them.
 - A trace with `schematicRouteHints` is drawn through its corners, as today, but natively.
-  A trace without corners is drawn as a right-angle wire between its pins; a pin on a named net
-  far from its partners gets a net label instead. Nothing the user drew is re-routed.
+  A trace without corners, and the near pins of a named net, are routed as orthogonal wires on the
+  0.1 grid around symbols, hand-drawn wires and other nets' wires (`schematic-route.ts`), each
+  with a bounded search (exact A*, then A* with the estimate weighted 5/4); a wire that cannot get
+  round is drawn with one elbow and the design warns (`auto-route`). A pin on a
+  named net far from its partners gets a net label instead. Nothing the user drew is re-routed.
 - Schematic units stay the numbers used today, so existing positions keep their meaning.
 
 ### 6. PCB placement and ratsnest
