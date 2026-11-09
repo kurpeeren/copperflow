@@ -1,8 +1,8 @@
 // Align and distribute: where each part of a selection goes, by its bounding box in the open view (y up). The
-// layouts are pure functions of the boxes; alignPlan turns them into one group edit, with each written position
-// snapped to the Grid step on the axis it moves. Locked and read-only parts, and parts the view does not draw, stay
-// out of the layout and are named, so the others line up among themselves.
-import { roundPosition, snap, unionBoxes, type Box, type Point } from "./geometry.js"
+// layouts are pure functions of the boxes; alignPlan turns them into one group edit with exact positions (no grid
+// snap, so edges line up). Locked and read-only parts count as references but stay put and are named when they would
+// have to move; parts the view does not draw stay out and are named.
+import { roundPosition, unionBoxes, type Box, type Point } from "./geometry.js"
 import { anchorLookup, inView, nameList, type GroupEdit, type Layout } from "./group-edits.js"
 import { partsNeeded, type AlignCommand } from "./align-rules.js"
 import { movedTo, VIEWS, type SourceCircuit, type View } from "./positions.js"
@@ -88,14 +88,17 @@ export function alignSummary(command: AlignCommand, names: readonly string[], vi
   return WORDING[command].replace("{}", nameList(names)) + VIEWS[view].where
 }
 
-/** The position props that put a part `offset` away, each snapped to `step` on the axis that moves. */
-function snappedTarget(circuit: SourceCircuit, name: string, view: View, layout: Layout, offset: Point): Record<string, number> {
+/** The position props that put a part `offset` away, exact to 4 decimals (no grid snap: the edges must line up). */
+function targetProps(circuit: SourceCircuit, name: string, view: View, layout: Layout, offset: Point): Record<string, number> {
   const [keyX, keyY] = VIEWS[view].position
   const [x, y] = movedTo(circuit, name, view, anchorLookup(layout.anchors, layout.boxes)(name), offset)
-  return { [keyX]: offset.x === 0 ? x : roundPosition(snap(x, layout.step)), [keyY]: offset.y === 0 ? y : roundPosition(snap(y, layout.step)) }
+  return { [keyX]: x, [keyY]: y }
 }
 
-/** What the command does to the selection: one group edit, or the reason it does nothing. */
+/**
+ * What the command does to the selection: one group edit, or the reason it does nothing. Every selected part the view
+ * draws sets the target, locked ones too; one that would have to move but cannot stays and is named.
+ */
 export function alignPlan(
   circuit: SourceCircuit,
   names: readonly string[],
@@ -105,16 +108,18 @@ export function alignPlan(
   blockerFor: (name: string) => string | null,
 ): GroupEdit | { message: string } {
   const placed = inView(layout)
-  const skipped = names.flatMap((name) => (!placed(name) ? `${name} is not in this view` : (blockerFor(name) ?? [])))
-  const movable = layout.boxes.filter((part) => names.includes(part.name) && placed(part.name) && blockerFor(part.name) === null)
+  const away = names.filter((name) => !placed(name)).map((name) => `${name} is not in this view`)
+  const drawn = layout.boxes.filter((part) => names.includes(part.name) && placed(part.name))
   const needed = partsNeeded(command)
-  if (movable.length < needed) {
-    const why = skipped.length > 0 ? ` (${skipped.join("; ")})` : ""
-    return { message: `${needed === 2 ? "Align" : "Distribute"} needs ${needed} or more parts that can move${why}.` }
+  if (drawn.length < needed) {
+    const why = away.length > 0 ? ` (${away.join("; ")})` : ""
+    return { message: `${needed === 2 ? "Align" : "Distribute"} needs ${needed} or more parts in this view${why}.` }
   }
-  const offsets = layoutOffsets(command, movable)
-  const parts = movable.map((part) => part.name).filter((name) => offsets.has(name))
+  const offsets = layoutOffsets(command, drawn)
+  const stuck = [...offsets.keys()].flatMap((name) => blockerFor(name) ?? [])
+  const parts = drawn.map((part) => part.name).filter((name) => offsets.has(name) && blockerFor(name) === null)
+  const skipped = [...away, ...stuck]
   if (parts.length === 0) return { message: skipped.length > 0 ? `Nothing moves. ${skipped.join("; ")}.` : "The parts are already there." }
-  const edits = parts.map((name) => ({ kind: "setProps" as const, part: name, props: snappedTarget(circuit, name, view, layout, offsets.get(name) as Point) }))
+  const edits = parts.map((name) => ({ kind: "setProps" as const, part: name, props: targetProps(circuit, name, view, layout, offsets.get(name) as Point) }))
   return { edits, summary: alignSummary(command, parts, view), parts, skipped, done: "moved" }
 }

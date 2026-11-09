@@ -115,44 +115,61 @@ describe("alignPlan", () => {
     expect("summary" in plan && plan.summary).toBe("align R2 and R3 left")
   })
 
-  test("a position that lands off the Grid snaps on the axis that moves, and the other axis is left alone", () => {
+  test("positions are exact, not snapped to the Grid, so edges of different-sized boxes line up to 1e-4", () => {
     const off = scene(
       [
-        { name: "A", x: 0, y: 0.03, hw: 1, hh: 1 },
-        { name: "B", x: 3.04, y: 0.07, hw: 1, hh: 1 },
-      ],
-      0.1,
-    )
-    const plan = alignPlan(off.circuit, ["A", "B"], "pcb", off.layout, "alignLeft", off.blocker())
-    expect(written(plan)).toEqual([["B", { pcbX: 0, pcbY: 0.07 }]])
-  })
-
-  test("a position the move leaves off the Grid is snapped to it", () => {
-    const off = scene(
-      [
-        { name: "A", x: 0, y: 0, hw: 1, hh: 1 },
-        { name: "B", x: 3.04, y: 5, hw: 1, hh: 1 },
+        { name: "A", x: 0, y: 0.03, hw: 1.03, hh: 1 },
+        { name: "B", x: 3.04, y: 0.07, hw: 0.37, hh: 1 },
       ],
       0.5,
     )
-    // B moves by -3.04 to 0: on the grid. A wider offset check: align right moves A to 3.04, which snaps to 3.
-    const plan = alignPlan(off.circuit, ["A", "B"], "pcb", off.layout, "alignRight", off.blocker())
-    expect(written(plan)).toEqual([["A", { pcbX: 3, pcbY: 0 }]])
+    const plan = alignPlan(off.circuit, ["A", "B"], "pcb", off.layout, "alignLeft", off.blocker())
+    // A's left edge is -1.03; B's centre goes to -1.03 + 0.37 = -0.66.
+    expect(written(plan)).toEqual([["B", { pcbX: -0.66, pcbY: 0.07 }]])
+    const turned = scene([
+      { name: "A", x: 0, y: 0, hw: 1.234, hh: 0.5 },
+      { name: "B", x: 6, y: 3, hw: 0.5, hh: 1.777 },
+    ])
+    const moved = alignPlan(turned.circuit, ["A", "B"], "pcb", turned.layout, "alignTop", turned.blocker())
+    if (!("edits" in moved)) throw new Error("expected an edit")
+    const y = (moved.edits[0] as unknown as { props: { pcbY: number } }).props.pcbY
+    expect(Math.abs(y + 0.5 - (3 + 1.777))).toBeLessThan(1e-4)
   })
 
-  test("a locked member is skipped and named, and the others line up among themselves", () => {
+  test("a locked leftmost part sets the Align left edge; the others line up to it", () => {
     const { circuit, layout, blocker } = scene(specs)
     const plan = alignPlan(circuit, ["R1", "R2", "R3"], "pcb", layout, "alignLeft", blocker(["R1"]))
     if (!("edits" in plan)) throw new Error("expected an edit")
-    expect(plan.skipped).toEqual(["R1 is locked"])
-    expect(plan.parts).toEqual(["R3"])
-    expect(plan.done).toBe("moved")
+    expect(plan.parts).toEqual(["R2", "R3"])
+    expect(plan.skipped).toEqual([])
+    expect(written(plan)).toEqual([["R2", { pcbX: 1, pcbY: 1 }], ["R3", { pcbX: -0.5, pcbY: 2 }]])
   })
 
-  test("with too few parts able to move, nothing is sent and the message says why", () => {
+  test("a locked part that would have to move stays and is named", () => {
     const { circuit, layout, blocker } = scene(specs)
-    expect(alignPlan(circuit, ["R1", "R2"], "pcb", layout, "alignLeft", blocker(["R1"]))).toEqual({ message: "Align needs 2 or more parts that can move (R1 is locked)." })
-    const distribute = alignPlan(circuit, ["R1", "R2"], "pcb", layout, "distributeH", blocker())
+    const plan = alignPlan(circuit, ["R1", "R2", "R3"], "pcb", layout, "alignLeft", blocker(["R2"]))
+    if (!("edits" in plan)) throw new Error("expected an edit")
+    expect(plan.parts).toEqual(["R3"])
+    expect(plan.skipped).toEqual(["R2 is locked"])
+  })
+
+  test("a locked part in the middle of a distribute keeps its place and the others space around the end points", () => {
+    const row = scene([
+      { name: "A", x: 1, y: 0, hw: 1, hh: 1 },
+      { name: "B", x: 4, y: 0, hw: 2, hh: 1 },
+      { name: "C", x: 5, y: 0, hw: 0.5, hh: 1 },
+      { name: "D", x: 12.5, y: 0, hw: 0.5, hh: 1 },
+    ])
+    const plan = alignPlan(row.circuit, ["A", "B", "C", "D"], "pcb", row.layout, "distributeH", row.blocker(["B"]))
+    if (!("edits" in plan)) throw new Error("expected an edit")
+    expect(plan.parts).toEqual(["C"])
+    expect(plan.skipped).toEqual(["B is locked"])
+  })
+
+  test("with too few parts in the view, nothing is sent and the message says why", () => {
+    const { circuit, layout, blocker } = scene(specs, 0.1, ["R2"])
+    expect(alignPlan(circuit, ["R1", "R2"], "pcb", layout, "alignLeft", blocker())).toEqual({ message: "Align needs 2 or more parts in this view (R2 is not in this view)." })
+    const distribute = alignPlan(circuit, ["R1", "R3"], "pcb", layout, "distributeH", blocker())
     expect("message" in distribute && distribute.message).toContain("Distribute needs 3")
   })
 
