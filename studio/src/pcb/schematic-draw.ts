@@ -15,8 +15,8 @@ export interface SchematicDrawOptions {
   showPins?: boolean
   /** Pin ids to emphasise, e.g. the start of a wire being drawn and the pin under the pointer. */
   activePins?: readonly string[]
-  /** The part being dragged and how far it has moved, in sheet units. */
-  moving?: { component: string; by: Point }
+  /** The parts being dragged and how far they have moved, in sheet units. */
+  moving?: { components: readonly string[]; by: Point }
   /** Wires waiting for their build, drawn dashed. */
   pending?: readonly (readonly Point[])[]
   /** A net label or ground or power symbol drawn dashed at `at`, in place of where the layout has it; `hideWire` is the wire it replaces. */
@@ -84,7 +84,7 @@ export function drawSchematic(ctx: Ctx, layout: SchematicLayout, view: View, opt
   const px = 1 / camera.scale
   const line = (width: number) => Math.max(width, MIN_LINE_PX * px)
   const texts: Label[] = []
-  const shiftOf = (symbol: PlacedSymbol) => (options.moving?.component === symbol.component ? options.moving.by : NO_SHIFT)
+  const shiftOf = (symbol: PlacedSymbol) => (options.moving?.components.includes(symbol.component) ? options.moving.by : NO_SHIFT)
 
   ctx.save()
   const s = camera.scale * options.ratio

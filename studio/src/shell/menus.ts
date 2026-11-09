@@ -24,6 +24,7 @@ export type CommandId =
   | "netLabel"
   | "groundFlag"
   | "powerFlag"
+  | "noteBox"
   | "checkDrc"
   | "highlight"
   | "clearHighlight"
@@ -114,6 +115,8 @@ export const MENUS: readonly Menu[] = [
       run("Net label", "netLabel", "Alt+N"),
       run("Ground flag", "groundFlag"),
       run("Power flag", "powerFlag"),
+      "separator",
+      run("Note box", "noteBox"),
       "separator",
       later("Bus", STAGE_3, "Alt+B"),
       later("No connect flag", "Comes with the schematic flags (round 5)"),

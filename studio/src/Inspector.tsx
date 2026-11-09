@@ -194,7 +194,7 @@ function BoardView({ circuit, build, actions, counts, onShowChecks, view, collap
       </div>
     ) : (
       <div key={id}>
-        {circuit.annotations.marks.length === 0 && <p className="note">Select a part to leave a note at it, or draw a box on the PCB.</p>}
+        {circuit.annotations.marks.length === 0 && <p className="note">Select a part to leave a note at it, or use Place → Note box to draw one on the canvas.</p>}
         <ul className="marks">
           {circuit.annotations.marks.map((mark) => (
             <li key={mark.id}>

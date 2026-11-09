@@ -6,7 +6,7 @@ import { formatLength, PCB_ZOOM_REFERENCE_PX, SCHEMATIC_ZOOM_REFERENCE_PX, zoomP
 export type StatusGesture =
   | { kind: "drag"; offset: Point; moved: boolean; blocker: string | null }
   | { kind: "label"; label: { at: Point }; at: Point; moved: boolean; blocker: string | null }
-  | { kind: "pan" | "box" }
+  | { kind: "pan" | "box" | "note" }
 
 export interface StatusInput {
   cursor: Point | undefined

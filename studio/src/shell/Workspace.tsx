@@ -3,6 +3,8 @@ import type { Actions } from "../use-actions"
 import { Inspector } from "../Inspector"
 import { LeftPanel } from "../LeftPanel"
 import type { CanvasProps } from "../pcb/canvas-common"
+import type { ContextTarget } from "../pcb/press"
+import type { Point } from "../pcb/geometry"
 import { PcbCanvas } from "../pcb/PcbCanvas"
 import type { View } from "../pcb/positions"
 import { SchematicCanvas } from "../pcb/SchematicCanvas"
@@ -40,6 +42,9 @@ export interface WorkspaceProps {
   openChecks(): void
 }
 
+/** A right click on a canvas; the context menu answers it in the next task. */
+const NO_CONTEXT_MENU = (_target: ContextTarget, _at: Point): void => undefined
+
 /** What both canvases take, once there is a design to draw; each adds the rings of its own view. */
 function canvasProps({ data, workspace, checks, selection, onSelect, actions }: WorkspaceProps): Omit<CanvasProps, "markers" | "gridStyle" | "gridStep" | "onGridStep"> | undefined {
   const { build, circuit } = data
@@ -61,6 +66,7 @@ function canvasProps({ data, workspace, checks, selection, onSelect, actions }: 
     activeViolation: checks.active,
     focus: checks.focus,
     onFocused: checks.focused,
+    onContextMenu: NO_CONTEXT_MENU,
   }
 }
 

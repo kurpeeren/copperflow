@@ -133,8 +133,16 @@ describe("drawSchematic", () => {
 
   test("the moving part is drawn shifted", () => {
     const r1 = layout.symbols.find((s) => s.component === "R1")
-    const moved = draw({ moving: { component: "R1", by: { x: 1, y: 0 } } }).records.filter((r) => r.name === "translate")
+    const moved = draw({ moving: { components: ["R1"], by: { x: 1, y: 0 } } }).records.filter((r) => r.name === "translate")
     expect(moved.some((r) => r.args[0] === (r1?.x ?? 0) + 1)).toBe(true)
+  })
+
+  test("every part of a group move is drawn shifted by the same amount", () => {
+    const moved = draw({ moving: { components: ["R1", "R2"], by: { x: 1, y: 0 } } }).records.filter((r) => r.name === "translate")
+    for (const name of ["R1", "R2"]) {
+      const symbol = layout.symbols.find((s) => s.component === name)
+      expect([name, moved.some((r) => r.args[0] === (symbol?.x ?? 0) + 1)]).toEqual([name, true])
+    }
   })
 })
 

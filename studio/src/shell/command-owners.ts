@@ -27,6 +27,10 @@ export type CameraCommand = (typeof CAMERA_COMMANDS)[number]
 export const PART_COMMANDS = ["fit", "rotate", "delete", "highlight"] as const satisfies readonly CommandId[]
 export type PartCommand = (typeof PART_COMMANDS)[number]
 
+/** Answered by either canvas: the tools both views have, such as Place → Note box (use-note-tool.ts). */
+export const CANVAS_TOOL_COMMANDS = ["noteBox"] as const satisfies readonly CommandId[]
+export type CanvasToolCommand = (typeof CANVAS_TOOL_COMMANDS)[number]
+
 /** Answered by the schematic only (SchematicCanvas.tsx); sent while the PCB is open, they switch to the schematic first. */
 export const SHEET_COMMANDS = ["wire", "netLabel", "groundFlag", "powerFlag"] as const satisfies readonly CommandId[]
 export type SheetCommand = (typeof SHEET_COMMANDS)[number]
@@ -39,6 +43,6 @@ const has = (list: readonly CommandId[], command: CommandId) => list.includes(co
 export function commandOwner(command: CommandId): CommandOwner | undefined {
   if (has(APP_COMMANDS, command)) return "app"
   if (command in WORKSPACE_COMMANDS) return "workspace"
-  if (has(CAMERA_COMMANDS, command) || has(PART_COMMANDS, command)) return "canvas"
+  if (has(CAMERA_COMMANDS, command) || has(PART_COMMANDS, command) || has(CANVAS_TOOL_COMMANDS, command)) return "canvas"
   return has(SHEET_COMMANDS, command) ? "schematic" : undefined
 }

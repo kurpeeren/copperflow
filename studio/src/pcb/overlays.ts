@@ -1,5 +1,6 @@
 // Everything copperflow draws on top of the board, in CSS pixels. Each view passes its own look: PCB_LOOK takes its
 // colours from PALETTE and SHEET_LOOK from schematicTheme, so nothing here falls back to the other view's colours.
+import type { BoxMode } from "./box-select.js"
 import { CANVAS_FONT_FAMILY, PALETTE } from "./ctx.js"
 import { paintGrid, type GridLook, type GridPaint } from "./grid.js"
 import { worldToScreen, type Box, type Camera, type Point, type Size } from "./geometry.js"
@@ -27,6 +28,10 @@ export interface OverlayLook {
   selectedFill?: string
   /** Dash pattern of the note box. */
   noteDash: number[]
+  /** The selection box: its outline, solid when dragged left to right and `boxDash` right to left, and its wash. */
+  boxStroke: string
+  boxFill: string
+  boxDash: number[]
   /** The lock badge's ground and its padlock. */
   lockFill: string
   lockGlyph: string
@@ -36,7 +41,7 @@ export interface OverlayLook {
   markText: string
 }
 
-/** The PCB's look: white selection with a 50% wash, white hover, cyan dotted selection box, notes and locks in the white document colour. */
+/** The PCB's look: white selection with a 50% wash, white hover, the cyan selection box (dotted right to left) and note box, notes and locks in the white document colour. */
 export const PCB_LOOK: OverlayLook = {
   selected: PALETTE.selection,
   selectedFill: PALETTE.selectionFill,
@@ -44,6 +49,9 @@ export const PCB_LOOK: OverlayLook = {
   noteStroke: PALETTE.selectionBox,
   noteFill: PALETTE.selectionBoxFill,
   noteDash: [1, 3],
+  boxStroke: PALETTE.selectionBox,
+  boxFill: PALETTE.selectionBoxFill,
+  boxDash: [1, 3],
   lockFill: PALETTE.document,
   lockGlyph: PALETTE.background,
   markPin: PALETTE.document,
@@ -51,13 +59,16 @@ export const PCB_LOOK: OverlayLook = {
   markText: PALETTE.document,
 }
 
-/** The schematic's look: red selection and note box on the light sheet, with our own hover, lock and note colours. */
+/** The schematic's look: red selection and note box and a blue selection box on the light sheet, with our own hover, lock and note colours. */
 export const SHEET_LOOK: OverlayLook = {
   selected: schematicTheme.selection,
   hover: schematicTheme.hover,
   noteStroke: schematicTheme.selection,
   noteFill: schematicTheme.selectionFill,
   noteDash: [5, 4],
+  boxStroke: schematicTheme.selectionBox,
+  boxFill: schematicTheme.selectionBoxFill,
+  boxDash: [5, 4],
   lockFill: schematicTheme.lockBadge,
   lockGlyph: schematicTheme.lockGlyph,
   markPin: schematicTheme.notePin,
@@ -135,12 +146,21 @@ export function drawMark(ctx: CanvasRenderingContext2D, camera: Camera, size: Si
   ctx.restore()
 }
 
-/** The box drawn with Shift-drag to place a note. */
-export function drawSelectionBox(ctx: CanvasRenderingContext2D, a: Point, b: Point, look: OverlayLook): void {
+/** The selection box: a solid outline dragged left to right (it takes what is inside), dashed right to left (what it touches). */
+export function drawSelectionBox(ctx: CanvasRenderingContext2D, a: Point, b: Point, look: OverlayLook, mode: BoxMode): void {
+  drawBox(ctx, a, b, { stroke: look.boxStroke, fill: look.boxFill, dash: mode === "inside" ? [] : look.boxDash })
+}
+
+/** The box drawn with Place → Note box, where a note for the agent goes. */
+export function drawNoteBox(ctx: CanvasRenderingContext2D, a: Point, b: Point, look: OverlayLook): void {
+  drawBox(ctx, a, b, { stroke: look.noteStroke, fill: look.noteFill, dash: look.noteDash })
+}
+
+function drawBox(ctx: CanvasRenderingContext2D, a: Point, b: Point, style: { stroke: string; fill: string; dash: number[] }): void {
   ctx.save()
-  ctx.fillStyle = look.noteFill
-  ctx.strokeStyle = look.noteStroke
-  ctx.setLineDash(look.noteDash)
+  ctx.fillStyle = style.fill
+  ctx.strokeStyle = style.stroke
+  ctx.setLineDash(style.dash)
   ctx.fillRect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y))
   ctx.strokeRect(Math.min(a.x, b.x) + 0.5, Math.min(a.y, b.y) + 0.5, Math.abs(b.x - a.x), Math.abs(b.y - a.y))
   ctx.restore()

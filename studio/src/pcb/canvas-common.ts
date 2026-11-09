@@ -8,7 +8,10 @@ import type { Selection, SelectionChange } from "../selection"
 import type { Highlight } from "./highlight"
 import type { CameraCommand } from "../shell/command-owners"
 import { useCommands } from "../shell/commands"
-import { drawLockBadge, drawMark, drawOutline, drawSelectionBox, type OverlayLook } from "./overlays"
+import { drawLockBadge, drawMark, drawNoteBox, drawOutline, drawSelectionBox, type OverlayLook } from "./overlays"
+import { boxMode } from "./box-select"
+import type { Gesture } from "./gestures"
+import type { ContextTarget } from "./press"
 import { centredCamera, fitCamera, zoomAt, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import type { ViolationMarker } from "./markers"
 import { pcbBoxes } from "./pcb-draw"
@@ -49,11 +52,13 @@ export interface CanvasProps {
   /** A point to centre the camera on; the canvas calls onFocused once it has. */
   focus: FocusRequest | null
   onFocused(): void
+  /** A right click that did not move, on a part, a net label or the empty canvas; `at` is in client pixels. */
+  onContextMenu(target: ContextTarget, at: Point): void
 }
 
-/** A part drawn away from where the design has it: being dragged, or moved and waiting for its build. */
+/** Parts drawn away from where the design has them: being dragged, or moved and waiting for their build. */
 export interface Moving {
-  name: string
+  names: readonly string[]
   offset: Point
 }
 
@@ -168,17 +173,17 @@ export interface EditorLayer {
   selection: Selection
   locked: ReadonlySet<string>
   marks: Annotations["marks"]
-  /** The note box being drawn, in screen pixels. */
-  noteBox: { start: Point; current: Point } | undefined
+  /** The gesture under way, for the selection box or the note box it draws, in screen pixels. */
+  gesture: Gesture | undefined
   /** The view's overlay colours: PCB_LOOK or SHEET_LOOK. */
   look: OverlayLook
 }
 
-/** Hover and selection outlines, lock badges, the view's notes and the note box, in CSS pixels. */
+/** Hover and selection outlines, lock badges, the view's notes, and the selection box or note box, in CSS pixels. */
 export function drawEditorLayer(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, layer: EditorLayer): void {
-  const { look } = layer
+  const { look, gesture } = layer
   for (const part of layer.boxes) {
-    const offset = layer.moving && part.name === layer.moving.name ? layer.moving.offset : { x: 0, y: 0 }
+    const offset = layer.moving?.names.includes(part.name) ? layer.moving.offset : { x: 0, y: 0 }
     const selected = layer.selection.has(part.name)
     if (part.name === layer.hover && !selected) drawOutline(ctx, camera, size, part.box, offset, "hover", look)
     if (selected) drawOutline(ctx, camera, size, part.box, offset, "selected", look)
@@ -187,7 +192,8 @@ export function drawEditorLayer(ctx: CanvasRenderingContext2D, camera: Camera, s
   for (const mark of layer.marks) {
     if (mark.view === layer.view && mark.x !== undefined && mark.y !== undefined) drawMark(ctx, camera, size, { at: { x: mark.x, y: mark.y }, id: mark.id, text: mark.text }, look)
   }
-  if (layer.noteBox) drawSelectionBox(ctx, layer.noteBox.start, layer.noteBox.current, look)
+  if (gesture?.kind === "box") drawSelectionBox(ctx, gesture.start, gesture.current, look, boxMode(gesture.start, gesture.current))
+  if (gesture?.kind === "note") drawNoteBox(ctx, gesture.start, gesture.current, look)
 }
 
 /** A key meant for the canvas: not typed into a field, and not a browser shortcut such as Ctrl+R. */

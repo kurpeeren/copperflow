@@ -27,8 +27,11 @@ export const schematicTheme = {
   autoBox: "rgb(160 0 0 / 55%)",
   /** Outline of the part or label under the pointer. */
   hover: "rgb(255 0 0 / 45%)",
-  /** Fill of the note box drawn with Shift-drag. */
+  /** Fill of the note box drawn with Place → Note box. */
   selectionFill: "rgb(255 0 0 / 8%)",
+  /** The selection box dragged on the sheet: blue, as EasyEDA draws it, and its wash. */
+  selectionBox: "#0000FF",
+  selectionBoxFill: "rgb(0 0 255 / 8%)",
   /** The lock badge's ground and its padlock. */
   lockBadge: "#4f9a6c",
   lockGlyph: "#ffffff",

@@ -75,13 +75,13 @@ describe("drawPcb", () => {
   })
 
   test("a moving part carries its ratsnest ends with it", () => {
-    const at = (moving?: { component: string; by: { x: number; y: number } }) => {
+    const at = (moving?: { components: string[]; by: { x: number; y: number } }) => {
       const { ctx, records } = recorder()
       drawPcb(ctx, layout, VIEW, { ratio: 1, ...(moving ? { moving } : {}) })
       return records.filter((r) => r.name === "moveTo" && r.strokeStyle === PALETTE.ratsnest).map((r) => r.args)
     }
     const still = at()
-    const moved = at({ component: "R1", by: { x: 1, y: 0 } })
+    const moved = at({ components: ["R1"], by: { x: 1, y: 0 } })
     expect(still).toHaveLength(2)
     expect(moved.map((a) => a[0])).toEqual(still.map((a) => (a[0] as number) + 1))
   })

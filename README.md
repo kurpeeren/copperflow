@@ -96,10 +96,12 @@ The window is laid out like a desktop EDA editor:
   warnings, which are ringed on the canvas; click one to go to it) and Find Results.
 
 Drag parts on the PCB (they snap to a 0.1, 0.5 or 1 mm grid), press R to rotate and Delete to
-remove, scroll to zoom, drag the background to pan, lock parts, change values in Properties,
+remove, scroll to zoom, drag with the right (or middle) button to pan, lock parts, change values in Properties,
+draw a selection box by dragging the background (left to right takes the parts inside it, right to left the
+parts it touches, Shift or Ctrl adds), drag a selected part to move the whole selection,
 move symbols in the schematic and draw wires as in KiCad (click a free pin, or press W over a pin,
 click the sheet for corners on the grid, then click a pin, a net label or a wire; Esc cancels),
-leave marks for the agent and undo changes.
+leave marks for the agent (Place → Note box, then drag a box) and undo changes.
 Drag a net label or a ground or power symbol in the schematic and its wire follows, written as `schematicRouteHints` on the trace (Esc cancels the drag).
 The Place tools in the schematic toolbar (Net label, Ground flag, Power flag) put a label on a pin you click, written as a trace with one corner, and stay armed until Esc; Tab names a label before you click.
 Design → Highlight net lights every net of the selected part.

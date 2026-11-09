@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest"
 import { buildDesign } from "../src/engine/design.js"
 import { PCB_DEFAULT_STEP, planGrid } from "../studio/src/pcb/grid.js"
 import { PALETTE } from "../studio/src/pcb/ctx.js"
-import { drawGrid, drawLockBadge, drawMark, drawOutline, drawSelectionBox, PCB_LOOK, SHEET_LOOK, type OverlayLook } from "../studio/src/pcb/overlays.js"
+import { drawGrid, drawLockBadge, drawMark, drawNoteBox, drawOutline, drawSelectionBox, PCB_LOOK, SHEET_LOOK, type OverlayLook } from "../studio/src/pcb/overlays.js"
 import { drawPcb } from "../studio/src/pcb/pcb-draw.js"
 import { schematicTheme } from "../studio/src/pcb/schematic-theme.js"
 import { recorder } from "./helpers/fake-ctx.js"
@@ -43,7 +43,7 @@ function overlayColours(look: OverlayLook): Set<unknown> {
   const size = { width: 400, height: 300 }
   drawLockBadge(ctx, camera, size, { minX: 0, minY: 0, maxX: 1, maxY: 1 }, look)
   drawMark(ctx, camera, size, { at: { x: 2, y: 2 }, id: "N1", text: "route ground here" }, look)
-  drawSelectionBox(ctx, { x: 10, y: 10 }, { x: 60, y: 40 }, look)
+  drawNoteBox(ctx, { x: 10, y: 10 }, { x: 60, y: 40 }, look)
   return new Set(records.flatMap((r) => (r.name === "fill" || r.name === "fillRect" || r.name === "fillText" ? [r.fillStyle] : r.name === "stroke" || r.name === "strokeRect" ? [r.strokeStyle] : [])))
 }
 
@@ -86,6 +86,9 @@ describe("PCB colours (spec section 6)", () => {
       noteStroke: "#00ffff",
       noteFill: "rgb(0 255 255 / 10%)",
       noteDash: [1, 3],
+      boxStroke: "#00ffff",
+      boxFill: "rgb(0 255 255 / 10%)",
+      boxDash: [1, 3],
       lockFill: "#ffffff",
       lockGlyph: "#000000",
       markPin: "#ffffff",
@@ -187,14 +190,38 @@ describe("PCB colours (spec section 6)", () => {
   })
 })
 
+/** The stroke colour and dash of a selection box dragged from `a` to `b`. */
+function boxStroke(look: OverlayLook, mode: "inside" | "touching") {
+  const { ctx, records } = recorder()
+  drawSelectionBox(ctx, { x: 10, y: 10 }, { x: 60, y: 40 }, look, mode)
+  const stroke = records.find((r) => r.name === "strokeRect")
+  return { colour: stroke?.strokeStyle, dash: records.filter((r) => r.name === "setLineDash").map((r) => r.args[0]) }
+}
+
+describe("the selection box", () => {
+  test("on the PCB it is cyan: solid left to right, dotted right to left", () => {
+    expect(boxStroke(PCB_LOOK, "inside")).toEqual({ colour: "#00ffff", dash: [[]] })
+    expect(boxStroke(PCB_LOOK, "touching")).toEqual({ colour: "#00ffff", dash: [[1, 3]] })
+  })
+
+  test("on the schematic it is #0000FF: solid left to right, dashed right to left", () => {
+    expect(schematicTheme.selectionBox).toBe("#0000FF")
+    expect(boxStroke(SHEET_LOOK, "inside")).toEqual({ colour: "#0000FF", dash: [[]] })
+    expect(boxStroke(SHEET_LOOK, "touching")).toEqual({ colour: "#0000FF", dash: [[5, 4]] })
+  })
+})
+
 describe("schematic overlay look", () => {
-  test("red selection and note box with a dashed edge, and the sheet's own hover, lock and note colours", () => {
+  test("red selection and note box with a dashed edge, a blue selection box, and the sheet's own hover, lock and note colours", () => {
     expect(SHEET_LOOK).toEqual({
       selected: "#FF0000",
       hover: "rgb(255 0 0 / 45%)",
       noteStroke: "#FF0000",
       noteFill: "rgb(255 0 0 / 8%)",
       noteDash: [5, 4],
+      boxStroke: "#0000FF",
+      boxFill: "rgb(0 0 255 / 8%)",
+      boxDash: [5, 4],
       lockFill: "#4f9a6c",
       lockGlyph: "#ffffff",
       markPin: "#e0a46a",

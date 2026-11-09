@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { APP_COMMANDS, CAMERA_COMMANDS, PART_COMMANDS, SHEET_COMMANDS, WORKSPACE_COMMANDS, commandOwner } from "../studio/src/shell/command-owners.js"
+import { APP_COMMANDS, CAMERA_COMMANDS, CANVAS_TOOL_COMMANDS, PART_COMMANDS, SHEET_COMMANDS, WORKSPACE_COMMANDS, commandOwner } from "../studio/src/shell/command-owners.js"
 import { MENUS, menuItems, type CommandId } from "../studio/src/shell/menus.js"
 import { TOOLBARS } from "../studio/src/shell/toolbar.js"
 import { buildTone, statusText } from "../studio/src/shell/status-pill.js"
@@ -16,7 +16,7 @@ describe("command owners", () => {
   })
 
   test("no command has two owners", () => {
-    const all: string[] = [...APP_COMMANDS, ...Object.keys(WORKSPACE_COMMANDS), ...CAMERA_COMMANDS, ...PART_COMMANDS, ...SHEET_COMMANDS]
+    const all: string[] = [...APP_COMMANDS, ...Object.keys(WORKSPACE_COMMANDS), ...CAMERA_COMMANDS, ...PART_COMMANDS, ...CANVAS_TOOL_COMMANDS, ...SHEET_COMMANDS]
     expect(new Set(all).size).toBe(all.length)
   })
 
@@ -30,6 +30,13 @@ describe("command owners", () => {
 
   test("Select all is the app's own, so Ctrl+A selects the circuit's parts before a canvas has mounted", () => {
     expect(commandOwner("selectAll")).toBe("app")
+  })
+
+  test("Place → Note box is answered by either canvas, which arms its note tool", () => {
+    const item = MENUS.find((menu) => menu.title === "Place")?.entries.find((entry) => entry !== "separator" && entry.label === "Note box")
+    expect(item).toMatchObject({ command: "noteBox" })
+    expect(item && item !== "separator" ? item.only : "missing").toBeUndefined()
+    expect(commandOwner("noteBox")).toBe("canvas")
   })
 
   test("the schematic's tools are the schematic's alone", () => {

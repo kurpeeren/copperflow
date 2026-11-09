@@ -4,9 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { CircuitData, Design } from "../api"
 import type { Actions } from "../App"
-import { escapeDisarms, keyAction, keyInput } from "./canvas-keys"
+import { keyAction, keyInput } from "./canvas-keys"
 import type { Camera, Point } from "./geometry"
 import { joinedNet, labelNameFor, nameProblem, pendingLabel, placeLabelEdits, placeSummary, type LabelTool, type PendingLabel } from "./label-palette"
+import { useDisarmKey } from "./use-disarm-key"
 import { pinAt } from "./wire-tool"
 
 const PIN_HIT_PX = 12
@@ -44,23 +45,6 @@ function usePendingLabels(builtFrom: number) {
   }
   const drop = (entry: Sent) => setSent((list) => list.filter((s) => s !== entry))
   return { visible, add, drop }
-}
-
-/**
- * Esc puts the tool away, first, whatever is selected. It is captured and stopped so the same Escape does not
- * also clear the selection or stop wiring; the next Escape does. Text fields keep their own Escape.
- */
-function useDisarmKey(armed: boolean, disarm: () => void): void {
-  useEffect(() => {
-    if (!armed) return
-    const onKey = (event: KeyboardEvent) => {
-      if (!escapeDisarms(keyInput(event))) return
-      event.stopPropagation()
-      disarm()
-    }
-    window.addEventListener("keydown", onKey, true)
-    return () => window.removeEventListener("keydown", onKey, true)
-  }, [armed, disarm])
 }
 
 /** Alt+N arms the net label tool. */

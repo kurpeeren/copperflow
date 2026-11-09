@@ -11,8 +11,8 @@ export interface PcbDrawOptions {
   layers?: Partial<Layers>
   /** The nets to highlight; other copper is dimmed. */
   highlight?: { nets: readonly string[] }
-  /** The part being dragged and how far it has moved, in mm. */
-  moving?: { component: string; by: Point }
+  /** The parts being dragged and how far they have moved, in mm. */
+  moving?: { components: readonly string[]; by: Point }
   /** Defaults to true. */
   ratsnest?: boolean
   /** Violations with a position, ringed above everything else. */
@@ -56,7 +56,7 @@ export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDra
   const layers = { ...DEFAULT_LAYERS, ...options.layers }
   const { camera, size } = view
   const px = 1 / camera.scale
-  const shiftOf = (part: PlacedFootprint) => (options.moving?.component === part.component ? options.moving.by : NO_SHIFT)
+  const shiftOf = (part: PlacedFootprint) => (options.moving?.components.includes(part.component) ? options.moving.by : NO_SHIFT)
   const each = (paint: (part: PlacedFootprint) => void) => {
     for (const part of layout.parts) {
       framed(ctx, shiftOf(part).x, shiftOf(part).y, 0, () => {
@@ -291,7 +291,7 @@ function drawCourtyards(ctx: Ctx, each: Each, px: number, all: boolean): void {
 
 function drawRatsnest(ctx: Ctx, layout: PcbLayout, options: PcbDrawOptions, px: number): void {
   const moving = options.moving
-  const movingPads = new Set(layout.parts.filter((p) => p.component === moving?.component).flatMap((p) => p.pads.map((pad) => pad.id)))
+  const movingPads = new Set(layout.parts.filter((p) => moving?.components.includes(p.component)).flatMap((p) => p.pads.map((pad) => pad.id)))
   const end = (point: Point, pad: string) => (moving && movingPads.has(pad) ? { x: point.x + moving.by.x, y: point.y + moving.by.y } : point)
   ctx.lineWidth = px
   for (const line of layout.ratsnest) {
