@@ -9,7 +9,7 @@ import { armedCommand } from "../shell/toolbar"
 import { clearToolState, setToolState } from "../shell/tool-state"
 import { ViewTools } from "../shell/ViewTools"
 import { keepAutoPlaced } from "./auto-placed"
-import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
+import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, useLayout, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
 import { CanvasStatus, GridSelect, KeepButton } from "./CanvasTools"
 import { gridStepOptions, type GridLook } from "./grid"
 import { hitTest, unionBoxes, type Camera, type PartBox, type Point, type Size } from "./geometry"
@@ -361,7 +361,8 @@ export function SchematicCanvas(props: CanvasProps) {
   const tool = useArmedForGestures(note, palette)
   const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom, labels: labels.tools, selection, tool, onContextMenu: props.onContextMenu })
   useLabelRenameAction(design, palette, actions)
-  const highlight = useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys: { ...common, selection, layout: { anchors: parts.anchors, boxes: parts.boxes, step }, builtFrom, moveWaiting: gestures.pending !== undefined } })
+  const layout = useLayout(parts, step)
+  const highlight = useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys: { ...common, selection, layout, builtFrom, moveWaiting: gestures.pending !== undefined } })
   const hover = useSheetHover(parts.boxes, wire, labels.tools)
   const { moving, gesture } = gestures
   const movingLabels = useMovingLabels(design, gesture, labels.pending)

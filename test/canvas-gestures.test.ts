@@ -261,6 +261,30 @@ describe("a group drag as the browser sends it", () => {
     expect(state.selection.names).toEqual(NAMES)
   })
 
+  test("a drag the browser cancels writes nothing, and a release after it does nothing", async () => {
+    const { state, edits, session } = nineParts()
+    const c1 = screen(10)
+    session.press(press(), c1)
+    session.move({ x: c1.x + 20, y: c1.y }, 1)
+    session.cancel()
+    session.release({ x: c1.x + 20, y: c1.y })
+    await Promise.resolve()
+    expect(edits).toEqual([])
+    expect(state.selection.names).toEqual(NAMES)
+  })
+
+  test("a move with no button held means the release was lost: the drag ends unwritten and the pointer hovers again", async () => {
+    const { edits, session } = nineParts()
+    const c1 = screen(10)
+    session.press(press(), c1)
+    expect(session.move({ x: c1.x + 20, y: c1.y }, 1)).toBe(true)
+    expect(session.move({ x: c1.x + 30, y: c1.y }, 0)).toBe(false)
+    expect(session.move({ x: c1.x + 40, y: c1.y }, 0)).toBe(false)
+    session.release({ x: c1.x + 40, y: c1.y })
+    await Promise.resolve()
+    expect(edits).toEqual([])
+  })
+
   test("a release without moving still selects the pressed part alone", () => {
     const { state, edits, session } = nineParts()
     session.press(press(), screen(10))

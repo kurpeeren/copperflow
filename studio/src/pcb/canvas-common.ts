@@ -11,6 +11,7 @@ import { useCommands } from "../shell/commands"
 import { drawLockBadge, drawMark, drawNoteBox, drawOutline, drawSelectionBox, type OverlayLook } from "./overlays"
 import { boxMode } from "./box-select"
 import type { Gesture } from "./gestures"
+import type { Layout } from "./group-edits"
 import type { ContextTarget } from "./press"
 import { centredCamera, fitCamera, zoomAt, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import type { ViolationMarker } from "./markers"
@@ -76,6 +77,12 @@ export function usePlacedParts(design: Design, view: View, circuit: CircuitData)
   const locked = useMemo(() => new Set(circuit.annotations.locks.map((l) => l.part)), [circuit])
   const blockerFor = useCallback((name: string) => moveBlocker(circuit, locked, name, view), [circuit, locked, view])
   return { boxes, anchors, autoPlaced, locked, blockerFor }
+}
+
+/** The parts' anchors and boxes with the Grid step, as one object that stays the same until one of them changes. */
+export function useLayout(parts: Pick<Layout, "anchors" | "boxes">, step: number): Layout {
+  const { anchors, boxes } = parts
+  return useMemo(() => ({ anchors, boxes, step }), [anchors, boxes, step])
 }
 
 /** Follows the element's size in whole CSS pixels. */

@@ -56,7 +56,7 @@ export function useCanvasGestures(input: GestureInput) {
     [gesture, pending],
   )
   useEscapeCancelsLabel(gesture?.kind, session.cancel)
-  return { gesture, moving, pending, press: session.press, move: session.move, release: session.release }
+  return { gesture, moving, pending, press: session.press, move: session.move, release: session.release, cancel: session.cancel }
 }
 
 /** The pointer: grabbing while panning, move or not-allowed while dragging, crosshair for a tool, else pointer or default. */
@@ -72,7 +72,7 @@ export interface PointerInput {
   size: Size
   /** The element whose box pointer positions are measured against. */
   element: RefObject<Element | null>
-  gestures: { press(event: Press, point: Point): void; move(point: Point): boolean; release(at: Point): void }
+  gestures: { press(event: Press, point: Point): void; move(point: Point, buttons?: number): boolean; release(at: Point): void; cancel(): void }
   setCursor(world: Point): void
   /** Updates what is under the pointer while no gesture runs. */
   hover(world: Point): void
@@ -82,7 +82,10 @@ export interface PointerInput {
   open?(world: Point): void
 }
 
-/** Pointer handlers: a press goes to the view's tool, else starts a gesture; a move follows the gesture, else updates the hover. */
+/**
+ * Pointer handlers: a press goes to the view's tool, else starts a gesture; a move follows the gesture, else updates
+ * the hover. When the browser cancels the pointer or takes its capture away, the gesture ends without being finished.
+ */
 export function pointerHandlers(input: PointerInput) {
   const local = (event: { clientX: number; clientY: number }) => toLocal(input.element.current, input.size, event)
   return {
@@ -97,9 +100,12 @@ export function pointerHandlers(input: PointerInput) {
       const point = local(event)
       const world = screenToWorld(input.camera, input.size, point)
       input.setCursor(world)
-      if (!input.gestures.move(point)) input.hover(world)
+      if (!input.gestures.move(point, event.buttons)) input.hover(world)
     },
     onPointerUp: (event: PointerEvent<Element>) => input.gestures.release({ x: event.clientX, y: event.clientY }),
+    // After a release the gesture is already over, so the capture's loss that follows it does nothing.
+    onPointerCancel: () => input.gestures.cancel(),
+    onLostPointerCapture: () => input.gestures.cancel(),
     onDoubleClick: (event: MouseEvent<Element>) => {
       if (input.camera && opensOnDoubleClick(event)) input.open?.(screenToWorld(input.camera, input.size, local(event)))
     },

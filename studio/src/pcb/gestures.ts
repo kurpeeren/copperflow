@@ -218,10 +218,17 @@ export function gestureSession(read: () => { input: GestureInput; commit: Commit
       const next = startGesture(read().input, event, point)
       if (next) set(next)
     },
-    /** Follows the pointer; false when no gesture is running, so the canvas can update its hover instead. */
-    move(point: Point): boolean {
+    /**
+     * Follows the pointer; false when no gesture is running, so the canvas can update its hover instead. A move with
+     * no button held (`buttons` 0) means the release was lost, say to a dialog: the gesture ends without finishing.
+     */
+    move(point: Point, buttons?: number): boolean {
       const { input } = read()
       if (!current || !input.camera) return false
+      if (buttons === 0) {
+        set(undefined)
+        return false
+      }
       const next = followGesture(input, current, point, input.camera)
       if (next) set(next)
       return true
@@ -233,7 +240,7 @@ export function gestureSession(read: () => { input: GestureInput; commit: Commit
       const { input, commit } = read()
       if (done && input.camera) endGesture(input, done, input.camera, commit, at)
     },
-    /** Drops the gesture without finishing it (Esc while a label is dragged). */
+    /** Drops the gesture without finishing it: Esc while a label is dragged, or the browser took the pointer away. A release after it does nothing. */
     cancel(): void {
       set(undefined)
     },
