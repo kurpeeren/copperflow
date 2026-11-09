@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest"
 import type { LibraryPart } from "../studio/src/api.js"
 import type { PartInfo } from "../src/core/types.js"
 import { buildDesign } from "../src/engine/design.js"
-import { FIND_IDLE, findNets, findNothing, findPick, findResults, matchSummary, type FindNet } from "../studio/src/find.js"
+import { FIND_IDLE, findNets, findNothing, findPick, findResults, findStatus, matchSummary, type FindNet } from "../studio/src/find.js"
 
 const part = (name: string, props: Record<string, string | number> = {}): PartInfo => ({
   name,
@@ -114,5 +114,14 @@ describe("findNets and findPick", () => {
   test("a net row highlights its net", () => {
     const row = findResults("gnd", [], findNets(design))[0]!
     expect(findPick(row, design, "pcb")).toEqual({ highlight: [row.net] })
+  })
+})
+
+describe("findStatus", () => {
+  test("says the count after a search, for the find box's live region, and nothing before one", () => {
+    expect(findStatus(null, 0)).toBe("")
+    expect(findStatus("r", 0)).toBe("No results")
+    expect(findStatus("r", 1)).toBe("1 result")
+    expect(findStatus("r", 3)).toBe("3 results")
   })
 })

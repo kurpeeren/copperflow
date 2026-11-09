@@ -4,7 +4,9 @@
   top: 10px;
   right: 10px;
   z-index: 5;
-  width: 220px;
+  display: flex;
+  gap: 4px;
+  width: 248px;
   padding: 4px;
   border: 1px solid var(--line);
   border-radius: 3px;
@@ -13,7 +15,8 @@
 }
 
 .find-box input {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   height: 26px;
   padding: 0 8px;
   border: 1px solid var(--line);
@@ -26,6 +29,39 @@
 .find-box input:focus {
   outline: none;
   border-color: var(--copper);
+}
+
+/* The close button, with its own hover and pressed looks (the global button rules would give it a border). */
+button.find-close {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  justify-content: center;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--muted);
+}
+
+button.find-close:hover:not(:disabled) {
+  background: var(--raised);
+  color: var(--text);
+}
+
+button.find-close:active:not(:disabled) {
+  background: var(--tab);
+  color: var(--text);
+}
+
+/* The live region is read out, not shown: the Find Results tab shows the count. */
+.find-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /* The canvas area takes the focus when the box closes, without a ring. */

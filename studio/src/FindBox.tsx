@@ -1,4 +1,5 @@
 import { useEffect, useRef, type KeyboardEvent } from "react"
+import { CloseIcon } from "./icons"
 import "./find.css"
 
 interface Props {
@@ -8,6 +9,8 @@ interface Props {
   onText(text: string): void
   onSearch(text: string): void
   onClose(): void
+  /** The last search's count ("3 results"), said politely by assistive tech when it changes. */
+  status: string
 }
 
 /** The canvas area takes the focus back when the box closes. */
@@ -15,8 +18,8 @@ function focusCanvas(): void {
   document.getElementById("doc-panel")?.focus()
 }
 
-/** The small find box at the canvas's top right: Enter searches, Esc closes. */
-export function FindBox({ text, seq, onText, onSearch, onClose }: Props) {
+/** The small find box at the canvas's top right: Enter searches, Esc or its close button closes. */
+export function FindBox({ text, seq, onText, onSearch, onClose, status }: Props) {
   const field = useRef<HTMLInputElement>(null)
   useEffect(() => {
     const focusField = () => {
@@ -28,12 +31,14 @@ export function FindBox({ text, seq, onText, onSearch, onClose }: Props) {
     const later = window.setTimeout(focusField, 0)
     return () => window.clearTimeout(later)
   }, [seq])
+  const close = () => {
+    onClose()
+    focusCanvas()
+  }
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") onSearch(text)
-    else if (event.key === "Escape") {
-      onClose()
-      focusCanvas()
-    } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") field.current?.select()
+    else if (event.key === "Escape") close()
+    else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") field.current?.select()
     else return
     event.preventDefault()
     event.stopPropagation()
@@ -51,6 +56,12 @@ export function FindBox({ text, seq, onText, onSearch, onClose }: Props) {
         onChange={(event) => onText(event.target.value)}
         onKeyDown={onKeyDown}
       />
+      <button type="button" className="find-close" title="Close (Esc)" aria-label="Close the find box" onClick={close}>
+        <CloseIcon />
+      </button>
+      <span className="find-status" role="status" aria-live="polite">
+        {status}
+      </span>
     </div>
   )
 }

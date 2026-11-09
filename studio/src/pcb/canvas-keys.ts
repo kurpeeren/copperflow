@@ -24,6 +24,7 @@ export type KeyActionName =
   | "nudgeRight"
   | "nudgeUp"
   | "nudgeDown"
+  | "contextMenu"
 
 /** What a key event says, apart from the browser: modifiers, whether it came from a field, and the key. */
 export interface KeyInput {
@@ -155,9 +156,14 @@ function ctrlAction(input: KeyInput): KeyResult | null {
   return action ? act(action, true) : null
 }
 
+/** Shift+F10 or the menu key opens the context menu, as a right click does; prevented, so the browser's own does not open. */
+const opensMenu = (input: KeyInput): boolean =>
+  input.key === "ContextMenu" || (input.key === "F10" && input.shiftKey && !input.ctrlKey && !input.altKey && !input.metaKey)
+
 /** What the key press means in this view, or null when it is not ours (or belongs to a field or a browser shortcut). */
 export function keyAction(input: KeyInput, state: KeyState): KeyResult | null {
   if (input.typing) return null
+  if (opensMenu(input)) return act("contextMenu", true)
   const panel = PANEL_KEYS.get(input.key)
   if (panel && plainOrAltGr(input)) return act(panel)
   if (input.ctrlKey || input.metaKey) return ctrlAction(input)

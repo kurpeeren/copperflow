@@ -41,6 +41,13 @@ export interface FindNet {
 export const FIND_IDLE = "Press Ctrl+F to find a part or a net."
 export const findNothing = (query: string): string => `Nothing matches "${query}".`
 
+/** What the find box's live region says after a search: "No results", "1 result", "3 results"; nothing before one. */
+export function findStatus(query: string | null, count: number): string {
+  if (query === null) return ""
+  if (count === 0) return "No results"
+  return count === 1 ? "1 result" : `${count} results`
+}
+
 const collator = new Intl.Collator("en", { numeric: true })
 
 /** The nets of a built design with the label the Net tab shows. */

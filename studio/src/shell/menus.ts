@@ -220,6 +220,7 @@ const CANVAS_KEYS = [
   { keys: "Esc", label: "Clear the selection, put tools away" },
   { keys: "Arrow keys", label: "Move the selection one grid step" },
   { keys: "Shift+Arrow keys", label: "Move the selection ten grid steps" },
+  { keys: "Shift+F10", label: "Open the context menu (also the menu key)" },
 ]
 
 /** Every shortcut of a working command, once, then the canvas-only keys: the Help → Keys list. */

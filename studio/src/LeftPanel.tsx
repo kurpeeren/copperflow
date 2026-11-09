@@ -84,7 +84,10 @@ function DesignBody(props: Props) {
   }
 }
 
-/** The parts by kind; every selected one is highlighted, a click selects one, and Ctrl+click (or Shift+click) toggles one. */
+/**
+ * The parts by kind; every selected one is highlighted (and marked selected for assistive tech), a click selects one,
+ * and Ctrl+click (or Shift+click) toggles one.
+ */
 function PartsTree({ circuit, parts: library, selection, onSelect }: Props) {
   const locked = new Set(circuit.annotations.locks.map((lock) => lock.part))
   const title = (tag: string) => library.library.find((p) => p.component === tag)?.title ?? tag
@@ -97,10 +100,12 @@ function PartsTree({ circuit, parts: library, selection, onSelect }: Props) {
           <h3 title={tag}>
             {title(tag)} <span className="count">{parts.length}</span>
           </h3>
-          <ul>
+          <ul role="listbox" aria-multiselectable="true" aria-label={title(tag)}>
             {parts.map((part) => (
-              <li key={part.name}>
+              <li key={part.name} role="none">
                 <button
+                  role="option"
+                  aria-selected={selection.has(part.name)}
                   className={`row${selection.has(part.name) ? " selected" : ""}${part.editable ? "" : " readonly"}`}
                   onClick={(event) => onSelect(clicked(part.name, event))}
                   title={part.readonlyReason ? `Read-only: ${part.readonlyReason}` : undefined}

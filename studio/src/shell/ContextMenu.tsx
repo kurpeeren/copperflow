@@ -1,9 +1,10 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react"
 import type { Point } from "../pcb/geometry"
 import { contextShape, contextSize, placeMenu, type ContextEntry, type ContextItem, type Size } from "./context-menu"
+import { returnsFocus } from "./focus"
 import { useKeyHold } from "./key-gate"
 import { MenuItemButton, useCloseOnOutsidePress } from "./menu-parts"
-import { menuKey } from "./menu-keys"
+import { firstMenuItem, menuKey, type MenuShape } from "./menu-keys"
 import "./shell.css"
 import "./context-menu.css"
 
@@ -22,6 +23,22 @@ function useCloseOnResize(onClose: () => void): void {
     window.addEventListener("resize", onClose)
     return () => window.removeEventListener("resize", onClose)
   }, [onClose])
+}
+
+/**
+ * The menu takes the focus to its first enabled item as it opens, so assistive tech announces it, and gives it back
+ * as it closes. The cleanup runs before the next render's own focus (Properties' field, the rename input), which wins.
+ */
+function useMenuFocus(menu: RefObject<HTMLUListElement | null>, shape: MenuShape): void {
+  const first = useRef(firstMenuItem(shape))
+  useLayoutEffect(() => {
+    const element = menu.current
+    const before = document.activeElement
+    if (first.current !== null) element?.querySelector<HTMLElement>(`[data-item="${first.current}"]`)?.focus()
+    return () => {
+      if (before instanceof HTMLElement && before.isConnected && returnsFocus(document.activeElement, document.body, element)) before.focus()
+    }
+  }, [menu])
 }
 
 const itemOf = (menu: HTMLElement | null, element: Element | null): number | null => {
@@ -49,6 +66,7 @@ export function ContextMenu({ entries, at, onRun, onClose }: Props) {
     if (next.open === null) return onClose()
     if (next.focus !== "keep" && next.focus.item !== null) menu.current?.querySelector<HTMLElement>(`[data-item="${next.focus.item}"]`)?.focus()
   })
+  useMenuFocus(menu, shape)
   useCloseOnOutsidePress(true, menu, onClose)
   useCloseOnResize(onClose)
   return (

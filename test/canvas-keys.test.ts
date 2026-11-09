@@ -205,3 +205,20 @@ describe("Ctrl+F", () => {
     expect(keyAction(key("f"), PCB)?.action).toBe("fit")
   })
 })
+
+describe("the keyboard's context menu", () => {
+  test("Shift+F10 and the menu key open it in both views, prevented so the browser's own menu stays shut", () => {
+    for (const state of [PCB, SCHEMATIC]) {
+      expect(keyAction(key("F10", { shiftKey: true }), state)).toEqual({ action: "contextMenu", preventDefault: true })
+      expect(keyAction(key("ContextMenu"), state)).toEqual({ action: "contextMenu", preventDefault: true })
+    }
+  })
+
+  test("F10 alone, with Ctrl or Alt, or while typing is not the menu", () => {
+    expect(keyAction(key("F10"), PCB)).toBeNull()
+    expect(keyAction(key("F10", { shiftKey: true, ctrlKey: true }), PCB)).toBeNull()
+    expect(keyAction(key("F10", { shiftKey: true, altKey: true }), PCB)).toBeNull()
+    expect(keyAction(key("F10", { shiftKey: true, typing: true }), PCB)).toBeNull()
+    expect(keyAction(key("ContextMenu", { typing: true }), PCB)).toBeNull()
+  })
+})

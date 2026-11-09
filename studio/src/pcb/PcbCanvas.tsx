@@ -3,7 +3,7 @@ import type { CircuitData, Design } from "../api"
 import type { Selection } from "../selection"
 import type { WorldPad } from "../../../src/engine/pcb.js"
 import { keepAutoPlaced } from "./auto-placed"
-import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, useLayout, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
+import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, useKeyMenuPlace, useLayout, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
 import { ViewTools } from "../shell/ViewTools"
 import { CanvasStatus, GridSelect, KeepButton } from "./CanvasTools"
 import { PALETTE, type Layers } from "./ctx"
@@ -192,7 +192,8 @@ export function PcbCanvas(props: CanvasProps) {
   const tool = { armed: note.tool, disarm: note.disarm }
   const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom, selection, tool, onContextMenu: props.onContextMenu })
   const layout = useLayout(parts, step)
-  usePcbKeys(design, cursor, { ...common, selection, layout, builtFrom, moveWaiting: gestures.pending !== undefined, fit, onHighlight })
+  const menuPlace = useKeyMenuPlace(canvasRef, selection.primary, parts.boxes, camera, size)
+  usePcbKeys(design, cursor, { ...common, selection, layout, builtFrom, moveWaiting: gestures.pending !== undefined, fit, onHighlight, menuPlace, onContextMenu: props.onContextMenu })
   const hover = usePcbHover(design, parts.boxes)
   const { moving, gesture } = gestures
   usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad: hover.pad, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, highlightNets: highlight, markers, activeViolation, grid })

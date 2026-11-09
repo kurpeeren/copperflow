@@ -9,7 +9,7 @@ import { armedCommand } from "../shell/toolbar"
 import { clearToolState, setToolState } from "../shell/tool-state"
 import { ViewTools } from "../shell/ViewTools"
 import { keepAutoPlaced } from "./auto-placed"
-import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, useLayout, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
+import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, useKeyMenuPlace, useLayout, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
 import { CanvasStatus, GridSelect, KeepButton } from "./CanvasTools"
 import { gridStepOptions, type GridLook } from "./grid"
 import { hitTest, unionBoxes, type Camera, type PartBox, type Point, type Size } from "./geometry"
@@ -152,21 +152,20 @@ interface SheetViewProps {
   empty: boolean
 }
 
-/** The sheet's element: the canvas under the hint, the label name field and the status line; the browser's own menu never shows. */
+/**
+ * The sheet's element: the canvas under the hint, the label name field and the status line; the browser's own menu
+ * never shows. The canvas alone is the image, so the name field beside it stays a field to assistive tech.
+ */
 function SheetView({ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave, cursorStyle, wire, palette, note, gesture, empty }: SheetViewProps) {
   const hint = wireHint(wire) ?? paletteHint(palette) ?? note.hint
   return (
-    <div
-      className="schematic-canvas"
-      ref={wrapRef}
-      style={{ cursor: cursorStyle }}
-      {...pointer}
-      onPointerLeave={onLeave}
-      onContextMenu={(e) => e.preventDefault()}
-      role="img"
-      aria-label="Schematic. Drag symbols and net labels to move them, drag the background to select, drag with the right button to pan, scroll to zoom. Double click a net label to rename its net. Click a free pin or press W over a pin to draw a wire."
-    >
-      <canvas ref={canvasRef} style={{ width: size.width, height: size.height }} />
+    <div className="schematic-canvas" ref={wrapRef} style={{ cursor: cursorStyle }} {...pointer} onPointerLeave={onLeave} onContextMenu={(e) => e.preventDefault()}>
+      <canvas
+        ref={canvasRef}
+        style={{ width: size.width, height: size.height }}
+        role="img"
+        aria-label="Schematic. Drag symbols and net labels to move them, drag the background to select, drag with the right button to pan, scroll to zoom. Double click a net label to rename its net. Click a free pin or press W over a pin to draw a wire."
+      />
       {hint && (
         <div className="canvas-top">
           <div className="canvas-hint">{hint}</div>
@@ -365,7 +364,9 @@ export function SchematicCanvas(props: CanvasProps) {
   const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom, labels: labels.tools, selection, tool, onContextMenu: props.onContextMenu })
   useLabelRenameAction(design, palette, actions)
   const layout = useLayout(parts, step)
-  const highlight = useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys: { ...common, selection, layout, builtFrom, moveWaiting: gestures.pending !== undefined } })
+  const menuPlace = useKeyMenuPlace(wrapRef, selection.primary, parts.boxes, camera, size)
+  const keys = { ...common, selection, layout, builtFrom, moveWaiting: gestures.pending !== undefined, menuPlace, onContextMenu: props.onContextMenu }
+  const highlight = useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys })
   const hover = useSheetHover(parts.boxes, wire, labels.tools)
   const { moving, gesture } = gestures
   const movingLabels = useMovingLabels(design, gesture, labels.pending)

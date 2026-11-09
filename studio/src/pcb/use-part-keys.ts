@@ -1,6 +1,7 @@
-// The keys both canvases share: F and K fit, R and Space turn the selection about its centre, the arrows move it, Delete removes them, and H
-// highlights the net under the pointer (the menu's Highlight net, the selected parts' nets). What a key means is
-// decided in canvas-keys.ts; what Rotate and Delete do to several parts, in group-edits.ts. Ctrl+A is the app's.
+// The keys both canvases share: F and K fit, R and Space turn the selection about its centre, the arrows move it, Delete removes them, H
+// highlights the net under the pointer (the menu's Highlight net, the selected parts' nets), and Shift+F10 or the menu
+// key opens the context menu. What a key means is decided in canvas-keys.ts; what Rotate and Delete do to several
+// parts, in group-edits.ts. Ctrl+A is the app's.
 import { useEffect } from "react"
 import type { CircuitData } from "../api"
 import type { Actions } from "../App"
@@ -13,7 +14,9 @@ import { removeEach, removeQuestion, sendGroupEdit, type Layout } from "./group-
 import { claimsKey } from "./key-burst"
 import { useKeyEdits, type KeyEdits } from "./use-key-edits"
 import { menuHighlight, type Highlight } from "./highlight"
+import type { Point } from "./geometry"
 import type { View } from "./positions"
+import type { ContextTarget } from "./press"
 
 export interface PartKeysInput {
   view: View
@@ -36,6 +39,9 @@ export interface PartKeysInput {
   /** The nets a part's pins are on. */
   netsOf(part: string): Highlight
   onHighlight(nets: Highlight): void
+  /** Where Shift+F10 or the menu key opens the context menu (key-menu.ts), and the way to open it. */
+  menuPlace(): { target: ContextTarget; at: Point }
+  onContextMenu(target: ContextTarget, at: Point): void
 }
 
 /** Removes every selected part that may go, in one change, after asking; the rest are named and stay selected. */
@@ -50,6 +56,11 @@ function runKey(input: PartKeysInput, hit: KeyResult, edits: KeyEdits, repeat: b
   const { action } = hit
   if (action.startsWith("nudge")) return input.paused ? undefined : edits.nudge(input, hit)
   if (action === "fit") return input.fit()
+  if (action === "contextMenu") {
+    if (input.paused) return
+    const { target, at } = input.menuPlace()
+    return input.onContextMenu(target, at)
+  }
   if (action === "highlight") {
     const net = input.netUnderPointer()
     if (net !== undefined) input.onHighlight([net])
@@ -81,9 +92,9 @@ function usePartCommands(input: PartKeysInput, edits: KeyEdits): void {
 export function usePartKeys(input: PartKeysInput): void {
   const edits = useKeyEdits(input)
   usePartCommands(input, edits)
-  const { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtFrom, moveWaiting, fit, netUnderPointer, netsOf, onHighlight } = input
+  const { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtFrom, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu } = input
   useEffect(() => {
-    const keys: PartKeysInput = { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtFrom, moveWaiting, fit, netUnderPointer, netsOf, onHighlight }
+    const keys: PartKeysInput = { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtFrom, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu }
     const onKey = (event: KeyboardEvent) => {
       const hit = keyAction(keyInput(event), { view, drawing: paused })
       if (hit) {
@@ -95,5 +106,5 @@ export function usePartKeys(input: PartKeysInput): void {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [edits, view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtFrom, moveWaiting, fit, netUnderPointer, netsOf, onHighlight])
+  }, [edits, view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtFrom, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu])
 }

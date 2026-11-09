@@ -8,6 +8,7 @@ import type { View } from "../pcb/positions"
 import { SchematicCanvas } from "../pcb/SchematicCanvas"
 import type { Selection, SelectionChange } from "../selection"
 import { FindBox } from "../FindBox"
+import { findStatus } from "../find"
 import type { useChecks } from "../use-checks"
 import type { FindState } from "../use-find"
 import type { StudioData } from "../use-studio-data"
@@ -91,7 +92,7 @@ function CenterColumn(props: WorkspaceProps & { onContextMenu: ContextMenuState[
         {!build.design && <p className="empty">{build.status === "failed" ? build.error : "Building the circuit…"}</p>}
         {canvas && view === "pcb" && <PcbCanvas key={data.file} {...canvas} {...gridProps(workspace, "pcb")} markers={checks.markers.pcb} />}
         {canvas && view === "schematic" && <SchematicCanvas key={data.file} {...canvas} {...gridProps(workspace, "schematic")} markers={checks.markers.schematic} />}
-        {find.box.open && <FindBox text={find.box.text} seq={find.box.seq} onText={find.setText} onSearch={find.search} onClose={find.close} />}
+        {find.box.open && <FindBox text={find.box.text} seq={find.box.seq} onText={find.setText} onSearch={find.search} onClose={find.close} status={findStatus(find.results.query, find.results.rows.length)} />}
       </section>
       {workspace.bottom.open && (
         <BottomPanel
