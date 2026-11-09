@@ -1,7 +1,8 @@
-// What Rotate, Delete, Lock and Unlock do to the whole selection, as plain data: the edits for one history entry, the
-// parts left out and why. A part is left out for the reason that would stop the same action on it alone.
+// What Move, Rotate, Delete, Lock and Unlock do to the whole selection, as plain data: the edits for one history
+// entry, the parts left out and why. A part is left out for the reason that would stop the same action on it alone.
 import type { Edit } from "../../../src/core/types.js"
-import { nextRotation, VIEWS, type SourceCircuit, type View } from "./positions.js"
+import { roundPosition, type Point } from "./geometry.js"
+import { movedTo, nextRotation, VIEWS, type Anchor, type SourceCircuit, type View } from "./positions.js"
 
 /** One change for several parts. */
 export interface GroupEdit {
@@ -39,6 +40,31 @@ export function rotateEach(circuit: SourceCircuit, names: readonly string[], vie
   const [single] = turned
   const summary = turned.length === 1 && single ? `rotate ${single.name}${where} to ${single.to}°` : `rotate ${nameList(parts)}${where} by 90°`
   return { edits: turned.map((turn) => ({ kind: "setProps", part: turn.name, props: { [rotation]: turn.to } })), summary, parts, skipped }
+}
+
+/**
+ * Every part that may move, moved by the same `offset` in `view`, so the group keeps its shape; one part keeps the
+ * summary a single drag writes. `anchorOf` says where each part sits and what its groups add.
+ */
+export function moveEach(
+  circuit: SourceCircuit,
+  names: readonly string[],
+  view: View,
+  anchorOf: (name: string) => Pick<Anchor, "origin" | "group">,
+  offset: Point,
+  blockerFor: (name: string) => string | null,
+): GroupEdit {
+  const [keyX, keyY] = VIEWS[view].position
+  const { where } = VIEWS[view]
+  const skipped = names.flatMap((name) => blockerFor(name) ?? [])
+  const parts = names.filter((name) => blockerFor(name) === null)
+  const moves = parts.map((name) => ({ name, to: movedTo(circuit, name, view, anchorOf(name), offset) }))
+  const [single] = moves
+  const summary =
+    moves.length === 1 && single
+      ? `move ${single.name}${where} to (${single.to[0]}, ${single.to[1]})`
+      : `move ${nameList(parts)}${where} by (${roundPosition(offset.x)}, ${roundPosition(offset.y)})`
+  return { edits: moves.map(({ name, to }) => ({ kind: "setProps", part: name, props: { [keyX]: to[0], [keyY]: to[1] } })), summary, parts, skipped }
 }
 
 /** One removePart edit for every part that may go. */
