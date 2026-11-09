@@ -1,7 +1,8 @@
 // copperflow's PCB renderer: draws the engine's board layout onto a 2D canvas in layer order.
 // Only types come from the engine: its runtime modules reach Node-only code the Studio bundle cannot hold.
 import type { PcbLayout, PlacedFootprint, WorldPad } from "../../../src/engine/pcb.js"
-import { CANVAS_FONT_FAMILY, PALETTE, type Ctx } from "./ctx.js"
+import { baselineAt, devicePixelIn } from "./crisp.js"
+import { canvasFont, PALETTE, TEXT_WEIGHT, type Ctx } from "./ctx.js"
 import { worldToScreen, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
 import { DEFAULT_LAYERS, padLayer, type LayerVisibility } from "./layers.js"
 import { drawViolationMarkers, type ViolationMarker } from "./markers.js"
@@ -62,6 +63,8 @@ export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDra
   const layers: LayerVisibility = { ...DEFAULT_LAYERS, ...options.layers }
   const { camera, size } = view
   const px = 1 / camera.scale
+  /** One device pixel in world units: the thinnest any stroke is drawn. */
+  const hair = devicePixelIn(px, options.ratio)
   const shiftOf = (part: PlacedFootprint) => (options.moving?.components.includes(part.component) ? options.moving.by : NO_SHIFT)
   const each = (paint: (part: PlacedFootprint) => void) => {
     for (const part of layout.parts) {
@@ -77,15 +80,15 @@ export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDra
   ctx.setTransform(...worldMatrix(view, options.ratio))
   ctx.lineCap = "round"
   ctx.lineJoin = "round"
-  if (layers.keepout) drawKeepouts(ctx, layout, px)
+  if (layers.keepout) drawKeepouts(ctx, layout, px, hair)
   drawCopper(ctx, layers, options.highlight, each, px)
   if (layers.hole) drawDrills(ctx, each)
   each((part) => {
-    if (shownOn(layers, part, "Silk")) drawPolylines(ctx, part.silkscreen, part.side === "top" ? PALETTE.topSilk : PALETTE.bottomSilk, SILK_WIDTH_MM, false)
+    if (shownOn(layers, part, "Silk")) drawPolylines(ctx, part.silkscreen, part.side === "top" ? PALETTE.topSilk : PALETTE.bottomSilk, Math.max(SILK_WIDTH_MM, hair), false)
   })
-  if (layers.courtyard) drawCourtyards(ctx, each, px)
+  if (layers.courtyard) drawCourtyards(ctx, each, px, hair)
   each((part) => {
-    if (shownOn(layers, part, "Assembly")) drawPolylines(ctx, part.fabrication, assemblyColor(part), px, false)
+    if (shownOn(layers, part, "Assembly")) drawPolylines(ctx, part.fabrication, assemblyColor(part), hair, false)
   })
   if (layers.boardOutline) {
     drawBoard(ctx, layout, () => {
@@ -94,11 +97,11 @@ export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDra
       ctx.stroke()
     })
   }
-  if (options.ratsnest !== false && layers.ratline) drawRatsnest(ctx, layout, options, px)
+  if (options.ratsnest !== false && layers.ratline) drawRatsnest(ctx, layout, options, hair)
 
   // Text is drawn in screen space so it stays upright and readable at any zoom.
   ctx.setTransform(options.ratio, 0, 0, options.ratio, 0, 0)
-  for (const part of layout.parts) if (shownOn(layers, part, "Silk")) drawDesignator(ctx, part, camera, size, shiftOf(part))
+  for (const part of layout.parts) if (shownOn(layers, part, "Silk")) drawDesignator(ctx, part, camera, size, shiftOf(part), options.ratio)
   drawViolationMarkers(ctx, view, options.violations ?? [], options.activeViolation, true)
   ctx.restore()
 }
@@ -179,13 +182,13 @@ function drawBoard(ctx: Ctx, layout: PcbLayout, paint: () => void): void {
 }
 
 /** A dashed outline with diagonal hatch lines inside it, under the copper. */
-function drawKeepouts(ctx: Ctx, layout: PcbLayout, px: number): void {
+function drawKeepouts(ctx: Ctx, layout: PcbLayout, px: number, hair: number): void {
   const keepouts = layout.board?.keepouts ?? []
   if (keepouts.length === 0) return
   ctx.strokeStyle = PALETTE.keepout
   ctx.globalAlpha = KEEPOUT_ALPHA
   for (const keepout of keepouts) {
-    ctx.lineWidth = px
+    ctx.lineWidth = hair
     ctx.setLineDash([4 * px, 3 * px])
     polygon(ctx, keepout.outline)
     ctx.stroke()
@@ -295,20 +298,20 @@ function drawPolylines(ctx: Ctx, lines: readonly (readonly Point[])[], color: st
 }
 
 /** Every courtyard, dashed; an auto-placed part's is a little thicker. */
-function drawCourtyards(ctx: Ctx, each: Each, px: number): void {
+function drawCourtyards(ctx: Ctx, each: Each, px: number, hair: number): void {
   ctx.setLineDash([4 * px, 3 * px])
   each((part) => {
     ctx.globalAlpha = 1
-    drawPolylines(ctx, [part.courtyard], assemblyColor(part), part.autoPlaced ? AUTO_COURTYARD_PX * px : px, true)
+    drawPolylines(ctx, [part.courtyard], assemblyColor(part), part.autoPlaced ? AUTO_COURTYARD_PX * px : hair, true)
   })
   ctx.setLineDash([])
 }
 
-function drawRatsnest(ctx: Ctx, layout: PcbLayout, options: PcbDrawOptions, px: number): void {
+function drawRatsnest(ctx: Ctx, layout: PcbLayout, options: PcbDrawOptions, hair: number): void {
   const moving = options.moving
   const movingPads = new Set(layout.parts.filter((p) => moving?.components.includes(p.component)).flatMap((p) => p.pads.map((pad) => pad.id)))
   const end = (point: Point, pad: string) => (moving && movingPads.has(pad) ? { x: point.x + moving.by.x, y: point.y + moving.by.y } : point)
-  ctx.lineWidth = px
+  ctx.lineWidth = hair
   for (const line of layout.ratsnest) {
     const lit = options.highlight?.nets.includes(line.net) ?? false
     ctx.strokeStyle = lit ? PALETTE.highlight : PALETTE.ratsnest
@@ -326,17 +329,17 @@ function drawLine(ctx: Ctx, a: Point, b: Point): void {
 }
 
 /** The component id as silkscreen text, centred above the courtyard's top edge. */
-function drawDesignator(ctx: Ctx, part: PlacedFootprint, camera: Camera, size: Size, shift: Point): void {
+function drawDesignator(ctx: Ctx, part: PlacedFootprint, camera: Camera, size: Size, shift: Point, ratio: number): void {
   const fontPx = DESIGNATOR_MM * camera.scale
   if (fontPx < MIN_TEXT_PX) return
   const box = courtyardBox(part)
   const p = worldToScreen(camera, size, { x: (box.minX + box.maxX) / 2 + shift.x, y: box.maxY + shift.y })
   ctx.fillStyle = part.side === "top" ? PALETTE.topSilk : PALETTE.bottomSilk
   ctx.globalAlpha = alphaOf(part)
-  ctx.font = `600 ${fontPx}px ${CANVAS_FONT_FAMILY}`
+  ctx.font = canvasFont(TEXT_WEIGHT.strong, fontPx)
   ctx.textAlign = "center"
   ctx.textBaseline = "bottom"
-  ctx.fillText(part.component, p.x, p.y - DESIGNATOR_GAP_PX)
+  ctx.fillText(part.component, p.x, baselineAt(p.y - DESIGNATOR_GAP_PX, ratio))
   ctx.globalAlpha = 1
 }
 

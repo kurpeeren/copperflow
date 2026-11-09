@@ -2,6 +2,7 @@
 // dashed one a hovered part gets, 3 px round the wire; a selected wire (drawn red by schematic-draw.ts) gets white
 // squares on its corners and hollow squares on its two ends, which stay on their pins. Plain TypeScript, so the tests can run it.
 import { worldToScreen, type Camera, type Point, type Size } from "./geometry.js"
+import { hairlineWidth, squareAt, squareSide } from "./crisp.js"
 import { schematicTheme } from "./schematic-theme.js"
 import { pastStrokePx, wireHandles } from "./wire-hit.js"
 
@@ -52,12 +53,12 @@ export function wireOutline(points: readonly Point[], pad: number): Point[] {
 }
 
 /** The dashed hover outline round a wire whose points are in sheet units. */
-export function drawWireHover(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, points: readonly Point[], look: WireLook): void {
+export function drawWireHover(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, points: readonly Point[], look: WireLook, ratio: number): void {
   const outline = wireOutline(points.map((p) => worldToScreen(camera, size, p)), wireHoverPadPx(camera.scale))
   if (outline.length === 0) return
   ctx.save()
   ctx.strokeStyle = look.hover
-  ctx.lineWidth = 1
+  ctx.lineWidth = hairlineWidth(ratio)
   ctx.setLineDash(OUTLINE_DASH)
   ctx.beginPath()
   outline.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)))
@@ -67,18 +68,20 @@ export function drawWireHover(ctx: CanvasRenderingContext2D, camera: Camera, siz
 }
 
 /** A selected wire's handles: a filled square on each corner, then a hollow one on each end. */
-export function drawWireHandles(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, points: readonly Point[], look: WireLook): void {
+export function drawWireHandles(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, points: readonly Point[], look: WireLook, ratio: number): void {
   const { corners, ends } = wireHandles(points)
-  const half = WIRE_HANDLE_PX / 2
+  const side = squareSide(WIRE_HANDLE_PX, ratio)
+  const hair = hairlineWidth(ratio)
   const square = (p: Point, filled: boolean) => {
     const at = worldToScreen(camera, size, p)
-    if (filled) ctx.fillRect(at.x - half, at.y - half, WIRE_HANDLE_PX, WIRE_HANDLE_PX)
-    ctx.strokeRect(at.x - half, at.y - half, WIRE_HANDLE_PX, WIRE_HANDLE_PX)
+    const [x, y] = [squareAt(at.x - side / 2, ratio), squareAt(at.y - side / 2, ratio)]
+    if (filled) ctx.fillRect(x, y, side, side)
+    ctx.strokeRect(x + hair / 2, y + hair / 2, side - hair, side - hair)
   }
   ctx.save()
   ctx.fillStyle = look.handleFill
   ctx.strokeStyle = look.selected
-  ctx.lineWidth = 1.5
+  ctx.lineWidth = hair
   ctx.setLineDash([])
   for (const corner of corners) square(corner, true)
   for (const end of ends) square(end, false)

@@ -19,7 +19,7 @@
   --danger-text: #cf1322;
   --warning: #faad14;
   --mono: "Cascadia Mono", "JetBrains Mono", ui-monospace, Consolas, monospace;
-  --sans: Arial, "Microsoft YaHei", Helvetica, sans-serif;
+  --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
   color-scheme: light;
 }
 

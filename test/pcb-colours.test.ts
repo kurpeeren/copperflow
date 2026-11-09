@@ -41,9 +41,9 @@ function overlayColours(look: OverlayLook): Set<unknown> {
   const { ctx, records } = recorder()
   const camera = { cx: 0, cy: 0, scale: 20 }
   const size = { width: 400, height: 300 }
-  drawLockBadge(ctx, camera, size, { minX: 0, minY: 0, maxX: 1, maxY: 1 }, look)
-  drawMark(ctx, camera, size, { at: { x: 2, y: 2 }, id: "N1", text: "route ground here" }, look)
-  drawNoteBox(ctx, { x: 10, y: 10 }, { x: 60, y: 40 }, look)
+  drawLockBadge(ctx, camera, size, { minX: 0, minY: 0, maxX: 1, maxY: 1 }, look, 1)
+  drawMark(ctx, camera, size, { at: { x: 2, y: 2 }, id: "N1", text: "route ground here" }, look, 1)
+  drawNoteBox(ctx, { x: 10, y: 10 }, { x: 60, y: 40 }, look, 1)
   return new Set(records.flatMap((r) => (r.name === "fill" || r.name === "fillRect" || r.name === "fillText" ? [r.fillStyle] : r.name === "stroke" || r.name === "strokeRect" ? [r.strokeStyle] : [])))
 }
 
@@ -116,7 +116,7 @@ describe("PCB colours (spec section 6)", () => {
 
   test("the grid is white, 30% on minor lines and 50% on every fifth", () => {
     const { ctx, records } = recorder()
-    drawGrid(ctx, { cx: 0, cy: 0, scale: 20 }, { width: 400, height: 300 }, PCB_GRID)
+    drawGrid(ctx, { cx: 0, cy: 0, scale: 20 }, { width: 400, height: 300 }, PCB_GRID, 1)
     const colours = new Set(records.filter((r) => r.name === "stroke").map((r) => r.strokeStyle))
     expect(colours).toEqual(new Set(["rgb(255 255 255 / 30%)", "rgb(255 255 255 / 50%)"]))
   })
@@ -154,7 +154,7 @@ describe("PCB colours (spec section 6)", () => {
   test("a selection outline gets the 50% white wash", () => {
     const { ctx, records } = recorder()
     const box = { minX: 0, minY: 0, maxX: 1, maxY: 1 }
-    drawOutline(ctx, { cx: 0, cy: 0, scale: 20 }, { width: 400, height: 300 }, box, { x: 0, y: 0 }, "selected", PCB_LOOK)
+    drawOutline(ctx, { cx: 0, cy: 0, scale: 20 }, { width: 400, height: 300 }, box, { x: 0, y: 0 }, "selected", PCB_LOOK, 1)
     const wash = records.find((r) => r.name === "fillRect")
     expect(wash?.fillStyle).toBe("rgb(255 255 255 / 50%)")
     expect(records.find((r) => r.name === "strokeRect")?.strokeStyle).toBe("#ffffff")
@@ -172,7 +172,7 @@ describe("PCB colours (spec section 6)", () => {
   test("every fifth grid line is the 50% one", () => {
     const { ctx, records } = recorder()
     const camera = { cx: 0, cy: 0, scale: 20 }
-    drawGrid(ctx, camera, { width: 400, height: 300 }, PCB_GRID)
+    drawGrid(ctx, camera, { width: 400, height: 300 }, PCB_GRID, 1)
     const minor = (planGrid(camera, { width: 400, height: 300 }, 0.5)?.spacing ?? 0) * camera.scale
     const verticals = records.filter((r) => r.name === "moveTo" && r.args[1] === 0)
     const strong = verticals.filter((r) => r.strokeStyle === "rgb(255 255 255 / 50%)").map((r) => (r.args[0] as number) - 0.5)
@@ -193,7 +193,7 @@ describe("PCB colours (spec section 6)", () => {
 /** The stroke colour and dash of a selection box dragged from `a` to `b`. */
 function boxStroke(look: OverlayLook, mode: "inside" | "touching") {
   const { ctx, records } = recorder()
-  drawSelectionBox(ctx, { x: 10, y: 10 }, { x: 60, y: 40 }, look, mode)
+  drawSelectionBox(ctx, { x: 10, y: 10 }, { x: 60, y: 40 }, look, mode, 1)
   const stroke = records.find((r) => r.name === "strokeRect")
   return { colour: stroke?.strokeStyle, dash: records.filter((r) => r.name === "setLineDash").map((r) => r.args[0]) }
 }
@@ -243,7 +243,7 @@ describe("schematic overlay look", () => {
 
   test("a schematic selection outline is red with no wash", () => {
     const { ctx, records } = recorder()
-    drawOutline(ctx, { cx: 0, cy: 0, scale: 20 }, { width: 400, height: 300 }, { minX: 0, minY: 0, maxX: 1, maxY: 1 }, { x: 0, y: 0 }, "selected", SHEET_LOOK)
+    drawOutline(ctx, { cx: 0, cy: 0, scale: 20 }, { width: 400, height: 300 }, { minX: 0, minY: 0, maxX: 1, maxY: 1 }, { x: 0, y: 0 }, "selected", SHEET_LOOK, 1)
     expect(records.some((r) => r.name === "fillRect")).toBe(false)
     expect(records.find((r) => r.name === "strokeRect")?.strokeStyle).toBe(schematicTheme.selection)
   })

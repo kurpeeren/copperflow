@@ -4,7 +4,8 @@ import type { Box, Point } from "./geometry.js"
 
 export const NET_LABEL_TEXT = 0.16
 const TAG_THICKNESS = NET_LABEL_TEXT * 1.5
-const TAG_CHAR = 0.62
+/** Text width per character, in text heights; sized for the semibold (600) net names. */
+export const TAG_CHAR = 0.66
 const OUTWARD: Record<NetLabel["side"], Point> = { right: { x: 1, y: 0 }, left: { x: -1, y: 0 }, top: { x: 0, y: 1 }, bottom: { x: 0, y: -1 } }
 
 export interface LabelTag {

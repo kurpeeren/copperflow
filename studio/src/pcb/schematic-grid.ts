@@ -8,6 +8,6 @@ export const SHEET_DOT_PX = 2
 const SHEET_GRID: GridPaint = { lines: { minor: schematicTheme.grid }, dots: { minor: schematicTheme.gridDot, px: SHEET_DOT_PX } }
 
 /** Paints the grid at the chosen step, in CSS pixels; every line has the one colour and every dot the other. */
-export function drawSchematicGrid(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, look: GridLook): void {
-  paintGrid(ctx, camera, size, look, SHEET_GRID)
+export function drawSchematicGrid(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, look: GridLook, ratio: number): void {
+  paintGrid(ctx, camera, size, look, SHEET_GRID, ratio)
 }
