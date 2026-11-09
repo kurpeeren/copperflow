@@ -11,6 +11,7 @@ export type KeyActionName =
   | "highlight"
   | "clearHighlight"
   | "toggleUnit"
+  | "toggleGridStyle"
   | "toggleLeftPanel"
   | "toggleRightPanel"
   | "toggleBottomPanel"

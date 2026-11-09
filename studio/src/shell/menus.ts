@@ -14,6 +14,7 @@ export type CommandId =
   | "zoomIn"
   | "zoomOut"
   | "toggleUnit"
+  | "gridStyle"
   | "toggleLeftPanel"
   | "toggleRightPanel"
   | "toggleBottomPanel"
@@ -60,7 +61,6 @@ const STAGE_6 = "Comes with fabrication outputs (stage 6)"
 const SELECTION = "Comes with multi-selection (round 3)"
 const ENGINE = "Comes with the engine (stages 3 to 5)"
 const FIND = "Comes with Find (round 3)"
-const THEME = "Comes with the canvas theme (round 2)"
 const SETTINGS = "Comes in round 5, after the side-by-side check with EasyEDA"
 
 export const MENUS: readonly Menu[] = [
@@ -99,7 +99,7 @@ export const MENUS: readonly Menu[] = [
       run("Zoom out", "zoomOut"),
       "separator",
       { ...run("Unit", "toggleUnit", "Q"), only: "pcb" },
-      later("Grid style", THEME),
+      run("Grid style", "gridStyle"),
       "separator",
       run("Left panel", "toggleLeftPanel", "["),
       run("Right panel", "toggleRightPanel", "]"),

@@ -12,6 +12,7 @@ import { centredCamera, fitCamera, zoomAt, type Box, type Camera, type PartBox, 
 import type { ViolationMarker } from "./markers"
 import { pcbBoxes } from "./pcb-draw"
 import { moveBlocker, partAnchors, type View } from "./positions"
+import type { GridStyle } from "./grid"
 import type { Unit } from "./units"
 import { sheetBoxes } from "./schematic-draw"
 
@@ -33,6 +34,8 @@ export interface CanvasProps {
   /** The PCB's display unit; the model stays in mm. */
   unit: Unit
   onToggleUnit(): void
+  /** This document's grid style (lines or dots). */
+  gridStyle: GridStyle
   /** This view's violations that have a position, ringed on the canvas. */
   markers: readonly ViolationMarker[]
   /** The violation picked in the DRC tab. */

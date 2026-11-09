@@ -3,7 +3,7 @@
 import type { View } from "../pcb/positions.js"
 import type { CommandId } from "./menus.js"
 
-export type ToolIconName = "undo" | "zoomIn" | "zoomOut" | "fit" | "component" | "wire" | "netLabel" | "ground" | "power" | "rotate" | "check"
+export type ToolIconName = "undo" | "zoomIn" | "zoomOut" | "fit" | "component" | "wire" | "netLabel" | "ground" | "power" | "rotate" | "check" | "grid"
 
 interface ToolbarButtonBase {
   id: string
@@ -22,21 +22,23 @@ const button = (id: string, title: string, icon: ToolIconName, command: CommandI
 const UNDO = button("undo", "Undo (Ctrl+Z)", "undo", "undo", 0)
 const ZOOM = [button("zoomIn", "Zoom in", "zoomIn", "zoomIn", 1), button("zoomOut", "Zoom out", "zoomOut", "zoomOut", 1), button("fit", "Fit all (K)", "fit", "fit", 1)]
 const ROTATE = (group: number) => button("rotate", "Rotate (Space)", "rotate", "rotate", group)
+const GRID_STYLE = (group: number) => button("gridStyle", "Grid style", "grid", "gridStyle", group)
 const CHECK = (group: number) => button("checkDrc", "Check DRC", "check", "checkDrc", group)
 
 export const TOOLBARS: Readonly<Record<View, readonly ToolbarButton[]>> = {
   schematic: [
     UNDO,
     ...ZOOM,
-    button("component", "Component (Shift+F)", "component", "placeComponent", 2),
-    button("wire", "Wire (Alt+W)", "wire", "wire", 2),
-    button("netLabel", "Net label (Alt+N)", "netLabel", "netLabel", 2),
-    button("ground", "Ground flag", "ground", "groundFlag", 2),
-    button("power", "Power flag", "power", "powerFlag", 2),
-    ROTATE(3),
-    CHECK(4),
+    GRID_STYLE(2),
+    button("component", "Component (Shift+F)", "component", "placeComponent", 3),
+    button("wire", "Wire (Alt+W)", "wire", "wire", 3),
+    button("netLabel", "Net label (Alt+N)", "netLabel", "netLabel", 3),
+    button("ground", "Ground flag", "ground", "groundFlag", 3),
+    button("power", "Power flag", "power", "powerFlag", 3),
+    ROTATE(4),
+    CHECK(5),
   ],
-  pcb: [UNDO, ...ZOOM, { id: "unit", title: "Unit (Q)", text: "unit", command: "toggleUnit", group: 2 }, ROTATE(3), CHECK(4)],
+  pcb: [UNDO, ...ZOOM, GRID_STYLE(2), { id: "unit", title: "Unit (Q)", text: "unit", command: "toggleUnit", group: 2 }, ROTATE(3), CHECK(4)],
 }
 
 /** The buttons of a view split into its groups, in order. */

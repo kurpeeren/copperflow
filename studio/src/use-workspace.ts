@@ -1,10 +1,11 @@
 // The Studio's view state: which panels show, the left strip and its sub-tab, the PCB unit and the highlighted net, and the keys
 // that change them. The canvases' own keys (fit, rotate, wire, highlight under the pointer) live with the canvases.
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { keyAction, keyInput, type KeyActionName } from "./pcb/canvas-keys"
 import type { View } from "./pcb/positions"
 import { INITIAL_BOTTOM, clickBottom, openBottomTab, toggleBottom, type BottomState, type BottomTab } from "./shell/bottom-state"
 import { NO_HIGHLIGHT, type Highlight } from "./pcb/highlight"
+import { INITIAL_GRID_STYLES, toggleGridStyle, type GridStyles } from "./pcb/grid"
 import { nextUnit, type Unit } from "./pcb/units"
 import {
   INITIAL_LEFT,
@@ -59,6 +60,10 @@ export function useWorkspace(view: View) {
   const [focusPage, requestPage, pageFocused] = useFocusRequest()
   const [unit, setUnit] = useState<Unit>("mm")
   const [highlight, setHighlight] = useState<Highlight>(NO_HIGHLIGHT)
+  /** Each document keeps its grid style while the tabs switch. */
+  const [gridStyles, setGridStyles] = useState<GridStyles>(INITIAL_GRID_STYLES)
+  const openView = useRef(view)
+  openView.current = view
 
   /** Runs one of the workspace's own actions, for a key or a menu item. */
   const run = useCallback(
@@ -67,6 +72,7 @@ export function useWorkspace(view: View) {
       if (action === "toggleRightPanel") setRight(toggleStripOpen)
       if (action === "toggleBottomPanel") setBottom(toggleBottom)
       if (action === "toggleUnit") setUnit(nextUnit)
+      if (action === "toggleGridStyle") setGridStyles((styles) => toggleGridStyle(styles, openView.current))
       if (action === "clearHighlight") setHighlight(NO_HIGHLIGHT)
       if (action === "openLibrary") {
         setLeft(showLibrary)
@@ -94,5 +100,5 @@ export function useWorkspace(view: View) {
 
   const toggleUnit = useCallback(() => setUnit(nextUnit), [])
   const { left, right } = strips
-  return { ...strips, leftOpen: left.open, rightOpen: right.open, focusSearch, searchFocused, focusPage, pageFocused, openPageTree, unit, toggleUnit, highlight, setHighlight, run }
+  return { ...strips, leftOpen: left.open, rightOpen: right.open, focusSearch, searchFocused, focusPage, pageFocused, openPageTree, unit, toggleUnit, gridStyles, highlight, setHighlight, run }
 }

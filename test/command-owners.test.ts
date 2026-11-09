@@ -20,6 +20,10 @@ describe("command owners", () => {
     expect(new Set(all).size).toBe(all.length)
   })
 
+  test("Grid style is the workspace's, as its toolbar button and menu item share one path", () => {
+    expect(commandOwner("gridStyle")).toBe("workspace")
+  })
+
   test("Open circuit file is the app's own, so it works before a canvas has mounted", () => {
     expect(commandOwner("openFile")).toBe("app")
   })

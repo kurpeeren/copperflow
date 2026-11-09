@@ -2,20 +2,19 @@
 import { blurAfterPointerClick } from "../shell/focus"
 import type { Point } from "./geometry"
 import { statusParts } from "./status"
-import { snapLabel, type Unit } from "./units"
+import type { StepOption } from "./grid"
+import type { Unit } from "./units"
 import type { Gesture } from "./use-canvas-gestures"
 
-const SNAP_STEPS = [0.1, 0.5, 1]
-
-/** The snap steps are in mm (sheet units on the schematic, which has no `unit`); only their labels follow the unit. */
-export function SnapSelect({ step, onChange, unit }: { step: number; onChange(step: number): void; unit: Unit | undefined }) {
+/** One step is both the grid and the snap; the options are in mm on the PCB and in inches on the sheet (grid.ts). */
+export function GridSelect({ step, options, onChange }: { step: number; options: readonly StepOption[]; onChange(step: number): void }) {
   return (
     <label>
-      Snap
+      Grid
       <select value={step} onChange={(e) => onChange(Number(e.target.value))}>
-        {SNAP_STEPS.map((s) => (
-          <option key={s} value={s}>
-            {unit ? snapLabel(s, unit) : s}
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
           </option>
         ))}
       </select>

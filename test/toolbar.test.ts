@@ -8,19 +8,27 @@ const menuByCommand = new Map(MENUS.flatMap(menuItems).flatMap((item) => (item.c
 
 describe("toolbar", () => {
   test("the schematic row is in EasyEDA's order", () => {
-    expect(ids("schematic")).toEqual(["undo", "zoomIn", "zoomOut", "fit", "component", "wire", "netLabel", "ground", "power", "rotate", "checkDrc"])
-    expect(toolbarGroups("schematic").map((g) => g.length)).toEqual([1, 3, 5, 1, 1])
+    expect(ids("schematic")).toEqual(["undo", "zoomIn", "zoomOut", "fit", "gridStyle", "component", "wire", "netLabel", "ground", "power", "rotate", "checkDrc"])
+    expect(toolbarGroups("schematic").map((g) => g.length)).toEqual([1, 3, 1, 5, 1, 1])
   })
 
   test("the PCB row is in EasyEDA's order", () => {
-    expect(ids("pcb")).toEqual(["undo", "zoomIn", "zoomOut", "fit", "unit", "rotate", "checkDrc"])
-    expect(toolbarGroups("pcb").map((g) => g.length)).toEqual([1, 3, 1, 1, 1])
+    expect(ids("pcb")).toEqual(["undo", "zoomIn", "zoomOut", "fit", "gridStyle", "unit", "rotate", "checkDrc"])
+    expect(toolbarGroups("pcb").map((g) => g.length)).toEqual([1, 3, 2, 1, 1])
   })
 
   test("the PCB's Unit button shows the unit as its text and runs the menu's Unit", () => {
     const unit = TOOLBARS.pcb.find((b) => b.id === "unit")
     expect(unit).toEqual({ id: "unit", title: "Unit (Q)", text: "unit", command: "toggleUnit", group: 2 })
     expect(TOOLBARS.schematic.some((b) => b.command === "toggleUnit")).toBe(false)
+  })
+
+  test("both rows have a Grid style button that runs the View menu's Grid style", () => {
+    for (const view of ["schematic", "pcb"] as const) {
+      expect(TOOLBARS[view].find((b) => b.id === "gridStyle")).toEqual({ id: "gridStyle", title: "Grid style", icon: "grid", command: "gridStyle", group: 2 })
+    }
+    expect(menuByCommand.get("gridStyle")?.label).toBe("Grid style")
+    expect(menuByCommand.get("gridStyle")?.pending).toBeUndefined()
   })
 
   test("every other button has an icon", () => {

@@ -32,6 +32,23 @@ describe("menu bar keys on a title", () => {
   })
 })
 
+describe("menu bar keys with a modifier", () => {
+  test("with Alt, Ctrl or Meta held no key is the menu's, so Alt+Left still goes back in the browser", () => {
+    for (const modifier of [{ alt: true }, { ctrl: true }, { meta: true }]) {
+      for (const key of ["ArrowLeft", "ArrowRight", "ArrowDown", "ArrowUp", "Home", "End", "Escape"]) {
+        expect([key, menuKey(key, title(0), 0, SHAPES, modifier)]).toEqual([key, null])
+        expect([key, menuKey(key, item(0, 0), 0, SHAPES, modifier)]).toEqual([key, null])
+        expect([key, menuKey(key, null, 0, SHAPES, modifier)]).toEqual([key, null])
+      }
+    }
+  })
+
+  test("Tab still closes the menu with Alt held, and no modifier changes nothing", () => {
+    expect(menuKey("Tab", item(0, 0), 0, SHAPES, { alt: true })?.open).toBeNull()
+    expect(menuKey("ArrowRight", title(0), null, SHAPES, {})?.focus).toEqual(title(1))
+  })
+})
+
 describe("menu bar keys in an open menu", () => {
   test("Down and Up step through the items, skip separators and wrap", () => {
     expect(menuKey("ArrowDown", item(0, 0), 0, SHAPES)?.focus).toEqual(item(0, 2))

@@ -24,9 +24,9 @@ export function formatLength(mm: number, unit: Unit): string {
   return /^-0(\.0+)?$/.test(text) ? text.slice(1) : text
 }
 
-/** The snap select's label for a step in mm: "0.1 mm" or "3.94 mil". */
+/** The Grid select's label for a step in mm: "0.1 mm" or "3.94 mil"; mm keeps four decimals so 0.5 and 0.508 differ. */
 export function snapLabel(stepMm: number, unit: Unit): string {
-  return `${Number(toUnit(stepMm, unit).toFixed(2))} ${unit}`
+  return `${Number(toUnit(stepMm, unit).toFixed(unit === "mm" ? 4 : 2))} ${unit}`
 }
 
 export const zoomPercent = (scale: number, referencePx: number): number => Math.round((scale / referencePx) * 100)

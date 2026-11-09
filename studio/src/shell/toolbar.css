@@ -96,3 +96,7 @@ button.toolbar-button:hover:not(:disabled) {
 button.toolbar-button[aria-pressed="true"]:hover:not(:disabled) {
   background: var(--copper-wash);
 }
+
+button.toolbar-button:active:not(:disabled) {
+  background: var(--line);
+}

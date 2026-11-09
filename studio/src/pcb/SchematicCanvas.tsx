@@ -8,7 +8,8 @@ import { clearToolState, setToolState } from "../shell/tool-state"
 import { ViewTools } from "../shell/ViewTools"
 import { keepAutoPlaced } from "./auto-placed"
 import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
-import { CanvasStatus, KeepButton, SnapSelect } from "./CanvasTools"
+import { CanvasStatus, GridSelect, KeepButton } from "./CanvasTools"
+import { SHEET_DEFAULT_STEP, gridStepOptions, type GridLook } from "./grid"
 import { hitTest, unionBoxes, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import { highlightOf, partNets, schematicNetAt, type Highlight } from "./highlight"
 import { labelHitBox } from "./label-drag"
@@ -59,16 +60,18 @@ interface SheetScene {
   highlight: ReturnType<typeof highlightOf>
   markers: readonly ViolationMarker[]
   activeViolation: string | null
+  /** The grid's step and style. */
+  grid: GridLook
 }
 
 /** Draws the sheet and its violation rings, the wire being drawn and the editor layer; a sheet without parts gets a default view. */
 function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: SheetScene): void {
-  const { design, border, camera, size, moving, boxes, hover, selected, locked, circuit, gesture, movingLabels, hoverLabel, palette, highlight, markers, activeViolation } = scene
+  const { design, border, camera, size, moving, boxes, hover, selected, locked, circuit, gesture, movingLabels, hoverLabel, palette, highlight, markers, activeViolation, grid } = scene
   const { wiring, drawing, activePins, pendingWires, preview } = scene.wire
   const { ghosts, ghostWires, armed } = palette
   useEffect(() => {
     const view = camera ?? EMPTY_SHEET_CAMERA
-    const prepared = prepareCanvas(canvasRef.current, size, view, schematicTheme.background, drawSchematicGrid)
+    const prepared = prepareCanvas(canvasRef.current, size, view, schematicTheme.background, (c, cam, s) => drawSchematicGrid(c, cam, s, grid))
     if (!prepared) return
     const { ctx, ratio } = prepared
     drawSheetBorder(ctx, view, size, border)
@@ -90,7 +93,7 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
     const shownHover = drawing ? undefined : hover
     drawEditorLayer(ctx, view, size, { view: "schematic", boxes, moving, hover: shownHover, selected, locked, marks: circuit.annotations.marks, noteBox, look: SHEET_LOOK })
     if (hoverLabel && !drawing && !gesture) drawOutline(ctx, view, size, labelHitBox(hoverLabel), { x: 0, y: 0 }, "hover", SHEET_LOOK)
-  }, [canvasRef, design, border, camera, size, wiring, drawing, activePins, pendingWires, preview, moving, movingLabels, hoverLabel, boxes, hover, selected, locked, circuit, gesture, ghosts, ghostWires, armed, highlight, markers, activeViolation])
+  }, [canvasRef, design, border, camera, size, wiring, drawing, activePins, pendingWires, preview, moving, movingLabels, hoverLabel, boxes, hover, selected, locked, circuit, gesture, ghosts, ghostWires, armed, highlight, markers, activeViolation, grid])
 }
 
 interface SheetToolsProps {
@@ -99,11 +102,11 @@ interface SheetToolsProps {
   keep: { show: boolean; onKeep(): void }
 }
 
-/** Snap and "Keep these positions", in the toolbar's right side; rendered beside the sheet, not inside its pointer handlers. */
+/** Grid and "Keep these positions", in the toolbar's right side; rendered beside the sheet, not inside its pointer handlers. */
 function SheetTools({ step, setStep, keep }: SheetToolsProps) {
   return (
     <ViewTools>
-      <SnapSelect step={step} onChange={setStep} unit={undefined} />
+      <GridSelect step={step} options={gridStepOptions("schematic", "mm")} onChange={setStep} />
       <KeepButton {...keep} title="Write the faded symbols' positions into the code as schX and schY" />
     </ViewTools>
   )
@@ -272,12 +275,13 @@ function useArmedTool(wire: WireTool, palette: Palette): void {
  * The schematic, drawn by copperflow's own renderer under its camera, grid and tools, with the
  * wire tool (see useWireTool) and the Place tools (see useLabelPalette).
  */
-export function SchematicCanvas({ design, buildId, project, builtFrom, circuit, actions, selected, onSelect, highlight: highlightNets, onHighlight, markers, activeViolation, focus, onFocused }: CanvasProps) {
+export function SchematicCanvas({ design, buildId, project, builtFrom, circuit, actions, selected, onSelect, highlight: highlightNets, onHighlight, gridStyle, markers, activeViolation, focus, onFocused }: CanvasProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const size = useElementSize(wrapRef)
   const [cursor, setCursor] = useState<Point>()
-  const [step, setStep] = useState(0.5)
+  const [step, setStep] = useState(SHEET_DEFAULT_STEP)
+  const grid = useMemo<GridLook>(() => ({ step, style: gridStyle }), [step, gridStyle])
   const parts = usePlacedParts(design, "schematic", circuit)
   const sheet = useHeldSheet(design)
   const { camera, setCamera, fit } = useCamera(wrapRef, size, sheet.outer, FIT_MARGIN)
@@ -293,7 +297,7 @@ export function SchematicCanvas({ design, buildId, project, builtFrom, circuit, 
   const hover = useSheetHover(parts.boxes, wire, labels.tools)
   const { moving, gesture } = gestures
   const movingLabels = useMovingLabels(design, gesture, labels.pending)
-  useSheetPaint(canvasRef, { design, border, camera, size, wire, moving, boxes: parts.boxes, hover: hover.part, selected, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel: hover.label, palette, highlight, markers, activeViolation })
+  useSheetPaint(canvasRef, { design, border, camera, size, wire, moving, boxes: parts.boxes, hover: hover.part, selected, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel: hover.label, palette, highlight, markers, activeViolation, grid })
   const press = (event: { button: number; shiftKey: boolean }, world: Point) => palette.press(event, world) || wire.press(event, world)
   const pointer = pointerHandlers({ camera, size, element: wrapRef, gestures, setCursor, tool: press, hover: hover.at })
   const cursorStyle = cursorFor(gesture, wire.drawing !== null || wire.overPin || palette.armed, hover.part !== undefined || hover.label !== undefined)

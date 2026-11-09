@@ -11,7 +11,7 @@ export function StatusPill({ build, errors, onOpen }: { build: BuildState; error
         blurAfterPointerClick(event)
         onOpen()
       }}
-      title="DRC (\)"
+      title="Show DRC"
     >
       <span className="dot" aria-hidden="true" />
       <span role="status">{statusText(build, errors)}</span>

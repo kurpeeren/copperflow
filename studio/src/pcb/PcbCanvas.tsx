@@ -4,11 +4,13 @@ import type { WorldPad } from "../../../src/engine/pcb.js"
 import { keepAutoPlaced } from "./auto-placed"
 import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
 import { ViewTools } from "../shell/ViewTools"
-import { CanvasStatus, KeepButton, SnapSelect } from "./CanvasTools"
+import { CanvasStatus, GridSelect, KeepButton } from "./CanvasTools"
 import { PALETTE, type Layers } from "./ctx"
+import { PCB_DEFAULT_STEP, gridStepOptions, type GridLook } from "./grid"
 import { hitTest, pointBounds, unionBoxes, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import { NO_HIGHLIGHT, partNets, pcbNetAt, type Highlight } from "./highlight"
 import type { ViolationMarker } from "./markers"
+import { drawGrid } from "./overlays"
 import { drawPcb, padAt } from "./pcb-draw"
 import type { Unit } from "./units"
 import { cursorFor, pointerHandlers, useCanvasGestures, type Gesture } from "./use-canvas-gestures"
@@ -48,15 +50,17 @@ interface PcbScene {
   highlightNets: Highlight
   markers: readonly ViolationMarker[]
   activeViolation: string | null
+  /** The grid's step and style. */
+  grid: GridLook
 }
 
 /** Draws the board and its violation rings, then the editor layer, whenever anything visible changes. */
 function usePcbPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: PcbScene): void {
-  const { design, camera, size, layers, hoverPad, moving, boxes, hover, selected, locked, circuit, gesture, highlightNets, markers, activeViolation } = scene
+  const { design, camera, size, layers, hoverPad, moving, boxes, hover, selected, locked, circuit, gesture, highlightNets, markers, activeViolation, grid } = scene
   const litNets = useMemo(() => (highlightNets.length > 0 ? highlightNets : hoverPad?.net ? [hoverPad.net] : NO_HIGHLIGHT), [highlightNets, hoverPad])
   useEffect(() => {
     if (!camera) return
-    const prepared = prepareCanvas(canvasRef.current, size, camera, BACKGROUND)
+    const prepared = prepareCanvas(canvasRef.current, size, camera, BACKGROUND, (c, cam, s) => drawGrid(c, cam, s, grid))
     if (!prepared) return
     const { ctx, ratio } = prepared
     drawPcb(ctx, design.pcb, { camera, size }, {
@@ -70,7 +74,7 @@ function usePcbPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: PcbS
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
     const noteBox = gesture?.kind === "box" ? gesture : undefined
     drawEditorLayer(ctx, camera, size, { view: "pcb", boxes, moving, hover, selected, locked, marks: circuit.annotations.marks, noteBox })
-  }, [canvasRef, design, camera, size, layers, litNets, moving, boxes, hover, selected, locked, circuit, gesture, markers, activeViolation])
+  }, [canvasRef, design, camera, size, layers, litNets, moving, boxes, hover, selected, locked, circuit, gesture, markers, activeViolation, grid])
 }
 
 interface PcbToolsProps {
@@ -82,11 +86,11 @@ interface PcbToolsProps {
   keep: { show: boolean; onKeep(): void }
 }
 
-/** Snap, the layer switches and "Keep these positions", in the toolbar's right side. */
+/** Grid, the layer switches and "Keep these positions", in the toolbar's right side. */
 function PcbTools({ unit, step, setStep, layers, setLayers, keep }: PcbToolsProps) {
   return (
     <ViewTools>
-      <SnapSelect step={step} onChange={setStep} unit={unit} />
+      <GridSelect step={step} options={gridStepOptions("pcb", unit)} onChange={setStep} />
       <span className="tool-divider" aria-hidden="true" />
       {LAYER_BUTTONS.map(([key, label]) => (
         <button
@@ -105,13 +109,14 @@ function PcbTools({ unit, step, setStep, layers, setLayers, keep }: PcbToolsProp
 }
 
 /** The PCB, drawn by copperflow's own renderer under its camera, grid and tools. */
-export function PcbCanvas({ design, builtFrom, circuit, actions, selected, onSelect, highlight, onHighlight, unit, onToggleUnit, markers, activeViolation, focus, onFocused }: CanvasProps) {
+export function PcbCanvas({ design, builtFrom, circuit, actions, selected, onSelect, highlight, onHighlight, unit, onToggleUnit, gridStyle, markers, activeViolation, focus, onFocused }: CanvasProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const size = useElementSize(wrapRef)
   const [hover, setHover] = useState<string>()
   const [cursor, setCursor] = useState<Point>()
-  const [step, setStep] = useState(0.5)
+  const [step, setStep] = useState(PCB_DEFAULT_STEP)
+  const grid = useMemo<GridLook>(() => ({ step, style: gridStyle }), [step, gridStyle])
   const [layers, setLayers] = useState<Layers>(DEFAULT_LAYERS)
   const [hoverPad, setHoverPad] = useState<WorldPad>()
   const parts = usePlacedParts(design, "pcb", circuit)
@@ -126,7 +131,7 @@ export function PcbCanvas({ design, builtFrom, circuit, actions, selected, onSel
   const netsOf = useCallback((part: string) => partNets(design, part), [design])
   usePartKeys({ ...common, selected, paused: false, fit, netUnderPointer, netsOf, onHighlight })
   const { moving, gesture } = gestures
-  usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad, moving, boxes: parts.boxes, hover, selected, locked: parts.locked, circuit, gesture, highlightNets: highlight, markers, activeViolation })
+  usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad, moving, boxes: parts.boxes, hover, selected, locked: parts.locked, circuit, gesture, highlightNets: highlight, markers, activeViolation, grid })
   const hoverAt = (world: Point) => {
     setHover(hitTest(parts.boxes, world)?.name)
     setHoverPad(padAt(design.pcb, world))

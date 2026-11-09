@@ -1,5 +1,6 @@
 // Everything copperflow draws on top of the board, in CSS pixels.
-import { gridSteps, screenToWorld, worldToScreen, type Box, type Camera, type Point, type Size } from "./geometry.js"
+import { PCB_DEFAULT_STEP, paintGrid, type GridLook } from "./grid.js"
+import { worldToScreen, type Box, type Camera, type Point, type Size } from "./geometry.js"
 
 const COPPER = "#e0a46a"
 const MASK = "#4f9a6c"
@@ -10,37 +11,11 @@ const MAX_LABEL = 32
 
 const GRID_MINOR = "rgb(255 255 255 / 30%)"
 const GRID_FIFTH = "rgb(255 255 255 / 50%)"
-/** Every fifth grid line is drawn stronger. */
-export const GRID_EVERY = 5
+const DEFAULT_GRID: GridLook = { step: PCB_DEFAULT_STEP, style: "lines" }
 
-/** White grid lines: 30% on the minor grid, 50% on every fifth line. */
-export function drawGrid(ctx: CanvasRenderingContext2D, camera: Camera, size: Size): void {
-  const { minor } = gridSteps(camera.scale)
-  const topLeft = screenToWorld(camera, size, { x: 0, y: 0 })
-  const bottomRight = screenToWorld(camera, size, { x: size.width, y: size.height })
-  const columns = range(Math.floor(topLeft.x / minor), Math.ceil(bottomRight.x / minor))
-  const rows = range(Math.floor(bottomRight.y / minor), Math.ceil(topLeft.y / minor))
-  const lines = (indices: number[], at: (i: number) => [number, number, number, number]) => {
-    for (const [colour, wanted] of [[GRID_MINOR, false], [GRID_FIFTH, true]] as const) {
-      ctx.strokeStyle = colour
-      ctx.beginPath()
-      for (const i of indices.filter((n) => (n % GRID_EVERY === 0) === wanted)) {
-        const [x1, y1, x2, y2] = at(i)
-        ctx.moveTo(x1, y1)
-        ctx.lineTo(x2, y2)
-      }
-      ctx.stroke()
-    }
-  }
-  ctx.lineWidth = 1
-  lines(columns, (i) => {
-    const sx = Math.round(worldToScreen(camera, size, { x: i * minor, y: 0 }).x) + 0.5
-    return [sx, 0, sx, size.height]
-  })
-  lines(rows, (i) => {
-    const sy = Math.round(worldToScreen(camera, size, { x: 0, y: i * minor }).y) + 0.5
-    return [0, sy, size.width, sy]
-  })
+/** White grid lines or dots at the chosen step: 30% on the minor grid, 50% on every fifth line (or fifth crossing). */
+export function drawGrid(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, look: GridLook = DEFAULT_GRID): void {
+  paintGrid(ctx, camera, size, look, { minor: GRID_MINOR, fifth: GRID_FIFTH })
 }
 
 /** The colours of the overlays that differ between the canvases. */
@@ -154,12 +129,6 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.arcTo(x, y + h, x, y, r)
   ctx.arcTo(x, y, x + w, y, r)
   ctx.closePath()
-}
-
-function range(from: number, to: number): number[] {
-  const values: number[] = []
-  for (let i = from; i <= to; i++) values.push(i)
-  return values
 }
 
 /**

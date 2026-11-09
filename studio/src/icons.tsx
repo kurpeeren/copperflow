@@ -126,6 +126,11 @@ const rotate = (p: IconProps) => (
     <path d="M19 4v4.5h-4.5" />
   </ToolIcon>
 )
+const grid = (p: IconProps) => (
+  <ToolIcon {...p}>
+    <path d="M6 6h.01M12 6h.01M18 6h.01M6 12h.01M12 12h.01M18 12h.01M6 18h.01M12 18h.01M18 18h.01" strokeWidth="2.5" />
+  </ToolIcon>
+)
 const check = (p: IconProps) => (
   <ToolIcon {...p}>
     <path d="M12 3 4 6v6c0 4.5 3.2 7.8 8 9 4.8-1.2 8-4.5 8-9V6z" />
@@ -134,4 +139,4 @@ const check = (p: IconProps) => (
 )
 
 /** The toolbar's icons, by the name toolbar.ts gives each button. */
-export const TOOL_ICONS: Record<ToolIconName, (props: IconProps) => React.JSX.Element> = { undo, zoomIn, zoomOut, fit, component, wire, netLabel, ground, power, rotate, check }
+export const TOOL_ICONS: Record<ToolIconName, (props: IconProps) => React.JSX.Element> = { undo, zoomIn, zoomOut, fit, component, wire, netLabel, ground, power, rotate, check, grid }

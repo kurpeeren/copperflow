@@ -89,9 +89,20 @@ function fromOutside(key: string, open: number, menus: readonly MenuShape[]): Me
   return null
 }
 
-/** What `key` does with the focus `at` (null when it is outside the menu bar) and menu `open`; null when it is not a menu key. */
-export function menuKey(key: string, at: MenuFocus | null, open: number | null, menus: readonly MenuShape[]): MenuKeyResult | null {
+/** The modifier keys held with a press. */
+export interface Modifiers {
+  alt?: boolean
+  ctrl?: boolean
+  meta?: boolean
+}
+
+/**
+ * What `key` does with the focus `at` (null when it is outside the menu bar) and menu `open`; null when it is not a menu key.
+ * With Alt, Ctrl or Meta held nothing is the menu's (Alt+Left must still go back in the browser), Tab excepted.
+ */
+export function menuKey(key: string, at: MenuFocus | null, open: number | null, menus: readonly MenuShape[], modifiers: Modifiers = {}): MenuKeyResult | null {
   if (menus.length === 0) return null
+  if ((modifiers.alt || modifiers.ctrl || modifiers.meta) && key !== "Tab") return null
   if (at === null) return open === null ? null : fromOutside(key, open, menus)
   if (at.item === null) return onTitle(key, at.menu, open, menus)
   return onItem(key, { menu: at.menu, item: at.item }, menus)

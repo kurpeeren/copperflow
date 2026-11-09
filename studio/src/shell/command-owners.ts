@@ -11,6 +11,7 @@ export type AppCommand = (typeof APP_COMMANDS)[number]
 /** Run by the workspace, as the key with the same action is. */
 export const WORKSPACE_COMMANDS = {
   toggleUnit: "toggleUnit",
+  gridStyle: "toggleGridStyle",
   toggleLeftPanel: "toggleLeftPanel",
   toggleRightPanel: "toggleRightPanel",
   toggleBottomPanel: "toggleBottomPanel",

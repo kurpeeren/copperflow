@@ -150,7 +150,7 @@ export function MenuBar({ run, view, children }: Props) {
     moveFocus(next.focus)
   }
   const onKey = (event: KeyboardEvent | ReactKeyboardEvent): boolean => {
-    const next = menuKey(event.key, focusOf(bar.current, document.activeElement), open, shapes)
+    const next = menuKey(event.key, focusOf(bar.current, document.activeElement), open, shapes, { alt: event.altKey, ctrl: event.ctrlKey, meta: event.metaKey })
     if (!next) return false
     if (next.preventDefault) event.preventDefault()
     apply(next)
