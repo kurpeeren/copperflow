@@ -8,7 +8,7 @@ import type { Design } from "../../../src/engine/design.js"
 import type { Connection, Pin } from "../../../src/engine/model.js"
 import type { Point } from "./geometry.js"
 import type { SourceCircuit } from "./positions.js"
-import { lockedPart, pickRepeat, traceBlocker, tracesBetween, type EndMatch } from "./trace-source.js"
+import { endMatches, lockedPart, netNames, pickRepeat, repeatBlocker, traceBlocker, tracesBetween, type EndMatch } from "./trace-source.js"
 import { tidy } from "./wire-geometry.js"
 import { addressable, pinOfSelector, pinSelector } from "./wire-tool.js"
 
@@ -25,6 +25,8 @@ type TraceWriter = {
   /** The trace names the net first, so its corners run against the wire. */
   reversed: boolean
   components: string[]
+  /** Why an edit would reach another trace than this one. */
+  repeat?: string
 }
 
 /** What writes a wire's corners. */
@@ -48,7 +50,6 @@ const NO_LOCKS: ReadonlySet<string> = new Set()
 const isNet = (end: string): boolean => end.startsWith("net.")
 const sameSpot = (a: Point, b: Point): boolean => a.x === b.x && a.y === b.y
 const pinById = (design: Design, id: string): Pin | undefined => design.circuit.components.flatMap((c) => c.pins).find((pin) => pin.id === id)
-const netNames = (design: Design, netId: string): string[] => design.circuit.nets.find((net) => net.id === netId)?.names ?? [netId.replace(/^net\./, "")]
 
 function shape(id: string, points: Point[], writer: WireWriter): WireShape {
   return { id, points, fixed: { start: true, end: true }, writer }
@@ -57,7 +58,7 @@ function shape(id: string, points: Point[], writer: WireWriter): WireShape {
 /** The trace of a hand-drawn connection: the one between the same ends, written in the same direction, taking the n-th of a repeated pair. */
 function traceOfConnection(design: Design, source: SourceCircuit, connection: Connection): TraceInfo | undefined {
   const endOf = (id: string): EndMatch => (isNet(id) ? { net: netNames(design, id) } : { pin: id })
-  const sameWay = (t: TraceInfo) => (pinOfSelector(design, t.from ?? "") !== undefined) === !isNet(connection.from)
+  const sameWay = (t: TraceInfo) => endMatches(design, t.from, endOf(connection.from))
   const matches = tracesBetween(design, source, endOf(connection.from), endOf(connection.to)).filter(sameWay)
   return pickRepeat(matches, connection.id)
 }
@@ -68,7 +69,8 @@ function handDrawn(design: Design, source: SourceCircuit, id: string, points: Po
   const pins = [connection.from, connection.to].filter((end) => !isNet(end))
   const components = pins.map((pin) => pinById(design, pin)?.component ?? "")
   const toNet = pins.length === 1
-  return shape(id, points, { kind: "trace", trace, toNet, reversed: toNet && isNet(connection.from), components })
+  const repeat = repeatBlocker(source, trace)
+  return shape(id, points, { kind: "trace", trace, toNet, reversed: toNet && isNet(connection.from), components, ...(repeat ? { repeat } : {}) })
 }
 
 /** The pin of `pins` whose end on the sheet is `p`. */
@@ -110,7 +112,7 @@ export function wireBlocker(design: Design, wire: WireShape, locked: ReadonlySet
   const lockedName = lockedPart(design, writer.components, writer.kind === "trace" ? writer.trace : undefined, locked)
   if (lockedName !== undefined) return `${lockedName} is locked`
   if (writer.kind === "engine") return writer.unaddressable ?? null
-  return traceBlocker(writer.trace) ?? null
+  return writer.repeat ?? traceBlocker(writer.trace) ?? null
 }
 
 /** The corners a trace writes for `path`: the points between the ends (and the label end of a wire to a net), in the order the trace names its ends. */

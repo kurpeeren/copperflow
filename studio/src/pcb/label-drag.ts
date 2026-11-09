@@ -11,7 +11,7 @@ import { boundsOf } from "../../../src/engine/symbols/types.js"
 import { rightAngles, type Box, type Point } from "./geometry.js"
 import { labelTag } from "./label-tag.js"
 import type { SourceCircuit } from "./positions.js"
-import { lockedPart, pickRepeat, traceBlocker, tracesBetween } from "./trace-source.js"
+import { lockedPart, netNames, pickRepeat, repeatBlocker, traceBlocker, tracesBetween } from "./trace-source.js"
 import { addressable, pinOfSelector, pinSelector } from "./wire-tool.js"
 
 export type LabelDrag = Edit[] | { blocked: string }
@@ -111,14 +111,9 @@ export function labelPreview(design: Design, labelId: string, drop: Point): Labe
   return { at, side: sideOf(wire[wire.length - 2], at), wire, ...(anchor.connection ? { hideWire: `wire:${anchor.connection.id}` } : {}) }
 }
 
-/** The names the label's net answers to. */
-function netNames(design: Design, label: NetLabel): string[] {
-  return design.circuit.nets.find((net) => net.id === label.net)?.names ?? [label.net.replace(/^net\./, "")]
-}
-
 /** The source trace that joins the pin to the label's net, in either direction. A repeated pair (`#2`) takes the matching one. */
 function traceOf(design: Design, source: SourceCircuit, anchor: Anchor): TraceInfo | undefined {
-  const matches = tracesBetween(design, source, { pin: anchor.pin.id }, { net: netNames(design, anchor.label) })
+  const matches = tracesBetween(design, source, { pin: anchor.pin.id }, { net: netNames(design, anchor.label.net) })
   return pickRepeat(matches, anchor.connection?.id)
 }
 
@@ -132,7 +127,7 @@ function targetOf(design: Design, source: SourceCircuit, labelId: string, locked
   const trace = traceOf(design, source, anchor)
   const lockedName = lockedPart(design, [anchor.pin.component], trace, locked)
   if (lockedName !== undefined) return { blocked: `${lockedName} is locked` }
-  const blocker = trace ? traceBlocker(trace) : undefined
+  const blocker = trace ? (repeatBlocker(source, trace) ?? traceBlocker(trace)) : undefined
   if (blocker) return { blocked: blocker }
   if (!trace && anchor.connection) return { blocked: "The wire of this label is not written in a trace the Studio can find" }
   if (!trace && !addressable(pinSelector(design, anchor.pin))) return { blocked: `${anchor.pin.id} has a repeated name and cannot be wired from the Studio` }
@@ -147,7 +142,7 @@ export function labelBlocker(design: Design, source: SourceCircuit, labelId: str
 
 /** The name `net.<name>` writes for the label's net. */
 function netSelector(design: Design, label: NetLabel): string {
-  const names = netNames(design, label)
+  const names = netNames(design, label.net)
   return `net.${names.includes(label.text) ? label.text : (names[0] ?? label.text)}`
 }
 

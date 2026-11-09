@@ -68,7 +68,7 @@ describe("dragSegment", () => {
     expect(dragSegment(Z, 2, p(-0.5, 9))).toEqual([p(0, 0), p(0, 1), p(1.5, 1), p(1.5, 3), p(2, 3)])
   })
 
-  test("a straight wire dragged sideways becomes a Z with both ends fixed", () => {
+  test("a straight wire dragged sideways becomes a U with both ends fixed", () => {
     expect(dragSegment([p(0, 0), p(4, 0)], 0, p(7, 1))).toEqual([p(0, 0), p(0, 1), p(4, 1), p(4, 0)])
   })
 
@@ -288,5 +288,53 @@ describe("blockers", () => {
   test("nothing blocks an ordinary wire", () => {
     expect(wireBlocker(design, wire("wire:R1.pin2|R2.pin1"))).toBeNull()
     expect(wireBlocker(design, wire("wire:net.GND:1"))).toBeNull()
+  })
+})
+
+describe("repeated and opposite traces", () => {
+  const base = (traces: string) => `export default () => (
+  <board width="30mm" height="18mm">
+    <resistor name="R1" resistance="1k" footprint="0402" schX={0} schY={0} />
+    <resistor name="R2" resistance="1k" footprint="0402" schX={3} schY={0} />
+${traces}
+  </board>
+)`
+  const bump = (found: WireShape) => dragSegment(found.points, 1, p(0, 0.5))
+
+  /** Each wire's points after the edit for `id` is applied through core and the source rebuilt; a refusal gives undefined. */
+  function afterEdit(source: string, id: string, others: string[]) {
+    const s = setup(source)
+    const found = wire(id, s.design, s.model)
+    const edits = wireShapeEdits(s.design, found, found.points.length === 2 ? [found.points[0] as typeof Q, p(1, 1), p(2, 1), found.points[1] as typeof Q] : bump(found))
+    if (!Array.isArray(edits)) return { blocked: edits.blocked, before: found.points }
+    const next = setup(applyEdits(source, edits, new Set()))
+    return { before: found.points, after: wire(id, next.design, next.model).points, others: others.map((o) => [wire(o, s.design, s.model).points, wire(o, next.design, next.model).points]) }
+  }
+  const Q = p(0, 0)
+
+  test("the second of two identical traces is refused and the first lands on itself", () => {
+    const source = base(`    <trace from=".R1 > .pin2" to=".R2 > .pin1" />\n    <trace from=".R1 > .pin2" to=".R2 > .pin1" />`)
+    expect(afterEdit(source, "wire:R1.pin2|R2.pin1#2", [])).toMatchObject({ blocked: "This wire repeats another between the same ends; change its corners in the code" })
+    const first = afterEdit(source, "wire:R1.pin2|R2.pin1", ["wire:R1.pin2|R2.pin1#2"])
+    expect(first.blocked).toBeUndefined()
+    expect(first.after).not.toEqual(first.before)
+    expect(first.others?.[0]?.[1]).toEqual(first.others?.[0]?.[0])
+  })
+
+  test("a pin-to-pin pair written both ways: the first lands on itself, the opposite one is refused", () => {
+    const source = base(`    <trace from=".R1 > .pin2" to=".R2 > .pin1" />\n    <trace from=".R2 > .pin1" to=".R1 > .pin2" />`)
+    const forward = afterEdit(source, "wire:R1.pin2|R2.pin1", ["wire:R2.pin1|R1.pin2"])
+    expect(forward.blocked).toBeUndefined()
+    expect(forward.others?.[0]?.[1]).toEqual(forward.others?.[0]?.[0])
+    expect(afterEdit(source, "wire:R2.pin1|R1.pin2", [])).toMatchObject({ blocked: expect.stringContaining("repeats another") })
+  })
+
+  test("a pin-to-net pair written both ways: the opposite one is refused", () => {
+    const hints = `schematicRouteHints={[{ x: 1, y: 1 }, { x: 1, y: 2 }]}`
+    const source = base(`    <trace from=".R1 > .pin2" to="net.VCC" ${hints} />\n    <trace from="net.VCC" to=".R1 > .pin2" ${hints.replace("x: 1, y: 2", "x: 1, y: 3")} />`)
+    const forward = afterEdit(source, "wire:R1.pin2|net.VCC", ["wire:net.VCC|R1.pin2"])
+    expect(forward.blocked).toBeUndefined()
+    expect(forward.others?.[0]?.[1]).toEqual(forward.others?.[0]?.[0])
+    expect(afterEdit(source, "wire:net.VCC|R1.pin2", [])).toMatchObject({ blocked: expect.stringContaining("repeats another") })
   })
 })
