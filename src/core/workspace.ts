@@ -1,5 +1,5 @@
-import { mkdir, readdir, readFile, realpath, rm, rmdir, stat } from "node:fs/promises"
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
+import { readdir, readFile, realpath, rm } from "node:fs/promises"
+import { basename, join, relative, resolve, sep } from "node:path"
 import { analyzeCircuit } from "./analyze.js"
 import {
   annotationsPathFor,
@@ -14,15 +14,17 @@ import {
 } from "./annotations.js"
 import { drawingKeeper } from "./drawing-identity.js"
 import { applyEdits, EditError } from "./edit.js"
-import { serialized, writeFileAtomic } from "./fs-utils.js"
+import { inProjectQueue, isInside, readIfThere, writeNew, writeWithHistory } from "./file-writes.js"
 import { livesOnAs, readEntries, recordEntry, removeEntry, type Author, type HistoryEntry } from "./history.js"
+import { circuitPathFor, isLayoutFile, layoutPathFor } from "./layout-file.js"
+import { lockedPartsAt, lockedStart, type LayoutDesign } from "./layout-locks.js"
+import { lockedPartChanges, lockedRecordChanges } from "./layout-records.js"
 import { LIBRARY_OWNED_PROPS, libraryIds, libraryImports, PARTS_DIR } from "./library.js"
 import { partsInSelector } from "./selectors.js"
 import type { CircuitModel, Edit } from "./types.js"
 
 const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "coverage", ".copperflow"])
 const CIRCUIT_FILE = /\.circuit\.tsx$/
-const projectQueues = new Map<string, Promise<void>>()
 
 export interface LoadedCircuit {
   file: string
@@ -97,7 +99,7 @@ export function editCircuit(
   edits: Edit[],
   meta: { author: Author; summary: string },
 ): Promise<EditResult> {
-  return serialized(projectQueues, resolve(root), async () => {
+  return inProjectQueue(root, async () => {
     const loaded = await loadCircuit(root, file)
     await refuseLibraryOverrides(root, loaded, edits)
     const locked = new Set(loaded.annotations.locks.map((lock) => lock.part))
@@ -109,13 +111,23 @@ export function editCircuit(
   })
 }
 
+export interface HistoryOptions {
+  author: Author
+  id?: string
+  /**
+   * The circuit's built design, for undoing or redoing a layout file change: a track starting on a locked part's pad
+   * counts as locked. Without it such a change is refused while the circuit has locked parts.
+   */
+  design?: LayoutDesign
+}
+
 /**
  * Undoes one change: the given id, or the newest change that is not undone yet.
  * The agent (`ai`) may only undo its own changes. Refuses when the file changed since,
  * or when the undo would change a part that is locked now.
  */
-export function undoChange(root: string, options: { author: Author; id?: string }): Promise<HistoryEntry> {
-  return serialized(projectQueues, resolve(root), async () => {
+export function undoChange(root: string, options: HistoryOptions): Promise<HistoryEntry> {
+  return inProjectQueue(root, async () => {
     const entries = await readEntries(root)
     const undone = new Set(entries.flatMap((e) => (e.undoOf ? [e.undoOf] : [])))
     const undoable = (e: HistoryEntry) => !e.undoOf && !undone.has(e.id)
@@ -128,12 +140,12 @@ export function undoChange(root: string, options: { author: Author; id?: string 
     if (!undoable(target)) throw new Error(`${target.id} is already undone or is itself an undo`)
     if (options.author === "ai" && target.author !== "ai") throw new Error("The agent can only undo its own changes")
 
-    const loaded = await loadCircuit(root, target.file)
+    const loaded = await loadTracked(root, target.file, options.design)
     if (loaded.source !== target.after) {
       throw new Error(`${target.file} has changed since ${target.id}; undo it by hand or with git`)
     }
     if (target.absent === "before") return removeCreated(root, loaded, target, options.author)
-    const touched = changedLocks(loaded, target.before)
+    const touched = loaded.lockChange(target.before)
     if (touched) throw new Error(`Undoing ${target.id} would change the locked ${touched}; unlock it first`)
 
     return writeWithHistory(root, loaded, target.before, {
@@ -154,15 +166,15 @@ export function undoChange(root: string, options: { author: Author; id?: string 
  * its file, as in any editor. The agent (`ai`) may only redo its own undos. Refuses when the file changed since the
  * undo, or when the redo would change a part that is locked now. The redo is an ordinary change, so it can be undone.
  */
-export function redoChange(root: string, options: { author: Author; id?: string }): Promise<HistoryEntry> {
-  return serialized(projectQueues, resolve(root), async () => {
+export function redoChange(root: string, options: HistoryOptions): Promise<HistoryEntry> {
+  return inProjectQueue(root, async () => {
     const undo = redoTarget(await readEntries(root), options)
     if (undo.absent === "after") return recreate(root, undo, options.author)
-    const loaded = await loadCircuit(root, undo.file)
+    const loaded = await loadTracked(root, undo.file, options.design)
     if (loaded.source !== undo.after) {
       throw new Error(`${undo.file} has changed since ${undo.id}; redo it by hand or with git`)
     }
-    const touched = changedLocks(loaded, undo.before)
+    const touched = loaded.lockChange(undo.before)
     if (touched) throw new Error(`Redoing ${undo.undoOf} would change the locked ${touched}; unlock it first`)
 
     return writeWithHistory(root, loaded, undo.before, {
@@ -176,10 +188,53 @@ export function redoChange(root: string, options: { author: Author; id?: string 
   })
 }
 
+/** A file the history writes: a circuit file or its layout file, with how its locks see a change. */
+interface Tracked {
+  path: string
+  file: string
+  source: string
+  /** The locked things that would change if the file became `next`, or undefined. */
+  lockChange(next: string): string | undefined
+  /** The first locked thing in the file, as "part R1" or "track t0001", or undefined. */
+  firstLock(): string | undefined
+}
+
+/**
+ * The layout file of a circuit, by the layout file's project-relative name: the circuit must exist, and the path
+ * and name follow the circuit's real spelling, so a crafted name cannot reach another file.
+ */
+export async function resolveLayoutFile(
+  root: string,
+  file: string,
+): Promise<{ path: string; file: string; circuit: string; circuitPath: string }> {
+  const circuit = await resolveCircuit(root, circuitPathFor(file))
+  return { path: layoutPathFor(circuit.path), file: layoutPathFor(circuit.file), circuit: circuit.file, circuitPath: circuit.path }
+}
+
+/** A layout file's locks: its locked records, and tracks starting on a locked part's pad. */
+async function loadTrackedLayout(root: string, file: string, design: LayoutDesign | undefined): Promise<Tracked> {
+  const { path, file: name, circuitPath } = await resolveLayoutFile(root, file)
+  const source = await readIfThere(path)
+  if (source === undefined) throw new Error(`${name} does not exist`)
+  const onPart = lockedStart(await lockedPartsAt(circuitPath), design)
+  const lockChange = (next: string) => {
+    const found = [lockedRecordChanges(source, next), lockedPartChanges(source, next, onPart)].filter((text) => text !== undefined)
+    return found.length === 0 ? undefined : found.join(", ")
+  }
+  return { path, file: name, source, lockChange, firstLock: () => lockChange("") }
+}
+
+async function loadTracked(root: string, file: string, design?: LayoutDesign): Promise<Tracked> {
+  if (isLayoutFile(file)) return loadTrackedLayout(root, file, design)
+  const loaded = await loadCircuit(root, file)
+  const lock = loaded.annotations.locks[0]
+  return { ...loaded, lockChange: (next) => changedLocks(loaded, next), firstLock: () => lock && `${lockKind(lock)} ${lock.part}` }
+}
+
 /** Undoes a created file: it goes away, unless a part in it is locked now. */
-async function removeCreated(root: string, loaded: LoadedCircuit, target: HistoryEntry, author: Author): Promise<HistoryEntry> {
-  const locked = loaded.annotations.locks[0]
-  if (locked) throw new Error(`Undoing ${target.id} would remove the locked part ${locked.part}; unlock it first`)
+async function removeCreated(root: string, loaded: Tracked, target: HistoryEntry, author: Author): Promise<HistoryEntry> {
+  const locked = loaded.firstLock()
+  if (locked) throw new Error(`Undoing ${target.id} would remove the locked ${locked}; unlock it first`)
   const entry = await recordEntry(root, {
     author,
     file: loaded.file,
@@ -200,7 +255,7 @@ async function removeCreated(root: string, loaded: LoadedCircuit, target: Histor
 
 /** Redoes the undo of a created file: the file comes back with the text it had. */
 async function recreate(root: string, undo: HistoryEntry, author: Author): Promise<HistoryEntry> {
-  const path = resolveInRoot(root, undo.file)
+  const path = isLayoutFile(undo.file) ? (await resolveLayoutFile(root, undo.file)).path : resolveInRoot(root, undo.file)
   if (await readIfThere(path) !== undefined) throw new Error(`${undo.file} exists again since ${undo.id}; redo it by hand or with git`)
   return writeNew(root, path, undo.before, {
     author,
@@ -242,56 +297,6 @@ function redoableUndos(entries: readonly HistoryEntry[]): HistoryEntry[] {
   return found
 }
 
-async function readIfThere(path: string): Promise<string | undefined> {
-  try {
-    return await readFile(path, "utf8")
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
-    throw error
-  }
-}
-
-/** Records a history entry for a file that did not exist, then writes it; drops the entry if the write fails. */
-async function writeNew(
-  root: string,
-  path: string,
-  text: string,
-  meta: { author: Author; summary: string; redoOf?: string },
-): Promise<HistoryEntry> {
-  const place = await newFilePlace(root, path)
-  await mkdir(dirname(path), { recursive: true })
-  let entry: HistoryEntry | undefined
-  try {
-    entry = await recordEntry(root, { ...meta, file: place.file, before: "", after: text, absent: "before" })
-    await writeFileAtomic(path, text)
-    return entry
-  } catch (error) {
-    if (entry) await removeEntry(root, entry.id)
-    for (const folder of place.created) await rmdir(folder).catch(() => undefined)
-    throw error
-  }
-}
-
-/**
- * Where a file that does not exist yet would land, found before anything is created: the project-relative name in the
- * spelling later edits record (the real folder plus the file name), and the folders that are missing, deepest first.
- * Refuses a place whose nearest existing folder is outside the project, symlinks followed.
- */
-async function newFilePlace(root: string, path: string): Promise<{ file: string; created: string[] }> {
-  const missing: string[] = []
-  let folder = dirname(path)
-  while (!(await stat(folder).then(() => true, () => false))) {
-    missing.push(folder)
-    folder = dirname(folder)
-  }
-  const realRoot = await realpath(resolve(root))
-  const realFolder = await realpath(folder)
-  if (realFolder !== realRoot && !isInside(realRoot, realFolder)) throw new Error(`${relative(resolve(root), path).split(sep).join("/")} is outside the project root`)
-  const below = [...missing].reverse().map((dir) => basename(dir))
-  const file = relative(realRoot, join(realFolder, ...below, basename(path))).split(sep).join("/")
-  return { file, created: missing }
-}
-
 /** The project-relative path with `/` that a circuit file name means, whatever way it was written; refuses a path outside the project. */
 export function projectPath(root: string, file: string): string {
   return relative(resolve(root), resolveInRoot(root, file)).split(sep).join("/")
@@ -308,7 +313,7 @@ export function createCircuitFile(
   text: string,
   meta: { author: Author; summary: string; replace?: boolean },
 ): Promise<HistoryEntry> {
-  return serialized(projectQueues, resolve(root), async () => {
+  return inProjectQueue(root, async () => {
     const path = resolveInRoot(root, file)
     if (!CIRCUIT_FILE.test(basename(path))) throw new Error(`${file} must end in .circuit.tsx`)
     const source = await readIfThere(path)
@@ -328,7 +333,7 @@ export function updateAnnotations(
   file: string,
   change: (annotations: Annotations) => Annotations,
 ): Promise<Annotations> {
-  return serialized(projectQueues, resolve(root), async () => {
+  return inProjectQueue(root, async () => {
     const path = annotationsPathFor((await resolveCircuit(root, file)).path)
     const next = change(await readAnnotations(path))
     await writeAnnotations(path, next)
@@ -346,26 +351,6 @@ async function refuseLibraryOverrides(root: string, loaded: LoadedCircuit, edits
     const owned = Object.keys(edit.props ?? {}).find((key) => LIBRARY_OWNED_PROPS.includes(key))
     if (id && owned) throw new EditError("invalid", `${owned} comes from ${PARTS_DIR}/${id}/part.yaml; change it there`)
   }
-}
-
-/** Records the history entry first, then writes the file; drops the entry if the write fails. */
-async function writeWithHistory(
-  root: string,
-  loaded: Pick<LoadedCircuit, "path" | "source" | "file">,
-  text: string,
-  data: Omit<HistoryEntry, "id" | "time">,
-): Promise<HistoryEntry> {
-  if ((await readFile(loaded.path, "utf8")) !== loaded.source) {
-    throw new Error(`${loaded.file} changed while it was being edited; try again`)
-  }
-  const entry = await recordEntry(root, data)
-  try {
-    await writeFileAtomic(loaded.path, text)
-  } catch (error) {
-    await removeEntry(root, entry.id)
-    throw error
-  }
-  return entry
 }
 
 /**
@@ -398,7 +383,4 @@ function partState(model: CircuitModel, name: string): string {
   })
 }
 
-export function isInside(root: string, path: string): boolean {
-  const rel = relative(root, path)
-  return rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)
-}
+export { isInside }

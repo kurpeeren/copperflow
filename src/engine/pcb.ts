@@ -1,5 +1,7 @@
+import type { LayoutRecord } from "../core/layout-file.js"
 import { boundsOf, findSpot, type Bounds } from "./autoplace.js"
 import { usableOutline } from "./board.js"
+import { resolveCopper, type PcbTrack, type PcbVia } from "./copper.js"
 import { diagnostic } from "./diagnostics.js"
 import type { Footprint, Pad } from "./footprints/types.js"
 import type { Board, Circuit, Component, Diagnostic, Point } from "./model.js"
@@ -39,8 +41,14 @@ export interface RatsnestLine {
 export interface PcbLayout {
   board?: Board
   parts: PlacedFootprint[]
+  /** The layout file's tracks and vias, in file order, with the nets their copper resolves to. */
+  tracks: PcbTrack[]
+  vias: PcbVia[]
+  /** The connections copper does not join yet. */
   ratsnest: RatsnestLine[]
 }
+
+export type { PcbTrack, PcbVia }
 
 type FootprintOf = (component: Component) => Footprint | { error: string }
 interface Placement {
@@ -166,11 +174,24 @@ function placeAll(circuit: Circuit, resolved: readonly Resolved[], nets: Readonl
   return { parts: circuit.components.map((c) => byId.get(c.id) as PlacedFootprint) }
 }
 
-export function layoutPcb(circuit: Circuit, footprintOf: FootprintOf): { layout: PcbLayout; diagnostics: Diagnostic[] } {
+/** Places the parts, resolves the layout file's copper (`records`, in file order) and draws what is still unrouted. */
+export function layoutPcb(
+  circuit: Circuit,
+  footprintOf: FootprintOf,
+  records: readonly LayoutRecord[] = [],
+): { layout: PcbLayout; diagnostics: Diagnostic[] } {
   const { resolved, diagnostics, missing } = resolveFootprints(circuit, footprintOf)
   const { parts } = placeAll(circuit, resolved, pinNets(circuit))
   if (missing.length > 0) {
     diagnostics.push(diagnostic("no-footprint", "warning", "These parts have no footprint and are drawn as 1 x 1 mm squares without pads", missing))
   }
-  return { layout: { ...(circuit.board ? { board: circuit.board } : {}), parts, ratsnest: ratsnest(parts) }, diagnostics }
+  const copper = resolveCopper(parts, records, circuit.nets)
+  const layout: PcbLayout = {
+    ...(circuit.board ? { board: circuit.board } : {}),
+    parts,
+    tracks: copper.tracks,
+    vias: copper.vias,
+    ratsnest: ratsnest(parts, copper.islands),
+  }
+  return { layout, diagnostics: [...diagnostics, ...copper.diagnostics] }
 }

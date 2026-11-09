@@ -42,7 +42,7 @@ function pad(id: string, overrides: Partial<WorldPad> = {}): WorldPad {
   return { number: "1", shape: "rect", x: 0, y: 0, width: 1, height: 1, rotation: 0, layers: "top", id, component: id.split("#")[0] ?? id, ...overrides }
 }
 
-const layoutOf = (parts: PlacedFootprint[], b?: Board): PcbLayout => ({ ...(b ? { board: b } : {}), parts, ratsnest: [] })
+const layoutOf = (parts: PlacedFootprint[], b?: Board): PcbLayout => ({ ...(b ? { board: b } : {}), parts, ratsnest: [], tracks: [], vias: [] })
 const SQUARE = board(rectangle(-10, -10, 10, 10))
 
 describe("courtyard-overlap", () => {

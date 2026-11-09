@@ -1,8 +1,10 @@
+import { layoutPathFor, parseLayout, type LayoutRecord } from "../core/layout-file.js"
 import { checkDesign } from "./checks/index.js"
 import type { Violation } from "./checks/violation.js"
 import { elaborate } from "./elaborate.js"
 import { evaluateCircuit } from "./evaluate.js"
 import { generateFootprint, type FootprintResult } from "./footprints/index.js"
+import { diagnostic } from "./diagnostics.js"
 import type { Diagnostic, Circuit } from "./model.js"
 import { layoutPcb, type PcbLayout } from "./pcb.js"
 import { netClasses } from "./rules/classes.js"
@@ -41,15 +43,25 @@ function footprintCache(files: Files): (text: string) => FootprintResult {
 const pinPads = (footprint: FootprintResult): number | undefined =>
   "error" in footprint ? undefined : new Set(footprint.pads.map((pad) => pad.number)).size
 
+/** The copper in the layout file beside `main`, when there is one; each bad line is an error and is left out. */
+function readCopper(files: Files, main: string): { records: LayoutRecord[]; diagnostics: Diagnostic[] } {
+  const file = main.endsWith(".circuit.tsx") ? layoutPathFor(main) : undefined
+  const text = file === undefined ? undefined : files[file]
+  if (text === undefined) return { records: [], diagnostics: [] }
+  const { records, errors } = parseLayout(text)
+  return { records, diagnostics: errors.map((error) => diagnostic("layout-file", "error", `${file}: ${error}`, [])) }
+}
+
 /** Evaluates the circuit code in `main`, then lays out the schematic and the board. Throws CircuitCodeError. */
 export function buildDesign(files: Files, main: string): Design {
   const footprintOf = footprintCache(files)
   const circuit = elaborate(evaluateCircuit(files, main), main, { padCount: (text) => pinPads(footprintOf(text)) })
   const { layout: schematic, diagnostics: wiring } = layoutSchematicWithDiagnostics(circuit)
-  const pcb = layoutPcb(circuit, (component) => footprintOf(component.footprint as string))
+  const copper = readCopper(files, main)
+  const pcb = layoutPcb(circuit, (component) => footprintOf(component.footprint as string), copper.records)
   const loaded = loadRules(files)
   const classes = netClasses(loaded.rules, circuit.nets)
   const layers = layerCountWarnings(loaded.rules, circuit.board)
-  const diagnostics = [...circuit.diagnostics, ...wiring, ...pcb.diagnostics, ...loaded.diagnostics, ...layers, ...classes.diagnostics]
+  const diagnostics = [...circuit.diagnostics, ...wiring, ...copper.diagnostics, ...pcb.diagnostics, ...loaded.diagnostics, ...layers, ...classes.diagnostics]
   return { version: 1, file: main, circuit, schematic, pcb: pcb.layout, rules: loaded.rules, diagnostics, violations: checkDesign(circuit, schematic, pcb.layout, loaded.rules) }
 }
