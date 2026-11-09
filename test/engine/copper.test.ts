@@ -202,3 +202,19 @@ describe("pad shapes", () => {
     expect(result.tracks[0]?.pads).toEqual(["P#1", "Q#1"])
   })
 })
+
+describe("copper near many pads", () => {
+  test("a pad of a part with no position touches nothing and stops nothing", () => {
+    const lost = part("E", [{ ...pad("E", "1", Number.NaN, "net.VCC"), y: Number.NaN }])
+    const result = resolveCopper([...PARTS, lost], [track("t0001", [[0, 0], [10, 0]])], NETS)
+    expect(result.tracks[0]?.pads).toEqual(["A#1", "B#1"])
+  })
+
+  test("far apart copper is never joined, and the pads a track touches stay in pad order", () => {
+    const parts = Array.from({ length: 30 }, (_, i) => part(`P${i}`, [pad(`P${i}`, "1", i * 3, "net.GND")]))
+    const records = [track("t0001", [[87, 0], [0, 0]]), via("v0001", 200, 200)]
+    const result = resolveCopper(parts, records, NETS)
+    expect(result.tracks[0]?.pads).toEqual(["P0#1", "P29#1"])
+    expect(result.diagnostics.map((d) => d.code)).toEqual(["floating"])
+  })
+})

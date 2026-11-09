@@ -128,6 +128,7 @@ function singleChecks(piece: CopperPiece, records: Records, board: Board | undef
  */
 export function copperChecks(layout: PcbLayout, rules: Rules, classOf: ClassOf): Violation[] {
   const copper = copperPieces(layout, classOf)
+  if (copper.length === 0) return []
   const records: Records = { widths: new Map(layout.tracks.map((t) => [t.id, t.width])), vias: new Map(layout.vias.map((v) => [v.id, v])) }
   const found = [...copper.flatMap((piece) => singleChecks(piece, records, layout.board, rules)), ...clearanceChecks(copper, padPieces(layout, classOf), rules)]
   return found.sort((a, b) => naturalCompare(a.id, b.id))

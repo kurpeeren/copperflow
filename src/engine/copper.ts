@@ -1,5 +1,6 @@
 import type { CopperLayer, LayoutMaker, LayoutRecord, TrackRecord, ViaRecord } from "../core/layout-file.js"
-import { padShape, shapeDistance, type Shape } from "./checks/geometry.js"
+import { bounds, padShape, shapeDistance, type Shape } from "./checks/geometry.js"
+import { GridIndex, type Box } from "./checks/grid-index.js"
 import { diagnostic } from "./diagnostics.js"
 import type { Diagnostic, Net, Point } from "./model.js"
 import { naturalCompare } from "./order.js"
@@ -50,6 +51,8 @@ export interface Copper {
 const STACK: readonly CopperLayer[] = ["top", "inner1", "inner2", "bottom"]
 /** How far inside copper a point must be to count as touching, against rounding. */
 const TOUCH_TOLERANCE = 1e-9
+/** Side of a cell in the grids that find pads and copper near each other, in mm. */
+const NEAR_CELL = 2
 
 const padOnLayer = (pad: WorldPad, layer: CopperLayer) => pad.layers === "through" || pad.layers === layer
 const pointShape = (p: Point): Shape => ({ core: [p], radius: 0 })
@@ -118,16 +121,37 @@ interface Graph {
   touched: Map<number, number[]>
 }
 
+/** The box around a record's copper, a hair wider so touching copper is always found. */
+function recordBox(record: LayoutRecord): Box {
+  const points = record.t === "via" ? [record.at] : record.points
+  const reach = (record.t === "via" ? record.diameter : record.width) / 2 + TOUCH_TOLERANCE
+  return bounds({ core: points.length > 0 ? points : [{ x: 0, y: 0 }], radius: reach })
+}
+
+const finiteBox = (box: Box | undefined): box is Box => box !== undefined && [box.minX, box.minY, box.maxX, box.maxY].every(Number.isFinite)
+
+/** The indices of the items near each box, ascending; only these can touch. Items without a finite box (a part with no position) touch nothing. */
+function nearIndex<T>(items: readonly T[], boxOf: (item: T) => Box | undefined): (box: Box) => number[] {
+  const index = new GridIndex<number>(NEAR_CELL)
+  items.forEach((item, i) => {
+    const box = boxOf(item)
+    if (finiteBox(box)) index.insert(i, box)
+  })
+  return (box) => index.query(box).sort((a, b) => a - b)
+}
+
 /** Nodes are the pads, then the records in file order: record i is node pads.length + i. */
 function joinPads(graph: Graph): void {
   const shapes = graph.pads.map((pad) => padShape(pad))
+  const near = nearIndex(shapes, (shape) => (shape === undefined ? undefined : bounds(shape)))
   graph.records.forEach((record, r) => {
     const node = graph.pads.length + r
     const span = record.t === "via" ? [...viaSpan(record)] : [record.layer]
     const points = record.t === "via" ? [record.at] : record.points
-    const hits = graph.pads.flatMap((pad, p) =>
-      span.some((layer) => padOnLayer(pad, layer)) && points.some((q) => inPad(pad, shapes[p], q)) ? [p] : [],
-    )
+    const hits = near(recordBox(record)).filter((p) => {
+      const pad = graph.pads[p] as WorldPad
+      return span.some((layer) => padOnLayer(pad, layer)) && points.some((q) => inPad(pad, shapes[p], q))
+    })
     if (record.t === "track") graph.touched.set(r, hits)
     for (const p of hits) graph.groups.join(node, p)
   })
@@ -150,11 +174,12 @@ function recordsTouch(a: LayoutRecord, b: LayoutRecord): boolean {
 function joinRecords(graph: Graph): void {
   const { records, groups } = graph
   const offset = graph.pads.length
-  for (let i = 0; i < records.length; i++) {
-    for (let j = i + 1; j < records.length; j++) {
-      if (recordsTouch(records[i] as LayoutRecord, records[j] as LayoutRecord)) groups.join(offset + i, offset + j)
+  const near = nearIndex(records, recordBox)
+  records.forEach((record, i) => {
+    for (const j of near(recordBox(record))) {
+      if (j > i && recordsTouch(record, records[j] as LayoutRecord)) groups.join(offset + i, offset + j)
     }
-  }
+  })
 }
 
 /** Copper joined together, in the order its first record comes in the file. */
