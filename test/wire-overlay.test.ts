@@ -49,10 +49,11 @@ describe("the handles of a selected wire", () => {
     expect(WIRE_HANDLE_PX).toBe(6)
     expect(fills.map((r) => [r.args, r.fillStyle])).toEqual([[[7, -4, 6, 6], "#FFFFFF"]])
     expect(outlines.map((r) => r.args)).toEqual([
-      [7, -4, 6, 6],
-      [-2, -4, 6, 6],
-      [7, -13, 6, 6],
+      [7.5, -3.5, 5, 5],
+      [-1.5, -3.5, 5, 5],
+      [7.5, -12.5, 5, 5],
     ])
+    // The one-device-pixel outline runs inside the square's edge, on pixel centres.
     expect(outlines.every((r) => r.strokeStyle === schematicTheme.selection)).toBe(true)
   })
 

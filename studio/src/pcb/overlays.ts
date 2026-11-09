@@ -4,6 +4,7 @@ import type { BoxMode } from "./box-select.js"
 import { CANVAS_FONT_FAMILY, PALETTE } from "./ctx.js"
 import { paintGrid, type GridLook, type GridPaint } from "./grid.js"
 import { worldToScreen, type Box, type Camera, type Point, type Size } from "./geometry.js"
+import { deviceWidth, hairlineWidth, strokeBoxAt } from "./crisp.js"
 import { schematicTheme } from "./schematic-theme.js"
 
 const FONT = `12px ${CANVAS_FONT_FAMILY}`
@@ -13,8 +14,8 @@ const PCB_GRID_COLOURS = { minor: PALETTE.grid, fifth: PALETTE.gridFifth }
 const PCB_GRID: GridPaint = { lines: PCB_GRID_COLOURS, dots: { ...PCB_GRID_COLOURS, px: 1 } }
 
 /** White grid lines or 1 px dots at the chosen step: 30% on the minor grid, 50% on every fifth line (or fifth crossing). */
-export function drawGrid(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, look: GridLook): void {
-  paintGrid(ctx, camera, size, look, PCB_GRID)
+export function drawGrid(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, look: GridLook, ratio = 1): void {
+  paintGrid(ctx, camera, size, look, PCB_GRID, ratio)
 }
 
 /** The colours of the overlays that differ between the canvases. */
@@ -85,19 +86,22 @@ export function drawOutline(
   offset: Point,
   kind: "selected" | "hover",
   look: OverlayLook,
+  ratio = 1,
 ): void {
   const a = worldToScreen(camera, size, { x: box.minX + offset.x, y: box.maxY + offset.y })
   const b = worldToScreen(camera, size, { x: box.maxX + offset.x, y: box.minY + offset.y })
   const pad = 3
+  const devicePx = kind === "selected" ? deviceWidth(1.5, ratio) : 1
+  const rect = strokeBoxAt({ x: a.x - pad, y: a.y - pad }, { x: b.x + pad, y: b.y + pad }, ratio, devicePx)
   ctx.save()
-  ctx.lineWidth = kind === "selected" ? 1.5 : 1
+  ctx.lineWidth = devicePx / ratio
   ctx.strokeStyle = kind === "selected" ? look.selected : look.hover
   ctx.setLineDash(kind === "selected" ? [] : [4, 3])
   if (kind === "selected" && look.selectedFill) {
     ctx.fillStyle = look.selectedFill
-    ctx.fillRect(a.x - pad, a.y - pad, b.x - a.x + pad * 2, b.y - a.y + pad * 2)
+    ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
   }
-  ctx.strokeRect(a.x - pad, a.y - pad, b.x - a.x + pad * 2, b.y - a.y + pad * 2)
+  ctx.strokeRect(rect.x, rect.y, rect.width, rect.height)
   ctx.restore()
 }
 
@@ -147,22 +151,24 @@ export function drawMark(ctx: CanvasRenderingContext2D, camera: Camera, size: Si
 }
 
 /** The selection box: a solid outline dragged left to right (it takes what is inside), dashed right to left (what it touches). */
-export function drawSelectionBox(ctx: CanvasRenderingContext2D, a: Point, b: Point, look: OverlayLook, mode: BoxMode): void {
-  drawBox(ctx, a, b, { stroke: look.boxStroke, fill: look.boxFill, dash: mode === "inside" ? [] : look.boxDash })
+export function drawSelectionBox(ctx: CanvasRenderingContext2D, a: Point, b: Point, look: OverlayLook, mode: BoxMode, ratio = 1): void {
+  drawBox(ctx, a, b, { stroke: look.boxStroke, fill: look.boxFill, dash: mode === "inside" ? [] : look.boxDash }, ratio)
 }
 
 /** The box drawn with Place → Note box, where a note for the agent goes. */
-export function drawNoteBox(ctx: CanvasRenderingContext2D, a: Point, b: Point, look: OverlayLook): void {
-  drawBox(ctx, a, b, { stroke: look.noteStroke, fill: look.noteFill, dash: look.noteDash })
+export function drawNoteBox(ctx: CanvasRenderingContext2D, a: Point, b: Point, look: OverlayLook, ratio = 1): void {
+  drawBox(ctx, a, b, { stroke: look.noteStroke, fill: look.noteFill, dash: look.noteDash }, ratio)
 }
 
-function drawBox(ctx: CanvasRenderingContext2D, a: Point, b: Point, style: { stroke: string; fill: string; dash: number[] }): void {
+function drawBox(ctx: CanvasRenderingContext2D, a: Point, b: Point, style: { stroke: string; fill: string; dash: number[] }, ratio: number): void {
+  const rect = strokeBoxAt(a, b, ratio)
   ctx.save()
+  ctx.lineWidth = hairlineWidth(ratio)
   ctx.fillStyle = style.fill
   ctx.strokeStyle = style.stroke
   ctx.setLineDash(style.dash)
-  ctx.fillRect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y))
-  ctx.strokeRect(Math.min(a.x, b.x) + 0.5, Math.min(a.y, b.y) + 0.5, Math.abs(b.x - a.x), Math.abs(b.y - a.y))
+  ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
+  ctx.strokeRect(rect.x, rect.y, rect.width, rect.height)
   ctx.restore()
 }
 

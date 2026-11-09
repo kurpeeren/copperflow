@@ -184,7 +184,7 @@ export function prepareCanvas(
   size: Size,
   camera: Camera,
   background: string,
-  grid: (ctx: CanvasRenderingContext2D, camera: Camera, size: Size) => void,
+  grid: (ctx: CanvasRenderingContext2D, camera: Camera, size: Size, ratio: number) => void,
 ): { ctx: CanvasRenderingContext2D; ratio: number } | null {
   if (!canvas || size.width === 0) return null
   const ratio = window.devicePixelRatio || 1
@@ -195,7 +195,7 @@ export function prepareCanvas(
   ctx.fillStyle = background
   ctx.fillRect(0, 0, canvas.width, canvas.height)
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
-  grid(ctx, camera, size)
+  grid(ctx, camera, size, ratio)
   return { ctx, ratio }
 }
 
@@ -212,24 +212,26 @@ export interface EditorLayer {
   gesture: Gesture | undefined
   /** The view's overlay colours: PCB_LOOK or SHEET_LOOK. */
   look: OverlayLook
+  /** Device pixels per CSS pixel, from prepareCanvas. */
+  ratio: number
 }
 
 /** Hover and selection outlines, lock badges, the view's notes, and the selection box or note box, in CSS pixels. */
 export function drawEditorLayer(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, layer: EditorLayer): void {
-  const { look, gesture } = layer
+  const { look, gesture, ratio } = layer
   for (const part of layer.boxes) {
     const offset = layer.moving?.names.includes(part.name) ? layer.moving.offset : { x: 0, y: 0 }
     const selected = layer.selection.has(part.name)
-    if (part.name === layer.hover && !selected) drawOutline(ctx, camera, size, part.box, offset, "hover", look)
-    if (selected) drawOutline(ctx, camera, size, part.box, offset, "selected", look)
+    if (part.name === layer.hover && !selected) drawOutline(ctx, camera, size, part.box, offset, "hover", look, ratio)
+    if (selected) drawOutline(ctx, camera, size, part.box, offset, "selected", look, ratio)
     if (layer.locked.has(part.name)) drawLockBadge(ctx, camera, size, part.box, look)
   }
   for (const mark of layer.marks) {
     if (mark.view === layer.view && mark.x !== undefined && mark.y !== undefined) drawMark(ctx, camera, size, { at: { x: mark.x, y: mark.y }, id: mark.id, text: mark.text }, look)
   }
-  if (gesture?.kind === "box") drawSelectionBox(ctx, gesture.start, gesture.current, look, boxMode(gesture.start, gesture.current))
-  if (gesture?.kind === "zoom") drawSelectionBox(ctx, gesture.start, gesture.current, look, boxMode(gesture.start, gesture.current))
-  if (gesture?.kind === "note") drawNoteBox(ctx, gesture.start, gesture.current, look)
+  if (gesture?.kind === "box") drawSelectionBox(ctx, gesture.start, gesture.current, look, boxMode(gesture.start, gesture.current), ratio)
+  if (gesture?.kind === "zoom") drawSelectionBox(ctx, gesture.start, gesture.current, look, boxMode(gesture.start, gesture.current), ratio)
+  if (gesture?.kind === "note") drawNoteBox(ctx, gesture.start, gesture.current, look, ratio)
 }
 
 /** An Esc meant for the canvas: not typed into a field, and without Ctrl, Alt or Cmd. The other keys go by keyAction. */

@@ -2,6 +2,7 @@
 // Only the symbol library comes from the engine at run time: its other modules reach Node-only code the Studio bundle cannot hold.
 import type { PlacedSymbol, SchematicLayout, NetLabel } from "../../../src/engine/schematic.js"
 import { groundSymbol, powerSymbol, type SchSymbol, type Shape } from "../../../src/engine/symbols/index.js"
+import { baselineAt } from "./crisp.js"
 import { anchorAlignment, CANVAS_FONT_FAMILY, HIGHLIGHT_DIM, type Ctx } from "./ctx.js"
 import { labelTag, NET_LABEL_TEXT } from "./label-tag.js"
 import { worldToScreen, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
@@ -107,7 +108,7 @@ export function drawSchematic(ctx: Ctx, layout: SchematicLayout, view: View, opt
 
   // Text is drawn in screen space so it stays upright and readable at any zoom.
   ctx.setTransform(options.ratio, 0, 0, options.ratio, 0, 0)
-  for (const label of texts) drawText(ctx, label, camera, size)
+  for (const label of texts) drawText(ctx, label, camera, size, options.ratio)
   drawViolationMarkers(ctx, view, options.violations ?? [], options.activeViolation, false)
   ctx.restore()
 }
@@ -331,13 +332,13 @@ function drawPins(ctx: Ctx, layout: SchematicLayout, options: SchematicDrawOptio
   }
 }
 
-function drawText(ctx: Ctx, label: Label, camera: Camera, size: Size): void {
+function drawText(ctx: Ctx, label: Label, camera: Camera, size: Size, ratio: number): void {
   const fontPx = label.size * camera.scale
   if (fontPx < MIN_TEXT_PX || label.text === "") return
   const p = worldToScreen(camera, size, label.at)
   const [vertical, horizontal] = anchorAlignment(label.anchor)
   ctx.save()
-  ctx.translate(p.x, p.y)
+  ctx.translate(p.x, label.rotation ? p.y : baselineAt(p.y, ratio))
   if (label.rotation) ctx.rotate(rad(-label.rotation))
   ctx.globalAlpha = label.alpha ?? 1
   ctx.fillStyle = label.color

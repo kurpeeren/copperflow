@@ -2,6 +2,7 @@
 // document keeps, and the painting both canvases share.
 import { screenToWorld, worldToScreen, type Camera, type Size } from "./geometry.js"
 import type { View } from "./positions.js"
+import { hairlineAt, hairlineWidth, squareAt, squareSide } from "./crisp.js"
 import { gridStepLabel, type Unit } from "./units.js"
 
 const MIL = 0.0254
@@ -97,7 +98,7 @@ export interface GridPaint {
 
 const isFifth = (index: number) => index % GRID_EVERY === 0
 
-function paintLines(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, plan: GridPlan, colours: GridColours): void {
+function paintLines(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, plan: GridPlan, colours: GridColours, ratio: number): void {
   const { spacing } = plan
   const lines = (indices: number[], at: (i: number) => [number, number, number, number]) => {
     for (const [colour, wanted] of [[colours.minor, false], [colours.fifth ?? colours.minor, true]] as const) {
@@ -112,21 +113,21 @@ function paintLines(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, p
       if (!colours.fifth) return
     }
   }
-  ctx.lineWidth = 1
+  ctx.lineWidth = hairlineWidth(ratio)
   lines(plan.columns, (i) => {
-    const sx = Math.round(worldToScreen(camera, size, { x: i * spacing, y: 0 }).x) + 0.5
+    const sx = hairlineAt(worldToScreen(camera, size, { x: i * spacing, y: 0 }).x, ratio)
     return [sx, 0, sx, size.height]
   })
   lines(plan.rows, (i) => {
-    const sy = Math.round(worldToScreen(camera, size, { x: 0, y: i * spacing }).y) + 0.5
+    const sy = hairlineAt(worldToScreen(camera, size, { x: 0, y: i * spacing }).y, ratio)
     return [0, sy, size.width, sy]
   })
 }
 
-/** The screen positions of the dots' top-left corners along one axis, and which of them fall on a fifth line. */
-function dotAxis(indices: number[], at: (i: number) => number, px: number) {
-  const offset = Math.floor((px - 1) / 2)
-  return indices.map((i) => ({ at: Math.round(at(i)) - offset, fifth: isFifth(i) }))
+/** The screen positions of the dots' top-left corners along one axis (on device pixel edges), and which of them fall on a fifth line. */
+function dotAxis(indices: number[], at: (i: number) => number, side: number, ratio: number) {
+  const offset = Math.floor((Math.round(side * ratio) - 1) / 2) / ratio
+  return indices.map((i) => ({ at: squareAt(at(i), ratio) - offset, fifth: isFifth(i) }))
 }
 
 function fillSquares(ctx: CanvasRenderingContext2D, corners: readonly number[], colour: string, px: number): void {
@@ -140,29 +141,30 @@ function fillSquares(ctx: CanvasRenderingContext2D, corners: readonly number[], 
  * One square per crossing, in one walk over the crossings: the minor ones go straight into one path and the fifth
  * crossings (1 in 25) are kept for a second path, so the grid costs one rect per dot and one fill per colour.
  */
-function paintDots(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, plan: GridPlan, dots: GridPaint["dots"]): void {
+function paintDots(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, plan: GridPlan, dots: GridPaint["dots"], ratio: number): void {
   const { spacing } = plan
-  const columns = dotAxis(plan.columns, (i) => worldToScreen(camera, size, { x: i * spacing, y: 0 }).x, dots.px)
-  const rows = dotAxis(plan.rows, (j) => worldToScreen(camera, size, { x: 0, y: j * spacing }).y, dots.px)
+  const side = squareSide(dots.px, ratio)
+  const columns = dotAxis(plan.columns, (i) => worldToScreen(camera, size, { x: i * spacing, y: 0 }).x, side, ratio)
+  const rows = dotAxis(plan.rows, (j) => worldToScreen(camera, size, { x: 0, y: j * spacing }).y, side, ratio)
   const strong: number[] = []
   ctx.fillStyle = dots.minor
   ctx.beginPath()
   for (const column of columns) {
     for (const row of rows) {
       if (dots.fifth && column.fifth && row.fifth) strong.push(column.at, row.at)
-      else ctx.rect(column.at, row.at, dots.px, dots.px)
+      else ctx.rect(column.at, row.at, side, side)
     }
   }
   ctx.fill()
-  if (dots.fifth) fillSquares(ctx, strong, dots.fifth, dots.px)
+  if (dots.fifth) fillSquares(ctx, strong, dots.fifth, side)
 }
 
-/** Paints the grid at the look's step, as lines or as square dots at their crossings, in CSS pixels. */
-export function paintGrid(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, look: GridLook, paint: GridPaint): void {
+/** Paints the grid at the look's step, as hairlines or as square dots at their crossings, in CSS pixels, sharp at the device pixel `ratio`. */
+export function paintGrid(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, look: GridLook, paint: GridPaint, ratio = 1): void {
   const plan = planGrid(camera, size, look.step)
   if (!plan) return
   ctx.save()
-  if (look.style === "dots") paintDots(ctx, camera, size, plan, paint.dots)
-  else paintLines(ctx, camera, size, plan, paint.lines)
+  if (look.style === "dots") paintDots(ctx, camera, size, plan, paint.dots, ratio)
+  else paintLines(ctx, camera, size, plan, paint.lines, ratio)
   ctx.restore()
 }

@@ -97,10 +97,10 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
   const { sheet, selected: selectedWire } = useShapedSheet(design, scene.selectedWire, scene.wireShapes)
   useEffect(() => {
     const view = camera ?? EMPTY_SHEET_CAMERA
-    const prepared = prepareCanvas(canvasRef.current, size, view, schematicTheme.background, (c, cam, s) => drawSchematicGrid(c, cam, s, grid))
+    const prepared = prepareCanvas(canvasRef.current, size, view, schematicTheme.background, (c, cam, s, r) => drawSchematicGrid(c, cam, s, grid, r))
     if (!prepared) return
     const { ctx, ratio } = prepared
-    drawSheetBorder(ctx, view, size, border)
+    drawSheetBorder(ctx, view, size, border, ratio)
     drawSchematic(ctx, sheet, { camera: view, size }, {
       ratio,
       showPins: wiring || drawing !== null || armed,
@@ -117,11 +117,11 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
     if (preview) drawWirePreview(ctx, view, size, preview, "drawing", schematicTheme.wire)
     const shownHover = drawing ? undefined : hover
-    drawEditorLayer(ctx, view, size, { view: "schematic", boxes, moving, hover: shownHover, selection, locked, marks: circuit.annotations.marks, gesture, look: SHEET_LOOK })
-    if (hoverLabel && !drawing && !gesture) drawOutline(ctx, view, size, labelHitBox(hoverLabel), { x: 0, y: 0 }, "hover", SHEET_LOOK)
-    if (hoverWire && hoverWire.id !== selectedWire?.id && !wiring && !drawing && !gesture) drawWireHover(ctx, view, size, hoverWire.points, SHEET_WIRE_LOOK)
+    drawEditorLayer(ctx, view, size, { view: "schematic", boxes, moving, hover: shownHover, selection, locked, marks: circuit.annotations.marks, gesture, look: SHEET_LOOK, ratio })
+    if (hoverLabel && !drawing && !gesture) drawOutline(ctx, view, size, labelHitBox(hoverLabel), { x: 0, y: 0 }, "hover", SHEET_LOOK, ratio)
+    if (hoverWire && hoverWire.id !== selectedWire?.id && !wiring && !drawing && !gesture) drawWireHover(ctx, view, size, hoverWire.points, SHEET_WIRE_LOOK, ratio)
     // A net label dragged off the selected wire hides its line, so its handles go too.
-    if (selectedWire && !movingLabels.some((m) => m.hideWire === selectedWire.id)) drawWireHandles(ctx, view, size, selectedWire.points, SHEET_WIRE_LOOK)
+    if (selectedWire && !movingLabels.some((m) => m.hideWire === selectedWire.id)) drawWireHandles(ctx, view, size, selectedWire.points, SHEET_WIRE_LOOK, ratio)
   }, [canvasRef, sheet, border, camera, size, wiring, drawing, activePins, pendingWires, preview, moving, movingLabels, hoverLabel, hoverWire, selectedWire, boxes, hover, selection, locked, circuit, gesture, ghosts, ghostWires, armed, highlight, markers, activeViolation, grid])
 }
 
