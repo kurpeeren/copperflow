@@ -41,6 +41,10 @@ export interface KeyInput {
   typing: boolean
   /** Focus is on a button, which Space presses. */
   onButton?: boolean
+  /** Focus is in a widget that handles its own keys (a table row, listbox, tree, tab, menu). */
+  ownsKeys?: boolean
+  /** Something already handled the event (defaultPrevented). */
+  handled?: boolean
 }
 
 export interface KeyState {
@@ -83,6 +87,9 @@ function arrowAction(input: KeyInput): KeyResult | null {
   return { action: arrow.action, preventDefault: true, steps: input.shiftKey ? NUDGE_STEPS_SHIFT : NUDGE_STEPS }
 }
 
+/** Widgets that handle their own keys; canvas keys never fire inside them. */
+const OWN_KEYS = "tr, [role='row'], [role='gridcell'], [role='grid'], [role='listbox'], [role='option'], [role='tree'], [role='treeitem'], [role='tablist'], [role='tab'], [role='menu'], [role='menubar'], [role='menuitem'], [data-keys='own']"
+
 /** A key event as plain data. */
 export function keyInput(event: KeyboardEvent): KeyInput {
   const target = event.target instanceof HTMLElement ? event.target : null
@@ -96,6 +103,8 @@ export function keyInput(event: KeyboardEvent): KeyInput {
     altGraph: event.getModifierState?.("AltGraph") ?? false,
     typing: target?.closest("input, textarea, select, [contenteditable='true']") != null,
     onButton: target?.closest("button, a[href], summary") != null,
+    ownsKeys: target?.closest(OWN_KEYS) != null,
+    handled: event.defaultPrevented,
   }
 }
 
@@ -162,7 +171,7 @@ const opensMenu = (input: KeyInput): boolean =>
 
 /** What the key press means in this view, or null when it is not ours (or belongs to a field or a browser shortcut). */
 export function keyAction(input: KeyInput, state: KeyState): KeyResult | null {
-  if (input.typing) return null
+  if (input.typing || input.ownsKeys || input.handled) return null
   if (opensMenu(input)) return act("contextMenu", true)
   const panel = PANEL_KEYS.get(input.key)
   if (panel && plainOrAltGr(input)) return act(panel)

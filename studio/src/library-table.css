@@ -2,7 +2,7 @@
 .lib-table {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
   min-height: 0;
 }
 
@@ -15,13 +15,15 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
+  scroll-padding-top: 28px;
   border-top: 1px solid var(--line);
 }
 
 .lib-table table {
   width: 100%;
   table-layout: fixed;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
 .lib-table th,

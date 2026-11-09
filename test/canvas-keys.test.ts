@@ -222,3 +222,19 @@ describe("the keyboard's context menu", () => {
     expect(keyAction(key("ContextMenu", { typing: true }), PCB)).toBeNull()
   })
 })
+
+describe("widgets that own their keys", () => {
+  test("an arrow on a focused table row does not nudge; on the canvas it does", () => {
+    expect(keyAction(key("ArrowDown", { ownsKeys: true }), PCB)).toBeNull()
+    expect(keyAction(key("ArrowLeft", { ownsKeys: true }), SCHEMATIC)).toBeNull()
+    expect(keyAction(key("ArrowDown"), PCB)?.action).toBe("nudgeDown")
+  })
+
+  test("no canvas key fires in such a widget or for an event already handled", () => {
+    expect(keyAction(key("r", { ownsKeys: true }), PCB)).toBeNull()
+    expect(keyAction(key("z", { ctrlKey: true, ownsKeys: true }), PCB)).toBeNull()
+    expect(keyAction(key("ArrowUp", { handled: true }), PCB)).toBeNull()
+    expect(keyAction(key("r", { handled: true }), PCB)).toBeNull()
+    expect(keyAction(key("r"), PCB)?.action).toBe("rotate")
+  })
+})
