@@ -2,9 +2,11 @@
 // the same name sends; a title names the key in brackets, as the menu shows it. A test holds the two together.
 import type { View } from "../pcb/positions.js"
 import { commandDisabledReason } from "../pcb/selection-rules.js"
+import { DRAW_COMMANDS, DRAW_TOOL_COMMAND } from "../pcb/draw-commands.js"
+import type { DrawTool } from "../pcb/draw-tools.js"
 import type { CommandId, Toggles } from "./menus.js"
 
-export type ToolIconName = "undo" | "redo" | "zoomIn" | "zoomOut" | "fit" | "fitSelection" | "fitArea" | "component" | "wire" | "netLabel" | "ground" | "power" | "rotate" | "rotateRight" | "snap" | "check" | "grid" | "alignLeft" | "distributeH"
+export type ToolIconName = "undo" | "redo" | "zoomIn" | "zoomOut" | "fit" | "fitSelection" | "fitArea" | "component" | "wire" | "netLabel" | "ground" | "power" | "rotate" | "rotateRight" | "snap" | "check" | "grid" | "alignLeft" | "distributeH" | "polyline" | "arc" | "circle" | "rectangle" | "text"
 
 interface ToolbarButtonBase {
   id: string
@@ -43,9 +45,14 @@ export const TOOLBARS: Readonly<Record<View, readonly ToolbarButton[]>> = {
     button("netLabel", "Net label (Alt+N)", "netLabel", "netLabel", 3),
     button("ground", "Ground flag", "ground", "groundFlag", 3),
     button("power", "Power flag", "power", "powerFlag", 3),
-    ...ROTATE(4),
-    ...ALIGN(5),
-    CHECK(6),
+    button("polyline", "Polyline (Alt+L)", "polyline", "drawPolyline", 4),
+    button("arc", "Arc (Alt+A)", "arc", "drawArc", 4),
+    button("circle", "Circle (Alt+C)", "circle", "drawCircle", 4),
+    button("rectangle", "Rectangle (Alt+R)", "rectangle", "drawRectangle", 4),
+    button("text", "Text (Alt+T)", "text", "drawText", 4),
+    ...ROTATE(5),
+    ...ALIGN(6),
+    CHECK(7),
   ],
   pcb: [...HISTORY, ...ZOOM, ...GRID(2), { id: "unit", title: "Unit (Q)", text: "unit", command: "toggleUnit", group: 2 }, ...ROTATE(3), ...ALIGN(4), CHECK(5)],
 }
@@ -73,7 +80,7 @@ export function titleKey(title: string): string | undefined {
 }
 
 /** The commands that switch a tool on and stay on until it is put away. */
-const TOOL_COMMANDS: ReadonlySet<CommandId> = new Set(["wire", "netLabel", "groundFlag", "powerFlag", "fitArea"])
+const TOOL_COMMANDS: ReadonlySet<CommandId> = new Set(["wire", "netLabel", "groundFlag", "powerFlag", "fitArea", ...DRAW_COMMANDS])
 
 export function isToolCommand(command: CommandId): boolean {
   return TOOL_COMMANDS.has(command)
@@ -100,4 +107,9 @@ export function armedCommand(wiring: boolean, label: "label" | "gnd" | "vcc" | n
   if (label === "gnd") return "groundFlag"
   if (label === "vcc") return "powerFlag"
   return null
+}
+
+/** The command of the armed drawing tool, or null when none is armed. */
+export function drawToolCommand(tool: DrawTool | null): CommandId | null {
+  return tool ? DRAW_TOOL_COMMAND[tool] : null
 }

@@ -391,3 +391,34 @@ describe("rows that are placed parts (the Component tree)", () => {
     expect(keyAction(key("Delete", { ...tree, handled: true }), PCB)).toBeNull()
   })
 })
+
+describe("the drawing tool keys", () => {
+  const tools = [["l", "drawPolyline"], ["r", "drawRectangle"], ["c", "drawCircle"], ["a", "drawArc"], ["t", "drawText"]] as const
+
+  test("Alt+L, Alt+R, Alt+C, Alt+A and Alt+T arm the drawing tools on the schematic only, by the physical key", () => {
+    for (const [letter, action] of tools) {
+      const code = `Key${letter.toUpperCase()}`
+      expect(keyAction(key(letter, { altKey: true, code }), SCHEMATIC)).toEqual({ action, preventDefault: true })
+      // Alt changes the character on some layouts; the physical key still counts.
+      expect(keyAction(key("¬", { altKey: true, code }), SCHEMATIC)?.action).toBe(action)
+      expect(keyAction(key(letter, { altKey: true, code }), PCB)).toBeNull()
+      expect(keyAction(key(letter, { altKey: true, code, typing: true }), SCHEMATIC)).toBeNull()
+      expect(keyAction(key(letter, { altKey: true, shiftKey: true, code }), SCHEMATIC)).toBeNull()
+    }
+  })
+
+  test("while a polyline is drawn, Space flips the bend and Backspace removes a corner", () => {
+    const drawing = { ...SCHEMATIC, drawing: true }
+    expect(keyAction(key(" "), drawing)).toEqual({ action: "flipBend", preventDefault: true })
+    expect(keyAction(key("Backspace"), drawing)).toEqual({ action: "removeCorner", preventDefault: true })
+  })
+
+  test("while a shape is drawn, Enter finishes it, but not on a focused button or row, in a field or with a modifier", () => {
+    const drawing = { ...SCHEMATIC, drawing: true }
+    expect(keyAction(key("Enter"), drawing)).toEqual({ action: "finishShape", preventDefault: true })
+    for (const extra of [{ onButton: true }, { ownsKeys: true }, { typing: true }, { ctrlKey: true }, { altKey: true }, { shiftKey: true }]) {
+      expect(keyAction(key("Enter", extra), drawing)).toBeNull()
+    }
+    expect(keyAction(key("Enter"), SCHEMATIC)).toBeNull()
+  })
+})

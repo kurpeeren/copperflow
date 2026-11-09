@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { MENUS, menuItems } from "../studio/src/shell/menus.js"
-import { TOOLBARS, armedCommand, buttonPressed, buttonState, hasPressedState, isToolCommand, titleKey, toolbarGroups } from "../studio/src/shell/toolbar.js"
+import { TOOLBARS, armedCommand, drawToolCommand, buttonPressed, buttonState, hasPressedState, isToolCommand, titleKey, toolbarGroups } from "../studio/src/shell/toolbar.js"
 import { clearToolState, clickAction, getToolState, setToolState } from "../studio/src/shell/tool-state.js"
 
 const ids = (view: "schematic" | "pcb") => TOOLBARS[view].map((b) => b.id)
@@ -8,8 +8,8 @@ const menuByCommand = new Map(MENUS.flatMap(menuItems).flatMap((item) => (item.c
 
 describe("toolbar", () => {
   test("the schematic row is in EasyEDA's order", () => {
-    expect(ids("schematic")).toEqual(["undo", "redo", "zoomIn", "zoomOut", "fit", "fitSelection", "fitArea", "gridStyle", "snap", "component", "wire", "netLabel", "ground", "power", "rotate", "rotateRight", "alignLeft", "distributeH", "checkDrc"])
-    expect(toolbarGroups("schematic").map((g) => g.length)).toEqual([2, 5, 2, 5, 2, 2, 1])
+    expect(ids("schematic")).toEqual(["undo", "redo", "zoomIn", "zoomOut", "fit", "fitSelection", "fitArea", "gridStyle", "snap", "component", "wire", "netLabel", "ground", "power", "polyline", "arc", "circle", "rectangle", "text", "rotate", "rotateRight", "alignLeft", "distributeH", "checkDrc"])
+    expect(toolbarGroups("schematic").map((g) => g.length)).toEqual([2, 5, 2, 5, 5, 2, 2, 1])
   })
 
   test("the PCB row is in EasyEDA's order", () => {
@@ -160,5 +160,29 @@ describe("the view tools", () => {
     expect(buttonPressed("fitArea", null, { snap: true })).toBe(false)
     expect(clickAction("fitArea", { active: "fitArea", stop: () => {} })).toBe("stop")
     expect(hasPressedState("fit")).toBe(false)
+  })
+})
+
+describe("the drawing tools", () => {
+  test("the schematic row has the five drawing tools after the wire and label group, with their keys", () => {
+    const shown = TOOLBARS.schematic.filter((b) => ["polyline", "arc", "circle", "rectangle", "text"].includes(b.id))
+    expect(shown.map((b) => [b.title, b.icon, b.command])).toEqual([
+      ["Polyline (Alt+L)", "polyline", "drawPolyline"],
+      ["Arc (Alt+A)", "arc", "drawArc"],
+      ["Circle (Alt+C)", "circle", "drawCircle"],
+      ["Rectangle (Alt+R)", "rectangle", "drawRectangle"],
+      ["Text (Alt+T)", "text", "drawText"],
+    ])
+    expect(TOOLBARS.pcb.some((b) => b.command.startsWith("draw"))).toBe(false)
+  })
+
+  test("each shows pressed while armed, and a second click puts it away", () => {
+    for (const command of ["drawPolyline", "drawArc", "drawCircle", "drawRectangle", "drawText"] as const) {
+      expect([command, isToolCommand(command), buttonPressed(command, command, { snap: true })]).toEqual([command, true, true])
+      expect(clickAction(command, { active: command, stop: () => {} })).toBe("stop")
+    }
+    expect(drawToolCommand("polyline")).toBe("drawPolyline")
+    expect(drawToolCommand("text")).toBe("drawText")
+    expect(drawToolCommand(null)).toBeNull()
   })
 })

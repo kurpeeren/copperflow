@@ -31,6 +31,11 @@ export type CommandId =
   | "groundFlag"
   | "powerFlag"
   | "noteBox"
+  | "drawPolyline"
+  | "drawArc"
+  | "drawCircle"
+  | "drawRectangle"
+  | "drawText"
   | "checkDrc"
   | "highlight"
   | "clearHighlight"
@@ -140,7 +145,12 @@ export const MENUS: readonly Menu[] = [
       later("Bus", STAGE_3, "Alt+B"),
       later("No connect flag", "Comes with the schematic flags (round 5)"),
       later("Junction", "Comes in round 5; for now junctions are drawn where wires meet", "Alt+J"),
-      later("Text", "Comes with the drawing tools (round 5)", "Alt+T"),
+      "separator",
+      run("Polyline", "drawPolyline", "Alt+L"),
+      run("Arc", "drawArc", "Alt+A"),
+      run("Circle", "drawCircle", "Alt+C"),
+      run("Rectangle", "drawRectangle", "Alt+R"),
+      run("Text", "drawText", "Alt+T"),
     ],
   },
   {
@@ -236,6 +246,11 @@ export const COMMAND_KEY_ACTIONS: Partial<Record<CommandId, KeyActionName>> = {
   placeComponent: "openLibrary",
   wire: "wire",
   netLabel: "armNetLabel",
+  drawPolyline: "drawPolyline",
+  drawArc: "drawArc",
+  drawCircle: "drawCircle",
+  drawRectangle: "drawRectangle",
+  drawText: "drawText",
   highlight: "highlight",
   clearHighlight: "clearHighlight",
   rotate: "rotate",
@@ -253,6 +268,9 @@ const EXTRA_KEYS = [
   { keys: "W", label: "Wire (schematic)" },
   { keys: "R", label: "Rotate" },
   { keys: "Space (while drawing a wire)", label: "Flip the bend of the leg to the pointer" },
+  { keys: "Shift (while drawing a polyline)", label: "Keep the leg horizontal or vertical; Space flips its bend" },
+  { keys: "Enter (while drawing a polyline)", label: "Finish the polyline (or double click)" },
+  { keys: "Backspace (while drawing)", label: "Remove the last corner" },
   { keys: "F", label: "Fit all" },
   { keys: "Esc", label: "Clear the selection, put tools away" },
   { keys: "Arrow keys", label: "Move the selection one grid step (a tenth with Snap off)" },

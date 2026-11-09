@@ -236,3 +236,23 @@ describe("the view and layout tools", () => {
     }
   })
 })
+
+describe("Place → the drawing tools", () => {
+  test("Polyline, Arc, Circle, Rectangle and Text run, in EasyEDA's order, with their Alt keys", () => {
+    const place = MENUS.find((menu) => menu.title === "Place")?.entries ?? []
+    expect(place.slice(-6)).toEqual([
+      "separator",
+      { label: "Polyline", command: "drawPolyline", shortcut: "Alt+L" },
+      { label: "Arc", command: "drawArc", shortcut: "Alt+A" },
+      { label: "Circle", command: "drawCircle", shortcut: "Alt+C" },
+      { label: "Rectangle", command: "drawRectangle", shortcut: "Alt+R" },
+      { label: "Text", command: "drawText", shortcut: "Alt+T" },
+    ])
+    for (const [command, action] of [["drawPolyline", "drawPolyline"], ["drawText", "drawText"]] as const) expect(COMMAND_KEY_ACTIONS[command]).toBe(action)
+  })
+
+  test("Help → Keys lists the tools' keys and the keys while a polyline is drawn", () => {
+    const keys = shortcutList().map((row) => row.keys)
+    for (const shown of ["Alt+L", "Alt+A", "Alt+C", "Alt+R", "Alt+T", "Enter (while drawing a polyline)"]) expect(keys).toContain(shown)
+  })
+})

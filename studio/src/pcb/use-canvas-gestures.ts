@@ -99,6 +99,8 @@ export interface PointerInput {
   hover(world: Point): void
   /** The view's own tool sees a press first; true when it used it. */
   tool?(event: Press, world: Point): boolean
+  /** The view's own tool sees every release too, at a world point (a rectangle drawn by press-drag ends there). */
+  toolRelease?(world: Point): void
   /** A left double click, at a world point. */
   open?(world: Point): void
 }
@@ -123,7 +125,10 @@ export function pointerHandlers(input: PointerInput) {
       input.setCursor(world)
       if (!input.gestures.move(point, event.buttons)) input.hover(world)
     },
-    onPointerUp: (event: PointerEvent<Element>) => input.gestures.release({ x: event.clientX, y: event.clientY }),
+    onPointerUp: (event: PointerEvent<Element>) => {
+      if (input.camera && input.toolRelease) input.toolRelease(screenToWorld(input.camera, input.size, local(event)))
+      input.gestures.release({ x: event.clientX, y: event.clientY })
+    },
     // After a release the gesture is already over, so the capture's loss that follows it does nothing.
     onPointerCancel: () => input.gestures.cancel(),
     onLostPointerCapture: () => input.gestures.cancel(),

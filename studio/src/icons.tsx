@@ -151,6 +151,32 @@ const power = (p: IconProps) => (
     <path d="M6 8l6-5 6 5" />
   </ToolIcon>
 )
+const polyline = (p: IconProps) => (
+  <ToolIcon {...p}>
+    <path d="M3 19l5-10 6 6 7-11" />
+  </ToolIcon>
+)
+const arc = (p: IconProps) => (
+  <ToolIcon {...p}>
+    <path d="M4 18a8 8 0 0 1 16 0" />
+    <path d="M12 18v.01" />
+  </ToolIcon>
+)
+const circle = (p: IconProps) => (
+  <ToolIcon {...p}>
+    <circle cx="12" cy="12" r="8" />
+  </ToolIcon>
+)
+const rectangle = (p: IconProps) => (
+  <ToolIcon {...p}>
+    <rect x="4" y="6" width="16" height="12" />
+  </ToolIcon>
+)
+const text = (p: IconProps) => (
+  <ToolIcon {...p}>
+    <path d="M5 6V4h14v2M12 4v16M9 20h6" />
+  </ToolIcon>
+)
 const rotate = (p: IconProps) => (
   <ToolIcon {...p}>
     <path d="M19 12a7 7 0 1 1-2.2-5.1" />
@@ -197,4 +223,4 @@ const check = (p: IconProps) => (
 )
 
 /** The toolbar's icons, by the name toolbar.ts gives each button. */
-export const TOOL_ICONS: Record<ToolIconName, (props: IconProps) => React.JSX.Element> = { undo, redo, zoomIn, zoomOut, fit, fitSelection, fitArea, component, wire, netLabel, ground, power, rotate, rotateRight, snap, check, grid, alignLeft, distributeH }
+export const TOOL_ICONS: Record<ToolIconName, (props: IconProps) => React.JSX.Element> = { undo, redo, zoomIn, zoomOut, fit, fitSelection, fitArea, component, wire, netLabel, ground, power, rotate, rotateRight, snap, check, grid, alignLeft, distributeH, polyline, arc, circle, rectangle, text }

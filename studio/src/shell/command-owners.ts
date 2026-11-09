@@ -3,6 +3,7 @@
 // so a test can check that every command shown has someone to run it.
 import { ALIGN_COMMANDS } from "../pcb/align-rules.js"
 import type { KeyActionName } from "../pcb/canvas-keys.js"
+import { DRAW_COMMANDS } from "../pcb/draw-commands.js"
 import type { CommandId } from "./menus.js"
 
 /** Run by use-app-commands.ts. */
@@ -38,7 +39,7 @@ export const CANVAS_TOOL_COMMANDS = ["noteBox", "fitArea"] as const satisfies re
 export type CanvasToolCommand = (typeof CANVAS_TOOL_COMMANDS)[number]
 
 /** Answered by the schematic only (SchematicCanvas.tsx); sent while the PCB is open, they switch to the schematic first. */
-export const SHEET_COMMANDS = ["wire", "netLabel", "groundFlag", "powerFlag"] as const satisfies readonly CommandId[]
+export const SHEET_COMMANDS = ["wire", "netLabel", "groundFlag", "powerFlag", ...DRAW_COMMANDS] as const satisfies readonly CommandId[]
 export type SheetCommand = (typeof SHEET_COMMANDS)[number]
 
 /**

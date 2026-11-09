@@ -5,7 +5,7 @@ import type { CircuitData, Design } from "../api"
 import { Selection } from "../selection"
 import type { SheetCommand } from "../shell/command-owners"
 import { useCommands } from "../shell/commands"
-import { armedCommand } from "../shell/toolbar"
+import { armedCommand, drawToolCommand } from "../shell/toolbar"
 import { clearToolState, setToolState } from "../shell/tool-state"
 import { ViewTools } from "../shell/ViewTools"
 import { keepAutoPlaced } from "./auto-placed"
@@ -47,6 +47,10 @@ import { liveShapes, withShapes } from "./wire-drag"
 import type { SchematicDrawing } from "../../../src/engine/model.js"
 import { drawingBox } from "./drawing-hit"
 import { useSheetDrawings } from "./use-sheet-drawings"
+import type { DrawCommand } from "./draw-commands"
+import { drawHint } from "./draw-tools"
+import { DrawTextInput } from "./DrawText"
+import { useDrawTools } from "./use-draw-tools"
 
 const EMPTY_SHEET_CAMERA: Camera = { cx: 0, cy: 0, scale: 60 }
 const FIT_MARGIN = 0.06
@@ -56,6 +60,7 @@ const HIGHLIGHT_REACH_PX = 12
 type WireTool = ReturnType<typeof useWireTool>
 type Palette = ReturnType<typeof useLabelPalette>
 type NoteTool = ReturnType<typeof useNoteTool>
+type DrawTools = ReturnType<typeof useDrawTools>
 
 interface SheetScene {
   design: Design
@@ -83,6 +88,8 @@ interface SheetScene {
   /** Wires drawn in a new shape: those a move takes along, the one being reshaped, then those waiting for their build. */
   wireShapes: readonly WireLine[]
   palette: Palette
+  /** The drawing tools: the shape in progress and the drawings waiting for their build, drawn dashed. */
+  draw: DrawTools
   /** The highlighted nets and the pins on them. */
   highlight: ReturnType<typeof highlightOf>
   markers: readonly ViolationMarker[]
@@ -110,6 +117,7 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
   const { design, border, camera, size, moving, boxes, hover, selection, locked, circuit, gesture, movingLabels, hoverLabel, hoverDrawing, hoverWire, palette, highlight, markers, activeViolation, grid } = scene
   const { wiring, drawing, activePins, pendingWires, preview } = scene.wire
   const { ghosts, ghostWires, armed } = palette
+  const pendingDrawings = scene.draw.pending
   const { sheet, selected: selectedWire } = useShapedSheet(design, scene.selectedWire, scene.wireShapes, moving)
   useEffect(() => {
     const view = camera ?? EMPTY_SHEET_CAMERA
@@ -128,6 +136,7 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
       selectedLabels: selection.labels,
       selectedDrawings: selection.drawings,
       ...(moving?.drawings ? { movingDrawings: moving.drawings } : {}),
+      pendingDrawings,
       ...(highlight ? { highlight } : {}),
       ...(moving ? { moving: { components: moving.names, by: moving.offset } } : {}),
       violations: markers,
@@ -142,7 +151,7 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
     if (hoverWire && !selection.hasWire(hoverWire.id) && !wiring && !drawing && !gesture) drawWireHover(ctx, view, size, hoverWire.points, SHEET_WIRE_LOOK, ratio)
     // A net label dragged off the selected wire hides its line, so its handles go too.
     if (selectedWire && !movingLabels.some((m) => m.hideWire === selectedWire.id)) drawWireHandles(ctx, view, size, selectedWire.points, SHEET_WIRE_LOOK, ratio)
-  }, [canvasRef, sheet, border, camera, size, wiring, drawing, activePins, pendingWires, preview, moving, movingLabels, hoverLabel, hoverDrawing, hoverWire, selectedWire, boxes, hover, selection, locked, circuit, gesture, ghosts, ghostWires, armed, highlight, markers, activeViolation, grid])
+  }, [canvasRef, sheet, border, camera, size, wiring, drawing, activePins, pendingWires, preview, moving, movingLabels, hoverLabel, hoverDrawing, hoverWire, selectedWire, boxes, hover, selection, locked, circuit, gesture, ghosts, ghostWires, armed, pendingDrawings, highlight, markers, activeViolation, grid])
 }
 
 interface SheetToolsProps {
@@ -205,6 +214,7 @@ interface SheetViewProps {
   wire: WireTool
   palette: Palette
   note: NoteTool
+  draw: DrawTools
   gesture: Gesture | undefined
   /** A Rotate press is held until the next build. */
   rotateHeld: boolean
@@ -216,15 +226,15 @@ interface SheetViewProps {
  * The sheet's element: the canvas under the hint, the label name field and the status line; the browser's own menu
  * never shows. The canvas alone is the image, so the name field beside it stays a field to assistive tech.
  */
-function SheetView({ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave, cursorStyle, wire, palette, note, gesture, rotateHeld, snap, empty }: SheetViewProps) {
-  const hint = wireHint(wire) ?? paletteHint(palette) ?? note.hint
+function SheetView({ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave, cursorStyle, wire, palette, note, draw, gesture, rotateHeld, snap, empty }: SheetViewProps) {
+  const hint = wireHint(wire) ?? paletteHint(palette) ?? drawHint(draw.state) ?? note.hint
   return (
     <div className="schematic-canvas" ref={wrapRef} style={{ cursor: cursorStyle }} {...pointer} onPointerLeave={onLeave} onContextMenu={(e) => e.preventDefault()}>
       <canvas
         ref={canvasRef}
         style={{ width: size.width, height: size.height }}
         role="img"
-        aria-label="Schematic. Drag symbols, net labels and drawings to move them, click a wire to select it, Shift or Ctrl click parts, wires, net labels and drawings to add them, drag a wire or its corner handles to reshape it, drag the background to select, drag with the right button to pan, scroll to zoom. Double click a net label to rename its net. Click a free pin or press W over a pin to draw a wire."
+        aria-label="Schematic. Drag symbols, net labels and drawings to move them, click a wire to select it, Shift or Ctrl click parts, wires, net labels and drawings to add them, drag a wire or its corner handles to reshape it, drag the background to select, drag with the right button to pan, scroll to zoom. Double click a net label to rename its net. Click a free pin or press W over a pin to draw a wire. Place → Polyline, Arc, Circle, Rectangle and Text draw on the sheet."
       />
       {hint && (
         <div className="canvas-top">
@@ -232,6 +242,7 @@ function SheetView({ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave,
         </div>
       )}
       <NameInput palette={palette} camera={camera} size={size} />
+      <DrawTextInput draw={draw} camera={camera} size={size} />
       <CanvasStatus cursor={cursor} zoom={(camera ?? EMPTY_SHEET_CAMERA).scale} detail={wire.under.end?.label} gesture={gesture} rotateHeld={rotateHeld} snap={snap} />
       {empty && <p className="empty">This schematic has no parts yet.</p>}
     </div>
@@ -311,13 +322,15 @@ interface SheetKeysInput {
   fit(): void
   wire: WireTool
   palette: Palette
+  /** A drawing tool with a shape in progress owns Space, Backspace and Enter. */
+  drawBusy: boolean
   highlightNets: Highlight
   onHighlight(nets: Highlight): void
   keys: Omit<Parameters<typeof usePartKeys>[0], "paused" | "fit" | "netUnderPointer" | "netsOf" | "onHighlight">
 }
 
 /** The part keys with H over the sheet, and the hand-over between wiring and the Place tools; returns what to draw lit and the last arrow move. */
-function useSheetKeys({ design, builtFrom, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys }: SheetKeysInput): { highlight: SheetScene["highlight"]; rotateHeld: boolean; keyMoving: Moving | undefined } {
+function useSheetKeys({ design, builtFrom, camera, cursor, fit, wire, palette, drawBusy, highlightNets, onHighlight, keys }: SheetKeysInput): { highlight: SheetScene["highlight"]; rotateHeld: boolean; keyMoving: Moving | undefined } {
   const cursorRef = useRef<Point | undefined>(undefined)
   cursorRef.current = cursor
   const netUnderPointer = useCallback(
@@ -325,14 +338,15 @@ function useSheetKeys({ design, builtFrom, camera, cursor, fit, wire, palette, h
     [design, camera],
   )
   const netsOf = useCallback((part: string) => partNets(design, part), [design])
-  const { rotateHeld, keyMove } = usePartKeys({ ...keys, paused: wire.drawing !== null, fit, netUnderPointer, netsOf, onHighlight })
+  const { rotateHeld, keyMove } = usePartKeys({ ...keys, paused: wire.drawing !== null || drawBusy, fit, netUnderPointer, netsOf, onHighlight })
   const { wiring, drawing } = wire
   const { disarm } = palette
   // Wiring takes over from a Place tool, as arming a Place tool stops wiring.
   useEffect(() => {
     if (wiring || drawing) disarm()
   }, [wiring, drawing, disarm])
-  const tools: Record<SheetCommand, () => void> = {
+  // The drawing tools answer their own commands (use-draw-tools.ts).
+  const tools: Record<Exclude<SheetCommand, DrawCommand>, () => void> = {
     wire: () => {
       disarm()
       if (!wiring) wire.toggleWiring()
@@ -345,12 +359,13 @@ function useSheetKeys({ design, builtFrom, camera, cursor, fit, wire, palette, h
   return { highlight: useHighlight(design, highlightNets), rotateHeld, keyMoving: useKeyMoving(keyMove, builtFrom, keys.layout.anchors) }
 }
 
-/** Tells the toolbar which tool is armed (wiring, a Place tool or Fit area), and how to put it away. */
-function useArmedTool(wire: WireTool, palette: Palette, note: NoteTool): void {
+/** Tells the toolbar which tool is armed (wiring, a Place tool, a drawing tool or Fit area), and how to put it away. */
+function useArmedTool(wire: WireTool, palette: Palette, note: NoteTool, draw: DrawTools): void {
   const { wiring, cancel } = wire
   const { tool, disarm } = palette
   const { which, disarm: putNoteAway } = note
-  const active = armedCommand(wiring, tool) ?? boxToolCommand(which)
+  const { disarm: putDrawAway } = draw
+  const active = armedCommand(wiring, tool) ?? drawToolCommand(draw.tool) ?? boxToolCommand(which)
   useEffect(() => {
     setToolState({
       active,
@@ -358,9 +373,10 @@ function useArmedTool(wire: WireTool, palette: Palette, note: NoteTool): void {
         disarm()
         cancel()
         putNoteAway()
+        putDrawAway()
       },
     })
-  }, [active, disarm, cancel, putNoteAway])
+  }, [active, disarm, cancel, putNoteAway, putDrawAway])
   useEffect(() => clearToolState, [])
 }
 
@@ -380,15 +396,40 @@ function useSheetNoteTool(wire: WireTool, palette: Palette): NoteTool {
   return note
 }
 
-/** What the gestures see armed: the note tool, or a Place tool, with which an empty left drag pans as before (R26). */
-function useArmedForGestures(note: NoteTool, palette: Palette): GestureInput["tool"] {
+type DrawInput = Omit<Parameters<typeof useDrawTools>[0], "onArm">
+
+/**
+ * Place → Polyline, Arc, Circle, Rectangle and Text: arming one puts the wire tool, the Place tools and the note tool
+ * away, and any of those armed puts the drawing tool away.
+ */
+function useSheetDrawTools(input: DrawInput, wire: WireTool, palette: Palette, note: NoteTool): DrawTools {
+  const { cancel, wiring, drawing } = wire
+  const { disarm: putPlaceAway, armed: placing } = palette
+  const { disarm: putNoteAway, armed: noting } = note
+  const onArm = useCallback(() => {
+    putPlaceAway()
+    cancel()
+    putNoteAway()
+  }, [putPlaceAway, cancel, putNoteAway])
+  const draw = useDrawTools({ ...input, onArm })
+  const putAway = draw.disarm
+  useEffect(() => {
+    if (wiring || drawing || placing || noting) putAway()
+  }, [wiring, drawing, placing, noting, putAway])
+  return draw
+}
+
+/** What the gestures see armed: the note tool, or a Place or drawing tool, with which an empty left drag pans as before (R26). */
+function useArmedForGestures(note: NoteTool, palette: Palette, draw: DrawTools): GestureInput["tool"] {
   const { disarm: putNoteAway } = note
   const { disarm: putPlaceAway } = palette
+  const { disarm: putDrawAway } = draw
   const disarm = useCallback(() => {
     putNoteAway()
     putPlaceAway()
-  }, [putNoteAway, putPlaceAway])
-  return { armed: note.tool ?? (palette.armed ? "place" : null), disarm }
+    putDrawAway()
+  }, [putNoteAway, putPlaceAway, putDrawAway])
+  return { armed: note.tool ?? (palette.armed || draw.armed ? "place" : null), disarm }
 }
 
 interface SheetPointerInput extends Omit<PointerInput, "tool" | "open" | "gestures"> {
@@ -403,27 +444,28 @@ interface SheetPointerInput extends Omit<PointerInput, "tool" | "open" | "gestur
   wire: WireTool
   palette: Palette
   note: NoteTool
+  draw: DrawTools
   /** What a double click picks with: the selection and the armed tool. */
   picking: PickContext
   onOpenProperties(target: PropertiesTarget): void
 }
 
 /**
- * The sheet's pointer: the wire tool and the Place tools see a press first, unless the note tool is armed. A double
+ * The sheet's pointer: the drawing tools, the Place tools and the wire tool see a press first, unless the note tool is armed. A double
  * click does what doubleClickAction says: removes a corner of a wire selected before it began, else opens Properties
  * on a part or a wire, or renames the net of a label, while no tool is armed.
  */
-function sheetPointer({ boxes, labels, wires, drawings, corners, wire, palette, note, picking, onOpenProperties, ...input }: SheetPointerInput) {
-  const tool = (event: Press, world: Point) => !note.armed && (palette.press(event, world) || wire.press(event, world))
+function sheetPointer({ boxes, labels, wires, drawings, corners, wire, palette, note, draw, picking, onOpenProperties, ...input }: SheetPointerInput) {
+  const tool = (event: Press, world: Point) => !note.armed && (draw.press(event, world) || palette.press(event, world) || wire.press(event, world))
   const open = (world: Point) => {
-    const busy = note.armed || palette.armed || wire.wiring || wire.drawing !== null
+    const busy = note.armed || palette.armed || draw.armed || wire.wiring || wire.drawing !== null
     const target = targetAt(boxes, labels, world, picking, wires, drawings)
     const action = doubleClickAction({ busy, handle: corners.at(world, picking), target, selectedBefore: input.gestures.wireBeforeDoubleClick() })
     if (action.kind === "removeCorner") corners.drop(action.id, action.index)
     if (action.kind === "properties") onOpenProperties(action.target)
     if (action.kind === "rename") palette.rename(action.label)
   }
-  return pointerHandlers({ ...input, tool, open })
+  return pointerHandlers({ ...input, tool, toolRelease: draw.release, open })
 }
 
 /**
@@ -447,35 +489,36 @@ export function SchematicCanvas(props: CanvasProps) {
   const wire = useWireTool({ design, actions, camera, cursor, step, snap, buildId, builtFrom })
   const palette = useLabelPalette({ design, circuit, actions, camera, cursor, builtFrom, onArm: wire.cancel })
   const note = useSheetNoteTool(wire, palette)
+  const draw = useSheetDrawTools({ design, circuit, actions, camera, cursor, step, snap, builtFrom, onSelect }, wire, palette, note)
   // Parts moved here take the hand-drawn wires at their pins along (wire-follow.ts), in the move's own edit.
   const follow = useMemo(() => ({ design, locked: parts.locked }), [design, parts.locked])
   const common = { view: "schematic", circuit, actions, onSelect, blockerFor: parts.blockerFor, follow } as const
   const labels = useLabelDrag({ design, circuit, actions, builtFrom })
   const wires = useSheetWires({ design, circuit, actions, locked: parts.locked, camera, selection, onSelect, builtFrom, wiring: wire.wiring || wire.drawing !== null })
   const drawings = useSheetDrawings({ design, circuit, camera, locked: parts.locked })
-  const tool = useArmedForGestures(note, palette)
-  useArmedTool(wire, palette, note)
+  const tool = useArmedForGestures(note, palette, draw)
+  useArmedTool(wire, palette, note, draw)
   const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, snap, builtFrom, labels: labels.tools, wires: wires.hits, drawings: drawings.hits, selection, tool, filter: props.pickFilter, onContextMenu: props.onContextMenu })
   useLabelRenameAction(design, palette, actions)
   const layout = useLayout(parts, step, snap)
   const menuPlace = useKeyMenuPlace(wrapRef, selection.primary, parts.boxes, camera, size, wires.menuWire)
   const keys = { ...common, selection, layout, builtMark, buildStatus, moveWaiting: gestures.pending !== undefined, menuPlace, onContextMenu: props.onContextMenu, wire: wires.keys, drawings: drawings.removal }
-  const { highlight, rotateHeld, keyMoving } = useSheetKeys({ design, builtFrom, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys })
+  const { highlight, rotateHeld, keyMoving } = useSheetKeys({ design, builtFrom, camera, cursor, fit, wire, palette, drawBusy: draw.busy, highlightNets, onHighlight, keys })
   const hover = useSheetHover({ boxes: parts.boxes, wire, labels: labels.tools, filter: props.pickFilter, wires: wires.hits, drawings: drawings.hits, setCursor })
   const { gesture } = gestures
   const moving = gestures.moving ?? keyMoving
   const movingLabels = useMovingLabels(design, gesture, labels.pending, moving?.labels)
   const hoverWire = useMemo(() => wires.lineOf(hover.wire), [wires.lineOf, hover.wire])
   const wireShapes = useWireShapes(gesture, wires.pending, moving?.wires)
-  useSheetPaint(canvasRef, { design, border, camera, size, wire, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel: hover.label, hoverDrawing: drawings.drawingOf(hover.drawing), hoverWire, selectedWire: wires.selected, wireShapes, palette, highlight, markers, activeViolation, grid })
+  useSheetPaint(canvasRef, { design, border, camera, size, wire, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel: hover.label, hoverDrawing: drawings.drawingOf(hover.drawing), hoverWire, selectedWire: wires.selected, wireShapes, palette, draw, highlight, markers, activeViolation, grid })
   const picking = { selection, armed: tool.armed, filter: props.pickFilter }
-  const pointer = sheetPointer({ camera, size, element: wrapRef, gestures, setCursor, hover: hover.at, boxes: parts.boxes, labels: labels.tools, wires: wires.hits, drawings: drawings.hits, corners: wires.corners, wire, palette, note, picking, onOpenProperties: props.onOpenProperties })
-  const cursorStyle = cursorFor(gesture, wire.drawing !== null || wire.overPin || palette.armed || note.armed, hover.over)
+  const pointer = sheetPointer({ camera, size, element: wrapRef, gestures, setCursor, hover: hover.at, boxes: parts.boxes, labels: labels.tools, wires: wires.hits, drawings: drawings.hits, corners: wires.corners, wire, palette, note, draw, picking, onOpenProperties: props.onOpenProperties })
+  const cursorStyle = cursorFor(gesture, wire.drawing !== null || wire.overPin || palette.armed || note.armed || draw.armed, hover.over)
   // The toolbar's controls sit beside the sheet: inside it, their portal's events would reach the sheet's handlers.
   return (
     <>
       <SheetTools step={step} setStep={setStep} keep={{ show: parts.autoPlaced, onKeep: () => keepAutoPlaced(design, "schematic", parts.blockerFor, actions) }} />
-      <SheetView {...{ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave: hover.leave, cursorStyle, wire, palette, note, gesture, rotateHeld, snap }} empty={parts.boxes.length === 0} />
+      <SheetView {...{ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave: hover.leave, cursorStyle, wire, palette, note, draw, gesture, rotateHeld, snap }} empty={parts.boxes.length === 0} />
     </>
   )
 }

@@ -33,6 +33,8 @@ export interface SchematicDrawOptions {
   selectedDrawings?: readonly string[]
   /** Drawings a move takes, drawn where it puts them in place of where the layout has them. */
   movingDrawings?: readonly SchematicDrawing[]
+  /** Drawings not in the layout: the one a drawing tool is drawing and those sent and waiting for their build. */
+  pendingDrawings?: readonly SchematicDrawing[]
   /** One net to highlight, as on the PCB: its wires and labels are lit, everything else is dimmed. `pins` are the pins on it: they are marked, and their symbols are not dimmed. */
   highlight?: { net: string; pins?: readonly string[]; aliases?: readonly string[] }
   /** Labels sent and waiting for their build, drawn dashed where they will be. */
@@ -110,7 +112,7 @@ export function drawSchematic(ctx: Ctx, layout: SchematicLayout, view: View, opt
   ctx.lineCap = "round"
   ctx.lineJoin = "round"
   drawWires(ctx, layout, options, px, line)
-  const drawings = shownDrawings(layout.drawings, options.movingDrawings)
+  const drawings = [...shownDrawings(layout.drawings, options.movingDrawings), ...(options.pendingDrawings ?? [])]
   const paint: DrawingPaint = { ...(options.selectedDrawings ? { selected: options.selectedDrawings } : {}), dim: options.highlight !== undefined }
   drawDrawings(ctx, drawings, px / options.ratio, paint)
   for (const symbol of layout.symbols) drawSymbol(ctx, symbol, shiftOf(symbol), { line, px, fade: symbolFade(symbol, options.highlight) }, texts)

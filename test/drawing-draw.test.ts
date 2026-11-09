@@ -4,6 +4,7 @@ import { HIGHLIGHT_DIM } from "../studio/src/pcb/ctx.js"
 import { drawDrawings, drawDrawingTexts, shownDrawings } from "../studio/src/pcb/drawing-draw.js"
 import { worldToScreen } from "../studio/src/pcb/geometry.js"
 import { schematicTheme } from "../studio/src/pcb/schematic-theme.js"
+import { sentDrawing } from "../studio/src/pcb/draw-tools.js"
 import { drawSchematic } from "../studio/src/pcb/schematic-draw.js"
 import { recorder } from "./helpers/fake-ctx.js"
 
@@ -105,5 +106,16 @@ describe("the schematic with drawings", () => {
     drawSchematic(rec.ctx, design.schematic, { camera: CAMERA, size: SIZE }, { ratio: 1, selectedDrawings: ["G1"] })
     expect(strokes(rec.records).some((r) => r.strokeStyle === schematicTheme.selection && r.lineWidth === 0.05)).toBe(true)
     expect(rec.records.some((r) => r.name === "fillText" && r.args[0] === "Power")).toBe(true)
+  })
+
+  test("drawSchematic draws a drawing tool's pending shapes dashed, and their texts", () => {
+    const rec = recorder()
+    const box = sentDrawing({ tag: "schematicrect", props: { x: 20, y: 20, width: 1, height: 1 } }, "G9")
+    const note = sentDrawing({ tag: "schematictext", props: { x: 0, y: 1, text: "Waiting" } }, "G10")
+    drawSchematic(rec.ctx, { ...design.schematic, drawings: [] }, { camera: CAMERA, size: SIZE }, { ratio: 1, pendingDrawings: [box, note] })
+    const dashes = rec.records.filter((r) => r.name === "setLineDash").map((r) => r.args[0] as number[])
+    expect(dashes.some((dash) => dash.length === 2 && (dash[0] ?? 0) > (dash[1] ?? 0))).toBe(true)
+    expect(strokes(rec.records).some((r) => r.strokeStyle === schematicTheme.drawing)).toBe(true)
+    expect(rec.records.some((r) => r.name === "fillText" && r.args[0] === "Waiting")).toBe(true)
   })
 })

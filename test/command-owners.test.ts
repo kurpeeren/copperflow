@@ -60,7 +60,8 @@ describe("command owners", () => {
   })
 
   test("the schematic's tools are the schematic's alone", () => {
-    expect(SHEET_COMMANDS.map(commandOwner)).toEqual(["schematic", "schematic", "schematic", "schematic"])
+    expect(SHEET_COMMANDS.map(commandOwner)).toEqual(SHEET_COMMANDS.map(() => "schematic"))
+    expect(SHEET_COMMANDS).toHaveLength(9)
   })
 
   test("Remove corners is the schematic's, which holds the selected wire; Delete and Highlight net stay the canvas's", () => {
@@ -87,5 +88,11 @@ describe("build status pill", () => {
     expect(buildTone(done, 1)).toBe("bad")
     expect(buildTone(done, 0)).toBe("good")
     expect(buildTone({ status: "idle" }, 0)).toBe("idle")
+  })
+})
+
+describe("the drawing tools", () => {
+  test("are the schematic's", () => {
+    for (const command of ["drawPolyline", "drawArc", "drawCircle", "drawRectangle", "drawText"] as const) expect([command, commandOwner(command)]).toEqual([command, "schematic"])
   })
 })
