@@ -215,7 +215,8 @@ function addPart(source: string, scan: Scan, edit: Extract<Edit, { kind: "addPar
     return ` ${key}=${formatLiteral(value)}`
   })
   const eol = lineEnding(source)
-  const element = `<${edit.tag} name=${formatLiteral(edit.name)}${props.join("")} />`
+  const labels = edit.pinLabels === undefined ? "" : ` pinLabels={${formatPinLabels(edit.pinLabels)}}`
+  const element = `<${edit.tag} name=${formatLiteral(edit.name)}${props.join("")}${labels} />`
 
   const existingImport = scan.model.imports.find((i) => i.local === edit.tag)
   if (edit.importFrom !== undefined && existingImport && existingImport.source !== edit.importFrom) {
@@ -229,6 +230,25 @@ function addPart(source: string, scan: Scan, edit: Extract<Edit, { kind: "addPar
   return lastImport < 0
     ? statement + eol + withPart
     : withPart.slice(0, lastImport) + eol + statement + withPart.slice(lastImport)
+}
+
+const LABEL_KEY = /^pin[1-9][0-9]*$/
+const LABEL_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
+
+/** `{ pin1: "cathode", pin2: "anode" }`; keys are pin1, pin2, ... and names are identifiers, as selectors need. */
+function formatPinLabels(labels: Record<string, string>): string {
+  const entries = Object.entries(labels).map(([key, name]) => {
+    if (!LABEL_KEY.test(key)) throw new EditError("invalid", `pinLabels key "${key}" must be pin1, pin2, ...`)
+    if (typeof name !== "string" || !LABEL_NAME.test(name)) throw new EditError("invalid", `pinLabels name for ${key} must be letters, digits and _, not starting with a digit`)
+    return `${key}: ${JSON.stringify(name)}`
+  })
+  return `{ ${entries.join(", ")} }`
+}
+
+/** The whitespace before `offset` on its line, or undefined when other text precedes it. */
+function lineIndent(source: string, offset: number): string | undefined {
+  const before = source.slice(source.lastIndexOf("\n", offset - 1) + 1, offset)
+  return before.trim() === "" ? before : undefined
 }
 
 function requireEditablePart(scan: Scan, name: string, locked: ReadonlySet<string>): PartInfo {

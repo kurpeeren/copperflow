@@ -1,5 +1,5 @@
-import { readdir, readFile, realpath } from "node:fs/promises"
-import { basename, isAbsolute, join, relative, resolve, sep } from "node:path"
+import { mkdir, readdir, readFile, realpath, rm, rmdir, stat } from "node:fs/promises"
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { analyzeCircuit } from "./analyze.js"
 import {
   annotationsPathFor,
@@ -132,6 +132,7 @@ export function undoChange(root: string, options: { author: Author; id?: string 
     if (loaded.source !== target.after) {
       throw new Error(`${target.file} has changed since ${target.id}; undo it by hand or with git`)
     }
+    if (target.absent === "before") return removeCreated(root, loaded, target, options.author)
     const touched = changedLocks(loaded, target.before)
     if (touched) throw new Error(`Undoing ${target.id} would change the locked ${touched}; unlock it first`)
 
@@ -156,6 +157,7 @@ export function undoChange(root: string, options: { author: Author; id?: string 
 export function redoChange(root: string, options: { author: Author; id?: string }): Promise<HistoryEntry> {
   return serialized(projectQueues, resolve(root), async () => {
     const undo = redoTarget(await readEntries(root), options)
+    if (undo.absent === "after") return recreate(root, undo, options.author)
     const loaded = await loadCircuit(root, undo.file)
     if (loaded.source !== undo.after) {
       throw new Error(`${undo.file} has changed since ${undo.id}; redo it by hand or with git`)
@@ -171,6 +173,39 @@ export function redoChange(root: string, options: { author: Author; id?: string 
       after: undo.before,
       redoOf: undo.id,
     })
+  })
+}
+
+/** Undoes a created file: it goes away, unless a part in it is locked now. */
+async function removeCreated(root: string, loaded: LoadedCircuit, target: HistoryEntry, author: Author): Promise<HistoryEntry> {
+  const locked = loaded.annotations.locks[0]
+  if (locked) throw new Error(`Undoing ${target.id} would remove the locked part ${locked.part}; unlock it first`)
+  const entry = await recordEntry(root, {
+    author,
+    file: loaded.file,
+    summary: `Undo: ${target.redoOf ? target.summary.replace(/^Redo: /, "") : target.summary}`,
+    before: target.after,
+    after: "",
+    absent: "after",
+    undoOf: target.id,
+  })
+  try {
+    await rm(loaded.path)
+  } catch (error) {
+    await removeEntry(root, entry.id)
+    throw error
+  }
+  return entry
+}
+
+/** Redoes the undo of a created file: the file comes back with the text it had. */
+async function recreate(root: string, undo: HistoryEntry, author: Author): Promise<HistoryEntry> {
+  const path = resolveInRoot(root, undo.file)
+  if (await readIfThere(path) !== undefined) throw new Error(`${undo.file} exists again since ${undo.id}; redo it by hand or with git`)
+  return writeNew(root, path, undo.before, {
+    author,
+    summary: `Redo: ${undo.summary.replace(/^Undo: /, "")}`,
+    redoOf: undo.id,
   })
 }
 
@@ -207,6 +242,86 @@ function redoableUndos(entries: readonly HistoryEntry[]): HistoryEntry[] {
   return found
 }
 
+async function readIfThere(path: string): Promise<string | undefined> {
+  try {
+    return await readFile(path, "utf8")
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
+    throw error
+  }
+}
+
+/** Records a history entry for a file that did not exist, then writes it; drops the entry if the write fails. */
+async function writeNew(
+  root: string,
+  path: string,
+  text: string,
+  meta: { author: Author; summary: string; redoOf?: string },
+): Promise<HistoryEntry> {
+  const place = await newFilePlace(root, path)
+  await mkdir(dirname(path), { recursive: true })
+  let entry: HistoryEntry | undefined
+  try {
+    entry = await recordEntry(root, { ...meta, file: place.file, before: "", after: text, absent: "before" })
+    await writeFileAtomic(path, text)
+    return entry
+  } catch (error) {
+    if (entry) await removeEntry(root, entry.id)
+    for (const folder of place.created) await rmdir(folder).catch(() => undefined)
+    throw error
+  }
+}
+
+/**
+ * Where a file that does not exist yet would land, found before anything is created: the project-relative name in the
+ * spelling later edits record (the real folder plus the file name), and the folders that are missing, deepest first.
+ * Refuses a place whose nearest existing folder is outside the project, symlinks followed.
+ */
+async function newFilePlace(root: string, path: string): Promise<{ file: string; created: string[] }> {
+  const missing: string[] = []
+  let folder = dirname(path)
+  while (!(await stat(folder).then(() => true, () => false))) {
+    missing.push(folder)
+    folder = dirname(folder)
+  }
+  const realRoot = await realpath(resolve(root))
+  const realFolder = await realpath(folder)
+  if (realFolder !== realRoot && !isInside(realRoot, realFolder)) throw new Error(`${relative(resolve(root), path).split(sep).join("/")} is outside the project root`)
+  const below = [...missing].reverse().map((dir) => basename(dir))
+  const file = relative(realRoot, join(realFolder, ...below, basename(path))).split(sep).join("/")
+  return { file, created: missing }
+}
+
+/** The project-relative path with `/` that a circuit file name means, whatever way it was written; refuses a path outside the project. */
+export function projectPath(root: string, file: string): string {
+  return relative(resolve(root), resolveInRoot(root, file)).split(sep).join("/")
+}
+
+/**
+ * Writes a circuit file that does not exist yet, as one history entry; the undo removes it again.
+ * An existing file is refused unless `replace` is set; replacing is an ordinary change (the undo restores the old
+ * text) and is refused while the file has locks.
+ */
+export function createCircuitFile(
+  root: string,
+  file: string,
+  text: string,
+  meta: { author: Author; summary: string; replace?: boolean },
+): Promise<HistoryEntry> {
+  return serialized(projectQueues, resolve(root), async () => {
+    const path = resolveInRoot(root, file)
+    if (!CIRCUIT_FILE.test(basename(path))) throw new Error(`${file} must end in .circuit.tsx`)
+    const source = await readIfThere(path)
+    if (source === undefined) return writeNew(root, path, text, meta)
+    if (!meta.replace) throw new Error(`${file} already exists; pass replace: true to overwrite it, or choose another file name`)
+    const existing = await resolveCircuit(root, file)
+    const locks = (await readAnnotations(annotationsPathFor(existing.path))).locks
+    if (locks[0]) throw new Error(`${file} has a locked part (${locks[0].part}); it cannot be replaced`)
+    if (source === text) throw new EditError("invalid", "The file already has this content")
+    return writeWithHistory(root, { ...existing, source }, text, { author: meta.author, summary: meta.summary, file: existing.file, before: source, after: text })
+  })
+}
+
 /** Reads a circuit's annotations, applies `change` and writes the result. */
 export function updateAnnotations(
   root: string,
@@ -236,7 +351,7 @@ async function refuseLibraryOverrides(root: string, loaded: LoadedCircuit, edits
 /** Records the history entry first, then writes the file; drops the entry if the write fails. */
 async function writeWithHistory(
   root: string,
-  loaded: LoadedCircuit,
+  loaded: Pick<LoadedCircuit, "path" | "source" | "file">,
   text: string,
   data: Omit<HistoryEntry, "id" | "time">,
 ): Promise<HistoryEntry> {

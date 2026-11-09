@@ -8,6 +8,7 @@ export { listEntries, readEntries, type Author, type HistoryEntry, type HistoryL
 export * from "./workspace.js"
 export { formatHistory, formatSummary } from "./summary.js"
 export * from "./library.js"
-export { BUILTIN_PARTS, placePart, type PlaceRequest } from "./place.js"
+export { BUILTIN_PARTS, placeEdit, placePart, type PlaceRequest } from "./place.js"
+export { generateCircuit, DEFAULT_BOARD, type NewCircuit, type NewPart } from "./new-circuit.js"
 export * from "./bom.js"
 export { checkCircuit, formatCheck, type CheckOptions, type CheckResult, type IssueGroup } from "./check.js"

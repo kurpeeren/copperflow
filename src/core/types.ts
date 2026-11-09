@@ -100,8 +100,11 @@ export type Edit =
   | { kind: "removeTrace"; from: string; to: string }
   /** Replaces the corners of a trace's hand-drawn schematic wire; an empty list removes them. */
   | { kind: "setTraceHints"; from: string; to: string; schematicRouteHints: Point[] }
-  /** `importFrom` adds `import { tag } from "<importFrom>"` when it is missing. */
-  | { kind: "addPart"; tag: string; name: string; props?: Record<string, Literal>; importFrom?: string }
+  /**
+   * `importFrom` adds `import { tag } from "<importFrom>"` when it is missing. `pinLabels` is written as an object
+   * expression, `pinLabels={{ pin1: "cathode" }}`, the way a hand-written file names a built-in part's pins.
+   */
+  | { kind: "addPart"; tag: string; name: string; props?: Record<string, Literal>; pinLabels?: Record<string, string>; importFrom?: string }
   /** Adds a drawing before the board's first trace; `name` is written first, and a bus needs one. */
   | { kind: "addDrawing"; tag: string; name?: string; props: Record<string, DrawingValue> }
   | { kind: "removeDrawing"; id: string }

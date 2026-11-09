@@ -11,6 +11,8 @@ const EntrySchema = z.object({
   summary: z.string(),
   before: z.string(),
   after: z.string(),
+  /** Which side of the change has no file: a new circuit has none before, and the undo of that has none after. The text on that side is empty. */
+  absent: z.enum(["before", "after"]).optional(),
   /** Set on entries that undo an earlier entry. */
   undoOf: z.string().optional(),
   /** Set on entries that redo an earlier undo: the undo's id. A redo is an ordinary change, which can be undone. */

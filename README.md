@@ -43,7 +43,7 @@ copperflow summary --root examples/usb-c-ldo index.circuit.tsx
 
 Design rules live in `rules.yaml` at the project root: a fabrication profile (JLCPCB 2-layer by default), net classes and global nets. The `usb-c-ldo` example shows a small one, and `skills/copperflow/references/design-rules.md` explains the format and every check.
 
-Findings are grouped by code, with their positions, and any error fails the check (exit code 1). Copper checks, such as clearances between tracks, come with routing.
+The CLI groups findings by code, with their positions; the agent's `check_circuit` lists them one per line, errors first. Any error fails the check (exit code 1). Copper checks, such as clearances between tracks, come with routing.
 
 ### Connect Claude Code
 
@@ -175,11 +175,14 @@ The agent sees what you undid and does not repeat it.
 | Tool | What it does |
 |------|--------------|
 | `list_circuits` | Lists the `*.circuit.tsx` files in the project |
-| `circuit_summary` | Parts, props, traces, locks, marks and lock violations of one file |
+| `circuit_summary` | Compact by default (a line per part and net, locks, marks, lock violations); `detail: "full"` lists every prop and trace |
 | `set_props` | Sets literal props: position, rotation, value, footprint |
 | `remove_part` | Removes a part and its traces |
 | `add_trace` / `remove_trace` | Connects or disconnects two ports or nets |
-| `check_circuit` | Runs copperflow's own ERC and placement DRC and lists the errors and warnings by code, with positions |
+| `check_circuit` | Runs copperflow's own ERC and placement DRC: counts, then up to 20 findings, one line each; `filter` narrows by severity, part or net |
+| `new_circuit` | Writes a whole new circuit from a netlist in one call: parts (a built-in `kind` or a library `part`, `value`, `footprint`, `props` such as `pinCount` or a `pinLabels` object to name pins, no positions) and `nets` (`{ GND: ["R1.pin2", "U1.GND"] }`, no wire corners). Pins are checked first (a wrong one is refused with the part's real pin names); an existing file needs `replace: true`; one history entry, and undo removes the file |
+| `edit_circuit` | Several edits in one call, applied as one change (one history entry); stops at the first refused edit and writes nothing |
+| `connect_nets` | Connects many pins to named nets in one call, e.g. `{ "GND": ["R1.pin2", "C1.pin2"] }` |
 | `list_parts` / `part_info` | Shows the parts library and a part's data and checklist |
 | `create_part` | Adds a part from a datasheet: pins, footprint string or footprint file, MPN, suppliers |
 | `place_part` | Adds a library or built-in part to a circuit, with its import |

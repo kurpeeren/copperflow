@@ -7,7 +7,6 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { createCopperflowServer } from "../src/mcp/server.js"
 import { loadCircuit, redoChange, undoChange, updateAnnotations } from "../src/core/workspace.js"
 import { addMark, lockParts } from "../src/core/annotations.js"
-import { checkCircuit, formatCheck } from "../src/core/check.js"
 import { BOARD, LDO, SHARED, USBX, USBX_FOOTPRINT } from "./fixtures.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
 
@@ -39,10 +38,13 @@ describe("MCP server", () => {
       "bom",
       "check_circuit",
       "circuit_summary",
+      "connect_nets",
       "create_part",
+      "edit_circuit",
       "export_package",
       "list_circuits",
       "list_parts",
+      "new_circuit",
       "part_info",
       "place_part",
       "recent_changes",
@@ -102,7 +104,7 @@ describe("MCP server", () => {
     await updateAnnotations(root, FILE, (ann) =>
       addMark(lockParts(ann, model, ["C1"], "2026-11-03T10:00:00.000Z"), { text: "route GND here", view: "pcb", x: 1, y: 2 }, "2026-11-03T10:00:00.000Z").annotations,
     )
-    const summary = (await call("circuit_summary", { file: FILE })).text
+    const summary = (await call("circuit_summary", { file: FILE, detail: "full" })).text
     expect(summary).toContain('R1 <resistor> resistance="5.1k" footprint="0402" pcbX={-4} pcbY={2}')
     expect(summary).toContain("C1 <capacitor> [LOCKED]")
     expect(summary).toContain("RX <resistor> [read-only: inside a callback such as .map()]")
@@ -155,11 +157,10 @@ describe("MCP server", () => {
     expect(await readFile(join(root, FILE), "utf8")).toBe(BOARD)
   })
 
-  test("check_circuit returns the same text as formatCheck", async () => {
+  test("check_circuit answers with counts and one line per finding", async () => {
     const result = await call("check_circuit", { file: FILE })
     expect(result.isError).toBe(false)
-    expect(result.text).toBe(formatCheck(FILE, await checkCircuit(root, FILE, { engine: inProcessEngine })))
-    expect(result.text).toContain("check failed")
+    expect(result.text.split("\n")[0]).toMatch(/^main\.circuit\.tsx: \d+ errors?, \d+ warnings?$/)
     expect(result.text).toContain("More than one part is named RX")
   })
 
@@ -177,7 +178,7 @@ describe("MCP server", () => {
 
   test("the instructions say to check after every change and fix every error, as the tool description does", async () => {
     const instructions = client.getInstructions() ?? ""
-    expect(instructions).toContain("After every change, call check_circuit and fix every error before reporting success.")
+    expect(instructions).toContain("Call check_circuit once at the end, then fix every error before reporting success.")
     expect(instructions).not.toMatch(/placement errors/)
   })
 
