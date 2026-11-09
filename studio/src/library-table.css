@@ -27,7 +27,6 @@
   min-height: 0;
   overflow: auto;
   scroll-padding-top: 28px;
-  border-top: 1px solid var(--line);
 }
 
 .lib-table table {
@@ -37,9 +36,10 @@
   border-spacing: 0;
 }
 
+/* Each cell draws the row's bottom hairline (hairline.css). */
 .lib-table th,
 .lib-table td {
-  font-size: 13px;
+  font-size: 12px;
   height: 28px;
   box-sizing: border-box;
   padding: 0 8px;
@@ -54,7 +54,6 @@
   top: 0;
   z-index: 1;
   background: var(--strip);
-  border-bottom: 1px solid var(--line);
   color: var(--muted);
   font-weight: 600;
 }
@@ -74,7 +73,10 @@
   cursor: default;
 }
 
-.lib-table tbody tr:hover,
+.lib-table tbody tr:hover {
+  background: var(--raised);
+}
+
 .lib-table tbody tr:focus-visible,
 .lib-table tbody tr:focus-within {
   background: var(--copper-wash);
@@ -88,8 +90,8 @@
 button.lib-place {
   height: 22px;
   padding: 0 8px;
-  border: 1px solid var(--line);
-  border-radius: 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
   background: var(--panel);
   color: var(--text);
 }
@@ -99,7 +101,7 @@ button.lib-place:hover:not(:disabled) {
 }
 
 button.lib-place:active:not(:disabled) {
-  background: var(--copper-wash);
+  background: var(--line);
 }
 
 .lib-table-empty {

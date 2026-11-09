@@ -1,0 +1,47 @@
+/* The Studio's own look: every chrome colour, the soft shadow and the hairline ratio, in one place.
+   One accent, copper; cool, quiet neutrals. The canvases keep their own palettes (PALETTE, schematicTheme); the two
+   canvas backgrounds and the violation colours below only repeat theirs for the CSS. */
+:root {
+  /* The accent: the selected tab, the pressed tool, focus rings, the primary button, links and the active row. */
+  --copper: #C8702A;
+  --copper-strong: #B0601F;
+  --copper-wash: #F7EAD9;
+  --on-copper: #FFFFFF;
+
+  /* Neutrals. --raised is the hover fill on white; --line-strong the hover hairline and the pressed fill. */
+  --panel: #FFFFFF;
+  --ground: #F5F6F8;
+  --strip: #F5F6F8;
+  --raised: var(--strip);
+  --line: #E3E5E8;
+  --line-strong: #CFD3D8;
+  --text: #1F2328;
+  --muted: #656D76;
+  --disabled: #9AA1A9;
+
+  /* Status: good (verified, locked, a build that passed), danger, warning; each with a wash for a background. */
+  --mask: #1A7F37;
+  --good-wash: #DAFBE1;
+  --danger: #CF222E;
+  --danger-text: #B62324;
+  --danger-wash: #FFEBE9;
+  --warning: #BF8700;
+  --agent: var(--copper);
+
+  /* The canvases' own colours, as their palettes have them. */
+  --pcb-background: #000000;
+  --sheet-background: #FFFCF8;
+  --check-error: #e5534b;
+  --check-warning: #e0a63a;
+
+  /* Surfaces: one soft shadow for menus, dialogs and floating boxes; the dialog backdrop; the canvas status veil. */
+  --shadow: 0 4px 16px rgb(31 35 40 / 12%);
+  --backdrop: rgb(31 35 40 / 24%);
+  --veil: rgb(255 255 255 / 85%);
+
+  /* Colour changes on hover and press; nothing moves on load. */
+  --ease: 120ms ease-out;
+
+  /* The device pixel ratio, kept current by dpr.ts; 1 until the app sets it. */
+  --dpr: 1;
+}

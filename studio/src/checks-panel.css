@@ -1,9 +1,5 @@
-/* The DRC tab of the bottom panel: groups of rows, each row a message and the items it names. */
-:root {
-  /* The canvases ring violations in these (PALETTE.error and PALETTE.warning). */
-  --check-error: #e5534b;
-  --check-warning: #e0a63a;
-}
+/* The DRC tab of the bottom panel: groups of rows, each row a message and the items it names. The dots use
+   --check-error and --check-warning (shell/theme.css), the colours the canvases ring violations in. */
 
 /* The status pill in the menu bar opens the DRC tab. */
 button.build {
@@ -23,13 +19,13 @@ button.build {
   align-items: center;
   gap: 10px;
   padding: 3px 6px 3px 12px;
-  border-bottom: 1px solid var(--line);
 }
 
 .checks-head h2 {
   margin: 0;
   font-size: 12px;
   font-weight: 600;
+  letter-spacing: 0;
 }
 
 .checks-head .count {
@@ -53,11 +49,12 @@ button.build {
   margin: 8px 6px 2px;
   font-size: 12px;
   font-weight: 600;
+  letter-spacing: 0;
 }
 
 .check-group .code {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .check-group .dot {
@@ -84,7 +81,7 @@ button.build {
   padding: 3px 8px 3px 20px;
   border: 0;
   border-left: 2px solid transparent;
-  border-radius: 2px;
+  border-radius: 0;
   background: transparent;
   text-align: left;
 }
@@ -96,7 +93,7 @@ button.build {
 .check-row .items {
   color: var(--muted);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .check-row.active,

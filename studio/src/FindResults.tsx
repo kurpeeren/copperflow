@@ -11,7 +11,7 @@ export function FindResults({ query, rows, active, pick }: FindResultsProps) {
   if (rows.length === 0) return <p className="note bottom-note">{findNothing(query)}</p>
   return (
     <section className="find-results" aria-label="Find results" onClick={blurAfterPointerClick}>
-      <header className="find-head">
+      <header className="find-head hairline-b">
         <h2>Find results</h2>
         <span className="count">{`${rows.length} found for "${query}"`}</span>
       </header>

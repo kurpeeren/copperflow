@@ -8,8 +8,9 @@ const lineCount = (text: string) => text.split("\n").length - 1
 /** styles.css's length after round 1 of the EasyEDA shell; new rules go in their own sheets, so it must not grow. */
 const STYLES_CAP = 684
 
-/** The rules the Checks panel brought: its colour tokens and the status pill. */
-const CHECK_RULES = ["--check-error:", "--check-warning:", "button.build {"]
+/** The rule the Checks panel brought, the status pill; its colour tokens now sit with the others in theme.css. */
+const CHECK_RULES = ["button.build {"]
+const CHECK_TOKENS = ["--check-error:", "--check-warning:"]
 
 /** Every sheet that could hold a layout rule for the workspace row or its centre column. */
 const SHEETS = ["styles.css", "checks-panel.css", "inspector.css", "shell/shell.css", "shell/strips.css", "shell/doc-tabs.css", "shell/bottom.css", "shell/toolbar.css"]
@@ -28,6 +29,7 @@ describe("Studio style sheets", () => {
       expect([rule, styles.includes(rule)]).toEqual([rule, false])
       expect([rule, panel.includes(rule)]).toEqual([rule, true])
     }
+    for (const token of CHECK_TOKENS) expect([token, read("shell/theme.css").includes(token)]).toEqual([token, true])
   })
 
   test("styles.css has not grown", () => {
@@ -48,18 +50,18 @@ describe("Studio style sheets", () => {
     expect(tab).toContain("writing-mode: vertical-rl;")
   })
 
-  test("chrome corners are square or 2px, and only menus, dialogs and the toast cast a shadow", () => {
+  test("chrome corners are square or 4px, and only menus, dialogs and the toast cast a shadow", () => {
     for (const sheet of SHEETS) {
       const css = read(sheet)
       const radii = [...css.matchAll(/border-radius: ([^;]+);/g)].map((m) => m[1])
-      expect([sheet, radii.filter((r) => !["0", "2px", "50%"].includes(r ?? ""))]).toEqual([sheet, []])
+      expect([sheet, radii.filter((r) => !["0", "4px", "50%"].includes(r ?? ""))]).toEqual([sheet, []])
     }
     const shadows = SHEETS.flatMap((sheet) => [...read(sheet).matchAll(/\n([^\n{}]+) {[^}]*box-shadow: (?!inset)/g)].map((m) => m[1]))
     expect(shadows.sort()).toEqual([".dialog", ".menu-dropdown", ".toast"])
   })
 
-  test("the :root tokens carry the light chrome colours", () => {
-    const root = /:root\s*{([^}]*)}/.exec(read("styles.css"))?.[1] ?? ""
+  test("the :root tokens in theme.css carry the light chrome colours", () => {
+    const root = /:root\s*{([^}]*)}/.exec(read("shell/theme.css"))?.[1] ?? ""
     const token = (name: string) => new RegExp(`${name}: *([^;]+);`).exec(root)?.[1]
     expect({
       text: token("--text"),
@@ -69,6 +71,6 @@ describe("Studio style sheets", () => {
       strip: token("--strip"),
       muted: token("--muted"),
       disabled: token("--disabled"),
-    }).toEqual({ text: "#333333", panel: "#ffffff", line: "#d1d1d1", accent: "#1890ff", strip: "#f0f0f0", muted: "#666666", disabled: "#999999" })
+    }).toEqual({ text: "#1F2328", panel: "#FFFFFF", line: "#E3E5E8", accent: "#C8702A", strip: "#F5F6F8", muted: "#656D76", disabled: "#9AA1A9" })
   })
 })

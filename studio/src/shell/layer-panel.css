@@ -4,14 +4,13 @@
   display: flex;
   flex: none;
   padding: 6px;
-  border-bottom: 1px solid var(--line);
 }
 
 .layer-filter {
   flex: 1 1 0;
   height: 24px;
   padding: 0 6px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 0;
   background: var(--panel);
   color: var(--text);
@@ -23,20 +22,20 @@
 }
 
 .layer-filter:first-child {
-  border-radius: 3px 0 0 3px;
+  border-radius: 4px 0 0 4px;
 }
 
 .layer-filter:last-child {
-  border-radius: 0 3px 3px 0;
+  border-radius: 0 4px 4px 0;
 }
 
 button.layer-filter:hover:not(:disabled) {
   background: var(--raised);
-  border-color: var(--line);
+  border-color: var(--line-strong);
 }
 
 button.layer-filter:active:not(:disabled) {
-  background: var(--tab);
+  background: var(--line);
 }
 
 button.layer-filter.on,
@@ -61,7 +60,6 @@ button.layer-filter.on:active:not(:disabled) {
   box-sizing: border-box;
   height: 28px;
   padding: 0 6px 0 10px;
-  border-bottom: 1px solid var(--strip);
 }
 
 .layer-row:hover {
@@ -72,7 +70,7 @@ button.layer-filter.on:active:not(:disabled) {
   flex: none;
   width: 12px;
   height: 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   box-sizing: border-box;
 }
 
@@ -98,7 +96,7 @@ button.layer-filter.on:active:not(:disabled) {
   height: 24px;
   padding: 0;
   border: 0;
-  border-radius: 3px;
+  border-radius: 4px;
   background: transparent;
   color: var(--text);
 }
@@ -108,7 +106,7 @@ button.layer-filter.on:active:not(:disabled) {
 }
 
 button.layer-eye:hover:not(:disabled) {
-  background: var(--tab);
+  background: var(--raised);
 }
 
 button.layer-eye:active:not(:disabled) {

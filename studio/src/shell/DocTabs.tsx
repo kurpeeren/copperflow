@@ -13,7 +13,7 @@ interface Props {
 export function DocTabs({ file, view, onView }: Props) {
   const list = useTabList({ ids: DOC_TAB_ORDER, current: view, onSelect: onView })
   return (
-    <div className="doc-tabs" role="tablist" aria-label="Documents" onKeyDown={list.onKeyDown}>
+    <div className="doc-tabs hairline-b" role="tablist" aria-label="Documents" onKeyDown={list.onKeyDown}>
       {docTabs(file, view).map((tab) => (
         <button
           key={tab.view}

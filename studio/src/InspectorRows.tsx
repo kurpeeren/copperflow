@@ -18,7 +18,7 @@ export function Row({ label, htmlFor, children }: { label: string; htmlFor?: str
 export function Section({ title, open, onToggle, children }: { title: string; open: boolean; onToggle(): void; children: ReactNode }) {
   return (
     <section className={open ? "insp-section" : "insp-section collapsed"}>
-      <button type="button" className="insp-head" aria-expanded={open} onClick={onToggle}>
+      <button type="button" className="insp-head hairline-t" aria-expanded={open} onClick={onToggle}>
         <ChevronIcon className="insp-chevron" />
         <span className="insp-title">{title}</span>
       </button>

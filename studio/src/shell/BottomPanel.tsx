@@ -29,7 +29,7 @@ interface Props {
 /** The open bottom panel: the content of the chosen tab, above the strip. */
 export function BottomPanel(props: Props) {
   return (
-    <div className="bottom-panel" id={BOTTOM_PANEL_ID} role="tabpanel" aria-labelledby={bottomTabId(props.tab)} onClick={blurAfterPointerClick}>
+    <div className="bottom-panel hairline-t" id={BOTTOM_PANEL_ID} role="tabpanel" aria-labelledby={bottomTabId(props.tab)} onClick={blurAfterPointerClick}>
       <Content {...props} />
     </div>
   )

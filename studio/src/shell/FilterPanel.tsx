@@ -14,7 +14,7 @@ interface Props {
 export function FilterPanel({ view, filter, onToggle }: Props) {
   return (
     <aside className="panel right filter-panel" id={stripPanelId("right")} role="tabpanel" aria-labelledby={sideTabId("filter")} onClick={blurAfterPointerClick}>
-      <h3 className="filter-head">Pick</h3>
+      <h3 className="filter-head hairline-b">Pick</h3>
       <ul className="filter-list">
         {pickKindRows(view).map((row) => (
           <li key={row.kind}>

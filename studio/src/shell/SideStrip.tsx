@@ -26,7 +26,7 @@ export const sideTabId = (id: string) => `side-tab-${id}`
 export function SideStrip<T extends string>({ side, tabs, active, open, onClick, onSelect }: Props<T>) {
   const list = useTabList({ ids: tabs.map((t) => t.id), current: active, onSelect, onPointerClick: onClick })
   return (
-    <div className={`side-strip ${side}`} role="tablist" aria-orientation="vertical" aria-label={side === "left" ? "Left panel" : "Right panel"} onKeyDown={list.onKeyDown}>
+    <div className={`side-strip ${side} hairline-${side === "left" ? "r" : "l"}`} role="tablist" aria-orientation="vertical" aria-label={side === "left" ? "Left panel" : "Right panel"} onKeyDown={list.onKeyDown}>
       {tabs.map((tab) => {
         const on = open && tab.id === active
         return (

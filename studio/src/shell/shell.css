@@ -11,7 +11,6 @@ html body {
   gap: 8px;
   height: 32px;
   padding: 0 8px;
-  border-bottom: 1px solid var(--line);
   background: var(--panel);
   flex: none;
 }
@@ -42,14 +41,11 @@ html body {
   font-size: 12px;
 }
 
-.menu-title:hover {
-  border: 0;
-  background: var(--strip);
-}
-
+.menu-title:hover,
 .menu-title.open,
 .menu-title.open:hover {
-  background: var(--copper-wash);
+  border: 0;
+  background: var(--raised);
 }
 
 .menu-dropdown {
@@ -62,8 +58,9 @@ html body {
   padding: 4px 0;
   list-style: none;
   border: 1px solid var(--line);
+  border-radius: 4px;
   background: var(--panel);
-  box-shadow: 0 3px 8px rgb(0 0 0 / 15%);
+  box-shadow: var(--shadow);
 }
 
 .menu-item {
@@ -81,7 +78,7 @@ html body {
 
 .menu-item:hover:not([aria-disabled="true"]) {
   border: 0;
-  background: var(--copper-wash);
+  background: var(--raised);
 }
 
 .menu-item[aria-disabled="true"] {
@@ -103,17 +100,19 @@ html body {
   display: inline-block;
   width: 16px;
   content: "";
-  color: var(--copper-strong);
+  color: var(--copper);
 }
 
 .menu-item[aria-checked="true"] > span::before {
   content: "\2713";
 }
 
+/* A hairline: one device pixel at any display scale (hairline.css). */
 .menu-separator {
   height: 1px;
   margin: 4px 0;
   background: var(--line);
+  transform: scaleY(calc(1 / var(--dpr)));
 }
 
 .menubar-end {
@@ -140,7 +139,7 @@ html body {
   z-index: 100;
   display: grid;
   place-items: center;
-  background: rgb(0 0 0 / 25%);
+  background: var(--backdrop);
 }
 
 .dialog {
@@ -148,8 +147,9 @@ html body {
   max-height: calc(100vh - 64px);
   overflow: auto;
   border: 1px solid var(--line);
+  border-radius: 4px;
   background: var(--panel);
-  box-shadow: 0 6px 16px rgb(0 0 0 / 20%);
+  box-shadow: var(--shadow);
 }
 
 .dialog header {
@@ -158,13 +158,14 @@ html body {
   justify-content: space-between;
   height: 32px;
   padding: 0 4px 0 12px;
-  border-bottom: 1px solid var(--line);
-  background: var(--strip);
+  background: var(--panel);
 }
 
 .dialog h2 {
   margin: 0;
   font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
 }
 
 .dialog-body {
@@ -179,7 +180,7 @@ html body {
 .dialog td {
   height: 24px;
   padding: 0 8px 0 0;
-  border-bottom: 1px solid var(--strip);
+  font-size: 12px;
 }
 
 .dialog td:first-child {
@@ -187,10 +188,7 @@ html body {
   color: var(--muted);
 }
 
-button.menu-title:hover:not(:disabled) {
-  background: var(--strip);
-}
-
+button.menu-title:hover:not(:disabled),
 button.menu-title.open:hover:not(:disabled) {
-  background: var(--copper-wash);
+  background: var(--raised);
 }

@@ -1,13 +1,13 @@
-/* The document tab bar above the canvas. */
+/* The document tab bar above the canvas: tabs on the strip colour, the open one white with a copper underline. */
 .doc-tabs {
   display: flex;
   height: 24px;
   box-sizing: border-box;
   overflow: hidden;
-  border-bottom: 1px solid var(--line);
   background: var(--strip);
 }
 
+/* Each tab's right edge is a hairline (hairline.css). */
 .doc-tab {
   position: relative;
   flex: none;
@@ -16,24 +16,25 @@
   padding: 0 10px;
   overflow: hidden;
   border: 0;
-  border-right: 1px solid var(--line);
   border-radius: 0;
-  background: var(--tab);
+  background: transparent;
   color: var(--muted);
+  font-size: 12px;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .doc-tab.on {
-  background: var(--copper-wash);
+  background: var(--panel);
   color: var(--text);
 }
 
 .doc-tab.on::before {
   content: "";
   position: absolute;
-  inset: 0 0 auto;
+  inset: auto 0 0;
+  z-index: 1;
   height: 2px;
   background: var(--copper);
 }
@@ -47,11 +48,12 @@
 }
 
 button.doc-tab:hover:not(:disabled) {
-  background: var(--raised);
+  background: transparent;
+  color: var(--text);
 }
 
 button.doc-tab.on:hover:not(:disabled) {
-  background: var(--copper-wash);
+  background: var(--panel);
 }
 
 .doc-tab:focus-visible {

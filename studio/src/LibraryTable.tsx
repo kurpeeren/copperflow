@@ -86,7 +86,7 @@ export function LibraryTable({ parts, onPlace }: Props) {
       <p id={hint} className="lib-table-hint">
         Enter places the focused part; so does a double click on a row.
       </p>
-      <div className="lib-table-scroll">
+      <div className="lib-table-scroll hairline-t">
         <table aria-label="Library parts" aria-describedby={hint}>
           <LibraryHead />
           <tbody ref={body}>

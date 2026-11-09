@@ -16,7 +16,7 @@ const IDS = BOTTOM_TABS.map((tab) => tab.id)
 export function BottomStrip({ state, onClick, onOpen }: Props) {
   const list = useTabList({ ids: IDS, current: state.tab, onSelect: onOpen, onPointerClick: onClick })
   return (
-    <nav className="bottom-strip" role="tablist" aria-label="Bottom panel" onKeyDown={list.onKeyDown}>
+    <nav className="bottom-strip hairline-t" role="tablist" aria-label="Bottom panel" onKeyDown={list.onKeyDown}>
       {BOTTOM_TABS.map((tab) => {
         const on = state.open && state.tab === tab.id
         return (

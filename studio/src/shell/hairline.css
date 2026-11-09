@@ -1,0 +1,110 @@
+/* Hairlines one device pixel thick at any display scale. A 1px line is drawn on the edge it belongs to and scaled
+   down by --dpr (dpr.ts) toward that edge, so at 110% it is 1/1.1 of a CSS pixel: one device pixel, not a blurred
+   pair. Panel edges, strips, tab bars, section heads and table rows use these instead of a border. */
+.hairline-b,
+.hairline-t,
+.hairline-r,
+.hairline-l,
+.lib-table td,
+.filter-row,
+.layer-row,
+.bom th,
+.bom td,
+.dialog td {
+  position: relative;
+}
+
+.hairline-b::after,
+.hairline-t::after,
+.hairline-r::after,
+.hairline-l::after,
+.workspace:has(> .panel.right:not([hidden])) > .center::after,
+.doc-tab::after,
+.bottom-tab::after,
+.lib-table th::after,
+.lib-table td::after,
+.filter-row::after,
+.layer-row::after,
+.bom th::after,
+.bom td::after,
+.dialog td::after {
+  content: "";
+  position: absolute;
+  background: var(--line);
+  pointer-events: none;
+}
+
+.hairline-b::after {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  transform: scaleY(calc(1 / var(--dpr)));
+  transform-origin: bottom;
+}
+
+.hairline-t::after {
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  transform: scaleY(calc(1 / var(--dpr)));
+  transform-origin: top;
+}
+
+.hairline-r::after {
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 1px;
+  transform: scaleX(calc(1 / var(--dpr)));
+  transform-origin: right;
+}
+
+.hairline-l::after {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  transform: scaleX(calc(1 / var(--dpr)));
+  transform-origin: left;
+}
+
+/* Tabs in a bar: a hairline between each tab and the next. */
+.doc-tab::after,
+.bottom-tab::after {
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 1px;
+  transform: scaleX(calc(1 / var(--dpr)));
+  transform-origin: right;
+}
+
+/* Rows: a hairline under each table cell and each list row. */
+.lib-table th::after,
+.lib-table td::after,
+.filter-row::after,
+.layer-row::after,
+.bom th::after,
+.bom td::after,
+.dialog td::after {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  transform: scaleY(calc(1 / var(--dpr)));
+  transform-origin: bottom;
+}
+
+/* The right panel scrolls, and a line inside it would scroll away; the centre column draws that edge while the
+   panel is open (closed, the right strip's own line is the edge). */
+.workspace:has(> .panel.right:not([hidden])) > .center::after {
+  top: 0;
+  bottom: 0;
+  right: 0;
+  z-index: 2;
+  width: 1px;
+  transform: scaleX(calc(1 / var(--dpr)));
+  transform-origin: right;
+}

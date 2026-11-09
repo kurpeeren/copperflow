@@ -30,9 +30,9 @@ describe("the interface's type", () => {
     expect(styles).toMatch(/button,\s*input,\s*select \{\s*font: inherit;/)
   })
 
-  test("Properties values and table cells are 13px", () => {
+  test("Properties values are 13px, like all panel text; table cells are 12px", () => {
     expect(read("inspector.css")).toMatch(/\.insp-value input:not\(\[type="checkbox"\]\)[^{]*\{[^}]*font-size: 13px;/)
-    expect(read("library-table.css")).toMatch(/\.lib-table td \{[^}]*font-size: 13px;/)
+    expect(read("library-table.css")).toMatch(/\.lib-table td \{[^}]*font-size: 12px;/)
   })
 })
 
