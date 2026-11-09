@@ -1,12 +1,13 @@
 import type { HistoryListing } from "./history.js"
-import type { PropInfo } from "./types.js"
+import type { CircuitModel, PropInfo } from "./types.js"
 import type { LoadedCircuit } from "./workspace.js"
 
 /** A compact, line-oriented description of a circuit for agents and terminals. */
 export function formatSummary(circuit: LoadedCircuit): string {
   const { model, annotations } = circuit
   const locked = new Set(annotations.locks.map((lock) => lock.part))
-  const lines = [`${circuit.file}: ${model.parts.length} parts, ${model.traces.length} traces`, "Parts:"]
+  const drawings = model.drawings.length > 0 ? `, ${model.drawings.length} drawings` : ""
+  const lines = [`${circuit.file}: ${model.parts.length} parts, ${model.traces.length} traces${drawings}`, "Parts:"]
 
   for (const part of model.parts) {
     const flags = [locked.has(part.name) ? "[LOCKED]" : "", part.readonlyReason ? `[read-only: ${part.readonlyReason}]` : ""]
@@ -21,6 +22,8 @@ export function formatSummary(circuit: LoadedCircuit): string {
     const ends = trace.editable ? oneLine(`${trace.from} -> ${trace.to}`) : `line ${trace.line} [read-only: ${trace.readonlyReason}]`
     lines.push(`  ${[ends, formatProps(trace.props)].filter(Boolean).join(" ")}`)
   }
+
+  lines.push(...drawingLines(model, locked))
 
   if (annotations.marks.length > 0) {
     lines.push("Marks from the human:")
@@ -37,6 +40,19 @@ export function formatSummary(circuit: LoadedCircuit): string {
     for (const v of circuit.violations) lines.push(`  ${v.part} ${v.kind}: ${oneLine(v.detail)}`)
   }
   return lines.join("\n")
+}
+
+/** Drawings by id; a repeat (a piece of a bus, say) also shows the name it shares. Nothing when there are none. */
+function drawingLines(model: CircuitModel, locked: ReadonlySet<string>): string[] {
+  if (model.drawings.length === 0) return []
+  return [
+    "Drawings:",
+    ...model.drawings.map((drawing) => {
+      const flags = [locked.has(drawing.id) ? "[LOCKED]" : "", drawing.readonlyReason ? `[read-only: ${drawing.readonlyReason}]` : ""]
+      const shared = drawing.name !== undefined && drawing.name !== drawing.id ? `name=${JSON.stringify(drawing.name)}` : ""
+      return `  ${[oneLine(drawing.id), `<${drawing.tag}>`, ...flags, shared, formatProps(drawing.props)].filter(Boolean).join(" ")}`
+    }),
+  ]
 }
 
 export function formatHistory(entries: HistoryListing[]): string {

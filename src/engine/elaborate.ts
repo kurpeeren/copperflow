@@ -2,12 +2,15 @@ import { LIBRARY_OWNED_PROPS } from "../core/library.js"
 import { buildBoard } from "./board.js"
 import { buildPart, NO_OFFSET, type Offset } from "./component.js"
 import { diagnostic } from "./diagnostics.js"
+import { drawingName } from "./drawing-ids.js"
+import { drawingKindOf } from "./drawing-kinds.js"
+import { buildDrawing, uniqueDrawingIds, type DrawingEntry } from "./drawings.js"
 import { CircuitCodeError, type Evaluated } from "./evaluate.js"
 import { PIN_ROW_DEFAULT_PITCH, pinRowName } from "./footprints/pinrow.js"
 import { Fragment, isElement, type CfElement, type ComponentFunction } from "./jsx-runtime.js"
 import { buildKeepout } from "./keepout.js"
 import { kindOf } from "./kinds.js"
-import type { Board, Circuit, Component, Diagnostic, Keepout, SourceRef } from "./model.js"
+import type { Board, Circuit, Component, Diagnostic, DrawingKind, Keepout, SourceRef } from "./model.js"
 import { mergeNets } from "./nets.js"
 import { PropReader, type Props } from "./read-props.js"
 import { resolveTraces, type TraceDraft } from "./traces.js"
@@ -51,6 +54,9 @@ class Elaboration {
   readonly diagnostics: Diagnostic[] = []
   board: Board | undefined
   readonly keepouts: Keepout[] = []
+  /** Every drawing tag; ids are given after the walk, so a drawing never renames a part. */
+  readonly drawings: DrawingEntry[] = []
+  private readonly drawingCounts = new Map<DrawingKind, number>()
   private readonly keepoutSources: SourceRef[] = []
   private readonly nameCounts = new Map<string, number>()
   private readonly duplicated = new Set<string>()
@@ -113,6 +119,8 @@ class Elaboration {
       this.traces.push({ props: element.props, source })
       return
     }
+    const drawing = drawingKindOf(tag)
+    if (drawing) return this.drawing(element, drawing, frame, source)
     if (kindOf(tag)) return this.part(element, tag, frame, source)
     const severity = LATER_STAGE.has(tag) ? "warning" : "error"
     const message = LATER_STAGE.has(tag) ? `<${tag}> is not supported yet and is ignored` : `<${tag}> is not a copperflow element`
@@ -148,6 +156,14 @@ class Elaboration {
     this.diagnostics.push(...built.diagnostics)
     this.keepoutSources.push(source)
     if (built.keepout) this.keepouts.push(built.keepout)
+  }
+
+  private drawing(element: CfElement, kind: DrawingKind, frame: Frame, source: SourceRef): void {
+    const index = (this.drawingCounts.get(kind) ?? 0) + 1
+    this.drawingCounts.set(kind, index)
+    const built = buildDrawing(kind, element.props, element.children.length, { offset: frame.offset, index, source })
+    this.diagnostics.push(...built.diagnostics)
+    this.drawings.push({ kind, name: drawingName(kind, element.props["name"]), source, ...(built.drawing ? { drawing: built.drawing } : {}) })
   }
 
   /** One warning for each <keepout> of a circuit that has no <board>. */
@@ -190,6 +206,7 @@ export function elaborate(evaluated: Evaluated, file: string, options: Elaborate
   run.visit(evaluated.root, { offset: NO_OFFSET, callSite: undefined, library: undefined, depth: 0 })
   const traces = resolveTraces(run.traces, run.components)
   const nets = mergeNets(traces.nodes, traces.links)
+  const drawings = uniqueDrawingIds(run.drawings, run.components)
   const joined = nets.filter((net) => net.names.length > 1).map((net) => diagnostic("nets-joined", "warning", `Nets ${net.names.join(" and ")} are joined by a trace`, net.names))
   return {
     file,
@@ -197,6 +214,7 @@ export function elaborate(evaluated: Evaluated, file: string, options: Elaborate
     nets,
     connections: traces.connections,
     ...(run.board ? { board: { ...run.board, keepouts: run.keepouts } } : {}),
-    diagnostics: [...run.diagnostics, ...run.boardlessKeepouts(), ...traces.diagnostics, ...joined],
+    drawings: drawings.drawings,
+    diagnostics: [...run.diagnostics, ...drawings.diagnostics, ...run.boardlessKeepouts(), ...traces.diagnostics, ...joined],
   }
 }

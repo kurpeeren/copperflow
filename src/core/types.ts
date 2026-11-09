@@ -42,6 +42,32 @@ export interface TraceInfo {
   end: number
 }
 
+/**
+ * A schematic drawing (`schematicpath`, `schematicrect`, `schematiccircle`, `schematicarc`, `schematictext`
+ * or `bus`), addressed by the id the engine gives it (`SchematicDrawing.id`).
+ */
+export interface DrawingInfo {
+  /** Its name, or `drawing:<kind>:<n>` when it has none; a repeat gets `~2`, `~3` (src/engine/drawing-ids.ts). */
+  id: string
+  tag: string
+  /** The name the file gives, when it is a literal; the pieces of one bus share it. */
+  name?: string
+  /** The points of a path or bus, when they are written as a literal list. */
+  points?: Point[]
+  /** Tag of the enclosing element, e.g. "board" or "group". */
+  parent?: string
+  /** Every prop but `name`; `points` is editable when it is a literal list. */
+  props: Record<string, PropInfo>
+  line: number
+  editable: boolean
+  readonlyReason?: string
+  start: number
+  end: number
+}
+
+/** A drawing prop's value: `points` takes a list of points, every other prop a literal. */
+export type DrawingValue = Literal | Point[]
+
 export interface SkippedElement {
   tag: string
   line: number
@@ -59,6 +85,7 @@ export interface ImportInfo {
 export interface CircuitModel {
   parts: PartInfo[]
   traces: TraceInfo[]
+  drawings: DrawingInfo[]
   skipped: SkippedElement[]
   imports: ImportInfo[]
   /** Offsets of the `<board>` element's closing tag, when there is one. */
@@ -75,3 +102,8 @@ export type Edit =
   | { kind: "setTraceHints"; from: string; to: string; schematicRouteHints: Point[] }
   /** `importFrom` adds `import { tag } from "<importFrom>"` when it is missing. */
   | { kind: "addPart"; tag: string; name: string; props?: Record<string, Literal>; importFrom?: string }
+  /** Adds a drawing before the board's first trace; `name` is written first, and a bus needs one. */
+  | { kind: "addDrawing"; tag: string; name?: string; props: Record<string, DrawingValue> }
+  | { kind: "removeDrawing"; id: string }
+  /** Moves or restyles a drawing, e.g. `{ x, y }` or `{ points }`; a `name` renames it, which changes its id. */
+  | { kind: "setDrawingProps"; id: string; props: Record<string, DrawingValue> }

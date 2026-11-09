@@ -1,10 +1,13 @@
 import { readFile } from "node:fs/promises"
 import { z } from "zod"
 import { writeFileAtomic } from "./fs-utils.js"
-import type { CircuitModel } from "./types.js"
+import type { CircuitModel, PropInfo } from "./types.js"
 
 const LockSchema = z.object({
+  /** A part's name, or a drawing's id. */
   part: z.string(),
+  /** Set when the lock is on a drawing. */
+  drawing: z.literal(true).optional(),
   /** Attribute source text of every prop at lock time. */
   props: z.record(z.string(), z.string()),
   lockedAt: z.string(),
@@ -45,12 +48,33 @@ export function annotationsPathFor(circuitPath: string): string {
   return `${circuitPath.replace(/\.tsx$/, "")}.annotations.json`
 }
 
+/**
+ * What a lock holds on to: the part with this name, or the drawing with this id. `kind` says which a lock is on, so
+ * a lock on a part never matches a drawing of the same name; without it (a new lock), a part comes first.
+ */
+export function lockTarget(
+  model: CircuitModel,
+  name: string,
+  kind?: "part" | "drawing",
+): { props: Record<string, PropInfo>; drawing: boolean } | undefined {
+  const part = kind === "drawing" ? undefined : model.parts.find((p) => p.name === name)
+  if (part) return { props: part.props, drawing: false }
+  const drawing = kind === "part" ? undefined : model.drawings.find((d) => d.id === name)
+  return drawing && { props: drawing.props, drawing: true }
+}
+
+/** Which a stored lock is on. */
+export function lockKind(lock: Lock): "part" | "drawing" {
+  return lock.drawing ? "drawing" : "part"
+}
+
+/** Locks parts by name and drawings by id, with a snapshot of their props. */
 export function lockParts(annotations: Annotations, model: CircuitModel, parts: string[], now: string): Annotations {
   const fresh = parts.map((name): Lock => {
-    const part = model.parts.find((p) => p.name === name)
-    if (!part) throw new Error(`No part named ${name}`)
-    const props = Object.fromEntries(Object.entries(part.props).map(([key, prop]) => [key, prop.source]))
-    return { part: name, props, lockedAt: now }
+    const target = lockTarget(model, name)
+    if (!target) throw new Error(`No part or drawing named ${name}`)
+    const props = Object.fromEntries(Object.entries(target.props).map(([key, prop]) => [key, prop.source]))
+    return { part: name, ...(target.drawing ? { drawing: true as const } : {}), props, lockedAt: now }
   })
   const kept = annotations.locks.filter((lock) => !parts.includes(lock.part))
   return { ...annotations, locks: [...kept, ...fresh] }
@@ -60,15 +84,15 @@ export function unlockParts(annotations: Annotations, parts: string[]): Annotati
   return { ...annotations, locks: annotations.locks.filter((lock) => !parts.includes(lock.part)) }
 }
 
-/** Finds locked parts that were removed or changed, for example by a direct file edit. */
+/** Finds locked parts and drawings that were removed or changed, for example by a direct file edit. */
 export function verifyLocks(annotations: Annotations, model: CircuitModel): LockViolation[] {
   return annotations.locks.flatMap((lock): LockViolation[] => {
-    const part = model.parts.find((p) => p.name === lock.part)
-    if (!part) return [{ part: lock.part, kind: "missing", detail: "the locked part is no longer in the file" }]
-    const keys = new Set([...Object.keys(lock.props), ...Object.keys(part.props)])
+    const target = lockTarget(model, lock.part, lockKind(lock))
+    if (!target) return [{ part: lock.part, kind: "missing", detail: `the locked ${lockKind(lock)} is no longer in the file` }]
+    const keys = new Set([...Object.keys(lock.props), ...Object.keys(target.props)])
     const changes = [...keys].flatMap((key) => {
       const before = lock.props[key]
-      const after = part.props[key]?.source
+      const after = target.props[key]?.source
       return before === after ? [] : [`${key} was ${before ?? "(absent)"}, now ${after ?? "(absent)"}`]
     })
     return changes.length === 0 ? [] : [{ part: lock.part, kind: "changed", detail: changes.join("; ") }]
