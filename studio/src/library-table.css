@@ -6,6 +6,17 @@
   min-height: 0;
 }
 
+/* The hint that Enter places a part is read out with the table, not shown. */
+.lib-table-hint {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .lib-table-search {
   flex: none;
   margin: 6px 12px;

@@ -9,6 +9,7 @@ import {
   layerRows,
   padLayer,
   partLayers,
+  swatchBackground,
   toggleLayer,
   type LayerId,
 } from "../studio/src/pcb/layers.js"
@@ -39,6 +40,14 @@ describe("the layer list", () => {
     expect(rows.find((row) => row.id === "top")?.color).toBe(PALETTE.topCopper)
     expect(rows.find((row) => row.id === "boardOutline")?.color).toBe(PALETTE.boardEdge)
     expect(rows.find((row) => row.id === "ratline")?.color).toBe(PALETTE.ratsnest)
+  })
+
+  test("the Courtyard swatch shows the top and the bottom courtyard colours, since each side draws in its own", () => {
+    const courtyard = layerRows(false, "all").find((row) => row.id === "courtyard")
+    expect(courtyard).toMatchObject({ color: PALETTE.topAssembly, bottomColor: PALETTE.bottomAssembly })
+    expect(courtyard && swatchBackground(courtyard)).toBe(`linear-gradient(135deg, ${PALETTE.topAssembly} 50%, ${PALETTE.bottomAssembly} 50%)`)
+    expect(swatchBackground({ color: PALETTE.topCopper })).toBe(PALETTE.topCopper)
+    expect(layerRows(false, "all").filter((row) => row.bottomColor).map((row) => row.id)).toEqual(["courtyard"])
   })
 
   test("Keepout is listed only when the board has keepouts", () => {

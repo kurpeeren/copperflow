@@ -15,8 +15,10 @@ export interface LayerRow {
   id: LayerId
   name: string
   group: LayerGroup
-  /** The colour the layer is drawn in, and the swatch's. */
+  /** The colour the layer is drawn in, and the swatch's; for a layer drawn in each side's colour, the top side's. */
   color: string
+  /** The bottom side's colour, for a layer drawn in each side's colour (Courtyard); the swatch shows both. */
+  bottomColor?: string
 }
 
 const LAYER_ROWS: readonly LayerRow[] = [
@@ -26,7 +28,7 @@ const LAYER_ROWS: readonly LayerRow[] = [
   { id: "bottomSilk", name: "Bottom Silkscreen", group: "non-copper", color: PALETTE.bottomSilk },
   { id: "topAssembly", name: "Top Assembly", group: "non-copper", color: PALETTE.topAssembly },
   { id: "bottomAssembly", name: "Bottom Assembly", group: "non-copper", color: PALETTE.bottomAssembly },
-  { id: "courtyard", name: "Courtyard", group: "non-copper", color: PALETTE.topAssembly },
+  { id: "courtyard", name: "Courtyard", group: "non-copper", color: PALETTE.topAssembly, bottomColor: PALETTE.bottomAssembly },
   { id: "boardOutline", name: "Board Outline", group: "non-copper", color: PALETTE.boardEdge },
   { id: "multiLayer", name: "Multi-Layer", group: "copper", color: PALETTE.multiLayer },
   { id: "hole", name: "Hole", group: "non-copper", color: PALETTE.drill },
@@ -37,6 +39,11 @@ const LAYER_ROWS: readonly LayerRow[] = [
 /** The panel's rows: Keepout only when the board has keepouts, and only the layers the filter names. */
 export function layerRows(hasKeepouts: boolean, filter: LayerFilter): LayerRow[] {
   return LAYER_ROWS.filter((row) => (hasKeepouts || row.id !== "keepout") && (filter === "all" || row.group === filter))
+}
+
+/** The swatch's CSS background: the layer's colour, or the top and bottom colours split on the diagonal, top first. */
+export function swatchBackground(row: Pick<LayerRow, "color" | "bottomColor">): string {
+  return row.bottomColor ? `linear-gradient(135deg, ${row.color} 50%, ${row.bottomColor} 50%)` : row.color
 }
 
 export type LayerVisibility = Readonly<Record<LayerId, boolean>>

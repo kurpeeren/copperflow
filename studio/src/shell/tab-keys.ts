@@ -1,5 +1,6 @@
 // The keys of every tab list in the chrome (document tabs, the side strips, the Project Design sub-tabs and the
-// bottom strip): the arrow keys step to the next or previous tab and wrap at the ends, Home and End jump to them.
+// bottom strip) and of the Layer panel's filter radio group: the arrow keys step to the next or previous tab and wrap
+// at the ends, Home and End jump to them.
 
 const BACK = new Set(["ArrowLeft", "ArrowUp"])
 const FORWARD = new Set(["ArrowRight", "ArrowDown"])

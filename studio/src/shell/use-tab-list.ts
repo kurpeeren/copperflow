@@ -1,5 +1,6 @@
-// A tab list with a roving tab stop: Tab reaches the current tab only, the arrow keys, Home and End move between
-// the tabs and show the one they reach, and Enter or Space shows the focused one. What a key means is tab-keys.ts.
+// A tab list (or a radio group, as the Layer panel's filters) with a roving tab stop: Tab reaches the current tab only,
+// the arrow keys, Home and End move between the tabs and show the one they reach, and Enter or Space shows the focused
+// one. What a key means is tab-keys.ts.
 import type { KeyboardEvent, MouseEvent } from "react"
 import { blurButton, isPointerClick } from "./focus"
 import { tabAfterKey } from "./tab-keys"

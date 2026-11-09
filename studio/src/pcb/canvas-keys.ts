@@ -90,7 +90,7 @@ function arrowAction(input: KeyInput): KeyResult | null {
 }
 
 /** Widgets that handle their own keys: their arrows, Enter, Space, Delete and letters never reach the canvas. */
-const OWN_KEYS = "tr, [role='row'], [role='gridcell'], [role='grid'], [role='listbox'], [role='option'], [role='tree'], [role='treeitem'], [role='tablist'], [role='tab'], [role='menu'], [role='menubar'], [role='menuitem'], [data-keys='own']"
+const OWN_KEYS = "tr, [role='row'], [role='gridcell'], [role='grid'], [role='listbox'], [role='option'], [role='tree'], [role='treeitem'], [role='tablist'], [role='tab'], [role='radiogroup'], [role='menu'], [role='menubar'], [role='menuitem'], [data-keys='own']"
 
 /** Fields that take every key: text inputs, text areas, selects and editable text. A checkbox is pressed like a button. */
 const FIELDS = "input:not([type='checkbox']):not([type='radio']), textarea, select, [contenteditable='true']"
