@@ -255,6 +255,23 @@ describe("the held rotate and the build id", () => {
 describe("an Undo or Redo from the app", () => {
   const start = circuitOf([part("R1", 0, 0), part("R2", 4, 0)])
 
+  test("an align pressed after it waits for the build that read it, then aligns the parts where it put them", async () => {
+    const trio = circuitOf([part("R1", 0, 0), part("R2", 4, 3)])
+    const studio = bench(trio, ["R1", "R2"])
+    studio.nudge(1)
+    await studio.answer()
+    studio.build()
+    studio.history(trio)
+    studio.session.align(studio.input(), "alignLeft")
+    expect(studio.holding).toEqual([true])
+    await studio.answer()
+    expect(studio.sent).toEqual(["move R1 and R2 by (1, 0)"])
+    studio.build()
+    expect(studio.sent).toEqual(["move R1 and R2 by (1, 0)", "align R2 left"])
+    await studio.answer()
+    expect(at(studio.circuit(), "R2")).toEqual([0, 3, 0])
+  })
+
   test("a rotate pressed after it waits for the build that read it, then turns the parts where it put them", async () => {
     const studio = bench(start, ["R1", "R2"])
     studio.nudge(1)

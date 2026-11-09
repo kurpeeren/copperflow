@@ -163,7 +163,45 @@ describe("alignPlan", () => {
     const plan = alignPlan(row.circuit, ["A", "B", "C", "D"], "pcb", row.layout, "distributeH", row.blocker(["B"]))
     if (!("edits" in plan)) throw new Error("expected an edit")
     expect(plan.parts).toEqual(["C"])
-    expect(plan.skipped).toEqual(["B is locked"])
+    expect(plan.skipped).toEqual(["B is locked and kept its place; others may overlap it"])
+  })
+
+  test("the far end is the box that reaches furthest, even when a later box starts further right", () => {
+    // A is the leftmost; W starts before N but reaches further right (to 20); N is 9..10.
+    const wide = [box("A", 0, 0, 2, 1), box("W", 4, 0, 20, 1), box("N", 9, 0, 10, 1), box("M", 3, 0, 3.5, 1)]
+    // Ends A and W stay; widths 2 + 16 + 1 + 0.5 = 19.5 in 20, so 3 gaps of 1/6.
+    const offsets = Object.fromEntries(layoutOffsets("distributeH", wide))
+    expect(Object.keys(offsets).sort()).toEqual(["M", "N"])
+  })
+
+  test("a part with an anchor but no box is named, not dropped", () => {
+    const { circuit, layout, blocker } = scene(specs)
+    const anchors = new Map(layout.anchors).set("R4", { origin: { x: 20, y: 0 }, group: ZERO, autoPlaced: false })
+    const plan = alignPlan(circuit, ["R1", "R2", "R4"], "pcb", { ...layout, anchors }, "alignLeft", blocker())
+    if (!("edits" in plan)) throw new Error("expected an edit")
+    expect(plan.skipped).toEqual(["R4 has no box in this view"])
+  })
+
+  test("a schematic layout (y up, symbol boxes) writes schX and schY", () => {
+    const circuit: SourceCircuit = {
+      model: {
+        parts: ["S1", "S2"].map((name, i) => ({ ...part(name, 0, 0), props: { schX: prop(i * 3), schY: prop(i * 2), schRotation: prop(0) } })),
+        traces: [],
+        skipped: [],
+        imports: [],
+      },
+    }
+    const boxes: PartBox[] = [
+      { name: "S1", pcbComponentId: "S1", center: { x: 0, y: 0 }, box: { minX: -0.5, minY: -0.25, maxX: 0.5, maxY: 0.25 } },
+      { name: "S2", pcbComponentId: "S2", center: { x: 3, y: 2 }, box: { minX: 2, minY: 1, maxX: 4, maxY: 3 } },
+    ]
+    const anchors = new Map<string, Anchor>(boxes.map((b) => [b.name, { origin: b.center, group: ZERO, autoPlaced: false }]))
+    const layout: Layout = { anchors, boxes, step: 0.1 }
+    const blocker = (name: string) => moveBlocker(circuit, new Set(), name, "schematic")
+    const top = alignPlan(circuit, ["S1", "S2"], "schematic", layout, "alignTop", blocker)
+    if (!("edits" in top)) throw new Error("expected an edit")
+    expect(top.edits).toEqual([{ kind: "setProps", part: "S1", props: { schX: 0, schY: 2.75 } }])
+    expect(top.summary).toBe("align S1 top in the schematic")
   })
 
   test("with too few parts in the view, nothing is sent and the message says why", () => {

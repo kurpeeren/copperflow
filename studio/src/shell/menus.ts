@@ -190,8 +190,8 @@ export const MENUS: readonly Menu[] = [
 
 export const MENU_TITLES: readonly string[] = MENUS.map((menu) => menu.title)
 
-const isAlign = (command: CommandId): command is AlignCommand => ALIGN_COMMAND_IDS.has(command)
 const ALIGN_COMMAND_IDS: ReadonlySet<string> = new Set(ALIGN_COMMANDS)
+const isAlign = (command: CommandId): command is AlignCommand => ALIGN_COMMAND_IDS.has(command)
 
 const ONLY_REASON: Record<View, string> = { pcb: "PCB only", schematic: "Schematic only" }
 

@@ -30,17 +30,20 @@ function shifted(parts: readonly Boxed[], axis: "x" | "y", target: (box: Box) =>
   return offsets
 }
 
-/** Equal gaps between the boxes, in the order of their near edges; the first and the last stay where they are. */
+/**
+ * Equal gaps between the boxes, in the order of their near edges. The ends stay: the box with the smallest near edge,
+ * and the one reaching furthest (a wider earlier box can reach past a later one).
+ */
 function spaced(parts: readonly Boxed[], axis: "x" | "y"): Offsets {
   const [from, to, size] = axis === "x" ? (["minX", "maxX", widthOf] as const) : (["minY", "maxY", heightOf] as const)
   const order = [...parts].sort((a, b) => a.box[from] - b.box[from] || a.name.localeCompare(b.name))
   const first = order[0]
-  const last = order.at(-1)
+  const last = order.slice(1).reduce<Boxed | undefined>((far, part) => (!far || part.box[to] > far.box[to] ? part : far), undefined)
   if (!first || !last || order.length < 3) return new Map()
   const gap = (last.box[to] - first.box[from] - order.reduce((sum, { box }) => sum + size(box), 0)) / (order.length - 1)
   const offsets = new Map<string, Point>()
   let edge = first.box[to]
-  for (const { name, box } of order.slice(1, -1)) {
+  for (const { name, box } of order.slice(1).filter((part) => part !== last)) {
     const delta = roundPosition(edge + gap - box[from])
     if (delta !== 0) offsets.set(name, axis === "x" ? { x: delta, y: 0 } : { x: 0, y: delta })
     edge += gap + size(box)
@@ -108,15 +111,20 @@ export function alignPlan(
   blockerFor: (name: string) => string | null,
 ): GroupEdit | { message: string } {
   const placed = inView(layout)
-  const away = names.filter((name) => !placed(name)).map((name) => `${name} is not in this view`)
-  const drawn = layout.boxes.filter((part) => names.includes(part.name) && placed(part.name))
+  const drawn = layout.boxes.filter((part) => names.includes(part.name))
+  const boxed = new Set(drawn.map((part) => part.name))
+  const away = names.filter((name) => !boxed.has(name)).map((name) => `${name} ${placed(name) ? "has no box in" : "is not in"} this view`)
   const needed = partsNeeded(command)
   if (drawn.length < needed) {
     const why = away.length > 0 ? ` (${away.join("; ")})` : ""
     return { message: `${needed === 2 ? "Align" : "Distribute"} needs ${needed} or more parts in this view${why}.` }
   }
   const offsets = layoutOffsets(command, drawn)
-  const stuck = [...offsets.keys()].flatMap((name) => blockerFor(name) ?? [])
+  const kept = command.startsWith("distribute") ? " and kept its place; others may overlap it" : ""
+  const stuck = [...offsets.keys()].flatMap((name) => {
+    const reason = blockerFor(name)
+    return reason === null ? [] : `${reason}${kept}`
+  })
   const parts = drawn.map((part) => part.name).filter((name) => offsets.has(name) && blockerFor(name) === null)
   const skipped = [...away, ...stuck]
   if (parts.length === 0) return { message: skipped.length > 0 ? `Nothing moves. ${skipped.join("; ")}.` : "The parts are already there." }
