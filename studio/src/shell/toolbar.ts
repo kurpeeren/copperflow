@@ -6,7 +6,7 @@ import { DRAW_COMMANDS, DRAW_TOOL_COMMAND } from "../pcb/draw-commands.js"
 import type { DrawTool } from "../pcb/draw-tools.js"
 import type { CommandId, Toggles } from "./menus.js"
 
-export type ToolIconName = "undo" | "redo" | "zoomIn" | "zoomOut" | "fit" | "fitSelection" | "fitArea" | "component" | "wire" | "netLabel" | "ground" | "power" | "rotate" | "rotateRight" | "snap" | "check" | "grid" | "alignLeft" | "distributeH" | "polyline" | "arc" | "circle" | "rectangle" | "text"
+export type ToolIconName = "undo" | "redo" | "zoomIn" | "zoomOut" | "fit" | "fitSelection" | "fitArea" | "component" | "wire" | "netLabel" | "ground" | "power" | "rotate" | "rotateRight" | "snap" | "check" | "grid" | "alignLeft" | "distributeH" | "polyline" | "arc" | "circle" | "rectangle" | "text" | "bus"
 
 interface ToolbarButtonBase {
   id: string
@@ -42,6 +42,7 @@ export const TOOLBARS: Readonly<Record<View, readonly ToolbarButton[]>> = {
     ...GRID(2),
     button("component", "Component (Shift+F)", "component", "placeComponent", 3),
     button("wire", "Wire (Alt+W)", "wire", "wire", 3),
+    button("bus", "Bus (Alt+B)", "bus", "drawBus", 3),
     button("netLabel", "Net label (Alt+N)", "netLabel", "netLabel", 3),
     button("ground", "Ground flag", "ground", "groundFlag", 3),
     button("power", "Power flag", "power", "powerFlag", 3),

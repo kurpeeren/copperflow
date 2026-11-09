@@ -31,7 +31,7 @@ export function DrawingView({ design, circuit, drawing: id, locked, actions, run
   const blocker = drawingBlocker(circuit.model, locked, id)
   const rows = drawingRows(drawing, drawingInfo(circuit.model, id), blocker === null)
   const commit = (key: string, text: string): Promise<boolean> => {
-    const result = drawingFieldEdit(drawing, key, text)
+    const result = drawingFieldEdit(drawing, key, text, circuit.model)
     if ("message" in result) {
       actions.notify(result.message)
       return Promise.resolve(false)
@@ -115,6 +115,7 @@ function TypedField({ id, row, onCommit }: { id: string; row: DrawingRow; onComm
         id={id}
         value={draft}
         placeholder={row.placeholder}
+        title={row.hint}
         spellCheck={false}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}

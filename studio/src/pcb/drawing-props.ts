@@ -1,10 +1,12 @@
 // What Properties shows for one drawing and what its fields write: the kind and name, then the props of its kind
 // (position, size or points, line width, line style, colour, fill, text and font size), each as the file has it (a
-// drawing in a group shows its own props, not where the group puts it). A typed value is checked as the engine would,
-// then written with one setDrawingProps, so each field's commit is one history entry. Pure; InspectorDrawing.tsx draws it.
-import type { DrawingInfo, DrawingValue, Edit } from "../../../src/core/types.js"
+// drawing in a group shows its own props, not where the group puts it). A bus's name can be typed (a rename) and its
+// members are listed. A typed value is checked as the engine would, then written with one setDrawingProps, so each
+// field's commit is one history entry. Pure; InspectorDrawing.tsx draws it.
+import type { CircuitModel, DrawingInfo, DrawingValue, Edit } from "../../../src/core/types.js"
 import { LINE_STYLES, TEXT_ANCHORS } from "../../../src/engine/drawing-kinds.js"
 import type { Point, SchematicDrawing } from "../../../src/engine/model.js"
+import { busNameProblem, membersText } from "./bus-tool.js"
 import { KIND_WORDS } from "./drawing-actions.js"
 import { roundPosition } from "./geometry.js"
 import { schematicTheme } from "./schematic-theme.js"
@@ -25,6 +27,8 @@ export interface DrawingRow {
   placeholder?: string
   /** Whether it can be typed in: the drawing may be changed and the prop is a literal. */
   editable: boolean
+  /** What the field does, shown as its tooltip. */
+  hint?: string
 }
 
 type NumberRule = "any" | "positive" | "nonNegative"
@@ -93,12 +97,21 @@ function propRow(drawing: SchematicDrawing, info: DrawingInfo | undefined, key: 
   return { key, label: spec.label, value, field: spec.field, ...options, ...placeholder, editable: canEdit && info !== undefined && !expression }
 }
 
+export const BUS_RENAME_HINT = "Renames this piece of the bus only; its wires keep their nets"
+
+/** The name row: a bus's name is a field while its name is a literal; it is followed by the bus's members. */
+function nameRows(drawing: SchematicDrawing, info: DrawingInfo | undefined, canEdit: boolean): DrawingRow[] {
+  if (drawing.kind !== "bus") return [{ key: "name", label: "Name", value: drawing.name ?? "(none)", field: "static", editable: false }]
+  const name: DrawingRow = { key: "name", label: "Name", value: drawing.name, field: "text", editable: canEdit && info?.name !== undefined, hint: BUS_RENAME_HINT }
+  return [name, { key: "members", label: "Members", value: membersText(drawing.members), field: "static", editable: false }]
+}
+
 /** Every row for one drawing; `canEdit` is false while it is locked or read-only. */
 export function drawingRows(drawing: SchematicDrawing, info: DrawingInfo | undefined, canEdit: boolean): DrawingRow[] {
   const line = info?.line ?? drawing.source.line
   return [
     { key: "kind", label: "Kind", value: `${KIND_TITLES[drawing.kind]}, line ${line}`, field: "static", editable: false },
-    { key: "name", label: "Name", value: drawing.name ?? "(none)", field: "static", editable: false },
+    ...nameRows(drawing, info, canEdit),
     ...KEYS[drawing.kind].map((key) => propRow(drawing, info, key, canEdit)),
   ]
 }
@@ -132,8 +145,19 @@ function parseField(spec: Spec, text: string): DrawingValue | { message: string 
   return text === "" ? { message: `${spec.label} cannot be empty` } : text
 }
 
-/** The edit a field's commit writes, with its line in the history, or why the typed value is refused. */
-export function drawingFieldEdit(drawing: SchematicDrawing, key: string, text: string): { edit: Edit; summary: string } | { message: string } {
+type FieldEdit = { edit: Edit; summary: string } | { message: string }
+
+/** A bus's new name, checked as the engine checks it against the parts and drawings of `model`. */
+function busRename(drawing: Extract<SchematicDrawing, { kind: "bus" }>, text: string, model: Pick<CircuitModel, "parts" | "drawings">): FieldEdit {
+  const name = text.trim()
+  const problem = busNameProblem(model, name, drawing.id)
+  if (problem) return { message: problem }
+  return { edit: { kind: "setDrawingProps", id: drawing.id, props: { name } }, summary: `rename the bus ${drawing.name} to ${name}` }
+}
+
+/** The edit a field's commit writes, with its line in the history, or why the typed value is refused. `model` checks a bus's new name. */
+export function drawingFieldEdit(drawing: SchematicDrawing, key: string, text: string, model?: Pick<CircuitModel, "parts" | "drawings">): FieldEdit {
+  if (key === "name" && drawing.kind === "bus" && model) return busRename(drawing, text, model)
   const spec = SPECS[key]
   if (!spec) return { message: `${key} cannot be set here` }
   const value = parseField(spec, text)

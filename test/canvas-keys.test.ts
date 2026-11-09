@@ -393,9 +393,9 @@ describe("rows that are placed parts (the Component tree)", () => {
 })
 
 describe("the drawing tool keys", () => {
-  const tools = [["l", "drawPolyline"], ["r", "drawRectangle"], ["c", "drawCircle"], ["a", "drawArc"], ["t", "drawText"]] as const
+  const tools = [["b", "drawBus"], ["l", "drawPolyline"], ["r", "drawRectangle"], ["c", "drawCircle"], ["a", "drawArc"], ["t", "drawText"]] as const
 
-  test("Alt+L, Alt+R, Alt+C, Alt+A and Alt+T arm the drawing tools on the schematic only, by the physical key", () => {
+  test("Alt+B, Alt+L, Alt+R, Alt+C, Alt+A and Alt+T arm the bus and drawing tools on the schematic only, by the physical key", () => {
     for (const [letter, action] of tools) {
       const code = `Key${letter.toUpperCase()}`
       expect(keyAction(key(letter, { altKey: true, code }), SCHEMATIC)).toEqual({ action, preventDefault: true })

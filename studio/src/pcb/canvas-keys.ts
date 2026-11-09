@@ -6,6 +6,7 @@ import type { View } from "./positions.js"
 export type KeyActionName =
   | "wire"
   | "armNetLabel"
+  | "drawBus"
   | "drawPolyline"
   | "drawRectangle"
   | "drawCircle"
@@ -133,10 +134,11 @@ export function keyInput(event: KeyboardEvent): KeyInput {
 /** The letter of an Alt combination, from the physical key when there is one. */
 const altLetter = (input: KeyInput): string => (input.code?.startsWith("Key") ? input.code.slice(3).toLowerCase() : input.key.toLowerCase())
 
-/** The schematic's Alt combinations, by the physical key's letter: the wire, the net label and the drawing tools. */
+/** The schematic's Alt combinations, by the physical key's letter: the wire, the net label, the bus and the drawing tools. */
 const SHEET_ALT_KEYS: ReadonlyMap<string, KeyActionName> = new Map([
   ["w", "wire"],
   ["n", "armNetLabel"],
+  ["b", "drawBus"],
   ["l", "drawPolyline"],
   ["r", "drawRectangle"],
   ["c", "drawCircle"],

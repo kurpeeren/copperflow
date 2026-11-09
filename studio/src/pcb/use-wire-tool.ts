@@ -1,5 +1,5 @@
-// The schematic's W wire tool: what is under the pointer, the wire being drawn, its keys and the
-// wires waiting for their build.
+// The schematic's W wire tool: what is under the pointer, the wire being drawn, its keys, the list of a bus's
+// members a wire that meets a bus picks from, and the wires waiting for their build.
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react"
 import type { Design, Edit } from "../api"
 import type { Actions } from "../App"
@@ -7,7 +7,7 @@ import { isCanvasKey } from "./canvas-common"
 import { keyAction, keyInput } from "./canvas-keys"
 import { snapPoint, type Camera, type Point } from "./geometry"
 import { wirePath } from "./wire-path"
-import { endAt, freePin, namedNetsJoined, pinAt, sameEnd, wireEdits, type WireEnd } from "./wire-tool"
+import { endAt, freePin, memberEnd, namedNetsJoined, pinAt, sameEnd, wireEdits, type WireEnd } from "./wire-tool"
 
 /**
  * A wire being drawn: where it starts, the pin it starts on if any, the corners clicked so far (on the grid)
@@ -29,6 +29,15 @@ const legBends = (drawing: Drawing): boolean[] => [...drawing.bends, drawing.fli
 
 /** The wire as it is saved and drawn, from its start through the clicked corners to `to`. */
 const drawnPath = (drawing: Drawing, to: Point): Point[] => wirePath([drawing.start.at, ...drawing.corners, to], legBends(drawing))
+
+/**
+ * A bus a wire meets, waiting for one of its members to be picked from the list: the wire then starts at that member
+ * (`start`), or the wire being drawn ends there (`end`).
+ */
+export interface Picking {
+  bus: WireEnd
+  role: "start" | "end"
+}
 
 /** What is under the pointer: the end a wire would use there, and the pin, if it is a pin. */
 export interface Under {
@@ -102,13 +111,19 @@ function usePendingWires(builtFrom: number) {
   return { visible, add, drop }
 }
 
-/** W starts a wire at the pin under the pointer, or turns wiring on and off; Esc cancels; Backspace removes a corner; Space flips the bend. */
-function useWireKeys(
-  drawing: Drawing | null,
-  setDrawing: Dispatch<SetStateAction<Drawing | null>>,
-  setWiring: Dispatch<SetStateAction<boolean>>,
-  underRef: MutableRefObject<Under>,
-): void {
+interface WireKeys {
+  drawing: Drawing | null
+  setDrawing: Dispatch<SetStateAction<Drawing | null>>
+  setWiring: Dispatch<SetStateAction<boolean>>
+  underRef: MutableRefObject<Under>
+  /** Starts a wire at the end under the pointer; a bus asks for its member first. */
+  start(end: WireEnd, pin: string | undefined): void
+  /** Esc: closes the member list, else drops the wire being drawn, else stops wiring. */
+  escape(): void
+}
+
+/** W starts a wire at the pin (or bus) under the pointer, or turns wiring on and off; Esc cancels; Backspace removes a corner; Space flips the bend. */
+function useWireKeys({ drawing, setDrawing, setWiring, underRef, start, escape }: WireKeys): void {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const hit = keyAction(keyInput(event), { view: "schematic", drawing: drawing !== null })
@@ -116,7 +131,7 @@ function useWireKeys(
         if (hit.preventDefault) event.preventDefault()
         if (drawing) return
         const { end, pin } = underRef.current
-        if (end) return setDrawing(newDrawing(end, pin))
+        if (end) return start(end, pin)
         return setWiring((on) => !on)
       }
       // Backspace goes by the canvas key rule, so it does nothing in a field or on a focused table row or list.
@@ -129,11 +144,11 @@ function useWireKeys(
         event.preventDefault()
         return setDrawing({ ...drawing, flip: !drawing.flip })
       }
-      if (event.key === "Escape" && isCanvasKey(event)) return drawing ? setDrawing(null) : setWiring(false)
+      if (event.key === "Escape" && isCanvasKey(event)) escape()
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [drawing, setDrawing, setWiring, underRef])
+  }, [drawing, setDrawing, setWiring, underRef, start, escape])
 }
 
 /** The wire being drawn as it would run to the pointer: to the end under it, else to the grid point under it. */
@@ -144,48 +159,83 @@ function usePreview(drawing: Drawing | null, under: Under, cursor: Point | undef
   }, [drawing, under, cursor, step, snap])
 }
 
-/**
- * Wires are drawn the way KiCad users expect: click a free pin, or press W over any pin, then click
- * a pin, a net label or a wire to connect; clicks on the sheet place corners; Esc or a right click cancels.
- */
-export function useWireTool(input: WireInput) {
-  const { design, actions, camera, step, snap } = input
-  const [wiring, setWiring] = useState(false)
-  const [drawing, setDrawing] = useState<Drawing | null>(null)
-  const { under, setUnder, underRef } = useUnder(input.buildId)
-  const pending = usePendingWires(input.builtFrom)
-  useWireKeys(drawing, setDrawing, setWiring, underRef)
-  const preview = usePreview(drawing, under, input.cursor, step, snap)
-  const activePins = useMemo(() => [drawing?.pin, under.pin].filter((id): id is string => id !== undefined), [drawing, under])
+/** What is under `world`: any pin, label, bus or wire while wiring or drawing (`active`), else only a pin. */
+function underAtPoint(design: Design, camera: Camera | undefined, active: boolean, world: Point): Under {
+  if (!camera) return {}
+  const reach = PORT_HIT_PX / camera.scale
+  const pin = pinAt(design, world, reach)?.pin
+  if (!active && !pin) return {}
+  const end = endAt(design, world, reach)
+  return { ...(end ? { end } : {}), ...(pin ? { pin } : {}) }
+}
 
-  /** Any pin, label or wire while wiring or drawing, else only a pin. */
-  const underAt = (world: Point): Under => {
-    if (!camera) return {}
-    const reach = PORT_HIT_PX / camera.scale
-    const pin = pinAt(design, world, reach)?.pin
-    if (!wiring && !drawing && !pin) return {}
-    const end = endAt(design, world, reach)
-    return { ...(end ? { end } : {}), ...(pin ? { pin } : {}) }
+/** The bus member list: opened at a bus (a one-member bus needs none), then the member picked starts or ends the wire. */
+function usePicking(drawing: Drawing | null, setDrawing: (drawing: Drawing) => void, finish: (drawing: Drawing, target: WireEnd) => void) {
+  const [picking, setPicking] = useState<Picking | null>(null)
+  const use = (bus: WireEnd, role: Picking["role"], member: string) => {
+    const end = memberEnd(bus, member)
+    if (role === "start") setDrawing(newDrawing(end, undefined))
+    else if (drawing) finish(drawing, end)
   }
-  const finish = (current: Drawing, target: WireEnd) => {
+  const open = (bus: WireEnd, role: Picking["role"]) => {
+    const [only, ...more] = bus.members ?? []
+    if (only !== undefined && more.length === 0) return use(bus, role, only)
+    setPicking({ bus, role })
+  }
+  const pick = (member: string) => {
+    if (!picking) return
+    setPicking(null)
+    use(picking.bus, picking.role, member)
+  }
+  const cancelPick = useCallback(() => setPicking(null), [])
+  /** Starts a wire at `end`; a bus asks for its member first. */
+  const start = (end: WireEnd, pin: string | undefined) => (end.members ? open(end, "start") : setDrawing(newDrawing(end, pin)))
+  return { picking, open, pick, cancelPick, start }
+}
+
+/** Sends a finished wire and draws it dashed until its build; a wire that cannot be written says why. */
+function useFinish(design: Design, actions: Actions, pending: ReturnType<typeof usePendingWires>, setDrawing: (drawing: Drawing | null) => void) {
+  return (current: Drawing, target: WireEnd) => {
     setDrawing(null)
     const plan = planWire(design, current, target)
     if (!("edits" in plan)) return plan.notice && actions.notify(plan.notice)
     const sent = pending.add(plan.points)
     void actions.edit(plan.edits, plan.summary).then((ok) => ok || pending.drop(sent))
   }
+}
+
+/**
+ * Wires are drawn the way KiCad users expect: click a free pin, or press W over any pin, then click
+ * a pin, a net label, a bus or a wire to connect; clicks on the sheet place corners; Esc or a right click cancels.
+ * A wire that meets a bus picks one of the bus's members from a small list and is written to that member's net.
+ */
+export function useWireTool(input: WireInput) {
+  const { design, camera, step, snap } = input
+  const [wiring, setWiring] = useState(false)
+  const [drawing, setDrawing] = useState<Drawing | null>(null)
+  const { under, setUnder, underRef } = useUnder(input.buildId)
+  const pending = usePendingWires(input.builtFrom)
+  const finish = useFinish(design, input.actions, pending, setDrawing)
+  const picks = usePicking(drawing, setDrawing, finish)
+  const escape = () => (picks.picking ? picks.cancelPick() : drawing ? setDrawing(null) : setWiring(false))
+  useWireKeys({ drawing, setDrawing, setWiring, underRef, start: picks.start, escape })
+  const aimed = useMemo(() => (picks.picking?.role === "end" ? { end: picks.picking.bus } : under), [picks.picking, under])
+  const preview = usePreview(drawing, aimed, input.cursor, step, snap)
+  const activePins = useMemo(() => [drawing?.pin, under.pin].filter((id): id is string => id !== undefined), [drawing, under])
+  const underAt = (world: Point): Under => underAtPoint(design, camera, wiring || drawing !== null, world)
   const press = (event: { button: number; shiftKey: boolean }, world: Point) =>
-    pressWire({ design, camera, wiring, drawing, setDrawing, step, snap, finish, underAt }, event, world)
+    pressWire({ design, camera, wiring, drawing, setDrawing, step, snap, finish, underAt, picks }, event, world)
   const cancel = useCallback(() => {
     setWiring(false)
     setDrawing(null)
-  }, [])
+    picks.cancelPick()
+  }, [picks.cancelPick])
   const overPin = under.end !== undefined && (wiring || drawing !== null || (under.pin !== undefined && freePin(design, under.pin)))
   return {
     wiring,
     toggleWiring: () => {
+      cancel()
       setWiring(!wiring)
-      setDrawing(null)
     },
     /** Stops wiring and drops a wire in progress, e.g. when another tool takes over. */
     cancel,
@@ -198,6 +248,10 @@ export function useWireTool(input: WireInput) {
     press,
     hover: (world: Point) => setUnder(underAt(world)),
     leave: () => setUnder({}),
+    /** The bus whose members are listed, if the list is open. */
+    picking: picks.picking,
+    pick: picks.pick,
+    cancelPick: picks.cancelPick,
   }
 }
 
@@ -211,11 +265,17 @@ interface PressContext {
   snap: boolean
   finish(drawing: Drawing, target: WireEnd): void
   underAt(world: Point): Under
+  picks: Pick<ReturnType<typeof usePicking>, "picking" | "open" | "cancelPick" | "start">
 }
 
 /** Handles a press for the wire tool; false when the press is not the wire tool's, so the canvas can pan or drag. */
 function pressWire(c: PressContext, event: { button: number; shiftKey: boolean }, world: Point): boolean {
   if (!c.camera) return false
+  // A press on the sheet while the member list is open only closes the list.
+  if (c.picks.picking) {
+    c.picks.cancelPick()
+    return true
+  }
   if (event.button === 2 && c.drawing) {
     c.setDrawing(null)
     return true
@@ -223,13 +283,14 @@ function pressWire(c: PressContext, event: { button: number; shiftKey: boolean }
   if (event.button === 1 || event.button === 2 || event.shiftKey) return false
   if (c.drawing) {
     const target = endAt(c.design, world, PORT_HIT_PX / c.camera.scale)
-    if (target) c.finish(c.drawing, target)
+    if (target?.members) c.picks.open(target, "end")
+    else if (target) c.finish(c.drawing, target)
     else addCorner(c.drawing, world, c, c.setDrawing)
     return true
   }
   const { end, pin } = c.underAt(world)
   if (!end || (!c.wiring && !(pin && freePin(c.design, pin)))) return false
-  c.setDrawing(newDrawing(end, pin))
+  c.picks.start(end, pin)
   return true
 }
 

@@ -19,6 +19,11 @@ export interface WireEnd {
   net?: string
   /** The pin it stands for, e.g. `U1.pin4`, when it is a pin or the first pin of an unnamed net's wire. */
   pin?: string
+  /**
+   * A bus: the nets it stands for, one of which is picked before anything is written (memberEnd). Its selector is
+   * `bus:<id>`, which no trace can name.
+   */
+  members?: readonly string[]
 }
 
 /** A ground or power symbol is small; pointing near it counts. */
@@ -88,12 +93,43 @@ export function pinAt(design: Design, p: Point, maxDistance: number): { pin: str
   return best && { pin: best.pin, at: best.at }
 }
 
-/** The pin, net label or wire nearest to `p` within `maxDistance`, in that order of preference. */
+/** The pin, net label, bus or wire nearest to `p` within `maxDistance`, in that order of preference. */
 export function endAt(design: Design, p: Point, maxDistance: number): WireEnd | undefined {
   const hit = pinAt(design, p, maxDistance)
   const pin = hit && allPins(design).find((candidate) => candidate.id === hit.pin)
   if (hit && pin) return pinEnd(design, pin, hit.at)
-  return labelEnd(design, p, maxDistance) ?? wireEnd(design, p, maxDistance)
+  return labelEnd(design, p, maxDistance) ?? busEnd(design, p, maxDistance) ?? wireEnd(design, p, maxDistance)
+}
+
+/** The point of a line (a wire's or a bus's points) nearest to `p`, and how far it is. */
+function nearestOnLine(points: readonly Point[], p: Point): { at: Point; d: number } | undefined {
+  let best: { at: Point; d: number } | undefined
+  for (let i = 1; i < points.length; i++) {
+    const [a, b] = [points[i - 1], points[i]]
+    if (!a || !b) continue
+    const at = closestOnSegment(p, a, b)
+    const d = distance(at, p)
+    if (!best || d < best.d) best = { at, d }
+  }
+  return best
+}
+
+const round = (value: number): number => Math.round(value * 10000) / 10000 || 0
+
+/** The bus nearest to `p` within `maxDistance`, met at the nearest point of its line. */
+function busEnd(design: Design, p: Point, maxDistance: number): WireEnd | undefined {
+  let best: { id: string; name: string; members: readonly string[]; at: Point; d: number } | undefined
+  for (const drawing of design.schematic.drawings) {
+    if (drawing.kind !== "bus") continue
+    const near = nearestOnLine(drawing.points, p)
+    if (near && near.d <= maxDistance && (!best || near.d < best.d)) best = { id: drawing.id, name: drawing.name, members: drawing.members, ...near }
+  }
+  return best && { selector: `bus:${best.id}`, at: { x: round(best.at.x), y: round(best.at.y) }, label: best.name, members: best.members }
+}
+
+/** The member picked from a bus end: its net, met where the wire meets the bus, so the label sits on the bus. */
+export function memberEnd(bus: WireEnd, member: string): WireEnd {
+  return { selector: `net.${member}`, at: bus.at, label: member, net: member }
 }
 
 function labelEnd(design: Design, p: Point, maxDistance: number): WireEnd | undefined {
@@ -117,13 +153,8 @@ function distanceToLabel(label: NetLabel, p: Point): number {
 function wireEnd(design: Design, p: Point, maxDistance: number): WireEnd | undefined {
   let best: { net: string; at: Point; d: number } | undefined
   for (const wire of design.schematic.wires) {
-    for (let i = 1; i < wire.points.length; i++) {
-      const [a, b] = [wire.points[i - 1], wire.points[i]]
-      if (!a || !b) continue
-      const at = closestOnSegment(p, a, b)
-      const d = distance(at, p)
-      if (d <= maxDistance && (!best || d < best.d)) best = { net: wire.net, at, d }
-    }
+    const near = nearestOnLine(wire.points, p)
+    if (near && near.d <= maxDistance && (!best || near.d < best.d)) best = { net: wire.net, ...near }
   }
   return best && netEnd(design, best.net, best.at)
 }
@@ -190,7 +221,7 @@ export function savedCorners(start: WireEnd, end: WireEnd, corners: Point[], ben
 
 /** What the W tool writes: one addTrace, or nothing when the ends are already on one net or cannot be addressed. */
 export function wireEdits(design: Design, start: WireEnd, end: WireEnd, corners: Point[], bends: Bends = []): Edit[] {
-  if (!addressable(start.selector) || !addressable(end.selector)) return []
+  if (start.members || end.members || !addressable(start.selector) || !addressable(end.selector)) return []
   const [a, b] = [netOfEnd(design, start), netOfEnd(design, end)]
   if (sameEnd(start, end) || (a !== undefined && a.id === b?.id)) return []
   const hints = savedCorners(start, end, corners, bends)

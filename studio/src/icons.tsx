@@ -133,6 +133,13 @@ const wire = (p: IconProps) => (
     <path d="M7 18h6V6h4" />
   </ToolIcon>
 )
+/** A thick bus line with two thin wires branching off it. */
+const bus = (p: IconProps) => (
+  <ToolIcon {...p}>
+    <path d="M3 15h18" strokeWidth="3" />
+    <path d="M7 15l3-7M14 15l3-7" />
+  </ToolIcon>
+)
 const netLabel = (p: IconProps) => (
   <ToolIcon {...p}>
     <path d="M3 12h5" />
@@ -223,4 +230,4 @@ const check = (p: IconProps) => (
 )
 
 /** The toolbar's icons, by the name toolbar.ts gives each button. */
-export const TOOL_ICONS: Record<ToolIconName, (props: IconProps) => React.JSX.Element> = { undo, redo, zoomIn, zoomOut, fit, fitSelection, fitArea, component, wire, netLabel, ground, power, rotate, rotateRight, snap, check, grid, alignLeft, distributeH, polyline, arc, circle, rectangle, text }
+export const TOOL_ICONS: Record<ToolIconName, (props: IconProps) => React.JSX.Element> = { undo, redo, zoomIn, zoomOut, fit, fitSelection, fitArea, component, wire, netLabel, ground, power, rotate, rotateRight, snap, check, grid, alignLeft, distributeH, polyline, arc, circle, rectangle, text, bus }

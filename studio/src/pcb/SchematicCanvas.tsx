@@ -50,6 +50,7 @@ import { useSheetDrawings } from "./use-sheet-drawings"
 import type { DrawCommand } from "./draw-commands"
 import { drawHint } from "./draw-tools"
 import { DrawTextInput } from "./DrawText"
+import { BusMemberList } from "./BusMemberList"
 import { useDrawTools } from "./use-draw-tools"
 
 const EMPTY_SHEET_CAMERA: Camera = { cx: 0, cy: 0, scale: 60 }
@@ -234,7 +235,7 @@ function SheetView({ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave,
         ref={canvasRef}
         style={{ width: size.width, height: size.height }}
         role="img"
-        aria-label="Schematic. Drag symbols, net labels and drawings to move them, click a wire to select it, Shift or Ctrl click parts, wires, net labels and drawings to add them, drag a wire or its corner handles to reshape it, drag the background to select, drag with the right button to pan, scroll to zoom. Double click a net label to rename its net. Click a free pin or press W over a pin to draw a wire. Place → Polyline, Arc, Circle, Rectangle and Text draw on the sheet."
+        aria-label="Schematic. Drag symbols, net labels and drawings to move them, click a wire to select it, Shift or Ctrl click parts, wires, net labels and drawings to add them, drag a wire or its corner handles to reshape it, drag the background to select, drag with the right button to pan, scroll to zoom. Double click a net label to rename its net. Click a free pin or press W over a pin to draw a wire. Place → Bus draws a bus, and a wire that ends on a bus picks one of its members. Place → Polyline, Arc, Circle, Rectangle and Text draw on the sheet."
       />
       {hint && (
         <div className="canvas-top">
@@ -243,6 +244,7 @@ function SheetView({ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave,
       )}
       <NameInput palette={palette} camera={camera} size={size} />
       <DrawTextInput draw={draw} camera={camera} size={size} />
+      <BusMemberList wire={wire} camera={camera} size={size} />
       <CanvasStatus cursor={cursor} zoom={(camera ?? EMPTY_SHEET_CAMERA).scale} detail={wire.under.end?.label} gesture={gesture} rotateHeld={rotateHeld} snap={snap} />
       {empty && <p className="empty">This schematic has no parts yet.</p>}
     </div>
@@ -279,8 +281,9 @@ function useRefitOnFirstDrawing(sheet: Sheet, fit: () => void): void {
 }
 
 function wireHint(wire: WireTool): string | undefined {
+  if (wire.picking) return `Pick the member of ${wire.picking.bus.label} to connect: arrow keys and Enter, or a click. Esc closes the list.`
   if (wire.drawing) {
-    return `From ${wire.drawing.start.label}: click the sheet for a corner, then a pin, a wire or a net label to finish. Backspace removes a corner, Esc cancels.`
+    return `From ${wire.drawing.start.label}: click the sheet for a corner, then a pin, a wire, a bus or a net label to finish. Backspace removes a corner, Esc cancels.`
   }
   return wire.wiring ? "Click a pin to start a wire. Esc stops wiring." : undefined
 }

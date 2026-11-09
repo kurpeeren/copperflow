@@ -251,8 +251,14 @@ describe("Place → the drawing tools", () => {
     for (const [command, action] of [["drawPolyline", "drawPolyline"], ["drawText", "drawText"]] as const) expect(COMMAND_KEY_ACTIONS[command]).toBe(action)
   })
 
+  test("Bus runs after Note box, with Alt+B, and the menu keeps its length", () => {
+    const place = MENUS.find((menu) => menu.title === "Place")?.entries ?? []
+    expect(place).toContainEqual({ label: "Bus", command: "drawBus", shortcut: "Alt+B" })
+    expect(COMMAND_KEY_ACTIONS.drawBus).toBe("drawBus")
+  })
+
   test("Help → Keys lists the tools' keys and the keys while a polyline is drawn", () => {
     const keys = shortcutList().map((row) => row.keys)
-    for (const shown of ["Alt+L", "Alt+A", "Alt+C", "Alt+R", "Alt+T", "Enter (while drawing a polyline)"]) expect(keys).toContain(shown)
+    for (const shown of ["Alt+B", "Alt+L", "Alt+A", "Alt+C", "Alt+R", "Alt+T", "Enter (while drawing a polyline)"]) expect(keys).toContain(shown)
   })
 })

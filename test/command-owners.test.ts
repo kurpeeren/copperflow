@@ -61,7 +61,7 @@ describe("command owners", () => {
 
   test("the schematic's tools are the schematic's alone", () => {
     expect(SHEET_COMMANDS.map(commandOwner)).toEqual(SHEET_COMMANDS.map(() => "schematic"))
-    expect(SHEET_COMMANDS).toHaveLength(9)
+    expect(SHEET_COMMANDS).toHaveLength(10)
   })
 
   test("Remove corners is the schematic's, which holds the selected wire; Delete and Highlight net stay the canvas's", () => {
@@ -93,6 +93,6 @@ describe("build status pill", () => {
 
 describe("the drawing tools", () => {
   test("are the schematic's", () => {
-    for (const command of ["drawPolyline", "drawArc", "drawCircle", "drawRectangle", "drawText"] as const) expect([command, commandOwner(command)]).toEqual([command, "schematic"])
+    for (const command of ["drawBus", "drawPolyline", "drawArc", "drawCircle", "drawRectangle", "drawText"] as const) expect([command, commandOwner(command)]).toEqual([command, "schematic"])
   })
 })

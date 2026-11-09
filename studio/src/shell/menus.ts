@@ -31,6 +31,7 @@ export type CommandId =
   | "groundFlag"
   | "powerFlag"
   | "noteBox"
+  | "drawBus"
   | "drawPolyline"
   | "drawArc"
   | "drawCircle"
@@ -142,7 +143,7 @@ export const MENUS: readonly Menu[] = [
       "separator",
       run("Note box", "noteBox"),
       "separator",
-      later("Bus", STAGE_3, "Alt+B"),
+      run("Bus", "drawBus", "Alt+B"),
       later("No connect flag", "Comes with the schematic flags (round 5)"),
       later("Junction", "Comes in round 5; for now junctions are drawn where wires meet", "Alt+J"),
       "separator",
@@ -246,6 +247,7 @@ export const COMMAND_KEY_ACTIONS: Partial<Record<CommandId, KeyActionName>> = {
   placeComponent: "openLibrary",
   wire: "wire",
   netLabel: "armNetLabel",
+  drawBus: "drawBus",
   drawPolyline: "drawPolyline",
   drawArc: "drawArc",
   drawCircle: "drawCircle",

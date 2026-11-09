@@ -8,8 +8,8 @@ const menuByCommand = new Map(MENUS.flatMap(menuItems).flatMap((item) => (item.c
 
 describe("toolbar", () => {
   test("the schematic row is in EasyEDA's order", () => {
-    expect(ids("schematic")).toEqual(["undo", "redo", "zoomIn", "zoomOut", "fit", "fitSelection", "fitArea", "gridStyle", "snap", "component", "wire", "netLabel", "ground", "power", "polyline", "arc", "circle", "rectangle", "text", "rotate", "rotateRight", "alignLeft", "distributeH", "checkDrc"])
-    expect(toolbarGroups("schematic").map((g) => g.length)).toEqual([2, 5, 2, 5, 5, 2, 2, 1])
+    expect(ids("schematic")).toEqual(["undo", "redo", "zoomIn", "zoomOut", "fit", "fitSelection", "fitArea", "gridStyle", "snap", "component", "wire", "bus", "netLabel", "ground", "power", "polyline", "arc", "circle", "rectangle", "text", "rotate", "rotateRight", "alignLeft", "distributeH", "checkDrc"])
+    expect(toolbarGroups("schematic").map((g) => g.length)).toEqual([2, 5, 2, 6, 5, 2, 2, 1])
   })
 
   test("the PCB row is in EasyEDA's order", () => {
@@ -164,6 +164,11 @@ describe("the view tools", () => {
 })
 
 describe("the drawing tools", () => {
+  test("Bus sits beside Wire with its key and shows pressed while armed", () => {
+    expect(TOOLBARS.schematic.find((b) => b.id === "bus")).toMatchObject({ title: "Bus (Alt+B)", icon: "bus", command: "drawBus", group: 3 })
+    expect([isToolCommand("drawBus"), clickAction("drawBus", { active: "drawBus", stop: () => {} })]).toEqual([true, "stop"])
+  })
+
   test("the schematic row has the five drawing tools after the wire and label group, with their keys", () => {
     const shown = TOOLBARS.schematic.filter((b) => ["polyline", "arc", "circle", "rectangle", "text"].includes(b.id))
     expect(shown.map((b) => [b.title, b.icon, b.command])).toEqual([
@@ -182,6 +187,7 @@ describe("the drawing tools", () => {
       expect(clickAction(command, { active: command, stop: () => {} })).toBe("stop")
     }
     expect(drawToolCommand("polyline")).toBe("drawPolyline")
+    expect(drawToolCommand("bus")).toBe("drawBus")
     expect(drawToolCommand("text")).toBe("drawText")
     expect(drawToolCommand(null)).toBeNull()
   })

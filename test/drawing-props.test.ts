@@ -87,8 +87,15 @@ describe("the rows Properties shows for one drawing", () => {
     expect(rows("G2").find((row) => row.key === "y")).toMatchObject({ editable: true })
   })
 
-  test("a bus: its name and points", () => {
-    expect(brief("D[0:7]")).toEqual([["Kind", "Bus, line 10"], ["Name", "D[0:7]"], ["Points", "0, 6; 4, 6"]])
+  test("a bus: its name, which can be typed, its members and its points", () => {
+    expect(brief("D[0:7]")).toEqual([["Kind", "Bus, line 10"], ["Name", "D[0:7]"], ["Members", "D0 … D7, 8 members"], ["Points", "0, 6; 4, 6"]])
+    expect(rows("D[0:7]").find((row) => row.key === "name")).toMatchObject({ field: "text", editable: true, hint: "Renames this piece of the bus only; its wires keep their nets" })
+    expect(rows("D[0:7]").find((row) => row.key === "members")).toMatchObject({ field: "static", editable: false })
+    expect(rows("D[0:7]", false).find((row) => row.key === "name")).toMatchObject({ editable: false })
+  })
+
+  test("other drawings' names only show", () => {
+    expect(rows("G1").find((row) => row.key === "name")).toMatchObject({ field: "static", editable: false })
   })
 
   test("nothing is a field on a locked or read-only drawing, or one the file lacks", () => {
@@ -99,7 +106,7 @@ describe("the rows Properties shows for one drawing", () => {
 
 describe("a field's edit", () => {
   const applied = (id: string, key: string, text: string) => {
-    const result = drawingFieldEdit(drawing(id), key, text)
+    const result = drawingFieldEdit(drawing(id), key, text, model)
     if ("message" in result) throw new Error(result.message)
     return { ...result, source: applyEdits(SOURCE, [result.edit], new Set()) }
   }
@@ -127,5 +134,21 @@ describe("a field's edit", () => {
     expect(drawingFieldEdit(drawing("G1"), "color", "red")).toEqual({ message: 'Colour must be a colour such as "#000080"' })
     expect(drawingFieldEdit(drawing("drawing:path:1"), "points", "0, 4")).toEqual({ message: "Points needs two or more x, y pairs, such as 0, 0; 1, 0" })
     expect(drawingFieldEdit(drawing("G2"), "text", "")).toEqual({ message: "Text cannot be empty" })
+  })
+})
+
+describe("renaming a bus", () => {
+  test("writes setDrawingProps with the name; the bus is rebuilt with the new members", () => {
+    const result = drawingFieldEdit(drawing("D[0:7]"), "name", " A[3:0] ", model)
+    if ("message" in result) throw new Error(result.message)
+    expect(result).toEqual({ edit: { kind: "setDrawingProps", id: "D[0:7]", props: { name: "A[3:0]" } }, summary: "rename the bus D[0:7] to A[3:0]" })
+    const built = buildDesign({ [FILE]: applyEdits(SOURCE, [result.edit], new Set()) }, FILE)
+    expect(built.schematic.drawings.find((one) => one.kind === "bus")).toMatchObject({ id: "A[3:0]", members: ["A3", "A2", "A1", "A0"] })
+  })
+
+  test("a name the engine refuses is refused here with its reason", () => {
+    expect(drawingFieldEdit(drawing("D[0:7]"), "name", "D[0:", model)).toEqual({ message: '"D[0:" is not a valid bus name; use a net name such as "CLK" or a range such as "D[0:7]"' })
+    expect(drawingFieldEdit(drawing("D[0:7]"), "name", "G1", model)).toEqual({ message: "A drawing named G1 already exists" })
+    expect(drawingFieldEdit(drawing("G1"), "name", "G9", model)).toEqual({ message: "name cannot be set here" })
   })
 })

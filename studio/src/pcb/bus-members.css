@@ -1,0 +1,35 @@
+/* The W tool's list of a bus's members, opened where a wire meets a bus (BusMemberList.tsx). */
+.bus-members {
+  position: absolute;
+  z-index: 5;
+  min-width: 80px;
+  max-height: 220px;
+  margin: 0;
+  padding: 2px 0;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--copper);
+  border-radius: 2px;
+  background: var(--panel);
+  font-size: 12px;
+}
+
+.bus-members:focus {
+  outline: none;
+}
+
+.bus-members li {
+  padding: 3px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.bus-members li[aria-selected="true"] {
+  background: var(--copper-wash);
+  color: var(--copper-strong);
+}
+
+.bus-members li:active {
+  background: var(--copper);
+  color: #fff;
+}

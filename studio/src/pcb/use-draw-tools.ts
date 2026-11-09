@@ -1,13 +1,14 @@
-// The schematic's drawing tools (Place → Polyline, Arc, Circle, Rectangle, Text): which one is armed and the shape in
-// progress (draw-tools.ts says what each event does), their commands and keys, the drawings sent and drawn dashed
+// The schematic's drawing tools (Place → Bus, Polyline, Arc, Circle, Rectangle, Text): which one is armed and the shape
+// in progress (draw-tools.ts says what each event does), their commands and keys, the drawings sent and drawn dashed
 // until their build, and the new drawing selected once its build lands. This hook only turns pointer and key events
-// into draw-tools events.
+// into draw-tools events; a bus's name is checked here (bus-tool.ts) before it is sent.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { SchematicDrawing } from "../../../src/engine/model.js"
 import type { CircuitData, Design } from "../api"
 import type { Actions } from "../App"
 import { Selection, type SelectionChange } from "../selection"
 import { useCommands } from "../shell/commands"
+import { busNameProblem, newDrawingId, nextBusName } from "./bus-tool"
 import { escapeDisarms, keyAction, keyInput, type KeyActionName } from "./canvas-keys"
 import { DRAW_COMMAND_TOOL, DRAW_COMMANDS, isDrawCommand, type DrawCommand } from "./draw-commands"
 import { drawingEdit, drawStep, drawSummary, idleState, isDoubleClick, keepsFocus, previewDrawing, sentDrawing, toolPoint, type DrawEvent, type DrawState, type DrawTool, type NewDrawing } from "./draw-tools"
@@ -91,7 +92,7 @@ function useShiftHeld(armed: boolean): boolean {
   return held
 }
 
-/** Alt+L, Alt+A, Alt+C, Alt+R and Alt+T arm a tool; the menu and the toolbar send the same commands. */
+/** Alt+B, Alt+L, Alt+A, Alt+C, Alt+R and Alt+T arm a tool; the menu and the toolbar send the same commands. */
 function useArmKeys(arm: (tool: DrawTool) => void): void {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -169,23 +170,25 @@ function useToolState(onArm: () => void, write: (tool: DrawTool, drawing: NewDra
 }
 
 /**
- * Sends a finished drawing as one edit, draws it dashed until its build, and selects it once the build has it. Names
- * sent stay taken until the circuit has them, so two drawings made before a build never get the same name.
+ * Sends a finished drawing as one edit, draws it dashed until its build, and selects it (by the id the engine will
+ * give it) once the build has it. Names sent stay taken until the circuit has them, so two drawings made before a
+ * build never get the same name; `taken` also tells the bus tool which BUS<n> to offer next.
  */
 function useWrite(input: Input, sent: ReturnType<typeof useSentDrawings>) {
   const { circuit, actions } = input
   const { add, drop } = sent
   const { wait, forget } = useSelectWhenBuilt(input.design, input.onSelect)
   const taken = useRef<string[]>([])
-  return useCallback(
+  const write = useCallback(
     (tool: DrawTool, drawing: NewDrawing) => {
       const { model } = circuit
       taken.current = taken.current.filter((name) => !model.drawings.some((d) => d.name === name || d.id === name))
       const edit = drawingEdit(drawing, model, taken.current)
       const name = edit.name ?? ""
+      const id = newDrawingId(model, name)
       taken.current = [...taken.current, name]
-      const entry = add(sentDrawing(drawing, name))
-      wait(name)
+      const entry = add(sentDrawing(drawing, id))
+      wait(id)
       // A rejected edit counts as a failed one: the dashed drawing, its name and its selection are dropped.
       void actions
         .edit([edit], drawSummary(tool, name))
@@ -194,17 +197,32 @@ function useWrite(input: Input, sent: ReturnType<typeof useSentDrawings>) {
           if (ok) return
           taken.current = taken.current.filter((other) => other !== name)
           drop(entry)
-          forget(name)
+          forget(id)
         })
     },
     [circuit, actions, wait, forget, add, drop],
   )
+  return { write, taken }
+}
+
+/** The field's Enter, and the name a bus's field offers. */
+function fieldActions(state: DrawState | null, send: (event: DrawEvent) => void, model: CircuitData["model"], taken: { current: readonly string[] }) {
+  return {
+    /** A text is written; a bus's name is checked first, and what is wrong with it is returned. */
+    submitText: (text: string): string | undefined => {
+      const problem = state?.tool === "bus" ? busNameProblem(model, text) : undefined
+      if (!problem) send({ type: "text", text })
+      return problem
+    },
+    /** The next free BUS<n>. */
+    busName: () => nextBusName(model, taken.current),
+  }
 }
 
 export function useDrawTools(input: Input) {
   const { camera, cursor, step, snap } = input
   const sent = useSentDrawings(input.builtFrom)
-  const write = useWrite(input, sent)
+  const { write, taken } = useWrite(input, sent)
   const { state, send, arm, disarm } = useToolState(input.onArm, write)
   const shift = useShiftHeld(state !== null)
   const lastPress = useRef<{ at: Point; time: number }>(undefined)
@@ -240,7 +258,7 @@ export function useDrawTools(input: Input) {
     release: (world: Point) => {
       if (state) send({ type: "release", at: toolPoint(world, step, snap) })
     },
-    submitText: (text: string) => send({ type: "text", text }),
+    ...fieldActions(state, send, input.circuit.model, taken),
     cancelText: () => send({ type: "cancel" }),
     /** The shape in progress and the drawings waiting for their build, drawn dashed. */
     pending,

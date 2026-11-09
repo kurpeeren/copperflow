@@ -1,25 +1,28 @@
-// The schematic's drawing tools (Place → Polyline, Arc, Circle, Rectangle, Text) as plain data: a tool's state, what
+// The schematic's drawing tools (Place → Bus, Polyline, Arc, Circle, Rectangle, Text) as plain data: a tool's state, what
 // each event does to it, the drawing it writes, the dashed preview of the shape in progress and the hint. The hook
 // (use-draw-tools.ts) only turns pointer and key events into these events.
 // Only types come from the engine: its runtime modules reach Node-only code the Studio bundle cannot hold.
 import type { CircuitModel, DrawingValue, Edit } from "../../../src/core/types.js"
 import { nextDrawingName } from "../../../src/core/drawing-names.js"
+import { busMembers } from "../../../src/engine/drawing-kinds.js"
 import type { Point, SchematicDrawing } from "../../../src/engine/model.js"
 import { snapPoint } from "./geometry.js"
 import { squarePath } from "./wire-path.js"
 
-export type DrawTool = "polyline" | "rectangle" | "circle" | "arc" | "text"
+export type DrawTool = "bus" | "polyline" | "rectangle" | "circle" | "arc" | "text"
 
 /**
  * An armed tool and the clicks of the shape in progress (on the grid while Snap is on): a polyline's corners, a
  * rectangle's first corner, a circle's centre, an arc's centre and start, a text's place. No points: waiting for the
- * first click. `flip` turns the bend of a polyline's squared leg; `dragging` is a rectangle's first corner still held.
+ * first click. A bus is drawn as a polyline. `flip` turns the bend of a polyline's squared leg; `dragging` is a
+ * rectangle's first corner still held; `naming` is a finished bus waiting for its name in the field.
  */
 export interface DrawState {
   tool: DrawTool
   points: readonly Point[]
   flip: boolean
   dragging: boolean
+  naming?: boolean
 }
 
 export type DrawEvent =
@@ -33,12 +36,14 @@ export type DrawEvent =
   | { type: "flip" }
   /** Esc or a right click. */
   | { type: "cancel" }
-  /** Enter in the text field. */
+  /** Enter in the text field, or in a bus's name field. */
   | { type: "text"; text: string }
 
 /** What a finished shape writes, before it is named. */
 export interface NewDrawing {
-  tag: "schematicpath" | "schematicrect" | "schematiccircle" | "schematicarc" | "schematictext"
+  tag: "bus" | "schematicpath" | "schematicrect" | "schematiccircle" | "schematicarc" | "schematictext"
+  /** A bus's typed name; the other drawings are named G<n> when they are written. */
+  name?: string
   props: Record<string, DrawingValue>
 }
 
@@ -78,11 +83,12 @@ export function isDoubleClick(last: { at: Point; time: number } | undefined, now
 }
 
 /**
- * Whether a press must keep the focus from the canvas: a left press of the Text tool opens or moves its field, and the
- * browser's default for that press (focus to the canvas) would take the focus out of the field just opened.
+ * Whether a press must keep the focus from the canvas: a left press of the Text tool opens or moves its field, a press
+ * while a bus's name field is open leaves it open, and the browser's default for that press (focus to the canvas)
+ * would take the focus out of the field.
  */
 export function keepsFocus(state: DrawState | null, button: number): boolean {
-  return state?.tool === "text" && button === 0
+  return (state?.tool === "text" || state?.naming === true) && button === 0
 }
 
 /** The polyline's corners with the leg to `to` added: squared with Shift (with the leg's bend), else straight. */
@@ -108,12 +114,15 @@ function arcProps(centre: Point, start: Point, end: Point): Record<string, numbe
 const done = (tool: DrawTool, drawing: NewDrawing): DrawStep => ({ state: idleState(tool), drawing })
 const keep = (state: DrawState): DrawStep => ({ state })
 
+/** A polyline is written; a bus of two or more points asks for its name first. */
 function finishPolyline(state: DrawState): DrawStep {
-  if (state.points.length < 2) return keep(idleState("polyline"))
+  if (state.points.length < 2) return keep(idleState(state.tool))
+  if (state.tool === "bus") return keep({ ...state, naming: true })
   return done("polyline", { tag: "schematicpath", props: { points: [...state.points] } })
 }
 
 function pressPolyline(state: DrawState, event: Extract<DrawEvent, { type: "press" }>): DrawStep {
+  if (state.naming) return keep(state)
   if (event.double && state.points.length > 0) return finishPolyline(state)
   return keep({ ...state, points: withLeg(state, event.at, event.shift) })
 }
@@ -142,6 +151,7 @@ function pressArc(state: DrawState, at: Point): DrawStep {
 
 function press(state: DrawState, event: Extract<DrawEvent, { type: "press" }>): DrawStep {
   switch (state.tool) {
+    case "bus":
     case "polyline":
       return pressPolyline(state, event)
     case "rectangle":
@@ -163,7 +173,15 @@ function release(state: DrawState, at: Point): DrawStep {
   return props ? done("rectangle", { tag: "schematicrect", props }) : keep({ ...state, dragging: false })
 }
 
+/** A named bus is written with its points; a name the engine refuses keeps the field open. */
+function namedBus(state: DrawState, text: string): DrawStep {
+  const name = text.trim()
+  if (!state.naming || busMembers(name) === undefined) return keep(state)
+  return done("bus", { tag: "bus", name, props: { points: [...state.points] } })
+}
+
 function typed(state: DrawState, text: string): DrawStep {
+  if (state.tool === "bus") return namedBus(state, text)
   const [at] = state.points
   const value = text.trim()
   if (state.tool !== "text" || !at || value === "") return keep(idleState(state.tool))
@@ -178,11 +196,12 @@ export function drawStep(state: DrawState, event: DrawEvent): DrawStep {
     case "release":
       return release(state, event.at)
     case "finish":
-      return state.tool === "polyline" ? finishPolyline(state) : keep(state)
+      return (state.tool === "polyline" || state.tool === "bus") && !state.naming ? finishPolyline(state) : keep(state)
     case "removeCorner":
+      if (state.naming) return keep(state)
       return keep(state.points.length <= 1 ? idleState(state.tool) : { ...state, points: state.points.slice(0, -1) })
     case "flip":
-      return keep({ ...state, flip: !state.flip })
+      return keep(state.naming ? state : { ...state, flip: !state.flip })
     case "cancel":
       return { state: state.points.length > 0 ? idleState(state.tool) : null }
     case "text":
@@ -198,6 +217,7 @@ export function previewDrawing(state: DrawState, pointer: Point, shift: boolean)
   const [first, second] = state.points
   if (!first) return undefined
   const id = "drawing:preview"
+  if (state.tool === "bus") return { id, kind: "bus", name: "", members: [], points: state.naming ? [...state.points] : withLeg(state, pointer, shift), groupOffset: DASHED.groupOffset, source: NO_SOURCE }
   if (state.tool === "polyline") return { id, kind: "path", points: withLeg(state, pointer, shift), ...DASHED }
   if (state.tool === "rectangle") {
     const props = rectProps(first, pointer)
@@ -216,6 +236,8 @@ export function sentDrawing(drawing: NewDrawing, id: string): SchematicDrawing {
   const n = (key: string): number => Number(props[key] ?? 0)
   const at = { id, x: n("x"), y: n("y") }
   switch (drawing.tag) {
+    case "bus":
+      return { id, kind: "bus", name: drawing.name ?? "", members: busMembers(drawing.name ?? "") ?? [], points: (props["points"] ?? []) as Point[], groupOffset: DASHED.groupOffset, source: NO_SOURCE }
     case "schematicpath":
       return { id, kind: "path", points: (props["points"] ?? []) as Point[], ...DASHED }
     case "schematicrect":
@@ -232,16 +254,17 @@ export function sentDrawing(drawing: NewDrawing, id: string): SchematicDrawing {
 const NUMBERED = /^G(\d+)$/
 
 /**
- * The edit that adds the drawing, named G<n> after the highest G number a part or drawing has, and after the names
- * in `taken`: drawings sent whose build has not come back yet.
+ * The edit that adds the drawing: a bus with its typed name, any other drawing named G<n> after the highest G number a
+ * part or drawing has, and after the names in `taken`: drawings sent whose build has not come back yet.
  */
 export function drawingEdit(drawing: NewDrawing, model: Pick<CircuitModel, "parts" | "drawings">, taken: readonly string[] = []): Extract<Edit, { kind: "addDrawing" }> {
+  if (drawing.name !== undefined) return { kind: "addDrawing", tag: drawing.tag, name: drawing.name, props: drawing.props }
   const next = Number(NUMBERED.exec(nextDrawingName(model))?.[1] ?? 1)
   const highest = Math.max(next - 1, ...taken.map((name) => Number(NUMBERED.exec(name)?.[1] ?? 0)))
   return { kind: "addDrawing", tag: drawing.tag, name: `G${highest + 1}`, props: drawing.props }
 }
 
-const WORDS: Record<DrawTool, string> = { polyline: "line", rectangle: "rectangle", circle: "circle", arc: "arc", text: "text" }
+const WORDS: Record<DrawTool, string> = { bus: "bus", polyline: "line", rectangle: "rectangle", circle: "circle", arc: "arc", text: "text" }
 
 /** The history line of a new drawing, e.g. "add the rectangle G3". */
 export const drawSummary = (tool: DrawTool, name: string): string => `add the ${WORDS[tool]} ${name}`
@@ -250,6 +273,7 @@ const STOPS = "Esc or a right click stops."
 const CANCELS = "Esc cancels."
 
 const FIRST_CLICK: Record<DrawTool, string> = {
+  bus: `Click to start a bus, Enter to finish, then name it. ${STOPS}`,
   polyline: `Click to start a polyline, Enter to finish. ${STOPS}`,
   rectangle: `Drag, or click two opposite corners, to draw a rectangle. ${STOPS}`,
   circle: `Click the centre of a circle. ${STOPS}`,
@@ -264,7 +288,8 @@ export function drawHint(state: DrawState | null): string | undefined {
   if (!state) return undefined
   const count = state.points.length
   if (count === 0) return FIRST_CLICK[state.tool]
-  if (state.tool === "polyline") return POLYLINE_ON
+  if (state.naming) return `Name the bus, such as D[0:7] or CLK; Enter writes it, ${CANCELS}`
+  if (state.tool === "polyline" || state.tool === "bus") return POLYLINE_ON
   if (state.tool === "rectangle") return `Click the opposite corner. ${CANCELS}`
   if (state.tool === "circle") return `Click to set the radius. ${CANCELS}`
   if (state.tool === "text") return `Type the text; Enter writes it, ${CANCELS}`
