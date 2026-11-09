@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs"
+import { labelTag, NET_LABEL_TEXT, TAG_CHAR } from "../studio/src/pcb/label-tag.js"
 import { describe, expect, test } from "vitest"
 import { buildDesign } from "../src/engine/design.js"
 import { CANVAS_FONT_FAMILY, CANVAS_MONO_FAMILY, UI_FONT_STACK } from "../studio/src/pcb/ctx.js"
@@ -23,7 +24,8 @@ describe("the interface's type", () => {
 
   test("numbers line up: the body uses tabular figures and the inputs inherit them", () => {
     const styles = read("styles.css")
-    expect(styles).toMatch(/body \{[^}]*font-variant-numeric: tabular-nums;/)
+    expect(read("shell/shell.css")).toMatch(/body [{][^}]*font-variant-numeric: tabular-nums;/)
+    expect(styles).not.toContain("tabular-nums")
     expect(styles).toMatch(/button,\s*input,\s*select \{\s*font: inherit;/)
   })
 
@@ -74,5 +76,14 @@ describe("canvas text weights", () => {
   test("PCB designators are 600", () => {
     const pcb = fontsOf((ctx) => drawPcb(ctx as never, design.pcb, { camera: { cx: 0, cy: 0, scale: 20 }, size: SIZE }, { ratio: 1 }))
     expect(pcb.get("R1")).toMatch(/^600 [\d.]+px /)
+  })
+})
+
+describe("net label tags", () => {
+  test("a tag leaves room for semibold text: 0.66 of the text height per character plus the tag's ends", () => {
+    expect(TAG_CHAR).toBe(0.66)
+    const tag = labelTag({ at: { x: 0, y: 0 }, side: "right", text: "VCC_3V3_ANALOG" })
+    const width = tag.box.maxX - tag.box.minX
+    expect(width).toBeCloseTo(14 * NET_LABEL_TEXT * 0.66 + NET_LABEL_TEXT * 1.5, 9)
   })
 })

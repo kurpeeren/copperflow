@@ -26,13 +26,13 @@ describe("the outline round a hovered wire", () => {
     expect(wireHoverPadPx(100)).toBe(3)
     expect(wireHoverPadPx(2000)).toBe(22)
     const rec = recorder()
-    drawWireHover(rec.ctx, { cx: 0, cy: 0, scale: 2000 }, SIZE, [p(0, 0), p(1, 0)], SHEET_WIRE_LOOK)
+    drawWireHover(rec.ctx, { cx: 0, cy: 0, scale: 2000 }, SIZE, [p(0, 0), p(1, 0)], SHEET_WIRE_LOOK, 1)
     expect(rec.records.find((r) => r.name === "moveTo")?.args).toEqual([-22, 22])
   })
 
   test("is drawn dashed in the hover colour, one pixel wide", () => {
     const rec = recorder()
-    drawWireHover(rec.ctx, CAMERA, SIZE, [p(0, 0), p(10, 0)], SHEET_WIRE_LOOK)
+    drawWireHover(rec.ctx, CAMERA, SIZE, [p(0, 0), p(10, 0)], SHEET_WIRE_LOOK, 1)
     const stroke = rec.records.find((r) => r.name === "stroke")
     expect(stroke).toMatchObject({ strokeStyle: schematicTheme.hover, lineWidth: 1 })
     expect(rec.records.find((r) => r.name === "setLineDash")?.args[0]).toEqual([4, 3])
@@ -43,7 +43,7 @@ describe("the handles of a selected wire", () => {
   test("each corner gets a white square outlined in the selection colour; the two ends a hollow square", () => {
     const rec = recorder()
     // On screen (y down): the corner at (10, -1), the ends at (1, -1) and (10, -10).
-    drawWireHandles(rec.ctx, CAMERA, SIZE, [p(1, 1), p(10, 1), p(10, 10)], SHEET_WIRE_LOOK)
+    drawWireHandles(rec.ctx, CAMERA, SIZE, [p(1, 1), p(10, 1), p(10, 10)], SHEET_WIRE_LOOK, 1)
     const fills = rec.records.filter((r) => r.name === "fillRect")
     const outlines = rec.records.filter((r) => r.name === "strokeRect")
     expect(WIRE_HANDLE_PX).toBe(6)
@@ -59,7 +59,7 @@ describe("the handles of a selected wire", () => {
 
   test("a straight wire has no corner handle, only its two ends", () => {
     const rec = recorder()
-    drawWireHandles(rec.ctx, CAMERA, SIZE, [p(1, 1), p(10, 1)], SHEET_WIRE_LOOK)
+    drawWireHandles(rec.ctx, CAMERA, SIZE, [p(1, 1), p(10, 1)], SHEET_WIRE_LOOK, 1)
     expect(rec.records.filter((r) => r.name === "fillRect")).toEqual([])
     expect(rec.records.filter((r) => r.name === "strokeRect")).toHaveLength(2)
   })

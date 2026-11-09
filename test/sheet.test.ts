@@ -292,7 +292,7 @@ describe("drawSheetBorder", () => {
 
   test("sets the font once per text size, in the canvas font family", () => {
     const { ctx, fonts, texts } = textRecorder()
-    drawSheetBorder(ctx, camera, SCREEN, art)
+    drawSheetBorder(ctx, camera, SCREEN, art, 1)
     expect(texts).toHaveLength(20 + 9)
     expect(fonts).toHaveLength(3)
     expect(new Set(fonts).size).toBe(3)
@@ -301,7 +301,7 @@ describe("drawSheetBorder", () => {
 
   test("text too small to read is left out, and so is its font", () => {
     const { ctx, fonts, texts } = textRecorder()
-    drawSheetBorder(ctx, { ...camera, scale: 10 }, SCREEN, art)
+    drawSheetBorder(ctx, { ...camera, scale: 10 }, SCREEN, art, 1)
     expect(texts).toHaveLength(0)
     expect(fonts).toHaveLength(0)
   })

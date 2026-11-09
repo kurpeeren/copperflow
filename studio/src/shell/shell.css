@@ -1,4 +1,10 @@
 /* The menu bar and Studio's dialogs, in the EasyEDA Pro manner. */
+
+/* Numbers line up everywhere: coordinates, the Grid select, Properties and the tables. */
+body {
+  font-variant-numeric: tabular-nums;
+}
+
 .menubar {
   display: flex;
   align-items: center;

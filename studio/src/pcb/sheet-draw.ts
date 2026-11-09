@@ -98,7 +98,7 @@ function drawTitleBlock(ctx: CanvasRenderingContext2D, camera: Camera, size: Siz
 }
 
 /** The outer and inner lines, the zone ticks and labels and the title block; drawn over the grid and under the parts. */
-export function drawSheetBorder(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, art: SheetArt, ratio = 1): void {
+export function drawSheetBorder(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, art: SheetArt, ratio: number): void {
   const { sheet } = art
   ctx.save()
   ctx.strokeStyle = schematicTheme.border

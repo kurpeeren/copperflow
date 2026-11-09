@@ -53,7 +53,7 @@ export function wireOutline(points: readonly Point[], pad: number): Point[] {
 }
 
 /** The dashed hover outline round a wire whose points are in sheet units. */
-export function drawWireHover(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, points: readonly Point[], look: WireLook, ratio = 1): void {
+export function drawWireHover(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, points: readonly Point[], look: WireLook, ratio: number): void {
   const outline = wireOutline(points.map((p) => worldToScreen(camera, size, p)), wireHoverPadPx(camera.scale))
   if (outline.length === 0) return
   ctx.save()
@@ -68,7 +68,7 @@ export function drawWireHover(ctx: CanvasRenderingContext2D, camera: Camera, siz
 }
 
 /** A selected wire's handles: a filled square on each corner, then a hollow one on each end. */
-export function drawWireHandles(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, points: readonly Point[], look: WireLook, ratio = 1): void {
+export function drawWireHandles(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, points: readonly Point[], look: WireLook, ratio: number): void {
   const { corners, ends } = wireHandles(points)
   const side = squareSide(WIRE_HANDLE_PX, ratio)
   const hair = hairlineWidth(ratio)

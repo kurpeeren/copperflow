@@ -38,7 +38,7 @@ body {
   background: var(--ground);
   color: var(--text);
   font: 12px/1.5 var(--sans);
-  -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
 }
 
 code {

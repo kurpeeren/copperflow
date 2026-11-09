@@ -17,6 +17,9 @@ export const squareSide = (css: number, ratio: number): number => Math.max(1, Ma
 /** The device pixel row a text baseline sits on. */
 export const baselineAt = (v: number, ratio: number): number => Math.round(v * ratio) / ratio
 
+/** One device pixel in world units, given one CSS pixel in world units (`1 / camera.scale`). */
+export const devicePixelIn = (cssPixel: number, ratio: number): number => cssPixel / ratio
+
 /** A world-scaled stroke keeps its width but never draws thinner than one device pixel. */
 export const atLeastOnePixel = (width: number, ratio: number): number => Math.max(width, 1 / ratio)
 

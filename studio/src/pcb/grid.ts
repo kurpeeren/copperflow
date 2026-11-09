@@ -160,7 +160,7 @@ function paintDots(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, pl
 }
 
 /** Paints the grid at the look's step, as hairlines or as square dots at their crossings, in CSS pixels, sharp at the device pixel `ratio`. */
-export function paintGrid(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, look: GridLook, paint: GridPaint, ratio = 1): void {
+export function paintGrid(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, look: GridLook, paint: GridPaint, ratio: number): void {
   const plan = planGrid(camera, size, look.step)
   if (!plan) return
   ctx.save()

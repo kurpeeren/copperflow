@@ -224,10 +224,10 @@ export function drawEditorLayer(ctx: CanvasRenderingContext2D, camera: Camera, s
     const selected = layer.selection.has(part.name)
     if (part.name === layer.hover && !selected) drawOutline(ctx, camera, size, part.box, offset, "hover", look, ratio)
     if (selected) drawOutline(ctx, camera, size, part.box, offset, "selected", look, ratio)
-    if (layer.locked.has(part.name)) drawLockBadge(ctx, camera, size, part.box, look)
+    if (layer.locked.has(part.name)) drawLockBadge(ctx, camera, size, part.box, look, ratio)
   }
   for (const mark of layer.marks) {
-    if (mark.view === layer.view && mark.x !== undefined && mark.y !== undefined) drawMark(ctx, camera, size, { at: { x: mark.x, y: mark.y }, id: mark.id, text: mark.text }, look)
+    if (mark.view === layer.view && mark.x !== undefined && mark.y !== undefined) drawMark(ctx, camera, size, { at: { x: mark.x, y: mark.y }, id: mark.id, text: mark.text }, look, ratio)
   }
   if (gesture?.kind === "box") drawSelectionBox(ctx, gesture.start, gesture.current, look, boxMode(gesture.start, gesture.current), ratio)
   if (gesture?.kind === "zoom") drawSelectionBox(ctx, gesture.start, gesture.current, look, boxMode(gesture.start, gesture.current), ratio)

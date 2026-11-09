@@ -4,7 +4,7 @@ import type { BoxMode } from "./box-select.js"
 import { CANVAS_FONT_FAMILY, PALETTE } from "./ctx.js"
 import { paintGrid, type GridLook, type GridPaint } from "./grid.js"
 import { worldToScreen, type Box, type Camera, type Point, type Size } from "./geometry.js"
-import { deviceWidth, hairlineWidth, strokeBoxAt } from "./crisp.js"
+import { deviceWidth, hairlineWidth, squareAt, squareSide, strokeBoxAt } from "./crisp.js"
 import { schematicTheme } from "./schematic-theme.js"
 
 const FONT = `12px ${CANVAS_FONT_FAMILY}`
@@ -14,7 +14,7 @@ const PCB_GRID_COLOURS = { minor: PALETTE.grid, fifth: PALETTE.gridFifth }
 const PCB_GRID: GridPaint = { lines: PCB_GRID_COLOURS, dots: { ...PCB_GRID_COLOURS, px: 1 } }
 
 /** White grid lines or 1 px dots at the chosen step: 30% on the minor grid, 50% on every fifth line (or fifth crossing). */
-export function drawGrid(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, look: GridLook, ratio = 1): void {
+export function drawGrid(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, look: GridLook, ratio: number): void {
   paintGrid(ctx, camera, size, look, PCB_GRID, ratio)
 }
 
@@ -86,7 +86,7 @@ export function drawOutline(
   offset: Point,
   kind: "selected" | "hover",
   look: OverlayLook,
-  ratio = 1,
+  ratio: number,
 ): void {
   const a = worldToScreen(camera, size, { x: box.minX + offset.x, y: box.maxY + offset.y })
   const b = worldToScreen(camera, size, { x: box.maxX + offset.x, y: box.minY + offset.y })
@@ -106,13 +106,14 @@ export function drawOutline(
 }
 
 /** A small padlock at the part's top-right corner. */
-export function drawLockBadge(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, box: Box, look: OverlayLook): void {
+export function drawLockBadge(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, box: Box, look: OverlayLook, ratio: number): void {
   const corner = worldToScreen(camera, size, { x: box.maxX, y: box.maxY })
-  const x = corner.x - 4
-  const y = corner.y - 12
+  const x = squareAt(corner.x - 4, ratio)
+  const y = squareAt(corner.y - 12, ratio)
+  const side = squareSide(14, ratio)
   ctx.save()
   ctx.fillStyle = look.lockFill
-  roundRect(ctx, x, y, 14, 14, 3)
+  roundRect(ctx, x, y, side, side, 3)
   ctx.fill()
   ctx.strokeStyle = look.lockGlyph
   ctx.fillStyle = look.lockGlyph
@@ -125,7 +126,7 @@ export function drawLockBadge(ctx: CanvasRenderingContext2D, camera: Camera, siz
 }
 
 /** A note for the agent: a pin with its id and text. */
-export function drawMark(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, note: { at: Point; id: string; text: string }, look: OverlayLook): void {
+export function drawMark(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, note: { at: Point; id: string; text: string }, look: OverlayLook, ratio: number): void {
   const { at, id, text } = note
   const p = worldToScreen(camera, size, at)
   const label = `${id}  ${text.length > MAX_LABEL ? `${text.slice(0, MAX_LABEL - 1)}…` : text}`
@@ -138,7 +139,7 @@ export function drawMark(ctx: CanvasRenderingContext2D, camera: Camera, size: Si
   ctx.fillStyle = look.markText
   ctx.fillText(label, p.x + 16, p.y - 8)
   ctx.strokeStyle = look.markPin
-  ctx.lineWidth = 1.5
+  ctx.lineWidth = deviceWidth(1.5, ratio) / ratio
   ctx.beginPath()
   ctx.moveTo(p.x, p.y)
   ctx.lineTo(p.x + 10, p.y - 12)
@@ -151,12 +152,12 @@ export function drawMark(ctx: CanvasRenderingContext2D, camera: Camera, size: Si
 }
 
 /** The selection box: a solid outline dragged left to right (it takes what is inside), dashed right to left (what it touches). */
-export function drawSelectionBox(ctx: CanvasRenderingContext2D, a: Point, b: Point, look: OverlayLook, mode: BoxMode, ratio = 1): void {
+export function drawSelectionBox(ctx: CanvasRenderingContext2D, a: Point, b: Point, look: OverlayLook, mode: BoxMode, ratio: number): void {
   drawBox(ctx, a, b, { stroke: look.boxStroke, fill: look.boxFill, dash: mode === "inside" ? [] : look.boxDash }, ratio)
 }
 
 /** The box drawn with Place → Note box, where a note for the agent goes. */
-export function drawNoteBox(ctx: CanvasRenderingContext2D, a: Point, b: Point, look: OverlayLook, ratio = 1): void {
+export function drawNoteBox(ctx: CanvasRenderingContext2D, a: Point, b: Point, look: OverlayLook, ratio: number): void {
   drawBox(ctx, a, b, { stroke: look.noteStroke, fill: look.noteFill, dash: look.noteDash }, ratio)
 }
 
@@ -186,13 +187,13 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
  * A wire being drawn (solid, ending in a ring) or one waiting for the build (dashed), along
  * `points` in world units, in the view's wire colour.
  */
-export function drawWirePreview(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, points: Point[], kind: "drawing" | "pending", color: string): void {
+export function drawWirePreview(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, points: Point[], kind: "drawing" | "pending", color: string, ratio: number): void {
   const screen = points.map((p) => worldToScreen(camera, size, p))
   const last = screen[screen.length - 1]
   if (!last) return
   ctx.save()
   ctx.strokeStyle = color
-  ctx.lineWidth = 2
+  ctx.lineWidth = deviceWidth(2, ratio) / ratio
   ctx.lineCap = "round"
   ctx.lineJoin = "round"
   ctx.globalAlpha = kind === "pending" ? 0.75 : 1

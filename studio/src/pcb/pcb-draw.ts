@@ -1,7 +1,7 @@
 // copperflow's PCB renderer: draws the engine's board layout onto a 2D canvas in layer order.
 // Only types come from the engine: its runtime modules reach Node-only code the Studio bundle cannot hold.
 import type { PcbLayout, PlacedFootprint, WorldPad } from "../../../src/engine/pcb.js"
-import { atLeastOnePixel, baselineAt } from "./crisp.js"
+import { baselineAt, devicePixelIn } from "./crisp.js"
 import { canvasFont, PALETTE, TEXT_WEIGHT, type Ctx } from "./ctx.js"
 import { worldToScreen, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
 import { DEFAULT_LAYERS, padLayer, type LayerVisibility } from "./layers.js"
@@ -64,7 +64,7 @@ export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDra
   const { camera, size } = view
   const px = 1 / camera.scale
   /** One device pixel in world units: the thinnest any stroke is drawn. */
-  const hair = atLeastOnePixel(0, options.ratio) * px
+  const hair = devicePixelIn(px, options.ratio)
   const shiftOf = (part: PlacedFootprint) => (options.moving?.components.includes(part.component) ? options.moving.by : NO_SHIFT)
   const each = (paint: (part: PlacedFootprint) => void) => {
     for (const part of layout.parts) {
@@ -307,11 +307,11 @@ function drawCourtyards(ctx: Ctx, each: Each, px: number, hair: number): void {
   ctx.setLineDash([])
 }
 
-function drawRatsnest(ctx: Ctx, layout: PcbLayout, options: PcbDrawOptions, px: number): void {
+function drawRatsnest(ctx: Ctx, layout: PcbLayout, options: PcbDrawOptions, hair: number): void {
   const moving = options.moving
   const movingPads = new Set(layout.parts.filter((p) => moving?.components.includes(p.component)).flatMap((p) => p.pads.map((pad) => pad.id)))
   const end = (point: Point, pad: string) => (moving && movingPads.has(pad) ? { x: point.x + moving.by.x, y: point.y + moving.by.y } : point)
-  ctx.lineWidth = px
+  ctx.lineWidth = hair
   for (const line of layout.ratsnest) {
     const lit = options.highlight?.nets.includes(line.net) ?? false
     ctx.strokeStyle = lit ? PALETTE.highlight : PALETTE.ratsnest
