@@ -43,10 +43,13 @@ export function DrawingView({ design, circuit, drawing: id, locked, actions, onR
     const { edit } = result
     const name = edit.kind === "setDrawingProps" ? edit.props["name"] : undefined
     const forget = typeof name === "string" ? onRename({ from: id, to: renamedId(circuit.model, id, name) }) : undefined
-    return actions.edit([edit], result.summary).then((ok) => {
-      if (!ok) forget?.()
-      return ok
-    })
+    return actions
+      .edit([edit], result.summary)
+      .catch(() => false)
+      .then((ok) => {
+        if (!ok) forget?.()
+        return ok
+      })
   }
   return (
     <div className="inspector">
