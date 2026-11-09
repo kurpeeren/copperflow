@@ -11,6 +11,7 @@ import { boundsOf } from "../../../src/engine/symbols/types.js"
 import { rightAngles, type Box, type Point } from "./geometry.js"
 import { labelTag } from "./label-tag.js"
 import type { SourceCircuit } from "./positions.js"
+import { lockedPart, pickRepeat, traceBlocker, tracesBetween } from "./trace-source.js"
 import { addressable, pinOfSelector, pinSelector } from "./wire-tool.js"
 
 export type LabelDrag = Edit[] | { blocked: string }
@@ -27,7 +28,6 @@ export interface LabelPreview {
 
 /** A ground or power symbol is small; pointing near its drawing counts. */
 const LABEL_REACH = 0.1
-const NET_SELECTOR = /^net\.([\w-]+)$/
 const round = (value: number): number => Math.round(value * 1000) / 1000 || 0
 
 /** What a label hangs on: its pin, the pin's end on the sheet, and the connection of a hand-drawn label. */
@@ -118,36 +118,19 @@ function netNames(design: Design, label: NetLabel): string[] {
 
 /** The source trace that joins the pin to the label's net, in either direction. A repeated pair (`#2`) takes the matching one. */
 function traceOf(design: Design, source: SourceCircuit, anchor: Anchor): TraceInfo | undefined {
-  const names = netNames(design, anchor.label)
-  const toNet = (selector: string | undefined) => names.includes(NET_SELECTOR.exec(selector?.trim() ?? "")?.[1] ?? "")
-  const onPin = (selector: string | undefined) => selector !== undefined && pinOfSelector(design, selector)?.id === anchor.pin.id
-  const matches = source.model.traces.filter((t) => (onPin(t.from) && toNet(t.to)) || (onPin(t.to) && toNet(t.from)))
-  const repeat = Number(/#(\d+)$/.exec(anchor.connection?.id ?? "")?.[1] ?? 1)
-  return matches[repeat - 1] ?? matches[0]
-}
-
-/** Why the trace cannot be changed, or undefined when it can. */
-function traceBlocker(trace: TraceInfo): string | undefined {
-  if (!trace.editable) return `This wire is read-only (${trace.readonlyReason}); change it in the code`
-  if (trace.props["schematicRouteHints"] && !trace.schematicRouteHints) return "The corners of this wire are an expression; change them in the code"
-  return undefined
+  const matches = tracesBetween(design, source, { pin: anchor.pin.id }, { net: netNames(design, anchor.label) })
+  return pickRepeat(matches, anchor.connection?.id)
 }
 
 type Target = { anchor: Anchor; trace?: TraceInfo } | { blocked: string }
 
 const NO_LOCKS: ReadonlySet<string> = new Set()
 
-/** The locked part among the label's pin and the ends of its trace, as `core/edit` would refuse it. */
-function lockedPart(design: Design, anchor: Anchor, trace: TraceInfo | undefined, locked: ReadonlySet<string>): string | undefined {
-  const ends = [trace?.from, trace?.to].flatMap((end) => (end === undefined ? [] : [pinOfSelector(design, end)?.component ?? ""]))
-  return [anchor.pin.component, ...ends].find((name) => locked.has(name))
-}
-
 function targetOf(design: Design, source: SourceCircuit, labelId: string, locked: ReadonlySet<string>): Target {
   const anchor = anchorOf(design, labelId)
   if (!anchor) return { blocked: "This label is not attached to a pin the Studio can find" }
   const trace = traceOf(design, source, anchor)
-  const lockedName = lockedPart(design, anchor, trace, locked)
+  const lockedName = lockedPart(design, [anchor.pin.component], trace, locked)
   if (lockedName !== undefined) return { blocked: `${lockedName} is locked` }
   const blocker = trace ? traceBlocker(trace) : undefined
   if (blocker) return { blocked: blocker }
