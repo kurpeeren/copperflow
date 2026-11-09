@@ -116,9 +116,12 @@ function arrow(state: State, events: SessionEvents, input: EditInput, delta: Poi
   if (step.send) sendNudge(state, events, input, step.send)
 }
 
-/** An Undo or Redo went out: the gate waits for it, and the burst ends, so the next arrow moves from what it left. */
+/**
+ * An Undo or Redo went out: the gate waits for it, and the burst ends, so the next arrow moves from what it left. A
+ * failed one releases the gate at once: what was held for it goes on the next settle, against the design as it is.
+ */
 function historyWrite(state: State, events: SessionEvents, outcome: Promise<WriteOutcome>): void {
-  const before = state.gate.waiting
+  const before = { waiting: state.gate.waiting, history: state.gate.history }
   state.gate = historySent(state.gate)
   state.burst = undefined
   const { seq } = state.gate

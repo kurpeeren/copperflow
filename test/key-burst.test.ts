@@ -169,7 +169,9 @@ describe("the gate and an Undo or Redo", () => {
   // The undo under test was written at server mark 5; builds started at 3 (before it) and 7 (after it).
   const stale: DesignState = { builtMark: 3, buildStatus: "done", moveWaiting: false }
   const fresh: DesignState = { builtMark: 7, buildStatus: "done", moveWaiting: false }
-  const undone = () => historySettled(historySent(OPEN_GATE), true, 1, undefined, 5)
+  /** What the gate waited for before the first undo: nothing. */
+  const NOTHING = { waiting: undefined, history: undefined }
+  const undone = () => historySettled(historySent(OPEN_GATE), true, 1, NOTHING, 5)
 
   test("a Rotate after an undo is held until a build that started after the undo's write has succeeded", () => {
     expect(pressTurn(historySent(OPEN_GATE), NAMES, false, fresh).send).toBe(false)
@@ -204,10 +206,19 @@ describe("the gate and an Undo or Redo", () => {
 
   test("a failed undo wrote nothing: the gate waits again for what it waited for before, and keeps the held presses", () => {
     const held = pressTurn(historySent(OPEN_GATE), NAMES, false, fresh).gate
-    const failed = historySettled(held, false, 1, undefined)
+    const failed = historySettled(held, false, 1, NOTHING)
     expect(failed).toMatchObject({ inFlight: 0, waiting: undefined, history: undefined, held: { count: 1 } })
     expect(releaseTurn(failed, NAMES, stale).send).toBe(true)
     expect(pressArrow(failed, stale).send).toBe(true)
+  })
+
+  test("a failed undo after a successful one waits again for the first one's build, not for nothing", () => {
+    const first = undone()
+    const failed = historySettled(historySent(first), false, 2, { waiting: first.waiting, history: first.history })
+    expect(failed).toMatchObject({ inFlight: 0, waiting: { seq: 1 }, history: { seq: 1 }, written: 5 })
+    expect(pressArrow(failed, stale).send).toBe(false)
+    expect(pressTurn(failed, NAMES, false, stale).send).toBe(false)
+    expect(pressArrow(failed, fresh).send).toBe(true)
   })
 })
 

@@ -138,15 +138,21 @@ export function historySent(gate: TurnGate): TurnGate {
   return { ...sent, history: { seq: sent.seq } }
 }
 
+/** What the gate waited for when an Undo or Redo went out, so a failed one can put it back. */
+export type GateWait = Pick<TurnGate, "waiting" | "history">
+
 /**
- * Undo or Redo number `seq` resolved, written at server mark `mark`. A failed one wrote nothing: the gate waits again
- * for what it waited for before, and, unlike a failed key edit, keeps the presses that were held only for it.
+ * Undo or Redo number `seq` resolved, written at server mark `mark`. A failed one wrote nothing, so no build follows
+ * it: the gate stops waiting for it at once and waits again only for what it waited for before (`before`, nothing or
+ * an earlier write whose build will come). The presses held for it are kept and go as soon as that is met, so a
+ * failed Ctrl+Z never holds them waiting for a build.
  */
-export function historySettled(gate: TurnGate, ok: boolean, seq: number, before: TurnGate["waiting"], mark?: number): TurnGate {
-  if (ok) return editSettled(gate, true, seq, before, mark)
+export function historySettled(gate: TurnGate, ok: boolean, seq: number, before: GateWait, mark?: number): TurnGate {
+  if (ok) return editSettled(gate, true, seq, before.waiting, mark)
   const mine = (pending: { seq: number } | undefined) => pending?.seq === seq
   const inFlight = Math.max(0, gate.inFlight - 1)
-  return { ...gate, inFlight, waiting: mine(gate.waiting) ? before : gate.waiting, history: mine(gate.history) ? undefined : gate.history }
+  const waiting = mine(gate.waiting) ? before.waiting : gate.waiting
+  return { ...gate, inFlight, waiting, history: mine(gate.history) ? before.history : gate.history }
 }
 
 /**
