@@ -15,7 +15,7 @@ import {
   writeAnnotations,
 } from "../src/core/annotations.js"
 import { applyEdits } from "../src/core/edit.js"
-import { BOARD } from "./fixtures.js"
+import { BOARD, DRAWINGS } from "./fixtures.js"
 
 const NOW = "2026-11-03T10:00:00.000Z"
 const model = analyzeCircuit(BOARD)
@@ -53,6 +53,36 @@ describe("locks", () => {
     expect(verifyLocks(ann, analyzeCircuit(removed))).toEqual([
       { part: "R1", kind: "changed", detail: "pcbX was {-4}, now {9}" },
       { part: "C1", kind: "missing", detail: "the locked part is no longer in the file" },
+    ])
+  })
+})
+
+describe("drawing locks", () => {
+  const sheet = analyzeCircuit(DRAWINGS)
+
+  test("a drawing is locked by its id, with a snapshot of its props", () => {
+    const ann = lockParts(emptyAnnotations(), sheet, ["G1", "D[0:7]~2"], NOW)
+    expect(ann.locks).toEqual([
+      { part: "G1", drawing: true, lockedAt: NOW, props: { x: "{1}", y: "{2}", width: "{3}", height: "{1.5}" } },
+      { part: "D[0:7]~2", drawing: true, lockedAt: NOW, props: { points: "{[{ x: 4, y: 3 }, { x: 4, y: 5 }]}" } },
+    ])
+    expect(() => lockParts(emptyAnnotations(), sheet, ["G9"], NOW)).toThrow("No part or drawing named G9")
+  })
+
+  test("a drawing lock survives the sidecar round trip", async () => {
+    const path = join(await mkdtemp(join(tmpdir(), "cf-ann-")), "x.annotations.json")
+    const ann = lockParts(emptyAnnotations(), sheet, ["G1"], NOW)
+    await writeAnnotations(path, ann)
+    expect(await readAnnotations(path)).toEqual(ann)
+  })
+
+  test("verifyLocks reports a changed or missing locked drawing", () => {
+    const ann = lockParts(emptyAnnotations(), sheet, ["G1", "drawing:path:2"], NOW)
+    const moved = applyEdits(DRAWINGS, [{ kind: "setDrawingProps", id: "G1", props: { x: 2 } }], new Set())
+    const removed = applyEdits(moved, [{ kind: "removeDrawing", id: "drawing:path:2" }], new Set())
+    expect(verifyLocks(ann, analyzeCircuit(removed))).toEqual([
+      { part: "G1", kind: "changed", detail: "x was {1}, now {2}" },
+      { part: "drawing:path:2", kind: "missing", detail: "the locked drawing is no longer in the file" },
     ])
   })
 })

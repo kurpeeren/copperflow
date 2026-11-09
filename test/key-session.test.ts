@@ -13,7 +13,7 @@ function part(name: string, x: number, y: number): PartInfo {
   return { name, tag: "resistor", line: 1, props: { pcbX: prop(x), pcbY: prop(y), pcbRotation: prop(0) }, editable: true, start: 0, end: 0 }
 }
 
-const circuitOf = (parts: PartInfo[]): SourceCircuit => ({ model: { parts, traces: [], skipped: [], imports: [] } })
+const circuitOf = (parts: PartInfo[]): SourceCircuit => ({ model: { parts, traces: [], drawings: [], skipped: [], imports: [] } })
 
 /** What the server writes: each setProps edit's literals. */
 function applied(circuit: SourceCircuit, edits: readonly Edit[]): SourceCircuit {

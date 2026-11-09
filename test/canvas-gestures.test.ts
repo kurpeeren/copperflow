@@ -85,7 +85,7 @@ function canvas(start: readonly string[] = [], options: CanvasOptions = {}) {
     step: 0.5,
     ...(options.snap === undefined ? {} : { snap: options.snap }),
     builtFrom: 0,
-    circuit: { model: { parts: [], traces: [], skipped: [], imports: [] } },
+    circuit: { model: { parts: [], traces: [], drawings: [], skipped: [], imports: [] } },
     actions,
     selection: state.selection,
     onSelect: (change: SelectionChange) => void (state.selection = change(state.selection)),
@@ -483,6 +483,7 @@ describe("a group drag as the browser sends it", () => {
     model: {
       parts: NAMES.map((name, i) => ({ name, tag: "resistor", line: 1, props: { pcbX: prop(i * 3 + 1), pcbY: prop(0) }, editable: true, start: 0, end: 0 })),
       traces: [],
+      drawings: [],
       skipped: [],
       imports: [],
     },

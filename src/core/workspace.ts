@@ -3,6 +3,7 @@ import { basename, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { analyzeCircuit } from "./analyze.js"
 import {
   annotationsPathFor,
+  lockTarget,
   readAnnotations,
   verifyLocks,
   writeAnnotations,
@@ -249,11 +250,11 @@ async function writeWithHistory(
   return entry
 }
 
-/** Locked parts whose props, presence or traces differ between the current file and `next`. */
+/** Locked parts and drawings whose props, presence or traces differ between the current file and `next`. */
 function changedLockedParts(current: LoadedCircuit, next: CircuitModel): string[] {
   const state = (model: CircuitModel, name: string) =>
     JSON.stringify({
-      props: model.parts.find((p) => p.name === name)?.props ?? null,
+      props: lockTarget(model, name)?.props ?? null,
       traces: model.traces
         .filter((t) => [t.from, t.to].some((end) => end !== undefined && partsInSelector(end).includes(name)))
         .map((t) => [t.from, t.to, t.props])

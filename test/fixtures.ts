@@ -66,3 +66,18 @@ export default () => (
   </board>
 )
 `
+
+/** Schematic drawings: named, unnamed, a bus drawn in two pieces, and a text placed by an expression. */
+export const DRAWINGS = `export default () => (
+  <board width="30mm" height="18mm">
+    <resistor name="R1" resistance="1k" schX={0} schY={0} />
+    <schematicrect name="G1" x={1} y={2} width={3} height={1.5} />
+    <schematicpath points={[{ x: 0, y: 0 }, { x: 1, y: 0 }]} strokeWidth={0.02} />
+    <schematicpath points={[{ x: 0, y: 1 }, { x: 1, y: 1 }]} />
+    <bus name="D[0:7]" points={[{ x: 0, y: 3 }, { x: 4, y: 3 }]} />
+    <bus name="D[0:7]" points={[{ x: 4, y: 3 }, { x: 4, y: 5 }]} />
+    <schematictext name="G2" x={1 + 1} y={1} text="Power" />
+    <trace from=".R1 > .pin1" to="net.GND" />
+  </board>
+)
+`

@@ -82,7 +82,7 @@ interface Spec {
 
 /** Parts at (x, y) with boxes of half-size (hw, hh), in a layout with a Grid step; `hidden` parts are not drawn. */
 function scene(specs: Spec[], step = 0.1, hidden: string[] = []) {
-  const circuit: SourceCircuit = { model: { parts: specs.map((s) => part(s.name, s.x, s.y)), traces: [], skipped: [], imports: [] } }
+  const circuit: SourceCircuit = { model: { parts: specs.map((s) => part(s.name, s.x, s.y)), traces: [], drawings: [], skipped: [], imports: [] } }
   const shown = specs.filter((s) => !hidden.includes(s.name))
   const anchors = new Map<string, Anchor>(shown.map((s) => [s.name, { origin: { x: s.x, y: s.y }, group: ZERO, autoPlaced: false }]))
   const boxes: PartBox[] = shown.map((s) => ({
@@ -187,6 +187,7 @@ describe("alignPlan", () => {
       model: {
         parts: ["S1", "S2"].map((name, i) => ({ ...part(name, 0, 0), props: { schX: prop(i * 3), schY: prop(i * 2), schRotation: prop(0) } })),
         traces: [],
+        drawings: [],
         skipped: [],
         imports: [],
       },

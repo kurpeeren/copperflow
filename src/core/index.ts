@@ -1,6 +1,7 @@
 export * from "./types.js"
 export { analyzeCircuit } from "./analyze.js"
 export { applyEdits, EditError, type EditErrorCode } from "./edit.js"
+export { checkDrawingName, nextDrawingName } from "./drawing-names.js"
 export { partsInSelector } from "./selectors.js"
 export * from "./annotations.js"
 export { listEntries, readEntries, type Author, type HistoryEntry, type HistoryListing } from "./history.js"

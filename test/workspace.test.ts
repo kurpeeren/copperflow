@@ -13,7 +13,7 @@ import {
 } from "../src/core/workspace.js"
 import { listEntries } from "../src/core/history.js"
 import { lockParts } from "../src/core/annotations.js"
-import { BOARD } from "./fixtures.js"
+import { BOARD, DRAWINGS } from "./fixtures.js"
 
 let root: string
 const FILE = "boards/main.circuit.tsx"
@@ -336,5 +336,46 @@ describe("redo", () => {
     expect((await redoChange(root, { author: "ai" })).redoOf).toBe(own.id)
     const agents = await undoChange(root, { author: "ai" })
     expect((await redoChange(root, { author: "human" })).redoOf).toBe(agents.id)
+  })
+})
+
+describe("drawing edits in the history", () => {
+  const meta = (summary: string) => ({ author: "human" as const, summary })
+
+  beforeEach(async () => {
+    await writeFile(join(root, FILE), DRAWINGS)
+  })
+
+  test("each call is one history entry, and undo restores the exact text", async () => {
+    const points = [
+      { x: 0, y: 4 },
+      { x: 2, y: 4 },
+    ]
+    await editCircuit(root, FILE, [{ kind: "addDrawing", tag: "schematicpath", name: "G3", props: { points } }], meta("draw G3"))
+    await editCircuit(
+      root,
+      FILE,
+      [
+        { kind: "setDrawingProps", id: "G1", props: { x: 2, y: 3 } },
+        { kind: "setDrawingProps", id: "G3", props: { points: points.map((p) => ({ x: p.x + 1, y: p.y })) } },
+      ],
+      meta("move G1, G3"),
+    )
+    await editCircuit(root, FILE, [{ kind: "removeDrawing", id: "drawing:path:1" }], meta("delete a line"))
+    expect((await listEntries(root, 10)).map((e) => e.summary)).toEqual(["delete a line", "move G1, G3", "draw G3"])
+    const text = await read()
+    expect(text).toContain('<schematicpath name="G3" points={[{ x: 1, y: 4 }, { x: 3, y: 4 }]} />')
+    expect(text).toContain("x={2} y={3} width")
+    for (let i = 0; i < 3; i++) await undoChange(root, { author: "human" })
+    expect(await read()).toBe(DRAWINGS)
+  })
+
+  test("locks on drawings are enforced, and undo will not change a locked drawing", async () => {
+    await editCircuit(root, FILE, [{ kind: "setDrawingProps", id: "G1", props: { x: 5 } }], { author: "ai", summary: "move G1" })
+    const { model } = await loadCircuit(root, FILE)
+    await updateAnnotations(root, FILE, (ann) => lockParts(ann, model, ["G1"], "2026-11-09T10:00:00.000Z"))
+    await expect(editCircuit(root, FILE, [{ kind: "removeDrawing", id: "G1" }], meta("x"))).rejects.toThrow(/G1 is locked/)
+    await expect(undoChange(root, { author: "ai" })).rejects.toThrow(/locked part G1/)
+    expect(await read()).toContain("x={5} y={2}")
   })
 })

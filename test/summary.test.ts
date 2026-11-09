@@ -2,7 +2,7 @@ import { expect, test } from "vitest"
 import { analyzeCircuit } from "../src/core/analyze.js"
 import { emptyAnnotations } from "../src/core/annotations.js"
 import { formatHistory, formatSummary } from "../src/core/summary.js"
-import { BOARD } from "./fixtures.js"
+import { BOARD, DRAWINGS } from "./fixtures.js"
 
 test("summary lists skipped elements, read-only traces, unplaced marks and violations", () => {
   const source = BOARD.replace('<trace from=".R1 > .pin1" to="net.GND" />', '<trace from={gnd} to="net.GND" />')
@@ -57,4 +57,25 @@ test("history names the redo on the undo it took back and on the change it broug
     "c0002  2026-11-03T10:01:00.000Z  human  Undo: remove D3  (a.circuit.tsx) [redone as c0003]",
     "c0001  2026-11-03T10:00:00.000Z  ai  remove D3  (a.circuit.tsx) [redone as c0003]",
   ])
+})
+
+test("summary lists drawings by id, with locks and read-only props", () => {
+  const text = formatSummary({
+    file: "sheet.circuit.tsx",
+    path: "/x/sheet.circuit.tsx",
+    source: DRAWINGS,
+    model: analyzeCircuit(DRAWINGS),
+    annotations: { ...emptyAnnotations(), locks: [{ part: "G1", props: {}, lockedAt: "t" }] },
+    violations: [],
+  })
+  expect(text).toContain("sheet.circuit.tsx: 1 parts, 1 traces, 6 drawings")
+  expect(text).toContain("Drawings:\n  G1 <schematicrect> [LOCKED] x={1} y={2} width={3} height={1.5}\n  drawing:path:1 <schematicpath> points=")
+  expect(text).toContain('  D[0:7]~2 <bus> name="D[0:7]" points={[{ x: 4, y: 3 }, { x: 4, y: 5 }]}')
+  expect(text).toContain('  G2 <schematictext> x={1 + 1} (read-only) y={1} text="Power"')
+})
+
+test("a circuit without drawings keeps its summary as it was", () => {
+  const text = formatSummary({ file: "a.circuit.tsx", path: "/x/a.circuit.tsx", source: BOARD, model: analyzeCircuit(BOARD), annotations: emptyAnnotations(), violations: [] })
+  expect(text.split("\n")[0]).toBe("a.circuit.tsx: 5 parts, 2 traces")
+  expect(text).not.toContain("Drawings:")
 })
