@@ -1,8 +1,9 @@
 import { describe, expect, test } from "vitest"
 import type { NetLabel } from "../src/engine/schematic.js"
-import { contextItems, contextShape, contextSelection, contextSize, placeMenu, type ContextEntry } from "../studio/src/shell/context-menu.js"
+import { allLocked, contextItems, contextShape, contextSelection, contextSize, placeMenu, type ContextEntry } from "../studio/src/shell/context-menu.js"
 import { ENGINE } from "../studio/src/shell/menus.js"
 import { commandOwner } from "../studio/src/shell/command-owners.js"
+import { createTargetActions, latestHandler } from "../studio/src/shell/target-actions.js"
 import { Selection } from "../studio/src/selection.js"
 
 const label = { id: "l1", net: "net.VCC", text: "VCC", at: { x: 0, y: 0 }, side: "left", style: "label" } as NetLabel
@@ -33,8 +34,10 @@ describe("context menu items", () => {
 
   test("every command item has someone to run it", () => {
     for (const target of [part, { kind: "canvas" }] as const) {
-      for (const entry of contextItems(target, { allLocked: false })) {
-        if (entry !== "separator" && entry.command) expect(commandOwner(entry.command)).toBeDefined()
+      for (const locked of [false, true]) {
+        for (const entry of contextItems(target, { allLocked: locked })) {
+          if (entry !== "separator" && entry.command) expect(commandOwner(entry.command)).toBeDefined()
+        }
       }
     }
   })
@@ -74,5 +77,37 @@ describe("the selection on right click", () => {
     const current = Selection.none.add(["R1"])
     expect(contextSelection(current, { kind: "canvas" })).toBe(current)
     expect(contextSelection(current, { kind: "label", label })).toBe(current)
+  })
+})
+
+describe("allLocked", () => {
+  const locked = new Set(["R1", "R2"])
+  test("true only when something is selected and all of it is locked", () => {
+    expect(allLocked(["R1", "R2"], locked)).toBe(true)
+    expect(allLocked(["R1", "C1"], locked)).toBe(false)
+    expect(allLocked([], locked)).toBe(false)
+  })
+})
+
+describe("target actions", () => {
+  test("a rename started after the circuit changed uses the new circuit", () => {
+    const circuits: string[] = []
+    const latest = latestHandler(() => circuits.push("circuit 1"))
+    latest.set(() => circuits.push("circuit 2"))
+    latest.call({ kind: "renameLabel", labelId: "l1" })
+    expect(circuits).toEqual(["circuit 2"])
+  })
+  test("the newest answer gets the action, so it reads the current circuit", () => {
+    const bus = createTargetActions()
+    const seen: string[] = []
+    const stop = bus.answer(() => seen.push("old circuit"))
+    bus.answer(() => seen.push("new circuit"))
+    expect(bus.send({ kind: "renameLabel", labelId: "l1" })).toBe(true)
+    expect(seen).toEqual(["new circuit"])
+    stop()
+    expect(bus.send({ kind: "renameLabel", labelId: "l1" })).toBe(true)
+  })
+  test("nobody answering is reported", () => {
+    expect(createTargetActions().send({ kind: "renameLabel", labelId: "l1" })).toBe(false)
   })
 })

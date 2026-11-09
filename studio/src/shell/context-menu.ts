@@ -67,6 +67,11 @@ export function contextShape(entries: readonly ContextEntry[]): MenuShape {
   return entries.map((entry) => (entry === "separator" ? "separator" : entry.pending ? "disabled" : "item"))
 }
 
+/** Whether every selected part is locked (and some part is selected), so the menu offers Unlock. */
+export function allLocked(names: readonly string[], locked: ReadonlySet<string>): boolean {
+  return names.length > 0 && names.every((name) => locked.has(name))
+}
+
 /** A right click on a part that is not selected selects it alone; on a selected part the group stays. */
 export function contextSelection(selection: Selection, target: ContextTarget): Selection {
   return target.kind === "part" && !selection.has(target.name) ? selection.only(target.name) : selection
@@ -90,7 +95,7 @@ export function contextSize(entries: readonly ContextEntry[]): Size {
 }
 
 /** Where the menu's top-left corner goes: at the pointer, flipped to the left and up when it would leave the window. */
-export function placeMenu(at: Point, menu: Size, window: Size): Point {
-  const flip = (pointer: number, length: number, room: number) => Math.max(0, pointer + length > room ? pointer - length : pointer)
-  return { x: flip(at.x, menu.width, window.width), y: flip(at.y, menu.height, window.height) }
+export function placeMenu(at: Point, menu: Size, room: Size): Point {
+  const flip = (pointer: number, length: number, space: number) => Math.max(0, pointer + length > space ? pointer - length : pointer)
+  return { x: flip(at.x, menu.width, room.width), y: flip(at.y, menu.height, room.height) }
 }

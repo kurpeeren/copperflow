@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import type { Point } from "../pcb/geometry"
-import { blurButton, isPointerClick } from "./focus"
-import { contextShape, contextSize, placeMenu, type ContextEntry, type ContextItem } from "./context-menu"
+import { contextShape, contextSize, placeMenu, type ContextEntry, type ContextItem, type Size } from "./context-menu"
 import { useKeyHold } from "./key-gate"
+import { MenuItemButton, useCloseOnOutsidePress } from "./menu-parts"
 import { menuKey } from "./menu-keys"
 import "./shell.css"
 import "./context-menu.css"
@@ -16,19 +16,12 @@ interface Props {
   onClose(): void
 }
 
-/** Closes on a press anywhere outside the menu, and when the window changes size. */
-function useCloseOutside(menu: React.RefObject<HTMLElement | null>, onClose: () => void): void {
+/** Closes when the window changes size. */
+function useCloseOnResize(onClose: () => void): void {
   useEffect(() => {
-    const onPress = (event: PointerEvent) => {
-      if (!(event.target instanceof Node) || !menu.current?.contains(event.target)) onClose()
-    }
-    window.addEventListener("pointerdown", onPress, true)
     window.addEventListener("resize", onClose)
-    return () => {
-      window.removeEventListener("pointerdown", onPress, true)
-      window.removeEventListener("resize", onClose)
-    }
-  }, [menu, onClose])
+    return () => window.removeEventListener("resize", onClose)
+  }, [onClose])
 }
 
 const itemOf = (menu: HTMLElement | null, element: Element | null): number | null => {
@@ -40,7 +33,13 @@ const itemOf = (menu: HTMLElement | null, element: Element | null): number | nul
 export function ContextMenu({ entries, at, onRun, onClose }: Props) {
   const menu = useRef<HTMLUListElement>(null)
   const shape = useMemo(() => contextShape(entries), [entries])
-  const place = useMemo(() => placeMenu(at, contextSize(entries), { width: window.innerWidth, height: window.innerHeight }), [at, entries])
+  // The first position uses an estimate of the size; once drawn, the menu is measured and placed again.
+  const [measured, setMeasured] = useState<Size | null>(null)
+  useLayoutEffect(() => {
+    const box = menu.current?.getBoundingClientRect()
+    if (box) setMeasured({ width: box.width, height: box.height })
+  }, [entries])
+  const place = useMemo(() => placeMenu(at, measured ?? contextSize(entries), { width: window.innerWidth, height: window.innerHeight }), [at, entries, measured])
   // The menu holds every key while it is open, so none reaches the canvas behind it.
   useKeyHold(true, (event) => {
     const at = itemOf(menu.current, document.activeElement)
@@ -50,31 +49,26 @@ export function ContextMenu({ entries, at, onRun, onClose }: Props) {
     if (next.open === null) return onClose()
     if (next.focus !== "keep" && next.focus.item !== null) menu.current?.querySelector<HTMLElement>(`[data-item="${next.focus.item}"]`)?.focus()
   })
-  useCloseOutside(menu, onClose)
+  useCloseOnOutsidePress(true, menu, onClose)
+  useCloseOnResize(onClose)
   return (
-    <ul className="menu-dropdown context-menu" role="menu" aria-label="Context menu" ref={menu} style={{ left: place.x, top: place.y }}>
+    <ul className="menu-dropdown context-menu" role="menu" aria-label="Context menu" ref={menu} onContextMenu={(event) => event.preventDefault()} style={{ left: place.x, top: place.y }}>
       {entries.map((entry, i) =>
         entry === "separator" ? (
           <li key={`sep${i}`} className="menu-separator" role="separator" />
         ) : (
           <li key={entry.label} role="none">
-            <button
-              role="menuitem"
-              className="menu-item"
-              data-item={i}
-              tabIndex={-1}
-              aria-disabled={entry.pending ? true : undefined}
-              title={entry.pending}
-              onClick={(event) => {
-                if (isPointerClick(event)) blurButton(event)
-                if (entry.pending) return
+            <MenuItemButton
+              label={entry.label}
+              {...(entry.shortcut ? { shortcut: entry.shortcut } : {})}
+              index={i}
+              enabled={!entry.pending}
+              {...(entry.pending ? { reason: entry.pending } : {})}
+              onActivate={() => {
                 onClose()
                 onRun(entry)
               }}
-            >
-              <span>{entry.label}</span>
-              {entry.shortcut && <kbd>{entry.shortcut}</kbd>}
-            </button>
+            />
           </li>
         ),
       )}

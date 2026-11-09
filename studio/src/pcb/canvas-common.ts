@@ -52,8 +52,8 @@ export interface CanvasProps {
   /** A point to centre the camera on; the canvas calls onFocused once it has. */
   focus: FocusRequest | null
   onFocused(): void
-  /** A right click that did not move, on a part, a net label or the empty canvas; `at` is in client pixels; on a net label the schematic adds the way to rename its net. */
-  onContextMenu(target: ContextTarget, at: Point, rename?: () => void): void
+  /** A right click that did not move, on a part, a net label or the empty canvas; `at` is in client pixels */
+  onContextMenu(target: ContextTarget, at: Point): void
   /** A double click on a part: Properties, open on it. */
   onOpenProperties(part: string): void
 }

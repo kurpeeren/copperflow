@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react"
 import { blurButton, isPointerClick } from "./focus"
 import { useKeyHold } from "./key-gate"
+import { MenuItemButton, useCloseOnOutsidePress } from "./menu-parts"
 import { firstMenuItem, menuKey, type MenuFocus, type MenuKeyResult } from "./menu-keys"
 import { MENUS, itemState, menuReducer, menuShapes, type CommandId, type Menu, type MenuEntry } from "./menus"
 import type { View } from "../pcb/positions"
@@ -46,18 +47,6 @@ function useFocusMover(bar: RefObject<HTMLElement | null>): (target: MenuFocus) 
   )
 }
 
-/** Closes the open menu on a press outside the bar. */
-function useCloseOnOutsidePress(open: boolean, bar: RefObject<HTMLElement | null>, close: () => void): void {
-  useEffect(() => {
-    if (!open) return
-    const onPress = (event: PointerEvent) => {
-      if (!(event.target instanceof Node) || !bar.current?.contains(event.target)) close()
-    }
-    window.addEventListener("pointerdown", onPress, true)
-    return () => window.removeEventListener("pointerdown", onPress, true)
-  }, [open, bar, close])
-}
-
 function Entry({ entry, menu, index, view, onRun }: { entry: MenuEntry; menu: number; index: number; view: View; onRun: OnRun }) {
   if (entry === "separator") return <li className="menu-separator" role="separator" />
   const { label, shortcut, command } = entry
@@ -65,23 +54,7 @@ function Entry({ entry, menu, index, view, onRun }: { entry: MenuEntry; menu: nu
   const { enabled, reason } = itemState(entry, view)
   return (
     <li role="none">
-      <button
-        role="menuitem"
-        className="menu-item"
-        data-menu={menu}
-        data-item={index}
-        tabIndex={-1}
-        aria-disabled={enabled ? undefined : true}
-        title={reason}
-        onClick={(event) => {
-          const keyboard = !isPointerClick(event)
-          if (!keyboard) blurButton(event)
-          if (command && enabled) onRun(command, menu, keyboard)
-        }}
-      >
-        <span>{label}</span>
-        {shortcut && <kbd>{shortcut}</kbd>}
-      </button>
+      <MenuItemButton label={label} {...(shortcut ? { shortcut } : {})} menu={menu} index={index} enabled={enabled} {...(reason ? { reason } : {})} onActivate={(keyboard) => command && onRun(command, menu, keyboard)} />
     </li>
   )
 }

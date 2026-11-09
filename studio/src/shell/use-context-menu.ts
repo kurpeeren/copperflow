@@ -7,14 +7,14 @@ import type { Point } from "../pcb/geometry"
 import type { ContextTarget } from "../pcb/press"
 import type { Design } from "../../../src/engine/design.js"
 import type { Selection, SelectionChange } from "../selection"
-import { contextItems, contextSelection, type ContextEntry, type ContextItem } from "./context-menu"
+import { allLocked, contextItems, contextSelection, type ContextEntry, type ContextItem } from "./context-menu"
 import type { CommandId } from "./menus"
+import { targetActions } from "./target-actions"
 
 /** A right click that is being answered: what it was on, where, and how to rename the net of a label. */
 interface Request {
   target: ContextTarget
   at: Point
-  rename?: () => void
 }
 
 interface Input {
@@ -30,7 +30,7 @@ interface Input {
 export interface ContextMenuState {
   /** The open menu's items and place; null when closed. */
   open: { entries: readonly ContextEntry[]; at: Point } | null
-  show(target: ContextTarget, at: Point, rename?: () => void): void
+  show(target: ContextTarget, at: Point): void
   close(): void
   runItem(item: ContextItem): void
 }
@@ -39,9 +39,9 @@ export function useContextMenu(input: Input): ContextMenuState {
   const { circuit, design, selection, onSelect, run, openProperties, onHighlight } = input
   const [request, setRequest] = useState<Request | null>(null)
   const show = useCallback(
-    (target: ContextTarget, at: Point, rename?: () => void) => {
+    (target: ContextTarget, at: Point) => {
       onSelect((current) => contextSelection(current, target))
-      setRequest(rename ? { target, at, rename } : { target, at })
+      setRequest({ target, at })
     },
     [onSelect],
   )
@@ -51,14 +51,13 @@ export function useContextMenu(input: Input): ContextMenuState {
     const locked = new Set(circuit?.annotations.locks.map((lock) => lock.part))
     // The selection the click leaves, which the items act on.
     const after = contextSelection(selection, request.target)
-    const allLocked = after.size > 0 && after.names.every((name) => locked.has(name))
-    return { entries: contextItems(request.target, { allLocked }), at: request.at }
+    return { entries: contextItems(request.target, { allLocked: allLocked(after.names, locked) }), at: request.at }
   }, [request, circuit, selection])
   const runItem = useCallback(
     (item: ContextItem) => {
       if (item.command) return run(item.command)
       if (item.special === "properties") return openProperties()
-      if (item.special === "rename") return request?.rename?.()
+      if (item.special === "rename" && request?.target.kind === "label") return void targetActions.send({ kind: "renameLabel", labelId: request.target.label.id })
       if (item.special === "highlightNet" && request?.target.kind === "label" && design) onHighlight([canonicalNet(design.circuit.nets, request.target.label.net)])
     },
     [run, openProperties, onHighlight, request, design],

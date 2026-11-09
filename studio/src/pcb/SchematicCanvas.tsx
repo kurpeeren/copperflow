@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react"
+import type { Actions } from "../App"
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { CircuitData, Design } from "../api"
 import type { Selection } from "../selection"
@@ -26,6 +27,7 @@ import { firstDrawing, keepSheet, sheetArt, sheetDate, type Sheet, type SheetArt
 import { targetAt } from "./gestures"
 import { cursorFor, pointerHandlers, useCanvasGestures, type Gesture, type GestureInput, type PointerInput, type Press } from "./use-canvas-gestures"
 import { useDraggedLabel, useLabelDrag, type LabelTools, type MovingLabel } from "./use-label-drag"
+import { useTargetActions } from "../shell/use-target-actions"
 import { useLabelPalette } from "./use-label-palette"
 import { useNoteTool } from "./use-note-tool"
 import { usePartKeys } from "./use-part-keys"
@@ -174,6 +176,15 @@ function SheetView({ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave,
       {empty && <p className="empty">This schematic has no parts yet.</p>}
     </div>
   )
+}
+
+/** Answers the context menu's Rename: finds the label in the design as it is now, then opens the name input. */
+function useLabelRenameAction(design: Design, palette: Palette, actions: Actions): void {
+  useTargetActions((action) => {
+    const label = design.schematic.labels.find((candidate) => candidate.id === action.labelId)
+    if (label) palette.rename(label)
+    else actions.notify("That label is gone; right click it again.")
+  })
 }
 
 /** The sheet, kept as it is while the drawing still fits it (so it does not move under the parts). */
@@ -348,7 +359,8 @@ export function SchematicCanvas(props: CanvasProps) {
   const common = { view: "schematic", circuit, actions, onSelect, blockerFor: parts.blockerFor } as const
   const labels = useLabelDrag({ design, circuit, actions, builtFrom })
   const tool = useArmedForGestures(note, palette)
-  const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom, labels: labels.tools, selection, tool, onContextMenu: (target, at) => props.onContextMenu(target, at, target.kind === "label" ? () => palette.rename(target.label) : undefined) })
+  const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom, labels: labels.tools, selection, tool, onContextMenu: props.onContextMenu })
+  useLabelRenameAction(design, palette, actions)
   const highlight = useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys: { ...common, selection } })
   const hover = useSheetHover(parts.boxes, wire, labels.tools)
   const { moving, gesture } = gestures
