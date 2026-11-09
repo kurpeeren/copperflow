@@ -54,6 +54,8 @@ export interface DrawingInfo {
   name?: string
   /** The points of a path or bus, when they are written as a literal list. */
   points?: Point[]
+  /** Tag of the enclosing element, e.g. "board" or "group". */
+  parent?: string
   /** Every prop but `name`; `points` is editable when it is a literal list. */
   props: Record<string, PropInfo>
   line: number

@@ -375,7 +375,17 @@ describe("drawing edits in the history", () => {
     const { model } = await loadCircuit(root, FILE)
     await updateAnnotations(root, FILE, (ann) => lockParts(ann, model, ["G1"], "2026-11-09T10:00:00.000Z"))
     await expect(editCircuit(root, FILE, [{ kind: "removeDrawing", id: "G1" }], meta("x"))).rejects.toThrow(/G1 is locked/)
-    await expect(undoChange(root, { author: "ai" })).rejects.toThrow(/locked part G1/)
+    await expect(undoChange(root, { author: "ai" })).rejects.toThrow("would change the locked drawing G1; unlock it first")
     expect(await read()).toContain("x={5} y={2}")
+  })
+
+  test("undo will not hand a locked unnamed drawing's id to a twin written the same way", async () => {
+    const rect = "    <schematicrect width={1} height={1} />\n"
+    const source = DRAWINGS.replace("    <schematicrect name=", rect + '    <resistor name="R2" />\n' + rect + "    <schematicrect name=")
+    await writeFile(join(root, FILE), source)
+    await editCircuit(root, FILE, [{ kind: "removeDrawing", id: "drawing:rect:1" }], { author: "ai", summary: "delete a box" })
+    const { model } = await loadCircuit(root, FILE)
+    await updateAnnotations(root, FILE, (ann) => lockParts(ann, model, ["drawing:rect:1"], "2026-11-09T10:00:00.000Z"))
+    await expect(undoChange(root, { author: "ai" })).rejects.toThrow(/locked drawing drawing:rect:1/)
   })
 })

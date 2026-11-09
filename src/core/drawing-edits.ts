@@ -3,10 +3,21 @@ import MagicString from "magic-string"
 import type { JSXElement } from "@babel/types"
 import { drawingKindOf } from "../engine/drawing-kinds.js"
 import type { DrawingKind } from "../engine/model.js"
-import type { Scan } from "./analyze.js"
+import { scanCircuit, type Scan } from "./analyze.js"
+import { drawingKeeper } from "./drawing-identity.js"
 import { checkDrawingName } from "./drawing-names.js"
 import { EditError } from "./edit-error.js"
-import { attributeNamed, cleanPoint, insertInBoard, MAX_COORDINATE, putAttribute, removeRange, validateOrThrow } from "./edit-text.js"
+import {
+  attributeNamed,
+  boardInsertion,
+  cleanPoint,
+  lineEnding,
+  lineIndent,
+  MAX_COORDINATE,
+  putAttribute,
+  removeRange,
+  validateOrThrow,
+} from "./edit-text.js"
 import { formatLiteral, formatPointList } from "./literals.js"
 import type { DrawingInfo, Edit, Literal, Point } from "./types.js"
 
@@ -34,7 +45,25 @@ function kindOrThrow(tag: string): DrawingKind {
   return kind
 }
 
-/** Adds a drawing before the board's first trace (or before </board>), as addPart adds a part. */
+/**
+ * Where a new drawing goes: before the board's first trace (or before </board>), as addPart puts a part, or
+ * right after the last drawing of its kind when that one is written later in the board, since a drawing's index
+ * id counts every earlier tag of its kind and a new one before it would shift it.
+ */
+function drawingInsertion(source: string, scan: Scan, tag: string): { lineStart: number; indent: string } {
+  const usual = boardInsertion(source, scan, "a drawing")
+  const last = scan.model.drawings.filter((d) => d.tag === tag).at(-1)
+  if (!last || last.start < usual.lineStart || last.parent !== "board") return usual
+  const indent = lineIndent(source, last.start)
+  const newline = source.indexOf("\n", last.end)
+  if (indent === undefined || newline === -1 || source.slice(last.end, newline).trim() !== "") return usual
+  return { lineStart: newline + 1, indent }
+}
+
+/**
+ * Adds a drawing (see drawingInsertion for where). One that would still change the id of a drawing already in
+ * the file, such as a later one of its kind inside a group, is refused.
+ */
 export function addDrawing(source: string, scan: Scan, edit: Extract<Edit, { kind: "addDrawing" }>): string {
   const kind = kindOrThrow(edit.tag)
   if (kind === "bus" && edit.name === undefined) throw new EditError("invalid", 'A bus needs a name such as "D[0:7]" or "CLK"')
@@ -43,8 +72,26 @@ export function addDrawing(source: string, scan: Scan, edit: Extract<Edit, { kin
     if (key === "name") throw new EditError("invalid", "pass name as its own argument")
     return ` ${key}=${formatDrawingProp(key, value)}`
   })
+  const { lineStart, indent } = drawingInsertion(source, scan, edit.tag)
   const name = edit.name === undefined ? "" : ` name=${formatLiteral(edit.name)}`
-  return insertInBoard(source, scan, `<${edit.tag}${name}${props.join("")} />`, "a drawing")
+  const element = `<${edit.tag}${name}${props.join("")} />`
+  const next = source.slice(0, lineStart) + indent + element + lineEnding(source) + source.slice(lineStart)
+  keepOtherIds(scan, next, lineStart + indent.length)
+  return next
+}
+
+/** Refuses a new drawing (starting at `added`) that would change the id of a drawing already in the file. */
+function keepOtherIds(scan: Scan, next: string, added: number): void {
+  let after: Scan
+  try {
+    after = scanCircuit(next)
+  } catch {
+    return // applyEdits rescans the result and reports code that does not parse.
+  }
+  const before = scan.model.drawings.map((d) => d.id)
+  const now = after.model.drawings.filter((d) => d.start !== added).map((d) => d.id)
+  const changed = before.find((id, index) => now[index] !== id)
+  if (changed !== undefined) throw new EditError("invalid", `The new drawing would change the id of ${changed}; add it after that one by hand`)
 }
 
 function requireEditableDrawing(scan: Scan, id: string, locked: ReadonlySet<string>): { drawing: DrawingInfo; node: JSXElement } {
@@ -86,10 +133,11 @@ export function setDrawingProps(source: string, scan: Scan, edit: Extract<Edit, 
  * an earlier unnamed drawing of the same kind, for example, would hand its id to the next one.
  */
 export function keepLockedDrawings(source: string, scan: Scan, next: string, after: Scan, locked: ReadonlySet<string>): void {
+  const kept = drawingKeeper(source, next)
   for (const drawing of scan.model.drawings) {
     if (!locked.has(drawing.id)) continue
     const now = after.model.drawings.find((d) => d.id === drawing.id)
-    if (!now || next.slice(now.start, now.end) !== source.slice(drawing.start, drawing.end)) {
+    if (!now || !kept(drawing, now)) {
       throw new EditError("locked", `The edit would change the locked drawing ${drawing.id}; ask the human to unlock it`)
     }
   }

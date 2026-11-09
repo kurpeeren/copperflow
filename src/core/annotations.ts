@@ -48,12 +48,24 @@ export function annotationsPathFor(circuitPath: string): string {
   return `${circuitPath.replace(/\.tsx$/, "")}.annotations.json`
 }
 
-/** What a lock holds on to: the part with this name, else the drawing with this id. */
-export function lockTarget(model: CircuitModel, name: string): { props: Record<string, PropInfo>; drawing: boolean } | undefined {
-  const part = model.parts.find((p) => p.name === name)
+/**
+ * What a lock holds on to: the part with this name, or the drawing with this id. `kind` says which a lock is on, so
+ * a lock on a part never matches a drawing of the same name; without it (a new lock), a part comes first.
+ */
+export function lockTarget(
+  model: CircuitModel,
+  name: string,
+  kind?: "part" | "drawing",
+): { props: Record<string, PropInfo>; drawing: boolean } | undefined {
+  const part = kind === "drawing" ? undefined : model.parts.find((p) => p.name === name)
   if (part) return { props: part.props, drawing: false }
-  const drawing = model.drawings.find((d) => d.id === name)
+  const drawing = kind === "part" ? undefined : model.drawings.find((d) => d.id === name)
   return drawing && { props: drawing.props, drawing: true }
+}
+
+/** Which a stored lock is on. */
+export function lockKind(lock: Lock): "part" | "drawing" {
+  return lock.drawing ? "drawing" : "part"
 }
 
 /** Locks parts by name and drawings by id, with a snapshot of their props. */
@@ -75,8 +87,8 @@ export function unlockParts(annotations: Annotations, parts: string[]): Annotati
 /** Finds locked parts and drawings that were removed or changed, for example by a direct file edit. */
 export function verifyLocks(annotations: Annotations, model: CircuitModel): LockViolation[] {
   return annotations.locks.flatMap((lock): LockViolation[] => {
-    const target = lockTarget(model, lock.part)
-    if (!target) return [{ part: lock.part, kind: "missing", detail: `the locked ${lock.drawing ? "drawing" : "part"} is no longer in the file` }]
+    const target = lockTarget(model, lock.part, lockKind(lock))
+    if (!target) return [{ part: lock.part, kind: "missing", detail: `the locked ${lockKind(lock)} is no longer in the file` }]
     const keys = new Set([...Object.keys(lock.props), ...Object.keys(target.props)])
     const changes = [...keys].flatMap((key) => {
       const before = lock.props[key]

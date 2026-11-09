@@ -6,7 +6,14 @@ import { DRAWINGS } from "./fixtures.js"
 
 const wrap = (body: string) => `export default () => (\n  <board width="10mm" height="10mm">\n${body}\n  </board>\n)\n`
 const LINE = "points={[{ x: 0, y: 0 }, { x: 1, y: 0 }]}"
-const UNSURE = "its id depends on an earlier drawing made in a callback or with a computed name"
+const UNSURE = "its id depends on an earlier drawing made in a callback, a condition or a helper component, or with a computed name"
+const MAIN = "main.circuit.tsx"
+
+/** Both readings of one file: the engine's drawings and the core's. */
+function bothWays(text: string) {
+  const circuit = elaborate(evaluateCircuit({ [MAIN]: text }, MAIN), MAIN, { padCount: () => undefined })
+  return { engine: circuit.drawings, core: analyzeCircuit(text).drawings }
+}
 
 describe("drawings in the scan", () => {
   const model = analyzeCircuit(DRAWINGS)
@@ -75,6 +82,50 @@ test("a drawing named like a component gives way to it; a group's name is no par
     `<schematictext name="G9" text="c" />`,
   ].join("\n")
   expect(analyzeCircuit(wrap(body)).drawings.map((d) => d.id)).toEqual(["U1~2", "U2~2", "G9"])
+})
+
+test("a drawing under a condition or in a helper is read-only, and no editable id names another drawing", () => {
+  const text = [
+    `const Legend = () => <schematictext text="a" />`,
+    wrap(
+      [
+        `{false && <schematicrect x={9} width={1} height={1} />}`,
+        `<schematicrect width={1} height={1} />`,
+        `{true ? <schematiccircle radius={1} /> : <schematiccircle radius={2} />}`,
+        `<schematiccircle radius={3} />`,
+        `<Legend />`,
+        `<Legend />`,
+        `<schematictext text="b" />`,
+        `{false && <resistor name="R5" />}`,
+        `<schematictext name="R5" text="x" />`,
+        `<schematicpath name="P" ${LINE} />`,
+      ].join("\n"),
+    ),
+  ].join("\n")
+  const { engine, core } = bothWays(text)
+  expect(engine.map((d) => d.id)).toEqual(["drawing:rect:1", "drawing:circle:1", "drawing:circle:2", "drawing:text:1", "drawing:text:2", "drawing:text:3", "R5", "P"])
+  for (const drawing of core.filter((d) => d.editable)) {
+    const same = engine.find((d) => d.id === drawing.id)
+    expect([drawing.id, same?.source.line]).toEqual([drawing.id, drawing.line])
+  }
+  expect(core.map((d) => [d.id, d.readonlyReason])).toEqual([
+    ["drawing:text:1", "inside a helper component, which may draw it any number of times"],
+    ["drawing:rect:1", "inside a condition such as && or ?:"],
+    ["drawing:rect:2", UNSURE],
+    ["drawing:circle:1", "inside a condition such as && or ?:"],
+    ["drawing:circle:2", "inside a condition such as && or ?:"],
+    ["drawing:circle:3", UNSURE],
+    ["drawing:text:2", UNSURE],
+    ["R5~2", UNSURE],
+    ["P", undefined],
+  ])
+})
+
+test("the circuit's own function may be declared apart from its export", () => {
+  const declared = `function Sheet() {\n  return (\n    <board>\n      <schematicrect name="B" width={1} height={1} />\n    </board>\n  )\n}\nexport default Sheet\n`
+  const asConst = `const Sheet = () => (\n  <board>\n    <schematicrect width={1} height={1} />\n  </board>\n)\nexport default Sheet\n`
+  expect(analyzeCircuit(declared).drawings.map((d) => [d.id, d.editable])).toEqual([["B", true]])
+  expect(analyzeCircuit(asConst).drawings.map((d) => [d.id, d.editable])).toEqual([["drawing:rect:1", true]])
 })
 
 describe("drawings whose ids the file alone cannot tell", () => {

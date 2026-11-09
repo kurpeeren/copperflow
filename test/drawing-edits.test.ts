@@ -42,9 +42,32 @@ describe("addDrawing", () => {
     expect(out).toContain('    <schematicpath name="G3" points={[{ x: 0, y: 0 }, { x: 1.2346, y: -2 }]} lineStyle="dashed" />\n    <trace')
   })
 
-  test("an unnamed drawing takes the next place among its kind", () => {
-    const out = applyEdits(DRAWINGS, [{ kind: "addDrawing", tag: "schematicpath", props: { points: TWO } }], none)
-    expect(ids(out)).toContain("drawing:path:3")
+  test("goes after the last drawing of its kind when that one is written later, so no id shifts", () => {
+    const late = "    <schematicpath points={[{ x: 5, y: 5 }, { x: 6, y: 5 }]} />\n"
+    const after = DRAWINGS.replace("  </board>", `${late}  </board>`)
+    const before = ids(after)
+    expect(before).toContain("drawing:path:3")
+    const out = applyEdits(after, [{ kind: "addDrawing", tag: "schematicpath", props: { points: TWO } }], none)
+    expect(out).toBe(after.replace(late, `${late}    <schematicpath points={[{ x: 0, y: 0 }, { x: 1, y: 0 }]} />\n`))
+    expect(ids(out)).toEqual([...before, "drawing:path:4"])
+    const named = applyEdits(after, [{ kind: "addDrawing", tag: "schematicpath", name: "G3", props: { points: TWO } }], none)
+    expect(ids(named)).toEqual([...before, "G3"])
+  })
+
+  test("a new bus piece goes after the last bus, so the pieces keep their ids", () => {
+    const late = '    <bus name="D[0:7]" points={[{ x: 4, y: 5 }, { x: 6, y: 5 }]} />\n'
+    const after = DRAWINGS.replace("  </board>", `${late}  </board>`)
+    const out = applyEdits(after, [{ kind: "addDrawing", tag: "bus", name: "D[0:7]", props: { points: TWO } }], none)
+    expect(ids(out)).toEqual([...ids(after), "D[0:7]~4"])
+  })
+
+  test("refuses a new drawing that would renumber one written later inside a group", () => {
+    const grouped = "    <group schX={1}>\n      <schematicpath points={[{ x: 5, y: 5 }, { x: 6, y: 5 }]} />\n    </group>\n"
+    const after = DRAWINGS.replace("  </board>", `${grouped}  </board>`)
+    expect(editError([{ kind: "addDrawing", tag: "schematicpath", props: { points: TWO } }], none, after)).toMatchObject({
+      code: "invalid",
+      message: "The new drawing would change the id of drawing:path:3; add it after that one by hand",
+    })
   })
 
   test("a bus needs a name that names its nets, and a new piece may share an existing bus's name", () => {
@@ -104,6 +127,14 @@ describe("removeDrawing", () => {
     expect(editError([{ kind: "removeDrawing", id: "G1" }], new Set(["G1"]))).toMatchObject({ code: "locked", message: "G1 is locked; ask the human to unlock it" })
     const mapped = `<board>\n  {[1].map(() => <schematicrect name="B" width={1} height={1} />)}\n</board>`
     expect(editError([{ kind: "removeDrawing", id: "B" }], none, mapped)).toMatchObject({ code: "readonly", message: "B is read-only (inside a callback such as .map())" })
+  })
+
+  test("refuses to hand a locked drawing's id to a twin, even one written the same way", () => {
+    const rect = "    <schematicrect width={1} height={1} />\n"
+    const source = DRAWINGS.replace("    <schematicrect name=", rect + rect + '    <resistor name="R2" />\n' + rect + "    <schematicrect name=")
+    expect(ids(source).slice(0, 3)).toEqual(["drawing:rect:1", "drawing:rect:2", "drawing:rect:3"])
+    const error = editError([{ kind: "removeDrawing", id: "drawing:rect:1" }], new Set(["drawing:rect:2"]), source)
+    expect(error).toMatchObject({ code: "locked", message: "The edit would change the locked drawing drawing:rect:2; ask the human to unlock it" })
   })
 
   test("refuses to shift the id of a locked unnamed drawing", () => {

@@ -69,6 +69,18 @@ describe("drawing locks", () => {
     expect(() => lockParts(emptyAnnotations(), sheet, ["G9"], NOW)).toThrow("No part or drawing named G9")
   })
 
+  test("a lock on a part never matches a drawing of the same name, nor the other way round", () => {
+    const source = `<board>\n  <resistor name="R1" />\n  <schematictext name="R1" text="x" />\n  <schematictext name="T" text="y" />\n</board>`
+    const model = analyzeCircuit(source)
+    const ann = lockParts(lockParts(emptyAnnotations(), model, ["R1"], NOW), model, ["R1~2"], NOW)
+    const withoutPart = analyzeCircuit(source.replace('  <resistor name="R1" />\n', ""))
+    expect(withoutPart.drawings.map((d) => d.id)).toEqual(["R1", "T"])
+    expect(verifyLocks(ann, withoutPart)).toEqual([
+      { part: "R1", kind: "missing", detail: "the locked part is no longer in the file" },
+      { part: "R1~2", kind: "missing", detail: "the locked drawing is no longer in the file" },
+    ])
+  })
+
   test("a drawing lock survives the sidecar round trip", async () => {
     const path = join(await mkdtemp(join(tmpdir(), "cf-ann-")), "x.annotations.json")
     const ann = lockParts(emptyAnnotations(), sheet, ["G1"], NOW)

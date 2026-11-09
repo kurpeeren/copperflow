@@ -6,7 +6,7 @@ import { readPointList } from "./literals.js"
 import type { DrawingInfo, PropInfo, SkippedElement } from "./types.js"
 
 export const NAME_NOT_LITERAL = "name is not a string literal"
-export const UNSURE_ID = "its id depends on an earlier drawing made in a callback or with a computed name"
+export const UNSURE_ID = "its id depends on an earlier drawing made in a callback, a condition or a helper component, or with a computed name"
 
 /** A drawing tag as the scan meets it, in source order. */
 export interface DrawingTag {
@@ -19,8 +19,9 @@ export interface DrawingTag {
   start: number
   end: number
   readonlyReason?: string
-  /** Made in a callback such as .map(), so the engine may see it any number of times. */
-  inCallback: boolean
+  parent?: string
+  /** Why the engine may draw it any number of times (in a callback, a condition or a helper component). */
+  uncounted?: string
   hasSpread: boolean
 }
 
@@ -28,7 +29,8 @@ export interface DrawingTag {
 export interface NamedElement {
   name: string
   tag: string
-  inCallback: boolean
+  /** Made in a callback, a condition or a helper component, so the engine may make it any number of times. */
+  uncounted: boolean
 }
 
 export interface ScannedDrawings {
@@ -46,19 +48,19 @@ function isEnginePart(tag: string): boolean {
 }
 
 /**
- * Remembers what the drawings and parts read so far leave unknown about later ids: a tag made in a callback
- * may be drawn any number of times, which shifts the later unnamed ids of its kind and repeats its name, and a
- * computed name (or spread props) may take any name.
+ * Remembers what the drawings and parts read so far leave unknown about later ids: a tag made in a callback, a
+ * condition or a helper component may be drawn any number of times, which shifts the later unnamed ids of its
+ * kind and repeats (or drops) its name, and a computed name (or spread props) may take any name.
  */
-function doubts(callbackParts: Iterable<string>) {
+function doubts(uncountedParts: Iterable<string>) {
   const kinds = new Set<DrawingKind>()
-  const names = new Set(callbackParts)
+  const names = new Set(uncountedParts)
   let anyName = false
   return {
     unsure: (kind: DrawingKind, name: string | undefined) => (name === undefined ? kinds.has(kind) : anyName || names.has(name)),
     note(tag: DrawingTag, name: string | undefined, nameUnknown: boolean) {
-      if (tag.inCallback) kinds.add(tag.kind)
-      if (tag.inCallback && name !== undefined) names.add(name)
+      if (tag.uncounted) kinds.add(tag.kind)
+      if (tag.uncounted && name !== undefined) names.add(name)
       if (nameUnknown) anyName = true
     },
   }
@@ -74,6 +76,7 @@ function drawingInfo(tag: DrawingTag, id: string, name: string | undefined, read
     tag: tag.tag,
     ...(name === undefined ? {} : { name }),
     ...(points ? { points } : {}),
+    ...(tag.parent === undefined ? {} : { parent: tag.parent }),
     props,
     line: tag.line,
     editable: readonlyReason === undefined,
@@ -86,7 +89,8 @@ function drawingInfo(tag: DrawingTag, id: string, name: string | undefined, read
 /**
  * The file's drawings with the ids the engine gives them (the shared rule in drawing-ids.ts). A drawing whose
  * name is an expression is skipped; one whose id the file alone cannot tell is read-only, so an edit never
- * reaches a drawing the Studio did not mean. Drawings made inside other components are not seen.
+ * reaches a drawing the Studio did not mean. A drawing in a helper component of the same file is seen once, at
+ * its definition, and is read-only; drawings in components imported from other files are not seen.
  */
 export function scanDrawings(tags: readonly DrawingTag[], named: readonly NamedElement[]): ScannedDrawings {
   const parts = named.filter((element) => isEnginePart(element.tag))
@@ -95,7 +99,7 @@ export function scanDrawings(tags: readonly DrawingTag[], named: readonly NamedE
     tags.map((tag, index) => ({ kind: tag.kind, name: names[index] })),
     parts.map((part) => part.name),
   )
-  const doubt = doubts(parts.filter((part) => part.inCallback).map((part) => part.name))
+  const doubt = doubts(parts.filter((part) => part.uncounted).map((part) => part.name))
   const result: ScannedDrawings = { drawings: [], nodes: new Map(), skipped: [] }
   tags.forEach((tag, index) => {
     const name = names[index]
@@ -107,7 +111,7 @@ export function scanDrawings(tags: readonly DrawingTag[], named: readonly NamedE
       return
     }
     const { id } = ids[index] as DrawingId
-    result.drawings.push(drawingInfo(tag, id, name, tag.readonlyReason ?? (unsure ? UNSURE_ID : undefined)))
+    result.drawings.push(drawingInfo(tag, id, name, tag.readonlyReason ?? tag.uncounted ?? (unsure ? UNSURE_ID : undefined)))
     result.nodes.set(id, tag.node)
   })
   return result

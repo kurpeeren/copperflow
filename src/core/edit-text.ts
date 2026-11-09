@@ -45,6 +45,12 @@ export function putAttribute(out: MagicString, source: string, node: JSXElement,
 
 /** Puts an element on its own line before the board's first trace (or before </board>), never inside a group. */
 export function insertInBoard(source: string, scan: Scan, element: string, what: string): string {
+  const { lineStart, indent } = boardInsertion(source, scan, what)
+  return source.slice(0, lineStart) + indent + element + lineEnding(source) + source.slice(lineStart)
+}
+
+/** The line a new element goes before (the board's first trace, or </board>) and the indent it takes there. */
+export function boardInsertion(source: string, scan: Scan, what: string): { lineStart: number; indent: string } {
   // Anchor on the board's own traces, so the element never lands inside a group.
   const firstTrace = scan.model.traces.find((t) => t.parent === "board" && lineIndent(source, t.start) !== undefined)
   const anchor = firstTrace ? firstTrace.start : scan.model.boardClose?.start
@@ -52,8 +58,7 @@ export function insertInBoard(source: string, scan: Scan, element: string, what:
   const indent = lineIndent(source, anchor)
   if (indent === undefined) throw new EditError("invalid", `</board> must be on its own line to add ${what}`)
   const childIndent = anchor === firstTrace?.start ? indent : indent + (indent.includes("\t") ? "\t" : "  ")
-  const lineStart = anchor - indent.length
-  return source.slice(0, lineStart) + childIndent + element + lineEnding(source) + source.slice(lineStart)
+  return { lineStart: anchor - indent.length, indent: childIndent }
 }
 
 /** The whitespace before `offset` on its line, or undefined when other text precedes it. */

@@ -3,13 +3,16 @@ import { basename, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { analyzeCircuit } from "./analyze.js"
 import {
   annotationsPathFor,
+  lockKind,
   lockTarget,
   readAnnotations,
   verifyLocks,
   writeAnnotations,
   type Annotations,
+  type Lock,
   type LockViolation,
 } from "./annotations.js"
+import { drawingKeeper } from "./drawing-identity.js"
 import { applyEdits, EditError } from "./edit.js"
 import { serialized, writeFileAtomic } from "./fs-utils.js"
 import { livesOnAs, readEntries, recordEntry, removeEntry, type Author, type HistoryEntry } from "./history.js"
@@ -129,8 +132,8 @@ export function undoChange(root: string, options: { author: Author; id?: string 
     if (loaded.source !== target.after) {
       throw new Error(`${target.file} has changed since ${target.id}; undo it by hand or with git`)
     }
-    const touched = changedLockedParts(loaded, analyzeCircuit(target.before))
-    if (touched.length > 0) throw new Error(`Undoing ${target.id} would change the locked part ${touched.join(", ")}; unlock it first`)
+    const touched = changedLocks(loaded, target.before)
+    if (touched) throw new Error(`Undoing ${target.id} would change the locked ${touched}; unlock it first`)
 
     return writeWithHistory(root, loaded, target.before, {
       author: options.author,
@@ -157,8 +160,8 @@ export function redoChange(root: string, options: { author: Author; id?: string 
     if (loaded.source !== undo.after) {
       throw new Error(`${undo.file} has changed since ${undo.id}; redo it by hand or with git`)
     }
-    const touched = changedLockedParts(loaded, analyzeCircuit(undo.before))
-    if (touched.length > 0) throw new Error(`Redoing ${undo.undoOf} would change the locked part ${touched.join(", ")}; unlock it first`)
+    const touched = changedLocks(loaded, undo.before)
+    if (touched) throw new Error(`Redoing ${undo.undoOf} would change the locked ${touched}; unlock it first`)
 
     return writeWithHistory(root, loaded, undo.before, {
       author: options.author,
@@ -250,19 +253,34 @@ async function writeWithHistory(
   return entry
 }
 
-/** Locked parts and drawings whose props, presence or traces differ between the current file and `next`. */
-function changedLockedParts(current: LoadedCircuit, next: CircuitModel): string[] {
-  const state = (model: CircuitModel, name: string) =>
-    JSON.stringify({
-      props: lockTarget(model, name)?.props ?? null,
-      traces: model.traces
-        .filter((t) => [t.from, t.to].some((end) => end !== undefined && partsInSelector(end).includes(name)))
-        .map((t) => [t.from, t.to, t.props])
-        .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
-    })
-  return current.annotations.locks
-    .map((lock) => lock.part)
-    .filter((name) => state(current.model, name) !== state(next, name))
+/**
+ * The locked parts and drawings that would change if the file became `nextText`, as "part R1, drawing G1",
+ * or undefined when none would. A part changes with its props, presence or traces; a drawing when it is no
+ * longer the same element (drawing-identity.ts), so an unnamed twin cannot take its id unnoticed.
+ */
+function changedLocks(current: LoadedCircuit, nextText: string): string | undefined {
+  const next = analyzeCircuit(nextText)
+  const kept = drawingKeeper(current.source, nextText)
+  const drawingChanged = (id: string) => {
+    const before = current.model.drawings.find((d) => d.id === id)
+    const after = next.drawings.find((d) => d.id === id)
+    return before && after ? !kept(before, after) : before !== after
+  }
+  const changed = current.annotations.locks.filter((lock: Lock) =>
+    lock.drawing ? drawingChanged(lock.part) : partState(current.model, lock.part) !== partState(next, lock.part),
+  )
+  return changed.length === 0 ? undefined : changed.map((lock) => `${lockKind(lock)} ${lock.part}`).join(", ")
+}
+
+/** A locked part's props and traces, to compare. */
+function partState(model: CircuitModel, name: string): string {
+  return JSON.stringify({
+    props: lockTarget(model, name, "part")?.props ?? null,
+    traces: model.traces
+      .filter((t) => [t.from, t.to].some((end) => end !== undefined && partsInSelector(end).includes(name)))
+      .map((t) => [t.from, t.to, t.props])
+      .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+  })
 }
 
 export function isInside(root: string, path: string): boolean {

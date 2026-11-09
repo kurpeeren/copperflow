@@ -14,8 +14,11 @@ const FUNCTION_TYPES = new Set([
   "ClassMethod",
 ])
 const JSX_TYPES = new Set(["JSXElement", "JSXFragment"])
+const CONDITION_TYPES = new Set(["ConditionalExpression", "LogicalExpression"])
 
 export const INSIDE_CALLBACK = "inside a callback such as .map()"
+export const INSIDE_CONDITION = "inside a condition such as && or ?:"
+export const INSIDE_HELPER = "inside a helper component, which may draw it any number of times"
 export const USES_SPREAD = "uses spread props"
 
 /** The parsed circuit plus the AST nodes behind it, for editing. */
@@ -37,7 +40,10 @@ interface ElementFacts {
   attributes: JSXAttribute[]
   props: Record<string, PropInfo>
   readonlyReason?: string
-  inCallback: boolean
+  /** Tag of the enclosing element, e.g. "board" or "group". */
+  parent?: string
+  /** Why the engine may make it any number of times, none included; undefined when it makes it once. */
+  uncounted?: string
   hasSpread: boolean
 }
 
@@ -63,8 +69,10 @@ export function scanCircuit(source: string): Scan {
   }
   const drawingTags: DrawingTag[] = []
   const named: NamedElement[] = []
-  walk(parseSource(source), [], (node, ancestors) => {
-    if (node.type === "JSXElement") collectElement(source, readElement(source, node, ancestors), ancestors, scan, { drawingTags, named })
+  const file = parseSource(source)
+  const circuit = circuitFunction(file)
+  walk(file, [], (node, ancestors) => {
+    if (node.type === "JSXElement") collectElement(source, readElement(source, node, ancestors, circuit), ancestors, scan, { drawingTags, named })
     if (node.type === "ImportDeclaration") {
       for (const specifier of node.specifiers) {
         scan.model.imports.push({ local: specifier.local.name, source: node.source.value, end: node.end ?? 0 })
@@ -78,12 +86,35 @@ export function scanCircuit(source: string): Scan {
   return scan
 }
 
-function readElement(source: string, node: JSXElement, ancestors: Node[]): ElementFacts {
+/** The function the file exports as its circuit (`export default () => …`, or a function exported by name), if any. */
+function circuitFunction(file: File): Node | undefined {
+  const exported = file.program.body.find((statement) => statement.type === "ExportDefaultDeclaration")?.declaration
+  if (exported === undefined || FUNCTION_TYPES.has(exported.type)) return exported
+  if (exported.type !== "Identifier") return undefined
+  for (const statement of file.program.body) {
+    if (statement.type === "FunctionDeclaration" && statement.id?.name === exported.name) return statement
+    if (statement.type !== "VariableDeclaration") continue
+    const declarator = statement.declarations.find((d) => d.id.type === "Identifier" && d.id.name === exported.name)
+    if (declarator?.init) return declarator.init
+  }
+  return undefined
+}
+
+/** Why the engine may make an element any number of times: a callback, a condition, or a function that is not the circuit's own. */
+function uncountedReason(ancestors: Node[], circuit: Node | undefined): string | undefined {
+  if (isInsideCallback(ancestors)) return INSIDE_CALLBACK
+  if (ancestors.some((node) => CONDITION_TYPES.has(node.type))) return INSIDE_CONDITION
+  if (ancestors.some((node) => FUNCTION_TYPES.has(node.type) && node !== circuit)) return INSIDE_HELPER
+  return undefined
+}
+
+function readElement(source: string, node: JSXElement, ancestors: Node[], circuit: Node | undefined): ElementFacts {
   const opening = node.openingElement
   const attributes = opening.attributes.filter((a): a is JSXAttribute => a.type === "JSXAttribute")
   const hasSpread = opening.attributes.some((a) => a.type === "JSXSpreadAttribute")
-  const inCallback = isInsideCallback(ancestors)
-  const readonlyReason = inCallback ? INSIDE_CALLBACK : hasSpread ? USES_SPREAD : undefined
+  const uncounted = uncountedReason(ancestors, circuit)
+  const readonlyReason = uncounted === INSIDE_CALLBACK ? INSIDE_CALLBACK : hasSpread ? USES_SPREAD : undefined
+  const parentElement = [...ancestors].reverse().find((a): a is JSXElement => a.type === "JSXElement")
   return {
     tag: slice(source, opening.name),
     node,
@@ -93,7 +124,8 @@ function readElement(source: string, node: JSXElement, ancestors: Node[]): Eleme
     attributes,
     props: readProps(source, attributes),
     ...(readonlyReason ? { readonlyReason } : {}),
-    inCallback,
+    ...(parentElement ? { parent: slice(source, parentElement.openingElement.name) } : {}),
+    ...(uncounted ? { uncounted } : {}),
     hasSpread,
   }
 }
@@ -110,27 +142,26 @@ function collectElement(
     if (close != null) scan.model.boardClose = { start: close }
     return
   }
-  if (element.tag === "trace") return collectTrace(source, element, ancestors, scan)
+  if (element.tag === "trace") return collectTrace(element, scan)
   const kind = drawingKindOf(element.tag)
   if (kind) {
     found.drawingTags.push({ ...element, kind })
     return
   }
   const part = collectPart(element, scan)
-  if (part) found.named.push({ name: part.name, tag: part.tag, inCallback: element.inCallback })
+  if (part) found.named.push({ name: part.name, tag: part.tag, uncounted: element.uncounted !== undefined })
 }
 
-function collectTrace(source: string, element: ElementFacts, ancestors: Node[], scan: Scan): void {
-  const { props, readonlyReason, attributes } = element
+function collectTrace(element: ElementFacts, scan: Scan): void {
+  const { props, readonlyReason, attributes, parent } = element
   const from = props.from?.literal
   const to = props.to?.literal
   const literalEnds = typeof from === "string" && typeof to === "string"
   const reason = readonlyReason ?? (literalEnds ? undefined : "from or to is not a string literal")
-  const parentElement = [...ancestors].reverse().find((a): a is JSXElement => a.type === "JSXElement")
   const trace: TraceInfo = {
     from: typeof from === "string" ? from : undefined,
     to: typeof to === "string" ? to : undefined,
-    ...(parentElement ? { parent: slice(source, parentElement.openingElement.name) } : {}),
+    ...(parent === undefined ? {} : { parent }),
     ...hintsOf(attributes),
     props: omit(props, ["from", "to"]),
     line: element.line,
