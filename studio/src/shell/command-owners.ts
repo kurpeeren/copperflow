@@ -5,7 +5,7 @@ import type { KeyActionName } from "../pcb/canvas-keys.js"
 import type { CommandId } from "./menus.js"
 
 /** Run by use-app-commands.ts. */
-export const APP_COMMANDS = ["openFile", "exportBom", "exportPackage", "undo", "selectAll", "find", "checkDrc", "lock", "unlock", "history", "keys", "about"] as const satisfies readonly CommandId[]
+export const APP_COMMANDS = ["openFile", "exportBom", "exportPackage", "undo", "redo", "selectAll", "find", "checkDrc", "lock", "unlock", "history", "keys", "about"] as const satisfies readonly CommandId[]
 export type AppCommand = (typeof APP_COMMANDS)[number]
 
 /** Run by the workspace, as the key with the same action is. */

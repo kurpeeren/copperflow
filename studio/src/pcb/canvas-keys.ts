@@ -17,6 +17,7 @@ export type KeyActionName =
   | "toggleBottomPanel"
   | "openLibrary"
   | "undo"
+  | "redo"
   | "openFile"
   | "selectAll"
   | "find"
@@ -164,15 +165,19 @@ const plainOrAltGr = (input: KeyInput): boolean =>
 /** Ctrl (or Cmd) with these letters, by the character the key produces; prevented, so the browser's own does not run too. */
 const CTRL_KEYS: ReadonlyMap<string, KeyActionName> = new Map([
   ["z", "undo"],
+  ["y", "redo"],
   ["o", "openFile"],
   ["a", "selectAll"],
   ["f", "find"],
 ])
 
-/** Ctrl (or Cmd) with Z, O, A or F; AltGr and Shift combinations are not ours. */
+/** Ctrl (or Cmd) and Shift with these letters, by the character: Ctrl+Shift+Z redoes, as Ctrl+Y does. */
+const CTRL_SHIFT_KEYS: ReadonlyMap<string, KeyActionName> = new Map([["z", "redo"]])
+
+/** Ctrl (or Cmd) with Z, Y, O, A or F, or with Shift and Z; AltGr combinations are not ours. */
 function ctrlAction(input: KeyInput): KeyResult | null {
-  if (input.altKey || input.shiftKey || input.altGraph) return null
-  const action = CTRL_KEYS.get(input.key.toLowerCase())
+  if (input.altKey || input.altGraph) return null
+  const action = (input.shiftKey ? CTRL_SHIFT_KEYS : CTRL_KEYS).get(input.key.toLowerCase())
   return action ? act(action, true) : null
 }
 

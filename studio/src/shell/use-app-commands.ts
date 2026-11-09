@@ -88,6 +88,7 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     exportBom: () => exportBom(input.file, input.actions),
     exportPackage: () => exportPackage(input.file, input.actions),
     undo: () => void input.actions.undo(),
+    redo: () => void input.actions.redo(),
     // Every part of the circuit that may be picked: both views show the same parts, and the circuit is there before a canvas is.
     selectAll: () => input.select(selectAll(input.circuit?.model.parts.map((part) => part.name) ?? [], input.pickLayers, input.pickFilter)),
     find: input.openFind,
@@ -102,10 +103,13 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
 }
 
 /** The keys the app answers itself, with or without a canvas; each one's action is also its command. */
-const APP_KEYS = ["undo", "openFile", "selectAll", "find"] as const satisfies readonly (KeyActionName & CommandId)[]
+const APP_KEYS = ["undo", "redo", "openFile", "selectAll", "find"] as const satisfies readonly (KeyActionName & CommandId)[]
 const isAppKey = (action: KeyActionName | undefined): action is (typeof APP_KEYS)[number] => (APP_KEYS as readonly string[]).includes(action ?? "")
 
-/** Ctrl+Z undoes, Ctrl+O goes to the Page tree and Ctrl+A selects every part and Ctrl+F opens Find, outside text fields (keyAction decides). */
+/**
+ * Ctrl+Z undoes, Ctrl+Y and Ctrl+Shift+Z redo, Ctrl+O goes to the Page tree, Ctrl+A selects every part and Ctrl+F
+ * opens Find, outside text fields (keyAction decides).
+ */
 function useAppKeys(runCommand: (command: CommandId) => void, view: View): void {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

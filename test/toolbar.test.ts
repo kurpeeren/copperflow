@@ -8,13 +8,20 @@ const menuByCommand = new Map(MENUS.flatMap(menuItems).flatMap((item) => (item.c
 
 describe("toolbar", () => {
   test("the schematic row is in EasyEDA's order", () => {
-    expect(ids("schematic")).toEqual(["undo", "zoomIn", "zoomOut", "fit", "gridStyle", "component", "wire", "netLabel", "ground", "power", "rotate", "checkDrc"])
-    expect(toolbarGroups("schematic").map((g) => g.length)).toEqual([1, 3, 1, 5, 1, 1])
+    expect(ids("schematic")).toEqual(["undo", "redo", "zoomIn", "zoomOut", "fit", "gridStyle", "component", "wire", "netLabel", "ground", "power", "rotate", "checkDrc"])
+    expect(toolbarGroups("schematic").map((g) => g.length)).toEqual([2, 3, 1, 5, 1, 1])
   })
 
   test("the PCB row is in EasyEDA's order", () => {
-    expect(ids("pcb")).toEqual(["undo", "zoomIn", "zoomOut", "fit", "gridStyle", "unit", "rotate", "checkDrc"])
-    expect(toolbarGroups("pcb").map((g) => g.length)).toEqual([1, 3, 2, 1, 1])
+    expect(ids("pcb")).toEqual(["undo", "redo", "zoomIn", "zoomOut", "fit", "gridStyle", "unit", "rotate", "checkDrc"])
+    expect(toolbarGroups("pcb").map((g) => g.length)).toEqual([2, 3, 2, 1, 1])
+  })
+
+  test("Redo sits beside Undo in both rows and runs the Edit menu's Redo", () => {
+    for (const view of ["schematic", "pcb"] as const) {
+      expect(TOOLBARS[view].find((b) => b.id === "redo")).toEqual({ id: "redo", title: "Redo (Ctrl+Y)", icon: "redo", command: "redo", group: 0 })
+    }
+    expect(menuByCommand.get("redo")?.label).toBe("Redo")
   })
 
   test("the PCB's Unit button shows the unit as its text and runs the menu's Unit", () => {

@@ -24,6 +24,11 @@ describe("command owners", () => {
     expect(commandOwner("gridStyle")).toBe("workspace")
   })
 
+  test("Undo and Redo are the app's own, so Ctrl+Z and Ctrl+Y work before a canvas has mounted", () => {
+    expect(commandOwner("undo")).toBe("app")
+    expect(commandOwner("redo")).toBe("app")
+  })
+
   test("Open circuit file is the app's own, so it works before a canvas has mounted", () => {
     expect(commandOwner("openFile")).toBe("app")
   })

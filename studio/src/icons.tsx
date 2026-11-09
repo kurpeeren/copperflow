@@ -80,6 +80,13 @@ const undo = (p: IconProps) => (
     <path d="M4 9h10a6 6 0 0 1 0 12h-4" />
   </ToolIcon>
 )
+/** Undo's arrow, mirrored. */
+const redo = (p: IconProps) => (
+  <ToolIcon {...p}>
+    <path d="M16 5l4 4-4 4" />
+    <path d="M20 9H10a6 6 0 0 0 0 12h4" />
+  </ToolIcon>
+)
 const zoomIn = (p: IconProps) => (
   <ToolIcon {...p}>
     <circle cx="10.5" cy="10.5" r="6" />
@@ -148,4 +155,4 @@ const check = (p: IconProps) => (
 )
 
 /** The toolbar's icons, by the name toolbar.ts gives each button. */
-export const TOOL_ICONS: Record<ToolIconName, (props: IconProps) => React.JSX.Element> = { undo, zoomIn, zoomOut, fit, component, wire, netLabel, ground, power, rotate, check, grid }
+export const TOOL_ICONS: Record<ToolIconName, (props: IconProps) => React.JSX.Element> = { undo, redo, zoomIn, zoomOut, fit, component, wire, netLabel, ground, power, rotate, check, grid }

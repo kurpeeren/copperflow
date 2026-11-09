@@ -3,7 +3,7 @@
 import type { View } from "../pcb/positions.js"
 import type { CommandId } from "./menus.js"
 
-export type ToolIconName = "undo" | "zoomIn" | "zoomOut" | "fit" | "component" | "wire" | "netLabel" | "ground" | "power" | "rotate" | "check" | "grid"
+export type ToolIconName = "undo" | "redo" | "zoomIn" | "zoomOut" | "fit" | "component" | "wire" | "netLabel" | "ground" | "power" | "rotate" | "check" | "grid"
 
 interface ToolbarButtonBase {
   id: string
@@ -19,7 +19,7 @@ export type ToolbarButton = ToolbarButtonBase & ({ icon: ToolIconName; text?: un
 
 const button = (id: string, title: string, icon: ToolIconName, command: CommandId, group: number): ToolbarButton => ({ id, title, icon, command, group })
 
-const UNDO = button("undo", "Undo (Ctrl+Z)", "undo", "undo", 0)
+const HISTORY = [button("undo", "Undo (Ctrl+Z)", "undo", "undo", 0), button("redo", "Redo (Ctrl+Y)", "redo", "redo", 0)]
 const ZOOM = [button("zoomIn", "Zoom in", "zoomIn", "zoomIn", 1), button("zoomOut", "Zoom out", "zoomOut", "zoomOut", 1), button("fit", "Fit all (K)", "fit", "fit", 1)]
 const ROTATE = (group: number) => button("rotate", "Rotate (Space)", "rotate", "rotate", group)
 const GRID_STYLE = (group: number) => button("gridStyle", "Grid style", "grid", "gridStyle", group)
@@ -27,7 +27,7 @@ const CHECK = (group: number) => button("checkDrc", "Check DRC", "check", "check
 
 export const TOOLBARS: Readonly<Record<View, readonly ToolbarButton[]>> = {
   schematic: [
-    UNDO,
+    ...HISTORY,
     ...ZOOM,
     GRID_STYLE(2),
     button("component", "Component (Shift+F)", "component", "placeComponent", 3),
@@ -38,7 +38,7 @@ export const TOOLBARS: Readonly<Record<View, readonly ToolbarButton[]>> = {
     ROTATE(4),
     CHECK(5),
   ],
-  pcb: [UNDO, ...ZOOM, GRID_STYLE(2), { id: "unit", title: "Unit (Q)", text: "unit", command: "toggleUnit", group: 2 }, ROTATE(3), CHECK(4)],
+  pcb: [...HISTORY, ...ZOOM, GRID_STYLE(2), { id: "unit", title: "Unit (Q)", text: "unit", command: "toggleUnit", group: 2 }, ROTATE(3), CHECK(4)],
 }
 
 /** The buttons of a view split into its groups, in order. */

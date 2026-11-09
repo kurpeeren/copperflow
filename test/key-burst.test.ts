@@ -176,7 +176,7 @@ describe("claimsKey", () => {
   })
 
   test("a key the canvas does not run is never claimed, so the app, the workspace or the tool that runs it still sees it", () => {
-    for (const action of ["undo", "selectAll", "find", "openFile", "openLibrary", "wire", "armNetLabel"]) {
+    for (const action of ["undo", "redo", "selectAll", "find", "openFile", "openLibrary", "wire", "armNetLabel"]) {
       expect([action, claimsKey(action, 1, false, true)]).toEqual([action, false])
       expect([action, claimsKey(action, 0, false, true)]).toEqual([action, false])
     }

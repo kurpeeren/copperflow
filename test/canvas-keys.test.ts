@@ -14,7 +14,28 @@ describe("keyAction", () => {
     expect(keyAction(key("z", { ctrlKey: true, code: "KeyY" }), PCB)).toEqual({ action: "undo", preventDefault: true })
     expect(keyAction(key("Z", { metaKey: true }), SCHEMATIC)?.action).toBe("undo")
     expect(keyAction(key("o", { ctrlKey: true }), PCB)).toEqual({ action: "openFile", preventDefault: true })
-    expect(keyAction(key("y", { ctrlKey: true, code: "KeyZ" }), PCB)).toBeNull()
+    // A German keyboard's Z key gives y: by the character, that is Ctrl+Y, which redoes.
+    expect(keyAction(key("y", { ctrlKey: true, code: "KeyZ" }), PCB)?.action).toBe("redo")
+  })
+
+  test("Ctrl+Y and Ctrl+Shift+Z redo in both views, by the character the key produces", () => {
+    for (const state of [PCB, SCHEMATIC]) {
+      expect(keyAction(key("y", { ctrlKey: true, code: "KeyY" }), state)).toEqual({ action: "redo", preventDefault: true })
+      expect(keyAction(key("Z", { ctrlKey: true, shiftKey: true, code: "KeyZ" }), state)).toEqual({ action: "redo", preventDefault: true })
+    }
+    expect(keyAction(key("z", { ctrlKey: true, shiftKey: true, code: "KeyY" }), PCB)?.action).toBe("redo")
+    expect(keyAction(key("Y", { metaKey: true }), SCHEMATIC)?.action).toBe("redo")
+    expect(keyAction(key("Z", { metaKey: true, shiftKey: true }), PCB)?.action).toBe("redo")
+  })
+
+  test("redo is not ours with Alt, AltGr, in a text field, or as Ctrl+Shift+Y", () => {
+    for (const press of [key("y", { ctrlKey: true, altKey: true }), key("y", { ctrlKey: true, altGraph: true }), key("y", { ctrlKey: true, typing: true })]) {
+      expect(keyAction(press, PCB)).toBeNull()
+    }
+    expect(keyAction(key("Z", { ctrlKey: true, shiftKey: true, altKey: true }), PCB)).toBeNull()
+    expect(keyAction(key("Z", { ctrlKey: true, shiftKey: true, typing: true }), PCB)).toBeNull()
+    expect(keyAction(key("Y", { ctrlKey: true, shiftKey: true }), PCB)).toBeNull()
+    expect(keyAction(key("y"), PCB)).toBeNull()
   })
 
   test("Ctrl+A selects every part in both views, by the character, and keeps the browser from selecting the page", () => {
@@ -31,8 +52,8 @@ describe("keyAction", () => {
     expect(keyAction(key("a"), PCB)).toBeNull()
   })
 
-  test("Ctrl+Z is not ours with Shift, Alt, AltGr or in a text field", () => {
-    expect(keyAction(key("Z", { ctrlKey: true, shiftKey: true }), PCB)).toBeNull()
+  test("Ctrl+Z is not undo with Shift (that redoes), and not ours with Alt, AltGr or in a text field", () => {
+    expect(keyAction(key("Z", { ctrlKey: true, shiftKey: true }), PCB)?.action).toBe("redo")
     expect(keyAction(key("z", { ctrlKey: true, altKey: true }), PCB)).toBeNull()
     expect(keyAction(key("z", { ctrlKey: true, altGraph: true }), PCB)).toBeNull()
     expect(keyAction(key("z", { ctrlKey: true, typing: true }), PCB)).toBeNull()
@@ -245,6 +266,8 @@ describe("widgets that own their keys", () => {
     const owns = { ownsKeys: true }
     expect(keyAction(key("z", { ctrlKey: true, ...owns }), PCB)?.action).toBe("undo")
     expect(keyAction(key("Z", { metaKey: true, ...owns }), SCHEMATIC)?.action).toBe("undo")
+    expect(keyAction(key("y", { ctrlKey: true, ...owns }), PCB)?.action).toBe("redo")
+    expect(keyAction(key("Z", { ctrlKey: true, shiftKey: true, ...owns }), SCHEMATIC)?.action).toBe("redo")
     expect(keyAction(key("a", { ctrlKey: true, ...owns }), PCB)?.action).toBe("selectAll")
     expect(keyAction(key("f", { ctrlKey: true, ...owns }), PCB)?.action).toBe("find")
     expect(keyAction(key("o", { ctrlKey: true, ...owns }), SCHEMATIC)?.action).toBe("openFile")
@@ -268,6 +291,8 @@ function afterCanvas(input: KeyInput, state: KeyState, selected: number): KeyInp
 describe("keys another listener already prevented", () => {
   test("Ctrl+Z, Ctrl+A, Ctrl+F, Ctrl+O and the Alt tools still resolve for an event already prevented", () => {
     expect(keyAction(key("z", { ctrlKey: true, handled: true }), PCB)?.action).toBe("undo")
+    expect(keyAction(key("y", { ctrlKey: true, handled: true }), PCB)?.action).toBe("redo")
+    expect(keyAction(key("Z", { ctrlKey: true, shiftKey: true, handled: true }), PCB)?.action).toBe("redo")
     expect(keyAction(key("a", { ctrlKey: true, handled: true }), PCB)?.action).toBe("selectAll")
     expect(keyAction(key("f", { ctrlKey: true, handled: true }), PCB)?.action).toBe("find")
     expect(keyAction(key("o", { ctrlKey: true, handled: true }), PCB)?.action).toBe("openFile")
@@ -277,6 +302,8 @@ describe("keys another listener already prevented", () => {
   test("with a part selected and the canvas listening first, the app's, the workspace's and the tools' keys reach their listener", () => {
     const cases: [KeyInput, KeyState, string][] = [
       [key("z", { ctrlKey: true }), PCB, "undo"],
+      [key("y", { ctrlKey: true }), PCB, "redo"],
+      [key("Z", { ctrlKey: true, shiftKey: true }), SCHEMATIC, "redo"],
       [key("a", { ctrlKey: true }), PCB, "selectAll"],
       [key("f", { ctrlKey: true }), PCB, "find"],
       [key("o", { ctrlKey: true }), PCB, "openFile"],

@@ -12,6 +12,8 @@ export interface Actions {
   mark(text: string, at?: { view: "pcb" | "schematic"; x: number; y: number }): Promise<boolean>
   unmark(id: string): Promise<boolean>
   undo(id?: string): Promise<boolean>
+  /** Redoes the newest undone change, or the named one (POST /api/redo). */
+  redo(id?: string): Promise<boolean>
   verify(id: string, by: string, against: string, confirm: string): Promise<boolean>
   notify(text: string): void
 }
@@ -63,6 +65,7 @@ export function useActions({ file, refresh, refreshParts, notify }: ActionsInput
       mark: (text, at) => run(() => api("/api/mark", { file, text, ...at })),
       unmark: (id) => run(() => api("/api/unmark", { file, id })),
       undo: (id) => run(() => api("/api/undo", id ? { id } : {})),
+      redo: (id) => run(() => api("/api/redo", id ? { id } : {})),
       verify: async (id, by, against, confirm) => {
         const ok = await run(() => api("/api/verify", { id, by, against, confirm }))
         if (ok) await refreshParts()

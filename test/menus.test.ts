@@ -63,6 +63,18 @@ describe("menus", () => {
     expect(shortcutList()).toContainEqual({ keys: "Ctrl+A", label: "Select all" })
   })
 
+  test("Edit → Redo runs, with Ctrl+Y beside it; the key list also names Ctrl+Shift+Z", () => {
+    const edit = MENUS.find((menu) => menu.title === "Edit")?.entries ?? []
+    expect(edit.slice(0, 2)).toEqual([
+      { label: "Undo", command: "undo", shortcut: "Ctrl+Z" },
+      { label: "Redo", command: "redo", shortcut: "Ctrl+Y" },
+    ])
+    expect(COMMAND_KEY_ACTIONS.redo).toBe("redo")
+    expect(keyAction(pressOf("Ctrl+Shift+Z"), { view: "pcb" })?.action).toBe("redo")
+    expect(shortcutList()).toContainEqual({ keys: "Ctrl+Y", label: "Redo" })
+    expect(shortcutList()).toContainEqual({ keys: "Ctrl+Shift+Z", label: "Redo" })
+  })
+
   test("View → Unit works on the PCB and shows disabled, PCB only, on the schematic", () => {
     const unit = MENUS.flatMap(menuItems).find((item) => item.command === "toggleUnit") as MenuItem
     expect(itemState(unit, "pcb")).toEqual({ enabled: true })

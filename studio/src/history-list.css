@@ -1,0 +1,10 @@
+/* The Log's marks (HistoryList.tsx); the struck-through undone row is in styles.css. */
+.history li.redone .what {
+  color: var(--muted);
+}
+
+.history .history-note {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+}

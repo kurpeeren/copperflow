@@ -9,6 +9,7 @@ export type CommandId =
   | "exportBom"
   | "exportPackage"
   | "undo"
+  | "redo"
   | "delete"
   | "selectAll"
   | "fit"
@@ -82,7 +83,7 @@ export const MENUS: readonly Menu[] = [
     title: "Edit",
     entries: [
       run("Undo", "undo", "Ctrl+Z"),
-      later("Redo", "Comes in round 5; for now every change is kept in the Log, where it can be undone", "Ctrl+Y"),
+      run("Redo", "redo", "Ctrl+Y"),
       "separator",
       later("Copy", ENGINE, "Ctrl+C"),
       later("Paste", ENGINE, "Ctrl+V"),
@@ -196,6 +197,7 @@ export function menuItems(menu: Menu): MenuItem[] {
 /** The key action that does what each keyed command does; a test checks the shown shortcut against it. */
 export const COMMAND_KEY_ACTIONS: Partial<Record<CommandId, KeyActionName>> = {
   undo: "undo",
+  redo: "redo",
   openFile: "openFile",
   fit: "fit",
   toggleUnit: "toggleUnit",
@@ -213,8 +215,9 @@ export const COMMAND_KEY_ACTIONS: Partial<Record<CommandId, KeyActionName>> = {
   delete: "delete",
 }
 
-/** Keys that work on the canvases without a menu item. */
-const CANVAS_KEYS = [
+/** Keys that no menu item shows: the canvas keys, and the second key of a command. */
+const EXTRA_KEYS = [
+  { keys: "Ctrl+Shift+Z", label: "Redo" },
   { keys: "W", label: "Wire (schematic)" },
   { keys: "R", label: "Rotate" },
   { keys: "F", label: "Fit all" },
@@ -224,7 +227,7 @@ const CANVAS_KEYS = [
   { keys: "Shift+F10", label: "Open the context menu (also the menu key)" },
 ]
 
-/** Every shortcut of a working command, once, then the canvas-only keys: the Help → Keys list. */
+/** Every shortcut of a working command, once, then the keys no menu item shows: the Help → Keys list. */
 export function shortcutList(): { keys: string; label: string }[] {
   const seen = new Set<string>()
   const rows: { keys: string; label: string }[] = []
@@ -233,7 +236,7 @@ export function shortcutList(): { keys: string; label: string }[] {
     seen.add(item.shortcut)
     rows.push({ keys: item.shortcut, label: item.label })
   }
-  return [...rows, ...CANVAS_KEYS.filter((row) => !seen.has(row.keys))]
+  return [...rows, ...EXTRA_KEYS.filter((row) => !seen.has(row.keys))]
 }
 
 export interface MenuState {
