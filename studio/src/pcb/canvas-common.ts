@@ -22,6 +22,7 @@ import { fitBackingStore, resetContext } from "./canvas-surface"
 import type { GridStyle } from "./grid"
 import type { BuildStatus } from "./key-burst"
 import type { LayerVisibility } from "./layers"
+import type { PickFilter } from "./pick-filter"
 import type { Unit } from "./units"
 import { sheetBoxes } from "./schematic-draw"
 
@@ -55,6 +56,8 @@ export interface CanvasProps {
   onGridStep(step: number): void
   /** Which PCB layers are shown (the Layer panel); the schematic has none. */
   layers: LayerVisibility
+  /** Which kinds a click or a box may pick (the Filter tab). */
+  pickFilter: PickFilter
   /** This view's violations that have a position, ringed on the canvas. */
   markers: readonly ViolationMarker[]
   /** The violation picked in the DRC tab. */

@@ -9,6 +9,7 @@ import { keyAction, keyInput, type KeyActionName } from "../pcb/canvas-keys"
 import { lockChange } from "../pcb/group-edits"
 import type { PickLayers } from "../pcb/layers"
 import { selectAll } from "../pcb/pick"
+import type { PickFilter } from "../pcb/pick-filter"
 import type { View } from "../pcb/positions"
 import type { Selection, SelectionChange } from "../selection"
 import type { BottomTab } from "./bottom-state"
@@ -38,6 +39,8 @@ interface Input {
   actions: Actions
   /** On the PCB, which layers are shown: Select all leaves out the parts that are only on hidden ones. */
   pickLayers: PickLayers | undefined
+  /** The Filter tab: Select all takes no parts while Parts is off. */
+  pickFilter: PickFilter
   workspace: WorkspaceCommands
   openChecks(): void
   /** Opens the find box and focuses its field, or selects the text of the field when the box is open. */
@@ -86,7 +89,7 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     exportPackage: () => exportPackage(input.file, input.actions),
     undo: () => void input.actions.undo(),
     // Every part of the circuit that may be picked: both views show the same parts, and the circuit is there before a canvas is.
-    selectAll: () => input.select(selectAll(input.circuit?.model.parts.map((part) => part.name) ?? [], input.pickLayers)),
+    selectAll: () => input.select(selectAll(input.circuit?.model.parts.map((part) => part.name) ?? [], input.pickLayers, input.pickFilter)),
     find: input.openFind,
     checkDrc: input.openChecks,
     lock: () => lockSelection(input, true),
@@ -119,7 +122,7 @@ function useAppKeys(runCommand: (command: CommandId) => void, view: View): void 
 /** Returns the function the menu bar and toolbar call; it changes only when what the commands read changes. */
 export function useAppCommands(input: Input): (command: CommandId) => void {
   const [waiting, setWaiting] = useState<CommandId | null>(null)
-  const { file, view, setView, selection, select, circuit, actions, pickLayers, openChecks, openFind, openDialog } = input
+  const { file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, openChecks, openFind, openDialog } = input
   // The workspace object is new on every render, but its functions are stable.
   const { run, openBottom, openPageTree } = input.workspace
   // A command waiting for the schematic runs once the schematic canvas has mounted and subscribed.
@@ -133,7 +136,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
   }, [waiting, view, actions])
   const runCommand = useCallback(
     (command: CommandId) => {
-      const own = appCommand({ file, view, setView, selection, select, circuit, actions, pickLayers, workspace: { run, openBottom, openPageTree }, openChecks, openFind, openDialog }, command)
+      const own = appCommand({ file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, workspace: { run, openBottom, openPageTree }, openChecks, openFind, openDialog }, command)
       if (own) return own()
       if (SCHEMATIC_ONLY.has(command) && view !== "schematic") {
         setView("schematic")
@@ -142,7 +145,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
       }
       if (!send(command)) actions.notify("Wait for the build to finish, then try again.")
     },
-    [file, view, setView, selection, select, circuit, actions, pickLayers, run, openBottom, openPageTree, openChecks, openFind, openDialog],
+    [file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, run, openBottom, openPageTree, openChecks, openFind, openDialog],
   )
   useAppKeys(runCommand, view)
   return runCommand

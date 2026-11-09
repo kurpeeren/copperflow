@@ -1,0 +1,47 @@
+/* The Filter panel: a "Pick" heading in the Properties section-header style, then 28px checkbox rows. */
+.filter-head {
+  display: flex;
+  align-items: center;
+  flex: none;
+  box-sizing: border-box;
+  height: 24px;
+  margin: 0;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--strip);
+  font-size: inherit;
+  font-weight: 600;
+}
+
+.filter-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--strip);
+  cursor: pointer;
+}
+
+.filter-row:hover {
+  background: var(--raised);
+}
+
+.filter-row input {
+  flex: none;
+  margin: 0;
+  accent-color: var(--copper);
+}
+
+.filter-note {
+  margin: 0;
+  padding: 8px 10px;
+  color: var(--muted);
+}

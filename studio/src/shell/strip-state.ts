@@ -16,12 +16,12 @@ export interface StripState<T> {
   open: boolean
 }
 
-/** The right strip's tabs; Filter joins them in a later round. Layer exists only while the PCB is open. */
-export type RightStrip = "properties" | "layer"
+/** The right strip's tabs. Layer exists only while the PCB is open. */
+export type RightStrip = "properties" | "layer" | "filter"
 
 /** The tabs the right strip shows for the open document. */
 export function rightTabIds(view: View): RightStrip[] {
-  return view === "pcb" ? ["properties", "layer"] : ["properties"]
+  return view === "pcb" ? ["properties", "layer", "filter"] : ["properties", "filter"]
 }
 
 /** The strip as the open document shows it: the Layer tab does not exist on the schematic, so Properties takes its place. */

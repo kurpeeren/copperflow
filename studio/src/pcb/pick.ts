@@ -4,6 +4,7 @@
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { Selection, SelectionChange } from "../selection.js"
 import { anyLayerShown, type PickLayers } from "./layers.js"
+import { kindPickable, type PickFilter } from "./pick-filter.js"
 import type { ArmedTool } from "./press.js"
 
 /** Something a pick can take: a part, by name, or a net label on the schematic. */
@@ -17,15 +18,18 @@ export interface PickContext {
   armed: ArmedTool
   /** On the PCB: a part whose drawn layers are all hidden cannot be picked. The schematic has no layers. */
   layers?: PickLayers
+  /** The Filter tab: a kind switched off cannot be picked. */
+  filter?: PickFilter
 }
 
 /**
  * Whether `candidate` may be picked. With the Note box tool armed a press draws the note box, so nothing is picked
- * under it (and a double click opens nothing); a PCB part needs one of its layers shown; otherwise every part and net
- * label may be.
+ * under it (and a double click opens nothing); a kind the Filter tab switched off cannot be picked; a PCB part needs one
+ * of its layers shown; otherwise every part and net label may be.
  */
 export function canPick(candidate: Pickable, context: PickContext): boolean {
   if (context.armed === "note") return false
+  if (!kindPickable(context.filter, candidate.kind === "part" ? "parts" : "labels")) return false
   const { layers } = context
   const drawn = candidate.kind === "part" ? layers?.of(candidate.name) : undefined
   return !layers || !drawn || anyLayerShown(drawn, layers.visible)
@@ -41,7 +45,7 @@ export function pickNames(names: readonly string[], context: PickContext): strin
   return picks(names.map((name) => ({ kind: "part" as const, name })), context).map((part) => part.name)
 }
 
-/** Select all: every part of the circuit that may be picked, each once; on the PCB, not those on hidden layers. */
-export function selectAll(names: readonly string[], layers?: PickLayers): SelectionChange {
-  return (current) => current.all(pickNames(names, { selection: current, armed: null, layers }))
+/** Select all: every part of the circuit that may be picked, each once; on the PCB, not those on hidden layers, none while Parts is off. */
+export function selectAll(names: readonly string[], layers?: PickLayers, filter?: PickFilter): SelectionChange {
+  return (current) => current.all(pickNames(names, { selection: current, armed: null, layers, filter }))
 }

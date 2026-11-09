@@ -85,8 +85,8 @@ describe("right strip state", () => {
 
 describe("the Layer tab", () => {
   test("exists only while the PCB is open", () => {
-    expect(rightTabIds("pcb")).toEqual(["properties", "layer"])
-    expect(rightTabIds("schematic")).toEqual(["properties"])
+    expect(rightTabIds("pcb")).toEqual(["properties", "layer", "filter"])
+    expect(rightTabIds("schematic")).toEqual(["properties", "filter"])
   })
 
   test("is the right strip's tab on the PCB, and clicking it opens it and a second click collapses the panel", () => {
@@ -101,5 +101,17 @@ describe("the Layer tab", () => {
     expect(rightFor({ active: "layer", open: false }, "schematic")).toEqual({ active: "properties", open: false })
     const properties = { active: "properties" as const, open: true }
     expect(rightFor(properties, "schematic")).toBe(properties)
+  })
+})
+
+describe("the Filter tab", () => {
+  test("it is on both views, after Properties and (on the PCB) Layer", () => {
+    expect(rightTabIds("pcb")).toEqual(["properties", "layer", "filter"])
+    expect(rightTabIds("schematic")).toEqual(["properties", "filter"])
+  })
+
+  test("it stays when the view changes; Layer falls back to Properties on the schematic", () => {
+    expect(rightFor({ active: "filter", open: true }, "schematic")).toEqual({ active: "filter", open: true })
+    expect(rightFor({ active: "filter", open: true }, "pcb")).toEqual({ active: "filter", open: true })
   })
 })

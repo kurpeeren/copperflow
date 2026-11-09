@@ -7,6 +7,7 @@ import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSi
 import { ViewTools } from "../shell/ViewTools"
 import { CanvasStatus, GridSelect, KeepButton } from "./CanvasTools"
 import { PALETTE } from "./ctx"
+import type { PickFilter } from "./pick-filter"
 import { pickLayersOf, type LayerVisibility, type PickLayers } from "./layers"
 import { gridStepOptions, type GridLook } from "./grid"
 import { pointBounds, unionBoxes, type Camera, type PartBox, type Point, type Size } from "./geometry"
@@ -91,12 +92,12 @@ function PcbTools({ unit, step, setStep, keep }: PcbToolsProps) {
 }
 
 /** The part and the pad under the pointer. */
-function usePcbHover(design: Design, boxes: PartBox[], pick: PickLayers) {
+function usePcbHover(design: Design, boxes: PartBox[], pick: PickLayers, filter: PickFilter) {
   const [part, setPart] = useState<string>()
   const [pad, setPad] = useState<WorldPad>()
   // Parts and pads on hidden layers are not there to hover, as they are not there to pick.
   const at = (world: Point) => {
-    const target = targetAt(boxes, undefined, world, { selection: Selection.none, armed: null, layers: pick })
+    const target = targetAt(boxes, undefined, world, { selection: Selection.none, armed: null, layers: pick, filter })
     setPart(target.kind === "part" ? target.name : undefined)
     setPad(padAt(design.pcb, world, pick.visible))
   }
@@ -158,7 +159,7 @@ function useBoardBounds(design: Design, boxes: PartBox[]) {
 
 /** The PCB, drawn by copperflow's own renderer under its camera, grid and tools. */
 export function PcbCanvas(props: CanvasProps) {
-  const { design, builtFrom, builtMark, buildStatus, circuit, actions, selection, onSelect, highlight, onHighlight, unit, onToggleUnit, gridStyle, gridStep: step, onGridStep: setStep, markers, activeViolation, focus, onFocused, layers } = props
+  const { design, builtFrom, builtMark, buildStatus, circuit, actions, selection, onSelect, highlight, onHighlight, unit, onToggleUnit, gridStyle, gridStep: step, onGridStep: setStep, markers, activeViolation, focus, onFocused, layers, pickFilter } = props
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const size = useElementSize(wrapRef)
@@ -172,15 +173,15 @@ export function PcbCanvas(props: CanvasProps) {
   const common = { view: "pcb", circuit, actions, onSelect, blockerFor: parts.blockerFor } as const
   const note = useNoteTool()
   const tool = { armed: note.tool, disarm: note.disarm }
-  const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom, selection, tool, layers: pick, onContextMenu: props.onContextMenu })
+  const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom, selection, tool, layers: pick, filter: pickFilter, onContextMenu: props.onContextMenu })
   const layout = useLayout(parts, step)
   const menuPlace = useKeyMenuPlace(canvasRef, selection.primary, parts.boxes, camera, size)
   const { rotateHeld } = usePcbKeys(design, cursor, layers, { ...common, selection, layout, builtMark, buildStatus, moveWaiting: gestures.pending !== undefined, fit, onHighlight, menuPlace, onContextMenu: props.onContextMenu })
-  const hover = usePcbHover(design, parts.boxes, pick)
+  const hover = usePcbHover(design, parts.boxes, pick, pickFilter)
   const { moving, gesture } = gestures
   usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad: hover.pad, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, highlightNets: highlight, markers, activeViolation, grid })
   const open = (world: Point) => {
-    const target = targetAt(parts.boxes, undefined, world, { selection, armed: note.tool, layers: pick })
+    const target = targetAt(parts.boxes, undefined, world, { selection, armed: note.tool, layers: pick, filter: pickFilter })
     if (target.kind === "part") props.onOpenProperties(target.name)
   }
   const pointer = pointerHandlers({ camera, size, element: canvasRef, gestures, setCursor, hover: hover.at, open })

@@ -8,6 +8,7 @@ import { NO_HIGHLIGHT, type Highlight } from "./pcb/highlight"
 import { INITIAL_GRID_STEPS, INITIAL_GRID_STYLES, setGridStep, toggleGridStyle, type GridSteps, type GridStyles } from "./pcb/grid"
 import { nextUnit, type Unit } from "./pcb/units"
 import { useLayers } from "./use-layers"
+import { usePickFilter } from "./use-pick-filter"
 import {
   INITIAL_LEFT,
   clickLeftStrip,
@@ -144,8 +145,9 @@ export function useWorkspace(view: View) {
   const [highlight, setHighlight] = useState<Highlight>(NO_HIGHLIGHT)
   const { toggleGridStyleOf, ...grid } = useGridSettings()
   const layers = useLayers()
+  const filter = usePickFilter()
   const run = useWorkspaceRun(view, { strips: { setLeft, setRight, setBottom }, setUnit, setHighlight, toggleGridStyleOf, requestSearch })
   useWorkspaceKeys(view, run)
   const toggleUnit = useCallback(() => setUnit(nextUnit), [])
-  return { ...strips, ...grid, ...layers, ...focus, leftOpen: strips.left.open, rightOpen: strips.right.open, unit, toggleUnit, highlight, setHighlight, run }
+  return { ...strips, ...grid, ...layers, ...filter, ...focus, leftOpen: strips.left.open, rightOpen: strips.right.open, unit, toggleUnit, highlight, setHighlight, run }
 }

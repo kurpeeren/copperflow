@@ -140,7 +140,7 @@ function useStudio() {
   )
   const pcb = build.design?.pcb
   const pickLayers = useMemo(() => (tab === "pcb" && pcb ? pickLayersOf(pcb.parts, workspace.layerVisibility) : undefined), [tab, pcb, workspace.layerVisibility])
-  const runCommand = useAppCommands({ file, view: tab, setView: setTab, selection, select, circuit, actions, pickLayers, workspace, openChecks, openFind: find.open, openDialog: setDialog })
+  const runCommand = useAppCommands({ file, view: tab, setView: setTab, selection, select, circuit, actions, pickLayers, pickFilter: workspace.pickFilter, workspace, openChecks, openFind: find.open, openDialog: setDialog })
   return { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, actions, place, checks, find, openChecks, openDocument, runCommand }
 }
 

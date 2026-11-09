@@ -18,6 +18,7 @@ import { ContextMenu } from "./ContextMenu"
 import { DocTabs } from "./DocTabs"
 import type { CommandId } from "./menus"
 import { buildPageTree, type DocView } from "./page-tree"
+import { FilterPanel } from "./FilterPanel"
 import { LayerPanel } from "./LayerPanel"
 import { SideStrip } from "./SideStrip"
 import { useContextMenu, type ContextMenuState } from "./use-context-menu"
@@ -28,7 +29,7 @@ const LEFT_STRIP: ReadonlyArray<{ id: LeftStrip; label: string }> = [
   { id: "design", label: "Project Design" },
   { id: "library", label: "Common Library" },
 ]
-const RIGHT_LABELS: Record<RightStrip, string> = { properties: "Properties", layer: "Layer" }
+const RIGHT_LABELS: Record<RightStrip, string> = { properties: "Properties", layer: "Layer", filter: "Filter" }
 
 /** The right strip's tabs for the open document: Layer only on the PCB. */
 const rightStrip = (view: View) => rightTabIds(view).map((id) => ({ id, label: RIGHT_LABELS[id] }))
@@ -74,6 +75,7 @@ function canvasProps({ data, workspace, checks, selection, onSelect, actions }: 
     focus: checks.focus,
     onFocused: checks.focused,
     layers: workspace.layerVisibility,
+    pickFilter: workspace.pickFilter,
     onContextMenu,
     onOpenProperties: (part) => {
       onSelect((current) => current.only(part))
@@ -150,11 +152,12 @@ function LeftSide({ data, workspace, view, selection, onSelect, actions, onPlace
   )
 }
 
-/** The right panel: Properties, or on the PCB the Layer panel, once the circuit has loaded. Properties stays mounted behind the Layer tab, so its open sections are kept. */
-function RightSide({ data, workspace, checks, selection, onSelect, actions, run, openChecks }: WorkspaceProps) {
+/** The right panel: Properties, the Layer panel (PCB only) or the Filter panel, once the circuit has loaded. Properties stays mounted behind the Layer tab, so its open sections are kept. */
+function RightSide({ data, workspace, checks, selection, onSelect, actions, run, openChecks, view }: WorkspaceProps) {
   if (!data.circuit) return null
   const { right } = workspace
   const layerOpen = right.open && right.active === "layer"
+  const filterOpen = right.open && right.active === "filter"
   const keepouts = data.build.design?.pcb.board?.keepouts ?? []
   return (
     <>
@@ -173,6 +176,7 @@ function RightSide({ data, workspace, checks, selection, onSelect, actions, run,
         onFieldFocused={workspace.fieldFocused}
       />
       {layerOpen && <LayerPanel visibility={workspace.layerVisibility} filter={workspace.layerFilter} hasKeepouts={keepouts.length > 0} onFilter={workspace.setLayerFilter} onToggle={workspace.toggleLayerShown} />}
+      {filterOpen && <FilterPanel view={view} filter={workspace.pickFilter} onToggle={workspace.togglePickable} />}
     </>
   )
 }

@@ -4,6 +4,7 @@ import { boxSelection } from "../studio/src/pcb/box-select.js"
 import type { PartBox } from "../studio/src/pcb/geometry.js"
 import { targetAt } from "../studio/src/pcb/gestures.js"
 import { DEFAULT_LAYERS, type PickLayers } from "../studio/src/pcb/layers.js"
+import { ALL_PICKABLE, filterRows, kindPickable, togglePickKind } from "../studio/src/pcb/pick-filter.js"
 import { canPick, pickNames, picks, selectAll, type PickContext } from "../studio/src/pcb/pick.js"
 import { Selection } from "../studio/src/selection.js"
 
@@ -80,5 +81,51 @@ describe("hidden layers", () => {
     expect(targetAt(BOXES, undefined, { x: 1.5, y: 0 }, hiding)).toEqual({ kind: "part", name: "C1" })
     expect(boxSelection(["R1", "C1"], false, null, layers)(Selection.none).names).toEqual(["C1"])
     expect(pickNames(["R1", "C1"], hiding)).toEqual(["C1"])
+  })
+})
+
+describe("the Filter tab", () => {
+  const noParts = { parts: false, labels: true }
+  const noLabels = { parts: true, labels: false }
+
+  test("a kind switched off cannot be picked; the other can", () => {
+    expect(canPick({ kind: "part", name: "R1" }, { ...free, filter: noParts })).toBe(false)
+    expect(canPick({ kind: "label", label }, { ...free, filter: noParts })).toBe(true)
+    expect(canPick({ kind: "part", name: "R1" }, { ...free, filter: noLabels })).toBe(true)
+    expect(canPick({ kind: "label", label }, { ...free, filter: noLabels })).toBe(false)
+  })
+
+  test("a click goes through the part under it to a label, or to the canvas", () => {
+    expect(targetAt(BOXES, labels, { x: 1.5, y: 0 }, { ...free, filter: noParts })).toEqual({ kind: "canvas" })
+    expect(targetAt(BOXES, labels, { x: 9, y: 0 }, { ...free, filter: noLabels })).toEqual({ kind: "canvas" })
+    expect(targetAt(BOXES, labels, { x: 9, y: 0 }, { ...free, filter: noParts })).toEqual({ kind: "label", label })
+  })
+
+  test("a box takes no parts while Parts is off, and keeps the selection when it adds", () => {
+    const before = Selection.none.add(["U1"])
+    expect(boxSelection(["R1", "C1"], false, null, undefined, noParts)(before)).toBe(Selection.none)
+    expect(boxSelection(["R1", "C1"], true, null, undefined, noParts)(before)).toBe(before)
+    expect(boxSelection(["R1", "C1"], false, null, undefined, noLabels)(before).names).toEqual(["R1", "C1"])
+  })
+
+  test("Select all takes no parts while Parts is off", () => {
+    expect(selectAll(["R1", "C1"], undefined, noParts)(Selection.none)).toBe(Selection.none)
+    expect(selectAll(["R1", "C1"], undefined, noLabels)(Selection.none).names).toEqual(["R1", "C1"])
+  })
+
+  test("it combines with hidden layers", () => {
+    const layers: PickLayers = { visible: { ...DEFAULT_LAYERS }, of: () => undefined }
+    expect(canPick({ kind: "part", name: "R1" }, { ...free, layers, filter: noParts })).toBe(false)
+  })
+
+  test("toggling gives a new filter, the rows follow the view, and a missing filter allows everything", () => {
+    expect(ALL_PICKABLE).toEqual({ parts: true, labels: true })
+    const off = togglePickKind(ALL_PICKABLE, "labels")
+    expect(off).toEqual({ parts: true, labels: false })
+    expect(ALL_PICKABLE.labels).toBe(true)
+    expect(togglePickKind(off, "labels")).toEqual(ALL_PICKABLE)
+    expect(kindPickable(undefined, "parts")).toBe(true)
+    expect(filterRows("pcb").map((row) => row.label)).toEqual(["Parts"])
+    expect(filterRows("schematic").map((row) => row.label)).toEqual(["Parts", "Net labels and flags"])
   })
 })

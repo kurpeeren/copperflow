@@ -26,6 +26,7 @@ import { drawSheetBorder } from "./sheet-draw"
 import { firstDrawing, keepSheet, sheetArt, sheetDate, type Sheet, type SheetArt } from "./sheet"
 import { targetAt } from "./gestures"
 import type { PickContext } from "./pick"
+import { kindPickable, type PickFilter } from "./pick-filter"
 import { cursorFor, pointerHandlers, useCanvasGestures, type Gesture, type GestureInput, type PointerInput, type Press } from "./use-canvas-gestures"
 import { useDraggedLabel, useLabelDrag, type LabelTools, type MovingLabel } from "./use-label-drag"
 import { useTargetActions } from "../shell/use-target-actions"
@@ -118,14 +119,15 @@ function SheetTools({ step, setStep, keep }: SheetToolsProps) {
 }
 
 /** The part or the net label under the pointer, and the wire tool's view of it. */
-function useSheetHover(boxes: PartBox[], wire: WireTool, labels: LabelTools) {
+function useSheetHover(boxes: PartBox[], wire: WireTool, labels: LabelTools, filter: PickFilter) {
   const [part, setPart] = useState<string>()
   const [label, setLabel] = useState<NetLabel>()
   const at = (world: Point) => {
     wire.hover(world)
-    const hit = hitTest(boxes, world)?.name
+    // What the Filter tab does not let a click pick is not outlined under the pointer either.
+    const hit = kindPickable(filter, "parts") ? hitTest(boxes, world)?.name : undefined
     setPart(hit)
-    setLabel(hit === undefined ? labels.at(world) : undefined)
+    setLabel(hit === undefined && kindPickable(filter, "labels") ? labels.at(world) : undefined)
   }
   const leave = () => {
     setPart(undefined)
@@ -363,17 +365,17 @@ export function SchematicCanvas(props: CanvasProps) {
   const common = { view: "schematic", circuit, actions, onSelect, blockerFor: parts.blockerFor } as const
   const labels = useLabelDrag({ design, circuit, actions, builtFrom })
   const tool = useArmedForGestures(note, palette)
-  const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom, labels: labels.tools, selection, tool, onContextMenu: props.onContextMenu })
+  const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom, labels: labels.tools, selection, tool, filter: props.pickFilter, onContextMenu: props.onContextMenu })
   useLabelRenameAction(design, palette, actions)
   const layout = useLayout(parts, step)
   const menuPlace = useKeyMenuPlace(wrapRef, selection.primary, parts.boxes, camera, size)
   const keys = { ...common, selection, layout, builtMark, buildStatus, moveWaiting: gestures.pending !== undefined, menuPlace, onContextMenu: props.onContextMenu }
   const { highlight, rotateHeld } = useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys })
-  const hover = useSheetHover(parts.boxes, wire, labels.tools)
+  const hover = useSheetHover(parts.boxes, wire, labels.tools, props.pickFilter)
   const { moving, gesture } = gestures
   const movingLabels = useMovingLabels(design, gesture, labels.pending)
   useSheetPaint(canvasRef, { design, border, camera, size, wire, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel: hover.label, palette, highlight, markers, activeViolation, grid })
-  const pointer = sheetPointer({ camera, size, element: wrapRef, gestures, setCursor, hover: hover.at, boxes: parts.boxes, labels: labels.tools, wire, palette, note, picking: { selection, armed: tool.armed }, onOpenProperties: props.onOpenProperties })
+  const pointer = sheetPointer({ camera, size, element: wrapRef, gestures, setCursor, hover: hover.at, boxes: parts.boxes, labels: labels.tools, wire, palette, note, picking: { selection, armed: tool.armed, filter: props.pickFilter }, onOpenProperties: props.onOpenProperties })
   const cursorStyle = cursorFor(gesture, wire.drawing !== null || wire.overPin || palette.armed || note.armed, hover.part !== undefined || hover.label !== undefined)
   const onLeave = () => {
     hover.leave()
