@@ -135,6 +135,12 @@ export interface Layout {
   step: number
 }
 
+/** Whether the open view draws the part: it has a box or an anchor there. */
+export function inView(layout: Pick<Layout, "anchors" | "boxes">): (name: string) => boolean {
+  const shown = new Set(layout.boxes.map((part) => part.name))
+  return (name) => shown.has(name) || layout.anchors.has(name)
+}
+
 /** What Rotate does to the selection: the edit, or a message when no selected part is in this view. */
 export function rotatePlan(
   circuit: SourceCircuit,
@@ -144,11 +150,27 @@ export function rotatePlan(
   blockerFor: (name: string) => string | null,
 ): GroupEdit | { message: string } {
   if (names.length === 1) return rotateEach(circuit, names, view, blockerFor)
-  const shown = new Set(layout.boxes.map((part) => part.name))
-  const placed = (name: string) => shown.has(name) || layout.anchors.has(name)
   const centre = selectionCentre(layout.boxes.filter((part) => names.includes(part.name)).map((part) => part.box), layout.step)
   if (!centre) return { message: "None of the selected parts is in this view." }
-  return rotateAbout(circuit, names, view, anchorLookup(layout.anchors, layout.boxes), centre, blockerFor, placed)
+  return rotateAbout(circuit, names, view, anchorLookup(layout.anchors, layout.boxes), centre, blockerFor, inView(layout))
+}
+
+/**
+ * What an arrow key does to the selection: every part the open view draws moves by `offset`, as a drag does; a part
+ * the view does not draw is left out and named, so it is not moved from the origin.
+ */
+export function nudgePlan(
+  circuit: SourceCircuit,
+  names: readonly string[],
+  view: View,
+  layout: Pick<Layout, "anchors" | "boxes">,
+  offset: Point,
+  blockerFor: (name: string) => string | null,
+): GroupEdit {
+  const placed = inView(layout)
+  const away = names.filter((name) => !placed(name)).map((name) => `${name} is not in this view`)
+  const plan = moveEach(circuit, names.filter(placed), view, anchorLookup(layout.anchors, layout.boxes), offset, blockerFor)
+  return { ...plan, skipped: [...away, ...plan.skipped] }
 }
 
 /** One removePart edit for every part that may go. */

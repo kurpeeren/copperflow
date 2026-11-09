@@ -42,7 +42,7 @@ function useEscapeCancelsLabel(kind: Gesture["kind"] | undefined, cancel: () => 
 
 /**
  * The canvas gestures: one session holds the gesture from press to release (gestureSession), and `gesture` is what
- * React draws of it; `moving` is the group being dragged, else the one whose move waits for its build.
+ * React draws of it; `moving` is the group being dragged, else the one whose move waits for its build (`pending`).
  */
 export function useCanvasGestures(input: GestureInput) {
   const [gesture, setGesture] = useState<Gesture>()
@@ -56,7 +56,7 @@ export function useCanvasGestures(input: GestureInput) {
     [gesture, pending],
   )
   useEscapeCancelsLabel(gesture?.kind, session.cancel)
-  return { gesture, moving, press: session.press, move: session.move, release: session.release }
+  return { gesture, moving, pending, press: session.press, move: session.move, release: session.release }
 }
 
 /** The pointer: grabbing while panning, move or not-allowed while dragging, crosshair for a tool, else pointer or default. */

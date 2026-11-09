@@ -190,7 +190,7 @@ export function PcbCanvas(props: CanvasProps) {
   const note = useNoteTool()
   const tool = { armed: note.tool, disarm: note.disarm }
   const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, builtFrom, selection, tool, onContextMenu: props.onContextMenu })
-  usePcbKeys(design, cursor, { ...common, selection, layout: { anchors: parts.anchors, boxes: parts.boxes, step }, fit, onHighlight })
+  usePcbKeys(design, cursor, { ...common, selection, layout: { anchors: parts.anchors, boxes: parts.boxes, step }, builtFrom, moveWaiting: gestures.pending !== undefined, fit, onHighlight })
   const hover = usePcbHover(design, parts.boxes)
   const { moving, gesture } = gestures
   usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad: hover.pad, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, highlightNets: highlight, markers, activeViolation, grid })

@@ -26,6 +26,10 @@ export interface PartKeysInput {
   blockerFor(name: string): string | null
   /** Where the parts sit and the open view's Grid step, for the arrow keys and the turn about the selection's centre. */
   layout: Layout
+  /** When the build behind the shown design started (ms); a Rotate waits for a build after the last move. */
+  builtFrom: number
+  /** A dragged group's move waits for its build, so a Rotate waits too. */
+  moveWaiting: boolean
   fit(): void
   /** The net under the pointer, if any. */
   netUnderPointer(): string | undefined
@@ -75,11 +79,11 @@ function usePartCommands(input: PartKeysInput, edits: KeyEdits): void {
 }
 
 export function usePartKeys(input: PartKeysInput): void {
-  const edits = useKeyEdits()
+  const edits = useKeyEdits(input)
   usePartCommands(input, edits)
-  const { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, fit, netUnderPointer, netsOf, onHighlight } = input
+  const { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtFrom, moveWaiting, fit, netUnderPointer, netsOf, onHighlight } = input
   useEffect(() => {
-    const keys: PartKeysInput = { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, fit, netUnderPointer, netsOf, onHighlight }
+    const keys: PartKeysInput = { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtFrom, moveWaiting, fit, netUnderPointer, netsOf, onHighlight }
     const onKey = (event: KeyboardEvent) => {
       const hit = keyAction(keyInput(event), { view, drawing: paused })
       if (hit) {
@@ -91,5 +95,5 @@ export function usePartKeys(input: PartKeysInput): void {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [edits, view, selection, paused, circuit, actions, onSelect, blockerFor, layout, fit, netUnderPointer, netsOf, onHighlight])
+  }, [edits, view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtFrom, moveWaiting, fit, netUnderPointer, netsOf, onHighlight])
 }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import type { PartInfo } from "../src/core/types.js"
-import { anchorLookup, lockChange, moveEach, nudgeOffset, rotateAbout, rotatePlan, selectionCentre, turnedAbout, nameList, removeEach, removeQuestion, rotateEach, sendGroupEdit, skippedNote, type GroupEditActions } from "../studio/src/pcb/group-edits.js"
+import { anchorLookup, inView, lockChange, moveEach, nudgeOffset, nudgePlan, rotateAbout, rotatePlan, selectionCentre, turnedAbout, nameList, removeEach, removeQuestion, rotateEach, sendGroupEdit, skippedNote, type GroupEditActions } from "../studio/src/pcb/group-edits.js"
 import { moveBlocker, ZERO, type Anchor, type SourceCircuit, type View } from "../studio/src/pcb/positions.js"
 
 const prop = (literal: string | number) => ({ literal, source: JSON.stringify(literal), editable: true })
@@ -399,5 +399,33 @@ describe("rotatePlan and parts outside the view", () => {
     const pcb = rotatePlan(circuit, ["R1"], "pcb", layout, blockers([]))
     if ("message" in pcb) throw new Error(pcb.message)
     expect(pcb.edits).toEqual([{ kind: "setProps", part: "R1", props: { pcbRotation: 180 } }])
+  })
+})
+
+describe("nudgePlan and parts outside the view", () => {
+  const box = (name: string, x: number, y: number) => ({ name, pcbComponentId: name, center: { x, y }, box: { minX: x - 0.5, minY: y - 0.5, maxX: x + 0.5, maxY: y + 0.5 } })
+  const anchors = new Map<string, Anchor>([["R1", { origin: { x: 1, y: 1 }, group: ZERO, autoPlaced: false }]])
+  // R2 has a box but no anchor, C1 neither: C1 is not drawn in this view.
+  const layout = { anchors, boxes: [box("R1", 1, 1), box("R2", 3, 1)] }
+
+  test("a part is in the view when it has a box or an anchor there", () => {
+    const drawn = inView(layout)
+    expect(["R1", "R2", "C1"].map(drawn)).toEqual([true, true, false])
+  })
+
+  test("moves the drawn parts and names the ones the view does not draw, instead of moving them from the origin", () => {
+    const plan = nudgePlan(circuit, ["R1", "C1", "R2"], "pcb", layout, { x: 1, y: 0 }, blockers([]))
+    expect(plan.parts).toEqual(["R1", "R2"])
+    expect(plan.edits).toEqual([
+      { kind: "setProps", part: "R1", props: { pcbX: 2, pcbY: 1 } },
+      { kind: "setProps", part: "R2", props: { pcbX: 4, pcbY: 1 } },
+    ])
+    expect(skippedNote(plan)).toBe("Not moved: C1 is not in this view")
+  })
+
+  test("names the parts not in the view before the locked ones; with none left nothing is sent", () => {
+    const plan = nudgePlan(circuit, ["R1", "C1"], "pcb", layout, { x: 1, y: 0 }, blockers(["R1"]))
+    expect(plan.edits).toEqual([])
+    expect(skippedNote(plan)).toBe("C1 is not in this view; R1 is locked")
   })
 })
