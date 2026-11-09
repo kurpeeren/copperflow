@@ -8,10 +8,16 @@ import { anyLayerShown, type PickLayers } from "./layers.js"
 import { kindPickable, type PickFilter, type PickKind } from "./pick-filter.js"
 import type { ArmedTool } from "./press.js"
 
-/** Something a pick can take: a part, by name, or a net label, a wire or a drawing (by its id) on the schematic. */
-export type Pickable = { kind: "part"; name: string } | { kind: "label"; label: NetLabel } | { kind: "wire"; id: string } | { kind: "drawing"; id: string }
+/** Something a pick can take: a part, by name, a net label, a wire or a drawing (by its id) on the schematic, or a track or via (by its layout id) on the PCB. */
+export type Pickable =
+  | { kind: "part"; name: string }
+  | { kind: "label"; label: NetLabel }
+  | { kind: "wire"; id: string }
+  | { kind: "drawing"; id: string }
+  | { kind: "track"; id: string }
+  | { kind: "via"; id: string }
 
-const KINDS: Record<Pickable["kind"], PickKind> = { part: "parts", label: "labels", wire: "wires", drawing: "drawings" }
+const KINDS: Record<Pickable["kind"], PickKind> = { part: "parts", label: "labels", wire: "wires", drawing: "drawings", track: "tracks", via: "vias" }
 
 /** What a pick is made with. */
 export interface PickContext {

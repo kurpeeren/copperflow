@@ -1,8 +1,9 @@
 // copperflow's PCB renderer: draws the engine's board layout onto a 2D canvas in layer order.
 // Only types come from the engine: its runtime modules reach Node-only code the Studio bundle cannot hold.
 import type { PcbLayout, PlacedFootprint, WorldPad } from "../../../src/engine/pcb.js"
+import { drawCopperItems, type CopperScene } from "./copper-draw.js"
 import { devicePixelIn } from "./crisp.js"
-import { canvasFont, PALETTE, TEXT_WEIGHT, type Ctx } from "./ctx.js"
+import { canvasFont, PALETTE, PCB_DIM, TEXT_WEIGHT, type Ctx } from "./ctx.js"
 import { worldToScreen, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
 import { DEFAULT_LAYERS, padLayer, type LayerVisibility } from "./layers.js"
 import { drawViolationMarkers, type ViolationMarker } from "./markers.js"
@@ -23,13 +24,14 @@ export interface PcbDrawOptions {
   violations?: readonly ViolationMarker[]
   /** The violation picked in the DRC tab, whose ring is thicker. */
   activeViolation?: string
+  /** The layout file's tracks and vias (as dragged, or waiting for their build), with their selection and hover. */
+  copper?: CopperScene
 }
 
 type View = { camera: Camera; size: Size }
 
 const NO_SHIFT: Point = { x: 0, y: 0 }
-/** Alpha of everything outside a highlighted net; high enough that dimmed pure blue still reads on black. */
-export const PCB_DIM = 0.5
+export { PCB_DIM }
 /** The dashed courtyard of an auto-placed part stays at full alpha and a little thicker, so it reads on black. */
 const AUTO_COURTYARD_PX = 1.5
 const LIT_WASH_ALPHA = 0.35
@@ -82,6 +84,7 @@ export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDra
   ctx.lineJoin = "round"
   if (layers.keepout) drawKeepouts(ctx, layout, px, hair)
   drawCopper(ctx, layers, options.highlight, each, px)
+  if (options.copper) drawCopperItems(ctx, options.copper, layers, options.highlight, px)
   if (layers.hole) drawDrills(ctx, each)
   each((part) => {
     if (shownOn(layers, part, "Silk")) drawPolylines(ctx, part.silkscreen, part.side === "top" ? PALETTE.topSilk : PALETTE.bottomSilk, Math.max(SILK_WIDTH_MM, hair), false)

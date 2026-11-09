@@ -76,3 +76,11 @@ describe("a renamed drawing after its build", () => {
     expect(renamedAfterBuild(other, [{ from: "D[0:7]", to: "A[3:0]" }], renamed)).toEqual({ selection: other, waiting: [] })
   })
 })
+
+describe("copper in the shown selection", () => {
+  test("the PCB keeps the tracks and vias its layout has; the schematic shows none", () => {
+    const picked = Selection.none.addCopper(["t0001", "v0001", "t0009"])
+    expect(shownSelection(picked, { view: "pcb", copper: ["t0001", "v0001"] }).copper).toEqual(["t0001", "v0001"])
+    expect(shownSelection(picked, { view: "schematic", copper: ["t0001", "v0001"] }).copper).toEqual([])
+  })
+})

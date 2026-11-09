@@ -175,15 +175,28 @@ describe("the Filter tab", () => {
   })
 
   test("toggling gives a new filter, the rows follow the view, and a missing filter allows everything", () => {
-    expect(ALL_PICKABLE).toEqual({ parts: true, labels: true, wires: true, drawings: true })
+    expect(ALL_PICKABLE).toEqual({ parts: true, labels: true, wires: true, drawings: true, tracks: true, vias: true })
     const off = togglePickKind(ALL_PICKABLE, "labels")
-    expect(off).toEqual({ parts: true, labels: false, wires: true, drawings: true })
+    expect(off).toEqual({ parts: true, labels: false, wires: true, drawings: true, tracks: true, vias: true })
     expect(ALL_PICKABLE.labels).toBe(true)
     expect(togglePickKind(off, "labels")).toEqual(ALL_PICKABLE)
     expect(kindPickable(undefined, "parts")).toBe(true)
-    expect(pickKindRows("pcb").map((row) => row.label)).toEqual(["Parts"])
+    expect(pickKindRows("pcb").map((row) => row.label)).toEqual(["Parts", "Tracks", "Vias"])
+    expect(pickKindRows("pcb").map((row) => row.kind)).toEqual(["parts", "tracks", "vias"])
     expect(pickKindRows("schematic").map((row) => row.label)).toEqual(["Parts", "Wires", "Net labels and flags", "Drawings"])
     expect(pickKindRows("schematic").find((row) => row.label === "Drawings")?.kind).toBe("drawings")
     expect(pickKindRows("schematic").find((row) => row.label === "Wires")?.kind).toBe("wires")
+  })
+})
+
+describe("copper picks", () => {
+  const context = (filter = ALL_PICKABLE): PickContext => ({ selection: Selection.none, armed: null, filter })
+  test("tracks and vias follow their own Filter rows, and no tool that takes the press", () => {
+    expect(canPick({ kind: "track", id: "t0001" }, context())).toBe(true)
+    expect(canPick({ kind: "via", id: "v0001" }, context())).toBe(true)
+    expect(canPick({ kind: "track", id: "t0001" }, context({ ...ALL_PICKABLE, tracks: false }))).toBe(false)
+    expect(canPick({ kind: "via", id: "v0001" }, context({ ...ALL_PICKABLE, tracks: false }))).toBe(true)
+    expect(canPick({ kind: "via", id: "v0001" }, context({ ...ALL_PICKABLE, vias: false }))).toBe(false)
+    expect(canPick({ kind: "track", id: "t0001" }, { ...context(), armed: "note" })).toBe(false)
   })
 })

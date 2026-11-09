@@ -1,9 +1,10 @@
-// The selection: the parts, the schematic wires, the net labels and flags and the drawings picked, each list in the
+// The selection: the parts, the schematic wires, the net labels and flags, the drawings and the PCB's copper (tracks
+// and vias, by their layout ids) picked, each list in the
 // order it was picked, so the last part (the primary) can stand for the rest where only one part makes sense, such as
 // the Properties of a single part or centring the camera. A value: every change returns a new selection, or the same
 // one when nothing changed, so React sees what changed. The part counts (`names`, `size`, `primary`) count parts only,
 // so the part commands (Rotate, align, Lock) act on the parts; `wires` holds the wires, `labels` the labels, `drawings`
-// the drawings, and `total` counts all four, as "Selected objects: N" does.
+// the drawings, `copper` the tracks and vias, and `total` counts all five, as "Selected objects: N" does.
 
 /** A change to the selection, from what it is to what it becomes; the canvases, panels and keys send these. */
 export type SelectionChange = (current: Selection) => Selection
@@ -20,16 +21,17 @@ const among = (items: readonly string[], kept: Iterable<string>): string[] => {
   return items.filter((item) => set.has(item))
 }
 
-/** The four lists a selection holds. */
+/** The five lists a selection holds. */
 interface Lists {
   names: readonly string[]
   wires: readonly string[]
   labels: readonly string[]
   drawings: readonly string[]
+  copper: readonly string[]
 }
 
-const EMPTY: Lists = { names: [], wires: [], labels: [], drawings: [] }
-const KEYS: readonly (keyof Lists)[] = ["names", "wires", "labels", "drawings"]
+const EMPTY: Lists = { names: [], wires: [], labels: [], drawings: [], copper: [] }
+const KEYS: readonly (keyof Lists)[] = ["names", "wires", "labels", "drawings", "copper"]
 
 export class Selection {
   /** Nothing selected. */
@@ -47,11 +49,15 @@ export class Selection {
   /** The schematic drawings (lines, shapes, texts and buses), by their ids in the sheet's layout, oldest pick first. */
   readonly drawings: readonly string[]
 
+  /** The PCB's tracks and vias, by their ids in the layout file (`t0001`, `v0001`), oldest pick first. */
+  readonly copper: readonly string[]
+
   private constructor(lists: Lists) {
     this.names = Object.freeze([...lists.names])
     this.wires = Object.freeze([...lists.wires])
     this.labels = Object.freeze([...lists.labels])
     this.drawings = Object.freeze([...lists.drawings])
+    this.copper = Object.freeze([...lists.copper])
     Object.freeze(this)
   }
 
@@ -60,7 +66,7 @@ export class Selection {
   }
 
   private get lists(): Lists {
-    return { names: this.names, wires: this.wires, labels: this.labels, drawings: this.drawings }
+    return { names: this.names, wires: this.wires, labels: this.labels, drawings: this.drawings, copper: this.copper }
   }
 
   /** This selection with some lists changed: itself when every list kept its length (lists are only ever shortened or kept here). */
@@ -96,9 +102,18 @@ export class Selection {
     return this.drawings.length
   }
 
-  /** Every object selected: the parts, the wires, the labels and the drawings. */
+  get copperCount(): number {
+    return this.copper.length
+  }
+
+  /** Every object selected: the parts, the wires, the labels, the drawings and the copper. */
   get total(): number {
-    return this.names.length + this.wires.length + this.labels.length + this.drawings.length
+    return this.names.length + this.wires.length + this.labels.length + this.drawings.length + this.copper.length
+  }
+
+  /** The track or via when it is all that is selected: the one Properties shows the rows of. */
+  get soleCopper(): string | undefined {
+    return this.total === 1 ? this.copper[0] : undefined
   }
 
   /** The wire when it is all that is selected (one wire, nothing else): the one its handles, reshaping and Wire section are for. */
@@ -132,6 +147,10 @@ export class Selection {
     return this.drawings.includes(id)
   }
 
+  hasCopper(id: string): boolean {
+    return this.copper.includes(id)
+  }
+
   /** Just this part. */
   only(name: string): Selection {
     return this.total === 1 && this.names[0] === name ? this : new Selection({ ...EMPTY, names: [name] })
@@ -152,6 +171,11 @@ export class Selection {
     return this.soleDrawing === id ? this : new Selection({ ...EMPTY, drawings: [id] })
   }
 
+  /** Just this track or via. */
+  onlyCopper(id: string): Selection {
+    return this.soleCopper === id ? this : new Selection({ ...EMPTY, copper: [id] })
+  }
+
   /** The part taken out when it is in, else added as the primary; the other kinds stay. */
   toggle(name: string): Selection {
     return this.has(name) ? this.without([name]) : this.grown({ names: [...this.names, name] })
@@ -170,6 +194,11 @@ export class Selection {
   /** The drawing taken out when it is in, else added after the others; the other kinds stay. */
   toggleDrawing(id: string): Selection {
     return this.hasDrawing(id) ? this.withoutDrawings([id]) : this.grown({ drawings: [...this.drawings, id] })
+  }
+
+  /** The track or via taken out when it is in, else added after the others; the other kinds stay. */
+  toggleCopper(id: string): Selection {
+    return this.hasCopper(id) ? this.withoutCopper([id]) : this.grown({ copper: [...this.copper, id] })
   }
 
   /** The parts not in yet, added in order; the ones already in stay where they are. */
@@ -196,13 +225,19 @@ export class Selection {
     return fresh.length === 0 ? this : this.grown({ drawings: [...this.drawings, ...fresh] })
   }
 
+  /** The tracks and vias not in yet, added in order. */
+  addCopper(ids: readonly string[]): Selection {
+    const fresh = unique(ids).filter((id) => !this.hasCopper(id))
+    return fresh.length === 0 ? this : this.grown({ copper: [...this.copper, ...fresh] })
+  }
+
   clear(): Selection {
     return Selection.none
   }
 
-  /** Every one of these parts, wires, labels and drawings, each once, and nothing else. */
-  all(names: readonly string[], wires: readonly string[] = [], labels: readonly string[] = [], drawings: readonly string[] = []): Selection {
-    const next: Lists = { names: unique(names), wires: unique(wires), labels: unique(labels), drawings: unique(drawings) }
+  /** Every one of these parts, wires, labels, drawings and tracks or vias, each once, and nothing else. */
+  all(names: readonly string[], wires: readonly string[] = [], labels: readonly string[] = [], drawings: readonly string[] = [], copper: readonly string[] = []): Selection {
+    const next: Lists = { names: unique(names), wires: unique(wires), labels: unique(labels), drawings: unique(drawings), copper: unique(copper) }
     return KEYS.every((key) => sameList(next[key], this[key])) ? this : Selection.from(next)
   }
 
@@ -226,6 +261,11 @@ export class Selection {
     return this.with({ drawings: less(this.drawings, ids) })
   }
 
+  /** The selection less these tracks and vias. */
+  withoutCopper(ids: readonly string[]): Selection {
+    return this.with({ copper: less(this.copper, ids) })
+  }
+
   /** Only the selected parts that are among these, such as the parts the circuit still has. */
   keep(names: Iterable<string>): Selection {
     return this.with({ names: among(this.names, names) })
@@ -244,6 +284,11 @@ export class Selection {
   /** Only the selected drawings that are among these, such as the drawings the sheet still draws. */
   keepDrawings(ids: Iterable<string>): Selection {
     return this.with({ drawings: among(this.drawings, ids) })
+  }
+
+  /** Only the selected tracks and vias that are among these, such as those the layout file still has. */
+  keepCopper(ids: Iterable<string>): Selection {
+    return this.with({ copper: among(this.copper, ids) })
   }
 }
 

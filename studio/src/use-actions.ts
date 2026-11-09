@@ -1,5 +1,6 @@
 // The edits Studio sends to its server. Each one reports a failure itself, then reloads the open file.
 import { useCallback, useMemo } from "react"
+import type { LayoutEdit } from "../../src/core/layout-records.js"
 import { api, type Edit } from "./api"
 import { announceHistoryWrite } from "./history-writes"
 import { PLACE_DEFAULTS } from "./place-defaults"
@@ -9,6 +10,8 @@ export interface Actions {
   edit(edits: Edit[], summary: string): Promise<boolean>
   /** Like edit, and also gives the server's mark of the write, which orders it against builds (LiveProject.nextMark). */
   editMarked(edits: Edit[], summary: string): Promise<EditOutcome>
+  /** Writes copper edits to the open circuit's layout file, as one history entry, with the mark of the write. */
+  editLayout(edits: LayoutEdit[], summary: string): Promise<EditOutcome>
   lock(parts: string[], locked: boolean): Promise<boolean>
   mark(text: string, at?: { view: "pcb" | "schematic"; x: number; y: number }): Promise<boolean>
   unmark(id: string): Promise<boolean>
@@ -61,10 +64,12 @@ export function useActions({ file, refresh, refreshParts, notify }: ActionsInput
     [run],
   )
   const editMarked = useCallback((edits: Edit[], summary: string) => postMarked("/api/edit", { file, edits, summary }), [file, postMarked])
+  const editLayout = useCallback((edits: LayoutEdit[], summary: string) => postMarked("/api/layout", { file, edits, summary }), [file, postMarked])
   return useMemo(
     () => ({
       edit: async (edits, summary) => (await editMarked(edits, summary)).ok,
       editMarked,
+      editLayout,
       lock: (parts, locked) => run(() => api("/api/lock", { file, parts, locked })),
       mark: (text, at) => run(() => api("/api/mark", { file, text, ...at })),
       unmark: (id) => run(() => api("/api/unmark", { file, id })),
@@ -77,7 +82,7 @@ export function useActions({ file, refresh, refreshParts, notify }: ActionsInput
       },
       notify,
     }),
-    [file, run, notify, refreshParts, editMarked, postMarked],
+    [file, run, notify, refreshParts, editMarked, editLayout, postMarked],
   )
 }
 

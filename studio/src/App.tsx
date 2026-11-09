@@ -106,7 +106,8 @@ function useShownSelection(selection: Selection, circuit: CircuitData | undefine
     const sheet = design?.schematic
     const ids = <T extends { id: string }>(items: readonly T[] | undefined) => items?.map((item) => item.id)
     const drawings = sheet && stableDrawings(before?.schematic.drawings, sheet.drawings)
-    return shownSelection(selection, { view, parts: circuit?.model.parts.map((part) => part.name), wires: ids(sheet?.wires), labels: ids(sheet?.labels), drawings })
+    const copper = design && [...design.pcb.tracks, ...design.pcb.vias].map((item) => item.id)
+    return shownSelection(selection, { view, parts: circuit?.model.parts.map((part) => part.name), wires: ids(sheet?.wires), labels: ids(sheet?.labels), drawings, copper })
   }, [selection, circuit, design, view, before])
 }
 

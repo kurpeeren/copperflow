@@ -97,7 +97,8 @@ describe("propertiesView", () => {
     expect(kindRow("part:R1")).toBeUndefined()
     expect(kindRow("kind:labels:1")).toEqual({ kind: "labels", count: 1 })
     expect(kindRow("kind:notes:1")).toBeUndefined()
-    expect(KIND_LABELS).toEqual({ parts: "Parts", wires: "Wires", labels: "Net labels and flags", drawings: "Drawings" })
+    expect(KIND_LABELS).toEqual({ parts: "Parts", wires: "Wires", labels: "Net labels and flags", drawings: "Drawings", copper: "Tracks and vias" })
+    expect(kindRow("kind:copper:2")).toEqual({ kind: "copper", count: 2 })
     expect(kindRow("kind:drawings:2")).toEqual({ kind: "drawings", count: 2 })
   })
 
@@ -111,6 +112,11 @@ describe("propertiesView", () => {
     const view = propertiesView([named("R1")], { library: false }, 0, 0, 2)
     expect(view).toEqual({ header: "Selected objects: 3", sections: [{ title: "Selection", rows: ["kind:parts:1", "kind:drawings:2", "part:R1"] }] })
     expect(propertiesView([], { library: false }, 1, 0, 1)).toEqual({ header: "Selected objects: 2", sections: [{ title: "Selection", rows: ["kind:wires:1", "kind:drawings:1"] }] })
+  })
+
+  test("with copper in the mix the header counts it and the section counts tracks and vias together", () => {
+    const view = propertiesView([named("R1")], { library: false }, 0, 0, 0, 2)
+    expect(view).toEqual({ header: "Selected objects: 3", sections: [{ title: "Selection", rows: ["kind:parts:1", "kind:copper:2", "part:R1"] }] })
   })
 
   test("several parts get Rotate, Lock, Unlock and Delete, each run as the menu's command", () => {
@@ -138,6 +144,12 @@ describe("propertiesKind", () => {
     expect(propertiesKind(1, 0, 0, 1)).toBe("group")
     expect(propertiesKind(0, 0, 1, 1)).toBe("group")
     expect(propertiesKind(0, 0, 0, 2)).toBe("group")
+  })
+
+  test("a track's or via's own with one alone; with anything else, the group", () => {
+    expect(propertiesKind(0, 0, 0, 0, 1)).toBe("copper")
+    expect(propertiesKind(1, 0, 0, 0, 1)).toBe("group")
+    expect(propertiesKind(0, 0, 0, 0, 2)).toBe("group")
   })
 
   test("a label's own with one label alone; with anything else, the group", () => {

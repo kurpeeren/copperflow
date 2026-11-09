@@ -315,6 +315,55 @@ describe("drawings in the selection", () => {
   })
 })
 
+describe("copper in the selection", () => {
+  const T = "t0001"
+  const V = "v0001"
+  const track = Selection.none.onlyCopper(T)
+  const mix = of("R1").addDrawings(["G1"]).addCopper([T, V])
+
+  test("a track alone: one object, the sole copper, and no part", () => {
+    expect(track.copper).toEqual([T])
+    expect(track.copperCount).toBe(1)
+    expect(track.total).toBe(1)
+    expect(track.soleCopper).toBe(T)
+    expect(track.size).toBe(0)
+    expect(track.soleWire).toBeUndefined()
+    expect(Selection.none.copper).toEqual([])
+    expect(Selection.none.soleCopper).toBeUndefined()
+  })
+
+  test("copper is held with the other kinds in pick order and counted in the total", () => {
+    expect(mix.copper).toEqual([T, V])
+    expect(mix.total).toBe(4)
+    expect(mix.hasCopper(V)).toBe(true)
+    expect(mix.soleCopper).toBeUndefined()
+  })
+
+  test("onlyCopper, toggleCopper, withoutCopper and keepCopper; no change is the same selection", () => {
+    expect(mix.onlyCopper(V)).toMatchObject({ names: [], drawings: [], copper: [V] })
+    expect(track.onlyCopper(T)).toBe(track)
+    expect(of("R1").toggleCopper(T).toggleCopper(V)).toMatchObject({ names: ["R1"], copper: [T, V] })
+    expect(track.toggleCopper(T)).toBe(Selection.none)
+    expect(mix.withoutCopper([T])).toMatchObject({ names: ["R1"], copper: [V] })
+    expect(mix.withoutCopper(["t0009"])).toBe(mix)
+    expect(mix.keepCopper([V, "v0009"]).copper).toEqual([V])
+    expect(mix.keepCopper([T, V])).toBe(mix)
+    expect(track.keepCopper([])).toBe(Selection.none)
+    expect(mix.addCopper([T])).toBe(mix)
+    expect(Object.isFrozen(mix.copper)).toBe(true)
+  })
+
+  test("the other kinds' changes keep the copper; only, all and clear do not", () => {
+    expect(mix.toggle("C1").copper).toEqual([T, V])
+    expect(mix.without(["R1"]).withoutDrawings(["G1"]).copper).toEqual([T, V])
+    expect(mix.keep([]).keepWires([]).keepLabels([]).keepDrawings([]).copper).toEqual([T, V])
+    expect(mix.only("R1").copper).toEqual([])
+    expect(mix.all(["R1"]).copper).toEqual([])
+    expect(Selection.none.all([], [], [], [], [T, T])).toMatchObject({ copper: [T] })
+    expect(mix.clear()).toBe(Selection.none)
+  })
+})
+
 describe("a click on a part", () => {
   test("selects that part alone", () => {
     expect(clicked("C1", plain)(of("R1", "R2")).names).toEqual(["C1"])

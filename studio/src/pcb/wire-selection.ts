@@ -61,16 +61,20 @@ export interface ShownSheet {
   wires?: Iterable<string>
   labels?: Iterable<string>
   drawings?: Iterable<string>
+  /** On the PCB: the tracks and vias of the layout file. */
+  copper?: Iterable<string>
 }
 
 /**
  * What the canvases and panels are shown: the selection less any part the loaded circuit does not have (yet), and less
- * the wires, labels and drawings the open sheet does not draw. The PCB shows no wire, label or drawing, so those
- * selected on the schematic wait there.
+ * the wires, labels and drawings the open sheet does not draw, and the copper the PCB does not have. The PCB shows no
+ * wire, label or drawing, so those selected on the schematic wait there; copper selected on the PCB waits likewise
+ * while the schematic is open.
  */
 export function shownSelection(selection: Selection, sheet: ShownSheet): Selection {
   const kept = sheet.parts ? selection.keep(sheet.parts) : selection
   const onSheet = sheet.view === "schematic"
   const drawn = (ids: Iterable<string> | undefined): Iterable<string> => (onSheet ? (ids ?? []) : [])
-  return kept.keepWires(drawn(sheet.wires)).keepLabels(drawn(sheet.labels)).keepDrawings(drawn(sheet.drawings))
+  const copper = onSheet ? [] : (sheet.copper ?? [])
+  return kept.keepWires(drawn(sheet.wires)).keepLabels(drawn(sheet.labels)).keepDrawings(drawn(sheet.drawings)).keepCopper(copper)
 }

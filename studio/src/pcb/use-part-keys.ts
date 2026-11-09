@@ -57,6 +57,8 @@ export interface PartKeysInput {
   drawings?: RemoveDrawings
   /** The schematic's sheet, whose hand-drawn wires follow the parts the arrows and align move. The PCB has none. */
   follow?: WireFollow
+  /** The PCB's copper: Delete removes the selected tracks and vias (use-copper.ts). The schematic has none. */
+  copper?: { remove(ids: readonly string[]): void }
 }
 
 /**
@@ -66,7 +68,14 @@ export interface PartKeysInput {
  */
 function removeSelection(input: PartKeysInput, fromKey: boolean): void {
   if (input.paused) return
-  const result = deletePlan(input.selection, input.blockerFor, input.wire?.removal, input.wire?.labelRemoval, input.drawings)
+  // Copper lives in the layout file, so it goes in its own change; the rest of the selection goes as before.
+  const { copper } = input.selection
+  if (copper.length > 0 && input.copper) {
+    input.copper.remove(copper)
+    if (input.selection.total === copper.length) return
+  }
+  const rest = input.copper ? input.selection.withoutCopper(copper) : input.selection
+  const result = deletePlan(rest, input.blockerFor, input.wire?.removal, input.wire?.labelRemoval, input.drawings)
   if ("message" in result) return fromKey ? undefined : input.actions.notify(result.message)
   const { plan, wires, labels, drawings, question } = result
   if (question && !window.confirm(question)) return
@@ -124,9 +133,9 @@ function usePartCommands(input: PartKeysInput, edits: KeyEdits): void {
 export function usePartKeys(input: PartKeysInput): { rotateHeld: boolean; keyMove: KeyMove | undefined } {
   const { edits, held, moved } = useKeyEdits(input)
   usePartCommands(input, edits)
-  const { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, drawings, follow } = input
+  const { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, drawings, follow, copper } = input
   useEffect(() => {
-    const keys: PartKeysInput = { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, drawings, follow }
+    const keys: PartKeysInput = { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, drawings, follow, copper }
     const onKey = (event: KeyboardEvent) => {
       const hit = keyAction(keyInput(event), { view, drawing: paused })
       if (!hit) return
@@ -135,6 +144,6 @@ export function usePartKeys(input: PartKeysInput): { rotateHeld: boolean; keyMov
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [edits, view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, drawings, follow])
+  }, [edits, view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, drawings, follow, copper])
   return { rotateHeld: held, keyMove: moved }
 }

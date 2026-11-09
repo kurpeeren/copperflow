@@ -151,6 +151,9 @@ export function movePlan(input: GestureInput, names: readonly string[], offset: 
   return moveWithWires(input, names, offset, wires, labels, drawings).plan
 }
 
+/** What targetAt can find: everything pickable but the PCB's copper, which the PCB canvas picks first (copper-hit.ts). */
+type SheetPickable = Exclude<Pickable, { kind: "track" | "via" }>
+
 /** A box smaller than this on both sides, in CSS pixels, is a click. */
 const BOX_MIN_PX = 6
 const round = roundPosition
@@ -171,12 +174,12 @@ export function targetAt(
   const label = labels?.at(world)
   const wire = wires?.at(world)
   const drawn = drawings?.at(world)
-  const drawing = (place: DrawingHit["place"]): Pickable[] => (drawn?.place === place ? [{ kind: "drawing", id: drawn.id }] : [])
-  const candidates: Pickable[] = [
+  const drawing = (place: DrawingHit["place"]): SheetPickable[] => (drawn?.place === place ? [{ kind: "drawing", id: drawn.id }] : [])
+  const candidates: SheetPickable[] = [
     ...(label ? [{ kind: "label" as const, label }] : []),
     ...(wire !== undefined ? [{ kind: "wire" as const, id: wire }] : []),
     ...drawing("line"),
-    ...hitsAt(boxes, world).map((box): Pickable => ({ kind: "part", name: box.name })),
+    ...hitsAt(boxes, world).map((box): SheetPickable => ({ kind: "part", name: box.name })),
     ...drawing("inside"),
   ]
   const [first] = picks(candidates, context)

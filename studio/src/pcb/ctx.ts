@@ -32,10 +32,13 @@ export interface Ctx {
 }
 
 /**
- * The alpha of everything outside a highlighted net on the schematic. The PCB dims less, to PCB_DIM (pcb-draw.ts),
+ * The alpha of everything outside a highlighted net on the schematic. The PCB dims less, to PCB_DIM (below),
  * so its layer colours, pure blue among them, still read on black.
  */
 export const HIGHLIGHT_DIM = 0.3
+
+/** Alpha of everything outside a highlighted net on the PCB; high enough that dimmed pure blue still reads on black. */
+export const PCB_DIM = 0.5
 
 /** The interface's text stack: `--sans` in styles.css and the canvases' font family are this one string. */
 export const UI_FONT_STACK = '"Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif'

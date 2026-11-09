@@ -14,7 +14,9 @@ export function HistoryList({ history, actions }: { history: HistoryListing[]; a
         return (
           <li key={entry.id} className={row.className}>
             <span className={`who ${entry.author}`}>{entry.author === "ai" ? "Agent" : "You"}</span>
-            <span className="what">{entry.summary}</span>
+            <span className="what" title={entry.file}>
+              {entry.summary}
+            </span>
             {row.note && <span className="history-note">{row.note}</span>}
             {row.undoable && (
               <button className="icon" aria-label={`Undo ${entry.summary}`} onClick={() => void actions.undo(entry.id)}>
