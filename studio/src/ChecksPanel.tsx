@@ -18,7 +18,7 @@ export function ChecksPanel({ rows, counts, active, onPick }: Props) {
   const groups = useMemo(() => checkGroups(rows), [rows])
   return (
     <section className="checks" aria-label="Checks" onClick={blurAfterPointerClick}>
-      <header className="checks-head">
+      <header className="checks-head hairline-b">
         <h2>Checks</h2>
         {rows.length > 0 && <span className="count">{checkSummary(counts)}</span>}
       </header>

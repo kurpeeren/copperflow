@@ -149,7 +149,7 @@ export function MenuBar({ run, view, selected, toggles, children }: Props) {
   }
   const onHover = (index: number) => dispatch({ type: "hover", title: MENUS[index]?.title ?? "" })
   return (
-    <header className="menubar" ref={bar}>
+    <header className="menubar hairline-b" ref={bar}>
       <span className="brand" title="copperflow">
         copperflow
       </span>

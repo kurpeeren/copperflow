@@ -9,9 +9,9 @@
   width: 248px;
   padding: 4px;
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: 4px;
   background: var(--panel);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow);
 }
 
 .find-box input {
@@ -19,8 +19,8 @@
   min-width: 0;
   height: 26px;
   padding: 0 8px;
-  border: 1px solid var(--line);
-  border-radius: 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
   background: var(--panel);
   color: var(--text);
   font: inherit;
@@ -39,7 +39,7 @@ button.find-close {
   padding: 0;
   justify-content: center;
   border: 0;
-  border-radius: 2px;
+  border-radius: 4px;
   background: transparent;
   color: var(--muted);
 }
@@ -50,7 +50,7 @@ button.find-close:hover:not(:disabled) {
 }
 
 button.find-close:active:not(:disabled) {
-  background: var(--tab);
+  background: var(--line);
   color: var(--text);
 }
 
@@ -81,13 +81,13 @@ button.find-close:active:not(:disabled) {
   align-items: center;
   gap: 10px;
   padding: 3px 6px 3px 12px;
-  border-bottom: 1px solid var(--line);
 }
 
 .find-head h2 {
   margin: 0;
   font-size: 12px;
   font-weight: 600;
+  letter-spacing: 0;
 }
 
 .find-head .count {
@@ -112,7 +112,7 @@ button.find-row {
   padding: 3px 8px;
   border: 0;
   border-left: 2px solid transparent;
-  border-radius: 2px;
+  border-radius: 0;
   background: transparent;
   color: var(--text);
   text-align: left;
@@ -123,7 +123,7 @@ button.find-row:hover:not(:disabled) {
 }
 
 button.find-row:active:not(:disabled) {
-  background: var(--tab);
+  background: var(--line);
 }
 
 button.find-row.active,
@@ -136,11 +136,17 @@ button.find-row.active:hover:not(:disabled) {
   flex: none;
   width: 36px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .find-row .kind.net {
-  color: var(--copper-strong);
+  color: var(--copper-text);
+}
+
+/* Muted text is too light on the copper wash: an active row's text is the text colour. */
+button.find-row.active .kind,
+button.find-row.active .matched {
+  color: var(--text);
 }
 
 .find-row .name {
@@ -151,5 +157,5 @@ button.find-row.active:hover:not(:disabled) {
 
 .find-row .matched {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }

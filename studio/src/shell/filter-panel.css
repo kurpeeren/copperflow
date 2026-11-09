@@ -7,10 +7,10 @@
   height: 24px;
   margin: 0;
   padding: 0 10px;
-  border-bottom: 1px solid var(--line);
-  background: var(--strip);
-  font-size: inherit;
+  background: var(--panel);
+  font-size: 12px;
   font-weight: 600;
+  letter-spacing: 0;
 }
 
 .filter-list {
@@ -26,7 +26,6 @@
   box-sizing: border-box;
   height: 28px;
   padding: 0 10px;
-  border-bottom: 1px solid var(--strip);
   cursor: pointer;
 }
 

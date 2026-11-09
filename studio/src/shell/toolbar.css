@@ -1,11 +1,11 @@
-/* The toolbar under the menu bar: 24px icon buttons, and the open canvas's own tools at the right. */
+/* The toolbar under the menu bar: 24px icon buttons (16px icons, icon-shapes.ts) in a 32px row, and the open canvas's
+   own tools at the right. Pressed is the copper wash with a copper icon; disabled is the disabled grey. */
 .studio-toolbar {
   display: flex;
   align-items: center;
   gap: 2px;
   height: 32px;
   padding: 0 8px;
-  border-bottom: 1px solid var(--line);
   background: var(--panel);
   flex: none;
 }
@@ -17,10 +17,11 @@
   height: 24px;
   padding: 0;
   border: 0;
-  border-radius: 2px;
+  border-radius: 4px;
   background: transparent;
   color: var(--text);
   flex: none;
+  transition: background-color var(--ease), color var(--ease);
 }
 
 .toolbar-button.text {
@@ -28,24 +29,26 @@
   min-width: 24px;
   padding: 0 4px;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
 }
 
-.toolbar-button:hover {
-  background: var(--raised);
+.toolbar-button svg {
+  display: block;
 }
 
-.toolbar-button[aria-pressed="true"] {
+button.toolbar-button[aria-pressed="true"] {
   background: var(--copper-wash);
-  color: var(--copper-strong);
+  color: var(--copper);
 }
 
+/* Hairlines: one device pixel at any display scale (hairline.css). */
 .toolbar-separator {
   width: 1px;
-  height: 18px;
-  margin: 0 4px;
+  height: 16px;
+  margin: 0 6px;
   background: var(--line);
   flex: none;
+  transform: scaleX(calc(1 / var(--dpr)));
 }
 
 .toolbar-view-slot {
@@ -80,13 +83,14 @@
 .canvas-tools button.active {
   border-color: var(--copper);
   background: var(--copper-wash);
-  color: var(--text);
+  color: var(--copper-text);
 }
 
 .tool-divider {
   width: 1px;
-  height: 18px;
+  height: 16px;
   background: var(--line);
+  transform: scaleX(calc(1 / var(--dpr)));
 }
 
 button.toolbar-button:hover:not(:disabled) {
@@ -95,16 +99,16 @@ button.toolbar-button:hover:not(:disabled) {
 
 button.toolbar-button[aria-pressed="true"]:hover:not(:disabled) {
   background: var(--copper-wash);
+  color: var(--copper);
 }
 
 button.toolbar-button:active:not(:disabled) {
   background: var(--line);
 }
 
-/* Disabled by the selection (aria-disabled keeps the tooltip and the focus): dim, and no hover or pressed fill. */
+/* Disabled by the selection (aria-disabled keeps the tooltip and the focus): grey, and no hover or pressed fill. */
 button.toolbar-button[aria-disabled="true"] {
-  color: var(--muted);
-  opacity: 0.45;
+  color: var(--disabled);
   cursor: default;
 }
 

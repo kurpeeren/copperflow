@@ -110,8 +110,10 @@ describe("PCB colours (spec section 6)", () => {
 
   test("the PCB's CSS background is the palette's", () => {
     const css = readFileSync(new URL("../studio/src/styles.css", import.meta.url), "utf8")
+    const theme = readFileSync(new URL("../studio/src/shell/theme.css", import.meta.url), "utf8")
     const block = css.slice(css.indexOf(".pcb-canvas {"))
-    expect(block.slice(0, block.indexOf("}")).toLowerCase()).toContain(`background: ${PALETTE.background}`)
+    expect(block.slice(0, block.indexOf("}"))).toContain("background: var(--pcb-background)")
+    expect(theme.toLowerCase()).toContain(`--pcb-background: ${PALETTE.background};`)
   })
 
   test("the grid is white, 30% on minor lines and 50% on every fifth", () => {

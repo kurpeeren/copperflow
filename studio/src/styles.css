@@ -1,23 +1,5 @@
-/* Light workspace in the EasyEDA Pro manner: white panels, grey strips, blue accent. */
+/* The workspace in EasyEDA Pro's frame. Colours are tokens in shell/theme.css; hairlines are in shell/hairline.css. */
 :root {
-  --ground: #cccccc;
-  --panel: #ffffff;
-  --raised: #f5f5f5;
-  --strip: #f0f0f0;
-  --tab: #eeeeee;
-  --line: #d1d1d1;
-  --text: #333333;
-  --muted: #666666;
-  --disabled: #999999;
-  --copper: #1890ff;
-  --copper-strong: #096dd9;
-  --copper-wash: #e6f7ff;
-  --mask: #389e0d;
-  --agent: #1890ff;
-  --danger: #f5222d;
-  /* Error text on white; --danger is for marks and rings. */
-  --danger-text: #cf1322;
-  --warning: #faad14;
   --mono: "Cascadia Mono", "JetBrains Mono", ui-monospace, Consolas, monospace;
   --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
   color-scheme: light;
@@ -37,7 +19,7 @@ body,
 body {
   background: var(--ground);
   color: var(--text);
-  font: 12px/1.5 var(--sans);
+  font: 13px/20px var(--sans);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -60,9 +42,10 @@ button {
   height: 24px;
   padding: 0 10px;
   border: 1px solid var(--line);
-  border-radius: 2px;
+  border-radius: 4px;
   background: var(--panel);
   cursor: pointer;
+  transition: background-color var(--ease), border-color var(--ease), color var(--ease);
 }
 
 button:hover:not(:disabled) {
@@ -90,15 +73,15 @@ button.icon:hover:not(:disabled) {
 }
 
 button.primary {
-  border-color: var(--copper);
-  background: var(--copper);
-  color: #fff;
+  border-color: var(--copper-strong);
+  background: var(--copper-strong);
+  color: var(--on-copper);
   font-weight: 600;
 }
 
 button.primary:hover:not(:disabled) {
-  background: var(--copper-strong);
-  border-color: var(--copper-strong);
+  background: var(--copper-text);
+  border-color: var(--copper-text);
 }
 
 button.danger:hover:not(:disabled) {
@@ -110,8 +93,8 @@ input,
 select {
   height: 24px;
   padding: 0 8px;
-  border: 1px solid var(--line);
-  border-radius: 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
   background: var(--panel);
 }
 
@@ -120,7 +103,7 @@ input:disabled {
 }
 
 :focus-visible {
-  outline: 2px solid var(--copper-strong);
+  outline: 2px solid var(--copper);
   outline-offset: 1px;
 }
 
@@ -170,7 +153,7 @@ input:disabled {
 .banner {
   padding: 6px 12px;
   border-bottom: 1px solid var(--danger);
-  background: #fff1f0;
+  background: var(--danger-wash);
 }
 
 .panel[hidden] {
@@ -187,7 +170,7 @@ input:disabled {
   position: relative;
   height: 100%;
   overflow: hidden;
-  background: #000000;
+  background: var(--pcb-background);
 }
 
 .pcb-canvas canvas {
@@ -200,7 +183,7 @@ input:disabled {
   height: 100%;
   overflow: hidden;
   touch-action: none;
-  background: #fffcf8;
+  background: var(--sheet-background);
 }
 
 .schematic-canvas canvas {
@@ -221,7 +204,7 @@ input:disabled {
 
 .canvas-hint {
   padding: 4px 10px;
-  border-radius: 2px;
+  border-radius: 4px;
   background: var(--copper-wash);
   color: var(--text);
 }
@@ -231,7 +214,7 @@ input:disabled {
   left: 10px;
   bottom: 8px;
   padding: 0 4px;
-  background: rgb(255 255 255 / 85%);
+  background: var(--veil);
   color: var(--muted);
   font-family: var(--mono);
   font-size: 11px;
@@ -255,7 +238,7 @@ input:disabled {
   gap: 4px;
   padding: 6px;
   border: 1px solid var(--copper);
-  border-radius: 2px;
+  border-radius: 4px;
   background: var(--panel);
 }
 
@@ -266,7 +249,7 @@ input:disabled {
 
 .label-name [role="alert"] {
   max-width: 220px;
-  color: var(--copper-strong);
+  color: var(--copper-text);
   font-size: 12px;
 }
 
@@ -309,6 +292,7 @@ ul {
   margin: 6px 6px 2px;
   font-size: 12px;
   font-weight: 600;
+  letter-spacing: 0;
   color: var(--muted);
 }
 
@@ -321,7 +305,7 @@ ul {
   width: 100%;
   height: 28px;
   border: 0;
-  border-radius: 2px;
+  border-radius: 0;
   background: transparent;
   border-left: 2px solid transparent;
 }
@@ -339,6 +323,13 @@ ul {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--muted);
+}
+
+/* Muted text is too light on the copper wash: in a selected row it is the text colour. */
+.row.selected .value,
+.row.selected.readonly .name,
+.connections li.selected .arrow {
+  color: var(--text);
 }
 
 .row.readonly .name {
@@ -364,7 +355,7 @@ ul {
   gap: 6px;
   min-height: 28px;
   padding: 0 4px 0 6px;
-  border-radius: 2px;
+  border-radius: 4px;
 }
 
 .connections li.selected {
@@ -393,7 +384,6 @@ ul {
   gap: 6px;
   margin-top: 10px;
   padding: 10px 6px 4px;
-  border-top: 1px solid var(--line);
 }
 
 .add-connection label,
@@ -412,7 +402,7 @@ ul {
   flex: none;
   min-width: 46px;
   font-size: 12px;
-  color: var(--copper);
+  color: var(--copper-text);
 }
 
 .history .who.ai {
@@ -438,13 +428,14 @@ ul {
 .toggle.on {
   border-color: var(--mask);
   color: var(--mask);
-  background: #f6ffed;
+  background: var(--good-wash);
 }
 
 .inspector h3 {
-  margin: 18px 0 6px;
+  margin: 12px 0 4px;
   font-size: 12px;
   font-weight: 600;
+  letter-spacing: 0;
   color: var(--muted);
 }
 
@@ -500,6 +491,7 @@ ul {
   margin: 10px 6px 4px;
   font-size: 12px;
   font-weight: 600;
+  letter-spacing: 0;
   color: var(--muted);
 }
 
@@ -508,7 +500,7 @@ ul {
   align-items: center;
   gap: 8px;
   padding: 6px;
-  border-radius: 2px;
+  border-radius: 4px;
 }
 
 .library-item:hover {
@@ -542,14 +534,15 @@ ul {
 
 .chip-button {
   height: 26px;
-  border-radius: 2px;
+  border-radius: 4px;
 }
 
 .badge {
   flex: none;
-  padding: 1px 7px;
-  border-radius: 2px;
-  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 18px;
   border: 1px solid currentColor;
 }
 
@@ -562,7 +555,7 @@ ul {
 }
 
 .badge.power {
-  color: var(--copper-strong);
+  color: var(--copper-text);
 }
 
 .nets .row .badge {
@@ -571,7 +564,7 @@ ul {
 
 .badge.unverified {
   margin-left: 6px;
-  color: var(--copper-strong);
+  color: var(--copper-text);
 }
 
 .facts {
@@ -596,11 +589,11 @@ ul {
 }
 
 .facts a {
-  color: var(--copper-strong);
+  color: var(--copper-text);
 }
 
 .note.warn {
-  color: var(--copper-strong);
+  color: var(--copper-text);
 }
 
 .checklist {
@@ -634,7 +627,6 @@ ul {
 
 .bom th {
   padding: 4px 6px 4px 0;
-  border-bottom: 1px solid var(--line);
   color: var(--muted);
   font-weight: 600;
   text-align: left;
@@ -642,7 +634,6 @@ ul {
 
 .bom td {
   padding: 4px 6px 4px 0;
-  border-bottom: 1px solid var(--line);
   vertical-align: top;
 }
 
@@ -655,9 +646,9 @@ ul {
   padding: 10px 14px;
   border: 1px solid var(--line);
   border-left: 3px solid var(--copper);
-  border-radius: 2px;
-  background: var(--raised);
-  box-shadow: 0 4px 12px rgb(0 0 0 / 20%);
+  border-radius: 4px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
   cursor: pointer;
 }
 

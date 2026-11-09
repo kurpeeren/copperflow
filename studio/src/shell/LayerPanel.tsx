@@ -25,7 +25,7 @@ interface Props {
 function LayerFilters({ filter, onFilter }: Pick<Props, "filter" | "onFilter">) {
   const radios = useTabList({ ids: FILTER_IDS, current: filter, onSelect: onFilter })
   return (
-    <div className="layer-filters" role="radiogroup" aria-label="Show layers" onKeyDown={radios.onKeyDown}>
+    <div className="layer-filters hairline-b" role="radiogroup" aria-label="Show layers" onKeyDown={radios.onKeyDown}>
       {FILTERS.map(({ id, label }) => (
         <button key={id} className={`layer-filter${filter === id ? " on" : ""}`} role="radio" aria-checked={filter === id} {...radios.tab(id)}>
           {label}

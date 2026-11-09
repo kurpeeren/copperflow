@@ -46,7 +46,7 @@ const DESIGN_PANEL_ID = "design-panel"
 function SubTabs({ sub, onSub }: { sub: DesignSub; onSub(sub: DesignSub): void }) {
   const list = useTabList({ ids: SUBS, current: sub, onSelect: onSub })
   return (
-    <div className="sub-tabs" role="tablist" aria-label="Project Design" onKeyDown={list.onKeyDown}>
+    <div className="sub-tabs hairline-b" role="tablist" aria-label="Project Design" onKeyDown={list.onKeyDown}>
       {SUBS.map((t) => (
         <button key={t} role="tab" id={`sub-tab-${t}`} aria-controls={DESIGN_PANEL_ID} aria-selected={sub === t} className={`sub-tab${sub === t ? " on" : ""}`} {...list.tab(t)}>
           {SUB_NAMES[t]}
@@ -61,7 +61,7 @@ export function LeftPanel(props: Props) {
   const { left, onSub } = props
   const design = left.strip === "design"
   return (
-    <aside className="panel left" id={stripPanelId("left")} role="tabpanel" aria-labelledby={sideTabId(left.strip)} hidden={props.hidden} onClick={blurAfterPointerClick}>
+    <aside className="panel left hairline-r" id={stripPanelId("left")} role="tabpanel" aria-labelledby={sideTabId(left.strip)} hidden={props.hidden} onClick={blurAfterPointerClick}>
       {design && <SubTabs sub={left.sub} onSub={onSub} />}
       <div className="panel-body" {...(design ? { id: DESIGN_PANEL_ID, role: "tabpanel", "aria-labelledby": `sub-tab-${left.sub}` } : {})}>
         {!design && <Library parts={props.parts} onPlace={props.onPlace} focus={props.focusSearch} onFocused={props.onSearchFocused} />}
@@ -176,7 +176,7 @@ function AddConnection({ actions }: { actions: Actions }) {
   const [to, setTo] = useState("")
   return (
     <form
-      className="add-connection"
+      className="add-connection hairline-t"
       onSubmit={(e) => {
         e.preventDefault()
         if (!from || !to) return

@@ -7,6 +7,7 @@ import { labelAfterBuild } from "./pcb/label-selection"
 import { shownSelection, wireAfterBuild, withEndPins } from "./pcb/wire-selection"
 import { goneFrom, Selection, type SelectionChange } from "./selection"
 import { BottomStrip } from "./shell/BottomStrip"
+import { watchDpr } from "./shell/dpr"
 import { StudioDialog, type DialogName } from "./shell/Dialogs"
 import { MenuBar } from "./shell/MenuBar"
 import type { DocView } from "./shell/page-tree"
@@ -198,6 +199,8 @@ export function App() {
   const { build, circuit } = data
   const { message, dismiss } = toast
   const toggles = { snap: workspace.snap }
+  // Hairlines stay one device pixel through zoom and display-scale changes.
+  useEffect(() => watchDpr(window), [])
   if (!hasToken) return <NoToken />
   return (
     <div className="app">

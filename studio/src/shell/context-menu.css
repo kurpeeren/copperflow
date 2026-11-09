@@ -5,8 +5,7 @@
 }
 
 .context-menu .menu-item:active:not([aria-disabled="true"]) {
-  background: var(--copper-wash);
-  filter: brightness(0.95);
+  background: var(--line);
 }
 
 .context-menu .menu-item:focus-visible {

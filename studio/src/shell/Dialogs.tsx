@@ -36,7 +36,7 @@ function Dialog({ title, onClose, children }: { title: string; onClose(): void; 
   return (
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
       <section ref={box} tabIndex={-1} className="dialog" role="dialog" aria-modal="true" aria-label={title}>
-        <header>
+        <header className="hairline-b">
           <h2>{title}</h2>
           <button className="icon" aria-label="Close" onClick={onClose}>
             <CloseIcon />

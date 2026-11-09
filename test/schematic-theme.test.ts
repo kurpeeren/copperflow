@@ -60,8 +60,10 @@ describe("schematicTheme", () => {
 
   test("the sheet's CSS background is the same colour", () => {
     const css = readFileSync(new URL("../studio/src/styles.css", import.meta.url), "utf8")
+    const theme = readFileSync(new URL("../studio/src/shell/theme.css", import.meta.url), "utf8")
     const block = css.slice(css.indexOf(".schematic-canvas {"))
-    expect(block.slice(0, block.indexOf("}")).toUpperCase()).toContain(schematicTheme.background)
+    expect(block.slice(0, block.indexOf("}"))).toContain("background: var(--sheet-background)")
+    expect(theme.toUpperCase()).toContain(`--SHEET-BACKGROUND: ${schematicTheme.background};`)
   })
 })
 

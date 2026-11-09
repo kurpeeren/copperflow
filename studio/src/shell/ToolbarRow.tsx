@@ -31,7 +31,7 @@ function ButtonFace({ item, unit }: { item: ToolbarButton; unit: Unit }) {
 export function Toolbar({ view, unit, selected, toggles, run }: Props) {
   const tools = useToolState()
   return (
-    <div className="studio-toolbar" role="toolbar" aria-label="Tools">
+    <div className="studio-toolbar hairline-b" role="toolbar" aria-label="Tools">
       {toolbarGroups(view).map((group, i) => (
         <Fragment key={group[0]?.group}>
           {i > 0 && <span className="toolbar-separator" role="separator" aria-orientation="vertical" />}

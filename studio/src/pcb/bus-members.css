@@ -27,10 +27,10 @@
 
 .bus-members li[aria-selected="true"] {
   background: var(--copper-wash);
-  color: var(--copper-strong);
+  color: var(--copper-text);
 }
 
 .bus-members li:active {
-  background: var(--copper);
-  color: #fff;
+  background: var(--copper-strong);
+  color: var(--panel);
 }
