@@ -13,6 +13,9 @@ import {
   toggleLayer,
   type LayerId,
 } from "../studio/src/pcb/layers.js"
+import { canPick } from "../studio/src/pcb/pick.js"
+import { ALL_PICKABLE } from "../studio/src/pcb/pick-filter.js"
+import { Selection } from "../studio/src/selection.js"
 import { recorder } from "./helpers/fake-ctx.js"
 
 const CIRCUIT = `export default () => (
@@ -171,6 +174,14 @@ describe("what the pointer finds on hidden layers", () => {
     expect(padAt(layout, at, DEFAULT_LAYERS)?.id).toBe("R1#1")
     expect(padAt(layout, at, { ...DEFAULT_LAYERS, top: false })).toBeUndefined()
     expect(pcbNetAt(layout, at, { ...DEFAULT_LAYERS, top: false })).toBeUndefined()
+  })
+
+  test("a pad of a part that may not be picked (Parts off in the Filter tab) is not under the pointer either", () => {
+    const filter = { ...ALL_PICKABLE, parts: false }
+    const pickable = (name: string) => canPick({ kind: "part", name }, { selection: Selection.none, armed: null, filter })
+    expect(padAt(layout, at, DEFAULT_LAYERS, pickable)).toBeUndefined()
+    expect(padAt(layout, at, DEFAULT_LAYERS, (name) => name !== "R1")).toBeUndefined()
+    expect(padAt(layout, at, DEFAULT_LAYERS, () => true)?.id).toBe("R1#1")
   })
 
   test("a through pad follows Multi-Layer", () => {

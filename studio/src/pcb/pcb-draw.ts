@@ -100,9 +100,13 @@ export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDra
   ctx.restore()
 }
 
-/** The pad under a point, or undefined. Pads of the same part are tried in order; with `visible`, pads on hidden layers are skipped. */
-export function padAt(layout: PcbLayout, p: Point, visible?: LayerVisibility): WorldPad | undefined {
+/**
+ * The pad under a point, or undefined. Pads of the same part are tried in order; with `visible`, pads on hidden layers
+ * are skipped, and with `pickable`, the pads of a part that may not be picked (pick.ts canPick: the Filter tab).
+ */
+export function padAt(layout: PcbLayout, p: Point, visible?: LayerVisibility, pickable?: (part: string) => boolean): WorldPad | undefined {
   for (const part of layout.parts) {
+    if (pickable && !pickable(part.component)) continue
     const hit = part.pads.find((pad) => (!visible || visible[padLayer(pad)]) && insidePad(pad, p))
     if (hit) return hit
   }

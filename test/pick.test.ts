@@ -99,6 +99,10 @@ describe("the Filter tab", () => {
     expect(targetAt(BOXES, labels, { x: 1.5, y: 0 }, { ...free, filter: noParts })).toEqual({ kind: "canvas" })
     expect(targetAt(BOXES, labels, { x: 9, y: 0 }, { ...free, filter: noLabels })).toEqual({ kind: "canvas" })
     expect(targetAt(BOXES, labels, { x: 9, y: 0 }, { ...free, filter: noParts })).toEqual({ kind: "label", label })
+    // A label over a part (the sheet hover asks the same): the part while Parts is on, else the label.
+    const everywhere = { ...labels, at: () => label }
+    expect(targetAt(BOXES, everywhere, { x: 1.5, y: 0 }, free)).toEqual({ kind: "part", name: "C1" })
+    expect(targetAt(BOXES, everywhere, { x: 1.5, y: 0 }, { ...free, filter: noParts })).toEqual({ kind: "label", label })
   })
 
   test("a box takes no parts while Parts is off, and keeps the selection when it adds", () => {

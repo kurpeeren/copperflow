@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 import type { Actions } from "../App"
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { CircuitData, Design } from "../api"
-import type { Selection } from "../selection"
+import { Selection } from "../selection"
 import type { SheetCommand } from "../shell/command-owners"
 import { useCommands } from "../shell/commands"
 import { armedCommand } from "../shell/toolbar"
@@ -12,7 +12,7 @@ import { keepAutoPlaced } from "./auto-placed"
 import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, useKeyMenuPlace, useLayout, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
 import { CanvasStatus, GridSelect, KeepButton } from "./CanvasTools"
 import { gridStepOptions, type GridLook } from "./grid"
-import { hitTest, unionBoxes, type Camera, type PartBox, type Point, type Size } from "./geometry"
+import { unionBoxes, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import { highlightOf, partNets, schematicNetAt, type Highlight } from "./highlight"
 import { labelHitBox } from "./label-drag"
 import { NameInput, paletteHint } from "./LabelPalette"
@@ -26,7 +26,7 @@ import { drawSheetBorder } from "./sheet-draw"
 import { firstDrawing, keepSheet, sheetArt, sheetDate, type Sheet, type SheetArt } from "./sheet"
 import { targetAt } from "./gestures"
 import type { PickContext } from "./pick"
-import { kindPickable, type PickFilter } from "./pick-filter"
+import type { PickFilter } from "./pick-filter"
 import { cursorFor, pointerHandlers, useCanvasGestures, type Gesture, type GestureInput, type PointerInput, type Press } from "./use-canvas-gestures"
 import { useDraggedLabel, useLabelDrag, type LabelTools, type MovingLabel } from "./use-label-drag"
 import { useTargetActions } from "../shell/use-target-actions"
@@ -124,10 +124,10 @@ function useSheetHover(boxes: PartBox[], wire: WireTool, labels: LabelTools, fil
   const [label, setLabel] = useState<NetLabel>()
   const at = (world: Point) => {
     wire.hover(world)
-    // What the Filter tab does not let a click pick is not outlined under the pointer either.
-    const hit = kindPickable(filter, "parts") ? hitTest(boxes, world)?.name : undefined
-    setPart(hit)
-    setLabel(hit === undefined && kindPickable(filter, "labels") ? labels.at(world) : undefined)
+    // What a click may not pick (pick.ts: the Filter tab) is not outlined under the pointer either.
+    const target = targetAt(boxes, labels, world, { selection: Selection.none, armed: null, filter })
+    setPart(target.kind === "part" ? target.name : undefined)
+    setLabel(target.kind === "label" ? target.label : undefined)
   }
   const leave = () => {
     setPart(undefined)

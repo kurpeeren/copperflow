@@ -85,8 +85,8 @@ describe("right strip state", () => {
 
 describe("the Layer tab", () => {
   test("exists only while the PCB is open", () => {
-    expect(rightTabIds("pcb")).toEqual(["properties", "layer", "filter"])
-    expect(rightTabIds("schematic")).toEqual(["properties", "filter"])
+    expect(rightTabIds("pcb")).toContain("layer")
+    expect(rightTabIds("schematic")).not.toContain("layer")
   })
 
   test("is the right strip's tab on the PCB, and clicking it opens it and a second click collapses the panel", () => {

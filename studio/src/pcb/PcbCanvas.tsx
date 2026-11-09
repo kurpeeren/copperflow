@@ -7,6 +7,7 @@ import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSi
 import { ViewTools } from "../shell/ViewTools"
 import { CanvasStatus, GridSelect, KeepButton } from "./CanvasTools"
 import { PALETTE } from "./ctx"
+import { canPick, type PickContext } from "./pick"
 import type { PickFilter } from "./pick-filter"
 import { pickLayersOf, type LayerVisibility, type PickLayers } from "./layers"
 import { gridStepOptions, type GridLook } from "./grid"
@@ -95,11 +96,12 @@ function PcbTools({ unit, step, setStep, keep }: PcbToolsProps) {
 function usePcbHover(design: Design, boxes: PartBox[], pick: PickLayers, filter: PickFilter) {
   const [part, setPart] = useState<string>()
   const [pad, setPad] = useState<WorldPad>()
-  // Parts and pads on hidden layers are not there to hover, as they are not there to pick.
+  // Parts and pads on hidden layers, or of a kind the Filter tab switched off, are not there to hover, as they are not there to pick.
   const at = (world: Point) => {
-    const target = targetAt(boxes, undefined, world, { selection: Selection.none, armed: null, layers: pick, filter })
+    const context: PickContext = { selection: Selection.none, armed: null, layers: pick, filter }
+    const target = targetAt(boxes, undefined, world, context)
     setPart(target.kind === "part" ? target.name : undefined)
-    setPad(padAt(design.pcb, world, pick.visible))
+    setPad(padAt(design.pcb, world, pick.visible, (name) => canPick({ kind: "part", name }, context)))
   }
   const leave = () => {
     setPart(undefined)

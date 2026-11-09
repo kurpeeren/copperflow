@@ -1,6 +1,7 @@
-// What a click, a selection box or Select all may pick. Every pick asks canPick, so a rule about what may be selected
-// (the Filter tab of round 4) plugs in at this one place: the target under the pointer (gestures.ts targetAt), the
-// parts a box takes (box-select.ts boxSelection) and Select all. Plain TypeScript with .js imports, so the tests can run it.
+// What a click, a selection box, Select all or the hover may pick. Every pick asks canPick, so the rules about what may
+// be selected (the note tool, the Filter tab, the PCB's hidden layers) live in this one place: the target under the
+// pointer and the hover (gestures.ts targetAt), the parts a box takes (box-select.ts boxSelection), the pad under the
+// pointer (pcb-draw.ts padAt) and Select all. Plain TypeScript with .js imports, so the tests can run it.
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { Selection, SelectionChange } from "../selection.js"
 import { anyLayerShown, type PickLayers } from "./layers.js"
