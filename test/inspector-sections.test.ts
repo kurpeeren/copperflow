@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { inspectorSections, boardSections, type InspectorPart } from "../studio/src/inspector-sections.js"
+import { GROUP_ACTIONS, inspectorSections, boardSections, propertiesView, type InspectorPart } from "../studio/src/inspector-sections.js"
 
 const prop = (literal: string | number) => ({ literal, source: String(literal), editable: true })
 
@@ -58,5 +58,31 @@ describe("inspectorSections", () => {
 describe("boardSections", () => {
   test("with nothing selected: Build, Notes for the agent", () => {
     expect(boardSections().map((s) => s.title)).toEqual(["Build", "Notes for the agent"])
+  })
+})
+
+describe("propertiesView", () => {
+  const named = (name: string, part: InspectorPart = resistor) => ({ ...part, name })
+
+  test("with nothing selected: the board's sections under Selected objects: 0", () => {
+    expect(propertiesView([], { library: false })).toEqual({ header: "Selected objects: 0", sections: boardSections() })
+  })
+
+  test("with one part: that part's sections under Selected objects: 1", () => {
+    expect(propertiesView([named("R1")], { library: true })).toEqual({ header: "Selected objects: 1", sections: inspectorSections(resistor, { library: true }) })
+  })
+
+  test("with three parts: one Selection section listing them in the order they were picked", () => {
+    const view = propertiesView([named("R2"), named("C1", { tag: "capacitor", props: {} }), named("R1")], { library: false })
+    expect(view).toEqual({ header: "Selected objects: 3", sections: [{ title: "Selection", rows: ["part:R2", "part:C1", "part:R1"] }] })
+  })
+
+  test("several parts get Rotate, Lock, Unlock and Delete, each run as the menu's command", () => {
+    expect(GROUP_ACTIONS.map((action) => [action.label, action.command])).toEqual([
+      ["Rotate", "rotate"],
+      ["Lock", "lock"],
+      ["Unlock", "unlock"],
+      ["Delete", "delete"],
+    ])
   })
 })

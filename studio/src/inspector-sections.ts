@@ -1,4 +1,5 @@
 import type { PropInfo } from "../../src/core/types.js"
+import type { CommandId } from "./shell/menus.js"
 
 /** What the sections need to know about a part. */
 export interface InspectorPart {
@@ -8,7 +9,8 @@ export interface InspectorPart {
 
 /**
  * A row names what the component draws in it: "name", "kind", "lock", "connections", "library", "notes",
- * "prop:<key>" for a prop the part has, "suggest:<key>" for a usual prop it does not have yet.
+ * "prop:<key>" for a prop the part has, "suggest:<key>" for a usual prop it does not have yet, and
+ * "part:<name>" for one part of a selection of several.
  */
 export interface InspectorSection {
   title: string
@@ -63,3 +65,31 @@ export function boardSections(): InspectorSection[] {
     { title: "Notes for the agent", rows: ["notes"] },
   ]
 }
+
+/** A selected part as Properties sees it. */
+export interface SelectedPart extends InspectorPart {
+  name: string
+}
+
+/** What Properties shows: the header's count and the sections under it. */
+export interface PropertiesView {
+  header: string
+  sections: InspectorSection[]
+}
+
+/** The board's sections with nothing selected, a part's own with one, and the Selection section listing several. */
+export function propertiesView(parts: readonly SelectedPart[], opts: { library: boolean }): PropertiesView {
+  const header = `Selected objects: ${parts.length}`
+  const [first] = parts
+  if (!first) return { header, sections: boardSections() }
+  if (parts.length === 1) return { header, sections: inspectorSections(first, opts) }
+  return { header, sections: [{ title: "Selection", rows: parts.map((part) => `part:${part.name}`) }] }
+}
+
+/** What applies to every part of a selection of several; each runs the menu command, so it is one change in the history. */
+export const GROUP_ACTIONS = [
+  { label: "Rotate", command: "rotate" },
+  { label: "Lock", command: "lock" },
+  { label: "Unlock", command: "unlock" },
+  { label: "Delete", command: "delete" },
+] as const satisfies readonly { label: string; command: CommandId }[]
