@@ -49,7 +49,7 @@ describe("focus after a click", () => {
     expect(pointerClicked("checkbox", 0, true)).toBe(false)
   })
 
-  test("a click a label forwards to its checkbox has detail 0, so the pointer focus (no focus ring) gives it up", () => {
+  test("a click a label forwards to its checkbox may have detail 0; the pointer focus (no focus ring) still gives it up", () => {
     expect(pointerClicked("checkbox", 0, false)).toBe(true)
     expect(pointerClicked("button", 0, false)).toBe(false)
   })

@@ -189,8 +189,9 @@ export function keyAction(input: KeyInput, state: KeyState): KeyResult | null {
   if (panel && plainOrAltGr(input)) return act(panel)
   if (input.ctrlKey || input.metaKey) return ctrlAction(input)
   if (input.altKey) return altAction(input, state)
-  // The navigation and activation keys (arrows, Space, Delete, Backspace, the letters) belong to a focused table row, list, tree, tab or
-  // menu, and one that a widget already took is not the canvas's too; the shortcuts above still work there.
+  // The navigation and activation keys (arrows, Space, Delete, Backspace, the letters) belong to a focused table row,
+  // list, tree, tab or menu, and one that a widget already took is not the canvas's too; the shortcuts above still
+  // work there.
   if (input.ownsKeys || input.handled) return null
   const arrow = arrowAction(input)
   if (arrow) return arrow

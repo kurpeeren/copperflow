@@ -16,9 +16,9 @@ export function blurButton(event: { target: EventTarget | null }): void {
 }
 
 /**
- * Whether a click on a control came from the pointer. A label forwards its click to its checkbox with detail 0, as
- * Space does, so for a checkbox the browser's own guess decides too: a checkbox the pointer focused shows no
- * keyboard focus ring (`focusVisible` false).
+ * Whether a click on a control came from the pointer. The click a label forwards to its checkbox may carry detail 0
+ * (browsers differ), as Space does, so for a checkbox the browser's own guess decides too: a checkbox the pointer
+ * focused shows no keyboard focus ring (`focusVisible` false).
  */
 export function pointerClicked(control: "button" | "checkbox", detail: number, focusVisible: boolean): boolean {
   return detail > 0 || (control === "checkbox" && !focusVisible)
