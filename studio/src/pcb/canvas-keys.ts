@@ -41,7 +41,7 @@ export interface KeyInput {
   altGraph?: boolean
   /** Focus is in a text field, where every key is the field's. */
   typing: boolean
-  /** Focus is on a button, which Space presses. */
+  /** Focus is on a button or a checkbox, which Space presses. */
   onButton?: boolean
   /** Focus is in a widget that handles its own keys (a table row, listbox, tree, tab, menu); shortcuts still work there. */
   ownsKeys?: boolean
@@ -92,6 +92,10 @@ function arrowAction(input: KeyInput): KeyResult | null {
 /** Widgets that handle their own keys: their arrows, Enter, Space, Delete and letters never reach the canvas. */
 const OWN_KEYS = "tr, [role='row'], [role='gridcell'], [role='grid'], [role='listbox'], [role='option'], [role='tree'], [role='treeitem'], [role='tablist'], [role='tab'], [role='menu'], [role='menubar'], [role='menuitem'], [data-keys='own']"
 
+/** Fields that take every key: text inputs, text areas, selects and editable text. A checkbox is pressed like a button. */
+const FIELDS = "input:not([type='checkbox']):not([type='radio']), textarea, select, [contenteditable='true']"
+const PRESSABLE = "button, a[href], summary, input[type='checkbox'], input[type='radio']"
+
 /** A key event as plain data. */
 export function keyInput(event: KeyboardEvent): KeyInput {
   const target = event.target instanceof HTMLElement ? event.target : null
@@ -103,8 +107,8 @@ export function keyInput(event: KeyboardEvent): KeyInput {
     ctrlKey: event.ctrlKey,
     metaKey: event.metaKey,
     altGraph: event.getModifierState?.("AltGraph") ?? false,
-    typing: target?.closest("input, textarea, select, [contenteditable='true']") != null,
-    onButton: target?.closest("button, a[href], summary") != null,
+    typing: target?.closest(FIELDS) != null,
+    onButton: target?.closest(PRESSABLE) != null,
     ownsKeys: target?.closest(OWN_KEYS) != null,
     handled: event.defaultPrevented,
   }

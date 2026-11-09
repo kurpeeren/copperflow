@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { isPointerClick } from "../studio/src/shell/focus.js"
+import { isPointerClick, pointerClicked } from "../studio/src/shell/focus.js"
 import { tabAfterKey } from "../studio/src/shell/tab-keys.js"
 
 describe("tab keys, shared by every tab list", () => {
@@ -40,5 +40,17 @@ describe("focus after a click", () => {
 
   test("Enter or Space on a focused control clicks with detail 0 and keeps the focus", () => {
     expect(isPointerClick({ detail: 0 })).toBe(false)
+  })
+
+  test("a button or checkbox clicked with the pointer gives the focus up; one pressed with Space keeps it", () => {
+    expect(pointerClicked("button", 1, false)).toBe(true)
+    expect(pointerClicked("checkbox", 1, true)).toBe(true)
+    expect(pointerClicked("button", 0, true)).toBe(false)
+    expect(pointerClicked("checkbox", 0, true)).toBe(false)
+  })
+
+  test("a click a label forwards to its checkbox has detail 0, so the pointer focus (no focus ring) gives it up", () => {
+    expect(pointerClicked("checkbox", 0, false)).toBe(true)
+    expect(pointerClicked("button", 0, false)).toBe(false)
   })
 })

@@ -1,5 +1,6 @@
 import { EyeIcon } from "../icons"
 import { layerRows, type LayerFilter, type LayerId, type LayerVisibility } from "../pcb/layers"
+import { blurAfterPointerClick } from "./focus"
 import { sideTabId, stripPanelId } from "./SideStrip"
 import "./layer-panel.css"
 
@@ -21,7 +22,7 @@ interface Props {
 /** The PCB's layers: the filters at the top, then a 28px row for each layer with its colour, its name and an eye. */
 export function LayerPanel({ visibility, filter, hasKeepouts, onFilter, onToggle }: Props) {
   return (
-    <aside className="panel right layer-panel" id={stripPanelId("right")} role="tabpanel" aria-labelledby={sideTabId("layer")}>
+    <aside className="panel right layer-panel" id={stripPanelId("right")} role="tabpanel" aria-labelledby={sideTabId("layer")} onClick={blurAfterPointerClick}>
       <div className="layer-filters" role="group" aria-label="Show layers">
         {FILTERS.map(({ id, label }) => (
           <button key={id} className={`layer-filter${filter === id ? " on" : ""}`} aria-pressed={filter === id} onClick={() => onFilter(id)}>
