@@ -34,7 +34,7 @@ export function useChecks({ file, build, onTab, onSelect, onOpen }: ChecksInput)
     [onTab, onSelect],
   )
   const focused = useCallback(() => setFocus(null), [])
-  return { rows, counts, markers, active, focus, pick, focused }
+  return { rows, counts, markers, active, focus, pick, focused, requestFocus: setFocus }
 }
 
 /** Calls onOpen when a finished build has errors and the one before it had none. A failed build keeps the old design and is skipped. */

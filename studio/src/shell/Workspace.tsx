@@ -7,7 +7,9 @@ import { PcbCanvas } from "../pcb/PcbCanvas"
 import type { View } from "../pcb/positions"
 import { SchematicCanvas } from "../pcb/SchematicCanvas"
 import type { Selection, SelectionChange } from "../selection"
+import { FindBox } from "../FindBox"
 import type { useChecks } from "../use-checks"
+import type { FindState } from "../use-find"
 import type { StudioData } from "../use-studio-data"
 import type { useWorkspace } from "../use-workspace"
 import { BottomPanel } from "./BottomPanel"
@@ -30,6 +32,7 @@ export interface WorkspaceProps {
   data: StudioData
   workspace: ReturnType<typeof useWorkspace>
   checks: ReturnType<typeof useChecks>
+  find: FindState
   view: View
   onView(view: View): void
   selection: Selection
@@ -78,16 +81,17 @@ function gridProps(workspace: WorkspaceProps["workspace"], view: View) {
 
 /** The document tabs, the open document's canvas and the bottom panel, between the side panels. */
 function CenterColumn(props: WorkspaceProps & { onContextMenu: ContextMenuState["show"] }) {
-  const { data, workspace, checks, view } = props
+  const { data, workspace, checks, find, view } = props
   const { build } = data
   const canvas = canvasProps(props, props.onContextMenu)
   return (
     <div className="center">
       <DocTabs file={data.file} view={view} onView={props.onView} />
-      <section className="canvas" id="doc-panel" role="tabpanel" aria-labelledby={`doc-tab-${view}`}>
+      <section className="canvas" id="doc-panel" role="tabpanel" aria-labelledby={`doc-tab-${view}`} tabIndex={-1}>
         {!build.design && <p className="empty">{build.status === "failed" ? build.error : "Building the circuit…"}</p>}
         {canvas && view === "pcb" && <PcbCanvas key={data.file} {...canvas} {...gridProps(workspace, "pcb")} markers={checks.markers.pcb} />}
         {canvas && view === "schematic" && <SchematicCanvas key={data.file} {...canvas} {...gridProps(workspace, "schematic")} markers={checks.markers.schematic} />}
+      {find.box.open && <FindBox text={find.box.text} seq={find.box.seq} onText={find.setText} onSearch={find.search} onClose={find.close} />}
       </section>
       {workspace.bottom.open && (
         <BottomPanel
@@ -102,6 +106,7 @@ function CenterColumn(props: WorkspaceProps & { onContextMenu: ContextMenuState[
           counts={checks.counts}
           active={checks.active}
           onPick={checks.pick}
+          find={find.results}
         />
       )}
     </div>

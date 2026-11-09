@@ -1,6 +1,8 @@
 import type { Actions } from "../App"
 import type { HistoryListing, PartsData } from "../api"
 import { ChecksPanel } from "../ChecksPanel"
+import { FindResults } from "../FindResults"
+import type { FindResultsProps } from "../use-find"
 import type { CheckCounts, CheckRow } from "../checks-list"
 import { HistoryList } from "../HistoryList"
 import { Library } from "../Library"
@@ -21,6 +23,7 @@ interface Props {
   counts: CheckCounts
   active: string | null
   onPick(row: CheckRow): void
+  find: FindResultsProps
 }
 
 /** The open bottom panel: the content of the chosen tab, above the strip. */
@@ -52,6 +55,6 @@ function Content(props: Props) {
       if (!props.built) return <p className="note bottom-note">{props.buildError ?? "Building the circuit…"}</p>
       return <ChecksPanel rows={props.rows} counts={props.counts} active={props.active} onPick={props.onPick} />
     case "find":
-      return <p className="note bottom-note">Find comes in a later round. Its results will be listed here.</p>
+      return <FindResults {...props.find} />
   }
 }

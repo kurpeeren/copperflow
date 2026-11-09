@@ -1,0 +1,119 @@
+/* The find box over the canvas's top right, and the Find Results tab of the bottom panel. */
+.find-box {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  width: 220px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--panel);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+.find-box input {
+  width: 100%;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+}
+
+.find-box input:focus {
+  outline: none;
+  border-color: var(--copper);
+}
+
+/* The canvas area takes the focus when the box closes, without a ring. */
+#doc-panel:focus {
+  outline: none;
+}
+
+.find-results {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--panel);
+}
+
+.find-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 6px 3px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.find-head h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.find-head .count {
+  color: var(--muted);
+}
+
+.find-results ul {
+  flex: 1;
+  margin: 0;
+  padding: 2px 6px 8px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+button.find-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+  height: auto;
+  min-height: 26px;
+  padding: 3px 8px;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+button.find-row:hover:not(:disabled) {
+  background: var(--raised);
+}
+
+button.find-row:active:not(:disabled) {
+  background: var(--tab);
+}
+
+button.find-row.active,
+button.find-row.active:hover:not(:disabled) {
+  background: var(--copper-wash);
+  border-left-color: var(--copper);
+}
+
+.find-row .kind {
+  flex: none;
+  width: 36px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.find-row .kind.net {
+  color: var(--copper-strong);
+}
+
+.find-row .name {
+  flex: none;
+  min-width: 80px;
+  font-family: var(--mono);
+}
+
+.find-row .matched {
+  color: var(--muted);
+  font-size: 11px;
+}

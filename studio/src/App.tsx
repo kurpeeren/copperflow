@@ -12,6 +12,7 @@ import { useAppCommands } from "./shell/use-app-commands"
 import { Workspace } from "./shell/Workspace"
 import { useActions, usePlace } from "./use-actions"
 import { useChecks } from "./use-checks"
+import { useFind } from "./use-find"
 import { useStudioData } from "./use-studio-data"
 import { useWorkspace } from "./use-workspace"
 
@@ -100,6 +101,8 @@ export function App() {
   const place = usePlace({ file, refresh: data.refresh, refreshParts: data.refreshParts, notify }, selectOnly)
   const openChecks = useCallback(() => openBottom("drc"), [openBottom])
   const checks = useChecks({ file, build, onTab: setTab, onSelect: selectOnly, onOpen: openChecks })
+  const openFindResults = useCallback(() => openBottom("find"), [openBottom])
+  const find = useFind({ circuit, design: build.design, view: tab, onSelect: select, onHighlight: setHighlight, requestFocus: checks.requestFocus, openResults: openFindResults })
   useEscapeClearsSelection(select)
   useHighlightFollowsBuild(build.design, setHighlight)
   const closeDialog = useCallback(() => setDialog(null), [])
@@ -110,7 +113,7 @@ export function App() {
     },
     [setFile],
   )
-  const runCommand = useAppCommands({ file, view: tab, setView: setTab, selection, select, circuit, actions, workspace, openChecks, openDialog: setDialog })
+  const runCommand = useAppCommands({ file, view: tab, setView: setTab, selection, select, circuit, actions, workspace, openChecks, openFind: find.open, openDialog: setDialog })
 
   if (!hasToken) return <NoToken />
   return (
@@ -129,6 +132,7 @@ export function App() {
         data={data}
         workspace={workspace}
         checks={checks}
+        find={find}
         view={tab}
         onView={setTab}
         selection={selection}

@@ -36,6 +36,8 @@ interface Input {
   actions: Actions
   workspace: WorkspaceCommands
   openChecks(): void
+  /** Opens the find box and focuses its field, or selects the text of the field when the box is open. */
+  openFind(): void
   openDialog(name: DialogName): void
 }
 
@@ -81,8 +83,7 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     undo: () => void input.actions.undo(),
     // Every part of the circuit: both views show the same parts, and the circuit is there before a canvas is.
     selectAll: () => input.select((current) => current.all(input.circuit?.model.parts.map((part) => part.name) ?? [])),
-    // Find opens the Find Results tab until the find box arrives.
-    find: () => input.workspace.openBottom("find"),
+    find: input.openFind,
     checkDrc: input.openChecks,
     lock: () => lockSelection(input, true),
     unlock: () => lockSelection(input, false),
@@ -114,7 +115,7 @@ function useAppKeys(runCommand: (command: CommandId) => void, view: View): void 
 /** Returns the function the menu bar and toolbar call; it changes only when what the commands read changes. */
 export function useAppCommands(input: Input): (command: CommandId) => void {
   const [waiting, setWaiting] = useState<CommandId | null>(null)
-  const { file, view, setView, selection, select, circuit, actions, openChecks, openDialog } = input
+  const { file, view, setView, selection, select, circuit, actions, openChecks, openFind, openDialog } = input
   // The workspace object is new on every render, but its functions are stable.
   const { run, openBottom, openPageTree } = input.workspace
   // A command waiting for the schematic runs once the schematic canvas has mounted and subscribed.
@@ -128,7 +129,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
   }, [waiting, view, actions])
   const runCommand = useCallback(
     (command: CommandId) => {
-      const own = appCommand({ file, view, setView, selection, select, circuit, actions, workspace: { run, openBottom, openPageTree }, openChecks, openDialog }, command)
+      const own = appCommand({ file, view, setView, selection, select, circuit, actions, workspace: { run, openBottom, openPageTree }, openChecks, openFind, openDialog }, command)
       if (own) return own()
       if (SCHEMATIC_ONLY.has(command) && view !== "schematic") {
         setView("schematic")
@@ -137,7 +138,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
       }
       if (!send(command)) actions.notify("Wait for the build to finish, then try again.")
     },
-    [file, view, setView, selection, select, circuit, actions, run, openBottom, openPageTree, openChecks, openDialog],
+    [file, view, setView, selection, select, circuit, actions, run, openBottom, openPageTree, openChecks, openFind, openDialog],
   )
   useAppKeys(runCommand, view)
   return runCommand
