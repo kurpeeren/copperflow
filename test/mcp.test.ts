@@ -44,6 +44,7 @@ describe("MCP server", () => {
       "export_package",
       "list_circuits",
       "list_parts",
+      "new_circuit",
       "part_info",
       "place_part",
       "recent_changes",

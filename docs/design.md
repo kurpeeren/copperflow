@@ -111,6 +111,7 @@ human undid.
 | `add_trace` | add a trace between two selectors |
 | `remove_trace` | remove a trace |
 | `check_circuit` | build with copperflow's engine; error and warning counts, then up to 20 findings one per line; `filter` takes `errors`, `warnings`, a part or a net (read-only) |
+| `new_circuit` | a fresh `*.circuit.tsx` from `parts` and `nets` (no positions, no wire corners), board 30 x 20 mm unless given; everything is validated before anything is written (names, kinds, library ids, pins, a pin on two nets); an existing file is refused unless `replace`; one history entry, and undo removes the file (or restores the replaced one) |
 | `edit_circuit` | several edits (`set_props`, `connect`, `disconnect`, `place_part`, `remove_part`) applied in order as one change; a refused edit stops the batch, writes nothing and is named in the answer |
 | `connect_nets` | `{ NET: [pins] }`: one connection per pin, pins already on the net skipped, one change |
 | `recent_changes` | recent history entries, including undos |

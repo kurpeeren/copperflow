@@ -16,7 +16,11 @@ undoing their work.
    `[read-only: ...]` parts, "Marks from the human" and lock violations.
 2. Call `recent_changes`. A change marked `[undone]` was rejected by the human: do not make it
    again unless they ask.
-3. Write parts and connections, not positions or wire corners: the program places and routes.
+3. For a new design, call `new_circuit` once with the parts (`kind` for a built-in part such as
+   `resistor`, `part` for a library id, `value`, `footprint`) and the nets (`{ GND: ["R1.pin2",
+   "U1.GND"] }`); it writes the file, refuses unknown pins and lists the real ones. An existing
+   file needs `replace: true`.
+   Write parts and connections, not positions or wire corners: the program places and routes.
    Change existing parts and traces with `set_props`, `remove_part`, `add_trace` and
    `remove_trace`, or several at once with `edit_circuit` (one history entry; nothing is written
    if one edit is refused) and `connect_nets` (`{ GND: ["R1.pin2", "C1.pin2"] }`). These tools

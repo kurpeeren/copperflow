@@ -30,8 +30,10 @@ import { FootprintFileSchema } from "../engine/footprints/file.js"
 import { VERSION } from "../version.js"
 import { batchSummary, describeRefusal, editItem, firstRefusal, planNets, toEdit } from "./batch.js"
 import { formatCompactCheck, formatCompactSummary } from "./compact.js"
+import { NEW_CIRCUIT_DESCRIPTION, newCircuit, newCircuitInput } from "./new-circuit.js"
 
 const INSTRUCTIONS = `copperflow lets you edit circuit files together with a human.
+- Start a new design with new_circuit: one call with the parts and the nets (each net is a list of PART.pin). Then call check_circuit once.
 - Write parts and connections, not positions or wire corners. The program places the parts and routes the wires; leave schX, schY, pcbX, pcbY and schematicRouteHints alone unless the human asks for a position.
 - Call circuit_summary before changing a circuit, and again when the human says they changed something. The default answer is compact (one line per part and per net); use detail "full" only when you need every prop.
 - Make several changes in one call: edit_circuit takes a list of edits (one history entry, nothing written if one is refused), connect_nets wires whole nets at once, e.g. { "GND": ["R1.pin2", "C1.pin2"] }.
@@ -146,6 +148,12 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     },
     ({ file: circuit, filter }) =>
       run(async () => formatCompactCheck(circuit, await checkCircuit(root, circuit, designOptions), filter)),
+  )
+
+  server.registerTool(
+    "new_circuit",
+    { description: NEW_CIRCUIT_DESCRIPTION, inputSchema: newCircuitInput },
+    (input) => run(() => newCircuit(root, input)),
   )
 
   server.registerTool(
