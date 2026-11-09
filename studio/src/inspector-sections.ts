@@ -116,3 +116,21 @@ export function groupActionEnabled(
   if (command === "lock" || command === "unlock") return "parts" in lockChange(names, locks.locked, command === "lock", locks.violated)
   return parts.some((part) => part.editable && !locks.locked.has(part.name))
 }
+
+/** The one-part Lock button: the menu command it runs, its text, whether it shows pressed, and its tooltip. */
+export interface PartLockButton {
+  command: "lock" | "unlock"
+  label: string
+  pressed: boolean
+  title: string
+}
+
+/**
+ * Lock for an unlocked part, Unlock for a locked one, and, for a locked part changed outside the editor, Lock again,
+ * which takes the change as the lock (the banner's remedy). Each runs the menu's command, as the group's buttons do.
+ */
+export function partLockButton(name: string, locks: { locked: ReadonlySet<string>; violated: ReadonlySet<string> }): PartLockButton {
+  if (!locks.locked.has(name)) return { command: "lock", label: "Lock", pressed: false, title: "Lock this part, so the agent cannot move or change it" }
+  if (locks.violated.has(name)) return { command: "lock", label: "Lock again", pressed: true, title: "Changed outside the editor: lock it again to accept the change" }
+  return { command: "unlock", label: "Locked", pressed: true, title: "Unlock this part" }
+}

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { GROUP_ACTIONS, groupActionEnabled, inspectorSections, boardSections, propertiesView, type InspectorPart } from "../studio/src/inspector-sections.js"
+import { GROUP_ACTIONS, groupActionEnabled, inspectorSections, boardSections, partLockButton, propertiesView, type InspectorPart } from "../studio/src/inspector-sections.js"
 
 const prop = (literal: string | number) => ({ literal, source: String(literal), editable: true })
 
@@ -112,5 +112,24 @@ describe("groupActionEnabled", () => {
   test("read-only parts alone cannot be rotated or deleted, but can be locked", () => {
     const readOnly = [{ name: "U1", editable: false }, { name: "U2", editable: false }]
     expect(enabled([], [], readOnly)).toEqual([["rotate", false], ["lock", true], ["unlock", false], ["delete", false]])
+  })
+})
+
+describe("partLockButton", () => {
+  const locks = (locked: string[], violated: string[] = []) => ({ locked: new Set(locked), violated: new Set(violated) })
+
+  test("an unlocked part offers Lock; a locked one shows Locked and runs Unlock", () => {
+    expect(partLockButton("R1", locks([]))).toMatchObject({ command: "lock", label: "Lock", pressed: false })
+    expect(partLockButton("R1", locks(["R1"]))).toMatchObject({ command: "unlock", label: "Locked", pressed: true })
+  })
+
+  test("a locked part changed outside the editor offers Lock again, which accepts the change", () => {
+    expect(partLockButton("R1", locks(["R1"], ["R1"]))).toMatchObject({ command: "lock", label: "Lock again", pressed: true })
+  })
+
+  test("the command it runs is one the group's buttons would enable for that part", () => {
+    for (const state of [locks([]), locks(["R1"]), locks(["R1"], ["R1"])]) {
+      expect(groupActionEnabled(partLockButton("R1", state).command, [{ name: "R1", editable: true }], state)).toBe(true)
+    }
   })
 })

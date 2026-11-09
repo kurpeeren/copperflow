@@ -7,6 +7,7 @@ import { bomCsv, bomFileName } from "./bom-csv"
 import type { Actions } from "../App"
 import { keyAction, keyInput, type KeyActionName } from "../pcb/canvas-keys"
 import { lockChange } from "../pcb/group-edits"
+import { selectAll } from "../pcb/pick"
 import type { View } from "../pcb/positions"
 import type { Selection, SelectionChange } from "../selection"
 import type { BottomTab } from "./bottom-state"
@@ -81,8 +82,8 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     exportBom: () => exportBom(input.file, input.actions),
     exportPackage: () => exportPackage(input.file, input.actions),
     undo: () => void input.actions.undo(),
-    // Every part of the circuit: both views show the same parts, and the circuit is there before a canvas is.
-    selectAll: () => input.select((current) => current.all(input.circuit?.model.parts.map((part) => part.name) ?? [])),
+    // Every part of the circuit that may be picked: both views show the same parts, and the circuit is there before a canvas is.
+    selectAll: () => input.select(selectAll(input.circuit?.model.parts.map((part) => part.name) ?? [])),
     find: input.openFind,
     checkDrc: input.openChecks,
     lock: () => lockSelection(input, true),

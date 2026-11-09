@@ -5,9 +5,10 @@
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { Selection, SelectionChange } from "../selection.js"
 import { boxMode, boxSelection, partsInBox } from "./box-select.js"
-import { hitTest, roundPosition, screenToWorld, snap, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
+import { hitsAt, roundPosition, screenToWorld, snap, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
 import { anchorLookup, moveEach, type GroupEdit, type GroupEditActions } from "./group-edits.js"
 import { VIEWS, ZERO, type Anchor, type SourceCircuit, type View } from "./positions.js"
+import { picks, type Pickable, type PickContext } from "./pick.js"
 import { gestureStart, hasMoved, stillRelease, type ArmedTool, type ContextTarget, type GestureStart, type Press, type StillRelease, type Under } from "./press.js"
 
 export type Gesture =
@@ -80,13 +81,16 @@ export function movePlan(input: GestureInput, names: readonly string[], offset: 
 const BOX_MIN_PX = 6
 const round = roundPosition
 
-/** What is at a world point: the smallest part box there, else a net label, else nothing. */
-export function targetAt(boxes: PartBox[], labels: GestureLabels | undefined, world: Point): ContextTarget {
-  const part = hitTest(boxes, world)
-  if (part) return { kind: "part", name: part.name }
+/** What is at a world point and may be picked there (pick.ts): the smallest part box, else a net label, else nothing. */
+export function targetAt(boxes: readonly PartBox[], labels: GestureLabels | undefined, world: Point, context: PickContext): ContextTarget {
+  const parts = hitsAt(boxes, world).map((box): Pickable => ({ kind: "part", name: box.name }))
   const label = labels?.at(world)
-  return label ? { kind: "label", label } : { kind: "canvas" }
+  const [first] = picks(label ? [...parts, { kind: "label", label }] : parts, context)
+  return first ?? { kind: "canvas" }
 }
+
+/** What a pick on this canvas is made with: its selection and its armed tool. */
+const pickContext = (input: GestureInput): PickContext => ({ selection: input.selection, armed: input.tool.armed })
 
 function underOf(target: ContextTarget, selection: Selection): Under {
   if (target.kind === "part") return selection.has(target.name) ? "selectedPart" : "part"
@@ -98,7 +102,7 @@ export function startGesture(input: GestureInput, event: Press, point: Point): G
   const { camera } = input
   if (!camera) return undefined
   const world = screenToWorld(camera, input.size, point)
-  const target = targetAt(input.boxes, input.labels, world)
+  const target = targetAt(input.boxes, input.labels, world, pickContext(input))
   const start = gestureStart(event, underOf(target, input.selection), input.tool.armed)
   const still = stillRelease(start, input.tool.armed)
   if (start === "pan" || start === "rightPress") return { kind: "pan", start: point, camera, moved: false, still, target }
@@ -188,7 +192,7 @@ function endBox(input: GestureInput, done: Extract<Gesture, { kind: "box" }>, ca
     return
   }
   const names = partsInBox(input.boxes, corners[0], corners[1], boxMode(done.start, done.current))
-  input.onSelect(boxSelection(names, done.adds))
+  input.onSelect(boxSelection(names, done.adds, input.tool.armed))
 }
 
 /** A drawn note box asks for the note, places it at the box's centre, and puts the tool away; a click keeps it armed. */

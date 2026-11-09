@@ -3,7 +3,7 @@ import type { BuildState, CircuitData, Design, Literal, PartInfo, PartsData } fr
 import type { Actions } from "./App"
 import { BomSection } from "./BomSection"
 import { checkSummary, type CheckCounts } from "./checks-list"
-import { FIRST_FIELD, propertiesView, SUGGESTED_PROPS, type PropertiesView } from "./inspector-sections"
+import { FIRST_FIELD, groupActionEnabled, partLockButton, propertiesView, SUGGESTED_PROPS, type PropertiesView } from "./inspector-sections"
 import { GroupView } from "./InspectorGroup"
 import { MarkForm, NewPropRow, PropRow, Row, Section } from "./InspectorRows"
 import { LibraryInfo } from "./LibraryInfo"
@@ -41,6 +41,9 @@ interface SectionState {
   view: PropertiesView
 }
 
+/** The locked parts, and those of them changed outside the editor. */
+type Locks = { locked: ReadonlySet<string>; violated: ReadonlySet<string> }
+
 /** The selected parts in the order they were picked, as the circuit has them now. */
 function selectedParts(circuit: CircuitData, selection: Selection): PartInfo[] {
   return selection.names.flatMap((name) => circuit.model.parts.find((part) => part.name === name) ?? [])
@@ -75,7 +78,7 @@ export function Inspector(props: Props) {
   return (
     <aside ref={panel} className="panel right" id={stripPanelId("right")} role="tabpanel" aria-labelledby={sideTabId("properties")} hidden={props.hidden}>
       {parts.length > 1 && <GroupView view={view} parts={parts} locks={locks} run={props.run} onClear={() => props.onSelect((current) => current.clear())} collapsed={collapsed} toggle={toggle} />}
-      {parts.length === 1 && part && <PartView {...props} view={view} collapsed={collapsed} toggle={toggle} part={part} />}
+      {parts.length === 1 && part && <PartView {...props} view={view} collapsed={collapsed} toggle={toggle} part={part} locks={locks} />}
       {parts.length === 0 && <BoardView {...props} view={view} collapsed={collapsed} toggle={toggle} />}
     </aside>
   )
@@ -87,8 +90,8 @@ function centreOnBoard(design: Design | undefined, name: string): { x: number; y
   return box && { x: Math.round(box.center.x * 1000) / 1000, y: Math.round(box.center.y * 1000) / 1000 }
 }
 
-function PartView({ circuit, build, parts, part, actions, onSelect, run, view, collapsed, toggle }: Props & SectionState & { part: PartInfo }) {
-  const locked = circuit.annotations.locks.some((lock) => lock.part === part.name)
+function PartView({ circuit, build, parts, part, locks, actions, onSelect, run, view, collapsed, toggle }: Props & SectionState & { part: PartInfo; locks: Locks }) {
+  const locked = locks.locked.has(part.name)
   const library = parts.library.find((p) => p.component === part.tag)
   const setProp = (key: string, value: Literal) =>
     actions.edit([{ kind: "setProps", part: part.name, props: { [key]: value } }], `set ${part.name} ${key}=${JSON.stringify(value)}`)
@@ -104,7 +107,7 @@ function PartView({ circuit, build, parts, part, actions, onSelect, run, view, c
       const example = SUGGESTED_PROPS[part.tag]?.find(([name]) => name === key)?.[1] ?? ""
       return <NewPropRow key={id} name={key} example={example} disabled={!canEdit} onCommit={(value) => setProp(key, value)} />
     }
-    if (kind === "lock") return <LockRow key={id} locked={locked} onChange={(on) => void actions.lock([part.name], on)} />
+    if (kind === "lock") return <LockRow key={id} locked={locked} onChange={(on) => run(on ? "lock" : "unlock")} />
     if (kind === "connections") return <Connections key={id} traces={traces} />
     if (kind === "library") return library && <LibraryInfo key={id} id={library.id} verified={library.verified} actions={actions} />
     return (
@@ -126,7 +129,7 @@ function PartView({ circuit, build, parts, part, actions, onSelect, run, view, c
           <CloseIcon />
         </button>
       </header>
-      <PartActions part={part} locked={locked} canEdit={canEdit} actions={actions} onSelect={onSelect} onRotate={() => run("rotate")} />
+      <PartActions part={part} locks={locks} run={run} />
       {locked && <p className="note locked">Locked. The agent cannot move or change this part.</p>}
       {part.readonlyReason && <p className="note">Read-only here: {part.readonlyReason}. Change it in the code.</p>}
       {view.sections.map((section) => (
@@ -138,33 +141,23 @@ function PartView({ circuit, build, parts, part, actions, onSelect, run, view, c
   )
 }
 
-/** Lock, rotate and remove, in a row under the header. */
-function PartActions({ part, locked, canEdit, actions, onSelect, onRotate }: {
-  part: PartInfo
-  locked: boolean
-  canEdit: boolean
-  actions: Actions
-  onSelect(change: SelectionChange): void
-  /** Turns the part in the open view, as R and Space do. */
-  onRotate(): void
-}) {
+/**
+ * Lock, rotate and remove, in a row under the header. Each runs the menu's command on the selection (this part), so
+ * it is enabled, asks and is refused as Edit → Delete, Layout → Rotate and Lock are, and as the group's buttons are.
+ */
+function PartActions({ part, locks, run }: { part: PartInfo; locks: Locks; run(command: CommandId): void }) {
+  const lock = partLockButton(part.name, locks)
+  const enabled = (command: "rotate" | "delete") => groupActionEnabled(command, [part], locks)
   return (
     <div className="inspector-actions">
-      <button className={locked ? "toggle on" : "toggle"} aria-pressed={locked} onClick={() => void actions.lock([part.name], !locked)}>
-        {locked ? <LockIcon /> : <UnlockIcon />}
-        {locked ? "Locked" : "Lock"}
+      <button className={lock.pressed ? "toggle on" : "toggle"} aria-pressed={lock.pressed} title={lock.title} onClick={() => run(lock.command)}>
+        {lock.pressed ? <LockIcon /> : <UnlockIcon />}
+        {lock.label}
       </button>
-      <button disabled={!canEdit} onClick={onRotate}>
+      <button disabled={!enabled("rotate")} onClick={() => run("rotate")}>
         <RotateIcon /> Rotate
       </button>
-      <button
-        className="danger"
-        disabled={!canEdit}
-        onClick={() => {
-          if (!window.confirm(`Remove ${part.name} and its connections?`)) return
-          void actions.edit([{ kind: "removePart", part: part.name }], `remove ${part.name}`).then((ok) => ok && onSelect((current) => current.without([part.name])))
-        }}
-      >
+      <button className="danger" disabled={!enabled("delete")} onClick={() => run("delete")}>
         <TrashIcon /> Remove
       </button>
     </div>

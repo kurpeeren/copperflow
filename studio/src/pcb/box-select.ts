@@ -2,6 +2,8 @@
 // it takes the parts wholly inside it; right to left (a dashed outline), every part it touches.
 import type { SelectionChange } from "../selection.js"
 import { pointBounds, type Box, type PartBox, type Point } from "./geometry.js"
+import { pickNames } from "./pick.js"
+import type { ArmedTool } from "./press.js"
 
 export type BoxMode = "inside" | "touching"
 
@@ -22,7 +24,13 @@ export function partsInBox(boxes: readonly PartBox[], a: Point, b: Point, mode: 
   return boxes.filter((part) => takes(part.box)).map((part) => part.name)
 }
 
-/** The selection after a box: just the parts in it, or, with Shift or Ctrl held, those added to what was selected. */
-export function boxSelection(names: readonly string[], adds: boolean): SelectionChange {
-  return (current) => (adds ? current.add(names) : current.all(names))
+/**
+ * The selection after a box: just the parts in it that may be picked (pick.ts), or, with Shift or Ctrl held, those
+ * added to what was selected. `armed` is the canvas tool armed while the box was drawn.
+ */
+export function boxSelection(names: readonly string[], adds: boolean, armed: ArmedTool = null): SelectionChange {
+  return (current) => {
+    const picked = pickNames(names, { selection: current, armed })
+    return adds ? current.add(picked) : current.all(picked)
+  }
 }

@@ -4,6 +4,7 @@ import { endGesture, followGesture, gestureSession, movePlan, startGesture, targ
 import { sendGroupEdit } from "../studio/src/pcb/group-edits.js"
 import { moveBlocker } from "../studio/src/pcb/positions.js"
 import { worldToScreen, type Camera, type PartBox, type Point } from "../studio/src/pcb/geometry.js"
+import type { PickContext } from "../studio/src/pcb/pick.js"
 import type { ArmedTool, ContextTarget, Press } from "../studio/src/pcb/press.js"
 import { Selection, type SelectionChange } from "../studio/src/selection.js"
 
@@ -18,6 +19,7 @@ const partBox = (name: string, minX: number, maxX: number): PartBox => ({
 // R1 from x=0 to 2, R2 from 4 to 6, both from y=-1 to 1.
 const BOXES = [partBox("R1", 0, 2), partBox("R2", 4, 6)]
 const screen = (x: number, y = 0): Point => worldToScreen(CAMERA, SIZE, { x, y })
+const PICK: PickContext = { selection: Selection.none, armed: null }
 const press = (held: Partial<Press> = {}): Press => ({ button: 0, shiftKey: false, ctrlKey: false, metaKey: false, ...held })
 
 /** A canvas with R1 and R2: what the steps told it, and the selection they left. */
@@ -192,13 +194,13 @@ describe("what a right click or a double click is on", () => {
   const labels = { at: (p: Point) => (p.x > 8 ? label : undefined), blocker: () => null, commit: () => undefined }
 
   test("a part, else a net label, else the empty canvas", () => {
-    expect(targetAt(BOXES, labels, { x: 1, y: 0 })).toEqual({ kind: "part", name: "R1" })
-    expect(targetAt(BOXES, labels, { x: 9, y: 0 })).toEqual({ kind: "label", label })
-    expect(targetAt(BOXES, labels, { x: 7, y: 0 })).toEqual({ kind: "canvas" })
+    expect(targetAt(BOXES, labels, { x: 1, y: 0 }, PICK)).toEqual({ kind: "part", name: "R1" })
+    expect(targetAt(BOXES, labels, { x: 9, y: 0 }, PICK)).toEqual({ kind: "label", label })
+    expect(targetAt(BOXES, labels, { x: 7, y: 0 }, PICK)).toEqual({ kind: "canvas" })
   })
 
   test("the PCB has no labels, so there is only a part or the canvas", () => {
-    expect(targetAt(BOXES, undefined, { x: 9, y: 0 })).toEqual({ kind: "canvas" })
+    expect(targetAt(BOXES, undefined, { x: 9, y: 0 }, PICK)).toEqual({ kind: "canvas" })
   })
 })
 

@@ -77,12 +77,15 @@ export function snap(value: number, step: number): number {
   return Number((Math.round(value / step) * step).toFixed(decimals))
 }
 
-/** The smallest part box that contains the point. */
-export function hitTest(boxes: PartBox[], p: Point): PartBox | undefined {
+/** Every part box that contains the point, the smallest first. */
+export function hitsAt(boxes: readonly PartBox[], p: Point): PartBox[] {
   const area = (b: Box) => (b.maxX - b.minX) * (b.maxY - b.minY)
-  return boxes
-    .filter(({ box }) => p.x >= box.minX && p.x <= box.maxX && p.y >= box.minY && p.y <= box.maxY)
-    .sort((a, b) => area(a.box) - area(b.box))[0]
+  return boxes.filter(({ box }) => p.x >= box.minX && p.x <= box.maxX && p.y >= box.minY && p.y <= box.maxY).sort((a, b) => area(a.box) - area(b.box))
+}
+
+/** The smallest part box that contains the point. */
+export function hitTest(boxes: readonly PartBox[], p: Point): PartBox | undefined {
+  return hitsAt(boxes, p)[0]
 }
 
 /** The smallest box around the points, or undefined when there are none. */

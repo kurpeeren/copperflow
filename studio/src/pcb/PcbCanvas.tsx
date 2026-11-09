@@ -14,6 +14,7 @@ import type { ViolationMarker } from "./markers"
 import { drawGrid, PCB_LOOK } from "./overlays"
 import { drawPcb, padAt } from "./pcb-draw"
 import type { Unit } from "./units"
+import { targetAt } from "./gestures"
 import { cursorFor, pointerHandlers, useCanvasGestures, type Gesture } from "./use-canvas-gestures"
 import { useNoteTool } from "./use-note-tool"
 import { usePartKeys, type PartKeysInput } from "./use-part-keys"
@@ -196,8 +197,8 @@ export function PcbCanvas(props: CanvasProps) {
   const { moving, gesture } = gestures
   usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad: hover.pad, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, highlightNets: highlight, markers, activeViolation, grid })
   const open = (world: Point) => {
-    const hit = note.armed ? undefined : hitTest(parts.boxes, world)
-    if (hit) props.onOpenProperties(hit.name)
+    const target = targetAt(parts.boxes, undefined, world, { selection, armed: note.tool })
+    if (target.kind === "part") props.onOpenProperties(target.name)
   }
   const pointer = pointerHandlers({ camera, size, element: canvasRef, gestures, setCursor, hover: hover.at, open })
   const onLeave = () => {

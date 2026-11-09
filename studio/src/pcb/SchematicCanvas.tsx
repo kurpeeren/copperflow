@@ -25,6 +25,7 @@ import { drawingExtents } from "./drawing-extents"
 import { drawSheetBorder } from "./sheet-draw"
 import { firstDrawing, keepSheet, sheetArt, sheetDate, type Sheet, type SheetArt } from "./sheet"
 import { targetAt } from "./gestures"
+import type { PickContext } from "./pick"
 import { cursorFor, pointerHandlers, useCanvasGestures, type Gesture, type GestureInput, type PointerInput, type Press } from "./use-canvas-gestures"
 import { useDraggedLabel, useLabelDrag, type LabelTools, type MovingLabel } from "./use-label-drag"
 import { useTargetActions } from "../shell/use-target-actions"
@@ -318,6 +319,8 @@ interface SheetPointerInput extends Omit<PointerInput, "tool" | "open"> {
   wire: WireTool
   palette: Palette
   note: NoteTool
+  /** What a double click picks with: the selection and the armed tool. */
+  picking: PickContext
   onOpenProperties(part: string): void
 }
 
@@ -325,11 +328,11 @@ interface SheetPointerInput extends Omit<PointerInput, "tool" | "open"> {
  * The sheet's pointer: the wire tool and the Place tools see a press first, unless the note tool is armed; a double
  * click opens Properties on a part, or renames the net of a label, while no tool is armed.
  */
-function sheetPointer({ boxes, labels, wire, palette, note, onOpenProperties, ...input }: SheetPointerInput) {
+function sheetPointer({ boxes, labels, wire, palette, note, picking, onOpenProperties, ...input }: SheetPointerInput) {
   const tool = (event: Press, world: Point) => !note.armed && (palette.press(event, world) || wire.press(event, world))
   const open = (world: Point) => {
     if (note.armed || palette.armed || wire.wiring || wire.drawing) return
-    const target = targetAt(boxes, labels, world)
+    const target = targetAt(boxes, labels, world, picking)
     if (target.kind === "part") onOpenProperties(target.name)
     if (target.kind === "label") palette.rename(target.label)
   }
@@ -367,7 +370,7 @@ export function SchematicCanvas(props: CanvasProps) {
   const { moving, gesture } = gestures
   const movingLabels = useMovingLabels(design, gesture, labels.pending)
   useSheetPaint(canvasRef, { design, border, camera, size, wire, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel: hover.label, palette, highlight, markers, activeViolation, grid })
-  const pointer = sheetPointer({ camera, size, element: wrapRef, gestures, setCursor, hover: hover.at, boxes: parts.boxes, labels: labels.tools, wire, palette, note, onOpenProperties: props.onOpenProperties })
+  const pointer = sheetPointer({ camera, size, element: wrapRef, gestures, setCursor, hover: hover.at, boxes: parts.boxes, labels: labels.tools, wire, palette, note, picking: { selection, armed: tool.armed }, onOpenProperties: props.onOpenProperties })
   const cursorStyle = cursorFor(gesture, wire.drawing !== null || wire.overPin || palette.armed || note.armed, hover.part !== undefined || hover.label !== undefined)
   const onLeave = () => {
     hover.leave()
