@@ -35,24 +35,68 @@ export interface Sheet {
   outer: Box
   /** The inner line, ZONE_BAND inside the outer one. */
   inner: Box
+  /** True for the placeholder sheet of a schematic with nothing on it. */
+  empty: boolean
 }
+
+/** Float slack for size comparisons, in inches. */
+const EPSILON = 1e-6
 
 /** Rounds to the 0.1 grid; dividing by 10 at the end avoids the float noise of multiplying by 0.1. */
 function snapToGrid(value: number): number {
   return Math.round(value * GRID_STEPS_PER_INCH) / GRID_STEPS_PER_INCH
 }
 
-/** The smallest sheet that holds `extents` plus the margin (the largest if none does), centred on them; an empty sheet is centred on the origin. */
-export function sheetFor(extents: Box | undefined): Sheet {
+function sheetOn(size: SheetSize, extents: Box | undefined): Sheet {
   const box = extents ?? { minX: 0, minY: 0, maxX: 0, maxY: 0 }
-  const needW = box.maxX - box.minX + 2 * SHEET_MARGIN
-  const needH = box.maxY - box.minY + 2 * SHEET_MARGIN
-  const size = SHEET_SIZES.find((s) => s.width >= needW && s.height >= needH) ?? (SHEET_SIZES[SHEET_SIZES.length - 1] as SheetSize)
   const minX = snapToGrid((box.minX + box.maxX) / 2 - size.width / 2)
   const minY = snapToGrid((box.minY + box.maxY) / 2 - size.height / 2)
   const outer = { minX, minY, maxX: minX + size.width, maxY: minY + size.height }
   const inner = { minX: outer.minX + ZONE_BAND, minY: outer.minY + ZONE_BAND, maxX: outer.maxX - ZONE_BAND, maxY: outer.maxY - ZONE_BAND }
-  return { size, outer, inner }
+  return { size, outer, inner, empty: extents === undefined }
+}
+
+/** The title block's rectangle on a sheet. */
+function blockBox(sheet: Sheet): Box {
+  const { inner } = sheet
+  return { minX: inner.maxX - TITLE_BLOCK_WIDTH, minY: inner.maxY - TITLE_BLOCK_HEIGHT, maxX: inner.maxX, maxY: inner.maxY }
+}
+
+const overlaps = (a: Box, b: Box): boolean => a.minX < b.maxX && b.minX < a.maxX && a.minY < b.maxY && b.minY < a.maxY
+
+/** Whether the drawing and its margin lie inside the sheet's outer line and the drawing stays clear of the title block. */
+export function sheetHolds(sheet: Sheet, extents: Box): boolean {
+  const { outer } = sheet
+  const inside =
+    extents.minX - SHEET_MARGIN >= outer.minX - EPSILON &&
+    extents.minY - SHEET_MARGIN >= outer.minY - EPSILON &&
+    extents.maxX + SHEET_MARGIN <= outer.maxX + EPSILON &&
+    extents.maxY + SHEET_MARGIN <= outer.maxY + EPSILON
+  return inside && !overlaps(extents, blockBox(sheet))
+}
+
+/** The smallest sheet, no smaller than `atLeast`, that holds `extents` centred on them (the largest if none does); an empty sheet is A4 on the origin. */
+export function sheetFor(extents: Box | undefined, atLeast?: SheetSize): Sheet {
+  const first = Math.max(0, atLeast ? SHEET_SIZES.indexOf(atLeast) : 0)
+  const sizes = SHEET_SIZES.slice(first)
+  if (!extents) return sheetOn(sizes[0] as SheetSize, undefined)
+  const candidates = sizes.map((size) => sheetOn(size, extents))
+  return candidates.find((sheet) => sheetHolds(sheet, extents)) ?? (candidates[candidates.length - 1] as Sheet)
+}
+
+/**
+ * The sheet to show for these extents: the previous one while it still holds the drawing, so it stays put under the
+ * parts; otherwise a fresh choice that is never smaller than the previous one.
+ */
+export function keepSheet(previous: Sheet | undefined, extents: Box | undefined): Sheet {
+  if (!extents) return previous ?? sheetFor(undefined)
+  if (previous && !previous.empty && sheetHolds(previous, extents)) return previous
+  return sheetFor(extents, previous && !previous.empty ? previous.size : undefined)
+}
+
+/** The camera refits when the first parts arrive on a sheet that had none. */
+export function firstDrawing(before: Sheet | undefined, after: Sheet): boolean {
+  return (before?.empty ?? false) && !after.empty
 }
 
 export interface ZoneLabel {
@@ -115,8 +159,7 @@ const ROWS: ReadonlyArray<[string, keyof TitleValues]> = [
 
 /** The title block in the bottom-right corner of the inner line: a label cell and a value cell on each of its five rows. */
 export function titleBlock(sheet: Sheet, values: TitleValues): TitleBlock {
-  const { inner } = sheet
-  const box = { minX: inner.maxX - TITLE_BLOCK_WIDTH, minY: inner.maxY - TITLE_BLOCK_HEIGHT, maxX: inner.maxX, maxY: inner.maxY }
+  const box = blockBox(sheet)
   const rowHeight = TITLE_BLOCK_HEIGHT / ROWS.length
   const split = box.minX + LABEL_COLUMN
   const cells = ROWS.flatMap(([label, key], i): TitleCell[] => {
@@ -133,4 +176,16 @@ export function titleBlock(sheet: Sheet, values: TitleValues): TitleBlock {
 /** The build's finish time as YYYY-MM-DD; empty when there is no build or the time is not ISO. */
 export function sheetDate(finishedAt: string | undefined): string {
   return finishedAt && /^\d{4}-\d{2}-\d{2}/.test(finishedAt) ? finishedAt.slice(0, 10) : ""
+}
+
+/** Everything the painter needs for one sheet and its title values, built once rather than on every paint. */
+export interface SheetArt {
+  sheet: Sheet
+  dividers: { xs: number[]; ys: number[] }
+  labels: ZoneLabel[]
+  block: TitleBlock
+}
+
+export function sheetArt(sheet: Sheet, values: TitleValues): SheetArt {
+  return { sheet, dividers: zoneDividers(sheet), labels: zoneLabels(sheet), block: titleBlock(sheet, values) }
 }

@@ -18,8 +18,9 @@ import { drawOutline, drawWirePreview, type OverlayLook } from "./overlays"
 import { drawSchematicGrid } from "./schematic-grid"
 import { schematicTheme } from "./schematic-theme"
 import { drawSchematic } from "./schematic-draw"
+import { drawingExtents } from "./drawing-extents"
 import { drawSheetBorder } from "./sheet-draw"
-import { sheetDate, sheetFor, type Sheet, type TitleValues } from "./sheet"
+import { firstDrawing, keepSheet, sheetArt, sheetDate, type Sheet, type SheetArt } from "./sheet"
 import { cursorFor, pointerHandlers, useCanvasGestures, type Gesture } from "./use-canvas-gestures"
 import { useDraggedLabel, useLabelDrag, type LabelTools, type MovingLabel } from "./use-label-drag"
 import { useLabelPalette } from "./use-label-palette"
@@ -38,7 +39,7 @@ type Palette = ReturnType<typeof useLabelPalette>
 interface SheetScene {
   design: Design
   /** The drawing border and its title block. */
-  border: { sheet: Sheet; title: TitleValues }
+  border: SheetArt
   camera: Camera | undefined
   size: Size
   wire: WireTool
@@ -70,7 +71,7 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
     const prepared = prepareCanvas(canvasRef.current, size, view, schematicTheme.background, drawSchematicGrid)
     if (!prepared) return
     const { ctx, ratio } = prepared
-    drawSheetBorder(ctx, view, size, border.sheet, border.title)
+    drawSheetBorder(ctx, view, size, border)
     drawSchematic(ctx, design.schematic, { camera: view, size }, {
       ratio,
       showPins: wiring || drawing !== null || armed,
@@ -169,10 +170,24 @@ function SheetView({ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave,
   )
 }
 
-/** The sheet that holds the drawing, and the title block's values. */
-function useBorder(boxes: PartBox[], project: string | undefined, file: string, buildId: string | undefined): SheetScene["border"] {
-  const sheet = useMemo(() => sheetFor(unionBoxes(boxes.map((b) => b.box))), [boxes])
-  return useMemo(() => ({ sheet, title: { project: project ?? "", page: "Schematic", file, date: sheetDate(buildId), rev: "" } }), [sheet, project, file, buildId])
+/** The sheet, kept as it is while the drawing still fits it (so it does not move under the parts). */
+function useHeldSheet(design: Design): Sheet {
+  const held = useRef<Sheet>(undefined)
+  const extents = useMemo(() => drawingExtents(design.schematic), [design.schematic])
+  return useMemo(() => {
+    const next = keepSheet(held.current, extents)
+    held.current = next
+    return next
+  }, [extents])
+}
+
+/** Refits the camera when the first parts arrive on a sheet that had none, and not on later changes. */
+function useRefitOnFirstDrawing(sheet: Sheet, fit: () => void): void {
+  const before = useRef<Sheet>(undefined)
+  useEffect(() => {
+    if (firstDrawing(before.current, sheet)) fit()
+    before.current = sheet
+  }, [sheet, fit])
 }
 
 function wireHint(wire: WireTool): string | undefined {
@@ -264,8 +279,10 @@ export function SchematicCanvas({ design, buildId, project, builtFrom, circuit, 
   const [cursor, setCursor] = useState<Point>()
   const [step, setStep] = useState(0.5)
   const parts = usePlacedParts(design, "schematic", circuit)
-  const border = useBorder(parts.boxes, project, circuit.file, buildId)
-  const { camera, setCamera, fit } = useCamera(wrapRef, size, border.sheet.outer, FIT_MARGIN)
+  const sheet = useHeldSheet(design)
+  const { camera, setCamera, fit } = useCamera(wrapRef, size, sheet.outer, FIT_MARGIN)
+  useRefitOnFirstDrawing(sheet, fit)
+  const border = useMemo(() => sheetArt(sheet, { project: project ?? "", page: "Schematic", file: circuit.file, date: sheetDate(buildId), rev: "" }), [sheet, project, circuit.file, buildId])
   useCameraFocus("schematic", focus, camera, setCamera, onFocused)
   const wire = useWireTool({ design, actions, camera, cursor, step, buildId, builtFrom })
   const palette = useLabelPalette({ design, circuit, actions, camera, cursor, builtFrom, onArm: wire.cancel })

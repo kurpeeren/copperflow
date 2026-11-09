@@ -1,7 +1,7 @@
 // Paints the schematic's drawing border and title block (geometry in sheet.ts) in CSS pixels.
 import { worldToScreen, type Box, type Camera, type Point, type Size } from "./geometry.js"
 import { schematicTheme } from "./schematic-theme.js"
-import { titleBlock, zoneDividers, zoneLabels, type Sheet, type TitleValues } from "./sheet.js"
+import type { SheetArt } from "./sheet.js"
 
 /** Text heights in inches. */
 export const ZONE_TEXT = 0.12
@@ -29,16 +29,17 @@ function line(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, from: P
   ctx.lineTo(b.x, b.y)
 }
 
-function text(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, at: Point, value: string, height: number, align: CanvasTextAlign): void {
-  if (!value) return
+function text(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, at: Point, value: string, height: number, align: CanvasTextAlign, width?: number): void {
+  if (!value || height * camera.scale < MIN_ZONE_LABEL_PX) return
   const p = worldToScreen(camera, size, at)
   ctx.font = `${height * camera.scale}px sans-serif`
   ctx.textAlign = align
-  ctx.fillText(value, p.x, p.y)
+  if (width === undefined) ctx.fillText(value, p.x, p.y)
+  else ctx.fillText(value, p.x, p.y, Math.max(1, width * camera.scale))
 }
 
-function drawZones(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, sheet: Sheet): void {
-  const { xs, ys } = zoneDividers(sheet)
+function drawZones(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, art: SheetArt): void {
+  const { sheet, dividers: { xs, ys } } = art
   ctx.beginPath()
   for (const x of xs) {
     line(ctx, camera, size, { x, y: sheet.outer.minY }, { x, y: sheet.inner.minY })
@@ -52,11 +53,11 @@ function drawZones(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, sh
   if (!showZoneLabels(camera.scale)) return
   ctx.fillStyle = schematicTheme.titleText
   ctx.textBaseline = "middle"
-  for (const label of zoneLabels(sheet)) text(ctx, camera, size, label, label.text, ZONE_TEXT, "center")
+  for (const label of art.labels) text(ctx, camera, size, label, label.text, ZONE_TEXT, "center")
 }
 
-function drawTitleBlock(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, sheet: Sheet, values: TitleValues): void {
-  const block = titleBlock(sheet, values)
+function drawTitleBlock(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, art: SheetArt): void {
+  const block = art.block
   ctx.lineWidth = 1
   strokeBox(ctx, camera, size, block.box)
   for (const cell of block.cells) strokeBox(ctx, camera, size, cell.box)
@@ -64,19 +65,20 @@ function drawTitleBlock(ctx: CanvasRenderingContext2D, camera: Camera, size: Siz
   ctx.textBaseline = "middle"
   for (const cell of block.cells) {
     const at = { x: cell.box.minX + CELL_PADDING, y: (cell.box.minY + cell.box.maxY) / 2 }
-    text(ctx, camera, size, at, cell.text, cell.kind === "label" ? LABEL_TEXT : VALUE_TEXT, "left")
+    text(ctx, camera, size, at, cell.text, cell.kind === "label" ? LABEL_TEXT : VALUE_TEXT, "left", cell.box.maxX - cell.box.minX - 2 * CELL_PADDING)
   }
 }
 
 /** The outer and inner lines, the zone ticks and labels and the title block; drawn over the grid and under the parts. */
-export function drawSheetBorder(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, sheet: Sheet, values: TitleValues): void {
+export function drawSheetBorder(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, art: SheetArt): void {
+  const { sheet } = art
   ctx.save()
   ctx.strokeStyle = schematicTheme.border
   ctx.lineWidth = OUTER_LINE_PX
   strokeBox(ctx, camera, size, sheet.outer)
   ctx.lineWidth = 1
   strokeBox(ctx, camera, size, sheet.inner)
-  drawZones(ctx, camera, size, sheet)
-  drawTitleBlock(ctx, camera, size, sheet, values)
+  drawZones(ctx, camera, size, art)
+  drawTitleBlock(ctx, camera, size, art)
   ctx.restore()
 }

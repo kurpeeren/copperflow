@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { MIN_ZONE_LABEL_PX, showZoneLabels, ZONE_TEXT } from "../studio/src/pcb/sheet-draw.js"
-import { SHEET_MARGIN, SHEET_SIZES, sheetDate, sheetFor, titleBlock, zoneDividers, zoneLabels, ZONE_BAND } from "../studio/src/pcb/sheet.js"
+import { drawingExtents } from "../studio/src/pcb/drawing-extents.js"
+import { firstDrawing, keepSheet, SHEET_MARGIN, SHEET_SIZES, sheetArt, sheetDate, sheetFor, sheetHolds, titleBlock, zoneDividers, zoneLabels, ZONE_BAND } from "../studio/src/pcb/sheet.js"
 
 const around = (w: number, h: number, x = 0, y = 0) => ({ minX: x, minY: y, maxX: x + w, maxY: y + h })
 const VALUES = { project: "board", page: "Schematic", file: "a.circuit.ts", date: "2026-11-09", rev: "" }
@@ -23,8 +24,9 @@ describe("sheetFor", () => {
     expect(sheetFor(around(3, 8.28 - 2 * SHEET_MARGIN)).size.name).toBe("A3")
   })
 
-  test.each(SHEET_SIZES.map((s) => [s.name, s.width - 1, s.height - 1] as const))("%s is chosen for a drawing that just fits", (name, w, h) => {
-    expect(sheetFor(around(w - 0.001, h - 0.001)).size.name).toBe(name)
+  test.each(SHEET_SIZES.map((s) => [s.name, s.width, s.height] as const))("%s is chosen for a wide and for a tall drawing that just fit", (name, w, h) => {
+    expect(sheetFor(around(w - 2 * SHEET_MARGIN - 0.001, 3)).size.name).toBe(name)
+    expect(sheetFor(around(3, h - 2 * SHEET_MARGIN - 0.001)).size.name).toBe(name)
   })
 
   test("a drawing larger than A0 still gets A0", () => {
@@ -136,5 +138,93 @@ describe("sheetDate", () => {
   test("is empty without a build or with a stray string", () => {
     expect(sheetDate(undefined)).toBe("")
     expect(sheetDate("yesterday")).toBe("")
+  })
+})
+
+describe("sheet size boundary", () => {
+  test("an exact fit stays on its size despite float noise", () => {
+    const a4 = SHEET_SIZES[0]!
+    expect(sheetFor(around(a4.width - 2 * SHEET_MARGIN + 1e-9, 3)).size.name).toBe("A4")
+    expect(sheetFor(around(a4.width - 2 * SHEET_MARGIN + 1e-3, 3)).size.name).toBe("A3")
+  })
+})
+
+describe("keepSheet", () => {
+  test("the sheet is held while the drawing fits", () => {
+    const first = sheetFor(around(3, 2))
+    expect(keepSheet(first, around(3.4, 2.6, 0.2, 0.3))).toBe(first)
+  })
+
+  test("a part leaving the sheet re-chooses it", () => {
+    const first = sheetFor(around(3, 2))
+    const next = keepSheet(first, around(3, 2, 30, 0))
+    expect(next).not.toBe(first)
+    expect(sheetHolds(next, around(3, 2, 30, 0))).toBe(true)
+  })
+
+  test("a drawing that outgrows A4 gets A3", () => {
+    const first = sheetFor(around(3, 2))
+    expect(keepSheet(first, around(12, 5)).size.name).toBe("A3")
+  })
+
+  test("it never shrinks while open", () => {
+    const big = sheetFor(around(12, 5))
+    const small = keepSheet(big, around(3, 2, 100, 100))
+    expect(small.size.name).toBe("A3")
+  })
+
+  test("a drawing under the title block is not held", () => {
+    const first = sheetFor(around(3, 2))
+    const under = { minX: first.inner.maxX - 2, minY: first.inner.maxY - 0.5, maxX: first.inner.maxX - 1, maxY: first.inner.maxY - 0.2 }
+    expect(sheetHolds(first, under)).toBe(false)
+  })
+
+  test("without a drawing the previous sheet stays, or an empty A4 appears", () => {
+    const first = sheetFor(around(3, 2))
+    expect(keepSheet(first, undefined)).toBe(first)
+    expect(keepSheet(undefined, undefined).empty).toBe(true)
+  })
+
+  test("the first parts replace the empty placeholder", () => {
+    const empty = keepSheet(undefined, undefined)
+    const next = keepSheet(empty, around(3, 2, 40, 40))
+    expect(next.empty).toBe(false)
+    expect(sheetHolds(next, around(3, 2, 40, 40))).toBe(true)
+    expect(firstDrawing(empty, next)).toBe(true)
+    expect(firstDrawing(next, keepSheet(next, around(4, 2, 40, 40)))).toBe(false)
+    expect(firstDrawing(undefined, next)).toBe(false)
+  })
+})
+
+describe("drawingExtents", () => {
+  const layout = (over: object) => ({ symbols: [], wires: [], labels: [], junctions: [], ...over }) as never
+
+  test("an empty schematic has none", () => {
+    expect(drawingExtents(layout({}))).toBeUndefined()
+  })
+
+  test("wires, junctions and labels count", () => {
+    const e = drawingExtents(
+      layout({
+        wires: [{ id: "w", net: "n", points: [{ x: 1, y: 1 }, { x: 5, y: 1 }] }],
+        junctions: [{ x: 2, y: -3 }],
+        labels: [{ id: "l", net: "n", text: "GND", at: { x: 8, y: 6 }, side: "right", style: "ground" }],
+      }),
+    )
+    expect(e).toBeDefined()
+    expect(e!.minX).toBeLessThanOrEqual(1)
+    expect(e!.minY).toBeLessThanOrEqual(-3)
+    expect(e!.maxX).toBeGreaterThanOrEqual(8)
+    expect(e!.maxY).toBeGreaterThanOrEqual(6)
+  })
+})
+
+describe("sheetArt", () => {
+  test("holds the geometry built once", () => {
+    const sheet = sheetFor(around(3, 2))
+    const art = sheetArt(sheet, VALUES)
+    expect(art.labels).toHaveLength(20)
+    expect(art.block.cells).toHaveLength(10)
+    expect(art.dividers.xs).toHaveLength(5)
   })
 })
