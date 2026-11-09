@@ -15,9 +15,12 @@ const shapeOf = (drawing: SchematicDrawing): string => JSON.stringify({ ...drawi
 
 const countOf = (drawings: readonly SchematicDrawing[], kind: SchematicDrawing["kind"]): number => drawings.filter((drawing) => drawing.kind === kind).length
 
+/** Whether a name is shared by several pieces (a bus drawn in pieces): the first piece's id can then pass to another. */
+const repeated = (id: string, drawings: readonly SchematicDrawing[]): boolean => drawings.some((drawing) => drawing.id.startsWith(`${id}~`))
+
 /** Whether `now`, under an id that `then` had before the build, is still that drawing. */
 function sameDrawing(then: SchematicDrawing, now: SchematicDrawing, before: readonly SchematicDrawing[], after: readonly SchematicDrawing[]): boolean {
-  if (!shifting(now.id)) return true
+  if (!shifting(now.id) && !repeated(now.id, before) && !repeated(now.id, after)) return true
   if (then.kind !== now.kind) return false
   return countOf(before, now.kind) === countOf(after, now.kind) || shapeOf(then) === shapeOf(now)
 }

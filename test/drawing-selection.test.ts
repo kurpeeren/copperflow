@@ -40,6 +40,15 @@ describe("selected drawings after a build", () => {
     expect(stableDrawings(undefined, before)).toEqual([FIRST, SECOND, "G1"])
   })
 
+  test("the first piece of a bus drawn in pieces leaves the selection when the other piece takes its name", () => {
+    const BUS1 = `<bus name="D[0:3]" points={[{ x: 0, y: 5 }, { x: 2, y: 5 }]} />`
+    const BUS2 = `<bus name="D[0:3]" points={[{ x: 0, y: 7 }, { x: 2, y: 7 }]} />`
+    const two = sheet(BUS1, BUS2)
+    expect(two.map((d) => d.id)).toEqual(["D[0:3]", "D[0:3]~2"])
+    expect(stableDrawings(two, sheet(BUS2))).toEqual([])
+    expect(stableDrawings(two, sheet(BUS1, BUS2.replace("y: 7 }, { x: 2, y: 7", "y: 8 }, { x: 2, y: 8")))).toEqual(["D[0:3]", "D[0:3]~2"])
+  })
+
   test("the selection shown leaves out a drawing whose id now names another one", () => {
     const after = sheet(B, G1)
     const shown = shownSelection(Selection.none.addDrawings([FIRST, "G1"]), { view: "schematic", drawings: stableDrawings(before, after) })
