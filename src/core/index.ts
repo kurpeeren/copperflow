@@ -12,3 +12,6 @@ export { BUILTIN_PARTS, placeEdit, placePart, type PlaceRequest } from "./place.
 export { generateCircuit, DEFAULT_BOARD, type NewCircuit, type NewPart } from "./new-circuit.js"
 export * from "./bom.js"
 export { checkCircuit, formatCheck, type CheckOptions, type CheckResult, type IssueGroup } from "./check.js"
+export * from "./layout-file.js"
+export { applyLayoutRecordEdits, lockedRecordChanges, type LayoutEdit, type LayoutEditContext } from "./layout-records.js"
+export { applyLayoutEdits, describeLayoutEdits, type LayoutEditOptions, type LayoutEditResult } from "./layout-edits.js"
