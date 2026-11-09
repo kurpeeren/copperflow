@@ -332,7 +332,7 @@ function drawLine(ctx: Ctx, a: Point, b: Point): void {
 /** The component id as silkscreen text, centred above the courtyard's top edge, from 7 device pixels (text-level.ts). */
 function drawDesignator(ctx: Ctx, part: PlacedFootprint, camera: Camera, size: Size, shift: Point, ratio: number): void {
   const devicePx = devicePxFor(DESIGNATOR_MM, camera.scale, ratio)
-  if (!textShown("name", devicePx)) return
+  if (!textShown("name", devicePx, devicePx)) return
   const box = courtyardBox(part)
   const top = worldToScreen(camera, size, { x: (box.minX + box.maxX) / 2 + shift.x, y: box.maxY + shift.y })
   const p = textAnchorAt({ x: top.x, y: top.y - DESIGNATOR_GAP_PX }, ratio)

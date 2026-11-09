@@ -5,7 +5,7 @@
 import type { SchematicDrawing } from "../../../src/engine/model.js"
 import { anchorAlignment, CANVAS_FONT_FAMILY, HIGHLIGHT_DIM, type Ctx } from "./ctx.js"
 import { colorOf, dashOf, drawnWidth, fillOf, isFilled, lineStyleOf, strokeWidthOf } from "./drawing-style.js"
-import { devicePxFor, textAnchorAt, textShown } from "./text-level.js"
+import { devicePxFor, sheetLevelPx, textAnchorAt, textShown } from "./text-level.js"
 import { worldToScreen, type Camera, type Size } from "./geometry.js"
 import { schematicTheme } from "./schematic-theme.js"
 
@@ -83,13 +83,13 @@ export function drawDrawings(ctx: Ctx, drawings: readonly SchematicDrawing[], de
 
 /**
  * Writes the drawings' texts upright at their anchors, in CSS pixels (the context's transform is the device `ratio`),
- * at whole device pixel sizes on device pixels; like values, they wait until they are 9 device pixels tall.
+ * at whole device pixel sizes on device pixels; like values, they wait for the sheet's "all" level and 5 device pixels of their own.
  */
 export function drawDrawingTexts(ctx: Ctx, drawings: readonly SchematicDrawing[], camera: Camera, size: Size, paint: DrawingPaint, ratio: number): void {
   for (const drawing of drawings) {
     if (drawing.kind !== "text" || drawing.text === "") continue
     const devicePx = devicePxFor(drawing.fontSize, camera.scale, ratio)
-    if (!textShown("detail", devicePx)) continue
+    if (!textShown("detail", sheetLevelPx(camera.scale, ratio), devicePx)) continue
     const fontPx = devicePx / ratio
     const { color, alpha } = toneOf(drawing, paint)
     const at = textAnchorAt(worldToScreen(camera, size, drawing), ratio)

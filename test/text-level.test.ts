@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { ALL_TEXT_FROM, capToWidth, devicePxFor, fontPxFor, PIN_NUMBERS_FROM, sharpenText, textAnchorAt, textLevel, textShown, TEXT_FROM } from "../studio/src/pcb/text-level.js"
+import { ALL_TEXT_FROM, capToWidth, OWN_TEXT_FROM, SHEET_LEVEL_SIZE, sheetLevelPx, devicePxFor, fontPxFor, PIN_NUMBERS_FROM, sharpenText, textAnchorAt, textLevel, textShown, TEXT_FROM } from "../studio/src/pcb/text-level.js"
 
 const RATIOS = [1, 1.1, 1.25, 1.5, 2]
 const whole = (v: number) => Math.abs(v - Math.round(v)) < 1e-9
@@ -15,10 +15,24 @@ describe("textLevel", () => {
     expect(textLevel(40)).toBe("all")
   })
 
-  test("designators and net names show from 7, values and pin names from 9, pin numbers from 11", () => {
-    expect([6, 7, 9].map((px) => textShown("name", px))).toEqual([false, true, true])
-    expect([8, 9].map((px) => textShown("detail", px))).toEqual([false, true])
-    expect([10, 11].map((px) => textShown("pin-number", px))).toEqual([false, true])
+  test("by the level's size: designators and net names from 7, values and pin names from 9, pin numbers from 11", () => {
+    expect([6, 7, 9].map((px) => textShown("name", px, px))).toEqual([false, true, true])
+    expect([8, 9].map((px) => textShown("detail", px, px))).toEqual([false, true])
+    expect([10, 11].map((px) => textShown("pin-number", px, px))).toEqual([false, true])
+  })
+
+  test("a text the level allows is drawn while its own size is at least 5 device px", () => {
+    expect(OWN_TEXT_FROM).toBe(5)
+    expect(textShown("detail", 10, 5)).toBe(true)
+    expect(textShown("detail", 10, 4)).toBe(false)
+    expect(textShown("pin-number", 11, 5)).toBe(true)
+    expect(textShown("pin-number", 10, 9)).toBe(false)
+  })
+
+  test("the sheet's level is judged by its designator size, 0.16 in", () => {
+    expect(SHEET_LEVEL_SIZE).toBe(0.16)
+    expect(sheetLevelPx(60, 1)).toBe(10)
+    expect(sheetLevelPx(42, 1.1)).toBe(7)
   })
 })
 

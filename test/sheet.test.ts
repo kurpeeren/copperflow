@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { CANVAS_FONT_FAMILY } from "../studio/src/pcb/ctx.js"
 import { drawSheetBorder, showZoneLabels, ZONE_TEXT } from "../studio/src/pcb/sheet-draw.js"
-import { ALL_TEXT_FROM } from "../studio/src/pcb/text-level.js"
+import { ALL_TEXT_FROM, SHEET_LEVEL_SIZE } from "../studio/src/pcb/text-level.js"
 import { drawingExtents } from "../studio/src/pcb/drawing-extents.js"
 import { worldToScreen, type Box } from "../studio/src/pcb/geometry.js"
 import { firstDrawing, keepSheet, SHEET_MARGIN, SHEET_SIZES, sheetArt, sheetDate, sheetFor, sheetHolds, titleBlock, zoneDividers, zoneLabels, ZONE_BAND } from "../studio/src/pcb/sheet.js"
@@ -131,10 +131,11 @@ describe("zones", () => {
     expect(xs[0]).toBeCloseTo(sheet.inner.minX + (sheet.inner.maxX - sheet.inner.minX) / 6)
   })
 
-  test("zone labels, like all sheet text, wait until they are 9 device px", () => {
-    expect(showZoneLabels(ALL_TEXT_FROM / ZONE_TEXT, 1)).toBe(true)
-    expect(showZoneLabels(8.4 / ZONE_TEXT, 1)).toBe(false)
-    expect(showZoneLabels(8.4 / ZONE_TEXT, 1.1)).toBe(true)
+  test("zone labels, like all sheet text, wait for the sheet's all level: designators (0.16 in) at 9 device px", () => {
+    expect(showZoneLabels(ALL_TEXT_FROM / SHEET_LEVEL_SIZE, 1)).toBe(true)
+    expect(showZoneLabels(8.4 / SHEET_LEVEL_SIZE, 1)).toBe(false)
+    expect(showZoneLabels(8.4 / SHEET_LEVEL_SIZE, 1.1)).toBe(true)
+    expect(ZONE_TEXT).toBe(0.12)
   })
 })
 
@@ -328,15 +329,16 @@ describe("drawSheetBorder", () => {
     for (const font of fonts) expect(font.endsWith(CANVAS_FONT_FAMILY)).toBe(true)
   })
 
-  test("fonts are whole device pixels, and text under 9 device px is left out", () => {
+  test("fonts are whole device pixels, shown at the all level while they are 5 device px themselves", () => {
     const at = (scale: number, ratio: number) => {
       const { ctx, fonts } = textRecorder()
       drawSheetBorder(ctx, { ...camera, scale }, SCREEN, art, ratio)
       return fonts.map((font) => Number(/([\d.]+)px/.exec(font)?.[1]) * ratio)
     }
     for (const device of at(93.7, 1.25)) expect(Math.abs(device - Math.round(device))).toBeLessThan(1e-9)
-    // at 80 px per inch the title labels (0.09 in) are 7 px and wait; the zone labels and values are drawn
-    expect(at(80, 1).sort((a, b) => a - b)).toEqual([10, 11])
+    // at 60 px per inch (designators 10 px) the title labels (0.09 in) are 5 px and drawn; at 50 (8 px) nothing is
+    expect(at(60, 1).sort((a, b) => a - b)).toEqual([5, 7, 8])
+    expect(at(50, 1)).toEqual([])
   })
 
   test("text too small to read is left out, and so is its font", () => {

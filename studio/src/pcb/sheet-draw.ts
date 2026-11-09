@@ -4,7 +4,7 @@ import { deviceWidth, hairlineAt, hairlineWidth, strokeBoxAt } from "./crisp.js"
 import { worldToScreen, type Box, type Camera, type Point, type Size } from "./geometry.js"
 import { schematicTheme } from "./schematic-theme.js"
 import type { SheetArt } from "./sheet.js"
-import { devicePxFor, sharpenText, textAnchorAt, textShown } from "./text-level.js"
+import { devicePxFor, sharpenText, sheetLevelPx, textAnchorAt, textShown } from "./text-level.js"
 
 /** Text heights in inches. */
 export const ZONE_TEXT = 0.12
@@ -18,9 +18,9 @@ const CELL_TEXT = [
   ["value", VALUE_TEXT],
 ] as const
 
-/** Zone labels, like all the sheet's text, wait until they are 9 device pixels tall (text-level.ts); the border stays. */
+/** Zone labels, like all the sheet's text, wait for the sheet's "all" level and 5 device pixels of their own (text-level.ts); the border stays. */
 export function showZoneLabels(scale: number, ratio: number): boolean {
-  return textShown("detail", devicePxFor(ZONE_TEXT, scale, ratio))
+  return textShown("detail", sheetLevelPx(scale, ratio), devicePxFor(ZONE_TEXT, scale, ratio))
 }
 
 /** The outline of a box in `devicePx`-wide device pixels, its edges on device pixels. */
@@ -45,11 +45,11 @@ function line(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, from: P
 
 /**
  * Sets the font for text `height` inches tall, in whole device pixels, once for all the text of that size; false when
- * it is under 9 device pixels, so that text is left out.
+ * the sheet's level or its own size leaves it out.
  */
 function setTextHeight(ctx: CanvasRenderingContext2D, camera: Camera, height: number, ratio: number): boolean {
   const devicePx = devicePxFor(height, camera.scale, ratio)
-  if (!textShown("detail", devicePx)) return false
+  if (!textShown("detail", sheetLevelPx(camera.scale, ratio), devicePx)) return false
   ctx.font = canvasFont(TEXT_WEIGHT.regular, devicePx / ratio)
   return true
 }

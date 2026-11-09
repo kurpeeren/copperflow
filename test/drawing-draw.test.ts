@@ -92,15 +92,15 @@ describe("drawing the texts", () => {
     expect((rec.ctx as unknown as { textAlign: string }).textAlign).toBe("center")
   })
 
-  test("it waits until it is 9 device pixels tall, then is written at a whole device pixel size on a device pixel", () => {
+  test("it waits for the sheet's all level (designators 9 device px), then is written at a whole device pixel size on a device pixel", () => {
     const at = (scale: number, ratio: number) => {
       const rec = recorder()
       drawDrawingTexts(rec.ctx, drawings, { ...CAMERA, scale }, SIZE, {}, ratio)
       return rec.records.filter((r) => r.name === "fillText")
     }
-    expect(at(42, 1)).toEqual([])
-    expect(at(42, 1.1)).toHaveLength(1)
-    const [text] = at(51.3, 1.25)
+    expect(at(50, 1)).toEqual([])
+    expect(at(50, 1.15)).toHaveLength(1)
+    const [text] = at(61.3, 1.25)
     const whole = (v: number) => Math.abs(v - Math.round(v)) < 1e-9
     expect([whole((text?.args[1] as number) * 1.25), whole((text?.args[2] as number) * 1.25)]).toEqual([true, true])
     expect(whole(Number(/([\d.]+)px/.exec(text?.font ?? "")?.[1]) * 1.25)).toBe(true)

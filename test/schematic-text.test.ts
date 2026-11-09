@@ -39,14 +39,14 @@ const whole = (v: number) => Math.abs(v - Math.round(v)) < 1e-6
 describe("schematic text at the demo's 70%", () => {
   const scale = 0.7 * SCHEMATIC_ZOOM_REFERENCE_PX
 
-  test.each([1, 1.1, 1.25, 1.5])("every text is written at a whole device pixel size of at least 7, and no pin numbers, at ratio %s", (ratio) => {
+  test.each([1, 1.1, 1.25, 1.5])("every text is written at a whole device pixel size of at least 5, and no pin numbers, at ratio %s", (ratio) => {
     const { records } = draw(demo.schematic, scale, ratio, 8)
     const texts = written(records)
     expect(texts.length).toBeGreaterThan(0)
     for (const text of texts) {
       const device = fontPx(text.font) * ratio
       expect([text.args[0], whole(device)]).toEqual([text.args[0], true])
-      expect(device).toBeGreaterThanOrEqual(7)
+      expect(device).toBeGreaterThanOrEqual(5)
     }
     expect(textsOf(records).filter((t) => /^\d+$/.test(t))).toEqual([])
   })
@@ -60,14 +60,27 @@ describe("schematic text at the demo's 70%", () => {
 })
 
 describe("schematic text levels", () => {
-  test("pin numbers show from 11 device px, values from 9, designators from 7", () => {
+  test("judged by the designator's size: pin numbers from 11 device px, values from 9, designators from 7", () => {
     const at = (scale: number) => textsOf(draw(resistors, scale, 1).records)
-    expect(at(110)).toEqual(expect.arrayContaining(["R1", "1k", "1", "2"]))
-    expect(at(100)).toEqual(expect.arrayContaining(["R1", "1k"]))
-    expect(at(100)).not.toContain("1")
+    // designators (0.16 in) at 70 px/in are 11 px: pin numbers (0.1 in) are drawn though they are 7 px themselves
+    expect(at(70)).toEqual(expect.arrayContaining(["R1", "1k", "1", "2"]))
+    expect(at(65)).toEqual(expect.arrayContaining(["R1", "1k"]))
+    expect(at(65)).not.toContain("1")
     expect(at(50)).toContain("R1")
     expect(at(50)).not.toContain("1k")
     expect(at(40)).toEqual([])
+  })
+
+  test("at 100% on a 100% display the pin names are drawn", () => {
+    const texts = textsOf(draw(demo.schematic, SCHEMATIC_ZOOM_REFERENCE_PX, 1, 8).records)
+    expect(texts).toEqual(expect.arrayContaining(["CC1", "VBUS2", "EN", "VOUT"]))
+  })
+
+  test("a text the level allows is still skipped when it is itself under 5 device px", () => {
+    // at 57 px/in designators are 9 px (all) and pin names 7 px; J1's bottom names, shortened at 70%, are 4 px and go alone
+    const texts = textsOf(draw(demo.schematic, 57, 1, 8).records)
+    expect(texts).toEqual(expect.arrayContaining(["J1", "VBUS2", "EH"]))
+    expect(texts.filter((t) => t.endsWith("…"))).toEqual([])
   })
 
   test("text anchors are on device pixels in x and on the baseline", () => {
@@ -80,10 +93,14 @@ describe("schematic text levels", () => {
 })
 
 describe("pin names never overprint", () => {
-  test("J1's bottom names, closer than they are wide, are left out; its side names are drawn", () => {
-    const texts = textsOf(draw(demo.schematic, 120, 1, 0).records)
-    for (const name of ["GND2", "GND1", "EH"]) expect(texts).not.toContain(name)
+  test("J1's bottom names, wider than their pitch, are drawn smaller and shortened rather than left out", () => {
+    const { records } = draw(demo.schematic, 120, 1, 0)
+    const texts = textsOf(records)
+    expect(texts.filter((t) => t.startsWith("GN") && t.endsWith("…"))).toHaveLength(2)
+    expect(texts).toContain("EH")
     expect(texts).toEqual(expect.arrayContaining(["CC1", "CC2", "VBUS1", "VBUS2"]))
+    const eh = written(records).find((r) => r.args[0] === "EH")
+    expect(fontPx(eh?.font ?? "")).toBeLessThanOrEqual(14)
   })
 
   test("no two pin names of one symbol are written over each other", () => {
@@ -126,6 +143,12 @@ describe("schematic strokes", () => {
     expect(wireDrawnPx(1000, 1.25)).toBeCloseTo(20)
   })
 
+  test("wireDrawnPx is never below one device pixel, at any zoom and ratio", () => {
+    for (const ratio of [1, 1.1, 1.25, 1.5, 2, 3]) {
+      for (const scale of [0.01, 0.5, 5, 42, 49.9, 50, 60, 1000]) expect(wireDrawnPx(scale, ratio) * ratio).toBeGreaterThanOrEqual(1 - 1e-12)
+    }
+  })
+
   test("symbol outlines are at least one device pixel", () => {
     const { records } = draw(resistors, 10, 2)
     const outline = records.find((r) => r.name === "stroke" && r.strokeStyle === schematicTheme.symbolOutline)
@@ -150,7 +173,8 @@ function writtenBoxes(records: readonly DrawCall[]): Written[] {
     if (r.name !== "fillText") continue
     const text = r.args[0] as string
     const width = fakeTextWidth(text, r.font)
-    const height = fontPx(r.font)
+    // the ink of capitals and digits, as the fit counts it (schematic-text.ts NAME_INK_HEIGHT)
+    const height = fontPx(r.font) * 0.8
     const x0 = r.textAlign === "left" ? at.x : r.textAlign === "right" ? at.x - width : at.x - width / 2
     boxes.push({ text, x0, x1: x0 + width, y0: at.y - height / 2, y1: at.y + height / 2 })
   }

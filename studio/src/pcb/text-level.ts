@@ -10,6 +10,11 @@ export const ALL_TEXT_FROM = 9
 /** Pin numbers wait until they are this many device pixels tall. */
 export const PIN_NUMBERS_FROM = 11
 
+/** A text the level allows is drawn while its own size is at least this many device pixels; smaller, it alone is skipped. */
+export const OWN_TEXT_FROM = 5
+/** The schematic designator's height in inches: the sheet's level of detail is judged by its size on screen. */
+export const SHEET_LEVEL_SIZE = 0.16
+
 export type TextLevel = "none" | "names" | "all"
 
 /** What a text is, for the level of detail: designators and net names, pin numbers, and everything else. */
@@ -21,16 +26,23 @@ export function textLevel(devicePx: number): TextLevel {
   return devicePx < ALL_TEXT_FROM ? "names" : "all"
 }
 
-/** Whether a text of this kind is drawn at this size in device pixels. */
-export function textShown(kind: TextKind, devicePx: number): boolean {
-  const level = textLevel(devicePx)
+/**
+ * Whether a text of this kind is drawn: the level is judged by `levelPx` (the designator's size in device pixels),
+ * and the text itself must be at least OWN_TEXT_FROM device pixels (`ownPx`).
+ */
+export function textShown(kind: TextKind, levelPx: number, ownPx: number): boolean {
+  if (ownPx < OWN_TEXT_FROM) return false
+  const level = textLevel(levelPx)
   if (kind === "name") return level !== "none"
-  if (kind === "pin-number") return devicePx >= PIN_NUMBERS_FROM
+  if (kind === "pin-number") return levelPx >= PIN_NUMBERS_FROM
   return level === "all"
 }
 
 /** A text `worldSize` tall at `scale` CSS pixels per world unit, in whole device pixels (at least one). */
 export const devicePxFor = (worldSize: number, scale: number, ratio: number): number => Math.max(1, Math.round(worldSize * scale * ratio))
+
+/** The sheet's level size: the designator's height in whole device pixels at this zoom. */
+export const sheetLevelPx = (scale: number, ratio: number): number => devicePxFor(SHEET_LEVEL_SIZE, scale, ratio)
 
 /** The same size in CSS pixels, for `ctx.font` under the device ratio transform. */
 export const fontPxFor = (worldSize: number, scale: number, ratio: number): number => devicePxFor(worldSize, scale, ratio) / ratio
