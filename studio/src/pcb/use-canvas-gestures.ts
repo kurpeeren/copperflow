@@ -3,22 +3,25 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type RefObject } from "react"
 import { toLocal, type Moving } from "./canvas-common"
 import { screenToWorld, type Camera, type Point, type Size } from "./geometry"
-import { cancelsOnEscape, gestureLost, gestureSession, movePlan, type Commit, type Gesture, type GestureInput } from "./gestures"
+import { cancelsOnEscape, gestureLost, gestureSession, moveWithWires, type Commit, type Gesture, type GestureInput } from "./gestures"
 import { sendGroupEdit } from "./group-edits"
 import { opensOnDoubleClick, type Press } from "./press"
 
 export type { Gesture, GestureInput } from "./gestures"
 export type { Press }
 
-/** The last group move sent (its parts and the selected wires it carries), its parts kept drawn moved until a build that started after it was sent has finished. */
+/**
+ * The last group move sent (its parts and the selected wires it carries), its parts and the wires' new shapes kept
+ * drawn until a build that started after it was sent has finished.
+ */
 function usePendingMove(input: GestureInput): { pending: Moving | undefined; commit: Commit } {
   const { actions, builtFrom } = input
   const [pending, setPending] = useState<Moving & { sentAt: number }>()
   useEffect(() => setPending((current) => (current && current.sentAt > builtFrom ? current : undefined)), [builtFrom])
   const commit: Commit = (names, offset, wires = []) => {
     if (offset.x === 0 && offset.y === 0) return
-    const plan = movePlan(input, names, offset, wires)
-    const sent = plan.edits.length > 0 ? { names: plan.parts, offset, sentAt: Date.now() } : undefined
+    const { plan, lines } = moveWithWires(input, names, offset, wires)
+    const sent = plan.edits.length > 0 ? { names: plan.parts, offset, wires: lines, sentAt: Date.now() } : undefined
     if (sent) setPending(sent)
     void sendGroupEdit(plan, actions).then((ok) => ok || setPending((current) => (current === sent ? undefined : current)))
   }
@@ -40,9 +43,23 @@ function useEscapeCancelsDrag(kind: Gesture["kind"] | undefined, cancel: () => v
   }, [kind, cancel])
 }
 
+/** The group being dragged, with the shapes the drag gives the wires (the same edits a drop would write), live. */
+function useDragged(input: GestureInput, gesture: Gesture | undefined): Moving | undefined {
+  const dragged = gesture?.kind === "drag" && gesture.moved && !gesture.blocker ? gesture : undefined
+  const { follow, circuit } = input
+  // Worked out again as the drag's offset changes, or a build changes the sheet or the source; the rest of the input
+  // does not change the shapes during a drag.
+  return useMemo(() => {
+    if (!dragged) return undefined
+    const wires = follow ? moveWithWires(input, dragged.names, dragged.offset, dragged.wires).lines : []
+    return { names: dragged.movable, offset: dragged.offset, wires }
+  }, [dragged, follow, circuit])
+}
+
 /**
  * The canvas gestures: one session holds the gesture from press to release (gestureSession), and `gesture` is what
- * React draws of it; `moving` is the group being dragged, else the one whose move waits for its build (`pending`).
+ * React draws of it; `moving` is the group being dragged, else the one whose move waits for its build (`pending`),
+ * with the wires' new shapes on the schematic.
  */
 export function useCanvasGestures(input: GestureInput) {
   const [gesture, setGesture] = useState<Gesture>()
@@ -51,10 +68,8 @@ export function useCanvasGestures(input: GestureInput) {
   const latest = useRef({ input, commit })
   latest.current = { input, commit }
   const [session] = useState(() => gestureSession(() => latest.current, setGesture))
-  const moving = useMemo(
-    () => (gesture?.kind === "drag" && gesture.moved && !gesture.blocker ? { names: gesture.movable, offset: gesture.offset } : pending),
-    [gesture, pending],
-  )
+  const dragged = useDragged(input, gesture)
+  const moving = dragged ?? pending
   useEscapeCancelsDrag(gesture?.kind, session.cancel)
   // Pressing W during a wire's drag takes its drag tools away: the drag is dropped at once, so the wire goes back.
   useEffect(() => {

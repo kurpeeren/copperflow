@@ -3,7 +3,8 @@
 // the parts, so two quick presses turn the group twice about the same centre. Align and distribute wait at the same
 // gate (each is computed from the parts' positions), so two quick ones do not scatter the parts. After an Undo or Redo from the app
 // (history-writes.ts) both wait for the build that read it. On the schematic an arrow move or an align carries the
-// corners of the wires at the moved pins in its own edit, and an arrow move carries the selected wires (wire-follow.ts). use-key-edits.ts holds one session per
+// corners of the wires at the moved pins in its own edit, and an arrow move carries the selected wires (wire-follow.ts);
+// the canvas draws an arrow move's parts and wires where it puts them until its build lands (move-preview.ts). use-key-edits.ts holds one session per
 // canvas. Plain TypeScript with .js imports, so the tests can run it.
 import type { WriteOutcome } from "../history-writes.js"
 import type { Selection } from "../selection.js"
@@ -31,7 +32,8 @@ import {
 } from "./key-burst.js"
 import type { Point } from "./geometry.js"
 import type { SourceCircuit, Turn, View } from "./positions.js"
-import { withFollowingWires, type WireFollow } from "./wire-follow.js"
+import { movePreview, type MovePreview } from "./move-preview.js"
+import { withFollowingWires, withMovedWires, type WireFollow } from "./wire-follow.js"
 
 /** What an edit from a key needs, as the canvas has it at this press. */
 export interface EditInput extends DesignState {
@@ -66,6 +68,8 @@ interface SessionEvents {
   resolved(): void
   /** A Rotate or arrow press is held at the gate (true) or none is (false), told when that changes. */
   holding(on: boolean): void
+  /** On the schematic, an arrow move went out: what to draw of it until its build lands, and whether it was written. */
+  moved?(preview: MovePreview, sent: Promise<boolean>): void
 }
 
 interface State {
@@ -141,8 +145,10 @@ function sendNudge(state: State, events: SessionEvents, input: EditInput, total:
   const { burst, layout } = state
   if (!burst || !layout) return
   const parts = nudgePlan(burst.base, burst.names, input.view, layout, total, input.blockerFor)
-  const plan = withFollowingWires(parts, burst.base, input.follow, { wires: burst.wires ?? [], offset: total })
-  void send(state, events, plan, input).then((ok) => {
+  const { plan, lines } = withMovedWires(parts, burst.base, input.follow, { wires: burst.wires ?? [], offset: total })
+  const sent = send(state, events, plan, input)
+  if (input.follow && plan.edits.length > 0) events.moved?.(movePreview(input.follow.design, plan, lines), sent)
+  void sent.then((ok) => {
     if (state.burst !== burst && state.burst?.base !== burst.base) return
     const next = state.burst ? settleNudge(state.burst, ok) : undefined
     state.burst = next?.burst

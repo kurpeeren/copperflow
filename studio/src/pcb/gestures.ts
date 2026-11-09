@@ -14,7 +14,7 @@ import { areaCamera } from "./view-fit.js"
 import { picks, type Pickable, type PickContext } from "./pick.js"
 import { gestureStart, hasMoved, rightButtonHeld, stillRelease, type ArmedTool, type ContextTarget, type GestureStart, type Press, type StillRelease, type Under } from "./press.js"
 import { endReshape, followReshape, gripOf, handleUnder, startReshape, type ReshapeGesture, type WireDrag } from "./wire-drag.js"
-import { withFollowingWires, type WireFollow } from "./wire-follow.js"
+import { withMovedWires, type MovedWires, type WireFollow } from "./wire-follow.js"
 import type { WireLine } from "./wire-hit.js"
 
 export type { ReshapeGesture } from "./wire-drag.js"
@@ -106,13 +106,19 @@ export interface GestureInput {
 export type Commit = (names: readonly string[], offset: Point, wires?: readonly string[]) => void
 
 /**
- * The edit that moves `names` and the selected `wires` by `offset`; a part with no anchor in this view moves from the
- * centre of its box. On the schematic the wires at the moved pins keep their first segments square, and the selected
- * wires move with the parts, in the same edit list (wire-follow.ts).
+ * The edit that moves `names` and the selected `wires` by `offset`, and the shapes it gives the wires (drawn while the
+ * drag runs and until its build lands); a part with no anchor in this view moves from the centre of its box. On the
+ * schematic the wires at the moved pins keep their first segments square, and the selected wires move with the parts,
+ * in the same edit list (wire-follow.ts).
  */
-export function movePlan(input: GestureInput, names: readonly string[], offset: Point, wires: readonly string[] = []): GroupEdit {
+export function moveWithWires(input: GestureInput, names: readonly string[], offset: Point, wires: readonly string[] = []): MovedWires {
   const plan = moveEach(input.circuit, names, input.view, anchorLookup(input.anchors, input.boxes), offset, input.blockerFor)
-  return withFollowingWires(plan, input.circuit, input.follow, { wires, offset })
+  return withMovedWires(plan, input.circuit, input.follow, { wires, offset })
+}
+
+/** The edit of a move (moveWithWires) without the shapes. */
+export function movePlan(input: GestureInput, names: readonly string[], offset: Point, wires: readonly string[] = []): GroupEdit {
+  return moveWithWires(input, names, offset, wires).plan
 }
 
 /** A box smaller than this on both sides, in CSS pixels, is a click. */

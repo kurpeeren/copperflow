@@ -77,10 +77,15 @@ export interface CanvasProps {
 /** What a double click opens Properties on. */
 export type PropertiesTarget = Extract<ContextTarget, { kind: "part" | "wire" }>
 
-/** Parts drawn away from where the design has them: being dragged, or moved and waiting for their build. */
+/**
+ * Parts drawn away from where the design has them: being dragged, or moved and waiting for their build. On the
+ * schematic, `wires` are the shapes the move gives the wires at the moved pins and the selected wires, drawn in place
+ * of their own meanwhile.
+ */
 export interface Moving {
   names: readonly string[]
   offset: Point
+  wires?: readonly WireLine[]
 }
 
 const WHEEL_ZOOM = 0.0015

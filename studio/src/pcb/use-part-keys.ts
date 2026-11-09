@@ -15,7 +15,7 @@ import { keyAction, keyInput, type KeyResult } from "./canvas-keys"
 import { deletePlan } from "./delete-plan"
 import { sendGroupEdit, type Layout } from "./group-edits"
 import { claimsKey, type BuildStatus } from "./key-burst"
-import { useKeyEdits, type KeyEdits } from "./use-key-edits"
+import { useKeyEdits, type KeyEdits, type KeyMove } from "./use-key-edits"
 import { selectionHighlight, type Highlight } from "./highlight"
 import type { Point } from "./geometry"
 import type { View } from "./positions"
@@ -117,9 +117,9 @@ function usePartCommands(input: PartKeysInput, edits: KeyEdits): void {
   useCommands(table)
 }
 
-/** Wires the part keys and commands; returns whether a Rotate press is held until the next build. */
-export function usePartKeys(input: PartKeysInput): { rotateHeld: boolean } {
-  const { edits, held } = useKeyEdits(input)
+/** Wires the part keys and commands; returns whether a Rotate press is held until the next build, and the last arrow move sent. */
+export function usePartKeys(input: PartKeysInput): { rotateHeld: boolean; keyMove: KeyMove | undefined } {
+  const { edits, held, moved } = useKeyEdits(input)
   usePartCommands(input, edits)
   const { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, follow } = input
   useEffect(() => {
@@ -133,5 +133,5 @@ export function usePartKeys(input: PartKeysInput): { rotateHeld: boolean } {
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [edits, view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, follow])
-  return { rotateHeld: held }
+  return { rotateHeld: held, keyMove: moved }
 }

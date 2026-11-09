@@ -18,6 +18,7 @@ import { NO_LOCKS } from "./trace-source.js"
 import { describeWire, namedWireReason } from "./wire-actions.js"
 import { directionOf } from "./wire-geometry.js"
 import { carryPath, tidy, wireBlocker, wireOf, wireShapeEdits, type WireShape, type WireWriter } from "./wire-shape.js"
+import type { WireLine } from "./wire-hit.js"
 
 /** How far each moved part goes on the sheet, by name, in sheet units. */
 export type Moves = ReadonlyMap<string, Point>
@@ -124,24 +125,43 @@ function sourceWire(design: Design, source: SourceCircuit, wire: WireShape, writ
   return { start, end, corners, path: tidy([start.at, ...corners, ...(end ? [end.at] : [])]) }
 }
 
-/** The edits that write `next` as the wire's shape; nothing when it is the shape `shown` or the trace cannot be written. */
-function shapeEdits(design: Design, wire: WireShape, next: Point[], locked: ReadonlySet<string>, shown: Point[]): Edit[] {
-  const result = next.length < 2 ? [] : wireShapeEdits(design, { ...wire, points: next }, next, locked, shown)
-  return Array.isArray(result) ? result : []
+/** A wire's new shape in a move, and the edits that write it: the shape is drawn until the build with the move lands. */
+interface WireMove {
+  line: WireLine
+  edits: Edit[]
 }
 
-/** The edit that keeps one wire square at its moved pins; nothing when its shape did not change or it cannot be written. */
-function followWire(design: Design, source: SourceCircuit, wire: WireShape, moves: Moves, locked: ReadonlySet<string>): Edit[] {
+/** The move that writes `next` as the wire's shape; none when it is the shape `shown` or the trace cannot be written. */
+function shapeMove(design: Design, wire: WireShape, next: Point[], locked: ReadonlySet<string>, shown: Point[]): WireMove | undefined {
+  const result = next.length < 2 ? [] : wireShapeEdits(design, { ...wire, points: next }, next, locked, shown)
+  return Array.isArray(result) && result.length > 0 ? { line: { id: wire.id, points: next }, edits: result } : undefined
+}
+
+/** The new shape that keeps one wire square at its moved pins; none when its shape did not change or it cannot be written. */
+function followWire(design: Design, source: SourceCircuit, wire: WireShape, moves: Moves, locked: ReadonlySet<string>): WireMove | undefined {
   const { writer } = wire
-  if (writer.kind !== "trace" || !writer.components.some((name) => moves.has(name))) return []
+  if (writer.kind !== "trace" || !writer.components.some((name) => moves.has(name))) return undefined
   const now = sourceWire(design, source, wire, writer, moves)
-  if (!now) return []
+  if (!now) return undefined
   const { start, end } = now
   const tail = end ? [movedEnd(end)] : []
   // The corner next to each pin is picked on the tidied path, so a point in the middle of a run is not taken for it.
   const current = now.path.slice(1, end ? -1 : undefined)
   const next = tidy([movedEnd(start), ...followCorners(start, current, end), ...tail])
-  return shapeEdits(design, wire, next, locked, [movedEnd(start), ...now.corners, ...tail])
+  return shapeMove(design, wire, next, locked, [movedEnd(start), ...now.corners, ...tail])
+}
+
+/** The new shapes of the hand-drawn wires at the moved pins, but for the wires in `skip` (wireFollowEdits says which). */
+function wireFollowMoves(design: Design, source: SourceCircuit, moves: Moves, locked: ReadonlySet<string>, skip: ReadonlySet<string>): WireMove[] {
+  if (moves.size === 0) return []
+  const pins = new Set(design.circuit.components.filter((component) => moves.has(component.id)).flatMap((component) => component.pins.map((pin) => pin.id)))
+  const touched = new Set(design.circuit.connections.filter((c) => pins.has(c.from) || pins.has(c.to)).map((c) => c.id))
+  return design.schematic.wires.flatMap((drawn) => {
+    const followed = drawn.connection !== undefined && touched.has(drawn.connection) && !skip.has(drawn.id)
+    const wire = followed ? wireOf(design, source, drawn.id) : undefined
+    const move = wire && followWire(design, source, wire, moves, locked)
+    return move ? [move] : []
+  })
 }
 
 /**
@@ -150,14 +170,7 @@ function followWire(design: Design, source: SourceCircuit, wire: WireShape, move
  * a locked part at an end) is left as it is, so the move still goes through; a wire the engine draws needs nothing.
  */
 export function wireFollowEdits(design: Design, source: SourceCircuit, moves: Moves, locked: ReadonlySet<string> = NO_LOCKS, skip: ReadonlySet<string> = new Set()): Edit[] {
-  if (moves.size === 0) return []
-  const pins = new Set(design.circuit.components.filter((component) => moves.has(component.id)).flatMap((component) => component.pins.map((pin) => pin.id)))
-  const touched = new Set(design.circuit.connections.filter((c) => pins.has(c.from) || pins.has(c.to)).map((c) => c.id))
-  return design.schematic.wires.flatMap((drawn) => {
-    const followed = drawn.connection !== undefined && touched.has(drawn.connection) && !skip.has(drawn.id)
-    const wire = followed ? wireOf(design, source, drawn.id) : undefined
-    return wire ? followWire(design, source, wire, moves, locked) : []
-  })
+  return wireFollowMoves(design, source, moves, locked, skip).flatMap((move) => move.edits)
 }
 
 /** The selected wires a move carries, and the offset the move gives the selection. */
@@ -174,15 +187,15 @@ type CarryOutcome =
   | { kind: "leave" }
   | { kind: "blocked"; reason: string }
   | { kind: "follow"; name: string }
-  | { kind: "carry"; id: string; name: string; edits: Edit[] }
+  | { kind: "carry"; id: string; name: string; move: WireMove | undefined }
 
-/** The edit that carries one wire whole by `offset`; its ends whose parts move go along (by the same offset). */
-function carryWire(design: Design, source: SourceCircuit, wire: WireShape, writer: TraceWriter, offset: Point, moves: Moves, locked: ReadonlySet<string>): Edit[] {
+/** The new shape that carries one wire whole by `offset`; its ends whose parts move go along (by the same offset). */
+function carryWire(design: Design, source: SourceCircuit, wire: WireShape, writer: TraceWriter, offset: Point, moves: Moves, locked: ReadonlySet<string>): WireMove | undefined {
   const now = sourceWire(design, source, wire, writer, moves)
-  if (!now) return []
+  if (!now) return undefined
   const [first, second] = writer.components
   const moving = { start: first !== undefined && moves.has(first), end: now.end !== undefined && second !== undefined && moves.has(second) }
-  return shapeEdits(design, wire, carryPath(now.path, offset, moving), locked, now.path)
+  return shapeMove(design, wire, carryPath(now.path, offset, moving), locked, now.path)
 }
 
 function carryOutcome(follow: WireFollow, source: SourceCircuit, id: string, offset: Point, moves: Moves): CarryOutcome {
@@ -194,12 +207,12 @@ function carryOutcome(follow: WireFollow, source: SourceCircuit, id: string, off
   if (blocked !== null) return { kind: "blocked", reason: namedWireReason(design, wire, blocked) }
   const name = describeWire(design, wire)
   if (!writer.toNet && writer.components.every((part) => moves.has(part))) return { kind: "follow", name }
-  return { kind: "carry", id, name, edits: carryWire(design, source, wire, writer, offset, moves, locked) }
+  return { kind: "carry", id, name, move: carryWire(design, source, wire, writer, offset, moves, locked) }
 }
 
-/** The selected wires' part in a move: their edits, the wires carried (the following leaves them), their names and why some stay. */
+/** The selected wires' part in a move: their new shapes, the wires carried (the following leaves them), their names and why some stay. */
 interface Carried {
-  edits: Edit[]
+  moves: WireMove[]
   ids: ReadonlySet<string>
   names: string[]
   skipped: string[]
@@ -208,7 +221,7 @@ interface Carried {
 function carriedWires(follow: WireFollow, source: SourceCircuit, carry: Carry | undefined, moves: Moves): Carried {
   const outcomes = carry ? carry.wires.map((id) => carryOutcome(follow, source, id, carry.offset, moves)) : []
   return {
-    edits: outcomes.flatMap((outcome) => (outcome.kind === "carry" ? outcome.edits : [])),
+    moves: outcomes.flatMap((outcome) => (outcome.kind === "carry" && outcome.move ? [outcome.move] : [])),
     ids: new Set(outcomes.flatMap((outcome) => (outcome.kind === "carry" ? [outcome.id] : []))),
     names: outcomes.flatMap((outcome) => (outcome.kind === "carry" || outcome.kind === "follow" ? [outcome.name] : [])),
     skipped: outcomes.flatMap((outcome) => (outcome.kind === "blocked" ? [outcome.reason] : [])),
@@ -219,17 +232,30 @@ function carriedWires(follow: WireFollow, source: SourceCircuit, carry: Carry | 
 const carriedSummary = (parts: readonly string[], wires: readonly string[], offset: Point): string =>
   `move ${nameList([...parts, ...wireWords(wires)])}${VIEWS.schematic.where} by (${roundPosition(offset.x)}, ${roundPosition(offset.y)})`
 
+/** A move's plan with its wires' edits, and the new shapes of those wires, drawn until the build with the move lands. */
+export interface MovedWires {
+  plan: GroupEdit
+  lines: WireLine[]
+}
+
 /**
  * The plan with the wires its moves take along, in the same edit list: the selected wires in `carry`, carried whole,
- * and the hand-drawn wires at the moved pins, kept square. A selected wire that cannot move is named among those left
- * out. The plan itself without a sheet (the PCB).
+ * and the hand-drawn wires at the moved pins, kept square; and the new shapes those edits give the wires. A selected
+ * wire that cannot move is named among those left out. The plan itself, with no shapes, without a sheet (the PCB).
  */
-export function withFollowingWires(plan: GroupEdit, source: SourceCircuit, follow: WireFollow | undefined, carry?: Carry): GroupEdit {
-  if (!follow) return plan
+export function withMovedWires(plan: GroupEdit, source: SourceCircuit, follow: WireFollow | undefined, carry?: Carry): MovedWires {
+  if (!follow) return { plan, lines: [] }
   const moves = movesOf(follow.design, source, plan.edits)
   const selected = carriedWires(follow, source, carry, moves)
-  const edits = [...selected.edits, ...wireFollowEdits(follow.design, source, moves, follow.locked, selected.ids)]
-  if (edits.length === 0 && selected.names.length === 0 && selected.skipped.length === 0) return plan
+  const wireMoves = [...selected.moves, ...wireFollowMoves(follow.design, source, moves, follow.locked, selected.ids)]
+  const lines = wireMoves.map((move) => move.line)
+  if (wireMoves.length === 0 && selected.names.length === 0 && selected.skipped.length === 0) return { plan, lines }
   const summary = carry && selected.names.length > 0 ? carriedSummary(plan.parts, selected.names, carry.offset) : plan.summary
-  return { ...plan, edits: [...plan.edits, ...edits], summary, skipped: [...plan.skipped, ...selected.skipped] }
+  const edits = [...plan.edits, ...wireMoves.flatMap((move) => move.edits)]
+  return { plan: { ...plan, edits, summary, skipped: [...plan.skipped, ...selected.skipped] }, lines }
+}
+
+/** The plan with the wires its moves take along (withMovedWires), without the shapes. */
+export function withFollowingWires(plan: GroupEdit, source: SourceCircuit, follow: WireFollow | undefined, carry?: Carry): GroupEdit {
+  return withMovedWires(plan, source, follow, carry).plan
 }

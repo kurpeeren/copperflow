@@ -35,6 +35,9 @@ import { boxToolCommand } from "./box-tool"
 import { useFitSelection } from "./use-fit-selection"
 import { useNoteTool } from "./use-note-tool"
 import { usePartKeys } from "./use-part-keys"
+import type { KeyMove } from "./use-key-edits"
+import { previewMoving } from "./move-preview"
+import type { Anchor } from "./positions"
 import { useWireTool } from "./use-wire-tool"
 import { useSheetWires, type SheetCorners } from "./use-sheet-wires"
 import type { WireLine } from "./wire-hit"
@@ -71,7 +74,7 @@ interface SheetScene {
   /** The wire under the pointer, and the wire selected alone, which gets its handles; every selected wire is red. */
   hoverWire: WireLine | undefined
   selectedWire: WireLine | undefined
-  /** Wires drawn in a new shape: the one being dragged, then those waiting for their build. */
+  /** Wires drawn in a new shape: those a move takes along, the one being reshaped, then those waiting for their build. */
   wireShapes: readonly WireLine[]
   palette: Palette
   /** The highlighted nets and the pins on them. */
@@ -250,9 +253,17 @@ function useHighlight(design: Design, nets: Highlight): SheetScene["highlight"] 
   return useMemo(() => highlightOf(design, nets), [design, nets])
 }
 
-/** The wire being reshaped, then those reshaped and waiting for their build. */
-function useWireShapes(gesture: Gesture | undefined, pending: readonly WireLine[]): readonly WireLine[] {
-  return useMemo(() => liveShapes(gesture?.kind === "reshape" ? gesture : undefined, pending), [gesture, pending])
+/** The wires a move takes along (dragged, or sent and waiting for its build), the wire being reshaped, then those reshaped and waiting. */
+function useWireShapes(gesture: Gesture | undefined, pending: readonly WireLine[], moved: readonly WireLine[] | undefined): readonly WireLine[] {
+  return useMemo(() => {
+    const shaped = liveShapes(gesture?.kind === "reshape" ? gesture : undefined, pending)
+    return moved && moved.length > 0 ? [...moved, ...shaped] : shaped
+  }, [gesture, pending, moved])
+}
+
+/** The last arrow move, drawn from the sheet as it is now until a build that started after it lands (move-preview.ts). */
+function useKeyMoving(keyMove: KeyMove | undefined, builtFrom: number, anchors: ReadonlyMap<string, Anchor>): Moving | undefined {
+  return useMemo(() => (keyMove && keyMove.sentAt > builtFrom ? previewMoving(keyMove, anchors) : undefined), [keyMove, builtFrom, anchors])
 }
 
 /** The label being dragged, then those moved and waiting for their build. */
@@ -264,6 +275,8 @@ function useMovingLabels(design: Design, gesture: Gesture | undefined, pending: 
 
 interface SheetKeysInput {
   design: Design
+  /** When the build behind the shown design started (ms): an arrow move sent before it is drawn by the design itself. */
+  builtFrom: number
   camera: Camera | undefined
   cursor: Point | undefined
   fit(): void
@@ -274,8 +287,8 @@ interface SheetKeysInput {
   keys: Omit<Parameters<typeof usePartKeys>[0], "paused" | "fit" | "netUnderPointer" | "netsOf" | "onHighlight">
 }
 
-/** The part keys with H over the sheet, and the hand-over between wiring and the Place tools; returns what to draw lit. */
-function useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys }: SheetKeysInput): { highlight: SheetScene["highlight"]; rotateHeld: boolean } {
+/** The part keys with H over the sheet, and the hand-over between wiring and the Place tools; returns what to draw lit and the last arrow move. */
+function useSheetKeys({ design, builtFrom, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys }: SheetKeysInput): { highlight: SheetScene["highlight"]; rotateHeld: boolean; keyMoving: Moving | undefined } {
   const cursorRef = useRef<Point | undefined>(undefined)
   cursorRef.current = cursor
   const netUnderPointer = useCallback(
@@ -283,7 +296,7 @@ function useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNet
     [design, camera],
   )
   const netsOf = useCallback((part: string) => partNets(design, part), [design])
-  const { rotateHeld } = usePartKeys({ ...keys, paused: wire.drawing !== null, fit, netUnderPointer, netsOf, onHighlight })
+  const { rotateHeld, keyMove } = usePartKeys({ ...keys, paused: wire.drawing !== null, fit, netUnderPointer, netsOf, onHighlight })
   const { wiring, drawing } = wire
   const { disarm } = palette
   // Wiring takes over from a Place tool, as arming a Place tool stops wiring.
@@ -300,7 +313,7 @@ function useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNet
     powerFlag: () => palette.arm("vcc"),
   }
   useCommands(tools)
-  return { highlight: useHighlight(design, highlightNets), rotateHeld }
+  return { highlight: useHighlight(design, highlightNets), rotateHeld, keyMoving: useKeyMoving(keyMove, builtFrom, keys.layout.anchors) }
 }
 
 /** Tells the toolbar which tool is armed (wiring, a Place tool or Fit area), and how to put it away. */
@@ -415,13 +428,13 @@ export function SchematicCanvas(props: CanvasProps) {
   const layout = useLayout(parts, step, snap)
   const menuPlace = useKeyMenuPlace(wrapRef, selection.primary, parts.boxes, camera, size, wires.menuWire)
   const keys = { ...common, selection, layout, builtMark, buildStatus, moveWaiting: gestures.pending !== undefined, menuPlace, onContextMenu: props.onContextMenu, wire: wires.keys }
-  const { highlight, rotateHeld } = useSheetKeys({ design, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys })
+  const { highlight, rotateHeld, keyMoving } = useSheetKeys({ design, builtFrom, camera, cursor, fit, wire, palette, highlightNets, onHighlight, keys })
   const hover = useSheetHover(parts.boxes, wire, labels.tools, props.pickFilter, wires.hits)
-  const { moving, gesture } = gestures
+  const { gesture } = gestures
+  const moving = gestures.moving ?? keyMoving
   const movingLabels = useMovingLabels(design, gesture, labels.pending)
-  const { lineOf } = wires
-  const hoverWire = useMemo(() => lineOf(hover.wire), [lineOf, hover.wire])
-  const wireShapes = useWireShapes(gesture, wires.pending)
+  const hoverWire = useMemo(() => wires.lineOf(hover.wire), [wires.lineOf, hover.wire])
+  const wireShapes = useWireShapes(gesture, wires.pending, moving?.wires)
   useSheetPaint(canvasRef, { design, border, camera, size, wire, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel: hover.label, hoverWire, selectedWire: wires.selected, wireShapes, palette, highlight, markers, activeViolation, grid })
   const pointer = sheetPointer({ camera, size, element: wrapRef, gestures, setCursor, hover: hover.at, boxes: parts.boxes, labels: labels.tools, wires: wires.hits, corners: wires.corners, wire, palette, note, picking: { selection, armed: tool.armed, filter: props.pickFilter }, onOpenProperties: props.onOpenProperties })
   const cursorStyle = cursorFor(gesture, wire.drawing !== null || wire.overPin || palette.armed || note.armed, hover.part !== undefined || hover.label !== undefined || hover.wire !== undefined)

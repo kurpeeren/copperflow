@@ -3,9 +3,10 @@ import { analyzeCircuit } from "../src/core/analyze.js"
 import { applyEdits } from "../src/core/edit.js"
 import type { Edit } from "../src/core/types.js"
 import { buildDesign, type Design } from "../src/engine/design.js"
-import { movePlan, type GestureInput } from "../studio/src/pcb/gestures.js"
+import { movePlan, moveWithWires, type GestureInput } from "../studio/src/pcb/gestures.js"
 import { sendGroupEdit, type GroupEditActions, type Layout } from "../studio/src/pcb/group-edits.js"
 import { keySession, type EditInput } from "../studio/src/pcb/key-session.js"
+import { movePreview, previewMoving, type MovePreview } from "../studio/src/pcb/move-preview.js"
 import { moveBlocker, partAnchors, type SourceCircuit } from "../studio/src/pcb/positions.js"
 import { sheetBoxes } from "../studio/src/pcb/schematic-draw.js"
 import { movesOf, wireFollowEdits, withFollowingWires } from "../studio/src/pcb/wire-follow.js"
@@ -227,6 +228,43 @@ describe("selected wires in a move of the selection", () => {
   })
 })
 
+describe("what a move draws until its build lands", () => {
+  const input = {
+    view: "schematic",
+    circuit: sheet.source,
+    anchors: partAnchors(sheet.design, "schematic"),
+    boxes: sheetBoxes(sheet.design.schematic),
+    blockerFor: (name: string) => moveBlocker(sheet.source, new Set(), name, "schematic"),
+    follow: { design: sheet.design, locked: new Set<string>() },
+  } as unknown as GestureInput
+
+  test("the shapes a move gives its wires, carried and following, are the ones the build then draws", () => {
+    const { plan, lines } = moveWithWires(input, ["R1", "R7"], p(0, 0.5), [Z])
+    expect(lines.map((line) => line.id)).toEqual([Z, "wire:R7.pin2|net.VCC"])
+    expect(lines).toHaveLength(plan.edits.filter((edit) => edit.kind === "setTraceHints").length)
+    const rebuilt = setup(applyEdits(SOURCE, plan.edits, new Set())).design
+    for (const line of lines) expect(pointsOf(rebuilt, line.id)).toEqual(line.points)
+  })
+
+  test("without the sheet's wires (the PCB) a move has no shapes to draw", () => {
+    expect(moveWithWires({ ...input, follow: undefined }, ["R1"], p(0, 0.5), [Z]).lines).toEqual([])
+  })
+
+  test("a preview puts each moved part where its new props put it, and is drawn from the sheet as it is now", () => {
+    const { plan, lines } = moveWithWires(input, ["R1", "R7"], p(0, 0.5), [Z])
+    const preview = movePreview(sheet.design, plan, lines)
+    expect(preview.parts).toEqual([{ name: "R1", to: p(0, 0.5) }, { name: "R7", to: p(0, 11.5) }])
+    expect(previewMoving(preview, partAnchors(sheet.design, "schematic"))).toEqual({ names: ["R1", "R7"], offset: p(0, 0.5), wires: lines })
+    const halfway = setup(applyEdits(SOURCE, [{ kind: "setProps", part: "R1", props: { schX: 0, schY: 0.2 } }, { kind: "setProps", part: "R7", props: { schX: 0, schY: 11.2 } }], new Set()))
+    expect(previewMoving(preview, partAnchors(halfway.design, "schematic"))?.offset).toEqual(p(0, 0.3))
+  })
+
+  test("a preview of wires alone moves no part", () => {
+    const { plan, lines } = moveWithWires(input, [], p(0.5, 0.5), [Z])
+    expect(previewMoving(movePreview(sheet.design, plan, lines), partAnchors(sheet.design, "schematic"))).toEqual({ names: [], offset: p(0, 0), wires: lines })
+  })
+})
+
 /** Studio's edit call, kept: every call's edits and summary; each edit is written to the source when `answer` says. */
 function server(start = SOURCE) {
   let text = start
@@ -296,8 +334,8 @@ describe("the move and its wires are one history entry", () => {
     expect(withFollowingWires(plan, sheet.source, undefined)).toBe(plan)
   })
 
-  function keys(studio: ReturnType<typeof server>, names: readonly string[], design = sheet.design, wires: readonly string[] = []) {
-    const session = keySession({ resolved: () => undefined, holding: () => undefined })
+  function keys(studio: ReturnType<typeof server>, names: readonly string[], design = sheet.design, wires: readonly string[] = [], previews: MovePreview[] = []) {
+    const session = keySession({ resolved: () => undefined, holding: () => undefined, moved: (preview) => void previews.push(preview) })
     const input = (): EditInput => {
       const circuit = studio.source()
       return {
@@ -362,6 +400,19 @@ describe("the move and its wires are one history entry", () => {
     expect(studio.calls[1]?.edits).toEqual([{ kind: "setProps", part: "R1", props: { schX: 0, schY: 0.2 } }, hints(".R1 > .pin2", ".R2 > .pin1", [p(2, 0.2), p(2, 2.2), p(3.5, 2.2)])])
     await studio.answer()
     expect(square(pointsOf(setup(studio.text()).design, Z) ?? [])).toBe(true)
+  })
+
+  test("each arrow send hands the canvas the parts' places and the wires' shapes to draw until the build, the total from where the burst began", async () => {
+    const studio = server()
+    const previews: MovePreview[] = []
+    const { session, input } = keys(studio, ["R1"], sheet.design, [Z], previews)
+    session.nudge(input(), { action: "nudgeUp", preventDefault: true, steps: 1 })
+    session.nudge(input(), { action: "nudgeUp", preventDefault: true, steps: 1 })
+    await studio.answer()
+    expect(previews).toEqual([
+      { parts: [{ name: "R1", to: p(0, 0.1) }], wires: [{ id: Z, points: [p(0.5, 0.1), p(2, 0.1), p(2, 2.1), p(3.5, 2.1), p(3.5, 2)] }] },
+      { parts: [{ name: "R1", to: p(0, 0.2) }], wires: [{ id: Z, points: [p(0.5, 0.2), p(2, 0.2), p(2, 2.2), p(3.5, 2.2), p(3.5, 2)] }] },
+    ])
   })
 
   test("arrow keys with only a wire selected move that wire", async () => {
