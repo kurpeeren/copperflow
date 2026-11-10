@@ -107,12 +107,13 @@ export function drawOutline(
   ctx.lineWidth = devicePx / ratio
   ctx.strokeStyle = kind === "selected" ? look.selected : look.hover
   ctx.setLineDash(kind === "selected" ? [] : [4, 3])
-  ctx.shadowBlur = kind === "selected" ? (look.glow ?? 0) : 0
-  if (ctx.shadowBlur > 0) ctx.shadowColor = look.selected
   if (kind === "selected" && look.selectedFill) {
     ctx.fillStyle = look.selectedFill
     ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
   }
+  // The glow is set after the wash is filled, so only the outline glows.
+  ctx.shadowBlur = kind === "selected" ? (look.glow ?? 0) : 0
+  if (ctx.shadowBlur > 0) ctx.shadowColor = look.selected
   ctx.strokeRect(rect.x, rect.y, rect.width, rect.height)
   ctx.restore()
 }

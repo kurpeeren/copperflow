@@ -5,7 +5,7 @@ import { planGrid } from "../studio/src/pcb/grid.js"
 import { drawOutline, sheetLookFor, SHEET_LOOK } from "../studio/src/pcb/overlays.js"
 import { drawSchematic, type SchematicDrawOptions } from "../studio/src/pcb/schematic-draw.js"
 import { drawSchematicGrid, sheetGridPaint } from "../studio/src/pcb/schematic-grid.js"
-import { darkSchematicTheme as dark, schematicTheme as light, setSheetPalette } from "../studio/src/pcb/schematic-theme.js"
+import { darkSchematicTheme as dark, resetSheetPalette, schematicTheme as light, setSheetPalette } from "../studio/src/pcb/schematic-theme.js"
 import { sheetWireLookFor, SHEET_WIRE_LOOK } from "../studio/src/pcb/wire-overlay.js"
 import { recorder } from "./helpers/fake-ctx.js"
 
@@ -27,7 +27,7 @@ function draw(options: Partial<SchematicDrawOptions> = {}) {
   return rec
 }
 
-afterEach(() => setSheetPalette(light))
+afterEach(resetSheetPalette)
 
 /** The calls that put paint on the canvas. */
 const PAINTS = new Set(["stroke", "fill", "fillText", "strokeRect", "fillRect"])
@@ -144,5 +144,15 @@ describe("the dark overlays", () => {
     const hover = recorder()
     drawOutline(hover.ctx, camera, size, box, { x: 0, y: 0 }, "hover", sheetLookFor(dark), 2)
     expect(hover.records.find((r) => r.name === "strokeRect")).toMatchObject({ strokeStyle: dark.hover, shadowBlur: 0, lineWidth: 0.5 })
+  })
+})
+
+describe("the glow and a selection wash", () => {
+  test("a look with a wash fills it without the glow; only the outline glows", () => {
+    const { ctx, records } = recorder()
+    const box = { minX: 0, minY: 0, maxX: 1, maxY: 1 }
+    drawOutline(ctx, { cx: 0, cy: 0, scale: 20 }, { width: 400, height: 300 }, box, { x: 0, y: 0 }, "selected", { ...sheetLookFor(dark), selectedFill: "rgb(0 0 0 / 10%)" }, 1)
+    expect(records.find((r) => r.name === "fillRect")?.shadowBlur).toBe(0)
+    expect(records.find((r) => r.name === "strokeRect")?.shadowBlur).toBe(8)
   })
 })

@@ -152,6 +152,11 @@ export function setSheetPalette(palette: SchematicPalette): void {
   current = palette
 }
 
+/** Back to the light palette: for tests that set another. */
+export function resetSheetPalette(): void {
+  current = schematicTheme
+}
+
 /** Turns the selection glow on or off for what is stroked next: the palette's blur, in its selection colour. */
 export function glow(ctx: Ctx, on: boolean, palette: SchematicPalette = current): void {
   const blur = on ? palette.selectionGlow : 0

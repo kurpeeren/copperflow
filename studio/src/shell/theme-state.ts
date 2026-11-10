@@ -54,5 +54,8 @@ export const themeToggles = (theme: ThemeName) => ({ themeLight: theme === "ligh
 /** The schematic's grid style in each theme: a quiet dot grid on the dark sheet, lines on the light one. */
 export const themeGridStyle = (theme: ThemeName): GridStyle => (theme === "dark" ? "dots" : "lines")
 
+/** The grid styles after choosing `next` while `current` is on: unchanged when it is the same theme. */
+export const gridAfterThemeChoice = (styles: GridStyles, current: ThemeName, next: ThemeName): GridStyles => (current === next ? styles : withThemeGrid(styles, next))
+
 /** The grid styles after a switch to `theme`: the schematic's follows the theme, the PCB's stays. */
 export const withThemeGrid = (styles: GridStyles, theme: ThemeName): GridStyles => ({ ...styles, schematic: themeGridStyle(theme) })

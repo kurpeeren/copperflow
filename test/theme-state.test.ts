@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { INITIAL_GRID_STYLES } from "../studio/src/pcb/grid.js"
-import { DEFAULT_THEME, THEME_KEY, applyTheme, browserStore, loadTheme, parseTheme, saveTheme, themeGridStyle, themeToggles, withThemeGrid } from "../studio/src/shell/theme-state.js"
+import { readFileSync } from "node:fs"
+import { DEFAULT_THEME, THEME_KEY, applyTheme, browserStore, gridAfterThemeChoice, loadTheme, parseTheme, saveTheme, themeGridStyle, themeToggles, withThemeGrid } from "../studio/src/shell/theme-state.js"
 
 /** A storage that keeps what it is given, or throws on every use. */
 function store(initial: Record<string, string> = {}, broken = false) {
@@ -83,5 +84,45 @@ describe("the grid style per theme", () => {
     expect(withThemeGrid(styles, "dark")).toEqual({ schematic: "dots", pcb: "dots" })
     expect(withThemeGrid({ ...styles, schematic: "dots" }, "light")).toEqual({ schematic: "lines", pcb: "dots" })
     expect(withThemeGrid(INITIAL_GRID_STYLES, "light")).toEqual(INITIAL_GRID_STYLES)
+  })
+})
+
+describe("choosing the theme that is already on", () => {
+  test("leaves the grid style alone; a real change sets the schematic's", () => {
+    const styles = { schematic: "lines", pcb: "lines" } as const
+    expect(gridAfterThemeChoice(styles, "dark", "dark")).toBe(styles)
+    expect(gridAfterThemeChoice(styles, "light", "dark")).toEqual({ schematic: "dots", pcb: "lines" })
+    expect(gridAfterThemeChoice({ schematic: "dots", pcb: "lines" }, "dark", "light")).toEqual({ schematic: "lines", pcb: "lines" })
+  })
+})
+
+describe("the theme before the first paint", () => {
+  const html = readFileSync(new URL("../studio/index.html", import.meta.url), "utf8")
+  const head = html.slice(0, html.indexOf("</head>"))
+  const inline = /<script>([\s\S]*?)<\/script>/.exec(head)?.[1] ?? ""
+
+  /** Runs the inline script against a storage and a root, and returns the data-theme it set, if any. */
+  function boot(stored: string | null | Error): string | undefined {
+    let set: string | undefined
+    const localStorage = {
+      getItem: (key: string) => {
+        if (stored instanceof Error) throw stored
+        return key === THEME_KEY ? stored : null
+      },
+    }
+    const document = { documentElement: { setAttribute: (name: string, value: string) => void (name === "data-theme" && (set = value)) } }
+    new Function("localStorage", "document", inline)(localStorage, document)
+    return set
+  }
+
+  test("index.html sets the remembered theme in <head>, ahead of the module script that loads the CSS", () => {
+    expect(inline).toContain(THEME_KEY)
+    expect(html.indexOf("<script>")).toBeLessThan(html.indexOf('<script type="module"'))
+    expect(html.indexOf("<script>")).toBeLessThan(html.indexOf("</head>"))
+  })
+
+  test("only a remembered Dark is applied; anything else, or a blocked storage, leaves the page light", () => {
+    expect(boot("dark")).toBe("dark")
+    for (const stored of ["light", null, "Dark", new Error("blocked")]) expect(boot(stored)).toBeUndefined()
   })
 })

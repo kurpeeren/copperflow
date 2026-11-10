@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs"
-import { describe, expect, test } from "vitest"
+import { afterEach, describe, expect, test } from "vitest"
 import { SHEET_DEFAULT_STEP as SHEET_GRID, gridLineSpacing, planGrid } from "../studio/src/pcb/grid.js"
-import { darkSchematicTheme, schematicTheme, schematicThemeFor, setSheetPalette, sheetPalette, type SchematicPalette } from "../studio/src/pcb/schematic-theme.js"
+import { darkSchematicTheme, schematicTheme, schematicThemeFor, resetSheetPalette, setSheetPalette, sheetPalette, type SchematicPalette } from "../studio/src/pcb/schematic-theme.js"
 import { contrastRatio } from "../studio/src/shell/contrast.js"
 
 const SPEC = readFileSync(new URL("../docs/studio-easyeda-parity.md", import.meta.url), "utf8")
@@ -99,6 +99,8 @@ describe("schematic grid", () => {
 })
 
 describe("the dark schematic palette", () => {
+  afterEach(resetSheetPalette)
+
   test("a charcoal sheet, bright wires and a cyan selection; values ours, as the brief sets them", () => {
     expect(darkSchematicTheme).toMatchObject({
       background: "#141619", grid: "#2B3038", gridDot: "#2B3038", gridFifth: "#3A4049",
@@ -134,7 +136,7 @@ describe("the dark schematic palette", () => {
     expect(sheetPalette()).toBe(schematicTheme)
     setSheetPalette(darkSchematicTheme)
     expect(sheetPalette()).toBe(darkSchematicTheme)
-    setSheetPalette(schematicTheme)
+    resetSheetPalette()
     expect(sheetPalette()).toBe(schematicTheme)
   })
 

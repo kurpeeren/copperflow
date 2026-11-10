@@ -6,7 +6,7 @@ import type { View } from "./pcb/positions"
 import { INITIAL_BOTTOM, clickBottom, openBottomTab, toggleBottom, type BottomState, type BottomTab } from "./shell/bottom-state"
 import { NO_HIGHLIGHT, type Highlight } from "./pcb/highlight"
 import { INITIAL_GRID_STEPS, INITIAL_GRID_STYLES, setGridStep, toggleGridStyle, type GridSteps, type GridStyles } from "./pcb/grid"
-import { applyTheme, browserStore, loadTheme, saveTheme, withThemeGrid, type ThemeName } from "./shell/theme-state"
+import { applyTheme, browserStore, gridAfterThemeChoice, loadTheme, saveTheme, withThemeGrid, type ThemeName } from "./shell/theme-state"
 import { nextUnit, type Unit } from "./pcb/units"
 import { useLayers } from "./use-layers"
 import { usePickFilter } from "./use-pick-filter"
@@ -69,7 +69,7 @@ function useGridSettings(theme: ThemeName) {
   const [gridSteps, setGridSteps] = useState<GridSteps>(INITIAL_GRID_STEPS)
   const changeGridStep = useCallback((view: View, step: number) => setGridSteps((steps) => setGridStep(steps, view, step)), [])
   const toggleGridStyleOf = useCallback((view: View) => setGridStyles((styles) => toggleGridStyle(styles, view)), [])
-  const gridFollowsTheme = useCallback((next: ThemeName) => setGridStyles((styles) => withThemeGrid(styles, next)), [])
+  const gridFollowsTheme = useCallback((current: ThemeName, next: ThemeName) => setGridStyles((styles) => gridAfterThemeChoice(styles, current, next)), [])
   return { gridStyles, gridSteps, changeGridStep, toggleGridStyleOf, gridFollowsTheme }
 }
 
@@ -81,11 +81,14 @@ function useTheme() {
   const [theme, setThemeState] = useState<ThemeName>(() => loadTheme(browserStore))
   useEffect(() => applyTheme(document.documentElement, theme), [theme])
   const { gridFollowsTheme, ...grid } = useGridSettings(theme)
+  // A ref keeps `setTheme` stable and lets choosing the theme that is on leave the grid style as it is.
+  const current = useRef(theme)
   const setTheme = useCallback(
     (next: ThemeName) => {
+      gridFollowsTheme(current.current, next)
+      current.current = next
       setThemeState(next)
       saveTheme(browserStore, next)
-      gridFollowsTheme(next)
     },
     [gridFollowsTheme],
   )
