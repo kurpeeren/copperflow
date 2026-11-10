@@ -50,6 +50,25 @@ describe("edit_circuit with sub-sheets", () => {
     expect(await listEntries(root, 10)).toHaveLength(1)
   })
 
+  test("add_instance refuses a base another instance has, and a designator another instance makes; nothing is written", async () => {
+    const before = await source()
+    const same = await edit({ add_instance: { sheet: "PowerStage", name: "PS3", connections: { GND: "GND" }, base: 100 } })
+    expect(same.text).toMatch(/^Edit 1 of 1 \(add_instance\) was refused: PS3: base 100 is already PS1's; give another base/)
+    const big = `export default function Big() {
+  return (
+    <sheet>
+      <resistor name="R151" />
+    </sheet>
+  )
+}
+`
+    await writeFile(join(root, "Big.sheet.tsx"), big)
+    const overlap = await edit({ add_instance: { sheet: "Big", name: "B1", base: 50 } })
+    expect(overlap.text).toMatch(/was refused: B1 makes R201 \(R151 in Big\), which PS2 makes too; give B1 another base/)
+    expect(await source()).toBe(before)
+    expect(await listEntries(root, 10)).toHaveLength(1)
+  })
+
   test("set_connections writes an instance's connections anew", async () => {
     const answer = await edit({ set_connections: { instance: "PS2", connections: { VIN: "VBUS", VOUT: "V2_5", GND: "GND" } } })
     expect(answer.text).toMatch(/set PS2 connections/)

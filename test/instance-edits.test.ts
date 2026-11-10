@@ -92,6 +92,27 @@ describe("the edits made from a request", () => {
     })
   })
 
+  test("without a base, a new instance goes past every instance's span, a nested sheet's included", async () => {
+    const root = await setup()
+    await writeFile(join(root, "Block.sheet.tsx"), `import Stage from "./Stage.sheet"
+export default function Block() {
+  return (
+    <sheet>
+      <resistor name="R1" />
+      <Stage name="S1" base={100} />
+    </sheet>
+  )
+}
+`)
+    const text = `import Block from "./Block.sheet"
+${BOARD.replace("<resistor", `<Block name="B1" base={100} />
+    <resistor`)}`
+    const circuit = { file: MAIN, model: analyzeCircuit(text) }
+    expect(await instanceEdit(root, circuit, { sheet: "Block", name: "B2", connections: {} })).toMatchObject({ base: 300 })
+    await expect(instanceEdit(root, circuit, { sheet: "Stage", name: "S2", connections: {}, base: 100 })).rejects.toThrow("S2: base 100 is already B1's; give another base")
+    await expect(instanceEdit(root, circuit, { sheet: "Stage", name: "S2", connections: {}, base: 101 })).resolves.toMatchObject({ base: 101 })
+  })
+
   test("an unknown port or sheet is refused, naming what there is", async () => {
     const root = await setup()
     const circuit = { file: MAIN, model: analyzeCircuit(BOARD) }

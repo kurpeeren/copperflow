@@ -1,10 +1,10 @@
 // The requests that make instance edits: a sheet's file and ports are read so the connections can be checked.
 import { readFile } from "node:fs/promises"
 import { posix } from "node:path"
-import { BASE_STEP } from "../engine/sheets.js"
 import { scanCircuit } from "./analyze.js"
 import { SHEET_IMPORT, SHEET_TAG } from "./instance-edits.js"
 import { sheetFileIn } from "./selectors.js"
+import { checkNewInstance, nextFreeBase, placeInstances, sheetLayout } from "./sheet-layout.js"
 import { resolveInRoot } from "./workspace.js"
 import type { CircuitModel, Edit } from "./types.js"
 
@@ -47,22 +47,22 @@ export interface InstanceRequest {
 }
 
 /**
- * The base a new instance gets written with: the highest written base of the circuit's instances plus 100, so its
- * designators stay put when instances are moved or reordered. Undefined when an instance takes the default base,
- * since the default then depends on the order written.
+ * The edit that adds an instance, checked as new_circuit checks one: the connections against the sheet file's ports,
+ * the base and the designators it makes against the circuit's parts and instances. Without a base it is written
+ * past every instance's span, so its designators stay put when instances are moved or reordered; when an instance
+ * of the circuit takes the default base, the new one does too (the default then depends on the order written, and
+ * the engine's defaults never collide). Writes nothing.
  */
-function nextBase(model: CircuitModel): number | undefined {
-  const bases = model.parts.filter((part) => sheetFileIn(model, part.name) !== undefined).map((part) => part.props["base"]?.literal)
-  if (bases.some((base) => typeof base !== "number")) return undefined
-  return Math.max(0, ...(bases as number[])) + BASE_STEP
-}
-
-/** The edit that adds an instance, with the connections checked against the sheet file's ports. Writes nothing. */
 export async function instanceEdit(root: string, circuit: { file: string; model: CircuitModel }, request: InstanceRequest): Promise<Edit> {
   if (!SHEET_TAG.test(request.sheet)) throw new Error(`"${request.sheet}" is not a sheet name; a sheet name starts with a capital letter, e.g. PowerStage`)
   const { file, importFrom } = sheetFileFor(circuit, request.sheet)
   checkPorts(request.sheet, await portsOfFile(root, request.sheet, file), request.connections)
-  const base = request.base ?? nextBase(circuit.model)
+  const placed = await placeInstances(root, circuit.file, circuit.model)
+  const base = request.base ?? (placed.every((instance) => instance.written) ? nextFreeBase(placed) : undefined)
+  if (base !== undefined) {
+    const parts = circuit.model.parts.filter((part) => sheetFileIn(circuit.model, part.name) === undefined).map((part) => part.name)
+    checkNewInstance(request.name, request.sheet, base, await sheetLayout(root, file, [circuit.file]), placed, parts)
+  }
   return {
     kind: "addInstance",
     tag: request.sheet,
