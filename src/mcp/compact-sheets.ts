@@ -44,3 +44,31 @@ export function partLinesWithSheets(parts: readonly PartInfo[], flat: Flattened,
 export function flatCounts(flat: Flattened): { parts: number; instances: number; traces: number } {
   return { parts: flat.components.length, instances: (flat.instances ?? []).length, traces: flat.connections.length }
 }
+
+/** Whether a finding's item is about an instance: one of its parts or their pins, one of its ports, or a net or instance inside it. */
+export function aboutInstance(instance: SheetInstance): (item: string) => boolean {
+  const parts = new Set(instance.parts)
+  const { path } = instance
+  return (raw) => {
+    const item = raw.replace(/^net[.:]/, "")
+    return parts.has(item.split(".")[0] ?? item) || item === path || item.startsWith(`${path}.`) || item.startsWith(`${path}/`)
+  }
+}
+
+/** The instance at `path`, or throws naming the instances there are. */
+export function instanceAt(file: string, flat: Flattened, path: string): SheetInstance {
+  const instances = flat.instances ?? []
+  const found = instances.find((instance) => instance.path === path)
+  if (found) return found
+  if (instances.length === 0) throw new Error(`${file} has no sub-sheet instances, so there is no instance ${path}`)
+  throw new Error(`There is no instance ${path} in ${file}; the instances are ${instances.map((instance) => instance.path).join(", ")}`)
+}
+
+/** The lines of one instance and the instances inside it, each followed by the parts it holds directly. */
+export function instancePartLines(flat: Flattened, instance: SheetInstance, locked: ReadonlySet<string>): string[] {
+  const inside = (flat.instances ?? []).filter((other) => other.path === instance.path || other.path.startsWith(`${instance.path}/`))
+  return inside.flatMap((other) => [
+    instanceLine(other, locked.has(other.path)),
+    ...flat.components.filter((component) => component.instance === other.path).map(flatPartLine),
+  ])
+}

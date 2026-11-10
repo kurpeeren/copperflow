@@ -16,7 +16,7 @@ export interface Actions {
    */
   editFile(file: string, edits: Edit[], summary: string): Promise<EditOutcome>
   /** Writes copper edits to the open circuit's layout file, as one history entry, with the mark of the write. */
-  editLayout(edits: LayoutEdit[], summary: string): Promise<EditOutcome>
+  editLayout(edits: LayoutEdit[], summary: string, sheet?: { file: string; edits: Edit[] }): Promise<EditOutcome>
   lock(parts: string[], locked: boolean): Promise<boolean>
   mark(text: string, at?: { view: "pcb" | "schematic"; x: number; y: number }): Promise<boolean>
   unmark(id: string): Promise<boolean>
@@ -71,7 +71,10 @@ export function useActions({ file, refresh, refreshParts, notify }: ActionsInput
     [run],
   )
   const editMarked = useCallback((edits: Edit[], summary: string) => postMarked("/api/edit", { file, edits, summary }), [file, postMarked])
-  const editLayout = useCallback((edits: LayoutEdit[], summary: string) => postMarked("/api/layout", { file, edits, summary }), [file, postMarked])
+  const editLayout = useCallback(
+    (edits: LayoutEdit[], summary: string, sheet?: { file: string; edits: Edit[] }) => postMarked("/api/layout", { file, edits, summary, ...(sheet ? { sheet } : {}) }),
+    [file, postMarked],
+  )
   return useMemo(
     () => ({
       edit: async (edits, summary) => (await editMarked(edits, summary)).ok,

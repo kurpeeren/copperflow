@@ -5,7 +5,7 @@ import { CANVAS_FONT_FAMILY, PALETTE } from "./ctx.js"
 import { paintGrid, type GridLook, type GridPaint } from "./grid.js"
 import { worldToScreen, type Box, type Camera, type Point, type Size } from "./geometry.js"
 import { deviceWidth, hairlineWidth, squareAt, squareSide, strokeBoxAt } from "./crisp.js"
-import { schematicTheme } from "./schematic-theme.js"
+import { schematicTheme, type SchematicPalette } from "./schematic-theme.js"
 import { fontPxFor, sharpenText, textAnchorAt } from "./text-level.js"
 
 /** A note's text size in CSS pixels; it is drawn at the nearest whole device pixel size. */
@@ -42,6 +42,8 @@ export interface OverlayLook {
   markPin: string
   markPanel: string
   markText: string
+  /** The blur round a selection outline, in device pixels, in the selection colour; none when omitted. */
+  glow?: number
 }
 
 /** The PCB's look: white selection with a 50% wash, white hover, the cyan selection box (dotted right to left) and note box, notes and locks in the white document colour. */
@@ -62,22 +64,28 @@ export const PCB_LOOK: OverlayLook = {
   markText: PALETTE.document,
 }
 
-/** The schematic's look: red selection and note box and a blue selection box on the light sheet, with our own hover, lock and note colours. */
-export const SHEET_LOOK: OverlayLook = {
-  selected: schematicTheme.selection,
-  hover: schematicTheme.hover,
-  noteStroke: schematicTheme.selection,
-  noteFill: schematicTheme.selectionFill,
-  noteDash: [5, 4],
-  boxStroke: schematicTheme.selectionBox,
-  boxFill: schematicTheme.selectionBoxFill,
-  boxDash: [5, 4],
-  lockFill: schematicTheme.lockBadge,
-  lockGlyph: schematicTheme.lockGlyph,
-  markPin: schematicTheme.notePin,
-  markPanel: schematicTheme.notePanel,
-  markText: schematicTheme.noteText,
+/** A palette's look on the sheet; the dark one's selection outline glows. */
+export function sheetLookFor(palette: SchematicPalette): OverlayLook {
+  return {
+    selected: palette.selection,
+    hover: palette.hover,
+    noteStroke: palette.selection,
+    noteFill: palette.selectionFill,
+    noteDash: [5, 4],
+    boxStroke: palette.selectionBox,
+    boxFill: palette.selectionBoxFill,
+    boxDash: [5, 4],
+    lockFill: palette.lockBadge,
+    lockGlyph: palette.lockGlyph,
+    markPin: palette.notePin,
+    markPanel: palette.notePanel,
+    markText: palette.noteText,
+    ...(palette.selectionGlow > 0 ? { glow: palette.selectionGlow } : {}),
+  }
 }
+
+/** The schematic's look: red selection and note box and a blue selection box on the light sheet, with our own hover, lock and note colours. */
+export const SHEET_LOOK: OverlayLook = sheetLookFor(schematicTheme)
 
 /** A selection outline or hover outline (dashed) around a part, shifted by a drag. */
 export function drawOutline(
@@ -103,6 +111,9 @@ export function drawOutline(
     ctx.fillStyle = look.selectedFill
     ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
   }
+  // The glow is set after the wash is filled, so only the outline glows.
+  ctx.shadowBlur = kind === "selected" ? (look.glow ?? 0) : 0
+  if (ctx.shadowBlur > 0) ctx.shadowColor = look.selected
   ctx.strokeRect(rect.x, rect.y, rect.width, rect.height)
   ctx.restore()
 }

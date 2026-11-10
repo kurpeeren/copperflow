@@ -4,7 +4,12 @@ import type { Author, HistoryEntry } from "./history.js"
 import { EMPTY_LAYOUT, isLayoutFile, layoutPathFor, readLayoutText, serializeLayout, type LayoutRecord } from "./layout-file.js"
 import { boardLayersOf, designFor, lockedPartsAt, lockedStart, type DesignSource } from "./layout-locks.js"
 import { applyLayoutRecordEdits, setsLayer, type LayoutEdit } from "./layout-records.js"
-import { resolveLayoutFile } from "./workspace.js"
+import { resolveCircuit, resolveLayoutFile } from "./workspace.js"
+import { applyEdits } from "./edit.js"
+import { readFile } from "node:fs/promises"
+import type { FileChange } from "./history.js"
+import { alsoField, sheetFilesFirst } from "./sheet-files.js"
+import type { Edit } from "./types.js"
 
 export interface LayoutEditOptions {
   author: Author
@@ -20,6 +25,11 @@ export interface LayoutEditOptions {
   design?: DesignSource
   /** Set only by the router's code path: new records are marked `router`. */
   router?: boolean
+  /**
+   * A sub-sheet file edited in the same change, as Replicate layout writes a block's placement into its sheet and its
+   * copper into the layout file: one history entry naming the layout file, with the sheet file as its `also`.
+   */
+  sheet?: { file: string; edits: Edit[] }
 }
 
 export interface LayoutEditResult {
@@ -59,6 +69,15 @@ function layoutNameFor(file: string): string {
   }
 }
 
+/** The change edits make to a sub-sheet file, for a layout change's `also`; none when they change nothing. Sheet files hold no locks. */
+async function sheetChange(root: string, sheet: { file: string; edits: Edit[] }): Promise<FileChange[]> {
+  const resolved = await resolveCircuit(root, sheet.file)
+  if (!resolved.file.endsWith(".sheet.tsx")) throw new EditError("invalid", `${sheet.file} is not a .sheet.tsx file`)
+  const before = await readFile(resolved.path, "utf8")
+  const after = applyEdits(before, sheet.edits, new Set())
+  return after === before ? [] : [{ file: resolved.file, before, after }]
+}
+
 /**
  * Applies copper edits to a circuit's layout file (named by the circuit file or by the layout file itself) as one
  * history entry naming the layout file; the first edit creates the file, and undoing that removes it again. Locked
@@ -83,10 +102,11 @@ export function applyLayoutEdits(root: string, file: string, edits: readonly Lay
     const text = serializeLayout(doc)
     if (text === (source ?? "")) throw new EditError("invalid", "The edit made no change")
     const summary = options.summary ?? describeLayoutEdits(edits, created)
-    const entry =
-      source === undefined
-        ? await writeNew(root, layout.path, text, { author: options.author, summary })
-        : await writeWithHistory(root, { ...layout, source }, text, { author: options.author, summary, file: layout.file, before: source, after: text })
+    const also = options.sheet ? await sheetChange(root, options.sheet) : []
+    const meta = { author: options.author, summary, ...alsoField(also) }
+    const entry = await sheetFilesFirst(root, also, "after", () =>
+      source === undefined ? writeNew(root, layout.path, text, meta) : writeWithHistory(root, { ...layout, source }, text, { ...meta, file: layout.file, before: source, after: text }),
+    )
     return { entry, file: layout.file, records, created }
   })
 }

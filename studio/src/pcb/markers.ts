@@ -11,6 +11,14 @@ export interface ViolationMarker {
   severity: Severity
 }
 
+/** The ring colours: the PCB's by default; the schematic passes its palette's. */
+export interface RingColours {
+  error: string
+  warning: string
+}
+
+const PCB_RINGS: RingColours = { error: PALETTE.error, warning: PALETTE.warning }
+
 const RING_PX = 6
 const RING_WIDTH_PX = 1.5
 const ACTIVE_WIDTH_PX = 3
@@ -20,7 +28,7 @@ const HALO_PX = 1
  * One ring per violation: red for errors, amber for warnings, thicker for the active one. `halo` adds a white outer
  * and black inner halo, which the PCB's black ground needs and the light sheet does not. Expects a CSS-pixel transform.
  */
-export function drawViolationMarkers(ctx: Ctx, view: { camera: Camera; size: Size }, markers: readonly ViolationMarker[], active: string | undefined, halo: boolean): void {
+export function drawViolationMarkers(ctx: Ctx, view: { camera: Camera; size: Size }, markers: readonly ViolationMarker[], active: string | undefined, halo: boolean, colours: RingColours = PCB_RINGS): void {
   if (markers.length === 0) return
   ctx.globalAlpha = 1
   ctx.setLineDash([])
@@ -28,7 +36,7 @@ export function drawViolationMarkers(ctx: Ctx, view: { camera: Camera; size: Siz
     const p = worldToScreen(view.camera, view.size, marker.at)
     const width = marker.id === active ? ACTIVE_WIDTH_PX : RING_WIDTH_PX
     if (halo) ringHalos(ctx, p, width)
-    ctx.strokeStyle = marker.severity === "error" ? PALETTE.error : PALETTE.warning
+    ctx.strokeStyle = marker.severity === "error" ? colours.error : colours.warning
     ring(ctx, p, RING_PX, width)
   }
 }

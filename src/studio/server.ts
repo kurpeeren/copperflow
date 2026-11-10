@@ -252,7 +252,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       // Copper goes to the layout file beside the circuit; the built design tells which tracks start on locked parts.
       case "POST /api/layout": {
         const body = LayoutBody.parse(await readJson(req))
-        const result = await applyLayoutEdits(root, body.file, body.edits, { author: "human", summary: body.summary, design: designOf })
+        const result = await applyLayoutEdits(root, body.file, body.edits, { author: "human", summary: body.summary, design: designOf, ...(body.sheet ? { sheet: body.sheet } : {}) })
         const writeMark = live.nextMark()
         live.requestBuild(circuitPathFor(result.file))
         return send(res, { entryId: result.entry.id, created: result.created, writeMark })

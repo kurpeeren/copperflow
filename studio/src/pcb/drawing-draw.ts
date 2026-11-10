@@ -7,7 +7,7 @@ import { anchorAlignment, CANVAS_FONT_FAMILY, HIGHLIGHT_DIM, type Ctx } from "./
 import { colorOf, dashOf, drawnWidth, fillOf, isFilled, lineStyleOf, strokeWidthOf } from "./drawing-style.js"
 import { devicePxFor, sheetLevelPx, textAnchorAt, textShown } from "./text-level.js"
 import { worldToScreen, type Camera, type Size } from "./geometry.js"
-import { schematicTheme } from "./schematic-theme.js"
+import { glow, sheetPalette } from "./schematic-theme.js"
 
 /** How the drawings are painted this frame. */
 export interface DrawingPaint {
@@ -58,7 +58,7 @@ function outline(ctx: Ctx, drawing: Exclude<SchematicDrawing, { kind: "text" }>)
 
 /** The colour a drawing is drawn in this frame, and its alpha. */
 function toneOf(drawing: SchematicDrawing, paint: DrawingPaint): { color: string; alpha: number } {
-  if (paint.selected?.includes(drawing.id)) return { color: schematicTheme.selection, alpha: 1 }
+  if (paint.selected?.includes(drawing.id)) return { color: sheetPalette().selection, alpha: 1 }
   return { color: colorOf(drawing), alpha: paint.dim ? HIGHLIGHT_DIM : 1 }
 }
 
@@ -77,7 +77,10 @@ export function drawDrawings(ctx: Ctx, drawings: readonly SchematicDrawing[], de
       ctx.fillStyle = fillOf(color)
       ctx.fill()
     }
+    // Only the outline of a selected drawing glows, not its fill.
+    glow(ctx, paint.selected?.includes(drawing.id) ?? false)
     ctx.stroke()
+    glow(ctx, false)
     ctx.setLineDash([])
   }
   ctx.globalAlpha = 1

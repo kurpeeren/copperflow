@@ -1,7 +1,7 @@
 // How a schematic drawing looks: its line width on the sheet, its dashes, its colour and its fill. The drawing, the
 // hover and the hit test share these, so what is drawn is what is picked. Pure: plain TypeScript with .js imports.
 import type { LineStyle, SchematicDrawing } from "../../../src/engine/model.js"
-import { schematicTheme } from "./schematic-theme.js"
+import { sheetPalette } from "./schematic-theme.js"
 
 /** A wire's width on the sheet, in sheet units (schematic-draw.ts draws wires with it). */
 export const WIRE_WIDTH = 0.02
@@ -34,8 +34,8 @@ export function lineStyleOf(drawing: SchematicDrawing): LineStyle {
 
 /** The drawing's own colour: the one its file gives, else the theme's (the bus colour for a bus). */
 export function colorOf(drawing: SchematicDrawing): string {
-  if (drawing.kind === "bus") return schematicTheme.bus
-  return drawing.color ?? schematicTheme.drawing
+  if (drawing.kind === "bus") return sheetPalette().bus
+  return drawing.color ?? sheetPalette().drawing
 }
 
 /** Whether the drawing is a filled rectangle or circle. */

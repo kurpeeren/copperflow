@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest"
 import { keyAction, type KeyInput } from "../studio/src/pcb/canvas-keys.js"
 import { COMMAND_KEY_ACTIONS, MENUS, MENU_TITLES, itemState, menuItems, menuReducer, menuShapes, shortcutList, type MenuItem } from "../studio/src/shell/menus.js"
 import { send, subscribe } from "../studio/src/shell/commands.js"
+import { commandOwner } from "../studio/src/shell/command-owners.js"
 
 /** A key press as `keyAction` reads it, from a shortcut as the menu shows it, e.g. "Alt+W" or "Shift+H". */
 function pressOf(shortcut: string): KeyInput {
@@ -299,5 +300,27 @@ describe("Place → the drawing tools", () => {
   test("Help → Keys lists the tools' keys and the keys while a polyline is drawn", () => {
     const keys = shortcutList().map((row) => row.keys)
     for (const shown of ["Alt+B", "Alt+L", "Alt+A", "Alt+C", "Alt+R", "Alt+T", "Enter (while drawing a polyline)"]) expect(keys).toContain(shown)
+  })
+})
+
+describe("View → Theme", () => {
+  const view = () => MENUS.find((menu) => menu.title === "View")?.entries ?? []
+
+  test("a checked pair, Light then Dark, in its own group at the end of View", () => {
+    const entries = view()
+    const at = entries.findIndex((entry) => entry !== "separator" && entry.command === "themeLight")
+    expect(entries[at - 1]).toBe("separator")
+    expect(entries.slice(at)).toEqual([
+      { label: "Theme: Light", command: "themeLight", toggle: "themeLight" },
+      { label: "Theme: Dark", command: "themeDark", toggle: "themeDark" },
+    ])
+  })
+
+  test("the app runs both, in either view, whatever is selected", () => {
+    for (const command of ["themeLight", "themeDark"] as const) {
+      expect(commandOwner(command)).toBe("app")
+      const item = MENUS.flatMap(menuItems).find((entry) => entry.command === command) as MenuItem
+      for (const open of ["pcb", "schematic"] as const) expect(itemState(item, open, 0)).toEqual({ enabled: true })
+    }
   })
 })

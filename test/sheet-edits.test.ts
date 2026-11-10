@@ -111,3 +111,20 @@ describe("locks", () => {
     expect(lockedStart(new Set(["PS2"]), design)(track)).toBeUndefined()
   })
 })
+
+describe("Replicate layout's one history entry", () => {
+  test("the copper in the layout file and the placement in the sheet file are one entry, undone together", async () => {
+    const { applyLayoutEdits } = await import("../src/core/layout-edits.js")
+    const root = await mkdtemp(join(tmpdir(), "cf-replicate-"))
+    await writeFile(join(root, "main.circuit.tsx"), MAIN)
+    await writeFile(join(root, "PowerStage.sheet.tsx"), SHEET)
+    const track = { kind: "addTrack" as const, layer: "top" as const, width: 0.2, points: [{ x: 0, y: 0 }, { x: 1, y: 0 }] }
+    const sheet = { file: "PowerStage.sheet.tsx", edits: [{ kind: "setProps" as const, part: "R1", props: { pcbX: 1, pcbY: 2 } }] }
+    const result = await applyLayoutEdits(root, "main.circuit.tsx", [track], { author: "human", summary: "Replicate", sheet })
+    expect(result.entry.file).toBe("main.circuit.layout.json")
+    expect(result.entry.also?.map((change) => change.file)).toEqual(["PowerStage.sheet.tsx"])
+    expect(await readFile(join(root, "PowerStage.sheet.tsx"), "utf8")).toContain(`<resistor name="R1" pcbX={1} pcbY={2} />`)
+    await undoChange(root, { author: "human" })
+    expect(await readFile(join(root, "PowerStage.sheet.tsx"), "utf8")).toBe(SHEET)
+  })
+})

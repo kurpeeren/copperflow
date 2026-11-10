@@ -1,4 +1,4 @@
-import type { Diagnostic, Severity } from "../engine/model.js"
+import type { Diagnostic, Severity, SheetInstance } from "../engine/model.js"
 import type { Violation } from "../engine/index.js"
 import { buildWith, type DesignSource } from "./design-source.js"
 import { oneLine } from "./summary.js"
@@ -17,6 +17,10 @@ export interface CheckResult {
   warnings: IssueGroup[]
   violations: Violation[]
   diagnostics: Diagnostic[]
+  /** The circuit's sub-sheet instances, so findings can be told by instance. */
+  instances?: SheetInstance[]
+  /** The flattened designators and net names, so a filter that names none of them can be refused. */
+  names?: string[]
 }
 
 export interface CheckOptions {
@@ -50,6 +54,8 @@ export async function checkCircuit(root: string, file: string, options: CheckOpt
     warnings: groupIssues(issues, "warning"),
     violations: [...design.violations],
     diagnostics: [...design.diagnostics],
+    instances: [...(design.circuit?.instances ?? [])],
+    names: [...(design.circuit?.components ?? []).map((c) => c.id), ...(design.circuit?.nets ?? []).flatMap((n) => n.names)],
   }
 }
 

@@ -1,18 +1,22 @@
 // Properties for one selected track or via: Delete, then the Track or Via section (copper-props.ts): net, layer, width,
 // length and who drew it, with the width, the layer and the lock editable; a via's net, layers, drill and diameter.
-// Each change is one layout edit, so one history entry; Delete runs the command Edit → Delete runs.
+// Each change is one layout edit, so one history entry; Delete runs the command Edit → Delete runs. A selected
+// segment of a track shows its own rows (its track's net, its length and its two ends) and Delete segment.
 import { useEffect, useId, useState } from "react"
 import type { Design } from "./api"
 import type { Actions } from "./App"
 import { Row, Section } from "./InspectorRows"
 import { CloseIcon, TrashIcon } from "./icons"
-import { copperFieldEdit, copperProperties, type CopperField, type CopperRow } from "./pcb/copper-props"
+import { copperFieldEdit, copperProperties, segmentProperties, type CopperField, type CopperRow, type SegmentProperties } from "./pcb/copper-props"
 import type { CommandId } from "./shell/menus"
+import type { TrackSegment } from "./selection"
 
 interface CopperViewProps {
   design: Design
   /** The selected track's or via's id. */
   id: string
+  /** The segment of the track a double click selected, if any. */
+  segment?: TrackSegment | undefined
   actions: Actions
   run(command: CommandId): void
   onClear(): void
@@ -25,7 +29,9 @@ const LAYER_CHOICES = [
   { value: "bottom", label: "Bottom Layer" },
 ] as const
 
-export function CopperView({ design, id, actions, run, onClear, collapsed, toggle }: CopperViewProps) {
+export function CopperView({ design, id, segment, actions, run, onClear, collapsed, toggle }: CopperViewProps) {
+  const piece = segment?.id === id ? segmentProperties(design, segment) : undefined
+  if (piece) return <SegmentView shown={piece} id={id} run={run} onClear={onClear} collapsed={collapsed} toggle={toggle} />
   const shown = copperProperties(design, id)
   const item = design.pcb.tracks.find((one) => one.id === id) ?? design.pcb.vias.find((one) => one.id === id)
   if (!shown || !item) return null
@@ -54,6 +60,34 @@ export function CopperView({ design, id, actions, run, onClear, collapsed, toggl
       <Section title={shown.title} open={!collapsed.has(shown.title)} onToggle={() => toggle(shown.title)}>
         {shown.rows.map((row) => (
           <CopperRowView key={row.label} row={row} locked={shown.locked} onCommit={commit} />
+        ))}
+      </Section>
+    </div>
+  )
+}
+
+/** A segment's rows, all read-only, under Delete segment. */
+function SegmentView({ shown, id, run, onClear, collapsed, toggle }: { shown: SegmentProperties; id: string } & Pick<CopperViewProps, "run" | "onClear" | "collapsed" | "toggle">) {
+  return (
+    <div className="inspector">
+      <header className="insp-header">
+        <span>Selected objects: 1</span>
+        <button className="icon" aria-label="Clear the selection" onClick={onClear}>
+          <CloseIcon />
+        </button>
+      </header>
+      <div className="inspector-actions">
+        <button className="danger" disabled={shown.locked} title={shown.locked ? `${id} is locked` : "Delete this segment of the track (Delete)"} onClick={() => run("delete")}>
+          <TrashIcon /> Delete segment
+        </button>
+      </div>
+      <Section title={shown.title} open={!collapsed.has(shown.title)} onToggle={() => toggle(shown.title)}>
+        {shown.rows.map((row) => (
+          <Row key={row.label} label={row.label}>
+            <span className="static" title={row.value}>
+              {row.value}
+            </span>
+          </Row>
         ))}
       </Section>
     </div>

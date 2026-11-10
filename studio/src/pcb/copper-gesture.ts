@@ -1,6 +1,7 @@
 // Dragging the PCB's copper, from press to release: a track's segment or corner (copper-geometry.ts reshapes it), or a
 // via (copper-edits.ts moves it with the ends of its tracks). The drag works from the shapes at the press and the
 // pointer's whole move, gives the shapes to draw live, and at the release one layout edit list, so one history entry.
+// A press on the segment selected alone (a double click picked it) drags it as any segment, and keeps it selected.
 // Pure; plain TypeScript with .js imports, so the tests can run it.
 import type { LayoutEdit } from "../../../src/core/layout-records.js"
 import { roundPosition, snapPosition, type Point } from "./geometry.js"
@@ -9,6 +10,8 @@ import { moveCopper, NO_SHAPES, reshapeEdit, type CopperRecords, type CopperShap
 import { trackDragPath } from "./copper-geometry.js"
 import { nameList } from "./group-edits.js"
 import type { DragGrid } from "./wire-drag.js"
+import { nearestSegment } from "./wire-hit.js"
+import { segmentOn, type SelectionChange, type TrackSegment } from "../selection.js"
 
 export interface CopperDrag {
   /** A track's reshape, a via's move, or the selection's parts and copper moved together ("group"). */
@@ -20,6 +23,11 @@ export interface CopperDrag {
   /** A track's: what was grabbed, and its points at the press. */
   grip?: CopperGrip
   points?: readonly Point[]
+  /** A track's: where on it the press was (mm), and the pointer's move from there once it moved. */
+  world?: Point
+  last?: Point
+  /** A track's: the index of the selected segment the press grabbed, which stays selected. */
+  segment?: number
   /** A via's centre at the press. */
   at?: Point
   /** Where the press was, in world units (mm); the drag threshold is measured from it at the camera's scale. */
@@ -65,7 +73,27 @@ export function startCopperDrag(hit: CopperHit, records: CopperRecords, press: C
   const track = records.tracks.find((one) => one.id === hit.id)
   const grip = track && copperGrip(track.points, press.world, press.scale, press.sole, press.width)
   if (!track || !grip) return undefined
-  return { ...base, kind: "track", grip, points: track.points, blocker: track.locked ? `${track.id} is locked` : null }
+  return { ...base, kind: "track", grip, points: track.points, world: press.world, blocker: track.locked ? `${track.id} is locked` : null }
+}
+
+/** The drag keeping `selected` when it is the segment of this track the press grabbed; else the drag as it was. */
+export function keepSegment(drag: CopperDrag, selected: TrackSegment | undefined): CopperDrag {
+  const grabbed = drag.kind === "track" && drag.grip?.kind === "segment" && selected?.id === drag.id && selected.index === drag.grip.index
+  return grabbed ? { ...drag, segment: selected.index } : drag
+}
+
+/**
+ * What a release does to a selected segment the drag grabbed: a still click selects the whole track; a move keeps the
+ * dragged segment selected, at its index in the new path (the one nearest the pointer). Undefined for any other drag.
+ */
+export function segmentAfterDrag(drag: CopperDrag): SelectionChange | undefined {
+  if (drag.kind !== "track" || drag.segment === undefined) return undefined
+  const { id } = drag
+  if (!drag.moved) return (current) => current.onlyCopper(id)
+  if (!drag.path || !drag.world || !drag.last) return undefined
+  const index = nearestSegment(drag.path, { x: drag.world.x + drag.last.x, y: drag.world.y + drag.last.y })?.index
+  const segment = index === undefined ? undefined : segmentOn({ id, points: drag.path }, index)
+  return segment && ((current) => current.onlySegment(segment))
 }
 
 /**
@@ -89,7 +117,7 @@ export function followCopperDrag(drag: CopperDrag, moved: Point, grid: DragGrid,
     if (!drag.moved) notify(drag.blocker)
     return { ...drag, moved: true }
   }
-  if (drag.kind === "track" && drag.points && drag.grip) return { ...drag, moved: true, path: trackDragPath(drag.points, drag.grip, moved, grid) }
+  if (drag.kind === "track" && drag.points && drag.grip) return { ...drag, moved: true, last: moved, path: trackDragPath(drag.points, drag.grip, moved, grid) }
   return { ...drag, moved: true, offset: snappedOffset(drag.at ?? drag.origin ?? ZERO, moved, grid) }
 }
 

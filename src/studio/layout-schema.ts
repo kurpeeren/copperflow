@@ -13,7 +13,7 @@ const size = z.number().finite().positive().max(100)
 
 export const LayoutEditSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("addTrack"), net: net.optional(), layer, width: size, points, locked: z.boolean().optional() }).strict(),
-  z.object({ kind: z.literal("setTrack"), id, layer: layer.optional(), width: size.optional(), points: points.optional(), locked: z.boolean().optional() }).strict(),
+  z.object({ kind: z.literal("setTrack"), id, net: net.optional(), layer: layer.optional(), width: size.optional(), points: points.optional(), locked: z.boolean().optional() }).strict(),
   z.object({ kind: z.literal("removeTrack"), id }).strict(),
   z
     .object({ kind: z.literal("addVia"), net: net.optional(), at: point, drill: size, diameter: size, layers: z.array(layer).min(2).max(4).optional(), locked: z.boolean().optional() })
@@ -24,4 +24,12 @@ export const LayoutEditSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("removeVia"), id }).strict(),
 ])
 
-export const LayoutBody = z.object({ file: z.string().min(1).max(500), summary: z.string().min(1).max(200), edits: z.array(LayoutEditSchema).min(1).max(500) })
+/** Replicate layout's placement, written into the sheet file in the same history entry: positions only. */
+const SheetPlacement = z
+  .object({
+    file: z.string().min(1).max(500),
+    edits: z.array(z.object({ kind: z.literal("setProps"), part: z.string().min(1).max(64), props: z.record(z.enum(["pcbX", "pcbY", "pcbRotation"]), z.number().finite()) }).strict()).min(1).max(500),
+  })
+  .strict()
+
+export const LayoutBody = z.object({ file: z.string().min(1).max(500), summary: z.string().min(1).max(200), edits: z.array(LayoutEditSchema).min(1).max(500), sheet: SheetPlacement.optional() })

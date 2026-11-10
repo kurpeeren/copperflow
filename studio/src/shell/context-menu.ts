@@ -34,6 +34,8 @@ export interface ContextState {
   wire?: WireReasons
   /** On copper: every selected track and via is locked, so the item offers Unlock. */
   copperLocked?: boolean
+  /** On a track: one of its segments is selected (a double click picked it), so Delete removes only that segment. */
+  segment?: boolean
 }
 
 const run = (label: string, command: CommandId, shortcut?: string): ContextItem => (shortcut ? { label, command, shortcut } : { label, command })
@@ -111,16 +113,20 @@ const LABEL_ITEMS: readonly ContextEntry[] = [
 /** On a track: Fillet tracks and Straighten tracks, which act on the selected tracks. */
 const TRACK_ITEMS: readonly ContextEntry[] = [run("Fillet tracks", "filletTracks", "U"), run("Straighten tracks", "straightenTracks", "Shift+U"), "separator"]
 
-/** On a track or via: Properties, on a track Fillet and Straighten, Lock or Unlock (the selected copper), Delete. */
-function copperItems(id: string, locked: boolean | undefined): ContextEntry[] {
+/**
+ * On a track or via: Properties, on a track Fillet and Straighten, Lock or Unlock (the selected copper), and Delete,
+ * which reads Delete segment while a segment of the track is selected (Delete then removes that segment alone).
+ */
+function copperItems(id: string, locked: boolean | undefined, segment: boolean | undefined): ContextEntry[] {
   const track = id.startsWith("t") ? TRACK_ITEMS : []
-  return [{ label: "Properties", special: "properties" }, "separator", ...track, locked ? run("Unlock", "unlock") : run("Lock", "lock"), "separator", run("Delete", "delete", "Delete")]
+  const remove = run(segment ? "Delete segment" : "Delete", "delete", "Delete")
+  return [{ label: "Properties", special: "properties" }, "separator", ...track, locked ? run("Unlock", "unlock") : run("Lock", "lock"), "separator", remove]
 }
 
 /** The items for a right click on `target`. */
 export function contextItems(target: ContextTarget, state: ContextState): ContextEntry[] {
   if (target.kind === "part") return partItems(state)
-  if (target.kind === "copper") return copperItems(target.id, state.copperLocked)
+  if (target.kind === "copper") return copperItems(target.id, state.copperLocked, state.segment)
   if (target.kind === "wire") return wireItems(state.wire)
   if (target.kind === "drawing") return [...DRAWING_ITEMS]
   return [...(target.kind === "label" ? LABEL_ITEMS : CANVAS_ITEMS)]

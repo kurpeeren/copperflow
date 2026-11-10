@@ -11,6 +11,9 @@ export interface Ctx {
   globalAlpha: number
   lineCap: string
   lineJoin: string
+  /** The selection glow (schematic-theme.ts): a blur in device pixels, whatever the transform, and its colour. */
+  shadowBlur?: number
+  shadowColor?: unknown
   save(): void
   restore(): void
   setTransform(a: number, b: number, c: number, d: number, e: number, f: number): void

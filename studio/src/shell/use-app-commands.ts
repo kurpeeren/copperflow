@@ -15,6 +15,7 @@ import { replicatePlan } from "../pcb/replicate"
 import type { PickFilter } from "../pcb/pick-filter"
 import type { View } from "../pcb/positions"
 import type { Selection, SelectionChange } from "../selection"
+import type { ThemeName } from "./theme-state"
 import type { BottomTab } from "./bottom-state"
 import { COPPER_COMMANDS, PCB_COMMANDS, SHEET_COMMANDS, WORKSPACE_COMMANDS, type AppCommand } from "./command-owners"
 import { send } from "./commands"
@@ -35,6 +36,7 @@ interface WorkspaceCommands {
   run(action: KeyActionName): void
   openBottom(tab: BottomTab): void
   openPageTree(): void
+  setTheme(theme: ThemeName): void
 }
 
 interface Input {
@@ -133,13 +135,18 @@ function selectInstance(input: Input): void {
 
 /**
  * Layout → Replicate layout: the selected instance's placement and copper copied to the other instances of its sheet
- * (replicate.ts). The placement goes into the sheet file and the copper into the layout file, an entry each.
+ * (replicate.ts), as one history entry: the copper in the layout file, the placement in the sheet file with it.
  */
 async function replicateLayout(input: Input): Promise<void> {
   const plan = replicatePlan(input.design, input.selection.names)
   if ("message" in plan) return input.actions.notify(plan.message)
-  if (plan.sheet.edits.length > 0 && !(await input.actions.editFile(plan.sheet.file, plan.sheet.edits, plan.sheet.summary)).ok) return
-  if (plan.layout.edits.length > 0 && !(await input.actions.editLayout(plan.layout.edits, plan.layout.summary)).ok) return
+  const { sheet, layout } = plan
+  // One history entry: the copper in the layout file, the placement in the sheet file beside it (`also`).
+  const written =
+    layout.edits.length === 0
+      ? await input.actions.editFile(sheet.file, sheet.edits, sheet.summary)
+      : await input.actions.editLayout(layout.edits, sheet.edits.length === 0 ? layout.summary : `${layout.summary} and its placement`, sheet.edits.length === 0 ? undefined : { file: sheet.file, edits: sheet.edits })
+  if (!written.ok) return
   input.actions.notify(`Copied the layout of ${plan.source} to ${plan.targets.join(", ")}`)
 }
 
@@ -169,6 +176,8 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     addPage: () => pageCommand(input, "addPage"),
     renamePage: () => pageCommand(input, "renamePage"),
     deletePage: () => pageCommand(input, "deletePage"),
+    themeLight: () => input.workspace.setTheme("light"),
+    themeDark: () => input.workspace.setTheme("dark"),
   }
   return (table as Partial<Record<CommandId, () => void>>)[command]
 }
@@ -199,7 +208,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
   const [waiting, setWaiting] = useState<{ command: CommandId; view: View } | null>(null)
   const { file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, openChecks, openFind, openDialog, design, page, openPage } = input
   // The workspace object is new on every render, but its functions are stable.
-  const { run, openBottom, openPageTree } = input.workspace
+  const { run, openBottom, openPageTree, setTheme } = input.workspace
   // A command waiting for its view runs once that view's canvas has mounted and subscribed.
   useEffect(() => {
     if (!waiting || view !== waiting.view) return
@@ -211,7 +220,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
   }, [waiting, view, actions])
   const runCommand = useCallback(
     (command: CommandId) => {
-      const own = appCommand({ file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, workspace: { run, openBottom, openPageTree }, openChecks, openFind, openDialog, design, page, openPage }, command)
+      const own = appCommand({ file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, workspace: { run, openBottom, openPageTree, setTheme }, openChecks, openFind, openDialog, design, page, openPage }, command)
       if (own) return own()
       const only = viewOf(command)
       if (only && view !== only) {
@@ -221,7 +230,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
       }
       if (!send(command)) actions.notify("Wait for the build to finish, then try again.")
     },
-    [file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, run, openBottom, openPageTree, openChecks, openFind, openDialog, design, page, openPage],
+    [file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, run, openBottom, openPageTree, setTheme, openChecks, openFind, openDialog, design, page, openPage],
   )
   useAppKeys(runCommand, view)
   return runCommand

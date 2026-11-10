@@ -67,7 +67,7 @@ export interface WorkspaceProps {
 }
 
 /** What both canvases take, once there is a design to draw; each adds the rings of its own view. */
-function canvasProps({ data, workspace, checks, selection, onSelect, actions, onOpenSheet }: WorkspaceProps, onContextMenu: ContextMenuState["show"]): Omit<CanvasProps, "markers" | "gridStyle" | "gridStep" | "snap" | "onGridStep"> | undefined {
+function canvasProps({ data, workspace, checks, selection, onSelect, actions, onOpenSheet }: WorkspaceProps, onContextMenu: ContextMenuState["show"]): Omit<CanvasProps, "markers" | "gridStyle" | "gridStep" | "snap" | "onGridStep" | "theme"> | undefined {
   const { build, circuit } = data
   if (!build.design || !circuit) return undefined
   return {
@@ -103,9 +103,9 @@ function canvasProps({ data, workspace, checks, selection, onSelect, actions, on
   }
 }
 
-/** A canvas's own grid style and Grid step, and the setter bound to its view. */
+/** A canvas's own grid style and Grid step, the setter bound to its view, and the Studio's theme. */
 function gridProps(workspace: WorkspaceProps["workspace"], view: View) {
-  return { gridStyle: workspace.gridStyles[view], gridStep: workspace.gridSteps[view], snap: workspace.snap, onGridStep: (step: number) => workspace.changeGridStep(view, step) }
+  return { gridStyle: workspace.gridStyles[view], gridStep: workspace.gridSteps[view], snap: workspace.snap, onGridStep: (step: number) => workspace.changeGridStep(view, step), theme: workspace.theme }
 }
 
 /** The schematic canvas's props for the open page: only that page's drawing, and what it adds goes on that page. */

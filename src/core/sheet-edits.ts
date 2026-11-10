@@ -1,5 +1,5 @@
-// Edits of sub-sheets: in a sheet file, a port renamed with its local net and the symbol's size on `<sheet>`; in a
-// circuit, an instance's `connections`. A port's side, order and bus flag are ordinary props (setProps on the port).
+// Edits of sub-sheet files: a port renamed with its local net, and the symbol's size on `<sheet>`. A port's side, order
+// and bus flag are ordinary props (setProps on the port); an instance's connections are instance-edits.ts.
 import MagicString from "magic-string"
 import { busMembers } from "../engine/drawing-kinds.js"
 import { NET_NAME } from "../engine/selectors.js"
@@ -10,8 +10,6 @@ import { formatLiteral } from "./literals.js"
 import type { PartInfo } from "./types.js"
 
 const WHOLE_NET_NAME = new RegExp(`^${NET_NAME.source}$`)
-/** A key an object literal may write bare: VIN, D0; anything else ("D[0:7]") is quoted. */
-const BARE_KEY = /^[A-Za-z_$][\w$]*$/
 const LARGEST_SIZE = 1000
 
 function portOrThrow(scan: Scan, name: string): PartInfo {
@@ -72,31 +70,5 @@ export function setSheetSize(source: string, scan: Scan, size: { width?: number 
     }
     putAttribute(out, source, node, key, formatLiteral(Math.round(value * 1000) / 1000))
   }
-  return out.toString()
-}
-
-/** `{{ VIN: "VBUS", "D[0:7]": "D[0:7]" }}`: the connections as an object literal, in the order given. */
-function formatConnections(connections: Readonly<Record<string, string>>): string {
-  const entries = Object.entries(connections).map(([port, net]) => `${BARE_KEY.test(port) ? port : JSON.stringify(port)}: ${JSON.stringify(net)}`)
-  return entries.length === 0 ? "{{}}" : `{{ ${entries.join(", ")} }}`
-}
-
-/**
- * Writes an instance's `connections` whole: each port to a parent net name (a bus port to a parent bus name). The
- * engine reports a port the sheet lacks; here each entry must at least be a usable name.
- */
-export function setConnections(source: string, scan: Scan, part: PartInfo, connections: Readonly<Record<string, string>>): string {
-  if (typeof connections !== "object" || connections === null || Array.isArray(connections)) {
-    throw new EditError("invalid", "connections must be an object such as { VIN: \"VBUS\" }")
-  }
-  for (const [port, net] of Object.entries(connections)) {
-    if (busMembers(port) === undefined) throw new EditError("invalid", `"${port}" is not a port name`)
-    const bare = typeof net === "string" ? net.replace(/^net\./, "") : undefined
-    if (bare === undefined || busMembers(bare) === undefined) throw new EditError("invalid", `connections.${port} must be a net name such as "VBUS"`)
-  }
-  const node = scan.partNodes.get(part.name)
-  if (!node) throw new EditError("not_found", `No instance named ${part.name}`)
-  const out = new MagicString(source)
-  putAttribute(out, source, node, "connections", formatConnections(connections))
   return out.toString()
 }

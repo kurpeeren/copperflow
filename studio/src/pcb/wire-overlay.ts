@@ -3,7 +3,7 @@
 // squares on its corners and hollow squares on its two ends, which stay on their pins. Plain TypeScript, so the tests can run it.
 import { worldToScreen, type Camera, type Point, type Size } from "./geometry.js"
 import { hairlineWidth, squareAt, squareSide } from "./crisp.js"
-import { schematicTheme } from "./schematic-theme.js"
+import { schematicTheme, type SchematicPalette } from "./schematic-theme.js"
 import { pastStrokePx, wireHandles } from "./wire-hit.js"
 
 /** The colours of a wire's hover outline and handles. */
@@ -13,7 +13,10 @@ export interface WireLook {
   handleFill: string
 }
 
-export const SHEET_WIRE_LOOK: WireLook = { hover: schematicTheme.hover, selected: schematicTheme.selection, handleFill: schematicTheme.handleFill }
+/** A palette's wire look; the handles do not glow. */
+export const sheetWireLookFor = (palette: SchematicPalette): WireLook => ({ hover: palette.hover, selected: palette.selection, handleFill: palette.handleFill })
+
+export const SHEET_WIRE_LOOK: WireLook = sheetWireLookFor(schematicTheme)
 
 /** The side of a handle, in CSS pixels. */
 export const WIRE_HANDLE_PX = 6

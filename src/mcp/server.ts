@@ -29,9 +29,9 @@ import type { DesignSource } from "../core/bom.js"
 import { buildWith } from "../core/design-source.js"
 import { FootprintFileSchema } from "../engine/footprints/file.js"
 import { VERSION } from "../version.js"
-import { batchSummary, describeRefusal, editItem, firstRefusal, planNets, toEdit } from "./batch.js"
-import { formatCompactCheck, formatCompactSummary, type SheetView } from "./compact.js"
-import { importsSheet } from "./compact-sheets.js"
+import { batchSummary, describeRefusal, editItem, firstRefusal, moveNotes, planNets, toEdit } from "./batch.js"
+import { formatCompactCheck, formatCompactSummary, formatInstanceSummary, type SheetView } from "./compact.js"
+import { importsSheet, type Flattened } from "./compact-sheets.js"
 import { formatCopperSummary } from "./copper-summary.js"
 import * as copper from "./copper-tools.js"
 import * as fillet from "./fillet-tools.js"
@@ -39,6 +39,7 @@ import { NEW_CIRCUIT_DESCRIPTION, newCircuit, newCircuitInput } from "./new-circ
 
 const INSTRUCTIONS = `copperflow lets you edit circuit files together with a human.
 - Start a new design with new_circuit: one call with the parts and the nets (each net is a list of PART.pin). Then call check_circuit once.
+- A repeated block (the same regulator, channel or driver used twice or more) goes in a sheet once: new_circuit's sheets { Name: { parts, nets, ports } } and instances [{ sheet, name, connections }], or edit_circuit's add_instance for another use. Do not write its parts twice. Inside a sheet the designators are local (R1); each instance adds its base (R101, R201). For a large schematic put parts on pages (new_circuit's pages, place_part's page, edit_circuit's move_to_page); nets join across pages by name. check_circuit and circuit_summary take an instance name as filter.
 - Write parts and connections, not positions or wire corners. The program places the parts and routes the wires; leave schX, schY, pcbX, pcbY and schematicRouteHints alone unless the human asks for a position.
 - Call circuit_summary before changing a circuit, and again when the human says they changed something. The default answer is compact (one line per part and per net); use detail "full" only when you need every prop.
 - Make several changes in one call: edit_circuit takes a list of edits (one history entry, nothing written if one is refused), connect_nets wires whole nets at once, e.g. { "GND": ["R1.pin2", "C1.pin2"] }.
@@ -64,10 +65,10 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
   const server = new McpServer({ name: "copperflow", version: VERSION }, { instructions: INSTRUCTIONS })
   const designOptions = options.engine ? { engine: options.engine } : {}
 
-  const apply = async (circuit: string, edits: Edit[], summary: string, note = summary) => {
+  const apply = async (circuit: string, edits: Edit[], summary: string, note = summary, after: string[] = []) => {
     const result = await editCircuit(root, circuit, edits, { author: "ai", summary })
     const warnings = result.violations.map((v) => `Lock violation: ${v.part} ${v.kind}: ${v.detail}`)
-    return [`Change ${result.entry.id} applied: ${note}`, ...warnings].join("\n")
+    return [`Change ${result.entry.id} applied: ${note}`, ...after, ...warnings].join("\n")
   }
   const edit = (circuit: string, edits: Edit[], summary: string) => run(() => apply(circuit, edits, summary))
 
@@ -81,13 +82,18 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "circuit_summary",
     {
       description:
-        'Summarize a circuit. The default is compact: one line per part (name, type, value, footprint, positions) and per net, then locked parts, marks from the human and lock violations; long lists end with "… and N more". detail "full" lists every prop and trace.',
-      inputSchema: { file, detail: z.enum(["compact", "full"]).optional().describe('"compact" (default) or "full"') },
+        'Summarize a circuit. The default is compact: one line per part (name, type, value, footprint, positions) and per net, then locked parts, marks from the human and lock violations; long lists end with "… and N more". A sub-sheet instance is one line followed by its parts. filter with an instance name (e.g. "PS1") shows only that instance, its parts and the nets they are on. detail "full" lists every prop and trace.',
+      inputSchema: {
+        file,
+        detail: z.enum(["compact", "full"]).optional().describe('"compact" (default) or "full"'),
+        filter: z.string().optional().describe('A sub-sheet instance, e.g. "PS1"'),
+      },
       annotations: READ_ONLY,
     },
-    ({ file: circuit, detail }) =>
+    ({ file: circuit, detail, filter }) =>
       run(async () => {
         const loaded = await loadCircuit(root, circuit)
+        if (filter) return formatInstanceSummary(loaded, await flatDesign(root, loaded.file, options.engine), filter)
         if (detail === "full") return formatSummary(loaded)
         const usesSheets = loaded.model.imports.some((spec) => importsSheet(spec.source))
         return formatCompactSummary(loaded, usesSheets ? await sheetView(root, circuit, options.engine) : undefined)
@@ -153,7 +159,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     {
       description:
         "Check the circuit with copperflow's own rules: electrical checks (pins left unconnected, outputs shorted together, power pins without a source) and placement checks (overlapping parts, parts off the board), plus problems in the code and the model (footprints it cannot make, unknown or ambiguous pins, library overrides). Answers with the error and warning counts, then up to 20 findings, one line each. Run it once at the end and fix the errors before reporting success; filter narrows it to errors, warnings, copper, a part or a net. Copper clearance, width, via, board-edge and keepout violations are included.",
-      inputSchema: { file, filter: z.string().optional().describe('"errors", "warnings", "copper", a part name or a net name') },
+      inputSchema: { file, filter: z.string().optional().describe('"errors", "warnings", "copper", a part name, a net name or a sub-sheet instance such as "PS1"') },
       annotations: READ_ONLY,
     },
     ({ file: circuit, filter }) =>
@@ -198,7 +204,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "edit_circuit",
     {
       description:
-        "Apply several edits in order as ONE change (one history entry). Each edit has exactly one key: set_props { part, props }, connect { from, to }, disconnect { from, to }, place_part { part, name, props? } or remove_part { part }. If an edit is refused, nothing is written and the answer says which edit failed and why.",
+        "Apply several edits in order as ONE change (one history entry). Each edit has exactly one key: set_props { part, props }, connect { from, to }, disconnect { from, to }, place_part { part, name, props?, page? }, remove_part { part }, add_instance { sheet, name, connections, base?, page? } (another use of a sub-sheet), set_connections { instance, connections } (every port to its net) or move_to_page { part, page } (a part or an instance; nets join across pages by name). If an edit is refused, nothing is written and the answer says which edit failed and why.",
       inputSchema: { file, edits: z.array(editItem).min(1).max(100) },
     },
     ({ file: circuit, edits }) =>
@@ -213,8 +219,9 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
         }
         const list = converted.map((c) => c.edit)
         const summary = batchSummary(converted.map((c) => c.label))
+        const notes = list.some((e) => e.kind === "movePartToPage") ? await movesLeaveBehind(root, circuit, list) : []
         try {
-          return await apply(circuit, list, summary, `${edits.length} edit${edits.length === 1 ? "" : "s"}: ${summary.slice(5)}`)
+          return await apply(circuit, list, summary, `${edits.length} edit${edits.length === 1 ? "" : "s"}: ${summary.slice(5)}`, notes)
         } catch (error) {
           const refusal = await firstRefusal(root, circuit, list)
           if (!refusal) throw new Error(`The batch was refused as a whole: ${(error as Error).message}
@@ -363,6 +370,19 @@ Nothing was written.`)
   )
 
   return server
+}
+
+/** What the moves to a page in a batch leave behind, read before anything is written. */
+async function movesLeaveBehind(root: string, circuit: string, edits: Edit[]): Promise<string[]> {
+  const loaded = await loadCircuit(root, circuit)
+  return moveNotes(loaded.source, edits, new Set(loaded.annotations.locks.map((lock) => lock.part)))
+}
+
+/** The flattened design, for a summary of one instance; a build that fails is the answer. */
+async function flatDesign(root: string, circuit: string, engine: DesignSource | undefined): Promise<Flattened> {
+  const view = await sheetView(root, circuit, engine)
+  if ("failure" in view) throw new Error(`The circuit does not build, so its instances cannot be shown: ${view.failure}`)
+  return view.flat
 }
 
 /** The flattened design of a circuit with sub-sheets, or why it could not be built; the summary is given either way. */

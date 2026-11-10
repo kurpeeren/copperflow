@@ -18,6 +18,7 @@ import type { CommandsOff } from "./shell/menus"
 import type { DocView } from "./shell/page-tree"
 import { designOnPage, MAIN_PAGE, shownPage } from "./shell/schematic-pages"
 import { StatusPill } from "./shell/StatusPill"
+import { themeToggles } from "./shell/theme-state"
 import { Toolbar } from "./shell/ToolbarRow"
 import { useAppCommands } from "./shell/use-app-commands"
 import { Workspace } from "./shell/Workspace"
@@ -239,7 +240,7 @@ export function App() {
   const { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, openSheet, sheetParent, runCommand, page, openPage } = useStudio()
   const { build, circuit } = data
   const { message, dismiss } = toast
-  const toggles = { snap: workspace.snap }
+  const toggles = { snap: workspace.snap, ...themeToggles(workspace.theme) }
   const off = useCommandsOff(build.design)
   // Hairlines stay one device pixel through zoom and display-scale changes.
   useEffect(() => watchDpr(window), [])

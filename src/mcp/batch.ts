@@ -11,6 +11,9 @@ import {
   type Edit,
 } from "../core/index.js"
 import { buildWith, type DesignSource } from "../core/design-source.js"
+import { scanCircuit } from "../core/analyze.js"
+import { connectionsEdit, instanceEdit } from "../core/instance-requests.js"
+import { movePartNote } from "../core/page-edits.js"
 import { localNet, localNetRefusal, parseSelector } from "../engine/selectors.js"
 import type { Circuit, Component } from "../engine/model.js"
 import { pinName } from "./compact.js"
@@ -31,11 +34,22 @@ export const editItem = z
     disconnect: z.object(ends).optional(),
     place_part: z.object({ part: z.string(), name: z.string(), props: props.optional(), page: z.string().optional() }).optional(),
     remove_part: z.object({ part: z.string() }).optional(),
+    add_instance: z
+      .object({
+        sheet: z.string().describe("Sheet name, e.g. PowerStage for PowerStage.sheet.tsx beside the circuit"),
+        name: z.string().describe("Instance name, e.g. PS3"),
+        connections: z.record(z.string(), z.string()).optional().describe('Port to net, e.g. { "VIN": "VBUS" }'),
+        base: z.number().int().positive().optional().describe("Added to every designator inside; default the next free hundred"),
+        page: z.string().optional(),
+      })
+      .optional(),
+    set_connections: z.object({ instance: z.string(), connections: z.record(z.string(), z.string()).describe("Every port to its net; ports left out are open") }).optional(),
+    move_to_page: z.object({ part: z.string().describe("A part or an instance"), page: z.string().describe('Page name, made when missing; "Main" is the first page') }).optional(),
   })
-  .describe("Exactly one of set_props, connect, disconnect, place_part, remove_part")
+  .describe("Exactly one of set_props, connect, disconnect, place_part, remove_part, add_instance, set_connections, move_to_page")
 export type EditItem = z.infer<typeof editItem>
 
-const KINDS = ["set_props", "connect", "disconnect", "place_part", "remove_part"] as const
+const KINDS = ["set_props", "connect", "disconnect", "place_part", "remove_part", "add_instance", "set_connections", "move_to_page"] as const
 const SUMMARY_LIMIT = 100
 
 function kindOf(item: EditItem): (typeof KINDS)[number] {
@@ -63,7 +77,41 @@ export async function toEdit(root: string, file: string, item: EditItem): Promis
       return { edit: (await placeEdit(root, await loadCircuit(root, file), item.place_part!)).edit, label: `place ${item.place_part!.name}` }
     case "remove_part":
       return { edit: { kind: "removePart", part: item.remove_part!.part }, label: `remove ${item.remove_part!.part}` }
+    case "add_instance": {
+      const { connections = {}, ...rest } = item.add_instance!
+      const edit = await instanceEdit(root, await loadCircuit(root, file), { ...rest, connections })
+      return { edit, label: `add instance ${rest.name} (${rest.sheet})` }
+    }
+    case "set_connections": {
+      const request = item.set_connections!
+      return { edit: await connectionsEdit(root, await loadCircuit(root, file), request), label: `set ${request.instance} connections` }
+    }
+    case "move_to_page": {
+      const { part, page } = item.move_to_page!
+      return { edit: { kind: "movePartToPage", part, page }, label: `move ${part} to page ${page}` }
+    }
   }
+}
+
+/**
+ * What each move to a page leaves behind (the traces to other parts stay where they are written), read on the text as
+ * it is just before that move, one line per move that leaves something.
+ */
+export function moveNotes(source: string, edits: readonly Edit[], locked: ReadonlySet<string>): string[] {
+  const notes: string[] = []
+  let text = source
+  for (const edit of edits) {
+    if (edit.kind === "movePartToPage") {
+      const note = movePartNote(scanCircuit(text), edit.part, edit.page)
+      if (note) notes.push(`${edit.part}: ${note}`)
+    }
+    try {
+      text = applyEdits(text, [edit], locked)
+    } catch {
+      break
+    }
+  }
+  return notes
 }
 
 export interface Refusal {

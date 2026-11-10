@@ -8,7 +8,7 @@ import { HIGHLIGHT_DIM, type Ctx } from "./ctx.js"
 import { labelTag, NET_LABEL_TEXT } from "./label-tag.js"
 import { type Box, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
 import { drawViolationMarkers, type ViolationMarker } from "./markers.js"
-import { schematicTheme as theme } from "./schematic-theme.js"
+import { glow, sheetPalette, type SchematicPalette } from "./schematic-theme.js"
 import { WIRE_WIDTH } from "./drawing-style.js"
 import { drawDrawings, drawDrawingTexts, shownDrawings, type DrawingPaint } from "./drawing-draw.js"
 import { drawSheetTexts, type SheetText } from "./schematic-text.js"
@@ -74,11 +74,12 @@ const NUMBER_RISE = 0.07
 /** A two-pin part's designator and value are at most this many symbol lengths wide. */
 const TWO_PIN_TEXT_LENGTHS = 2.5
 const TEXT_KINDS: Record<Role, TextKind> = { reference: "name", value: "detail", "pin-name": "detail", "pin-number": "pin-number" }
-const TEXT_COLORS: Record<Role, string> = {
-  reference: theme.designator,
-  value: theme.value,
-  "pin-name": theme.pinName,
-  "pin-number": theme.pinNumber,
+/** The palette colour of each kind of symbol text. */
+const TEXT_COLORS: Record<Role, keyof SchematicPalette> = {
+  reference: "designator",
+  value: "value",
+  "pin-name": "pinName",
+  "pin-number": "pinNumber",
 }
 const OUTWARD: Record<NetLabel["side"], Point> = { right: { x: 1, y: 0 }, left: { x: -1, y: 0 }, top: { x: 0, y: 1 }, bottom: { x: 0, y: -1 } }
 
@@ -114,8 +115,11 @@ export function drawSchematic(ctx: Ctx, layout: SchematicLayout, view: View, opt
   for (const symbol of layout.symbols) drawSymbol(ctx, symbol, shiftOf(symbol), { line, px, fade: symbolFade(symbol, options.highlight) }, texts)
   for (const label of layout.labels) {
     const moving = options.movingLabels?.some((m) => m.id === label.id) ?? false
-    const tone = options.selectedLabels?.includes(label.id) ? { color: theme.selection, alpha: 1 } : toneOf(label.net, options.highlight)
+    const selected = options.selectedLabels?.includes(label.id) ?? false
+    const tone = selected ? { color: sheetPalette().selection, alpha: 1 } : toneOf(label.net, options.highlight)
+    glow(ctx, selected)
     drawLabel(ctx, movedLabel(label, options), line, texts, moving, tone)
+    glow(ctx, false)
   }
   for (const ghost of options.ghostLabels ?? []) drawLabel(ctx, ghost, line, texts, true, toneOf(ghost.net, undefined))
   drawPins(ctx, layout, options, px, shiftOf)
@@ -124,7 +128,7 @@ export function drawSchematic(ctx: Ctx, layout: SchematicLayout, view: View, opt
   ctx.setTransform(options.ratio, 0, 0, options.ratio, 0, 0)
   drawSheetTexts(ctx, texts, camera, size, options.ratio)
   drawDrawingTexts(ctx, drawings, camera, size, paint, options.ratio)
-  drawViolationMarkers(ctx, view, options.violations ?? [], options.activeViolation, false)
+  drawViolationMarkers(ctx, view, options.violations ?? [], options.activeViolation, false, { error: sheetPalette().markerError, warning: sheetPalette().markerWarning })
   ctx.restore()
 }
 
@@ -176,7 +180,7 @@ function dot(ctx: Ctx, p: Point, r: number): void {
 /** How a net's wires and labels are drawn: lit when it is the highlighted net, dimmed when another is, else as usual. */
 function toneOf(net: string, highlight: SchematicDrawOptions["highlight"]): { color: string | undefined; alpha: number } {
   if (!highlight) return { color: undefined, alpha: 1 }
-  return net === highlight.net || highlight.aliases?.includes(net) ? { color: theme.highlight, alpha: 1 } : { color: undefined, alpha: HIGHLIGHT_DIM }
+  return net === highlight.net || highlight.aliases?.includes(net) ? { color: sheetPalette().highlight, alpha: 1 } : { color: undefined, alpha: HIGHLIGHT_DIM }
 }
 
 /** A symbol is dimmed while a net is highlighted, unless one of its pins is on that net. */
@@ -202,21 +206,24 @@ function drawWires(ctx: Ctx, layout: SchematicLayout, options: SchematicDrawOpti
   ctx.lineWidth = line(WIRE_WIDTH)
   for (const wire of layout.wires) {
     if (options.movingLabels?.some((m) => m.hideWire === wire.id)) continue
-    const tone = options.selectedWires?.includes(wire.id) ? { color: theme.selection, alpha: 1 } : toneOf(wire.net, options.highlight)
-    ctx.strokeStyle = tone.color ?? theme.wire
+    const selected = options.selectedWires?.includes(wire.id) ?? false
+    const tone = selected ? { color: sheetPalette().selection, alpha: 1 } : toneOf(wire.net, options.highlight)
+    ctx.strokeStyle = tone.color ?? sheetPalette().wire
     ctx.globalAlpha = tone.alpha
+    glow(ctx, selected)
     path(ctx, wire.points)
     ctx.stroke()
   }
+  glow(ctx, false)
   for (const junction of layout.junctions) {
     const lit = options.highlight !== undefined && junctionLit(layout, junction, options.highlight)
-    ctx.fillStyle = lit ? theme.highlight : theme.junction
+    ctx.fillStyle = lit ? sheetPalette().highlight : sheetPalette().junction
     ctx.globalAlpha = options.highlight && !lit ? HIGHLIGHT_DIM : 1
     dot(ctx, junction, Math.max(MIN_JUNCTION, JUNCTION_PX * px))
     ctx.fill()
   }
   ctx.globalAlpha = 1
-  ctx.strokeStyle = theme.wire
+  ctx.strokeStyle = sheetPalette().wire
   const pending = (options.pending ?? []).filter((points) => points.length >= 2)
   if (pending.length === 0) return
   ctx.setLineDash(DASH)
@@ -234,7 +241,7 @@ function drawSymbol(ctx: Ctx, placed: PlacedSymbol, shift: Point, pen: { line: (
   const own: Label[] = []
   ctx.globalAlpha = alpha
   ctx.lineWidth = pen.line(SYMBOL_WIDTH)
-  drawShapes(ctx, placed.symbol.shapes, frame, theme.symbolOutline, own)
+  drawShapes(ctx, placed.symbol.shapes, frame, sheetPalette().symbolOutline, own)
   ctx.globalAlpha = 1
   if (!placed.symbol.shapes.some((shape) => shape.type === "text" && shape.role === "pin-number")) own.push(...pinNumbers(placed.symbol, frame))
   texts.push(...own.map((label) => ({ ...label, alpha, ...textBounds(label, placed) })))
@@ -256,7 +263,7 @@ function pinNumbers(symbol: SchSymbol, frame: Frame): Label[] {
     const local = { x: pin.end.x - inward.x * NUMBER_INSET, y: pin.end.y - inward.y * NUMBER_INSET }
     const alongLead = inward.x !== 0
     const lifted = alongLead ? { x: local.x, y: local.y + NUMBER_RISE } : { x: local.x + NUMBER_RISE, y: local.y }
-    return { text: String(pin.number), at: place(lifted, frame), size: 0.1, anchor: "center", color: theme.pinNumber, mono: true, kind: "pin-number" }
+    return { text: String(pin.number), at: place(lifted, frame), size: 0.1, anchor: "center", color: sheetPalette().pinNumber, mono: true, kind: "pin-number" }
   })
 }
 
@@ -300,7 +307,7 @@ function textLabel(shape: Extract<Shape, { type: "text" }>, frame: Frame, fallba
   const dy = along * Math.sin(angle)
   const anchor = Math.abs(dx) > 0.5 ? (dx > 0 ? "left" : "right") : Math.abs(dy) > 0.5 ? (dy > 0 ? "bottom" : "top") : "center"
   const role = { role: shape.role, kind: TEXT_KINDS[shape.role], ...(shape.role === "pin-name" ? { pinOf: pinFrame(shape, frame) } : {}), ...(shape.role === "reference" ? { strong: true } : {}), ...(shape.role === "pin-number" ? { mono: true } : {}) }
-  return { text: shape.text, at: place(shape.at, frame), size: shape.size, anchor, color: TEXT_COLORS[shape.role] ?? fallback, ...role }
+  return { text: shape.text, at: place(shape.at, frame), size: shape.size, anchor, color: (sheetPalette()[TEXT_COLORS[shape.role]] as string | undefined) ?? fallback, ...role }
 }
 
 /** Where a pin name sits in its symbol's own frame: the side its anchor faces, and whether the symbol is turned a quarter. */
@@ -330,18 +337,18 @@ function drawLabelShape(ctx: Ctx, label: NetLabel, line: (w: number) => number, 
     const shapes = label.style === "ground" ? groundSymbol() : powerSymbol(label.text)
     ctx.lineWidth = line(SYMBOL_WIDTH)
     const first = texts.length
-    drawShapes(ctx, shapes, { x: label.at.x, y: label.at.y, rotation: 0 }, tone.color ?? theme.symbolOutline, texts)
-    for (let i = first; i < texts.length; i++) texts[i] = { ...(texts[i] as Label), strong: true, kind: "name", color: tone.color ?? theme.netName, alpha: tone.alpha }
+    drawShapes(ctx, shapes, { x: label.at.x, y: label.at.y, rotation: 0 }, tone.color ?? sheetPalette().flag, texts)
+    for (let i = first; i < texts.length; i++) texts[i] = { ...(texts[i] as Label), strong: true, kind: "name", color: tone.color ?? sheetPalette().netName, alpha: tone.alpha }
     return
   }
   const { middle, upright, box } = labelTag(label)
-  texts.push({ text: label.text, at: middle, size: NET_LABEL_TEXT, anchor: "center", strong: true, kind: "name", color: tone.color ?? theme.netName, rotation: upright ? 90 : 0, alpha: tone.alpha })
+  texts.push({ text: label.text, at: middle, size: NET_LABEL_TEXT, anchor: "center", strong: true, kind: "name", color: tone.color ?? sheetPalette().netName, rotation: upright ? 90 : 0, alpha: tone.alpha })
   if (label.port) drawPortFlag(ctx, label, box, line, tone)
 }
 
 /** A sheet's port is a flag: its name in an outline, a bus port's outline as wide as a bus. */
 function drawPortFlag(ctx: Ctx, label: NetLabel, box: { minX: number; minY: number; maxX: number; maxY: number }, line: (w: number) => number, tone: Tone): void {
-  ctx.strokeStyle = tone.color ?? theme.netName
+  ctx.strokeStyle = tone.color ?? sheetPalette().netName
   ctx.lineWidth = line(label.bus ? SYMBOL_WIDTH * 3 : SYMBOL_WIDTH)
   ctx.beginPath()
   ctx.moveTo(box.minX, box.minY)
@@ -359,7 +366,7 @@ function drawPins(ctx: Ctx, layout: SchematicLayout, options: SchematicDrawOptio
       const lit = options.highlight?.pins?.includes(id) ?? false
       const active = (options.activePins?.includes(id) ?? false) || lit
       if (!active && !options.showPins) continue
-      ctx.fillStyle = active ? theme.highlight : theme.pin
+      ctx.fillStyle = active ? sheetPalette().highlight : sheetPalette().pin
       const radius = lit ? Math.min(PIN_DOT_PX * px, Math.max(LIT_PIN_WORLD, LIT_PIN_MIN_PX * px)) : (active ? ACTIVE_PIN_FACTOR : 1) * PIN_DOT_PX * px
       dot(ctx, { x: end.x + shift.x, y: end.y + shift.y }, radius)
       ctx.fill()
