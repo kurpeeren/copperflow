@@ -151,6 +151,12 @@ const EditSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("renamePort"), from: z.string().max(64), to: z.string().max(64) }),
   z.object({ kind: z.literal("setSheetSize"), width: z.number().finite().nullable().optional(), height: z.number().finite().nullable().optional() }),
   z.object({ kind: z.literal("setConnections"), part: z.string(), connections: z.record(z.string().max(64), z.string().max(64)) }),
+  z.object({ kind: z.literal("addPour"), net: z.string().max(200), layer: z.string().max(16), outline: z.array(point).max(1000).optional(), props: props.optional() }),
+  z.object({ kind: z.literal("setPour"), id: z.string().max(64), props: z.record(z.string().max(64), z.union([literal, z.array(point).max(1000), z.null()])) }),
+  z.object({ kind: z.literal("removePour"), id: z.string().max(64) }),
+  z.object({ kind: z.literal("addHole"), x: z.number().finite(), y: z.number().finite(), diameter: z.number().finite() }),
+  z.object({ kind: z.literal("setHole"), id: z.string().max(64), props: z.record(z.string().max(64), z.number().finite()) }),
+  z.object({ kind: z.literal("removeHole"), id: z.string().max(64) }),
 ])
 const Bodies = {
   // "Keep these positions" writes every auto-placed part in one request.

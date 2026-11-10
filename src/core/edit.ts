@@ -2,6 +2,7 @@ import MagicString from "magic-string"
 import { scanCircuit, type Scan } from "./analyze.js"
 import { addDrawing, keepLockedDrawings, removeDrawing, setDrawingProps } from "./drawing-edits.js"
 import { EditError } from "./edit-error.js"
+import { addHole, addPour, keepLockedBoardItems, removeBoardItem, setHole, setPour } from "./pour-edits.js"
 import {
   attributeNamed,
   cleanPoint,
@@ -38,6 +39,7 @@ function applyEdit(source: string, edit: Edit, locked: ReadonlySet<string>): str
   const next = editSource(source, scan, edit, locked)
   const after = scanOrThrow(next, "The edit would produce invalid code")
   keepLockedDrawings(source, scan, next, after, locked)
+  keepLockedBoardItems(source, scan, next, after, locked)
   return next
 }
 
@@ -73,6 +75,18 @@ function editSource(source: string, scan: Scan, edit: Edit, locked: ReadonlySet<
       return renamePage(source, scan, edit.from, edit.to)
     case "removePage":
       return removePage(source, scan, edit.name, locked)
+    case "addPour":
+      return addPour(source, scan, edit)
+    case "setPour":
+      return setPour(source, scan, edit, locked)
+    case "removePour":
+      return removeBoardItem(source, scan, "copperpour", edit.id, locked)
+    case "addHole":
+      return addHole(source, scan, edit)
+    case "setHole":
+      return setHole(source, scan, edit, locked)
+    case "removeHole":
+      return removeBoardItem(source, scan, "hole", edit.id, locked)
     case "renamePort":
       return renamePort(source, scan, edit.from, edit.to)
     case "setSheetSize":
