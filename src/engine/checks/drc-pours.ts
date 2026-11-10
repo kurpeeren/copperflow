@@ -1,5 +1,6 @@
 import { usableOutline } from "../board.js"
-import { counterClockwise, difference, intersection, offset, toPath, toPoints, union, type Paths } from "../pour/clip.js"
+import { counterClockwise, difference, intersection, offset, pathArea, toPath, toPoints, union, type Paths } from "../pour/clip.js"
+import { shapeOutline } from "../pour/shapes.js"
 import type { Hole, Point } from "../model.js"
 import { naturalCompare } from "../order.js"
 import type { PcbLayout, PourFill, WorldPad } from "../pcb.js"
@@ -20,6 +21,7 @@ import { violation, type Violation } from "./violation.js"
  * keeps the board-edge clearance from a non-plated hole (`copper-hole`, for pads, tracks and vias too). A pour with no
  * copper warns (`pour-empty`), as does one joining no pad of its net (`pour-floating`) or fewer than half (`pour-sparse`). A fill also keeps the board-edge clearance
  * and out of keepouts on its layer, checked with a 2 µm tolerance as a safety net (`copper-edge`, `copper-keepout`).
+ * A hole not wholly inside the board, less the board-edge clearance, is an error (`hole-off-board`).
  */
 
 /** The grid cell for a fill's edges, in mm. */
@@ -149,6 +151,29 @@ function holeChecks(layout: PcbLayout, pours: readonly Measured[], pieces: reado
   })
 }
 
+/** How much of a hole may lie past the shrunk outline before it is reported, in square micrometres: rounding only. */
+const OFF_BOARD_AREA = 1
+
+/**
+ * A hole whose circle is not wholly inside the board's outline shrunk by the board-edge clearance: off the board or
+ * across its edge. Checked on the built positions, so a hole in a group or a sub-sheet instance is covered too.
+ */
+function holesOffBoard(layout: PcbLayout, rules: Rules): Violation[] {
+  const board = layout.board
+  if (board === undefined || !usableOutline(board)) return []
+  const edge = rules.fabrication.boardEdgeClearance
+  const allowed = offset(union([counterClockwise(toPath(board.outline))]), -edge, "miter")
+  return layout.holes.flatMap((hole) => {
+    const disc = [counterClockwise(toPath(shapeOutline({ core: [{ x: hole.x, y: hole.y }], radius: hole.diameter / 2 })))]
+    const outside = difference(disc, allowed).reduce((sum, path) => sum + Math.abs(pathArea(path)), 0)
+    if (outside <= OFF_BOARD_AREA) return []
+    const message = `${hole.id} at (${mm6(hole.x)}, ${mm6(hole.y)}), ${mm6(hole.diameter)} mm is not inside the board: a hole keeps ${mm6(edge)} mm from the board edge`
+    return [violation("hole-off-board", "error", message, [hole.id], "pcb", { x: hole.x, y: hole.y })]
+  })
+}
+
+const mm6 = (n: number) => String(Math.round(n * 1e6) / 1e6)
+
 const boxesMeet = (a: Box, b: Box) => a.minX <= b.maxX && b.minX <= a.maxX && a.minY <= b.maxY && b.minY <= a.maxY
 
 // ---- the board edge and keepouts ----
@@ -236,6 +261,7 @@ export function pourChecks(layout: PcbLayout, rules: Rules, classOf: ClassOf, ne
   const found = [
     ...clearanceChecks(pours, pieces, rules),
     ...holeChecks(layout, pours, pieces, rules),
+    ...holesOffBoard(layout, rules),
     ...layout.pours.flatMap((fill) => [pourUse(layout, fill, netName(fill.net)), fillEdge(layout, fill, rules), ...fillKeepouts(layout, fill)].filter((v): v is Violation => v !== undefined)),
   ]
   return found.sort((a, b) => naturalCompare(a.id, b.id))

@@ -174,7 +174,7 @@ describe("copper_summary with pours and holes", () => {
 describe("check_circuit with pours and holes", () => {
   test("the copper filter takes copper-hole and the pour warnings", async () => {
     expect(COPPER_RULES.has("copper-hole")).toBe(true)
-    for (const code of ["pour-floating", "pour-sparse", "pour-empty"]) expect(COPPER_RULES.has(code)).toBe(true)
+    for (const code of ["hole-off-board", "pour-floating", "pour-sparse", "pour-empty"]) expect(COPPER_RULES.has(code)).toBe(true)
     await call("add_hole", { file: FILE, x: -4.5, y: 4, diameter: 1 })
     const { text } = await call("check_circuit", { file: FILE, filter: "copper" })
     expect(text).toMatch(/^error copper-hole .*hole:1/m)
