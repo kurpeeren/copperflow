@@ -12,6 +12,8 @@ import type { Author, HistoryEntry } from "./history.js"
  */
 
 const FIELD = ["fabrication", "filletRadius"] as const
+/** Flow lists stay as people write them, `[GND, VBUS]`, not `[ GND, VBUS ]`. */
+const WRITE = { flowCollectionPadding: false } as const
 
 function checkRadius(radius: number | undefined): void {
   if (radius === undefined) return
@@ -28,14 +30,14 @@ export function withFilletRadius(text: string, radius: number | undefined): stri
   if (problem) throw new EditError("invalid", `${RULES_PATH} cannot be read (${problem.message.split("\n")[0]}); fix it first`)
   if (radius !== undefined) {
     document.setIn([...FIELD], radius)
-    return String(document)
+    return document.toString(WRITE)
   }
   if (!document.hasIn([...FIELD])) return text
   document.deleteIn([...FIELD])
   const fabrication = document.getIn([FIELD[0]], true)
   if (isMap(fabrication) && fabrication.items.length === 0) document.deleteIn([FIELD[0]])
   const contents = document.contents
-  return isMap(contents) && contents.items.length === 0 ? "" : String(document)
+  return isMap(contents) && contents.items.length === 0 ? "" : document.toString(WRITE)
 }
 
 /** Sets the fillet radius in the project's rules.yaml (creating it when there is none) as one history entry. */

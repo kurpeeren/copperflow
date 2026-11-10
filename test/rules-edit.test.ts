@@ -17,7 +17,7 @@ describe("withFilletRadius", () => {
     expect(after).toContain("# our board house")
     expect(after).toContain("profile: jlcpcb-2layer # cheapest")
     expect(after).toContain("minClearance: 6mil")
-    expect(after).toContain("globalNets: [ GND ]")
+    expect(after).toContain("globalNets: [GND]")
     expect(radiusIn(after)).toBe(1.5)
     expect(loadRules({ "rules.yaml": after }).diagnostics).toEqual([])
   })
