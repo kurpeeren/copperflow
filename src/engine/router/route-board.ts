@@ -1,4 +1,6 @@
+import type { LayoutEdit } from "../../core/layout-records.js"
 import type { Component, SheetInstance } from "../model.js"
+import { cleanup, layoutEdits } from "./cleanup.js"
 import { naturalCompare } from "../order.js"
 import type { RatsnestLine, WorldPad } from "../pcb.js"
 import { SearchBuffers } from "./astar.js"
@@ -16,7 +18,7 @@ import { replicate, type Replica } from "./replicate.js"
  * pass cap is reached. Then what is still contested is settled in the same order: each route clear of the routes kept
  * before it stays, the others are routed once more around those as walls, and what cannot be is reported with the
  * pins and the objects in the way. An instance's routes are then copied to the other instances of its sheet whose
- * placement matches.
+ * placement matches. Last, every route is cleaned up (see cleanup) and given as layout edits too.
  */
 
 export type RouteScope =
@@ -62,6 +64,8 @@ export interface RouteReport {
   unrouted: UnroutedConnection[]
   /** The negotiation passes run. */
   passes: number
+  /** The routed copper, cleaned up, as layout edits in one list (see cleanup). */
+  edits: LayoutEdit[]
   ms: number
   /** With the instance scope: what became of each other instance of the sheet. */
   replicas?: Replica[]
@@ -235,8 +239,9 @@ export function routeBoard(input: RouteBoardInput, options: RouteBoardOptions = 
     return placed === undefined ? [] : [{ net: connection.line.net, from: connection.line.from, to: connection.line.to, copper: placed.copper, cost: placed.cost }]
   })
   const failures = connections.flatMap((connection) => run.failed.get(connection.index) ?? [])
-  const report: RouteReport = { routed, unrouted: failures, passes, ms: 0 }
+  const report: RouteReport = { routed, unrouted: failures, passes, edits: [], ms: 0 }
   const copies = scope.kind === "instance" ? replicate(world, input, scope.instance, routed, run.congestion) : undefined
   const result = copies === undefined ? report : { ...report, routed: [...routed, ...copies.routed], unrouted: [...failures, ...copies.unrouted], replicas: copies.replicas }
-  return { ...result, ms: performance.now() - started }
+  const cleaned = cleanup(input, result.routed, world)
+  return { ...result, routed: cleaned, edits: layoutEdits(cleaned), ms: performance.now() - started }
 }
