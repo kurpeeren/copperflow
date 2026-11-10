@@ -10,6 +10,7 @@ import { loadCircuit, resolveCircuit, updateAnnotations } from "../src/core/work
 import { buildDesign } from "../src/engine/design.js"
 import { ENGINE_FILES } from "../src/engine/engine.js"
 import { collectProjectFiles } from "../src/engine/project-files.js"
+import { autoroute } from "../src/mcp/route-tools.js"
 import { createCopperflowServer } from "../src/mcp/server.js"
 
 const FILE = "main.circuit.tsx"
@@ -48,6 +49,29 @@ const WALLED = board(20, 12, [
 ])
 /** Twelve separate nets in two columns: more than a tiny budget routes. */
 const MANY = board(30, 40, Array.from({ length: 12 }, (_, i) => [resistor(`L${i + 1}`, -6, (i - 5.5) * 3), resistor(`M${i + 1}`, 6, (i - 5.5) * 3), trace(`L${i + 1}.pin2`, `N${i + 1}`), trace(`M${i + 1}.pin1`, `N${i + 1}`)]).flat())
+
+/** A sheet with a local net FB between its two resistors, used once as PS1; and a bus D[0:3] drawn on the board. */
+const BLOCK = `export default function Block() {
+  return (
+    <sheet>
+      <port name="IN" />
+      <resistor name="R1" resistance="1k" footprint="0603" pcbX={-2} pcbY={0} />
+      <resistor name="R2" resistance="1k" footprint="0603" pcbX={2} pcbY={0} />
+      <trace from="R1.pin1" to="net.IN" />
+      <trace from="R1.pin2" to="net.FB" />
+      <trace from="R2.pin1" to="net.FB" />
+    </sheet>
+  )
+}
+`
+const WITH_BLOCK = `import Block from "./Block.sheet"
+export default () => (
+  <board width="20mm" height="12mm">
+    <Block name="PS1" connections={{ IN: "A" }} pcbX={0} pcbY={0} />
+    <bus name="D[0:3]" points={[{ x: 0, y: 8 }, { x: 4, y: 8 }]} />
+  </board>
+)
+`
 
 /** Builds in this process; `during` runs once inside the next build, as a write that lands while the board is routed. */
 const hooks: { during?: (() => Promise<void>) | undefined } = {}
@@ -170,19 +194,31 @@ describe("autoroute", () => {
     expect(built.pcb.ratsnest).toEqual([])
   }, 30_000)
 
-  test("a tiny budget: says the time ran out and writes only whole connections", async () => {
+  test("a budget spent after two connections: says the time ran out and writes only those two, whole", async () => {
     await open(MANY)
-    const lines = (await design()).pcb.ratsnest.length
-    expect(lines).toBe(12)
+    expect((await design()).pcb.ratsnest).toHaveLength(12)
     const before = (await entries()).length
-    const { text, isError } = await call("autoroute", { file: FILE, budgetSeconds: 0.001 })
-    expect(isError).toBe(false)
-    expect(text).toMatch(/the time budget ran out/)
-    expect(text).toMatch(/Stopped at the 0\.001 s time budget/)
-    const routed = Number(/Routed (\d+) of 12 connections/.exec(text)?.[1])
-    expect(routed).toBeLessThan(12)
-    expect((await entries()).length).toBe(before + (routed > 0 ? 1 : 0))
-    expect((await design()).pcb.ratsnest).toHaveLength(12 - routed)
+    let tick = 0
+    // Each tick is 1 ms: the start, then one per connection begun; the third is past 2.5 ms.
+    const text = await autoroute({ root, engine: { build } as never }, { file: FILE, budgetSeconds: 0.0025 }, { clock: () => tick++ })
+    expect(text).toMatch(/^Change c\d+: Routed 2 of 12 connections in 1 pass; unrouted: \S+ to \S+ \(the time budget ran out before it was routed\)/)
+    expect(text).toMatch(/Stopped at the 0\.0025 s time budget/)
+    expect((await entries()).length).toBe(before + 1)
+    const built = await design()
+    expect(built.pcb.ratsnest).toHaveLength(10)
+    expect(built.violations.filter((v) => /copper|hole|via|track|short/.test(v.code))).toEqual([])
+  }, 30_000)
+
+  test("a budget that is not more than 0 is refused; one over 300 s is held to 300 s", async () => {
+    await open(CROSS)
+    const ports = { root, engine: { build } as never }
+    for (const budgetSeconds of [0, -1, Number.NaN]) await expect(autoroute(ports, { file: FILE, budgetSeconds })).rejects.toThrow(/budgetSeconds must be more than 0.*Nothing was written\.$/)
+    // The clock reads 0 at the start and 300 s after: a budget held to 300 s is spent at once, nothing is routed.
+    let ticks = 0
+    const text = await autoroute(ports, { file: FILE, budgetSeconds: 1e6 }, { clock: () => (ticks++ === 0 ? 0 : 300_000) })
+    const [first, second] = text.split(/\n/)
+    expect(first).toMatch(/^Routed 0 of 2 connections .*Nothing was written\.$/)
+    expect(second).toMatch(/^Stopped at the 300 s time budget/)
   }, 30_000)
 
   test("a change written while it routes discards the result: nothing is written", async () => {
@@ -195,6 +231,47 @@ describe("autoroute", () => {
     expect(text).toMatch(/changed while the board was routed/)
     expect((await records()).map((record) => record.by)).toEqual(["human"])
   }, 30_000)
+
+  test("a change to the circuit source while it routes discards the result too", async () => {
+    await open(CROSS)
+    hooks.during = async () => {
+      await writeFile(join(root, FILE), `${CROSS}// changed by hand`)
+    }
+    const { text, isError } = await call("autoroute", { file: FILE })
+    expect(isError).toBe(true)
+    expect(text).toMatch(/^The circuit changed while the board was routed, so the result was discarded; route again\. Nothing was written\.$/)
+    expect(await records()).toEqual([])
+  }, 30_000)
+})
+
+describe("net names", () => {
+  test("a sub-sheet's local net is taken as circuit_summary spells it, with or without net.", async () => {
+    await open(WITH_BLOCK)
+    await writeFile(join(root, "Block.sheet.tsx"), BLOCK)
+    expect((await call("circuit_summary", { file: FILE })).text).toMatch(/^PS1\/FB: /m)
+    expect((await call("autoroute", { file: FILE, nets: ["PS1/FB"] })).text).toMatch(/^Change c\d+: Routed 1 of 1 connection in/)
+    expect((await call("unroute", { file: FILE, nets: ["net.PS1/FB"] })).text).toMatch(/^Change c\d+: Unroute: remove /)
+    expect((await call("autoroute", { file: FILE, nets: ["net.PS1/FB"] })).text).toMatch(/^Change c\d+: Routed 1 of 1 connection in/)
+    expect((await call("unroute", { file: FILE, nets: ["PS1/FB"] })).text).toMatch(/^Change c\d+: Unroute: remove /)
+  }, 30_000)
+
+  test("a bus is refused by both tools: it is given as its member nets", async () => {
+    await open(WITH_BLOCK)
+    await writeFile(join(root, "Block.sheet.tsx"), BLOCK)
+    for (const tool of ["autoroute", "unroute"]) {
+      for (const bus of ["D", "D[0:3]"]) {
+        const { text, isError } = await call(tool, { file: FILE, nets: [bus] })
+        expect(isError).toBe(true)
+        expect(text).toBe(`${bus} is a bus (D[0:3]); give its member nets instead: D0, D1, D2, D3. Nothing was written.`)
+      }
+    }
+  }, 30_000)
+
+  test("an unknown net is refused, saying nothing was written", async () => {
+    await open(CROSS)
+    expect((await call("autoroute", { file: FILE, nets: ["Z"] })).text).toMatch(/^The circuit has no net "Z"\. Nets: .*\. Nothing was written\.$/)
+    expect((await call("unroute", { file: FILE, nets: ["Z"] })).text).toMatch(/Nothing was written\.$/)
+  })
 })
 
 describe("unroute", () => {

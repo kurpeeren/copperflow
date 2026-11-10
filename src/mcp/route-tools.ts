@@ -87,14 +87,26 @@ function notes(report: RouteReport, budgetSeconds: number): string[] {
 }
 
 /** autoroute: routes in this process within the budget and writes the routed connections as one change. */
-export async function autoroute(ports: Ports, input: { file: string; nets?: string[] | undefined; parts?: string[] | undefined; instance?: string | undefined; budgetSeconds?: number | undefined }): Promise<string> {
+/** The budget asked for, held to 300 s; refused unless it is more than 0. */
+export function budgetOf(asked: number | undefined): number {
+  if (asked === undefined) return DEFAULT_BUDGET_SECONDS
+  if (!(asked > 0)) throw new Error(`budgetSeconds must be more than 0 (it was ${asked}). Nothing was written.`)
+  return Math.min(asked, MAX_BUDGET_SECONDS)
+}
+
+export interface AutorouteOptions {
+  /** The clock the budget is measured on, in ms (the router's own by default); tests pass their own. */
+  clock?: () => number
+}
+
+export async function autoroute(ports: Ports, input: { file: string; nets?: string[] | undefined; parts?: string[] | undefined; instance?: string | undefined; budgetSeconds?: number | undefined }, options: AutorouteOptions = {}): Promise<string> {
+  const budgetSeconds = budgetOf(input.budgetSeconds)
   const circuit = await resolveCircuit(ports.root, input.file)
   if (!circuit.file.endsWith(".circuit.tsx")) throw new Error(`${circuit.file} is a sub-sheet; route the board of the circuit that uses it. Nothing was written.`)
   const start = await contentHashes(ports.root, circuit.file)
   const design = await buildOf(ports, circuit.file)
   const scope = scopeOf(design, input)
-  const budgetSeconds = input.budgetSeconds ?? DEFAULT_BUDGET_SECONDS
-  const report = routeBoard(routeInput(design), { scope, budgetMs: budgetSeconds * 1000 })
+  const report = routeBoard(routeInput(design), { scope, budgetMs: budgetSeconds * 1000, ...(options.clock ? { clock: options.clock } : {}) })
   const total = report.routed.length + report.unrouted.length
   if (total === 0) return "Nothing to route: every connection in the scope is already routed. Nothing was written."
   const line = routedLine(report)

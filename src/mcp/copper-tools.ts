@@ -73,12 +73,19 @@ export async function buildOf(ports: Ports, file: string): Promise<Design> {
   return buildWith(ports.root, (await resolveCircuit(ports.root, file)).file, ports.engine)
 }
 
+/** The bus drawn on the schematic that `name` means, by its full name ("D[0:3]") or its stem ("D"). */
+function busNamed(design: Design, name: string) {
+  return design.circuit.drawings.find((drawing) => drawing.kind === "bus" && (drawing.name === name || drawing.name.replace(/\[[^\]]*\]$/, "") === name))
+}
+
 export function netOrThrow(design: Design, name: string) {
   const net = findNet(design.circuit.nets, name)
   if (net) return net
+  const bus = busNamed(design, name)
+  if (bus?.kind === "bus") throw new Error(`${name} is a bus (${bus.name}); give its member nets instead: ${bus.members.join(", ")}. Nothing was written.`)
   const names = design.circuit.nets.map(nameOf)
   const more = names.length > NETS_SHOWN ? ` … and ${names.length - NETS_SHOWN} more` : ""
-  throw new Error(`The circuit has no net "${name}". Nets: ${names.slice(0, NETS_SHOWN).join(", ")}${more}`)
+  throw new Error(`The circuit has no net "${name}". Nets: ${names.slice(0, NETS_SHOWN).join(", ")}${more}. Nothing was written.`)
 }
 
 const describeHit = (design: Design, hit: CopperHit) => `${netLabel(design.circuit.nets, hit.net)} (${hit.kind} ${hit.id})`
