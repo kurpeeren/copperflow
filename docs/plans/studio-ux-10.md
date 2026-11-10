@@ -44,6 +44,17 @@ Asked by the maintainer (2026-11-10): "double-click a track and delete only the 
 - MCP: `remove_copper` accepts `{ id, segment }` for the same split.
 - Tests: the split edits for a first, a middle and a last segment; a two-point track; the selection value and the pick on double click; the menu item; the MCP shape.
 
-## Task 4: browser check (controller)
+## Task 4: a dark theme
+
+Asked by the maintainer (2026-11-10): "the schematic should also have a dark theme, and it should feel like Flux.ai" — a dark charcoal workspace, a quiet dot grid, bright wires and a glowing selection. Round 9 left dark mode out; this task adds it as our own, with the copper identity kept. No Flux artwork, names or colour values are copied; the feel is the target, the values are ours.
+
+- **Switch.** View → Theme → Light / Dark (a checked pair; the choice is remembered per browser; default Light). The whole Studio changes, chrome and canvases, with no reload.
+- **Chrome tokens** (theme.css, under `:root[data-theme="dark"]`): app background `#16181D`, panels `#1D2026`, strips `#191C21`, hairlines `#2A2E36` (hover `#3A4049`), text `#E6E8EB`, muted `#9AA1A9`, disabled `#5C636B`, copper `#D98A3F` (hover `#E89A4F`, wash `rgba(217,138,63,.16)`, text on copper `#1A1206`), menu shadow `0 6px 20px rgba(0,0,0,.45)`. Every chrome colour already goes through a token (round 9), so no rule outside theme.css changes colour; a test greps for raw hex as today.
+- **Schematic canvas, dark palette** (a second `schematicTheme`, chosen by the theme): background `#141619`; the grid as dots `#2B3038` (dot grid in dark, lines in light), the fifth dot `#3A4049`; symbol bodies and pins `#D9DEE5`; wires `#5BD3C7`; buses `#8AB4FF`; junctions in the wire colour; net labels `#F2C66D`; power and ground flags `#FF9E80`; designators `#E6E8EB`, values `#AEB6C0`, pin names `#AEB6C0`, pin numbers `#7E8792`; drawings `#9AA1A9`; selection `#4CC9F0` with a soft glow (`shadowBlur` 8 device px in the selection colour, nothing else glows); hover outline `#8BE0F5`; violation markers keep their red and amber (`#FF6B6B`, `#FFC857`); auto-placed dots and the sheet frame in muted. Text contrast against the background is at least 4.5:1 for designators, values and labels (a test computes it, as round 9's contrast test does for the chrome).
+- **PCB canvas** stays as it is (already dark); its paper margin and the ruler take the chrome tokens so the frame matches.
+- **Crispness.** Hairlines stay one device pixel in both themes; the dot grid is drawn with device-pixel-aligned rects, fading as the line grid does (round 9 thresholds).
+- Tests: the token values and the switch state; the dark `schematicTheme` values; the contrast bound; the grid style per theme; the View menu items; no raw hex outside the allowed files.
+
+## Task 5: browser check (controller)
 
 On the check copy: round a hand-drawn two-corner track, see chords on the arc and the summary; straighten it back; a corner near another net's pad stays square and is named; drag R1's designator on the schematic, see the prop in the file and the label follow the part when it moves; double-click a track's middle segment, delete it, see two tracks and the ratsnest line return, and draw the piece again from one open end.
