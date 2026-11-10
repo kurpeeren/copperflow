@@ -33,7 +33,6 @@ declare module "clipper-lib" {
       static Area(path: Path): number
       static Orientation(path: Path): boolean
       static PointInPolygon(point: IntPoint, path: Path): number
-      static CleanPolygons(paths: Paths, distance: number): Paths
     }
 
     class ClipperOffset {

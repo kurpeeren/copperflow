@@ -82,5 +82,3 @@ export function regionHolds(region: Region, point: IntPoint): boolean {
   return region.holes.every((hole) => ClipperLib.Clipper.PointInPolygon(point, hole) !== 1)
 }
 
-/** The paths with points closer than `units` to their neighbours (or nearly in line with them) merged away. */
-export const clean = (paths: Paths, units: number): Paths => ClipperLib.Clipper.CleanPolygons(paths, units)
