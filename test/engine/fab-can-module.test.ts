@@ -1,10 +1,13 @@
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join, relative } from "node:path"
 import { describe, expect, test } from "vitest"
+import { buildBom } from "../../src/core/bom.js"
 import { buildDesign } from "../../src/engine/design.js"
+import { fabricationSet } from "../../src/engine/fab/export.js"
 import { gerberFiles } from "../../src/engine/fab/layers.js"
 import { checkRoutedAll, routeDesign } from "../helpers/route-check.js"
 import { readGerber, type ReadGerber } from "../helpers/gerber-read.js"
+import { readZip } from "../helpers/zip-read.js"
 
 const FOLDER = join(import.meta.dirname, "..", "fixtures", "can-module")
 const MAIN = "can-module.circuit.tsx"
@@ -39,7 +42,7 @@ function padPositions(read: ReadGerber) {
 const segments = (read: ReadGerber) => read.strokes.reduce((sum, stroke) => sum + stroke.points.length - 1, 0)
 
 describe("the CAN module's Gerbers after the router runs on it", () => {
-  test("the copper parsed back holds the routed tracks, the 12 vias and every pad, and a second run is byte-identical", () => {
+  test("the copper parsed back holds the routed tracks, the 12 vias and every pad, and a second run is byte-identical; the whole set exports without warnings", async () => {
     const files = filesIn(FOLDER)
     const report = routeDesign(buildDesign(files, MAIN))
     expect(report.unrouted).toEqual([])
@@ -73,5 +76,12 @@ describe("the CAN module's Gerbers after the router runs on it", () => {
     }
 
     expect(gerberFiles(routed.pcb, routed.rules.fabrication, "can-module", CREATED)).toEqual(written)
+
+    const set = fabricationSet(routed, await buildBom(FOLDER, MAIN, { design: routed }), CREATED)
+    if (!set.ok) throw new Error(set.errors.join("; "))
+    expect(set.warnings).toEqual([])
+    expect(readZip(set.zipData)).toHaveLength(13)
+    const placed = (set.files.find((f) => f.file === "can-module-pick-and-place.csv")?.text ?? "").trimEnd().split("\n").slice(1)
+    expect(placed.map((row) => row.split(",")[0])).toEqual(["C1", "C2", "C3", "C4", "J1", "J2", "J3", "R1", "R2", "U1", "U2", "Y1"])
   }, 60_000)
 })
