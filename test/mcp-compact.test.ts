@@ -102,6 +102,80 @@ ${parts}
   })
 })
 
+const POWER_STAGE = `export default function PowerStage() {
+  return (
+    <sheet>
+      <port name="VIN" />
+      <port name="VOUT" />
+      <port name="GND" />
+      <chip name="U1" pinLabels={{ pin1: "IN", pin2: "OUT", pin3: "GND" }} />
+      <capacitor name="C1" capacitance="1uF" footprint="0402" />
+      <resistor name="R1" resistance="10k" />
+      <resistor name="R2" resistance="10k" />
+      <trace from="U1.IN" to="net.VIN" />
+      <trace from="U1.OUT" to="net.VOUT" />
+      <trace from="U1.GND" to="net.GND" />
+      <trace from="C1.pin1" to="net.VOUT" />
+      <trace from="R1.pin1" to="net.VOUT" />
+      <trace from="R1.pin2" to="net.FB" />
+      <trace from="R2.pin1" to="net.FB" />
+    </sheet>
+  )
+}
+`
+
+const WITH_SHEETS = `import PowerStage from "./PowerStage.sheet"
+export default () => (
+  <board width="40mm" height="40mm">
+    <PowerStage name="PS1" connections={{ VIN: "VBUS", VOUT: "V3_3", GND: "GND" }} />
+    <PowerStage name="PS2" connections={{ VIN: "V3_3", GND: "GND" }} />
+    <resistor name="R1" resistance="1k" />
+    <trace from="R1.pin1" to="net.VBUS" />
+  </board>
+)
+`
+
+describe("compact circuit_summary with sub-sheets", () => {
+  beforeEach(async () => {
+    await writeFile(join(root, "PowerStage.sheet.tsx"), POWER_STAGE)
+    await writeFile(join(root, "sheets.circuit.tsx"), WITH_SHEETS)
+  })
+
+  test("shows each instance in one line and its parts by their flattened designators", async () => {
+    const lines = (await call("circuit_summary", { file: "sheets.circuit.tsx" })).text.split("\n")
+    expect(lines[0]).toMatch(/^sheets\.circuit\.tsx: 9 parts, 2 instances, \d+ nets, 1 traces, 0 locked$/)
+    expect(lines).toContain("PS1 PowerStage base 100: VIN=VBUS VOUT=V3_3 GND=GND, 4 parts")
+    expect(lines).toContain("PS2 PowerStage base 200: VIN=V3_3 VOUT=(open) GND=GND, 4 parts")
+    expect(lines).toContain("C101 capacitor 1uF 0402 in PS1 as C1")
+    expect(lines).toContain("R202 resistor 10k in PS2 as R2")
+    expect(lines).toContain("R1 resistor 1k")
+    expect(lines.some((l) => l.startsWith("PS1 PowerStage") && l.includes("@"))).toBe(false)
+  })
+
+  test("nets are the flattened design's: ports join the parent nets, local nets carry the instance", async () => {
+    const lines = (await call("circuit_summary", { file: "sheets.circuit.tsx" })).text.split("\n")
+    expect(lines).toContain("VBUS: R1.pin1 U101.pin1")
+    expect(lines).toContain("PS1/FB: R101.pin2 R102.pin1")
+    expect(lines).toContain("V3_3: C101.pin1 R101.pin1 U101.pin2 U201.pin1")
+  })
+
+  test("a locked instance is marked on its line", async () => {
+    const { model } = await loadCircuit(root, "sheets.circuit.tsx")
+    await updateAnnotations(root, "sheets.circuit.tsx", (a) => lockParts(a, model, ["PS1"], NOW))
+    const lines = (await call("circuit_summary", { file: "sheets.circuit.tsx" })).text.split("\n")
+    expect(lines).toContain("PS1 PowerStage base 100: VIN=VBUS VOUT=V3_3 GND=GND, 4 parts [LOCKED]")
+    expect(lines).toContain("Locked: PS1")
+  })
+
+  test("a circuit whose build fails still has its summary, with a note", async () => {
+    await writeFile(join(root, "PowerStage.sheet.tsx"), "export default function PowerStage() { throw new Error('broken') }\n")
+    const { text, isError } = await call("circuit_summary", { file: "sheets.circuit.tsx" })
+    expect(isError).toBe(false)
+    expect(text).toMatch(/^Sub-sheets not shown: the build failed: .*broken/m)
+    expect(text).toContain("PS1 PowerStage")
+  })
+})
+
 function many(n: number, severity: "error" | "warning", code: string, item: (i: number) => string) {
   return Array.from({ length: n }, (_, i) => ({ id: `${code}${i}`, code, severity, message: `${code} number ${i}`, items: [item(i)], view: "pcb" }))
 }

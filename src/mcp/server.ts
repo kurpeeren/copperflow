@@ -30,7 +30,8 @@ import { buildWith } from "../core/design-source.js"
 import { FootprintFileSchema } from "../engine/footprints/file.js"
 import { VERSION } from "../version.js"
 import { batchSummary, describeRefusal, editItem, firstRefusal, planNets, toEdit } from "./batch.js"
-import { formatCompactCheck, formatCompactSummary } from "./compact.js"
+import { formatCompactCheck, formatCompactSummary, type SheetView } from "./compact.js"
+import { importsSheet } from "./compact-sheets.js"
 import { formatCopperSummary } from "./copper-summary.js"
 import * as copper from "./copper-tools.js"
 import { NEW_CIRCUIT_DESCRIPTION, newCircuit, newCircuitInput } from "./new-circuit.js"
@@ -86,7 +87,9 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     ({ file: circuit, detail }) =>
       run(async () => {
         const loaded = await loadCircuit(root, circuit)
-        return detail === "full" ? formatSummary(loaded) : formatCompactSummary(loaded)
+        if (detail === "full") return formatSummary(loaded)
+        const usesSheets = loaded.model.imports.some((spec) => importsSheet(spec.source))
+        return formatCompactSummary(loaded, usesSheets ? await sheetView(root, circuit, options.engine) : undefined)
       }),
   )
 
@@ -347,6 +350,16 @@ Nothing was written.`)
   )
 
   return server
+}
+
+/** The flattened design of a circuit with sub-sheets, or why it could not be built; the summary is given either way. */
+async function sheetView(root: string, circuit: string, engine: DesignSource | undefined): Promise<SheetView> {
+  try {
+    const { circuit: built } = await buildWith(root, circuit, engine)
+    return { flat: built }
+  } catch (error) {
+    return { failure: error instanceof Error ? error.message : String(error) }
+  }
 }
 
 async function run(task: () => Promise<string>): Promise<CallToolResult> {

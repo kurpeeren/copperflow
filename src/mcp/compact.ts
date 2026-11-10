@@ -1,5 +1,6 @@
 import type { CheckResult, LoadedCircuit, PartInfo, TraceInfo } from "../core/index.js"
 import { oneLine } from "../core/summary.js"
+import { flatCounts, partLinesWithSheets, type Flattened } from "./compact-sheets.js"
 import { COPPER_RULES } from "./copper-summary.js"
 
 /** Lists in a default answer stop here, so the whole answer fits a screen. */
@@ -76,14 +77,26 @@ function partLine(part: PartInfo, locked: ReadonlySet<string>): string {
   return [part.name, part.tag, value, literalOf(part, "footprint"), ...places, ...flags].filter(Boolean).join(" ")
 }
 
-/** The default circuit_summary: counts, one line per part and net, locks, marks and lock violations. */
-export function formatCompactSummary(circuit: LoadedCircuit): string {
+/** What a circuit with sub-sheets adds to its summary: the flattened design, or why it could not be built. */
+export type SheetView = { flat: Flattened } | { failure: string }
+
+/**
+ * The default circuit_summary: counts, one line per part and net, locks, marks and lock violations. With sub-sheets
+ * the parts and nets are the flattened design's: an instance is one line, its parts follow by their designators.
+ */
+export function formatCompactSummary(circuit: LoadedCircuit, sheets?: SheetView): string {
   const { model, annotations } = circuit
   const lockedNames = annotations.locks.map((lock) => lock.part)
   const locked = new Set(lockedNames)
-  const nets = netsOf(model.traces).sort((a, b) => Number(b.names.length > 0) - Number(a.names.length > 0) || natural.compare(a.names[0] ?? "", b.names[0] ?? ""))
-  const lines = [`${circuit.file}: ${model.parts.length} parts, ${nets.length} nets, ${model.traces.length} traces, ${locked.size} locked`]
-  lines.push(...capped(model.parts.map((part) => partLine(part, locked))))
+  const flat = sheets && "flat" in sheets ? sheets.flat : undefined
+  const written = flat ? flat.nets.map((net) => ({ names: net.names, pins: net.pins })) : netsOf(model.traces)
+  const nets = written.sort((a, b) => Number(b.names.length > 0) - Number(a.names.length > 0) || natural.compare(a.names[0] ?? "", b.names[0] ?? ""))
+  const counts = flat ? flatCounts(flat) : undefined
+  const parts = counts ? `${counts.parts} parts, ${counts.instances} instances` : `${model.parts.length} parts`
+  const lines = [`${circuit.file}: ${parts}, ${nets.length} nets, ${model.traces.length} traces, ${locked.size} locked`]
+  if (sheets && "failure" in sheets) lines.push(`Sub-sheets not shown: the build failed: ${oneLine(sheets.failure)}`)
+  const partLines = flat ? partLinesWithSheets(model.parts, flat, locked, (part) => partLine(part, locked)) : model.parts.map((part) => partLine(part, locked))
+  lines.push(...capped(partLines))
   lines.push(...capped(nets.map(netLine)))
   if (model.skipped.length > 0) lines.push(`Not editable: ${model.skipped.length} elements (detail: "full")`)
   if (lockedNames.length > 0) {
