@@ -47,6 +47,7 @@ describe("MCP server", () => {
       "fillet_tracks",
       "list_circuits",
       "list_parts",
+      "make_sheet",
       "new_circuit",
       "part_info",
       "place_part",

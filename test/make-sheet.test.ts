@@ -79,3 +79,34 @@ describe("making a sub-sheet from a selection", () => {
     expect(await readEntries(root)).toHaveLength(0)
   })
 })
+
+describe("the make_sheet tool", () => {
+  test("answers compactly with the file, the instance, the ports and the designators; undo_change takes both files back", async () => {
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js")
+    const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js")
+    const { createCopperflowServer } = await import("../src/mcp/server.js")
+    const server = createCopperflowServer(root, { engine: inProcessEngine as never })
+    const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
+    const client = new Client({ name: "test", version: "0.0.0" })
+    await Promise.all([server.connect(serverSide), client.connect(clientSide)])
+    const call = async (name: string, args: Record<string, unknown>) => {
+      const result = await client.callTool({ name, arguments: args })
+      return { text: (result.content as { text: string }[]).map((c) => c.text).join("\n"), isError: result.isError === true }
+    }
+    const answer = await call("make_sheet", { file: FILE, name: "Filter", parts: SELECTED, rename: true })
+    expect(answer).toEqual({
+      isError: false,
+      text: [
+        "Change c0001: wrote Filter.sheet.tsx; F1 Filter base 100 replaces 3 parts",
+        "Ports: C3_pin2 D[0:3] (bus) VIN",
+        "Designators: C3 → C1 (C101), R5 → R1 (R101), R6 → R2 (R102)",
+        "Now call check_circuit once.",
+      ].join("\n"),
+    })
+    expect((await call("check_circuit", { file: FILE })).text).toMatch(/^main\.circuit\.tsx: 0 errors/)
+    expect(await call("make_sheet", { file: FILE, name: "Filter", parts: ["R7"] })).toEqual({ isError: true, text: "Filter.sheet.tsx already exists; choose another sheet name" })
+    await call("undo_change", {})
+    expect(await read(FILE)).toBe(CUT_MAIN)
+    expect(await exists(SHEET)).toBe(false)
+  })
+})

@@ -35,11 +35,12 @@ import { importsSheet, type Flattened } from "./compact-sheets.js"
 import { formatCopperSummary } from "./copper-summary.js"
 import * as copper from "./copper-tools.js"
 import * as fillet from "./fillet-tools.js"
+import { MAKE_SHEET_DESCRIPTION, makeSheet, makeSheetInput } from "./make-sheet.js"
 import { NEW_CIRCUIT_DESCRIPTION, newCircuit, newCircuitInput } from "./new-circuit.js"
 
 const INSTRUCTIONS = `copperflow lets you edit circuit files together with a human.
 - Start a new design with new_circuit: one call with the parts and the nets (each net is a list of PART.pin). Then call check_circuit once.
-- A repeated block (the same regulator, channel or driver used twice or more) goes in a sheet once: new_circuit's sheets { Name: { parts, nets, ports } } and instances [{ sheet, name, connections }], or edit_circuit's add_instance for another use. Do not write its parts twice. Inside a sheet the designators are local (R1); each instance adds its base (R101, R201). For a large schematic put parts on pages (new_circuit's pages, place_part's page, edit_circuit's move_to_page); nets join across pages by name. check_circuit and circuit_summary take an instance name as filter.
+- A repeated block (the same regulator, channel or driver used twice or more) goes in a sheet once: new_circuit's sheets { Name: { parts, nets, ports } } and instances [{ sheet, name, connections }], or edit_circuit's add_instance for another use; make_sheet moves parts already written into a new sheet. Do not write its parts twice. Inside a sheet the designators are local (R1); each instance adds its base (R101, R201). For a large schematic put parts on pages (new_circuit's pages, place_part's page, edit_circuit's move_to_page); nets join across pages by name. check_circuit and circuit_summary take an instance name as filter.
 - Write parts and connections, not positions or wire corners. The program places the parts and routes the wires; leave schX, schY, pcbX, pcbY and schematicRouteHints alone unless the human asks for a position.
 - Call circuit_summary before changing a circuit, and again when the human says they changed something. The default answer is compact (one line per part and per net); use detail "full" only when you need every prop.
 - Make several changes in one call: edit_circuit takes a list of edits (one history entry, nothing written if one is refused), connect_nets wires whole nets at once, e.g. { "GND": ["R1.pin2", "C1.pin2"] }.
@@ -199,6 +200,8 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     { description: NEW_CIRCUIT_DESCRIPTION, inputSchema: newCircuitInput },
     (input) => run(() => newCircuit(root, input)),
   )
+
+  server.registerTool("make_sheet", { description: MAKE_SHEET_DESCRIPTION, inputSchema: makeSheetInput }, (input) => run(() => makeSheet(root, input)))
 
   server.registerTool(
     "edit_circuit",
