@@ -171,6 +171,10 @@ describe("the Gerber layers of a board", () => {
     expect(wider.diagnostics).toEqual([])
     const grown = fileOf(files(board({ parts: [part(pads)] }), wider.rules.fabrication), "b-F_Mask.gts")
     expect(grown.flashes[1]?.aperture.shape).toEqual({ type: "circle", diameter: 1.9 })
+    const none = loadRules({ "rules.yaml": "fabrication:\n  maskExpansion: 0\n" })
+    expect(none.diagnostics).toEqual([])
+    expect(fileOf(files(board({ parts: [part(pads)] }), none.rules.fabrication), "b-F_Mask.gts").flashes[1]?.aperture.shape).toEqual({ type: "circle", diameter: 1.7 })
+    expect(loadRules({ "rules.yaml": "fabrication:\n  maskExpansion: -1\n" }).diagnostics[0]?.message).toMatch(/fabrication\.maskExpansion/)
   })
 
   test("paste covers SMD pads only, shrunk by the paste reduction (none by default), on their own side", () => {

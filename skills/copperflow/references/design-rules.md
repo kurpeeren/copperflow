@@ -83,6 +83,9 @@ globalNets: [GND, V24, V3_3]
 - `fabrication.filletRadius` is the radius Fillet tracks (and `fillet_tracks`) rounds corners with,
   1 mm when left out; a track's own width is the floor. It is not a fabrication limit, so the
   profiles do not set it. The Studio's Design → Design rules writes it.
+- `fabrication.maskExpansion` is how far each solder mask opening grows past its pad (0.05 mm when
+  left out), and `fabrication.pasteReduction` how far the solder paste shrinks inside each SMD pad
+  (0 when left out); both may be 0. The fabrication (Gerber) files use them.
 - The built-in profiles are JLCPCB's published standard capabilities in 1 oz copper; each profile's
   `source` names the page, its sections and the date it was read.
 - A class field left out takes the default class's value: track 0.25 mm, clearance 0.2 mm, via drill
