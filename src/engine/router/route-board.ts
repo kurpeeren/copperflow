@@ -2,7 +2,7 @@ import type { Component, SheetInstance } from "../model.js"
 import { naturalCompare } from "../order.js"
 import type { RatsnestLine, WorldPad } from "../pcb.js"
 import { SearchBuffers } from "./astar.js"
-import { Congestion, clearOf, placeRoute, type Placed } from "./congestion.js"
+import { Congestion, clearOf, near, placeRoute, type Placed } from "./congestion.js"
 import { attempt, classLookup, netRule, type Job, type RouteInput } from "./connect.js"
 import { islandsOf } from "./ends.js"
 import { routerWorld, type NetRule, type RouterWorld } from "./grid.js"
@@ -191,13 +191,12 @@ function settle(run: Run, connections: readonly Connection[]): void {
     const placed = congestion.placed.get(connection.index)
     if (placed === undefined) continue
     const rule = connection.job.rule
-    const near = kept.filter((other) => other.net !== placed.net)
-    if (clearOf(world, rule, placed, near)) {
+    if (clearOf(world, rule, placed, kept.filter((other) => other.net !== placed.net && near(world, rule, placed.box, other.box)))) {
       kept.push(placed)
       continue
     }
     congestion.placed.delete(connection.index)
-    const walls = kept.flatMap((other) => other.pieces)
+    const walls = [...kept.flatMap((other) => other.pieces), ...congestion.holes()]
     const result = attempt(world, connection.job, { extra: walls, buffers: run.buffers })
     if (!result.routed) {
       run.failed.set(connection.index, unrouted(connection, result.reason, result.blockers))

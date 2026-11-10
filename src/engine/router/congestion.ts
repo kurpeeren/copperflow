@@ -94,6 +94,9 @@ function footprintFor(world: RouterWorld, placed: Placed, rule: NetRule): Footpr
 
 const overlaps = (a: Box, b: Box) => a.minX <= b.maxX && b.minX <= a.maxX && a.minY <= b.maxY && b.minY <= a.maxY
 
+/** Whether copper in box `b` can come near enough to box `a` to keep the rule's tracks or vias out of it. */
+export const near = (world: RouterWorld, rule: NetRule, a: Box, b: Box): boolean => overlaps(grow(a, world.widestGap + rule.width + rule.via.diameter + world.frame.pitch), b)
+
 /** The board's congestion: the history of each cell (per layer, and for vias) and the routes laid. */
 export class Congestion {
   readonly history: Int32Array[]
@@ -108,8 +111,7 @@ export class Congestion {
 
   /** The routes of other nets whose copper comes near the box, in index order. */
   others(net: string, box: Box, rule: NetRule): Placed[] {
-    const near = grow(box, this.world.widestGap + rule.width + rule.via.diameter + this.world.frame.pitch)
-    return [...this.placed.values()].filter((p) => p.net !== net && overlaps(p.box, near)).sort((a, b) => a.index - b.index)
+    return [...this.placed.values()].filter((p) => p.net !== net && near(this.world, rule, box, p.box)).sort((a, b) => a.index - b.index)
   }
 
   /** Every via hole laid, as hole-only obstacles: a via keeps the hole spacing from them whatever the net. */
