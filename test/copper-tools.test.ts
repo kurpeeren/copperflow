@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from "vitest"
 import { cp, mkdtemp, readFile } from "node:fs/promises"
+import { existsSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -131,6 +132,17 @@ describe("route_track", () => {
   test("says nothing about violations when it introduced none", async () => {
     const { text } = await route("VBUS", [pt(-2.275, 0), pt(-2.275, -3)])
     expect(text.split("\n")).toHaveLength(1)
+  })
+})
+
+describe("undo_change of copper", () => {
+  test("undoes a route_track while a part elsewhere on the board is locked", async () => {
+    expect((await route("CC1", [pt(-4.93, 4), pt(-4.93, 6)])).isError).toBe(false)
+    await lockC1()
+    const { text, isError } = await call("undo_change")
+    expect({ text, isError }).toMatchObject({ isError: false })
+    expect(text).toMatch(/Add track t0001/)
+    expect(existsSync(join(root, LAYOUT))).toBe(false)
   })
 })
 

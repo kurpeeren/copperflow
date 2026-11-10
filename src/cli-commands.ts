@@ -25,6 +25,7 @@ import {
   type MarkInput,
 } from "./core/index.js"
 import type { DesignSource } from "./core/bom.js"
+import { buildWith } from "./core/design-source.js"
 import { createCopperflowServer } from "./mcp/server.js"
 import { startStudio } from "./studio/server.js"
 import { VERSION } from "./version.js"
@@ -133,7 +134,9 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
         return 0
       }
       case "undo": {
-        const entry = await undoChange(root, { author: "human", ...(rest[0] ? { id: rest[0] } : {}) })
+        // The built design tells which tracks start on locked parts, so copper can be undone while parts are locked.
+        const design = (circuit: string) => buildWith(root, circuit, options.engine)
+        const entry = await undoChange(root, { author: "human", design, ...(rest[0] ? { id: rest[0] } : {}) })
         io.out(`${entry.id}: ${entry.summary}`)
         return 0
       }

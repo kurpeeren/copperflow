@@ -26,6 +26,7 @@ import {
   type Edit,
 } from "../core/index.js"
 import type { DesignSource } from "../core/bom.js"
+import { buildWith } from "../core/design-source.js"
 import { FootprintFileSchema } from "../engine/footprints/file.js"
 import { VERSION } from "../version.js"
 import { batchSummary, describeRefusal, editItem, firstRefusal, planNets, toEdit } from "./batch.js"
@@ -337,7 +338,9 @@ Nothing was written.`)
     },
     ({ id }) =>
       run(async () => {
-        const entry = await undoChange(root, { author: "ai", ...(id ? { id } : {}) })
+        // The built design tells which tracks start on locked parts, so copper can be undone while parts are locked.
+        const design = (circuit: string) => buildWith(root, circuit, options.engine)
+        const entry = await undoChange(root, { author: "ai", design, ...(id ? { id } : {}) })
         return `Change ${entry.id} applied: ${entry.summary}`
       }),
   )

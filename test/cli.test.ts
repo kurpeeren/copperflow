@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { runCli } from "../src/cli-commands.js"
 import { readAnnotations } from "../src/core/annotations.js"
+import { applyLayoutEdits } from "../src/core/layout-edits.js"
 import { createPart } from "../src/core/library.js"
 import { BOARD, LDO, SHARED } from "./fixtures.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
@@ -128,6 +129,15 @@ describe("cli", () => {
     await writeFile(join(root, FILE), "export default () => <board>\n")
     expect(await run("bom", FILE)).toBe(1)
     expect(err.join("\n")).toMatch(/main\.circuit\.tsx:\d+:\d+: /)
+  })
+
+  test("undo of a copper change goes through while a part elsewhere is locked", async () => {
+    const points = [{ x: 40, y: 40 }, { x: 45, y: 40 }]
+    await applyLayoutEdits(root, FILE, [{ kind: "addTrack", layer: "top", width: 0.25, points }], { author: "human" })
+    expect(await run("lock", FILE, "R1")).toBe(0)
+    expect(await run("undo")).toBe(0)
+    expect(err).toEqual([])
+    expect(out.at(-1)).toMatch(/Add track t0001/)
   })
 
   test("errors are reported with a non-zero exit code", async () => {
