@@ -1,5 +1,5 @@
-import { naturalCompare } from "../order.js"
-import { BOARD_EDGE, FREE, type RouterGrid } from "./grid.js"
+import { separating } from "./blockers.js"
+import { FREE, type RouterGrid } from "./grid.js"
 
 /**
  * A* on the router grid: the cheapest path from any source cell to any target cell, moving to the 8 neighbours on a
@@ -11,7 +11,7 @@ import { BOARD_EDGE, FREE, type RouterGrid } from "./grid.js"
  * the state's), the smallest over the layers with targets. It never falls by more than a move costs, so it is
  * consistent: the first time a state is taken it is at its cheapest, and no state is reopened. The queue orders by
  * estimate, then by the smaller remaining estimate, then by state number, so the same grid gives the same path.
- * The search gives up after `maxExpansions` states.
+ * The search gives up after `maxExpansions` states. With no path, it names the objects between the two ends.
  */
 
 export const STEP = 10
@@ -124,27 +124,6 @@ function octile(box: Box, col: number, row: number): number {
 
 const turnOf = (from: number, to: number): number => (from === NONE ? 0 : Math.min(Math.abs(from - to), 8 - Math.abs(from - to)))
 
-/** The objects next to the explored cells, on their layer: what closed the way. The board edge only when nothing else did. */
-function blockersAround(grid: RouterGrid, closed: Uint8Array): string[] {
-  const found = new Set<string>()
-  const cells = grid.cols * grid.rows
-  const explored = (node: number) => closed.subarray(node * DIRECTIONS, (node + 1) * DIRECTIONS).includes(1)
-  for (let node = 0; node < grid.layers.length * cells; node++) {
-    if (!explored(node)) continue
-    const [layer, cell] = [Math.floor(node / cells), node % cells]
-    const map = grid.track[layer] as Int32Array
-    const [col, row] = [cell % grid.cols, Math.floor(cell / grid.cols)]
-    for (let d = 0; d < 8; d++) {
-      const [c, r] = [col + (DCOL[d] as number), row + (DROW[d] as number)]
-      if (c < 0 || r < 0 || c >= grid.cols || r >= grid.rows) continue
-      const index = map[r * grid.cols + c] as number
-      if (index !== FREE) found.add(grid.blockers[index] as string)
-    }
-  }
-  const names = [...found].sort(naturalCompare)
-  return names.length > 1 ? names.filter((name) => name !== BOARD_EDGE) : names
-}
-
 /** The cheapest path from a source to a target, or why there is none. Blocked sources and targets are left out. */
 export function searchPath(grid: RouterGrid, sources: readonly CellRef[], targets: readonly CellRef[], options: SearchOptions = {}): SearchResult {
   const cells = grid.cols * grid.rows
@@ -169,7 +148,8 @@ export function searchPath(grid: RouterGrid, sources: readonly CellRef[], target
     const h = estimate(Math.floor(node / cells), node % cells)
     queue.push(g + h, h, state)
   }
-  if (goals.length > 0) for (const ref of sources.filter(open)) reach((ref.layer * cells + ref.cell) * DIRECTIONS + NONE, 0, -1, ref.layer * cells + ref.cell)
+  const starts = sources.filter(open)
+  if (goals.length > 0) for (const ref of starts) reach((ref.layer * cells + ref.cell) * DIRECTIONS + NONE, 0, -1, ref.layer * cells + ref.cell)
   const limit = options.maxExpansions ?? DEFAULT_MAX_EXPANSIONS
   let expanded = 0
   while (queue.size > 0) {
@@ -197,7 +177,7 @@ export function searchPath(grid: RouterGrid, sources: readonly CellRef[], target
       reach((l * cells + cell) * DIRECTIONS + NONE, g + VIA, state, l * cells + cell)
     }
   }
-  return { found: false, reason: "no-path", expanded, blockers: blockersAround(grid, closed) }
+  return { found: false, reason: "no-path", expanded, blockers: separating(grid, starts, goals) }
 }
 
 function stepsTo(parent: Int32Array, last: number, cells: number): CellRef[] {
