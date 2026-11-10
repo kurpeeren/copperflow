@@ -1,0 +1,35 @@
+# SOIC-18, 7.5 mm body (JEDEC MS-013 AC): pitch 1.27 mm, lead span 10.3 mm nominal, body 11.55 x 7.5 mm.
+# Pads 1.95 x 0.6 mm centred 4.75 mm from the middle. Pin 1 top left, pins counted counter-clockwise. mm, y up.
+pads:
+  - { number: "1", shape: roundrect, x: -4.75, y: 5.08, width: 1.95, height: 0.6 }
+  - { number: "2", shape: roundrect, x: -4.75, y: 3.81, width: 1.95, height: 0.6 }
+  - { number: "3", shape: roundrect, x: -4.75, y: 2.54, width: 1.95, height: 0.6 }
+  - { number: "4", shape: roundrect, x: -4.75, y: 1.27, width: 1.95, height: 0.6 }
+  - { number: "5", shape: roundrect, x: -4.75, y: 0, width: 1.95, height: 0.6 }
+  - { number: "6", shape: roundrect, x: -4.75, y: -1.27, width: 1.95, height: 0.6 }
+  - { number: "7", shape: roundrect, x: -4.75, y: -2.54, width: 1.95, height: 0.6 }
+  - { number: "8", shape: roundrect, x: -4.75, y: -3.81, width: 1.95, height: 0.6 }
+  - { number: "9", shape: roundrect, x: -4.75, y: -5.08, width: 1.95, height: 0.6 }
+  - { number: "10", shape: roundrect, x: 4.75, y: -5.08, width: 1.95, height: 0.6 }
+  - { number: "11", shape: roundrect, x: 4.75, y: -3.81, width: 1.95, height: 0.6 }
+  - { number: "12", shape: roundrect, x: 4.75, y: -2.54, width: 1.95, height: 0.6 }
+  - { number: "13", shape: roundrect, x: 4.75, y: -1.27, width: 1.95, height: 0.6 }
+  - { number: "14", shape: roundrect, x: 4.75, y: 0, width: 1.95, height: 0.6 }
+  - { number: "15", shape: roundrect, x: 4.75, y: 1.27, width: 1.95, height: 0.6 }
+  - { number: "16", shape: roundrect, x: 4.75, y: 2.54, width: 1.95, height: 0.6 }
+  - { number: "17", shape: roundrect, x: 4.75, y: 3.81, width: 1.95, height: 0.6 }
+  - { number: "18", shape: roundrect, x: 4.75, y: 5.08, width: 1.95, height: 0.6 }
+body:
+  - [-3.75, 5.775]
+  - [3.75, 5.775]
+  - [3.75, -5.775]
+  - [-3.75, -5.775]
+silkscreen:
+  - [[-3.75, 5.775], [3.75, 5.775]]
+  - [[-3.75, -5.775], [3.75, -5.775]]
+  - [[-3.75, 5.775], [-3.75, 5.6]]
+courtyard:
+  - [-5.975, 6.025]
+  - [5.975, 6.025]
+  - [5.975, -6.025]
+  - [-5.975, -6.025]

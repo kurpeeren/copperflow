@@ -1,0 +1,33 @@
+title: TJA1050 high-speed CAN transceiver, SO8
+manufacturer: NXP Semiconductors
+mpn: TJA1050T/CM,118
+footprint: soic8
+pins:
+  "1":
+    name: TXD
+    type: input
+  "2":
+    name: GND
+    type: ground
+  "3":
+    name: VCC
+    type: power_in
+  "4":
+    name: RXD
+    type: output
+  "5":
+    name: VREF
+    type: output
+  "6":
+    name: CANL
+    type: bidirectional
+  "7":
+    name: CANH
+    type: bidirectional
+  "8":
+    name: S
+    type: input
+suppliers:
+  jlcpcb: C6271
+datasheet:
+  url: https://www.nxp.com/docs/en/data-sheet/TJA1050.pdf
