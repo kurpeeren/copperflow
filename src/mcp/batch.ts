@@ -27,7 +27,7 @@ export const editItem = z
     set_props: z.object({ part: z.string(), props }).optional(),
     connect: z.object(ends).optional(),
     disconnect: z.object(ends).optional(),
-    place_part: z.object({ part: z.string(), name: z.string(), props: props.optional() }).optional(),
+    place_part: z.object({ part: z.string(), name: z.string(), props: props.optional(), page: z.string().optional() }).optional(),
     remove_part: z.object({ part: z.string() }).optional(),
   })
   .describe("Exactly one of set_props, connect, disconnect, place_part, remove_part")

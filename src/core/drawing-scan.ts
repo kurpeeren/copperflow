@@ -20,6 +20,7 @@ export interface DrawingTag {
   end: number
   readonlyReason?: string
   parent?: string
+  page?: string
   /** Why the engine may draw it any number of times (in a callback, a condition or a helper component). */
   uncounted?: string
   hasSpread: boolean
@@ -77,6 +78,7 @@ function drawingInfo(tag: DrawingTag, id: string, name: string | undefined, read
     ...(name === undefined ? {} : { name }),
     ...(points ? { points } : {}),
     ...(tag.parent === undefined ? {} : { parent: tag.parent }),
+    ...(tag.page === undefined ? {} : { page: tag.page }),
     props,
     line: tag.line,
     editable: readonlyReason === undefined,
