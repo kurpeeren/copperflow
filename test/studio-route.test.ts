@@ -3,7 +3,9 @@ import { EventEmitter } from "node:events"
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { resolveCircuit } from "../src/core/workspace.js"
+import { lockParts } from "../src/core/annotations.js"
+import { inProjectQueue } from "../src/core/file-writes.js"
+import { loadCircuit, resolveCircuit, updateAnnotations } from "../src/core/workspace.js"
 import { buildDesign } from "../src/engine/design.js"
 import { ENGINE_FILES } from "../src/engine/engine.js"
 import { collectProjectFiles } from "../src/engine/project-files.js"
@@ -257,6 +259,42 @@ describe("Route → Autoroute on the server", () => {
     expect((await sheet.json()).error).toContain("is a sub-sheet")
     expect(await data(await api("/api/route", { file: FILE, scope: { kind: "all" } }))).toMatchObject({ status: "routing" })
     await ended()
+  }, 30_000)
+
+  test("a net, part or instance the circuit does not have is refused with its names, and nothing runs", async () => {
+    await open(null)
+    for (const [scope, error] of [
+      [{ kind: "nets", nets: ["A", "NOPE", "ALSO_NOT"] }, "The circuit has no nets NOPE, ALSO_NOT. Nothing was routed."],
+      [{ kind: "parts", parts: ["R1", "U9"] }, "The circuit has no part U9. Nothing was routed."],
+      [{ kind: "instance", instance: "PS7" }, "The circuit has no sub-sheet instance PS7. Nothing was routed."],
+    ] as const) {
+      const refused = await api("/api/route", { file: FILE, scope })
+      expect([scope.kind, refused.status]).toEqual([scope.kind, 400])
+      expect((await refused.json()).error).toBe(error)
+    }
+    expect(events).toEqual([])
+    expect(await data(await api("/api/route", { file: FILE, scope: { kind: "nets", nets: ["A"] } }))).toMatchObject({ status: "routing" })
+    expect(await ended()).toMatchObject({ state: "done", routed: 1, total: 1 })
+  }, 30_000)
+
+  test("a lock added while the run waits in the write queue is honoured: no track starts on the part, and the run is written", async () => {
+    const locking = fakeWorker(async (request, reply) => {
+      // Holds the write queue a moment, and queues a lock of every part behind it, both before the run's write.
+      void inProjectQueue(root, () => new Promise((done) => setTimeout(done, 300)))
+      void updateAnnotations(root, FILE, (a) => lockParts(a, model, ["R1", "R2", "R3", "R4"], new Date().toISOString()))
+      reply({ type: "done", report: routeBoard(request.input, { scope: request.scope }) })
+    })
+    const { model } = await loadCircuit(root, FILE)
+    await open(locking.factory)
+    await data(await api("/api/route", { file: FILE, scope: { kind: "all" } }))
+    expect(await ended()).toMatchObject({ state: "done", routed: 2, entryId: "c0001" })
+    const design = await builder.build(root, FILE)
+    const pads = design.pcb.parts.flatMap((part) => part.pads)
+    for (const track of design.pcb.tracks) {
+      const start = track.points[0]!
+      expect(pads.some((pad) => Math.hypot(pad.x - start.x, pad.y - start.y) < 0.3)).toBe(false)
+    }
+    expect(design.pcb.ratsnest).toEqual([])
   }, 30_000)
 
   test("a locked part's pad is never where a router track starts", async () => {

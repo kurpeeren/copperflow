@@ -203,6 +203,7 @@ describe("autoroute", () => {
     const text = await autoroute({ root, engine: { build } as never }, { file: FILE, budgetSeconds: 0.0025 }, { clock: () => tick++ })
     expect(text).toMatch(/^Change c\d+: Routed 2 of 12 connections in 1 pass; unrouted: \S+ to \S+ \(the time budget ran out before it was routed\)/)
     expect(text).toMatch(/Stopped at the 0\.0025 s time budget/)
+    expect(text).toMatch(/\nThe cleanup was skipped because the budget was spent: the routes are clear, maybe not at their shortest\./)
     expect((await entries()).length).toBe(before + 1)
     const built = await design()
     expect(built.pcb.ratsnest).toHaveLength(10)

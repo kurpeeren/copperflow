@@ -15,11 +15,19 @@ export interface UnrouteRecord {
 export interface UnrouteTrack extends UnrouteRecord {
   layer: CopperLayer
   points: readonly LayoutPoint[]
+  /** With the via's place and size, tells whether the track touches a via. */
+  width?: number
+}
+
+/** A via as Unroute reads it: where it is and how big tells whether a track touches it. */
+export interface UnrouteVia extends UnrouteRecord {
+  at?: LayoutPoint
+  diameter?: number
 }
 
 export interface UnrouteCopper {
   tracks: readonly UnrouteTrack[]
-  vias: readonly UnrouteRecord[]
+  vias: readonly UnrouteVia[]
 }
 
 export interface UnrouteOptions {
@@ -33,13 +41,36 @@ export interface Unroute {
   edits: LayoutEdit[]
   /** Why router copper was left: "t0004 starts on the locked part J1". */
   skipped: string[]
+  /** The router's vias left because a track not made by the router touches them (taking them would leave it dangling). */
+  kept: string[]
 }
 
 const takesBack = (record: UnrouteRecord, ids: ReadonlySet<string> | undefined) => record.by === "router" && !record.locked && (ids === undefined || ids.has(record.id))
 
+/** Closer than this, in mm, is touching. */
+const TOUCH_MM = 1e-6
+
+/** The distance from a point to a segment. */
+function toSegment(p: LayoutPoint, a: LayoutPoint, b: LayoutPoint): number {
+  const [dx, dy] = [b.x - a.x, b.y - a.y]
+  const length = dx * dx + dy * dy
+  const t = length === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / length))
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy))
+}
+
+/** Whether the track's copper reaches the via's pad (both with their sizes; a via without them touches nothing). */
+function touchesVia(track: UnrouteTrack, via: UnrouteVia): boolean {
+  if (via.at === undefined || via.diameter === undefined) return false
+  const reach = via.diameter / 2 + (track.width ?? 0) / 2 + TOUCH_MM
+  const at = via.at
+  if (track.points.length === 1) return Math.hypot(track.points[0]!.x - at.x, track.points[0]!.y - at.y) <= reach
+  return track.points.some((point, i) => i > 0 && toSegment(at, track.points[i - 1]!, point) <= reach)
+}
+
 /**
  * The edits that remove the router's unlocked copper: all of it, or only the records named in `ids`. A track that
- * starts on a locked part's pad is left (the core would refuse its removal) and named in `skipped`.
+ * starts on a locked part's pad is left (the core would refuse its removal) and named in `skipped`; a router via that a
+ * track not made by the router touches (a router track reshaped by hand is the editor's) is left and named in `kept`.
  */
 export function unrouteEdits(copper: UnrouteCopper, options: UnrouteOptions = {}): Unroute {
   const only = options.ids === undefined ? undefined : new Set(options.ids)
@@ -50,22 +81,31 @@ export function unrouteEdits(copper: UnrouteCopper, options: UnrouteOptions = {}
     if (part !== undefined) skipped.push(`${track.id} starts on the locked part ${part}`)
     return part === undefined
   })
-  const edits = [
-    ...tracks.map((track): LayoutEdit => ({ kind: "removeTrack", id: track.id })),
-    ...copper.vias.filter((via) => takesBack(via, only)).map((via): LayoutEdit => ({ kind: "removeVia", id: via.id })),
-  ]
-  return { edits, skipped }
+  const others = copper.tracks.filter((track) => track.by !== "router")
+  const kept: string[] = []
+  const vias = copper.vias.filter((via) => {
+    if (!takesBack(via, only)) return false
+    const touched = others.some((track) => touchesVia(track, via))
+    if (touched) kept.push(via.id)
+    return !touched
+  })
+  const edits = [...tracks.map((track): LayoutEdit => ({ kind: "removeTrack", id: track.id })), ...vias.map((via): LayoutEdit => ({ kind: "removeVia", id: via.id }))]
+  return { edits, skipped, kept }
 }
 
 const counted = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`
 
-/** "Unroute: remove 12 tracks and 3 vias the router made; left t0004 (starts on the locked part J1)". */
-export function unrouteSummary(edits: readonly LayoutEdit[], skipped: readonly string[] = []): string {
+/**
+ * "Unroute: remove 12 tracks and 3 vias the router made; left t0004 (starts on the locked part J1); kept 1 via a track
+ * not made by the router touches".
+ */
+export function unrouteSummary(edits: readonly LayoutEdit[], skipped: readonly string[] = [], kept = 0): string {
   const tracks = edits.filter((edit) => edit.kind === "removeTrack").length
   const vias = edits.filter((edit) => edit.kind === "removeVia").length
   const parts = [...(tracks > 0 ? [counted(tracks, "track")] : []), ...(vias > 0 ? [counted(vias, "via")] : [])]
   const left = skipped.length === 0 ? "" : `; left ${skipped.map((why) => why.replace(/^(\S+) /, "$1 (")).join("), ")})`
-  const text = `Unroute: remove ${parts.join(" and ")} the router made${left}`
+  const held = kept === 0 ? "" : `; kept ${counted(kept, "via")} a track not made by the router touches`
+  const text = `Unroute: remove ${parts.join(" and ")} the router made${left}${held}`
   return text.length <= 200 ? text : `${text.slice(0, 199)}…`
 }
 

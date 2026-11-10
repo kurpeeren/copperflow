@@ -34,7 +34,7 @@ describe("Unroute", () => {
 
   test("a router track that starts on a part locked since is left, and named", () => {
     const result = unrouteEdits(COPPER, { lockedPart: (track) => (track.id === "t0005" ? "J1" : undefined) })
-    expect(result).toEqual({ edits: [{ kind: "removeTrack", id: "t0002" }, { kind: "removeVia", id: "v0001" }], skipped: ["t0005 starts on the locked part J1"] })
+    expect(result).toEqual({ edits: [{ kind: "removeTrack", id: "t0002" }, { kind: "removeVia", id: "v0001" }], skipped: ["t0005 starts on the locked part J1"], kept: [] })
     expect(unrouteSummary(result.edits, result.skipped)).toBe("Unroute: remove 1 track and 1 via the router made; left t0005 (starts on the locked part J1)")
   })
 
@@ -55,6 +55,28 @@ describe("Unroute", () => {
       { kind: "setTrack", id: "t0002", locked: false },
     ], { author: "human" }).doc
     expect(edited.records.map((record) => [record.id, record.by])).toEqual([["t0001", "human"], ["v0001", "human"], ["t0002", "router"]])
+  })
+
+  test("a router via that a track not made by the router touches is kept, and the summary counts it", () => {
+    const routed = applyLayoutRecordEdits(parseLayout(""), [
+      { kind: "addTrack", net: "net.A", layer: "top", width: 0.2, points: [{ x: 0, y: 0 }, { x: 1, y: 0 }] },
+      { kind: "addVia", net: "net.A", at: { x: 1, y: 0 }, drill: 0.3, diameter: 0.6 },
+      { kind: "addTrack", net: "net.A", layer: "bottom", width: 0.2, points: [{ x: 1, y: 0 }, { x: 3, y: 0 }] },
+      { kind: "addVia", net: "net.A", at: { x: 3, y: 0 }, drill: 0.3, diameter: 0.6 },
+      { kind: "addTrack", net: "net.A", layer: "top", width: 0.2, points: [{ x: 3, y: 0 }, { x: 5, y: 0 }] },
+    ], { author: "human", router: true }).doc
+    // The first track is reshaped by hand, its end still on the router's via v0001; v0002 touches router tracks only.
+    const edited = applyLayoutRecordEdits(routed, [{ kind: "setTrack", id: "t0001", points: [{ x: 0, y: 0 }, { x: 0.5, y: 0.4 }, { x: 1.05, y: 0 }] }], { author: "human" }).doc
+    const tracks = edited.records.filter((record) => record.t === "track")
+    const vias = edited.records.filter((record) => record.t === "via")
+    const result = unrouteEdits({ tracks, vias })
+    expect(result.edits).toEqual([
+      { kind: "removeTrack", id: "t0002" },
+      { kind: "removeTrack", id: "t0003" },
+      { kind: "removeVia", id: "v0002" },
+    ])
+    expect(result.kept).toEqual(["v0001"])
+    expect(unrouteSummary(result.edits, result.skipped, result.kept.length)).toBe("Unroute: remove 2 tracks and 1 via the router made; kept 1 via a track not made by the router touches")
   })
 })
 

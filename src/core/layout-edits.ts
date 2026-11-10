@@ -86,11 +86,14 @@ async function sheetChange(root: string, sheet: { file: string; edits: Edit[] })
 /**
  * Applies copper edits to a circuit's layout file (named by the circuit file or by the layout file itself) as one
  * history entry naming the layout file; the first edit creates the file, and undoing that removes it again. Locked
- * records, and tracks starting on a locked part's pad, are refused. Throws EditError for a refused edit.
+ * records, and tracks starting on a locked part's pad, are refused. Throws EditError for a refused edit. The edits may
+ * be given by a function, called in the project's write queue after the guard.
  */
-export function applyLayoutEdits(root: string, file: string, edits: readonly LayoutEdit[], options: LayoutEditOptions): Promise<LayoutEditResult> {
+export function applyLayoutEdits(root: string, file: string, given: readonly LayoutEdit[] | (() => Promise<readonly LayoutEdit[]>), options: LayoutEditOptions): Promise<LayoutEditResult> {
   return inProjectQueue(root, async () => {
     await options.guard?.()
+    // A function gives the edits inside the queue, after the guard: the router lays its tracks off the parts locked then.
+    const edits = typeof given === "function" ? await given() : given
     assertMeta({ author: options.author, summary: options.summary ?? "layout edit" })
     const layout = await resolveLayoutFile(root, layoutNameFor(file))
     const source = await readIfThere(layout.path)

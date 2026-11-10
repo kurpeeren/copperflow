@@ -235,6 +235,35 @@ describe("routing one instance of a sheet", () => {
     const checked = expectClean(withStub, report, 2)
     expect(checked.after.pcb.ratsnest).toEqual([])
   })
+
+  test("a budget spent once the instance is routed copies nothing more and skips the cleanup, saying so", () => {
+    const design = buildDesign(files, MAIN)
+    // The clock stands still until the last connection of a pass is told, then jumps past the budget.
+    let now = 0
+    const report = routeDesign(design, {
+      scope: { kind: "instance", instance: "P1" },
+      budgetMs: 1000,
+      clock: () => now,
+      onProgress: (progress) => {
+        if (progress.stage === "routing" && progress.done === progress.total) now = 5000
+      },
+    })
+    const own = report.routed.filter((route) => route.copiedFrom === undefined)
+    expect(own.length).toBeGreaterThan(0)
+    expect(report.routed.filter((route) => route.copiedFrom !== undefined)).toEqual([])
+    expect(report.replicas).toEqual([{ instance: "P2", copied: 0 }])
+    expect(report.unrouted.length).toBe(own.length)
+    for (const one of report.unrouted) {
+      expect(one.reason).toMatch(/: the time budget ran out before it was routed$/)
+      expect([one.from, one.to].every((pad) => /^(R201|C201)#/.test(pad))).toBe(true)
+    }
+    expect(report.budgetSpent).toBe(true)
+    expect(report.cleanupSkipped).toBe(true)
+    expect(report.cleanupCapped).toBe(false)
+    const tracks = report.edits.filter((edit) => edit.kind === "addTrack").length
+    expect(tracks).toBe(own.reduce((sum, route) => sum + route.copper.tracks.length, 0))
+    expectClean(files, report)
+  })
 })
 
 describe("the time budget", () => {
