@@ -146,8 +146,24 @@ describe("the copper pour and hole tools", () => {
   })
 
   test("a dragged corner writes the outline with that corner moved", () => {
-    const { edit } = pourCornerEdit("copperpour:2", square(5, 5, 10), 2, { x: 18, y: 16 })
-    expect(edit).toEqual({ kind: "setPour", id: "copperpour:2", props: { outline: [{ x: 5, y: 5 }, { x: 15, y: 5 }, { x: 18, y: 16 }, { x: 5, y: 15 }] } })
+    const change = pourCornerEdit("copperpour:2", square(5, 5, 10), 2, { x: 18, y: 16 })
+    expect(change).toMatchObject({ edit: { kind: "setPour", id: "copperpour:2", props: { outline: [{ x: 5, y: 5 }, { x: 15, y: 5 }, { x: 18, y: 16 }, { x: 5, y: 15 }] } } })
+  })
+
+  test("a corner dragged onto another, onto the line of the rest, or across an edge writes nothing and says why", () => {
+    const triangle = [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 0, y: 4 }]
+    expect(pourCornerEdit("copperpour:1", triangle, 2, { x: 4, y: 0 })).toEqual({ message: "Not moved: the outline would not be a simple polygon (two corners in a row are at the same place)" })
+    expect(pourCornerEdit("copperpour:1", triangle, 2, { x: 8, y: 0 })).toHaveProperty("message", expect.stringContaining("one line"))
+    expect(pourCornerEdit("copperpour:1", square(0, 0, 4), 2, { x: 4, y: -2 })).toHaveProperty("message", expect.stringContaining("cross"))
+  })
+
+  test("the pour tool refuses to close an outline whose edges cross, keeping its corners", () => {
+    let state: PourToolState = idlePourTool("pour")
+    for (const [x, y] of [[0, 0], [4, 4], [4, 0], [0, 4]] as const) state = press(state, x, y).state as PourToolState
+    const step = pourToolStep(state, { type: "finish" })
+    expect(step.outline).toBeUndefined()
+    expect(step.refused).toBe("Not closed: two of its edges cross")
+    expect(step.state?.points).toHaveLength(4)
   })
 
   test("Delete removes the later ids first, and names the locked and read-only ones", () => {

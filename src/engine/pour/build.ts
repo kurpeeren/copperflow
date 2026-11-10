@@ -48,12 +48,13 @@ function outlineOf(value: unknown, offset: Offset, warn: Warn): Point[] | undefi
 
 /**
  * A `<copperpour net layer … />` as written: a pour needs a net and a layer, and an outline when it has one must be a
- * polygon; a bad optional prop is warned about and its default used. `index` is its 1-based place among the pours read.
+ * polygon; a bad optional prop is warned about and its default used. `index` is its 1-based place among every
+ * `<copperpour>` tag in source order, kept or not, so a dropped pour does not renumber the ones after it.
  */
 export function buildPour(props: Props, offset: Offset, index: number, source: SourceRef): { pour?: PourDraft; diagnostics: Diagnostic[] } {
   const reader = new PropReader(props, "copperpour", source)
   const extra: Diagnostic[] = []
-  const warn: Warn = (message) => extra.push(diagnostic("bad-value", "warning", message, ["copperpour"], source))
+  const warn: Warn = (message) => extra.push(diagnostic("bad-value", "warning", message, [`copperpour:${index}`], source))
   const netName = reader.string("net")
   if (netName === undefined) warn('copperpour needs a net, such as net="GND"; it is ignored')
   const layer = props["layer"]

@@ -38,6 +38,7 @@ import {
   type PourToolState,
 } from "./pour-tool"
 import type { PourFillMode } from "./pour-view"
+import { newBoardItemId } from "../../../src/core/board-items.js"
 import { DRAG_THRESHOLD_PX, type ArmedTool, type Press } from "./press"
 
 export interface PoursInput {
@@ -78,21 +79,26 @@ interface CornerDrag {
 
 const locksOf = (circuit: CircuitData): ReadonlySet<string> => new Set(circuit.annotations.locks.map((lock) => lock.part))
 
-/** Selects a new pour once the build has it: the pours counted when it was sent, and one more. */
+/** Selects a new pour, by the id its edit gave it, once the build has it. */
 function useSelectNewPour(design: Design, onSelect: PoursInput["onSelect"]) {
-  const [waiting, setWaiting] = useState<{ count: number } | null>(null)
+  const [waiting, setWaiting] = useState<string | null>(null)
   const pours = poursOf(design)
   useEffect(() => {
-    if (!waiting || pours.length <= waiting.count) return
-    const id = `copperpour:${waiting.count + 1}`
-    if (pours.some((pour) => pour.id === id)) onSelect((current) => current.clear().onlyBoard(id))
+    if (waiting === null || !pours.some((pour) => pour.id === waiting)) return
+    onSelect((current) => current.clear().onlyBoard(waiting))
     setWaiting(null)
   }, [pours, waiting, onSelect])
-  return useCallback((count: number) => setWaiting({ count }), [])
+  return useCallback((id: string) => setWaiting(id), [])
+}
+
+/** A failed send the actions did not report themselves: told, and counted as failed. */
+const reported = (actions: Actions) => (error: unknown): false => {
+  actions.notify(`Not written: ${error instanceof Error ? error.message : String(error)}`)
+  return false
 }
 
 /** The armed tool's state; `send` runs one event through it and hands a closed outline or a hole's place to `write`. */
-function useToolState(onArm: () => void, write: (step: { outline?: Point[]; hole?: Point }) => void) {
+function useToolState(onArm: () => void, write: (step: { outline?: Point[]; hole?: Point; refused?: string }) => void) {
   const [state, setState] = useState<PourToolState | null>(null)
   const ref = useRef(state)
   ref.current = state
@@ -103,7 +109,7 @@ function useToolState(onArm: () => void, write: (step: { outline?: Point[]; hole
       const next = pourToolStep(current, event)
       ref.current = next.state
       setState(next.state)
-      if (next.outline || next.hole) write(next)
+      if (next.outline || next.hole || next.refused) write(next)
     },
     [write],
   )
@@ -169,7 +175,7 @@ interface Latest {
   input: PoursInput
   diameter: string
   drag: CornerDrag | undefined
-  waitForPour(count: number): void
+  waitForPour(id: string): void
 }
 
 /** Writes a closed pour, or a whole-board one (no outline), of the default net on the active layer; selects it once built. */
@@ -177,17 +183,18 @@ function writePour(latest: Latest, outline: readonly Point[] | undefined): void 
   const { input } = latest
   const net = defaultPourNet(input.design)
   if (net === undefined) return input.actions.notify("The circuit has no net for a copper pour yet.")
-  const count = poursOf(input.design).length
+  // addPour puts a new pour after every <copperpour> tag, so it takes the next id (board-items.ts newBoardItemId).
+  const id = newBoardItemId(input.circuit.model.boardItems ?? [], "copperpour")
   void input.actions
     .edit([pourEdit(net, input.activeLayer, outline)], pourSummary(net, input.activeLayer, outline === undefined))
-    .catch(() => false)
-    .then((ok) => ok && latest.waitForPour(count))
+    .catch(reported(input.actions))
+    .then((ok) => ok && latest.waitForPour(id))
 }
 
 function writeHole(latest: Latest, at: Point): void {
   const diameter = holeDiameter(latest.diameter)
   if (typeof diameter !== "number") return latest.input.actions.notify(diameter.message)
-  void latest.input.actions.edit([holeEdit(at, diameter)], holeSummary(diameter)).catch(() => false)
+  void latest.input.actions.edit([holeEdit(at, diameter)], holeSummary(diameter)).catch(reported(latest.input.actions))
 }
 
 /** A press that picks: a corner of the selected pour starts its drag; else a hole, else a pour's outline, is selected (toggled with Shift or Ctrl). */
@@ -240,7 +247,8 @@ export function usePours(input: PoursInput) {
   const now: Latest = { input, diameter, drag, waitForPour }
   const latest = useRef(now)
   latest.current = now
-  const write = useCallback((step: { outline?: Point[]; hole?: Point }) => {
+  const write = useCallback((step: { outline?: Point[]; hole?: Point; refused?: string }) => {
+    if (step.refused) latest.current.input.actions.notify(step.refused)
     if (step.outline) writePour(latest.current, step.outline)
     if (step.hole) writeHole(latest.current, step.hole)
   }, [])
@@ -304,10 +312,14 @@ export function usePours(input: PoursInput) {
   const release = (current: CornerDrag) => {
     put(undefined)
     if (!current.moved) return
-    const outline = draggedOutline(current)
     const change = pourCornerEdit(current.id, current.outline, current.index, current.to)
-    setSent({ id: current.id, outline })
-    void input.actions.edit([change.edit], change.summary).then((ok) => ok || setSent(undefined))
+    // A corner that would leave no simple polygon is not written: the reason is told and the old outline stays.
+    if ("message" in change) return input.actions.notify(change.message)
+    setSent({ id: current.id, outline: draggedOutline(current) })
+    void input.actions
+      .edit([change.edit], change.summary)
+      .catch(reported(input.actions))
+      .then((ok) => ok || setSent(undefined))
   }
 
   return {

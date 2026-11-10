@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { analyzeCircuit } from "../src/core/analyze.js"
-import { NOT_AT_TOP, UNSURE_BOARD_ID } from "../src/core/board-items.js"
+import { newBoardItemId, NOT_AT_TOP, UNSURE_BOARD_ID } from "../src/core/board-items.js"
 import { applyEdits, EditError } from "../src/core/edit.js"
 import type { Edit } from "../src/core/types.js"
 
@@ -50,11 +50,15 @@ describe("the scan of pours and holes", () => {
     expect(found[0]?.props["net"]?.literal).toBe("GND")
   })
 
-  test("a pour after one the engine may skip is read-only, since its id is unsure", () => {
-    const source = WITH_POURS.replace('<copperpour net="GND" layer="bottom" />', "<copperpour net={net} layer=\"bottom\" />")
-    const [first, second] = items(source)
-    expect(first?.editable).toBe(true)
-    expect(second?.readonlyReason).toBe(UNSURE_BOARD_ID)
+  test("a pour after one the engine drops keeps its id and stays editable; one after a pour made in a callback is read-only", () => {
+    const dropped = WITH_POURS.replace('<copperpour net="GND" layer="bottom" />', '<copperpour net={net} layer="bottom" />')
+    expect(items(dropped).map((item) => [item.id, item.editable])).toEqual([
+      ["copperpour:1", true],
+      ["copperpour:2", true],
+      ["hole:1", true],
+    ])
+    const mapped = WITH_POURS.replace('<copperpour net="GND" layer="bottom" />', '{["a"].map(() => <copperpour net="GND" layer="bottom" />)}')
+    expect(items(mapped)[1]?.readonlyReason).toBe(UNSURE_BOARD_ID)
   })
 
   test("a pour inside a group is read-only", () => {
@@ -99,6 +103,14 @@ describe("addPour", () => {
 })
 
 describe("setPour", () => {
+  test("refuses an outline that is not a simple polygon: repeated corners, no area, crossing edges", () => {
+    const set = (outline: { x: number; y: number }[]) => editError([{ kind: "setPour", id: "copperpour:2", props: { outline } }]).message
+    expect(set([{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 4 }])).toMatch(/same place/)
+    expect(set([{ x: 0, y: 0 }, { x: 2, y: 0 }, { x: 4, y: 0 }])).toMatch(/one line/)
+    expect(set([{ x: 0, y: 0 }, { x: 4, y: 4 }, { x: 4, y: 0 }, { x: 0, y: 4 }])).toMatch(/cross/)
+    expect(editError([{ kind: "addPour", net: "GND", layer: "top", outline: [{ x: 0, y: 0 }, { x: 4, y: 4 }, { x: 4, y: 0 }, { x: 0, y: 4 }] }]).message).toMatch(/cross/)
+  })
+
   test("sets props and the outline, one edit each", () => {
     const outline = [
       { x: 0, y: 0 },
@@ -162,5 +174,18 @@ describe("holes", () => {
     expect(editError([{ kind: "addHole", x: 1, y: 1, diameter: 0 }]).message).toMatch(/diameter/)
     expect(editError([{ kind: "setHole", id: "hole:1", props: { radius: 1 } }]).message).toMatch(/radius/)
     expect(editError([{ kind: "removeHole", id: "hole:1" }], new Set(["hole:1"])).code).toBe("locked")
+  })
+})
+
+describe("a new pour or hole after every one of its tag", () => {
+  test("a grouped pour later in the file does not refuse the new one, which goes before </board> and takes the next id", () => {
+    const source = BOARD.replace("  </board>", '    <group pcbX={5}>\n      <copperpour net="GND" layer="top" />\n    </group>\n  </board>')
+    const out = applyEdits(source, [{ kind: "addPour", net: "VCC", layer: "bottom" }], none)
+    expect(out).toContain('    </group>\n    <copperpour net="VCC" layer="bottom" />\n  </board>')
+    const found = items(out)
+    expect(found.map((item) => item.id)).toEqual(["copperpour:1", "copperpour:2"])
+    expect(found[1]?.props["net"]?.literal).toBe("VCC")
+    expect(newBoardItemId(items(source), "copperpour")).toBe("copperpour:2")
+    expect(newBoardItemId(items(source), "hole")).toBe("hole:1")
   })
 })

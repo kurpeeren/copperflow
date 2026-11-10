@@ -3,7 +3,7 @@
 import MagicString from "magic-string"
 import type { JSXElement } from "@babel/types"
 import { scanCircuit, type Scan } from "./analyze.js"
-import { POUR_LAYERS } from "./board-items.js"
+import { outlineProblem, POUR_LAYERS } from "./board-items.js"
 import { drawingKeeper } from "./drawing-identity.js"
 import { EditError } from "./edit-error.js"
 import { atTop, attributeNamed, boardInsertion, cleanPoint, jsxAttributes, lineEnding, lineIndent, MAX_COORDINATE, putAttribute, removeRange } from "./edit-text.js"
@@ -53,6 +53,8 @@ function layerOrThrow(value: unknown): string {
 function outlineOrThrow(value: unknown): Point[] {
   const points = Array.isArray(value) && value.length >= 3 && value.length <= MAX_OUTLINE ? value.map(cleanPoint) : []
   if (points.length < 3 || points.some((point) => point === undefined)) throw new EditError("invalid", `outline must be a list of 3 to ${MAX_OUTLINE} points with numbers x and y`)
+  const problem = outlineProblem(points as Point[])
+  if (problem) throw new EditError("invalid", `The pour's outline is not a simple polygon: ${problem}`)
   return points as Point[]
 }
 
@@ -77,17 +79,27 @@ function formatHoleProp(key: string, value: unknown): string {
 const itemsOf = (scan: Scan): BoardItemInfo[] => scan.model.boardItems ?? []
 
 /**
- * Where a new pour or hole goes: right after the last one of its tag when that one is at the top of the board and
- * on its own line, so the earlier ids stay; else before the board's first trace, as a part goes.
+ * Where a new pour or hole goes, always after every one of its tag, so it takes the next id and no id already in the
+ * file moves: before the board's first trace (as a part goes) when they all come earlier; right after the last one when
+ * it is at the top of the board on its own line; else (the last is in a group or a page) just before </board>.
  */
 function itemInsertion(source: string, scan: Scan, tag: BoardItemTag): { lineStart: number; indent: string } {
-  const usual = boardInsertion(source, scan, tag === "hole" ? "a hole" : "a copper pour")
+  const what = tag === "hole" ? "a hole" : "a copper pour"
+  const usual = boardInsertion(source, scan, what)
   const last = itemsOf(scan).filter((item) => item.tag === tag).at(-1)
-  if (!last || last.start < usual.lineStart || !atTop(last.parent)) return usual
+  if (!last || last.end <= usual.lineStart) return usual
   const indent = lineIndent(source, last.start)
   const newline = source.indexOf("\n", last.end)
-  if (indent === undefined || newline === -1 || source.slice(last.end, newline).trim() !== "") return usual
-  return { lineStart: newline + 1, indent }
+  if (atTop(last.parent) && indent !== undefined && newline !== -1 && source.slice(last.end, newline).trim() === "") return { lineStart: newline + 1, indent }
+  return beforeBoardClose(source, scan, what)
+}
+
+/** The line of </board> and the indent of the board's children. */
+function beforeBoardClose(source: string, scan: Scan, what: string): { lineStart: number; indent: string } {
+  const close = scan.model.boardClose?.start
+  const indent = close === undefined ? undefined : lineIndent(source, close)
+  if (close === undefined || indent === undefined) throw new EditError("invalid", `</board> must be on its own line to add ${what}`)
+  return { lineStart: close - indent.length, indent: indent + (indent.includes("\t") ? "\t" : "  ") }
 }
 
 /** Adds an element of `tag` and refuses the result when it would change the id of a pour or hole already in the file. */

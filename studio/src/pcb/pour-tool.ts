@@ -3,6 +3,7 @@
 // the hole's diameter field, and the edits they send: a pour on the active layer, of GND when the circuit has it, and
 // a hole. A pour's corners can be dragged afterwards (pourCornerEdit), and Delete removes pours and holes
 // (boardRemoval). Plain TypeScript with .js imports, so the tests run it without a DOM.
+import { outlineProblem } from "../../../src/core/board-items.js"
 import type { BoardItemInfo, CircuitModel, Edit } from "../../../src/core/types.js"
 import type { Design } from "../../../src/engine/design.js"
 import type { Point } from "../../../src/engine/model.js"
@@ -28,6 +29,8 @@ export type PourToolEvent =
 /** The next state (null: the tool is put away), and the outline of a closed pour or the place of a hole. */
 export interface PourToolStep {
   state: PourToolState | null
+  /** Why the outline could not close. */
+  refused?: string
   outline?: Point[]
   hole?: Point
 }
@@ -48,20 +51,16 @@ function corners(points: readonly Point[]): Point[] {
   return points.filter((p, i) => i === 0 || !same(p, points[i - 1] as Point))
 }
 
-/** Twice the signed area of a ring: zero when its corners are all on one line. */
-function doubleArea(ring: readonly Point[]): number {
-  return ring.reduce((sum, a, i) => {
-    const b = ring[(i + 1) % ring.length] as Point
-    return sum + a.x * b.y - b.x * a.y
-  }, 0)
-}
-
-/** A pour closes with three corners or more that enclose some area; fewer, or all on a line, waits for more. */
+/**
+ * A pour closes with three corners or more that make a simple polygon; fewer wait for more, and an outline with no
+ * area or crossing edges is refused with the reason, its corners kept so Backspace can mend it.
+ */
 function close(state: PourToolState): PourToolStep {
   const ring = corners(state.points)
   if (ring.length >= 3 && ring.at(-1) && same(ring[0] as Point, ring.at(-1) as Point)) ring.pop()
-  if (ring.length < 3 || Math.abs(doubleArea(ring)) < 1e-9) return keep(state)
-  return { state: idlePourTool(state.tool), outline: ring }
+  if (ring.length < 3) return keep(state)
+  const problem = outlineProblem(ring)
+  return problem ? { state, refused: `Not closed: ${problem}` } : { state: idlePourTool(state.tool), outline: ring }
 }
 
 function press(state: PourToolState, at: Point, double: boolean): PourToolStep {
@@ -119,9 +118,14 @@ export function holeDiameter(raw: string): number | { message: string } {
   return Math.round(value * 1000) / 1000
 }
 
-/** The edit that writes a pour's outline with one corner moved: one history entry. */
-export function pourCornerEdit(id: string, outline: readonly Point[], index: number, to: Point): { edit: Edit; summary: string } {
+/**
+ * The edit that writes a pour's outline with one corner moved: one history entry; or, when the moved outline would
+ * not be a simple polygon (the corner on another, on the line through its neighbours, or edges crossing), why not.
+ */
+export function pourCornerEdit(id: string, outline: readonly Point[], index: number, to: Point): { edit: Edit; summary: string } | { message: string } {
   const moved = outline.map((corner, i) => (i === index ? { x: to.x, y: to.y } : { x: corner.x, y: corner.y }))
+  const problem = outlineProblem(moved)
+  if (problem) return { message: `Not moved: the outline would not be a simple polygon (${problem})` }
   return { edit: { kind: "setPour", id, props: { outline: moved } }, summary: `move a corner of ${id}` }
 }
 
