@@ -4,6 +4,7 @@
 // with .js imports, so the tests run it without a DOM.
 import type { Edit } from "../../../src/core/types.js"
 import type { CopperPour, Hole } from "../../../src/engine/model.js"
+import { lockChange } from "./group-edits.js"
 import { pourNetName, poursOf, type PourDesign } from "./pour-hit.js"
 import { holeDiameter } from "./pour-tool.js"
 
@@ -107,4 +108,33 @@ export function boardFieldEdit(design: PourDesign, id: string, field: BoardField
   const summary = `set ${id} ${field}=${value === null ? "the net class's" : value}`
   if (isHole) return { edit: { kind: "setHole", id, props: { [field]: value as number } }, summary }
   return { edit: { kind: "setPour", id, props: { [field]: value } }, summary }
+}
+
+/** The Lock button of a pour's or hole's Properties: the menu command it runs, its text, whether it shows pressed, its tooltip. */
+export interface BoardLockButton {
+  command: "lock" | "unlock"
+  label: string
+  pressed: boolean
+  title: string
+}
+
+/**
+ * Lock for an unlocked pour or hole, Unlock for a locked one, and Lock again for a locked one changed outside the
+ * editor, as a part's button does. A part's lock never covers a pour: each is locked by its own id.
+ */
+export function boardLockButton(id: string, locks: { locked: ReadonlySet<string>; violated: ReadonlySet<string> }): BoardLockButton {
+  const word = id.startsWith("hole:") ? "hole" : "copper pour"
+  if (!locks.locked.has(id)) return { command: "lock", label: "Lock", pressed: false, title: `Lock this ${word}, so the agent cannot change or remove it` }
+  if (locks.violated.has(id)) return { command: "lock", label: "Lock again", pressed: true, title: "Changed outside the editor: lock it again to accept the change" }
+  return { command: "unlock", label: "Locked", pressed: true, title: `Unlock this ${word}` }
+}
+
+/** What Layout → Lock or Unlock sends for the selection: the selected parts' names and pours' and holes' ids it changes, or why none. */
+export function selectionLockChange(
+  selection: { names: readonly string[]; board: readonly string[] },
+  locked: ReadonlySet<string>,
+  on: boolean,
+  violated: ReadonlySet<string> = new Set(),
+): { parts: string[] } | { message: string } {
+  return lockChange([...selection.names, ...selection.board], locked, on, violated)
 }

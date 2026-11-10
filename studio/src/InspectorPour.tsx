@@ -1,13 +1,13 @@
 // Properties for one selected copper pour or hole: Delete, then the Copper pour section (net, layer, priority,
 // clearance, minimum width and thermal relief editable; the outline and the fill area shown) or the Hole section
-// (position and diameter). Each change is one edit of the circuit file, so one history entry (pour-props.ts); a
-// locked or read-only pour or hole shows its rows without fields.
+// (position and diameter), with a Lock button as a part has. Each change is one edit of the circuit file, so one history
+// entry (pour-props.ts); a locked or read-only pour or hole shows its rows without fields.
 import { useEffect, useId, useState } from "react"
 import type { CircuitData, Design } from "./api"
 import type { Actions } from "./App"
 import { Row, Section } from "./InspectorRows"
-import { CloseIcon, TrashIcon } from "./icons"
-import { boardFieldEdit, boardProperties, type BoardField, type BoardRow } from "./pcb/pour-props"
+import { CloseIcon, LockIcon, TrashIcon, UnlockIcon } from "./icons"
+import { boardFieldEdit, boardLockButton, boardProperties, type BoardField, type BoardRow } from "./pcb/pour-props"
 import { boardItemBlocker } from "./pcb/pour-tool"
 import type { CommandId } from "./shell/menus"
 
@@ -16,7 +16,8 @@ interface PourViewProps {
   circuit: CircuitData
   /** The selected pour's or hole's id. */
   id: string
-  locked: ReadonlySet<string>
+  /** The locked parts, pours and holes, and those of them changed outside the editor. */
+  locks: { locked: ReadonlySet<string>; violated: ReadonlySet<string> }
   actions: Actions
   run(command: CommandId): void
   onClear(): void
@@ -24,10 +25,11 @@ interface PourViewProps {
   toggle(title: string): void
 }
 
-export function PourView({ design, circuit, id, locked, actions, run, onClear, collapsed, toggle }: PourViewProps) {
+export function PourView({ design, circuit, id, locks, actions, run, onClear, collapsed, toggle }: PourViewProps) {
   const shown = boardProperties(design, id)
   if (!shown) return null
-  const blocker = boardItemBlocker(circuit.model, locked, id)
+  const blocker = boardItemBlocker(circuit.model, locks.locked, id)
+  const lock = boardLockButton(id, locks)
   const commit = async (field: BoardField, raw: string): Promise<boolean> => {
     const change = boardFieldEdit(design, id, field, raw)
     if (!change) return true
@@ -46,6 +48,10 @@ export function PourView({ design, circuit, id, locked, actions, run, onClear, c
         </button>
       </header>
       <div className="inspector-actions">
+        <button className={lock.pressed ? "toggle on" : "toggle"} aria-pressed={lock.pressed} title={lock.title} onClick={() => run(lock.command)}>
+          {lock.pressed ? <LockIcon /> : <UnlockIcon />}
+          {lock.label}
+        </button>
         <button className="danger" disabled={blocker !== null} title={blocker ?? `Delete this ${shown.kind === "hole" ? "hole" : "copper pour"} (Delete)`} onClick={() => run("delete")}>
           <TrashIcon /> Delete
         </button>
