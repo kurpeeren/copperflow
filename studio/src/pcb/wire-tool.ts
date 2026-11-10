@@ -5,6 +5,8 @@ import type { Design } from "../../../src/engine/design.js"
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { Net, Pin } from "../../../src/engine/model.js"
 import type { Point } from "./geometry.js"
+import { connectionRefusal } from "../../../src/core/connection-names.js"
+import { connectionsWith } from "./instances.js"
 import { labelTag } from "./label-tag.js"
 import { wirePath, type Bends } from "./wire-path.js"
 
@@ -24,6 +26,11 @@ export interface WireEnd {
    * `bus:<id>`, which no trace can name.
    */
   members?: readonly string[]
+  /**
+   * A pin of a sub-sheet instance's symbol: a port, which no trace can name. A wire to it writes the instance's
+   * `connections` instead (portWire). Its selector is `port:<instance>.<port>`.
+   */
+  port?: { instance: string; name: string; bus: boolean; members?: readonly string[] }
 }
 
 /** A ground or power symbol is small; pointing near it counts. */
@@ -81,6 +88,52 @@ export function freePin(design: Design, pinId: string): boolean {
   return net === undefined || (net.pins.length < 2 && net.names.length === 0)
 }
 
+/** A pin of an instance's sheet symbol ("PS1.VIN") as a wire end. */
+function portEnd(design: Design, pinId: string, at: Point): WireEnd | undefined {
+  for (const instance of design.circuit.instances ?? []) {
+    if (instance.path.includes("/")) continue
+    const port = instance.ports.find((candidate) => `${instance.path}.${candidate.name}` === pinId)
+    if (!port) continue
+    const label = `${instance.path}.${port.name}`
+    const members = port.members ? { members: port.members } : {}
+    return { selector: `port:${label}`, at, label, port: { instance: instance.path, name: port.name, bus: port.bus === true, ...members } }
+  }
+  return undefined
+}
+
+/**
+ * A wire that starts or ends on a sheet symbol's pin connects that port, never by a trace: it writes the instance's
+ * `connections` with the net the other end names (a net label, a flag, a pin or wire already on a named net), or for a
+ * bus pin the bus the other end is, with the same members. Undefined when neither end is a port.
+ */
+export function portWire(design: Design, start: WireEnd, end: WireEnd): { edits: Edit[]; summary: string } | { notice: string } | undefined {
+  const [pin, other] = start.port ? [start, end] : end.port ? [end, start] : []
+  if (!pin?.port || !other) return undefined
+  const { port } = pin
+  if (other.port) return { notice: `Connect ${pin.label} and ${other.label} through a named net: wire each to a net label` }
+  const instance = (design.circuit.instances ?? []).find((candidate) => candidate.path === port.instance)
+  if (!instance) return { notice: `${port.instance} is gone; wait for the build` }
+  const target = port.bus ? busTarget(port, other) : netTarget(other)
+  if (target === undefined) {
+    const what = port.bus ? `a bus with the members ${(port.members ?? []).join(", ")}` : "the net a name first (a net label)"
+    return { notice: port.bus ? `${pin.label} is a bus pin; wire it to ${what}` : `Give ${what}, then wire ${pin.label} to it` }
+  }
+  const refusal = connectionRefusal(instance.sheet, port.name, target, port.bus)
+  if (refusal !== undefined) return { notice: refusal }
+  const edits: Edit[] = [{ kind: "setConnections", part: instance.path, connections: connectionsWith(instance, port.name, target) }]
+  return { edits, summary: `connect ${pin.label} to ${target}` }
+}
+
+/** The named net a wire end is on: a net selector, or a pin or wire on a named net. */
+const netTarget = (end: WireEnd): string | undefined => (end.members ? undefined : end.selector.startsWith("net.") ? end.selector.slice("net.".length) : end.net)
+
+/** The bus a bus pin may take: a bus end whose members are the port's, by name. */
+function busTarget(port: NonNullable<WireEnd["port"]>, end: WireEnd): string | undefined {
+  const wanted = port.members ?? []
+  const has = end.members ?? []
+  return has.length === wanted.length && wanted.every((member) => has.includes(member)) ? end.label : undefined
+}
+
 /** The pin whose end is nearest to `p` within `maxDistance`. */
 export function pinAt(design: Design, p: Point, maxDistance: number): { pin: string; at: Point } | undefined {
   let best: { pin: string; at: Point; d: number } | undefined
@@ -108,6 +161,8 @@ export function endAt(design: Design, p: Point, maxDistance: number, meet: Meet 
   const hit = pinAt(design, p, maxDistance)
   const pin = hit && allPins(design).find((candidate) => candidate.id === hit.pin)
   if (hit && pin) return pinEnd(design, pin, hit.at)
+  const port = hit && portEnd(design, hit.pin, hit.at)
+  if (port) return port
   return labelEnd(design, p, maxDistance) ?? busEnd(design, p, maxDistance, meet) ?? wireEnd(design, p, maxDistance, meet)
 }
 

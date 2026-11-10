@@ -4,6 +4,7 @@ import { buildDesign } from "../src/engine/design.js"
 import { connectionsWith, instancePart, instancePartBlocker, instanceSelection, lockedWithInstances, partsOfInstance, sheetUses, topInstance, usedLine } from "../studio/src/pcb/instances.js"
 import { replicatePlan } from "../studio/src/pcb/replicate.js"
 import { dropCorner, dropPin, handleAt, symbolHandles } from "../studio/src/pcb/sheet-symbol-edit.js"
+import { endAt, portWire, wireEdits, type WireEnd } from "../studio/src/pcb/wire-tool.js"
 import { docTabs, tabTarget } from "../studio/src/shell/doc-tabs.js"
 import { buildPageTree } from "../studio/src/shell/page-tree.js"
 
@@ -188,5 +189,39 @@ describe("a sheet file in the tabs and the tree", () => {
       [MAIN, ["Schematic", "PCB"]],
       [SHEET, ["Schematic*"]],
     ])
+  })
+})
+
+describe("wiring a sheet symbol's pin", () => {
+  const BUS_SHEET = POWER.replace(`<port name="GND" />`, `<port name="GND" />\n      <port name="D[0:3]" bus />`)
+  const built = buildDesign({ [MAIN]: main([TWO, `<resistor name="R9" footprint="0402" schX={0} schY={3} />`, `<trace from="R9.pin1" to="net.SIG" />`].join("\n")), [SHEET]: BUS_SHEET }, MAIN)
+  const pinOf = (pin: string) => {
+    const at = built.schematic.symbols.find((s) => s.component === "PS1")?.pinEnds[pin]
+    if (!at) throw new Error(`no ${pin}`)
+    return endAt(built, at, 0.01) as WireEnd
+  }
+
+  test("to a pin on a named net writes the instance's connections, never a trace", () => {
+    const r9 = built.schematic.symbols.find((s) => s.component === "R9")?.pinEnds["R9.pin1"]
+    if (!r9) throw new Error("no R9")
+    const vin = pinOf("PS1.VIN")
+    expect(vin.port).toEqual({ instance: "PS1", name: "VIN", bus: false })
+    expect(portWire(built, vin, endAt(built, r9, 0.01) as WireEnd)).toEqual({
+      edits: [{ kind: "setConnections", part: "PS1", connections: { VIN: "SIG", VOUT: "V3_3", GND: "GND" } }],
+      summary: "connect PS1.VIN to SIG",
+    })
+  })
+
+  test("a bus pin takes a bus with the same members, and nothing else", () => {
+    const bus: WireEnd = { selector: "bus:D[0:3]", at: { x: 0, y: 0 }, label: "D[0:3]", members: ["D0", "D1", "D2", "D3"] }
+    const data = pinOf("PS1.D[0:3]")
+    expect(portWire(built, bus, data)).toMatchObject({ edits: [{ kind: "setConnections", part: "PS1", connections: { "D[0:3]": "D[0:3]" } }] })
+    expect(portWire(built, data, { ...bus, label: "A[0:1]", members: ["A0", "A1"] })).toEqual({ notice: "PS1.D[0:3] is a bus pin; wire it to a bus with the members D0, D1, D2, D3" })
+  })
+
+  test("to an end with no named net is refused with what to do", () => {
+    const loose: WireEnd = { selector: "R1.pin1", at: { x: 0, y: 0 }, label: "R1.pin1", pin: "R1.pin1" }
+    expect(portWire(built, pinOf("PS1.VOUT"), loose)).toEqual({ notice: "Give the net a name first (a net label), then wire PS1.VOUT to it" })
+    expect(wireEdits(built, pinOf("PS1.VOUT"), loose, [])).toEqual([])
   })
 })

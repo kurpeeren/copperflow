@@ -41,9 +41,11 @@ async function portsOfFile(root: string, sheet: string, file: string): Promise<{
  * Refuses a connection to a port the sheet has not, naming the ones it has, and a connection a port cannot take: a
  * net port takes a net name, a bus port a bus name, and neither a net local to an instance.
  */
-export function checkPorts(sheet: string, ports: readonly string[], connections: Record<string, string>, buses: readonly string[] = []): void {
+export function checkPorts(sheet: string, ports: readonly string[], connections: Record<string, string>, buses?: readonly string[]): void {
   const unknown = Object.keys(connections).find((port) => !ports.includes(port))
   if (unknown !== undefined) throw new Error(`${sheet} has no port ${unknown}; ${ports.length === 0 ? "it has no ports" : `its ports are ${ports.join(", ")}`}`)
+  // Without the sheet's bus ports (a sheet new_circuit is writing has none), its own checks name the nets.
+  if (buses === undefined) return
   for (const [port, target] of Object.entries(connections)) {
     const refusal = connectionRefusal(sheet, port, target, buses.includes(port))
     if (refusal !== undefined) throw new Error(refusal)
