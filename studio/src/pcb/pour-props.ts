@@ -30,6 +30,11 @@ const LAYER_CHOICES = [
   { value: "top", label: "Top Layer" },
   { value: "bottom", label: "Bottom Layer" },
 ] as const
+/** The inner layers a 4-layer board offers a pour. */
+const INNER_CHOICES = [
+  { value: "inner1", label: "Inner Layer 1" },
+  { value: "inner2", label: "Inner Layer 2" },
+] as const
 const THERMAL_CHOICES = [
   { value: "relief", label: "Relief (spokes)" },
   { value: "solid", label: "Solid" },
@@ -45,7 +50,7 @@ function pourRows(design: PourDesign, pour: CopperPour): BoardRow[] {
   const fill = design.pcb.pours.find((one) => one.id === pour.id)
   return [
     { label: "Net", value: pourNetName(design, pour.net), field: "net", choices: nets },
-    { label: "Layer", value: pour.layer, field: "layer", choices: LAYER_CHOICES },
+    { label: "Layer", value: pour.layer, field: "layer", choices: design.pcb.board?.layers === 4 ? [...LAYER_CHOICES, ...INNER_CHOICES] : LAYER_CHOICES },
     { label: "Priority", value: String(pour.priority), field: "priority" },
     { label: "Clearance (mm)", value: pour.clearance === undefined ? "" : number(pour.clearance), field: "clearance" },
     { label: "Min width (mm)", value: number(pour.minWidth), field: "minWidth" },

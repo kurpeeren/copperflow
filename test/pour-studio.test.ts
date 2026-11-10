@@ -332,3 +332,23 @@ describe("the order a press on the PCB is offered", () => {
     expect(text.asked).toEqual(["pourTool", "route", "pourCorner"])
   })
 })
+
+describe("inner-layer pours on a 4-layer board", () => {
+  const FOUR = {
+    ...DESIGN,
+    pcb: {
+      ...DESIGN.pcb,
+      board: { ...DESIGN.pcb.board, layers: 4, pours: [...(DESIGN.pcb.board?.pours ?? []), { id: "copperpour:3", net: "net:2", layer: "inner1", outline: square(20, 2, 5), ...base }] },
+      pours: [...DESIGN.pcb.pours, { id: "copperpour:3", net: "net:2", layer: "inner1", polygons: [{ outer: square(20, 2, 5), holes: [] }], area: 25 }],
+    },
+  } as unknown as PourDesign
+
+  test("are picked by their outline and named, and Properties offers the inner layers", () => {
+    expect(pourEdgeAt(FOUR, { x: 22, y: 2 }, SCALE, DEFAULT_LAYERS, none)).toBe("copperpour:3")
+    expect(pourEdgeAt(FOUR, { x: 22, y: 2 }, SCALE, DEFAULT_LAYERS, new Set(["copperpour:3"]))).toBeUndefined()
+    expect(pourLabel(FOUR, { net: "net:2", layer: "inner1" })).toBe("pour GND · inner1")
+    const layer = boardProperties(FOUR, "copperpour:3")?.rows.find((row) => row.label === "Layer")
+    expect(layer?.choices?.map((choice) => choice.value)).toEqual(["top", "bottom", "inner1", "inner2"])
+    expect(boardProperties(DESIGN, "copperpour:2")?.rows.find((row) => row.label === "Layer")?.choices?.map((choice) => choice.value)).toEqual(["top", "bottom"])
+  })
+})

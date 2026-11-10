@@ -36,9 +36,13 @@ const mmText = (value: number): string => `${Number(value.toFixed(4))} mm`
 /** "hole 3.2 mm". */
 export const holeLabel = (hole: Pick<Hole, "diameter">): string => `hole ${mmText(hole.diameter)}`
 
-/** Whether a pour (by its layer and id) is drawn: its copper layer shown and the Layer panel's eye for it open. */
+/**
+ * Whether a pour (by its layer and id) is drawn and picked: the Layer panel's eye for it open, and for a top or bottom
+ * pour its copper layer shown too. An inner layer has no row of its own yet, so its pours follow their own eyes alone.
+ */
 export function pourShown(pour: { id: string; layer: string }, visible: LayerVisibility, hidden: ReadonlySet<string>): boolean {
-  return (pour.layer === "top" || pour.layer === "bottom") && visible[pour.layer] && !hidden.has(pour.id)
+  if (hidden.has(pour.id)) return false
+  return pour.layer === "top" || pour.layer === "bottom" ? visible[pour.layer] : pour.layer === "inner1" || pour.layer === "inner2"
 }
 
 /** The ring of points closed back to its first, as edges. */

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { PALETTE } from "../studio/src/pcb/ctx.js"
 import { DEFAULT_LAYERS } from "../studio/src/pcb/layers.js"
-import { drawHoles, drawPourFills, drawPourOutlines, pourHatch, type PourScene } from "../studio/src/pcb/pour-draw.js"
+import { drawHoles, drawPourFills, drawPourOutlines, HATCH_MIN_PX, pourHatch, type PourScene } from "../studio/src/pcb/pour-draw.js"
 import { POUR_FILL_ALPHA } from "../studio/src/pcb/pour-view.js"
 import { recorder } from "./helpers/fake-ctx.js"
 
@@ -98,5 +98,54 @@ describe("the outlines and holes", () => {
     const off = recorder()
     drawHoles(off.ctx, holes, { selected: new Set() }, { ...DEFAULT_LAYERS, hole: false }, PX, 0.01)
     expect(off.records).toHaveLength(0)
+  })
+})
+
+describe("the fills' paths and hatch", () => {
+  test("a fill's rings and hatch are built once per fill and zoom, then reused by every redraw", () => {
+    const made: string[] = []
+    class FakePath {
+      constructor() {
+        made.push("path")
+      }
+      moveTo() {}
+      lineTo() {}
+      closePath() {}
+    }
+    const original = (globalThis as { Path2D?: unknown }).Path2D
+    ;(globalThis as { Path2D?: unknown }).Path2D = FakePath
+    try {
+      const fills = FILLS.map((fill) => ({ ...fill }))
+      for (let i = 0; i < 3; i++) drawPourFills(recorder().ctx, { pours: fills }, scene({ mode: "hatched" }), DEFAULT_LAYERS, PX)
+      expect(made).toHaveLength(4) // rings and hatch of each of the two fills
+      drawPourFills(recorder().ctx, { pours: fills }, scene({ mode: "hatched" }), DEFAULT_LAYERS, PX * 2)
+      expect(made).toHaveLength(6) // a new zoom rebuilds only the hatches
+      const { ctx, records } = recorder()
+      drawPourFills(ctx, { pours: fills }, scene(), DEFAULT_LAYERS, PX)
+      expect(made).toHaveLength(6)
+      expect(records.filter((r) => r.name === "fill").map((r) => r.args[1])).toEqual(["evenodd", "evenodd"])
+    } finally {
+      ;(globalThis as { Path2D?: unknown }).Path2D = original
+    }
+  })
+
+  test("hatch lines stay at least 6 px apart however far out the view is zoomed", () => {
+    const fill = FILLS[1] as never
+    const spacing = (lines: Array<[{ x: number }, unknown]>) => (lines[1]?.[0].x ?? 0) - (lines[0]?.[0].x ?? 0)
+    expect(spacing(pourHatch(fill))).toBeCloseTo(0.5)
+    expect(HATCH_MIN_PX).toBe(6)
+    expect(spacing(pourHatch(fill, 1))).toBeCloseTo(6)
+  })
+})
+
+describe("inner-layer pours", () => {
+  test("are drawn in their own colour and follow only their own eye", () => {
+    const inner = [{ id: "copperpour:3", net: "n", layer: "inner1" as const, polygons: [{ outer: square(0, 0, 2), holes: [] }], area: 4 }]
+    const { ctx, records } = recorder()
+    drawPourFills(ctx, { pours: inner }, scene(), { ...DEFAULT_LAYERS, top: false, bottom: false }, PX)
+    expect(records.filter((r) => r.name === "fill").map((r) => r.fillStyle)).toEqual([PALETTE.inner1Copper])
+    const hidden = recorder()
+    drawPourFills(hidden.ctx, { pours: inner }, scene({ hidden: new Set(["copperpour:3"]) }), DEFAULT_LAYERS, PX)
+    expect(hidden.records.filter((r) => r.name === "fill")).toHaveLength(0)
   })
 })

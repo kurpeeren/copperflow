@@ -26,29 +26,36 @@ export interface PourScene {
   preview?: readonly Point[]
 }
 
-const LAYER_COLOR: Record<string, string> = { top: PALETTE.topCopper, bottom: PALETTE.bottomCopper }
+export const POUR_COLORS: Readonly<Record<string, string>> = { top: PALETTE.topCopper, bottom: PALETTE.bottomCopper, inner1: PALETTE.inner1Copper, inner2: PALETTE.inner2Copper }
+const LAYER_COLOR = POUR_COLORS
 const HATCH_MM = 0.5
 const MAX_HATCH = 400
 const HANDLE_PX = 6
 const OUTLINE_PX = 1
 const SELECTED_PX = 1.5
 
-function ringPath(ctx: Ctx, ring: readonly Point[]): void {
+function ringPath(ctx: Pick<Ctx, "moveTo" | "lineTo" | "closePath">, ring: readonly Point[]): void {
   ring.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)))
   ctx.closePath()
 }
 
 /** One path of every piece and hole of the fill, for an even-odd fill or clip. */
-function fillPath(ctx: Ctx, fill: Pick<PourFill, "polygons">): void {
-  ctx.beginPath()
+function fillPath(ctx: Ctx | Path2D, fill: Pick<PourFill, "polygons">): void {
+  if (!(hasPath2D() && ctx instanceof Path2D)) (ctx as Ctx).beginPath()
   for (const polygon of fill.polygons) {
     ringPath(ctx, polygon.outer)
     for (const hole of polygon.holes) ringPath(ctx, hole)
   }
 }
 
-/** 45 degree lines HATCH_MM apart over the fill's bounds; further apart when there would be more than MAX_HATCH. */
-export function pourHatch(fill: Pick<PourFill, "polygons">): Array<[Point, Point]> {
+/** The fewest CSS pixels between two hatch lines at the current zoom, so a zoomed-out fill does not turn solid. */
+export const HATCH_MIN_PX = 6
+
+/**
+ * 45 degree lines HATCH_MM apart over the fill's bounds, and at least HATCH_MIN_PX apart at the zoom `px` (mm per CSS
+ * pixel) gives; further apart when there would be more than MAX_HATCH.
+ */
+export function pourHatch(fill: Pick<PourFill, "polygons">, px = 0): Array<[Point, Point]> {
   const points = fill.polygons.flatMap((polygon) => polygon.outer)
   if (points.length === 0) return []
   const xs = points.map((p) => p.x)
@@ -57,7 +64,7 @@ export function pourHatch(fill: Pick<PourFill, "polygons">): Array<[Point, Point
   const height = maxY - minY
   const start = minX - height
   const span = maxX - start
-  const step = Math.max(HATCH_MM, span / (MAX_HATCH - 1))
+  const step = Math.max(HATCH_MM, HATCH_MIN_PX * px, span / (MAX_HATCH - 1))
   const count = Math.floor(span / step + 1e-9) + 1
   return Array.from({ length: count }, (_, i): [Point, Point] => [
     { x: start + i * step, y: minY },
@@ -65,9 +72,74 @@ export function pourHatch(fill: Pick<PourFill, "polygons">): Array<[Point, Point
   ])
 }
 
+/**
+ * Each fill's rings as one Path2D, and its hatch for the last zoom it was drawn at, kept by the fill object itself: a
+ * build makes new fills, so a pointer move or a redraw at the same zoom rebuilds nothing. Without Path2D (the tests)
+ * the paths are traced on the context each time.
+ */
+interface FillPaths {
+  rings?: Path2D
+  hatch?: { px: number; path: Path2D }
+}
+const FILL_PATHS = new WeakMap<object, FillPaths>()
+const hasPath2D = (): boolean => typeof Path2D === "function"
+
+function pathsOf(fill: object): FillPaths {
+  const known = FILL_PATHS.get(fill)
+  if (known) return known
+  const made: FillPaths = {}
+  FILL_PATHS.set(fill, made)
+  return made
+}
+
+function ringsOf(fill: Pick<PourFill, "polygons">): Path2D | undefined {
+  if (!hasPath2D()) return undefined
+  const paths = pathsOf(fill)
+  if (!paths.rings) {
+    paths.rings = new Path2D()
+    fillPath(paths.rings, fill)
+  }
+  return paths.rings
+}
+
+function hatchOf(fill: Pick<PourFill, "polygons">, px: number): Path2D | undefined {
+  if (!hasPath2D()) return undefined
+  const paths = pathsOf(fill)
+  if (paths.hatch?.px !== px) {
+    const path = new Path2D()
+    for (const [a, b] of pourHatch(fill, px)) {
+      path.moveTo(a.x, a.y)
+      path.lineTo(b.x, b.y)
+    }
+    paths.hatch = { px, path }
+  }
+  return paths.hatch.path
+}
+
 function strokeRings(ctx: Ctx, fill: Pick<PourFill, "polygons">, width: number): void {
   ctx.lineWidth = width
+  const rings = ringsOf(fill)
+  if (rings) return ctx.stroke(rings)
   fillPath(ctx, fill)
+  ctx.stroke()
+}
+
+function fillRings(ctx: Ctx, fill: Pick<PourFill, "polygons">, use: "fill" | "clip"): void {
+  const rings = ringsOf(fill)
+  if (rings) return use === "fill" ? ctx.fill(rings, "evenodd") : ctx.clip(rings, "evenodd")
+  fillPath(ctx, fill)
+  if (use === "fill") ctx.fill("evenodd")
+  else ctx.clip("evenodd")
+}
+
+function strokeHatch(ctx: Ctx, fill: Pick<PourFill, "polygons">, px: number): void {
+  const hatch = hatchOf(fill, px)
+  if (hatch) return ctx.stroke(hatch)
+  ctx.beginPath()
+  for (const [a, b] of pourHatch(fill, px)) {
+    ctx.moveTo(a.x, a.y)
+    ctx.lineTo(b.x, b.y)
+  }
   ctx.stroke()
 }
 
@@ -81,22 +153,12 @@ function drawFill(ctx: Ctx, fill: PourFill, mode: PourFillMode, px: number): voi
     return
   }
   ctx.globalAlpha = POUR_FILL_ALPHA
-  if (mode === "solid") {
-    fillPath(ctx, fill)
-    ctx.fill("evenodd")
-    return
-  }
+  if (mode === "solid") return fillRings(ctx, fill, "fill")
   ctx.save()
-  fillPath(ctx, fill)
-  ctx.clip("evenodd")
+  fillRings(ctx, fill, "clip")
   ctx.lineWidth = OUTLINE_PX * px
   ctx.globalAlpha = 1
-  ctx.beginPath()
-  for (const [a, b] of pourHatch(fill)) {
-    ctx.moveTo(a.x, a.y)
-    ctx.lineTo(b.x, b.y)
-  }
-  ctx.stroke()
+  strokeHatch(ctx, fill, px)
   ctx.restore()
   ctx.globalAlpha = 1
   strokeRings(ctx, fill, OUTLINE_PX * px)

@@ -1,6 +1,7 @@
 import { EyeIcon } from "../icons"
 import { ACTIVE_LAYERS, layerRows, swatchBackground, type ActiveLayer, type LayerFilter, type LayerId, type LayerVisibility, type PourRow } from "../pcb/layers"
 import { PALETTE } from "../pcb/ctx"
+import { POUR_COLORS } from "../pcb/pour-draw"
 import { blurAfterPointerClick } from "./focus"
 import { sideTabId, stripPanelId } from "./SideStrip"
 import { useTabList } from "./use-tab-list"
@@ -28,7 +29,6 @@ interface Props {
   onTogglePour(id: string): void
 }
 
-const POUR_SWATCH: Record<string, string> = { top: PALETTE.topCopper, bottom: PALETTE.bottomCopper }
 
 /** The copper pours under a heading per layer, each named by its net, with an eye that hides it alone. */
 function PourList({ pours, onTogglePour }: Pick<Props, "pours" | "onTogglePour">) {
@@ -41,7 +41,7 @@ function PourList({ pours, onTogglePour }: Pick<Props, "pours" | "onTogglePour">
           <ul className="layer-list">
             {group.pours.map((pour) => (
               <li key={pour.id} className={`layer-row${pour.shown ? "" : " off"}`}>
-                <span className="layer-swatch" style={{ background: POUR_SWATCH[pour.layer] ?? PALETTE.topCopper, opacity: 0.6 }} aria-hidden="true" />
+                <span className="layer-swatch" style={{ background: POUR_COLORS[pour.layer] ?? PALETTE.topCopper, opacity: 0.6 }} aria-hidden="true" />
                 <span className="layer-name" title={pour.id}>
                   {pour.net}
                 </span>
