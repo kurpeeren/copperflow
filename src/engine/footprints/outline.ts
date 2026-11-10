@@ -69,7 +69,7 @@ export function rectangle(half: Extent): Point[] {
  * keeping the size even so that the centre falls on the step; rounding each half up does both. The
  * IPC-7351B wording was not seen.
  */
-export function courtyard(pads: readonly Pad[], component: Extent, table: Readonly<GoalTable>): Point[] {
+export function courtyard(pads: readonly Pad[], component: Extent, table: Readonly<Pick<GoalTable, "courtyardExcess" | "roundOff">>): Point[] {
   const pad = padExtent(pads)
   return rectangle({
     x: roundUpToStep(Math.max(pad.x, component.x) + table.courtyardExcess, table.roundOff),

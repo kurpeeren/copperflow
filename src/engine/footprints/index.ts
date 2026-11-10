@@ -1,3 +1,4 @@
+import { bgaFootprint } from "./bga.js"
 import { chipFootprint } from "./chip.js"
 import { dfnFootprint } from "./dfn.js"
 import { dualFootprint } from "./dual.js"
@@ -26,6 +27,7 @@ const FAMILIES: readonly Family[] = [
   dualFootprint,
   quadFootprint,
   dfnFootprint,
+  bgaFootprint,
   pinRowFootprint,
 ]
 
