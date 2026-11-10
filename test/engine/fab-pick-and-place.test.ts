@@ -13,7 +13,7 @@ const footprint = (name: string): Footprint => ({ name, pads: [], courtyard: [],
 const rows = (csv: string) => csv.trimEnd().split("\n")
 
 describe("the footprint families' rotation corrections", () => {
-  test("each family copperflow makes, and footprint files, has a correction of 0 by default", () => {
+  test("SOIC, SOP and TSSOP turn 270 and SOT-23 180 by default, as JLCPCB's part models need; chips, pin rows and footprint files 0", () => {
     expect(footprintFamily("0805")).toBe("chip")
     expect(footprintFamily("sod123")).toBe("sod")
     expect(footprintFamily("sot23_5")).toBe("sot")
@@ -22,8 +22,12 @@ describe("the footprint families' rotation corrections", () => {
     expect(footprintFamily("qfn32_ep")).toBe("qfn")
     expect(footprintFamily("pinrow2_p4.88mm")).toBe("pinrow")
     expect(footprintFamily("parts/MCP2515/footprint.yaml")).toBe("file")
-    expect(Object.values(PLACEMENT_ROTATIONS).every((degrees) => degrees === 0)).toBe(true)
-    expect(placementCorrection("soic8", PROFILE)).toBe(0)
+    expect(PLACEMENT_ROTATIONS).toEqual({ chip: 0, sod: 0, sot: 180, soic: 270, sop: 270, tssop: 270, qfn: 0, qfp: 0, pinrow: 0, file: 0 })
+    expect(placementCorrection("soic8", PROFILE)).toBe(270)
+    expect(placementCorrection("sot23_5", PROFILE)).toBe(180)
+    expect(placementCorrection("0805", PROFILE)).toBe(0)
+    expect(placementCorrection("pinrow2_p2.54mm", PROFILE)).toBe(0)
+    expect(placementCorrection("parts/MCP2515/footprint.yaml", PROFILE)).toBe(0)
   })
 
   test("rules.yaml sets a family's correction; an unknown family or a value that is not a number is a rules error", () => {
@@ -31,7 +35,7 @@ describe("the footprint families' rotation corrections", () => {
     expect(set.diagnostics).toEqual([])
     expect(placementCorrection("soic8", set.rules.fabrication)).toBe(270)
     expect(placementCorrection("0603", set.rules.fabrication)).toBe(-90)
-    expect(placementCorrection("sot23", set.rules.fabrication)).toBe(0)
+    expect(placementCorrection("sot23", set.rules.fabrication)).toBe(180)
     expect(loadRules({ "rules.yaml": "fabrication:\n  placementRotations:\n    dip: 90\n" }).diagnostics[0]?.message).toMatch(/placementRotations/)
     expect(loadRules({ "rules.yaml": "fabrication:\n  placementRotations:\n    soic: left\n" }).diagnostics[0]?.message).toMatch(/placementRotations\.soic/)
   })
@@ -41,7 +45,7 @@ describe("the footprint families' rotation corrections", () => {
     expect(set.diagnostics).toEqual([])
     expect(placementCorrection("parts/MCP2515/footprint.yaml", set.rules.fabrication)).toBe(180)
     expect(placementCorrection("parts/TJA1050/footprint.yaml", set.rules.fabrication)).toBe(90)
-    expect(placementCorrection("soic8", set.rules.fabrication)).toBe(0)
+    expect(placementCorrection("soic8", set.rules.fabrication)).toBe(270)
     expect(loadRules({ "rules.yaml": "fabrication:\n  placementRotations:\n    parts:\n      MCP2515: up\n" }).diagnostics[0]?.message).toMatch(/placementRotations\.parts\.MCP2515/)
     expect(loadRules({ "rules.yaml": "fabrication:\n  placementRotations:\n    parts:\n      ../x: 90\n" }).diagnostics[0]?.message).toMatch(/placementRotations\.parts/)
   })

@@ -88,9 +88,11 @@ globalNets: [GND, V24, V3_3]
   (0 when left out); both may be 0. The fabrication (Gerber) files use them.
 - `fabrication.placementRotations` adds degrees (counter-clockwise) to the parts' rotation in the
   pick-and-place file, per footprint family: `chip` (0603, 0805 ...), `sod`, `sot`, `soic`, `sop`,
-  `tssop`, `qfn`, `qfp`, `pinrow` and `file` (footprint files). Every family is 0 when left out;
-  set one only after JLCPCB's assembly preview shows that family's parts turned, for example
-  `placementRotations: { soic: 270 }`. A library part drawn with its own footprint file can have
+  `tssop`, `qfn`, `qfp`, `pinrow` and `file` (footprint files). Left out, `soic`, `sop` and `tssop`
+  are 270 and `sot` (SOT-23) 180, the corrections commonly used for JLCPCB's part models; every
+  other family is 0. JLCPCB's assembly preview is the final check: set a family only after the
+  preview shows its parts turned, for example `placementRotations: { qfn: 270 }`, and `0` takes a
+  default back out. A library part drawn with its own footprint file can have
   its own correction by its id under `parts`, which takes the place of the `file` family's for that
   part only: `placementRotations: { file: 90, parts: { MCP2515: 180 } }`. Bottom parts get the same
   correction, their rotation read as seen from below.

@@ -7,10 +7,10 @@ import { BOARD, SHARED } from "./fixtures.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
 
 const CAN = join(import.meta.dirname, "fixtures", "can-module")
-/** A circuit the engine builds without errors or warnings: one resistor, nothing to route. */
+/** A circuit the engine builds and exports without errors or warnings: one resistor with its LCSC number, nothing to route. */
 const CLEAN = `export default () => (
   <board width="10mm" height="10mm">
-    <resistor name="R1" resistance="1k" footprint="0402" pcbX={0} pcbY={0} schX={0} schY={0} />
+    <resistor name="R1" resistance="1k" footprint="0402" supplierPartNumbers={{ jlcpcb: ["C11702"] }} pcbX={0} pcbY={0} schX={0} schY={0} />
   </board>
 )
 `
@@ -45,7 +45,7 @@ describe("copperflow export", () => {
       [
         "Wrote 13 files to boards/led-fab/ and boards/led-fab.zip:",
         ...NAMES.map((name) => `  led-${name}`),
-        "Next, a person should upload led-fab.zip to JLCPCB.",
+        "Next, a person should upload led-fab.zip to JLCPCB's PCB order, and led-bom.csv and led-pick-and-place.csv from boards/led-fab/ at its assembly step (the zip holds them too).",
       ].join("\n"),
     )
     expect((await readdir(join(root, "boards", "led-fab"))).sort()).toEqual(NAMES.map((name) => `led-${name}`).sort())
@@ -66,7 +66,7 @@ describe("copperflow export", () => {
     const text = out.join("\n")
     expect(text).toMatch(/^Wrote 13 files to can-module-fab\/ and can-module-fab\.zip:\n {2}can-module-F_Cu\.gtl\n/)
     expect(text).toMatch(/\nWarning: \d+ connections are not routed: /)
-    expect(text.endsWith("\nNext, a person should upload can-module-fab.zip to JLCPCB.")).toBe(true)
+    expect(text.endsWith("\nNext, a person should upload can-module-fab.zip to JLCPCB's PCB order, and can-module-bom.csv and can-module-pick-and-place.csv from can-module-fab/ at its assembly step (the zip holds them too).")).toBe(true)
   })
 
   test("a circuit with errors is refused: each error printed, nothing written, exit code 1", async () => {

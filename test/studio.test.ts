@@ -382,7 +382,7 @@ describe("parts library", () => {
     const clean = '<board width="10mm" height="10mm">\n  <resistor name="R1" resistance="1k" footprint="0402" pcbX={0} pcbY={0} schX={0} schY={0} />\n</board>'
     await writeFile(join(root, "boards", "led.circuit.tsx"), `export default () => (\n${clean}\n)\n`)
     const result = await data(await api("/api/export", { file: "boards/led.circuit.tsx" }))
-    expect(result).toMatchObject({ written: true, folder: "boards/led-fab", zip: "boards/led-fab.zip", warnings: [] })
+    expect(result).toMatchObject({ written: true, folder: "boards/led-fab", zip: "boards/led-fab.zip", warnings: ["No LCSC part number for R1; JLCPCB assembly will not match it"] })
     expect(result.files).toHaveLength(13)
     expect(result.files[0]).toBe("led-F_Cu.gtl")
     expect((await readFile(join(root, "boards", "led-fab.zip"))).subarray(0, 2).toString()).toBe("PK")

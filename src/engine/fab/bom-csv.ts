@@ -1,6 +1,7 @@
 // The bill of materials in JLCPCB's columns (Comment, Designator, Footprint, LCSC Part #), one row per line of the
 // BOM copperflow already builds. Pure.
 import type { BomLine } from "../../core/bom.js"
+import { footprintFilePart } from "../rules/rotations.js"
 import { csvCell } from "./csv.js"
 
 export const JLCPCB_BOM_COLUMNS = ["Comment", "Designator", "Footprint", "LCSC Part #"] as const
@@ -9,12 +10,15 @@ export const JLCPCB_BOM_COLUMNS = ["Comment", "Designator", "Footprint", "LCSC P
 const LCSC_SUPPLIER = /^(jlcpcb|lcsc)\s+(\S+)$/i
 
 /** The LCSC number of a line's supplier part ("jlcpcb C9657" gives "C9657"), or "" for another supplier. */
-const lcscNumber = (supplier: string): string => LCSC_SUPPLIER.exec(supplier.trim())?.[2] ?? ""
+export const lcscNumber = (supplier: string): string => LCSC_SUPPLIER.exec(supplier.trim())?.[2] ?? ""
 
 /** The comment JLCPCB shows for a line: its value, else its MPN, else its kind. */
 const comment = (line: BomLine): string => line.value || line.mpn || line.kind
 
+/** The footprint JLCPCB shows: a library part's id when it is drawn with that part's footprint file, else the footprint. */
+const footprint = (line: BomLine): string => footprintFilePart(line.footprint) ?? line.footprint
+
 export function jlcpcbBomCsv(lines: readonly BomLine[]): string {
-  const rows = lines.map((line) => [comment(line), line.designators.join(","), line.footprint, lcscNumber(line.supplier)])
+  const rows = lines.map((line) => [comment(line), line.designators.join(","), footprint(line), lcscNumber(line.supplier)])
   return `${[[...JLCPCB_BOM_COLUMNS], ...rows].map((row) => row.map(csvCell).join(",")).join("\n")}\n`
 }

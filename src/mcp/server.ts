@@ -346,7 +346,7 @@ Nothing was written.`)
     "export_fabrication",
     {
       description:
-        "Write the fabrication files for JLCPCB: Gerbers, plated and non-plated drills, pick-and-place and BOM in <name>-fab/ and <name>-fab.zip beside the circuit (or in the project folder out). Call it after autoroute and a clean check_circuit. A design with errors is refused and nothing is written; warnings (unrouted connections, parts without a footprint) are listed. A person uploads the zip.",
+        "Write the fabrication files for JLCPCB: Gerbers, plated and non-plated drills, pick-and-place and BOM in <name>-fab/ and <name>-fab.zip beside the circuit (or in the project folder out). Call it after autoroute and a clean check_circuit. A design with errors is refused and nothing is written; warnings (unrouted connections, parts without a footprint, designators over pads, parts without an LCSC number) are listed. A person uploads the zip for the board and the BOM and pick-and-place CSVs for assembly.",
       inputSchema: {
         file,
         out: z.string().optional().describe("A project folder to write into instead of the circuit's own, e.g. fab"),

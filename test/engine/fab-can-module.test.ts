@@ -51,7 +51,7 @@ function inMaskOpening(p: { x: number; y: number }, pad: { x: number; y: number;
 const segments = (read: ReadGerber) => read.strokes.reduce((sum, stroke) => sum + stroke.points.length - 1, 0)
 
 describe("the CAN module's Gerbers after the router runs on it", () => {
-  test("the copper parsed back holds the routed tracks, the 12 vias and every pad, and a second run is byte-identical; the whole set exports without warnings", async () => {
+  test("the copper parsed back holds the routed tracks, the 12 vias and every pad, and a second run is byte-identical; the whole set exports with only the warning about the parts without an LCSC number", async () => {
     const files = filesIn(FOLDER)
     const report = routeDesign(buildDesign(files, MAIN))
     expect(report.unrouted).toEqual([])
@@ -99,7 +99,7 @@ describe("the CAN module's Gerbers after the router runs on it", () => {
 
     const set = fabricationSet(routed, await buildBom(FOLDER, MAIN, { design: routed }), CREATED)
     if (!set.ok) throw new Error(set.errors.join("; "))
-    expect(set.warnings).toEqual([])
+    expect(set.warnings).toEqual(["No LCSC part number for C1, C2, C3, C4, J1, J2, J3, R1, R2, Y1; JLCPCB assembly will not match them"])
     expect(readZip(set.zipData)).toHaveLength(13)
     const placed = (set.files.find((f) => f.file === "can-module-pick-and-place.csv")?.text ?? "").trimEnd().split("\n").slice(1)
     expect(placed.map((row) => row.split(",")[0])).toEqual(["C1", "C2", "C3", "C4", "J1", "J2", "J3", "R1", "R2", "U1", "U2", "Y1"])
