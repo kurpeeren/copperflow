@@ -55,6 +55,8 @@ import { drawHint } from "./draw-tools"
 import { DrawTextInput } from "./DrawText"
 import { BusMemberList } from "./BusMemberList"
 import { useDrawTools } from "./use-draw-tools"
+import { topInstance } from "./instances"
+import { useSymbolEdit } from "./use-symbol-edit"
 
 const EMPTY_SHEET_CAMERA: Camera = { cx: 0, cy: 0, scale: 60 }
 const FIT_MARGIN = 0.06
@@ -238,14 +240,16 @@ interface SheetViewProps {
   rotateHeld: boolean
   snap: boolean
   empty: boolean
+  /** What a held sheet-symbol handle does on release. */
+  symbolHint: string | undefined
 }
 
 /**
  * The sheet's element: the canvas under the hint, the label name field and the status line; the browser's own menu
  * never shows. The canvas alone is the image, so the name field beside it stays a field to assistive tech.
  */
-function SheetView({ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave, cursorStyle, wire, palette, note, draw, gesture, rotateHeld, snap, empty }: SheetViewProps) {
-  const hint = wireHint(wire) ?? paletteHint(palette) ?? drawHint(draw.state) ?? note.hint
+function SheetView({ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave, cursorStyle, wire, palette, note, draw, gesture, rotateHeld, snap, empty, symbolHint }: SheetViewProps) {
+  const hint = symbolHint ?? wireHint(wire) ?? paletteHint(palette) ?? drawHint(draw.state) ?? note.hint
   return (
     <div className="schematic-canvas" ref={wrapRef} style={{ cursor: cursorStyle }} {...pointer} onPointerLeave={onLeave} onContextMenu={(e) => e.preventDefault()}>
       <canvas
@@ -472,6 +476,11 @@ interface SheetPointerInput extends Omit<PointerInput, "tool" | "open" | "gestur
   /** What a double click picks with: the selection and the armed tool. */
   picking: PickContext
   onOpenProperties(target: PropertiesTarget): void
+  /** A selected sheet symbol's pin and corner handles. */
+  symbolEdit: ReturnType<typeof useSymbolEdit>
+  /** The sheet file of an instance's symbol, which a double click opens instead of Properties. */
+  sheetOf(name: string): string | undefined
+  onOpenSheet(file: string): void
 }
 
 /**
@@ -479,17 +488,25 @@ interface SheetPointerInput extends Omit<PointerInput, "tool" | "open" | "gestur
  * click does what doubleClickAction says: removes a corner of a wire selected before it began, else opens Properties
  * on a part or a wire, or renames the net of a label, while no tool is armed.
  */
-function sheetPointer({ boxes, labels, wires, drawings, corners, wire, palette, note, draw, picking, onOpenProperties, ...input }: SheetPointerInput) {
-  const tool = (event: Press, world: Point) => !note.armed && (draw.press(event, world) || palette.press(event, world) || wire.press(event, world))
+function sheetPointer({ boxes, labels, wires, drawings, corners, wire, palette, note, draw, picking, onOpenProperties, symbolEdit, sheetOf, onOpenSheet, ...input }: SheetPointerInput) {
+  const idle = () => !note.armed && !palette.armed && !draw.armed && !wire.wiring && wire.drawing === null
+  const tool = (event: Press, world: Point) => (idle() && symbolEdit.press(event, world)) || (!note.armed && (draw.press(event, world) || palette.press(event, world) || wire.press(event, world)))
+  const toolRelease = (world: Point) => {
+    draw.release(world)
+    symbolEdit.release(world)
+  }
   const open = (world: Point) => {
     const busy = note.armed || palette.armed || draw.armed || wire.wiring || wire.drawing !== null
     const target = targetAt(boxes, labels, world, picking, wires, drawings)
     const action = doubleClickAction({ busy, handle: corners.at(world, picking), target, selectedBefore: input.gestures.wireBeforeDoubleClick() })
     if (action.kind === "removeCorner") corners.drop(action.id, action.index)
-    if (action.kind === "properties") onOpenProperties(action.target)
+    // A sub-sheet instance's symbol opens its sheet, as a block opens in EasyEDA and KiCad.
+    const sheet = action.kind === "properties" && action.target.kind === "part" ? sheetOf(action.target.name) : undefined
+    if (sheet !== undefined) onOpenSheet(sheet)
+    else if (action.kind === "properties") onOpenProperties(action.target)
     if (action.kind === "rename") palette.rename(action.label)
   }
-  return pointerHandlers({ ...input, tool, toolRelease: draw.release, open })
+  return pointerHandlers({ ...input, tool, toolRelease, open })
 }
 
 /**
@@ -511,6 +528,7 @@ export function SchematicCanvas(props: CanvasProps) {
   useCameraFocus("schematic", focus, camera, setCamera, onFocused)
   useFitSelection({ selection, boxes: parts.boxes, size, setCamera, notify: actions.notify })
   const wire = useWireTool({ design, actions, camera, cursor, step, snap, buildId, builtFrom })
+  const symbolEdit = useSymbolEdit({ design, selection, camera, actions })
   const palette = useLabelPalette({ design, circuit, actions, camera, cursor, builtFrom, onArm: wire.cancel })
   const note = useSheetNoteTool(wire, palette)
   const draw = useSheetDrawTools({ design, circuit, actions, camera, cursor, step, snap, builtFrom, onSelect }, wire, palette, note)
@@ -539,13 +557,14 @@ export function SchematicCanvas(props: CanvasProps) {
   const wireShapes = useWireShapes(gesture, wires.pending, moving?.wires)
   useSheetPaint(canvasRef, { design, border, camera, size, wire, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel: hover.label, hoverDrawing: drawings.drawingOf(hover.drawing), hoverWire, selectedWire: wires.selected, wireShapes, palette, draw, highlight, markers, activeViolation, grid, texts: sceneTexts, theme: props.theme })
   const picking = { selection, armed: tool.armed, filter: props.pickFilter }
-  const pointer = sheetPointer({ camera, size, element: wrapRef, gestures, setCursor, hover: hover.at, boxes: parts.boxes, labels: labels.tools, wires: wires.hits, drawings: drawings.hits, corners: wires.corners, wire, palette, note, draw, picking, onOpenProperties: props.onOpenProperties })
+  const sheetOf = (name: string) => topInstance(design, name)?.file
+  const pointer = sheetPointer({ symbolEdit, sheetOf, onOpenSheet: props.onOpenSheet, camera, size, element: wrapRef, gestures, setCursor, hover: hover.at, boxes: parts.boxes, labels: labels.tools, wires: wires.hits, drawings: drawings.hits, corners: wires.corners, wire, palette, note, draw, picking, onOpenProperties: props.onOpenProperties })
   const cursorStyle = cursorFor(gesture, wire.drawing !== null || wire.overPin || palette.armed || note.armed || draw.armed, hover.over)
   // The toolbar's controls sit beside the sheet: inside it, their portal's events would reach the sheet's handlers.
   return (
     <>
       <SheetTools step={step} setStep={setStep} keep={{ show: parts.autoPlaced, onKeep: () => keepAutoPlaced(design, "schematic", parts.blockerFor, actions, circuit) }} />
-      <SheetView {...{ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave: hover.leave, cursorStyle, wire, palette, note, draw, gesture, rotateHeld, snap }} empty={parts.boxes.length === 0} />
+      <SheetView {...{ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave: hover.leave, cursorStyle, wire, palette, note, draw, gesture, rotateHeld, snap }} empty={parts.boxes.length === 0} symbolHint={symbolEdit.hint} />
     </>
   )
 }

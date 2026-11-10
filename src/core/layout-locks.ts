@@ -2,7 +2,10 @@ import type { PlacedFootprint } from "../engine/pcb.js"
 import { padsUnder } from "../engine/copper.js"
 import { readAnnotations, annotationsPathFor } from "./annotations.js"
 import { EditError } from "./edit-error.js"
+import { withInstanceParts, type InstanceParts } from "./instance-locks.js"
 import type { TrackRecord } from "./layout-file.js"
+
+export { withInstanceParts, type InstanceParts }
 
 /**
  * The built design of a circuit, as far as copper edits need it: the placed parts with their pads (for the locks), and
@@ -10,7 +13,7 @@ import type { TrackRecord } from "./layout-file.js"
  */
 export interface LayoutDesign {
   pcb: { parts: readonly PlacedFootprint[] }
-  circuit?: { board?: { layers: 2 | 4 } }
+  circuit?: { board?: { layers: 2 | 4 }; instances?: readonly InstanceParts[] }
 }
 
 /** The board's layer count when the design tells it, else undefined (nothing to check against). */
@@ -36,12 +39,13 @@ export async function designFor(source: DesignSource | undefined, circuitFile: s
  * the circuit has locked parts a track's change is refused rather than guessed.
  */
 export function lockedStart(lockedParts: ReadonlySet<string>, design: LayoutDesign | undefined): (track: TrackRecord) => string | undefined {
+  const all = withInstanceParts(lockedParts, design?.circuit?.instances)
   return (track) => {
     if (lockedParts.size === 0) return undefined
     if (!design) throw new EditError("invalid", `${track.id}: the circuit has locked parts, so changing its copper needs the built design`)
     const start = track.points[0]
     if (!start) return undefined
-    return padsUnder(design.pcb.parts, start, track.layer).find((pad) => lockedParts.has(pad.component))?.component
+    return padsUnder(design.pcb.parts, start, track.layer).find((pad) => all.has(pad.component))?.component
   }
 }
 

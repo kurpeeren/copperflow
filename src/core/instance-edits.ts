@@ -1,6 +1,7 @@
 // Edits of sub-sheet instances in a circuit: `<Stage name="S1" connections={{ VIN: "VBUS" }} base={200} />` with
 // `import Stage from "./Stage.sheet"`. These check the text; instance-requests.ts checks the sheet file's ports.
 import MagicString from "magic-string"
+import { busMembers } from "../engine/drawing-kinds.js"
 import type { Scan } from "./analyze.js"
 import { EditError } from "./edit-error.js"
 import { lineEnding, putAttribute } from "./edit-text.js"
@@ -17,11 +18,15 @@ export const SHEET_IMPORT = /^\.{1,2}\/[\w./-]*\.sheet$/
 type AddInstance = Extract<Edit, { kind: "addInstance" }>
 type SetConnections = Extract<Edit, { kind: "setConnections" }>
 
-/** `{{ VIN: "VBUS", "V-X": "N" }}`: each port to a parent net name, checked. */
+/** A net name, or a bus name such as "D[0:7]" (a bus port connects to a parent bus). */
+const netOrBus = (name: string): boolean => NET_NAME.test(name) || busMembers(name) !== undefined
+
+/** `{{ VIN: "VBUS", "D[0:7]": "D[0:7]" }}`: each port to a parent net (or bus) name, checked; "net." in front is dropped. */
 function formatConnections(name: string, connections: Record<string, string>): string {
-  const entries = Object.entries(connections).map(([port, net]) => {
-    if (!NET_NAME.test(port)) throw new EditError("invalid", `${name}: "${port}" is not a port name`)
-    if (typeof net !== "string" || !NET_NAME.test(net)) throw new EditError("invalid", `${name}: connections.${port} must be a net name such as "VBUS"`)
+  const entries = Object.entries(connections).map(([port, written]) => {
+    if (!netOrBus(port)) throw new EditError("invalid", `${name}: "${port}" is not a port name`)
+    const net = typeof written === "string" ? written.replace(/^net\./, "") : written
+    if (typeof net !== "string" || !netOrBus(net)) throw new EditError("invalid", `${name}: connections.${port} must be a net name such as "VBUS"`)
     return `${IDENTIFIER.test(port) ? port : JSON.stringify(port)}: ${JSON.stringify(net)}`
   })
   return entries.length === 0 ? "{{}}" : `{{ ${entries.join(", ")} }}`

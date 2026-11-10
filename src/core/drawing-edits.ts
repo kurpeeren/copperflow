@@ -9,6 +9,7 @@ import { checkDrawingName } from "./drawing-names.js"
 import { EditError } from "./edit-error.js"
 import { insertOnPage } from "./page-edits.js"
 import {
+  atTop,
   attributeNamed,
   boardInsertion,
   cleanPoint,
@@ -54,7 +55,7 @@ function kindOrThrow(tag: string): DrawingKind {
 function drawingInsertion(source: string, scan: Scan, tag: string): { lineStart: number; indent: string } {
   const usual = boardInsertion(source, scan, "a drawing")
   const last = scan.model.drawings.filter((d) => d.tag === tag).at(-1)
-  if (!last || last.start < usual.lineStart || last.parent !== "board") return usual
+  if (!last || last.start < usual.lineStart || !atTop(last.parent)) return usual
   const indent = lineIndent(source, last.start)
   const newline = source.indexOf("\n", last.end)
   if (indent === undefined || newline === -1 || source.slice(last.end, newline).trim() !== "") return usual

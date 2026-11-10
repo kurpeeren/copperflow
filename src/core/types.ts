@@ -126,7 +126,7 @@ export type Edit =
    * `import tag from "<importFrom>"` (a `.sheet` file) when missing.
    */
   | { kind: "addInstance"; tag: string; name: string; connections: Record<string, string>; base?: number; importFrom: string; page?: string }
-  /** Writes an instance's `connections` anew: each port to a parent net; ports left out are open. */
+  /** Writes an instance's `connections` anew: each port to a parent net (a bus port to a parent bus); ports left out are open. */
   | { kind: "setConnections"; part: string; connections: Record<string, string> }
   | { kind: "removePart"; part: string }
   /** `schematicRouteHints` are the corners of a wire drawn by hand in the schematic. */
@@ -162,3 +162,7 @@ export type Edit =
   | { kind: "removeDrawing"; id: string }
   /** Moves or restyles a drawing, e.g. `{ x, y }` or `{ points }`; a `name` renames it, which changes its id. */
   | { kind: "setDrawingProps"; id: string; props: Record<string, DrawingValue> }
+  /** In a sheet file: renames a `<port>` and the trace ends that name its net (`net.<from>`). */
+  | { kind: "renamePort"; from: string; to: string }
+  /** In a sheet file: the sheet symbol's size on `<sheet>`; null removes one, so the ports decide it again. */
+  | { kind: "setSheetSize"; width?: number | null; height?: number | null }

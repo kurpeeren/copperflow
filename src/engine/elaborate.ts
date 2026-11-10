@@ -18,13 +18,17 @@ import {
   type Diagnostic,
   type DrawingKind,
   type Keepout,
+  type InstancePort,
   type SheetInstance,
+  type SheetPortSpec,
+  type SheetSize,
   type SourceRef,
 } from "./model.js"
 import { mergeNets } from "./nets.js"
 import { naturalCompare } from "./order.js"
 import { PropReader, type Props } from "./read-props.js"
-import { Bases, badPorts, flatNet, portsOf, readBase, readConnections, SHEET_FILE, sheetName, traceScope, withBase, type InstanceScope } from "./sheets.js"
+import { placePorts, portMembers, readPorts, readSheetSize } from "./sheet-ports.js"
+import { Bases, flatNet, readBase, readConnections, SHEET_FILE, sheetName, traceScope, withBase, type InstanceScope } from "./sheets.js"
 import { resolveTraces, type TraceDraft } from "./traces.js"
 
 export interface ElaborateOptions {
@@ -64,6 +68,16 @@ interface Frame {
   instance?: InstanceScope
 }
 
+/** An angle as the nearest quarter turn, 0 to 270: a sheet symbol turns as a part's does. */
+const quarterTurn = (angle: number): number => (((Math.round(angle / 90) * 90) % 360) + 360) % 360
+
+/** A port as the design lists it: its place, and the net (or for a bus port, the parent bus) it joins. */
+function instancePort(port: SheetPortSpec, scope: InstanceScope, written: ReadonlyMap<string, string>): InstancePort {
+  if (!port.bus) return { ...port, net: flatNet(scope, port.name) }
+  const members = portMembers({ name: port.name, bus: true })
+  return { ...port, net: written.get(port.name) ?? `${scope.path}/${port.name}`, members }
+}
+
 /** `{ page }` for a thing on a page other than the first, nothing on the first. */
 const onPage = (page: string | undefined): { page?: string } => (page === undefined ? {} : { page })
 
@@ -91,6 +105,10 @@ class Elaboration {
   private readonly instancePaths = new Map<string, number>()
   /** Whether the file built is a sheet itself, so its `<port>` elements are expected. */
   private rootIsSheet = false
+  /** The file built, when it is a sheet: its ports and symbol size. */
+  sheet: Circuit["sheet"]
+  /** The sheet files whose ports and size have been reported on, so each finding is reported once, not per instance. */
+  private readonly sheetsRead = new Set<string>()
 
   constructor(
     private readonly evaluated: Evaluated,
@@ -168,12 +186,14 @@ class Elaboration {
       this.diagnostics.push(diagnostic("not-a-sheet", "error", `${file} must return <sheet>; ${name} is left out`, [name], source))
       return
     }
-    const ports = portsOf(result.children)
-    const read = readConnections(element.props["connections"], { name, sheet, ports, source })
-    this.diagnostics.push(...read.diagnostics, ...badPorts(result.children, (port) => this.sourceOf(port, frame)))
+    const symbol = this.sheetPorts(result, file, sheet, frame, source)
+    const ports = symbol.ports.map((port) => port.name)
+    const buses = new Map(symbol.ports.filter((port) => port.bus).map((port) => [port.name, portMembers({ name: port.name, bus: true })]))
+    const read = readConnections(element.props["connections"], { name, sheet, ports, buses, source })
+    this.diagnostics.push(...read.diagnostics)
     const { base, written } = this.instanceBase(element.props["base"], name, path, parent, source)
     const files = [...(parent?.files ?? []), file]
-    const scope: InstanceScope = { name, path, sheet, base: (parent?.base ?? 0) + base, files, parent, ports, connections: read.connections, parts: new Map() }
+    const scope: InstanceScope = { name, path, sheet, base: (parent?.base ?? 0) + base, files, parent, ports, connections: read.joins, parts: new Map() }
     const placed = this.instancePlacement(element.props, name, frame.offset, source)
     const index = this.instances.length
     this.instances.push({} as SheetInstance)
@@ -188,12 +208,26 @@ class Elaboration {
       base,
       designatorBase: scope.base,
       connections: Object.fromEntries(read.connections),
-      ports: ports.map((port) => ({ name: port, net: flatNet(scope, port) })),
+      ports: symbol.ports.map((port) => instancePort(port, scope, read.connections)),
+      ...(symbol.size ? { size: symbol.size } : {}),
       parts: parts.sort(naturalCompare),
       ...placed.record,
       ...onPage(frame.page),
       source,
     }
+  }
+
+  /** A sheet's ports placed on its symbol and its symbol size; what is wrong with them is reported once per sheet file. */
+  private sheetPorts(body: CfElement, file: string, sheet: string, frame: Frame, at: SourceRef): { ports: SheetPortSpec[]; size?: SheetSize } {
+    const written = readPorts(body.children, (port) => this.sourceOf(port, frame))
+    const placed = placePorts(written.ports, sheet, at)
+    const size = readSheetSize(body.props, sheet, at)
+    if (!this.sheetsRead.has(file)) {
+      this.sheetsRead.add(file)
+      this.diagnostics.push(...written.diagnostics, ...placed.diagnostics, ...size.diagnostics)
+    }
+    const ports = placed.ports.map(({ name, side, order, bus }): SheetPortSpec => ({ name, side, order, ...(bus ? { bus: true as const } : {}) }))
+    return { ports, ...(Object.keys(size.size).length > 0 ? { size: size.size } : {}) }
   }
 
   /** A unique path: a second instance of the same name in the same parent is an error and gets "~2", "~3" and so on. */
@@ -219,16 +253,19 @@ class Elaboration {
   }
 
   /** The offset inside the instance, and the instance's own position as the design records it. */
-  private instancePlacement(props: Props, name: string, offset: Offset, source: SourceRef): { offset: Offset; record: Pick<SheetInstance, "sch" | "pcb"> } {
+  private instancePlacement(props: Props, name: string, offset: Offset, source: SourceRef): { offset: Offset; record: Pick<SheetInstance, "sch" | "schRotation" | "pcb"> } {
     const reader = new PropReader(props, name, source)
     const [pcbX, pcbY, schX, schY] = [reader.length("pcbX"), reader.length("pcbY"), reader.length("schX"), reader.length("schY")]
     const turn = reader.angle("pcbRotation")
+    const schTurn = reader.angle("schRotation")
     this.diagnostics.push(...reader.diagnostics)
     const at = pcbPoint(offset, pcbX ?? 0, pcbY ?? 0)
     const rotation = ((((offset.pcbRotation ?? 0) + (turn ?? 0)) % 360) + 360) % 360
     const sch = { x: offset.schX + (schX ?? 0), y: offset.schY + (schY ?? 0) }
     const record = {
-      ...(schX !== undefined || schY !== undefined ? { sch } : {}),
+      ...(schX !== undefined || schY !== undefined ? { sch: { ...sch, ...(schTurn === undefined ? {} : { rotation: quarterTurn(schTurn) }) } } : {}),
+      // Kept without a position too: Rotate on an auto-placed symbol writes schRotation alone.
+      ...(schTurn === undefined ? {} : { schRotation: quarterTurn(schTurn) }),
       ...(pcbX !== undefined || pcbY !== undefined || turn !== undefined ? { pcb: { ...at, rotation } } : {}),
     }
     return { offset: { pcbX: at.x, pcbY: at.y, schX: sch.x, schY: sch.y, pcbRotation: rotation }, record }
@@ -259,7 +296,8 @@ class Elaboration {
   private sheetElement(element: CfElement, frame: Frame, source: SourceRef): void {
     if (frame.depth === 1 && !frame.instance) {
       this.rootIsSheet = true
-      this.diagnostics.push(...badPorts(element.children, (port) => this.sourceOf(port, frame)))
+      const name = sheetName(this.file)
+      this.sheet = { name, ...this.sheetPorts(element, this.file, name, frame, source) }
     } else {
       const message = "<sheet> is the body of a <name>.sheet.tsx file; use that sheet as a component instead"
       this.diagnostics.push(diagnostic("unsupported-element", "error", message, ["sheet"], source))
@@ -336,7 +374,8 @@ class Elaboration {
     this.drawingCounts.set(kind, index)
     const built = buildDrawing(kind, element.props, element.children.length, { offset: frame.offset, index, source })
     this.diagnostics.push(...built.diagnostics)
-    const drawn = built.drawing ? { drawing: { ...built.drawing, ...onPage(frame.page) } } : {}
+    const inside = frame.instance ? { instance: frame.instance.path } : {}
+    const drawn = built.drawing ? { drawing: { ...built.drawing, ...onPage(frame.page), ...inside } } : {}
     const name = drawingName(kind, element.props["name"])
     // A named drawing in a sheet is named per instance, so two instances do not repeat a name; a bus keeps its net names.
     const scoped = name !== undefined && frame.instance && kind !== "bus" ? `${frame.instance.path}/${name}` : name
@@ -422,6 +461,7 @@ export function elaborate(evaluated: Evaluated, file: string, options: Elaborate
     ...(run.board ? { board: { ...run.board, keepouts: run.keepouts } } : {}),
     drawings: drawings.drawings,
     ...instances,
+    ...(run.sheet ? { sheet: run.sheet } : {}),
     diagnostics: [...run.diagnostics, ...drawings.diagnostics, ...run.boardlessKeepouts(), ...traces.diagnostics, ...joined],
   }
 }

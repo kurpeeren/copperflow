@@ -24,4 +24,12 @@ export const LayoutEditSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("removeVia"), id }).strict(),
 ])
 
-export const LayoutBody = z.object({ file: z.string().min(1).max(500), summary: z.string().min(1).max(200), edits: z.array(LayoutEditSchema).min(1).max(500) })
+/** Replicate layout's placement, written into the sheet file in the same history entry: positions only. */
+const SheetPlacement = z
+  .object({
+    file: z.string().min(1).max(500),
+    edits: z.array(z.object({ kind: z.literal("setProps"), part: z.string().min(1).max(64), props: z.record(z.enum(["pcbX", "pcbY", "pcbRotation"]), z.number().finite()) }).strict()).min(1).max(500),
+  })
+  .strict()
+
+export const LayoutBody = z.object({ file: z.string().min(1).max(500), summary: z.string().min(1).max(200), edits: z.array(LayoutEditSchema).min(1).max(500), sheet: SheetPlacement.optional() })

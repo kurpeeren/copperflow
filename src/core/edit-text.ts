@@ -43,6 +43,9 @@ export function putAttribute(out: MagicString, source: string, node: JSXElement,
   }
 }
 
+/** Whether an element's parent is the board, or in a sheet file the `<sheet>`, which holds its parts as a board does. */
+export const atTop = (parent: string | undefined): boolean => parent === "board" || parent === "sheet"
+
 /** Puts an element on its own line before the board's first trace (or before </board>), never inside a group. */
 export function insertInBoard(source: string, scan: Scan, element: string, what: string): string {
   const { lineStart, indent } = boardInsertion(source, scan, what)
@@ -52,7 +55,7 @@ export function insertInBoard(source: string, scan: Scan, element: string, what:
 /** The line a new element goes before (the board's first trace, or </board>) and the indent it takes there. */
 export function boardInsertion(source: string, scan: Scan, what: string): { lineStart: number; indent: string } {
   // Anchor on the board's own traces, so the element never lands inside a group.
-  const firstTrace = scan.model.traces.find((t) => t.parent === "board" && lineIndent(source, t.start) !== undefined)
+  const firstTrace = scan.model.traces.find((t) => atTop(t.parent) && lineIndent(source, t.start) !== undefined)
   const anchor = firstTrace ? firstTrace.start : scan.model.boardClose?.start
   if (anchor === undefined) throw new EditError("invalid", "No <board> element with a closing tag was found")
   const indent = lineIndent(source, anchor)

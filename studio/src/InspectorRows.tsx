@@ -78,7 +78,7 @@ export function PropRow({ name, prop, disabled, onCommit, notify }: {
   )
 }
 
-const NUMERIC_PROPS = new Set(["pcbX", "pcbY", "pcbRotation", "schX", "schY", "schRotation", "pinCount"])
+const NUMERIC_PROPS = new Set(["pcbX", "pcbY", "pcbRotation", "schX", "schY", "schRotation", "pinCount", "order", "base"])
 
 /** An empty input for a usual prop the part does not have yet. */
 export function NewPropRow({ name, example, disabled, onCommit }: {

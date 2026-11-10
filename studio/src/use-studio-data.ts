@@ -6,6 +6,8 @@ import { isStaleKey } from "./request-error"
 
 export interface StudioData {
   files: string[]
+  /** The project's sub-sheet files, which open as their own schematic. */
+  sheets: string[]
   /** The project folder's name, once the server has said it. */
   project: string | undefined
   file: string | undefined
@@ -22,6 +24,7 @@ export interface StudioData {
 /** The file list, the project name and the parts, once at start. */
 function useProject(notify: (text: string) => void, setFile: (pick: (current: string | undefined) => string | undefined) => void, refreshParts: () => Promise<void>) {
   const [files, setFiles] = useState<string[]>([])
+  const [sheets, setSheets] = useState<string[]>([])
   const [project, setProject] = useState<string>()
   useEffect(() => {
     api<string[]>("/api/circuits")
@@ -30,12 +33,15 @@ function useProject(notify: (text: string) => void, setFile: (pick: (current: st
         setFile((current) => current ?? list[0])
       })
       .catch((error: Error) => notify(error.message))
+    api<string[]>("/api/sheets")
+      .then(setSheets)
+      .catch((error: Error) => notify(error.message))
     api<{ name: string }>("/api/project")
       .then((info) => setProject(info.name))
       .catch((error: Error) => notify(error.message))
     refreshParts().catch((error: Error) => notify(error.message))
   }, [notify, setFile, refreshParts])
-  return { files, project }
+  return { files, sheets, project }
 }
 
 /**
@@ -76,7 +82,7 @@ export function useStudioData(notify: (text: string) => void, onFile: () => void
     setBuild((previous) => (next.status === "building" && previous.design ? { ...next, design: previous.design } : next))
   }, [])
 
-  const { files, project } = useProject(report, setFile, refreshParts)
+  const { files, sheets, project } = useProject(report, setFile, refreshParts)
 
   useEffect(() => {
     if (!file) return
@@ -96,5 +102,5 @@ export function useStudioData(notify: (text: string) => void, onFile: () => void
     })
   }, [file, refresh, refreshBuild, refreshParts, report, onFile])
 
-  return { files, project, file, setFile, circuit, build, history, parts, refresh, refreshParts }
+  return { files, sheets, project, file, setFile, circuit, build, history, parts, refresh, refreshParts }
 }

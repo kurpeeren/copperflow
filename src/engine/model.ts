@@ -149,6 +149,8 @@ export type SchematicDrawing = DrawingShape & {
   source: SourceRef
   /** The page it is drawn on; absent on the first page, MAIN_PAGE. */
   page?: string
+  /** The sub-sheet instance it was drawn in; such a drawing is on the sheet's own page, not the parent's. */
+  instance?: string
 }
 
 /** The first page of every schematic: it holds whatever no `<page>` wraps. */
@@ -157,10 +159,28 @@ export const MAIN_PAGE = "Main"
 /** The page a part, trace or drawing is on. */
 export const pageOf = (thing: { page?: string }): string => thing.page ?? MAIN_PAGE
 
-/** A sub-sheet port and the flattened net it joins: the parent net when connected, else the instance's own net. */
-export interface InstancePort {
+/** A sub-sheet port's place on the sheet symbol: a side of the box and the 1-based slot along it (from the top or the left). */
+export interface SheetPortSpec {
   name: string
+  side: Side
+  order: number
+  /** A bus port: joins the members of the bus its name stands for ("D[0:7]" is D0 … D7) by name. */
+  bus?: true
+}
+
+/** The symbol size a `<sheet width height>` writes, in sheet units; absent, the ports decide it. */
+export interface SheetSize {
+  width?: number
+  height?: number
+}
+
+/**
+ * A sub-sheet port and the flattened net it joins: the parent net when connected, else the instance's own net. A bus
+ * port's net is the parent bus it is connected to (or "<path>/<name>"), and `members` are the nets it joins.
+ */
+export interface InstancePort extends SheetPortSpec {
   net: string
+  members?: string[]
 }
 
 /**
@@ -186,8 +206,12 @@ export interface SheetInstance {
   ports: InstancePort[]
   /** The flattened ids of every part inside, nested instances included, in natural order. */
   parts: string[]
-  /** The instance's own schX/schY and pcbX/pcbY/pcbRotation, when written. */
-  sch?: Point
+  /** The sheet symbol's size as the sheet file writes it; absent when it writes none. */
+  size?: SheetSize
+  /** The instance's own schX/schY (and schRotation, when written) and pcbX/pcbY/pcbRotation, when written. */
+  sch?: Point & { rotation?: number }
+  /** The symbol's schRotation, quarter turns, whenever written, with or without schX/schY. */
+  schRotation?: number
   pcb?: { x: number; y: number; rotation: number }
   /** The page it is on; absent on the first page. */
   page?: string
@@ -209,5 +233,7 @@ export interface Circuit {
   drawings: SchematicDrawing[]
   /** The sub-sheet instances in source order, outer before inner; absent when there are none. */
   instances?: SheetInstance[]
+  /** When the file built is a sheet itself: its name, its ports with their places on the symbol, and the symbol size. */
+  sheet?: { name: string; ports: SheetPortSpec[]; size?: SheetSize }
   diagnostics: Diagnostic[]
 }

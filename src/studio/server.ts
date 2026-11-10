@@ -21,6 +21,7 @@ import {
   isInside,
   isLayoutFile,
   listCircuits,
+  listSheets,
   listEntries,
   loadCircuit,
   lockParts,
@@ -133,6 +134,9 @@ const EditSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("addPage"), name: z.string().max(64) }),
   z.object({ kind: z.literal("renamePage"), from: z.string().max(64), to: z.string().max(64) }),
   z.object({ kind: z.literal("removePage"), name: z.string().max(64) }),
+  z.object({ kind: z.literal("renamePort"), from: z.string().max(64), to: z.string().max(64) }),
+  z.object({ kind: z.literal("setSheetSize"), width: z.number().finite().nullable().optional(), height: z.number().finite().nullable().optional() }),
+  z.object({ kind: z.literal("setConnections"), part: z.string(), connections: z.record(z.string().max(64), z.string().max(64)) }),
 ])
 const Bodies = {
   // "Keep these positions" writes every auto-placed part in one request.
@@ -219,6 +223,8 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         return openEvents(res)
       case "GET /api/circuits":
         return send(res, await listCircuits(root))
+      case "GET /api/sheets":
+        return send(res, await listSheets(root))
       case "GET /api/project":
         return send(res, { name: basename(root) })
       case "GET /api/circuit": {
@@ -246,7 +252,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       // Copper goes to the layout file beside the circuit; the built design tells which tracks start on locked parts.
       case "POST /api/layout": {
         const body = LayoutBody.parse(await readJson(req))
-        const result = await applyLayoutEdits(root, body.file, body.edits, { author: "human", summary: body.summary, design: designOf })
+        const result = await applyLayoutEdits(root, body.file, body.edits, { author: "human", summary: body.summary, design: designOf, ...(body.sheet ? { sheet: body.sheet } : {}) })
         const writeMark = live.nextMark()
         live.requestBuild(circuitPathFor(result.file))
         return send(res, { entryId: result.entry.id, created: result.created, writeMark })

@@ -15,6 +15,8 @@ export type CommandId =
   | "redo"
   | "delete"
   | "selectAll"
+  | "selectInstance"
+  | "replicateLayout"
   | "fit"
   | "fitSelection"
   | "fitArea"
@@ -118,6 +120,7 @@ export const MENUS: readonly Menu[] = [
       run("Delete", "delete", "Delete"),
       "separator",
       run("Select all", "selectAll", "Ctrl+A"),
+      run("Select the instance", "selectInstance"),
       run("Find", "find", "Ctrl+F"),
       later("Find similar objects", FIND, "Ctrl+Shift+F"),
       "separator",
@@ -181,6 +184,7 @@ export const MENUS: readonly Menu[] = [
       { label: "Rename page", command: "renamePage", only: "schematic" },
       { label: "Delete page", command: "deletePage", only: "schematic" },
       "separator",
+      { label: "Replicate layout", command: "replicateLayout", only: "pcb" },
       later("Annotate designators", `${WAITS_FOR_BLOCKS}; for now Studio picks the next free name when placing`),
       later("Placement transfer", WAITS_FOR_BLOCKS, "Ctrl+Shift+X"),
     ],

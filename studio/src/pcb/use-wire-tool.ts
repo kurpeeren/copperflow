@@ -7,7 +7,7 @@ import { isCanvasKey } from "./canvas-common"
 import { keyAction, keyInput } from "./canvas-keys"
 import { snapPoint, type Camera, type Point } from "./geometry"
 import { wirePath } from "./wire-path"
-import { endAt, freePin, memberEnd, type Meet, namedNetsJoined, pinAt, sameEnd, wireEdits, type WireEnd } from "./wire-tool"
+import { endAt, freePin, memberEnd, type Meet, namedNetsJoined, pinAt, portWire, sameEnd, wireEdits, type WireEnd } from "./wire-tool"
 
 /**
  * A wire being drawn: where it starts, the pin it starts on if any, the corners clicked so far (on the grid)
@@ -74,6 +74,9 @@ const sameUnder = (a: Under, b: Under) =>
 function planWire(design: Design, drawing: Drawing, target: WireEnd): WirePlan {
   const { start, corners } = drawing
   if (sameEnd(target, start)) return {}
+  const port = portWire(design, start, target)
+  // A symbol's pin is connected through its instance's connections; the build then draws the wire.
+  if (port) return "edits" in port ? { ...port, points: [] } : port
   const repeated = [start, target].find((end) => end.selector.split(".")[0]?.includes("~"))
   if (repeated) return { notice: `${repeated.label} has a repeated name and cannot be wired from the Studio` }
   const edits = wireEdits(design, start, target, corners, legBends(drawing))
@@ -292,7 +295,8 @@ function pressWire(c: PressContext, event: { button: number; shiftKey: boolean }
   if (event.button === 1 || event.button === 2 || event.shiftKey) return false
   if (c.drawing) {
     const target = endAt(c.design, world, PORT_HIT_PX / c.camera.scale, meetOf(c.drawing, c.step, c.snap))
-    if (target?.members) c.picks.open(target, "end")
+    // A bus pin takes the bus whole; any other end picks one member.
+    if (target?.members && !c.drawing.start.port?.bus) c.picks.open(target, "end")
     else if (target) c.finish(c.drawing, target)
     else addCorner(c.drawing, world, c, c.setDrawing)
     return true

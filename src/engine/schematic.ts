@@ -4,6 +4,7 @@ import { routeWires, type FixedWire, type RouteRequest, type SheetBox } from "./
 import { rotatePoint, rotateSide, sheetBounds, sheetPoint, type Spot } from "./schematic-geometry.js"
 import { placeLoose } from "./schematic-place.js"
 import { netsAcrossPages, pagesOf, pageView, tracesAcrossPages } from "./schematic-pages.js"
+import { portFlags, withSheetSymbols } from "./schematic-sheets.js"
 import { symbolFor, type SchSymbol } from "./symbols/index.js"
 
 export interface PlacedSymbol {
@@ -32,6 +33,9 @@ export interface NetLabel {
   at: Point
   side: Side
   style: "label" | "ground" | "power"
+  /** A sheet's port, drawn as a port flag on the sheet's own page; a bus port also says `bus`. */
+  port?: true
+  bus?: true
 }
 
 /** What one schematic page shows, by id; each page is laid out on its own sheet, from its own origin. */
@@ -67,7 +71,9 @@ function origins(circuit: Circuit, symbols: ReadonlyMap<string, SchSymbol>): Map
   for (const component of circuit.components) {
     if (component.sch) result.set(component.id, { ...component.sch, autoPlaced: false })
   }
-  for (const [name, spot] of placeLoose(circuit, symbols)) result.set(name, { ...spot, autoPlaced: true })
+  const turns = new Map(circuit.components.flatMap((c) => (c.kind === "sheet" && typeof c.props["schRotation"] === "number" ? [[c.id, c.props["schRotation"]] as const] : [])))
+  // A sheet symbol placed by the layout still turns as its instance's schRotation says.
+  for (const [name, spot] of placeLoose(circuit, symbols)) result.set(name, { ...spot, rotation: turns.get(name) ?? spot.rotation, autoPlaced: true })
   return result
 }
 
@@ -86,8 +92,11 @@ function withMovedLabels(symbol: SchSymbol, component: Component, rotation: numb
   return { ...symbol, shapes }
 }
 
-function placeSymbols(circuit: Circuit): { symbols: PlacedSymbol[]; spots: Map<string, PinSpot> } {
-  const drawn = new Map(circuit.components.map((component) => [component.id, symbolFor(component)]))
+/** Symbols drawn otherwise than by kind: a sub-sheet instance's sheet symbol, by component id. */
+type OwnSymbols = ReadonlyMap<string, SchSymbol>
+
+function placeSymbols(circuit: Circuit, own: OwnSymbols): { symbols: PlacedSymbol[]; spots: Map<string, PinSpot> } {
+  const drawn = new Map(circuit.components.map((component) => [component.id, own.get(component.id) ?? symbolFor(component)]))
   const where = origins(circuit, drawn)
   const spots = new Map<string, PinSpot>()
   const symbols = circuit.components.flatMap((component): PlacedSymbol[] => {
@@ -188,8 +197,8 @@ type PageLayout = Omit<SchematicLayout, "pages">
  * Where every symbol, wire, label and junction of one page goes, and a warning for each wire that could not avoid
  * other things. Wires without corners are routed in source order, then the near pins of each named net.
  */
-function layoutPage(circuit: Circuit, crossPage: ReadonlySet<string>): { layout: PageLayout; diagnostics: Diagnostic[] } {
-  const { symbols, spots } = placeSymbols(circuit)
+function layoutPage(circuit: Circuit, crossPage: ReadonlySet<string>, own: OwnSymbols): { layout: PageLayout; diagnostics: Diagnostic[] } {
+  const { symbols, spots } = placeSymbols(circuit, own)
   const hand = handDrawn(circuit, spots)
   const drawn: Drawn = { joins: hand.joins, labeled: hand.labeled }
   const nets = layoutNets(circuit, spots, drawn, crossPage)
@@ -231,14 +240,15 @@ function pageEntry(name: string, layout: PageLayout): SchematicPage {
  * Where every symbol, wire, label and junction of the schematic goes, page by page, and a warning for each wire
  * that could not avoid other things or that joins two pages.
  */
-export function layoutSchematicWithDiagnostics(circuit: Circuit): { layout: SchematicLayout; diagnostics: Diagnostic[] } {
+export function layoutSchematicWithDiagnostics(built: Circuit): { layout: SchematicLayout; diagnostics: Diagnostic[] } {
+  const { circuit, symbols: own } = withSheetSymbols(built)
   const crossPage = netsAcrossPages(circuit)
   const counts = new Map<string, number>()
   const all: PageLayout = { symbols: [], wires: [], labels: [], junctions: [], drawings: [] }
   const pages: SchematicPage[] = []
   const diagnostics: Diagnostic[] = [...tracesAcrossPages(circuit)]
   pagesOf(circuit).forEach((name, index) => {
-    const one = layoutPage(pageView(circuit, name), crossPage)
+    const one = layoutPage(pageView(circuit, name), crossPage, own)
     const page: PageLayout = { ...one.layout, wires: numberAcross(one.layout.wires, counts, index > 0) }
     all.symbols.push(...page.symbols)
     all.wires.push(...page.wires)
@@ -248,6 +258,10 @@ export function layoutSchematicWithDiagnostics(circuit: Circuit): { layout: Sche
     diagnostics.push(...one.diagnostics)
     pages.push(pageEntry(name, page))
   })
+  const flags = portFlags(built, all)
+  all.labels.push(...flags)
+  const first = pages[0]
+  if (first) first.labels.push(...flags.map((flag) => flag.id))
   return { layout: { ...all, pages }, diagnostics }
 }
 

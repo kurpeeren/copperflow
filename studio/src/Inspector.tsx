@@ -12,6 +12,9 @@ import { WireView } from "./InspectorWire"
 import { TextView } from "./InspectorText"
 import { MarkForm, NewPropRow, PropRow, Row, Section } from "./InspectorRows"
 import { LibraryInfo } from "./LibraryInfo"
+import { FlattenedPartView, InstanceSection, PortSection, SheetPartNote } from "./InspectorInstance"
+import { instancePart, topInstance } from "./pcb/instances"
+import { isSheetFile } from "./pcb/sheet-names"
 import { CloseIcon, LockIcon, RotateIcon, TrashIcon, UnlockIcon } from "./icons"
 import { touches } from "./LeftPanel"
 import { autoPlacedParts } from "./pcb/auto-placed"
@@ -44,6 +47,10 @@ interface Props {
   /** Asked for by a double click on a part: move the focus to its first field, then call onFieldFocused. */
   focusField: boolean
   onFieldFocused(): void
+  /** Opens a sub-sheet file as its own schematic. */
+  onOpenSheet(file: string): void
+  /** While a sheet file is open, the design of the circuit it was opened from, which tells how many instances use it. */
+  parentDesign?: Design | undefined
 }
 
 /** Which sections are collapsed, the way to flip one, and what Properties shows. */
@@ -56,9 +63,14 @@ interface SectionState {
 /** The locked parts, and those of them changed outside the editor. */
 type Locks = { locked: ReadonlySet<string>; violated: ReadonlySet<string> }
 
-/** The selected parts in the order they were picked, as the circuit has them now. */
+/**
+ * The selected parts in the order they were picked, as the circuit has them now. In a sheet, a port's flag selected
+ * alone stands for the port, which the sheet file writes as an element of its own.
+ */
 function selectedParts(circuit: CircuitData, selection: Selection): PartInfo[] {
-  return selection.names.flatMap((name) => circuit.model.parts.find((part) => part.name === name) ?? [])
+  const flag = selection.size === 0 && selection.soleLabel?.startsWith("port:") ? selection.soleLabel.slice("port:".length) : undefined
+  const names = flag === undefined ? selection.names : [flag]
+  return names.flatMap((name) => circuit.model.parts.find((part) => part.name === name) ?? [])
 }
 
 /** Moves the focus to the first property field once one is asked for and the panel shows. */
@@ -79,8 +91,11 @@ export function Inspector(props: Props) {
   useFieldFocus(panel, props.focusField, props.onFieldFocused)
   const parts = selectedParts(props.circuit, props.selection)
   const [part] = parts
-  const { wireCount, labelCount, drawingCount, copperCount, soleWire: wire, soleLabel: label, soleDrawing: drawing, soleCopper, soleText, textCount } = props.selection
+  const portFlag = parts.length === 1 && props.selection.size === 0
+  const { wireCount: wires, labelCount: labelsPicked, drawingCount, copperCount, soleWire: wire, soleLabel: label, soleDrawing: drawing, soleCopper, soleText, textCount } = props.selection
+  const [wireCount, labelCount] = portFlag ? [0, 0] : [wires, labelsPicked]
   const kind = propertiesKind(parts.length, wireCount, labelCount, drawingCount, copperCount, textCount)
+  const flattened = parts.length === 0 && props.selection.size === 1 && props.selection.primary !== undefined ? instancePart(props.build.design, props.selection.primary) : undefined
   const library = kind === "part" && part ? props.parts.library.find((p) => p.component === part.tag) : undefined
   const autoPlaced = kind === "part" && part !== undefined && autoPlacedParts(props.build.design, props.openView).has(part.name)
   const view = propertiesView(parts, { library: library !== undefined, autoPlaced }, wireCount, labelCount, drawingCount, copperCount, textCount)
@@ -104,7 +119,8 @@ export function Inspector(props: Props) {
       {kind === "copper" && soleCopper !== undefined && design && <CopperView design={design} id={soleCopper} segment={props.selection.segment} actions={props.actions} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
       {kind === "group" && <GroupView view={view} parts={parts} others={wireCount + labelCount + drawingCount + copperCount} locks={locks} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
       {kind === "part" && part && <PartView {...props} view={view} collapsed={collapsed} toggle={toggle} part={part} locks={locks} />}
-      {kind === "board" && <BoardView {...props} view={view} collapsed={collapsed} toggle={toggle} />}
+      {flattened && design && <FlattenedPartView design={design} part={flattened.part} onSelect={props.onSelect} onOpenSheet={props.onOpenSheet} />}
+      {kind === "board" && !flattened && <BoardView {...props} view={view} collapsed={collapsed} toggle={toggle} />}
     </aside>
   )
 }
@@ -115,7 +131,7 @@ function centreOnBoard(design: Design | undefined, name: string): { x: number; y
   return box && { x: Math.round(box.center.x * 1000) / 1000, y: Math.round(box.center.y * 1000) / 1000 }
 }
 
-function PartView({ circuit, build, parts, part, locks, actions, onSelect, run, view, collapsed, toggle }: Props & SectionState & { part: PartInfo; locks: Locks }) {
+function PartView({ circuit, build, parts, part, locks, actions, onSelect, run, view, collapsed, toggle, onOpenSheet, parentDesign }: Props & SectionState & { part: PartInfo; locks: Locks }) {
   const locked = locks.locked.has(part.name)
   const library = parts.library.find((p) => p.component === part.tag)
   const setProp = (key: string, value: Literal) =>
@@ -159,6 +175,9 @@ function PartView({ circuit, build, parts, part, locks, actions, onSelect, run, 
       <PartActions part={part} locks={locks} run={run} />
       {locked && <p className="note locked">Locked. The agent cannot move or change this part.</p>}
       {part.readonlyReason && <p className="note">Read-only here: {part.readonlyReason}. Change it in the code.</p>}
+      {isSheetFile(circuit.file) && <SheetPartNote file={circuit.file} parentDesign={parentDesign} />}
+      {part.tag === "port" && isSheetFile(circuit.file) && <PortSection part={part} editable={canEdit} actions={actions} collapsed={collapsed} toggle={toggle} />}
+      {build.design && topInstance(build.design, part.name) && <InstanceSection design={build.design} name={part.name} editable={canEdit} actions={actions} onOpenSheet={onOpenSheet} collapsed={collapsed} toggle={toggle} />}
       {view.sections.map((section) => (
         <Section key={section.title} title={section.title} open={!collapsed.has(section.title)} onToggle={() => toggle(section.title)}>
           {section.rows.map(renderRow)}

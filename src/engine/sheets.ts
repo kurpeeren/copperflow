@@ -2,7 +2,7 @@
 // is an instance flattened into the circuit. These are the rules the flattening follows; elaborate.ts walks the tree.
 import { posix } from "node:path"
 import { diagnostic } from "./diagnostics.js"
-import { isElement, type CfElement } from "./jsx-runtime.js"
+import { busMembers } from "./drawing-kinds.js"
 import type { Diagnostic, SourceRef } from "./model.js"
 import { naturalCompare } from "./order.js"
 import { labelStyle } from "./schematic-nets.js"
@@ -36,7 +36,7 @@ export interface InstanceScope {
   files: readonly string[]
   parent: InstanceScope | undefined
   ports: readonly string[]
-  /** Port name to the parent's net name, for the ports the instance connects. */
+  /** A net inside to the parent's net it is: each connected port, and each joined member of a connected bus port. */
   connections: ReadonlyMap<string, string>
   /** Local part name to flattened id, filled as the parts are made. */
   parts: Map<string, string>
@@ -58,49 +58,50 @@ export function traceScope(scope: InstanceScope): TraceScope {
   return { part: (name) => scope.parts.get(name) ?? `${scope.path}/${name}`, net: (name) => flatNet(scope, name) }
 }
 
-/** The names of the `<port>` elements a sheet holds, in the order written, each once. Components inside are not entered. */
-export function portsOf(children: readonly unknown[]): string[] {
-  const names: string[] = []
-  const walk = (nodes: readonly unknown[]): void => {
-    for (const node of nodes) {
-      if (!isElement(node) || typeof node.type !== "string") continue
-      const name = node.props["name"]
-      if (node.type === "port" && typeof name === "string" && WHOLE_NET_NAME.test(name) && !names.includes(name)) names.push(name)
-      walk(node.children)
-    }
-  }
-  walk(children)
-  return names
-}
-
-/** A port whose name is not a net name, so no trace can reach it. */
-export function badPorts(children: readonly unknown[], source: (element: CfElement) => SourceRef): Diagnostic[] {
-  const found: Diagnostic[] = []
-  const walk = (nodes: readonly unknown[]): void => {
-    for (const node of nodes) {
-      if (!isElement(node) || typeof node.type !== "string") continue
-      const name = node.props["name"]
-      if (node.type === "port" && (typeof name !== "string" || !WHOLE_NET_NAME.test(name))) {
-        const message = `<port> needs a name made of letters, digits, "_" and "-"; it is ignored`
-        found.push(diagnostic("bad-value", "error", message, ["port"], source(node)))
-      }
-      walk(node.children)
-    }
-  }
-  walk(children)
-  return found
-}
-
 export interface InstanceSpec {
   name: string
   sheet: string
   ports: readonly string[]
+  /** The bus ports among them, each with the member nets its name stands for. */
+  buses?: ReadonlyMap<string, readonly string[]>
   source: SourceRef
 }
 
-/** The connections an instance writes: each port to a parent net name, "net." allowed in front. Bad entries are errors and left out. */
-export function readConnections(value: unknown, spec: InstanceSpec): { connections: Map<string, string>; diagnostics: Diagnostic[] } {
+export interface ReadConnections {
+  /** As written and usable: port name to the parent net (or, for a bus port, the parent bus) name. */
+  connections: Map<string, string>
+  /** What the nets inside become: a net port's name to its parent net, and each joined member of a bus port to itself. */
+  joins: Map<string, string>
+  diagnostics: Diagnostic[]
+}
+
+/** The members a bus port and the parent bus it connects to share; one missing on either side is an error naming it. */
+function busJoin(port: string, members: readonly string[], target: string, spec: InstanceSpec): { joins: string[]; diagnostics: Diagnostic[] } {
+  const outside = busMembers(target)
+  if (outside === undefined) {
+    const message = `${spec.name}: connections.${port} must be a bus name such as "D[0:7]", as port ${port} is a bus port`
+    return { joins: [], diagnostics: [diagnostic("bad-value", "error", message, [`${spec.name}.${port}`], spec.source)] }
+  }
+  const missingOutside = members.filter((member) => !outside.includes(member))
+  const missingInside = outside.filter((member) => !members.includes(member))
+  const diagnostics: Diagnostic[] = []
+  const missing = (names: readonly string[], where: string) => {
+    if (names.length === 0) return
+    const message = `${spec.name} connects bus port ${port} of ${spec.sheet} to ${target}, but ${names.join(", ")} ${names.length === 1 ? "is" : "are"} missing ${where}`
+    diagnostics.push(diagnostic("bus-member-missing", "error", message, names.map((name) => `${spec.name}.${name}`), spec.source))
+  }
+  missing(missingOutside, `from ${target}`)
+  missing(missingInside, `from port ${port}`)
+  return { joins: members.filter((member) => outside.includes(member)), diagnostics }
+}
+
+/**
+ * The connections an instance writes: each port to a parent net name, "net." allowed in front; a bus port to a parent
+ * bus with the same member names. Bad entries are errors and left out.
+ */
+export function readConnections(value: unknown, spec: InstanceSpec): ReadConnections {
   const connections = new Map<string, string>()
+  const joins = new Map<string, string>()
   const diagnostics: Diagnostic[] = []
   const error = (code: string, message: string, item: string) => diagnostics.push(diagnostic(code, "error", message, [item], spec.source))
   if (value !== undefined && (typeof value !== "object" || value === null || Array.isArray(value))) {
@@ -109,20 +110,30 @@ export function readConnections(value: unknown, spec: InstanceSpec): { connectio
   const entries = typeof value === "object" && value !== null && !Array.isArray(value) ? Object.entries(value) : []
   for (const [port, target] of entries) {
     const net = typeof target === "string" ? target.replace(/^net\./, "") : undefined
+    const members = spec.buses?.get(port)
     if (!spec.ports.includes(port)) {
       const known = [...spec.ports].sort(naturalCompare).join(", ")
       error("unknown-port", `${spec.sheet} has no port ${port} (${known === "" ? "it has no ports" : `ports: ${known}`})`, `${spec.name}.${port}`)
+    } else if (members !== undefined && net !== undefined) {
+      const bus = busJoin(port, members, net, spec)
+      diagnostics.push(...bus.diagnostics)
+      connections.set(port, net)
+      for (const member of bus.joins) joins.set(member, member)
     } else if (net === undefined || !WHOLE_NET_NAME.test(net)) {
       error("bad-value", `${spec.name}: connections.${port} must be a net name such as "VBUS"`, `${spec.name}.${port}`)
-    } else connections.set(port, net)
+    } else {
+      connections.set(port, net)
+      joins.set(port, net)
+    }
   }
-  diagnostics.push(...shortedPorts(connections, spec))
+  const netPorts = new Map([...connections].filter(([port]) => !spec.buses?.has(port)))
+  diagnostics.push(...shortedPorts(netPorts, spec))
   for (const port of spec.ports) {
     if (connections.has(port) || entries.some(([key]) => key === port)) continue
     const message = `Port ${port} of ${spec.name} (${spec.sheet}) is not connected`
     diagnostics.push(diagnostic("unconnected-port", "warning", message, [`${spec.name}.${port}`], spec.source))
   }
-  return { connections, diagnostics }
+  return { connections, joins, diagnostics }
 }
 
 /** Two or more ports of one instance on one parent net join those nets inside the sheet: a warning per net. */

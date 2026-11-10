@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { hasToken, type CircuitData, type Design } from "./api"
 import { tidyReason } from "./pcb/auto-placed"
+import { isSheetFile } from "./pcb/sheet-names"
 import { NO_HIGHLIGHT, remapHighlight } from "./pcb/highlight"
 import { pickLayersOf } from "./pcb/layers"
 import { copperBoxes } from "./pcb/copper-hit"
@@ -107,12 +108,15 @@ function usePruneWire(design: Design | undefined, select: (change: SelectionChan
  */
 function useShownSelection(selection: Selection, circuit: CircuitData | undefined, design: Design | undefined, view: Tab, before: Design | undefined): Selection {
   return useMemo(() => {
+    // On the PCB the parts sub-sheet instances make (R101) are picked too: they are on the board, not in the file.
+    const flattened = view === "pcb" ? (design?.circuit.components.filter((c) => c.instance !== undefined).map((c) => c.id) ?? []) : []
+    const parts = circuit && [...circuit.model.parts.map((part) => part.name), ...flattened]
     const sheet = design?.schematic
     const ids = <T extends { id: string }>(items: readonly T[] | undefined) => items?.map((item) => item.id)
     const drawings = sheet && stableDrawings(before?.schematic.drawings, sheet.drawings)
     const copper = design && [...design.pcb.tracks, ...design.pcb.vias].map((item) => item.id)
     const texts = design && ids(view === "pcb" ? boardTexts(design.pcb) : view === "schematic" ? sheetTexts(design.schematic) : [])
-    return shownSelection(selection, { view, parts: circuit?.model.parts.map((part) => part.name), wires: ids(sheet?.wires), labels: ids(sheet?.labels), drawings, copper, texts })
+    return shownSelection(selection, { view, parts, wires: ids(sheet?.wires), labels: ids(sheet?.labels), drawings, copper, texts })
   }, [selection, circuit, design, view, before])
 }
 
@@ -187,15 +191,20 @@ function useStudio() {
   useEscapeClearsSelection(select)
   useHighlightFollowsBuild(build.design, workspace.setHighlight)
   const closeDialog = useCallback(() => setDialog(null), [])
+  const [sheetParent, setSheetParent] = useState<SheetParent>()
   const openDocument = useCallback(
     (target: string, view: DocView, toPage?: string) => {
       if (toPage !== undefined) setWantedPage(toPage)
       else if (target !== file) setWantedPage(MAIN_PAGE)
+      // A sheet opened from a circuit remembers it, so its tabs lead back and Properties counts its instances there.
+      if (isSheetFile(target)) setSheetParent((current) => (file && !isSheetFile(file) ? { file, design: build.design } : current))
+      else setSheetParent(undefined)
       setFile(target)
-      setTab(view)
+      setTab(isSheetFile(target) ? "schematic" : view)
     },
-    [setFile, file],
+    [setFile, file, build.design],
   )
+  const openSheet = useCallback((sheet: string) => openDocument(sheet, "schematic"), [openDocument])
   const openPage = useCallback((toPage: string) => {
     setWantedPage(toPage)
     setTab("schematic")
@@ -210,7 +219,13 @@ function useStudio() {
   const copperRecords = tab === "pcb" ? pcb : undefined
   const sheetIds = { sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords }
   const runCommand = useAppCommands({ file, view: tab, setView: setTab, selection, select, circuit, actions, pickLayers, pickFilter: workspace.pickFilter, ...sheetIds, workspace, openChecks, openFind: find.open, openDialog: setDialog, design: build.design, page, openPage })
-  return { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, runCommand, page, openPage }
+  return { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, openSheet, sheetParent, runCommand, page, openPage }
+}
+
+/** The circuit a sheet file was opened from, and its design as it was then. */
+export interface SheetParent {
+  file: string
+  design: Design | undefined
 }
 
 /** The menu commands the build turns off for now, with the reason: Tidy sheet while Studio placed nothing on the sheet. */
@@ -222,7 +237,7 @@ function useCommandsOff(design: Design | undefined): CommandsOff {
 }
 
 export function App() {
-  const { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, runCommand, page, openPage } = useStudio()
+  const { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, openSheet, sheetParent, runCommand, page, openPage } = useStudio()
   const { build, circuit } = data
   const { message, dismiss } = toast
   const toggles = { snap: workspace.snap, ...themeToggles(workspace.theme) }
@@ -258,6 +273,8 @@ export function App() {
         run={runCommand}
         onPlace={place}
         onOpenDocument={openDocument}
+        onOpenSheet={openSheet}
+        sheetParent={sheetParent}
         openChecks={openChecks}
       />
       <BottomStrip state={workspace.bottom} onClick={workspace.clickBottomTab} onOpen={workspace.openBottom} />

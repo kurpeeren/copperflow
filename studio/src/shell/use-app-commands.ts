@@ -10,6 +10,8 @@ import { copperLock, type CopperRecords } from "../pcb/copper-edits"
 import { lockChange } from "../pcb/group-edits"
 import type { PickLayers } from "../pcb/layers"
 import { selectAll } from "../pcb/pick"
+import { instancePart, instanceSelection, topInstance } from "../pcb/instances"
+import { replicatePlan } from "../pcb/replicate"
 import type { PickFilter } from "../pcb/pick-filter"
 import type { View } from "../pcb/positions"
 import type { Selection, SelectionChange } from "../selection"
@@ -122,6 +124,37 @@ function lockParts(input: Input, locked: boolean): void {
   void input.actions.lock(change.parts, locked)
 }
 
+/** Select → "Select the instance": every part of the instance each selected part (or symbol) is in. */
+function selectInstance(input: Input): void {
+  const parts = instanceSelection(input.design, input.selection.names)
+  if (!parts) return input.actions.notify("Select a part of a sub-sheet instance, or its symbol on the schematic, first.")
+  // The schematic draws the instance as one symbol: selecting it there is selecting the instance.
+  const shown = input.view === "schematic" ? input.selection.names.flatMap((name) => topInstance(input.design, name)?.path ?? instancePart(input.design, name)?.outer ?? []) : parts
+  input.select((current) => current.all([...new Set(shown)]))
+}
+
+/**
+ * Layout → Replicate layout: the selected instance's placement and copper copied to the other instances of its sheet
+ * (replicate.ts), as one history entry: the copper in the layout file, the placement in the sheet file with it.
+ */
+async function replicateLayout(input: Input): Promise<void> {
+  // Placed means pcbX and pcbY written on the instance, as the circuit file has it.
+  const placed = (name: string) => {
+    const props = input.circuit?.model.parts.find((part) => part.name === name)?.props
+    return props?.["pcbX"] !== undefined && props["pcbY"] !== undefined
+  }
+  const plan = replicatePlan(input.design, input.selection.names, placed)
+  if ("message" in plan) return input.actions.notify(plan.message)
+  const { sheet, layout } = plan
+  // One history entry: the copper in the layout file, the placement in the sheet file beside it (`also`).
+  const written =
+    layout.edits.length === 0
+      ? await input.actions.editFile(sheet.file, sheet.edits, sheet.summary)
+      : await input.actions.editLayout(layout.edits, sheet.edits.length === 0 ? layout.summary : `${layout.summary} and its placement`, sheet.edits.length === 0 ? undefined : { file: sheet.file, edits: sheet.edits })
+  if (!written.ok) return
+  input.actions.notify(`Copied the layout of ${plan.source} to ${plan.targets.join(", ")}`)
+}
+
 /** The app's own commands; undefined for the ones the canvases answer. */
 function appCommand(input: Input, command: CommandId): (() => void) | undefined {
   const action = WORKSPACE[command]
@@ -135,6 +168,8 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     // Every part of the circuit that may be picked (both views show the same parts, and the circuit is there before a
     // canvas is), and on the schematic every wire of the sheet.
     selectAll: () => input.select(selectAll(input.circuit?.model.parts.map((part) => part.name) ?? [], input.pickLayers, input.pickFilter, input.sheetWires, input.sheetLabels, input.sheetDrawings, input.pcbCopper)),
+    selectInstance: () => selectInstance(input),
+    replicateLayout: () => void replicateLayout(input),
     find: input.openFind,
     checkDrc: input.openChecks,
     designRules: () => input.openDialog("rules"),
