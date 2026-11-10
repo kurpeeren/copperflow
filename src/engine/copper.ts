@@ -182,6 +182,16 @@ function recordsTouch(a: LayoutRecord, b: LayoutRecord): boolean {
   return viasTouch(a as ViaRecord, b as ViaRecord)
 }
 
+/** Joins the copper each group names (pad and record ids): what a piece of a pour's fill touches is one conductor. */
+function joinGroups(graph: Graph, groups: readonly (readonly string[])[]): void {
+  if (groups.length === 0) return
+  const nodes = new Map<string, number>([...graph.pads.map((pad, p) => [pad.id, p] as const), ...graph.records.map((record, r) => [record.id, graph.pads.length + r] as const)])
+  for (const group of groups) {
+    const [first, ...rest] = group.flatMap((id) => nodes.get(id) ?? [])
+    if (first !== undefined) for (const node of rest) graph.groups.join(first, node)
+  }
+}
+
 function joinRecords(graph: Graph): void {
   const { records, groups } = graph
   const offset = graph.pads.length
@@ -297,10 +307,11 @@ function padIslands(graph: Graph, islands: readonly Island[]): Map<string, numbe
 }
 
 /** Copper on layers the board has, resolved: items in the given order, the pads' groups, and the findings. */
-function resolveKept(pads: WorldPad[], records: readonly LayoutRecord[], nets: readonly Net[]): Copper & { items: (PcbTrack | PcbVia)[] } {
+function resolveKept(pads: WorldPad[], records: readonly LayoutRecord[], nets: readonly Net[], joins: readonly (readonly string[])[]): Copper & { items: (PcbTrack | PcbVia)[] } {
   const graph: Graph = { pads, records: [...records], groups: new Groups(pads.length + records.length), touched: new Map() }
   joinPads(graph)
   joinRecords(graph)
+  joinGroups(graph, joins)
   const named = netNamer(nets)
   const islands = islandsOf(graph)
   const netOf = new Map(islands.flatMap((island) => islandNets(island, records, named)))
@@ -313,14 +324,22 @@ function resolveKept(pads: WorldPad[], records: readonly LayoutRecord[], nets: r
  * shorts (copper joining pads of two nets), floating copper (touching no pad), and records whose named net is unknown
  * or differs from their pads' net. With `boardLayers`, copper on a layer the board lacks (inner1 on a 2-layer board)
  * is a `copper-layer` error and joins nothing: it carries no net and the ratsnest keeps its lines. Records keep their
- * file order.
+ * file order. `joins` are groups of pad and record ids that are one conductor through other copper: the pieces of a
+ * pour's fill (pour/joins.ts), so pads the fill joins lose their airwires and copper touching only the fill is not floating.
  */
-export function resolveCopper(parts: readonly PlacedFootprint[], records: readonly LayoutRecord[], nets: readonly Net[], boardLayers?: 2 | 4): Copper {
+export function resolveCopper(
+  parts: readonly PlacedFootprint[],
+  records: readonly LayoutRecord[],
+  nets: readonly Net[],
+  boardLayers?: 2 | 4,
+  joins: readonly (readonly string[])[] = [],
+): Copper {
   const missing = records.map((record) => (boardLayers === undefined ? undefined : missingLayer(record, boardLayers)))
   const kept = resolveKept(
     parts.flatMap((part) => part.pads),
     records.filter((_, i) => missing[i] === undefined),
     nets,
+    joins,
   )
   let next = 0
   const items = records.map((record, i) => {
