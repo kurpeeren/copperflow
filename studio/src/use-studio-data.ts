@@ -1,7 +1,7 @@
 // What Studio loads from its server: the project's circuit files, the open file's circuit, build and history, and
 // the parts; kept in step with the server's change events.
 import { useCallback, useEffect, useState } from "react"
-import { api, subscribe, type BuildState, type CircuitData, type HistoryListing, type PartsData } from "./api"
+import { api, subscribe, type BuildState, type CircuitData, type HistoryListing, type HistoryProblem, type HistoryResult, type PartsData } from "./api"
 import { isStaleKey } from "./request-error"
 
 export interface StudioData {
@@ -15,6 +15,8 @@ export interface StudioData {
   circuit: CircuitData | undefined
   build: BuildState
   history: HistoryListing[]
+  /** Entry files the history could not read, or why the whole listing failed; the canvas does not wait on it. */
+  historyProblems: HistoryProblem[]
   parts: PartsData
   /** Reloads the circuit and the history of `file`. */
   refresh(file: string): Promise<void>
@@ -53,6 +55,7 @@ export function useStudioData(notify: (text: string) => void, onFile: () => void
   const [circuit, setCircuit] = useState<CircuitData>()
   const [build, setBuild] = useState<BuildState>({ status: "idle" })
   const [history, setHistory] = useState<HistoryListing[]>([])
+  const [historyProblems, setHistoryProblems] = useState<HistoryProblem[]>([])
   const [parts, setParts] = useState<PartsData>({ library: [], builtin: [] })
   // An out of date key stops every request, so the canvas says so instead of waiting for a build forever.
   const report = useCallback(
@@ -64,12 +67,14 @@ export function useStudioData(notify: (text: string) => void, onFile: () => void
   )
 
   const refresh = useCallback(async (target: string) => {
-    const [data, entries] = await Promise.all([
+    // The history is a side panel: when it fails the document still shows, and the panel says why.
+    const [data, listing] = await Promise.all([
       api<CircuitData>(`/api/circuit?file=${encodeURIComponent(target)}`),
-      api<HistoryListing[]>("/api/history?limit=30"),
+      api<HistoryResult>("/api/history?limit=30").catch((error: Error): HistoryResult => ({ entries: [], problems: [{ file: "history", reason: error.message }] })),
     ])
     setCircuit(data)
-    setHistory(entries)
+    setHistory(listing.entries)
+    setHistoryProblems(listing.problems)
   }, [])
 
   const refreshParts = useCallback(async () => {
@@ -102,5 +107,5 @@ export function useStudioData(notify: (text: string) => void, onFile: () => void
     })
   }, [file, refresh, refreshBuild, refreshParts, report, onFile])
 
-  return { files, sheets, project, file, setFile, circuit, build, history, parts, refresh, refreshParts }
+  return { files, sheets, project, file, setFile, circuit, build, history, historyProblems, parts, refresh, refreshParts }
 }

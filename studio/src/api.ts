@@ -1,11 +1,11 @@
 import type { Annotations, LockViolation } from "../../src/core/annotations.js"
-import type { HistoryListing } from "../../src/core/history.js"
+import type { HistoryListing, HistoryProblem } from "../../src/core/history.js"
 import type { CircuitModel, Edit, Literal, PartInfo, PropInfo, TraceInfo } from "../../src/core/types.js"
 import type { Design } from "../../src/engine/design.js"
 import type { Diagnostic } from "../../src/engine/model.js"
 import { requestErrorText } from "./request-error.js"
 
-export type { Annotations, CircuitModel, Design, Diagnostic, Edit, HistoryListing, Literal, LockViolation, PartInfo, PropInfo, TraceInfo }
+export type { Annotations, CircuitModel, Design, Diagnostic, Edit, HistoryListing, HistoryProblem, Literal, LockViolation, PartInfo, PropInfo, TraceInfo }
 
 export interface CircuitData {
   file: string
@@ -151,4 +151,10 @@ export function subscribe(onEvent: (event: "change" | "build" | "library", file:
   }
   void listen()
   return () => controller.abort()
+}
+
+/** What /api/history answers: the entries it could read, and the entry files it skipped. */
+export interface HistoryResult {
+  entries: HistoryListing[]
+  problems: HistoryProblem[]
 }

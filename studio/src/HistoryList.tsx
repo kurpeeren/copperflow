@@ -1,13 +1,19 @@
 import type { Actions } from "./App"
-import type { HistoryListing } from "./api"
+import type { HistoryListing, HistoryProblem } from "./api"
 import { historyRow } from "./history-rows"
 import { UndoIcon } from "./icons"
 import "./history-list.css"
 
 /** The changes from you and the agent, newest first, each with an undo; undone and redone ones are marked. */
-export function HistoryList({ history, actions }: { history: HistoryListing[]; actions: Actions }) {
-  if (history.length === 0) return <p className="note">Changes from you and the agent appear here.</p>
+export function HistoryList({ history, problems, actions }: { history: HistoryListing[]; problems: HistoryProblem[]; actions: Actions }) {
+  const skipped = problems.map((problem) => (
+    <p key={problem.file} className="note" role="alert">
+      Skipped {problem.file}: {problem.reason}
+    </p>
+  ))
+  if (history.length === 0) return <>{problems.length === 0 && <p className="note">Changes from you and the agent appear here.</p>}{skipped}</>
   return (
+    <>
     <ul className="history">
       {history.map((entry) => {
         const row = historyRow(entry)
@@ -27,5 +33,7 @@ export function HistoryList({ history, actions }: { history: HistoryListing[]; a
         )
       })}
     </ul>
+    {skipped}
+    </>
   )
 }

@@ -1,6 +1,6 @@
 import { EditError } from "./edit-error.js"
 import { inProjectQueue, readIfThere, writeNew, writeWithHistory } from "./file-writes.js"
-import type { Author, HistoryEntry } from "./history.js"
+import { assertMeta, type Author, type HistoryEntry } from "./history.js"
 import { EMPTY_LAYOUT, isLayoutFile, layoutPathFor, readLayoutText, serializeLayout, type LayoutRecord } from "./layout-file.js"
 import { boardLayersOf, designFor, lockedPartsAt, lockedStart, type DesignSource } from "./layout-locks.js"
 import { applyLayoutRecordEdits, setsLayer, type LayoutEdit } from "./layout-records.js"
@@ -85,6 +85,7 @@ async function sheetChange(root: string, sheet: { file: string; edits: Edit[] })
  */
 export function applyLayoutEdits(root: string, file: string, edits: readonly LayoutEdit[], options: LayoutEditOptions): Promise<LayoutEditResult> {
   return inProjectQueue(root, async () => {
+    assertMeta({ author: options.author, summary: options.summary ?? "layout edit" })
     const layout = await resolveLayoutFile(root, layoutNameFor(file))
     const source = await readIfThere(layout.path)
     const before = source === undefined ? EMPTY_LAYOUT : readLayoutText(source, layout.file)

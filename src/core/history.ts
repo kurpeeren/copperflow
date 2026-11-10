@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { z } from "zod"
+import { EditError } from "./edit-error.js"
 
 /** One file a change wrote besides its main file, such as a sheet file a new circuit uses. */
 const FileChangeSchema = z.object({
@@ -90,12 +91,28 @@ export function historyDir(root: string): string {
   return join(root, ".copperflow", "history")
 }
 
+/** Refuses, before anything is written, entry data the history could not read back (an author other than "ai" or "human", say). */
+export function assertEntryData(data: Omit<HistoryEntry, "id" | "time">): void {
+  const result = EntrySchema.omit({ id: true, time: true }).safeParse(data)
+  if (result.success) return
+  const issue = result.error.issues[0]
+  const field = issue?.path.join(".") || "entry"
+  const detail = issue?.code === "invalid_value" ? `expected one of ${issue.values.map((v) => JSON.stringify(v)).join("|")}` : issue?.message
+  throw new EditError("invalid", `Not a valid history entry: ${field}: ${detail}`)
+}
+
+/** Refuses, before any work, a change whose author or summary the history would not accept. */
+export function assertMeta(meta: { author: Author; summary: string }): void {
+  assertEntryData({ author: meta.author, summary: meta.summary, file: "x", before: "", after: "" })
+}
+
 /** Stores an entry under the next id after the highest one (c0001, c0002, ...). */
 export async function recordEntry(
   root: string,
   data: Omit<HistoryEntry, "id" | "time">,
   now: Date = new Date(),
 ): Promise<HistoryEntry> {
+  assertEntryData(data)
   const dir = historyDir(root)
   await mkdir(dir, { recursive: true })
   for (let attempt = 0; attempt < 20; attempt++) {
@@ -120,16 +137,36 @@ export async function readEntries(root: string): Promise<HistoryEntry[]> {
   return Promise.all((await entryIds(root)).map((id) => readEntry(root, id)))
 }
 
-/** The newest entries first, without file contents. */
-export async function listEntries(root: string, limit: number): Promise<HistoryListing[]> {
-  const entries = await readEntries(root)
-  const links = linksOf(entries)
-  return entries
+/** An entry file that could not be read, and why. */
+export interface HistoryProblem {
+  file: string
+  reason: string
+}
+
+/** The newest entries first, without file contents, and the entry files that were skipped because they could not be read. */
+export async function listHistory(root: string, limit: number): Promise<{ entries: HistoryListing[]; problems: HistoryProblem[] }> {
+  const readable: HistoryEntry[] = []
+  const problems: HistoryProblem[] = []
+  for (const id of await entryIds(root)) {
+    try {
+      readable.push(await readEntry(root, id))
+    } catch (error) {
+      problems.push({ file: `${id}.json`, reason: (error as Error).message })
+    }
+  }
+  const links = linksOf(readable)
+  const entries = readable
     .slice(-limit)
     .reverse()
     .map(({ before: _before, after: _after, also, ...rest }) =>
       listing(also ? { ...rest, also: also.map(({ before: _b, after: _a, ...file }) => file) } : rest, links),
     )
+  return { entries, problems }
+}
+
+/** The newest entries first, without file contents; unreadable entry files are left out (listHistory names them). */
+export async function listEntries(root: string, limit: number): Promise<HistoryListing[]> {
+  return (await listHistory(root, limit)).entries
 }
 
 async function readEntry(root: string, id: string): Promise<HistoryEntry> {

@@ -15,7 +15,7 @@ import {
   formatCheck,
   formatHistory,
   formatSummary,
-  listEntries,
+  listHistory,
   loadCircuit,
   lockParts,
   removeMark,
@@ -106,7 +106,10 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
         return 0
       case "history": {
         const [limit] = takeOption(rest, "--limit")
-        io.out(formatHistory(await listEntries(root, positiveInt(limit ?? "20"))))
+        {
+          const { entries, problems } = await listHistory(root, positiveInt(limit ?? "20"))
+          io.out(formatHistory(entries, problems))
+        }
         return 0
       }
       case "parts":

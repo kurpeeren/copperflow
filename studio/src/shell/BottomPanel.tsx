@@ -1,5 +1,5 @@
 import type { Actions } from "../App"
-import type { HistoryListing, PartsData } from "../api"
+import type { HistoryListing, HistoryProblem, PartsData } from "../api"
 import { ChecksPanel } from "../ChecksPanel"
 import { FindResults } from "../FindResults"
 import type { FindResultsProps } from "../use-find"
@@ -15,6 +15,7 @@ interface Props {
   parts: PartsData
   onPlace(part: string): void
   history: HistoryListing[]
+  historyProblems: HistoryProblem[]
   actions: Actions
   built: boolean
   /** Why the build failed, when it did and no design exists yet. */
@@ -44,7 +45,7 @@ function Content(props: Props) {
     case "log":
       return (
         <div className="bottom-scroll">
-          <HistoryList history={props.history} actions={props.actions} />
+          <HistoryList history={props.history} problems={props.historyProblems} actions={props.actions} />
         </div>
       )
     case "drc":

@@ -1,7 +1,7 @@
 import { mkdir, readFile, realpath, rmdir, stat } from "node:fs/promises"
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 import { serialized, writeFileAtomic } from "./fs-utils.js"
-import { recordEntry, removeEntry, type Author, type FileChange, type HistoryEntry } from "./history.js"
+import { assertEntryData, recordEntry, removeEntry, type Author, type FileChange, type HistoryEntry } from "./history.js"
 
 /** One queue per project root: every change to a project's files runs after the one before. */
 const projectQueues = new Map<string, Promise<void>>()
@@ -28,6 +28,7 @@ export async function writeNew(
   text: string,
   meta: { author: Author; summary: string; redoOf?: string; also?: FileChange[] },
 ): Promise<HistoryEntry> {
+  assertEntryData({ ...meta, file: "x", before: "", after: text, absent: "before" })
   const place = await newFilePlace(root, path)
   await mkdir(dirname(path), { recursive: true })
   let entry: HistoryEntry | undefined
@@ -69,6 +70,7 @@ export async function writeWithHistory(
   text: string,
   data: Omit<HistoryEntry, "id" | "time">,
 ): Promise<HistoryEntry> {
+  assertEntryData(data)
   if ((await readFile(loaded.path, "utf8")) !== loaded.source) {
     throw new Error(`${loaded.file} changed while it was being edited; try again`)
   }

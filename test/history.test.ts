@@ -1,8 +1,9 @@
+import { EditError } from "../src/core/edit-error.js"
 import { expect, test } from "vitest"
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { historyDir, readEntries, recordEntry } from "../src/core/history.js"
+import { historyDir, listHistory, readEntries, recordEntry } from "../src/core/history.js"
 
 const data = { author: "ai" as const, file: "a.circuit.tsx", summary: "s", before: "a", after: "b" }
 
@@ -27,4 +28,23 @@ test("an entry whose id does not match its file name is rejected", async () => {
   await mkdir(historyDir(root), { recursive: true })
   await writeFile(join(historyDir(root), "c0001.json"), JSON.stringify({ id: "c0005", time: "t", ...data }))
   await expect(readEntries(root)).rejects.toThrow(/c0001\.json/)
+})
+
+test("recording an entry with an author the history cannot read back is refused, and nothing is written", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cf-hist-"))
+  const bad = recordEntry(root, { ...data, author: "agent" as never })
+  await expect(bad).rejects.toBeInstanceOf(EditError)
+  await expect(bad).rejects.toThrow(/author.*"ai"\|"human"/)
+  expect(await readEntries(root)).toEqual([])
+})
+
+test("a listing with one corrupt entry beside good ones returns the good ones and names the problem", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cf-hist-"))
+  await recordEntry(root, data)
+  await writeFile(join(historyDir(root), "c0002.json"), JSON.stringify({ id: "c0002", time: "t", ...data, author: "agent" }))
+  await recordEntry(root, data)
+  const { entries, problems } = await listHistory(root, 10)
+  expect(entries.map((e) => e.id)).toEqual(["c0003", "c0001"])
+  expect(problems).toHaveLength(1)
+  expect(problems[0]).toMatchObject({ file: "c0002.json", reason: expect.stringMatching(/c0002\.json.*not a valid history entry/) })
 })
