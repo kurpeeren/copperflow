@@ -4,12 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>copperflow studio</title>
-    <!-- The remembered theme (theme-state.ts, key copperflow.theme) before any style loads, so Dark never flashes light. -->
-    <script>
-      try {
-        if (localStorage.getItem("copperflow.theme") === "dark") document.documentElement.setAttribute("data-theme", "dark")
-      } catch (e) {}
-    </script>
+    <!-- The remembered theme (theme-state.ts, key copperflow.theme) before any style loads, so Dark never flashes light. An external file: the server's Content-Security-Policy blocks inline scripts. -->
+    <script src="./theme-boot.js"></script>
   </head>
   <body>
     <div id="root"></div>

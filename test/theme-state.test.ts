@@ -99,7 +99,9 @@ describe("choosing the theme that is already on", () => {
 describe("the theme before the first paint", () => {
   const html = readFileSync(new URL("../studio/index.html", import.meta.url), "utf8")
   const head = html.slice(0, html.indexOf("</head>"))
-  const inline = /<script>([\s\S]*?)<\/script>/.exec(head)?.[1] ?? ""
+  // The server's Content-Security-Policy is script-src 'self', so the bootstrap is an external same-origin file.
+  const tag = '<script src="./theme-boot.js"></script>'
+  const inline = readFileSync(new URL("../studio/public/theme-boot.js", import.meta.url), "utf8")
 
   /** Runs the inline script against a storage and a root, and returns the data-theme it set, if any. */
   function boot(stored: string | null | Error): string | undefined {
@@ -117,8 +119,14 @@ describe("the theme before the first paint", () => {
 
   test("index.html sets the remembered theme in <head>, ahead of the module script that loads the CSS", () => {
     expect(inline).toContain(THEME_KEY)
-    expect(html.indexOf("<script>")).toBeLessThan(html.indexOf('<script type="module"'))
-    expect(html.indexOf("<script>")).toBeLessThan(html.indexOf("</head>"))
+    expect(head).toContain(tag)
+    expect(html.indexOf(tag)).toBeLessThan(html.indexOf('<script type="module"'))
+  })
+
+  test("index.html has no inline script or style the Content-Security-Policy would block", () => {
+    expect(html).not.toMatch(/<script(?![^>]*\ssrc=)/)
+    expect(html).not.toMatch(/<style[\s>]/)
+    expect(html).not.toMatch(/\sstyle=|\sonload=|\sonclick=/)
   })
 
   test("only a remembered Dark is applied; anything else, or a blocked storage, leaves the page light", () => {
