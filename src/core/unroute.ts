@@ -11,30 +11,62 @@ export interface UnrouteRecord {
   locked: boolean
 }
 
+/** A track as Unroute reads it: where it starts tells whether a locked part holds it. */
+export interface UnrouteTrack extends UnrouteRecord {
+  layer: CopperLayer
+  points: readonly LayoutPoint[]
+}
+
 export interface UnrouteCopper {
-  tracks: readonly UnrouteRecord[]
+  tracks: readonly UnrouteTrack[]
   vias: readonly UnrouteRecord[]
+}
+
+export interface UnrouteOptions {
+  /** Only the records named here. */
+  ids?: readonly string[]
+  /** The locked part a track starts on, if any: such a track counts as locked (layout-locks.ts lockedStart). */
+  lockedPart?: (track: UnrouteTrack) => string | undefined
+}
+
+export interface Unroute {
+  edits: LayoutEdit[]
+  /** Why router copper was left: "t0004 starts on the locked part J1". */
+  skipped: string[]
 }
 
 const takesBack = (record: UnrouteRecord, ids: ReadonlySet<string> | undefined) => record.by === "router" && !record.locked && (ids === undefined || ids.has(record.id))
 
-/** The edits that remove the router's unlocked copper: all of it, or only the records named in `ids`. */
-export function unrouteEdits(copper: UnrouteCopper, ids?: readonly string[]): LayoutEdit[] {
-  const only = ids === undefined ? undefined : new Set(ids)
-  return [
-    ...copper.tracks.filter((track) => takesBack(track, only)).map((track): LayoutEdit => ({ kind: "removeTrack", id: track.id })),
+/**
+ * The edits that remove the router's unlocked copper: all of it, or only the records named in `ids`. A track that
+ * starts on a locked part's pad is left (the core would refuse its removal) and named in `skipped`.
+ */
+export function unrouteEdits(copper: UnrouteCopper, options: UnrouteOptions = {}): Unroute {
+  const only = options.ids === undefined ? undefined : new Set(options.ids)
+  const skipped: string[] = []
+  const tracks = copper.tracks.filter((track) => {
+    if (!takesBack(track, only)) return false
+    const part = options.lockedPart?.(track)
+    if (part !== undefined) skipped.push(`${track.id} starts on the locked part ${part}`)
+    return part === undefined
+  })
+  const edits = [
+    ...tracks.map((track): LayoutEdit => ({ kind: "removeTrack", id: track.id })),
     ...copper.vias.filter((via) => takesBack(via, only)).map((via): LayoutEdit => ({ kind: "removeVia", id: via.id })),
   ]
+  return { edits, skipped }
 }
 
 const counted = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`
 
-/** "Unroute: remove 12 tracks and 3 vias the router made". */
-export function unrouteSummary(edits: readonly LayoutEdit[]): string {
+/** "Unroute: remove 12 tracks and 3 vias the router made; left t0004 (starts on the locked part J1)". */
+export function unrouteSummary(edits: readonly LayoutEdit[], skipped: readonly string[] = []): string {
   const tracks = edits.filter((edit) => edit.kind === "removeTrack").length
   const vias = edits.filter((edit) => edit.kind === "removeVia").length
   const parts = [...(tracks > 0 ? [counted(tracks, "track")] : []), ...(vias > 0 ? [counted(vias, "via")] : [])]
-  return `Unroute: remove ${parts.join(" and ")} the router made`
+  const left = skipped.length === 0 ? "" : `; left ${skipped.map((why) => why.replace(/^(\S+) /, "$1 (")).join("), ")})`
+  const text = `Unroute: remove ${parts.join(" and ")} the router made${left}`
+  return text.length <= 200 ? text : `${text.slice(0, 199)}…`
 }
 
 /** Whether a point on a layer lies on a pad of a locked part. */

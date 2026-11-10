@@ -37,7 +37,8 @@ import {
 import { Engine } from "../engine/engine.js"
 import { setFilletRadius } from "../core/rules-edit.js"
 import { RULES_PATH } from "../engine/rules/load.js"
-import { layoutPathFor, readLayoutText } from "../core/layout-file.js"
+import { layoutPathFor, readLayoutText, type TrackRecord } from "../core/layout-file.js"
+import { lockedPartsAt, lockedStart } from "../core/layout-locks.js"
 import { readIfThere } from "../core/file-writes.js"
 import { unrouteEdits, unrouteSummary } from "../core/unroute.js"
 import { resolveLayoutFile } from "../core/workspace.js"
@@ -320,9 +321,16 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         const layout = await resolveLayoutFile(root, layoutNameOf(body.file))
         const source = await readIfThere(layout.path)
         const records = source === undefined ? [] : readLayoutText(source, layout.file).records
-        const edits = unrouteEdits({ tracks: records.filter((r) => r.t === "track"), vias: records.filter((r) => r.t === "via") }, body.ids)
-        if (edits.length === 0) throw new HttpError(400, body.ids ? "None of the selected copper was made by the router and unlocked; Unroute removes only that" : "The board has no unlocked router copper to remove")
-        const result = await applyLayoutEdits(root, layout.circuit, edits, { author: "human", summary: unrouteSummary(edits), design: designOf })
+        // A router track starting on a part locked since counts as locked: it is left and named, not refused with the rest.
+        const locked = await lockedPartsAt(layout.circuitPath)
+        const lockedPart = locked.size === 0 ? undefined : lockedStart(locked, await designOf(layout.circuit))
+        const tracks = records.filter((r): r is TrackRecord => r.t === "track")
+        const { edits, skipped } = unrouteEdits({ tracks, vias: records.filter((r) => r.t === "via") }, { ...(body.ids ? { ids: body.ids } : {}), ...(lockedPart ? { lockedPart: (track) => lockedPart(tracks.find((one) => one.id === track.id) as TrackRecord) } : {}) })
+        if (edits.length === 0) {
+          const none = body.ids ? "None of the selected copper was made by the router and unlocked; Unroute removes only that" : "The board has no unlocked router copper to remove"
+          throw new HttpError(400, skipped.length === 0 ? none : `${none}: ${skipped.join("; ")}`)
+        }
+        const result = await applyLayoutEdits(root, layout.circuit, edits, { author: "human", summary: unrouteSummary(edits, skipped), design: designOf })
         const writeMark = live.nextMark()
         live.requestBuild(layout.circuit)
         return send(res, { entryId: result.entry.id, summary: result.entry.summary, writeMark })

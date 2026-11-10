@@ -114,7 +114,10 @@ function addOne(doc: LayoutDoc, edit: Extract<LayoutEdit, { kind: "addTrack" | "
 function setOne(doc: LayoutDoc, index: number, edit: Extract<LayoutEdit, { kind: "setTrack" | "setVia" }>, context: LayoutEditContext): LayoutDoc {
   const { kind: _kind, id: _id, ...fields } = edit
   const defined = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined))
-  const record = checked({ ...doc.records[index], ...defined })
+  const before = doc.records[index] as LayoutRecord
+  // Router copper a person or the agent reshapes becomes theirs, so Unroute (which takes back the router's) leaves it.
+  const by = before.by === "router" && !context.router && !onlyLock(edit) ? { by: MAKER[context.author] } : {}
+  const record = checked({ ...before, ...defined, ...by })
   refuseMissingLayer(record, edit, context)
   if (!onlyLock(edit)) refuseLockedPart(record, context)
   return { ...doc, records: doc.records.map((r, i) => (i === index ? record : r)) }

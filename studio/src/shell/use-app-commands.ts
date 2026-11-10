@@ -87,7 +87,8 @@ function routeScope(input: Input, scope: RouteScope | Refusal): void {
 
 /** Route → Unroute: the selected router copper, or with no copper selected all of it. */
 function unroute(input: Input): void {
-  const request = unrouteRequest(input.design, input.selection.copper)
+  const locked = new Set(input.circuit?.annotations.locks.filter((lock) => !lock.drawing).map((lock) => lock.part))
+  const request = unrouteRequest(input.design, input.selection.copper, locked)
   if ("message" in request) return input.actions.notify(request.message)
   void input.actions.unroute(request.ids)
 }

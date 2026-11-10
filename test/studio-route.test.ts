@@ -8,6 +8,7 @@ import { buildDesign } from "../src/engine/design.js"
 import { ENGINE_FILES } from "../src/engine/engine.js"
 import { collectProjectFiles } from "../src/engine/project-files.js"
 import { routeBoard } from "../src/engine/router/route-board.js"
+import { applyLayoutEdits } from "../src/core/layout-edits.js"
 import type { DesignBuilder } from "../src/studio/live.js"
 import type { RouteEvent } from "../src/studio/route-events.js"
 import type { RouteWorker, RouteWorkerFactory, RouteWorkerReply, RouteWorkerRequest } from "../src/studio/route-runner.js"
@@ -28,8 +29,16 @@ ${[resistor("R1", -5.5, 0), resistor("R2", 5.5, 0), resistor("R3", 0, -4.5, "pcb
   </board>
 )
 `
+/** Builds in this process; while `slow` is set, a build first says it began and waits for `release`. */
+const pace = { slow: false, began: (): void => undefined, release: Promise.resolve() }
 const builder: DesignBuilder = {
-  build: async (root, file) => buildDesign(await collectProjectFiles(root, { include: ENGINE_FILES }), (await resolveCircuit(root, file)).file),
+  build: async (root, file) => {
+    if (pace.slow) {
+      pace.began()
+      await pace.release
+    }
+    return buildDesign(await collectProjectFiles(root, { include: ENGINE_FILES }), (await resolveCircuit(root, file)).file)
+  },
 }
 
 let root: string
@@ -65,6 +74,7 @@ async function open(routeWorker?: RouteWorkerFactory | null) {
 }
 
 beforeEach(async () => {
+  pace.slow = false
   root = await mkdtemp(join(tmpdir(), "cf-route-"))
   await mkdir(join(root, "static"))
   await writeFile(join(root, "static", "index.html"), "<html></html>")
@@ -182,6 +192,55 @@ describe("Route → Autoroute on the server", () => {
     expect(await records()).toEqual([])
   }, 30_000)
 
+  test("a rules.yaml or sub-sheet change while it runs discards the result too", async () => {
+    for (const [name, text, what] of [
+      ["rules.yaml", "fabrication:\n  minHoleToHole: 0.3\n", "rules"],
+      ["Block.sheet.tsx", "export default () => <sheet />\n", "sheet"],
+    ] as const) {
+      const changing = fakeWorker(async (request, reply) => {
+        await writeFile(join(root, name), text)
+        reply({ type: "done", report: routeBoard(request.input, { scope: request.scope }) })
+      })
+      await open(changing.factory)
+      await data(await api("/api/route", { file: FILE, scope: { kind: "all" } }))
+      expect([what, await ended()]).toEqual([what, { file: FILE, state: "discarded", reason: "A file the circuit is built from (a sub-sheet, a part or rules.yaml) changed while the board was routed, so the result was discarded; route again" }])
+      expect(await records()).toEqual([])
+      stopEvents()
+      await studio.close()
+    }
+    await open(null)
+  }, 60_000)
+
+  test("a hand edit queued before the run's write gets in first, and the run is discarded, not written on top", async () => {
+    const hand = { kind: "addTrack", layer: "top", width: 0.25, points: [{ x: -6, y: 5 }, { x: -4, y: 5 }] } as const
+    const racing = fakeWorker(async (request, reply) => {
+      // Waits in the write queue for its design while the run's own write queues behind it.
+      void applyLayoutEdits(root, FILE, [{ ...hand, points: [...hand.points] }], { author: "human", summary: "Add track", design: async () => (await new Promise((done) => setTimeout(done, 300)), builder.build(root, FILE)) })
+      reply({ type: "done", report: routeBoard(request.input, { scope: request.scope }) })
+    })
+    await open(racing.factory)
+    await data(await api("/api/route", { file: FILE, scope: { kind: "all" } }))
+    expect(await ended()).toEqual({ file: FILE, state: "discarded", reason: "The layout file changed while the board was routed, so the result was discarded; route again" })
+    expect((await records()).map((record) => record.by)).toEqual(["human"])
+  }, 30_000)
+
+  test("a cancel that comes once the write is under way is too late: the run ends done", async () => {
+    let release = (): void => undefined
+    const began = new Promise<void>((done) => (pace.began = done))
+    pace.release = new Promise<void>((done) => (release = done))
+    const slowWrite = fakeWorker((request, reply) => {
+      pace.slow = true
+      reply({ type: "done", report: routeBoard(request.input, { scope: request.scope }) })
+    })
+    await open(slowWrite.factory)
+    await data(await api("/api/route", { file: FILE, scope: { kind: "all" } }))
+    await began
+    expect(await data(await api("/api/route/cancel", {}))).toEqual({ cancelled: false })
+    release()
+    expect(await ended()).toMatchObject({ state: "done", routed: 2, entryId: "c0001" })
+    expect(events.some((event) => event.state === "cancelled")).toBe(false)
+  }, 30_000)
+
   test("a worker that fails says why", async () => {
     await open(fakeWorker((_request, reply) => reply({ type: "error", message: "out of memory" })).factory)
     await data(await api("/api/route", { file: FILE, scope: { kind: "all" } }))
@@ -233,5 +292,27 @@ describe("Route → Unroute on the server", () => {
     expect((await records()).map((record) => record.id)).toEqual([handTrack])
     const none = await api("/api/unroute", { file: FILE })
     expect((await none.json()).error).toBe("The board has no unlocked router copper to remove")
+  }, 30_000)
+
+  test("a router track on a part locked since routing is left and named; the rest goes", async () => {
+    await open(null)
+    await data(await api("/api/route", { file: FILE, scope: { kind: "all" } }))
+    await ended()
+    await data(await api("/api/lock", { file: FILE, parts: ["R1", "R2", "R3", "R4"], locked: true }))
+    const done = await data(await api("/api/unroute", { file: FILE }))
+    expect(done.summary).toMatch(/^Unroute: remove .* the router made; left t\d{4} \(starts on the locked part R\d\)/)
+    const left = await records()
+    expect(left.length).toBeGreaterThan(0)
+    expect(left.every((record) => record.t === "track")).toBe(true)
+  }, 30_000)
+
+  test("a router track reshaped by hand is the person's: Unroute leaves it", async () => {
+    await open(null)
+    await data(await api("/api/route", { file: FILE, scope: { kind: "nets", nets: ["A"] } }))
+    await ended()
+    const [first] = (await records()).filter((record) => record.t === "track")
+    await data(await api("/api/layout", { file: FILE, summary: "Reshape", edits: [{ kind: "setTrack", id: first!.id, width: 0.3 }] }))
+    await api("/api/unroute", { file: FILE })
+    expect((await records()).filter((record) => record.id === first!.id).map((record) => record.by)).toEqual(["human"])
   }, 30_000)
 })

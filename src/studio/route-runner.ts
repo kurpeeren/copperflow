@@ -1,7 +1,7 @@
 // Route → Autoroute on the server: one run at a time, in a worker thread so the Studio stays responsive, its progress
 // and its end told through the live events ("route"). The copper is written as one history entry (author human, records
-// by the router), unless the circuit or its layout file changed while the run was computed (content hashes at start
-// and end), or the run was cancelled. Without worker threads (or without the built worker file, as when the server
+// by the router), unless a file the run was computed from changed meanwhile (content hashes of every file a build
+// reads, at the start and again inside the project's write queue just before the write), or the run was cancelled. Without worker threads (or without the built worker file, as when the server
 // runs from its TypeScript sources) the run is computed in the server process, which says so.
 import { createHash } from "node:crypto"
 import { existsSync } from "node:fs"
@@ -10,10 +10,11 @@ import { applyLayoutEdits } from "../core/layout-edits.js"
 import { layoutPathFor } from "../core/layout-file.js"
 import { lockedPartsAt, lockedStart, type DesignSource } from "../core/layout-locks.js"
 import type { LayoutEdit } from "../core/layout-records.js"
-import { readIfThere } from "../core/file-writes.js"
 import { startOffLocked } from "../core/unroute.js"
 import { resolveCircuit } from "../core/workspace.js"
 import type { Design } from "../engine/design.js"
+import { ENGINE_FILES } from "../engine/engine.js"
+import { collectProjectFiles } from "../engine/project-files.js"
 import { routeBoard, type RouteBoardInput, type RouteProgress, type RouteReport, type RouteScope } from "../engine/router/route-board.js"
 import { discardReason, routeSummary, type ContentHashes, type RouteEvent } from "./route-events.js"
 
@@ -73,10 +74,18 @@ export interface RouteRunnerDeps {
 
 class Cancelled extends Error {}
 
+/** The files changed while the run was computed: the result is not written. */
+class Discarded extends Error {}
+
+/** Locks and marks: the build does not read them, and the write checks the locks itself. */
+const ANNOTATIONS = /\.(circuit|sheet)\.annotations\.json$/
+
 /** The run going now. */
 interface Job {
   file: string
   cancelled: boolean
+  /** The write passed its check and goes ahead: too late to cancel. */
+  committed: boolean
   /** Stops the computation: ends the worker, or makes the in-process run stop at its next progress. */
   stop(): void
 }
@@ -99,7 +108,7 @@ export class RouteRunner {
    */
   async start(file: string, scope: RouteScope): Promise<string> {
     if (this.job) throw new Error(`The board of ${this.job.file} is being routed; cancel it or wait for it to end`)
-    const job: Job = { file, cancelled: false, stop: () => undefined }
+    const job: Job = { file, cancelled: false, committed: false, stop: () => undefined }
     this.job = job
     try {
       const circuit = await resolveCircuit(this.deps.root, file)
@@ -119,15 +128,22 @@ export class RouteRunner {
   /** Cancels the run going now; whether there was one. */
   cancel(): boolean {
     const job = this.job
-    if (!job || job.cancelled) return false
+    if (!job || job.cancelled || job.committed) return false
     job.cancelled = true
     job.stop()
     return true
   }
 
-  private async hashes(circuit: { path: string }): Promise<ContentHashes> {
-    const [code, layout] = await Promise.all([readIfThere(circuit.path), readIfThere(layoutPathFor(circuit.path))])
-    return { circuit: hash(code), layout: hash(layout) }
+  /** The hashes of the circuit, its layout file and every other file a build reads (the engine's own file set). */
+  private async hashes(circuit: { file: string }): Promise<ContentHashes> {
+    const files = await collectProjectFiles(this.deps.root, { include: ENGINE_FILES })
+    const layout = layoutPathFor(circuit.file)
+    const rest = createHash("sha256")
+    for (const name of Object.keys(files).sort()) {
+      if (name === circuit.file || name === layout || ANNOTATIONS.test(name)) continue
+      rest.update(name).update("\0").update(files[name] as string).update("\0")
+    }
+    return { circuit: hash(files[circuit.file]), layout: hash(files[layout]), project: rest.digest("hex") }
   }
 
   private async run(job: Job, circuit: { path: string; file: string }, scope: RouteScope): Promise<void> {
@@ -138,28 +154,39 @@ export class RouteRunner {
       if (job.cancelled) throw new Cancelled()
       const input: RouteBoardInput = { layout: design.pcb, rules: design.rules, nets: design.circuit.nets, components: design.circuit.components, ...(design.circuit.instances ? { instances: design.circuit.instances } : {}) }
       const report = await this.compute(job, { input, scope })
-      if (job.cancelled) throw new Cancelled()
-      const why = discardReason(start, await this.hashes(circuit))
-      if (why !== undefined) return this.deps.announce({ file, state: "discarded", reason: why })
-      const written = report.edits.length === 0 ? {} : await this.write(circuit, design, scope, report)
+      const check = async () => {
+        if (job.cancelled) throw new Cancelled()
+        const why = discardReason(start, await this.hashes(circuit))
+        if (why !== undefined) throw new Discarded(why)
+      }
+      if (report.edits.length === 0) await check()
+      const written = report.edits.length === 0 ? {} : await this.write(job, circuit, design, scope, report, check)
       const total = report.routed.length + report.unrouted.length
       this.deps.announce({ file, state: "done", routed: report.routed.length, total, passes: report.passes, unrouted: report.unrouted, cleanupCapped: report.cleanupCapped, ...written })
     } catch (error) {
-      if (error instanceof Cancelled || job.cancelled) return this.deps.announce({ file, state: "cancelled" })
+      if (error instanceof Discarded) return this.deps.announce({ file, state: "discarded", reason: error.message })
+      if (error instanceof Cancelled || (job.cancelled && !job.committed)) return this.deps.announce({ file, state: "cancelled" })
       const message = (error instanceof Error ? error.message : String(error)).split(this.deps.root).join(".")
       this.deps.announce({ file, state: "failed", error: message })
     }
   }
 
-  /** The copper as one history entry, by the router, with no track starting on a locked part's pad. */
-  private async write(circuit: { path: string; file: string }, design: Design, scope: RouteScope, report: RouteReport): Promise<{ entryId: string; writeMark: number }> {
+  /**
+   * The copper as one history entry, by the router, with no track starting on a locked part's pad. `check` runs in the
+   * project's write queue, after the writes queued before this one, so a hand edit that got in first discards the run.
+   */
+  private async write(job: Job, circuit: { path: string; file: string }, design: Design, scope: RouteScope, report: RouteReport, check: () => Promise<void>): Promise<{ entryId: string; writeMark: number }> {
     const locked = await lockedPartsAt(circuit.path)
     const onLocked = lockedStart(locked, design)
     const edits: LayoutEdit[] =
       locked.size === 0 ? report.edits : startOffLocked(report.edits, (point, layer) => onLocked({ t: "track", id: "", layer, width: 1, points: [point], locked: false, by: "router" }) !== undefined)
     const total = report.routed.length + report.unrouted.length
     const source: DesignSource = (name) => this.deps.designOf(name)
-    const result = await applyLayoutEdits(this.deps.root, circuit.file, edits, { author: "human", router: true, summary: routeSummary(scope, report.routed.length, total), design: source })
+    const guard = async () => {
+      await check()
+      job.committed = true
+    }
+    const result = await applyLayoutEdits(this.deps.root, circuit.file, edits, { author: "human", router: true, summary: routeSummary(scope, report.routed.length, total), design: source, guard })
     const writeMark = this.deps.nextMark()
     this.deps.requestBuild(circuit.file)
     return { entryId: result.entry.id, writeMark }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { discardReason, isRouting, routeProgressText, routeSummary, scopeText, type RouteEvent } from "../src/studio/route-events.js"
+import { discardReason, isRouting, routeProgressText, routeSummary, scopeText, writtenMark, type RouteEvent } from "../src/studio/route-events.js"
 
 const FILE = "main.circuit.tsx"
 
@@ -51,6 +51,13 @@ describe("the run's events", () => {
     expect(isRouting({ file: FILE, state: "cancelled" })).toBe(false)
   })
 
+  test("a run that wrote copper gives its write mark, for the canvas keys to wait on its build", () => {
+    const done: RouteEvent = { file: FILE, state: "done", routed: 1, total: 1, passes: 1, unrouted: [], cleanupCapped: false }
+    expect(writtenMark({ ...done, entryId: "c0001", writeMark: 7 })).toBe(7)
+    expect(writtenMark(done)).toBeUndefined()
+    expect(writtenMark({ file: FILE, state: "cancelled" })).toBeUndefined()
+  })
+
   test("the scope in words, and the history entry's summary", () => {
     expect(scopeText({ kind: "all" })).toBe("the board")
     expect(scopeText({ kind: "nets", nets: ["net.GND"] })).toBe("net GND")
@@ -65,11 +72,12 @@ describe("the run's events", () => {
 })
 
 describe("the discard rule", () => {
-  const start = { circuit: "a", layout: "b" }
-  test("the result applies only when neither file changed while it was computed", () => {
-    expect(discardReason(start, { circuit: "a", layout: "b" })).toBeUndefined()
-    expect(discardReason(start, { circuit: "x", layout: "b" })).toBe("The circuit changed while the board was routed, so the result was discarded; route again")
-    expect(discardReason(start, { circuit: "a", layout: "x" })).toBe("The layout file changed while the board was routed, so the result was discarded; route again")
-    expect(discardReason(start, { circuit: "x", layout: "y" })).toMatch(/^The circuit and its layout file changed/)
+  const start = { circuit: "a", layout: "b", project: "c" }
+  test("the result applies only when no file the run was computed from changed meanwhile", () => {
+    expect(discardReason(start, { ...start })).toBeUndefined()
+    expect(discardReason(start, { ...start, circuit: "x" })).toBe("The circuit changed while the board was routed, so the result was discarded; route again")
+    expect(discardReason(start, { ...start, layout: "x" })).toBe("The layout file changed while the board was routed, so the result was discarded; route again")
+    expect(discardReason(start, { ...start, circuit: "x", layout: "y" })).toMatch(/^The circuit and its layout file changed/)
+    expect(discardReason(start, { ...start, project: "x" })).toBe("A file the circuit is built from (a sub-sheet, a part or rules.yaml) changed while the board was routed, so the result was discarded; route again")
   })
 })

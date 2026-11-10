@@ -1,9 +1,10 @@
 // What Route → Autoroute selection, Autoroute net and Unroute ask the server for, from the selection, the highlighted
 // net and the built copper, or why there is nothing to ask. Pure, so the tests run it without a DOM.
 import { unrouteEdits } from "../../../src/core/unroute.js"
+import { padsUnder } from "../../../src/engine/copper.js"
 import type { Design } from "../../../src/engine/design.js"
 import type { RouteScope } from "../../../src/studio/route-events.js"
-import { instancePart, partsOfInstance, topInstance } from "./instances.js"
+import { instancePart, lockedWithInstances, partsOfInstance, topInstance } from "./instances.js"
 
 /** Why a command has nothing to do, for the note. */
 export interface Refusal {
@@ -33,10 +34,20 @@ export function netScope(highlight: readonly string[]): RouteScope | Refusal {
   return { kind: "nets", nets: [...highlight] }
 }
 
-/** Unroute: the selected copper the router made (ids), or with no copper selected all of it (no ids). */
-export function unrouteRequest(design: Design | undefined, copper: readonly string[]): { ids?: string[] } | Refusal {
+/**
+ * Unroute: the selected copper the router made (ids), or with no copper selected all of it (no ids). A router track
+ * starting on a locked part (`locked`: the circuit's locked parts) counts as locked, as the core counts it.
+ */
+export function unrouteRequest(design: Design | undefined, copper: readonly string[], locked: ReadonlySet<string> = new Set()): { ids?: string[] } | Refusal {
   if (!design) return { message: "Wait for the build to finish, then try again." }
-  if (copper.length === 0) return unrouteEdits(design.pcb).length === 0 ? { message: "The board has no unlocked router copper to remove." } : {}
-  if (unrouteEdits(design.pcb, copper).length === 0) return { message: "None of the selected copper was made by the router and unlocked; Unroute removes only that." }
-  return { ids: [...copper] }
+  const held = lockedWithInstances(locked, design)
+  const lockedPart = (track: { layer: Design["pcb"]["tracks"][number]["layer"]; points: readonly { x: number; y: number }[] }) => {
+    const start = track.points[0]
+    return start === undefined ? undefined : padsUnder(design.pcb.parts, start, track.layer).find((pad) => held.has(pad.component))?.component
+  }
+  const ids = copper.length === 0 ? undefined : copper
+  const { edits, skipped } = unrouteEdits(design.pcb, { ...(ids ? { ids } : {}), lockedPart })
+  if (edits.length > 0) return ids ? { ids: [...ids] } : {}
+  const none = ids ? "None of the selected copper was made by the router and unlocked; Unroute removes only that" : "The board has no unlocked router copper to remove"
+  return { message: skipped.length === 0 ? `${none}.` : `${none}: ${skipped.join("; ")}.` }
 }

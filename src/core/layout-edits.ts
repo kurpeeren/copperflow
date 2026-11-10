@@ -26,6 +26,11 @@ export interface LayoutEditOptions {
   /** Set only by the router's code path: new records are marked `router`. */
   router?: boolean
   /**
+   * Runs first inside the project's write queue, after every write queued before: a throw stops the edit and nothing is
+   * written. The router checks there that the files are still those it routed.
+   */
+  guard?: () => Promise<void>
+  /**
    * A sub-sheet file edited in the same change, as Replicate layout writes a block's placement into its sheet and its
    * copper into the layout file: one history entry naming the layout file, with the sheet file as its `also`.
    */
@@ -85,6 +90,7 @@ async function sheetChange(root: string, sheet: { file: string; edits: Edit[] })
  */
 export function applyLayoutEdits(root: string, file: string, edits: readonly LayoutEdit[], options: LayoutEditOptions): Promise<LayoutEditResult> {
   return inProjectQueue(root, async () => {
+    await options.guard?.()
     assertMeta({ author: options.author, summary: options.summary ?? "layout edit" })
     const layout = await resolveLayoutFile(root, layoutNameFor(file))
     const source = await readIfThere(layout.path)

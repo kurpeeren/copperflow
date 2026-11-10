@@ -31,6 +31,9 @@ export type RouteEvent =
 /** Whether the run the event tells of is still going. */
 export const isRouting = (event: RouteEvent | undefined): boolean => event?.state === "started" || event?.state === "running" || event?.state === "cleanup"
 
+/** The server's mark of the run's write, when it wrote copper: the build after it shows the copper. */
+export const writtenMark = (event: RouteEvent): number | undefined => (event.state === "done" && event.entryId !== undefined ? event.writeMark : undefined)
+
 const bare = (net: string) => net.replace(/^net\./, "")
 
 /** What the scope covers, in words: "the board", "net GND", "R1, R2", "instance PS1". */
@@ -82,17 +85,23 @@ export function routeProgressText(event: RouteEvent): string {
   }
 }
 
-/** The content hashes of a circuit file and of its layout file (a missing file hashes as empty). */
+/**
+ * The content hashes of a circuit file, of its layout file (a missing file hashes as empty), and of every other file a
+ * build of it reads (sub-sheets, modules, library parts, rules.yaml).
+ */
 export interface ContentHashes {
   circuit: string
   layout: string
+  project: string
 }
 
 /** Why a result computed from the files as they were at `start` must not be applied to them as they are at `end`. */
 export function discardReason(start: ContentHashes, end: ContentHashes): string | undefined {
   const circuit = start.circuit !== end.circuit
   const layout = start.layout !== end.layout
-  if (!circuit && !layout) return undefined
-  const what = circuit && layout ? "The circuit and its layout file" : circuit ? "The circuit" : "The layout file"
+  const project = start.project !== end.project
+  if (!circuit && !layout && !project) return undefined
+  const what =
+    circuit && layout ? "The circuit and its layout file" : circuit ? "The circuit" : layout ? "The layout file" : "A file the circuit is built from (a sub-sheet, a part or rules.yaml)"
   return `${what} changed while the board was routed, so the result was discarded; route again`
 }

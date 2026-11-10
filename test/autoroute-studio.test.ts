@@ -69,6 +69,19 @@ describe("what Unroute asks for", () => {
     expect(unrouteRequest(design([track("t0001", "human")]), [])).toEqual({ message: "The board has no unlocked router copper to remove." })
     expect(unrouteRequest(undefined, [])).toEqual({ message: "Wait for the build to finish, then try again." })
   })
+
+  test("a router track starting on a locked part (or on a part of a locked instance) counts as locked, as the core counts it", () => {
+    const pads = design().pcb.parts.flatMap((part) => part.pads)
+    const at = (id: string) => pads.find((pad) => pad.id === id)!
+    const from = (id: string, pad: string): TrackRecord => ({ ...track(id, "router"), points: [{ x: at(pad).x, y: at(pad).y }, { x: at(pad).x, y: at(pad).y + 2 }] })
+    const built = design([from("t0001", "R1#1"), from("t0002", "R101#1")])
+    expect(unrouteRequest(built, [])).toEqual({})
+    expect(unrouteRequest(built, [], new Set(["R1"]))).toEqual({})
+    expect(unrouteRequest(built, [], new Set(["R1", "PS1"]))).toEqual({
+      message: "The board has no unlocked router copper to remove: t0001 starts on the locked part R1; t0002 starts on the locked part R101.",
+    })
+    expect(unrouteRequest(built, ["t0001"], new Set(["R1"]))).toEqual({ message: "None of the selected copper was made by the router and unlocked; Unroute removes only that: t0001 starts on the locked part R1." })
+  })
 })
 
 describe("the Checks list after a run", () => {
