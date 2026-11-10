@@ -1,15 +1,20 @@
 import { bgaFootprint } from "./bga.js"
 import { chipFootprint } from "./chip.js"
+import { crystalFootprint } from "./crystal.js"
 import { dfnFootprint } from "./dfn.js"
+import { dipFootprint } from "./dip.js"
 import { dualFootprint } from "./dual.js"
 import { footprintFromFile } from "./file.js"
 import { isSimple, parseFootprint, type ParsedFootprint } from "./parse.js"
 import { moldedFootprint } from "./molded.js"
 import { pinRowFootprint } from "./pinrow.js"
 import { quadFootprint } from "./quad.js"
+import { radialFootprint } from "./radial.js"
 import { sodFootprint } from "./sod.js"
 import { sotFootprint } from "./sot.js"
 import { powerSotFootprint } from "./sotpower.js"
+import { to220Footprint } from "./to220.js"
+import { to92Footprint } from "./to92.js"
 import type { Footprint } from "./types.js"
 
 export type FootprintResult = Footprint | { error: string }
@@ -33,6 +38,11 @@ const FAMILIES: readonly Family[] = [
   dfnFootprint,
   bgaFootprint,
   pinRowFootprint,
+  dipFootprint,
+  to220Footprint,
+  to92Footprint,
+  crystalFootprint,
+  radialFootprint,
 ]
 
 /** Footprint strings in a project are few; the bound only guards against unbounded growth. */
