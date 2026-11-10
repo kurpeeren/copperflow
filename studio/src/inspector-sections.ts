@@ -34,6 +34,8 @@ export const SUGGESTED_PROPS: Record<string, [string, string][]> = {
   fuse: [["currentRating", "500mA"], ["footprint", "1206"]],
   crystal: [["frequency", "16MHz"], ["footprint", "hc49"]],
   pinheader: [["pinCount", "4"], ["pitch", "2.54mm"]],
+  // A sheet's port: where its pin sits on the sheet symbol.
+  port: [["side", "left"], ["order", "1"]],
 }
 
 /** Props that say where a part is, in the order the Position section shows them. */

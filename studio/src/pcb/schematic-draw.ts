@@ -334,8 +334,22 @@ function drawLabelShape(ctx: Ctx, label: NetLabel, line: (w: number) => number, 
     for (let i = first; i < texts.length; i++) texts[i] = { ...(texts[i] as Label), strong: true, kind: "name", color: tone.color ?? theme.netName, alpha: tone.alpha }
     return
   }
-  const { middle, upright } = labelTag(label)
+  const { middle, upright, box } = labelTag(label)
   texts.push({ text: label.text, at: middle, size: NET_LABEL_TEXT, anchor: "center", strong: true, kind: "name", color: tone.color ?? theme.netName, rotation: upright ? 90 : 0, alpha: tone.alpha })
+  if (label.port) drawPortFlag(ctx, label, box, line, tone)
+}
+
+/** A sheet's port is a flag: its name in an outline, a bus port's outline as wide as a bus. */
+function drawPortFlag(ctx: Ctx, label: NetLabel, box: { minX: number; minY: number; maxX: number; maxY: number }, line: (w: number) => number, tone: Tone): void {
+  ctx.strokeStyle = tone.color ?? theme.netName
+  ctx.lineWidth = line(label.bus ? SYMBOL_WIDTH * 3 : SYMBOL_WIDTH)
+  ctx.beginPath()
+  ctx.moveTo(box.minX, box.minY)
+  ctx.lineTo(box.maxX, box.minY)
+  ctx.lineTo(box.maxX, box.maxY)
+  ctx.lineTo(box.minX, box.maxY)
+  ctx.closePath()
+  ctx.stroke()
 }
 
 function drawPins(ctx: Ctx, layout: SchematicLayout, options: SchematicDrawOptions, px: number, shiftOf: (s: PlacedSymbol) => Point): void {

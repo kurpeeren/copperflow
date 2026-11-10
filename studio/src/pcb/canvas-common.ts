@@ -27,6 +27,7 @@ import type { LayerVisibility } from "./layers"
 import type { PickFilter } from "./pick-filter"
 import type { Unit } from "./units"
 import { sheetBoxes } from "./schematic-draw"
+import { instancePartBlocker, lockedWithInstances } from "./instances"
 import type { WireLine } from "./wire-hit"
 
 export interface CanvasProps {
@@ -74,6 +75,8 @@ export interface CanvasProps {
   onContextMenu(target: ContextTarget, at: Point): void
   /** A double click on a part, or on a schematic wire: Properties, open on it. */
   onOpenProperties(target: PropertiesTarget): void
+  /** A double click on a sub-sheet instance's symbol: its sheet file opens as its own schematic. */
+  onOpenSheet(file: string): void
 }
 
 /** What a double click opens Properties on. */
@@ -102,8 +105,9 @@ export function usePlacedParts(design: Design, view: View, circuit: CircuitData)
   const boxes = useMemo(() => (view === "pcb" ? pcbBoxes(design.pcb) : sheetBoxes(design.schematic)), [design, view])
   const anchors = useMemo(() => partAnchors(design, view), [design, view])
   const autoPlaced = useMemo(() => [...anchors.values()].some((anchor) => anchor.autoPlaced), [anchors])
-  const locked = useMemo(() => new Set(circuit.annotations.locks.map((l) => l.part)), [circuit])
-  const blockerFor = useCallback((name: string) => moveBlocker(circuit, locked, name, view), [circuit, locked, view])
+  // A locked sub-sheet instance locks every part inside it; such a part is placed in its sheet, not here.
+  const locked = useMemo(() => lockedWithInstances(new Set(circuit.annotations.locks.map((l) => l.part)), design), [circuit, design])
+  const blockerFor = useCallback((name: string) => instancePartBlocker(design, locked, name) ?? moveBlocker(circuit, locked, name, view), [design, circuit, locked, view])
   return { boxes, anchors, autoPlaced, locked, blockerFor }
 }
 

@@ -11,15 +11,19 @@ interface Props {
   page: string
   onView(view: DocView): void
   onPage(page: string): void
+  /** While a sheet is open: the circuit it was opened from, whose tabs go back to it. */
+  parent?: string
+  onParent?(view: DocView): void
 }
 
 /** The tab bar above the canvas: a Schematic tab per page of the open file, then its PCB; all are always there. */
-export function DocTabs({ file, view, pages, page, onView, onPage }: Props) {
-  const tabs = docTabs(file, view, pages, page)
+export function DocTabs({ file, view, pages, page, onView, onPage, parent, onParent }: Props) {
+  const tabs = docTabs(file, view, pages, page, parent)
   const current = tabs.find((tab) => tab.active)?.id ?? view
   const open = (id: string) => {
     const target = tabTarget(id)
-    if (target.page !== undefined) onPage(target.page)
+    if (target.parent) onParent?.(target.view)
+    else if (target.page !== undefined) onPage(target.page)
     else onView(target.view)
   }
   const list = useTabList({ ids: tabs.map((tab) => tab.id), current, onSelect: open })
@@ -30,7 +34,7 @@ export function DocTabs({ file, view, pages, page, onView, onPage }: Props) {
           key={tab.id}
           role="tab"
           // The canvas panel is labelled by doc-tab-<view>: the open tab of each view carries that id.
-          id={tab.active || tab.page === undefined ? `doc-tab-${tab.view}` : `doc-tab-${tab.view}-${index}`}
+          id={tab.active || (tab.page === undefined && !tab.parent) ? `doc-tab-${tab.view}` : `doc-tab-${tab.view}-${index}`}
           aria-controls="doc-panel"
           aria-selected={tab.active}
           className={`doc-tab${tab.active ? " on" : ""}`}

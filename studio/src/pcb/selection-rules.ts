@@ -3,7 +3,7 @@
 import { alignDisabledReason, isAlignCommand } from "./align-rules.js"
 
 /** The commands that act on the selection and need at least one part. */
-export const SELECTION_COMMANDS = ["fitSelection", "rotateRight"] as const
+export const SELECTION_COMMANDS = ["fitSelection", "rotateRight", "selectInstance", "replicateLayout"] as const
 
 /** What the tooltip of a command that needs a part says while nothing is selected. */
 export const SELECT_A_PART = "Select a part first"

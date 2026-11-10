@@ -1,4 +1,6 @@
-// The Page tree of Project Design: project folder -> circuit files -> Schematic (or its pages) and PCB documents.
+// The Page tree of Project Design: project folder -> circuit files -> Schematic (or its pages) and PCB documents, then
+// the sub-sheet files, each with its one Schematic.
+import { isSheetFile } from "../pcb/sheet-names.js"
 
 export type DocView = "schematic" | "pcb"
 
@@ -37,6 +39,8 @@ export interface OpenPages {
 
 function documentsOf(file: string, openFile: string | undefined, openView: DocView, pages: OpenPages | undefined): PageDocument[] {
   const open = file === openFile
+  // A sheet file is one schematic: its parts are on the board of each circuit that uses it.
+  if (isSheetFile(file)) return [{ view: "schematic", label: "Schematic", active: open }]
   return DOC_VIEWS.flatMap(({ view, label }): PageDocument[] => {
     if (view === "pcb" || !open || !pages || pages.names.length <= 1) return [{ view, label, active: open && view === openView }]
     return pages.names.map((page) => ({ view, label: page, page, active: openView === "schematic" && page === pages.open }))

@@ -134,13 +134,13 @@ describe("menus", () => {
     expect(itemState(unit, "schematic")).toEqual({ enabled: false, reason: "PCB only" })
   })
 
-  test("an item still to come is disabled in both views with its reason; the rest work in both but the page items, Tidy sheet and Unit", () => {
+  test("an item still to come is disabled in both views with its reason; the rest work in both but the page items, Tidy sheet, Replicate layout and Unit", () => {
     const later = { label: "Bus", pending: "Comes with blocks and sheets (stage 3)" }
     expect(itemState(later, "pcb")).toEqual({ enabled: false, reason: later.pending })
     const views = (["pcb", "schematic"] as const).map((view) =>
       MENUS.flatMap(menuItems).filter((item) => item.command && !itemState(item, view).enabled).map((item) => item.label),
     )
-    expect(views).toEqual([["Add page", "Rename page", "Delete page", "Tidy sheet"], ["Unit"]])
+    expect(views).toEqual([["Add page", "Rename page", "Delete page", "Tidy sheet"], ["Unit", "Replicate layout"]])
   })
 
   test("no menu has more than 14 items", () => {

@@ -16,6 +16,7 @@ import type { FindState } from "../use-find"
 import type { StudioData } from "../use-studio-data"
 import type { useWorkspace } from "../use-workspace"
 import type { DrawingRename } from "../pcb/drawing-selection"
+import type { SheetParent } from "../App"
 import { BottomPanel } from "./BottomPanel"
 import { ContextMenu } from "./ContextMenu"
 import { DocTabs } from "./DocTabs"
@@ -58,11 +59,15 @@ export interface WorkspaceProps {
   run(command: CommandId): void
   onPlace(part: string): void
   onOpenDocument(file: string, view: DocView, page?: string): void
+  /** Opens a sub-sheet file as its own schematic: a double click on its symbol, or Properties. */
+  onOpenSheet(file: string): void
+  /** While a sheet file is open: the circuit it was opened from. */
+  sheetParent?: SheetParent
   openChecks(): void
 }
 
 /** What both canvases take, once there is a design to draw; each adds the rings of its own view. */
-function canvasProps({ data, workspace, checks, selection, onSelect, actions }: WorkspaceProps, onContextMenu: ContextMenuState["show"]): Omit<CanvasProps, "markers" | "gridStyle" | "gridStep" | "snap" | "onGridStep"> | undefined {
+function canvasProps({ data, workspace, checks, selection, onSelect, actions, onOpenSheet }: WorkspaceProps, onContextMenu: ContextMenuState["show"]): Omit<CanvasProps, "markers" | "gridStyle" | "gridStep" | "snap" | "onGridStep"> | undefined {
   const { build, circuit } = data
   if (!build.design || !circuit) return undefined
   return {
@@ -87,6 +92,7 @@ function canvasProps({ data, workspace, checks, selection, onSelect, actions }: 
     layers: workspace.layerVisibility,
     pickFilter: workspace.pickFilter,
     onContextMenu,
+    onOpenSheet,
     onOpenProperties: (target) => {
       onSelect((current) => {
         if (target.kind === "wire") return current.onlyWire(target.id)
@@ -114,6 +120,12 @@ function usePageCanvas(canvas: ReturnType<typeof canvasProps>, page: string) {
   return canvas && shown && paged ? { ...canvas, design: shown, actions: paged } : undefined
 }
 
+/** While a sheet is open, the circuit it came from, whose tabs go back to it. */
+function parentTabs({ sheetParent, onOpenDocument }: WorkspaceProps) {
+  if (!sheetParent) return {}
+  return { parent: sheetParent.file, onParent: (view: DocView) => onOpenDocument(sheetParent.file, view) }
+}
+
 /** The document tabs, the open document's canvas and the bottom panel, between the side panels. */
 function CenterColumn(props: WorkspaceProps & { onContextMenu: ContextMenuState["show"] }) {
   const { data, workspace, checks, find, view, page } = props
@@ -123,7 +135,7 @@ function CenterColumn(props: WorkspaceProps & { onContextMenu: ContextMenuState[
   const pages = useMemo(() => pageNames(build.design), [build.design])
   return (
     <div className="center">
-      <DocTabs file={data.file} view={view} pages={pages} page={page} onView={props.onView} onPage={props.onPage} />
+      <DocTabs file={data.file} view={view} pages={pages} page={page} onView={props.onView} onPage={props.onPage} {...parentTabs(props)} />
       <section className="canvas" id="doc-panel" role="tabpanel" aria-labelledby={`doc-tab-${view}`} tabIndex={-1}>
         {!build.design && <p className="empty">{build.status === "failed" ? build.error : "Building the circuit…"}</p>}
         {canvas && view === "pcb" && <PcbCanvas key={data.file} {...canvas} {...gridProps(workspace, "pcb")} markers={checks.markers.pcb} activeLayer={workspace.activeLayer} onActiveLayer={workspace.setActiveLayer} />}
@@ -153,8 +165,8 @@ ${page}`} {...sheet} {...gridProps(workspace, "schematic")} markers={checks.mark
 
 /** The left panel (Project Design or Common Library), once the circuit has loaded. */
 function LeftSide({ data, workspace, view, page, selection, onSelect, actions, onPlace, onOpenDocument }: WorkspaceProps) {
-  const { circuit, build, project, files, file } = data
-  const pageTree = useMemo(() => buildPageTree(project, files, file, view, { names: pageNames(build.design), open: page }), [project, files, file, view, build.design, page])
+  const { circuit, build, project, files, sheets, file } = data
+  const pageTree = useMemo(() => buildPageTree(project, [...files, ...sheets], file, view, { names: pageNames(build.design), open: page }), [project, files, sheets, file, view, build.design, page])
   const autoPlaced = useMemo(() => autoPlacedParts(build.design, view), [build.design, view])
   if (!circuit) return null
   return (
@@ -183,7 +195,7 @@ function LeftSide({ data, workspace, view, page, selection, onSelect, actions, o
 }
 
 /** The right panel: Properties, the Layer panel (PCB only) or the Filter panel, once the circuit has loaded. Properties stays mounted behind the Layer tab, so its open sections are kept. */
-function RightSide({ data, workspace, checks, selection, onSelect, onRenameDrawing, actions, run, openChecks, view }: WorkspaceProps) {
+function RightSide({ data, workspace, checks, selection, onSelect, onRenameDrawing, actions, run, openChecks, view, onOpenSheet, sheetParent }: WorkspaceProps) {
   if (!data.circuit) return null
   const { right } = workspace
   const layerOpen = right.open && right.active === "layer"
@@ -206,6 +218,8 @@ function RightSide({ data, workspace, checks, selection, onSelect, onRenameDrawi
         hidden={!right.open || right.active !== "properties"}
         focusField={workspace.focusField}
         onFieldFocused={workspace.fieldFocused}
+        onOpenSheet={onOpenSheet}
+        parentDesign={sheetParent?.design}
       />
       {layerOpen && <LayerPanel visibility={workspace.layerVisibility} filter={workspace.layerFilter} hasKeepouts={keepouts.length > 0} onFilter={workspace.setLayerFilter} onToggle={workspace.toggleLayerShown} active={workspace.activeLayer} onActive={workspace.setActiveLayer} />}
       {filterOpen && <FilterPanel view={view} filter={workspace.pickFilter} onToggle={workspace.togglePickable} />}
