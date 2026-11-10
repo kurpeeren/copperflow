@@ -168,8 +168,10 @@ export interface SheetInstance {
   /** The sheet's name: its file name without ".sheet.tsx". */
   sheet: string
   file: string
-  /** The instance's own base; the designators of an instance inside a sheet add the outer bases too. */
+  /** The instance's own base: written, or the default that follows the previous sibling's span. */
   base: number
+  /** What its designators get added: its base plus the bases of the instances around it. */
+  designatorBase: number
   /** As written: port name to parent net name. */
   connections: Record<string, string>
   /** The sheet's ports in the order they are written. */

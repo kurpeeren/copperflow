@@ -192,10 +192,16 @@ As built in stage 6 (docs/plans/engine-stage-6.md), which replaces parts of the 
   parts, traces, drawings and `<port name="VIN" />`. A circuit uses it through an ordinary import:
   `<PowerStage name="PS1" connections={{ VIN: "VBUS" }} base={100} schX={…} pcbX={…} pcbRotation={…} />`.
   Elaboration (`src/engine/sheets.ts`, `elaborate.ts`) flattens each instance into the circuit.
-- Designators: each part's number gets the instance's base (R1 in PS1 with base 100 is R101; a
-  name without a number gets the base appended). Bases default to 100, 200, … in the order the
-  instances are written in their parent; an inner instance's designators add the outer bases.
-  Two siblings with one base, or a designator another part already has, is a `base-clash` error.
+- Designators: each part's number gets the instance's designator base, its own base plus the
+  bases of the instances around it (R1 in PS1 with base 100 is R101; a name without a number gets
+  the base appended). Default bases never collide: a sheet spans 100 for its own parts plus the
+  spans of the instances inside it, recursively (a Block holding one Divider spans 200), and in
+  each parent the first default base is 100 and each next one is the previous default base plus
+  the previous instance's span (B1 100 with R101 and its D1's R201, B2 300 with R301 and R401). A
+  written `base` takes no default and leaves the sequence alone, unless it reaches the next
+  default, in which case the sequence continues past it. Two siblings with one base, or a
+  designator another part already has, is a `base-clash` error. Two ports of one instance on one
+  parent net are a `port-short` warning.
 - Nets: a net inside is `PS1/NAME`, except a connected port's net, which is the parent net, and a
   ground or power name (as the schematic's power and ground symbols read names), which is global.
   An unconnected port is an `unconnected-port` warning; a connection to a port the sheet lacks is

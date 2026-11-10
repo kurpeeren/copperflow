@@ -87,6 +87,7 @@ test("the circuit keeps each instance: sheet file, base, connections and ports w
       sheet: "PowerStage",
       file: SHEET,
       base: 100,
+      designatorBase: 100,
       connections: { VIN: "VBUS", VOUT: "V3_3", GND: "GND" },
       ports: [
         { name: "VIN", net: "VBUS" },
@@ -251,4 +252,106 @@ test("a group inside a turned instance turns with it", () => {
     { x: 3, y: 6 },
     { x: 3, y: 4 },
   ])
+})
+
+const sheetOf = (name: string, body: string, imports = "") =>
+  `${imports}export default function ${name}() {\n  return (\n    <sheet>\n${body}\n    </sheet>\n  )\n}\n`
+
+function buildFiles(main: string, sheets: Record<string, string>): Circuit {
+  const source = `${Object.keys(sheets).map((file) => `import ${file.replace(".sheet.tsx", "")} from "./${file.replace(".tsx", "")}"\n`).join("")}export default () => (<board width="40mm" height="40mm">${main}</board>)\n`
+  return elaborate(evaluateCircuit({ [MAIN]: source, ...sheets }, MAIN), MAIN, noPads)
+}
+
+const DIVIDER = sheetOf("Divider", `<resistor name="R1" />`)
+const BLOCK = sheetOf("Block", `<resistor name="R1" />\n<Divider name="D1" />`, `import Divider from "./Divider.sheet"\n`)
+
+test("default bases never collide: each instance's sheet spans its nested instances", () => {
+  const circuit = buildFiles(`<Block name="B1" /><Block name="B2" />`, { "Block.sheet.tsx": BLOCK, "Divider.sheet.tsx": DIVIDER })
+  expect(circuit.components.map((c) => [c.id, c.instance])).toEqual([
+    ["R101", "B1"],
+    ["R201", "B1/D1"],
+    ["R301", "B2"],
+    ["R401", "B2/D1"],
+  ])
+  expect(circuit.instances?.map((i) => [i.path, i.base, i.designatorBase])).toEqual([
+    ["B1", 100, 100],
+    ["B1/D1", 100, 200],
+    ["B2", 300, 300],
+    ["B2/D1", 100, 400],
+  ])
+  expect(circuit.diagnostics).toEqual([])
+})
+
+test("three levels of nesting take bases that never collide", () => {
+  const leaf = sheetOf("Leaf", `<resistor name="R1" />`)
+  const mid = sheetOf("Mid", `<resistor name="R1" />\n<Leaf name="L1" />\n<Leaf name="L2" />`, `import Leaf from "./Leaf.sheet"\n`)
+  const top = sheetOf("Top", `<resistor name="R1" />\n<Mid name="M1" />`, `import Mid from "./Mid.sheet"\n`)
+  const circuit = buildFiles(`<Top name="T1" /><Top name="T2" />`, { "Top.sheet.tsx": top, "Mid.sheet.tsx": mid, "Leaf.sheet.tsx": leaf })
+  expect(circuit.components.map((c) => c.id)).toEqual(["R101", "R201", "R301", "R401", "R501", "R601", "R701", "R801"])
+  expect(circuit.components.map((c) => c.instance)).toEqual(["T1", "T1/M1", "T1/M1/L1", "T1/M1/L2", "T2", "T2/M1", "T2/M1/L1", "T2/M1/L2"])
+  expect(circuit.diagnostics).toEqual([])
+})
+
+test("a written base leaves the defaults alone unless it reaches them; then they continue past it", () => {
+  const low = buildFiles(`<Divider name="A" base={50} /><Divider name="B" />`, { "Divider.sheet.tsx": DIVIDER })
+  expect(low.components.map((c) => c.id)).toEqual(["R51", "R101"])
+  const high = buildFiles(`<Divider name="A" base={500} /><Divider name="B" />`, { "Divider.sheet.tsx": DIVIDER })
+  expect(high.components.map((c) => c.id)).toEqual(["R501", "R601"])
+})
+
+test("two ports of one instance on one parent net are a port-short warning naming them", () => {
+  const circuit = build(`<PowerStage name="PS1" connections={{ VIN: "X", VOUT: "X", GND: "GND" }} />`)
+  expect(circuit.diagnostics).toEqual([
+    expect.objectContaining({
+      code: "port-short",
+      severity: "warning",
+      items: ["PS1.VIN", "PS1.VOUT"],
+      message: "PS1 connects ports VIN and VOUT of PowerStage to the same net X, which joins them inside the sheet",
+    }),
+  ])
+})
+
+test.each([
+  ["-100", "{-100}"],
+  ["1.5", "{1.5}"],
+  ["a string", '"100"'],
+])("a base that is %s is an error and the default is used", (_label, value) => {
+  const circuit = buildFiles(`<Divider name="A" base=${value} />`, { "Divider.sheet.tsx": DIVIDER })
+  expect(circuit.components.map((c) => c.id)).toEqual(["R101"])
+  expect(circuit.diagnostics).toEqual([expect.objectContaining({ code: "bad-value", severity: "error", items: ["A.base"] })])
+})
+
+test("two instances of one name in one parent are an error; the second gets ~2", () => {
+  const circuit = buildFiles(`<Divider name="A" /><Divider name="A" />`, { "Divider.sheet.tsx": DIVIDER })
+  expect(circuit.instances?.map((i) => i.path)).toEqual(["A", "A~2"])
+  expect(circuit.diagnostics).toEqual([expect.objectContaining({ code: "duplicate-name", severity: "error", items: ["A"] })])
+})
+
+test("a <page> or a <board> inside a sheet is an error and what it holds stays in the instance", () => {
+  const odd = sheetOf("Odd", `<page name="Power"><resistor name="R1" /></page>\n<board width="5mm" height="5mm"><resistor name="R2" /></board>`)
+  const circuit = buildFiles(`<page name="IO"><Odd name="O1" /></page>`, { "Odd.sheet.tsx": odd })
+  expect(circuit.components.map((c) => [c.id, c.page])).toEqual([
+    ["R101", "IO"],
+    ["R102", "IO"],
+  ])
+  expect(circuit.board?.outline).toHaveLength(4)
+  expect(circuit.diagnostics.map((d) => [d.code, d.severity])).toEqual([
+    ["page-in-sheet", "error"],
+    ["board-in-sheet", "error"],
+  ])
+})
+
+test("connections that are not an object are an error, and every port is then unconnected", () => {
+  const circuit = build(`<PowerStage name="PS1" connections="VBUS" />`)
+  expect(circuit.diagnostics.map((d) => [d.code, d.severity, d.items])).toEqual([
+    ["bad-value", "error", ["PS1.connections"]],
+    ["unconnected-port", "warning", ["PS1.VIN"]],
+    ["unconnected-port", "warning", ["PS1.VOUT"]],
+    ["unconnected-port", "warning", ["PS1.GND"]],
+  ])
+})
+
+test("a <port> outside a sheet is a warning and joins nothing", () => {
+  const circuit = build(`<port name="VIN" />`)
+  expect(circuit.diagnostics).toEqual([expect.objectContaining({ code: "unsupported-element", severity: "warning", items: ["port"] })])
 })

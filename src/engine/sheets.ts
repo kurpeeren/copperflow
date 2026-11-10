@@ -116,6 +116,7 @@ export function readConnections(value: unknown, spec: InstanceSpec): { connectio
       error("bad-value", `${spec.name}: connections.${port} must be a net name such as "VBUS"`, `${spec.name}.${port}`)
     } else connections.set(port, net)
   }
+  diagnostics.push(...shortedPorts(connections, spec))
   for (const port of spec.ports) {
     if (connections.has(port) || entries.some(([key]) => key === port)) continue
     const message = `Port ${port} of ${spec.name} (${spec.sheet}) is not connected`
@@ -124,10 +125,58 @@ export function readConnections(value: unknown, spec: InstanceSpec): { connectio
   return { connections, diagnostics }
 }
 
+/** Two or more ports of one instance on one parent net join those nets inside the sheet: a warning per net. */
+function shortedPorts(connections: ReadonlyMap<string, string>, spec: InstanceSpec): Diagnostic[] {
+  const byNet = new Map<string, string[]>()
+  for (const [port, net] of connections) byNet.set(net, [...(byNet.get(net) ?? []), port])
+  return [...byNet].flatMap(([net, ports]) => {
+    if (ports.length < 2) return []
+    const named = `${ports.slice(0, -1).join(", ")} and ${ports[ports.length - 1] ?? ""}`
+    const message = `${spec.name} connects ports ${named} of ${spec.sheet} to the same net ${net}, which joins them inside the sheet`
+    return [diagnostic("port-short", "warning", message, ports.map((port) => `${spec.name}.${port}`), spec.source)]
+  })
+}
+
 /** The base an instance writes, when it is a whole number above zero; anything else is an error and the default is used. */
 export function readBase(value: unknown, name: string, source: SourceRef): { base?: number; diagnostics: Diagnostic[] } {
   if (value === undefined) return { diagnostics: [] }
   if (typeof value === "number" && Number.isInteger(value) && value > 0) return { base: value, diagnostics: [] }
   const message = `${name}: base must be a whole number above 0, such as 300; the default is used`
   return { diagnostics: [diagnostic("bad-value", "error", message, [`${name}.base`], source)] }
+}
+
+/**
+ * Default bases that never collide. Each instance's sheet needs a span of designators: 100 for its own parts plus
+ * the spans of the instances inside it, so a sheet with one nested instance spans 200. Within one parent the
+ * default base is the previous default base plus the previous instance's span: 100, then 100 + span, and so on.
+ * A written base takes no default and leaves the sequence alone, unless it reaches the next default, in which
+ * case the sequence continues past it.
+ */
+export class Bases {
+  /** The next default base in each parent, by parent path ("" for the circuit). */
+  private readonly next = new Map<string, number>()
+  /** The spans of the instances finished so far inside each instance, summed, by path. */
+  private readonly inner = new Map<string, number>()
+  /** The bases taken in each parent, with the path that took each. */
+  private readonly taken = new Map<string, Map<number, string>>()
+
+  /** The base of an instance about to be walked, and the sibling that already has that base, if any. */
+  claim(parent: string, path: string, written: number | undefined): { base: number; clashWith?: string } {
+    const base = written ?? this.next.get(parent) ?? BASE_STEP
+    const taken = this.taken.get(parent) ?? new Map<number, string>()
+    this.taken.set(parent, taken)
+    const other = taken.get(base)
+    if (other !== undefined) return { base, clashWith: other }
+    taken.set(base, path)
+    return { base }
+  }
+
+  /** Once the walk inside an instance is done: its span, added to its parent's, and the parent's next default moved on. */
+  finish(parent: string, path: string, base: number, written: boolean): number {
+    const span = BASE_STEP + (this.inner.get(path) ?? 0)
+    this.inner.set(parent, (this.inner.get(parent) ?? 0) + span)
+    const next = this.next.get(parent) ?? BASE_STEP
+    if (!written || base >= next) this.next.set(parent, base + span)
+    return span
+  }
 }

@@ -24,7 +24,7 @@ import {
 import { mergeNets } from "./nets.js"
 import { naturalCompare } from "./order.js"
 import { PropReader, type Props } from "./read-props.js"
-import { BASE_STEP, badPorts, flatNet, portsOf, readBase, readConnections, SHEET_FILE, sheetName, traceScope, withBase, type InstanceScope } from "./sheets.js"
+import { Bases, badPorts, flatNet, portsOf, readBase, readConnections, SHEET_FILE, sheetName, traceScope, withBase, type InstanceScope } from "./sheets.js"
 import { resolveTraces, type TraceDraft } from "./traces.js"
 
 export interface ElaborateOptions {
@@ -85,9 +85,7 @@ class Elaboration {
   readonly instances: SheetInstance[] = []
   /** The instance path that made each part name; "" for the circuit itself. */
   private readonly owners = new Map<string, string>()
-  /** How many instances each parent (by path, "" for the circuit) holds so far, and the base each took. */
-  private readonly instanceCounts = new Map<string, number>()
-  private readonly basesTaken = new Map<string, Map<number, string>>()
+  private readonly bases = new Bases()
   /** Pairs of instance paths already reported for sharing a base, so their designators are not reported again. */
   private readonly clashingPairs = new Set<string>()
   private readonly instancePaths = new Map<string, number>()
@@ -173,13 +171,14 @@ class Elaboration {
     const ports = portsOf(result.children)
     const read = readConnections(element.props["connections"], { name, sheet, ports, source })
     this.diagnostics.push(...read.diagnostics, ...badPorts(result.children, (port) => this.sourceOf(port, frame)))
-    const base = this.instanceBase(element.props["base"], name, path, parent, source)
+    const { base, written } = this.instanceBase(element.props["base"], name, path, parent, source)
     const files = [...(parent?.files ?? []), file]
     const scope: InstanceScope = { name, path, sheet, base: (parent?.base ?? 0) + base, files, parent, ports, connections: read.connections, parts: new Map() }
     const placed = this.instancePlacement(element.props, name, frame.offset, source)
     const index = this.instances.length
     this.instances.push({} as SheetInstance)
     this.visit(result.children, { ...frame, offset: placed.offset, instance: scope })
+    this.bases.finish(parent?.path ?? "", path, base, written)
     const parts = this.components.filter((c) => c.instance === path || c.instance?.startsWith(`${path}/`)).map((c) => c.id)
     this.instances[index] = {
       name,
@@ -187,6 +186,7 @@ class Elaboration {
       sheet,
       file,
       base,
+      designatorBase: scope.base,
       connections: Object.fromEntries(read.connections),
       ports: ports.map((port) => ({ name: port, net: flatNet(scope, port) })),
       parts: parts.sort(naturalCompare),
@@ -205,24 +205,17 @@ class Elaboration {
     return `${path}~${count}`
   }
 
-  /** The base written, or 100, 200, … by the instance's place among its parent's; a base two siblings share is an error. */
-  private instanceBase(value: unknown, name: string, path: string, parent: InstanceScope | undefined, source: SourceRef): number {
-    const key = parent?.path ?? ""
-    const count = (this.instanceCounts.get(key) ?? 0) + 1
-    this.instanceCounts.set(key, count)
-    const written = readBase(value, name, source)
-    this.diagnostics.push(...written.diagnostics)
-    const base = written.base ?? count * BASE_STEP
-    const taken = this.basesTaken.get(key) ?? new Map<number, string>()
-    this.basesTaken.set(key, taken)
-    const other = taken.get(base)
-    if (other === undefined) taken.set(base, path)
-    else {
-      this.clashingPairs.add(`${other}|${path}`)
-      const message = `${name} has base ${base}, as ${other.split("/").pop() ?? other} does; give one of them another base`
-      this.diagnostics.push(diagnostic("base-clash", "error", message, [other, path], source))
+  /** The base written, or the next default (see Bases); a base two siblings share is an error. */
+  private instanceBase(value: unknown, name: string, path: string, parent: InstanceScope | undefined, source: SourceRef): { base: number; written: boolean } {
+    const read = readBase(value, name, source)
+    this.diagnostics.push(...read.diagnostics)
+    const { base, clashWith } = this.bases.claim(parent?.path ?? "", path, read.base)
+    if (clashWith !== undefined) {
+      this.clashingPairs.add(`${clashWith}|${path}`)
+      const message = `${name} has base ${base}, as ${clashWith.split("/").pop() ?? clashWith} does; give one of them another base`
+      this.diagnostics.push(diagnostic("base-clash", "error", message, [clashWith, path], source))
     }
-    return base
+    return { base, written: read.base !== undefined }
   }
 
   /** The offset inside the instance, and the instance's own position as the design records it. */
