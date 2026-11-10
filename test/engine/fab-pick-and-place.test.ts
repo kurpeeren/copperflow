@@ -35,6 +35,16 @@ describe("the footprint families' rotation corrections", () => {
     expect(loadRules({ "rules.yaml": "fabrication:\n  placementRotations:\n    dip: 90\n" }).diagnostics[0]?.message).toMatch(/placementRotations/)
     expect(loadRules({ "rules.yaml": "fabrication:\n  placementRotations:\n    soic: left\n" }).diagnostics[0]?.message).toMatch(/placementRotations\.soic/)
   })
+
+  test("a footprint file's part id in placementRotations.parts overrides its family's correction for that part only", () => {
+    const set = loadRules({ "rules.yaml": "fabrication:\n  placementRotations:\n    file: 90\n    parts:\n      MCP2515: 180\n" })
+    expect(set.diagnostics).toEqual([])
+    expect(placementCorrection("parts/MCP2515/footprint.yaml", set.rules.fabrication)).toBe(180)
+    expect(placementCorrection("parts/TJA1050/footprint.yaml", set.rules.fabrication)).toBe(90)
+    expect(placementCorrection("soic8", set.rules.fabrication)).toBe(0)
+    expect(loadRules({ "rules.yaml": "fabrication:\n  placementRotations:\n    parts:\n      MCP2515: up\n" }).diagnostics[0]?.message).toMatch(/placementRotations\.parts\.MCP2515/)
+    expect(loadRules({ "rules.yaml": "fabrication:\n  placementRotations:\n    parts:\n      ../x: 90\n" }).diagnostics[0]?.message).toMatch(/placementRotations\.parts/)
+  })
 })
 
 describe("the pick-and-place file", () => {
