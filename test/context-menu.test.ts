@@ -184,10 +184,11 @@ describe("target actions", () => {
 
 describe("the menu on copper", () => {
   const track = { kind: "copper" as const, id: "t0001" }
-  test("Properties, Lock (or Unlock when all the selected copper is locked) and Delete", () => {
-    expect(names(contextItems(track, { allLocked: false, selected: 0 }))).toEqual(["Properties", "-", "Lock", "-", "Delete"])
+  test("Properties, Fillet and Straighten on a track, Lock (or Unlock when all the selected copper is locked) and Delete", () => {
+    expect(names(contextItems(track, { allLocked: false, selected: 0 }))).toEqual(["Properties", "-", "Fillet tracks", "Straighten tracks", "-", "Lock", "-", "Delete"])
     const locked = contextItems(track, { allLocked: false, selected: 0, copperLocked: true })
-    expect(names(locked)).toEqual(["Properties", "-", "Unlock", "-", "Delete"])
+    expect(names(locked)).toEqual(["Properties", "-", "Fillet tracks", "Straighten tracks", "-", "Unlock", "-", "Delete"])
+    expect(names(contextItems({ kind: "copper", id: "v0001" }, { allLocked: false, selected: 0 }))).toEqual(["Properties", "-", "Lock", "-", "Delete"])
     expect(locked.find((entry) => entry !== "separator" && entry.label === "Unlock")).toMatchObject({ command: "unlock" })
   })
 

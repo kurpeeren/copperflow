@@ -14,13 +14,13 @@ import type { PickFilter } from "../pcb/pick-filter"
 import type { View } from "../pcb/positions"
 import type { Selection, SelectionChange } from "../selection"
 import type { BottomTab } from "./bottom-state"
-import { PCB_COMMANDS, SHEET_COMMANDS, WORKSPACE_COMMANDS, type AppCommand } from "./command-owners"
+import { COPPER_COMMANDS, PCB_COMMANDS, SHEET_COMMANDS, WORKSPACE_COMMANDS, type AppCommand } from "./command-owners"
 import { send } from "./commands"
 import type { DialogName } from "./Dialogs"
 import type { CommandId } from "./menus"
 
 const SCHEMATIC_ONLY: ReadonlySet<CommandId> = new Set(SHEET_COMMANDS)
-const PCB_ONLY: ReadonlySet<CommandId> = new Set(PCB_COMMANDS)
+const PCB_ONLY: ReadonlySet<CommandId> = new Set([...PCB_COMMANDS, ...COPPER_COMMANDS])
 
 /** The one view a command runs in, if it is a view's own (the other view switches to it first). */
 const viewOf = (command: CommandId): View | undefined => (SCHEMATIC_ONLY.has(command) ? "schematic" : PCB_ONLY.has(command) ? "pcb" : undefined)

@@ -46,6 +46,9 @@ export type CommandId =
   | "rotate"
   | "rotateRight"
   | "removeCorners"
+  | "filletTracks"
+  | "straightenTracks"
+  | "designRules"
   | "tidySheet"
   | AlignCommand
   | "find"
@@ -112,6 +115,9 @@ export const MENUS: readonly Menu[] = [
       run("Select all", "selectAll", "Ctrl+A"),
       run("Find", "find", "Ctrl+F"),
       later("Find similar objects", FIND, "Ctrl+Shift+F"),
+      "separator",
+      run("Fillet tracks", "filletTracks", "U"),
+      run("Straighten tracks", "straightenTracks", "Shift+U"),
     ],
   },
   {
@@ -271,6 +277,8 @@ export const COMMAND_KEY_ACTIONS: Partial<Record<CommandId, KeyActionName>> = {
   delete: "delete",
   alignLeft: "alignLeft",
   distributeH: "distributeH",
+  filletTracks: "filletTracks",
+  straightenTracks: "straightenTracks",
 }
 
 /** Keys that no menu item shows: the canvas keys, and the second key of a command. */

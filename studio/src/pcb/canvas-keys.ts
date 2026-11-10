@@ -42,6 +42,8 @@ export type KeyActionName =
   | "finishShape"
   | "alignLeft"
   | "distributeH"
+  | "filletTracks"
+  | "straightenTracks"
 
 /** What a key event says, apart from the browser: modifiers, whether it came from a field, and the key. */
 export interface KeyInput {
@@ -182,6 +184,9 @@ function letterAction(letter: string, input: KeyInput, state: KeyState): KeyResu
       return input.shiftKey ? act("clearHighlight") : act("highlight")
     case "q":
       return state.view === "pcb" ? act("toggleUnit") : null
+    case "u":
+      // Edit → Fillet tracks, and with Shift Straighten tracks: the PCB's only.
+      return state.view === "pcb" ? act(input.shiftKey ? "straightenTracks" : "filletTracks", true) : null
     default:
       return null
   }
