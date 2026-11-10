@@ -17,6 +17,7 @@ import { movePartNote } from "../core/page-edits.js"
 import { localNet, localNetRefusal, parseSelector } from "../engine/selectors.js"
 import type { Circuit, Component } from "../engine/model.js"
 import { pinName } from "./compact.js"
+import { holeFields, pointText, pourFields } from "./pour-tools.js"
 
 type LoadedModel = Awaited<ReturnType<typeof loadCircuit>>["model"]
 
@@ -45,11 +46,15 @@ export const editItem = z
       .optional(),
     set_connections: z.object({ instance: z.string(), connections: z.record(z.string(), z.string()).describe("Every port to its net; ports left out are open") }).optional(),
     move_to_page: z.object({ part: z.string().describe("A part or an instance"), page: z.string().describe('Page name, made when missing; "Main" is the first page') }).optional(),
+    add_pour: z.object(pourFields).optional(),
+    remove_pour: z.object({ id: z.string().describe('e.g. "copperpour:1"') }).optional(),
+    add_hole: z.object(holeFields).optional(),
+    remove_hole: z.object({ id: z.string().describe('e.g. "hole:1"') }).optional(),
   })
-  .describe("Exactly one of set_props, connect, disconnect, place_part, remove_part, add_instance, set_connections, move_to_page")
+  .describe("Exactly one of set_props, connect, disconnect, place_part, remove_part, add_instance, set_connections, move_to_page, add_pour, remove_pour, add_hole, remove_hole")
 export type EditItem = z.infer<typeof editItem>
 
-const KINDS = ["set_props", "connect", "disconnect", "place_part", "remove_part", "add_instance", "set_connections", "move_to_page"] as const
+const KINDS = ["set_props", "connect", "disconnect", "place_part", "remove_part", "add_instance", "set_connections", "move_to_page", "add_pour", "remove_pour", "add_hole", "remove_hole"] as const
 const SUMMARY_LIMIT = 100
 
 function kindOf(item: EditItem): (typeof KINDS)[number] {
@@ -90,6 +95,20 @@ export async function toEdit(root: string, file: string, item: EditItem): Promis
       const { part, page } = item.move_to_page!
       return { edit: { kind: "movePartToPage", part, page }, label: `move ${part} to page ${page}` }
     }
+    case "add_pour": {
+      const { net, layer, outline, props: values } = item.add_pour!
+      const props = Object.fromEntries(Object.entries(values ?? {}).filter(([, value]) => value !== undefined)) as Record<string, string | number>
+      const edit: Edit = { kind: "addPour", net, layer, ...(outline ? { outline } : {}), ...(Object.keys(props).length > 0 ? { props } : {}) }
+      return { edit, label: `add pour ${net} ${layer}` }
+    }
+    case "remove_pour":
+      return { edit: { kind: "removePour", id: item.remove_pour!.id }, label: `remove ${item.remove_pour!.id}` }
+    case "add_hole": {
+      const hole = item.add_hole!
+      return { edit: { kind: "addHole", ...hole }, label: `add hole at ${pointText(hole.x, hole.y)}` }
+    }
+    case "remove_hole":
+      return { edit: { kind: "removeHole", id: item.remove_hole!.id }, label: `remove ${item.remove_hole!.id}` }
   }
 }
 

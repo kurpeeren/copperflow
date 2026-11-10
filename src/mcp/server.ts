@@ -37,6 +37,7 @@ import { importsSheet, type Flattened } from "./compact-sheets.js"
 import { formatCopperSummary } from "./copper-summary.js"
 import * as copper from "./copper-tools.js"
 import * as fillet from "./fillet-tools.js"
+import * as pour from "./pour-tools.js"
 import * as router from "./route-tools.js"
 import { MAKE_SHEET_DESCRIPTION, makeSheet, makeSheetInput } from "./make-sheet.js"
 import { NEW_CIRCUIT_DESCRIPTION, newCircuit, newCircuitInput } from "./new-circuit.js"
@@ -163,7 +164,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "check_circuit",
     {
       description:
-        "Check the circuit with copperflow's own rules: electrical checks (pins left unconnected, outputs shorted together, power pins without a source) and placement checks (overlapping parts, parts off the board), plus problems in the code and the model (footprints it cannot make, unknown or ambiguous pins, library overrides). Answers with the error and warning counts, then up to 20 findings, one line each. Run it once at the end and fix the errors before reporting success; filter narrows it to errors, warnings, copper, a part or a net. Copper clearance, width, via, hole-to-hole, board-edge and keepout violations are included.",
+        "Check the circuit with copperflow's own rules: electrical checks (pins left unconnected, outputs shorted together, power pins without a source) and placement checks (overlapping parts, parts off the board), plus problems in the code and the model (footprints it cannot make, unknown or ambiguous pins, library overrides). Answers with the error and warning counts, then up to 20 findings, one line each. Run it once at the end and fix the errors before reporting success; filter narrows it to errors, warnings, copper, a part or a net. Copper clearance, width, via, hole-to-hole, board-edge, keepout, copper-to-hole (copper-hole) and pour (pour-floating) violations are included.",
       inputSchema: { file, filter: z.string().optional().describe('"errors", "warnings", "copper", a part name, a net name or a sub-sheet instance such as "PS1"') },
       annotations: READ_ONLY,
     },
@@ -199,6 +200,18 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     { description: router.UNROUTE_DESCRIPTION, inputSchema: router.unrouteInput, annotations: { destructiveHint: true } },
     (input) => run(() => router.unroute(ports, input)),
   )
+  server.registerTool("add_pour", { description: pour.ADD_POUR_DESCRIPTION, inputSchema: pour.addPourInput }, (input) => run(() => pour.addPour(ports, input)))
+  server.registerTool(
+    "remove_pour",
+    { description: pour.REMOVE_POUR_DESCRIPTION, inputSchema: pour.removePourInput, annotations: { destructiveHint: true } },
+    (input) => run(() => pour.removePour(ports, input)),
+  )
+  server.registerTool("add_hole", { description: pour.ADD_HOLE_DESCRIPTION, inputSchema: pour.addHoleInput }, (input) => run(() => pour.addHole(ports, input)))
+  server.registerTool(
+    "remove_hole",
+    { description: pour.REMOVE_HOLE_DESCRIPTION, inputSchema: pour.removeHoleInput, annotations: { destructiveHint: true } },
+    (input) => run(() => pour.removeHole(ports, input)),
+  )
   server.registerTool(
     "copper_summary",
     { description: copper.COPPER_SUMMARY_DESCRIPTION, inputSchema: { file }, annotations: READ_ONLY },
@@ -217,7 +230,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "edit_circuit",
     {
       description:
-        "Apply several edits in order as ONE change (one history entry). Each edit has exactly one key: set_props { part, props }, connect { from, to }, disconnect { from, to }, place_part { part, name, props?, page? }, remove_part { part }, add_instance { sheet, name, connections, base?, page? } (another use of a sub-sheet), set_connections { instance, connections } (every port to its net) or move_to_page { part, page } (a part or an instance; nets join across pages by name). If an edit is refused, nothing is written and the answer says which edit failed and why.",
+        "Apply several edits in order as ONE change (one history entry). Each edit has exactly one key: set_props { part, props }, connect { from, to }, disconnect { from, to }, place_part { part, name, props?, page? }, remove_part { part }, add_instance { sheet, name, connections, base?, page? } (another use of a sub-sheet), set_connections { instance, connections } (every port to its net), move_to_page { part, page } (a part or an instance; nets join across pages by name), add_pour { net, layer, outline?, props? }, remove_pour { id }, add_hole { x, y, diameter } or remove_hole { id }. If an edit is refused, nothing is written and the answer says which edit failed and why.",
       inputSchema: { file, edits: z.array(editItem).min(1).max(100) },
     },
     ({ file: circuit, edits }) =>

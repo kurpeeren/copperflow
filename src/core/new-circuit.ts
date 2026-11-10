@@ -4,7 +4,7 @@ import { MAIN_PAGE } from "../engine/model.js"
 import { checkPageName } from "./page-edits.js"
 import { boardSkeleton, checkNets, checkParts, partEdit, type NewPart } from "./netlist.js"
 import { planSheets, type NewInstance, type NewSheet } from "./new-circuit-sheets.js"
-import type { Edit } from "./types.js"
+import type { Edit, Literal, Point } from "./types.js"
 
 export type { NewPart } from "./netlist.js"
 export type { NewInstance, NewSheet } from "./new-circuit-sheets.js"
@@ -20,6 +20,18 @@ export interface NewCircuit {
   sheets?: Record<string, NewSheet>
   /** Uses of sheets, each flattened into the circuit with its base added to every designator. */
   instances?: NewInstance[]
+  /** Copper pours, each of a net the circuit has, on the top or bottom; without an outline one fills the board. */
+  pours?: NewPour[]
+  /** Non-plated holes, centre and diameter in mm. */
+  holes?: { x: number; y: number; diameter: number }[]
+}
+
+export interface NewPour {
+  net: string
+  layer: string
+  outline?: Point[]
+  /** priority, clearance, minWidth, thermal, thermalWidth, thermalGap; checked as the core's addPour checks them. */
+  props?: Record<string, Literal | undefined>
 }
 
 export const DEFAULT_BOARD = { width: 30, height: 20 }
@@ -48,6 +60,17 @@ function checkPages(known: ReadonlySet<string>, pages: NewCircuit["pages"]): Map
     }
   }
   return pageOf
+}
+
+/** The pours' and holes' edits: each pour on a net the circuit names, on a layer of its two-layer board. */
+function boardItemEdits(spec: NewCircuit, nets: ReadonlySet<string>): Edit[] {
+  const pours = (spec.pours ?? []).map((pour, index): Edit => {
+    if (!nets.has(pour.net)) throw new Error(`Pour ${index + 1}: there is no net ${pour.net}; the nets are ${[...nets].join(", ")}`)
+    if (pour.layer !== "top" && pour.layer !== "bottom") throw new Error(`Pour ${index + 1}: a new circuit's board has two layers, so the layer is top or bottom`)
+    const props = Object.fromEntries(Object.entries(pour.props ?? {}).filter((entry): entry is [string, Literal] => entry[1] !== undefined))
+    return { kind: "addPour", net: pour.net, layer: pour.layer, ...(pour.outline ? { outline: pour.outline } : {}), ...(Object.keys(props).length > 0 ? { props } : {}) }
+  })
+  return [...pours, ...(spec.holes ?? []).map((hole): Edit => ({ kind: "addHole", x: hole.x, y: hole.y, diameter: hole.diameter }))]
 }
 
 /** A new circuit file's text and the sheet files written with it. */
@@ -91,6 +114,8 @@ export async function generateCircuit(root: string, file: string, spec: NewCircu
     const page = pageOf.get(instance.name)
     edits.push(page === undefined ? instance : { ...instance, page })
   }
+  const named = new Set([...Object.keys(spec.nets), ...planned.instances.flatMap((instance) => Object.values(instance.connections ?? {}))])
+  edits.push(...boardItemEdits(spec, named))
   const traceOnPage = (from: string) => {
     const page = pageOf.get(from.split(".")[0] ?? "")
     return page === undefined ? {} : { page }

@@ -1,10 +1,13 @@
 import { trackLength } from "../engine/copper.js"
 import type { Design } from "../engine/design.js"
 import type { Violation } from "../engine/index.js"
+import type { Hole } from "../engine/model.js"
+import type { PourFill } from "../engine/pcb.js"
+import { pourJoins } from "../engine/pour/joins.js"
 import { netLabel } from "./copper-under.js"
 
 /** The rule codes of copper findings: the copper checks and what copper joining reports. */
-export const COPPER_RULES: ReadonlySet<string> = new Set(["copper-clearance", "track-width", "via-drill", "via-ring", "hole-to-hole", "copper-edge", "copper-keepout", "short", "floating", "mismatch", "copper-layer"])
+export const COPPER_RULES: ReadonlySet<string> = new Set(["copper-clearance", "track-width", "via-drill", "via-ring", "hole-to-hole", "copper-edge", "copper-keepout", "short", "floating", "mismatch", "copper-layer", "copper-hole", "pour-floating"])
 
 /** copper_summary stops here, so the answer fits a screen. */
 export const SUMMARY_LIMIT = 60
@@ -56,7 +59,35 @@ export function violationLine(violations: readonly Violation[]): string {
   return `Copper violations: ${violations.length} (${listed.join(", ")})`
 }
 
-/** The default copper_summary: totals, a line per net with copper or unrouted connections, then violations by rule; at most 60 lines. */
+const mmText = (n: number) => String(Math.round(n * 1e6) / 1e6)
+
+/** The pads of the pour's net that its fill touches, counted once each: the connections the pour makes. */
+function padsJoined(design: Design, fill: PourFill): number {
+  const pads = design.pcb.parts.flatMap((part) => part.pads)
+  const padIds = new Set(pads.map((pad) => pad.id))
+  const touched = pourJoins([fill], pads, design.pcb.tracks, design.pcb.vias).flat()
+  return new Set(touched.filter((id) => padIds.has(id))).size
+}
+
+/** "copperpour:1 GND bottom: 412.35 mm², joins 7 pads". */
+export function pourLine(design: Design, fill: PourFill): string {
+  return `${fill.id} ${netLabel(design.circuit.nets, fill.net)} ${fill.layer}: ${fill.area.toFixed(2)} mm², joins ${plural(padsJoined(design, fill), "pad")}`
+}
+
+/** "hole:1 at (3, 3), 3.2 mm". */
+export const holeLine = (hole: Hole): string => `${hole.id} at (${mmText(hole.x)}, ${mmText(hole.y)}), ${mmText(hole.diameter)} mm`
+
+/** "Pours: 2, holes: 4", then a line per pour and per hole; nothing on a board with neither. */
+function boardItemLines(design: Design): string[] {
+  const { pours, holes } = design.pcb
+  if (pours.length + holes.length === 0) return []
+  return [`Pours: ${pours.length}, holes: ${holes.length}`, ...pours.map((fill) => pourLine(design, fill)), ...holes.map(holeLine)]
+}
+
+/**
+ * The default copper_summary: totals, a line per net with copper or unrouted connections, the pours and holes, then
+ * violations by rule; at most 60 lines.
+ */
 export function formatCopperSummary(file: string, design: Design, limit = SUMMARY_LIMIT): string {
   const nets = perNet(design)
   const all = [...nets.values()]
@@ -67,11 +98,12 @@ export function formatCopperSummary(file: string, design: Design, limit = SUMMAR
     .map(([id, one]) => ({ name: id === "" ? "(no net)" : netLabel(design.circuit.nets, id), one }))
     .sort((a, b) => natural.compare(a.name, b.name))
     .map(({ name, one }) => netLine(name, one))
+  const items = boardItemLines(design)
   const tail = violationLine(copperViolations(design))
-  const room = Math.max(0, limit - 2)
-  if (lines.length <= room) return [head, ...lines, tail].join("\n")
+  const room = Math.max(0, limit - 2 - items.length)
+  if (lines.length <= room) return [head, ...lines, ...items, tail].join("\n")
   const shown = lines.slice(0, Math.max(0, room - 1))
-  return [head, ...shown, `… and ${lines.length - shown.length} more nets`, tail].join("\n")
+  return [head, ...shown, `… and ${lines.length - shown.length} more nets`, ...items, tail].join("\n")
 }
 
 /** The measured value in a violation's message (the first "X mm"; 0 when copper touches); smaller is worse. */

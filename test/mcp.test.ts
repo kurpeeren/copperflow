@@ -34,6 +34,8 @@ describe("MCP server", () => {
   test("exposes its tools, with no unlock or verify tool", async () => {
     const { tools } = await client.listTools()
     expect(tools.map((t) => t.name).sort()).toEqual([
+      "add_hole",
+      "add_pour",
       "add_trace",
       "add_via",
       "autoroute",
@@ -55,7 +57,9 @@ describe("MCP server", () => {
       "place_part",
       "recent_changes",
       "remove_copper",
+      "remove_hole",
       "remove_part",
+      "remove_pour",
       "remove_trace",
       "route_track",
       "set_props",

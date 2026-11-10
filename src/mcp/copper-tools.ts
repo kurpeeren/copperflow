@@ -57,7 +57,7 @@ export const ADD_VIA_DESCRIPTION =
 export const REMOVE_COPPER_DESCRIPTION =
   "Remove tracks and vias by id (from copper_summary or check_circuit) as ONE change; { id, segment } removes only that segment of a track, splitting it into the runs left on either side (a run of one point disappears). Locked copper is refused."
 export const COPPER_SUMMARY_DESCRIPTION =
-  'Summarize the copper: totals, then one line per net (tracks, vias, length in mm, connections still unrouted), then the copper violations counted by rule. At most 60 lines. Call it before and after drawing copper; check_circuit with filter "copper" lists the violations.'
+  'Summarize the copper: totals, then one line per net (tracks, vias, length in mm, connections still unrouted), each copper pour (net, layer, fill area in mm², the pads its fill joins) and each hole by id, then the copper violations counted by rule. At most 60 lines. Call it before and after drawing copper; check_circuit with filter "copper" lists the violations.'
 
 export interface Ports {
   root: string
