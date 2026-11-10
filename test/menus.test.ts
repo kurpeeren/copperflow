@@ -3,6 +3,7 @@ import { keyAction, type KeyInput } from "../studio/src/pcb/canvas-keys.js"
 import { COMMAND_KEY_ACTIONS, MENUS, MENU_TITLES, itemState, menuItems, menuReducer, menuShapes, shortcutList, type MenuItem } from "../studio/src/shell/menus.js"
 import { send, subscribe } from "../studio/src/shell/commands.js"
 import { commandOwner } from "../studio/src/shell/command-owners.js"
+import { commandDisabledReason, SELECT_A_PART } from "../studio/src/pcb/selection-rules.js"
 
 /** A key press as `keyAction` reads it, from a shortcut as the menu shows it, e.g. "Alt+W" or "Shift+H". */
 function pressOf(shortcut: string): KeyInput {
@@ -71,6 +72,13 @@ describe("menus", () => {
     expect(shortcutList()).toContainEqual({ keys: "Space (while drawing a wire)", label: "Flip the bend of the leg to the pointer" })
   })
 
+  test("Edit → Make sub-sheet… runs on the schematic and needs a selected part", () => {
+    const item = MENUS.find((menu) => menu.title === "Edit")?.entries.find((entry) => entry !== "separator" && entry.label === "Make sub-sheet…")
+    expect(item).toEqual({ label: "Make sub-sheet…", command: "makeSheet", only: "schematic" })
+    expect(commandDisabledReason("makeSheet", 0)).toBe(SELECT_A_PART)
+    expect(commandDisabledReason("makeSheet", 2)).toBeNull()
+  })
+
   test("Edit → Select all runs, with Ctrl+A beside it", () => {
     const item = MENUS.find((menu) => menu.title === "Edit")?.entries.find((entry) => entry !== "separator" && entry.label === "Select all")
     expect(item).toEqual({ label: "Select all", command: "selectAll", shortcut: "Ctrl+A" })
@@ -135,13 +143,13 @@ describe("menus", () => {
     expect(itemState(unit, "schematic")).toEqual({ enabled: false, reason: "PCB only" })
   })
 
-  test("an item still to come is disabled in both views with its reason; the rest work in both but the page items, Tidy sheet, Replicate layout and Unit", () => {
+  test("an item still to come is disabled in both views with its reason; the rest work in both but Make sub-sheet, the page items, Tidy sheet, Replicate layout and Unit", () => {
     const later = { label: "Bus", pending: "Comes with blocks and sheets (stage 3)" }
     expect(itemState(later, "pcb")).toEqual({ enabled: false, reason: later.pending })
     const views = (["pcb", "schematic"] as const).map((view) =>
       MENUS.flatMap(menuItems).filter((item) => item.command && !itemState(item, view).enabled).map((item) => item.label),
     )
-    expect(views).toEqual([["Add page", "Rename page", "Delete page", "Tidy sheet"], ["Unit", "Replicate layout"]])
+    expect(views).toEqual([["Make sub-sheet…", "Add page", "Rename page", "Delete page", "Tidy sheet"], ["Unit", "Replicate layout"]])
   })
 
   test("no menu has more than 14 items", () => {

@@ -21,6 +21,7 @@ import { COPPER_COMMANDS, PCB_COMMANDS, SHEET_COMMANDS, WORKSPACE_COMMANDS, type
 import { send } from "./commands"
 import type { DialogName } from "./Dialogs"
 import type { CommandId } from "./menus"
+import { makeSheetStart } from "./make-sheet-form"
 import { runPageCommand, type PageCommand } from "./page-commands"
 import type { Design } from "../api"
 
@@ -155,6 +156,13 @@ async function replicateLayout(input: Input): Promise<void> {
   input.actions.notify(`Copied the layout of ${plan.source} to ${plan.targets.join(", ")}`)
 }
 
+/** Edit → Make sub-sheet…: the dialog opens for parts of one page; otherwise the note says why not. */
+function makeSheet(input: Input): void {
+  const start = makeSheetStart(input.circuit?.model, input.selection.names)
+  if ("message" in start) return input.actions.notify(start.message)
+  input.openDialog("makeSheet")
+}
+
 /** The app's own commands; undefined for the ones the canvases answer. */
 function appCommand(input: Input, command: CommandId): (() => void) | undefined {
   const action = WORKSPACE[command]
@@ -170,6 +178,7 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     selectAll: () => input.select(selectAll(input.circuit?.model.parts.map((part) => part.name) ?? [], input.pickLayers, input.pickFilter, input.sheetWires, input.sheetLabels, input.sheetDrawings, input.pcbCopper)),
     selectInstance: () => selectInstance(input),
     replicateLayout: () => void replicateLayout(input),
+    makeSheet: () => makeSheet(input),
     find: input.openFind,
     checkDrc: input.openChecks,
     designRules: () => input.openDialog("rules"),

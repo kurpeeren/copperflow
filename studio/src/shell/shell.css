@@ -208,6 +208,25 @@ html body {
   justify-self: end;
 }
 
+/* Edit → Make sub-sheet: the lists and the rename choice take the whole width under the name. */
+.make-sheet-form h3,
+.make-sheet-form table,
+.make-sheet-rename {
+  grid-column: 1 / -1;
+}
+
+.make-sheet-form h3 {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.make-sheet-rename {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
 button.menu-title:hover:not(:disabled),
 button.menu-title.open:hover:not(:disabled) {
   background: var(--raised);
