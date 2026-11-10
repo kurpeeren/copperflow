@@ -23,6 +23,8 @@ export type CommandId =
   | "zoomOut"
   | "toggleUnit"
   | "gridStyle"
+  | "themeLight"
+  | "themeDark"
   | "toggleLeftPanel"
   | "toggleRightPanel"
   | "toggleBottomPanel"
@@ -75,7 +77,7 @@ export interface MenuItem {
 }
 
 /** The settings a menu item or toolbar button can switch and show. */
-export type ToggleId = "snap"
+export type ToggleId = "snap" | "themeLight" | "themeDark"
 export type Toggles = Readonly<Record<ToggleId, boolean>>
 
 export type MenuEntry = MenuItem | "separator"
@@ -139,6 +141,9 @@ export const MENUS: readonly Menu[] = [
       run("Left panel", "toggleLeftPanel", "["),
       run("Right panel", "toggleRightPanel", "]"),
       run("Bottom panel", "toggleBottomPanel", "\\"),
+      "separator",
+      { ...run("Theme: Light", "themeLight"), toggle: "themeLight" },
+      { ...run("Theme: Dark", "themeDark"), toggle: "themeDark" },
     ],
   },
   {
