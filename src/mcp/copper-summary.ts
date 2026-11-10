@@ -77,10 +77,22 @@ export function formatCopperSummary(file: string, design: Design, limit = SUMMAR
   return [head, ...shown, `… and ${lines.length - shown.length} more nets`, tail].join("\n")
 }
 
-/** The copper findings of `after` that `before` did not have, as the lines of an answer (at most 5, then "… and N more"). */
+/** The measured value in a violation's message (the first "X mm"; 0 when copper touches); smaller is worse. */
+function measured(v: Violation): number | undefined {
+  if (v.message.includes("touching or overlapping")) return 0
+  const found = /(\d+(?:\.\d+)?) mm/.exec(v.message)
+  return found?.[1] === undefined ? undefined : Number(found[1])
+}
+
+/** The copper findings of `after` that are new or measure worse than in `before`, as the lines of an answer (at most 5, then "… and N more"). */
 export function introducedLines(before: Pick<Design, "violations">, after: Pick<Design, "violations">): string[] {
-  const known = new Set(copperViolations(before).map((v) => v.id))
-  const fresh = copperViolations(after).filter((v) => !known.has(v.id))
+  const known = new Map(copperViolations(before).map((v) => [v.id, measured(v)]))
+  const worse = (v: Violation) => {
+    if (!known.has(v.id)) return true
+    const [was, now] = [known.get(v.id), measured(v)]
+    return was !== undefined && now !== undefined && now < was - 1e-9
+  }
+  const fresh = copperViolations(after).filter(worse)
   const lines = fresh.slice(0, SHOWN_INTRODUCED).map((v) => `${v.severity} ${v.code} [${v.items.join(", ")}]: ${v.message}`)
   const more = fresh.length - SHOWN_INTRODUCED
   return more > 0 ? [...lines, `… and ${more} more (check_circuit with filter "copper")`] : lines

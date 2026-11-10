@@ -269,3 +269,33 @@ describe("copper_summary limit", () => {
     expect(lines[4]).toBe("Copper violations: none")
   })
 })
+
+describe("fix round 1", () => {
+  const v = (message: string, id = "copper-clearance:t0001|t0002") => ({ id, code: "copper-clearance", severity: "error", message, items: ["t0001", "t0002"], view: "pcb" }) as never
+  const lines = async (before: unknown[], after: unknown[]) => {
+    const { introducedLines } = await import("../src/mcp/copper-summary.js")
+    return introducedLines({ violations: before as never }, { violations: after as never })
+  }
+
+  test("reports new violations and existing ones that got worse, not ones that stayed or got better", async () => {
+    const was = v("t0001 and t0002 are 0.150 mm apart; default needs 0.200 mm")
+    expect(await lines([was], [v("t0001 and t0002 are 0.100 mm apart; default needs 0.200 mm")])).toHaveLength(1)
+    expect(await lines([was], [v("t0001 and t0002 are touching or overlapping; default needs 0.200 mm")])).toHaveLength(1)
+    expect(await lines([was], [was])).toEqual([])
+    expect(await lines([was], [v("t0001 and t0002 are 0.180 mm apart; default needs 0.200 mm")])).toEqual([])
+    expect(await lines([], [was])).toHaveLength(1)
+  })
+
+  test("a via without a net takes the net of the copper under it, track and via of one net alike", async () => {
+    await route("VBUS", [pt(-2.275, 0), pt(-2.275, -3)])
+    await call("add_via", { file: FILE, net: "VBUS", at: pt(-2.275, -1) })
+    const { text, isError } = await call("add_via", { file: FILE, at: pt(-2.275, -1) })
+    expect(isError).toBe(false)
+    expect(text).toContain("on VBUS")
+  })
+
+  test("refuses an invalid layer and a file outside the project", async () => {
+    expect((await call("route_track", { file: FILE, net: "VBUS", layer: "middle", points: [pt(0, 0), pt(1, 0)] })).isError).toBe(true)
+    expect((await call("copper_summary", { file: "../outside.circuit.tsx" })).isError).toBe(true)
+  })
+})

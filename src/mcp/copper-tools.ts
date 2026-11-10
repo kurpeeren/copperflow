@@ -15,7 +15,7 @@ const NETS_SHOWN = 20
 export const routeTrackInput = {
   file: z.string().describe("Circuit file path relative to the project root"),
   net: z.string().describe("Net name, e.g. VBUS"),
-  layer: layer.describe('Copper layer: "top" or "bottom"'),
+  layer: layer.describe('Copper layer: "top" or "bottom" (inner1 and inner2 exist but cannot be routed in the Studio)'),
   points: z
     .array(point)
     .min(2)
@@ -37,7 +37,7 @@ export const removeCopperInput = {
 }
 
 export const ROUTE_TRACK_DESCRIPTION =
-  "Draw one track of a net by hand as ONE change: a list of corner points on one layer. It must start on a pad, track or via of the net and may not touch another net's copper. The width comes from the net class unless given. The answer is one line plus any copper violations the change introduced. The program checks clearance; the router comes later. A track cannot start on a locked part's pad."
+  "Draw one track of a net by hand as ONE change: a list of corner points on one layer. It must start on a pad, track or via of the net and may not touch another net's copper. The width comes from the net class unless given. The answer is one line plus the copper violations the change introduced: new ones and existing ones it made worse (check_circuit with filter \"copper\" lists all). The program checks clearance; the router comes later. A track cannot start on a locked part's pad."
 export const ADD_VIA_DESCRIPTION =
   "Place a via by hand as ONE change. Its net is the net of the pad or track under it unless you give one; its size follows the net class and the fabrication minimum ring."
 export const REMOVE_COPPER_DESCRIPTION = "Remove tracks and vias by id (from copper_summary or check_circuit) as ONE change. Locked copper is refused."
@@ -71,8 +71,12 @@ const describeHit = (design: Design, hit: CopperHit) => `${netLabel(design.circu
 /** Applies the edits as one change with the built design for the locks, then lists what the change introduced. */
 async function applyCopper(ports: Ports, file: string, before: Design, edits: LayoutEdit[], headline: (created: string[]) => string): Promise<string> {
   const result = await applyLayoutEdits(ports.root, file, edits, { author: "ai", design: before })
-  const after = await buildOf(ports, file)
-  return [`Change ${result.entry.id}: ${headline(result.created)}`, ...introducedLines(before, after)].join("\n")
+  const head = `Change ${result.entry.id}: ${headline(result.created)}`
+  try {
+    return [head, ...introducedLines(before, await buildOf(ports, file))].join("\n")
+  } catch (error) {
+    return `${head}\nThe change was written, but the copper could not be re-checked: ${(error as Error).message}`
+  }
 }
 
 function checkPoints(design: Design, netId: string, onLayer: CopperLayer, points: readonly Point[], netName: string): void {
@@ -111,7 +115,9 @@ function viaNet(design: Design, centre: Point, layers: readonly CopperLayer[], w
     if (clash) throw new Error(`The via ${at(centre)} is on ${describeHit(design, clash)}, but it was asked for ${nameOf(named)}. Nothing was written.`)
     return named
   }
-  const id = hits.find((hit) => hit.net !== undefined)?.net
+  const nets = [...new Set(hits.flatMap((hit) => (hit.net === undefined ? [] : [hit.net])))]
+  if (nets.length > 1) throw new Error(`The via ${at(centre)} is on copper of ${nets.map((id) => netLabel(design.circuit.nets, id)).join(" and ")}; give the net or move it. Nothing was written.`)
+  const id = nets[0]
   return design.circuit.nets.find((net) => net.id === id)
 }
 

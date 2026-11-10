@@ -28,9 +28,9 @@ undoing their work.
    Copper: you may draw the tracks and vias you want by hand with `route_track` (a track of one
    net, starting on a pad, track or via of that net), `add_via` and `remove_copper`; each is one
    history entry, and the answer lists the copper violations the change introduced. The program
-   checks clearance; the router comes later and does the rest. Call `copper_summary` before and
-   after (per net: tracks, vias, length, unrouted connections), and `check_circuit` with filter
-   `copper` for the full list.
+   checks clearance; the router comes later and does the rest. Order: `copper_summary` first (per net: tracks, vias,
+   length, unrouted connections), then your copper changes, then `check_circuit` once at the end
+   (filter `copper` for the full list).
 4. Call `check_circuit` once at the end (it lists the first 20 findings; `filter` takes `errors`,
    `warnings`, `copper`, a part or a net). It runs copperflow's own rule checks: the electrical
    checks (`pin-unconnected`, `output-conflict`, `no-power-source`), the placement checks

@@ -41,7 +41,7 @@ const INSTRUCTIONS = `copperflow lets you edit circuit files together with a hum
 - Make several changes in one call: edit_circuit takes a list of edits (one history entry, nothing written if one is refused), connect_nets wires whole nets at once, e.g. { "GND": ["R1.pin2", "C1.pin2"] }.
 - Change existing parts and traces through these tools rather than rewriting the file, so locks and history apply.
 - Call check_circuit once at the end, then fix every error before reporting success. It shows the first 20 findings; use its filter (errors, warnings, a part or a net) for the rest.
-- You may route copper by hand: route_track draws one track of a net from a pad, track or via of that net, add_via places a via, remove_copper removes tracks and vias; each is one change. The program checks clearance and answers with the violations your change introduced; the router comes later and does the rest. Call copper_summary before and after, and check_circuit with filter "copper" for the full list.
+- You may route copper by hand: route_track draws one track of a net from a pad, track or via of that net, add_via places a via, remove_copper removes tracks and vias; each is one change. The program checks clearance and answers with the violations your change introduced; the router comes later and does the rest. Order: copper_summary, then your copper changes, then check_circuit once at the end (filter "copper" for the full list of violations).
 - Never change, move or remove a part marked [LOCKED]. If a summary lists lock violations, restore those parts.
 - "Marks from the human" are instructions placed on the board; follow them.
 - recent_changes shows what the human undid; do not redo an undone change unless asked.
