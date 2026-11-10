@@ -5,8 +5,7 @@ import { basename, dirname, relative, resolve, sep } from "node:path"
 import { writeFileAtomic } from "./fs-utils.js"
 import { isInside, readIfThere } from "./file-writes.js"
 import type { FileChange } from "./history.js"
-
-export const SHEET_FILE = /\.sheet\.tsx$/
+import { SHEET_FILE } from "../engine/sheets.js"
 
 /** A sheet file's path on disk, refused unless it is a `.sheet.tsx` file whose nearest existing folder is inside the project. */
 async function sheetPath(root: string, file: string): Promise<string> {

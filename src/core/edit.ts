@@ -14,6 +14,7 @@ import {
   validateOrThrow,
 } from "./edit-text.js"
 import { formatLiteral, formatPointList, readPointList } from "./literals.js"
+import { addInstance, setConnections } from "./instance-edits.js"
 import { addPage, insertOnPage, movePartToPage, removePage, renamePage } from "./page-edits.js"
 import { localNet, localNetRefusal } from "../engine/selectors.js"
 import { partsInSelector, sheetFileIn } from "./selectors.js"
@@ -60,6 +61,10 @@ function editSource(source: string, scan: Scan, edit: Edit, locked: ReadonlySet<
       return setDrawingProps(source, scan, edit, locked)
     case "movePartToPage":
       return movePartToPage(source, scan, requireEditablePart(scan, edit.part, locked), edit.page)
+    case "addInstance":
+      return addInstance(source, scan, edit)
+    case "setConnections":
+      return setConnections(source, scan, edit, locked)
     case "addPage":
       return addPage(source, scan, edit.name)
     case "renamePage":

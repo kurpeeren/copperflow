@@ -138,6 +138,13 @@ export type Edit =
     }
   /** Moves a part, and the traces with hand-drawn corners that reach it, onto a page (made when missing); "Main" is the first page. */
   | { kind: "movePartToPage"; part: string; page: string }
+  /**
+   * Adds a sub-sheet instance, `<tag name connections={{ PORT: "NET" }} base? />`, on its page, and the default import
+   * `import tag from "<importFrom>"` (a `.sheet` file) when missing.
+   */
+  | { kind: "addInstance"; tag: string; name: string; connections: Record<string, string>; base?: number; importFrom: string; page?: string }
+  /** Writes an instance's `connections` anew: each port to a parent net; ports left out are open. */
+  | { kind: "setConnections"; part: string; connections: Record<string, string> }
   /** Adds an empty `<page name>` at the end of the board. */
   | { kind: "addPage"; name: string }
   /** Renames every `<page>` element of the page. The first page, "Main", has no element and keeps its name. */
