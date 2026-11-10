@@ -53,7 +53,7 @@ function maskBox(pad: WorldPad, expansion: number): Box {
 }
 
 /** The places tried for a part's designator, in order: centred above, below, left and right of its courtyard. */
-function candidates(part: PlacedFootprint): Point[] {
+export function candidates(part: PlacedFootprint): Point[] {
   if (part.courtyard.length === 0) return [{ x: part.x, y: part.y }]
   const xs = part.courtyard.map((c) => c.x)
   const ys = part.courtyard.map((c) => c.y)
@@ -102,6 +102,15 @@ export function designatorPlacements(parts: readonly PlacedFootprint[], expansio
     return { component: part.component, side: part.side, at, coversPads: unique(pads), coversDesignators: unique(designators) }
   })
 }
+
+/** The board with each part's designator anchor (`designatorAt`) set where the export draws it. */
+export function withDesignators(pcb: PcbLayout, fabrication: FabricationProfile): PcbLayout {
+  const placed = new Map(designatorPlacements(pcb.parts, fabrication.maskExpansion ?? DEFAULT_MASK_EXPANSION).map((p) => [p.component, p.at]))
+  return { ...pcb, parts: pcb.parts.map((part) => (placed.has(part.component) ? { ...part, designatorAt: placed.get(part.component) as Point } : part)) }
+}
+
+/** Where the Studio draws a part's designator: pcbNameAt's place, else the anchor the design carries, else above the courtyard. */
+export const designatorAnchor = (part: PlacedFootprint): Point => part.nameAt ?? part.designatorAt ?? (candidates(part)[0] as Point)
 
 const possessive = (name: string) => `${name}'s`
 

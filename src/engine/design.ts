@@ -7,6 +7,7 @@ import { evaluateCircuit } from "./evaluate.js"
 import { generateFootprint, type FootprintResult } from "./footprints/index.js"
 import { diagnostic } from "./diagnostics.js"
 import type { Diagnostic, Circuit } from "./model.js"
+import { withDesignators } from "./fab/designators.js"
 import { layoutPcb, type PcbLayout } from "./pcb.js"
 import { netClasses } from "./rules/classes.js"
 import { layerCountWarnings, loadRules } from "./rules/load.js"
@@ -67,5 +68,6 @@ export function buildDesign(files: Files, main: string): Design {
   const placement = pcb.diagnostics.filter((d) => !isCopperNote(d))
   const diagnostics = [...circuit.diagnostics, ...wiring, ...copper.diagnostics, ...placement, ...loaded.diagnostics, ...layers, ...classes.diagnostics]
   const violations = checkDesign(circuit, schematic, pcb.layout, loaded.rules, notes)
-  return { version: 1, file: main, circuit, schematic, pcb: pcb.layout, rules: loaded.rules, diagnostics, violations }
+  const board = withDesignators(pcb.layout, loaded.rules.fabrication)
+  return { version: 1, file: main, circuit, schematic, pcb: board, rules: loaded.rules, diagnostics, violations }
 }

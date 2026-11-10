@@ -8,6 +8,7 @@ import type { Selection } from "../selection.js"
 import { nudgeDirection, type KeyResult } from "./canvas-keys.js"
 import { nudgeOffset } from "./group-edits.js"
 import { partLabelId, partLabels, parsePartLabelId, textBox } from "../../../src/engine/part-labels.js"
+import { designatorAnchor } from "../../../src/engine/fab/designators.js"
 import type { PcbLayout, PlacedFootprint } from "../../../src/engine/pcb.js"
 import { rotatePoint } from "../../../src/engine/schematic-geometry.js"
 import type { PlacedSymbol, SchematicLayout } from "../../../src/engine/schematic.js"
@@ -48,16 +49,9 @@ export function sheetTexts(layout: SchematicLayout): PartText[] {
   return layout.symbols.flatMap((placed) => partLabels(placed))
 }
 
-function courtyardTop(part: PlacedFootprint): Point {
-  const xs = part.courtyard.map((c) => c.x)
-  const ys = part.courtyard.map((c) => c.y)
-  return { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: Math.max(...ys) }
-}
-
-/** A part's silkscreen designator: where pcbNameAt puts it, else centred just above the courtyard's top edge. */
+/** A part's silkscreen designator: where pcbNameAt puts it, else where the fabrication export draws it. */
 export function designatorText(part: PlacedFootprint): PartText {
-  const top = courtyardTop(part)
-  const at = part.nameAt ?? { x: top.x, y: top.y + DESIGNATOR_MM / 2 }
+  const at = designatorAnchor(part)
   const offset = { x: at.x - part.x, y: at.y - part.y }
   return { id: partLabelId(part.component, "pcbNameAt"), part: part.component, prop: "pcbNameAt", text: part.component, at, offset, box: textBox(at, DESIGNATOR_MM, part.component.length) }
 }

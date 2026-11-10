@@ -31,6 +31,11 @@ export interface PlacedFootprint {
   fabrication: Point[][]
   /** The middle of the silkscreen designator, when the part's pcbNameAt moves it: its origin plus that offset, in mm. */
   nameAt?: Point
+  /**
+   * The middle of the silkscreen designator as the fabrication export draws it (fab/designators.ts): `nameAt` when set,
+   * else the first free side of the courtyard. buildDesign sets it; the Studio draws the designator there.
+   */
+  designatorAt?: Point
 }
 
 export interface RatsnestLine {
