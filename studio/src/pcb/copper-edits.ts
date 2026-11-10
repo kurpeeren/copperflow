@@ -120,8 +120,8 @@ export type SegmentTrack = Pick<PcbTrack, "id" | "net" | "named" | "layer" | "wi
  */
 export function segmentDeletion(track: SegmentTrack | undefined, segment: TrackSegment): { edits: LayoutEdit[]; summary: string } | { message: string } {
   if (!track) return { message: `${segment.id} is gone` }
-  const net = track.named ?? track.net
-  const split = segmentRemoval({ id: track.id, ...(net === undefined ? {} : { net }), layer: track.layer, width: track.width, points: track.points, locked: track.locked }, segment.index)
+  const nets = { ...(track.named === undefined ? {} : { net: track.named }), ...(track.net === undefined ? {} : { carried: track.net }) }
+  const split = segmentRemoval({ id: track.id, ...nets, layer: track.layer, width: track.width, points: track.points, locked: track.locked }, segment.index)
   return "message" in split ? split : { edits: split.edits, summary: `Delete segment ${segment.index} of ${track.id}` }
 }
 

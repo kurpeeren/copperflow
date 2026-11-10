@@ -153,6 +153,7 @@ describe("segmentDeletion: Delete on a selected segment", () => {
     const { named: _named, ...unnamed } = track
     const split = segmentDeletion(unnamed, { id: "t0004", index: 1 })
     expect("edits" in split && split.edits[1]).toMatchObject({ net: "net.3" })
+    expect("edits" in split && split.edits[0]).toEqual({ kind: "setTrack", id: "t0004", net: "net.3", points: [pt(0, 0), pt(5, 0)] })
     expect(segmentDeletion({ ...track, locked: true }, { id: "t0004", index: 1 })).toEqual({ message: "t0004 is locked" })
     expect(segmentDeletion(undefined, { id: "t0004", index: 1 })).toEqual({ message: "t0004 is gone" })
   })

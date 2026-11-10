@@ -1,4 +1,6 @@
 import { describe, expect, test } from "vitest"
+import { EMPTY_LAYOUT } from "../src/core/layout-file.js"
+import { applyLayoutRecordEdits } from "../src/core/layout-records.js"
 import { segmentRemoval } from "../src/core/track-split.js"
 
 const pt = (x: number, y: number) => ({ x, y })
@@ -43,5 +45,32 @@ describe("segmentRemoval", () => {
     const points = track.points.map((p) => ({ ...p }))
     segmentRemoval(track, 1)
     expect(track.points).toEqual(points)
+  })
+})
+
+describe("a record with no net of its own", () => {
+  const { net: _net, ...bare } = track
+
+  test("both runs are written with the net the track carries", () => {
+    expect(segmentRemoval({ ...bare, carried: "net.3" }, 1)).toEqual({
+      edits: [
+        { kind: "setTrack", id: "t0001", net: "net.3", points: [pt(0, 0), pt(5, 0)] },
+        { kind: "addTrack", net: "net.3", layer: "top", width: 0.3, points: [pt(5, 5), pt(10, 5)] },
+      ],
+    })
+    expect(segmentRemoval({ ...bare, carried: "net.3" }, 0)).toEqual({ edits: [{ kind: "setTrack", id: "t0001", net: "net.3", points: [pt(5, 0), pt(5, 5), pt(10, 5)] }] })
+  })
+
+  test("a record that names its net keeps it; the carried net does not replace it", () => {
+    const result = segmentRemoval({ ...track, carried: "net.3" }, 1)
+    expect(result).toMatchObject({ edits: [{ kind: "setTrack", id: "t0001", points: [pt(0, 0), pt(5, 0)] }, { net: "VBUS" }] })
+    expect("edits" in result && "net" in (result.edits[0] as object)).toBe(false)
+  })
+
+  test("setTrack can write a net, checked as an add's is", () => {
+    const added = applyLayoutRecordEdits(EMPTY_LAYOUT, [{ kind: "addTrack", layer: "top", width: 0.3, points: [pt(0, 0), pt(5, 0)] }], { author: "human" })
+    const named = applyLayoutRecordEdits(added.doc, [{ kind: "setTrack", id: "t0001", net: "VBUS" }], { author: "human" })
+    expect(named.doc.records[0]).toMatchObject({ id: "t0001", net: "VBUS" })
+    expect(() => applyLayoutRecordEdits(added.doc, [{ kind: "setTrack", id: "t0001", net: "" }], { author: "human" })).toThrow(/net/)
   })
 })

@@ -247,6 +247,28 @@ describe("remove_copper", () => {
     expect(await entries()).toBe(before)
   })
 
+  test("refuses two items naming the same track, a segment among them, writing nothing", async () => {
+    await route("VBUS", [pt(-2.275, 0), pt(-2.275, -3), pt(1.55, -3), pt(1.55, -1.2875)])
+    const before = await entries()
+    const twice = await call("remove_copper", { file: FILE, ids: [{ id: "t0001", segment: 0 }, { id: "t0001", segment: 2 }] })
+    expect(twice.isError).toBe(true)
+    expect(twice.text).toContain("one segment per track per call")
+    const mixed = await call("remove_copper", { file: FILE, ids: ["t0001", { id: "t0001", segment: 1 }] })
+    expect(mixed.isError).toBe(true)
+    expect(mixed.text).toContain("one segment per track per call")
+    expect(await entries()).toBe(before)
+  })
+
+  test("refuses a segment of a track that starts on a locked part's pad", async () => {
+    await route("VBUS", [pt(-2.275, 0), pt(-2.275, -3), pt(1.55, -3)])
+    await lockC1()
+    const before = await entries()
+    const { text, isError } = await call("remove_copper", { file: FILE, ids: [{ id: "t0001", segment: 1 }] })
+    expect(isError).toBe(true)
+    expect(text).toContain("C1")
+    expect(await entries()).toBe(before)
+  })
+
   test("reports violations the removal introduced", async () => {
     await route("VBUS", [pt(-2.275, 0), pt(-2.275, -3)])
     await route("VBUS", [pt(-2.275, -3), pt(0, -3)])

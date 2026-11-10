@@ -185,16 +185,29 @@ function removalEdits(design: Design, item: CopperRemoval): LayoutEdit[] {
   if (typeof item === "string") return [item.startsWith("t") ? { kind: "removeTrack", id: item } : { kind: "removeVia", id: item }]
   const track = design.pcb.tracks.find((one) => one.id === item.id)
   if (!track) throw new Error(`No track ${item.id} in the layout file. Nothing was written.`)
-  const net = track.named ?? track.net
-  const split = segmentRemoval({ id: track.id, ...(net === undefined ? {} : { net }), layer: track.layer, width: track.width, points: track.points, locked: track.locked }, item.segment)
+  const nets = { ...(track.named === undefined ? {} : { net: track.named }), ...(track.net === undefined ? {} : { carried: track.net }) }
+  const split = segmentRemoval({ id: track.id, ...nets, layer: track.layer, width: track.width, points: track.points, locked: track.locked }, item.segment)
   if ("message" in split) throw new Error(`${split.message}. Nothing was written.`)
   return split.edits
+}
+
+const trackOf = (item: CopperRemoval): string | undefined => (typeof item === "string" ? (item.startsWith("t") ? item : undefined) : item.id)
+
+/**
+ * Refuses a track named more than once in one call when a segment of it is among them: each split is worked out from
+ * the track as built, so a second one would undo the first.
+ */
+function refuseSplitTwice(items: readonly CopperRemoval[]): void {
+  const segmented = new Set(items.flatMap((item) => (typeof item === "string" ? [] : [item.id])))
+  const twice = [...segmented].find((id) => items.filter((item) => trackOf(item) === id).length > 1)
+  if (twice !== undefined) throw new Error(`${twice} is named more than once: remove one segment per track per call, and not with the whole track. Nothing was written.`)
 }
 
 const removedWord = (item: CopperRemoval): string => (typeof item === "string" ? item : `segment ${item.segment} of ${item.id}`)
 
 /** remove_copper: tracks and vias by id, and segments of tracks, as one change. */
 export async function removeCopper(ports: Ports, input: { file: string; ids: CopperRemoval[] }): Promise<string> {
+  refuseSplitTwice(input.ids)
   const design = await buildOf(ports, input.file)
   const edits = input.ids.flatMap((item) => removalEdits(design, item))
   return applyCopper(ports, input.file, design, edits, () => `removed ${input.ids.map(removedWord).join(", ")}`)
