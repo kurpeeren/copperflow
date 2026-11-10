@@ -3,7 +3,7 @@ import { usableOutline } from "../board.js"
 import type { ClassOf } from "../checks/copper-pieces.js"
 import { bounds, pointInPolygon, shapeDistance, type Shape } from "../checks/geometry.js"
 import { GridIndex, type Box } from "../checks/grid-index.js"
-import type { Board, Keepout, Point } from "../model.js"
+import type { Board, Hole, Keepout, Point } from "../model.js"
 import { naturalCompare } from "../order.js"
 import type { PcbLayout } from "../pcb.js"
 import { requiredClearance } from "../rules/classes.js"
@@ -16,7 +16,7 @@ import { obstaclesOf, type Obstacle } from "./obstacles.js"
  * The board rasterised for one net: a square grid of cells per copper layer, each cell free or blocked for the
  * centre line of the net's tracks, and one more map of the cells a via of the net may sit on.
  *
- * Every obstacle (copper and pads of other nets, keepouts, the board edge) is grown by the gap the copper checks
+ * Every obstacle (copper and pads of other nets, keepouts, non-plated holes, the board edge) is grown by the gap the copper checks
  * demand plus half the track width, so a centre line that stays at that distance is legal. A path runs straight
  * between neighbouring cell centres (along an axis or at 45°), and the copper between two free centres can come
  * nearer to an obstacle than the centres do. It cannot come nearer than √(R² − L²/4) when both centres are at least R
@@ -28,7 +28,7 @@ import { obstaclesOf, type Obstacle } from "./obstacles.js"
  * A via also keeps the fabrication hole spacing from every hole (through pads and vias, its own net's included).
  *
  * The board is prepared once (`routerWorld`): its obstacles in a spatial index, and per track width and via size the
- * maps of what does not depend on the net (keepouts and the board edge). A grid is then made for one net over a
+ * maps of what does not depend on the net (keepouts, holes and the board edge). A grid is then made for one net over a
  * window of the board's cells, from those maps and the obstacles near the window.
  */
 
@@ -81,7 +81,7 @@ export interface CellWindow {
   row1: number
 }
 
-/** What does not depend on the net, for one track width and via size: keepouts and the board edge. */
+/** What does not depend on the net, for one track width and via size: keepouts, holes and the board edge. */
 interface Base {
   track: Int32Array[]
   via: Int32Array
@@ -97,6 +97,8 @@ export interface RouterWorld {
   frame: GridFrame
   board?: Board
   keepouts: readonly Keepout[]
+  /** The non-plated holes, which tracks and vias keep the board-edge clearance from. */
+  holes: readonly Hole[]
   /** Pads and the layout's copper, in natural id order. */
   obstacles: readonly Obstacle[]
   index: GridIndex<Obstacle>
@@ -201,6 +203,7 @@ export function routerWorld(layout: PcbLayout, rules: Rules, classOf: ClassOf): 
     frame: frameOf(layout, routerPitch(rules)),
     ...(board === undefined ? {} : { board }),
     keepouts: (board?.keepouts ?? []).filter((keepout) => keepout.outline.length >= 3),
+    holes: layout.holes,
     obstacles,
     index,
     widestGap,
@@ -211,13 +214,22 @@ export function routerWorld(layout: PcbLayout, rules: Rules, classOf: ClassOf): 
 const layerMaps = (grid: RouterGrid, layers: readonly CopperLayer[]): Int32Array[] =>
   grid.layers.flatMap((layer, i) => (layers.includes(layer) ? [grid.track[i] as Int32Array] : []))
 
-/** Keepouts and the board edge over the whole board, for one track width and via size. */
+/** A non-plated hole: tracks on every layer and vias keep the board-edge clearance from its edge. */
+function stampHoleClearance(world: RouterWorld, grid: RouterGrid, rule: NetRule, hole: Hole, index: number): void {
+  const minimum = world.rules.fabrication.boardEdgeClearance
+  const disc: Shape = { core: [{ x: hole.x, y: hole.y }], radius: hole.diameter / 2 }
+  for (const map of grid.track) stamp(grid, map, index, disc, centreReach(minimum + rule.width / 2, grid.pitch), 0)
+  stamp(grid, grid.via, index, disc, minimum + rule.via.diameter / 2, 0)
+}
+
+/** Keepouts, holes and the board edge over the whole board, for one track width and via size. */
 function baseOf(world: RouterWorld, rule: NetRule): Base {
   const key = `${rule.width}|${rule.via.diameter}`
   const known = world.bases.get(key)
   if (known !== undefined) return known
   const keepouts = [...world.keepouts].sort((a, b) => naturalCompare(a.id, b.id))
-  const names = [...keepouts.map((keepout) => keepout.id), ...(world.board === undefined ? [] : [BOARD_EDGE])]
+  const holes = [...world.holes].sort((a, b) => naturalCompare(a.id, b.id))
+  const names = [...keepouts.map((keepout) => keepout.id), ...holes.map((hole) => hole.id), ...(world.board === undefined ? [] : [BOARD_EDGE])]
   const blank = () => new Int32Array(world.frame.cols * world.frame.rows).fill(FREE)
   const grid: RouterGrid = { ...world.frame, track: world.frame.layers.map(blank), via: blank(), blockers: names }
   const { pitch } = grid
@@ -230,8 +242,9 @@ function baseOf(world: RouterWorld, rule: NetRule): Base {
     fill(grid, grid.via, index, keepout.outline)
     for (const edge of edgesOf(keepout.outline)) stamp(grid, grid.via, index, edge, rule.via.diameter / 2, 0)
   })
+  holes.forEach((hole, i) => stampHoleClearance(world, grid, rule, hole, keepouts.length + i))
   if (world.board !== undefined) {
-    const index = keepouts.length
+    const index = keepouts.length + holes.length
     const { outline } = world.board
     const minimum = world.rules.fabrication.boardEdgeClearance
     for (const map of grid.track) {
@@ -331,11 +344,11 @@ function stampHole({ world, grid, rule, below }: Stamping, piece: Obstacle, inde
 
 /**
  * The grid for routing `rule.net` over a window of the board (the whole board by default): pads, tracks and vias of
- * other nets (and of no net), keepouts and the board edge are obstacles; the net's own copper is not, but its pads
+ * other nets (and of no net), keepouts, holes and the board edge are obstacles; the net's own copper is not, but its pads
  * keep vias off and every hole keeps vias at the hole spacing. `extra` is more copper to keep out the same way, such
  * as what the router laid earlier in a run. Where two objects block one cell, the first marked names it: other nets'
  * copper and pads (the layout's, then `extra`), the net's own pads, then holes, each in natural id order; then
- * keepouts, then the board edge.
+ * keepouts, then non-plated holes, then the board edge.
  */
 export function rasteriseIn(world: RouterWorld, rule: NetRule, window: CellWindow = wholeBoard(world), extra: readonly Obstacle[] = []): RouterGrid {
   const base = baseOf(world, rule)
