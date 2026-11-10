@@ -37,8 +37,13 @@ import {
 import { Engine } from "../engine/engine.js"
 import { setFilletRadius } from "../core/rules-edit.js"
 import { RULES_PATH } from "../engine/rules/load.js"
+import { layoutPathFor, readLayoutText } from "../core/layout-file.js"
+import { readIfThere } from "../core/file-writes.js"
+import { unrouteEdits, unrouteSummary } from "../core/unroute.js"
+import { resolveLayoutFile } from "../core/workspace.js"
 import { LayoutBody } from "./layout-schema.js"
 import { LiveProject, type DesignBuilder } from "./live.js"
+import { RouteRunner, routeWorkerFactory, type RouteWorkerFactory } from "./route-runner.js"
 
 export interface StudioOptions {
   root: string
@@ -50,6 +55,11 @@ export interface StudioOptions {
   maxStreams?: number
   /** Builds the designs the viewers draw; defaults to an Engine, which the Studio stops when it closes. */
   builder?: DesignBuilder
+  /**
+   * Starts a router worker for each Route → Autoroute run; by default a worker thread on the built router-worker.js.
+   * Null routes in the server process.
+   */
+  routeWorker?: RouteWorkerFactory | null
 }
 
 export interface Studio {
@@ -159,6 +169,18 @@ const Bodies = {
   verify: z.object({ id: z.string().min(1).max(64), by: z.string().min(1).max(100), against: z.string().min(1).max(300), confirm: z.string() }),
   // The Design rules panel: a radius in mm, or null for the default.
   rules: z.object({ filletRadius: z.number().nullable(), file: z.string().optional() }),
+  // Route → Autoroute: the whole board, some nets, the connections of some parts, or one sub-sheet instance.
+  route: z.object({
+    file,
+    scope: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("all") }).strict(),
+      z.object({ kind: z.literal("nets"), nets: z.array(z.string().min(1).max(200)).min(1).max(500) }).strict(),
+      z.object({ kind: z.literal("parts"), parts: z.array(z.string().min(1).max(64)).min(1).max(500) }).strict(),
+      z.object({ kind: z.literal("instance"), instance: z.string().min(1).max(200) }).strict(),
+    ]),
+  }),
+  // Route → Unroute: the router's copper among the ids, or all of it.
+  unroute: z.object({ file, ids: z.array(z.string().min(1).max(32)).max(5000).optional() }),
   // Edit → Make sub-sheet: `preview` answers what it would do and writes nothing.
   makeSheet: z.object({
     file,
@@ -195,6 +217,14 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
   const streams = new Set<ServerResponse>()
   const maxStreams = options.maxStreams ?? DEFAULT_MAX_STREAMS
   let port = 0
+  const router = new RouteRunner({
+    root,
+    designOf: async (circuit) => (await live.currentDesign(circuit)) ?? (await building.builder.build(root, circuit)),
+    announce: (event) => live.announce("route", event),
+    nextMark: () => live.nextMark(),
+    requestBuild: (circuit) => live.requestBuild(circuit),
+    createWorker: options.routeWorker === null ? undefined : (options.routeWorker ?? (await routeWorkerFactory())),
+  })
 
   const server = createServer((req, res) => {
     handle(req, res).catch((error: unknown) => sendError(res, error, root))
@@ -276,6 +306,26 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         const writeMark = live.nextMark()
         live.requestBuild(circuitPathFor(result.file))
         return send(res, { entryId: result.entry.id, created: result.created, writeMark })
+      }
+      // The run goes on after the answer; its progress and its end come as "route" events.
+      case "POST /api/route": {
+        const body = Bodies.route.parse(await readJson(req))
+        if (router.running !== undefined) throw new HttpError(409, `The board of ${router.running} is being routed; cancel it or wait for it to end`)
+        return send(res, { status: "routing", file: await router.start(body.file, body.scope) }, 202)
+      }
+      case "POST /api/route/cancel":
+        return send(res, { cancelled: router.cancel() })
+      case "POST /api/unroute": {
+        const body = Bodies.unroute.parse(await readJson(req))
+        const layout = await resolveLayoutFile(root, layoutNameOf(body.file))
+        const source = await readIfThere(layout.path)
+        const records = source === undefined ? [] : readLayoutText(source, layout.file).records
+        const edits = unrouteEdits({ tracks: records.filter((r) => r.t === "track"), vias: records.filter((r) => r.t === "via") }, body.ids)
+        if (edits.length === 0) throw new HttpError(400, body.ids ? "None of the selected copper was made by the router and unlocked; Unroute removes only that" : "The board has no unlocked router copper to remove")
+        const result = await applyLayoutEdits(root, layout.circuit, edits, { author: "human", summary: unrouteSummary(edits), design: designOf })
+        const writeMark = live.nextMark()
+        live.requestBuild(layout.circuit)
+        return send(res, { entryId: result.entry.id, summary: result.entry.summary, writeMark })
       }
       case "POST /api/lock": {
         const body = Bodies.lock.parse(await readJson(req))
@@ -410,12 +460,23 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
     token,
     openUrl: `http://127.0.0.1:${port}/#token=${token}`,
     close: async () => {
+      router.cancel()
       live.stop()
       await building.stop()
       for (const stream of streams) stream.end()
       server.closeAllConnections()
       await new Promise<void>((done) => server.close(() => done()))
     },
+  }
+}
+
+/** The layout file a request names: itself, or the one beside a circuit file. */
+function layoutNameOf(file: string): string {
+  if (isLayoutFile(file)) return file
+  try {
+    return layoutPathFor(file)
+  } catch (error) {
+    throw new HttpError(400, (error as Error).message)
   }
 }
 
