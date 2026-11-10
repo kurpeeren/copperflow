@@ -4,7 +4,8 @@ import { drillFiles } from "../../src/engine/fab/excellon.js"
 import { writeGerber } from "../../src/engine/fab/gerber.js"
 import { gerberLayers } from "../../src/engine/fab/layers.js"
 import { readDrill } from "../helpers/drill-read.js"
-import { readGerber, type Point } from "../helpers/gerber-read.js"
+import { counterClockwise, difference, pathArea, toPath, union, type Paths } from "../../src/engine/pour/clip.js"
+import { readGerber } from "../helpers/gerber-read.js"
 
 const MAIN = "main.circuit.tsx"
 const CREATED = new Date(Date.UTC(2026, 10, 11, 9, 0, 0))
@@ -32,16 +33,21 @@ const design = buildDesign(circuit(POURS), MAIN)
 const plain = buildDesign(circuit(""), MAIN)
 const layersOf = (built: typeof design) => new Map(gerberLayers(built.pcb, built.rules.fabrication).map(({ name, layer }) => [name, layer]))
 
-/** The shoelace area of a closed contour, its closing corner repeated, in mm². */
-function area(points: readonly Point[]): number {
-  return Math.abs(points.slice(1).reduce((sum, p, i) => sum + ((points[i] as Point).x * p.y - p.x * (points[i] as Point).y), 0)) / 2
+/**
+ * The pours' copper as read back, drawn in file order as a reader would: each dark Conductor region added, each clear
+ * region removing what is under it so far. Nested pieces (an island inside a hole) count only when drawn after the hole.
+ */
+function pourArea(text: string): number {
+  let drawn: Paths = []
+  for (const region of readGerber(text).regions) {
+    const path = counterClockwise(toPath(region.points.slice(0, -1)))
+    if (region.polarity === "clear") drawn = difference(drawn, [path])
+    else if (region.fn === "Conductor") drawn = union([...drawn, path])
+  }
+  return drawn.reduce((sum, path) => sum + pathArea(path), 0) / 1e6
 }
 
-/** The pour's copper as read back: its dark regions less its clear ones. */
-function pourArea(text: string): number {
-  const regions = readGerber(text).regions.filter((region) => region.fn === "Conductor" || region.polarity === "clear")
-  return regions.reduce((sum, region) => sum + (region.polarity === "clear" ? -area(region.points) : area(region.points)), 0)
-}
+const emptyLayer = { fileFunction: "", polarity: "Positive" as const, objects: [] }
 
 describe("the pour in the Gerber files", () => {
   test("each copper layer's pour reads back as regions with its reliefs and holes cleared, within 1% of the model's area", () => {
@@ -49,7 +55,7 @@ describe("the pour in the Gerber files", () => {
     const [top, bottom] = design.pcb.pours
     expect(top?.polygons.some((polygon) => polygon.holes.length > 0)).toBe(true)
     for (const [name, pour] of [["F_Cu", top], ["B_Cu", bottom]] as const) {
-      const text = writeGerber(layers.get(name) ?? { fileFunction: "", polarity: "Positive", objects: [] }, CREATED)
+      const text = writeGerber(layers.get(name) ?? emptyLayer, CREATED)
       const read = readGerber(text)
       expect(read.regions.some((region) => region.polarity === "clear")).toBe(true)
       const model = pour?.area ?? 0
@@ -58,8 +64,21 @@ describe("the pour in the Gerber files", () => {
     }
   })
 
+  test("an island inside another pour's hole is drawn after that hole is cleared, and the area still matches", () => {
+    const island = `<copperpour net="GND" layer="top" /><copperpour net="SIG" layer="top" priority={1} outline={[{ x: -7.5, y: -1.5 }, { x: -2.5, y: -1.5 }, { x: -2.5, y: 2 }, { x: -7.5, y: 2 }]} />`
+    const nested = buildDesign(circuit(island), MAIN)
+    const [ground, inner] = nested.pcb.pours
+    expect(inner?.area).toBeGreaterThan(5)
+    const text = writeGerber(layersOf(nested).get("F_Cu") ?? emptyLayer, CREATED)
+    const regions = readGerber(text).regions
+    const islandAt = regions.findIndex((region, i) => i > 0 && region.fn === "Conductor")
+    expect(regions.slice(0, islandAt).some((region) => region.polarity === "clear")).toBe(true)
+    const model = (ground?.area ?? 0) + (inner?.area ?? 0)
+    expect(Math.abs(pourArea(text) - model) / model).toBeLessThan(0.01)
+  })
+
   test("the pour comes before the pads and tracks, which are drawn dark after it", () => {
-    const text = writeGerber(layersOf(design).get("F_Cu") ?? { fileFunction: "", polarity: "Positive", objects: [] }, CREATED)
+    const text = writeGerber(layersOf(design).get("F_Cu") ?? emptyLayer, CREATED)
     const lastClear = text.lastIndexOf("%LPC*%")
     const firstFlash = text.search(/D03\*/)
     expect(lastClear).toBeGreaterThan(0)
@@ -73,7 +92,7 @@ describe("the pour in the Gerber files", () => {
   })
 
   test("a board without pours writes no clear polarity", () => {
-    const text = writeGerber(layersOf(plain).get("F_Cu") ?? { fileFunction: "", polarity: "Positive", objects: [] }, CREATED)
+    const text = writeGerber(layersOf(plain).get("F_Cu") ?? emptyLayer, CREATED)
     expect(text).not.toContain("%LPC*%")
   })
 })

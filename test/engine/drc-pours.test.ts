@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { pourChecks } from "../../src/engine/checks/drc-pours.js"
 import { buildDesign, type Design } from "../../src/engine/design.js"
-import type { Board, Hole, Point } from "../../src/engine/model.js"
+import type { Board, Hole, Keepout, Point } from "../../src/engine/model.js"
 import type { PcbLayout, PcbTrack, PlacedFootprint, PourFill, WorldPad } from "../../src/engine/pcb.js"
 import { loadRules } from "../../src/engine/rules/load.js"
 import { DEFAULT_CLASS } from "../../src/engine/rules/profiles.js"
@@ -42,11 +42,12 @@ interface Scene {
   pads?: WorldPad[]
   tracks?: PcbTrack[]
   holes?: Hole[]
+  keepouts?: Keepout[]
 }
 
-function layoutOf({ pours = [], pads = [], tracks = [], holes = [] }: Scene): PcbLayout {
+function layoutOf({ pours = [], pads = [], tracks = [], holes = [], keepouts = [] }: Scene): PcbLayout {
   const part: PlacedFootprint = { component: "X", x: 0, y: 0, rotation: 0, side: "top", autoPlaced: false, pads, courtyard: [], silkscreen: [], fabrication: [] }
-  return { board: BOARD, parts: [part], ratsnest: [], tracks, vias: [], pours, holes }
+  return { board: { ...BOARD, keepouts }, parts: [part], ratsnest: [], tracks, vias: [], pours, holes }
 }
 
 const run = (scene: Scene) => pourChecks(layoutOf(scene), RULES, asDefault)
@@ -136,5 +137,27 @@ describe("on a built board", () => {
   test("a track run near the hole is a copper-hole violation", () => {
     const design = withTrack({ t: "track", id: "t0001", net: "SIG", layer: "bottom", width: 0.25, points: [{ x: -8, y: 3 }, { x: -6, y: 3 }], locked: false, by: "human" })
     expect(design.violations.filter((v) => v.code === "copper-hole").map((v) => v.id)).toEqual(["copper-hole:hole:1|t0001"])
+  })
+})
+
+describe("the fill against the board edge and keepouts, a safety net with a 2 µm tolerance", () => {
+  const inner = 10 - EDGE
+
+  test("a fill nearer the board edge than its clearance is copper-edge; one at it, or a micrometre over, is not", () => {
+    const near = run({ pours: [fill("copperpour:1", "net.GND", square(-9.95, -inner, inner, inner))], pads: [GND_PAD] })
+    expect(near.map((v) => [v.id, v.message])).toEqual([["copper-edge:copperpour:1", `copperpour:1 comes nearer the board edge than ${mm(EDGE)} mm`]])
+    expect(run({ pours: [fill("copperpour:1", "net.GND", square(-inner, -inner, inner, inner))], pads: [GND_PAD] })).toEqual([])
+    expect(run({ pours: [fill("copperpour:1", "net.GND", square(-inner - 0.001, -inner, inner, inner))], pads: [GND_PAD] })).toEqual([])
+  })
+
+  test("a fill reaching into a keepout on its layer is copper-keepout; one around it, or a keepout on the other layer, is not", () => {
+    const keepout = (layers: Keepout["layers"]): Keepout => ({ id: "keepout:1", outline: square(4, 4, 6, 6), layers, source: SOURCE })
+    const whole = fill("copperpour:1", "net.GND", square(-8, -8, 8, 8))
+    expect(run({ pours: [whole], pads: [GND_PAD], keepouts: [keepout("all")] }).map((v) => [v.id, v.message])).toEqual([
+      ["copper-keepout:copperpour:1|keepout:1", "copperpour:1 lies inside keepout:1"],
+    ])
+    expect(run({ pours: [whole], pads: [GND_PAD], keepouts: [keepout("bottom")] })).toEqual([])
+    const around = fill("copperpour:1", "net.GND", square(-8, -8, 8, 8), [clockwise(4, 4, 6, 6)])
+    expect(run({ pours: [around], pads: [GND_PAD], keepouts: [keepout("top")] })).toEqual([])
   })
 })
