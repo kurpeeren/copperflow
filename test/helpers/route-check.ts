@@ -2,6 +2,7 @@ import { buildDesign, type Design } from "../../src/engine/design.js"
 import type { Violation } from "../../src/engine/checks/violation.js"
 import { routeConnection, type ConnectionResult } from "../../src/engine/router/connect.js"
 import type { RoutedCopper } from "../../src/engine/router/path.js"
+import { routeBoard, type RouteBoardOptions, type RouteReport } from "../../src/engine/router/route-board.js"
 
 type Files = Readonly<Record<string, string>>
 
@@ -39,4 +40,26 @@ export function checkRouted(files: Files, main: string, copper: RoutedCopper, fi
   const known = new Set(before.violations.map((v) => v.id))
   const added = after.violations.filter((v) => !known.has(v.id) && v.code !== "unrouted")
   return { before, after, added, copper: after.violations.filter((v) => COPPER_CODES.includes(v.code)) }
+}
+
+/** Builds the design again with every routed copper added to its layout file (ids counting on from `first`), and runs every check. */
+export function checkRoutedAll(files: Files, main: string, coppers: readonly RoutedCopper[], first = 1): Checked {
+  const before = buildDesign(files, main)
+  const existing = files[layoutPath(main)] ?? ""
+  let next = first
+  const lines = coppers.map((copper) => {
+    const text = layoutLines(copper, next)
+    next += Math.max(copper.tracks.length, copper.vias.length)
+    return text
+  })
+  const after = buildDesign({ ...files, [layoutPath(main)]: existing + lines.join("") }, main)
+  const known = new Set(before.violations.map((v) => v.id))
+  const added = after.violations.filter((v) => !known.has(v.id) && v.code !== "unrouted")
+  return { before, after, added, copper: after.violations.filter((v) => COPPER_CODES.includes(v.code)) }
+}
+
+/** Routes the built design's board, with its circuit's nets, parts and instances. */
+export function routeDesign(design: Design, options: RouteBoardOptions = {}): RouteReport {
+  const input = { layout: design.pcb, rules: design.rules, nets: design.circuit.nets, components: design.circuit.components, ...(design.circuit.instances ? { instances: design.circuit.instances } : {}) }
+  return routeBoard(input, options)
 }

@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join, relative } from "node:path"
 import { describe, expect, test } from "vitest"
 import { buildDesign } from "../../src/engine/design.js"
-import { checkRouted, routeIn } from "../helpers/route-check.js"
+import { checkRouted, checkRoutedAll, routeDesign, routeIn } from "../helpers/route-check.js"
 
 const FOLDER = join(import.meta.dirname, "..", "fixtures", "can-module")
 const MAIN = "can-module.circuit.tsx"
@@ -42,4 +42,19 @@ describe("the CAN module board", () => {
     expect(checked.after.pcb.ratsnest.filter((l) => l.net === "net.TXCAN")).toEqual([])
     expect(checked.after.pcb.ratsnest).toHaveLength(design.pcb.ratsnest.length - 1)
   })
+})
+
+describe("the CAN module board, routed whole", () => {
+  const files = filesIn(FOLDER)
+  const design = buildDesign(files, MAIN)
+
+  test("every connection routes, and the board passes every copper check with no ratsnest left", () => {
+    const report = routeDesign(design)
+    expect(report.unrouted).toEqual([])
+    expect(report.routed).toHaveLength(design.pcb.ratsnest.length)
+    const checked = checkRoutedAll(files, MAIN, report.routed.map((route) => route.copper))
+    expect(checked.copper).toEqual([])
+    expect(checked.added).toEqual([])
+    expect(checked.after.pcb.ratsnest).toEqual([])
+  }, 30_000)
 })
