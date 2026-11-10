@@ -34,19 +34,38 @@ const SCALE = 10 ** DECIMALS
 const FIRST_APERTURE = 10
 
 /**
- * The rounded rectangle: $1 corner radius, $2 width, $3 height, $4 rotation in degrees. Two centred rectangles, one
- * cut short by the corners in each direction, and a circle in each corner, all turned about the centre.
+ * The rounded rectangle: $1 corner radius, $2 to $9 the centres of the four corner circles (x then y), already turned
+ * about the pad's centre. The body is the polygon through those centres, each side widened by a line of the corners'
+ * diameter, and a circle in each corner. Turning is done here, not by the primitives' rotation parameter, which
+ * older readers do not know for circles.
  */
 const ROUNDRECT_MACRO = [
   "%AMRoundRect*",
-  "0 Rounded rectangle: $1 corner radius $2 width $3 height $4 rotation*",
-  "21,1,$2,$3-$1x2,0,0,$4*",
-  "21,1,$2-$1x2,$3,0,0,$4*",
-  "1,1,$1x2,$2/2-$1,$3/2-$1,$4*",
-  "1,1,$1x2,$1-$2/2,$3/2-$1,$4*",
-  "1,1,$1x2,$1-$2/2,$1-$3/2,$4*",
-  "1,1,$1x2,$2/2-$1,$1-$3/2,$4*%",
+  "0 Rounded rectangle: $1 corner radius and $2 to $9 the corner centres*",
+  "4,1,4,$2,$3,$4,$5,$6,$7,$8,$9,$2,$3,0*",
+  "20,1,$1x2,$2,$3,$4,$5,0*",
+  "20,1,$1x2,$4,$5,$6,$7,0*",
+  "20,1,$1x2,$6,$7,$8,$9,0*",
+  "20,1,$1x2,$8,$9,$2,$3,0*",
+  "1,1,$1x2,$2,$3*",
+  "1,1,$1x2,$4,$5*",
+  "1,1,$1x2,$6,$7*",
+  "1,1,$1x2,$8,$9*%",
 ]
+
+/** The corner circles' centres of a rounded rectangle, turned `rotation` degrees counter-clockwise: x, y in turn. */
+function roundRectCorners(width: number, height: number, radius: number, rotation: number): number[] {
+  const radians = (rotation * Math.PI) / 180
+  const [cos, sin] = [Math.cos(radians), Math.sin(radians)]
+  const [a, b] = [width / 2 - radius, height / 2 - radius]
+  const corners = [
+    [-a, -b],
+    [a, -b],
+    [a, b],
+    [-a, b],
+  ] as const
+  return corners.flatMap(([x, y]) => [x * cos - y * sin, x * sin + y * cos])
+}
 
 /** A coordinate in the 4.6 format, leading zeros left out: 1.25 mm is "1250000". */
 const coordinate = (mm: number): string => String(Math.round(mm * SCALE) + 0)
@@ -65,7 +84,7 @@ function apertureTemplate(aperture: Aperture): string {
     case "obround":
       return `O,${decimal(aperture.width)}X${decimal(aperture.height)}`
     case "roundrect":
-      return `RoundRect,${[aperture.radius, aperture.width, aperture.height, aperture.rotation].map(decimal).join("X")}`
+      return `RoundRect,${[aperture.radius, ...roundRectCorners(aperture.width, aperture.height, aperture.radius, aperture.rotation)].map(decimal).join("X")}`
   }
 }
 

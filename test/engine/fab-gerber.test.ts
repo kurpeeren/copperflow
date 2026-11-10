@@ -52,11 +52,16 @@ describe("the Gerber writer", () => {
     expect(read.flashes.map((f) => f.aperture.code)).toEqual(["10", "10", "11"])
   })
 
-  test("a rounded rectangle is a RoundRect macro aperture with radius, width, height and rotation", () => {
+  test("a rounded rectangle is a RoundRect macro aperture with its radius and its four corner centres turned already", () => {
     const text = writeGerber(layer([{ kind: "flash", at: { x: 1, y: 1 }, aperture: { shape: "roundrect", width: 1.2, height: 0.8, radius: 0.2, rotation: 30 }, function: "SMDPad,CuDef" }]), CREATED)
     const read = readGerber(text)
     expect(read.macros).toEqual(["RoundRect"])
-    expect(read.flashes[0]?.aperture.shape).toEqual({ type: "macroShape", name: "RoundRect", variableValues: [0.2, 1.2, 0.8, 30] })
+    expect(read.flashes[0]?.aperture.shape).toEqual({ type: "macroShape", name: "RoundRect", variableValues: [0.2, -0.24641, -0.373205, 0.44641, 0.026795, 0.24641, 0.373205, -0.44641, -0.026795] })
+    // No primitive relies on a rotation parameter: the circles have exposure, diameter and centre only.
+    const macro = text.slice(text.indexOf("%AMRoundRect"), text.indexOf("%", text.indexOf("%AMRoundRect") + 1))
+    const circles = macro.split("\n").filter((l) => l.startsWith("1,"))
+    expect(circles).toHaveLength(4)
+    for (const line of circles) expect(line.split(",")).toHaveLength(5)
     expect(read.flashes[0]?.aperture.fn).toBe("SMDPad,CuDef")
     expect(writeGerber(layer([]), CREATED)).not.toContain("%AMRoundRect")
   })
