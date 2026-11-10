@@ -19,6 +19,10 @@ export interface PartInfo {
   /** Character offsets of the whole element in the source. */
   start: number
   end: number
+  /** Tag of the enclosing element, e.g. "board", "page" or "group". */
+  parent?: string
+  /** The `<page>` it is written in; absent on the first page, "Main". */
+  page?: string
 }
 
 /** A point in schematic or board units. */
@@ -40,6 +44,8 @@ export interface TraceInfo {
   readonlyReason?: string
   start: number
   end: number
+  /** The `<page>` it is written in; absent on the first page, "Main". */
+  page?: string
 }
 
 /**
@@ -56,6 +62,8 @@ export interface DrawingInfo {
   points?: Point[]
   /** Tag of the enclosing element, e.g. "board" or "group". */
   parent?: string
+  /** The `<page>` it is written in; absent on the first page, "Main". */
+  page?: string
   /** Every prop but `name`; `points` is editable when it is a literal list. */
   props: Record<string, PropInfo>
   line: number
@@ -82,12 +90,25 @@ export interface ImportInfo {
   end: number
 }
 
+/** A `<page name>` element. One page may be written as several elements; each is listed. */
+export interface PageInfo {
+  /** Undefined when the name is not a string literal. */
+  name: string | undefined
+  line: number
+  start: number
+  end: number
+  /** Where `</page>` starts; undefined for `<page name="…" />`. */
+  closeStart?: number
+}
+
 export interface CircuitModel {
   parts: PartInfo[]
   traces: TraceInfo[]
   drawings: DrawingInfo[]
   skipped: SkippedElement[]
   imports: ImportInfo[]
+  /** The `<page>` elements in source order; absent in a model made by hand, which has none. */
+  pages?: PageInfo[]
   /** Offsets of the `<board>` element's closing tag, when there is one. */
   boardClose?: { start: number }
 }
@@ -96,7 +117,8 @@ export type Edit =
   | { kind: "setProps"; part: string; props: Record<string, Literal> }
   | { kind: "removePart"; part: string }
   /** `schematicRouteHints` are the corners of a wire drawn by hand in the schematic. */
-  | { kind: "addTrace"; from: string; to: string; props?: Record<string, Literal>; schematicRouteHints?: Point[] }
+  /** `page` puts it in that `<page>` (made when missing); without one, or "Main", it goes on the first page. */
+  | { kind: "addTrace"; from: string; to: string; props?: Record<string, Literal>; schematicRouteHints?: Point[]; page?: string }
   | { kind: "removeTrace"; from: string; to: string }
   /** Replaces the corners of a trace's hand-drawn schematic wire; an empty list removes them. */
   | { kind: "setTraceHints"; from: string; to: string; schematicRouteHints: Point[] }
@@ -104,9 +126,26 @@ export type Edit =
    * `importFrom` adds `import { tag } from "<importFrom>"` when it is missing. `pinLabels` is written as an object
    * expression, `pinLabels={{ pin1: "cathode" }}`, the way a hand-written file names a built-in part's pins.
    */
-  | { kind: "addPart"; tag: string; name: string; props?: Record<string, Literal>; pinLabels?: Record<string, string>; importFrom?: string }
+  | {
+      kind: "addPart"
+      tag: string
+      name: string
+      props?: Record<string, Literal>
+      pinLabels?: Record<string, string>
+      importFrom?: string
+      /** The page it goes on, made when missing; without one, or "Main", the first page. */
+      page?: string
+    }
+  /** Moves a part, and the traces with hand-drawn corners that reach it, onto a page (made when missing); "Main" is the first page. */
+  | { kind: "movePartToPage"; part: string; page: string }
+  /** Adds an empty `<page name>` at the end of the board. */
+  | { kind: "addPage"; name: string }
+  /** Renames every `<page>` element of the page. The first page, "Main", has no element and keeps its name. */
+  | { kind: "renamePage"; from: string; to: string }
+  /** Removes a page's elements and the traces and drawings in them; refused while a part is on it. */
+  | { kind: "removePage"; name: string }
   /** Adds a drawing before the board's first trace; `name` is written first, and a bus needs one. */
-  | { kind: "addDrawing"; tag: string; name?: string; props: Record<string, DrawingValue> }
+  | { kind: "addDrawing"; tag: string; name?: string; props: Record<string, DrawingValue>; page?: string }
   | { kind: "removeDrawing"; id: string }
   /** Moves or restyles a drawing, e.g. `{ x, y }` or `{ points }`; a `name` renames it, which changes its id. */
   | { kind: "setDrawingProps"; id: string; props: Record<string, DrawingValue> }

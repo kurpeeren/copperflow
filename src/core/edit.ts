@@ -14,7 +14,9 @@ import {
   validateOrThrow,
 } from "./edit-text.js"
 import { formatLiteral, formatPointList, readPointList } from "./literals.js"
+import { addPage, insertOnPage, movePartToPage, removePage, renamePage } from "./page-edits.js"
 import { partsInSelector } from "./selectors.js"
+import { MAIN_PAGE } from "../engine/model.js"
 import type { Edit, Literal, PartInfo, Point } from "./types.js"
 
 export { EditError, type EditErrorCode } from "./edit-error.js"
@@ -42,7 +44,7 @@ function editSource(source: string, scan: Scan, edit: Edit, locked: ReadonlySet<
     case "removePart":
       return removePart(source, scan, edit.part, locked)
     case "addTrace":
-      return addTrace(source, scan, edit.from, edit.to, edit.props ?? {}, edit.schematicRouteHints)
+      return addTrace(source, scan, edit.from, edit.to, edit.props ?? {}, edit.schematicRouteHints, edit.page)
     case "removeTrace":
       return removeTrace(source, scan, edit.from, edit.to, locked)
     case "setTraceHints":
@@ -55,6 +57,14 @@ function editSource(source: string, scan: Scan, edit: Edit, locked: ReadonlySet<
       return removeDrawing(source, scan, edit.id, locked)
     case "setDrawingProps":
       return setDrawingProps(source, scan, edit, locked)
+    case "movePartToPage":
+      return movePartToPage(source, scan, requireEditablePart(scan, edit.part, locked), edit.page)
+    case "addPage":
+      return addPage(source, scan, edit.name)
+    case "renamePage":
+      return renamePage(source, scan, edit.from, edit.to)
+    case "removePage":
+      return removePage(source, scan, edit.name, locked)
   }
 }
 
@@ -122,7 +132,7 @@ function cornersOrThrow(points: unknown): Point[] {
   })
 }
 
-function addTrace(source: string, scan: Scan, from: string, to: string, props: Record<string, Literal>, hints?: Point[]): string {
+function addTrace(source: string, scan: Scan, from: string, to: string, props: Record<string, Literal>, hints?: Point[], page?: string): string {
   for (const [label, value] of [
     ["from", from],
     ["to", to],
@@ -137,18 +147,19 @@ function addTrace(source: string, scan: Scan, from: string, to: string, props: R
   const ends = [samePort(from), samePort(to)].sort().join("\0")
   const existing = scan.model.traces.find((t) => t.from !== undefined && t.to !== undefined && [samePort(t.from), samePort(t.to)].sort().join("\0") === ends)
   if (existing) throw new EditError("invalid", `${from} and ${to} are already connected (line ${existing.line})`)
+  const extra =
+    Object.entries(props)
+      .map(([key, value]) => ` ${key}=${formatLiteral(value)}`)
+      .join("") + (corners.length > 0 ? ` schematicRouteHints=${formatPointList(corners)}` : "")
+  const element = `<trace from=${formatLiteral(from)} to=${formatLiteral(to)}${extra} />`
+  if (page !== undefined && page !== MAIN_PAGE) return insertOnPage(source, scan, element, page, "a trace")
   const close = scan.model.boardClose?.start
   if (close === undefined) throw new EditError("invalid", "No <board> element with a closing tag was found")
   const lineStart = source.lastIndexOf("\n", close - 1) + 1
   const indent = source.slice(lineStart, close)
   if (indent.trim() !== "") throw new EditError("invalid", "</board> must be on its own line to add a trace")
-  const extra =
-    Object.entries(props)
-      .map(([key, value]) => ` ${key}=${formatLiteral(value)}`)
-      .join("") + (corners.length > 0 ? ` schematicRouteHints=${formatPointList(corners)}` : "")
   const childIndent = indent + (indent.includes("\t") ? "\t" : "  ")
-  const element = `${childIndent}<trace from=${formatLiteral(from)} to=${formatLiteral(to)}${extra} />${lineEnding(source)}`
-  return source.slice(0, lineStart) + element + source.slice(lineStart)
+  return source.slice(0, lineStart) + childIndent + element + lineEnding(source) + source.slice(lineStart)
 }
 
 function removeTrace(source: string, scan: Scan, from: string, to: string, locked: ReadonlySet<string>): string {
@@ -222,7 +233,7 @@ function addPart(source: string, scan: Scan, edit: Extract<Edit, { kind: "addPar
   if (edit.importFrom !== undefined && existingImport && existingImport.source !== edit.importFrom) {
     throw new EditError("invalid", `${edit.tag} is already imported from "${existingImport.source}"`)
   }
-  const withPart = insertInBoard(source, scan, element, "a part")
+  const withPart = insertOnPage(source, scan, element, edit.page, "a part", true)
 
   if (edit.importFrom === undefined || existingImport) return withPart
   const statement = `import { ${edit.tag} } from ${JSON.stringify(edit.importFrom)}`

@@ -3,6 +3,8 @@ import { kindOf, pinSpecs } from "../engine/kinds.js"
 import { analyzeCircuit } from "./analyze.js"
 import { applyEdits } from "./edit.js"
 import { libraryIds, readPart } from "./library.js"
+import { MAIN_PAGE } from "../engine/model.js"
+import { checkPageName } from "./page-edits.js"
 import { BUILTIN_PARTS, placeEdit } from "./place.js"
 import type { CircuitModel, Edit, Literal } from "./types.js"
 
@@ -24,6 +26,8 @@ export interface NewCircuit {
   /** Net name to the pins on it, each written PART.pin. */
   nets: Record<string, string[]>
   board?: { width: number; height: number }
+  /** Schematic pages after the first ("Main"), in order, each with the names of its parts; a part in none is on Main. */
+  pages?: { name: string; parts: string[] }[]
 }
 
 export const DEFAULT_BOARD = { width: 30, height: 20 }
@@ -168,11 +172,31 @@ function checkNets(table: PinTable, nets: Record<string, string[]>): Map<string,
   return clean
 }
 
+/** The page of each part named in `pages`, checked: every page has a usable new name, every part is known and on one page. */
+function checkPages(table: PinTable, pages: NewCircuit["pages"]): Map<string, string> {
+  const pageOf = new Map<string, string>()
+  const names = new Set<string>()
+  for (const { name, parts } of pages ?? []) {
+    checkPageName(name)
+    if (name === MAIN_PAGE) throw new Error(`Parts in no page are on ${MAIN_PAGE}; leave ${MAIN_PAGE} out of pages`)
+    if (names.has(name)) throw new Error(`Two pages are named ${name}`)
+    names.add(name)
+    for (const part of parts) {
+      if (!table.has(part)) throw new Error(`Page ${name}: there is no part ${part}; the parts are ${[...table.keys()].join(", ")}`)
+      const other = pageOf.get(part)
+      if (other !== undefined) throw new Error(`${part} is on both page ${other} and page ${name}; a part is on one page`)
+      pageOf.set(part, name)
+    }
+  }
+  return pageOf
+}
+
 /** The edit that adds one part. A chip or connector has no library entry, so it is added directly. */
-async function partEdit(root: string, circuit: { file: string; model: CircuitModel }, part: NewPart, own: PartProps): Promise<Edit> {
+async function partEdit(root: string, circuit: { file: string; model: CircuitModel }, part: NewPart, own: PartProps, page: string | undefined): Promise<Edit> {
   const labels = own.pinLabels ? { pinLabels: own.pinLabels } : {}
-  if (part.kind === "chip" || part.kind === "connector") return { kind: "addPart", tag: part.kind, name: part.name, props: own.props, ...labels }
-  const { edit } = await placeEdit(root, circuit, { part: part.kind ?? (part.part as string), name: part.name, props: own.props })
+  const onPage = page === undefined ? {} : { page }
+  if (part.kind === "chip" || part.kind === "connector") return { kind: "addPart", tag: part.kind, name: part.name, props: own.props, ...labels, ...onPage }
+  const { edit } = await placeEdit(root, circuit, { part: part.kind ?? (part.part as string), name: part.name, props: own.props, ...onPage })
   return { ...edit, ...labels }
 }
 
@@ -183,10 +207,16 @@ export async function generateCircuit(root: string, file: string, spec: NewCircu
   if (spec.parts.length === 0) throw new Error("A circuit needs at least one part")
   const { table, props } = await checkParts(root, spec.parts)
   const nets = checkNets(table, spec.nets)
+  const pageOf = checkPages(table, spec.pages)
   const skeleton = boardSkeleton(board)
   const circuit = { file, model: analyzeCircuit(skeleton) }
-  const edits: Edit[] = []
-  for (const part of spec.parts) edits.push(await partEdit(root, circuit, part, props.get(part.name) ?? { props: {} }))
-  const traces: Edit[] = [...nets].flatMap(([net, selectors]) => selectors.map((from): Edit => ({ kind: "addTrace", from, to: `net.${net}` })))
+  // Each page is written once, in the order given, so the pages keep that order; Main stays the board itself.
+  const edits: Edit[] = (spec.pages ?? []).map((page): Edit => ({ kind: "addPage", name: page.name }))
+  for (const part of spec.parts) edits.push(await partEdit(root, circuit, part, props.get(part.name) ?? { props: {} }, pageOf.get(part.name)))
+  const traceOnPage = (from: string) => {
+    const page = pageOf.get(from.split(".")[0] ?? "")
+    return page === undefined ? {} : { page }
+  }
+  const traces: Edit[] = [...nets].flatMap(([net, selectors]) => selectors.map((from): Edit => ({ kind: "addTrace", from, to: `net.${net}`, ...traceOnPage(from) })))
   return { text: applyEdits(skeleton, [...edits, ...traces], new Set()), traces: traces.length }
 }

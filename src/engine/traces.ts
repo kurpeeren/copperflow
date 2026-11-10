@@ -8,6 +8,8 @@ import { parseSelector } from "./selectors.js"
 export interface TraceDraft {
   props: Props
   source: SourceRef
+  /** The page it is written on; absent on the first page. */
+  page?: string
 }
 
 export interface ResolvedTraces {
@@ -72,7 +74,7 @@ export function resolveTraces(drafts: readonly TraceDraft[], components: readonl
   const seen = new Map<string, number>()
   const warned = new Set<string>()
   const result: ResolvedTraces = { connections: [], nodes: new Set(), links: [], diagnostics: [] }
-  for (const { props, source } of drafts) {
+  for (const { props, source, page } of drafts) {
     const from = resolveEndpoint("from", props["from"], byId, source)
     const to = resolveEndpoint("to", props["to"], byId, source)
     for (const end of [from, to]) {
@@ -91,7 +93,7 @@ export function resolveTraces(drafts: readonly TraceDraft[], components: readonl
     const count = (seen.get(base) ?? 0) + 1
     seen.set(base, count)
     const built = connection(count === 1 ? base : `${base}#${count}`, from.id, to.id, props, source)
-    result.connections.push(built.connection)
+    result.connections.push(page === undefined ? built.connection : { ...built.connection, page })
     result.diagnostics.push(...built.diagnostics)
   }
   return result

@@ -47,6 +47,9 @@ export type CommandId =
   | "rotateRight"
   | "removeCorners"
   | "tidySheet"
+  | "addPage"
+  | "renamePage"
+  | "deletePage"
   | AlignCommand
   | "find"
   | "lock"
@@ -162,6 +165,10 @@ export const MENUS: readonly Menu[] = [
       "separator",
       run("Highlight net", "highlight", "H"),
       run("Clear highlight", "clearHighlight", "Shift+H"),
+      "separator",
+      { label: "Add page", command: "addPage", only: "schematic" },
+      { label: "Rename page", command: "renamePage", only: "schematic" },
+      { label: "Delete page", command: "deletePage", only: "schematic" },
       "separator",
       later("Annotate designators", `${WAITS_FOR_BLOCKS}; for now Studio picks the next free name when placing`),
       later("Placement transfer", WAITS_FOR_BLOCKS, "Ctrl+Shift+X"),

@@ -1,6 +1,7 @@
 import { parse } from "@babel/parser"
 import type { File, JSXAttribute, JSXElement, Node } from "@babel/types"
 import { drawingKindOf } from "../engine/drawing-kinds.js"
+import { MAIN_PAGE } from "../engine/model.js"
 import { NAME_NOT_LITERAL, scanDrawings, type DrawingTag, type NamedElement } from "./drawing-scan.js"
 import { readLiteral, readPointList } from "./literals.js"
 import type { CircuitModel, PartInfo, Point, PropInfo, TraceInfo } from "./types.js"
@@ -28,6 +29,8 @@ export interface Scan {
   traceNodes: JSXElement[]
   /** By drawing id. */
   drawingNodes: Map<string, JSXElement>
+  /** The `<page>` elements, in the order of `model.pages`. */
+  pageNodes: JSXElement[]
 }
 
 /** What every element is, whatever its tag. */
@@ -42,6 +45,8 @@ interface ElementFacts {
   readonlyReason?: string
   /** Tag of the enclosing element, e.g. "board" or "group". */
   parent?: string
+  /** The name of the enclosing `<page>`, when it is a literal other than "Main". */
+  page?: string
   /** Why the engine may make it any number of times, none included; undefined when it makes it once. */
   uncounted?: string
   hasSpread: boolean
@@ -62,10 +67,11 @@ export function analyzeCircuit(source: string): CircuitModel {
 
 export function scanCircuit(source: string): Scan {
   const scan: Scan = {
-    model: { parts: [], traces: [], drawings: [], skipped: [], imports: [] },
+    model: { parts: [], traces: [], drawings: [], skipped: [], imports: [], pages: [] },
     partNodes: new Map(),
     traceNodes: [],
     drawingNodes: new Map(),
+    pageNodes: [],
   }
   const drawingTags: DrawingTag[] = []
   const named: NamedElement[] = []
@@ -115,6 +121,7 @@ function readElement(source: string, node: JSXElement, ancestors: Node[], circui
   const uncounted = uncountedReason(ancestors, circuit)
   const readonlyReason = uncounted === INSIDE_CALLBACK ? INSIDE_CALLBACK : hasSpread ? USES_SPREAD : undefined
   const parentElement = [...ancestors].reverse().find((a): a is JSXElement => a.type === "JSXElement")
+  const page = enclosingPage(source, ancestors)
   return {
     tag: slice(source, opening.name),
     node,
@@ -125,6 +132,7 @@ function readElement(source: string, node: JSXElement, ancestors: Node[], circui
     props: readProps(source, attributes),
     ...(readonlyReason ? { readonlyReason } : {}),
     ...(parentElement ? { parent: slice(source, parentElement.openingElement.name) } : {}),
+    ...(page === undefined ? {} : { page }),
     ...(uncounted ? { uncounted } : {}),
     hasSpread,
   }
@@ -142,6 +150,7 @@ function collectElement(
     if (close != null) scan.model.boardClose = { start: close }
     return
   }
+  if (element.tag === "page") return collectPage(element, scan)
   if (element.tag === "trace") return collectTrace(element, scan)
   const kind = drawingKindOf(element.tag)
   if (kind) {
@@ -153,7 +162,7 @@ function collectElement(
 }
 
 function collectTrace(element: ElementFacts, scan: Scan): void {
-  const { props, readonlyReason, attributes, parent } = element
+  const { props, readonlyReason, attributes, parent, page } = element
   const from = props.from?.literal
   const to = props.to?.literal
   const literalEnds = typeof from === "string" && typeof to === "string"
@@ -162,6 +171,7 @@ function collectTrace(element: ElementFacts, scan: Scan): void {
     from: typeof from === "string" ? from : undefined,
     to: typeof to === "string" ? to : undefined,
     ...(parent === undefined ? {} : { parent }),
+    ...(page === undefined ? {} : { page }),
     ...hintsOf(attributes),
     props: omit(props, ["from", "to"]),
     line: element.line,
@@ -172,6 +182,28 @@ function collectTrace(element: ElementFacts, scan: Scan): void {
   }
   scan.model.traces.push(trace)
   scan.traceNodes.push(element.node)
+}
+
+/** A `<page>` holds parts; it is not one. */
+function collectPage(element: ElementFacts, scan: Scan): void {
+  const name = element.props.name?.literal
+  const close = element.node.closingElement?.start
+  scan.pageNodes.push(element.node)
+  scan.model.pages?.push({
+    name: typeof name === "string" ? name : undefined,
+    line: element.line,
+    start: element.start,
+    end: element.end,
+    ...(close == null ? {} : { closeStart: close }),
+  })
+}
+
+/** The literal name of the nearest `<page>` around an element; none for the first page, "Main". */
+function enclosingPage(source: string, ancestors: Node[]): string | undefined {
+  const page = [...ancestors].reverse().find((a): a is JSXElement => a.type === "JSXElement" && slice(source, a.openingElement.name) === "page")
+  const attribute = page?.openingElement.attributes.find((a): a is JSXAttribute => a.type === "JSXAttribute" && a.name.name === "name")
+  const name = attribute ? readLiteral(attribute.value) : undefined
+  return typeof name === "string" && name !== MAIN_PAGE ? name : undefined
 }
 
 /** Adds a named element as a part; returns it, or undefined when it has no name, a computed one or a repeated one. */
@@ -192,6 +224,8 @@ function collectPart(element: ElementFacts, scan: Scan): PartInfo | undefined {
     ...(readonlyReason ? { readonlyReason } : {}),
     start: element.start,
     end: element.end,
+    ...(element.parent === undefined ? {} : { parent: element.parent }),
+    ...(element.page === undefined ? {} : { page: element.page }),
   }
   if (scan.partNodes.has(part.name)) {
     scan.model.skipped.push({ tag, line, reason: `duplicate name ${part.name}` })

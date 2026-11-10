@@ -24,6 +24,11 @@ export const newCircuitInput = {
     .max(200),
   nets: z.record(z.string(), z.array(z.string()).min(1)).describe('Net name to its pins, e.g. { "GND": ["R1.pin2", "U1.GND"] }'),
   board: z.object({ width: z.number(), height: z.number() }).optional().describe("Board size in mm; default 30 x 20"),
+  pages: z
+    .array(z.object({ name: z.string().describe('Page name, e.g. "Power"'), parts: z.array(z.string()).describe("Names of the parts drawn on it") }))
+    .max(50)
+    .optional()
+    .describe('Schematic pages after the first, "Main", which holds every part not listed. Pages are drawing only: a net name joins its pins on every page.'),
   replace: z.boolean().optional().describe("Overwrite the file when it exists"),
 }
 

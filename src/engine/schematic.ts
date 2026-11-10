@@ -3,6 +3,7 @@ import { junctionsOf, labelName, labelStyle, layoutNets, type Drawn, type PinSpo
 import { routeWires, type FixedWire, type RouteRequest, type SheetBox } from "./schematic-route.js"
 import { rotateSide, sheetBounds, sheetPoint, type Spot } from "./schematic-geometry.js"
 import { placeLoose } from "./schematic-place.js"
+import { netsAcrossPages, pagesOf, pageView, tracesAcrossPages } from "./schematic-pages.js"
 import { symbolFor, type SchSymbol } from "./symbols/index.js"
 
 export interface PlacedSymbol {
@@ -33,6 +34,18 @@ export interface NetLabel {
   style: "label" | "ground" | "power"
 }
 
+/** What one schematic page shows, by id; each page is laid out on its own sheet, from its own origin. */
+export interface SchematicPage {
+  name: string
+  /** Component ids. */
+  parts: string[]
+  wires: string[]
+  labels: string[]
+  drawings: string[]
+  junctions: Point[]
+}
+
+/** Every page's symbols, wires, labels, junctions and drawings together; `pages` says which page each is on. */
 export interface SchematicLayout {
   symbols: PlacedSymbol[]
   wires: Wire[]
@@ -40,6 +53,8 @@ export interface SchematicLayout {
   junctions: Point[]
   /** The circuit's drawings as they are, in an array of their own: already on the sheet, with the groups' offsets added. */
   drawings: SchematicDrawing[]
+  /** In page order, the first page "Main"; absent in a layout made by hand, which is one page. */
+  pages?: SchematicPage[]
 }
 
 interface Origin extends Spot {
@@ -152,15 +167,17 @@ function sheetBoxes(symbols: readonly PlacedSymbol[]): SheetBox[] {
 
 const isRequest = (slot: Wire | RouteRequest): slot is RouteRequest => !("points" in slot)
 
+type PageLayout = Omit<SchematicLayout, "pages">
+
 /**
- * Where every symbol, wire, label and junction of the schematic goes, and a warning for each wire that could not
- * avoid other things. Wires without corners are routed in source order, then the near pins of each named net.
+ * Where every symbol, wire, label and junction of one page goes, and a warning for each wire that could not avoid
+ * other things. Wires without corners are routed in source order, then the near pins of each named net.
  */
-export function layoutSchematicWithDiagnostics(circuit: Circuit): { layout: SchematicLayout; diagnostics: Diagnostic[] } {
+function layoutPage(circuit: Circuit, crossPage: ReadonlySet<string>): { layout: PageLayout; diagnostics: Diagnostic[] } {
   const { symbols, spots } = placeSymbols(circuit)
   const hand = handDrawn(circuit, spots)
   const drawn: Drawn = { joins: hand.joins, labeled: hand.labeled }
-  const nets = layoutNets(circuit, spots, drawn)
+  const nets = layoutNets(circuit, spots, drawn, crossPage)
   const requests = [...hand.slots.filter(isRequest), ...nets.wires]
   const routed = routeWires({ boxes: sheetBoxes(symbols), spots }, hand.fixed, requests)
   const byRequest = new Map(requests.map((request, index) => [request, routed.wires[index]]))
@@ -170,6 +187,53 @@ export function layoutSchematicWithDiagnostics(circuit: Circuit): { layout: Sche
   })
   const layout = { symbols, wires, labels: [...hand.labels, ...nets.labels], junctions: junctionsOf(wires, spots), drawings: [...circuit.drawings] }
   return { layout, diagnostics: routed.diagnostics }
+}
+
+/**
+ * A net's wires are numbered across the pages, so a wire id names one wire of the whole schematic. The first page keeps
+ * its numbers, gaps included (a wire between pins that coincide is dropped); each later page starts past the highest
+ * number used so far.
+ */
+function numberAcross(wires: readonly Wire[], highest: Map<string, number>, renumber: boolean): Wire[] {
+  return wires.map((wire) => {
+    if (wire.connection !== undefined) return wire
+    const own = Number(wire.id.slice(`wire:${wire.net}:`.length))
+    const number = renumber || !Number.isInteger(own) ? (highest.get(wire.net) ?? 0) + 1 : own
+    highest.set(wire.net, Math.max(highest.get(wire.net) ?? 0, number))
+    return renumber ? { ...wire, id: `wire:${wire.net}:${number}` } : wire
+  })
+}
+
+const idsOf = (list: readonly { id: string }[]): string[] => list.map((item) => item.id)
+
+/** The ids one page shows. */
+function pageEntry(name: string, layout: PageLayout): SchematicPage {
+  const { symbols, wires, labels, drawings, junctions } = layout
+  return { name, parts: symbols.map((s) => s.component), wires: idsOf(wires), labels: idsOf(labels), drawings: idsOf(drawings), junctions }
+}
+
+/**
+ * Where every symbol, wire, label and junction of the schematic goes, page by page, and a warning for each wire
+ * that could not avoid other things or that joins two pages.
+ */
+export function layoutSchematicWithDiagnostics(circuit: Circuit): { layout: SchematicLayout; diagnostics: Diagnostic[] } {
+  const crossPage = netsAcrossPages(circuit)
+  const counts = new Map<string, number>()
+  const all: PageLayout = { symbols: [], wires: [], labels: [], junctions: [], drawings: [] }
+  const pages: SchematicPage[] = []
+  const diagnostics: Diagnostic[] = [...tracesAcrossPages(circuit)]
+  pagesOf(circuit).forEach((name, index) => {
+    const one = layoutPage(pageView(circuit, name), crossPage)
+    const page: PageLayout = { ...one.layout, wires: numberAcross(one.layout.wires, counts, index > 0) }
+    all.symbols.push(...page.symbols)
+    all.wires.push(...page.wires)
+    all.labels.push(...page.labels)
+    all.junctions.push(...page.junctions)
+    all.drawings.push(...page.drawings)
+    diagnostics.push(...one.diagnostics)
+    pages.push(pageEntry(name, page))
+  })
+  return { layout: { ...all, pages }, diagnostics }
 }
 
 /** Where every symbol, wire, label and junction of the schematic goes. */

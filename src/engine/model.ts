@@ -55,6 +55,8 @@ export interface Component {
   props: Record<string, unknown>
   /** The outermost element that produced it. */
   source: SourceRef
+  /** The schematic page it is drawn on; absent on the first page, MAIN_PAGE. */
+  page?: string
 }
 
 /** Named: "net.GND". Unnamed: "net:" + the first pin id. */
@@ -71,6 +73,8 @@ export interface Connection {
   width?: number
   corners?: Point[]
   source: SourceRef
+  /** The page the trace is written on; absent on the first page, MAIN_PAGE. */
+  page?: string
 }
 
 /** A region of the board that keeps pads and courtyards out. `id` is "keepout:<n>" in source order. */
@@ -131,10 +135,23 @@ export type SchematicDrawing = DrawingShape & {
   /** What the enclosing groups add to schX/schY; zero outside a group. */
   groupOffset: Point
   source: SourceRef
+  /** The page it is drawn on; absent on the first page, MAIN_PAGE. */
+  page?: string
 }
+
+/** The first page of every schematic: it holds whatever no `<page>` wraps. */
+export const MAIN_PAGE = "Main"
+
+/** The page a part, trace or drawing is on. */
+export const pageOf = (thing: { page?: string }): string => thing.page ?? MAIN_PAGE
 
 export interface Circuit {
   file: string
+  /**
+   * The schematic's pages in order: MAIN_PAGE first, then each `<page name>` the first time it is written. Pages are
+   * drawing only; nets are the circuit's. Absent in a circuit made by hand, which is one page.
+   */
+  pages?: string[]
   components: Component[]
   nets: Net[]
   connections: Connection[]

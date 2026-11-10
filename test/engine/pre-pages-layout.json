@@ -1,0 +1,921 @@
+{
+ "layout": {
+  "symbols": [
+   {
+    "component": "U1",
+    "x": 9.4,
+    "y": 0,
+    "rotation": 0,
+    "autoPlaced": true,
+    "symbol": {
+     "kind": "chip",
+     "shapes": [
+      {
+       "type": "polyline",
+       "points": [
+        {
+         "x": -0.5,
+         "y": -0.3
+        },
+        {
+         "x": 0.5,
+         "y": -0.3
+        },
+        {
+         "x": 0.5,
+         "y": 0.3
+        },
+        {
+         "x": -0.5,
+         "y": 0.3
+        }
+       ],
+       "closed": true
+      },
+      {
+       "type": "polyline",
+       "points": [
+        {
+         "x": -0.5,
+         "y": 0.2
+        },
+        {
+         "x": -0.7,
+         "y": 0.2
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "text": "VIN",
+       "at": {
+        "x": -0.45,
+        "y": 0.2
+       },
+       "anchor": "left",
+       "size": 0.12,
+       "role": "pin-name"
+      },
+      {
+       "type": "text",
+       "text": "1",
+       "at": {
+        "x": -0.68,
+        "y": 0.27
+       },
+       "anchor": "left",
+       "size": 0.1,
+       "role": "pin-number"
+      },
+      {
+       "type": "polyline",
+       "points": [
+        {
+         "x": -0.5,
+         "y": 0
+        },
+        {
+         "x": -0.7,
+         "y": 0
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "text": "GND",
+       "at": {
+        "x": -0.45,
+        "y": 0
+       },
+       "anchor": "left",
+       "size": 0.12,
+       "role": "pin-name"
+      },
+      {
+       "type": "text",
+       "text": "2",
+       "at": {
+        "x": -0.68,
+        "y": 0.07
+       },
+       "anchor": "left",
+       "size": 0.1,
+       "role": "pin-number"
+      },
+      {
+       "type": "polyline",
+       "points": [
+        {
+         "x": -0.5,
+         "y": -0.2
+        },
+        {
+         "x": -0.7,
+         "y": -0.2
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "text": "VOUT",
+       "at": {
+        "x": -0.45,
+        "y": -0.2
+       },
+       "anchor": "left",
+       "size": 0.12,
+       "role": "pin-name"
+      },
+      {
+       "type": "text",
+       "text": "3",
+       "at": {
+        "x": -0.68,
+        "y": -0.13
+       },
+       "anchor": "left",
+       "size": 0.1,
+       "role": "pin-number"
+      },
+      {
+       "type": "text",
+       "text": "U1",
+       "at": {
+        "x": -0.1,
+        "y": 0.44
+       },
+       "anchor": "center",
+       "size": 0.16,
+       "role": "reference"
+      }
+     ],
+     "pins": [
+      {
+       "number": 1,
+       "name": "VIN",
+       "end": {
+        "x": -0.7,
+        "y": 0.2
+       },
+       "side": "left"
+      },
+      {
+       "number": 2,
+       "name": "GND",
+       "end": {
+        "x": -0.7,
+        "y": 0
+       },
+       "side": "left"
+      },
+      {
+       "number": 3,
+       "name": "VOUT",
+       "end": {
+        "x": -0.7,
+        "y": -0.2
+       },
+       "side": "left"
+      }
+     ],
+     "bounds": {
+      "minX": -0.7,
+      "minY": -0.3,
+      "maxX": 0.5,
+      "maxY": 0.52
+     }
+    },
+    "pinEnds": {
+     "U1.pin1": {
+      "x": 8.7,
+      "y": 0.2
+     },
+     "U1.pin2": {
+      "x": 8.7,
+      "y": 0
+     },
+     "U1.pin3": {
+      "x": 8.7,
+      "y": -0.2
+     }
+    }
+   },
+   {
+    "component": "C1",
+    "x": 8.4,
+    "y": -1.1,
+    "rotation": 270,
+    "autoPlaced": true,
+    "symbol": {
+     "kind": "capacitor",
+     "shapes": [
+      {
+       "type": "polyline",
+       "points": [
+        {
+         "x": -0.5,
+         "y": 0
+        },
+        {
+         "x": -0.05,
+         "y": 0
+        }
+       ]
+      },
+      {
+       "type": "polyline",
+       "points": [
+        {
+         "x": -0.05,
+         "y": -0.15
+        },
+        {
+         "x": -0.05,
+         "y": 0.15
+        }
+       ]
+      },
+      {
+       "type": "polyline",
+       "points": [
+        {
+         "x": 0.05,
+         "y": -0.15
+        },
+        {
+         "x": 0.05,
+         "y": 0.15
+        }
+       ]
+      },
+      {
+       "type": "polyline",
+       "points": [
+        {
+         "x": 0.05,
+         "y": 0
+        },
+        {
+         "x": 0.5,
+         "y": 0
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "text": "C1",
+       "at": {
+        "x": 0,
+        "y": 0.27
+       },
+       "anchor": "center",
+       "size": 0.16,
+       "role": "reference"
+      }
+     ],
+     "pins": [
+      {
+       "number": 1,
+       "name": "left",
+       "end": {
+        "x": -0.5,
+        "y": 0
+       },
+       "side": "left"
+      },
+      {
+       "number": 2,
+       "name": "right",
+       "end": {
+        "x": 0.5,
+        "y": 0
+       },
+       "side": "right"
+      }
+     ],
+     "bounds": {
+      "minX": -0.5,
+      "minY": -0.15,
+      "maxX": 0.5,
+      "maxY": 0.35
+     }
+    },
+    "pinEnds": {
+     "C1.pin1": {
+      "x": 8.4,
+      "y": -0.6
+     },
+     "C1.pin2": {
+      "x": 8.4,
+      "y": -1.6
+     }
+    }
+   },
+   {
+    "component": "C2",
+    "x": 7.7,
+    "y": -1.1,
+    "rotation": 270,
+    "autoPlaced": true,
+    "symbol": {
+     "kind": "capacitor",
+     "shapes": [
+      {
+       "type": "polyline",
+       "points": [
+        {
+         "x": -0.5,
+         "y": 0
+        },
+        {
+         "x": -0.05,
+         "y": 0
+        }
+       ]
+      },
+      {
+       "type": "polyline",
+       "points": [
+        {
+         "x": -0.05,
+         "y": -0.15
+        },
+        {
+         "x": -0.05,
+         "y": 0.15
+        }
+       ]
+      },
+      {
+       "type": "polyline",
+       "points": [
+        {
+         "x": 0.05,
+         "y": -0.15
+        },
+        {
+         "x": 0.05,
+         "y": 0.15
+        }
+       ]
+      },
+      {
+       "type": "polyline",
+       "points": [
+        {
+         "x": 0.05,
+         "y": 0
+        },
+        {
+         "x": 0.5,
+         "y": 0
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "text": "C2",
+       "at": {
+        "x": 0,
+        "y": 0.27
+       },
+       "anchor": "center",
+       "size": 0.16,
+       "role": "reference"
+      }
+     ],
+     "pins": [
+      {
+       "number": 1,
+       "name": "left",
+       "end": {
+        "x": -0.5,
+        "y": 0
+       },
+       "side": "left"
+      },
+      {
+       "number": 2,
+       "name": "right",
+       "end": {
+        "x": 0.5,
+        "y": 0
+       },
+       "side": "right"
+      }
+     ],
+     "bounds": {
+      "minX": -0.5,
+      "minY": -0.15,
+      "maxX": 0.5,
+      "maxY": 0.35
+     }
+    },
+    "pinEnds": {
+     "C2.pin1": {
+      "x": 7.7,
+      "y": -0.6
+     },
+     "C2.pin2": {
+      "x": 7.7,
+      "y": -1.6
+     }
+    }
+   },
+   {
+    "component": "R1",
+    "x": 6,
+    "y": 2,
+    "rotation": 0,
+    "autoPlaced": false,
+    "symbol": {
+     "kind": "resistor",
+     "shapes": [
+      {
+       "type": "polyline",
+       "points": [
+        {
+         "x": -0.5,
+         "y": 0
+        },
+        {
+         "x": -0.3,
+         "y": 0
+        }
+       ]
+      },
+      {
+       "type": "polyline",
+       "points": [
+        {
+         "x": -0.3,
+         "y": -0.08
+        },
+        {
+         "x": 0.3,
+         "y": -0.08
+        },
+        {
+         "x": 0.3,
+         "y": 0.08
+        },
+        {
+         "x": -0.3,
+         "y": 0.08
+        }
+       ],
+       "closed": true
+      },
+      {
+       "type": "polyline",
+       "points": [
+        {
+         "x": 0.3,
+         "y": 0
+        },
+        {
+         "x": 0.5,
+         "y": 0
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "text": "R1",
+       "at": {
+        "x": 0,
+        "y": 0.2
+       },
+       "anchor": "center",
+       "size": 0.16,
+       "role": "reference"
+      }
+     ],
+     "pins": [
+      {
+       "number": 1,
+       "name": "left",
+       "end": {
+        "x": -0.5,
+        "y": 0
+       },
+       "side": "left"
+      },
+      {
+       "number": 2,
+       "name": "right",
+       "end": {
+        "x": 0.5,
+        "y": 0
+       },
+       "side": "right"
+      }
+     ],
+     "bounds": {
+      "minX": -0.5,
+      "minY": -0.08,
+      "maxX": 0.5,
+      "maxY": 0.28
+     }
+    },
+    "pinEnds": {
+     "R1.pin1": {
+      "x": 5.5,
+      "y": 2
+     },
+     "R1.pin2": {
+      "x": 6.5,
+      "y": 2
+     }
+    }
+   },
+   {
+    "component": "D1",
+    "x": 11.4,
+    "y": -0.5,
+    "rotation": 0,
+    "autoPlaced": true,
+    "symbol": {
+     "kind": "led",
+     "shapes": [
+      {
+       "type": "polyline",
+       "points": [
+        {
+         "x": -0.5,
+         "y": 0
+        },
+        {
+         "x": -0.15,
+         "y": 0
+        }
+       ]
+      },
+      {
+       "type": "polyline",
+       "points": [
+        {
+         "x": -0.15,
+         "y": 0.15
+        },
+        {
+         "x": -0.15,
+         "y": -0.15
+        },
+        {
+         "x": 0.15,
+         "y": 0
+        }
+       ],
+       "closed": true,
+       "fill": true
+      },
+      {
+       "type": "polyline",
+       "points": [
+        {
+         "x": 0.15,
+         "y": -0.15
+        },
+        {
+         "x": 0.15,
+         "y": 0.15
+        }
+       ]
+      },
+      {
+       "type": "polyline",
+       "points": [
+        {
+         "x": 0.15,
+         "y": 0
+        },
+        {
+         "x": 0.5,
+         "y": 0
+        }
+       ]
+      },
+      {
+       "type": "polyline",
+       "points": [
+        {
+         "x": -0.05,
+         "y": 0.2
+        },
+        {
+         "x": 0.05,
+         "y": 0.3
+        }
+       ]
+      },
+      {
+       "type": "polyline",
+       "points": [
+        {
+         "x": 0.05,
+         "y": 0.3
+        },
+        {
+         "x": -0.056066,
+         "y": 0.264645
+        },
+        {
+         "x": 0.014645,
+         "y": 0.193934
+        }
+       ],
+       "closed": true,
+       "fill": true
+      },
+      {
+       "type": "polyline",
+       "points": [
+        {
+         "x": 0.05,
+         "y": 0.2
+        },
+        {
+         "x": 0.15,
+         "y": 0.3
+        }
+       ]
+      },
+      {
+       "type": "polyline",
+       "points": [
+        {
+         "x": 0.15,
+         "y": 0.3
+        },
+        {
+         "x": 0.043934,
+         "y": 0.264645
+        },
+        {
+         "x": 0.114645,
+         "y": 0.193934
+        }
+       ],
+       "closed": true,
+       "fill": true
+      },
+      {
+       "type": "text",
+       "text": "D1",
+       "at": {
+        "x": 0,
+        "y": 0.42
+       },
+       "anchor": "center",
+       "size": 0.16,
+       "role": "reference"
+      }
+     ],
+     "pins": [
+      {
+       "number": 1,
+       "name": "anode",
+       "end": {
+        "x": -0.5,
+        "y": 0
+       },
+       "side": "left"
+      },
+      {
+       "number": 2,
+       "name": "cathode",
+       "end": {
+        "x": 0.5,
+        "y": 0
+       },
+       "side": "right"
+      }
+     ],
+     "bounds": {
+      "minX": -0.5,
+      "minY": -0.15,
+      "maxX": 0.5,
+      "maxY": 0.5
+     }
+    },
+    "pinEnds": {
+     "D1.pin1": {
+      "x": 10.9,
+      "y": -0.5
+     },
+     "D1.pin2": {
+      "x": 11.9,
+      "y": -0.5
+     }
+    }
+   }
+  ],
+  "wires": [
+   {
+    "id": "wire:R1.pin1|net.V3_3",
+    "net": "net.V3_3",
+    "points": [
+     {
+      "x": 5.5,
+      "y": 2
+     },
+     {
+      "x": 6,
+      "y": 3
+     }
+    ],
+    "connection": "R1.pin1|net.V3_3"
+   },
+   {
+    "id": "wire:R1.pin2|D1.pin1",
+    "net": "net:D1.pin1",
+    "points": [
+     {
+      "x": 6.5,
+      "y": 2
+     },
+     {
+      "x": 10.7,
+      "y": 2
+     },
+     {
+      "x": 10.7,
+      "y": -0.5
+     },
+     {
+      "x": 10.9,
+      "y": -0.5
+     }
+    ],
+    "connection": "R1.pin2|D1.pin1"
+   },
+   {
+    "id": "wire:net.GND:1",
+    "net": "net.GND",
+    "points": [
+     {
+      "x": 8.4,
+      "y": -1.6
+     },
+     {
+      "x": 8.4,
+      "y": -1.8
+     },
+     {
+      "x": 7.7,
+      "y": -1.8
+     },
+     {
+      "x": 7.7,
+      "y": -1.6
+     }
+    ]
+   },
+   {
+    "id": "wire:net.GND:2",
+    "net": "net.GND",
+    "points": [
+     {
+      "x": 7.7,
+      "y": -1.8
+     },
+     {
+      "x": 7.4,
+      "y": -1.8
+     },
+     {
+      "x": 7.4,
+      "y": 0
+     },
+     {
+      "x": 8.7,
+      "y": 0
+     }
+    ]
+   },
+   {
+    "id": "wire:net.V3_3:1",
+    "net": "net.V3_3",
+    "points": [
+     {
+      "x": 7.7,
+      "y": -0.6
+     },
+     {
+      "x": 7.7,
+      "y": -0.2
+     },
+     {
+      "x": 8.7,
+      "y": -0.2
+     }
+    ]
+   },
+   {
+    "id": "wire:net.VBUS:1",
+    "net": "net.VBUS",
+    "points": [
+     {
+      "x": 8.4,
+      "y": -0.6
+     },
+     {
+      "x": 8.4,
+      "y": 0.2
+     },
+     {
+      "x": 8.7,
+      "y": 0.2
+     }
+    ]
+   }
+  ],
+  "labels": [
+   {
+    "id": "label:R1.pin1|net.V3_3",
+    "net": "net.V3_3",
+    "text": "V3_3",
+    "at": {
+     "x": 6,
+     "y": 3
+    },
+    "side": "right",
+    "style": "power"
+   },
+   {
+    "id": "label:net.GND:C1.pin2",
+    "net": "net.GND",
+    "text": "GND",
+    "at": {
+     "x": 8.4,
+     "y": -1.6
+    },
+    "side": "bottom",
+    "style": "ground"
+   },
+   {
+    "id": "label:net.GND:D1.pin2",
+    "net": "net.GND",
+    "text": "GND",
+    "at": {
+     "x": 11.9,
+     "y": -0.5
+    },
+    "side": "right",
+    "style": "ground"
+   },
+   {
+    "id": "label:net.V3_3:C2.pin1",
+    "net": "net.V3_3",
+    "text": "V3_3",
+    "at": {
+     "x": 7.7,
+     "y": -0.6
+    },
+    "side": "top",
+    "style": "power"
+   },
+   {
+    "id": "label:net.VBUS:C1.pin1",
+    "net": "net.VBUS",
+    "text": "VBUS",
+    "at": {
+     "x": 8.4,
+     "y": -0.6
+    },
+    "side": "top",
+    "style": "power"
+   }
+  ],
+  "junctions": [
+   {
+    "x": 7.7,
+    "y": -1.8
+   }
+  ],
+  "drawings": [
+   {
+    "kind": "text",
+    "x": 0,
+    "y": 4,
+    "text": "LDO",
+    "fontSize": 0.1,
+    "anchor": "left",
+    "id": "Title",
+    "name": "Title",
+    "groupOffset": {
+     "x": 0,
+     "y": 0
+    },
+    "source": {
+     "file": "main.circuit.tsx",
+     "line": 18,
+     "column": 1,
+     "offset": 667
+    }
+   }
+  ]
+ },
+ "diagnostics": []
+}

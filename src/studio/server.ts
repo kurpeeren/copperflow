@@ -111,6 +111,7 @@ const EditSchema = z.discriminatedUnion("kind", [
       .array(z.object({ x: z.number().finite(), y: z.number().finite() }))
       .max(200)
       .optional(),
+    page: z.string().max(64).optional(),
   }),
   z.object({ kind: z.literal("removeTrace"), from: z.string(), to: z.string() }),
   z.object({
@@ -121,9 +122,13 @@ const EditSchema = z.discriminatedUnion("kind", [
       .array(z.object({ x: z.number().finite(), y: z.number().finite() }))
       .max(200),
   }),
-  z.object({ kind: z.literal("addDrawing"), tag: z.string().max(64), name: z.string().max(64).optional(), props: drawingProps }),
+  z.object({ kind: z.literal("addDrawing"), tag: z.string().max(64), name: z.string().max(64).optional(), props: drawingProps, page: z.string().max(64).optional() }),
   z.object({ kind: z.literal("removeDrawing"), id: z.string().max(200) }),
   z.object({ kind: z.literal("setDrawingProps"), id: z.string().max(200), props: drawingProps }),
+  z.object({ kind: z.literal("movePartToPage"), part: z.string(), page: z.string().max(64) }),
+  z.object({ kind: z.literal("addPage"), name: z.string().max(64) }),
+  z.object({ kind: z.literal("renamePage"), from: z.string().max(64), to: z.string().max(64) }),
+  z.object({ kind: z.literal("removePage"), name: z.string().max(64) }),
 ])
 const Bodies = {
   // "Keep these positions" writes every auto-placed part in one request.
@@ -140,7 +145,7 @@ const Bodies = {
   undo: z.object({ id: z.string().optional() }),
   redo: z.object({ id: z.string().optional() }),
   build: z.object({ file }),
-  place: z.object({ file, part: z.string().min(1).max(64), name: z.string().max(40).optional(), props: props.optional() }),
+  place: z.object({ file, part: z.string().min(1).max(64), name: z.string().max(40).optional(), props: props.optional(), page: z.string().max(64).optional() }),
   verify: z.object({ id: z.string().min(1).max(64), by: z.string().min(1).max(100), against: z.string().min(1).max(300), confirm: z.string() }),
 }
 

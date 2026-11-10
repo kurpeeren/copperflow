@@ -14,6 +14,7 @@ import { StudioDialog, type DialogName } from "./shell/Dialogs"
 import { MenuBar } from "./shell/MenuBar"
 import type { CommandsOff } from "./shell/menus"
 import type { DocView } from "./shell/page-tree"
+import { designOnPage, MAIN_PAGE, shownPage } from "./shell/schematic-pages"
 import { StatusPill } from "./shell/StatusPill"
 import { Toolbar } from "./shell/ToolbarRow"
 import { useAppCommands } from "./shell/use-app-commands"
@@ -176,29 +177,37 @@ function useStudio() {
   const { seen, onRenameDrawing } = usePruneWire(build.design, select)
   const selection = useShownSelection(picked, circuit, build.design, tab, seen.current)
   const actions = useActions({ file, refresh: data.refresh, refreshParts: data.refreshParts, notify: toast.notify })
-  const place = usePlace({ file, refresh: data.refresh, refreshParts: data.refreshParts, notify: toast.notify }, selectOnly)
+  const [wantedPage, setWantedPage] = useState(MAIN_PAGE)
+  const page = shownPage(build.design, wantedPage)
+  const place = usePlace({ file, refresh: data.refresh, refreshParts: data.refreshParts, notify: toast.notify }, selectOnly, tab === "schematic" ? page : MAIN_PAGE)
   const { checks, find, openChecks } = useChecksAndFind({ data, tab, setTab, select, selectOnly, workspace })
   useEscapeClearsSelection(select)
   useHighlightFollowsBuild(build.design, workspace.setHighlight)
   const closeDialog = useCallback(() => setDialog(null), [])
   const openDocument = useCallback(
-    (target: string, view: DocView) => {
+    (target: string, view: DocView, toPage?: string) => {
+      if (toPage !== undefined) setWantedPage(toPage)
+      else if (target !== file) setWantedPage(MAIN_PAGE)
       setFile(target)
       setTab(view)
     },
-    [setFile],
+    [setFile, file],
   )
+  const openPage = useCallback((toPage: string) => {
+    setWantedPage(toPage)
+    setTab("schematic")
+  }, [])
   const pcb = build.design?.pcb
   const pickLayers = useMemo(() => (tab === "pcb" && pcb ? pickLayersOf(pcb.parts, workspace.layerVisibility) : undefined), [tab, pcb, workspace.layerVisibility])
-  const sheet = build.design?.schematic
+  const sheet = useMemo(() => (build.design ? designOnPage(build.design, page).schematic : undefined), [build.design, page])
   const sheetWires = useMemo(() => (tab === "schematic" && sheet ? sheet.wires.map((wire) => wire.id) : []), [tab, sheet])
   const sheetLabels = useMemo(() => (tab === "schematic" && sheet ? sheet.labels.map((label) => label.id) : []), [tab, sheet])
   const sheetDrawings = useMemo(() => (tab === "schematic" && sheet ? sheet.drawings.map((drawing) => drawing.id) : []), [tab, sheet])
   const pcbCopper = useMemo(() => (tab === "pcb" && pcb ? copperBoxes(pcb, workspace.layerVisibility).map(({ kind, id }) => ({ kind, id })) : []), [tab, pcb, workspace.layerVisibility])
   const copperRecords = tab === "pcb" ? pcb : undefined
   const sheetIds = { sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords }
-  const runCommand = useAppCommands({ file, view: tab, setView: setTab, selection, select, circuit, actions, pickLayers, pickFilter: workspace.pickFilter, ...sheetIds, workspace, openChecks, openFind: find.open, openDialog: setDialog })
-  return { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, runCommand }
+  const runCommand = useAppCommands({ file, view: tab, setView: setTab, selection, select, circuit, actions, pickLayers, pickFilter: workspace.pickFilter, ...sheetIds, workspace, openChecks, openFind: find.open, openDialog: setDialog, design: build.design, page, openPage })
+  return { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, runCommand, page, openPage }
 }
 
 /** The menu commands the build turns off for now, with the reason: Tidy sheet while Studio placed nothing on the sheet. */
@@ -210,7 +219,7 @@ function useCommandsOff(design: Design | undefined): CommandsOff {
 }
 
 export function App() {
-  const { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, runCommand } = useStudio()
+  const { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, runCommand, page, openPage } = useStudio()
   const { build, circuit } = data
   const { message, dismiss } = toast
   const toggles = { snap: workspace.snap }
@@ -237,6 +246,8 @@ export function App() {
         find={find}
         view={tab}
         onView={setTab}
+        page={page}
+        onPage={openPage}
         selection={selection}
         onSelect={select}
         onRenameDrawing={onRenameDrawing}

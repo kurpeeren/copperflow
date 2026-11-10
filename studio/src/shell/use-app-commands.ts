@@ -18,6 +18,8 @@ import { PCB_COMMANDS, SHEET_COMMANDS, WORKSPACE_COMMANDS, type AppCommand } fro
 import { send } from "./commands"
 import type { DialogName } from "./Dialogs"
 import type { CommandId } from "./menus"
+import { runPageCommand, type PageCommand } from "./page-commands"
+import type { Design } from "../api"
 
 const SCHEMATIC_ONLY: ReadonlySet<CommandId> = new Set(SHEET_COMMANDS)
 const PCB_ONLY: ReadonlySet<CommandId> = new Set(PCB_COMMANDS)
@@ -61,6 +63,18 @@ interface Input {
   /** Opens the find box and focuses its field, or selects the text of the field when the box is open. */
   openFind(): void
   openDialog(name: DialogName): void
+  /** The design, for its schematic pages. */
+  design: Design | undefined
+  /** The schematic page that is open. */
+  page: string
+  openPage(page: string): void
+}
+
+/** Design → Add, Rename or Delete page, on the open schematic page; the name is asked for in the browser's prompt. */
+function pageCommand(input: Input, command: PageCommand): void {
+  const { design, page, actions, openPage } = input
+  const ask = (question: string, initial: string) => window.prompt(question, initial)
+  void runPageCommand(command, { design, page, edit: actions.edit, notify: actions.notify, ask, openPage })
 }
 
 function exportPackage(file: string | undefined, actions: Actions): void {
@@ -126,6 +140,9 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     history: () => input.workspace.openBottom("log"),
     keys: () => input.openDialog("keys"),
     about: () => input.openDialog("about"),
+    addPage: () => pageCommand(input, "addPage"),
+    renamePage: () => pageCommand(input, "renamePage"),
+    deletePage: () => pageCommand(input, "deletePage"),
   }
   return (table as Partial<Record<CommandId, () => void>>)[command]
 }
@@ -154,7 +171,7 @@ function useAppKeys(runCommand: (command: CommandId) => void, view: View): void 
 /** Returns the function the menu bar and toolbar call; it changes only when what the commands read changes. */
 export function useAppCommands(input: Input): (command: CommandId) => void {
   const [waiting, setWaiting] = useState<{ command: CommandId; view: View } | null>(null)
-  const { file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, openChecks, openFind, openDialog } = input
+  const { file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, openChecks, openFind, openDialog, design, page, openPage } = input
   // The workspace object is new on every render, but its functions are stable.
   const { run, openBottom, openPageTree } = input.workspace
   // A command waiting for its view runs once that view's canvas has mounted and subscribed.
@@ -168,7 +185,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
   }, [waiting, view, actions])
   const runCommand = useCallback(
     (command: CommandId) => {
-      const own = appCommand({ file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, workspace: { run, openBottom, openPageTree }, openChecks, openFind, openDialog }, command)
+      const own = appCommand({ file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, workspace: { run, openBottom, openPageTree }, openChecks, openFind, openDialog, design, page, openPage }, command)
       if (own) return own()
       const only = viewOf(command)
       if (only && view !== only) {
@@ -178,7 +195,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
       }
       if (!send(command)) actions.notify("Wait for the build to finish, then try again.")
     },
-    [file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, run, openBottom, openPageTree, openChecks, openFind, openDialog],
+    [file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, run, openBottom, openPageTree, openChecks, openFind, openDialog, design, page, openPage],
   )
   useAppKeys(runCommand, view)
   return runCommand

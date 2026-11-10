@@ -3,7 +3,7 @@ import type { PageTree as Tree, DocView } from "./page-tree"
 
 interface Props {
   tree: Tree
-  onOpen(file: string, view: DocView): void
+  onOpen(file: string, view: DocView, page?: string): void
   /** Move the focus to the first file now (Ctrl+O); `onFocused` says it has been done. */
   focus: boolean
   onFocused(): void
@@ -28,8 +28,8 @@ export function PageTree({ tree, onOpen, focus, onFocused }: Props) {
             </button>
             <ul>
               {entry.documents.map((doc) => (
-                <li key={doc.view}>
-                  <button className={`tree-row doc${doc.active ? " active" : ""}`} aria-current={doc.active ? "page" : undefined} onClick={() => onOpen(entry.file, doc.view)}>
+                <li key={doc.page ?? doc.view}>
+                  <button className={`tree-row doc${doc.active ? " active" : ""}`} aria-current={doc.active ? "page" : undefined} onClick={() => onOpen(entry.file, doc.view, doc.page)}>
                     {doc.label}
                   </button>
                 </li>

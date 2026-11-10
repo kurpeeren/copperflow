@@ -50,6 +50,8 @@ export interface PlaceRequest {
   /** The designator; when omitted the next free one is used, e.g. R5. */
   name?: string
   props?: Record<string, Literal>
+  /** The schematic page it goes on, made when missing; without one, the first page ("Main"). */
+  page?: string
 }
 
 /** The next free designator for a part: R1, R2, ... or U1, U2, ... for library parts. */
@@ -68,7 +70,7 @@ export async function placeEdit(
 ): Promise<{ edit: Edit; name: string }> {
   const builtin = (BUILTIN_PARTS as readonly string[]).includes(request.part)
   const name = request.name ?? suggestName(circuit.model, request.part, !builtin)
-  const props = request.props ? { props: request.props } : {}
+  const props = { ...(request.props ? { props: request.props } : {}), ...(request.page === undefined ? {} : { page: request.page }) }
   if (builtin) return { edit: { kind: "addPart", tag: request.part, name, ...props }, name }
   // Exact folder names, so "ldo" does not match "LDO" on a case-insensitive disk.
   if (!(await libraryIds(root)).includes(request.part)) {

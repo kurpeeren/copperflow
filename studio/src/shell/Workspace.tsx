@@ -1,4 +1,5 @@
 import { useMemo } from "react"
+import type { Edit } from "../api"
 import type { Actions } from "../use-actions"
 import { Inspector } from "../Inspector"
 import { LeftPanel } from "../LeftPanel"
@@ -20,6 +21,8 @@ import { ContextMenu } from "./ContextMenu"
 import { DocTabs } from "./DocTabs"
 import type { CommandId } from "./menus"
 import { buildPageTree, type DocView } from "./page-tree"
+import { onPage } from "./page-commands"
+import { designOnPage, pageNames } from "./schematic-pages"
 import { FilterPanel } from "./FilterPanel"
 import { LayerPanel } from "./LayerPanel"
 import { SideStrip } from "./SideStrip"
@@ -43,6 +46,9 @@ export interface WorkspaceProps {
   find: FindState
   view: View
   onView(view: View): void
+  /** The schematic page that is open. */
+  page: string
+  onPage(page: string): void
   selection: Selection
   onSelect(change: SelectionChange): void
   /** A drawing renamed in Properties: the selection follows it to its new id once its build lands; the result forgets it. */
@@ -51,7 +57,7 @@ export interface WorkspaceProps {
   /** Runs a menu command, as the menu bar does. */
   run(command: CommandId): void
   onPlace(part: string): void
-  onOpenDocument(file: string, view: DocView): void
+  onOpenDocument(file: string, view: DocView, page?: string): void
   openChecks(): void
 }
 
@@ -96,18 +102,33 @@ function gridProps(workspace: WorkspaceProps["workspace"], view: View) {
   return { gridStyle: workspace.gridStyles[view], gridStep: workspace.gridSteps[view], snap: workspace.snap, onGridStep: (step: number) => workspace.changeGridStep(view, step) }
 }
 
+/** The schematic canvas's props for the open page: only that page's drawing, and what it adds goes on that page. */
+function usePageCanvas(canvas: ReturnType<typeof canvasProps>, page: string) {
+  const design = canvas?.design
+  const actions = canvas?.actions
+  const shown = useMemo(() => (design ? designOnPage(design, page) : undefined), [design, page])
+  const paged = useMemo(
+    () => (actions ? { ...actions, edit: (edits: Edit[], summary: string) => actions.edit(onPage(edits, page), summary), editMarked: (edits: Edit[], summary: string) => actions.editMarked(onPage(edits, page), summary) } : undefined),
+    [actions, page],
+  )
+  return canvas && shown && paged ? { ...canvas, design: shown, actions: paged } : undefined
+}
+
 /** The document tabs, the open document's canvas and the bottom panel, between the side panels. */
 function CenterColumn(props: WorkspaceProps & { onContextMenu: ContextMenuState["show"] }) {
-  const { data, workspace, checks, find, view } = props
+  const { data, workspace, checks, find, view, page } = props
   const { build } = data
   const canvas = canvasProps(props, props.onContextMenu)
+  const sheet = usePageCanvas(canvas, page)
+  const pages = useMemo(() => pageNames(build.design), [build.design])
   return (
     <div className="center">
-      <DocTabs file={data.file} view={view} onView={props.onView} />
+      <DocTabs file={data.file} view={view} pages={pages} page={page} onView={props.onView} onPage={props.onPage} />
       <section className="canvas" id="doc-panel" role="tabpanel" aria-labelledby={`doc-tab-${view}`} tabIndex={-1}>
         {!build.design && <p className="empty">{build.status === "failed" ? build.error : "Building the circuit…"}</p>}
         {canvas && view === "pcb" && <PcbCanvas key={data.file} {...canvas} {...gridProps(workspace, "pcb")} markers={checks.markers.pcb} activeLayer={workspace.activeLayer} onActiveLayer={workspace.setActiveLayer} />}
-        {canvas && view === "schematic" && <SchematicCanvas key={data.file} {...canvas} {...gridProps(workspace, "schematic")} markers={checks.markers.schematic} />}
+        {sheet && view === "schematic" && <SchematicCanvas key={`${data.file}
+${page}`} {...sheet} {...gridProps(workspace, "schematic")} markers={checks.markers.schematic} />}
         {find.box.open && <FindBox text={find.box.text} seq={find.box.seq} onText={find.setText} onSearch={find.search} onClose={find.close} status={findStatus(find.results.query, find.results.rows.length)} />}
       </section>
       {workspace.bottom.open && (
@@ -131,9 +152,9 @@ function CenterColumn(props: WorkspaceProps & { onContextMenu: ContextMenuState[
 }
 
 /** The left panel (Project Design or Common Library), once the circuit has loaded. */
-function LeftSide({ data, workspace, view, selection, onSelect, actions, onPlace, onOpenDocument }: WorkspaceProps) {
+function LeftSide({ data, workspace, view, page, selection, onSelect, actions, onPlace, onOpenDocument }: WorkspaceProps) {
   const { circuit, build, project, files, file } = data
-  const pageTree = useMemo(() => buildPageTree(project, files, file, view), [project, files, file, view])
+  const pageTree = useMemo(() => buildPageTree(project, files, file, view, { names: pageNames(build.design), open: page }), [project, files, file, view, build.design, page])
   const autoPlaced = useMemo(() => autoPlacedParts(build.design, view), [build.design, view])
   if (!circuit) return null
   return (

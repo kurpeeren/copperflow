@@ -286,11 +286,12 @@ Nothing was written.`)
         part: z.string(),
         name: z.string().describe("New designator, e.g. U2 or R5"),
         props: z.record(z.string(), literal).optional().describe('Literal props, e.g. { "resistance": "10k", "pcbX": 4 }'),
+        page: z.string().optional().describe('Schematic page, e.g. "Power"; made when missing. Without one the part goes on the first page, "Main". Nets join across pages by name.'),
       },
     },
-    ({ file: circuit, part, name, props }) =>
+    ({ file: circuit, part, name, props, page }) =>
       run(async () => {
-        const result = await placePart(root, circuit, { part, name, ...(props ? { props } : {}) }, { author: "ai" })
+        const result = await placePart(root, circuit, { part, name, ...(props ? { props } : {}), ...(page ? { page } : {}) }, { author: "ai" })
         return `Change ${result.entry.id} applied: ${result.entry.summary}. Connect it with add_trace or connect_nets; run check_circuit once at the end.`
       }),
   )
