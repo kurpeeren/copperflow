@@ -7,6 +7,7 @@ import { canvasFont, PALETTE, PCB_DIM, TEXT_WEIGHT, type Ctx } from "./ctx.js"
 import { worldToScreen, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
 import { DEFAULT_LAYERS, padLayer, type LayerVisibility } from "./layers.js"
 import { drawViolationMarkers, type ViolationMarker } from "./markers.js"
+import { DESIGNATOR_MM } from "./part-text.js"
 import { devicePxFor, sharpenText, textAnchorAt, textShown } from "./text-level.js"
 
 export interface PcbDrawOptions {
@@ -46,7 +47,6 @@ export const MAX_HATCH_LINES = 400
 /** Lets the last line land on the box's edge despite rounding in span / step. */
 const HATCH_SLACK = 1e-9
 const DEFAULT_CORNER = 0.25
-const DESIGNATOR_MM = 0.8
 const DESIGNATOR_GAP_PX = 2
 /** Parts the engine placed for itself are drawn faded, so the person sees they have no position yet. */
 const AUTO_PLACED_ALPHA = 0.6
@@ -332,18 +332,22 @@ function drawLine(ctx: Ctx, a: Point, b: Point): void {
   ctx.stroke()
 }
 
-/** The component id as silkscreen text, centred above the courtyard's top edge, from 7 device pixels (text-level.ts). */
+/**
+ * The component id as silkscreen text, from 7 device pixels (text-level.ts): centred above the courtyard's top edge, or
+ * centred on where pcbNameAt puts it (`nameAt`).
+ */
 function drawDesignator(ctx: Ctx, part: PlacedFootprint, camera: Camera, size: Size, shift: Point, ratio: number): void {
   const devicePx = devicePxFor(DESIGNATOR_MM, camera.scale, ratio)
   if (!textShown("name", devicePx, devicePx)) return
   const box = courtyardBox(part)
-  const top = worldToScreen(camera, size, { x: (box.minX + box.maxX) / 2 + shift.x, y: box.maxY + shift.y })
-  const p = textAnchorAt({ x: top.x, y: top.y - DESIGNATOR_GAP_PX }, ratio)
+  const spot = part.nameAt ?? { x: (box.minX + box.maxX) / 2, y: box.maxY }
+  const at = worldToScreen(camera, size, { x: spot.x + shift.x, y: spot.y + shift.y })
+  const p = textAnchorAt(part.nameAt ? at : { x: at.x, y: at.y - DESIGNATOR_GAP_PX }, ratio)
   ctx.fillStyle = part.side === "top" ? PALETTE.topSilk : PALETTE.bottomSilk
   ctx.globalAlpha = alphaOf(part)
   ctx.font = canvasFont(TEXT_WEIGHT.strong, devicePx / ratio)
   ctx.textAlign = "center"
-  ctx.textBaseline = "bottom"
+  ctx.textBaseline = part.nameAt ? "middle" : "bottom"
   ctx.fillText(part.component, p.x, p.y)
   ctx.globalAlpha = 1
 }

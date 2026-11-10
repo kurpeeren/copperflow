@@ -94,6 +94,20 @@ describe("drawPcb", () => {
     expect(texts.every((r) => r.fillStyle === PALETTE.topSilk)).toBe(true)
   })
 
+  test("a designator pcbNameAt moves is centred on its spot, and follows its part while the part is dragged", () => {
+    const moved = { ...layout, parts: layout.parts.map((p) => (p.component === "R2" ? { ...p, nameAt: { x: 6, y: 1 } } : p)) }
+    const r2 = (by?: { x: number; y: number }) => {
+      const { ctx, records } = recorder()
+      drawPcb(ctx, moved, VIEW, { ratio: 1, ...(by ? { moving: { components: ["R2"], by } } : {}) })
+      return records.find((r) => r.name === "fillText" && r.args[0] === "R2")
+    }
+    const spot = worldToScreen(VIEW.camera, VIEW.size, { x: 6, y: 1 })
+    expect(r2()?.args.slice(1)).toEqual([spot.x, spot.y])
+    expect(r2()?.textBaseline).toBe("middle")
+    const shifted = worldToScreen(VIEW.camera, VIEW.size, { x: 7, y: 1 })
+    expect(r2({ x: 1, y: 0 })?.args.slice(1)).toEqual([shifted.x, shifted.y])
+  })
+
   test("designators are written at whole device pixel sizes on device pixels, from 7 device px", () => {
     const at = (scale: number, ratio: number) => {
       const { ctx, records } = recorder()

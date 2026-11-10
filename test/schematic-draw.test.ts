@@ -5,6 +5,7 @@ import { HIGHLIGHT_DIM, PALETTE } from "../studio/src/pcb/ctx.js"
 import { drawPcb, PCB_DIM } from "../studio/src/pcb/pcb-draw.js"
 import { worldToScreen } from "../studio/src/pcb/geometry.js"
 import { schematicTheme } from "../studio/src/pcb/schematic-theme.js"
+import { sheetTexts } from "../studio/src/pcb/part-text.js"
 import { drawSchematic, sheetBoxes, wireDrawnPx, wireStrokePx, type SchematicDrawOptions } from "../studio/src/pcb/schematic-draw.js"
 import { recorder } from "./helpers/fake-ctx.js"
 
@@ -389,5 +390,12 @@ describe("sheetBoxes", () => {
     const x = layout.symbols.find((s) => s.component === "R2")?.x ?? 0
     expect(r2?.box.minX).toBeLessThan(x)
     expect(r2?.box.maxX).toBeGreaterThan(x)
+  })
+
+  test("a part's box is its body and pins: its name and value are picked on their own", () => {
+    const r2 = sheetBoxes(layout).find((b) => b.name === "R2")
+    const [name, value] = sheetTexts(layout).filter((t) => t.part === "R2")
+    expect(name && r2 && name.at.y > r2.box.maxY).toBe(true)
+    expect(value && r2 && value.at.y < r2.box.minY).toBe(true)
   })
 })
