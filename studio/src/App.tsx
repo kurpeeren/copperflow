@@ -166,7 +166,7 @@ function useChecksAndFind({ data, tab, setTab, select, selectOnly, workspace }: 
   const { setHighlight, openBottom } = workspace
   const openChecks = useCallback(() => openBottom("drc"), [openBottom])
   const selectCopper = useCallback((ids: readonly string[]) => select(() => Selection.none.all([], [], [], [], ids)), [select])
-  const checks = useChecks({ file, build, onTab: setTab, onSelect: selectOnly, onSelectCopper: selectCopper, onOpen: openChecks })
+  const checks = useChecks({ file, build, route: data.route, onTab: setTab, onSelect: selectOnly, onSelectCopper: selectCopper, onOpen: openChecks })
   const openFindResults = useCallback(() => openBottom("find"), [openBottom])
   const find = useFind({ file, circuit: data.circuit, library: data.parts.library, design: build.design, view: tab, onSelect: select, onHighlight: setHighlight, requestFocus: checks.requestFocus, openResults: openFindResults })
   return { checks, find, openChecks }
@@ -220,7 +220,7 @@ function useStudio() {
   const pcbCopper = useMemo(() => (tab === "pcb" && pcb ? copperBoxes(pcb, workspace.layerVisibility).map(({ kind, id }) => ({ kind, id })) : []), [tab, pcb, workspace.layerVisibility])
   const copperRecords = tab === "pcb" ? pcb : undefined
   const sheetIds = { sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords }
-  const runCommand = useAppCommands({ file, view: tab, setView: setTab, selection, select, circuit, actions, pickLayers, pickFilter: workspace.pickFilter, ...sheetIds, workspace, openChecks, openFind: find.open, openDialog: setDialog, design: build.design, page, openPage })
+  const runCommand = useAppCommands({ file, view: tab, setView: setTab, selection, select, circuit, actions, pickLayers, pickFilter: workspace.pickFilter, ...sheetIds, workspace, openChecks, openFind: find.open, openDialog: setDialog, design: build.design, page, openPage, highlight: workspace.highlight })
   return { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, openSheet, sheetParent, runCommand, page, openPage }
 }
 
