@@ -1,11 +1,11 @@
 import type { LayoutRecord } from "../../core/layout-file.js"
 import type { PcbTrack, PcbVia } from "../copper.js"
-import type { PcbLayout } from "../pcb.js"
+import type { PcbLayout, RatsnestLine } from "../pcb.js"
 import { cachedPourFills } from "../pour/cache.js"
 import { resolveWithPours, type PourFiller } from "../pour/resolve.js"
 import { ratsnest } from "../ratsnest.js"
 import { layoutEdits } from "./cleanup.js"
-import { classLookup, type RouteInput } from "./connect.js"
+import { classLookup, padName, type RouteInput } from "./connect.js"
 import type { RouteBoardInput, RouteBoardOptions, RouteReport, RoutedConnection } from "./route-board.js"
 
 /**
@@ -13,7 +13,8 @@ import type { RouteBoardInput, RouteBoardOptions, RouteReport, RoutedConnection 
  * the fill already makes are not in the ratsnest, so they are not routed. Once the routes are laid the fill is computed
  * again around them (as the next build would), and it may now be cut apart by other nets' tracks: the connections of a
  * pour's net that the new fill no longer makes are routed in another round, with the routes laid so far as fixed copper.
- * Rounds repeat until the fill makes every connection of its net that is not routed, a round routes nothing, or the cap.
+ * Rounds repeat until the fill makes every connection of its net that is not routed, a round routes nothing, the cap
+ * or the budget; what is still missing then is reported unrouted, so a run never hides an airwire the next build shows.
  */
 
 /** The most extra rounds after the first; one usually settles it, since a pour net's own tracks never cut its fill. */
@@ -64,41 +65,57 @@ export function refilled(input: RouteInput, routed: readonly RoutedConnection[])
 
 const lineKey = (line: { net: string; from: string; to: string }) => `${line.net}|${line.from}|${line.to}`
 
-/** The two rounds as one report: the later round's results replace the earlier failures of the nets it took on again. */
-function merged(before: RouteReport, after: RouteReport, retried: ReadonlySet<string>, ms: number): RouteReport {
+/** The two rounds as one report: the later round's results replace the earlier failures of the lines it took on again. */
+function merged(before: RouteReport, after: RouteReport, retried: ReadonlySet<string>): RouteReport {
   const routed = [...before.routed, ...after.routed]
-  const unrouted = [...before.unrouted.filter((one) => !retried.has(one.net)), ...after.unrouted]
+  const unrouted = [...before.unrouted.filter((one) => !retried.has(lineKey(one))), ...after.unrouted]
   return {
     ...before,
     routed,
     unrouted,
     passes: before.passes + after.passes,
     edits: layoutEdits(routed),
-    ms,
+    ms: before.ms + after.ms,
     cleanupCapped: before.cleanupCapped || after.cleanupCapped,
     cleanupSkipped: before.cleanupSkipped || after.cleanupSkipped,
     budgetSpent: before.budgetSpent || after.budgetSpent,
   }
 }
 
-/** Routes the board with `routeOnce`, then routes again what the refilled pours no longer join; see the module comment. */
+/** The report with the lines the refilled pours no longer join, and that no round reported, added as unrouted. */
+function withLeftover(report: RouteReport, layout: PcbLayout, missing: readonly RatsnestLine[]): RouteReport {
+  const pads = new Map(layout.parts.flatMap((part) => part.pads).map((pad) => [pad.id, pad]))
+  const name = (id: string) => {
+    const pad = pads.get(id)
+    return pad === undefined ? id : padName(pad)
+  }
+  const reported = new Set(report.unrouted.map(lineKey))
+  const left = missing
+    .filter((line) => !reported.has(lineKey(line)))
+    .map((line) => ({ net: line.net, from: line.from, to: line.to, reason: `the refilled pour no longer joins ${name(line.from)} to ${name(line.to)}`, blockers: [] }))
+  return left.length === 0 ? report : { ...report, unrouted: [...report.unrouted, ...left] }
+}
+
+/**
+ * Routes the board with `routeOnce`, then routes again what the refilled pours no longer join; see the module comment.
+ * The extra rounds take exactly those lines, whatever the run's scope: the run's own copper broke them. Lines still
+ * missing when the rounds stop (a round routed nothing, the cap, the budget) are reported unrouted.
+ */
 export function routeWithPours(input: RouteBoardInput, options: RouteBoardOptions, routeOnce: (input: RouteBoardInput, options: RouteBoardOptions) => RouteReport): RouteReport {
   let report = routeOnce(input, options)
   if ((input.layout.board?.pours ?? []).length === 0) return report
-  const tried = new Set<string>()
-  for (let round = 0; round < MAX_ROUNDS && !report.budgetSpent; round++) {
+  for (let round = 0; ; round++) {
     const layout = refilled(input, report.routed)
     const pourNets = new Set(layout.pours.map((pour) => pour.net))
-    const missing = layout.ratsnest.filter((line) => pourNets.has(line.net) && !tried.has(lineKey(line)))
-    if (missing.length === 0) break
+    const reported = new Set(report.unrouted.map(lineKey))
+    const missing = layout.ratsnest.filter((line) => pourNets.has(line.net) && !reported.has(lineKey(line)))
+    if (missing.length === 0) return report
     // The rounds' own time is what the budget counts: refilling between them is quick, and the clock is read only by the runs.
-    const spent = report.ms
-    if (options.budgetMs !== undefined && spent >= options.budgetMs) break
-    const budget = options.budgetMs === undefined ? {} : { budgetMs: options.budgetMs - spent }
-    const next = routeOnce({ ...input, layout: { ...layout, ratsnest: missing } }, { ...options, ...budget })
-    for (const line of missing) tried.add(lineKey(line))
-    report = merged(report, next, new Set(missing.map((line) => line.net)), report.ms + next.ms)
-    if (next.routed.length === 0) break
+    const spent = options.budgetMs !== undefined && report.ms >= options.budgetMs
+    if (round >= MAX_ROUNDS || report.budgetSpent || spent) return withLeftover(report, layout, missing)
+    const budget = options.budgetMs === undefined ? {} : { budgetMs: options.budgetMs - report.ms }
+    const next = routeOnce({ ...input, layout: { ...layout, ratsnest: missing } }, { ...options, ...budget, scope: { kind: "all" } })
+    report = merged(report, next, new Set(missing.map(lineKey)))
+    if (next.routed.length === 0) return withLeftover(report, layout, missing)
   }
-  return report
 }

@@ -102,7 +102,14 @@ describe("another round when the refilled pour no longer makes a connection", ()
   const input: RouteBoardInput = { layout: design.pcb, rules: design.rules, nets: design.circuit.nets }
   const report = (routed: RoutedConnection[]): RouteReport => ({ routed, unrouted: [], passes: 1, edits: [], ms: 0, cleanupCapped: false, cleanupSkipped: false, budgetSpent: false })
   const across: RoutedConnection = { net: "net.SIG", from: "R1#2", to: "R2#2", copper: { net: "net.SIG", tracks: [{ layer: "top", width: 0.25, points: [{ x: 0, y: -6 }, { x: 0, y: 6 }] }], vias: [] } }
-  const gnd: RoutedConnection = { net: "net.GND", from: "R1#1", to: "R2#1", copper: { net: "net.GND", tracks: [{ layer: "bottom", width: 0.25, points: [{ x: -5, y: 0 }, { x: 5, y: 0 }] }], vias: [] } }
+  const padAt = (id: string) => {
+    const pad = design.pcb.parts.flatMap((part) => part.pads).find((one) => one.id === id)
+    return { x: pad?.x ?? 0, y: pad?.y ?? 0 }
+  }
+  const [g1, g2] = [padAt("R1#1"), padAt("R2#1")]
+  // Down through a via on each GND pad and across on the bottom, under the SIG track.
+  const via = (at: { x: number; y: number }) => ({ at, drill: 0.3, diameter: 0.6, layers: ["top" as const, "bottom" as const] })
+  const gnd: RoutedConnection = { net: "net.GND", from: "R1#1", to: "R2#1", copper: { net: "net.GND", tracks: [{ layer: "bottom", width: 0.25, points: [g1, g2] }], vias: [via(g1), via(g2)] } }
 
   test("the GND line the cut fill leaves is routed in a second round, and the reports are merged", () => {
     expect(design.pcb.ratsnest.map((line) => line.net)).toEqual(["net.SIG"])
@@ -117,17 +124,55 @@ describe("another round when the refilled pour no longer makes a connection", ()
     expect(calls[1]?.layout.tracks.map((track) => [track.id, track.net])).toEqual([["routed:1:t1", "net.SIG"]])
     expect(merged.routed).toEqual([across, gnd])
     expect(merged.passes).toBe(2)
-    expect(merged.edits).toHaveLength(2)
+    expect(merged.edits).toHaveLength(4)
   })
 
-  test("a round that routes nothing ends it, and a board without pours is routed once", () => {
+  const LEFT = "the refilled pour no longer joins R1.pin1 to R2.pin1"
+  const left = (found: RouteReport) => found.unrouted.map((one) => [one.net, one.reason])
+
+  test("a round that routes nothing ends it with the line unrouted, and a board without pours is routed once", () => {
     let calls = 0
     const stuck = routeWithPours(input, {}, () => report(++calls === 1 ? [across] : []))
     expect(calls).toBe(2)
     expect(stuck.routed).toEqual([across])
+    expect(left(stuck)).toEqual([["net.GND", LEFT]])
     const plain: RouteBoardInput = { ...input, layout: { ...input.layout, board: { ...(input.layout.board as NonNullable<typeof input.layout.board>), pours: [] } } }
     let once = 0
     routeWithPours(plain, {}, () => report(++once === 1 ? [across] : []))
     expect(once).toBe(1)
+  })
+
+  test("a scoped run routes the lines its own copper broke, whatever the scope", () => {
+    const scopes: unknown[] = []
+    // Like routeOnce, the stub routes only the lines its scope covers.
+    const scoped = routeWithPours(input, { scope: { kind: "nets", nets: ["SIG"] } }, (given, options) => {
+      scopes.push(options.scope)
+      const lines = given.layout.ratsnest.filter((line) => options.scope?.kind !== "nets" || options.scope.nets.some((net) => line.net.endsWith(net)))
+      return report(scopes.length === 1 ? [across] : lines.some((line) => line.net === "net.GND") ? [gnd] : [])
+    })
+    expect(scopes).toEqual([{ kind: "nets", nets: ["SIG"] }, { kind: "all" }])
+    expect(scoped.routed).toEqual([across, gnd])
+    expect(scoped.unrouted).toEqual([])
+  })
+
+  test("at the round cap the lines still missing are unrouted", () => {
+    let calls = 0
+    const capped = routeWithPours(input, {}, () => report(++calls === 1 ? [across] : [{ ...across, from: `R1#2`, to: `R2#2` }]))
+    expect(calls).toBe(4)
+    expect(left(capped)).toEqual([["net.GND", LEFT]])
+  })
+
+  test("when the budget is spent the lines still missing are unrouted", () => {
+    let calls = 0
+    const late = routeWithPours(input, { budgetMs: 10 }, () => ({ ...report(++calls === 1 ? [across] : [gnd]), ms: 20 }))
+    expect(calls).toBe(1)
+    expect(left(late)).toEqual([["net.GND", LEFT]])
+  })
+
+  test("an earlier failure is replaced only for the line taken on again", () => {
+    const other = { net: "net.GND", from: "R9#1", to: "R9#2", reason: "could not route R9", blockers: [] }
+    let calls = 0
+    const kept = routeWithPours(input, {}, () => (++calls === 1 ? { ...report([across]), unrouted: [other] } : report([gnd])))
+    expect(kept.unrouted).toEqual([other])
   })
 })
