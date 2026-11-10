@@ -71,9 +71,12 @@ function netOrThrow(design: Design, name: string) {
 
 const describeHit = (design: Design, hit: CopperHit) => `${netLabel(design.circuit.nets, hit.net)} (${hit.kind} ${hit.id})`
 
-/** Applies the edits as one change with the built design for the locks, then lists what the change introduced. */
-async function applyCopper(ports: Ports, file: string, before: Design, edits: LayoutEdit[], headline: (created: string[]) => string): Promise<string> {
-  const result = await applyLayoutEdits(ports.root, file, edits, { author: "ai", design: before })
+/**
+ * Applies the edits as one change with the built design for the locks, then lists what the change introduced. The
+ * history entry's summary is made from the edits unless one is given.
+ */
+export async function applyCopper(ports: Ports, file: string, before: Design, edits: LayoutEdit[], headline: (created: string[]) => string, summary?: string): Promise<string> {
+  const result = await applyLayoutEdits(ports.root, file, edits, { author: "ai", design: before, ...(summary === undefined ? {} : { summary }) })
   const head = `Change ${result.entry.id}: ${headline(result.created)}`
   try {
     return [head, ...introducedLines(before, await buildOf(ports, file))].join("\n")

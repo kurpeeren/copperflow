@@ -33,6 +33,7 @@ import { batchSummary, describeRefusal, editItem, firstRefusal, planNets, toEdit
 import { formatCompactCheck, formatCompactSummary } from "./compact.js"
 import { formatCopperSummary } from "./copper-summary.js"
 import * as copper from "./copper-tools.js"
+import * as fillet from "./fillet-tools.js"
 import { NEW_CIRCUIT_DESCRIPTION, newCircuit, newCircuitInput } from "./new-circuit.js"
 
 const INSTRUCTIONS = `copperflow lets you edit circuit files together with a human.
@@ -42,7 +43,7 @@ const INSTRUCTIONS = `copperflow lets you edit circuit files together with a hum
 - Make several changes in one call: edit_circuit takes a list of edits (one history entry, nothing written if one is refused), connect_nets wires whole nets at once, e.g. { "GND": ["R1.pin2", "C1.pin2"] }.
 - Change existing parts and traces through these tools rather than rewriting the file, so locks and history apply.
 - Call check_circuit once at the end, then fix every error before reporting success. It shows the first 20 findings; use its filter (errors, warnings, a part or a net) for the rest.
-- You may route copper by hand: route_track draws one track of a net from a pad, track or via of that net, add_via places a via, remove_copper removes tracks and vias; each is one change. The program checks clearance and answers with the violations your change introduced; the router comes later and does the rest. Order: copper_summary, then your copper changes, then check_circuit once at the end (filter "copper" for the full list of violations). A locked part guards only the tracks that start on its pads; vias on it and tracks that only end there are not locked, so leave them alone unless the human asks.
+- You may route copper by hand: route_track draws one track of a net from a pad, track or via of that net, add_via places a via, remove_copper removes tracks and vias, fillet_tracks rounds track corners and straighten_tracks squares them again; each is one change. The program checks clearance and answers with the violations your change introduced; the router comes later and does the rest. Order: copper_summary, then your copper changes, then check_circuit once at the end (filter "copper" for the full list of violations). A locked part guards only the tracks that start on its pads; vias on it and tracks that only end there are not locked, so leave them alone unless the human asks.
 - Never change, move or remove a part marked [LOCKED]. If a summary lists lock violations, restore those parts.
 - "Marks from the human" are instructions placed on the board; follow them.
 - recent_changes shows what the human undid; do not redo an undone change unless asked.
@@ -165,6 +166,16 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "remove_copper",
     { description: copper.REMOVE_COPPER_DESCRIPTION, inputSchema: copper.removeCopperInput, annotations: { destructiveHint: true } },
     (input) => run(() => copper.removeCopper(ports, input)),
+  )
+  server.registerTool(
+    "fillet_tracks",
+    { description: fillet.FILLET_TRACKS_DESCRIPTION, inputSchema: fillet.filletTracksInput },
+    (input) => run(() => fillet.filletTracks(ports, input)),
+  )
+  server.registerTool(
+    "straighten_tracks",
+    { description: fillet.STRAIGHTEN_TRACKS_DESCRIPTION, inputSchema: fillet.straightenTracksInput },
+    (input) => run(() => fillet.straightenTracks(ports, input)),
   )
   server.registerTool(
     "copper_summary",

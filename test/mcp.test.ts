@@ -44,6 +44,7 @@ describe("MCP server", () => {
       "create_part",
       "edit_circuit",
       "export_package",
+      "fillet_tracks",
       "list_circuits",
       "list_parts",
       "new_circuit",
@@ -55,6 +56,7 @@ describe("MCP server", () => {
       "remove_trace",
       "route_track",
       "set_props",
+      "straighten_tracks",
       "undo_change",
     ])
   })
