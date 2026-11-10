@@ -142,6 +142,7 @@ export function contextSelection(selection: Selection, target: ContextTarget): S
   if (target.kind === "wire") return selection.hasWire(target.id) ? selection : selection.onlyWire(target.id)
   if (target.kind === "label") return selection.hasLabel(target.label.id) ? selection : selection.onlyLabel(target.label.id)
   if (target.kind === "copper") return selection.hasCopper(target.id) ? selection : selection.onlyCopper(target.id)
+  if (target.kind === "text") return selection.hasText(target.id) ? selection : selection.onlyText(target.id)
   return target.kind === "part" && !selection.has(target.name) ? selection.only(target.name) : selection
 }
 

@@ -1,6 +1,6 @@
 // The steps of a pointer gesture on either canvas, from press to release. press.ts decides what a press starts; these
-// follow the pointer and finish the gesture: a pan, a drag of the selection (its parts, wires, labels and drawings), of a net label or of
-// a wire's segment or corner (wire-drag.ts), a selection box, or the armed Note box tool's box. gestureSession holds the gesture between
+// follow the pointer and finish the gesture: a pan, a drag of the selection (its parts, wires, labels and drawings), of a net label, of
+// a part's name, value or designator (part-text.ts) or of a wire's segment or corner (wire-drag.ts), a selection box, or the armed Note box tool's box. gestureSession holds the gesture between
 // events; use-canvas-gestures.ts draws it. Plain TypeScript with .js imports, so the tests can run it.
 import type { NetLabel } from "../../../src/engine/schematic.js"
 import type { Selection, SelectionChange } from "../selection.js"
@@ -48,6 +48,8 @@ export type Gesture =
       still: StillRelease
     }
   | { kind: "label"; label: NetLabel; start: Point; at: Point; moved: boolean; blocker: string | null }
+  /** A part's name, value or designator (by its text id): `from` is where its middle was, `at` where the drag puts it, on the grid. */
+  | { kind: "text"; id: string; start: Point; from: Point; at: Point; moved: boolean; blocker: string | null }
   | ReshapeGesture
   | { kind: "box"; start: Point; current: Point; adds: boolean; still: StillRelease }
   | { kind: "note"; start: Point; current: Point }
@@ -68,6 +70,18 @@ export interface GestureLabels {
   commit(label: NetLabel, drop: Point): void
   /** What each label draws (label-drag.ts labelDrawnBox), which a selection box takes by its direction rule. */
   boxes?: readonly { id: string; box: Box }[]
+}
+
+/** What a gesture asks of the parts' names and values (schematic) or designators (PCB), by text id (use-part-texts.ts). */
+export interface GestureTexts {
+  /** The text under the point, if any. */
+  at(world: Point): string | undefined
+  /** Where the text's middle is drawn now, a move waiting for its build included. */
+  position(id: string): Point | undefined
+  /** Why the text may not move, or null. */
+  blocker(id: string): string | null
+  /** Writes the move of the text's middle to `at`. */
+  commit(id: string, at: Point): void
 }
 
 /** What a gesture asks of the schematic's wires: the id of the one under a point (wire-hit.ts), if any, the lines a box looks at, and how to reshape them. */
@@ -114,6 +128,8 @@ export interface GestureInput {
   wires?: GestureWires
   /** The schematic's drawings, which a click selects and a drag moves. */
   drawings?: GestureDrawings
+  /** The parts' names and values (schematic) or designators (PCB), which a click selects and a drag moves. */
+  texts?: GestureTexts
   /** The schematic's sheet, whose hand-drawn wires follow a moved part; the PCB has none. */
   follow?: WireFollow
   /** The PCB's layers, which decide what a click or a box may pick; the schematic has none. */
@@ -165,8 +181,9 @@ const round = roundPosition
 
 /**
  * What is at a world point and may be picked there (pick.ts): a net label, else a wire, else a drawing's line or text,
- * else the smallest part box, else a filled drawing's inside, else nothing. A label, wire or drawn line over a symbol
- * is the thing picked there, not the symbol under it; a symbol over a filled shape is.
+ * else the smallest part box, else a part's name, value or designator, else a filled drawing's inside, else nothing.
+ * A label, wire or drawn line over a symbol is the thing picked there, not the symbol under it; a symbol over a filled
+ * shape is, and so is a symbol's body over its own name.
  */
 export function targetAt(
   boxes: readonly PartBox[],
@@ -175,16 +192,19 @@ export function targetAt(
   context: PickContext,
   wires?: Pick<GestureWires, "at">,
   drawings?: Pick<GestureDrawings, "at">,
+  texts?: Pick<GestureTexts, "at">,
 ): ContextTarget {
   const label = labels?.at(world)
   const wire = wires?.at(world)
   const drawn = drawings?.at(world)
+  const text = texts?.at(world)
   const drawing = (place: DrawingHit["place"]): SheetPickable[] => (drawn?.place === place ? [{ kind: "drawing", id: drawn.id }] : [])
   const candidates: SheetPickable[] = [
     ...(label ? [{ kind: "label" as const, label }] : []),
     ...(wire !== undefined ? [{ kind: "wire" as const, id: wire }] : []),
     ...drawing("line"),
     ...hitsAt(boxes, world).map((box): SheetPickable => ({ kind: "part", name: box.name })),
+    ...(text !== undefined ? [{ kind: "text" as const, id: text }] : []),
     ...drawing("inside"),
   ]
   const [first] = picks(candidates, context)
@@ -229,7 +249,7 @@ function underOf(target: ContextTarget, selection: Selection): Under {
   if (target.kind === "wire") return selection.hasWire(target.id) && selection.total > 1 ? "selectedWire" : "wire"
   if (target.kind === "label") return selection.hasLabel(target.label.id) && selection.total > 1 ? "selectedLabel" : "label"
   if (target.kind === "drawing") return selection.hasDrawing(target.id) ? "selectedDrawing" : "drawing"
-  return "empty"
+  return target.kind === "text" ? "text" : "empty"
 }
 
 /** What a press is on: a corner handle of the selected wire, drawn over everything, else what targetAt finds. */
@@ -239,7 +259,7 @@ function pressedAt(input: GestureInput, world: Point, camera: Camera): { target:
   const copper = input.copperAt?.(world)
   // Only a right or middle press reaches here on copper; for those, "empty" is what the press does (pan or the menu).
   if (copper !== undefined) return { target: { kind: "copper", id: copper }, under: "empty" }
-  const target = targetAt(input.boxes, input.labels, world, pickContext(input), input.wires, input.drawings)
+  const target = targetAt(input.boxes, input.labels, world, pickContext(input), input.wires, input.drawings, input.texts)
   return { target, under: underOf(target, input.selection) }
 }
 
@@ -269,6 +289,7 @@ export function startGesture(input: GestureInput, event: Press, point: Point): G
   if (target.kind === "label") return pressOnLabel(input, target.label, start, point, still)
   if (target.kind === "wire") return pressOnWire(input, target.id, start, { world, point, still, ...(corner === undefined ? {} : { corner }) }, camera)
   if (target.kind === "drawing") return pressOnDrawing(input, target.id, start, point, still)
+  if (target.kind === "text") return pressOnText(input, target.id, start, point)
   const part = target.kind === "part" ? input.boxes.find((box) => box.name === target.name) : undefined
   if (!part) return undefined
   if (start === "toggle") {
@@ -288,6 +309,18 @@ function pressOnLabel(input: GestureInput, label: NetLabel, start: GestureStart,
   if (start !== "label") return undefined
   input.onSelect((current) => current.onlyLabel(label.id))
   return { kind: "label", label, start: point, at: label.at, moved: false, blocker: input.labels?.blocker(label.id) ?? null }
+}
+
+/** A press on a part's name, value or designator: Shift or Ctrl toggles it, else it is selected alone and dragged alone. */
+function pressOnText(input: GestureInput, id: string, start: GestureStart, point: Point): Gesture | undefined {
+  if (start === "toggle") {
+    input.onSelect((current) => current.toggleText(id))
+    return undefined
+  }
+  const from = input.texts?.position(id)
+  if (start !== "text" || !from) return undefined
+  input.onSelect((current) => current.onlyText(id))
+  return { kind: "text", id, start: point, from, at: from, moved: false, blocker: input.texts?.blocker(id) ?? null }
 }
 
 /** A press on a drawing: Shift or Ctrl toggles it, else it is dragged, alone (selected first) or with the selection it is in. */
@@ -369,6 +402,7 @@ export function followGesture(input: GestureInput, gesture: Gesture, point: Poin
     const { at } = gesture.label
     return { ...gesture, moved: true, at: { x: snapped(at.x + moved.x), y: snapped(at.y + moved.y) } }
   }
+  if (gesture.kind === "text") return { ...gesture, moved: true, at: { x: snapped(gesture.from.x + moved.x), y: snapped(gesture.from.y + moved.y) } }
   // Snap the pressed part's or drawing's origin, where its position props put it, to the grid, not the distance moved;
   // a press on a wire or a label moves by whole grid steps.
   const { part } = gesture
@@ -381,6 +415,10 @@ export function endGesture(input: GestureInput, done: Gesture, camera: Camera, c
   if (done.kind === "label") {
     if (!done.moved) return
     return done.blocker ? input.actions.notify(done.blocker) : input.labels?.commit(done.label, done.at)
+  }
+  if (done.kind === "text") {
+    if (!done.moved) return
+    return done.blocker ? input.actions.notify(done.blocker) : input.texts?.commit(done.id, done.at)
   }
   if (done.kind === "drag") return endDrag(input, done, commit)
   if (done.kind === "reshape") return endReshape(input.wires?.drag, done, (text) => input.actions.notify(text))
@@ -460,8 +498,8 @@ export function gestureLost(gesture: Gesture, wires: GestureWires | undefined): 
   return gesture.kind === "reshape" && !wires?.drag
 }
 
-/** The drags Esc drops: a net label's and a wire's reshape. Any other gesture leaves Esc to its own work. */
-export const ESC_CANCELS: ReadonlySet<Gesture["kind"]> = new Set(["label", "reshape"])
+/** The drags Esc drops: a net label's, a part's text's and a wire's reshape. Any other gesture leaves Esc to its own work. */
+export const ESC_CANCELS: ReadonlySet<Gesture["kind"]> = new Set(["label", "text", "reshape"])
 
 export const cancelsOnEscape = (kind: Gesture["kind"] | undefined): boolean => kind !== undefined && ESC_CANCELS.has(kind)
 

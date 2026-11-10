@@ -1,5 +1,5 @@
-// The selection: the parts, the schematic wires, the net labels and flags, the drawings and the PCB's copper (tracks
-// and vias, by their layout ids) picked, each list in the
+// The selection: the parts, the schematic wires, the net labels and flags, the drawings, the PCB's copper (tracks
+// and vias, by their layout ids) and the parts' names and values (texts) picked, each list in the
 // order it was picked, so the last part (the primary) can stand for the rest where only one part makes sense, such as
 // the Properties of a single part or centring the camera. A value: every change returns a new selection, or the same
 // one when nothing changed, so React sees what changed. The part counts (`names`, `size`, `primary`) count parts only,
@@ -21,17 +21,18 @@ const among = (items: readonly string[], kept: Iterable<string>): string[] => {
   return items.filter((item) => set.has(item))
 }
 
-/** The five lists a selection holds. */
+/** The six lists a selection holds. */
 interface Lists {
   names: readonly string[]
   wires: readonly string[]
   labels: readonly string[]
   drawings: readonly string[]
   copper: readonly string[]
+  texts: readonly string[]
 }
 
-const EMPTY: Lists = { names: [], wires: [], labels: [], drawings: [], copper: [] }
-const KEYS: readonly (keyof Lists)[] = ["names", "wires", "labels", "drawings", "copper"]
+const EMPTY: Lists = { names: [], wires: [], labels: [], drawings: [], copper: [], texts: [] }
+const KEYS: readonly (keyof Lists)[] = ["names", "wires", "labels", "drawings", "copper", "texts"]
 
 export class Selection {
   /** Nothing selected. */
@@ -52,12 +53,16 @@ export class Selection {
   /** The PCB's tracks and vias, by their ids in the layout file (`t0001`, `v0001`), oldest pick first. */
   readonly copper: readonly string[]
 
+  /** Parts' names and values on the schematic and designators on the silkscreen, as "<part>:<prop>" ("R1:schNameAt"), oldest pick first. */
+  readonly texts: readonly string[]
+
   private constructor(lists: Lists) {
     this.names = Object.freeze([...lists.names])
     this.wires = Object.freeze([...lists.wires])
     this.labels = Object.freeze([...lists.labels])
     this.drawings = Object.freeze([...lists.drawings])
     this.copper = Object.freeze([...lists.copper])
+    this.texts = Object.freeze([...lists.texts])
     Object.freeze(this)
   }
 
@@ -66,7 +71,7 @@ export class Selection {
   }
 
   private get lists(): Lists {
-    return { names: this.names, wires: this.wires, labels: this.labels, drawings: this.drawings, copper: this.copper }
+    return { names: this.names, wires: this.wires, labels: this.labels, drawings: this.drawings, copper: this.copper, texts: this.texts }
   }
 
   /** This selection with some lists changed: itself when every list kept its length (lists are only ever shortened or kept here). */
@@ -106,9 +111,18 @@ export class Selection {
     return this.copper.length
   }
 
-  /** Every object selected: the parts, the wires, the labels, the drawings and the copper. */
+  get textCount(): number {
+    return this.texts.length
+  }
+
+  /** Every object selected: the parts, the wires, the labels, the drawings, the copper and the names and values. */
   get total(): number {
-    return this.names.length + this.wires.length + this.labels.length + this.drawings.length + this.copper.length
+    return this.names.length + this.wires.length + this.labels.length + this.drawings.length + this.copper.length + this.texts.length
+  }
+
+  /** The name, value or designator when it is all that is selected: the one Properties, the arrows and a drag move. */
+  get soleText(): string | undefined {
+    return this.total === 1 ? this.texts[0] : undefined
   }
 
   /** The track or via when it is all that is selected: the one Properties shows the rows of. */
@@ -151,6 +165,10 @@ export class Selection {
     return this.copper.includes(id)
   }
 
+  hasText(id: string): boolean {
+    return this.texts.includes(id)
+  }
+
   /** Just this part. */
   only(name: string): Selection {
     return this.total === 1 && this.names[0] === name ? this : new Selection({ ...EMPTY, names: [name] })
@@ -169,6 +187,11 @@ export class Selection {
   /** Just this drawing. */
   onlyDrawing(id: string): Selection {
     return this.soleDrawing === id ? this : new Selection({ ...EMPTY, drawings: [id] })
+  }
+
+  /** Just this name, value or designator. */
+  onlyText(id: string): Selection {
+    return this.soleText === id ? this : new Selection({ ...EMPTY, texts: [id] })
   }
 
   /** Just this track or via. */
@@ -199,6 +222,11 @@ export class Selection {
   /** The track or via taken out when it is in, else added after the others; the other kinds stay. */
   toggleCopper(id: string): Selection {
     return this.hasCopper(id) ? this.withoutCopper([id]) : this.grown({ copper: [...this.copper, id] })
+  }
+
+  /** The name, value or designator taken out when it is in, else added after the others; the other kinds stay. */
+  toggleText(id: string): Selection {
+    return this.hasText(id) ? this.with({ texts: less(this.texts, [id]) }) : this.grown({ texts: [...this.texts, id] })
   }
 
   /** The parts not in yet, added in order; the ones already in stay where they are. */
@@ -235,9 +263,9 @@ export class Selection {
     return Selection.none
   }
 
-  /** Every one of these parts, wires, labels, drawings and tracks or vias, each once, and nothing else. */
+  /** Every one of these parts, wires, labels, drawings and tracks or vias, each once, and nothing else (no name or value). */
   all(names: readonly string[], wires: readonly string[] = [], labels: readonly string[] = [], drawings: readonly string[] = [], copper: readonly string[] = []): Selection {
-    const next: Lists = { names: unique(names), wires: unique(wires), labels: unique(labels), drawings: unique(drawings), copper: unique(copper) }
+    const next: Lists = { names: unique(names), wires: unique(wires), labels: unique(labels), drawings: unique(drawings), copper: unique(copper), texts: [] }
     return KEYS.every((key) => sameList(next[key], this[key])) ? this : Selection.from(next)
   }
 
@@ -284,6 +312,16 @@ export class Selection {
   /** Only the selected drawings that are among these, such as the drawings the sheet still draws. */
   keepDrawings(ids: Iterable<string>): Selection {
     return this.with({ drawings: among(this.drawings, ids) })
+  }
+
+  /** The selection less these names, values and designators. */
+  withoutTexts(ids: readonly string[]): Selection {
+    return this.with({ texts: less(this.texts, ids) })
+  }
+
+  /** Only the selected names, values and designators that are among these, such as those of the parts still drawn. */
+  keepTexts(ids: Iterable<string>): Selection {
+    return this.with({ texts: among(this.texts, ids) })
   }
 
   /** Only the selected tracks and vias that are among these, such as those the layout file still has. */

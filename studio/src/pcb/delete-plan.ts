@@ -10,6 +10,15 @@ import { nameList, removeEach, removeQuestion, wireWords, type GroupEdit } from 
 import type { LabelsRemoval } from "./label-selection.js"
 import type { WiresRemoval } from "./wire-actions.js"
 
+/**
+ * What Delete may remove: the selection less the parts' names and values (and designators), which Delete leaves alone
+ * (hiding one is another matter); undefined when nothing else is selected, and then Delete does nothing at all.
+ */
+export function deletable(selection: Selection): Selection | undefined {
+  const rest = selection.withoutTexts(selection.texts)
+  return rest.total === 0 && selection.total > 0 ? undefined : rest
+}
+
 /** What Delete says when it removed copper and other things together: two history entries, one per file. */
 export const TWO_FILES_DELETE = "Deleted in two changes: the copper in the layout file, the rest in the circuit file."
 
