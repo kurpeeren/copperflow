@@ -4,6 +4,8 @@ import type { Point } from "./model.js"
  * Rounded track corners, kept as points. A fillet replaces a corner by a run of short chords on the arc tangent to
  * both legs; straighten finds such runs by their shape alone (equal chords, equal turns, a half turn where each leg
  * meets the arc, equal tangent lengths) and puts the corner back where the two legs meet. Pure geometry, in mm.
+ * The shape alone cannot tell a one-chord arc from a symmetric bend drawn by hand: two segments meeting at the same
+ * small turn (at most 15 degrees) on equal tangents read as a rounded corner, and straighten makes them one corner.
  */
 
 /** The widest angle one chord may span. */
@@ -14,6 +16,12 @@ export const MAX_CHORD_SAG = 0.005
 const MIN_STRAIGHT = 0.01
 /** Turns closer than this (radians) count as equal; a turn smaller than it is no corner. */
 const ANGLE_TOLERANCE = 1e-3
+/**
+ * Fillet leaves a corner alone when its arc's chords would turn by no more than twice that at each end: straighten
+ * would not find such a run again (the nanometre rounding of very short chords moves their turns by up to the
+ * tolerance), so neither command touches a corner that slight.
+ */
+const SLIGHTEST_HALF_STEP = 2 * ANGLE_TOLERANCE
 /** Lengths closer than this (mm) count as equal, besides a relative allowance. */
 const LENGTH_TOLERANCE = 1e-4
 const LENGTH_SHARE = 0.01
@@ -36,8 +44,19 @@ export interface FilletResult {
   square: SquareCorner[]
 }
 
-/** Asked about each arc before it is put in: a reason when the corner may not be rounded so. */
+/**
+ * Asked about each corner before it changes, with the corner point and its arc's points (the arc fillet would put in,
+ * or the one straighten would take out): a reason when the corner may not change so.
+ */
 export type CornerGuard = (corner: Point, arc: readonly Point[]) => string | undefined
+
+export interface StraightenResult {
+  points: Point[]
+  /** The corners put back now. */
+  straightened: number
+  /** The rounded corners that stay round, each at its corner point with the guard's reason. */
+  round: { at: Point; reason: string }[]
+}
 
 const sub = (a: Point, b: Point): Point => ({ x: a.x - b.x, y: a.y - b.y })
 const add = (a: Point, b: Point): Point => ({ x: a.x + b.x, y: a.y + b.y })
@@ -117,6 +136,9 @@ function chordRuns(points: readonly Point[]): ChordRun[] {
   return runs
 }
 
+/** How many chords the arc of `radius` over `angle` takes. */
+const chordCount = (angle: number, radius: number): number => Math.max(1, Math.ceil(angle / chordStep(radius) - 1e-9))
+
 /** The chords of the arc of `radius` that rounds the corner at `p`, from the incoming leg's tangent point to the outgoing one's. */
 function arcPoints(p: Point, into: Point, out: Point, radius: number, turn: number): Point[] {
   const angle = Math.abs(turn)
@@ -124,7 +146,7 @@ function arcPoints(p: Point, into: Point, out: Point, radius: number, turn: numb
   const [start, end] = [sub(p, scale(into, tangent)), add(p, scale(out, tangent))]
   const side = Math.sign(turn)
   const centre = add(start, scale({ x: -into.y * side, y: into.x * side }, radius))
-  const count = Math.max(1, Math.ceil(angle / chordStep(radius) - 1e-9))
+  const count = chordCount(angle, radius)
   const from = sub(start, centre)
   const inner = Array.from({ length: count - 1 }, (_, k) => {
     const a = (side * angle * (k + 1)) / count
@@ -149,7 +171,7 @@ export function filletTrack(points: readonly Point[], radius: number, width: num
   for (let i = 1; i < path.length - 1; i++) {
     const [p, before, after] = [path[i] as Point, out.at(-1) as Point, path[i + 1] as Point]
     const angle = Math.abs(turn[i] as number)
-    if (inRun.has(i) || angle <= ANGLE_TOLERANCE) {
+    if (inRun.has(i) || angle / chordCount(angle, r) / 2 <= SLIGHTEST_HALF_STEP) {
       out.push(p)
       continue
     }
@@ -169,11 +191,19 @@ export function filletTrack(points: readonly Point[], radius: number, width: num
   return { points: count === 0 ? [...points] : out, rounded: count, square }
 }
 
-/** Puts back every rounded corner of a track: each chord run becomes the point where its framing legs meet. */
-export function straightenTrack(points: readonly Point[]): { points: Point[]; straightened: number } {
+/**
+ * Puts back every rounded corner of a track: each chord run becomes the point where its framing legs meet, unless the
+ * guard refuses; a refused corner stays round, with the reason.
+ */
+export function straightenTrack(points: readonly Point[], guard?: CornerGuard): StraightenResult {
   const path = distinct(points)
-  const runs = chordRuns(path)
-  if (runs.length === 0) return { points: [...points], straightened: 0 }
+  const round: StraightenResult["round"] = []
+  const runs = chordRuns(path).filter((run) => {
+    const corner = rounded(run.corner)
+    const reason = guard?.(corner, path.slice(run.first, run.last + 1))
+    return reason === undefined ? true : void round.push({ at: corner, reason })
+  })
+  if (runs.length === 0) return { points: [...points], straightened: 0, round }
   const out: Point[] = []
   let next = 0
   for (const run of runs) {
@@ -181,5 +211,5 @@ export function straightenTrack(points: readonly Point[]): { points: Point[]; st
     next = run.last + 1
   }
   out.push(...path.slice(next))
-  return { points: out, straightened: runs.length }
+  return { points: out, straightened: runs.length, round }
 }

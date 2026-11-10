@@ -145,9 +145,32 @@ describe("straightenTrack", () => {
 
   test("is idempotent and leaves a square track alone", () => {
     const track = tracks["a staircase"] as Point[]
-    expect(straightenTrack(track)).toEqual({ points: track, straightened: 0 })
+    expect(straightenTrack(track)).toEqual({ points: track, straightened: 0, round: [] })
     const once = straightenTrack(filletTrack(track, 1, 0.25).points)
-    expect(straightenTrack(once.points)).toEqual({ points: once.points, straightened: 0 })
+    expect(straightenTrack(once.points)).toEqual({ points: once.points, straightened: 0, round: [] })
+  })
+
+  test("a turn too slight for straighten to find is no corner for fillet either; 0.1 degree comes back", () => {
+    for (const degrees of [0.05, 0.07, 0.1, 0.2, 0.3, 0.5]) {
+      const a = degrees * DEG
+      const track = [pt(0, 0), pt(10, 0), pt(10 + 10 * Math.cos(a), 10 * Math.sin(a))]
+      const rounded = filletTrack(track, 1, 0.25)
+      expect([degrees, near(straightenTrack(rounded.points).points, track)]).toEqual([degrees, true])
+    }
+  })
+
+  test("asks the guard about each run before putting its corner back", () => {
+    const rounded = filletTrack([pt(0, 0), pt(10, 0), pt(10, 10), pt(20, 10)], 1, 0.25).points
+    const seen: Point[] = []
+    const back = straightenTrack(rounded, (corner, arc) => {
+      seen.push(corner)
+      expect(arc.length).toBeGreaterThan(2)
+      return corner.y === 10 ? "too close to GND" : undefined
+    })
+    expect(seen).toEqual([pt(10, 0), pt(10, 10)])
+    expect(back.straightened).toBe(1)
+    expect(back.round).toEqual([{ at: pt(10, 10), reason: "too close to GND" }])
+    expect(straightenTrack(back.points).straightened).toBe(1)
   })
 
   test("leaves a 45 degree chamfer drawn by hand alone", () => {
