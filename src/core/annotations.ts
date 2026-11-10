@@ -49,8 +49,9 @@ export function annotationsPathFor(circuitPath: string): string {
 }
 
 /**
- * What a lock holds on to: the part with this name, or the drawing with this id. `kind` says which a lock is on, so
- * a lock on a part never matches a drawing of the same name; without it (a new lock), a part comes first.
+ * What a lock holds on to: the part with this name, or the drawing, copper pour or hole with this id ("copperpour:1",
+ * "hole:1"); a lock on any of these but a part is stored with `drawing`. `kind` says which a lock is on, so a lock on a
+ * part never matches a drawing of the same name; without it (a new lock), a part comes first.
  */
 export function lockTarget(
   model: CircuitModel,
@@ -59,7 +60,8 @@ export function lockTarget(
 ): { props: Record<string, PropInfo>; drawing: boolean } | undefined {
   const part = kind === "drawing" ? undefined : model.parts.find((p) => p.name === name)
   if (part) return { props: part.props, drawing: false }
-  const drawing = kind === "part" ? undefined : model.drawings.find((d) => d.id === name)
+  if (kind === "part") return undefined
+  const drawing = model.drawings.find((d) => d.id === name) ?? model.boardItems?.find((item) => item.id === name)
   return drawing && { props: drawing.props, drawing: true }
 }
 
@@ -68,11 +70,18 @@ export function lockKind(lock: Lock): "part" | "drawing" {
   return lock.drawing ? "drawing" : "part"
 }
 
-/** Locks parts by name and drawings by id, with a snapshot of their props. */
+/** What a stored lock is on, in words: "part", "drawing", "copper pour" or "hole". */
+export function lockWord(lock: Lock): string {
+  if (!lock.drawing) return "part"
+  if (lock.part.startsWith("copperpour:")) return "copper pour"
+  return lock.part.startsWith("hole:") ? "hole" : "drawing"
+}
+
+/** Locks parts by name and drawings, copper pours and holes by id, with a snapshot of their props. */
 export function lockParts(annotations: Annotations, model: CircuitModel, parts: string[], now: string): Annotations {
   const fresh = parts.map((name): Lock => {
     const target = lockTarget(model, name)
-    if (!target) throw new Error(`No part or drawing named ${name}`)
+    if (!target) throw new Error(`No part, drawing, copper pour or hole named ${name}`)
     const props = Object.fromEntries(Object.entries(target.props).map(([key, prop]) => [key, prop.source]))
     return { part: name, ...(target.drawing ? { drawing: true as const } : {}), props, lockedAt: now }
   })
@@ -88,7 +97,7 @@ export function unlockParts(annotations: Annotations, parts: string[]): Annotati
 export function verifyLocks(annotations: Annotations, model: CircuitModel): LockViolation[] {
   return annotations.locks.flatMap((lock): LockViolation[] => {
     const target = lockTarget(model, lock.part, lockKind(lock))
-    if (!target) return [{ part: lock.part, kind: "missing", detail: `the locked ${lockKind(lock)} is no longer in the file` }]
+    if (!target) return [{ part: lock.part, kind: "missing", detail: `the locked ${lockWord(lock)} is no longer in the file` }]
     const keys = new Set([...Object.keys(lock.props), ...Object.keys(target.props)])
     const changes = [...keys].flatMap((key) => {
       const before = lock.props[key]

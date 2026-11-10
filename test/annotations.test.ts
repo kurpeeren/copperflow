@@ -66,7 +66,7 @@ describe("drawing locks", () => {
       { part: "G1", drawing: true, lockedAt: NOW, props: { x: "{1}", y: "{2}", width: "{3}", height: "{1.5}" } },
       { part: "D[0:7]~2", drawing: true, lockedAt: NOW, props: { points: "{[{ x: 4, y: 3 }, { x: 4, y: 5 }]}" } },
     ])
-    expect(() => lockParts(emptyAnnotations(), sheet, ["G9"], NOW)).toThrow("No part or drawing named G9")
+    expect(() => lockParts(emptyAnnotations(), sheet, ["G9"], NOW)).toThrow("No part, drawing, copper pour or hole named G9")
   })
 
   test("a lock on a part never matches a drawing of the same name, nor the other way round", () => {
