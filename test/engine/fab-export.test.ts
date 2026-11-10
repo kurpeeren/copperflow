@@ -6,6 +6,7 @@ import { afterEach, beforeAll, describe, expect, test } from "vitest"
 import { buildBom, type BomLine } from "../../src/core/bom.js"
 import { buildDesign, type Design } from "../../src/engine/design.js"
 import { fabricationSet, writeFabrication, type FabricationSet } from "../../src/engine/fab/export.js"
+import type { PcbVia } from "../../src/engine/pcb.js"
 import { readZip } from "../helpers/zip-read.js"
 
 const FOLDER = join(import.meta.dirname, "..", "fixtures", "can-module")
@@ -94,6 +95,35 @@ describe("the fabrication set", () => {
     })
     expect(design.violations.some((v) => v.severity === "warning")).toBe(true)
     expect(fabricationSet(design, bom, CREATED).ok).toBe(true)
+  })
+})
+
+describe("what the fabrication set refuses or warns about", () => {
+  const fourLayers = (vias: PcbVia[]): Design => ({
+    ...design,
+    pcb: { ...design.pcb, board: { ...(design.pcb.board as NonNullable<Design["pcb"]["board"]>), layers: 4 }, vias: [...design.pcb.vias, ...vias] },
+  })
+  const via = (id: string, layers: PcbVia["layers"]): PcbVia => ({ id, at: { x: 0, y: 0 }, drill: 0.3, diameter: 0.6, layers, locked: false, by: "human" })
+
+  test("a blind or buried via is refused, naming the layers it spans in stack order; a through via is not", () => {
+    const refused = fabricationSet(fourLayers([via("v0007", ["inner1", "top"]), via("v0008", ["inner1", "inner2"]), via("v0009", ["top", "inner2", "bottom"])]), bom, CREATED)
+    expect(refused).toEqual({
+      ok: false,
+      errors: [
+        "blind or buried vias cannot be made as through drills; v0007 spans top–inner1",
+        "blind or buried vias cannot be made as through drills; v0008 spans inner1–inner2",
+      ],
+    })
+    expect(fabricationSet(fourLayers([via("v0009", ["bottom", "top"])]), bom, CREATED).ok).toBe(true)
+  })
+
+  test("a part without a footprint is named in a warning, since the pick-and-place leaves it out", () => {
+    const parts = design.pcb.parts.map((part) => (part.component === "U1" || part.component === "C2" ? { ...part, footprint: undefined } : part))
+    const set = accepted(fabricationSet({ ...design, pcb: { ...design.pcb, parts } }, bom, CREATED))
+    expect(set.warnings).toContain("2 parts have no footprint and are not in the pick-and-place: C2, U1")
+    const one = design.pcb.parts.map((part) => (part.component === "U1" ? { ...part, footprint: undefined } : part))
+    expect(accepted(fabricationSet({ ...design, pcb: { ...design.pcb, parts: one } }, bom, CREATED)).warnings).toContain("1 part has no footprint and is not in the pick-and-place: U1")
+    expect(accepted(fabricationSet(design, bom, CREATED)).warnings.some((w) => w.includes("footprint"))).toBe(false)
   })
 })
 

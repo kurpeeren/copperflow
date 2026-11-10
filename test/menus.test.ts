@@ -49,6 +49,20 @@ describe("menus", () => {
     expect(find("Junction")?.pending).toMatch(/^Comes later/)
   })
 
+  test("Export → Fabrication files (JLCPCB) runs the export; BOM and Package stay before it, Gerber and Pick and place run the same export", () => {
+    const entries = MENUS.find((m) => m.title === "Export")?.entries ?? []
+    expect(entries.slice(0, 5)).toEqual([
+      { label: "BOM", command: "exportBom" },
+      { label: "Package", command: "exportPackage" },
+      { label: "Fabrication files (JLCPCB)", command: "exportFabrication" },
+      { label: "Gerber", command: "exportFabrication" },
+      { label: "Pick and place (CPL)", command: "exportFabrication" },
+    ])
+    const file = MENUS.find((m) => m.title === "File")?.entries ?? []
+    expect(file).toContainEqual({ label: "Export Gerber", command: "exportFabrication" })
+    expect(commandOwner("exportFabrication")).toBe("app")
+  })
+
   test("Settings → Hotkeys opens the Keys dialog", () => {
     const hotkeys = MENUS.find((m) => m.title === "Settings")?.entries.find((e) => e !== "separator" && e.label === "Hotkeys")
     expect(hotkeys).toEqual({ label: "Hotkeys", command: "keys" })

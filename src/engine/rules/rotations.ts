@@ -3,9 +3,17 @@
 import { parseFootprint } from "../footprints/parse.js"
 import type { FabricationProfile } from "./schema.js"
 
+/** A library part's id, as the parts library accepts it: the key of a per-part correction. */
+export const LIBRARY_PART_ID = /^[A-Za-z](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9])?$/
+/** The footprint file of a library part, whose id the per-part corrections are keyed by. */
+const PART_FOOTPRINT_FILE = /^parts\/([^/]+)\/footprint\.yaml$/
+
 /** The families copperflow makes footprints for, by the letters of the footprint string, and footprint files. */
 export const FOOTPRINT_FAMILIES = ["chip", "sod", "sot", "soic", "sop", "tssop", "qfn", "qfp", "pinrow", "file"] as const
 export type FootprintFamily = (typeof FOOTPRINT_FAMILIES)[number]
+
+/** rules.yaml's corrections: per family, and per library part for the parts drawn with that part's footprint file. */
+export type PlacementRotations = Partial<Record<FootprintFamily, number>> & { parts?: Record<string, number> }
 
 /**
  * The corrections when rules.yaml sets none. All 0: copperflow's footprints are drawn at IPC-7351B's zero orientation,
@@ -36,8 +44,14 @@ export function footprintFamily(footprint: string): FootprintFamily | undefined 
   return isFamily(kind) ? kind : undefined
 }
 
-/** The correction for a footprint: the profile's for its family, else the table's; 0 for a footprint of no family. */
+/**
+ * The correction for a footprint: for a library part's footprint file the profile's for that part when it sets one,
+ * else the profile's for its family, else the table's; 0 for a footprint of no family.
+ */
 export function placementCorrection(footprint: string, fabrication: FabricationProfile): number {
+  const partId = PART_FOOTPRINT_FILE.exec(footprint)?.[1]
+  const forPart = partId === undefined ? undefined : fabrication.placementRotations?.parts?.[partId]
+  if (forPart !== undefined) return forPart
   const family = footprintFamily(footprint)
   if (family === undefined) return 0
   return fabrication.placementRotations?.[family] ?? PLACEMENT_ROTATIONS[family]

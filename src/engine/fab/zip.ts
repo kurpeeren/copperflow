@@ -21,6 +21,11 @@ const DEFLATED = 8
 const LOCAL_SIZE = 30
 const CENTRAL_SIZE = 46
 const END_SIZE = 22
+/**
+ * The deflate level, fixed so a zlib whose default changes still writes the same archive: zlib's normal level, which
+ * is what the general-purpose flags' compression bits (left 0, "normal") say.
+ */
+export const DEFLATE_LEVEL = 6
 /** The first year a DOS date can hold. */
 const DOS_EPOCH = 1980
 
@@ -75,7 +80,7 @@ export function zipFiles(files: readonly ZipInput[], modified: Date): Uint8Array
   let offset = 0
   for (const file of files) {
     const data = Buffer.from(file.text, "utf8")
-    const deflated = deflateRawSync(data)
+    const deflated = deflateRawSync(data, { level: DEFLATE_LEVEL })
     const smaller = deflated.length < data.length
     const entry: Entry = { name: Buffer.from(file.name, "utf8"), method: smaller ? DEFLATED : STORED, crc: crc32(data), size: data.length, body: smaller ? deflated : data, offset }
     const local = Buffer.alloc(LOCAL_SIZE)

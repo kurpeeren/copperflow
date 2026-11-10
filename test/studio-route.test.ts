@@ -168,6 +168,37 @@ describe("Route → Autoroute on the server", () => {
     expect(new Set((await readFile(join(root, LAYOUT), "utf8")).match(/"net":"[^"]+"/g))).toEqual(new Set(['"net":"net.B"']))
   }, 30_000)
 
+  test("Export → Fabrication files waits for no route: while one runs it is a 409, and it exports once the run ends", async () => {
+    const silent = fakeWorker(() => undefined)
+    await open(silent.factory)
+    await data(await api("/api/route", { file: FILE, scope: { kind: "all" } }))
+    const during = await api("/api/export", { file: FILE })
+    expect(during.status).toBe(409)
+    expect((await during.json()).error).toBe(`The board of ${FILE} is being routed; cancel it or wait for it to end before exporting`)
+    expect(await readFile(join(root, "main-fab.zip")).catch(() => undefined)).toBeUndefined()
+    await data(await api("/api/route/cancel", {}))
+    await ended()
+    expect((await data(await api("/api/export", { file: FILE }))).zip).toBe("main-fab.zip")
+  }, 30_000)
+
+  test("Export → Fabrication files runs in the project's write queue, so it waits for a write in progress", async () => {
+    await open(null)
+    let release = (): void => undefined
+    const held = inProjectQueue(root, () => new Promise<void>((done) => (release = done)))
+    let finished = false
+    const exported = api("/api/export", { file: FILE }).then((response) => {
+      finished = true
+      return response
+    })
+    await new Promise((done) => setTimeout(done, 300))
+    expect(finished).toBe(false)
+    expect(await readFile(join(root, "main-fab.zip")).catch(() => undefined)).toBeUndefined()
+    release()
+    await held
+    expect((await exported).status).toBe(200)
+    expect((await readFile(join(root, "main-fab.zip"))).subarray(0, 2).toString()).toBe("PK")
+  }, 30_000)
+
   test("one run at a time; cancel ends the worker and writes nothing", async () => {
     const silent = fakeWorker(() => undefined)
     await open(silent.factory)

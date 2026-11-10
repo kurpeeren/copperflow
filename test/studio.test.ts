@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { request } from "node:http"
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
 import { resolveCircuit } from "../src/core/workspace.js"
@@ -375,6 +375,48 @@ describe("parts library", () => {
     expect(lines.map((l: { designators: string[] }) => l.designators[0])).toContain("R1")
     const pkg = await data(await api("/api/package", { file: FILE }))
     expect(pkg.files).toContain("exports/main/BOM.csv")
+  })
+
+  test("Export → Fabrication files writes the folder and zip beside the circuit and answers with them and the warnings", async () => {
+    await mkdir(join(root, "boards"))
+    const clean = '<board width="10mm" height="10mm">\n  <resistor name="R1" resistance="1k" footprint="0402" pcbX={0} pcbY={0} schX={0} schY={0} />\n</board>'
+    await writeFile(join(root, "boards", "led.circuit.tsx"), `export default () => (\n${clean}\n)\n`)
+    const result = await data(await api("/api/export", { file: "boards/led.circuit.tsx" }))
+    expect(result).toMatchObject({ written: true, folder: "boards/led-fab", zip: "boards/led-fab.zip", warnings: [] })
+    expect(result.files).toHaveLength(13)
+    expect(result.files[0]).toBe("led-F_Cu.gtl")
+    expect((await readFile(join(root, "boards", "led-fab.zip"))).subarray(0, 2).toString()).toBe("PK")
+  })
+
+  test("Export → Fabrication files reports a file in the way of the folder as a 400 in plain words", async () => {
+    const clean = '<board width="10mm" height="10mm">\n  <resistor name="R1" resistance="1k" footprint="0402" pcbX={0} pcbY={0} schX={0} schY={0} />\n</board>'
+    await writeFile(join(root, "led.circuit.tsx"), `export default () => (\n${clean}\n)\n`)
+    await writeFile(join(root, "led-fab"), "mine")
+    const response = await api("/api/export", { file: "led.circuit.tsx" })
+    expect(response.status).toBe(400)
+    expect((await response.json()).error).toBe("Cannot write the fabrication files: led-fab is in the way (a file where a folder goes); move or rename it")
+  })
+
+  test("Export → Fabrication files exports the circuit as it is after a hand edit, not an earlier build", async () => {
+    const part = (name: string, x: number) => `  <resistor name="${name}" resistance="1k" footprint="0402" pcbX={${x}} pcbY={0} schX={${x}} schY={0} />`
+    const circuit = (...parts: string[]) => `export default () => (\n<board width="20mm" height="10mm">\n${parts.join("\n")}\n</board>\n)\n`
+    await writeFile(join(root, "led.circuit.tsx"), circuit(part("R1", 0)))
+    await data(await api("/api/build", { file: "led.circuit.tsx" }))
+    await data(await api("/api/export", { file: "led.circuit.tsx" }))
+    expect(await readFile(join(root, "led-fab", "led-pick-and-place.csv"), "utf8")).not.toContain("R2")
+    await writeFile(join(root, "led.circuit.tsx"), circuit(part("R1", 0), part("R2", 5)))
+    await data(await api("/api/export", { file: "led.circuit.tsx" }))
+    expect(await readFile(join(root, "led-fab", "led-pick-and-place.csv"), "utf8")).toContain("\nR2,5mm,0mm,Top,0\n")
+  })
+
+  test("Export → Fabrication files is refused for a circuit with errors, naming them, and needs the token", async () => {
+    const refused = await api("/api/export", { file: FILE })
+    expect(refused.status).toBe(422)
+    expect((await refused.json()).error).toMatch(/^No fabrication files written: duplicate-name: More than one part is named RX \(RX\); /)
+    expect(await readdir(root)).not.toContain("main-fab")
+    const noToken = await reach(`${studio.url}/api/export`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ file: FILE }) })
+    expect(noToken.status).toBe(403)
+    expect((await api("/api/export", {})).status).toBe(400)
   })
 
   test("the BOM reads the live design when it is current, and builds when it is not", async () => {

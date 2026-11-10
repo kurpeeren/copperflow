@@ -8,7 +8,9 @@ import {
   BUILTIN_PARTS,
   buildBom,
   createPart,
+  exportFabrication,
   exportPackage,
+  formatFabrication,
   formatBomMarkdown,
   listParts,
   partDir,
@@ -48,6 +50,7 @@ const INSTRUCTIONS = `copperflow lets you edit circuit files together with a hum
 - Change existing parts and traces through these tools rather than rewriting the file, so locks and history apply.
 - Call check_circuit once at the end, then fix every error before reporting success. It shows the first 20 findings; use its filter (errors, warnings, a part or a net) for the rest.
 - Copper: place the parts first, then run autoroute (one change: it routes what is still unrouted and names each connection it could not route, with the reason), then check_circuit once at the end (filter "copper" for the full list of violations). Route by hand only what the router reports: route_track draws one track of a net from a pad, track or via of that net, add_via places a via, remove_copper removes tracks and vias, fillet_tracks rounds track corners and straighten_tracks squares them again; each is one change, and the answer lists the violations it introduced. Or move parts and run autoroute again; unroute takes back the router's copper (never hand copper). copper_summary shows per net what is routed. A locked part guards only the tracks that start on its pads; vias on it and tracks that only end there are not locked, so leave them alone unless the human asks.
+- When the copper is routed and check_circuit reports no errors, call export_fabrication: it writes <name>-fab/ and <name>-fab.zip beside the circuit. A person uploads the zip to JLCPCB; you do not.
 - Never change, move or remove a part marked [LOCKED]. If a summary lists lock violations, restore those parts.
 - "Marks from the human" are instructions placed on the board; follow them.
 - recent_changes shows what the human undid; do not redo an undone change unless asked.
@@ -59,7 +62,7 @@ const literal = z.union([z.string(), z.number(), z.boolean()])
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false }
 
 export interface ServerOptions {
-  /** Builds the design for check_circuit, bom and export_package; tests pass one that runs in this process. */
+  /** Builds the design for check_circuit, bom, export_package and export_fabrication; tests pass one that runs in this process. */
   engine?: DesignSource
 }
 
@@ -337,6 +340,27 @@ Nothing was written.`)
       annotations: READ_ONLY,
     },
     ({ file: circuit }) => run(async () => formatBomMarkdown(await buildBom(root, circuit, designOptions))),
+  )
+
+  server.registerTool(
+    "export_fabrication",
+    {
+      description:
+        "Write the fabrication files for JLCPCB: Gerbers, plated and non-plated drills, pick-and-place and BOM in <name>-fab/ and <name>-fab.zip beside the circuit (or in the project folder out). Call it after autoroute and a clean check_circuit. A design with errors is refused and nothing is written; warnings (unrouted connections, parts without a footprint) are listed. A person uploads the zip.",
+      inputSchema: {
+        file,
+        out: z.string().optional().describe("A project folder to write into instead of the circuit's own, e.g. fab"),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false },
+    },
+    async ({ file: circuit, out }) => {
+      try {
+        const result = await exportFabrication(root, circuit, { ...designOptions, ...(out ? { outDir: out } : {}) })
+        return { ...(result.written ? {} : { isError: true }), content: [{ type: "text", text: formatFabrication(result, { compact: true }) }] }
+      } catch (error) {
+        return { isError: true, content: [{ type: "text", text: (error as Error).message }] }
+      }
+    },
   )
 
   server.registerTool(

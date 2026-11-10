@@ -202,9 +202,13 @@ type Pending = ToolbarButton & { pending: string }
 const pendingOf = (view: "schematic" | "pcb"): Pending[] => TOOLBARS[view].filter((b): b is Pending => b.pending !== undefined)
 
 describe("the pending buttons", () => {
-  test("the schematic waits only on the No connect flag; the PCB on Board outline, Copper area and Gerber", () => {
+  test("the schematic waits only on the No connect flag; the PCB on Board outline and Copper area", () => {
     expect(pendingOf("schematic").map((b) => b.id)).toEqual(["noConnect"])
-    expect(pendingOf("pcb").map((b) => b.id)).toEqual(["boardOutline", "copperArea", "gerber"])
+    expect(pendingOf("pcb").map((b) => b.id)).toEqual(["boardOutline", "copperArea"])
+  })
+
+  test("Gerber runs the fabrication export, as Export → Fabrication files (JLCPCB) does", () => {
+    expect(TOOLBARS.pcb.find((b) => b.id === "gerber")).toEqual({ id: "gerber", title: "Gerber", icon: "gerber", command: "exportFabrication", group: 8 })
   })
 
   test("Via and Single routing run the Route menu's tools, with their keys, and show pressed while armed", () => {
@@ -219,10 +223,9 @@ describe("the pending buttons", () => {
     }
   })
 
-  test("routing and copper wait for hand routing (stage 4), Gerber for fabrication outputs (stage 6), the flag for blocks and sheets (stage 3)", () => {
+  test("routing and copper wait for hand routing (stage 4), the flag for blocks and sheets (stage 3)", () => {
     const reason = (id: string) => pendingOf("pcb").find((b) => b.id === id)?.pending
     for (const id of ["boardOutline", "copperArea"]) expect(reason(id)).toBe("Comes with hand routing (engine stage 4)")
-    expect(reason("gerber")).toBe("Comes with fabrication outputs (engine stage 6)")
     expect(pendingOf("schematic")[0]?.pending).toBe("Comes with blocks and sheets (engine stage 3)")
   })
 
@@ -233,15 +236,16 @@ describe("the pending buttons", () => {
     expect(hasPressedState("undo")).toBe(false)
   })
 
-  test("a pending button that has a menu item of the same name says the same thing", () => {
+  test("a button that has a menu item of the same name says the same thing or sends the same command", () => {
     const byLabel = new Map(MENUS.flatMap(menuItems).map((item) => [item.label.toLowerCase(), item] as const))
     let matched = 0
-    for (const item of [...pendingOf("schematic"), ...pendingOf("pcb")]) {
+    for (const item of [...TOOLBARS.schematic, ...TOOLBARS.pcb]) {
       const entry = byLabel.get(item.title.toLowerCase())
       if (!entry) continue
       matched++
-      expect([item.id, entry.pending]).toEqual([item.id, item.pending])
+      expect([item.id, entry.pending, entry.command]).toEqual([item.id, item.pending, item.command])
     }
+    // No connect flag (pending) and Gerber (the fabrication export), at least.
     expect(matched).toBeGreaterThanOrEqual(2)
   })
 

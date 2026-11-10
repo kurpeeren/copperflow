@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { parseLength } from "../units.js"
-import { FOOTPRINT_FAMILIES, type FootprintFamily } from "./rotations.js"
+import { FOOTPRINT_FAMILIES, LIBRARY_PART_ID, type PlacementRotations } from "./rotations.js"
 
 /** The parsed, resolved form of rules.yaml. Every length is in millimetres. Plain JSON values only. */
 
@@ -22,8 +22,11 @@ export interface FabricationProfile {
   maskExpansion?: number
   /** How far the solder paste shrinks inside each SMD pad, in mm; the profiles leave it out (0 then). */
   pasteReduction?: number
-  /** Degrees added to the rotation in the pick-and-place file, per footprint family; the profiles leave it out (0 then). */
-  placementRotations?: Partial<Record<FootprintFamily, number>>
+  /**
+   * Degrees added to the rotation in the pick-and-place file, per footprint family, and per library part (by its id)
+   * for the parts whose footprint is that part's footprint file; the profiles leave it out (0 then).
+   */
+  placementRotations?: PlacementRotations
 }
 
 export interface NetClass {
@@ -66,6 +69,8 @@ const nonNegativeLength = z.union([z.number(), z.string()]).transform((value, ct
   return z.NEVER
 })
 
+const degrees = z.number().finite()
+
 const FabricationSchema = z
   .object({
     profile: z.string().optional(),
@@ -79,7 +84,13 @@ const FabricationSchema = z
     filletRadius: length.optional(),
     maskExpansion: nonNegativeLength.optional(),
     pasteReduction: nonNegativeLength.optional(),
-    placementRotations: z.partialRecord(z.enum(FOOTPRINT_FAMILIES), z.number().finite()).optional(),
+    placementRotations: z
+      .object({
+        ...Object.fromEntries(FOOTPRINT_FAMILIES.map((family) => [family, degrees.optional()])),
+        parts: z.record(z.string().regex(LIBRARY_PART_ID, "a library part id such as MCP2515"), degrees).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
 
