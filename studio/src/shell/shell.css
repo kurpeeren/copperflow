@@ -188,6 +188,26 @@ html body {
   color: var(--muted);
 }
 
+/* Design → Design rules: the label beside its field, the note under them, Save at the end. */
+.rules-form {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.rules-form p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+}
+
+.rules-form button {
+  grid-column: 2;
+  justify-self: end;
+}
+
 button.menu-title:hover:not(:disabled),
 button.menu-title.open:hover:not(:disabled) {
   background: var(--raised);

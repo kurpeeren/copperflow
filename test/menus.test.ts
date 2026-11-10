@@ -39,9 +39,8 @@ describe("menus", () => {
     }
   })
 
-  test("the honest reasons: Design rules, Annotate, Footprint manager, No connect flag and Junction", () => {
+  test("the honest reasons: Annotate, Footprint manager, No connect flag and Junction", () => {
     const find = (label: string) => MENUS.flatMap(menuItems).find((item) => item.label === label)
-    expect(find("Design rules")?.pending).toContain("(engine stage 4)")
     expect(find("Annotate designators")?.pending).toContain("(engine stage 3)")
     expect(find("Footprint manager")?.pending).toContain("(engine stage 3)")
     expect(find("No connect flag")?.pending).toContain("(engine stage 3)")

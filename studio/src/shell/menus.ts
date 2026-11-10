@@ -164,7 +164,7 @@ export const MENUS: readonly Menu[] = [
     title: "Design",
     entries: [
       run("Check DRC", "checkDrc"),
-      later("Design rules", `${WAITS_FOR_ROUTING}; for now edit rules.yaml in the project`),
+      run("Design rules", "designRules"),
       "separator",
       run("Highlight net", "highlight", "H"),
       run("Clear highlight", "clearHighlight", "Shift+H"),

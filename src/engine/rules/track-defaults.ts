@@ -38,5 +38,8 @@ export const defaultVia = (rules: Rules): ViaSize => ringSafe(rules, DEFAULT_CLA
 /** The fillet radius when rules.yaml sets none, in mm. */
 export const DEFAULT_FILLET_RADIUS = 1
 
+/** The largest fillet radius the Design rules panel takes, in mm: anything larger is a typing slip on any board. */
+export const MAX_FILLET_RADIUS = 50
+
 /** The radius Fillet tracks rounds corners with: rules.yaml's fabrication.filletRadius, else 1 mm. A track's width is its floor. */
 export const filletRadius = (rules: Rules): number => rules.fabrication.filletRadius ?? DEFAULT_FILLET_RADIUS

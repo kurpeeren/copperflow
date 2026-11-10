@@ -1,7 +1,7 @@
 import { resolve } from "node:path"
 import { isMap, parseDocument } from "yaml"
 import { RULES_PATH } from "../engine/rules/load.js"
-import { DEFAULT_FILLET_RADIUS } from "../engine/rules/track-defaults.js"
+import { DEFAULT_FILLET_RADIUS, MAX_FILLET_RADIUS } from "../engine/rules/track-defaults.js"
 import { EditError } from "./edit-error.js"
 import { inProjectQueue, readIfThere, writeNew, writeWithHistory } from "./file-writes.js"
 import type { Author, HistoryEntry } from "./history.js"
@@ -10,9 +10,6 @@ import type { Author, HistoryEntry } from "./history.js"
  * Design-rule changes the Studio makes to rules.yaml (the Design rules panel): the fillet radius, under `fabrication`.
  * The rest of the file stays as written, comments included; each change is one history entry.
  */
-
-/** The largest fillet radius taken, in mm: anything larger is a typing slip on any board copperflow draws. */
-export const MAX_FILLET_RADIUS = 50
 
 const FIELD = ["fabrication", "filletRadius"] as const
 

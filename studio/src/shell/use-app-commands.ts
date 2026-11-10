@@ -121,6 +121,7 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     selectAll: () => input.select(selectAll(input.circuit?.model.parts.map((part) => part.name) ?? [], input.pickLayers, input.pickFilter, input.sheetWires, input.sheetLabels, input.sheetDrawings, input.pcbCopper)),
     find: input.openFind,
     checkDrc: input.openChecks,
+    designRules: () => input.openDialog("rules"),
     lock: () => lockSelection(input, true),
     unlock: () => lockSelection(input, false),
     history: () => input.workspace.openBottom("log"),

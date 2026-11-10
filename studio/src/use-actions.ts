@@ -20,6 +20,8 @@ export interface Actions {
   /** Redoes the newest undone change, or the named one, announced as undo is. */
   redo(id?: string): Promise<EditOutcome>
   verify(id: string, by: string, against: string, confirm: string): Promise<boolean>
+  /** Design rules: writes the fillet radius to rules.yaml (null for the default), as one history entry, and tells it. */
+  setFilletRadius(radius: number | null): Promise<boolean>
   notify(text: string): void
 }
 
@@ -80,6 +82,7 @@ export function useActions({ file, refresh, refreshParts, notify }: ActionsInput
         if (ok) await refreshParts()
         return ok
       },
+      setFilletRadius: (radius) => run(async () => notify((await api<{ summary: string }>("/api/rules", { filletRadius: radius })).summary)),
       notify,
     }),
     [file, run, notify, refreshParts, editMarked, editLayout, postMarked],
