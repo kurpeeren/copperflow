@@ -35,6 +35,18 @@ export function padExtent(pads: readonly Pad[]): Extent {
   }, { x: 0, y: 0 })
 }
 
+/** True when every two pads keep at least `gap` apart, measured between their bounding boxes. */
+export function padsApart(pads: readonly Pad[], gap: number): boolean {
+  const boxes = pads.map((pad) => ({ pad, half: padHalfSize(pad) }))
+  return boxes.every((a, i) =>
+    boxes.slice(i + 1).every((b) => {
+      const dx = Math.abs(a.pad.x - b.pad.x) - a.half.x - b.half.x
+      const dy = Math.abs(a.pad.y - b.pad.y) - a.half.y - b.half.y
+      return Math.max(dx, dy) >= gap - 1e-9
+    }),
+  )
+}
+
 /** Half the gap between two rows of pads: how far the nearest pad edge is from the centre line across `axis`. */
 function innerEdge(pads: readonly Pad[], axis: "x" | "y" = "x"): number {
   return Math.min(...pads.map((pad) => Math.abs(pad[axis]) - padHalfSize(pad)[axis]))

@@ -1,7 +1,9 @@
+import { exposedPadSize, MIN_PAD_GAP, mm, onlyPitch, sizeText } from "./exposed.js"
 import { confirmsPackage, gullWingRow, leadlessRow, range, type IcPackage } from "./ic.js"
 import { roundRectPad, type PadRow, type Range } from "./ipc7351.js"
-import { bodyOutline, centredOffsets, courtyard, quadSilkscreen, tidy } from "./outline.js"
-import { isSimple, type ParsedFootprint } from "./parse.js"
+import { qfnPackage, qfpPackage } from "./jedec.js"
+import { bodyOutline, centredOffsets, courtyard, padsApart, quadSilkscreen, tidy, type Extent } from "./outline.js"
+import { isSimple, type Pair, type ParsedFootprint } from "./parse.js"
 import type { Footprint, Pad } from "./types.js"
 
 /** A square quad package. `exposedPad` is the thermal pad's side (Dh = Eh), for no-lead packages. */
@@ -77,29 +79,57 @@ function quadPads(pins: number, pitch: number, row: PadRow): Pad[] {
   return places.map((p, i) => roundRectPad(String(i + 1), p.x, p.y, p.width, p.height))
 }
 
+/** LQFP and TQFP differ from each other only in body thickness; both take the QFP footprint. */
+const QFP_ALIASES = new Set(["qfp", "lqfp", "tqfp"])
+const QUAD_KINDS = new Set(["qfn", ...QFP_ALIASES])
+
 /**
- * The exposed pad takes the drawing's nominal Dh × Eh (the mean of min and max). This is a choice
- * made here: the IPC-7351B rule for thermal pad lands was not seen.
+ * The IPC-7351B nominal footprint for "qfp48", "qfn32", "qfn32_ep", and for packages named by body
+ * and pitch such as "qfn32_5x5_p0.5_ep3.1" or "lqfp64_10x10_p0.5", or undefined.
  */
-function exposedPad(number: number, side: Range): Pad {
-  const size = tidy((side.min + side.max) / 2)
-  return roundRectPad(String(number), 0, 0, size, size)
+export function quadFootprint(parsed: ParsedFootprint): Footprint | undefined {
+  if (!QUAD_KINDS.has(parsed.kind) || parsed.variant !== undefined) return undefined
+  return parsed.size ? namedQuad(parsed, parsed.size) : tableQuad(parsed)
 }
 
-/** The IPC-7351B nominal footprint for "qfp48", "qfn32", "qfn32_ep" and the like, or undefined. */
-export function quadFootprint(parsed: ParsedFootprint): Footprint | undefined {
+function tableQuad(parsed: ParsedFootprint): Footprint | undefined {
   const leadless = parsed.kind === "qfn"
-  const pkg = leadless ? QFNS.get(parsed.code) : parsed.kind === "qfp" ? QFPS.get(parsed.code) : undefined
-  if (!pkg || !isSimple(parsed) || parsed.variant !== undefined || !confirmsPackage(parsed.params, pkg, leadless ? ["ep"] : [])) return undefined
-  const pins = Number(parsed.code)
+  const pkg = leadless ? QFNS.get(parsed.code) : QFPS.get(parsed.code)
+  if (!pkg || !isSimple(parsed) || !confirmsPackage(parsed.params, pkg, leadless ? ["ep"] : [])) return undefined
+  const thermal = parsed.params["ep"] === true && pkg.exposedPad ? nominalSquare(pkg.exposedPad) : undefined
+  return quad(parsed.kind + parsed.code + (thermal ? "_ep" : ""), Number(parsed.code), pkg, leadless, thermal)
+}
+
+/**
+ * The exposed pad of a cited package takes the drawing's nominal Dh × Eh (the mean of min and max).
+ * This is a choice made here: the IPC-7351B rule for thermal pad lands was not seen.
+ */
+const nominalSquare = (side: Range): Extent => {
+  const size = tidy((side.min + side.max) / 2)
+  return { x: size, y: size }
+}
+
+/** "qfn<N>_<body>x<body>_p<pitch>" with an optional "_ep<size>" or "_ep<w>x<h>", and the QFP forms. */
+function namedQuad(parsed: ParsedFootprint, body: Pair): Footprint | undefined {
+  const leadless = parsed.kind === "qfn"
+  const pitch = parsed.params["p"]
+  if (parsed.cross !== undefined || parsed.suffix !== undefined || typeof pitch !== "number") return undefined
+  const pkg = leadless ? qfnPackage(parsed.code, body, pitch) : qfpPackage(parsed.code, body, pitch)
+  const thermal = leadless ? exposedPadSize(parsed) : onlyPitch(parsed) ? undefined : null
+  if (!pkg || thermal === null) return undefined
+  const name = `${parsed.kind}${parsed.code}_${mm(body[0])}x${mm(body[1])}_p${mm(pitch)}${thermal ? `_ep${sizeText(thermal)}` : ""}`
+  return quad(name, Number(parsed.code), pkg, leadless, thermal)
+}
+
+function quad(name: string, pins: number, pkg: IcPackage, leadless: boolean, thermal: Extent | undefined): Footprint | undefined {
   const { row, table } = leadless ? leadlessRow(pkg) : gullWingRow(pkg)
   const signal = quadPads(pins, pkg.pitch, row)
-  const thermal = parsed.params["ep"] === true ? pkg.exposedPad : undefined
-  const pads = thermal ? [...signal, exposedPad(pins + 1, thermal)] : signal
+  const pads = thermal ? [...signal, roundRectPad(String(pins + 1), 0, 0, thermal.x, thermal.y)] : signal
+  if (!padsApart(pads, MIN_PAD_GAP)) return undefined
   const half = pkg.bodyAcross.max / 2
   const reach = Math.max(pkg.span.max, pkg.bodyAcross.max) / 2
   return {
-    name: `${parsed.kind}${parsed.code}${thermal ? "_ep" : ""}`,
+    name,
     pads,
     courtyard: courtyard(pads, { x: reach, y: reach }, table),
     silkscreen: quadSilkscreen(signal, { x: half, y: half }),

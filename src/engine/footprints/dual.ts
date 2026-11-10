@@ -78,7 +78,7 @@ const FAMILIES = new Map<string, ReadonlyMap<string, IcPackage>>([
 ])
 
 /** Pad 1 at the top of the left column; the left column runs down, the right column back up. */
-function dualPads(pins: number, pitch: number, row: PadRow): Pad[] {
+export function dualPads(pins: number, pitch: number, row: PadRow): Pad[] {
   const ys = centredOffsets(pins / 2, pitch)
   const left = [...ys].reverse().map((y, i) => roundRectPad(String(i + 1), -row.centre, y, row.length, row.width))
   const right = ys.map((y, i) => roundRectPad(String(pins / 2 + i + 1), row.centre, y, row.length, row.width))

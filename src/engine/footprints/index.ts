@@ -1,4 +1,5 @@
 import { chipFootprint } from "./chip.js"
+import { dfnFootprint } from "./dfn.js"
 import { dualFootprint } from "./dual.js"
 import { footprintFromFile } from "./file.js"
 import { isSimple, parseFootprint, type ParsedFootprint } from "./parse.js"
@@ -24,6 +25,7 @@ const FAMILIES: readonly Family[] = [
   sotFootprint,
   dualFootprint,
   quadFootprint,
+  dfnFootprint,
   pinRowFootprint,
 ]
 
