@@ -43,6 +43,15 @@ export interface EditResult {
   entry: HistoryEntry
   model: CircuitModel
   violations: LockViolation[]
+  /** The ids of the pours and holes the edits wrote or changed (none left in place as it was), in source order. */
+  boardItemsAdded: string[]
+}
+
+/** The pours and holes of `next` that are no element of `source` left in place: those the change wrote or changed. */
+function boardItemsAdded(source: string, before: CircuitModel, next: string, after: CircuitModel): string[] {
+  const kept = drawingKeeper(source, next)
+  const old = before.boardItems ?? []
+  return (after.boardItems ?? []).filter((item) => !old.some((one) => one.tag === item.tag && kept(one, item))).map((item) => item.id)
 }
 
 /** Resolves a project-relative path and rejects anything outside the project root. */
@@ -121,7 +130,7 @@ export function editCircuit(
     if (after === loaded.source) throw new EditError("invalid", "The edit made no change")
     const entry = await writeWithHistory(root, loaded, after, { ...meta, file: loaded.file, before: loaded.source, after })
     const model = analyzeCircuit(after)
-    return { entry, model, violations: verifyLocks(loaded.annotations, model) }
+    return { entry, model, violations: verifyLocks(loaded.annotations, model), boardItemsAdded: boardItemsAdded(loaded.source, loaded.model, after, model) }
   })
 }
 

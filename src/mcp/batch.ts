@@ -11,12 +11,13 @@ import {
   type Edit,
 } from "../core/index.js"
 import { buildWith, type DesignSource } from "../core/design-source.js"
-import { scanCircuit } from "../core/analyze.js"
+import { analyzeCircuit, scanCircuit } from "../core/analyze.js"
 import { connectionsEdit, instanceEdit } from "../core/instance-requests.js"
 import { movePartNote } from "../core/page-edits.js"
 import { localNet, localNetRefusal, parseSelector } from "../engine/selectors.js"
-import type { Circuit, Component } from "../engine/model.js"
+import type { Circuit, Component, Net } from "../engine/model.js"
 import { pinName } from "./compact.js"
+import { findNet } from "./copper-under.js"
 import { holeFields, pointText, pourFields } from "./pour-tools.js"
 
 type LoadedModel = Awaited<ReturnType<typeof loadCircuit>>["model"]
@@ -168,6 +169,35 @@ export async function firstRefusal(root: string, file: string, edits: Edit[]): P
     } catch (error) {
       if (error instanceof EditError) return { index, reason: error.message }
       throw error
+    }
+  }
+  return undefined
+}
+
+/** Whether the circuit text writes a trace to `net.<name>`. */
+const namedIn = (source: string, name: string) => analyzeCircuit(source).traces.some((trace) => trace.from === `net.${name}` || trace.to === `net.${name}`)
+
+/**
+ * The first add_pour on a net that neither the built design has nor an earlier edit of the batch writes (the batch is
+ * applied in order, so a net it connects first is fine). Nothing is refused when the design does not build.
+ */
+export async function unknownPourNet(root: string, file: string, edits: readonly Edit[], engine?: DesignSource): Promise<Refusal | undefined> {
+  if (!edits.some((edit) => edit.kind === "addPour")) return undefined
+  let nets: readonly Net[]
+  try {
+    nets = (await buildWith(root, file, engine)).circuit.nets
+  } catch {
+    return undefined
+  }
+  const loaded = await loadCircuit(root, file)
+  const locked = new Set(loaded.annotations.locks.map((lock) => lock.part))
+  let source = loaded.source
+  for (const [index, edit] of edits.entries()) {
+    if (edit.kind === "addPour" && !findNet(nets, edit.net) && !namedIn(source, edit.net)) return { index, reason: `There is no net ${edit.net}; connect pins to it first` }
+    try {
+      source = applyEdits(source, [edit], locked)
+    } catch {
+      return undefined
     }
   }
   return undefined

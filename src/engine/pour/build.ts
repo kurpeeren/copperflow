@@ -88,8 +88,8 @@ const outsideBoard = (outline: readonly Point[], board: Board) =>
   difference([toPath(outline)], [toPath(board.outline)]).reduce((sum, path) => sum + Math.abs(pathArea(path)), 0) > OUTSIDE_AREA
 
 /**
- * The pours checked against the circuit and the board: the net must exist and the layer be one the board has, or the
- * pour is left out with a warning; an outline that leaves the board is warned about and filled only on the board.
+ * The pours checked against the circuit and the board: the net must exist (else a `pour-net` error) and the layer be
+ * one the board has (else a warning), or the pour is left out; an outline that leaves the board is warned about and filled only on the board.
  */
 export function resolvePours(drafts: readonly PourDraft[], nets: readonly Net[], board: Board): { pours: CopperPour[]; diagnostics: Diagnostic[] } {
   const diagnostics: Diagnostic[] = []
@@ -97,7 +97,7 @@ export function resolvePours(drafts: readonly PourDraft[], nets: readonly Net[],
     const warn: Warn = (message) => diagnostics.push(diagnostic("bad-value", "warning", message, [draft.id], draft.source))
     const net = netIdOf(nets, netName)
     if (net === undefined) {
-      warn(`copperpour: the circuit has no net ${netName}; the pour is ignored`)
+      diagnostics.push(diagnostic("pour-net", "error", `${draft.id} names the net ${netName}, which the circuit does not have`, [draft.id], draft.source))
       return []
     }
     if (board.layers === 2 && INNER.includes(draft.layer)) {

@@ -2,8 +2,6 @@
 // circuit file through the core (pour-edits.ts), so one history entry, and honours the locks by id.
 import { z } from "zod"
 import { editCircuit, type Edit } from "../core/index.js"
-import { newBoardItemId } from "../core/board-items.js"
-import { loadCircuit } from "../core/workspace.js"
 import type { Design } from "../engine/design.js"
 import { pourLine } from "./copper-summary.js"
 import { findNet } from "./copper-under.js"
@@ -70,41 +68,52 @@ export function pourEdit(design: Design, request: PourRequest): Extract<Edit, { 
   return { kind: "addPour", net: net.names[0] ?? request.net, layer: request.layer, ...(request.outline ? { outline: request.outline } : {}), ...(Object.keys(props).length > 0 ? { props } : {}) }
 }
 
-/** Applies one edit as one history entry by the agent; the answer is its first line plus any lock violations. */
-async function applyOne(ports: Ports, circuit: string, edit: Edit, summary: string): Promise<string> {
-  const result = await editCircuit(ports.root, circuit, [edit], { author: "ai", summary })
-  const warnings = result.violations.map((v) => `Lock violation: ${v.part} ${v.kind}: ${v.detail}`)
-  return [`Change ${result.entry.id}: ${summary.replace(/^add /, "added ").replace(/^remove /, "removed ")}`, ...warnings].join("\n")
-}
-
-/** The id the next pour or hole gets in the file as it is now. */
-async function nextId(ports: Ports, circuit: string, tag: "copperpour" | "hole"): Promise<string> {
-  const { model } = await loadCircuit(ports.root, circuit)
-  return newBoardItemId(model.boardItems ?? [], tag)
-}
-
-export async function addPour(ports: Ports, input: { file: string } & PourRequest): Promise<string> {
-  const edit = pourEdit(await buildOf(ports, input.file), input)
-  const id = await nextId(ports, input.file, "copperpour")
-  const head = await applyOne(ports, input.file, edit, `add ${id} (${edit.net}, ${edit.layer})`)
+/**
+ * Runs one tool's work; a refusal names the tool's item and ends with "Nothing was written.", as every refusal comes
+ * before the one write.
+ */
+async function asItem(label: string, task: () => Promise<string>): Promise<string> {
   try {
-    const after = await buildOf(ports, input.file)
-    const fill = after.pcb.pours.find((one) => one.id === id)
-    return fill ? `${head}\n${pourLine(after, fill)}` : head
+    return await task()
   } catch (error) {
-    return `${head}\nThe pour was written, but the board could not be rebuilt: ${(error as Error).message}`
+    const reason = (error as Error).message.replace(/\s*Nothing was written\.?$/, "").replace(/\.$/, "")
+    throw new Error(`${label} was refused: ${reason}. Nothing was written.`)
   }
 }
 
-export function removePour(ports: Ports, input: { file: string; id: string }): Promise<string> {
-  return applyOne(ports, input.file, { kind: "removePour", id: input.id }, `remove ${input.id}`)
+/** Applies one edit as one history entry by the agent; the answer's head names what it did, then any lock violations. */
+async function applyOne(ports: Ports, circuit: string, edit: Edit, summary: string, head: (added: string | undefined) => string) {
+  const result = await editCircuit(ports.root, circuit, [edit], { author: "ai", summary })
+  const warnings = result.violations.map((v) => `Lock violation: ${v.part} ${v.kind}: ${v.detail}`)
+  const added = result.boardItemsAdded[0]
+  return { added, text: [`Change ${result.entry.id}: ${head(added)}`, ...warnings].join("\n") }
 }
 
-export async function addHole(ports: Ports, input: { file: string } & HoleRequest): Promise<string> {
-  const id = await nextId(ports, input.file, "hole")
-  return applyOne(ports, input.file, { kind: "addHole", x: input.x, y: input.y, diameter: input.diameter }, `add ${id} ${holeWords(input)}`)
+export function addPour(ports: Ports, input: { file: string } & PourRequest): Promise<string> {
+  return asItem(`add_pour ${input.net} ${input.layer}`, async () => {
+    const edit = pourEdit(await buildOf(ports, input.file), input)
+    const { added, text } = await applyOne(ports, input.file, edit, `add copper pour ${edit.net} ${edit.layer}`, (id) => `added ${id ?? "a copper pour"} (${edit.net}, ${edit.layer})`)
+    try {
+      const after = await buildOf(ports, input.file)
+      const fill = after.pcb.pours.find((one) => one.id === added)
+      return fill ? `${text}\n${pourLine(after, fill)}` : text
+    } catch (error) {
+      return `${text}\nThe pour was written, but the board could not be rebuilt: ${(error as Error).message}`
+    }
+  })
+}
+
+export function removePour(ports: Ports, input: { file: string; id: string }): Promise<string> {
+  return asItem(`remove_pour ${input.id}`, async () => (await applyOne(ports, input.file, { kind: "removePour", id: input.id }, `remove ${input.id}`, () => `removed ${input.id}`)).text)
+}
+
+export function addHole(ports: Ports, input: { file: string } & HoleRequest): Promise<string> {
+  return asItem(`add_hole at ${pointText(input.x, input.y)}`, async () => {
+    const edit: Edit = { kind: "addHole", x: input.x, y: input.y, diameter: input.diameter }
+    return (await applyOne(ports, input.file, edit, `add hole ${holeWords(input)}`, (id) => `added ${id ?? "a hole"} ${holeWords(input)}`)).text
+  })
 }
 
 export function removeHole(ports: Ports, input: { file: string; id: string }): Promise<string> {
-  return applyOne(ports, input.file, { kind: "removeHole", id: input.id }, `remove ${input.id}`)
+  return asItem(`remove_hole ${input.id}`, async () => (await applyOne(ports, input.file, { kind: "removeHole", id: input.id }, `remove ${input.id}`, () => `removed ${input.id}`)).text)
 }

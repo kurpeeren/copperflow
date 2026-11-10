@@ -154,8 +154,8 @@ describe("removePour", () => {
 
 describe("holes", () => {
   test("addHole writes x, y and diameter after the last hole", () => {
-    const out = applyEdits(WITH_POURS, [{ kind: "addHole", x: 10, y: 12.5, diameter: 3.2 }], none)
-    expect(out).toContain('<hole x={2} y={3} diameter={3.2} />\n    <hole x={10} y={12.5} diameter={3.2} />')
+    const out = applyEdits(WITH_POURS, [{ kind: "addHole", x: 10, y: 7.5, diameter: 3.2 }], none)
+    expect(out).toContain('<hole x={2} y={3} diameter={3.2} />\n    <hole x={10} y={7.5} diameter={3.2} />')
   })
 
   test("addHole on a board without one goes before the first trace", () => {
@@ -187,5 +187,35 @@ describe("a new pour or hole after every one of its tag", () => {
     expect(found[1]?.props["net"]?.literal).toBe("VCC")
     expect(newBoardItemId(items(source), "copperpour")).toBe("copperpour:2")
     expect(newBoardItemId(items(source), "hole")).toBe("hole:1")
+  })
+})
+
+describe("pours and holes stay on the board", () => {
+  test("refuses an outline point outside the board", () => {
+    const outline = [{ x: 0, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 5 }]
+    expect(editError([{ kind: "addPour", net: "GND", layer: "top", outline }]).message).toBe("outline point (100, 100) lies outside the board")
+    expect(editError([{ kind: "setPour", id: "copperpour:2", props: { outline } }]).message).toMatch(/outline point \(100, 100\) lies outside the board/)
+  })
+
+  test("refuses a hole outside the board, also when moved there", () => {
+    expect(editError([{ kind: "addHole", x: 20, y: 0, diameter: 2 }]).message).toBe("the hole at (20, 0) lies outside the board")
+    expect(editError([{ kind: "setHole", id: "hole:1", props: { y: -11 } }]).message).toBe("the hole at (2, -11) lies outside the board")
+  })
+
+  test("a hole's diameter is at least 0.1 mm and at most the board's smaller side", () => {
+    expect(editError([{ kind: "addHole", x: 0, y: 0, diameter: 0.05 }]).message).toBe("diameter must be at least 0.1 mm")
+    expect(editError([{ kind: "addHole", x: 0, y: 0, diameter: 21 }]).message).toBe("diameter must be at most 20 mm, the board's smaller side")
+    expect(applyEdits(BOARD, [{ kind: "addHole", x: 0, y: 0, diameter: 0.1 }], none)).toContain("diameter={0.1}")
+  })
+
+  test("a pour's clearance, minWidth, thermalWidth and thermalGap are at most 10 mm", () => {
+    for (const key of ["clearance", "minWidth", "thermalWidth", "thermalGap"]) {
+      expect(editError([{ kind: "addPour", net: "GND", layer: "top", props: { [key]: 11 } }]).message).toBe(`${key} must be a number of mm above 0 and at most 10`)
+    }
+  })
+
+  test("a board drawn as an outline is not checked by the core", () => {
+    const shaped = BOARD.replace('width="30mm" height="20mm"', "outline={points}")
+    expect(applyEdits(shaped, [{ kind: "addHole", x: 50, y: 0, diameter: 2 }], none)).toContain("<hole x={50}")
   })
 })

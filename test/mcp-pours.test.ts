@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "vitest"
-import { cp, mkdtemp, readFile } from "node:fs/promises"
+import { cp, mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -229,5 +229,59 @@ describe("the instructions and the skill", () => {
       for (const tool of ["add_pour", "remove_pour", "add_hole", "remove_hole"]) expect(text).toContain(tool)
       expect(text).toMatch(/A part's lock never covers a pour/)
     }
+  })
+})
+
+describe("fix round 1", () => {
+  const design = () => inProcessEngine.build(root, FILE)
+
+  test("edit_circuit refuses a pour on a net the circuit does not have; a net made earlier in the batch is fine", async () => {
+    const before = await source()
+    const refused = await call("edit_circuit", { file: FILE, edits: [{ add_pour: { net: "NOPE", layer: "bottom" } }] })
+    expect(refused.isError).toBe(true)
+    expect(refused.text).toMatch(/Edit 1 of 1 \(add_pour\) was refused: There is no net NOPE/)
+    expect(await source()).toBe(before)
+    const made = await call("edit_circuit", {
+      file: FILE,
+      edits: [{ place_part: { part: "resistor", name: "R9", props: { resistance: "1k", footprint: "0402" } } }, { connect: { from: "R9.pin1", to: "net.SHIELD" } }, { connect: { from: "R9.pin2", to: "net.GND" } }, { add_pour: { net: "SHIELD", layer: "top" } }],
+    })
+    expect(made.isError).toBe(false)
+    expect((await design()).pcb.pours.map((pour) => pour.id)).toEqual(["copperpour:1"])
+  })
+
+  test("a pour naming a net the circuit lacks is a pour-net error in check_circuit's copper filter", async () => {
+    await writeFile(join(root, FILE), (await source()).replace("<trace", '<copperpour net="NOPE" layer="bottom" />\n    <trace'))
+    const { text } = await call("check_circuit", { file: FILE, filter: "copper" })
+    expect(text).toMatch(/^error pour-net \[copperpour:1\]: copperpour:1 names the net NOPE, which the circuit does not have/m)
+  })
+
+  test("an outline point or a hole outside the board is refused and nothing is written", async () => {
+    const before = await source()
+    const outline = [{ x: 0, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 5 }]
+    const pour = await call("add_pour", { file: FILE, net: "GND", layer: "top", outline })
+    expect(pour.text).toBe("add_pour GND top was refused: outline point (100, 100) lies outside the board. Nothing was written.")
+    const hole = await call("add_hole", { file: FILE, x: 40, y: 0, diameter: 2 })
+    expect(hole.text).toBe("add_hole at (40, 0) was refused: the hole at (40, 0) lies outside the board. Nothing was written.")
+    expect(await source()).toBe(before)
+  })
+
+  test("refusals name the tool's item and end with Nothing was written.", async () => {
+    expect((await call("remove_pour", { file: FILE, id: "copperpour:9" })).text).toBe("remove_pour copperpour:9 was refused: No copper pour with id copperpour:9. Nothing was written.")
+    expect((await call("add_pour", { file: FILE, net: "NOPE", layer: "top" })).text).toBe("add_pour NOPE top was refused: There is no net NOPE; connect pins to it first. Nothing was written.")
+    expect((await call("add_hole", { file: FILE, x: 0, y: 0, diameter: 0.05 })).text).toBe("add_hole at (0, 0) was refused: diameter must be at least 0.1 mm. Nothing was written.")
+    expect((await call("add_pour", { file: FILE, net: "GND", layer: "top", props: { thermalGap: 20 } })).text).toMatch(/thermalGap must be a number of mm above 0 and at most 10\. Nothing was written\.$/)
+  })
+
+  test("the answered id is the one the built design gives the new pour or hole", async () => {
+    // A pour in a group comes first in the file but the new pour still gets the next id.
+    await writeFile(join(root, FILE), (await source()).replace("<trace", '<group><copperpour net="GND" layer="top" /><hole x={-12} y={-7} diameter={2} /></group>\n    <trace'))
+    const pour = await call("add_pour", { file: FILE, net: "VBUS", layer: "bottom" })
+    const pourId = /added (copperpour:\d+)/.exec(pour.text)?.[1]
+    const hole = await call("add_hole", { file: FILE, x: 12, y: -7, diameter: 2 })
+    const holeId = /added (hole:\d+)/.exec(hole.text)?.[1]
+    const built = await design()
+    expect(built.pcb.pours.find((one) => one.id === pourId)?.layer).toBe("bottom")
+    expect(built.pcb.holes.find((one) => one.id === holeId)).toMatchObject({ x: 12, y: -7 })
+    expect([pourId, holeId]).toEqual(["copperpour:2", "hole:2"])
   })
 })

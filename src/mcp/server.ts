@@ -31,7 +31,7 @@ import type { DesignSource } from "../core/bom.js"
 import { buildWith } from "../core/design-source.js"
 import { FootprintFileSchema } from "../engine/footprints/file.js"
 import { VERSION } from "../version.js"
-import { batchSummary, describeRefusal, editItem, firstRefusal, moveNotes, planNets, toEdit } from "./batch.js"
+import { batchSummary, describeRefusal, editItem, firstRefusal, moveNotes, planNets, toEdit, unknownPourNet } from "./batch.js"
 import { formatCompactCheck, formatCompactSummary, formatInstanceSummary, type SheetView } from "./compact.js"
 import { importsSheet, type Flattened } from "./compact-sheets.js"
 import { formatCopperSummary } from "./copper-summary.js"
@@ -245,6 +245,8 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
           }
         }
         const list = converted.map((c) => c.edit)
+        const badNet = await unknownPourNet(root, circuit, list, options.engine)
+        if (badNet) throw new Error(describeRefusal(badNet, edits.length, "add_pour"))
         const summary = batchSummary(converted.map((c) => c.label))
         const notes = list.some((e) => e.kind === "movePartToPage") ? await movesLeaveBehind(root, circuit, list) : []
         try {

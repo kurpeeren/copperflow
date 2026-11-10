@@ -137,6 +137,18 @@ export interface CircuitModel {
   pages?: PageInfo[]
   /** Offsets of the `<board>` element's closing tag, when there is one. */
   boardClose?: { start: number }
+  /**
+   * The board's rectangle in mm, from literal width and height (and pcbX, pcbY); absent when the board is drawn as an
+   * outline or its size is not a literal, so nothing is checked against it.
+   */
+  boardBox?: BoardBox
+}
+
+export interface BoardBox {
+  minX: number
+  minY: number
+  maxX: number
+  maxY: number
 }
 
 /**
