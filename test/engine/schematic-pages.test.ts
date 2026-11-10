@@ -3,6 +3,8 @@ import { elaborate } from "../../src/engine/elaborate.js"
 import { evaluateCircuit } from "../../src/engine/evaluate.js"
 import type { Circuit } from "../../src/engine/model.js"
 import { layoutSchematic, layoutSchematicWithDiagnostics } from "../../src/engine/schematic.js"
+import before from "./pre-pages-layout.json" with { type: "json" }
+import { BODY } from "./pre-pages-fixture.js"
 
 const MAIN = "main.circuit.tsx"
 const noPads = { padCount: () => undefined }
@@ -28,11 +30,37 @@ const twoPages = [
   `</page>`,
 ].join("\n")
 
-test("a circuit without pages is one page, Main, holding everything", () => {
-  const layout = layoutSchematic(build(`<resistor name="R1" />\n<resistor name="R2" />\n<trace from="R1.pin1" to="R2.pin1" />`))
-  expect(layout.pages).toEqual([
-    { name: "Main", parts: ["R1", "R2"], wires: layout.wires.map((w) => w.id), labels: layout.labels.map((l) => l.id), drawings: [], junctions: layout.junctions },
+test("a circuit without pages lays out exactly as before pages, on one page, Main, holding everything", () => {
+  const { layout, diagnostics } = layoutSchematicWithDiagnostics(build(BODY))
+  const { pages, ...rest } = layout
+  expect(JSON.parse(JSON.stringify({ layout: rest, diagnostics }))).toEqual(before)
+  expect(pages).toEqual([
+    { name: "Main", parts: ["U1", "C1", "C2", "R1", "D1"], wires: rest.wires.map((w) => w.id), labels: rest.labels.map((l) => l.id), drawings: ["Title"], junctions: rest.junctions },
   ])
+})
+
+test("wire ids stay unique when the first page drops a wire between pins that coincide", () => {
+  const coincident = [
+    `<resistor name="R1" schX={0} schY={0} />`,
+    `<resistor name="R2" schX={1} schY={0} />`,
+    `<resistor name="R3" schX={0} schY={-2} />`,
+    `<trace from="R1.pin2" to="net.GND" />`,
+    `<trace from="R2.pin1" to="net.GND" />`,
+    `<trace from="R3.pin1" to="net.GND" />`,
+    `<page name="IO">`,
+    `  <resistor name="R4" />`,
+    `  <resistor name="R5" />`,
+    `  <trace from="R4.pin1" to="net.GND" />`,
+    `  <trace from="R5.pin1" to="net.GND" />`,
+    `</page>`,
+  ].join("\n")
+  const layout = layoutSchematic(build(coincident))
+  const [main, io] = layout.pages ?? []
+  const gnd = (ids: readonly string[]) => ids.filter((id) => id.startsWith("wire:net.GND:"))
+  expect(gnd(main?.wires ?? []).length).toBeLessThan(2)
+  const ids = layout.wires.map((w) => w.id)
+  expect(new Set(ids).size).toBe(ids.length)
+  expect(gnd(io?.wires ?? []).every((id) => !(main?.wires ?? []).includes(id))).toBe(true)
 })
 
 test("each page is laid out on its own: the parts of one page are placed as if the others were not there", () => {

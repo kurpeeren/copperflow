@@ -189,13 +189,18 @@ function layoutPage(circuit: Circuit, crossPage: ReadonlySet<string>): { layout:
   return { layout, diagnostics: routed.diagnostics }
 }
 
-/** A net's wires are numbered across the pages, so a wire id names one wire of the whole schematic. */
-function numberAcross(wires: readonly Wire[], counts: Map<string, number>, renumber: boolean): Wire[] {
+/**
+ * A net's wires are numbered across the pages, so a wire id names one wire of the whole schematic. The first page keeps
+ * its numbers, gaps included (a wire between pins that coincide is dropped); each later page starts past the highest
+ * number used so far.
+ */
+function numberAcross(wires: readonly Wire[], highest: Map<string, number>, renumber: boolean): Wire[] {
   return wires.map((wire) => {
     if (wire.connection !== undefined) return wire
-    const count = (counts.get(wire.net) ?? 0) + 1
-    counts.set(wire.net, count)
-    return renumber ? { ...wire, id: `wire:${wire.net}:${count}` } : wire
+    const own = Number(wire.id.slice(`wire:${wire.net}:`.length))
+    const number = renumber || !Number.isInteger(own) ? (highest.get(wire.net) ?? 0) + 1 : own
+    highest.set(wire.net, Math.max(highest.get(wire.net) ?? 0, number))
+    return renumber ? { ...wire, id: `wire:${wire.net}:${number}` } : wire
   })
 }
 
