@@ -19,6 +19,11 @@ export const DIAGONAL = 14
 export const TURN_45 = 4
 export const TURN_90 = 12
 export const VIA = 20 * STEP
+/**
+ * The most a path may cost: a cost that would pass it stays there, so the Int32 costs never wrap. Cell penalties are
+ * kept to at most 2^20 each, so only a path over a thousand fully priced cells reaches it.
+ */
+export const COST_CAP = 2 ** 30
 /** States taken before the search gives up, unless the caller sets another bound. */
 export const DEFAULT_MAX_EXPANSIONS = 1_000_000
 
@@ -202,7 +207,8 @@ export function searchPath(grid: RouterGrid, sources: readonly EndRef[], targets
   const { cost, parent, seen, closed } = buffers
   const penalties = options.penalties
   const queue = new Queue()
-  const reach = (state: number, g: number, from: number, node: number): void => {
+  const reach = (state: number, paid: number, from: number, node: number): void => {
+    const g = Math.min(paid, COST_CAP)
     if (seen[state] === search && g >= (cost[state] as number)) return
     seen[state] = search
     cost[state] = g
@@ -221,7 +227,7 @@ export function searchPath(grid: RouterGrid, sources: readonly EndRef[], targets
     if (++expanded > limit) return { found: false, reason: "limit", expanded: limit, blockers: [] }
     const node = Math.floor(state / DIRECTIONS)
     const g = cost[state] as number
-    if ((goalCost[node] as number) >= 0) return { found: true, steps: stepsTo(parent, state, cells), cost: g + (goalCost[node] as number) }
+    if ((goalCost[node] as number) >= 0) return { found: true, steps: stepsTo(parent, state, cells), cost: Math.min(g + (goalCost[node] as number), COST_CAP) }
     const [layer, cell, dir] = [Math.floor(node / cells), node % cells, state % DIRECTIONS]
     const [col, row] = [cell % grid.cols, Math.floor(cell / grid.cols)]
     const map = grid.track[layer] as Int32Array

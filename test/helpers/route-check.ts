@@ -7,7 +7,7 @@ import { routeBoard, type RouteBoardOptions, type RouteReport } from "../../src/
 type Files = Readonly<Record<string, string>>
 
 /** The copper checks of stage 4, and the findings from resolving copper (shorts, floating copper, mismatched nets). */
-export const COPPER_CODES = ["copper-clearance", "copper-edge", "copper-keepout", "track-width", "via-drill", "via-ring", "short", "floating", "mismatch", "copper-layer"]
+export const COPPER_CODES = ["copper-clearance", "copper-edge", "copper-keepout", "track-width", "via-drill", "via-ring", "hole-to-hole", "short", "floating", "mismatch", "copper-layer"]
 
 const layoutPath = (main: string) => main.replace(/\.circuit\.tsx$/, ".circuit.layout.json")
 

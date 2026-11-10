@@ -8,7 +8,7 @@ import type { Rules } from "../rules/schema.js"
 import { clearanceChecks } from "./copper-clearance.js"
 import { copperPieces, padPieces, type ClassOf, type CopperPiece } from "./copper-pieces.js"
 import { copperViolation, mm } from "./copper-violation.js"
-import { closestPoints, pointInPolygon, shapeDistance, type Shape } from "./geometry.js"
+import { closestPoints, drillShape, pointInPolygon, shapeDistance, type Shape } from "./geometry.js"
 import { breaksMinimum, LENGTH_TOLERANCE } from "./limits.js"
 import type { Violation } from "./violation.js"
 
@@ -110,6 +110,36 @@ export function keepoutHit(piece: CopperPiece, keepout: Keepout): Violation | un
   return copperViolation("copper-keepout", `${piece.id} lies inside ${keepout.id}`, [piece.id, keepout.id], [piece.id, keepout.id], at)
 }
 
+// ---- hole spacing ----
+
+interface Hole {
+  id: string
+  shape: Shape
+}
+
+/** Each via's hole against every other via's and every through pad's, on any nets, the same one included. */
+function holeChecks(layout: PcbLayout, rules: Rules): Violation[] {
+  const minimum = rules.fabrication.minHoleToHole
+  const vias: Hole[] = layout.vias.filter((via) => via.missingLayer === undefined).map((via) => ({ id: via.id, shape: { core: [via.at], radius: via.drill / 2 } }))
+  const pads: Hole[] = layout.parts.flatMap((part) => part.pads).flatMap((pad) => {
+    const shape = pad.layers === "through" ? drillShape(pad) : undefined
+    return shape === undefined ? [] : [{ id: pad.id, shape }]
+  })
+  const found: Violation[] = []
+  vias.forEach((a, i) => {
+    for (const b of [...vias.slice(i + 1), ...pads]) {
+      const distance = shapeDistance(a.shape, b.shape)
+      if (!breaksMinimum(distance, minimum)) continue
+      const key = [a.id, b.id].sort(naturalCompare)
+      const [first, second] = key as [string, string]
+      const message = `The holes of ${first} and ${second} are ${distance > 0 ? `${mm(distance)} mm apart` : "touching or overlapping"}; the minimum is ${mm(minimum)} mm`
+      const [p, q] = closestPoints(a.shape, b.shape)
+      found.push(copperViolation("hole-to-hole", message, key, key, { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }))
+    }
+  })
+  return found
+}
+
 // ---- all together ----
 
 interface Records {
@@ -136,7 +166,8 @@ function singleChecks(piece: CopperPiece, records: Records, board: Board | undef
 export function copperChecks(layout: PcbLayout, rules: Rules, classOf: ClassOf): Violation[] {
   const copper = copperPieces(layout, classOf)
   if (copper.length === 0) return []
+  const holes = holeChecks(layout, rules)
   const records: Records = { widths: new Map(layout.tracks.map((t) => [t.id, t.width])), vias: new Map(layout.vias.map((v) => [v.id, v])) }
-  const found = [...copper.flatMap((piece) => singleChecks(piece, records, layout.board, rules)), ...clearanceChecks(copper, padPieces(layout, classOf), rules)]
+  const found = [...copper.flatMap((piece) => singleChecks(piece, records, layout.board, rules)), ...clearanceChecks(copper, padPieces(layout, classOf), rules), ...holes]
   return found.sort((a, b) => naturalCompare(a.id, b.id))
 }

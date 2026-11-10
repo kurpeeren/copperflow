@@ -17,7 +17,10 @@ import type { PathLegs, RoutedCopper } from "./path.js"
  */
 
 /** What a cell another net holds costs in pass `pass`. */
-export const presentPrice = (pass: number): number => Math.round(4 * STEP * 1.6 ** (pass - 1))
+export const presentPrice = (pass: number): number => Math.min(Math.round(4 * STEP * 1.6 ** (pass - 1)), MAX_PRICE)
+/** The most a cell's price or its history may reach, and so the most a cell costs (see COST_CAP in the search). */
+export const MAX_PRICE = 2 ** 20
+const capped = (value: number) => Math.min(value, MAX_PRICE)
 /** What a fought-over cell's history rises by each pass. */
 export const HISTORY_STEP = 3 * STEP
 
@@ -38,6 +41,8 @@ export interface Placed {
   nodes: CellRef[]
   vias: number[]
   legs: PathLegs
+  /** What the search paid for the path. */
+  cost: number
   footprints: Map<string, Footprint>
 }
 
@@ -63,11 +68,11 @@ export const holesOnly = (pieces: readonly Obstacle[]): Obstacle[] => pieces.fil
 const boardCell = (world: RouterWorld, window: CellWindow, grid: RouterGrid, cell: number) => (window.row0 + Math.floor(cell / grid.cols)) * world.frame.cols + window.col0 + (cell % grid.cols)
 
 /** The route as laid: its pieces, path cells on the board, and via cells. */
-export function placeRoute(world: RouterWorld, index: number, copper: RoutedCopper, className: string, steps: readonly CellRef[], grid: RouterGrid, window: CellWindow, legs: PathLegs): Placed {
+export function placeRoute(world: RouterWorld, index: number, copper: RoutedCopper, className: string, steps: readonly CellRef[], grid: RouterGrid, window: CellWindow, legs: PathLegs, cost = 0): Placed {
   const pieces = copperObstacles(copper, className)
   const nodes = steps.map((step) => ({ layer: step.layer, cell: boardCell(world, window, grid, step.cell) }))
   const vias = nodes.flatMap((node, i) => (i > 0 && nodes[i - 1]?.layer !== node.layer ? [node.cell] : []))
-  return { index, net: copper.net, copper, pieces, box: pieces.length > 0 ? boxOf(pieces.flatMap((piece) => piece.shapes)) : { minX: 0, minY: 0, maxX: 0, maxY: 0 }, nodes, vias, legs, footprints: new Map() }
+  return { index, net: copper.net, copper, pieces, box: pieces.length > 0 ? boxOf(pieces.flatMap((piece) => piece.shapes)) : { minX: 0, minY: 0, maxX: 0, maxY: 0 }, nodes, vias, legs, cost, footprints: new Map() }
 }
 
 /** The board cells the route's copper keeps the rule's tracks and vias out of, each once. */
@@ -121,13 +126,14 @@ export class Congestion {
 
   /**
    * The costs of the window's cells for the rule's net in pass `pass`, and which other route holds each cell
-   * (owner, or -1), for telling afterwards where the route laid on that grid is in conflict.
+   * (every one of them), for telling afterwards where the route laid on that grid is in conflict.
    */
   costs(rule: NetRule, grid: RouterGrid, window: CellWindow, pass: number): Occupancy {
     const { frame } = this.world
     const cells = grid.cols * grid.rows
-    const owner = grid.layers.map(() => new Int32Array(cells).fill(-1))
-    const viaOwner = new Int32Array(cells).fill(-1)
+    const owners = new Map<number, number[]>()
+    const viaOwners = new Map<number, number[]>()
+    const hold = (map: Map<number, number[]>, key: number, index: number) => map.set(key, [...(map.get(key) ?? []), index])
     const inWindow = (board: number) => {
       const [col, row] = [(board % frame.cols) - window.col0, Math.floor(board / frame.cols) - window.row0]
       return col < 0 || row < 0 || col >= grid.cols || row >= grid.rows ? -1 : row * grid.cols + col
@@ -141,14 +147,14 @@ export class Congestion {
           const cell = inWindow(board)
           if (cell < 0) continue
           ;(count[l] as Int32Array)[cell] = ((count[l] as Int32Array)[cell] as number) + 1
-          ;(owner[l] as Int32Array)[cell] = other.index
+          hold(owners, l * cells + cell, other.index)
         }
       })
       for (const board of footprint.via) {
         const cell = inWindow(board)
         if (cell < 0) continue
         viaCount[cell] = (viaCount[cell] as number) + 1
-        viaOwner[cell] = other.index
+        hold(viaOwners, cell, other.index)
       }
     }
     const price = presentPrice(pass)
@@ -156,10 +162,10 @@ export class Congestion {
     const via = new Int32Array(cells)
     for (let cell = 0; cell < cells; cell++) {
       const board = (window.row0 + Math.floor(cell / grid.cols)) * frame.cols + window.col0 + (cell % grid.cols)
-      for (let l = 0; l < grid.layers.length; l++) (track[l] as Int32Array)[cell] = ((this.history[l] as Int32Array)[board] as number) + price * ((count[l] as Int32Array)[cell] as number)
-      via[cell] = (this.viaHistory[board] as number) + price * (viaCount[cell] as number)
+      for (let l = 0; l < grid.layers.length; l++) (track[l] as Int32Array)[cell] = capped(((this.history[l] as Int32Array)[board] as number) + price * ((count[l] as Int32Array)[cell] as number))
+      via[cell] = capped((this.viaHistory[board] as number) + price * (viaCount[cell] as number))
     }
-    return { penalties: { track, via }, owner, viaOwner }
+    return { penalties: { track, via }, owners, viaOwners }
   }
 
   /**
@@ -170,28 +176,29 @@ export class Congestion {
     const found = new Set<number>()
     const { frame } = world
     const local = (board: number) => (Math.floor(board / frame.cols) - window.row0) * grid.cols + (board % frame.cols) - window.col0
+    const cells = grid.cols * grid.rows
     for (const node of placed.nodes) {
-      const who = occupancy.owner[node.layer]?.[local(node.cell)] ?? -1
-      if (who < 0) continue
-      found.add(who)
-      ;(this.history[node.layer] as Int32Array)[node.cell] = ((this.history[node.layer] as Int32Array)[node.cell] as number) + HISTORY_STEP
+      const who = occupancy.owners.get(node.layer * cells + local(node.cell))
+      if (who === undefined) continue
+      for (const index of who) found.add(index)
+      ;(this.history[node.layer] as Int32Array)[node.cell] = capped(((this.history[node.layer] as Int32Array)[node.cell] as number) + HISTORY_STEP)
     }
     for (const cell of placed.vias) {
-      const who = occupancy.viaOwner[local(cell)] ?? -1
-      if (who < 0) continue
-      found.add(who)
-      this.viaHistory[cell] = (this.viaHistory[cell] as number) + HISTORY_STEP
+      const who = occupancy.viaOwners.get(local(cell))
+      if (who === undefined) continue
+      for (const index of who) found.add(index)
+      this.viaHistory[cell] = capped((this.viaHistory[cell] as number) + HISTORY_STEP)
     }
     for (const who of legConflicts(world, rule, placed, this.others(rule.net, placed.box, rule))) found.add(who)
     return found
   }
 }
 
-/** The window's penalties, and which route holds each cell. */
+/** The window's penalties, and which routes hold each cell: by layer · cells + cell for tracks, by cell for vias. */
 export interface Occupancy {
   penalties: Penalties
-  owner: Int32Array[]
-  viaOwner: Int32Array
+  owners: Map<number, number[]>
+  viaOwners: Map<number, number[]>
 }
 
 /** The routes a leg of the placed route comes too near to, checked exactly. */

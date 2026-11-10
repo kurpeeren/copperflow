@@ -48,7 +48,7 @@ describe("the CAN module board, routed whole", () => {
   const files = filesIn(FOLDER)
   const design = buildDesign(files, MAIN)
 
-  test("every connection routes, and the board passes every copper check with no ratsnest left", () => {
+  test("every connection routes, the board passes every copper check with no ratsnest left, and a second run is the same", () => {
     const report = routeDesign(design)
     expect(report.unrouted).toEqual([])
     expect(report.routed).toHaveLength(design.pcb.ratsnest.length)
@@ -56,5 +56,6 @@ describe("the CAN module board, routed whole", () => {
     expect(checked.copper).toEqual([])
     expect(checked.added).toEqual([])
     expect(checked.after.pcb.ratsnest).toEqual([])
+    expect({ ...routeDesign(design), ms: 0 }).toEqual({ ...report, ms: 0 })
   }, 30_000)
 })
