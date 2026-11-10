@@ -8,6 +8,7 @@ import { naturalCompare } from "../order.js"
 import type { PcbLayout } from "../pcb.js"
 import { placementCorrection } from "../rules/rotations.js"
 import type { FabricationProfile } from "../rules/schema.js"
+import { csvField } from "./csv.js"
 
 export const PICK_AND_PLACE_COLUMNS = ["Designator", "Mid X", "Mid Y", "Layer", "Rotation"] as const
 
@@ -39,9 +40,4 @@ export function pickAndPlaceCsv(pcb: PcbLayout, fabrication: FabricationProfile)
       rotation(part.rotation + placementCorrection(footprint, fabrication)),
     ])
   return `${[[...PICK_AND_PLACE_COLUMNS], ...rows].map((row) => row.map(csvField).join(",")).join("\n")}\n`
-}
-
-/** A CSV field, quoted when it holds a comma, a quote or a line end. */
-export function csvField(value: string): string {
-  return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
 }

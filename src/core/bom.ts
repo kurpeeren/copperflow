@@ -1,6 +1,7 @@
 import { copyFile, mkdir, rm, stat, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import type { Design } from "../engine/design.js"
+import { csvCell } from "../engine/fab/csv.js"
 import type { Component } from "../engine/model.js"
 import { buildWith, type DesignSource } from "./design-source.js"
 import { isPartVerified, libraryValues, PARTS_DIR, readPart, type Part } from "./library.js"
@@ -127,13 +128,8 @@ function propValue(component: Component): string {
 }
 
 export function formatBomCsv(lines: BomLine[]): string {
-  const cell = (value: string | number) => {
-    // A leading = + - @ makes spreadsheets run the cell as a formula.
-    const text = /^[=+\-@\t\r]/.test(String(value)) ? `'${value}` : String(value)
-    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
-  }
   const rows = lines.map((l) => [l.designators.join(" "), l.quantity, l.kind, l.value, l.footprint, l.manufacturer, l.mpn, l.supplier, l.datasheet])
-  return [COLUMNS, ...rows].map((row) => row.map(cell).join(",")).join("\n") + "\n"
+  return [COLUMNS, ...rows].map((row) => row.map(csvCell).join(",")).join("\n") + "\n"
 }
 
 export function formatBomMarkdown(lines: BomLine[]): string {
