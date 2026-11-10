@@ -91,6 +91,24 @@ describe("applyLayoutEdits", () => {
     await expect(applyLayoutEdits(root, "boards/none.circuit.tsx", [addTrack()], human)).rejects.toThrow(/does not exist/)
   })
 
+  test("a guard runs in the project queue after the writes queued before it, and a throw writes nothing", async () => {
+    const seen: string[] = []
+    const slow = applyLayoutEdits(root, FILE, [addTrack()], { author: "human", design: async () => (await new Promise((done) => setTimeout(done, 100)), design) })
+    const guarded = applyLayoutEdits(root, FILE, [addTrack()], {
+      author: "human",
+      design,
+      guard: async () => {
+        seen.push(await layoutText())
+        throw new Error("changed")
+      },
+    })
+    await slow
+    await expect(guarded).rejects.toThrow("changed")
+    expect(seen).toEqual([await layoutText()])
+    expect(seen[0]).toContain('"id":"t0001"')
+    expect(await layoutText()).not.toContain('"id":"t0002"')
+  })
+
   test("a locked record is refused", async () => {
     await applyLayoutEdits(root, FILE, [addTrack()], human)
     await applyLayoutEdits(root, FILE, [{ kind: "setTrack", id: "t0001", locked: true }], human)

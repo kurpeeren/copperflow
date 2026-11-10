@@ -1,7 +1,9 @@
 // What Studio loads from its server: the project's circuit files, the open file's circuit, build and history, and
 // the parts; kept in step with the server's change events.
 import { useCallback, useEffect, useState } from "react"
-import { api, subscribe, type BuildState, type CircuitData, type HistoryListing, type HistoryProblem, type HistoryResult, type PartsData } from "./api"
+import { api, subscribe, type BuildState, type CircuitData, type HistoryListing, type HistoryProblem, type HistoryResult, type PartsData, type RouteEvent } from "./api"
+import { isRouting, routeProgressText, writtenMark } from "../../src/studio/route-events.js"
+import { announceHistoryWrite } from "./history-writes"
 import { isStaleKey } from "./request-error"
 
 export interface StudioData {
@@ -18,6 +20,8 @@ export interface StudioData {
   /** Entry files the history could not read, or why the whole listing failed; the canvas does not wait on it. */
   historyProblems: HistoryProblem[]
   parts: PartsData
+  /** The open circuit's latest Route → Autoroute news, from this Studio or another viewer's run. */
+  route: RouteEvent | undefined
   /** Reloads the circuit and the history of `file`. */
   refresh(file: string): Promise<void>
   refreshParts(): Promise<void>
@@ -57,6 +61,7 @@ export function useStudioData(notify: (text: string) => void, onFile: () => void
   const [history, setHistory] = useState<HistoryListing[]>([])
   const [historyProblems, setHistoryProblems] = useState<HistoryProblem[]>([])
   const [parts, setParts] = useState<PartsData>({ library: [], builtin: [] })
+  const [route, setRoute] = useState<RouteEvent>()
   // An out of date key stops every request, so the canvas says so instead of waiting for a build forever.
   const report = useCallback(
     (text: string) => {
@@ -88,24 +93,40 @@ export function useStudioData(notify: (text: string) => void, onFile: () => void
   }, [])
 
   const { files, sheets, project } = useProject(report, setFile, refreshParts)
+  /** A run's news: kept for the status line and the Checks list; its end is told, and a write reloads the history. */
+  const onRoute = useCallback(
+    (event: RouteEvent) => {
+      setRoute(event)
+      if (isRouting(event)) return
+      notify(routeProgressText(event))
+      const mark = writtenMark(event)
+      if (mark === undefined) return
+      // The canvas keys wait for the build that holds the copper, as they do after an undo.
+      void announceHistoryWrite(Promise.resolve({ ok: true, mark }))
+      refresh(event.file).catch((error: Error) => report(error.message))
+    },
+    [notify, refresh, report],
+  )
 
   useEffect(() => {
     if (!file) return
     onFile()
+    setRoute(undefined)
     refresh(file).catch((error: Error) => report(error.message))
     api("/api/build", { file })
       .then(() => refreshBuild(file))
       .catch((error: Error) => report(error.message))
-    return subscribe((event, changed) => {
+    return subscribe((event, changed, data) => {
       if (event === "library") {
         refreshParts().catch((error: Error) => report(error.message))
         return
       }
       if (changed !== file) return
+      if (event === "route") return onRoute(data as unknown as RouteEvent)
       const update = event === "change" ? refresh(file) : refreshBuild(file)
       update.catch((error: Error) => report(error.message))
     })
-  }, [file, refresh, refreshBuild, refreshParts, report, onFile])
+  }, [file, refresh, refreshBuild, refreshParts, report, onFile, onRoute])
 
-  return { files, sheets, project, file, setFile, circuit, build, history, historyProblems, parts, refresh, refreshParts }
+  return { files, sheets, project, file, setFile, circuit, build, history, historyProblems, parts, route, refresh, refreshParts }
 }

@@ -22,6 +22,8 @@ import { send } from "./commands"
 import type { DialogName } from "./Dialogs"
 import type { CommandId } from "./menus"
 import { makeSheetStart } from "./make-sheet-form"
+import { netScope, selectionScope, unrouteRequest, type Refusal } from "../pcb/autoroute"
+import type { RouteScope } from "../api"
 import { runPageCommand, type PageCommand } from "./page-commands"
 import type { Design } from "../api"
 
@@ -73,6 +75,22 @@ interface Input {
   /** The schematic page that is open. */
   page: string
   openPage(page: string): void
+  /** The highlighted nets: Autoroute net routes the one the Nets panel's row highlights. */
+  highlight: readonly string[]
+}
+
+/** Route → Autoroute selection and Autoroute net: routes the scope, or says why there is none. */
+function routeScope(input: Input, scope: RouteScope | Refusal): void {
+  if ("message" in scope) return input.actions.notify(scope.message)
+  void input.actions.route(scope)
+}
+
+/** Route → Unroute: the selected router copper, or with no copper selected all of it. */
+function unroute(input: Input): void {
+  const locked = new Set(input.circuit?.annotations.locks.filter((lock) => !lock.drawing).map((lock) => lock.part))
+  const request = unrouteRequest(input.design, input.selection.copper, locked)
+  if ("message" in request) return input.actions.notify(request.message)
+  void input.actions.unroute(request.ids)
 }
 
 /** Design → Add, Rename or Delete page, on the open schematic page; the name is asked for in the browser's prompt. */
@@ -183,6 +201,10 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     find: input.openFind,
     checkDrc: input.openChecks,
     designRules: () => input.openDialog("rules"),
+    autoroute: () => routeScope(input, { kind: "all" }),
+    autorouteSelection: () => routeScope(input, selectionScope(input.design, input.selection.names)),
+    autorouteNet: () => routeScope(input, netScope(input.highlight)),
+    unroute: () => unroute(input),
     lock: () => lockSelection(input, true),
     unlock: () => lockSelection(input, false),
     history: () => input.workspace.openBottom("log"),
@@ -221,7 +243,7 @@ function useAppKeys(runCommand: (command: CommandId) => void, view: View): void 
 /** Returns the function the menu bar and toolbar call; it changes only when what the commands read changes. */
 export function useAppCommands(input: Input): (command: CommandId) => void {
   const [waiting, setWaiting] = useState<{ command: CommandId; view: View } | null>(null)
-  const { file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, openChecks, openFind, openDialog, design, page, openPage } = input
+  const { file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, openChecks, openFind, openDialog, design, page, openPage, highlight } = input
   // The workspace object is new on every render, but its functions are stable.
   const { run, openBottom, openPageTree, setTheme } = input.workspace
   // A command waiting for its view runs once that view's canvas has mounted and subscribed.
@@ -235,7 +257,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
   }, [waiting, view, actions])
   const runCommand = useCallback(
     (command: CommandId) => {
-      const own = appCommand({ file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, workspace: { run, openBottom, openPageTree, setTheme }, openChecks, openFind, openDialog, design, page, openPage }, command)
+      const own = appCommand({ file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, workspace: { run, openBottom, openPageTree, setTheme }, openChecks, openFind, openDialog, design, page, openPage, highlight }, command)
       if (own) return own()
       const only = viewOf(command)
       if (only && view !== only) {
@@ -245,7 +267,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
       }
       if (!send(command)) actions.notify("Wait for the build to finish, then try again.")
     },
-    [file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, run, openBottom, openPageTree, setTheme, openChecks, openFind, openDialog, design, page, openPage],
+    [file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, run, openBottom, openPageTree, setTheme, openChecks, openFind, openDialog, design, page, openPage, highlight],
   )
   useAppKeys(runCommand, view)
   return runCommand

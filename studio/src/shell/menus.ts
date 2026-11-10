@@ -5,7 +5,7 @@ import type { AlignCommand } from "../pcb/align-rules.js"
 import type { KeyActionName } from "../pcb/canvas-keys.js"
 import type { View } from "../pcb/positions.js"
 import { commandDisabledReason } from "../pcb/selection-rules.js"
-import { WAITS_FOR_AUTOROUTER, WAITS_FOR_BLOCKS, WAITS_FOR_ENGINE, WAITS_FOR_FABRICATION, WAITS_FOR_ROUTING } from "./pending.js"
+import { WAITS_FOR_BLOCKS, WAITS_FOR_ENGINE, WAITS_FOR_FABRICATION, WAITS_FOR_ROUTING } from "./pending.js"
 
 export type CommandId =
   | "openFile"
@@ -45,6 +45,10 @@ export type CommandId =
   | "drawText"
   | "singleRouting"
   | "placeVia"
+  | "autoroute"
+  | "autorouteSelection"
+  | "autorouteNet"
+  | "unroute"
   | "checkDrc"
   | "highlight"
   | "clearHighlight"
@@ -197,7 +201,11 @@ export const MENUS: readonly Menu[] = [
       run("Single routing", "singleRouting", "Alt+W"),
       run("Via", "placeVia", "Alt+V"),
       later("Routing corner", WAITS_FOR_ROUTING, "L"),
-      later("Auto routing", WAITS_FOR_AUTOROUTER),
+      "separator",
+      run("Autoroute", "autoroute"),
+      run("Autoroute selection", "autorouteSelection"),
+      run("Autoroute net", "autorouteNet"),
+      run("Unroute", "unroute"),
     ],
   },
   {

@@ -2,7 +2,7 @@
 // the camera focus it asks for, and the panel opening by itself when a build first reports errors.
 // What these mean is decided in checks-list.ts and checks-panel-state.ts.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { BuildState } from "./api"
+import type { BuildState, RouteEvent } from "./api"
 import { checkCounts, checkRows, markersFor, type CheckRow } from "./checks-list"
 import { checkPick, opensOnBuild, type FocusRequest } from "./checks-panel-state"
 import type { View } from "./pcb/positions"
@@ -10,15 +10,17 @@ import type { View } from "./pcb/positions"
 interface ChecksInput {
   file: string | undefined
   build: BuildState
+  /** The last Route → Autoroute run's news: its unrouted connections join the rows. */
+  route: RouteEvent | undefined
   onTab(view: View): void
   onSelect(part: string): void
   onSelectCopper(ids: readonly string[]): void
   onOpen(): void
 }
 
-export function useChecks({ file, build, onTab, onSelect, onSelectCopper, onOpen }: ChecksInput) {
+export function useChecks({ file, build, route, onTab, onSelect, onSelectCopper, onOpen }: ChecksInput) {
   const design = build.design
-  const rows = useMemo(() => (design ? checkRows(design) : []), [design])
+  const rows = useMemo(() => (design ? checkRows(design, route) : []), [design, route])
   const counts = useMemo(() => checkCounts(rows), [rows])
   const markers = useMemo(() => ({ pcb: markersFor(rows, "pcb"), schematic: markersFor(rows, "schematic") }), [rows])
   const [active, setActive] = useState<string | null>(null)

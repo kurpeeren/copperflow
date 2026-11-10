@@ -1,0 +1,10 @@
+/* Route → Autoroute's progress: the status bar's other end, with Cancel (canvas-status gives the look). */
+.canvas-status.route-status {
+  left: auto;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  pointer-events: auto;
+}

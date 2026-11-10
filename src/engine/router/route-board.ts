@@ -1,6 +1,6 @@
 import type { LayoutEdit } from "../../core/layout-records.js"
 import type { Component, SheetInstance } from "../model.js"
-import { cleanup, layoutEdits } from "./cleanup.js"
+import { cleanupReport, layoutEdits } from "./cleanup.js"
 import { naturalCompare } from "../order.js"
 import type { RatsnestLine, WorldPad } from "../pcb.js"
 import { SearchBuffers } from "./astar.js"
@@ -32,8 +32,13 @@ export interface RouteBoardInput extends RouteInput {
   instances?: readonly SheetInstance[]
 }
 
+/** How far a run is: a negotiation pass's connections done of its total, or the cleanup, which says whether it hit its pass cap. */
+export type RouteProgress = { stage: "routing"; pass: number; done: number; total: number } | { stage: "cleanup"; capped: boolean }
+
 export interface RouteBoardOptions {
   scope?: RouteScope
+  /** Told after each connection a pass routes, and once the cleanup ends. */
+  onProgress?: (progress: RouteProgress) => void
   /** The most negotiation passes; 30 by default. */
   maxPasses?: number
   /** The most states one search takes before it gives up (the search's own bound by default). */
@@ -67,6 +72,8 @@ export interface RouteReport {
   /** The routed copper, cleaned up, as layout edits in one list (see cleanup). */
   edits: LayoutEdit[]
   ms: number
+  /** Whether cleanup stopped at its pass cap before the routes settled (they are still clear, maybe not at their shortest). */
+  cleanupCapped: boolean
   /** With the instance scope: what became of each other instance of the sheet. */
   replicas?: Replica[]
 }
@@ -141,6 +148,7 @@ interface Run {
   congestion: Congestion
   buffers: SearchBuffers
   failed: Map<number, UnroutedConnection>
+  onProgress?: (progress: RouteProgress) => void
 }
 
 const unrouted = (connection: Connection, reason: string, blockers: string[]): UnroutedConnection => ({ net: connection.line.net, from: connection.line.from, to: connection.line.to, reason, blockers })
@@ -187,8 +195,9 @@ function negotiateAll(run: Run, connections: readonly Connection[], maxPasses: n
   let pending = [...connections]
   for (let pass = 1; pass <= maxPasses; pass++) {
     const fought = new Set<number>()
-    for (const connection of pending) {
+    for (const [done, connection] of pending.entries()) {
       const others = negotiate(run, connection, pass)
+      run.onProgress?.({ stage: "routing", pass, done: done + 1, total: pending.length })
       if (others === undefined || others.size === 0) continue
       fought.add(connection.index)
       for (const other of others) fought.add(other)
@@ -231,7 +240,14 @@ export function routeBoard(input: RouteBoardInput, options: RouteBoardOptions = 
   const scope = options.scope ?? { kind: "all" }
   const world = routerWorld(input.layout, input.rules, classLookup(input.rules, input.nets))
   const connections = connectionsOf(world, input, linesIn(input, scope))
-  const run: Run = { ...(options.maxExpansions === undefined ? {} : { maxExpansions: options.maxExpansions }), world, congestion: new Congestion(world), buffers: new SearchBuffers(), failed: new Map() }
+  const run: Run = {
+    ...(options.maxExpansions === undefined ? {} : { maxExpansions: options.maxExpansions }),
+    ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
+    world,
+    congestion: new Congestion(world),
+    buffers: new SearchBuffers(),
+    failed: new Map(),
+  }
   const passes = connections.length === 0 ? 0 : negotiateAll(run, connections, options.maxPasses ?? MAX_PASSES)
   settle(run, connections)
   const routed = connections.flatMap((connection) => {
@@ -239,9 +255,10 @@ export function routeBoard(input: RouteBoardInput, options: RouteBoardOptions = 
     return placed === undefined ? [] : [{ net: connection.line.net, from: connection.line.from, to: connection.line.to, copper: placed.copper, cost: placed.cost }]
   })
   const failures = connections.flatMap((connection) => run.failed.get(connection.index) ?? [])
-  const report: RouteReport = { routed, unrouted: failures, passes, edits: [], ms: 0 }
+  const report: RouteReport = { routed, unrouted: failures, passes, edits: [], ms: 0, cleanupCapped: false }
   const copies = scope.kind === "instance" ? replicate(world, input, scope.instance, routed, run.congestion) : undefined
   const result = copies === undefined ? report : { ...report, routed: [...routed, ...copies.routed], unrouted: [...failures, ...copies.unrouted], replicas: copies.replicas }
-  const cleaned = cleanup(input, result.routed, world)
-  return { ...result, routed: cleaned, edits: layoutEdits(cleaned), ms: performance.now() - started }
+  const cleaned = cleanupReport(input, result.routed, { world })
+  options.onProgress?.({ stage: "cleanup", capped: cleaned.capped })
+  return { ...result, routed: cleaned.routed, edits: layoutEdits(cleaned.routed), cleanupCapped: cleaned.capped, ms: performance.now() - started }
 }

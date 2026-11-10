@@ -28,6 +28,10 @@ describe("command owners", () => {
     expect(commandOwner("redo")).toBe("app")
   })
 
+  test("Autoroute, its selection and net forms, and Unroute are the app's own: they ask the server, whichever view is open", () => {
+    for (const command of ["autoroute", "autorouteSelection", "autorouteNet", "unroute"] as const) expect([command, commandOwner(command)]).toEqual([command, "app"])
+  })
+
   test("Open circuit file is the app's own, so it works before a canvas has mounted", () => {
     expect(commandOwner("openFile")).toBe("app")
   })

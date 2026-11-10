@@ -4,6 +4,7 @@
 import type { Violation } from "../../src/engine/checks/violation.js"
 import type { Design } from "../../src/engine/design.js"
 import type { Diagnostic, Point, Severity } from "../../src/engine/model.js"
+import type { RouteEvent } from "../../src/studio/route-events.js"
 import type { ViolationMarker } from "./pcb/markers.js"
 
 export interface CheckRow {
@@ -85,11 +86,28 @@ const diagnosticRow = (d: Diagnostic, index: number): CheckRow => ({
   view: "code",
 })
 
-/** Violations, then diagnostics (view `code`), with every error before every warning. */
-export function checkRows(design: Design): CheckRow[] {
+const pair = (a: string, b: string) => (a < b ? `${a} ${b}` : `${b} ${a}`)
+
+/**
+ * After a Route → Autoroute run: each connection it could not route, with the router's reason, at the middle of its
+ * ratsnest line, for as long as the ratsnest still has the connection.
+ */
+function routeRows(design: Design, route: RouteEvent | undefined): CheckRow[] {
+  if (route?.state !== "done") return []
+  const lines = new Map(design.pcb.ratsnest.map((line) => [pair(line.from, line.to), line]))
+  return route.unrouted.flatMap((connection) => {
+    const line = lines.get(pair(connection.from, connection.to))
+    if (line === undefined) return []
+    const at = { x: (line.a.x + line.b.x) / 2, y: (line.a.y + line.b.y) / 2 }
+    return [{ id: `route:${connection.from}:${connection.to}`, severity: "warning" as const, code: "unrouted", message: connection.reason, items: [connection.from, connection.to, ...connection.blockers], view: "pcb" as const, at }]
+  })
+}
+
+/** Violations, the last Autoroute run's unrouted connections, then diagnostics (view `code`), with every error before every warning. */
+export function checkRows(design: Design, route?: RouteEvent): CheckRow[] {
   const components = new Set(design.circuit.components.map((component) => component.id))
   const copperIds = copperIdsOf(design)
-  const rows = [...design.violations.map(violationRow), ...design.diagnostics.map(diagnosticRow)].map((row) => withPart(row, components, copperIds))
+  const rows = [...design.violations.map(violationRow), ...routeRows(design, route), ...design.diagnostics.map(diagnosticRow)].map((row) => withPart(row, components, copperIds))
   return rows.sort((a, b) => rank(a.severity) - rank(b.severity))
 }
 

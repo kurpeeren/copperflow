@@ -3,9 +3,10 @@ import type { HistoryListing, HistoryProblem } from "../../src/core/history.js"
 import type { CircuitModel, Edit, Literal, PartInfo, PropInfo, TraceInfo } from "../../src/core/types.js"
 import type { Design } from "../../src/engine/design.js"
 import type { Diagnostic } from "../../src/engine/model.js"
+import type { RouteEvent, RouteScope } from "../../src/studio/route-events.js"
 import { requestErrorText } from "./request-error.js"
 
-export type { Annotations, CircuitModel, Design, Diagnostic, Edit, HistoryListing, HistoryProblem, Literal, LockViolation, PartInfo, PropInfo, TraceInfo }
+export type { Annotations, CircuitModel, Design, Diagnostic, Edit, HistoryListing, HistoryProblem, Literal, LockViolation, PartInfo, PropInfo, RouteEvent, RouteScope, TraceInfo }
 
 export interface CircuitData {
   file: string
@@ -114,17 +115,21 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
   return json.data
 }
 
+export type ServerEvent = "change" | "build" | "library" | "route"
+const SERVER_EVENTS: readonly string[] = ["change", "build", "library", "route"] satisfies ServerEvent[]
+
 /**
- * Subscribes to file changes and build updates; returns an unsubscribe function.
- * Uses fetch rather than EventSource so the token goes in a header, not in the URL.
+ * Subscribes to file changes, build updates and routing news; returns an unsubscribe function. A "route" event also
+ * gives its data, a RouteEvent. Uses fetch rather than EventSource so the token goes in a header, not in the URL.
  */
-export function subscribe(onEvent: (event: "change" | "build" | "library", file: string) => void): () => void {
+export function subscribe(onEvent: (event: ServerEvent, file: string, data: Record<string, unknown>) => void): () => void {
   const controller = new AbortController()
   const handle = (block: string) => {
     const event = /^event: (.+)$/m.exec(block)?.[1]
     const data = /^data: (.+)$/m.exec(block)?.[1]
-    if ((event === "change" || event === "build" || event === "library") && data) {
-      onEvent(event, (JSON.parse(data) as { file?: string }).file ?? "")
+    if (event !== undefined && SERVER_EVENTS.includes(event) && data) {
+      const parsed = JSON.parse(data) as Record<string, unknown>
+      onEvent(event as ServerEvent, typeof parsed.file === "string" ? parsed.file : "", parsed)
     }
   }
   const listen = async () => {

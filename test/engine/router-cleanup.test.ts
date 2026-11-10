@@ -3,7 +3,7 @@ import { parseLayout } from "../../src/core/layout-file.js"
 import { applyLayoutRecordEdits } from "../../src/core/layout-records.js"
 import { buildDesign, type Design } from "../../src/engine/design.js"
 import type { Point } from "../../src/engine/model.js"
-import { cleanup, layoutEdits } from "../../src/engine/router/cleanup.js"
+import { cleanup, cleanupReport, layoutEdits } from "../../src/engine/router/cleanup.js"
 import { netRule } from "../../src/engine/router/connect.js"
 import type { RoutedCopper } from "../../src/engine/router/path.js"
 import type { RoutedConnection } from "../../src/engine/router/route-board.js"
@@ -96,6 +96,15 @@ describe("cleaning up routed copper", () => {
     const cleaned = cleanup(inputOf(design), [route(copper)])
     expect(cleaned[0]?.copper).toEqual({ net: "net.A", vias: [], tracks: [{ layer: "top", width, points: [p1, p2] }] })
     expectClean(files, cleaned)
+  })
+
+  test("cleanup says when it stopped at its pass cap before the routes settled", () => {
+    const { design, p1, p2, width, route } = pair()
+    const copper: RoutedCopper = { net: "net.A", vias: [], tracks: [{ layer: "top", width, points: [p1, { x: -2, y: 0 }, { x: -2, y: 1 }, { x: 2, y: 1 }, { x: 2, y: 0 }, p2] }] }
+    expect(cleanupReport(inputOf(design), [route(copper)], { maxRounds: 1 }).capped).toBe(true)
+    const settled = cleanupReport(inputOf(design), [route(copper)])
+    expect(settled.capped).toBe(false)
+    expect(settled.routed).toEqual(cleanup(inputOf(design), [route(copper)]))
   })
 
   test("a track end inside its pad is snapped to the pad centre", () => {

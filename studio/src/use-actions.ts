@@ -1,7 +1,7 @@
 // The edits Studio sends to its server. Each one reports a failure itself, then reloads the open file.
 import { useCallback, useMemo } from "react"
 import type { LayoutEdit } from "../../src/core/layout-records.js"
-import { api, type Edit } from "./api"
+import { api, type Edit, type RouteScope } from "./api"
 import { announceHistoryWrite } from "./history-writes"
 import { noteRulesWrite } from "./pcb/rules-writes"
 import { PLACE_DEFAULTS } from "./place-defaults"
@@ -29,6 +29,12 @@ export interface Actions {
   verify(id: string, by: string, against: string, confirm: string): Promise<boolean>
   /** Edit → Make sub-sheet: the parts moved into a new sheet file and an instance in their place, as one history entry. */
   makeSheet(request: { name: string; parts: readonly string[]; rename: boolean; instance?: string }): Promise<boolean>
+  /** Route → Autoroute: starts routing the open circuit's board in the scope; its news comes as route events. */
+  route(scope: RouteScope): Promise<boolean>
+  /** Cancels the run going now. */
+  cancelRoute(): Promise<boolean>
+  /** Route → Unroute: removes the router's copper among `ids`, or all of it, as one history entry, and tells it. */
+  unroute(ids?: readonly string[]): Promise<EditOutcome>
   /** Design rules: writes the fillet radius to rules.yaml (null for the default), as one history entry, and tells it. */
   setFilletRadius(radius: number | null): Promise<boolean>
   notify(text: string): void
@@ -100,6 +106,35 @@ export function useActions({ file, refresh, refreshParts, notify }: ActionsInput
           const made = await api<{ preview: MakeSheetPreview }>("/api/make-sheet", { file, ...request })
           notify(madeNote(made.preview, request.parts.length))
         }),
+      route: async (scope) => {
+        try {
+          await api("/api/route", { file, scope })
+          return true
+        } catch (error) {
+          notify((error as Error).message)
+          return false
+        }
+      },
+      cancelRoute: async () => {
+        try {
+          return (await api<{ cancelled: boolean }>("/api/route/cancel", {})).cancelled
+        } catch (error) {
+          notify((error as Error).message)
+          return false
+        }
+      },
+      unroute: (ids) =>
+        announceHistoryWrite(
+          (async () => {
+            let mark: number | undefined
+            const ok = await run(async () => {
+              const done = await api<{ summary: string; writeMark: number }>("/api/unroute", { file, ...(ids ? { ids } : {}) })
+              mark = done.writeMark
+              notify(done.summary)
+            })
+            return { ok, mark }
+          })(),
+        ),
       setFilletRadius: (radius) =>
         run(async () => {
           const saved = await api<{ summary: string; writeMark?: number }>("/api/rules", { filletRadius: radius, ...(file ? { file } : {}) })

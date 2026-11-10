@@ -25,6 +25,7 @@ import { buildPageTree, type DocView } from "./page-tree"
 import { onPage } from "./page-commands"
 import { designOnPage, pageNames } from "./schematic-pages"
 import { FilterPanel } from "./FilterPanel"
+import { RouteStatus } from "./RouteStatus"
 import { LayerPanel } from "./LayerPanel"
 import { SideStrip } from "./SideStrip"
 import { useContextMenu, type ContextMenuState } from "./use-context-menu"
@@ -141,6 +142,7 @@ function CenterColumn(props: WorkspaceProps & { onContextMenu: ContextMenuState[
         {canvas && view === "pcb" && <PcbCanvas key={data.file} {...canvas} {...gridProps(workspace, "pcb")} markers={checks.markers.pcb} activeLayer={workspace.activeLayer} onActiveLayer={workspace.setActiveLayer} />}
         {sheet && view === "schematic" && <SchematicCanvas key={`${data.file}
 ${page}`} {...sheet} {...gridProps(workspace, "schematic")} markers={checks.markers.schematic} />}
+        <RouteStatus route={data.route} onCancel={() => void props.actions.cancelRoute()} />
         {find.box.open && <FindBox text={find.box.text} seq={find.box.seq} onText={find.setText} onSearch={find.search} onClose={find.close} status={findStatus(find.results.query, find.results.rows.length)} />}
       </section>
       {workspace.bottom.open && (
