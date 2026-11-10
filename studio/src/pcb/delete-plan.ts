@@ -1,5 +1,6 @@
-// What Delete does to the selection, parts, wires, net labels and drawings together: one change, so one history entry,
-// that removes the selected wires' traces first, then the selected drawings, then the selected parts. A hand-drawn label is removed by removing its
+// What Delete does to the selection, parts, wires, net labels, drawings, copper pours and holes together: one change, so
+// one history entry, that removes the selected wires' traces first, then the selected drawings, pours and holes, then
+// the selected parts. A hand-drawn label is removed by removing its
 // trace, through the wires' own removal, so its wire also selected is not removed twice; a label Studio placed on a
 // pin goes only with its part. A wire whose trace ends on a part being removed is left to that part (core's removePart
 // takes the part's traces with it), so no trace is removed twice. What cannot go is named in one note and the rest
@@ -53,6 +54,8 @@ export interface DeletePlan {
   labels: string[]
   /** The drawings the change removes. */
   drawings: string[]
+  /** The copper pours and holes the change removes. */
+  board: string[]
   /** Asked before parts go, since they take their connections; wires alone go without asking, as in EasyEDA. */
   question?: string
 }
@@ -83,6 +86,7 @@ export function deletePlan(
   removeWires?: RemoveWires,
   removeLabels?: RemoveLabels,
   removeDrawings?: RemoveDrawings,
+  removeBoard?: RemoveDrawings,
 ): DeletePlan | { message: string } {
   if (selection.total === 0) return { message: NOTHING_TO_DELETE }
   const parts = removeEach(selection.names, blockerFor)
@@ -91,11 +95,12 @@ export function deletePlan(
   const wireIds = unique([...selection.wires, ...(labels?.withWires.map((one) => one.wire) ?? [])])
   const wires = removeWires && wireIds.length > 0 ? removeWires(wireIds, going, new Set(parts.skipped)) : undefined
   const drawings = removeDrawings && selection.drawingCount > 0 ? removeDrawings(selection.drawings) : undefined
+  const board = removeBoard && selection.boardCount > 0 ? removeBoard(selection.board) : undefined
   const plan: GroupEdit = {
-    edits: [...(wires?.edits ?? []), ...(drawings?.edits ?? []), ...parts.edits],
-    summary: `remove ${nameList([...parts.parts, ...wireWords(wires?.names ?? []), ...(drawings?.names ?? [])])}`,
+    edits: [...(wires?.edits ?? []), ...(drawings?.edits ?? []), ...(board?.edits ?? []), ...parts.edits],
+    summary: `remove ${nameList([...parts.parts, ...wireWords(wires?.names ?? []), ...(drawings?.names ?? []), ...(board?.names ?? [])])}`,
     parts: parts.parts,
-    skipped: [...parts.skipped, ...(wires?.skipped ?? []), ...(labels?.skipped ?? []), ...(drawings?.skipped ?? [])],
+    skipped: [...parts.skipped, ...(wires?.skipped ?? []), ...(labels?.skipped ?? []), ...(drawings?.skipped ?? []), ...(board?.skipped ?? [])],
     done: "removed",
   }
   const gone = new Set([...(wires?.removed ?? []), ...(wires?.withParts ?? [])])
@@ -105,6 +110,7 @@ export function deletePlan(
     wires: selection.wires.filter((id) => gone.has(id)),
     labels: selection.labels.filter((id) => goneLabels.has(id)),
     drawings: drawings?.removed ?? [],
+    board: board?.removed ?? [],
     // The question counts the wires selected; a selected label's wire is the label's, not "a wire".
     ...(parts.parts.length > 0 ? { question: removeQuestion(parts.parts, (wires?.removed ?? []).filter((id) => selection.hasWire(id)).length) } : {}),
   }

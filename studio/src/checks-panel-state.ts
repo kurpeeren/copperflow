@@ -17,6 +17,8 @@ export interface CheckPick {
   focus?: FocusRequest
   select?: string
   selectCopper?: string[]
+  /** The copper pours and holes to select, with the copper. */
+  selectBoard?: string[]
 }
 
 /**
@@ -28,12 +30,12 @@ export function opensOnBuild(previousErrors: number | undefined, errors: number)
   return previousErrors === 0 && errors > 0
 }
 
-/** A canvas row shows its view and centres on its position, when it has one; any row selects the copper or else the part it names. */
+/** A canvas row shows its view and centres on its position, when it has one; any row selects the copper, pours and holes or else the part it names. */
 export function checkPick(row: CheckRow): CheckPick {
   const view = row.view === "code" ? undefined : row.view
   return {
     ...(view ? { tab: view } : {}),
     ...(view && row.at ? { focus: { view, at: row.at } } : {}),
-    ...(row.copper && row.copper.length > 0 ? { selectCopper: row.copper } : row.part ? { select: row.part } : {}),
+    ...(row.copper?.length || row.board?.length ? { selectCopper: row.copper ?? [], ...(row.board?.length ? { selectBoard: row.board } : {}) } : row.part ? { select: row.part } : {}),
   }
 }

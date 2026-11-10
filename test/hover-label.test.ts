@@ -223,3 +223,38 @@ describe("hover labels on the schematic", () => {
     expect(hoverTarget(p(1, 0), sheetScene({ ...PICK, filter: { ...ALL_PICKABLE, parts: false } }))?.text).toBe("V3_3")
   })
 })
+
+describe("the hover label on pours and holes", () => {
+  const SOURCE = { file: "a.tsx", line: 1, column: 1, offset: 0 }
+  const square = (x: number, y: number, size: number) => [p(x, y), p(x + size, y), p(x + size, y + size), p(x, y + size)]
+  const base = { priority: 0, minWidth: 0.25, thermal: "relief", thermalWidth: 0.3, thermalGap: 0.25, source: SOURCE }
+  function scene(context: PickContext = PICK, hidden: ReadonlySet<string> = new Set()): PcbHoverScene {
+    const board = { outline: square(-50, -50, 100), layers: 2, thickness: 1.6, keepouts: [], pours: [{ id: "copperpour:1", net: "net.GND", layer: "bottom", ...base }] }
+    const pcb = {
+      parts: [],
+      tracks: [],
+      vias: [],
+      ratsnest: [],
+      board,
+      pours: [{ id: "copperpour:1", net: "net.GND", layer: "bottom", polygons: [{ outer: square(-49, -49, 98), holes: [] }], area: 9604 }],
+      holes: [{ id: "hole:1", x: 40, y: 40, diameter: 3.2, source: SOURCE }],
+    }
+    const design = { circuit: CIRCUIT, pcb } as unknown as PcbHoverScene["design"]
+    return { view: "pcb", design, copper: { tracks: [], vias: [] }, scale: 20, layers: { visible: DEFAULT_LAYERS, of: () => ["top"] }, context, boxes: [], pours: { hidden, activeLayer: "top" } }
+  }
+
+  test("names the pour over its fill and its outline, and the hole with its diameter", () => {
+    expect(hoverTarget(p(0, 0), scene())).toEqual({ kind: "pour", id: "copperpour:1", text: "pour GND · bottom" })
+    expect(hoverTarget(p(-50, 0), scene())?.text).toBe("pour GND · bottom")
+    expect(hoverTarget(p(40.5, 40), scene())).toEqual({ kind: "hole", id: "hole:1", text: "hole 3.2 mm" })
+    expect(stillOver({ kind: "hole", id: "hole:1", text: "" }, p(40, 41), scene())).toBe(true)
+    expect(stillOver({ kind: "pour", id: "copperpour:1", text: "" }, p(10, 10), scene())).toBe(true)
+    expect(stillOver({ kind: "pour", id: "copperpour:1", text: "" }, p(60, 60), scene())).toBe(false)
+  })
+
+  test("names neither while the Filter tab has them off, nor a pour hidden in the Layer panel", () => {
+    expect(hoverTarget(p(0, 0), scene({ ...PICK, filter: { ...ALL_PICKABLE, pours: false } }))).toBeUndefined()
+    expect(hoverTarget(p(40, 40), scene({ ...PICK, filter: { ...ALL_PICKABLE, pours: false } }))).toBeUndefined()
+    expect(hoverTarget(p(0, 0), scene(PICK, new Set(["copperpour:1"])))).toBeUndefined()
+  })
+})

@@ -6,6 +6,7 @@ import type { Design } from "../../src/engine/design.js"
 import type { Diagnostic, Point, Severity } from "../../src/engine/model.js"
 import type { RouteEvent } from "../../src/studio/route-events.js"
 import type { ViolationMarker } from "./pcb/markers.js"
+import { boardItemCentre } from "./pcb/pour-hit.js"
 
 export interface CheckRow {
   /** The violation's id; a diagnostic has none and gets one from its place in the list. */
@@ -21,6 +22,8 @@ export interface CheckRow {
   part?: string
   /** The design's tracks and vias the row names, in item order; clicking the row selects them instead of a part. */
   copper?: string[]
+  /** The design's copper pours and holes the row names (`copperpour:1`, `hole:1`), selected with the copper. */
+  board?: string[]
 }
 
 export interface CheckGroup {
@@ -58,12 +61,23 @@ export function selectablePart(row: Pick<CheckRow, "items">, components: Readonl
   return part !== undefined && components.has(part) ? part : undefined
 }
 
-/** A row naming copper selects that copper; any other row selects the part it names. */
-function withPart(row: CheckRow, components: ReadonlySet<string>, copperIds: ReadonlySet<string>): CheckRow {
+/**
+ * A row naming copper, pours or holes selects them, and one about a pour or hole without a position is ringed at it;
+ * any other row selects the part it names.
+ */
+function withPart(row: CheckRow, components: ReadonlySet<string>, copperIds: ReadonlySet<string>, design: Design): CheckRow {
   const copper = row.items.filter((item) => copperIds.has(item))
-  if (copper.length > 0) return { ...row, copper }
+  const board = row.items.filter((item) => boardIdsOf(design).has(item))
+  const at = row.at ?? (row.view === "pcb" ? board.map((id) => boardItemCentre(design, id)).find((point) => point !== undefined) : undefined)
+  if (copper.length > 0 || board.length > 0) return { ...row, ...(copper.length > 0 ? { copper } : {}), ...(board.length > 0 ? { board } : {}), ...(at ? { at } : {}) }
   const part = selectablePart(row, components)
   return part === undefined ? row : { ...row, part }
+}
+
+/** The ids of the design's copper pours and holes. */
+function boardIdsOf(design: Design): Set<string> {
+  const pcb = design.pcb as Design["pcb"] | undefined
+  return new Set([...(pcb?.board?.pours ?? []), ...(pcb?.holes ?? [])].map((item) => item.id))
 }
 
 /** The ids of the design's tracks and vias. */
@@ -107,7 +121,7 @@ function routeRows(design: Design, route: RouteEvent | undefined): CheckRow[] {
 export function checkRows(design: Design, route?: RouteEvent): CheckRow[] {
   const components = new Set(design.circuit.components.map((component) => component.id))
   const copperIds = copperIdsOf(design)
-  const rows = [...design.violations.map(violationRow), ...routeRows(design, route), ...design.diagnostics.map(diagnosticRow)].map((row) => withPart(row, components, copperIds))
+  const rows = [...design.violations.map(violationRow), ...routeRows(design, route), ...design.diagnostics.map(diagnosticRow)].map((row) => withPart(row, components, copperIds, design))
   return rows.sort((a, b) => rank(a.severity) - rank(b.severity))
 }
 

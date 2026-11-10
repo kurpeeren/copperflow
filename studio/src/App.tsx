@@ -165,7 +165,7 @@ function useChecksAndFind({ data, tab, setTab, select, selectOnly, workspace }: 
   const { file, build } = data
   const { setHighlight, openBottom } = workspace
   const openChecks = useCallback(() => openBottom("drc"), [openBottom])
-  const selectCopper = useCallback((ids: readonly string[]) => select(() => Selection.none.all([], [], [], [], ids)), [select])
+  const selectCopper = useCallback((ids: readonly string[], board: readonly string[]) => select(() => Selection.none.all([], [], [], [], ids).addBoard(board)), [select])
   const checks = useChecks({ file, build, route: data.route, onTab: setTab, onSelect: selectOnly, onSelectCopper: selectCopper, onOpen: openChecks })
   const openFindResults = useCallback(() => openBottom("find"), [openBottom])
   const find = useFind({ file, circuit: data.circuit, library: data.parts.library, design: build.design, view: tab, onSelect: select, onHighlight: setHighlight, requestFocus: checks.requestFocus, openResults: openFindResults })

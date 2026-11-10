@@ -14,7 +14,8 @@ interface ChecksInput {
   route: RouteEvent | undefined
   onTab(view: View): void
   onSelect(part: string): void
-  onSelectCopper(ids: readonly string[]): void
+  /** Selects these tracks and vias, and these copper pours and holes, alone. */
+  onSelectCopper(ids: readonly string[], board: readonly string[]): void
   onOpen(): void
 }
 
@@ -33,7 +34,7 @@ export function useChecks({ file, build, route, onTab, onSelect, onSelectCopper,
       if (step.tab) onTab(step.tab)
       if (step.focus) setFocus(step.focus)
       if (step.select) onSelect(step.select)
-      if (step.selectCopper) onSelectCopper(step.selectCopper)
+      if (step.selectCopper) onSelectCopper(step.selectCopper, step.selectBoard ?? [])
     },
     [onTab, onSelect, onSelectCopper],
   )

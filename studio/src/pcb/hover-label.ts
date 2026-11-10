@@ -11,13 +11,14 @@ import type { PartBox, Point } from "./geometry.js"
 import { targetAt, textTakesPress, type GestureDrawings, type GestureLabels, type GestureTexts, type GestureWires } from "./gestures.js"
 import type { PickLayers } from "./layers.js"
 import { padAt, padDistance } from "./pcb-draw.js"
+import { holeAt, holeLabel, onFill, pourEdgeAt, pourFillAt, pourLabel, poursOf } from "./pour-hit.js"
 import { canPick, type PickContext } from "./pick.js"
 import { segmentAt } from "./wire-hit.js"
 import { labelOf, pinAt, PIN_REACH_PX } from "./wire-tool.js"
 
 /** What the label is about, by the id the design gives it, and what it says. */
 export interface HoverTarget {
-  kind: "pad" | "via" | "track" | "pin" | "port" | "label" | "wire"
+  kind: "pad" | "via" | "track" | "pin" | "port" | "label" | "wire" | "pour" | "hole"
   id: string
   text: string
   /** A net label or wire over a pin end: that pin's id, which its text names too. */
@@ -35,6 +36,8 @@ export interface PcbHoverScene {
   boxes: readonly PartBox[]
   /** The designators, which take a click before the copper and pads under them. */
   texts?: Pick<GestureTexts, "at">
+  /** The pours hidden in the Layer panel and the active layer, whose fill is named first where two overlap. */
+  pours?: { hidden: ReadonlySet<string>; activeLayer: string }
 }
 
 /** The schematic as the label sees it: the hit tests the canvas gives a click (gestures.ts targetAt). */
@@ -82,7 +85,25 @@ function trackText(design: Pick<Design, "circuit">, track: PcbTrack): string {
   return `track ${track.id}${SEP}${netText(design, track.net)}${SEP}${mm(track.width)}${SEP}${track.layer}${track.by === "router" ? `${SEP}routed` : ""}`
 }
 
-/** On the PCB: a designator takes the click, so nothing; then the via or track, then the pad of a part that may be picked. */
+const NO_HIDDEN: ReadonlySet<string> = new Set()
+
+/** A hole under the pointer, then a pour's outline, then the pour whose fill lies under it, of those that may be picked. */
+function boardItemTarget(world: Point, scene: PcbHoverScene): HoverTarget | undefined {
+  const { design, scale, layers, context } = scene
+  const hidden = scene.pours?.hidden ?? NO_HIDDEN
+  const holeId = canPick({ kind: "hole", id: "" }, context) ? holeAt(design.pcb.holes ?? [], world, scale, layers.visible) : undefined
+  const hole = design.pcb.holes?.find((one) => one.id === holeId)
+  if (hole) return { kind: "hole", id: hole.id, text: holeLabel(hole) }
+  if (!canPick({ kind: "pour", id: "" }, context)) return undefined
+  const id = pourEdgeAt(design, world, scale, layers.visible, hidden) ?? (design.pcb.pours && pourFillAt(design, world, layers.visible, hidden, scene.pours?.activeLayer))
+  const pour = poursOf(design).find((one) => one.id === id)
+  return pour && { kind: "pour", id: pour.id, text: pourLabel(design, pour) }
+}
+
+/**
+ * On the PCB: a designator takes the click, so nothing; then the via or track, then the pad of a part that may be
+ * picked, then a hole or a pour (named over its fill too, though a click picks a pour by its outline only).
+ */
 function pcbTarget(world: Point, scene: PcbHoverScene): HoverTarget | undefined {
   const { design, copper, scale, layers, context } = scene
   if (textTakesPress(scene.boxes, world, context, scene.texts)) return undefined
@@ -92,7 +113,7 @@ function pcbTarget(world: Point, scene: PcbHoverScene): HoverTarget | undefined 
   const track = hit?.kind === "track" ? copper.tracks.find((one) => one.id === hit.id) : undefined
   if (track) return { kind: "track", id: track.id, text: trackText(design, track) }
   const pad = padAt(design.pcb, world, layers.visible, (name) => canPick({ kind: "part", name }, context))
-  return pad && { kind: "pad", id: pad.id, text: padText(design, pad) }
+  return pad ? { kind: "pad", id: pad.id, text: padText(design, pad) } : boardItemTarget(world, scene)
 }
 
 /** The name a net label or flag stands for: its text when the net has that name, else the net's first name. */
@@ -167,6 +188,11 @@ function stillOnBoard(target: HoverTarget, world: Point, scene: PcbHoverScene): 
   if (target.kind === "track") {
     const track = copper.tracks.find((one) => one.id === target.id)
     return track !== undefined && segmentAt(track.points, world, copperReach(track.width, scale)) !== undefined
+  }
+  if (target.kind === "hole") return holeAt(scene.design.pcb.holes ?? [], world, scale, scene.layers.visible) === target.id
+  if (target.kind === "pour") {
+    const fill = scene.design.pcb.pours?.find((one) => one.id === target.id)
+    return pourEdgeAt(scene.design, world, scale, scene.layers.visible, scene.pours?.hidden ?? NO_HIDDEN) === target.id || (fill !== undefined && onFill(fill, world))
   }
   const component = target.id.slice(0, target.id.indexOf("#"))
   const pad = scene.design.pcb.parts.find((part) => part.component === component)?.pads.find((one) => one.id === target.id)
