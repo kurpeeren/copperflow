@@ -156,6 +156,11 @@ describe("Replicate layout", () => {
     expect(replicatePlan(design(), ["PS1"], (name) => name !== "PS1")).toEqual({ message: "Place PS1 on the board first (pcbX and pcbY on the instance), then replicate the layout." })
   })
 
+  test("refuses when a target instance is locked, naming it, since the sheet's placement would move its parts", () => {
+    expect(replicatePlan(design(), ["PS1"], undefined, new Set(["PS2"]))).toEqual({ message: "PS2 is locked; unlock it to replicate the layout of PS1 to it." })
+    expect("message" in replicatePlan(design(), ["PS1"], undefined, new Set(["PS1"]))).toBe(false)
+  })
+
   test("removes only the target's own copper, not a parent net's track passing over it", () => {
     const passing: TrackRecord = { t: "track", id: "t0001", net: "net.VBUS", layer: "bottom", width: 0.2, points: [{ x: 9.8, y: 4 }, { x: 10.2, y: 6 }], locked: false, by: "human" }
     const own: TrackRecord = { t: "track", id: "t0002", net: "net.PS2/MID", layer: "top", width: 0.2, points: [{ x: 10, y: 5 }, { x: 10, y: 6 }], locked: false, by: "human" }
