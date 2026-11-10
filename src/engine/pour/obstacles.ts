@@ -5,7 +5,7 @@ import type { Board, CopperPour, Point, PourLayer } from "../model.js"
 import type { WorldPad } from "../pcb.js"
 import { requiredClearance } from "../rules/classes.js"
 import type { Rules } from "../rules/schema.js"
-import { counterClockwise, offset, toPath, union, type IntPoint, type Paths } from "./clip.js"
+import { counterClockwise, offset, toPath, union, type IntPoint, type Path, type Paths } from "./clip.js"
 import { shapeOutline } from "./shapes.js"
 import { thermalRelief } from "./thermal.js"
 
@@ -35,12 +35,16 @@ export interface LayerCopper {
    * a pad it overlaps under the non-zero rule.
    */
   obstacles: Paths
-  /** The pour's own pads grown by the relief gap (relief pours only). */
-  cuts: Paths
-  /** The relief spokes across those gaps. */
-  spokes: Paths
-  /** Points of the pour's own net's copper: a piece of fill holding none of them is an island. */
-  anchors: IntPoint[]
+  /** The relief round each of the pour's own pads (relief pours only). */
+  reliefs: PadRelief[]
+  /** Outlines of the pour's own net's copper on the layer: a piece of fill meeting none of them is an island. */
+  anchors: Paths
+}
+
+/** A pad's relief: the pad grown by the gap, and its spokes, each with the point the fill must hold to keep it. */
+export interface PadRelief {
+  cut: Path
+  spokes: { path: Path; tip: IntPoint }[]
 }
 
 /**
@@ -48,6 +52,8 @@ export interface LayerCopper {
  * (within 2 µm of the true arc) never bring the fill closer than the clearance.
  */
 const MARGIN = 0.003
+/** How far the pour's own copper is grown to find the pieces it touches, in mm: 1 µm, so meeting at an edge counts. */
+const TOUCH = 0.001
 
 const padOnLayer = (pad: WorldPad, layer: PourLayer) => pad.layers === "through" || pad.layers === layer
 
@@ -98,19 +104,21 @@ function boardObstacles(pour: CopperPour, inputs: PourInputs): Paths {
   return [...keepouts.map((keepout) => toPath(keepout.outline)), ...holes.map(toPath)]
 }
 
-function ownNet(pour: CopperPour, inputs: PourInputs): Pick<LayerCopper, "cuts" | "spokes" | "anchors"> {
+function ownNet(pour: CopperPour, inputs: PourInputs): Pick<LayerCopper, "reliefs" | "anchors"> {
   const pads = inputs.pads.filter((pad) => padOnLayer(pad, pour.layer) && pad.net === pour.net)
   const { tracks, vias } = layerItems(pour, inputs)
-  const anchors: Point[] = [
-    ...pads.flatMap((pad) => [{ x: pad.x, y: pad.y }, ...(padShape(pad)?.core ?? [])]),
-    ...tracks.filter((track) => track.net === pour.net).flatMap((track) => track.points),
-    ...vias.filter((via) => via.net === pour.net).map((via) => via.at),
+  const shapes: Shape[] = [
+    ...pads.flatMap((pad) => padShape(pad) ?? []),
+    ...tracks.filter((track) => track.net === pour.net).flatMap(trackShapes),
+    ...vias.filter((via) => via.net === pour.net).map((via) => ({ core: [via.at], radius: via.diameter / 2 })),
   ]
   const reliefs = pour.thermal === "relief" ? pads.flatMap((pad) => thermalRelief(pad, pour.thermalGap, pour.thermalWidth) ?? []) : []
   return {
-    cuts: reliefs.map((relief) => toPath(relief.cut)),
-    spokes: reliefs.flatMap((relief) => relief.spokes.map(toPath)),
-    anchors: toPath(anchors),
+    reliefs: reliefs.map((relief) => ({
+      cut: toPath(relief.cut),
+      spokes: relief.spokes.map((spoke, i) => ({ path: toPath(spoke), tip: toPath([relief.tips[i] as Point])[0] as IntPoint })),
+    })),
+    anchors: shapes.map((shape) => toPath(shapeOutline(shape, TOUCH))).filter((path) => path.length >= 3),
   }
 }
 

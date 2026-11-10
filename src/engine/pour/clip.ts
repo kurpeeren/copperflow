@@ -85,3 +85,27 @@ export function regionHolds(region: Region, point: IntPoint): boolean {
   return region.holes.every((hole) => ClipperLib.Clipper.PointInPolygon(point, hole) !== 1)
 }
 
+
+/** The box round some paths, in units. */
+export interface Bounds {
+  minX: number
+  minY: number
+  maxX: number
+  maxY: number
+}
+
+export function boundsOf(paths: Paths): Bounds {
+  const box = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
+  for (const path of paths) {
+    for (const p of path) {
+      box.minX = Math.min(box.minX, p.X)
+      box.minY = Math.min(box.minY, p.Y)
+      box.maxX = Math.max(box.maxX, p.X)
+      box.maxY = Math.max(box.maxY, p.Y)
+    }
+  }
+  return box
+}
+
+export const boxesMeet = (a: Bounds, b: Bounds): boolean => a.minX <= b.maxX && b.minX <= a.maxX && a.minY <= b.maxY && b.minY <= a.maxY
+export const boxHolds = (b: Bounds, p: IntPoint): boolean => p.X >= b.minX && p.X <= b.maxX && p.Y >= b.minY && p.Y <= b.maxY

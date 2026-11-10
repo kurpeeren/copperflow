@@ -9,6 +9,8 @@ export interface Relief {
   cut: Point[]
   /** Four rectangles from the pad's centre along its own axes (0°, 90°, 180°, 270°), each `width` wide. */
   spokes: Point[][]
+  /** For each spoke, the middle of the part past the gap: the spoke joins the fill only when the fill holds this point. */
+  tips: Point[]
 }
 
 const DEG = Math.PI / 180
@@ -31,8 +33,10 @@ export function thermalRelief(pad: WorldPad, gap: number, width: number): Relief
   const world = (p: Point): Point => ({ x: pad.x + p.x * cos - p.y * sin, y: pad.y + p.x * sin + p.y * cos })
   const halfHeight = (pad.shape === "circle" ? pad.width : pad.height) / 2
   const side = width / 2
+  const edge = (d: Point) => (d.x !== 0 ? pad.width / 2 : halfHeight) + gap
+  const tips = DIRECTIONS.map((d) => world({ x: d.x * (edge(d) + width / 2), y: d.y * (edge(d) + width / 2) }))
   const spokes = DIRECTIONS.map((d) => {
-    const reach = (d.x !== 0 ? pad.width / 2 : halfHeight) + gap + width
+    const reach = edge(d) + width
     const across = { x: -d.y * side, y: d.x * side }
     const tip = { x: d.x * reach, y: d.y * reach }
     return [
@@ -42,5 +46,5 @@ export function thermalRelief(pad: WorldPad, gap: number, width: number): Relief
       { x: across.x, y: across.y },
     ].map(world)
   })
-  return { cut: shapeOutline(shape, gap), spokes }
+  return { cut: shapeOutline(shape, gap), spokes, tips }
 }

@@ -1,21 +1,27 @@
 import type { CopperPour, Point, PourLayer } from "../model.js"
 import {
+  boundsOf,
+  boxesMeet,
+  boxHolds,
   difference,
   intersection,
   offset,
   pathArea,
   regionArea,
+  regionHolds,
   regions,
   toPath,
   toPoints,
   union,
   UNITS_PER_MM,
+  type Bounds,
+  type IntPoint,
   type Path,
   type Paths,
   type Region,
 } from "./clip.js"
 import { connectedPieces } from "./islands.js"
-import { layerCopper, type EarlierFill, type PourInputs } from "./obstacles.js"
+import { layerCopper, type EarlierFill, type PadRelief, type PourInputs } from "./obstacles.js"
 
 /** A piece of a pour's copper: its outline (counter-clockwise, y up) and its holes (clockwise), in mm. */
 export interface PourPolygon {
@@ -84,13 +90,38 @@ function tidyRegions(pieces: readonly Region[]): Region[] {
   })
 }
 
+/** True when one of the pieces holds the point. */
+function holds(pieces: readonly { region: Region; box: Bounds }[], point: IntPoint): boolean {
+  return pieces.some((piece) => boxHolds(piece.box, point) && regionHolds(piece.region, point))
+}
+
+/**
+ * The spokes that join the fill: a spoke is kept only when the opened fill holds its tip, so a pad whose surroundings
+ * were opened away gets none (and no lone cross). A kept spoke keeps out of every other same-net pad's relief gap,
+ * and out of everything the fill keeps out of.
+ */
+function joiningSpokes(reliefs: readonly PadRelief[], opened: Paths, allowed: Paths): Paths {
+  if (reliefs.length === 0) return []
+  const pieces = regions(opened).map((region) => ({ region, box: boundsOf([region.outer]) }))
+  const cutBoxes = reliefs.map((relief) => boundsOf([relief.cut]))
+  const kept = reliefs.flatMap((relief, i) => {
+    const spokes = relief.spokes.filter((spoke) => holds(pieces, spoke.tip)).map((spoke) => spoke.path)
+    if (spokes.length === 0) return []
+    const box = boundsOf(spokes)
+    const others = reliefs.filter((other, j) => j !== i && boxesMeet(box, cutBoxes[j] as Bounds)).map((other) => other.cut)
+    return others.length > 0 ? difference(spokes, others) : spokes
+  })
+  return kept.length > 0 ? intersection(kept, allowed) : []
+}
+
 /** The copper of one pour: the region less the obstacles and relief gaps, opened, with spokes, without islands. */
 function fillOne(pour: CopperPour, inputs: PourInputs, earlier: readonly EarlierFill[]): Region[] {
   const copper = layerCopper(pour, inputs, earlier)
   const allowed = difference(pourRegion(pour, inputs), copper.obstacles)
-  const cut = copper.cuts.length > 0 ? difference(allowed, copper.cuts) : allowed
+  const cuts = copper.reliefs.map((relief) => relief.cut)
+  const cut = cuts.length > 0 ? difference(allowed, cuts) : allowed
   const opened = open(cut, pour.minWidth)
-  const spokes = copper.spokes.length > 0 ? intersection(copper.spokes, allowed) : []
+  const spokes = joiningSpokes(copper.reliefs, opened, allowed)
   const all = regions([...opened, ...spokes])
   // With no copper of its net on the layer yet there is nothing to join: the pour keeps its whole fill.
   const pieces = copper.anchors.length > 0 ? connectedPieces(all, copper.anchors) : all

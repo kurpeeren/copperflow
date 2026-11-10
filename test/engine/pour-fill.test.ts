@@ -209,6 +209,28 @@ test("a keepout drawn clockwise over another net's pad still keeps all copper ou
   expect(areaIn(filled, circle({ x: 0, y: 0 }, 0.5 + CLEARANCE))).toBe(0)
 })
 
+test("a piece crossed by a track of the pour's net counts as joined though no track point is inside it", () => {
+  const crossing = track("t1", "net.GND", [{ x: -8, y: 0 }, { x: 8, y: 0 }])
+  const filled = fill({ pours: [pour({ outline: rectangle(-3, -3, 3, 3) })], tracks: [crossing] })
+  expect(filled.area).toBeCloseTo(36, 1)
+})
+
+test("a pad whose surroundings were opened away gets no spokes and no copper", () => {
+  const ring = Array.from({ length: 8 }, (_, i) => {
+    const angle = (i * Math.PI) / 4
+    return pad(`U${i + 2}#1`, "net.X", 2.2 * Math.cos(angle), 2.2 * Math.sin(angle))
+  })
+  const filled = fill({ pads: [pad("J1#1", "net.GND", 0, 0), ...ring] })
+  expect(areaIn(filled, circle({ x: 0, y: 0 }, 1.15))).toBe(0)
+})
+
+test("a spoke keeps out of a neighbouring same-net pad's relief gap", () => {
+  const smd = (id: string, x: number, y: number) => pad(id, "net.GND", x, y, { shape: "rect", width: 0.4, height: 0.4, layers: "top" })
+  const filled = fill({ pads: [smd("U1#1", 0, 0), smd("U1#2", 0.55, 0.5)] })
+  expect(areaIn(filled, rectangle(0.3, 0.1, 0.38, 0.15))).toBe(0)
+  expect(areaIn(filled, circle({ x: 0.33, y: 0 }, 0.05))).toBeGreaterThan(0.007)
+})
+
 test("the open grows back round, so a sharp tip narrower than minWidth does not survive", () => {
   // The wedge is 0.212 mm wide at x = 0.53: a mitred grow keeps it that wide, a round one leaves a rounded tip.
   const wedge = pour({ outline: [{ x: 0, y: 0 }, { x: 3, y: -0.6 }, { x: 3, y: 0.6 }] })
