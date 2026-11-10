@@ -15,12 +15,13 @@ import {
 import { drawingKeeper } from "./drawing-identity.js"
 import { applyEdits, EditError } from "./edit.js"
 import { inProjectQueue, isInside, readIfThere, writeNew, writeWithHistory } from "./file-writes.js"
-import { livesOnAs, readEntries, recordEntry, removeEntry, type Author, type HistoryEntry } from "./history.js"
+import { livesOnAs, readEntries, recordEntry, removeEntry, type Author, type FileChange, type HistoryEntry } from "./history.js"
 import { circuitPathFor, isLayoutFile, layoutPathFor } from "./layout-file.js"
 import { designFor, lockedPartsAt, lockedStart, type DesignSource } from "./layout-locks.js"
 import { lockedPartChanges, lockedRecordChanges } from "./layout-records.js"
 import { LIBRARY_OWNED_PROPS, libraryIds, libraryImports, PARTS_DIR } from "./library.js"
 import { partsInSelector } from "./selectors.js"
+import { alsoField, checkSheetFiles, invertChanges, planSheetWrites, writeSheetFiles } from "./sheet-files.js"
 import { RULES_PATH } from "../engine/rules/load.js"
 import type { CircuitModel, Edit } from "./types.js"
 
@@ -146,19 +147,23 @@ export function undoChange(root: string, options: HistoryOptions): Promise<Histo
     if (loaded.source !== target.after) {
       throw new Error(`${target.file} has changed since ${target.id}; undo it by hand or with git`)
     }
-    if (target.absent === "before") return removeCreated(root, loaded, target, options.author)
+    const also = target.also ?? []
+    await checkSheetFiles(root, also, "after", target.id, "undo")
+    if (target.absent === "before") return withSheetFiles(root, also, removeCreated(root, loaded, target, options.author))
     const touched = loaded.lockChange(target.before)
     if (touched) throw new Error(`Undoing ${target.id} would change the locked ${touched}; unlock it first`)
 
-    return writeWithHistory(root, loaded, target.before, {
+    const written = writeWithHistory(root, loaded, target.before, {
       author: options.author,
       file: loaded.file,
       // An undo of a redo reads as an undo of the change itself.
       summary: `Undo: ${target.redoOf ? target.summary.replace(/^Redo: /, "") : target.summary}`,
       before: target.after,
       after: target.before,
+      ...alsoField(invertChanges(also)),
       undoOf: target.id,
     })
+    return withSheetFiles(root, also, written)
   })
 }
 
@@ -171,7 +176,9 @@ export function undoChange(root: string, options: HistoryOptions): Promise<Histo
 export function redoChange(root: string, options: HistoryOptions): Promise<HistoryEntry> {
   return inProjectQueue(root, async () => {
     const undo = redoTarget(await readEntries(root), options)
-    if (undo.absent === "after") return recreate(root, undo, options.author)
+    const also = undo.also ?? []
+    await checkSheetFiles(root, also, "after", undo.id, "redo")
+    if (undo.absent === "after") return withSheetFiles(root, also, recreate(root, undo, options.author))
     const loaded = await loadTracked(root, undo.file, options.design)
     if (loaded.source !== undo.after) {
       throw new Error(`${undo.file} has changed since ${undo.id}; redo it by hand or with git`)
@@ -179,14 +186,16 @@ export function redoChange(root: string, options: HistoryOptions): Promise<Histo
     const touched = loaded.lockChange(undo.before)
     if (touched) throw new Error(`Redoing ${undo.undoOf} would change the locked ${touched}; unlock it first`)
 
-    return writeWithHistory(root, loaded, undo.before, {
+    const redone = writeWithHistory(root, loaded, undo.before, {
       author: options.author,
       file: loaded.file,
       summary: `Redo: ${undo.summary.replace(/^Undo: /, "")}`,
       before: undo.after,
       after: undo.before,
+      ...alsoField(invertChanges(also)),
       redoOf: undo.id,
     })
+    return withSheetFiles(root, also, redone)
   })
 }
 
@@ -243,6 +252,13 @@ async function loadTracked(root: string, file: string, design?: DesignSource): P
   return { ...loaded, lockChange: (next) => changedLocks(loaded, next), firstLock: () => lock && `${lockKind(lock)} ${lock.part}` }
 }
 
+/** Once the main file of an undo or redo is written, its sheet files go back to how they were before the change it takes back. */
+async function withSheetFiles(root: string, also: readonly FileChange[], main: Promise<HistoryEntry>): Promise<HistoryEntry> {
+  const entry = await main
+  await writeSheetFiles(root, also, "before")
+  return entry
+}
+
 /** Undoes a created file: it goes away, unless a part in it is locked now. */
 async function removeCreated(root: string, loaded: Tracked, target: HistoryEntry, author: Author): Promise<HistoryEntry> {
   const locked = loaded.firstLock()
@@ -254,6 +270,7 @@ async function removeCreated(root: string, loaded: Tracked, target: HistoryEntry
     before: target.after,
     after: "",
     absent: "after",
+    ...alsoField(invertChanges(target.also ?? [])),
     undoOf: target.id,
   })
   try {
@@ -272,6 +289,7 @@ async function recreate(root: string, undo: HistoryEntry, author: Author): Promi
   return writeNew(root, path, undo.before, {
     author,
     summary: `Redo: ${undo.summary.replace(/^Undo: /, "")}`,
+    ...alsoField(invertChanges(undo.also ?? [])),
     redoOf: undo.id,
   })
 }
@@ -303,8 +321,9 @@ function redoableUndos(entries: readonly HistoryEntry[]): HistoryEntry[] {
   const changedAfter = new Set<string>()
   const found: HistoryEntry[] = []
   for (const entry of [...entries].reverse()) {
-    if (!entry.undoOf && !entry.redoOf) changedAfter.add(entry.file)
-    else if (entry.undoOf && !redone.has(entry.id) && !changedAfter.has(entry.file)) found.push(entry)
+    const files = [entry.file, ...(entry.also ?? []).map((change) => change.file)]
+    if (!entry.undoOf && !entry.redoOf) for (const file of files) changedAfter.add(file)
+    else if (entry.undoOf && !redone.has(entry.id) && !files.some((file) => changedAfter.has(file))) found.push(entry)
   }
   return found
 }
@@ -317,26 +336,40 @@ export function projectPath(root: string, file: string): string {
 /**
  * Writes a circuit file that does not exist yet, as one history entry; the undo removes it again.
  * An existing file is refused unless `replace` is set; replacing is an ordinary change (the undo restores the old
- * text) and is refused while the file has locks.
+ * text) and is refused while the file has locks. `sheets` are sub-sheet files written in the same change under the
+ * same rule; nothing is written when any file is refused.
  */
 export function createCircuitFile(
   root: string,
   file: string,
   text: string,
-  meta: { author: Author; summary: string; replace?: boolean },
+  meta: { author: Author; summary: string; replace?: boolean; sheets?: readonly { file: string; text: string }[] },
 ): Promise<HistoryEntry> {
   return inProjectQueue(root, async () => {
     const path = resolveInRoot(root, file)
     if (!CIRCUIT_FILE.test(basename(path))) throw new Error(`${file} must end in .circuit.tsx`)
     const source = await readIfThere(path)
-    if (source === undefined) return writeNew(root, path, text, meta)
-    if (!meta.replace) throw new Error(`${file} already exists; pass replace: true to overwrite it, or choose another file name`)
+    if (source !== undefined && !meta.replace) throw new Error(`${file} already exists; pass replace: true to overwrite it, or choose another file name`)
+    const also = await planSheetWrites(root, meta.sheets ?? [], meta.replace === true)
+    const info = { author: meta.author, summary: meta.summary, ...alsoField(also) }
+    if (source === undefined) return writeSheetsAfter(root, also, writeNew(root, path, text, info))
     const existing = await resolveCircuit(root, file)
     const locks = (await readAnnotations(annotationsPathFor(existing.path))).locks
     if (locks[0]) throw new Error(`${file} has a locked part (${locks[0].part}); it cannot be replaced`)
-    if (source === text) throw new EditError("invalid", "The file already has this content")
-    return writeWithHistory(root, { ...existing, source }, text, { author: meta.author, summary: meta.summary, file: existing.file, before: source, after: text })
+    if (source === text && also.length === 0) throw new EditError("invalid", "The file already has this content")
+    return writeSheetsAfter(root, also, writeWithHistory(root, { ...existing, source }, text, { ...info, file: existing.file, before: source, after: text }))
   })
+}
+
+/** Writes the sheet files once the circuit file and its history entry are written. */
+async function writeSheetsAfter(root: string, also: readonly FileChange[], main: Promise<HistoryEntry>): Promise<HistoryEntry> {
+  const entry = await main
+  try {
+    await writeSheetFiles(root, also, "after")
+  } catch (error) {
+    throw new Error(`${entry.file} was written as change ${entry.id}, but a sheet file was not (${(error as Error).message}); undo ${entry.id}`)
+  }
+  return entry
 }
 
 /** Reads a circuit's annotations, applies `change` and writes the result. */

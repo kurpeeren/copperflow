@@ -2,6 +2,14 @@ import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { z } from "zod"
 
+/** One file a change wrote besides its main file, such as a sheet file a new circuit uses. */
+const FileChangeSchema = z.object({
+  file: z.string(),
+  before: z.string(),
+  after: z.string(),
+  absent: z.enum(["before", "after"]).optional(),
+})
+
 const EntrySchema = z.object({
   id: z.string().regex(/^c\d{4,}$/),
   time: z.string(),
@@ -13,6 +21,8 @@ const EntrySchema = z.object({
   after: z.string(),
   /** Which side of the change has no file: a new circuit has none before, and the undo of that has none after. The text on that side is empty. */
   absent: z.enum(["before", "after"]).optional(),
+  /** Other files the same change wrote, undone and redone with the main file. */
+  also: z.array(FileChangeSchema).optional(),
   /** Set on entries that undo an earlier entry. */
   undoOf: z.string().optional(),
   /** Set on entries that redo an earlier undo: the undo's id. A redo is an ordinary change, which can be undone. */
@@ -20,6 +30,7 @@ const EntrySchema = z.object({
 })
 
 export type HistoryEntry = z.infer<typeof EntrySchema>
+export type FileChange = z.infer<typeof FileChangeSchema>
 export type Author = HistoryEntry["author"]
 
 export interface HistoryListing extends Omit<HistoryEntry, "before" | "after"> {
