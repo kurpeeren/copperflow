@@ -1,5 +1,5 @@
 import { centredOffsets, closedRectangle, padExtent, rectangle, SILK_CLEARANCE, tidy } from "./outline.js"
-import type { ParsedFootprint } from "./parse.js"
+import { isSimple, type ParsedFootprint } from "./parse.js"
 import type { Footprint, Pad } from "./types.js"
 
 /**
@@ -47,7 +47,7 @@ function pinPad(number: number, x: number): Pad {
  * not drawn: its size is not part of the string.
  */
 export function pinRowFootprint(parsed: ParsedFootprint): Footprint | undefined {
-  if (parsed.kind !== "pinrow" || parsed.variant !== undefined) return undefined
+  if (parsed.kind !== "pinrow" || !isSimple(parsed) || parsed.variant !== undefined) return undefined
   if (Object.keys(parsed.params).some((key) => key !== "p")) return undefined
   const count = Number(parsed.code)
   const pitch = parsed.params["p"] ?? PIN_ROW_DEFAULT_PITCH

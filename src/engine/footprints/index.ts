@@ -1,7 +1,7 @@
 import { chipFootprint } from "./chip.js"
 import { dualFootprint } from "./dual.js"
 import { footprintFromFile } from "./file.js"
-import { parseFootprint, type ParsedFootprint } from "./parse.js"
+import { isSimple, parseFootprint, type ParsedFootprint } from "./parse.js"
 import { pinRowFootprint } from "./pinrow.js"
 import { quadFootprint } from "./quad.js"
 import { sodFootprint } from "./sod.js"
@@ -14,7 +14,8 @@ export type FootprintResult = Footprint | { error: string }
 type Family = (parsed: ParsedFootprint) => Footprint | undefined
 
 /** No variant and no parameters: "0603", not "0603_5" or "0603_p0.5mm". */
-const isPlain = (parsed: ParsedFootprint) => parsed.variant === undefined && Object.keys(parsed.params).length === 0
+const isPlain = (parsed: ParsedFootprint) =>
+  isSimple(parsed) && parsed.variant === undefined && Object.keys(parsed.params).length === 0
 
 /** Tried in order; the first family that accepts the string makes the footprint. */
 const FAMILIES: readonly Family[] = [

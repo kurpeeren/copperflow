@@ -1,7 +1,7 @@
 import { confirmsPackage, gullWingRow, range, type IcPackage } from "./ic.js"
 import { roundRectPad, type PadRow } from "./ipc7351.js"
 import { bodyOutline, centredOffsets, courtyard, dualSilkscreen } from "./outline.js"
-import type { ParsedFootprint } from "./parse.js"
+import { isSimple, type ParsedFootprint } from "./parse.js"
 import type { Footprint, Pad } from "./types.js"
 
 /**
@@ -88,7 +88,7 @@ function dualPads(pins: number, pitch: number, row: PadRow): Pad[] {
 /** The IPC-7351B nominal footprint for "soic8", "sop8", "tssop20" and the like, or undefined. */
 export function dualFootprint(parsed: ParsedFootprint): Footprint | undefined {
   const pkg = FAMILIES.get(parsed.kind)?.get(parsed.code)
-  if (!pkg || parsed.variant !== undefined || !confirmsPackage(parsed.params, pkg)) return undefined
+  if (!pkg || !isSimple(parsed) || parsed.variant !== undefined || !confirmsPackage(parsed.params, pkg)) return undefined
   const pins = Number(parsed.code)
   const { row, table } = gullWingRow(pkg)
   const pads = dualPads(pins, pkg.pitch, row)

@@ -1,7 +1,7 @@
 import { confirmsPackage, gullWingRow, leadlessRow, range, type IcPackage } from "./ic.js"
 import { roundRectPad, type PadRow, type Range } from "./ipc7351.js"
 import { bodyOutline, centredOffsets, courtyard, quadSilkscreen, tidy } from "./outline.js"
-import type { ParsedFootprint } from "./parse.js"
+import { isSimple, type ParsedFootprint } from "./parse.js"
 import type { Footprint, Pad } from "./types.js"
 
 /** A square quad package. `exposedPad` is the thermal pad's side (Dh = Eh), for no-lead packages. */
@@ -90,7 +90,7 @@ function exposedPad(number: number, side: Range): Pad {
 export function quadFootprint(parsed: ParsedFootprint): Footprint | undefined {
   const leadless = parsed.kind === "qfn"
   const pkg = leadless ? QFNS.get(parsed.code) : parsed.kind === "qfp" ? QFPS.get(parsed.code) : undefined
-  if (!pkg || parsed.variant !== undefined || !confirmsPackage(parsed.params, pkg, leadless ? ["ep"] : [])) return undefined
+  if (!pkg || !isSimple(parsed) || parsed.variant !== undefined || !confirmsPackage(parsed.params, pkg, leadless ? ["ep"] : [])) return undefined
   const pins = Number(parsed.code)
   const { row, table } = leadless ? leadlessRow(pkg) : gullWingRow(pkg)
   const signal = quadPads(pins, pkg.pitch, row)

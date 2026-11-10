@@ -1,7 +1,7 @@
 import { confirmsPackage, gullWingRow, range, type IcPackage } from "./ic.js"
 import { roundRectPad } from "./ipc7351.js"
 import { bodyOutline, courtyard, rowSilkscreen, tidy } from "./outline.js"
-import type { ParsedFootprint } from "./parse.js"
+import { isSimple, type ParsedFootprint } from "./parse.js"
 import type { Footprint, Pad } from "./types.js"
 
 /** A SOT-23 variant: its outline and where its leads sit along each row, in pitches from the centre. */
@@ -67,7 +67,7 @@ function sotPads(variant: SotVariant, centre: number, length: number, width: num
 /** The IPC-7351B nominal footprint for "sot23", "sot23_5" or "sot23_6", or undefined. */
 export function sotFootprint(parsed: ParsedFootprint): Footprint | undefined {
   const variant = parsed.kind === "sot" && parsed.code === "23" ? VARIANTS.get(parsed.variant) : undefined
-  if (!variant || !confirmsPackage(parsed.params, variant.pkg)) return undefined
+  if (!variant || !isSimple(parsed) || !confirmsPackage(parsed.params, variant.pkg)) return undefined
   const { pkg } = variant
   const { row, table } = gullWingRow(pkg)
   const pads = sotPads(variant, row.centre, row.length, row.width)
