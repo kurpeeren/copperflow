@@ -207,7 +207,12 @@ As built in stage 6 (docs/plans/engine-stage-6.md), which replaces parts of the 
   An unconnected port is an `unconnected-port` warning; a connection to a port the sheet lacks is
   an `unknown-port` error that lists the sheet's ports; a sheet that contains itself is a
   `sheet-recursion` error and that instance is left out.
-- Positions inside are relative to the instance; the instance's pcbRotation turns its block. An
+- Positions inside are relative to the instance; the instance's pcbRotation turns its block. Parts
+  without a position are auto-placed with their instance (`src/engine/instance-anchor.ts`): on the
+  schematic they are placed by connectivity as one block whose origin is the instance's schX/schY
+  (or right of everything when the instance has none) and which moves right past anything it
+  would crowd; on the PCB the free-spot scan starts at the instance's pcbX/pcbY, or at the
+  instance's first auto-placed part when it has none. An
   instance sits on a page like a part; a `<page>` or `<board>` inside a sheet is an error.
 - The design stays flat for every reader (parts by flattened designator, nets, layouts). Beside
   it, each component made by an instance carries `instance` (its path, `PS1` or `PS1/D1`) and

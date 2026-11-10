@@ -355,3 +355,67 @@ test("a <port> outside a sheet is a warning and joins nothing", () => {
   const circuit = build(`<port name="VIN" />`)
   expect(circuit.diagnostics).toEqual([expect.objectContaining({ code: "unsupported-element", severity: "warning", items: ["port"] })])
 })
+
+const PAIR = sheetOf(
+  "Pair",
+  [
+    `<port name="IN" />`,
+    `<resistor name="R1" resistance="1k" footprint="0402" />`,
+    `<capacitor name="C1" capacitance="1uF" footprint="0402" />`,
+    `<trace from="R1.pin1" to="net.IN" />`,
+    `<trace from="R1.pin2" to="C1.pin1" />`,
+    `<trace from="C1.pin2" to="net.GND" />`,
+  ].join("\n"),
+)
+
+function designOf(main: string) {
+  const source = `import Pair from "./Pair.sheet"\nexport default () => (<board width="60mm" height="60mm">${main}</board>)\n`
+  return buildDesign({ [MAIN]: source, "Pair.sheet.tsx": PAIR }, MAIN)
+}
+
+type Box = { minX: number; maxX: number; minY: number; maxY: number }
+const overlap = (a: Box, b: Box) => a.minX < b.maxX && b.minX < a.maxX && a.minY < b.maxY && b.minY < a.maxY
+const boxOf = (points: readonly { x: number; y: number }[]): Box => ({
+  minX: Math.min(...points.map((p) => p.x)),
+  maxX: Math.max(...points.map((p) => p.x)),
+  minY: Math.min(...points.map((p) => p.y)),
+  maxY: Math.max(...points.map((p) => p.y)),
+})
+
+test("an instance's unplaced parts are placed near the instance and clear of another instance's parts", () => {
+  const design = designOf(
+    [`<Pair name="P1" connections={{ IN: "A" }} schX={20} schY={10} pcbX={15} pcbY={15} />`, `<Pair name="P2" connections={{ IN: "B" }} schX={-20} schY={-10} pcbX={-15} pcbY={-15} />`].join(""),
+  )
+  const sch = new Map(design.schematic.symbols.map((s) => [s.component, s]))
+  const pcb = new Map(design.pcb.parts.map((p) => [p.component, p]))
+  for (const [ids, at] of [
+    [["R101", "C101"], { sch: { x: 20, y: 10 }, pcb: { x: 15, y: 15 } }],
+    [["R201", "C201"], { sch: { x: -20, y: -10 }, pcb: { x: -15, y: -15 } }],
+  ] as const) {
+    for (const id of ids) {
+      const symbol = sch.get(id)
+      const part = pcb.get(id)
+      expect(Math.hypot((symbol?.x ?? 1e9) - at.sch.x, (symbol?.y ?? 1e9) - at.sch.y)).toBeLessThan(6)
+      expect(Math.hypot((part?.x ?? 1e9) - at.pcb.x, (part?.y ?? 1e9) - at.pcb.y)).toBeLessThan(6)
+    }
+  }
+  const courtyards = design.pcb.parts.map((p) => boxOf(p.courtyard))
+  courtyards.forEach((a, i) => courtyards.slice(i + 1).forEach((b) => expect(overlap(a, b)).toBe(false)))
+})
+
+test("an instance without a position keeps its parts together, clear of the rest", () => {
+  const design = designOf([`<Pair name="P1" connections={{ IN: "A" }} />`, `<Pair name="P2" connections={{ IN: "B" }} />`, `<resistor name="R1" footprint="0402" />`].join(""))
+  const sch = new Map(design.schematic.symbols.map((s) => [s.component, s]))
+  const pcb = new Map(design.pcb.parts.map((p) => [p.component, p]))
+  for (const [a, b] of [
+    ["R101", "C101"],
+    ["R201", "C201"],
+  ] as const) {
+    const [sa, sb] = [sch.get(a), sch.get(b)]
+    const [pa, pb] = [pcb.get(a), pcb.get(b)]
+    expect(Math.hypot((sa?.x ?? 0) - (sb?.x ?? 1e9), (sa?.y ?? 0) - (sb?.y ?? 1e9))).toBeLessThan(6)
+    expect(Math.hypot((pa?.x ?? 0) - (pb?.x ?? 1e9), (pa?.y ?? 0) - (pb?.y ?? 1e9))).toBeLessThan(6)
+  }
+  const courtyards = design.pcb.parts.map((p) => boxOf(p.courtyard))
+  courtyards.forEach((a, i) => courtyards.slice(i + 1).forEach((b) => expect(overlap(a, b)).toBe(false)))
+})

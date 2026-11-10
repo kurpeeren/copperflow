@@ -74,14 +74,16 @@ function scan(s: Scan): { spot: Point; found: boolean } {
 
 /**
  * Where to put a part with the given courtyard bounds: the first free grid spot in rings around
- * the board centre that lies inside the board; else the first free spot outside it, out to
- * MAX_REACH; else the last position tried.
+ * the board centre (or `near`, when given) that lies inside the board; else the first free spot
+ * outside it, out to MAX_REACH; else the last position tried.
  */
-export function findSpot(relative: Bounds, occupied: readonly Bounds[], board: Bounds | undefined): Point {
-  const centre = board ? { x: (board.minX + board.maxX) / 2, y: (board.minY + board.maxY) / 2 } : { x: 0, y: 0 }
+export function findSpot(relative: Bounds, occupied: readonly Bounds[], board: Bounds | undefined, near?: Point): Point {
+  const middle = board ? { x: (board.minX + board.maxX) / 2, y: (board.minY + board.maxY) / 2 } : { x: 0, y: 0 }
+  const centre = near ?? middle
   const maxRings = Math.ceil(MAX_REACH / GRID)
   if (board) {
-    const reach = Math.max(board.maxX - board.minX, board.maxY - board.minY) / 2
+    // Away from the middle, the rings must reach the far side of the board.
+    const reach = Math.max(board.maxX - board.minX, board.maxY - board.minY) / (near ? 1 : 2)
     const inBoard = scan({ centre, relative, occupied, within: board, rings: Math.min(maxRings, Math.ceil(reach / GRID)) })
     if (inBoard.found) return inBoard.spot
   }
