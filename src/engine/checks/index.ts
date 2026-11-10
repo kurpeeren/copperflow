@@ -65,7 +65,7 @@ export function checkDesign(
     ...padChecks(placed, rules, classOf),
     ...partChecks(placed, rules),
     ...copperChecks(placed, rules, classOf),
-    ...pourChecks(placed, rules, classOf),
+    ...pourChecks(placed, rules, classOf, (net) => circuit.nets.find((one) => one.id === net)?.names[0] ?? net),
     ...copperNoteChecks(copperNotes, layout),
     ...skipped,
   ])

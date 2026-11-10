@@ -2,6 +2,7 @@ import { outlinePoints } from "../board.js"
 import { pcbPoint, type Offset } from "../component.js"
 import { diagnostic } from "../diagnostics.js"
 import type { Board, CopperPour, Diagnostic, Net, Point, PourLayer, SourceRef } from "../model.js"
+import { boardItemId } from "../hole.js"
 import { PropReader, type Props } from "../read-props.js"
 import { difference, pathArea, toPath } from "./clip.js"
 
@@ -49,12 +50,14 @@ function outlineOf(value: unknown, offset: Offset, warn: Warn): Point[] | undefi
 /**
  * A `<copperpour net layer … />` as written: a pour needs a net and a layer, and an outline when it has one must be a
  * polygon; a bad optional prop is warned about and its default used. `index` is its 1-based place among every
- * `<copperpour>` tag in source order, kept or not, so a dropped pour does not renumber the ones after it.
+ * `<copperpour>` tag of its file in source order, kept or not, so a dropped pour does not renumber the ones after it;
+ * inside a sub-sheet instance the id starts with the instance path ("PS1/copperpour:1").
  */
-export function buildPour(props: Props, offset: Offset, index: number, source: SourceRef): { pour?: PourDraft; diagnostics: Diagnostic[] } {
+export function buildPour(props: Props, offset: Offset, index: number, source: SourceRef, instance?: string): { pour?: PourDraft; diagnostics: Diagnostic[] } {
+  const id = boardItemId("copperpour", index, instance)
   const reader = new PropReader(props, "copperpour", source)
   const extra: Diagnostic[] = []
-  const warn: Warn = (message) => extra.push(diagnostic("bad-value", "warning", message, [`copperpour:${index}`], source))
+  const warn: Warn = (message) => extra.push(diagnostic("bad-value", "warning", message, [id], source))
   const netName = reader.string("net")
   if (netName === undefined) warn('copperpour needs a net, such as net="GND"; it is ignored')
   const layer = props["layer"]
@@ -63,7 +66,7 @@ export function buildPour(props: Props, offset: Offset, index: number, source: S
   const outline = outlineOf(props["outline"], offset, warn)
   const clearance = positive(reader, "clearance", warn)
   const pour = {
-    id: `copperpour:${index}`,
+    id,
     netName: netName ?? "",
     layer: layer as PourLayer,
     ...(outline ? { outline } : {}),

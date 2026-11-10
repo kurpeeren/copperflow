@@ -1,9 +1,10 @@
 import { usableOutline } from "../board.js"
-import { viaSpan } from "../copper.js"
-import { counterClockwise, difference, intersection, offset, toPath, toPoints, union, type Paths } from "../pour/clip.js"
+import { counterClockwise, difference, intersection, offset, pathArea, toPath, toPoints, union, type Paths } from "../pour/clip.js"
+import { shapeOutline } from "../pour/shapes.js"
 import type { Hole, Point } from "../model.js"
 import { naturalCompare } from "../order.js"
-import type { PcbLayout, PourFill } from "../pcb.js"
+import type { PcbLayout, PourFill, WorldPad } from "../pcb.js"
+import { pourJoins } from "../pour/joins.js"
 import { requiredClearance } from "../rules/classes.js"
 import type { Rules } from "../rules/schema.js"
 import { ruleText } from "./copper-clearance.js"
@@ -18,8 +19,9 @@ import { violation, type Violation } from "./violation.js"
  * The checks on the pours' fills and the board's holes. A fill is copper: it keeps the clearance to every other net's
  * pads, tracks, vias and fills on its layer (the fill is built that way; this is the safety net), and like all copper it
  * keeps the board-edge clearance from a non-plated hole (`copper-hole`, for pads, tracks and vias too). A pour with no
- * copper of its net on its layer joins nothing: a `pour-floating` warning. A fill also keeps the board-edge clearance
+ * copper warns (`pour-empty`), as does one joining no pad of its net (`pour-floating`) or fewer than half (`pour-sparse`). A fill also keeps the board-edge clearance
  * and out of keepouts on its layer, checked with a 2 µm tolerance as a safety net (`copper-edge`, `copper-keepout`).
+ * A hole not wholly inside the board, less the board-edge clearance, is an error (`hole-off-board`).
  */
 
 /** The grid cell for a fill's edges, in mm. */
@@ -149,6 +151,29 @@ function holeChecks(layout: PcbLayout, pours: readonly Measured[], pieces: reado
   })
 }
 
+/** How much of a hole may lie past the shrunk outline before it is reported, in square micrometres: rounding only. */
+const OFF_BOARD_AREA = 1
+
+/**
+ * A hole whose circle is not wholly inside the board's outline shrunk by the board-edge clearance: off the board or
+ * across its edge. Checked on the built positions, so a hole in a group or a sub-sheet instance is covered too.
+ */
+function holesOffBoard(layout: PcbLayout, rules: Rules): Violation[] {
+  const board = layout.board
+  if (board === undefined || !usableOutline(board)) return []
+  const edge = rules.fabrication.boardEdgeClearance
+  const allowed = offset(union([counterClockwise(toPath(board.outline))]), -edge, "miter")
+  return layout.holes.flatMap((hole) => {
+    const disc = [counterClockwise(toPath(shapeOutline({ core: [{ x: hole.x, y: hole.y }], radius: hole.diameter / 2 })))]
+    const outside = difference(disc, allowed).reduce((sum, path) => sum + Math.abs(pathArea(path)), 0)
+    if (outside <= OFF_BOARD_AREA) return []
+    const message = `${hole.id} at (${mm6(hole.x)}, ${mm6(hole.y)}), ${mm6(hole.diameter)} mm is not inside the board: a hole keeps ${mm6(edge)} mm from the board edge`
+    return [violation("hole-off-board", "error", message, [hole.id], "pcb", { x: hole.x, y: hole.y })]
+  })
+}
+
+const mm6 = (n: number) => String(Math.round(n * 1e6) / 1e6)
+
 const boxesMeet = (a: Box, b: Box) => a.minX <= b.maxX && b.minX <= a.maxX && a.minY <= b.maxY && b.minY <= a.maxY
 
 // ---- the board edge and keepouts ----
@@ -184,27 +209,60 @@ function fillKeepouts(layout: PcbLayout, fill: PourFill): Violation[] {
   })
 }
 
-// ---- floating pours ----
+// ---- pours that join little or nothing ----
 
-/** A pour with no pad, track or via of its net on its layer. */
-function floating(layout: PcbLayout, fill: PourFill): Violation | undefined {
-  const pads = layout.parts.flatMap((part) => part.pads).some((pad) => pad.net === fill.net && (pad.layers === "through" || pad.layers === fill.layer))
-  const tracks = layout.tracks.some((track) => track.missingLayer === undefined && track.net === fill.net && track.layer === fill.layer)
-  const vias = layout.vias.some((via) => via.missingLayer === undefined && via.net === fill.net && viaSpan(via).has(fill.layer))
-  if (pads || tracks || vias) return undefined
-  const message = `${fill.id} (${fill.net}, ${fill.layer}) touches no ${fill.net} copper on its layer, so it joins nothing`
-  return violation("pour-floating", "warning", message, [fill.id], "pcb", fill.polygons[0]?.outer[0])
+/** The pads of the fills' net that their copper touches, each once. */
+function padsJoined(layout: PcbLayout, fills: readonly PourFill[], pads: readonly WorldPad[]): Set<string> {
+  const padIds = new Set(pads.map((pad) => pad.id))
+  return new Set(pourJoins(fills, pads, layout.tracks, layout.vias).flat().filter((id) => padIds.has(id)))
+}
+
+/** The pours on the fill's layer of another net that filled before it (higher priority, or equal and earlier) and got copper. */
+function takenBy(layout: PcbLayout, fill: PourFill): string[] {
+  const pours = layout.board?.pours ?? []
+  const index = pours.findIndex((pour) => pour.id === fill.id)
+  const self = pours[index]
+  if (self === undefined) return []
+  return pours
+    .filter((pour, i) => pour.layer === self.layer && pour.net !== self.net && (pour.priority > self.priority || (pour.priority === self.priority && i < index)))
+    .filter((pour) => (layout.pours.find((one) => one.id === pour.id)?.area ?? 0) > 0)
+    .map((pour) => pour.id)
+}
+
+/**
+ * A pour with no copper (`pour-empty`, naming the pours that took its area); one that joins no pad of its net
+ * (`pour-floating`); one that joins fewer than half its net's pads, with its net's other pours not making up the half
+ * (`pour-sparse`): a pour on the far side of a board whose parts sit on top joins only their through pads.
+ */
+function pourUse(layout: PcbLayout, fill: PourFill, net: string): Violation | undefined {
+  const at = fill.polygons[0]?.outer[0]
+  if (fill.polygons.length === 0) {
+    if (layout.board === undefined || !usableOutline(layout.board)) return undefined
+    const took = takenBy(layout, fill)
+    const why = took.length > 0 ? `${took.join(" and ")} took its area` : `what is left of its area once other copper, keepouts and holes are kept clear of touches no ${net} copper`
+    return violation("pour-empty", "warning", `${fill.id} has no copper: ${why}`, [fill.id], "pcb")
+  }
+  const pads = layout.parts.flatMap((part) => part.pads).filter((pad) => pad.net === fill.net)
+  const joined = padsJoined(layout, [fill], pads).size
+  if (joined === 0) return violation("pour-floating", "warning", `${fill.id} joins no pad of ${net}`, [fill.id], "pcb", at)
+  if (joined * 2 >= pads.length) return undefined
+  // A pour on each side together joining most of the net's pads is the usual two-layer board: no warning.
+  const together = layout.pours.filter((one) => one.net === fill.net)
+  if (together.length > 1 && padsJoined(layout, together, pads).size * 2 >= pads.length) return undefined
+  const message = `${fill.id} joins only ${joined} of ${pads.length} ${net} pads; a pour joins the pads on its own layer and through pads, so put one on the layer the parts sit on`
+  return violation("pour-sparse", "warning", message, [fill.id], "pcb", at)
 }
 
 /** Every check on the pours and the holes, sorted by id. `classOf` gives a net's class. */
-export function pourChecks(layout: PcbLayout, rules: Rules, classOf: ClassOf): Violation[] {
+export function pourChecks(layout: PcbLayout, rules: Rules, classOf: ClassOf, netName: (net: string) => string = (net) => net): Violation[] {
   if (layout.pours.length === 0 && layout.holes.length === 0) return []
   const pours = layout.pours.map((fill) => measured(fill, classOf))
   const pieces = [...padPieces(layout, classOf), ...copperPieces(layout, classOf)]
   const found = [
     ...clearanceChecks(pours, pieces, rules),
     ...holeChecks(layout, pours, pieces, rules),
-    ...layout.pours.flatMap((fill) => [floating(layout, fill), fillEdge(layout, fill, rules), ...fillKeepouts(layout, fill)].filter((v): v is Violation => v !== undefined)),
+    ...holesOffBoard(layout, rules),
+    ...layout.pours.flatMap((fill) => [pourUse(layout, fill, netName(fill.net)), fillEdge(layout, fill, rules), ...fillKeepouts(layout, fill)].filter((v): v is Violation => v !== undefined)),
   ]
   return found.sort((a, b) => naturalCompare(a.id, b.id))
 }

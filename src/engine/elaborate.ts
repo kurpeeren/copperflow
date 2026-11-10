@@ -98,9 +98,12 @@ class Elaboration {
   /** Every drawing tag; ids are given after the walk, so a drawing never renames a part. */
   readonly drawings: DrawingEntry[] = []
   private readonly drawingCounts = new Map<DrawingKind, number>()
-  /** Every `<copperpour>` and `<hole>` tag met so far, kept or not: their ids count them all, as the core's edits do. */
-  private pourTags = 0
-  private holeTags = 0
+  /**
+   * Every `<copperpour>` and `<hole>` tag met so far, kept or not, counted per file as parts are named: the circuit's
+   * own and each sub-sheet instance's apart, keyed by tag and instance path ("" for the circuit). Their ids count them
+   * all, as the core's edits of that file do.
+   */
+  private readonly boardItemTags = new Map<string, number>()
   /** The keepouts, pours and holes, each kept or not: one with no board is warned about once the walk is done. */
   private readonly boardThings: { tag: string; source: SourceRef }[] = []
   private readonly nameCounts = new Map<string, number>()
@@ -381,16 +384,24 @@ class Elaboration {
     if (built.keepout) this.keepouts.push(built.keepout)
   }
 
+  /** The 1-based place of a pour or hole tag among those of its kind in its own file (its instance's, or the circuit's). */
+  private boardItemIndex(tag: "copperpour" | "hole", frame: Frame): number {
+    const key = `${tag} ${frame.instance?.path ?? ""}`
+    const index = (this.boardItemTags.get(key) ?? 0) + 1
+    this.boardItemTags.set(key, index)
+    return index
+  }
+
   /** Pours are collected like keepouts; their nets are checked once the nets are known. */
   private copperpour(element: CfElement, frame: Frame, source: SourceRef): void {
-    const built = buildPour(element.props, frame.offset, ++this.pourTags, source)
+    const built = buildPour(element.props, frame.offset, this.boardItemIndex("copperpour", frame), source, frame.instance?.path)
     this.diagnostics.push(...built.diagnostics)
     this.boardThings.push({ tag: "copperpour", source })
     if (built.pour) this.pours.push(built.pour)
   }
 
   private hole(element: CfElement, frame: Frame, source: SourceRef): void {
-    const built = buildHole(element.props, frame.offset, ++this.holeTags, source)
+    const built = buildHole(element.props, frame.offset, this.boardItemIndex("hole", frame), source, frame.instance?.path)
     this.diagnostics.push(...built.diagnostics)
     this.boardThings.push({ tag: "hole", source })
     if (built.hole) this.holes.push(built.hole)

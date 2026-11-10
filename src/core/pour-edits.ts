@@ -3,11 +3,12 @@
 import MagicString from "magic-string"
 import type { JSXElement } from "@babel/types"
 import { scanCircuit, type Scan } from "./analyze.js"
-import { outlineProblem, POUR_LAYERS } from "./board-items.js"
+import { boardItemInstance, instanceItemRefusal, outlineProblem, POUR_LAYERS } from "./board-items.js"
 import { drawingKeeper } from "./drawing-identity.js"
 import { EditError } from "./edit-error.js"
 import { atTop, attributeNamed, boardInsertion, cleanPoint, jsxAttributes, lineEnding, lineIndent, MAX_COORDINATE, putAttribute, removeRange } from "./edit-text.js"
 import { formatLiteral, formatPointList } from "./literals.js"
+import { sheetFileIn } from "./selectors.js"
 import type { BoardBox, BoardItemInfo, BoardItemTag, BoardItemValue, Edit, Literal, Point } from "./types.js"
 
 const MAX_OUTLINE = 1000
@@ -157,6 +158,8 @@ export function addHole(source: string, scan: Scan, edit: Extract<Edit, { kind: 
 const WORD: Record<BoardItemTag, string> = { copperpour: "copper pour", hole: "hole" }
 
 function requireEditableItem(scan: Scan, tag: BoardItemTag, id: string, locked: ReadonlySet<string>): { item: BoardItemInfo; node: JSXElement } {
+  const instance = boardItemInstance(id)
+  if (instance !== undefined) throw new EditError("readonly", instanceItemRefusal(id, instance, sheetFileIn(scan.model, instance)))
   const item = itemsOf(scan).find((one) => one.id === id && one.tag === tag)
   const node = scan.boardItemNodes.get(id)
   if (!item || !node) throw new EditError("not_found", `No ${WORD[tag]} with id ${id}`)

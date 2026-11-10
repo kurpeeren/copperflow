@@ -1,6 +1,7 @@
 // The board's copper pours and holes as the file writes them (`<copperpour>`, `<hole>`), with the ids the engine gives
-// them: "copperpour:<n>" and "hole:<n>", every tag of each counted in source order, kept by the engine or not
-// (elaborate.ts). Only a tag the engine may make any number of times (in a callback, a condition or a helper) leaves
+// them: "copperpour:<n>" and "hole:<n>", every tag of each in this file counted in source order, kept by the engine or
+// not (elaborate.ts). Ids are per file, as part names are: one inside a sub-sheet instance is "PS1/hole:1", the
+// instance path and then the sheet file's own count; this file does not hold it, so it is edited in the sheet file. Only a tag the engine may make any number of times (in a callback, a condition or a helper) leaves
 // the later ids of its tag unknown; those are read-only, so an edit never reaches a pour or hole the Studio did not mean.
 import type { JSXElement } from "@babel/types"
 import { readPointList } from "./literals.js"
@@ -26,6 +27,21 @@ export interface BoardItemTagFacts {
   readonlyReason?: string
   parent?: string
   uncounted?: string
+}
+
+/** The sub-sheet instance a pour's or hole's id names ("PS1" of "PS1/hole:1"); undefined for one of the file itself. */
+export function boardItemInstance(id: string): string | undefined {
+  const slash = id.lastIndexOf("/")
+  return slash > 0 ? id.slice(0, slash) : undefined
+}
+
+/** Whether the id is a hole's, the file's own or an instance's. */
+export const isHoleId = (id: string): boolean => /(^|\/)hole:\d+$/.test(id)
+
+/** Why a pour or hole of a sub-sheet instance is not edited here: it is written in its sheet file. */
+export function instanceItemRefusal(id: string, instance: string, sheetFile: string | undefined): string {
+  const word = isHoleId(id) ? "hole" : "copper pour"
+  return `${id} is a ${word} inside the sub-sheet instance ${instance}; edit ${sheetFile ?? "its sheet file"} instead`
 }
 
 export const isBoardItemTag = (tag: string): tag is BoardItemTag => (BOARD_ITEM_TAGS as readonly string[]).includes(tag)
