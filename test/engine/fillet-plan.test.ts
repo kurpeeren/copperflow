@@ -111,6 +111,14 @@ describe("planFillet", () => {
     expect(plan.summary).toBe("Rounded 1 corner on 1 track; 2 left square: too short; t0004 is locked; t0005 starts on the locked part R1")
   })
 
+  test("a locked sub-sheet instance's parts lock the tracks that start on them; the others are rounded", () => {
+    const onInstance = track("t0005", [pt(0, 25), pt(5, 25), pt(5, 28)])
+    const design = designOf({ tracks: [L, onInstance], pads: [pad("R101#1", pt(0, 25))] })
+    const plan = planFillet({ ...design, circuit: { ...design.circuit, instances: [{ path: "PS1", parts: ["R101"] }] } }, { lockedParts: new Set(["PS1"]) })
+    expect(plan.changes.map((c) => c.id)).toEqual(["t0001"])
+    expect(plan.summary).toBe("Rounded 1 corner on 1 track; t0005 starts on the locked part R101")
+  })
+
   test("says so when there is nothing to round", () => {
     const straight = track("t0001", [pt(0, 0), pt(5, 0)])
     expect(planFillet(designOf({ tracks: [straight] }))).toEqual({ changes: [], summary: "No square corners to round" })

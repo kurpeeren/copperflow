@@ -1,4 +1,5 @@
 import { filletGuard, guardPieces, straightenGuard, type GuardContext } from "./checks/fillet-guard.js"
+import { withInstanceParts, type InstanceParts } from "../core/instance-locks.js"
 import { padsUnder, type PcbTrack } from "./copper.js"
 import { filletTrack, straightenTrack } from "./fillet.js"
 import type { Net, Point } from "./model.js"
@@ -17,7 +18,7 @@ import { filletRadius } from "./rules/track-defaults.js"
 
 /** What the plans read of a built design. */
 export interface PlanDesign {
-  circuit: { nets: readonly Net[] }
+  circuit: { nets: readonly Net[]; instances?: readonly InstanceParts[] }
   pcb: PcbLayout
   rules: Rules
 }
@@ -48,10 +49,12 @@ function chosenTracks(design: PlanDesign, options: PlanOptions): { tracks: PcbTr
   const wanted = options.ids === undefined ? undefined : new Set(options.ids)
   const picked = design.pcb.tracks.filter((track) => track.missingLayer === undefined && (wanted === undefined || wanted.has(track.id)))
   const skipped: string[] = []
+  // A locked sub-sheet instance locks every part inside it.
+  const locked = options.lockedParts?.size ? withInstanceParts(options.lockedParts, design.circuit.instances) : undefined
   const tracks = picked.filter((track) => {
     if (track.locked) return void skipped.push(`${track.id} is locked`)
     const start = track.points[0]
-    const part = start && options.lockedParts?.size ? padsUnder(design.pcb.parts, start, track.layer).find((pad) => options.lockedParts?.has(pad.component))?.component : undefined
+    const part = start && locked ? padsUnder(design.pcb.parts, start, track.layer).find((pad) => locked.has(pad.component))?.component : undefined
     return part === undefined ? true : void skipped.push(`${track.id} starts on the locked part ${part}`)
   })
   return { tracks, skipped }
