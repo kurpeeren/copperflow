@@ -133,6 +133,29 @@ describe("the hover label's driver", () => {
     expect(shownLabel(last())).toBeUndefined()
   })
 
+  test("once shown, the label follows the pointer on the same target; on another target it hides and shows again after 250 ms", () => {
+    const fake = fakeEnv()
+    const states: RestState[] = []
+    // x < 5 is over the pad, x >= 5 over the via.
+    const probe = { pick: (world: Point) => (world.x < 5 ? PAD : VIA), still: (target: HoverTarget, world: Point) => target === (world.x < 5 ? PAD : VIA) }
+    const driver = createHoverDriver(fake.env, (state) => states.push(state), () => probe)
+    const last = () => states.at(-1) ?? HOVER_IDLE
+    driver.move(at(1, 0), at(10, 10))
+    fake.advance(REST_MS + 5)
+    expect(shownLabel(last())).toEqual({ text: PAD.text, left: 22, top: 22 })
+    for (const x of [2, 3, 4]) {
+      driver.move(at(x, 0), at(x * 10, 10))
+      expect(shownLabel(last())).toEqual({ text: PAD.text, left: x * 10 + 12, top: 22 })
+    }
+    expect(fake.timers.size).toBe(0)
+    driver.move(at(6, 0), at(60, 10))
+    expect(shownLabel(last())).toBeUndefined()
+    fake.advance(REST_MS - 10)
+    expect(shownLabel(last())).toBeUndefined()
+    fake.advance(20)
+    expect(shownLabel(last())).toEqual({ text: VIA.text, left: 72, top: 22 })
+  })
+
   test("any key hides the label through the listener, and dispose stops the timer and the listener", () => {
     const { driver, advance, keys, timers, press, last, counts } = driven()
     driver.move(at(0, 0), at(0, 0))
