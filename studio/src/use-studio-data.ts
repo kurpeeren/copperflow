@@ -2,7 +2,8 @@
 // the parts; kept in step with the server's change events.
 import { useCallback, useEffect, useState } from "react"
 import { api, subscribe, type BuildState, type CircuitData, type HistoryListing, type HistoryProblem, type HistoryResult, type PartsData, type RouteEvent } from "./api"
-import { isRouting, routeProgressText } from "../../src/studio/route-events.js"
+import { isRouting, routeProgressText, writtenMark } from "../../src/studio/route-events.js"
+import { announceHistoryWrite } from "./history-writes"
 import { isStaleKey } from "./request-error"
 
 export interface StudioData {
@@ -98,7 +99,11 @@ export function useStudioData(notify: (text: string) => void, onFile: () => void
       setRoute(event)
       if (isRouting(event)) return
       notify(routeProgressText(event))
-      if (event.state === "done" && event.entryId) refresh(event.file).catch((error: Error) => report(error.message))
+      const mark = writtenMark(event)
+      if (mark === undefined) return
+      // The canvas keys wait for the build that holds the copper, as they do after an undo.
+      void announceHistoryWrite(Promise.resolve({ ok: true, mark }))
+      refresh(event.file).catch((error: Error) => report(error.message))
     },
     [notify, refresh, report],
   )
