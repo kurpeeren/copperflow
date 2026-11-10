@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { analyzeCircuit } from "../src/core/analyze.js"
 import { emptyAnnotations, lockParts, unlockParts, verifyLocks } from "../src/core/annotations.js"
 import { applyEdits, EditError } from "../src/core/edit.js"
+import { formatSummary } from "../src/core/summary.js"
 import { editCircuit, undoChange, updateAnnotations, loadCircuit } from "../src/core/workspace.js"
 
 const NOW = "2026-11-11T10:00:00.000Z"
@@ -54,6 +55,12 @@ describe("locks on pours and holes", () => {
       { part: "copperpour:1", kind: "changed", detail: 'layer was "bottom", now "top"' },
       { part: "hole:1", kind: "missing", detail: "the locked hole is no longer in the file" },
     ])
+  })
+
+  test("the full summary lists pours and holes by id, a locked one marked", async () => {
+    const annotations = lockParts(emptyAnnotations(), model, ["hole:1"], NOW)
+    const text = formatSummary({ file: FILE, path: FILE, source: BOARD, model, annotations, violations: [] } as never)
+    expect(text).toContain('Pours and holes:\n  copperpour:1 <copperpour> net="GND" layer="bottom"\n  hole:1 <hole> [LOCKED] x={2} y={3} diameter={3.2}')
   })
 
   test("undo refuses to take back a change that would alter a pour locked since", async () => {

@@ -23,7 +23,7 @@ export function formatSummary(circuit: LoadedCircuit): string {
     lines.push(`  ${[ends, formatProps(trace.props)].filter(Boolean).join(" ")}`)
   }
 
-  lines.push(...drawingLines(model, locked))
+  lines.push(...drawingLines(model, locked), ...boardItemLines(model, locked))
 
   if (annotations.marks.length > 0) {
     lines.push("Marks from the human:")
@@ -51,6 +51,19 @@ function drawingLines(model: CircuitModel, locked: ReadonlySet<string>): string[
       const flags = [locked.has(drawing.id) ? "[LOCKED]" : "", drawing.readonlyReason ? `[read-only: ${drawing.readonlyReason}]` : ""]
       const shared = drawing.name !== undefined && drawing.name !== drawing.id ? `name=${JSON.stringify(drawing.name)}` : ""
       return `  ${[oneLine(drawing.id), `<${drawing.tag}>`, ...flags, shared, formatProps(drawing.props)].filter(Boolean).join(" ")}`
+    }),
+  ]
+}
+
+/** Copper pours and holes by id, each marked when locked. Nothing when there are none. */
+function boardItemLines(model: CircuitModel, locked: ReadonlySet<string>): string[] {
+  const items = model.boardItems ?? []
+  if (items.length === 0) return []
+  return [
+    "Pours and holes:",
+    ...items.map((item) => {
+      const flags = [locked.has(item.id) ? "[LOCKED]" : "", item.readonlyReason ? `[read-only: ${item.readonlyReason}]` : ""]
+      return `  ${[item.id, `<${item.tag}>`, ...flags, formatProps(item.props)].filter(Boolean).join(" ")}`
     }),
   ]
 }
