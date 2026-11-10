@@ -1,6 +1,7 @@
 // What Properties shows for one selected track or via, and the edit each of its editable rows (a track's width and
 // layer, the lock of either) sends. Pure; plain TypeScript with .js imports, so the tests can run it.
 import type { LayoutEdit } from "../../../src/core/layout-records.js"
+import { trackLength } from "../../../src/engine/copper.js"
 import type { PcbTrack, PcbVia } from "../../../src/engine/pcb.js"
 
 /** What these rows read of the built design. */
@@ -30,10 +31,7 @@ const MAKERS: Record<PcbTrack["by"], string> = { human: "You", agent: "The agent
 
 const mm = (value: number): string => `${Math.round(value * 1000) / 1000} mm`
 
-/** A track's length along its points, in mm. */
-export function trackLength(points: PcbTrack["points"]): number {
-  return points.reduce((sum, p, i) => (i === 0 ? 0 : sum + Math.hypot(p.x - (points[i - 1]?.x ?? p.x), p.y - (points[i - 1]?.y ?? p.y))), 0)
-}
+export { trackLength }
 
 function netName(design: CopperDesign, net: string | undefined): string {
   if (net === undefined) return "No net"

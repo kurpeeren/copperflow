@@ -61,6 +61,11 @@ const NEAR_CELL = 2
 const padOnLayer = (pad: WorldPad, layer: CopperLayer) => pad.layers === "through" || pad.layers === layer
 const pointShape = (p: Point): Shape => ({ core: [p], radius: 0 })
 
+/** A track's length along its points, in mm: the sum of its segments. */
+export function trackLength(points: readonly Point[]): number {
+  return points.reduce((sum, p, i) => (i === 0 ? 0 : sum + Math.hypot(p.x - (points[i - 1]?.x ?? p.x), p.y - (points[i - 1]?.y ?? p.y))), 0)
+}
+
 /** Every layer a via joins: the stack from its first listed layer to its last. */
 export function viaSpan(via: Pick<ViaRecord, "layers">): Set<CopperLayer> {
   const indices = via.layers.map((layer) => STACK.indexOf(layer))

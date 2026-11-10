@@ -1,3 +1,4 @@
+import { trackLength } from "../engine/copper.js"
 import type { Design } from "../engine/design.js"
 import type { Violation } from "../engine/index.js"
 import { netLabel } from "./copper-under.js"
@@ -23,10 +24,6 @@ interface NetCopper {
 
 const mm = (value: number) => value.toFixed(1)
 
-function lengthOf(points: readonly { x: number; y: number }[]): number {
-  return points.reduce((sum, p, i) => (i === 0 ? 0 : sum + Math.hypot(p.x - (points[i - 1]?.x ?? p.x), p.y - (points[i - 1]?.y ?? p.y))), 0)
-}
-
 /** Per net id (or "" for copper on no net): tracks, vias, length and the connections still to route. */
 function perNet(design: Design): Map<string, NetCopper> {
   const nets = new Map<string, NetCopper>()
@@ -39,7 +36,7 @@ function perNet(design: Design): Map<string, NetCopper> {
   for (const track of design.pcb.tracks) {
     const one = of(track.net)
     one.tracks += 1
-    one.length += lengthOf(track.points)
+    one.length += trackLength(track.points)
   }
   for (const via of design.pcb.vias) of(via.net).vias += 1
   for (const line of design.pcb.ratsnest) of(line.net).unrouted += 1

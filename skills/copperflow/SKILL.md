@@ -30,7 +30,9 @@ undoing their work.
    history entry, and the answer lists the copper violations the change introduced. The program
    checks clearance; the router comes later and does the rest. Order: `copper_summary` first (per net: tracks, vias,
    length, unrouted connections), then your copper changes, then `check_circuit` once at the end
-   (filter `copper` for the full list).
+   (filter `copper` for the full list). A locked part guards only the tracks that start on its
+   pads; vias on it and tracks that only end there are not locked, so leave them alone unless
+   the human asks.
 4. Call `check_circuit` once at the end (it lists the first 20 findings; `filter` takes `errors`,
    `warnings`, `copper`, a part or a net). It runs copperflow's own rule checks: the electrical
    checks (`pin-unconnected`, `output-conflict`, `no-power-source`), the placement checks

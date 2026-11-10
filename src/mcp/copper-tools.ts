@@ -4,7 +4,7 @@ import { buildWith, type DesignSource } from "../core/design-source.js"
 import { boardCopperLayers, type CopperLayer } from "../core/layout-file.js"
 import { copperPieces, padPieces, type CopperPiece } from "../engine/checks/copper-pieces.js"
 import type { Shape } from "../engine/checks/geometry.js"
-import { copperTouches } from "../engine/copper.js"
+import { copperTouches, trackLength } from "../engine/copper.js"
 import type { Design } from "../engine/design.js"
 import type { Point } from "../engine/model.js"
 import { defaultVia, trackWidth, viaSize } from "../engine/rules/track-defaults.js"
@@ -121,10 +121,6 @@ function checkSegments(design: Design, netId: string, onLayer: CopperLayer, poin
   }
 }
 
-function lengthOf(points: readonly Point[]): number {
-  return points.reduce((sum, p, i) => (i === 0 ? 0 : sum + Math.hypot(p.x - (points[i - 1]?.x ?? p.x), p.y - (points[i - 1]?.y ?? p.y))), 0)
-}
-
 /** route_track: one track as one change. */
 export async function routeTrack(ports: Ports, input: { file: string; net: string; layer: CopperLayer; points: Point[]; width?: number }): Promise<string> {
   const design = await buildOf(ports, input.file)
@@ -135,7 +131,7 @@ export async function routeTrack(ports: Ports, input: { file: string; net: strin
   checkSegments(design, net.id, input.layer, input.points, width, nameOf(net))
   const edit: LayoutEdit = { kind: "addTrack", net: nameOf(net), layer: input.layer, width, points: input.points }
   const segments = input.points.length - 1
-  const line = () => `routed ${nameOf(net)} on ${input.layer}, ${segments} segment${segments === 1 ? "" : "s"}, ${lengthOf(input.points).toFixed(1)} mm`
+  const line = () => `routed ${nameOf(net)} on ${input.layer}, ${segments} segment${segments === 1 ? "" : "s"}, ${trackLength(input.points).toFixed(1)} mm`
   return applyCopper(ports, input.file, design, [edit], line)
 }
 

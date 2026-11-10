@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import type { LayoutRecord, TrackRecord, ViaRecord } from "../../src/core/layout-file.js"
-import { padsUnder, resolveCopper } from "../../src/engine/copper.js"
+import { padsUnder, resolveCopper, trackLength } from "../../src/engine/copper.js"
 import type { Net } from "../../src/engine/model.js"
 import type { PlacedFootprint, WorldPad } from "../../src/engine/pcb.js"
 import { ratsnest } from "../../src/engine/ratsnest.js"
@@ -272,5 +272,12 @@ describe("copper on a layer the board lacks", () => {
   test("copper on the board's layers keeps its order and nets around a stray record", () => {
     const result = resolveCopper(parts, [track("t0001", [[0, 0], [10, 0]]), inner, track("t0008", [[10, 0], [20, 0]])], NETS, 2)
     expect(result.tracks.map((t) => [t.id, t.net])).toEqual([["t0001", "net.GND"], ["t0007", undefined], ["t0008", "net.GND"]])
+  })
+})
+
+describe("trackLength", () => {
+  test("sums the segments; a single point has no length", () => {
+    expect(trackLength([{ x: 0, y: 0 }, { x: 3, y: 4 }, { x: 3, y: 10 }])).toBe(11)
+    expect(trackLength([{ x: 1, y: 1 }])).toBe(0)
   })
 })

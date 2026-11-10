@@ -14,7 +14,8 @@ export interface LayoutEditOptions {
    * The circuit's built design (its PCB parts are enough). A track that starts on a pad of a locked part counts as
    * locked; without the design that cannot be told, so changing or removing a track is refused while parts are locked.
    * A function is called with the circuit file only when the circuit has locked parts or an edit puts copper on a
-   * layer. With the design, copper on a layer the board lacks (inner1 on a 2-layer board) is refused.
+   * layer. With the design, copper on a layer the board lacks (inner1 on a 2-layer board) is refused. A design built
+   * before a part moved judges a track start against the old pad positions; callers pass the newest build they have.
    */
   design?: DesignSource
   /** Set only by the router's code path: new records are marked `router`. */
