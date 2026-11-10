@@ -119,6 +119,8 @@ Keys, ignored while you type in a field:
 - `W` or `Alt+W` wires, `Alt+N` places a net label, `Space` or `R` rotates, `Delete` removes, `F` or `K` fits
 - `H` highlights the net under the pointer, `Shift+H` clears it
 - `Q` switches the PCB between mm and mil (display only), `Shift+F` searches the library
+- On the PCB `U` rounds the corners of the selected tracks (Edit → Fillet tracks; with nothing selected, every
+  track after a confirm) and `Shift+U` straightens them again; Design → Design rules sets the radius
 - `[`, `]` and `\` hide and show the left, right and bottom panels; the bottom panel comes back on the tab it had
 - `Ctrl+Z` undoes the last change, `Ctrl+O` goes to the circuit files under Project Design → Page
 - `Ctrl+A` selects every part, `Ctrl+F` opens the find box (Enter lists what matches in Find Results)
@@ -185,6 +187,7 @@ The agent sees what you undid and does not repeat it.
 | `connect_nets` | Connects many pins to named nets in one call, e.g. `{ "GND": ["R1.pin2", "C1.pin2"] }` |
 | `route_track` | Draws one track of a net by hand from a pad, track or via of that net, as one change; refused when a point lands on another net's copper; the answer lists the copper violations it introduced |
 | `add_via` / `remove_copper` | Places a via (net from the copper under it, size from the net class and the fabrication ring) or removes tracks and vias by id, each as one change |
+| `fillet_tracks` / `straighten_tracks` | Rounds the square corners of tracks (by id, or every track) into short chords on an arc of the design rules' fillet radius, or puts rounded corners back, each as one change; a corner too close to other copper, a pad, a keepout or the board edge, or with legs too short, stays square and is counted |
 | `copper_summary` | Per net: tracks, vias, length and unrouted connections, then copper violations by rule (at most 60 lines) |
 | `list_parts` / `part_info` | Shows the parts library and a part's data and checklist |
 | `create_part` | Adds a part from a datasheet: pins, footprint string or footprint file, MPN, suppliers |
