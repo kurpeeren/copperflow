@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest"
 import type { CircuitModel } from "../src/core/types.js"
-import { DEFAULT_LAYERS } from "../studio/src/pcb/layers.js"
+import { DEFAULT_LAYERS, pourRows, togglePour } from "../studio/src/pcb/layers.js"
+import { commandOwner } from "../studio/src/shell/command-owners.js"
+import { MENUS, menuItems } from "../studio/src/shell/menus.js"
 import { canPick } from "../studio/src/pcb/pick.js"
 import { ALL_PICKABLE, pickKindRows } from "../studio/src/pcb/pick-filter.js"
 import { Selection } from "../studio/src/selection.js"
@@ -245,5 +247,41 @@ describe("pours and holes in the selection and the Filter tab", () => {
     expect(canPick({ kind: "pour", id: "copperpour:1" }, { ...context, filter: ALL_PICKABLE })).toBe(true)
     expect(pickKindRows("pcb").map((row) => row.kind)).toContain("pours")
     expect(pickKindRows("schematic").map((row) => row.kind)).not.toContain("pours")
+  })
+})
+
+describe("the menus and the Layer panel", () => {
+  test("Place has Copper pour, its whole-board form and Hole, run by the PCB; View has the three Pour fill items, checked by the setting", () => {
+    const place = menuItems(MENUS.find((menu) => menu.title === "Place") as never)
+    expect(place.filter((item) => ["placePour", "placePourBoard", "placeHole"].includes(item.command ?? "")).map((item) => item.label)).toEqual(["Copper pour", "Copper pour: Whole board", "Hole"])
+    for (const command of ["placePour", "placePourBoard", "placeHole"] as const) expect(commandOwner(command)).toBe("pcb")
+    const view = menuItems(MENUS.find((menu) => menu.title === "View") as never)
+    expect(view.filter((item) => item.command?.startsWith("pour")).map((item) => [item.label, item.toggle])).toEqual([
+      ["Pour fill: Solid", "pourSolid"],
+      ["Pour fill: Hatched", "pourHatched"],
+      ["Pour fill: Outline only", "pourOutline"],
+    ])
+    for (const command of ["pourSolid", "pourHatched", "pourOutline"] as const) expect(commandOwner(command)).toBe("app")
+  })
+
+  test("the Layer panel lists the pours under their layer, top first, each with its eye", () => {
+    const pours = [
+      { id: "copperpour:1", net: "net:2", layer: "bottom" },
+      { id: "copperpour:2", net: "net:1", layer: "top" },
+      { id: "copperpour:3", net: "net:2", layer: "top" },
+    ]
+    const hidden = togglePour(new Set(), "copperpour:3")
+    expect(pourRows(pours, (net) => (net === "net:2" ? "GND" : "VCC"), hidden)).toEqual([
+      {
+        layer: "top",
+        name: "Top Layer",
+        pours: [
+          { id: "copperpour:2", net: "VCC", layer: "top", shown: true },
+          { id: "copperpour:3", net: "GND", layer: "top", shown: false },
+        ],
+      },
+      { layer: "bottom", name: "Bottom Layer", pours: [{ id: "copperpour:1", net: "GND", layer: "bottom", shown: true }] },
+    ])
+    expect(togglePour(hidden, "copperpour:3").size).toBe(0)
   })
 })

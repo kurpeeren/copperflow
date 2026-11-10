@@ -1,0 +1,17 @@
+/* Place → Hole's diameter field, under the tool's hint. */
+.hole-field {
+  position: absolute;
+  top: 44px;
+  left: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: var(--copper-wash);
+  color: var(--text);
+}
+
+.hole-field input {
+  width: 64px;
+}

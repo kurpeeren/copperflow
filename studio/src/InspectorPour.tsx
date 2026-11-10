@@ -1,0 +1,119 @@
+// Properties for one selected copper pour or hole: Delete, then the Copper pour section (net, layer, priority,
+// clearance, minimum width and thermal relief editable; the outline and the fill area shown) or the Hole section
+// (position and diameter). Each change is one edit of the circuit file, so one history entry (pour-props.ts); a
+// locked or read-only pour or hole shows its rows without fields.
+import { useEffect, useId, useState } from "react"
+import type { CircuitData, Design } from "./api"
+import type { Actions } from "./App"
+import { Row, Section } from "./InspectorRows"
+import { CloseIcon, TrashIcon } from "./icons"
+import { boardFieldEdit, boardProperties, type BoardField, type BoardRow } from "./pcb/pour-props"
+import { boardItemBlocker } from "./pcb/pour-tool"
+import type { CommandId } from "./shell/menus"
+
+interface PourViewProps {
+  design: Design
+  circuit: CircuitData
+  /** The selected pour's or hole's id. */
+  id: string
+  locked: ReadonlySet<string>
+  actions: Actions
+  run(command: CommandId): void
+  onClear(): void
+  collapsed: ReadonlySet<string>
+  toggle(title: string): void
+}
+
+export function PourView({ design, circuit, id, locked, actions, run, onClear, collapsed, toggle }: PourViewProps) {
+  const shown = boardProperties(design, id)
+  if (!shown) return null
+  const blocker = boardItemBlocker(circuit.model, locked, id)
+  const commit = async (field: BoardField, raw: string): Promise<boolean> => {
+    const change = boardFieldEdit(design, id, field, raw)
+    if (!change) return true
+    if ("message" in change) {
+      actions.notify(change.message)
+      return false
+    }
+    return actions.edit([change.edit], change.summary)
+  }
+  return (
+    <div className="inspector">
+      <header className="insp-header">
+        <span>Selected objects: 1</span>
+        <button className="icon" aria-label="Clear the selection" onClick={onClear}>
+          <CloseIcon />
+        </button>
+      </header>
+      <div className="inspector-actions">
+        <button className="danger" disabled={blocker !== null} title={blocker ?? `Delete this ${shown.kind === "hole" ? "hole" : "copper pour"} (Delete)`} onClick={() => run("delete")}>
+          <TrashIcon /> Delete
+        </button>
+      </div>
+      <Section title={shown.title} open={!collapsed.has(shown.title)} onToggle={() => toggle(shown.title)}>
+        {shown.rows.map((row) => (
+          <BoardRowView key={row.label} row={row} disabled={blocker !== null} onCommit={commit} />
+        ))}
+      </Section>
+    </div>
+  )
+}
+
+function BoardRowView({ row, disabled, onCommit }: { row: BoardRow; disabled: boolean; onCommit(field: BoardField, raw: string): Promise<boolean> }) {
+  const id = useId()
+  const { field, choices } = row
+  if (!field || disabled) {
+    return (
+      <Row label={row.label}>
+        <span className="static" title={row.value}>
+          {row.value === "" ? "Net class" : row.value}
+        </span>
+      </Row>
+    )
+  }
+  if (choices) {
+    return (
+      <Row label={row.label} htmlFor={id}>
+        <select id={id} value={row.value} onChange={(e) => void onCommit(field, e.target.value)}>
+          {choices.map((choice) => (
+            <option key={choice.value} value={choice.value}>
+              {choice.label}
+            </option>
+          ))}
+          {!choices.some((choice) => choice.value === row.value) && (
+            <option value={row.value} disabled>
+              {row.value}
+            </option>
+          )}
+        </select>
+      </Row>
+    )
+  }
+  return <NumberField id={id} row={row} field={field} onCommit={onCommit} />
+}
+
+/** A number written when the field is left or Enter is pressed; Esc puts the shown value back. An empty clearance means the net class's. */
+function NumberField({ id, row, field, onCommit }: { id: string; row: BoardRow; field: BoardField; onCommit(field: BoardField, raw: string): Promise<boolean> }) {
+  const [draft, setDraft] = useState(row.value)
+  useEffect(() => setDraft(row.value), [row.value])
+  const commit = () => {
+    if (draft !== row.value) void onCommit(field, draft).then((ok) => ok || setDraft(row.value))
+  }
+  return (
+    <Row label={row.label} htmlFor={id}>
+      <input
+        id={id}
+        value={draft}
+        inputMode="decimal"
+        spellCheck={false}
+        placeholder={field === "clearance" ? "Net class" : undefined}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur()
+          if (e.key === "Escape") setDraft(row.value)
+        }}
+      />
+    </Row>
+  )
+}

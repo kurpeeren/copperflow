@@ -47,6 +47,12 @@ export type CommandId =
   | "drawText"
   | "singleRouting"
   | "placeVia"
+  | "placePour"
+  | "placePourBoard"
+  | "placeHole"
+  | "pourSolid"
+  | "pourHatched"
+  | "pourOutline"
   | "autoroute"
   | "autorouteSelection"
   | "autorouteNet"
@@ -86,7 +92,7 @@ export interface MenuItem {
 }
 
 /** The settings a menu item or toolbar button can switch and show. */
-export type ToggleId = "snap" | "hoverLabels" | "themeLight" | "themeDark"
+export type ToggleId = "snap" | "hoverLabels" | "themeLight" | "themeDark" | "pourSolid" | "pourHatched" | "pourOutline"
 export type Toggles = Readonly<Record<ToggleId, boolean>>
 
 export type MenuEntry = MenuItem | "separator"
@@ -149,6 +155,9 @@ export const MENUS: readonly Menu[] = [
       run("Grid style", "gridStyle"),
       { ...run("Snap", "snap", "Alt+S"), toggle: "snap" },
       { ...run("Hover labels", "hoverLabels"), toggle: "hoverLabels" },
+      { ...run("Pour fill: Solid", "pourSolid"), toggle: "pourSolid" },
+      { ...run("Pour fill: Hatched", "pourHatched"), toggle: "pourHatched" },
+      { ...run("Pour fill: Outline only", "pourOutline"), toggle: "pourOutline" },
       "separator",
       run("Left panel", "toggleLeftPanel", "["),
       run("Right panel", "toggleRightPanel", "]"),
@@ -172,6 +181,10 @@ export const MENUS: readonly Menu[] = [
       run("Bus", "drawBus", "Alt+B"),
       later("No connect flag", WAITS_FOR_BLOCKS),
       later("Junction", "Comes later; for now junctions are drawn where wires meet", "Alt+J"),
+      "separator",
+      run("Copper pour", "placePour"),
+      run("Copper pour: Whole board", "placePourBoard"),
+      run("Hole", "placeHole"),
       "separator",
       run("Polyline", "drawPolyline", "Alt+L"),
       run("Arc", "drawArc", "Alt+A"),

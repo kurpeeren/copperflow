@@ -63,6 +63,8 @@ export interface ShownSheet {
   drawings?: Iterable<string>
   /** On the PCB: the tracks and vias of the layout file. */
   copper?: Iterable<string>
+  /** On the PCB: the board's copper pours and holes. */
+  board?: Iterable<string>
   /** The open view's names and values (schematic) or designators (PCB), by text id (part-text.ts). */
   texts?: Iterable<string>
 }
@@ -78,5 +80,6 @@ export function shownSelection(selection: Selection, sheet: ShownSheet): Selecti
   const onSheet = sheet.view === "schematic"
   const drawn = (ids: Iterable<string> | undefined): Iterable<string> => (onSheet ? (ids ?? []) : [])
   const copper = onSheet ? [] : (sheet.copper ?? [])
-  return kept.keepWires(drawn(sheet.wires)).keepLabels(drawn(sheet.labels)).keepDrawings(drawn(sheet.drawings)).keepCopper(copper).keepTexts(sheet.texts ?? [])
+  const board = onSheet ? [] : (sheet.board ?? [])
+  return kept.keepWires(drawn(sheet.wires)).keepLabels(drawn(sheet.labels)).keepDrawings(drawn(sheet.drawings)).keepCopper(copper).keepTexts(sheet.texts ?? []).keepBoard(board)
 }

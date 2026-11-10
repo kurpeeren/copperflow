@@ -7,6 +7,7 @@ import { INITIAL_BOTTOM, clickBottom, openBottomTab, toggleBottom, type BottomSt
 import { NO_HIGHLIGHT, type Highlight } from "./pcb/highlight"
 import { INITIAL_GRID_STEPS, INITIAL_GRID_STYLES, setGridStep, toggleGridStyle, type GridSteps, type GridStyles } from "./pcb/grid"
 import { loadHoverLabels, saveHoverLabels } from "./shell/hover-label-setting"
+import { loadPourFill, savePourFill, type PourFillMode } from "./pcb/pour-view"
 import { applyTheme, browserStore, gridAfterThemeChoice, loadTheme, saveTheme, withThemeGrid, type ThemeName } from "./shell/theme-state"
 import { nextUnit, type Unit } from "./pcb/units"
 import { useLayers } from "./use-layers"
@@ -115,6 +116,16 @@ function useHoverLabels() {
   return { hoverLabels, toggleHoverLabels }
 }
 
+/** View → Pour fill: solid until another is chosen, remembered per browser (pour-view.ts). */
+function usePourFill() {
+  const [pourFill, setMode] = useState<PourFillMode>(() => loadPourFill(browserStore))
+  const setPourFill = useCallback((mode: PourFillMode) => {
+    setMode(mode)
+    savePourFill(browserStore, mode)
+  }, [])
+  return { pourFill, setPourFill }
+}
+
 /** Answers the workspace's own keys, as they mean in the open view. */
 function useWorkspaceKeys(view: View, run: (action: KeyActionName) => void): void {
   useEffect(() => {
@@ -193,10 +204,11 @@ export function useWorkspace(view: View) {
   const { toggleGridStyleOf, ...grid } = themedGrid
   const { snap, toggleSnap } = useSnap()
   const { hoverLabels, toggleHoverLabels } = useHoverLabels()
+  const { pourFill, setPourFill } = usePourFill()
   const layers = useLayers()
   const filter = usePickFilter()
   const run = useWorkspaceRun(view, { strips: { setLeft, setRight, setBottom }, setUnit, setHighlight, toggleGridStyleOf, toggleSnap, requestSearch })
   useWorkspaceKeys(view, run)
   const toggleUnit = useCallback(() => setUnit(nextUnit), [])
-  return { ...strips, ...grid, theme, setTheme, snap, hoverLabels, toggleHoverLabels, ...layers, ...filter, ...focus, leftOpen: strips.left.open, unit, toggleUnit, highlight, setHighlight, run }
+  return { ...strips, ...grid, theme, setTheme, snap, hoverLabels, toggleHoverLabels, pourFill, setPourFill, ...layers, ...filter, ...focus, leftOpen: strips.left.open, unit, toggleUnit, highlight, setHighlight, run }
 }

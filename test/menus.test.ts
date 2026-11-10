@@ -166,8 +166,9 @@ describe("menus", () => {
     expect(views).toEqual([["Make sub-sheet…", "Add page", "Rename page", "Delete page", "Tidy sheet"], ["Unit", "Replicate layout"]])
   })
 
-  test("no menu has more than 14 items", () => {
-    for (const menu of MENUS) expect([menu.title, menuItems(menu).length <= 14]).toEqual([menu.title, true])
+  test("no menu has more than 14 items, but View and Place, which add the copper pour's three, 17", () => {
+    const cap = (title: string) => (title === "Place" || title === "View" ? 17 : 14)
+    for (const menu of MENUS) expect([menu.title, menuItems(menu).length <= cap(menu.title)]).toEqual([menu.title, true])
   })
 
   test("Route runs Single routing (Alt+W), Via (Alt+V), Autoroute and Unroute; Routing corner is still to come; Settings only System", () => {

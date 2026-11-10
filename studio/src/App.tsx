@@ -21,6 +21,7 @@ import type { DocView } from "./shell/page-tree"
 import { designOnPage, MAIN_PAGE, shownPage } from "./shell/schematic-pages"
 import { StatusPill } from "./shell/StatusPill"
 import { themeToggles } from "./shell/theme-state"
+import { pourFillToggles } from "./pcb/pour-view"
 import { Toolbar } from "./shell/ToolbarRow"
 import { useAppCommands } from "./shell/use-app-commands"
 import { Workspace } from "./shell/Workspace"
@@ -117,8 +118,9 @@ function useShownSelection(selection: Selection, circuit: CircuitData | undefine
     const ids = <T extends { id: string }>(items: readonly T[] | undefined) => items?.map((item) => item.id)
     const drawings = sheet && stableDrawings(before?.schematic.drawings, sheet.drawings)
     const copper = design && [...design.pcb.tracks, ...design.pcb.vias].map((item) => item.id)
+    const board = design && [...(design.pcb.board?.pours ?? []), ...(design.pcb.holes ?? [])].map((item) => item.id)
     const texts = design && ids(view === "pcb" ? boardTexts(design.pcb) : view === "schematic" ? sheetTexts(design.schematic) : [])
-    return shownSelection(selection, { view, parts, wires: ids(sheet?.wires), labels: ids(sheet?.labels), drawings, copper, texts })
+    return shownSelection(selection, { view, parts, wires: ids(sheet?.wires), labels: ids(sheet?.labels), drawings, copper, texts, board })
   }, [selection, circuit, design, view, before])
 }
 
@@ -254,7 +256,7 @@ export function App() {
   const { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, openSheet, sheetParent, runCommand, page, openPage } = useStudio()
   const { build, circuit } = data
   const { message, dismiss } = toast
-  const toggles = { snap: workspace.snap, hoverLabels: workspace.hoverLabels, ...themeToggles(workspace.theme) }
+  const toggles = { snap: workspace.snap, hoverLabels: workspace.hoverLabels, ...themeToggles(workspace.theme), ...pourFillToggles(workspace.pourFill) }
   const off = useCommandsOff(build.design)
   const makeSheet = useMakeSheetPanel(data.file, selection.names, actions)
   // Hairlines stay one device pixel through zoom and display-scale changes.

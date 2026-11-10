@@ -1,5 +1,6 @@
 import { EyeIcon } from "../icons"
-import { ACTIVE_LAYERS, layerRows, swatchBackground, type ActiveLayer, type LayerFilter, type LayerId, type LayerVisibility } from "../pcb/layers"
+import { ACTIVE_LAYERS, layerRows, swatchBackground, type ActiveLayer, type LayerFilter, type LayerId, type LayerVisibility, type PourRow } from "../pcb/layers"
+import { PALETTE } from "../pcb/ctx"
 import { blurAfterPointerClick } from "./focus"
 import { sideTabId, stripPanelId } from "./SideStrip"
 import { useTabList } from "./use-tab-list"
@@ -22,6 +23,38 @@ interface Props {
   /** The copper layer tracks are drawn on; V changes it too. */
   active: ActiveLayer
   onActive(layer: ActiveLayer): void
+  /** The board's copper pours, by layer, each with its own eye. */
+  pours: readonly { layer: string; name: string; pours: readonly PourRow[] }[]
+  onTogglePour(id: string): void
+}
+
+const POUR_SWATCH: Record<string, string> = { top: PALETTE.topCopper, bottom: PALETTE.bottomCopper }
+
+/** The copper pours under a heading per layer, each named by its net, with an eye that hides it alone. */
+function PourList({ pours, onTogglePour }: Pick<Props, "pours" | "onTogglePour">) {
+  if (pours.length === 0) return null
+  return (
+    <ul className="layer-list layer-pours hairline-t" aria-label="Copper pours">
+      {pours.map((group) => (
+        <li key={group.layer}>
+          <div className="layer-pours-title">Copper pours · {group.name}</div>
+          <ul className="layer-list">
+            {group.pours.map((pour) => (
+              <li key={pour.id} className={`layer-row${pour.shown ? "" : " off"}`}>
+                <span className="layer-swatch" style={{ background: POUR_SWATCH[pour.layer] ?? PALETTE.topCopper, opacity: 0.6 }} aria-hidden="true" />
+                <span className="layer-name" title={pour.id}>
+                  {pour.net}
+                </span>
+                <button className="layer-eye" aria-pressed={pour.shown} aria-label={`${pour.net} pour on the ${group.name}`} title={`${pour.shown ? "Hide" : "Show"} the ${pour.net} pour`} onClick={() => onTogglePour(pour.id)}>
+                  <EyeIcon off={!pour.shown} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </li>
+      ))}
+    </ul>
+  )
 }
 
 /** The active copper layer, as EasyEDA's layer select: tracks are drawn on it, and V switches it. */
@@ -55,7 +88,7 @@ function LayerFilters({ filter, onFilter }: Pick<Props, "filter" | "onFilter">) 
 }
 
 /** The PCB's layers: the filters at the top, the active layer, then a 28px row for each layer with its colour, its name and an eye. */
-export function LayerPanel({ visibility, filter, hasKeepouts, onFilter, onToggle, active, onActive }: Props) {
+export function LayerPanel({ visibility, filter, hasKeepouts, onFilter, onToggle, active, onActive, pours, onTogglePour }: Props) {
   return (
     <aside className="panel right layer-panel" id={stripPanelId("right")} role="tabpanel" aria-labelledby={sideTabId("layer")} onClick={blurAfterPointerClick}>
       <LayerFilters filter={filter} onFilter={onFilter} />
@@ -75,6 +108,7 @@ export function LayerPanel({ visibility, filter, hasKeepouts, onFilter, onToggle
           )
         })}
       </ul>
+      {filter !== "non-copper" && <PourList pours={pours} onTogglePour={onTogglePour} />}
     </aside>
   )
 }

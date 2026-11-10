@@ -27,6 +27,8 @@ import { designOnPage, pageNames } from "./schematic-pages"
 import { FilterPanel } from "./FilterPanel"
 import { RouteStatus } from "./RouteStatus"
 import { LayerPanel } from "./LayerPanel"
+import { pourRows } from "../pcb/layers"
+import { pourNetName } from "../pcb/pour-hit"
 import { SideStrip } from "./SideStrip"
 import { useContextMenu, type ContextMenuState } from "./use-context-menu"
 import { rightTabIds, type LeftStrip, type RightStrip } from "./strip-state"
@@ -139,7 +141,7 @@ function CenterColumn(props: WorkspaceProps & { onContextMenu: ContextMenuState[
       <DocTabs file={data.file} view={view} pages={pages} page={page} onView={props.onView} onPage={props.onPage} {...parentTabs(props)} />
       <section className="canvas" id="doc-panel" role="tabpanel" aria-labelledby={`doc-tab-${view}`} tabIndex={-1}>
         {!build.design && <p className="empty">{build.status === "failed" ? build.error : "Building the circuit…"}</p>}
-        {canvas && view === "pcb" && <PcbCanvas key={data.file} {...canvas} {...gridProps(workspace, "pcb")} markers={checks.markers.pcb} activeLayer={workspace.activeLayer} onActiveLayer={workspace.setActiveLayer} />}
+        {canvas && view === "pcb" && <PcbCanvas key={data.file} {...canvas} {...gridProps(workspace, "pcb")} markers={checks.markers.pcb} activeLayer={workspace.activeLayer} onActiveLayer={workspace.setActiveLayer} pourFill={workspace.pourFill} hiddenPours={workspace.hiddenPours} />}
         {sheet && view === "schematic" && <SchematicCanvas key={`${data.file}
 ${page}`} {...sheet} {...gridProps(workspace, "schematic")} markers={checks.markers.schematic} />}
         <RouteStatus route={data.route} onCancel={() => void props.actions.cancelRoute()} />
@@ -204,6 +206,8 @@ function RightSide({ data, workspace, checks, selection, onSelect, onRenameDrawi
   const layerOpen = right.open && right.active === "layer"
   const filterOpen = right.open && right.active === "filter"
   const keepouts = data.build.design?.pcb.board?.keepouts ?? []
+  const design = data.build.design
+  const pours = design ? pourRows(design.pcb.board?.pours ?? [], (net) => pourNetName(design, net), workspace.hiddenPours) : []
   return (
     <>
       <Inspector
@@ -224,7 +228,7 @@ function RightSide({ data, workspace, checks, selection, onSelect, onRenameDrawi
         onOpenSheet={onOpenSheet}
         parentDesign={sheetParent?.design}
       />
-      {layerOpen && <LayerPanel visibility={workspace.layerVisibility} filter={workspace.layerFilter} hasKeepouts={keepouts.length > 0} onFilter={workspace.setLayerFilter} onToggle={workspace.toggleLayerShown} active={workspace.activeLayer} onActive={workspace.setActiveLayer} />}
+      {layerOpen && <LayerPanel visibility={workspace.layerVisibility} filter={workspace.layerFilter} hasKeepouts={keepouts.length > 0} onFilter={workspace.setLayerFilter} onToggle={workspace.toggleLayerShown} active={workspace.activeLayer} onActive={workspace.setActiveLayer} pours={pours} onTogglePour={workspace.togglePourShown} />}
       {filterOpen && <FilterPanel view={view} filter={workspace.pickFilter} onToggle={workspace.togglePickable} />}
     </>
   )
