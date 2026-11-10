@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { parseLength } from "../units.js"
+import { FOOTPRINT_FAMILIES, type FootprintFamily } from "./rotations.js"
 
 /** The parsed, resolved form of rules.yaml. Every length is in millimetres. Plain JSON values only. */
 
@@ -21,6 +22,8 @@ export interface FabricationProfile {
   maskExpansion?: number
   /** How far the solder paste shrinks inside each SMD pad, in mm; the profiles leave it out (0 then). */
   pasteReduction?: number
+  /** Degrees added to the rotation in the pick-and-place file, per footprint family; the profiles leave it out (0 then). */
+  placementRotations?: Partial<Record<FootprintFamily, number>>
 }
 
 export interface NetClass {
@@ -76,6 +79,7 @@ const FabricationSchema = z
     filletRadius: length.optional(),
     maskExpansion: nonNegativeLength.optional(),
     pasteReduction: nonNegativeLength.optional(),
+    placementRotations: z.partialRecord(z.enum(FOOTPRINT_FAMILIES), z.number().finite()).optional(),
   })
   .strict()
 

@@ -152,9 +152,9 @@ describe("the Gerber layers of a board", () => {
   test("a rounded-rectangle pad is a RoundRect macro flash", () => {
     const top = fileOf(files(board({ parts: [part([pad("1", { shape: "roundrect", width: 1.2, height: 0.8, cornerRadius: 0.2, rotation: 90 })])] })), "b-F_Cu.gtl")
     expect(top.macros).toEqual(["RoundRect"])
-    expect(top.flashes[0]?.aperture.shape).toEqual({ type: "macroShape", name: "RoundRect", variableValues: [0.2, 0.8, 1.2, 0] })
+    expect(top.flashes[0]?.aperture.shape).toEqual({ type: "macroShape", name: "RoundRect", variableValues: [0.2, -0.2, -0.4, 0.2, -0.4, 0.2, 0.4, -0.2, 0.4] })
     const turned = fileOf(files(board({ parts: [part([pad("1", { shape: "oval", width: 2, height: 1, rotation: 30 })])] })), "b-F_Cu.gtl")
-    expect(turned.flashes[0]?.aperture.shape).toEqual({ type: "macroShape", name: "RoundRect", variableValues: [0.5, 2, 1, 30] })
+    expect(turned.flashes[0]?.aperture.shape).toEqual({ type: "macroShape", name: "RoundRect", variableValues: [0.5, -0.433013, -0.25, 0.433013, 0.25, 0.433013, 0.25, -0.433013, -0.25] })
   })
 
   test("the mask opens every pad on its side grown by the expansion: 0.05 mm by default, else the profile's", () => {
@@ -163,10 +163,13 @@ describe("the Gerber layers of a board", () => {
     const top = fileOf(read, "b-F_Mask.gts")
     expect(top.fileAttributes).toContain(".FilePolarity,Negative")
     expect(top.flashes.map((f) => f.aperture.shape)).toEqual([
-      { type: "macroShape", name: "RoundRect", variableValues: [0.15, 1.1, 0.6, 0] },
+      { type: "macroShape", name: "RoundRect", variableValues: [0.15, -0.4, -0.15, 0.4, -0.15, 0.4, 0.15, -0.4, 0.15] },
       { type: "circle", diameter: 1.8 },
     ])
     expect(fileOf(read, "b-B_Mask.gbs").flashes.map((f) => f.aperture.shape)).toEqual([{ type: "circle", diameter: 1.8 }])
+    expect(top.flashes.map((f) => f.aperture.fn)).toEqual(["SMDPad,CuDef", "ComponentPad"])
+    const turnedRect = fileOf(files(board({ parts: [part([pad("1", { rotation: 30 })])] })), "b-F_Mask.gts")
+    expect(turnedRect.regions[0]?.fn).toBe("SMDPad,CuDef")
     const wider = loadRules({ "rules.yaml": "fabrication:\n  maskExpansion: 0.1mm\n" })
     expect(wider.diagnostics).toEqual([])
     const grown = fileOf(files(board({ parts: [part(pads)] }), wider.rules.fabrication), "b-F_Mask.gts")
@@ -182,6 +185,7 @@ describe("the Gerber layers of a board", () => {
     const read = files(board({ parts: [part(pads)] }))
     expect(fileOf(read, "b-F_Paste.gtp").flashes.map((f) => [f.at, f.aperture.shape])).toEqual([[{ x: 0, y: 0 }, { type: "rectangle", xSize: 1, ySize: 0.5 }]])
     expect(fileOf(read, "b-B_Paste.gbp").flashes.map((f) => f.at)).toEqual([{ x: -3, y: 0 }])
+    expect(fileOf(read, "b-F_Paste.gtp").flashes[0]?.aperture.fn).toBe("SMDPad,CuDef")
     const reduced = loadRules({ "rules.yaml": "fabrication:\n  pasteReduction: 0.05\n" }).rules.fabrication
     expect(fileOf(files(board({ parts: [part(pads)] }), reduced), "b-F_Paste.gtp").flashes[0]?.aperture.shape).toEqual({ type: "rectangle", xSize: 0.9, ySize: 0.4 })
   })
@@ -213,6 +217,7 @@ describe("the Gerber layers of a board", () => {
     expect(front.strokes[0]?.points).toEqual(silk[0])
     expect(front.strokes.length).toBeGreaterThan(2)
     expect(front.strokes.every((s) => (s.aperture.shape as { diameter?: number }).diameter === 0.15)).toBe(true)
+    expect(front.strokes.every((s) => s.aperture.fn === "Other,Legend")).toBe(true)
     const back = fileOf(read, "b-B_Silkscreen.gbo")
     expect(back.strokes.length).toBeGreaterThan(1)
     const xs = back.strokes.flatMap((s) => s.points.map((p) => p.x))

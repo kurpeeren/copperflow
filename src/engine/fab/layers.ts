@@ -71,12 +71,16 @@ function rectCorners(at: Point, width: number, height: number, rotation: number)
 }
 
 const pads = (parts: readonly PlacedFootprint[]) => parts.flatMap((part) => part.pads)
+/** The X2 aperture function of a pad, on copper, mask and paste alike. */
+const padFunction = (pad: WorldPad) => (isSmd(pad) ? "SMDPad,CuDef" : "ComponentPad")
+/** The X2 aperture function of silkscreen lines: the specification has none of its own for a legend. */
+const LEGEND_FUNCTION = "Other,Legend"
 const present = <T>(item: T | undefined): item is T => item !== undefined
 
 function copperObjects(pcb: PcbLayout, layer: CopperLayer): GerberObject[] {
   const padCopper = pads(pcb.parts)
     .filter((pad) => pad.layers === "through" || pad.layers === layer)
-    .map((pad) => padObject(pad, 0, isSmd(pad) ? "SMDPad,CuDef" : "ComponentPad"))
+    .map((pad) => padObject(pad, 0, padFunction(pad)))
   const tracks = pcb.tracks
     .filter((track) => track.layer === layer && track.missingLayer === undefined)
     .map((track): GerberObject => ({ kind: "draw", points: track.points, width: track.width, function: "Conductor" }))
@@ -99,7 +103,7 @@ function silkObjects(parts: readonly PlacedFootprint[], side: Side): GerberObjec
     .filter((part) => part.side === side)
     .flatMap((part) => [...part.silkscreen, ...textStrokes(part.component, designatorAt(part), DESIGNATOR_HEIGHT, side === "bottom")])
     .filter((line) => line.length > 0)
-    .map((points): GerberObject => ({ kind: "draw", points, width: SILK_WIDTH }))
+    .map((points): GerberObject => ({ kind: "draw", points, width: SILK_WIDTH, function: LEGEND_FUNCTION }))
 }
 
 function outlineObjects(pcb: PcbLayout): GerberObject[] {
@@ -122,8 +126,8 @@ export function gerberLayers(pcb: PcbLayout, fabrication: FabricationProfile): {
   })
   for (const side of SIDES) {
     const onSide = pads(pcb.parts).filter((pad) => padOnSide(pad, side))
-    const mask = onSide.map((pad) => padObject(pad, expansion)).filter(present)
-    const paste = onSide.filter(isSmd).map((pad) => padObject(pad, -reduction)).filter(present)
+    const mask = onSide.map((pad) => padObject(pad, expansion, padFunction(pad))).filter(present)
+    const paste = onSide.filter(isSmd).map((pad) => padObject(pad, -reduction, padFunction(pad))).filter(present)
     layers.set(`${SIDE_KEY[side]}_Mask`, { fileFunction: `Soldermask,${SIDE_X2[side]}`, polarity: "Negative", objects: mask })
     layers.set(`${SIDE_KEY[side]}_Paste`, { fileFunction: `Paste,${SIDE_X2[side]}`, polarity: "Positive", objects: paste })
     layers.set(`${SIDE_KEY[side]}_Silkscreen`, { fileFunction: `Legend,${SIDE_X2[side]}`, polarity: "Positive", objects: silkObjects(pcb.parts, side) })

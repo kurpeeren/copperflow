@@ -86,6 +86,12 @@ globalNets: [GND, V24, V3_3]
 - `fabrication.maskExpansion` is how far each solder mask opening grows past its pad (0.05 mm when
   left out), and `fabrication.pasteReduction` how far the solder paste shrinks inside each SMD pad
   (0 when left out); both may be 0. The fabrication (Gerber) files use them.
+- `fabrication.placementRotations` adds degrees (counter-clockwise) to the parts' rotation in the
+  pick-and-place file, per footprint family: `chip` (0603, 0805 ...), `sod`, `sot`, `soic`, `sop`,
+  `tssop`, `qfn`, `qfp`, `pinrow` and `file` (footprint files). Every family is 0 when left out;
+  set one only after JLCPCB's assembly preview shows that family's parts turned, for example
+  `placementRotations: { soic: 270 }`. Bottom parts get the same correction, their rotation read
+  as seen from below.
 - The built-in profiles are JLCPCB's published standard capabilities in 1 oz copper; each profile's
   `source` names the page, its sections and the date it was read.
 - A class field left out takes the default class's value: track 0.25 mm, clearance 0.2 mm, via drill
