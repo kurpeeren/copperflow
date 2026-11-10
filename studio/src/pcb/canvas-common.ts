@@ -22,6 +22,7 @@ import { pcbBoxes } from "./pcb-draw"
 import { moveBlocker, partAnchors, type View } from "./positions"
 import { fitBackingStore, resetContext } from "./canvas-surface"
 import type { GridStyle } from "./grid"
+import type { ThemeName } from "../shell/theme-state"
 import type { BuildStatus } from "./key-burst"
 import type { LayerVisibility } from "./layers"
 import type { PickFilter } from "./pick-filter"
@@ -54,6 +55,8 @@ export interface CanvasProps {
   onToggleUnit(): void
   /** This document's grid style (lines or dots). */
   gridStyle: GridStyle
+  /** The Studio's theme; the schematic draws in its palette, the PCB keeps its own. */
+  theme: ThemeName
   /** This document's Grid step: the grid and the snap. */
   gridStep: number
   /** Whether drags, arrow keys and wire corners go to the grid (View → Snap). */

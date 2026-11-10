@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { INITIAL_GRID_STYLES } from "../studio/src/pcb/grid.js"
-import { DEFAULT_THEME, THEME_KEY, applyTheme, loadTheme, parseTheme, saveTheme, themeGridStyle, themeToggles, withThemeGrid } from "../studio/src/shell/theme-state.js"
+import { DEFAULT_THEME, THEME_KEY, applyTheme, browserStore, loadTheme, parseTheme, saveTheme, themeGridStyle, themeToggles, withThemeGrid } from "../studio/src/shell/theme-state.js"
 
 /** A storage that keeps what it is given, or throws on every use. */
 function store(initial: Record<string, string> = {}, broken = false) {
@@ -49,6 +49,12 @@ describe("the theme switch", () => {
         throw new Error("no localStorage")
       }),
     ).toBe("light")
+  })
+
+  test("outside a browser there is no storage, and the theme is Light", () => {
+    expect(browserStore()).toBeUndefined()
+    expect(loadTheme(browserStore)).toBe("light")
+    expect(saveTheme(browserStore, "dark")).toBe(false)
   })
 
   test("applying a theme sets data-theme on the root, which theme.css keys the dark tokens on", () => {

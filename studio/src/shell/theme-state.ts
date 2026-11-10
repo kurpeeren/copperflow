@@ -16,6 +16,9 @@ export interface ThemeStore {
   setItem(key: string, value: string): void
 }
 
+/** The browser's own storage; none outside a browser. Reading `window.localStorage` may itself throw (blocked site data). */
+export const browserStore = (): ThemeStore | undefined => (typeof window === "undefined" ? undefined : window.localStorage)
+
 /** A stored value as a theme: anything but "dark" or "light" reads as the default. */
 export const parseTheme = (value: unknown): ThemeName => (value === "dark" || value === "light" ? value : DEFAULT_THEME)
 
