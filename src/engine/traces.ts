@@ -3,13 +3,21 @@ import type { Component, Connection, Diagnostic, Pin, Point, SourceRef } from ".
 import { netNode, pinNode } from "./nets.js"
 import { naturalCompare } from "./order.js"
 import { PropReader, type Props } from "./read-props.js"
-import { parseSelector } from "./selectors.js"
+import { parseSelector, type ParsedSelector } from "./selectors.js"
+
+/** How the names a sub-sheet's trace writes become the flattened circuit's: its parts' designators and its nets. */
+export interface TraceScope {
+  part(name: string): string
+  net(name: string): string
+}
 
 export interface TraceDraft {
   props: Props
   source: SourceRef
   /** The page it is written on; absent on the first page. */
   page?: string
+  /** The sub-sheet instance it is written in; absent on the circuit itself. */
+  scope?: TraceScope
 }
 
 export interface ResolvedTraces {
@@ -23,13 +31,20 @@ export interface ResolvedTraces {
 /** A resolved end may carry a warning: the name it used is shared by several pins. */
 type Endpoint = { ok: true; id: string; node: string; warning?: Diagnostic } | { ok: false; node?: string; problem: Diagnostic }
 
-function resolveEndpoint(prop: string, value: unknown, byId: ReadonlyMap<string, Component>, source: SourceRef): Endpoint {
+/** A selector as the flattened circuit names it: a sub-sheet's local names turned into the circuit's. */
+function scoped(parsed: ParsedSelector, scope: TraceScope | undefined): ParsedSelector {
+  if (!scope) return parsed
+  return parsed.kind === "net" ? { kind: "net", name: scope.net(parsed.name) } : { ...parsed, part: scope.part(parsed.part) }
+}
+
+function resolveEndpoint(prop: string, value: unknown, byId: ReadonlyMap<string, Component>, source: SourceRef, scope?: TraceScope): Endpoint {
   const text = typeof value === "string" ? value : undefined
-  const parsed = text === undefined ? undefined : parseSelector(text)
-  if (text === undefined || !parsed) {
+  const written = text === undefined ? undefined : parseSelector(text)
+  if (text === undefined || !written) {
     const message = text === undefined ? `trace needs a ${prop}` : `Cannot read "${text}" as a pin or net`
     return { ok: false, problem: diagnostic("bad-selector", "error", message, [text ?? prop], source) }
   }
+  const parsed = scoped(written, scope)
   if (parsed.kind === "net") return { ok: true, id: `net.${parsed.name}`, node: netNode(parsed.name) }
   const component = byId.get(parsed.part)
   if (!component) {
@@ -74,9 +89,9 @@ export function resolveTraces(drafts: readonly TraceDraft[], components: readonl
   const seen = new Map<string, number>()
   const warned = new Set<string>()
   const result: ResolvedTraces = { connections: [], nodes: new Set(), links: [], diagnostics: [] }
-  for (const { props, source, page } of drafts) {
-    const from = resolveEndpoint("from", props["from"], byId, source)
-    const to = resolveEndpoint("to", props["to"], byId, source)
+  for (const { props, source, page, scope } of drafts) {
+    const from = resolveEndpoint("from", props["from"], byId, source, scope)
+    const to = resolveEndpoint("to", props["to"], byId, source, scope)
     for (const end of [from, to]) {
       if (!end.ok) result.diagnostics.push(end.problem)
       else if (end.node.startsWith("net:")) result.nodes.add(end.node)

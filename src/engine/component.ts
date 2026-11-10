@@ -1,17 +1,42 @@
 import { diagnostic } from "./diagnostics.js"
 import { kindOf, pinSpecs, pinTypeFromAttributes } from "./kinds.js"
-import type { Component, Diagnostic, Pin, Side, SourceRef } from "./model.js"
+import type { Component, Diagnostic, Pin, Point, Side, SourceRef } from "./model.js"
 import { jsonProps, PropReader, type Props } from "./read-props.js"
 
-/** What a group adds to its children's positions. */
+/**
+ * What the enclosing groups and sub-sheet instances do to their children's positions: a PCB position is turned
+ * counter-clockwise by `pcbRotation` degrees (an instance's pcbRotation; 0 without one), then moved by pcbX/pcbY.
+ */
 export interface Offset {
   pcbX: number
   pcbY: number
   schX: number
   schY: number
+  pcbRotation?: number
 }
 
 export const NO_OFFSET: Offset = { pcbX: 0, pcbY: 0, schX: 0, schY: 0 }
+
+const QUARTER_TURNS: readonly (readonly [number, number])[] = [
+  [1, 0],
+  [0, 1],
+  [-1, 0],
+  [0, -1],
+]
+
+/** Cosine and sine of an angle in degrees; exact for quarter turns, so turned positions stay clean numbers. */
+function turn(degrees: number): readonly [number, number] {
+  const quarter = degrees / 90
+  if (Number.isInteger(quarter)) return QUARTER_TURNS[((quarter % 4) + 4) % 4] as readonly [number, number]
+  const radians = (degrees * Math.PI) / 180
+  return [Math.cos(radians), Math.sin(radians)]
+}
+
+/** Where a PCB position written inside the offset lands on the board. */
+export function pcbPoint(offset: Offset, x: number, y: number): Point {
+  const [cos, sin] = turn(offset.pcbRotation ?? 0)
+  return { x: x * cos - y * sin + offset.pcbX, y: x * sin + y * cos + offset.pcbY }
+}
 
 export interface PartOrigin {
   source: SourceRef
@@ -41,7 +66,9 @@ function pcbPlacement(reader: PropReader, props: Props, offset: Offset): Compone
   const y = reader.length("pcbY")
   const rotation = reader.angle("pcbRotation") ?? 0
   if (x === undefined && y === undefined) return undefined
-  return { x: (x ?? 0) + offset.pcbX, y: (y ?? 0) + offset.pcbY, rotation, side: props["layer"] === "bottom" ? "bottom" : "top" }
+  const at = pcbPoint(offset, x ?? 0, y ?? 0)
+  const turned = (((rotation + (offset.pcbRotation ?? 0)) % 360) + 360) % 360
+  return { ...at, rotation: turned, side: props["layer"] === "bottom" ? "bottom" : "top" }
 }
 
 function schPlacement(reader: PropReader, id: string, origin: PartOrigin, out: Diagnostic[]): Component["sch"] {

@@ -1,6 +1,6 @@
 import { LIBRARY_OWNED_PROPS } from "../core/library.js"
 import { buildBoard } from "./board.js"
-import { buildPart, NO_OFFSET, type Offset } from "./component.js"
+import { buildPart, NO_OFFSET, pcbPoint, type Offset } from "./component.js"
 import { diagnostic } from "./diagnostics.js"
 import { drawingName } from "./drawing-ids.js"
 import { drawingKindOf } from "./drawing-kinds.js"
@@ -10,9 +10,21 @@ import { PIN_ROW_DEFAULT_PITCH, pinRowName } from "./footprints/pinrow.js"
 import { Fragment, isElement, type CfElement, type ComponentFunction } from "./jsx-runtime.js"
 import { buildKeepout } from "./keepout.js"
 import { kindOf } from "./kinds.js"
-import { MAIN_PAGE, type Board, type Circuit, type Component, type Diagnostic, type DrawingKind, type Keepout, type SourceRef } from "./model.js"
+import {
+  MAIN_PAGE,
+  type Board,
+  type Circuit,
+  type Component,
+  type Diagnostic,
+  type DrawingKind,
+  type Keepout,
+  type SheetInstance,
+  type SourceRef,
+} from "./model.js"
 import { mergeNets } from "./nets.js"
+import { naturalCompare } from "./order.js"
 import { PropReader, type Props } from "./read-props.js"
+import { BASE_STEP, badPorts, flatNet, portsOf, readBase, readConnections, SHEET_FILE, sheetName, traceScope, withBase, type InstanceScope } from "./sheets.js"
 import { resolveTraces, type TraceDraft } from "./traces.js"
 
 export interface ElaborateOptions {
@@ -36,7 +48,7 @@ function footprintOf(tag: string, props: Props, reader: PropReader): string | un
 }
 
 /** Tags that are accepted but have no effect until their stage lands. */
-const LATER_STAGE = new Set(["via", "hole", "copperpour", "port", "netlabel"])
+const LATER_STAGE = new Set(["via", "hole", "copperpour", "netlabel"])
 const LIBRARY_PATH = /^parts\/([^/]+)\//
 const MAX_DEPTH = 200
 
@@ -48,6 +60,8 @@ interface Frame {
   depth: number
   /** The `<page>` around it; undefined on the first page. */
   page: string | undefined
+  /** The sub-sheet instance it is in; undefined on the circuit itself. */
+  instance?: InstanceScope
 }
 
 /** `{ page }` for a thing on a page other than the first, nothing on the first. */
@@ -67,6 +81,18 @@ class Elaboration {
   private readonly keepoutSources: SourceRef[] = []
   private readonly nameCounts = new Map<string, number>()
   private readonly duplicated = new Set<string>()
+  /** The sub-sheet instances, outer before inner, each set once the walk inside it is done. */
+  readonly instances: SheetInstance[] = []
+  /** The instance path that made each part name; "" for the circuit itself. */
+  private readonly owners = new Map<string, string>()
+  /** How many instances each parent (by path, "" for the circuit) holds so far, and the base each took. */
+  private readonly instanceCounts = new Map<string, number>()
+  private readonly basesTaken = new Map<string, Map<number, string>>()
+  /** Pairs of instance paths already reported for sharing a base, so their designators are not reported again. */
+  private readonly clashingPairs = new Set<string>()
+  private readonly instancePaths = new Map<string, number>()
+  /** Whether the file built is a sheet itself, so its `<port>` elements are expected. */
+  private rootIsSheet = false
 
   constructor(
     private readonly evaluated: Evaluated,
@@ -87,17 +113,21 @@ class Elaboration {
     this.tag(node, node.type, next)
   }
 
-  private call(element: CfElement, fn: ComponentFunction, frame: Frame): void {
-    const origin = this.evaluated.definedIn(fn)
-    let result: unknown
+  private invoke(element: CfElement, fn: ComponentFunction, origin: string | undefined): unknown {
     try {
-      result = fn({ ...element.props, children: element.children })
+      return fn({ ...element.props, children: element.children })
     } catch (error) {
       if (error instanceof CircuitCodeError) throw error
       const message = (error as { message?: unknown } | null)?.message
       const where = origin ?? element.source?.file ?? this.file
       throw new CircuitCodeError(`${where}: ${typeof message === "string" ? message : String(error)}`, { cause: error })
     }
+  }
+
+  private call(element: CfElement, fn: ComponentFunction, frame: Frame): void {
+    const origin = this.evaluated.definedIn(fn)
+    if (origin !== undefined && SHEET_FILE.test(origin)) return this.instance(element, fn, origin, frame)
+    const result = this.invoke(element, fn, origin)
     const library = LIBRARY_PATH.exec(origin ?? "")?.[1] ?? frame.library
     if (library !== undefined && frame.library === undefined) this.libraryOverrides(element, library, this.sourceOf(element, frame))
     this.visit(result, { ...frame, callSite: frame.callSite ?? element.source, library })
@@ -116,15 +146,112 @@ class Elaboration {
     this.diagnostics.push(diagnostic("library-override", "warning", message, owned.map((key) => `${name}.${key}`), source))
   }
 
+  /**
+   * One instance of a sub-sheet: its parts get the base added to their designators, its nets are its own unless a
+   * port connects them or they are power or ground, and its positions are relative to the instance.
+   */
+  private instance(element: CfElement, fn: ComponentFunction, file: string, frame: Frame): void {
+    const source = this.sourceOf(element, frame)
+    const sheet = sheetName(file)
+    const name = element.props["name"]
+    if (typeof name !== "string" || name === "") {
+      this.diagnostics.push(diagnostic("missing-name", "error", `An instance of ${sheet} needs a name`, [sheet], source))
+      return
+    }
+    const parent = frame.instance
+    const path = this.instancePath(parent ? `${parent.path}/${name}` : name, source)
+    if (parent?.files.includes(file)) {
+      const message = `${file} contains itself (${path}); a sheet cannot import itself`
+      this.diagnostics.push(diagnostic("sheet-recursion", "error", message, [path], source))
+      return
+    }
+    const result = this.invoke(element, fn, file)
+    if (!isElement(result) || result.type !== "sheet") {
+      this.diagnostics.push(diagnostic("not-a-sheet", "error", `${file} must return <sheet>; ${name} is left out`, [name], source))
+      return
+    }
+    const ports = portsOf(result.children)
+    const read = readConnections(element.props["connections"], { name, sheet, ports, source })
+    this.diagnostics.push(...read.diagnostics, ...badPorts(result.children, (port) => this.sourceOf(port, frame)))
+    const base = this.instanceBase(element.props["base"], name, path, parent, source)
+    const files = [...(parent?.files ?? []), file]
+    const scope: InstanceScope = { name, path, sheet, base: (parent?.base ?? 0) + base, files, parent, ports, connections: read.connections, parts: new Map() }
+    const placed = this.instancePlacement(element.props, name, frame.offset, source)
+    const index = this.instances.length
+    this.instances.push({} as SheetInstance)
+    this.visit(result.children, { ...frame, offset: placed.offset, instance: scope })
+    const parts = this.components.filter((c) => c.instance === path || c.instance?.startsWith(`${path}/`)).map((c) => c.id)
+    this.instances[index] = {
+      name,
+      path,
+      sheet,
+      file,
+      base,
+      connections: Object.fromEntries(read.connections),
+      ports: ports.map((port) => ({ name: port, net: flatNet(scope, port) })),
+      parts: parts.sort(naturalCompare),
+      ...placed.record,
+      ...onPage(frame.page),
+      source,
+    }
+  }
+
+  /** A unique path: a second instance of the same name in the same parent is an error and gets "~2", "~3" and so on. */
+  private instancePath(path: string, source: SourceRef): string {
+    const count = (this.instancePaths.get(path) ?? 0) + 1
+    this.instancePaths.set(path, count)
+    if (count === 1) return path
+    if (count === 2) this.diagnostics.push(diagnostic("duplicate-name", "error", `More than one instance is named ${path}`, [path], source))
+    return `${path}~${count}`
+  }
+
+  /** The base written, or 100, 200, … by the instance's place among its parent's; a base two siblings share is an error. */
+  private instanceBase(value: unknown, name: string, path: string, parent: InstanceScope | undefined, source: SourceRef): number {
+    const key = parent?.path ?? ""
+    const count = (this.instanceCounts.get(key) ?? 0) + 1
+    this.instanceCounts.set(key, count)
+    const written = readBase(value, name, source)
+    this.diagnostics.push(...written.diagnostics)
+    const base = written.base ?? count * BASE_STEP
+    const taken = this.basesTaken.get(key) ?? new Map<number, string>()
+    this.basesTaken.set(key, taken)
+    const other = taken.get(base)
+    if (other === undefined) taken.set(base, path)
+    else {
+      this.clashingPairs.add(`${other}|${path}`)
+      const message = `${name} has base ${base}, as ${other.split("/").pop() ?? other} does; give one of them another base`
+      this.diagnostics.push(diagnostic("base-clash", "error", message, [other, path], source))
+    }
+    return base
+  }
+
+  /** The offset inside the instance, and the instance's own position as the design records it. */
+  private instancePlacement(props: Props, name: string, offset: Offset, source: SourceRef): { offset: Offset; record: Pick<SheetInstance, "sch" | "pcb"> } {
+    const reader = new PropReader(props, name, source)
+    const [pcbX, pcbY, schX, schY] = [reader.length("pcbX"), reader.length("pcbY"), reader.length("schX"), reader.length("schY")]
+    const turn = reader.angle("pcbRotation")
+    this.diagnostics.push(...reader.diagnostics)
+    const at = pcbPoint(offset, pcbX ?? 0, pcbY ?? 0)
+    const rotation = ((((offset.pcbRotation ?? 0) + (turn ?? 0)) % 360) + 360) % 360
+    const sch = { x: offset.schX + (schX ?? 0), y: offset.schY + (schY ?? 0) }
+    const record = {
+      ...(schX !== undefined || schY !== undefined ? { sch } : {}),
+      ...(pcbX !== undefined || pcbY !== undefined || turn !== undefined ? { pcb: { ...at, rotation } } : {}),
+    }
+    return { offset: { pcbX: at.x, pcbY: at.y, schX: sch.x, schY: sch.y, pcbRotation: rotation }, record }
+  }
+
   private tag(element: CfElement, tag: string, frame: Frame): void {
     const source = this.sourceOf(element, frame)
     if (tag === Fragment) return this.visit(element.children, frame)
+    if (tag === "sheet") return this.sheetElement(element, frame, source)
+    if (tag === "port") return this.port(frame, source)
     if (tag === "group") return this.group(element, frame, source)
     if (tag === "page") return this.page(element, frame, source)
     if (tag === "board") return this.boardElement(element, frame, source)
     if (tag === "keepout") return this.keepout(element, frame, source)
     if (tag === "trace") {
-      this.traces.push({ props: element.props, source, ...onPage(frame.page) })
+      this.traces.push({ props: element.props, source, ...onPage(frame.page), ...(frame.instance ? { scope: traceScope(frame.instance) } : {}) })
       return
     }
     const drawing = drawingKindOf(tag)
@@ -135,12 +262,33 @@ class Elaboration {
     this.diagnostics.push(diagnostic("unsupported-element", severity, message, [tag], source))
   }
 
+  /** A `<sheet>` is the body of a sheet file: the file built alone is its contents; anywhere else it is an error. */
+  private sheetElement(element: CfElement, frame: Frame, source: SourceRef): void {
+    if (frame.depth === 1 && !frame.instance) {
+      this.rootIsSheet = true
+      this.diagnostics.push(...badPorts(element.children, (port) => this.sourceOf(port, frame)))
+    } else {
+      const message = "<sheet> is the body of a <name>.sheet.tsx file; use that sheet as a component instead"
+      this.diagnostics.push(diagnostic("unsupported-element", "error", message, ["sheet"], source))
+    }
+    this.visit(element.children, frame)
+  }
+
+  /** Ports were read when the instance began; outside a sheet a port joins nothing. */
+  private port(frame: Frame, source: SourceRef): void {
+    if (frame.instance || this.rootIsSheet) return
+    const message = "<port> has an effect only in a sub-sheet (<name>.sheet.tsx); it is ignored"
+    this.diagnostics.push(diagnostic("unsupported-element", "warning", message, ["port"], source))
+  }
+
   private group(element: CfElement, frame: Frame, source: SourceRef): void {
     const reader = new PropReader(element.props, "group", source)
     const { offset } = frame
+    const at = pcbPoint(offset, reader.length("pcbX") ?? 0, reader.length("pcbY") ?? 0)
     const next: Offset = {
-      pcbX: offset.pcbX + (reader.length("pcbX") ?? 0),
-      pcbY: offset.pcbY + (reader.length("pcbY") ?? 0),
+      ...offset,
+      pcbX: at.x,
+      pcbY: at.y,
       schX: offset.schX + (reader.length("schX") ?? 0),
       schY: offset.schY + (reader.length("schY") ?? 0),
     }
@@ -155,6 +303,11 @@ class Elaboration {
       this.diagnostics.push(diagnostic("missing-name", "error", "<page> needs a name; what it holds stays on the page around it", ["page"], source))
       return this.visit(element.children, frame)
     }
+    if (frame.instance) {
+      const message = `A sheet is drawn on its instance's page: page ${name} in ${frame.instance.sheet} is ignored`
+      this.diagnostics.push(diagnostic("page-in-sheet", "error", message, [name], source))
+      return this.visit(element.children, frame)
+    }
     if (frame.page !== undefined) {
       const message = `Pages do not nest: page ${name} is inside page ${frame.page}, and what it holds stays on ${frame.page}`
       this.diagnostics.push(diagnostic("nested-page", "error", message, [name], source))
@@ -165,7 +318,10 @@ class Elaboration {
   }
 
   private boardElement(element: CfElement, frame: Frame, source: SourceRef): void {
-    if (this.board) this.diagnostics.push(diagnostic("two-boards", "error", "A circuit has one <board>; the second is ignored", ["board"], source))
+    if (frame.instance) {
+      const message = `A sheet has no <board>; the one in ${frame.instance.sheet} is ignored`
+      this.diagnostics.push(diagnostic("board-in-sheet", "error", message, ["board"], source))
+    } else if (this.board) this.diagnostics.push(diagnostic("two-boards", "error", "A circuit has one <board>; the second is ignored", ["board"], source))
     else {
       const built = buildBoard(element.props, source)
       this.board = built.board
@@ -188,7 +344,10 @@ class Elaboration {
     const built = buildDrawing(kind, element.props, element.children.length, { offset: frame.offset, index, source })
     this.diagnostics.push(...built.diagnostics)
     const drawn = built.drawing ? { drawing: { ...built.drawing, ...onPage(frame.page) } } : {}
-    this.drawings.push({ kind, name: drawingName(kind, element.props["name"]), source, ...drawn })
+    const name = drawingName(kind, element.props["name"])
+    // A named drawing in a sheet is named per instance, so two instances do not repeat a name; a bus keeps its net names.
+    const scoped = name !== undefined && frame.instance && kind !== "bus" ? `${frame.instance.path}/${name}` : name
+    this.drawings.push({ kind, name: scoped, source, ...drawn })
   }
 
   /** One warning for each <keepout> of a circuit that has no <board>. */
@@ -203,20 +362,47 @@ class Elaboration {
       this.diagnostics.push(diagnostic("missing-name", "error", `<${tag}> needs a name`, [tag], source))
       return
     }
-    const id = this.uniqueId(name, source)
+    const scope = frame.instance
+    const id = scope ? this.instancePartId(name, scope, source) : this.uniqueId(name, source)
     const reader = new PropReader(element.props, id, source)
     const footprint = footprintOf(tag, element.props, reader)
     const padCount = footprint === undefined ? undefined : this.options.padCount(footprint)
     const origin = { source, library: frame.library, offset: frame.offset }
     const built = buildPart(tag, id, element.props, origin, { name: footprint, padCount })
-    this.components.push({ ...built.component, ...onPage(frame.page) })
+    const hierarchy = scope ? { instance: scope.path, localId: name } : {}
+    this.components.push({ ...built.component, ...onPage(frame.page), ...hierarchy })
     this.diagnostics.push(...reader.diagnostics, ...built.diagnostics)
   }
 
-  private uniqueId(name: string, source: SourceRef): string {
+  /** The flattened designator of a part in an instance; one that another part already has is a base clash. */
+  private instancePartId(name: string, scope: InstanceScope, source: SourceRef): string {
+    const flat = withBase(name, scope.base)
+    const owner = this.owners.get(flat)
+    if (owner !== undefined && owner !== scope.path && !this.duplicated.has(flat)) {
+      this.duplicated.add(flat)
+      if (!this.clashingPairs.has(`${owner}|${scope.path}`)) {
+        const message = `${name} of ${scope.path} becomes ${flat}, which is already a part; give ${scope.name} another base`
+        this.diagnostics.push(diagnostic("base-clash", "error", message, [scope.path, flat], source))
+      }
+    }
+    const id = this.uniqueId(flat, source, scope.path)
+    if (!scope.parts.has(name)) scope.parts.set(name, id)
+    return id
+  }
+
+  private uniqueId(name: string, source: SourceRef, owner = ""): string {
     const count = (this.nameCounts.get(name) ?? 0) + 1
     this.nameCounts.set(name, count)
-    if (count === 1) return name
+    if (count === 1) {
+      this.owners.set(name, owner)
+      return name
+    }
+    const first = this.owners.get(name) ?? ""
+    if (first !== "" && owner === "" && !this.duplicated.has(name)) {
+      this.duplicated.add(name)
+      const message = `${name} is already a part of ${first}; give ${first.split("/").pop() ?? first} another base`
+      this.diagnostics.push(diagnostic("base-clash", "error", message, [first, name], source))
+    }
     if (!this.duplicated.has(name)) {
       this.duplicated.add(name)
       this.diagnostics.push(diagnostic("duplicate-name", "error", `More than one part is named ${name}`, [name], source))
@@ -229,6 +415,7 @@ class Elaboration {
 export function elaborate(evaluated: Evaluated, file: string, options: ElaborateOptions): Circuit {
   const run = new Elaboration(evaluated, file, options)
   run.visit(evaluated.root, { offset: NO_OFFSET, callSite: undefined, library: undefined, depth: 0, page: undefined })
+  const instances = run.instances.length > 0 ? { instances: run.instances } : {}
   const traces = resolveTraces(run.traces, run.components)
   const nets = mergeNets(traces.nodes, traces.links)
   const drawings = uniqueDrawingIds(run.drawings, run.components)
@@ -241,6 +428,7 @@ export function elaborate(evaluated: Evaluated, file: string, options: Elaborate
     connections: traces.connections,
     ...(run.board ? { board: { ...run.board, keepouts: run.keepouts } } : {}),
     drawings: drawings.drawings,
+    ...instances,
     diagnostics: [...run.diagnostics, ...drawings.diagnostics, ...run.boardlessKeepouts(), ...traces.diagnostics, ...joined],
   }
 }
