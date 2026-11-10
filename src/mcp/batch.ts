@@ -11,7 +11,7 @@ import {
   type Edit,
 } from "../core/index.js"
 import { buildWith, type DesignSource } from "../core/design-source.js"
-import { parseSelector } from "../engine/selectors.js"
+import { localNet, localNetRefusal, parseSelector } from "../engine/selectors.js"
 import type { Circuit, Component } from "../engine/model.js"
 import { pinName } from "./compact.js"
 
@@ -145,6 +145,8 @@ export async function planNets(root: string, file: string, nets: Record<string, 
   const plan: NetPlan = { edits: [], added: {}, skipped: 0 }
   const claimed = new Map<string, string>()
   for (const [name, pins] of Object.entries(nets)) {
+    const local = localNet(`net.${name}`)
+    if (local) throw new Error(localNetRefusal(local, circuit.instances?.find((instance) => instance.path === local.instance)?.file))
     if (!NET_NAME.test(name)) throw new Error(`"${name}" is not a net name; use letters, digits, _ and -, e.g. GND`)
     for (const pin of new Set(pins.map((p) => p.trim()))) {
       if (!PIN.test(pin)) throw new Error(`"${pin}" is not a pin selector; write PART.pin, e.g. R1.pin2 or U1.VOUT`)

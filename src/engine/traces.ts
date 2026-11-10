@@ -3,7 +3,7 @@ import type { Component, Connection, Diagnostic, Pin, Point, SourceRef } from ".
 import { netNode, pinNode } from "./nets.js"
 import { naturalCompare } from "./order.js"
 import { PropReader, type Props } from "./read-props.js"
-import { parseSelector, type ParsedSelector } from "./selectors.js"
+import { localNet, localNetRefusal, parseSelector, type ParsedSelector } from "./selectors.js"
 
 /** How the names a sub-sheet's trace writes become the flattened circuit's: its parts' designators and its nets. */
 export interface TraceScope {
@@ -37,9 +37,17 @@ function scoped(parsed: ParsedSelector, scope: TraceScope | undefined): ParsedSe
   return parsed.kind === "net" ? { kind: "net", name: scope.net(parsed.name) } : { ...parsed, part: scope.part(parsed.part) }
 }
 
-function resolveEndpoint(prop: string, value: unknown, byId: ReadonlyMap<string, Component>, source: SourceRef, scope?: TraceScope): Endpoint {
+/** The sheet file of an instance path, when the circuit has that instance. */
+export type SheetFileOf = (instance: string) => string | undefined
+
+function resolveEndpoint(prop: string, value: unknown, byId: ReadonlyMap<string, Component>, source: SourceRef, scope?: TraceScope, sheetFileOf?: SheetFileOf): Endpoint {
   const text = typeof value === "string" ? value : undefined
   const written = text === undefined ? undefined : parseSelector(text)
+  const local = text === undefined ? undefined : localNet(text)
+  if (local) {
+    const message = localNetRefusal(local, sheetFileOf?.(local.instance))
+    return { ok: false, problem: diagnostic("local-net", "error", message, [`${local.instance}/${local.net}`], source) }
+  }
   if (text === undefined || !written) {
     const message = text === undefined ? `trace needs a ${prop}` : `Cannot read "${text}" as a pin or net`
     return { ok: false, problem: diagnostic("bad-selector", "error", message, [text ?? prop], source) }
@@ -84,14 +92,14 @@ function corners(value: unknown): Point[] | undefined {
  * Turns trace elements into connections. A trace with a bad end is reported and left out. A pin
  * name shared by several pins is reported once, however many traces use it.
  */
-export function resolveTraces(drafts: readonly TraceDraft[], components: readonly Component[]): ResolvedTraces {
+export function resolveTraces(drafts: readonly TraceDraft[], components: readonly Component[], sheetFileOf?: SheetFileOf): ResolvedTraces {
   const byId = new Map(components.map((component) => [component.id, component]))
   const seen = new Map<string, number>()
   const warned = new Set<string>()
   const result: ResolvedTraces = { connections: [], nodes: new Set(), links: [], diagnostics: [] }
   for (const { props, source, page, scope } of drafts) {
-    const from = resolveEndpoint("from", props["from"], byId, source, scope)
-    const to = resolveEndpoint("to", props["to"], byId, source, scope)
+    const from = resolveEndpoint("from", props["from"], byId, source, scope, sheetFileOf)
+    const to = resolveEndpoint("to", props["to"], byId, source, scope, sheetFileOf)
     for (const end of [from, to]) {
       if (!end.ok) result.diagnostics.push(end.problem)
       else if (end.node.startsWith("net:")) result.nodes.add(end.node)

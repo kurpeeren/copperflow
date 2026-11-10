@@ -93,7 +93,7 @@ export function formatCompactSummary(circuit: LoadedCircuit, sheets?: SheetView)
   const nets = written.sort((a, b) => Number(b.names.length > 0) - Number(a.names.length > 0) || natural.compare(a.names[0] ?? "", b.names[0] ?? ""))
   const counts = flat ? flatCounts(flat) : undefined
   const parts = counts ? `${counts.parts} parts, ${counts.instances} instances` : `${model.parts.length} parts`
-  const lines = [`${circuit.file}: ${parts}, ${nets.length} nets, ${model.traces.length} traces, ${locked.size} locked`]
+  const lines = [`${circuit.file}: ${parts}, ${nets.length} nets, ${counts?.traces ?? model.traces.length} traces, ${locked.size} locked`]
   if (sheets && "failure" in sheets) lines.push(`Sub-sheets not shown: the build failed: ${oneLine(sheets.failure)}`)
   const partLines = flat ? partLinesWithSheets(model.parts, flat, locked, (part) => partLine(part, locked)) : model.parts.map((part) => partLine(part, locked))
   lines.push(...capped(partLines))

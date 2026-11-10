@@ -419,3 +419,10 @@ test("an instance without a position keeps its parts together, clear of the rest
   const courtyards = design.pcb.parts.map((p) => boxOf(p.courtyard))
   courtyards.forEach((a, i) => courtyards.slice(i + 1).forEach((b) => expect(overlap(a, b)).toBe(false)))
 })
+
+test("a trace to a local net such as net.PS1/FB is refused and points at the sheet", () => {
+  const circuit = build([`<PowerStage name="PS1" connections={{ VIN: "VBUS", VOUT: "V3_3", GND: "GND" }} />`, `<resistor name="R1" />`, `<trace from="R1.pin1" to="net.PS1/FB" />`].join("\n"))
+  expect(circuit.diagnostics).toEqual([
+    expect.objectContaining({ code: "local-net", severity: "error", items: ["PS1/FB"], message: "PS1/FB is local to instance PS1; edit PowerStage.sheet.tsx and use FB there" }),
+  ])
+})

@@ -143,7 +143,7 @@ describe("compact circuit_summary with sub-sheets", () => {
 
   test("shows each instance in one line and its parts by their flattened designators", async () => {
     const lines = (await call("circuit_summary", { file: "sheets.circuit.tsx" })).text.split("\n")
-    expect(lines[0]).toMatch(/^sheets\.circuit\.tsx: 9 parts, 2 instances, \d+ nets, 1 traces, 0 locked$/)
+    expect(lines[0]).toMatch(/^sheets\.circuit\.tsx: 9 parts, 2 instances, \d+ nets, 15 traces, 0 locked$/)
     expect(lines).toContain("PS1 PowerStage base 100: VIN=VBUS VOUT=V3_3 GND=GND, 4 parts")
     expect(lines).toContain("PS2 PowerStage base 200: VIN=V3_3 VOUT=(open) GND=GND, 4 parts")
     expect(lines).toContain("C101 capacitor 1uF 0402 in PS1 as C1")
@@ -165,6 +165,63 @@ describe("compact circuit_summary with sub-sheets", () => {
     const lines = (await call("circuit_summary", { file: "sheets.circuit.tsx" })).text.split("\n")
     expect(lines).toContain("PS1 PowerStage base 100: VIN=VBUS VOUT=V3_3 GND=GND, 4 parts [LOCKED]")
     expect(lines).toContain("Locked: PS1")
+  })
+
+  test("a nested instance shows the base its parts carry; an instance a plain component makes is listed", async () => {
+    const divider = `export default function Divider() {
+  return (
+    <sheet>
+      <resistor name="R1" resistance="1k" />
+    </sheet>
+  )
+}
+`
+    const block = `import Divider from "./Divider.sheet"
+export default function Block() {
+  return (
+    <sheet>
+      <resistor name="R1" resistance="2k" />
+      <Divider name="D1" />
+    </sheet>
+  )
+}
+`
+    const main = `import Block from "./Block.sheet"
+import Divider from "./Divider.sheet"
+const Two = () => <><Divider name="X1" /><Divider name="X2" /></>
+export default () => (
+  <board width="40mm" height="40mm">
+    <Block name="B1" />
+    <Two />
+  </board>
+)
+`
+    await writeFile(join(root, "Divider.sheet.tsx"), divider)
+    await writeFile(join(root, "Block.sheet.tsx"), block)
+    await writeFile(join(root, "nested.circuit.tsx"), main)
+    const lines = (await call("circuit_summary", { file: "nested.circuit.tsx" })).text.split("\n")
+    expect(lines[0]).toBe("nested.circuit.tsx: 4 parts, 4 instances, 0 nets, 0 traces, 0 locked")
+    expect(lines.slice(1, 9)).toEqual([
+      "B1 Block base 100: no ports, 2 parts",
+      "R101 resistor 2k in B1 as R1",
+      "B1/D1 Divider base 200: no ports, 1 part",
+      "R201 resistor 1k in B1/D1 as R1",
+      "X1 Divider base 300: no ports, 1 part",
+      "R301 resistor 1k in X1 as R1",
+      "X2 Divider base 400: no ports, 1 part",
+      "R401 resistor 1k in X2 as R1",
+    ])
+  })
+
+  test("a local net is refused by add_trace, edit_circuit and connect_nets, pointing at the sheet", async () => {
+    const message = "PS1/FB is local to instance PS1; edit PowerStage.sheet.tsx and use FB there"
+    const added = await call("add_trace", { file: "sheets.circuit.tsx", from: "R1.pin2", to: "net.PS1/FB" })
+    expect(added.text).toContain(message)
+    const edited = await call("edit_circuit", { file: "sheets.circuit.tsx", edits: [{ connect: { from: "R1.pin2", to: "net.PS1/FB" } }] })
+    expect(edited.text).toContain(message)
+    const connected = await call("connect_nets", { file: "sheets.circuit.tsx", nets: { "PS1/FB": ["R1.pin2"] } })
+    expect(connected.isError).toBe(true)
+    expect(connected.text).toContain(message)
   })
 
   test("a circuit whose build fails still has its summary, with a note", async () => {

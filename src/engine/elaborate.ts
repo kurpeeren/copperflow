@@ -409,7 +409,7 @@ export function elaborate(evaluated: Evaluated, file: string, options: Elaborate
   const run = new Elaboration(evaluated, file, options)
   run.visit(evaluated.root, { offset: NO_OFFSET, callSite: undefined, library: undefined, depth: 0, page: undefined })
   const instances = run.instances.length > 0 ? { instances: run.instances } : {}
-  const traces = resolveTraces(run.traces, run.components)
+  const traces = resolveTraces(run.traces, run.components, (path) => run.instances.find((instance) => instance.path === path)?.file)
   const nets = mergeNets(traces.nodes, traces.links)
   const drawings = uniqueDrawingIds(run.drawings, run.components)
   const joined = nets.filter((net) => net.names.length > 1).map((net) => diagnostic("nets-joined", "warning", `Nets ${net.names.join(" and ")} are joined by a trace`, net.names))
