@@ -175,14 +175,14 @@ describe("the Filter tab", () => {
   })
 
   test("toggling gives a new filter, the rows follow the view, and a missing filter allows everything", () => {
-    expect(ALL_PICKABLE).toEqual({ parts: true, labels: true, wires: true, drawings: true, tracks: true, vias: true, texts: true })
+    expect(ALL_PICKABLE).toEqual({ parts: true, labels: true, wires: true, drawings: true, tracks: true, vias: true, texts: true, pours: true })
     const off = togglePickKind(ALL_PICKABLE, "labels")
-    expect(off).toEqual({ parts: true, labels: false, wires: true, drawings: true, tracks: true, vias: true, texts: true })
+    expect(off).toEqual({ parts: true, labels: false, wires: true, drawings: true, tracks: true, vias: true, texts: true, pours: true })
     expect(ALL_PICKABLE.labels).toBe(true)
     expect(togglePickKind(off, "labels")).toEqual(ALL_PICKABLE)
     expect(kindPickable(undefined, "parts")).toBe(true)
-    expect(pickKindRows("pcb").map((row) => row.label)).toEqual(["Parts", "Tracks", "Vias", "Designators"])
-    expect(pickKindRows("pcb").map((row) => row.kind)).toEqual(["parts", "tracks", "vias", "texts"])
+    expect(pickKindRows("pcb").map((row) => row.label)).toEqual(["Parts", "Tracks", "Vias", "Copper pours and holes", "Designators"])
+    expect(pickKindRows("pcb").map((row) => row.kind)).toEqual(["parts", "tracks", "vias", "pours", "texts"])
     expect(pickKindRows("schematic").map((row) => row.label)).toEqual(["Parts", "Wires", "Net labels and flags", "Drawings", "Names and values"])
     expect(pickKindRows("schematic").find((row) => row.label === "Names and values")?.kind).toBe("texts")
     expect(pickKindRows("schematic").find((row) => row.label === "Drawings")?.kind).toBe("drawings")
