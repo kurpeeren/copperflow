@@ -126,13 +126,14 @@ export class Congestion {
 
   /**
    * The costs of the window's cells for the rule's net in pass `pass`, and which other route holds each cell
-   * (owner, or -1), for telling afterwards where the route laid on that grid is in conflict.
+   * (every one of them), for telling afterwards where the route laid on that grid is in conflict.
    */
   costs(rule: NetRule, grid: RouterGrid, window: CellWindow, pass: number): Occupancy {
     const { frame } = this.world
     const cells = grid.cols * grid.rows
-    const owner = grid.layers.map(() => new Int32Array(cells).fill(-1))
-    const viaOwner = new Int32Array(cells).fill(-1)
+    const owners = new Map<number, number[]>()
+    const viaOwners = new Map<number, number[]>()
+    const hold = (map: Map<number, number[]>, key: number, index: number) => map.set(key, [...(map.get(key) ?? []), index])
     const inWindow = (board: number) => {
       const [col, row] = [(board % frame.cols) - window.col0, Math.floor(board / frame.cols) - window.row0]
       return col < 0 || row < 0 || col >= grid.cols || row >= grid.rows ? -1 : row * grid.cols + col
@@ -146,14 +147,14 @@ export class Congestion {
           const cell = inWindow(board)
           if (cell < 0) continue
           ;(count[l] as Int32Array)[cell] = ((count[l] as Int32Array)[cell] as number) + 1
-          ;(owner[l] as Int32Array)[cell] = other.index
+          hold(owners, l * cells + cell, other.index)
         }
       })
       for (const board of footprint.via) {
         const cell = inWindow(board)
         if (cell < 0) continue
         viaCount[cell] = (viaCount[cell] as number) + 1
-        viaOwner[cell] = other.index
+        hold(viaOwners, cell, other.index)
       }
     }
     const price = presentPrice(pass)
@@ -164,7 +165,7 @@ export class Congestion {
       for (let l = 0; l < grid.layers.length; l++) (track[l] as Int32Array)[cell] = capped(((this.history[l] as Int32Array)[board] as number) + price * ((count[l] as Int32Array)[cell] as number))
       via[cell] = capped((this.viaHistory[board] as number) + price * (viaCount[cell] as number))
     }
-    return { penalties: { track, via }, owner, viaOwner }
+    return { penalties: { track, via }, owners, viaOwners }
   }
 
   /**
@@ -175,16 +176,17 @@ export class Congestion {
     const found = new Set<number>()
     const { frame } = world
     const local = (board: number) => (Math.floor(board / frame.cols) - window.row0) * grid.cols + (board % frame.cols) - window.col0
+    const cells = grid.cols * grid.rows
     for (const node of placed.nodes) {
-      const who = occupancy.owner[node.layer]?.[local(node.cell)] ?? -1
-      if (who < 0) continue
-      found.add(who)
+      const who = occupancy.owners.get(node.layer * cells + local(node.cell))
+      if (who === undefined) continue
+      for (const index of who) found.add(index)
       ;(this.history[node.layer] as Int32Array)[node.cell] = capped(((this.history[node.layer] as Int32Array)[node.cell] as number) + HISTORY_STEP)
     }
     for (const cell of placed.vias) {
-      const who = occupancy.viaOwner[local(cell)] ?? -1
-      if (who < 0) continue
-      found.add(who)
+      const who = occupancy.viaOwners.get(local(cell))
+      if (who === undefined) continue
+      for (const index of who) found.add(index)
       this.viaHistory[cell] = capped((this.viaHistory[cell] as number) + HISTORY_STEP)
     }
     for (const who of legConflicts(world, rule, placed, this.others(rule.net, placed.box, rule))) found.add(who)
@@ -192,11 +194,11 @@ export class Congestion {
   }
 }
 
-/** The window's penalties, and which route holds each cell. */
+/** The window's penalties, and which routes hold each cell: by layer · cells + cell for tracks, by cell for vias. */
 export interface Occupancy {
   penalties: Penalties
-  owner: Int32Array[]
-  viaOwner: Int32Array
+  owners: Map<number, number[]>
+  viaOwners: Map<number, number[]>
 }
 
 /** The routes a leg of the placed route comes too near to, checked exactly. */

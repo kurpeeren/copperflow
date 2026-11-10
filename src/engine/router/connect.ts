@@ -4,7 +4,7 @@ import { netClasses } from "../rules/classes.js"
 import { DEFAULT_CLASS } from "../rules/profiles.js"
 import type { Rules } from "../rules/schema.js"
 import { trackWidth, viaSize } from "../rules/track-defaults.js"
-import { searchPath, type CellRef, type EndRef, type Penalties, type SearchBuffers, type SearchOptions } from "./astar.js"
+import { DIAGONAL, searchPath, STEP, VIA, type CellRef, type EndRef, type Penalties, type SearchBuffers, type SearchOptions } from "./astar.js"
 import { blockingNames, endCells, joinedTo, padLegs } from "./ends.js"
 import { cellCentre, cellsNear, isWholeBoard, rasteriseIn, routerWorld, wholeBoard, windowAround, type CellWindow, type NetRule, type RouterGrid, type RouterWorld } from "./grid.js"
 import { boxOf, type Obstacle } from "./obstacles.js"
@@ -153,18 +153,45 @@ function spacedSearch(world: RouterWorld, first: RouterGrid, job: Job, sources: 
 }
 
 /** The cells around the connection's two ends, grown by the margin (or half the ends' span, if larger). */
-export function jobWindow(world: RouterWorld, job: Job): CellWindow {
+export function jobWindow(world: RouterWorld, job: Job, scale = 1): CellWindow {
   const shapes = [...job.start, ...job.end].flatMap((piece) => piece.shapes)
   const box = shapes.length > 0 ? boxOf(shapes) : { minX: Math.min(job.from.x, job.to.x), minY: Math.min(job.from.y, job.to.y), maxX: Math.max(job.from.x, job.to.x), maxY: Math.max(job.from.y, job.to.y) }
-  const margin = Math.max(WINDOW_MARGIN, (box.maxX - box.minX) / 2, (box.maxY - box.minY) / 2)
+  const margin = scale * Math.max(WINDOW_MARGIN, (box.maxX - box.minX) / 2, (box.maxY - box.minY) / 2)
   return windowAround(world, { minX: box.minX - margin, minY: box.minY - margin, maxX: box.maxX + margin, maxY: box.maxY + margin })
 }
 
-/** Routes the job in its window, and over the whole board when the window has no way through. */
+/** A path dearer than this many times the plain distance between the pads is tried once more in a wider window. */
+const DETOUR_FACTOR = 3
+/** How much wider that window's margin is. */
+const WIDER = 3
+
+/**
+ * What a route between the two pad centres costs without congestion, at a guess: the straight 45° run on the grid and
+ * room for two vias (a pass under something), so a route is not widened only for changing layer.
+ */
+function plainCost(world: RouterWorld, job: Job): number {
+  const [dx, dy] = [Math.abs(job.from.x - job.to.x) / world.frame.pitch, Math.abs(job.from.y - job.to.y) / world.frame.pitch]
+  return STEP * Math.max(dx, dy) + (DIAGONAL - STEP) * Math.min(dx, dy) + 2 * VIA
+}
+
+const sameWindow = (a: CellWindow, b: CellWindow) => a.col0 === b.col0 && a.row0 === b.row0 && a.col1 === b.col1 && a.row1 === b.row1
+
+/**
+ * Routes the job in its window, and over the whole board when the window has no way through. Under penalties a
+ * window always has a way, perhaps a dear one: a path over DETOUR_FACTOR times the plain cost is tried once more in a
+ * window WIDER times as wide, and the cheaper of the two is kept.
+ */
 export function attempt(world: RouterWorld, job: Job, options: AttemptOptions = {}): Attempt {
   const window = jobWindow(world, job)
   const first = attemptIn(world, job, window, options)
-  if (first.routed || first.noPath !== true || isWholeBoard(world, window)) return first
+  if (first.routed) {
+    if (options.penalties === undefined || first.cost <= DETOUR_FACTOR * plainCost(world, job)) return first
+    const wide = jobWindow(world, job, WIDER)
+    if (sameWindow(wide, window)) return first
+    const second = attemptIn(world, job, wide, options)
+    return second.routed && second.cost < first.cost ? second : first
+  }
+  if (first.noPath !== true || isWholeBoard(world, window)) return first
   return attemptIn(world, job, wholeBoard(world), options)
 }
 

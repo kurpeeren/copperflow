@@ -3,7 +3,9 @@ import { naturalCompare } from "../order.js"
 import type { PlacedFootprint, WorldPad } from "../pcb.js"
 import { offenders, type Laid } from "./clear.js"
 import { copperObstacles, type Congestion } from "./congestion.js"
-import { netRule, why } from "./connect.js"
+import { copperTouches } from "../copper.js"
+import { attempt, netRule, why } from "./connect.js"
+import { islandsOf } from "./ends.js"
 import type { RouterWorld } from "./grid.js"
 import type { Obstacle } from "./obstacles.js"
 import type { RoutedCopper } from "./path.js"
@@ -13,7 +15,9 @@ import type { RouteBoardInput, RoutedConnection, UnroutedConnection } from "./ro
  * Copying an instance's routes to the other instances of its sheet, as Replicate layout does: where a target's parts
  * sit in its own frame exactly as the source's sit in theirs, each route of the source is turned into the target's
  * frame, onto the same pads of the target's parts and the nets those pads are on. A copy is kept only when the exact
- * clearance check passes against everything already on the board and laid in the run; otherwise it is reported.
+ * clearance check passes against everything already on the board and laid in the run; otherwise it is reported. A copy
+ * whose ends would not touch the target's pads (a source route ending on hand copper the target lacks) is not made:
+ * that connection is routed for the target on its own.
  */
 
 export interface Replica {
@@ -100,6 +104,19 @@ function copyOffenders(world: RouterWorld, input: RouteBoardInput, copper: Route
   return [...found].sort(naturalCompare)
 }
 
+/** The pad and the copper of its net already joined to it, in the target. */
+function islandIn(world: RouterWorld, input: RouteBoardInput, pad: WorldPad): Obstacle[] {
+  const islands = islandsOf(input.layout, world.obstacles.filter((piece) => piece.net === pad.net))
+  return islands.find((island) => island.some((piece) => piece.id === pad.id)) ?? world.obstacles.filter((piece) => piece.id === pad.id)
+}
+
+/** Whether the copper touches the island's copper on a shared layer, so the copy really ends there. */
+function touches(copper: RoutedCopper, className: string, island: readonly Obstacle[]): boolean {
+  return copperObstacles(copper, className).some((piece) =>
+    island.some((other) => piece.layers.some((layer) => other.layers.includes(layer)) && piece.shapes.some((a) => other.shapes.some((b) => copperTouches(a, b)))),
+  )
+}
+
 export interface Copies {
   routed: RoutedConnection[]
   unrouted: UnroutedConnection[]
@@ -131,13 +148,25 @@ export function replicate(world: RouterWorld, input: RouteBoardInput, name: stri
       const [from, to] = [padIn(route.from), padIn(route.to)]
       if (from === undefined || to === undefined || from.net === undefined || from.net !== to.net) continue
       if (!missing.has([from.id, to.id].sort(naturalCompare).join(" "))) continue
+      const rule = netRule(input.rules, input.nets, from.net)
+      const [start, end] = [islandIn(world, input, from), islandIn(world, input, to)]
       const copper = moved(route.copper, from.net, frameOf(source), frameOf(target))
+      if (!touches(copper, rule.className, start) || !touches(copper, rule.className, end)) {
+        const result = attempt(world, { rule, from, to, start, end }, { extra: walls })
+        if (!result.routed) {
+          copies.unrouted.push({ net: from.net, from: from.id, to: to.id, reason: result.reason, blockers: result.blockers })
+          continue
+        }
+        walls.push(...copperObstacles(result.copper, rule.className))
+        copies.routed.push({ net: from.net, from: from.id, to: to.id, copper: result.copper, cost: result.cost })
+        continue
+      }
       const blockers = copyOffenders(world, input, copper, walls)
       if (blockers.length > 0) {
         copies.unrouted.push({ net: from.net, from: from.id, to: to.id, reason: why(from, to, blockers, "no-path", 0), blockers })
         continue
       }
-      walls.push(...copperObstacles(copper, netRule(input.rules, input.nets, from.net).className))
+      walls.push(...copperObstacles(copper, rule.className))
       copies.routed.push({ net: from.net, from: from.id, to: to.id, copper, copiedFrom: source.name })
       copied++
     }

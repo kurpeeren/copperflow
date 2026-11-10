@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest"
 import { buildDesign } from "../../src/engine/design.js"
 import type { PcbLayout } from "../../src/engine/pcb.js"
+import { attempt, classLookup, netRule } from "../../src/engine/router/connect.js"
+import { routerWorld } from "../../src/engine/router/grid.js"
 import { checkRouted, layoutLines, routeIn } from "../helpers/route-check.js"
 
 const MAIN = "main.circuit.tsx"
@@ -155,5 +157,29 @@ describe("pads no grid cell lies on", () => {
     const files = fine(`    <keepout pcbX={0.125} pcbY={0} width={6} height={6} />`)
     const result = routeIn(buildDesign(files, MAIN), "U1#2", "R1#1")
     expect(result).toEqual({ routed: false, reason: "could not route U1.pin2 to R1.pin1: U1.pin2 has no free grid cell, blocked by U1#1 and U1#3", blockers: ["U1#1", "U1#3"] })
+  })
+})
+
+describe("a dear path in the first window", () => {
+  test("is tried once more in a wider window, and the cheaper detour is kept", () => {
+    const files = { [MAIN]: board(60, 60, [resistor("R1", -2.5, 0), resistor("R2", 2.5, 0), trace("R1.pin2", "SIG"), trace("R2.pin1", "SIG")].join("\n")) }
+    const design = buildDesign(files, MAIN)
+    const world = routerWorld(design.pcb, design.rules, classLookup(design.rules, design.circuit.nets))
+    const piece = (id: string) => world.obstacles.filter((one) => one.id === id)
+    const [from, to] = [padAt(design.pcb, "R1#2"), padAt(design.pcb, "R2#1")]
+    const job = { rule: netRule(design.rules, design.circuit.nets, "net.SIG"), from, to, start: piece("R1#2"), end: piece("R2#1") }
+    const wall = (grid: { cols: number; rows: number; pitch: number; originCol: number; originRow: number; layers: readonly string[] }) => {
+      const cells = grid.cols * grid.rows
+      const track = grid.layers.map(() => new Int32Array(cells))
+      for (let cell = 0; cell < cells; cell++) {
+        const [x, y] = [(grid.originCol + (cell % grid.cols)) * grid.pitch, (grid.originRow + Math.floor(cell / grid.cols)) * grid.pitch]
+        if (Math.abs(x) <= 0.5 && Math.abs(y) <= 10) for (const map of track) map[cell] = 100_000
+      }
+      return { track, via: new Int32Array(cells) }
+    }
+    const result = attempt(world, job, { penalties: wall })
+    if (!result.routed) throw new Error(result.reason)
+    expect(result.cost).toBeLessThan(100_000)
+    expect(Math.max(...result.copper.tracks.flatMap((track) => track.points.map((p) => Math.abs(p.y))))).toBeGreaterThan(10)
   })
 })

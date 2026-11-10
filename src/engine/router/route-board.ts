@@ -2,10 +2,10 @@ import type { Component, SheetInstance } from "../model.js"
 import { naturalCompare } from "../order.js"
 import type { RatsnestLine, WorldPad } from "../pcb.js"
 import { SearchBuffers } from "./astar.js"
-import { Congestion, clearOf, near, placeRoute, type Placed } from "./congestion.js"
+import { Congestion, clearOf, near, placeRoute, type Occupancy, type Placed } from "./congestion.js"
 import { attempt, classLookup, netRule, type Job, type RouteInput } from "./connect.js"
 import { islandsOf } from "./ends.js"
-import { routerWorld, type NetRule, type RouterWorld } from "./grid.js"
+import { routerWorld, type CellWindow, type NetRule, type RouterWorld } from "./grid.js"
 import type { Obstacle } from "./obstacles.js"
 import type { RoutedCopper } from "./path.js"
 import { replicate, type Replica } from "./replicate.js"
@@ -34,6 +34,8 @@ export interface RouteBoardOptions {
   scope?: RouteScope
   /** The most negotiation passes; 30 by default. */
   maxPasses?: number
+  /** The most states one search takes before it gives up (the search's own bound by default). */
+  maxExpansions?: number
 }
 
 export interface RoutedConnection {
@@ -130,6 +132,7 @@ function connectionsOf(world: RouterWorld, input: RouteBoardInput, lines: readon
 }
 
 interface Run {
+  maxExpansions?: number
   world: RouterWorld
   congestion: Congestion
   buffers: SearchBuffers
@@ -141,22 +144,30 @@ const unrouted = (connection: Connection, reason: string, blockers: string[]): U
 /** Routes one connection in pass `pass` against the others' copper as a cost; returns the routes it is in conflict with. */
 function negotiate(run: Run, connection: Connection, pass: number): Set<number> | undefined {
   const { world, congestion } = run
+  const before = congestion.placed.get(connection.index)
   congestion.placed.delete(connection.index)
-  let occupancy: ReturnType<Congestion["costs"]> | undefined
+  const occupancies = new Map<CellWindow, Occupancy>()
   const result = attempt(world, connection.job, {
     extra: congestion.holes(),
     buffers: run.buffers,
+    ...(run.maxExpansions === undefined ? {} : { maxExpansions: run.maxExpansions }),
     penalties: (grid, window) => {
-      occupancy = congestion.costs(connection.job.rule, grid, window, pass)
+      const occupancy = congestion.costs(connection.job.rule, grid, window, pass)
+      occupancies.set(window, occupancy)
       return occupancy.penalties
     },
   })
   if (!result.routed) {
+    if (result.limit === true && before !== undefined) {
+      congestion.placed.set(connection.index, before)
+      return new Set()
+    }
     run.failed.set(connection.index, unrouted(connection, result.reason, result.blockers))
     return undefined
   }
   const placed = placeRoute(world, connection.index, result.copper, connection.job.rule.className, result.steps, result.grid, result.window, legsOf(result.copper, connection.job), result.cost)
   congestion.placed.set(connection.index, placed)
+  const occupancy = occupancies.get(result.window)
   return occupancy === undefined ? new Set() : congestion.conflicts(world, connection.job.rule, placed, occupancy, result.grid, result.window)
 }
 
@@ -199,7 +210,7 @@ function settle(run: Run, connections: readonly Connection[]): void {
     }
     congestion.placed.delete(connection.index)
     const walls = [...kept.flatMap((other) => other.pieces), ...congestion.holes()]
-    const result = attempt(world, connection.job, { extra: walls, buffers: run.buffers })
+    const result = attempt(world, connection.job, { extra: walls, buffers: run.buffers, ...(run.maxExpansions === undefined ? {} : { maxExpansions: run.maxExpansions }) })
     if (!result.routed) {
       run.failed.set(connection.index, unrouted(connection, result.reason, result.blockers))
       continue
@@ -216,7 +227,7 @@ export function routeBoard(input: RouteBoardInput, options: RouteBoardOptions = 
   const scope = options.scope ?? { kind: "all" }
   const world = routerWorld(input.layout, input.rules, classLookup(input.rules, input.nets))
   const connections = connectionsOf(world, input, linesIn(input, scope))
-  const run: Run = { world, congestion: new Congestion(world), buffers: new SearchBuffers(), failed: new Map() }
+  const run: Run = { ...(options.maxExpansions === undefined ? {} : { maxExpansions: options.maxExpansions }), world, congestion: new Congestion(world), buffers: new SearchBuffers(), failed: new Map() }
   const passes = connections.length === 0 ? 0 : negotiateAll(run, connections, options.maxPasses ?? MAX_PASSES)
   settle(run, connections)
   const routed = connections.flatMap((connection) => {

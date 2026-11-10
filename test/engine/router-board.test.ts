@@ -19,8 +19,8 @@ const keepout = (x: number, y: number, width: number, height: number) => `    <k
 const withoutTime = (report: RouteReport) => ({ ...report, ms: 0 })
 
 /** Every routed copper laid on the board: zero copper violations, nothing added, and the routed lines gone. */
-function expectClean(files: Record<string, string>, report: RouteReport) {
-  const checked = checkRoutedAll(files, MAIN, report.routed.map((route) => route.copper))
+function expectClean(files: Record<string, string>, report: RouteReport, first = 1) {
+  const checked = checkRoutedAll(files, MAIN, report.routed.map((route) => route.copper), first)
   expect(checked.copper).toEqual([])
   expect(checked.added).toEqual([])
   const left = new Set(checked.after.pcb.ratsnest.map((line) => [line.from, line.to].sort().join(" ")))
@@ -93,7 +93,7 @@ describe("routing the whole board", () => {
     expectClean(files, report)
   })
 
-  test("three nets wanting a gap with room for one track a layer: two get it, the third is reported with the routes in its way", () => {
+  test("three nets wanting a gap with room for one track a layer: two get it, the third is reported; twice the same, and a search bound hit in a late pass keeps the earlier route", () => {
     const files = {
       [MAIN]: board(20, 14, [
         resistor("R1", -6, -2),
@@ -120,6 +120,10 @@ describe("routing the whole board", () => {
     expect(lost?.reason).toMatch(/^could not route R\d\.pin2 to R\d\.pin1: no room between /)
     expect(lost?.blockers).toEqual(expect.arrayContaining(report.routed.map((route) => route.net)))
     expectClean(files, report)
+    expect(withoutTime(routeDesign(buildDesign(files, MAIN), { maxPasses: 4 }))).toEqual(withoutTime(report))
+    const bounded = routeDesign(buildDesign(files, MAIN), { maxPasses: 4, maxExpansions: 8000 })
+    expect(bounded.routed).toHaveLength(2)
+    expectClean(files, bounded)
   })
 
   test("the scope narrows the run to some nets or the connections of some parts", () => {
@@ -202,5 +206,20 @@ describe("routing one instance of a sheet", () => {
     const report = routeDesign(moved, { scope: { kind: "instance", instance: "P1" } })
     expect(report.routed.every((route) => route.copiedFrom === undefined)).toBe(true)
     expect(report.replicas).toEqual([{ instance: "P2", copied: 0, reason: "its placement differs from P1" }])
+  })
+
+  test("a route ending on hand copper of the source is not copied where that copper is missing; that instance is routed itself", () => {
+    const plain = buildDesign(files, MAIN)
+    const pad = plain.pcb.parts.flatMap((part) => part.pads).find((one) => one.id === "R101#2")
+    if (pad?.net === undefined) throw new Error("no R101#2")
+    const stub = { t: "track", id: "t0001", net: pad.net, layer: "top", width: 0.25, points: [{ x: pad.x, y: pad.y }, { x: pad.x + 1.5, y: pad.y }], locked: false, by: "human" }
+    const withStub = { ...files, "main.circuit.layout.json": `${JSON.stringify(stub)}\n` }
+    const report = routeDesign(buildDesign(withStub, MAIN), { scope: { kind: "instance", instance: "P1" } })
+    expect(report.unrouted).toEqual([])
+    const inP2 = report.routed.filter((route) => route.from.startsWith("R201#2") || route.to.startsWith("R201#2"))
+    expect(inP2).toHaveLength(1)
+    expect(inP2[0]?.copiedFrom).toBeUndefined()
+    const checked = expectClean(withStub, report, 2)
+    expect(checked.after.pcb.ratsnest).toEqual([])
   })
 })
