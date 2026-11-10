@@ -64,3 +64,12 @@ export function shownLabel(state: RestState): { text: string; left: number; top:
   if (state.phase !== "shown") return undefined
   return { text: state.target.text, left: state.at.x + LABEL_OFFSET_PX, top: state.at.y + LABEL_OFFSET_PX }
 }
+
+/**
+ * Where the label's corner goes for a label of `label` size in a canvas of `area` size: right-below the pointer, or
+ * left of it (above it) when it would run past the right (bottom) edge, and never past the top left corner.
+ */
+export function placeLabel(corner: { left: number; top: number }, label: { width: number; height: number }, area: { width: number; height: number }): { left: number; top: number } {
+  const flip = (start: number, size: number, room: number) => (start + size > room ? Math.max(0, start - 2 * LABEL_OFFSET_PX - size) : start)
+  return { left: flip(corner.left, label.width, area.width), top: flip(corner.top, label.height, area.height) }
+}

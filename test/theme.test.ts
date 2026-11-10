@@ -191,12 +191,12 @@ describe("type", () => {
     for (const sheet of sheets()) expect([sheet, /text-transform: *uppercase/.test(read(sheet))]).toEqual([sheet, false])
   })
 
-  test("11px is the status line's alone", () => {
+  test("11px is the status line's and the hover label's alone", () => {
     const small = sheets().flatMap((sheet) => {
       const css = read(sheet)
       return [...css.matchAll(/\n([^\n{}]+) \{[^}]*font-size: 11px;/g)].map((m) => `${sheet}: ${m[1]}`)
     })
-    expect(small.sort()).toEqual(["styles.css: .canvas-status", "styles.css: .canvas-status .unit-toggle"])
+    expect(small.sort()).toEqual(["pcb/hover-label.css: .hover-label", "styles.css: .canvas-status", "styles.css: .canvas-status .unit-toggle"])
   })
 })
 
@@ -365,5 +365,20 @@ describe("the dark theme's tokens", () => {
     const names = [...darkBlock().matchAll(/\n\s*(--[\w-]+):/g)].map((m) => m[1] as string)
     expect(names.length).toBeGreaterThan(10)
     for (const name of names) expect([name, token(name) !== undefined]).toEqual([name, true])
+  })
+})
+
+describe("the hover label's look", () => {
+  const sheet = () => read("pcb/hover-label.css")
+
+  test("its colours are tokens in theme.css: the panel's background, a hairline, the text colour", () => {
+    expect([token("--hover-label-background"), token("--hover-label-line"), token("--hover-label-text")]).toEqual(["var(--panel)", "var(--line)", "var(--text)"])
+  })
+
+  test("11px text on the token background with a hairline border, a 4px radius and the menus' shadow, over the canvas without taking the pointer", () => {
+    const declarations = rule(sheet(), ".hover-label")
+    for (const wanted of ["background: var(--hover-label-background);", "border: 1px solid var(--hover-label-line);", "color: var(--hover-label-text);", "font-size: 11px;", "border-radius: 4px;", "box-shadow: var(--shadow);", "pointer-events: none;", "position: absolute;"]) {
+      expect([wanted, declarations.includes(wanted)]).toEqual([wanted, true])
+    }
   })
 })

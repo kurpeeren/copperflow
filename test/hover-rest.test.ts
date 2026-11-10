@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { HOVER_IDLE, LABEL_OFFSET_PX, REST_MS, restDue, restStep, shownLabel, type RestEvent, type RestState } from "../studio/src/pcb/hover-rest.js"
+import { HOVER_IDLE, LABEL_OFFSET_PX, placeLabel, REST_MS, restDue, restStep, shownLabel, type RestEvent, type RestState } from "../studio/src/pcb/hover-rest.js"
 import { HOVER_LABELS_KEY, loadHoverLabels, saveHoverLabels } from "../studio/src/shell/hover-label-setting.js"
 
 const PAD = { kind: "pad" as const, id: "U1#5", text: "U1.5 VOUT · V3_3" }
@@ -68,6 +68,21 @@ describe("the hover label's rest", () => {
     const state = shown()
     expect(restStep(state, { kind: "tick", now: 1000 })).toBe(state)
     expect(restStep(HOVER_IDLE, { kind: "tick", now: 1000 })).toBe(HOVER_IDLE)
+  })
+})
+
+describe("the hover label's place", () => {
+  const AREA = { width: 400, height: 300 }
+  const LABEL = { width: 120, height: 20 }
+
+  test("right-below the pointer while it fits the canvas", () => {
+    expect(placeLabel({ left: 22, top: 32 }, LABEL, AREA)).toEqual({ left: 22, top: 32 })
+  })
+
+  test("left of the pointer near the right edge, above it near the bottom, never past the top left corner", () => {
+    // The pointer at (380, 290): the label's corner would be (392, 302).
+    expect(placeLabel({ left: 392, top: 302 }, LABEL, AREA)).toEqual({ left: 380 - 12 - 120, top: 290 - 12 - 20 })
+    expect(placeLabel({ left: 392, top: 32 }, { width: 500, height: 20 }, AREA)).toEqual({ left: 0, top: 32 })
   })
 })
 
