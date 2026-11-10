@@ -28,7 +28,7 @@ export interface Actions {
   redo(id?: string): Promise<EditOutcome>
   verify(id: string, by: string, against: string, confirm: string): Promise<boolean>
   /** Edit → Make sub-sheet: the parts moved into a new sheet file and an instance in their place, as one history entry. */
-  makeSheet(request: { name: string; parts: readonly string[]; rename: boolean }): Promise<boolean>
+  makeSheet(request: { name: string; parts: readonly string[]; rename: boolean; instance?: string }): Promise<boolean>
   /** Design rules: writes the fillet radius to rules.yaml (null for the default), as one history entry, and tells it. */
   setFilletRadius(radius: number | null): Promise<boolean>
   notify(text: string): void

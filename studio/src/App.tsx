@@ -14,7 +14,7 @@ import { BottomStrip } from "./shell/BottomStrip"
 import { watchDpr } from "./shell/dpr"
 import { StudioDialog, type DialogName } from "./shell/Dialogs"
 import type { MakeSheetPreview } from "./shell/make-sheet-form"
-import type { MakeSheetPanel } from "./shell/MakeSheetDialog"
+import type { MakeSheetChoice, MakeSheetPanel } from "./shell/MakeSheetDialog"
 import { MenuBar } from "./shell/MenuBar"
 import type { CommandsOff } from "./shell/menus"
 import type { DocView } from "./shell/page-tree"
@@ -243,8 +243,8 @@ function useMakeSheetPanel(file: string | undefined, parts: readonly string[], a
   return useMemo(
     () => ({
       parts,
-      preview: (name: string, rename: boolean) => api<MakeSheetPreview>("/api/make-sheet", { file, name, parts, rename, preview: true }),
-      make: (name: string, rename: boolean) => actions.makeSheet({ name, parts, rename }),
+      preview: (choice: MakeSheetChoice) => api<MakeSheetPreview>("/api/make-sheet", { file, parts, ...choice, preview: true }),
+      make: (choice: MakeSheetChoice) => actions.makeSheet({ parts, ...choice }),
     }),
     [file, parts, actions],
   )

@@ -36,6 +36,9 @@ export function designatorRows(preview: MakeSheetPreview): DesignatorRow[] {
   return preview.mapping.map((m) => ({ now: m.from, sheet: m.to, board: m.flat }))
 }
 
+/** The instance name field's placeholder: the default the server takes when it is left empty, <Sheet>1. */
+export const instancePlaceholder = (sheet: string): string => `${sheet.trim() || "PowerStage"}1`
+
 /** What the sheet name field says while it is empty. */
 export const SHEET_NAME_HINT = "Type the sheet's name, e.g. PowerStage: a capital letter, then letters, digits and _."
 
