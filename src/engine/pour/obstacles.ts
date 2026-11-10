@@ -52,6 +52,12 @@ export interface PadRelief {
  * (within 2 µm of the true arc) never bring the fill closer than the clearance.
  */
 const MARGIN = 0.003
+/**
+ * How much further than the clearance an earlier fill is grown, in mm: 10 µm. Both outlines are arcs drawn as chords
+ * (each up to 2 µm inside the true arc) and rounded to 1 µm, and a fill's sliver between two arcs can sit nearer
+ * still; 10 µm dominates all of it, so two fills always end at least the clearance apart.
+ */
+const FILL_MARGIN = 0.01
 /** How far the pour's own copper is grown to find the pieces it touches, in mm: 1 µm, so meeting at an edge counts. */
 const TOUCH = 0.001
 
@@ -94,7 +100,7 @@ function otherNets(pour: CopperPour, inputs: PourInputs): Paths {
 /** The earlier fills of other nets on the layer grown by the clearance; each comes out of the offset with its holes. */
 function earlierFills(pour: CopperPour, inputs: PourInputs, earlier: readonly EarlierFill[]): Paths {
   const fills = earlier.filter((fill) => fill.layer === pour.layer && fill.net !== pour.net)
-  return fills.flatMap((fill) => offset(fill.paths, gapTo(pour, inputs, fill.net) + MARGIN, "round"))
+  return fills.flatMap((fill) => offset(fill.paths, gapTo(pour, inputs, fill.net) + FILL_MARGIN, "round"))
 }
 
 function boardObstacles(pour: CopperPour, inputs: PourInputs): Paths {
