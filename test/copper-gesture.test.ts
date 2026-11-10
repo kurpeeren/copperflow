@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest"
-import { copperDragShapes, endCopperDrag, followCopperDrag, groupParts, startCopperDrag, startGroupDrag } from "../studio/src/pcb/copper-gesture.js"
+import { copperDragShapes, endCopperDrag, followCopperDrag, groupParts, keepSegment, segmentAfterDrag, startCopperDrag, startGroupDrag } from "../studio/src/pcb/copper-gesture.js"
+import { Selection } from "../studio/src/selection.js"
 import type { CopperRecords } from "../studio/src/pcb/copper-edits.js"
 
 const p = (x: number, y: number) => ({ x, y })
@@ -50,6 +51,48 @@ describe("a track's drag", () => {
     const drag = startCopperDrag({ kind: "track", id: "t0001" }, records(), { world: p(5, 0), point: START, scale: SCALE, sole: false, width: 0.25 })
     if (!drag) throw new Error("no drag")
     expect(endCopperDrag(drag, records(), noPad)).toBeUndefined()
+  })
+})
+
+describe("a selected segment's drag", () => {
+  const bent: CopperRecords = { tracks: [{ id: "t0003", layer: "top", points: [p(0, 0), p(10, 0), p(10, 10)], locked: false }], vias: [] }
+  const press = (world: { x: number; y: number }) => startCopperDrag({ kind: "track", id: "t0003" }, bent, { world, point: START, scale: SCALE, sole: true, width: 0.25 })
+  const selected = Selection.none.onlySegment("t0003", 1)
+
+  test("a press on the selected segment keeps it; on another segment or on a corner handle it does not", () => {
+    const on = press(p(10.1, 5))
+    expect(on && keepSegment(on, selected.segment)).toMatchObject({ grip: { kind: "segment", index: 1 }, segment: 1 })
+    const other = press(p(5, 0.1))
+    expect(other && keepSegment(other, selected.segment).segment).toBeUndefined()
+    const corner = press(p(10, 0))
+    expect(corner?.grip).toEqual({ kind: "corner", index: 1 })
+    expect(corner && keepSegment(corner, selected.segment).segment).toBeUndefined()
+    expect(on && keepSegment(on, undefined).segment).toBeUndefined()
+  })
+
+  test("it reshapes the track as the whole track's segment drag does, and the moved segment stays selected", () => {
+    const on = press(p(10.1, 5))
+    if (!on) throw new Error("no drag")
+    const kept = keepSegment(on, selected.segment)
+    const moved = followCopperDrag(kept, p(3, 0.2), GRID, () => undefined)
+    const plain = followCopperDrag(on, p(3, 0.2), GRID, () => undefined)
+    expect(moved.path).toEqual(plain.path)
+    expect(moved.path).toEqual([p(0, 0), p(13, 0), p(13, 10), p(10, 10)])
+    expect(endCopperDrag(moved, bent, noPad)).toEqual(endCopperDrag(plain, bent, noPad))
+    expect(segmentAfterDrag(moved)?.(selected)).toMatchObject({ copper: ["t0003"], segment: { id: "t0003", index: 1 } })
+  })
+
+  test("a click on the selected segment that does not move selects the whole track", () => {
+    const on = press(p(10.1, 5))
+    if (!on) throw new Error("no drag")
+    const after = segmentAfterDrag(keepSegment(on, selected.segment))?.(selected)
+    expect(after?.copper).toEqual(["t0003"])
+    expect(after?.segment).toBeUndefined()
+  })
+
+  test("a drag of a whole track leaves the selection to the press", () => {
+    const on = press(p(10.1, 5))
+    expect(on && segmentAfterDrag(followCopperDrag(on, p(3, 0), GRID, () => undefined))).toBeUndefined()
   })
 })
 

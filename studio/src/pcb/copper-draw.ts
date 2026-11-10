@@ -2,7 +2,7 @@
 // round-joined strokes in their layer's colour (the inactive copper layer first and dimmed to 40%, as EasyEDA does),
 // then vias as a ring in the plated colour with a dark hole, then the track tool's copper (the route being drawn, and
 // those waiting for their build at 70%), then the hover outline and the selection (a white outline and the 50% white
-// wash). Copper on a layer the board lacks is an error and is drawn in the keepout colour, not as copper. The Layer
+// wash; a selected segment has them along that segment alone). Copper on a layer the board lacks is an error and is drawn in the keepout colour, not as copper. The Layer
 // panel's rows decide what shows (copper-hit.ts copperShown).
 import type { PcbTrack, PcbVia } from "../../../src/engine/pcb.js"
 import { PALETTE, PCB_DIM, type Ctx } from "./ctx.js"
@@ -10,6 +10,7 @@ import { copperShown, stray } from "./copper-hit.js"
 import type { Point } from "./geometry.js"
 import type { LayerVisibility } from "./layers.js"
 import type { RouteDrawing } from "./track-tool.js"
+import type { TrackSegment } from "../selection.js"
 
 /** The copper layer not being worked on is drawn at this alpha. */
 export const INACTIVE_COPPER_ALPHA = 0.4
@@ -28,6 +29,8 @@ export interface CopperScene {
   activeLayer?: "top" | "bottom"
   /** The selected tracks and vias, by id. */
   selected: ReadonlySet<string>
+  /** The segment selected of the selected track: only it is marked. */
+  segment?: TrackSegment
   /** The track or via under the pointer. */
   hover?: string
   /** The track tool's copper: the route being drawn (alpha 1) and those waiting for their build (PENDING_ROUTE_ALPHA). */
@@ -98,13 +101,21 @@ function drawRoutes(ctx: Ctx, scene: CopperScene, layers: LayerVisibility): void
   ctx.globalAlpha = 1
 }
 
+/** The points a mark of `track` follows: the selected segment's two ends, or the whole track. */
+function markedPoints(scene: CopperScene, track: CopperTrackDraw, wash: boolean): readonly Point[] {
+  const index = wash && scene.segment?.id === track.id ? scene.segment.index : undefined
+  const piece = index === undefined ? [] : track.points.slice(index, index + 2)
+  return piece.length === 2 ? piece : track.points
+}
+
 /** An outline of the track or via `id` in `color`, and with `wash` the 50% white over it; `px` is one CSS pixel in mm. */
 function mark(ctx: Ctx, scene: CopperScene, layers: LayerVisibility, id: string, color: string, wash: boolean, px: number): void {
   const track = scene.tracks.find((one) => one.id === id)
   if (track && trackShown(track, layers)) {
-    strokePath(ctx, track.points, color, track.width + 2 * OUTLINE_PX * px)
-    strokePath(ctx, track.points, trackColor(track), track.width)
-    if (wash) strokePath(ctx, track.points, PALETTE.selectionFill, track.width)
+    const points = markedPoints(scene, track, wash)
+    strokePath(ctx, points, color, track.width + 2 * OUTLINE_PX * px)
+    strokePath(ctx, points, trackColor(track), track.width)
+    if (wash) strokePath(ctx, points, PALETTE.selectionFill, track.width)
     return
   }
   const via = scene.vias.find((one) => one.id === id)

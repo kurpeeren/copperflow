@@ -4,7 +4,8 @@
 // the Properties of a single part or centring the camera. A value: every change returns a new selection, or the same
 // one when nothing changed, so React sees what changed. The part counts (`names`, `size`, `primary`) count parts only,
 // so the part commands (Rotate, align, Lock) act on the parts; `wires` holds the wires, `labels` the labels, `drawings`
-// the drawings, `copper` the tracks and vias, and `total` counts all five, as "Selected objects: N" does.
+// the drawings, `copper` the tracks and vias, and `total` counts all five, as "Selected objects: N" does. A double
+// click on a track selects one of its segments: the track alone in `copper`, with `segment` naming which.
 
 /** A change to the selection, from what it is to what it becomes; the canvases, panels and keys send these. */
 export type SelectionChange = (current: Selection) => Selection
@@ -29,6 +30,12 @@ interface Lists {
   drawings: readonly string[]
   copper: readonly string[]
   texts: readonly string[]
+}
+
+/** One segment of a track: the track's id and the segment's index (0 runs from its first point to the second). */
+export interface TrackSegment {
+  readonly id: string
+  readonly index: number
 }
 
 const EMPTY: Lists = { names: [], wires: [], labels: [], drawings: [], copper: [], texts: [] }
@@ -56,13 +63,17 @@ export class Selection {
   /** Parts' names and values on the schematic and designators on the silkscreen, as "<part>:<prop>" ("R1:schNameAt"), oldest pick first. */
   readonly texts: readonly string[]
 
-  private constructor(lists: Lists) {
+  /** The segment of the track selected alone that a double click picked; undefined when the whole track (or anything else) is. */
+  readonly segment: TrackSegment | undefined
+
+  private constructor(lists: Lists, segment?: TrackSegment) {
     this.names = Object.freeze([...lists.names])
     this.wires = Object.freeze([...lists.wires])
     this.labels = Object.freeze([...lists.labels])
     this.drawings = Object.freeze([...lists.drawings])
     this.copper = Object.freeze([...lists.copper])
     this.texts = Object.freeze([...lists.texts])
+    this.segment = segment && Object.freeze({ id: segment.id, index: segment.index })
     Object.freeze(this)
   }
 
@@ -194,9 +205,14 @@ export class Selection {
     return this.soleText === id ? this : new Selection({ ...EMPTY, texts: [id] })
   }
 
-  /** Just this track or via. */
+  /** Just this track or via, the whole track even when one of its segments was selected. */
   onlyCopper(id: string): Selection {
-    return this.soleCopper === id ? this : new Selection({ ...EMPTY, copper: [id] })
+    return this.soleCopper === id && !this.segment ? this : new Selection({ ...EMPTY, copper: [id] })
+  }
+
+  /** Just this segment of this track. */
+  onlySegment(id: string, index: number): Selection {
+    return this.segment?.id === id && this.segment.index === index ? this : new Selection({ ...EMPTY, copper: [id] }, { id, index })
   }
 
   /** The part taken out when it is in, else added as the primary; the other kinds stay. */

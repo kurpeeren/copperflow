@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { boxSelection } from "../studio/src/pcb/box-select.js"
-import { copperAt, copperBoxes, copperGrip, copperInBox, copperShown, type CopperShapes } from "../studio/src/pcb/copper-hit.js"
+import { copperAt, copperBoxes, copperGrip, copperInBox, copperShown, segmentUnder, type CopperShapes } from "../studio/src/pcb/copper-hit.js"
 import { DEFAULT_LAYERS } from "../studio/src/pcb/layers.js"
 import { ALL_PICKABLE } from "../studio/src/pcb/pick-filter.js"
 import { selectAll, type PickContext } from "../studio/src/pcb/pick.js"
@@ -101,5 +101,26 @@ describe("copper in a selection box and in Select all", () => {
     const copper = [{ kind: "track" as const, id: "t0001" }, { kind: "via" as const, id: "v0001" }]
     expect(selectAll(["R1"], undefined, undefined, [], [], [], copper)(Selection.none).copper).toEqual(["t0001", "v0001"])
     expect(selectAll(["R1"], undefined, { ...ALL_PICKABLE, tracks: false }, [], [], [], copper)(Selection.none).copper).toEqual(["v0001"])
+  })
+})
+
+describe("segmentUnder: what a double click picks", () => {
+  const under = (x: number, y: number, over: Partial<PickContext> = {}) => segmentUnder(shapes, { x, y }, SCALE, DEFAULT_LAYERS, context(over))
+
+  test("the segment of the track under the pointer, by its index", () => {
+    expect(under(5, 0.3)).toEqual({ id: "t0001", index: 0 })
+    expect(under(10.3, 6)).toEqual({ id: "t0001", index: 1 })
+    expect(under(5, 2.1)).toEqual({ id: "t0002", index: 0 })
+  })
+
+  test("nothing on a via, off the copper, or on a track the Filter tab leaves out", () => {
+    expect(under(10, 0.2)).toBeUndefined()
+    expect(under(5, 5)).toBeUndefined()
+    expect(under(5, 0.3, { filter: { ...ALL_PICKABLE, tracks: false } })).toBeUndefined()
+  })
+
+  test("as a selection: the track alone with that segment", () => {
+    const picked = under(10.3, 6)
+    expect(picked && Selection.none.onlySegment(picked.id, picked.index)).toMatchObject({ copper: ["t0001"], segment: { id: "t0001", index: 1 } })
   })
 })

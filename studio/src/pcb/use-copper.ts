@@ -1,19 +1,20 @@
 // The PCB canvas's copper: the tracks and vias as shown (the design's, with the shapes of a drag or of an edit still
 // waiting for its build in their place), the one under the pointer, a press that selects one and drags it (a track's
-// segment or corner, a via), the arrow keys that move copper selected on its own, and Delete's part for copper. The
+// segment or corner, a via), the segment a double click picks, the arrow keys that move copper selected on its own, and
+// Delete's part for copper (a selected segment splits its track). The
 // logic is in copper-hit.ts, copper-gesture.ts and copper-edits.ts; this hook holds the state and sends the edits.
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent, type RefObject } from "react"
 import type { Design } from "../api"
 import type { Actions } from "../App"
 import type { EditOutcome } from "../use-actions"
-import { Selection, togglesSelection, type SelectionChange } from "../selection"
+import { Selection, togglesSelection, type SelectionChange, type TrackSegment } from "../selection"
 import { keyAction, keyInput, nudgeDirection } from "./canvas-keys"
 import { toLocal } from "./canvas-common"
 import type { CopperScene } from "./copper-draw"
-import { copperNudges, copperRemoval, moveCopper, NO_SHAPES, withShapes, type OnPad } from "./copper-edits"
+import { copperNudges, copperRemoval, moveCopper, NO_SHAPES, segmentDeletion, withShapes, type OnPad } from "./copper-edits"
 import { addPending, dropPending, inFlight, markPending, pendingMoving, pendingShapes, settlePending, type PendingCopper } from "./copper-pending"
-import { copperDragShapes, endCopperDrag, followCopperDrag, groupParts, startCopperDrag, startGroupDrag, type CopperChange, type CopperDrag } from "./copper-gesture"
-import { copperAt } from "./copper-hit"
+import { copperDragShapes, endCopperDrag, followCopperDrag, groupParts, keepSegment, segmentAfterDrag, startCopperDrag, startGroupDrag, type CopperChange, type CopperDrag } from "./copper-gesture"
+import { copperAt, segmentUnder } from "./copper-hit"
 import { screenToWorld, type Camera, type Point, type Size } from "./geometry"
 import { nameList, nudgeOffset } from "./group-edits"
 import type { LayerVisibility } from "./layers"
@@ -122,8 +123,8 @@ function useCopperKeys(latest: RefObject<Latest>): void {
 
 /**
  * A press on copper: Shift or Ctrl toggles it; on copper selected with other things the whole selection is dragged
- * (parts and copper by one offset); else it is selected alone and its drag begins. A plain press on a part selected
- * with copper drags the whole selection too.
+ * (parts and copper by one offset); on the selected segment its drag begins and the segment stays selected; else it is
+ * selected alone and its drag begins. A plain press on a part selected with copper drags the whole selection too.
  */
 function pressCopper(input: CopperInput, shown: Shown, world: Point, event: Press): CopperDrag | "toggled" | undefined {
   const { camera, selection } = input
@@ -136,9 +137,11 @@ function pressCopper(input: CopperInput, shown: Shown, world: Point, event: Pres
   }
   if (selection.hasCopper(hit.id) && selection.total > 1) return startGroupDrag({ id: hit.id, names: selection.names, copper: selection.copper, start: world })
   const sole = selection.soleCopper === hit.id
-  input.onSelect((current) => current.onlyCopper(hit.id))
   const width = shown.tracks.find((track) => track.id === hit.id)?.width ?? 0
-  return startCopperDrag(hit, shown, { world, point: world, scale: camera.scale, sole, width }) ?? "toggled"
+  const started = startCopperDrag(hit, shown, { world, point: world, scale: camera.scale, sole, width })
+  const drag = started && keepSegment(started, selection.segment)
+  if (drag?.segment === undefined) input.onSelect((current) => current.onlyCopper(hit.id))
+  return drag ?? "toggled"
 }
 
 /** A plain press on a part selected with copper: the group's drag, from the part's origin; a locked part is left to the canvas, which says why. */
@@ -150,8 +153,17 @@ function pressPartWithCopper(input: CopperInput, world: Point, event: Press): Co
   return startGroupDrag({ part, names: selection.names, copper: selection.copper, start: world, origin: parts.originOf(part) })
 }
 
-/** Delete's part for copper: the selected tracks and vias that may go, in one change; the locked ones are named. */
+/** Delete on the selected segment: its track split into the runs left, in one change; the selection goes with it. */
+function removeSegment(input: CopperInput, shown: Shown, segment: TrackSegment): void {
+  const change = segmentDeletion(shown.tracks.find((track) => track.id === segment.id), segment)
+  if ("message" in change) return input.actions.notify(`Not removed: ${change.message}`)
+  void input.actions.editLayout(change.edits, change.summary).then((outcome) => outcome.ok && input.onSelect((current) => current.withoutCopper([segment.id])))
+}
+
+/** Delete's part for copper: the selected tracks and vias that may go, in one change; the locked ones are named; a selected segment alone splits its track. */
 function removeCopper(input: CopperInput, shown: Shown, ids: readonly string[]): void {
+  const { segment } = input.selection
+  if (segment && ids.length === 1 && ids[0] === segment.id) return removeSegment(input, shown, segment)
   const { edits, removed, skipped } = copperRemoval(shown, ids)
   if (skipped.length > 0) input.actions.notify(`Not removed: ${skipped.join("; ")}`)
   if (edits.length === 0) return
@@ -181,7 +193,7 @@ export function useCopper(input: CopperInput) {
   latest.current = now
   useCopperKeys(latest)
   const live = useMemo(() => (drag ? withShapes(shown, copperDragShapes(drag, shown, onPad)) : shown), [drag, shown, onPad])
-  const scene: CopperScene = { tracks: live.tracks, vias: live.vias, selected: new Set(selection.copper), ...(hover === undefined ? {} : { hover }) }
+  const scene: CopperScene = { tracks: live.tracks, vias: live.vias, selected: new Set(selection.copper), ...(selection.segment ? { segment: selection.segment } : {}), ...(hover === undefined ? {} : { hover }) }
   // Stable, so the part keys do not listen again on every render.
   const keys = useMemo(() => ({ remove: (ids: readonly string[]) => removeCopper(latest.current.input, latest.current.shown, ids) }), [])
   const moving = useMemo(() => dragMoving(drag, input.parts) ?? pending.moving, [drag, input.parts, pending.moving])
@@ -201,6 +213,12 @@ export function copperIdAt(copper: CopperState, world: Point): string | undefine
   const { input, shown } = copper.latest.current
   const hit = input.camera && copperAt(shown, world, input.camera.scale, input.layers, { selection: Selection.none, armed: input.armed, filter: input.filter })
   return hit ? hit.id : undefined
+}
+
+/** The segment of the shown, pickable track under `world`, which a double click selects; undefined off tracks. */
+export function copperSegmentAt(copper: CopperState, world: Point): TrackSegment | undefined {
+  const { input, shown } = copper.latest.current
+  return input.camera && segmentUnder(shown, world, input.camera.scale, input.layers, { selection: input.selection, armed: input.armed, filter: input.filter })
 }
 
 /** The copper under `world` for the hover; true when there is some, so the part and pad under it are not hovered. */
@@ -233,6 +251,8 @@ function releaseCopper(copper: CopperState, drag: CopperDrag): void {
   copper.put(undefined)
   const { input, shown, onPad, send, sendParts } = copper.latest.current
   if (drag.kind === "group" && !drag.moved) return input.onSelect(aloneAfter(drag))
+  const segment = segmentAfterDrag(drag)
+  if (segment) input.onSelect(segment)
   const parts = groupParts(drag)
   if (parts) sendParts(parts, input.parts.move(parts.names, parts.offset))
   const end = endCopperDrag(drag, shown, onPad)

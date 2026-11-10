@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { copperLock, copperNudges, copperRemoval, mergeShapes, moveCopper, reshapeEdit, withShapes, type CopperRecords } from "../studio/src/pcb/copper-edits.js"
+import { copperLock, copperNudges, copperRemoval, mergeShapes, moveCopper, reshapeEdit, withShapes, type CopperRecords, segmentDeletion } from "../studio/src/pcb/copper-edits.js"
 import type { Point } from "../studio/src/pcb/geometry.js"
 
 const p = (x: number, y: number) => ({ x, y })
@@ -126,5 +126,34 @@ describe("copperNudges", () => {
     expect(copperNudges({ copper: ["t0001"], total: 1 }, true)).toBe(false)
     expect(copperNudges({ copper: ["t0001"], total: 2 }, false)).toBe(false)
     expect(copperNudges({ copper: [], total: 0 }, false)).toBe(false)
+  })
+})
+
+describe("segmentDeletion: Delete on a selected segment", () => {
+  const pt = (x: number, y: number) => ({ x, y })
+  const track = { id: "t0004", net: "net.3", named: "VBUS", layer: "top" as const, width: 0.4, points: [pt(0, 0), pt(5, 0), pt(5, 5), pt(9, 5)], locked: false }
+
+  test("a middle segment splits the track as one change, the new run keeping the net as the record names it", () => {
+    expect(segmentDeletion(track, { id: "t0004", index: 1 })).toEqual({
+      edits: [
+        { kind: "setTrack", id: "t0004", points: [pt(0, 0), pt(5, 0)] },
+        { kind: "addTrack", net: "VBUS", layer: "top", width: 0.4, points: [pt(5, 5), pt(9, 5)] },
+      ],
+      summary: "Delete segment 1 of t0004",
+    })
+  })
+
+  test("the first and the last segment shorten the track; a two-point track goes", () => {
+    expect(segmentDeletion(track, { id: "t0004", index: 0 })).toMatchObject({ edits: [{ kind: "setTrack", id: "t0004", points: [pt(5, 0), pt(5, 5), pt(9, 5)] }] })
+    expect(segmentDeletion(track, { id: "t0004", index: 2 })).toMatchObject({ edits: [{ kind: "setTrack", id: "t0004", points: [pt(0, 0), pt(5, 0), pt(5, 5)] }] })
+    expect(segmentDeletion({ ...track, points: [pt(0, 0), pt(5, 0)] }, { id: "t0004", index: 0 })).toMatchObject({ edits: [{ kind: "removeTrack", id: "t0004" }] })
+  })
+
+  test("a track with no named net keeps the net it carries; a locked or missing track is refused", () => {
+    const { named: _named, ...unnamed } = track
+    const split = segmentDeletion(unnamed, { id: "t0004", index: 1 })
+    expect("edits" in split && split.edits[1]).toMatchObject({ net: "net.3" })
+    expect(segmentDeletion({ ...track, locked: true }, { id: "t0004", index: 1 })).toEqual({ message: "t0004 is locked" })
+    expect(segmentDeletion(undefined, { id: "t0004", index: 1 })).toEqual({ message: "t0004 is gone" })
   })
 })
