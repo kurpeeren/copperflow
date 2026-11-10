@@ -138,7 +138,12 @@ function selectInstance(input: Input): void {
  * (replicate.ts), as one history entry: the copper in the layout file, the placement in the sheet file with it.
  */
 async function replicateLayout(input: Input): Promise<void> {
-  const plan = replicatePlan(input.design, input.selection.names)
+  // Placed means pcbX and pcbY written on the instance, as the circuit file has it.
+  const placed = (name: string) => {
+    const props = input.circuit?.model.parts.find((part) => part.name === name)?.props
+    return props?.["pcbX"] !== undefined && props["pcbY"] !== undefined
+  }
+  const plan = replicatePlan(input.design, input.selection.names, placed)
   if ("message" in plan) return input.actions.notify(plan.message)
   const { sheet, layout } = plan
   // One history entry: the copper in the layout file, the placement in the sheet file beside it (`also`).

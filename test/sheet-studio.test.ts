@@ -146,6 +146,23 @@ describe("Replicate layout", () => {
     expect(plan.layout.summary).toBe("Replicate the copper of PS1 to PS2")
   })
 
+  test("refuses instances without a written place, and instances the copy would overlap", () => {
+    const files = (body: string) => buildDesign({ [MAIN]: main(body), [SHEET]: POWER }, MAIN)
+    const unplaced = files([`<PowerStage name="PS1" connections={{ VIN: "A", VOUT: "B", GND: "GND" }} pcbX={-10} pcbY={0} />`, `<PowerStage name="PS2" connections={{ VIN: "C", VOUT: "D", GND: "GND" }} />`].join(" "))
+    expect(replicatePlan(unplaced, ["PS1"])).toEqual({ message: "Place PS2 on the board first (pcbX and pcbY on the instance), then replicate the layout." })
+    const close = files([`<PowerStage name="PS1" connections={{ VIN: "A", VOUT: "B", GND: "GND" }} pcbX={-10} pcbY={0} />`, `<PowerStage name="PS2" connections={{ VIN: "C", VOUT: "D", GND: "GND" }} pcbX={-9.5} pcbY={0} />`].join(" "))
+    expect(replicatePlan(close, ["PS1"])).toEqual({ message: "PS1 and PS2 would overlap; place the instances apart first, then replicate the layout." })
+    expect(replicatePlan(design(), ["PS1"], (name) => name !== "PS1")).toEqual({ message: "Place PS1 on the board first (pcbX and pcbY on the instance), then replicate the layout." })
+  })
+
+  test("removes only the target's own copper, not a parent net's track passing over it", () => {
+    const passing: TrackRecord = { t: "track", id: "t0001", net: "net.VBUS", layer: "bottom", width: 0.2, points: [{ x: 9.8, y: 4 }, { x: 10.2, y: 6 }], locked: false, by: "human" }
+    const own: TrackRecord = { t: "track", id: "t0002", net: "net.PS2/MID", layer: "top", width: 0.2, points: [{ x: 10, y: 5 }, { x: 10, y: 6 }], locked: false, by: "human" }
+    const plan = replicatePlan(design(serializeLayout({ next: { track: 3, via: 1 }, records: [passing, own] })), ["PS1"])
+    if ("message" in plan) throw new Error(plan.message)
+    expect(plan.layout.edits.filter((edit) => edit.kind === "removeTrack")).toEqual([{ kind: "removeTrack", id: "t0002" }])
+  })
+
   test("says why when there is nothing to copy to", () => {
     expect(replicatePlan(design(), ["R1"])).toEqual({ message: "Select a part of the instance whose layout to copy, or its symbol on the schematic." })
     const one = buildDesign({ [MAIN]: main(`<PowerStage name="PS1" connections={{ VIN: "A", VOUT: "B", GND: "GND" }} />`), [SHEET]: POWER }, MAIN)

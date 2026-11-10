@@ -21,8 +21,37 @@ interface Frame {
   rotation: number
 }
 
-/** Where an instance's block sits: its pcbX/pcbY/pcbRotation, or the board's origin when it writes none. */
+/** Where an instance's block sits: its pcbX/pcbY/pcbRotation (replicatePlan refuses an instance that writes none). */
 const frameOf = (instance: SheetInstance): Frame => instance.pcb ?? { x: 0, y: 0, rotation: 0 }
+
+type Box = { minX: number; maxX: number; minY: number; maxY: number }
+
+/** The source's box as it lands in another instance's frame. */
+function boxIn(box: Box, from: Frame, to: Frame): Box {
+  const corners = [{ x: box.minX, y: box.minY }, { x: box.maxX, y: box.minY }, { x: box.maxX, y: box.maxY }, { x: box.minX, y: box.maxY }].map((p) => toBoard(toLocal(p, from), to))
+  const xs = corners.map((p) => p.x)
+  const ys = corners.map((p) => p.y)
+  return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) }
+}
+
+const overlap = (a: Box, b: Box): boolean => a.minX < b.maxX && b.minX < a.maxX && a.minY < b.maxY && b.minY < a.maxY
+
+/**
+ * Why the instances cannot take the copy: one has no written place on the board (an unplaced instance sits at the
+ * origin, so the copper would land on another instance), or two of them, the source's layout copied in, overlap.
+ */
+function placeRefusal(design: Design, source: SheetInstance, targets: readonly SheetInstance[], placed: (name: string) => boolean): string | undefined {
+  const unplaced = [source, ...targets].filter((instance) => !placed(instance.name)).map((instance) => instance.name)
+  if (unplaced.length > 0) return `Place ${unplaced.join(", ")} on the board first (pcbX and pcbY on the instance), then replicate the layout.`
+  const box = boxOf(design, source)
+  if (!box) return undefined
+  const boxes = [source, ...targets].map((instance) => ({ name: instance.name, box: boxIn(box, frameOf(source), frameOf(instance)) }))
+  for (const [i, a] of boxes.entries()) {
+    const b = boxes.slice(i + 1).find((other) => overlap(a.box, other.box))
+    if (b) return `${a.name} and ${b.name} would overlap; place the instances apart first, then replicate the layout.`
+  }
+  return undefined
+}
 
 function turned(p: Point, degrees: number): Point {
   const radians = (degrees * Math.PI) / 180
@@ -35,6 +64,12 @@ const toLocal = (p: Point, frame: Frame): Point => turned({ x: p.x - frame.x, y:
 const toBoard = (p: Point, frame: Frame): Point => {
   const q = turned(p, frame.rotation)
   return { x: round(q.x + frame.x), y: round(q.y + frame.y) }
+}
+
+/** Whether an instance writes pcbX and pcbY, as its source element has them (a pcbRotation alone places nothing). */
+function written(design: Design, name: string): boolean {
+  const props = topInstance(design, name)?.pcb
+  return props !== undefined && (props.x !== 0 || props.y !== 0)
 }
 
 /** The source instance the selection names: a selected instance symbol, or the instance a selected part is in. */
@@ -54,6 +89,13 @@ function boxOf(design: Design, instance: SheetInstance) {
   const xs = points.map((p) => p.x)
   const ys = points.map((p) => p.y)
   return { minX: Math.min(...xs) - REACH_MM, maxX: Math.max(...xs) + REACH_MM, minY: Math.min(...ys) - REACH_MM, maxY: Math.max(...ys) + REACH_MM }
+}
+
+/** Whether a target's own copper goes: on one of its local nets, or touching pads and only its parts' (not a parent net's track passing over). */
+function ownedBy(instance: SheetInstance, net: string | undefined, pads: readonly string[] = []): boolean {
+  if (net?.startsWith(`net.${instance.path}/`)) return true
+  const own = new Set(instance.parts)
+  return pads.length > 0 && pads.every((pad) => own.has(pad.split("#")[0] ?? ""))
 }
 
 /** Whether copper is the instance's: on one of its local nets, or every pad it joins is its parts', or all of it lies over its parts. */
@@ -119,8 +161,8 @@ function copperEdits(design: Design, copper: CopperIn, source: SheetInstance, ta
       return mapped === undefined ? {} : { net: mapped }
     }
     const removed: LayoutEdit[] = [
-      ...copper.tracks.filter((track) => belongs(design, target, track.net, track.points, track.pads)).map((track): LayoutEdit => ({ kind: "removeTrack", id: track.id })),
-      ...copper.vias.filter((via) => belongs(design, target, via.net, [via.at])).map((via): LayoutEdit => ({ kind: "removeVia", id: via.id })),
+      ...copper.tracks.filter((track) => ownedBy(target, track.net, track.pads)).map((track): LayoutEdit => ({ kind: "removeTrack", id: track.id })),
+      ...copper.vias.filter((via) => ownedBy(target, via.net)).map((via): LayoutEdit => ({ kind: "removeVia", id: via.id })),
     ]
     const added: LayoutEdit[] = [
       ...tracks.map((track): LayoutEdit => ({ kind: "addTrack", ...named(track.net), layer: track.layer, width: track.width, points: track.points.map(move) })),
@@ -139,12 +181,14 @@ export interface ReplicatePlan {
 }
 
 /** The plan for the instance the selection names, or a message why there is nothing to do. */
-export function replicatePlan(design: Design | undefined, names: readonly string[]): ReplicatePlan | { message: string } {
+export function replicatePlan(design: Design | undefined, names: readonly string[], placed?: (name: string) => boolean): ReplicatePlan | { message: string } {
   if (!design) return { message: "Wait for the build to finish, then try again." }
   const source = sourceInstance(design, names)
   if (!source) return { message: "Select a part of the instance whose layout to copy, or its symbol on the schematic." }
   const targets = (design.circuit.instances ?? []).filter((instance) => instance.file === source.file && instance.path !== source.path && !instance.path.includes("/"))
   if (targets.length === 0) return { message: `${source.name} is the only instance of ${source.sheet}; there is nothing to copy its layout to.` }
+  const refusal = placeRefusal(design, source, targets, placed ?? ((name) => written(design, name)))
+  if (refusal) return { message: refusal }
   const names_ = targets.map((target) => target.name).join(", ")
   const sheet = { file: source.file, edits: placementEdits(design, source), summary: `Replicate the placement of ${source.name} in ${source.sheet}` }
   const layout = { edits: copperEdits(design, design.pcb, source, targets), summary: `Replicate the copper of ${source.name} to ${names_}` }
