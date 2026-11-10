@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest"
-import { analyzeCircuit } from "../src/core/analyze.js"
+import { analyzeCircuit, scanCircuit } from "../src/core/analyze.js"
+import { movePartNote } from "../src/core/page-edits.js"
 import { applyEdits, EditError } from "../src/core/edit.js"
 import { elaborate } from "../src/engine/elaborate.js"
 import { evaluateCircuit } from "../src/engine/evaluate.js"
@@ -70,7 +71,7 @@ describe("adding a part on a page", () => {
 })
 
 describe("moving a part to another page", () => {
-  test("moves the part and its hand-drawn wires, and keeps their positions; plain traces stay", () => {
+  test("moves the part, its hand-drawn wires and the traces that reach only it, and keeps their positions", () => {
     const next = applyEdits(twoPages, [{ kind: "movePartToPage", part: "R1", page: "Power" }], none)
     expect(pagesOf(next)).toEqual({ C1: "Power", R1: "Power" })
     expect(next).toContain(`<resistor name="R1" schX={2} schY={1} />`)
@@ -78,8 +79,19 @@ describe("moving a part to another page", () => {
     expect(model.traces.map((t) => [t.from, t.page])).toEqual([
       ["C1.pin1", "Power"],
       ["R1.pin1", "Power"],
-      ["R1.pin2", undefined],
+      ["R1.pin2", "Power"],
     ])
+  })
+
+  test("a trace to another part stays where it is, and the note says so", () => {
+    const joined = file([`<resistor name="R1" />`, `<resistor name="R2" />`, `<trace from="R1.pin1" to="R2.pin1" />`, `<trace from="R1.pin2" to="net.GND" />`])
+    const next = applyEdits(joined, [{ kind: "movePartToPage", part: "R1", page: "IO" }], none)
+    expect(analyzeCircuit(next).traces.map((t) => [t.from, t.page])).toEqual([
+      ["R1.pin1", undefined],
+      ["R1.pin2", "IO"],
+    ])
+    expect(movePartNote(scanCircuit(joined), "R1", "IO")).toBe("R1.pin1 to R2.pin1 stays where it is written; it joins pins on two pages and is not drawn")
+    expect(movePartNote(scanCircuit(file([`<resistor name="R1" />`])), "R1", "IO")).toBeUndefined()
   })
 
   test("back to Main puts it on the board", () => {
@@ -123,6 +135,24 @@ describe("adding, renaming and removing pages", () => {
     expect(() => applyEdits(twoPages, [{ kind: "removePage", name: "Power" }], none)).toThrow(/still has parts \(C1\)/)
     expect(() => applyEdits(twoPages, [{ kind: "removePage", name: "Main" }], none)).toThrow(/cannot be removed/)
   })
+
+  test("refuses a page that still holds a trace, so no net loses a pin", () => {
+    const leftover = file([`<resistor name="R1" />`, `<capacitor name="C1" />`, `<page name="Power">`, `  <trace from="C1.pin1" to="net.VBUS" />`, `</page>`, `<trace from="R1.pin1" to="net.VBUS" />`])
+    expect(() => applyEdits(leftover, [{ kind: "removePage", name: "Power" }], none)).toThrow("Power still has 1 trace: C1.pin1 to VBUS; move or remove it first")
+  })
+
+  test("moving the last part off a page takes its traces along, so the page can then go and the net keeps its pin", () => {
+    const moved = applyEdits(twoPages, [{ kind: "movePartToPage", part: "C1", page: "Main" }], none)
+    const gone = applyEdits(moved, [{ kind: "removePage", name: "Power" }], none)
+    const circuit = elaborate(evaluateCircuit({ [MAIN]: gone }, MAIN), MAIN, { padCount: () => undefined })
+    expect(circuit.nets.find((n) => n.id === "net.VBUS")?.pins).toEqual(["C1.pin1", "R1.pin1"])
+  })
+
+  test("refuses a page whose parts the file alone cannot name", () => {
+    const computed = file([`<page name="Gen">`, "  {[1, 2].map((i) => <resistor name={`R${i}`} />)}", `</page>`])
+    expect(() => applyEdits(computed, [{ kind: "removePage", name: "Gen" }], none)).toThrow(/Gen holds elements the file alone cannot name \(line 4\)/)
+  })
+
 })
 
 describe("a drawing on a page", () => {

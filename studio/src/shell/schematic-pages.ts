@@ -45,11 +45,15 @@ export function nextPageName(names: readonly string[]): string {
   for (let n = names.length + 1; ; n++) if (!names.includes(`Page ${n}`)) return `Page ${n}`
 }
 
-/** Why a page cannot be deleted, or undefined when it can: the first page is the board itself, and a page with parts stays. */
+/** Why a page cannot be deleted, or undefined when it can: the first page is the board itself, and a page with parts or traces stays. */
 export function deletePageRefusal(design: Design | undefined, page: string): string | undefined {
   if (page === MAIN_PAGE) return `${MAIN_PAGE} is the first page and cannot be deleted`
   const parts = design?.schematic.pages?.find((entry) => entry.name === page)?.parts ?? []
-  return parts.length > 0 ? `Page ${page} still has parts (${parts.join(", ")}); move or delete them first` : undefined
+  if (parts.length > 0) return `Page ${page} still has parts (${parts.join(", ")}); move or delete them first`
+  const traces = design?.circuit.connections.filter((connection) => connection.page === page) ?? []
+  if (traces.length === 0) return undefined
+  const ends = traces.map((t) => `${t.from.replace(/^net\./, "")} to ${t.to.replace(/^net\./, "")}`).join(", ")
+  return `${page} still has ${traces.length === 1 ? "1 trace" : `${traces.length} traces`}: ${ends}; move or remove ${traces.length === 1 ? "it" : "them"} first`
 }
 
 /** Why a page cannot be renamed, or undefined when it can. */

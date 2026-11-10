@@ -99,6 +99,8 @@ describe("the Page commands", () => {
     expect(deletePageRefusal(design, "Power")).toMatch(/still has parts \(C1\)/)
     expect(deletePageRefusal(design, "Main")).toMatch(/first page/)
     expect(deletePageRefusal(design, "Spare")).toBeUndefined()
+    const traced = buildDesign({ [MAIN]: source.replace('<page name="Spare">', '<page name="Spare">\n      <trace from="R1.pin2" to="net.VBUS" />') }, MAIN)
+    expect(deletePageRefusal(traced, "Spare")).toBe("Spare still has 1 trace: R1.pin2 to VBUS; move or remove it first")
     expect(renamePageRefusal("Main")).toMatch(/keeps its name/)
     expect(renamePageRefusal("Power")).toBeUndefined()
   })
