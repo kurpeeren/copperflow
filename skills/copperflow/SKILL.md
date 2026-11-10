@@ -37,13 +37,16 @@ undoing their work.
    A part's name and value on the schematic and its silkscreen designator move with
    `set_props` `schNameAt`, `schValueAt` and `pcbNameAt`, each a point `{ x, y }` from the
    part's origin (sheet units, board mm) that moves with the part; `null` puts it back.
-   Copper: you may draw the tracks and vias you want by hand with `route_track` (a track of one
-   net, starting on a pad, track or via of that net), `add_via` and `remove_copper`, and round
-   track corners with `fillet_tracks` (`straighten_tracks` squares them again); each is one
-   history entry, and the answer lists the copper violations the change introduced. The program
-   checks clearance; the router comes later and does the rest. Order: `copper_summary` first (per net: tracks, vias,
-   length, unrouted connections), then your copper changes, then `check_circuit` once at the end
-   (filter `copper` for the full list). A locked part guards only the tracks that start on its
+   Copper: place the parts first, then run `autoroute` (one history entry; it routes what is
+   still unrouted, or only some `nets`, `parts` or an `instance`, within `budgetSeconds`, 20 s by
+   default, and names each connection it could not route with the reason), then `check_circuit`
+   once at the end (filter `copper` for the full list). Route by hand only what the router
+   reports: `route_track` (a track of one net, starting on a pad, track or via of that net),
+   `add_via` and `remove_copper`, and round track corners with `fillet_tracks`
+   (`straighten_tracks` squares them again); each is one history entry, and the answer lists the
+   copper violations the change introduced. Or move parts and run `autoroute` again; `unroute`
+   (`nets` or `all: true`) takes back the router's copper and never hand-drawn copper.
+   `copper_summary` shows per net the tracks, vias, length and unrouted connections. A locked part guards only the tracks that start on its
    pads; vias on it and tracks that only end there are not locked, so leave them alone unless
    the human asks.
 4. Call `check_circuit` once at the end (it lists the first 20 findings; `filter` takes `errors`,

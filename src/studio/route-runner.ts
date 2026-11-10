@@ -92,6 +92,35 @@ interface Job {
 
 const hash = (text: string | undefined) => createHash("sha256").update(text ?? "").digest("hex")
 
+/** The hashes of a circuit (project-relative), its layout file and every other file a build reads (the engine's own file set). */
+export async function contentHashes(root: string, circuitFile: string): Promise<ContentHashes> {
+  const files = await collectProjectFiles(root, { include: ENGINE_FILES })
+  const layout = layoutPathFor(circuitFile)
+  const rest = createHash("sha256")
+  for (const name of Object.keys(files).sort()) {
+    if (name === circuitFile || name === layout || ANNOTATIONS.test(name)) continue
+    rest.update(name).update("\0").update(files[name] as string).update("\0")
+  }
+  return { circuit: hash(files[circuitFile]), layout: hash(files[layout]), project: rest.digest("hex") }
+}
+
+/** The router's input from a built design: its board, rules, nets, parts and sub-sheet instances. */
+export const routeInput = (design: Design): RouteBoardInput => ({
+  layout: design.pcb,
+  rules: design.rules,
+  nets: design.circuit.nets,
+  components: design.circuit.components,
+  ...(design.circuit.instances ? { instances: design.circuit.instances } : {}),
+})
+
+/** The router's edits with no track starting on a pad of a part locked now (see startOffLocked). */
+export async function lockSafeEdits(circuitPath: string, design: Design, edits: LayoutEdit[]): Promise<LayoutEdit[]> {
+  const locked = await lockedPartsAt(circuitPath)
+  if (locked.size === 0) return edits
+  const onLocked = lockedStart(locked, design)
+  return startOffLocked(edits, (point, layer) => onLocked({ t: "track", id: "", layer, width: 1, points: [point], locked: false, by: "router" }) !== undefined)
+}
+
 export class RouteRunner {
   private job: Job | undefined
 
@@ -134,16 +163,8 @@ export class RouteRunner {
     return true
   }
 
-  /** The hashes of the circuit, its layout file and every other file a build reads (the engine's own file set). */
-  private async hashes(circuit: { file: string }): Promise<ContentHashes> {
-    const files = await collectProjectFiles(this.deps.root, { include: ENGINE_FILES })
-    const layout = layoutPathFor(circuit.file)
-    const rest = createHash("sha256")
-    for (const name of Object.keys(files).sort()) {
-      if (name === circuit.file || name === layout || ANNOTATIONS.test(name)) continue
-      rest.update(name).update("\0").update(files[name] as string).update("\0")
-    }
-    return { circuit: hash(files[circuit.file]), layout: hash(files[layout]), project: rest.digest("hex") }
+  private hashes(circuit: { file: string }): Promise<ContentHashes> {
+    return contentHashes(this.deps.root, circuit.file)
   }
 
   private async run(job: Job, circuit: { path: string; file: string }, scope: RouteScope): Promise<void> {
@@ -152,8 +173,7 @@ export class RouteRunner {
       const start = await this.hashes(circuit)
       const design = await this.deps.designOf(file)
       if (job.cancelled) throw new Cancelled()
-      const input: RouteBoardInput = { layout: design.pcb, rules: design.rules, nets: design.circuit.nets, components: design.circuit.components, ...(design.circuit.instances ? { instances: design.circuit.instances } : {}) }
-      const report = await this.compute(job, { input, scope })
+      const report = await this.compute(job, { input: routeInput(design), scope })
       const check = async () => {
         if (job.cancelled) throw new Cancelled()
         const why = discardReason(start, await this.hashes(circuit))
@@ -176,10 +196,7 @@ export class RouteRunner {
    * project's write queue, after the writes queued before this one, so a hand edit that got in first discards the run.
    */
   private async write(job: Job, circuit: { path: string; file: string }, design: Design, scope: RouteScope, report: RouteReport, check: () => Promise<void>): Promise<{ entryId: string; writeMark: number }> {
-    const locked = await lockedPartsAt(circuit.path)
-    const onLocked = lockedStart(locked, design)
-    const edits: LayoutEdit[] =
-      locked.size === 0 ? report.edits : startOffLocked(report.edits, (point, layer) => onLocked({ t: "track", id: "", layer, width: 1, points: [point], locked: false, by: "router" }) !== undefined)
+    const edits = await lockSafeEdits(circuit.path, design, report.edits)
     const total = report.routed.length + report.unrouted.length
     const source: DesignSource = (name) => this.deps.designOf(name)
     const guard = async () => {

@@ -51,7 +51,7 @@ export const removeCopperInput = {
 }
 
 export const ROUTE_TRACK_DESCRIPTION =
-  "Draw one track of a net by hand as ONE change: a list of corner points on one layer. It must start on a pad, track or via of the net, and no corner or segment between corners may touch another net's copper. The width comes from the net class unless given. The answer is one line plus the copper violations the change introduced: new ones and existing ones it made worse (check_circuit with filter \"copper\" lists all). The program checks clearance; the router comes later. A track cannot start on a locked part's pad."
+  "Draw one track of a net by hand as ONE change: a list of corner points on one layer. It must start on a pad, track or via of the net, and no corner or segment between corners may touch another net's copper. The width comes from the net class unless given. The answer is one line plus the copper violations the change introduced: new ones and existing ones it made worse (check_circuit with filter \"copper\" lists all). The program checks clearance; route by hand what autoroute reports it could not route. A track cannot start on a locked part's pad."
 export const ADD_VIA_DESCRIPTION =
   "Place a via by hand as ONE change. Its net is the net of the pad or track under it unless you give one; its size follows the net class and the fabrication minimum ring."
 export const REMOVE_COPPER_DESCRIPTION =
@@ -73,7 +73,7 @@ export async function buildOf(ports: Ports, file: string): Promise<Design> {
   return buildWith(ports.root, (await resolveCircuit(ports.root, file)).file, ports.engine)
 }
 
-function netOrThrow(design: Design, name: string) {
+export function netOrThrow(design: Design, name: string) {
   const net = findNet(design.circuit.nets, name)
   if (net) return net
   const names = design.circuit.nets.map(nameOf)
