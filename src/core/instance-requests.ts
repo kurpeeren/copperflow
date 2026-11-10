@@ -1,6 +1,7 @@
 // The requests that make instance edits: a sheet's file and ports are read so the connections can be checked.
 import { readFile } from "node:fs/promises"
 import { posix } from "node:path"
+import { BASE_STEP } from "../engine/sheets.js"
 import { scanCircuit } from "./analyze.js"
 import { SHEET_IMPORT, SHEET_TAG } from "./instance-edits.js"
 import { sheetFileIn } from "./selectors.js"
@@ -45,17 +46,29 @@ export interface InstanceRequest {
   page?: string
 }
 
+/**
+ * The base a new instance gets written with: the highest written base of the circuit's instances plus 100, so its
+ * designators stay put when instances are moved or reordered. Undefined when an instance takes the default base,
+ * since the default then depends on the order written.
+ */
+function nextBase(model: CircuitModel): number | undefined {
+  const bases = model.parts.filter((part) => sheetFileIn(model, part.name) !== undefined).map((part) => part.props["base"]?.literal)
+  if (bases.some((base) => typeof base !== "number")) return undefined
+  return Math.max(0, ...(bases as number[])) + BASE_STEP
+}
+
 /** The edit that adds an instance, with the connections checked against the sheet file's ports. Writes nothing. */
 export async function instanceEdit(root: string, circuit: { file: string; model: CircuitModel }, request: InstanceRequest): Promise<Edit> {
   if (!SHEET_TAG.test(request.sheet)) throw new Error(`"${request.sheet}" is not a sheet name; a sheet name starts with a capital letter, e.g. PowerStage`)
   const { file, importFrom } = sheetFileFor(circuit, request.sheet)
   checkPorts(request.sheet, await portsOfFile(root, request.sheet, file), request.connections)
+  const base = request.base ?? nextBase(circuit.model)
   return {
     kind: "addInstance",
     tag: request.sheet,
     name: request.name,
     connections: request.connections,
-    ...(request.base === undefined ? {} : { base: request.base }),
+    ...(base === undefined ? {} : { base }),
     importFrom,
     ...(request.page === undefined ? {} : { page: request.page }),
   }

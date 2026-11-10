@@ -29,7 +29,7 @@ import type { DesignSource } from "../core/bom.js"
 import { buildWith } from "../core/design-source.js"
 import { FootprintFileSchema } from "../engine/footprints/file.js"
 import { VERSION } from "../version.js"
-import { batchSummary, describeRefusal, editItem, firstRefusal, planNets, toEdit } from "./batch.js"
+import { batchSummary, describeRefusal, editItem, firstRefusal, moveNotes, planNets, toEdit } from "./batch.js"
 import { formatCompactCheck, formatCompactSummary, type SheetView } from "./compact.js"
 import { importsSheet } from "./compact-sheets.js"
 import { formatCopperSummary } from "./copper-summary.js"
@@ -64,10 +64,10 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
   const server = new McpServer({ name: "copperflow", version: VERSION }, { instructions: INSTRUCTIONS })
   const designOptions = options.engine ? { engine: options.engine } : {}
 
-  const apply = async (circuit: string, edits: Edit[], summary: string, note = summary) => {
+  const apply = async (circuit: string, edits: Edit[], summary: string, note = summary, after: string[] = []) => {
     const result = await editCircuit(root, circuit, edits, { author: "ai", summary })
     const warnings = result.violations.map((v) => `Lock violation: ${v.part} ${v.kind}: ${v.detail}`)
-    return [`Change ${result.entry.id} applied: ${note}`, ...warnings].join("\n")
+    return [`Change ${result.entry.id} applied: ${note}`, ...after, ...warnings].join("\n")
   }
   const edit = (circuit: string, edits: Edit[], summary: string) => run(() => apply(circuit, edits, summary))
 
@@ -196,7 +196,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "edit_circuit",
     {
       description:
-        "Apply several edits in order as ONE change (one history entry). Each edit has exactly one key: set_props { part, props }, connect { from, to }, disconnect { from, to }, place_part { part, name, props? } or remove_part { part }. If an edit is refused, nothing is written and the answer says which edit failed and why.",
+        "Apply several edits in order as ONE change (one history entry). Each edit has exactly one key: set_props { part, props }, connect { from, to }, disconnect { from, to }, place_part { part, name, props?, page? }, remove_part { part }, add_instance { sheet, name, connections, base?, page? } (another use of a sub-sheet), set_connections { instance, connections } (every port to its net) or move_to_page { part, page } (a part or an instance; nets join across pages by name). If an edit is refused, nothing is written and the answer says which edit failed and why.",
       inputSchema: { file, edits: z.array(editItem).min(1).max(100) },
     },
     ({ file: circuit, edits }) =>
@@ -211,8 +211,9 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
         }
         const list = converted.map((c) => c.edit)
         const summary = batchSummary(converted.map((c) => c.label))
+        const notes = list.some((e) => e.kind === "movePartToPage") ? await movesLeaveBehind(root, circuit, list) : []
         try {
-          return await apply(circuit, list, summary, `${edits.length} edit${edits.length === 1 ? "" : "s"}: ${summary.slice(5)}`)
+          return await apply(circuit, list, summary, `${edits.length} edit${edits.length === 1 ? "" : "s"}: ${summary.slice(5)}`, notes)
         } catch (error) {
           const refusal = await firstRefusal(root, circuit, list)
           if (!refusal) throw new Error(`The batch was refused as a whole: ${(error as Error).message}
@@ -361,6 +362,12 @@ Nothing was written.`)
   )
 
   return server
+}
+
+/** What the moves to a page in a batch leave behind, read before anything is written. */
+async function movesLeaveBehind(root: string, circuit: string, edits: Edit[]): Promise<string[]> {
+  const loaded = await loadCircuit(root, circuit)
+  return moveNotes(loaded.source, edits, new Set(loaded.annotations.locks.map((lock) => lock.part)))
 }
 
 /** The flattened design of a circuit with sub-sheets, or why it could not be built; the summary is given either way. */
