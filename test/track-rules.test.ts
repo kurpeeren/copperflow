@@ -39,6 +39,17 @@ describe("the track tool's width rule", () => {
     expect(defaultVia({ ...rules(), fabrication: PROFILES["jlcpcb-4layer"] as Rules["fabrication"] })).toEqual({ drill: 0.3, diameter: 0.6 })
   })
 
+  test("a class below the fabrication minimums is raised to them; one that meets them keeps its values", () => {
+    const thin = { name: "thin", trackWidth: 0.05, clearance: 0.1, via: { drill: 0.1, diameter: 0.5 }, patterns: ["S*"] }
+    const sig = net("net.SIG", ["SIG"])
+    expect(trackWidth(rules([thin]), sig)).toBe(0.1)
+    expect(viaSize(rules([thin]), sig)).toEqual({ drill: 0.15, diameter: 0.51 })
+    const exact = { ...thin, trackWidth: 0.1, via: { drill: 0.15, diameter: 0.6 } }
+    expect(trackWidth(rules([exact]), sig)).toBe(0.1)
+    expect(viaSize(rules([exact]), sig)).toEqual({ drill: 0.15, diameter: 0.6 })
+    expect(trackWidth(rules([power]), net("net.VBUS", ["VBUS"]))).toBe(0.6)
+  })
+
   test("routeNet gathers the net's id, its name, the width and the via; an unknown id gives none", () => {
     const design = { rules: rules([power]), circuit: { nets: [net("net.VBUS", ["VBUS"]), net("net:R1.pin1", [])] } }
     expect(routeNet(design, "net.VBUS")).toEqual({ id: "net.VBUS", name: "VBUS", width: 0.6, via: { drill: 0.4, diameter: 0.8 } })
