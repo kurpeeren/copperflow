@@ -17,7 +17,6 @@ import { formatLiteral, formatPoint, formatPointList, readPointList } from "./li
 import { addPage, insertOnPage, movePartToPage, removePage, renamePage } from "./page-edits.js"
 import { localNet, localNetRefusal } from "../engine/selectors.js"
 import { partsInSelector, sheetFileIn } from "./selectors.js"
-import { partsInSelector } from "./selectors.js"
 import { LABEL_AT_PROPS } from "../engine/component.js"
 import { MAIN_PAGE } from "../engine/model.js"
 import type { Edit, Literal, PartInfo, Point, PropValue } from "./types.js"
