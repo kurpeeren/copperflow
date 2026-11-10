@@ -17,6 +17,7 @@ export type CommandId =
   | "selectAll"
   | "selectInstance"
   | "replicateLayout"
+  | "makeSheet"
   | "fit"
   | "fitSelection"
   | "fitArea"
@@ -121,6 +122,7 @@ export const MENUS: readonly Menu[] = [
       "separator",
       run("Select all", "selectAll", "Ctrl+A"),
       run("Select the instance", "selectInstance"),
+      { label: "Make sub-sheet…", command: "makeSheet", only: "schematic" },
       run("Find", "find", "Ctrl+F"),
       later("Find similar objects", FIND, "Ctrl+Shift+F"),
       "separator",

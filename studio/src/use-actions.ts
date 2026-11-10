@@ -5,6 +5,7 @@ import { api, type Edit } from "./api"
 import { announceHistoryWrite } from "./history-writes"
 import { noteRulesWrite } from "./pcb/rules-writes"
 import { PLACE_DEFAULTS } from "./place-defaults"
+import { madeNote, type MakeSheetPreview } from "./shell/make-sheet-form"
 
 /** Every action reports failures itself and resolves to whether it succeeded. */
 export interface Actions {
@@ -26,6 +27,8 @@ export interface Actions {
   /** Redoes the newest undone change, or the named one, announced as undo is. */
   redo(id?: string): Promise<EditOutcome>
   verify(id: string, by: string, against: string, confirm: string): Promise<boolean>
+  /** Edit → Make sub-sheet: the parts moved into a new sheet file and an instance in their place, as one history entry. */
+  makeSheet(request: { name: string; parts: readonly string[]; rename: boolean; instance?: string }): Promise<boolean>
   /** Design rules: writes the fillet radius to rules.yaml (null for the default), as one history entry, and tells it. */
   setFilletRadius(radius: number | null): Promise<boolean>
   notify(text: string): void
@@ -92,6 +95,11 @@ export function useActions({ file, refresh, refreshParts, notify }: ActionsInput
         if (ok) await refreshParts()
         return ok
       },
+      makeSheet: (request) =>
+        run(async () => {
+          const made = await api<{ preview: MakeSheetPreview }>("/api/make-sheet", { file, ...request })
+          notify(madeNote(made.preview, request.parts.length))
+        }),
       setFilletRadius: (radius) =>
         run(async () => {
           const saved = await api<{ summary: string; writeMark?: number }>("/api/rules", { filletRadius: radius, ...(file ? { file } : {}) })

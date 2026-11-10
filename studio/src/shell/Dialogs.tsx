@@ -4,9 +4,10 @@ import { CloseIcon } from "../icons"
 import { dialogKey, trapStep } from "./dialog-keys"
 import { useKeyHold } from "./key-gate"
 import { shortcutList } from "./menus"
+import { MakeSheetForm, type MakeSheetPanel } from "./MakeSheetDialog"
 import { FILLET_RADIUS_LABEL, FILLET_RADIUS_NOTE, filletRadiusField, readFilletRadius } from "./rules-form"
 
-export type DialogName = "keys" | "about" | "rules"
+export type DialogName = "keys" | "about" | "rules" | "makeSheet"
 
 /** What Design → Design rules shows and writes: the rules the build read, and the save of a new fillet radius. */
 export interface RulesPanel {
@@ -97,8 +98,15 @@ function RulesForm({ rules, onClose }: { rules: RulesPanel; onClose(): void }) {
   )
 }
 
-/** Help → Keys, Help → About and Design → Design rules. */
-export function StudioDialog({ name, onClose, rules }: { name: DialogName; onClose(): void; rules: RulesPanel }) {
+/** Help → Keys, Help → About, Design → Design rules and Edit → Make sub-sheet. */
+export function StudioDialog({ name, onClose, rules, makeSheet }: { name: DialogName; onClose(): void; rules: RulesPanel; makeSheet: MakeSheetPanel }) {
+  if (name === "makeSheet") {
+    return (
+      <Dialog title="Make sub-sheet" onClose={onClose}>
+        <MakeSheetForm panel={makeSheet} onClose={onClose} />
+      </Dialog>
+    )
+  }
   if (name === "rules") {
     return (
       <Dialog title="Design rules" onClose={onClose}>

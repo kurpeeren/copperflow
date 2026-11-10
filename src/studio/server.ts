@@ -25,6 +25,8 @@ import {
   listEntries,
   loadCircuit,
   lockParts,
+  makeSubSheet,
+  previewSubSheet,
   redoChange,
   removeMark,
   resolveCircuit,
@@ -157,6 +159,15 @@ const Bodies = {
   verify: z.object({ id: z.string().min(1).max(64), by: z.string().min(1).max(100), against: z.string().min(1).max(300), confirm: z.string() }),
   // The Design rules panel: a radius in mm, or null for the default.
   rules: z.object({ filletRadius: z.number().nullable(), file: z.string().optional() }),
+  // Edit → Make sub-sheet: `preview` answers what it would do and writes nothing.
+  makeSheet: z.object({
+    file,
+    name: z.string().min(1).max(64),
+    parts: z.array(z.string().max(64)).max(500),
+    rename: z.boolean().optional(),
+    instance: z.string().max(64).optional(),
+    preview: z.boolean().optional(),
+  }),
 }
 
 /**
@@ -248,6 +259,15 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         const writeMark = live.nextMark()
         live.requestBuild(result.entry.file)
         return send(res, { entryId: result.entry.id, violations: result.violations, writeMark })
+      }
+      // The new sheet file rides on the circuit file's entry, so the build that follows reads both.
+      case "POST /api/make-sheet": {
+        const { file: name, preview, ...request } = Bodies.makeSheet.parse(await readJson(req))
+        if (preview) return send(res, await previewSubSheet(root, name, request))
+        const result = await makeSubSheet(root, name, request, { author: "human", engine: { build: (_root, circuit) => designOf(circuit) } })
+        const writeMark = live.nextMark()
+        live.requestBuild(result.entry.file)
+        return send(res, { entryId: result.entry.id, preview: result.preview, writeMark })
       }
       // Copper goes to the layout file beside the circuit; the built design tells which tracks start on locked parts.
       case "POST /api/layout": {

@@ -11,6 +11,7 @@ import type { DesignBuilder } from "../src/studio/live.js"
 import { startStudio, type Studio } from "../src/studio/server.js"
 import { createPart } from "../src/core/library.js"
 import { BOARD, LDO, SHARED } from "./fixtures.js"
+import { CUT_MAIN } from "./helpers/cut-fixture.js"
 import { retryLostConnect, startReachableStudio } from "./helpers/reachable-studio.js"
 
 const FILE = "main.circuit.tsx"
@@ -290,6 +291,28 @@ describe("layout edits", () => {
     expect(response.status).toBe(400)
     const unknown = await api("/api/layout", { file: FILE, summary: "x", edits: [{ kind: "removePart", part: "R1" }] })
     expect(unknown.status).toBe(400)
+  })
+})
+
+describe("make sub-sheet", () => {
+  test("previews without writing, then writes both files as one entry that undo takes back", async () => {
+    await writeFile(join(root, FILE), CUT_MAIN)
+    const body = { file: FILE, name: "Filter", parts: ["R5", "C3", "R6"], rename: true }
+    const preview = await data(await api("/api/make-sheet", { ...body, preview: true }))
+    expect(preview).toMatchObject({ file: "Filter.sheet.tsx", instance: "Filter1", base: 100, ports: [{ name: "C3_pin2" }, { name: "D[0:3]", bus: true }, { name: "VIN" }] })
+    expect(await readFile(join(root, "Filter.sheet.tsx"), "utf8").catch(() => "none")).toBe("none")
+    const made = await data(await api("/api/make-sheet", body))
+    expect(made).toMatchObject({ entryId: "c0001", writeMark: expect.any(Number), preview: { instance: "Filter1" } })
+    expect(await readFile(join(root, FILE), "utf8")).toContain(`<Filter name="Filter1"`)
+    await data(await api("/api/undo", {}))
+    expect(await readFile(join(root, FILE), "utf8")).toBe(CUT_MAIN)
+    expect(await readFile(join(root, "Filter.sheet.tsx"), "utf8").catch(() => "none")).toBe("none")
+  })
+
+  test("a selection that cannot be cut is refused with the reason", async () => {
+    const response = await api("/api/make-sheet", { file: FILE, name: "Filter", parts: [], preview: true })
+    expect(response.status).toBe(400)
+    expect((await response.json()).error).toMatch(/Select the parts/)
   })
 })
 

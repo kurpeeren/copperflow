@@ -235,6 +235,15 @@ As built in stage 6 (docs/plans/engine-stage-6.md), which replaces parts of the 
   instance on the PCB, and "In PowerStage, used 2 times" in a sheet. Edit → Select the instance and
   Design → Replicate layout (the source's auto-placed parts written into the sheet, its copper copied
   into each other instance's frame) act on instances; a locked instance locks its parts.
+- Edit → Make sub-sheet… (and the `make_sheet` tool) moves selected parts of one page and the wires
+  among them into a new `<Name>.sheet.tsx` beside the circuit (`src/core/sheet-cut.ts` reads the
+  boundary, `sheet-cut-text.ts` writes both texts, `make-sheet.ts` the change). Each net crossing the
+  boundary becomes a port named after it (an unnamed one after its first pin, `R5_pin1`), a crossing
+  member of a drawn bus a bus port with the bus's members; a wire across the boundary is replaced by
+  a trace to the port's net on each side, so the netlist stays the same. The instance takes the
+  parts' place (the middle of their written positions; the parts keep theirs relative to it) and
+  base 100 or the next free one. Designators stay unless the person asks for local ones (R1, C1, …).
+  One history entry names the circuit file with the sheet file as `also`.
 
 The original plan:
 

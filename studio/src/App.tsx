@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { hasToken, type CircuitData, type Design } from "./api"
+import { api, hasToken, type CircuitData, type Design } from "./api"
 import { tidyReason } from "./pcb/auto-placed"
 import { isSheetFile } from "./pcb/sheet-names"
 import { NO_HIGHLIGHT, remapHighlight } from "./pcb/highlight"
@@ -13,6 +13,8 @@ import { goneFrom, Selection, type SelectionChange } from "./selection"
 import { BottomStrip } from "./shell/BottomStrip"
 import { watchDpr } from "./shell/dpr"
 import { StudioDialog, type DialogName } from "./shell/Dialogs"
+import type { MakeSheetPreview } from "./shell/make-sheet-form"
+import type { MakeSheetChoice, MakeSheetPanel } from "./shell/MakeSheetDialog"
 import { MenuBar } from "./shell/MenuBar"
 import type { CommandsOff } from "./shell/menus"
 import type { DocView } from "./shell/page-tree"
@@ -22,7 +24,7 @@ import { themeToggles } from "./shell/theme-state"
 import { Toolbar } from "./shell/ToolbarRow"
 import { useAppCommands } from "./shell/use-app-commands"
 import { Workspace } from "./shell/Workspace"
-import { useActions, usePlace } from "./use-actions"
+import { useActions, usePlace, type Actions } from "./use-actions"
 import { useChecks } from "./use-checks"
 import { useFind } from "./use-find"
 import { useStudioData, type StudioData } from "./use-studio-data"
@@ -236,12 +238,25 @@ function useCommandsOff(design: Design | undefined): CommandsOff {
   }, [design])
 }
 
+/** What Edit → Make sub-sheet's dialog asks: previews of the open file's selected parts, and the change itself. */
+function useMakeSheetPanel(file: string | undefined, parts: readonly string[], actions: Actions): MakeSheetPanel {
+  return useMemo(
+    () => ({
+      parts,
+      preview: (choice: MakeSheetChoice) => api<MakeSheetPreview>("/api/make-sheet", { file, parts, ...choice, preview: true }),
+      make: (choice: MakeSheetChoice) => actions.makeSheet({ parts, ...choice }),
+    }),
+    [file, parts, actions],
+  )
+}
+
 export function App() {
   const { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, openSheet, sheetParent, runCommand, page, openPage } = useStudio()
   const { build, circuit } = data
   const { message, dismiss } = toast
   const toggles = { snap: workspace.snap, ...themeToggles(workspace.theme) }
   const off = useCommandsOff(build.design)
+  const makeSheet = useMakeSheetPanel(data.file, selection.names, actions)
   // Hairlines stay one device pixel through zoom and display-scale changes.
   useEffect(() => watchDpr(window), [])
   if (!hasToken) return <NoToken />
@@ -251,7 +266,7 @@ export function App() {
         <StatusPill build={build} errors={checks.counts.errors} onOpen={openChecks} />
       </MenuBar>
       <Toolbar view={tab} unit={workspace.unit} selected={selection.size} toggles={toggles} run={runCommand} />
-      {dialog && <StudioDialog name={dialog} onClose={closeDialog} rules={{ fabrication: build.design?.rules.fabrication, save: actions.setFilletRadius }} />}
+      {dialog && <StudioDialog name={dialog} onClose={closeDialog} rules={{ fabrication: build.design?.rules.fabrication, save: actions.setFilletRadius }} makeSheet={makeSheet} />}
       {circuit && circuit.violations.length > 0 && (
         <div className="banner" role="alert">
           Locked parts changed outside the editor: {circuit.violations.map((v) => `${v.part} (${v.detail})`).join(", ")}. Lock them again to accept the change, or undo it in the code.
