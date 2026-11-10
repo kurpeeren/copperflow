@@ -5,7 +5,6 @@
 import { busMembers } from "../engine/drawing-kinds.js"
 import { naturalCompare, sortedNatural } from "../engine/order.js"
 import { parseSelector } from "../engine/selectors.js"
-import { NET_NAME } from "./netlist.js"
 import { sheetFileIn } from "./selectors.js"
 import type { CircuitModel, PartInfo, TraceInfo } from "./types.js"
 
@@ -44,6 +43,8 @@ export interface CutPlan {
 }
 
 const TRAILING_NUMBER = /^(.*?)(\d+)$/
+/** A net name a selector can write, as netlist.ts checks it (this module stays free of the file system for the Studio). */
+const NET_NAME = /^[A-Za-z_][\w-]*$/
 
 /** Why the selection cannot become a sub-sheet, or undefined when it can. */
 export function cutRefusal(model: CircuitModel, names: readonly string[]): string | undefined {
@@ -172,7 +173,7 @@ export function planCut(model: CircuitModel, names: readonly string[], rename: b
   }
 
   // A pin already wired to the net on its side needs no second trace.
-  const pairKey = (a: string, b: string) => [a, b].sort().join(" ")
+  const pairKey = (a: string, b: string) => [a, b].sort().join("|")
   const renamed = (node: string) => (node.startsWith("net:") ? `net:${netNames.get(node.slice(4)) ?? node.slice(4)}` : node)
   const pairs = (traces: readonly TraceInfo[], rename: (node: string) => string) =>
     new Set(traces.flatMap((t) => (t.from === undefined || t.to === undefined ? [] : [pairKey(rename(nodeOf(t.from)), rename(nodeOf(t.to)))])))
