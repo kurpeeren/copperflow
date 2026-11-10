@@ -5,7 +5,7 @@ import type { CircuitData, Design } from "./api"
 import type { Actions } from "./App"
 import { Row, Section } from "./InspectorRows"
 import { CloseIcon } from "./icons"
-import { textProperties, textResetEdits } from "./pcb/part-text"
+import { textProperties, textResetEdits, textResetReason } from "./pcb/part-text"
 
 interface TextViewProps {
   design: Design
@@ -22,7 +22,7 @@ interface TextViewProps {
 export function TextView({ design, circuit, text, locked, actions, onClear, collapsed, toggle }: TextViewProps) {
   const shown = textProperties(design, circuit, text, locked)
   if (!shown) return null
-  const resetBlocked = shown.blocker ?? (shown.moved ? null : "It is where the layout puts it")
+  const resetBlocked = textResetReason(design, circuit, text, locked)
   const reset = () => void actions.edit(textResetEdits(text), `Reset ${shown.rows[0]?.value ?? ""} ${shown.title.toLowerCase()} position`)
   return (
     <div className="inspector">

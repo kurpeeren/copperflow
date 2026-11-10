@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
 import { resolveCircuit } from "../src/core/workspace.js"
 import { buildDesign } from "../src/engine/design.js"
-import { FOOTPRINT_FILE } from "../src/engine/engine.js"
+import { ENGINE_FILES } from "../src/engine/engine.js"
 import { collectProjectFiles } from "../src/engine/project-files.js"
 import type { DesignBuilder } from "../src/studio/live.js"
 import { startStudio, type Studio } from "../src/studio/server.js"
@@ -17,7 +17,7 @@ const FILE = "main.circuit.tsx"
 /** Builds in this process, as the engine's worker does, so tests need no built worker file. */
 const builder: DesignBuilder = {
   build: async (root, file) =>
-    buildDesign(await collectProjectFiles(root, { include: FOOTPRINT_FILE }), (await resolveCircuit(root, file)).file),
+    buildDesign(await collectProjectFiles(root, { include: ENGINE_FILES }), (await resolveCircuit(root, file)).file),
 }
 let root: string
 let studio: Studio
@@ -296,13 +296,20 @@ describe("layout edits", () => {
 describe("design rules", () => {
   test("the fillet radius goes to rules.yaml as one history entry, which undo takes back; null is the default again", async () => {
     const set = await data(await api("/api/rules", { filletRadius: 1.5 }))
-    expect(set).toEqual({ entryId: "c0001", summary: "Set the fillet radius to 1.5 mm" })
+    expect(set).toEqual({ entryId: "c0001", summary: "Set the fillet radius to 1.5 mm", writeMark: expect.any(Number) })
     expect(await readFile(join(root, "rules.yaml"), "utf8")).toBe("fabrication:\n  filletRadius: 1.5\n")
     expect((await data(await api("/api/undo", {}))).summary).toBe("Undo: Set the fillet radius to 1.5 mm")
     await expect(readFile(join(root, "rules.yaml"), "utf8")).rejects.toThrow()
     await data(await api("/api/redo", {}))
     await data(await api("/api/rules", { filletRadius: null }))
     expect(await readFile(join(root, "rules.yaml"), "utf8")).toBe("")
+  })
+
+  test("the write's mark orders it against builds: a build that started after it, of the open circuit, has the radius", async () => {
+    const set = await data(await api("/api/rules", { filletRadius: 1.5, file: FILE }))
+    const built = await buildWhen((b) => finished(b) && b.startMark > set.writeMark)
+    expect(built.status).toBe("done")
+    expect(built.design.rules.fabrication.filletRadius).toBe(1.5)
   })
 
   test("a radius that is no positive length is refused", async () => {

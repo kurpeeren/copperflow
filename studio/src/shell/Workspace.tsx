@@ -216,7 +216,7 @@ function RightSide({ data, workspace, checks, selection, onSelect, onRenameDrawi
 /** The row under the toolbar: the strips at the edges, the side panels, and the centre column. */
 export function Workspace(props: WorkspaceProps) {
   const { data, workspace, selection, onSelect } = props
-  const contextMenu = useContextMenu({ circuit: data.circuit, design: data.build.design, selection, onSelect, run: props.run, openProperties: workspace.openProperties, onHighlight: workspace.setHighlight })
+  const contextMenu = useContextMenu({ circuit: data.circuit, design: data.build.design, selection, onSelect, run: props.run, openProperties: workspace.openProperties, edit: props.actions.edit, onHighlight: workspace.setHighlight })
   return (
     <main className="workspace">
       <SideStrip side="left" tabs={LEFT_STRIP} active={workspace.left.strip} open={workspace.left.open} onClick={workspace.clickLeft} onSelect={workspace.selectLeft} />

@@ -211,3 +211,19 @@ describe("the menu on copper", () => {
     expect(contextSelection(Selection.none.all(["R1"]), track).names).toEqual([])
   })
 })
+
+describe("context menu on a part's text", () => {
+  const text = { kind: "text", id: "R1:schNameAt" } as const
+  test("offers Reset position and Properties, not the canvas items", () => {
+    const items = contextItems(text, { allLocked: false, selected: 0, textReset: null })
+    expect(names(items)).toEqual(["Reset position", "-", "Properties"])
+    expect(items[0]).toMatchObject({ special: "resetText" })
+    expect(items[0]).not.toHaveProperty("pending")
+    expect(items[2]).toMatchObject({ special: "properties" })
+  })
+  test("disables Reset position with the reason when the text is at its default place", () => {
+    const items = contextItems(text, { allLocked: false, selected: 0, textReset: "It is where the layout puts it" })
+    expect(items[0]).toMatchObject({ pending: "It is where the layout puts it" })
+    expect(contextShape(items)).toEqual(["disabled", "separator", "item"])
+  })
+})

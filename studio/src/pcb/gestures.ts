@@ -211,6 +211,11 @@ export function targetAt(
   return first ?? { kind: "canvas" }
 }
 
+/** Whether a pickable text is what a press at `world` takes, so copper under it must not (on the PCB: texts, then copper, then pads and parts). */
+export function textTakesPress(boxes: readonly PartBox[], world: Point, context: PickContext, texts: Pick<GestureTexts, "at"> | undefined): boolean {
+  return targetAt(boxes, undefined, world, context, undefined, undefined, texts).kind === "text"
+}
+
 /** What a double click does: remove a corner, open Properties on a part, a wire or a drawing, rename a label's net, or nothing. */
 export type DoubleClick =
   | { kind: "removeCorner"; id: string; index: number }
@@ -256,10 +261,11 @@ function underOf(target: ContextTarget, selection: Selection): Under {
 function pressedAt(input: GestureInput, world: Point, camera: Camera): { target: ContextTarget; under: Under; corner?: number } {
   const handle = handleUnder(input.wires?.drag, pickContext(input), world, camera.scale)
   if (handle) return { target: { kind: "wire", id: handle.id }, under: "wireCorner", corner: handle.index }
-  const copper = input.copperAt?.(world)
+  const target = targetAt(input.boxes, input.labels, world, pickContext(input), input.wires, input.drawings, input.texts)
+  // A text is small and drawn over copper, so copper under it does not take the press; otherwise copper is above the parts.
+  const copper = target.kind === "text" ? undefined : input.copperAt?.(world)
   // Only a right or middle press reaches here on copper; for those, "empty" is what the press does (pan or the menu).
   if (copper !== undefined) return { target: { kind: "copper", id: copper }, under: "empty" }
-  const target = targetAt(input.boxes, input.labels, world, pickContext(input), input.wires, input.drawings, input.texts)
   return { target, under: underOf(target, input.selection) }
 }
 
