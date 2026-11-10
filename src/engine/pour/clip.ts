@@ -73,6 +73,9 @@ export function regions(paths: Paths): Region[] {
 /** The signed area in square units: positive for a counter-clockwise outline. */
 export const pathArea = (path: Path): number => ClipperLib.Clipper.Area(path)
 
+/** The path counter-clockwise, so it adds to the area however it was drawn: a lone outline, never one with holes. */
+export const counterClockwise = (path: Path): Path => (pathArea(path) < 0 ? [...path].reverse() : path)
+
 /** The area of a region in square units: its outline less its holes. */
 export const regionArea = (region: Region): number => Math.abs(pathArea(region.outer)) - region.holes.reduce((sum, hole) => sum + Math.abs(pathArea(hole)), 0)
 

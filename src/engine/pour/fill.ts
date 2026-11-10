@@ -45,12 +45,13 @@ function pourRegion(pour: CopperPour, inputs: PourInputs): Paths {
 }
 
 /**
- * A morphological open: shrink by half `width`, grow back. Copper narrower than `width` vanishes; the rest keeps its
- * square corners (miter), and is cut back to the area it came from, so the open never adds copper.
+ * A morphological open: shrink by half `width`, grow back with round corners. Copper narrower than `width` vanishes,
+ * sharp tips included (a mitred grow would rebuild them); convex corners come back rounded by half `width`. The result
+ * is cut back to the area it came from, so the open never adds copper.
  */
 function open(paths: Paths, width: number): Paths {
   if (paths.length === 0) return []
-  return intersection(offset(offset(paths, -width / 2, "miter"), width / 2, "miter"), paths)
+  return intersection(offset(offset(paths, -width / 2, "miter"), width / 2, "round"), paths)
 }
 
 /**

@@ -75,10 +75,18 @@ function distanceToEdges(filled: PourFill, p: Point): number {
   )
 }
 
-test("a whole-board pour on an empty board is the outline shrunk by the board-edge clearance", () => {
+test("a whole-board pour on an empty board is the outline shrunk by the board-edge clearance, corners rounded by the open", () => {
   const filled = fill({})
   const inner = HALF - EDGE
-  expect(filled).toEqual({ id: "copperpour:1", net: "net.GND", layer: "top", polygons: [{ outer: rectangle(-inner, -inner, inner, inner), holes: [] }], area: 384.16 })
+  expect(filled).toMatchObject({ id: "copperpour:1", net: "net.GND", layer: "top", polygons: [{ holes: [] }] })
+  const outer = filled.polygons[0]?.outer ?? []
+  const xs = outer.map((p) => p.x)
+  const ys = outer.map((p) => p.y)
+  expect([Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)]).toEqual([-inner, inner, -inner, inner])
+  // Four corners of radius minWidth / 2 = 0.125 lose (1 − π/4) × 0.125² each.
+  const rounded = (2 * inner) ** 2 - 4 * (1 - Math.PI / 4) * 0.125 ** 2
+  expect(filled.area).toBeCloseTo(rounded, 2)
+  expect(filled.area).toBeLessThanOrEqual(rounded)
 })
 
 test("a pad of another net leaves a clearance gap round it", () => {
@@ -163,10 +171,10 @@ test("copper narrower than minWidth is removed", () => {
 test("where two pours overlap the higher priority keeps the copper, the other keeps its clearance", () => {
   const left = pour({ id: "copperpour:2", net: "net.VCC", outline: rectangle(-HALF, -HALF, 0, HALF), priority: 1 })
   const [ground, power] = fillPours(inputs({ pours: [pour(), left] })) as [PourFill, PourFill]
-  expect(power.area).toBeCloseTo((HALF - EDGE) * 2 * (HALF - EDGE), 6)
+  expect(power.area).toBeCloseTo((HALF - EDGE) * 2 * (HALF - EDGE), 1)
   expect(Math.min(...ground.polygons.flatMap((polygon) => polygon.outer.map((p) => p.x)))).toBeGreaterThanOrEqual(CLEARANCE)
   const [groundFirst, powerSecond] = fillPours(inputs({ pours: [pour({ priority: 2 }), left] })) as [PourFill, PourFill]
-  expect(groundFirst.area).toBeCloseTo(384.16, 6)
+  expect(groundFirst.area).toBeCloseTo(384.16, 1)
   expect(powerSecond.polygons).toEqual([])
 })
 
@@ -192,4 +200,20 @@ test("the fill is the same every time, outlines counter-clockwise from their low
     expect(polygon.outer[0]).toEqual(lowest)
     for (const hole of polygon.holes) expect(pathArea(toPath(hole))).toBeLessThan(0)
   }
+})
+
+test("a keepout drawn clockwise over another net's pad still keeps all copper out of both", () => {
+  const keepout: Keepout = { id: "keepout:1", outline: [...rectangle(-3, -3, 0.2, 3)].reverse(), layers: "all", source: SOURCE }
+  const filled = fill({ keepouts: [keepout], pads: [pad("U1#1", "net.X", 0, 0, { width: 1, height: 1 })] })
+  expect(areaIn(filled, rectangle(-3, -3, 0.2, 3))).toBe(0)
+  expect(areaIn(filled, circle({ x: 0, y: 0 }, 0.5 + CLEARANCE))).toBe(0)
+})
+
+test("the open grows back round, so a sharp tip narrower than minWidth does not survive", () => {
+  // The wedge is 0.212 mm wide at x = 0.53: a mitred grow keeps it that wide, a round one leaves a rounded tip.
+  const wedge = pour({ outline: [{ x: 0, y: 0 }, { x: 3, y: -0.6 }, { x: 3, y: 0.6 }] })
+  const filled = fill({ pours: [wedge] })
+  expect(filled.area).toBeGreaterThan(1.5)
+  const width = areaIn(filled, rectangle(0.53, -1, 0.531, 1)) / 0.001
+  expect(width).toBeLessThan(0.15)
 })

@@ -5,7 +5,7 @@ import type { Board, CopperPour, Point, PourLayer } from "../model.js"
 import type { WorldPad } from "../pcb.js"
 import { requiredClearance } from "../rules/classes.js"
 import type { Rules } from "../rules/schema.js"
-import { offset, toPath, type IntPoint, type Paths } from "./clip.js"
+import { counterClockwise, offset, toPath, union, type IntPoint, type Paths } from "./clip.js"
 import { shapeOutline } from "./shapes.js"
 import { thermalRelief } from "./thermal.js"
 
@@ -29,7 +29,11 @@ export interface EarlierFill {
 
 /** What a pour meets on its layer. */
 export interface LayerCopper {
-  /** What the fill keeps out of: other nets' copper and earlier fills grown by the clearance, keepouts, holes. */
+  /**
+   * What the fill keeps out of, as one area: other nets' copper and earlier fills grown by the clearance, keepouts,
+   * holes. Every outline is turned counter-clockwise before the union, so a keepout drawn clockwise does not cancel
+   * a pad it overlaps under the non-zero rule.
+   */
   obstacles: Paths
   /** The pour's own pads grown by the relief gap (relief pours only). */
   cuts: Paths
@@ -66,11 +70,11 @@ function layerItems(pour: CopperPour, inputs: PourInputs): { tracks: PcbTrack[];
   return { tracks, vias }
 }
 
-function otherNets(pour: CopperPour, inputs: PourInputs, earlier: readonly EarlierFill[]): Paths {
+/** Other nets' pads, tracks and vias on the layer, each grown by the clearance: one simple outline apiece. */
+function otherNets(pour: CopperPour, inputs: PourInputs): Paths {
   const grown = (shape: Shape, net: string | undefined) => toPath(shapeOutline(shape, gapTo(pour, inputs, net) + MARGIN))
   const { tracks, vias } = layerItems(pour, inputs)
   const pads = inputs.pads.filter((pad) => padOnLayer(pad, pour.layer) && pad.net !== pour.net)
-  const fills = earlier.filter((fill) => fill.layer === pour.layer && fill.net !== pour.net)
   return [
     ...pads.flatMap((pad) => {
       const shape = padShape(pad)
@@ -78,8 +82,13 @@ function otherNets(pour: CopperPour, inputs: PourInputs, earlier: readonly Earli
     }),
     ...tracks.filter((track) => track.net !== pour.net).flatMap((track) => trackShapes(track).map((shape) => grown(shape, track.net))),
     ...vias.filter((via) => via.net !== pour.net).map((via) => grown({ core: [via.at], radius: via.diameter / 2 }, via.net)),
-    ...fills.flatMap((fill) => offset(fill.paths, gapTo(pour, inputs, fill.net) + MARGIN, "round")),
   ]
+}
+
+/** The earlier fills of other nets on the layer grown by the clearance; each comes out of the offset with its holes. */
+function earlierFills(pour: CopperPour, inputs: PourInputs, earlier: readonly EarlierFill[]): Paths {
+  const fills = earlier.filter((fill) => fill.layer === pour.layer && fill.net !== pour.net)
+  return fills.flatMap((fill) => offset(fill.paths, gapTo(pour, inputs, fill.net) + MARGIN, "round"))
 }
 
 function boardObstacles(pour: CopperPour, inputs: PourInputs): Paths {
@@ -107,5 +116,6 @@ function ownNet(pour: CopperPour, inputs: PourInputs): Pick<LayerCopper, "cuts" 
 
 /** Everything the pour meets on its layer, from the inputs and the fills of the pours that come before it. */
 export function layerCopper(pour: CopperPour, inputs: PourInputs, earlier: readonly EarlierFill[]): LayerCopper {
-  return { obstacles: [...otherNets(pour, inputs, earlier), ...boardObstacles(pour, inputs)], ...ownNet(pour, inputs) }
+  const outlines = [...otherNets(pour, inputs), ...boardObstacles(pour, inputs)].map(counterClockwise)
+  return { obstacles: union([...outlines, ...earlierFills(pour, inputs, earlier)]), ...ownNet(pour, inputs) }
 }
