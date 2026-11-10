@@ -179,7 +179,37 @@ describe("layout net renaming", () => {
       { id: "net.GND", names: ["GND"], pins: ["R5.pin1", "R9.pin1"] },
       { id: "net.X", names: ["X"], pins: ["R9.pin2"] },
     ]
-    const rename = layoutNetRenamer(nets, { parts: [], mapping: [{ from: "C3", to: "C1" }, { from: "R5", to: "R1" }], crossings: [] }, "Filter1", 100)
+    const rename = layoutNetRenamer(nets, [], { parts: [], mapping: [{ from: "C3", to: "C1" }, { from: "R5", to: "R1" }], crossings: [] }, "Filter1", 100)
     expect(["net:C3.pin1", "GND", "X", "nope"].map(rename)).toEqual(["net:C101.pin1", "GND", "X", "nope"])
   })
+})
+
+describe("the board after a cut whose crossing pins are written by label", () => {
+  const LAYOUT = "main.circuit.layout.json"
+  const circuit = (to: string) => `export default () => (
+  <board width="20mm" height="20mm">
+    <chip name="U1" footprint="soic8" pinLabels={{ pin1: "VIN", pin2: "VOUT" }} schX={2} schY={1} pcbX={4} pcbY={4} />
+    <chip name="U2" footprint="soic8" pinLabels={{ pin1: "IN", pin2: "OUT" }} schX={8} schY={1} pcbX={12} pcbY={4} />
+    <resistor name="R5" resistance="1k" schX={2} schY={4} pcbX={4} pcbY={12} />
+    <trace from="U1.VOUT" to="${to}" />
+    <trace from="R5.pin1" to="U1.VIN" />
+  </board>
+)
+`
+  const track: TrackRecord = { t: "track", id: "t0001", net: "net:U1.pin2", layer: "top", width: 0.25, points: [{ x: 18, y: 18 }, { x: 19, y: 18 }], locked: false, by: "human" }
+
+  for (const [what, to] of [["both ends by label", "U2.IN"], ["one end by label, one by number", "U2.pin1"]] as const) {
+    test(`${what}: the copper takes the port's net and the build knows it`, async () => {
+      await writeFile(join(root, FILE), circuit(to))
+      await writeFile(join(root, LAYOUT), serializeLayout({ next: { track: 2, via: 1 }, records: [track] }))
+      const { preview } = await makeSubSheet(root, FILE, { name: "Reg", parts: ["U1", "R5"] }, { author: "human", engine: inProcessEngine as never })
+      expect(preview.ports).toEqual([{ name: "U1_VOUT" }])
+      expect(await read(LAYOUT)).toContain(`"id":"t0001","net":"U1_VOUT"`)
+      const design = await inProcessEngine.build(root, FILE)
+      expect(design.diagnostics.filter((d) => d.code === "unknown-net" || d.severity === "error")).toEqual([])
+      const net = design.circuit.nets.find((n) => n.id === "net.U1_VOUT")
+      expect(net?.pins.sort()).toEqual(["U101.pin2", "U2.pin1"])
+      expect(design.pcb.tracks.find((t) => t.id === "t0001")?.net).toBe("net.U1_VOUT")
+    })
+  }
 })
