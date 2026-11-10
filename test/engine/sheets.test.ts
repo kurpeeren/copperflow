@@ -236,3 +236,19 @@ test("the design built from instances is the flat design the tools read", () => 
   expect(design.pcb.parts.map((p) => p.component)).toContain("U201")
   expect(design.diagnostics.filter((d) => d.severity === "error")).toEqual([])
 })
+
+test("a group inside a turned instance turns with it", () => {
+  const block = `export default function Block() {\n  return (\n    <sheet>\n      <group pcbX={1}><resistor name="R1" pcbX={1} pcbY={0} pcbRotation={90} /></group>\n      <keepout pcbX={0} pcbY={1} width={2} height={2} />\n    </sheet>\n  )\n}\n`
+  const files = {
+    [MAIN]: `import Block from "./Block.sheet"\nexport default () => (<board width="20mm" height="20mm"><Block name="B1" pcbX={5} pcbY={5} pcbRotation={90} /></board>)\n`,
+    "Block.sheet.tsx": block,
+  }
+  const circuit = elaborate(evaluateCircuit(files, MAIN), MAIN, noPads)
+  expect(part(circuit, "R101")?.pcb).toEqual({ x: 5, y: 7, rotation: 180, side: "top" })
+  expect(circuit.board?.keepouts[0]?.outline).toEqual([
+    { x: 5, y: 4 },
+    { x: 5, y: 6 },
+    { x: 3, y: 6 },
+    { x: 3, y: 4 },
+  ])
+})
