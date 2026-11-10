@@ -153,8 +153,43 @@ describe("the Gerber layers of a board", () => {
     const top = fileOf(files(board({ parts: [part([pad("1", { shape: "roundrect", width: 1.2, height: 0.8, cornerRadius: 0.2, rotation: 90 })])] })), "b-F_Cu.gtl")
     expect(top.macros).toEqual(["RoundRect"])
     expect(top.flashes[0]?.aperture.shape).toEqual({ type: "macroShape", name: "RoundRect", variableValues: [0.2, -0.2, -0.4, 0.2, -0.4, 0.2, 0.4, -0.2, 0.4] })
-    const turned = fileOf(files(board({ parts: [part([pad("1", { shape: "oval", width: 2, height: 1, rotation: 30 })])] })), "b-F_Cu.gtl")
-    expect(turned.flashes[0]?.aperture.shape).toEqual({ type: "macroShape", name: "RoundRect", variableValues: [0.5, -0.433013, -0.25, 0.433013, 0.25, 0.433013, 0.25, -0.433013, -0.25] })
+  })
+
+  test("a rounded rectangle without a corner radius is a plain rectangle: the R aperture upright, a region turned; its mask opening is rounded by the expansion", () => {
+    const sharp = (rotation: number, x = 0) => pad("1", { shape: "roundrect", x, width: 1.2, height: 0.8, rotation })
+    const read = files(board({ parts: [part([sharp(90), sharp(30, 3), pad("3", { shape: "roundrect", x: -3, width: 1, height: 1, cornerRadius: 0 })])] }))
+    const top = fileOf(read, "b-F_Cu.gtl")
+    expect(top.macros).toEqual([])
+    expect(top.flashes.map((f) => f.aperture.shape)).toEqual([
+      { type: "rectangle", xSize: 0.8, ySize: 1.2 },
+      { type: "rectangle", xSize: 1, ySize: 1 },
+    ])
+    expect(top.regions).toHaveLength(1)
+    expect(top.regions[0]?.points).toHaveLength(5)
+    expect(top.regions[0]?.fn).toBe("SMDPad,CuDef")
+    const mask = fileOf(read, "b-F_Mask.gts")
+    expect(mask.macros).toEqual(["RoundRect"])
+    expect(mask.flashes[0]?.aperture.shape).toMatchObject({ type: "macroShape", name: "RoundRect", variableValues: [0.05, -0.4, -0.6, 0.4, -0.6, 0.4, 0.6, -0.4, 0.6] })
+  })
+
+  test("an oval upright or a quarter turned is the O aperture; turned otherwise it is a region of its stadium outline", () => {
+    const read = files(board({ parts: [part([pad("1", { shape: "oval", width: 2, height: 1, rotation: 90 }), pad("2", { shape: "oval", x: 3, width: 2, height: 1, rotation: 30 })])] }))
+    const top = fileOf(read, "b-F_Cu.gtl")
+    expect(top.macros).toEqual([])
+    expect(top.flashes.map((f) => f.aperture.shape)).toEqual([{ type: "obround", xSize: 1, ySize: 2 }])
+    expect(top.regions).toHaveLength(1)
+    const outline = top.regions[0]?.points ?? []
+    // Two ends of 8 to 12 arc points each, closed back on the first.
+    expect(outline.length - 1).toBeGreaterThanOrEqual(16)
+    expect(outline.length - 1).toBeLessThanOrEqual(24)
+    expect(outline[outline.length - 1]).toEqual(outline[0])
+    // Every point is on the stadium: 0.5 mm from the segment between the end centres, which lies along 30 degrees.
+    const [cos, sin] = [Math.cos(Math.PI / 6), Math.sin(Math.PI / 6)]
+    for (const p of outline) {
+      const along = Math.max(-0.5, Math.min(0.5, (p.x - 3) * cos + p.y * sin))
+      expect(Math.hypot(p.x - 3 - along * cos, p.y - along * sin)).toBeCloseTo(0.5, 5)
+    }
+    expect(Math.max(...outline.map((p) => (p.x - 3) * cos + p.y * sin))).toBeCloseTo(1, 5)
   })
 
   test("the mask opens every pad on its side grown by the expansion: 0.05 mm by default, else the profile's", () => {

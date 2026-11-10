@@ -28,7 +28,11 @@ const SIDE_X2: Readonly<Record<Side, "Top" | "Bot">> = { top: "Top", bottom: "Bo
 const isSmd = (pad: WorldPad) => pad.drill === undefined && pad.layers !== "through"
 const padOnSide = (pad: WorldPad, side: Side) => pad.layers === "through" || pad.layers === side
 
-/** A pad's copper as a flash or a region, its size changed by `grow` on every side (negative shrinks); none when nothing is left. */
+/**
+ * A pad's copper as a flash or a region, its size changed by `grow` on every side (negative shrinks); none when nothing
+ * is left. Upright or quarter-turned rectangles and ovals are the R and O apertures, other angles a region of their
+ * outline; a rounded rectangle is the RoundRect macro only while its corner radius is above 0, else a rectangle.
+ */
 export function padObject(pad: WorldPad, grow = 0, fn?: string): GerberObject | undefined {
   const width = pad.width + 2 * grow
   const height = pad.height + 2 * grow
@@ -38,20 +42,41 @@ export function padObject(pad: WorldPad, grow = 0, fn?: string): GerberObject | 
   const square = Math.abs(turn % 90) < ANGLE_TOLERANCE || Math.abs((turn % 90) - 90) < ANGLE_TOLERANCE
   const upright = Math.abs(turn - 90) < ANGLE_TOLERANCE ? { width: height, height: width } : { width, height }
   const extra = fn === undefined ? {} : { function: fn }
+  const plainRect = (): GerberObject =>
+    square ? { kind: "flash", at, aperture: { shape: "rect", ...upright }, ...extra } : { kind: "region", points: rectCorners(at, width, height, pad.rotation), ...extra }
   switch (pad.shape) {
     case "circle":
       return { kind: "flash", at, aperture: { shape: "circle", diameter: width }, ...extra }
     case "rect":
-      return square ? { kind: "flash", at, aperture: { shape: "rect", ...upright }, ...extra } : { kind: "region", points: rectCorners(at, width, height, pad.rotation), ...extra }
+      return plainRect()
     case "oval":
       if (square) return { kind: "flash", at, aperture: { shape: "obround", ...upright }, ...extra }
-      return { kind: "flash", at, aperture: { shape: "roundrect", width, height, radius: Math.min(width, height) / 2, rotation: turn }, ...extra }
+      return { kind: "region", points: stadium(at, width, height, pad.rotation), ...extra }
     case "roundrect": {
       const radius = Math.min(Math.max((pad.cornerRadius ?? 0) + grow, 0), width / 2, height / 2)
+      if (radius <= 0) return plainRect()
       const sized = square ? { ...upright, rotation: 0 } : { width, height, rotation: turn }
       return { kind: "flash", at, aperture: { shape: "roundrect", radius, ...sized }, ...extra }
     }
   }
+}
+
+/** The points of each round end of a turned oval's outline, its first, middle (the tip) and last included. */
+const STADIUM_END_POINTS = 11
+
+/** A `width` by `height` oval turned `rotation` degrees about `at`, as the corners of its outline: two half circles. */
+function stadium(at: Point, width: number, height: number, rotation: number): Point[] {
+  const radius = Math.min(width, height) / 2
+  const reach = Math.max(width, height) / 2 - radius
+  // Drawn along x, then turned a further quarter when the oval is taller than wide.
+  const radians = ((rotation + (height > width ? 90 : 0)) * Math.PI) / 180
+  const [cos, sin] = [Math.cos(radians), Math.sin(radians)]
+  const end = (centre: number, from: number) =>
+    Array.from({ length: STADIUM_END_POINTS }, (_, i) => {
+      const angle = from + (Math.PI * i) / (STADIUM_END_POINTS - 1)
+      return { x: centre + radius * Math.cos(angle), y: radius * Math.sin(angle) }
+    })
+  return [...end(reach, -Math.PI / 2), ...end(-reach, Math.PI / 2)].map(({ x, y }) => ({ x: at.x + x * cos - y * sin, y: at.y + x * sin + y * cos }))
 }
 
 function rectCorners(at: Point, width: number, height: number, rotation: number): Point[] {
