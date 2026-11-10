@@ -36,8 +36,9 @@ import type { CopperScene } from "./copper-draw"
 import { copperBoxes } from "./copper-hit"
 import { copperCursor, copperIdAt, copperPress, copperSegmentAt, hoverCopper, useCopper, withCopperDrag, type CopperParts } from "./use-copper"
 import { anchorLookup, moveEach, sendGroupEditMarked } from "./group-edits"
-import { HoverLabel, hidingOnPress, useHoverLabel } from "./HoverLabel"
-import { hoverTarget } from "./hover-label"
+import { HoverLabel, useHoverLabel } from "./HoverLabel"
+import { withHoverLabel, type HoverDriver } from "./hover-driver"
+import { hoverTarget, stillOver, type HoverTarget, type PcbHoverScene } from "./hover-label"
 
 const BACKGROUND = PALETTE.background
 
@@ -243,8 +244,8 @@ interface PcbPointerInput {
   setCursor(world: Point | undefined): void
   onOpenProperties: CanvasProps["onOpenProperties"]
   onSelect: CanvasProps["onSelect"]
-  /** The hover label: told where the pointer rests, when it leaves and when it presses. */
-  label: { at(world: Point): void; leave(): void; press(): void }
+  /** The hover label: told where the pointer is, when it leaves, presses and turns the wheel. */
+  label: Pick<HoverDriver, "leave" | "press" | "stale" | "over"> & { at(world: Point): void }
 }
 
 /**
@@ -268,7 +269,7 @@ function pcbPointer({ copper, track, hover, boxes, context, texts, camera, size,
   }
   const pressCopper = copperPress(copper)
   const tool = (event: Press, world: Point) => track.press(event, world) || (!textFirst(world) && pressCopper(event, world))
-  const pointer = hidingOnPress(withCopperDrag(copper, pointerHandlers({ camera, size, element: canvasRef, gestures, setCursor, hover: hoverAt, open, tool }), setCursor), label.press)
+  const pointer = withHoverLabel(withCopperDrag(copper, pointerHandlers({ camera, size, element: canvasRef, gestures, setCursor, hover: hoverAt, open, tool }), setCursor), label)
   const onLeave = () => {
     label.leave()
     hover.leave()
@@ -319,11 +320,10 @@ export function PcbCanvas(props: PcbCanvasProps) {
   const copperScene: CopperScene = { ...copper.scene, activeLayer: props.activeLayer, routes: track.routes }
   usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad: hover.pad, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, highlightNets: highlight, markers, activeViolation, grid, copper: copperScene, texts: sceneTexts })
   const context: PickContext = { selection, armed: note.tool, layers: pick, filter: pickFilter }
-  const hoverLabel = useHoverLabel({ enabled: props.hoverLabels, busy: track.routing })
-  const label = {
-    ...hoverLabel,
-    at: (world: Point) => camera && hoverLabel.move(hoverTarget(world, { view: "pcb", design, copper: copper.shown, scale: camera.scale, layers: pick, context, boxes: parts.boxes, texts: texts.tools }), worldToScreen(camera, size, world)),
-  }
+  const scene: PcbHoverScene | undefined = camera && { view: "pcb", design, copper: copper.shown, scale: camera.scale, layers: pick, context, boxes: parts.boxes, texts: texts.tools }
+  const probe = scene && { pick: (world: Point) => hoverTarget(world, scene), still: (target: HoverTarget, world: Point) => stillOver(target, world, scene) }
+  const hoverLabel = useHoverLabel({ enabled: props.hoverLabels, busy: track.routing, probe, camera, design })
+  const label = { ...hoverLabel, at: (world: Point) => camera && hoverLabel.move(world, worldToScreen(camera, size, world)) }
   const { pointer, onLeave } = pcbPointer({ copper, track, hover, boxes: parts.boxes, context, texts: texts.tools, camera, size, canvasRef, gestures, setCursor, onOpenProperties: props.onOpenProperties, onSelect, label })
   const cursorStyle = track.armed ? "crosshair" : (copperCursor(copper) ?? cursorFor(gesture, note.armed, hover.part !== undefined || hover.text !== undefined))
   return (

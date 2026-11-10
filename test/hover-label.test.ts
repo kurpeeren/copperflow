@@ -3,7 +3,7 @@ import type { NetLabel } from "../src/engine/schematic.js"
 import { copperAt } from "../studio/src/pcb/copper-hit.js"
 import type { PartBox, Point } from "../studio/src/pcb/geometry.js"
 import { targetAt } from "../studio/src/pcb/gestures.js"
-import { hoverTarget, type PcbHoverScene, type SheetHoverScene } from "../studio/src/pcb/hover-label.js"
+import { hoverTarget, stillOver, type PcbHoverScene, type SheetHoverScene } from "../studio/src/pcb/hover-label.js"
 import { DEFAULT_LAYERS, type LayerVisibility } from "../studio/src/pcb/layers.js"
 import { padAt } from "../studio/src/pcb/pcb-draw.js"
 import type { PickContext } from "../studio/src/pcb/pick.js"
@@ -108,6 +108,15 @@ describe("hover labels on the PCB", () => {
     expect(hoverTarget(p(4, 5), { ...pcbScene(), texts: { at: () => "U1:pcbNameAt" } })).toBeUndefined()
   })
 
+  test("staying over the same pad, via or track is checked on that one alone", () => {
+    const scene = pcbScene()
+    const [pad, via, routed] = [hoverTarget(p(0.1, 0.1), scene), hoverTarget(p(20, 0.1), scene), hoverTarget(p(4, 5.05), scene)]
+    if (!pad || !via || !routed) throw new Error("expected targets")
+    expect([stillOver(pad, p(0.4, -0.4), scene), stillOver(pad, p(0.7, 0), scene)]).toEqual([true, false])
+    expect([stillOver(via, p(20.2, 0), scene), stillOver(via, p(21, 0), scene)]).toEqual([true, false])
+    expect([stillOver(routed, p(25, 5.1), scene), stillOver(routed, p(25, 6), scene)]).toEqual([true, false])
+  })
+
   test("the label names what a click picks: copper first, then the pad's part", () => {
     const scene = pcbScene()
     for (const at of [p(0.1, 0.1), p(2, 0), p(10, 0), p(20, 0.1), p(4, 5.05), p(4, 8), p(0, 5)]) {
@@ -128,7 +137,8 @@ describe("hover labels on the PCB", () => {
 const label = (id: string, net: string, text: string, at: Point, style: NetLabel["style"] = "label"): NetLabel => ({ id, net, text, at, side: "left", style })
 
 function sheetScene(context: PickContext = PICK): SheetHoverScene {
-  const labels = [label("L1", "net.V3_3", "V3_3", p(0, 5)), label("G1", "net.GND", "GND", p(10, 5), "ground")]
+  // L5 sits on U1.pin5's end, as a net label drawn at a pin does.
+  const labels = [label("L1", "net.V3_3", "V3_3", p(0, 5)), label("G1", "net.GND", "GND", p(10, 5), "ground"), label("L5", "net.V3_3", "V3_3", p(1, 0))]
   const wires = [{ id: "W1", net: "net.V3_3", points: [p(-5, 10), p(5, 10)] }]
   return {
     view: "schematic",
@@ -153,7 +163,7 @@ function sheetScene(context: PickContext = PICK): SheetHoverScene {
 
 describe("hover labels on the schematic", () => {
   test("a pin end names the part, the pin's own name and its net", () => {
-    expect(hoverTarget(p(1.05, 0), sheetScene())).toEqual({ kind: "pin", id: "U1.pin5", text: "U1.VOUT · V3_3" })
+    expect(hoverTarget(p(0.89, 0), sheetScene())).toEqual({ kind: "pin", id: "U1.pin5", text: "U1.VOUT · V3_3" })
     expect(hoverTarget(p(-1, 0.05), sheetScene())?.text).toBe("U1.pin1 · no net")
   })
 
@@ -173,19 +183,43 @@ describe("hover labels on the schematic", () => {
     expect(hoverTarget(p(40, 40), sheetScene())).toBeUndefined()
   })
 
-  test("the label names what a click picks: a label or wire over a pin is the label or wire", () => {
+  test("a net label on a pin end is still what the label names, and its text adds the pin", () => {
+    expect(hoverTarget(p(1, 0), sheetScene())).toEqual({ kind: "label", id: "L5", text: "V3_3 · pin U1.VOUT", pin: "U1.pin5" })
+  })
+
+  test("the label names what a click picks: a label or wire over a pin is the label or wire, and says the pin", () => {
     const scene = sheetScene()
-    for (const at of [p(0, 5), p(0, 10), p(1.05, 0), p(20, 0), p(0, 1.5)]) {
+    for (const at of [p(0, 5), p(0, 10), p(1, 0), p(0.89, 0), p(20, 0), p(0, 1.5)]) {
       const clicked = targetAt(scene.boxes, scene.labels, at, scene.context, scene.wires)
       const shown = hoverTarget(at, scene)
       if (clicked.kind === "label") expect(shown).toMatchObject({ kind: "label", id: clicked.label.id })
       else if (clicked.kind === "wire") expect(shown).toMatchObject({ kind: "wire", id: clicked.id })
       else expect(shown === undefined || shown.kind === "pin" || shown.kind === "port").toBe(true)
     }
+    const onPin = p(1, 0)
+    const clicked = targetAt(scene.boxes, scene.labels, onPin, scene.context, scene.wires)
+    expect(clicked).toMatchObject({ kind: "label", label: { id: "L5" } })
+    expect(hoverTarget(onPin, scene)).toMatchObject({ kind: "label", id: "L5", text: "V3_3 · pin U1.VOUT" })
+  })
+
+  test("staying over the same thing is checked on that thing alone", () => {
+    const scene = sheetScene()
+    const onLabel = hoverTarget(p(1, 0), scene)
+    const onPin = hoverTarget(p(0.89, 0), scene)
+    const onWire = hoverTarget(p(0, 10), scene)
+    expect([onLabel, onPin, onWire].every((target) => target !== undefined)).toBe(true)
+    if (!onLabel || !onPin || !onWire) return
+    expect(stillOver(onLabel, p(1.02, 0), scene)).toBe(true)
+    expect(stillOver(onLabel, p(0, 5), scene)).toBe(false)
+    expect(stillOver(onPin, p(0.95, 0.02), scene)).toBe(true)
+    expect(stillOver(onPin, p(0.5, 0), scene)).toBe(false)
+    expect(stillOver(onWire, p(3, 10), scene)).toBe(true)
+    expect(stillOver(onWire, p(3, 11), scene)).toBe(false)
   })
 
   test("with the note tool armed, or parts filtered out, a pin has no label", () => {
-    expect(hoverTarget(p(1, 0), sheetScene({ ...PICK, armed: "note" }))).toBeUndefined()
-    expect(hoverTarget(p(1, 0), sheetScene({ ...PICK, filter: { ...ALL_PICKABLE, parts: false } }))).toBeUndefined()
+    expect(hoverTarget(p(0.89, 0), sheetScene({ ...PICK, armed: "note" }))).toBeUndefined()
+    expect(hoverTarget(p(0.89, 0), sheetScene({ ...PICK, filter: { ...ALL_PICKABLE, parts: false } }))).toBeUndefined()
+    expect(hoverTarget(p(1, 0), sheetScene({ ...PICK, filter: { ...ALL_PICKABLE, parts: false } }))?.text).toBe("V3_3")
   })
 })

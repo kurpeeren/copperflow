@@ -57,8 +57,9 @@ import { BusMemberList } from "./BusMemberList"
 import { useDrawTools } from "./use-draw-tools"
 import { topInstance } from "./instances"
 import { useSymbolEdit } from "./use-symbol-edit"
-import { HoverLabel, hidingOnPress, useHoverLabel } from "./HoverLabel"
-import { hoverTarget } from "./hover-label"
+import { HoverLabel, useHoverLabel } from "./HoverLabel"
+import { withHoverLabel } from "./hover-driver"
+import { hoverTarget, stillOver, type HoverTarget, type SheetHoverScene } from "./hover-label"
 import type { RestState } from "./hover-rest"
 
 const EMPTY_SHEET_CAMERA: Camera = { cx: 0, cy: 0, scale: 60 }
@@ -564,18 +565,21 @@ export function SchematicCanvas(props: CanvasProps) {
   useSheetPaint(canvasRef, { design, border, camera, size, wire, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel: hover.label, hoverDrawing: drawings.drawingOf(hover.drawing), hoverWire, selectedWire: wires.selected, wireShapes, palette, draw, highlight, markers, activeViolation, grid, texts: sceneTexts, theme: props.theme })
   const picking = { selection, armed: tool.armed, filter: props.pickFilter }
   const sheetOf = (name: string) => topInstance(design, name)?.file
-  const hoverLabel = useHoverLabel({ enabled: props.hoverLabels, busy: wire.drawing !== null || draw.busy })
+  const view = camera ?? EMPTY_SHEET_CAMERA
+  const scene: SheetHoverScene = { view: "schematic", design, scale: view.scale, context: picking, boxes: parts.boxes, labels: labels.tools, wires: wires.hits, drawings: drawings.hits, texts: texts.tools }
+  const probe = { pick: (world: Point) => hoverTarget(world, scene), still: (target: HoverTarget, world: Point) => stillOver(target, world, scene) }
+  const hoverLabel = useHoverLabel({ enabled: props.hoverLabels, busy: wire.drawing !== null || draw.busy, probe, camera, design })
   const hoverAt = (world: Point) => {
     hover.at(world)
-    const view = camera ?? EMPTY_SHEET_CAMERA
-    hoverLabel.move(hoverTarget(world, { view: "schematic", design, scale: view.scale, context: picking, boxes: parts.boxes, labels: labels.tools, wires: wires.hits, drawings: drawings.hits, texts: texts.tools }), worldToScreen(view, size, world))
+    hoverLabel.move(world, worldToScreen(view, size, world))
   }
   const onLeave = () => {
     hoverLabel.leave()
     hover.leave()
   }
   const sheetHandlers = sheetPointer({ symbolEdit, sheetOf, onOpenSheet: props.onOpenSheet, camera, size, element: wrapRef, gestures, setCursor, hover: hoverAt, boxes: parts.boxes, labels: labels.tools, wires: wires.hits, drawings: drawings.hits, corners: wires.corners, wire, palette, note, draw, picking, onOpenProperties: props.onOpenProperties })
-  const pointer = hidingOnPress(sheetHandlers, hoverLabel.press)
+  // The handlers are on the sheet's element, so a move over the status line or a field on it is not a move over the canvas.
+  const pointer = withHoverLabel(sheetHandlers, hoverLabel, canvasRef)
   const cursorStyle = cursorFor(gesture, wire.drawing !== null || wire.overPin || palette.armed || note.armed || draw.armed, hover.over)
   // The toolbar's controls sit beside the sheet: inside it, their portal's events would reach the sheet's handlers.
   return (
