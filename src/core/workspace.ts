@@ -15,7 +15,7 @@ import {
 import { drawingKeeper } from "./drawing-identity.js"
 import { applyEdits, EditError } from "./edit.js"
 import { inProjectQueue, isInside, readIfThere, writeNew, writeWithHistory } from "./file-writes.js"
-import { livesOnAs, readEntries, recordEntry, removeEntry, type Author, type FileChange, type HistoryEntry } from "./history.js"
+import { assertMeta, livesOnAs, readEntries, recordEntry, removeEntry, type Author, type FileChange, type HistoryEntry } from "./history.js"
 import { circuitPathFor, isLayoutFile, layoutPathFor } from "./layout-file.js"
 import { designFor, lockedPartsAt, lockedStart, type DesignSource } from "./layout-locks.js"
 import { lockedPartChanges, lockedRecordChanges } from "./layout-records.js"
@@ -113,6 +113,7 @@ export function editCircuit(
   meta: { author: Author; summary: string },
 ): Promise<EditResult> {
   return inProjectQueue(root, async () => {
+    assertMeta(meta)
     const loaded = await loadCircuit(root, file)
     await refuseLibraryOverrides(root, loaded, edits)
     const locked = new Set(loaded.annotations.locks.map((lock) => lock.part))
@@ -348,6 +349,7 @@ export function createCircuitFile(
   meta: { author: Author; summary: string; replace?: boolean; sheets?: readonly { file: string; text: string }[] },
 ): Promise<HistoryEntry> {
   return inProjectQueue(root, async () => {
+    assertMeta(meta)
     const path = resolveInRoot(root, file)
     if (!CIRCUIT_FILE.test(basename(path))) throw new Error(`${file} must end in .circuit.tsx`)
     const source = await readIfThere(path)

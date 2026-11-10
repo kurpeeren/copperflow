@@ -55,11 +55,11 @@ function drawingLines(model: CircuitModel, locked: ReadonlySet<string>): string[
   ]
 }
 
-export function formatHistory(entries: HistoryListing[]): string {
-  if (entries.length === 0) return "No changes recorded yet."
-  return entries
-    .map((e) => `${e.id}  ${e.time}  ${e.author}  ${e.summary}  (${[e.file, ...(e.also ?? []).map((other) => other.file)].join(", ")})${e.undone ? " [undone]" : ""}${e.redoneAs ? ` [redone as ${e.redoneAs}]` : ""}`)
-    .join("\n")
+export function formatHistory(entries: HistoryListing[], problems: readonly { file: string; reason: string }[] = []): string {
+  const skipped = problems.map((p) => `Skipped ${p.file}: ${oneLine(p.reason)}`)
+  if (entries.length === 0) return ["No changes recorded yet.", ...skipped].join("\n")
+  const rows = entries.map((e) => `${e.id}  ${e.time}  ${e.author}  ${e.summary}  (${[e.file, ...(e.also ?? []).map((other) => other.file)].join(", ")})${e.undone ? " [undone]" : ""}${e.redoneAs ? ` [redone as ${e.redoneAs}]` : ""}`)
+  return [...rows, ...skipped].join("\n")
 }
 
 function formatProps(props: Record<string, PropInfo>): string {

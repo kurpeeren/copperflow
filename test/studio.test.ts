@@ -143,7 +143,7 @@ describe("editing", () => {
     expect(result.entryId).toBe("c0001")
     expect(result.writeMark).toBeTypeOf("number")
     expect(await readFile(join(root, FILE), "utf8")).toContain("pcbX={5}")
-    const history = await data(await api("/api/history"))
+    const history = (await data(await api("/api/history"))).entries
     expect(history[0]).toMatchObject({ author: "human", summary: "move R1" })
   })
 
@@ -204,7 +204,7 @@ describe("editing", () => {
     const redo = await data(await api("/api/redo", {}))
     expect(redo).toEqual({ entryId: "c0003", summary: "Redo: remove LED1", writeMark: expect.any(Number) })
     expect(await readFile(join(root, FILE), "utf8")).toBe(edited)
-    const history = await data(await api("/api/history"))
+    const history = (await data(await api("/api/history"))).entries
     expect(history.map((e: { id: string; undone: boolean; redoneAs?: string }) => [e.id, e.undone, e.redoneAs ?? null])).toEqual([
       ["c0003", false, null],
       [undo.entryId, false, "c0003"],
@@ -267,7 +267,7 @@ describe("layout edits", () => {
     const result = await data(await api("/api/layout", { file: FILE, summary: "Add track", edits: [await track()] }))
     expect(result).toEqual({ entryId: "c0001", created: ["t0001"], writeMark: expect.any(Number) })
     expect(await readFile(join(root, LAYOUT), "utf8")).toContain('"id":"t0001"')
-    const history = await data(await api("/api/history"))
+    const history = (await data(await api("/api/history"))).entries
     expect(history[0]).toMatchObject({ id: "c0001", file: LAYOUT, author: "human", summary: "Add track" })
     const undo = await data(await api("/api/undo", {}))
     expect(undo.summary).toBe("Undo: Add track")

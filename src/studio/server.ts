@@ -22,7 +22,7 @@ import {
   isLayoutFile,
   listCircuits,
   listSheets,
-  listEntries,
+  listHistory,
   loadCircuit,
   lockParts,
   makeSubSheet,
@@ -246,7 +246,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       case "GET /api/build":
         return send(res, live.getBuild((await resolveCircuit(root, query("file"))).file))
       case "GET /api/history":
-        return send(res, await listEntries(root, Number(url.searchParams.get("limit") ?? 50) || 50))
+        return send(res, await listHistory(root, Number(url.searchParams.get("limit") ?? 50) || 50))
       case "POST /api/build": {
         const body = Bodies.build.parse(await readJson(req))
         live.requestBuild((await resolveCircuit(root, body.file)).file)

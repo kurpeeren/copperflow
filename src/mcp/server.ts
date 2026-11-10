@@ -20,7 +20,7 @@ import {
   formatHistory,
   formatSummary,
   listCircuits,
-  listEntries,
+  listHistory,
   loadCircuit,
   undoChange,
   type Edit,
@@ -353,7 +353,10 @@ Nothing was written.`)
       inputSchema: { limit: z.number().int().min(1).max(200).optional() },
       annotations: READ_ONLY,
     },
-    ({ limit }) => run(async () => formatHistory(await listEntries(root, limit ?? 20))),
+    ({ limit }) => run(async () => {
+      const { entries, problems } = await listHistory(root, limit ?? 20)
+      return formatHistory(entries, problems)
+    }),
   )
 
   server.registerTool(

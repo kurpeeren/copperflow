@@ -149,6 +149,7 @@ ${page}`} {...sheet} {...gridProps(workspace, "schematic")} markers={checks.mark
           parts={data.parts}
           onPlace={props.onPlace}
           history={data.history}
+          historyProblems={data.historyProblems}
           actions={props.actions}
           built={build.design !== undefined}
           buildError={build.status === "failed" ? (build.error ?? "The build failed.") : undefined}
