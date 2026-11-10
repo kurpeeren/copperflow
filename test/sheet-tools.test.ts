@@ -132,6 +132,18 @@ describe("check_circuit and circuit_summary for one instance", () => {
     expect((await call("check_circuit", { file: FILE, filter: "V1_8" })).isError).toBe(false)
     expect((await call("check_circuit", { file: FILE, filter: "R201" })).isError).toBe(false)
   })
+
+  test("a port, a pin or a name in another case is still a filter in a circuit with instances", async () => {
+    const port = await call("check_circuit", { file: FILE, filter: "PS2.GND" })
+    expect(port.text).toContain("warning unconnected-port [PS2.GND]")
+    expect((await call("check_circuit", { file: FILE, filter: "PS1.VIN" })).text).toMatch(/^main\.circuit\.tsx: 0 errors, 0 warnings \(filter: PS1\.VIN\)$/)
+    const pin = await call("check_circuit", { file: FILE, filter: "R201.pin2" })
+    expect(pin.text).toContain("warning pin-unconnected [R201.pin2]")
+    const lower = await call("check_circuit", { file: FILE, filter: "r201" })
+    expect(lower).toMatchObject({ isError: false })
+    expect(lower.text).toContain("[R201.pin2]")
+    expect((await call("check_circuit", { file: FILE, filter: "ps9.vin" })).isError).toBe(true)
+  })
 })
 
 describe("the filters with a sheet inside a sheet", () => {

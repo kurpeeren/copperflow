@@ -1,6 +1,6 @@
 // The sheet files a change writes besides its circuit file: a new circuit with sub-sheets writes them all as one
 // history entry, and its undo and redo take them all back together. Sheet files hold no locks.
-import { mkdir, realpath, rm, stat } from "node:fs/promises"
+import { mkdir, realpath, rm, rmdir, stat } from "node:fs/promises"
 import { basename, dirname, relative, resolve, sep } from "node:path"
 import { writeFileAtomic } from "./fs-utils.js"
 import { isInside, readIfThere } from "./file-writes.js"
@@ -57,12 +57,22 @@ export async function checkSheetFiles(root: string, changes: readonly FileChange
   }
 }
 
-/** Gives a file this text, or removes it when the text is undefined. */
-async function putText(path: string, text: string | undefined): Promise<void> {
-  if (text === undefined) await rm(path, { force: true })
-  else {
-    await mkdir(dirname(path), { recursive: true })
-    await writeFileAtomic(path, text)
+/** Gives a file this text, or removes it when the text is undefined; answers the first folder it had to make, if any. */
+async function putText(path: string, text: string | undefined): Promise<string | undefined> {
+  if (text === undefined) {
+    await rm(path, { force: true })
+    return undefined
+  }
+  const made = await mkdir(dirname(path), { recursive: true })
+  await writeFileAtomic(path, text)
+  return made
+}
+
+/** Removes the folders from a file's folder up to `top`, deepest first, each only while it is empty. */
+async function removeFolders(path: string, top: string): Promise<void> {
+  for (let folder = dirname(path); ; folder = dirname(folder)) {
+    if (!(await rmdir(folder).then(() => true, () => false))) return
+    if (folder === top || dirname(folder) === folder) return
   }
 }
 
@@ -73,15 +83,21 @@ async function putText(path: string, text: string | undefined): Promise<void> {
  */
 export async function writeSheetFiles(root: string, changes: readonly FileChange[], side: "before" | "after"): Promise<() => Promise<void>> {
   const found: { path: string; text: string | undefined }[] = []
+  const made: { path: string; top: string }[] = []
   for (const change of changes) {
     const path = await sheetPath(root, change.file)
     found.push({ path, text: await readIfThere(path) })
   }
   const putBack = async () => {
     for (const { path, text } of [...found].reverse()) await putText(path, text).catch(() => undefined)
+    for (const { path, top } of [...made].reverse()) await removeFolders(path, top)
   }
   try {
-    for (const [index, change] of changes.entries()) await putText(found[index]?.path ?? "", textOn(change, side))
+    for (const [index, change] of changes.entries()) {
+      const path = found[index]?.path ?? ""
+      const top = await putText(path, textOn(change, side))
+      if (top !== undefined) made.push({ path, top })
+    }
   } catch (error) {
     await putBack()
     throw error

@@ -172,8 +172,11 @@ const FILTER_WORDS = new Set(["errors", "warnings", "copper"])
 function refuseUnknownName(file: string, result: CheckResult, filter: string): void {
   const instances = result.instances ?? []
   if (FILTER_WORDS.has(filter) || instances.length === 0 || result.names === undefined) return
-  const name = filter.replace(/^net[.:]/, "")
-  if (result.names.includes(name)) return
+  if (findings(result).some((f) => matches(f, filter))) return
+  // A pin (R101.pin2) or a port (PS1.VIN) names its part or instance before the dot; names match in any case.
+  const name = filter.replace(/^net[.:]/, "").toLowerCase()
+  const known = [...result.names, ...instances.map((i) => i.path)].map((n) => n.toLowerCase())
+  if (known.some((n) => name === n || name.startsWith(`${n}.`))) return
   throw new Error(`There is no instance, part or net ${filter} in ${file}; the instances are ${instances.map((i) => i.path).join(", ")}`)
 }
 

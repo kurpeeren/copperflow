@@ -81,9 +81,9 @@ describe("a circuit written with its sheet files", () => {
 describe("a sheet file that cannot be written", () => {
   test("leaves nothing written: no circuit, no other sheet file, no history entry", async () => {
     await writeFile(join(root, "blocks"), "a plain file where a folder must go")
-    const sheets = [{ file: SHEET, text: SHEET_TEXT }, { file: "blocks/B.sheet.tsx", text: SHEET_TEXT }]
+    const sheets = [{ file: SHEET, text: SHEET_TEXT }, { file: "new/deeper/A.sheet.tsx", text: SHEET_TEXT }, { file: "blocks/B.sheet.tsx", text: SHEET_TEXT }]
     await expect(create(sheets)).rejects.toThrow()
-    expect([await exists(CIRCUIT), await exists(SHEET)]).toEqual([false, false])
+    expect([await exists(CIRCUIT), await exists(SHEET), await exists("new")]).toEqual([false, false, false])
     expect(await listEntries(root, 10)).toHaveLength(0)
   })
 
