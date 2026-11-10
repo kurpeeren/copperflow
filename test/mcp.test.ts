@@ -35,10 +35,12 @@ describe("MCP server", () => {
     const { tools } = await client.listTools()
     expect(tools.map((t) => t.name).sort()).toEqual([
       "add_trace",
+      "add_via",
       "bom",
       "check_circuit",
       "circuit_summary",
       "connect_nets",
+      "copper_summary",
       "create_part",
       "edit_circuit",
       "export_package",
@@ -48,8 +50,10 @@ describe("MCP server", () => {
       "part_info",
       "place_part",
       "recent_changes",
+      "remove_copper",
       "remove_part",
       "remove_trace",
+      "route_track",
       "set_props",
       "undo_change",
     ])

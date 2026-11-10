@@ -1,5 +1,6 @@
 import type { CheckResult, LoadedCircuit, PartInfo, TraceInfo } from "../core/index.js"
 import { oneLine } from "../core/summary.js"
+import { COPPER_RULES } from "./copper-summary.js"
 
 /** Lists in a default answer stop here, so the whole answer fits a screen. */
 export const COMPACT_LIMIT = 20
@@ -119,6 +120,7 @@ function matches(finding: Finding, filter: string | undefined): boolean {
   if (filter === undefined || filter === "") return true
   if (filter === "errors") return finding.severity === "error"
   if (filter === "warnings") return finding.severity === "warning"
+  if (filter === "copper") return COPPER_RULES.has(finding.rule)
   const needle = filter.toLowerCase()
   const whole = (item: string) => item.toLowerCase() === needle || item.toLowerCase().startsWith(`${needle}.`)
   return finding.items.some((item) => whole(item) || whole(item.replace(/^net[.:]/, "")))

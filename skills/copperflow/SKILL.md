@@ -25,8 +25,14 @@ undoing their work.
    `remove_trace`, or several at once with `edit_circuit` (one history entry; nothing is written
    if one edit is refused) and `connect_nets` (`{ GND: ["R1.pin2", "C1.pin2"] }`). These tools
    enforce locks and record history; editing the file directly does not.
+   Copper: you may draw the tracks and vias you want by hand with `route_track` (a track of one
+   net, starting on a pad, track or via of that net), `add_via` and `remove_copper`; each is one
+   history entry, and the answer lists the copper violations the change introduced. The program
+   checks clearance; the router comes later and does the rest. Call `copper_summary` before and
+   after (per net: tracks, vias, length, unrouted connections), and `check_circuit` with filter
+   `copper` for the full list.
 4. Call `check_circuit` once at the end (it lists the first 20 findings; `filter` takes `errors`,
-   `warnings`, a part or a net). It runs copperflow's own rule checks: the electrical
+   `warnings`, `copper`, a part or a net). It runs copperflow's own rule checks: the electrical
    checks (`pin-unconnected`, `output-conflict`, `no-power-source`), the placement checks
    (`courtyard-overlap`, `outside-board`) and the problems in the code and the model, one line each
    with the rule, the items and the position: `footprint` (a footprint it cannot make), `unknown-pin`, `ambiguous-pin` (a name

@@ -30,6 +30,8 @@ import { FootprintFileSchema } from "../engine/footprints/file.js"
 import { VERSION } from "../version.js"
 import { batchSummary, describeRefusal, editItem, firstRefusal, planNets, toEdit } from "./batch.js"
 import { formatCompactCheck, formatCompactSummary } from "./compact.js"
+import { formatCopperSummary } from "./copper-summary.js"
+import * as copper from "./copper-tools.js"
 import { NEW_CIRCUIT_DESCRIPTION, newCircuit, newCircuitInput } from "./new-circuit.js"
 
 const INSTRUCTIONS = `copperflow lets you edit circuit files together with a human.
@@ -39,6 +41,7 @@ const INSTRUCTIONS = `copperflow lets you edit circuit files together with a hum
 - Make several changes in one call: edit_circuit takes a list of edits (one history entry, nothing written if one is refused), connect_nets wires whole nets at once, e.g. { "GND": ["R1.pin2", "C1.pin2"] }.
 - Change existing parts and traces through these tools rather than rewriting the file, so locks and history apply.
 - Call check_circuit once at the end, then fix every error before reporting success. It shows the first 20 findings; use its filter (errors, warnings, a part or a net) for the rest.
+- You may route copper by hand: route_track draws one track of a net from a pad, track or via of that net, add_via places a via, remove_copper removes tracks and vias; each is one change. The program checks clearance and answers with the violations your change introduced; the router comes later and does the rest. Call copper_summary before and after, and check_circuit with filter "copper" for the full list.
 - Never change, move or remove a part marked [LOCKED]. If a summary lists lock violations, restore those parts.
 - "Marks from the human" are instructions placed on the board; follow them.
 - recent_changes shows what the human undid; do not redo an undone change unless asked.
@@ -142,12 +145,30 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "check_circuit",
     {
       description:
-        "Check the circuit with copperflow's own rules: electrical checks (pins left unconnected, outputs shorted together, power pins without a source) and placement checks (overlapping parts, parts off the board), plus problems in the code and the model (footprints it cannot make, unknown or ambiguous pins, library overrides). Answers with the error and warning counts, then up to 20 findings, one line each. Run it once at the end and fix the errors before reporting success; filter narrows it to errors, warnings, a part or a net.",
-      inputSchema: { file, filter: z.string().optional().describe('"errors", "warnings", a part name or a net name') },
+        "Check the circuit with copperflow's own rules: electrical checks (pins left unconnected, outputs shorted together, power pins without a source) and placement checks (overlapping parts, parts off the board), plus problems in the code and the model (footprints it cannot make, unknown or ambiguous pins, library overrides). Answers with the error and warning counts, then up to 20 findings, one line each. Run it once at the end and fix the errors before reporting success; filter narrows it to errors, warnings, copper, a part or a net. Copper clearance, width, via, board-edge and keepout violations are included.",
+      inputSchema: { file, filter: z.string().optional().describe('"errors", "warnings", "copper", a part name or a net name') },
       annotations: READ_ONLY,
     },
     ({ file: circuit, filter }) =>
       run(async () => formatCompactCheck(circuit, await checkCircuit(root, circuit, designOptions), filter)),
+  )
+
+  const ports = { root, ...(options.engine ? { engine: options.engine } : {}) }
+  server.registerTool(
+    "route_track",
+    { description: copper.ROUTE_TRACK_DESCRIPTION, inputSchema: copper.routeTrackInput },
+    (input) => run(() => copper.routeTrack(ports, input)),
+  )
+  server.registerTool("add_via", { description: copper.ADD_VIA_DESCRIPTION, inputSchema: copper.addViaInput }, (input) => run(() => copper.addVia(ports, input)))
+  server.registerTool(
+    "remove_copper",
+    { description: copper.REMOVE_COPPER_DESCRIPTION, inputSchema: copper.removeCopperInput, annotations: { destructiveHint: true } },
+    (input) => run(() => copper.removeCopper(ports, input)),
+  )
+  server.registerTool(
+    "copper_summary",
+    { description: copper.COPPER_SUMMARY_DESCRIPTION, inputSchema: { file }, annotations: READ_ONLY },
+    ({ file: circuit }) => run(async () => formatCopperSummary(circuit, await copper.buildOf(ports, circuit))),
   )
 
   server.registerTool(
