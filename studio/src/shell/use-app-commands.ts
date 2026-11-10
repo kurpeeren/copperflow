@@ -8,7 +8,7 @@ import { fabricationNote } from "./fabrication-note"
 import type { Actions } from "../App"
 import { keyAction, keyInput, type KeyActionName } from "../pcb/canvas-keys"
 import { copperLock, type CopperRecords } from "../pcb/copper-edits"
-import { lockChange } from "../pcb/group-edits"
+import { selectionLockChange } from "../pcb/pour-props"
 import type { PickLayers } from "../pcb/layers"
 import { selectAll } from "../pcb/pick"
 import { instancePart, instanceSelection, topInstance } from "../pcb/instances"
@@ -135,23 +135,26 @@ function exportBom(file: string | undefined, actions: Actions): void {
     .catch((error: Error) => actions.notify(error.message))
 }
 
-/** Locks or unlocks the selected copper (one layout edit), then the selected parts. */
+/** Locks or unlocks the selected copper (one layout edit), then the selected parts, pours and holes. */
 function lockSelection(input: Input, locked: boolean): void {
   const { copper } = input.selection
   if (copper.length > 0 && input.copperRecords) {
     const change = copperLock(input.copperRecords, copper, locked)
     if ("message" in change) input.actions.notify(change.message)
     else void input.actions.editLayout(change.edits, change.summary)
-    if (input.selection.size === 0) return
+    if (input.selection.size + input.selection.boardCount === 0) return
   }
   lockParts(input, locked)
 }
 
-/** Locks or unlocks every selected part that is not so already (or, for Lock, was changed outside the editor), in one call. */
+/**
+ * Locks or unlocks every selected part, pour and hole that is not so already (or, for Lock, was changed outside the
+ * editor), in one call: parts by name, pours and holes by id.
+ */
 function lockParts(input: Input, locked: boolean): void {
   const now = new Set(input.circuit?.annotations.locks.map((lock) => lock.part))
   const violated = new Set(input.circuit?.violations.map((violation) => violation.part))
-  const change = lockChange(input.selection.names, now, locked, violated)
+  const change = selectionLockChange(input.selection, now, locked, violated)
   if ("message" in change) return input.actions.notify(change.message)
   void input.actions.lock(change.parts, locked)
 }

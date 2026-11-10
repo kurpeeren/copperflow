@@ -31,12 +31,13 @@ import type { DesignSource } from "../core/bom.js"
 import { buildWith } from "../core/design-source.js"
 import { FootprintFileSchema } from "../engine/footprints/file.js"
 import { VERSION } from "../version.js"
-import { batchSummary, describeRefusal, editItem, firstRefusal, moveNotes, planNets, toEdit } from "./batch.js"
+import { batchSummary, describeRefusal, editItem, firstRefusal, moveNotes, planNets, toEdit, unknownPourNet } from "./batch.js"
 import { formatCompactCheck, formatCompactSummary, formatInstanceSummary, type SheetView } from "./compact.js"
 import { importsSheet, type Flattened } from "./compact-sheets.js"
 import { formatCopperSummary } from "./copper-summary.js"
 import * as copper from "./copper-tools.js"
 import * as fillet from "./fillet-tools.js"
+import * as pour from "./pour-tools.js"
 import * as router from "./route-tools.js"
 import { MAKE_SHEET_DESCRIPTION, makeSheet, makeSheetInput } from "./make-sheet.js"
 import { NEW_CIRCUIT_DESCRIPTION, newCircuit, newCircuitInput } from "./new-circuit.js"
@@ -50,6 +51,7 @@ const INSTRUCTIONS = `copperflow lets you edit circuit files together with a hum
 - Change existing parts and traces through these tools rather than rewriting the file, so locks and history apply.
 - Call check_circuit once at the end, then fix every error before reporting success. It shows the first 20 findings; use its filter (errors, warnings, a part or a net) for the rest.
 - Copper: place the parts first, then run autoroute (one change: it routes what is still unrouted and names each connection it could not route, with the reason), then check_circuit once at the end (filter "copper" for the full list of violations). Route by hand only what the router reports: route_track draws one track of a net from a pad, track or via of that net, add_via places a via, remove_copper removes tracks and vias, fillet_tracks rounds track corners and straighten_tracks squares them again; each is one change, and the answer lists the violations it introduced. Or move parts and run autoroute again; unroute takes back the router's copper (never hand copper). copper_summary shows per net what is routed. A locked part guards only the tracks that start on its pads; vias on it and tracks that only end there are not locked, so leave them alone unless the human asks.
+- Pours: a two-layer board gets a GND pour on the bottom (and on top when there is room) before autoroute: add_pour { net: "GND", layer: "bottom" } without an outline fills the whole board, with thermal spokes to the GND pads, and the connections the fill makes count as routed. Then autoroute, then check_circuit (pour-floating warns of a pour piece that joins nothing; copper-hole of copper too near a hole). remove_pour, add_hole and remove_hole (mounting holes) work by id, as do edit_circuit's add_pour, remove_pour, add_hole and remove_hole; new_circuit takes pours and holes; copper_summary lists each pour (area, pads it joins) and hole. A part's lock never covers a pour; a locked pour or hole is locked by its id: leave it alone.
 - When the copper is routed and check_circuit reports no errors, call export_fabrication: it writes <name>-fab/ and <name>-fab.zip beside the circuit. A person uploads the zip to JLCPCB; you do not.
 - Never change, move or remove a part marked [LOCKED]. If a summary lists lock violations, restore those parts.
 - "Marks from the human" are instructions placed on the board; follow them.
@@ -163,7 +165,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "check_circuit",
     {
       description:
-        "Check the circuit with copperflow's own rules: electrical checks (pins left unconnected, outputs shorted together, power pins without a source) and placement checks (overlapping parts, parts off the board), plus problems in the code and the model (footprints it cannot make, unknown or ambiguous pins, library overrides). Answers with the error and warning counts, then up to 20 findings, one line each. Run it once at the end and fix the errors before reporting success; filter narrows it to errors, warnings, copper, a part or a net. Copper clearance, width, via, hole-to-hole, board-edge and keepout violations are included.",
+        "Check the circuit with copperflow's own rules: electrical checks (pins left unconnected, outputs shorted together, power pins without a source) and placement checks (overlapping parts, parts off the board), plus problems in the code and the model (footprints it cannot make, unknown or ambiguous pins, library overrides). Answers with the error and warning counts, then up to 20 findings, one line each. Run it once at the end and fix the errors before reporting success; filter narrows it to errors, warnings, copper, a part or a net. Copper clearance, width, via, hole-to-hole, board-edge, keepout, copper-to-hole (copper-hole) and pour (pour-floating) violations are included.",
       inputSchema: { file, filter: z.string().optional().describe('"errors", "warnings", "copper", a part name, a net name or a sub-sheet instance such as "PS1"') },
       annotations: READ_ONLY,
     },
@@ -199,6 +201,18 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     { description: router.UNROUTE_DESCRIPTION, inputSchema: router.unrouteInput, annotations: { destructiveHint: true } },
     (input) => run(() => router.unroute(ports, input)),
   )
+  server.registerTool("add_pour", { description: pour.ADD_POUR_DESCRIPTION, inputSchema: pour.addPourInput }, (input) => run(() => pour.addPour(ports, input)))
+  server.registerTool(
+    "remove_pour",
+    { description: pour.REMOVE_POUR_DESCRIPTION, inputSchema: pour.removePourInput, annotations: { destructiveHint: true } },
+    (input) => run(() => pour.removePour(ports, input)),
+  )
+  server.registerTool("add_hole", { description: pour.ADD_HOLE_DESCRIPTION, inputSchema: pour.addHoleInput }, (input) => run(() => pour.addHole(ports, input)))
+  server.registerTool(
+    "remove_hole",
+    { description: pour.REMOVE_HOLE_DESCRIPTION, inputSchema: pour.removeHoleInput, annotations: { destructiveHint: true } },
+    (input) => run(() => pour.removeHole(ports, input)),
+  )
   server.registerTool(
     "copper_summary",
     { description: copper.COPPER_SUMMARY_DESCRIPTION, inputSchema: { file }, annotations: READ_ONLY },
@@ -217,7 +231,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "edit_circuit",
     {
       description:
-        "Apply several edits in order as ONE change (one history entry). Each edit has exactly one key: set_props { part, props }, connect { from, to }, disconnect { from, to }, place_part { part, name, props?, page? }, remove_part { part }, add_instance { sheet, name, connections, base?, page? } (another use of a sub-sheet), set_connections { instance, connections } (every port to its net) or move_to_page { part, page } (a part or an instance; nets join across pages by name). If an edit is refused, nothing is written and the answer says which edit failed and why.",
+        "Apply several edits in order as ONE change (one history entry). Each edit has exactly one key: set_props { part, props }, connect { from, to }, disconnect { from, to }, place_part { part, name, props?, page? }, remove_part { part }, add_instance { sheet, name, connections, base?, page? } (another use of a sub-sheet), set_connections { instance, connections } (every port to its net), move_to_page { part, page } (a part or an instance; nets join across pages by name), add_pour { net, layer, outline?, props? }, remove_pour { id }, add_hole { x, y, diameter } or remove_hole { id }. If an edit is refused, nothing is written and the answer says which edit failed and why.",
       inputSchema: { file, edits: z.array(editItem).min(1).max(100) },
     },
     ({ file: circuit, edits }) =>
@@ -231,6 +245,8 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
           }
         }
         const list = converted.map((c) => c.edit)
+        const badNet = await unknownPourNet(root, circuit, list, options.engine)
+        if (badNet) throw new Error(describeRefusal(badNet, edits.length, "add_pour"))
         const summary = batchSummary(converted.map((c) => c.label))
         const notes = list.some((e) => e.kind === "movePartToPage") ? await movesLeaveBehind(root, circuit, list) : []
         try {

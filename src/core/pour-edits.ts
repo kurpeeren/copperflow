@@ -8,16 +8,23 @@ import { drawingKeeper } from "./drawing-identity.js"
 import { EditError } from "./edit-error.js"
 import { atTop, attributeNamed, boardInsertion, cleanPoint, jsxAttributes, lineEnding, lineIndent, MAX_COORDINATE, putAttribute, removeRange } from "./edit-text.js"
 import { formatLiteral, formatPointList } from "./literals.js"
-import type { BoardItemInfo, BoardItemTag, BoardItemValue, Edit, Literal, Point } from "./types.js"
+import type { BoardBox, BoardItemInfo, BoardItemTag, BoardItemValue, Edit, Literal, Point } from "./types.js"
 
 const MAX_OUTLINE = 1000
 /** Far beyond any board; keeps the file's numbers sane. */
 const MAX_SIZE = 1000
+/** A pour's clearance, minimum width and thermal sizes, in mm: anything larger is a slip, not a design. */
+const MAX_POUR_SIZE = 10
+/** The smallest hole a fab drills, in mm. */
+const MIN_HOLE = 0.1
 
 type Check = (key: string, value: unknown) => void
 
 const positive: Check = (key, value) => {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > MAX_SIZE) throw new EditError("invalid", `${key} must be a number of mm above 0 and at most ${MAX_SIZE}`)
+}
+const smallSize: Check = (key, value) => {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > MAX_POUR_SIZE) throw new EditError("invalid", `${key} must be a number of mm above 0 and at most ${MAX_POUR_SIZE}`)
 }
 const coordinate: Check = (key, value) => {
   if (typeof value !== "number" || !Number.isFinite(value) || Math.abs(value) > MAX_COORDINATE) throw new EditError("invalid", `${key} must be a number of mm`)
@@ -28,13 +35,13 @@ const POUR_PROPS: Record<string, Check> = {
   priority: (key, value) => {
     if (typeof value !== "number" || !Number.isInteger(value) || Math.abs(value) > MAX_SIZE) throw new EditError("invalid", `${key} must be a whole number`)
   },
-  clearance: positive,
-  minWidth: positive,
+  clearance: smallSize,
+  minWidth: smallSize,
   thermal: (key, value) => {
     if (value !== "relief" && value !== "solid") throw new EditError("invalid", `${key} must be "relief" or "solid"`)
   },
-  thermalWidth: positive,
-  thermalGap: positive,
+  thermalWidth: smallSize,
+  thermalGap: smallSize,
 }
 
 const HOLE_PROPS: Record<string, Check> = { x: coordinate, y: coordinate, diameter: positive }
@@ -49,20 +56,36 @@ function layerOrThrow(value: unknown): string {
   return value as string
 }
 
-/** A pour's outline, rounded as corners are: 3 to MAX_OUTLINE points. */
-function outlineOrThrow(value: unknown): Point[] {
+const mmText = (n: number) => String(Math.round(n * 1e6) / 1e6)
+const pointText = (p: Point) => `(${mmText(p.x)}, ${mmText(p.y)})`
+const onBoard = (box: BoardBox, p: Point) => p.x >= box.minX && p.x <= box.maxX && p.y >= box.minY && p.y <= box.maxY
+
+/** A pour's outline, rounded as corners are: 3 to MAX_OUTLINE points, each on the board when its rectangle is known. */
+function outlineOrThrow(value: unknown, box: BoardBox | undefined): Point[] {
   const points = Array.isArray(value) && value.length >= 3 && value.length <= MAX_OUTLINE ? value.map(cleanPoint) : []
   if (points.length < 3 || points.some((point) => point === undefined)) throw new EditError("invalid", `outline must be a list of 3 to ${MAX_OUTLINE} points with numbers x and y`)
+  const outside = box && (points as Point[]).find((point) => !onBoard(box, point))
+  if (outside) throw new EditError("invalid", `outline point ${pointText(outside)} lies outside the board`)
   const problem = outlineProblem(points as Point[])
   if (problem) throw new EditError("invalid", `The pour's outline is not a simple polygon: ${problem}`)
   return points as Point[]
 }
 
+/** A hole whose centre is on the board and whose diameter is at least MIN_HOLE and at most the board's smaller side. */
+function checkHole(hole: { x: number; y: number; diameter: number }, box: BoardBox | undefined): void {
+  if (hole.diameter < MIN_HOLE) throw new EditError("invalid", `diameter must be at least ${MIN_HOLE} mm`)
+  if (!box) return
+  const side = Math.min(box.maxX - box.minX, box.maxY - box.minY)
+  if (hole.diameter > side) throw new EditError("invalid", `diameter must be at most ${mmText(side)} mm, the board's smaller side`)
+  const known = Number.isFinite(hole.x) && Number.isFinite(hole.y)
+  if (known && !onBoard(box, hole)) throw new EditError("invalid", `the hole at ${pointText(hole)} lies outside the board`)
+}
+
 /** A pour prop as an attribute value, checked. */
-function formatPourProp(key: string, value: unknown): string {
+function formatPourProp(key: string, value: unknown, box: BoardBox | undefined): string {
   if (key === "net") return formatLiteral(netOrThrow(value))
   if (key === "layer") return formatLiteral(layerOrThrow(value))
-  if (key === "outline") return formatPointList(outlineOrThrow(value))
+  if (key === "outline") return formatPointList(outlineOrThrow(value, box))
   const check = POUR_PROPS[key]
   if (!check) throw new EditError("invalid", `A copper pour has no prop "${key}"; it takes net, layer, outline, ${Object.keys(POUR_PROPS).join(", ")}`)
   check(key, value)
@@ -115,17 +138,19 @@ function addItem(source: string, scan: Scan, tag: BoardItemTag, element: string)
 }
 
 export function addPour(source: string, scan: Scan, edit: Extract<Edit, { kind: "addPour" }>): string {
-  const attributes = [`net=${formatPourProp("net", edit.net)}`, `layer=${formatPourProp("layer", edit.layer)}`]
-  if (edit.outline !== undefined) attributes.push(`outline=${formatPourProp("outline", edit.outline)}`)
+  const box = scan.model.boardBox
+  const attributes = [`net=${formatPourProp("net", edit.net, box)}`, `layer=${formatPourProp("layer", edit.layer, box)}`]
+  if (edit.outline !== undefined) attributes.push(`outline=${formatPourProp("outline", edit.outline, box)}`)
   for (const [key, value] of Object.entries(edit.props ?? {})) {
     if (key === "net" || key === "layer" || key === "outline") throw new EditError("invalid", `pass ${key} as its own argument`)
-    attributes.push(`${key}=${formatPourProp(key, value)}`)
+    attributes.push(`${key}=${formatPourProp(key, value, box)}`)
   }
   return addItem(source, scan, "copperpour", `<copperpour ${attributes.join(" ")} />`)
 }
 
 export function addHole(source: string, scan: Scan, edit: Extract<Edit, { kind: "addHole" }>): string {
   const attributes = (["x", "y", "diameter"] as const).map((key) => `${key}=${formatHoleProp(key, edit[key])}`)
+  checkHole(edit, scan.model.boardBox)
   return addItem(source, scan, "hole", `<hole ${attributes.join(" ")} />`)
 }
 
@@ -149,8 +174,20 @@ function removeAttribute(out: MagicString, source: string, node: JSXElement, key
   out.remove(before?.end ?? node.openingElement.name.end ?? 0, attribute.end ?? 0)
 }
 
+/** A hole's position and diameter once `props` are set; an expression counts as unknown (NaN), which every check passes. */
+function holeAfter(item: BoardItemInfo, props: Record<string, BoardItemValue>): { x: number; y: number; diameter: number } {
+  const value = (key: string) => {
+    const given = key in props ? props[key] : item.props[key]?.literal
+    return typeof given === "number" ? given : Number.NaN
+  }
+  return { x: value("x"), y: value("y"), diameter: value("diameter") }
+}
+
 function setItem(source: string, scan: Scan, tag: BoardItemTag, id: string, props: Record<string, BoardItemValue>, locked: ReadonlySet<string>): string {
   const { item, node } = requireEditableItem(scan, tag, id, locked)
+  // Inside a group or a page the coordinates are the group's own, so only an item at the top of the board is checked.
+  const box = atTop(item.parent) ? scan.model.boardBox : undefined
+  if (tag === "hole") checkHole(holeAfter(item, props), box)
   const out = new MagicString(source)
   for (const [key, value] of Object.entries(props)) {
     if (value === null) {
@@ -159,7 +196,7 @@ function setItem(source: string, scan: Scan, tag: BoardItemTag, id: string, prop
       removeAttribute(out, source, node, key)
       continue
     }
-    const formatted = tag === "hole" ? formatHoleProp(key, value) : formatPourProp(key, value)
+    const formatted = tag === "hole" ? formatHoleProp(key, value) : formatPourProp(key, value, box)
     if (attributeNamed(source, node, key) && !item.props[key]?.editable) {
       throw new EditError("readonly", `${id}.${key} is an expression (${item.props[key]?.source}) and cannot be edited`)
     }

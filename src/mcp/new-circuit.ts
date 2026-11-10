@@ -2,6 +2,7 @@ import { z } from "zod"
 import { access } from "node:fs/promises"
 import { annotationsPathFor, BUILTIN_PARTS, createCircuitFile, generateCircuit, projectPath, readAnnotations, resolveInRoot, type GeneratedInstance, type NewCircuit } from "../core/index.js"
 import { COMPACT_LIMIT } from "./compact.js"
+import { holeFields, pourFields } from "./pour-tools.js"
 
 const literal = z.union([z.string(), z.number(), z.boolean()])
 
@@ -51,6 +52,12 @@ export const newCircuitInput = {
     .max(50)
     .optional()
     .describe("Uses of the sheets; list an instance's name in pages to put it on a page"),
+  pours: z
+    .array(z.object({ ...pourFields, layer: z.enum(["top", "bottom"]).describe('"top" or "bottom"') }))
+    .max(20)
+    .optional()
+    .describe('Copper pours, e.g. [{ "net": "GND", "layer": "bottom" }]: each fills the whole board, or its outline, with its net; a two-layer board gets a GND pour on the bottom (and top when there is room)'),
+  holes: z.array(z.object(holeFields)).max(50).optional().describe("Non-plated mounting holes, e.g. [{ \"x\": 12, \"y\": 7, \"diameter\": 3.2 }]"),
   replace: z.boolean().optional().describe("Overwrite the file and its sheet files when they exist"),
 }
 
@@ -72,6 +79,14 @@ function instanceLine(instance: GeneratedInstance): string {
   return `${instance.name} ${instance.sheet} base ${instance.base}: ${ports || "no connections"}`
 }
 
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
+
+/** "2 pours, 1 hole", or nothing when there are none. */
+function boardItemsLine(spec: NewCircuit): string[] {
+  const [pours, holes] = [spec.pours?.length ?? 0, spec.holes?.length ?? 0]
+  return pours + holes === 0 ? [] : [`${plural(pours, "pour")}, ${plural(holes, "hole")}`]
+}
+
 /** Writes the circuit (and its sheet files) and answers in a few lines. */
 export async function newCircuit(root: string, input: { file: string; replace?: boolean } & NewCircuit): Promise<string> {
   const { file: written, replace, ...spec } = input
@@ -91,6 +106,7 @@ export async function newCircuit(root: string, input: { file: string; replace?: 
     counted,
     ...instances.slice(0, COMPACT_LIMIT).map(instanceLine),
     `${Object.keys(spec.nets).length} nets, ${traces} traces`,
+    ...boardItemsLine(spec),
     ...(left ? [left] : []),
     "Now call check_circuit once.",
   ].join("\n")

@@ -11,12 +11,14 @@ import {
   type Edit,
 } from "../core/index.js"
 import { buildWith, type DesignSource } from "../core/design-source.js"
-import { scanCircuit } from "../core/analyze.js"
+import { analyzeCircuit, scanCircuit } from "../core/analyze.js"
 import { connectionsEdit, instanceEdit } from "../core/instance-requests.js"
 import { movePartNote } from "../core/page-edits.js"
 import { localNet, localNetRefusal, parseSelector } from "../engine/selectors.js"
-import type { Circuit, Component } from "../engine/model.js"
+import type { Circuit, Component, Net } from "../engine/model.js"
 import { pinName } from "./compact.js"
+import { findNet } from "./copper-under.js"
+import { holeFields, pointText, pourFields } from "./pour-tools.js"
 
 type LoadedModel = Awaited<ReturnType<typeof loadCircuit>>["model"]
 
@@ -45,11 +47,15 @@ export const editItem = z
       .optional(),
     set_connections: z.object({ instance: z.string(), connections: z.record(z.string(), z.string()).describe("Every port to its net; ports left out are open") }).optional(),
     move_to_page: z.object({ part: z.string().describe("A part or an instance"), page: z.string().describe('Page name, made when missing; "Main" is the first page') }).optional(),
+    add_pour: z.object(pourFields).optional(),
+    remove_pour: z.object({ id: z.string().describe('e.g. "copperpour:1"') }).optional(),
+    add_hole: z.object(holeFields).optional(),
+    remove_hole: z.object({ id: z.string().describe('e.g. "hole:1"') }).optional(),
   })
-  .describe("Exactly one of set_props, connect, disconnect, place_part, remove_part, add_instance, set_connections, move_to_page")
+  .describe("Exactly one of set_props, connect, disconnect, place_part, remove_part, add_instance, set_connections, move_to_page, add_pour, remove_pour, add_hole, remove_hole")
 export type EditItem = z.infer<typeof editItem>
 
-const KINDS = ["set_props", "connect", "disconnect", "place_part", "remove_part", "add_instance", "set_connections", "move_to_page"] as const
+const KINDS = ["set_props", "connect", "disconnect", "place_part", "remove_part", "add_instance", "set_connections", "move_to_page", "add_pour", "remove_pour", "add_hole", "remove_hole"] as const
 const SUMMARY_LIMIT = 100
 
 function kindOf(item: EditItem): (typeof KINDS)[number] {
@@ -90,6 +96,20 @@ export async function toEdit(root: string, file: string, item: EditItem): Promis
       const { part, page } = item.move_to_page!
       return { edit: { kind: "movePartToPage", part, page }, label: `move ${part} to page ${page}` }
     }
+    case "add_pour": {
+      const { net, layer, outline, props: values } = item.add_pour!
+      const props = Object.fromEntries(Object.entries(values ?? {}).filter(([, value]) => value !== undefined)) as Record<string, string | number>
+      const edit: Edit = { kind: "addPour", net, layer, ...(outline ? { outline } : {}), ...(Object.keys(props).length > 0 ? { props } : {}) }
+      return { edit, label: `add pour ${net} ${layer}` }
+    }
+    case "remove_pour":
+      return { edit: { kind: "removePour", id: item.remove_pour!.id }, label: `remove ${item.remove_pour!.id}` }
+    case "add_hole": {
+      const hole = item.add_hole!
+      return { edit: { kind: "addHole", ...hole }, label: `add hole at ${pointText(hole.x, hole.y)}` }
+    }
+    case "remove_hole":
+      return { edit: { kind: "removeHole", id: item.remove_hole!.id }, label: `remove ${item.remove_hole!.id}` }
   }
 }
 
@@ -149,6 +169,35 @@ export async function firstRefusal(root: string, file: string, edits: Edit[]): P
     } catch (error) {
       if (error instanceof EditError) return { index, reason: error.message }
       throw error
+    }
+  }
+  return undefined
+}
+
+/** Whether the circuit text writes a trace to `net.<name>`. */
+const namedIn = (source: string, name: string) => analyzeCircuit(source).traces.some((trace) => trace.from === `net.${name}` || trace.to === `net.${name}`)
+
+/**
+ * The first add_pour on a net that neither the built design has nor an earlier edit of the batch writes (the batch is
+ * applied in order, so a net it connects first is fine). Nothing is refused when the design does not build.
+ */
+export async function unknownPourNet(root: string, file: string, edits: readonly Edit[], engine?: DesignSource): Promise<Refusal | undefined> {
+  if (!edits.some((edit) => edit.kind === "addPour")) return undefined
+  let nets: readonly Net[]
+  try {
+    nets = (await buildWith(root, file, engine)).circuit.nets
+  } catch {
+    return undefined
+  }
+  const loaded = await loadCircuit(root, file)
+  const locked = new Set(loaded.annotations.locks.map((lock) => lock.part))
+  let source = loaded.source
+  for (const [index, edit] of edits.entries()) {
+    if (edit.kind === "addPour" && !findNet(nets, edit.net) && !namedIn(source, edit.net)) return { index, reason: `There is no net ${edit.net}; connect pins to it first` }
+    try {
+      source = applyEdits(source, [edit], locked)
+    } catch {
+      return undefined
     }
   }
   return undefined

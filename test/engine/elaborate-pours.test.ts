@@ -62,8 +62,11 @@ test("a copperpour without a known net or a usable layer is warned about and ign
     'copperpour needs a net, such as net="GND"; it is ignored',
     "copperpour: layer must be top, bottom, inner1 or inner2; the pour is ignored",
     "copperpour: outline must be a list of at least 3 points with x and y; the pour is ignored",
-    "copperpour: the circuit has no net VCC; the pour is ignored",
+    "copperpour:2 names the net VCC, which the circuit does not have",
     "copperpour: a 2-layer board has no inner1; the pour is ignored",
+  ])
+  expect(circuit.diagnostics.filter((d) => d.code === "pour-net").map((d) => [d.severity, d.message, d.items])).toEqual([
+    ["error", "copperpour:2 names the net VCC, which the circuit does not have", ["copperpour:2"]],
   ])
   expect(build(`<copperpour net="GND" layer="inner2" />`, `width="10mm" height="10mm" layers={4}`).board?.pours).toHaveLength(1)
 })

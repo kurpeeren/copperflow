@@ -3,7 +3,7 @@ import { basename, join, relative, resolve, sep } from "node:path"
 import { analyzeCircuit } from "./analyze.js"
 import {
   annotationsPathFor,
-  lockKind,
+  lockWord,
   lockTarget,
   readAnnotations,
   verifyLocks,
@@ -43,6 +43,15 @@ export interface EditResult {
   entry: HistoryEntry
   model: CircuitModel
   violations: LockViolation[]
+  /** The ids of the pours and holes the edits wrote or changed (none left in place as it was), in source order. */
+  boardItemsAdded: string[]
+}
+
+/** The pours and holes of `next` that are no element of `source` left in place: those the change wrote or changed. */
+function boardItemsAdded(source: string, before: CircuitModel, next: string, after: CircuitModel): string[] {
+  const kept = drawingKeeper(source, next)
+  const old = before.boardItems ?? []
+  return (after.boardItems ?? []).filter((item) => !old.some((one) => one.tag === item.tag && kept(one, item))).map((item) => item.id)
 }
 
 /** Resolves a project-relative path and rejects anything outside the project root. */
@@ -121,7 +130,7 @@ export function editCircuit(
     if (after === loaded.source) throw new EditError("invalid", "The edit made no change")
     const entry = await writeWithHistory(root, loaded, after, { ...meta, file: loaded.file, before: loaded.source, after })
     const model = analyzeCircuit(after)
-    return { entry, model, violations: verifyLocks(loaded.annotations, model) }
+    return { entry, model, violations: verifyLocks(loaded.annotations, model), boardItemsAdded: boardItemsAdded(loaded.source, loaded.model, after, model) }
   })
 }
 
@@ -259,7 +268,7 @@ async function loadTracked(root: string, file: string, design?: DesignSource): P
   if (file === RULES_PATH) return loadTrackedRules(root)
   const loaded = await loadCircuit(root, file)
   const lock = loaded.annotations.locks[0]
-  return { ...loaded, lockChange: (next) => changedLocks(loaded, next), firstLock: () => lock && `${lockKind(lock)} ${lock.part}` }
+  return { ...loaded, lockChange: (next) => changedLocks(loaded, next), firstLock: () => lock && `${lockWord(lock)} ${lock.part}` }
 }
 
 /** Undoes a created file: it goes away, unless a part in it is locked now. */
@@ -400,14 +409,14 @@ function changedLocks(current: LoadedCircuit, nextText: string): string | undefi
   const next = analyzeCircuit(nextText)
   const kept = drawingKeeper(current.source, nextText)
   const drawingChanged = (id: string) => {
-    const before = current.model.drawings.find((d) => d.id === id)
-    const after = next.drawings.find((d) => d.id === id)
+    const before = current.model.drawings.find((d) => d.id === id) ?? current.model.boardItems?.find((item) => item.id === id)
+    const after = next.drawings.find((d) => d.id === id) ?? next.boardItems?.find((item) => item.id === id)
     return before && after ? !kept(before, after) : before !== after
   }
   const changed = current.annotations.locks.filter((lock: Lock) =>
     lock.drawing ? drawingChanged(lock.part) : partState(current.model, lock.part) !== partState(next, lock.part),
   )
-  return changed.length === 0 ? undefined : changed.map((lock) => `${lockKind(lock)} ${lock.part}`).join(", ")
+  return changed.length === 0 ? undefined : changed.map((lock) => `${lockWord(lock)} ${lock.part}`).join(", ")
 }
 
 /** A locked part's props and traces, to compare. */

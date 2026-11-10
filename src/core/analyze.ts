@@ -2,10 +2,11 @@ import { parse } from "@babel/parser"
 import type { File, JSXAttribute, JSXElement, Node } from "@babel/types"
 import { drawingKindOf } from "../engine/drawing-kinds.js"
 import { MAIN_PAGE } from "../engine/model.js"
+import { parseLength } from "../engine/units.js"
 import { isBoardItemTag, scanBoardItems, type BoardItemTagFacts } from "./board-items.js"
 import { NAME_NOT_LITERAL, scanDrawings, type DrawingTag, type NamedElement } from "./drawing-scan.js"
 import { readLiteral, readPoint, readPointList } from "./literals.js"
-import type { CircuitModel, PartInfo, Point, PropInfo, TraceInfo } from "./types.js"
+import type { BoardBox, CircuitModel, PartInfo, Point, PropInfo, TraceInfo } from "./types.js"
 
 const SKIP_KEYS = new Set(["loc", "start", "end", "extra", "comments", "leadingComments", "trailingComments", "innerComments"])
 const FUNCTION_TYPES = new Set([
@@ -148,6 +149,15 @@ function readElement(source: string, node: JSXElement, ancestors: Node[], circui
   }
 }
 
+/** The board's rectangle from literal width, height, pcbX and pcbY; undefined with an outline or a size not written as a literal. */
+function boardBox(props: Record<string, PropInfo>): BoardBox | undefined {
+  if (props["outline"] !== undefined) return undefined
+  const length = (key: string, fallback?: number) => (props[key] === undefined ? fallback : parseLength(props[key]?.literal))
+  const [width, height, x, y] = [length("width"), length("height"), length("pcbX", 0), length("pcbY", 0)]
+  if (width === undefined || height === undefined || x === undefined || y === undefined) return undefined
+  return { minX: x - width / 2, minY: y - height / 2, maxX: x + width / 2, maxY: y + height / 2 }
+}
+
 function collectElement(
   source: string,
   element: ElementFacts,
@@ -159,6 +169,8 @@ function collectElement(
     // A sheet file's <sheet> holds its parts as a circuit's <board> does.
     const close = element.node.closingElement?.start
     if (close != null && scan.model.boardClose === undefined) scan.model.boardClose = { start: close }
+    const box = element.tag === "board" ? boardBox(element.props) : undefined
+    if (box && scan.model.boardBox === undefined) scan.model.boardBox = box
     if (element.tag === "sheet" && scan.sheetNode === undefined) scan.sheetNode = element.node
     return
   }
