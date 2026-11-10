@@ -295,3 +295,75 @@ describe("text contrast", () => {
     expect(read("checks-panel.css")).toMatch(/\.check-row\.active \.items \{\s*color: var\(--text\);/)
   })
 })
+
+describe("the dark theme's tokens", () => {
+  /** The declarations of the dark block: the tokens theme.css sets under `:root[data-theme="dark"]`. */
+  const darkBlock = () => {
+    const css = theme()
+    const at = css.indexOf(':root[data-theme="dark"] {')
+    return at < 0 ? "" : css.slice(at, css.indexOf("}", at))
+  }
+  const dark = (name: string) => new RegExp(`\\n\\s*${name}: *([^;]+);`).exec(darkBlock())?.[1]
+  /** A dark token's hex value, following `var(--x)` aliases into the dark block and then the light one. */
+  const darkHex = (name: string): string => {
+    const value = dark(name) ?? token(name) ?? ""
+    const alias = /^var\((--[\w-]+)\)$/.exec(value)?.[1]
+    return alias ? darkHex(alias) : value
+  }
+  /** `rgba(r,g,b,a)` laid over a hex colour, as the eye sees the wash on a panel. */
+  const over = (rgba: string, ground: string): string => {
+    const [r, g, b, a] = (/rgba\(([^)]+)\)/.exec(rgba)?.[1] ?? "").split(",").map(Number) as [number, number, number, number]
+    const base = [1, 3, 5].map((at) => parseInt(ground.slice(at, at + 2), 16))
+    return `#${[r, g, b].map((c, i) => Math.round(c * a + (base[i] as number) * (1 - a)).toString(16).padStart(2, "0")).join("")}`
+  }
+
+  test("the dark block follows the light tokens and switches the browser's own controls too", () => {
+    expect(darkBlock()).not.toBe("")
+    expect(theme().indexOf(':root[data-theme="dark"]')).toBeGreaterThan(theme().indexOf(":root {"))
+    expect(dark("color-scheme")).toBe("dark")
+  })
+
+  test("a charcoal workspace: ground, panels, strips, hairlines and text", () => {
+    expect({
+      ground: dark("--ground"),
+      panel: dark("--panel"),
+      strip: dark("--strip"),
+      line: dark("--line"),
+      lineHover: dark("--line-strong"),
+      text: dark("--text"),
+      muted: dark("--muted"),
+      disabled: dark("--disabled"),
+    }).toEqual({ ground: "#16181D", panel: "#1D2026", strip: "#191C21", line: "#2A2E36", lineHover: "#3A4049", text: "#E6E8EB", muted: "#9AA1A9", disabled: "#5C636B" })
+  })
+
+  test("copper stays the accent: the colour, its hover, its wash and the text on it", () => {
+    expect([dark("--copper"), dark("--copper-strong"), dark("--copper-text"), dark("--copper-wash"), dark("--on-copper")]).toEqual(["#D98A3F", "#D98A3F", "#E89A4F", "rgba(217,138,63,.16)", "#1A1206"])
+  })
+
+  test("menus take a deeper shadow; the sheet's CSS ground is the dark sheet's", () => {
+    expect(dark("--shadow")).toBe("0 6px 20px rgba(0,0,0,.45)")
+    expect(dark("--sheet-background")).toBe("#141619")
+  })
+
+  test("every text pair of the light theme is at least 4.5:1 in the dark one too", () => {
+    const wash = over(dark("--copper-wash") ?? "", darkHex("--panel"))
+    const hexOf = (name: string) => (name === "--copper-wash" ? wash : darkHex(name))
+    const pairs: [string, string][] = [
+      ["--on-copper", "--copper-strong"], ["--on-copper", "--copper-text"], ["--copper-text", "--panel"], ["--copper-text", "--copper-wash"],
+      ["--agent", "--panel"], ["--text", "--copper-wash"], ["--text", "--panel"], ["--text", "--strip"], ["--text", "--ground"],
+      ["--muted", "--panel"], ["--muted", "--strip"], ["--danger-text", "--panel"], ["--danger-text", "--danger-wash"], ["--mask", "--panel"], ["--mask", "--good-wash"],
+    ]
+    for (const [text, background] of pairs) {
+      const ratio = contrastRatio(hexOf(text), hexOf(background))
+      expect([text, background, ratio >= 4.5]).toEqual([text, background, true])
+    }
+    expect(contrastRatio(darkHex("--copper"), darkHex("--panel"))).toBeGreaterThanOrEqual(3)
+    expect(contrastRatio(darkHex("--copper"), wash)).toBeGreaterThanOrEqual(3)
+  })
+
+  test("the dark block names only tokens the light one has", () => {
+    const names = [...darkBlock().matchAll(/\n\s*(--[\w-]+):/g)].map((m) => m[1] as string)
+    expect(names.length).toBeGreaterThan(10)
+    for (const name of names) expect([name, token(name) !== undefined]).toEqual([name, true])
+  })
+})

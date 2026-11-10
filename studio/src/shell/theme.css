@@ -1,7 +1,10 @@
 /* The Studio's own look: every chrome colour, the soft shadow and the hairline ratio, in one place.
    One accent, copper; cool, quiet neutrals. The canvases keep their own palettes (PALETTE, schematicTheme); the two
-   canvas backgrounds and the violation colours below only repeat theirs for the CSS. */
+   canvas backgrounds and the violation colours below only repeat theirs for the CSS.
+   View → Theme → Dark sets data-theme="dark" on the root (theme-state.ts): the block after this one swaps the tokens. */
 :root {
+  color-scheme: light;
+
   /* The accent: the selected tab, the pressed tool, focus rings, the primary button, links and the active row.
      --copper is for marks that are not text (underlines, outlines, the pressed icon: 3:1 on white and on the wash).
      Text in copper is --copper-text (4.5:1 on white and on the wash); the primary button fills with --copper-strong
@@ -49,4 +52,38 @@
 
   /* The device pixel ratio, kept current by dpr.ts; 1 until the app sets it. */
   --dpr: 1;
+}
+
+/* The dark theme: a charcoal workspace, copper kept as the accent. Only the tokens change; every rule reads them.
+   --copper-strong fills the primary button and --copper-text is its hover and copper text (7:1 on the panels). */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --copper: #D98A3F;
+  --copper-strong: #D98A3F;
+  --copper-text: #E89A4F;
+  --copper-wash: rgba(217,138,63,.16);
+  --on-copper: #1A1206;
+
+  --panel: #1D2026;
+  --ground: #16181D;
+  --strip: #191C21;
+  --line: #2A2E36;
+  --line-strong: #3A4049;
+  --text: #E6E8EB;
+  --muted: #9AA1A9;
+  --disabled: #5C636B;
+
+  --mask: #5CC98A;
+  --good-wash: #1C3326;
+  --danger: #F06A6A;
+  --danger-text: #FF8F8F;
+  --danger-wash: #3A2024;
+  --warning: #E0A63A;
+
+  --sheet-background: #141619;
+
+  --shadow: 0 6px 20px rgba(0,0,0,.45);
+  --backdrop: rgb(0 0 0 / 50%);
+  --veil: rgb(22 24 29 / 85%);
 }
