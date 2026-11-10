@@ -112,10 +112,60 @@ export default () => (
     <resistor name="R7" resistance="2k" schX={10} schY={1} />
     <resistor name="R8" resistance="2k" schX={10} schY={3} />
     <bus name="D[0:3]" points={[{ x: 6, y: 3 }, { x: 9, y: 3 }]} />
-    <Filter name="F1" connections={{ C3_pin2: "C3_pin2", "D[0:3]": "D[0:3]", VIN: "VIN" }} base={100} schX={3} schY={2} pcbX={5} pcbY={2} />
+    <Filter name="Filter1" connections={{ C3_pin2: "C3_pin2", "D[0:3]": "D[0:3]", VIN: "VIN" }} base={100} schX={3} schY={2} pcbX={5} pcbY={2} />
     <trace from="R7.pin1" to="net.VIN" />
     <trace from="R8.pin1" to="net.D1" />
     <trace from="R7.pin2" to="net.C3_pin2" />
+  </board>
+)
+`)
+  })
+})
+
+describe("fix round 1", () => {
+  test("a part inside a <group> is refused until it is ungrouped", () => {
+    const grouped = analyzeCircuit(CUT_MAIN.replace(`    <resistor name="R5" resistance="1k" schX={2} schY={1} pcbX={4} pcbY={2} />`, `    <group pcbX={10} pcbY={10}>\n      <resistor name="R5" resistance="1k" schX={2} schY={1} pcbX={4} pcbY={2} />\n    </group>`))
+    expect(cutRefusal(grouped, SELECTED)).toBe("R5 is inside a <group>, whose offset its position adds to; ungroup it first.")
+  })
+
+  test("a crossing wire's other props go with the traces that replace it, on both sides", () => {
+    const thick = CUT_MAIN.replace(`<trace from="C3.pin2" to="R7.pin2" />`, `<trace from="C3.pin2" to="R7.pin2" thickness="0.4mm" />`)
+    const model = analyzeCircuit(thick)
+    const plan = planCut(model, SELECTED, false)
+    expect(plan.parentTraces).toEqual([{ pin: "R7.pin2", net: "C3_pin2", props: { thickness: "0.4mm" } }])
+    expect(applyEdits(thick, parentEdits(plan, { sheet: "Filter", name: "Filter1", base: 100, origin: {} }), new Set())).toContain(`<trace from="R7.pin2" to="net.C3_pin2" thickness="0.4mm" />`)
+    expect(sheetSource(thick, model, plan, "Filter", {})).toContain(`<trace from="C3.pin2" to="net.C3_pin2" thickness="0.4mm" />`)
+    const expression = analyzeCircuit(CUT_MAIN.replace(`<trace from="C3.pin2" to="R7.pin2" />`, `<trace from="C3.pin2" to="R7.pin2" thickness={w} />`))
+    expect(() => planCut(expression, SELECTED, false)).toThrow(/thickness=\{w\}, which cannot be carried/)
+  })
+
+  test("on a page other than Main, the instance goes on that page and each parent join on its outside part's page", () => {
+    const paged = `export default () => (
+  <board width="20mm" height="20mm">
+    <resistor name="R7" />
+    <page name="Power">
+      <resistor name="R5" schX={2} schY={1} />
+      <resistor name="R8" />
+      <trace from="R5.pin1" to="R7.pin1" />
+      <trace from="R5.pin2" to="R8.pin1" />
+    </page>
+  </board>
+)
+`
+    const model = analyzeCircuit(paged)
+    const plan = planCut(model, ["R5"], false)
+    expect(plan.page).toBe("Power")
+    const after = applyEdits(paged, parentEdits(plan, { sheet: "Stage", name: "Stage1", base: 100, origin: cutOrigin(plan.parts) }), new Set())
+    expect(after).toBe(`import Stage from "./Stage.sheet"
+export default () => (
+  <board width="20mm" height="20mm">
+    <resistor name="R7" />
+    <page name="Power">
+      <resistor name="R8" />
+      <Stage name="Stage1" connections={{ R5_pin1: "R5_pin1", R5_pin2: "R5_pin2" }} base={100} schX={2} schY={1} />
+      <trace from="R8.pin1" to="net.R5_pin2" />
+    </page>
+    <trace from="R7.pin1" to="net.R5_pin1" />
   </board>
 )
 `)

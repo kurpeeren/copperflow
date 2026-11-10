@@ -201,7 +201,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     (input) => run(() => newCircuit(root, input)),
   )
 
-  server.registerTool("make_sheet", { description: MAKE_SHEET_DESCRIPTION, inputSchema: makeSheetInput }, (input) => run(() => makeSheet(root, input)))
+  server.registerTool("make_sheet", { description: MAKE_SHEET_DESCRIPTION, inputSchema: makeSheetInput }, (input) => run(() => makeSheet(root, input, options.engine)))
 
   server.registerTool(
     "edit_circuit",

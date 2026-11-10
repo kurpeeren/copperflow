@@ -264,7 +264,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       case "POST /api/make-sheet": {
         const { file: name, preview, ...request } = Bodies.makeSheet.parse(await readJson(req))
         if (preview) return send(res, await previewSubSheet(root, name, request))
-        const result = await makeSubSheet(root, name, request, { author: "human" })
+        const result = await makeSubSheet(root, name, request, { author: "human", engine: { build: (_root, circuit) => designOf(circuit) } })
         const writeMark = live.nextMark()
         live.requestBuild(result.entry.file)
         return send(res, { entryId: result.entry.id, preview: result.preview, writeMark })

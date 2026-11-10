@@ -1,17 +1,19 @@
 // The sheet files a change writes besides its circuit file: a new circuit with sub-sheets writes them all as one
-// history entry, and its undo and redo take them all back together. Sheet files hold no locks.
+// history entry, and its undo and redo take them all back together. Sheet files hold no locks. A circuit's layout file
+// rides along the same way when a change renames the nets its copper names (Make sub-sheet).
 import { mkdir, realpath, rm, rmdir, stat } from "node:fs/promises"
 import { basename, dirname, relative, resolve, sep } from "node:path"
 import { writeFileAtomic } from "./fs-utils.js"
 import { isInside, readIfThere } from "./file-writes.js"
 import type { FileChange } from "./history.js"
 import { SHEET_FILE } from "../engine/sheets.js"
+import { isLayoutFile } from "./layout-file.js"
 
-/** A sheet file's path on disk, refused unless it is a `.sheet.tsx` file whose nearest existing folder is inside the project. */
+/** A sheet (or layout) file's path on disk, refused unless it is a `.sheet.tsx` (or `.circuit.layout.json`) file whose nearest existing folder is inside the project. */
 async function sheetPath(root: string, file: string): Promise<string> {
   if (file.includes("\0")) throw new Error("A file path cannot contain a NUL character")
   const path = resolve(root, file)
-  if (!SHEET_FILE.test(basename(path))) throw new Error(`${file} must end in .sheet.tsx`)
+  if (!SHEET_FILE.test(basename(path)) && !isLayoutFile(basename(path))) throw new Error(`${file} must end in .sheet.tsx`)
   if (!isInside(resolve(root), path)) throw new Error(`${file} is outside the project root`)
   let folder = dirname(path)
   while (!(await stat(folder).then(() => true, () => false))) folder = dirname(folder)

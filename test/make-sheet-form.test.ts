@@ -1,12 +1,12 @@
 import { describe, expect, test } from "vitest"
 import { analyzeCircuit } from "../src/core/analyze.js"
-import { designatorRows, madeNote, makeSheetStart, portRows, type MakeSheetPreview } from "../studio/src/shell/make-sheet-form.js"
+import { designatorRows, instancePlaceholder, madeNote, makeSheetStart, portRows, type MakeSheetPreview } from "../studio/src/shell/make-sheet-form.js"
 import { CUT_MAIN } from "./helpers/cut-fixture.js"
 
 const PREVIEW: MakeSheetPreview = {
   file: "Filter.sheet.tsx",
   sheet: "Filter",
-  instance: "F1",
+  instance: "Filter1",
   base: 100,
   ports: [{ name: "D[0:3]", bus: true }, { name: "VIN" }],
   connections: { "D[0:3]": "D[0:3]", VIN: "VIN" },
@@ -35,6 +35,11 @@ describe("Edit → Make sub-sheet…", () => {
       { now: "C3", sheet: "C1", board: "C101" },
       { now: "R5", sheet: "R1", board: "R101" },
     ])
-    expect(madeNote(PREVIEW, 2)).toBe("Made Filter.sheet.tsx: F1 (base 100) replaces 2 parts")
+    expect(madeNote(PREVIEW, 2)).toBe("Made Filter.sheet.tsx: Filter1 (base 100) replaces 2 parts")
   })
+})
+
+test("the instance name field shows the default the server takes, the sheet's name and 1", () => {
+  expect(instancePlaceholder("Filter")).toBe("Filter1")
+  expect(instancePlaceholder("  ")).toBe("PowerStage1")
 })

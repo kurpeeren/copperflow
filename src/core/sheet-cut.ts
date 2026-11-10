@@ -6,7 +6,8 @@ import { busMembers } from "../engine/drawing-kinds.js"
 import { naturalCompare, sortedNatural } from "../engine/order.js"
 import { parseSelector } from "../engine/selectors.js"
 import { sheetFileIn } from "./selectors.js"
-import type { CircuitModel, PartInfo, TraceInfo } from "./types.js"
+import { EditError } from "./edit-error.js"
+import type { CircuitModel, Literal, PartInfo, TraceInfo } from "./types.js"
 
 /** A port the new sheet gets: a net port named after the parent net, or a bus port named after the parent bus. */
 export interface CutPort {
@@ -20,6 +21,8 @@ export interface PinToNet {
   net: string
   /** The page of the pin's part on the parent; absent on Main. */
   page?: string
+  /** The props of the wire it replaces, but its ends and corners (thickness …), as literals. */
+  props?: Record<string, Literal>
 }
 
 export interface CutPlan {
@@ -40,6 +43,8 @@ export interface CutPlan {
   sheetTraces: PinToNet[]
   /** A moved wire's net end renamed: a net of a crossing net written under another of its names takes the port's net. */
   netNames: ReadonlyMap<string, string>
+  /** Each crossing net: its names and pins (`R5.pin1`) in the circuit, and the net it is under in the parent now. */
+  crossings: { names: string[]; pins: string[]; net: string }[]
 }
 
 const TRAILING_NUMBER = /^(.*?)(\d+)$/
@@ -55,6 +60,7 @@ export function cutRefusal(model: CircuitModel, names: readonly string[]): strin
     if (!part) return `There is no part ${name} in the circuit.`
     if (sheetFileIn(model, name) !== undefined) return `${name} is a sub-sheet instance; a sub-sheet is made of parts only, so leave instances out of the selection.`
     if (!part.editable) return `${name} cannot be moved (${part.readonlyReason ?? "read-only"}).`
+    if (part.parent === "group") return `${name} is inside a <group>, whose offset its position adds to; ungroup it first.`
     parts.push(part)
   }
   const pages = new Set(parts.map((part) => part.page ?? ""))
@@ -91,6 +97,17 @@ class Groups {
     }
     return groups
   }
+}
+
+const TRACE_OWN = new Set(["from", "to", "schematicRouteHints"])
+
+/** A crossing wire's other props, which the traces replacing it carry; refused when one is not a literal. */
+function wireProps(trace: TraceInfo): Record<string, Literal> | undefined {
+  const entries = Object.entries(trace.props).filter(([key]) => !TRACE_OWN.has(key))
+  if (entries.length === 0) return undefined
+  const expression = entries.find(([, prop]) => prop.literal === undefined)
+  if (expression) throw new EditError("invalid", `The wire on line ${trace.line} has ${expression[0]}=${expression[1].source}, which cannot be carried across the sheet's boundary; write it as a literal first`)
+  return Object.fromEntries(entries.map(([key, prop]) => [key, prop.literal as Literal]))
 }
 
 const endsOf = (trace: TraceInfo): string[] => [trace.from, trace.to].flatMap((end) => (end === undefined ? [] : [end]))
@@ -159,6 +176,7 @@ export function planCut(model: CircuitModel, names: readonly string[], rename: b
   const portNet = new Map<string, string>()
   const netNames = new Map<string, string>()
   const ports = new Map<string, CutPort>()
+  const crossings: CutPlan["crossings"] = []
   for (const nodes of groups.members().values()) {
     const pinParts = nodes.map(partOfNode).filter((part): part is string => part !== undefined)
     const nets = sortedNatural(nodes.filter((node) => node.startsWith("net:")).map((node) => node.slice(4)))
@@ -167,6 +185,7 @@ export function planCut(model: CircuitModel, names: readonly string[], rename: b
     const bus = nets.map((net) => ({ net, bus: busOf(model, net) })).find((found) => found.bus !== undefined)
     const net = bus?.net ?? nets[0] ?? unnamedNet(nodes.filter((node) => node.startsWith("pin:")).map((node) => node.slice(4)), taken)
     for (const node of nodes) portNet.set(node, net)
+    crossings.push({ names: nets, pins: nodes.filter((node) => node.startsWith("pin:")).map((node) => node.slice(4)), net })
     for (const other of nets) if (other !== net) netNames.set(other, net)
     const port = bus?.bus ?? net
     ports.set(port, bus ? { name: port, bus: true } : { name: port })
@@ -182,6 +201,7 @@ export function planCut(model: CircuitModel, names: readonly string[], rename: b
   const parentTraces = new Map<string, PinToNet>()
   const sheetTraces = new Map<string, PinToNet>()
   for (const trace of crossing) {
+    const props = wireProps(trace)
     for (const end of endsOf(trace)) {
       const node = nodeOf(end)
       const part = partOfNode(node)
@@ -191,7 +211,8 @@ export function planCut(model: CircuitModel, names: readonly string[], rename: b
       const page = model.parts.find((p) => p.name === part)?.page
       const target = inside.has(part) ? sheetTraces : parentTraces
       if ((inside.has(part) ? inSheet : kept).has(pairKey(node, `net:${net}`))) continue
-      target.set(pin, { pin, net, ...(page === undefined || inside.has(part) ? {} : { page }) })
+      if (target.has(pin)) continue
+      target.set(pin, { pin, net, ...(page === undefined || inside.has(part) ? {} : { page }), ...(props ? { props } : {}) })
     }
   }
   const sortedPorts = [...ports.values()].sort((a, b) => naturalCompare(a.name, b.name))
@@ -206,5 +227,6 @@ export function planCut(model: CircuitModel, names: readonly string[], rename: b
     parentTraces: [...parentTraces.values()],
     sheetTraces: [...sheetTraces.values()],
     netNames,
+    crossings,
   }
 }

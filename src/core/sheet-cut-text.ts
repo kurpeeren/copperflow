@@ -46,9 +46,9 @@ export function cutOrigin(parts: readonly PartInfo[]): CutOrigin {
   return origin
 }
 
-/** The instance's default name: the sheet name's capitals and the lowest free number, PowerStage → PS1. */
+/** The instance's default name: the sheet's name and the lowest free number, PowerStage → PowerStage1 (F1 would read like a fuse). */
 export function defaultInstanceName(sheet: string, model: CircuitModel): string {
-  const initials = sheet.replace(/[^A-Z]/g, "") || sheet.slice(0, 1).toUpperCase()
+  const initials = sheet
   const taken = new Set([...model.parts.map((p) => p.name), ...model.drawings.flatMap((d) => [d.id, d.name ?? ""]), ...model.imports.map((i) => i.local)])
   let n = 1
   while (taken.has(`${initials}${n}`)) n++
@@ -68,7 +68,7 @@ export function parentEdits(plan: CutPlan, instance: InstanceSpec): Edit[] {
   const place = Object.fromEntries(AXES.flatMap((axis) => (instance.origin[axis] === undefined ? [] : [[axis, instance.origin[axis]]])))
   return [
     ...plan.parts.map((part): Edit => ({ kind: "removePart", part: part.name })),
-    ...plan.parentTraces.map((t): Edit => ({ kind: "addTrace", from: t.pin, to: `net.${t.net}`, ...(t.page === undefined ? {} : { page: t.page }) })),
+    ...plan.parentTraces.map((t): Edit => ({ kind: "addTrace", from: t.pin, to: `net.${t.net}`, ...(t.props ? { props: t.props } : {}), ...(t.page === undefined ? {} : { page: t.page }) })),
     { kind: "addInstance", tag: instance.sheet, name: instance.name, connections: plan.connections, base: instance.base, importFrom: `./${instance.sheet}.sheet`, ...page },
     ...(Object.keys(place).length === 0 ? [] : [{ kind: "setProps", part: instance.name, props: place } satisfies Edit]),
   ]
@@ -142,7 +142,10 @@ export function sheetSource(source: string, model: CircuitModel, plan: CutPlan, 
   const wires = plan.moved.map((trace) => indent + movedTrace(trace, names, plan.netNames, origin))
   const joins = [...plan.sheetTraces]
     .sort((a, b) => naturalCompare(a.pin, b.pin))
-    .map((t) => `${indent}<trace from=${formatLiteral(sheetEnd(t.pin, names, plan.netNames))} to=${formatLiteral(`net.${t.net}`)} />`)
+    .map((t) => {
+      const props = Object.entries(t.props ?? {}).map(([key, value]) => ` ${key}=${formatLiteral(value)}`)
+      return `${indent}<trace from=${formatLiteral(sheetEnd(t.pin, names, plan.netNames))} to=${formatLiteral(`net.${t.net}`)}${props.join("")} />`
+    })
   const imports = importsFor(source, model, plan.parts)
   const text = [...imports, ...(imports.length > 0 ? [""] : []), `export default function ${sheet}() {`, "  return (", "    <sheet>", ...ports, ...parts, ...wires, ...joins, "    </sheet>", "  )", "}", ""].join("\n")
   return renameParts(applyEdits(text, relativePlaces(plan.parts, origin), new Set()), plan.mapping)
