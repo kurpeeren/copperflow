@@ -34,6 +34,16 @@ The round 1–9 constraints hold (English; one-line commits without trailers; no
 - Studio PCB: the same for the silkscreen designator.
 - Tests: the engine anchor from the prop; pick order; the drag edit; reset; a moved part keeps its labels' offsets.
 
-## Task 3: browser check (controller)
+## Task 3: one segment of a track
 
-On the check copy: round a hand-drawn two-corner track, see chords on the arc and the summary; straighten it back; a corner near another net's pad stays square and is named; drag R1's designator on the schematic, see the prop in the file and the label follow the part when it moves.
+Asked by the maintainer (2026-11-10): "double-click a track and delete only the segment where it was clicked, then draw it again". KiCad deletes a single segment by default; EasyEDA Pro selects a segment on click and the whole track on double click. Ours today picks the whole track.
+
+- A **double click** on a track selects the segment under the pointer alone (selection value: track id + segment index), outlined in white; a single click still selects the whole track. Properties shows the segment's length, its two ends and the track's net.
+- **Delete** on a segment removes it: the track record is split into the two remaining runs (each keeps the net, layer and width; a run with one point disappears), as one history entry through the core (`setTrack` + `addTrack`, or `removeTrack` when nothing is left); the context menu gets "Delete segment". The open ends are then floating (the engine reports them as today) and the track tool starts on either of them to draw the piece again.
+- Dragging a selected segment behaves as the whole-track segment drag does today.
+- MCP: `remove_copper` accepts `{ id, segment }` for the same split.
+- Tests: the split edits for a first, a middle and a last segment; a two-point track; the selection value and the pick on double click; the menu item; the MCP shape.
+
+## Task 4: browser check (controller)
+
+On the check copy: round a hand-drawn two-corner track, see chords on the arc and the summary; straighten it back; a corner near another net's pad stays square and is named; drag R1's designator on the schematic, see the prop in the file and the label follow the part when it moves; double-click a track's middle segment, delete it, see two tracks and the ratsnest line return, and draw the piece again from one open end.
