@@ -2,8 +2,9 @@
 // the rest go to the open canvas over the command bus (command-owners.ts says which is which). A view's own commands
 // (the schematic's tools, the PCB's routing) sent while the other view is open switch to it first.
 import { useCallback, useEffect, useState } from "react"
-import { api, type BomLine, type CircuitData } from "../api"
+import { api, type BomLine, type CircuitData, type FabricationExport } from "../api"
 import { bomCsv, bomFileName } from "./bom-csv"
+import { fabricationNote } from "./fabrication-note"
 import type { Actions } from "../App"
 import { keyAction, keyInput, type KeyActionName } from "../pcb/canvas-keys"
 import { copperLock, type CopperRecords } from "../pcb/copper-edits"
@@ -109,6 +110,15 @@ function exportPackage(file: string | undefined, actions: Actions): void {
     .catch((error: Error) => actions.notify(error.message))
 }
 
+/** Export → Fabrication files (JLCPCB): written beside the circuit by the server; the note says where, or why not. */
+function exportFabrication(file: string | undefined, actions: Actions): void {
+  if (!file) return
+  actions.notify("Writing the fabrication files…")
+  api<FabricationExport>("/api/export", { file })
+    .then((result) => actions.notify(fabricationNote(result)))
+    .catch((error: Error) => actions.notify(error.message))
+}
+
 /** Saves the BOM as a CSV file through the browser's download. */
 function exportBom(file: string | undefined, actions: Actions): void {
   if (!file) return
@@ -191,6 +201,7 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     openFile: input.workspace.openPageTree,
     exportBom: () => exportBom(input.file, input.actions),
     exportPackage: () => exportPackage(input.file, input.actions),
+    exportFabrication: () => exportFabrication(input.file, input.actions),
     undo: () => void input.actions.undo(),
     redo: () => void input.actions.redo(),
     // Every part of the circuit that may be picked (both views show the same parts, and the circuit is there before a

@@ -49,6 +49,16 @@ describe("menus", () => {
     expect(find("Junction")?.pending).toMatch(/^Comes later/)
   })
 
+  test("Export → Fabrication files (JLCPCB) runs the export; BOM and Package stay before it", () => {
+    const entries = MENUS.find((m) => m.title === "Export")?.entries ?? []
+    expect(entries.slice(0, 3)).toEqual([
+      { label: "BOM", command: "exportBom" },
+      { label: "Package", command: "exportPackage" },
+      { label: "Fabrication files (JLCPCB)", command: "exportFabrication" },
+    ])
+    expect(commandOwner("exportFabrication")).toBe("app")
+  })
+
   test("Settings → Hotkeys opens the Keys dialog", () => {
     const hotkeys = MENUS.find((m) => m.title === "Settings")?.entries.find((e) => e !== "separator" && e.label === "Hotkeys")
     expect(hotkeys).toEqual({ label: "Hotkeys", command: "keys" })

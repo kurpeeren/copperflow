@@ -11,6 +11,7 @@ export type CommandId =
   | "openFile"
   | "exportBom"
   | "exportPackage"
+  | "exportFabrication"
   | "undo"
   | "redo"
   | "delete"
@@ -239,7 +240,7 @@ export const MENUS: readonly Menu[] = [
   },
   {
     title: "Export",
-    entries: [run("BOM", "exportBom"), run("Package", "exportPackage"), later("Gerber", WAITS_FOR_FABRICATION), later("Pick and place (CPL)", WAITS_FOR_FABRICATION), later("PDF", WAITS_FOR_FABRICATION)],
+    entries: [run("BOM", "exportBom"), run("Package", "exportPackage"), run("Fabrication files (JLCPCB)", "exportFabrication"), later("Gerber", WAITS_FOR_FABRICATION), later("Pick and place (CPL)", WAITS_FOR_FABRICATION), later("PDF", WAITS_FOR_FABRICATION)],
   },
   {
     title: "Settings",

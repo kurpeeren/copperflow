@@ -377,6 +377,26 @@ describe("parts library", () => {
     expect(pkg.files).toContain("exports/main/BOM.csv")
   })
 
+  test("Export → Fabrication files writes the folder and zip beside the circuit and answers with them and the warnings", async () => {
+    await mkdir(join(root, "boards"))
+    const clean = '<board width="10mm" height="10mm">\n  <resistor name="R1" resistance="1k" footprint="0402" pcbX={0} pcbY={0} schX={0} schY={0} />\n</board>'
+    await writeFile(join(root, "boards", "led.circuit.tsx"), `export default () => (\n${clean}\n)\n`)
+    const result = await data(await api("/api/export", { file: "boards/led.circuit.tsx" }))
+    expect(result).toMatchObject({ written: true, folder: "boards/led-fab", zip: "boards/led-fab.zip", warnings: [] })
+    expect(result.files).toHaveLength(13)
+    expect(result.files[0]).toBe("led-F_Cu.gtl")
+    expect((await readFile(join(root, "boards", "led-fab.zip"))).subarray(0, 2).toString()).toBe("PK")
+  })
+
+  test("Export → Fabrication files is refused for a circuit with errors, naming them, and needs the token", async () => {
+    const refused = await data(await api("/api/export", { file: FILE }))
+    expect(refused.written).toBe(false)
+    expect(refused.errors.join("\n")).toMatch(/duplicate-name: More than one part is named RX/)
+    const noToken = await reach(`${studio.url}/api/export`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ file: FILE }) })
+    expect(noToken.status).toBe(403)
+    expect((await api("/api/export", {})).status).toBe(400)
+  })
+
   test("the BOM reads the live design when it is current, and builds when it is not", async () => {
     await data(await api("/api/build", { file: FILE }))
     await buildWhen(finished)

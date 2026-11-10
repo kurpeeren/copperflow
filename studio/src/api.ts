@@ -3,10 +3,11 @@ import type { HistoryListing, HistoryProblem } from "../../src/core/history.js"
 import type { CircuitModel, Edit, Literal, PartInfo, PropInfo, TraceInfo } from "../../src/core/types.js"
 import type { Design } from "../../src/engine/design.js"
 import type { Diagnostic } from "../../src/engine/model.js"
+import type { FabricationExport } from "../../src/core/fabrication.js"
 import type { RouteEvent, RouteScope } from "../../src/studio/route-events.js"
 import { requestErrorText } from "./request-error.js"
 
-export type { Annotations, CircuitModel, Design, Diagnostic, Edit, HistoryListing, HistoryProblem, Literal, LockViolation, PartInfo, PropInfo, RouteEvent, RouteScope, TraceInfo }
+export type { Annotations, CircuitModel, Design, Diagnostic, Edit, FabricationExport, HistoryListing, HistoryProblem, Literal, LockViolation, PartInfo, PropInfo, RouteEvent, RouteScope, TraceInfo }
 
 export interface CircuitData {
   file: string

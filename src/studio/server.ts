@@ -7,6 +7,7 @@ import { z, ZodError } from "zod"
 import {
   BUILTIN_PARTS,
   buildBom,
+  exportFabrication,
   exportPackage,
   listParts,
   partDir,
@@ -395,6 +396,11 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       case "POST /api/package": {
         const circuit = (await loadCircuit(root, Bodies.build.parse(await readJson(req)).file)).file
         return send(res, await exportPackage(root, circuit, { design: await designOf(circuit) }))
+      }
+      // The fabrication files go beside the circuit; a design with errors is refused (written: false) with them.
+      case "POST /api/export": {
+        const circuit = (await resolveCircuit(root, Bodies.build.parse(await readJson(req)).file)).file
+        return send(res, await exportFabrication(root, circuit, { design: await designOf(circuit) }))
       }
       // Undo and redo write the file too: their write mark, as an edit's, lets the keys wait for the build that read them.
       case "POST /api/undo": {
