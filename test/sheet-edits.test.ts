@@ -128,3 +128,25 @@ describe("Replicate layout's one history entry", () => {
     expect(await readFile(join(root, "PowerStage.sheet.tsx"), "utf8")).toBe(SHEET)
   })
 })
+
+describe("what a connection may name", () => {
+  const BUSSED = SHEET.replace(`<port name="VOUT" side="right" />`, `<port name="VOUT" side="right" />\n      <port name="D[0:3]" bus />`)
+
+  test("a net port takes a net name and a bus port a bus name; a local net never", async () => {
+    const { connectionsEdit } = await import("../src/core/instance-requests.js")
+    const { analyzeCircuit } = await import("../src/core/analyze.js")
+    const root = await mkdtemp(join(tmpdir(), "cf-conn-"))
+    await writeFile(join(root, "PowerStage.sheet.tsx"), BUSSED)
+    const circuit = { file: "main.circuit.tsx", model: analyzeCircuit(MAIN) }
+    await expect(connectionsEdit(root, circuit, { instance: "PS1", connections: { VIN: "D[0:7]" } })).rejects.toThrow(`PowerStage port VIN is a net port and takes a net name such as "VBUS", not "D[0:7]"`)
+    await expect(connectionsEdit(root, circuit, { instance: "PS1", connections: { "D[0:3]": "X(" } })).rejects.toThrow(`PowerStage port D[0:3] is a bus port and takes a bus name such as "D[0:7]", not "X("`)
+    await expect(connectionsEdit(root, circuit, { instance: "PS1", connections: { VIN: "net.PS2/FB" } })).rejects.toThrow("PS2/FB is local to instance PS2")
+    expect(await connectionsEdit(root, circuit, { instance: "PS1", connections: { VIN: "VBUS", "D[0:3]": "D[0:3]" } })).toMatchObject({ kind: "setConnections" })
+  })
+
+  test("the Studio asks the same before it writes", async () => {
+    const { connectionRefusal } = await import("../src/core/connection-names.js")
+    expect(connectionRefusal("PowerStage", "VIN", "D[0:7]", false)).toMatch(/net port/)
+    expect(connectionRefusal("PowerStage", "D[0:3]", "A[0:3]", true)).toBeUndefined()
+  })
+})

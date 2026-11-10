@@ -3,10 +3,16 @@ import { readFile } from "node:fs/promises"
 import { posix } from "node:path"
 import { scanCircuit } from "./analyze.js"
 import { SHEET_IMPORT, SHEET_TAG } from "./instance-edits.js"
+import { connectionRefusal } from "./connection-names.js"
 import { sheetFileIn } from "./selectors.js"
 import { checkNewInstance, nextFreeBase, placeInstances, sheetLayout } from "./sheet-layout.js"
 import { resolveInRoot } from "./workspace.js"
 import type { CircuitModel, Edit } from "./types.js"
+
+/** The names of a sheet file's bus ports, `<port name bus />`. */
+export function sheetBusPorts(text: string): string[] {
+  return scanCircuit(text).model.parts.filter((part) => part.tag === "port" && part.props["bus"]?.literal === true).map((part) => part.name)
+}
 
 /** The names of a sheet file's `<port name>` elements, in the order written. */
 export function sheetPorts(text: string): string[] {
@@ -20,7 +26,7 @@ export function sheetFileFor(circuit: { file: string; model: CircuitModel }, she
   return { file: posix.join(posix.dirname(circuit.file), `${importFrom}.tsx`), importFrom }
 }
 
-async function portsOfFile(root: string, sheet: string, file: string): Promise<string[]> {
+async function portsOfFile(root: string, sheet: string, file: string): Promise<{ ports: string[]; buses: string[] }> {
   let text: string
   try {
     text = await readFile(resolveInRoot(root, file), "utf8")
@@ -28,13 +34,20 @@ async function portsOfFile(root: string, sheet: string, file: string): Promise<s
     if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new Error(`There is no sheet ${sheet}: ${file} does not exist`)
     throw error
   }
-  return sheetPorts(text)
+  return { ports: sheetPorts(text), buses: sheetBusPorts(text) }
 }
 
-/** Refuses a connection to a port the sheet has not, naming the ones it has. */
-export function checkPorts(sheet: string, ports: readonly string[], connections: Record<string, string>): void {
+/**
+ * Refuses a connection to a port the sheet has not, naming the ones it has, and a connection a port cannot take: a
+ * net port takes a net name, a bus port a bus name, and neither a net local to an instance.
+ */
+export function checkPorts(sheet: string, ports: readonly string[], connections: Record<string, string>, buses: readonly string[] = []): void {
   const unknown = Object.keys(connections).find((port) => !ports.includes(port))
   if (unknown !== undefined) throw new Error(`${sheet} has no port ${unknown}; ${ports.length === 0 ? "it has no ports" : `its ports are ${ports.join(", ")}`}`)
+  for (const [port, target] of Object.entries(connections)) {
+    const refusal = connectionRefusal(sheet, port, target, buses.includes(port))
+    if (refusal !== undefined) throw new Error(refusal)
+  }
 }
 
 export interface InstanceRequest {
@@ -56,7 +69,8 @@ export interface InstanceRequest {
 export async function instanceEdit(root: string, circuit: { file: string; model: CircuitModel }, request: InstanceRequest): Promise<Edit> {
   if (!SHEET_TAG.test(request.sheet)) throw new Error(`"${request.sheet}" is not a sheet name; a sheet name starts with a capital letter, e.g. PowerStage`)
   const { file, importFrom } = sheetFileFor(circuit, request.sheet)
-  checkPorts(request.sheet, await portsOfFile(root, request.sheet, file), request.connections)
+  const sheetPortsRead = await portsOfFile(root, request.sheet, file)
+  checkPorts(request.sheet, sheetPortsRead.ports, request.connections, sheetPortsRead.buses)
   const placed = await placeInstances(root, circuit.file, circuit.model)
   const base = request.base ?? (placed.every((instance) => instance.written) ? nextFreeBase(placed) : undefined)
   if (base !== undefined) {
@@ -80,6 +94,7 @@ export async function connectionsEdit(root: string, circuit: { file: string; mod
   if (sheetFile === undefined) throw new Error(`${request.instance} is not a sub-sheet instance`)
   const tag = circuit.model.parts.find((part) => part.name === request.instance)?.tag ?? request.instance
   const file = posix.join(posix.dirname(circuit.file), sheetFile)
-  checkPorts(tag, await portsOfFile(root, tag, file), request.connections)
+  const read = await portsOfFile(root, tag, file)
+  checkPorts(tag, read.ports, request.connections, read.buses)
   return { kind: "setConnections", part: request.instance, connections: request.connections }
 }

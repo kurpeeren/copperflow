@@ -4,6 +4,7 @@
 import { useEffect, useId, useState } from "react"
 import type { Design, PartInfo } from "./api"
 import type { Actions } from "./App"
+import { connectionRefusal } from "../../src/core/connection-names.js"
 import { Row, Section } from "./InspectorRows"
 import { connectionsWith, instancePart, partsOfInstance, sheetUses, topInstance, usedLine } from "./pcb/instances"
 import { sheetName } from "./pcb/sheet-names"
@@ -49,8 +50,14 @@ export function InstanceSection({ design, name, editable, actions, onOpenSheet, 
   const instance = topInstance(design, name)
   const id = useId()
   if (!instance) return null
-  const connect = (port: string, net: string) =>
-    actions.edit([{ kind: "setConnections", part: name, connections: connectionsWith(instance, port, net) }], `Connect ${name}.${port} to ${net === "" ? "nothing" : net}`)
+  const connect = (port: string, net: string) => {
+    const refusal = net === "" ? undefined : connectionRefusal(instance.sheet, port, net, instance.ports.find((p) => p.name === port)?.bus === true)
+    if (refusal !== undefined) {
+      actions.notify(refusal)
+      return Promise.resolve(false)
+    }
+    return actions.edit([{ kind: "setConnections", part: name, connections: connectionsWith(instance, port, net) }], `Connect ${name}.${port} to ${net === "" ? "nothing" : net}`)
+  }
   const setBase = (text: string) => {
     const base = Number(text)
     if (!Number.isInteger(base) || base <= 0) {
