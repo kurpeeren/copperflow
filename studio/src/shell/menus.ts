@@ -112,7 +112,7 @@ export const MENUS: readonly Menu[] = [
       "separator",
       run("Export BOM", "exportBom"),
       run("Export package", "exportPackage"),
-      later("Export Gerber", WAITS_FOR_FABRICATION),
+      run("Export Gerber", "exportFabrication"),
       later("Print", WAITS_FOR_FABRICATION),
     ],
   },
@@ -240,7 +240,7 @@ export const MENUS: readonly Menu[] = [
   },
   {
     title: "Export",
-    entries: [run("BOM", "exportBom"), run("Package", "exportPackage"), run("Fabrication files (JLCPCB)", "exportFabrication"), later("Gerber", WAITS_FOR_FABRICATION), later("Pick and place (CPL)", WAITS_FOR_FABRICATION), later("PDF", WAITS_FOR_FABRICATION)],
+    entries: [run("BOM", "exportBom"), run("Package", "exportPackage"), run("Fabrication files (JLCPCB)", "exportFabrication"), run("Gerber", "exportFabrication"), run("Pick and place (CPL)", "exportFabrication"), later("PDF", WAITS_FOR_FABRICATION)],
   },
   {
     title: "Settings",

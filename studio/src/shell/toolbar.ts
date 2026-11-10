@@ -5,7 +5,7 @@ import { commandDisabledReason } from "../pcb/selection-rules.js"
 import { DRAW_COMMANDS, DRAW_TOOL_COMMAND } from "../pcb/draw-commands.js"
 import type { DrawTool } from "../pcb/draw-tools.js"
 import type { CommandId, Toggles } from "./menus.js"
-import { WAITS_FOR_BLOCKS, WAITS_FOR_FABRICATION, WAITS_FOR_ROUTING } from "./pending.js"
+import { WAITS_FOR_BLOCKS, WAITS_FOR_ROUTING } from "./pending.js"
 
 export type ToolIconName = "undo" | "redo" | "zoomIn" | "zoomOut" | "fit" | "fitSelection" | "fitArea" | "component" | "wire" | "netLabel" | "ground" | "power" | "rotate" | "rotateRight" | "snap" | "check" | "grid" | "alignLeft" | "distributeH" | "polyline" | "arc" | "circle" | "rectangle" | "text" | "bus" | "noConnect" | "via" | "boardOutline" | "copperArea" | "singleRouting" | "gerber"
 
@@ -77,7 +77,7 @@ export const TOOLBARS: Readonly<Record<View, readonly ToolbarButton[]>> = {
     button("singleRouting", "Single routing (Alt+W)", "singleRouting", "singleRouting", 5),
     ...ALIGN(6),
     ...ROTATE(7),
-    later("gerber", "Gerber", "gerber", WAITS_FOR_FABRICATION, 8),
+    button("gerber", "Gerber", "gerber", "exportFabrication", 8),
   ],
 }
 
