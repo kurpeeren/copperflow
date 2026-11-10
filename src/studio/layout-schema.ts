@@ -13,7 +13,7 @@ const size = z.number().finite().positive().max(100)
 
 export const LayoutEditSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("addTrack"), net: net.optional(), layer, width: size, points, locked: z.boolean().optional() }).strict(),
-  z.object({ kind: z.literal("setTrack"), id, layer: layer.optional(), width: size.optional(), points: points.optional(), locked: z.boolean().optional() }).strict(),
+  z.object({ kind: z.literal("setTrack"), id, net: net.optional(), layer: layer.optional(), width: size.optional(), points: points.optional(), locked: z.boolean().optional() }).strict(),
   z.object({ kind: z.literal("removeTrack"), id }).strict(),
   z
     .object({ kind: z.literal("addVia"), net: net.optional(), at: point, drill: size, diameter: size, layers: z.array(layer).min(2).max(4).optional(), locked: z.boolean().optional() })

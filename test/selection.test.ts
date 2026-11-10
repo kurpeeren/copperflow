@@ -405,3 +405,40 @@ describe("names, values and designators", () => {
     expect(one.toggleText("R1:schNameAt")).toBe(Selection.none)
   })
 })
+
+describe("one segment of a track in the selection", () => {
+  const T = "t0001"
+  const ends = { from: { x: 0, y: 0 }, to: { x: 5, y: 0 } }
+  const segment = Selection.none.onlySegment({ id: T, index: 2, ...ends })
+
+  test("the segment is the track alone with the segment's index: the sole copper, one object", () => {
+    expect(segment.copper).toEqual([T])
+    expect(segment.segment).toEqual({ id: T, index: 2, ...ends })
+    expect(segment.soleCopper).toBe(T)
+    expect(segment.total).toBe(1)
+    expect(Object.isFrozen(segment.segment)).toBe(true)
+    expect(Selection.none.segment).toBeUndefined()
+    expect(Selection.none.onlyCopper(T).segment).toBeUndefined()
+  })
+
+  test("the same segment again is the same selection; another segment or another track is a new one", () => {
+    expect(segment.onlySegment({ id: T, index: 2, ...ends })).toBe(segment)
+    expect(segment.onlySegment({ id: T, index: 1, ...ends }).segment).toEqual({ id: T, index: 1, ...ends })
+    expect(segment.onlySegment({ id: "t0002", index: 2, ...ends })).toMatchObject({ copper: ["t0002"], segment: { id: "t0002", index: 2 } })
+  })
+
+  test("a single click on the track selects the whole track", () => {
+    const whole = segment.onlyCopper(T)
+    expect(whole.copper).toEqual([T])
+    expect(whole.segment).toBeUndefined()
+  })
+
+  test("any other change drops the segment; keeping the track keeps it", () => {
+    expect(segment.toggle("R1").segment).toBeUndefined()
+    expect(segment.addCopper(["v0001"]).segment).toBeUndefined()
+    expect(segment.toggleCopper(T)).toBe(Selection.none)
+    expect(segment.withoutCopper([T])).toBe(Selection.none)
+    expect(segment.keepCopper([T])).toBe(segment)
+    expect(segment.clear()).toBe(Selection.none)
+  })
+})

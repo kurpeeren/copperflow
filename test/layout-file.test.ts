@@ -165,8 +165,8 @@ describe("edits", () => {
   })
 
   test.each([
-    [{ kind: "setTrack", id: "t0001", by: "router" }, "setTrack cannot set by; it takes id, layer, width, points, locked"],
-    [{ kind: "setTrack", id: "t0001", net: "VCC" }, "setTrack cannot set net"],
+    [{ kind: "setTrack", id: "t0001", by: "router" }, "setTrack cannot set by; it takes id, net, layer, width, points, locked"],
+    [{ kind: "setTrack", id: "t0001", drill: 0.3 }, "setTrack cannot set drill"],
     [{ kind: "setVia", id: "v0001", t: "track" }, "setVia cannot set t"],
     [{ kind: "addTrack", layer: "top", width: 0.2, points: [{ x: 0, y: 0 }, { x: 1, y: 0 }], by: "human" }, "addTrack cannot set by"],
     [{ kind: "addVia", at: { x: 0, y: 0 }, drill: 0.3, diameter: 0.6, id: "v0001" }, "addVia cannot set id"],

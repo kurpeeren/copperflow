@@ -116,7 +116,7 @@ human undid.
 | `connect_nets` | `{ NET: [pins] }`: one connection per pin, pins already on the net skipped, one change |
 | `route_track` | one track of a net from a pad, track or via of that net (`net`, `layer`, `points`, `width?`; the width defaults to the net class); a point on another net's copper is refused naming both nets; one change through the layout file, with locks; the answer is a line plus the copper violations it introduced |
 | `add_via` | a via (`net?`, `at`, `layers?`): the net of the copper under it, the size from the net class and the fabrication minimum ring; one change |
-| `remove_copper` | tracks and vias by `ids`, one change; locked copper is refused |
+| `remove_copper` | tracks and vias by `ids`, one change; an `{ id, segment }` among them removes one segment of a track, splitting it into the runs left; locked copper is refused |
 | `fillet_tracks` | the square corners of tracks (`ids?`, `radius?`; every track without ids, the rules' fillet radius without a radius) as chords on an arc, one change; a corner whose arc breaks clearance, the board edge or a keepout, whose legs are too short, or where copper of its net joins a leg the arc replaces stays square and is counted with the reason; locked tracks are left alone |
 | `straighten_tracks` | the rounded corners of tracks (`ids?`) back to the point where their legs meet, one change; a corner whose square form would break clearance, the board edge or a keepout, or leave copper of its net that joins the arc, stays round and is counted |
 | `copper_summary` | per net one line (tracks, vias, mm, unrouted connections), then copper violations by rule; at most 60 lines (read-only) |

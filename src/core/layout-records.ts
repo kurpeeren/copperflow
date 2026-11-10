@@ -21,7 +21,7 @@ import {
  */
 export type LayoutEdit =
   | { kind: "addTrack"; net?: string; layer: CopperLayer; width: number; points: LayoutPoint[]; locked?: boolean }
-  | { kind: "setTrack"; id: string; layer?: CopperLayer; width?: number; points?: LayoutPoint[]; locked?: boolean }
+  | { kind: "setTrack"; id: string; net?: string; layer?: CopperLayer; width?: number; points?: LayoutPoint[]; locked?: boolean }
   | { kind: "removeTrack"; id: string }
   | { kind: "addVia"; net?: string; at: LayoutPoint; drill: number; diameter: number; layers?: CopperLayer[]; locked?: boolean }
   | { kind: "setVia"; id: string; at?: LayoutPoint; drill?: number; diameter?: number; layers?: CopperLayer[]; locked?: boolean }
@@ -40,7 +40,7 @@ export interface LayoutEditContext {
 /** The fields each edit kind may carry, besides `kind`. */
 const EDIT_FIELDS: Record<LayoutEdit["kind"], readonly string[]> = {
   addTrack: ["net", "layer", "width", "points", "locked"],
-  setTrack: ["id", "layer", "width", "points", "locked"],
+  setTrack: ["id", "net", "layer", "width", "points", "locked"],
   removeTrack: ["id"],
   addVia: ["net", "at", "drill", "diameter", "layers", "locked"],
   setVia: ["id", "at", "drill", "diameter", "layers", "locked"],

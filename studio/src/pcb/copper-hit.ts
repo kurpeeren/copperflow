@@ -8,6 +8,7 @@ import { areasInBox, type BoxMode } from "./box-select.js"
 import { roundPosition, type Box, type Point } from "./geometry.js"
 import type { LayerVisibility } from "./layers.js"
 import { canPick, type PickContext } from "./pick.js"
+import { segmentOn, type TrackSegment } from "../selection.js"
 import { cornerAt, distanceToSegment, segmentAt, WIRE_REACH_PX } from "./wire-hit.js"
 import { handleReach, type WireGrip } from "./wire-drag.js"
 
@@ -77,6 +78,17 @@ function trackUnder(tracks: readonly TrackShape[], p: Point, scale: number, visi
 /** The via under `p`, else the nearest track in reach, among those shown and pickable; `scale` is CSS pixels per mm. */
 export function copperAt(shapes: CopperShapes, p: Point, scale: number, visible: LayerVisibility, context: PickContext): CopperHit | undefined {
   return viaUnder(shapes.vias, p, scale, visible, context) ?? trackUnder(shapes.tracks, p, scale, visible, context)
+}
+
+/**
+ * The segment a double click at `p` picks: the one under the pointer of the track copperAt finds there; nothing on a
+ * via or off the copper.
+ */
+export function segmentUnder(shapes: CopperShapes, p: Point, scale: number, visible: LayerVisibility, context: PickContext): TrackSegment | undefined {
+  const hit = copperAt(shapes, p, scale, visible, context)
+  const track = hit?.kind === "track" ? shapes.tracks.find((one) => one.id === hit.id) : undefined
+  const index = track && segmentAt(track.points, p, copperReach(track.width, scale))
+  return track && index !== undefined ? segmentOn(track, index) : undefined
 }
 
 /**

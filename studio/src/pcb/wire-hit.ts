@@ -33,7 +33,7 @@ export function distanceToSegment(p: Point, a: Point, b: Point): number {
 }
 
 /** The nearest segment of `points` to `p`, as its index and distance. */
-function nearestSegment(points: readonly Point[], p: Point): { index: number; distance: number } | undefined {
+export function nearestSegment(points: readonly Point[], p: Point): { index: number; distance: number } | undefined {
   let best: { index: number; distance: number } | undefined
   for (let i = 1; i < points.length; i++) {
     const distance = distanceToSegment(p, points[i - 1] as Point, points[i] as Point)

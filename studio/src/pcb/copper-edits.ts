@@ -1,5 +1,5 @@
 // The layout edits the PCB canvas sends for copper: moving tracks and vias (a via drag, the arrow keys), a track's
-// reshape, and Delete. Each gives the edits for one history entry, what is left out and why, and the shapes to draw
+// reshape, and Delete (of whole copper, or of one selected segment of a track). Each gives the edits for one history entry, what is left out and why, and the shapes to draw
 // until the build that reads them lands. Pure; plain TypeScript with .js imports, so the tests can run it.
 import type { LayoutEdit } from "../../../src/core/layout-records.js"
 import type { PcbTrack, PcbVia } from "../../../src/engine/pcb.js"
@@ -7,6 +7,8 @@ import type { Point } from "./geometry.js"
 import { tidyTrack } from "./copper-geometry.js"
 import { nameList } from "./group-edits.js"
 import { carryPath } from "./wire-geometry.js"
+import { segmentRemoval } from "../../../src/core/track-split.js"
+import { segmentFits, type TrackSegment } from "../selection.js"
 
 /** The copper as these edits need it. */
 export interface CopperRecords {
@@ -107,6 +109,21 @@ export function copperRemoval(records: CopperRecords, ids: readonly string[]): {
     removed: going.map((item) => item.id),
     skipped: picked.filter((item) => item.locked).map((item) => `${item.id} is locked`),
   }
+}
+
+/** A track as a segment's Delete reads it: `named` is its net as the record names it, `net` the net it carries. */
+export type SegmentTrack = Pick<PcbTrack, "id" | "net" | "named" | "layer" | "width" | "points" | "locked">
+
+/**
+ * Delete on a selected segment: the track split into the runs left on either side of it (track-split.ts), in one
+ * change, refused when the segment's ends are no longer where they were picked (the track changed under it); the new run keeps the net as the record names it (else the one it carries), the layer and the width.
+ */
+export function segmentDeletion(track: SegmentTrack | undefined, segment: TrackSegment): { edits: LayoutEdit[]; summary: string } | { message: string } {
+  if (!track) return { message: `${segment.id} is gone` }
+  if (!segmentFits(segment, track.points)) return { message: "the track changed; select the segment again" }
+  const nets = { ...(track.named === undefined ? {} : { net: track.named }), ...(track.net === undefined ? {} : { carried: track.net }) }
+  const split = segmentRemoval({ id: track.id, ...nets, layer: track.layer, width: track.width, points: track.points, locked: track.locked }, segment.index)
+  return "message" in split ? split : { edits: split.edits, summary: `Delete segment ${segment.index} of ${track.id}` }
 }
 
 /** Two sets of shapes as one; `later`'s shape of a record wins. */

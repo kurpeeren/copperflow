@@ -70,7 +70,8 @@ export function useContextMenu(input: Input): ContextMenuState {
     const { target } = request
     const wire = target.kind === "wire" ? wireMenuReasons(target.id, after, design, circuit, locked) : undefined
     const copperLocked = target.kind === "copper" && copperAllLocked(design, after.copper)
-    return { entries: contextItems(target, { allLocked: allLocked(after.names, locked), selected: after.size, wire, copperLocked }), at: request.at }
+    const segment = target.kind === "copper" && after.segment?.id === target.id
+    return { entries: contextItems(target, { allLocked: allLocked(after.names, locked), selected: after.size, wire, copperLocked, segment }), at: request.at }
   }, [request, circuit, design, selection])
   const runItem = useCallback(
     (item: ContextItem) => {

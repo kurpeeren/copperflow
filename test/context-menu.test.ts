@@ -192,6 +192,18 @@ describe("the menu on copper", () => {
     expect(locked.find((entry) => entry !== "separator" && entry.label === "Unlock")).toMatchObject({ command: "unlock" })
   })
 
+  test("with a segment of the track selected, Delete reads Delete segment and runs Delete", () => {
+    const entries = contextItems(track, { allLocked: false, selected: 0, segment: true })
+    expect(names(entries)).toEqual(["Properties", "-", "Fillet tracks", "Straighten tracks", "-", "Lock", "-", "Delete segment"])
+    expect(entries.at(-1)).toEqual({ label: "Delete segment", command: "delete", shortcut: "Delete" })
+  })
+
+  test("a right click on the track of the selected segment keeps the segment; on another track it selects that track", () => {
+    const segment = Selection.none.onlySegment({ id: "t0001", index: 1, from: { x: 0, y: 0 }, to: { x: 5, y: 0 } })
+    expect(contextSelection(segment, track)).toBe(segment)
+    expect(contextSelection(segment, { kind: "copper", id: "t0002" }).segment).toBeUndefined()
+  })
+
   test("a right click on copper not selected selects it alone; on selected copper the group stays", () => {
     const group = Selection.none.all(["R1"]).addCopper(["t0001"])
     expect(contextSelection(group, track)).toBe(group)

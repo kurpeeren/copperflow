@@ -34,7 +34,7 @@ import { useTrackShape } from "./use-track-shape"
 import { usePartKeys, type PartKeysInput } from "./use-part-keys"
 import type { CopperScene } from "./copper-draw"
 import { copperBoxes } from "./copper-hit"
-import { copperCursor, copperIdAt, copperPress, hoverCopper, useCopper, withCopperDrag, type CopperParts } from "./use-copper"
+import { copperCursor, copperIdAt, copperPress, copperSegmentAt, hoverCopper, useCopper, withCopperDrag, type CopperParts } from "./use-copper"
 import { anchorLookup, moveEach, sendGroupEditMarked } from "./group-edits"
 
 const BACKGROUND = PALETTE.background
@@ -238,12 +238,19 @@ interface PcbPointerInput {
   gestures: ReturnType<typeof useCanvasGestures>
   setCursor(world: Point | undefined): void
   onOpenProperties: CanvasProps["onOpenProperties"]
+  onSelect: CanvasProps["onSelect"]
 }
 
-/** The pointer handlers: the track tool sees a press first, then copper (above the pads and parts), then the gestures. */
-function pcbPointer({ copper, track, hover, boxes, context, camera, size, canvasRef, gestures, setCursor, onOpenProperties }: PcbPointerInput) {
+/**
+ * The pointer handlers: the track tool sees a press first, then copper (above the pads and parts), then the gestures.
+ * A double click on a track selects the segment under the pointer; on a part it opens Properties.
+ */
+function pcbPointer({ copper, track, hover, boxes, context, camera, size, canvasRef, gestures, setCursor, onOpenProperties, onSelect }: PcbPointerInput) {
   const open = (world: Point) => {
-    if (track.armed || hoverCopper(copper, world)) return
+    if (track.armed) return
+    const segment = copperSegmentAt(copper, world)
+    if (segment) return onSelect((current) => current.onlySegment(segment))
+    if (hoverCopper(copper, world)) return
     const target = targetAt(boxes, undefined, world, context)
     if (target.kind === "part") onOpenProperties(target)
   }
@@ -300,7 +307,7 @@ export function PcbCanvas(props: PcbCanvasProps) {
   const copperScene: CopperScene = { ...copper.scene, activeLayer: props.activeLayer, routes: track.routes }
   usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad: hover.pad, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, highlightNets: highlight, markers, activeViolation, grid, copper: copperScene, texts: sceneTexts })
   const context: PickContext = { selection, armed: note.tool, layers: pick, filter: pickFilter }
-  const { pointer, onLeave } = pcbPointer({ copper, track, hover, boxes: parts.boxes, context, camera, size, canvasRef, gestures, setCursor, onOpenProperties: props.onOpenProperties })
+  const { pointer, onLeave } = pcbPointer({ copper, track, hover, boxes: parts.boxes, context, camera, size, canvasRef, gestures, setCursor, onOpenProperties: props.onOpenProperties, onSelect })
   const cursorStyle = track.armed ? "crosshair" : (copperCursor(copper) ?? cursorFor(gesture, note.armed, hover.part !== undefined || hover.text !== undefined))
   return (
     <div className="pcb-canvas" ref={wrapRef}>
