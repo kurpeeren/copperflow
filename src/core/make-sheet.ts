@@ -142,7 +142,10 @@ async function prepare(root: string, file: string, request: MakeSheetRequest, bu
     connections: plan.connections,
     mapping: plan.mapping.map((m) => ({ ...m, flat: withBase(m.to, base) })),
   }
-  const layout = built ? await layoutChange(root, loaded.file, async () => layoutNetRenamer((await built.design()).circuit.nets, plan, instance, base)) : []
+  const layout = built ? await layoutChange(root, loaded.file, async () => {
+    const { circuit } = await built.design()
+    return layoutNetRenamer(circuit.nets, circuit.components, plan, instance, base)
+  }) : []
   return { loaded, preview, sheetText: sheetSource(source, model, plan, name, origin), after, layout }
 }
 

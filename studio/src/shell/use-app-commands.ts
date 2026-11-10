@@ -144,7 +144,8 @@ async function replicateLayout(input: Input): Promise<void> {
     const props = input.circuit?.model.parts.find((part) => part.name === name)?.props
     return props?.["pcbX"] !== undefined && props["pcbY"] !== undefined
   }
-  const plan = replicatePlan(input.design, input.selection.names, placed)
+  const locked = new Set(input.circuit?.annotations.locks.map((lock) => lock.part))
+  const plan = replicatePlan(input.design, input.selection.names, placed, locked)
   if ("message" in plan) return input.actions.notify(plan.message)
   const { sheet, layout } = plan
   // One history entry: the copper in the layout file, the placement in the sheet file beside it (`also`).

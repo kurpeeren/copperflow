@@ -180,13 +180,26 @@ export interface ReplicatePlan {
   layout: { edits: LayoutEdit[]; summary: string }
 }
 
-/** The plan for the instance the selection names, or a message why there is nothing to do. */
-export function replicatePlan(design: Design | undefined, names: readonly string[], placed?: (name: string) => boolean): ReplicatePlan | { message: string } {
+/** Why a locked target refuses the copy: the sheet's placement and the copper would move what its lock holds. */
+function lockRefusal(source: SheetInstance, targets: readonly SheetInstance[], locked: ReadonlySet<string>): string | undefined {
+  const held = targets.filter((target) => locked.has(target.name) || locked.has(target.path)).map((target) => target.name)
+  if (held.length === 0) return undefined
+  const [verb, pronoun] = held.length === 1 ? ["is", "it"] : ["are", "them"]
+  return `${held.join(", ")} ${verb} locked; unlock ${pronoun} to replicate the layout of ${source.name} to ${pronoun}.`
+}
+
+/**
+ * The plan for the instance the selection names, or a message why there is nothing to do. `locked` is the circuit's
+ * locks: a locked target refuses it, as every other write does.
+ */
+export function replicatePlan(design: Design | undefined, names: readonly string[], placed?: (name: string) => boolean, locked: ReadonlySet<string> = new Set()): ReplicatePlan | { message: string } {
   if (!design) return { message: "Wait for the build to finish, then try again." }
   const source = sourceInstance(design, names)
   if (!source) return { message: "Select a part of the instance whose layout to copy, or its symbol on the schematic." }
   const targets = (design.circuit.instances ?? []).filter((instance) => instance.file === source.file && instance.path !== source.path && !instance.path.includes("/"))
   if (targets.length === 0) return { message: `${source.name} is the only instance of ${source.sheet}; there is nothing to copy its layout to.` }
+  const held = lockRefusal(source, targets, locked)
+  if (held) return { message: held }
   const refusal = placeRefusal(design, source, targets, placed ?? ((name) => written(design, name)))
   if (refusal) return { message: refusal }
   const names_ = targets.map((target) => target.name).join(", ")

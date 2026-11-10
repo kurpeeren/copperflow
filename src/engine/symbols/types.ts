@@ -4,7 +4,7 @@ export type Anchor = "left" | "center" | "right"
 export type TextRole = "reference" | "value" | "pin-name" | "pin-number"
 
 export type Shape =
-  | { type: "polyline"; points: Point[]; closed?: boolean; fill?: boolean }
+  | { type: "polyline"; points: Point[]; closed?: boolean; fill?: boolean; /** A sheet symbol's bus pin, drawn in the bus colour. */ bus?: true }
   | { type: "circle"; center: Point; radius: number; fill?: boolean }
   | { type: "arc"; center: Point; radius: number; start: number; end: number } // degrees, counter-clockwise, y up
   | { type: "text"; text: string; at: Point; anchor: Anchor; size: number; role: TextRole }

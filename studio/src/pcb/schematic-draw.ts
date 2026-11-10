@@ -243,7 +243,9 @@ function drawSymbol(ctx: Ctx, placed: PlacedSymbol, shift: Point, pen: { line: (
   ctx.lineWidth = pen.line(SYMBOL_WIDTH)
   drawShapes(ctx, placed.symbol.shapes, frame, sheetPalette().symbolOutline, own)
   ctx.globalAlpha = 1
-  if (!placed.symbol.shapes.some((shape) => shape.type === "text" && shape.role === "pin-number")) own.push(...pinNumbers(placed.symbol, frame))
+  // A sheet symbol's pins are its ports, which have names only.
+  const ownNumbers = placed.symbol.shapes.some((shape) => shape.type === "text" && shape.role === "pin-number")
+  if (placed.symbol.kind !== "sheet" && !ownNumbers) own.push(...pinNumbers(placed.symbol, frame))
   texts.push(...own.map((label) => ({ ...label, alpha, ...textBounds(label, placed) })))
 }
 
@@ -276,9 +278,23 @@ function drawShapes(ctx: Ctx, shapes: readonly Shape[], frame: Frame, color: str
   ctx.fillStyle = color
   for (const shape of shapes) {
     if (shape.type === "text") texts.push(textLabel(shape, frame, color))
+    else if (shape.type === "polyline" && shape.bus) busBar(ctx, shape)
     else paintShape(ctx, shape)
   }
   ctx.restore()
+}
+
+/** A sheet symbol's bus pin: a bar filled and outlined in the bus colour, as a bus is drawn. */
+function busBar(ctx: Ctx, shape: Extract<Shape, { type: "polyline" }>): void {
+  const [stroke, fill] = [ctx.strokeStyle, ctx.fillStyle]
+  ctx.strokeStyle = sheetPalette().bus
+  ctx.fillStyle = sheetPalette().bus
+  path(ctx, shape.points)
+  ctx.closePath()
+  ctx.fill()
+  ctx.stroke()
+  ctx.strokeStyle = stroke
+  ctx.fillStyle = fill
 }
 
 function paintShape(ctx: Ctx, shape: Exclude<Shape, { type: "text" }>): void {
