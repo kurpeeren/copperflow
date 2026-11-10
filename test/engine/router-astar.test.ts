@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { DIAGONAL, SearchBuffers, searchPath, STEP, TURN_45, VIA, type CellRef } from "../../src/engine/router/astar.js"
+import { COST_CAP, DIAGONAL, SearchBuffers, searchPath, STEP, TURN_45, VIA, type CellRef } from "../../src/engine/router/astar.js"
 import { FREE, type RouterGrid } from "../../src/engine/router/grid.js"
 
 /** A grid of `cols` × `rows` cells on top and bottom; `blocked` maps "layer:col,row" to a blocker name. */
@@ -138,5 +138,12 @@ describe("A* on the router grid", () => {
     expect(runBig({ buffers })).toEqual(runBig())
     expect(runSmall({ buffers })).toEqual(runSmall())
     expect(runBig({ buffers })).toEqual(runBig())
+  })
+  test("a path over many costly cells stops at the cost cap and never wraps", () => {
+    const grid = gridOf(3000, 1)
+    const cells = grid.cols * grid.rows
+    const track = [new Int32Array(cells).fill(2 ** 20), new Int32Array(cells).fill(2 ** 20)]
+    const result = searchPath(grid, [at(grid, 0, 0, 0)], [at(grid, 0, 2999, 0)], { penalties: { track, via: new Int32Array(cells) } })
+    expect(result.found && result.cost).toBe(COST_CAP)
   })
 })

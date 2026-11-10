@@ -41,6 +41,8 @@ export interface RoutedConnection {
   from: string
   to: string
   copper: RoutedCopper
+  /** What the search paid for the route (moves, corners, vias and congestion); absent on a copy. */
+  cost?: number
   /** For a copy made by replication: the instance the route was copied from. */
   copiedFrom?: string
 }
@@ -153,7 +155,7 @@ function negotiate(run: Run, connection: Connection, pass: number): Set<number> 
     run.failed.set(connection.index, unrouted(connection, result.reason, result.blockers))
     return undefined
   }
-  const placed = placeRoute(world, connection.index, result.copper, connection.job.rule.className, result.steps, result.grid, result.window, legsOf(result.copper, connection.job))
+  const placed = placeRoute(world, connection.index, result.copper, connection.job.rule.className, result.steps, result.grid, result.window, legsOf(result.copper, connection.job), result.cost)
   congestion.placed.set(connection.index, placed)
   return occupancy === undefined ? new Set() : congestion.conflicts(world, connection.job.rule, placed, occupancy, result.grid, result.window)
 }
@@ -202,7 +204,7 @@ function settle(run: Run, connections: readonly Connection[]): void {
       run.failed.set(connection.index, unrouted(connection, result.reason, result.blockers))
       continue
     }
-    const again = placeRoute(world, connection.index, result.copper, rule.className, result.steps, result.grid, result.window, legsOf(result.copper, connection.job))
+    const again = placeRoute(world, connection.index, result.copper, rule.className, result.steps, result.grid, result.window, legsOf(result.copper, connection.job), result.cost)
     congestion.placed.set(connection.index, again)
     kept.push(again)
   }
@@ -219,7 +221,7 @@ export function routeBoard(input: RouteBoardInput, options: RouteBoardOptions = 
   settle(run, connections)
   const routed = connections.flatMap((connection) => {
     const placed = run.congestion.placed.get(connection.index)
-    return placed === undefined ? [] : [{ net: connection.line.net, from: connection.line.from, to: connection.line.to, copper: placed.copper }]
+    return placed === undefined ? [] : [{ net: connection.line.net, from: connection.line.from, to: connection.line.to, copper: placed.copper, cost: placed.cost }]
   })
   const failures = connections.flatMap((connection) => run.failed.get(connection.index) ?? [])
   const report: RouteReport = { routed, unrouted: failures, passes, ms: 0 }

@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { buildDesign } from "../../src/engine/design.js"
+import { COST_CAP } from "../../src/engine/router/astar.js"
+import { MAX_PRICE, presentPrice } from "../../src/engine/router/congestion.js"
 import type { RouteReport } from "../../src/engine/router/route-board.js"
 import { checkRoutedAll, routeDesign } from "../helpers/route-check.js"
 
@@ -127,6 +129,37 @@ describe("routing the whole board", () => {
     expect(routeDesign(design, { scope: { kind: "parts", parts: ["R4"] } }).routed.map((route) => [route.from, route.to])).toEqual([["R3#2", "R4#1"]])
     expect(routeDesign(design, { scope: { kind: "parts", parts: ["R9"] } })).toMatchObject({ routed: [], unrouted: [], passes: 0 })
   })
+})
+
+describe("a long contested channel over every pass", () => {
+  const nets = ["A", "B", "C", "D", "E"]
+  const CHANNEL = {
+    [MAIN]: board(32, 14, [
+      ...nets.flatMap((net, i) => [resistor(`L${i + 1}`, -13, (i - 2) * 2), resistor(`M${i + 1}`, 13, (i - 2) * 2), trace(`L${i + 1}.pin2`, net), trace(`M${i + 1}.pin1`, net)]),
+      keepout(0, 4.05, 16, 7.5),
+      keepout(0, -4.05, 16, 7.5),
+    ]),
+  }
+
+  test("the price stops rising at its cap, so a path's cost stays far below the 32-bit limit", () => {
+    expect(presentPrice(1)).toBeLessThan(presentPrice(2))
+    expect(presentPrice(30)).toBe(MAX_PRICE)
+    expect(MAX_PRICE * 1000).toBeLessThanOrEqual(COST_CAP)
+    expect(COST_CAP).toBeLessThan(2 ** 31)
+  })
+
+  test("thirty passes on a 16 mm channel: every cost stays in range, two nets get the channel, the rest are reported", () => {
+    const design = buildDesign(CHANNEL, MAIN)
+    const report = routeDesign(design)
+    expect(report.passes).toBe(30)
+    for (const route of report.routed) {
+      expect(route.cost).toBeGreaterThan(0)
+      expect(route.cost).toBeLessThanOrEqual(COST_CAP)
+    }
+    expect(report.routed).toHaveLength(2)
+    expect(report.unrouted).toHaveLength(3)
+    expectClean(CHANNEL, report)
+  }, 60_000)
 })
 
 describe("routing one instance of a sheet", () => {
