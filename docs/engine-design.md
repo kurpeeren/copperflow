@@ -186,6 +186,31 @@ uses stable ids so the Studio, history and checks can follow an item across edit
 
 ### 4. Blocks and instances
 
+As built in stage 6 (docs/plans/engine-stage-6.md), which replaces parts of the plan below:
+
+- A block is a sub-sheet: `<name>.sheet.tsx` exports a default component returning `<sheet>` with
+  parts, traces, drawings and `<port name="VIN" />`. A circuit uses it through an ordinary import:
+  `<PowerStage name="PS1" connections={{ VIN: "VBUS" }} base={100} schX={…} pcbX={…} pcbRotation={…} />`.
+  Elaboration (`src/engine/sheets.ts`, `elaborate.ts`) flattens each instance into the circuit.
+- Designators: each part's number gets the instance's base (R1 in PS1 with base 100 is R101; a
+  name without a number gets the base appended). Bases default to 100, 200, … in the order the
+  instances are written in their parent; an inner instance's designators add the outer bases.
+  Two siblings with one base, or a designator another part already has, is a `base-clash` error.
+- Nets: a net inside is `PS1/NAME`, except a connected port's net, which is the parent net, and a
+  ground or power name (as the schematic's power and ground symbols read names), which is global.
+  An unconnected port is an `unconnected-port` warning; a connection to a port the sheet lacks is
+  an `unknown-port` error that lists the sheet's ports; a sheet that contains itself is a
+  `sheet-recursion` error and that instance is left out.
+- Positions inside are relative to the instance; the instance's pcbRotation turns its block. An
+  instance sits on a page like a part; a `<page>` or `<board>` inside a sheet is an error.
+- The design stays flat for every reader (parts by flattened designator, nets, layouts). Beside
+  it, each component made by an instance carries `instance` (its path, `PS1` or `PS1/D1`) and
+  `localId` (`R1`), and `circuit.instances` lists each instance with its sheet, file, base,
+  connections, ports with their nets, parts, position and page. A sheet file built alone is its
+  contents, with its nets as written.
+
+The original plan:
+
 - A block is a function component in its own file that contains a `<group>`. It exposes named
   ports with `<port name="FIELD" />`; inside, a trace connects to `port.FIELD`; outside, an
   instance's port is `IN1.FIELD`. Everything stays literal, so it stays editable.
