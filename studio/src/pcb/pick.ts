@@ -10,7 +10,8 @@ import type { ArmedTool } from "./press.js"
 
 /**
  * Something a pick can take: a part, by name, a net label, a wire or a drawing (by its id) on the schematic, a track or
- * via (by its layout id) on the PCB, or a part's name, value or designator (by its text id, "R1:schNameAt").
+ * via (by its layout id) or a copper pour or hole (by its engine id, "copperpour:1") on the PCB, or a part's name,
+ * value or designator (by its text id, "R1:schNameAt").
  */
 export type Pickable =
   | { kind: "part"; name: string }
@@ -20,8 +21,10 @@ export type Pickable =
   | { kind: "track"; id: string }
   | { kind: "via"; id: string }
   | { kind: "text"; id: string }
+  | { kind: "pour"; id: string }
+  | { kind: "hole"; id: string }
 
-const KINDS: Record<Pickable["kind"], PickKind> = { part: "parts", label: "labels", wire: "wires", drawing: "drawings", track: "tracks", via: "vias", text: "texts" }
+const KINDS: Record<Pickable["kind"], PickKind> = { part: "parts", label: "labels", wire: "wires", drawing: "drawings", track: "tracks", via: "vias", text: "texts", pour: "pours", hole: "pours" }
 
 /** What a pick is made with. */
 export interface PickContext {
