@@ -10,7 +10,7 @@ import { PIN_ROW_DEFAULT_PITCH, pinRowName } from "./footprints/pinrow.js"
 import { Fragment, isElement, type CfElement, type ComponentFunction } from "./jsx-runtime.js"
 import { buildKeepout } from "./keepout.js"
 import { kindOf } from "./kinds.js"
-import type { Board, Circuit, Component, Diagnostic, DrawingKind, Keepout, SourceRef } from "./model.js"
+import { MAIN_PAGE, type Board, type Circuit, type Component, type Diagnostic, type DrawingKind, type Keepout, type SourceRef } from "./model.js"
 import { mergeNets } from "./nets.js"
 import { PropReader, type Props } from "./read-props.js"
 import { resolveTraces, type TraceDraft } from "./traces.js"
@@ -46,7 +46,12 @@ interface Frame {
   callSite: SourceRef | undefined
   library: string | undefined
   depth: number
+  /** The `<page>` around it; undefined on the first page. */
+  page: string | undefined
 }
+
+/** `{ page }` for a thing on a page other than the first, nothing on the first. */
+const onPage = (page: string | undefined): { page?: string } => (page === undefined ? {} : { page })
 
 class Elaboration {
   readonly components: Component[] = []
@@ -54,6 +59,8 @@ class Elaboration {
   readonly diagnostics: Diagnostic[] = []
   board: Board | undefined
   readonly keepouts: Keepout[] = []
+  /** The pages in the order they are first written, MAIN_PAGE first. */
+  readonly pages: string[] = [MAIN_PAGE]
   /** Every drawing tag; ids are given after the walk, so a drawing never renames a part. */
   readonly drawings: DrawingEntry[] = []
   private readonly drawingCounts = new Map<DrawingKind, number>()
@@ -113,10 +120,11 @@ class Elaboration {
     const source = this.sourceOf(element, frame)
     if (tag === Fragment) return this.visit(element.children, frame)
     if (tag === "group") return this.group(element, frame, source)
+    if (tag === "page") return this.page(element, frame, source)
     if (tag === "board") return this.boardElement(element, frame, source)
     if (tag === "keepout") return this.keepout(element, frame, source)
     if (tag === "trace") {
-      this.traces.push({ props: element.props, source })
+      this.traces.push({ props: element.props, source, ...onPage(frame.page) })
       return
     }
     const drawing = drawingKindOf(tag)
@@ -138,6 +146,22 @@ class Elaboration {
     }
     this.diagnostics.push(...reader.diagnostics)
     this.visit(element.children, { ...frame, offset: next })
+  }
+
+  /** A page holds what it wraps; a second page of the same name adds to the first, and `Main` is the first page. */
+  private page(element: CfElement, frame: Frame, source: SourceRef): void {
+    const name = element.props["name"]
+    if (typeof name !== "string" || name.trim() === "") {
+      this.diagnostics.push(diagnostic("missing-name", "error", "<page> needs a name; what it holds stays on the page around it", ["page"], source))
+      return this.visit(element.children, frame)
+    }
+    if (frame.page !== undefined) {
+      const message = `Pages do not nest: page ${name} is inside page ${frame.page}, and what it holds stays on ${frame.page}`
+      this.diagnostics.push(diagnostic("nested-page", "error", message, [name], source))
+      return this.visit(element.children, frame)
+    }
+    if (!this.pages.includes(name)) this.pages.push(name)
+    this.visit(element.children, { ...frame, page: name === MAIN_PAGE ? undefined : name })
   }
 
   private boardElement(element: CfElement, frame: Frame, source: SourceRef): void {
@@ -163,7 +187,8 @@ class Elaboration {
     this.drawingCounts.set(kind, index)
     const built = buildDrawing(kind, element.props, element.children.length, { offset: frame.offset, index, source })
     this.diagnostics.push(...built.diagnostics)
-    this.drawings.push({ kind, name: drawingName(kind, element.props["name"]), source, ...(built.drawing ? { drawing: built.drawing } : {}) })
+    const drawn = built.drawing ? { drawing: { ...built.drawing, ...onPage(frame.page) } } : {}
+    this.drawings.push({ kind, name: drawingName(kind, element.props["name"]), source, ...drawn })
   }
 
   /** One warning for each <keepout> of a circuit that has no <board>. */
@@ -184,7 +209,7 @@ class Elaboration {
     const padCount = footprint === undefined ? undefined : this.options.padCount(footprint)
     const origin = { source, library: frame.library, offset: frame.offset }
     const built = buildPart(tag, id, element.props, origin, { name: footprint, padCount })
-    this.components.push(built.component)
+    this.components.push({ ...built.component, ...onPage(frame.page) })
     this.diagnostics.push(...reader.diagnostics, ...built.diagnostics)
   }
 
@@ -203,13 +228,14 @@ class Elaboration {
 /** Turns the evaluated element tree into the circuit model. */
 export function elaborate(evaluated: Evaluated, file: string, options: ElaborateOptions): Circuit {
   const run = new Elaboration(evaluated, file, options)
-  run.visit(evaluated.root, { offset: NO_OFFSET, callSite: undefined, library: undefined, depth: 0 })
+  run.visit(evaluated.root, { offset: NO_OFFSET, callSite: undefined, library: undefined, depth: 0, page: undefined })
   const traces = resolveTraces(run.traces, run.components)
   const nets = mergeNets(traces.nodes, traces.links)
   const drawings = uniqueDrawingIds(run.drawings, run.components)
   const joined = nets.filter((net) => net.names.length > 1).map((net) => diagnostic("nets-joined", "warning", `Nets ${net.names.join(" and ")} are joined by a trace`, net.names))
   return {
     file,
+    pages: run.pages,
     components: run.components,
     nets,
     connections: traces.connections,
