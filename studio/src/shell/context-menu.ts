@@ -11,7 +11,7 @@ import type { WireReasons } from "../pcb/wire-actions.js"
 import { ENGINE, type CommandId } from "./menus.js"
 
 /** What an item does besides running a command: open Properties, rename a label's net, highlight a label's net. */
-export type ContextSpecial = "properties" | "rename" | "highlightNet"
+export type ContextSpecial = "properties" | "rename" | "highlightNet" | "resetText"
 
 export interface ContextItem {
   label: string
@@ -36,6 +36,8 @@ export interface ContextState {
   copperLocked?: boolean
   /** On a track: one of its segments is selected (a double click picked it), so Delete removes only that segment. */
   segment?: boolean
+  /** On a part's name, value or designator: why Reset position cannot run (nothing moved it, or it cannot be edited), or null. */
+  textReset?: string | null
 }
 
 const run = (label: string, command: CommandId, shortcut?: string): ContextItem => (shortcut ? { label, command, shortcut } : { label, command })
@@ -123,12 +125,19 @@ function copperItems(id: string, locked: boolean | undefined, segment: boolean |
   return [{ label: "Properties", special: "properties" }, "separator", ...track, locked ? run("Unlock", "unlock") : run("Lock", "lock"), "separator", remove]
 }
 
+/** On a part's name, value or designator: Reset position (disabled with its reason) and Properties. */
+function textItems(reset: string | null | undefined): ContextEntry[] {
+  const resetItem: ContextItem = { label: "Reset position", special: "resetText" }
+  return [reset ? { ...resetItem, pending: reset } : resetItem, "separator", { label: "Properties", special: "properties" }]
+}
+
 /** The items for a right click on `target`. */
 export function contextItems(target: ContextTarget, state: ContextState): ContextEntry[] {
   if (target.kind === "part") return partItems(state)
   if (target.kind === "copper") return copperItems(target.id, state.copperLocked, state.segment)
   if (target.kind === "wire") return wireItems(state.wire)
   if (target.kind === "drawing") return [...DRAWING_ITEMS]
+  if (target.kind === "text") return textItems(state.textReset)
   return [...(target.kind === "label" ? LABEL_ITEMS : CANVAS_ITEMS)]
 }
 

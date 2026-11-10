@@ -10,6 +10,7 @@ import {
   movePlan,
   startGesture,
   targetAt,
+  textTakesPress,
   type Gesture,
   type GestureInput,
   type GestureWires,
@@ -43,6 +44,8 @@ interface CanvasOptions {
   locked?: string[]
   armed?: ArmedTool
   snap?: boolean
+  /** A track lies under every point (the PCB's copperAt). */
+  copper?: string
   wire?: string
   /** Wires selected with the parts in `start`. */
   wires?: string[]
@@ -130,6 +133,7 @@ function canvas(start: readonly string[] = [], options: CanvasOptions = {}) {
       blocker: () => (options.locked?.includes("R2") ? "R2 is locked" : null),
       commit: (id, at) => void textMoves.push({ id, at }),
     },
+    ...(options.copper ? { copperAt: () => options.copper } : {}),
     ...(options.filter ? { filter: options.filter } : {}),
   })
   /** Presses at `from`, moves through `path` and lets go at the last point, as the hook does. */
@@ -681,6 +685,21 @@ describe("the right and middle buttons", () => {
       { target: { kind: "part", name: "R1" }, at: { x: 640, y: 480 } },
       { target: { kind: "canvas" }, at: { x: 640, y: 480 } },
     ])
+  })
+
+  test("texts come before copper: a right press on a designator over a track is on the text, off it on the track", () => {
+    const c = canvas([], { copper: "t0001" })
+    c.gesture({ button: 2 }, screen(12))
+    c.gesture({ button: 2 }, screen(8))
+    expect(c.menus.map((m) => m.target)).toEqual([{ kind: "text", id: R2_NAME }, { kind: "copper", id: "t0001" }])
+  })
+
+  test("textTakesPress is true over a pickable text only", () => {
+    const texts = { at: textAt }
+    expect(textTakesPress(BOXES, { x: 12, y: 0 }, PICK, texts)).toBe(true)
+    expect(textTakesPress(BOXES, { x: 8, y: 0 }, PICK, texts)).toBe(false)
+    expect(textTakesPress(BOXES, { x: 12, y: 0 }, { ...PICK, filter: { ...ALL_PICKABLE, texts: false } }, texts)).toBe(false)
+    expect(textTakesPress(BOXES, { x: 12, y: 0 }, PICK, undefined)).toBe(false)
   })
 
   test("a still right press puts an armed tool away instead", () => {

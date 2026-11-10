@@ -128,6 +128,13 @@ export function textBlocker(circuit: SourceCircuit, locked: ReadonlySet<string>,
   return prop && !prop.editable ? `${part.name}.${parsed.prop} is an expression; change it in the code` : null
 }
 
+/** Why Reset position cannot run on a text, or null when it can: it is gone, cannot be edited, or nothing moved it. */
+export function textResetReason(layout: { schematic: SchematicLayout; pcb: PcbLayout }, circuit: SourceCircuit, id: string, locked: ReadonlySet<string>): string | null {
+  const shown = textProperties(layout, circuit, id, locked)
+  if (!shown) return "It is not on this sheet"
+  return shown.blocker ?? (shown.moved ? null : "It is where the layout puts it")
+}
+
 /** A text drawn away from where the layout has it: being dragged, or moved and waiting for its build. */
 export interface TextMove {
   id: string
