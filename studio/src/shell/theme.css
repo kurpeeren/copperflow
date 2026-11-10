@@ -47,6 +47,12 @@
   --backdrop: rgb(31 35 40 / 24%);
   --veil: rgb(255 255 255 / 85%);
 
+  /* The hover label over the canvases (pcb/hover-label.css): a panel's background, a hairline and the text colour,
+     so it follows the theme with them. */
+  --hover-label-background: var(--panel);
+  --hover-label-line: var(--line);
+  --hover-label-text: var(--text);
+
   /* Colour changes on hover and press; nothing moves on load. */
   --ease: 120ms ease-out;
 

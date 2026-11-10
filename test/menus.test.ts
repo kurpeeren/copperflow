@@ -340,3 +340,14 @@ describe("View → Theme", () => {
     }
   })
 })
+
+describe("View → Hover labels", () => {
+  test("a checked item after Snap, which the app runs in either view, whatever is selected", () => {
+    const entries = MENUS.find((menu) => menu.title === "View")?.entries ?? []
+    const at = entries.findIndex((entry) => entry !== "separator" && entry.command === "snap")
+    expect(entries[at + 1]).toEqual({ label: "Hover labels", command: "hoverLabels", toggle: "hoverLabels" })
+    expect(commandOwner("hoverLabels")).toBe("app")
+    const item = MENUS.flatMap(menuItems).find((entry) => entry.command === "hoverLabels") as MenuItem
+    for (const open of ["pcb", "schematic"] as const) expect(itemState(item, open, 0)).toEqual({ enabled: true })
+  })
+})

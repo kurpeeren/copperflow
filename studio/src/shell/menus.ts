@@ -22,6 +22,7 @@ export type CommandId =
   | "fitSelection"
   | "fitArea"
   | "snap"
+  | "hoverLabels"
   | "zoomIn"
   | "zoomOut"
   | "toggleUnit"
@@ -84,7 +85,7 @@ export interface MenuItem {
 }
 
 /** The settings a menu item or toolbar button can switch and show. */
-export type ToggleId = "snap" | "themeLight" | "themeDark"
+export type ToggleId = "snap" | "hoverLabels" | "themeLight" | "themeDark"
 export type Toggles = Readonly<Record<ToggleId, boolean>>
 
 export type MenuEntry = MenuItem | "separator"
@@ -146,6 +147,7 @@ export const MENUS: readonly Menu[] = [
       { ...run("Unit", "toggleUnit", "Q"), only: "pcb" },
       run("Grid style", "gridStyle"),
       { ...run("Snap", "snap", "Alt+S"), toggle: "snap" },
+      { ...run("Hover labels", "hoverLabels"), toggle: "hoverLabels" },
       "separator",
       run("Left panel", "toggleLeftPanel", "["),
       run("Right panel", "toggleRightPanel", "]"),

@@ -40,8 +40,11 @@ const SELECTOR_PART = /^[A-Za-z_][\w-]*$/
 const WRITTEN_PIN = /^([A-Za-z_][\w-]*)\.([\w-]+)$/
 const CLASS_PIN = /^\.([A-Za-z_][\w-]*)\s*>\s*\.([\w-]+)$/
 
+/** How near a pin end, in CSS pixels, the pointer reaches it: the wire tool's reach, and the hover label's. */
+export const PIN_REACH_PX = 12
+
 /** The first name `pinLabels` gives pin `number`, if the part has one; kind aliases such as `left` are not labels. */
-function labelOf(props: Record<string, unknown>, number: number): string | undefined {
+export function labelOf(props: Record<string, unknown>, number: number): string | undefined {
   const labels = props["pinLabels"]
   if (typeof labels !== "object" || labels === null) return undefined
   for (const [key, value] of Object.entries(labels)) {

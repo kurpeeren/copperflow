@@ -1,0 +1,16 @@
+/* The label of what rests under the pointer on either canvas (HoverLabel.tsx), 12 px right-below the pointer. */
+.hover-label {
+  position: absolute;
+  z-index: 6;
+  padding: 2px 6px;
+  border: 1px solid var(--hover-label-line);
+  border-radius: 4px;
+  background: var(--hover-label-background);
+  box-shadow: var(--shadow);
+  color: var(--hover-label-text);
+  font-family: var(--sans);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+  pointer-events: none;
+}

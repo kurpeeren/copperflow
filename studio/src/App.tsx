@@ -254,7 +254,7 @@ export function App() {
   const { toast, tab, setTab, dialog, closeDialog, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, openSheet, sheetParent, runCommand, page, openPage } = useStudio()
   const { build, circuit } = data
   const { message, dismiss } = toast
-  const toggles = { snap: workspace.snap, ...themeToggles(workspace.theme) }
+  const toggles = { snap: workspace.snap, hoverLabels: workspace.hoverLabels, ...themeToggles(workspace.theme) }
   const off = useCommandsOff(build.design)
   const makeSheet = useMakeSheetPanel(data.file, selection.names, actions)
   // Hairlines stay one device pixel through zoom and display-scale changes.

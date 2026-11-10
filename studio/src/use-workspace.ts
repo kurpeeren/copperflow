@@ -6,6 +6,7 @@ import type { View } from "./pcb/positions"
 import { INITIAL_BOTTOM, clickBottom, openBottomTab, toggleBottom, type BottomState, type BottomTab } from "./shell/bottom-state"
 import { NO_HIGHLIGHT, type Highlight } from "./pcb/highlight"
 import { INITIAL_GRID_STEPS, INITIAL_GRID_STYLES, setGridStep, toggleGridStyle, type GridSteps, type GridStyles } from "./pcb/grid"
+import { loadHoverLabels, saveHoverLabels } from "./shell/hover-label-setting"
 import { applyTheme, browserStore, gridAfterThemeChoice, loadTheme, saveTheme, withThemeGrid, type ThemeName } from "./shell/theme-state"
 import { nextUnit, type Unit } from "./pcb/units"
 import { useLayers } from "./use-layers"
@@ -102,6 +103,18 @@ function useSnap() {
   return { snap, toggleSnap }
 }
 
+/** View → Hover labels: on until switched off, remembered per browser (hover-label-setting.ts). */
+function useHoverLabels() {
+  const [hoverLabels, setHoverLabels] = useState(() => loadHoverLabels(browserStore))
+  const first = useRef(true)
+  useEffect(() => {
+    if (first.current) first.current = false
+    else saveHoverLabels(browserStore, hoverLabels)
+  }, [hoverLabels])
+  const toggleHoverLabels = useCallback(() => setHoverLabels((on) => !on), [])
+  return { hoverLabels, toggleHoverLabels }
+}
+
 /** Answers the workspace's own keys, as they mean in the open view. */
 function useWorkspaceKeys(view: View, run: (action: KeyActionName) => void): void {
   useEffect(() => {
@@ -179,10 +192,11 @@ export function useWorkspace(view: View) {
   const { theme, setTheme, grid: themedGrid } = useTheme()
   const { toggleGridStyleOf, ...grid } = themedGrid
   const { snap, toggleSnap } = useSnap()
+  const { hoverLabels, toggleHoverLabels } = useHoverLabels()
   const layers = useLayers()
   const filter = usePickFilter()
   const run = useWorkspaceRun(view, { strips: { setLeft, setRight, setBottom }, setUnit, setHighlight, toggleGridStyleOf, toggleSnap, requestSearch })
   useWorkspaceKeys(view, run)
   const toggleUnit = useCallback(() => setUnit(nextUnit), [])
-  return { ...strips, ...grid, theme, setTheme, snap, ...layers, ...filter, ...focus, leftOpen: strips.left.open, unit, toggleUnit, highlight, setHighlight, run }
+  return { ...strips, ...grid, theme, setTheme, snap, hoverLabels, toggleHoverLabels, ...layers, ...filter, ...focus, leftOpen: strips.left.open, unit, toggleUnit, highlight, setHighlight, run }
 }

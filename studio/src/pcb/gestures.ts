@@ -187,7 +187,7 @@ const round = roundPosition
  */
 export function targetAt(
   boxes: readonly PartBox[],
-  labels: GestureLabels | undefined,
+  labels: Pick<GestureLabels, "at"> | undefined,
   world: Point,
   context: PickContext,
   wires?: Pick<GestureWires, "at">,
