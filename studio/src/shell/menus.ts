@@ -279,6 +279,7 @@ const EXTRA_KEYS = [
   { keys: "W", label: "Wire (schematic), Single routing (PCB)" },
   { keys: "V (PCB)", label: "Change the active layer; while routing, a via at the last corner" },
   { keys: "Space (while routing)", label: "Step the corner mode: 45°, 45° reversed, 90°" },
+  { keys: "Enter (while routing)", label: "End the track open at its last corner (or click that corner again)" },
   { keys: "R", label: "Rotate" },
   { keys: "Space (while drawing a wire)", label: "Flip the bend of the leg to the pointer" },
   { keys: "Shift (while drawing a polyline)", label: "Keep the leg horizontal or vertical; Space flips its bend" },

@@ -348,21 +348,45 @@ function drawDesignator(ctx: Ctx, part: PlacedFootprint, camera: Camera, size: S
   ctx.globalAlpha = 1
 }
 
-function insidePad(pad: WorldPad, p: Point): boolean {
+/**
+ * The pad within `reach` mm of a point (the nearest; one under the point counts as 0 mm away): the track tool reaches
+ * a pad as it reaches a track, so a click just off a small pad's edge still starts or ends on it. With `visible`,
+ * pads on hidden layers are skipped.
+ */
+export function padNear(layout: PcbLayout, p: Point, reach: number, visible?: LayerVisibility): WorldPad | undefined {
+  let best: { pad: WorldPad; distance: number } | undefined
+  for (const part of layout.parts) {
+    for (const pad of part.pads) {
+      if (visible && !visible[padLayer(pad)]) continue
+      const distance = padDistance(pad, p)
+      if (distance <= reach && (!best || distance < best.distance)) best = { pad, distance }
+    }
+  }
+  return best?.pad
+}
+
+const insidePad = (pad: WorldPad, p: Point): boolean => padDistance(pad, p) <= 0
+
+/** The point in the pad's own frame: from its centre, turned back by its rotation. */
+function padFrame(pad: WorldPad, p: Point): Point {
   const turn = rad(-pad.rotation)
   const dx = p.x - pad.x
   const dy = p.y - pad.y
-  const x = dx * Math.cos(turn) - dy * Math.sin(turn)
-  const y = dx * Math.sin(turn) + dy * Math.cos(turn)
-  if (pad.shape === "circle") return Math.hypot(x, y) <= pad.width / 2
-  if (pad.shape === "oval") return insideStadium(x, y, pad.width, pad.height)
-  return Math.abs(x) <= pad.width / 2 && Math.abs(y) <= pad.height / 2
+  return { x: dx * Math.cos(turn) - dy * Math.sin(turn), y: dx * Math.sin(turn) + dy * Math.cos(turn) }
 }
 
-/** The distance to the stadium's centre segment is at most its radius. */
-function insideStadium(x: number, y: number, w: number, h: number): boolean {
+/** How far outside the pad's copper the point is; 0 on or inside it. */
+export function padDistance(pad: WorldPad, p: Point): number {
+  const { x, y } = padFrame(pad, p)
+  if (pad.shape === "circle") return Math.max(0, Math.hypot(x, y) - pad.width / 2)
+  if (pad.shape === "oval") return stadiumDistance(x, y, pad.width, pad.height)
+  return Math.hypot(Math.max(0, Math.abs(x) - pad.width / 2), Math.max(0, Math.abs(y) - pad.height / 2))
+}
+
+/** The distance to the stadium's centre segment, less its radius; 0 inside. */
+function stadiumDistance(x: number, y: number, w: number, h: number): number {
   const radius = Math.min(w, h) / 2
   const reach = Math.max(w, h) / 2 - radius
   const [ax, ay] = w >= h ? [Math.max(-reach, Math.min(reach, x)), 0] : [0, Math.max(-reach, Math.min(reach, y))]
-  return Math.hypot(x - ax, y - ay) <= radius
+  return Math.max(0, Math.hypot(x - ax, y - ay) - radius)
 }

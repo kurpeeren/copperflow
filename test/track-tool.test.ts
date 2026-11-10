@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest"
 import type { RouteNet } from "../studio/src/pcb/track-rules.js"
 import {
   addRouteCorner,
+  endRouteOpen,
   finishRoute,
   nextRouteMode,
   placeViaAt,
@@ -232,5 +233,37 @@ describe("Route → Via", () => {
       edits: [{ kind: "addVia", at: p(1, 1), drill: 0.3, diameter: 0.6, layers: ["top", "bottom"] }],
       summary: "Add via at (1, 1)",
     })
+  })
+})
+
+describe("endRouteOpen", () => {
+  const corner = (route: Route, x: number) => addRouteCorner(route, p(x, 0))
+  const onBottom = (route: Route): Route => {
+    const flipped = switchRouteLayer(route)
+    if ("message" in flipped) throw new Error(flipped.message)
+    return flipped
+  }
+
+  test("ends the route at its last corner, as one track; a layer change since that corner is dropped, so no via dangles", () => {
+    const route = onBottom(corner(started(pad("U1.1", p(0, 0), "net.VBUS")), 10))
+    expect(endRouteOpen(route)).toEqual({
+      edits: [{ kind: "addTrack", net: "VBUS", layer: "top", width: 0.5, points: [p(0, 0), p(10, 0)] }],
+      summary: "Route VBUS from U1.1, open at (10, 0)",
+      drawing: routeDrawing({ ...route, layer: "top" }, p(10, 0)),
+    })
+  })
+
+  test("a via before the last corner stays: the tracks and the via in path order", () => {
+    const route = corner(onBottom(corner(started(pad("U1.1", p(0, 0), "net.VBUS")), 10)), 20)
+    const open = endRouteOpen(route)
+    expect(open && "edits" in open ? open.edits : open).toEqual([
+      { kind: "addTrack", net: "VBUS", layer: "top", width: 0.5, points: [p(0, 0), p(10, 0)] },
+      { kind: "addVia", net: "VBUS", at: p(10, 0), drill: 0.3, diameter: 0.6, layers: ["top", "bottom"] },
+      { kind: "addTrack", net: "VBUS", layer: "bottom", width: 0.5, points: [p(10, 0), p(20, 0)] },
+    ])
+  })
+
+  test("with no corner there is nothing to keep", () => {
+    expect(endRouteOpen(started(pad("U1.1", p(0, 0), "net.VBUS")))).toEqual({ message: "Click a corner first: a track needs two points. Esc drops it." })
   })
 })

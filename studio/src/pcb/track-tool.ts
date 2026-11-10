@@ -1,7 +1,8 @@
 // The PCB's track tool as pure data (Route → Single routing, Route → Via): a route starts on a pad, on its net and
 // layer; clicks add corners, each leg in the corner mode it was clicked with (track-corners.ts); V changes the layer
 // at the last corner, which then holds a via; Backspace takes the last corner back (and its via); a click on a pad, a
-// track or a via of the same net finishes it, as one list of layout edits (one history entry). Plain TypeScript with
+// track or a via of the same net finishes it, and Enter (or a click on the last corner again) ends it open there, as
+// one list of layout edits (one history entry). Plain TypeScript with
 // .js imports, so the tests can run it.
 import type { LayoutEdit } from "../../../src/core/layout-records.js"
 import type { CopperLayer } from "../../../src/core/layout-file.js"
@@ -188,6 +189,17 @@ export function finishRoute(route: Route, target: RouteTarget): Finished | Messa
   if (why) return { message: why }
   const drawing = routeDrawing(route, target.at)
   return { edits: drawingEdits(drawing, route.net.name), summary: `Route ${route.net.name} from ${route.start.label} to ${targetName(target)}`, drawing }
+}
+
+/**
+ * Enter, or a click on the last corner again: the route ends open at that corner, to be carried on later (the engine
+ * reports the track floating until it reaches its net). A layer change since the corner is dropped, so no via dangles.
+ */
+export function endRouteOpen(route: Route): Finished | Message {
+  const last = route.corners.at(-1)
+  if (!last) return { message: "Click a corner first: a track needs two points. Esc drops it." }
+  const drawing = routeDrawing({ ...route, layer: last.layer }, last.at)
+  return { edits: drawingEdits(drawing, route.net.name), summary: `Route ${route.net.name} from ${route.start.label}, open at (${last.at.x}, ${last.at.y})`, drawing }
 }
 
 /**

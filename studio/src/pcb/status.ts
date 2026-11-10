@@ -54,5 +54,5 @@ export function statusParts(input: StatusInput): { position: string; drag: strin
 
 /** What the status line says while a track is drawn: its net, its layer, its width and the corner mode, and the keys. */
 export function routingStatus(net: string, layer: string, width: number, mode: string): string {
-  return `Routing ${net} on ${layer}, ${width} mm, ${mode} — Space corner, V layer+via, Esc`
+  return `Routing ${net} on ${layer}, ${width} mm, ${mode} — Space corner, V layer+via, Enter ends open, Esc`
 }

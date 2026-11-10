@@ -1,5 +1,5 @@
-// What the PCB's track tool finds under the pointer: a via (first, as the copper pick does), a pad, then a track on
-// the route's layer, met at its nearest point and, on a horizontal or vertical segment, on the grid while Snap is on
+// What the PCB's track tool finds under the pointer: a via (first, as the copper pick does), a pad (under it or within
+// reach of its edge), then a track on the route's layer, met at its nearest point and, on a horizontal or vertical segment, on the grid while Snap is on
 // (as the schematic wire tool meets a wire). Only what the Layer panel shows is found. Plain TypeScript with .js
 // imports, so the tests can run it.
 import type { CopperLayer } from "../../../src/core/layout-file.js"
@@ -8,7 +8,7 @@ import type { WorldPad } from "../../../src/engine/pcb.js"
 import { copperShown } from "./copper-hit.js"
 import { roundPosition, snapPosition, type Point } from "./geometry.js"
 import type { LayerVisibility } from "./layers.js"
-import { padAt } from "./pcb-draw.js"
+import { padNear } from "./pcb-draw.js"
 import type { RouteTarget } from "./track-tool.js"
 import { netName } from "./track-rules.js"
 
@@ -43,8 +43,9 @@ function viaTarget(source: TargetSource, p: Point, reach: number): RouteTarget |
   return via && { kind: "via", id: via.id, at: via.at, ...named(source.design, via.net) }
 }
 
-function padTarget(source: TargetSource, p: Point): RouteTarget | undefined {
-  const pad = padAt(source.design.pcb, p, source.visible)
+/** The pad under the point, or within `reach` of its edge (a click just off a small pad still means it). */
+function padTarget(source: TargetSource, p: Point, reach: number): RouteTarget | undefined {
+  const pad = padNear(source.design.pcb, p, reach, source.visible)
   return pad && { kind: "pad", id: pad.id, label: padName(source.design, pad), part: pad.component, at: { x: pad.x, y: pad.y }, ...named(source.design, pad.net), layer: pad.layers }
 }
 
@@ -76,5 +77,5 @@ function trackTarget(source: TargetSource, p: Point, reach: number, layer: Coppe
 
 /** The via, pad or track (on `layer`, or any layer when none is given) under `p` within `reach` mm. */
 export function routeTargetAt(source: TargetSource, p: Point, reach: number, layer: CopperLayer | undefined, meet?: Meet): RouteTarget | undefined {
-  return viaTarget(source, p, reach) ?? padTarget(source, p) ?? trackTarget(source, p, reach, layer, meet)
+  return viaTarget(source, p, reach) ?? padTarget(source, p, reach) ?? trackTarget(source, p, reach, layer, meet)
 }
