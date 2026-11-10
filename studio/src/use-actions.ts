@@ -3,6 +3,7 @@ import { useCallback, useMemo } from "react"
 import type { LayoutEdit } from "../../src/core/layout-records.js"
 import { api, type Edit } from "./api"
 import { announceHistoryWrite } from "./history-writes"
+import { noteRulesWrite } from "./pcb/rules-writes"
 import { PLACE_DEFAULTS } from "./place-defaults"
 
 /** Every action reports failures itself and resolves to whether it succeeded. */
@@ -82,7 +83,12 @@ export function useActions({ file, refresh, refreshParts, notify }: ActionsInput
         if (ok) await refreshParts()
         return ok
       },
-      setFilletRadius: (radius) => run(async () => notify((await api<{ summary: string }>("/api/rules", { filletRadius: radius })).summary)),
+      setFilletRadius: (radius) =>
+        run(async () => {
+          const saved = await api<{ summary: string; writeMark?: number }>("/api/rules", { filletRadius: radius, ...(file ? { file } : {}) })
+          if (saved.writeMark !== undefined) noteRulesWrite({ radius, mark: saved.writeMark })
+          notify(saved.summary)
+        }),
       notify,
     }),
     [file, run, notify, refreshParts, editMarked, editLayout, postMarked],

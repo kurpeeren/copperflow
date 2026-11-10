@@ -292,7 +292,7 @@ export function PcbCanvas(props: PcbCanvasProps) {
   const copperParts = useCopperParts({ parts, circuit, actions, selection, armed: note.tool, pick, pickFilter })
   const copper = useCopper({ design, builtMark, parts: copperParts, camera, size, canvas: canvasRef, layers, filter: pickFilter, armed: note.tool, selection, onSelect, actions, step, snap, routing: trackArm.route !== null })
   const copperAreas = useMemo(() => copperBoxes(copper.shown, layers), [copper.shown, layers])
-  useTrackShape({ design, selection, lockedParts: parts.locked, routing: trackArm.route !== null, send: (change) => copper.latest.current.send(change), busy: () => copper.latest.current.inFlight, notify: actions.notify })
+  useTrackShape({ design, builtMark, selection, lockedParts: parts.locked, routing: trackArm.route !== null, send: (change) => copper.latest.current.send(change), busy: () => copper.latest.current.inFlight, notify: actions.notify })
   const track = useTrackTool({ design, builtMark, copper: copper.shown, camera, cursor, step, snap, layers, activeLayer: props.activeLayer, onActiveLayer: props.onActiveLayer, locked: parts.locked, actions, arm: trackArm, onArm: note.disarm })
   usePcbToolState(track.command ?? boxToolCommand(note.which), note.disarm, trackArm.disarm)
   const silkShown = useCallback((name: string) => {

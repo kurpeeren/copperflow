@@ -8,10 +8,13 @@ import type { CopperCommand } from "../shell/command-owners"
 import { useCommands } from "../shell/commands"
 import { keyAction, keyInput } from "./canvas-keys"
 import type { CopperChange } from "./copper-gesture"
+import { designWithSavedRadius, latestRulesWrite } from "./rules-writes"
 import { shapeChange, shapeScope, type TrackShapeCommand } from "./fillet"
 
 export interface TrackShapeInput {
   design: Design
+  /** The shown build's start mark: a radius saved after it is not in the design yet (rules-writes.ts). */
+  builtMark: number | undefined
   selection: Selection
   /** The locked parts: a track starting on one of their pads stays as it is. */
   lockedParts: ReadonlySet<string>
@@ -26,11 +29,12 @@ export interface TrackShapeInput {
 /** Runs one of the two commands on the design's copper, asking first when it would change every track of the board. */
 function runShape(input: TrackShapeInput, command: TrackShapeCommand): void {
   if (input.busy()) return input.notify("Wait for the last copper change to land, then try again.")
-  const tracks = input.design.pcb.tracks.filter((track) => track.missingLayer === undefined)
+  const design = designWithSavedRadius(input.design, latestRulesWrite(), input.builtMark)
+  const tracks = design.pcb.tracks.filter((track) => track.missingLayer === undefined)
   const scope = shapeScope(command, tracks, input.selection)
   if ("message" in scope) return input.notify(scope.message)
   if (scope.confirm !== undefined && !window.confirm(scope.confirm)) return
-  const change = shapeChange(command, input.design, scope.ids, input.lockedParts)
+  const change = shapeChange(command, design, scope.ids, input.lockedParts)
   if ("message" in change) return input.notify(change.message)
   input.send(change)
   input.notify(change.summary)

@@ -152,7 +152,7 @@ const Bodies = {
   place: z.object({ file, part: z.string().min(1).max(64), name: z.string().max(40).optional(), props: props.optional(), page: z.string().max(64).optional() }),
   verify: z.object({ id: z.string().min(1).max(64), by: z.string().min(1).max(100), against: z.string().min(1).max(300), confirm: z.string() }),
   // The Design rules panel: a radius in mm, or null for the default.
-  rules: z.object({ filletRadius: z.number().nullable() }),
+  rules: z.object({ filletRadius: z.number().nullable(), file: z.string().optional() }),
 }
 
 /**
@@ -277,7 +277,11 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       case "POST /api/rules": {
         const body = Bodies.rules.parse(await readJson(req))
         const entry = await setFilletRadius(root, body.filletRadius ?? undefined, { author: "human" })
-        return send(res, { entryId: entry.id, summary: entry.summary })
+        // The write's mark, as an edit's: a build that started after it read the new radius. The open circuit is built now
+        // (the watcher builds every circuit again when rules.yaml changes, but later), so the mark is met soon.
+        const writeMark = live.nextMark()
+        if (body.file) live.requestBuild((await loadCircuit(root, body.file)).file)
+        return send(res, { entryId: entry.id, summary: entry.summary, writeMark })
       }
       case "GET /api/parts":
         return send(res, { library: await listParts(root), builtin: BUILTIN_PARTS })
