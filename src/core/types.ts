@@ -121,6 +121,13 @@ export type PropValue = Literal | Point | null
 
 export type Edit =
   | { kind: "setProps"; part: string; props: Record<string, PropValue> }
+  /**
+   * Adds a sub-sheet instance, `<tag name connections={{ PORT: "NET" }} base? />`, on its page, and the default import
+   * `import tag from "<importFrom>"` (a `.sheet` file) when missing.
+   */
+  | { kind: "addInstance"; tag: string; name: string; connections: Record<string, string>; base?: number; importFrom: string; page?: string }
+  /** Writes an instance's `connections` anew: each port to a parent net; ports left out are open. */
+  | { kind: "setConnections"; part: string; connections: Record<string, string> }
   | { kind: "removePart"; part: string }
   /** `schematicRouteHints` are the corners of a wire drawn by hand in the schematic. */
   /** `page` puts it in that `<page>` (made when missing); without one, or "Main", it goes on the first page. */
