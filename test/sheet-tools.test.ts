@@ -107,3 +107,14 @@ describe("check_circuit and circuit_summary for one instance", () => {
     expect(answer).toEqual({ isError: true, text: "There is no instance PS9 in main.circuit.tsx; the instances are PS1, PS2" })
   })
 })
+
+describe("the guidance for a model", () => {
+  test("the instructions and the skill say to put a repeated block in a sheet and to use pages for a large schematic", async () => {
+    const skill = await readFile(new URL("../skills/copperflow/SKILL.md", import.meta.url), "utf8")
+    for (const text of [client.getInstructions() ?? "", skill]) {
+      expect(text).toMatch(/repeated block/)
+      expect(text).toMatch(/instances/)
+      expect(text).toMatch(/pages/)
+    }
+  })
+})

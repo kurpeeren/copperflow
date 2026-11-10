@@ -20,6 +20,15 @@ undoing their work.
    `resistor`, `part` for a library id, `value`, `footprint`) and the nets (`{ GND: ["R1.pin2",
    "U1.GND"] }`); it writes the file, refuses unknown pins and lists the real ones. An existing
    file needs `replace: true`.
+   A repeated block (the same regulator or channel used twice or more) goes in a sheet once,
+   not as parts written twice: `new_circuit` takes `sheets: { PowerStage: { parts, nets, ports }
+   }` and `instances: [{ sheet: "PowerStage", name: "PS1", connections: { VIN: "VBUS" } }]`, and
+   writes `PowerStage.sheet.tsx` beside the circuit; `edit_circuit` adds another with
+   `add_instance` and rewires one with `set_connections`. Inside a sheet the designators are
+   local (R1); each instance adds its base (R101, R201). For a large schematic use pages
+   (`pages` in `new_circuit`, `page` in `place_part`, `move_to_page` in `edit_circuit`); nets
+   join across pages by name. `check_circuit` and `circuit_summary` take an instance name as
+   `filter` to show only that instance.
    Write parts and connections, not positions or wire corners: the program places and routes.
    Change existing parts and traces with `set_props`, `remove_part`, `add_trace` and
    `remove_trace`, or several at once with `edit_circuit` (one history entry; nothing is written
