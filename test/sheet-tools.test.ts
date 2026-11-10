@@ -73,3 +73,37 @@ describe("edit_circuit with sub-sheets", () => {
     expect(await source()).toMatch(/<page name="Power">\n\s+<PowerStage name="PS2"/)
   })
 })
+
+describe("check_circuit and circuit_summary for one instance", () => {
+  beforeEach(async () => {
+    await edit({ set_connections: { instance: "PS2", connections: { VIN: "V3_3", VOUT: "V1_8" } } })
+  })
+
+  test("check_circuit with an instance's name shows only the findings about its parts, nets and ports", async () => {
+    const lines = (await call("check_circuit", { file: FILE, filter: "PS2" })).text.split("\n")
+    expect(lines[0]).toMatch(/^main\.circuit\.tsx: 0 errors, \d+ warnings \(filter: PS2\)$/)
+    expect(lines).toContain("warning unconnected-port [PS2.GND]: Port GND of PS2 (PowerStage) is not connected at main.circuit.tsx:6:5")
+    expect(lines.some((line) => line.includes("[net.PS2/FB]"))).toBe(true)
+    expect(lines.some((line) => /R101|PS1/.test(line) && !/R201|C201|U201/.test(line))).toBe(false)
+  })
+
+  test("circuit_summary with an instance's name shows its line, its parts and the nets they are on", async () => {
+    const lines = (await call("circuit_summary", { file: FILE, filter: "PS2" })).text.split("\n")
+    expect(lines).toEqual([
+      "main.circuit.tsx, instance PS2: 3 parts, 4 nets",
+      "PS2 PowerStage base 200: VIN=V3_3 VOUT=V1_8 GND=(open), 3 parts",
+      "U201 chip in PS2 as U1",
+      "C201 capacitor 1uF in PS2 as C1",
+      "R201 resistor 10k in PS2 as R1",
+      "GND: C101.pin2 C201.pin2 J1.pin2 U101.pin3 U201.pin3",
+      "PS2/FB: R201.pin2",
+      "V1_8: C201.pin1 R201.pin1 U201.pin2",
+      "V3_3: C101.pin1 R101.pin1 U101.pin2 U201.pin1",
+    ])
+  })
+
+  test("an unknown instance is refused, naming the instances", async () => {
+    const answer = await call("circuit_summary", { file: FILE, filter: "PS9" })
+    expect(answer).toEqual({ isError: true, text: "There is no instance PS9 in main.circuit.tsx; the instances are PS1, PS2" })
+  })
+})

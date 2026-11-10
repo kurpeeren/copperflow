@@ -30,8 +30,8 @@ import { buildWith } from "../core/design-source.js"
 import { FootprintFileSchema } from "../engine/footprints/file.js"
 import { VERSION } from "../version.js"
 import { batchSummary, describeRefusal, editItem, firstRefusal, moveNotes, planNets, toEdit } from "./batch.js"
-import { formatCompactCheck, formatCompactSummary, type SheetView } from "./compact.js"
-import { importsSheet } from "./compact-sheets.js"
+import { formatCompactCheck, formatCompactSummary, formatInstanceSummary, type SheetView } from "./compact.js"
+import { importsSheet, type Flattened } from "./compact-sheets.js"
 import { formatCopperSummary } from "./copper-summary.js"
 import * as copper from "./copper-tools.js"
 import * as fillet from "./fillet-tools.js"
@@ -81,13 +81,18 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "circuit_summary",
     {
       description:
-        'Summarize a circuit. The default is compact: one line per part (name, type, value, footprint, positions) and per net, then locked parts, marks from the human and lock violations; long lists end with "… and N more". detail "full" lists every prop and trace.',
-      inputSchema: { file, detail: z.enum(["compact", "full"]).optional().describe('"compact" (default) or "full"') },
+        'Summarize a circuit. The default is compact: one line per part (name, type, value, footprint, positions) and per net, then locked parts, marks from the human and lock violations; long lists end with "… and N more". A sub-sheet instance is one line followed by its parts. filter with an instance name (e.g. "PS1") shows only that instance, its parts and the nets they are on. detail "full" lists every prop and trace.',
+      inputSchema: {
+        file,
+        detail: z.enum(["compact", "full"]).optional().describe('"compact" (default) or "full"'),
+        filter: z.string().optional().describe('A sub-sheet instance, e.g. "PS1"'),
+      },
       annotations: READ_ONLY,
     },
-    ({ file: circuit, detail }) =>
+    ({ file: circuit, detail, filter }) =>
       run(async () => {
         const loaded = await loadCircuit(root, circuit)
+        if (filter) return formatInstanceSummary(loaded, await flatDesign(root, loaded.file, options.engine), filter)
         if (detail === "full") return formatSummary(loaded)
         const usesSheets = loaded.model.imports.some((spec) => importsSheet(spec.source))
         return formatCompactSummary(loaded, usesSheets ? await sheetView(root, circuit, options.engine) : undefined)
@@ -151,7 +156,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     {
       description:
         "Check the circuit with copperflow's own rules: electrical checks (pins left unconnected, outputs shorted together, power pins without a source) and placement checks (overlapping parts, parts off the board), plus problems in the code and the model (footprints it cannot make, unknown or ambiguous pins, library overrides). Answers with the error and warning counts, then up to 20 findings, one line each. Run it once at the end and fix the errors before reporting success; filter narrows it to errors, warnings, copper, a part or a net. Copper clearance, width, via, board-edge and keepout violations are included.",
-      inputSchema: { file, filter: z.string().optional().describe('"errors", "warnings", "copper", a part name or a net name') },
+      inputSchema: { file, filter: z.string().optional().describe('"errors", "warnings", "copper", a part name, a net name or a sub-sheet instance such as "PS1"') },
       annotations: READ_ONLY,
     },
     ({ file: circuit, filter }) =>
@@ -368,6 +373,13 @@ Nothing was written.`)
 async function movesLeaveBehind(root: string, circuit: string, edits: Edit[]): Promise<string[]> {
   const loaded = await loadCircuit(root, circuit)
   return moveNotes(loaded.source, edits, new Set(loaded.annotations.locks.map((lock) => lock.part)))
+}
+
+/** The flattened design, for a summary of one instance; a build that fails is the answer. */
+async function flatDesign(root: string, circuit: string, engine: DesignSource | undefined): Promise<Flattened> {
+  const view = await sheetView(root, circuit, engine)
+  if ("failure" in view) throw new Error(`The circuit does not build, so its instances cannot be shown: ${view.failure}`)
+  return view.flat
 }
 
 /** The flattened design of a circuit with sub-sheets, or why it could not be built; the summary is given either way. */

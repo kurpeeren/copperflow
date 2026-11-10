@@ -1,6 +1,6 @@
 import type { CheckResult, LoadedCircuit, PartInfo, TraceInfo } from "../core/index.js"
 import { oneLine } from "../core/summary.js"
-import { flatCounts, partLinesWithSheets, type Flattened } from "./compact-sheets.js"
+import { aboutInstance, flatCounts, instanceAt, instancePartLines, partLinesWithSheets, type Flattened } from "./compact-sheets.js"
 import { COPPER_RULES } from "./copper-summary.js"
 
 /** Lists in a default answer stop here, so the whole answer fits a screen. */
@@ -111,6 +111,22 @@ export function formatCompactSummary(circuit: LoadedCircuit, sheets?: SheetView)
   return lines.join("\n")
 }
 
+/**
+ * circuit_summary for one instance (`filter`): its line and its parts, the instances inside it, and the nets its parts
+ * are on, with every pin of those nets. Throws naming the instances when there is no such instance.
+ */
+export function formatInstanceSummary(circuit: LoadedCircuit, flat: Flattened, path: string): string {
+  const instance = instanceAt(circuit.file, flat, path)
+  const locked = new Set(circuit.annotations.locks.map((lock) => lock.part))
+  const parts = new Set(instance.parts)
+  const nets = flat.nets
+    .filter((net) => net.pins.some((pin) => parts.has(pin.split(".")[0] ?? pin)))
+    .map((net) => ({ names: net.names, pins: net.pins }))
+    .sort((a, b) => natural.compare(a.names[0] ?? "", b.names[0] ?? ""))
+  const head = `${circuit.file}, instance ${path}: ${plural(parts.size, "part")}, ${plural(nets.length, "net")}`
+  return [head, ...capped(instancePartLines(flat, instance, locked)), ...capped(nets.map(netLine))].join("\n")
+}
+
 interface Finding {
   severity: "error" | "warning"
   rule: string
@@ -147,9 +163,14 @@ function findingLine(f: Finding): string {
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
 
-/** The default check_circuit: counts, then up to 20 violations, one line each, errors first. */
+/**
+ * The default check_circuit: counts, then up to 20 violations, one line each, errors first. A filter naming a
+ * sub-sheet instance keeps the findings about its parts, its ports and the nets and instances inside it.
+ */
 export function formatCompactCheck(file: string, result: CheckResult, filter?: string): string {
-  const all = findings(result).filter((f) => matches(f, filter))
+  const instance = filter ? result.instances?.find((found) => found.path === filter) : undefined
+  const about = instance ? aboutInstance(instance) : undefined
+  const all = findings(result).filter((f) => (about ? f.items.some(about) : matches(f, filter)))
   const sorted = [...all.filter((f) => f.severity === "error"), ...all.filter((f) => f.severity === "warning")]
   const errors = sorted.filter((f) => f.severity === "error").length
   const head = `${file}: ${plural(errors, "error")}, ${plural(sorted.length - errors, "warning")}${filter ? ` (filter: ${filter})` : ""}`
