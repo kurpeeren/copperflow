@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { copperFieldEdit, copperProperties, type CopperDesign } from "../studio/src/pcb/copper-props.js"
+import { copperFieldEdit, copperProperties, segmentProperties, type CopperDesign } from "../studio/src/pcb/copper-props.js"
 
 const design: CopperDesign = {
   circuit: { nets: [{ id: "net.GND", names: ["GND"] }] },
@@ -73,5 +73,28 @@ describe("copperFieldEdit", () => {
   test("the same value is no change", () => {
     expect(copperFieldEdit(track, "width", "0.25")).toBeUndefined()
     expect(copperFieldEdit(track, "layer", "top")).toBeUndefined()
+  })
+})
+
+describe("segmentProperties", () => {
+  test("a segment: its track's net, its length and its two ends", () => {
+    expect(segmentProperties(design, { id: "t0001", index: 0 })).toEqual({
+      kind: "segment",
+      title: "Segment",
+      locked: false,
+      rows: [
+        { label: "Net", value: "GND" },
+        { label: "Track", value: "t0001" },
+        { label: "Length", value: "5 mm" },
+        { label: "Start", value: "(0, 0) mm" },
+        { label: "End", value: "(3, 4) mm" },
+      ],
+    })
+    expect(segmentProperties(design, { id: "t0002", index: 0 })).toMatchObject({ locked: true, rows: [{ label: "Net", value: "No net" }, {}, { value: "1 mm" }, {}, {}] })
+  })
+
+  test("nothing for a segment the track does not have, or a track that is gone", () => {
+    expect(segmentProperties(design, { id: "t0001", index: 2 })).toBeUndefined()
+    expect(segmentProperties(design, { id: "t0009", index: 0 })).toBeUndefined()
   })
 })

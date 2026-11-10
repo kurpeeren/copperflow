@@ -1,8 +1,10 @@
-// What Properties shows for one selected track or via, and the edit each of its editable rows (a track's width and
-// layer, the lock of either) sends. Pure; plain TypeScript with .js imports, so the tests can run it.
+// What Properties shows for one selected track or via (or one selected segment of a track), and the edit each of its
+// editable rows (a track's width and layer, the lock of either) sends. Pure; plain TypeScript with .js imports, so the tests can run it.
 import type { LayoutEdit } from "../../../src/core/layout-records.js"
 import { trackLength } from "../../../src/engine/copper.js"
 import type { PcbTrack, PcbVia } from "../../../src/engine/pcb.js"
+import { hasSegment } from "../../../src/core/track-split.js"
+import type { TrackSegment } from "../selection.js"
 
 /** What these rows read of the built design. */
 export interface CopperDesign {
@@ -67,6 +69,35 @@ export function copperProperties(design: CopperDesign, id: string): CopperProper
   if (track) return { kind: "track", title: "Track", locked: track.locked, rows: trackRows(design, track) }
   const via = design.pcb.vias.find((one) => one.id === id)
   return via && { kind: "via", title: "Via", locked: via.locked, rows: viaRows(design, via) }
+}
+
+/** A selected segment's rows: its track's net, which segment of which track, its length and its two ends. */
+export interface SegmentProperties {
+  kind: "segment"
+  title: "Segment"
+  locked: boolean
+  rows: CopperRow[]
+}
+
+const at = (p: { x: number; y: number }): string => `(${Math.round(p.x * 1000) / 1000}, ${Math.round(p.y * 1000) / 1000}) mm`
+
+/** The rows of `segment`, or undefined when the design has no such track or the track no such segment. */
+export function segmentProperties(design: CopperDesign, segment: TrackSegment): SegmentProperties | undefined {
+  const track = design.pcb.tracks.find((one) => one.id === segment.id)
+  if (!track || !hasSegment(track.points, segment.index)) return undefined
+  const [start, end] = [track.points[segment.index], track.points[segment.index + 1]] as [PcbTrack["points"][number], PcbTrack["points"][number]]
+  return {
+    kind: "segment",
+    title: "Segment",
+    locked: track.locked,
+    rows: [
+      { label: "Net", value: netName(design, track.net) },
+      { label: "Track", value: track.id },
+      { label: "Length", value: mm(trackLength([start, end])) },
+      { label: "Start", value: at(start) },
+      { label: "End", value: at(end) },
+    ],
+  }
 }
 
 /** A track (it has points) or a via (it has none), as the field edits read it. */

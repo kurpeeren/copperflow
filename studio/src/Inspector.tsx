@@ -101,7 +101,7 @@ export function Inspector(props: Props) {
       {kind === "label" && label !== undefined && design && <LabelView design={design} label={label} run={props.run} notify={props.actions.notify} onClear={clear} collapsed={collapsed} toggle={toggle} />}
       {kind === "drawing" && drawing !== undefined && design && <DrawingView design={design} circuit={props.circuit} drawing={drawing} locked={locks.locked} actions={props.actions} onRename={props.onRenameDrawing} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
       {kind === "text" && soleText !== undefined && design && <TextView design={design} circuit={props.circuit} text={soleText} locked={locks.locked} actions={props.actions} onClear={clear} collapsed={collapsed} toggle={toggle} />}
-      {kind === "copper" && soleCopper !== undefined && design && <CopperView design={design} id={soleCopper} actions={props.actions} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
+      {kind === "copper" && soleCopper !== undefined && design && <CopperView design={design} id={soleCopper} segment={props.selection.segment} actions={props.actions} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
       {kind === "group" && <GroupView view={view} parts={parts} others={wireCount + labelCount + drawingCount + copperCount} locks={locks} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
       {kind === "part" && part && <PartView {...props} view={view} collapsed={collapsed} toggle={toggle} part={part} locks={locks} />}
       {kind === "board" && <BoardView {...props} view={view} collapsed={collapsed} toggle={toggle} />}
