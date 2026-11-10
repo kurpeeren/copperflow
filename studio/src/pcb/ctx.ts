@@ -26,11 +26,12 @@ export interface Ctx {
   lineTo(x: number, y: number): void
   arc(x: number, y: number, r: number, start: number, end: number): void
   arcTo(x1: number, y1: number, x2: number, y2: number, r: number): void
-  fill(): void
+  /** "evenodd" fills a pour with its holes left open. */
+  fill(rule?: "evenodd" | "nonzero"): void
   stroke(): void
   fillText(text: string, x: number, y: number): void
   measureText(text: string): { width: number; actualBoundingBoxAscent?: number; actualBoundingBoxDescent?: number }
-  clip(): void
+  clip(rule?: "evenodd" | "nonzero"): void
   setLineDash(segments: number[]): void
 }
 
