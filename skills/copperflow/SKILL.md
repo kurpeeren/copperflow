@@ -25,6 +25,9 @@ undoing their work.
    `remove_trace`, or several at once with `edit_circuit` (one history entry; nothing is written
    if one edit is refused) and `connect_nets` (`{ GND: ["R1.pin2", "C1.pin2"] }`). These tools
    enforce locks and record history; editing the file directly does not.
+   A part's name and value on the schematic and its silkscreen designator move with
+   `set_props` `schNameAt`, `schValueAt` and `pcbNameAt`, each a point `{ x, y }` from the
+   part's origin (sheet units, board mm) that moves with the part; `null` puts it back.
    Copper: you may draw the tracks and vias you want by hand with `route_track` (a track of one
    net, starting on a pad, track or via of that net), `add_via` and `remove_copper`, and round
    track corners with `fillet_tracks` (`straighten_tracks` squares them again); each is one
