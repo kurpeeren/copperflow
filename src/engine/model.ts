@@ -57,6 +57,10 @@ export interface Component {
   source: SourceRef
   /** The schematic page it is drawn on; absent on the first page, MAIN_PAGE. */
   page?: string
+  /** The path of the sub-sheet instance that made it, e.g. "PS1" or "PS1/D1"; absent on the circuit itself. */
+  instance?: string
+  /** Its name in the sheet file, e.g. "R1" for R101 of an instance with base 100; absent on the circuit itself. */
+  localId?: string
 }
 
 /** Named: "net.GND". Unnamed: "net:" + the first pin id. */
@@ -145,6 +149,43 @@ export const MAIN_PAGE = "Main"
 /** The page a part, trace or drawing is on. */
 export const pageOf = (thing: { page?: string }): string => thing.page ?? MAIN_PAGE
 
+/** A sub-sheet port and the flattened net it joins: the parent net when connected, else the instance's own net. */
+export interface InstancePort {
+  name: string
+  net: string
+}
+
+/**
+ * One instance of a sub-sheet (`<name>.sheet.tsx`). Its parts are flattened into the circuit with `base` added to
+ * each designator's number; a net inside is "<path>/<name>" unless it is a connected port's net (the parent net)
+ * or a power or ground name (global).
+ */
+export interface SheetInstance {
+  /** The name prop, e.g. "PS1". */
+  name: string
+  /** The names of the instances from the circuit down, joined by "/", e.g. "PS1" or "PS1/D1". */
+  path: string
+  /** The sheet's name: its file name without ".sheet.tsx". */
+  sheet: string
+  file: string
+  /** The instance's own base: written, or the default that follows the previous sibling's span. */
+  base: number
+  /** What its designators get added: its base plus the bases of the instances around it. */
+  designatorBase: number
+  /** As written: port name to parent net name. */
+  connections: Record<string, string>
+  /** The sheet's ports in the order they are written. */
+  ports: InstancePort[]
+  /** The flattened ids of every part inside, nested instances included, in natural order. */
+  parts: string[]
+  /** The instance's own schX/schY and pcbX/pcbY/pcbRotation, when written. */
+  sch?: Point
+  pcb?: { x: number; y: number; rotation: number }
+  /** The page it is on; absent on the first page. */
+  page?: string
+  source: SourceRef
+}
+
 export interface Circuit {
   file: string
   /**
@@ -158,5 +199,7 @@ export interface Circuit {
   board?: Board
   /** Schematic only: the PCB and the nets ignore them. */
   drawings: SchematicDrawing[]
+  /** The sub-sheet instances in source order, outer before inner; absent when there are none. */
+  instances?: SheetInstance[]
   diagnostics: Diagnostic[]
 }

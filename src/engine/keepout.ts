@@ -1,5 +1,5 @@
 import { outlinePoints } from "./board.js"
-import type { Offset } from "./component.js"
+import { pcbPoint, type Offset } from "./component.js"
 import { diagnostic } from "./diagnostics.js"
 import type { Diagnostic, Keepout, Point, SourceRef } from "./model.js"
 import { PropReader, type Props } from "./read-props.js"
@@ -15,14 +15,14 @@ function centredRectangle(reader: PropReader, offset: Offset): Point[] | undefin
   const width = reader.length("width")
   const height = reader.length("height")
   if (width === undefined || height === undefined) return undefined
-  const cx = (reader.length("pcbX") ?? 0) + offset.pcbX
-  const cy = (reader.length("pcbY") ?? 0) + offset.pcbY
+  const cx = reader.length("pcbX") ?? 0
+  const cy = reader.length("pcbY") ?? 0
   const [dx, dy] = [width / 2, height / 2]
   return [
-    { x: cx - dx, y: cy - dy },
-    { x: cx + dx, y: cy - dy },
-    { x: cx + dx, y: cy + dy },
-    { x: cx - dx, y: cy + dy },
+    pcbPoint(offset, cx - dx, cy - dy),
+    pcbPoint(offset, cx + dx, cy - dy),
+    pcbPoint(offset, cx + dx, cy + dy),
+    pcbPoint(offset, cx - dx, cy + dy),
   ]
 }
 
@@ -36,7 +36,7 @@ function shapeOf(props: Props, reader: PropReader, offset: Offset, warn: (messag
   }
   const points = outlinePoints(given)
   if (!points) warn("keepout: outline must be a list of at least 3 points with x and y")
-  return points?.map((p) => ({ x: p.x + offset.pcbX, y: p.y + offset.pcbY }))
+  return points?.map((p) => pcbPoint(offset, p.x, p.y))
 }
 
 /** `index` is the keepout's 1-based place in source order. A keepout that cannot be placed gets a bad-value warning and no result. */

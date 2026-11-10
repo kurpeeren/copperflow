@@ -8,7 +8,8 @@ import { naturalCompare } from "./order.js"
 import { sheetBounds, snap, snapDown, snapUp, tidy, type Spot } from "./schematic-geometry.js"
 import { chainEnds, chainsOf, isPair, reversed, type Link } from "./schematic-place-chains.js"
 import { anchorPinsByNet, attachmentOf, flowOrder, netlistOf, type Attachment, type Hook, type Netlist, type AnchorPin } from "./schematic-place-plan.js"
-import { CLEARANCE, Sheet, unitOf, type Direction, type Symbols, type Unit } from "./schematic-place-units.js"
+import { anchorGroups, type AnchorGroup } from "./instance-anchor.js"
+import { CLEARANCE, crowds, Sheet, unitOf, type Direction, type Symbols, type Unit } from "./schematic-place-units.js"
 import { drawnAsBox, type Bounds, type SchSymbol } from "./symbols/index.js"
 
 /** The least room between two chips in the row. */
@@ -242,7 +243,51 @@ function rowOf(loose: readonly Component[], circuit: Circuit, symbols: Symbols):
   return { row: { anchors, hangers, betweenNeed: betweenNeeds(between, hung.strands, symbols) }, between, hung }
 }
 
-/** Spots for the components without schX/schY, keyed by name. */
+/** Places `loose` by connectivity on `sheet`. */
+function placeParts(loose: readonly Component[], circuit: Circuit, symbols: Symbols, sheet: Sheet): void {
+  const { row, between, hung } = rowOf(loose, circuit, symbols)
+  placeRow(row, symbols, sheet)
+  for (const part of between) placeBetween(part, hung.strands.get(part.part) ?? [], row, symbols, sheet)
+  placeLeftovers(hung.leftovers, symbols, sheet)
+}
+
+/**
+ * An instance's loose parts, placed by connectivity on a sheet of their own, then moved as one block: to the
+ * instance's own spot, or right of everything when it has none, and on to the right past anything it would crowd.
+ */
+function placeBlock(group: AnchorGroup, circuit: Circuit, symbols: Symbols, sheet: Sheet): void {
+  const own = new Sheet([])
+  placeParts(group.parts, circuit, symbols, own)
+  if (own.boxes.length === 0) return
+  const block = unionOf(own.boxes)
+  const right = sheet.right()
+  let dx = group.anchor ? snap(group.anchor.x) : snapUp((right === undefined ? 0 : right + COLUMN_GAP) - block.minX)
+  const dy = group.anchor ? snap(group.anchor.y) : 0
+  for (let hit = crowding(block, dx, dy, sheet); hit; hit = crowding(block, dx, dy, sheet)) dx = snapUp(hit.maxX + CLEARANCE - block.minX)
+  for (const [part, spot] of own.spots) {
+    const moved = { x: tidy(spot.x + dx), y: tidy(spot.y + dy), rotation: spot.rotation }
+    const symbol = symbols.get(part)
+    sheet.spots.set(part, moved)
+    if (symbol) sheet.boxes.push(sheetBounds(symbol.bounds, moved))
+  }
+}
+
+function unionOf(boxes: readonly Bounds[]): Bounds {
+  return {
+    minX: Math.min(...boxes.map((b) => b.minX)),
+    maxX: Math.max(...boxes.map((b) => b.maxX)),
+    minY: Math.min(...boxes.map((b) => b.minY)),
+    maxY: Math.max(...boxes.map((b) => b.maxY)),
+  }
+}
+
+/** A box on the sheet that the block, moved by dx and dy, would crowd. */
+function crowding(block: Bounds, dx: number, dy: number, sheet: Sheet): Bounds | undefined {
+  const moved = { minX: block.minX + dx, maxX: block.maxX + dx, minY: block.minY + dy, maxY: block.maxY + dy }
+  return sheet.boxes.find((box) => crowds(moved, box))
+}
+
+/** Spots for the components without schX/schY, keyed by name. Each sub-sheet instance's parts are placed as one block. */
 export function placeLoose(circuit: Circuit, symbols: Symbols): Map<string, Spot> {
   const fixed = circuit.components.flatMap((c) => {
     const symbol = symbols.get(c.id)
@@ -250,9 +295,9 @@ export function placeLoose(circuit: Circuit, symbols: Symbols): Map<string, Spot
   })
   const sheet = new Sheet(fixed)
   const loose = circuit.components.filter((c) => !c.sch && symbols.has(c.id)).sort((a, b) => naturalCompare(a.id, b.id))
-  const { row, between, hung } = rowOf(loose, circuit, symbols)
-  placeRow(row, symbols, sheet)
-  for (const part of between) placeBetween(part, hung.strands.get(part.part) ?? [], row, symbols, sheet)
-  placeLeftovers(hung.leftovers, symbols, sheet)
+  for (const group of anchorGroups(circuit, loose, "sch")) {
+    if (group.key === "") placeParts(group.parts, circuit, symbols, sheet)
+    else placeBlock(group, circuit, symbols, sheet)
+  }
   return sheet.spots
 }

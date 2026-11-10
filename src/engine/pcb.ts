@@ -3,6 +3,7 @@ import { boundsOf, findSpot, type Bounds } from "./autoplace.js"
 import { usableOutline } from "./board.js"
 import { resolveCopper, type PcbTrack, type PcbVia } from "./copper.js"
 import { diagnostic } from "./diagnostics.js"
+import { anchorGroups } from "./instance-anchor.js"
 import type { Footprint, Pad } from "./footprints/types.js"
 import type { Board, Circuit, Component, Diagnostic, Point } from "./model.js"
 import { naturalCompare } from "./order.js"
@@ -165,11 +166,19 @@ function placeAll(circuit: Circuit, resolved: readonly Resolved[], nets: Readonl
   }
   const board = usableOutline(circuit.board) && circuit.board ? boundsOf(circuit.board.outline) : undefined
   const unplaced = resolved.filter(({ component }) => !component.pcb).sort((a, b) => naturalCompare(a.component.id, b.component.id))
-  for (const { component, footprint } of unplaced) {
-    const relative = boundsOf(footprint?.courtyard ?? FALLBACK_COURTYARD)
-    const part = place(component, footprint, { ...AUTO_PLACEMENT, ...findSpot(relative, occupied, board) }, true, nets)
-    byId.set(component.id, part)
-    occupied.push(boundsOf(part.courtyard))
+  const footprints = new Map(unplaced.map(({ component, footprint }) => [component.id, footprint]))
+  // An instance's parts start at the instance's place; an instance without one keeps its parts together near its first.
+  for (const group of anchorGroups(circuit, unplaced.map(({ component }) => component), "pcb")) {
+    let near = group.anchor
+    for (const component of group.parts) {
+      const footprint = footprints.get(component.id)
+      const relative = boundsOf(footprint?.courtyard ?? FALLBACK_COURTYARD)
+      const spot = findSpot(relative, occupied, board, near)
+      if (group.key !== "") near ??= spot
+      const part = place(component, footprint, { ...AUTO_PLACEMENT, ...spot }, true, nets)
+      byId.set(component.id, part)
+      occupied.push(boundsOf(part.courtyard))
+    }
   }
   return { parts: circuit.components.map((c) => byId.get(c.id) as PlacedFootprint) }
 }

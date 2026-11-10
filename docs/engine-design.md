@@ -186,6 +186,42 @@ uses stable ids so the Studio, history and checks can follow an item across edit
 
 ### 4. Blocks and instances
 
+As built in stage 6 (docs/plans/engine-stage-6.md), which replaces parts of the plan below:
+
+- A block is a sub-sheet: `<name>.sheet.tsx` exports a default component returning `<sheet>` with
+  parts, traces, drawings and `<port name="VIN" />`. A circuit uses it through an ordinary import:
+  `<PowerStage name="PS1" connections={{ VIN: "VBUS" }} base={100} schX={…} pcbX={…} pcbRotation={…} />`.
+  Elaboration (`src/engine/sheets.ts`, `elaborate.ts`) flattens each instance into the circuit.
+- Designators: each part's number gets the instance's designator base, its own base plus the
+  bases of the instances around it (R1 in PS1 with base 100 is R101; a name without a number gets
+  the base appended). Default bases never collide: a sheet spans 100 for its own parts plus the
+  spans of the instances inside it, recursively (a Block holding one Divider spans 200), and in
+  each parent the first default base is 100 and each next one is the previous default base plus
+  the previous instance's span (B1 100 with R101 and its D1's R201, B2 300 with R301 and R401). A
+  written `base` takes no default and leaves the sequence alone, unless it reaches the next
+  default, in which case the sequence continues past it. Two siblings with one base, or a
+  designator another part already has, is a `base-clash` error. Two ports of one instance on one
+  parent net are a `port-short` warning.
+- Nets: a net inside is `PS1/NAME`, except a connected port's net, which is the parent net, and a
+  ground or power name (as the schematic's power and ground symbols read names), which is global.
+  An unconnected port is an `unconnected-port` warning; a connection to a port the sheet lacks is
+  an `unknown-port` error that lists the sheet's ports; a sheet that contains itself is a
+  `sheet-recursion` error and that instance is left out.
+- Positions inside are relative to the instance; the instance's pcbRotation turns its block. Parts
+  without a position are auto-placed with their instance (`src/engine/instance-anchor.ts`): on the
+  schematic they are placed by connectivity as one block whose origin is the instance's schX/schY
+  (or right of everything when the instance has none) and which moves right past anything it
+  would crowd; on the PCB the free-spot scan starts at the instance's pcbX/pcbY, or at the
+  instance's first auto-placed part when it has none. An
+  instance sits on a page like a part; a `<page>` or `<board>` inside a sheet is an error.
+- The design stays flat for every reader (parts by flattened designator, nets, layouts). Beside
+  it, each component made by an instance carries `instance` (its path, `PS1` or `PS1/D1`) and
+  `localId` (`R1`), and `circuit.instances` lists each instance with its sheet, file, base,
+  connections, ports with their nets, parts, position and page. A sheet file built alone is its
+  contents, with its nets as written.
+
+The original plan:
+
 - A block is a function component in its own file that contains a `<group>`. It exposes named
   ports with `<port name="FIELD" />`; inside, a trace connects to `port.FIELD`; outside, an
   instance's port is `IN1.FIELD`. Everything stays literal, so it stays editable.

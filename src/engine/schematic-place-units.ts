@@ -67,7 +67,7 @@ export function unitOf(links: readonly Link[], direction: Direction, gap: number
   return { pieces, box }
 }
 
-const crowds = (a: Bounds, b: Bounds): boolean =>
+export const crowds = (a: Bounds, b: Bounds): boolean =>
   a.minX < b.maxX + CLEARANCE - EPSILON &&
   b.minX < a.maxX + CLEARANCE - EPSILON &&
   a.minY < b.maxY + CLEARANCE - EPSILON &&

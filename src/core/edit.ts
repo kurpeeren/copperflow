@@ -15,7 +15,8 @@ import {
 } from "./edit-text.js"
 import { formatLiteral, formatPointList, readPointList } from "./literals.js"
 import { addPage, insertOnPage, movePartToPage, removePage, renamePage } from "./page-edits.js"
-import { partsInSelector } from "./selectors.js"
+import { localNet, localNetRefusal } from "../engine/selectors.js"
+import { partsInSelector, sheetFileIn } from "./selectors.js"
 import { MAIN_PAGE } from "../engine/model.js"
 import type { Edit, Literal, PartInfo, Point } from "./types.js"
 
@@ -138,6 +139,8 @@ function addTrace(source: string, scan: Scan, from: string, to: string, props: R
     ["to", to],
   ] as const) {
     if (typeof value !== "string" || value.trim() === "") throw new EditError("invalid", `${label} must be a selector`)
+    const local = localNet(value)
+    if (local) throw new EditError("invalid", localNetRefusal(local, sheetFileIn(scan.model, local.instance)))
   }
   for (const [key, value] of Object.entries(props)) {
     if (key === "from" || key === "to" || key === "schematicRouteHints") throw new EditError("invalid", `pass ${key} as its own argument`)
