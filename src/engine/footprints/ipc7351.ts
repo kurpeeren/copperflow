@@ -159,6 +159,14 @@ export function gullWingTable(pitch: number): Readonly<GoalTable> {
 export const QFN_TABLE = table({ toe: 0.3, heel: 0, side: -0.04 }, 0.05, 0.25)
 
 /**
+ * Molded-body components with inward L-bend terminals (DO-214 diodes, molded tantalum capacitors),
+ * level B: toe 0.15, heel 0.50, side −0.05; round-off to the nearest 0.05 mm; courtyard excess 0.25.
+ * These goals are written from general knowledge of the IPC-7351B molded-body table; no source for
+ * that table was at hand, so they are not checked against it.
+ */
+export const MOLDED_BODY_TABLE = table({ toe: 0.15, heel: 0.5, side: -0.05 }, 0.05, 0.25)
+
+/**
  * [IPC-7351B] Table 3-2, Note 1 (paraphrased): when Smin is at most Amax, the level B heel goal is
  * 0.15 mm. Note 2: Note 1 does not apply when the terminal length tolerance exceeds 0.5 mm. The note
  * text was seen under Table 3-2 ([PCBL-1744], image Untitled3.png); the heel row of Table 3-3 carries

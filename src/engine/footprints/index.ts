@@ -4,10 +4,12 @@ import { dfnFootprint } from "./dfn.js"
 import { dualFootprint } from "./dual.js"
 import { footprintFromFile } from "./file.js"
 import { isSimple, parseFootprint, type ParsedFootprint } from "./parse.js"
+import { moldedFootprint } from "./molded.js"
 import { pinRowFootprint } from "./pinrow.js"
 import { quadFootprint } from "./quad.js"
 import { sodFootprint } from "./sod.js"
 import { sotFootprint } from "./sot.js"
+import { powerSotFootprint } from "./sotpower.js"
 import type { Footprint } from "./types.js"
 
 export type FootprintResult = Footprint | { error: string }
@@ -24,6 +26,8 @@ const FAMILIES: readonly Family[] = [
   (parsed) => (parsed.kind === "" && isPlain(parsed) ? chipFootprint(parsed.code) : undefined),
   (parsed) => (parsed.kind === "sod" && isPlain(parsed) ? sodFootprint(parsed.code) : undefined),
   sotFootprint,
+  powerSotFootprint,
+  moldedFootprint,
   dualFootprint,
   quadFootprint,
   dfnFootprint,
