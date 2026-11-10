@@ -12,7 +12,7 @@ const MIN_HEIGHT = 0.6
 const NAME_GAP = 0.05
 const NAME_PADDING = 0.4
 const LABEL_GAP = 0.12
-/** Half the thickness of a bus pin, drawn hollow so it differs from a net pin at a glance. */
+/** Half the thickness of a bus pin, a bar in the bus colour so it differs from a net pin at a glance. */
 const BUS_HALF = 0.025
 
 /** A port with its place on the symbol, as the sheet file and the design both carry it. */
@@ -102,12 +102,15 @@ function pinName(pin: SymbolPinPlace): Shape {
   return text(pin.name, pt(edge.x, edge.y + inward * NAME_GAP * 2), "center", "pin-name")
 }
 
-/** A net pin is a line; a bus pin is a hollow bar of the bus's width. */
+/** A net pin is a line; a bus pin is a bar of the bus's width, marked so it is drawn in the bus colour. */
 function lead(pin: SymbolPinPlace): Shape {
   const { edge, end } = pin
   if (!pin.bus) return line([edge.x, edge.y], [end.x, end.y])
-  if (edge.y === end.y) return rect(Math.min(edge.x, end.x), edge.y - BUS_HALF, Math.max(edge.x, end.x), edge.y + BUS_HALF)
-  return rect(edge.x - BUS_HALF, Math.min(edge.y, end.y), edge.x + BUS_HALF, Math.max(edge.y, end.y))
+  const bar =
+    edge.y === end.y
+      ? rect(Math.min(edge.x, end.x), edge.y - BUS_HALF, Math.max(edge.x, end.x), edge.y + BUS_HALF)
+      : rect(edge.x - BUS_HALF, Math.min(edge.y, end.y), edge.x + BUS_HALF, Math.max(edge.y, end.y))
+  return { ...bar, bus: true } as Shape
 }
 
 /** The symbol as a part's is drawn: the box, the pins with their names, the instance name above and the sheet name below. */

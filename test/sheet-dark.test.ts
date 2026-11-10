@@ -156,3 +156,46 @@ describe("the glow and a selection wash", () => {
     expect(records.find((r) => r.name === "strokeRect")?.shadowBlur).toBe(8)
   })
 })
+
+describe("a sheet symbol", () => {
+  const SHEET = `export default function Stage() {
+  return (
+    <sheet>
+      <port name="VIN" />
+      <port name="D[0:3]" bus />
+      <resistor name="R1" footprint="0402" />
+      <trace from="R1.pin1" to="net.VIN" />
+      <trace from="R1.pin2" to="net.D0" />
+    </sheet>
+  )
+}
+`
+  const MAIN = `import Stage from "./Stage.sheet"
+export default () => (
+  <board width="30mm" height="18mm">
+    <Stage name="S1" connections={{ VIN: "VIN", "D[0:3]": "D[0:3]" }} schX={0} schY={0} />
+    <resistor name="R9" resistance="1k" footprint="0402" schX={4} schY={0} />
+  </board>
+)`
+  const built = buildDesign({ "main.circuit.tsx": MAIN, "Stage.sheet.tsx": SHEET }, "main.circuit.tsx").schematic
+  const drawn = () => {
+    const rec = recorder()
+    drawSchematic(rec.ctx as never, built, { camera: { cx: 1, cy: 0, scale: 200 }, size: { width: 1200, height: 800 } }, { ratio: 1 })
+    return rec.records
+  }
+
+  test("draws its bus pin in the bus colour, in both palettes", () => {
+    expect(built.symbols.find((s) => s.component === "S1")?.symbol.kind).toBe("sheet")
+    for (const palette of [light, dark]) {
+      setSheetPalette(palette)
+      const painted = drawn().filter((r) => r.name === "stroke" || r.name === "fill")
+      expect(painted.some((r) => (r.name === "stroke" ? r.strokeStyle : r.fillStyle) === palette.bus)).toBe(true)
+    }
+  })
+
+  test("draws no pin numbers; a part beside it still does", () => {
+    const texts = drawn().filter((r) => r.name === "fillText").map((r) => String(r.args[0]))
+    expect(texts).toContain("VIN")
+    expect(texts.filter((t) => /^\d+$/.test(t))).toEqual(["1", "2"])
+  })
+})
