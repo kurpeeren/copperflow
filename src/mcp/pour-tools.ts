@@ -42,7 +42,7 @@ export const addHoleInput = { file, ...holeFields }
 export const removeHoleInput = { file, id: z.string().describe('The hole\'s id from copper_summary, e.g. "hole:1"') }
 
 export const ADD_POUR_DESCRIPTION =
-  "Add a copper pour of a net on one layer as ONE change: the engine fills it on every build around the other nets' copper, with thermal relief spokes to the net's pads, and the connections the fill makes count as routed. Without an outline it fills the whole board. A two-layer board gets a GND pour on the bottom (and on top when there is room) before autoroute. The answer gives its id and its fill (area, pads it joins)."
+  "Add a copper pour of a net on one layer as ONE change: the engine fills it on every build around the other nets' copper, with thermal relief spokes to the net's pads, and the connections the fill makes count as routed. Without an outline it fills the whole board. Before autoroute a board gets a GND pour on the layer the parts sit on (both layers when a two-layer board is routed on both); check the pads it joins. The answer gives its id and its fill (area, pads it joins)."
 export const REMOVE_POUR_DESCRIPTION =
   "Remove a copper pour by id as ONE change. A locked pour is refused, and so is removing an earlier pour that would renumber a locked one. A pour inside a sub-sheet instance (\"PS1/copperpour:1\") is written in its sheet file: edit that file instead."
 export const ADD_HOLE_DESCRIPTION = "Add a non-plated hole (a mounting hole) as ONE change; copper keeps the board-edge clearance from it."

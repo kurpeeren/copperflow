@@ -56,7 +56,7 @@ export const newCircuitInput = {
     .array(z.object({ ...pourFields, layer: z.enum(["top", "bottom"]).describe('"top" or "bottom"') }))
     .max(20)
     .optional()
-    .describe('Copper pours, e.g. [{ "net": "GND", "layer": "bottom" }]: each fills the whole board, or its outline, with its net; a two-layer board gets a GND pour on the bottom (and top when there is room)'),
+    .describe('Copper pours, e.g. [{ "net": "GND", "layer": "bottom" }]: each fills the whole board, or its outline, with its net; a board gets a GND pour on the layer the parts sit on (both layers when a two-layer board is routed on both)'),
   holes: z.array(z.object(holeFields)).max(50).optional().describe("Non-plated mounting holes, e.g. [{ \"x\": 12, \"y\": 7, \"diameter\": 3.2 }]"),
   replace: z.boolean().optional().describe("Overwrite the file and its sheet files when they exist"),
 }

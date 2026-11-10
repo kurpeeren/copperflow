@@ -49,11 +49,14 @@ undoing their work.
    `copper_summary` shows per net the tracks, vias, length and unrouted connections. A locked part guards only the tracks that start on its
    pads; vias on it and tracks that only end there are not locked, so leave them alone unless
    the human asks.
-   Pours: a two-layer board gets a GND pour on the bottom (and on top when there is room) before
-   `autoroute`: `add_pour` `{ net: "GND", layer: "bottom" }` without an `outline` fills the whole
-   board, with thermal spokes to the GND pads, and the connections the fill makes count as
-   routed. Then `autoroute`, then `check_circuit` (`pour-floating` warns of a pour piece that
-   joins nothing, `copper-hole` of copper too near a hole). `props` takes `priority`,
+   Pours: before `autoroute`, a board gets a GND pour on the layer the parts sit on (both layers
+   when a two-layer board is routed on both), checked with `copper_summary`'s 'joins N pads': a
+   pour joins only the pads on its own layer and through pads, so a bottom pour under parts on
+   top joins almost nothing. `add_pour` `{ net: "GND", layer: "top" }` without an `outline`
+   fills the whole board, with thermal spokes to the GND pads, and the connections the fill
+   makes count as routed. Then `autoroute`, then `check_circuit` (`pour-floating` warns of a
+   pour that joins no pad of its net, `pour-sparse` of one joining fewer than half of them,
+   `pour-empty` of one left with no copper, `copper-hole` of copper too near a hole). `props` takes `priority`,
    `clearance`, `minWidth`, `thermal` (`relief` or `solid`), `thermalWidth` and `thermalGap`.
    `remove_pour`, `add_hole` and `remove_hole` (mounting holes) work by id (`copperpour:1`,
    `hole:1`), as do `edit_circuit`'s `add_pour`, `remove_pour`, `add_hole` and `remove_hole`;

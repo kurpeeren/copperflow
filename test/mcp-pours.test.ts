@@ -172,9 +172,9 @@ describe("copper_summary with pours and holes", () => {
 })
 
 describe("check_circuit with pours and holes", () => {
-  test("the copper filter takes copper-hole and pour-floating", async () => {
+  test("the copper filter takes copper-hole and the pour warnings", async () => {
     expect(COPPER_RULES.has("copper-hole")).toBe(true)
-    expect(COPPER_RULES.has("pour-floating")).toBe(true)
+    for (const code of ["pour-floating", "pour-sparse", "pour-empty"]) expect(COPPER_RULES.has(code)).toBe(true)
     await call("add_hole", { file: FILE, x: -4.5, y: 4, diameter: 1 })
     const { text } = await call("check_circuit", { file: FILE, filter: "copper" })
     expect(text).toMatch(/^error copper-hole .*hole:1/m)
@@ -222,10 +222,14 @@ describe("new_circuit with pours and holes", () => {
 })
 
 describe("the instructions and the skill", () => {
-  test("say a two-layer board gets a GND pour on the bottom, and top when there is room, before autoroute, then check_circuit", async () => {
+  test("say a GND pour goes on the layer the parts sit on (both layers when routed on both), checked by its joins, before autoroute, then check_circuit", async () => {
     const skill = await readFile(new URL("../skills/copperflow/SKILL.md", import.meta.url), "utf8")
     for (const text of [client.getInstructions() ?? "", skill.replace(/\s+/g, " ")]) {
-      expect(text).toMatch(/two-layer board gets a GND pour on the bottom \(and on top when there is room\) before `?autoroute`?[^]*?then `?check_circuit`?/)
+      expect(text).toMatch(/a GND pour on the layer the parts sit on \(both layers when a two-layer board is routed on both\), checked with `?copper_summary`?'s 'joins N pads'/)
+      expect(text).not.toMatch(/GND pour on the bottom/)
+      expect(text).toMatch(/before `?autoroute`?[^]*?then `?check_circuit`?/)
+      expect(text).toMatch(/`?pour-sparse`?/)
+      expect(text).toMatch(/`?pour-empty`?/)
       for (const tool of ["add_pour", "remove_pour", "add_hole", "remove_hole"]) expect(text).toContain(tool)
       expect(text).toMatch(/A part's lock never covers a pour/)
     }

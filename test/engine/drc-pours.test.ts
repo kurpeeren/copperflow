@@ -100,13 +100,30 @@ describe("holes", () => {
   })
 })
 
-describe("a pour with nothing of its net on its layer", () => {
+describe("a pour that joins no pad of its net", () => {
   test("is a pour-floating warning naming it", () => {
     const pour = fill("copperpour:1", "net.GND", square(-8, -8, 8, 8), [], "bottom")
     const found = run({ pours: [pour], pads: [GND_PAD] })
     expect(found.map((v) => [v.id, v.severity, v.items])).toEqual([["pour-floating:copperpour:1", "warning", ["copperpour:1"]]])
-    expect(found[0]?.message).toBe("copperpour:1 (net.GND, bottom) touches no net.GND copper on its layer, so it joins nothing")
+    expect(found[0]?.message).toBe("copperpour:1 joins no pad of net.GND")
     expect(run({ pours: [pour], pads: [pad("X#9", "net.GND", -5, -5, "through")] })).toEqual([])
+  })
+})
+
+describe("a pour that joins few of its net's pads", () => {
+  const PADS = [pad("X#1", "net.GND", -5, -5, "through"), pad("X#2", "net.GND", 5, 5), pad("X#3", "net.GND", -5, 5), pad("X#4", "net.GND", 5, -5)]
+  const bottom = fill("copperpour:1", "net.GND", square(-8, -8, 8, 8), [], "bottom")
+
+  test("joining fewer than half is a pour-sparse warning with the count; half or more is not", () => {
+    const found = run({ pours: [bottom], pads: PADS })
+    expect(found.map((v) => [v.id, v.severity])).toEqual([["pour-sparse:copperpour:1", "warning"]])
+    expect(found[0]?.message).toMatch(/^copperpour:1 joins only 1 of 4 net\.GND pads/)
+    expect(run({ pours: [bottom], pads: PADS.map((one) => ({ ...one, layers: one.id === "X#2" ? "through" : one.layers })) })).toEqual([])
+  })
+
+  test("a pour on the other side joining the rest leaves the pair without a warning", () => {
+    const top = fill("copperpour:2", "net.GND", square(-8, -8, 8, 8))
+    expect(run({ pours: [bottom, top], pads: PADS })).toEqual([])
   })
 })
 

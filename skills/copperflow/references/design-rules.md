@@ -136,7 +136,9 @@ position. Anything a check cannot evaluate is reported as `unchecked`, never sil
 | `annular-ring` | error | The copper ring around a drill is below `minAnnularRing`. |
 | `hole-to-hole` | error | Two holes are closer than `minHoleToHole`. |
 | `copper-hole` | error | Copper (a pad, track, via or pour fill) is closer to a non-plated `<hole>` than `boardEdgeClearance`. |
-| `pour-floating` | warning | A copper pour has no pad, track or via of its net on its layer, so its fill joins nothing. |
+| `pour-floating` | warning | A copper pour's fill joins no pad of its net. |
+| `pour-sparse` | warning | A copper pour joins fewer than half of its net's pads (and its net's other pours do not make up the half): a pour joins only the pads on its layer and through pads, so put it on the layer the parts sit on. |
+| `pour-empty` | warning | A copper pour has no copper: a pour of another net filled first (higher priority, or equal and earlier) took its area, or what is left touches none of its net's copper. |
 | `courtyard-overlap` | error | Two part courtyards overlap. |
 | `keepout` | error | A part lies inside a keep-out area. |
 | `outside-board` | warning | A part is not inside the board outline. |
