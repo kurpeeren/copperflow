@@ -5,6 +5,7 @@ import { lstat, realpath } from "node:fs/promises"
 import { dirname, join, relative, resolve, sep } from "node:path"
 import type { Design } from "../engine/design.js"
 import { fabricationSet, writeFabrication } from "../engine/fab/export.js"
+import { uploadStep } from "../engine/fab/names.js"
 import { buildBom } from "./bom.js"
 import { buildWith, type DesignSource } from "./design-source.js"
 import { inProjectQueue, isInside } from "./file-writes.js"
@@ -92,21 +93,6 @@ export function exportFabrication(root: string, file: string, options: Fabricati
   })
 }
 
-/** A path's last part: the zip's own name is what a person uploads. */
-const baseName = (path: string) => path.split("/").pop() ?? path
-
-/** The written file whose name ends in `suffix`, e.g. "-bom.csv". */
-const fileEnding = (files: readonly string[], suffix: string, fallback: string) => files.find((name) => name.endsWith(suffix)) ?? fallback
-
-/**
- * The next step: the Gerber zip goes to JLCPCB's PCB order, the BOM and pick-and-place CSVs to its assembly step. Both
- * CSVs are in the folder, and the zip keeps them too.
- */
-function nextStep(result: Extract<FabricationExport, { written: true }>): string {
-  const bom = fileEnding(result.files, "-bom.csv", "the BOM")
-  const placement = fileEnding(result.files, "-pick-and-place.csv", "the pick-and-place file")
-  return `Next, a person should upload ${baseName(result.zip)} to JLCPCB's PCB order, and ${bom} and ${placement} from ${result.folder}/ at its assembly step (the zip holds them too).`
-}
 
 /**
  * The export as text: the folder and zip, the files (one per line, or on one line when `compact`), each warning, and
@@ -120,6 +106,6 @@ export function formatFabrication(result: FabricationExport, options: { compact?
     `Wrote ${result.files.length} files to ${result.folder}/ and ${result.zip}:`,
     ...files,
     ...result.warnings.map((warning) => `Warning: ${warning}`),
-    nextStep(result),
+    `Next, a person should ${uploadStep(result.zip, result.folder, result.files)}.`,
   ].join("\n")
 }
