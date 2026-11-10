@@ -87,7 +87,7 @@ describe("the Gerber writer", () => {
     ]
     const text = writeGerber(layer([{ kind: "region", points: corners, function: "SMDPad,CuDef" }]), CREATED)
     const read = readGerber(text)
-    expect(read.regions).toEqual([{ points: [...corners, corners[0]], fn: "SMDPad,CuDef" }])
+    expect(read.regions).toEqual([{ points: [...corners, corners[0]], fn: "SMDPad,CuDef", polarity: "dark" }])
     expect(text).toMatch(/G36\*\n[\s\S]*G37\*\n/)
   })
 

@@ -1,5 +1,5 @@
 // The Gerber X2 file writer: header and file attributes, apertures (C, R, O and a RoundRect macro), flashes, draws and
-// regions, in millimetres with 4.6 coordinates. Pure: it takes shapes in mm and a creation date, and returns the text,
+// regions (dark, or clear to cut holes), in millimetres with 4.6 coordinates. Pure: it takes shapes in mm and a creation date, and returns the text,
 // the same bytes for the same input. copperflow's own code, written from the Gerber format specification.
 import type { Point } from "../model.js"
 import { VERSION } from "../../version.js"
@@ -16,8 +16,8 @@ export type GerberObject =
   | { kind: "flash"; at: Point; aperture: Aperture; function?: string }
   /** A line through the points drawn with a round aperture of `width`; a single point is flashed. */
   | { kind: "draw"; points: Point[]; width: number; function?: string }
-  /** A filled polygon; the last corner joins the first. */
-  | { kind: "region"; points: Point[]; function?: string }
+  /** A filled polygon; the last corner joins the first. A `clear` region removes what was drawn before it under it. */
+  | { kind: "region"; points: Point[]; function?: string; polarity?: "clear" }
 
 export interface GerberLayer {
   /** The X2 file function, e.g. "Copper,L1,Top", "Soldermask,Bot" or "Profile,NP". */
@@ -109,16 +109,23 @@ class Apertures {
   }
 }
 
-/** The body: aperture selections, flashes, draws and regions in the order given. */
+/** The body: aperture selections, flashes, draws and regions in the order given, the load polarity switched as needed. */
 function body(objects: readonly GerberObject[], apertures: Apertures): string[] {
   const lines: string[] = []
   let current: number | undefined
+  let clear = false
+  const polarity = (object: GerberObject) => {
+    const wanted = object.kind === "region" && object.polarity === "clear"
+    if (wanted !== clear) lines.push(wanted ? "%LPC*%" : "%LPD*%")
+    clear = wanted
+  }
   const select = (aperture: Aperture, fn: string | undefined) => {
     const code = apertures.code(aperture, fn)
     if (code !== current) lines.push(`D${code}*`)
     current = code
   }
   for (const object of objects) {
+    polarity(object)
     if (object.kind === "region") {
       const [first, ...rest] = object.points
       if (first === undefined) continue
@@ -137,6 +144,7 @@ function body(objects: readonly GerberObject[], apertures: Apertures): string[] 
     select({ shape: "circle", diameter: object.width }, object.function)
     lines.push(rest.length === 0 ? `${at(first)}D03*` : `${at(first)}D02*`, ...rest.map((p) => `${at(p)}D01*`))
   }
+  if (clear) lines.push("%LPD*%")
   return lines
 }
 
