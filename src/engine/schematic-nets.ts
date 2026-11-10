@@ -105,8 +105,8 @@ function clustersOf(pins: readonly string[], groups: Groups): string[][] {
   return [...byRoot.values()].sort((a, b) => naturalCompare(a[0] ?? "", b[0] ?? ""))
 }
 
-function labelsFor(net: Net, name: string, clusters: readonly string[][], spots: ReadonlyMap<string, PinSpot>, drawn: Drawn): NetLabel[] {
-  const wanted = labelStyle(name) !== "label" || clusters.length >= 2
+function labelsFor(net: Net, name: string, clusters: readonly string[][], spots: ReadonlyMap<string, PinSpot>, drawn: Drawn, elsewhere: boolean): NetLabel[] {
+  const wanted = labelStyle(name) !== "label" || clusters.length >= 2 || elsewhere
   if (!wanted) return []
   return clusters.flatMap((cluster) => {
     const first = cluster[0]
@@ -116,8 +116,16 @@ function labelsFor(net: Net, name: string, clusters: readonly string[][], spots:
   })
 }
 
-/** The wires to route between near pins of each named net, and the labels and ground or power symbols of the rest. */
-export function layoutNets(circuit: Circuit, spots: ReadonlyMap<string, PinSpot>, drawn: Drawn): { wires: RouteRequest[]; labels: NetLabel[] } {
+/**
+ * The wires to route between near pins of each named net, and the labels and ground or power symbols of the rest.
+ * A net in `crossPage` has pins on another page too, so even a single piece of it carries its label.
+ */
+export function layoutNets(
+  circuit: Circuit,
+  spots: ReadonlyMap<string, PinSpot>,
+  drawn: Drawn,
+  crossPage: ReadonlySet<string> = new Set(),
+): { wires: RouteRequest[]; labels: NetLabel[] } {
   const maxLength = circuit.board?.schMaxTraceDistance ?? DEFAULT_MAX_TRACE_DISTANCE
   const groups = new Groups()
   for (const [a, b] of drawn.joins) groups.join(a, b)
@@ -130,7 +138,7 @@ export function layoutNets(circuit: Circuit, spots: ReadonlyMap<string, PinSpot>
     const drawnEdges = treeEdges(pins, spots, drawn.joins).filter((edge) => edge.length <= maxLength + EPSILON)
     for (const edge of drawnEdges) groups.join(edge.a, edge.b)
     drawnEdges.forEach((edge, index) => wires.push({ id: `wire:${net.id}:${index + 1}`, net: net.id, from: edge.a, to: edge.b }))
-    labels.push(...labelsFor(net, name, clustersOf(pins, groups), spots, drawn))
+    labels.push(...labelsFor(net, name, clustersOf(pins, groups), spots, drawn, crossPage.has(net.id)))
   }
   return { wires, labels }
 }
