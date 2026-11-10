@@ -2,7 +2,9 @@ import { resolve } from "node:path"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   buildBom,
+  exportFabrication,
   exportPackage,
+  formatFabrication,
   formatBomCsv,
   formatBomMarkdown,
   listParts,
@@ -58,14 +60,17 @@ Usage:
   copperflow bom <file> [--csv]               print the bill of materials
   copperflow package <file> [--out dir]
                                               write BOM, datasheets and part status to a folder
+  copperflow export <file> [--out dir]        write the fabrication files for JLCPCB: Gerbers, drills,
+                                              pick-and-place and BOM in <name>-fab/ and <name>-fab.zip
+                                              beside the circuit (or in the project folder --out)
   copperflow history [--limit n]              list recent changes
   copperflow undo [id]                        undo the newest change, or the given one
 
 Every command accepts --root <dir> (default: the current directory).
-check exits with 1 when the circuit has errors.`
+check exits with 1 when the circuit has errors; export exits with 1 when the circuit has errors and writes nothing.`
 
 export interface CliOptions {
-  /** Builds the design for check, bom and package; tests pass one that runs in this process. */
+  /** Builds the design for check, bom, package and export; tests pass one that runs in this process. */
   engine?: DesignSource
 }
 
@@ -135,6 +140,12 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
         const result = await exportPackage(root, file, { ...designOptions(options), ...(outDir ? { outDir } : {}) })
         io.out(`Wrote ${result.outDir}:\n${result.files.join("\n")}`)
         return 0
+      }
+      case "export": {
+        const [outDir, args] = takeOption(rest, "--out")
+        const result = await exportFabrication(root, required(args[0], "file"), { ...designOptions(options), ...(outDir ? { outDir } : {}) })
+        io.out(formatFabrication(result))
+        return result.written ? 0 : 1
       }
       case "undo": {
         // The built design tells which tracks start on locked parts, so copper can be undone while parts are locked.
