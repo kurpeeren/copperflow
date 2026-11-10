@@ -334,3 +334,18 @@ describe("order", () => {
     expect(forward.length).toBeGreaterThan(4)
   })
 })
+
+describe("hole spacing of vias", () => {
+  test("two vias, of one net or two, keep the hole spacing", () => {
+    expect(ids(run({ vias: [via("v0001", { x: 0, y: 0 }), via("v0002", { x: 0.7, y: 0 })] }), "hole-to-hole")).toEqual(["hole-to-hole:v0001|v0002"])
+    expect(ids(run({ vias: [via("v0001", { x: 0, y: 0 }), via("v0002", { x: 0.75, y: 0 })] }), "hole-to-hole")).toEqual([])
+    const found = coded(run({ vias: [via("v0001", { x: 0, y: 0 }), via("v0002", { x: 0, y: 1.5 }, { net: "net.B" })] }, { ...RULES, fabrication: { ...RULES.fabrication, minHoleToHole: 3 } }), "hole-to-hole")
+    expect(found.map((v) => [v.id, v.message])).toEqual([["hole-to-hole:v0001|v0002", "The holes of v0001 and v0002 are 1.200 mm apart; the minimum is 3.000 mm"]])
+  })
+
+  test("a via keeps the hole spacing from a through pad's hole, its own net's included", () => {
+    const through = pad("P#1", { shape: "circle", width: 1.6, height: 1.6, layers: "through", drill: { width: 1, height: 1 }, net: "net.A" })
+    expect(ids(run({ pads: [through], vias: [via("v0001", { x: 1, y: 0 })] }), "hole-to-hole")).toEqual(["hole-to-hole:P#1|v0001"])
+    expect(ids(run({ pads: [through], vias: [via("v0001", { x: 1.11, y: 0 })] }), "hole-to-hole")).toEqual([])
+  })
+})

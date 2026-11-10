@@ -52,6 +52,20 @@ describe("routing the whole board", () => {
     expect(checked.after.pcb.ratsnest).toEqual([])
   })
 
+  test("a route's own vias keep the hole spacing from each other", () => {
+    const files = { ...CROSS, "rules.yaml": "fabrication:\n  minHoleToHole: 3\n" }
+    const design = buildDesign(files, MAIN)
+    expect(design.rules.fabrication.minHoleToHole).toBe(3)
+    const report = routeDesign(design)
+    for (const route of report.routed) {
+      route.copper.vias.forEach((a, i) => {
+        for (const b of route.copper.vias.slice(i + 1)) expect(Math.hypot(a.at.x - b.at.x, a.at.y - b.at.y)).toBeGreaterThanOrEqual(a.drill / 2 + b.drill / 2 + 3 - 1e-6)
+      })
+    }
+    expect(report.routed.length + report.unrouted.length).toBe(2)
+    expectClean(files, report)
+  })
+
   test("the same board routes the same way twice", () => {
     const design = buildDesign(CROSS, MAIN)
     expect(withoutTime(routeDesign(design))).toEqual(withoutTime(routeDesign(design)))

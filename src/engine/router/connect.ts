@@ -4,9 +4,9 @@ import { netClasses } from "../rules/classes.js"
 import { DEFAULT_CLASS } from "../rules/profiles.js"
 import type { Rules } from "../rules/schema.js"
 import { trackWidth, viaSize } from "../rules/track-defaults.js"
-import { searchPath, type CellRef, type EndRef, type Penalties, type SearchBuffers } from "./astar.js"
+import { searchPath, type CellRef, type EndRef, type Penalties, type SearchBuffers, type SearchOptions } from "./astar.js"
 import { blockingNames, endCells, joinedTo, padLegs } from "./ends.js"
-import { isWholeBoard, rasteriseIn, routerWorld, wholeBoard, windowAround, type CellWindow, type NetRule, type RouterGrid, type RouterWorld } from "./grid.js"
+import { cellCentre, cellsNear, isWholeBoard, rasteriseIn, routerWorld, wholeBoard, windowAround, type CellWindow, type NetRule, type RouterGrid, type RouterWorld } from "./grid.js"
 import { boxOf, type Obstacle } from "./obstacles.js"
 import { pathCopper, type RoutedCopper } from "./path.js"
 
@@ -70,7 +70,7 @@ export interface AttemptOptions {
 
 export type Attempt =
   | { routed: true; copper: RoutedCopper; cost: number; steps: CellRef[]; grid: RouterGrid; window: CellWindow; penalties?: Penalties }
-  | { routed: false; reason: string; blockers: string[]; noPath?: boolean }
+  | { routed: false; reason: string; blockers: string[]; noPath?: boolean; limit?: boolean }
 
 interface Side {
   refs: EndRef[]
@@ -100,10 +100,56 @@ function attemptIn(world: RouterWorld, job: Job, window: CellWindow, options: At
   }
   const penalties = options.penalties?.(grid, window)
   const search = { ...(penalties ? { penalties } : {}), ...(options.buffers ? { buffers: options.buffers } : {}), ...(options.maxExpansions === undefined ? {} : { maxExpansions: options.maxExpansions }) }
-  const result = searchPath(grid, start.refs, end.refs, search)
-  if (!result.found) return { routed: false, reason: why(job.from, job.to, result.blockers, result.reason, result.expanded), blockers: result.blockers, noPath: result.reason === "no-path" }
+  const spaced = spacedSearch(world, grid, job, start.refs, end.refs, search)
+  if (spaced.failure !== undefined) return spaced.failure
   const legs = { ...(start.at ? { start: start.at } : {}), ...(end.at ? { end: end.at } : {}) }
-  return { routed: true, copper: pathCopper(grid, result.steps, job.rule, legs), cost: result.cost, steps: result.steps, grid, window, ...(penalties ? { penalties } : {}) }
+  const { steps, cost } = spaced
+  return { routed: true, copper: pathCopper(spaced.grid, steps, job.rule, legs), cost, steps, grid: spaced.grid, window, ...(penalties ? { penalties } : {}) }
+}
+
+/** How many times a search is run again with via cells closed, when its own vias come too near each other. */
+const SPACING_RETRIES = 6
+const OWN_VIA = "the route's own via"
+
+/** The first via of the path too near a later one, as a cell, or undefined when all keep the hole spacing. */
+function crowdedVia(grid: RouterGrid, steps: readonly CellRef[], rule: NetRule, spacing: number): number | undefined {
+  const vias = steps.flatMap((step, i) => (i > 0 && steps[i - 1]?.layer !== step.layer ? [step.cell] : []))
+  const need = rule.via.drill + spacing
+  for (const [i, a] of vias.entries()) {
+    const p = cellCentre(grid, a)
+    for (const b of vias.slice(i + 1)) {
+      const q = cellCentre(grid, b)
+      if (Math.hypot(p.x - q.x, p.y - q.y) < need - 1e-9) return a
+    }
+  }
+  return undefined
+}
+
+type Spaced = { failure?: undefined; grid: RouterGrid; steps: CellRef[]; cost: number } | { failure: Attempt & { routed: false } }
+
+/**
+ * The search, kept to paths whose own vias keep the fabrication hole spacing from each other: when two come too near,
+ * the via cells around the first (but its own) are closed and the search is run again, a bounded number of times.
+ */
+function spacedSearch(world: RouterWorld, first: RouterGrid, job: Job, sources: readonly EndRef[], targets: readonly EndRef[], search: SearchOptions): Spaced {
+  const spacing = world.rules.fabrication.minHoleToHole
+  let grid = first
+  for (let tries = 0; ; tries++) {
+    const result = searchPath(grid, sources, targets, search)
+    if (!result.found) {
+      const failure = { routed: false as const, reason: why(job.from, job.to, result.blockers, result.reason, result.expanded), blockers: result.blockers, noPath: result.reason === "no-path", ...(result.reason === "limit" ? { limit: true } : {}) }
+      return { failure }
+    }
+    const crowded = crowdedVia(grid, result.steps, job.rule, spacing)
+    if (crowded === undefined) return { grid, steps: result.steps, cost: result.cost }
+    if (tries >= SPACING_RETRIES) return { failure: { routed: false, reason: `${cannot(job.from, job.to)}: its vias cannot keep the ${spacing} mm hole spacing`, blockers: [] } }
+    if (grid === first) grid = { ...first, via: Int32Array.from(first.via), blockers: [...first.blockers, OWN_VIA] }
+    const index = grid.blockers.length - 1
+    const via = grid.via
+    cellsNear(grid, { core: [cellCentre(grid, crowded)], radius: 0 }, job.rule.via.drill + spacing, (cell) => {
+      if (cell !== crowded) via[cell] = index
+    })
+  }
 }
 
 /** The cells around the connection's two ends, grown by the margin (or half the ends' span, if larger). */
