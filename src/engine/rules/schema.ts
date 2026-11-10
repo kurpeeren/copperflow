@@ -15,6 +15,8 @@ export interface FabricationProfile {
   boardEdgeClearance: number
   minHoleToHole: number
   minSilkToPad: number
+  /** The radius Fillet tracks rounds corners with; not a fabrication limit, so the profiles leave it out (1 mm then). */
+  filletRadius?: number
 }
 
 export interface NetClass {
@@ -60,6 +62,7 @@ const FabricationSchema = z
     boardEdgeClearance: length.optional(),
     minHoleToHole: length.optional(),
     minSilkToPad: length.optional(),
+    filletRadius: length.optional(),
   })
   .strict()
 
