@@ -17,11 +17,12 @@ import { highlightOf, partNets, schematicNetAt, type Highlight } from "./highlig
 import { labelHitBox } from "./label-drag"
 import { NameInput, paletteHint } from "./LabelPalette"
 import type { ViolationMarker } from "./markers"
-import { drawOutline, drawTextOutlines, drawWirePreview, SHEET_LOOK } from "./overlays"
+import { drawOutline, drawTextOutlines, drawWirePreview, sheetLookFor } from "./overlays"
 import { sheetWithTextMoves, type PartText, type TextMove } from "./part-text"
 import { usePartTexts, useShownTexts, type PartTexts } from "./use-part-texts"
 import { drawSchematicGrid } from "./schematic-grid"
-import { schematicTheme } from "./schematic-theme"
+import { schematicThemeFor, setSheetPalette } from "./schematic-theme"
+import type { ThemeName } from "../shell/theme-state"
 import { drawSchematic } from "./schematic-draw"
 import { drawingExtents } from "./drawing-extents"
 import { drawSheetBorder } from "./sheet-draw"
@@ -44,7 +45,7 @@ import type { Anchor } from "./positions"
 import { useWireTool } from "./use-wire-tool"
 import { useSheetWires, type SheetCorners } from "./use-sheet-wires"
 import type { WireLine } from "./wire-hit"
-import { drawWireHandles, drawWireHover, SHEET_WIRE_LOOK } from "./wire-overlay"
+import { drawWireHandles, drawWireHover, sheetWireLookFor } from "./wire-overlay"
 import { liveShapes, withShapes } from "./wire-drag"
 import type { SchematicDrawing } from "../../../src/engine/model.js"
 import { drawingBox } from "./drawing-hit"
@@ -91,6 +92,8 @@ interface SheetScene {
   /** Wires drawn in a new shape: those a move takes along, the one being reshaped, then those waiting for their build. */
   wireShapes: readonly WireLine[]
   palette: Palette
+  /** The Studio's theme: the sheet is drawn in its palette. */
+  theme: ThemeName
   /** The drawing tools: the shape in progress and the drawings waiting for their build, drawn dashed. */
   draw: DrawTools
   /** The highlighted nets and the pins on them. */
@@ -119,7 +122,7 @@ function useShapedSheet(design: Design, selectedWire: WireLine | undefined, shap
 
 /** Draws the sheet and its violation rings, the wire being drawn and the editor layer; a sheet without parts gets a default view. */
 function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: SheetScene): void {
-  const { design, border, camera, size, moving, boxes, hover, selection, locked, circuit, gesture, movingLabels, hoverLabel, hoverDrawing, hoverWire, palette, highlight, markers, activeViolation, grid, texts } = scene
+  const { design, border, camera, size, moving, boxes, hover, selection, locked, circuit, gesture, movingLabels, hoverLabel, hoverDrawing, hoverWire, palette, highlight, markers, activeViolation, grid, texts, theme } = scene
   const { wiring, drawing, activePins, pendingWires, preview } = scene.wire
   const { ghosts, ghostWires, armed } = palette
   const pendingDrawings = scene.draw.pending
@@ -128,7 +131,12 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
   const sheet = useMemo(() => sheetWithTextMoves(shaped.sheet, texts.moves), [shaped.sheet, texts.moves])
   useEffect(() => {
     const view = camera ?? EMPTY_SHEET_CAMERA
-    const prepared = prepareCanvas(canvasRef.current, size, view, schematicTheme.background, (c, cam, s, r) => drawSchematicGrid(c, cam, s, grid, r))
+    // Every drawing routine reads the palette set here, so the whole sheet switches with the theme.
+    const colours = schematicThemeFor(theme)
+    setSheetPalette(colours)
+    const look = sheetLookFor(colours)
+    const wireLook = sheetWireLookFor(colours)
+    const prepared = prepareCanvas(canvasRef.current, size, view, colours.background, (c, cam, s, r) => drawSchematicGrid(c, cam, s, grid, r, colours))
     if (!prepared) return
     const { ctx, ratio } = prepared
     drawSheetBorder(ctx, view, size, border, ratio)
@@ -150,16 +158,16 @@ function useSheetPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: Sh
       ...(activeViolation ? { activeViolation } : {}),
     })
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
-    if (preview) drawWirePreview(ctx, view, size, preview, "drawing", schematicTheme.wire, ratio)
+    if (preview) drawWirePreview(ctx, view, size, preview, "drawing", colours.wire, ratio)
     const shownHover = drawing ? undefined : hover
-    drawEditorLayer(ctx, view, size, { view: "schematic", boxes, moving, hover: shownHover, selection, locked, marks: circuit.annotations.marks, gesture, look: SHEET_LOOK, ratio })
-    if (hoverLabel && !drawing && !gesture) drawOutline(ctx, view, size, labelHitBox(hoverLabel), { x: 0, y: 0 }, "hover", SHEET_LOOK, ratio)
-    drawTextOutlines(ctx, { camera: view, size }, texts.shown, { selected: selection.texts, hover: drawing || gesture ? undefined : texts.hover }, SHEET_LOOK, ratio)
-    if (hoverDrawing && !selection.hasDrawing(hoverDrawing.id) && !drawing && !gesture) drawOutline(ctx, view, size, drawingBox(hoverDrawing), { x: 0, y: 0 }, "hover", SHEET_LOOK, ratio)
-    if (hoverWire && !selection.hasWire(hoverWire.id) && !wiring && !drawing && !gesture) drawWireHover(ctx, view, size, hoverWire.points, SHEET_WIRE_LOOK, ratio)
+    drawEditorLayer(ctx, view, size, { view: "schematic", boxes, moving, hover: shownHover, selection, locked, marks: circuit.annotations.marks, gesture, look, ratio })
+    if (hoverLabel && !drawing && !gesture) drawOutline(ctx, view, size, labelHitBox(hoverLabel), { x: 0, y: 0 }, "hover", look, ratio)
+    drawTextOutlines(ctx, { camera: view, size }, texts.shown, { selected: selection.texts, hover: drawing || gesture ? undefined : texts.hover }, look, ratio)
+    if (hoverDrawing && !selection.hasDrawing(hoverDrawing.id) && !drawing && !gesture) drawOutline(ctx, view, size, drawingBox(hoverDrawing), { x: 0, y: 0 }, "hover", look, ratio)
+    if (hoverWire && !selection.hasWire(hoverWire.id) && !wiring && !drawing && !gesture) drawWireHover(ctx, view, size, hoverWire.points, wireLook, ratio)
     // A net label dragged off the selected wire hides its line, so its handles go too.
-    if (selectedWire && !movingLabels.some((m) => m.hideWire === selectedWire.id)) drawWireHandles(ctx, view, size, selectedWire.points, SHEET_WIRE_LOOK, ratio)
-  }, [canvasRef, sheet, border, camera, size, wiring, drawing, activePins, pendingWires, preview, moving, movingLabels, hoverLabel, hoverDrawing, hoverWire, selectedWire, boxes, hover, selection, locked, circuit, gesture, ghosts, ghostWires, armed, pendingDrawings, highlight, markers, activeViolation, grid, texts])
+    if (selectedWire && !movingLabels.some((m) => m.hideWire === selectedWire.id)) drawWireHandles(ctx, view, size, selectedWire.points, wireLook, ratio)
+  }, [canvasRef, sheet, border, camera, size, wiring, drawing, activePins, pendingWires, preview, moving, movingLabels, hoverLabel, hoverDrawing, hoverWire, selectedWire, boxes, hover, selection, locked, circuit, gesture, ghosts, ghostWires, armed, pendingDrawings, highlight, markers, activeViolation, grid, texts, theme])
 }
 
 interface SheetToolsProps {
@@ -529,7 +537,7 @@ export function SchematicCanvas(props: CanvasProps) {
   const movingLabels = useMovingLabels(design, gesture, labels.pending, moving?.labels)
   const hoverWire = useMemo(() => wires.lineOf(hover.wire), [wires.lineOf, hover.wire])
   const wireShapes = useWireShapes(gesture, wires.pending, moving?.wires)
-  useSheetPaint(canvasRef, { design, border, camera, size, wire, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel: hover.label, hoverDrawing: drawings.drawingOf(hover.drawing), hoverWire, selectedWire: wires.selected, wireShapes, palette, draw, highlight, markers, activeViolation, grid, texts: sceneTexts })
+  useSheetPaint(canvasRef, { design, border, camera, size, wire, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, movingLabels, hoverLabel: hover.label, hoverDrawing: drawings.drawingOf(hover.drawing), hoverWire, selectedWire: wires.selected, wireShapes, palette, draw, highlight, markers, activeViolation, grid, texts: sceneTexts, theme: props.theme })
   const picking = { selection, armed: tool.armed, filter: props.pickFilter }
   const pointer = sheetPointer({ camera, size, element: wrapRef, gestures, setCursor, hover: hover.at, boxes: parts.boxes, labels: labels.tools, wires: wires.hits, drawings: drawings.hits, corners: wires.corners, wire, palette, note, draw, picking, onOpenProperties: props.onOpenProperties })
   const cursorStyle = cursorFor(gesture, wire.drawing !== null || wire.overPin || palette.armed || note.armed || draw.armed, hover.over)

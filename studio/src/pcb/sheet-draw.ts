@@ -2,7 +2,7 @@
 import { canvasFont, TEXT_WEIGHT } from "./ctx.js"
 import { deviceWidth, hairlineAt, hairlineWidth, strokeBoxAt } from "./crisp.js"
 import { worldToScreen, type Box, type Camera, type Point, type Size } from "./geometry.js"
-import { schematicTheme } from "./schematic-theme.js"
+import { sheetPalette } from "./schematic-theme.js"
 import type { SheetArt } from "./sheet.js"
 import { fitText } from "./pin-name-fit.js"
 import { devicePxFor, sharpenText, sheetLevelPx, textAnchorAt, textShown } from "./text-level.js"
@@ -78,7 +78,7 @@ function drawZones(ctx: CanvasRenderingContext2D, camera: Camera, size: Size, ar
   }
   ctx.stroke()
   if (!showZoneLabels(camera.scale, ratio) || !setTextHeight(ctx, camera, ZONE_TEXT, ratio)) return
-  ctx.fillStyle = schematicTheme.titleText
+  ctx.fillStyle = sheetPalette().titleText
   ctx.textBaseline = "middle"
   ctx.textAlign = "center"
   for (const label of art.labels) text(ctx, camera, size, label, label.text, ratio)
@@ -88,7 +88,7 @@ function drawTitleBlock(ctx: CanvasRenderingContext2D, camera: Camera, size: Siz
   const block = art.block
   strokeBox(ctx, camera, size, block.box, ratio)
   for (const cell of block.cells) strokeBox(ctx, camera, size, cell.box, ratio)
-  ctx.fillStyle = schematicTheme.titleText
+  ctx.fillStyle = sheetPalette().titleText
   ctx.textBaseline = "middle"
   ctx.textAlign = "left"
   for (const [kind, height] of CELL_TEXT) {
@@ -106,7 +106,7 @@ export function drawSheetBorder(ctx: CanvasRenderingContext2D, camera: Camera, s
   const { sheet } = art
   ctx.save()
   sharpenText(ctx)
-  ctx.strokeStyle = schematicTheme.border
+  ctx.strokeStyle = sheetPalette().border
   strokeBox(ctx, camera, size, sheet.outer, ratio, deviceWidth(OUTER_LINE_PX, ratio))
   strokeBox(ctx, camera, size, sheet.inner, ratio)
   drawZones(ctx, camera, size, art, ratio)

@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs"
-import { describe, expect, test } from "vitest"
+import { afterEach, describe, expect, test } from "vitest"
 import { SHEET_DEFAULT_STEP as SHEET_GRID, gridLineSpacing, planGrid } from "../studio/src/pcb/grid.js"
-import { schematicTheme } from "../studio/src/pcb/schematic-theme.js"
+import { darkSchematicTheme, schematicTheme, schematicThemeFor, resetSheetPalette, setSheetPalette, sheetPalette, type SchematicPalette } from "../studio/src/pcb/schematic-theme.js"
+import { contrastRatio } from "../studio/src/shell/contrast.js"
 
 const SPEC = readFileSync(new URL("../docs/studio-easyeda-parity.md", import.meta.url), "utf8")
 const START = SPEC.indexOf("**Schematic**")
@@ -44,7 +45,7 @@ describe("schematicTheme", () => {
   ]
   test.each(rows)("%s matches the spec table", (item, keys) => {
     const [colour] = specColours(item)
-    for (const key of keys) expect(schematicTheme[key].toUpperCase()).toBe(colour)
+    for (const key of keys) expect((schematicTheme[key] as string).toUpperCase()).toBe(colour)
   })
 
   test("the drawing border is the line colour and the title text the second colour", () => {
@@ -94,5 +95,69 @@ describe("schematic grid", () => {
     expect(xs[xs.length - 1]).toBeGreaterThanOrEqual(1)
     expect((xs[1] as number) - (xs[0] as number)).toBeCloseTo(SHEET_GRID)
     expect(ys.length).toBeGreaterThan(5)
+  })
+})
+
+describe("the dark schematic palette", () => {
+  afterEach(resetSheetPalette)
+
+  test("a charcoal sheet, bright wires and a cyan selection; values ours, as the brief sets them", () => {
+    expect(darkSchematicTheme).toMatchObject({
+      background: "#141619", grid: "#2B3038", gridDot: "#2B3038", gridFifth: "#3A4049",
+      symbolOutline: "#D9DEE5", pin: "#D9DEE5", wire: "#5BD3C7", bus: "#8AB4FF", junction: "#5BD3C7",
+      netName: "#F2C66D", flag: "#FF9E80", designator: "#E6E8EB", value: "#AEB6C0", pinName: "#AEB6C0", pinNumber: "#7E8792",
+      drawing: "#9AA1A9", selection: "#4CC9F0", hover: "#8BE0F5", markerError: "#FF6B6B", markerWarning: "#FFC857",
+      border: "#9AA1A9", titleText: "#9AA1A9",
+    })
+  })
+
+  test("only the dark selection glows: 8 device px in the selection colour", () => {
+    expect(darkSchematicTheme.selectionGlow).toBe(8)
+    expect(schematicTheme.selectionGlow).toBe(0)
+  })
+
+  test("junctions are drawn in the wire colour", () => {
+    expect(darkSchematicTheme.junction).toBe(darkSchematicTheme.wire)
+  })
+
+  test("the light palette keeps its look: flags in the symbol colour, markers in the PCB's red and amber, no fifth dot", () => {
+    expect(schematicTheme.flag).toBe(schematicTheme.symbolOutline)
+    expect([schematicTheme.markerError, schematicTheme.markerWarning]).toEqual(["#e5534b", "#e0a63a"])
+    expect(schematicTheme.gridFifth).toBeUndefined()
+  })
+
+  test("both palettes name the same colours", () => {
+    expect(Object.keys(darkSchematicTheme).filter((key) => key !== "gridFifth").sort()).toEqual(Object.keys(schematicTheme).sort())
+  })
+
+  test("the theme picks the palette, and the sheet draws with the one set last (light until set)", () => {
+    expect(schematicThemeFor("light")).toBe(schematicTheme)
+    expect(schematicThemeFor("dark")).toBe(darkSchematicTheme)
+    expect(sheetPalette()).toBe(schematicTheme)
+    setSheetPalette(darkSchematicTheme)
+    expect(sheetPalette()).toBe(darkSchematicTheme)
+    resetSheetPalette()
+    expect(sheetPalette()).toBe(schematicTheme)
+  })
+
+  const TEXTS: (keyof SchematicPalette)[] = ["designator", "value", "netName", "pinName", "pinNumber", "titleText"]
+  test.each([["light", schematicTheme], ["dark", darkSchematicTheme]] as const)("%s: designators, values and labels are at least 4.5:1 on the sheet", (_, palette) => {
+    for (const key of TEXTS) {
+      const ratio = contrastRatio(palette[key] as string, palette.background)
+      expect([key, ratio >= 4.5]).toEqual([key, true])
+    }
+  })
+
+  test("the dark sheet's own marks read on it: wires, buses, flags, selection and markers at least 3:1", () => {
+    for (const key of ["wire", "bus", "flag", "symbolOutline", "selection", "hover", "markerError", "markerWarning", "drawing"] as const) {
+      expect([key, contrastRatio(darkSchematicTheme[key], darkSchematicTheme.background) >= 3]).toEqual([key, true])
+    }
+  })
+
+  test("the dark grid is quiet: dots barely above the sheet, the fifth a step brighter", () => {
+    const dot = contrastRatio(darkSchematicTheme.gridDot, darkSchematicTheme.background)
+    const fifth = contrastRatio(darkSchematicTheme.gridFifth as string, darkSchematicTheme.background)
+    expect(dot).toBeLessThan(2)
+    expect(fifth).toBeGreaterThan(dot)
   })
 })

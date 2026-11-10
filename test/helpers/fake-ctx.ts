@@ -10,6 +10,9 @@ export interface DrawCall {
   font: string
   textAlign: string
   textBaseline: string
+  /** The glow round what was drawn: its blur in device pixels and its colour. */
+  shadowBlur: number
+  shadowColor: unknown
 }
 
 /** Width per character of the fake font, in font sizes. */
@@ -41,13 +44,13 @@ export const fontPx = (font: string): number => Number(/([\d.]+)px/.exec(font)?.
 export function recorder() {
   const calls: string[] = []
   const records: DrawCall[] = []
-  const state = { fillStyle: "", strokeStyle: "", lineWidth: 1, font: "", textAlign: "", textBaseline: "", globalAlpha: 1, lineCap: "", lineJoin: "" }
+  const state = { fillStyle: "", strokeStyle: "", lineWidth: 1, font: "", textAlign: "", textBaseline: "", globalAlpha: 1, lineCap: "", lineJoin: "", shadowBlur: 0, shadowColor: "" }
   const ctx = new Proxy(state, {
     get(target, key) {
       if (key in target) return target[key as keyof typeof target]
       return (...args: unknown[]) => {
         calls.push(String(key))
-        records.push({ name: String(key), args, strokeStyle: target.strokeStyle, fillStyle: target.fillStyle, globalAlpha: target.globalAlpha, lineWidth: target.lineWidth, font: target.font, textAlign: target.textAlign, textBaseline: target.textBaseline })
+        records.push({ name: String(key), args, strokeStyle: target.strokeStyle, fillStyle: target.fillStyle, globalAlpha: target.globalAlpha, lineWidth: target.lineWidth, font: target.font, textAlign: target.textAlign, textBaseline: target.textBaseline, shadowBlur: target.shadowBlur, shadowColor: target.shadowColor })
         if (key === "measureText") {
           const ink = fakeInk(String(args[0]), target.font, target.textBaseline)
           return { width: fakeTextWidth(String(args[0]), target.font), actualBoundingBoxAscent: ink.ascent, actualBoundingBoxDescent: ink.descent }

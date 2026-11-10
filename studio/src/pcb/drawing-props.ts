@@ -9,7 +9,7 @@ import type { Point, SchematicDrawing } from "../../../src/engine/model.js"
 import { busNameProblem, membersText } from "./bus-tool.js"
 import { KIND_WORDS } from "./drawing-actions.js"
 import { roundPosition } from "./geometry.js"
-import { schematicTheme } from "./schematic-theme.js"
+import { sheetPalette } from "./schematic-theme.js"
 
 /** How a row's value is shown and typed. */
 export type DrawingField = "static" | "number" | "text" | "points" | "choice" | "check" | "color"
@@ -91,7 +91,7 @@ function propRow(drawing: SchematicDrawing, info: DrawingInfo | undefined, key: 
   const spec = SPECS[key] as Spec
   const prop = info?.props[key]
   const expression = prop !== undefined && !prop.editable
-  const placeholder = key === "color" ? { placeholder: schematicTheme.drawing } : {}
+  const placeholder = key === "color" ? { placeholder: sheetPalette().drawing } : {}
   const options = spec.options ? { options: spec.options } : {}
   const value = expression ? prop.source : valueOf(drawing, key)
   return { key, label: spec.label, value, field: spec.field, ...options, ...placeholder, editable: canEdit && info !== undefined && !expression }
