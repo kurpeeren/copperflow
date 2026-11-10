@@ -21,6 +21,7 @@ import { designFor, lockedPartsAt, lockedStart, type DesignSource } from "./layo
 import { lockedPartChanges, lockedRecordChanges } from "./layout-records.js"
 import { LIBRARY_OWNED_PROPS, libraryIds, libraryImports, PARTS_DIR } from "./library.js"
 import { partsInSelector } from "./selectors.js"
+import { RULES_PATH } from "../engine/rules/load.js"
 import type { CircuitModel, Edit } from "./types.js"
 
 const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "coverage", ".copperflow"])
@@ -226,8 +227,17 @@ async function loadTrackedLayout(root: string, file: string, design: DesignSourc
   return { path, file: name, source, lockChange, firstLock: () => lockChange("") }
 }
 
+/** The project's rules.yaml, which the Design rules panel writes: it holds no locks. */
+async function loadTrackedRules(root: string): Promise<Tracked> {
+  const path = resolve(root, RULES_PATH)
+  const source = await readIfThere(path)
+  if (source === undefined) throw new Error(`${RULES_PATH} does not exist`)
+  return { path, file: RULES_PATH, source, lockChange: () => undefined, firstLock: () => undefined }
+}
+
 async function loadTracked(root: string, file: string, design?: DesignSource): Promise<Tracked> {
   if (isLayoutFile(file)) return loadTrackedLayout(root, file, design)
+  if (file === RULES_PATH) return loadTrackedRules(root)
   const loaded = await loadCircuit(root, file)
   const lock = loaded.annotations.locks[0]
   return { ...loaded, lockChange: (next) => changedLocks(loaded, next), firstLock: () => lock && `${lockKind(lock)} ${lock.part}` }

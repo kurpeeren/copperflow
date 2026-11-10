@@ -1,10 +1,18 @@
-import { useEffect, useRef, type ReactNode, type RefObject } from "react"
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react"
+import type { FabricationProfile } from "../../../src/engine/rules/schema.js"
 import { CloseIcon } from "../icons"
 import { dialogKey, trapStep } from "./dialog-keys"
 import { useKeyHold } from "./key-gate"
 import { shortcutList } from "./menus"
+import { FILLET_RADIUS_LABEL, FILLET_RADIUS_NOTE, filletRadiusField, readFilletRadius } from "./rules-form"
 
-export type DialogName = "keys" | "about"
+export type DialogName = "keys" | "about" | "rules"
+
+/** What Design → Design rules shows and writes: the rules the build read, and the save of a new fillet radius. */
+export interface RulesPanel {
+  fabrication: Pick<FabricationProfile, "filletRadius"> | undefined
+  save(radius: number | null): Promise<boolean>
+}
 
 const FOCUSABLE = "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])"
 
@@ -65,8 +73,39 @@ function KeysList() {
   )
 }
 
-/** Help → Keys and Help → About. */
-export function StudioDialog({ name, onClose }: { name: DialogName; onClose(): void }) {
+/** The Design rules panel's form: the Fillet radius, written to rules.yaml on Save. */
+function RulesForm({ rules, onClose }: { rules: RulesPanel; onClose(): void }) {
+  const field = filletRadiusField(rules.fabrication)
+  const [text, setText] = useState(field.value)
+  const [problem, setProblem] = useState<string>()
+  const id = useId()
+  const submit = async (event: FormEvent) => {
+    event.preventDefault()
+    const read = readFilletRadius(text)
+    if ("message" in read) return setProblem(read.message)
+    if (text.trim() === field.value) return onClose()
+    if (await rules.save(read.radius)) onClose()
+  }
+  return (
+    <form className="rules-form" onSubmit={(event) => void submit(event)}>
+      <label htmlFor={id}>{FILLET_RADIUS_LABEL}</label>
+      <input id={id} value={text} placeholder={field.placeholder} onChange={(event) => setText(event.target.value)} aria-describedby={`${id}-note`} aria-invalid={problem !== undefined} />
+      <p id={`${id}-note`}>{problem ?? FILLET_RADIUS_NOTE}</p>
+      <p>The rest of the design rules are in rules.yaml in the project.</p>
+      <button type="submit">Save</button>
+    </form>
+  )
+}
+
+/** Help → Keys, Help → About and Design → Design rules. */
+export function StudioDialog({ name, onClose, rules }: { name: DialogName; onClose(): void; rules: RulesPanel }) {
+  if (name === "rules") {
+    return (
+      <Dialog title="Design rules" onClose={onClose}>
+        <RulesForm rules={rules} onClose={onClose} />
+      </Dialog>
+    )
+  }
   if (name === "keys") {
     return (
       <Dialog title="Keys" onClose={onClose}>

@@ -80,6 +80,9 @@ globalNets: [GND, V24, V3_3]
 - Lengths are millimetres, or a number with a unit such as `6mil`.
 - Profile fields: `minTrackWidth`, `minClearance`, `minDrill`, `minAnnularRing`,
   `boardEdgeClearance`, `minHoleToHole`, `minSilkToPad`.
+- `fabrication.filletRadius` is the radius Fillet tracks (and `fillet_tracks`) rounds corners with,
+  1 mm when left out; a track's own width is the floor. It is not a fabrication limit, so the
+  profiles do not set it. The Studio's Design → Design rules writes it.
 - The built-in profiles are JLCPCB's published standard capabilities in 1 oz copper; each profile's
   `source` names the page, its sections and the date it was read.
 - A class field left out takes the default class's value: track 0.25 mm, clearance 0.2 mm, via drill

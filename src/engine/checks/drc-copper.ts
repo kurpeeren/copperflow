@@ -75,7 +75,8 @@ function strictlyOutside(p: Point, outline: readonly Point[]): boolean {
   return !pointInPolygon(p, outline) && nearestEdge([{ core: [p], radius: 0 }], outline).distance > LENGTH_TOLERANCE
 }
 
-function boardEdge(piece: CopperPiece, outline: readonly Point[], rules: Rules): Violation | undefined {
+/** The board-edge check on one piece: outside the board, or closer to its edge than the fabrication minimum. */
+export function boardEdge(piece: CopperPiece, outline: readonly Point[], rules: Rules): Violation | undefined {
   const minimum = rules.fabrication.boardEdgeClearance
   const report = (message: string, at: Point) => copperViolation("copper-edge", message, [piece.id], [piece.id], at)
   const outside = piece.shapes.flatMap((shape) => shape.core).find((p) => strictlyOutside(p, outline))
@@ -101,7 +102,8 @@ function insidePoint(shape: Shape, outline: readonly Point[]): Point | undefined
   return shapeDistance(shape, area) < -LENGTH_TOLERANCE ? closestPoints(shape, area)[1] : undefined
 }
 
-function keepoutHit(piece: CopperPiece, keepout: Keepout): Violation | undefined {
+/** The keepout check on one piece: copper reaching inside a keepout on one of its layers. */
+export function keepoutHit(piece: CopperPiece, keepout: Keepout): Violation | undefined {
   if (!keepoutCovers(keepout, piece)) return undefined
   const at = piece.shapes.map((shape) => insidePoint(shape, keepout.outline)).find((p) => p !== undefined)
   if (at === undefined) return undefined

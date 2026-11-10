@@ -14,7 +14,7 @@ import type { PickFilter } from "../pcb/pick-filter"
 import type { View } from "../pcb/positions"
 import type { Selection, SelectionChange } from "../selection"
 import type { BottomTab } from "./bottom-state"
-import { PCB_COMMANDS, SHEET_COMMANDS, WORKSPACE_COMMANDS, type AppCommand } from "./command-owners"
+import { COPPER_COMMANDS, PCB_COMMANDS, SHEET_COMMANDS, WORKSPACE_COMMANDS, type AppCommand } from "./command-owners"
 import { send } from "./commands"
 import type { DialogName } from "./Dialogs"
 import type { CommandId } from "./menus"
@@ -22,7 +22,7 @@ import { runPageCommand, type PageCommand } from "./page-commands"
 import type { Design } from "../api"
 
 const SCHEMATIC_ONLY: ReadonlySet<CommandId> = new Set(SHEET_COMMANDS)
-const PCB_ONLY: ReadonlySet<CommandId> = new Set(PCB_COMMANDS)
+const PCB_ONLY: ReadonlySet<CommandId> = new Set([...PCB_COMMANDS, ...COPPER_COMMANDS])
 
 /** The one view a command runs in, if it is a view's own (the other view switches to it first). */
 const viewOf = (command: CommandId): View | undefined => (SCHEMATIC_ONLY.has(command) ? "schematic" : PCB_ONLY.has(command) ? "pcb" : undefined)
@@ -135,6 +135,7 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     selectAll: () => input.select(selectAll(input.circuit?.model.parts.map((part) => part.name) ?? [], input.pickLayers, input.pickFilter, input.sheetWires, input.sheetLabels, input.sheetDrawings, input.pcbCopper)),
     find: input.openFind,
     checkDrc: input.openChecks,
+    designRules: () => input.openDialog("rules"),
     lock: () => lockSelection(input, true),
     unlock: () => lockSelection(input, false),
     history: () => input.workspace.openBottom("log"),

@@ -9,6 +9,7 @@ import { collectProjectFiles } from "../../src/engine/project-files.js"
 import { classOfNet, netClasses, requiredClearance } from "../../src/engine/rules/classes.js"
 import { loadRules } from "../../src/engine/rules/load.js"
 import { DEFAULT_CLASS, PROFILES } from "../../src/engine/rules/profiles.js"
+import { DEFAULT_FILLET_RADIUS, filletRadius } from "../../src/engine/rules/track-defaults.js"
 import { BOARD } from "../fixtures.js"
 
 const load = (yaml: string) => loadRules({ "rules.yaml": yaml })
@@ -39,6 +40,16 @@ describe("loadRules", () => {
     expect(rules.fabrication.minClearance).toBeCloseTo(0.1524, 6)
     expect(rules.fabrication.minDrill).toBe(PROFILES["jlcpcb-4layer"]?.minDrill)
     expect(rules.file).toBe("rules.yaml")
+  })
+
+  test("the fillet radius is 1 mm unless fabrication sets one, in any length unit", () => {
+    expect(DEFAULT_FILLET_RADIUS).toBe(1)
+    expect(filletRadius(loadRules({}).rules)).toBe(1)
+    const { rules, diagnostics } = load("fabrication:\n  filletRadius: 0.5mm\n")
+    expect(diagnostics).toEqual([])
+    expect(filletRadius(rules)).toBe(0.5)
+    expect(filletRadius(load("fabrication:\n  filletRadius: 40mil\n").rules)).toBeCloseTo(1.016, 6)
+    expect(load("fabrication:\n  filletRadius: 0\n").diagnostics[0]?.message).toMatch(/fabrication\.filletRadius/)
   })
 
   test("a class field left out takes the default class value", () => {

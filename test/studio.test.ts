@@ -293,6 +293,26 @@ describe("layout edits", () => {
   })
 })
 
+describe("design rules", () => {
+  test("the fillet radius goes to rules.yaml as one history entry, which undo takes back; null is the default again", async () => {
+    const set = await data(await api("/api/rules", { filletRadius: 1.5 }))
+    expect(set).toEqual({ entryId: "c0001", summary: "Set the fillet radius to 1.5 mm" })
+    expect(await readFile(join(root, "rules.yaml"), "utf8")).toBe("fabrication:\n  filletRadius: 1.5\n")
+    expect((await data(await api("/api/undo", {}))).summary).toBe("Undo: Set the fillet radius to 1.5 mm")
+    await expect(readFile(join(root, "rules.yaml"), "utf8")).rejects.toThrow()
+    await data(await api("/api/redo", {}))
+    await data(await api("/api/rules", { filletRadius: null }))
+    expect(await readFile(join(root, "rules.yaml"), "utf8")).toBe("")
+  })
+
+  test("a radius that is no positive length is refused", async () => {
+    const zero = await api("/api/rules", { filletRadius: 0 })
+    expect(zero.status).toBe(400)
+    expect((await zero.json()).error).toContain("fillet radius")
+    expect((await api("/api/rules", { filletRadius: "1" })).status).toBe(400)
+  })
+})
+
 describe("parts library", () => {
   test("lists library and built-in parts and shows one part", async () => {
     await createPart(root, "LDO", LDO, { now: "t" })

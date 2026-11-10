@@ -26,7 +26,8 @@ undoing their work.
    if one edit is refused) and `connect_nets` (`{ GND: ["R1.pin2", "C1.pin2"] }`). These tools
    enforce locks and record history; editing the file directly does not.
    Copper: you may draw the tracks and vias you want by hand with `route_track` (a track of one
-   net, starting on a pad, track or via of that net), `add_via` and `remove_copper`; each is one
+   net, starting on a pad, track or via of that net), `add_via` and `remove_copper`, and round
+   track corners with `fillet_tracks` (`straighten_tracks` squares them again); each is one
    history entry, and the answer lists the copper violations the change introduced. The program
    checks clearance; the router comes later and does the rest. Order: `copper_summary` first (per net: tracks, vias,
    length, unrouted connections), then your copper changes, then `check_circuit` once at the end

@@ -108,15 +108,19 @@ const LABEL_ITEMS: readonly ContextEntry[] = [
   { label: "Highlight net", special: "highlightNet" },
 ]
 
-/** On a track or via: Properties, Lock or Unlock (the selected copper), Delete. */
-function copperItems(locked: boolean | undefined): ContextEntry[] {
-  return [{ label: "Properties", special: "properties" }, "separator", locked ? run("Unlock", "unlock") : run("Lock", "lock"), "separator", run("Delete", "delete", "Delete")]
+/** On a track: Fillet tracks and Straighten tracks, which act on the selected tracks. */
+const TRACK_ITEMS: readonly ContextEntry[] = [run("Fillet tracks", "filletTracks", "U"), run("Straighten tracks", "straightenTracks", "Shift+U"), "separator"]
+
+/** On a track or via: Properties, on a track Fillet and Straighten, Lock or Unlock (the selected copper), Delete. */
+function copperItems(id: string, locked: boolean | undefined): ContextEntry[] {
+  const track = id.startsWith("t") ? TRACK_ITEMS : []
+  return [{ label: "Properties", special: "properties" }, "separator", ...track, locked ? run("Unlock", "unlock") : run("Lock", "lock"), "separator", run("Delete", "delete", "Delete")]
 }
 
 /** The items for a right click on `target`. */
 export function contextItems(target: ContextTarget, state: ContextState): ContextEntry[] {
   if (target.kind === "part") return partItems(state)
-  if (target.kind === "copper") return copperItems(state.copperLocked)
+  if (target.kind === "copper") return copperItems(target.id, state.copperLocked)
   if (target.kind === "wire") return wireItems(state.wire)
   if (target.kind === "drawing") return [...DRAWING_ITEMS]
   return [...(target.kind === "label" ? LABEL_ITEMS : CANVAS_ITEMS)]

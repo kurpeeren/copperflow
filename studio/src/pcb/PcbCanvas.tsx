@@ -28,6 +28,7 @@ import { selectedCopperLine } from "./key-menu"
 import type { ActiveLayer } from "./layers"
 import { padName } from "./track-targets"
 import { useTrackArm, useTrackTool } from "./use-track-tool"
+import { useTrackShape } from "./use-track-shape"
 import { usePartKeys, type PartKeysInput } from "./use-part-keys"
 import type { CopperScene } from "./copper-draw"
 import { copperBoxes } from "./copper-hit"
@@ -269,6 +270,7 @@ export function PcbCanvas(props: PcbCanvasProps) {
   const copperParts = useCopperParts({ parts, circuit, actions, selection, armed: note.tool, pick, pickFilter })
   const copper = useCopper({ design, builtMark, parts: copperParts, camera, size, canvas: canvasRef, layers, filter: pickFilter, armed: note.tool, selection, onSelect, actions, step, snap, routing: trackArm.route !== null })
   const copperAreas = useMemo(() => copperBoxes(copper.shown, layers), [copper.shown, layers])
+  useTrackShape({ design, selection, lockedParts: parts.locked, routing: trackArm.route !== null, send: (change) => copper.latest.current.send(change), busy: () => copper.latest.current.inFlight, notify: actions.notify })
   const track = useTrackTool({ design, builtMark, copper: copper.shown, camera, cursor, step, snap, layers, activeLayer: props.activeLayer, onActiveLayer: props.onActiveLayer, locked: parts.locked, actions, arm: trackArm, onArm: note.disarm })
   usePcbToolState(track.command ?? boxToolCommand(note.which), note.disarm, trackArm.disarm)
   const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, snap, builtFrom, selection, tool: { armed: note.tool, disarm: note.disarm }, layers: pick, copper: copperAreas, copperAt: (world) => copperIdAt(copper, world), filter: pickFilter, onContextMenu: track.armed ? track.cancel : props.onContextMenu })

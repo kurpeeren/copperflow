@@ -278,11 +278,62 @@ describe("check_circuit copper filter", () => {
   })
 })
 
+describe("fillet_tracks and straighten_tracks", () => {
+  const L_TRACK = [pt(-2.275, 0), pt(-2.275, -3), pt(1.55, -3), pt(1.55, -1.2875)]
+
+  test("round every corner as one history entry and answer in a line; straighten puts them back", async () => {
+    await route("VBUS", L_TRACK)
+    const before = await entries()
+    const rounded = await call("fillet_tracks", { file: FILE })
+    expect(rounded.isError).toBe(false)
+    expect(rounded.text.split("\n")[0]).toMatch(/^Change c\d+: rounded 2 corners on 1 track$/)
+    expect(await entries()).toBe(before + 1)
+    const [, track] = await layoutRecords()
+    expect(track.points.length).toBeGreaterThan(10)
+    const back = await call("straighten_tracks", { file: FILE, ids: ["t0001"] })
+    expect(back.text.split("\n")[0]).toMatch(/^Change c\d+: straightened 2 corners on 1 track$/)
+    const [, square] = await layoutRecords()
+    expect(square.points.length).toBe(4)
+    square.points.forEach((p: { x: number; y: number }, i: number) => {
+      expect(p.x).toBeCloseTo(L_TRACK[i]!.x, 3)
+      expect(p.y).toBeCloseTo(L_TRACK[i]!.y, 3)
+    })
+  })
+
+  test("take a radius, and say so without writing when nothing changes", async () => {
+    await route("VBUS", L_TRACK)
+    const tooBig = await call("fillet_tracks", { file: FILE, ids: ["t0001"], radius: 5 })
+    expect(tooBig.isError).toBe(false)
+    expect(tooBig.text).toBe("Nothing was written: no corner was rounded; 2 left square: too short")
+    const before = await entries()
+    expect((await call("straighten_tracks", { file: FILE })).text).toBe("Nothing was written: no rounded corners to straighten")
+    expect(await entries()).toBe(before)
+  })
+
+  test("refuse an id that is no track, and leave a track on a locked part alone", async () => {
+    await route("VBUS", L_TRACK)
+    const unknown = await call("fillet_tracks", { file: FILE, ids: ["t0009"] })
+    expect(unknown.isError).toBe(true)
+    expect(unknown.text).toContain("t0009")
+    expect((await call("fillet_tracks", { file: FILE, ids: ["v0001"] })).isError).toBe(true)
+    await lockC1()
+    expect((await call("fillet_tracks", { file: FILE })).text).toBe("Nothing was written: no tracks to round; t0001 starts on the locked part C1")
+  })
+})
+
 describe("the tool list", () => {
-  test("has the four copper tools and no unlock or verify tool", async () => {
+  test("has the six copper tools and no unlock or verify tool", async () => {
     const names = (await client.listTools()).tools.map((t) => t.name)
-    for (const name of ["route_track", "add_via", "remove_copper", "copper_summary"]) expect(names).toContain(name)
+    for (const name of ["route_track", "add_via", "remove_copper", "copper_summary", "fillet_tracks", "straighten_tracks"]) expect(names).toContain(name)
     expect(names.filter((n) => /unlock|verify/.test(n))).toEqual([])
+  })
+
+  test("fillet_tracks takes file, ids and radius; straighten_tracks file and ids", async () => {
+    const tools = (await client.listTools()).tools
+    const keys = (name: string) => Object.keys(tools.find((t) => t.name === name)?.inputSchema.properties ?? {})
+    expect(keys("fillet_tracks")).toEqual(["file", "ids", "radius"])
+    expect(keys("straighten_tracks")).toEqual(["file", "ids"])
+    expect(client.getInstructions()).toMatch(/fillet_tracks/)
   })
 })
 
