@@ -44,6 +44,7 @@ describe("MCP server", () => {
       "copper_summary",
       "create_part",
       "edit_circuit",
+      "export_fabrication",
       "export_package",
       "fillet_tracks",
       "list_circuits",

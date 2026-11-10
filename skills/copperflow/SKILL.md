@@ -58,7 +58,12 @@ undoing their work.
    library part owns) and so on. Fix every error before you report success. Warnings such as
    `unrouted` do not fail the check; mention them. Net classes and fabrication limits live in
    `rules.yaml` at the project root; do not work around a rule in the circuit.
-5. Tell the human what you changed and the change ids, so they can undo a single step.
+5. For a board to be made: after `autoroute` and a clean `check_circuit`, call
+   `export_fabrication`. It writes `<name>-fab/` (Gerbers, drills, pick-and-place, BOM) and
+   `<name>-fab.zip` beside the circuit; a design with errors is refused and nothing is written.
+   Pass on its warnings (unrouted connections, parts without a footprint). A person uploads the
+   zip to JLCPCB; you do not.
+6. Tell the human what you changed and the change ids, so they can undo a single step.
 
 ## Rules
 
