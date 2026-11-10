@@ -125,6 +125,15 @@ describe("what the fabrication set refuses or warns about", () => {
     expect(accepted(fabricationSet({ ...design, pcb: { ...design.pcb, parts: one } }, bom, CREATED)).warnings).toContain("1 part has no footprint and is not in the pick-and-place: U1")
     expect(accepted(fabricationSet(design, bom, CREATED)).warnings.some((w) => w.includes("footprint"))).toBe(false)
   })
+
+  test("a designator a person put over another part's pads is named in a warning, and keeps its place", () => {
+    const u1 = design.pcb.parts.find((part) => part.component === "U1")?.pads.find((pad) => pad.number === "9")
+    if (u1 === undefined) throw new Error("no U1 pad 9")
+    const parts = design.pcb.parts.map((part) => (part.component === "C1" ? { ...part, nameAt: { x: u1.x, y: u1.y } } : part))
+    const set = accepted(fabricationSet({ ...design, pcb: { ...design.pcb, parts } }, bom, CREATED))
+    expect(set.warnings).toContain("C1's silkscreen overlaps U1's pads")
+    expect(accepted(fabricationSet(design, bom, CREATED)).warnings.some((w) => w.includes("silkscreen"))).toBe(false)
+  })
 })
 
 describe("writing the fabrication set", () => {

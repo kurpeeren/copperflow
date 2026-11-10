@@ -4,6 +4,7 @@ import { describe, expect, test } from "vitest"
 import { buildBom } from "../../src/core/bom.js"
 import { buildDesign } from "../../src/engine/design.js"
 import { fabricationSet } from "../../src/engine/fab/export.js"
+import { designatorPlacements } from "../../src/engine/fab/designators.js"
 import { gerberFiles } from "../../src/engine/fab/layers.js"
 import { checkRoutedAll, routeDesign } from "../helpers/route-check.js"
 import { readGerber, type ReadGerber } from "../helpers/gerber-read.js"
@@ -37,6 +38,14 @@ function padPositions(read: ReadGerber) {
     return { x: corners.reduce((sum, p) => sum + p.x, 0) / corners.length, y: corners.reduce((sum, p) => sum + p.y, 0) / corners.length }
   })
   return keys([...flashes, ...regions])
+}
+
+/** Whether a point lies inside a pad's mask opening, taken as the box around the pad grown by `expansion`. */
+function inMaskOpening(p: { x: number; y: number }, pad: { x: number; y: number; width: number; height: number; rotation: number }, expansion: number): boolean {
+  const radians = (pad.rotation * Math.PI) / 180
+  const [cos, sin] = [Math.abs(Math.cos(radians)), Math.abs(Math.sin(radians))]
+  const [w, h] = [pad.width / 2 + expansion, pad.height / 2 + expansion]
+  return Math.abs(p.x - pad.x) < w * cos + h * sin && Math.abs(p.y - pad.y) < w * sin + h * cos
 }
 
 const segments = (read: ReadGerber) => read.strokes.reduce((sum, stroke) => sum + stroke.points.length - 1, 0)
@@ -76,6 +85,17 @@ describe("the CAN module's Gerbers after the router runs on it", () => {
     }
 
     expect(gerberFiles(routed.pcb, routed.rules.fabrication, "can-module", CREATED)).toEqual(written)
+
+    // C1 and C2 sit just below U1, whose pads 9 and 10 their designators would cover above them: they go elsewhere,
+    // and no silkscreen line of either side has a point inside a mask opening.
+    const designators = new Map(designatorPlacements(routed.pcb.parts, 0.05).map((p) => [p.component, p.at]))
+    expect(designators.get("C1")).not.toEqual({ x: -12.5, y: -3.8 })
+    expect(designators.get("C2")).not.toEqual({ x: -1.5, y: -3.8 })
+    for (const [side, file] of [["top", "can-module-F_Silkscreen.gto"], ["bottom", "can-module-B_Silkscreen.gbo"]] as const) {
+      const openings = pads.filter((p) => p.layers === side || p.layers === "through")
+      const points = (read.get(file) as ReadGerber).strokes.flatMap((stroke) => stroke.points)
+      expect(points.filter((point) => openings.some((pad) => inMaskOpening(point, pad, 0.05)))).toEqual([])
+    }
 
     const set = fabricationSet(routed, await buildBom(FOLDER, MAIN, { design: routed }), CREATED)
     if (!set.ok) throw new Error(set.errors.join("; "))
