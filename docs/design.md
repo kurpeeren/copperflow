@@ -158,7 +158,14 @@ rejected.
   labels and power and ground symbols in copperflow's palette. Symbols the engine placed are
   drawn at 60% alpha inside a dashed box, and "Keep these positions" writes their `schX`/`schY`.
   The same camera, grid, snapping, selection, lock badges, notes and keys as the PCB apply.
-  Dragging a symbol writes `schX`/`schY`; R writes `schRotation`. Wires are drawn the way KiCad
+  Dragging a symbol writes `schX`/`schY`; R writes `schRotation`. A part's name and value are
+  picked on their own, after wires and parts (the Filter tab's "Names and values" row), and a
+  drag or an arrow key writes `schNameAt={{ x, y }}` or `schValueAt={{ x, y }}` through
+  `set_props`: an offset from the symbol's origin in sheet units, on the sheet as it is (a turned
+  symbol does not turn it), so the label moves with its part. On the PCB the silkscreen
+  designator does the same with `pcbNameAt` (board mm). Without the prop the label sits where
+  the layout always put it; Properties' Reset position removes the prop, and Delete leaves a
+  label alone. Moving a label changes no symbol's bounds, so no wire moves. Wires are drawn the way KiCad
   users expect: clicking a free pin, or pressing W over any pin, starts a wire; an elbow follows
   the pointer on the grid; clicking the sheet places a corner (Backspace removes the last one);
   clicking a pin, a net label or an existing wire ends it, and Esc or a right click cancels. A

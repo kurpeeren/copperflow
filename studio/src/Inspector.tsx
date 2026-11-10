@@ -9,12 +9,14 @@ import { LabelView } from "./InspectorLabel"
 import { DrawingView } from "./InspectorDrawing"
 import { CopperView } from "./InspectorCopper"
 import { WireView } from "./InspectorWire"
+import { TextView } from "./InspectorText"
 import { MarkForm, NewPropRow, PropRow, Row, Section } from "./InspectorRows"
 import { LibraryInfo } from "./LibraryInfo"
 import { CloseIcon, LockIcon, RotateIcon, TrashIcon, UnlockIcon } from "./icons"
 import { touches } from "./LeftPanel"
 import { autoPlacedParts } from "./pcb/auto-placed"
 import { pcbBoxes } from "./pcb/pcb-draw"
+import { TEXT_NAMES } from "./pcb/part-text"
 import type { View } from "./pcb/positions"
 import type { DrawingRename } from "./pcb/drawing-selection"
 import type { Selection, SelectionChange } from "./selection"
@@ -77,11 +79,11 @@ export function Inspector(props: Props) {
   useFieldFocus(panel, props.focusField, props.onFieldFocused)
   const parts = selectedParts(props.circuit, props.selection)
   const [part] = parts
-  const { wireCount, labelCount, drawingCount, copperCount, soleWire: wire, soleLabel: label, soleDrawing: drawing, soleCopper } = props.selection
-  const kind = propertiesKind(parts.length, wireCount, labelCount, drawingCount, copperCount)
+  const { wireCount, labelCount, drawingCount, copperCount, soleWire: wire, soleLabel: label, soleDrawing: drawing, soleCopper, soleText, textCount } = props.selection
+  const kind = propertiesKind(parts.length, wireCount, labelCount, drawingCount, copperCount, textCount)
   const library = kind === "part" && part ? props.parts.library.find((p) => p.component === part.tag) : undefined
   const autoPlaced = kind === "part" && part !== undefined && autoPlacedParts(props.build.design, props.openView).has(part.name)
-  const view = propertiesView(parts, { library: library !== undefined, autoPlaced }, wireCount, labelCount, drawingCount, copperCount)
+  const view = propertiesView(parts, { library: library !== undefined, autoPlaced }, wireCount, labelCount, drawingCount, copperCount, textCount)
   const locks = { locked: new Set(props.circuit.annotations.locks.map((lock) => lock.part)), violated: new Set(props.circuit.violations.map((v) => v.part)) }
   // Collapsed sections are kept by title for as long as Studio is open.
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
@@ -98,6 +100,7 @@ export function Inspector(props: Props) {
       {kind === "wire" && wire !== undefined && design && <WireView design={design} circuit={props.circuit} wire={wire} locked={locks.locked} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
       {kind === "label" && label !== undefined && design && <LabelView design={design} label={label} run={props.run} notify={props.actions.notify} onClear={clear} collapsed={collapsed} toggle={toggle} />}
       {kind === "drawing" && drawing !== undefined && design && <DrawingView design={design} circuit={props.circuit} drawing={drawing} locked={locks.locked} actions={props.actions} onRename={props.onRenameDrawing} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
+      {kind === "text" && soleText !== undefined && design && <TextView design={design} circuit={props.circuit} text={soleText} locked={locks.locked} actions={props.actions} onClear={clear} collapsed={collapsed} toggle={toggle} />}
       {kind === "copper" && soleCopper !== undefined && design && <CopperView design={design} id={soleCopper} actions={props.actions} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
       {kind === "group" && <GroupView view={view} parts={parts} others={wireCount + labelCount + drawingCount + copperCount} locks={locks} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
       {kind === "part" && part && <PartView {...props} view={view} collapsed={collapsed} toggle={toggle} part={part} locks={locks} />}
@@ -130,6 +133,7 @@ function PartView({ circuit, build, parts, part, locks, actions, onSelect, run, 
       const example = SUGGESTED_PROPS[part.tag]?.find(([name]) => name === key)?.[1] ?? ""
       return <NewPropRow key={id} name={key} example={example} disabled={!canEdit} onCommit={(value) => setProp(key, value)} />
     }
+    if (kind === "textAt" && prop) return <Row key={id} label={`${TEXT_NAMES[key] ?? key} offset`}><span className="static" title="Drag it on the canvas, or select it for Reset position">{prop.source.replace(/[{}]/g, "").trim()}</span></Row>
     if (kind === "lock") return <LockRow key={id} locked={locked} onChange={(on) => run(on ? "lock" : "unlock")} />
     if (kind === "connections") return <Connections key={id} traces={traces} />
     if (kind === "library") return library && <LibraryInfo key={id} id={library.id} verified={library.verified} actions={actions} />

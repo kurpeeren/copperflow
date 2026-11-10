@@ -213,3 +213,18 @@ export function drawWirePreview(ctx: CanvasRenderingContext2D, camera: Camera, s
   }
   ctx.restore()
 }
+
+/** Outlines the parts' names and values (or designators) that are selected, and the one under the pointer when it is not. */
+export function drawTextOutlines(
+  ctx: CanvasRenderingContext2D,
+  view: { camera: Camera; size: Size },
+  texts: readonly { id: string; box: Box }[],
+  marked: { selected: readonly string[]; hover: string | undefined },
+  look: OverlayLook,
+  ratio: number,
+): void {
+  for (const text of texts) {
+    const kind = marked.selected.includes(text.id) ? "selected" : text.id === marked.hover ? "hover" : undefined
+    if (kind) drawOutline(ctx, view.camera, view.size, text.box, { x: 0, y: 0 }, kind, look, ratio)
+  }
+}

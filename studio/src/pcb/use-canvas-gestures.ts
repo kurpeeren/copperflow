@@ -83,7 +83,7 @@ export function useCanvasGestures(input: GestureInput) {
 /** The pointer: grabbing while panning, move or not-allowed while dragging, crosshair for a tool, else pointer or default. */
 export function cursorFor(gesture: Gesture | undefined, crosshair: boolean, overPart: boolean): string {
   if (gesture?.kind === "pan" && (gesture.moved || gesture.still === "none")) return "grabbing"
-  if (gesture?.kind === "drag" || gesture?.kind === "label" || gesture?.kind === "reshape") return gesture.blocker ? "not-allowed" : "move"
+  if (gesture?.kind === "drag" || gesture?.kind === "label" || gesture?.kind === "text" || gesture?.kind === "reshape") return gesture.blocker ? "not-allowed" : "move"
   if (crosshair || gesture?.kind === "note" || gesture?.kind === "zoom") return "crosshair"
   return overPart ? "pointer" : "default"
 }

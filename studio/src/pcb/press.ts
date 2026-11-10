@@ -18,7 +18,7 @@ export interface Press {
  * a wire, a wire selected with other things (parts, labels or other wires), a corner handle of the wire selected alone
  * (schematic), a drawing, one already selected, or nothing.
  */
-export type Under = "part" | "selectedPart" | "label" | "selectedLabel" | "wire" | "selectedWire" | "wireCorner" | "drawing" | "selectedDrawing" | "empty"
+export type Under = "part" | "selectedPart" | "label" | "selectedLabel" | "wire" | "selectedWire" | "wireCorner" | "drawing" | "selectedDrawing" | "text" | "empty"
 
 /**
  * The armed canvas tool, as far as a press is concerned: Place → Note box and View → Fit area take every left press; a schematic Place
@@ -37,6 +37,7 @@ export type ArmedTool = "note" | "zoom" | "place" | null
  * - "moveGroup": on a selected part or drawing, or a wire or label selected with other things: drags the whole
  *   selection; released without moving, selects that part, drawing, wire or label alone.
  * - "label": on a net label not selected, or selected alone: selects it alone and drags it.
+ * - "text": on a part's name, value or designator: selects it alone and drags it (it never moves with a selection).
  * - "wireSegment": on a schematic wire not selected, or selected alone: selects it alone (the parts go) and drags the
  *   segment under the press.
  * - "wireCorner": on a corner handle of the wire selected alone: drags that corner.
@@ -55,6 +56,7 @@ export type GestureStart =
   | "move"
   | "moveGroup"
   | "label"
+  | "text"
   | "wireSegment"
   | "wireCorner"
   | "wire"
@@ -63,7 +65,7 @@ export type GestureStart =
   | "none"
 
 /** What Shift or Ctrl toggles in or out of the selection: a part, a net label, a drawing or a wire, also through its corner handle. */
-const TOGGLES: ReadonlySet<Under> = new Set(["part", "selectedPart", "label", "selectedLabel", "wire", "selectedWire", "wireCorner", "drawing", "selectedDrawing"])
+const TOGGLES: ReadonlySet<Under> = new Set(["part", "selectedPart", "label", "selectedLabel", "wire", "selectedWire", "wireCorner", "drawing", "selectedDrawing", "text"])
 
 /** What a plain press drags with the whole selection: a selected part or drawing, or a wire or label selected with other things. */
 const GROUP: ReadonlySet<Under> = new Set(["selectedPart", "selectedWire", "selectedLabel", "selectedDrawing"])
@@ -86,6 +88,7 @@ export function gestureStart(press: Press, under: Under, armed: ArmedTool): Gest
   if (under === "part" || under === "drawing") return "move"
   if (GROUP.has(under)) return "moveGroup"
   if (under === "wire" || under === "wireCorner") return armed === null ? WIRE_PRESS[under] : "wire"
+  if (under === "text") return "text"
   return under === "label" ? "label" : "box"
 }
 
@@ -129,11 +132,15 @@ export function opensOnDoubleClick(event: { button: number; target: unknown }): 
   return typeof target?.closest !== "function" || !target.closest(CONTROLS)
 }
 
-/** What a right click (or a double click) is on: a part, a net label, a wire or a drawing (by its id) in the schematic, a track or via on the PCB, or the empty canvas. */
+/**
+ * What a right click (or a double click) is on: a part, a net label, a wire or a drawing (by its id) in the schematic, a
+ * track or via on the PCB, a part's name, value or designator (by its text id), or the empty canvas.
+ */
 export type ContextTarget =
   | { kind: "part"; name: string }
   | { kind: "label"; label: NetLabel }
   | { kind: "wire"; id: string }
   | { kind: "drawing"; id: string }
   | { kind: "copper"; id: string }
+  | { kind: "text"; id: string }
   | { kind: "canvas" }

@@ -390,3 +390,18 @@ describe("goneFrom", () => {
     expect(goneFrom([], ["R1"])).toEqual([])
   })
 })
+
+describe("names, values and designators", () => {
+  test("one alone is the sole text; it counts in the total but not as a part", () => {
+    const one = Selection.none.onlyText("R1:schNameAt")
+    expect(one.soleText).toBe("R1:schNameAt")
+    expect(one.total).toBe(1)
+    expect(one.size).toBe(0)
+    expect(one.onlyText("R1:schNameAt")).toBe(one)
+    const two = one.add(["R1"])
+    expect(two.soleText).toBeUndefined()
+    expect(two.toggleText("R1:schNameAt").texts).toEqual([])
+    expect(two.keepTexts([]).texts).toEqual([])
+    expect(one.toggleText("R1:schNameAt")).toBe(Selection.none)
+  })
+})

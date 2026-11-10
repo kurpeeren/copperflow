@@ -32,6 +32,13 @@ describe("inspectorSections", () => {
     expect(position?.rows).toEqual(["prop:pcbX", "lock"])
   })
 
+  test("a moved name, value or designator shows its offset in Position, not as a value prop", () => {
+    const moved: InspectorPart = { tag: "resistor", props: { pcbX: prop(1), schNameAt: { literal: undefined, source: "{{ x: 1, y: 2 }}", editable: true } } }
+    const [basic, , position] = inspectorSections(moved, { library: false })
+    expect(basic?.rows).toEqual(["name", "kind", "suggest:resistance"])
+    expect(position?.rows).toEqual(["prop:pcbX", "textAt:schNameAt", "lock"])
+  })
+
   test("a part with no footprint and none to offer has no Footprint section", () => {
     const header: InspectorPart = { tag: "pinheader", props: { pinCount: prop(4) } }
     expect(inspectorSections(header, { library: false }).map((s) => s.title)).toEqual(["Basic", "Position", "Connections", "Notes"])
@@ -97,7 +104,7 @@ describe("propertiesView", () => {
     expect(kindRow("part:R1")).toBeUndefined()
     expect(kindRow("kind:labels:1")).toEqual({ kind: "labels", count: 1 })
     expect(kindRow("kind:notes:1")).toBeUndefined()
-    expect(KIND_LABELS).toEqual({ parts: "Parts", wires: "Wires", labels: "Net labels and flags", drawings: "Drawings", copper: "Tracks and vias" })
+    expect(KIND_LABELS).toEqual({ parts: "Parts", wires: "Wires", labels: "Net labels and flags", drawings: "Drawings", copper: "Tracks and vias", texts: "Names and values" })
     expect(kindRow("kind:copper:2")).toEqual({ kind: "copper", count: 2 })
     expect(kindRow("kind:drawings:2")).toEqual({ kind: "drawings", count: 2 })
   })
@@ -211,5 +218,17 @@ describe("partLockButton", () => {
     for (const state of [locks([]), locks(["R1"]), locks(["R1"], ["R1"])]) {
       expect(groupActionEnabled(partLockButton("R1", state).command, [{ name: "R1", editable: true }], state)).toBe(true)
     }
+  })
+})
+
+describe("names and values in Properties", () => {
+  test("one alone has its own view; with others it is counted in the Selection section", () => {
+    expect(propertiesKind(0, 0, 0, 0, 0, 1)).toBe("text")
+    expect(propertiesKind(1, 0, 0, 0, 0, 1)).toBe("group")
+    const view = propertiesView([{ name: "R1", ...resistor }], { library: false }, 0, 0, 0, 0, 2)
+    expect(view.header).toBe("Selected objects: 3")
+    expect(view.sections[0]?.rows).toEqual(["kind:parts:1", "kind:texts:2", "part:R1"])
+    expect(kindRow("kind:texts:2")).toEqual({ kind: "texts", count: 2 })
+    expect(KIND_LABELS.texts).toBe("Names and values")
   })
 })

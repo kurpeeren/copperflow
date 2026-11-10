@@ -6,6 +6,7 @@ import { formatLength, PCB_ZOOM_REFERENCE_PX, SCHEMATIC_ZOOM_REFERENCE_PX, zoomP
 export type StatusGesture =
   | { kind: "drag"; offset: Point; moved: boolean; blocker: string | null }
   | { kind: "label"; label: { at: Point }; at: Point; moved: boolean; blocker: string | null }
+  | { kind: "text"; from: Point; at: Point; moved: boolean; blocker: string | null }
   | { kind: "pan" | "box" | "note" | "zoom" | "reshape" }
 
 export interface StatusInput {
@@ -27,10 +28,11 @@ export const WAITING_FOR_BUILD = "Waiting for the build…"
 /** What the status line says while snap is off. */
 export const SNAP_OFF = "Snap off"
 
-/** How far the part or label being dragged is from where it started; undefined when nothing visible is dragged. */
+/** How far the part, label or text being dragged is from where it started; undefined when nothing visible is dragged. */
 function dragDelta(gesture: StatusGesture | undefined): Point | undefined {
   if (gesture?.kind === "drag" && gesture.moved && !gesture.blocker) return gesture.offset
   if (gesture?.kind === "label" && gesture.moved && !gesture.blocker) return { x: gesture.at.x - gesture.label.at.x, y: gesture.at.y - gesture.label.at.y }
+  if (gesture?.kind === "text" && gesture.moved && !gesture.blocker) return { x: gesture.at.x - gesture.from.x, y: gesture.at.y - gesture.from.y }
   return undefined
 }
 

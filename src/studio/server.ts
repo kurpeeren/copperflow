@@ -101,8 +101,10 @@ const file = z.string().min(1).max(500)
 const point = z.object({ x: z.number().finite(), y: z.number().finite() })
 /** A drawing prop: `points` takes a point list (the core checks which key may), every other prop a literal. */
 const drawingProps = z.record(z.string().max(64), z.union([literal, z.array(point).max(1000)]))
+/** setProps also takes a point (a moved label's offset) and null (removes the prop); the core checks which key may. */
+const setPropValues = z.record(z.string().max(64), z.union([literal, point, z.null()]))
 const EditSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("setProps"), part: z.string(), props }),
+  z.object({ kind: z.literal("setProps"), part: z.string(), props: setPropValues }),
   z.object({ kind: z.literal("removePart"), part: z.string() }),
   z.object({
     kind: z.literal("addTrace"),

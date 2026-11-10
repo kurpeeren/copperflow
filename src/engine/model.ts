@@ -61,6 +61,14 @@ export interface Component {
   instance?: string
   /** Its name in the sheet file, e.g. "R1" for R101 of an instance with base 100; absent on the circuit itself. */
   localId?: string
+  /**
+   * Where its name and value are drawn on the schematic, and its designator on the silkscreen, when the file moves
+   * them (schNameAt, schValueAt, pcbNameAt): offsets from the part's origin, in sheet units and board mm, on the sheet
+   * and the board as they are (a turned part does not turn them). Absent, the layout puts them where it always has.
+   */
+  schNameAt?: Point
+  schValueAt?: Point
+  pcbNameAt?: Point
 }
 
 /** Named: "net.GND". Unnamed: "net:" + the first pin id. */

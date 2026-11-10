@@ -3,6 +3,7 @@
 import type { SchematicDrawing } from "../../../src/engine/model.js"
 import type { PlacedSymbol, SchematicLayout, NetLabel } from "../../../src/engine/schematic.js"
 import { groundSymbol, powerSymbol, type SchSymbol, type Shape } from "../../../src/engine/symbols/index.js"
+import { boundsOf } from "../../../src/engine/symbols/types.js"
 import { HIGHLIGHT_DIM, type Ctx } from "./ctx.js"
 import { labelTag, NET_LABEL_TEXT } from "./label-tag.js"
 import { type Box, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
@@ -127,7 +128,10 @@ export function drawSchematic(ctx: Ctx, layout: SchematicLayout, view: View, opt
   ctx.restore()
 }
 
-/** One box per symbol, from its bounds turned to the symbol's rotation; the id is the component. */
+/**
+ * One box per symbol, from its body and pins turned to the symbol's rotation; the id is the component. The part's name
+ * and value are left out: they are picked on their own (part-text.ts), after the parts.
+ */
 export function sheetBoxes(layout: SchematicLayout): PartBox[] {
   return layout.symbols.map((placed) => {
     const box = symbolBox(placed)
@@ -135,9 +139,11 @@ export function sheetBoxes(layout: SchematicLayout): PartBox[] {
   })
 }
 
-/** The symbol's bounds turned to its rotation, on the sheet. */
+const isPartText = (shape: Shape) => shape.type === "text" && (shape.role === "reference" || shape.role === "value")
+
+/** The symbol's body and pins, without its name and value, turned to its rotation, on the sheet. */
 function symbolBox(placed: PlacedSymbol): Box {
-  const { minX, minY, maxX, maxY } = placed.symbol.bounds
+  const { minX, minY, maxX, maxY } = boundsOf(placed.symbol.shapes.filter((shape) => !isPartText(shape)), placed.symbol.pins)
   const corners = [
     { x: minX, y: minY },
     { x: maxX, y: minY },

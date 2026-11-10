@@ -12,8 +12,9 @@ import type { PartCommand } from "../shell/command-owners"
 import { useCommands } from "../shell/commands"
 import { ALIGN_COMMANDS, isAlignCommand, type AlignCommand } from "./align-rules"
 import { keyAction, keyInput, type KeyResult } from "./canvas-keys"
-import { deletePlan, restBlocked, splitCopper, TWO_FILES_DELETE, type RemoveDrawings } from "./delete-plan"
+import { deletable, deletePlan, restBlocked, splitCopper, TWO_FILES_DELETE, type RemoveDrawings } from "./delete-plan"
 import { sendGroupEdit, type Layout } from "./group-edits"
+import { textNudge } from "./part-text"
 import { claimsKey, type BuildStatus } from "./key-burst"
 import { useKeyEdits, type KeyEdits, type KeyMove } from "./use-key-edits"
 import { selectionHighlight, type Highlight } from "./highlight"
@@ -59,6 +60,8 @@ export interface PartKeysInput {
   follow?: WireFollow
   /** The PCB's copper: Delete removes the selected tracks and vias (use-copper.ts). The schematic has none. */
   copper?: { remove(ids: readonly string[]): void }
+  /** The parts' names and values (or designators): the arrows move one selected alone (use-part-texts.ts). */
+  texts?: { nudge(id: string, by: Point): void }
 }
 
 /**
@@ -67,9 +70,11 @@ export interface PartKeysInput {
  * says what to select.
  */
 function removeSelection(input: PartKeysInput, fromKey: boolean): void {
-  if (input.paused) return
+  // A part's name or value is not removed: with only those selected, Delete does nothing.
+  const selection = deletable(input.selection)
+  if (input.paused || !selection) return
   // Copper lives in the layout file, so it goes in its own change, sent only once the rest (and its question) is settled.
-  const { copper, rest } = splitCopper(input.selection, input.copper !== undefined)
+  const { copper, rest } = splitCopper(selection, input.copper !== undefined)
   const removeCopper = () => (copper.length > 0 ? input.copper?.remove(copper) : undefined)
   if (!rest) return removeCopper()
   const result = deletePlan(rest, input.blockerFor, input.wire?.removal, input.wire?.labelRemoval, input.drawings)
@@ -89,11 +94,18 @@ function removeSelection(input: PartKeysInput, fromKey: boolean): void {
   })
 }
 
+/** An arrow key: a name or value selected alone moves by whole grid steps from where it is drawn (part-text.ts); else the selection's parts move. */
+function nudge(input: PartKeysInput, hit: KeyResult, edits: KeyEdits): void {
+  const move = input.texts && textNudge(input.selection, hit, input.layout)
+  if (!move) return edits.nudge(input, hit)
+  input.texts?.nudge(move.id, move.by)
+}
+
 /** Runs the canvas actions of a key press: fit, highlight, rotate, nudge, align, delete. */
 function runKey(input: PartKeysInput, hit: KeyResult, edits: KeyEdits, repeat: boolean): void {
   const { action } = hit
   if (isAlignCommand(action)) return input.paused || repeat ? undefined : edits.align(input, action)
-  if (action.startsWith("nudge")) return input.paused ? undefined : edits.nudge(input, hit)
+  if (action.startsWith("nudge")) return input.paused ? undefined : nudge(input, hit, edits)
   if (action === "fit") return input.fit()
   if (action === "delete") return removeSelection(input, true)
   if (action === "contextMenu") {
@@ -139,9 +151,9 @@ function usePartCommands(input: PartKeysInput, edits: KeyEdits): void {
 export function usePartKeys(input: PartKeysInput): { rotateHeld: boolean; keyMove: KeyMove | undefined } {
   const { edits, held, moved } = useKeyEdits(input)
   usePartCommands(input, edits)
-  const { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, drawings, follow, copper } = input
+  const { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, drawings, follow, copper, texts } = input
   useEffect(() => {
-    const keys: PartKeysInput = { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, drawings, follow, copper }
+    const keys: PartKeysInput = { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, drawings, follow, copper, texts }
     const onKey = (event: KeyboardEvent) => {
       const hit = keyAction(keyInput(event), { view, drawing: paused })
       if (!hit) return
@@ -150,6 +162,6 @@ export function usePartKeys(input: PartKeysInput): { rotateHeld: boolean; keyMov
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [edits, view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, drawings, follow, copper])
+  }, [edits, view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, drawings, follow, copper, texts])
   return { rotateHeld: held, keyMove: moved }
 }

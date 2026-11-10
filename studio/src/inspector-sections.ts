@@ -39,6 +39,9 @@ export const SUGGESTED_PROPS: Record<string, [string, string][]> = {
 /** Props that say where a part is, in the order the Position section shows them. */
 export const POSITION_PROPS = ["pcbX", "pcbY", "pcbRotation", "schX", "schY", "schRotation", "side", "layer"]
 
+/** Props that move the part's name, value and silkscreen designator: shown in Position, set by dragging them on the canvas. */
+export const TEXT_POSITION_PROPS = ["schNameAt", "schValueAt", "pcbNameAt"]
+
 /** The prop the Footprint section holds; footprint parameters join it in later rounds. */
 const FOOTPRINT = "footprint"
 
@@ -59,15 +62,16 @@ export interface SectionOptions {
 
 /** The sections of a selected part and the rows each holds. */
 export function inspectorSections(part: InspectorPart, opts: SectionOptions): InspectorSection[] {
-  const valueKeys = Object.keys(part.props).filter((key) => !POSITION_PROPS.includes(key) && key !== FOOTPRINT)
+  const valueKeys = Object.keys(part.props).filter((key) => !POSITION_PROPS.includes(key) && !TEXT_POSITION_PROPS.includes(key) && key !== FOOTPRINT)
   const suggested = (SUGGESTED_PROPS[part.tag] ?? []).map(([key]) => key).filter((key) => !(key in part.props))
   const missing = suggested.filter((key) => key !== FOOTPRINT)
   const placed = POSITION_PROPS.filter((key) => key in part.props)
+  const moved = TEXT_POSITION_PROPS.filter((key) => key in part.props)
   const footprint = footprintRows(part, suggested)
   return [
     { title: "Basic", rows: ["name", "kind", ...valueKeys.map((k) => `prop:${k}`), ...missing.map((k) => `suggest:${k}`)] },
     ...(footprint.length > 0 ? [{ title: "Footprint", rows: footprint }] : []),
-    { title: "Position", rows: [...(opts.autoPlaced ? ["placed"] : []), ...placed.map((k) => `prop:${k}`), "lock"] },
+    { title: "Position", rows: [...(opts.autoPlaced ? ["placed"] : []), ...placed.map((k) => `prop:${k}`), ...moved.map((k) => `textAt:${k}`), "lock"] },
     { title: "Connections", rows: ["connections"] },
     ...(opts.library ? [{ title: "Library", rows: ["library"] }] : []),
     { title: "Notes", rows: ["notes"] },
@@ -97,26 +101,35 @@ export interface PropertiesView {
  * What Properties shows for a selection of `parts` parts, `wires` wires, `labels` net labels and flags and `drawings`
  * drawings: the board, one part's, one wire's, one label's, one drawing's, or the group's.
  */
-export type PropertiesKind = "board" | "part" | "wire" | "label" | "drawing" | "copper" | "group"
+export type PropertiesKind = "board" | "part" | "wire" | "label" | "drawing" | "copper" | "text" | "group"
 
-export function propertiesKind(parts: number, wires: number, labels = 0, drawings = 0, copper = 0): PropertiesKind {
-  const total = parts + wires + labels + drawings + copper
+/** `texts` counts the parts' names and values (or designators) selected. */
+export function propertiesKind(parts: number, wires: number, labels = 0, drawings = 0, copper = 0, texts = 0): PropertiesKind {
+  const total = parts + wires + labels + drawings + copper + texts
   if (total === 0) return "board"
   if (total > 1) return "group"
   if (parts === 1) return "part"
   if (wires === 1) return "wire"
   if (copper === 1) return "copper"
+  if (texts === 1) return "text"
   return labels === 1 ? "label" : "drawing"
 }
 
 /** The kinds of object a selection counts, and how Properties names them. */
-export type ObjectKind = "parts" | "wires" | "labels" | "drawings" | "copper"
+export type ObjectKind = "parts" | "wires" | "labels" | "drawings" | "copper" | "texts"
 
-export const KIND_LABELS: Record<ObjectKind, string> = { parts: "Parts", wires: "Wires", labels: "Net labels and flags", drawings: "Drawings", copper: "Tracks and vias" }
+export const KIND_LABELS: Record<ObjectKind, string> = {
+  parts: "Parts",
+  wires: "Wires",
+  labels: "Net labels and flags",
+  drawings: "Drawings",
+  copper: "Tracks and vias",
+  texts: "Names and values",
+}
 
-const KIND_ROW = /^kind:(parts|wires|labels|drawings|copper):(\d+)$/
+const KIND_ROW = /^kind:(parts|wires|labels|drawings|copper|texts):(\d+)$/
 
-/** A "kind:<parts|wires|labels|drawings|copper>:<count>" row read back; undefined for any other row. */
+/** A "kind:<parts|wires|labels|drawings|copper|texts>:<count>" row read back; undefined for any other row. */
 export function kindRow(id: string): { kind: ObjectKind; count: number } | undefined {
   const match = KIND_ROW.exec(id)
   return match ? { kind: match[1] as ObjectKind, count: Number(match[2]) } : undefined
@@ -127,13 +140,13 @@ export function kindRow(id: string): { kind: ObjectKind; count: number } | undef
  * wires, labels or drawings among them (`wires`, `labels`, `drawings`, how many), the section first counts each kind
  * present. The header counts every object.
  */
-export function propertiesView(parts: readonly SelectedPart[], opts: SectionOptions, wires = 0, labels = 0, drawings = 0, copper = 0): PropertiesView {
-  const header = `Selected objects: ${parts.length + wires + labels + drawings + copper}`
+export function propertiesView(parts: readonly SelectedPart[], opts: SectionOptions, wires = 0, labels = 0, drawings = 0, copper = 0, texts = 0): PropertiesView {
+  const header = `Selected objects: ${parts.length + wires + labels + drawings + copper + texts}`
   const [first] = parts
   const listed = parts.map((part) => `part:${part.name}`)
-  const present: [ObjectKind, number][] = [["parts", parts.length], ["wires", wires], ["labels", labels], ["drawings", drawings], ["copper", copper]]
+  const present: [ObjectKind, number][] = [["parts", parts.length], ["wires", wires], ["labels", labels], ["drawings", drawings], ["copper", copper], ["texts", texts]]
   const counts = present.flatMap(([kind, count]) => (count > 0 ? [`kind:${kind}:${count}`] : []))
-  if (wires + labels + drawings + copper > 0) return { header, sections: [{ title: "Selection", rows: [...counts, ...listed] }] }
+  if (wires + labels + drawings + copper + texts > 0) return { header, sections: [{ title: "Selection", rows: [...counts, ...listed] }] }
   if (!first) return { header, sections: boardSections() }
   if (parts.length === 1) return { header, sections: inspectorSections(first, opts) }
   return { header, sections: [{ title: "Selection", rows: listed }] }

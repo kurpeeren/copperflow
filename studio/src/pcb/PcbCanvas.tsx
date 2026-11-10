@@ -14,10 +14,12 @@ import { gridStepOptions, type GridLook } from "./grid"
 import { pointBounds, unionBoxes, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import { NO_HIGHLIGHT, partNets, pcbNetAt, type Highlight } from "./highlight"
 import type { ViolationMarker } from "./markers"
-import { drawGrid, PCB_LOOK } from "./overlays"
+import { drawGrid, drawTextOutlines, PCB_LOOK } from "./overlays"
+import { boardWithTextMoves, type PartText, type TextMove } from "./part-text"
+import { usePartTexts, useShownTexts } from "./use-part-texts"
 import { drawPcb, padAt } from "./pcb-draw"
 import type { Unit } from "./units"
-import { targetAt } from "./gestures"
+import { targetAt, type GestureTexts } from "./gestures"
 import { cursorFor, pointerHandlers, useCanvasGestures, type Gesture, type Press } from "./use-canvas-gestures"
 import { useFitSelection } from "./use-fit-selection"
 import { useNoteTool } from "./use-note-tool"
@@ -82,18 +84,21 @@ interface PcbScene {
   grid: GridLook
   /** The layout file's tracks and vias as shown, with their selection and hover. */
   copper: CopperScene
+  /** The designators as drawn (moves in place), the moves, and the one under the pointer. */
+  texts: { shown: readonly PartText[]; moves: readonly TextMove[]; hover: string | undefined }
 }
 
 /** Draws the board and its violation rings, then the editor layer, whenever anything visible changes. */
 function usePcbPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: PcbScene): void {
-  const { design, camera, size, layers, hoverPad, moving, boxes, hover, selection, locked, circuit, gesture, highlightNets, markers, activeViolation, grid, copper } = scene
+  const { design, camera, size, layers, hoverPad, moving, boxes, hover, selection, locked, circuit, gesture, highlightNets, markers, activeViolation, grid, copper, texts } = scene
+  const board = useMemo(() => boardWithTextMoves(design.pcb, texts.moves), [design.pcb, texts.moves])
   const litNets = useMemo(() => (highlightNets.length > 0 ? highlightNets : hoverPad?.net ? [hoverPad.net] : NO_HIGHLIGHT), [highlightNets, hoverPad])
   useEffect(() => {
     if (!camera) return
     const prepared = prepareCanvas(canvasRef.current, size, camera, BACKGROUND, (c, cam, s, r) => drawGrid(c, cam, s, grid, r))
     if (!prepared) return
     const { ctx, ratio } = prepared
-    drawPcb(ctx, design.pcb, { camera, size }, {
+    drawPcb(ctx, board, { camera, size }, {
       ratio,
       layers,
       ...(litNets.length > 0 ? { highlight: { nets: litNets } } : {}),
@@ -104,7 +109,8 @@ function usePcbPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: PcbS
     })
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
     drawEditorLayer(ctx, camera, size, { view: "pcb", boxes, moving, hover, selection, locked, marks: circuit.annotations.marks, gesture, look: PCB_LOOK, ratio })
-  }, [canvasRef, design, camera, size, layers, litNets, moving, boxes, hover, selection, locked, circuit, gesture, markers, activeViolation, grid, copper])
+    drawTextOutlines(ctx, { camera, size }, texts.shown, { selected: selection.texts, hover: gesture ? undefined : texts.hover }, PCB_LOOK, ratio)
+  }, [canvasRef, board, camera, size, layers, litNets, moving, boxes, hover, selection, locked, circuit, gesture, markers, activeViolation, grid, copper, texts])
 }
 
 interface PcbToolsProps {
@@ -124,22 +130,25 @@ function PcbTools({ unit, step, setStep, keep }: PcbToolsProps) {
   )
 }
 
-/** The part and the pad under the pointer. */
-function usePcbHover(design: Design, boxes: PartBox[], pick: PickLayers, filter: PickFilter) {
+/** The part, the designator and the pad under the pointer. */
+function usePcbHover(design: Design, boxes: PartBox[], pick: PickLayers, filter: PickFilter, texts: GestureTexts) {
   const [part, setPart] = useState<string>()
+  const [text, setText] = useState<string>()
   const [pad, setPad] = useState<WorldPad>()
   // Parts and pads on hidden layers, or of a kind the Filter tab switched off, are not there to hover, as they are not there to pick.
   const at = (world: Point) => {
     const context: PickContext = { selection: Selection.none, armed: null, layers: pick, filter }
-    const target = targetAt(boxes, undefined, world, context)
+    const target = targetAt(boxes, undefined, world, context, undefined, undefined, texts)
     setPart(target.kind === "part" ? target.name : undefined)
+    setText(target.kind === "text" ? target.id : undefined)
     setPad(padAt(design.pcb, world, pick.visible, (name) => canPick({ kind: "part", name }, context)))
   }
   const leave = () => {
     setPart(undefined)
+    setText(undefined)
     setPad(undefined)
   }
-  return { part, pad, at, leave }
+  return { part, text, pad, at, leave }
 }
 
 type PcbKeysInput = Omit<PartKeysInput, "netUnderPointer" | "netsOf">
@@ -273,19 +282,26 @@ export function PcbCanvas(props: PcbCanvasProps) {
   useTrackShape({ design, selection, lockedParts: parts.locked, routing: trackArm.route !== null, send: (change) => copper.latest.current.send(change), busy: () => copper.latest.current.inFlight, notify: actions.notify })
   const track = useTrackTool({ design, builtMark, copper: copper.shown, camera, cursor, step, snap, layers, activeLayer: props.activeLayer, onActiveLayer: props.onActiveLayer, locked: parts.locked, actions, arm: trackArm, onArm: note.disarm })
   usePcbToolState(track.command ?? boxToolCommand(note.which), note.disarm, trackArm.disarm)
-  const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, snap, builtFrom, selection, tool: { armed: note.tool, disarm: note.disarm }, layers: pick, copper: copperAreas, copperAt: (world) => copperIdAt(copper, world), filter: pickFilter, onContextMenu: track.armed ? track.cancel : props.onContextMenu })
+  const silkShown = useCallback((name: string) => {
+    const part = design.pcb.parts.find((p) => p.component === name)
+    return part !== undefined && layers[part.side === "top" ? "topSilk" : "bottomSilk"]
+  }, [design, layers])
+  const texts = usePartTexts({ view: "pcb", design, circuit, actions, locked: parts.locked, builtFrom, drawn: silkShown })
+  const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, snap, builtFrom, selection, tool: { armed: note.tool, disarm: note.disarm }, layers: pick, copper: copperAreas, copperAt: (world) => copperIdAt(copper, world), texts: texts.tools, filter: pickFilter, onContextMenu: track.armed ? track.cancel : props.onContextMenu })
   const layout = useLayout(parts, step, snap)
   const copperLine = useMemo(() => selectedCopperLine(selection.copper, selection.total, copper.shown), [selection, copper.shown])
   const menuPlace = useKeyMenuPlace(canvasRef, selection.primary, parts.boxes, camera, size, undefined, copperLine)
-  const { rotateHeld } = usePcbKeys(design, cursor, layers, { ...common, paused: track.routing, selection, layout, builtMark, buildStatus, moveWaiting: gestures.pending !== undefined, fit, onHighlight, menuPlace, onContextMenu: props.onContextMenu, copper: copper.keys })
-  const hover = usePcbHover(design, parts.boxes, pick, pickFilter)
+  const { rotateHeld } = usePcbKeys(design, cursor, layers, { ...common, paused: track.routing, selection, layout, builtMark, buildStatus, moveWaiting: gestures.pending !== undefined, fit, onHighlight, menuPlace, onContextMenu: props.onContextMenu, copper: copper.keys, texts })
+  const hover = usePcbHover(design, parts.boxes, pick, pickFilter, texts.tools)
   const { gesture } = gestures
+  const shownTexts = useShownTexts(texts, gesture)
+  const sceneTexts = useMemo(() => ({ ...shownTexts, hover: hover.text }), [shownTexts, hover.text])
   const moving = copper.moving ? { names: copper.moving.names, offset: copper.moving.offset } : gestures.moving
   const copperScene: CopperScene = { ...copper.scene, activeLayer: props.activeLayer, routes: track.routes }
-  usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad: hover.pad, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, highlightNets: highlight, markers, activeViolation, grid, copper: copperScene })
+  usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad: hover.pad, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, highlightNets: highlight, markers, activeViolation, grid, copper: copperScene, texts: sceneTexts })
   const context: PickContext = { selection, armed: note.tool, layers: pick, filter: pickFilter }
   const { pointer, onLeave } = pcbPointer({ copper, track, hover, boxes: parts.boxes, context, camera, size, canvasRef, gestures, setCursor, onOpenProperties: props.onOpenProperties })
-  const cursorStyle = track.armed ? "crosshair" : (copperCursor(copper) ?? cursorFor(gesture, note.armed, hover.part !== undefined))
+  const cursorStyle = track.armed ? "crosshair" : (copperCursor(copper) ?? cursorFor(gesture, note.armed, hover.part !== undefined || hover.text !== undefined))
   return (
     <div className="pcb-canvas" ref={wrapRef}>
       <PcbSurface canvasRef={canvasRef} size={size} cursorStyle={cursorStyle} pointer={pointer} onLeave={onLeave} hint={note.hint ?? track.hint} />

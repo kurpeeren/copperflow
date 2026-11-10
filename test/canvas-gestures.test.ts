@@ -66,6 +66,10 @@ const FLAG: NetLabel = { id: "label:net.GND:R2.pin2", net: "net.GND", text: "GND
 const FLAG_BOX = { minX: 8.5, minY: -0.5, maxX: 9.5, maxY: 0.5 }
 const flagAt = (p: Point) => (p.x >= FLAG_BOX.minX && p.x <= FLAG_BOX.maxX && p.y >= FLAG_BOX.minY && p.y <= FLAG_BOX.maxY ? FLAG : undefined)
 
+// R2's name, moved off to the right: its middle at (12, 0), answering from x 11 to 13 and y -0.1 to 0.1.
+const R2_NAME = "R2:schNameAt"
+const textAt = (p: Point) => (p.x >= 11 && p.x <= 13 && Math.abs(p.y) <= 0.1 ? R2_NAME : undefined)
+
 /** A canvas with R1 and R2: what the steps told it, and the selection they left. */
 function canvas(start: readonly string[] = [], options: CanvasOptions = {}) {
   const calls: string[] = []
@@ -81,6 +85,7 @@ function canvas(start: readonly string[] = [], options: CanvasOptions = {}) {
   const commit = (names: readonly string[], offset: Point, wires: readonly string[] = [], labels: readonly string[] = [], drawings: readonly string[] = []) =>
     void commits.push({ names, offset, ...(wires.length > 0 ? { wires } : {}), ...(labels.length > 0 ? { labels } : {}), ...(drawings.length > 0 ? { drawings } : {}) })
   const labelMoves: { id: string; at: Point }[] = []
+  const textMoves: { id: string; at: Point }[] = []
   const shapes: { id: string; path: readonly Point[] }[] = []
   const drag: GestureWires["drag"] = {
     points: (id) => (id === "wire:W" ? state.wirePoints : undefined),
@@ -119,6 +124,12 @@ function canvas(start: readonly string[] = [], options: CanvasOptions = {}) {
       origin: (id) => (id === "G1" ? { x: 0.25, y: -3 } : undefined),
       blocker: (id) => (options.locked?.includes(id) ? `${id} is locked` : null),
     },
+    texts: {
+      at: textAt,
+      position: (id) => (id === R2_NAME ? { x: 12, y: 0 } : undefined),
+      blocker: () => (options.locked?.includes("R2") ? "R2 is locked" : null),
+      commit: (id, at) => void textMoves.push({ id, at }),
+    },
     ...(options.filter ? { filter: options.filter } : {}),
   })
   /** Presses at `from`, moves through `path` and lets go at the last point, as the hook does. */
@@ -130,7 +141,7 @@ function canvas(start: readonly string[] = [], options: CanvasOptions = {}) {
     return started
   }
   const session = () => gestureSession(() => ({ input: input(), commit }), () => undefined)
-  return { state, calls, commits, shapes, menus, labelMoves, gesture, session, input }
+  return { state, calls, commits, shapes, menus, labelMoves, textMoves, gesture, session, input }
 }
 
 afterEach(() => vi.unstubAllGlobals())
@@ -247,6 +258,46 @@ describe("parts and wires in one selection", () => {
     const c = canvas(["R1"], { wires: ["wire:W"] })
     expect(c.gesture({}, screen(7, 3), screen(7.6, 3))).toMatchObject({ kind: "drag", wire: "wire:W" })
     expect(c.shapes).toEqual([])
+  })
+})
+
+describe("a part's name, value or designator", () => {
+  test("a plain press selects it alone and drags it alone onto the grid, written once on the drop", () => {
+    const c = canvas(["R1"])
+    expect(c.gesture({}, screen(12), screen(12.3), screen(12.6, 0.2))).toMatchObject({ kind: "text", id: R2_NAME })
+    expect(c.state.selection).toMatchObject({ names: [], texts: [R2_NAME] })
+    expect(c.textMoves).toEqual([{ id: R2_NAME, at: { x: 12.5, y: 0 } }])
+    expect(c.commits).toEqual([])
+  })
+
+  test("a still click selects it and writes nothing", () => {
+    const c = canvas()
+    c.gesture({}, screen(12))
+    expect(c.state.selection.soleText).toBe(R2_NAME)
+    expect(c.textMoves).toEqual([])
+  })
+
+  test("Shift or Ctrl adds it to the selection, and again takes it out", () => {
+    const c = canvas(["R1"])
+    c.gesture({ shiftKey: true }, screen(12))
+    expect(c.state.selection).toMatchObject({ names: ["R1"], texts: [R2_NAME] })
+    c.gesture({ ctrlKey: true }, screen(12))
+    expect(c.state.selection).toMatchObject({ names: ["R1"], texts: [] })
+  })
+
+  test("a locked part's name says why and stays", () => {
+    const c = canvas([], { locked: ["R2"] })
+    c.gesture({}, screen(12), screen(13), screen(14))
+    expect(c.textMoves).toEqual([])
+    expect(c.calls).toEqual(["notify R2 is locked"])
+  })
+
+  test("a drag on a selected part leaves the selected names where they are", () => {
+    const c = canvas(["R1"])
+    c.state.selection = c.state.selection.toggleText(R2_NAME)
+    c.gesture({}, screen(1), screen(1.6), screen(2))
+    expect(c.commits).toEqual([{ names: ["R1"], offset: { x: 1, y: 0 } }])
+    expect(c.textMoves).toEqual([])
   })
 })
 
@@ -580,6 +631,7 @@ describe("what a double click does", () => {
 describe("Esc during a gesture", () => {
   test("drops a net label's drag and a wire's reshape, and leaves the others to Esc's own work", () => {
     expect(cancelsOnEscape("label")).toBe(true)
+    expect(cancelsOnEscape("text")).toBe(true)
     expect(cancelsOnEscape("reshape")).toBe(true)
     for (const kind of ["drag", "box", "pan", "note", "zoom"] as const) expect(cancelsOnEscape(kind)).toBe(false)
     expect(cancelsOnEscape(undefined)).toBe(false)

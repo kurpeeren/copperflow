@@ -113,8 +113,14 @@ export interface CircuitModel {
   boardClose?: { start: number }
 }
 
+/**
+ * What setProps writes to a prop: a literal; a point, for the props that move a part's labels (schNameAt, schValueAt,
+ * pcbNameAt); or null, which removes one of those three props.
+ */
+export type PropValue = Literal | Point | null
+
 export type Edit =
-  | { kind: "setProps"; part: string; props: Record<string, Literal> }
+  | { kind: "setProps"; part: string; props: Record<string, PropValue> }
   | { kind: "removePart"; part: string }
   /** `schematicRouteHints` are the corners of a wire drawn by hand in the schematic. */
   /** `page` puts it in that `<page>` (made when missing); without one, or "Main", it goes on the first page. */

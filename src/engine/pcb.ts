@@ -29,6 +29,8 @@ export interface PlacedFootprint {
   courtyard: Point[]
   silkscreen: Point[][]
   fabrication: Point[][]
+  /** The middle of the silkscreen designator, when the part's pcbNameAt moves it: its origin plus that offset, in mm. */
+  nameAt?: Point
 }
 
 export interface RatsnestLine {
@@ -129,6 +131,7 @@ function place(component: Component, footprint: Footprint | undefined, at: Place
     courtyard: move(footprint?.courtyard ?? FALLBACK_COURTYARD),
     silkscreen: (footprint?.silkscreen ?? []).map(move),
     fabrication: (footprint?.fabrication ?? []).map(move),
+    ...(component.pcbNameAt ? { nameAt: { x: at.x + component.pcbNameAt.x, y: at.y + component.pcbNameAt.y } } : {}),
   }
 }
 

@@ -175,15 +175,16 @@ describe("the Filter tab", () => {
   })
 
   test("toggling gives a new filter, the rows follow the view, and a missing filter allows everything", () => {
-    expect(ALL_PICKABLE).toEqual({ parts: true, labels: true, wires: true, drawings: true, tracks: true, vias: true })
+    expect(ALL_PICKABLE).toEqual({ parts: true, labels: true, wires: true, drawings: true, tracks: true, vias: true, texts: true })
     const off = togglePickKind(ALL_PICKABLE, "labels")
-    expect(off).toEqual({ parts: true, labels: false, wires: true, drawings: true, tracks: true, vias: true })
+    expect(off).toEqual({ parts: true, labels: false, wires: true, drawings: true, tracks: true, vias: true, texts: true })
     expect(ALL_PICKABLE.labels).toBe(true)
     expect(togglePickKind(off, "labels")).toEqual(ALL_PICKABLE)
     expect(kindPickable(undefined, "parts")).toBe(true)
-    expect(pickKindRows("pcb").map((row) => row.label)).toEqual(["Parts", "Tracks", "Vias"])
-    expect(pickKindRows("pcb").map((row) => row.kind)).toEqual(["parts", "tracks", "vias"])
-    expect(pickKindRows("schematic").map((row) => row.label)).toEqual(["Parts", "Wires", "Net labels and flags", "Drawings"])
+    expect(pickKindRows("pcb").map((row) => row.label)).toEqual(["Parts", "Tracks", "Vias", "Designators"])
+    expect(pickKindRows("pcb").map((row) => row.kind)).toEqual(["parts", "tracks", "vias", "texts"])
+    expect(pickKindRows("schematic").map((row) => row.label)).toEqual(["Parts", "Wires", "Net labels and flags", "Drawings", "Names and values"])
+    expect(pickKindRows("schematic").find((row) => row.label === "Names and values")?.kind).toBe("texts")
     expect(pickKindRows("schematic").find((row) => row.label === "Drawings")?.kind).toBe("drawings")
     expect(pickKindRows("schematic").find((row) => row.label === "Wires")?.kind).toBe("wires")
   })
@@ -198,5 +199,29 @@ describe("copper picks", () => {
     expect(canPick({ kind: "via", id: "v0001" }, context({ ...ALL_PICKABLE, tracks: false }))).toBe(true)
     expect(canPick({ kind: "via", id: "v0001" }, context({ ...ALL_PICKABLE, vias: false }))).toBe(false)
     expect(canPick({ kind: "track", id: "t0001" }, { ...context(), armed: "note" })).toBe(false)
+  })
+})
+
+describe("a part's name, value or designator", () => {
+  // R1's name sits from x = 3 to 6 on y = 0: over R1's box (0 to 4) on the left, and on its own on the right.
+  const texts = { at: (world: { x: number; y: number }) => (world.x >= 3 && world.x <= 6 && Math.abs(world.y) < 0.2 ? "R1:schNameAt" : undefined) }
+
+  test("is picked after the wires and the parts: on its own it is the target, over a part's body or a wire it is not", () => {
+    expect(targetAt(BOXES, undefined, { x: 5, y: 0 }, free, wires, undefined, texts)).toEqual({ kind: "text", id: "R1:schNameAt" })
+    expect(targetAt(BOXES, undefined, { x: 3.5, y: 0 }, free, wires, undefined, texts)).toEqual({ kind: "part", name: "R1" })
+    const wiresHere = { at: () => "wire:W" }
+    expect(targetAt(BOXES, undefined, { x: 5, y: 0 }, free, wiresHere, undefined, texts)).toEqual({ kind: "wire", id: "wire:W" })
+  })
+
+  test("is not picked while the Filter tab has Names and values off, nor under the Note box tool", () => {
+    const off: PickContext = { ...free, filter: { ...ALL_PICKABLE, texts: false } }
+    expect(targetAt(BOXES, undefined, { x: 5, y: 0 }, off, wires, undefined, texts)).toEqual({ kind: "canvas" })
+    expect(targetAt(BOXES, undefined, { x: 5, y: 0 }, note, wires, undefined, texts)).toEqual({ kind: "canvas" })
+    expect(canPick({ kind: "text", id: "R1:schNameAt" }, free)).toBe(true)
+  })
+
+  test("Select all leaves the names and values out", () => {
+    const before = Selection.none.toggleText("R1:schNameAt")
+    expect(selectAll(["R1"])(before).texts).toEqual([])
   })
 })

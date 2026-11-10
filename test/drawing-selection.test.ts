@@ -84,3 +84,13 @@ describe("copper in the shown selection", () => {
     expect(shownSelection(picked, { view: "schematic", copper: ["t0001", "v0001"] }).copper).toEqual([])
   })
 })
+
+describe("names, values and designators in the shown selection", () => {
+  test("a text shows only in the view that draws it and only while its part draws it: gone after a build, waiting on the other view", () => {
+    const picked = Selection.none.onlyText("R1:schNameAt")
+    expect(shownSelection(picked, { view: "schematic", texts: ["R1:schNameAt", "R1:schValueAt"] }).soleText).toBe("R1:schNameAt")
+    expect(shownSelection(picked, { view: "pcb", texts: ["R1:pcbNameAt"] }).texts).toEqual([])
+    expect(shownSelection(picked, { view: "schematic", texts: ["R2:schNameAt"] }).texts).toEqual([])
+    expect(shownSelection(picked, { view: "schematic" }).texts).toEqual([])
+  })
+})
