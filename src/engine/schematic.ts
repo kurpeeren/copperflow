@@ -71,7 +71,9 @@ function origins(circuit: Circuit, symbols: ReadonlyMap<string, SchSymbol>): Map
   for (const component of circuit.components) {
     if (component.sch) result.set(component.id, { ...component.sch, autoPlaced: false })
   }
-  for (const [name, spot] of placeLoose(circuit, symbols)) result.set(name, { ...spot, autoPlaced: true })
+  const turns = new Map(circuit.components.flatMap((c) => (c.kind === "sheet" && typeof c.props["schRotation"] === "number" ? [[c.id, c.props["schRotation"]] as const] : [])))
+  // A sheet symbol placed by the layout still turns as its instance's schRotation says.
+  for (const [name, spot] of placeLoose(circuit, symbols)) result.set(name, { ...spot, rotation: turns.get(name) ?? spot.rotation, autoPlaced: true })
   return result
 }
 

@@ -181,3 +181,9 @@ test("a sheet built alone shows its parts by their local names and a flag for ea
   expect(flags).toEqual(["port:VIN VIN -0.5,0", "port:VOUT VOUT 0.5,0", "port:GND GND -1.5,0"])
   expect(built.schematic.pages?.[0]?.labels).toEqual(expect.arrayContaining(["port:VIN", "port:VOUT", "port:GND"]))
 })
+
+test("an instance with schRotation and no position turns its symbol where the layout places it", () => {
+  const built = design(`<PowerStage name="PS1" connections={{ VIN: "A", VOUT: "B", GND: "GND" }} schRotation={90} />`)
+  expect(built.circuit.instances?.[0]?.schRotation).toBe(90)
+  expect(built.schematic.symbols.find((s) => s.component === "PS1")).toMatchObject({ rotation: 90, autoPlaced: true })
+})

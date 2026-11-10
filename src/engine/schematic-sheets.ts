@@ -28,7 +28,7 @@ function symbolComponent(instance: SheetInstance): Component {
     pinSides: {},
     ...(instance.sch ? { sch: { x: instance.sch.x, y: instance.sch.y, rotation: instance.sch.rotation ?? 0 } } : {}),
     groupOffset: { pcb: { x: 0, y: 0 }, sch: { x: 0, y: 0 } },
-    props: {},
+    props: instance.schRotation === undefined ? {} : { schRotation: instance.schRotation },
     source: instance.source,
     ...(instance.page === undefined ? {} : { page: instance.page }),
   }

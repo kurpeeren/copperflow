@@ -253,7 +253,7 @@ class Elaboration {
   }
 
   /** The offset inside the instance, and the instance's own position as the design records it. */
-  private instancePlacement(props: Props, name: string, offset: Offset, source: SourceRef): { offset: Offset; record: Pick<SheetInstance, "sch" | "pcb"> } {
+  private instancePlacement(props: Props, name: string, offset: Offset, source: SourceRef): { offset: Offset; record: Pick<SheetInstance, "sch" | "schRotation" | "pcb"> } {
     const reader = new PropReader(props, name, source)
     const [pcbX, pcbY, schX, schY] = [reader.length("pcbX"), reader.length("pcbY"), reader.length("schX"), reader.length("schY")]
     const turn = reader.angle("pcbRotation")
@@ -264,6 +264,8 @@ class Elaboration {
     const sch = { x: offset.schX + (schX ?? 0), y: offset.schY + (schY ?? 0) }
     const record = {
       ...(schX !== undefined || schY !== undefined ? { sch: { ...sch, ...(schTurn === undefined ? {} : { rotation: quarterTurn(schTurn) }) } } : {}),
+      // Kept without a position too: Rotate on an auto-placed symbol writes schRotation alone.
+      ...(schTurn === undefined ? {} : { schRotation: quarterTurn(schTurn) }),
       ...(pcbX !== undefined || pcbY !== undefined || turn !== undefined ? { pcb: { ...at, rotation } } : {}),
     }
     return { offset: { pcbX: at.x, pcbY: at.y, schX: sch.x, schY: sch.y, pcbRotation: rotation }, record }

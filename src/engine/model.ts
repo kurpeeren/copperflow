@@ -210,6 +210,8 @@ export interface SheetInstance {
   size?: SheetSize
   /** The instance's own schX/schY (and schRotation, when written) and pcbX/pcbY/pcbRotation, when written. */
   sch?: Point & { rotation?: number }
+  /** The symbol's schRotation, quarter turns, whenever written, with or without schX/schY. */
+  schRotation?: number
   pcb?: { x: number; y: number; rotation: number }
   /** The page it is on; absent on the first page. */
   page?: string
