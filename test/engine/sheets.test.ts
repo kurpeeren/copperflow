@@ -90,9 +90,9 @@ test("the circuit keeps each instance: sheet file, base, connections and ports w
       designatorBase: 100,
       connections: { VIN: "VBUS", VOUT: "V3_3", GND: "GND" },
       ports: [
-        { name: "VIN", net: "VBUS" },
-        { name: "VOUT", net: "V3_3" },
-        { name: "GND", net: "GND" },
+        { name: "VIN", net: "VBUS", side: "left", order: 1 },
+        { name: "VOUT", net: "V3_3", side: "right", order: 1 },
+        { name: "GND", net: "GND", side: "bottom", order: 1 },
       ],
       parts: ["C101", "R101", "R102", "U101"],
       sch: { x: 10, y: 0 },
@@ -233,7 +233,8 @@ test("flattening is deterministic", () => {
 
 test("the design built from instances is the flat design the tools read", () => {
   const design = buildDesign({ [MAIN]: mainWith(TWO), [SHEET]: POWER_STAGE }, MAIN)
-  expect(design.schematic.symbols.map((p) => p.component).sort()).toEqual(["C101", "C201", "R1", "R101", "R102", "R201", "R202", "U101", "U201"])
+  // The parent page draws each instance as its sheet symbol; the parts inside are on the sheet's own page.
+  expect(design.schematic.symbols.map((p) => p.component).sort()).toEqual(["PS1", "PS2", "R1"])
   expect(design.pcb.parts.map((p) => p.component)).toContain("U201")
   expect(design.diagnostics.filter((d) => d.severity === "error")).toEqual([])
 })
@@ -388,14 +389,13 @@ test("an instance's unplaced parts are placed near the instance and clear of ano
   )
   const sch = new Map(design.schematic.symbols.map((s) => [s.component, s]))
   const pcb = new Map(design.pcb.parts.map((p) => [p.component, p]))
-  for (const [ids, at] of [
-    [["R101", "C101"], { sch: { x: 20, y: 10 }, pcb: { x: 15, y: 15 } }],
-    [["R201", "C201"], { sch: { x: -20, y: -10 }, pcb: { x: -15, y: -15 } }],
+  for (const [instance, ids, at] of [
+    ["P1", ["R101", "C101"], { sch: { x: 20, y: 10 }, pcb: { x: 15, y: 15 } }],
+    ["P2", ["R201", "C201"], { sch: { x: -20, y: -10 }, pcb: { x: -15, y: -15 } }],
   ] as const) {
+    expect(sch.get(instance)).toMatchObject(at.sch)
     for (const id of ids) {
-      const symbol = sch.get(id)
       const part = pcb.get(id)
-      expect(Math.hypot((symbol?.x ?? 1e9) - at.sch.x, (symbol?.y ?? 1e9) - at.sch.y)).toBeLessThan(6)
       expect(Math.hypot((part?.x ?? 1e9) - at.pcb.x, (part?.y ?? 1e9) - at.pcb.y)).toBeLessThan(6)
     }
   }
@@ -405,15 +405,14 @@ test("an instance's unplaced parts are placed near the instance and clear of ano
 
 test("an instance without a position keeps its parts together, clear of the rest", () => {
   const design = designOf([`<Pair name="P1" connections={{ IN: "A" }} />`, `<Pair name="P2" connections={{ IN: "B" }} />`, `<resistor name="R1" footprint="0402" />`].join(""))
-  const sch = new Map(design.schematic.symbols.map((s) => [s.component, s]))
+  // On the parent page each instance is one symbol, placed like a part.
+  expect(design.schematic.symbols.map((s) => s.component).sort()).toEqual(["P1", "P2", "R1"])
   const pcb = new Map(design.pcb.parts.map((p) => [p.component, p]))
   for (const [a, b] of [
     ["R101", "C101"],
     ["R201", "C201"],
   ] as const) {
-    const [sa, sb] = [sch.get(a), sch.get(b)]
     const [pa, pb] = [pcb.get(a), pcb.get(b)]
-    expect(Math.hypot((sa?.x ?? 0) - (sb?.x ?? 1e9), (sa?.y ?? 0) - (sb?.y ?? 1e9))).toBeLessThan(6)
     expect(Math.hypot((pa?.x ?? 0) - (pb?.x ?? 1e9), (pa?.y ?? 0) - (pb?.y ?? 1e9))).toBeLessThan(6)
   }
   const courtyards = design.pcb.parts.map((p) => boxOf(p.courtyard))
