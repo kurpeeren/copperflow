@@ -1,5 +1,6 @@
+import { deflateRawSync } from "node:zlib"
 import { describe, expect, test } from "vitest"
-import { zipFiles } from "../../src/engine/fab/zip.js"
+import { DEFLATE_LEVEL, zipFiles } from "../../src/engine/fab/zip.js"
 import { readZip } from "../helpers/zip-read.js"
 
 const CREATED = new Date(Date.UTC(2026, 10, 10, 9, 5, 7))
@@ -21,6 +22,14 @@ describe("the zip writer", () => {
     const files = [{ name: "a.txt", text: "x".repeat(500) }]
     expect(Buffer.from(zipFiles(files, CREATED)).equals(Buffer.from(zipFiles(files, CREATED)))).toBe(true)
     expect(Buffer.from(zipFiles(files, CREATED)).equals(Buffer.from(zipFiles(files, new Date(Date.UTC(2027, 0, 1)))))).toBe(false)
+  })
+
+  test("deflates at a level it names, zlib's normal level 6, not whatever zlib's default is", () => {
+    const text = "X1000000Y2000000D01*\n".repeat(300)
+    expect(DEFLATE_LEVEL).toBe(6)
+    const zip = Buffer.from(zipFiles([{ name: "a.gtl", text }], CREATED))
+    const body = deflateRawSync(Buffer.from(text, "utf8"), { level: DEFLATE_LEVEL })
+    expect(zip.subarray(30 + "a.gtl".length, 30 + "a.gtl".length + body.length).equals(body)).toBe(true)
   })
 
   test("an empty archive is just the end record", () => {
