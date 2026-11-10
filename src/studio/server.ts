@@ -397,10 +397,14 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         const circuit = (await loadCircuit(root, Bodies.build.parse(await readJson(req)).file)).file
         return send(res, await exportPackage(root, circuit, { design: await designOf(circuit) }))
       }
-      // The fabrication files go beside the circuit; a design with errors is refused (written: false) with them.
+      // The fabrication files go beside the circuit. Not while the router runs (it would export the board before the
+      // run's copper); the export takes the design in the project's write queue, so no write lands between the two.
       case "POST /api/export": {
         const circuit = (await resolveCircuit(root, Bodies.build.parse(await readJson(req)).file)).file
-        return send(res, await exportFabrication(root, circuit, { design: await designOf(circuit) }))
+        if (router.running !== undefined) throw new HttpError(409, `The board of ${router.running} is being routed; cancel it or wait for it to end before exporting`)
+        const result = await exportFabrication(root, circuit, { engine: { build: (_root, file) => designOf(file) } })
+        if (!result.written) throw new HttpError(422, `No fabrication files written: ${result.errors.join("; ")}`)
+        return send(res, result)
       }
       // Undo and redo write the file too: their write mark, as an edit's, lets the keys wait for the build that read them.
       case "POST /api/undo": {

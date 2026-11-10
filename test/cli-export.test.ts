@@ -1,4 +1,4 @@
-import { cp, mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises"
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
@@ -94,5 +94,51 @@ describe("copperflow export", () => {
     expect(await run("help")).toBe(0)
     expect(out.join("\n")).toContain("copperflow export <file> [--out dir]")
     expect(out.join("\n")).toContain("export exits with 1 when the circuit has errors")
+  })
+})
+
+describe("copperflow export keeps to the project", () => {
+  let outside: string
+  beforeEach(async () => {
+    outside = await mkdtemp(join(tmpdir(), "cf-cli-outside-"))
+    await writeFile(join(root, "led.circuit.tsx"), CLEAN)
+  })
+  afterEach(async () => {
+    await rm(outside, { recursive: true, force: true })
+  })
+  /** A junction on Windows (no rights needed), a folder symlink elsewhere. */
+  const link = (target: string, path: string) => symlink(target, join(root, path), "junction")
+
+  test("--out through a link to a folder outside the project is refused and writes nothing there", async () => {
+    await link(outside, "away")
+    expect(await run("export", "led.circuit.tsx", "--out", "away")).toBe(1)
+    expect(err.at(-1)).toMatch(/away is outside the project root/)
+    expect(await run("export", "led.circuit.tsx", "--out", "away/deeper")).toBe(1)
+    expect(err.at(-1)).toMatch(/away\/deeper is outside the project root/)
+    expect(await readdir(outside)).toEqual([])
+  })
+
+  test("a <name>-fab folder that is a link to outside is refused, so neither the files nor the stale-file removal reach there", async () => {
+    await writeFile(join(outside, "led-In1_Cu.g2"), "not the project's")
+    await link(outside, "led-fab")
+    expect(await run("export", "led.circuit.tsx")).toBe(1)
+    expect(err.at(-1)).toMatch(/led-fab is outside the project root/)
+    expect(await readdir(outside)).toEqual(["led-In1_Cu.g2"])
+    expect(await exists("led-fab.zip")).toBe(false)
+  })
+
+  test("a file where the <name>-fab folder goes is reported in plain words, exit code 1", async () => {
+    await writeFile(join(root, "led-fab"), "mine")
+    expect(await run("export", "led.circuit.tsx")).toBe(1)
+    expect(err.at(-1)).toBe("copperflow: Cannot write the fabrication files: led-fab is in the way (a file where a folder goes); move or rename it")
+    expect(await readFile(join(root, "led-fab"), "utf8")).toBe("mine")
+  })
+
+  test("a file of a person's own inside <name>-fab/ survives the export", async () => {
+    await mkdir(join(root, "led-fab"))
+    await writeFile(join(root, "led-fab", "order-notes.txt"), "4 boards, green")
+    expect(await run("export", "led.circuit.tsx")).toBe(0)
+    expect(await readFile(join(root, "led-fab", "order-notes.txt"), "utf8")).toBe("4 boards, green")
+    expect(await readdir(join(root, "led-fab"))).toHaveLength(14)
   })
 })
