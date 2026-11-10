@@ -10,7 +10,7 @@ import { DEFAULT_CLASS } from "../../src/engine/rules/profiles.js"
 
 const RULES = loadRules({}).rules
 const board: Board = { outline: [{ x: -5, y: -5 }, { x: 5, y: -5 }, { x: 5, y: 5 }, { x: -5, y: 5 }], layers: 2, thickness: 1.6, keepouts: [] }
-const layout: PcbLayout = { board, parts: [], ratsnest: [], tracks: [], vias: [] }
+const layout: PcbLayout = { board, parts: [], ratsnest: [], tracks: [], vias: [], pours: [], holes: [] }
 const rule = (net: string): NetRule => ({ net, className: DEFAULT_CLASS.name, width: 0.25, via: { drill: 0.3, diameter: 0.6 } })
 const across = (net: string, y: number): RoutedCopper => ({ net, tracks: [{ layer: "top", width: 0.25, points: [{ x: -3, y }, { x: 3, y }] }], vias: [] })
 

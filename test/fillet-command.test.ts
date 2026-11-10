@@ -17,7 +17,7 @@ const Z = track("t0002", [pt(-20, -20), pt(-10, -20), pt(-10, -10), pt(0, -10)])
 
 function designOf(tracks: PcbTrack[]): PlanDesign {
   const part: PlacedFootprint = { component: "U1", x: 0, y: 0, rotation: 0, side: "top", autoPlaced: false, pads: [], courtyard: [], silkscreen: [], fabrication: [] }
-  return { circuit: { nets: NETS }, pcb: { parts: [part], tracks, vias: [], ratsnest: [] }, rules: loadRules({}).rules }
+  return { circuit: { nets: NETS }, pcb: { parts: [part], tracks, vias: [], ratsnest: [], pours: [], holes: [] }, rules: loadRules({}).rules }
 }
 
 const press = (key: string, extra: Partial<KeyInput> = {}): KeyInput => ({ key, code: `Key${key.toUpperCase()}`, shiftKey: false, altKey: false, ctrlKey: false, metaKey: false, typing: false, ...extra })

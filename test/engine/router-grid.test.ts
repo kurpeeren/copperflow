@@ -24,7 +24,7 @@ function pad(id: string, x: number, y: number, net?: string): WorldPad {
 function layoutOf(pads: WorldPad[], keepouts: Keepout[] = [], tracks: PcbTrack[] = [], vias: PcbVia[] = []): PcbLayout {
   const board: Board = { outline: square(-5, -5, 5, 5), layers: 2, thickness: 1.6, keepouts }
   const part: PlacedFootprint = { component: "X", x: 0, y: 0, rotation: 0, side: "top", autoPlaced: false, pads, courtyard: [], silkscreen: [], fabrication: [] }
-  return { board, parts: [part], ratsnest: [], tracks, vias }
+  return { board, parts: [part], ratsnest: [], tracks, vias, pours: [], holes: [] }
 }
 
 const asDefault = () => DEFAULT_CLASS.name

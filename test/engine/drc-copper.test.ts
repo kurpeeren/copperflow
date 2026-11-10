@@ -32,7 +32,7 @@ interface Copper {
 
 function layoutOf({ pads = [], tracks = [], vias = [], board }: Copper): PcbLayout {
   const part: PlacedFootprint = { component: "X", x: 0, y: 0, rotation: 0, side: "top", autoPlaced: false, pads, courtyard: [], silkscreen: [], fabrication: [] }
-  return { ...(board ? { board } : {}), parts: [part], ratsnest: [], tracks, vias }
+  return { ...(board ? { board } : {}), parts: [part], ratsnest: [], tracks, vias, pours: [], holes: [] }
 }
 
 const square = (x0: number, y0: number, x1: number, y1: number): Point[] => [

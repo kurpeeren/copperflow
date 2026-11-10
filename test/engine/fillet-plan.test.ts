@@ -33,7 +33,7 @@ function designOf({ tracks = [], vias = [], pads = [], keepouts = [], rulesYaml 
   const part: PlacedFootprint = { component: "U1", x: 0, y: 0, rotation: 0, side: "top", autoPlaced: false, pads, courtyard: [], silkscreen: [], fabrication: [] }
   const board: Board = { outline: outline(-30, -30, 30, 30), layers: 2, thickness: 1.6, keepouts }
   const rules = loadRules(rulesYaml === undefined ? {} : { "rules.yaml": rulesYaml }).rules
-  return { circuit: { nets: NETS }, pcb: { board, parts: [part], tracks, vias, ratsnest: [] }, rules }
+  return { circuit: { nets: NETS }, pcb: { board, parts: [part], tracks, vias, ratsnest: [], pours: [], holes: [] }, rules }
 }
 
 const L = track("t0001", [pt(0, 0), pt(10, 0), pt(10, 10)])

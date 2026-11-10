@@ -9,7 +9,9 @@ import { diagnostic } from "./diagnostics.js"
 import type { Diagnostic, Circuit } from "./model.js"
 import { withDesignators } from "./fab/designators.js"
 import { layoutPcb, type PcbLayout } from "./pcb.js"
+import { cachedPourFills } from "./pour/cache.js"
 import { netClasses } from "./rules/classes.js"
+import { DEFAULT_CLASS } from "./rules/profiles.js"
 import { layerCountWarnings, loadRules } from "./rules/load.js"
 import type { Rules } from "./rules/schema.js"
 import { layoutSchematicWithDiagnostics, type SchematicLayout } from "./schematic.js"
@@ -54,6 +56,14 @@ function readCopper(files: Files, main: string): { records: LayoutRecord[]; diag
   return { records, diagnostics: errors.map((error) => diagnostic("layout-file", "error", `${file}: ${error}`, [])) }
 }
 
+/** The layout with its pours filled from the placed pads, the copper, the board and the rules. */
+function withPours(layout: PcbLayout, rules: Rules, byNet: ReadonlyMap<string, string>): PcbLayout {
+  if (!layout.board?.pours) return layout
+  const classOf = (net: string | undefined) => (net === undefined ? DEFAULT_CLASS.name : (byNet.get(net) ?? DEFAULT_CLASS.name))
+  const pads = layout.parts.flatMap((part) => part.pads)
+  return { ...layout, pours: cachedPourFills({ board: layout.board, pads, tracks: layout.tracks, vias: layout.vias, rules, classOf }) }
+}
+
 /** Evaluates the circuit code in `main`, then lays out the schematic and the board. Throws CircuitCodeError. */
 export function buildDesign(files: Files, main: string): Design {
   const footprintOf = footprintCache(files)
@@ -67,7 +77,8 @@ export function buildDesign(files: Files, main: string): Design {
   const notes = pcb.diagnostics.filter(isCopperNote)
   const placement = pcb.diagnostics.filter((d) => !isCopperNote(d))
   const diagnostics = [...circuit.diagnostics, ...wiring, ...copper.diagnostics, ...placement, ...loaded.diagnostics, ...layers, ...classes.diagnostics]
-  const violations = checkDesign(circuit, schematic, pcb.layout, loaded.rules, notes)
-  const board = withDesignators(pcb.layout, loaded.rules.fabrication)
+  const layout = withPours(pcb.layout, loaded.rules, classes.byNet)
+  const violations = checkDesign(circuit, schematic, layout, loaded.rules, notes)
+  const board = withDesignators(layout, loaded.rules.fabrication)
   return { version: 1, file: main, circuit, schematic, pcb: board, rules: loaded.rules, diagnostics, violations }
 }
