@@ -2,6 +2,7 @@ import { z } from "zod"
 import { applyLayoutEdits, resolveCircuit, type LayoutEdit } from "../core/index.js"
 import { buildWith, type DesignSource } from "../core/design-source.js"
 import { boardCopperLayers, type CopperLayer } from "../core/layout-file.js"
+import { segmentRemoval } from "../core/track-split.js"
 import { copperPieces, padPieces, type CopperPiece } from "../engine/checks/copper-pieces.js"
 import type { Shape } from "../engine/checks/geometry.js"
 import { copperTouches, trackLength } from "../engine/copper.js"
@@ -34,16 +35,27 @@ export const addViaInput = {
   layers: z.array(layer).min(2).optional().describe('Layers it joins; default ["top", "bottom"]; inner layers only on a 4-layer board'),
 }
 
+const copperId = z.string().regex(/^[tv]\d+$/, 'a track id such as "t0001" or a via id such as "v0001"')
+const trackSegment = z.object({
+  id: z.string().regex(/^t\d+$/, 'a track id such as "t0001"'),
+  segment: z.number().int().min(0).describe("The segment's index: 0 is from the first point to the second"),
+})
+
 export const removeCopperInput = {
   file: z.string().describe("Circuit file path relative to the project root"),
-  ids: z.array(z.string().regex(/^[tv]\d+$/, 'a track id such as "t0001" or a via id such as "v0001"')).min(1).max(100),
+  ids: z
+    .array(z.union([copperId, trackSegment]))
+    .min(1)
+    .max(100)
+    .describe('Track and via ids, or { id, segment } to remove one segment of a track: the track keeps the run before it and the run after it becomes a new track'),
 }
 
 export const ROUTE_TRACK_DESCRIPTION =
   "Draw one track of a net by hand as ONE change: a list of corner points on one layer. It must start on a pad, track or via of the net, and no corner or segment between corners may touch another net's copper. The width comes from the net class unless given. The answer is one line plus the copper violations the change introduced: new ones and existing ones it made worse (check_circuit with filter \"copper\" lists all). The program checks clearance; the router comes later. A track cannot start on a locked part's pad."
 export const ADD_VIA_DESCRIPTION =
   "Place a via by hand as ONE change. Its net is the net of the pad or track under it unless you give one; its size follows the net class and the fabrication minimum ring."
-export const REMOVE_COPPER_DESCRIPTION = "Remove tracks and vias by id (from copper_summary or check_circuit) as ONE change. Locked copper is refused."
+export const REMOVE_COPPER_DESCRIPTION =
+  "Remove tracks and vias by id (from copper_summary or check_circuit) as ONE change; { id, segment } removes only that segment of a track, splitting it into the runs left on either side (a run of one point disappears). Locked copper is refused."
 export const COPPER_SUMMARY_DESCRIPTION =
   'Summarize the copper: totals, then one line per net (tracks, vias, length in mm, connections still unrouted), then the copper violations counted by rule. At most 60 lines. Call it before and after drawing copper; check_circuit with filter "copper" lists the violations.'
 
@@ -165,9 +177,25 @@ export async function addVia(ports: Ports, input: { file: string; net?: string; 
   return applyCopper(ports, input.file, design, [edit], ([id]) => `added via ${id} on ${on} at ${at(input.at)}, ${mmText(size.drill)}/${mmText(size.diameter)} mm`)
 }
 
-/** remove_copper: tracks and vias by id as one change. */
-export async function removeCopper(ports: Ports, input: { file: string; ids: string[] }): Promise<string> {
+/** What remove_copper takes away: a track or via by id, or one segment of a track. */
+export type CopperRemoval = string | { id: string; segment: number }
+
+/** The edits that remove one item; a segment's split is worked out from the track as built (segmentRemoval). */
+function removalEdits(design: Design, item: CopperRemoval): LayoutEdit[] {
+  if (typeof item === "string") return [item.startsWith("t") ? { kind: "removeTrack", id: item } : { kind: "removeVia", id: item }]
+  const track = design.pcb.tracks.find((one) => one.id === item.id)
+  if (!track) throw new Error(`No track ${item.id} in the layout file. Nothing was written.`)
+  const net = track.named ?? track.net
+  const split = segmentRemoval({ id: track.id, ...(net === undefined ? {} : { net }), layer: track.layer, width: track.width, points: track.points, locked: track.locked }, item.segment)
+  if ("message" in split) throw new Error(`${split.message}. Nothing was written.`)
+  return split.edits
+}
+
+const removedWord = (item: CopperRemoval): string => (typeof item === "string" ? item : `segment ${item.segment} of ${item.id}`)
+
+/** remove_copper: tracks and vias by id, and segments of tracks, as one change. */
+export async function removeCopper(ports: Ports, input: { file: string; ids: CopperRemoval[] }): Promise<string> {
   const design = await buildOf(ports, input.file)
-  const edits: LayoutEdit[] = input.ids.map((id) => (id.startsWith("t") ? { kind: "removeTrack", id } : { kind: "removeVia", id }))
-  return applyCopper(ports, input.file, design, edits, () => `removed ${input.ids.join(", ")}`)
+  const edits = input.ids.flatMap((item) => removalEdits(design, item))
+  return applyCopper(ports, input.file, design, edits, () => `removed ${input.ids.map(removedWord).join(", ")}`)
 }
