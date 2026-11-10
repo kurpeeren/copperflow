@@ -108,6 +108,21 @@ describe("route_track", () => {
     expect(text).toContain("VBUS")
   })
 
+  test("is refused when a segment between corners crosses another net's pad, naming both nets and the segment", async () => {
+    const before = await entries()
+    const { text, isError } = await route("VBUS", [pt(-2.275, 0), pt(-2.275, -2), pt(-0.725, -2), pt(-0.725, 1.5)])
+    expect(isError).toBe(true)
+    expect(text).toMatch(/^Segment 3 \(-0\.725, -2\)–\(-0\.725, 1\.5\) crosses GND \(pad C1#2\), but the track is on VBUS\. Nothing was written\.$/)
+    expect(await entries()).toBe(before)
+  })
+
+  test("is refused when a segment crosses another net's track between its corners", async () => {
+    await route("V3_3", [pt(1.55, 1.2875), pt(1.55, 3), pt(5, 3)])
+    const { text, isError } = await route("VBUS", [pt(-2.275, 0), pt(-2.275, 4), pt(3, 4), pt(3, 2)])
+    expect(isError).toBe(true)
+    expect(text).toMatch(/^Segment 3 .* crosses V3_3 \(track t\d+\), but the track is on VBUS/)
+  })
+
   test("refuses an unknown net and lists the real ones", async () => {
     const { text, isError } = await route("VBUSS", [pt(-2.275, 0), pt(-2.275, -3)])
     expect(isError).toBe(true)

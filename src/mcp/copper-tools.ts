@@ -2,6 +2,9 @@ import { z } from "zod"
 import { applyLayoutEdits, resolveCircuit, type LayoutEdit } from "../core/index.js"
 import { buildWith, type DesignSource } from "../core/design-source.js"
 import { boardCopperLayers, type CopperLayer } from "../core/layout-file.js"
+import { copperPieces, padPieces, type CopperPiece } from "../engine/checks/copper-pieces.js"
+import type { Shape } from "../engine/checks/geometry.js"
+import { copperTouches } from "../engine/copper.js"
 import type { Design } from "../engine/design.js"
 import type { Point } from "../engine/model.js"
 import { defaultVia, trackWidth, viaSize } from "../engine/rules/track-defaults.js"
@@ -37,7 +40,7 @@ export const removeCopperInput = {
 }
 
 export const ROUTE_TRACK_DESCRIPTION =
-  "Draw one track of a net by hand as ONE change: a list of corner points on one layer. It must start on a pad, track or via of the net and may not touch another net's copper. The width comes from the net class unless given. The answer is one line plus the copper violations the change introduced: new ones and existing ones it made worse (check_circuit with filter \"copper\" lists all). The program checks clearance; the router comes later. A track cannot start on a locked part's pad."
+  "Draw one track of a net by hand as ONE change: a list of corner points on one layer. It must start on a pad, track or via of the net, and no corner or segment between corners may touch another net's copper. The width comes from the net class unless given. The answer is one line plus the copper violations the change introduced: new ones and existing ones it made worse (check_circuit with filter \"copper\" lists all). The program checks clearance; the router comes later. A track cannot start on a locked part's pad."
 export const ADD_VIA_DESCRIPTION =
   "Place a via by hand as ONE change. Its net is the net of the pad or track under it unless you give one; its size follows the net class and the fabrication minimum ring."
 export const REMOVE_COPPER_DESCRIPTION = "Remove tracks and vias by id (from copper_summary or check_circuit) as ONE change. Locked copper is refused."
@@ -98,6 +101,26 @@ function checkPoints(design: Design, netId: string, onLayer: CopperLayer, points
   }
 }
 
+/** The other nets' copper (and copper on no net) on the layer: pads, tracks and vias as the copper checks measure them. */
+function foreignCopper(design: Design, netId: string, onLayer: CopperLayer): CopperPiece[] {
+  const anyClass = () => ""
+  return [...padPieces(design.pcb, anyClass), ...copperPieces(design.pcb, anyClass)].filter((piece) => piece.net !== netId && piece.layers.includes(onLayer))
+}
+
+/** Refuses a segment whose copper (the centre line grown by half the width) touches another net's copper. */
+function checkSegments(design: Design, netId: string, onLayer: CopperLayer, points: readonly Point[], width: number, netName: string): void {
+  const others = foreignCopper(design, netId, onLayer)
+  for (let i = 1; i < points.length; i++) {
+    const [a, b] = [points[i - 1] as Point, points[i] as Point]
+    const segment: Shape = { core: [a, b], radius: width / 2 }
+    const hit = others.find((piece) => piece.shapes.some((shape) => copperTouches(segment, shape)))
+    if (hit) {
+      const what = `${netLabel(design.circuit.nets, hit.net)} (${hit.kind} ${hit.id})`
+      throw new Error(`Segment ${i} ${at(a)}–${at(b)} crosses ${what}, but the track is on ${netName}. Nothing was written.`)
+    }
+  }
+}
+
 function lengthOf(points: readonly Point[]): number {
   return points.reduce((sum, p, i) => (i === 0 ? 0 : sum + Math.hypot(p.x - (points[i - 1]?.x ?? p.x), p.y - (points[i - 1]?.y ?? p.y))), 0)
 }
@@ -109,6 +132,7 @@ export async function routeTrack(ports: Ports, input: { file: string; net: strin
   checkLayers(design, [input.layer])
   checkPoints(design, net.id, input.layer, input.points, nameOf(net))
   const width = input.width ?? trackWidth(design.rules, net)
+  checkSegments(design, net.id, input.layer, input.points, width, nameOf(net))
   const edit: LayoutEdit = { kind: "addTrack", net: nameOf(net), layer: input.layer, width, points: input.points }
   const segments = input.points.length - 1
   const line = () => `routed ${nameOf(net)} on ${input.layer}, ${segments} segment${segments === 1 ? "" : "s"}, ${lengthOf(input.points).toFixed(1)} mm`
