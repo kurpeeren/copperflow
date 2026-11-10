@@ -5,6 +5,7 @@ import { commandOwner } from "../studio/src/shell/command-owners.js"
 import { MENUS, menuItems } from "../studio/src/shell/menus.js"
 import { canPick } from "../studio/src/pcb/pick.js"
 import { ALL_PICKABLE, pickKindRows } from "../studio/src/pcb/pick-filter.js"
+import { pcbPress } from "../studio/src/pcb/press-order.js"
 import { Selection } from "../studio/src/selection.js"
 import { boardItemCentre, holeAt, holeLabel, pourCornerAt, pourEdgeAt, pourFillAt, pourLabel, type PourDesign } from "../studio/src/pcb/pour-hit.js"
 import { boardFieldEdit as fieldEdit, boardProperties } from "../studio/src/pcb/pour-props.js"
@@ -283,5 +284,35 @@ describe("the menus and the Layer panel", () => {
       { layer: "bottom", name: "Bottom Layer", pours: [{ id: "copperpour:1", net: "GND", layer: "bottom", shown: true }] },
     ])
     expect(togglePour(hidden, "copperpour:3").size).toBe(0)
+  })
+})
+
+describe("the order a press on the PCB is offered", () => {
+  const PRESS = { button: 0, shiftKey: false, ctrlKey: false, metaKey: false }
+  function takers(took: Partial<Record<"pourTool" | "route" | "pourCorner" | "copper" | "pour", boolean>>, text = false) {
+    const asked: string[] = []
+    const taker = (name: keyof typeof took) => () => {
+      asked.push(name)
+      return took[name] === true
+    }
+    return { asked, press: pcbPress({ pourTool: taker("pourTool"), route: taker("route"), pourCorner: taker("pourCorner"), text: () => text, copper: taker("copper"), pour: taker("pour") }) }
+  }
+
+  test("a track or via under a pour's outline takes the press first; the pour only when no copper does", () => {
+    const both = takers({ copper: true, pour: true })
+    expect(both.press(PRESS, { x: 0, y: 0 })).toBe(true)
+    expect(both.asked).toEqual(["pourTool", "route", "pourCorner", "copper"])
+    const pourOnly = takers({ pour: true })
+    expect(pourOnly.press(PRESS, { x: 0, y: 0 })).toBe(true)
+    expect(pourOnly.asked.at(-1)).toBe("pour")
+  })
+
+  test("an armed pour tool takes every press; a designator keeps the copper and pours under it from taking one", () => {
+    const tool = takers({ pourTool: true, copper: true })
+    tool.press(PRESS, { x: 0, y: 0 })
+    expect(tool.asked).toEqual(["pourTool"])
+    const text = takers({ copper: true, pour: true }, true)
+    expect(text.press(PRESS, { x: 0, y: 0 })).toBe(false)
+    expect(text.asked).toEqual(["pourTool", "route", "pourCorner"])
   })
 })

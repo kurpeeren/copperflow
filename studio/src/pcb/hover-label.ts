@@ -87,22 +87,30 @@ function trackText(design: Pick<Design, "circuit">, track: PcbTrack): string {
 
 const NO_HIDDEN: ReadonlySet<string> = new Set()
 
-/** A hole under the pointer, then a pour's outline, then the pour whose fill lies under it, of those that may be picked. */
+/** A hole under the pointer, else a pour's outline (what a click picks before the parts), of those that may be picked. */
 function boardItemTarget(world: Point, scene: PcbHoverScene): HoverTarget | undefined {
   const { design, scale, layers, context } = scene
-  const hidden = scene.pours?.hidden ?? NO_HIDDEN
-  const holeId = canPick({ kind: "hole", id: "" }, context) ? holeAt(design.pcb.holes ?? [], world, scale, layers.visible) : undefined
-  const hole = design.pcb.holes?.find((one) => one.id === holeId)
-  if (hole) return { kind: "hole", id: hole.id, text: holeLabel(hole) }
   if (!canPick({ kind: "pour", id: "" }, context)) return undefined
-  const id = pourEdgeAt(design, world, scale, layers.visible, hidden) ?? (design.pcb.pours && pourFillAt(design, world, layers.visible, hidden, scene.pours?.activeLayer))
-  const pour = poursOf(design).find((one) => one.id === id)
+  const hole = design.pcb.holes?.find((one) => one.id === holeAt(design.pcb.holes ?? [], world, scale, layers.visible))
+  if (hole) return { kind: "hole", id: hole.id, text: holeLabel(hole) }
+  return pourTarget(design, pourEdgeAt(design, world, scale, layers.visible, scene.pours?.hidden ?? NO_HIDDEN))
+}
+
+function pourTarget(design: PcbHoverScene["design"], id: string | undefined): HoverTarget | undefined {
+  const pour = id === undefined ? undefined : poursOf(design).find((one) => one.id === id)
   return pour && { kind: "pour", id: pour.id, text: pourLabel(design, pour) }
 }
 
+/** The shown pour whose fill lies under the pointer, which the label names though a click picks a pour by its outline. */
+function fillTarget(world: Point, scene: PcbHoverScene): HoverTarget | undefined {
+  const { design, layers, context } = scene
+  if (!design.pcb.pours || !canPick({ kind: "pour", id: "" }, context)) return undefined
+  return pourTarget(design, pourFillAt(design, world, layers.visible, scene.pours?.hidden ?? NO_HIDDEN, scene.pours?.activeLayer))
+}
+
 /**
- * On the PCB: a designator takes the click, so nothing; then the via or track, then the pad of a part that may be
- * picked, then a hole or a pour (named over its fill too, though a click picks a pour by its outline only).
+ * On the PCB, in a click's order: a designator takes the click, so nothing; then the via or track, then a hole or a
+ * pour's outline, then the pad of a part that may be picked; over none of them, the pour whose fill is there.
  */
 function pcbTarget(world: Point, scene: PcbHoverScene): HoverTarget | undefined {
   const { design, copper, scale, layers, context } = scene
@@ -112,8 +120,10 @@ function pcbTarget(world: Point, scene: PcbHoverScene): HoverTarget | undefined 
   if (via) return { kind: "via", id: via.id, text: viaText(design, via) }
   const track = hit?.kind === "track" ? copper.tracks.find((one) => one.id === hit.id) : undefined
   if (track) return { kind: "track", id: track.id, text: trackText(design, track) }
+  const item = boardItemTarget(world, scene)
+  if (item) return item
   const pad = padAt(design.pcb, world, layers.visible, (name) => canPick({ kind: "part", name }, context))
-  return pad ? { kind: "pad", id: pad.id, text: padText(design, pad) } : boardItemTarget(world, scene)
+  return pad ? { kind: "pad", id: pad.id, text: padText(design, pad) } : fillTarget(world, scene)
 }
 
 /** The name a net label or flag stands for: its text when the net has that name, else the net's first name. */

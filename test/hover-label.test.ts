@@ -258,3 +258,24 @@ describe("the hover label on pours and holes", () => {
     expect(hoverTarget(p(0, 0), scene(PICK, new Set(["copperpour:1"])))).toBeUndefined()
   })
 })
+
+describe("the hover label's order on pours", () => {
+  const SOURCE = { file: "a.tsx", line: 1, column: 1, offset: 0 }
+  const square = (x: number, y: number, size: number) => [p(x, y), p(x + size, y), p(x + size, y + size), p(x, y + size)]
+  const base = { priority: 0, minWidth: 0.25, thermal: "relief", thermalWidth: 0.3, thermalGap: 0.25, source: SOURCE }
+  /** A top GND pour whose outline runs along y = 0, under a track along y = 5, with a pad of U1 on its outline at x = 2. */
+  function scene(): PcbHoverScene {
+    const board = { outline: square(-50, -50, 100), layers: 2, thickness: 1.6, keepouts: [], pours: [{ id: "copperpour:1", net: "net.GND", layer: "top", outline: [p(-10, 0), p(30, 0), p(30, 20), p(-10, 20)], ...base }] }
+    const parts = [{ component: "U1", side: "top", pads: [pad("U1", "1", p(2, 0))] }]
+    const pcb = { parts, tracks: [], vias: [], ratsnest: [], board, pours: [{ id: "copperpour:1", net: "net.GND", layer: "top", polygons: [{ outer: square(-9, 1, 18), holes: [] }], area: 324 }], holes: [] }
+    const design = { circuit: CIRCUIT, pcb } as unknown as PcbHoverScene["design"]
+    return { view: "pcb", design, copper: { tracks: [track("t0012", 5, "human")], vias: [] }, scale: 20, layers: { visible: DEFAULT_LAYERS, of: () => ["top"] }, context: PICK, boxes: [] }
+  }
+
+  test("a track over a pour is named first, a pour's outline before a pad on it, and the fill last", () => {
+    expect(hoverTarget(p(0, 5), scene())?.kind).toBe("track")
+    expect(hoverTarget(p(2, 0), scene())?.kind).toBe("pour")
+    expect(hoverTarget(p(2, 0.4), scene())?.kind).toBe("pad")
+    expect(hoverTarget(p(0, 10), scene())).toEqual({ kind: "pour", id: "copperpour:1", text: "pour GND · top" })
+  })
+})

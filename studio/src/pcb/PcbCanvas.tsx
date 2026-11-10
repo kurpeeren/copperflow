@@ -43,6 +43,7 @@ import type { PourScene } from "./pour-draw"
 import type { PourFillMode } from "./pour-view"
 import { HoleDiameterField } from "./HoleDiameterField"
 import { usePours, withPourDrag } from "./use-pours"
+import { pcbPress } from "./press-order"
 
 const BACKGROUND = PALETTE.background
 
@@ -289,9 +290,7 @@ function pcbPointer({ copper, pours, track, hover, boxes, context, texts, camera
     pours.hoverAt(world)
   }
   const pressCopper = copperPress(copper)
-  // A pour tool takes every press; then routing, the selected pour's corners, the copper, and a hole or a pour's outline before the parts.
-  const tool = (event: Press, world: Point) =>
-    pours.toolPress(event, world) || track.press(event, world) || pours.cornerPress(event, world) || (!textFirst(world) && (pressCopper(event, world) || pours.pickPress(event, world)))
+  const tool = pcbPress({ pourTool: pours.toolPress, route: track.press, pourCorner: pours.cornerPress, text: textFirst, copper: pressCopper, pour: pours.pickPress })
   const handlers = pointerHandlers({ camera, size, element: canvasRef, gestures, setCursor, hover: hoverAt, open, tool })
   const pointer = withHoverLabel(withPourDrag(pours, withCopperDrag(copper, handlers, setCursor), setCursor), label)
   const onLeave = () => {
