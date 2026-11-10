@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from "vitest"
 import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { readEntries, redoChange, undoChange } from "../src/core/index.js"
+import { analyzeCircuit, lockParts, readEntries, redoChange, undoChange, unlockParts, updateAnnotations } from "../src/core/index.js"
 import { makeSubSheet, previewSubSheet } from "../src/core/make-sheet.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
 import { CUT_MAIN } from "./helpers/cut-fixture.js"
@@ -72,6 +72,9 @@ describe("making a sub-sheet from a selection", () => {
   test("refuses a bad sheet name, an existing sheet file, a locked part and an empty selection; nothing is written", async () => {
     await expect(previewSubSheet(root, FILE, { name: "filter", parts: SELECTED })).rejects.toThrow(/not a sheet name/)
     await expect(previewSubSheet(root, FILE, { name: "Filter", parts: [] })).rejects.toThrow(/Select the parts/)
+    await updateAnnotations(root, FILE, (a) => lockParts(a, analyzeCircuit(CUT_MAIN), ["R6"], "2026-11-10T00:00:00Z"))
+    await expect(makeSubSheet(root, FILE, { name: "Filter", parts: SELECTED }, { author: "human" })).rejects.toThrow(/R6 is locked/)
+    await updateAnnotations(root, FILE, (a) => unlockParts(a, ["R6"]))
     await writeFile(join(root, SHEET), "old")
     await expect(makeSubSheet(root, FILE, { name: "Filter", parts: SELECTED }, { author: "human" })).rejects.toThrow(/Filter\.sheet\.tsx already exists/)
     expect(await read(SHEET)).toBe("old")
