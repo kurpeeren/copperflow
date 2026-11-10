@@ -32,6 +32,8 @@ import {
   updateAnnotations,
 } from "../core/index.js"
 import { Engine } from "../engine/engine.js"
+import { setFilletRadius } from "../core/rules-edit.js"
+import { RULES_PATH } from "../engine/rules/load.js"
 import { LayoutBody } from "./layout-schema.js"
 import { LiveProject, type DesignBuilder } from "./live.js"
 
@@ -142,10 +144,15 @@ const Bodies = {
   build: z.object({ file }),
   place: z.object({ file, part: z.string().min(1).max(64), name: z.string().max(40).optional(), props: props.optional() }),
   verify: z.object({ id: z.string().min(1).max(64), by: z.string().min(1).max(100), against: z.string().min(1).max(300), confirm: z.string() }),
+  // The Design rules panel: a radius in mm, or null for the default.
+  rules: z.object({ filletRadius: z.number().nullable() }),
 }
 
-/** The circuit a history entry's file builds: itself, or the circuit beside a layout file. */
-const builtFrom = (file: string): string => (isLayoutFile(file) ? circuitPathFor(file) : file)
+/**
+ * The circuit a history entry's file builds: itself, or the circuit beside a layout file. rules.yaml builds none
+ * itself: the watcher builds every circuit again when an engine file changes.
+ */
+const builtFrom = (file: string): string | undefined => (file === RULES_PATH ? undefined : isLayoutFile(file) ? circuitPathFor(file) : file)
 
 class HttpError extends Error {
   constructor(
@@ -186,6 +193,11 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
     const given = req.headers["x-copperflow-token"]
     if (typeof given !== "string" || !sameToken(given, token)) throw new HttpError(403, "Missing or wrong session token")
 
+    /** Builds the circuit a history entry's file belongs to, when there is one. */
+    const rebuild = (file: string) => {
+      const circuit = builtFrom(file)
+      if (circuit !== undefined) live.requestBuild(circuit)
+    }
     /** The live design when it is current for the circuit file, else a fresh build. */
     const designOf = async (circuit: string) => (await live.currentDesign(circuit)) ?? (await building.builder.build(root, circuit))
 
@@ -255,6 +267,11 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         const body = Bodies.unmark.parse(await readJson(req))
         return send(res, await updateAnnotations(root, body.file, (a) => removeMark(a, body.id)))
       }
+      case "POST /api/rules": {
+        const body = Bodies.rules.parse(await readJson(req))
+        const entry = await setFilletRadius(root, body.filletRadius ?? undefined, { author: "human" })
+        return send(res, { entryId: entry.id, summary: entry.summary })
+      }
       case "GET /api/parts":
         return send(res, { library: await listParts(root), builtin: BUILTIN_PARTS })
       case "GET /api/part": {
@@ -289,14 +306,14 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         const body = Bodies.undo.parse(await readJson(req))
         const entry = await undoChange(root, { author: "human", design: designOf, ...(body.id ? { id: body.id } : {}) })
         const writeMark = live.nextMark()
-        live.requestBuild(builtFrom(entry.file))
+        rebuild(entry.file)
         return send(res, { entryId: entry.id, summary: entry.summary, writeMark })
       }
       case "POST /api/redo": {
         const body = Bodies.redo.parse(await readJson(req))
         const entry = await redoChange(root, { author: "human", design: designOf, ...(body.id ? { id: body.id } : {}) })
         const writeMark = live.nextMark()
-        live.requestBuild(builtFrom(entry.file))
+        rebuild(entry.file)
         return send(res, { entryId: entry.id, summary: entry.summary, writeMark })
       }
       default:
