@@ -1,9 +1,14 @@
+import type { CopperLayer } from "../../core/layout-file.js"
 import { copperTouches, padsUnder } from "../copper.js"
 import { copperPieces, padPieces, type CopperPiece } from "../checks/copper-pieces.js"
-import type { PcbLayout } from "../pcb.js"
+import type { Point } from "../model.js"
+import { naturalCompare } from "../order.js"
+import type { PcbLayout, WorldPad } from "../pcb.js"
 import { DEFAULT_CLASS } from "../rules/profiles.js"
-import type { CellRef } from "./astar.js"
-import { cellsOnShape, FREE, type RouterGrid } from "./grid.js"
+import { STEP, type CellRef, type EndRef } from "./astar.js"
+import { offenders, type Laid } from "./clear.js"
+import { BOARD_EDGE, cellCentre, cellsOnShape, forCellsIn, FREE, type NetRule, type RouterGrid, type RouterWorld } from "./grid.js"
+import type { Obstacle } from "./obstacles.js"
 
 /**
  * Where a connection may start or end: the pad, every pad its net's copper already joins to it, and that copper
@@ -65,4 +70,71 @@ export function endCells(grid: RouterGrid, pieces: readonly CopperPiece[]): Cell
   })
   const cells = grid.cols * grid.rows
   return [...seen].sort((a, b) => a - b).map((node) => ({ layer: Math.floor(node / cells), cell: node % cells }))
+}
+
+/** The net's pads and copper in the groups its copper joins, each group in natural id order, groups by their first. */
+export function islandsOf(layout: PcbLayout, pieces: readonly Obstacle[]): Obstacle[][] {
+  const groups = new Groups(pieces.length)
+  pieces.forEach((a, i) => pieces.forEach((b, j) => j > i && joined(layout, a, b) && groups.join(i, j)))
+  const byRoot = new Map<number, Obstacle[]>()
+  pieces.forEach((piece, i) => {
+    const root = groups.find(i)
+    byRoot.set(root, [...(byRoot.get(root) ?? []), piece])
+  })
+  return [...byRoot.values()].map((group) => [...group].sort((a, b) => naturalCompare(a.id, b.id)))
+}
+
+/** How far from a pad's centre a leg may reach a free cell, beyond the pad itself, in mm. */
+const LEG_REACH = 1
+/** The legs kept per pad, nearest first. */
+const LEG_LIMIT = 8
+
+/** An end off the grid: the pad centre, and the cells its legs reach, each with the leg's cost. */
+export interface Legs {
+  at: Point
+  ends: EndRef[]
+}
+
+/**
+ * Legs from the pad's centre to the free cells around it, for a pad no grid cell lies on: straight tracks of the
+ * net's width that keep every gap exactly (checked as laid copper, not on the grid), to at most LEG_LIMIT cells,
+ * nearest first. Each costs its length in grid steps.
+ */
+export function padLegs(world: RouterWorld, grid: RouterGrid, rule: NetRule, pad: WorldPad, extra: readonly Obstacle[] = []): Legs {
+  const at = { x: pad.x, y: pad.y }
+  const reach = Math.hypot(pad.width, pad.height) / 2 + LEG_REACH
+  const layers = pad.layers === "through" ? grid.layers : [pad.layers]
+  const candidates: { ref: EndRef; length: number }[] = []
+  grid.layers.forEach((layer, l) => {
+    if (!layers.includes(layer)) return
+    const map = grid.track[l] as Int32Array
+    forCellsIn(grid, { minX: at.x - reach, minY: at.y - reach, maxX: at.x + reach, maxY: at.y + reach }, (cell) => {
+      const centre = cellCentre(grid, cell)
+      const length = Math.hypot(centre.x - at.x, centre.y - at.y)
+      if (map[cell] === FREE && length <= reach) candidates.push({ ref: { layer: l, cell }, length })
+    })
+  })
+  candidates.sort((a, b) => a.length - b.length || a.ref.layer - b.ref.layer || a.ref.cell - b.ref.cell)
+  const ends: EndRef[] = []
+  for (const { ref, length } of candidates) {
+    if (ends.length >= LEG_LIMIT) break
+    const leg: Laid = { kind: "track", layers: [grid.layers[ref.layer] as CopperLayer], shapes: [{ core: [at, cellCentre(grid, ref.cell)], radius: rule.width / 2 }] }
+    if (offenders(world, rule, leg, extra).length === 0) ends.push({ ...ref, cost: Math.round((length / grid.pitch) * STEP) })
+  }
+  return { at, ends }
+}
+
+/** What blocks the cells on the pieces' copper, by name, in natural order, the board edge only when nothing else does. */
+export function blockingNames(grid: RouterGrid, pieces: readonly CopperPiece[]): string[] {
+  const names = new Set<string>()
+  grid.layers.forEach((layer, l) => {
+    const map = grid.track[l] as Int32Array
+    for (const piece of pieces.filter((p) => p.layers.includes(layer))) {
+      for (const shape of piece.shapes) {
+        for (const cell of cellsOnShape(grid, shape)) if (map[cell] !== FREE) names.add(grid.blockers[map[cell] as number] as string)
+      }
+    }
+  })
+  const sorted = [...names].sort(naturalCompare)
+  return sorted.length > 1 ? sorted.filter((name) => name !== BOARD_EDGE) : sorted
 }

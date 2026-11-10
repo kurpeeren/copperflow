@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest"
 import type { Board, Keepout, Point } from "../../src/engine/model.js"
-import type { PcbLayout, PcbTrack, PlacedFootprint, WorldPad } from "../../src/engine/pcb.js"
-import { cellsOnShape, centreReach, FREE, rasterise, routerPitch, type NetRule, type RouterGrid } from "../../src/engine/router/grid.js"
+import type { PcbLayout, PcbTrack, PcbVia, PlacedFootprint, WorldPad } from "../../src/engine/pcb.js"
+import { cellsOnShape, centreReach, FREE, rasterise, rasteriseIn, routerPitch, routerWorld, type NetRule, type RouterGrid } from "../../src/engine/router/grid.js"
 import { loadRules } from "../../src/engine/rules/load.js"
 import { DEFAULT_CLASS } from "../../src/engine/rules/profiles.js"
 import type { NetClass, Rules } from "../../src/engine/rules/schema.js"
@@ -21,10 +21,10 @@ function pad(id: string, x: number, y: number, net?: string): WorldPad {
   return { number: "1", shape: "rect", x, y, width: 1, height: 1, rotation: 0, layers: "top", id, component: id.split("#")[0] ?? id, ...(net ? { net } : {}) }
 }
 
-function layoutOf(pads: WorldPad[], keepouts: Keepout[] = [], tracks: PcbTrack[] = []): PcbLayout {
+function layoutOf(pads: WorldPad[], keepouts: Keepout[] = [], tracks: PcbTrack[] = [], vias: PcbVia[] = []): PcbLayout {
   const board: Board = { outline: square(-5, -5, 5, 5), layers: 2, thickness: 1.6, keepouts }
   const part: PlacedFootprint = { component: "X", x: 0, y: 0, rotation: 0, side: "top", autoPlaced: false, pads, courtyard: [], silkscreen: [], fabrication: [] }
-  return { board, parts: [part], ratsnest: [], tracks, vias: [] }
+  return { board, parts: [part], ratsnest: [], tracks, vias }
 }
 
 const asDefault = () => DEFAULT_CLASS.name
@@ -113,5 +113,53 @@ describe("rasterising the board for one net", () => {
 
   test("the cells on a shape are those whose centre lies on its copper", () => {
     expect(cellsOnShape(grid, { core: [{ x: 0, y: 0 }], radius: 0.3 })).toEqual([cellAt(grid, 0, -0.25), cellAt(grid, -0.25, 0), cellAt(grid, 0, 0), cellAt(grid, 0.25, 0), cellAt(grid, 0, 0.25)])
+  })
+})
+
+describe("what the router keeps out besides copper clearance", () => {
+  test("a pad of a shape the checks do not know is an obstacle over its whole box", () => {
+    const odd = { ...pad("B#1", 0, 0, "net.B"), shape: "star", width: 2, height: 1 } as unknown as WorldPad
+    const grid = rasterise(layoutOf([odd]), RULES, asDefault, RULE)
+    expect(trackBlocker(grid, 0, 0, 0)).toBe("B#1")
+    expect(trackBlocker(grid, 0, 1.25, 0)).toBe("B#1")
+    expect(trackBlocker(grid, 0, 1.5, 0)).toBeUndefined()
+    expect(viaBlocker(grid, 1.5, 0)).toBe("B#1")
+    expect(viaBlocker(grid, 1.75, 0)).toBeUndefined()
+  })
+
+  test("a via keeps the hole spacing from a through pad and a via of its own net", () => {
+    const through: WorldPad = { ...pad("A#1", -2, 0, "net.A"), shape: "circle", width: 1.2, height: 1.2, layers: "through", drill: { width: 1, height: 1 } }
+    const via: PcbVia = { id: "v0001", net: "net.A", at: { x: 2, y: 2 }, drill: 0.3, diameter: 0.6, layers: ["top", "bottom"], locked: false, by: "human" } as PcbVia
+    const grid = rasterise(layoutOf([through], [], [], [via]), RULES, asDefault, RULE)
+    expect(trackBlocker(grid, 0, -2, 0)).toBeUndefined()
+    expect(viaBlocker(grid, -1, 0)).toBe("A#1")
+    expect(viaBlocker(grid, -0.75, 0)).toBeUndefined()
+    expect(trackBlocker(grid, 0, 2, 2)).toBeUndefined()
+    expect(viaBlocker(grid, 2.5, 2)).toBe("v0001")
+    expect(viaBlocker(grid, 2.75, 2)).toBeUndefined()
+  })
+
+  test("a window of the board is the same grid over its own cells", () => {
+    const layout = layoutOf([pad("B#1", 0, 0, "net.B"), pad("A#1", -3, 0, "net.A")])
+    const world = routerWorld(layout, RULES, asDefault)
+    const full = rasteriseIn(world, RULE)
+    const part = rasteriseIn(world, RULE, { col0: 5, row0: 12, col1: 30, row1: 25 })
+    expect([part.originCol, part.originRow, part.cols, part.rows]).toEqual([full.originCol + 5, full.originRow + 12, 26, 14])
+    for (let row = 0; row < part.rows; row++) {
+      for (let col = 0; col < part.cols; col++) {
+        const [mine, whole] = [row * part.cols + col, (row + 12) * full.cols + col + 5]
+        const name = (grid: RouterGrid, map: Int32Array, cell: number) => (map[cell] === FREE ? undefined : grid.blockers[map[cell] as number])
+        expect(name(part, part.track[0] as Int32Array, mine)).toBe(name(full, full.track[0] as Int32Array, whole))
+        expect(name(part, part.via, mine)).toBe(name(full, full.via, whole))
+      }
+    }
+  })
+
+  test("copper added for the run blocks like the layout's own, by the name it is given", () => {
+    const world = routerWorld(layoutOf([]), RULES, asDefault)
+    const extra = { id: "net.B", kind: "track" as const, net: "net.B", className: "default", layers: ["top" as const], shapes: [{ core: [{ x: -4, y: 1 }, { x: 4, y: 1 }], radius: 0.125 }], at: { x: -4, y: 1 }, box: { minX: -4.125, minY: 0.875, maxX: 4.125, maxY: 1.125 } }
+    const grid = rasteriseIn(world, RULE, undefined, [extra])
+    expect(trackBlocker(grid, 0, 0, 1.25)).toBe("net.B")
+    expect(trackBlocker(grid, 1, 0, 1.25)).toBeUndefined()
   })
 })

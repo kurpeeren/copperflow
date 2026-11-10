@@ -49,15 +49,24 @@ function runs(steps: readonly CellRef[]): CellRef[][] {
   return found
 }
 
+/** Where a path leaves a pad centre off the grid, or ends on one. */
+export interface PathLegs {
+  start?: Point
+  end?: Point
+}
+
 /**
  * The copper for a path of cells: a track for each run on one layer (a run of one cell, between two vias or at an
- * end, lays none), with points only at the corners, and a via of the net's size wherever the layer changes.
+ * end, lays none), with points only at the corners, and a via of the net's size wherever the layer changes. A leg
+ * adds the pad centre before the first point or after the last, and makes a track of a run of one cell.
  */
-export function pathCopper(grid: RouterGrid, steps: readonly CellRef[], rule: NetRule): RoutedCopper {
+export function pathCopper(grid: RouterGrid, steps: readonly CellRef[], rule: NetRule, legs: PathLegs = {}): RoutedCopper {
   const pieces = runs(steps)
-  const tracks = pieces
-    .filter((run) => run.length > 1)
-    .map((run) => ({ layer: grid.layers[run[0]?.layer ?? 0] as CopperLayer, width: rule.width, points: corners(grid, run) }))
+  const last = pieces.length - 1
+  const tracks = pieces.flatMap((run, i) => {
+    const points = [...(i === 0 && legs.start ? [legs.start] : []), ...corners(grid, run), ...(i === last && legs.end ? [legs.end] : [])]
+    return points.length > 1 ? [{ layer: grid.layers[run[0]?.layer ?? 0] as CopperLayer, width: rule.width, points }] : []
+  })
   const vias = pieces.slice(1).map((run) => ({ at: cellCentre(grid, run[0]?.cell ?? 0), drill: rule.via.drill, diameter: rule.via.diameter, layers: [...THROUGH] }))
   return { net: rule.net, tracks, vias }
 }

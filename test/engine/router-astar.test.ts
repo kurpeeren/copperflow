@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { DIAGONAL, searchPath, STEP, TURN_45, VIA, type CellRef } from "../../src/engine/router/astar.js"
+import { DIAGONAL, SearchBuffers, searchPath, STEP, TURN_45, VIA, type CellRef } from "../../src/engine/router/astar.js"
 import { FREE, type RouterGrid } from "../../src/engine/router/grid.js"
 
 /** A grid of `cols` × `rows` cells on top and bottom; `blocked` maps "layer:col,row" to a blocker name. */
@@ -99,5 +99,44 @@ describe("A* on the router grid", () => {
     const grid = gridOf(20, 20, { ...wall(20, 10, [0], "keepout:1", [3, 15]) })
     const run = () => searchPath(grid, [at(grid, 0, 0, 9), at(grid, 0, 0, 10)], [at(grid, 0, 19, 9), at(grid, 0, 19, 10)])
     expect(run()).toEqual(run())
+  })
+  test("penalties steer the path off costly cells when a way round is cheaper", () => {
+    const grid = gridOf(9, 5)
+    const cells = grid.cols * grid.rows
+    const track = [new Int32Array(cells), new Int32Array(cells)]
+    for (let row = 0; row < 4; row++) (track[0] as Int32Array)[row * grid.cols + 4] = 1000
+    const result = searchPath(grid, [at(grid, 0, 0, 1)], [at(grid, 0, 8, 1)], { penalties: { track, via: new Int32Array(cells) } })
+    expect(result.found).toBe(true)
+    if (!result.found) return
+    expect(cellsOf(grid, result.steps)).toContain("0:4,4")
+    expect(result.steps.every((step) => step.layer === 0)).toBe(true)
+  })
+
+  test("a costly via place is avoided, and penalties add to the cost", () => {
+    const grid = gridOf(5, 1, wall(1, 2, [0], "keepout:1"))
+    const cells = grid.cols * grid.rows
+    const via = new Int32Array(cells)
+    via[0] = 500
+    via[1] = 500
+    const result = searchPath(grid, [at(grid, 0, 0, 0)], [at(grid, 0, 4, 0)], { penalties: { track: [new Int32Array(cells), new Int32Array(cells)], via } })
+    expect(result.found && result.cost).toBe(2 * VIA + 4 * STEP + 500)
+  })
+
+  test("a start and an end may carry a cost of their own, as an off-grid leg does", () => {
+    const grid = gridOf(6, 3)
+    const result = searchPath(grid, [{ ...at(grid, 0, 0, 1), cost: 7 }, { ...at(grid, 0, 0, 0), cost: 100 }], [{ ...at(grid, 0, 5, 1), cost: 3 }])
+    expect(result.found && result.cost).toBe(5 * STEP + 10)
+    expect(result.found && cellsOf(grid, result.steps)[0]).toBe("0:0,1")
+  })
+
+  test("buffers reused across searches give the same paths as fresh ones", () => {
+    const buffers = new SearchBuffers()
+    const big = gridOf(20, 20, { ...wall(20, 10, [0], "keepout:1", [3, 15]) })
+    const small = gridOf(6, 3)
+    const runBig = (options = {}) => searchPath(big, [at(big, 0, 0, 9)], [at(big, 0, 19, 9)], options)
+    const runSmall = (options = {}) => searchPath(small, [at(small, 0, 0, 0)], [at(small, 0, 5, 2)], options)
+    expect(runBig({ buffers })).toEqual(runBig())
+    expect(runSmall({ buffers })).toEqual(runSmall())
+    expect(runBig({ buffers })).toEqual(runBig())
   })
 })

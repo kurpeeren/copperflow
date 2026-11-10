@@ -36,12 +36,51 @@ export interface CellRef {
   cell: number
 }
 
+/** A start or an end of a search: a cell, and what reaching it from off the grid (a leg from a pad centre) costs. */
+export interface EndRef extends CellRef {
+  cost?: number
+}
+
 export type SearchResult =
   | { found: true; steps: CellRef[]; cost: number }
   | { found: false; reason: "no-path" | "limit"; expanded: number; blockers: string[] }
 
+/** What entering a cell costs on top of the move, per layer, and what a via there costs on top of VIA. */
+export interface Penalties {
+  track: readonly Int32Array[]
+  via: Int32Array
+}
+
 export interface SearchOptions {
   maxExpansions?: number
+  penalties?: Penalties
+  /** Arrays kept from one search to the next, so a run of searches allocates them once. */
+  buffers?: SearchBuffers
+}
+
+/**
+ * The per-state arrays of a search. A state's cost and parent are valid only when its mark is the current search's
+ * number, so a new search needs no clearing.
+ */
+export class SearchBuffers {
+  cost = new Int32Array(0)
+  parent = new Int32Array(0)
+  seen = new Uint32Array(0)
+  closed = new Uint32Array(0)
+  private search = 0
+
+  /** Starts a search over `states` states, and returns its number. */
+  begin(states: number): number {
+    if (this.seen.length < states || this.search >= 0xfffffffe) {
+      const size = Math.max(states, this.seen.length)
+      this.cost = new Int32Array(size)
+      this.parent = new Int32Array(size)
+      this.seen = new Uint32Array(size)
+      this.closed = new Uint32Array(size)
+      this.search = 0
+    }
+    return ++this.search
+  }
 }
 
 /** States by estimate, a binary heap; ties go to the smaller remaining estimate, then the smaller state. */
@@ -124,57 +163,86 @@ function octile(box: Box, col: number, row: number): number {
 
 const turnOf = (from: number, to: number): number => (from === NONE ? 0 : Math.min(Math.abs(from - to), 8 - Math.abs(from - to)))
 
-/** The cheapest path from a source to a target, or why there is none. Blocked sources and targets are left out. */
-export function searchPath(grid: RouterGrid, sources: readonly CellRef[], targets: readonly CellRef[], options: SearchOptions = {}): SearchResult {
+/** The estimate from a node to the nearest target box: octile on its layer, or octile plus a via to another layer. */
+function estimator(grid: RouterGrid, goals: readonly CellRef[]): (layer: number, cell: number) => number {
+  const boxes = targetBoxes(grid, goals)
+  const layers = boxes.flatMap((box, layer) => (box === undefined ? [] : [{ box, layer }]))
+  return (layer, cell) => {
+    const [col, row] = [cell % grid.cols, Math.floor(cell / grid.cols)]
+    let best = Infinity
+    for (const target of layers) best = Math.min(best, octile(target.box, col, row) + (target.layer === layer ? 0 : VIA))
+    return best
+  }
+}
+
+/** The cost of the leg off the grid at each target node, by node; -1 where there is no target. */
+function goalCosts(cells: number, goals: readonly EndRef[], layers: number): Int32Array {
+  const extra = new Int32Array(layers * cells).fill(-1)
+  for (const { layer, cell, cost } of goals) {
+    const node = layer * cells + cell
+    const own = cost ?? 0
+    if (extra[node] === -1 || own < (extra[node] as number)) extra[node] = own
+  }
+  return extra
+}
+
+/**
+ * The cheapest path from a source to a target, or why there is none. Blocked sources and targets are left out. A
+ * source's cost starts its path; a target's cost is added when the path ends there (the first target taken ends the
+ * search, so a target with a costly leg is preferred over a cheaper one only as the estimate orders them).
+ */
+export function searchPath(grid: RouterGrid, sources: readonly EndRef[], targets: readonly EndRef[], options: SearchOptions = {}): SearchResult {
   const cells = grid.cols * grid.rows
   const open = (ref: CellRef) => grid.track[ref.layer]?.[ref.cell] === FREE
   const goals = targets.filter(open)
-  const isGoal = new Uint8Array(grid.layers.length * cells)
-  for (const { layer, cell } of goals) isGoal[layer * cells + cell] = 1
-  const boxes = targetBoxes(grid, goals)
-  const estimate = (layer: number, cell: number): number => {
-    const [col, row] = [cell % grid.cols, Math.floor(cell / grid.cols)]
-    return boxes.reduce((best, box, l) => (box === undefined ? best : Math.min(best, octile(box, col, row) + (l === layer ? 0 : VIA))), Infinity)
-  }
-  const states = grid.layers.length * cells * DIRECTIONS
-  const cost = new Float64Array(states).fill(Infinity)
-  const parent = new Int32Array(states).fill(-1)
-  const closed = new Uint8Array(states)
+  const goalCost = goalCosts(cells, goals, grid.layers.length)
+  const estimate = estimator(grid, goals)
+  const buffers = options.buffers ?? new SearchBuffers()
+  const search = buffers.begin(grid.layers.length * cells * DIRECTIONS)
+  const { cost, parent, seen, closed } = buffers
+  const penalties = options.penalties
   const queue = new Queue()
   const reach = (state: number, g: number, from: number, node: number): void => {
-    if (g >= (cost[state] as number)) return
+    if (seen[state] === search && g >= (cost[state] as number)) return
+    seen[state] = search
     cost[state] = g
     parent[state] = from
     const h = estimate(Math.floor(node / cells), node % cells)
     queue.push(g + h, h, state)
   }
   const starts = sources.filter(open)
-  if (goals.length > 0) for (const ref of starts) reach((ref.layer * cells + ref.cell) * DIRECTIONS + NONE, 0, -1, ref.layer * cells + ref.cell)
+  if (goals.length > 0) for (const ref of starts) reach((ref.layer * cells + ref.cell) * DIRECTIONS + NONE, ref.cost ?? 0, -1, ref.layer * cells + ref.cell)
   const limit = options.maxExpansions ?? DEFAULT_MAX_EXPANSIONS
   let expanded = 0
   while (queue.size > 0) {
     const state = queue.pop()
-    if (closed[state] === 1) continue
-    closed[state] = 1
+    if (closed[state] === search) continue
+    closed[state] = search
     if (++expanded > limit) return { found: false, reason: "limit", expanded: limit, blockers: [] }
     const node = Math.floor(state / DIRECTIONS)
-    if (isGoal[node] === 1) return { found: true, steps: stepsTo(parent, state, cells), cost: cost[state] as number }
     const g = cost[state] as number
+    if ((goalCost[node] as number) >= 0) return { found: true, steps: stepsTo(parent, state, cells), cost: g + (goalCost[node] as number) }
     const [layer, cell, dir] = [Math.floor(node / cells), node % cells, state % DIRECTIONS]
     const [col, row] = [cell % grid.cols, Math.floor(cell / grid.cols)]
     const map = grid.track[layer] as Int32Array
+    const extra = penalties?.track[layer]
     for (let d = 0; d < 8; d++) {
       const turn = turnOf(dir, d)
       if (turn > 2) continue
       const [c, r] = [col + (DCOL[d] as number), row + (DROW[d] as number)]
-      if (c < 0 || r < 0 || c >= grid.cols || r >= grid.rows || map[r * grid.cols + c] !== FREE) continue
-      const next = layer * cells + r * grid.cols + c
-      reach(next * DIRECTIONS + d, g + (d % 2 === 1 ? DIAGONAL : STEP) + (TURN_COST[turn] as number), state, next)
+      if (c < 0 || r < 0 || c >= grid.cols || r >= grid.rows) continue
+      const to = r * grid.cols + c
+      if (map[to] !== FREE) continue
+      const next = layer * cells + to
+      const step = (d % 2 === 1 ? DIAGONAL : STEP) + (TURN_COST[turn] as number) + (extra === undefined ? 0 : (extra[to] as number))
+      reach(next * DIRECTIONS + d, g + step, state, next)
     }
     if (grid.via[cell] !== FREE) continue
+    const viaCost = VIA + (penalties === undefined ? 0 : (penalties.via[cell] as number))
     for (let l = 0; l < grid.layers.length; l++) {
       if (l === layer || grid.track[l]?.[cell] !== FREE) continue
-      reach((l * cells + cell) * DIRECTIONS + NONE, g + VIA, state, l * cells + cell)
+      const landing = penalties === undefined ? 0 : (penalties.track[l]?.[cell] as number)
+      reach((l * cells + cell) * DIRECTIONS + NONE, g + viaCost + landing, state, l * cells + cell)
     }
   }
   return { found: false, reason: "no-path", expanded, blockers: separating(grid, starts, goals) }

@@ -121,3 +121,39 @@ describe("routing one connection", () => {
     expect(routeIn(joined, "R1#2", "R2#1")).toMatchObject({ routed: false, reason: "R1.pin2 and R2.pin1 are already connected" })
   })
 })
+
+describe("pads no grid cell lies on", () => {
+  const FINE = "parts/fine/footprint.yaml"
+  const FINE_YAML = ["pads:", ...[-0.65, 0, 0.65].map((x, i) => `  - { number: '${i + 1}', shape: rect, x: ${x}, y: 0, width: 0.4, height: 1.5 }`)].join("\n") + "\n"
+  const fine = (extra = "") => ({
+    [MAIN]: board(20, 12, [
+      `    <chip name="U1" footprint="${FINE}" pinCount={3} pcbX={0.125} pcbY={0} />`,
+      resistor("R1", 0, -4),
+      trace("U1.pin1", "A"),
+      trace("U1.pin2", "SIG"),
+      trace("U1.pin3", "B"),
+      trace("R1.pin1", "SIG"),
+      extra,
+    ].join("\n")),
+    [FINE]: FINE_YAML,
+  })
+
+  test("a fine-pitch pad off the grid is left from its centre, and the result passes every check", () => {
+    const files = fine()
+    const design = buildDesign(files, MAIN)
+    const result = routeIn(design, "U1#2", "R1#1")
+    if (!result.routed) throw new Error(result.reason)
+    const pad = padAt(design.pcb, "U1#2")
+    const ends = result.copper.tracks.flatMap((track) => [track.points[0], track.points.at(-1)])
+    expect(ends).toContainEqual({ x: pad.x, y: pad.y })
+    const checked = checkRouted(files, MAIN, result.copper)
+    expect(checked.copper).toEqual([])
+    expect(checked.added).toEqual([])
+  })
+
+  test("with no legal way off the pad, the reason names what blocks its cells", () => {
+    const files = fine(`    <keepout pcbX={0.125} pcbY={0} width={6} height={6} />`)
+    const result = routeIn(buildDesign(files, MAIN), "U1#2", "R1#1")
+    expect(result).toEqual({ routed: false, reason: "could not route U1.pin2 to R1.pin1: U1.pin2 has no free grid cell, blocked by U1#1 and U1#3", blockers: ["U1#1", "U1#3"] })
+  })
+})
