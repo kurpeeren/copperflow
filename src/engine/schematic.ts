@@ -1,7 +1,7 @@
 import type { Circuit, Component, Connection, Diagnostic, Point, SchematicDrawing, Side } from "./model.js"
 import { junctionsOf, labelName, labelStyle, layoutNets, type Drawn, type PinSpot } from "./schematic-nets.js"
 import { routeWires, type FixedWire, type RouteRequest, type SheetBox } from "./schematic-route.js"
-import { rotateSide, sheetBounds, sheetPoint, type Spot } from "./schematic-geometry.js"
+import { rotatePoint, rotateSide, sheetBounds, sheetPoint, type Spot } from "./schematic-geometry.js"
 import { placeLoose } from "./schematic-place.js"
 import { netsAcrossPages, pagesOf, pageView, tracesAcrossPages } from "./schematic-pages.js"
 import { symbolFor, type SchSymbol } from "./symbols/index.js"
@@ -71,6 +71,21 @@ function origins(circuit: Circuit, symbols: ReadonlyMap<string, SchSymbol>): Map
   return result
 }
 
+/**
+ * The symbol with its name and value where the part's schNameAt and schValueAt put them: offsets from the origin on
+ * the sheet, so in the symbol's own frame they are turned back by its rotation. The bounds stay those of the symbol as
+ * drawn by default, so moving a label moves no part and no wire.
+ */
+function withMovedLabels(symbol: SchSymbol, component: Component, rotation: number): SchSymbol {
+  const offsets = { reference: component.schNameAt, value: component.schValueAt }
+  if (!offsets.reference && !offsets.value) return symbol
+  const shapes = symbol.shapes.map((shape) => {
+    const offset = shape.type === "text" && (shape.role === "reference" || shape.role === "value") ? offsets[shape.role] : undefined
+    return offset ? { ...shape, at: rotatePoint(offset, -rotation), anchor: "center" as const } : shape
+  })
+  return { ...symbol, shapes }
+}
+
 function placeSymbols(circuit: Circuit): { symbols: PlacedSymbol[]; spots: Map<string, PinSpot> } {
   const drawn = new Map(circuit.components.map((component) => [component.id, symbolFor(component)]))
   const where = origins(circuit, drawn)
@@ -87,7 +102,7 @@ function placeSymbols(circuit: Circuit): { symbols: PlacedSymbol[]; spots: Map<s
       pinEnds[id] = end
       spots.set(id, { end, side: rotateSide(pin.side, at.rotation) })
     }
-    return [{ component: component.id, ...at, symbol, pinEnds }]
+    return [{ component: component.id, ...at, symbol: withMovedLabels(symbol, component, at.rotation), pinEnds }]
   })
   return { symbols, spots }
 }

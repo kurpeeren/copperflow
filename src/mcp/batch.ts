@@ -19,12 +19,14 @@ type LoadedModel = Awaited<ReturnType<typeof loadCircuit>>["model"]
 
 const literal = z.union([z.string(), z.number(), z.boolean()])
 const props = z.record(z.string(), literal)
+/** set_props also takes a point for schNameAt, schValueAt and pcbNameAt, and null to remove a prop. */
+const setValues = z.record(z.string(), z.union([literal, z.object({ x: z.number(), y: z.number() }), z.null()]))
 const ends = { from: z.string(), to: z.string() }
 
 /** One step of edit_circuit: exactly one of these keys is set. */
 export const editItem = z
   .object({
-    set_props: z.object({ part: z.string(), props }).optional(),
+    set_props: z.object({ part: z.string(), props: setValues }).optional(),
     connect: z.object(ends).optional(),
     disconnect: z.object(ends).optional(),
     place_part: z.object({ part: z.string(), name: z.string(), props: props.optional(), page: z.string().optional() }).optional(),

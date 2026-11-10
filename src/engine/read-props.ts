@@ -1,5 +1,5 @@
 import { diagnostic } from "./diagnostics.js"
-import type { Diagnostic, SourceRef } from "./model.js"
+import type { Diagnostic, Point, SourceRef } from "./model.js"
 import { parseAngle, parseLength } from "./units.js"
 
 export type Props = Readonly<Record<string, unknown>>
@@ -34,10 +34,25 @@ export class PropReader {
     return parseAngle(this.props[key]) ?? this.bad(key, 'an angle such as 90 or "90deg"')
   }
 
+  /** A point written as `{{ x: 1, y: -0.5 }}`: two finite numbers and nothing else. */
+  point(key: string): Point | undefined {
+    if (!this.has(key)) return undefined
+    return pointOf(this.props[key]) ?? this.bad(key, "a point such as { x: 0.5, y: -0.2 }")
+  }
+
   string(key: string): string | undefined {
     const value = this.props[key]
     return typeof value === "string" && value !== "" ? value : undefined
   }
+}
+
+/** The value as a point when it is an object of exactly two finite numbers, x and y. */
+export function pointOf(value: unknown): Point | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined
+  const keys = Object.keys(value)
+  const { x, y } = value as { x?: unknown; y?: unknown }
+  const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v)
+  return keys.length === 2 && finite(x) && finite(y) ? { x, y } : undefined
 }
 
 /** The value as plain JSON, or undefined when it has none (functions, symbols, cycles, class instances). */

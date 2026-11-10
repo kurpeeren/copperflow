@@ -57,6 +57,14 @@ export interface Component {
   source: SourceRef
   /** The schematic page it is drawn on; absent on the first page, MAIN_PAGE. */
   page?: string
+  /**
+   * Where its name and value are drawn on the schematic, and its designator on the silkscreen, when the file moves
+   * them (schNameAt, schValueAt, pcbNameAt): offsets from the part's origin, in sheet units and board mm, on the sheet
+   * and the board as they are (a turned part does not turn them). Absent, the layout puts them where it always has.
+   */
+  schNameAt?: Point
+  schValueAt?: Point
+  pcbNameAt?: Point
 }
 
 /** Named: "net.GND". Unnamed: "net:" + the first pin id. */

@@ -13,11 +13,12 @@ import {
   removeRange,
   validateOrThrow,
 } from "./edit-text.js"
-import { formatLiteral, formatPointList, readPointList } from "./literals.js"
+import { formatLiteral, formatPoint, formatPointList, readPointList } from "./literals.js"
 import { addPage, insertOnPage, movePartToPage, removePage, renamePage } from "./page-edits.js"
 import { partsInSelector } from "./selectors.js"
+import { LABEL_AT_PROPS } from "../engine/component.js"
 import { MAIN_PAGE } from "../engine/model.js"
-import type { Edit, Literal, PartInfo, Point } from "./types.js"
+import type { Edit, Literal, PartInfo, Point, PropValue } from "./types.js"
 
 export { EditError, type EditErrorCode } from "./edit-error.js"
 
@@ -72,7 +73,7 @@ function setProps(
   source: string,
   scan: Scan,
   name: string,
-  props: Record<string, Literal>,
+  props: Record<string, PropValue>,
   locked: ReadonlySet<string>,
 ): string {
   const part = requireEditablePart(scan, name, locked)
@@ -80,13 +81,34 @@ function setProps(
   if (!node) throw new EditError("not_found", `No part named ${name}`)
   const out = new MagicString(source)
   for (const [key, value] of Object.entries(props)) {
-    validateOrThrow(key, value)
-    if (attributeNamed(source, node, key) && !part.props[key]?.editable) {
+    if (value === null) validateOrThrow(key, "")
+    const formatted = value === null ? null : formattedProp(key, value)
+    const attribute = attributeNamed(source, node, key)
+    if (attribute && !part.props[key]?.editable) {
       throw new EditError("readonly", `${name}.${key} is an expression (${part.props[key]?.source}) and cannot be edited`)
     }
-    putAttribute(out, source, node, key, formatLiteral(value))
+    if (formatted !== null) putAttribute(out, source, node, key, formatted)
+    else if (attribute) {
+      const attributes = jsxAttributes(node)
+      const before = attributes[attributes.indexOf(attribute) - 1]
+      out.remove(before?.end ?? node.openingElement.name.end ?? 0, attribute.end ?? 0)
+    }
   }
   return out.toString()
+}
+
+const LABEL_PROPS: ReadonlySet<string> = new Set(LABEL_AT_PROPS)
+
+/** A prop's value as written: a point for a label's position (rounded, as corners are), else a checked literal. */
+function formattedProp(key: string, value: Literal | Point): string {
+  if (typeof value !== "object") {
+    validateOrThrow(key, value)
+    return formatLiteral(value)
+  }
+  if (!LABEL_PROPS.has(key)) throw new EditError("invalid", `${key} must be a string, number or boolean; only ${LABEL_AT_PROPS.join(", ")} take a point`)
+  const point = cleanPoint(value)
+  if (!point) throw new EditError("invalid", `${key} needs numbers x and y between -${MAX_COORDINATE} and ${MAX_COORDINATE}`)
+  return formatPoint(point)
 }
 
 /** Removes a part and its traces; refuses when that would touch a locked or read-only element. */

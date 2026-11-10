@@ -3,7 +3,7 @@ import type { File, JSXAttribute, JSXElement, Node } from "@babel/types"
 import { drawingKindOf } from "../engine/drawing-kinds.js"
 import { MAIN_PAGE } from "../engine/model.js"
 import { NAME_NOT_LITERAL, scanDrawings, type DrawingTag, type NamedElement } from "./drawing-scan.js"
-import { readLiteral, readPointList } from "./literals.js"
+import { readLiteral, readPoint, readPointList } from "./literals.js"
 import type { CircuitModel, PartInfo, Point, PropInfo, TraceInfo } from "./types.js"
 
 const SKIP_KEYS = new Set(["loc", "start", "end", "extra", "comments", "leadingComments", "trailingComments", "innerComments"])
@@ -241,7 +241,9 @@ function readProps(source: string, attributes: JSXAttribute[]): Record<string, P
   return Object.fromEntries(
     attributes.map((attribute): [string, PropInfo] => {
       const literal = readLiteral(attribute.value)
-      const info = { literal, source: attribute.value ? slice(source, attribute.value) : "", editable: literal !== undefined }
+      // A literal point (a moved label's offset) is written back as a whole, so it is editable too.
+      const editable = literal !== undefined || readPoint(attribute.value) !== undefined
+      const info = { literal, source: attribute.value ? slice(source, attribute.value) : "", editable }
       return [slice(source, attribute.name), info]
     }),
   )

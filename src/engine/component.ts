@@ -83,6 +83,17 @@ function readPinSides(id: string, props: Props, source: SourceRef): { sides: Rec
   return { sides, diagnostics }
 }
 
+/** The props that move a part's name, value and silkscreen designator. */
+export const LABEL_AT_PROPS = ["schNameAt", "schValueAt", "pcbNameAt"] as const
+
+/** The moved labels the props give, each a point; one that is not a point is a bad-value warning and left out. */
+function movedLabels(reader: PropReader): Pick<Component, (typeof LABEL_AT_PROPS)[number]> {
+  return Object.fromEntries(LABEL_AT_PROPS.flatMap((key) => {
+    const at = reader.point(key)
+    return at ? [[key, at]] : []
+  }))
+}
+
 /** A part's footprint string, declared or implied by its kind, and how many pads it has, if known. */
 export interface PartFootprint {
   name: string | undefined
@@ -104,6 +115,7 @@ export function buildPart(tag: string, id: string, props: Props, origin: PartOri
   const valueProp = kindOf(tag)?.valueProp
   const rawValue = valueProp ? props[valueProp] : undefined
   const mpn = reader.string("manufacturerPartNumber")
+  const labelsAt = movedLabels(reader)
   const component: Component = {
     id,
     kind: tag,
@@ -116,6 +128,7 @@ export function buildPart(tag: string, id: string, props: Props, origin: PartOri
     pinSides: pinSides.sides,
     ...(sch ? { sch } : {}),
     ...(pcb ? { pcb } : {}),
+    ...labelsAt,
     groupOffset: { pcb: { x: origin.offset.pcbX, y: origin.offset.pcbY }, sch: { x: origin.offset.schX, y: origin.offset.schY } },
     props: jsonProps(props),
     source: origin.source,

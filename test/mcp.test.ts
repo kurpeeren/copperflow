@@ -127,6 +127,14 @@ describe("MCP server", () => {
     expect(await readFile(join(root, FILE), "utf8")).toContain("pcbX={2} pcbY={2} pcbRotation={90}")
   })
 
+  test("set_props moves a label with a point and puts it back with null", async () => {
+    const moved = await call("set_props", { file: FILE, part: "R1", props: { schNameAt: { x: 0.5, y: 0.4 } } })
+    expect(moved.isError).toBe(false)
+    expect(await readFile(join(root, FILE), "utf8")).toContain("pcbY={2} schNameAt={{ x: 0.5, y: 0.4 }}")
+    expect((await call("set_props", { file: FILE, part: "R1", props: { schNameAt: null } })).isError).toBe(false)
+    expect(await readFile(join(root, FILE), "utf8")).not.toContain("schNameAt")
+  })
+
   test("edits of locked parts come back as tool errors", async () => {
     const { model } = await loadCircuit(root, FILE)
     await updateAnnotations(root, FILE, (ann) => lockParts(ann, model, ["R1"], "2026-11-03T10:00:00.000Z"))

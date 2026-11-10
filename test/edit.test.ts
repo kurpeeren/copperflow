@@ -268,3 +268,29 @@ describe("setTraceHints", () => {
     expectEditError(() => set(WITH_HINTS, "R1.pin2", "net.VCC", corners, new Set(["R1"])), "locked")
   })
 })
+
+describe("setProps: label positions", () => {
+  test("writes schNameAt, schValueAt and pcbNameAt as points", () => {
+    const out = applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { schNameAt: { x: 0.5, y: -0.3 }, pcbNameAt: { x: 0, y: 2.5 } } }], none)
+    expect(out).toContain("schNameAt={{ x: 0.5, y: -0.3 }}")
+    expect(out).toContain("pcbNameAt={{ x: 0, y: 2.5 }}")
+  })
+
+  test("a written point can be written again, and reads back as editable", () => {
+    const once = applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { schValueAt: { x: 1, y: 1 } } }], none)
+    expect(analyzeCircuit(once).parts.find((p) => p.name === "R1")?.props["schValueAt"]?.editable).toBe(true)
+    const twice = applyEdits(once, [{ kind: "setProps", part: "R1", props: { schValueAt: { x: -0.25, y: 0 } } }], none)
+    expect(twice).toBe(BOARD.replace("pcbX={-4} pcbY={2}", "pcbX={-4} pcbY={2} schValueAt={{ x: -0.25, y: 0 }}"))
+  })
+
+  test("null removes the prop, and leaves the rest as it was", () => {
+    const moved = applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { schNameAt: { x: 1, y: 1 } } }], none)
+    expect(applyEdits(moved, [{ kind: "setProps", part: "R1", props: { schNameAt: null } }], none)).toBe(BOARD)
+    expect(applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { schNameAt: null } }], none)).toBe(BOARD)
+  })
+
+  test("a point is refused for any other prop, and a point must be two finite numbers", () => {
+    expectEditError(() => applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { pcbX: { x: 1, y: 1 } } }], none), "invalid")
+    expectEditError(() => applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { schNameAt: { x: Number.NaN, y: 1 } } }], none), "invalid")
+  })
+})
