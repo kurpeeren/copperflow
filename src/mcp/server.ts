@@ -35,6 +35,7 @@ import { importsSheet, type Flattened } from "./compact-sheets.js"
 import { formatCopperSummary } from "./copper-summary.js"
 import * as copper from "./copper-tools.js"
 import * as fillet from "./fillet-tools.js"
+import * as router from "./route-tools.js"
 import { MAKE_SHEET_DESCRIPTION, makeSheet, makeSheetInput } from "./make-sheet.js"
 import { NEW_CIRCUIT_DESCRIPTION, newCircuit, newCircuitInput } from "./new-circuit.js"
 
@@ -46,7 +47,7 @@ const INSTRUCTIONS = `copperflow lets you edit circuit files together with a hum
 - Make several changes in one call: edit_circuit takes a list of edits (one history entry, nothing written if one is refused), connect_nets wires whole nets at once, e.g. { "GND": ["R1.pin2", "C1.pin2"] }.
 - Change existing parts and traces through these tools rather than rewriting the file, so locks and history apply.
 - Call check_circuit once at the end, then fix every error before reporting success. It shows the first 20 findings; use its filter (errors, warnings, a part or a net) for the rest.
-- You may route copper by hand: route_track draws one track of a net from a pad, track or via of that net, add_via places a via, remove_copper removes tracks and vias, fillet_tracks rounds track corners and straighten_tracks squares them again; each is one change. The program checks clearance and answers with the violations your change introduced; the router comes later and does the rest. Order: copper_summary, then your copper changes, then check_circuit once at the end (filter "copper" for the full list of violations). A locked part guards only the tracks that start on its pads; vias on it and tracks that only end there are not locked, so leave them alone unless the human asks.
+- Copper: place the parts first, then run autoroute (one change: it routes what is still unrouted and names each connection it could not route, with the reason), then check_circuit once at the end (filter "copper" for the full list of violations). Route by hand only what the router reports: route_track draws one track of a net from a pad, track or via of that net, add_via places a via, remove_copper removes tracks and vias, fillet_tracks rounds track corners and straighten_tracks squares them again; each is one change, and the answer lists the violations it introduced. Or move parts and run autoroute again; unroute takes back the router's copper (never hand copper). copper_summary shows per net what is routed. A locked part guards only the tracks that start on its pads; vias on it and tracks that only end there are not locked, so leave them alone unless the human asks.
 - Never change, move or remove a part marked [LOCKED]. If a summary lists lock violations, restore those parts.
 - "Marks from the human" are instructions placed on the board; follow them.
 - recent_changes shows what the human undid; do not redo an undone change unless asked.
@@ -159,7 +160,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "check_circuit",
     {
       description:
-        "Check the circuit with copperflow's own rules: electrical checks (pins left unconnected, outputs shorted together, power pins without a source) and placement checks (overlapping parts, parts off the board), plus problems in the code and the model (footprints it cannot make, unknown or ambiguous pins, library overrides). Answers with the error and warning counts, then up to 20 findings, one line each. Run it once at the end and fix the errors before reporting success; filter narrows it to errors, warnings, copper, a part or a net. Copper clearance, width, via, board-edge and keepout violations are included.",
+        "Check the circuit with copperflow's own rules: electrical checks (pins left unconnected, outputs shorted together, power pins without a source) and placement checks (overlapping parts, parts off the board), plus problems in the code and the model (footprints it cannot make, unknown or ambiguous pins, library overrides). Answers with the error and warning counts, then up to 20 findings, one line each. Run it once at the end and fix the errors before reporting success; filter narrows it to errors, warnings, copper, a part or a net. Copper clearance, width, via, hole-to-hole, board-edge and keepout violations are included.",
       inputSchema: { file, filter: z.string().optional().describe('"errors", "warnings", "copper", a part name, a net name or a sub-sheet instance such as "PS1"') },
       annotations: READ_ONLY,
     },
@@ -188,6 +189,12 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "straighten_tracks",
     { description: fillet.STRAIGHTEN_TRACKS_DESCRIPTION, inputSchema: fillet.straightenTracksInput },
     (input) => run(() => fillet.straightenTracks(ports, input)),
+  )
+  server.registerTool("autoroute", { description: router.AUTOROUTE_DESCRIPTION, inputSchema: router.autorouteInput }, (input) => run(() => router.autoroute(ports, input)))
+  server.registerTool(
+    "unroute",
+    { description: router.UNROUTE_DESCRIPTION, inputSchema: router.unrouteInput, annotations: { destructiveHint: true } },
+    (input) => run(() => router.unroute(ports, input)),
   )
   server.registerTool(
     "copper_summary",

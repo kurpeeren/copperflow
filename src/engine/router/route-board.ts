@@ -5,7 +5,7 @@ import { naturalCompare } from "../order.js"
 import type { RatsnestLine, WorldPad } from "../pcb.js"
 import { SearchBuffers } from "./astar.js"
 import { Congestion, clearOf, near, placeRoute, type Occupancy, type Placed } from "./congestion.js"
-import { attempt, classLookup, netRule, type Job, type RouteInput } from "./connect.js"
+import { attempt, cannot, classLookup, netRule, type Job, type RouteInput } from "./connect.js"
 import { islandsOf } from "./ends.js"
 import { routerWorld, type CellWindow, type NetRule, type RouterWorld } from "./grid.js"
 import type { Obstacle } from "./obstacles.js"
@@ -43,6 +43,13 @@ export interface RouteBoardOptions {
   maxPasses?: number
   /** The most states one search takes before it gives up (the search's own bound by default). */
   maxExpansions?: number
+  /**
+   * The time the run may take, in ms: once spent, no connection is started or routed again, those not routed are
+   * reported, and the routes made so far are kept whole (cleaned up as usual). No limit by default.
+   */
+  budgetMs?: number
+  /** The clock the budget is measured on, in ms (performance.now by default); tests pass their own. */
+  clock?: () => number
 }
 
 export interface RoutedConnection {
@@ -76,7 +83,12 @@ export interface RouteReport {
   cleanupCapped: boolean
   /** With the instance scope: what became of each other instance of the sheet. */
   replicas?: Replica[]
+  /** Whether the run stopped at its time budget, leaving connections it had not routed. */
+  budgetSpent: boolean
 }
+
+/** The reason given to a connection the time budget left unrouted, after "could not route A to B: ". */
+export const OUT_OF_TIME = "the time budget ran out before it was routed"
 
 export const MAX_PASSES = 30
 
@@ -149,9 +161,19 @@ interface Run {
   buffers: SearchBuffers
   failed: Map<number, UnroutedConnection>
   onProgress?: (progress: RouteProgress) => void
+  /** Whether the time budget is spent; it stays spent once it is. */
+  late: () => boolean
 }
 
 const unrouted = (connection: Connection, reason: string, blockers: string[]): UnroutedConnection => ({ net: connection.line.net, from: connection.line.from, to: connection.line.to, reason, blockers })
+const outOfTime = (connection: Connection) => unrouted(connection, `${cannot(connection.job.from, connection.job.to)}: ${OUT_OF_TIME}`, [])
+
+/** The budget's test: false until the clock passes the deadline, then true from then on. */
+function lateness(clock: () => number, started: number, budgetMs: number | undefined): () => boolean {
+  if (budgetMs === undefined) return () => false
+  let spent = false
+  return () => (spent ||= clock() - started >= budgetMs)
+}
 
 /** Routes one connection in pass `pass` against the others' copper as a cost; returns the routes it is in conflict with. */
 function negotiate(run: Run, connection: Connection, pass: number): Set<number> | undefined {
@@ -196,6 +218,7 @@ function negotiateAll(run: Run, connections: readonly Connection[], maxPasses: n
   for (let pass = 1; pass <= maxPasses; pass++) {
     const fought = new Set<number>()
     for (const [done, connection] of pending.entries()) {
+      if (run.late()) return pass
       const others = negotiate(run, connection, pass)
       run.onProgress?.({ stage: "routing", pass, done: done + 1, total: pending.length })
       if (others === undefined || others.size === 0) continue
@@ -215,13 +238,21 @@ function settle(run: Run, connections: readonly Connection[]): void {
   const kept: Placed[] = []
   for (const connection of connections) {
     const placed = congestion.placed.get(connection.index)
-    if (placed === undefined) continue
+    if (placed === undefined) {
+      // Only the budget leaves a connection neither placed nor failed: it was never tried.
+      if (!run.failed.has(connection.index)) run.failed.set(connection.index, outOfTime(connection))
+      continue
+    }
     const rule = connection.job.rule
     if (clearOf(world, rule, placed, kept.filter((other) => other.net !== placed.net && near(world, rule, placed.box, other.box)))) {
       kept.push(placed)
       continue
     }
     congestion.placed.delete(connection.index)
+    if (run.late()) {
+      run.failed.set(connection.index, outOfTime(connection))
+      continue
+    }
     const walls = [...kept.flatMap((other) => other.pieces), ...congestion.holes()]
     const result = attempt(world, connection.job, { extra: walls, buffers: run.buffers, ...(run.maxExpansions === undefined ? {} : { maxExpansions: run.maxExpansions }) })
     if (!result.routed) {
@@ -236,7 +267,8 @@ function settle(run: Run, connections: readonly Connection[]): void {
 
 /** Routes the connections the scope covers; see the module comment. */
 export function routeBoard(input: RouteBoardInput, options: RouteBoardOptions = {}): RouteReport {
-  const started = performance.now()
+  const clock = options.clock ?? (() => performance.now())
+  const started = clock()
   const scope = options.scope ?? { kind: "all" }
   const world = routerWorld(input.layout, input.rules, classLookup(input.rules, input.nets))
   const connections = connectionsOf(world, input, linesIn(input, scope))
@@ -247,6 +279,7 @@ export function routeBoard(input: RouteBoardInput, options: RouteBoardOptions = 
     congestion: new Congestion(world),
     buffers: new SearchBuffers(),
     failed: new Map(),
+    late: lateness(clock, started, options.budgetMs),
   }
   const passes = connections.length === 0 ? 0 : negotiateAll(run, connections, options.maxPasses ?? MAX_PASSES)
   settle(run, connections)
@@ -255,10 +288,10 @@ export function routeBoard(input: RouteBoardInput, options: RouteBoardOptions = 
     return placed === undefined ? [] : [{ net: connection.line.net, from: connection.line.from, to: connection.line.to, copper: placed.copper, cost: placed.cost }]
   })
   const failures = connections.flatMap((connection) => run.failed.get(connection.index) ?? [])
-  const report: RouteReport = { routed, unrouted: failures, passes, edits: [], ms: 0, cleanupCapped: false }
+  const report: RouteReport = { routed, unrouted: failures, passes, edits: [], ms: 0, cleanupCapped: false, budgetSpent: failures.some((one) => one.reason.endsWith(OUT_OF_TIME)) }
   const copies = scope.kind === "instance" ? replicate(world, input, scope.instance, routed, run.congestion) : undefined
   const result = copies === undefined ? report : { ...report, routed: [...routed, ...copies.routed], unrouted: [...failures, ...copies.unrouted], replicas: copies.replicas }
   const cleaned = cleanupReport(input, result.routed, { world })
   options.onProgress?.({ stage: "cleanup", capped: cleaned.capped })
-  return { ...result, routed: cleaned.routed, edits: layoutEdits(cleaned.routed), cleanupCapped: cleaned.capped, ms: performance.now() - started }
+  return { ...result, routed: cleaned.routed, edits: layoutEdits(cleaned.routed), cleanupCapped: cleaned.capped, ms: clock() - started }
 }

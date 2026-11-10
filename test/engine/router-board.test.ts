@@ -236,3 +236,33 @@ describe("routing one instance of a sheet", () => {
     expect(checked.after.pcb.ratsnest).toEqual([])
   })
 })
+
+describe("the time budget", () => {
+  const ROWS = {
+    [MAIN]: board(20, 16, [
+      ...["A", "B", "C", "D"].flatMap((net, i) => [resistor(`L${i + 1}`, -4, (i - 1.5) * 3.5), resistor(`M${i + 1}`, 4, (i - 1.5) * 3.5), trace(`L${i + 1}.pin2`, net), trace(`M${i + 1}.pin1`, net)]),
+    ]),
+  }
+
+  test("a run out of time keeps the connections it routed whole, reports the rest, and gives edits for the routed ones only", () => {
+    const design = buildDesign(ROWS, MAIN)
+    expect(design.pcb.ratsnest).toHaveLength(4)
+    let tick = 0
+    const report = routeDesign(design, { budgetMs: 2.5, clock: () => tick++ })
+    expect(report.budgetSpent).toBe(true)
+    expect(report.routed).toHaveLength(2)
+    expect(report.unrouted).toHaveLength(2)
+    for (const one of report.unrouted) expect(one.reason).toMatch(/^could not route \S+ to \S+: the time budget ran out before it was routed$/)
+    const tracks = report.edits.filter((edit) => edit.kind === "addTrack").length
+    expect(tracks).toBe(report.routed.reduce((sum, route) => sum + route.copper.tracks.length, 0))
+    const checked = expectClean(ROWS, report)
+    expect(checked.after.pcb.ratsnest).toHaveLength(2)
+  })
+
+  test("a budget that is not spent changes nothing", () => {
+    const design = buildDesign(ROWS, MAIN)
+    const report = routeDesign(design, { budgetMs: 60_000 })
+    expect(report.budgetSpent).toBe(false)
+    expect(withoutTime(report)).toEqual(withoutTime(routeDesign(design)))
+  })
+})

@@ -36,6 +36,7 @@ describe("MCP server", () => {
     expect(tools.map((t) => t.name).sort()).toEqual([
       "add_trace",
       "add_via",
+      "autoroute",
       "bom",
       "check_circuit",
       "circuit_summary",
@@ -59,6 +60,7 @@ describe("MCP server", () => {
       "set_props",
       "straighten_tracks",
       "undo_change",
+      "unroute",
     ])
   })
 

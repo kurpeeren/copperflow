@@ -319,6 +319,15 @@ describe("check_circuit copper filter", () => {
     expect(lines.slice(1).every((l) => /(copper-|track-|via-|short|floating|mismatch)/.test(l))).toBe(true)
   })
 
+  test("shows via holes too close together (hole-to-hole), as copper_summary counts them", async () => {
+    await call("add_via", { file: FILE, net: "GND", at: pt(10, 6) })
+    await call("add_via", { file: FILE, net: "GND", at: pt(10.65, 6) })
+    const { text } = await call("check_circuit", { file: FILE, filter: "copper" })
+    expect(text).toMatch(/hole-to-hole/)
+    const summary = (await call("copper_summary", { file: FILE })).text
+    expect(summary.split(/\n/).at(-1)).toMatch(/hole-to-hole \d+/)
+  })
+
   test("is mentioned in the tool description and the instructions", async () => {
     const tools = (await client.listTools()).tools
     expect(tools.find((t) => t.name === "check_circuit")?.description).toContain("copper")
