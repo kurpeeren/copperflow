@@ -33,7 +33,7 @@ export interface RouteBoardInput extends RouteInput {
 }
 
 /** How far a run is: a negotiation pass's connections done of its total, or the cleanup, which says whether it hit its pass cap. */
-export type RouteProgress = { stage: "routing"; pass: number; done: number; total: number } | { stage: "cleanup"; capped: boolean }
+export type RouteProgress = { stage: "routing"; pass: number; done: number; total: number } | { stage: "cleanup"; capped: boolean; skipped?: boolean }
 
 export interface RouteBoardOptions {
   scope?: RouteScope
@@ -44,8 +44,9 @@ export interface RouteBoardOptions {
   /** The most states one search takes before it gives up (the search's own bound by default). */
   maxExpansions?: number
   /**
-   * The time the run may take, in ms: once spent, no connection is started or routed again, those not routed are
-   * reported, and the routes made so far are kept whole (cleaned up as usual). No limit by default.
+   * The time the run may take, in ms: once spent, no connection is started, routed again or copied to another instance,
+   * those not routed are reported, and the routes made so far are kept whole; the cleanup is skipped when the budget is
+   * spent before it starts (the routes are clear, maybe not at their shortest). No limit by default.
    */
   budgetMs?: number
   /** The clock the budget is measured on, in ms (performance.now by default); tests pass their own. */
@@ -81,6 +82,8 @@ export interface RouteReport {
   ms: number
   /** Whether cleanup stopped at its pass cap before the routes settled (they are still clear, maybe not at their shortest). */
   cleanupCapped: boolean
+  /** Whether the cleanup was skipped because the time budget was spent before it started. */
+  cleanupSkipped: boolean
   /** With the instance scope: what became of each other instance of the sheet. */
   replicas?: Replica[]
   /** Whether the run stopped at its time budget, leaving connections it had not routed. */
@@ -288,10 +291,14 @@ export function routeBoard(input: RouteBoardInput, options: RouteBoardOptions = 
     return placed === undefined ? [] : [{ net: connection.line.net, from: connection.line.from, to: connection.line.to, copper: placed.copper, cost: placed.cost }]
   })
   const failures = connections.flatMap((connection) => run.failed.get(connection.index) ?? [])
-  const report: RouteReport = { routed, unrouted: failures, passes, edits: [], ms: 0, cleanupCapped: false, budgetSpent: failures.some((one) => one.reason.endsWith(OUT_OF_TIME)) }
-  const copies = scope.kind === "instance" ? replicate(world, input, scope.instance, routed, run.congestion) : undefined
-  const result = copies === undefined ? report : { ...report, routed: [...routed, ...copies.routed], unrouted: [...failures, ...copies.unrouted], replicas: copies.replicas }
-  const cleaned = cleanupReport(input, result.routed, { world })
+  const copies = scope.kind === "instance" ? replicate(world, input, scope.instance, routed, run.congestion, { late: run.late, outOfTime: (from, to) => `${cannot(from, to)}: ${OUT_OF_TIME}` }) : undefined
+  const all = copies === undefined ? { routed, unrouted: failures } : { routed: [...routed, ...copies.routed], unrouted: [...failures, ...copies.unrouted], replicas: copies.replicas }
+  const report = { ...all, passes, budgetSpent: all.unrouted.some((one) => one.reason.endsWith(OUT_OF_TIME)) }
+  if (run.late()) {
+    options.onProgress?.({ stage: "cleanup", capped: false, skipped: true })
+    return { ...report, edits: layoutEdits(report.routed), cleanupCapped: false, cleanupSkipped: true, budgetSpent: true, ms: clock() - started }
+  }
+  const cleaned = cleanupReport(input, report.routed, { world })
   options.onProgress?.({ stage: "cleanup", capped: cleaned.capped })
-  return { ...result, routed: cleaned.routed, edits: layoutEdits(cleaned.routed), cleanupCapped: cleaned.capped, ms: clock() - started }
+  return { ...report, routed: cleaned.routed, edits: layoutEdits(cleaned.routed), cleanupCapped: cleaned.capped, cleanupSkipped: false, ms: clock() - started }
 }

@@ -83,6 +83,7 @@ function notes(report: RouteReport, budgetSeconds: number): string[] {
   return [
     ...(report.budgetSpent ? [`Stopped at the ${budgetSeconds} s time budget; run autoroute again (with a larger budgetSeconds) to route the rest.`] : []),
     ...(report.cleanupCapped ? ["The cleanup stopped at its pass cap: the routes are clear, maybe not at their shortest."] : []),
+    ...(report.cleanupSkipped ? ["The cleanup was skipped because the budget was spent: the routes are clear, maybe not at their shortest."] : []),
   ]
 }
 
@@ -140,13 +141,14 @@ export async function unroute(ports: Ports, input: { file: string; nets?: string
   const locked = await lockedPartsAt(circuit.path)
   const startsOn = locked.size === 0 ? undefined : lockedStart(locked, design)
   const lockedPart = startsOn && ((track: UnrouteTrack) => startsOn({ t: "track", id: track.id, layer: track.layer, width: 1, points: [...track.points], locked: track.locked, by: track.by }))
-  const { edits, skipped } = unrouteEdits({ tracks: design.pcb.tracks, vias: design.pcb.vias }, { ...(ids ? { ids } : {}), ...(lockedPart ? { lockedPart } : {}) })
+  const { edits, skipped, kept } = unrouteEdits({ tracks: design.pcb.tracks, vias: design.pcb.vias }, { ...(ids ? { ids } : {}), ...(lockedPart ? { lockedPart } : {}) })
   if (edits.length === 0) {
     const none = input.nets ? `The nets ${input.nets.join(", ")} have no unlocked router copper to remove` : "The board has no unlocked router copper to remove"
     throw new Error(`${none}${skipped.length === 0 ? "" : `: ${skipped.join("; ")}`}. Nothing was written.`)
   }
-  const summary = unrouteSummary(edits, skipped)
+  const summary = unrouteSummary(edits, skipped, kept.length)
   // The entry's summary is cut at 200 characters; the answer names every record left.
-  const headline = summary.endsWith("…") ? `${unrouteSummary(edits)}; left ${skipped.join("; ")}` : summary
+  const held = kept.length === 0 ? "" : `; kept ${plural(kept.length, "via")} a track not made by the router touches (${kept.join(", ")})`
+  const headline = summary.endsWith("…") ? `${unrouteSummary(edits)}${skipped.length === 0 ? "" : `; left ${skipped.join("; ")}`}${held}` : summary
   return applyCopper(ports, circuit.file, design, edits, () => headline, summary)
 }

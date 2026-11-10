@@ -325,12 +325,12 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         const locked = await lockedPartsAt(layout.circuitPath)
         const lockedPart = locked.size === 0 ? undefined : lockedStart(locked, await designOf(layout.circuit))
         const tracks = records.filter((r): r is TrackRecord => r.t === "track")
-        const { edits, skipped } = unrouteEdits({ tracks, vias: records.filter((r) => r.t === "via") }, { ...(body.ids ? { ids: body.ids } : {}), ...(lockedPart ? { lockedPart: (track) => lockedPart(tracks.find((one) => one.id === track.id) as TrackRecord) } : {}) })
+        const { edits, skipped, kept } = unrouteEdits({ tracks, vias: records.filter((r) => r.t === "via") }, { ...(body.ids ? { ids: body.ids } : {}), ...(lockedPart ? { lockedPart: (track) => lockedPart(tracks.find((one) => one.id === track.id) as TrackRecord) } : {}) })
         if (edits.length === 0) {
           const none = body.ids ? "None of the selected copper was made by the router and unlocked; Unroute removes only that" : "The board has no unlocked router copper to remove"
           throw new HttpError(400, skipped.length === 0 ? none : `${none}: ${skipped.join("; ")}`)
         }
-        const result = await applyLayoutEdits(root, layout.circuit, edits, { author: "human", summary: unrouteSummary(edits, skipped), design: designOf })
+        const result = await applyLayoutEdits(root, layout.circuit, edits, { author: "human", summary: unrouteSummary(edits, skipped, kept.length), design: designOf })
         const writeMark = live.nextMark()
         live.requestBuild(layout.circuit)
         return send(res, { entryId: result.entry.id, summary: result.entry.summary, writeMark })

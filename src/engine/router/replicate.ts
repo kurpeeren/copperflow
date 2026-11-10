@@ -123,8 +123,18 @@ export interface Copies {
   replicas: Replica[]
 }
 
-/** Copies the source instance's routes to the other instances of its sheet (see the module comment). */
-export function replicate(world: RouterWorld, input: RouteBoardInput, name: string, routed: readonly RoutedConnection[], congestion: Congestion): Copies {
+/**
+ * Copies the source instance's routes to the other instances of its sheet (see the module comment). Once `late` says
+ * the time budget is spent, no copy is made or routed any more: each connection left is reported with `outOfTime`.
+ */
+export function replicate(
+  world: RouterWorld,
+  input: RouteBoardInput,
+  name: string,
+  routed: readonly RoutedConnection[],
+  congestion: Congestion,
+  budget: { late: () => boolean; outOfTime: (from: WorldPad, to: WorldPad) => string },
+): Copies {
   const source = input.instances?.find((instance) => instance.name === name || instance.path === name)
   if (source === undefined) return { routed: [], unrouted: [], replicas: [] }
   const targets = (input.instances ?? []).filter((instance) => instance.file === source.file && instance.path !== source.path)
@@ -148,6 +158,10 @@ export function replicate(world: RouterWorld, input: RouteBoardInput, name: stri
       const [from, to] = [padIn(route.from), padIn(route.to)]
       if (from === undefined || to === undefined || from.net === undefined || from.net !== to.net) continue
       if (!missing.has([from.id, to.id].sort(naturalCompare).join(" "))) continue
+      if (budget.late()) {
+        copies.unrouted.push({ net: from.net, from: from.id, to: to.id, reason: budget.outOfTime(from, to), blockers: [] })
+        continue
+      }
       const rule = netRule(input.rules, input.nets, from.net)
       const [start, end] = [islandIn(world, input, from), islandIn(world, input, to)]
       const copper = moved(route.copper, from.net, frameOf(source), frameOf(target))
