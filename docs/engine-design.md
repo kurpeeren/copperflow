@@ -219,6 +219,22 @@ As built in stage 6 (docs/plans/engine-stage-6.md), which replaces parts of the 
   `localId` (`R1`), and `circuit.instances` lists each instance with its sheet, file, base,
   connections, ports with their nets, parts, position and page. A sheet file built alone is its
   contents, with its nets as written.
+- The sheet symbol (`src/engine/sheet-ports.ts`, `sheet-symbol.ts`): a port writes its place on the
+  symbol, `<port name="VIN" side="left" order={1} />` (sides left, right, top, bottom; without them
+  ground goes to the bottom, a name with OUT to the right, the rest to the left, each in the first
+  free slot in source order), and `<sheet width height>` the box size in sheet units, grown to what
+  the ports need. A bad side, order or size, or two ports at one place, is an error. A bus port,
+  `<port name="D[0:7]" bus />`, joins the parent bus its connection names member by member; a
+  member missing on either side is a `bus-member-missing` error. The parent page draws each
+  instance as its symbol, a "sheet" component whose pins (`PS1.VIN`) are routed like a part's; a
+  bus pin is drawn hollow and joins no single net. A sheet built alone draws a flag per port.
+- The Studio opens a sheet file as its own Schematic tab beside the parent's tabs (a double click
+  on a symbol, or the Project tree); edits there go to the sheet file. With a symbol selected, a
+  pin dragged on the box writes its `side`/`order` (a port already there swaps), and the lower right
+  corner writes the size. Properties shows an instance's sheet, connections and base, a part's
+  instance on the PCB, and "In PowerStage, used 2 times" in a sheet. Edit → Select the instance and
+  Design → Replicate layout (the source's auto-placed parts written into the sheet, its copper copied
+  into each other instance's frame) act on instances; a locked instance locks its parts.
 
 The original plan:
 
