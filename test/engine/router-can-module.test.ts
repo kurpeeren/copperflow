@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join, relative } from "node:path"
 import { describe, expect, test } from "vitest"
 import { buildDesign } from "../../src/engine/design.js"
+import { cleanup } from "../../src/engine/router/cleanup.js"
 import { checkRouted, checkRoutedAll, routeDesign, routeIn } from "../helpers/route-check.js"
 
 const FOLDER = join(import.meta.dirname, "..", "fixtures", "can-module")
@@ -57,5 +58,7 @@ describe("the CAN module board, routed whole", () => {
     expect(checked.added).toEqual([])
     expect(checked.after.pcb.ratsnest).toEqual([])
     expect({ ...routeDesign(design), ms: 0 }).toEqual({ ...report, ms: 0 })
+    expect(cleanup({ layout: design.pcb, rules: design.rules, nets: design.circuit.nets }, report.routed)).toEqual(report.routed)
+    expect(report.edits).toHaveLength(report.routed.reduce((sum, route) => sum + route.copper.tracks.length + route.copper.vias.length, 0))
   }, 30_000)
 })
