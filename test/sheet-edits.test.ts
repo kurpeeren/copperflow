@@ -4,7 +4,7 @@ import { join } from "node:path"
 import { describe, expect, test } from "vitest"
 import { applyEdits } from "../src/core/edit.js"
 import { lockedStart, withInstanceParts } from "../src/core/layout-locks.js"
-import { editCircuit, listCircuits, listSheets, undoChange } from "../src/core/workspace.js"
+import { editCircuit, listCircuits, listSheets, redoChange, undoChange } from "../src/core/workspace.js"
 import type { TrackRecord } from "../src/core/layout-file.js"
 
 const none = new Set<string>()
@@ -130,8 +130,19 @@ describe("Replicate layout's one history entry", () => {
     expect(result.entry.file).toBe("main.circuit.layout.json")
     expect(result.entry.also?.map((change) => change.file)).toEqual(["PowerStage.sheet.tsx"])
     expect(await readFile(join(root, "PowerStage.sheet.tsx"), "utf8")).toContain(`<resistor name="R1" pcbX={1} pcbY={2} />`)
+    const placed = await readFile(join(root, "PowerStage.sheet.tsx"), "utf8")
+    const layout = await readFile(join(root, "main.circuit.layout.json"), "utf8")
     await undoChange(root, { author: "human" })
     expect(await readFile(join(root, "PowerStage.sheet.tsx"), "utf8")).toBe(SHEET)
+    await expect(readFile(join(root, "main.circuit.layout.json"), "utf8")).rejects.toThrow()
+    await redoChange(root, { author: "human" })
+    expect(await readFile(join(root, "PowerStage.sheet.tsx"), "utf8")).toBe(placed)
+    expect(await readFile(join(root, "main.circuit.layout.json"), "utf8")).toBe(layout)
+    // A sheet file changed after the entry is not overwritten by its undo.
+    await writeFile(join(root, "PowerStage.sheet.tsx"), `${placed}// edited by hand
+`)
+    await expect(undoChange(root, { author: "human" })).rejects.toThrow("PowerStage.sheet.tsx has changed since")
+    expect(await readFile(join(root, "main.circuit.layout.json"), "utf8")).toBe(layout)
   })
 })
 
