@@ -15,7 +15,8 @@ export async function readIfThere(path: string): Promise<string | undefined> {
   try {
     return await readFile(path, "utf8")
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
+    // A path under a plain file (ENOTDIR) is not there either.
+    if (["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) return undefined
     throw error
   }
 }

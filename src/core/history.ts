@@ -33,7 +33,9 @@ export type HistoryEntry = z.infer<typeof EntrySchema>
 export type FileChange = z.infer<typeof FileChangeSchema>
 export type Author = HistoryEntry["author"]
 
-export interface HistoryListing extends Omit<HistoryEntry, "before" | "after"> {
+export interface HistoryListing extends Omit<HistoryEntry, "before" | "after" | "also"> {
+  /** The other files the change wrote, without their text. */
+  also?: Omit<FileChange, "before" | "after">[]
   /** A later undo took this change back, and no redo has brought it back since. */
   undone: boolean
   /**
@@ -76,7 +78,7 @@ export function livesOnAs(entries: readonly HistoryEntry[], id: string): string 
   return livesOn(linksOf(entries), id)
 }
 
-function listing(entry: Omit<HistoryEntry, "before" | "after">, links: Links): HistoryListing {
+function listing(entry: Omit<HistoryListing, "undone" | "redoneAs">, links: Links): HistoryListing {
   const redoneAs = entry.undoOf ? links.redoneBy.get(entry.id) : livesOn(links, entry.id)
   const undone = links.undoneBy.has(entry.id) && redoneAs === undefined
   return redoneAs ? { ...entry, undone, redoneAs } : { ...entry, undone }
@@ -125,7 +127,9 @@ export async function listEntries(root: string, limit: number): Promise<HistoryL
   return entries
     .slice(-limit)
     .reverse()
-    .map(({ before: _before, after: _after, ...rest }) => listing(rest, links))
+    .map(({ before: _before, after: _after, also, ...rest }) =>
+      listing(also ? { ...rest, also: also.map(({ before: _b, after: _a, ...file }) => file) } : rest, links),
+    )
 }
 
 async function readEntry(root: string, id: string): Promise<HistoryEntry> {

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, test } from "vitest"
-import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises"
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { createCircuitFile, listEntries, readEntries, redoChange, undoChange } from "../src/core/index.js"
+import { createCircuitFile, formatHistory, listEntries, readEntries, redoChange, undoChange } from "../src/core/index.js"
 import { BOARD } from "./fixtures.js"
 
 const CIRCUIT = "a.circuit.tsx"
@@ -75,5 +75,41 @@ describe("a circuit written with its sheet files", () => {
     await writeFile(join(root, SHEET), "made again by hand")
     await expect(redoChange(root, { author: "ai" })).rejects.toThrow(/Block\.sheet\.tsx exists again/)
     expect(await exists(CIRCUIT)).toBe(false)
+  })
+})
+
+describe("a sheet file that cannot be written", () => {
+  test("leaves nothing written: no circuit, no other sheet file, no history entry", async () => {
+    await writeFile(join(root, "blocks"), "a plain file where a folder must go")
+    const sheets = [{ file: SHEET, text: SHEET_TEXT }, { file: "blocks/B.sheet.tsx", text: SHEET_TEXT }]
+    await expect(create(sheets)).rejects.toThrow()
+    expect([await exists(CIRCUIT), await exists(SHEET)]).toEqual([false, false])
+    expect(await listEntries(root, 10)).toHaveLength(0)
+  })
+
+  test("a circuit file that cannot be written takes the sheet files written before it away again", async () => {
+    await writeFile(join(root, "x"), "a plain file where a folder must go")
+    const made = createCircuitFile(root, "x/a.circuit.tsx", BOARD, { author: "ai", summary: "create", sheets: [{ file: SHEET, text: SHEET_TEXT }] })
+    await expect(made).rejects.toThrow()
+    expect(await exists(SHEET)).toBe(false)
+    expect(await listEntries(root, 10)).toHaveLength(0)
+  })
+
+  test("an undo whose sheet file is already as it was before the change still goes through", async () => {
+    await create([{ file: SHEET, text: SHEET_TEXT }])
+    await rm(join(root, SHEET))
+    await undoChange(root, { author: "ai" })
+    expect(await exists(CIRCUIT)).toBe(false)
+    await redoChange(root, { author: "ai" })
+    expect([await read(CIRCUIT), await read(SHEET)]).toEqual([BOARD, SHEET_TEXT])
+  })
+})
+
+describe("the history listing of a change with sheet files", () => {
+  test("names the sheet files without their text, and recent_changes names them", async () => {
+    await create([{ file: SHEET, text: SHEET_TEXT }])
+    const [entry] = await listEntries(root, 10)
+    expect(entry?.also).toEqual([{ file: SHEET, absent: "before" }])
+    expect(formatHistory(await listEntries(root, 10))).toMatch(/\(a\.circuit\.tsx, Block\.sheet\.tsx\)$/)
   })
 })
