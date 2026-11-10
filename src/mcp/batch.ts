@@ -19,7 +19,7 @@ type LoadedModel = Awaited<ReturnType<typeof loadCircuit>>["model"]
 
 const literal = z.union([z.string(), z.number(), z.boolean()])
 const props = z.record(z.string(), literal)
-/** set_props also takes a point for schNameAt, schValueAt and pcbNameAt, and null to remove a prop. */
+/** set_props also takes a point for schNameAt, schValueAt and pcbNameAt, and null to remove one of them. */
 const setValues = z.record(z.string(), z.union([literal, z.object({ x: z.number(), y: z.number() }), z.null()]))
 const ends = { from: z.string(), to: z.string() }
 

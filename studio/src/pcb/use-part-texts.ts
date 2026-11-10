@@ -1,13 +1,15 @@
 // What a canvas needs to pick, drag and nudge its parts' texts (the names and values on the schematic, the designators
 // on the PCB): the pure part-text.ts bound to the design and the actions, and the moves drawn at their new places while
-// their edits wait for the build. A move is one set_props edit, so one history entry.
-import { useEffect, useMemo, useState } from "react"
+// their edits wait for the build. A move is one set_props edit, so one history entry; quick arrow presses are merged
+// into as few moves as the edits in flight allow (text-keys.ts).
+import { useEffect, useMemo, useRef, useState } from "react"
 import type { CircuitData, Design } from "../api"
 import type { Actions } from "../App"
 import type { Point } from "./geometry"
 import type { Gesture, GestureTexts } from "./gestures"
 import { textBlocker, textMoveEdits, textsWithMoves, textUnder, TEXT_NAMES, viewTexts, type PartText, type TextMove } from "./part-text"
 import type { View } from "./positions"
+import { textKeys } from "./text-keys"
 
 interface Input {
   view: View
@@ -45,17 +47,33 @@ export function usePartTexts({ view, design, circuit, actions, locked, builtFrom
   const texts = useMemo(() => viewTexts(view, design), [view, design])
   const pending = useMemo(() => sent.filter((m) => m.sentAt > builtFrom), [sent, builtFrom])
   const placed = useMemo(() => textsWithMoves(texts, pending), [texts, pending])
-  const commit = (id: string, at: Point) => {
-    const text = placed.find((t) => t.id === id)
-    if (!text) return
-    const blocked = textBlocker(circuit, locked, id)
-    if (blocked) return actions.notify(blocked)
-    const edits = textMoveEdits(text, at)
-    if (edits.length === 0) return
+  const show = (id: string, at: Point): Sent => {
     const move: Sent = { id, at, sentAt: Date.now() }
     setSent((list) => [...list.filter((m) => m.id !== id), move])
-    void actions.edit(edits, `Move ${text.part} ${TEXT_NAMES[text.prop]?.toLowerCase() ?? text.prop}`).then((ok) => ok || setSent((list) => list.filter((m) => m !== move)))
+    return move
   }
+  /** Writes the text's middle at `at`; resolves whether it was written (nothing to write counts as written). */
+  const write = async (text: PartText, at: Point): Promise<boolean> => {
+    const blocked = textBlocker(circuit, locked, text.id)
+    if (blocked) {
+      actions.notify(blocked)
+      return false
+    }
+    const edits = textMoveEdits(text, at)
+    if (edits.length === 0) return true
+    const move = show(text.id, at)
+    const ok = await actions.edit(edits, `Move ${text.part} ${TEXT_NAMES[text.prop]?.toLowerCase() ?? text.prop}`)
+    if (!ok) setSent((list) => list.filter((m) => m !== move))
+    return ok
+  }
+  const commit = (id: string, at: Point) => {
+    const text = placed.find((t) => t.id === id)
+    if (text) void write(text, at)
+  }
+  // The key bursts outlive renders; each send uses the latest write.
+  const latestWrite = useRef(write)
+  latestWrite.current = write
+  const [keys] = useState(() => textKeys((text, at) => latestWrite.current(text, at)))
   const tools: GestureTexts = {
     at: (world) => textUnder(drawn ? placed.filter((t) => drawn(t.part)) : placed, world)?.id,
     position: (id) => placed.find((t) => t.id === id)?.at,
@@ -63,8 +81,8 @@ export function usePartTexts({ view, design, circuit, actions, locked, builtFrom
     commit,
   }
   const nudge = (id: string, by: Point) => {
-    const at = placed.find((t) => t.id === id)?.at
-    if (at) commit(id, { x: at.x + by.x, y: at.y + by.y })
+    const at = keys.press(design, (wanted) => placed.find((t) => t.id === wanted), id, by)
+    if (at && textBlocker(circuit, locked, id) === null) show(id, at)
   }
   return { tools, placed, pending, nudge }
 }

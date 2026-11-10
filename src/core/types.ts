@@ -115,7 +115,7 @@ export interface CircuitModel {
 
 /**
  * What setProps writes to a prop: a literal; a point, for the props that move a part's labels (schNameAt, schValueAt,
- * pcbNameAt); or null, which removes the prop.
+ * pcbNameAt); or null, which removes one of those three props.
  */
 export type PropValue = Literal | Point | null
 

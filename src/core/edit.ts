@@ -81,7 +81,7 @@ function setProps(
   if (!node) throw new EditError("not_found", `No part named ${name}`)
   const out = new MagicString(source)
   for (const [key, value] of Object.entries(props)) {
-    if (value === null) validateOrThrow(key, "")
+    if (value === null && !LABEL_PROPS.has(key)) throw new EditError("invalid", `${key} cannot be removed with null; only ${LABEL_AT_PROPS.join(", ")} can`)
     const formatted = value === null ? null : formattedProp(key, value)
     const attribute = attributeNamed(source, node, key)
     if (attribute && !part.props[key]?.editable) {

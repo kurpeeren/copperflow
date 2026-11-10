@@ -7,6 +7,7 @@ import { copperBoxes } from "./pcb/copper-hit"
 import { drawingAfterBuild, renamedAfterBuild, stableDrawings, type DrawingRename } from "./pcb/drawing-selection"
 import { labelAfterBuild } from "./pcb/label-selection"
 import { shownSelection, wireAfterBuild, withEndPins } from "./pcb/wire-selection"
+import { boardTexts, sheetTexts } from "./pcb/part-text"
 import { goneFrom, Selection, type SelectionChange } from "./selection"
 import { BottomStrip } from "./shell/BottomStrip"
 import { watchDpr } from "./shell/dpr"
@@ -109,7 +110,8 @@ function useShownSelection(selection: Selection, circuit: CircuitData | undefine
     const ids = <T extends { id: string }>(items: readonly T[] | undefined) => items?.map((item) => item.id)
     const drawings = sheet && stableDrawings(before?.schematic.drawings, sheet.drawings)
     const copper = design && [...design.pcb.tracks, ...design.pcb.vias].map((item) => item.id)
-    return shownSelection(selection, { view, parts: circuit?.model.parts.map((part) => part.name), wires: ids(sheet?.wires), labels: ids(sheet?.labels), drawings, copper })
+    const texts = design && ids(view === "pcb" ? boardTexts(design.pcb) : view === "schematic" ? sheetTexts(design.schematic) : [])
+    return shownSelection(selection, { view, parts: circuit?.model.parts.map((part) => part.name), wires: ids(sheet?.wires), labels: ids(sheet?.labels), drawings, copper, texts })
   }, [selection, circuit, design, view, before])
 }
 

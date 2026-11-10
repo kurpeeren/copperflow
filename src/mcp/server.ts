@@ -95,13 +95,13 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "set_props",
     {
       description:
-        "Set literal props of a part, e.g. pcbX, pcbY, pcbRotation, schX, schY, resistance, footprint. Missing props are added. schNameAt and schValueAt move the part's name and value on the schematic, pcbNameAt its silkscreen designator: each is a point { x, y }, an offset from the part's origin (sheet units, board mm), which moves with the part. null removes a prop, which puts a moved label back where the layout puts it.",
+        "Set literal props of a part, e.g. pcbX, pcbY, pcbRotation, schX, schY, resistance, footprint. Missing props are added. schNameAt and schValueAt move the part's name and value on the schematic, pcbNameAt its silkscreen designator: each is a point { x, y }, an offset from the part's origin (sheet units, board mm), which moves with the part. null removes one of these three props, which puts the label back where the layout puts it.",
       inputSchema: {
         file,
         part: z.string().describe("Part name, e.g. R1"),
         props: z
           .record(z.string(), z.union([literal, z.object({ x: z.number(), y: z.number() }), z.null()]))
-          .describe("Props to set, e.g. { \"pcbX\": 4, \"resistance\": \"10k\", \"schNameAt\": { \"x\": 0, \"y\": 0.4 } }; null removes a prop"),
+          .describe("Props to set, e.g. { \"pcbX\": 4, \"resistance\": \"10k\", \"schNameAt\": { \"x\": 0, \"y\": 0.4 } }; null removes schNameAt, schValueAt or pcbNameAt"),
       },
     },
     ({ file: circuit, part, props }) => {

@@ -178,7 +178,7 @@ The agent sees what you undid and does not repeat it.
 |------|--------------|
 | `list_circuits` | Lists the `*.circuit.tsx` files in the project |
 | `circuit_summary` | Compact by default (a line per part and net, locks, marks, lock violations); `detail: "full"` lists every prop and trace |
-| `set_props` | Sets literal props: position, rotation, value, footprint; `schNameAt`, `schValueAt` and `pcbNameAt` take a point `{ x, y }` that moves the name, value or silkscreen designator from the part's origin; `null` removes a prop |
+| `set_props` | Sets literal props: position, rotation, value, footprint; `schNameAt`, `schValueAt` and `pcbNameAt` take a point `{ x, y }` that moves the name, value or silkscreen designator from the part's origin; `null` removes one of those three |
 | `remove_part` | Removes a part and its traces |
 | `add_trace` / `remove_trace` | Connects or disconnects two ports or nets |
 | `check_circuit` | Runs copperflow's own ERC and placement DRC: counts, then up to 20 findings, one line each; `filter` narrows by severity, `copper`, part or net; copper clearance, width, via, board-edge and keepout violations are included |

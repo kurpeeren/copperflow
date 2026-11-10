@@ -289,6 +289,15 @@ describe("setProps: label positions", () => {
     expect(applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { schNameAt: null } }], none)).toBe(BOARD)
   })
 
+  test("null removes only the label props; any other prop is refused, naming the three", () => {
+    expectEditError(() => applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { resistance: null } }], none), "invalid")
+    try {
+      applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { pcbX: null } }], none)
+    } catch (error) {
+      expect((error as Error).message).toBe("pcbX cannot be removed with null; only schNameAt, schValueAt, pcbNameAt can")
+    }
+  })
+
   test("a point is refused for any other prop, and a point must be two finite numbers", () => {
     expectEditError(() => applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { pcbX: { x: 1, y: 1 } } }], none), "invalid")
     expectEditError(() => applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { schNameAt: { x: Number.NaN, y: 1 } } }], none), "invalid")
