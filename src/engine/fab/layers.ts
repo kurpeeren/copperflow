@@ -1,10 +1,12 @@
-// What each Gerber file holds, from the built board: copper (pads, tracks, vias) per copper layer, solder mask openings
+// What each Gerber file holds, from the built board: copper (pours, pads, tracks, vias) per copper layer, solder mask openings
 // (pads grown by the mask expansion; vias are tented), paste (SMD pads only, shrunk by the paste reduction),
-// silkscreen (footprint outlines and designators) and the board outline. Keepouts are not exported. Pure.
+// silkscreen (footprint outlines and designators) and the board outline. Keepouts are not exported; the mask and paste
+// ignore the pours. Pure.
 import { boardCopperLayers, type CopperLayer } from "../../core/layout-file.js"
 import { viaSpan } from "../copper.js"
 import type { Point } from "../model.js"
 import type { PcbLayout, PlacedFootprint, WorldPad } from "../pcb.js"
+import { pathArea, regions, toPath, toPoints } from "../pour/clip.js"
 import type { FabricationProfile } from "../rules/schema.js"
 import { DEFAULT_MASK_EXPANSION, DESIGNATOR_HEIGHT, designatorPlacements, SILK_WIDTH } from "./designators.js"
 import { writeGerber, type GerberLayer, type GerberObject } from "./gerber.js"
@@ -98,6 +100,21 @@ const padFunction = (pad: WorldPad) => (isSmd(pad) ? "SMDPad,CuDef" : "Component
 const LEGEND_FUNCTION = "Other,Legend"
 const present = <T>(item: T | undefined): item is T => item !== undefined
 
+/**
+ * The pours' fills on the layer as regions: the fills united, then each piece dark and its holes (the reliefs' gaps,
+ * the clearance round other nets' copper) clear, largest piece first so a piece inside another's hole is drawn after
+ * that hole is cleared. They come before everything else on the layer, which is drawn dark over them.
+ */
+function pourObjects(pcb: PcbLayout, layer: CopperLayer): GerberObject[] {
+  const paths = pcb.pours.filter((pour) => pour.layer === layer).flatMap((pour) => pour.polygons.flatMap((polygon) => [toPath(polygon.outer), ...polygon.holes.map(toPath)]))
+  if (paths.length === 0) return []
+  const pieces = regions(paths).sort((a, b) => Math.abs(pathArea(b.outer)) - Math.abs(pathArea(a.outer)))
+  return pieces.flatMap((piece): GerberObject[] => [
+    { kind: "region", points: toPoints(piece.outer), function: "Conductor" },
+    ...piece.holes.map((hole): GerberObject => ({ kind: "region", points: toPoints(hole), polarity: "clear" })),
+  ])
+}
+
 function copperObjects(pcb: PcbLayout, layer: CopperLayer): GerberObject[] {
   const padCopper = pads(pcb.parts)
     .filter((pad) => pad.layers === "through" || pad.layers === layer)
@@ -108,7 +125,7 @@ function copperObjects(pcb: PcbLayout, layer: CopperLayer): GerberObject[] {
   const vias = pcb.vias
     .filter((via) => via.missingLayer === undefined && viaSpan(via).has(layer))
     .map((via): GerberObject => ({ kind: "flash", at: via.at, aperture: { shape: "circle", diameter: via.diameter }, function: "ViaPad" }))
-  return [...padCopper.filter(present), ...tracks, ...vias]
+  return [...pourObjects(pcb, layer), ...padCopper.filter(present), ...tracks, ...vias]
 }
 
 function silkObjects(parts: readonly PlacedFootprint[], side: Side, expansion: number): GerberObject[] {

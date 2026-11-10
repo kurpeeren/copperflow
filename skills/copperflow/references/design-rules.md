@@ -135,6 +135,8 @@ position. Anything a check cannot evaluate is reported as `unchecked`, never sil
 | `drill-size` | error | A drill is below `minDrill`. |
 | `annular-ring` | error | The copper ring around a drill is below `minAnnularRing`. |
 | `hole-to-hole` | error | Two holes are closer than `minHoleToHole`. |
+| `copper-hole` | error | Copper (a pad, track, via or pour fill) is closer to a non-plated `<hole>` than `boardEdgeClearance`. |
+| `pour-floating` | warning | A copper pour has no pad, track or via of its net on its layer, so its fill joins nothing. |
 | `courtyard-overlap` | error | Two part courtyards overlap. |
 | `keepout` | error | A part lies inside a keep-out area. |
 | `outside-board` | warning | A part is not inside the board outline. |

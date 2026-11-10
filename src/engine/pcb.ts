@@ -1,13 +1,14 @@
 import type { LayoutRecord } from "../core/layout-file.js"
 import { boundsOf, findSpot, type Bounds } from "./autoplace.js"
 import { usableOutline } from "./board.js"
-import { resolveCopper, type PcbTrack, type PcbVia } from "./copper.js"
+import type { PcbTrack, PcbVia } from "./copper.js"
 import { diagnostic } from "./diagnostics.js"
 import { anchorGroups } from "./instance-anchor.js"
 import type { Footprint, Pad } from "./footprints/types.js"
 import type { Board, Circuit, Component, Diagnostic, Hole, Point } from "./model.js"
 import { naturalCompare } from "./order.js"
 import type { PourFill } from "./pour/fill.js"
+import { resolveWithPours, type PourFiller } from "./pour/resolve.js"
 import { ratsnest } from "./ratsnest.js"
 
 export interface WorldPad extends Pad {
@@ -55,7 +56,7 @@ export interface PcbLayout {
   vias: PcbVia[]
   /** The connections copper does not join yet. */
   ratsnest: RatsnestLine[]
-  /** The board's copper pours as filled, in the board's pour order; buildDesign fills them once the rules are read. */
+  /** The board's copper pours as filled, in the board's pour order (empty when layoutPcb is given no filler). */
   pours: PourFill[]
   /** The board's non-plated holes, in source order. */
   holes: Hole[]
@@ -196,25 +197,29 @@ function placeAll(circuit: Circuit, resolved: readonly Resolved[], nets: Readonl
   return { parts: circuit.components.map((c) => byId.get(c.id) as PlacedFootprint) }
 }
 
-/** Places the parts, resolves the layout file's copper (`records`, in file order) and draws what is still unrouted. */
+/**
+ * Places the parts, resolves the layout file's copper (`records`, in file order), fills the pours with `fill` (none
+ * without it) and draws what neither the copper nor the fill joins yet.
+ */
 export function layoutPcb(
   circuit: Circuit,
   footprintOf: FootprintOf,
   records: readonly LayoutRecord[] = [],
+  fill?: PourFiller,
 ): { layout: PcbLayout; diagnostics: Diagnostic[] } {
   const { resolved, diagnostics, missing } = resolveFootprints(circuit, footprintOf)
   const { parts } = placeAll(circuit, resolved, pinNets(circuit))
   if (missing.length > 0) {
     diagnostics.push(diagnostic("no-footprint", "warning", "These parts have no footprint and are drawn as 1 x 1 mm squares without pads", missing))
   }
-  const copper = resolveCopper(parts, records, circuit.nets, circuit.board?.layers ?? 2)
+  const { copper, pours } = resolveWithPours(parts, records, circuit.nets, circuit.board?.layers ?? 2, fill)
   const layout: PcbLayout = {
     ...(circuit.board ? { board: circuit.board } : {}),
     parts,
     tracks: copper.tracks,
     vias: copper.vias,
     ratsnest: ratsnest(parts, copper.islands),
-    pours: [],
+    pours,
     holes: circuit.board?.holes ?? [],
   }
   return { layout, diagnostics: [...diagnostics, ...copper.diagnostics] }

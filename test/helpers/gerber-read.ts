@@ -1,6 +1,6 @@
 // Reads a written Gerber file back with the independent parser (@tracespace/parser) into what the tests compare against
 // the model: the X2 file attributes, the apertures with their aperture function, the flashes, the drawn segments
-// (grouped into strokes, one per D02 move followed by draws) and the regions. Coordinates in mm.
+// (grouped into strokes, one per D02 move followed by draws) and the regions with their load polarity. Coordinates in mm.
 import { parse } from "@tracespace/parser"
 
 export interface Point {
@@ -25,8 +25,11 @@ export interface ReadGerber {
   flashes: { at: Point; aperture: ReadAperture }[]
   /** Each stroke: the point a move left it at and the points of the draws that follow, with the aperture drawn with. */
   strokes: { points: Point[]; aperture: ReadAperture }[]
-  /** Each region's corners as written, the closing corner included; `fn` is the aperture function set when it began. */
-  regions: { points: Point[]; fn?: string }[]
+  /**
+   * Each region's corners as written, the closing corner included; `fn` is the aperture function set when it began,
+   * `polarity` the load polarity it was drawn with ("dark" adds, "clear" removes).
+   */
+  regions: { points: Point[]; fn?: string; polarity: string }[]
   done: boolean
 }
 
@@ -40,6 +43,7 @@ interface Node {
   units?: string
   graphic?: string
   region?: boolean
+  polarity?: string
   coordinates?: Record<string, string>
   position?: { start: { offset?: number }; end: { offset?: number } }
 }
@@ -59,7 +63,8 @@ export function readGerber(text: string): ReadGerber {
   let inRegion = false
   let at: Point = { x: 0, y: 0 }
   let stroke: { points: Point[]; aperture: ReadAperture } | undefined
-  let region: { points: Point[]; fn?: string } | undefined
+  let region: { points: Point[]; fn?: string; polarity: string } | undefined
+  let polarity = "dark"
   for (const node of tree.children as unknown as Node[]) {
     if (node.type === "unimplemented") {
       // The statement as written: the parser's own value drops a "T0" inside a date, so the source text is read.
@@ -76,6 +81,9 @@ export function readGerber(text: string): ReadGerber {
       case "coordinateFormat":
         if (node.format) read.format = node.format
         break
+      case "loadPolarity":
+        polarity = node.polarity ?? "dark"
+        break
       case "units":
         if (node.units) read.units = node.units
         break
@@ -91,7 +99,7 @@ export function readGerber(text: string): ReadGerber {
         break
       case "regionMode":
         inRegion = node.region === true
-        if (inRegion) region = { points: [], ...(fn === undefined ? {} : { fn }) }
+        if (inRegion) region = { points: [], ...(fn === undefined ? {} : { fn }), polarity }
         else if (region) {
           read.regions.push(region)
           region = undefined

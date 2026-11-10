@@ -103,6 +103,19 @@ describe("rasterising the board for one net", () => {
     expect(viaBlocker(kept, 1.75, 2.5)).toBe("keepout:1")
   })
 
+  test("a non-plated hole keeps tracks on every layer and vias at the board-edge clearance", () => {
+    const holed: PcbLayout = { ...layoutOf([]), holes: [{ id: "hole:1", x: 2, y: 2, diameter: 1, source: SOURCE }] }
+    const kept = rasterise(holed, RULES, asDefault, RULE)
+    for (const layer of [0, 1]) {
+      expect(trackBlocker(kept, layer, 2, 2)).toBe("hole:1")
+      expect(trackBlocker(kept, layer, 2, 2.75)).toBe("hole:1")
+      expect(trackBlocker(kept, layer, 2, 3)).toBeUndefined()
+    }
+    expect(viaBlocker(kept, 2, 3)).toBe("hole:1")
+    expect(viaBlocker(kept, 2, 3.25)).toBeUndefined()
+    expect(trackBlocker(kept, 0, 4.75, 0)).toBe("board edge")
+  })
+
   test("another net's track blocks its layer; the net's own track does not", () => {
     const track = (id: string, net: string, y: number): PcbTrack => ({ id, net, layer: "bottom", width: 0.25, points: [{ x: -4, y }, { x: 4, y }], locked: false, by: "human", pads: [] })
     const crossed = rasterise(layoutOf([], [], [track("t0001", "net.B", 1), track("t0002", "net.A", -1)]), RULES, asDefault, RULE)

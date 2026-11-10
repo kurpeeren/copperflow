@@ -14,8 +14,8 @@ export interface DrillHole {
   at: Point
   /** Set for a slot: where the route ends; `at` is where it starts. */
   to?: Point
-  /** The X2 drill function: a component's hole or a via's. */
-  function: "ComponentDrill" | "ViaDrill"
+  /** The X2 drill function: a component's hole, a via's, or a non-plated mounting hole's. */
+  function: "ComponentDrill" | "ViaDrill" | "MechanicalDrill"
 }
 
 /** Three decimals: whole micrometres, finer than any drill. */
@@ -37,14 +37,15 @@ function padHole(pad: WorldPad & { drill: { width: number; height: number } }): 
   return { diameter: Math.min(width, height), at: { x: pad.x - dx, y: pad.y - dy }, to: { x: pad.x + dx, y: pad.y + dy }, function: "ComponentDrill" }
 }
 
-/** The board's holes: plated (through pads, then vias, in model order) and non-plated (none in the model yet). */
+/** The board's holes: plated (through pads, then vias, in model order) and non-plated (the board's holes, in source order). */
 export function drillHoles(pcb: PcbLayout): { plated: DrillHole[]; nonPlated: DrillHole[] } {
   const pads = pcb.parts
     .flatMap((part) => part.pads)
     .filter((pad): pad is WorldPad & { drill: { width: number; height: number } } => pad.layers === "through" && pad.drill !== undefined)
     .map(padHole)
   const vias = pcb.vias.filter((via) => via.missingLayer === undefined).map((via): DrillHole => ({ diameter: via.drill, at: via.at, function: "ViaDrill" }))
-  return { plated: [...pads, ...vias], nonPlated: [] }
+  const holes = pcb.holes.map((hole): DrillHole => ({ diameter: hole.diameter, at: { x: hole.x, y: hole.y }, function: "MechanicalDrill" }))
+  return { plated: [...pads, ...vias], nonPlated: holes }
 }
 
 interface Tool {

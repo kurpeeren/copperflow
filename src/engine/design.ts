@@ -6,9 +6,10 @@ import { elaborate } from "./elaborate.js"
 import { evaluateCircuit } from "./evaluate.js"
 import { generateFootprint, type FootprintResult } from "./footprints/index.js"
 import { diagnostic } from "./diagnostics.js"
-import type { Diagnostic, Circuit } from "./model.js"
+import type { Board, Diagnostic, Circuit } from "./model.js"
 import { withDesignators } from "./fab/designators.js"
 import { layoutPcb, type PcbLayout } from "./pcb.js"
+import type { PourFiller } from "./pour/resolve.js"
 import { cachedPourFills } from "./pour/cache.js"
 import { netClasses } from "./rules/classes.js"
 import { DEFAULT_CLASS } from "./rules/profiles.js"
@@ -56,12 +57,11 @@ function readCopper(files: Files, main: string): { records: LayoutRecord[]; diag
   return { records, diagnostics: errors.map((error) => diagnostic("layout-file", "error", `${file}: ${error}`, [])) }
 }
 
-/** The layout with its pours filled from the placed pads, the copper, the board and the rules. */
-function withPours(layout: PcbLayout, rules: Rules, byNet: ReadonlyMap<string, string>): PcbLayout {
-  if (!layout.board?.pours) return layout
+/** Fills the board's pours from the placed pads, the resolved copper, the board and the rules; none without pours. */
+function pourFiller(board: Board | undefined, rules: Rules, byNet: ReadonlyMap<string, string>): PourFiller | undefined {
+  if (!board?.pours) return undefined
   const classOf = (net: string | undefined) => (net === undefined ? DEFAULT_CLASS.name : (byNet.get(net) ?? DEFAULT_CLASS.name))
-  const pads = layout.parts.flatMap((part) => part.pads)
-  return { ...layout, pours: cachedPourFills({ board: layout.board, pads, tracks: layout.tracks, vias: layout.vias, rules, classOf }) }
+  return (pads, copper) => cachedPourFills({ board, pads, tracks: copper.tracks, vias: copper.vias, rules, classOf })
 }
 
 /** Evaluates the circuit code in `main`, then lays out the schematic and the board. Throws CircuitCodeError. */
@@ -70,14 +70,14 @@ export function buildDesign(files: Files, main: string): Design {
   const circuit = elaborate(evaluateCircuit(files, main), main, { padCount: (text) => pinPads(footprintOf(text)) })
   const { layout: schematic, diagnostics: wiring } = layoutSchematicWithDiagnostics(circuit)
   const copper = readCopper(files, main)
-  const pcb = layoutPcb(circuit, (component) => footprintOf(component.footprint as string), copper.records)
   const loaded = loadRules(files)
   const classes = netClasses(loaded.rules, circuit.nets)
+  const pcb = layoutPcb(circuit, (component) => footprintOf(component.footprint as string), copper.records, pourFiller(circuit.board, loaded.rules, classes.byNet))
   const layers = layerCountWarnings(loaded.rules, circuit.board)
   const notes = pcb.diagnostics.filter(isCopperNote)
   const placement = pcb.diagnostics.filter((d) => !isCopperNote(d))
   const diagnostics = [...circuit.diagnostics, ...wiring, ...copper.diagnostics, ...placement, ...loaded.diagnostics, ...layers, ...classes.diagnostics]
-  const layout = withPours(pcb.layout, loaded.rules, classes.byNet)
+  const layout = pcb.layout
   const violations = checkDesign(circuit, schematic, layout, loaded.rules, notes)
   const board = withDesignators(layout, loaded.rules.fabrication)
   return { version: 1, file: main, circuit, schematic, pcb: board, rules: loaded.rules, diagnostics, violations }

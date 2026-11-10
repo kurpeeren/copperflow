@@ -9,6 +9,7 @@ import { attempt, cannot, classLookup, netRule, type Job, type RouteInput } from
 import { islandsOf } from "./ends.js"
 import { routerWorld, type CellWindow, type NetRule, type RouterWorld } from "./grid.js"
 import type { Obstacle } from "./obstacles.js"
+import { routeWithPours } from "./pour-rounds.js"
 import type { RoutedCopper } from "./path.js"
 import { replicate, type Replica } from "./replicate.js"
 
@@ -268,8 +269,16 @@ function settle(run: Run, connections: readonly Connection[]): void {
   }
 }
 
-/** Routes the connections the scope covers; see the module comment. */
+/**
+ * Routes the connections the scope covers; see the module comment. On a board with pours, the connections the fills
+ * make are left to them, and what the fills no longer join once the routes are laid is routed again (pour-rounds).
+ */
 export function routeBoard(input: RouteBoardInput, options: RouteBoardOptions = {}): RouteReport {
+  return routeWithPours(input, options, routeOnce)
+}
+
+/** One run over the layout's ratsnest: negotiation, settling, copies, cleanup. */
+function routeOnce(input: RouteBoardInput, options: RouteBoardOptions): RouteReport {
   const clock = options.clock ?? (() => performance.now())
   const started = clock()
   const scope = options.scope ?? { kind: "all" }
