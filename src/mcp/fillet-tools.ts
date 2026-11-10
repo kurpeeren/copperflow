@@ -24,9 +24,9 @@ export const straightenTracksInput = {
 }
 
 export const FILLET_TRACKS_DESCRIPTION =
-  "Round the square corners of tracks as ONE change: each corner becomes short chords on an arc tangent to both legs. A corner stays square when its arc would come closer than the clearance to another net's copper, a pad, a keepout or the board edge, when its legs are shorter than the radius needs, or when copper of its net joins it there; the answer counts those with the reasons. Locked tracks and tracks starting on a locked part are left alone. Corners already round stay as they are; straighten_tracks puts them back."
+  "Round the square corners of tracks as ONE change: each corner becomes short chords on an arc tangent to both legs. A corner stays square when its arc would come closer than the clearance to another net's copper, a pad, a keepout or the board edge, when its legs are shorter than the radius needs, or when copper of its net joins the part of a leg the arc replaces; the answer counts those with the reasons. Locked tracks and tracks starting on a locked part are left alone. Corners already round stay as they are; straighten_tracks puts them back."
 export const STRAIGHTEN_TRACKS_DESCRIPTION =
-  "Put back the corners fillet_tracks rounded, as ONE change: each run of chords on an arc becomes the point where the two straight legs around it meet. Locked tracks and tracks starting on a locked part are left alone."
+  "Put back the corners fillet_tracks rounded, as ONE change: each run of chords on an arc becomes the point where the two straight legs around it meet. A corner stays round when the square corner would come closer than the clearance to another net's copper, a pad, a keepout or the board edge, or would leave copper of its net that joins the arc; the answer counts those with the reasons. Locked tracks and tracks starting on a locked part are left alone."
 
 /** Refuses ids that name no track of the layout, before anything is written. */
 function checkIds(design: Design, ids: readonly string[] | undefined): void {

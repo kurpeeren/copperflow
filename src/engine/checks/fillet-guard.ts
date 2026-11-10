@@ -12,9 +12,10 @@ import { bounds, type Shape } from "./geometry.js"
 import type { Box } from "./grid-index.js"
 
 /**
- * Whether a rounded corner may go in: the design-rule checks the copper checks run (clearance to other nets' copper and
- * to pads, the board edge, keepouts grown by the minimum clearance) measured on the arc's chords alone, against
- * everything but the track itself; and the arc must still touch whatever of its own net met the square corner.
+ * Whether a corner may change, rounded (the arc takes the place of the legs it cuts off) or straightened (the legs take
+ * the place of the arc): the design-rule checks the copper checks run (clearance to other nets' copper and to pads, the
+ * board edge, keepouts grown by the minimum clearance) measured on the new copper alone, against everything but the
+ * track itself; and the new copper must still touch whatever of the track's own net joined the copper it replaces.
  */
 
 export interface GuardContext {
@@ -45,18 +46,19 @@ export function guardPieces({ layout, rules, classOf }: GuardContext): GuardPiec
   return { copper: copperPieces(layout, classOf), pads: padPieces(layout, classOf), reach: Math.max(...clearances) }
 }
 
-function arcPiece(track: PcbTrack, arc: readonly Point[], classOf: ClassOf): CopperPiece {
-  const shapes = arc.slice(1).map((p, i): Shape => ({ core: [arc[i] as Point, p], radius: track.width / 2 }))
+/** The copper of a path of the track: one shape per segment, the track's width. */
+const pathShapes = (track: PcbTrack, path: readonly Point[]): Shape[] => path.slice(1).map((p, i): Shape => ({ core: [path[i] as Point, p], radius: track.width / 2 }))
+
+function pathPiece(track: PcbTrack, path: readonly Point[], classOf: ClassOf): CopperPiece {
   const net = track.net === undefined ? {} : { net: track.net }
-  return { id: track.id, kind: "track", ...net, className: classOf(track.net), layers: [track.layer], shapes, at: arc[0] as Point, pads: track.pads }
+  return { id: track.id, kind: "track", ...net, className: classOf(track.net), layers: [track.layer], shapes: pathShapes(track, path), at: path[0] as Point, pads: track.pads }
 }
 
 const touches = (a: CopperPiece, shapes: readonly Shape[]) => a.shapes.some((one) => shapes.some((other) => copperTouches(one, other)))
 
-/** What of the track's own net met the square corner and the arc would no longer touch. */
-function leftBehind(near: readonly CopperPiece[], track: PcbTrack, corner: Point, arc: CopperPiece): boolean {
-  const disc: Shape[] = [{ core: [corner], radius: track.width / 2 }]
-  return near.some((piece) => piece.net === track.net && touches(piece, disc) && !touches(piece, arc.shapes))
+/** Whether copper of the track's own net joins the copper that goes and would not touch the copper that comes. */
+function leftBehind(near: readonly CopperPiece[], track: PcbTrack, gone: readonly Shape[], coming: CopperPiece): boolean {
+  return near.some((piece) => piece.net === track.net && touches(piece, gone) && !touches(piece, coming.shapes))
 }
 
 /** The other piece a clearance violation of the arc names, as the summary says it: its net, else its id. */
@@ -75,18 +77,35 @@ function placementReason(arc: CopperPiece, context: GuardContext): string | unde
   return keepout ? `too close to ${keepout.id}` : undefined
 }
 
-/** The guard for one track's corners: the reason a proposed arc may not go in, or undefined when it may. */
-export function filletGuard(context: GuardContext, pieces: GuardPieces, track: PcbTrack): CornerGuard {
+/** The pieces of the board near a track's layer, and how to check one corner change of it. */
+function cornerCheck(context: GuardContext, pieces: GuardPieces, track: PcbTrack) {
   const onLayer = (piece: CopperPiece) => piece.id !== track.id && piece.layers.includes(track.layer)
   const [copper, pads] = [pieces.copper.filter(onLayer), pieces.pads.filter(onLayer)]
-  return (corner, arc) => {
-    const piece = arcPiece(track, arc, context.classOf)
-    const area = grown(boxOf([...piece.shapes, { core: [corner], radius: track.width / 2 }]), pieces.reach + track.width)
+  /** The reason the path `coming` may not take the place of `going`, or undefined when it may. */
+  return (coming: readonly Point[], going: readonly Point[], joined: string): string | undefined => {
+    const piece = pathPiece(track, coming, context.classOf)
+    const gone = pathShapes(track, going)
+    const area = grown(boxOf([...piece.shapes, ...gone]), pieces.reach + track.width)
     const isNear = (one: CopperPiece) => overlaps(boxOf(one.shapes), area)
     const [nearCopper, nearPads] = [copper.filter(isNear), pads.filter(isNear)]
-    if (leftBehind([...nearCopper, ...nearPads], track, corner, piece)) return "joined at the corner"
+    if (leftBehind([...nearCopper, ...nearPads], track, gone, piece)) return joined
     const clash = clearanceChecks([piece, ...nearCopper], nearPads, context.rules).find((violation) => violation.items.includes(track.id))
     if (clash) return `too close to ${nameOfOther(clash.items, track, [...nearCopper, ...nearPads], context)}`
     return placementReason(piece, context)
   }
+}
+
+/** The legs of a corner that its arc replaces: from the arc's start to the corner to the arc's end. */
+const legsOf = (corner: Point, arc: readonly Point[]): Point[] => [arc[0] as Point, corner, arc.at(-1) as Point]
+
+/** The guard for rounding one track's corners: the reason a proposed arc may not go in, or undefined when it may. */
+export function filletGuard(context: GuardContext, pieces: GuardPieces, track: PcbTrack): CornerGuard {
+  const check = cornerCheck(context, pieces, track)
+  return (corner, arc) => check(arc, legsOf(corner, arc), "joined on the corner's legs")
+}
+
+/** The guard for straightening one track's corners: the same checks on the square corner that would replace the arc. */
+export function straightenGuard(context: GuardContext, pieces: GuardPieces, track: PcbTrack): CornerGuard {
+  const check = cornerCheck(context, pieces, track)
+  return (corner, arc) => check(legsOf(corner, arc), arc, "joined on the arc")
 }

@@ -84,9 +84,20 @@ describe("planFillet", () => {
 
   test("leaves a corner square where a via, a pad or another track's end joins it, when the arc would leave it", () => {
     const onVia = planFillet(designOf({ tracks: [L], vias: [via("v0001", pt(10, 0))] }), { radius: 3 })
-    expect(onVia.summary).toBe("No corner was rounded; 1 left square: joined at the corner")
+    expect(onVia.summary).toBe("No corner was rounded; 1 left square: joined on the corner's legs")
     const branch = track("t0003", [pt(10, 0), pt(20, 0)])
-    expect(planFillet(designOf({ tracks: [L, branch] }), { ids: ["t0001"] }).summary).toBe("No corner was rounded; 1 left square: joined at the corner")
+    expect(planFillet(designOf({ tracks: [L, branch] }), { ids: ["t0001"] }).summary).toBe("No corner was rounded; 1 left square: joined on the corner's legs")
+  })
+
+  test("leaves a corner square where copper of its net joins a leg the arc would replace, away from the corner", () => {
+    const square = "No corner was rounded; 1 left square: joined on the corner's legs"
+    const branch = track("t0003", [pt(8.5, 0), pt(8.5, -5)])
+    expect(planFillet(designOf({ tracks: [L, branch] }), { ids: ["t0001"], radius: 3 }).summary).toBe(square)
+    expect(planFillet(designOf({ tracks: [L], vias: [via("v0001", pt(8.5, 0), { diameter: 0.4 })] }), { radius: 3 }).summary).toBe(square)
+    expect(planFillet(designOf({ tracks: [L], pads: [pad("U1#2", pt(8.5, 0), { width: 0.3, height: 0.3, net: "net.A" })] }), { radius: 3 }).summary).toBe(square)
+    // On the part of the leg that stays straight, it stays joined.
+    const far = track("t0003", [pt(5, 0), pt(5, -5)])
+    expect(planFillet(designOf({ tracks: [L, far] }), { ids: ["t0001"], radius: 3 }).summary).toBe("Rounded 1 corner on 1 track")
   })
 
   test("counts the reasons once each, and skips locked tracks and tracks on a locked part, saying so", () => {
@@ -114,6 +125,21 @@ describe("planStraighten", () => {
     expect(back.summary).toBe("Straightened 3 corners on 2 tracks")
     expect(back.changes[0]?.points).toEqual(L.points)
     expect(back.changes[1]?.points).toEqual(STAIRS.points)
+  })
+
+  const roundedL = () => ({ ...L, points: planFillet(designOf({ tracks: [L] })).changes[0]?.points ?? [] })
+  const STAIRS_ROUND = () => ({ ...STAIRS, points: planFillet(designOf({ tracks: [STAIRS] })).changes[0]?.points ?? [] })
+
+  test("keeps a corner round when the square corner would come too close to another net's copper", () => {
+    const gnd = track("t0003", [pt(10.3, -0.3), pt(10.4, -0.4)], { net: "net.B" })
+    const plan = planStraighten(designOf({ tracks: [roundedL(), STAIRS_ROUND(), gnd] }))
+    expect(plan.changes.map((c) => c.id)).toEqual(["t0002"])
+    expect(plan.summary).toBe("Straightened 2 corners on 1 track; 1 kept round: too close to GND")
+  })
+
+  test("keeps a corner round when copper of its net joins the arc and the square corner would leave it", () => {
+    const onArc = via("v0001", pt(9.53, 0.47), { diameter: 0.4 })
+    expect(planStraighten(designOf({ tracks: [roundedL()], vias: [onArc] })).summary).toBe("No corner was straightened; 1 kept round: joined on the arc")
   })
 
   test("says so when no corner is rounded, and skips locked tracks", () => {

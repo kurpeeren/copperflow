@@ -1,4 +1,4 @@
-import { filletGuard, guardPieces, type GuardContext } from "./checks/fillet-guard.js"
+import { filletGuard, guardPieces, straightenGuard, type GuardContext } from "./checks/fillet-guard.js"
 import { padsUnder, type PcbTrack } from "./copper.js"
 import { filletTrack, straightenTrack } from "./fillet.js"
 import type { Net, Point } from "./model.js"
@@ -11,7 +11,8 @@ import { filletRadius } from "./rules/track-defaults.js"
 /**
  * Fillet tracks and Straighten tracks on a built design, as the Studio and the agent run them: which tracks change,
  * their new points, and the one-line summary ("Rounded 14 corners on 6 tracks; 2 left square: too short, too close to
- * GND"). Locked tracks, and tracks starting on a locked part's pad, are left as they are and named.
+ * GND"; "Straightened 3 corners on 2 tracks; 1 kept round: too close to GND"). Locked tracks, and tracks starting on a
+ * locked part's pad, are left as they are and named.
  */
 
 /** What the plans read of a built design. */
@@ -95,14 +96,20 @@ export function planFillet(design: PlanDesign, options: PlanOptions = {}): Coppe
 /** Straighten tracks: every rounded corner of the tracks put back where its legs meet. */
 export function planStraighten(design: PlanDesign, options: Omit<PlanOptions, "radius"> = {}): CopperPlan {
   const { tracks, skipped } = chosenTracks(design, options)
+  const context = guardContext(design)
+  const pieces = guardPieces(context)
   const changes: TrackChange[] = []
-  let corners = 0
+  const reasons: string[] = []
+  let [corners, round] = [0, 0]
   for (const track of tracks) {
-    const result = straightenTrack(track.points)
-    if (result.straightened === 0) continue
-    changes.push({ id: track.id, points: result.points })
+    const result = straightenTrack(track.points, straightenGuard(context, pieces, track))
+    if (result.straightened > 0) changes.push({ id: track.id, points: result.points })
     corners += result.straightened
+    round += result.round.length
+    for (const corner of result.round) if (!reasons.includes(corner.reason)) reasons.push(corner.reason)
   }
-  const head = corners === 0 ? "No rounded corners to straighten" : `Straightened ${plural(corners, "corner")} on ${plural(changes.length, "track")}`
-  return { changes, summary: withSkipped(head, skipped) }
+  if (corners === 0 && round === 0) return { changes, summary: withSkipped("No rounded corners to straighten", skipped) }
+  const head = corners === 0 ? "No corner was straightened" : `Straightened ${plural(corners, "corner")} on ${plural(changes.length, "track")}`
+  const kept = round === 0 ? [] : [`${round} kept round: ${reasons.join(", ")}`]
+  return { changes, summary: withSkipped(head, [...kept, ...skipped]) }
 }
