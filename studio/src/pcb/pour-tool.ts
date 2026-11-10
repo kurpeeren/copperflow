@@ -3,7 +3,8 @@
 // the hole's diameter field, and the edits they send: a pour on the active layer, of GND when the circuit has it, and
 // a hole. A pour's corners can be dragged afterwards (pourCornerEdit), and Delete removes pours and holes
 // (boardRemoval). Plain TypeScript with .js imports, so the tests run it without a DOM.
-import { outlineProblem } from "../../../src/core/board-items.js"
+import { boardItemInstance, instanceItemRefusal, isHoleId, outlineProblem } from "../../../src/core/board-items.js"
+import { sheetFileIn } from "../../../src/core/selectors.js"
 import type { BoardItemInfo, CircuitModel, Edit } from "../../../src/core/types.js"
 import type { Design } from "../../../src/engine/design.js"
 import type { Point } from "../../../src/engine/model.js"
@@ -129,8 +130,13 @@ export function pourCornerEdit(id: string, outline: readonly Point[], index: num
   return { edit: { kind: "setPour", id, props: { outline: moved } }, summary: `move a corner of ${id}` }
 }
 
-/** Why a pour or hole cannot be edited (locked, or read-only in the code), or null when it can. */
-export function boardItemBlocker(model: Pick<CircuitModel, "boardItems">, locked: ReadonlySet<string>, id: string): string | null {
+/**
+ * Why a pour or hole cannot be edited (inside a sub-sheet instance, locked, or read-only in the code), or null when it
+ * can. One of an instance is edited in its sheet file, as a part inside an instance is.
+ */
+export function boardItemBlocker(model: Pick<CircuitModel, "boardItems"> & Partial<Pick<CircuitModel, "parts" | "imports">>, locked: ReadonlySet<string>, id: string): string | null {
+  const instance = boardItemInstance(id)
+  if (instance !== undefined) return instanceItemRefusal(id, instance, sheetFileIn({ parts: model.parts ?? [], imports: model.imports ?? [] }, instance))
   const item = model.boardItems?.find((one) => one.id === id)
   if (!item) return `${id} is not in the code yet`
   if (locked.has(id)) return `${id} is locked`
@@ -151,12 +157,12 @@ const nameOf = (item: Pick<BoardItemInfo, "tag" | "id">): string => (item.tag ==
  * The removal of the selected pours and holes that may go, the last of each kind first: removing one renumbers the
  * later ones of its kind, so going backwards every id still names its element when its turn comes.
  */
-export function boardRemoval(model: Pick<CircuitModel, "boardItems">, locked: ReadonlySet<string>): (ids: readonly string[]) => BoardRemoval {
+export function boardRemoval(model: Pick<CircuitModel, "boardItems"> & Partial<Pick<CircuitModel, "parts" | "imports">>, locked: ReadonlySet<string>): (ids: readonly string[]) => BoardRemoval {
   return (ids) => {
     const blockers = ids.map((id) => ({ id, blocker: boardItemBlocker(model, locked, id) }))
     const removed = blockers.flatMap((one) => (one.blocker === null ? [one.id] : []))
     const backwards = [...removed].sort((a, b) => indexOf(b) - indexOf(a))
-    const edits = backwards.map((id): Edit => (id.startsWith("hole:") ? { kind: "removeHole", id } : { kind: "removePour", id }))
+    const edits = backwards.map((id): Edit => (isHoleId(id) ? { kind: "removeHole", id } : { kind: "removePour", id }))
     const items = removed.flatMap((id) => model.boardItems?.find((one) => one.id === id) ?? [])
     return { edits, names: items.map(nameOf), skipped: blockers.flatMap((one) => one.blocker ?? []), removed }
   }

@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises"
 import { z } from "zod"
+import { boardItemInstance, instanceItemRefusal, isHoleId } from "./board-items.js"
 import { writeFileAtomic } from "./fs-utils.js"
+import { sheetFileIn } from "./selectors.js"
 import type { CircuitModel, PropInfo } from "./types.js"
 
 const LockSchema = z.object({
@@ -74,13 +76,15 @@ export function lockKind(lock: Lock): "part" | "drawing" {
 export function lockWord(lock: Lock): string {
   if (!lock.drawing) return "part"
   if (lock.part.startsWith("copperpour:")) return "copper pour"
-  return lock.part.startsWith("hole:") ? "hole" : "drawing"
+  return isHoleId(lock.part) ? "hole" : "drawing"
 }
 
 /** Locks parts by name and drawings, copper pours and holes by id, with a snapshot of their props. */
 export function lockParts(annotations: Annotations, model: CircuitModel, parts: string[], now: string): Annotations {
   const fresh = parts.map((name): Lock => {
     const target = lockTarget(model, name)
+    const instance = target ? undefined : boardItemInstance(name)
+    if (instance !== undefined) throw new Error(instanceItemRefusal(name, instance, sheetFileIn(model, instance)))
     if (!target) throw new Error(`No part, drawing, copper pour or hole named ${name}`)
     const props = Object.fromEntries(Object.entries(target.props).map(([key, prop]) => [key, prop.source]))
     return { part: name, ...(target.drawing ? { drawing: true as const } : {}), props, lockedAt: now }

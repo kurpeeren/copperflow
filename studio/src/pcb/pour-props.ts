@@ -2,6 +2,7 @@
 // layer, priority, clearance, minimum width and thermal relief (its outline and fill area are shown), a hole's
 // position and diameter. Each change is one edit of the circuit file, so one history entry. Pure; plain TypeScript
 // with .js imports, so the tests run it without a DOM.
+import { isHoleId } from "../../../src/core/board-items.js"
 import type { Edit } from "../../../src/core/types.js"
 import type { CopperPour, Hole } from "../../../src/engine/model.js"
 import { lockChange } from "./group-edits.js"
@@ -102,7 +103,7 @@ function holeValue(field: HoleField, raw: string): number | { message: string } 
 export function boardFieldEdit(design: PourDesign, id: string, field: BoardField, raw: string): FieldChange {
   const shown = boardProperties(design, id)?.rows.find((row) => row.field === field)
   if (!shown || shown.value === raw.trim()) return undefined
-  const isHole = id.startsWith("hole:")
+  const isHole = isHoleId(id)
   const value = isHole ? holeValue(field as HoleField, raw) : pourValue(field as PourField, raw)
   if (value !== null && typeof value === "object") return value
   const summary = `set ${id} ${field}=${value === null ? "the net class's" : value}`
@@ -123,7 +124,7 @@ export interface BoardLockButton {
  * editor, as a part's button does. A part's lock never covers a pour: each is locked by its own id.
  */
 export function boardLockButton(id: string, locks: { locked: ReadonlySet<string>; violated: ReadonlySet<string> }): BoardLockButton {
-  const word = id.startsWith("hole:") ? "hole" : "copper pour"
+  const word = isHoleId(id) ? "hole" : "copper pour"
   if (!locks.locked.has(id)) return { command: "lock", label: "Lock", pressed: false, title: `Lock this ${word}, so the agent cannot change or remove it` }
   if (locks.violated.has(id)) return { command: "lock", label: "Lock again", pressed: true, title: "Changed outside the editor: lock it again to accept the change" }
   return { command: "unlock", label: "Locked", pressed: true, title: `Unlock this ${word}` }
