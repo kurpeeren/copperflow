@@ -1,5 +1,6 @@
 // copperflow's PCB renderer: draws the engine's board layout onto a 2D canvas in layer order.
 // Only types come from the engine: its runtime modules reach Node-only code the Studio bundle cannot hold.
+import { designatorAnchor } from "../../../src/engine/fab/designators.js"
 import type { PcbLayout, PlacedFootprint, WorldPad } from "../../../src/engine/pcb.js"
 import { drawCopperItems, type CopperScene } from "./copper-draw.js"
 import { devicePixelIn } from "./crisp.js"
@@ -47,7 +48,6 @@ export const MAX_HATCH_LINES = 400
 /** Lets the last line land on the box's edge despite rounding in span / step. */
 const HATCH_SLACK = 1e-9
 const DEFAULT_CORNER = 0.25
-const DESIGNATOR_GAP_PX = 2
 /** Parts the engine placed for itself are drawn faded, so the person sees they have no position yet. */
 const AUTO_PLACED_ALPHA = 0.6
 
@@ -333,21 +333,19 @@ function drawLine(ctx: Ctx, a: Point, b: Point): void {
 }
 
 /**
- * The component id as silkscreen text, from 7 device pixels (text-level.ts): centred above the courtyard's top edge, or
- * centred on where pcbNameAt puts it (`nameAt`).
+ * The component id as silkscreen text, from 7 device pixels (text-level.ts): centred where the fabrication export
+ * draws it (designators.ts), or on where pcbNameAt puts it (`nameAt`).
  */
 function drawDesignator(ctx: Ctx, part: PlacedFootprint, camera: Camera, size: Size, shift: Point, ratio: number): void {
   const devicePx = devicePxFor(DESIGNATOR_MM, camera.scale, ratio)
   if (!textShown("name", devicePx, devicePx)) return
-  const box = courtyardBox(part)
-  const spot = part.nameAt ?? { x: (box.minX + box.maxX) / 2, y: box.maxY }
-  const at = worldToScreen(camera, size, { x: spot.x + shift.x, y: spot.y + shift.y })
-  const p = textAnchorAt(part.nameAt ? at : { x: at.x, y: at.y - DESIGNATOR_GAP_PX }, ratio)
+  const spot = designatorAnchor(part)
+  const p = textAnchorAt(worldToScreen(camera, size, { x: spot.x + shift.x, y: spot.y + shift.y }), ratio)
   ctx.fillStyle = part.side === "top" ? PALETTE.topSilk : PALETTE.bottomSilk
   ctx.globalAlpha = alphaOf(part)
   ctx.font = canvasFont(TEXT_WEIGHT.strong, devicePx / ratio)
   ctx.textAlign = "center"
-  ctx.textBaseline = part.nameAt ? "middle" : "bottom"
+  ctx.textBaseline = "middle"
   ctx.fillText(part.component, p.x, p.y)
   ctx.globalAlpha = 1
 }

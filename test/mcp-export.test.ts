@@ -11,7 +11,7 @@ import { inProcessEngine } from "./helpers/in-process-engine.js"
 const CAN = join(import.meta.dirname, "fixtures", "can-module")
 const CLEAN = `export default () => (
   <board width="10mm" height="10mm">
-    <resistor name="R1" resistance="1k" footprint="0402" pcbX={0} pcbY={0} schX={0} schY={0} />
+    <resistor name="R1" resistance="1k" footprint="0402" supplierPartNumbers={{ jlcpcb: ["C11702"] }} pcbX={0} pcbY={0} schX={0} schY={0} />
   </board>
 )
 `
@@ -58,7 +58,7 @@ describe("export_fabrication", () => {
     expect(answer.isError).toBe(false)
     const files = ["F_Cu.gtl", "B_Cu.gbl", "F_Mask.gts", "B_Mask.gbs", "F_Paste.gtp", "B_Paste.gbp", "F_Silkscreen.gto", "B_Silkscreen.gbo", "Edge_Cuts.gm1", "PTH.drl", "NPTH.drl", "pick-and-place.csv", "bom.csv"]
     expect(answer.text).toBe(
-      ["Wrote 13 files to led-fab/ and led-fab.zip:", files.map((name) => `led-${name}`).join(", "), "Next, a person should upload led-fab.zip to JLCPCB."].join("\n"),
+      ["Wrote 13 files to led-fab/ and led-fab.zip:", files.map((name) => `led-${name}`).join(", "), "Next, a person should upload led-fab.zip to JLCPCB's PCB order, and led-bom.csv and led-pick-and-place.csv from led-fab/ at its assembly step (the zip holds them too)."].join("\n"),
     )
     expect(await readdir(join(root, "led-fab"))).toHaveLength(13)
     expect((await readFile(join(root, "led-fab.zip"))).subarray(0, 4).toString("hex")).toBe("504b0304")

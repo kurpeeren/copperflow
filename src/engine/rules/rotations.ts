@@ -16,17 +16,19 @@ export type FootprintFamily = (typeof FOOTPRINT_FAMILIES)[number]
 export type PlacementRotations = Partial<Record<FootprintFamily, number>> & { parts?: Record<string, number> }
 
 /**
- * The corrections when rules.yaml sets none. All 0: copperflow's footprints are drawn at IPC-7351B's zero orientation,
- * and no assembler's offsets have been confirmed against them yet. A person who sees a part turned in JLCPCB's
- * assembly preview sets `fabrication.placementRotations` for its family.
+ * The corrections when rules.yaml sets none. copperflow's footprints are drawn at IPC-7351B's zero orientation, pin 1
+ * at the top left; JLCPCB's part models for SOIC, SOP and TSSOP packages need the commonly used 270 degrees, and SOT-23
+ * 180. Chips, pin rows and footprint files stay 0, and so do the families whose correction is not well established.
+ * JLCPCB's assembly preview is the final check: a person who sees a part turned there sets
+ * `fabrication.placementRotations` for its family or its library part.
  */
 export const PLACEMENT_ROTATIONS: Readonly<Record<FootprintFamily, number>> = {
   chip: 0,
   sod: 0,
-  sot: 0,
-  soic: 0,
-  sop: 0,
-  tssop: 0,
+  sot: 180,
+  soic: 270,
+  sop: 270,
+  tssop: 270,
   qfn: 0,
   qfp: 0,
   pinrow: 0,
@@ -44,12 +46,15 @@ export function footprintFamily(footprint: string): FootprintFamily | undefined 
   return isFamily(kind) ? kind : undefined
 }
 
+/** The library part a footprint file belongs to ("parts/MCP2515/footprint.yaml" gives "MCP2515"), or none. */
+export const footprintFilePart = (footprint: string): string | undefined => PART_FOOTPRINT_FILE.exec(footprint)?.[1]
+
 /**
  * The correction for a footprint: for a library part's footprint file the profile's for that part when it sets one,
  * else the profile's for its family, else the table's; 0 for a footprint of no family.
  */
 export function placementCorrection(footprint: string, fabrication: FabricationProfile): number {
-  const partId = PART_FOOTPRINT_FILE.exec(footprint)?.[1]
+  const partId = footprintFilePart(footprint)
   const forPart = partId === undefined ? undefined : fabrication.placementRotations?.parts?.[partId]
   if (forPart !== undefined) return forPart
   const family = footprintFamily(footprint)

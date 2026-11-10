@@ -6,18 +6,14 @@ import { viaSpan } from "../copper.js"
 import type { Point } from "../model.js"
 import type { PcbLayout, PlacedFootprint, WorldPad } from "../pcb.js"
 import type { FabricationProfile } from "../rules/schema.js"
+import { DEFAULT_MASK_EXPANSION, DESIGNATOR_HEIGHT, designatorPlacements, SILK_WIDTH } from "./designators.js"
 import { writeGerber, type GerberLayer, type GerberObject } from "./gerber.js"
 import { fabFileName, GERBER_LAYERS, type GerberLayerName } from "./names.js"
 import { textStrokes } from "./stroke-font.js"
 
-/** The mask opening's growth past each pad when the profile sets none, in mm. */
-export const DEFAULT_MASK_EXPANSION = 0.05
+export { DEFAULT_MASK_EXPANSION, DESIGNATOR_HEIGHT, SILK_WIDTH }
 /** The paste's shrink inside each SMD pad when the profile sets none, in mm. */
 export const DEFAULT_PASTE_REDUCTION = 0
-/** The silkscreen line width, in mm: JLCPCB's minimum legible line. */
-export const SILK_WIDTH = 0.15
-/** The silkscreen designator's height, in mm: JLCPCB's minimum legible character height. */
-export const DESIGNATOR_HEIGHT = 1
 /** The board outline's line width, in mm. */
 export const OUTLINE_WIDTH = 0.1
 
@@ -32,7 +28,11 @@ const SIDE_X2: Readonly<Record<Side, "Top" | "Bot">> = { top: "Top", bottom: "Bo
 const isSmd = (pad: WorldPad) => pad.drill === undefined && pad.layers !== "through"
 const padOnSide = (pad: WorldPad, side: Side) => pad.layers === "through" || pad.layers === side
 
-/** A pad's copper as a flash or a region, its size changed by `grow` on every side (negative shrinks); none when nothing is left. */
+/**
+ * A pad's copper as a flash or a region, its size changed by `grow` on every side (negative shrinks); none when nothing
+ * is left. Upright or quarter-turned rectangles and ovals are the R and O apertures, other angles a region of their
+ * outline; a rounded rectangle is the RoundRect macro only while its corner radius is above 0, else a rectangle.
+ */
 export function padObject(pad: WorldPad, grow = 0, fn?: string): GerberObject | undefined {
   const width = pad.width + 2 * grow
   const height = pad.height + 2 * grow
@@ -42,20 +42,41 @@ export function padObject(pad: WorldPad, grow = 0, fn?: string): GerberObject | 
   const square = Math.abs(turn % 90) < ANGLE_TOLERANCE || Math.abs((turn % 90) - 90) < ANGLE_TOLERANCE
   const upright = Math.abs(turn - 90) < ANGLE_TOLERANCE ? { width: height, height: width } : { width, height }
   const extra = fn === undefined ? {} : { function: fn }
+  const plainRect = (): GerberObject =>
+    square ? { kind: "flash", at, aperture: { shape: "rect", ...upright }, ...extra } : { kind: "region", points: rectCorners(at, width, height, pad.rotation), ...extra }
   switch (pad.shape) {
     case "circle":
       return { kind: "flash", at, aperture: { shape: "circle", diameter: width }, ...extra }
     case "rect":
-      return square ? { kind: "flash", at, aperture: { shape: "rect", ...upright }, ...extra } : { kind: "region", points: rectCorners(at, width, height, pad.rotation), ...extra }
+      return plainRect()
     case "oval":
       if (square) return { kind: "flash", at, aperture: { shape: "obround", ...upright }, ...extra }
-      return { kind: "flash", at, aperture: { shape: "roundrect", width, height, radius: Math.min(width, height) / 2, rotation: turn }, ...extra }
+      return { kind: "region", points: stadium(at, width, height, pad.rotation), ...extra }
     case "roundrect": {
       const radius = Math.min(Math.max((pad.cornerRadius ?? 0) + grow, 0), width / 2, height / 2)
+      if (radius <= 0) return plainRect()
       const sized = square ? { ...upright, rotation: 0 } : { width, height, rotation: turn }
       return { kind: "flash", at, aperture: { shape: "roundrect", radius, ...sized }, ...extra }
     }
   }
+}
+
+/** The points of each round end of a turned oval's outline, its first, middle (the tip) and last included. */
+const STADIUM_END_POINTS = 11
+
+/** A `width` by `height` oval turned `rotation` degrees about `at`, as the corners of its outline: two half circles. */
+function stadium(at: Point, width: number, height: number, rotation: number): Point[] {
+  const radius = Math.min(width, height) / 2
+  const reach = Math.max(width, height) / 2 - radius
+  // Drawn along x, then turned a further quarter when the oval is taller than wide.
+  const radians = ((rotation + (height > width ? 90 : 0)) * Math.PI) / 180
+  const [cos, sin] = [Math.cos(radians), Math.sin(radians)]
+  const end = (centre: number, from: number) =>
+    Array.from({ length: STADIUM_END_POINTS }, (_, i) => {
+      const angle = from + (Math.PI * i) / (STADIUM_END_POINTS - 1)
+      return { x: centre + radius * Math.cos(angle), y: radius * Math.sin(angle) }
+    })
+  return [...end(reach, -Math.PI / 2), ...end(-reach, Math.PI / 2)].map(({ x, y }) => ({ x: at.x + x * cos - y * sin, y: at.y + x * sin + y * cos }))
 }
 
 function rectCorners(at: Point, width: number, height: number, rotation: number): Point[] {
@@ -90,18 +111,12 @@ function copperObjects(pcb: PcbLayout, layer: CopperLayer): GerberObject[] {
   return [...padCopper.filter(present), ...tracks, ...vias]
 }
 
-/** Where a part's designator goes: where pcbNameAt puts it, else centred just above the courtyard's top edge. */
-function designatorAt(part: PlacedFootprint): Point {
-  if (part.nameAt) return part.nameAt
-  const xs = part.courtyard.map((c) => c.x)
-  const ys = part.courtyard.map((c) => c.y)
-  return { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: Math.max(...ys) + DESIGNATOR_HEIGHT / 2 }
-}
-
-function silkObjects(parts: readonly PlacedFootprint[], side: Side): GerberObject[] {
-  return parts
-    .filter((part) => part.side === side)
-    .flatMap((part) => [...part.silkscreen, ...textStrokes(part.component, designatorAt(part), DESIGNATOR_HEIGHT, side === "bottom")])
+function silkObjects(parts: readonly PlacedFootprint[], side: Side, expansion: number): GerberObject[] {
+  const designators = designatorPlacements(parts, expansion).filter((placed) => placed.side === side)
+  return [
+    ...parts.filter((part) => part.side === side).flatMap((part) => part.silkscreen),
+    ...designators.flatMap((placed) => textStrokes(placed.component, placed.at, DESIGNATOR_HEIGHT, side === "bottom")),
+  ]
     .filter((line) => line.length > 0)
     .map((points): GerberObject => ({ kind: "draw", points, width: SILK_WIDTH, function: LEGEND_FUNCTION }))
 }
@@ -130,7 +145,7 @@ export function gerberLayers(pcb: PcbLayout, fabrication: FabricationProfile): {
     const paste = onSide.filter(isSmd).map((pad) => padObject(pad, -reduction, padFunction(pad))).filter(present)
     layers.set(`${SIDE_KEY[side]}_Mask`, { fileFunction: `Soldermask,${SIDE_X2[side]}`, polarity: "Negative", objects: mask })
     layers.set(`${SIDE_KEY[side]}_Paste`, { fileFunction: `Paste,${SIDE_X2[side]}`, polarity: "Positive", objects: paste })
-    layers.set(`${SIDE_KEY[side]}_Silkscreen`, { fileFunction: `Legend,${SIDE_X2[side]}`, polarity: "Positive", objects: silkObjects(pcb.parts, side) })
+    layers.set(`${SIDE_KEY[side]}_Silkscreen`, { fileFunction: `Legend,${SIDE_X2[side]}`, polarity: "Positive", objects: silkObjects(pcb.parts, side, expansion) })
   }
   layers.set("Edge_Cuts", { fileFunction: "Profile,NP", polarity: "Positive", objects: outlineObjects(pcb) })
   return GERBER_LAYERS.flatMap((name) => {

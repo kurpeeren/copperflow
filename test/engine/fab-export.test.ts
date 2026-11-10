@@ -69,6 +69,7 @@ describe("the fabrication set", () => {
     const pnp = set.files.find((f) => f.file === "can-module-pick-and-place.csv")?.text ?? ""
     expect(pnp.trimEnd().split("\n")).toHaveLength(13)
     expect(pnp).toContain("\nU1,-7mm,2mm,Top,0\n")
+    expect(pnp).toContain("\nU2,8mm,2mm,Top,270\n")
     const csv = set.files.find((f) => f.file === "can-module-bom.csv")?.text ?? ""
     expect(csv.split("\n")[0]).toBe("Comment,Designator,Footprint,LCSC Part #")
     expect(csv).toMatch(/\n[^\n]*,U1,[^\n]*,C9657\n/)
@@ -77,7 +78,7 @@ describe("the fabrication set", () => {
   test("a board with unrouted connections is exported with a warning that names each of them", () => {
     const set = accepted(fabricationSet(design, bom, CREATED))
     expect(design.pcb.ratsnest.length).toBeGreaterThan(0)
-    expect(set.warnings).toHaveLength(1)
+    expect(set.warnings).toHaveLength(2)
     expect(set.warnings[0]).toMatch(new RegExp(`^${design.pcb.ratsnest.length} connections are not routed: `))
     for (const line of design.pcb.ratsnest) expect(set.warnings[0]).toContain(`${line.from} to ${line.to}`)
   })
@@ -124,6 +125,24 @@ describe("what the fabrication set refuses or warns about", () => {
     const one = design.pcb.parts.map((part) => (part.component === "U1" ? { ...part, footprint: undefined } : part))
     expect(accepted(fabricationSet({ ...design, pcb: { ...design.pcb, parts: one } }, bom, CREATED)).warnings).toContain("1 part has no footprint and is not in the pick-and-place: U1")
     expect(accepted(fabricationSet(design, bom, CREATED)).warnings.some((w) => w.includes("footprint"))).toBe(false)
+  })
+
+  test("one warning names every part with no LCSC part number, which JLCPCB's assembly cannot match", () => {
+    const set = accepted(fabricationSet(design, bom, CREATED))
+    expect(set.warnings).toContain("No LCSC part number for C1, C2, C3, C4, J1, J2, J3, R1, R2, Y1; JLCPCB assembly will not match them")
+    const one = bom.map((line) => ({ ...line, supplier: line.designators.includes("U1") ? "digikey 1" : "jlcpcb C1" }))
+    expect(accepted(fabricationSet(design, one, CREATED)).warnings).toContain("No LCSC part number for U1; JLCPCB assembly will not match it")
+    const all = bom.map((line) => ({ ...line, supplier: "lcsc C1" }))
+    expect(accepted(fabricationSet(design, all, CREATED)).warnings.some((w) => w.includes("LCSC"))).toBe(false)
+  })
+
+  test("a designator a person put over another part's pads is named in a warning, and keeps its place", () => {
+    const u1 = design.pcb.parts.find((part) => part.component === "U1")?.pads.find((pad) => pad.number === "9")
+    if (u1 === undefined) throw new Error("no U1 pad 9")
+    const parts = design.pcb.parts.map((part) => (part.component === "C1" ? { ...part, nameAt: { x: u1.x, y: u1.y } } : part))
+    const set = accepted(fabricationSet({ ...design, pcb: { ...design.pcb, parts } }, bom, CREATED))
+    expect(set.warnings).toContain("C1's silkscreen overlaps U1's pads")
+    expect(accepted(fabricationSet(design, bom, CREATED)).warnings.some((w) => w.includes("silkscreen"))).toBe(false)
   })
 })
 

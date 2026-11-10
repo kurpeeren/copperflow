@@ -70,6 +70,12 @@ function strokesOf(char: string): Point[][] {
   )
 }
 
+/** The width of the text drawn `height` tall, in the same unit: from the first glyph's left edge to the last one's right. */
+export function textWidth(text: string, height: number): number {
+  const count = [...text].length
+  return count === 0 ? 0 : (((count - 1) * ADVANCE + GLYPH_WIDTH) * height) / GLYPH_HEIGHT
+}
+
 /**
  * The text as polylines in mm, `height` tall, centred on `at`; `mirrored` reverses it left to right, as text on the
  * bottom side reads from below.
@@ -77,7 +83,7 @@ function strokesOf(char: string): Point[][] {
 export function textStrokes(text: string, at: Point, height: number, mirrored = false): Point[][] {
   const unit = height / GLYPH_HEIGHT
   const chars = [...text]
-  const width = chars.length === 0 ? 0 : (chars.length - 1) * ADVANCE + GLYPH_WIDTH
+  const width = textWidth(text, GLYPH_HEIGHT)
   const side = mirrored ? -1 : 1
   return chars.flatMap((char, i) =>
     strokesOf(char).map((line) =>

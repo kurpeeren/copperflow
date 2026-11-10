@@ -5,6 +5,7 @@ import { lstat, realpath } from "node:fs/promises"
 import { dirname, join, relative, resolve, sep } from "node:path"
 import type { Design } from "../engine/design.js"
 import { fabricationSet, writeFabrication } from "../engine/fab/export.js"
+import { uploadStep } from "../engine/fab/names.js"
 import { buildBom } from "./bom.js"
 import { buildWith, type DesignSource } from "./design-source.js"
 import { inProjectQueue, isInside } from "./file-writes.js"
@@ -92,12 +93,11 @@ export function exportFabrication(root: string, file: string, options: Fabricati
   })
 }
 
-/** The zip's own name, which is what a person uploads. */
-const zipName = (zip: string) => zip.split("/").pop() ?? zip
 
 /**
  * The export as text: the folder and zip, the files (one per line, or on one line when `compact`), each warning, and
- * the next step, a person uploading the zip; or each error and that nothing was written.
+ * the next step, a person uploading the zip for the board and the CSVs for assembly; or each error and that nothing was
+ * written.
  */
 export function formatFabrication(result: FabricationExport, options: { compact?: boolean } = {}): string {
   if (!result.written) return ["Refused: no fabrication files were written. Fix these errors first:", ...result.errors.map((error) => `  ${error}`)].join("\n")
@@ -106,6 +106,6 @@ export function formatFabrication(result: FabricationExport, options: { compact?
     `Wrote ${result.files.length} files to ${result.folder}/ and ${result.zip}:`,
     ...files,
     ...result.warnings.map((warning) => `Warning: ${warning}`),
-    `Next, a person should upload ${zipName(result.zip)} to JLCPCB.`,
+    `Next, a person should ${uploadStep(result.zip, result.folder, result.files)}.`,
   ].join("\n")
 }

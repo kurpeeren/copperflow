@@ -53,5 +53,16 @@ export const fabFileName = (name: string, file: GerberLayerName | OtherFileName)
 /** The folder the files go in, beside the circuit: "can-module-fab". */
 export const fabFolderName = (name: string): string => `${name}-fab`
 
+/**
+ * The upload step after an export, starting with "upload": the zip goes to JLCPCB's PCB order, the BOM and
+ * pick-and-place CSVs to its assembly step. Both CSVs are in the folder, and the zip keeps them too. `zip` and `folder`
+ * may carry a path; `files` are the written files' names.
+ */
+export function uploadStep(zip: string, folder: string, files: readonly string[]): string {
+  const named = (suffix: string, fallback: string) => files.find((name) => name.endsWith(suffix)) ?? fallback
+  const zipName = zip.split("/").pop() ?? zip
+  return `upload ${zipName} to JLCPCB's PCB order, and ${named("-bom.csv", "the BOM")} and ${named("-pick-and-place.csv", "the pick-and-place file")} from ${folder}/ at its assembly step (the zip holds them too)`
+}
+
 /** The zip of the folder: "can-module-fab.zip". */
 export const fabZipName = (name: string): string => `${fabFolderName(name)}.zip`
