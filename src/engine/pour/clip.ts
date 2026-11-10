@@ -6,8 +6,12 @@ import type { Point } from "../model.js"
  * every operation is exact and the same input always gives the same output. Areas are filled by the non-zero rule;
  * results are strictly simple (no self-touching outlines), outers counter-clockwise and holes clockwise (y up).
  */
-export type Path = ClipperLib.Path
-export type Paths = ClipperLib.Paths
+export interface IntPoint {
+  X: number
+  Y: number
+}
+export type Path = IntPoint[]
+export type Paths = Path[]
 
 /** One piece of filled area: an outline and the holes in it. */
 export interface Region {
@@ -73,7 +77,7 @@ export const pathArea = (path: Path): number => ClipperLib.Clipper.Area(path)
 export const regionArea = (region: Region): number => Math.abs(pathArea(region.outer)) - region.holes.reduce((sum, hole) => sum + Math.abs(pathArea(hole)), 0)
 
 /** True when the point is inside the region or on its edge. */
-export function regionHolds(region: Region, point: ClipperLib.IntPoint): boolean {
+export function regionHolds(region: Region, point: IntPoint): boolean {
   if (ClipperLib.Clipper.PointInPolygon(point, region.outer) === 0) return false
   return region.holes.every((hole) => ClipperLib.Clipper.PointInPolygon(point, hole) !== 1)
 }
