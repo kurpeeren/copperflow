@@ -220,3 +220,14 @@ describe("new_circuit with pours and holes", () => {
     expect(gap.text).toMatch(/minWidth must be a number of mm above 0/)
   })
 })
+
+describe("the instructions and the skill", () => {
+  test("say a two-layer board gets a GND pour on the bottom, and top when there is room, before autoroute, then check_circuit", async () => {
+    const skill = await readFile(new URL("../skills/copperflow/SKILL.md", import.meta.url), "utf8")
+    for (const text of [client.getInstructions() ?? "", skill.replace(/\s+/g, " ")]) {
+      expect(text).toMatch(/two-layer board gets a GND pour on the bottom \(and on top when there is room\) before `?autoroute`?[^]*?then `?check_circuit`?/)
+      for (const tool of ["add_pour", "remove_pour", "add_hole", "remove_hole"]) expect(text).toContain(tool)
+      expect(text).toMatch(/A part's lock never covers a pour/)
+    }
+  })
+})

@@ -49,6 +49,17 @@ undoing their work.
    `copper_summary` shows per net the tracks, vias, length and unrouted connections. A locked part guards only the tracks that start on its
    pads; vias on it and tracks that only end there are not locked, so leave them alone unless
    the human asks.
+   Pours: a two-layer board gets a GND pour on the bottom (and on top when there is room) before
+   `autoroute`: `add_pour` `{ net: "GND", layer: "bottom" }` without an `outline` fills the whole
+   board, with thermal spokes to the GND pads, and the connections the fill makes count as
+   routed. Then `autoroute`, then `check_circuit` (`pour-floating` warns of a pour piece that
+   joins nothing, `copper-hole` of copper too near a hole). `props` takes `priority`,
+   `clearance`, `minWidth`, `thermal` (`relief` or `solid`), `thermalWidth` and `thermalGap`.
+   `remove_pour`, `add_hole` and `remove_hole` (mounting holes) work by id (`copperpour:1`,
+   `hole:1`), as do `edit_circuit`'s `add_pour`, `remove_pour`, `add_hole` and `remove_hole`;
+   `new_circuit` takes `pours` and `holes`; `copper_summary` lists each pour (area, the pads it
+   joins) and hole. A part's lock never covers a pour; a pour or hole is locked by its id, and a
+   locked one is left alone.
 4. Call `check_circuit` once at the end (it lists the first 20 findings; `filter` takes `errors`,
    `warnings`, `copper`, a part or a net). It runs copperflow's own rule checks: the electrical
    checks (`pin-unconnected`, `output-conflict`, `no-power-source`), the placement checks
