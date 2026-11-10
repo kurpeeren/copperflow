@@ -20,6 +20,7 @@ import { defaultVia, routeNet } from "./track-rules"
 import { routeTargetAt, type TargetSource } from "./track-targets"
 import {
   addRouteCorner,
+  endRouteOpen,
   finishRoute,
   lastPoint,
   layerName,
@@ -134,6 +135,7 @@ interface Latest {
   arm(kind: Exclude<TrackArm, null>): void
   /** Esc or a right click: drops the route, else puts the tool away. */
   cancel(): void
+  send: Send
 }
 
 /** The design's copper (as shown) and the copper sent and waiting for its build. */
@@ -143,7 +145,7 @@ function targetSource(input: TrackToolInput, pending: TargetSource["copper"]): T
 }
 
 /** The steps the keys and the press share, read through `latest`. */
-function useSteps(input: TrackToolInput, pending: TargetSource["copper"]): Latest {
+function useSteps(input: TrackToolInput, pending: TargetSource["copper"], send: Send): Latest {
   const { design, actions, onActiveLayer, arm: armState, onArm } = input
   const { route, setRoute } = armState
   // Before a route starts, a track on either shown layer may start it (its layer becomes the route's).
@@ -173,10 +175,20 @@ function useSteps(input: TrackToolInput, pending: TargetSource["copper"]): Lates
     armState.setArmed(kind)
   }
   const cancel = () => (route ? setRoute(null) : armState.disarm())
-  return { input, route, setRoute, put, targetAt, start, changeLayer, arm, cancel }
+  return { input, route, setRoute, put, targetAt, start, changeLayer, arm, cancel, send }
 }
 
-/** W or Alt+W arms routing (and over a pad starts there), Alt+V the via; while routing Space, V, Backspace and Esc. */
+/** Enter, or a click on the last corner again: the route ends open there (track-tool.ts endRouteOpen). */
+function endOpen(latest: Latest): void {
+  const { input, route } = latest
+  if (!route) return
+  const end = endRouteOpen(route)
+  if ("message" in end) return input.actions.notify(end.message)
+  latest.setRoute(null)
+  latest.send(end, route.net.id)
+}
+
+/** W or Alt+W arms routing (and over a pad starts there), Alt+V the via; while routing Space, V, Backspace, Enter and Esc. */
 function onTrackKey(latest: Latest, event: KeyboardEvent): void {
   const { input, route } = latest
   const press = keyInput(event)
@@ -201,6 +213,11 @@ function onTrackKey(latest: Latest, event: KeyboardEvent): void {
   if (hit.action === "switchLayer") {
     take()
     return latest.changeLayer(otherLayer(route?.layer ?? input.activeLayer))
+  }
+  if (hit.action === "finishShape") {
+    if (!route) return
+    take()
+    return endOpen(latest)
   }
   if (!route || (hit.action !== "flipBend" && hit.action !== "removeCorner")) return
   take()
@@ -233,7 +250,11 @@ function clickRoute(latest: Latest, world: Point, send: Send): void {
     if (target) latest.start(target)
     return
   }
-  if (!target) return latest.put(addRouteCorner(route, routeCorner(lastPoint(route), world, input)))
+  if (!target) {
+    const next = addRouteCorner(route, routeCorner(lastPoint(route), world, input))
+    // A click on the last corner again ends the track open there, as a double click does elsewhere.
+    return next === route && route.corners.length > 0 ? endOpen(latest) : latest.put(next)
+  }
   const end = finishRoute(route, target)
   if (!end) return
   if ("message" in end) return input.actions.notify(end.message)
@@ -268,7 +289,7 @@ const hintOf = (armed: TrackArm, route: Route | null, active: ActiveLayer): stri
 export function useTrackTool(input: TrackToolInput) {
   const { route, setRoute } = input.arm
   const pending = usePendingRoutes(input.builtMark, input.actions)
-  const steps = useSteps(input, pending.copper)
+  const steps = useSteps(input, pending.copper, pending.send)
   const latest = useRef(steps)
   latest.current = steps
   useTrackKeys(latest)

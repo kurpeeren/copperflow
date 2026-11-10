@@ -58,3 +58,16 @@ describe("routeTargetAt", () => {
     expect(routeTargetAt(source(), p(30, 30), 0.3, "top")).toBeUndefined()
   })
 })
+
+describe("a pad within reach", () => {
+  test("a click just off a pad's edge, within reach, still finds it; farther away it finds nothing", () => {
+    // U1#1 is 1 × 1 at the origin, so its edge is 0.5 from its centre.
+    expect(routeTargetAt(source(), p(0.7, 0.2), 0.3, "top")).toMatchObject({ kind: "pad", id: "U1#1", at: p(0, 0) })
+    expect(routeTargetAt(source(), p(0.9, 0), 0.3, "top")).toBeUndefined()
+  })
+
+  test("a pad on a hidden layer is not found, even within reach", () => {
+    const hidden = { ...source(), visible: { ...DEFAULT_LAYERS, top: false } }
+    expect(routeTargetAt(hidden, p(0.1, 0.1), 0.3, "top")).toBeUndefined()
+  })
+})
