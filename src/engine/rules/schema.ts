@@ -17,6 +17,10 @@ export interface FabricationProfile {
   minSilkToPad: number
   /** The radius Fillet tracks rounds corners with; not a fabrication limit, so the profiles leave it out (1 mm then). */
   filletRadius?: number
+  /** How far the solder mask opening grows past each pad, in mm; the profiles leave it out (0.05 mm then). */
+  maskExpansion?: number
+  /** How far the solder paste shrinks inside each SMD pad, in mm; the profiles leave it out (0 then). */
+  pasteReduction?: number
 }
 
 export interface NetClass {
@@ -52,6 +56,13 @@ const length = z.union([z.number(), z.string()]).transform((value, ctx) => {
   return z.NEVER
 })
 
+const nonNegativeLength = z.union([z.number(), z.string()]).transform((value, ctx) => {
+  const parsed = parseLength(value)
+  if (parsed !== undefined && parsed >= 0) return parsed
+  ctx.issues.push({ code: "custom", message: `"${String(value)}" is not a length of 0 or more such as 0, 0.05mm or 2mil`, input: value })
+  return z.NEVER
+})
+
 const FabricationSchema = z
   .object({
     profile: z.string().optional(),
@@ -63,6 +74,8 @@ const FabricationSchema = z
     minHoleToHole: length.optional(),
     minSilkToPad: length.optional(),
     filletRadius: length.optional(),
+    maskExpansion: nonNegativeLength.optional(),
+    pasteReduction: nonNegativeLength.optional(),
   })
   .strict()
 
