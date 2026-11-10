@@ -97,12 +97,50 @@ export interface Keepout {
   source: SourceRef
 }
 
+/** A copper layer a pour can fill: "top" and "bottom", and on a 4-layer board "inner1" and "inner2". */
+export type PourLayer = "top" | "bottom" | "inner1" | "inner2"
+
+/**
+ * A copper pour as the design writes it (`<copperpour>`): the intent, not the copper. The engine computes the fill on
+ * every build. `id` is "copperpour:<n>" in source order; `net` is the net's id. Without `outline` it fills the board.
+ */
+export interface CopperPour {
+  id: string
+  net: string
+  layer: PourLayer
+  outline?: Point[]
+  /** Where two pours overlap, the higher one keeps the copper; equal ones go in source order. */
+  priority: number
+  /** The gap to other nets' copper, in mm; absent, the net classes' clearance. */
+  clearance?: number
+  /** Copper narrower than this is removed, in mm. */
+  minWidth: number
+  /** How same-net pads join the fill: four spokes, or solid copper. */
+  thermal: "relief" | "solid"
+  thermalWidth: number
+  thermalGap: number
+  source: SourceRef
+}
+
+/** A non-plated hole (`<hole>`): its centre and diameter in mm. `id` is "hole:<n>" in source order. */
+export interface Hole {
+  id: string
+  x: number
+  y: number
+  diameter: number
+  source: SourceRef
+}
+
 export interface Board {
   outline: Point[]
   layers: 2 | 4
   thickness: number
   schMaxTraceDistance?: number
   keepouts: Keepout[]
+  /** The copper pours, in source order; absent when there are none. */
+  pours?: CopperPour[]
+  /** The non-plated holes, in source order; absent when there are none. */
+  holes?: Hole[]
 }
 
 export type DrawingKind = "path" | "rect" | "circle" | "arc" | "text" | "bus"

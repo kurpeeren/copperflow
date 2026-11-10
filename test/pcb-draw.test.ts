@@ -163,7 +163,7 @@ describe("drawPcb", () => {
 
   test("a board with nothing in it still draws", () => {
     const { ctx, calls } = recorder()
-    drawPcb(ctx, { parts: [], tracks: [], vias: [], ratsnest: [] }, VIEW, { ratio: 1 })
+    drawPcb(ctx, { parts: [], tracks: [], vias: [], ratsnest: [], pours: [], holes: [] }, VIEW, { ratio: 1 })
     expect(calls).toContain("save")
     expect(calls).toContain("restore")
   })

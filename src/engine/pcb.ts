@@ -5,8 +5,9 @@ import { resolveCopper, type PcbTrack, type PcbVia } from "./copper.js"
 import { diagnostic } from "./diagnostics.js"
 import { anchorGroups } from "./instance-anchor.js"
 import type { Footprint, Pad } from "./footprints/types.js"
-import type { Board, Circuit, Component, Diagnostic, Point } from "./model.js"
+import type { Board, Circuit, Component, Diagnostic, Hole, Point } from "./model.js"
 import { naturalCompare } from "./order.js"
+import type { PourFill } from "./pour/fill.js"
 import { ratsnest } from "./ratsnest.js"
 
 export interface WorldPad extends Pad {
@@ -54,9 +55,13 @@ export interface PcbLayout {
   vias: PcbVia[]
   /** The connections copper does not join yet. */
   ratsnest: RatsnestLine[]
+  /** The board's copper pours as filled, in the board's pour order; buildDesign fills them once the rules are read. */
+  pours: PourFill[]
+  /** The board's non-plated holes, in source order. */
+  holes: Hole[]
 }
 
-export type { PcbTrack, PcbVia }
+export type { PcbTrack, PcbVia, PourFill }
 
 type FootprintOf = (component: Component) => Footprint | { error: string }
 interface Placement {
@@ -209,6 +214,8 @@ export function layoutPcb(
     tracks: copper.tracks,
     vias: copper.vias,
     ratsnest: ratsnest(parts, copper.islands),
+    pours: [],
+    holes: circuit.board?.holes ?? [],
   }
   return { layout, diagnostics: [...diagnostics, ...copper.diagnostics] }
 }

@@ -55,5 +55,7 @@ export const board = (fields: Partial<PcbLayout>, layers: 2 | 4 = 2): PcbLayout 
   tracks: [],
   vias: [],
   ratsnest: [],
+  pours: [],
+  holes: [],
   ...fields,
 })
