@@ -13,7 +13,7 @@ interface Problem {
   path: readonly (string | number)[]
 }
 
-const OVERRIDABLE = ["minTrackWidth", "minClearance", "minDrill", "minAnnularRing", "boardEdgeClearance", "minHoleToHole", "minSilkToPad", "filletRadius", "maskExpansion", "pasteReduction"] as const
+const OVERRIDABLE = ["minTrackWidth", "minClearance", "minDrill", "minAnnularRing", "boardEdgeClearance", "minHoleToHole", "minSilkToPad", "filletRadius", "maskExpansion", "pasteReduction", "placementRotations"] as const
 
 const defaultProfile = (): FabricationProfile => PROFILES[DEFAULT_PROFILE] as FabricationProfile
 
