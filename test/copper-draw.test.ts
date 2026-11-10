@@ -86,7 +86,7 @@ describe("drawCopperItems", () => {
   test("a selected segment gets the white outline and the wash along that segment alone", () => {
     const bent = { id: "t0003", net: "net.A", layer: "top" as const, width: 0.25, points: [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 5 }] }
     const { ctx, records } = recorder()
-    drawCopperItems(ctx, scene({ tracks: [bent], selected: new Set(["t0003"]), segment: { id: "t0003", index: 1 } }), DEFAULT_LAYERS, undefined, PX)
+    drawCopperItems(ctx, scene({ tracks: [bent], selected: new Set(["t0003"]), segment: { id: "t0003", index: 1, from: { x: 5, y: 0 }, to: { x: 5, y: 5 } } }), DEFAULT_LAYERS, undefined, PX)
     const pathOf = (stroke: (typeof records)[number]) => {
       const end = records.indexOf(stroke)
       const start = records.slice(0, end).map((r) => r.name).lastIndexOf("beginPath")
@@ -96,6 +96,16 @@ describe("drawCopperItems", () => {
     const [wash] = strokes(records, PALETTE.selectionFill)
     expect(outline && pathOf(outline)).toEqual([[5, 0], [5, 5]])
     expect(wash && pathOf(wash)).toEqual([[5, 0], [5, 5]])
+  })
+
+  test("a selected segment whose ends no longer fit the track is not drawn on its own: the whole track is marked", () => {
+    const bent = { id: "t0003", net: "net.A", layer: "top" as const, width: 0.25, points: [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 5 }] }
+    const { ctx, records } = recorder()
+    drawCopperItems(ctx, scene({ tracks: [bent], selected: new Set(["t0003"]), segment: { id: "t0003", index: 1, from: { x: 5, y: 0 }, to: { x: 6, y: 5 } } }), DEFAULT_LAYERS, undefined, PX)
+    const [outline] = strokes(records, PALETTE.selection)
+    const end = records.indexOf(outline as never)
+    const start = records.slice(0, end).map((r) => r.name).lastIndexOf("beginPath")
+    expect(records.slice(start + 1, end).map((r) => r.args)).toEqual([[0, 0], [5, 0], [5, 5]])
   })
 
   test("a highlighted net keeps its copper; other copper dims", () => {

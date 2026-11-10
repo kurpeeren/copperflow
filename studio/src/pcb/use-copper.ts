@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent, t
 import type { Design } from "../api"
 import type { Actions } from "../App"
 import type { EditOutcome } from "../use-actions"
-import { Selection, togglesSelection, type SelectionChange, type TrackSegment } from "../selection"
+import { Selection, segmentChecked, togglesSelection, type SelectionChange, type TrackSegment } from "../selection"
 import { keyAction, keyInput, nudgeDirection } from "./canvas-keys"
 import { toLocal } from "./canvas-common"
 import type { CopperScene } from "./copper-draw"
@@ -192,12 +192,21 @@ export function useCopper(input: CopperInput) {
   const latest = useRef(now)
   latest.current = now
   useCopperKeys(latest)
+  useSegmentCheck(shown.tracks, selection, input.onSelect)
   const live = useMemo(() => (drag ? withShapes(shown, copperDragShapes(drag, shown, onPad)) : shown), [drag, shown, onPad])
   const scene: CopperScene = { tracks: live.tracks, vias: live.vias, selected: new Set(selection.copper), ...(selection.segment ? { segment: selection.segment } : {}), ...(hover === undefined ? {} : { hover }) }
   // Stable, so the part keys do not listen again on every render.
   const keys = useMemo(() => ({ remove: (ids: readonly string[]) => removeCopper(latest.current.input, latest.current.shown, ids) }), [])
   const moving = useMemo(() => dragMoving(drag, input.parts) ?? pending.moving, [drag, input.parts, pending.moving])
   return { scene, shown, drag, hover, setHover, put, dragRef, latest, keys, moving }
+}
+
+/** Drops a selected segment once the shown track no longer has its ends at its index (a fillet, an undo, a build). */
+function useSegmentCheck(tracks: Shown["tracks"], selection: Selection, onSelect: CopperInput["onSelect"]): void {
+  const stale = segmentChecked(selection, tracks) !== selection
+  useEffect(() => {
+    if (stale) onSelect((current) => segmentChecked(current, tracks))
+  }, [stale, tracks, onSelect])
 }
 
 /** The parts a group drag moves now, those that may move, drawn moved. */

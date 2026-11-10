@@ -249,7 +249,7 @@ function pcbPointer({ copper, track, hover, boxes, context, camera, size, canvas
   const open = (world: Point) => {
     if (track.armed) return
     const segment = copperSegmentAt(copper, world)
-    if (segment) return onSelect((current) => current.onlySegment(segment.id, segment.index))
+    if (segment) return onSelect((current) => current.onlySegment(segment))
     if (hoverCopper(copper, world)) return
     const target = targetAt(boxes, undefined, world, context)
     if (target.kind === "part") onOpenProperties(target)

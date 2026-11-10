@@ -108,9 +108,9 @@ describe("segmentUnder: what a double click picks", () => {
   const under = (x: number, y: number, over: Partial<PickContext> = {}) => segmentUnder(shapes, { x, y }, SCALE, DEFAULT_LAYERS, context(over))
 
   test("the segment of the track under the pointer, by its index", () => {
-    expect(under(5, 0.3)).toEqual({ id: "t0001", index: 0 })
-    expect(under(10.3, 6)).toEqual({ id: "t0001", index: 1 })
-    expect(under(5, 2.1)).toEqual({ id: "t0002", index: 0 })
+    expect(under(5, 0.3)).toEqual({ id: "t0001", index: 0, from: { x: 0, y: 0 }, to: { x: 10, y: 0 } })
+    expect(under(10.3, 6)).toEqual({ id: "t0001", index: 1, from: { x: 10, y: 0 }, to: { x: 10, y: 10 } })
+    expect(under(5, 2.1)).toEqual({ id: "t0002", index: 0, from: { x: 0, y: 2 }, to: { x: 10, y: 2 } })
   })
 
   test("nothing on a via, off the copper, or on a track the Filter tab leaves out", () => {
@@ -121,6 +121,6 @@ describe("segmentUnder: what a double click picks", () => {
 
   test("as a selection: the track alone with that segment", () => {
     const picked = under(10.3, 6)
-    expect(picked && Selection.none.onlySegment(picked.id, picked.index)).toMatchObject({ copper: ["t0001"], segment: { id: "t0001", index: 1 } })
+    expect(picked && Selection.none.onlySegment(picked)).toMatchObject({ copper: ["t0001"], segment: { id: "t0001", index: 1 } })
   })
 })

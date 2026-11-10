@@ -78,7 +78,7 @@ describe("copperFieldEdit", () => {
 
 describe("segmentProperties", () => {
   test("a segment: its track's net, its length and its two ends", () => {
-    expect(segmentProperties(design, { id: "t0001", index: 0 })).toEqual({
+    expect(segmentProperties(design, { id: "t0001", index: 0, from: { x: 0, y: 0 }, to: { x: 3, y: 4 } })).toEqual({
       kind: "segment",
       title: "Segment",
       locked: false,
@@ -90,11 +90,12 @@ describe("segmentProperties", () => {
         { label: "End", value: "(3, 4) mm" },
       ],
     })
-    expect(segmentProperties(design, { id: "t0002", index: 0 })).toMatchObject({ locked: true, rows: [{ label: "Net", value: "No net" }, {}, { value: "1 mm" }, {}, {}] })
+    expect(segmentProperties(design, { id: "t0002", index: 0, from: { x: 0, y: 0 }, to: { x: 1, y: 0 } })).toMatchObject({ locked: true, rows: [{ label: "Net", value: "No net" }, {}, { value: "1 mm" }, {}, {}] })
   })
 
   test("nothing for a segment the track does not have, or a track that is gone", () => {
-    expect(segmentProperties(design, { id: "t0001", index: 2 })).toBeUndefined()
-    expect(segmentProperties(design, { id: "t0009", index: 0 })).toBeUndefined()
+    expect(segmentProperties(design, { id: "t0001", index: 2, from: { x: 3, y: 10 }, to: { x: 3, y: 10 } })).toBeUndefined()
+    expect(segmentProperties(design, { id: "t0009", index: 0, from: { x: 0, y: 0 }, to: { x: 1, y: 0 } })).toBeUndefined()
+    expect(segmentProperties(design, { id: "t0001", index: 0, from: { x: 0, y: 0 }, to: { x: 3, y: 5 } })).toBeUndefined()
   })
 })

@@ -11,7 +11,7 @@ import { trackDragPath } from "./copper-geometry.js"
 import { nameList } from "./group-edits.js"
 import type { DragGrid } from "./wire-drag.js"
 import { nearestSegment } from "./wire-hit.js"
-import type { SelectionChange, TrackSegment } from "../selection.js"
+import { segmentOn, type SelectionChange, type TrackSegment } from "../selection.js"
 
 export interface CopperDrag {
   /** A track's reshape, a via's move, or the selection's parts and copper moved together ("group"). */
@@ -92,7 +92,8 @@ export function segmentAfterDrag(drag: CopperDrag): SelectionChange | undefined 
   if (!drag.moved) return (current) => current.onlyCopper(id)
   if (!drag.path || !drag.world || !drag.last) return undefined
   const index = nearestSegment(drag.path, { x: drag.world.x + drag.last.x, y: drag.world.y + drag.last.y })?.index
-  return index === undefined ? undefined : (current) => current.onlySegment(id, index)
+  const segment = index === undefined ? undefined : segmentOn({ id, points: drag.path }, index)
+  return segment && ((current) => current.onlySegment(segment))
 }
 
 /**

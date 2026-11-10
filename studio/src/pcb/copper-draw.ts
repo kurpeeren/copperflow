@@ -10,7 +10,7 @@ import { copperShown, stray } from "./copper-hit.js"
 import type { Point } from "./geometry.js"
 import type { LayerVisibility } from "./layers.js"
 import type { RouteDrawing } from "./track-tool.js"
-import type { TrackSegment } from "../selection.js"
+import { segmentFits, type TrackSegment } from "../selection.js"
 
 /** The copper layer not being worked on is drawn at this alpha. */
 export const INACTIVE_COPPER_ALPHA = 0.4
@@ -101,11 +101,10 @@ function drawRoutes(ctx: Ctx, scene: CopperScene, layers: LayerVisibility): void
   ctx.globalAlpha = 1
 }
 
-/** The points a mark of `track` follows: the selected segment's two ends, or the whole track. */
+/** The points a mark of `track` follows: the selected segment's two ends while they fit the track, or the whole track. */
 function markedPoints(scene: CopperScene, track: CopperTrackDraw, wash: boolean): readonly Point[] {
-  const index = wash && scene.segment?.id === track.id ? scene.segment.index : undefined
-  const piece = index === undefined ? [] : track.points.slice(index, index + 2)
-  return piece.length === 2 ? piece : track.points
+  const { segment } = scene
+  return wash && segment?.id === track.id && segmentFits(segment, track.points) ? [segment.from, segment.to] : track.points
 }
 
 /** An outline of the track or via `id` in `color`, and with `wash` the 50% white over it; `px` is one CSS pixel in mm. */

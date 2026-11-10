@@ -57,7 +57,7 @@ describe("a track's drag", () => {
 describe("a selected segment's drag", () => {
   const bent: CopperRecords = { tracks: [{ id: "t0003", layer: "top", points: [p(0, 0), p(10, 0), p(10, 10)], locked: false }], vias: [] }
   const press = (world: { x: number; y: number }) => startCopperDrag({ kind: "track", id: "t0003" }, bent, { world, point: START, scale: SCALE, sole: true, width: 0.25 })
-  const selected = Selection.none.onlySegment("t0003", 1)
+  const selected = Selection.none.onlySegment({ id: "t0003", index: 1, from: p(10, 0), to: p(10, 10) })
 
   test("a press on the selected segment keeps it; on another segment or on a corner handle it does not", () => {
     const on = press(p(10.1, 5))
@@ -79,7 +79,7 @@ describe("a selected segment's drag", () => {
     expect(moved.path).toEqual(plain.path)
     expect(moved.path).toEqual([p(0, 0), p(13, 0), p(13, 10), p(10, 10)])
     expect(endCopperDrag(moved, bent, noPad)).toEqual(endCopperDrag(plain, bent, noPad))
-    expect(segmentAfterDrag(moved)?.(selected)).toMatchObject({ copper: ["t0003"], segment: { id: "t0003", index: 1 } })
+    expect(segmentAfterDrag(moved)?.(selected)).toMatchObject({ copper: ["t0003"], segment: { id: "t0003", index: 1, from: p(13, 0), to: p(13, 10) } })
   })
 
   test("a click on the selected segment that does not move selects the whole track", () => {

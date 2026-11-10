@@ -132,9 +132,10 @@ describe("copperNudges", () => {
 describe("segmentDeletion: Delete on a selected segment", () => {
   const pt = (x: number, y: number) => ({ x, y })
   const track = { id: "t0004", net: "net.3", named: "VBUS", layer: "top" as const, width: 0.4, points: [pt(0, 0), pt(5, 0), pt(5, 5), pt(9, 5)], locked: false }
+  const seg = (index: number, points = track.points) => ({ id: "t0004", index, from: points[index] ?? pt(0, 0), to: points[index + 1] ?? pt(0, 0) })
 
   test("a middle segment splits the track as one change, the new run keeping the net as the record names it", () => {
-    expect(segmentDeletion(track, { id: "t0004", index: 1 })).toEqual({
+    expect(segmentDeletion(track, seg(1))).toEqual({
       edits: [
         { kind: "setTrack", id: "t0004", points: [pt(0, 0), pt(5, 0)] },
         { kind: "addTrack", net: "VBUS", layer: "top", width: 0.4, points: [pt(5, 5), pt(9, 5)] },
@@ -144,17 +145,17 @@ describe("segmentDeletion: Delete on a selected segment", () => {
   })
 
   test("the first and the last segment shorten the track; a two-point track goes", () => {
-    expect(segmentDeletion(track, { id: "t0004", index: 0 })).toMatchObject({ edits: [{ kind: "setTrack", id: "t0004", points: [pt(5, 0), pt(5, 5), pt(9, 5)] }] })
-    expect(segmentDeletion(track, { id: "t0004", index: 2 })).toMatchObject({ edits: [{ kind: "setTrack", id: "t0004", points: [pt(0, 0), pt(5, 0), pt(5, 5)] }] })
-    expect(segmentDeletion({ ...track, points: [pt(0, 0), pt(5, 0)] }, { id: "t0004", index: 0 })).toMatchObject({ edits: [{ kind: "removeTrack", id: "t0004" }] })
+    expect(segmentDeletion(track, seg(0))).toMatchObject({ edits: [{ kind: "setTrack", id: "t0004", points: [pt(5, 0), pt(5, 5), pt(9, 5)] }] })
+    expect(segmentDeletion(track, seg(2))).toMatchObject({ edits: [{ kind: "setTrack", id: "t0004", points: [pt(0, 0), pt(5, 0), pt(5, 5)] }] })
+    expect(segmentDeletion({ ...track, points: [pt(0, 0), pt(5, 0)] }, seg(0, [pt(0, 0), pt(5, 0)]))).toMatchObject({ edits: [{ kind: "removeTrack", id: "t0004" }] })
   })
 
   test("a track with no named net keeps the net it carries; a locked or missing track is refused", () => {
     const { named: _named, ...unnamed } = track
-    const split = segmentDeletion(unnamed, { id: "t0004", index: 1 })
+    const split = segmentDeletion(unnamed, seg(1))
     expect("edits" in split && split.edits[1]).toMatchObject({ net: "net.3" })
     expect("edits" in split && split.edits[0]).toEqual({ kind: "setTrack", id: "t0004", net: "net.3", points: [pt(0, 0), pt(5, 0)] })
-    expect(segmentDeletion({ ...track, locked: true }, { id: "t0004", index: 1 })).toEqual({ message: "t0004 is locked" })
-    expect(segmentDeletion(undefined, { id: "t0004", index: 1 })).toEqual({ message: "t0004 is gone" })
+    expect(segmentDeletion({ ...track, locked: true }, seg(1))).toEqual({ message: "t0004 is locked" })
+    expect(segmentDeletion(undefined, seg(1))).toEqual({ message: "t0004 is gone" })
   })
 })

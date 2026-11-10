@@ -5,7 +5,8 @@
 // one when nothing changed, so React sees what changed. The part counts (`names`, `size`, `primary`) count parts only,
 // so the part commands (Rotate, align, Lock) act on the parts; `wires` holds the wires, `labels` the labels, `drawings`
 // the drawings, `copper` the tracks and vias, and `total` counts all five, as "Selected objects: N" does. A double
-// click on a track selects one of its segments: the track alone in `copper`, with `segment` naming which.
+// click on a track selects one of its segments: the track alone in `copper`, with `segment` naming which and where its
+// two ends were; once the track's points no longer have those ends there, the segment is dropped (segmentChecked).
 
 /** A change to the selection, from what it is to what it becomes; the canvases, panels and keys send these. */
 export type SelectionChange = (current: Selection) => Selection
@@ -32,10 +33,36 @@ interface Lists {
   texts: readonly string[]
 }
 
-/** One segment of a track: the track's id and the segment's index (0 runs from its first point to the second). */
+/** A point of a track, in mm. */
+interface SegmentEnd {
+  readonly x: number
+  readonly y: number
+}
+
+/**
+ * One segment of a track: the track's id, the segment's index (0 runs from its first point to the second) and its two
+ * ends when it was picked, which tell a segment still there from another one at the same index.
+ */
 export interface TrackSegment {
   readonly id: string
   readonly index: number
+  readonly from: SegmentEnd
+  readonly to: SegmentEnd
+}
+
+const sameEnd = (a: SegmentEnd | undefined, b: SegmentEnd): boolean => a !== undefined && a.x === b.x && a.y === b.y
+const sameSegment = (a: TrackSegment | undefined, b: TrackSegment): boolean =>
+  a !== undefined && a.id === b.id && a.index === b.index && sameEnd(a.from, b.from) && sameEnd(a.to, b.to)
+
+/** Segment `index` of `track`, with its ends; undefined when the track has no such segment. */
+export function segmentOn(track: { id: string; points: readonly SegmentEnd[] }, index: number): TrackSegment | undefined {
+  const [from, to] = [track.points[index], track.points[index + 1]]
+  return Number.isInteger(index) && index >= 0 && from && to ? { id: track.id, index, from: { x: from.x, y: from.y }, to: { x: to.x, y: to.y } } : undefined
+}
+
+/** Whether these points still have the segment's two ends at its index. */
+export function segmentFits(segment: TrackSegment, points: readonly SegmentEnd[]): boolean {
+  return sameEnd(points[segment.index], segment.from) && sameEnd(points[segment.index + 1], segment.to)
 }
 
 const EMPTY: Lists = { names: [], wires: [], labels: [], drawings: [], copper: [], texts: [] }
@@ -73,7 +100,7 @@ export class Selection {
     this.drawings = Object.freeze([...lists.drawings])
     this.copper = Object.freeze([...lists.copper])
     this.texts = Object.freeze([...lists.texts])
-    this.segment = segment && Object.freeze({ id: segment.id, index: segment.index })
+    this.segment = segment && Object.freeze({ id: segment.id, index: segment.index, from: Object.freeze({ ...segment.from }), to: Object.freeze({ ...segment.to }) })
     Object.freeze(this)
   }
 
@@ -210,9 +237,9 @@ export class Selection {
     return this.soleCopper === id && !this.segment ? this : new Selection({ ...EMPTY, copper: [id] })
   }
 
-  /** Just this segment of this track. */
-  onlySegment(id: string, index: number): Selection {
-    return this.segment?.id === id && this.segment.index === index ? this : new Selection({ ...EMPTY, copper: [id] }, { id, index })
+  /** Just this segment of its track. */
+  onlySegment(segment: TrackSegment): Selection {
+    return sameSegment(this.segment, segment) ? this : new Selection({ ...EMPTY, copper: [segment.id] }, segment)
   }
 
   /** The part taken out when it is in, else added as the primary; the other kinds stay. */
@@ -344,6 +371,16 @@ export class Selection {
   keepCopper(ids: Iterable<string>): Selection {
     return this.with({ copper: among(this.copper, ids) })
   }
+}
+
+/**
+ * The selection once the tracks are as `tracks` has them: a selected segment whose ends are no longer at its index (a
+ * fillet, an undo, a drag, a build) is dropped and its whole track stays selected; anything else is the same selection.
+ */
+export function segmentChecked(selection: Selection, tracks: readonly { id: string; points: readonly SegmentEnd[] }[]): Selection {
+  const { segment } = selection
+  const track = segment && tracks.find((one) => one.id === segment.id)
+  return segment && track && !segmentFits(segment, track.points) ? selection.onlyCopper(segment.id) : selection
 }
 
 /** The modifiers of a click that toggles one part in or out instead of selecting it alone: Shift or Ctrl, as in EasyEDA (Cmd on a Mac). */

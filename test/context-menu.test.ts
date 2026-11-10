@@ -199,7 +199,7 @@ describe("the menu on copper", () => {
   })
 
   test("a right click on the track of the selected segment keeps the segment; on another track it selects that track", () => {
-    const segment = Selection.none.onlySegment("t0001", 1)
+    const segment = Selection.none.onlySegment({ id: "t0001", index: 1, from: { x: 0, y: 0 }, to: { x: 5, y: 0 } })
     expect(contextSelection(segment, track)).toBe(segment)
     expect(contextSelection(segment, { kind: "copper", id: "t0002" }).segment).toBeUndefined()
   })

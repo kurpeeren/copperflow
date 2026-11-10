@@ -8,7 +8,7 @@ import { tidyTrack } from "./copper-geometry.js"
 import { nameList } from "./group-edits.js"
 import { carryPath } from "./wire-geometry.js"
 import { segmentRemoval } from "../../../src/core/track-split.js"
-import type { TrackSegment } from "../selection.js"
+import { segmentFits, type TrackSegment } from "../selection.js"
 
 /** The copper as these edits need it. */
 export interface CopperRecords {
@@ -116,10 +116,11 @@ export type SegmentTrack = Pick<PcbTrack, "id" | "net" | "named" | "layer" | "wi
 
 /**
  * Delete on a selected segment: the track split into the runs left on either side of it (track-split.ts), in one
- * change; the new run keeps the net as the record names it (else the one it carries), the layer and the width.
+ * change, refused when the segment's ends are no longer where they were picked (the track changed under it); the new run keeps the net as the record names it (else the one it carries), the layer and the width.
  */
 export function segmentDeletion(track: SegmentTrack | undefined, segment: TrackSegment): { edits: LayoutEdit[]; summary: string } | { message: string } {
   if (!track) return { message: `${segment.id} is gone` }
+  if (!segmentFits(segment, track.points)) return { message: "the track changed; select the segment again" }
   const nets = { ...(track.named === undefined ? {} : { net: track.named }), ...(track.net === undefined ? {} : { carried: track.net }) }
   const split = segmentRemoval({ id: track.id, ...nets, layer: track.layer, width: track.width, points: track.points, locked: track.locked }, segment.index)
   return "message" in split ? split : { edits: split.edits, summary: `Delete segment ${segment.index} of ${track.id}` }

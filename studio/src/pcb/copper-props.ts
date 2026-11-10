@@ -4,7 +4,7 @@ import type { LayoutEdit } from "../../../src/core/layout-records.js"
 import { trackLength } from "../../../src/engine/copper.js"
 import type { PcbTrack, PcbVia } from "../../../src/engine/pcb.js"
 import { hasSegment } from "../../../src/core/track-split.js"
-import type { TrackSegment } from "../selection.js"
+import { segmentFits, type TrackSegment } from "../selection.js"
 
 /** What these rows read of the built design. */
 export interface CopperDesign {
@@ -81,10 +81,10 @@ export interface SegmentProperties {
 
 const at = (p: { x: number; y: number }): string => `(${Math.round(p.x * 1000) / 1000}, ${Math.round(p.y * 1000) / 1000}) mm`
 
-/** The rows of `segment`, or undefined when the design has no such track or the track no such segment. */
+/** The rows of `segment`, or undefined when the design has no such track or the track no such segment (with its ends). */
 export function segmentProperties(design: CopperDesign, segment: TrackSegment): SegmentProperties | undefined {
   const track = design.pcb.tracks.find((one) => one.id === segment.id)
-  if (!track || !hasSegment(track.points, segment.index)) return undefined
+  if (!track || !hasSegment(track.points, segment.index) || !segmentFits(segment, track.points)) return undefined
   const [start, end] = [track.points[segment.index], track.points[segment.index + 1]] as [PcbTrack["points"][number], PcbTrack["points"][number]]
   return {
     kind: "segment",

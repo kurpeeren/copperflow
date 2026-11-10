@@ -408,11 +408,12 @@ describe("names, values and designators", () => {
 
 describe("one segment of a track in the selection", () => {
   const T = "t0001"
-  const segment = Selection.none.onlySegment(T, 2)
+  const ends = { from: { x: 0, y: 0 }, to: { x: 5, y: 0 } }
+  const segment = Selection.none.onlySegment({ id: T, index: 2, ...ends })
 
   test("the segment is the track alone with the segment's index: the sole copper, one object", () => {
     expect(segment.copper).toEqual([T])
-    expect(segment.segment).toEqual({ id: T, index: 2 })
+    expect(segment.segment).toEqual({ id: T, index: 2, ...ends })
     expect(segment.soleCopper).toBe(T)
     expect(segment.total).toBe(1)
     expect(Object.isFrozen(segment.segment)).toBe(true)
@@ -421,9 +422,9 @@ describe("one segment of a track in the selection", () => {
   })
 
   test("the same segment again is the same selection; another segment or another track is a new one", () => {
-    expect(segment.onlySegment(T, 2)).toBe(segment)
-    expect(segment.onlySegment(T, 1).segment).toEqual({ id: T, index: 1 })
-    expect(segment.onlySegment("t0002", 2)).toMatchObject({ copper: ["t0002"], segment: { id: "t0002", index: 2 } })
+    expect(segment.onlySegment({ id: T, index: 2, ...ends })).toBe(segment)
+    expect(segment.onlySegment({ id: T, index: 1, ...ends }).segment).toEqual({ id: T, index: 1, ...ends })
+    expect(segment.onlySegment({ id: "t0002", index: 2, ...ends })).toMatchObject({ copper: ["t0002"], segment: { id: "t0002", index: 2 } })
   })
 
   test("a single click on the track selects the whole track", () => {

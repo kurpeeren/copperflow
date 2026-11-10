@@ -8,7 +8,7 @@ import { areasInBox, type BoxMode } from "./box-select.js"
 import { roundPosition, type Box, type Point } from "./geometry.js"
 import type { LayerVisibility } from "./layers.js"
 import { canPick, type PickContext } from "./pick.js"
-import type { TrackSegment } from "../selection.js"
+import { segmentOn, type TrackSegment } from "../selection.js"
 import { cornerAt, distanceToSegment, segmentAt, WIRE_REACH_PX } from "./wire-hit.js"
 import { handleReach, type WireGrip } from "./wire-drag.js"
 
@@ -88,7 +88,7 @@ export function segmentUnder(shapes: CopperShapes, p: Point, scale: number, visi
   const hit = copperAt(shapes, p, scale, visible, context)
   const track = hit?.kind === "track" ? shapes.tracks.find((one) => one.id === hit.id) : undefined
   const index = track && segmentAt(track.points, p, copperReach(track.width, scale))
-  return track && index !== undefined ? { id: track.id, index } : undefined
+  return track && index !== undefined ? segmentOn(track, index) : undefined
 }
 
 /**
