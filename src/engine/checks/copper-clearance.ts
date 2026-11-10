@@ -96,7 +96,7 @@ function pairName(rules: Rules, a: string, b: string): string {
 }
 
 /** What sets the gap: the classes (their clearances and their pair entry), or the fabrication minimum when it is larger. */
-function ruleText(rules: Rules, a: string, b: string, required: number): string {
+export function ruleText(rules: Rules, a: string, b: string, required: number): string {
   const byClasses = requiredClearance({ ...rules, fabrication: { ...rules.fabrication, minClearance: 0 } }, a, b)
   return byClasses < required ? `the fabrication minimum is ${mm(required)} mm` : `${pairName(rules, a, b)} needs ${mm(required)} mm`
 }

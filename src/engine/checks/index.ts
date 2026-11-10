@@ -8,6 +8,7 @@ import type { SchematicLayout } from "../schematic.js"
 import { copperNoteChecks } from "./copper-notes.js"
 import { copperChecks } from "./drc-copper.js"
 import { padChecks } from "./drc-pads.js"
+import { pourChecks } from "./drc-pours.js"
 import { partChecks } from "./drc-parts.js"
 import { electricalChecks } from "./erc.js"
 import { violation, type Violation } from "./violation.js"
@@ -64,6 +65,7 @@ export function checkDesign(
     ...padChecks(placed, rules, classOf),
     ...partChecks(placed, rules),
     ...copperChecks(placed, rules, classOf),
+    ...pourChecks(placed, rules, classOf),
     ...copperNoteChecks(copperNotes, layout),
     ...skipped,
   ])
