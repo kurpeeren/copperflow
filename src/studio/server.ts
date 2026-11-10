@@ -220,7 +220,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
   let port = 0
   const router = new RouteRunner({
     root,
-    designOf: async (circuit) => (await live.currentDesign(circuit)) ?? (await building.builder.build(root, circuit)),
+    build: (circuit) => building.builder.build(root, circuit),
     announce: (event) => live.announce("route", event),
     nextMark: () => live.nextMark(),
     requestBuild: (circuit) => live.requestBuild(circuit),

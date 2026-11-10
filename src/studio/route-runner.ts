@@ -1,8 +1,11 @@
 // Route → Autoroute on the server: one run at a time, in a worker thread so the Studio stays responsive, its progress
-// and its end told through the live events ("route"). The copper is written as one history entry (author human, records
-// by the router), unless a file the run was computed from changed meanwhile (content hashes of every file a build
-// reads, at the start and again inside the project's write queue just before the write), or the run was cancelled. Without worker threads (or without the built worker file, as when the server
-// runs from its TypeScript sources) the run is computed in the server process, which says so.
+// and its end told through the live events ("route"). The board is built afresh from the files whose content hashes
+// are taken at the start (never the live build, which can predate a write the watcher has not counted yet), and the
+// scope's names are checked against it before the run is under way. The copper is written as one history entry
+// (author human, records by the router), unless a file the run was computed from changed meanwhile (the hashes again,
+// inside the project's write queue just before the write), or the run was cancelled. Without worker threads (or without
+// the built worker file, as when the server runs from its TypeScript sources) the run is computed in the server
+// process, which says so.
 import { createHash } from "node:crypto"
 import { existsSync } from "node:fs"
 import { fileURLToPath } from "node:url"
@@ -15,7 +18,8 @@ import { resolveCircuit } from "../core/workspace.js"
 import type { Design } from "../engine/design.js"
 import { ENGINE_FILES } from "../engine/engine.js"
 import { collectProjectFiles } from "../engine/project-files.js"
-import { routeBoard, type RouteBoardInput, type RouteProgress, type RouteReport, type RouteScope } from "../engine/router/route-board.js"
+import { findNet } from "../mcp/copper-under.js"
+import { findInstance, routeBoard, type RouteBoardInput, type RouteProgress, type RouteReport, type RouteScope } from "../engine/router/route-board.js"
 import { discardReason, routeSummary, type ContentHashes, type RouteEvent } from "./route-events.js"
 
 /** What the worker is sent: the board and the scope. */
@@ -60,8 +64,8 @@ export async function routeWorkerFactory(): Promise<RouteWorkerFactory | undefin
 /** What the runner needs of the server. */
 export interface RouteRunnerDeps {
   root: string
-  /** The built design of a circuit file: the live one when current, else a fresh build. */
-  designOf(circuit: string): Promise<Design>
+  /** A fresh build of a circuit file from the files as they are now (not the live build, which may be stale). */
+  build(circuit: string): Promise<Design>
   /** Tells the viewers. */
   announce(event: RouteEvent): void
   /** Takes the server's next mark (LiveProject.nextMark) after a write. */
@@ -113,6 +117,34 @@ export const routeInput = (design: Design): RouteBoardInput => ({
   ...(design.circuit.instances ? { instances: design.circuit.instances } : {}),
 })
 
+const noSuch = (one: string, many: string, names: readonly string[]) => `The circuit has no ${names.length === 1 ? one : many} ${names.join(", ")}. Nothing was routed.`
+
+/**
+ * The scope checked against the circuit, its nets given by their ids: a net, part or instance the circuit does not have
+ * is refused with its names, as the agent's autoroute refuses it.
+ */
+export function checkedScope(design: Design, scope: RouteScope): RouteScope {
+  switch (scope.kind) {
+    case "all":
+      return scope
+    case "nets": {
+      const found = scope.nets.map((name) => ({ name, net: findNet(design.circuit.nets, name) }))
+      const missing = found.filter((one) => one.net === undefined).map((one) => one.name)
+      if (missing.length > 0) throw new Error(noSuch("net", "nets", missing))
+      return { kind: "nets", nets: found.flatMap((one) => (one.net ? [one.net.id] : [])) }
+    }
+    case "parts": {
+      const known = new Set(design.circuit.components.map((component) => component.id))
+      const missing = scope.parts.filter((part) => !known.has(part))
+      if (missing.length > 0) throw new Error(noSuch("part", "parts", missing))
+      return scope
+    }
+    case "instance":
+      if (findInstance(design.circuit.instances, scope.instance) === undefined) throw new Error(noSuch("sub-sheet instance", "sub-sheet instances", [scope.instance]))
+      return scope
+  }
+}
+
 /** The router's edits with no track starting on a pad of a part locked now (see startOffLocked). */
 export async function lockSafeEdits(circuitPath: string, design: Design, edits: LayoutEdit[]): Promise<LayoutEdit[]> {
   const locked = await lockedPartsAt(circuitPath)
@@ -133,7 +165,8 @@ export class RouteRunner {
 
   /**
    * Starts routing the circuit `file` in `scope` and returns its project path once the run is under way; the run
-   * goes on and is told through the events. Throws when another run is going or the file is not a circuit.
+   * goes on and is told through the events. Throws when another run is going, the file is not a circuit, it does not
+   * build, or the scope names a net, part or instance the circuit does not have.
    */
   async start(file: string, scope: RouteScope): Promise<string> {
     if (this.job) throw new Error(`The board of ${this.job.file} is being routed; cancel it or wait for it to end`)
@@ -143,8 +176,12 @@ export class RouteRunner {
       const circuit = await resolveCircuit(this.deps.root, file)
       if (!circuit.file.endsWith(".circuit.tsx")) throw new Error(`${circuit.file} is a sub-sheet; open the circuit that uses it to route its board`)
       job.file = circuit.file
+      // The hashes first, then the build: a write in between makes the build newer than the hashes, and the run is discarded.
+      const start = await this.hashes(circuit)
+      const design = await this.deps.build(circuit.file)
+      const checked = checkedScope(design, scope)
       this.deps.announce({ file: circuit.file, state: "started", scope, ...(this.deps.createWorker ? {} : { inProcess: true }) })
-      void this.run(job, circuit, scope).finally(() => {
+      void this.run(job, circuit, scope, { start, design, checked }).finally(() => {
         if (this.job === job) this.job = undefined
       })
       return circuit.file
@@ -167,13 +204,12 @@ export class RouteRunner {
     return contentHashes(this.deps.root, circuit.file)
   }
 
-  private async run(job: Job, circuit: { path: string; file: string }, scope: RouteScope): Promise<void> {
+  private async run(job: Job, circuit: { path: string; file: string }, scope: RouteScope, built: { start: ContentHashes; design: Design; checked: RouteScope }): Promise<void> {
     const file = circuit.file
+    const { start, design, checked } = built
     try {
-      const start = await this.hashes(circuit)
-      const design = await this.deps.designOf(file)
       if (job.cancelled) throw new Cancelled()
-      const report = await this.compute(job, { input: routeInput(design), scope })
+      const report = await this.compute(job, { input: routeInput(design), scope: checked })
       const check = async () => {
         if (job.cancelled) throw new Cancelled()
         const why = discardReason(start, await this.hashes(circuit))
@@ -193,16 +229,18 @@ export class RouteRunner {
 
   /**
    * The copper as one history entry, by the router, with no track starting on a locked part's pad. `check` runs in the
-   * project's write queue, after the writes queued before this one, so a hand edit that got in first discards the run.
+   * project's write queue, after the writes queued before this one, so a hand edit that got in first discards the run;
+   * the locks are read there too, after `check`, so a part locked while the run waited is honoured. Once `check` passes,
+   * the files are those the design was built from, so the write judges track starts by it.
    */
   private async write(job: Job, circuit: { path: string; file: string }, design: Design, scope: RouteScope, report: RouteReport, check: () => Promise<void>): Promise<{ entryId: string; writeMark: number }> {
-    const edits = await lockSafeEdits(circuit.path, design, report.edits)
     const total = report.routed.length + report.unrouted.length
-    const source: DesignSource = (name) => this.deps.designOf(name)
+    const source: DesignSource = async () => design
     const guard = async () => {
       await check()
       job.committed = true
     }
+    const edits = () => lockSafeEdits(circuit.path, design, report.edits)
     const result = await applyLayoutEdits(this.deps.root, circuit.file, edits, { author: "human", router: true, summary: routeSummary(scope, report.routed.length, total), design: source, guard })
     const writeMark = this.deps.nextMark()
     this.deps.requestBuild(circuit.file)

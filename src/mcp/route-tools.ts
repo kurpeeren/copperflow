@@ -112,7 +112,8 @@ export async function autoroute(ports: Ports, input: { file: string; nets?: stri
   if (total === 0) return "Nothing to route: every connection in the scope is already routed. Nothing was written."
   const line = routedLine(report)
   if (report.edits.length === 0) return [`${line}. Nothing was written.`, ...notes(report, budgetSeconds)].join("\n")
-  const edits = await lockSafeEdits(circuit.path, design, report.edits)
+  // The locks are read in the write queue, after the guard: a part locked while the board was routed is honoured.
+  const edits = () => lockSafeEdits(circuit.path, design, report.edits)
   const guard = async () => {
     const why = discardReason(start, await contentHashes(ports.root, circuit.file))
     if (why !== undefined) throw new Error(`${why}. Nothing was written.`)
