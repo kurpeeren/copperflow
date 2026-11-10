@@ -163,12 +163,27 @@ function findingLine(f: Finding): string {
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
 
+const FILTER_WORDS = new Set(["errors", "warnings", "copper"])
+
+/**
+ * In a circuit with sub-sheet instances, a filter that is no instance, part or net is refused, naming the instances,
+ * rather than answering an empty list that reads as a clean instance.
+ */
+function refuseUnknownName(file: string, result: CheckResult, filter: string): void {
+  const instances = result.instances ?? []
+  if (FILTER_WORDS.has(filter) || instances.length === 0 || result.names === undefined) return
+  const name = filter.replace(/^net[.:]/, "")
+  if (result.names.includes(name)) return
+  throw new Error(`There is no instance, part or net ${filter} in ${file}; the instances are ${instances.map((i) => i.path).join(", ")}`)
+}
+
 /**
  * The default check_circuit: counts, then up to 20 violations, one line each, errors first. A filter naming a
  * sub-sheet instance keeps the findings about its parts, its ports and the nets and instances inside it.
  */
 export function formatCompactCheck(file: string, result: CheckResult, filter?: string): string {
   const instance = filter ? result.instances?.find((found) => found.path === filter) : undefined
+  if (filter && !instance) refuseUnknownName(file, result, filter)
   const about = instance ? aboutInstance(instance) : undefined
   const all = findings(result).filter((f) => (about ? f.items.some(about) : matches(f, filter)))
   const sorted = [...all.filter((f) => f.severity === "error"), ...all.filter((f) => f.severity === "warning")]

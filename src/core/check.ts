@@ -19,6 +19,8 @@ export interface CheckResult {
   diagnostics: Diagnostic[]
   /** The circuit's sub-sheet instances, so findings can be told by instance. */
   instances?: SheetInstance[]
+  /** The flattened designators and net names, so a filter that names none of them can be refused. */
+  names?: string[]
 }
 
 export interface CheckOptions {
@@ -53,6 +55,7 @@ export async function checkCircuit(root: string, file: string, options: CheckOpt
     violations: [...design.violations],
     diagnostics: [...design.diagnostics],
     instances: [...(design.circuit?.instances ?? [])],
+    names: [...(design.circuit?.components ?? []).map((c) => c.id), ...(design.circuit?.nets ?? []).flatMap((n) => n.names)],
   }
 }
 
