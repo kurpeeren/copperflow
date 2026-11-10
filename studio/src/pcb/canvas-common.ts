@@ -62,6 +62,8 @@ export interface CanvasProps {
   gridStep: number
   /** Whether drags, arrow keys and wire corners go to the grid (View → Snap). */
   snap: boolean
+  /** Whether the label of what rests under the pointer shows (View → Hover labels). */
+  hoverLabels: boolean
   onGridStep(step: number): void
   /** Which PCB layers are shown (the Layer panel); the schematic has none. */
   layers: LayerVisibility

@@ -40,6 +40,7 @@ interface WorkspaceCommands {
   openBottom(tab: BottomTab): void
   openPageTree(): void
   setTheme(theme: ThemeName): void
+  toggleHoverLabels(): void
 }
 
 interface Input {
@@ -215,6 +216,7 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     deletePage: () => pageCommand(input, "deletePage"),
     themeLight: () => input.workspace.setTheme("light"),
     themeDark: () => input.workspace.setTheme("dark"),
+    hoverLabels: input.workspace.toggleHoverLabels,
   }
   return (table as Partial<Record<CommandId, () => void>>)[command]
 }
@@ -245,7 +247,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
   const [waiting, setWaiting] = useState<{ command: CommandId; view: View } | null>(null)
   const { file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, openChecks, openFind, openDialog, design, page, openPage, highlight } = input
   // The workspace object is new on every render, but its functions are stable.
-  const { run, openBottom, openPageTree, setTheme } = input.workspace
+  const { run, openBottom, openPageTree, setTheme, toggleHoverLabels } = input.workspace
   // A command waiting for its view runs once that view's canvas has mounted and subscribed.
   useEffect(() => {
     if (!waiting || view !== waiting.view) return
@@ -257,7 +259,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
   }, [waiting, view, actions])
   const runCommand = useCallback(
     (command: CommandId) => {
-      const own = appCommand({ file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, workspace: { run, openBottom, openPageTree, setTheme }, openChecks, openFind, openDialog, design, page, openPage, highlight }, command)
+      const own = appCommand({ file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, workspace: { run, openBottom, openPageTree, setTheme, toggleHoverLabels }, openChecks, openFind, openDialog, design, page, openPage, highlight }, command)
       if (own) return own()
       const only = viewOf(command)
       if (only && view !== only) {
@@ -267,7 +269,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
       }
       if (!send(command)) actions.notify("Wait for the build to finish, then try again.")
     },
-    [file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, run, openBottom, openPageTree, setTheme, openChecks, openFind, openDialog, design, page, openPage, highlight],
+    [file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, run, openBottom, openPageTree, setTheme, toggleHoverLabels, openChecks, openFind, openDialog, design, page, openPage, highlight],
   )
   useAppKeys(runCommand, view)
   return runCommand
