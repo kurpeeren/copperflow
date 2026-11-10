@@ -87,11 +87,11 @@ export function useActions({ file, refresh, refreshParts, notify }: ActionsInput
 }
 
 /** Places a built-in or library part with its starting values and selects it. */
-export function usePlace({ file, refresh, notify }: ActionsInput, onPlaced: (name: string) => void): (part: string) => void {
+export function usePlace({ file, refresh, notify }: ActionsInput, onPlaced: (name: string) => void, page = "Main"): (part: string) => void {
   return useCallback(
     (part: string) => {
       const props = PLACE_DEFAULTS[part]
-      api<{ name: string }>("/api/place", { file, part, ...(props ? { props } : {}) })
+      api<{ name: string }>("/api/place", { file, part, ...(props ? { props } : {}), ...(page === "Main" ? {} : { page }) })
         .then((result) => {
           onPlaced(result.name)
           notify(`Placed ${result.name}${props ? " with a starting value; change it on the right" : ""}. Drag it into position on the PCB.`)
@@ -101,6 +101,6 @@ export function usePlace({ file, refresh, notify }: ActionsInput, onPlaced: (nam
           if (file) refresh(file).catch(() => undefined)
         })
     },
-    [file, refresh, notify, onPlaced],
+    [file, refresh, notify, onPlaced, page],
   )
 }

@@ -111,6 +111,7 @@ const EditSchema = z.discriminatedUnion("kind", [
       .array(z.object({ x: z.number().finite(), y: z.number().finite() }))
       .max(200)
       .optional(),
+    page: z.string().max(64).optional(),
   }),
   z.object({ kind: z.literal("removeTrace"), from: z.string(), to: z.string() }),
   z.object({
@@ -121,7 +122,7 @@ const EditSchema = z.discriminatedUnion("kind", [
       .array(z.object({ x: z.number().finite(), y: z.number().finite() }))
       .max(200),
   }),
-  z.object({ kind: z.literal("addDrawing"), tag: z.string().max(64), name: z.string().max(64).optional(), props: drawingProps }),
+  z.object({ kind: z.literal("addDrawing"), tag: z.string().max(64), name: z.string().max(64).optional(), props: drawingProps, page: z.string().max(64).optional() }),
   z.object({ kind: z.literal("removeDrawing"), id: z.string().max(200) }),
   z.object({ kind: z.literal("setDrawingProps"), id: z.string().max(200), props: drawingProps }),
   z.object({ kind: z.literal("movePartToPage"), part: z.string(), page: z.string().max(64) }),

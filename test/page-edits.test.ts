@@ -124,3 +124,17 @@ describe("adding, renaming and removing pages", () => {
     expect(() => applyEdits(twoPages, [{ kind: "removePage", name: "Main" }], none)).toThrow(/cannot be removed/)
   })
 })
+
+describe("a drawing on a page", () => {
+  test("goes in the page, and the engine draws it there", () => {
+    const next = applyEdits(twoPages, [{ kind: "addDrawing", tag: "schematictext", props: { x: 1, y: 1, text: "Hi" }, page: "Power" }], none)
+    expect(next).toContain(`<schematictext x={1} y={1} text="Hi" />\n    </page>`)
+    const circuit = elaborate(evaluateCircuit({ [MAIN]: next }, MAIN), MAIN, { padCount: () => undefined })
+    expect(circuit.drawings.map((d) => [d.id, d.page])).toEqual([["drawing:text:1", "Power"]])
+  })
+
+  test("is refused when it would change the id of a drawing written later", () => {
+    const later = file([`<page name="Power">`, `</page>`, `<schematictext x={0} y={0} text="A" />`])
+    expect(() => applyEdits(later, [{ kind: "addDrawing", tag: "schematictext", props: { x: 1, y: 1, text: "B" }, page: "Power" }], none)).toThrow(/would change the id of drawing:text:1/)
+  })
+})

@@ -145,7 +145,7 @@ export type Edit =
   /** Removes a page's elements and the traces and drawings in them; refused while a part is on it. */
   | { kind: "removePage"; name: string }
   /** Adds a drawing before the board's first trace; `name` is written first, and a bus needs one. */
-  | { kind: "addDrawing"; tag: string; name?: string; props: Record<string, DrawingValue> }
+  | { kind: "addDrawing"; tag: string; name?: string; props: Record<string, DrawingValue>; page?: string }
   | { kind: "removeDrawing"; id: string }
   /** Moves or restyles a drawing, e.g. `{ x, y }` or `{ points }`; a `name` renames it, which changes its id. */
   | { kind: "setDrawingProps"; id: string; props: Record<string, DrawingValue> }

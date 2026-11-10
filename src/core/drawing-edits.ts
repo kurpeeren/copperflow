@@ -2,11 +2,12 @@
 import MagicString from "magic-string"
 import type { JSXElement } from "@babel/types"
 import { drawingKindOf } from "../engine/drawing-kinds.js"
-import type { DrawingKind } from "../engine/model.js"
+import { MAIN_PAGE, type DrawingKind } from "../engine/model.js"
 import { scanCircuit, type Scan } from "./analyze.js"
 import { drawingKeeper } from "./drawing-identity.js"
 import { checkDrawingName } from "./drawing-names.js"
 import { EditError } from "./edit-error.js"
+import { insertOnPage } from "./page-edits.js"
 import {
   attributeNamed,
   boardInsertion,
@@ -72,9 +73,14 @@ export function addDrawing(source: string, scan: Scan, edit: Extract<Edit, { kin
     if (key === "name") throw new EditError("invalid", "pass name as its own argument")
     return ` ${key}=${formatDrawingProp(key, value)}`
   })
-  const { lineStart, indent } = drawingInsertion(source, scan, edit.tag)
   const name = edit.name === undefined ? "" : ` name=${formatLiteral(edit.name)}`
   const element = `<${edit.tag}${name}${props.join("")} />`
+  if (edit.page !== undefined && edit.page !== MAIN_PAGE) {
+    const next = insertOnPage(source, scan, element, edit.page, "a drawing")
+    keepIdsAround(source, scan, next, element)
+    return next
+  }
+  const { lineStart, indent } = drawingInsertion(source, scan, edit.tag)
   const next = source.slice(0, lineStart) + indent + element + lineEnding(source) + source.slice(lineStart)
   keepOtherIds(scan, next, lineStart + indent.length)
   return next
@@ -92,6 +98,20 @@ function keepOtherIds(scan: Scan, next: string, added: number): void {
   const now = after.model.drawings.filter((d) => d.start !== added).map((d) => d.id)
   const changed = before.find((id, index) => now[index] !== id)
   if (changed !== undefined) throw new EditError("invalid", `The new drawing would change the id of ${changed}; add it after that one by hand`)
+}
+
+/** Refuses a new drawing (`element`), wherever it went, that would change the id of a drawing already in the file. */
+function keepIdsAround(source: string, scan: Scan, next: string, element: string): void {
+  const textOf = (text: string, d: { start: number; end: number }) => text.slice(d.start, d.end)
+  const before = scan.model.drawings.map((d) => ({ id: d.id, text: textOf(source, d) }))
+  const now = scanCircuit(next).model.drawings.map((d) => ({ id: d.id, text: textOf(next, d) }))
+  const sameOthers = (added: number) => {
+    const rest = now.filter((_, index) => index !== added)
+    return rest.length === before.length && rest.every((d, index) => d.text === before[index]?.text)
+  }
+  const added = now.findIndex((d, index) => d.text === element && sameOthers(index))
+  const changed = before.find((d, index) => now.filter((_, other) => other !== added)[index]?.id !== d.id)
+  if (changed !== undefined) throw new EditError("invalid", `The new drawing would change the id of ${changed.id}; add it after that one by hand`)
 }
 
 function requireEditableDrawing(scan: Scan, id: string, locked: ReadonlySet<string>): { drawing: DrawingInfo; node: JSXElement } {

@@ -30,7 +30,7 @@ interface Props {
   left: LeftState
   onSub(sub: DesignSub): void
   pageTree: PageTreeData
-  onOpenDocument(file: string, view: DocView): void
+  onOpenDocument(file: string, view: DocView, page?: string): void
   /** Shift+F asked for the Library search field. */
   focusSearch: boolean
   onSearchFocused(): void
