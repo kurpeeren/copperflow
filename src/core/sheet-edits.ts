@@ -25,8 +25,20 @@ function portNameOk(name: string, bus: boolean): boolean {
 }
 
 /**
+ * The nets a rename renames, old name to new: the port's own net, or for a bus port each member to the member in the
+ * same place ("D[0:3]" to "A[0:3]" renames D0 to A0 … D3 to A3); a bus name with another member count is refused.
+ */
+function renamedNets(from: string, to: string, bus: boolean): Map<string, string> {
+  if (!bus) return new Map([[from, to]])
+  const [before, after] = [busMembers(from) ?? [], busMembers(to) ?? []]
+  if (before.length !== after.length) throw new EditError("invalid", `${to} has ${after.length} members and ${from} has ${before.length}; a bus port keeps its member count`)
+  return new Map(before.map((member, index) => [member, after[index] as string]))
+}
+
+/**
  * Renames a port and the sheet's local net of that name: the `<port name>` and every trace end written `net.<from>`.
- * The instances in parent circuits keep their `connections`, which name the old port until they are changed.
+ * A bus port renames the sheet's `<bus>` of its name and its members' trace ends too. The instances in parent
+ * circuits keep their `connections`, which name the old port until they are changed.
  */
 export function renamePort(source: string, scan: Scan, from: string, to: string): string {
   const port = portOrThrow(scan, from)
@@ -38,18 +50,31 @@ export function renamePort(source: string, scan: Scan, from: string, to: string)
   if (scan.model.parts.some((part) => part.name === to)) throw new EditError("invalid", `${to} is already the name of a part or port in this sheet`)
   const node = scan.partNodes.get(from)
   if (!node) throw new EditError("not_found", `No port named ${from} in this sheet`)
+  const nets = renamedNets(from, to, bus)
   const out = new MagicString(source)
   putAttribute(out, source, node, "name", formatLiteral(to))
   scan.model.traces.forEach((trace, index) => {
     const element = scan.traceNodes[index]
     if (!element) return
     for (const key of ["from", "to"] as const) {
-      if (trace[key] !== `net.${from}`) continue
-      if (!trace.editable) throw new EditError("readonly", `The trace on line ${trace.line} names net.${from} and is read-only; rename it by hand`)
-      putAttribute(out, source, element, key, formatLiteral(`net.${to}`))
+      const renamed = nets.get(trace[key]?.replace(/^net\./, "") ?? "")
+      if (!trace[key]?.startsWith("net.") || renamed === undefined) continue
+      if (!trace.editable) throw new EditError("readonly", `The trace on line ${trace.line} names ${trace[key]} and is read-only; rename it by hand`)
+      putAttribute(out, source, element, key, formatLiteral(`net.${renamed}`))
     }
   })
+  if (bus) renameBuses(out, source, scan, from, to)
   return out.toString()
+}
+
+/** Gives every piece of the sheet's `<bus name={from}>` the new name. */
+function renameBuses(out: MagicString, source: string, scan: Scan, from: string, to: string): void {
+  for (const drawing of scan.model.drawings) {
+    if (drawing.tag !== "bus" || drawing.name !== from) continue
+    const element = scan.drawingNodes.get(drawing.id)
+    if (!drawing.editable || !element) throw new EditError("readonly", `The bus on line ${drawing.line} is read-only; rename it by hand`)
+    putAttribute(out, source, element, "name", formatLiteral(to))
+  }
 }
 
 /** Sets the sheet symbol's size on `<sheet>`: each a number above 0; null removes it, so the ports decide it again. */

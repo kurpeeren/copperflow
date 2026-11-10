@@ -46,9 +46,15 @@ describe("edits in a sheet file", () => {
     expect(() => applyEdits(SHEET, [{ kind: "renamePort", from: "R1", to: "X" }], none)).toThrow(/No port named R1/)
   })
 
-  test("a bus port takes a bus name", () => {
-    const bussed = SHEET.replace(`<port name="VIN" />`, `<port name="D[0:3]" bus />`)
-    expect(applyEdits(bussed, [{ kind: "renamePort", from: "D[0:3]", to: "A[0:7]" }], none)).toContain(`<port name="A[0:7]" bus />`)
+  test("renaming a bus port renames the sheet's bus and its members' nets, keeping the member count", () => {
+    const bussed = SHEET.replace(`<port name="VIN" />`, `<port name="D[0:3]" bus />
+      <bus name="D[0:3]" points={[{ x: 0, y: 0 }, { x: 1, y: 0 }]} />`).replace(`to="net.VIN"`, `to="net.D2"`)
+    const next = applyEdits(bussed, [{ kind: "renamePort", from: "D[0:3]", to: "A[4:7]" }], none)
+    expect(next).toContain(`<port name="A[4:7]" bus />`)
+    expect(next).toContain(`<bus name="A[4:7]" points={[{ x: 0, y: 0 }, { x: 1, y: 0 }]} />`)
+    expect(next).toContain(`<trace from="R1.pin1" to="net.A6" />`)
+    expect(next).not.toContain("D[0:3]")
+    expect(() => applyEdits(bussed, [{ kind: "renamePort", from: "D[0:3]", to: "A[0:7]" }], none)).toThrow("A[0:7] has 8 members and D[0:3] has 4; a bus port keeps its member count")
   })
 
   test("the symbol size is set on <sheet>, and null removes it", () => {
