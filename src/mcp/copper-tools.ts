@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { applyLayoutEdits, resolveCircuit, type LayoutEdit } from "../core/index.js"
 import { buildWith, type DesignSource } from "../core/design-source.js"
-import type { CopperLayer } from "../core/layout-file.js"
+import { boardCopperLayers, type CopperLayer } from "../core/layout-file.js"
 import type { Design } from "../engine/design.js"
 import type { Point } from "../engine/model.js"
 import { defaultVia, trackWidth, viaSize } from "../engine/rules/track-defaults.js"
@@ -15,7 +15,7 @@ const NETS_SHOWN = 20
 export const routeTrackInput = {
   file: z.string().describe("Circuit file path relative to the project root"),
   net: z.string().describe("Net name, e.g. VBUS"),
-  layer: layer.describe('Copper layer: "top" or "bottom" (inner1 and inner2 exist but cannot be routed in the Studio)'),
+  layer: layer.describe('Copper layer: "top" or "bottom"; inner1 and inner2 only on a 4-layer board (they cannot be routed in the Studio)'),
   points: z
     .array(point)
     .min(2)
@@ -28,7 +28,7 @@ export const addViaInput = {
   file: z.string().describe("Circuit file path relative to the project root"),
   net: z.string().optional().describe("Net name; by default the net of the copper under the point"),
   at: point.describe("Centre in mm"),
-  layers: z.array(layer).min(2).optional().describe('Layers it joins; default ["top", "bottom"]'),
+  layers: z.array(layer).min(2).optional().describe('Layers it joins; default ["top", "bottom"]; inner layers only on a 4-layer board'),
 }
 
 export const removeCopperInput = {
@@ -79,6 +79,14 @@ async function applyCopper(ports: Ports, file: string, before: Design, edits: La
   }
 }
 
+/** Refuses copper on a layer the board does not have, before anything is written. */
+function checkLayers(design: Design, layers: readonly CopperLayer[]): void {
+  const count = design.circuit.board?.layers ?? 2
+  const has = boardCopperLayers(count)
+  const missing = layers.find((one) => !has.includes(one))
+  if (missing !== undefined) throw new Error(`The board has ${count} layers (${has.join(", ")}), so there is no ${missing}. Nothing was written.`)
+}
+
 function checkPoints(design: Design, netId: string, onLayer: CopperLayer, points: readonly Point[], netName: string): void {
   const [first] = points
   if (first && !copperAt(design, first, [onLayer]).some((hit) => hit.net === netId)) {
@@ -98,6 +106,7 @@ function lengthOf(points: readonly Point[]): number {
 export async function routeTrack(ports: Ports, input: { file: string; net: string; layer: CopperLayer; points: Point[]; width?: number }): Promise<string> {
   const design = await buildOf(ports, input.file)
   const net = netOrThrow(design, input.net)
+  checkLayers(design, [input.layer])
   checkPoints(design, net.id, input.layer, input.points, nameOf(net))
   const width = input.width ?? trackWidth(design.rules, net)
   const edit: LayoutEdit = { kind: "addTrack", net: nameOf(net), layer: input.layer, width, points: input.points }
@@ -125,6 +134,7 @@ function viaNet(design: Design, centre: Point, layers: readonly CopperLayer[], w
 export async function addVia(ports: Ports, input: { file: string; net?: string; at: Point; layers?: CopperLayer[] }): Promise<string> {
   const design = await buildOf(ports, input.file)
   const layers = input.layers ?? ["top", "bottom"]
+  checkLayers(design, layers)
   const net = viaNet(design, input.at, layers, input.net)
   const size = net ? viaSize(design.rules, net) : defaultVia(design.rules)
   const edit: LayoutEdit = { kind: "addVia", ...(net ? { net: nameOf(net) } : {}), at: input.at, drill: size.drill, diameter: size.diameter, ...(input.layers ? { layers } : {}) }

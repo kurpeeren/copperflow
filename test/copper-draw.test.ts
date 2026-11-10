@@ -18,6 +18,19 @@ const scene = (over: Partial<CopperScene> = {}): CopperScene => ({
 const strokes = (records: ReturnType<typeof recorder>["records"], color: string) => records.filter((r) => r.name === "stroke" && r.strokeStyle === color)
 
 describe("drawCopperItems", () => {
+  test("copper on a layer the board lacks is drawn in the keepout colour, not as top copper, and follows the Keepout row", () => {
+    const stray = { id: "t0007", layer: "inner1" as const, width: 0.25, points: [{ x: 0, y: 6 }, { x: 5, y: 6 }], missingLayer: "inner1" as const }
+    const via = { id: "v0002", at: { x: 5, y: 6 }, drill: 0.3, diameter: 0.6, missingLayer: "inner1" as const }
+    const { ctx, records } = recorder()
+    drawCopperItems(ctx, scene({ tracks: [stray], vias: [via] }), DEFAULT_LAYERS, undefined, PX)
+    expect(strokes(records, PALETTE.keepout)).toMatchObject([{ lineWidth: 0.25, globalAlpha: 1 }])
+    expect(strokes(records, PALETTE.topCopper)).toHaveLength(0)
+    expect(records.filter((r) => r.name === "fill" && r.fillStyle === PALETTE.keepout)).toHaveLength(1)
+    const hidden = recorder()
+    drawCopperItems(hidden.ctx, scene({ tracks: [stray], vias: [via] }), { ...DEFAULT_LAYERS, keepout: false }, undefined, PX)
+    expect(strokes(hidden.records, PALETTE.keepout)).toHaveLength(0)
+  })
+
   test("a route being drawn is solid in its layer's colour; one waiting for its build at 70%; with its vias", () => {
     const { ctx, records } = recorder()
     const drawing = { tracks: [{ layer: "bottom" as const, width: 0.5, points: [{ x: 0, y: 4 }, { x: 5, y: 4 }] }], vias: [{ at: { x: 5, y: 4 }, drill: 0.3, diameter: 0.6 }] }

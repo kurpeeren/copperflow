@@ -17,7 +17,7 @@ export interface TargetSource {
   /** The copper as shown, with each record's net id. */
   copper: {
     tracks: readonly { id: string; net?: string; layer: CopperLayer; width: number; points: readonly Point[] }[]
-    vias: readonly { id: string; net?: string; at: Point; diameter: number }[]
+    vias: readonly { id: string; net?: string; at: Point; diameter: number; missingLayer?: CopperLayer }[]
   }
   visible: LayerVisibility
 }
@@ -39,7 +39,7 @@ const named = (design: Pick<Design, "circuit">, net: string | undefined) => (net
 
 function viaTarget(source: TargetSource, p: Point, reach: number): RouteTarget | undefined {
   if (!copperShown({ kind: "via" }, source.visible)) return undefined
-  const via = source.copper.vias.find((one) => Math.hypot(p.x - one.at.x, p.y - one.at.y) <= Math.max(one.diameter / 2, reach))
+  const via = source.copper.vias.find((one) => one.missingLayer === undefined && Math.hypot(p.x - one.at.x, p.y - one.at.y) <= Math.max(one.diameter / 2, reach))
   return via && { kind: "via", id: via.id, at: via.at, ...named(source.design, via.net) }
 }
 

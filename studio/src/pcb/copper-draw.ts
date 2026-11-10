@@ -2,10 +2,11 @@
 // round-joined strokes in their layer's colour (the inactive copper layer first and dimmed to 40%, as EasyEDA does),
 // then vias as a ring in the plated colour with a dark hole, then the track tool's copper (the route being drawn, and
 // those waiting for their build at 70%), then the hover outline and the selection (a white outline and the 50% white
-// wash). The Layer panel's rows decide what shows (copper-hit.ts copperShown).
+// wash). Copper on a layer the board lacks is an error and is drawn in the keepout colour, not as copper. The Layer
+// panel's rows decide what shows (copper-hit.ts copperShown).
 import type { PcbTrack, PcbVia } from "../../../src/engine/pcb.js"
 import { PALETTE, PCB_DIM, type Ctx } from "./ctx.js"
-import { copperShown } from "./copper-hit.js"
+import { copperShown, stray } from "./copper-hit.js"
 import type { Point } from "./geometry.js"
 import type { LayerVisibility } from "./layers.js"
 import type { RouteDrawing } from "./track-tool.js"
@@ -17,8 +18,8 @@ export const PENDING_ROUTE_ALPHA = 0.7
 /** How far the selection and hover outlines reach past the copper's edge, in CSS pixels. */
 const OUTLINE_PX = 1.5
 
-export type CopperTrackDraw = Pick<PcbTrack, "id" | "net" | "layer" | "width" | "points">
-export type CopperViaDraw = Pick<PcbVia, "id" | "net" | "at" | "drill" | "diameter">
+export type CopperTrackDraw = Pick<PcbTrack, "id" | "net" | "layer" | "width" | "points" | "missingLayer">
+export type CopperViaDraw = Pick<PcbVia, "id" | "net" | "at" | "drill" | "diameter" | "missingLayer">
 
 export interface CopperScene {
   tracks: readonly CopperTrackDraw[]
@@ -36,6 +37,13 @@ export interface CopperScene {
 type Highlight = { nets: readonly string[] } | undefined
 
 const LAYER_COLORS: Record<PcbTrack["layer"], string> = { top: PALETTE.topCopper, bottom: PALETTE.bottomCopper, inner1: PALETTE.topCopper, inner2: PALETTE.topCopper }
+
+/** A track's colour: its layer's, or the keepout colour for a layer the board lacks. */
+export const trackColor = (track: CopperTrackDraw): string => (track.missingLayer === undefined ? LAYER_COLORS[track.layer] : PALETTE.keepout)
+/** A via ring's colour: plated, or the keepout colour when it lists a layer the board lacks. */
+export const ringColor = (via: CopperViaDraw): string => (via.missingLayer === undefined ? PALETTE.viaRing : PALETTE.keepout)
+const trackShown = (track: CopperTrackDraw, layers: LayerVisibility) => copperShown({ kind: "track", layer: track.layer, ...stray(track) }, layers)
+const viaShown = (via: CopperViaDraw, layers: LayerVisibility) => copperShown({ kind: "via", ...stray(via) }, layers)
 
 /** The alpha for copper on `net`: dimmed when a highlight leaves it out. */
 const litAlpha = (highlight: Highlight, net: string | undefined): number => (highlight && (net === undefined || !highlight.nets.includes(net)) ? PCB_DIM : 1)
@@ -57,20 +65,20 @@ function disc(ctx: Ctx, at: Point, radius: number, color: string): void {
 
 function drawTracks(ctx: Ctx, scene: CopperScene, layers: LayerVisibility, highlight: Highlight): void {
   const active = scene.activeLayer ?? "top"
-  const shown = scene.tracks.filter((track) => copperShown({ kind: "track", layer: track.layer }, layers))
-  const ordered = [...shown.filter((track) => track.layer !== active), ...shown.filter((track) => track.layer === active)]
+  const shown = scene.tracks.filter((track) => trackShown(track, layers))
+  const isActive = (track: CopperTrackDraw) => track.layer === active || track.missingLayer !== undefined
+  const ordered = [...shown.filter((track) => !isActive(track)), ...shown.filter(isActive)]
   for (const track of ordered) {
-    ctx.globalAlpha = (track.layer === active ? 1 : INACTIVE_COPPER_ALPHA) * litAlpha(highlight, track.net)
-    strokePath(ctx, track.points, LAYER_COLORS[track.layer], track.width)
+    ctx.globalAlpha = (isActive(track) ? 1 : INACTIVE_COPPER_ALPHA) * litAlpha(highlight, track.net)
+    strokePath(ctx, track.points, trackColor(track), track.width)
   }
   ctx.globalAlpha = 1
 }
 
 function drawVias(ctx: Ctx, scene: CopperScene, layers: LayerVisibility, highlight: Highlight): void {
-  if (!copperShown({ kind: "via" }, layers)) return
-  for (const via of scene.vias) {
+  for (const via of scene.vias.filter((one) => viaShown(one, layers))) {
     ctx.globalAlpha = litAlpha(highlight, via.net)
-    disc(ctx, via.at, via.diameter / 2, PALETTE.viaRing)
+    disc(ctx, via.at, via.diameter / 2, ringColor(via))
     if (layers.hole) disc(ctx, via.at, via.drill / 2, PALETTE.drill)
   }
   ctx.globalAlpha = 1
@@ -93,16 +101,16 @@ function drawRoutes(ctx: Ctx, scene: CopperScene, layers: LayerVisibility): void
 /** An outline of the track or via `id` in `color`, and with `wash` the 50% white over it; `px` is one CSS pixel in mm. */
 function mark(ctx: Ctx, scene: CopperScene, layers: LayerVisibility, id: string, color: string, wash: boolean, px: number): void {
   const track = scene.tracks.find((one) => one.id === id)
-  if (track && copperShown({ kind: "track", layer: track.layer }, layers)) {
+  if (track && trackShown(track, layers)) {
     strokePath(ctx, track.points, color, track.width + 2 * OUTLINE_PX * px)
-    strokePath(ctx, track.points, LAYER_COLORS[track.layer], track.width)
+    strokePath(ctx, track.points, trackColor(track), track.width)
     if (wash) strokePath(ctx, track.points, PALETTE.selectionFill, track.width)
     return
   }
   const via = scene.vias.find((one) => one.id === id)
-  if (!via || !copperShown({ kind: "via" }, layers)) return
+  if (!via || !viaShown(via, layers)) return
   disc(ctx, via.at, via.diameter / 2 + OUTLINE_PX * px, color)
-  disc(ctx, via.at, via.diameter / 2, PALETTE.viaRing)
+  disc(ctx, via.at, via.diameter / 2, ringColor(via))
   if (wash) disc(ctx, via.at, via.diameter / 2, PALETTE.selectionFill)
   if (layers.hole) disc(ctx, via.at, via.drill / 2, PALETTE.drill)
 }

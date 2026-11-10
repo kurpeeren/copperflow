@@ -2,6 +2,7 @@ import { EditError } from "./edit-error.js"
 import type { Author } from "./history.js"
 import {
   checkRecord,
+  missingLayerMessage,
   nextLayoutId,
   parseLayout,
   serializeRecords,
@@ -32,6 +33,8 @@ export interface LayoutEditContext {
   router?: boolean
   /** The locked part whose pad the track's first point lies on, if any; such a track counts as locked. */
   lockedPartAtStart?: (track: TrackRecord) => string | undefined
+  /** The board's layer count, when known: an edit putting copper on a layer the board lacks is refused. */
+  boardLayers?: 2 | 4
 }
 
 /** The fields each edit kind may carry, besides `kind`. */
@@ -72,6 +75,17 @@ function refuseLockedPart(record: LayoutRecord, context: LayoutEditContext): voi
   if (part !== undefined) throw new EditError("locked", `${record.id} starts on the locked part ${part}; ask the human to unlock it`)
 }
 
+/** An edit that puts copper on a layer: an add, or a change of layer(s). */
+export const setsLayer = (edit: LayoutEdit): boolean =>
+  edit.kind === "addTrack" || edit.kind === "addVia" || ("layer" in edit && edit.layer !== undefined) || ("layers" in edit && edit.layers !== undefined)
+
+/** Refuses a record the edit put on a layer the board does not have. */
+function refuseMissingLayer(record: LayoutRecord, edit: LayoutEdit, context: LayoutEditContext): void {
+  if (context.boardLayers === undefined || !setsLayer(edit)) return
+  const message = missingLayerMessage(record, context.boardLayers)
+  if (message !== undefined) throw new EditError("invalid", `${message}; use ${context.boardLayers === 2 ? "top or bottom" : "a layer the board has"}. Nothing was written.`)
+}
+
 const onlyLock = (edit: LayoutEdit) => edit.kind.startsWith("set") && Object.keys(edit).every((key) => key === "kind" || key === "id" || key === "locked")
 
 /** Refuses changing or removing a locked record or a track on a locked part; a person may still change only its lock. */
@@ -92,6 +106,7 @@ function addOne(doc: LayoutDoc, edit: Extract<LayoutEdit, { kind: "addTrack" | "
   const t = kind === "addTrack" ? "track" : "via"
   const by = context.router ? "router" : MAKER[context.author]
   const record = checked({ t, id: nextLayoutId(doc, t), ...fields, locked: edit.locked ?? false, by })
+  refuseMissingLayer(record, edit, context)
   refuseLockedPart(record, context)
   return { next: { ...doc.next, [t]: doc.next[t] + 1 }, records: [...doc.records, record] }
 }
@@ -100,6 +115,7 @@ function setOne(doc: LayoutDoc, index: number, edit: Extract<LayoutEdit, { kind:
   const { kind: _kind, id: _id, ...fields } = edit
   const defined = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined))
   const record = checked({ ...doc.records[index], ...defined })
+  refuseMissingLayer(record, edit, context)
   if (!onlyLock(edit)) refuseLockedPart(record, context)
   return { ...doc, records: doc.records.map((r, i) => (i === index ? record : r)) }
 }

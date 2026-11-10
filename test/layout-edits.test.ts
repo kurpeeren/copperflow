@@ -143,14 +143,17 @@ describe("locked parts", () => {
     await expect(redoChange(root, { author: "human", design })).rejects.toThrow(/Redoing .* would change the locked track t0001 \(on the locked part R1\)/)
   })
 
-  test("the design may be given as a function of the circuit file, asked for only when parts are locked", async () => {
+  test("the design may be given as a function of the circuit file, asked for only when parts are locked or copper gets a layer", async () => {
     const asked: string[] = []
     const designFor = async (circuit: string) => {
       asked.push(circuit)
       return design
     }
-    await applyLayoutEdits(root, FILE, [addTrack()], { ...human, design: designFor })
-    expect(asked).toEqual([])
+    await applyLayoutEdits(root, FILE, [addTrack(), addTrack()], { ...human, design: designFor })
+    expect(asked).toEqual([FILE])
+    await applyLayoutEdits(root, FILE, [{ kind: "removeTrack", id: "t0002" }, { kind: "setTrack", id: "t0001", width: 0.3 }], { ...human, design: designFor })
+    expect(asked).toEqual([FILE])
+    asked.length = 0
     await lockR1()
     await expect(applyLayoutEdits(root, FILE, [{ kind: "removeTrack", id: "t0001" }], { ...human, design: designFor })).rejects.toThrow(
       /t0001 starts on the locked part R1/,
@@ -165,6 +168,33 @@ describe("locked parts", () => {
     await applyLayoutEdits(root, FILE, [{ kind: "addVia", at: pad("R2#1"), drill: 0.3, diameter: 0.6 }], { ...human, design })
     await undoChange(root, { author: "human", design })
     expect(await layoutText()).not.toContain("v0001")
+  })
+})
+
+describe("copper layers the board lacks", () => {
+  const inner = (): LayoutEdit => ({ ...addTrack(), layer: "inner1" } as LayoutEdit)
+
+  test("a track on an inner layer of a 2-layer board is refused and nothing is written", async () => {
+    await expect(applyLayoutEdits(root, FILE, [inner()], { ...human, design })).rejects.toThrow("t0001 is on inner1 but the board has 2 layers")
+    expect(existsSync(join(root, LAYOUT))).toBe(false)
+  })
+
+  test("a via listing an inner layer, or a track changed onto one, is refused", async () => {
+    await applyLayoutEdits(root, FILE, [addTrack()], { ...human, design })
+    const via: LayoutEdit = { kind: "addVia", at: pad("R2#1"), drill: 0.3, diameter: 0.6, layers: ["top", "inner1"] }
+    await expect(applyLayoutEdits(root, FILE, [via], { author: "ai", design })).rejects.toThrow("v0001 joins inner1 but the board has 2 layers")
+    await expect(applyLayoutEdits(root, FILE, [{ kind: "setTrack", id: "t0001", layer: "inner2" }], { ...human, design })).rejects.toThrow(
+      "t0001 is on inner2 but the board has 2 layers",
+    )
+  })
+
+  test("a 4-layer board takes inner copper", async () => {
+    const four = CIRCUIT.replace('<board width="30mm" height="20mm">', '<board width="30mm" height="20mm" layers={4}>')
+    await writeFile(join(root, FILE), four)
+    const design4 = buildDesign({ [FILE]: four }, FILE)
+    expect(design4.circuit.board?.layers).toBe(4)
+    const result = await applyLayoutEdits(root, FILE, [inner()], { ...human, design: design4 })
+    expect(result.records.map((r) => r.t === "track" && r.layer)).toEqual(["inner1"])
   })
 })
 

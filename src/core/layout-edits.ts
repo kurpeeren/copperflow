@@ -2,8 +2,8 @@ import { EditError } from "./edit-error.js"
 import { inProjectQueue, readIfThere, writeNew, writeWithHistory } from "./file-writes.js"
 import type { Author, HistoryEntry } from "./history.js"
 import { EMPTY_LAYOUT, isLayoutFile, layoutPathFor, readLayoutText, serializeLayout, type LayoutRecord } from "./layout-file.js"
-import { designFor, lockedPartsAt, lockedStart, type DesignSource } from "./layout-locks.js"
-import { applyLayoutRecordEdits, type LayoutEdit } from "./layout-records.js"
+import { boardLayersOf, designFor, lockedPartsAt, lockedStart, type DesignSource } from "./layout-locks.js"
+import { applyLayoutRecordEdits, setsLayer, type LayoutEdit } from "./layout-records.js"
 import { resolveLayoutFile } from "./workspace.js"
 
 export interface LayoutEditOptions {
@@ -13,7 +13,8 @@ export interface LayoutEditOptions {
   /**
    * The circuit's built design (its PCB parts are enough). A track that starts on a pad of a locked part counts as
    * locked; without the design that cannot be told, so changing or removing a track is refused while parts are locked.
-   * A function is called with the circuit file only when the circuit has locked parts.
+   * A function is called with the circuit file only when the circuit has locked parts or an edit puts copper on a
+   * layer. With the design, copper on a layer the board lacks (inner1 on a 2-layer board) is refused.
    */
   design?: DesignSource
   /** Set only by the router's code path: new records are marked `router`. */
@@ -68,7 +69,14 @@ export function applyLayoutEdits(root: string, file: string, edits: readonly Lay
     const source = await readIfThere(layout.path)
     const before = source === undefined ? EMPTY_LAYOUT : readLayoutText(source, layout.file)
     const lockedParts = await lockedPartsAt(layout.circuitPath)
-    const context = { author: options.author, ...(options.router ? { router: true } : {}), lockedPartAtStart: lockedStart(lockedParts, await designFor(options.design, layout.circuit, lockedParts)) }
+    const design = await designFor(options.design, layout.circuit, lockedParts.size > 0 || edits.some(setsLayer))
+    const boardLayers = boardLayersOf(design)
+    const context = {
+      author: options.author,
+      ...(options.router ? { router: true } : {}),
+      ...(boardLayers === undefined ? {} : { boardLayers }),
+      lockedPartAtStart: lockedStart(lockedParts, design),
+    }
     const { doc, created } = applyLayoutRecordEdits(before, edits, context)
     const records = doc.records
     const text = serializeLayout(doc)

@@ -218,7 +218,7 @@ async function loadTrackedLayout(root: string, file: string, design: DesignSourc
   const source = await readIfThere(path)
   if (source === undefined) throw new Error(`${name} does not exist`)
   const lockedParts = await lockedPartsAt(circuitPath)
-  const onPart = lockedStart(lockedParts, await designFor(design, circuit, lockedParts))
+  const onPart = lockedStart(lockedParts, await designFor(design, circuit, lockedParts.size > 0))
   const lockChange = (next: string) => {
     const found = [lockedRecordChanges(source, next), lockedPartChanges(source, next, onPart)].filter((text) => text !== undefined)
     return found.length === 0 ? undefined : found.join(", ")

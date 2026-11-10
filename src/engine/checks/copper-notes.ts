@@ -3,7 +3,7 @@ import type { PcbLayout } from "../pcb.js"
 import { violation, type Violation } from "./violation.js"
 
 /** The codes of the findings copper.ts makes about how copper joins pads; the checks report them as violations. */
-export const COPPER_NOTE_CODES: ReadonlySet<string> = new Set(["short", "floating", "mismatch"])
+export const COPPER_NOTE_CODES: ReadonlySet<string> = new Set(["short", "floating", "mismatch", "copper-layer"])
 
 export const isCopperNote = (d: Diagnostic): boolean => COPPER_NOTE_CODES.has(d.code)
 
@@ -14,7 +14,7 @@ function copperAt(layout: PcbLayout, ids: readonly string[]): Point | undefined 
 }
 
 /**
- * The short, floating and mismatch findings as PCB violations with the same code, severity, message
+ * The short, floating, mismatch and copper-layer findings as PCB violations with the same code, severity, message
  * and items, pointing at the first copper they name. Other diagnostics are left out.
  */
 export function copperNoteChecks(notes: readonly Diagnostic[], layout: PcbLayout): Violation[] {

@@ -294,6 +294,15 @@ describe("fix round 1", () => {
     expect(text).toContain("on VBUS")
   })
 
+  test("refuses an inner layer on a 2-layer board, naming the layer count, and writes nothing", async () => {
+    const before = await entries()
+    const track = await route("VBUS", [pt(-2.275, 0), pt(-2.275, -3)], { layer: "inner1" })
+    expect(track).toEqual({ isError: true, text: "The board has 2 layers (top, bottom), so there is no inner1. Nothing was written." })
+    const via = await call("add_via", { file: FILE, at: pt(-2.275, 0), layers: ["top", "inner2"] })
+    expect(via).toEqual({ isError: true, text: "The board has 2 layers (top, bottom), so there is no inner2. Nothing was written." })
+    expect(await entries()).toBe(before)
+  })
+
   test("refuses an invalid layer and a file outside the project", async () => {
     expect((await call("route_track", { file: FILE, net: "VBUS", layer: "middle", points: [pt(0, 0), pt(1, 0)] })).isError).toBe(true)
     expect((await call("copper_summary", { file: "../outside.circuit.tsx" })).isError).toBe(true)

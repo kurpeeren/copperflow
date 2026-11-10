@@ -61,8 +61,9 @@ export function padPieces(layout: PcbLayout, classOf: ClassOf): CopperPiece[] {
   return layout.parts.flatMap((part) => part.pads).flatMap((pad) => padPiece(pad, classOf) ?? [])
 }
 
-/** The tracks and vias, in natural id order. */
+/** The tracks and vias on layers the board has, in natural id order; copper on a missing layer is only a copper-layer error. */
 export function copperPieces(layout: PcbLayout, classOf: ClassOf): CopperPiece[] {
-  const pieces = [...layout.tracks.map((track) => trackPiece(track, classOf)), ...layout.vias.map((via) => viaPiece(via, classOf))]
+  const onBoard = <T extends { missingLayer?: unknown }>(item: T) => item.missingLayer === undefined
+  const pieces = [...layout.tracks.filter(onBoard).map((track) => trackPiece(track, classOf)), ...layout.vias.filter(onBoard).map((via) => viaPiece(via, classOf))]
   return pieces.filter((piece) => piece.shapes.length > 0).sort((a, b) => naturalCompare(a.id, b.id))
 }

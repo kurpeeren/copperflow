@@ -3,7 +3,7 @@ import type { Violation } from "../engine/index.js"
 import { netLabel } from "./copper-under.js"
 
 /** The rule codes of copper findings: the copper checks and what copper joining reports. */
-export const COPPER_RULES: ReadonlySet<string> = new Set(["copper-clearance", "track-width", "via-drill", "via-ring", "copper-edge", "copper-keepout", "short", "floating", "mismatch"])
+export const COPPER_RULES: ReadonlySet<string> = new Set(["copper-clearance", "track-width", "via-drill", "via-ring", "copper-edge", "copper-keepout", "short", "floating", "mismatch", "copper-layer"])
 
 /** copper_summary stops here, so the answer fits a screen. */
 export const SUMMARY_LIMIT = 60

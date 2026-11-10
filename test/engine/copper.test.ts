@@ -242,3 +242,35 @@ describe("copper crossing mid-segment", () => {
     expect(copper([up("t0001", 0, "GND"), up("t0002", 30, "VCC"), bottom]).diagnostics.map((d) => d.code)).toEqual(["floating"])
   })
 })
+
+describe("copper on a layer the board lacks", () => {
+  /** C at x=20 and E at x=40 are through pads of GND. */
+  const parts = [...PARTS, part("E", [pad("E", "1", 40, "net.GND", "through")])]
+  const inner = track("t0007", [[20, 0], [40, 0]], { layer: "inner1", net: "GND" })
+
+  test("a track on inner1 of a 2-layer board joins nothing, carries no net and is an error", () => {
+    const result = resolveCopper(parts, [inner], NETS, 2)
+    expect(result.tracks).toEqual([expect.objectContaining({ id: "t0007", pads: [], missingLayer: "inner1" })])
+    expect(result.tracks[0]?.net).toBeUndefined()
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ code: "copper-layer", severity: "error", message: "t0007 is on inner1 but the board has 2 layers", items: ["t0007"] }),
+    ])
+    expect(ratsnest(parts, result.islands).map((l) => `${l.from}-${l.to}`)).toContain("C#1-E#1")
+  })
+
+  test("a via listing inner1 on a 2-layer board joins nothing; on a 4-layer board both join", () => {
+    const blind = via("v0001", 20, 0, { layers: ["top", "inner1"] })
+    const two = resolveCopper(parts, [inner, blind], NETS, 2)
+    expect(two.vias[0]).toMatchObject({ id: "v0001", missingLayer: "inner1" })
+    expect(two.diagnostics.map((d) => d.message)).toEqual(["t0007 is on inner1 but the board has 2 layers", "v0001 joins inner1 but the board has 2 layers"])
+    const four = resolveCopper(parts, [inner, blind], NETS, 4)
+    expect(four.tracks[0]).toMatchObject({ net: "net.GND", pads: ["C#1", "E#1"] })
+    expect(four.tracks[0]?.missingLayer).toBeUndefined()
+    expect(four.diagnostics).toEqual([])
+  })
+
+  test("copper on the board's layers keeps its order and nets around a stray record", () => {
+    const result = resolveCopper(parts, [track("t0001", [[0, 0], [10, 0]]), inner, track("t0008", [[10, 0], [20, 0]])], NETS, 2)
+    expect(result.tracks.map((t) => [t.id, t.net])).toEqual([["t0001", "net.GND"], ["t0007", undefined], ["t0008", "net.GND"]])
+  })
+})

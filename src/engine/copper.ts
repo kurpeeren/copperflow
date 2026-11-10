@@ -1,4 +1,4 @@
-import type { CopperLayer, LayoutMaker, LayoutRecord, TrackRecord, ViaRecord } from "../core/layout-file.js"
+import { missingLayer, missingLayerMessage, type CopperLayer, type LayoutMaker, type LayoutRecord, type TrackRecord, type ViaRecord } from "../core/layout-file.js"
 import { bounds, padShape, shapeDistance, type Shape } from "./checks/geometry.js"
 import { GridIndex, type Box } from "./checks/grid-index.js"
 import { diagnostic } from "./diagnostics.js"
@@ -23,6 +23,8 @@ export interface PcbTrack {
   by: LayoutMaker
   /** The ids of the pads it touches directly, in pad order. */
   pads: string[]
+  /** A layer it is on (or a via lists) that the board does not have: such copper joins nothing and is an error. */
+  missingLayer?: CopperLayer
 }
 
 export interface PcbVia {
@@ -37,6 +39,8 @@ export interface PcbVia {
   layers: CopperLayer[]
   locked: boolean
   by: LayoutMaker
+  /** A layer it is on (or a via lists) that the board does not have: such copper joins nothing and is an error. */
+  missingLayer?: CopperLayer
 }
 
 export interface Copper {
@@ -287,13 +291,8 @@ function padIslands(graph: Graph, islands: readonly Island[]): Map<string, numbe
   )
 }
 
-/**
- * Resolves the layout file's copper against the placed pads: which pads and copper touch, the net each piece carries,
- * shorts (copper joining pads of two nets), floating copper (touching no pad), and records whose named net is unknown
- * or differs from their pads' net. Records keep their file order.
- */
-export function resolveCopper(parts: readonly PlacedFootprint[], records: readonly LayoutRecord[], nets: readonly Net[]): Copper {
-  const pads = parts.flatMap((part) => part.pads)
+/** Copper on layers the board has, resolved: items in the given order, the pads' groups, and the findings. */
+function resolveKept(pads: WorldPad[], records: readonly LayoutRecord[], nets: readonly Net[]): Copper & { items: (PcbTrack | PcbVia)[] } {
   const graph: Graph = { pads, records: [...records], groups: new Groups(pads.length + records.length), touched: new Map() }
   joinPads(graph)
   joinRecords(graph)
@@ -301,10 +300,36 @@ export function resolveCopper(parts: readonly PlacedFootprint[], records: readon
   const islands = islandsOf(graph)
   const netOf = new Map(islands.flatMap((island) => islandNets(island, records, named)))
   const items = records.map((record, r) => copperItem(record, netOf.get(r), (graph.touched.get(r) ?? []).map((p) => (pads[p] as WorldPad).id)))
+  return { items, tracks: [], vias: [], islands: padIslands(graph, islands), diagnostics: diagnosticsOf(islands, records, named) }
+}
+
+/**
+ * Resolves the layout file's copper against the placed pads: which pads and copper touch, the net each piece carries,
+ * shorts (copper joining pads of two nets), floating copper (touching no pad), and records whose named net is unknown
+ * or differs from their pads' net. With `boardLayers`, copper on a layer the board lacks (inner1 on a 2-layer board)
+ * is a `copper-layer` error and joins nothing: it carries no net and the ratsnest keeps its lines. Records keep their
+ * file order.
+ */
+export function resolveCopper(parts: readonly PlacedFootprint[], records: readonly LayoutRecord[], nets: readonly Net[], boardLayers?: 2 | 4): Copper {
+  const missing = records.map((record) => (boardLayers === undefined ? undefined : missingLayer(record, boardLayers)))
+  const kept = resolveKept(
+    parts.flatMap((part) => part.pads),
+    records.filter((_, i) => missing[i] === undefined),
+    nets,
+  )
+  let next = 0
+  const items = records.map((record, i) => {
+    const layer = missing[i]
+    return layer === undefined ? (kept.items[next++] as PcbTrack | PcbVia) : { ...copperItem(record, undefined, []), missingLayer: layer }
+  })
+  const layerErrors = records.flatMap((record) => {
+    const message = boardLayers === undefined ? undefined : missingLayerMessage(record, boardLayers)
+    return message === undefined ? [] : [diagnostic("copper-layer", "error", message, [record.id])]
+  })
   return {
     tracks: items.filter((item): item is PcbTrack => "points" in item),
     vias: items.filter((item): item is PcbVia => "at" in item),
-    islands: padIslands(graph, islands),
-    diagnostics: diagnosticsOf(islands, records, named),
+    islands: kept.islands,
+    diagnostics: [...layerErrors, ...kept.diagnostics],
   }
 }

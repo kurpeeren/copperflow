@@ -12,9 +12,9 @@ import { cornerAt, distanceToSegment, segmentAt, WIRE_REACH_PX } from "./wire-hi
 import { handleReach, type WireGrip } from "./wire-drag.js"
 
 /** A track as the hit test and the drawing see it. */
-export type TrackShape = Pick<PcbTrack, "id" | "layer" | "width" | "points">
+export type TrackShape = Pick<PcbTrack, "id" | "layer" | "width" | "points" | "missingLayer">
 /** A via as the hit test sees it. */
-export type ViaShape = Pick<PcbVia, "id" | "at" | "diameter">
+export type ViaShape = Pick<PcbVia, "id" | "at" | "diameter" | "missingLayer">
 
 /** The copper drawn on the board, in file order. */
 export interface CopperShapes {
@@ -28,11 +28,20 @@ export type CopperHit = { kind: "track" | "via"; id: string }
 /** What a press grabs of a track: a segment (from point `index` to the next) or the corner at point `index`. */
 export type CopperGrip = WireGrip
 
+/** A track or via as copperShown sees it; `missingLayer` marks copper on a layer the board lacks. */
+export type ShownCopper = ({ kind: "track"; layer: PcbTrack["layer"] } | { kind: "via" }) & { missingLayer?: PcbTrack["layer"] }
+
+/** The `missingLayer` of copper that has one, to spread into a ShownCopper. */
+export const stray = (item: { missingLayer?: PcbTrack["layer"] }): { missingLayer?: PcbTrack["layer"] } =>
+  item.missingLayer === undefined ? {} : { missingLayer: item.missingLayer }
+
 /**
  * Whether a track or via is drawn with these layers shown: a track on its copper layer's row (inner layers have no row
- * yet, so they are not drawn), a via on Multi-Layer's, as a plated pad is.
+ * yet, so they are not drawn), a via on Multi-Layer's, as a plated pad is. Copper on a layer the board lacks is an
+ * error drawn in the keepout colour, so it follows the Keepout row.
  */
-export function copperShown(item: { kind: "track"; layer: PcbTrack["layer"] } | { kind: "via" }, visible: LayerVisibility): boolean {
+export function copperShown(item: ShownCopper, visible: LayerVisibility): boolean {
+  if (item.missingLayer !== undefined) return visible.keepout
   if (item.kind === "via") return visible.multiLayer
   return (item.layer === "top" || item.layer === "bottom") && visible[item.layer]
 }
@@ -44,8 +53,7 @@ const PAST_EDGE_PX = 2
 export const copperReach = (width: number, scale: number): number => Math.max(WIRE_REACH_PX, (width * scale) / 2 + PAST_EDGE_PX) / scale
 
 function viaUnder(vias: readonly ViaShape[], p: Point, scale: number, visible: LayerVisibility, context: PickContext): CopperHit | undefined {
-  if (!copperShown({ kind: "via" }, visible)) return undefined
-  const hit = vias.find((via) => canPick({ kind: "via", id: via.id }, context) && Math.hypot(p.x - via.at.x, p.y - via.at.y) <= copperReach(via.diameter, scale))
+  const hit = vias.find((via) => copperShown({ kind: "via", ...stray(via) }, visible) && canPick({ kind: "via", id: via.id }, context) && Math.hypot(p.x - via.at.x, p.y - via.at.y) <= copperReach(via.diameter, scale))
   return hit && { kind: "via", id: hit.id }
 }
 
@@ -59,7 +67,7 @@ function distanceTo(points: readonly Point[], p: Point): number {
 function trackUnder(tracks: readonly TrackShape[], p: Point, scale: number, visible: LayerVisibility, context: PickContext): CopperHit | undefined {
   let best: { id: string; distance: number } | undefined
   for (const track of tracks) {
-    if (!copperShown({ kind: "track", layer: track.layer }, visible) || !canPick({ kind: "track", id: track.id }, context)) continue
+    if (!copperShown({ kind: "track", layer: track.layer, ...stray(track) }, visible) || !canPick({ kind: "track", id: track.id }, context)) continue
     const distance = distanceTo(track.points, p)
     if (distance <= copperReach(track.width, scale) && (!best || distance < best.distance)) best = { id: track.id, distance }
   }
@@ -94,8 +102,8 @@ const padded = (points: readonly Point[], half: number): Box => {
 
 /** The box of each shown track (its points widened by half its width) and via (its ring), tracks first, in file order. */
 export function copperBoxes(shapes: CopperShapes, visible: LayerVisibility): CopperArea[] {
-  const tracks = shapes.tracks.filter((track) => copperShown({ kind: "track", layer: track.layer }, visible))
-  const vias = copperShown({ kind: "via" }, visible) ? shapes.vias : []
+  const tracks = shapes.tracks.filter((track) => copperShown({ kind: "track", layer: track.layer, ...stray(track) }, visible))
+  const vias = shapes.vias.filter((via) => copperShown({ kind: "via", ...stray(via) }, visible))
   return [
     ...tracks.map((track): CopperArea => ({ kind: "track", id: track.id, box: padded(track.points, track.width / 2) })),
     ...vias.map((via): CopperArea => ({ kind: "via", id: via.id, box: padded([via.at], via.diameter / 2) })),

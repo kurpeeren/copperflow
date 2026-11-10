@@ -50,6 +50,8 @@ describe("copperAt", () => {
 
   test("a layer the Layer panel has no row for (inner copper) is not shown", () => {
     expect(copperShown({ kind: "track", layer: "inner1" }, DEFAULT_LAYERS)).toBe(false)
+    expect(copperShown({ kind: "track", layer: "inner1", missingLayer: "inner1" }, DEFAULT_LAYERS)).toBe(true)
+    expect(copperShown({ kind: "via", missingLayer: "inner1" }, { ...DEFAULT_LAYERS, keepout: false })).toBe(false)
     expect(copperShown({ kind: "track", layer: "top" }, DEFAULT_LAYERS)).toBe(true)
     expect(copperShown({ kind: "via" }, { ...DEFAULT_LAYERS, multiLayer: false })).toBe(false)
   })

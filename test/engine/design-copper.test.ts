@@ -99,3 +99,28 @@ describe("the design reads the layout file", () => {
     expect(build(layout).pcb.ratsnest).toEqual([])
   })
 })
+
+describe("copper on a layer the board lacks", () => {
+  const THT = `export default () => (
+  <board width="30mm" height="20mm">
+    <chip name="J1" footprint="pinrow2_p2.54mm" pinCount={2} pcbX={-6} pcbY={0} />
+    <chip name="J2" footprint="pinrow2_p2.54mm" pinCount={2} pcbX={6} pcbY={0} />
+    <trace from=".J1 > .pin1" to=".J2 > .pin1" />
+  </board>
+)
+`
+  const buildTht = (layout?: string) => buildDesign({ [MAIN]: THT, ...(layout === undefined ? {} : { [LAYOUT]: layout }) }, MAIN)
+
+  test("a track on inner1 between two through pads of a 2-layer board keeps the airwire and is an error", () => {
+    const pads = buildTht().pcb.parts.flatMap((p) => p.pads)
+    const [a, b] = [pads.find((p) => p.id === "J1#1"), pads.find((p) => p.id === "J2#1")] as [WorldPad, WorldPad]
+    const layout = trackLine("t0007", a, b, "J1.pin1").replace('"layer":"top"', '"layer":"inner1"')
+    const design = buildTht(layout)
+    expect(design.pcb.ratsnest).toHaveLength(buildTht().pcb.ratsnest.length)
+    expect(design.pcb.ratsnest.length).toBeGreaterThan(0)
+    expect(design.violations.filter((v) => v.code === "copper-layer")).toEqual([
+      expect.objectContaining({ severity: "error", message: "t0007 is on inner1 but the board has 2 layers", items: ["t0007"], view: "pcb" }),
+    ])
+    expect(design.violations.filter((v) => v.code === "copper-clearance")).toEqual([])
+  })
+})

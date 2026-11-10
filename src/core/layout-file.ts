@@ -40,6 +40,23 @@ export interface ViaRecord {
 
 export type LayoutRecord = TrackRecord | ViaRecord
 
+/** The copper layers a board of `count` layers has: top and bottom, and the two inner layers on a 4-layer board. */
+export const boardCopperLayers = (count: 2 | 4): readonly CopperLayer[] => (count === 4 ? COPPER_LAYERS : ["top", "bottom"])
+
+/** The first layer a record is on (a track) or lists (a via) that a board of `count` layers does not have. */
+export function missingLayer(record: Pick<TrackRecord, "layer"> | Pick<ViaRecord, "layers">, count: 2 | 4): CopperLayer | undefined {
+  const has = boardCopperLayers(count)
+  const layers = "layer" in record ? [record.layer] : record.layers
+  return layers.find((layer) => !has.includes(layer))
+}
+
+/** "t0007 is on inner1 but the board has 2 layers", for a record on a layer the board lacks; undefined otherwise. */
+export function missingLayerMessage(record: LayoutRecord, count: 2 | 4): string | undefined {
+  const layer = missingLayer(record, count)
+  if (layer === undefined) return undefined
+  return `${record.id} ${record.t === "track" ? "is on" : "joins"} ${layer} but the board has ${count} layers`
+}
+
 const CIRCUIT_SUFFIX = ".circuit.tsx"
 const LAYOUT_SUFFIX = ".circuit.layout.json"
 const ID_PATTERN = { track: /^t(\d{4,})$/, via: /^v(\d{4,})$/ } as const
