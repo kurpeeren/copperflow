@@ -133,16 +133,36 @@ function cleanedOnce(check: Check, copper: RoutedCopper, pads: readonly EndPad[]
 
 const overlaps = (a: Obstacle["box"], b: Obstacle["box"]) => a.minX <= b.maxX && b.minX <= a.maxX && a.minY <= b.maxY && b.minY <= a.maxY
 
+export interface CleanupOptions {
+  /** The board as the router saw it, to save building it again. */
+  world?: RouterWorld
+  /** The most passes over the routes; MAX_ROUNDS by default. */
+  maxRounds?: number
+}
+
+export interface CleanupReport {
+  routed: RoutedConnection[]
+  /** Whether the last pass allowed still changed a route, so the routes may not have settled. */
+  capped: boolean
+}
+
 /** The routes cleaned up (see the module comment), in the same order; `world` may be given to save building it again. */
 export function cleanup(input: RouteInput, routed: readonly RoutedConnection[], world?: RouterWorld): RoutedConnection[] {
-  const board = world ?? routerWorld(input.layout, input.rules, classLookup(input.rules, input.nets))
+  return cleanupReport(input, routed, world === undefined ? {} : { world }).routed
+}
+
+/** The routes cleaned up, and whether cleanup stopped at its pass cap before they settled. */
+export function cleanupReport(input: RouteInput, routed: readonly RoutedConnection[], options: CleanupOptions = {}): CleanupReport {
+  const board = options.world ?? routerWorld(input.layout, input.rules, classLookup(input.rules, input.nets))
   const pads = new Map(input.layout.parts.flatMap((part) => part.pads).map((pad) => [pad.id, pad]))
   const padShapes = new Map(board.obstacles.filter((piece) => piece.kind === "pad").map((piece) => [piece.id, piece.shapes]))
   const rules = new Map<string, NetRule>()
   const ruleOf = (net: string) => rules.get(net) ?? rules.set(net, netRule(input.rules, input.nets, net)).get(net)!
   const coppers = routed.map((route) => route.copper)
   const pieces = coppers.map((copper) => copperObstacles(copper, ruleOf(copper.net).className))
-  for (let round = 0; round < MAX_ROUNDS; round++) {
+  const rounds = options.maxRounds ?? MAX_ROUNDS
+  let capped = false
+  for (let round = 0; round < rounds; round++) {
     let changed = false
     routed.forEach((route, k) => {
       const copper = coppers[k] as RoutedCopper
@@ -160,8 +180,9 @@ export function cleanup(input: RouteInput, routed: readonly RoutedConnection[], 
       pieces[k] = copperObstacles(next, ruleOf(next.net).className)
     })
     if (!changed) break
+    capped = round === rounds - 1
   }
-  return routed.map((route, k) => ({ ...route, copper: coppers[k] as RoutedCopper }))
+  return { routed: routed.map((route, k) => ({ ...route, copper: coppers[k] as RoutedCopper })), capped }
 }
 
 /** The routes as layout edits in one list: each route's tracks, then its vias. Applied with the router's mark, they read `by: "router"`. */

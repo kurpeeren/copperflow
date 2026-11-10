@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest"
 import { buildDesign } from "../../src/engine/design.js"
 import { COST_CAP } from "../../src/engine/router/astar.js"
 import { MAX_PRICE, presentPrice } from "../../src/engine/router/congestion.js"
-import type { RouteReport } from "../../src/engine/router/route-board.js"
+import type { RouteProgress, RouteReport } from "../../src/engine/router/route-board.js"
 import { checkRoutedAll, routeDesign } from "../helpers/route-check.js"
 
 const MAIN = "main.circuit.tsx"
@@ -133,6 +133,19 @@ describe("routing the whole board", () => {
     expect(routeDesign(design, { scope: { kind: "parts", parts: ["R4"] } }).routed.map((route) => [route.from, route.to])).toEqual([["R3#2", "R4#1"]])
     expect(routeDesign(design, { scope: { kind: "parts", parts: ["R9"] } })).toMatchObject({ routed: [], unrouted: [], passes: 0 })
   })
+
+  test("progress tells the connections done of the pass's total, then the cleanup, and the report says the cleanup settled", () => {
+    const design = buildDesign(CROSS, MAIN)
+    const seen: RouteProgress[] = []
+    const report = routeDesign(design, { onProgress: (progress) => seen.push(progress) })
+    const first = seen.filter((progress) => progress.stage === "routing" && progress.pass === 1)
+    expect(first.map((progress) => progress.stage === "routing" && [progress.done, progress.total])).toEqual([
+      [1, 2],
+      [2, 2],
+    ])
+    expect(seen.at(-1)).toEqual({ stage: "cleanup", capped: false })
+    expect(report.cleanupCapped).toBe(false)
+  }, 30_000)
 })
 
 describe("a long contested channel over every pass", () => {
