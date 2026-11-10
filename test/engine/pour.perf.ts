@@ -2,7 +2,10 @@ import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join, relative } from "node:path"
 import { expect, test } from "vitest"
 import { buildDesign, type Design } from "../../src/engine/design.js"
+import { checkDesign } from "../../src/engine/checks/index.js"
+import { isCopperNote } from "../../src/engine/checks/copper-notes.js"
 import { fillPours, type PourInputs } from "../../src/engine/pour/fill.js"
+import { pourJoins } from "../../src/engine/pour/joins.js"
 import { netClasses } from "../../src/engine/rules/classes.js"
 import { DEFAULT_CLASS } from "../../src/engine/rules/profiles.js"
 import { fastestMs } from "../helpers/fastest.js"
@@ -73,4 +76,19 @@ test("fills the 200-part board's two pours in under 3 s", () => {
   const fastest = fastestMs(() => void fillPours(inputs), 3)
   console.log(`fillPours 200 parts, 2 pours, fastest of 3: ${fastest.toFixed(1)} ms`)
   expect(fastest).toBeLessThan(BENCHMARK_LIMIT_MS)
+}, 120_000)
+
+/** The checks and the joins on the filled 200-part board: well under the fill's own bound. */
+const CHECK_LIMIT_MS = 500
+
+test("joins and checks the 200-part board's two pours in under 500 ms each", () => {
+  const design = buildDesign({ "big.circuit.tsx": benchmarkBoard() }, "big.circuit.tsx")
+  const pads = design.pcb.parts.flatMap((part) => part.pads)
+  const joins = fastestMs(() => void pourJoins(design.pcb.pours, pads, design.pcb.tracks, design.pcb.vias), 3)
+  const notes = design.diagnostics.filter(isCopperNote)
+  const checks = fastestMs(() => void checkDesign(design.circuit, design.schematic, design.pcb, design.rules, notes), 3)
+  console.log(`pourJoins 200 parts, 2 pours, fastest of 3: ${joins.toFixed(1)} ms; checkDesign with them: ${checks.toFixed(1)} ms`)
+  expect(design.pcb.ratsnest.filter((line) => line.net === "net.GND")).toEqual([])
+  expect(joins).toBeLessThan(CHECK_LIMIT_MS)
+  expect(checks).toBeLessThan(CHECK_LIMIT_MS)
 }, 120_000)
