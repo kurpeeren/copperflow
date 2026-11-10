@@ -173,7 +173,7 @@ export function movePlan(input: GestureInput, names: readonly string[], offset: 
 }
 
 /** What targetAt can find: everything pickable but the PCB's copper, which the PCB canvas picks first (copper-hit.ts). */
-type SheetPickable = Exclude<Pickable, { kind: "track" | "via" }>
+type SheetPickable = Exclude<Pickable, { kind: "track" | "via" | "pour" | "hole" }>
 
 /** A box smaller than this on both sides, in CSS pixels, is a click. */
 const BOX_MIN_PX = 6

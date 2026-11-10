@@ -6,6 +6,7 @@ import { deletePlan, NOTHING_TO_DELETE } from "../studio/src/pcb/delete-plan.js"
 import { skippedNote } from "../studio/src/pcb/group-edits.js"
 import { moveBlocker } from "../studio/src/pcb/positions.js"
 import { wiresRemoval } from "../studio/src/pcb/wire-actions.js"
+import { boardRemoval } from "../studio/src/pcb/pour-tool.js"
 import { Selection } from "../studio/src/selection.js"
 
 const FILE = "main.circuit.tsx"
@@ -61,6 +62,7 @@ describe("Delete on wires alone", () => {
       wires: [R3_VCC],
       labels: [],
       drawings: [],
+      board: [],
     })
   })
 
@@ -146,5 +148,35 @@ describe("what Delete cannot remove", () => {
     if ("message" in result) throw new Error(result.message)
     expect(result.plan.edits).toEqual([])
     expect(skippedNote(result.plan)).toBe("The wire from R5.pin1 to R6.pin1 has no trace of its own: Studio draws it for net GND")
+  })
+})
+
+describe("Delete on pours and holes", () => {
+  const SOURCE = `export default () => (
+  <board width="30mm" height="20mm">
+    <resistor name="R1" resistance="1k" footprint="0402" />
+    <copperpour net="GND" layer="bottom" />
+    <copperpour net="GND" layer="top" />
+    <hole x={2} y={3} diameter={3.2} />
+  </board>
+)
+`
+  test("one change removes the parts, pours and holes selected, the later pour first, so it applies cleanly", () => {
+    const model = analyzeCircuit(SOURCE)
+    const selection = Selection.none.onlyBoard("copperpour:1").toggleBoard("copperpour:2").toggleBoard("hole:1").toggle("R1")
+    const result = deletePlan(selection, () => null, undefined, undefined, undefined, boardRemoval(model, new Set()))
+    if ("message" in result) throw new Error(result.message)
+    expect(result.board).toEqual(["copperpour:1", "copperpour:2", "hole:1"])
+    expect(result.plan.summary).toBe("remove R1, copper pour 1, copper pour 2 and 1 more")
+    const out = applyEdits(SOURCE, result.plan.edits, new Set())
+    expect(out).not.toMatch(/copperpour|<hole|R1/)
+  })
+
+  test("a locked pour stays and is named", () => {
+    const model = analyzeCircuit(SOURCE)
+    const result = deletePlan(Selection.none.onlyBoard("copperpour:2"), () => null, undefined, undefined, undefined, boardRemoval(model, new Set(["copperpour:2"])))
+    if ("message" in result) throw new Error(result.message)
+    expect(result.plan.edits).toEqual([])
+    expect(result.plan.skipped).toEqual(["copperpour:2 is locked"])
   })
 })

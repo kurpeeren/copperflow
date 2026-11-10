@@ -153,15 +153,15 @@ describe("the view tools", () => {
   test("Snap is a switch in the grid group: pressed while snap is on, with Alt+S in its title and the menu item", () => {
     expect(need("snap")).toMatchObject({ title: "Snap (Alt+S)", icon: "snap", command: "snap", group: need("gridStyle").group })
     expect(menuByCommand.get("snap")).toMatchObject({ label: "Snap", shortcut: "Alt+S", toggle: "snap" })
-    expect(buttonPressed("snap", null, { snap: true, hoverLabels: true, themeLight: true, themeDark: false })).toBe(true)
-    expect(buttonPressed("snap", "fitArea", { snap: false, hoverLabels: true, themeLight: true, themeDark: false })).toBe(false)
+    expect(buttonPressed("snap", null, { snap: true, hoverLabels: true, themeLight: true, themeDark: false, pourSolid: true, pourHatched: false, pourOutline: false })).toBe(true)
+    expect(buttonPressed("snap", "fitArea", { snap: false, hoverLabels: true, themeLight: true, themeDark: false, pourSolid: true, pourHatched: false, pourOutline: false })).toBe(false)
     expect(hasPressedState("snap")).toBe(true)
   })
 
   test("Fit area shows pressed while its tool is armed and a second click puts it away", () => {
     expect(isToolCommand("fitArea")).toBe(true)
-    expect(buttonPressed("fitArea", "fitArea", { snap: true, hoverLabels: true, themeLight: true, themeDark: false })).toBe(true)
-    expect(buttonPressed("fitArea", null, { snap: true, hoverLabels: true, themeLight: true, themeDark: false })).toBe(false)
+    expect(buttonPressed("fitArea", "fitArea", { snap: true, hoverLabels: true, themeLight: true, themeDark: false, pourSolid: true, pourHatched: false, pourOutline: false })).toBe(true)
+    expect(buttonPressed("fitArea", null, { snap: true, hoverLabels: true, themeLight: true, themeDark: false, pourSolid: true, pourHatched: false, pourOutline: false })).toBe(false)
     expect(clickAction("fitArea", { active: "fitArea", stop: () => {} })).toBe("stop")
     expect(hasPressedState("fit")).toBe(false)
   })
@@ -187,7 +187,7 @@ describe("the drawing tools", () => {
 
   test("each shows pressed while armed, and a second click puts it away", () => {
     for (const command of ["drawPolyline", "drawArc", "drawCircle", "drawRectangle", "drawText"] as const) {
-      expect([command, isToolCommand(command), buttonPressed(command, command, { snap: true, hoverLabels: true, themeLight: true, themeDark: false })]).toEqual([command, true, true])
+      expect([command, isToolCommand(command), buttonPressed(command, command, { snap: true, hoverLabels: true, themeLight: true, themeDark: false, pourSolid: true, pourHatched: false, pourOutline: false })]).toEqual([command, true, true])
       expect(clickAction(command, { active: command, stop: () => {} })).toBe("stop")
     }
     expect(drawToolCommand("polyline")).toBe("drawPolyline")

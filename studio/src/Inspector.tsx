@@ -8,6 +8,7 @@ import { GroupView } from "./InspectorGroup"
 import { LabelView } from "./InspectorLabel"
 import { DrawingView } from "./InspectorDrawing"
 import { CopperView } from "./InspectorCopper"
+import { PourView } from "./InspectorPour"
 import { WireView } from "./InspectorWire"
 import { TextView } from "./InspectorText"
 import { MarkForm, NewPropRow, PropRow, Row, Section } from "./InspectorRows"
@@ -92,13 +93,13 @@ export function Inspector(props: Props) {
   const parts = selectedParts(props.circuit, props.selection)
   const [part] = parts
   const portFlag = parts.length === 1 && props.selection.size === 0
-  const { wireCount: wires, labelCount: labelsPicked, drawingCount, copperCount, soleWire: wire, soleLabel: label, soleDrawing: drawing, soleCopper, soleText, textCount } = props.selection
+  const { wireCount: wires, labelCount: labelsPicked, drawingCount, copperCount, soleWire: wire, soleLabel: label, soleDrawing: drawing, soleCopper, soleText, textCount, boardCount, soleBoard } = props.selection
   const [wireCount, labelCount] = portFlag ? [0, 0] : [wires, labelsPicked]
-  const kind = propertiesKind(parts.length, wireCount, labelCount, drawingCount, copperCount, textCount)
+  const kind = propertiesKind(parts.length, wireCount, labelCount, drawingCount, copperCount, textCount, boardCount)
   const flattened = parts.length === 0 && props.selection.size === 1 && props.selection.primary !== undefined ? instancePart(props.build.design, props.selection.primary) : undefined
   const library = kind === "part" && part ? props.parts.library.find((p) => p.component === part.tag) : undefined
   const autoPlaced = kind === "part" && part !== undefined && autoPlacedParts(props.build.design, props.openView).has(part.name)
-  const view = propertiesView(parts, { library: library !== undefined, autoPlaced }, wireCount, labelCount, drawingCount, copperCount, textCount)
+  const view = propertiesView(parts, { library: library !== undefined, autoPlaced }, wireCount, labelCount, drawingCount, copperCount, textCount, boardCount)
   const locks = { locked: new Set(props.circuit.annotations.locks.map((lock) => lock.part)), violated: new Set(props.circuit.violations.map((v) => v.part)) }
   // Collapsed sections are kept by title for as long as Studio is open.
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
@@ -117,7 +118,8 @@ export function Inspector(props: Props) {
       {kind === "drawing" && drawing !== undefined && design && <DrawingView design={design} circuit={props.circuit} drawing={drawing} locked={locks.locked} actions={props.actions} onRename={props.onRenameDrawing} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
       {kind === "text" && soleText !== undefined && design && <TextView design={design} circuit={props.circuit} text={soleText} locked={locks.locked} actions={props.actions} onClear={clear} collapsed={collapsed} toggle={toggle} />}
       {kind === "copper" && soleCopper !== undefined && design && <CopperView design={design} id={soleCopper} segment={props.selection.segment} actions={props.actions} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
-      {kind === "group" && <GroupView view={view} parts={parts} others={wireCount + labelCount + drawingCount + copperCount} locks={locks} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
+      {kind === "pour" && soleBoard !== undefined && design && <PourView design={design} circuit={props.circuit} id={soleBoard} locked={locks.locked} actions={props.actions} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
+      {kind === "group" && <GroupView view={view} parts={parts} others={wireCount + labelCount + drawingCount + copperCount + boardCount} locks={locks} run={props.run} onClear={clear} collapsed={collapsed} toggle={toggle} />}
       {kind === "part" && part && <PartView {...props} view={view} collapsed={collapsed} toggle={toggle} part={part} locks={locks} />}
       {flattened && design && <FlattenedPartView design={design} part={flattened.part} onSelect={props.onSelect} onOpenSheet={props.onOpenSheet} />}
       {kind === "board" && !flattened && <BoardView {...props} view={view} collapsed={collapsed} toggle={toggle} />}

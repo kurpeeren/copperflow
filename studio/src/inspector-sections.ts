@@ -103,22 +103,23 @@ export interface PropertiesView {
  * What Properties shows for a selection of `parts` parts, `wires` wires, `labels` net labels and flags and `drawings`
  * drawings: the board, one part's, one wire's, one label's, one drawing's, or the group's.
  */
-export type PropertiesKind = "board" | "part" | "wire" | "label" | "drawing" | "copper" | "text" | "group"
+export type PropertiesKind = "board" | "part" | "wire" | "label" | "drawing" | "copper" | "text" | "pour" | "group"
 
 /** `texts` counts the parts' names and values (or designators) selected. */
-export function propertiesKind(parts: number, wires: number, labels = 0, drawings = 0, copper = 0, texts = 0): PropertiesKind {
-  const total = parts + wires + labels + drawings + copper + texts
+export function propertiesKind(parts: number, wires: number, labels = 0, drawings = 0, copper = 0, texts = 0, pours = 0): PropertiesKind {
+  const total = parts + wires + labels + drawings + copper + texts + pours
   if (total === 0) return "board"
   if (total > 1) return "group"
   if (parts === 1) return "part"
   if (wires === 1) return "wire"
   if (copper === 1) return "copper"
   if (texts === 1) return "text"
+  if (pours === 1) return "pour"
   return labels === 1 ? "label" : "drawing"
 }
 
 /** The kinds of object a selection counts, and how Properties names them. */
-export type ObjectKind = "parts" | "wires" | "labels" | "drawings" | "copper" | "texts"
+export type ObjectKind = "parts" | "wires" | "labels" | "drawings" | "copper" | "texts" | "pours"
 
 export const KIND_LABELS: Record<ObjectKind, string> = {
   parts: "Parts",
@@ -127,9 +128,10 @@ export const KIND_LABELS: Record<ObjectKind, string> = {
   drawings: "Drawings",
   copper: "Tracks and vias",
   texts: "Names and values",
+  pours: "Copper pours and holes",
 }
 
-const KIND_ROW = /^kind:(parts|wires|labels|drawings|copper|texts):(\d+)$/
+const KIND_ROW = /^kind:(parts|wires|labels|drawings|copper|texts|pours):(\d+)$/
 
 /** A "kind:<parts|wires|labels|drawings|copper|texts>:<count>" row read back; undefined for any other row. */
 export function kindRow(id: string): { kind: ObjectKind; count: number } | undefined {
@@ -142,13 +144,13 @@ export function kindRow(id: string): { kind: ObjectKind; count: number } | undef
  * wires, labels or drawings among them (`wires`, `labels`, `drawings`, how many), the section first counts each kind
  * present. The header counts every object.
  */
-export function propertiesView(parts: readonly SelectedPart[], opts: SectionOptions, wires = 0, labels = 0, drawings = 0, copper = 0, texts = 0): PropertiesView {
-  const header = `Selected objects: ${parts.length + wires + labels + drawings + copper + texts}`
+export function propertiesView(parts: readonly SelectedPart[], opts: SectionOptions, wires = 0, labels = 0, drawings = 0, copper = 0, texts = 0, pours = 0): PropertiesView {
+  const header = `Selected objects: ${parts.length + wires + labels + drawings + copper + texts + pours}`
   const [first] = parts
   const listed = parts.map((part) => `part:${part.name}`)
-  const present: [ObjectKind, number][] = [["parts", parts.length], ["wires", wires], ["labels", labels], ["drawings", drawings], ["copper", copper], ["texts", texts]]
+  const present: [ObjectKind, number][] = [["parts", parts.length], ["wires", wires], ["labels", labels], ["drawings", drawings], ["copper", copper], ["texts", texts], ["pours", pours]]
   const counts = present.flatMap(([kind, count]) => (count > 0 ? [`kind:${kind}:${count}`] : []))
-  if (wires + labels + drawings + copper + texts > 0) return { header, sections: [{ title: "Selection", rows: [...counts, ...listed] }] }
+  if (wires + labels + drawings + copper + texts + pours > 0) return { header, sections: [{ title: "Selection", rows: [...counts, ...listed] }] }
   if (!first) return { header, sections: boardSections() }
   if (parts.length === 1) return { header, sections: inspectorSections(first, opts) }
   return { header, sections: [{ title: "Selection", rows: listed }] }

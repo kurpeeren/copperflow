@@ -1,4 +1,5 @@
-import type { DrawingInfo } from "./types.js"
+/** Where an element sits in its text. */
+type Span = { start: number; end: number }
 
 /** How many characters two texts share at the start and, after those, at the end. */
 function commonEnds(a: string, b: string): { prefix: number; suffix: number } {
@@ -15,7 +16,7 @@ function commonEnds(a: string, b: string): { prefix: number; suffix: number } {
  * text, and, where either lies in text the change left alone, at the place that text moved to. So an unnamed
  * twin written the same way cannot take a locked drawing's id unnoticed.
  */
-export function drawingKeeper(source: string, next: string): (drawing: DrawingInfo, now: DrawingInfo) => boolean {
+export function drawingKeeper(source: string, next: string): (drawing: Span, now: Span) => boolean {
   let ends: { prefix: number; suffix: number } | undefined
   const shift = next.length - source.length
   return (drawing, now) => {

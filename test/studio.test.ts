@@ -173,6 +173,22 @@ describe("editing", () => {
     expect((await edit({ kind: "addDrawing", tag: "schematicrect", props: { x: { y: 1 } } })).status).toBe(400)
   })
 
+  test("pour and hole edits are accepted, one history entry each; malformed ones are refused", async () => {
+    const outline = [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 4 }]
+    await data(await api("/api/edit", { file: FILE, summary: "add a pour", edits: [{ kind: "addPour", net: "GND", layer: "top", outline }] }))
+    await data(await api("/api/edit", { file: FILE, summary: "set the pour", edits: [{ kind: "setPour", id: "copperpour:1", props: { priority: 2, outline: null } }] }))
+    await data(await api("/api/edit", { file: FILE, summary: "add a hole", edits: [{ kind: "addHole", x: 3, y: 3, diameter: 3.2 }] }))
+    await data(await api("/api/edit", { file: FILE, summary: "move the hole", edits: [{ kind: "setHole", id: "hole:1", props: { x: 5 } }] }))
+    const text = await readFile(join(root, FILE), "utf8")
+    expect(text).toContain('<copperpour net="GND" layer="top" priority={2} />')
+    expect(text).toContain("<hole x={5} y={3} diameter={3.2} />")
+    await data(await api("/api/edit", { file: FILE, summary: "remove both", edits: [{ kind: "removeHole", id: "hole:1" }, { kind: "removePour", id: "copperpour:1" }] }))
+    expect(await readFile(join(root, FILE), "utf8")).not.toMatch(/copperpour|<hole/)
+    const edit = (one: unknown) => api("/api/edit", { file: FILE, summary: "x", edits: [one] })
+    expect((await edit({ kind: "addHole", x: "1", y: 0, diameter: 3 })).status).toBe(400)
+    expect((await edit({ kind: "setPour", id: "copperpour:1", props: { outline: [{ x: "1", y: 0 }] } })).status).toBe(400)
+  })
+
   test("locked parts cannot be edited until they are unlocked", async () => {
     await data(await api("/api/lock", { file: FILE, parts: ["R1"], locked: true }))
     const refused = await api("/api/edit", { file: FILE, summary: "x", edits: [{ kind: "setProps", part: "R1", props: { pcbX: 5 } }] })

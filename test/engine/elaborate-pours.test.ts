@@ -1,4 +1,5 @@
 import { expect, test } from "vitest"
+import { analyzeCircuit } from "../../src/core/analyze.js"
 import { elaborate } from "../../src/engine/elaborate.js"
 import { evaluateCircuit } from "../../src/engine/evaluate.js"
 import type { Circuit } from "../../src/engine/model.js"
@@ -99,4 +100,19 @@ test("pours and holes need a board, and are no longer later-stage elements", () 
   const files = { [MAIN]: `export default () => (<group>${GND}<copperpour net="GND" layer="top" /><hole x={0} y={0} diameter={1} /></group>)` }
   const circuit = elaborate(evaluateCircuit(files, MAIN), MAIN, noPads)
   expect(circuit.diagnostics.map((d) => d.message)).toEqual(["<copperpour> needs a <board>; it is ignored", "<hole> needs a <board>; it is ignored"])
+})
+
+test("every copperpour and hole tag is counted, kept or not, and a dropped one's warning names its id", () => {
+  const body = `<copperpour layer="top" />\n<copperpour net="GND" layer="bottom" />\n<hole x={1} y={1} diameter="abc" />\n<hole x={2} y={2} diameter={3} />`
+  const circuit = build(body)
+  expect(circuit.board?.pours?.map((pour) => pour.id)).toEqual(["copperpour:2"])
+  expect(circuit.board?.holes?.map((hole) => hole.id)).toEqual(["hole:2"])
+  const items = circuit.diagnostics.flatMap((d) => d.items)
+  expect(items).toContain("copperpour:1")
+  expect(items).toContain("hole:1")
+  const source = `export default () => (\n  <board width="10mm" height="10mm">\n${GND}\n${body}\n  </board>\n)\n`
+  const core = (analyzeCircuit(source).boardItems ?? []).map((item) => item.id)
+  expect(core).toEqual(["copperpour:1", "copperpour:2", "hole:1", "hole:2"])
+  expect(core).toEqual(expect.arrayContaining([...(circuit.board?.pours ?? []), ...(circuit.board?.holes ?? [])].map((item) => item.id)))
+  expect(analyzeCircuit(source).boardItems?.every((item) => item.editable)).toBe(true)
 })

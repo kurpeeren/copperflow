@@ -233,3 +233,28 @@ describe("copper rows", () => {
     expect(checkRows(withCopper([overlap]))[0]?.copper).toBeUndefined()
   })
 })
+
+describe("pour and hole rows", () => {
+  const square = [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 2 }, { x: 0, y: 2 }]
+  const withBoard = (violations: Violation[]) =>
+    ({
+      ...designWith(violations, []),
+      pcb: { tracks: [{ id: "t0001" }], vias: [], board: { outline: square, pours: [{ id: "copperpour:1", outline: square }] }, holes: [{ id: "hole:1", x: 7, y: 8, diameter: 3 }] },
+    }) as unknown as Design
+
+  test("a pour named without a position is ringed at its outline's middle and selected", () => {
+    const [row] = checkRows(withBoard([violation("pour-floating", "warning", ["copperpour:1"], "pcb")]))
+    expect(row).toMatchObject({ board: ["copperpour:1"], at: { x: 2, y: 1 } })
+    expect(row?.part).toBeUndefined()
+    expect(markersFor([row as CheckRow], "pcb")).toHaveLength(1)
+  })
+
+  test("a copper-hole row names the hole and the copper, keeping its own position", () => {
+    const [row] = checkRows(withBoard([violation("copper-hole", "error", ["hole:1", "t0001"], "pcb", { x: 6, y: 8 })]))
+    expect(row).toMatchObject({ board: ["hole:1"], copper: ["t0001"], at: { x: 6, y: 8 } })
+  })
+
+  test("a pour or hole the design no longer has is not named", () => {
+    expect(checkRows(withBoard([violation("copper-hole", "error", ["hole:4"], "pcb")]))[0]?.board).toBeUndefined()
+  })
+})

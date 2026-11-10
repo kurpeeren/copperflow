@@ -73,6 +73,30 @@ export interface DrawingInfo {
   end: number
 }
 
+/** The tags of the board's own items: copper pours and non-plated holes. */
+export type BoardItemTag = "copperpour" | "hole"
+
+/**
+ * A copper pour (`<copperpour>`) or hole (`<hole>`), addressed by the id the engine gives it: "copperpour:<n>" or
+ * "hole:<n>" in source order (board-items.ts).
+ */
+export interface BoardItemInfo {
+  id: string
+  tag: BoardItemTag
+  props: Record<string, PropInfo>
+  /** A pour's outline, when it is written as a literal list. */
+  outline?: Point[]
+  parent?: string
+  line: number
+  editable: boolean
+  readonlyReason?: string
+  start: number
+  end: number
+}
+
+/** A pour or hole prop's value: a pour's `outline` takes a list of points, null removes a prop, every other prop is a literal. */
+export type BoardItemValue = Literal | Point[] | null
+
 /** A drawing prop's value: `points` takes a list of points, every other prop a literal. */
 export type DrawingValue = Literal | Point[]
 
@@ -105,6 +129,8 @@ export interface CircuitModel {
   parts: PartInfo[]
   traces: TraceInfo[]
   drawings: DrawingInfo[]
+  /** The board's copper pours and holes, in source order; absent in a model made by hand. */
+  boardItems?: BoardItemInfo[]
   skipped: SkippedElement[]
   imports: ImportInfo[]
   /** The `<page>` elements in source order; absent in a model made by hand, which has none. */
@@ -162,6 +188,15 @@ export type Edit =
   | { kind: "removeDrawing"; id: string }
   /** Moves or restyles a drawing, e.g. `{ x, y }` or `{ points }`; a `name` renames it, which changes its id. */
   | { kind: "setDrawingProps"; id: string; props: Record<string, DrawingValue> }
+  /** Adds a `<copperpour>`: without an outline it fills the whole board. `props` are its optional props (priority, clearance, …). */
+  | { kind: "addPour"; net: string; layer: string; outline?: Point[]; props?: Record<string, Literal> }
+  /** Sets a pour's props by its id ("copperpour:1"); null removes one (an outline: the pour fills the board again). */
+  | { kind: "setPour"; id: string; props: Record<string, BoardItemValue> }
+  | { kind: "removePour"; id: string }
+  /** Adds a `<hole x y diameter />`, all in mm. */
+  | { kind: "addHole"; x: number; y: number; diameter: number }
+  | { kind: "setHole"; id: string; props: Record<string, number> }
+  | { kind: "removeHole"; id: string }
   /** In a sheet file: renames a `<port>` and the trace ends that name its net (`net.<from>`). */
   | { kind: "renamePort"; from: string; to: string }
   /** In a sheet file: the sheet symbol's size on `<sheet>`; null removes one, so the ports decide it again. */

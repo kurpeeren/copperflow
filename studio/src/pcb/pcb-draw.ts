@@ -8,6 +8,7 @@ import { canvasFont, PALETTE, PCB_DIM, TEXT_WEIGHT, type Ctx } from "./ctx.js"
 import { worldToScreen, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
 import { DEFAULT_LAYERS, padLayer, type LayerVisibility } from "./layers.js"
 import { drawViolationMarkers, type ViolationMarker } from "./markers.js"
+import { drawHoles, drawPourFills, drawPourOutlines, type PourScene } from "./pour-draw.js"
 import { DESIGNATOR_MM } from "./part-text.js"
 import { devicePxFor, sharpenText, textAnchorAt, textShown } from "./text-level.js"
 
@@ -28,7 +29,11 @@ export interface PcbDrawOptions {
   activeViolation?: string
   /** The layout file's tracks and vias (as dragged, or waiting for their build), with their selection and hover. */
   copper?: CopperScene
+  /** How the pours are drawn and which are selected, hovered or hidden; without it the fills are solid and nothing is marked. */
+  pours?: PourScene
 }
+
+const PLAIN_POURS: PourScene = { mode: "solid", hidden: new Set(), selected: new Set(), activeLayer: "top" }
 
 type View = { camera: Camera; size: Size }
 
@@ -83,9 +88,13 @@ export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDra
   ctx.lineCap = "round"
   ctx.lineJoin = "round"
   if (layers.keepout) drawKeepouts(ctx, layout, px, hair)
+  const pours = options.pours ?? PLAIN_POURS
+  drawPourFills(ctx, layout, pours, layers, px)
   drawCopper(ctx, layers, options.highlight, each, px)
   if (options.copper) drawCopperItems(ctx, options.copper, layers, options.highlight, px)
   if (layers.hole) drawDrills(ctx, each)
+  drawHoles(ctx, layout.holes ?? [], pours, layers, px, hair)
+  drawPourOutlines(ctx, layout, pours, layers, px, hair)
   each((part) => {
     if (shownOn(layers, part, "Silk")) drawPolylines(ctx, part.silkscreen, part.side === "top" ? PALETTE.topSilk : PALETTE.bottomSilk, Math.max(SILK_WIDTH_MM, hair), false)
   })

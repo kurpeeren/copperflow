@@ -40,6 +40,11 @@ describe("checkPick", () => {
     expect(checkPick(row({ view: "pcb", at, copper: ["t0001", "v0001"] }))).toEqual({ tab: "pcb", focus: { view: "pcb", at }, selectCopper: ["t0001", "v0001"] })
   })
 
+  test("a pour or hole row selects them, with any copper it names", () => {
+    expect(checkPick(row({ view: "pcb", board: ["hole:1"], copper: ["t0001"] }))).toEqual({ tab: "pcb", selectCopper: ["t0001"], selectBoard: ["hole:1"] })
+    expect(checkPick(row({ view: "pcb", board: ["copperpour:1"] }))).toEqual({ tab: "pcb", selectCopper: [], selectBoard: ["copperpour:1"] })
+  })
+
   test("a row that names no part leaves the selection alone", () => {
     expect(checkPick(row({ view: "pcb" }))).toEqual({ tab: "pcb" })
     expect(checkPick(row({ view: "code" }))).toEqual({})

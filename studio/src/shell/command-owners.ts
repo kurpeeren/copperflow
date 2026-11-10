@@ -7,7 +7,7 @@ import { DRAW_COMMANDS } from "../pcb/draw-commands.js"
 import type { CommandId } from "./menus.js"
 
 /** Run by use-app-commands.ts. */
-export const APP_COMMANDS = ["openFile", "exportBom", "exportPackage", "exportFabrication", "undo", "redo", "selectAll", "selectInstance", "replicateLayout", "makeSheet", "find", "checkDrc", "designRules", "autoroute", "autorouteSelection", "autorouteNet", "unroute", "lock", "unlock", "history", "keys", "about", "addPage", "renamePage", "deletePage", "themeLight", "themeDark", "hoverLabels"] as const satisfies readonly CommandId[]
+export const APP_COMMANDS = ["openFile", "exportBom", "exportPackage", "exportFabrication", "undo", "redo", "selectAll", "selectInstance", "replicateLayout", "makeSheet", "find", "checkDrc", "designRules", "autoroute", "autorouteSelection", "autorouteNet", "unroute", "lock", "unlock", "history", "keys", "about", "addPage", "renamePage", "deletePage", "themeLight", "themeDark", "hoverLabels", "pourSolid", "pourHatched", "pourOutline"] as const satisfies readonly CommandId[]
 export type AppCommand = (typeof APP_COMMANDS)[number]
 
 /** Run by the workspace, as the key with the same action is. */
@@ -57,6 +57,10 @@ export type WireCommand = (typeof WIRE_COMMANDS)[number]
 export const PCB_COMMANDS = ["singleRouting", "placeVia"] as const satisfies readonly CommandId[]
 export type PcbCommand = (typeof PCB_COMMANDS)[number]
 
+/** Answered by the PCB only (use-pours.ts): Place → Copper pour, its whole-board form and Hole; sent while the schematic is open, they switch to the PCB first. */
+export const POUR_COMMANDS = ["placePour", "placePourBoard", "placeHole"] as const satisfies readonly CommandId[]
+export type PourCommand = (typeof POUR_COMMANDS)[number]
+
 /** Answered by the PCB only, which holds the built copper (use-track-shape.ts): Edit → Fillet tracks and Straighten tracks. */
 export const COPPER_COMMANDS = ["filletTracks", "straightenTracks"] as const satisfies readonly CommandId[]
 export type CopperCommand = (typeof COPPER_COMMANDS)[number]
@@ -70,6 +74,6 @@ export function commandOwner(command: CommandId): CommandOwner | undefined {
   if (has(APP_COMMANDS, command)) return "app"
   if (command in WORKSPACE_COMMANDS) return "workspace"
   if (has(CAMERA_COMMANDS, command) || has(FIT_COMMANDS, command) || has(PART_COMMANDS, command) || has(CANVAS_TOOL_COMMANDS, command)) return "canvas"
-  if (has(PCB_COMMANDS, command) || has(COPPER_COMMANDS, command)) return "pcb"
+  if (has(PCB_COMMANDS, command) || has(COPPER_COMMANDS, command) || has(POUR_COMMANDS, command)) return "pcb"
   return has(SHEET_COMMANDS, command) || has(SHEET_LAYOUT_COMMANDS, command) || has(WIRE_COMMANDS, command) ? "schematic" : undefined
 }

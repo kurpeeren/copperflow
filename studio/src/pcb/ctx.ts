@@ -26,11 +26,12 @@ export interface Ctx {
   lineTo(x: number, y: number): void
   arc(x: number, y: number, r: number, start: number, end: number): void
   arcTo(x1: number, y1: number, x2: number, y2: number, r: number): void
-  fill(): void
-  stroke(): void
+  /** "evenodd" fills a pour with its holes left open; a Path2D is a pour's rings kept between redraws. */
+  fill(pathOrRule?: Path2D | "evenodd" | "nonzero", rule?: "evenodd" | "nonzero"): void
+  stroke(path?: Path2D): void
   fillText(text: string, x: number, y: number): void
   measureText(text: string): { width: number; actualBoundingBoxAscent?: number; actualBoundingBoxDescent?: number }
-  clip(): void
+  clip(pathOrRule?: Path2D | "evenodd" | "nonzero", rule?: "evenodd" | "nonzero"): void
   setLineDash(segments: number[]): void
 }
 
@@ -67,6 +68,9 @@ export const PALETTE = {
   boardEdge: "#ff00ff",
   topCopper: "#ff0000",
   bottomCopper: "#0000ff",
+  /** The inner copper layers of a 4-layer board, which draw only their pours so far. */
+  inner1Copper: "#cc9933",
+  inner2Copper: "#9966cc",
   /** Pads of plated through-holes and via rings. */
   multiLayer: "#c0c0c0",
   viaRing: "#c0c0c0",

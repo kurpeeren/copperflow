@@ -62,6 +62,30 @@ export const DEFAULT_LAYERS: LayerVisibility = {
   bottomAssembly: false,
 }
 
+/** A new set with the pour `id` hidden when it was shown, shown when it was hidden. */
+export function togglePour(hidden: ReadonlySet<string>, id: string): ReadonlySet<string> {
+  const next = new Set(hidden)
+  if (!next.delete(id)) next.add(id)
+  return next
+}
+
+/** A pour as the Layer panel lists it under its layer: "GND", its id and whether it shows. */
+export interface PourRow {
+  id: string
+  net: string
+  layer: string
+  shown: boolean
+}
+
+/** The board's pours grouped by their copper layer (top, then bottom, then the inner layers), each named by its net. */
+export function pourRows(pours: readonly { id: string; net: string; layer: string }[], netName: (net: string) => string, hidden: ReadonlySet<string>): { layer: string; name: string; pours: PourRow[] }[] {
+  const names: Record<string, string> = { top: "Top Layer", bottom: "Bottom Layer", inner1: "Inner Layer 1", inner2: "Inner Layer 2" }
+  return Object.keys(names).flatMap((layer) => {
+    const rows = pours.filter((pour) => pour.layer === layer).map((pour) => ({ id: pour.id, net: netName(pour.net), layer, shown: !hidden.has(pour.id) }))
+    return rows.length > 0 ? [{ layer, name: names[layer] as string, pours: rows }] : []
+  })
+}
+
 /** A new record with `id` switched. */
 export function toggleLayer(visibility: LayerVisibility, id: LayerId): LayerVisibility {
   return { ...visibility, [id]: !visibility[id] }

@@ -4,7 +4,7 @@
 // the Properties of a single part or centring the camera. A value: every change returns a new selection, or the same
 // one when nothing changed, so React sees what changed. The part counts (`names`, `size`, `primary`) count parts only,
 // so the part commands (Rotate, align, Lock) act on the parts; `wires` holds the wires, `labels` the labels, `drawings`
-// the drawings, `copper` the tracks and vias, and `total` counts all five, as "Selected objects: N" does. A double
+// the drawings, `copper` the tracks and vias, `board` the copper pours and holes, and `total` counts them all, as "Selected objects: N" does. A double
 // click on a track selects one of its segments: the track alone in `copper`, with `segment` naming which and where its
 // two ends were; once the track's points no longer have those ends there, the segment is dropped (segmentChecked).
 
@@ -23,7 +23,7 @@ const among = (items: readonly string[], kept: Iterable<string>): string[] => {
   return items.filter((item) => set.has(item))
 }
 
-/** The six lists a selection holds. */
+/** The seven lists a selection holds. */
 interface Lists {
   names: readonly string[]
   wires: readonly string[]
@@ -31,6 +31,7 @@ interface Lists {
   drawings: readonly string[]
   copper: readonly string[]
   texts: readonly string[]
+  board: readonly string[]
 }
 
 /** A point of a track, in mm. */
@@ -65,8 +66,8 @@ export function segmentFits(segment: TrackSegment, points: readonly SegmentEnd[]
   return sameEnd(points[segment.index], segment.from) && sameEnd(points[segment.index + 1], segment.to)
 }
 
-const EMPTY: Lists = { names: [], wires: [], labels: [], drawings: [], copper: [], texts: [] }
-const KEYS: readonly (keyof Lists)[] = ["names", "wires", "labels", "drawings", "copper", "texts"]
+const EMPTY: Lists = { names: [], wires: [], labels: [], drawings: [], copper: [], texts: [], board: [] }
+const KEYS: readonly (keyof Lists)[] = ["names", "wires", "labels", "drawings", "copper", "texts", "board"]
 
 export class Selection {
   /** Nothing selected. */
@@ -90,6 +91,9 @@ export class Selection {
   /** Parts' names and values on the schematic and designators on the silkscreen, as "<part>:<prop>" ("R1:schNameAt"), oldest pick first. */
   readonly texts: readonly string[]
 
+  /** The PCB's copper pours and holes, by the ids the engine gives them (`copperpour:1`, `hole:1`), oldest pick first. */
+  readonly board: readonly string[]
+
   /** The segment of the track selected alone that a double click picked; undefined when the whole track (or anything else) is. */
   readonly segment: TrackSegment | undefined
 
@@ -100,6 +104,7 @@ export class Selection {
     this.drawings = Object.freeze([...lists.drawings])
     this.copper = Object.freeze([...lists.copper])
     this.texts = Object.freeze([...lists.texts])
+    this.board = Object.freeze([...lists.board])
     this.segment = segment && Object.freeze({ id: segment.id, index: segment.index, from: Object.freeze({ ...segment.from }), to: Object.freeze({ ...segment.to }) })
     Object.freeze(this)
   }
@@ -109,7 +114,7 @@ export class Selection {
   }
 
   private get lists(): Lists {
-    return { names: this.names, wires: this.wires, labels: this.labels, drawings: this.drawings, copper: this.copper, texts: this.texts }
+    return { names: this.names, wires: this.wires, labels: this.labels, drawings: this.drawings, copper: this.copper, texts: this.texts, board: this.board }
   }
 
   /** This selection with some lists changed: itself when every list kept its length (lists are only ever shortened or kept here). */
@@ -153,9 +158,19 @@ export class Selection {
     return this.texts.length
   }
 
-  /** Every object selected: the parts, the wires, the labels, the drawings, the copper and the names and values. */
+  /** How many copper pours and holes are selected. */
+  get boardCount(): number {
+    return this.board.length
+  }
+
+  /** Every object selected: the parts, the wires, the labels, the drawings, the copper, the names and values, the pours and holes. */
   get total(): number {
-    return this.names.length + this.wires.length + this.labels.length + this.drawings.length + this.copper.length + this.texts.length
+    return this.names.length + this.wires.length + this.labels.length + this.drawings.length + this.copper.length + this.texts.length + this.board.length
+  }
+
+  /** The pour or hole when it is all that is selected: the one Properties shows and whose outline has handles. */
+  get soleBoard(): string | undefined {
+    return this.total === 1 ? this.board[0] : undefined
   }
 
   /** The name, value or designator when it is all that is selected: the one Properties, the arrows and a drag move. */
@@ -205,6 +220,36 @@ export class Selection {
 
   hasText(id: string): boolean {
     return this.texts.includes(id)
+  }
+
+  hasBoard(id: string): boolean {
+    return this.board.includes(id)
+  }
+
+  /** Just this pour or hole. */
+  onlyBoard(id: string): Selection {
+    return this.soleBoard === id ? this : new Selection({ ...EMPTY, board: [id] })
+  }
+
+  /** The pour or hole taken out when it is in, else added after the others; the other kinds stay. */
+  toggleBoard(id: string): Selection {
+    return this.hasBoard(id) ? this.withoutBoard([id]) : this.grown({ board: [...this.board, id] })
+  }
+
+  /** The pours and holes not in yet, added in order. */
+  addBoard(ids: readonly string[]): Selection {
+    const fresh = unique(ids).filter((id) => !this.hasBoard(id))
+    return fresh.length === 0 ? this : this.grown({ board: [...this.board, ...fresh] })
+  }
+
+  /** The selection less these pours and holes. */
+  withoutBoard(ids: readonly string[]): Selection {
+    return this.with({ board: less(this.board, ids) })
+  }
+
+  /** Only the selected pours and holes that are among these, such as those the board still has. */
+  keepBoard(ids: Iterable<string>): Selection {
+    return this.with({ board: among(this.board, ids) })
   }
 
   /** Just this part. */
@@ -308,7 +353,7 @@ export class Selection {
 
   /** Every one of these parts, wires, labels, drawings and tracks or vias, each once, and nothing else (no name or value). */
   all(names: readonly string[], wires: readonly string[] = [], labels: readonly string[] = [], drawings: readonly string[] = [], copper: readonly string[] = []): Selection {
-    const next: Lists = { names: unique(names), wires: unique(wires), labels: unique(labels), drawings: unique(drawings), copper: unique(copper), texts: [] }
+    const next: Lists = { names: unique(names), wires: unique(wires), labels: unique(labels), drawings: unique(drawings), copper: unique(copper), texts: [], board: [] }
     return KEYS.every((key) => sameList(next[key], this[key])) ? this : Selection.from(next)
   }
 

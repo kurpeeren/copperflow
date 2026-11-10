@@ -58,6 +58,8 @@ export interface PartKeysInput {
   drawings?: RemoveDrawings
   /** The schematic's sheet, whose hand-drawn wires follow the parts the arrows and align move. The PCB has none. */
   follow?: WireFollow
+  /** The PCB's copper pours and holes' Delete (pour-tool.ts boardRemoval). The schematic has none. */
+  board?: RemoveDrawings
   /** The PCB's copper: Delete removes the selected tracks and vias (use-copper.ts). The schematic has none. */
   copper?: { remove(ids: readonly string[]): void }
   /** The parts' names and values (or designators): the arrows move one selected alone (use-part-texts.ts). */
@@ -77,16 +79,16 @@ function removeSelection(input: PartKeysInput, fromKey: boolean): void {
   const { copper, rest } = splitCopper(selection, input.copper !== undefined)
   const removeCopper = () => (copper.length > 0 ? input.copper?.remove(copper) : undefined)
   if (!rest) return removeCopper()
-  const result = deletePlan(rest, input.blockerFor, input.wire?.removal, input.wire?.labelRemoval, input.drawings)
+  const result = deletePlan(rest, input.blockerFor, input.wire?.removal, input.wire?.labelRemoval, input.drawings, input.board)
   if ("message" in result) {
     const blocked = restBlocked(copper.length, result.message, fromKey)
     if (blocked.removeCopper) removeCopper()
     return blocked.notice === undefined ? undefined : input.actions.notify(blocked.notice)
   }
-  const { plan, wires, labels, drawings, question } = result
+  const { plan, wires, labels, drawings, board, question } = result
   if (question && !window.confirm(question)) return
   removeCopper()
-  const left = (current: Selection) => current.without(plan.parts).withoutWires(wires).withoutLabels(labels).withoutDrawings(drawings)
+  const left = (current: Selection) => current.without(plan.parts).withoutWires(wires).withoutLabels(labels).withoutDrawings(drawings).withoutBoard(board)
   void sendGroupEdit(plan, input.actions).then((ok) => {
     if (!ok) return
     input.onSelect(left)
@@ -151,9 +153,9 @@ function usePartCommands(input: PartKeysInput, edits: KeyEdits): void {
 export function usePartKeys(input: PartKeysInput): { rotateHeld: boolean; keyMove: KeyMove | undefined } {
   const { edits, held, moved } = useKeyEdits(input)
   usePartCommands(input, edits)
-  const { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, drawings, follow, copper, texts } = input
+  const { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, drawings, board, follow, copper, texts } = input
   useEffect(() => {
-    const keys: PartKeysInput = { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, drawings, follow, copper, texts }
+    const keys: PartKeysInput = { view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, drawings, board, follow, copper, texts }
     const onKey = (event: KeyboardEvent) => {
       const hit = keyAction(keyInput(event), { view, drawing: paused })
       if (!hit) return
@@ -162,6 +164,6 @@ export function usePartKeys(input: PartKeysInput): { rotateHeld: boolean; keyMov
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [edits, view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, drawings, follow, copper, texts])
+  }, [edits, view, selection, paused, circuit, actions, onSelect, blockerFor, layout, builtMark, buildStatus, moveWaiting, fit, netUnderPointer, netsOf, onHighlight, menuPlace, onContextMenu, wire, drawings, board, follow, copper, texts])
   return { rotateHeld: held, keyMove: moved }
 }

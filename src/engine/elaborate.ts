@@ -98,6 +98,9 @@ class Elaboration {
   /** Every drawing tag; ids are given after the walk, so a drawing never renames a part. */
   readonly drawings: DrawingEntry[] = []
   private readonly drawingCounts = new Map<DrawingKind, number>()
+  /** Every `<copperpour>` and `<hole>` tag met so far, kept or not: their ids count them all, as the core's edits do. */
+  private pourTags = 0
+  private holeTags = 0
   /** The keepouts, pours and holes, each kept or not: one with no board is warned about once the walk is done. */
   private readonly boardThings: { tag: string; source: SourceRef }[] = []
   private readonly nameCounts = new Map<string, number>()
@@ -380,14 +383,14 @@ class Elaboration {
 
   /** Pours are collected like keepouts; their nets are checked once the nets are known. */
   private copperpour(element: CfElement, frame: Frame, source: SourceRef): void {
-    const built = buildPour(element.props, frame.offset, this.pours.length + 1, source)
+    const built = buildPour(element.props, frame.offset, ++this.pourTags, source)
     this.diagnostics.push(...built.diagnostics)
     this.boardThings.push({ tag: "copperpour", source })
     if (built.pour) this.pours.push(built.pour)
   }
 
   private hole(element: CfElement, frame: Frame, source: SourceRef): void {
-    const built = buildHole(element.props, frame.offset, this.holes.length + 1, source)
+    const built = buildHole(element.props, frame.offset, ++this.holeTags, source)
     this.diagnostics.push(...built.diagnostics)
     this.boardThings.push({ tag: "hole", source })
     if (built.hole) this.holes.push(built.hole)

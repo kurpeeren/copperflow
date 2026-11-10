@@ -125,3 +125,13 @@ button.layer-eye:active:not(:disabled) {
   flex: 1;
   min-width: 0;
 }
+
+/* The copper pours, under a small heading per layer. */
+.layer-pours {
+  flex: none;
+}
+
+.layer-pours-title {
+  padding: 8px 10px 2px;
+  color: var(--muted);
+}

@@ -2,6 +2,7 @@ import { parse } from "@babel/parser"
 import type { File, JSXAttribute, JSXElement, Node } from "@babel/types"
 import { drawingKindOf } from "../engine/drawing-kinds.js"
 import { MAIN_PAGE } from "../engine/model.js"
+import { isBoardItemTag, scanBoardItems, type BoardItemTagFacts } from "./board-items.js"
 import { NAME_NOT_LITERAL, scanDrawings, type DrawingTag, type NamedElement } from "./drawing-scan.js"
 import { readLiteral, readPoint, readPointList } from "./literals.js"
 import type { CircuitModel, PartInfo, Point, PropInfo, TraceInfo } from "./types.js"
@@ -29,6 +30,8 @@ export interface Scan {
   traceNodes: JSXElement[]
   /** By drawing id. */
   drawingNodes: Map<string, JSXElement>
+  /** The pours and holes, by their ids ("copperpour:1", "hole:1"). */
+  boardItemNodes: Map<string, JSXElement>
   /** The `<page>` elements, in the order of `model.pages`. */
   pageNodes: JSXElement[]
   /** A sheet file's `<sheet>` element. */
@@ -69,18 +72,20 @@ export function analyzeCircuit(source: string): CircuitModel {
 
 export function scanCircuit(source: string): Scan {
   const scan: Scan = {
-    model: { parts: [], traces: [], drawings: [], skipped: [], imports: [], pages: [] },
+    model: { parts: [], traces: [], drawings: [], boardItems: [], skipped: [], imports: [], pages: [] },
     partNodes: new Map(),
     traceNodes: [],
     drawingNodes: new Map(),
+    boardItemNodes: new Map(),
     pageNodes: [],
   }
   const drawingTags: DrawingTag[] = []
+  const boardTags: BoardItemTagFacts[] = []
   const named: NamedElement[] = []
   const file = parseSource(source)
   const circuit = circuitFunction(file)
   walk(file, [], (node, ancestors) => {
-    if (node.type === "JSXElement") collectElement(source, readElement(source, node, ancestors, circuit), ancestors, scan, { drawingTags, named })
+    if (node.type === "JSXElement") collectElement(source, readElement(source, node, ancestors, circuit), ancestors, scan, { drawingTags, boardTags, named })
     if (node.type === "ImportDeclaration") {
       for (const specifier of node.specifiers) {
         scan.model.imports.push({ local: specifier.local.name, source: node.source.value, end: node.end ?? 0 })
@@ -91,6 +96,9 @@ export function scanCircuit(source: string): Scan {
   scan.model.drawings = drawings.drawings
   scan.model.skipped.push(...drawings.skipped)
   scan.drawingNodes = drawings.nodes
+  const board = scanBoardItems(boardTags)
+  scan.model.boardItems = board.items
+  scan.boardItemNodes = board.nodes
   return scan
 }
 
@@ -145,7 +153,7 @@ function collectElement(
   element: ElementFacts,
   ancestors: Node[],
   scan: Scan,
-  found: { drawingTags: DrawingTag[]; named: NamedElement[] },
+  found: { drawingTags: DrawingTag[]; boardTags: BoardItemTagFacts[]; named: NamedElement[] },
 ): void {
   if (element.tag === "board" || element.tag === "sheet") {
     // A sheet file's <sheet> holds its parts as a circuit's <board> does.
@@ -156,6 +164,12 @@ function collectElement(
   }
   if (element.tag === "page") return collectPage(element, scan)
   if (element.tag === "trace") return collectTrace(element, scan)
+  if (isBoardItemTag(element.tag)) {
+    const outline = element.attributes.find((a) => a.name.type === "JSXIdentifier" && a.name.name === "outline")
+    const { tag, node, props, line, start, end, readonlyReason, parent, uncounted } = element
+    found.boardTags.push({ tag, node, props, outlineValue: outline?.value, line, start, end, ...(readonlyReason ? { readonlyReason } : {}), ...(parent ? { parent } : {}), ...(uncounted ? { uncounted } : {}) })
+    return
+  }
   const kind = drawingKindOf(element.tag)
   if (kind) {
     found.drawingTags.push({ ...element, kind })
