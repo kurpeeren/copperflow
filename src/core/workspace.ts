@@ -26,6 +26,8 @@ import type { CircuitModel, Edit } from "./types.js"
 
 const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "coverage", ".copperflow"])
 const CIRCUIT_FILE = /\.circuit\.tsx$/
+/** A sub-sheet file: built alone it is its own contents, and it is edited as a circuit file is. */
+const SHEET_FILE = /\.sheet\.tsx$/
 
 export interface LoadedCircuit {
   file: string
@@ -66,17 +68,26 @@ export async function resolveCircuit(root: string, file: string): Promise<{ path
     throw error
   }
   if (!isInside(realRoot, path)) throw new Error(`${file} is outside the project root`)
-  if (!CIRCUIT_FILE.test(basename(path))) throw new Error(`${file} is not a *.circuit.tsx file`)
+  if (!CIRCUIT_FILE.test(basename(path)) && !SHEET_FILE.test(basename(path))) throw new Error(`${file} is not a *.circuit.tsx or *.sheet.tsx file`)
   return { path, file: relative(realRoot, path).split(sep).join("/") }
 }
 
 /** Circuit files (`*.circuit.tsx`) in the project, as sorted project-relative paths. */
-export async function listCircuits(root: string): Promise<string[]> {
+export function listCircuits(root: string): Promise<string[]> {
+  return listMatching(root, CIRCUIT_FILE)
+}
+
+/** Sub-sheet files (`*.sheet.tsx`) in the project, as sorted project-relative paths. */
+export function listSheets(root: string): Promise<string[]> {
+  return listMatching(root, SHEET_FILE)
+}
+
+async function listMatching(root: string, pattern: RegExp): Promise<string[]> {
   const found: string[] = []
   const visit = async (dir: string): Promise<void> => {
     for (const entry of await readdir(dir, { withFileTypes: true })) {
       if (entry.isDirectory() && !SKIP_DIRS.has(entry.name)) await visit(join(dir, entry.name))
-      else if (entry.isFile() && CIRCUIT_FILE.test(entry.name)) {
+      else if (entry.isFile() && pattern.test(entry.name)) {
         found.push(relative(resolve(root), join(dir, entry.name)).split(sep).join("/"))
       }
     }

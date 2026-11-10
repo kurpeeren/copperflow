@@ -17,6 +17,7 @@ import { formatLiteral, formatPoint, formatPointList, readPointList } from "./li
 import { addPage, insertOnPage, movePartToPage, removePage, renamePage } from "./page-edits.js"
 import { localNet, localNetRefusal } from "../engine/selectors.js"
 import { partsInSelector, sheetFileIn } from "./selectors.js"
+import { renamePort, setConnections, setSheetSize } from "./sheet-edits.js"
 import { LABEL_AT_PROPS } from "../engine/component.js"
 import { MAIN_PAGE } from "../engine/model.js"
 import type { Edit, Literal, PartInfo, Point, PropValue } from "./types.js"
@@ -67,6 +68,12 @@ function editSource(source: string, scan: Scan, edit: Edit, locked: ReadonlySet<
       return renamePage(source, scan, edit.from, edit.to)
     case "removePage":
       return removePage(source, scan, edit.name, locked)
+    case "renamePort":
+      return renamePort(source, scan, edit.from, edit.to)
+    case "setSheetSize":
+      return setSheetSize(source, scan, edit)
+    case "setConnections":
+      return setConnections(source, scan, requireEditablePart(scan, edit.part, locked), edit.connections)
   }
 }
 

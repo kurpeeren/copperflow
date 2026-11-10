@@ -155,3 +155,9 @@ export type Edit =
   | { kind: "removeDrawing"; id: string }
   /** Moves or restyles a drawing, e.g. `{ x, y }` or `{ points }`; a `name` renames it, which changes its id. */
   | { kind: "setDrawingProps"; id: string; props: Record<string, DrawingValue> }
+  /** In a sheet file: renames a `<port>` and the trace ends that name its net (`net.<from>`). */
+  | { kind: "renamePort"; from: string; to: string }
+  /** In a sheet file: the sheet symbol's size on `<sheet>`; null removes one, so the ports decide it again. */
+  | { kind: "setSheetSize"; width?: number | null; height?: number | null }
+  /** Writes a sub-sheet instance's `connections` whole: port name to parent net (a bus port to a parent bus). */
+  | { kind: "setConnections"; part: string; connections: Record<string, string> }

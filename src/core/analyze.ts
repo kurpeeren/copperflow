@@ -31,6 +31,8 @@ export interface Scan {
   drawingNodes: Map<string, JSXElement>
   /** The `<page>` elements, in the order of `model.pages`. */
   pageNodes: JSXElement[]
+  /** A sheet file's `<sheet>` element. */
+  sheetNode?: JSXElement
 }
 
 /** What every element is, whatever its tag. */
@@ -145,9 +147,11 @@ function collectElement(
   scan: Scan,
   found: { drawingTags: DrawingTag[]; named: NamedElement[] },
 ): void {
-  if (element.tag === "board") {
+  if (element.tag === "board" || element.tag === "sheet") {
+    // A sheet file's <sheet> holds its parts as a circuit's <board> does.
     const close = element.node.closingElement?.start
-    if (close != null) scan.model.boardClose = { start: close }
+    if (close != null && scan.model.boardClose === undefined) scan.model.boardClose = { start: close }
+    if (element.tag === "sheet" && scan.sheetNode === undefined) scan.sheetNode = element.node
     return
   }
   if (element.tag === "page") return collectPage(element, scan)

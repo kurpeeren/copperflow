@@ -4,7 +4,7 @@ import MagicString from "magic-string"
 import { MAIN_PAGE } from "../engine/model.js"
 import { scanCircuit, type Scan } from "./analyze.js"
 import { EditError } from "./edit-error.js"
-import { attributeNamed, insertInBoard, lineEnding, lineIndent, removeRange } from "./edit-text.js"
+import { atTop, attributeNamed, insertInBoard, lineEnding, lineIndent, removeRange } from "./edit-text.js"
 import { formatLiteral } from "./literals.js"
 import { partsInSelector } from "./selectors.js"
 import type { PageInfo, PartInfo, TraceInfo } from "./types.js"
@@ -117,11 +117,11 @@ export function movePartNote(scan: Scan, name: string, page: string): string | u
 export function movePartToPage(source: string, scan: Scan, part: PartInfo, page: string): string {
   const target = isMain(page) ? MAIN_PAGE : checkPageName(page)
   if (pageOfThing(part) === target) throw new EditError("invalid", `${part.name} is already on page ${target}`)
-  if (part.parent !== "board" && part.parent !== "page") {
+  if (!atTop(part.parent) && part.parent !== "page") {
     throw new EditError("readonly", `${part.name} is inside a <${part.parent ?? "?"}>; move what holds it instead`)
   }
   const traces = tracesThatMove(scan, part)
-  const stuck = traces.find((t) => !t.editable || (t.parent !== "board" && t.parent !== "page"))
+  const stuck = traces.find((t) => !t.editable || (!atTop(t.parent) && t.parent !== "page"))
   if (stuck) throw new EditError("readonly", `${part.name} has a trace on line ${stuck.line} that cannot be moved; move it by hand`)
   const texts = [part, ...traces].map((range) => source.slice(range.start, range.end))
   const removed = [part, ...traces].sort((a, b) => b.start - a.start).reduce((text, range) => removeRange(text, range.start, range.end), source)

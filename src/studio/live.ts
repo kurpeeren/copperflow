@@ -33,7 +33,9 @@ export interface BuildState {
 export type Listener = (event: "change" | "build" | "library", data: Record<string, unknown>) => void
 
 const IGNORED = /^(node_modules|dist|\.git|\.copperflow|coverage)\//
-const ANNOTATIONS = /\.circuit\.annotations\.json$/
+const ANNOTATIONS = /\.(circuit|sheet)\.annotations\.json$/
+/** A sub-sheet file: the circuits that use it read it, so its change builds every kept build again, its own included. */
+const SHEET = /\.sheet\.tsx$/
 const PART_YAML = /^parts\/[^/]+\/part\.yaml$/
 const LIBRARY_TIMER = "\0library"
 const REBUILD_TIMER = "\0rebuild"
@@ -172,11 +174,11 @@ export class LiveProject {
     if (IGNORED.test(name)) return
     if (PART_YAML.test(name)) this.debounce(LIBRARY_TIMER, () => this.emit("library", {}))
     const annotations = ANNOTATIONS.test(name)
-    const circuit = annotations ? name.replace(ANNOTATIONS, ".circuit.tsx") : name
-    if (circuit.endsWith(".circuit.tsx")) this.debounce(circuit, () => this.emit("change", { file: circuit }))
+    const circuit = annotations ? name.replace(ANNOTATIONS, ".$1.tsx") : name
+    if (circuit.endsWith(".circuit.tsx") || SHEET.test(circuit)) this.debounce(circuit, () => this.emit("change", { file: circuit }))
     // The sidecar holds locks and marks, which the engine does not build from.
     if (annotations || !isProjectFile(name, ENGINE_FILES)) return
-    if (this.starts.has(name)) this.debounce(`${BUILT_CIRCUIT_TIMER}${name}`, () => void this.changedUnlessBuilt(name))
+    if (this.starts.has(name) && !SHEET.test(name)) this.debounce(`${BUILT_CIRCUIT_TIMER}${name}`, () => void this.changedUnlessBuilt(name))
     else this.engineFileChanged()
   }
 
