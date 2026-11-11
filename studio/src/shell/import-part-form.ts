@@ -44,9 +44,11 @@ export function verifyHint(result: ImportPartResult): string {
   return `Not verified: check every pin and pad in parts/${result.id}/verification.md against the datasheet before verifying it.`
 }
 
-/** The Library's line for where a part came from: "Imported from LCSC C7950 on 2026-11-11". */
+/** The Library's line for where a part came from: "Imported from LCSC C7950 on 2026-11-11", "Written on 2026-11-11". */
 export function originLabel(origin: string | undefined): string | undefined {
   if (!origin) return undefined
   const lcsc = /^lcsc (C\d+), imported (\S+)$/.exec(origin)
-  return lcsc ? `Imported from LCSC ${lcsc[1]} on ${lcsc[2]}` : origin
+  if (lcsc) return `Imported from LCSC ${lcsc[1]} on ${lcsc[2]}`
+  const written = /^written (\S+)$/.exec(origin)
+  return written ? `Written on ${written[1]}` : origin
 }
