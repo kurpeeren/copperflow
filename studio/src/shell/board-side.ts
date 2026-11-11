@@ -107,7 +107,7 @@ export function transferPlan(names: readonly string[], sheet: readonly SheetSpot
   const boardMiddle = middleOf(ok.map((name) => board.find((part) => part.component === name) as BoardPart))
   const edits = spots.map((spot): Edit => {
     const at = offsets.get(spot.component) as { x: number; y: number }
-    const turn = spot.rotation === undefined ? {} : { pcbRotation: spot.rotation }
+    const turn: Record<string, PropValue> = spot.rotation === undefined ? {} : { pcbRotation: spot.rotation }
     return { kind: "setProps", part: spot.component, props: { pcbX: tidy(boardMiddle.x + at.x), pcbY: tidy(boardMiddle.y + at.y), ...turn } }
   })
   return { edits, summary: `place ${ok.length === 1 ? ok[0] : `${ok.length} parts`} as on the schematic${and(skipped)}`, skipped }
