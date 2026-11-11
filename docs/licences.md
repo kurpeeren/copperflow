@@ -55,8 +55,11 @@ What copperflow concludes and does:
   tool" the notice names; its requirement is met by stating the source, which every import does.
 - **The source is stated and kept.** The written `part.yaml` names it (`origin: lcsc Cxxxx, imported <date>` and a
   description naming the JLCEDA/EasyEDA Official Library with both links), and the part folder gets `source.md` with
-  the notice exactly as the document carried it. Nothing in copperflow removes either. Every import (CLI, MCP answer,
-  Studio result) prints the limit in one sentence.
+  the notice exactly as the document carried it. Both stay as long as the part uses the imported footprint: replacing
+  the part with the part wizard or `create_part` while keeping its `footprint.yaml` (no new pads) keeps the origin and
+  `source.md`. Only a replace that changes the footprint (a footprint string or new pads) removes them, together with
+  the imported `footprint.yaml`, and says so in its answer, because the part then no longer holds EasyEDA's data. Every
+  import (CLI, MCP answer, Studio result) prints the limit in one sentence.
 - **Nothing is redistributed by copperflow.** No fetched data is bundled, cached or shipped; copperflow's own tests use
   documents written for copperflow in EasyEDA's format (dimensions from the packages' standard drawings), not recorded
   copies of the library.

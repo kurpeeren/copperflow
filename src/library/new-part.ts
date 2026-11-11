@@ -1,10 +1,14 @@
 // A library part written from a datasheet by a person (Library → New part…) or the agent (create_part): part.yaml with
 // origin "written", the component and verification.md, through the core's createPart. Never verified.
+// Replacing a part that has its own footprint.yaml without giving pads keeps that file; an imported part then keeps its
+// origin and source.md too. Replacing an imported part's footprint removes the imported data.
 import { access, readFile, rm } from "node:fs/promises"
 import { join } from "node:path"
-import { createPart, FOOTPRINT_FILE, PARTS_DIR, partDir, validatePartId, type Part } from "../core/library.js"
+import { parse } from "yaml"
+import { createPart, FOOTPRINT_FILE, isPlaceholder, isWritten, PARTS_DIR, partDir, readPart, validatePartId, type Part } from "../core/library.js"
 import { generateFootprint } from "../engine/footprints/index.js"
-import { pinErrors, type FootprintFile } from "../engine/footprints/file.js"
+import { FootprintFileSchema, pinErrors, type FootprintFile } from "../engine/footprints/file.js"
+import { ORIENTATION_NOTE } from "./lcsc-part.js"
 import { parsePinTable, type PinRow } from "./pin-table.js"
 
 /** A footprint string such as "soic8" or "qfn32_5x5_p0.5", or the part's own footprint.yaml. */
@@ -51,26 +55,31 @@ export async function writeNewPart(root: string, input: NewPartInput, options: {
   const fromFile = typeof input.package !== "string"
   if (input.footprintFile && !fromFile) throw new Error(`Footprint pads are given only with package { file: "${FOOTPRINT_FILE}" }`)
   if (!fromFile) checkPackage(input.package as string, pins)
-  const footprintFile = fromFile ? (input.footprintFile ?? stubFootprint(pins)) : undefined
-  const notes = fromFile && !input.footprintFile ? [PLACEHOLDER_NOTE] : []
+  const dir = partDir(root, id)
+  const previous = options.replace === true ? await previousPart(dir, root, id) : {}
+  const kept = fromFile && !input.footprintFile ? previous.footprint : undefined
+  const imported = previous.origin !== undefined && !isWritten(previous.origin)
+  const footprintFile = fromFile ? (input.footprintFile ?? kept ?? stubFootprint(pins)) : undefined
+  const notes = replaceNotes({ fromFile, given: !!input.footprintFile, kept: !!kept, imported, origin: previous.origin })
   const part = {
     title: input.title,
     ...(input.description ? { description: input.description } : {}),
     ...(input.manufacturer ? { manufacturer: input.manufacturer } : {}),
     ...(input.mpn ? { mpn: input.mpn } : {}),
-    origin: `written ${options.now.slice(0, 10)}`,
+    origin: kept && imported ? previous.origin : `written ${options.now.slice(0, 10)}`,
     footprint: fromFile ? FOOTPRINT_FILE : input.package,
     pins,
     ...(input.suppliers && Object.keys(input.suppliers).length > 0 ? { suppliers: input.suppliers } : {}),
     ...(input.datasheet && (input.datasheet.url || input.datasheet.file) ? { datasheet: input.datasheet } : {}),
   }
-  const dir = partDir(root, id)
   const existed = await access(dir).then(
     () => true,
     () => false,
   )
   try {
     const created = await createPart(root, id, part, { replace: options.replace === true, now: options.now, notes, ...(footprintFile ? { footprintFile } : {}) })
+    // The imported data goes only once the part that no longer uses it is written.
+    if (imported && !kept) await removeImport(dir, fromFile)
     const checklist = await readFile(join(dir, "verification.md"), "utf8")
     return { id, part: created.part, files: created.files, notes, verification: `${PARTS_DIR}/${id}/verification.md`, checklist }
   } catch (error) {
@@ -78,6 +87,39 @@ export async function writeNewPart(root: string, input: NewPartInput, options: {
     if (!existed) await rm(dir, { recursive: true, force: true })
     throw error
   }
+}
+
+interface PreviousPart {
+  origin?: string
+  /** The part's own footprint.yaml when it has pads drawn (not the placeholder). */
+  footprint?: FootprintFile
+}
+
+/** What a replace may keep from the part already in the folder; nothing when there is none or it cannot be read. */
+async function previousPart(dir: string, root: string, id: string): Promise<PreviousPart> {
+  const origin = await readPart(root, id).then(
+    (part) => part.origin,
+    () => undefined,
+  )
+  const text = await readFile(join(dir, FOOTPRINT_FILE), "utf8").catch(() => undefined)
+  const parsed = text === undefined || isPlaceholder(text) ? undefined : FootprintFileSchema.safeParse(parse(text))
+  return { ...(origin ? { origin } : {}), ...(parsed?.success ? { footprint: parsed.data } : {}) }
+}
+
+/** What the answer and verification.md say about the footprint: kept, a placeholder, or the import removed. */
+function replaceNotes(state: { fromFile: boolean; given: boolean; kept: boolean; imported: boolean; origin?: string }): string[] {
+  if (state.kept && state.imported) return [`Kept ${FOOTPRINT_FILE}, the origin (${state.origin}) and source.md from the import: the part still uses EasyEDA's footprint.`, ORIENTATION_NOTE]
+  if (state.kept) return [`Kept ${FOOTPRINT_FILE}: its pads were drawn before and none were given.`]
+  const notes = state.fromFile && !state.given ? [PLACEHOLDER_NOTE] : []
+  if (!state.imported) return notes
+  const footprint = state.fromFile ? `replaced the imported ${FOOTPRINT_FILE}` : `the imported ${FOOTPRINT_FILE}`
+  return [...notes, `Removed source.md and ${footprint}: the part no longer uses EasyEDA's data.`]
+}
+
+/** Removes an imported part's source.md and, when the part no longer names it, its footprint.yaml. */
+async function removeImport(dir: string, fromFile: boolean): Promise<void> {
+  await rm(join(dir, "source.md"), { force: true })
+  if (!fromFile) await rm(join(dir, FOOTPRINT_FILE), { force: true })
 }
 
 /** A few lines saying what was written, for create_part and the Studio. */

@@ -43,7 +43,12 @@ When the human asks for a part by its LCSC number (for example `C7950`), call `i
 with `lcsc` (and `id` if they name one). It fetches the part's symbol, footprint and attributes
 from EasyEDA and writes `parts/<id>/` with `part.yaml`, `footprint.yaml`, `verification.md` and
 `source.md`. Pin types are `passive` except supply and ground pins, so set the real types with
-`create_part` (`replace: true`) from the datasheet when the checks need them. Tell the human the
+`create_part` (`replace: true`, `package: { "file": "footprint.yaml" }`, no `footprint_file`) from
+the datasheet when the checks need them: the imported pads, origin and `source.md` are kept. A
+replace that changes the footprint (a footprint string or new pads) makes the part `written` and
+removes `source.md` and the imported `footprint.yaml`. The footprint keeps EasyEDA's orientation
+(rows horizontal, pin 1 at the bottom left), which is JLCPCB's, so pick-and-place needs no
+correction; place it at `pcbRotation -90` to match a generated footprint of the same package. Tell the human the
 part is not verified, what the answer's notes say was approximated, and that the import is for
 personal, non-commercial use only, as EasyEDA's terms allow (see `source.md`). Import one part per
 request; never import in bulk. Offline it writes nothing: then create the part from the datasheet
