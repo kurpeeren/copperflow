@@ -137,9 +137,9 @@ autoplace { file: "sensor.circuit.tsx", instance: "PS1" }
 autoplace { file: "sensor.circuit.tsx", instance: "CH1" }
 → Placed 2 parts; wire length 85 mm (was 90); board 30 × 20 mm; 2 overlaps
 autoplace { file: "sensor.circuit.tsx", instance: "CH2" }
-→ Nothing to place: every part in the scope is placed or locked. Nothing was written.
-set_props { file: "sensor.circuit.tsx", part: "CH2", props: { pcbX: 5, pcbY: 5 } }
-→ Change c0009 applied: set CH2 pcbX=5 pcbY=5
+→ Placed 2 parts; wire length 78 mm (was 85); board 30 × 20 mm; 0 overlaps
+  Change c0009; undo_change takes it back.
+  Notes: CH2 was moved as a block, keeping the arrangement of CH1
 autoplace { file: "sensor.circuit.tsx", parts: ["J1", "J2"] }
 → Placed 2 parts; wire length 61 mm (was 88); board 30 × 20 mm; 0 overlaps
 fit_board { file: "sensor.circuit.tsx" }
@@ -147,9 +147,10 @@ fit_board { file: "sensor.circuit.tsx" }
 ```
 
 A sheet holds one layout for all its instances: placing CH1 wrote the positions into
-`Channel.sheet.tsx`, so CH2 took the same layout on top of CH1 (the 2 overlaps). Move the other
-instance as a whole with `set_props` on the instance (`pcbX`, `pcbY`), then look with
-`board_summary`.
+`Channel.sheet.tsx`, so CH2 took the same layout on top of CH1 (the 2 overlaps). `autoplace` on
+CH2 (or on the whole board) moves the other instance as a whole: it sets the instance's `pcbX`,
+`pcbY` so its copy overlaps nothing, near what it connects to. A locked instance stays. Then look
+with `board_summary`.
 
 ## 7. Look, tune, pour, route
 

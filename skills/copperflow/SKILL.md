@@ -71,8 +71,8 @@ first line of its answer. The worked example is in
    then `Change c0007; undo_change takes it back.`, then `Not placed:` and `Notes:` if any. Place
    the block with the most connections (the MCU) first, then the others, then the connectors.
    Parts a person placed or locked stay and are worked round. A sheet holds one layout for all
-   its instances: after the first is placed the others sit on top of it (`Nothing to place` for
-   them); move each as a whole with `set_props` `{ part: "CH2", props: { pcbX, pcbY } }`.
+   its instances: the first one placed sets it, and `autoplace` moves each other instance as a
+   whole by its anchor (`{ instance: "CH2" }`, or the whole board), noting `CH2 was moved as a block`.
 8. **Board shape and connectors.** `fit_board` `{ file, margin? }`:
    `Change c0010: board 42 × 28 mm (margin 2 mm)`; or `autoplace` with `fit: true`.
    Mounting holes with `add_hole` `{ file, x, y, diameter }`.
