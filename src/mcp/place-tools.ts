@@ -101,9 +101,9 @@ export async function autoplace(
   const scope = scopeOf(design, input)
   const locked = await lockedNames(circuit.path, design)
   const placement = placeBoard(design, { scope, locked, budgetMs: budgetSeconds * 1000, ...(options.clock ? { clock: options.clock } : {}) })
-  const writes = placementWrites(design, placement.positions)
+  const writes = placementWrites(design, placement.positions, placement.blocks)
   const unplaced = listLine("Not placed", placement.unplaced.map((u) => `${u.name} (${u.reason})`))
-  if (writes.circuit.length + writes.sheets.length === 0 && !input.fit) {
+  if (writes.circuit.length + writes.sheets.length + writes.blocks.length === 0 && !input.fit) {
     const which = scope.kind === "instance" ? `every part of ${scope.instance}` : "every part in the scope"
     const none = placement.unplaced.length === 0 ? `Nothing to place: ${which} already has a position or is locked; autoplace moves only parts without one.` : "No part was placed."
     return [`${none} Nothing was written.`, ...unplaced].join("\n")

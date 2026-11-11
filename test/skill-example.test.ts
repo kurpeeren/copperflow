@@ -59,8 +59,7 @@ describe("the two-channel sensor board of the skill", () => {
         { sheet: "Channel", name: "CH2", connections: { ...channel, IN: "S2", OUT: "ADC2" } },
       ],
       parts: [{ name: "U1", part: "ATTINY814" }, { name: "C1", kind: "capacitor", value: "100nF", footprint: "0402" }, { name: "J1", kind: "pinheader", props: { pinCount: 4 } }, { name: "J2", kind: "pinheader", props: { pinCount: 3 } }],
-      nets: { V5: ["J1.pin1"], GND: ["J1.pin2", "J2.pin3", "U1.GND", "C1.pin2"], S1: ["J1.pin3"], S2: ["J1.pin4"], V3_3: ["U1.VCC", "C1.pin1", "J2.pin1"], UPDI: ["U1.UPDI", "J2.pin2"], ADC1: ["U1.PA4"], ADC2: ["U1.PA5"] },
-    })
+      nets: { V5: ["J1.pin1"], GND: ["J1.pin2", "J2.pin3", "U1.GND", "C1.pin2"], S1: ["J1.pin3"], S2: ["J1.pin4"], V3_3: ["U1.VCC", "C1.pin1", "J2.pin1"], UPDI: ["U1.UPDI", "J2.pin2"], ADC1: ["U1.PA4"], ADC2: ["U1.PA5"] },    })
     expect(written.isError, written.text).toBe(false)
     expect(written.text.split("\n").slice(0, 5)).toEqual([
       expect.stringMatching(/^Change c\d+: wrote sensor\.circuit\.tsx, (Power|Channel)\.sheet\.tsx, (Power|Channel)\.sheet\.tsx$/),
@@ -73,9 +72,9 @@ describe("the two-channel sensor board of the skill", () => {
     expect((await call("note_decision", { file: FILE, text: "Schematic approved" })).text).toMatch(/^Change c\d+: noted under Decisions in PROJECT\.md$/)
     expect((await call("autoplace", { file: FILE, parts: ["U1", "C1"] })).text).toMatch(/^Placed 2 parts; wire length \d+ mm \(was \d+\); board 30 × 20 mm; 0 overlaps\nChange c\d+; undo_change takes it back\./)
     for (const instance of ["PS1", "CH1"]) expect((await call("autoplace", { file: FILE, instance })).text).toMatch(/^Placed \d+ parts/)
-    // CH2 shares Channel.sheet.tsx with CH1, so it took CH1's layout; nothing of it is left to place.
-    expect((await call("autoplace", { file: FILE, instance: "CH2" })).text).toMatch(/^Nothing to place/)
-    expect((await call("set_props", { file: FILE, part: "CH2", props: { pcbX: 5, pcbY: 5 } })).text).toMatch(/^Change c\d+ applied: set CH2 pcbX=5 pcbY=5$/)
+    // CH2 shares Channel.sheet.tsx with CH1, so it took CH1's layout; autoplace moves it as a block by its anchor.
+    const ch2 = await call("autoplace", { file: FILE, instance: "CH2" })
+    expect(ch2.text).toMatch(/^Placed 2 parts; wire length \d+ mm \(was \d+\); board 30 × 20 mm; 0 overlaps\nChange c\d+; undo_change takes it back\.\nNotes: CH2 was moved as a block, keeping the arrangement of CH1$/)
     expect((await call("autoplace", { file: FILE, parts: ["J1", "J2"] })).text).toMatch(/^Placed 2 parts/)
     expect((await call("fit_board", { file: FILE })).text).toMatch(/^Change c\d+: board [\d.]+ × [\d.]+ mm \(margin 2 mm\)$/)
     expect((await call("board_summary", { file: FILE })).text).toMatch(/^sensor\.circuit\.tsx: Board [\d.]+ × [\d.]+ mm, 2 layers, courtyards use \d+%; 11 parts, \d+ nets/)

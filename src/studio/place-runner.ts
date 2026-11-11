@@ -135,14 +135,14 @@ export class PlaceRunner {
     const { scope, fit, start, design, locked } = input
     try {
       const placement = await this.compute(job, { design, scope, locked, budgetMs: STUDIO_PLACE_BUDGET_MS })
-      const writes = placementWrites(design, placement.positions)
+      const writes = placementWrites(design, placement.positions, placement.blocks)
       const guard = async () => {
         if (job.cancelled) throw new Cancelled()
         const why = discardReason(start, await contentHashes(this.deps.root, file))
         if (why !== undefined) throw new Discarded(placeDiscard(why))
         job.committed = true
       }
-      const nothing = writes.circuit.length + writes.sheets.length === 0 && !fit
+      const nothing = writes.circuit.length + writes.sheets.length + writes.blocks.length === 0 && !fit
       if (nothing) await guard()
       const written = nothing ? undefined : await writePlacement(this.deps.root, file, writes, { author: "human", summary: placeSummary(scope, placement.positions.size), guard, ...(fit ? { fit: { margin: DEFAULT_FIT_MARGIN } } : {}) })
       const mark = written?.entry ? { entryId: written.entry.id, writeMark: this.deps.nextMark() } : {}

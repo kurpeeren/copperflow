@@ -5,15 +5,16 @@
 import { readFile } from "node:fs/promises"
 import { buildDesign, type Design } from "../engine/design.js"
 import { ENGINE_FILES } from "../engine/engine.js"
-import type { Component, SheetInstance } from "../engine/model.js"
+import { frameTurn } from "../engine/instance-anchor.js"
+import type { Component } from "../engine/model.js"
 import { naturalCompare } from "../engine/order.js"
-import { fitBoard, type FitBoard, type PlacedPosition } from "../engine/pcb-place/index.js"
+import { fitBoard, type BlockMove, type FitBoard, type PlacedPosition } from "../engine/pcb-place/index.js"
 import { collectProjectFiles } from "../engine/project-files.js"
 import { applyEdits } from "./edit.js"
 import { inProjectQueue, writeWithHistory } from "./file-writes.js"
 import { assertMeta, type Author, type FileChange, type HistoryEntry } from "./history.js"
 import { alsoField, sheetFilesFirst } from "./sheet-files.js"
-import type { CircuitModel, Edit } from "./types.js"
+import type { CircuitModel, Edit, PropInfo } from "./types.js"
 import { loadCircuit, resolveCircuit } from "./workspace.js"
 
 /** The edits that write a placement: the circuit's own parts, and the parts each sheet file holds. */
@@ -21,6 +22,8 @@ export interface PlacementWrites {
   circuit: Edit[]
   /** Each sheet file's edits, and the part each edit places as the circuit names it ("R101" for R1 of S1). */
   sheets: { file: string; edits: Edit[]; parts: string[]; twins: Twin[][] }[]
+  /** Instances moved as a whole: their pcbX/pcbY in the circuit shift by (dx, dy). */
+  blocks: BlockMove[]
   /** Placed parts no edit can write, and why. */
   notes: string[]
 }
@@ -48,18 +51,6 @@ function turned(x: number, y: number, degrees: number): { x: number; y: number }
   return { x: x * Math.cos(r) - y * Math.sin(r), y: x * Math.sin(r) + y * Math.cos(r) }
 }
 
-/**
- * The turn an instance gives the parts inside it: that of the nearest instance on its path (itself first) that writes
- * a board position, which records the turns of those round it; none when no instance on the path writes one.
- */
-function frameTurn(instances: readonly SheetInstance[], path: string): number {
-  for (let at: string | undefined = path; at; at = at.includes("/") ? at.slice(0, at.lastIndexOf("/")) : undefined) {
-    const placed = instances.find((instance) => instance.path === at)?.pcb
-    if (placed) return placed.rotation
-  }
-  return 0
-}
-
 /** The part's own props for a board position: the inverse of how the build puts a written position on the board. */
 function propsFor(component: Component, at: PlacedPosition, turn: number): SetProps["props"] {
   const local = turned(at.x - component.groupOffset.pcb.x, at.y - component.groupOffset.pcb.y, -turn)
@@ -70,7 +61,7 @@ function propsFor(component: Component, at: PlacedPosition, turn: number): SetPr
  * The edits that put each part of `positions` (board coordinates, as the placer gives them) where it says. A sheet
  * holds one position per part for every instance of it, so a second instance's part is left out with a note.
  */
-export function placementWrites(design: Design, positions: ReadonlyMap<string, PlacedPosition>): PlacementWrites {
+export function placementWrites(design: Design, positions: ReadonlyMap<string, PlacedPosition>, blocks: readonly BlockMove[] = []): PlacementWrites {
   const components = new Map(design.circuit.components.map((c) => [c.id, c]))
   const instances = design.circuit.instances ?? []
   const circuit: Edit[] = []
@@ -113,7 +104,7 @@ export function placementWrites(design: Design, positions: ReadonlyMap<string, P
       twins: [...sheet.twins, twinsOf(instance.file, local)],
     })
   }
-  return { circuit, sheets: [...sheets].map(([file, sheet]) => ({ file, ...sheet })), notes }
+  return { circuit, sheets: [...sheets].map(([file, sheet]) => ({ file, ...sheet })), blocks: [...blocks], notes }
 }
 
 export interface WritePlacementOptions {
@@ -181,6 +172,33 @@ function unlockedTwins(sheet: PlacementWrites["sheets"][number], locked: Readonl
   return { edits: kept.map((one) => one.edit), parts: kept.map((one) => one.name) }
 }
 
+/** A position prop's value in mm: 0 when it is not written, undefined when it is not a plain number. */
+function lengthOf(prop: PropInfo | undefined): number | undefined {
+  if (prop === undefined) return 0
+  const value = prop.literal
+  if (typeof value === "number") return value
+  return typeof value === "string" && /^-?\d+(\.\d+)?(mm)?$/.test(value.trim()) ? Number.parseFloat(value) : undefined
+}
+
+/** The edits that shift each moved instance's anchor; an instance that is locked, holds a locked part or cannot take the props is named in `skipped`. */
+function blockEdits(model: CircuitModel, blocks: readonly BlockMove[], locked: ReadonlySet<string>, skipped: string[]): { edits: SetProps[]; names: string[] } {
+  const edits: SetProps[] = []
+  const names: string[] = []
+  for (const block of blocks) {
+    const held = block.parts.find((part) => locked.has(part))
+    const why = refusal(model, block.instance, locked) ?? (held ? `holds ${held}, which is locked` : undefined)
+    const props = model.parts.find((p) => p.name === block.instance)?.props ?? {}
+    const [x, y] = [lengthOf(props["pcbX"]), lengthOf(props["pcbY"])]
+    if (why !== undefined || x === undefined || y === undefined) {
+      skipped.push(`${block.instance} ${why ?? "has a position that is not a plain number"}`)
+      continue
+    }
+    edits.push({ kind: "setProps", part: block.instance, props: { pcbX: round(x + block.dx), pcbY: round(y + block.dy) } })
+    names.push(...block.parts)
+  }
+  return { edits, names }
+}
+
 interface Texts {
   circuit: { path: string; file: string; source: string; after: string }
   sheets: (FileChange & { path: string })[]
@@ -223,8 +241,9 @@ export function writePlacement(root: string, file: string, writes: PlacementWrit
     const locked = new Set(loaded.annotations.locks.map((lock) => lock.part))
     const skipped: string[] = []
     const own = writable(loaded.model, writes.circuit, writes.circuit.map((edit) => (edit.kind === "setProps" ? edit.part : "")), locked, skipped)
-    const written = [...own.names]
-    let after = applyEdits(loaded.source, own.edits, locked)
+    const moves = blockEdits(loaded.model, writes.blocks, locked, skipped)
+    const written = [...own.names, ...moves.names]
+    let after = applyEdits(loaded.source, [...own.edits, ...moves.edits], locked)
     const sheets: Texts["sheets"] = []
     for (const sheet of writes.sheets) {
       const resolved = await resolveCircuit(root, sheet.file)
