@@ -253,6 +253,7 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     placementTransfer: () => transferPlacement(input),
     flip: () => flipSelection(input),
     annotate: () => annotateDesignators(input),
+    systemSettings: () => input.openDialog("system"),
   }
   return (table as Partial<Record<CommandId, () => void>>)[command]
 }

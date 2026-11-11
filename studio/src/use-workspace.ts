@@ -5,11 +5,12 @@ import { keyAction, keyInput, type KeyActionName } from "./pcb/canvas-keys"
 import type { View } from "./pcb/positions"
 import { INITIAL_BOTTOM, clickBottom, openBottomTab, toggleBottom, type BottomState, type BottomTab } from "./shell/bottom-state"
 import { NO_HIGHLIGHT, type Highlight } from "./pcb/highlight"
-import { INITIAL_GRID_STEPS, INITIAL_GRID_STYLES, setGridStep, toggleGridStyle, type GridSteps, type GridStyles } from "./pcb/grid"
+import { INITIAL_GRID_STYLES, setGridStep, toggleGridStyle, type GridSteps, type GridStyles } from "./pcb/grid"
 import { loadHoverLabels, saveHoverLabels } from "./shell/hover-label-setting"
 import { loadPourFill, savePourFill, type PourFillMode } from "./pcb/pour-view"
 import { applyTheme, browserStore, gridAfterThemeChoice, loadTheme, saveTheme, withThemeGrid, type ThemeName } from "./shell/theme-state"
 import { nextUnit, type Unit } from "./pcb/units"
+import { loadSystem, saveSystem, type SystemSettings } from "./shell/system-settings"
 import { useLayers } from "./use-layers"
 import { usePickFilter } from "./use-pick-filter"
 import {
@@ -68,11 +69,11 @@ function useFocusRequest() {
  */
 function useGridSettings(theme: ThemeName) {
   const [gridStyles, setGridStyles] = useState<GridStyles>(() => withThemeGrid(INITIAL_GRID_STYLES, theme))
-  const [gridSteps, setGridSteps] = useState<GridSteps>(INITIAL_GRID_STEPS)
+  const [gridSteps, setGridSteps] = useState<GridSteps>(() => loadSystem(browserStore).grid)
   const changeGridStep = useCallback((view: View, step: number) => setGridSteps((steps) => setGridStep(steps, view, step)), [])
   const toggleGridStyleOf = useCallback((view: View) => setGridStyles((styles) => toggleGridStyle(styles, view)), [])
   const gridFollowsTheme = useCallback((current: ThemeName, next: ThemeName) => setGridStyles((styles) => gridAfterThemeChoice(styles, current, next)), [])
-  return { gridStyles, gridSteps, changeGridStep, toggleGridStyleOf, gridFollowsTheme }
+  return { gridStyles, gridSteps, setGridSteps, changeGridStep, toggleGridStyleOf, gridFollowsTheme }
 }
 
 /**
@@ -113,7 +114,7 @@ function useHoverLabels() {
     else saveHoverLabels(browserStore, hoverLabels)
   }, [hoverLabels])
   const toggleHoverLabels = useCallback(() => setHoverLabels((on) => !on), [])
-  return { hoverLabels, toggleHoverLabels }
+  return { hoverLabels, setHoverLabels, toggleHoverLabels }
 }
 
 /** View → Pour fill: solid until another is chosen, remembered per browser (pour-view.ts). */
@@ -198,17 +199,28 @@ function useWorkspaceRun(view: View, { strips, setUnit, setHighlight, toggleGrid
 export function useWorkspace(view: View) {
   const { setLeft, setRight, setBottom, ...strips } = useStrips(view)
   const { requestSearch, ...focus } = usePanelFocus(setLeft, setRight)
-  const [unit, setUnit] = useState<Unit>("mm")
+  const [unit, setUnit] = useState<Unit>(() => loadSystem(browserStore).unit)
   const [highlight, setHighlight] = useState<Highlight>(NO_HIGHLIGHT)
   const { theme, setTheme, grid: themedGrid } = useTheme()
-  const { toggleGridStyleOf, ...grid } = themedGrid
+  const { toggleGridStyleOf, setGridSteps, ...grid } = themedGrid
   const { snap, toggleSnap } = useSnap()
-  const { hoverLabels, toggleHoverLabels } = useHoverLabels()
+  const { hoverLabels, setHoverLabels, toggleHoverLabels } = useHoverLabels()
   const { pourFill, setPourFill } = usePourFill()
   const layers = useLayers()
   const filter = usePickFilter()
   const run = useWorkspaceRun(view, { strips: { setLeft, setRight, setBottom }, setUnit, setHighlight, toggleGridStyleOf, toggleSnap, requestSearch })
   useWorkspaceKeys(view, run)
   const toggleUnit = useCallback(() => setUnit(nextUnit), [])
-  return { ...strips, ...grid, theme, setTheme, snap, hoverLabels, toggleHoverLabels, pourFill, setPourFill, ...layers, ...filter, ...focus, leftOpen: strips.left.open, unit, toggleUnit, highlight, setHighlight, run }
+  // Settings → System: all at once; the unit and the grid steps are kept per browser beside the theme and hover labels.
+  const applySystem = useCallback(
+    (settings: SystemSettings) => {
+      setTheme(settings.theme)
+      setUnit(settings.unit)
+      setGridSteps(settings.grid)
+      setHoverLabels(settings.hoverLabels)
+      saveSystem(browserStore, settings)
+    },
+    [setTheme, setGridSteps, setHoverLabels],
+  )
+  return { ...strips, ...grid, theme, setTheme, applySystem, snap, hoverLabels, toggleHoverLabels, pourFill, setPourFill, ...layers, ...filter, ...focus, leftOpen: strips.left.open, unit, toggleUnit, highlight, setHighlight, run }
 }

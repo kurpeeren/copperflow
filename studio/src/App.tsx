@@ -297,6 +297,7 @@ export function App() {
   const makeSheet = useMakeSheetPanel(data.file, selection.names, actions)
   const importPart = useImportPartPanel(data.refreshParts, toast.notify)
   const newPart = useNewPartPanel(data.refreshParts, toast.notify)
+  const system = { settings: { theme: workspace.theme, unit: workspace.unit, grid: workspace.gridSteps, hoverLabels: workspace.hoverLabels }, apply: workspace.applySystem }
   // Hairlines stay one device pixel through zoom and display-scale changes.
   useEffect(() => watchDpr(window), [])
   if (!hasToken) return <NoToken />
@@ -306,7 +307,7 @@ export function App() {
         <StatusPill build={build} errors={checks.counts.errors} onOpen={openChecks} />
       </MenuBar>
       <Toolbar view={tab} unit={workspace.unit} selected={selection.size} toggles={toggles} run={runCommand} />
-      {dialog && <StudioDialog name={dialog} onClose={closeDialog} rules={{ fabrication: build.design?.rules.fabrication, save: actions.setFilletRadius }} makeSheet={makeSheet} importPart={importPart} newPart={newPart} />}
+      {dialog && <StudioDialog name={dialog} onClose={closeDialog} rules={{ fabrication: build.design?.rules.fabrication, save: actions.setFilletRadius }} makeSheet={makeSheet} importPart={importPart} newPart={newPart} system={system} />}
       {circuit && circuit.violations.length > 0 && (
         <div className="banner" role="alert">
           Locked parts changed outside the editor: {circuit.violations.map((v) => `${v.part} (${v.detail})`).join(", ")}. Lock them again to accept the change, or undo it in the code.

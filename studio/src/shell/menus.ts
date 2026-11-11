@@ -280,7 +280,7 @@ export const MENUS: readonly Menu[] = [
   },
   {
     title: "Settings",
-    entries: [later("System…", SOON), run("Hotkeys", "keys")],
+    entries: [run("System…", "systemSettings"), run("Hotkeys", "keys")],
   },
   {
     title: "Help",
