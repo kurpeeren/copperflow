@@ -51,9 +51,10 @@ function routedRecords(routed: readonly RoutedConnection[], prefix: string): Lay
   ])
 }
 
-/** The route a `routed:N:…` copper id names, as an index into the routes it was made from. */
-export function routedIndex(id: string): number | undefined {
-  const found = /^routed:(\d+):[tv]\d+$/.exec(id)
+/** The route a `<prefix>:N:…` copper id names (`routed:N:…` by default), as an index into the routes it was made from. */
+export function routedIndex(id: string, prefix = "routed"): number | undefined {
+  if (!id.startsWith(`${prefix}:`)) return undefined
+  const found = /^(\d+):[tv]\d+$/.exec(id.slice(prefix.length + 1))
   return found ? Number(found[1]) - 1 : undefined
 }
 
@@ -116,7 +117,7 @@ export function routeWithPours(input: RouteBoardInput, options: RouteBoardOption
   for (let round = 0; ; round++) {
     const layout = refilled(input, report.routed)
     const pourNets = new Set(layout.pours.map((pour) => pour.net))
-    const reported = new Set(report.unrouted.map(lineKey))
+    const reported = new Set([...report.unrouted.map(lineKey), ...(options.alreadyMissing ?? [])])
     const missing = layout.ratsnest.filter((line) => pourNets.has(line.net) && !reported.has(lineKey(line)))
     if (missing.length === 0) return report
     // The rounds' own time is what the budget counts: refilling between them is quick, and the clock is read only by the runs.

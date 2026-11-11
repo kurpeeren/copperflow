@@ -5,6 +5,7 @@ import type { Point } from "../model.js"
 import { STEP, type CellRef, type Penalties } from "./astar.js"
 import { offenders } from "./clear.js"
 import { cellsNear, foreignReach, grow, windowBox, type CellWindow, type NetRule, type RouterGrid, type RouterWorld } from "./grid.js"
+import { KEEP_COST, type KeepClear } from "./keep-clear.js"
 import { boxOf, type Obstacle } from "./obstacles.js"
 import type { PathLegs, RoutedCopper } from "./path.js"
 
@@ -108,7 +109,10 @@ export class Congestion {
   readonly viaHistory: Int32Array
   readonly placed = new Map<number, Placed>()
 
-  constructor(private readonly world: RouterWorld) {
+  constructor(
+    private readonly world: RouterWorld,
+    private readonly keep?: KeepClear,
+  ) {
     const cells = world.frame.cols * world.frame.rows
     this.history = world.frame.layers.map(() => new Int32Array(cells))
     this.viaHistory = new Int32Array(cells)
@@ -160,9 +164,14 @@ export class Congestion {
     const price = presentPrice(pass)
     const track = grid.layers.map(() => new Int32Array(cells))
     const via = new Int32Array(cells)
+    const own = this.keep === undefined ? -1 : this.keep.nets.indexOf(rule.net) + 1
+    const keepCost = (l: number, board: number) => {
+      const holder = this.keep?.track[l]?.[board] ?? 0
+      return holder !== 0 && holder !== own ? KEEP_COST : 0
+    }
     for (let cell = 0; cell < cells; cell++) {
       const board = (window.row0 + Math.floor(cell / grid.cols)) * frame.cols + window.col0 + (cell % grid.cols)
-      for (let l = 0; l < grid.layers.length; l++) (track[l] as Int32Array)[cell] = capped(((this.history[l] as Int32Array)[board] as number) + price * ((count[l] as Int32Array)[cell] as number))
+      for (let l = 0; l < grid.layers.length; l++) (track[l] as Int32Array)[cell] = capped(((this.history[l] as Int32Array)[board] as number) + price * ((count[l] as Int32Array)[cell] as number) + keepCost(l, board))
       via[cell] = capped((this.viaHistory[board] as number) + price * (viaCount[cell] as number))
     }
     return { penalties: { track, via }, owners, viaOwners }

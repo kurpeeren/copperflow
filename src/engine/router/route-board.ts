@@ -12,6 +12,7 @@ import type { Obstacle } from "./obstacles.js"
 import { routeWithPours } from "./pour-rounds.js"
 import type { RoutedCopper } from "./path.js"
 import { replicate, type Replica } from "./replicate.js"
+import { keepClearOf } from "./keep-clear.js"
 import { ripUpAndRetry } from "./rip-up.js"
 
 /**
@@ -53,6 +54,12 @@ export interface RouteBoardOptions {
   budgetMs?: number
   /** The clock the budget is measured on, in ms (performance.now by default); tests pass their own. */
   clock?: () => number
+  /** false: no keep-clear cost around pads a pour joins (keep-clear); on by default. */
+  keepClear?: boolean
+  /** false: no rip-up and retry of failed connections (rip-up); on by default. */
+  retry?: boolean
+  /** Connections (`net|from|to`) the board missed before a retry's inner run: its pour rounds leave them alone. */
+  alreadyMissing?: ReadonlySet<string>
 }
 
 export interface RoutedConnection {
@@ -90,6 +97,8 @@ export interface RouteReport {
   replicas?: Replica[]
   /** Whether the run stopped at its time budget, leaving connections it had not routed. */
   budgetSpent: boolean
+  /** How many failed connections rip-up tried again (rip-up); absent when none. */
+  retried?: number
 }
 
 /** The reason given to a connection the time budget left unrouted, after "could not route A to B: ". */
@@ -293,7 +302,7 @@ function routeOnce(input: RouteBoardInput, options: RouteBoardOptions): RouteRep
     ...(options.maxExpansions === undefined ? {} : { maxExpansions: options.maxExpansions }),
     ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
     world,
-    congestion: new Congestion(world),
+    congestion: new Congestion(world, options.keepClear === false ? undefined : keepClearOf(world)),
     buffers: new SearchBuffers(),
     failed: new Map(),
     late: lateness(clock, started, options.budgetMs),

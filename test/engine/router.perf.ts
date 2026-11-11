@@ -39,6 +39,35 @@ test("routes the CAN module board fully in under 3 s (2 s idle target)", () => {
   expect(fastest).toBeLessThan(CAN_LIMIT_MS)
 }, 60_000)
 
+const PROOF_FOLDER = join(import.meta.dirname, "..", "fixtures", "can-proof")
+const PROOF_LAYOUT = "can-module.circuit.layout.json"
+
+test("the proof CAN board with the retry firing (keep-clear off) routes fully in under 3 s", () => {
+  const all = filesIn(PROOF_FOLDER)
+  const files = { ...all, [PROOF_LAYOUT]: `${(all[PROOF_LAYOUT] ?? "").split("\n")[0]}\n` }
+  const design = buildDesign(files, CAN_MAIN)
+  const report = routeDesign(design, { keepClear: false })
+  expect(report.retried).toBe(1)
+  expect(report.unrouted).toEqual([])
+  const fastest = fastestMs(() => void routeDesign(design, { keepClear: false }), 3)
+  console.log(`routeBoard proof CAN board, retry firing, fastest of 3: ${fastest.toFixed(1)} ms`)
+  expect(fastest).toBeLessThan(CAN_LIMIT_MS)
+}, 60_000)
+
+test("a board with one connection that cannot be routed: the retry's cost stays bounded", () => {
+  const resistor = (name: string, x: number, y: number) => `<resistor name="${name}" resistance="1k" footprint="0603" pcbX={${x}} pcbY={${y}} />`
+  // SIG is cut by a keepout across the whole board; OTHER routes beside it.
+  const main = `export default () => (<board width="20mm" height="12mm">${resistor("R1", -6, -3)}${resistor("R2", 6, -3)}${resistor("R3", -6, 3)}${resistor("R4", -2, 3)}<keepout pcbX={0} pcbY={0} width={1} height={14} /><trace from="R1.pin2" to="net.SIG" /><trace from="R2.pin1" to="net.SIG" /><trace from="R3.pin2" to="net.OTHER" /><trace from="R4.pin1" to="net.OTHER" /></board>)`
+  const design = buildDesign({ "main.circuit.tsx": main }, "main.circuit.tsx")
+  const report = routeDesign(design)
+  expect(report.unrouted).toHaveLength(1)
+  expect(report.retried).toBe(1)
+  const plain = fastestMs(() => void routeDesign(design, { retry: false }), 3)
+  const fastest = fastestMs(() => void routeDesign(design), 3)
+  console.log(`routeBoard one unroutable connection, fastest of 3: ${fastest.toFixed(1)} ms with the retry, ${plain.toFixed(1)} ms without`)
+  expect(fastest).toBeLessThan(1000)
+}, 60_000)
+
 const COLUMNS = 20
 const SPACING_MM = 3
 
