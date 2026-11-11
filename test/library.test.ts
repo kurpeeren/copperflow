@@ -78,6 +78,14 @@ describe("creating parts", () => {
     await expect(createPart(root, "LDO", LDO, { replace: true, now: NOW })).rejects.toThrow(/verified/)
   })
 
+  test("a part can say where it came from, and the library lists it", async () => {
+    const origin = "lcsc C7950, imported 2026-11-11"
+    await createPart(root, "LDO", { ...LDO, origin }, { now: NOW })
+    expect((await readPart(root, "LDO")).origin).toBe(origin)
+    expect((await listParts(root))[0]).toMatchObject({ id: "LDO", origin })
+    expect(PartSchema.safeParse({ ...LDO, origin: "two\nlines" }).success).toBe(false)
+  })
+
   test("verifying records who checked it and against what", async () => {
     await createPart(root, "LDO", LDO, { now: NOW })
     const part = await verifyPart(root, "LDO", { by: "Eren", against: "AP2112 datasheet rev 2, p. 2" }, NOW)

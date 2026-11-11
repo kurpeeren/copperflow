@@ -53,6 +53,8 @@ export const PartSchema = z
     description: z.string().max(2000).regex(/^[^\x00-\x08\x0b-\x1f\x7f]*$/, "no control characters").optional(),
     manufacturer: line(200).optional(),
     mpn: line(100).optional(),
+    /** Where the part came from when copperflow fetched it, e.g. "lcsc C7950, imported 2026-11-11". */
+    origin: line(200).optional(),
     footprint: z.string().regex(/^[A-Za-z0-9_.(),-]+$/, "use a copperflow footprint string such as sot23_5 or 0402, or footprint.yaml for the part's own footprint file"),
     pins: z.record(z.string().regex(/^[1-9][0-9]*$/, "pin numbers start at 1"), PinSchema),
     suppliers: z
@@ -82,6 +84,8 @@ export interface PartSummary {
   component: string
   verified: boolean
   verifiedBy?: string
+  /** Where the part came from, when part.yaml says (an imported part). */
+  origin?: string
   /** Set when part.yaml cannot be read; the part is listed so the problem is visible. */
   error?: string
 }
@@ -172,6 +176,7 @@ export async function listParts(root: string): Promise<PartSummary[]> {
         component: componentName(id),
         verified,
         ...(verified && part.verified ? { verifiedBy: part.verified.by } : {}),
+        ...(part.origin ? { origin: part.origin } : {}),
       })
     } catch (error) {
       summaries.push({ id, title: "(invalid part.yaml)", footprint: "", component: componentName(id), verified: false, error: (error as Error).message })
