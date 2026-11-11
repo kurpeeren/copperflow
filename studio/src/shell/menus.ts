@@ -228,7 +228,7 @@ export const MENUS: readonly Menu[] = [
       { label: "Delete page", command: "deletePage", only: "schematic" },
       "separator",
       { label: "Replicate layout", command: "replicateLayout", only: "pcb" },
-      later("Annotate designators", SOON),
+      run("Annotate designators", "annotate"),
       { label: "Placement transfer", command: "placementTransfer", shortcut: "Ctrl+Shift+X", only: "pcb" },
     ],
   },

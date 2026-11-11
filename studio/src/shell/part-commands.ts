@@ -6,6 +6,7 @@ import type { Actions } from "../App"
 import { Selection, type SelectionChange } from "../selection"
 import { flipPlan, transferPlan, type PlanResult } from "./board-side"
 import { findSimilar } from "./find-similar"
+import { annotatePlan } from "./annotate"
 
 export interface PartCommandInput {
   design: Design | undefined
@@ -35,6 +36,24 @@ export function transferPlacement({ design, circuit, selection, actions }: PartC
   const names = selection.names.length > 0 ? selection.names : design.pcb.parts.map((part) => part.component)
   const sheet = design.schematic.symbols.map((symbol) => ({ component: symbol.component, x: symbol.x, y: symbol.y }))
   write(actions, transferPlan(names, sheet, design.pcb.parts, circuit.model.parts, lockedParts(circuit)))
+}
+
+/** Design → Annotate designators: every part numbered again by where its symbol sits, as one history entry. */
+export function annotateDesignators({ design, circuit, actions }: PartCommandInput): void {
+  if (!design || !circuit) return
+  const locked = lockedParts(circuit)
+  const pages = design.schematic.pages ?? []
+  const instances = new Set(design.circuit.components.filter((component) => component.kind === "sheet").map((component) => component.id))
+  const parts = circuit.model.parts
+    .filter((part) => !instances.has(part.name))
+    .map((part) => {
+      const symbol = design.schematic.symbols.find((placed) => placed.component === part.name)
+      const page = Math.max(0, pages.findIndex((entry) => entry.parts.includes(part.name)))
+      return { name: part.name, renamable: part.editable && !locked.has(part.name), ...(symbol ? { at: { page, x: symbol.x, y: symbol.y } } : {}) }
+    })
+  const plan = annotatePlan(parts)
+  if ("message" in plan) return actions.notify(plan.message)
+  void actions.edit([plan.edit], plan.summary).then((ok) => ok && actions.notify(`Annotated ${plan.edit.mapping.length} designators`))
 }
 
 /** Edit → Find similar objects (Ctrl+Shift+F): selects the parts, or drawings, like the selected one. */

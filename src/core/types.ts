@@ -167,6 +167,8 @@ export type Edit =
   /** Writes an instance's `connections` anew: each port to a parent net (a bus port to a parent bus); ports left out are open. */
   | { kind: "setConnections"; part: string; connections: Record<string, string> }
   | { kind: "removePart"; part: string }
+  /** Gives parts new names in one pass (they may swap), and the trace ends that name them follow (rename-parts.ts). */
+  | { kind: "renameParts"; mapping: { from: string; to: string }[] }
   /** `schematicRouteHints` are the corners of a wire drawn by hand in the schematic. */
   /** `page` puts it in that `<page>` (made when missing); without one, or "Main", it goes on the first page. */
   | { kind: "addTrace"; from: string; to: string; props?: Record<string, Literal>; schematicRouteHints?: Point[]; page?: string }

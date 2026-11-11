@@ -20,6 +20,7 @@ import { addPage, insertOnPage, movePartToPage, removePage, renamePage } from ".
 import { localNet, localNetRefusal } from "../engine/selectors.js"
 import { partsInSelector, sheetFileIn } from "./selectors.js"
 import { renamePort, setSheetSize } from "./sheet-edits.js"
+import { renameParts } from "./rename-parts.js"
 import { setBoard } from "./board-edits.js"
 import { LABEL_AT_PROPS } from "../engine/component.js"
 import { MAIN_PAGE } from "../engine/model.js"
@@ -50,6 +51,8 @@ function editSource(source: string, scan: Scan, edit: Edit, locked: ReadonlySet<
       return setProps(source, scan, edit.part, edit.props, locked)
     case "removePart":
       return removePart(source, scan, edit.part, locked)
+    case "renameParts":
+      return renameParts(source, scan, edit, locked)
     case "addTrace":
       return addTrace(source, scan, edit.from, edit.to, edit.props ?? {}, edit.schematicRouteHints, edit.page)
     case "removeTrace":

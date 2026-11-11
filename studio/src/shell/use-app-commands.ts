@@ -29,7 +29,7 @@ import { placeInstanceScope, placeSelectionScope } from "../pcb/autoplace"
 import type { PlaceScope } from "../api"
 import type { RouteScope } from "../api"
 import { runPageCommand, type PageCommand } from "./page-commands"
-import { flipSelection, selectSimilar, transferPlacement } from "./part-commands"
+import { annotateDesignators, flipSelection, selectSimilar, transferPlacement } from "./part-commands"
 import type { Design } from "../api"
 
 const SCHEMATIC_ONLY: ReadonlySet<CommandId> = new Set([...SHEET_COMMANDS, ...MARK_COMMANDS])
@@ -252,6 +252,7 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     findSimilar: () => selectSimilar(input),
     placementTransfer: () => transferPlacement(input),
     flip: () => flipSelection(input),
+    annotate: () => annotateDesignators(input),
   }
   return (table as Partial<Record<CommandId, () => void>>)[command]
 }

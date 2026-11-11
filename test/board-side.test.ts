@@ -3,8 +3,10 @@ import { flipPlan, transferPlan, TRANSFER_SCALE } from "../studio/src/shell/boar
 import { findSimilar } from "../studio/src/shell/find-similar.js"
 import { keyAction } from "../studio/src/pcb/canvas-keys.js"
 
+import type { PartInfo } from "../src/core/types.js"
+
 const prop = (literal: number) => ({ literal, source: `{${literal}}`, editable: true })
-const parts = [
+const parts: Pick<PartInfo, "name" | "editable" | "props">[] = [
   { name: "R1", editable: true, props: { pcbX: prop(1), pcbY: prop(2) } },
   { name: "R2", editable: true, props: {} },
   { name: "C1", editable: true, props: {} },

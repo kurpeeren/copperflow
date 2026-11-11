@@ -132,6 +132,15 @@ const setPropValues = z.record(z.string().max(64), z.union([literal, point, z.nu
 const EditSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("setProps"), part: z.string(), props: setPropValues }),
   z.object({ kind: z.literal("removePart"), part: z.string() }),
+  z.object({ kind: z.literal("renameParts"), mapping: z.array(z.object({ from: z.string().max(64), to: z.string().max(64) })).min(1).max(2000) }),
+  z.object({
+    kind: z.literal("addPart"),
+    tag: z.string().max(64),
+    name: z.string().max(64),
+    props: props.optional(),
+    pinLabels: z.record(z.string().max(16), z.string().max(64)).optional(),
+    page: z.string().max(64).optional(),
+  }),
   z.object({
     kind: z.literal("addTrace"),
     from: z.string(),
