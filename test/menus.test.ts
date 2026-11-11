@@ -157,7 +157,7 @@ describe("menus", () => {
     const views = (["pcb", "schematic"] as const).map((view) =>
       MENUS.flatMap(menuItems).filter((item) => item.command && !itemState(item, view).enabled).map((item) => item.label),
     )
-    expect(views).toEqual([["Make sub-sheet…", "No connect flag", "Junction", "Add page", "Rename page", "Delete page", "Tidy sheet"], ["Unit", "Autoplace", "Autoplace selection", "Autoplace instance", "Replicate layout", "Routing corner", "Fit board"]])
+    expect(views).toEqual([["Make sub-sheet…", "No connect flag", "Junction", "Add page", "Rename page", "Delete page", "Tidy sheet"], ["Unit", "Autoplace", "Autoplace selection", "Autoplace instance", "Replicate layout", "Placement transfer", "Routing corner", "Flip", "Fit board"]])
   })
 
   test("no menu has more than 14 items, but View and Place, which add the copper pour's three, 17, Place with Autoplace's three 20, and Layout with Fit board 15", () => {

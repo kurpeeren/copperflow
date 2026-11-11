@@ -153,7 +153,7 @@ export const MENUS: readonly Menu[] = [
       run("Select the instance", "selectInstance"),
       { label: "Make sub-sheet…", command: "makeSheet", only: "schematic" },
       run("Find", "find", "Ctrl+F"),
-      later("Find similar objects", SOON, "Ctrl+Shift+F"),
+      run("Find similar objects", "findSimilar", "Ctrl+Shift+F"),
       "separator",
       run("Fillet tracks", "filletTracks", "U"),
       run("Straighten tracks", "straightenTracks", "Shift+U"),
@@ -229,7 +229,7 @@ export const MENUS: readonly Menu[] = [
       "separator",
       { label: "Replicate layout", command: "replicateLayout", only: "pcb" },
       later("Annotate designators", SOON),
-      later("Placement transfer", SOON, "Ctrl+Shift+X"),
+      { label: "Placement transfer", command: "placementTransfer", shortcut: "Ctrl+Shift+X", only: "pcb" },
     ],
   },
   {
@@ -250,7 +250,7 @@ export const MENUS: readonly Menu[] = [
     entries: [
       run("Rotate", "rotate", "Space"),
       run("Rotate right", "rotateRight"),
-      later("Flip", SOON, "X"),
+      { label: "Flip", command: "flip", shortcut: "X", only: "pcb" },
       "separator",
       run("Lock", "lock"),
       run("Unlock", "unlock"),

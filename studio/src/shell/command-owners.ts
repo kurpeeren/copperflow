@@ -7,7 +7,7 @@ import { DRAW_COMMANDS } from "../pcb/draw-commands.js"
 import type { CommandId } from "./menus.js"
 
 /** Run by use-app-commands.ts. */
-export const APP_COMMANDS = ["openFile", "exportBom", "exportPackage", "exportFabrication", "undo", "redo", "selectAll", "selectInstance", "replicateLayout", "makeSheet", "find", "checkDrc", "designRules", "autoplace", "autoplaceSelection", "autoplaceInstance", "fitBoard", "autoroute", "autorouteSelection", "autorouteNet", "unroute", "lock", "unlock", "history", "keys", "about", "addPage", "renamePage", "deletePage", "themeLight", "themeDark", "hoverLabels", "pourSolid", "pourHatched", "pourOutline"] as const satisfies readonly CommandId[]
+export const APP_COMMANDS = ["openFile", "exportBom", "exportPackage", "exportFabrication", "undo", "redo", "selectAll", "selectInstance", "replicateLayout", "makeSheet", "find", "checkDrc", "designRules", "autoplace", "autoplaceSelection", "autoplaceInstance", "fitBoard", "autoroute", "autorouteSelection", "autorouteNet", "unroute", "lock", "unlock", "history", "keys", "about", "addPage", "renamePage", "deletePage", "themeLight", "themeDark", "hoverLabels", "pourSolid", "pourHatched", "pourOutline", "findSimilar", "placementTransfer", "flip"] as const satisfies readonly CommandId[]
 export type AppCommand = (typeof APP_COMMANDS)[number]
 
 /** Run by the workspace, as the key with the same action is. */

@@ -29,6 +29,7 @@ import { placeInstanceScope, placeSelectionScope } from "../pcb/autoplace"
 import type { PlaceScope } from "../api"
 import type { RouteScope } from "../api"
 import { runPageCommand, type PageCommand } from "./page-commands"
+import { flipSelection, selectSimilar, transferPlacement } from "./part-commands"
 import type { Design } from "../api"
 
 const SCHEMATIC_ONLY: ReadonlySet<CommandId> = new Set([...SHEET_COMMANDS, ...MARK_COMMANDS])
@@ -248,12 +249,15 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     pourSolid: () => input.workspace.setPourFill(POUR_FILL_COMMANDS.pourSolid),
     pourHatched: () => input.workspace.setPourFill(POUR_FILL_COMMANDS.pourHatched),
     pourOutline: () => input.workspace.setPourFill(POUR_FILL_COMMANDS.pourOutline),
+    findSimilar: () => selectSimilar(input),
+    placementTransfer: () => transferPlacement(input),
+    flip: () => flipSelection(input),
   }
   return (table as Partial<Record<CommandId, () => void>>)[command]
 }
 
 /** The keys the app answers itself, with or without a canvas; each one's action is also its command. */
-const APP_KEYS = ["undo", "redo", "openFile", "selectAll", "find"] as const satisfies readonly (KeyActionName & CommandId)[]
+const APP_KEYS = ["undo", "redo", "openFile", "selectAll", "find", "findSimilar", "placementTransfer", "flip"] as const satisfies readonly (KeyActionName & CommandId)[]
 const isAppKey = (action: KeyActionName | undefined): action is (typeof APP_KEYS)[number] => (APP_KEYS as readonly string[]).includes(action ?? "")
 
 /**
