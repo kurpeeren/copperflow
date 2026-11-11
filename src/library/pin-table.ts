@@ -37,9 +37,11 @@ export function parsePinTable(text: string): PinTable {
   const seen = new Map<string, number>()
   lines.forEach((raw, index) => {
     const text = raw.trim()
-    if (text === "" || (index === firstFilled && isHeader(text))) return
+    if (text === "") return
+    const cells = cellsOf(text, separator)
+    if (index === firstFilled && isHeader(text, cells[0] ?? "")) return
     const line = index + 1
-    const result = readRow(cellsOf(text, separator), seen)
+    const result = readRow(cells, seen)
     if (typeof result === "string") errors.push({ line, text, message: `Line ${line}: ${result}` })
     else {
       seen.set(result.number, line)
@@ -60,27 +62,35 @@ export function suggestedPinName(text: string): string {
   return /^[A-Za-z_]/.test(name) ? name : `_${name}`
 }
 
-/** One separator for the whole table: tabs if any line has one, commas if every line has one, else spaces. */
+/**
+ * One separator for the whole table: tabs if any line has one; commas if any line's first cell ends at a comma ("1, VDD"),
+ * so a line without one is read as one cell and reported; else spaces.
+ */
 function separatorOf(lines: readonly string[]): Separator {
   const filled = lines.map((line) => line.trim()).filter((line) => line !== "")
   if (filled.some((line) => line.includes("\t"))) return "tab"
-  if (filled.length > 0 && filled.every((line) => line.includes(","))) return "comma"
+  if (filled.some((line) => /^[^\s,]+\s*,/.test(line))) return "comma"
   return filled.some((line) => / {2,}/.test(line)) ? "spaces" : "space"
 }
 
 function cellsOf(text: string, separator: Separator): string[] {
   const pattern = { tab: /\t/, comma: /,/, spaces: / {2,}/, space: /\s+/ }[separator]
   // In an aligned table a line may have only single spaces; then its words are its cells.
-  const split = separator === "spaces" && !/ {2,}/.test(text) ? /\s+/ : pattern
-  const cells = text.split(split).map((cell) => cell.trim())
-  if (separator !== "space") return cells
-  // Space-separated: the words after the type are the description.
+  const words = separator === "space" || (separator === "spaces" && !/ {2,}/.test(text))
+  const cells = text.split(words ? /\s+/ : pattern).map((cell) => cell.trim())
+  if (!words) return cells
+  // Split on every space: the words after the type are the description.
   return cells.length > 3 ? [...cells.slice(0, 3), cells.slice(3).join(" ")] : cells
 }
 
-/** A header names its columns: it has no digits ("Pin Name Type", "No., Name, Type"). */
-function isHeader(text: string): boolean {
-  return !/[0-9]/.test(text)
+const COLUMN_WORD = /\b(pin|no|number|name|type|function|description)\b/i
+
+/**
+ * A header names its columns: it has no digits ("Pin Name Type", "No., Name, Type"), or its first cell is not a pin
+ * number and it has a column word ("Pin Name Type (Note 1)").
+ */
+function isHeader(text: string, firstCell: string): boolean {
+  return !/[0-9]/.test(text) || (!PIN_NUMBER.test(firstCell) && COLUMN_WORD.test(text))
 }
 
 function readRow(cells: readonly string[], seen: ReadonlyMap<string, number>): PinRow | string {

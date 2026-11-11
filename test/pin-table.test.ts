@@ -43,6 +43,22 @@ describe("pasting a pin table", () => {
     ])
   })
 
+  test("a comma table with one line without a comma reads the other lines and reports that one", () => {
+    const table = parsePinTable("1, VDD, power_in\n2, GND, ground\n3")
+    expect(table.pins.map((pin) => pin.name)).toEqual(["VDD", "GND"])
+    expect(table.errors.map((error) => error.message)).toEqual(["Line 3: pin 3 has no name"])
+  })
+
+  test("in an aligned table a single-spaced line keeps its description's words together", () => {
+    const table = parsePinTable("1    VDD    power_in    Supply\n4 SDA input Serial data")
+    expect(table.pins[1]).toEqual({ number: "4", name: "SDA", type: "input", description: "Serial data" })
+  })
+
+  test("a header with a digit is skipped when it names its columns", () => {
+    expect(parsePinTable("Pin Name Type (Note 1)\n1 VDD power_in").errors).toEqual([])
+    expect(parsePinTable("Pin No. 1-28, Name, Type\n1, VDD, power_in").pins).toHaveLength(1)
+  })
+
   test("an unknown type word is reported on its line, not guessed; the other pins are kept", () => {
     const table = parsePinTable("1 VDD P\n2 GND ground\n3 SDA I/O")
     expect(table.pins).toEqual([{ number: "2", name: "GND", type: "ground" }])
