@@ -76,7 +76,7 @@ describe("placementWrites", () => {
       { kind: "setProps", part: "R2", props: { pcbX: 3, pcbY: 4, pcbRotation: 90 } },
     ])
     // S1 sits at (8, -6) turned 90°: (10, -3) is (2, 3) from it, which is (3, -2) in the sheet's frame.
-    expect(writes.sheets).toEqual([{ file: SHEET, edits: [{ kind: "setProps", part: "R1", props: { pcbX: 3, pcbY: -2, pcbRotation: 90 } }], parts: ["R101"] }])
+    expect(writes.sheets).toEqual([{ file: SHEET, edits: [{ kind: "setProps", part: "R1", props: { pcbX: 3, pcbY: -2, pcbRotation: 90 } }], parts: ["R101"], twins: [[{ part: "R101", instance: "S1" }]] }])
     expect(writes.notes).toEqual([])
   })
 
@@ -123,6 +123,22 @@ describe("writePlacement", () => {
     expect(written.written).not.toContain("R2")
     expect(written.skipped).toEqual(["R2 is locked"])
     expect(await readFile(join(root, MAIN), "utf8")).toContain(`<resistor name="R2" resistance="1k" footprint="0603" />`)
+  })
+
+  test("a sheet position is not written when another instance's copy of that part is locked: the locked part stays put", async () => {
+    await project(TWO)
+    const design = await build()
+    const { model } = await loadCircuit(root, MAIN)
+    await updateAnnotations(root, MAIN, (a) => lockParts(a, model, ["S1"], new Date().toISOString()))
+    const sheetBefore = await readFile(join(root, SHEET), "utf8")
+    const lockedAt = partAt(design, "R101")
+    const written = await writePlacement(root, MAIN, placementWrites(design, new Map([["R201", { x: -4, y: 9, rotation: 90 }]])), { author: "ai", summary: "Autoplace the board" })
+    expect(written.written).toEqual([])
+    expect(written.skipped).toEqual(["R201 shares R1 of Stage.sheet.tsx with R101, which is locked"])
+    expect(written.entry).toBeUndefined()
+    expect(await readFile(join(root, SHEET), "utf8")).toBe(sheetBefore)
+    const now = partAt(await build(), "R101")
+    expect([now.x, now.y, now.rotation]).toEqual([lockedAt.x, lockedAt.y, lockedAt.rotation])
   })
 
   test("the guard runs first and stops the write", async () => {

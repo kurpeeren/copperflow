@@ -20,12 +20,18 @@ import { loadCircuit, resolveCircuit } from "./workspace.js"
 export interface PlacementWrites {
   circuit: Edit[]
   /** Each sheet file's edits, and the part each edit places as the circuit names it ("R101" for R1 of S1). */
-  sheets: { file: string; edits: Edit[]; parts: string[] }[]
+  sheets: { file: string; edits: Edit[]; parts: string[]; twins: Twin[][] }[]
   /** Placed parts no edit can write, and why. */
   notes: string[]
 }
 
-type SetProps = Extract<Edit, { kind: "setProps" }>
+/** One instance's copy of a sheet part: its circuit name ("R201") and the instance's path ("S2"). */
+export interface Twin {
+  part: string
+  instance: string
+}
+
+type SetProps =Extract<Edit, { kind: "setProps" }>
 
 const POSITION_PROPS = ["pcbX", "pcbY", "pcbRotation"] as const
 const round = (v: number): number => Math.round(v * 10_000) / 10_000 || 0
@@ -68,7 +74,12 @@ export function placementWrites(design: Design, positions: ReadonlyMap<string, P
   const components = new Map(design.circuit.components.map((c) => [c.id, c]))
   const instances = design.circuit.instances ?? []
   const circuit: Edit[] = []
-  const sheets = new Map<string, { edits: Edit[]; parts: string[] }>()
+  const sheets = new Map<string, { edits: Edit[]; parts: string[]; twins: Twin[][] }>()
+  const twinsOf = (file: string, local: string): Twin[] =>
+    design.circuit.components.flatMap((c) => {
+      const owner = c.instance === undefined || c.localId !== local ? undefined : instances.find((one) => one.path === c.instance)
+      return owner?.file === file ? [{ part: c.id, instance: owner.path }] : []
+    })
   const owners = new Map<string, string>()
   const notes: string[] = []
   for (const name of [...positions.keys()].sort(naturalCompare)) {
@@ -95,8 +106,12 @@ export function placementWrites(design: Design, positions: ReadonlyMap<string, P
       continue
     }
     owners.set(key, `${name} (${instance.path})`)
-    const sheet = sheets.get(instance.file) ?? { edits: [], parts: [] }
-    sheets.set(instance.file, { edits: [...sheet.edits, { kind: "setProps", part: local, props: propsFor(component, at, frameTurn(instances, instance.path)) }], parts: [...sheet.parts, name] })
+    const sheet = sheets.get(instance.file) ?? { edits: [], parts: [], twins: [] }
+    sheets.set(instance.file, {
+      edits: [...sheet.edits, { kind: "setProps", part: local, props: propsFor(component, at, frameTurn(instances, instance.path)) }],
+      parts: [...sheet.parts, name],
+      twins: [...sheet.twins, twinsOf(instance.file, local)],
+    })
   }
   return { circuit, sheets: [...sheets].map(([file, sheet]) => ({ file, ...sheet })), notes }
 }
@@ -143,6 +158,29 @@ function writable(model: CircuitModel, edits: readonly Edit[], names: readonly s
   return { edits: kept.map((one) => one.edit), names: kept.map((one) => one.name) }
 }
 
+/** Whether a copy is locked: by its own name, or by the lock on its instance or any instance round it. */
+function twinLocked(twin: Twin, locked: ReadonlySet<string>): boolean {
+  if (locked.has(twin.part)) return true
+  const steps = twin.instance.split("/")
+  return steps.some((_, i) => locked.has(steps.slice(0, i + 1).join("/")))
+}
+
+/**
+ * A sheet's edits less those whose part is locked in any instance: the sheet holds one position for every instance,
+ * so writing it would move the locked copy too. Each one left out is named in `skipped`.
+ */
+function unlockedTwins(sheet: PlacementWrites["sheets"][number], locked: ReadonlySet<string>, skipped: string[]): { edits: Edit[]; parts: string[] } {
+  const kept = sheet.edits.flatMap((edit, i) => {
+    const name = sheet.parts[i] ?? ""
+    const held = (sheet.twins[i] ?? []).find((twin) => twinLocked(twin, locked))
+    if (!held) return [{ edit, name }]
+    const local = edit.kind === "setProps" ? edit.part : name
+    skipped.push(held.part === name ? `${name} is locked` : `${name} shares ${local} of ${sheet.file} with ${held.part}, which is locked`)
+    return []
+  })
+  return { edits: kept.map((one) => one.edit), parts: kept.map((one) => one.name) }
+}
+
 interface Texts {
   circuit: { path: string; file: string; source: string; after: string }
   sheets: (FileChange & { path: string })[]
@@ -174,7 +212,8 @@ async function record(root: string, texts: Texts, meta: { author: Author; summar
 /**
  * Writes the placement into the circuit `file` and its sheet files as one history entry. The locks are read inside the
  * project's write queue, after `guard`: a part locked meanwhile, read-only or with its position written as an
- * expression stays as it is and is named in `skipped`. Nothing changed: no entry.
+ * expression stays as it is and is named in `skipped`; so does a sheet part whose copy in any instance is locked.
+ * Nothing changed: no entry.
  */
 export function writePlacement(root: string, file: string, writes: PlacementWrites, options: WritePlacementOptions): Promise<WrittenPlacement> {
   return inProjectQueue(root, async () => {
@@ -191,7 +230,8 @@ export function writePlacement(root: string, file: string, writes: PlacementWrit
       const resolved = await resolveCircuit(root, sheet.file)
       const before = await readFile(resolved.path, "utf8")
       const model = (await loadCircuit(root, resolved.file)).model
-      const kept = writable(model, sheet.edits, sheet.parts, new Set(), skipped)
+      const free = unlockedTwins(sheet, locked, skipped)
+      const kept = writable(model, free.edits, free.parts, new Set(), skipped)
       const text = applyEdits(before, kept.edits, new Set())
       if (text !== before) sheets.push({ path: resolved.path, file: resolved.file, before, after: text })
       written.push(...kept.names)
