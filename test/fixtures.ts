@@ -41,6 +41,12 @@ export const USBX_FOOTPRINT: FootprintFile = {
   ],
 }
 
+/** create_part's arguments for a part: its fields, with the footprint as the package. */
+export function createPartArgs(id: string, part: Part, footprintFile?: FootprintFile): Record<string, unknown> {
+  const { footprint, ...fields } = part
+  return { id, ...fields, package: footprint === "footprint.yaml" ? { file: footprint } : footprint, ...(footprintFile ? { footprint_file: footprintFile } : {}) }
+}
+
 /** The module BOARD imports. */
 export const SHARED = `export const regulatorProps = { footprint: "sot23_5", pinCount: 5 }; export const offset = 1`
 

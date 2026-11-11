@@ -7,7 +7,6 @@ import YAML from "yaml"
 import {
   BUILTIN_PARTS,
   buildBom,
-  createPart,
   exportFabrication,
   exportPackage,
   formatFabrication,
@@ -39,6 +38,7 @@ import * as copper from "./copper-tools.js"
 import * as fillet from "./fillet-tools.js"
 import * as pour from "./pour-tools.js"
 import * as router from "./route-tools.js"
+import { CREATE_PART_DESCRIPTION, createPartInput, createPartTool } from "./create-part.js"
 import { IMPORT_PART_DESCRIPTION, importPart, importPartInput } from "./import-part.js"
 import { MAKE_SHEET_DESCRIPTION, makeSheet, makeSheetInput } from "./make-sheet.js"
 import { NEW_CIRCUIT_DESCRIPTION, newCircuit, newCircuitInput } from "./new-circuit.js"
@@ -304,33 +304,7 @@ Nothing was written.`)
       }),
   )
 
-  server.registerTool(
-    "create_part",
-    {
-      description:
-        "Create a library part from a datasheet you have read: pins by number with names and electrical types, a copperflow footprint string such as sot23_5 or 0402, MPN and supplier numbers. When no footprint string fits the package, set footprint to \"footprint.yaml\" and pass footprint_file with every pad transcribed from the datasheet's recommended land pattern (never estimate). The part starts NOT verified; tell the human to check verification.md.",
-      inputSchema: {
-        id: z.string().describe("Folder name, e.g. AP2112K-3.3"),
-        part: PartSchema.omit({ verified: true }),
-        footprint_file: FootprintFileSchema.optional().describe(
-          'Pads in mm (y up, origin at the part centre) from the datasheet land pattern; requires part.footprint to be "footprint.yaml"',
-        ),
-        replace: z.boolean().optional().describe("Overwrite an existing, unverified part"),
-      },
-    },
-    ({ id, part, footprint_file, replace }) =>
-      run(async () => {
-        const result = await createPart(root, id, part, {
-          replace: replace === true,
-          ...(footprint_file ? { footprintFile: footprint_file } : {}),
-          now: new Date().toISOString(),
-        })
-        return [
-          `Created ${result.files.join(", ")}.`,
-          `Use it with place_part (part "${id}"). It is NOT verified: ask the human to check parts/${id}/verification.md against the datasheet.`,
-        ].join("\n")
-      }),
-  )
+  server.registerTool("create_part", { description: CREATE_PART_DESCRIPTION, inputSchema: createPartInput }, (input) => run(() => createPartTool(root, input)))
 
   server.registerTool("import_part", { description: IMPORT_PART_DESCRIPTION, inputSchema: importPartInput, annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true } }, (input) => run(() => importPart(root, input, options.fetch)))
 

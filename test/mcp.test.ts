@@ -7,7 +7,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { createCopperflowServer } from "../src/mcp/server.js"
 import { loadCircuit, redoChange, undoChange, updateAnnotations } from "../src/core/workspace.js"
 import { addMark, lockParts } from "../src/core/annotations.js"
-import { BOARD, LDO, SHARED, USBX, USBX_FOOTPRINT } from "./fixtures.js"
+import { BOARD, createPartArgs, LDO, SHARED, USBX, USBX_FOOTPRINT } from "./fixtures.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
 
 const FILE = "main.circuit.tsx"
@@ -86,7 +86,7 @@ describe("MCP server", () => {
   })
 
   test("the agent creates a part from a datasheet, places it and sees it in the BOM", async () => {
-    const created = await call("create_part", { id: "AP2112K-3.3", part: LDO })
+    const created = await call("create_part", createPartArgs("AP2112K-3.3", LDO))
     expect(created.isError).toBe(false)
     expect(created.text).toContain("NOT verified")
     expect((await call("list_parts")).text).toContain("AP2112K-3.3  <AP2112K_3_3>  AP2112K-3.3 LDO regulator  sot23_5  NOT verified")
@@ -98,18 +98,52 @@ describe("MCP server", () => {
   })
 
   test("create_part with footprint_file writes parts/<id>/footprint.yaml and lists it", async () => {
-    const created = await call("create_part", { id: "USBX", part: USBX, footprint_file: USBX_FOOTPRINT })
+    const created = await call("create_part", createPartArgs("USBX", USBX, USBX_FOOTPRINT))
     expect(created.isError).toBe(false)
     expect(created.text).toContain("parts/USBX/footprint.yaml")
     expect(await readFile(join(root, "parts", "USBX", "footprint.yaml"), "utf8")).toContain("pads:")
     const bad = { pads: [{ number: "9", shape: "rect", x: 0, y: 0, width: 1, height: 1 }] }
-    const refused = await call("create_part", { id: "USBY", part: USBX, footprint_file: bad })
+    const refused = await call("create_part", createPartArgs("USBY", USBX, bad as never))
     expect(refused.isError).toBe(true)
     expect(refused.text).toMatch(/pad 9/)
   })
 
+  test("create_part takes the part's fields, the package and the pins, the same as Library → New part…", async () => {
+    const { tools } = await client.listTools()
+    const schema = tools.find((t) => t.name === "create_part")?.inputSchema
+    expect(Object.keys(schema?.properties ?? {})).toEqual(["id", "title", "description", "manufacturer", "mpn", "package", "pins", "suppliers", "datasheet", "footprint_file", "replace"])
+    expect(schema?.required).toEqual(["id", "title", "package", "pins"])
+  })
+
+  test("create_part writes a written, unverified part from a pasted pin table and answers compactly", async () => {
+    const created = await call("create_part", { id: "X16M", title: "16 MHz crystal", package: "hc49s", pins: "1 XTAL1 passive\n2 XTAL2 passive", suppliers: { lcsc: "C16212" } })
+    expect(created.isError).toBe(false)
+    expect(created.text).toBe(
+      [
+        "Created X16M: 16 MHz crystal, 2 pins, footprint hc49s.",
+        "Wrote parts/X16M/part.yaml, parts/X16M/X16M.tsx, parts/X16M/verification.md.",
+        "It is NOT verified: check every pin and the footprint in parts/X16M/verification.md against the datasheet.",
+        'Use it with place_part (part "X16M"). Tell the human it is Unverified until they check verification.md.',
+      ].join("\n"),
+    )
+    expect((await call("list_parts")).text).toMatch(/^X16M .* NOT verified {2}written \d{4}-\d{2}-\d{2}$/)
+    const again = await call("create_part", { id: "X16M", title: "Other", package: "hc49s", pins: "1 A\n2 B" })
+    expect(again.isError).toBe(true)
+    expect(again.text).toContain("Part X16M already exists; pass replace to overwrite it")
+    expect((await call("create_part", { id: "X16M", title: "Other", package: "hc49s", pins: "1 A\n2 B", replace: true })).isError).toBe(false)
+    const bad = await call("create_part", { id: "X2", title: "Bad", package: "hc49s", pins: "1 A P\n2 B" })
+    expect(bad.text).toContain('Line 1: "P" is not a pin type')
+  })
+
+  test("create_part with package footprint file and no pads writes a placeholder footprint.yaml and says so", async () => {
+    const created = await call("create_part", { id: "J9", title: "9-pin header", package: { file: "footprint.yaml" }, pins: { "1": { name: "A", type: "passive" } } })
+    expect(created.isError).toBe(false)
+    expect(created.text).toContain("parts/J9/footprint.yaml")
+    expect(created.text).toContain("Note: footprint.yaml is a placeholder")
+  })
+
   test("invalid parts come back as tool errors", async () => {
-    const result = await call("create_part", { id: "../evil", part: LDO })
+    const result = await call("create_part", createPartArgs("../evil", LDO))
     expect(result.isError).toBe(true)
   })
 
