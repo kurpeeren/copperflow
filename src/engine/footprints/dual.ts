@@ -1,7 +1,7 @@
 import { confirmsPackage, gullWingRow, range, type IcPackage } from "./ic.js"
 import { roundRectPad, type PadRow, type Range } from "./ipc7351.js"
 import { bodyOutline, centredOffsets, courtyard, dualSilkscreen } from "./outline.js"
-import type { ParsedFootprint } from "./parse.js"
+import { parseFootprint, type ParsedFootprint } from "./parse.js"
 import type { Footprint, Pad } from "./types.js"
 
 /**
@@ -146,6 +146,15 @@ export const DUAL_FORMS: readonly { form: string; pins: readonly number[] }[] = 
   form: `${s.kind}<N>${s.suffix}`,
   pins: s.pins,
 }))
+
+/** The series whose outline was written from general knowledge, not taken from a drawing: MS-013 and MO-150. */
+const FROM_MEMORY: ReadonlySet<DualSeries> = new Set([SOIC_WIDE, SSOP])
+
+/** Whether a footprint string names a package whose outline was not taken from a drawing ("soic18w", "ssop20"). */
+export function outlineFromMemory(text: string): boolean {
+  const parsed = parseFootprint(text)
+  return parsed !== undefined && SERIES.some((s) => FROM_MEMORY.has(s) && s.kind === parsed.kind && s.suffix === (parsed.suffix ?? ""))
+}
 
 function packageOf(series: DualSeries, pins: number): IcPackage {
   const listed = series.bodyLength.get(pins)

@@ -71,6 +71,12 @@ moves the inner edge by the statistical S tolerance, so G = Smax' − 2·Jh − 
 SOIC127P600X175-8N (1.55 × 0.60 at ±2.70), and `soic18w` at 1.675 × 0.60 at ±4.84 mm. The same gull-wing row serves
 `sot23…`, `sot223`, `sot89` and the QFP families; the two-terminal SOD and DO-214 patterns keep the general form.
 
+The `soic<N>w` (JEDEC MS-013) and `ssop<N>` (JEDEC MO-150) outline dimensions were written from memory, not copied
+from the drawings. Their pads follow the same formula that reproduces the published SOIC-8 pattern. A maker's
+recommended pattern can differ: for an 18-lead wide SOIC, pads about 2.0 mm long reach about 0.3 mm further in at the
+heel than `soic18w`'s 1.675 mm. A part created with one of these packages gets a checklist line in its
+`verification.md` asking for the pads to be compared with the maker's land pattern.
+
 A name is normalised: `QFN32_5mmx5mm_p0.50mm_EP3.10` is made as `qfn32_5x5_p0.5_ep3.1`. Two pads of a generated
 footprint keep at least 0.1 mm of copper between them; a string whose pads would come closer (a large exposed pad, a
 crowded corner) is refused rather than drawn. A string of a known family that cannot be made says why, for example

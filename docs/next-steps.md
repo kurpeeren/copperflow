@@ -25,6 +25,8 @@ Stages 4–9 are on the branch: hand routing, the router, pages and sub-sheets, 
 Recommendation: keep 1 + 4 as the base and add 2 as an importer whose results stay "Unverified" until a person checks them.
 
 ## Footprint accuracy
+- Check MS-013 (`soic<N>w`) and MO-150 (`ssop<N>`) against the drawings: their outline dimensions in
+  `src/engine/footprints/dual.ts` were written from memory.
 - The pick-and-place rotation default of 0 for `qfn`, `dfn`, `qfp`, `lqfp` and `tqfp` is unverified; JLCPCB's preview
   (or an imported part of the same package) settles it.
 - Follow-up: rotate imported footprints into copperflow's orientation on import, with a pick-and-place correction field

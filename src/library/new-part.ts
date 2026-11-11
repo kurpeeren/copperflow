@@ -6,6 +6,7 @@ import { access, readFile, rm } from "node:fs/promises"
 import { join } from "node:path"
 import { parse } from "yaml"
 import { createPart, FOOTPRINT_FILE, isPlaceholder, isWritten, PARTS_DIR, partDir, readPart, validatePartId, type Part } from "../core/library.js"
+import { outlineFromMemory } from "../engine/footprints/dual.js"
 import { generateFootprint } from "../engine/footprints/index.js"
 import { FootprintFileSchema, pinErrors, type FootprintFile } from "../engine/footprints/file.js"
 import { ORIENTATION_NOTE } from "./lcsc-part.js"
@@ -50,6 +51,8 @@ const STUB_ROW_SPACING = 7.62
 export const PLACEHOLDER_NOTE =
   'footprint.yaml is a placeholder (pads 2.54 mm apart, in one row up to four pins and in two rows 7.62 mm apart above that): draw every pad from the datasheet\'s recommended land pattern, then delete "placeholder: true". Until then the checks report an error for each use of the part on the board, fabrication files are not written and the part cannot be verified; the schematic works. A footprint file goes into pick-and-place at its own orientation: drawn as copperflow draws (pin 1 top left, rows vertical), a SOIC- or SOP-like part needs fabrication.placementRotations.parts.<id>: 270 in rules.yaml; check it in JLCPCB\'s assembly preview.'
 
+export const REMEMBERED_OUTLINE_NOTE = "Compare the pads with the land pattern in the maker's datasheet; this package's outline was not taken from the drawing."
+
 /** Writes the part; throws with one message for the person when it cannot, and then writes nothing. */
 export async function writeNewPart(root: string, input: NewPartInput, options: { now: string; replace?: boolean }): Promise<NewPartResult> {
   const id = validatePartId(input.id)
@@ -62,7 +65,8 @@ export async function writeNewPart(root: string, input: NewPartInput, options: {
   const kept = fromFile && !input.footprintFile ? previous.footprint : undefined
   const imported = previous.origin !== undefined && !isWritten(previous.origin)
   const footprintFile = fromFile ? (input.footprintFile ?? kept ?? stubFootprint(pins)) : undefined
-  const notes = replaceNotes({ fromFile, given: !!input.footprintFile, kept: !!kept, imported, origin: previous.origin })
+  const remembered = !fromFile && outlineFromMemory(input.package as string) ? [REMEMBERED_OUTLINE_NOTE] : []
+  const notes = [...replaceNotes({ fromFile, given: !!input.footprintFile, kept: !!kept, imported, origin: previous.origin }), ...remembered]
   const part = {
     title: input.title,
     ...(input.description ? { description: input.description } : {}),

@@ -96,6 +96,17 @@ describe("writing a part from the wizard", () => {
     expect((await readPart(root, "CONN3")).footprint).toBe("footprint.yaml")
   })
 
+  test("a wide SOIC or SSOP part's checklist asks for the pads to be compared with the datasheet; a narrow SOIC's does not", async () => {
+    const pins = Array.from({ length: 16 }, (_, i) => `${i + 1} P${i + 1} passive`).join("\n")
+    const note = "Compare the pads with the land pattern in the maker's datasheet; this package's outline was not taken from the drawing."
+    for (const [id, pkg] of [["WIDE", "soic16w"], ["SHRINK", "ssop16"]] as const) {
+      const result = await writeNewPart(root, { ...CRYSTAL, id, package: pkg, pins }, { now: NOW })
+      expect(result.notes).toEqual([note])
+      expect(result.checklist).toContain(`- [ ] ${note}`)
+    }
+    expect((await writeNewPart(root, { ...CRYSTAL, id: "NARROW", package: "soic16", pins }, { now: NOW })).notes).toEqual([])
+  })
+
   test("the placeholder for more than four pins is a dual in-line outline: 2.54 mm pitch, rows 7.62 mm apart", () => {
     const pins = (n: number) => Object.fromEntries(Array.from({ length: n }, (_, i) => [String(i + 1), { name: `P${i + 1}`, type: "passive" as const }]))
     const at = (n: number) => stubFootprint(pins(n)).pads.map((pad) => [pad.number, pad.x, pad.y])
