@@ -5,6 +5,7 @@ import { parse, stringify } from "yaml"
 import { z } from "zod"
 import { footprintFromFile, pinErrors, type FootprintFile } from "../engine/footprints/file.js"
 import { writeFileAtomic } from "./fs-utils.js"
+import { PIN_TYPES, type PinType } from "./pin-types.js"
 import type { CircuitModel } from "./types.js"
 
 export const PARTS_DIR = "parts"
@@ -12,8 +13,7 @@ export const PARTS_DIR = "parts"
 /** The file in a part folder that holds the pads, when `footprint` in part.yaml is this name. */
 export const FOOTPRINT_FILE = "footprint.yaml"
 
-export const PIN_TYPES = ["power_in", "power_out", "ground", "input", "output", "bidirectional", "passive", "no_connect"] as const
-export type PinType = (typeof PIN_TYPES)[number]
+export { PIN_TYPES, type PinType } from "./pin-types.js"
 
 /** Props a library part owns; circuits cannot override them on an instance. */
 export const LIBRARY_OWNED_PROPS = ["footprint", "manufacturerPartNumber", "supplierPartNumbers", "pinLabels", "pinAttributes"]

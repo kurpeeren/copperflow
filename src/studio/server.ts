@@ -44,6 +44,9 @@ import { readIfThere } from "../core/file-writes.js"
 import { unrouteEdits, unrouteSummary } from "../core/unroute.js"
 import { resolveLayoutFile } from "../core/workspace.js"
 import { COMMERCIAL_NOTE, importLcscPart } from "../library/import-lcsc.js"
+import { writeNewPart } from "../library/new-part.js"
+import { FOOTPRINT_FILE } from "../core/library.js"
+import { PIN_TYPES } from "../core/pin-types.js"
 import { LayoutBody } from "./layout-schema.js"
 import { LiveProject, type DesignBuilder } from "./live.js"
 import { RouteRunner, routeWorkerFactory, type RouteWorkerFactory } from "./route-runner.js"
@@ -180,6 +183,18 @@ const Bodies = {
   verify: z.object({ id: z.string().min(1).max(64), by: z.string().min(1).max(100), against: z.string().min(1).max(300), confirm: z.string() }),
   // Library → Import by LCSC number: one part, written unverified.
   importPart: z.object({ lcsc: z.string().min(1).max(20), id: z.string().min(1).max(64).optional(), replace: z.boolean().optional() }),
+  // Library → New part…: the part written from a datasheet; the writer checks every field again.
+  createPart: z.object({
+    id: z.string().min(1).max(64),
+    title: z.string().min(1).max(200),
+    manufacturer: z.string().max(200).optional(),
+    mpn: z.string().max(100).optional(),
+    package: z.union([z.string().min(1).max(100), z.object({ file: z.literal(FOOTPRINT_FILE) }).strict()]),
+    pins: z.array(z.object({ number: z.string().max(10), name: z.string().max(100), type: z.enum(PIN_TYPES), description: z.string().max(200).optional() }).strict()).min(1).max(2000),
+    suppliers: z.record(z.string().max(40), z.string().max(100)).optional(),
+    datasheet: z.object({ url: z.string().max(2000) }).strict().optional(),
+    replace: z.boolean().optional(),
+  }),
   // The Design rules panel: a radius in mm, or null for the default.
   rules: z.object({ filletRadius: z.number().nullable(), file: z.string().optional() }),
   // Route → Autoroute: the whole board, some nets, the connections of some parts, or one sub-sheet instance.
@@ -406,6 +421,12 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         const result = await importLcscPart(root, body.lcsc, { now, replace: body.replace === true, ...(body.id ? { id: body.id } : {}), ...(options.fetch ? { fetch: options.fetch } : {}) })
         const { id, lcsc, part, files, pads, notes } = result
         return send(res, { id, lcsc, title: part.title, pins: Object.keys(part.pins).length, pads, files, notes, terms: COMMERCIAL_NOTE })
+      }
+      case "POST /api/create-part": {
+        const { replace, ...input } = Bodies.createPart.parse(await readJson(req))
+        const result = await writeNewPart(root, input, { now: new Date().toISOString(), replace: replace === true })
+        const { id, part, files, notes, verification, checklist } = result
+        return send(res, { id, title: part.title, pins: Object.keys(part.pins).length, footprint: part.footprint, files, notes, verification, checklist })
       }
       case "GET /api/bom": {
         const circuit = (await loadCircuit(root, query("file"))).file

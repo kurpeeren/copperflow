@@ -1,6 +1,6 @@
 // A pin table pasted from a datasheet: one pin per line, "number name type [description]", separated by tabs, commas
 // or spaces. Pure. A type that is not one of copperflow's pin types is reported on its line, never guessed.
-import { PIN_TYPES, type PinType } from "../core/library.js"
+import { PIN_TYPES, type PinType } from "../core/pin-types.js"
 
 export interface PinRow {
   number: string
