@@ -114,18 +114,24 @@ function toPad(entry: FootprintFile["pads"][number]): Pad {
   }
 }
 
-/** A rectangle around every pad, counter-clockwise from the lower left, `excess` mm larger on each side. */
-function paddedBounds(pads: readonly Pad[], excess: number): Point[] {
-  const boxes = pads.map((pad) => {
+/**
+ * A rectangle around every pad and the extra points (such as a body outline), counter-clockwise from the lower left,
+ * `excess` mm larger on each side.
+ */
+export function paddedBounds(pads: readonly Pick<Pad, "x" | "y" | "width" | "height" | "rotation">[], excess: number, points: readonly Point[] = []): Point[] {
+  const xs = points.map((p) => p.x)
+  const ys = points.map((p) => p.y)
+  for (const pad of pads) {
     const angle = (pad.rotation * Math.PI) / 180
     const halfX = (Math.abs(pad.width * Math.cos(angle)) + Math.abs(pad.height * Math.sin(angle))) / 2
     const halfY = (Math.abs(pad.width * Math.sin(angle)) + Math.abs(pad.height * Math.cos(angle))) / 2
-    return { minX: pad.x - halfX, maxX: pad.x + halfX, minY: pad.y - halfY, maxY: pad.y + halfY }
-  })
-  const minX = Math.min(...boxes.map((b) => b.minX)) - excess
-  const maxX = Math.max(...boxes.map((b) => b.maxX)) + excess
-  const minY = Math.min(...boxes.map((b) => b.minY)) - excess
-  const maxY = Math.max(...boxes.map((b) => b.maxY)) + excess
+    xs.push(pad.x - halfX, pad.x + halfX)
+    ys.push(pad.y - halfY, pad.y + halfY)
+  }
+  const minX = Math.min(...xs) - excess
+  const maxX = Math.max(...xs) + excess
+  const minY = Math.min(...ys) - excess
+  const maxY = Math.max(...ys) + excess
   return [
     { x: minX, y: minY },
     { x: maxX, y: minY },

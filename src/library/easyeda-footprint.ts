@@ -2,13 +2,14 @@
 // EasyEDA draws in units of 10 mil with y growing downwards around the document's origin (head.x, head.y);
 // footprint.yaml is in mm with y up around the part centre. Pad numbers are kept as EasyEDA writes them; the importer
 // maps the ones that are not pin numbers.
+import { DEFAULT_COURTYARD_EXCESS, paddedBounds } from "../engine/footprints/file.js"
 import { circlePoints, pathPolylines, type RawPoint } from "./easyeda-path.js"
 
 /** One EasyEDA unit in mm: the format's unit is 10 mil. */
 export const EASYEDA_UNIT_MM = 0.254
 
-/** Free space the courtyard keeps around the pads and the body, in mm (as footprint.yaml's default). */
-const COURTYARD_EXCESS = 0.25
+/** How near two ends of body segments must be to join, in mm. */
+const JOIN_TOLERANCE = 0.001
 
 const LAYER = { top: "1", bottom: "2", topSilk: "3", multi: "11", body: "99" } as const
 
@@ -70,7 +71,8 @@ export function convertFootprint(doc: EasyedaDocument): ConvertedFootprint {
     }
   }
   if (pads.length === 0) throw new Error("the footprint has no pads")
-  const body = largest(bodies)
+  const body = largest(closedRings(bodies))
+  if (!body) notes.push(bodies.length === 0 ? "The footprint draws no body outline, so footprint.yaml has none." : "The body outline (EasyEDA layer 99) is not closed, so footprint.yaml has no body.")
   return { pads, courtyard: courtyardAround(pads, body), silkscreen, ...(body ? { body: openRing(body) } : {}), notes }
 }
 
@@ -212,29 +214,35 @@ function outline(fields: string[], place: Place): { layer: string; polylines: [n
   }
 }
 
-/** A rectangle around every pad and the body, COURTYARD_EXCESS larger on each side, counter-clockwise from the lower left. */
+/** footprint.yaml's default courtyard around the pads, enlarged to take in the body. */
 function courtyardAround(pads: readonly ConvertedPad[], body: [number, number][] | undefined): [number, number][] {
-  const xs: number[] = []
-  const ys: number[] = []
-  for (const pad of pads) {
-    const angle = ((pad.rotation ?? 0) * Math.PI) / 180
-    const halfX = (Math.abs(pad.width * Math.cos(angle)) + Math.abs(pad.height * Math.sin(angle))) / 2
-    const halfY = (Math.abs(pad.width * Math.sin(angle)) + Math.abs(pad.height * Math.cos(angle))) / 2
-    xs.push(pad.x - halfX, pad.x + halfX)
-    ys.push(pad.y - halfY, pad.y + halfY)
+  const points = (body ?? []).map(([x, y]) => ({ x, y }))
+  return paddedBounds(pads.map((pad) => ({ ...pad, rotation: pad.rotation ?? 0 })), DEFAULT_COURTYARD_EXCESS, points).map(({ x, y }) => [round(x), round(y)] as [number, number])
+}
+
+/**
+ * The closed rings among the outlines: those that end where they start, and open segments joined end to end
+ * (in either direction) until they close. Chains that never close are left out.
+ */
+export function closedRings(lines: readonly [number, number][][]): [number, number][][] {
+  const near = (a: [number, number] | undefined, b: [number, number] | undefined) => !!a && !!b && Math.hypot(a[0] - b[0], a[1] - b[1]) <= JOIN_TOLERANCE
+  const isClosed = (line: [number, number][]) => line.length >= 4 && near(line[0], line[line.length - 1])
+  const rings = lines.filter(isClosed)
+  const open = lines.filter((line) => !isClosed(line) && line.length >= 2).map((line) => [...line])
+  while (open.length > 0) {
+    let chain = open.shift() as [number, number][]
+    for (let grown = true; grown && !isClosed(chain); ) {
+      grown = false
+      const end = chain[chain.length - 1]
+      const index = open.findIndex((line) => near(line[0], end) || near(line[line.length - 1], end))
+      if (index === -1) break
+      const next = open.splice(index, 1)[0] as [number, number][]
+      chain = [...chain, ...(near(next[0], end) ? next : [...next].reverse()).slice(1)]
+      grown = true
+    }
+    if (isClosed(chain)) rings.push(chain)
   }
-  for (const [x, y] of body ?? []) {
-    xs.push(x)
-    ys.push(y)
-  }
-  const [minX, maxX] = [round(Math.min(...xs) - COURTYARD_EXCESS), round(Math.max(...xs) + COURTYARD_EXCESS)]
-  const [minY, maxY] = [round(Math.min(...ys) - COURTYARD_EXCESS), round(Math.max(...ys) + COURTYARD_EXCESS)]
-  return [
-    [minX, minY],
-    [maxX, minY],
-    [maxX, maxY],
-    [minX, maxY],
-  ]
+  return rings
 }
 
 /** The outline enclosing the most area, as the body. */

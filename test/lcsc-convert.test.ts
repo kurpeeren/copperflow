@@ -57,6 +57,10 @@ describe("SOIC-8 (LM358DR2G, C7950)", () => {
     const arc = (footprint.silkscreen ?? []).find((line) => line.length > 3 && line.every(([x, y]) => Math.abs(Math.hypot(x + 2.5, y) - 0.5) < 1e-3))
     expect(arc?.[0]).toEqual([-2.5, -0.5])
     expect(arc?.at(-1)).toEqual([-2.5, 0.5])
+    // The pin-1 notch bulges into the body (+x), as drawn.
+    const middle = arc?.[Math.floor((arc.length - 1) / 2)] ?? [0, 0]
+    expect(middle[0]).toBeCloseTo(-2, 3)
+    expect(middle[1]).toBeCloseTo(0, 3)
     expect(footprint.courtyard).toEqual([
       [-2.7, -3.725],
       [2.7, -3.725],
@@ -142,8 +146,31 @@ describe("pad shapes", () => {
     expect(result.notes).toEqual([
       "An unplated hole of 1.016 mm at (2.54, 0) is not in footprint.yaml; add it to the board as a hole.",
       "An unplated pad hole of 1.016 mm at (-2.54, 0) is not in footprint.yaml; add it to the board as a hole.",
+      "The footprint draws no body outline, so footprint.yaml has none.",
     ])
     expect(() => pad("PAD~RECT~4000~3000~4~4~2~~1~0~~0~g~0~~Y~0")).toThrow(/bottom side/)
+  })
+})
+
+describe("the body", () => {
+  const PAD = "PAD~RECT~4000~3000~4~4~1~~1~0~~0~g~0~~Y~0"
+  const track = (points: string) => `TRACK~1~99~~${points}~t~0`
+
+  test("separate segments that touch are joined into a ring, in either direction", () => {
+    const result = convertFootprint(doc(PAD, track("3990 2990 4010 2990"), track("4010 3010 4010 2990"), track("4010 3010 3990 3010 3990 2990")))
+    expect(result.body).toEqual([
+      [-2.54, 2.54],
+      [2.54, 2.54],
+      [2.54, -2.54],
+      [-2.54, -2.54],
+    ])
+    expect(result.notes).toEqual([])
+  })
+
+  test("an outline that does not close gives no body and a note", () => {
+    const result = convertFootprint(doc(PAD, track("3990 2990 4010 2990 4010 3010 3990 3010")))
+    expect(result.body).toBeUndefined()
+    expect(result.notes).toEqual(["The body outline (EasyEDA layer 99) is not closed, so footprint.yaml has no body."])
   })
 })
 
