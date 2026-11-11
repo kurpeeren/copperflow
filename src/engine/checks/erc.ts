@@ -1,4 +1,5 @@
 import type { Circuit, Component, Net, Pin, PinType, Point } from "../model.js"
+import { flaggedPinSet } from "../no-connect.js"
 import { naturalCompare } from "../order.js"
 import type { SchematicLayout } from "../schematic.js"
 import type { Rules } from "../rules/schema.js"
@@ -21,6 +22,8 @@ interface Context {
   netOf: Map<string, Net>
   ends: Map<string, Point>
   globalNets: ReadonlySet<string>
+  /** The pins a no connect flag marks (no-connect.ts): meant to stay unconnected, as a no_connect pin is. */
+  flagged: ReadonlySet<string>
 }
 
 function contextOf(circuit: Circuit, schematic: SchematicLayout, rules: Rules): Context {
@@ -28,7 +31,7 @@ function contextOf(circuit: Circuit, schematic: SchematicLayout, rules: Rules): 
   const kindOf = new Map(pins.map((p) => [p.id, circuit.components.find((c) => c.id === p.component)?.kind ?? ""]))
   const netOf = new Map(circuit.nets.flatMap((net) => net.pins.map((pin): [string, Net] => [pin, net])))
   const ends = new Map(schematic.symbols.flatMap((s) => Object.entries(s.pinEnds)))
-  return { pins, kindOf, netOf, ends, globalNets: new Set(rules.globalNets) }
+  return { pins, kindOf, netOf, ends, globalNets: new Set(rules.globalNets), flagged: flaggedPinSet(circuit.components) }
 }
 
 /** "U1.pin3 (EN)": the pin id and its first name beyond pin<n>, when it has one. */
@@ -55,14 +58,16 @@ function pinsOn(context: Context, net: Net): Pin[] {
 const isAlone = (context: Context, pin: Pin) => (context.netOf.get(pin.id)?.pins.length ?? 1) <= 1
 
 function unconnectedPin(context: Context, pin: Pin): Violation[] {
-  if (pin.type === "no_connect" || !isAlone(context, pin)) return []
+  if (pin.type === "no_connect" || context.flagged.has(pin.id) || !isAlone(context, pin)) return []
   const severity = ERROR_WHEN_UNCONNECTED.has(pin.type) ? "error" : "warning"
   return [violation("pin-unconnected", severity, `${describePin(pin)} is not connected`, [pin.id], "schematic", context.ends.get(pin.id))]
 }
 
 function connectedNoConnect(context: Context, pin: Pin): Violation[] {
-  if (pin.type !== "no_connect" || isAlone(context, pin)) return []
-  return [violation("nc-connected", "error", `${describePin(pin)} must stay unconnected but is wired to other pins`, [pin.id], "schematic", context.ends.get(pin.id))]
+  const flagged = context.flagged.has(pin.id)
+  if ((pin.type !== "no_connect" && !flagged) || isAlone(context, pin)) return []
+  const why = flagged ? "has a no connect flag" : "must stay unconnected"
+  return [violation("nc-connected", "error", `${describePin(pin)} ${why} but is wired to other pins`, [pin.id], "schematic", context.ends.get(pin.id))]
 }
 
 // ---- nets ----

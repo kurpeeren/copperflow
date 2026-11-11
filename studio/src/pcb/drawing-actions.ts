@@ -7,7 +7,7 @@ import type { SchematicDrawing } from "../../../src/engine/model.js"
 import { roundPosition, type Point } from "./geometry.js"
 
 /** The words for a drawing of each kind, for the history and the notes. */
-export const KIND_WORDS: Record<SchematicDrawing["kind"], string> = { path: "line", rect: "rectangle", circle: "circle", arc: "arc", text: "text", bus: "bus" }
+export const KIND_WORDS: Record<SchematicDrawing["kind"], string> = { path: "line", rect: "rectangle", circle: "circle", arc: "arc", text: "text", bus: "bus", junction: "junction" }
 
 const plus = (a: Point, b: Point): Point => ({ x: roundPosition(a.x + b.x), y: roundPosition(a.y + b.y) })
 

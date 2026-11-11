@@ -2,6 +2,7 @@
 // theme's when it gives none), its width (never under one device pixel), its dashes and its 20% fill; texts upright in
 // the canvas font, in screen space with the other text. Selected drawings take the selection colour, and a drawing a
 // move takes is drawn where the move puts it. schematic-draw.ts calls both passes.
+import { JUNCTION_RADIUS } from "../../../src/engine/drawing-kinds.js"
 import type { SchematicDrawing } from "../../../src/engine/model.js"
 import { anchorAlignment, CANVAS_FONT_FAMILY, HIGHLIGHT_DIM, type Ctx } from "./ctx.js"
 import { colorOf, dashOf, drawnWidth, fillOf, isFilled, lineStyleOf, strokeWidthOf } from "./drawing-style.js"
@@ -36,7 +37,7 @@ function sweepOf(startAngle: number, endAngle: number): number {
 }
 
 /** Lays down the drawing's outline as the current path (the sheet's y is up, so an arc turns counter-clockwise). */
-function outline(ctx: Ctx, drawing: Exclude<SchematicDrawing, { kind: "text" }>): void {
+function outline(ctx: Ctx, drawing: Exclude<SchematicDrawing, { kind: "text" | "junction" }>): void {
   ctx.beginPath()
   if (drawing.kind === "path" || drawing.kind === "bus") {
     drawing.points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)))
@@ -62,11 +63,26 @@ function toneOf(drawing: SchematicDrawing, paint: DrawingPaint): { color: string
   return { color: colorOf(drawing), alpha: paint.dim ? HIGHLIGHT_DIM : 1 }
 }
 
+/** A junction: a solid dot of its radius, as the sheet's own junctions; a selected one glows. */
+function drawJunction(ctx: Ctx, drawing: Extract<SchematicDrawing, { kind: "junction" }>, color: string, alpha: number, selected: boolean): void {
+  ctx.globalAlpha = alpha
+  ctx.fillStyle = color
+  ctx.beginPath()
+  ctx.arc(drawing.x, drawing.y, JUNCTION_RADIUS, 0, 2 * Math.PI)
+  glow(ctx, selected)
+  ctx.fill()
+  glow(ctx, false)
+}
+
 /** Strokes (and fills) every drawing but the texts, in sheet units; `devicePx` is one device pixel in sheet units. */
 export function drawDrawings(ctx: Ctx, drawings: readonly SchematicDrawing[], devicePx: number, paint: DrawingPaint): void {
   for (const drawing of drawings) {
     if (drawing.kind === "text") continue
     const { color, alpha } = toneOf(drawing, paint)
+    if (drawing.kind === "junction") {
+      drawJunction(ctx, drawing, color, alpha, paint.selected?.includes(drawing.id) ?? false)
+      continue
+    }
     const width = drawnWidth(strokeWidthOf(drawing), devicePx)
     ctx.globalAlpha = alpha
     ctx.lineWidth = width

@@ -36,6 +36,7 @@ export function designOnPage(design: Design, page: string): Design {
       labels: keep(schematic.labels, entry.labels, (l) => l.id),
       drawings: keep(schematic.drawings, entry.drawings, (d) => d.id),
       junctions: entry.junctions,
+      ...(schematic.noConnects ? { noConnects: keep(schematic.noConnects, entry.parts, (flag) => flag.component) } : {}),
     },
   }
 }

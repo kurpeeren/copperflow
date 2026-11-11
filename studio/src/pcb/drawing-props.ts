@@ -68,9 +68,10 @@ const KEYS: Record<SchematicDrawing["kind"], readonly string[]> = {
   arc: ["x", "y", "radius", "startAngle", "endAngle", ...LINE],
   text: ["x", "y", "text", "fontSize", "anchor", "color"],
   bus: ["points"],
+  junction: ["x", "y", "color"],
 }
 
-const KIND_TITLES: Record<SchematicDrawing["kind"], string> = { path: "Line", rect: "Rectangle", circle: "Circle", arc: "Arc", text: "Text", bus: "Bus" }
+const KIND_TITLES: Record<SchematicDrawing["kind"], string> = { path: "Line", rect: "Rectangle", circle: "Circle", arc: "Arc", text: "Text", bus: "Bus", junction: "Junction" }
 
 /** Points as Properties writes them: "0, 0; 1, 0". */
 const pointsText = (points: readonly Point[]): string => points.map((point) => `${point.x}, ${point.y}`).join("; ")

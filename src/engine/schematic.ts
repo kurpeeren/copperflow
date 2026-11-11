@@ -1,4 +1,5 @@
 import type { Circuit, Component, Connection, Diagnostic, Point, SchematicDrawing, Side } from "./model.js"
+import { noConnectFlags, type NoConnectFlag } from "./no-connect.js"
 import { junctionsOf, labelName, labelStyle, layoutNets, type Drawn, type PinSpot } from "./schematic-nets.js"
 import { routeWires, type FixedWire, type RouteRequest, type SheetBox } from "./schematic-route.js"
 import { rotatePoint, rotateSide, sheetBounds, sheetPoint, type Spot } from "./schematic-geometry.js"
@@ -59,6 +60,8 @@ export interface SchematicLayout {
   drawings: SchematicDrawing[]
   /** In page order, the first page "Main"; absent in a layout made by hand, which is one page. */
   pages?: SchematicPage[]
+  /** The no connect flags at the ends of the flagged pins (no-connect.ts); absent in a layout made by hand. */
+  noConnects?: NoConnectFlag[]
 }
 
 interface Origin extends Spot {
@@ -262,7 +265,9 @@ export function layoutSchematicWithDiagnostics(built: Circuit): { layout: Schema
   all.labels.push(...flags)
   const first = pages[0]
   if (first) first.labels.push(...flags.map((flag) => flag.id))
-  return { layout: { ...all, pages }, diagnostics }
+  const pinEnds = new Map(all.symbols.flatMap((placed) => Object.entries(placed.pinEnds)))
+  const noConnects = noConnectFlags(circuit.components, pinEnds)
+  return { layout: { ...all, pages, ...(noConnects.length > 0 ? { noConnects } : {}) }, diagnostics }
 }
 
 /** Where every symbol, wire, label and junction of the schematic goes. */

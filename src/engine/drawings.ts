@@ -80,6 +80,7 @@ const SHAPES: Readonly<Record<DrawingKind, ShapeOf>> = {
     const { name, members } = r.required("name", named, BUS_NAME, { name: "", members: [] })
     return { kind: "bus", name, points: points(r, o), members }
   },
+  junction: (r, o) => ({ kind: "junction", ...corner(r, o), ...colorOf(r) }),
 }
 
 /**

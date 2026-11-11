@@ -15,7 +15,7 @@ export const FILL_ALPHA_HEX = "33"
 /** The line width a drawing gives itself, in sheet units: its strokeWidth, a bus's fixed width, none for a text. */
 export function strokeWidthOf(drawing: SchematicDrawing): number {
   if (drawing.kind === "bus") return BUS_WIDTH
-  return drawing.kind === "text" ? 0 : drawing.strokeWidth
+  return drawing.kind === "text" || drawing.kind === "junction" ? 0 : drawing.strokeWidth
 }
 
 /** The width a line is drawn with: its own, but never under one device pixel (`devicePx`, in sheet units). */
@@ -27,18 +27,19 @@ export function dashOf(style: LineStyle, width: number): number[] {
   return style === "dotted" ? [0, 2 * width] : []
 }
 
-/** The line style a drawing is drawn with; a bus and a text are solid. */
+/** The line style a drawing is drawn with; a bus, a text and a junction are solid. */
 export function lineStyleOf(drawing: SchematicDrawing): LineStyle {
-  return drawing.kind === "bus" || drawing.kind === "text" ? "solid" : drawing.lineStyle
+  return drawing.kind === "bus" || drawing.kind === "text" || drawing.kind === "junction" ? "solid" : drawing.lineStyle
 }
 
-/** The drawing's own colour: the one its file gives, else the theme's (the bus colour for a bus). */
+/** The drawing's own colour: the one its file gives, else the theme's (the bus colour for a bus, the junction colour for a junction). */
 export function colorOf(drawing: SchematicDrawing): string {
   if (drawing.kind === "bus") return sheetPalette().bus
+  if (drawing.kind === "junction") return drawing.color ?? sheetPalette().junction
   return drawing.color ?? sheetPalette().drawing
 }
 
-/** Whether the drawing is a filled rectangle or circle. */
+/** Whether the drawing is a filled rectangle or circle. A junction is a solid dot, drawn on its own (drawing-draw.ts). */
 export const isFilled = (drawing: SchematicDrawing): boolean => (drawing.kind === "rect" || drawing.kind === "circle") && drawing.filled
 
 /** The wash a filled shape gets: its colour at 20% alpha. */
