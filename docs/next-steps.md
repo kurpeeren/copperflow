@@ -1,7 +1,7 @@
-# Next steps (2026-11-10)
+# Next steps (2026-11-11)
 
 ## State
-Router stage 5 Tasks 1–2 are on main: the CAN module routes 32/32 in under 1 s, the 200-part board 398/398 in 4.4 s, both with zero copper violations. Left in stage 5: cleanup (45°, fewer vias), the Studio Autoroute command with a worker and progress, the `autoroute` agent tool.
+Stages 4–9 are on the branch: hand routing, the router, pages and sub-sheets, fabrication outputs, copper pours and holes, and the part library (generated packages, the part wizard, the LCSC importer). Next: `docs/plans/ai-codesign-2.md` — the board placer, the board in words, and the project memory.
 
 ## Suggested schematic tools
 - Net highlight on hover across pages and sub-sheets.
