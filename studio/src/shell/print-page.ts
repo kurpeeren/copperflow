@@ -2,6 +2,10 @@
 // one sheet: an SVG the size of an A4 landscape page holding the drawing as an image (drawn by the Studio's own
 // renderers, print-render.ts) and a title line, one sheet per printed page. PDF is the same page, saved through the
 // browser's print dialog ("Save as PDF"), so no PDF library is needed. Pure.
+import { schematicThemeFor } from "../pcb/schematic-theme.js"
+
+/** The paper the board prints on: the light sheet's background, not the PCB view's dark one. */
+export const BOARD_PAPER = (): string => schematicThemeFor("light").background
 
 /** One drawn sheet: its image (a data URL) and what the title line says. */
 export interface PrintSheet {

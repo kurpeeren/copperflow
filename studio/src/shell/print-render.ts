@@ -7,7 +7,7 @@ import { fitCamera, pointBounds, unionBoxes, type Box, type Camera, type Size } 
 import { drawPcb } from "../pcb/pcb-draw"
 import { drawSchematic } from "../pcb/schematic-draw"
 import { schematicThemeFor, setSheetPalette } from "../pcb/schematic-theme"
-import { printImageSize, printPageHtml, type PrintSheet } from "./print-page"
+import { BOARD_PAPER, printImageSize, printPageHtml, type PrintSheet } from "./print-page"
 import { designOnPage, pageNames } from "./schematic-pages"
 import { parseTheme, type ThemeName } from "./theme-state"
 
@@ -36,9 +36,6 @@ function sheetImage(design: Design, page: string, size: Size): string | undefine
   drawSchematic(drawn.ctx, layout, { camera: fitCamera(box, size, MARGIN), size }, { ratio: 1 })
   return drawn.canvas.toDataURL("image/png")
 }
-
-/** The paper the board prints on: the light sheet's background, not the PCB view's dark one. */
-export const BOARD_PAPER = (): string => schematicThemeFor("light").background
 
 /** The board drawn in the PCB view's layer colours on paper, its tracks and vias with it, fitted to the sheet. */
 function boardImage(design: Design, size: Size): string | undefined {

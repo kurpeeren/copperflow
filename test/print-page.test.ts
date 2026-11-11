@@ -7,7 +7,7 @@ const sheet = { title: "led <test> · PCB", image: "data:image/png;base64,AAAA",
 
 describe("File → Print… and Export → PDF…", () => {
   test("the board prints on the light sheet's paper, not the PCB view's dark background", async () => {
-    const { BOARD_PAPER } = await import("../studio/src/shell/print-render.js")
+    const { BOARD_PAPER } = await import("../studio/src/shell/print-page.js")
     const { schematicTheme } = await import("../studio/src/pcb/schematic-theme.js")
     const { PALETTE } = await import("../studio/src/pcb/ctx.js")
     expect(BOARD_PAPER()).toBe(schematicTheme.background)
