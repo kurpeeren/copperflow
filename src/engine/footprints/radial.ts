@@ -5,7 +5,7 @@ import { leadDiameter, THROUGH_HOLE_COURTYARD, throughHoleLand, throughHolePad }
 import type { Range } from "./ipc7351.js"
 import { arcPoints, courtyard, SILK_CLEARANCE, tidy } from "./outline.js"
 import type { ParsedFootprint } from "./parse.js"
-import type { Footprint, Pad } from "./types.js"
+import { refuse, type Footprint, type Pad, type Refusal } from "./types.js"
 
 /**
  * Radial electrolytic capacitors, "radial<d>x<pitch>": a can d mm across with two leads `pitch` mm
@@ -38,15 +38,17 @@ function plusMark(pad: Pad): Point[][] {
  * "radial<d>x<pitch>": pad 1 (square, positive) at the left, pad 2 (negative) at the right, the can
  * as a circle on the silkscreen and a "+" by pad 1; or undefined.
  */
-export function radialFootprint(parsed: ParsedFootprint): Footprint | undefined {
+export function radialFootprint(parsed: ParsedFootprint): Footprint | Refusal | undefined {
   const plain = parsed.suffix === undefined && parsed.size === undefined && parsed.pairs === undefined && parsed.variant === undefined
-  if (parsed.kind !== "radial" || parsed.cross === undefined || !plain || Object.keys(parsed.params).length > 0) return undefined
+  if (parsed.kind !== "radial" || !plain || Object.keys(parsed.params).length > 0) return undefined
+  if (parsed.cross === undefined) return refuse("a radial capacitor is radial<can diameter>x<lead spacing>, such as radial6.3x2.5")
   const diameter = Number(parsed.code)
   const pitch = Number(parsed.cross)
   const lead = LEADS.find((row) => diameter <= row.upTo)?.lead
-  if (!lead || diameter < MIN_DIAMETER || diameter > MAX_DIAMETER || pitch <= 0 || pitch >= diameter) return undefined
+  if (!lead || diameter < MIN_DIAMETER || diameter > MAX_DIAMETER) return refuse(`the can is ${MIN_DIAMETER} to ${MAX_DIAMETER} mm across`)
+  if (pitch <= 0 || pitch >= diameter) return refuse(`the leads must be closer together than the ${mm(diameter)} mm can is wide`)
   const land = throughHoleLand(leadDiameter(lead))
-  if (pitch - land.pad < MIN_PAD_GAP) return undefined
+  if (pitch - land.pad < MIN_PAD_GAP) return refuse(`${land.pad} mm lands ${mm(pitch)} mm apart would touch`)
   const pads: Pad[] = [throughHolePad("1", tidy(-pitch / 2), 0, land, true), throughHolePad("2", tidy(pitch / 2), 0, land)]
   const can = diameter / 2
   const silkRadius = Math.max(can, pitch / 2 + (land.pad * Math.SQRT2) / 2 + SILK_CLEARANCE)

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { generateFootprint, padCount } from "../../src/engine/footprints/index.js"
-import { EPS, courtyardHalf, expectWellFormed, footprint, neighbourDistances, pad, refused } from "./footprint-checks.js"
+import { EPS, courtyardHalf, expectWellFormed, footprint, neighbourDistances, pad, refusedAll } from "./footprint-checks.js"
 
 /** Pad size along its lead and across it, and the distance between the centres of two opposite pads. */
 function expectRow(text: string, first: number, opposite: number, along: "x" | "y", expected: { length: number; width: number; centres: number }) {
@@ -137,30 +137,29 @@ describe("QFN, QFP and DFN named by body and pitch", () => {
   })
 
   test("strings that are not such a package are refused", () => {
-    for (const text of [
-      "qfn32_5x5",
-      "qfn32_5x5_p0.55",
-      "qfn30_5x5_p0.5",
-      "qfn32_5x6_p0.5",
-      "qfn64_5x5_p0.5",
-      "qfn32_5x5_p0.5_ep",
-      "qfn32_5x5_p0.5_ep4.8",
-      "qfn32_5x5_p0.5_w5",
-      "lqfp64_10x10_p0.5_ep3",
-      "lqfp64_10x10_p1",
-      "qfn32_5x5_p0.5_rows2x2",
-      "qfn28_5x5_p0.65",
-      "dfn8_3x3",
-      "dfn7_3x3_p0.65",
-      "dfn8_3x3_p0.65_ep2.8x2",
-      "dfn6_2x2_p0.65_ep1x1.6",
-      "dfn8_3x1_p0.65",
-      "dfn8",
-      "qfn32_0.5x0.5_p0.5",
-      "qfn32_5x5_p0.5s",
-    ]) {
-      refused(text)
-    }
+    refusedAll({
+      "qfn32_5x5": "a QFN named by its body needs its pitch, such as _p0.5",
+      "qfn32_5x5_p0.55": "QFN pitch must be 0.4, 0.5 or 0.65 mm",
+      "qfn30_5x5_p0.5": "a QFN has a pin count divisible by 4",
+      "qfn32_5x6_p0.5": "QFN bodies must be square",
+      "qfn64_5x5_p0.5": "16 pins a side at 0.5 mm do not fit a 5 mm side",
+      "qfn32_5x5_p0.5_ep": "_ep needs the exposed pad's size, such as _ep3.1 or _ep1.6x2.4",
+      "qfn32_5x5_p0.5_ep4.8": "the exposed pad would touch the pins",
+      "qfn32_5x5_p0.5_ep4.5": "the exposed pad would touch the pins",
+      "qfn32_5x5_p0.5_w5": "a QFN takes only _p and _ep, not _w",
+      "lqfp64_10x10_p0.5_ep3": "a QFP takes only _p",
+      "lqfp64_10x10_p1": "QFP pitch must be 0.4, 0.5, 0.65 or 0.8 mm",
+      "qfn32_5x5_p0.5_rows2x2": "a QFN takes only _p and _ep, not _rows",
+      "qfn28_5x5_p0.65": "the pins would come closer than 0.1 mm to each other",
+      "dfn8_3x3": "a DFN needs its pitch, such as _p0.65",
+      "dfn7_3x3_p0.65": "a DFN has a pin count divisible by 2",
+      "dfn8_3x3_p0.65_ep2.8x2": "the exposed pad would touch the pins",
+      "dfn6_2x2_p0.65_ep1x1.6": "the exposed pad would touch the pins",
+      "dfn8_3x1_p0.65": "4 pins a side at 0.65 mm do not fit a 1 mm side",
+      "dfn8": "a DFN needs its body, such as dfn8_3x3_p0.65",
+      "qfn32_0.5x0.5_p0.5": "a QFN body is 1 to 60 mm",
+      "qfn32_5x5_p0.5s": null,
+    })
     expect(generateFootprint("qfn2048_60x60_p0.5")).toHaveProperty("error")
   })
 })

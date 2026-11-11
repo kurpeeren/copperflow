@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { bgaLand, bgaRowName } from "../../src/engine/footprints/bga.js"
 import { padCount } from "../../src/engine/footprints/index.js"
-import { courtyardHalf, expectWellFormed, footprint, pad, refused } from "./footprint-checks.js"
+import { courtyardHalf, expectWellFormed, footprint, pad, refusedAll } from "./footprint-checks.js"
 
 describe("BGA", () => {
   test("rows are lettered A to Y without I, O, Q, S, X and Z, then AA, AB, … and BA", () => {
@@ -32,7 +32,8 @@ describe("BGA", () => {
   test("lands by pitch", () => {
     expect(bgaLand(1.27)).toEqual({ ball: 0.75, land: 0.55 })
     expect(bgaLand(1)).toEqual({ ball: 0.5, land: 0.4 })
-    expect(bgaLand(0.8)).toEqual({ ball: 0.4, land: 0.3 })
+    // 0.8 mm: the 0.45 mm ball of JEDEC MO-275; 0.45 × 0.80 = 0.36 → 0.35.
+    expect(bgaLand(0.8)).toEqual({ ball: 0.45, land: 0.35 })
     expect(bgaLand(0.65)).toEqual({ ball: 0.35, land: 0.3 })
     expect(bgaLand(0.5)).toEqual({ ball: 0.3, land: 0.25 })
     expect(bgaLand(0.4)).toEqual({ ball: 0.25, land: 0.2 })
@@ -78,20 +79,18 @@ describe("BGA", () => {
   })
 
   test("strings that are not a full grid are refused", () => {
-    for (const text of [
-      "bga64",
-      "bga255_17x17_p1",
-      "bga256_17x17",
-      "bga256_17x17_p0.9",
-      "bga256_14x14_p1",
-      "bga24_6x8_p1_rows5x5",
-      "bga24_5x5_p1_rows6x4",
-      "bga256_17x17_p1_w17",
-      "bga256_17x17_p1_ep2",
-      "bga256x2_17x17_p1",
-      "bga0_1x1_p1",
-    ]) {
-      refused(text)
-    }
+    refusedAll({
+      "bga64": "a BGA needs its body, such as bga256_17x17_p1",
+      "bga255_17x17_p1": "255 balls are no square grid; give _rows<R>x<C>",
+      "bga256_17x17": "a BGA needs its pitch, such as _p1",
+      "bga256_17x17_p0.9": "BGA pitch must be one of 1.27, 1, 0.8, 0.65, 0.5, 0.4 mm",
+      "bga256_14x14_p1": "a 16\u00d716 grid at 1 mm does not fit the body",
+      "bga24_6x8_p1_rows5x5": "_rows5x5 is not a full grid of 24 balls",
+      "bga24_5x5_p1_rows6x4": "a 6\u00d74 grid at 1 mm does not fit the body",
+      "bga256_17x17_p1_w17": "a BGA takes only _p and _rows, not _w",
+      "bga256_17x17_p1_ep2": "a BGA takes only _p and _rows, not _ep",
+      "bga256x2_17x17_p1": null,
+      "bga0_1x1_p1": "a BGA has 1 to 4096 balls",
+    })
   })
 })

@@ -1,10 +1,10 @@
-import { exposedPadSize, MIN_PAD_GAP, mm, onlyPitch, sizeText } from "./exposed.js"
+import { crowded, exposedPadSize, mm, onlyPitch, sizeText } from "./exposed.js"
 import { confirmsPackage, gullWingRow, leadlessRow, range, type IcPackage } from "./ic.js"
 import { roundRectPad, type PadRow, type Range } from "./ipc7351.js"
 import { qfnPackage, qfpPackage } from "./jedec.js"
-import { bodyOutline, centredOffsets, courtyard, padsApart, quadSilkscreen, tidy, type Extent } from "./outline.js"
+import { bodyOutline, centredOffsets, courtyard, quadSilkscreen, tidy, type Extent } from "./outline.js"
 import { isSimple, type Pair, type ParsedFootprint } from "./parse.js"
-import type { Footprint, Pad } from "./types.js"
+import { isRefusal, refuse, type Footprint, type Pad, type Refusal } from "./types.js"
 
 /** A square quad package. `exposedPad` is the thermal pad's side (Dh = Eh), for no-lead packages. */
 interface QuadPackage extends IcPackage {
@@ -87,12 +87,12 @@ const QUAD_KINDS = new Set(["qfn", ...QFP_ALIASES])
  * The IPC-7351B nominal footprint for "qfp48", "qfn32", "qfn32_ep", and for packages named by body
  * and pitch such as "qfn32_5x5_p0.5_ep3.1" or "lqfp64_10x10_p0.5", or undefined.
  */
-export function quadFootprint(parsed: ParsedFootprint): Footprint | undefined {
+export function quadFootprint(parsed: ParsedFootprint): Footprint | Refusal | undefined {
   if (!QUAD_KINDS.has(parsed.kind) || parsed.variant !== undefined) return undefined
   return parsed.size ? namedQuad(parsed, parsed.size) : tableQuad(parsed)
 }
 
-function tableQuad(parsed: ParsedFootprint): Footprint | undefined {
+function tableQuad(parsed: ParsedFootprint): Footprint | Refusal | undefined {
   const leadless = parsed.kind === "qfn"
   const pkg = leadless ? QFNS.get(parsed.code) : QFPS.get(parsed.code)
   if (!pkg || !isSimple(parsed) || !confirmsPackage(parsed.params, pkg, leadless ? ["ep"] : [])) return undefined
@@ -110,22 +110,26 @@ const nominalSquare = (side: Range): Extent => {
 }
 
 /** "qfn<N>_<body>x<body>_p<pitch>" with an optional "_ep<size>" or "_ep<w>x<h>", and the QFP forms. */
-function namedQuad(parsed: ParsedFootprint, body: Pair): Footprint | undefined {
+function namedQuad(parsed: ParsedFootprint, body: Pair): Footprint | Refusal | undefined {
   const leadless = parsed.kind === "qfn"
+  const label = leadless ? "QFN" : "QFP"
   const pitch = parsed.params["p"]
-  if (parsed.cross !== undefined || parsed.suffix !== undefined || typeof pitch !== "number") return undefined
+  if (parsed.cross !== undefined || parsed.suffix !== undefined) return undefined
+  if (typeof pitch !== "number") return refuse(`a ${label} named by its body needs its pitch, such as _p0.5`)
   const pkg = leadless ? qfnPackage(parsed.code, body, pitch) : qfpPackage(parsed.code, body, pitch)
-  const thermal = leadless ? exposedPadSize(parsed) : onlyPitch(parsed) ? undefined : null
-  if (!pkg || thermal === null) return undefined
+  if (isRefusal(pkg)) return pkg
+  const thermal = leadless ? exposedPadSize(parsed, label) : onlyPitch(parsed) ? undefined : refuse("a QFP takes only _p")
+  if (isRefusal(thermal)) return thermal
   const name = `${parsed.kind}${parsed.code}_${mm(body[0])}x${mm(body[1])}_p${mm(pitch)}${thermal ? `_ep${sizeText(thermal)}` : ""}`
   return quad(name, Number(parsed.code), pkg, leadless, thermal)
 }
 
-function quad(name: string, pins: number, pkg: IcPackage, leadless: boolean, thermal: Extent | undefined): Footprint | undefined {
+function quad(name: string, pins: number, pkg: IcPackage, leadless: boolean, thermal: Extent | undefined): Footprint | Refusal {
   const { row, table } = leadless ? leadlessRow(pkg) : gullWingRow(pkg)
   const signal = quadPads(pins, pkg.pitch, row)
   const pads = thermal ? [...signal, roundRectPad(String(pins + 1), 0, 0, thermal.x, thermal.y)] : signal
-  if (!padsApart(pads, MIN_PAD_GAP)) return undefined
+  const tooClose = crowded(pads, thermal !== undefined)
+  if (tooClose) return tooClose
   const half = pkg.bodyAcross.max / 2
   const reach = Math.max(pkg.span.max, pkg.bodyAcross.max) / 2
   return {

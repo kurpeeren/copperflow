@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { padCount } from "../../src/engine/footprints/index.js"
 import { MOLDED_BODY_TABLE } from "../../src/engine/footprints/ipc7351.js"
-import { courtyardHalf, EPS, expectWellFormed, footprint, pad, refused } from "./footprint-checks.js"
+import { courtyardHalf, EPS, expectWellFormed, footprint, pad, refusedAll } from "./footprint-checks.js"
 
 describe("SOT-223 and SOT-89", () => {
   test("SOT-223, worked by hand: three leads along the bottom, tab 4 on top", () => {
@@ -23,7 +23,7 @@ describe("SOT-223 and SOT-89", () => {
     expectWellFormed(fp)
   })
 
-  test("SOT-89: the tab is a second pad 2", () => {
+  test("SOT-89: the tab is a second pad 2 whose land runs on under the body", () => {
     // Span 3.94–4.25, foot 0.89–1.20, lead 0.44–0.56, tab 1.62–1.83, body 2.40–2.60 across.
     // Note 1 applies (Smin = 3.94 − 2.40 = 1.54 ≤ 2.60): Jh 0.15.
     // Z = 3.94 + 0.70 + √(0.31² + 0.10² + 0.05²) = 4.64 + 0.3295 = 4.9695 → 4.95
@@ -33,9 +33,11 @@ describe("SOT-223 and SOT-89", () => {
     const fp = footprint("sot89")
     expect(fp.pads.map((p) => p.number)).toEqual(["1", "2", "3", "2"])
     expect(pad(fp, 1)).toMatchObject({ x: -1.5, y: -1.6, width: 0.65, height: 1.75 })
-    expect(fp.pads[3]).toMatchObject({ number: "2", x: 0, y: 1.6, width: 1.9, height: 1.75 })
-    expect(padCount("sot89")).toBe(4)
-    expect(new Set(fp.pads.map((p) => p.number)).size).toBe(3)
+    // The tab land's outer end stays at 1.60 + 1.75/2 = 2.475; it runs in under the body to 0.30 short of the lead
+    // lands, whose inner ends are at −1.60 + 0.875 = −0.725: from −0.425 to 2.475, 2.90 long, centred at 1.025.
+    expect(fp.pads[3]).toMatchObject({ number: "2", x: 0, y: 1.025, width: 1.9, height: 2.9 })
+    expect(fp.pads).toHaveLength(4)
+    expect(padCount("sot89")).toBe(3)
     expectWellFormed(fp)
   })
 
@@ -50,7 +52,12 @@ describe("SOT-223 and SOT-89", () => {
   })
 
   test("other SOT strings are still refused", () => {
-    for (const text of ["sot223_p2.3", "sot89_5", "sot2230", "sot223s"]) refused(text)
+    refusedAll({
+      "sot223_p2.3": null,
+      "sot89_5": null,
+      "sot2230": null,
+      "sot223s": null,
+    })
   })
 })
 
@@ -85,6 +92,13 @@ describe("DO-214 diodes", () => {
   })
 
   test("other strings are refused", () => {
-    for (const text of ["do214", "do214ad", "smd", "sma_p2", "sma_5", "smax2"]) refused(text)
+    refusedAll({
+      "do214": "do214 needs a suffix: do214ac, do214aa or do214ab",
+      "do214ad": "do214 needs a suffix: do214ac, do214aa or do214ab",
+      "smd": null,
+      "sma_p2": null,
+      "sma_5": null,
+      "smax2": null,
+    })
   })
 })

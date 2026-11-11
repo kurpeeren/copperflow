@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest"
 import { padCount } from "../../src/engine/footprints/index.js"
 import { leadDiameter, throughHoleLand } from "../../src/engine/footprints/ipc7251.js"
 import type { Footprint } from "../../src/engine/footprints/types.js"
-import { courtyardHalf, expectWellFormed, footprint, neighbourDistances, pad, refused } from "./footprint-checks.js"
+import { courtyardHalf, expectWellFormed, footprint, neighbourDistances, pad, refusedAll } from "./footprint-checks.js"
 
 const drill = (fp: Footprint, n: number | string) => pad(fp, n).drill?.width
 
@@ -58,7 +58,15 @@ describe("DIP", () => {
   })
 
   test("others are refused", () => {
-    for (const text of ["dip7", "dip2", "dip66", "dip8_w5", "dip8_p2", "dip8_5", "dip8s"]) refused(text)
+    refusedAll({
+      "dip7": "a DIP has an even pin count from 4 to 64",
+      "dip2": "a DIP has an even pin count from 4 to 64",
+      "dip66": "a DIP has an even pin count from 4 to 64",
+      "dip8_w5": "DIP rows are at least 7.62 mm apart",
+      "dip8_p2": "a DIP takes only _w, not _p",
+      "dip8_5": null,
+      "dip8s": null,
+    })
   })
 })
 
@@ -75,8 +83,13 @@ describe("TO-220 and TO-92", () => {
     expect(drill(fp, 2)).toBe(1.3)
     expectWellFormed(fp)
     expectTickUnderPadOne(fp)
-    // The tab line is behind the leads.
-    expect(fp.silkscreen[1]?.[0]?.y).toBeGreaterThan(0)
+    // The lead plane is 2.0 behind the front face and 2.5 in front of the tab's back; the tab is 1.27 thick.
+    const outline = fp.silkscreen[0] ?? []
+    expect(Math.min(...outline.map((p) => p.y))).toBe(-2)
+    expect(Math.max(...outline.map((p) => p.y))).toBe(2.5)
+    expect(fp.silkscreen[1]?.[0]?.y).toBeCloseTo(1.23, 9)
+    // Courtyard: 2.5 + 0.25 = 2.75 front and back.
+    expect(courtyardHalf(fp).y).toBe(2.75)
   })
 
   test("TO-92: leads formed to 2.54, the flat face in front", () => {
@@ -89,7 +102,13 @@ describe("TO-220 and TO-92", () => {
   })
 
   test("others are refused", () => {
-    for (const text of ["to220_p2.54", "to221", "to92s", "to92_5", "to247"]) refused(text)
+    refusedAll({
+      "to220_p2.54": null,
+      "to221": null,
+      "to92s": null,
+      "to92_5": null,
+      "to247": null,
+    })
   })
 })
 
@@ -112,7 +131,12 @@ describe("crystals", () => {
   test("hc49 has the same pads", () => {
     expect(footprint("hc49").pads).toEqual(footprint("hc49s").pads)
     expect(footprint("hc49").origin).toContain("HC-49/U")
-    for (const text of ["hc49u", "hc50", "hc49_p5", "hc49s_5"]) refused(text)
+    refusedAll({
+      "hc49u": null,
+      "hc50": null,
+      "hc49_p5": null,
+      "hc49s_5": null,
+    })
   })
 })
 
@@ -141,7 +165,16 @@ describe("radial electrolytics", () => {
   })
 
   test("others are refused", () => {
-    for (const text of ["radial5", "radial5x5", "radial5x1", "radial2x1", "radial50x10", "radial5x2_p2", "radial5x2s"]) refused(text)
+    refusedAll({
+      "radial5": "a radial capacitor is radial<can diameter>x<lead spacing>, such as radial6.3x2.5",
+      "radial5x5": "the leads must be closer together than the 5 mm can is wide",
+      "radial6.3x7": "the leads must be closer together than the 6.3 mm can is wide",
+      "radial5x1": "1.3 mm lands 1 mm apart would touch",
+      "radial2x1": "the can is 3 to 40 mm across",
+      "radial50x10": "the can is 3 to 40 mm across",
+      "radial5x2_p2": null,
+      "radial5x2s": null,
+    })
   })
 })
 
@@ -168,6 +201,12 @@ describe("two-row pin headers", () => {
   })
 
   test("others are refused", () => {
-    for (const text of ["pinrow3x5", "pinrow2x0", "pinrow2x5_p1.5", "pinrow2x5s", "pinrow2x5_w3"]) refused(text)
+    refusedAll({
+      "pinrow3x5": "headers have one row (pinrow<N>) or two (pinrow2x<N>)",
+      "pinrow2x0": "a two-row header has 1 to 500 pins a row",
+      "pinrow2x5_p1.5": null,
+      "pinrow2x5s": null,
+      "pinrow2x5_w3": null,
+    })
   })
 })

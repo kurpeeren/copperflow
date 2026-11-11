@@ -18,6 +18,19 @@ export function refused(text: string): void {
   expect(generateFootprint(text)).toEqual({ error: `copperflow cannot make footprint "${text}" yet` })
 }
 
+/** The string is refused with this reason after it. */
+export function refusedBecause(text: string, reason: string): void {
+  expect(generateFootprint(text)).toEqual({ error: `copperflow cannot make footprint "${text}": ${reason}` })
+}
+
+/** Each string is refused: with the reason given, or with the plain "yet" error for null. */
+export function refusedAll(cases: Readonly<Record<string, string | null>>): void {
+  for (const [text, reason] of Object.entries(cases)) {
+    if (reason === null) refused(text)
+    else refusedBecause(text, reason)
+  }
+}
+
 export function pad(fp: Footprint, number: string | number): Pad {
   const found = fp.pads.find((p) => p.number === String(number))
   if (!found) throw new Error(`${fp.name} has no pad ${number}`)
@@ -68,7 +81,10 @@ export function courtyardHalf(fp: Footprint): { x: number; y: number } {
   return { x: Math.max(...fp.courtyard.map((p) => Math.abs(p.x))), y: Math.max(...fp.courtyard.map((p) => Math.abs(p.y))) }
 }
 
-/** The checks every generated footprint passes: the courtyard holds the pads and the body, silkscreen clears copper, pads apart. */
+/**
+ * The checks every generated footprint passes: the courtyard holds the pads, the body and the silkscreen, silkscreen
+ * clears copper, pads apart.
+ */
 export function expectWellFormed(fp: Footprint): void {
   const half = courtyardHalf(fp)
   for (const p of fp.pads) {
@@ -83,6 +99,10 @@ export function expectWellFormed(fp: Footprint): void {
     expect(Math.abs(point.y)).toBeLessThanOrEqual(half.y + EPS)
   }
   expect(fp.silkscreen.length).toBeGreaterThan(0)
+  for (const point of fp.silkscreen.flat()) {
+    expect(Math.abs(point.x), `${fp.name}: silkscreen inside the courtyard`).toBeLessThanOrEqual(half.x + EPS)
+    expect(Math.abs(point.y), `${fp.name}: silkscreen inside the courtyard`).toBeLessThanOrEqual(half.y + EPS)
+  }
   expect(silkToPads(fp)).toBeGreaterThanOrEqual(SILK_CLEARANCE - 1e-6)
   if (fp.pads.length <= 400) {
     for (let i = 0; i < fp.pads.length; i++) {

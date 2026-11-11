@@ -1,6 +1,7 @@
 import { gullWingRow, range, type IcPackage } from "./ic.js"
 import { roundRectPad, type Range } from "./ipc7351.js"
-import { bodyOutline, courtyard, rowSilkscreen } from "./outline.js"
+import type { Point } from "../model.js"
+import { bodyOutline, courtyard, padExtent, SILK_CLEARANCE, tidy, type Extent } from "./outline.js"
 import { isSimple, type ParsedFootprint } from "./parse.js"
 import type { Footprint, Pad } from "./types.js"
 
@@ -11,6 +12,8 @@ interface PowerSot {
   tabWidth: Range
   /** The pad number of the tab: pin 4 on a SOT-223, joined to pin 2 on a SOT-89. */
   tabNumber: string
+  /** True when the tab's land runs on under the body (SOT-89: the slug under the body is pin 2). */
+  tabUnderBody?: boolean
 }
 
 /**
@@ -38,9 +41,11 @@ const SOT223: PowerSot = {
  * width 1.62–1.83, body 4.40–4.60 by 2.40–2.60, pitch 1.5. Written from general knowledge, not
  * transcribed from one drawing.
  *
- * The SOT-89 has leads on one side only; its tab, joined to pin 2, shows on the far side. The land
- * pattern treats the tab as a second row of the gull-wing equations with the leads' foot length,
- * which is a simplification made here, not an IPC-7351B rule for this package.
+ * The SOT-89 has leads on one side only; its tab, joined to pin 2, shows on the far side and runs
+ * under the whole body. The land pattern takes the tab's outer end from a second row of the
+ * gull-wing equations with the leads' foot length, then runs the tab land on under the body to
+ * `TAB_GAP` short of the lead lands (about 2.9 mm long), as makers' recommended SOT-89 lands do.
+ * Both are choices made here, not an IPC-7351B rule for this package.
  */
 const SOT89: PowerSot = {
   pkg: {
@@ -54,6 +59,7 @@ const SOT89: PowerSot = {
   },
   tabWidth: range(1.62, 1.83),
   tabNumber: "2",
+  tabUnderBody: true,
 }
 
 const PACKAGES = new Map<string, PowerSot>([
@@ -61,13 +67,32 @@ const PACKAGES = new Map<string, PowerSot>([
   ["89", SOT89],
 ])
 
+/** How far the SOT-89's tab land stops short of the lead lands under the body. */
+const TAB_GAP = 0.3
+
 /** Pads 1 to 3 along the bottom, left to right, and the tab centred on top. */
 function powerSotPads(sot: PowerSot): Pad[] {
   const { row } = gullWingRow(sot.pkg)
   const tab = gullWingRow({ ...sot.pkg, leadWidth: sot.tabWidth }).row
   const pitch = sot.pkg.pitch
   const leads = [-pitch, 0, pitch].map((x, i) => roundRectPad(String(i + 1), x, -row.centre, row.width, row.length))
-  return [...leads, roundRectPad(sot.tabNumber, 0, tab.centre, tab.width, tab.length)]
+  const outer = tab.centre + tab.length / 2
+  const inner = sot.tabUnderBody ? -row.centre + row.length / 2 + TAB_GAP : tab.centre - tab.length / 2
+  return [...leads, roundRectPad(sot.tabNumber, 0, tidy((outer + inner) / 2), tab.width, tidy(outer - inner))]
+}
+
+/**
+ * Lines along the body's left and right edges, clear of the pads. The left one runs on down past
+ * pad 1, at the left of the bottom row, to mark it.
+ */
+function powerSotSilkscreen(pads: readonly Pad[], body: Extent): Point[][] {
+  const extent = padExtent(pads)
+  const x = tidy(Math.max(body.x, extent.x + SILK_CLEARANCE))
+  const y = tidy(body.y)
+  return [
+    [{ x: -x, y: -tidy(extent.y) }, { x: -x, y }],
+    [{ x, y: -y }, { x, y }],
+  ]
 }
 
 /** The IPC-7351B nominal footprint for "sot223" or "sot89", or undefined. */
@@ -84,7 +109,7 @@ export function powerSotFootprint(parsed: ParsedFootprint): Footprint | undefine
     name: `sot${parsed.code}`,
     pads,
     courtyard: courtyard(pads, component, table),
-    silkscreen: rowSilkscreen(pads, body),
+    silkscreen: powerSotSilkscreen(pads, body),
     fabrication: bodyOutline(body),
     origin: `IPC-7351B nominal, ${pkg.label}`,
   }

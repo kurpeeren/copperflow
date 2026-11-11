@@ -1,7 +1,7 @@
 import { IPC_TOLERANCES, landPattern, MOLDED_BODY_TABLE, twoTerminalPads, type Range } from "./ipc7351.js"
 import { bodyOutline, cathodeBar, courtyard, sideLines } from "./outline.js"
 import type { ParsedFootprint } from "./parse.js"
-import type { Footprint } from "./types.js"
+import { refuse, type Footprint, type Refusal } from "./types.js"
 
 /** A DO-214 diode: span He (toe to toe), the terminal foot L, its width b, and the body. */
 interface MoldedOutline {
@@ -67,7 +67,10 @@ function keyOf(parsed: ParsedFootprint): string | undefined {
  * is the anode and pin 2 the cathode, so the silkscreen cathode bar sits on the pad 2 side, at
  * positive x.
  */
-export function moldedFootprint(parsed: ParsedFootprint): Footprint | undefined {
+export function moldedFootprint(parsed: ParsedFootprint): Footprint | Refusal | undefined {
+  if (parsed.kind === "do" && parsed.code === "214" && !OUTLINES.has(`do214${parsed.suffix ?? ""}`)) {
+    return refuse("do214 needs a suffix: do214ac, do214aa or do214ab")
+  }
   const key = keyOf(parsed)
   const outline = key === undefined ? undefined : OUTLINES.get(key)
   if (!key || !outline) return undefined

@@ -52,7 +52,12 @@ listed in `skills/copperflow/references/editable-subset.md`.
 
 A name is normalised: `QFN32_5mmx5mm_p0.50mm_EP3.10` is made as `qfn32_5x5_p0.5_ep3.1`. Two pads of a generated
 footprint keep at least 0.1 mm of copper between them; a string whose pads would come closer (a large exposed pad, a
-crowded corner) is refused rather than drawn.
+crowded corner) is refused rather than drawn. A string of a known family that cannot be made says why, for example
+`copperflow cannot make footprint "qfn32_5x6_p0.5": QFN bodies must be square` or `… "do214": do214 needs a suffix:
+do214ac, do214aa or do214ab`.
+
+Each family has its own pick-and-place rotation correction (`fabrication.placementRotations` in `rules.yaml`, see
+`skills/copperflow/references/design-rules.md`): `sot223` is 180 like `sot`, every other new family 0.
 
 ## The families
 
@@ -102,7 +107,8 @@ over pad 1.
 ### BGA
 
 A full grid. Ball A1 at the top left; rows go down A, B, C, … skipping I, O, Q, S, X and Z, then AA, AB, …; columns
-1, 2, 3, … left to right. Lands are round and smaller than the ball (20% for balls under 0.55 mm, 25% from 0.55 mm).
+1, 2, 3, … left to right. Lands are round and smaller than the ball (20% for balls under 0.55 mm, 25% from 0.55 mm); the ball by pitch is
+0.75 at 1.27, 0.50 at 1.0, 0.45 at 0.8 (JEDEC MO-275), 0.35 at 0.65, 0.30 at 0.5 and 0.25 at 0.4 mm.
 The silkscreen is the body outline, with a bracket outside its top-left corner by A1. The courtyard is the body +
 1.0 mm.
 
@@ -119,8 +125,10 @@ The silkscreen is the body outline, with a bracket outside its top-left corner b
 
 ### SOD and DO-214 diodes
 
-Two pads along x; pad 1 is the anode, pad 2 the cathode. Silkscreen lines run along the body between the pads, with
-a cathode bar on the pad 2 side. DO-214 (SMA, SMB, SMC) uses the molded-body goals (toe 0.15, heel 0.50, side −0.05).
+Two pads along x; **pad 1 is the anode, pad 2 the cathode**, for `sod123`, `sod323`, `sma`, `smb`, `smc` and the
+`do214…` names alike. Some sources number the cathode 1 (many datasheets and part libraries do): a part imported from
+such a source must map its cathode pin to pad 2. Silkscreen lines run along the body between the pads, with a cathode
+bar on the pad 2 side. DO-214 (SMA, SMB, SMC) uses the molded-body goals (toe 0.15, heel 0.50, side −0.05).
 
 ```
        ─────────
@@ -133,8 +141,9 @@ a cathode bar on the pad 2 side. DO-214 (SMA, SMB, SMC) uses the molded-body goa
 ### SOT-223 and SOT-89
 
 Three leads along the bottom (1, 2, 3 left to right) and a wide tab on top: pad 4 on a SOT-223, a second pad 2 on a
-SOT-89 (its tab is joined to pin 2). The silkscreen draws the body's left and right edges between the rows; the left
-line runs down past pad 1.
+SOT-89 (its tab is joined to pin 2), whose land runs on under the body to 0.3 mm short of the lead lands, as the
+slug under a SOT-89 is pin 2. The silkscreen draws the body's left and right edges; the left line runs down past
+pad 1.
 
 ```
            ###########
@@ -164,7 +173,8 @@ left column, up the right. The silkscreen outline lies between the columns with 
 ### TO-220 and TO-92
 
 Three leads in a row, pin 1 at the left seen from the front (−y), square. TO-220 stands upright: the silkscreen is
-the body with the metal tab behind the leads. TO-92 has the flat face in front and the round back behind; its leads
+the body with the metal tab behind the leads; the lead plane is 2.0 mm behind the front face and 2.5 mm in front of
+the tab's back. TO-92 has the flat face in front and the round back behind; its leads
 are taken formed to 2.54 mm. A short line in front of pad 1 marks it.
 
 ```
@@ -208,7 +218,7 @@ can: 0.45 mm below 8 mm, 0.6 mm up to 10 mm, 0.8 mm above.
 
 `pinrow2x<N>`: N pins per row, numbered as on a ribbon cable header: odd pins along the top row, even along the
 bottom, pin 1 at the top left with pin 2 under it. Pads as for `pinrow<N>` (1.0 mm drill, 1.7 mm pads, pad 1 square);
-a tick left of the outline marks pin 1.
+a tick left of the outline marks pin 1, and the courtyard is widened to hold it.
 
 ```
    ┌──────────────────┐

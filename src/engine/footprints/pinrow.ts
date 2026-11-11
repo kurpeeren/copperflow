@@ -1,6 +1,6 @@
 import { centredOffsets, closedRectangle, padExtent, rectangle, SILK_CLEARANCE, tidy } from "./outline.js"
 import { isSimple, type ParsedFootprint } from "./parse.js"
-import type { Footprint, Pad } from "./types.js"
+import { refuse, type Footprint, type Pad, type Refusal } from "./types.js"
 
 /**
  * Engine plan (Task 4 decisions): a pin row is a fixed through-hole pattern, not an IPC-7351B
@@ -46,7 +46,7 @@ function pinPad(number: number, x: number, y = 0): Pad {
  * undefined. A pitch at or below the pad size is refused, because the pads would touch. The body is
  * not drawn: its size is not part of the string.
  */
-export function pinRowFootprint(parsed: ParsedFootprint): Footprint | undefined {
+export function pinRowFootprint(parsed: ParsedFootprint): Footprint | Refusal | undefined {
   if (parsed.kind !== "pinrow" || parsed.variant !== undefined) return undefined
   if (Object.keys(parsed.params).some((key) => key !== "p")) return undefined
   const pitch = parsed.params["p"] ?? PIN_ROW_DEFAULT_PITCH
@@ -72,6 +72,8 @@ function outlines(pads: Pad[]): Pick<Footprint, "pads" | "courtyard" | "silkscre
 
 /** The pin 1 tick of a two-row header sits this far outside the silkscreen outline, as long as the pad. */
 const TICK_GAP = 0.3
+/** The two-row courtyard is widened to hold the tick with this much to spare, on both sides. */
+const TICK_COURTYARD_GAP = 0.1
 
 /**
  * "pinrow2x<N>" with an optional `_p<pitch>`: two rows of N pins, the same pads as a pin row. Pins
@@ -79,17 +81,21 @@ const TICK_GAP = 0.3
  * right of pin 1, odd pins along the top row and even pins along the bottom. A tick left of the
  * outline marks pin 1.
  */
-function twoRows(parsed: ParsedFootprint, pitch: number): Footprint | undefined {
+function twoRows(parsed: ParsedFootprint, pitch: number): Footprint | Refusal | undefined {
   const plain = parsed.suffix === undefined && parsed.size === undefined && parsed.pairs === undefined
   const count = Number(parsed.cross)
-  if (parsed.code !== "2" || !plain || !Number.isInteger(count) || count < 1 || count > MAX_PINS / 2) return undefined
+  if (!plain) return undefined
+  if (parsed.code !== "2") return refuse("headers have one row (pinrow<N>) or two (pinrow2x<N>)")
+  if (!Number.isInteger(count) || count < 1 || count > MAX_PINS / 2) return refuse(`a two-row header has 1 to ${MAX_PINS / 2} pins a row`)
   const pads = centredOffsets(count, pitch).flatMap((x, i) => [pinPad(2 * i + 1, x, tidy(pitch / 2)), pinPad(2 * i + 2, x, tidy(-pitch / 2))])
   const shapes = outlines(pads)
-  const x = tidy(-(padExtent(pads).x + SILK_CLEARANCE + TICK_GAP))
+  const extent = padExtent(pads)
+  const x = tidy(-(extent.x + SILK_CLEARANCE + TICK_GAP))
   const top = tidy(pitch / 2 + PAD_SIZE / 2)
   return {
     name: `pinrow2x${count}_p${mm(pitch)}mm`,
     ...shapes,
+    courtyard: rectangle({ x: tidy(-x + TICK_COURTYARD_GAP), y: tidy(extent.y + COURTYARD_EXCESS) }),
     silkscreen: [...shapes.silkscreen, [{ x, y: top }, { x, y: tidy(top - PAD_SIZE) }]],
     origin: `Fixed two-row pin header, not an IPC-7351B calculation: ${mm(pitch)} mm pitch, ${DRILL.toFixed(1)} mm drill, ${PAD_SIZE.toFixed(1)} mm pads`,
   }

@@ -2,7 +2,7 @@ import type { Point } from "../model.js"
 import { mm } from "./exposed.js"
 import { centredOffsets, closedRectangle, courtyard, padExtent, SILK_CLEARANCE, tidy, type Extent } from "./outline.js"
 import type { ParsedFootprint } from "./parse.js"
-import type { Footprint, Pad } from "./types.js"
+import { isRefusal, refuse, type Footprint, type Pad, type Refusal } from "./types.js"
 
 /**
  * Row letters of a ball grid, JEDEC style: A at the top, skipping I, O, Q, S, X and Z (they read as
@@ -20,12 +20,13 @@ export function bgaRowName(index: number): string {
 
 /**
  * The nominal ball diameter at each pitch: typical JEDEC values (MO-151, MO-195, MO-275), written
- * from general knowledge of those outlines, not transcribed from them.
+ * from general knowledge of those outlines, not transcribed from them. At 0.8 mm pitch the 0.45 mm
+ * ball of the JEDEC MO-275 variations most 0.8 mm FBGAs follow (some use 0.40).
  */
 const BALL_BY_PITCH: ReadonlyMap<number, number> = new Map([
   [1.27, 0.75],
   [1, 0.5],
-  [0.8, 0.4],
+  [0.8, 0.45],
   [0.65, 0.35],
   [0.5, 0.3],
   [0.4, 0.25],
@@ -61,15 +62,18 @@ export function bgaLand(pitch: number): { ball: number; land: number } | undefin
   return undefined
 }
 
-/** Rows × columns: from `_rows<R>x<C>`, or the square root of the ball count. */
-function grid(balls: number, rows: readonly [number, number] | undefined): { rows: number; columns: number } | undefined {
+/** Rows × columns: from `_rows<R>x<C>`, or the square root of the ball count; or why there is no such grid. */
+function grid(balls: number, rows: readonly [number, number] | undefined): { rows: number; columns: number } | Refusal {
   if (rows) {
     const [r, c] = rows
-    return Number.isInteger(r) && Number.isInteger(c) && r * c === balls ? { rows: r, columns: c } : undefined
+    const whole = Number.isInteger(r) && Number.isInteger(c) && r * c === balls
+    return whole ? { rows: r, columns: c } : refuse(`_rows${r}x${c} is not a full grid of ${balls} balls`)
   }
   const side = Math.round(Math.sqrt(balls))
-  return side * side === balls ? { rows: side, columns: side } : undefined
+  return side * side === balls ? { rows: side, columns: side } : refuse(`${balls} balls are no square grid; give _rows<R>x<C>`)
 }
+
+const PITCHES = [...BALL_BY_PITCH.keys()].join(", ")
 
 function bgaPads(rows: number, columns: number, pitch: number, land: number): Pad[] {
   const xs = centredOffsets(columns, pitch)
@@ -93,20 +97,23 @@ function bgaSilkscreen(pads: readonly Pad[], body: Extent): Point[][] {
  * Without `_rows` the grid is square. Ball A1 is at the top left; rows run down A, B, C, … and
  * columns 1, 2, 3, … left to right.
  */
-export function bgaFootprint(parsed: ParsedFootprint): Footprint | undefined {
+export function bgaFootprint(parsed: ParsedFootprint): Footprint | Refusal | undefined {
+  if (parsed.kind !== "bga" || parsed.variant !== undefined || parsed.cross !== undefined || parsed.suffix !== undefined) return undefined
   const body = parsed.size
   const pitch = parsed.params["p"]
-  if (parsed.kind !== "bga" || !body || typeof pitch !== "number" || Object.keys(parsed.params).length !== 1) return undefined
-  if (parsed.variant !== undefined || parsed.cross !== undefined || parsed.suffix !== undefined) return undefined
-  if (Object.keys(parsed.pairs ?? {}).some((key) => key !== "rows")) return undefined
+  if (!body) return refuse("a BGA needs its body, such as bga256_17x17_p1")
+  if (typeof pitch !== "number") return refuse("a BGA needs its pitch, such as _p1")
+  const extra = [...Object.keys(parsed.params), ...Object.keys(parsed.pairs ?? {})].find((key) => key !== "p" && key !== "rows")
+  if (extra !== undefined) return refuse(`a BGA takes only _p and _rows, not _${extra}`)
   const balls = Number(parsed.code)
+  if (!Number.isInteger(balls) || balls < 1 || balls > MAX_BALLS) return refuse(`a BGA has 1 to ${MAX_BALLS} balls`)
   const size = bgaLand(pitch)
-  if (!Number.isInteger(balls) || balls < 1 || balls > MAX_BALLS || !size) return undefined
+  if (!size) return refuse(`BGA pitch must be one of ${PITCHES} mm`)
   const shape = grid(balls, parsed.pairs?.["rows"])
-  if (!shape) return undefined
+  if (isRefusal(shape)) return shape
   const [width, height] = body
   const fits = (count: number, side: number) => (count - 1) * pitch + size.land <= side + SAME
-  if (!fits(shape.columns, width) || !fits(shape.rows, height)) return undefined
+  if (!fits(shape.columns, width) || !fits(shape.rows, height)) return refuse(`a ${shape.rows}×${shape.columns} grid at ${mm(pitch)} mm does not fit the body`)
   const pads = bgaPads(shape.rows, shape.columns, pitch, size.land)
   const half = { x: width / 2, y: height / 2 }
   const square = shape.rows === shape.columns

@@ -8,25 +8,26 @@ import type { Footprint, Pad } from "./types.js"
 /**
  * TO-220AB (JEDEC), standing upright, in the dimensions makers' outline drawings commonly give:
  * three leads 2.54 mm apart, lead width 0.70–0.90 and thickness 0.45–0.60, body width up to 10.66,
- * overall thickness up to 4.83 of which the metal tab is up to 1.40. Written from general knowledge
- * of those drawings, not transcribed from one.
+ * a metal tab 1.27 mm thick. Written from general knowledge of those drawings, not transcribed from
+ * one.
  *
- * Seen from the top the leads (y = 0) leave the plastic halfway through it: the front face is
- * (4.83 − 1.40)/2 in front of them (−y) and the tab behind them (+y). The origin is the middle lead,
- * not the body centre.
+ * Seen from the top the lead plane (y = 0) lies about 2.0 mm behind the front face of the plastic
+ * and about 2.5 mm in front of the back of the tab, as in JEDEC TO-220AB; the tab's front face is
+ * 1.27 mm in front of its back. The origin is the middle lead, not the body centre.
  */
 const PITCH = 2.54
 const LEAD_WIDTH = range(0.7, 0.9)
 const LEAD_THICKNESS = range(0.45, 0.6)
 const BODY_WIDTH = 10.66
-const BODY_THICKNESS = 4.83
-const TAB_THICKNESS = 1.4
+const TAB_THICKNESS = 1.27
 /** The pin 1 tick sits this far in front of the body. */
 const TICK_GAP = 0.3
 
-const FRONT = -(BODY_THICKNESS - TAB_THICKNESS) / 2
-const TAB = FRONT + BODY_THICKNESS - TAB_THICKNESS
-const BACK = FRONT + BODY_THICKNESS
+/** The front face of the plastic, in front of the lead plane (−y). */
+const FRONT = -2
+/** The back of the tab, behind the lead plane. */
+const BACK = 2.5
+const TAB = BACK - TAB_THICKNESS
 const HALF_WIDTH = BODY_WIDTH / 2
 
 function body(): Point[] {

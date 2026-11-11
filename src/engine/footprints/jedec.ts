@@ -13,6 +13,7 @@
 import { range, type IcPackage } from "./ic.js"
 import type { Range } from "./ipc7351.js"
 import type { Pair } from "./parse.js"
+import { isRefusal, refuse, type Refusal } from "./types.js"
 
 /** Body tolerance of the plastic: ±0.10 mm, as the NXP QFN and LQFP drawings in quad.ts give. */
 const BODY_TOLERANCE = 0.1
@@ -59,43 +60,81 @@ function byPitch(table: ReadonlyMap<number, Range>, pitch: number): Range | unde
   return undefined
 }
 
-function pinCount(code: string, perSides: number): number | undefined {
+function pinCount(code: string, perSides: number, label: string): number | Refusal {
   const pins = Number(code)
-  return Number.isInteger(pins) && pins > 0 && pins <= MAX_PINS && pins % perSides === 0 ? pins : undefined
+  if (!Number.isInteger(pins) || pins <= 0 || pins > MAX_PINS) return refuse(`a ${label} has 1 to ${MAX_PINS} pins`)
+  return pins % perSides === 0 ? pins : refuse(`a ${label} has a pin count divisible by ${perSides}`)
 }
 
-const saneBody = (side: number) => side >= MIN_BODY && side <= MAX_BODY
+const pitches = (table: ReadonlyMap<number, Range>) => {
+  const list = [...table.keys()].map(String)
+  return `${list.slice(0, -1).join(", ")} or ${list[list.length - 1]} mm`
+}
+
+function checkBody(label: string, sides: readonly number[]): Refusal | undefined {
+  return sides.every((side) => side >= MIN_BODY && side <= MAX_BODY) ? undefined : refuse(`a ${label} body is ${MIN_BODY} to ${MAX_BODY} mm`)
+}
 
 /**
  * Leads along one side must fit the body: `count` leads `pitch` apart, plus one lead width, stay
  * inside the side length. Whether the corner pads of two sides clear each other is checked on the
  * pads themselves (quad.ts).
  */
-function fits(count: number, pitch: number, width: Range, side: number): boolean {
-  return (count - 1) * pitch + width.max <= side + SAME
+function checkFit(count: number, pitch: number, width: Range, side: number): Refusal | undefined {
+  return (count - 1) * pitch + width.max <= side + SAME ? undefined : refuse(`${count} pins a side at ${pitch} mm do not fit a ${side} mm side`)
 }
 
-/** A square QFN of `pins` (four sides), body side × side, or undefined when it cannot be one. */
-export function qfnPackage(code: string, body: Pair, pitch: number): IcPackage | undefined {
-  const pins = pinCount(code, 4)
-  const width = byPitch(NO_LEAD_WIDTH, pitch)
+/** The first refusal of the checks, run in order. */
+function firstRefusal(...checks: readonly (() => Refusal | undefined)[]): Refusal | undefined {
+  for (const check of checks) {
+    const refusal = check()
+    if (refusal) return refusal
+  }
+  return undefined
+}
+
+interface SquareQuad {
+  pins: number
+  side: number
+  width: Range
+}
+
+/** A square four-sided package (QFN, LQFP) of `pins`, or why it cannot be one. */
+function squareQuad(label: string, code: string, body: Pair, pitch: number, widths: ReadonlyMap<number, Range>): SquareQuad | Refusal {
+  const pins = pinCount(code, 4, label)
+  if (isRefusal(pins)) return pins
+  const width = byPitch(widths, pitch)
+  if (!width) return refuse(`${label} pitch must be ${pitches(widths)}`)
   const [side, other] = body
-  if (pins === undefined || !width || Math.abs(side - other) > SAME || !saneBody(side)) return undefined
-  if (!fits(pins / 4, pitch, width, side)) return undefined
+  const refusal = firstRefusal(
+    () => (Math.abs(side - other) > SAME ? refuse(`${label} bodies must be square`) : undefined),
+    () => checkBody(label, body),
+    () => checkFit(pins / 4, pitch, width, side),
+  )
+  return refusal ?? { pins, side, width }
+}
+
+/** A square QFN of `pins` (four sides), body side × side, or why it cannot be one. */
+export function qfnPackage(code: string, body: Pair, pitch: number): IcPackage | Refusal {
+  const quad = squareQuad("QFN", code, body, pitch, NO_LEAD_WIDTH)
+  if (isRefusal(quad)) return quad
+  const { pins, side, width } = quad
   const outline = plusMinus(side, BODY_TOLERANCE)
   return { label: `QFN-${pins} ${side}×${side} mm, ${pitch} mm pitch`, pitch, span: outline, terminal: NO_LEAD_TERMINAL, leadWidth: width, bodyAcross: outline, bodyAlong: outline }
 }
 
 /**
  * A DFN of `pins` on two sides: the body is `<across>x<along>`, across the two rows of terminals
- * (x) and along them (y). Undefined when it cannot be one.
+ * (x) and along them (y). Or why it cannot be one.
  */
-export function dfnPackage(code: string, body: Pair, pitch: number): IcPackage | undefined {
-  const pins = pinCount(code, 2)
+export function dfnPackage(code: string, body: Pair, pitch: number): IcPackage | Refusal {
+  const pins = pinCount(code, 2, "DFN")
+  if (isRefusal(pins)) return pins
   const width = byPitch(NO_LEAD_WIDTH, pitch)
+  if (!width) return refuse(`DFN pitch must be ${pitches(NO_LEAD_WIDTH)}`)
   const [across, along] = body
-  if (pins === undefined || !width || !saneBody(across) || !saneBody(along)) return undefined
-  if (!fits(pins / 2, pitch, width, along)) return undefined
+  const refusal = firstRefusal(() => checkBody("DFN", body), () => checkFit(pins / 2, pitch, width, along))
+  if (refusal) return refusal
   const span = plusMinus(across, BODY_TOLERANCE)
   return {
     label: `DFN-${pins} ${across}×${along} mm, ${pitch} mm pitch`,
@@ -108,13 +147,11 @@ export function dfnPackage(code: string, body: Pair, pitch: number): IcPackage |
   }
 }
 
-/** A square LQFP (or TQFP: the same footprint) of `pins`, or undefined when it cannot be one. */
-export function qfpPackage(code: string, body: Pair, pitch: number): IcPackage | undefined {
-  const pins = pinCount(code, 4)
-  const width = byPitch(QFP_WIDTH, pitch)
-  const [side, other] = body
-  if (pins === undefined || !width || Math.abs(side - other) > SAME || !saneBody(side)) return undefined
-  if (!fits(pins / 4, pitch, width, side)) return undefined
+/** A square LQFP (or TQFP: the same footprint) of `pins`, or why it cannot be one. */
+export function qfpPackage(code: string, body: Pair, pitch: number): IcPackage | Refusal {
+  const quad = squareQuad("QFP", code, body, pitch, QFP_WIDTH)
+  if (isRefusal(quad)) return quad
+  const { pins, side, width } = quad
   const spanTolerance = side <= QFP_SMALL_BODY + SAME ? QFP_SPAN_TOLERANCE_SMALL : QFP_SPAN_TOLERANCE_LARGE
   const outline = plusMinus(side, BODY_TOLERANCE)
   return {

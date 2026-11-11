@@ -4,7 +4,7 @@ import { range } from "./ic.js"
 import { leadDiameter, THROUGH_HOLE_COURTYARD, throughHoleLand, throughHolePad } from "./ipc7251.js"
 import { arcPoints, bodyOutline, centredOffsets, courtyard, padExtent, SILK_CLEARANCE, tidy, type Extent } from "./outline.js"
 import { isSimple, type ParsedFootprint } from "./parse.js"
-import type { Footprint, Pad } from "./types.js"
+import { refuse, type Footprint, type Pad, type Refusal } from "./types.js"
 
 /**
  * JEDEC MS-001 (300 mil) and MS-011 (600 mil) plastic DIPs, typical values written from general
@@ -44,13 +44,14 @@ function dipSilkscreen(pads: readonly Pad[], body: Extent): Point[][] {
  * "dip<N>", with `_w<mm>` for the row spacing (7.62 mm, 300 mil, unless given; never narrower), or
  * undefined.
  */
-export function dipFootprint(parsed: ParsedFootprint): Footprint | undefined {
+export function dipFootprint(parsed: ParsedFootprint): Footprint | Refusal | undefined {
   if (parsed.kind !== "dip" || !isSimple(parsed) || parsed.variant !== undefined) return undefined
-  if (Object.keys(parsed.params).some((key) => key !== "w")) return undefined
+  const extra = Object.keys(parsed.params).find((key) => key !== "w")
+  if (extra !== undefined) return refuse(`a DIP takes only _w, not _${extra}`)
   const pins = Number(parsed.code)
   const spacing = parsed.params["w"] ?? DIP_DEFAULT_ROW_SPACING
-  if (!Number.isInteger(pins) || pins < 4 || pins > MAX_PINS || pins % 2 !== 0) return undefined
-  if (spacing === true || spacing < DIP_DEFAULT_ROW_SPACING - 1e-9) return undefined
+  if (!Number.isInteger(pins) || pins < 4 || pins > MAX_PINS || pins % 2 !== 0) return refuse(`a DIP has an even pin count from 4 to ${MAX_PINS}`)
+  if (spacing === true || spacing < DIP_DEFAULT_ROW_SPACING - 1e-9) return refuse(`DIP rows are at least ${DIP_DEFAULT_ROW_SPACING} mm apart`)
   const pads = dipPads(pins, spacing)
   const body = { x: (spacing - BODY_INSET) / 2, y: (pins / 2) * (PITCH / 2) }
   const land = pads[0] as Pad
