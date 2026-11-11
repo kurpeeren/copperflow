@@ -121,8 +121,6 @@ export interface Menu {
 }
 
 const run = (label: string, command: CommandId, shortcut?: string): MenuItem => (shortcut ? { label, command, shortcut } : { label, command })
-const later = (label: string, pending: string, shortcut?: string): MenuItem => (shortcut ? { label, pending, shortcut } : { label, pending })
-const SOON = "Comes later; not in Studio yet"
 
 export const ENGINE = WAITS_FOR_ENGINE
 
@@ -136,7 +134,7 @@ export const MENUS: readonly Menu[] = [
       run("Export BOM", "exportBom"),
       run("Export package", "exportPackage"),
       run("Export Gerber", "exportFabrication"),
-      later("Print…", SOON),
+      run("Print…", "print"),
     ],
   },
   {
@@ -276,7 +274,7 @@ export const MENUS: readonly Menu[] = [
   },
   {
     title: "Export",
-    entries: [run("BOM", "exportBom"), run("Package", "exportPackage"), run("Fabrication files (JLCPCB)", "exportFabrication"), run("Gerber", "exportFabrication"), run("Pick and place (CPL)", "exportFabrication"), later("PDF…", SOON)],
+    entries: [run("BOM", "exportBom"), run("Package", "exportPackage"), run("Fabrication files (JLCPCB)", "exportFabrication"), run("Gerber", "exportFabrication"), run("Pick and place (CPL)", "exportFabrication"), run("PDF…", "exportPdf")],
   },
   {
     title: "Settings",

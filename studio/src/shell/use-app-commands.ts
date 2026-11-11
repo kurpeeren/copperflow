@@ -29,6 +29,7 @@ import { placeInstanceScope, placeSelectionScope } from "../pcb/autoplace"
 import type { PlaceScope } from "../api"
 import type { RouteScope } from "../api"
 import { runPageCommand, type PageCommand } from "./page-commands"
+import { openPrint, printSheets } from "./print-render"
 import { annotateDesignators, copySelection, flipSelection, pasteCopied, selectSimilar, transferPlacement } from "./part-commands"
 import type { Design } from "../api"
 
@@ -119,6 +120,20 @@ function exportPackage(file: string | undefined, actions: Actions): void {
   api<{ outDir: string; files: string[] }>("/api/package", { file })
     .then((result) => actions.notify(`Exported ${result.files.length} files to ${result.outDir}`))
     .catch((error: Error) => actions.notify(error.message))
+}
+
+/**
+ * File → Print… and Export → PDF…: every schematic page and the board on A4 landscape sheets, printed through the
+ * browser; PDF is the print dialog's "Save as PDF".
+ */
+function printDesign(input: Input, pdf: boolean): void {
+  const { design, file, actions } = input
+  if (!design || !file) return actions.notify("Wait for the build to finish, then try again.")
+  const sheets = printSheets(design, file)
+  if (sheets.length === 0) return actions.notify("Nothing to print yet: the circuit has no parts.")
+  const name = file.replace(/\.circuit\.tsx$/, "")
+  if (!openPrint(name, sheets)) return actions.notify("The browser blocked the print window; allow pop-ups for Studio and try again.")
+  actions.notify(pdf ? `Choose "Save as PDF" in the print dialog to save ${name}.pdf (${sheets.length} sheets)` : `Printing ${sheets.length} sheets`)
 }
 
 /** Export → Fabrication files (JLCPCB): written beside the circuit by the server; the note says where, or why not. */
@@ -256,6 +271,8 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     systemSettings: () => input.openDialog("system"),
     newCircuit: () => input.openDialog("newCircuit"),
     footprintManager: () => input.openDialog("footprints"),
+    print: () => printDesign(input, false),
+    exportPdf: () => printDesign(input, true),
     copy: () => copySelection(input),
     paste: () => pasteCopied(input, input.view === "schematic" ? input.page : undefined),
   }
