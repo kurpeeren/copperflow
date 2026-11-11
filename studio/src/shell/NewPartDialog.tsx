@@ -252,46 +252,49 @@ export function NewPartForm({ panel, onClose }: { panel: NewPartPanel; onClose()
   const text = (key: "id" | "title" | "manufacturer" | "mpn" | "datasheet", label: string, placeholder: string) => (
     <>
       <label htmlFor={`${id}-${key}`}>{label}</label>
-      <input id={`${id}-${key}`} value={fields[key]} placeholder={placeholder} disabled={busy} onChange={(e) => set(key, e.target.value)} />
+      <input id={`${id}-${key}`} value={fields[key]} placeholder={placeholder} onChange={(e) => set(key, e.target.value)} />
     </>
   )
   return (
     <form className="rules-form new-part-form" onSubmit={(event) => void submit(event)}>
-      {text("id", "Part id", "AP2112K-3.3")}
-      {text("title", "Title", "3.3 V LDO regulator")}
-      {text("manufacturer", "Manufacturer", "Diodes Incorporated")}
-      {text("mpn", "MPN", "AP2112K-3.3TRG1")}
-      <span>Package</span>
-      <div className="new-part-package">
-        <label>
-          <input type="radio" name={`${id}-kind`} checked={fields.packageKind === "string"} onChange={() => set("packageKind", "string")} /> Footprint string
+      {/* While the part is written every field is off: the request is sent, so an edit would be lost. */}
+      <fieldset className="new-part-fields" disabled={busy}>
+        {text("id", "Part id", "AP2112K-3.3")}
+        {text("title", "Title", "3.3 V LDO regulator")}
+        {text("manufacturer", "Manufacturer", "Diodes Incorporated")}
+        {text("mpn", "MPN", "AP2112K-3.3TRG1")}
+        <span>Package</span>
+        <div className="new-part-package">
+          <label>
+            <input type="radio" name={`${id}-kind`} checked={fields.packageKind === "string"} onChange={() => set("packageKind", "string")} /> Footprint string
+          </label>
+          <label>
+            <input type="radio" name={`${id}-kind`} checked={fields.packageKind === "file"} onChange={() => set("packageKind", "file")} /> Footprint file
+          </label>
+        </div>
+        {fields.packageKind === "string" ? (
+          <>
+            <label htmlFor={`${id}-package`}>Footprint</label>
+            <input id={`${id}-package`} value={fields.packageText} placeholder="soic8, qfn32_5x5_p0.5, hc49s" onChange={(e) => set("packageText", e.target.value)} />
+            <PackagePreview text={fields.packageText} />
+          </>
+        ) : (
+          <p>footprint.yaml is written as a placeholder, one pad per pin. The schematic can use the part now; the board reports an error for it until you draw its pads from the datasheet's land pattern and delete "placeholder: true".</p>
+        )}
+        <h3>Pins</h3>
+        <PinRows pins={fields.pins} onChange={(pins) => set("pins", pins)} />
+        <button type="button" className="new-part-add" onClick={() => set("pins", withPin(fields.pins))}>
+          Add pin
+        </button>
+        <PasteArea pins={fields.pins} onChange={(pins) => set("pins", pins)} />
+        <h3>Suppliers</h3>
+        <Suppliers fields={fields.suppliers} onChange={(suppliers) => set("suppliers", suppliers)} />
+        {text("datasheet", "Datasheet URL", "https://…")}
+        <label className="make-sheet-rename">
+          <input type="checkbox" checked={fields.replace} onChange={(e) => set("replace", e.target.checked)} />
+          Replace a part with this id that is not verified
         </label>
-        <label>
-          <input type="radio" name={`${id}-kind`} checked={fields.packageKind === "file"} onChange={() => set("packageKind", "file")} /> Footprint file
-        </label>
-      </div>
-      {fields.packageKind === "string" ? (
-        <>
-          <label htmlFor={`${id}-package`}>Footprint</label>
-          <input id={`${id}-package`} value={fields.packageText} placeholder="soic8, qfn32_5x5_p0.5, hc49s" onChange={(e) => set("packageText", e.target.value)} />
-          <PackagePreview text={fields.packageText} />
-        </>
-      ) : (
-        <p>footprint.yaml is written as a placeholder, one pad per pin. The schematic can use the part now; the board reports an error for it until you draw its pads from the datasheet's land pattern and delete "placeholder: true".</p>
-      )}
-      <h3>Pins</h3>
-      <PinRows pins={fields.pins} onChange={(pins) => set("pins", pins)} />
-      <button type="button" className="new-part-add" onClick={() => set("pins", withPin(fields.pins))}>
-        Add pin
-      </button>
-      <PasteArea pins={fields.pins} onChange={(pins) => set("pins", pins)} />
-      <h3>Suppliers</h3>
-      <Suppliers fields={fields.suppliers} onChange={(suppliers) => set("suppliers", suppliers)} />
-      {text("datasheet", "Datasheet URL", "https://…")}
-      <label className="make-sheet-rename">
-        <input type="checkbox" checked={fields.replace} onChange={(e) => set("replace", e.target.checked)} />
-        Replace a part with this id that is not verified
-      </label>
+      </fieldset>
       {problems.length > 0 && (
         <ul className="new-part-problems" role="alert">
           {problems.map((problem) => (

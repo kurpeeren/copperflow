@@ -73,6 +73,9 @@ describe("writing a part from the wizard", () => {
     await expect(writeNewPart(root, { ...CRYSTAL, pins: "" }, { now: NOW })).rejects.toThrow("The part has no pins")
     await expect(writeNewPart(root, { ...CRYSTAL, package: "qfn5_9x9" }, { now: NOW })).rejects.toThrow('Package "qfn5_9x9": copperflow cannot make footprint')
     await expect(writeNewPart(root, { ...CRYSTAL, package: "soic8" }, { now: NOW })).rejects.toThrow('Package "soic8" does not fit the pins: pad 3 is not a pin in part.yaml')
+    await expect(writeNewPart(root, { ...CRYSTAL, package: "footprint.yaml" }, { now: NOW })).rejects.toThrow(
+      'Package "footprint.yaml" is not a footprint string: for the part\'s own footprint file pass package { "file": "footprint.yaml" }',
+    )
     await expect(writeNewPart(root, { ...CRYSTAL, pins: "1 XTAL1\n2 XTAL2\n3 CASE ground" }, { now: NOW })).rejects.toThrow("pin 3 (CASE) has no pad")
     await expect(writeNewPart(root, { ...CRYSTAL, id: "../x" }, { now: NOW })).rejects.toThrow("is not a valid part id")
     await expect(writeNewPart(root, { ...CRYSTAL, datasheet: { url: "ftp://x" } }, { now: NOW })).rejects.toThrow("datasheet.url")

@@ -126,6 +126,7 @@ function tableRows(text: string): PinRow[] {
 
 /** Throws unless copperflow can make the footprint string and its pads are the part's pins. */
 function checkPackage(text: string, pins: Part["pins"]): void {
+  if (text === FOOTPRINT_FILE) throw new Error(`Package "${text}" is not a footprint string: for the part's own footprint file pass package { "file": "${FOOTPRINT_FILE}" }`)
   const footprint = generateFootprint(text)
   if ("error" in footprint) throw new Error(`Package "${text}": ${footprint.error}`)
   const problems = pinErrors(footprint, { pins })

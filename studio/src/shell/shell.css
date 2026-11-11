@@ -370,3 +370,8 @@ button.menu-title.open:hover:not(:disabled) {
   white-space: pre-wrap;
   font-size: 12px;
 }
+
+/* The New part fields sit in the form's grid; the fieldset only turns them off while the part is written. */
+.new-part-fields {
+  display: contents;
+}

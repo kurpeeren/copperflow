@@ -1,6 +1,6 @@
 // Library → New part…: the dialog's fields, its pin rows and paste, and the request it sends. Pure; plain TypeScript
 // with .js imports, so the tests can run it. The server's writer checks everything again.
-import { PIN_TYPES, type PinType } from "../../../src/core/pin-types.js"
+import { PART_ID, PIN_NAME, PIN_NUMBER, PIN_TYPES, type PinType } from "../../../src/core/pin-types.js"
 import { generateFootprint } from "../../../src/engine/footprints/index.js"
 import { parsePinTable, suggestedPinName, type PinRow, type PinTableError } from "../../../src/library/pin-table.js"
 import type { CreatePartRequest } from "./new-part-result.js"
@@ -48,9 +48,6 @@ export const EMPTY_FIELDS: NewPartFields = {
   replace: false,
 }
 
-const PART_ID = /^[A-Za-z](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9])?$/
-const PIN_NUMBER = /^[1-9][0-9]*$/
-const PIN_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 const SUPPLIER = /^[a-z0-9_]+$/
 
 const isBlank = (pin: PinField) => pin.number.trim() === "" && pin.name.trim() === ""

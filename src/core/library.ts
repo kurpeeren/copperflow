@@ -5,7 +5,7 @@ import { parse, stringify } from "yaml"
 import { z } from "zod"
 import { footprintFromFile, pinErrors, type FootprintFile } from "../engine/footprints/file.js"
 import { writeFileAtomic } from "./fs-utils.js"
-import { PIN_TYPES, type PinType } from "./pin-types.js"
+import { PART_ID, PIN_NAME, PIN_NUMBER, PIN_TYPES, type PinType } from "./pin-types.js"
 import type { CircuitModel } from "./types.js"
 
 export const PARTS_DIR = "parts"
@@ -30,8 +30,6 @@ export const PIN_ATTRIBUTES: Record<PinType, Record<string, boolean>> = {
   no_connect: { doNotConnect: true },
 }
 
-// Ends with a letter or digit: Windows ignores trailing dots, so "Foo." could alias "Foo".
-const PART_ID = /^[A-Za-z](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9])?$/
 const RESERVED_KEYS = new Set(["__proto__", "constructor", "prototype"])
 
 const line = (max: number) =>
@@ -39,7 +37,7 @@ const line = (max: number) =>
 
 const PinSchema = z
   .object({
-    name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "use letters, digits and _ (pin names become selectors)"),
+    name: z.string().regex(PIN_NAME, "use letters, digits and _ (pin names become selectors)"),
     type: z.enum(PIN_TYPES),
     /** The side of the schematic box this pin goes to; without it the pin type decides. */
     side: z.enum(["left", "right", "top", "bottom"]).optional(),
@@ -56,7 +54,7 @@ export const PartSchema = z
     /** Where the part came from when copperflow fetched it, e.g. "lcsc C7950, imported 2026-11-11". */
     origin: line(200).optional(),
     footprint: z.string().regex(/^[A-Za-z0-9_.(),-]+$/, "use a copperflow footprint string such as sot23_5 or 0402, or footprint.yaml for the part's own footprint file"),
-    pins: z.record(z.string().regex(/^[1-9][0-9]*$/, "pin numbers start at 1"), PinSchema),
+    pins: z.record(z.string().regex(PIN_NUMBER, "pin numbers start at 1"), PinSchema),
     suppliers: z
       .record(z.string().regex(/^[a-z0-9_]+$/).refine((key) => !RESERVED_KEYS.has(key), "reserved name"), line(100))
       .optional(),
