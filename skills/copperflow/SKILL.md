@@ -59,8 +59,20 @@ means, `replace`, refused pins and the export's warnings are in
    <id>: …`). An import is for personal, non-commercial use only and is always unverified. The
    person can make a part themselves in the Studio with Library → New part…. See
    [references/parts-library.md](references/parts-library.md). `bom` `{ file }` lists what the
-   board uses.
-3. **Blocks first.** One sub-sheet per block (power, MCU, a sensor channel, a connector).
+   board uses. Built-in kinds taking `value`: `resistor` (resistance, `"10k"`), `capacitor`
+   (capacitance, `"100nF"`; `props: { polarized: true }`), `inductor`, `crystal` (frequency,
+   `"8MHz"`), `fuse`, `battery`, `potentiometer`. `led` and `diode` take no value (`led`:
+   `props: { color: "green" }`); `pinheader` takes `props: { pinCount, pitch: "2.54mm", pinLabels }`;
+   `chip` comes from the library (`part:`). Footprint strings: `soic<N>` (3.9 mm), `soic<N>w`
+   (7.5 mm: 16–28), `sop<N>`, `ssop<N>`, `tssop<N>`, `qfn…`, `qfp…`, `sot23_5`; the full list is
+   in [references/editable-subset.md](references/editable-subset.md). A connector with no family
+   (a screw terminal) is a `pinheader` with its pitch (`pinrow2_p5.08mm`), noted in PROJECT.md's
+   Open for the person to replace.
+   Unused inputs of a chip: tie them off as the datasheet says and `note_decision` it, or flag
+   them with `set_props` `{ part: "U1", props: { noConnect: "pin4,pin5" } }` (null removes).
+3. **Blocks first.** A sub-sheet is for a block used more than once (or one the person wants on
+   its own page); every other block is named in PROJECT.md's Blocks, its parts written at the top
+   level and later placed together with `autoplace { parts: [...] }`.
    `new_circuit` `{ file, parts, nets, sheets, instances, place: false }` writes the circuit and
    each `<name>.sheet.tsx`: `Change c0002: wrote main.circuit.tsx, Channel.sheet.tsx`, then the
    counts, one line per instance (`CH1 Channel base 100: IN=AIN1 GND=GND`), `N nets, M traces`
@@ -92,6 +104,11 @@ means, `replace`, refused pins and the export's warnings are in
    Parts a person placed or locked stay and are worked round. A sheet holds one layout for all
    its instances: the first one placed sets it, and `autoplace` moves each other instance as a
    whole by its anchor (`{ instance: "CH2" }`, or the whole board), noting `CH2 was moved as a block`.
+   `Not placed: U1 (no free spot …)`: make the board larger (`fit_board` with a larger `margin`) and run
+   `autoplace` again, or place that part with `set_props` `{ pcbX, pcbY }` and `autoplace` the
+   rest. The wire length can come out longer than the starting packing (`(was …)` smaller): read
+   `board_summary`, move the outliers its longest connections name, and do not repeat `autoplace`
+   hoping for better.
 8. **Board shape and connectors.** `fit_board` `{ file, margin? }`:
    `Change c0010: board 42 × 28 mm (margin 2 mm)`; or `autoplace` with `fit: true`.
    Mounting holes with `add_hole` `{ file, x, y, diameter }`.
@@ -126,7 +143,9 @@ means, `replace`, refused pins and the export's warnings are in
 part, a net or an instance. Electrical checks (`pin-unconnected`, `output-conflict`,
 `no-power-source`), placement checks (`courtyard-overlap`, `outside-board`), copper and pour
 checks, and code and model problems: `footprint`, `unknown-pin`, `ambiguous-pin` (write
-`pin<n>` instead), `library-override`. Fix every error before you report success. Warnings
+`pin<n>` instead), `library-override`. `auto-route` (a warning: a schematic wire drawn
+straight because symbols stand too close for a way round) is fixed by moving a symbol with
+`set_props` `{ schX, schY }`. Fix every error before you report success. Warnings
 such as `unrouted` do not fail the check; mention them. Net classes and fabrication limits live
 in `rules.yaml` at the project root; do not work around a rule in the circuit.
 

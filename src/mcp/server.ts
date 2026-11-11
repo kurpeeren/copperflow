@@ -108,7 +108,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "set_props",
     {
       description:
-        "Set literal props of a part, e.g. pcbX, pcbY, pcbRotation, schX, schY, resistance, footprint. Missing props are added. schNameAt and schValueAt move the part's name and value on the schematic, pcbNameAt its silkscreen designator: each is a point { x, y }, an offset from the part's origin (sheet units, board mm), which moves with the part. null removes one of these three props, which puts the label back where the layout puts it.",
+        "Set literal props of a part, e.g. pcbX, pcbY, pcbRotation, schX, schY, resistance, footprint. Missing props are added. schNameAt and schValueAt move the part's name and value on the schematic, pcbNameAt its silkscreen designator: each is a point { x, y }, an offset from the part's origin (sheet units, board mm), which moves with the part. null removes one of these three props, which puts the label back where the layout puts it. noConnect: \"pin3,pin10\" flags pins meant to stay unconnected (no pin-unconnected error, a cross on the schematic); null removes the flags.",
       inputSchema: {
         file,
         part: z.string().describe("Part name, e.g. R1"),
