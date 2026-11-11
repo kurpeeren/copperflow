@@ -1,6 +1,7 @@
 // Library → New part…: the dialog's pure logic (rows, paste, the request) and the footprint preview drawn from the generator.
 import { describe, expect, test } from "vitest"
 import { generateFootprint } from "../src/engine/footprints/index.js"
+import { unknownFootprint } from "../src/engine/footprints/known.js"
 import {
   createdSummary,
   EMPTY_FIELDS,
@@ -99,7 +100,7 @@ describe("New part dialog: the request", () => {
       problems: [
         '"9x" is not a part id: start with a letter, end with a letter or digit, and use letters, digits, ".", "_" or "-".',
         "Give the part a title.",
-        'copperflow cannot make footprint "qfn5" yet',
+        unknownFootprint("qfn5"),
         "Pin row 2: pin 1 is already in row 1.",
         'Pin row 2: "+B" is not a pin name; use letters, digits and _, starting with a letter (e.g. _B).',
         'Pin row 3: "x" is not a pin number; pins are numbered 1, 2, 3 ….',

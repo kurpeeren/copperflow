@@ -147,11 +147,6 @@ export const DUAL_FORMS: readonly { form: string; pins: readonly number[] }[] = 
   pins: s.pins,
 }))
 
-/** The series a parsed string names by kind and suffix, whatever its pin count. */
-export function dualSeriesOf(parsed: ParsedFootprint): { kind: string; suffix: string; pins: readonly number[] } | undefined {
-  return SERIES.find((s) => s.kind === parsed.kind && s.suffix === (parsed.suffix ?? ""))
-}
-
 function packageOf(series: DualSeries, pins: number): IcPackage {
   const listed = series.bodyLength.get(pins)
   const nominal = (pins / 2 - 1) * series.lead.pitch + 2 * series.overhang

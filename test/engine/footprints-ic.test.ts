@@ -9,6 +9,7 @@ import {
   gullWingTable,
   QFN_TABLE,
 } from "../../src/engine/footprints/ipc7351.js"
+import { nearestFootprints, unknownFootprint } from "../../src/engine/footprints/known.js"
 import { parseFootprint } from "../../src/engine/footprints/parse.js"
 import type { Footprint, Pad } from "../../src/engine/footprints/types.js"
 import type { Circuit, Point } from "../../src/engine/model.js"
@@ -445,7 +446,7 @@ test("_p and _w only confirm the package; other values are refused", () => {
   expect(footprint("qfn32_ep_w5mm").pads).toEqual(footprint("qfn32_ep").pads)
   expect(footprint("sot23_5_p0.95mm").pads).toEqual(footprint("sot23_5").pads)
   for (const text of ["soic8_p0.65mm", "soic8_w5.3mm", "tssop20_p0.5mm", "qfn32_p0.65mm", "qfp48_w12mm"]) {
-    expect(generateFootprint(text)).toEqual({ error: `copperflow cannot make footprint "${text}" yet` })
+    expect(generateFootprint(text)).toEqual({ error: unknownFootprint(text) })
   }
 })
 
@@ -488,9 +489,40 @@ test("strings outside the cited tables are refused", () => {
     "0603_5",
     "sod123_5",
   ]) {
-    expect(generateFootprint(text)).toEqual({ error: `copperflow cannot make footprint "${text}" yet` })
+    expect(generateFootprint(text)).toEqual({ error: unknownFootprint(text) })
   }
 })
+
+describe("the refusal of an unknown string names what exists", () => {
+  test("it lists the string forms on one line and points at the skill", () => {
+    const error = unknownFootprint("to247")
+    expect(error).toMatch(/^copperflow cannot make footprint "to247":/)
+    expect(error).not.toContain("\n")
+    for (const form of ["0603", "sot23_5", "soic<N> (N even 8–16)", "soic<N>w (N 16, 18, 20, 24, 28)", "sop<N>", "ssop<N>", "tssop<N> (N even 8–28)", "qfn<N>_<b>x<b>_p<pitch>", "pinrow<N>", "dip<N>"]) {
+      expect(error).toContain(form)
+    }
+    expect(error).toMatch(/\(see the skill's parts library reference\)$/)
+  })
+
+  test("a known family with a bad number or suffix gets the nearest valid strings", () => {
+    expect(nearestFootprints("soic18")).toEqual(["soic16", "soic18w", "soic14"].sort(byPins))
+    expect(nearestFootprints("soic14w")).toEqual(["soic14", "soic16w", "soic18w"].sort(byPins))
+    expect(nearestFootprints("tssop30")).toEqual(["tssop24", "tssop26", "tssop28"])
+    expect(nearestFootprints("qfn20")).toEqual(["qfn16", "qfn32", "qfn48"])
+    expect(nearestFootprints("0604")).toEqual(["0402", "0603", "0805"])
+    expect(generateFootprint("soic18")).toEqual({ error: expect.stringMatching(/^copperflow cannot make footprint "soic18": nearest are soic14, soic16, soic18w; known families are /) })
+  })
+
+  test("a string of no known kind names no nearest strings", () => {
+    expect(nearestFootprints("xyz")).toEqual([])
+    expect(nearestFootprints("abc12")).toEqual([])
+    expect(unknownFootprint("xyz")).toMatch(/^copperflow cannot make footprint "xyz": known families are /)
+  })
+})
+
+function byPins(a: string, b: string): number {
+  return Number(/\d+/.exec(a)?.[0]) - Number(/\d+/.exec(b)?.[0]) || a.localeCompare(b)
+}
 
 describe("gull-wing heel goal: Amax is the body between the lead rows", () => {
   // The reading is settled in ipc7351.ts (gullWingGoals). These cases are where the two readings

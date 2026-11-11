@@ -7,7 +7,9 @@ level B rule in `ipc7251.ts`. No code or data is taken from KiCad or any other G
 
 Every footprint is drawn seen from the top, origin at the part centre, y up, mm. Pad 1 is always marked on the
 silkscreen. Strings are case-insensitive; lengths may carry `mm`, `mil` or `in` (`_p100mil`). A string that no family
-accepts gives the error `copperflow cannot make footprint "<string>" yet`; a part with such a package carries its own
+accepts gives the error `copperflow cannot make footprint "<string>": known families are …` with the string forms on
+one line, preceded by `nearest are …` (up to three valid strings) when it looks like a known family with a bad number
+or suffix, such as `soic18` (nearest `soic14, soic16, soic18w`); see `known.ts`. A part with such a package carries its own
 `footprint.yaml` (see `skills/copperflow/references/parts-library.md`).
 
 ## How sure the numbers are

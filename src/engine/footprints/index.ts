@@ -5,6 +5,7 @@ import { dfnFootprint } from "./dfn.js"
 import { dipFootprint } from "./dip.js"
 import { dualFootprint } from "./dual.js"
 import { footprintFromFile } from "./file.js"
+import { unknownFootprint } from "./known.js"
 import { isSimple, parseFootprint, type ParsedFootprint } from "./parse.js"
 import { moldedFootprint } from "./molded.js"
 import { pinRowFootprint } from "./pinrow.js"
@@ -102,7 +103,7 @@ function build(text: string): FootprintResult {
       if (footprint) return footprint
     }
   }
-  return { error: `copperflow cannot make footprint "${text}" yet` }
+  return { error: unknownFootprint(text) }
 }
 
 function deepFreeze<T>(value: T): T {

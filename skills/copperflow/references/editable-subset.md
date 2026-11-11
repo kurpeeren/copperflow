@@ -77,6 +77,7 @@ copperflow makes the pads itself from these `footprint` strings (case does not m
 `docs/footprints.md` in the copperflow repository draws each family and says how sure its numbers
 are. A parameter such as `_p1.27mm` on a cited package (`soic8_p1.27mm`) is accepted only when it
 matches the package. Any other string, such as `sod523` or `to247`, gives the error
-`copperflow cannot make footprint "<string>" yet`.
+`copperflow cannot make footprint "<string>": known families are …`, naming the nearest valid
+strings first when it looks like a known family (`soic18`: `soic14, soic16, soic18w`).
 For a package no family fits, a library part carries its own `footprint.yaml` (see
 [parts-library.md](parts-library.md)).

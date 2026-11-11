@@ -1,6 +1,7 @@
 // Checks shared by the tests of the generated package families.
 import { expect } from "vitest"
 import { generateFootprint } from "../../src/engine/footprints/index.js"
+import { unknownFootprint } from "../../src/engine/footprints/known.js"
 import type { Footprint, Pad } from "../../src/engine/footprints/types.js"
 import type { Point } from "../../src/engine/model.js"
 
@@ -15,7 +16,7 @@ export function footprint(text: string): Footprint {
 }
 
 export function refused(text: string): void {
-  expect(generateFootprint(text)).toEqual({ error: `copperflow cannot make footprint "${text}" yet` })
+  expect(generateFootprint(text)).toEqual({ error: unknownFootprint(text) })
 }
 
 /** The string is refused with this reason after it. */
@@ -23,7 +24,7 @@ export function refusedBecause(text: string, reason: string): void {
   expect(generateFootprint(text)).toEqual({ error: `copperflow cannot make footprint "${text}": ${reason}` })
 }
 
-/** Each string is refused: with the reason given, or with the plain "yet" error for null. */
+/** Each string is refused: with the reason given, or with the unknown-string error (known families) for null. */
 export function refusedAll(cases: Readonly<Record<string, string | null>>): void {
   for (const [text, reason] of Object.entries(cases)) {
     if (reason === null) refused(text)

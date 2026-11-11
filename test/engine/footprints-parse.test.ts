@@ -1,5 +1,6 @@
 import { expect, test } from "vitest"
 import { generateFootprint } from "../../src/engine/footprints/index.js"
+import { unknownFootprint } from "../../src/engine/footprints/known.js"
 import { isSimple, parseFootprint } from "../../src/engine/footprints/parse.js"
 
 test("a body or grid segment <a>x<b> becomes the size", () => {
@@ -40,6 +41,6 @@ test("isSimple is false for any of the new parts", () => {
 
 test("the older families refuse strings with the new parts", () => {
   for (const text of ["0603x5", "0603s", "sod123s", "soic8_5x5", "soic8x2", "sot23s", "qfn32_ep2x2", "qfp48s", "pinrow4s", "pinrow4_rows2x2"]) {
-    expect(generateFootprint(text)).toEqual({ error: `copperflow cannot make footprint "${text}" yet` })
+    expect(generateFootprint(text)).toEqual({ error: unknownFootprint(text) })
   }
 })

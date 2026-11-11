@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { generateFootprint, padCount } from "../../src/engine/footprints/index.js"
 import { gullWingGoals, landPattern, twoTerminalPads } from "../../src/engine/footprints/ipc7351.js"
+import { unknownFootprint } from "../../src/engine/footprints/known.js"
 import { cathodeBar, padExtent } from "../../src/engine/footprints/outline.js"
 import { parseFootprint } from "../../src/engine/footprints/parse.js"
 import type { Footprint, Pad } from "../../src/engine/footprints/types.js"
@@ -347,15 +348,14 @@ test("padCount", () => {
 
 test("unknown strings are refused", () => {
   expect(generateFootprint("bga64")).toEqual({ error: 'copperflow cannot make footprint "bga64": a BGA needs its body, such as bga256_17x17_p1' })
-  expect(generateFootprint("0604")).toEqual({ error: 'copperflow cannot make footprint "0604" yet' })
-  expect(generateFootprint("0603_p0.5mm")).toEqual({ error: 'copperflow cannot make footprint "0603_p0.5mm" yet' })
-  expect(generateFootprint("")).toEqual({ error: 'copperflow cannot make footprint "" yet' })
-  expect(generateFootprint("sod999")).toEqual({ error: 'copperflow cannot make footprint "sod999" yet' })
-  expect(generateFootprint("sod123_w2")).toEqual({ error: 'copperflow cannot make footprint "sod123_w2" yet' })
+  for (const text of ["0604", "0603_p0.5mm", "", "sod999", "sod123_w2"]) {
+    expect(generateFootprint(text)).toEqual({ error: unknownFootprint(text) })
+  }
+  expect(unknownFootprint("sod999")).toMatch(/^copperflow cannot make footprint "sod999": nearest are sod123, sod323; known families are /)
 })
 
 test("SOD-523 waits for IPC-7351B flat-lead goals", () => {
-  expect(generateFootprint("sod523")).toEqual({ error: 'copperflow cannot make footprint "sod523" yet' })
+  expect(generateFootprint("sod523")).toEqual({ error: unknownFootprint("sod523") })
 })
 
 test("results are cached by text and cannot be changed", () => {
