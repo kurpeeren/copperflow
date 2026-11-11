@@ -227,6 +227,31 @@ html body {
   align-items: center;
 }
 
+/* Library → Import by LCSC number: the result takes the whole width; long paths and notes wrap. */
+.import-result {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+  max-height: 50vh;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
+.import-result h3 {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.import-result ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.import-result p strong {
+  color: var(--text);
+}
+
 button.menu-title:hover:not(:disabled),
 button.menu-title.open:hover:not(:disabled) {
   background: var(--raised);

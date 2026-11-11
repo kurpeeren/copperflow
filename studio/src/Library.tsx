@@ -1,16 +1,19 @@
 import { useEffect, useRef, useState } from "react"
 import type { PartsData } from "./api"
+import { originLabel } from "./shell/import-part-form"
 
 interface Props {
   parts: PartsData
   onPlace(part: string): void
+  /** Library → Import by LCSC number…: opens the dialog. */
+  onImport(): void
   /** Focus the search field now (Shift+F); `onFocused` says it has been done. */
   focus: boolean
   onFocused(): void
 }
 
 /** Parts that can be added to the board: the project's library and the built-in parts. */
-export function Library({ parts, onPlace, focus, onFocused }: Props) {
+export function Library({ parts, onPlace, onImport, focus, onFocused }: Props) {
   const [query, setQuery] = useState("")
   const search = useRef<HTMLInputElement>(null)
   useEffect(() => {
@@ -38,8 +41,11 @@ export function Library({ parts, onPlace, focus, onFocused }: Props) {
       <h3>
         Project library <span className="count">{parts.library.length}</span>
       </h3>
+      <button className="library-import" onClick={onImport}>
+        Import by LCSC number…
+      </button>
       {parts.library.length === 0 && (
-        <p className="note">No parts yet. Ask the agent to create one from a datasheet.</p>
+        <p className="note">No parts yet. Import one by its LCSC number, or ask the agent to create one from a datasheet.</p>
       )}
       <ul>
         {library.map((part) => (
@@ -49,6 +55,7 @@ export function Library({ parts, onPlace, focus, onFocused }: Props) {
               <span className="meta">
                 {part.mpn ?? part.id}, {part.footprint}
               </span>
+              {part.origin && <span className="meta">{originLabel(part.origin)}</span>}
             </div>
             <span className={`badge ${part.verified ? "verified" : "unverified"}`} title={part.verified ? `Checked by ${part.verifiedBy}` : "Not checked against the datasheet yet"}>
               {part.verified ? "Verified" : "Unverified"}

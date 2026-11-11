@@ -43,6 +43,7 @@ import { lockedPartsAt, lockedStart } from "../core/layout-locks.js"
 import { readIfThere } from "../core/file-writes.js"
 import { unrouteEdits, unrouteSummary } from "../core/unroute.js"
 import { resolveLayoutFile } from "../core/workspace.js"
+import { COMMERCIAL_NOTE, importLcscPart } from "../library/import-lcsc.js"
 import { LayoutBody } from "./layout-schema.js"
 import { LiveProject, type DesignBuilder } from "./live.js"
 import { RouteRunner, routeWorkerFactory, type RouteWorkerFactory } from "./route-runner.js"
@@ -62,6 +63,8 @@ export interface StudioOptions {
    * Null routes in the server process.
    */
   routeWorker?: RouteWorkerFactory | null
+  /** Fetches for Library → Import by LCSC number; tests pass one that answers from fixtures. */
+  fetch?: typeof fetch
 }
 
 export interface Studio {
@@ -175,6 +178,8 @@ const Bodies = {
   build: z.object({ file }),
   place: z.object({ file, part: z.string().min(1).max(64), name: z.string().max(40).optional(), props: props.optional(), page: z.string().max(64).optional() }),
   verify: z.object({ id: z.string().min(1).max(64), by: z.string().min(1).max(100), against: z.string().min(1).max(300), confirm: z.string() }),
+  // Library → Import by LCSC number: one part, written unverified.
+  importPart: z.object({ lcsc: z.string().min(1).max(20), id: z.string().min(1).max(64).optional(), replace: z.boolean().optional() }),
   // The Design rules panel: a radius in mm, or null for the default.
   rules: z.object({ filletRadius: z.number().nullable(), file: z.string().optional() }),
   // Route → Autoroute: the whole board, some nets, the connections of some parts, or one sub-sheet instance.
@@ -394,6 +399,13 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         if (body.confirm.trim() !== body.id) throw new HttpError(400, `Type ${body.id} exactly to confirm`)
         await verifyPart(root, body.id, { by: body.by, against: body.against }, new Date().toISOString())
         return send(res, { id: body.id })
+      }
+      case "POST /api/import-part": {
+        const body = Bodies.importPart.parse(await readJson(req))
+        const now = new Date().toISOString()
+        const result = await importLcscPart(root, body.lcsc, { now, replace: body.replace === true, ...(body.id ? { id: body.id } : {}), ...(options.fetch ? { fetch: options.fetch } : {}) })
+        const { id, lcsc, part, files, pads, notes } = result
+        return send(res, { id, lcsc, title: part.title, pins: Object.keys(part.pins).length, pads, files, notes, terms: COMMERCIAL_NOTE })
       }
       case "GET /api/bom": {
         const circuit = (await loadCircuit(root, query("file"))).file

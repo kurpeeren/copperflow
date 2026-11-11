@@ -61,6 +61,8 @@ export interface WorkspaceProps {
   /** Runs a menu command, as the menu bar does. */
   run(command: CommandId): void
   onPlace(part: string): void
+  /** Library → Import by LCSC number…: opens the dialog. */
+  onImportPart(): void
   onOpenDocument(file: string, view: DocView, page?: string): void
   /** Opens a sub-sheet file as its own schematic: a double click on its symbol, or Properties. */
   onOpenSheet(file: string): void
@@ -169,7 +171,7 @@ ${page}`} {...sheet} {...gridProps(workspace, "schematic")} markers={checks.mark
 }
 
 /** The left panel (Project Design or Common Library), once the circuit has loaded. */
-function LeftSide({ data, workspace, view, page, selection, onSelect, actions, onPlace, onOpenDocument }: WorkspaceProps) {
+function LeftSide({ data, workspace, view, page, selection, onSelect, actions, onPlace, onImportPart, onOpenDocument }: WorkspaceProps) {
   const { circuit, build, project, files, sheets, file } = data
   const pageTree = useMemo(() => buildPageTree(project, [...files, ...sheets], file, view, { names: pageNames(build.design), open: page }), [project, files, sheets, file, view, build.design, page])
   const autoPlaced = useMemo(() => autoPlacedParts(build.design, view), [build.design, view])
@@ -179,6 +181,7 @@ function LeftSide({ data, workspace, view, page, selection, onSelect, actions, o
       circuit={circuit}
       parts={data.parts}
       onPlace={onPlace}
+      onImport={onImportPart}
       selection={selection}
       onSelect={onSelect}
       actions={actions}

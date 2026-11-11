@@ -4,10 +4,11 @@ import { CloseIcon } from "../icons"
 import { dialogKey, trapStep } from "./dialog-keys"
 import { useKeyHold } from "./key-gate"
 import { shortcutList } from "./menus"
+import { ImportPartForm, type ImportPartPanel } from "./ImportPartDialog"
 import { MakeSheetForm, type MakeSheetPanel } from "./MakeSheetDialog"
 import { FILLET_RADIUS_LABEL, FILLET_RADIUS_NOTE, filletRadiusField, readFilletRadius } from "./rules-form"
 
-export type DialogName = "keys" | "about" | "rules" | "makeSheet"
+export type DialogName = "keys" | "about" | "rules" | "makeSheet" | "importPart"
 
 /** What Design → Design rules shows and writes: the rules the build read, and the save of a new fillet radius. */
 export interface RulesPanel {
@@ -98,8 +99,15 @@ function RulesForm({ rules, onClose }: { rules: RulesPanel; onClose(): void }) {
   )
 }
 
-/** Help → Keys, Help → About, Design → Design rules and Edit → Make sub-sheet. */
-export function StudioDialog({ name, onClose, rules, makeSheet }: { name: DialogName; onClose(): void; rules: RulesPanel; makeSheet: MakeSheetPanel }) {
+/** Help → Keys, Help → About, Design → Design rules, Edit → Make sub-sheet and Library → Import by LCSC number. */
+export function StudioDialog({ name, onClose, rules, makeSheet, importPart }: { name: DialogName; onClose(): void; rules: RulesPanel; makeSheet: MakeSheetPanel; importPart: ImportPartPanel }) {
+  if (name === "importPart") {
+    return (
+      <Dialog title="Import by LCSC number" onClose={onClose}>
+        <ImportPartForm panel={importPart} onClose={onClose} />
+      </Dialog>
+    )
+  }
   if (name === "makeSheet") {
     return (
       <Dialog title="Make sub-sheet" onClose={onClose}>

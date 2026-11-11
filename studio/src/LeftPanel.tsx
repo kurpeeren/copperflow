@@ -20,6 +20,8 @@ interface Props {
   circuit: CircuitData
   parts: PartsData
   onPlace(part: string): void
+  /** Library → Import by LCSC number…. */
+  onImport(): void
   selection: Selection
   onSelect(change: SelectionChange): void
   actions: Actions
@@ -68,7 +70,7 @@ export function LeftPanel(props: Props) {
     <aside className="panel left hairline-r" id={stripPanelId("left")} role="tabpanel" aria-labelledby={sideTabId(left.strip)} hidden={props.hidden} onClick={blurAfterPointerClick}>
       {design && <SubTabs sub={left.sub} onSub={onSub} />}
       <div className="panel-body" {...(design ? { id: DESIGN_PANEL_ID, role: "tabpanel", "aria-labelledby": `sub-tab-${left.sub}` } : {})}>
-        {!design && <Library parts={props.parts} onPlace={props.onPlace} focus={props.focusSearch} onFocused={props.onSearchFocused} />}
+        {!design && <Library parts={props.parts} onPlace={props.onPlace} onImport={props.onImport} focus={props.focusSearch} onFocused={props.onSearchFocused} />}
         {design && <DesignBody {...props} />}
       </div>
     </aside>

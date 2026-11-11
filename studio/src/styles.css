@@ -487,6 +487,11 @@ ul {
   margin: 2px 0 8px;
 }
 
+.library-import {
+  width: 100%;
+  margin: 0 0 4px;
+}
+
 .library h3 {
   margin: 10px 6px 4px;
   font-size: 12px;

@@ -24,6 +24,8 @@ export interface LibraryPart {
   component: string
   verified: boolean
   verifiedBy?: string
+  /** Where the part came from, e.g. "lcsc C7950, imported 2026-11-11". */
+  origin?: string
 }
 
 export interface PartsData {
