@@ -21,6 +21,11 @@ Passive parts (resistors, capacitors, LEDs, headers) are built in and need no en
      until a human checks every pad against the datasheet. Without `footprint_file` a
      placeholder `footprint.yaml` (`placeholder: true`) is written: the schematic works, but each
      use on the board is a check error until the human draws the pads and deletes that line.
+     Footprint files go into the pick-and-place file at their own orientation (the `file`
+     family's correction is 0). Imported ones are already in JLCPCB's orientation. One drawn in
+     copperflow's orientation (pin 1 top left, rows vertical) for a SOIC- or SOP-like package needs
+     `fabrication.placementRotations.parts.<id>: 270` in `rules.yaml` (see
+     [design-rules.md](design-rules.md)); tell the human to check it in JLCPCB's assembly preview.
    - `pins`: every pin by number, with the datasheet's name and an electrical type:
      `power_in`, `power_out`, `ground`, `input`, `output`, `bidirectional`, `passive` or
      `no_connect`. Pin names become selectors, so use letters, digits and `_` only

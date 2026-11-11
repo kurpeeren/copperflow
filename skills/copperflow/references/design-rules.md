@@ -97,7 +97,9 @@ globalNets: [GND, V24, V3_3]
   default back out. A library part drawn with its own footprint file can have
   its own correction by its id under `parts`, which takes the place of the `file` family's for that
   part only: `placementRotations: { file: 90, parts: { MCP2515: 180 } }`. Bottom parts get the same
-  correction, their rotation read as seen from below.
+  correction, their rotation read as seen from below. Imported footprints (`import_part`) are already
+  in JLCPCB's orientation and need none; a footprint file drawn in copperflow's orientation (pin 1 top
+  left, rows vertical) for a SOIC- or SOP-like package needs `parts: { <id>: 270 }`.
 - The built-in profiles are JLCPCB's published standard capabilities in 1 oz copper; each profile's
   `source` names the page, its sections and the date it was read.
 - A class field left out takes the default class's value: track 0.25 mm, clearance 0.2 mm, via drill

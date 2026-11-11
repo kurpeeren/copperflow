@@ -46,7 +46,7 @@ const STUB_PITCH = 2.54
 const STUB_PAD = { width: 1.2, height: 1.8 }
 
 export const PLACEHOLDER_NOTE =
-  'footprint.yaml is a placeholder (one pad per pin in a row, 2.54 mm apart): draw every pad from the datasheet\'s recommended land pattern, then delete "placeholder: true". Until then the checks report an error for each use of the part on the board, fabrication files are not written and the part cannot be verified; the schematic works.'
+  'footprint.yaml is a placeholder (one pad per pin in a row, 2.54 mm apart): draw every pad from the datasheet\'s recommended land pattern, then delete "placeholder: true". Until then the checks report an error for each use of the part on the board, fabrication files are not written and the part cannot be verified; the schematic works. A footprint file goes into pick-and-place at its own orientation: drawn as copperflow draws (pin 1 top left, rows vertical), a SOIC- or SOP-like part needs fabrication.placementRotations.parts.<id>: 270 in rules.yaml; check it in JLCPCB\'s assembly preview.'
 
 /** Writes the part; throws with one message for the person when it cannot, and then writes nothing. */
 export async function writeNewPart(root: string, input: NewPartInput, options: { now: string; replace?: boolean }): Promise<NewPartResult> {
