@@ -9,9 +9,12 @@ export type ProjectSection = (typeof PROJECT_SECTIONS)[number]
 /** The file a project starts with: a title and the four sections, empty. */
 export const EMPTY_PROJECT = `# Project\n\n${PROJECT_SECTIONS.map((s) => `## ${s}\n\n`).join("")}`
 
-/** Where a section's body lies in the text: from after its heading line to the next "## " heading or the end. */
+/**
+ * Where a section's body lies in the text: from after its heading line to the next "## " heading or the end. The
+ * heading is found in any case ("## decisions"), and in a file with CRLF line ends.
+ */
 function bodyRange(text: string, section: ProjectSection): { start: number; end: number } | undefined {
-  const heading = new RegExp(`^## ${section}[ \\t]*$`, "m").exec(text)
+  const heading = new RegExp(`^## ${section}[ \\t]*\\r?$`, "mi").exec(text)
   if (!heading) return undefined
   const lineEnd = text.indexOf("\n", heading.index)
   const start = lineEnd < 0 ? text.length : lineEnd + 1
@@ -28,12 +31,19 @@ export function sectionText(text: string, section: ProjectSection): string {
 /** The body as written into the file: a blank line, the content, a blank line before the next heading. */
 const bodyOf = (content: string) => (content.trim() === "" ? "\n" : `\n${content.trim()}\n\n`)
 
-/** The text with one section's body replaced; a missing section is added at the end. */
+/** The text with one section's body replaced; a missing section is added at the end. A CRLF file stays CRLF. */
 export function withSection(text: string, section: ProjectSection, content: string): string {
-  const range = bodyRange(text, section)
-  if (range) return text.slice(0, range.start) + bodyOf(content) + text.slice(range.end)
-  const base = text === "" || text.endsWith("\n\n") ? text : text.endsWith("\n") ? `${text}\n` : `${text}\n\n`
-  return `${base}## ${section}\n${bodyOf(content)}`
+  const crlf = text.includes("\r\n") && !/(^|[^\r])\n/.test(text)
+  const plain = crlf ? text.replace(/\r\n/g, "\n") : text
+  const range = bodyRange(plain, section)
+  const lf = (body: string) => body.replace(/\r\n/g, "\n")
+  let after: string
+  if (range) after = plain.slice(0, range.start) + bodyOf(lf(content)) + plain.slice(range.end)
+  else {
+    const base = plain === "" || plain.endsWith("\n\n") ? plain : plain.endsWith("\n") ? `${plain}\n` : `${plain}\n\n`
+    after = `${base}## ${section}\n${bodyOf(lf(content))}`
+  }
+  return crlf ? after.replace(/\n/g, "\r\n") : after
 }
 
 /** The text with one line added at the end of a section's body. */

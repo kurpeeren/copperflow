@@ -38,15 +38,30 @@ function segmentDistance(p: Point, a: Point, b: Point): number {
   return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy))
 }
 
-/** The least distance from a courtyard corner to the outline's edges. */
-function edgeDistance(courtyard: readonly Point[], outline: readonly Point[]): number {
+/** Whether a point lies inside a polygon (even-odd rule). */
+function inside(p: Point, polygon: readonly Point[]): boolean {
+  let within = false
+  polygon.forEach((a, i) => {
+    const b = polygon[(i + 1) % polygon.length] as Point
+    if (a.y > p.y !== b.y > p.y && p.x < a.x + ((p.y - a.y) * (b.x - a.x)) / (b.y - a.y)) within = !within
+  })
+  return within
+}
+
+/** The least distance from each corner of `from` to the edges of `to`. */
+function cornerDistance(from: readonly Point[], to: readonly Point[]): number {
   let least = Infinity
-  for (const p of courtyard) {
-    outline.forEach((a, i) => {
-      least = Math.min(least, segmentDistance(p, a, outline[(i + 1) % outline.length] as Point))
-    })
-  }
+  for (const p of from) to.forEach((a, i) => (least = Math.min(least, segmentDistance(p, a, to[(i + 1) % to.length] as Point))))
   return least
+}
+
+/**
+ * The least distance between a courtyard and the outline's edges, both ways round: a courtyard corner near an edge, or
+ * an outline corner near (or inside, 0) the courtyard, as a notch in the board does.
+ */
+export function edgeDistance(courtyard: readonly Point[], outline: readonly Point[]): number {
+  if (outline.some((corner) => inside(corner, courtyard))) return 0
+  return Math.min(cornerDistance(courtyard, outline), cornerDistance(outline, courtyard))
 }
 
 function sizeLine(design: Design): string {

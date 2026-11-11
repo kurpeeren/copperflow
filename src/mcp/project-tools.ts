@@ -1,8 +1,11 @@
 // The project memory tools. project_status is the first call a fresh context makes: PROJECT.md's Intent, Blocks, the
 // last five Decisions and Open, then per circuit file its counts and its last three changes. note_decision and
 // set_project write PROJECT.md through the core, one history entry by the agent each.
+import { existsSync } from "node:fs"
+import { join } from "node:path"
 import { z } from "zod"
-import { listCircuits, listEntries, type HistoryListing } from "../core/index.js"
+import { listCircuits, listEntries, resolveCircuit, type HistoryListing } from "../core/index.js"
+import { layoutPathFor } from "../core/layout-file.js"
 import { noteDecision, readProject, setProject, type ProjectUpdate } from "../core/project.js"
 import { PROJECT_PATH, sectionLines, sectionText } from "../core/project-text.js"
 import type { Design } from "../engine/design.js"
@@ -14,6 +17,7 @@ const CHANGES_SHOWN = 3
 const HISTORY_READ = 500
 
 export const noteDecisionInput = {
+  file: z.string().optional().describe("The circuit file the decision is about, if one; it is named in the line"),
   text: z.string().min(1).max(500).describe('The decision in one line, e.g. "TJA1051 over MCP2551: 3.3 V I/O"'),
 }
 
@@ -30,7 +34,7 @@ export const setProjectInput = {
 export const PROJECT_STATUS_DESCRIPTION =
   "Call this first in every task. Answers in a screenful: the project's PROJECT.md (Intent, Blocks, the last five Decisions, Open), then per circuit file its parts, nets, unplaced parts, unrouted connections, errors and warnings, and its last three changes. Without a PROJECT.md the answer says so; set_project writes one."
 export const NOTE_DECISION_DESCRIPTION =
-  "Note a design decision in PROJECT.md: one dated line under Decisions, as ONE change. Note each choice a later context should not undo (a part chosen and why, a board size, what the person approved)."
+  "Note a design decision in PROJECT.md: one dated line under Decisions (naming the circuit file when file is given), as ONE change. Note each choice a later context should not undo (a part chosen and why, a board size, what the person approved)."
 export const SET_PROJECT_DESCRIPTION =
   "Rewrite sections of PROJECT.md as ONE change: intent (one paragraph), blocks (one line each: name, what it does, status) and open (what is left). Sections not given and Decisions stay as they are. Creates PROJECT.md when the project has none."
 
@@ -63,14 +67,26 @@ export function projectLines(text: string | undefined): string[] {
   ]
 }
 
+/**
+ * The changes, newest first, that touched a circuit: written to its file, its layout file or a sheet file it uses, or
+ * with one of those among the files written alongside.
+ */
+export function changesOf(file: string, sheets: readonly string[], history: readonly HistoryListing[]): HistoryListing[] {
+  const own = new Set([file, layoutPathFor(file), ...sheets])
+  return history.filter((e) => own.has(e.file) || (e.also ?? []).some((change) => own.has(change.file)))
+}
+
 async function circuitLines(ports: Ports, file: string, history: readonly HistoryListing[]): Promise<string[]> {
   let counts: string
+  let sheets: string[] = []
   try {
-    counts = circuitCounts(await buildOf(ports, file))
+    const design = await buildOf(ports, file)
+    counts = circuitCounts(design)
+    sheets = [...new Set((design.circuit.instances ?? []).map((instance) => instance.file))]
   } catch (error) {
     counts = `could not be built: ${(error as Error).message.split("\n")[0]}`
   }
-  const changes = history.filter((e) => e.file === file).slice(0, CHANGES_SHOWN)
+  const changes = changesOf(file, sheets, history).slice(0, CHANGES_SHOWN)
   return [`${file}: ${counts}`, ...changes.map(changeLine)]
 }
 
@@ -86,8 +102,10 @@ export async function projectStatus(ports: Ports): Promise<string> {
   ].join("\n")
 }
 
-export async function noteDecisionTool(ports: Ports, input: { text: string }): Promise<string> {
-  const entry = await noteDecision(ports.root, input.text, { author: "ai" })
+export async function noteDecisionTool(ports: Ports, input: { file?: string | undefined; text: string }): Promise<string> {
+  const about = input.file === undefined ? undefined : (await resolveCircuit(ports.root, input.file)).file
+  if (about !== undefined && !existsSync(join(ports.root, about))) throw new Error(`There is no circuit file ${about}. Nothing was written.`)
+  const entry = await noteDecision(ports.root, about === undefined ? input.text : `${about}: ${input.text}`, { author: "ai" })
   return `Change ${entry.id}: noted under Decisions in ${PROJECT_PATH}`
 }
 
