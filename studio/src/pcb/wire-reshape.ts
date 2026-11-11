@@ -8,6 +8,7 @@ import type { SelectionChange } from "../selection.js"
 import type { Point } from "./geometry.js"
 import type { SourceCircuit } from "./positions.js"
 import { NO_LOCKS } from "./trace-source.js"
+import { drawingBlocker } from "./drawing-actions.js"
 import { junctionMoves, junctionsIn } from "./junction-follow.js"
 import { cornerBlocker, describeWire, WIRE_GONE } from "./wire-actions.js"
 import { removeCorner, samePath, tidy, wireBlocker, wireOf, wireShapeEdits, type WireShape } from "./wire-shape.js"
@@ -93,16 +94,21 @@ export function reshapeBlocker(design: Design, source: SourceCircuit, wireId: st
 }
 
 /** The junctions on the wire's shape shown, moved onto its new path (junction-follow.ts). */
-function followingJunctions(design: Design, shape: WireShape, path: readonly Point[], shown?: readonly Point[]): Edit[] {
+/**
+ * The junctions on the wire's shape shown, moved onto its new path (junction-follow.ts). A junction that may not move
+ * (locked, read-only, or its position written as an expression) stays where it is, as it would under a drag.
+ */
+function followingJunctions(design: Design, source: SourceCircuit, shape: WireShape, path: readonly Point[], locked: ReadonlySet<string>, shown?: readonly Point[]): Edit[] {
   const others = design.schematic.wires.filter((wire) => wire.id !== shape.id).map((wire) => wire.points)
-  return junctionMoves(junctionsIn(design.schematic.drawings), shown ?? shape.points, tidy(path), others)
+  const movable = junctionsIn(design.schematic.drawings).filter((junction) => drawingBlocker(source.model, locked, junction.id, ["x", "y"]) === null)
+  return junctionMoves(movable, shown ?? shape.points, tidy(path), others)
 }
 
-function reshapeOf(design: Design, shape: WireShape, path: readonly Point[], verb: string, locked: ReadonlySet<string>, shown?: readonly Point[]): WireReshape {
+function reshapeOf(design: Design, source: SourceCircuit, shape: WireShape, path: readonly Point[], verb: string, locked: ReadonlySet<string>, shown?: readonly Point[]): WireReshape {
   const edits = wireShapeEdits(design, shape, path, locked, shown)
   if (!Array.isArray(edits)) return edits
   // An unchanged shape sends nothing, junctions included; a new one carries its junctions in the same history entry.
-  const all = edits.length === 0 ? edits : [...edits, ...followingJunctions(design, shape, path, shown)]
+  const all = edits.length === 0 ? edits : [...edits, ...followingJunctions(design, source, shape, path, locked, shown)]
   return { edits: all, summary: `${verb} ${describeWire(design, shape)}`, points: tidy(path), ...after(design, shape) }
 }
 
@@ -112,7 +118,7 @@ function reshapeOf(design: Design, shape: WireShape, path: readonly Point[], ver
  */
 export function wireReshape(design: Design, source: SourceCircuit, wireId: string, path: readonly Point[], locked: ReadonlySet<string> = NO_LOCKS, shown?: readonly Point[]): WireReshape {
   const shape = wireOf(design, source, wireId)
-  return shape ? reshapeOf(design, shape, path, "reshape", locked, shown) : { blocked: WIRE_GONE }
+  return shape ? reshapeOf(design, source, shape, path, "reshape", locked, shown) : { blocked: WIRE_GONE }
 }
 
 /**
@@ -126,5 +132,5 @@ export function cornerDrop(design: Design, source: SourceCircuit, wireId: string
   const waiting = shown !== undefined && !samePath(shown, shape.points)
   const refused = waiting ? null : cornerBlocker(design, shape, locked)
   if (refused !== null) return { blocked: refused }
-  return reshapeOf(design, shape, removeCorner(shown ?? shape.points, index), "remove a corner of", locked, shown)
+  return reshapeOf(design, source, shape, removeCorner(shown ?? shape.points, index), "remove a corner of", locked, shown)
 }

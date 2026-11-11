@@ -1,4 +1,8 @@
 import { describe, expect, test } from "vitest"
+import { mkdtemp, readFile, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { editCircuit, undoChange } from "../src/core/workspace.js"
 import { analyzeCircuit } from "../src/core/analyze.js"
 import { applyEdits } from "../src/core/edit.js"
 import { buildDesign } from "../src/engine/design.js"
@@ -57,6 +61,28 @@ describe("a junction follows its wire", () => {
     const [junction] = after.schematic.drawings.filter((d) => d.kind === "junction")
     // On the new path: no wire point segment is further than a rounding step from it.
     expect(junctionsGone([{ id: "j", x: (junction as { x: number }).x, y: (junction as { y: number }).y }], [wire], [])).toEqual(["j"])
+  })
+
+  test("a locked junction stays where it is while its wire moves", () => {
+    const junction = design.schematic.drawings.find((d) => d.kind === "junction" && d.y === 1)
+    if (!junction) throw new Error("no junction on the wire")
+    const path = draggedPath(pointsOf(U), { kind: "segment", index: 1 }, p(0, 2), SNAP)
+    const result = wireReshape(design, model, U, path, new Set([junction.id]))
+    if ("blocked" in result) throw new Error(result.blocked)
+    expect(result.edits.some((edit) => edit.kind === "setDrawingProps")).toBe(false)
+    expect(result.edits.length).toBeGreaterThan(0)
+  })
+
+  test("one undo takes back the wire's new shape and the junction's move together", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cf-junction-"))
+    await writeFile(join(root, FILE), SOURCE, "utf8")
+    const path = draggedPath(pointsOf(U), { kind: "segment", index: 1 }, p(0, 2), SNAP)
+    const result = wireReshape(design, model, U, path)
+    if ("blocked" in result) throw new Error(result.blocked)
+    await editCircuit(root, FILE, result.edits, { author: "human", summary: result.summary })
+    expect(junctions(await readFile(join(root, FILE), "utf8"))).toEqual([p(1.5, 3), p(1.5, 5)])
+    await undoChange(root, { author: "human" })
+    expect(await readFile(join(root, FILE), "utf8")).toBe(SOURCE)
   })
 
   test("a junction another wire also passes through stays where it is", () => {
