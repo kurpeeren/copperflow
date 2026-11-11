@@ -79,9 +79,9 @@ class Router {
   private readonly groups = new Groups()
   private readonly groupWires = new Map<string, number[]>()
   private readonly scratch = new SearchScratch()
-  /** 1 where a grid point lies within BODY_CLEARANCE of a symbol's bounds: never opened. */
-  private readonly body: Uint8Array
-  /** The pins whose way out (exit points and landing) passes each grid point, by grid index. */
+  /** 1 where a grid point lies within BODY_CLEARANCE of a symbol's bounds: never opened. Made on the first tight search. */
+  private bodyCells: Uint8Array | undefined
+  /** The pins whose way out (exit points and landing) passes each grid point, by grid index. Made with `bodyCells`. */
   private readonly wayOut = new Map<number, string[]>()
   private readonly maxExpansions: number
   readonly diagnostics: Diagnostic[] = []
@@ -94,8 +94,6 @@ class Router {
     const rects = sheet.boxes.map((box) => cellsAround(box.bounds, SYMBOL_MARGIN))
     this.grid = new SheetGrid(extentOf(rects, sheet.spots))
     for (const rect of rects) this.grid.cover(rect)
-    this.body = new Uint8Array(this.grid.width * this.grid.height)
-    for (const box of sheet.boxes) this.markBody(cellsAround(box.bounds, BODY_CLEARANCE))
     sheet.boxes.forEach((box, index) => {
       for (const pin of box.pins) {
         const spot = sheet.spots.get(pin)
@@ -103,6 +101,21 @@ class Router {
       }
     })
     for (const { landing } of this.exits.values()) this.grid.add(landing[0], landing[1], SYMBOL)
+  }
+
+  /** The body cells and the ways out, made once when a wire first needs a tight search. */
+  private get body(): Uint8Array {
+    if (this.bodyCells) return this.bodyCells
+    const body = new Uint8Array(this.grid.width * this.grid.height)
+    for (const box of this.sheet.boxes) {
+      const rect = cellsAround(box.bounds, BODY_CLEARANCE)
+      for (let y = rect.minY; y <= rect.maxY; y++) {
+        for (let x = rect.minX; x <= rect.maxX; x++) {
+          const index = this.grid.indexOf(x, y)
+          if (index >= 0) body[index] = 1
+        }
+      }
+    }
     for (const [pin, exit] of this.exits) {
       const cells = [...exit.open, ...exit.landing]
       for (let i = 0; i < cells.length; i += 2) {
@@ -110,15 +123,8 @@ class Router {
         if (index >= 0) this.wayOut.set(index, [...(this.wayOut.get(index) ?? []), pin])
       }
     }
-  }
-
-  private markBody(rect: CellRect): void {
-    for (let y = rect.minY; y <= rect.maxY; y++) {
-      for (let x = rect.minX; x <= rect.maxX; x++) {
-        const index = this.grid.indexOf(x, y)
-        if (index >= 0) this.body[index] = 1
-      }
-    }
+    this.bodyCells = body
+    return body
   }
 
   /** Records a drawn wire: an obstacle from now on, and part of its pins' group. */
