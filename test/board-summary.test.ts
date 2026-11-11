@@ -71,8 +71,8 @@ describe("board_summary", () => {
     const text = formatBoardSummary(BENCHMARK_MAIN, design, new Set())
     expect(lines(text).length).toBe(BOARD_SUMMARY_LIMIT)
     expect(text).toMatch(/^… and \d+ more parts \(detail: full\)$/m)
-    expect(text).toMatch(/^Longest connections, pad to pad \(10 of \d+\):$/m)
-    expect(text).toMatch(/^ {2}\w+: \S+ \(-?[\d.]+, -?[\d.]+ \w+\) to \S+ \(-?[\d.]+, -?[\d.]+ \w+\) [\d.]+ mm unrouted$/m)
+    // Nothing is placed: no connection has a length to tell, so none is listed.
+    expect(text).not.toMatch(/^Longest connections/m)
     expect(text).toMatch(/^C1 1uF 0603 not placed$/m)
     const full = formatBoardSummary(BENCHMARK_MAIN, design, new Set(), "full")
     expect(lines(full).length).toBeGreaterThan(200)

@@ -205,10 +205,10 @@ function silkChecks(parts: readonly PlacedFootprint[], rules: Rules): Violation[
 
 function unplaced(parts: readonly PlacedFootprint[]): Violation[] {
   const auto = parts.filter((p) => p.autoPlaced).sort(byComponent)
-  const first = auto[0]
-  if (first === undefined) return []
-  const message = "These parts have no position and were placed automatically"
-  return [violation("unplaced", "warning", message, auto.map((p) => p.component), "pcb", at(first))]
+  if (auto.length === 0) return []
+  // No place is given: the spot the build packs them at only draws them, and their pads are named "not placed".
+  const message = "These parts have no position yet; autoplace places them"
+  return [violation("unplaced", "warning", message, auto.map((p) => p.component), "pcb")]
 }
 
 function unrouted(layout: PcbLayout): Violation[] {

@@ -260,7 +260,9 @@ describe("unplaced, unrouted and unchecked", () => {
     const found = coded(run(built), "unplaced")
     expect(found).toHaveLength(1)
     expect(found[0]).toMatchObject({ severity: "warning", items: ["R1", "R2"] })
-    expect(found[0]?.at).toEqual({ x: built.pcb.parts.find((p) => p.component === "R1")?.x, y: built.pcb.parts.find((p) => p.component === "R1")?.y })
+    // They have no position: the warning gives no place, only the spot the build packs them at would be one.
+    expect(found[0]?.at).toBeUndefined()
+    expect(found[0]?.message).toBe("These parts have no position yet; autoplace places them")
     expect(built.diagnostics.filter((d) => d.code === "auto-placed")).toEqual([])
   })
 

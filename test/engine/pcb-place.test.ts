@@ -134,7 +134,7 @@ describe("placeBoard on small boards", () => {
     const after = rebuilt(files, placement)
     expect(partOf(after, "U1")).toMatchObject({ x: 0, y: 0, rotation: 0 })
     // R6 is locked but never placed by hand, so the build still packs it: the only placement finding.
-    expect(placementFindings(after)).toEqual(["These parts have no position and were placed automatically"])
+    expect(placementFindings(after)).toEqual(["These parts have no position yet; autoplace places them"])
     const keepout = boxOfPoints(after.pcb.board?.keepouts[0]?.outline ?? [])
     const hole = { minX: 3.5, minY: -1.5, maxX: 6.5, maxY: 1.5 }
     for (const name of placement.positions.keys()) {

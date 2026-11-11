@@ -4,7 +4,7 @@
 import type { Design } from "../engine/design.js"
 import type { Point } from "../engine/model.js"
 import { naturalCompare } from "../engine/order.js"
-import { connectionPlace, padsById } from "../engine/pad-text.js"
+import { connectionPlace, padsById, unplacedParts } from "../engine/pad-text.js"
 import type { PlacedFootprint, RatsnestLine } from "../engine/pcb.js"
 import { ratsnest } from "../engine/ratsnest.js"
 import { netLabel } from "./copper-under.js"
@@ -95,12 +95,16 @@ const lineKey = (line: RatsnestLine) => `${line.net}|${line.from}|${line.to}`
  * The longest connections, routed or not, each with its two pads and where they are, so a part far from the pin it
  * serves shows: "OSC1: U1.pin8 (4.20, 6.10 top) to Y1.pin1 (18.30, 5.90 top) 25.2 mm". The connections are the
  * ratsnest with copper ignored, measured pad to pad in a straight line; a poured net's routed ones are left out (the
- * pour joins them wherever the parts are), its unrouted ones are not.
+ * pour joins them wherever the parts are), its unrouted ones are not. A connection to a part with no position yet is
+ * left out: it has no length to tell.
  */
 function longestLines(design: Design, shown: number): string[] {
   const open = new Set(design.pcb.ratsnest.map(lineKey))
   const poured = new Set(design.pcb.pours.map((pour) => pour.net))
+  const unplaced = unplacedParts(design.pcb)
+  const placed = (id: string) => !unplaced.has(id.split("#")[0] as string)
   const lines = ratsnest(design.pcb.parts)
+    .filter((line) => placed(line.from) && placed(line.to))
     .filter((line) => open.has(lineKey(line)) || !poured.has(line.net))
     .sort((a, b) => lineLength(b) - lineLength(a) || naturalCompare(a.from, b.from))
   if (lines.length === 0) return []
