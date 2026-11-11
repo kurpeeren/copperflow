@@ -17,6 +17,9 @@ import { importSummary, type ImportPartRequest, type ImportPartResult } from "./
 import type { ImportPartPanel } from "./shell/ImportPartDialog"
 import { createdSummary, type CreatePartRequest, type CreatePartResult } from "./shell/new-part-result"
 import type { NewPartPanel } from "./shell/new-part-result"
+import type { NewCircuitPanel } from "./shell/NewCircuitDialog"
+import type { FootprintPanel } from "./shell/FootprintManagerDialog"
+import type { NewCircuitRequest } from "./shell/new-circuit-form"
 import type { MakeSheetPreview } from "./shell/make-sheet-form"
 import type { MakeSheetChoice, MakeSheetPanel } from "./shell/MakeSheetDialog"
 import { MenuBar } from "./shell/MenuBar"
@@ -276,6 +279,36 @@ function useNewPartPanel(refreshParts: () => Promise<void>, notify: (message: st
   )
 }
 
+/** What File → New circuit… asks: the empty circuit written through the core, then the file list read again and the file opened. */
+function useNewCircuitPanel(refreshFiles: () => Promise<void>, open: (file: string, view: DocView) => void, notify: (message: string) => void): NewCircuitPanel {
+  return useMemo(
+    () => ({
+      create: async (request: NewCircuitRequest) => {
+        try {
+          const made = await api<{ file: string }>("/api/new-circuit", request)
+          await refreshFiles()
+          open(made.file, "schematic")
+          notify(`Created ${made.file}; Undo removes it again`)
+          return true
+        } catch (error) {
+          notify((error as Error).message)
+          return false
+        }
+      },
+    }),
+    [refreshFiles, open, notify],
+  )
+}
+
+/** What Tools → Footprint manager… reads: the open design's parts and their locks; it writes through the actions' edit. */
+function useFootprintPanel(design: Design | undefined, circuit: CircuitData | undefined, actions: Actions): FootprintPanel {
+  return useMemo(() => {
+    const locked = new Set(circuit?.annotations.locks.filter((lock) => !lock.drawing).map((lock) => lock.part))
+    const source = design && circuit ? { components: design.circuit.components, parts: circuit.model.parts, locked } : undefined
+    return { source, write: actions.edit }
+  }, [design, circuit, actions])
+}
+
 /** What Edit → Make sub-sheet's dialog asks: previews of the open file's selected parts, and the change itself. */
 function useMakeSheetPanel(file: string | undefined, parts: readonly string[], actions: Actions): MakeSheetPanel {
   return useMemo(
@@ -297,6 +330,9 @@ export function App() {
   const makeSheet = useMakeSheetPanel(data.file, selection.names, actions)
   const importPart = useImportPartPanel(data.refreshParts, toast.notify)
   const newPart = useNewPartPanel(data.refreshParts, toast.notify)
+  const newCircuit = useNewCircuitPanel(data.refreshFiles, openDocument, toast.notify)
+  const footprints = useFootprintPanel(build.design, circuit, actions)
+  const system = { settings: { theme: workspace.theme, unit: workspace.unit, grid: workspace.gridSteps, hoverLabels: workspace.hoverLabels }, apply: workspace.applySystem }
   // Hairlines stay one device pixel through zoom and display-scale changes.
   useEffect(() => watchDpr(window), [])
   if (!hasToken) return <NoToken />
@@ -306,7 +342,7 @@ export function App() {
         <StatusPill build={build} errors={checks.counts.errors} onOpen={openChecks} />
       </MenuBar>
       <Toolbar view={tab} unit={workspace.unit} selected={selection.size} toggles={toggles} run={runCommand} />
-      {dialog && <StudioDialog name={dialog} onClose={closeDialog} rules={{ fabrication: build.design?.rules.fabrication, save: actions.setFilletRadius }} makeSheet={makeSheet} importPart={importPart} newPart={newPart} />}
+      {dialog && <StudioDialog name={dialog} onClose={closeDialog} rules={{ fabrication: build.design?.rules.fabrication, save: actions.setFilletRadius }} makeSheet={makeSheet} importPart={importPart} newPart={newPart} system={system} newCircuit={newCircuit} footprints={footprints} />}
       {circuit && circuit.violations.length > 0 && (
         <div className="banner" role="alert">
           Locked parts changed outside the editor: {circuit.violations.map((v) => `${v.part} (${v.detail})`).join(", ")}. Lock them again to accept the change, or undo it in the code.

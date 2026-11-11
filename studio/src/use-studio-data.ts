@@ -28,6 +28,8 @@ export interface StudioData {
   /** Reloads the circuit and the history of `file`. */
   refresh(file: string): Promise<void>
   refreshParts(): Promise<void>
+  /** Reads the project's circuit files again. */
+  refreshFiles(): Promise<void>
 }
 
 /** The file list, the project name and the parts, once at start. */
@@ -50,7 +52,9 @@ function useProject(notify: (text: string) => void, setFile: (pick: (current: st
       .catch((error: Error) => notify(error.message))
     refreshParts().catch((error: Error) => notify(error.message))
   }, [notify, setFile, refreshParts])
-  return { files, sheets, project }
+  /** Reads the file list again, as after File → New circuit. */
+  const refreshFiles = useCallback(() => api<string[]>("/api/circuits").then(setFiles), [])
+  return { files, sheets, project, refreshFiles }
 }
 
 /**
@@ -96,7 +100,7 @@ export function useStudioData(notify: (text: string) => void, onFile: () => void
     setBuild((previous) => (next.status === "building" && previous.design ? { ...next, design: previous.design } : next))
   }, [])
 
-  const { files, sheets, project } = useProject(report, setFile, refreshParts)
+  const { files, sheets, project, refreshFiles } = useProject(report, setFile, refreshParts)
   /** A run's news: kept for the status line and the Checks list; its end is told, and a write reloads the history. */
   const onRoute = useCallback(
     (event: RouteEvent) => {
@@ -148,5 +152,5 @@ export function useStudioData(notify: (text: string) => void, onFile: () => void
     })
   }, [file, refresh, refreshBuild, refreshParts, report, onFile, onRoute, onPlace])
 
-  return { files, sheets, project, file, setFile, circuit, build, history, historyProblems, parts, route, place, refresh, refreshParts }
+  return { files, sheets, project, file, setFile, circuit, build, history, historyProblems, parts, route, place, refresh, refreshParts, refreshFiles }
 }

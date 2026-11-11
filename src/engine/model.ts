@@ -143,7 +143,7 @@ export interface Board {
   holes?: Hole[]
 }
 
-export type DrawingKind = "path" | "rect" | "circle" | "arc" | "text" | "bus"
+export type DrawingKind = "path" | "rect" | "circle" | "arc" | "text" | "bus" | "junction"
 export type LineStyle = "solid" | "dashed" | "dotted"
 export type TextAnchor = "left" | "center" | "right"
 
@@ -162,7 +162,8 @@ export interface DrawingStroke extends DrawingColor {
  * What a drawing is, in sheet units (1 = 1 inch, y up). A rectangle stands on its lower-left corner; an
  * arc runs counter-clockwise from `startAngle` to `endAngle` (degrees from +x, as written). A text has a
  * colour but no line, and its `y` is the middle of its height, as for symbol text. A bus is a line with
- * a name such as "D[0:7]"; `members` are the names of its nets ("D0" … "D7"), and it joins none of them.
+ * a name such as "D[0:7]"; `members` are the names of its nets ("D0" … "D7"), and it joins none of them. A
+ * junction is the dot Place → Junction puts on a wire, as EasyEDA's; it is drawn, and joins nothing itself.
  */
 export type DrawingShape =
   | ({ kind: "path"; points: Point[] } & DrawingStroke)
@@ -171,6 +172,7 @@ export type DrawingShape =
   | ({ kind: "arc"; x: number; y: number; radius: number; startAngle: number; endAngle: number } & DrawingStroke)
   | ({ kind: "text"; x: number; y: number; text: string; fontSize: number; anchor: TextAnchor } & DrawingColor)
   | { kind: "bus"; name: string; points: Point[]; members: string[] }
+  | ({ kind: "junction"; x: number; y: number } & DrawingColor)
 
 /**
  * A schematic-only drawing. `id` is its name, or "drawing:<kind>:<n>" for the n-th tag of that kind in

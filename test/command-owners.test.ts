@@ -67,9 +67,9 @@ describe("command owners", () => {
     expect(SHEET_COMMANDS).toHaveLength(10)
   })
 
-  test("Single routing and Via are the PCB's alone", () => {
-    expect(PCB_COMMANDS).toEqual(["singleRouting", "placeVia"])
-    expect(PCB_COMMANDS.map(commandOwner)).toEqual(["pcb", "pcb"])
+  test("Single routing, Via and Routing corner are the PCB's alone", () => {
+    expect(PCB_COMMANDS).toEqual(["singleRouting", "placeVia", "routingCorner"])
+    expect(PCB_COMMANDS.map(commandOwner)).toEqual(["pcb", "pcb", "pcb"])
   })
 
   test("Tidy sheet is the schematic's, which knows its parts and their locks", () => {

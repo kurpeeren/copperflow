@@ -15,7 +15,7 @@ import { snapPoint, type Camera, type Point } from "./geometry"
 import type { ActiveLayer, LayerVisibility } from "./layers"
 import type { Press } from "./press"
 import { routingStatus } from "./status"
-import { cornerModeName } from "./track-corners"
+import { cornerModeName, nextCornerMode, type CornerMode } from "./track-corners"
 import { defaultVia, routeNet } from "./track-rules"
 import { routeTargetAt, type TargetSource } from "./track-targets"
 import {
@@ -73,8 +73,10 @@ export interface TrackToolInput {
 export function useTrackArm() {
   const [armed, setArmed] = useState<TrackArm>(null)
   const [route, setRoute] = useState<Route | null>(null)
+  /** The corner mode a new route starts in: Route → Routing corner (L) steps it, as it steps a route being drawn. */
+  const [mode, setMode] = useState<CornerMode>("45")
   const disarm = useCallback(() => setArmed(null), [])
-  return { armed, setArmed, disarm, route, setRoute }
+  return { armed, setArmed, disarm, route, setRoute, mode, setMode }
 }
 
 interface PendingRoute {
@@ -136,6 +138,7 @@ interface Latest {
   /** Esc or a right click: drops the route, else puts the tool away. */
   cancel(): void
   send: Send
+  stepCorner(): void
 }
 
 /** The design's copper (as shown) and the copper sent and waiting for its build. */
@@ -159,7 +162,7 @@ function useSteps(input: TrackToolInput, pending: TargetSource["copper"], send: 
     if (next.layer !== input.activeLayer) onActiveLayer(next.layer)
   }
   const start = (target: RouteTarget) => {
-    const started = startRoute(target, { activeLayer: input.activeLayer, locked: input.locked, netOf: (id) => routeNet(design, id) })
+    const started = startRoute(target, { activeLayer: input.activeLayer, locked: input.locked, netOf: (id) => routeNet(design, id), mode: armState.mode })
     if ("message" in started) return actions.notify(started.message)
     put(started.route)
   }
@@ -175,7 +178,14 @@ function useSteps(input: TrackToolInput, pending: TargetSource["copper"], send: 
     armState.setArmed(kind)
   }
   const cancel = () => (route ? setRoute(null) : armState.disarm())
-  return { input, route, setRoute, put, targetAt, start, changeLayer, arm, cancel, send }
+  // Route → Routing corner: the next mode for the leg to the pointer and for the routes after it.
+  const stepCorner = () => {
+    const next = nextCornerMode(route?.mode ?? armState.mode)
+    armState.setMode(next)
+    if (route) put({ ...route, mode: next })
+    else actions.notify(`Routing corner: ${cornerModeName(next)}`)
+  }
+  return { input, route, setRoute, put, targetAt, start, changeLayer, arm, cancel, send, stepCorner }
 }
 
 /** Enter, or a click on the last corner again: the route ends open there (track-tool.ts endRouteOpen). */
@@ -214,6 +224,10 @@ function onTrackKey(latest: Latest, event: KeyboardEvent): void {
     take()
     return latest.changeLayer(otherLayer(route?.layer ?? input.activeLayer))
   }
+  if (hit.action === "routingCorner") {
+    take()
+    return latest.stepCorner()
+  }
   if (hit.action === "finishShape") {
     if (!route) return
     take()
@@ -221,6 +235,7 @@ function onTrackKey(latest: Latest, event: KeyboardEvent): void {
   }
   if (!route || (hit.action !== "flipBend" && hit.action !== "removeCorner")) return
   take()
+  if (hit.action === "flipBend") input.arm.setMode(nextRouteMode(route).mode)
   latest.put(hit.action === "flipBend" ? nextRouteMode(route) : removeRouteCorner(route))
 }
 
@@ -293,7 +308,7 @@ export function useTrackTool(input: TrackToolInput) {
   const latest = useRef(steps)
   latest.current = steps
   useTrackKeys(latest)
-  useCommands({ singleRouting: () => latest.current.arm("route"), placeVia: () => latest.current.arm("via") } satisfies Record<PcbCommand, () => void>)
+  useCommands({ singleRouting: () => latest.current.arm("route"), placeVia: () => latest.current.arm("via"), routingCorner: () => latest.current.stepCorner() } satisfies Record<PcbCommand, () => void>)
   const { armed } = input.arm
   // Putting the tool away drops the route; the Layer panel's select changes the route's layer as V does.
   useEffect(() => {

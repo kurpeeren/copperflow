@@ -58,6 +58,8 @@ import { useDrawTools } from "./use-draw-tools"
 import { topInstance } from "./instances"
 import { useSymbolEdit } from "./use-symbol-edit"
 import { HoverLabel, useHoverLabel } from "./HoverLabel"
+import { useSheetMarks } from "./use-sheet-marks"
+import { notePointer } from "../shell/pointer-place"
 import { withHoverLabel } from "./hover-driver"
 import { hoverTarget, stillOver, type HoverTarget, type SheetHoverScene } from "./hover-label"
 import type { RestState } from "./hover-rest"
@@ -71,6 +73,7 @@ type WireTool = ReturnType<typeof useWireTool>
 type Palette = ReturnType<typeof useLabelPalette>
 type NoteTool = ReturnType<typeof useNoteTool>
 type DrawTools = ReturnType<typeof useDrawTools>
+type Marks = ReturnType<typeof useSheetMarks>
 
 interface SheetScene {
   design: Design
@@ -248,14 +251,16 @@ interface SheetViewProps {
   symbolHint: string | undefined
   /** The hover label's state (HoverLabel.tsx). */
   label: RestState
+  /** The armed mark tool's hint. */
+  markHint: string | undefined
 }
 
 /**
  * The sheet's element: the canvas under the hint, the label name field and the status line; the browser's own menu
  * never shows. The canvas alone is the image, so the name field beside it stays a field to assistive tech.
  */
-function SheetView({ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave, cursorStyle, wire, palette, note, draw, gesture, rotateHeld, snap, empty, symbolHint, label }: SheetViewProps) {
-  const hint = symbolHint ?? wireHint(wire) ?? paletteHint(palette) ?? drawHint(draw.state) ?? note.hint
+function SheetView({ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave, cursorStyle, wire, palette, note, draw, gesture, rotateHeld, snap, empty, symbolHint, label, markHint }: SheetViewProps) {
+  const hint = symbolHint ?? markHint ?? wireHint(wire) ?? paletteHint(palette) ?? drawHint(draw.state) ?? note.hint
   return (
     <div className="schematic-canvas" ref={wrapRef} style={{ cursor: cursorStyle }} {...pointer} onPointerLeave={onLeave} onContextMenu={(e) => e.preventDefault()}>
       <canvas
@@ -394,13 +399,14 @@ function useSheetKeys({ design, builtFrom, camera, cursor, fit, wire, palette, d
   return { highlight: useHighlight(design, highlightNets), rotateHeld, keyMoving: useKeyMoving(keyMove, builtFrom, keys.layout.anchors) }
 }
 
-/** Tells the toolbar which tool is armed (wiring, a Place tool, a drawing tool or Fit area), and how to put it away. */
-function useArmedTool(wire: WireTool, palette: Palette, note: NoteTool, draw: DrawTools): void {
+/** Tells the toolbar which tool is armed (wiring, a Place tool, a drawing tool, a mark tool or Fit area), and how to put it away. */
+function useArmedTool(wire: WireTool, palette: Palette, note: NoteTool, draw: DrawTools, marks: Marks): void {
   const { wiring, cancel } = wire
   const { tool, disarm } = palette
   const { which, disarm: putNoteAway } = note
   const { disarm: putDrawAway } = draw
-  const active = armedCommand(wiring, tool) ?? drawToolCommand(draw.tool) ?? boxToolCommand(which)
+  const { disarm: putMarksAway } = marks
+  const active = armedCommand(wiring, tool) ?? drawToolCommand(draw.tool) ?? marks.tool ?? boxToolCommand(which)
   useEffect(() => {
     setToolState({
       active,
@@ -409,10 +415,33 @@ function useArmedTool(wire: WireTool, palette: Palette, note: NoteTool, draw: Dr
         cancel()
         putNoteAway()
         putDrawAway()
+        putMarksAway()
       },
     })
-  }, [active, disarm, cancel, putNoteAway, putDrawAway])
+  }, [active, disarm, cancel, putNoteAway, putDrawAway, putMarksAway])
   useEffect(() => clearToolState, [])
+}
+
+/**
+ * Place → No connect flag and Junction: arming one puts the other tools away, and any of them armed puts it away.
+ */
+function useMarkTools(input: Omit<Parameters<typeof useSheetMarks>[0], "onArm">, wire: WireTool, palette: Palette, note: NoteTool, draw: DrawTools): Marks {
+  const { cancel, wiring, drawing } = wire
+  const { disarm: putPlaceAway, armed: placing } = palette
+  const { disarm: putNoteAway, armed: noting } = note
+  const { disarm: putDrawAway, armed: drawingShape } = draw
+  const onArm = useCallback(() => {
+    putPlaceAway()
+    cancel()
+    putNoteAway()
+    putDrawAway()
+  }, [putPlaceAway, cancel, putNoteAway, putDrawAway])
+  const marks = useSheetMarks({ ...input, onArm })
+  const putAway = marks.disarm
+  useEffect(() => {
+    if (wiring || drawing || placing || noting || drawingShape) putAway()
+  }, [wiring, drawing, placing, noting, drawingShape, putAway])
+  return marks
 }
 
 /** Place → Note box, which the wire tool and the Place tools step aside for, and which steps aside for them. */
@@ -455,16 +484,18 @@ function useSheetDrawTools(input: DrawInput, wire: WireTool, palette: Palette, n
 }
 
 /** What the gestures see armed: the note tool, or a Place or drawing tool, with which an empty left drag pans as before (R26). */
-function useArmedForGestures(note: NoteTool, palette: Palette, draw: DrawTools): GestureInput["tool"] {
+function useArmedForGestures(note: NoteTool, palette: Palette, draw: DrawTools, marks: Marks): GestureInput["tool"] {
   const { disarm: putNoteAway } = note
   const { disarm: putPlaceAway } = palette
   const { disarm: putDrawAway } = draw
+  const { disarm: putMarksAway } = marks
   const disarm = useCallback(() => {
     putNoteAway()
     putPlaceAway()
     putDrawAway()
-  }, [putNoteAway, putPlaceAway, putDrawAway])
-  return { armed: note.tool ?? (palette.armed || draw.armed ? "place" : null), disarm }
+    putMarksAway()
+  }, [putNoteAway, putPlaceAway, putDrawAway, putMarksAway])
+  return { armed: note.tool ?? (palette.armed || draw.armed || marks.armed ? "place" : null), disarm }
 }
 
 interface SheetPointerInput extends Omit<PointerInput, "tool" | "open" | "gestures"> {
@@ -480,6 +511,7 @@ interface SheetPointerInput extends Omit<PointerInput, "tool" | "open" | "gestur
   palette: Palette
   note: NoteTool
   draw: DrawTools
+  marks: Marks
   /** What a double click picks with: the selection and the armed tool. */
   picking: PickContext
   onOpenProperties(target: PropertiesTarget): void
@@ -495,15 +527,15 @@ interface SheetPointerInput extends Omit<PointerInput, "tool" | "open" | "gestur
  * click does what doubleClickAction says: removes a corner of a wire selected before it began, else opens Properties
  * on a part or a wire, or renames the net of a label, while no tool is armed.
  */
-function sheetPointer({ boxes, labels, wires, drawings, corners, wire, palette, note, draw, picking, onOpenProperties, symbolEdit, sheetOf, onOpenSheet, ...input }: SheetPointerInput) {
-  const idle = () => !note.armed && !palette.armed && !draw.armed && !wire.wiring && wire.drawing === null
-  const tool = (event: Press, world: Point) => (idle() && symbolEdit.press(event, world)) || (!note.armed && (draw.press(event, world) || palette.press(event, world) || wire.press(event, world)))
+function sheetPointer({ boxes, labels, wires, drawings, corners, wire, palette, note, draw, marks, picking, onOpenProperties, symbolEdit, sheetOf, onOpenSheet, ...input }: SheetPointerInput) {
+  const idle = () => !note.armed && !palette.armed && !draw.armed && !marks.armed && !wire.wiring && wire.drawing === null
+  const tool = (event: Press, world: Point) => (idle() && symbolEdit.press(event, world)) || (!note.armed && (marks.press(event, world) || draw.press(event, world) || palette.press(event, world) || wire.press(event, world)))
   const toolRelease = (world: Point) => {
     draw.release(world)
     symbolEdit.release(world)
   }
   const open = (world: Point) => {
-    const busy = note.armed || palette.armed || draw.armed || wire.wiring || wire.drawing !== null
+    const busy = note.armed || palette.armed || draw.armed || marks.armed || wire.wiring || wire.drawing !== null
     const target = targetAt(boxes, labels, world, picking, wires, drawings)
     const action = doubleClickAction({ busy, handle: corners.at(world, picking), target, selectedBefore: input.gestures.wireBeforeDoubleClick() })
     if (action.kind === "removeCorner") corners.drop(action.id, action.index)
@@ -546,8 +578,9 @@ export function SchematicCanvas(props: CanvasProps) {
   const wires = useSheetWires({ design, circuit, actions, locked: parts.locked, camera, selection, onSelect, builtFrom, wiring: wire.wiring || wire.drawing !== null })
   const drawings = useSheetDrawings({ design, circuit, camera, locked: parts.locked })
   const texts = usePartTexts({ view: "schematic", design, circuit, actions, locked: parts.locked, builtFrom })
-  const tool = useArmedForGestures(note, palette, draw)
-  useArmedTool(wire, palette, note, draw)
+  const marks = useMarkTools({ design, circuit, actions, camera, locked: parts.locked }, wire, palette, note, draw)
+  const tool = useArmedForGestures(note, palette, draw, marks)
+  useArmedTool(wire, palette, note, draw, marks)
   const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, snap, builtFrom, labels: labels.tools, wires: wires.hits, drawings: drawings.hits, texts: texts.tools, selection, tool, filter: props.pickFilter, onContextMenu: props.onContextMenu })
   useLabelRenameAction(design, palette, actions)
   const layout = useLayout(parts, step, snap)
@@ -570,6 +603,7 @@ export function SchematicCanvas(props: CanvasProps) {
   const probe = { pick: (world: Point) => hoverTarget(world, scene), still: (target: HoverTarget, world: Point) => stillOver(target, world, scene) }
   const hoverLabel = useHoverLabel({ enabled: props.hoverLabels, busy: wire.drawing !== null || draw.busy, probe, camera, design })
   const hoverAt = (world: Point) => {
+    notePointer("sch", world)
     hover.at(world)
     hoverLabel.move(world, worldToScreen(view, size, world))
   }
@@ -577,15 +611,15 @@ export function SchematicCanvas(props: CanvasProps) {
     hoverLabel.leave()
     hover.leave()
   }
-  const sheetHandlers = sheetPointer({ symbolEdit, sheetOf, onOpenSheet: props.onOpenSheet, camera, size, element: wrapRef, gestures, setCursor, hover: hoverAt, boxes: parts.boxes, labels: labels.tools, wires: wires.hits, drawings: drawings.hits, corners: wires.corners, wire, palette, note, draw, picking, onOpenProperties: props.onOpenProperties })
+  const sheetHandlers = sheetPointer({ symbolEdit, sheetOf, onOpenSheet: props.onOpenSheet, camera, size, element: wrapRef, gestures, setCursor, hover: hoverAt, boxes: parts.boxes, labels: labels.tools, wires: wires.hits, drawings: drawings.hits, corners: wires.corners, wire, palette, note, draw, marks, picking, onOpenProperties: props.onOpenProperties })
   // The handlers are on the sheet's element, so a move over the status line or a field on it is not a move over the canvas.
   const pointer = withHoverLabel(sheetHandlers, hoverLabel, canvasRef)
-  const cursorStyle = cursorFor(gesture, wire.drawing !== null || wire.overPin || palette.armed || note.armed || draw.armed, hover.over)
+  const cursorStyle = cursorFor(gesture, wire.drawing !== null || wire.overPin || palette.armed || note.armed || draw.armed || marks.armed, hover.over)
   // The toolbar's controls sit beside the sheet: inside it, their portal's events would reach the sheet's handlers.
   return (
     <>
       <SheetTools step={step} setStep={setStep} keep={{ show: parts.autoPlaced, onKeep: () => keepAutoPlaced(design, "schematic", parts.blockerFor, actions, circuit) }} />
-      <SheetView {...{ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave, cursorStyle, wire, palette, note, draw, gesture, rotateHeld, snap }} empty={parts.boxes.length === 0} symbolHint={symbolEdit.hint} label={hoverLabel.state} />
+      <SheetView {...{ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave, cursorStyle, wire, palette, note, draw, gesture, rotateHeld, snap }} empty={parts.boxes.length === 0} symbolHint={symbolEdit.hint} label={hoverLabel.state} markHint={marks.hint} />
     </>
   )
 }

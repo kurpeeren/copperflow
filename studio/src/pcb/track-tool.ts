@@ -53,6 +53,8 @@ export interface StartContext {
   /** The locked parts: a track may not start on their pads (the core refuses it too: src/core/layout-locks.ts lockedStart). */
   locked: ReadonlySet<string>
   netOf(id: string): RouteNet | undefined
+  /** The corner mode a new route starts in (Route → Routing corner); 45° without one. */
+  mode?: CornerMode
 }
 
 /** The copper a route (or a via) draws, before it is written and until its build lands. */
@@ -83,7 +85,7 @@ export function startRoute(target: RouteTarget, context: StartContext): { route:
   if (!net) return { message: `${name} is on no net; connect it in the schematic first` }
   const from = startOf(target, context)
   if ("message" in from) return from
-  return { route: { net, start: from.start, layer: from.layer, mode: "45", corners: [] } }
+  return { route: { net, start: from.start, layer: from.layer, mode: context.mode ?? "45", corners: [] } }
 }
 
 /**
@@ -132,7 +134,7 @@ export function routeDrawing(route: Route, end: Point): RouteDrawing {
   let run = { layer: legs[0]?.layer ?? route.layer, from: route.start.at, legs: [] as Leg[] }
   let from = route.start.at
   const close = () => {
-    const points = routePoints(run.from, run.legs.map((leg) => ({ to: leg.at, mode: leg.mode })))
+    const points = routePoints(run.from, run.legs.map((leg) => ({ to: leg.at, mode: leg.mode })), width)
     if (points.length >= 2) drawing.tracks.push({ layer: run.layer, width, points })
   }
   for (const leg of legs) {

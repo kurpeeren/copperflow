@@ -1,14 +1,16 @@
 // The corner modes of the PCB's track tool, as EasyEDA routes: 45° (the straight run first along the longer axis,
-// then a 45° leg), the same reversed (the 45° leg first), and 90° (the schematic's square rule, horizontal first).
-// Space steps through them. Pure; plain TypeScript with .js imports, so the tests can run it.
+// then a 45° leg), the same reversed (the 45° leg first), 90° (the schematic's square rule, horizontal first) and
+// arc (the 90° elbow rounded into a quarter arc). Space and L (Route → Routing corner) step through them. Pure; plain
+// TypeScript with .js imports, so the tests can run it.
+import { filletTrack } from "../../../src/engine/fillet.js"
 import { tidyTrack } from "./copper-geometry.js"
 import { roundPosition, type Point } from "./geometry.js"
 import { squarePath } from "./wire-path.js"
 
-export const CORNER_MODES = ["45", "45r", "90"] as const
+export const CORNER_MODES = ["45", "45r", "90", "arc"] as const
 export type CornerMode = (typeof CORNER_MODES)[number]
 
-const NAMES: Readonly<Record<CornerMode, string>> = { "45": "45°", "45r": "45° reversed", "90": "90°" }
+const NAMES: Readonly<Record<CornerMode, string>> = { "45": "45°", "45r": "45° reversed", "90": "90°", arc: "Arc" }
 
 export const cornerModeName = (mode: CornerMode): string => NAMES[mode]
 
@@ -29,11 +31,27 @@ function elbow45(from: Point, to: Point, straightFirst: boolean): Point {
 }
 
 /** The points of one leg after `from`, ending at `to`: one elbow at most. */
-export function cornerLeg(from: Point, to: Point, mode: CornerMode): Point[] {
+export function cornerLeg(from: Point, to: Point, mode: CornerMode, width = 0): Point[] {
   const [adx, ady] = [Math.abs(to.x - from.x), Math.abs(to.y - from.y)]
   if (adx === 0 || ady === 0 || adx === ady) return [to]
   if (mode === "90") return squarePath([from, to]).slice(1)
+  if (mode === "arc") return arcLeg(from, to, width)
   return [elbow45(from, to, mode === "45"), to]
+}
+
+/** How much of the shorter leg the arc takes: nearly all, leaving the little straight the fillet keeps. */
+const ARC_SHARE = 0.98
+
+/**
+ * The square elbow rounded with about the largest arc both legs hold: a quarter arc tangent to them. An arc tighter
+ * than half the track's width would pinch the copper inside the bend, so a leg too short for one stays a square elbow.
+ */
+function arcLeg(from: Point, to: Point, width: number): Point[] {
+  const square = squarePath([from, to])
+  const radius = ARC_SHARE * Math.min(Math.abs(to.x - from.x), Math.abs(to.y - from.y))
+  if (radius < width / 2) return square.slice(1)
+  // The arc's points stay as computed: rounding them to the grid would bend the curve.
+  return filletTrack([from, ...square.slice(1)], radius, width).points.slice(1)
 }
 
 export interface CornerLegSpec {
@@ -41,12 +59,12 @@ export interface CornerLegSpec {
   mode: CornerMode
 }
 
-/** The track from `start` through each leg in its own mode, tidied (copper-geometry.ts tidyTrack). */
-export function routePoints(start: Point, legs: readonly CornerLegSpec[]): Point[] {
+/** The track from `start` through each leg in its own mode, tidied (copper-geometry.ts tidyTrack); `width` is the track's. */
+export function routePoints(start: Point, legs: readonly CornerLegSpec[], width = 0): Point[] {
   const points: Point[] = [start]
   let from = start
   for (const leg of legs) {
-    points.push(...cornerLeg(from, leg.to, leg.mode))
+    points.push(...cornerLeg(from, leg.to, leg.mode, width))
     from = leg.to
   }
   return tidyTrack(points)

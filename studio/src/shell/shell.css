@@ -208,6 +208,43 @@ html body {
   justify-self: end;
 }
 
+/* Settings → System: a checkbox row takes the whole width. */
+.system-form label:has(input[type="checkbox"]) {
+  grid-column: 1 / -1;
+}
+
+/* Tools → Footprint manager: the parts in a scrolling table, the note and Save under it. */
+.footprint-manager {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.footprint-manager table {
+  display: block;
+  max-height: 50vh;
+  overflow: auto;
+}
+
+.footprint-manager th {
+  text-align: left;
+  color: var(--muted);
+  font-weight: normal;
+}
+
+.footprint-manager input {
+  width: 100%;
+}
+
+.footprint-manager p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.footprint-manager button {
+  justify-self: end;
+}
+
 /* Edit → Make sub-sheet: the lists and the rename choice take the whole width under the name. */
 .make-sheet-form h3,
 .make-sheet-form table,

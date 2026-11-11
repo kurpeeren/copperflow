@@ -17,7 +17,10 @@ import {
   addMark,
   applyLayoutEdits,
   circuitPathFor,
+  createCircuitFile,
   editCircuit,
+  renameDesignators,
+  projectPath,
   EditError,
   isInside,
   isLayoutFile,
@@ -38,6 +41,7 @@ import {
 import { Engine } from "../engine/engine.js"
 import { setFilletRadius } from "../core/rules-edit.js"
 import { readProject } from "../core/project.js"
+import { boardSkeleton } from "../core/netlist.js"
 import { RULES_PATH } from "../engine/rules/load.js"
 import { layoutPathFor, readLayoutText, type TrackRecord } from "../core/layout-file.js"
 import { lockedPartsAt, lockedStart } from "../core/layout-locks.js"
@@ -132,6 +136,15 @@ const setPropValues = z.record(z.string().max(64), z.union([literal, point, z.nu
 const EditSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("setProps"), part: z.string(), props: setPropValues }),
   z.object({ kind: z.literal("removePart"), part: z.string() }),
+  z.object({
+    kind: z.literal("addPart"),
+    tag: z.string().max(64),
+    name: z.string().max(64),
+    props: props.optional(),
+    pinLabels: z.record(z.string().max(16), z.string().max(64)).optional(),
+    importFrom: z.string().max(200).optional(),
+    page: z.string().max(64).optional(),
+  }),
   z.object({
     kind: z.literal("addTrace"),
     from: z.string(),
@@ -235,6 +248,10 @@ const Bodies = {
     instance: z.string().max(64).optional(),
     preview: z.boolean().optional(),
   }),
+  // File → New circuit: an empty circuit file with a board, written through the core as one history entry.
+  newCircuit: z.object({ file: z.string().min(1).max(200).regex(/^[\w\- ./]+\.circuit\.tsx$/), width: z.number().positive().max(1000), height: z.number().positive().max(1000) }),
+  // Design → Annotate designators: the parts renamed, and the layout file's nets with them, as one history entry.
+  renameParts: z.object({ file, summary: z.string().min(1).max(200), mapping: z.array(z.object({ from: z.string().max(64), to: z.string().max(64) })).min(1).max(2000) }),
 }
 
 /**
@@ -353,6 +370,20 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         const writeMark = live.nextMark()
         live.requestBuild(result.entry.file)
         return send(res, { entryId: result.entry.id, preview: result.preview, writeMark })
+      }
+      case "POST /api/rename-parts": {
+        const body = Bodies.renameParts.parse(await readJson(req))
+        const { entry } = await renameDesignators(root, body.file, body.mapping, { author: "human", summary: body.summary, engine: { build: (_root, circuit) => designOf(circuit) } })
+        const writeMark = live.nextMark()
+        live.requestBuild(entry.file)
+        return send(res, { entryId: entry.id, writeMark })
+      }
+      case "POST /api/new-circuit": {
+        const body = Bodies.newCircuit.parse(await readJson(req))
+        const target = projectPath(root, body.file)
+        const entry = await createCircuitFile(root, target, boardSkeleton({ width: body.width, height: body.height }), { author: "human", summary: `create ${target} (empty, ${body.width} × ${body.height} mm board)` })
+        live.requestBuild(entry.file)
+        return send(res, { file: entry.file, entryId: entry.id })
       }
       // Copper goes to the layout file beside the circuit; the built design tells which tracks start on locked parts.
       case "POST /api/layout": {

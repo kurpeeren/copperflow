@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vitest"
 import type { NetLabel } from "../src/engine/schematic.js"
 import { allLocked, contextItems, contextShape, contextSelection, contextSize, placeMenu, WIRE_IN_GROUP, type ContextEntry } from "../studio/src/shell/context-menu.js"
-import { ENGINE } from "../studio/src/shell/menus.js"
 import { commandOwner } from "../studio/src/shell/command-owners.js"
 import { createTargetActions, latestHandler } from "../studio/src/shell/target-actions.js"
 import { Selection } from "../studio/src/selection.js"
@@ -14,14 +13,14 @@ const FREE_WIRE = { remove: null, removeCorners: null }
 const STUDIO_WIRE = "This wire has no trace of its own: Studio draws it for net GND"
 
 describe("context menu items", () => {
-  test("a part gets Properties, Rotate, Lock, Highlight its nets and Delete", () => {
-    expect(names(contextItems(part, { allLocked: false, selected: 1 }))).toEqual(["Properties", "-", "Rotate", "Lock", "Highlight its nets", "-", "Delete"])
+  test("a part gets Properties, Rotate, Lock, Highlight its nets, Copy and Delete", () => {
+    expect(names(contextItems(part, { allLocked: false, selected: 1 }))).toEqual(["Properties", "-", "Rotate", "Lock", "Highlight its nets", "Copy", "-", "Delete"])
   })
 
   test("two or more selected parts add the align items, and distribute waits for three", () => {
     const two = contextItems(part, { allLocked: false, selected: 2 })
     expect(names(two)).toEqual([
-      "Properties", "-", "Rotate", "Lock", "Highlight its nets", "-",
+      "Properties", "-", "Rotate", "Lock", "Highlight its nets", "Copy", "-",
       "Align left", "Align right", "Align top", "Align bottom", "Align horizontal centres", "Align vertical centres", "-",
       "Distribute horizontally", "Distribute vertically", "-", "Delete",
     ])
@@ -38,11 +37,11 @@ describe("context menu items", () => {
     expect(names(items)).not.toContain("Lock")
   })
 
-  test("empty canvas gets Fit all, Grid style, zoom and a pending Paste", () => {
+  test("empty canvas gets Fit all, Grid style, zoom and Paste", () => {
     const items = contextItems({ kind: "canvas" }, { allLocked: false, selected: 1 })
     expect(names(items)).toEqual(["Fit all", "Grid style", "-", "Zoom in", "Zoom out", "-", "Paste"])
-    expect(items.at(-1)).toMatchObject({ label: "Paste", pending: ENGINE })
-    expect(contextShape(items).at(-1)).toBe("disabled")
+    expect(items.at(-1)).toEqual({ label: "Paste", command: "paste", shortcut: "Ctrl+V" })
+    expect(contextShape(items).at(-1)).toBe("item")
   })
 
   test("a net label gets Rename and Highlight net", () => {
@@ -91,7 +90,7 @@ describe("context menu items", () => {
   })
 
   test("the shape marks separators", () => {
-    expect(contextShape(contextItems(part, { allLocked: false, selected: 1 }))).toEqual(["item", "separator", "item", "item", "item", "separator", "item"])
+    expect(contextShape(contextItems(part, { allLocked: false, selected: 1 }))).toEqual(["item", "separator", "item", "item", "item", "item", "separator", "item"])
   })
 })
 

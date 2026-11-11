@@ -3,6 +3,7 @@ import type { CircuitData, Design } from "../api"
 import { Selection } from "../selection"
 import type { WorldPad } from "../../../src/engine/pcb.js"
 import { keepAutoPlaced } from "./auto-placed"
+import { notePointer } from "../shell/pointer-place"
 import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, useKeyMenuPlace, useLayout, usePlacedParts, type CanvasProps, type Moving } from "./canvas-common"
 import { ViewTools } from "../shell/ViewTools"
 import { CanvasStatus, GridSelect, KeepButton } from "./CanvasTools"
@@ -276,6 +277,7 @@ function pcbPointer({ copper, pours, track, hover, boxes, context, texts, camera
     if (target.kind === "part") onOpenProperties(target)
   }
   const hoverAt = (world: Point) => {
+    notePointer("pcb", world)
     label.at(world)
     if (textFirst(world)) {
       copper.setHover(undefined)

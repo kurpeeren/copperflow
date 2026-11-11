@@ -66,6 +66,7 @@ function distanceTo(drawing: SchematicDrawing, p: Point): number {
     case "arc":
       return toArc(drawing, p)
     case "text":
+    case "junction":
       return toBox(drawingBounds(drawing), p)
   }
 }

@@ -12,6 +12,7 @@ import { glow, sheetPalette, type SchematicPalette } from "./schematic-theme.js"
 import { WIRE_WIDTH } from "./drawing-style.js"
 import { drawDrawings, drawDrawingTexts, shownDrawings, type DrawingPaint } from "./drawing-draw.js"
 import { drawSheetTexts, type SheetText } from "./schematic-text.js"
+import { drawNoConnects } from "./no-connect-draw.js"
 import type { TextKind } from "./text-level.js"
 
 export interface SchematicDrawOptions {
@@ -123,6 +124,7 @@ export function drawSchematic(ctx: Ctx, layout: SchematicLayout, view: View, opt
   }
   for (const ghost of options.ghostLabels ?? []) drawLabel(ctx, ghost, line, texts, true, toneOf(ghost.net, undefined))
   drawPins(ctx, layout, options, px, shiftOf)
+  drawNoConnects(ctx, layout.noConnects ?? [], line, options.highlight !== undefined)
 
   // Text is drawn in screen space so it stays upright and readable at any zoom.
   ctx.setTransform(options.ratio, 0, 0, options.ratio, 0, 0)

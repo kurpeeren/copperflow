@@ -7,6 +7,9 @@ import { shortcutList } from "./menus"
 import { ImportPartForm, type ImportPartPanel } from "./ImportPartDialog"
 import { MakeSheetForm, type MakeSheetPanel } from "./MakeSheetDialog"
 import { DialogBoundary, lazyRetrying } from "./lazy-dialog"
+import { SystemForm, type SystemPanel } from "./SystemDialog"
+import { NewCircuitForm, type NewCircuitPanel } from "./NewCircuitDialog"
+import { FootprintManagerForm, type FootprintPanel } from "./FootprintManagerDialog"
 import type { NewPartPanel } from "./new-part-result"
 import { FILLET_RADIUS_LABEL, FILLET_RADIUS_NOTE, filletRadiusField, readFilletRadius } from "./rules-form"
 
@@ -14,7 +17,7 @@ import { FILLET_RADIUS_LABEL, FILLET_RADIUS_NOTE, filletRadiusField, readFilletR
 // after a failed load.
 const newPartForm = lazyRetrying(() => import("./NewPartDialog").then((module) => module.NewPartForm))
 
-export type DialogName = "keys" | "about" | "rules" | "makeSheet" | "importPart" | "newPart"
+export type DialogName = "keys" | "about" | "rules" | "makeSheet" | "importPart" | "newPart" | "system" | "newCircuit" | "footprints"
 
 /** What Design → Design rules shows and writes: the rules the build read, and the save of a new fillet radius. */
 export interface RulesPanel {
@@ -106,7 +109,28 @@ function RulesForm({ rules, onClose }: { rules: RulesPanel; onClose(): void }) {
 }
 
 /** Help → Keys, Help → About, Design → Design rules, Edit → Make sub-sheet, Library → Import by LCSC number and Library → New part. */
-export function StudioDialog({ name, onClose, rules, makeSheet, importPart, newPart }: { name: DialogName; onClose(): void; rules: RulesPanel; makeSheet: MakeSheetPanel; importPart: ImportPartPanel; newPart: NewPartPanel }) {
+export function StudioDialog({ name, onClose, rules, makeSheet, importPart, newPart, system, newCircuit, footprints }: { name: DialogName; onClose(): void; rules: RulesPanel; makeSheet: MakeSheetPanel; importPart: ImportPartPanel; newPart: NewPartPanel; system: SystemPanel; newCircuit: NewCircuitPanel; footprints: FootprintPanel }) {
+  if (name === "footprints") {
+    return (
+      <Dialog title="Footprint manager" onClose={onClose} wide>
+        <FootprintManagerForm panel={footprints} onClose={onClose} />
+      </Dialog>
+    )
+  }
+  if (name === "newCircuit") {
+    return (
+      <Dialog title="New circuit" onClose={onClose}>
+        <NewCircuitForm panel={newCircuit} onClose={onClose} />
+      </Dialog>
+    )
+  }
+  if (name === "system") {
+    return (
+      <Dialog title="System settings" onClose={onClose}>
+        <SystemForm panel={system} onClose={onClose} />
+      </Dialog>
+    )
+  }
   if (name === "newPart") {
     return (
       <Dialog title="New part" onClose={onClose} wide>

@@ -10,6 +10,7 @@ const KIND_BY_TAG: Readonly<Record<string, DrawingKind>> = {
   schematicarc: "arc",
   schematictext: "text",
   bus: "bus",
+  junction: "junction",
 }
 
 const TAG_BY_KIND: Readonly<Record<DrawingKind, string>> = {
@@ -19,7 +20,11 @@ const TAG_BY_KIND: Readonly<Record<DrawingKind, string>> = {
   arc: "schematicarc",
   text: "schematictext",
   bus: "bus",
+  junction: "junction",
 }
+
+/** A junction dot's radius in sheet units, as the dots the sheet draws where wires meet: drawn and hit at this size. */
+export const JUNCTION_RADIUS = 0.04
 
 export const DEFAULT_STROKE_WIDTH = 0.01
 export const DEFAULT_FONT_SIZE = 0.1
@@ -94,6 +99,8 @@ function rawBounds(drawing: DrawingShape): Bounds {
       return arcBox(drawing.x, drawing.y, drawing.radius, drawing.startAngle, drawing.endAngle)
     case "text":
       return textBox(drawing.x, drawing.y, drawing.text, drawing.fontSize, drawing.anchor)
+    case "junction":
+      return { minX: drawing.x - JUNCTION_RADIUS, minY: drawing.y - JUNCTION_RADIUS, maxX: drawing.x + JUNCTION_RADIUS, maxY: drawing.y + JUNCTION_RADIUS }
   }
 }
 

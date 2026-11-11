@@ -18,7 +18,7 @@ import type { View } from "../pcb/positions"
 import type { Selection, SelectionChange } from "../selection"
 import type { ThemeName } from "./theme-state"
 import type { BottomTab } from "./bottom-state"
-import { COPPER_COMMANDS, PCB_COMMANDS, POUR_COMMANDS, SHEET_COMMANDS, WORKSPACE_COMMANDS, type AppCommand } from "./command-owners"
+import { COPPER_COMMANDS, MARK_COMMANDS, PCB_COMMANDS, POUR_COMMANDS, SHEET_COMMANDS, WORKSPACE_COMMANDS, type AppCommand } from "./command-owners"
 import { POUR_FILL_COMMANDS, type PourFillMode } from "../pcb/pour-view"
 import { send } from "./commands"
 import type { DialogName } from "./Dialogs"
@@ -29,9 +29,11 @@ import { placeInstanceScope, placeSelectionScope } from "../pcb/autoplace"
 import type { PlaceScope } from "../api"
 import type { RouteScope } from "../api"
 import { runPageCommand, type PageCommand } from "./page-commands"
+import { openPrint, printSheets } from "./print-render"
+import { annotateDesignators, copySelection, flipSelection, pasteCopied, selectSimilar, transferPlacement } from "./part-commands"
 import type { Design } from "../api"
 
-const SCHEMATIC_ONLY: ReadonlySet<CommandId> = new Set(SHEET_COMMANDS)
+const SCHEMATIC_ONLY: ReadonlySet<CommandId> = new Set([...SHEET_COMMANDS, ...MARK_COMMANDS])
 const PCB_ONLY: ReadonlySet<CommandId> = new Set([...PCB_COMMANDS, ...COPPER_COMMANDS, ...POUR_COMMANDS])
 
 /** The one view a command runs in, if it is a view's own (the other view switches to it first). */
@@ -118,6 +120,20 @@ function exportPackage(file: string | undefined, actions: Actions): void {
   api<{ outDir: string; files: string[] }>("/api/package", { file })
     .then((result) => actions.notify(`Exported ${result.files.length} files to ${result.outDir}`))
     .catch((error: Error) => actions.notify(error.message))
+}
+
+/**
+ * File → Print… and Export → PDF…: every schematic page and the board on A4 landscape sheets, printed through the
+ * browser; PDF is the print dialog's "Save as PDF".
+ */
+function printDesign(input: Input, pdf: boolean): void {
+  const { design, file, actions } = input
+  if (!design || !file) return actions.notify("Wait for the build to finish, then try again.")
+  const sheets = printSheets(design, file)
+  if (sheets.length === 0) return actions.notify("Nothing to print yet: the circuit has no parts.")
+  const name = file.replace(/\.circuit\.tsx$/, "")
+  if (!openPrint(name, sheets)) return actions.notify("The browser blocked the print window; allow pop-ups for Studio and try again.")
+  actions.notify(pdf ? `Choose "Save as PDF" in the print dialog to save ${name}.pdf (${sheets.length} sheets)` : `Printing ${sheets.length} sheets`)
 }
 
 /** Export → Fabrication files (JLCPCB): written beside the circuit by the server; the note says where, or why not. */
@@ -248,12 +264,23 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     pourSolid: () => input.workspace.setPourFill(POUR_FILL_COMMANDS.pourSolid),
     pourHatched: () => input.workspace.setPourFill(POUR_FILL_COMMANDS.pourHatched),
     pourOutline: () => input.workspace.setPourFill(POUR_FILL_COMMANDS.pourOutline),
+    findSimilar: () => selectSimilar(input),
+    placementTransfer: () => transferPlacement(input),
+    flip: () => flipSelection(input),
+    annotate: () => annotateDesignators(input),
+    systemSettings: () => input.openDialog("system"),
+    newCircuit: () => input.openDialog("newCircuit"),
+    footprintManager: () => input.openDialog("footprints"),
+    print: () => printDesign(input, false),
+    exportPdf: () => printDesign(input, true),
+    copy: () => copySelection(input),
+    paste: () => pasteCopied(input, input.view === "schematic" ? input.page : undefined, input.view === "schematic" ? "sch" : "pcb"),
   }
   return (table as Partial<Record<CommandId, () => void>>)[command]
 }
 
 /** The keys the app answers itself, with or without a canvas; each one's action is also its command. */
-const APP_KEYS = ["undo", "redo", "openFile", "selectAll", "find"] as const satisfies readonly (KeyActionName & CommandId)[]
+const APP_KEYS = ["undo", "redo", "openFile", "selectAll", "find", "findSimilar", "placementTransfer", "flip", "copy", "paste"] as const satisfies readonly (KeyActionName & CommandId)[]
 const isAppKey = (action: KeyActionName | undefined): action is (typeof APP_KEYS)[number] => (APP_KEYS as readonly string[]).includes(action ?? "")
 
 /**
@@ -265,6 +292,8 @@ function useAppKeys(runCommand: (command: CommandId) => void, view: View): void 
     const onKey = (event: KeyboardEvent) => {
       const action = keyAction(keyInput(event), { view })?.action
       if (!isAppKey(action)) return
+      // Text selected on the page is the browser's to copy.
+      if (action === "copy" && (window.getSelection()?.toString() ?? "") !== "") return
       event.preventDefault()
       runCommand(action)
     }
