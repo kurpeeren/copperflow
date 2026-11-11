@@ -11,7 +11,7 @@ export const SOURCE_NAME = "JLCEDA/EasyEDA Official Library"
 export const SOURCE_LINKS = ["https://lceda.cn/", "https://easyeda.com"] as const
 
 /**
- * EasyEDA draws footprints with rows horizontal and pin 1 at the bottom left, which is JLCPCB's assembly orientation
+ * EasyEDA draws dual packages with their rows horizontal and pin 1 at the bottom left (quad packages as JLCPCB places them), its assembly orientation
  * (so pick-and-place needs no correction, `file: 0`) and copperflow's generated convention turned +90°.
  */
 export const ORIENTATION_NOTE = "The footprint keeps the source's orientation; place at pcbRotation -90 to match a generated footprint of the same package."

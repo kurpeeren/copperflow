@@ -52,7 +52,7 @@ from EasyEDA and writes `parts/<id>/` with `part.yaml`, `footprint.yaml`, `verif
 the datasheet when the checks need them: the imported pads, origin and `source.md` are kept. A
 replace that changes the footprint (a footprint string or new pads) makes the part `written` and
 removes `source.md` and the imported `footprint.yaml`. The footprint keeps EasyEDA's orientation
-(rows horizontal, pin 1 at the bottom left), which is JLCPCB's, so pick-and-place needs no
+(dual packages with their rows horizontal and pin 1 at the bottom left; quad packages as the source draws them), which is JLCPCB's, so pick-and-place needs no
 correction; place it at `pcbRotation -90` to match a generated footprint of the same package. Tell the human the
 part is not verified, what the answer's notes say was approximated, and that the import is for
 personal, non-commercial use only, as EasyEDA's terms allow (see `source.md`). Import one part per
