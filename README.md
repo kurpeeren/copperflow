@@ -139,6 +139,8 @@ When the agent changes the file, the editor updates by itself.
 The Library, in Common Library and in the bottom strip, places parts from your library or the
 built-in parts (resistor, capacitor, LED and so on). Selecting a library part shows its maker,
 MPN, supplier number, datasheet and checklist in Properties, and lets you mark it verified.
+Library → New part… writes a part from its datasheet with a live footprint preview, and
+Library → Import by LCSC number… fetches one from EasyEDA; both leave it not verified.
 
 ## How it works
 
@@ -196,6 +198,7 @@ The agent sees what you undid and does not repeat it.
 | `copper_summary` | Per net: tracks, vias, length and unrouted connections, then copper violations by rule (at most 60 lines) |
 | `list_parts` / `part_info` | Shows the parts library and a part's data and checklist |
 | `create_part` | Adds a part from a datasheet: pins, footprint string or footprint file, MPN, suppliers |
+| `import_part` | Fetches one part by its LCSC number from EasyEDA into `parts/<id>/`, unverified, for personal, non-commercial use only (see [licences](docs/licences.md)) |
 | `place_part` | Adds a library or built-in part to a circuit, with its import |
 | `bom` / `export_package` | Bill of materials; folder with BOM, datasheets and part status |
 | `recent_changes` | Recent changes by you and the agent, including undos |
