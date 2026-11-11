@@ -61,7 +61,7 @@ means, `replace`, refused pins and the export's warnings are in
    [references/parts-library.md](references/parts-library.md). `bom` `{ file }` lists what the
    board uses. Built-in kinds taking `value`: `resistor` (resistance, `"10k"`), `capacitor`
    (capacitance, `"100nF"`; `props: { polarized: true }`), `inductor`, `crystal` (frequency,
-   `"8MHz"`), `fuse`, `battery`, `potentiometer`. `led` and `diode` take no value (`led`:
+   `"8MHz"`), `resonator` (frequency), `fuse`, `battery`, `potentiometer`. `led` and `diode` take no value (`led`:
    `props: { color: "green" }`); `pinheader` takes `props: { pinCount, pitch: "2.54mm", pinLabels }`;
    `chip` comes from the library (`part:`). Footprint strings: `soic<N>` (3.9 mm), `soic<N>w`
    (7.5 mm: 16–28), `sop<N>`, `ssop<N>`, `tssop<N>`, `qfn…`, `qfp…`, `sot23_5`; the full list is
