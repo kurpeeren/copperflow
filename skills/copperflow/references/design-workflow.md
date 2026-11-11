@@ -165,11 +165,19 @@ board_summary { file: "sensor.circuit.tsx" }
 add_pour { file: "sensor.circuit.tsx", net: "GND", layer: "top" }
 → Change c0012: added copperpour:1 (GND, top)
   copperpour:1 GND top: 301.20 mm², joins 9 pads
+add_pour { file: "sensor.circuit.tsx", net: "GND", layer: "bottom" }
+→ Change c0013: added copperpour:2 (GND, bottom)
+route_track { file: "sensor.circuit.tsx", from: "R201.pin2", to: "U1.PA4" }
+→ Change c0014: routed ADC1 R201.pin2 (6.10, 3.00 top) to U1.pin2 (9.20, 4.10 top): 1 track, 0 vias
 autoroute { file: "sensor.circuit.tsx" }
-→ Change c0013: Routed 8 of 8 connections in 1 pass
+→ Change c0015: Routed 7 of 7 connections in 1 pass
 check_circuit { file: "sensor.circuit.tsx" }
-→ sensor.circuit.tsx: 0 errors, 7 warnings
+→ sensor.circuit.tsx: 0 errors, 6 warnings
 ```
+
+Clean means 0 errors and no `unrouted` warning. Had `autoroute` left one (`unrouted: C3.pin2
+(12.30, 4.50 top) to U2.pin2 (…)`), route it with `route_track` by reference or move a part and
+run `autoroute` again before the export.
 
 A part that sits badly in `board_summary` (overlapping, off the board, a long line) is moved
 with `set_props { pcbX, pcbY, pcbRotation }` or placed again with `autoplace` before routing.

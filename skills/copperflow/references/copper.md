@@ -11,11 +11,19 @@ wire length 184 mm (was 412); board 42 × 28 mm; 0 overlaps", then any part not 
 an `instance`, within `budgetSeconds`, 20 s by default, and names each connection it could not
 route with the reason), then `check_circuit` once at the end (filter `copper` for the full list).
 
-`autoroute` answers `Change c0012: Routed 30 of 32 connections in 2 passes; unrouted: U1.pin3 to
-R1.pin2 (no room between U1 and C3), …`, then the copper violations the change introduced.
+`autoroute` answers `Change c0012: Routed 30 of 32 connections in 2 passes; unrouted: U1.pin3
+(4.10, 2.00 top) to R1.pin2 (9.30, 2.00 top) (no room between U1 and C3), …`, then the copper
+violations the change introduced. Each unrouted connection names its pads with their centres and
+layer (`through` for a through pad); `check_circuit` with filter `copper` and `copper_summary`
+list them the same way. When the router is boxed in by its own routes it takes them up, routes
+the closed-in connection first and routes them again, keeping that only if fewer are left open.
 
-Route by hand only what the router reports: `route_track` (a track of one net, starting on a
-pad, track or via of that net), `add_via` and `remove_copper`, and round track corners with
+Route by hand only what the router reports: `route_track` by reference,
+`{ file, from: "U1.pin3", to: "R1.pin2" }`, runs the router's search for that one connection
+(tracks and vias) or is refused naming what is in the way; with `via: [{ x, y }, …]` it draws
+one track from pad centre through those corners to pad centre, on the pads' layer (or `layer`).
+`route_track` with `net`, `layer` and `points` draws a track by coordinates (starting on a pad,
+track or via of that net). `add_via` and `remove_copper` add and remove, and round track corners with
 `fillet_tracks` (`straighten_tracks` squares them again); each is one history entry, and the
 answer lists the copper violations the change introduced. Or move parts and run `autoroute`
 again; `unroute` (`nets` or `all: true`) takes back the router's copper and never hand-drawn
@@ -30,11 +38,14 @@ end there are not locked, so leave them alone unless the human asks.
 
 ## Pours
 
-Pours: before `autoroute`, a board gets a GND pour on the layer the parts sit on (both layers when a
-two-layer board is routed on both), checked with `copper_summary`'s 'joins N pads': a pour joins
+Pours: before `autoroute`, a two-layer board gets a GND pour on both layers (`top` and `bottom`),
+checked with `copper_summary`'s 'joins N pads': a pour joins
 only the pads on its own layer and through pads, so a bottom pour under parts on top joins almost
 nothing. `add_pour` `{ net: "GND", layer: "top" }` without an `outline` fills the whole board,
-with thermal spokes to the GND pads, and the connections the fill makes count as routed. It
+with thermal spokes to the GND pads, and the connections the fill makes count as routed. Tracks
+of other nets cut the fill, so a pad the unrouted fill joined can end up cut off from it: the
+router then routes that pad again, and with only one pour it may find no room. A second pour on
+the other layer gives such a pad a way out through a via. It
 answers `Change c0010: added copperpour:1 (GND, top)` and the fill line. Then `autoroute`, then
 `check_circuit` (`pour-floating` warns of a pour that joins no pad of its net, `pour-sparse` of
 one joining fewer than half of them, `pour-empty` of one left with no copper, `copper-hole` of

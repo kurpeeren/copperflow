@@ -6,6 +6,10 @@ Passive parts (resistors, capacitors, LEDs, headers) are built in and need no en
 ## From a datasheet
 
 1. Read the datasheet yourself. Find the package, the pin table and the ordering information.
+   When no datasheet can be read (no link, offline, a scan you cannot read), say so to the
+   person and ask for the datasheet; prefer that to writing pins from memory, which is often
+   wrong (pins shifted by one). If they ask you to go on anyway, put `Pins NOT from a datasheet`
+   in `description` and in PROJECT.md's Open.
 2. Call `create_part` with:
    - `id`: the folder name, usually the part number, such as `AP2112K-3.3`.
    - `title`, `manufacturer`, `mpn` (the full orderable number, such as `AP2112K-3.3TRG1`).

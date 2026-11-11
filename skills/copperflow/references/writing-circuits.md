@@ -11,7 +11,9 @@ Read before your first `new_circuit` or `edit_circuit` in a project.
 - `value`: the main value of a built-in part (`"10k"`, `"100nF"`).
 - `footprint`: a generated footprint string for a built-in part (`"0402"`, `"0603"`); a
   library part brings its own.
-- `props`: anything else, e.g. `{ pinCount: 4 }` for a pin header.
+- `props`: anything else, e.g. `{ pinCount: 4 }` for a pin header. A header's `pinLabels` is an
+  object keyed `pin1`, `pin2`, … (`{ pin1: "V5", pin2: "GND" }`); an array is refused. The same
+  shape goes to `set_props`. `noConnect` (`"pin4,pin5"`) may be given here too.
 
 A net names pins as `R1.pin1` or by a library pin name (`U1.VOUT`). A pin the part does not
 have is refused before anything is written, and the answer lists the part's real pins: use one
@@ -43,3 +45,11 @@ datasheet or a choice only they can make, suggest that instead.
 folder `out` (e.g. `"fab"`). Pass on every `Warning:` line: connections not routed, parts
 without a footprint, silkscreen over pads, parts without an LCSC number (JLCPCB assembly will
 not match them). A design with errors is refused and nothing is written.
+
+Export only a clean board: `check_circuit` with 0 errors and no `unrouted` warning. With
+connections still unrouted the files are written with a warning, but the board is not finished
+and must not be ordered: say so, then route them with `route_track` by reference
+(`{ from: "C3.pin2", to: "U2.pin2" }`), or move the part in the way and run `autoroute` again.
+
+A part not placed yet (no `pcbX`/`pcbY`) gets only the `unplaced` warning; its board-edge,
+courtyard and clearance findings wait until it has a position.

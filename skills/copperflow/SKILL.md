@@ -54,7 +54,9 @@ means, `replace`, refused pins and the export's warnings are in
    `id <chip> title footprint verified|NOT verified`; `part_info` `{ id }` shows its part.yaml);
    a built-in part with a generated footprint string (`kind: "resistor"`, `footprint: "0402"`);
    for a chip, `create_part` from the datasheet with a generated package string such as
-   `package: "soic8"` (`Created <id>: <title>, N pins, footprint …`, `It is NOT verified: …`);
+   `package: "soic8"` (`Created <id>: <title>, N pins, footprint …`, `It is NOT verified: …`).
+   No datasheet you can read: tell the person, write `Pins NOT from a datasheet` in the part's
+   `description`, and ask for the datasheet rather than writing pins from memory;
    `import_part` `{ lcsc }` only when the human asks for an LCSC number (`Imported C7950 as
    <id>: …`). An import is for personal, non-commercial use only and is always unverified. The
    person can make a part themselves in the Studio with Library → New part…. See
@@ -62,14 +64,16 @@ means, `replace`, refused pins and the export's warnings are in
    board uses. Built-in kinds taking `value`: `resistor` (resistance, `"10k"`), `capacitor`
    (capacitance, `"100nF"`; `props: { polarized: true }`), `inductor`, `crystal` (frequency,
    `"8MHz"`), `resonator` (frequency), `fuse`, `battery`, `potentiometer`. `led` and `diode` take no value (`led`:
-   `props: { color: "green" }`); `pinheader` takes `props: { pinCount, pitch: "2.54mm", pinLabels }`;
+   `props: { color: "green" }`); `pinheader` takes `props: { pinCount, pitch: "2.54mm", pinLabels }`,
+   `pinLabels` an object keyed `pin1`… (`{ pin1: "V5", pin2: "GND" }`, not an array; so in `set_props`);
    `chip` comes from the library (`part:`). Footprint strings: `soic<N>` (3.9 mm), `soic<N>w`
    (7.5 mm: 16–28), `sop<N>`, `ssop<N>`, `tssop<N>`, `qfn…`, `qfp…`, `sot23_5`; the full list is
    in [references/editable-subset.md](references/editable-subset.md). A connector with no family
    (a screw terminal) is a `pinheader` with its pitch (`pinrow2_p5.08mm`), noted in PROJECT.md's
    Open for the person to replace.
    Unused inputs of a chip: tie them off as the datasheet says and `note_decision` it, or flag
-   them with `set_props` `{ part: "U1", props: { noConnect: "pin4,pin5" } }` (null removes).
+   them with `set_props` `{ part: "U1", props: { noConnect: "pin4,pin5" } }` (null removes), or
+   give `noConnect` in the part's `props` in `new_circuit`.
 3. **Blocks first.** A sub-sheet is for a block used more than once (or one the person wants on
    its own page); every other block is named in PROJECT.md's Blocks, its parts written at the top
    level and later placed together with `autoplace { parts: [...] }`.
@@ -120,16 +124,22 @@ means, `replace`, refused pins and the export's warnings are in
    and never one the human placed unless they ask.
 10. **Pours.** `add_pour` `{ file, net: "GND", layer: "top" }` on the layer the parts sit on:
     `Change …: added copperpour:1 (GND, top)` and `copperpour:1 GND top: … mm², joins N pads`.
+    On a two-layer board pour GND on both layers (`top` and `bottom`) before `autoroute`.
 11. **Route.** `autoroute` `{ file }`: `Change …: Routed 30 of 32 connections in 2 passes;
-    unrouted: …`. Route by hand only what the router reports. Details in
+    unrouted: C3.pin2 (12.30, 4.50 top) to U2.pin2 (15.10, 6.00 top) (…)`. Route each one it
+    reports with `route_track` `{ file, from: "C3.pin2", to: "U2.pin2" }` (the router's search for
+    that one connection; add `via` points to draw it yourself), or move the part and `autoroute`
+    again. Details in
     [references/copper.md](references/copper.md) (`route_track`, `add_via`, `remove_copper`,
     `fillet_tracks`, `straighten_tracks`, `unroute`, `copper_summary`, `remove_pour`,
     `remove_hole`).
 12. **Check.** `check_circuit` `{ file, filter? }`: `main.circuit.tsx: 0 errors, 2 warnings`, then
     up to 20 findings, one line each (`error pin-unconnected [U1.pin3]: …`).
-13. **Export.** For a board to be made: after `autoroute` and a clean `check_circuit`, call
-    `export_fabrication` `{ file }`: `Wrote 12 files to main-fab/ and main-fab.zip:`; a design
-    with errors is `Refused: no fabrication files were written.` and nothing is written. Pass on
+13. **Export.** For a board to be made: after `autoroute` and a clean `check_circuit` (0 errors
+    and no `unrouted` warning), call `export_fabrication` `{ file }`: `Wrote 12 files to
+    main-fab/ and main-fab.zip:`; a design with errors is `Refused: no fabrication files were
+    written.` An export with unrouted connections is written with a warning and is NOT a finished
+    board: say so, and route them first (step 11). Pass on
     every `Warning:` line; `out` writes into another project folder. A person uploads the zip to JLCPCB; you do not. `export_package` writes the
     BOM and datasheets folder.
 14. **Remember, throughout.** `note_decision` `{ text, file? }` as each choice is made that a
@@ -145,8 +155,9 @@ part, a net or an instance. Electrical checks (`pin-unconnected`, `output-confli
 checks, and code and model problems: `footprint`, `unknown-pin`, `ambiguous-pin` (write
 `pin<n>` instead), `library-override`. `auto-route` (a warning: a schematic wire drawn
 straight because symbols stand too close for a way round) is fixed by moving a symbol with
-`set_props` `{ schX, schY }`. Fix every error before you report success. Warnings
-such as `unrouted` do not fail the check; mention them. Net classes and fabrication limits live
+`set_props` `{ schX, schY }`. Fix every error before you report success. Warnings do not fail
+the check; mention them, but `unrouted` means the board is not finished (step 13). A part not
+placed yet gets only the `unplaced` warning. Net classes and fabrication limits live
 in `rules.yaml` at the project root; do not work around a rule in the circuit.
 
 ## Rules

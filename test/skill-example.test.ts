@@ -83,8 +83,14 @@ describe("the two-channel sensor board of the skill", () => {
     // A placed instance stays where it is: nothing to place.
     expect((await call("autoplace", { file: FILE, instance: "CH1" })).text).toMatch(/^Nothing to place/)
     expect((await call("add_pour", { file: FILE, net: "GND", layer: "top" })).text).toMatch(/^Change c\d+: added copperpour:1 \(GND, top\)\ncopperpour:1 GND top: [\d.]+ mm², joins \d+ pads/)
-    expect((await call("autoroute", { file: FILE })).text).toMatch(/^Change c\d+: Routed \d+ of \d+ connections in \d+ pass(es)?/)
-    expect((await call("check_circuit", { file: FILE })).text).toMatch(/^sensor\.circuit\.tsx: 0 errors, \d+ warnings/)
+    expect((await call("add_pour", { file: FILE, net: "GND", layer: "bottom" })).text).toMatch(/^Change c\d+: added copperpour:2 \(GND, bottom\)/)
+    const byRef = await call("route_track", { file: FILE, from: "R201.pin2", to: "U1.PA4" })
+    expect(byRef.text).toMatch(/^Change c\d+: routed ADC1 R201\.pin2 \(-?[\d.]+, -?[\d.]+ top\) to U1\.pin2 \(-?[\d.]+, -?[\d.]+ top\): \d+ tracks?, \d+ vias?/)
+    const routed = await call("autoroute", { file: FILE })
+    expect(routed.text).toMatch(/^Change c\d+: Routed (\d+) of \1 connections? in \d+ pass(es)?/)
+    const checked = (await call("check_circuit", { file: FILE })).text
+    expect(checked).toMatch(/^sensor\.circuit\.tsx: 0 errors, \d+ warnings/)
+    expect(checked).not.toMatch(/unrouted/)
     expect((await call("export_fabrication", { file: FILE })).text).toMatch(/^Wrote \d+ files to sensor-fab\/ and sensor-fab\.zip:/)
   }, 60_000)
 
@@ -94,8 +100,12 @@ describe("the two-channel sensor board of the skill", () => {
     const created = await call("create_part", { id: "MCP2515", title: "MCP2515 CAN controller", manufacturer: "Microchip", mpn: "MCP2515-I/SO", package: "soic18w", pins })
     expect(created.text).toMatch(/^Created MCP2515: MCP2515 CAN controller, 18 pins, footprint soic18w\./)
     const file = "can.circuit.tsx"
-    const written = await call("new_circuit", { file, place: false, parts: [{ name: "U1", part: "MCP2515" }, { name: "J1", kind: "pinheader", props: { pinCount: 2 } }], nets: { GND: ["U1.VSS", "J1.pin2"], V5: ["U1.VDD", "J1.pin1"] } })
+    const written = await call("new_circuit", { file, place: false, parts: [{ name: "U1", part: "MCP2515" }, { name: "J1", kind: "pinheader", props: { pinCount: 2, pinLabels: { pin1: "V5", pin2: "GND" } } }], nets: { GND: ["U1.VSS", "J1.pin2"], V5: ["U1.VDD", "J1.pin1"] } })
     expect(written.isError, written.text).toBe(false)
+    const listed = await call("new_circuit", { file: "list.circuit.tsx", place: false, parts: [{ name: "J1", kind: "pinheader", props: { pinCount: 2, pinLabels: ["V5", "GND"] } }], nets: {} })
+    expect(listed.isError).toBe(true)
+    const inline = await call("new_circuit", { file: "nc.circuit.tsx", place: false, parts: [{ name: "U1", part: "MCP2515", props: { noConnect: "pin3,pin4" } }], nets: { GND: ["U1.VSS"] } })
+    expect(inline.isError, inline.text).toBe(false)
     const unused = "TXCAN,RXCAN,CLKOUT,TX0RTS,TX1RTS,TX2RTS,OSC2,OSC1,RX1BF,RX0BF,INT,SCK,SI,SO,CS,RESET"
     expect((await call("set_props", { file, part: "U1", props: { noConnect: unused } })).isError).toBe(false)
     const checked = await call("check_circuit", { file, filter: "U1" })

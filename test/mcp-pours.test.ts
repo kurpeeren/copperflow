@@ -223,10 +223,11 @@ describe("new_circuit with pours and holes", () => {
 })
 
 describe("the skill", () => {
-  test("says a GND pour goes on the layer the parts sit on (both layers when routed on both), checked by its joins, before autoroute, then check_circuit", async () => {
+  test("says a two-layer board gets a GND pour on both layers, checked by its joins, before autoroute, then check_circuit", async () => {
     {
       const text = await skillText()
-      expect(text).toMatch(/a GND pour on the layer the parts sit on \(both layers when a two-layer board is routed on both\), checked with `?copper_summary`?'s 'joins N pads'/)
+      expect(text).toMatch(/a two-layer board gets a GND pour on both layers \(`top` and `bottom`\),\s+checked with `?copper_summary`?'s 'joins N pads'/)
+      expect(text).toMatch(/On a two-layer board pour GND on both layers \(`top` and `bottom`\) before `autoroute`/)
       expect(text).not.toMatch(/GND pour on the bottom/)
       expect(text).toMatch(/before `?autoroute`?[^]*?then `?check_circuit`?/)
       expect(text).toMatch(/`?pour-sparse`?/)

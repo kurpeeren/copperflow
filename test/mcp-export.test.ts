@@ -90,7 +90,8 @@ describe("export_fabrication", () => {
 
   test("the skill says to export after autoroute and a clean check_circuit, and that a person uploads the zip", async () => {
     const skill = await readFile(new URL("../skills/copperflow/SKILL.md", import.meta.url), "utf8")
-    expect(skill).toMatch(/after `autoroute` and a clean `check_circuit`, call\s+`export_fabrication`/)
+    expect(skill).toMatch(/after `autoroute` and a clean `check_circuit` \(0 errors\s+and no `unrouted` warning\), call `export_fabrication`/)
+    expect(skill).toMatch(/An export with unrouted connections is written with a warning and is NOT a finished\s+board/)
     expect(skill).toMatch(/A person uploads the\s+zip to JLCPCB/)
   })
 })
