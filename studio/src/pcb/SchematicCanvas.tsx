@@ -59,6 +59,7 @@ import { topInstance } from "./instances"
 import { useSymbolEdit } from "./use-symbol-edit"
 import { HoverLabel, useHoverLabel } from "./HoverLabel"
 import { useSheetMarks } from "./use-sheet-marks"
+import { notePointer } from "../shell/pointer-place"
 import { withHoverLabel } from "./hover-driver"
 import { hoverTarget, stillOver, type HoverTarget, type SheetHoverScene } from "./hover-label"
 import type { RestState } from "./hover-rest"
@@ -602,6 +603,7 @@ export function SchematicCanvas(props: CanvasProps) {
   const probe = { pick: (world: Point) => hoverTarget(world, scene), still: (target: HoverTarget, world: Point) => stillOver(target, world, scene) }
   const hoverLabel = useHoverLabel({ enabled: props.hoverLabels, busy: wire.drawing !== null || draw.busy, probe, camera, design })
   const hoverAt = (world: Point) => {
+    notePointer("sch", world)
     hover.at(world)
     hoverLabel.move(world, worldToScreen(view, size, world))
   }

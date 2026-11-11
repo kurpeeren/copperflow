@@ -274,7 +274,7 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     print: () => printDesign(input, false),
     exportPdf: () => printDesign(input, true),
     copy: () => copySelection(input),
-    paste: () => pasteCopied(input, input.view === "schematic" ? input.page : undefined),
+    paste: () => pasteCopied(input, input.view === "schematic" ? input.page : undefined, input.view === "schematic" ? "sch" : "pcb"),
   }
   return (table as Partial<Record<CommandId, () => void>>)[command]
 }

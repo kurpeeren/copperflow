@@ -8,7 +8,8 @@ import { Selection, type SelectionChange } from "../selection"
 import { flipPlan, transferPlan, type PlanResult } from "./board-side"
 import { findSimilar } from "./find-similar"
 import { annotatePlan } from "./annotate"
-import { copyParts, pasteEdits, type Clipboard } from "./clipboard"
+import { copyParts, pasteEdits, pasteShift, type Clipboard } from "./clipboard"
+import { lastPointer, type PointerView } from "./pointer-place"
 
 export interface PartCommandInput {
   design: Design | undefined
@@ -63,24 +64,34 @@ export function annotateDesignators({ design, circuit, actions }: PartCommandInp
 
 /** What Edit → Copy took last; one per Studio tab, as EasyEDA keeps its own clipboard for parts. */
 let copied: Clipboard | undefined
+/** How many times the clipboard has been pasted without the pointer, so each such paste steps further. */
+let pastes = 0
 
 /** Edit → Copy (Ctrl+C): the selected parts and the traces among them. */
 export function copySelection({ circuit, selection, actions }: PartCommandInput): void {
   if (!circuit) return
-  const clip = copyParts(circuit.model, selection.names)
+  const clip = copyParts(circuit.model, selection.names, circuit.file)
   if ("message" in clip) return actions.notify(clip.message)
   copied = clip
+  pastes = 0
   const what = clip.parts.length === 1 ? (clip.parts[0]?.name ?? "") : `${clip.parts.length} parts`
   const traces = clip.traces.length > 0 ? ` and ${clip.traces.length} ${clip.traces.length === 1 ? "trace" : "traces"}` : ""
-  const left = clip.left.length > 0 ? `; left out ${clip.left.join(", ")} (written as expressions)` : ""
+  const left = clip.left.length > 0 ? `; left out ${clip.left.join(", ")}` : ""
   actions.notify(`Copied ${what}${traces}${left}`)
 }
 
 /** Edit → Paste (Ctrl+V): what Copy took, as new parts with the next free designators, one history entry; selected once written. */
-export function pasteCopied({ circuit, select, actions }: PartCommandInput, page: string | undefined): void {
+export function pasteCopied({ design, circuit, select, actions }: PartCommandInput, page: string | undefined, view: PointerView): void {
   if (!circuit) return
   if (!copied) return actions.notify("Copy some parts first (Ctrl+C).")
-  const { edits, summary, names } = pasteEdits(copied, circuit.model, page)
+  const at = lastPointer(view)
+  const shift = pasteShift(copied, at ? { view, at } : undefined, pastes + 1)
+  const own = new Set(circuit.model.parts.map((part) => part.name))
+  const taken = (design?.circuit.components ?? []).map((component) => component.id).filter((id) => !own.has(id))
+  const pasted = pasteEdits(copied, circuit.model, { file: circuit.file, ...(page ? { page } : {}), taken, shift })
+  if ("message" in pasted) return actions.notify(pasted.message)
+  pastes += 1
+  const { edits, summary, names } = pasted
   void actions.edit(edits, summary).then((ok) => {
     if (!ok) return
     select(() => Selection.none.all(names))

@@ -142,6 +142,7 @@ const EditSchema = z.discriminatedUnion("kind", [
     name: z.string().max(64),
     props: props.optional(),
     pinLabels: z.record(z.string().max(16), z.string().max(64)).optional(),
+    importFrom: z.string().max(200).optional(),
     page: z.string().max(64).optional(),
   }),
   z.object({
