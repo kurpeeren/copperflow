@@ -5,11 +5,20 @@ import { naturalCompare } from "../order.js"
 /** What a part is to the placer: placed first, beside a supply pin, against the edge, or anywhere its nets pull it. */
 export type Role = "chip" | "decoupling" | "connector" | "other"
 
-/** A decoupling capacitor's supply pin: the part and the index of its pad, and the capacitor's own pad on that net. */
-export interface Decoupling {
-  part: string
+/** One of a part's own pads and the pad of another part it should sit beside (pad indexes in footprint order). */
+export interface PadTie {
   pad: number
   ownPad: number
+}
+
+/**
+ * The part a small part sits beside, and the pads that tie them: a decoupling capacitor's supply pin, a crystal's two
+ * pins on a chip (`also` is the second), a load capacitor's crystal pad, a pull-up's chip pin, an LED's pad for its
+ * resistor. `part` is placed before it, and it moves with `part` in the refinement.
+ */
+export interface Beside extends PadTie {
+  part: string
+  also?: PadTie
 }
 
 const CONNECTOR_KINDS = new Set(["pinheader", "connector"])
@@ -17,22 +26,38 @@ const CONNECTOR_KINDS = new Set(["pinheader", "connector"])
 const CONNECTOR_FOOTPRINT = /connector|header|terminal|usb|jst|screw/i
 const SUPPLY_NAME = /^\+?(?:\d+V\d*|V(?:CC|DD|BUS)\w*|[AD]V(?:CC|DD)\w*)$/i
 const GROUND_NAME = /^(?:\w*GND\w*|V(?:SS|EE)\w*)$/i
+/** A signal net with more pins than this is a bus or a shared line, not one pin's own wire. */
+const SATELLITE_NET_PINS = 4
+/** Parts an LED's (or diode's) series resistor sits beside when no chip pin is on the net. */
+const LIGHT_KINDS = new Set(["led", "diode"])
 
 export const isConnector = (c: Component): boolean => CONNECTOR_KINDS.has(c.kind) || CONNECTOR_FOOTPRINT.test(c.footprint ?? "")
 
 /** The last segment of each name: "PS1/VCC" is a VCC. */
 const shortNames = (net: Net): string[] => net.names.map((n) => n.split("/").pop() as string)
 
-/** Reads which parts are chips, connectors and decoupling capacitors, and which supply pin each capacitor decouples. */
-export function roles(design: Design): { role: (part: string) => Role; decouples: (part: string) => Decoupling | undefined } {
+/** What `roles` reads: each part's role, and the part (and pads) it sits beside. */
+export interface Roles {
+  role: (part: string) => Role
+  beside: (part: string) => Beside | undefined
+}
+
+/**
+ * Reads which parts are chips, connectors and decoupling capacitors, and which pins the small parts sit beside:
+ * decoupling capacitors their supply pin, then (in name order) every other two-pin part whose nets tie it to one
+ * chip, the crystals first so their load capacitors sit beside the crystal rather than the chip.
+ */
+export function roles(design: Design): Roles {
   const { components, nets } = design.circuit
   const pinById = new Map(components.flatMap((c) => c.pins.map((p) => [p.id, p] as const)))
   const netOfPin = new Map(nets.flatMap((n) => n.pins.map((pin) => [pin, n] as const)))
+  const byId = new Map(components.map((c) => [c.id, c]))
   const hasType = (net: Net, type: Pin["type"]) => net.pins.some((id) => pinById.get(id)?.type === type)
   const isSupply = (net: Net) => !isGround(net) && (hasType(net, "power_in") || shortNames(net).some((n) => SUPPLY_NAME.test(n)))
   const isGround = (net: Net) => hasType(net, "ground") || shortNames(net).some((n) => GROUND_NAME.test(n))
   const padsOf = new Map(design.pcb.parts.map((p) => [p.component, p.pads]))
   const padIndex = (part: string, pin: string) => padsOf.get(part)?.findIndex((pad) => pad.pin === pin) ?? -1
+  const sorted = [...components].sort((a, b) => naturalCompare(a.id, b.id))
 
   /** The capacitor's pin on a supply net when its other pin is on ground. */
   const supplyPin = (c: Component): Pin | undefined => {
@@ -44,9 +69,9 @@ export function roles(design: Design): { role: (part: string) => Role; decouples
     return undefined
   }
 
-  const assigned = new Map<string, Decoupling>()
+  const decoupling = new Map<string, Beside>()
   const load = new Map<string, number>()
-  for (const cap of [...components].sort((a, b) => naturalCompare(a.id, b.id))) {
+  for (const cap of sorted) {
     const own = supplyPin(cap)
     if (!own) continue
     const net = netOfPin.get(own.id) as Net
@@ -57,16 +82,60 @@ export function roles(design: Design): { role: (part: string) => Role; decouples
     const pin = candidates.find((p) => padIndex(p.component, p.id) >= 0)
     if (!pin) continue
     load.set(pin.id, (load.get(pin.id) ?? 0) + 1)
-    assigned.set(cap.id, { part: pin.component, pad: padIndex(pin.component, pin.id), ownPad: padIndex(cap.id, own.id) })
+    decoupling.set(cap.id, { part: pin.component, pad: padIndex(pin.component, pin.id), ownPad: padIndex(cap.id, own.id) })
   }
 
-  const byId = new Map(components.map((c) => [c.id, c]))
+  const isChip = (part: string) => byId.get(part)?.kind === "chip"
+  /** A small part that may hang on a pin: two pins, no connector or chip, not a decoupling capacitor. */
+  const small = (c: Component) => c.pins.length === 2 && !isConnector(c) && c.kind !== "chip" && !decoupling.has(c.id)
+  /** The pins on the part's own short signal net other than its own, when it has one there. */
+  const signalPeers = (pin: Pin): Pin[] => {
+    const net = netOfPin.get(pin.id)
+    if (!net || isSupply(net) || isGround(net) || net.pins.length > SATELLITE_NET_PINS) return []
+    return net.pins.flatMap((id) => {
+      const p = pinById.get(id)
+      return p && p.component !== pin.component && padIndex(p.component, p.id) >= 0 ? [p] : []
+    })
+  }
+  const tie = (own: Pin, host: Pin): PadTie & { part: string } => ({ part: host.component, pad: padIndex(host.component, host.id), ownPad: padIndex(own.component, own.id) })
+  /** The one chip pin among `peers`, when exactly one chip is there. */
+  const chipPin = (peers: readonly Pin[]): Pin | undefined => {
+    const chips = peers.filter((p) => isChip(p.component))
+    return new Set(chips.map((p) => p.component)).size === 1 ? chips[0] : undefined
+  }
+
+  const satellites = new Map<string, Beside>()
+  // Two pins on one chip's two signal pins: a crystal or resonator (or a part like it) across them.
+  for (const c of sorted.filter(small)) {
+    const [a, b] = c.pins as [Pin, Pin]
+    const [ha, hb] = [chipPin(signalPeers(a)), chipPin(signalPeers(b))]
+    if (!ha || !hb || ha.component !== hb.component || ha.id === hb.id) continue
+    const second = tie(b, hb)
+    satellites.set(c.id, { ...tie(a, ha), also: { pad: second.pad, ownPad: second.ownPad } })
+  }
+  // One pin on a short signal net: beside a crystal pad there, else the one chip pin there, else an LED's pad.
+  for (const c of sorted.filter((one) => small(one) && !satellites.has(one.id))) {
+    const choices = c.pins.flatMap((own) => {
+      const peers = signalPeers(own)
+      const crystal = peers.find((p) => satellites.get(p.component)?.also !== undefined)
+      const chip = chipPin(peers)
+      const light = LIGHT_KINDS.has(c.kind) ? undefined : peers.length === 1 ? peers.find((p) => LIGHT_KINDS.has(byId.get(p.component)?.kind ?? "")) : undefined
+      const host = crystal ?? chip ?? light
+      return host ? [{ own, host, rank: crystal ? 0 : chip ? 1 : 2 }] : []
+    })
+    const hosts = new Set(choices.map((one) => one.host.component))
+    const best = [...choices].sort((x, y) => x.rank - y.rank)[0]
+    // Tied to two different chips (a series resistor between them): it belongs to neither.
+    if (!best || (best.rank === 1 && [...hosts].filter(isChip).length > 1)) continue
+    satellites.set(c.id, tie(best.own, best.host))
+  }
+
   const role = (part: string): Role => {
     const c = byId.get(part)
     if (!c) return "other"
     if (isConnector(c)) return "connector"
-    if (assigned.has(part)) return "decoupling"
+    if (decoupling.has(part)) return "decoupling"
     return c.kind === "chip" ? "chip" : "other"
   }
-  return { role, decouples: (part) => assigned.get(part) }
+  return { role, beside: (part) => decoupling.get(part) ?? satellites.get(part) }
 }

@@ -1,0 +1,33 @@
+title: TJA1051T/3 high-speed CAN transceiver
+description: Pin table as transcribed in the brief from the NXP datasheet by the
+  person (SO-8). The agent did not open a datasheet file in this run. NOT
+  verified.
+manufacturer: NXP
+mpn: TJA1051T/3
+origin: written 2026-11-11
+footprint: soic8
+pins:
+  "1":
+    name: TXD
+    type: input
+  "2":
+    name: GND
+    type: ground
+  "3":
+    name: VCC
+    type: power_in
+  "4":
+    name: RXD
+    type: output
+  "5":
+    name: VIO
+    type: power_in
+  "6":
+    name: CANL
+    type: bidirectional
+  "7":
+    name: CANH
+    type: bidirectional
+  "8":
+    name: S
+    type: input

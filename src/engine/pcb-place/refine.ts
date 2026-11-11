@@ -49,21 +49,35 @@ export function lcg(seed: number): () => number {
 }
 
 /**
- * What moves together: a chip with the decoupling capacitors placed beside it is shifted as one, so they stay
- * beside its pins. Connectors stay on their edge, capacitors of fixed chips beside those chips, and parts that
- * found no room where they are.
+ * What moves together: a part with the parts placed beside its pins (decoupling capacitors, a crystal and through it
+ * the crystal's load capacitors, pull-ups) is shifted as one, so they stay beside those pins. Connectors stay on
+ * their edge, parts beside fixed parts stay beside them, and parts that found no room stay where they are.
  */
 function unitsOf(problem: Problem, frozen: ReadonlySet<number>): number[][] {
   const names = new Map(problem.movables.map((m, i) => [m.name, i]))
-  const caps = new Map<number, number[]>()
+  /** The part at the end of the chain of parts `i` sits beside: undefined when that chain ends at a fixed or unplaced part. */
+  const rootOf = (i: number): number | undefined => {
+    const seen = new Set<number>()
+    let at = i
+    for (;;) {
+      if (frozen.has(at) || seen.has(at)) return undefined
+      seen.add(at)
+      const m = problem.movables[at] as Movable
+      if (!m.beside) return at
+      const next = names.get(m.beside.part)
+      if (next === undefined) return undefined
+      at = next
+    }
+  }
+  const members = new Map<number, number[]>()
   problem.movables.forEach((m, i) => {
-    const chip = m.decouples ? names.get(m.decouples.part) : undefined
-    if (chip !== undefined && !frozen.has(chip) && !frozen.has(i)) caps.set(chip, [...(caps.get(chip) ?? []), i])
+    if (!m.beside) return
+    const root = rootOf(i)
+    if (root !== undefined) members.set(root, [...(members.get(root) ?? []), i])
   })
-  const grouped = new Set([...caps.values()].flat())
   return problem.movables.flatMap((m: Movable, i) => {
-    if (frozen.has(i) || grouped.has(i) || m.role === "connector" || m.decouples) return []
-    return [[i, ...(caps.get(i) ?? [])]]
+    if (frozen.has(i) || m.role === "connector" || m.beside) return []
+    return [[i, ...(members.get(i) ?? [])]]
   })
 }
 

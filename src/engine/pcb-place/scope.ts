@@ -5,7 +5,7 @@ import type { Component, Point } from "../model.js"
 import { naturalCompare } from "../order.js"
 import type { PlacedFootprint } from "../pcb.js"
 import { boxOfPoints, isRectangle, turn, type Area, type Box } from "./geometry.js"
-import { roles, type Decoupling, type Role } from "./roles.js"
+import { roles, type Beside, type Role } from "./roles.js"
 
 /** Which parts the placer may move: all, the named ones, or those of one sub-sheet instance ("PS1" takes PS1/R1 too). */
 export type PlaceScope = { kind: "all" } | { kind: "parts"; parts: readonly string[] } | { kind: "instance"; instance: string }
@@ -29,8 +29,8 @@ export interface Movable {
   boxes: Box[]
   pads: LocalPad[][]
   role: Role
-  /** For a decoupling capacitor: the supply pad it sits beside and its own pad on that net. */
-  decouples?: Decoupling
+  /** For a part that sits beside another's pins (a decoupling capacitor, a crystal, a pull-up): that part and the pads. */
+  beside?: Beside
   /** Its sub-sheet instance's place on the board, when the instance has one: where it starts when nothing pulls it. */
   anchor?: Point
   /** Pins on nets with another pad. */
@@ -114,7 +114,7 @@ function boardObstacles(design: Design): Obstacle[] {
 interface PartFacts {
   component: Component
   role: Role
-  decouples: Decoupling | undefined
+  beside: Beside | undefined
   anchor: Point | undefined
 }
 
@@ -130,8 +130,8 @@ function movable(part: PlacedFootprint, facts: PartFacts, netIndex: ReadonlyMap<
   )
   const connections = part.pads.filter((pad) => pad.net !== undefined && connected.has(pad.net)).length
   const start = { x: part.x, y: part.y, rotation: part.rotation }
-  const { component, role, decouples, anchor } = facts
-  return { name: part.component, component, boxes, pads, role, connections, start, ...(decouples ? { decouples } : {}), ...(anchor ? { anchor } : {}) }
+  const { component, role, beside, anchor } = facts
+  return { name: part.component, component, boxes, pads, role, connections, start, ...(beside ? { beside } : {}), ...(anchor ? { anchor } : {}) }
 }
 
 /**
@@ -159,7 +159,7 @@ export function readProblem(design: Design, options: ScopeOptions = {}, aside: R
     if (aside.has(part.component)) continue
     if (moves(part)) {
       const name = part.component
-      const facts = { component: components.get(name) as Component, role: roleOf.role(name), decouples: roleOf.decouples(name), anchor: anchors.get(name) }
+      const facts = { component: components.get(name) as Component, role: roleOf.role(name), beside: roleOf.beside(name), anchor: anchors.get(name) }
       movables.push(movable(part, facts, netIndex, connected))
       continue
     }

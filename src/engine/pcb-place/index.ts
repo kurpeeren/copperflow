@@ -75,7 +75,8 @@ const quarterOf = (rotation: number): number => Math.round(rotation / 90) & 3
 /**
  * Places the parts nobody placed or locked (in the scope) by connectivity: a constructive pass (the chip with most
  * connections first, each next part at the spot that costs least wire, decoupling capacitors beside their supply
- * pins, connectors on the nearest edge with their pins inward), then simulated annealing on the total ratsnest length.
+ * pins and every other two-pin part a chip's net ties it to beside that pin (a crystal across its two pins, the load
+ * capacitors beside the crystal on the side away from the chip, a pull-up, an LED's resistor beside the LED), connectors on the nearest edge with their pins inward), then simulated annealing on the total ratsnest length.
  * Pure: it reads the design and returns positions; writing them is the caller's. Same input, same output.
  */
 export function placeBoard(design: Design, options: PlaceOptions = {}): Placement {

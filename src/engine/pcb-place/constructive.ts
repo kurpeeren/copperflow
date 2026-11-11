@@ -18,13 +18,23 @@ const ABUT_REACH = 4
 const ABUT_BAND = 2
 /** Abutting spots are rounded away from the courtyard they abut to this step (mm). */
 const ABUT_STEP = 0.01
-/** How much more a decoupling capacitor's distance to its supply pin weighs than its other wiring. */
-const DECOUPLING_WEIGHT = 4
+/** How much more a part's distance to the pins it sits beside (a decoupling capacitor's supply pin) weighs than its other wiring. */
+const BESIDE_WEIGHT = 4
 
 export interface Spot {
   x: number
   y: number
   rot: number
+}
+
+/**
+ * A pad a part sits beside, its own pad there, and for a part beside a part that itself sits beside pins (a load
+ * capacitor beside a crystal) where those pins are, to keep away from.
+ */
+export interface Host {
+  at: Point
+  ownPad: number
+  away?: Point
 }
 
 /** What the constructive pass keeps while it places: the courtyards, and the pads placed so far per net. */
@@ -34,12 +44,16 @@ export class Board {
   readonly padsX: number[][]
   readonly padsY: number[][]
   readonly netBox: Box[]
+  /** Every pad of each net, placed or not. */
+  readonly netSize: number[]
 
   constructor(
     readonly problem: Problem,
     readonly state: State,
   ) {
     this.placed = new Uint8Array(problem.movables.length)
+    this.netSize = problem.fixedPads.map((pads) => pads.length)
+    for (const m of problem.movables) for (const pad of m.pads[0] ?? []) if (pad.net >= 0) this.netSize[pad.net] = (this.netSize[pad.net] ?? 0) + 1
     problem.obstacles.forEach((o, k) => this.index.set(problem.movables.length + k, o.box))
     this.padsX = problem.fixedPads.map((pads) => pads.map((p) => p.x))
     this.padsY = problem.fixedPads.map((pads) => pads.map((p) => p.y))
@@ -83,16 +97,39 @@ export class Board {
     return local && { x: (this.state.x[i] as number) + local.x, y: (this.state.y[i] as number) + local.y }
   }
 
+  /** How hard a net pulls a part: a large net (ground) a quarter as hard on a part that sits beside pins. */
+  private weight(hosts: readonly unknown[], net: number): number {
+    return hosts.length > 0 && (this.netSize[net] as number) > LARGE_NET ? LARGE_NET_WEIGHT : 1
+  }
+
+  /** Where the pads a part sits beside are now, paired with its own pad on each; empty when they are not placed. */
+  hosts(m: Movable): Host[] {
+    if (!m.beside) return []
+    const { part } = m.beside
+    const host = this.problem.movables.find((one) => one.name === part)
+    // The pins the host itself sits beside (a crystal's chip pins): this part keeps to the far side of the host.
+    const from = host ? this.hosts(host).map((h) => h.at) : []
+    const away = from.length > 0 ? { x: from.reduce((s, p) => s + p.x, 0) / from.length, y: from.reduce((s, p) => s + p.y, 0) / from.length } : undefined
+    return [m.beside, ...(m.beside.also ? [m.beside.also] : [])].flatMap((tie) => {
+      const at = this.padAt(part, tie.pad)
+      return at ? [{ at, ownPad: tie.ownPad, ...(away ? { away } : {}) }] : []
+    })
+  }
+
   /**
    * What a spot costs in wiring: for each pad on a net, the distance to the nearest pad of that net placed so far,
-   * plus how much the spot grows each net's half-perimeter; a decoupling capacitor adds its distance to its supply pin.
+   * plus how much the spot grows each net's half-perimeter; a part that sits beside pins (a decoupling capacitor, a
+   * crystal, a pull-up) adds its distance to each of them, weighted. Such a part's pad on a large net (ground) pulls
+   * a quarter as hard, so a crystal's load capacitor goes beside the crystal pad rather than toward the chip's ground.
    */
-  cost(m: Movable, spot: Spot, supply: Point | undefined): number {
+  cost(m: Movable, spot: Spot, hosts: readonly Host[]): number {
     const pads = m.pads[spot.rot] ?? []
     let total = 0
     const grown = new Map<number, Box>()
-    for (const pad of pads) {
-      if (pad.net < 0) continue
+    const tied = new Set(hosts.map((h) => h.ownPad))
+    for (const [index, pad] of pads.entries()) {
+      // A pad tied to a pin is costed by its distance to that pin alone (below), not pulled toward the net's others.
+      if (pad.net < 0 || tied.has(index)) continue
       const [x, y] = [spot.x + pad.x, spot.y + pad.y]
       const xs = this.padsX[pad.net] as number[]
       const ys = this.padsY[pad.net] as number[]
@@ -103,17 +140,25 @@ export class Board {
         const d = dx * dx + dy * dy
         if (d < nearest) nearest = d
       }
-      if (nearest < Infinity) total += Math.sqrt(nearest)
+      if (nearest < Infinity) total += this.weight(hosts, pad.net) * Math.sqrt(nearest)
       const b = grown.get(pad.net) ?? (this.netBox[pad.net] as Box)
       grown.set(pad.net, { minX: Math.min(b.minX, x), minY: Math.min(b.minY, y), maxX: Math.max(b.maxX, x), maxY: Math.max(b.maxY, y) })
     }
     for (const [net, b] of grown) {
       const before = this.netBox[net] as Box
-      if (Number.isFinite(before.minX)) total += b.maxX - b.minX + b.maxY - b.minY - (before.maxX - before.minX + before.maxY - before.minY)
+      const growth = b.maxX - b.minX + b.maxY - b.minY - (before.maxX - before.minX + before.maxY - before.minY)
+      if (Number.isFinite(before.minX)) total += this.weight(hosts, net) * growth
     }
-    if (supply && m.decouples) {
-      const own = pads[m.decouples.ownPad]
-      if (own) total += DECOUPLING_WEIGHT * Math.hypot(spot.x + own.x - supply.x, spot.y + own.y - supply.y)
+    for (const host of hosts) {
+      const own = pads[host.ownPad]
+      if (!own) continue
+      const [dx, dy] = [spot.x + own.x - host.at.x, spot.y + own.y - host.at.y]
+      total += BESIDE_WEIGHT * Math.hypot(dx, dy)
+      if (!host.away) continue
+      // How far the pad sits back toward the host's own pins, past the host pad: a load capacitor between crystal and chip.
+      const [ax, ay] = [host.at.x - host.away.x, host.at.y - host.away.y]
+      const length = Math.hypot(ax, ay)
+      if (length > 0) total += BESIDE_WEIGHT * Math.max(0, -(dx * ax + dy * ay) / length)
     }
     return total
   }
@@ -170,19 +215,21 @@ const down = (v: number) => Math.floor(v / ABUT_STEP + 1e-6) * ABUT_STEP
  * Spots that put the part against a courtyard near `centre`, the clearance apart, lined up with its sides or its
  * middle: the grid alone leaves gaps of up to a grid step between parts.
  */
-function abuttingSpots(board: Board, m: Movable, centre: Point, inner: number, reach: number): Spot[] {
+function abuttingSpots(board: Board, m: Movable, centre: Point, inner: number, reach: number, host: number | undefined): Spot[] {
   const gap = board.problem.clearance
   const window = { minX: centre.x - reach, minY: centre.y - reach, maxX: centre.x + reach, maxY: centre.y + reach }
   const spots: Spot[] = []
   for (const id of board.index.near(window)) {
     const other = board.index.get(id) as Box
-    // Courtyards well inside the first free ring are surrounded: nothing abuts them.
+    // Courtyards well inside the first free ring are surrounded: nothing abuts them. The part this one sits beside
+    // holds the scan centre (its pins) in its courtyard, and is abutted whatever.
     const away = Math.max(other.minX - centre.x, centre.x - other.maxX, other.minY - centre.y, centre.y - other.maxY)
-    if (away < inner) continue
+    if (away < inner && id !== host) continue
     for (let rot = 0; rot < 4; rot++) {
       const b = m.boxes[rot] as Box
-      const xs = [other.minX - b.minX, other.maxX - b.maxX, (other.minX + other.maxX - b.minX - b.maxX) / 2]
-      const ys = [other.minY - b.minY, other.maxY - b.maxY, (other.minY + other.maxY - b.minY - b.maxY) / 2]
+      // Lined up with the other's sides or middle, or with the scan centre (the pins a crystal sits beside).
+      const xs = [other.minX - b.minX, other.maxX - b.maxX, (other.minX + other.maxX - b.minX - b.maxX) / 2, centre.x]
+      const ys = [other.minY - b.minY, other.maxY - b.maxY, (other.minY + other.maxY - b.minY - b.maxY) / 2, centre.y]
       const right = up(other.maxX + gap - b.minX)
       const left = down(other.minX - gap - b.maxX)
       const above = up(other.maxY + gap - b.minY)
@@ -194,15 +241,23 @@ function abuttingSpots(board: Board, m: Movable, centre: Point, inner: number, r
   return spots.filter((spot) => board.fits(m, spot))
 }
 
+/** The courtyard id (in the board's index) of the part `m` sits beside, when it has one. */
+function hostId(problem: Problem, m: Movable): number | undefined {
+  if (!m.beside) return undefined
+  const part = m.beside.part
+  const movable = problem.movables.findIndex((one) => one.name === part)
+  if (movable >= 0) return movable
+  const fixed = problem.obstacles.findIndex((o) => o.part && o.name === part)
+  return fixed >= 0 ? problem.movables.length + fixed : undefined
+}
+
 /** The scan centres for a part: where its nets' placed pads are on average, and the pads of its small nets. */
 function centresFor(board: Board, i: number): Point[] {
   const m = board.problem.movables[i] as Movable
   const area = board.problem.area.box
   const middle = { x: (area.minX + area.maxX) / 2, y: (area.minY + area.maxY) / 2 }
-  if (m.decouples) {
-    const supply = board.padAt(m.decouples.part, m.decouples.pad)
-    if (supply) return [supply]
-  }
+  const hosts = board.hosts(m)
+  if (hosts.length > 0) return [{ x: hosts.reduce((s, h) => s + h.at.x, 0) / hosts.length, y: hosts.reduce((s, h) => s + h.at.y, 0) / hosts.length }]
   const nets = [...new Set((m.pads[0] ?? []).map((p) => p.net).filter((n) => n >= 0))]
   let [sx, sy, weight] = [0, 0, 0]
   const extra: Point[] = []
@@ -239,7 +294,7 @@ function placeOne(board: Board, i: number): Placed {
     note = `${m.name} is a connector, but no board edge has room for it, so it is placed inside the board`
   }
   const centres = centresFor(board, i)
-  const supply = m.decouples ? board.padAt(m.decouples.part, m.decouples.pad) : undefined
+  const hosts = board.hosts(m)
   const first = centres[0] as Point
   let best: { spot: Spot; cost: number; far: number } | undefined
   const seen = new Set<string>()
@@ -247,11 +302,11 @@ function placeOne(board: Board, i: number): Placed {
     const free = freeSpots(board, m, centre)
     const reach = Math.max(ABUT_REACH, (free.first + 1) * GRID)
     const inner = free.first * GRID - ABUT_BAND
-    for (const spot of [...free.spots, ...abuttingSpots(board, m, centre, inner, reach)]) {
+    for (const spot of [...free.spots, ...abuttingSpots(board, m, centre, inner, reach, hostId(board.problem, m))]) {
       const key = `${spot.x},${spot.y},${spot.rot}`
       if (seen.has(key)) continue
       seen.add(key)
-      const cost = board.cost(m, spot, supply)
+      const cost = board.cost(m, spot, hosts)
       const far = Math.hypot(spot.x - first.x, spot.y - first.y)
       if (!best || cost < best.cost - 1e-9 || (Math.abs(cost - best.cost) <= 1e-9 && far < best.far - 1e-9)) best = { spot, cost, far }
     }
@@ -276,7 +331,7 @@ function nextPart(board: Board, waiting: readonly number[]): number {
   const anyPlaced = board.placed.some((p) => p === 1)
   const rank = (i: number) => {
     const m = movables[i] as Movable
-    const chipWaits = m.decouples !== undefined && !board.problem.fixedPartPads.has(m.decouples.part)
+    const chipWaits = m.beside !== undefined && !board.problem.fixedPartPads.has(m.beside.part)
     return [m.role === "connector" ? 1 : 0, chipWaits ? 1 : 0, anyPlaced || m.role === "chip" ? 0 : 1, -pull(board, m), -m.connections] as const
   }
   let best = waiting[0] as number
@@ -324,7 +379,7 @@ export function construct(problem: Problem, state: State, late: () => boolean = 
   const board = new Board(problem, state)
   const capsOf = new Map<string, number[]>()
   problem.movables.forEach((m, i) => {
-    if (m.decouples) capsOf.set(m.decouples.part, [...(capsOf.get(m.decouples.part) ?? []), i])
+    if (m.beside) capsOf.set(m.beside.part, [...(capsOf.get(m.beside.part) ?? []), i])
   })
   const unplaced: { index: number; reason: string }[] = []
   const notes: string[] = []

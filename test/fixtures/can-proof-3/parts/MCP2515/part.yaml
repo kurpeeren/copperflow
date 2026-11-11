@@ -1,0 +1,63 @@
+title: MCP2515 stand-alone CAN controller with SPI interface
+description: Pin table as transcribed in the brief from the Microchip datasheet
+  by the person (SOIC-18 wide). The agent did not open a datasheet file in this
+  run. NOT verified.
+manufacturer: Microchip
+mpn: MCP2515-I/SO
+origin: written 2026-11-11
+footprint: soic18w
+pins:
+  "1":
+    name: TXCAN
+    type: output
+  "2":
+    name: RXCAN
+    type: input
+  "3":
+    name: CLKOUT
+    type: output
+  "4":
+    name: TX0RTS
+    type: input
+  "5":
+    name: TX1RTS
+    type: input
+  "6":
+    name: TX2RTS
+    type: input
+  "7":
+    name: OSC2
+    type: output
+  "8":
+    name: OSC1
+    type: input
+  "9":
+    name: VSS
+    type: ground
+  "10":
+    name: RX1BF
+    type: output
+  "11":
+    name: RX0BF
+    type: output
+  "12":
+    name: INT
+    type: output
+  "13":
+    name: SCK
+    type: input
+  "14":
+    name: SI
+    type: input
+  "15":
+    name: SO
+    type: output
+  "16":
+    name: CS
+    type: input
+  "17":
+    name: RESET
+    type: input
+  "18":
+    name: VDD
+    type: power_in

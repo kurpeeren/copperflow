@@ -83,7 +83,7 @@ export function placeConnector(board: Board, i: number, target: Point): Spot | u
     let best: { spot: Spot; cost: number; far: number } | undefined
     for (const rot of inwardRotations(m, edge.normal)) {
       for (const spot of alongEdge(board, m, edge, rot, target)) {
-        const cost = board.cost(m, spot, undefined)
+        const cost = board.cost(m, spot, [])
         const far = Math.hypot(spot.x - target.x, spot.y - target.y)
         if (!best || cost < best.cost - 1e-9 || (Math.abs(cost - best.cost) <= 1e-9 && far < best.far - 1e-9)) best = { spot, cost, far }
       }
