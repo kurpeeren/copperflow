@@ -15,6 +15,8 @@ import type { Bounds } from "./symbols/index.js"
 
 /** Wires keep this far from symbol bounds, in sheet units. */
 const SYMBOL_MARGIN = 0.1
+/** A wire that finds no way outside the margins may run inside them, but never closer than this to a symbol's bounds. */
+const BODY_CLEARANCE = 0.05
 /** The search box is the box around the two pins grown by this many cells (2.0 units). */
 const SEARCH_REACH = 20
 /** A pin's way out of its own symbol is at most this many cells long. */
@@ -77,6 +79,10 @@ class Router {
   private readonly groups = new Groups()
   private readonly groupWires = new Map<string, number[]>()
   private readonly scratch = new SearchScratch()
+  /** 1 where a grid point lies within BODY_CLEARANCE of a symbol's bounds: never opened. */
+  private readonly body: Uint8Array
+  /** The pins whose way out (exit points and landing) passes each grid point, by grid index. */
+  private readonly wayOut = new Map<number, string[]>()
   private readonly maxExpansions: number
   readonly diagnostics: Diagnostic[] = []
 
@@ -88,6 +94,8 @@ class Router {
     const rects = sheet.boxes.map((box) => cellsAround(box.bounds, SYMBOL_MARGIN))
     this.grid = new SheetGrid(extentOf(rects, sheet.spots))
     for (const rect of rects) this.grid.cover(rect)
+    this.body = new Uint8Array(this.grid.width * this.grid.height)
+    for (const box of sheet.boxes) this.markBody(cellsAround(box.bounds, BODY_CLEARANCE))
     sheet.boxes.forEach((box, index) => {
       for (const pin of box.pins) {
         const spot = sheet.spots.get(pin)
@@ -95,6 +103,22 @@ class Router {
       }
     })
     for (const { landing } of this.exits.values()) this.grid.add(landing[0], landing[1], SYMBOL)
+    for (const [pin, exit] of this.exits) {
+      const cells = [...exit.open, ...exit.landing]
+      for (let i = 0; i < cells.length; i += 2) {
+        const index = this.grid.indexOf(cells[i] as number, cells[i + 1] as number)
+        if (index >= 0) this.wayOut.set(index, [...(this.wayOut.get(index) ?? []), pin])
+      }
+    }
+  }
+
+  private markBody(rect: CellRect): void {
+    for (let y = rect.minY; y <= rect.maxY; y++) {
+      for (let x = rect.minX; x <= rect.maxX; x++) {
+        const index = this.grid.indexOf(x, y)
+        if (index >= 0) this.body[index] = 1
+      }
+    }
   }
 
   /** Records a drawn wire: an obstacle from now on, and part of its pins' group. */
@@ -158,9 +182,39 @@ class Router {
     }
     const window = { grid: this.grid, box, sources: ends.sources, goal: ends.goal }
     const exact = findPath({ ...window, maxExpansions: Math.min(EXACT_EXPANSIONS, this.maxExpansions), weighted: false }, this.scratch)
-    const cells = exact ?? findPath({ ...window, maxExpansions: this.maxExpansions, weighted: true }, this.scratch)
+    let cells = exact ?? findPath({ ...window, maxExpansions: this.maxExpansions, weighted: true }, this.scratch)
+    if (!cells && this.openTight(box, request) > 0) {
+      // The wires already joined to the pins may now be met inside the margins too.
+      if (joined) this.markGroup(ends, request.from, PASS, true)
+      else {
+        this.markGroup(ends, request.from, SOURCE, true)
+        this.markGroup(ends, request.to, TARGET, true)
+      }
+      cells = findPath({ ...window, maxExpansions: this.maxExpansions, weighted: true }, this.scratch)
+    }
     this.grid.undo()
     return cells && cells.length >= 2 ? corners(box, cells) : undefined
+  }
+
+  /**
+   * For a wire that found no way: opens, until the search is over, the points of the box that are held back only to
+   * keep wires off symbols (margins) but lie outside every symbol's body and off every other pin's way out; how many.
+   * Where symbols stand closer than two margins and a free line, the margins meet and wall off the pins between
+   * them: a pin's way out ends in its neighbour's margin, and two neighbouring pins of one chip cannot be joined.
+   * A wire 0.1 from a body, with a short stub out of each pin, is what a person draws there.
+   */
+  private openTight(box: CellRect, request: RouteRequest): number {
+    let opened = 0
+    const others = (index: number) => (this.wayOut.get(index) ?? []).some((pin) => pin !== request.from && pin !== request.to)
+    for (let y = box.minY; y <= box.maxY; y++) {
+      for (let x = box.minX; x <= box.maxX; x++) {
+        const index = this.grid.indexOf(x, y)
+        if (index < 0 || ((this.grid.flags[index] as number) & SYMBOL) === 0 || this.body[index] !== 0 || others(index)) continue
+        this.grid.patch(x, y, 0, SYMBOL)
+        opened += 1
+      }
+    }
+    return opened
   }
 
   /** Opens the two routed pins' ways out until the search is over; joined pins may also run along them. */
@@ -187,14 +241,18 @@ class Router {
     ends.goal.maxY = Math.max(ends.goal.maxY, ly)
   }
 
-  /** Marks the grid points of the wires joined to the pin, leaving out those inside a symbol's margin. */
-  private markGroup(ends: Ends, pin: string, flag: number): void {
+  /**
+   * Marks the grid points of the wires joined to the pin, leaving out those inside a symbol's margin, or with `tight`
+   * only those inside a symbol's body.
+   */
+  private markGroup(ends: Ends, pin: string, flag: number, tight = false): void {
     for (const index of this.groupWires.get(this.groups.find(pin)) ?? []) {
       const { lattice, rect } = this.drawn[index] as WireMarks
       if (!overlaps(rect, ends.box)) continue
       for (let i = 0; i < lattice.length; i += 2) {
         const [x, y] = [lattice[i] as number, lattice[i + 1] as number]
-        if (this.grid.marginsAt(x, y) === 0) this.markEnd(ends, x, y, flag)
+        const free = tight ? this.body[this.grid.indexOf(x, y)] === 0 : this.grid.marginsAt(x, y) === 0
+        if (free) this.markEnd(ends, x, y, flag)
       }
     }
   }

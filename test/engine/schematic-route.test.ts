@@ -205,11 +205,37 @@ describe("the router on its own", () => {
   const inside = (p: Point, b: { minX: number; minY: number; maxX: number; maxY: number }, margin: number) =>
     p.x >= b.minX - margin - 1e-9 && p.x <= b.maxX + margin + 1e-9 && p.y >= b.minY - margin - 1e-9 && p.y <= b.maxY + margin + 1e-9
 
-  test("a pin whose only way out lands in another symbol's margin is not routed through it, and warns", () => {
-    const boxes = [box(-0.5, -0.2, 0.5, 0.2, ["A.p"]), box(0.8, 0.1, 1.8, 0.5, ["B.p"]), box(3, -1.2, 4, -0.8, ["C.p"])]
+  test("a pin whose only way out lands in another symbol's margin gets out through it, clear of that symbol's body", () => {
+    const b = { minX: 0.8, minY: 0.1, maxX: 1.8, maxY: 0.5 }
+    const boxes = [box(-0.5, -0.2, 0.5, 0.2, ["A.p"]), box(b.minX, b.minY, b.maxX, b.maxY, ["B.p"]), box(3, -1.2, 4, -0.8, ["C.p"])]
     const spots = new Map([["A.p", spot(0.5, 0, "right")], ["B.p", spot(1.8, 0.3, "right")], ["C.p", spot(3, -1, "left")]])
     const routed = routeWires({ boxes, spots }, [], [{ id: "w", net: "n", from: "A.p", to: "C.p" }])
-    expect(routed.diagnostics.map((d) => d.code)).toEqual(["auto-route"])
+    expect(routed.diagnostics).toEqual([])
+    const wire = routed.wires[0] as Wire
+    expect(isOrthogonal(wire)).toBe(true)
+    expect(latticePoints(wire).filter((p) => inside({ x: p.x / 10, y: p.y / 10 }, b, 0.05))).toEqual([])
+  })
+
+  test("neighbouring pins of one chip boxed in by a close part are joined with a short stub out of each pin", () => {
+    const chip = box(3.9, -1.1, 5.7, 1.3, ["U.4", "U.5", "U.6"])
+    const crystal = box(2.6, -0.35, 3.6, 0.35, ["Y.1"])
+    const spots = new Map([
+      ["U.4", spot(3.9, 0.6, "left")],
+      ["U.5", spot(3.9, 0.4, "left")],
+      ["U.6", spot(3.9, 0.2, "left")],
+      ["Y.1", spot(3.6, 0, "right")],
+    ])
+    const requests = [
+      { id: "a", net: "V", from: "U.4", to: "U.5" },
+      { id: "b", net: "V", from: "U.5", to: "U.6" },
+    ]
+    const routed = routeWires({ boxes: [chip, crystal], spots }, [], requests)
+    expect(routed.diagnostics).toEqual([])
+    expect(routed.wires.map((w) => w?.points)).toEqual([
+      [{ x: 3.9, y: 0.6 }, { x: 3.8, y: 0.6 }, { x: 3.8, y: 0.4 }, { x: 3.9, y: 0.4 }],
+      [{ x: 3.8, y: 0.4 }, { x: 3.8, y: 0.2 }, { x: 3.9, y: 0.2 }],
+    ])
+    expect(routeWires({ boxes: [chip, crystal], spots }, [], requests)).toEqual(routed)
   })
 
   test("a wire of the group running inside a symbol's margin is not a place to end on", () => {
