@@ -29,7 +29,7 @@ import { placeInstanceScope, placeSelectionScope } from "../pcb/autoplace"
 import type { PlaceScope } from "../api"
 import type { RouteScope } from "../api"
 import { runPageCommand, type PageCommand } from "./page-commands"
-import { annotateDesignators, flipSelection, selectSimilar, transferPlacement } from "./part-commands"
+import { annotateDesignators, copySelection, flipSelection, pasteCopied, selectSimilar, transferPlacement } from "./part-commands"
 import type { Design } from "../api"
 
 const SCHEMATIC_ONLY: ReadonlySet<CommandId> = new Set([...SHEET_COMMANDS, ...MARK_COMMANDS])
@@ -255,12 +255,14 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     annotate: () => annotateDesignators(input),
     systemSettings: () => input.openDialog("system"),
     newCircuit: () => input.openDialog("newCircuit"),
+    copy: () => copySelection(input),
+    paste: () => pasteCopied(input, input.view === "schematic" ? input.page : undefined),
   }
   return (table as Partial<Record<CommandId, () => void>>)[command]
 }
 
 /** The keys the app answers itself, with or without a canvas; each one's action is also its command. */
-const APP_KEYS = ["undo", "redo", "openFile", "selectAll", "find", "findSimilar", "placementTransfer", "flip"] as const satisfies readonly (KeyActionName & CommandId)[]
+const APP_KEYS = ["undo", "redo", "openFile", "selectAll", "find", "findSimilar", "placementTransfer", "flip", "copy", "paste"] as const satisfies readonly (KeyActionName & CommandId)[]
 const isAppKey = (action: KeyActionName | undefined): action is (typeof APP_KEYS)[number] => (APP_KEYS as readonly string[]).includes(action ?? "")
 
 /**
@@ -272,6 +274,8 @@ function useAppKeys(runCommand: (command: CommandId) => void, view: View): void 
     const onKey = (event: KeyboardEvent) => {
       const action = keyAction(keyInput(event), { view })?.action
       if (!isAppKey(action)) return
+      // Text selected on the page is the browser's to copy.
+      if (action === "copy" && (window.getSelection()?.toString() ?? "") !== "") return
       event.preventDefault()
       runCommand(action)
     }

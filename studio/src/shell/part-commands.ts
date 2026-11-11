@@ -1,12 +1,14 @@
 // The app's commands on the selected parts that write through the core as one history entry each: Layout → Flip,
-// Design → Placement transfer and Edit → Find similar objects (which only selects). What each writes is decided in
-// board-side.ts and find-similar.ts; this file reads the open design and selection for them.
+// Design → Placement transfer and Annotate designators, Edit → Copy and Paste, and Edit → Find similar objects (which
+// only selects). What each writes is decided in board-side.ts, annotate.ts, clipboard.ts and find-similar.ts; this
+// file reads the open design and selection for them.
 import type { CircuitData, Design } from "../api"
 import type { Actions } from "../App"
 import { Selection, type SelectionChange } from "../selection"
 import { flipPlan, transferPlan, type PlanResult } from "./board-side"
 import { findSimilar } from "./find-similar"
 import { annotatePlan } from "./annotate"
+import { copyParts, pasteEdits, type Clipboard } from "./clipboard"
 
 export interface PartCommandInput {
   design: Design | undefined
@@ -54,6 +56,33 @@ export function annotateDesignators({ design, circuit, actions }: PartCommandInp
   const plan = annotatePlan(parts)
   if ("message" in plan) return actions.notify(plan.message)
   void actions.edit([plan.edit], plan.summary).then((ok) => ok && actions.notify(`Annotated ${plan.edit.mapping.length} designators`))
+}
+
+/** What Edit → Copy took last; one per Studio tab, as EasyEDA keeps its own clipboard for parts. */
+let copied: Clipboard | undefined
+
+/** Edit → Copy (Ctrl+C): the selected parts and the traces among them. */
+export function copySelection({ circuit, selection, actions }: PartCommandInput): void {
+  if (!circuit) return
+  const clip = copyParts(circuit.model, selection.names)
+  if ("message" in clip) return actions.notify(clip.message)
+  copied = clip
+  const what = clip.parts.length === 1 ? (clip.parts[0]?.name ?? "") : `${clip.parts.length} parts`
+  const traces = clip.traces.length > 0 ? ` and ${clip.traces.length} ${clip.traces.length === 1 ? "trace" : "traces"}` : ""
+  const left = clip.left.length > 0 ? `; left out ${clip.left.join(", ")} (written as expressions)` : ""
+  actions.notify(`Copied ${what}${traces}${left}`)
+}
+
+/** Edit → Paste (Ctrl+V): what Copy took, as new parts with the next free designators, one history entry; selected once written. */
+export function pasteCopied({ circuit, select, actions }: PartCommandInput, page: string | undefined): void {
+  if (!circuit) return
+  if (!copied) return actions.notify("Copy some parts first (Ctrl+C).")
+  const { edits, summary, names } = pasteEdits(copied, circuit.model, page)
+  void actions.edit(edits, summary).then((ok) => {
+    if (!ok) return
+    select(() => Selection.none.all(names))
+    actions.notify(`Pasted ${names.join(", ")}`)
+  })
 }
 
 /** Edit → Find similar objects (Ctrl+Shift+F): selects the parts, or drawings, like the selected one. */

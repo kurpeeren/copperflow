@@ -8,7 +8,7 @@ import type { Selection } from "../selection.js"
 import type { MenuShape } from "./menu-keys.js"
 import { ALIGN_COMMANDS, alignDisabledReason, type AlignCommand } from "../pcb/align-rules.js"
 import type { WireReasons } from "../pcb/wire-actions.js"
-import { ENGINE, type CommandId } from "./menus.js"
+import type { CommandId } from "./menus.js"
 
 /** What an item does besides running a command: open Properties, rename a label's net, highlight a label's net. */
 export type ContextSpecial = "properties" | "rename" | "highlightNet" | "resetText"
@@ -72,6 +72,7 @@ function partItems({ allLocked, selected }: ContextState): ContextEntry[] {
     run("Rotate", "rotate", "Space"),
     allLocked ? run("Unlock", "unlock") : run("Lock", "lock"),
     run("Highlight its nets", "highlight", "H"),
+    run("Copy", "copy", "Ctrl+C"),
     ...alignItems(selected),
     "separator",
     run("Delete", "delete", "Delete"),
@@ -85,7 +86,7 @@ const CANVAS_ITEMS: readonly ContextEntry[] = [
   run("Zoom in", "zoomIn"),
   run("Zoom out", "zoomOut"),
   "separator",
-  { label: "Paste", shortcut: "Ctrl+V", pending: ENGINE },
+  run("Paste", "paste", "Ctrl+V"),
 ]
 
 /** On a wire selected with other things: Delete acts on all of them (naming what stays), Remove corners on a wire alone. */
