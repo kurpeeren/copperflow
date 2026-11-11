@@ -256,3 +256,117 @@ button.menu-title:hover:not(:disabled),
 button.menu-title.open:hover:not(:disabled) {
   background: var(--raised);
 }
+
+/* Library → New part: a wider dialog; the preview, the pin table and the paste area take the whole width. */
+.dialog.wide {
+  width: min(680px, calc(100vw - 32px));
+}
+
+.new-part-form h3,
+.new-part-form .new-part-pins,
+.new-part-form .new-part-paste,
+.new-part-form .new-part-problems {
+  grid-column: 1 / -1;
+}
+
+.new-part-form h3 {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.new-part-package {
+  display: flex;
+  gap: 12px;
+}
+
+.new-part-preview {
+  grid-column: 2;
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  margin: 0;
+}
+
+.new-part-preview canvas {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.new-part-preview figcaption {
+  color: var(--muted);
+}
+
+.new-part-form p.new-part-preview-note {
+  grid-column: 2;
+}
+
+.new-part-pins {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.new-part-pins th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.new-part-pins td,
+.new-part-pins th {
+  padding: 2px 4px 2px 0;
+}
+
+.dialog .new-part-pins td:first-child {
+  width: 56px;
+  color: inherit;
+}
+
+.new-part-pins input,
+.new-part-pins select {
+  width: 100%;
+}
+
+.new-part-form button.new-part-add {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+
+.new-part-paste {
+  display: grid;
+  gap: 4px;
+}
+
+.new-part-paste textarea {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.new-part-paste button {
+  justify-self: start;
+}
+
+.new-part-paste ul,
+.new-part-form .new-part-problems {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--danger-text);
+}
+
+.new-part-supplier {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 8px;
+}
+
+.new-part-checklist {
+  margin: 0;
+  padding: 8px;
+  max-height: 30vh;
+  overflow: auto;
+  background: var(--ground);
+  border: 1px solid var(--line);
+  white-space: pre-wrap;
+  font-size: 12px;
+}

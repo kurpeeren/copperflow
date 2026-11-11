@@ -3,8 +3,10 @@
 import { PIN_TYPES, type PinType } from "../../../src/core/pin-types.js"
 import { generateFootprint } from "../../../src/engine/footprints/index.js"
 import { parsePinTable, suggestedPinName, type PinRow, type PinTableError } from "../../../src/library/pin-table.js"
+import type { CreatePartRequest } from "./new-part-result.js"
 
 export { PIN_TYPES }
+export { createdSummary, type CreatePartRequest, type CreatePartResult } from "./new-part-result.js"
 
 /** A pin row as typed; empty number and name together is an unused row. */
 export interface PinField {
@@ -44,33 +46,6 @@ export const EMPTY_FIELDS: NewPartFields = {
   suppliers: [{ supplier: "lcsc", number: "" }],
   datasheet: "",
   replace: false,
-}
-
-/** What the dialog sends to POST /api/create-part. */
-export interface CreatePartRequest {
-  id: string
-  title: string
-  manufacturer?: string
-  mpn?: string
-  package: string | { file: "footprint.yaml" }
-  pins: PinRow[]
-  suppliers?: Record<string, string>
-  datasheet?: { url: string }
-  replace: boolean
-}
-
-/** The server's answer. */
-export interface CreatePartResult {
-  id: string
-  title: string
-  pins: number
-  footprint: string
-  files: string[]
-  /** What the person still has to do; also in verification.md. */
-  notes: string[]
-  /** verification.md's path in the project, and its text. */
-  verification: string
-  checklist: string
 }
 
 const PART_ID = /^[A-Za-z](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9])?$/
@@ -131,11 +106,6 @@ export function readCreateRequest(fields: NewPartFields): CreatePartRequest | { 
     ...(datasheet ? { datasheet: { url: datasheet } } : {}),
     replace: fields.replace,
   }
-}
-
-/** The result's first line. */
-export function createdSummary(result: CreatePartResult): string {
-  return `Created ${result.id}: ${result.title}, ${result.pins} pin${result.pins === 1 ? "" : "s"}, footprint ${result.footprint}. Not verified: check it in ${result.verification}.`
 }
 
 function packageProblems(fields: NewPartFields): string[] {

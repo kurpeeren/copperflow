@@ -15,6 +15,8 @@ import { watchDpr } from "./shell/dpr"
 import { StudioDialog, type DialogName } from "./shell/Dialogs"
 import { importSummary, type ImportPartRequest, type ImportPartResult } from "./shell/import-part-form"
 import type { ImportPartPanel } from "./shell/ImportPartDialog"
+import { createdSummary, type CreatePartRequest, type CreatePartResult } from "./shell/new-part-result"
+import type { NewPartPanel } from "./shell/new-part-result"
 import type { MakeSheetPreview } from "./shell/make-sheet-form"
 import type { MakeSheetChoice, MakeSheetPanel } from "./shell/MakeSheetDialog"
 import { MenuBar } from "./shell/MenuBar"
@@ -198,6 +200,7 @@ function useStudio() {
   useHighlightFollowsBuild(build.design, workspace.setHighlight)
   const closeDialog = useCallback(() => setDialog(null), [])
   const openImportPart = useCallback(() => setDialog("importPart"), [])
+  const openNewPart = useCallback(() => setDialog("newPart"), [])
   const [sheetParent, setSheetParent] = useState<SheetParent>()
   const openDocument = useCallback(
     (target: string, view: DocView, toPage?: string) => {
@@ -226,7 +229,7 @@ function useStudio() {
   const copperRecords = tab === "pcb" ? pcb : undefined
   const sheetIds = { sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords }
   const runCommand = useAppCommands({ file, view: tab, setView: setTab, selection, select, circuit, actions, pickLayers, pickFilter: workspace.pickFilter, ...sheetIds, workspace, openChecks, openFind: find.open, openDialog: setDialog, design: build.design, page, openPage, highlight: workspace.highlight })
-  return { toast, tab, setTab, dialog, closeDialog, openImportPart, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, openSheet, sheetParent, runCommand, page, openPage }
+  return { toast, tab, setTab, dialog, closeDialog, openImportPart, openNewPart, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, openSheet, sheetParent, runCommand, page, openPage }
 }
 
 /** The circuit a sheet file was opened from, and its design as it was then. */
@@ -258,6 +261,21 @@ function useImportPartPanel(refreshParts: () => Promise<void>, notify: (message:
   )
 }
 
+/** What Library → New part… asks: the part written from the datasheet; the Library then reads the parts again. */
+function useNewPartPanel(refreshParts: () => Promise<void>, notify: (message: string) => void): NewPartPanel {
+  return useMemo(
+    () => ({
+      create: async (request: CreatePartRequest) => {
+        const result = await api<CreatePartResult>("/api/create-part", request)
+        await refreshParts()
+        notify(createdSummary(result))
+        return result
+      },
+    }),
+    [refreshParts, notify],
+  )
+}
+
 /** What Edit → Make sub-sheet's dialog asks: previews of the open file's selected parts, and the change itself. */
 function useMakeSheetPanel(file: string | undefined, parts: readonly string[], actions: Actions): MakeSheetPanel {
   return useMemo(
@@ -271,13 +289,14 @@ function useMakeSheetPanel(file: string | undefined, parts: readonly string[], a
 }
 
 export function App() {
-  const { toast, tab, setTab, dialog, closeDialog, openImportPart, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, openSheet, sheetParent, runCommand, page, openPage } = useStudio()
+  const { toast, tab, setTab, dialog, closeDialog, openImportPart, openNewPart, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, openSheet, sheetParent, runCommand, page, openPage } = useStudio()
   const { build, circuit } = data
   const { message, dismiss } = toast
   const toggles = { snap: workspace.snap, hoverLabels: workspace.hoverLabels, ...themeToggles(workspace.theme), ...pourFillToggles(workspace.pourFill) }
   const off = useCommandsOff(build.design)
   const makeSheet = useMakeSheetPanel(data.file, selection.names, actions)
   const importPart = useImportPartPanel(data.refreshParts, toast.notify)
+  const newPart = useNewPartPanel(data.refreshParts, toast.notify)
   // Hairlines stay one device pixel through zoom and display-scale changes.
   useEffect(() => watchDpr(window), [])
   if (!hasToken) return <NoToken />
@@ -287,7 +306,7 @@ export function App() {
         <StatusPill build={build} errors={checks.counts.errors} onOpen={openChecks} />
       </MenuBar>
       <Toolbar view={tab} unit={workspace.unit} selected={selection.size} toggles={toggles} run={runCommand} />
-      {dialog && <StudioDialog name={dialog} onClose={closeDialog} rules={{ fabrication: build.design?.rules.fabrication, save: actions.setFilletRadius }} makeSheet={makeSheet} importPart={importPart} />}
+      {dialog && <StudioDialog name={dialog} onClose={closeDialog} rules={{ fabrication: build.design?.rules.fabrication, save: actions.setFilletRadius }} makeSheet={makeSheet} importPart={importPart} newPart={newPart} />}
       {circuit && circuit.violations.length > 0 && (
         <div className="banner" role="alert">
           Locked parts changed outside the editor: {circuit.violations.map((v) => `${v.part} (${v.detail})`).join(", ")}. Lock them again to accept the change, or undo it in the code.
@@ -309,6 +328,7 @@ export function App() {
         run={runCommand}
         onPlace={place}
         onImportPart={openImportPart}
+        onNewPart={openNewPart}
         onOpenDocument={openDocument}
         onOpenSheet={openSheet}
         sheetParent={sheetParent}

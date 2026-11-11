@@ -7,13 +7,15 @@ interface Props {
   onPlace(part: string): void
   /** Library → Import by LCSC number…: opens the dialog. */
   onImport(): void
+  /** Library → New part…: opens the dialog. */
+  onNewPart(): void
   /** Focus the search field now (Shift+F); `onFocused` says it has been done. */
   focus: boolean
   onFocused(): void
 }
 
 /** Parts that can be added to the board: the project's library and the built-in parts. */
-export function Library({ parts, onPlace, onImport, focus, onFocused }: Props) {
+export function Library({ parts, onPlace, onImport, onNewPart, focus, onFocused }: Props) {
   const [query, setQuery] = useState("")
   const search = useRef<HTMLInputElement>(null)
   useEffect(() => {
@@ -41,11 +43,14 @@ export function Library({ parts, onPlace, onImport, focus, onFocused }: Props) {
       <h3>
         Project library <span className="count">{parts.library.length}</span>
       </h3>
+      <button className="library-import" onClick={onNewPart}>
+        New part…
+      </button>
       <button className="library-import" onClick={onImport}>
         Import by LCSC number…
       </button>
       {parts.library.length === 0 && (
-        <p className="note">No parts yet. Import one by its LCSC number, or ask the agent to create one from a datasheet.</p>
+        <p className="note">No parts yet. Write one from its datasheet with New part…, import one by its LCSC number, or ask the agent to create one.</p>
       )}
       <ul>
         {library.map((part) => (

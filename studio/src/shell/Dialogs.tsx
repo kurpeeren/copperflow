@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react"
+import { lazy, Suspense, useEffect, useId, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react"
 import type { FabricationProfile } from "../../../src/engine/rules/schema.js"
 import { CloseIcon } from "../icons"
 import { dialogKey, trapStep } from "./dialog-keys"
@@ -6,9 +6,13 @@ import { useKeyHold } from "./key-gate"
 import { shortcutList } from "./menus"
 import { ImportPartForm, type ImportPartPanel } from "./ImportPartDialog"
 import { MakeSheetForm, type MakeSheetPanel } from "./MakeSheetDialog"
+import type { NewPartPanel } from "./new-part-result"
 import { FILLET_RADIUS_LABEL, FILLET_RADIUS_NOTE, filletRadiusField, readFilletRadius } from "./rules-form"
 
-export type DialogName = "keys" | "about" | "rules" | "makeSheet" | "importPart"
+// The New part dialog carries the footprint generator for its preview; it loads when first opened.
+const NewPartForm = lazy(() => import("./NewPartDialog").then((module) => ({ default: module.NewPartForm })))
+
+export type DialogName = "keys" | "about" | "rules" | "makeSheet" | "importPart" | "newPart"
 
 /** What Design → Design rules shows and writes: the rules the build read, and the save of a new fillet radius. */
 export interface RulesPanel {
@@ -31,7 +35,7 @@ function useDialogKeys(box: RefObject<HTMLElement | null>, onClose: () => void):
   })
 }
 
-function Dialog({ title, onClose, children }: { title: string; onClose(): void; children: ReactNode }) {
+function Dialog({ title, onClose, children, wide = false }: { title: string; onClose(): void; children: ReactNode; wide?: boolean }) {
   const box = useRef<HTMLElement>(null)
   // Focus moves into the dialog on open and goes back to what had it on close.
   useEffect(() => {
@@ -45,7 +49,7 @@ function Dialog({ title, onClose, children }: { title: string; onClose(): void; 
   useDialogKeys(box, onClose)
   return (
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
-      <section ref={box} tabIndex={-1} className="dialog" role="dialog" aria-modal="true" aria-label={title}>
+      <section ref={box} tabIndex={-1} className={wide ? "dialog wide" : "dialog"} role="dialog" aria-modal="true" aria-label={title}>
         <header className="hairline-b">
           <h2>{title}</h2>
           <button className="icon" aria-label="Close" onClick={onClose}>
@@ -99,8 +103,17 @@ function RulesForm({ rules, onClose }: { rules: RulesPanel; onClose(): void }) {
   )
 }
 
-/** Help → Keys, Help → About, Design → Design rules, Edit → Make sub-sheet and Library → Import by LCSC number. */
-export function StudioDialog({ name, onClose, rules, makeSheet, importPart }: { name: DialogName; onClose(): void; rules: RulesPanel; makeSheet: MakeSheetPanel; importPart: ImportPartPanel }) {
+/** Help → Keys, Help → About, Design → Design rules, Edit → Make sub-sheet, Library → Import by LCSC number and Library → New part. */
+export function StudioDialog({ name, onClose, rules, makeSheet, importPart, newPart }: { name: DialogName; onClose(): void; rules: RulesPanel; makeSheet: MakeSheetPanel; importPart: ImportPartPanel; newPart: NewPartPanel }) {
+  if (name === "newPart") {
+    return (
+      <Dialog title="New part" onClose={onClose} wide>
+        <Suspense fallback={<p>Loading…</p>}>
+          <NewPartForm panel={newPart} onClose={onClose} />
+        </Suspense>
+      </Dialog>
+    )
+  }
   if (name === "importPart") {
     return (
       <Dialog title="Import by LCSC number" onClose={onClose}>
