@@ -5,6 +5,7 @@ import { refine, type RefineOptions } from "./refine.js"
 import { readProblem, type ScopeOptions } from "./scope.js"
 import { edgeTouches, NetModel, ratsnestLength, type State } from "./score.js"
 
+export { fitBoard, type FitBoard } from "./fit-board.js"
 export type { PlaceScope } from "./scope.js"
 
 export interface PlaceOptions extends ScopeOptions, RefineOptions {
