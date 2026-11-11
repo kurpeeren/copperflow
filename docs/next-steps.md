@@ -21,6 +21,7 @@ Stages 4–9 are on the branch: hand routing, the router, pages and sub-sheets, 
 2. Import from JLCPCB/LCSC (EasyEDA format part data by C-number): largest stock-linked set; needs a converter and a licence check per source.
 3. KiCad libraries: very large, but CC-BY-SA with exception — usable as data with attribution, never their code.
 4. Generator for standard packages (already: chip sizes, SOIC/SOP/TSSOP, SOT, pin rows), extended to QFN/QFP/BGA by IPC-7351 formulas.
+5. SMD crystal families (3.2 × 2.5, 5.0 × 3.2) and a screw-terminal family: today only through-hole crystals (`hc49`, `hc49s`) exist, and a screw terminal is a pin header with its pitch.
 
 Recommendation: keep 1 + 4 as the base and add 2 as an importer whose results stay "Unverified" until a person checks them.
 
