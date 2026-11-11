@@ -53,9 +53,12 @@ export function annotateDesignators({ design, circuit, actions }: PartCommandInp
       const page = Math.max(0, pages.findIndex((entry) => entry.parts.includes(part.name)))
       return { name: part.name, renamable: part.editable && !locked.has(part.name), ...(symbol ? { at: { page, x: symbol.x, y: symbol.y } } : {}) }
     })
-  const plan = annotatePlan(parts)
+  // The parts sub-sheet instances bring in (R101 from a sheet at base 100) keep their designators, and their numbers are taken.
+  const own = new Set(circuit.model.parts.map((part) => part.name))
+  const inside = design.circuit.components.filter((component) => !own.has(component.id) && component.kind !== "sheet").map((component) => ({ name: component.id, renamable: false }))
+  const plan = annotatePlan([...parts, ...inside])
   if ("message" in plan) return actions.notify(plan.message)
-  void actions.edit([plan.edit], plan.summary).then((ok) => ok && actions.notify(`Annotated ${plan.edit.mapping.length} designators`))
+  void actions.renameParts(plan.edit.mapping, plan.summary).then((outcome) => outcome.ok && actions.notify(`Annotated ${plan.edit.mapping.length} designators`))
 }
 
 /** What Edit → Copy took last; one per Studio tab, as EasyEDA keeps its own clipboard for parts. */

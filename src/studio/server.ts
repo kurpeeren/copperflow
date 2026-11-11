@@ -19,6 +19,7 @@ import {
   circuitPathFor,
   createCircuitFile,
   editCircuit,
+  renameDesignators,
   projectPath,
   EditError,
   isInside,
@@ -135,7 +136,6 @@ const setPropValues = z.record(z.string().max(64), z.union([literal, point, z.nu
 const EditSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("setProps"), part: z.string(), props: setPropValues }),
   z.object({ kind: z.literal("removePart"), part: z.string() }),
-  z.object({ kind: z.literal("renameParts"), mapping: z.array(z.object({ from: z.string().max(64), to: z.string().max(64) })).min(1).max(2000) }),
   z.object({
     kind: z.literal("addPart"),
     tag: z.string().max(64),
@@ -249,6 +249,8 @@ const Bodies = {
   }),
   // File → New circuit: an empty circuit file with a board, written through the core as one history entry.
   newCircuit: z.object({ file: z.string().min(1).max(200).regex(/^[\w\- ./]+\.circuit\.tsx$/), width: z.number().positive().max(1000), height: z.number().positive().max(1000) }),
+  // Design → Annotate designators: the parts renamed, and the layout file's nets with them, as one history entry.
+  renameParts: z.object({ file, summary: z.string().min(1).max(200), mapping: z.array(z.object({ from: z.string().max(64), to: z.string().max(64) })).min(1).max(2000) }),
 }
 
 /**
@@ -367,6 +369,13 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         const writeMark = live.nextMark()
         live.requestBuild(result.entry.file)
         return send(res, { entryId: result.entry.id, preview: result.preview, writeMark })
+      }
+      case "POST /api/rename-parts": {
+        const body = Bodies.renameParts.parse(await readJson(req))
+        const { entry } = await renameDesignators(root, body.file, body.mapping, { author: "human", summary: body.summary, engine: { build: (_root, circuit) => designOf(circuit) } })
+        const writeMark = live.nextMark()
+        live.requestBuild(entry.file)
+        return send(res, { entryId: entry.id, writeMark })
       }
       case "POST /api/new-circuit": {
         const body = Bodies.newCircuit.parse(await readJson(req))

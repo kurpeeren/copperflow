@@ -27,6 +27,8 @@ export interface Actions {
   /** Redoes the newest undone change, or the named one, announced as undo is. */
   redo(id?: string): Promise<EditOutcome>
   verify(id: string, by: string, against: string, confirm: string): Promise<boolean>
+  /** Design → Annotate designators: parts renamed, and the layout file's nets with them, as one history entry. */
+  renameParts(mapping: readonly { from: string; to: string }[], summary: string): Promise<EditOutcome>
   /** Edit → Make sub-sheet: the parts moved into a new sheet file and an instance in their place, as one history entry. */
   makeSheet(request: { name: string; parts: readonly string[]; rename: boolean; instance?: string }): Promise<boolean>
   /** Route → Autoroute: starts routing the open circuit's board in the scope; its news comes as route events. */
@@ -96,6 +98,7 @@ export function useActions({ file, refresh, refreshParts, notify }: ActionsInput
       editMarked,
       editFile: (target, edits, summary) => postMarked("/api/edit", { file: target, edits, summary }),
       editLayout,
+      renameParts: (mapping, summary) => announceHistoryWrite(postMarked("/api/rename-parts", { file, mapping, summary })),
       lock: (parts, locked) => run(() => api("/api/lock", { file, parts, locked })),
       mark: (text, at) => run(() => api("/api/mark", { file, text, ...at })),
       unmark: (id) => run(() => api("/api/unmark", { file, id })),
