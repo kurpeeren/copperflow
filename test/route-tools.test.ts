@@ -135,7 +135,7 @@ describe("the tools' shapes", () => {
     const instructions = client.getInstructions() ?? ""
     const skill = await readFile(new URL("../skills/copperflow/SKILL.md", import.meta.url), "utf8")
     for (const text of [instructions, skill.replace(/\s+/g, " ")]) {
-      expect(text).toMatch(/place the parts first, then run `?autoroute`?[^]*?, then `?check_circuit`? once at the end/)
+      expect(text).toMatch(/place the parts first[^]*?, then run `?autoroute`?[^]*?, then `?check_circuit`? once at the end/)
       expect(text).toMatch(/Route by hand only what the router reports/)
       expect(text).toMatch(/`?unroute`?/)
     }

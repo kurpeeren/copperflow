@@ -37,7 +37,9 @@ undoing their work.
    A part's name and value on the schematic and its silkscreen designator move with
    `set_props` `schNameAt`, `schValueAt` and `pcbNameAt`, each a point `{ x, y }` from the
    part's origin (sheet units, board mm) that moves with the part; `null` puts it back.
-   Copper: place the parts first, then run `autoroute` (one history entry; it routes what is
+   Copper: place the parts first with `autoplace` (one history entry; parts without a position, or
+   only some `parts` or an `instance`; `fit: true` also fits the board; it answers "Placed 12 parts;
+   wire length 184 mm (was 412); board 42 × 28 mm; 0 overlaps", then any part not placed), then run `autoroute` (one history entry; it routes what is
    still unrouted, or only some `nets`, `parts` or an `instance`, within `budgetSeconds`, 20 s by
    default, and names each connection it could not route with the reason), then `check_circuit`
    once at the end (filter `copper` for the full list). Route by hand only what the router
