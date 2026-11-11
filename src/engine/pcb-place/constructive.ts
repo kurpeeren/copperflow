@@ -106,9 +106,10 @@ export class Board {
   hosts(m: Movable): Host[] {
     if (!m.beside) return []
     const { part } = m.beside
-    const host = this.problem.movables.find((one) => one.name === part)
-    // The pins the host itself sits beside (a crystal's chip pins): this part keeps to the far side of the host.
-    const from = host ? this.hosts(host).map((h) => h.at) : []
+    // The pins the host itself sits beside (a crystal's chip pins), whether the host moves or a person placed it: this
+    // part keeps to the far side of the host.
+    const hostTie = this.problem.movables.find((one) => one.name === part)?.beside ?? this.problem.fixedBeside.get(part)
+    const from = hostTie ? [hostTie, ...(hostTie.also ? [hostTie.also] : [])].flatMap((tie) => this.padAt(hostTie.part, tie.pad) ?? []) : []
     const away = from.length > 0 ? { x: from.reduce((s, p) => s + p.x, 0) / from.length, y: from.reduce((s, p) => s + p.y, 0) / from.length } : undefined
     return [m.beside, ...(m.beside.also ? [m.beside.also] : [])].flatMap((tie) => {
       const at = this.padAt(part, tie.pad)

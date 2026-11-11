@@ -87,6 +87,20 @@ describe("the placer keeps a chip's satellites beside their pins", () => {
     expect([...again.positions]).toEqual([...placement.positions])
   })
 
+  test("a crystal a person placed still keeps its load capacitors on its side away from the chip", () => {
+    const main = (files[MAIN] as string)
+      .replace('name="U1"', 'name="U1" pcbX={1.5} pcbY={-0.5} pcbRotation={0}')
+      .replace('name="Y1"', 'name="Y1" pcbX={-7.3} pcbY={-3.675} pcbRotation={90}')
+    const result = placeBoard(buildDesign({ ...files, [MAIN]: main }, MAIN))
+    const board = buildDesign({ ...files, [MAIN]: withPositions(main, result.positions) }, MAIN)
+    const crystalX = padsOf(board, "Y1")[0]?.x ?? 0
+    // The chip is on the crystal's right: each capacitor's crystal-side pad is left of the crystal's pads.
+    for (const [cap, net] of [["C2", "net.OSC1"], ["C3", "net.OSC2"]] as const) {
+      expect(padsOf(board, cap).find((p) => p.net === net)?.x ?? 0).toBeLessThan(crystalX)
+      expect(nearest(board, cap, "Y1", net)).toBeLessThanOrEqual(3)
+    }
+  })
+
   test("a part a person placed stays where it is", () => {
     const pinned = (files[MAIN] as string).replace('name="Y1"', 'name="Y1" pcbX={10} pcbY={-8} pcbRotation={0}')
     const result = placeBoard(buildDesign({ ...files, [MAIN]: pinned }, MAIN))

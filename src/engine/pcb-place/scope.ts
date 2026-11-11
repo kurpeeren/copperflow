@@ -57,6 +57,8 @@ export interface Problem {
   fixedPads: Point[][]
   /** Fixed parts' pads by part name, in footprint pad order (for decoupling). */
   fixedPartPads: Map<string, (Point & { net?: number })[]>
+  /** What the fixed parts sit beside (a hand-placed crystal's chip pins), so their own satellites keep to the far side. */
+  fixedBeside: Map<string, Beside>
   area: Area
   /** The gap kept between courtyards (and to keepouts and holes), in mm. */
   clearance: number
@@ -155,6 +157,7 @@ export function readProblem(design: Design, options: ScopeOptions = {}, aside: R
   const obstacles = boardObstacles(design)
   const fixedPads: Point[][] = nets.map(() => [])
   const fixedPartPads = new Map<string, (Point & { net?: number })[]>()
+  const fixedBeside = new Map<string, Beside>()
   for (const part of [...design.pcb.parts].sort((a, b) => naturalCompare(a.component, b.component))) {
     if (aside.has(part.component)) continue
     if (moves(part)) {
@@ -166,6 +169,8 @@ export function readProblem(design: Design, options: ScopeOptions = {}, aside: R
     obstacles.push({ name: part.component, box: boxOfPoints(part.courtyard), part: true })
     for (const pad of part.pads) if (pad.net !== undefined) fixedPads[netIndex.get(pad.net) as number]?.push({ x: pad.x, y: pad.y })
     fixedPartPads.set(part.component, part.pads.map((pad) => ({ x: pad.x, y: pad.y, ...(pad.net !== undefined ? { net: netIndex.get(pad.net) as number } : {}) })))
+    const beside = roleOf.beside(part.component)
+    if (beside) fixedBeside.set(part.component, beside)
   }
-  return { movables, obstacles, nets, fixedPads, fixedPartPads, area: areaOf(design), clearance: DEFAULT_COURTYARD_CLEARANCE }
+  return { movables, obstacles, nets, fixedPads, fixedPartPads, fixedBeside, area: areaOf(design), clearance: DEFAULT_COURTYARD_CLEARANCE }
 }
