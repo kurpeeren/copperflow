@@ -30,6 +30,17 @@ Passive parts (resistors, capacitors, LEDs, headers) are built in and need no en
    check, with the datasheet pages you used.
 4. Place it with `place_part`, connect it with `add_trace`, then run `check_circuit`.
 
+## By LCSC number
+
+When the human asks for a part by its LCSC number (for example `C7950`), call `import_part`
+with `lcsc` (and `id` if they name one). It fetches the part's symbol, footprint and attributes
+from EasyEDA and writes `parts/<id>/` with `part.yaml`, `footprint.yaml`, `verification.md` and
+`source.md`. Pin types are `passive` except supply and ground pins, so set the real types with
+`create_part` (`replace: true`) from the datasheet when the checks need them. Tell the human the
+part is not verified, what the answer's notes say was approximated, and that the source grants
+commercial use only inside JLCEDA/EasyEDA (see `source.md`). Import one part per request; never
+import in bulk. Offline it writes nothing: then create the part from the datasheet instead.
+
 ## From a photo
 
 A photo shows the package and the marking, not the pinout. Identify the part from the marking,

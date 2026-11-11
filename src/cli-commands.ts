@@ -28,6 +28,7 @@ import {
 } from "./core/index.js"
 import type { DesignSource } from "./core/bom.js"
 import { buildWith } from "./core/design-source.js"
+import { formatImport, importLcscPart } from "./library/import-lcsc.js"
 import { createCopperflowServer } from "./mcp/server.js"
 import { startStudio } from "./studio/server.js"
 import { VERSION } from "./version.js"
@@ -55,6 +56,9 @@ Usage:
   copperflow parts build                      regenerate part components after editing part.yaml
   copperflow parts verify <id> --by <name> --against <datasheet, page>
                                               mark a part as checked against its datasheet
+  copperflow parts import <C-number> [--id <id>] [--replace]
+                                              fetch a part by its LCSC number from EasyEDA into parts/,
+                                              not verified (needs the internet; see docs/licences.md)
   copperflow place <file> <part> <name> [key=value ...]
                                               add a library or built-in part to a circuit
   copperflow bom <file> [--csv]               print the bill of materials
@@ -72,6 +76,8 @@ check exits with 1 when the circuit has errors; export exits with 1 when the cir
 export interface CliOptions {
   /** Builds the design for check, bom, package and export; tests pass one that runs in this process. */
   engine?: DesignSource
+  /** Fetches for parts import; tests pass one that answers from fixtures. */
+  fetch?: typeof fetch
 }
 
 export async function runCli(args: string[], cwd: string, io: CliIO, options: CliOptions = {}): Promise<number> {
@@ -118,7 +124,7 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
         return 0
       }
       case "parts":
-        await partsCommand(root, rest, io)
+        await partsCommand(root, rest, io, options)
         return 0
       case "place": {
         const [file, part, name, ...props] = rest
@@ -197,7 +203,7 @@ async function mark(root: string, rest: string[], io: CliIO): Promise<void> {
   io.out(`Added mark ${id}`)
 }
 
-async function partsCommand(root: string, rest: string[], io: CliIO): Promise<void> {
+async function partsCommand(root: string, rest: string[], io: CliIO, options: CliOptions): Promise<void> {
   const [action, ...args] = rest
   if (action === undefined) {
     const parts = await listParts(root)
@@ -207,12 +213,20 @@ async function partsCommand(root: string, rest: string[], io: CliIO): Promise<vo
     }
     for (const p of parts) {
       if (p.error) io.out(`${p.id}  ${p.error}`)
-      else io.out(`${p.id}  <${p.component}>  ${p.title}  ${p.footprint}  ${p.verified ? `verified by ${p.verifiedBy}` : "not verified"}`)
+      else io.out(`${p.id}  <${p.component}>  ${p.title}  ${p.footprint}  ${p.verified ? `verified by ${p.verifiedBy}` : "not verified"}${p.origin ? `  ${p.origin}` : ""}`)
     }
     return
   }
   if (action === "build") {
     io.out((await rebuildComponents(root)).join("\n") || "No parts to build.")
+    return
+  }
+  if (action === "import") {
+    const [replace, withoutReplace] = takeFlag(args, "--replace")
+    const [id, remaining] = takeOption(withoutReplace, "--id")
+    const lcsc = required(remaining[0], "LCSC part number (e.g. C9657)")
+    const result = await importLcscPart(root, lcsc, { now: new Date().toISOString(), replace, ...(id ? { id } : {}), ...(options.fetch ? { fetch: options.fetch } : {}) })
+    io.out(formatImport(result))
     return
   }
   if (action === "verify") {

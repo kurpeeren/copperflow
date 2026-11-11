@@ -39,6 +39,7 @@ import * as copper from "./copper-tools.js"
 import * as fillet from "./fillet-tools.js"
 import * as pour from "./pour-tools.js"
 import * as router from "./route-tools.js"
+import { IMPORT_PART_DESCRIPTION, importPart, importPartInput } from "./import-part.js"
 import { MAKE_SHEET_DESCRIPTION, makeSheet, makeSheetInput } from "./make-sheet.js"
 import { NEW_CIRCUIT_DESCRIPTION, newCircuit, newCircuitInput } from "./new-circuit.js"
 
@@ -56,7 +57,7 @@ const INSTRUCTIONS = `copperflow lets you edit circuit files together with a hum
 - Never change, move or remove a part marked [LOCKED]. If a summary lists lock violations, restore those parts.
 - "Marks from the human" are instructions placed on the board; follow them.
 - recent_changes shows what the human undid; do not redo an undone change unless asked.
-- New chips go into the parts library first (create_part from the datasheet), then into the circuit with place_part.
+- New chips go into the parts library first (create_part from the datasheet, or import_part by LCSC number when the human asks), then into the circuit with place_part.
   Library parts start NOT verified; only the human verifies them.`
 
 const file = z.string().describe("Circuit file path relative to the project root, e.g. index.circuit.tsx")
@@ -66,6 +67,8 @@ const READ_ONLY = { readOnlyHint: true, destructiveHint: false }
 export interface ServerOptions {
   /** Builds the design for check_circuit, bom, export_package and export_fabrication; tests pass one that runs in this process. */
   engine?: DesignSource
+  /** Fetches for import_part; tests pass one that answers from fixtures. */
+  fetch?: typeof fetch
 }
 
 export function createCopperflowServer(root: string, options: ServerOptions = {}): McpServer {
@@ -285,7 +288,7 @@ Nothing was written.`)
         const parts = await listParts(root)
         if (parts.length === 0) return "The parts library is empty. Create parts with create_part."
         return parts
-          .map((p) => `${p.id}  <${p.component}>  ${p.title}  ${p.footprint}  ${p.verified ? "verified" : "NOT verified"}`)
+          .map((p) => `${p.id}  <${p.component}>  ${p.title}  ${p.footprint}  ${p.verified ? "verified" : "NOT verified"}${p.origin ? `  ${p.origin}` : ""}`)
           .join("\n")
       }),
   )
@@ -328,6 +331,8 @@ Nothing was written.`)
         ].join("\n")
       }),
   )
+
+  server.registerTool("import_part", { description: IMPORT_PART_DESCRIPTION, inputSchema: importPartInput }, (input) => run(() => importPart(root, input, options.fetch)))
 
   server.registerTool(
     "place_part",
