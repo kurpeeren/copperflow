@@ -9,6 +9,16 @@ import { cellsNear, type RouterWorld } from "./grid.js"
  * and walled in. So in the first run the cells around each such pad, on the fill's layer, cost other nets' tracks a
  * little more: a price, not a wall, so a track still passes there when there is no other way. Only for a net poured on
  * one layer: poured on two, a cut-off pad still reaches the other fill through a via.
+ *
+ * Why not on two layers as well (checked on the skill's sensor board, test/skill-example.test.ts): the GND line that
+ * board lost is U101.pin2, the middle pad of a SOT-23-5 LDO between pins 1 and 3, which are both V5 and joined to each
+ * other. Every top route between them passes round pin 2, inside its keep-clear, whatever it costs, and an S1 via
+ * above closes the ring: the main run walls pin 2 in with keep-clear on or off (the same line fails both ways). What
+ * recovers it is rip-up and retry, which takes the V5 and S1 routes up and routes the GND line first. With keep-clear
+ * on both layers the main run's other routes come out differently, and the retry's new GND route (a bottom track with
+ * two vias) walls in C301.pin2 instead, so the retry is not kept. Keep-clear did not fail there; it was not needed, and
+ * on two layers it only adds cost on both sides of every through pad, which crowds the routes the retry depends on.
+ * (That was the placement before small parts were kept beside their pins; the board now routes fully either way.)
  */
 
 /** How far beyond the pad's copper the keep-clear reaches, in mm: about one track and its gap. */
