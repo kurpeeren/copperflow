@@ -22,7 +22,8 @@ describe("the footprint families' rotation corrections", () => {
     expect(footprintFamily("qfn32_ep")).toBe("qfn")
     expect(footprintFamily("pinrow2_p4.88mm")).toBe("pinrow")
     expect(footprintFamily("parts/MCP2515/footprint.yaml")).toBe("file")
-    expect(PLACEMENT_ROTATIONS).toEqual({ chip: 0, sod: 0, sot: 180, soic: 270, sop: 270, tssop: 270, qfn: 0, qfp: 0, pinrow: 0, file: 0 })
+    const nonZero = Object.fromEntries(Object.entries(PLACEMENT_ROTATIONS).filter(([, degrees]) => degrees !== 0))
+    expect(nonZero).toEqual({ sot: 180, sot223: 180, soic: 270, sop: 270, tssop: 270 })
     expect(placementCorrection("soic8", PROFILE)).toBe(270)
     expect(placementCorrection("sot23_5", PROFILE)).toBe(180)
     expect(placementCorrection("0805", PROFILE)).toBe(0)
@@ -36,8 +37,46 @@ describe("the footprint families' rotation corrections", () => {
     expect(placementCorrection("soic8", set.rules.fabrication)).toBe(270)
     expect(placementCorrection("0603", set.rules.fabrication)).toBe(-90)
     expect(placementCorrection("sot23", set.rules.fabrication)).toBe(180)
-    expect(loadRules({ "rules.yaml": "fabrication:\n  placementRotations:\n    dip: 90\n" }).diagnostics[0]?.message).toMatch(/placementRotations/)
+    expect(loadRules({ "rules.yaml": "fabrication:\n  placementRotations:\n    to247: 90\n" }).diagnostics[0]?.message).toMatch(/placementRotations/)
     expect(loadRules({ "rules.yaml": "fabrication:\n  placementRotations:\n    soic: left\n" }).diagnostics[0]?.message).toMatch(/placementRotations\.soic/)
+  })
+
+  test("every generated family has its own entry: SOT-223 180, SOT-89 and the rest 0", () => {
+    const cases: [string, string, number][] = [
+      ["sot223", "sot223", 180],
+      ["sot89", "sot89", 0],
+      ["qfn32_5x5_p0.5_ep3.1", "qfn", 0],
+      ["dfn8_3x3_p0.65", "dfn", 0],
+      ["lqfp64_10x10_p0.5", "lqfp", 0],
+      ["tqfp32", "tqfp", 0],
+      ["bga256_17x17_p1", "bga", 0],
+      ["sma", "sma", 0],
+      ["smc", "smc", 0],
+      ["do214ac", "do214ac", 0],
+      ["do214ab", "do214ab", 0],
+      ["dip8", "dip", 0],
+      ["to220", "to220", 0],
+      ["to92", "to92", 0],
+      ["hc49", "hc49", 0],
+      ["hc49s", "hc49s", 0],
+      ["radial6.3x2.5", "radial", 0],
+      ["pinrow2x5", "pinrow2x", 0],
+      ["pinrow5", "pinrow", 0],
+    ]
+    for (const [text, family, degrees] of cases) {
+      expect(footprintFamily(text), text).toBe(family)
+      expect(placementCorrection(text, PROFILE), text).toBe(degrees)
+    }
+  })
+
+  test("rules.yaml overrides a generated family, such as dfn", () => {
+    const set = loadRules({ "rules.yaml": "fabrication:\n  placementRotations:\n    dfn: 270\n    sot89: 90\n    pinrow2x: 180\n" })
+    expect(set.diagnostics).toEqual([])
+    expect(placementCorrection("dfn8_3x3_p0.65_ep1.6x2.4", set.rules.fabrication)).toBe(270)
+    expect(placementCorrection("sot89", set.rules.fabrication)).toBe(90)
+    expect(placementCorrection("pinrow2x5", set.rules.fabrication)).toBe(180)
+    expect(placementCorrection("qfn32_ep", set.rules.fabrication)).toBe(0)
+    expect(placementCorrection("sot223", set.rules.fabrication)).toBe(180)
   })
 
   test("a footprint file's part id in placementRotations.parts overrides its family's correction for that part only", () => {

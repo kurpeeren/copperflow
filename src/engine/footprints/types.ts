@@ -37,3 +37,15 @@ export interface Footprint {
   /** Where the numbers come from, for example "IPC-7351B nominal, EIA 0603". */
   origin: string
 }
+
+/**
+ * A family's answer to a string it recognises but cannot make: the reason, shown after the string in the error
+ * ("qfn32_5x6_p0.5": QFN bodies must be square).
+ */
+export interface Refusal {
+  refused: string
+}
+
+export const refuse = (reason: string): Refusal => ({ refused: reason })
+
+export const isRefusal = (value: unknown): value is Refusal => typeof value === "object" && value !== null && "refused" in value

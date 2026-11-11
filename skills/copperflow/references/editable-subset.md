@@ -60,14 +60,23 @@ copperflow makes the pads itself from these `footprint` strings (case does not m
 | Family | Strings |
 |---|---|
 | Chip resistors, capacitors, LEDs | `0201`, `0402`, `0603`, `0805`, `1206`, `1210`, `1812`, `2010`, `2512` |
-| Diodes | `sod123`, `sod323` |
+| Diodes | `sod123`, `sod323`, `sma`, `smb`, `smc` (also `do214ac`, `do214aa`, `do214ab`) |
 | SOT-23 | `sot23`, `sot23_5`, `sot23_6` |
+| Power SOT | `sot223`, `sot89` |
 | SOIC, SOP, TSSOP | `soic8`, `soic14`, `soic16`, `sop8`, `tssop14`, `tssop16`, `tssop20` |
-| QFP | `qfp32`, `qfp48`, `qfp64`, `qfp100` |
-| QFN | `qfn16`, `qfn32`, `qfn48`, and with the exposed pad `qfn16_ep`, `qfn32_ep`, `qfn48_ep` |
-| Pin rows (through-hole) | `pinrow<N>`: N pins at 2.54 mm, or at a pitch `_p<pitch>` larger than the 1.7 mm pad, such as `pinrow4_p2mm` |
+| QFP | `qfp32`, `qfp48`, `qfp64`, `qfp100`; by body and pitch `qfp<N>_<b>x<b>_p<pitch>` such as `lqfp64_10x10_p0.5` (`lqfp`, `tqfp` are the same) |
+| QFN | `qfn16`, `qfn32`, `qfn48`, and with the exposed pad `qfn16_ep`, `qfn32_ep`, `qfn48_ep`; by body and pitch `qfn<N>_<b>x<b>_p<pitch>` with an optional `_ep<size>` or `_ep<w>x<h>`, such as `qfn32_5x5_p0.5_ep3.1` |
+| DFN | `dfn<N>_<across>x<along>_p<pitch>`, `_ep` as for QFN, such as `dfn8_3x3_p0.65_ep1.6x2.4` |
+| BGA | `bga<N>_<x>x<y>_p<pitch>`, a full grid, optional `_rows<R>x<C>`, such as `bga256_17x17_p1` |
+| DIP (through-hole) | `dip<N>`, rows 7.62 mm apart unless `_w<mm>`, such as `dip28_w15.24` |
+| TO packages (through-hole) | `to220`, `to92` |
+| Crystals (through-hole) | `hc49`, `hc49s` |
+| Radial electrolytics | `radial<can>x<lead spacing>`, such as `radial6.3x2.5` |
+| Pin rows (through-hole) | `pinrow<N>`: N pins at 2.54 mm, or at a pitch `_p<pitch>` larger than the 1.7 mm pad, such as `pinrow4_p2mm`; two rows `pinrow2x<N>` (odd pins on top) |
 
-A parameter such as `_p1.27mm` is accepted only when it matches the package. Any other string,
-such as `sod523` or `dip8`, gives the error `copperflow cannot make footprint "<string>" yet`.
+`docs/footprints.md` in the copperflow repository draws each family and says how sure its numbers
+are. A parameter such as `_p1.27mm` on a cited package (`soic8_p1.27mm`) is accepted only when it
+matches the package. Any other string, such as `sod523` or `to247`, gives the error
+`copperflow cannot make footprint "<string>" yet`.
 For a package no family fits, a library part carries its own `footprint.yaml` (see
 [parts-library.md](parts-library.md)).

@@ -1,29 +1,51 @@
+import { bgaFootprint } from "./bga.js"
 import { chipFootprint } from "./chip.js"
+import { crystalFootprint } from "./crystal.js"
+import { dfnFootprint } from "./dfn.js"
+import { dipFootprint } from "./dip.js"
 import { dualFootprint } from "./dual.js"
 import { footprintFromFile } from "./file.js"
-import { parseFootprint, type ParsedFootprint } from "./parse.js"
+import { isSimple, parseFootprint, type ParsedFootprint } from "./parse.js"
+import { moldedFootprint } from "./molded.js"
 import { pinRowFootprint } from "./pinrow.js"
 import { quadFootprint } from "./quad.js"
+import { radialFootprint } from "./radial.js"
 import { sodFootprint } from "./sod.js"
 import { sotFootprint } from "./sot.js"
-import type { Footprint } from "./types.js"
+import { powerSotFootprint } from "./sotpower.js"
+import { to220Footprint } from "./to220.js"
+import { to92Footprint } from "./to92.js"
+import { isRefusal, type Footprint, type Refusal } from "./types.js"
 
 export type FootprintResult = Footprint | { error: string }
 
-/** A footprint family: makes a footprint from a parsed string, or declines with undefined. */
-type Family = (parsed: ParsedFootprint) => Footprint | undefined
+/**
+ * A footprint family: makes a footprint from a parsed string, declines with undefined when the string is not its,
+ * or refuses with a reason when the string is its kind but cannot be made.
+ */
+type Family = (parsed: ParsedFootprint) => Footprint | Refusal | undefined
 
 /** No variant and no parameters: "0603", not "0603_5" or "0603_p0.5mm". */
-const isPlain = (parsed: ParsedFootprint) => parsed.variant === undefined && Object.keys(parsed.params).length === 0
+const isPlain = (parsed: ParsedFootprint) =>
+  isSimple(parsed) && parsed.variant === undefined && Object.keys(parsed.params).length === 0
 
 /** Tried in order; the first family that accepts the string makes the footprint. */
 const FAMILIES: readonly Family[] = [
   (parsed) => (parsed.kind === "" && isPlain(parsed) ? chipFootprint(parsed.code) : undefined),
   (parsed) => (parsed.kind === "sod" && isPlain(parsed) ? sodFootprint(parsed.code) : undefined),
   sotFootprint,
+  powerSotFootprint,
+  moldedFootprint,
   dualFootprint,
   quadFootprint,
+  dfnFootprint,
+  bgaFootprint,
   pinRowFootprint,
+  dipFootprint,
+  to220Footprint,
+  to92Footprint,
+  crystalFootprint,
+  radialFootprint,
 ]
 
 /** Footprint strings in a project are few; the bound only guards against unbounded growth. */
@@ -62,10 +84,13 @@ function fromFile(path: string, readFile: ((path: string) => string | undefined)
   return source === undefined ? { error: `${path}: footprint file not found` } : footprintFromFile(path, source)
 }
 
-/** How many pads the footprint has, or undefined when copperflow cannot make it. */
+/**
+ * How many pins the footprint has pads for (its distinct pad numbers: a SOT-89's tab is a second pad 2, so it counts
+ * 3), or undefined when copperflow cannot make it.
+ */
 export function padCount(text: string): number | undefined {
   const result = generateFootprint(text)
-  return "error" in result ? undefined : result.pads.length
+  return "error" in result ? undefined : new Set(result.pads.map((pad) => pad.number)).size
 }
 
 function build(text: string): FootprintResult {
@@ -73,6 +98,7 @@ function build(text: string): FootprintResult {
   if (parsed) {
     for (const family of FAMILIES) {
       const footprint = family(parsed)
+      if (isRefusal(footprint)) return { error: `copperflow cannot make footprint "${text}": ${footprint.refused}` }
       if (footprint) return footprint
     }
   }

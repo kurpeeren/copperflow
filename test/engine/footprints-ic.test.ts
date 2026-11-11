@@ -427,7 +427,6 @@ test("strings outside the cited tables are refused", () => {
     "qfp47",
     "qfn20",
     "sot23_4",
-    "sot223",
     "sot23_5_ep",
     "tssop20_ep",
     "soic8_5",

@@ -346,7 +346,7 @@ test("padCount", () => {
 })
 
 test("unknown strings are refused", () => {
-  expect(generateFootprint("bga64")).toEqual({ error: 'copperflow cannot make footprint "bga64" yet' })
+  expect(generateFootprint("bga64")).toEqual({ error: 'copperflow cannot make footprint "bga64": a BGA needs its body, such as bga256_17x17_p1' })
   expect(generateFootprint("0604")).toEqual({ error: 'copperflow cannot make footprint "0604" yet' })
   expect(generateFootprint("0603_p0.5mm")).toEqual({ error: 'copperflow cannot make footprint "0603_p0.5mm" yet' })
   expect(generateFootprint("")).toEqual({ error: 'copperflow cannot make footprint "" yet' })

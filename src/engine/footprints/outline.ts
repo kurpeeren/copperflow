@@ -35,6 +35,18 @@ export function padExtent(pads: readonly Pad[]): Extent {
   }, { x: 0, y: 0 })
 }
 
+/** True when every two pads keep at least `gap` apart, measured between their bounding boxes. */
+export function padsApart(pads: readonly Pad[], gap: number): boolean {
+  const boxes = pads.map((pad) => ({ pad, half: padHalfSize(pad) }))
+  return boxes.every((a, i) =>
+    boxes.slice(i + 1).every((b) => {
+      const dx = Math.abs(a.pad.x - b.pad.x) - a.half.x - b.half.x
+      const dy = Math.abs(a.pad.y - b.pad.y) - a.half.y - b.half.y
+      return Math.max(dx, dy) >= gap - 1e-9
+    }),
+  )
+}
+
 /** Half the gap between two rows of pads: how far the nearest pad edge is from the centre line across `axis`. */
 function innerEdge(pads: readonly Pad[], axis: "x" | "y" = "x"): number {
   return Math.min(...pads.map((pad) => Math.abs(pad[axis]) - padHalfSize(pad)[axis]))
@@ -57,7 +69,7 @@ export function rectangle(half: Extent): Point[] {
  * keeping the size even so that the centre falls on the step; rounding each half up does both. The
  * IPC-7351B wording was not seen.
  */
-export function courtyard(pads: readonly Pad[], component: Extent, table: Readonly<GoalTable>): Point[] {
+export function courtyard(pads: readonly Pad[], component: Extent, table: Readonly<Pick<GoalTable, "courtyardExcess" | "roundOff">>): Point[] {
   const pad = padExtent(pads)
   return rectangle({
     x: roundUpToStep(Math.max(pad.x, component.x) + table.courtyardExcess, table.roundOff),
@@ -150,5 +162,54 @@ export function quadSilkscreen(pads: readonly Pad[], body: Extent): Point[][] {
     corner(1, 1),
     corner(1, -1),
     corner(-1, -1),
+  ]
+}
+
+/** Points along a circular arc from `from` to `to` degrees (counter-clockwise from +x), every `step` degrees or less. */
+export function arcPoints(centre: Point, radius: number, from: number, to: number, step = 5): Point[] {
+  const count = Math.max(1, Math.ceil(Math.abs(to - from) / step))
+  return Array.from({ length: count + 1 }, (_, i) => {
+    const angle = ((from + ((to - from) * i) / count) * Math.PI) / 180
+    return { x: tidy(centre.x + radius * Math.cos(angle)), y: tidy(centre.y + radius * Math.sin(angle)) }
+  })
+}
+
+/** How far a point is from a pad's copper: its circle for a round pad, its box otherwise. */
+export function distanceToPad(point: Point, pad: Pad): number {
+  const half = padHalfSize(pad)
+  if (pad.shape === "circle") return Math.hypot(point.x - pad.x, point.y - pad.y) - half.x
+  const dx = Math.max(Math.abs(point.x - pad.x) - half.x, 0)
+  const dy = Math.max(Math.abs(point.y - pad.y) - half.y, 0)
+  return Math.hypot(dx, dy)
+}
+
+/** Keeps silkscreen a little more than the clearance from copper when a line is cut into runs. */
+const RUN_MARGIN = 0.02
+
+/**
+ * The parts of a polyline whose points all keep the silkscreen clearance from every pad. Points are
+ * taken as given, so the polyline should be finely divided (an arc from `arcPoints`).
+ */
+export function runsClearOf(points: readonly Point[], pads: readonly Pad[]): Point[][] {
+  const runs: Point[][] = []
+  let current: Point[] = []
+  for (const point of points) {
+    const clear = pads.every((pad) => distanceToPad(point, pad) >= SILK_CLEARANCE + RUN_MARGIN)
+    if (clear) current.push(point)
+    else {
+      if (current.length > 1) runs.push(current)
+      current = []
+    }
+  }
+  if (current.length > 1) runs.push(current)
+  return runs
+}
+
+/** The pin 1 tick of through-hole parts: a short line under pad 1, at height `y`. */
+const TICK_LENGTH = 1
+export function pinOneTick(pad: Pad, y: number): Point[] {
+  return [
+    { x: tidy(pad.x - TICK_LENGTH / 2), y: tidy(y) },
+    { x: tidy(pad.x + TICK_LENGTH / 2), y: tidy(y) },
   ]
 }
