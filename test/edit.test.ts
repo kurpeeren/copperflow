@@ -294,7 +294,7 @@ describe("setProps: label positions", () => {
     try {
       applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { pcbX: null } }], none)
     } catch (error) {
-      expect((error as Error).message).toBe("pcbX cannot be removed with null; only schNameAt, schValueAt, pcbNameAt can")
+      expect((error as Error).message).toBe("pcbX cannot be removed with null; only schNameAt, schValueAt, pcbNameAt, noConnect can")
     }
   })
 
