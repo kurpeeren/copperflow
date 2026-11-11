@@ -37,7 +37,7 @@ the `origin` line of each footprint say which package and which numbers were use
 | SOIC, narrow (3.9 mm) | `soic8` | `soic<N>`, N even 8–16 (JEDEC MS-012) |
 | SOIC, wide (7.5 mm) | `soic18w` | `soic<N>w`, N 16, 18, 20, 24, 28 (JEDEC MS-013) |
 | SOP (5.3 mm, 1.27 mm pitch) | `sop8` | `sop<N>`, N even 8–16 |
-| SSOP (5.3 mm, 0.65 mm pitch) | `ssop20` | `ssop<N>`, N even 8–28 (JEDEC MO-150) |
+| SSOP (5.3 mm, 0.65 mm pitch) | `ssop20` | `ssop<N>`, N 14, 16, 20, 24, 28 (JEDEC MO-150) |
 | TSSOP (4.4 mm, 0.65 mm pitch) | `tssop20` | `tssop<N>`, N even 8–28 (JEDEC MO-153) |
 | QFN, from a table | `qfn32_ep` | `qfn16`, `qfn32`, `qfn48`, with `_ep` for the cited exposed pad |
 | QFN, by body and pitch | `qfn32_5x5_p0.5_ep3.1` | `qfn<N>_<b>x<b>_p<pitch>`, pitch 0.4, 0.5 or 0.65; `_ep<size>` or `_ep<w>x<h>` |

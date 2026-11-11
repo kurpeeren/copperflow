@@ -95,12 +95,13 @@ const SOP: DualSeries = {
  * SSOP, 0.65 mm pitch, 5.3 mm body: JEDEC MO-150 revision B, in millimetres: E 7.40–8.20, L 0.55–0.95,
  * b 0.22–0.38, E1 5.00–5.60, e 0.65, and D 5.90–6.50 (14 and 16 leads), 6.90–7.50 (20), 7.90–8.50
  * (24), 9.90–10.50 (28). Written from general knowledge of MO-150, not transcribed from one drawing.
+ * Only the lead counts with a listed body length are made.
  */
 const SSOP: DualSeries = {
   kind: "ssop",
   suffix: "",
   label: (pins) => `SSOP-${pins}`,
-  pins: evens(8, 28),
+  pins: [14, 16, 20, 24, 28],
   lead: { pitch: 0.65, span: range(7.4, 8.2), terminal: range(0.55, 0.95), leadWidth: range(0.22, 0.38), bodyAcross: range(5.0, 5.6) },
   bodyLength: new Map([
     [14, range(5.9, 6.5)],
@@ -118,7 +119,8 @@ const SSOP: DualSeries = {
  * dimension table of the package outline: TSSOP14 SOT402-1 (8 February 2016), TSSOP16 SOT403-1
  * (10 December 2019) and TSSOP20 SOT360-1 (8 February 2016): HE 6.2–6.6, Lp 0.50–0.75, bp 0.19–0.30,
  * E 4.3–4.5, e 0.65, and D below. https://www.nxp.com/docs/en/package-information/SOT360-1.pdf (and
- * SOT402-1.pdf, SOT403-1.pdf). D for 8, 24 and 28 leads (2.90–3.10, 7.70–7.90, 9.60–9.80) is MO-153's
+ * SOT402-1.pdf, SOT403-1.pdf). The foot is taken as MO-153's L 0.45–0.75, which covers NXP's narrower
+ * range and other makers' parts. D for 8, 24 and 28 leads (2.90–3.10, 7.70–7.90, 9.60–9.80) is MO-153's
  * (AA, AD, AE), written from general knowledge; other counts take the overhang.
  */
 const TSSOP: DualSeries = {
@@ -126,7 +128,7 @@ const TSSOP: DualSeries = {
   suffix: "",
   label: (pins) => `TSSOP-${pins}`,
   pins: evens(8, 28),
-  lead: { pitch: 0.65, span: range(6.2, 6.6), terminal: range(0.5, 0.75), leadWidth: range(0.19, 0.3), bodyAcross: range(4.3, 4.5) },
+  lead: { pitch: 0.65, span: range(6.2, 6.6), terminal: range(0.45, 0.75), leadWidth: range(0.19, 0.3), bodyAcross: range(4.3, 4.5) },
   bodyLength: new Map([
     [8, range(2.9, 3.1)],
     [14, range(4.9, 5.1)],

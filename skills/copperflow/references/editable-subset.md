@@ -63,7 +63,7 @@ copperflow makes the pads itself from these `footprint` strings (case does not m
 | Diodes | `sod123`, `sod323`, `sma`, `smb`, `smc` (also `do214ac`, `do214aa`, `do214ab`) |
 | SOT-23 | `sot23`, `sot23_5`, `sot23_6` |
 | Power SOT | `sot223`, `sot89` |
-| SOIC, SOP, SSOP, TSSOP | `soic<N>` (3.9 mm body, N even 8–16), `soic<N>w` (7.5 mm body: 16, 18, 20, 24, 28), `sop<N>` (5.3 mm, 1.27 mm pitch, N even 8–16), `ssop<N>` (5.3 mm, 0.65 mm pitch, N even 8–28), `tssop<N>` (4.4 mm, 0.65 mm pitch, N even 8–28) |
+| SOIC, SOP, SSOP, TSSOP | `soic<N>` (3.9 mm body, N even 8–16), `soic<N>w` (7.5 mm body: 16, 18, 20, 24, 28), `sop<N>` (5.3 mm, 1.27 mm pitch, N even 8–16), `ssop<N>` (5.3 mm, 0.65 mm pitch: 14, 16, 20, 24, 28), `tssop<N>` (4.4 mm, 0.65 mm pitch, N even 8–28) |
 | QFP | `qfp32`, `qfp48`, `qfp64`, `qfp100`; by body and pitch `qfp<N>_<b>x<b>_p<pitch>` such as `lqfp64_10x10_p0.5` (`lqfp`, `tqfp` are the same) |
 | QFN | `qfn16`, `qfn32`, `qfn48`, and with the exposed pad `qfn16_ep`, `qfn32_ep`, `qfn48_ep`; by body and pitch `qfn<N>_<b>x<b>_p<pitch>` with an optional `_ep<size>` or `_ep<w>x<h>`, such as `qfn32_5x5_p0.5_ep3.1` |
 | DFN | `dfn<N>_<across>x<along>_p<pitch>`, `_ep` as for QFN, such as `dfn8_3x3_p0.65_ep1.6x2.4` |

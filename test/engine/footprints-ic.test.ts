@@ -92,7 +92,7 @@ const IC_FAMILIES = [
   "soic28w",
   "sop8",
   "sop16",
-  "ssop8",
+  "ssop14",
   "ssop20",
   "ssop28",
   "tssop8",
@@ -270,15 +270,16 @@ describe("published land patterns", () => {
     // IPC name: SOP65P640X110-20N (the cited outline's 1.1 mm height), density level B.
     // no independent source found
     // NXP, "TSSOP20 SOT360-1 package information", 8 February 2016 (JEDEC MO-153): HE 6.2–6.6,
-    // Lp 0.50–0.75, bp 0.19–0.30, E (body width) 4.3–4.5. Pitch 0.65 > 0.625, so Table 3-2 level B:
-    // Jt 0.35, Js 0.03. Note 1 does not apply (Smin 4.70 > Amax, the body width 4.50), so Jh = 0.35.
+    // bp 0.19–0.30, E (body width) 4.3–4.5, with MO-153's foot L 0.45–0.75 (NXP gives Lp 0.50–0.75).
+    // Pitch 0.65 > 0.625, so Table 3-2 level B: Jt 0.35, Js 0.03. Note 1 does not apply (Smin 4.70 >
+    // Amax, the body width 4.50), so Jh = 0.35.
     // Z = 6.20 + 0.70 + √(0.40² + 0.10² + 0.05²) = 6.90 + 0.4153 = 7.3153 → 7.30 (146.31 → 146)
-    // Smin = 6.20 − 2·0.75 = 4.70, Smax = 6.60 − 2·0.50 = 5.60, CS = 0.90
-    // CSrms = √(0.40² + 2·0.25²) = 0.5339, Smax' = 5.60 − (0.90 − 0.5339)/2 = 5.4169
-    // G = 5.4169 − 0.70 − √(0.40² + 0.10² + 0.05²) = 4.7169 − 0.4153 = 4.3016 → 4.30 (86.03 → 86)
+    // Smin = 6.20 − 2·0.75 = 4.70, Smax = 6.60 − 2·0.45 = 5.70, CS = 1.00
+    // CSrms = √(0.40² + 2·0.30²) = 0.5831, Smax' = 5.70 − (1.00 − 0.5831)/2 = 5.4916
+    // G = 5.4916 − 0.70 − √(0.40² + 0.10² + 0.05²) = 4.7916 − 0.4153 = 4.3763 → 4.40 (87.53 → 88)
     // X = 0.19 + 0.06 + √(0.11² + 0.10² + 0.05²) = 0.25 + 0.1568 = 0.4068 → 0.40 (8.14 → 8)
-    // Pad (7.30 − 4.30)/2 = 1.50 along the lead, 0.40 across, columns (7.30 + 4.30)/2 = 5.80 apart.
-    expectRows("tssop20", 1, 20, "x", { length: 1.5, width: 0.4, centres: 5.8 }, 0.005)
+    // Pad (7.30 − 4.40)/2 = 1.45 along the lead, 0.40 across, columns (7.30 + 4.40)/2 = 5.85 apart.
+    expectRows("tssop20", 1, 20, "x", { length: 1.45, width: 0.4, centres: 5.85 }, 0.005)
   })
 
   test("QFP-48 follows the cited dimensions and goals", () => {
@@ -334,8 +335,8 @@ describe("the other IC packages, worked by hand", () => {
     // G 6.8764 − 0.70 − 0.4153 = 5.7611 → 5.75; X 0.42 + 0.1640 = 0.5840 → 0.60.
     ["sop8", 1, 8, "x", { length: 1.525, width: 0.6, centres: 7.275 }],
     // NXP TSSOP14 SOT402-1 and TSSOP16 SOT403-1: the leads are those of TSSOP20 SOT360-1.
-    ["tssop14", 1, 14, "x", { length: 1.5, width: 0.4, centres: 5.8 }],
-    ["tssop16", 1, 16, "x", { length: 1.5, width: 0.4, centres: 5.8 }],
+    ["tssop14", 1, 14, "x", { length: 1.45, width: 0.4, centres: 5.85 }],
+    ["tssop16", 1, 16, "x", { length: 1.45, width: 0.4, centres: 5.85 }],
     // NXP LQFP32 SOT358-1: HD 8.85–9.15, Lp 0.45–0.75, bp 0.30–0.40, D 6.9–7.1, pitch 0.8 > 0.625, so
     // Table 3-2 (Js 0.03): Z and G as QFP-48 (9.85, 7.05); X 0.30 + 0.06 + 0.15 = 0.51 → 0.50.
     ["qfp32", 1, 24, "x", { length: 1.4, width: 0.5, centres: 8.45 }],
@@ -356,8 +357,8 @@ describe("the other IC packages, worked by hand", () => {
     // TSSOP-8 and TSSOP-28 (MO-153) have the TSSOP-20 leads.
     ["ssop20", 1, 20, "x", { length: 1.6, width: 0.5, centres: 7.3 }],
     ["soic28w", 1, 28, "x", { length: 1.675, width: 0.6, centres: 9.675 }],
-    ["tssop8", 1, 8, "x", { length: 1.5, width: 0.4, centres: 5.8 }],
-    ["tssop28", 1, 28, "x", { length: 1.5, width: 0.4, centres: 5.8 }],
+    ["tssop8", 1, 8, "x", { length: 1.45, width: 0.4, centres: 5.85 }],
+    ["tssop28", 1, 28, "x", { length: 1.45, width: 0.4, centres: 5.85 }],
     // NXP HVQFN16 SOT758-1 (D 2.9–3.1) and HVQFN48 SOT619-1 (D 6.9–7.1): L and b as HVQFN32, so the
     // pads are the same and only Z and G move with D: Z 3.75 / 7.75, G 2.00 / 6.00.
     ["qfn16", 1, 12, "x", { length: 0.875, width: 0.25, centres: 2.875 }],
