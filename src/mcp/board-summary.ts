@@ -1,0 +1,125 @@
+// board_summary: the board in words, the model's eyes on the layout. Board size and layers, the share of the board the
+// courtyards take, a line per part, the longest ratsnest lines, placement findings, pours and the unrouted count; the
+// default answer stops at about 60 lines and the rest is behind detail "full".
+import type { Design } from "../engine/design.js"
+import type { Point } from "../engine/model.js"
+import { naturalCompare } from "../engine/order.js"
+import type { PlacedFootprint, RatsnestLine } from "../engine/pcb.js"
+import { netLabel } from "./copper-under.js"
+
+/** board_summary stops near here, so the answer fits a screen. */
+export const BOARD_SUMMARY_LIMIT = 60
+const LONGEST_SHOWN = 10
+/** The finding lists name at most this many parts each in the default answer. */
+const FINDINGS_SHOWN = 10
+
+export const BOARD_SUMMARY_DESCRIPTION =
+  'The board in words, in about 60 lines: board size and layers, the share the courtyards use, one line per part ("U1 MCP2515 soic18w @(12.0, 8.5) r90 top [LOCKED]"; "not placed" for a part without a position), the ten longest unrouted connections with their nets, overlapping courtyards, parts off the board or within the edge clearance, pours per layer and the unrouted count. Long part lists end with "… and N more parts (detail: full)"; detail "full" lists everything.'
+
+export type BoardDetail = "compact" | "full"
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
+const mm = (v: number) => (Math.round(v * 10) / 10).toFixed(1)
+
+/** The area of a closed polygon (shoelace), in mm². */
+function polygonArea(points: readonly Point[]): number {
+  let twice = 0
+  points.forEach((p, i) => {
+    const q = points[(i + 1) % points.length] as Point
+    twice += p.x * q.y - q.x * p.y
+  })
+  return Math.abs(twice) / 2
+}
+
+function segmentDistance(p: Point, a: Point, b: Point): number {
+  const [dx, dy] = [b.x - a.x, b.y - a.y]
+  const length2 = dx * dx + dy * dy
+  const t = length2 === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / length2))
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy))
+}
+
+/** The least distance from a courtyard corner to the outline's edges. */
+function edgeDistance(courtyard: readonly Point[], outline: readonly Point[]): number {
+  let least = Infinity
+  for (const p of courtyard) {
+    outline.forEach((a, i) => {
+      least = Math.min(least, segmentDistance(p, a, outline[(i + 1) % outline.length] as Point))
+    })
+  }
+  return least
+}
+
+function sizeLine(design: Design): string {
+  const board = design.pcb.board
+  const outline = board?.outline ?? []
+  const parts = design.pcb.parts
+  const count = `${plural(parts.length, "part")}, ${plural(design.circuit.nets.length, "net")}`
+  if (outline.length < 3) return `No board outline; ${count}`
+  const xs = outline.map((p) => p.x)
+  const ys = outline.map((p) => p.y)
+  const used = parts.reduce((sum, p) => sum + (p.courtyard.length >= 3 ? polygonArea(p.courtyard) : 0), 0)
+  const share = Math.round((used / Math.max(polygonArea(outline), 1e-9)) * 100)
+  return `Board ${mm(Math.max(...xs) - Math.min(...xs))} × ${mm(Math.max(...ys) - Math.min(...ys))} mm, ${board?.layers ?? 2} layers, courtyards use ${share}%; ${count}`
+}
+
+/** "U1 MCP2515 soic18w @(12.0, 8.5) r90 top [LOCKED]"; a part the build packed says "not placed". */
+export function partLine(design: Design, part: PlacedFootprint, locked: ReadonlySet<string>): string {
+  const component = design.circuit.components.find((c) => c.id === part.component)
+  const value = component?.value ?? component?.mpn ?? component?.kind ?? "?"
+  const footprint = component?.footprint ?? part.footprint?.name ?? "?"
+  const where = part.autoPlaced ? "not placed" : `@(${mm(part.x)}, ${mm(part.y)}) r${part.rotation} ${part.side}`
+  return `${part.component} ${value} ${footprint} ${where}${locked.has(part.component) ? " [LOCKED]" : ""}`
+}
+
+const lineLength = (line: RatsnestLine) => Math.hypot(line.b.x - line.a.x, line.b.y - line.a.y)
+
+function longestLines(design: Design, shown: number): string[] {
+  const lines = [...design.pcb.ratsnest].sort((a, b) => lineLength(b) - lineLength(a) || naturalCompare(a.from, b.from))
+  if (lines.length === 0) return []
+  const head = `Longest unrouted connections (${Math.min(shown, lines.length)} of ${lines.length}):`
+  return [head, ...lines.slice(0, shown).map((l) => `  ${netLabel(design.circuit.nets, l.net)} ${l.from} - ${l.to}: ${mm(lineLength(l))} mm`)]
+}
+
+function listed(head: string, names: readonly string[], shown: number): string[] {
+  if (names.length === 0) return []
+  const more = names.length > shown ? `, … and ${names.length - shown} more` : ""
+  return [`${head} (${names.length}): ${names.slice(0, shown).join(", ")}${more}`]
+}
+
+/** Courtyard overlaps, parts off the board and parts within the edge clearance. */
+function findingLines(design: Design, shown: number): string[] {
+  const overlaps = design.violations.filter((v) => v.code === "courtyard-overlap").map((v) => v.items.join("/"))
+  const outside = design.violations.filter((v) => v.code === "outside-board").flatMap((v) => v.items)
+  const outline = design.pcb.board?.outline ?? []
+  const edge = design.rules.fabrication.boardEdgeClearance
+  const off = new Set(outside)
+  const near = outline.length < 3 ? [] : design.pcb.parts.filter((p) => !off.has(p.component) && p.courtyard.length >= 3 && edgeDistance(p.courtyard, outline) < edge - 1e-9).map((p) => p.component).sort(naturalCompare)
+  return [...listed("Courtyards overlap", overlaps, shown), ...listed("Off the board", outside, shown), ...listed(`Within the ${edge} mm edge clearance`, near, shown)]
+}
+
+function pourLines(design: Design): string[] {
+  const byLayer = new Map<string, string[]>()
+  for (const pour of design.pcb.pours) byLayer.set(pour.layer, [...(byLayer.get(pour.layer) ?? []), netLabel(design.circuit.nets, pour.net)])
+  if (byLayer.size === 0) return ["Pours: none"]
+  return [`Pours: ${[...byLayer].map(([layer, nets]) => `${layer} ${nets.join(", ")}`).join("; ")}`]
+}
+
+/**
+ * The board summary. The default fits about 60 lines: the part lines are cut first and end with "… and N more (detail:
+ * full)"; detail "full" lists every part, every unrouted connection and every finding.
+ */
+export function formatBoardSummary(file: string, design: Design, locked: ReadonlySet<string>, detail: BoardDetail = "compact"): string {
+  const full = detail === "full"
+  const parts = [...design.pcb.parts].sort((a, b) => naturalCompare(a.component, b.component)).map((p) => partLine(design, p, locked))
+  const head = [`${file}: ${sizeLine(design)}`]
+  const tail = [
+    ...longestLines(design, full ? Infinity : LONGEST_SHOWN),
+    ...findingLines(design, full ? Infinity : FINDINGS_SHOWN),
+    ...pourLines(design),
+    `Unrouted: ${plural(design.pcb.ratsnest.length, "connection")}`,
+  ]
+  const room = BOARD_SUMMARY_LIMIT - head.length - tail.length
+  if (full || parts.length <= room) return [...head, ...parts, ...tail].join("\n")
+  const shown = parts.slice(0, Math.max(0, room - 1))
+  return [...head, ...shown, `… and ${parts.length - shown.length} more parts (detail: full)`, ...tail].join("\n")
+}

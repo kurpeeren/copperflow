@@ -23,6 +23,7 @@ import { LIBRARY_OWNED_PROPS, libraryIds, libraryImports, PARTS_DIR } from "./li
 import { partsInSelector } from "./selectors.js"
 import { alsoField, checkSheetFiles, invertChanges, planSheetWrites, sheetFilesFirst } from "./sheet-files.js"
 import { RULES_PATH } from "../engine/rules/load.js"
+import { PROJECT_PATH } from "./project-text.js"
 import type { CircuitModel, Edit } from "./types.js"
 
 const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "coverage", ".copperflow"])
@@ -255,17 +256,17 @@ async function loadTrackedLayout(root: string, file: string, design: DesignSourc
   return { path, file: name, source, lockChange, firstLock: () => lockChange("") }
 }
 
-/** The project's rules.yaml, which the Design rules panel writes: it holds no locks. */
-async function loadTrackedRules(root: string): Promise<Tracked> {
-  const path = resolve(root, RULES_PATH)
+/** A project file without locks at the root: rules.yaml, which the Design rules panel writes, or PROJECT.md. */
+async function loadTrackedPlain(root: string, file: string): Promise<Tracked> {
+  const path = resolve(root, file)
   const source = await readIfThere(path)
-  if (source === undefined) throw new Error(`${RULES_PATH} does not exist`)
-  return { path, file: RULES_PATH, source, lockChange: () => undefined, firstLock: () => undefined }
+  if (source === undefined) throw new Error(`${file} does not exist`)
+  return { path, file, source, lockChange: () => undefined, firstLock: () => undefined }
 }
 
 async function loadTracked(root: string, file: string, design?: DesignSource): Promise<Tracked> {
   if (isLayoutFile(file)) return loadTrackedLayout(root, file, design)
-  if (file === RULES_PATH) return loadTrackedRules(root)
+  if (file === RULES_PATH || file === PROJECT_PATH) return loadTrackedPlain(root, file)
   const loaded = await loadCircuit(root, file)
   const lock = loaded.annotations.locks[0]
   return { ...loaded, lockChange: (next) => changedLocks(loaded, next), firstLock: () => lock && `${lockWord(lock)} ${lock.part}` }

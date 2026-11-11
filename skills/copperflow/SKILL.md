@@ -11,6 +11,7 @@ undoing their work.
 
 ## Every task
 
+0. Call `project_status` first (PROJECT.md and each circuit's state); record choices with `note_decision`, the intent, blocks and open items with `set_project`, and look at the board with `board_summary`.
 1. Call `circuit_summary` for the file before changing it (the default answer is compact; use
    `detail: "full"` only when you need every prop). Read it fully: `[LOCKED]` parts,
    `[read-only: ...]` parts, "Marks from the human" and lock violations.

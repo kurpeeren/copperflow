@@ -23,6 +23,7 @@ import {
   listCircuits,
   listHistory,
   loadCircuit,
+  resolveCircuit,
   undoChange,
   type Edit,
 } from "../core/index.js"
@@ -34,6 +35,9 @@ import { batchSummary, describeRefusal, editItem, firstRefusal, moveNotes, planN
 import { formatCompactCheck, formatCompactSummary, formatInstanceSummary, type SheetView } from "./compact.js"
 import { importsSheet, type Flattened } from "./compact-sheets.js"
 import { formatCopperSummary } from "./copper-summary.js"
+import { BOARD_SUMMARY_DESCRIPTION, formatBoardSummary } from "./board-summary.js"
+import * as project from "./project-tools.js"
+import { lockedNames } from "../studio/place-runner.js"
 import * as copper from "./copper-tools.js"
 import * as fillet from "./fillet-tools.js"
 import * as pour from "./pour-tools.js"
@@ -224,6 +228,23 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     { description: copper.COPPER_SUMMARY_DESCRIPTION, inputSchema: { file }, annotations: READ_ONLY },
     ({ file: circuit }) => run(async () => formatCopperSummary(circuit, await copper.buildOf(ports, circuit))),
   )
+  server.registerTool(
+    "board_summary",
+    {
+      description: BOARD_SUMMARY_DESCRIPTION,
+      inputSchema: { file, detail: z.enum(["compact", "full"]).optional().describe('"compact" (default, about 60 lines) or "full"') },
+      annotations: READ_ONLY,
+    },
+    ({ file: circuit, detail }) =>
+      run(async () => {
+        const resolved = await resolveCircuit(root, circuit)
+        const design = await copper.buildOf(ports, resolved.file)
+        return formatBoardSummary(resolved.file, design, new Set(await lockedNames(resolved.path, design)), detail)
+      }),
+  )
+  server.registerTool("project_status", { description: project.PROJECT_STATUS_DESCRIPTION, inputSchema: {}, annotations: READ_ONLY }, () => run(() => project.projectStatus(ports)))
+  server.registerTool("note_decision", { description: project.NOTE_DECISION_DESCRIPTION, inputSchema: project.noteDecisionInput }, (input) => run(() => project.noteDecisionTool(ports, input)))
+  server.registerTool("set_project", { description: project.SET_PROJECT_DESCRIPTION, inputSchema: project.setProjectInput }, (input) => run(() => project.setProjectTool(ports, input)))
 
   server.registerTool(
     "new_circuit",
