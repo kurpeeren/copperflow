@@ -61,7 +61,8 @@ describe("new_circuit round trip and pins", () => {
     const run = (part: object) => call("new_circuit", { file: "x.circuit.tsx", parts: [part], nets: {} })
     expect((await run({ name: "U1", part: "AP2112K-3.3", props: { pinLabels: { pin1: "A" } } })).text).toMatch(/change them there/)
     expect((await run({ name: "D1", kind: "led", props: { pinLabels: { left: "A" } } })).text).toMatch(/pin1, pin2/)
-    expect((await run({ name: "D1", kind: "led", props: { pinLabels: { pin1: "a b" } } })).text).toMatch(/letters, digits and _/)
+    expect((await run({ name: "D1", kind: "led", props: { pinLabels: { pin1: "a b" } } })).text).toMatch(/letters, digits and _, not starting with a digit: use "a_b"/)
+    expect((await run({ name: "J1", kind: "pinheader", props: { pinCount: 2, pinLabels: { pin1: "5V" } } })).text).toMatch(/pinLabels name "5V" for pin1 must be .*: use "V5"/)
     expect((await run({ name: "D1", kind: "led", props: { other: { pin1: "A" } } })).text).toMatch(/only pinLabels takes an object/)
   })
 

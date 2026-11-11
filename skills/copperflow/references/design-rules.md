@@ -159,5 +159,5 @@ Rules the checks follow:
 - `power_out` pins of one part on one net count as one source, so they are not an `output-conflict`.
 - With no usable board outline, the edge and outside-board checks do not run, and an `unchecked`
   warning says so.
-- Copper checks (track width, track clearance, vias) are not run yet. They come with routing in a later
-  stage; until then `unrouted` is the reminder that the copper is missing.
+- Copper checks (track width, track clearance, vias, pours) run with the others: `check_circuit` with filter
+  `copper` lists them, and `copper_summary` counts them by rule. `unrouted` is the reminder that copper is missing.

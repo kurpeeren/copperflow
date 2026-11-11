@@ -304,11 +304,23 @@ function addPart(source: string, scan: Scan, edit: Extract<Edit, { kind: "addPar
 const LABEL_KEY = /^pin[1-9][0-9]*$/
 const LABEL_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 
+/**
+ * A pin name close to `name` that LABEL_NAME takes: a supply name puts its volts after the V ("5V" is V5, "3V3" is
+ * V3_3); otherwise the characters it refuses become _, and a leading digit gets _ in front.
+ */
+export function pinLabelSuggestion(name: string): string {
+  const volts = /^(\d+)[Vv](\d*)$/.exec(name)
+  if (volts) return `V${volts[1]}${volts[2] ? `_${volts[2]}` : ""}`
+  const cleaned = name.replace(/[^A-Za-z0-9_]/g, "_")
+  return /^[A-Za-z_]/.test(cleaned) ? cleaned : `_${cleaned}`
+}
+
 /** `{ pin1: "cathode", pin2: "anode" }`; keys are pin1, pin2, ... and names are identifiers, as selectors need. */
 function formatPinLabels(labels: Record<string, string>): string {
   const entries = Object.entries(labels).map(([key, name]) => {
     if (!LABEL_KEY.test(key)) throw new EditError("invalid", `pinLabels key "${key}" must be pin1, pin2, ...`)
-    if (typeof name !== "string" || !LABEL_NAME.test(name)) throw new EditError("invalid", `pinLabels name for ${key} must be letters, digits and _, not starting with a digit`)
+    if (typeof name !== "string") throw new EditError("invalid", `pinLabels name for ${key} must be letters, digits and _, not starting with a digit`)
+    if (!LABEL_NAME.test(name)) throw new EditError("invalid", `pinLabels name "${name}" for ${key} must be letters, digits and _, not starting with a digit: use "${pinLabelSuggestion(name)}"`)
     return `${key}: ${JSON.stringify(name)}`
   })
   return `{ ${entries.join(", ")} }`

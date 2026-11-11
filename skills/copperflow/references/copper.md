@@ -11,6 +11,15 @@ wire length 184 mm (was 412); board 42 × 28 mm; 0 overlaps", then any part not 
 an `instance`, within `budgetSeconds`, 20 s by default, and names each connection it could not
 route with the reason), then `check_circuit` once at the end (filter `copper` for the full list).
 
+One `autoplace` over the whole board is right for a small board (a dozen or two parts on one
+sheet). A larger board, or one with sub-sheets, is placed block by block: `{ instance }` or
+`{ parts: [...] }` for each block, the one with most connections first, connectors last. The
+placer keeps decoupling capacitors beside their supply pins, a crystal beside the two chip pins
+it is across with its load capacitors on its far side, and a pull-up or an LED's resistor beside
+the pin it serves. After `autoplace`, read `board_summary`'s longest connections: a part far
+from the pin it serves shows there with both pads' places. Move it with `set_props`
+`{ pcbX, pcbY, pcbRotation }`; it then has a position, and `autoplace` leaves it alone.
+
 `autoroute` answers `Change c0012: Routed 30 of 32 connections in 2 passes; unrouted: U1.pin3
 (4.10, 2.00 top) to R1.pin2 (9.30, 2.00 top) (no room between U1 and C3), …`, then the copper
 violations the change introduced. Each unrouted connection names its pads with their centres and

@@ -64,8 +64,10 @@ means, `replace`, refused pins and the export's warnings are in
    board uses. Built-in kinds taking `value`: `resistor` (resistance, `"10k"`), `capacitor`
    (capacitance, `"100nF"`; `props: { polarized: true }`), `inductor`, `crystal` (frequency,
    `"8MHz"`), `resonator` (frequency), `fuse`, `battery`, `potentiometer`. `led` and `diode` take no value (`led`:
-   `props: { color: "green" }`); `pinheader` takes `props: { pinCount, pitch: "2.54mm", pinLabels }`,
-   `pinLabels` an object keyed `pin1`… (`{ pin1: "V5", pin2: "GND" }`, not an array; so in `set_props`);
+   `props: { color: "green" }`; pins `anode` = pin1, `cathode` = pin2); `pinheader` takes `props: { pinCount, pitch: "2.54mm", pinLabels }`,
+   `pinLabels` an object keyed `pin1`… (`{ pin1: "V5", pin2: "GND" }`, not an array; so in `set_props`;
+   names are letters, digits and `_`, not starting with a digit: `V5`, not `5V`). Designators and part
+   ids: [references/writing-circuits.md](references/writing-circuits.md);
    `chip` comes from the library (`part:`). Footprint strings: `soic<N>` (3.9 mm), `soic<N>w`
    (7.5 mm: 16–28), `sop<N>`, `ssop<N>`, `tssop<N>`, `qfn…`, `qfp…`, `sot23_5`; the full list is
    in [references/editable-subset.md](references/editable-subset.md). A connector with no family
@@ -101,18 +103,18 @@ means, `replace`, refused pins and the export's warnings are in
 6. **Ask the person before the PCB.** Stop here. Run `check_circuit` and fix its errors, then
    summarise the blocks and the parts chosen (and which are unverified) and ask whether to go on
    to the board. Wait for a yes; `note_decision` what they approved.
-7. **Place block by block.** `autoplace` `{ file, instance: "CH1" }` or `{ file, parts: [...] }`
-   (one change): `Placed 12 parts; wire length 184 mm (was 412); board 42 × 28 mm; 0 overlaps`,
-   then `Change c0007; undo_change takes it back.`, then `Not placed:` and `Notes:` if any. Place
-   the block with the most connections (the MCU) first, then the others, then the connectors.
+7. **Place.** A small board (a dozen or two parts, no sheets): one `autoplace` `{ file }`. A larger
+   one, or with sheets, block by block: `{ file, instance: "CH1" }` or `{ file, parts: [...] }`, the
+   block with most connections (the MCU) first, connectors last. One change: `Placed 12 parts; wire
+   length 184 mm (was 412); board 42 × 28 mm; 0 overlaps`, `Change c0007; …`, `Not placed:`, `Notes:`.
    Parts a person placed or locked stay and are worked round. A sheet holds one layout for all
    its instances: the first one placed sets it, and `autoplace` moves each other instance as a
    whole by its anchor (`{ instance: "CH2" }`, or the whole board), noting `CH2 was moved as a block`.
    `Not placed: U1 (no free spot …)`: make the board larger (`fit_board` with a larger `margin`) and run
    `autoplace` again, or place that part with `set_props` `{ pcbX, pcbY }` and `autoplace` the
-   rest. The wire length can come out longer than the starting packing (`(was …)` smaller): read
-   `board_summary`, move the outliers its longest connections name, and do not repeat `autoplace`
-   hoping for better.
+   rest. Then read `board_summary`'s longest connections: a part far from the pin it serves (a
+   crystal, a pull-up) shows there with both pads' places; move it with `set_props` `{ pcbX, pcbY }`
+   and `autoplace` leaves it alone from then on. Do not repeat `autoplace` hoping for better.
 8. **Board shape and connectors.** `fit_board` `{ file, margin? }`:
    `Change c0010: board 42 × 28 mm (margin 2 mm)`; or `autoplace` with `fit: true`.
    Mounting holes with `add_hole` `{ file, x, y, diameter }`.
@@ -129,23 +131,20 @@ means, `replace`, refused pins and the export's warnings are in
     unrouted: C3.pin2 (12.30, 4.50 top) to U2.pin2 (15.10, 6.00 top) (…)`. Route each one it
     reports with `route_track` `{ file, from: "C3.pin2", to: "U2.pin2" }` (the router's search for
     that one connection; add `via` points to draw it yourself), or move the part and `autoroute`
-    again. Details in
-    [references/copper.md](references/copper.md) (`route_track`, `add_via`, `remove_copper`,
-    `fillet_tracks`, `straighten_tracks`, `unroute`, `copper_summary`, `remove_pour`,
-    `remove_hole`).
+    again. Details in [references/copper.md](references/copper.md) (`route_track`, `add_via`,
+    `remove_copper`, `fillet_tracks`, `straighten_tracks`, `unroute`, `copper_summary`, `remove_pour`, `remove_hole`).
 12. **Check.** `check_circuit` `{ file, filter? }`: `main.circuit.tsx: 0 errors, 2 warnings`, then
     up to 20 findings, one line each (`error pin-unconnected [U1.pin3]: …`).
 13. **Export.** For a board to be made: after `autoroute` and a clean `check_circuit` (0 errors
     and no `unrouted` warning), call `export_fabrication` `{ file }`: `Wrote 12 files to
     main-fab/ and main-fab.zip:`; a design with errors is `Refused: no fabrication files were
     written.` An export with unrouted connections is written with a warning and is NOT a finished
-    board: say so, and route them first (step 11). Pass on
-    every `Warning:` line; `out` writes into another project folder. A person uploads the zip to JLCPCB; you do not. `export_package` writes the
-    BOM and datasheets folder.
+    board: say so, and route them first (step 11). Pass on every `Warning:` line; `out` writes into
+    another project folder. A person uploads the zip to JLCPCB; you do not. `export_package` writes the BOM and datasheets folder.
 14. **Remember, throughout.** `note_decision` `{ text, file? }` as each choice is made that a
-    later context needs (a part and why, a board size, what the person approved), not batched at
-    the end: `Change …: noted under Decisions in PROJECT.md`. Keep `set_project`'s blocks and
-    open items current.
+    later context needs (a part and why, a board size, what the person approved; at most 500
+    characters each), not batched at the end: `Change …: noted under Decisions in PROJECT.md`.
+    Keep `set_project`'s blocks and open items current.
 
 ## Checking
 

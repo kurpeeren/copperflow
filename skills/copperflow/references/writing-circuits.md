@@ -12,8 +12,15 @@ Read before your first `new_circuit` or `edit_circuit` in a project.
 - `footprint`: a generated footprint string for a built-in part (`"0402"`, `"0603"`); a
   library part brings its own.
 - `props`: anything else, e.g. `{ pinCount: 4 }` for a pin header. A header's `pinLabels` is an
-  object keyed `pin1`, `pin2`, … (`{ pin1: "V5", pin2: "GND" }`); an array is refused. The same
-  shape goes to `set_props`. `noConnect` (`"pin4,pin5"`) may be given here too.
+  object keyed `pin1`, `pin2`, … (`{ pin1: "V5", pin2: "GND" }`); an array is refused. Each name
+  is letters, digits and `_` and does not start with a digit: `"5V"` is refused and the answer
+  suggests `"V5"`. The same shape goes to `set_props`. `noConnect` (`"pin4,pin5"`) may be given here too.
+- `name`: the designator, a letter then letters, digits or `_` (at most 32: `R1`, `U_MCU`). A
+  library part id (`create_part`'s `id`) starts with a letter, ends with a letter or digit, and
+  between has letters, digits, `.`, `_` or `-` (at most 64: `AP2112K-3.3`).
+
+The built-in `led` and `diode` have `pin1` = `anode` and `pin2` = `cathode` (`D1.anode`,
+`D1.cathode`); a resistor's or capacitor's pins are `pin1` and `pin2`.
 
 A net names pins as `R1.pin1` or by a library pin name (`U1.VOUT`). A pin the part does not
 have is refused before anything is written, and the answer lists the part's real pins: use one
