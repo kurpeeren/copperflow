@@ -51,7 +51,7 @@ What copperflow concludes and does:
 - **The non-commercial limit applies to the download itself**, not only to using the part outside EasyEDA: fetching a
   part for a commercial design is already outside what the Terms allow. For such a design the person draws the part
   from the datasheet (the part wizard) or obtains the right from JLCEDA/EasyEDA.
-- **The agent's path is the case the notice addresses.** `import_part`, called by an AI agent over MCP, is the "AI
+- **The agent's path is the case the notice addresses.** `import_part`, called by an agent over MCP, is the "AI
   tool" the notice names; its requirement is met by stating the source, which every import does.
 - **The source is stated and kept.** The written `part.yaml` names it (`origin: lcsc Cxxxx, imported <date>` and a
   description naming the JLCEDA/EasyEDA Official Library with both links), and the part folder gets `source.md` with
