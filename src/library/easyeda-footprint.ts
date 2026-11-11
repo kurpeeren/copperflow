@@ -2,6 +2,10 @@
 // EasyEDA draws in units of 10 mil with y growing downwards around the document's origin (head.x, head.y);
 // footprint.yaml is in mm with y up around the part centre. Pad numbers are kept as EasyEDA writes them; the importer
 // maps the ones that are not pin numbers.
+//
+// The record field orders below were read from real answers for 11 parts (2026-11-11): PAD, TRACK, ARC, CIRCLE,
+// SOLIDREGION and HOLE were seen there; that rotation is clockwise and holeLength the slot's full length are inferred
+// from those answers, not documented. RECT was never seen on layer 3 or 99 in them, so its order is assumed.
 import { DEFAULT_COURTYARD_EXCESS, paddedBounds } from "../engine/footprints/file.js"
 import { circlePoints, pathPolylines, type RawPoint } from "./easyeda-path.js"
 
@@ -203,7 +207,7 @@ function outline(fields: string[], place: Place): { layer: string; polylines: [n
     // SOLIDREGION~layer~net~path~fill~id
     case "SOLIDREGION":
       return { layer: fields[1] ?? "", polylines: pathPolylines(fields[3] ?? "").map(toMm) }
-    // RECT~x~y~width~height~layer~id (x, y the top left corner)
+    // RECT~x~y~width~height~layer~id (x, y the top left corner): assumed, never seen in a real answer
     case "RECT": {
       const [x, y, w, h] = [num(fields[1]), num(fields[2]), num(fields[3]), num(fields[4])]
       const ring = [point(x, y), point(x + w, y), point(x + w, y + h), point(x, y + h), point(x, y)]
