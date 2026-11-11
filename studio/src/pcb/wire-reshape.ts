@@ -8,6 +8,7 @@ import type { SelectionChange } from "../selection.js"
 import type { Point } from "./geometry.js"
 import type { SourceCircuit } from "./positions.js"
 import { NO_LOCKS } from "./trace-source.js"
+import { junctionMoves, junctionsIn } from "./junction-follow.js"
 import { cornerBlocker, describeWire, WIRE_GONE } from "./wire-actions.js"
 import { removeCorner, samePath, tidy, wireBlocker, wireOf, wireShapeEdits, type WireShape } from "./wire-shape.js"
 import { pinOfSelector } from "./wire-tool.js"
@@ -91,10 +92,18 @@ export function reshapeBlocker(design: Design, source: SourceCircuit, wireId: st
   return shape ? wireBlocker(design, shape, locked) : WIRE_GONE
 }
 
+/** The junctions on the wire's shape shown, moved onto its new path (junction-follow.ts). */
+function followingJunctions(design: Design, shape: WireShape, path: readonly Point[], shown?: readonly Point[]): Edit[] {
+  const others = design.schematic.wires.filter((wire) => wire.id !== shape.id).map((wire) => wire.points)
+  return junctionMoves(junctionsIn(design.schematic.drawings), shown ?? shape.points, tidy(path), others)
+}
+
 function reshapeOf(design: Design, shape: WireShape, path: readonly Point[], verb: string, locked: ReadonlySet<string>, shown?: readonly Point[]): WireReshape {
   const edits = wireShapeEdits(design, shape, path, locked, shown)
   if (!Array.isArray(edits)) return edits
-  return { edits, summary: `${verb} ${describeWire(design, shape)}`, points: tidy(path), ...after(design, shape) }
+  // An unchanged shape sends nothing, junctions included; a new one carries its junctions in the same history entry.
+  const all = edits.length === 0 ? edits : [...edits, ...followingJunctions(design, shape, path, shown)]
+  return { edits: all, summary: `${verb} ${describeWire(design, shape)}`, points: tidy(path), ...after(design, shape) }
 }
 
 /**

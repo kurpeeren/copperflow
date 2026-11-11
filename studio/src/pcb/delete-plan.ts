@@ -1,6 +1,6 @@
 // What Delete does to the selection, parts, wires, net labels, drawings, copper pours and holes together: one change, so
-// one history entry, that removes the selected wires' traces first, then the selected drawings, pours and holes, then
-// the selected parts. A hand-drawn label is removed by removing its
+// one history entry, that removes the selected wires' traces first, then the selected drawings (and the junctions on
+// the wires that go), pours and holes, then the selected parts. A hand-drawn label is removed by removing its
 // trace, through the wires' own removal, so its wire also selected is not removed twice; a label Studio placed on a
 // pin goes only with its part. A wire whose trace ends on a part being removed is left to that part (core's removePart
 // takes the part's traces with it), so no trace is removed twice. What cannot go is named in one note and the rest
@@ -94,7 +94,9 @@ export function deletePlan(
   const labels = removeLabels && selection.labelCount > 0 ? removeLabels(selection.labels, going) : undefined
   const wireIds = unique([...selection.wires, ...(labels?.withWires.map((one) => one.wire) ?? [])])
   const wires = removeWires && wireIds.length > 0 ? removeWires(wireIds, going, new Set(parts.skipped)) : undefined
-  const drawings = removeDrawings && selection.drawingCount > 0 ? removeDrawings(selection.drawings) : undefined
+  // The junctions on the wires that go leave with them, in the same change (junction-follow.ts).
+  const drawingIds = unique([...selection.drawings, ...(wires?.junctions ?? [])])
+  const drawings = removeDrawings && drawingIds.length > 0 ? removeDrawings(drawingIds) : undefined
   const board = removeBoard && selection.boardCount > 0 ? removeBoard(selection.board) : undefined
   const plan: GroupEdit = {
     edits: [...(wires?.edits ?? []), ...(drawings?.edits ?? []), ...(board?.edits ?? []), ...parts.edits],

@@ -6,6 +6,7 @@ import type { Edit } from "../../../src/core/types.js"
 import type { Design } from "../../../src/engine/design.js"
 import { netLabel } from "../net-rows.js"
 import { canonicalNet } from "./highlight.js"
+import { junctionsGone, junctionsIn } from "./junction-follow.js"
 import type { SourceCircuit } from "./positions.js"
 import { lockedPart, NO_LOCKS } from "./trace-source.js"
 import { wireBlocker, wireOf, type WireShape } from "./wire-shape.js"
@@ -141,6 +142,8 @@ export interface WiresRemoval {
   /** The wires whose trace ends on a part being removed: the part takes them. */
   withParts: string[]
   skipped: string[]
+  /** The junctions that go with the wires (junction-follow.ts): Delete removes them in the same change. */
+  junctions: string[]
 }
 
 type Refusal = { kind: "skipped"; reason: string; named: string; studio: boolean }
@@ -187,12 +190,16 @@ export function wiresRemoval(
 ): WiresRemoval {
   const outcomes = ids.map((id) => wireOutcome(design, source, id, parts, locked))
   const removed = outcomes.flatMap((outcome) => (outcome.kind === "removed" ? [outcome] : []))
+  const withParts = outcomes.flatMap((outcome) => (outcome.kind === "withParts" ? [outcome.id] : []))
+  const gone = new Set([...removed.map((outcome) => outcome.id), ...withParts])
+  const lines = (keep: boolean) => design.schematic.wires.filter((wire) => gone.has(wire.id) !== keep).map((wire) => wire.points)
   return {
     edits: removed.flatMap((outcome) => outcome.edits),
     removed: removed.map((outcome) => outcome.id),
     names: removed.map((outcome) => outcome.name),
-    withParts: outcomes.flatMap((outcome) => (outcome.kind === "withParts" ? [outcome.id] : [])),
+    withParts,
     skipped: refusals(outcomes, said),
+    junctions: junctionsGone(junctionsIn(design.schematic.drawings), lines(false), lines(true)),
   }
 }
 
