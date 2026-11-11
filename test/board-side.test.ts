@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { flipPlan, transferPlan, TRANSFER_SCALE } from "../studio/src/shell/board-side.js"
+import { flipPlan, PAGE_GAP_MM, transferPlan, TRANSFER_SCALE } from "../studio/src/shell/board-side.js"
 import { findSimilar } from "../studio/src/shell/find-similar.js"
 import { keyAction } from "../studio/src/pcb/canvas-keys.js"
 
@@ -32,8 +32,10 @@ describe("Layout → Flip", () => {
   })
 
   test("leaves locked parts and says so; refuses with nothing it may flip", () => {
-    expect(flipPlan(["R1", "C1"], board, parts, new Set(["C1"]))).toMatchObject({ summary: "flip R1 to the bottom; left C1 (locked or read-only)", skipped: ["C1"] })
-    expect(flipPlan(["C1"], board, parts, new Set(["C1"]))).toHaveProperty("message")
+    expect(flipPlan(["R1", "C1"], board, parts, new Set(["C1"]))).toMatchObject({ summary: "flip R1 to the bottom; left C1 (locked)", skipped: ["C1 (locked)"] })
+    expect(flipPlan(["C1"], board, parts, new Set(["C1"]))).toEqual({ message: "Cannot flip C1 (locked)." })
+    // A part a sub-sheet instance brings in is on the board but not in this file.
+    expect(flipPlan(["S1_R1"], [...board, { component: "S1_R1", x: 0, y: 0, side: "top" }], parts, new Set())).toEqual({ message: "Cannot flip S1_R1 (inside a sub-sheet; change it in its sheet)." })
     expect(flipPlan([], board, parts, new Set())).toEqual({ message: "Select a part on the PCB to flip." })
   })
 
@@ -62,9 +64,24 @@ describe("Design → Placement transfer", () => {
     })
   })
 
+  test("two pages land in their own regions side by side, and each part takes its symbol's rotation", () => {
+    // Both pages draw their part at the same sheet spot; on one sheet they would land on each other.
+    const sheet = [
+      { component: "R1", x: 0, y: 0, page: 0, rotation: 90 },
+      { component: "C1", x: 0, y: 0, page: 1, rotation: 0 },
+    ]
+    const plan = transferPlan(["R1", "C1"], sheet, board, parts, new Set())
+    if ("message" in plan) throw new Error(plan.message)
+    const [r1, c1] = plan.edits.map((edit) => (edit.kind === "setProps" ? edit.props : {}))
+    expect(r1).toMatchObject({ pcbRotation: 90 })
+    expect(c1).toMatchObject({ pcbRotation: 0 })
+    expect(Math.abs((c1?.["pcbX"] as number) - (r1?.["pcbX"] as number))).toBeGreaterThanOrEqual(PAGE_GAP_MM)
+    expect(c1?.["pcbX"]).toBeGreaterThan(r1?.["pcbX"] as number)
+  })
+
   test("leaves locked parts in place and refuses when no part is on both views", () => {
     const sheet = [{ component: "R1", x: 0, y: 0 }, { component: "C1", x: 1, y: 0 }]
-    expect(transferPlan(["R1", "C1"], sheet, board, parts, new Set(["R1"]))).toMatchObject({ skipped: ["R1"], summary: "place C1 as on the schematic; left R1 (locked or read-only)" })
+    expect(transferPlan(["R1", "C1"], sheet, board, parts, new Set(["R1"]))).toMatchObject({ skipped: ["R1 (locked)"], summary: "place C1 as on the schematic; left R1 (locked)" })
     expect(transferPlan(["X9"], sheet, board, parts, new Set())).toHaveProperty("message")
   })
 })

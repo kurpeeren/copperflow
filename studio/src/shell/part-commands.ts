@@ -37,7 +37,9 @@ export function flipSelection({ design, circuit, selection, actions }: PartComma
 export function transferPlacement({ design, circuit, selection, actions }: PartCommandInput): void {
   if (!design || !circuit) return
   const names = selection.names.length > 0 ? selection.names : design.pcb.parts.map((part) => part.component)
-  const sheet = design.schematic.symbols.map((symbol) => ({ component: symbol.component, x: symbol.x, y: symbol.y }))
+  const pages = design.schematic.pages ?? []
+  const pageOf = (component: string) => Math.max(0, pages.findIndex((entry) => entry.parts.includes(component)))
+  const sheet = design.schematic.symbols.map((symbol) => ({ component: symbol.component, x: symbol.x, y: symbol.y, page: pageOf(symbol.component), rotation: symbol.rotation }))
   write(actions, transferPlan(names, sheet, design.pcb.parts, circuit.model.parts, lockedParts(circuit)))
 }
 
