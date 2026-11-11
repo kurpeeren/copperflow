@@ -26,8 +26,15 @@ const CONNECTOR_KINDS = new Set(["pinheader", "connector"])
 const CONNECTOR_FOOTPRINT = /connector|header|terminal|usb|jst|screw/i
 const SUPPLY_NAME = /^\+?(?:\d+V\d*|V(?:CC|DD|BUS)\w*|[AD]V(?:CC|DD)\w*)$/i
 const GROUND_NAME = /^(?:\w*GND\w*|V(?:SS|EE)\w*)$/i
-/** A signal net with more pins than this is a bus or a shared line, not one pin's own wire. */
-const SATELLITE_NET_PINS = 4
+/**
+ * A signal net with more pins than this is a bus or a shared line, not one pin's own wire. A crystal net carries the
+ * chip pin, the crystal, its load capacitor, and often a feedback resistor and a test point: 5. Six leaves one more
+ * for a damping resistor; seven or more pins (an SPI clock to several chips, a reset bus) is shared, and its parts
+ * are placed by their wiring like any other.
+ */
+export const SATELLITE_NET_PINS = 6
+/** Parts a load capacitor sits beside before any other part across the same two chip pins. */
+const OSCILLATOR_KINDS = new Set(["crystal", "resonator"])
 /** Parts an LED's (or diode's) series resistor sits beside when no chip pin is on the net. */
 const LIGHT_KINDS = new Set(["led", "diode"])
 
@@ -117,7 +124,9 @@ export function roles(design: Design): Roles {
   for (const c of sorted.filter((one) => small(one) && !satellites.has(one.id))) {
     const choices = c.pins.flatMap((own) => {
       const peers = signalPeers(own)
-      const crystal = peers.find((p) => satellites.get(p.component)?.also !== undefined)
+      // Across two chip pins: a crystal or resonator first, so a feedback resistor across the same pins is not taken for it.
+      const across = peers.filter((p) => satellites.get(p.component)?.also !== undefined)
+      const crystal = across.find((p) => OSCILLATOR_KINDS.has(byId.get(p.component)?.kind ?? "")) ?? across[0]
       const chip = chipPin(peers)
       const light = LIGHT_KINDS.has(c.kind) ? undefined : peers.length === 1 ? peers.find((p) => LIGHT_KINDS.has(byId.get(p.component)?.kind ?? "")) : undefined
       const host = crystal ?? chip ?? light

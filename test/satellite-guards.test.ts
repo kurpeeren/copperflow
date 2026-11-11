@@ -9,7 +9,7 @@ import { createCopperflowServer } from "../src/mcp/server.js"
 import { buildDesign, type Design } from "../src/engine/design.js"
 import { ENGINE_FILES } from "../src/engine/engine.js"
 import { collectProjectFiles } from "../src/engine/project-files.js"
-import { roles } from "../src/engine/pcb-place/roles.js"
+import { roles, SATELLITE_NET_PINS } from "../src/engine/pcb-place/roles.js"
 import { loadCircuit, updateAnnotations } from "../src/core/index.js"
 import { lockParts } from "../src/core/annotations.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
@@ -32,6 +32,25 @@ describe("parts the rule leaves alone", () => {
     expect(r.beside("R2")?.part).toBe("U1")
     expect(r.beside("R1")).toBeUndefined()
     expect(r.beside("C1")).toBeUndefined()
+  })
+
+  test(`a crystal net of up to ${SATELLITE_NET_PINS} pins keeps its satellites; one more and it is a shared line`, () => {
+    const crystal = (extra: number) => {
+      const headers = Array.from({ length: extra }, (_, i) => `<pinheader name="J${i + 1}" pinCount={1} />${trace(`.J${i + 1} > .pin1`, "net.X1")}`).join("")
+      return board(
+        [chip("U1"), '<crystal name="Y1" frequency="8MHz" footprint="hc49s" />', '<capacitor name="C1" capacitance="22pF" footprint="0603" />', '<resistor name="R5" resistance="1M" footprint="0603" />',
+          trace(".U1 > .pin2", "net.X1"), trace(".Y1 > .pin1", "net.X1"), trace(".C1 > .pin1", "net.X1"), trace(".R5 > .pin1", "net.X1"), trace(".C1 > .pin2", "net.GND"),
+          trace(".U1 > .pin3", "net.X2"), trace(".Y1 > .pin2", "net.X2"), trace(".R5 > .pin2", "net.X2"), headers].join(""),
+      )
+    }
+    // X1: the chip pin, the crystal, the load capacitor, the feedback resistor, and the test points.
+    const kept = roles(crystal(SATELLITE_NET_PINS - 4))
+    expect(kept.beside("Y1")).toMatchObject({ part: "U1" })
+    expect(kept.beside("C1")).toMatchObject({ part: "Y1" })
+    const shared = roles(crystal(SATELLITE_NET_PINS - 3))
+    // X1 no longer ties anything: the crystal keeps only its X2 pin's tie, the capacitor on X1 none.
+    expect(shared.beside("Y1")).toEqual({ part: "U1", pad: 2, ownPad: 1 })
+    expect(shared.beside("C1")).toBeUndefined()
   })
 
   test("a bulk capacitor on a rail several chips share is not a satellite", () => {
