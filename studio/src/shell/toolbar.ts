@@ -5,7 +5,7 @@ import { commandDisabledReason } from "../pcb/selection-rules.js"
 import { DRAW_COMMANDS, DRAW_TOOL_COMMAND } from "../pcb/draw-commands.js"
 import type { DrawTool } from "../pcb/draw-tools.js"
 import type { CommandId, Toggles } from "./menus.js"
-import { WAITS_FOR_BLOCKS, WAITS_FOR_ROUTING } from "./pending.js"
+import { WAITS_FOR_ROUTING } from "./pending.js"
 
 export type ToolIconName = "undo" | "redo" | "zoomIn" | "zoomOut" | "fit" | "fitSelection" | "fitArea" | "component" | "wire" | "netLabel" | "ground" | "power" | "rotate" | "rotateRight" | "snap" | "check" | "grid" | "alignLeft" | "distributeH" | "polyline" | "arc" | "circle" | "rectangle" | "text" | "bus" | "noConnect" | "via" | "boardOutline" | "copperArea" | "singleRouting" | "gerber"
 
@@ -55,7 +55,7 @@ export const TOOLBARS: Readonly<Record<View, readonly ToolbarButton[]>> = {
     button("netLabel", "Net label (Alt+N)", "netLabel", "netLabel", 3),
     button("ground", "Ground flag", "ground", "groundFlag", 3),
     button("power", "Power flag", "power", "powerFlag", 3),
-    later("noConnect", "No connect flag", "noConnect", WAITS_FOR_BLOCKS, 3),
+    button("noConnect", "No connect flag", "noConnect", "noConnect", 3),
     button("polyline", "Polyline (Alt+L)", "polyline", "drawPolyline", 4),
     button("arc", "Arc (Alt+A)", "arc", "drawArc", 4),
     button("circle", "Circle (Alt+C)", "circle", "drawCircle", 4),
@@ -125,7 +125,7 @@ export function titleKey(title: string): string | undefined {
 }
 
 /** The commands that switch a tool on and stay on until it is put away. */
-const TOOL_COMMANDS: ReadonlySet<CommandId> = new Set(["wire", "netLabel", "groundFlag", "powerFlag", "fitArea", "singleRouting", "placeVia", ...DRAW_COMMANDS])
+const TOOL_COMMANDS: ReadonlySet<CommandId> = new Set(["wire", "netLabel", "groundFlag", "powerFlag", "fitArea", "singleRouting", "placeVia", "noConnect", "junction", ...DRAW_COMMANDS])
 
 export function isToolCommand(command: CommandId): boolean {
   return TOOL_COMMANDS.has(command)

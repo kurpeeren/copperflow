@@ -47,6 +47,13 @@ export const SHEET_LAYOUT_COMMANDS = ["tidySheet"] as const satisfies readonly C
 export type SheetLayoutCommand = (typeof SHEET_LAYOUT_COMMANDS)[number]
 
 /**
+ * Answered by the schematic only (use-sheet-marks.ts): Place → No connect flag and Junction, the tools that put a
+ * flag on a pin and a dot on a wire; sent while the PCB is open, they switch to the schematic first.
+ */
+export const MARK_COMMANDS = ["noConnect", "junction"] as const satisfies readonly CommandId[]
+export type MarkCommand = (typeof MARK_COMMANDS)[number]
+
+/**
  * Answered by the schematic only, for its selected wire (use-sheet-wires.ts): the context menu and Properties send
  * them. Delete and Highlight net are the part commands, which act on a selected wire too.
  */
@@ -54,7 +61,7 @@ export const WIRE_COMMANDS = ["removeCorners"] as const satisfies readonly Comma
 export type WireCommand = (typeof WIRE_COMMANDS)[number]
 
 /** Answered by the PCB only (use-track-tool.ts); sent while the schematic is open, they switch to the PCB first. */
-export const PCB_COMMANDS = ["singleRouting", "placeVia"] as const satisfies readonly CommandId[]
+export const PCB_COMMANDS = ["singleRouting", "placeVia", "routingCorner"] as const satisfies readonly CommandId[]
 export type PcbCommand = (typeof PCB_COMMANDS)[number]
 
 /** Answered by the PCB only (use-pours.ts): Place → Copper pour, its whole-board form and Hole; sent while the schematic is open, they switch to the PCB first. */
@@ -75,5 +82,5 @@ export function commandOwner(command: CommandId): CommandOwner | undefined {
   if (command in WORKSPACE_COMMANDS) return "workspace"
   if (has(CAMERA_COMMANDS, command) || has(FIT_COMMANDS, command) || has(PART_COMMANDS, command) || has(CANVAS_TOOL_COMMANDS, command)) return "canvas"
   if (has(PCB_COMMANDS, command) || has(COPPER_COMMANDS, command) || has(POUR_COMMANDS, command)) return "pcb"
-  return has(SHEET_COMMANDS, command) || has(SHEET_LAYOUT_COMMANDS, command) || has(WIRE_COMMANDS, command) ? "schematic" : undefined
+  return has(SHEET_COMMANDS, command) || has(SHEET_LAYOUT_COMMANDS, command) || has(WIRE_COMMANDS, command) || has(MARK_COMMANDS, command) ? "schematic" : undefined
 }

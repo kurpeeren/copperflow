@@ -202,8 +202,8 @@ type Pending = ToolbarButton & { pending: string }
 const pendingOf = (view: "schematic" | "pcb"): Pending[] => TOOLBARS[view].filter((b): b is Pending => b.pending !== undefined)
 
 describe("the pending buttons", () => {
-  test("the schematic waits only on the No connect flag; the PCB on Board outline and Copper area", () => {
-    expect(pendingOf("schematic").map((b) => b.id)).toEqual(["noConnect"])
+  test("the schematic waits on nothing, No connect flag runs; the PCB waits on Board outline and Copper area", () => {
+    expect(pendingOf("schematic").map((b) => b.id)).toEqual([])
     expect(pendingOf("pcb").map((b) => b.id)).toEqual(["boardOutline", "copperArea"])
   })
 
@@ -223,10 +223,9 @@ describe("the pending buttons", () => {
     }
   })
 
-  test("routing and copper wait for hand routing (stage 4), the flag for blocks and sheets (stage 3)", () => {
+  test("Board outline and Copper area wait for hand routing (stage 4)", () => {
     const reason = (id: string) => pendingOf("pcb").find((b) => b.id === id)?.pending
     for (const id of ["boardOutline", "copperArea"]) expect(reason(id)).toBe("Comes with hand routing (engine stage 4)")
-    expect(pendingOf("schematic")[0]?.pending).toBe("Comes with blocks and sheets (engine stage 3)")
   })
 
   test("a pending button is disabled whatever is selected, and its tooltip carries the reason", () => {

@@ -41,12 +41,12 @@ describe("menus", () => {
     }
   })
 
-  test("the honest reasons: Annotate, Footprint manager, No connect flag and Junction", () => {
+  test("Place → No connect flag and Junction run on the schematic, Junction with Alt+J", () => {
     const find = (label: string) => MENUS.flatMap(menuItems).find((item) => item.label === label)
-    expect(find("Annotate designators")?.pending).toContain("(engine stage 3)")
-    expect(find("Footprint manager")?.pending).toContain("(engine stage 3)")
-    expect(find("No connect flag")?.pending).toContain("(engine stage 3)")
-    expect(find("Junction")?.pending).toMatch(/^Comes later/)
+    expect(find("No connect flag")).toEqual({ label: "No connect flag", command: "noConnect", only: "schematic" })
+    expect(find("Junction")).toEqual({ label: "Junction", command: "junction", shortcut: "Alt+J", only: "schematic" })
+    expect(commandOwner("noConnect")).toBe("schematic")
+    expect(keyAction(pressOf("Alt+J"), { view: "schematic" })?.action).toBe("junction")
   })
 
   test("Export → Fabrication files (JLCPCB) runs the export; BOM and Package stay before it, Gerber and Pick and place run the same export", () => {
@@ -66,12 +66,6 @@ describe("menus", () => {
   test("Settings → Hotkeys opens the Keys dialog", () => {
     const hotkeys = MENUS.find((m) => m.title === "Settings")?.entries.find((e) => e !== "separator" && e.label === "Hotkeys")
     expect(hotkeys).toEqual({ label: "Hotkeys", command: "keys" })
-  })
-
-  test("Flip waits for the engine, and Find similar objects for Find", () => {
-    const find = (label: string) => MENUS.flatMap(menuItems).find((item) => item.label === label)
-    expect(find("Flip")?.pending).toBe("Comes with the engine (stages 3 to 5)")
-    expect(find("Find similar objects")?.pending).toMatch(/^Comes later/)
   })
 
   test("Edit → Find runs the find command, with Ctrl+F beside it", () => {
@@ -163,7 +157,7 @@ describe("menus", () => {
     const views = (["pcb", "schematic"] as const).map((view) =>
       MENUS.flatMap(menuItems).filter((item) => item.command && !itemState(item, view).enabled).map((item) => item.label),
     )
-    expect(views).toEqual([["Make sub-sheet…", "Add page", "Rename page", "Delete page", "Tidy sheet"], ["Unit", "Autoplace", "Autoplace selection", "Autoplace instance", "Replicate layout", "Fit board"]])
+    expect(views).toEqual([["Make sub-sheet…", "No connect flag", "Junction", "Add page", "Rename page", "Delete page", "Tidy sheet"], ["Unit", "Autoplace", "Autoplace selection", "Autoplace instance", "Replicate layout", "Routing corner", "Fit board"]])
   })
 
   test("no menu has more than 14 items, but View and Place, which add the copper pour's three, 17, Place with Autoplace's three 20, and Layout with Fit board 15", () => {
@@ -171,13 +165,15 @@ describe("menus", () => {
     for (const menu of MENUS) expect([menu.title, menuItems(menu).length <= cap(menu.title)]).toEqual([menu.title, true])
   })
 
-  test("Route runs Single routing (Alt+W), Via (Alt+V), Autoroute and Unroute; Routing corner is still to come; Settings only System", () => {
+  test("Route runs Single routing (Alt+W), Via (Alt+V), Autoroute and Unroute; Routing corner (L) steps the corner mode", () => {
     const route = MENUS.find((m) => m.title === "Route")
     expect(route && menuItems(route).slice(0, 2)).toEqual([
       { label: "Single routing", command: "singleRouting", shortcut: "Alt+W" },
       { label: "Via", command: "placeVia", shortcut: "Alt+V" },
     ])
-    expect(route && menuItems(route).filter((item) => item.pending !== undefined).map((item) => item.label)).toEqual(["Routing corner"])
+    expect(route && menuItems(route).filter((item) => item.pending !== undefined)).toEqual([])
+    expect(route && menuItems(route)[2]).toEqual({ label: "Routing corner", command: "routingCorner", shortcut: "L", only: "pcb" })
+    expect(commandOwner("routingCorner")).toBe("pcb")
     expect(route && menuItems(route).slice(3)).toEqual([
       { label: "Autoroute", command: "autoroute" },
       { label: "Autoroute selection", command: "autorouteSelection" },
@@ -187,8 +183,6 @@ describe("menus", () => {
     expect(itemState({ label: "Autoroute selection", command: "autorouteSelection" }, "pcb", 0)).toEqual({ enabled: false, reason: "Select a part first" })
     expect(itemState({ label: "Autoroute", command: "autoroute" }, "schematic", 0)).toEqual({ enabled: true })
     expect(shortcutList()).toContainEqual({ keys: "V (PCB)", label: "Change the active layer; while routing, a via at the last corner" })
-    const settings = MENUS.find((m) => m.title === "Settings")
-    expect(settings && menuItems(settings).filter((item) => item.pending !== undefined).map((item) => item.label)).toEqual(["System"])
   })
 
   test("a shortcut shown beside a command does what the key does", () => {

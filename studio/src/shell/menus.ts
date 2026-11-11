@@ -5,7 +5,7 @@ import type { AlignCommand } from "../pcb/align-rules.js"
 import type { KeyActionName } from "../pcb/canvas-keys.js"
 import type { View } from "../pcb/positions.js"
 import { commandDisabledReason } from "../pcb/selection-rules.js"
-import { WAITS_FOR_BLOCKS, WAITS_FOR_ENGINE, WAITS_FOR_FABRICATION, WAITS_FOR_ROUTING } from "./pending.js"
+import { WAITS_FOR_ENGINE } from "./pending.js"
 
 export type CommandId =
   | "openFile"
@@ -81,6 +81,20 @@ export type CommandId =
   | "history"
   | "keys"
   | "about"
+  | "newCircuit"
+  | "print"
+  | "exportPdf"
+  | "copy"
+  | "paste"
+  | "findSimilar"
+  | "noConnect"
+  | "junction"
+  | "annotate"
+  | "placementTransfer"
+  | "routingCorner"
+  | "flip"
+  | "footprintManager"
+  | "systemSettings"
 
 export interface MenuItem {
   label: string
@@ -108,22 +122,21 @@ export interface Menu {
 
 const run = (label: string, command: CommandId, shortcut?: string): MenuItem => (shortcut ? { label, command, shortcut } : { label, command })
 const later = (label: string, pending: string, shortcut?: string): MenuItem => (shortcut ? { label, pending, shortcut } : { label, pending })
+const SOON = "Comes later; not in Studio yet"
 
 export const ENGINE = WAITS_FOR_ENGINE
-const FIND = "Comes later; for now Find (Ctrl+F) looks up parts and nets"
-const SETTINGS = "Comes later, with the Studio preferences"
 
 export const MENUS: readonly Menu[] = [
   {
     title: "File",
     entries: [
       run("Open circuit file", "openFile", "Ctrl+O"),
-      later("New circuit", "Comes later; for now create a .circuit.tsx file in the project folder"),
+      later("New circuit…", SOON),
       "separator",
       run("Export BOM", "exportBom"),
       run("Export package", "exportPackage"),
       run("Export Gerber", "exportFabrication"),
-      later("Print", WAITS_FOR_FABRICATION),
+      later("Print…", SOON),
     ],
   },
   {
@@ -132,15 +145,15 @@ export const MENUS: readonly Menu[] = [
       run("Undo", "undo", "Ctrl+Z"),
       run("Redo", "redo", "Ctrl+Y"),
       "separator",
-      later("Copy", ENGINE, "Ctrl+C"),
-      later("Paste", ENGINE, "Ctrl+V"),
+      later("Copy", SOON, "Ctrl+C"),
+      later("Paste", SOON, "Ctrl+V"),
       run("Delete", "delete", "Delete"),
       "separator",
       run("Select all", "selectAll", "Ctrl+A"),
       run("Select the instance", "selectInstance"),
       { label: "Make sub-sheet…", command: "makeSheet", only: "schematic" },
       run("Find", "find", "Ctrl+F"),
-      later("Find similar objects", FIND, "Ctrl+Shift+F"),
+      later("Find similar objects", SOON, "Ctrl+Shift+F"),
       "separator",
       run("Fillet tracks", "filletTracks", "U"),
       run("Straighten tracks", "straightenTracks", "Shift+U"),
@@ -183,8 +196,8 @@ export const MENUS: readonly Menu[] = [
       run("Note box", "noteBox"),
       "separator",
       run("Bus", "drawBus", "Alt+B"),
-      later("No connect flag", WAITS_FOR_BLOCKS),
-      later("Junction", "Comes later; for now junctions are drawn where wires meet", "Alt+J"),
+      { label: "No connect flag", command: "noConnect", only: "schematic" },
+      { label: "Junction", command: "junction", shortcut: "Alt+J", only: "schematic" },
       "separator",
       run("Copper pour", "placePour"),
       run("Copper pour: Whole board", "placePourBoard"),
@@ -215,8 +228,8 @@ export const MENUS: readonly Menu[] = [
       { label: "Delete page", command: "deletePage", only: "schematic" },
       "separator",
       { label: "Replicate layout", command: "replicateLayout", only: "pcb" },
-      later("Annotate designators", `${WAITS_FOR_BLOCKS}; for now Studio picks the next free name when placing`),
-      later("Placement transfer", WAITS_FOR_BLOCKS, "Ctrl+Shift+X"),
+      later("Annotate designators", SOON),
+      later("Placement transfer", SOON, "Ctrl+Shift+X"),
     ],
   },
   {
@@ -224,7 +237,7 @@ export const MENUS: readonly Menu[] = [
     entries: [
       run("Single routing", "singleRouting", "Alt+W"),
       run("Via", "placeVia", "Alt+V"),
-      later("Routing corner", WAITS_FOR_ROUTING, "L"),
+      { label: "Routing corner", command: "routingCorner", shortcut: "L", only: "pcb" },
       "separator",
       run("Autoroute", "autoroute"),
       run("Autoroute selection", "autorouteSelection"),
@@ -237,7 +250,7 @@ export const MENUS: readonly Menu[] = [
     entries: [
       run("Rotate", "rotate", "Space"),
       run("Rotate right", "rotateRight"),
-      later("Flip", ENGINE, "X"),
+      later("Flip", SOON, "X"),
       "separator",
       run("Lock", "lock"),
       run("Unlock", "unlock"),
@@ -259,15 +272,15 @@ export const MENUS: readonly Menu[] = [
   },
   {
     title: "Tools",
-    entries: [run("History", "history"), later("Footprint manager", `${WAITS_FOR_BLOCKS}; for now edit footprint.yaml files in the project`)],
+    entries: [run("History", "history"), later("Footprint manager…", SOON)],
   },
   {
     title: "Export",
-    entries: [run("BOM", "exportBom"), run("Package", "exportPackage"), run("Fabrication files (JLCPCB)", "exportFabrication"), run("Gerber", "exportFabrication"), run("Pick and place (CPL)", "exportFabrication"), later("PDF", WAITS_FOR_FABRICATION)],
+    entries: [run("BOM", "exportBom"), run("Package", "exportPackage"), run("Fabrication files (JLCPCB)", "exportFabrication"), run("Gerber", "exportFabrication"), run("Pick and place (CPL)", "exportFabrication"), later("PDF…", SOON)],
   },
   {
     title: "Settings",
-    entries: [later("System", SETTINGS), run("Hotkeys", "keys")],
+    entries: [later("System…", SOON), run("Hotkeys", "keys")],
   },
   {
     title: "Help",
@@ -331,6 +344,13 @@ export const COMMAND_KEY_ACTIONS: Partial<Record<CommandId, KeyActionName>> = {
   distributeH: "distributeH",
   filletTracks: "filletTracks",
   straightenTracks: "straightenTracks",
+  routingCorner: "routingCorner",
+  flip: "flip",
+  copy: "copy",
+  paste: "paste",
+  findSimilar: "findSimilar",
+  junction: "junction",
+  placementTransfer: "placementTransfer",
 }
 
 /** Keys that no menu item shows: the canvas keys, and the second key of a command. */
@@ -338,7 +358,7 @@ const EXTRA_KEYS = [
   { keys: "Ctrl+Shift+Z", label: "Redo" },
   { keys: "W", label: "Wire (schematic), Single routing (PCB)" },
   { keys: "V (PCB)", label: "Change the active layer; while routing, a via at the last corner" },
-  { keys: "Space (while routing)", label: "Step the corner mode: 45°, 45° reversed, 90°" },
+  { keys: "Space (while routing)", label: "Step the corner mode: 45°, 45° reversed, 90°, arc" },
   { keys: "Enter (while routing)", label: "End the track open at its last corner (or click that corner again)" },
   { keys: "R", label: "Rotate" },
   { keys: "Space (while drawing a wire)", label: "Flip the bend of the leg to the pointer" },

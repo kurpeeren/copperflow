@@ -18,7 +18,7 @@ import type { View } from "../pcb/positions"
 import type { Selection, SelectionChange } from "../selection"
 import type { ThemeName } from "./theme-state"
 import type { BottomTab } from "./bottom-state"
-import { COPPER_COMMANDS, PCB_COMMANDS, POUR_COMMANDS, SHEET_COMMANDS, WORKSPACE_COMMANDS, type AppCommand } from "./command-owners"
+import { COPPER_COMMANDS, MARK_COMMANDS, PCB_COMMANDS, POUR_COMMANDS, SHEET_COMMANDS, WORKSPACE_COMMANDS, type AppCommand } from "./command-owners"
 import { POUR_FILL_COMMANDS, type PourFillMode } from "../pcb/pour-view"
 import { send } from "./commands"
 import type { DialogName } from "./Dialogs"
@@ -31,7 +31,7 @@ import type { RouteScope } from "../api"
 import { runPageCommand, type PageCommand } from "./page-commands"
 import type { Design } from "../api"
 
-const SCHEMATIC_ONLY: ReadonlySet<CommandId> = new Set(SHEET_COMMANDS)
+const SCHEMATIC_ONLY: ReadonlySet<CommandId> = new Set([...SHEET_COMMANDS, ...MARK_COMMANDS])
 const PCB_ONLY: ReadonlySet<CommandId> = new Set([...PCB_COMMANDS, ...COPPER_COMMANDS, ...POUR_COMMANDS])
 
 /** The one view a command runs in, if it is a view's own (the other view switches to it first). */

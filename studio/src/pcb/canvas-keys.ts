@@ -44,6 +44,13 @@ export type KeyActionName =
   | "distributeH"
   | "filletTracks"
   | "straightenTracks"
+  | "routingCorner"
+  | "flip"
+  | "copy"
+  | "paste"
+  | "findSimilar"
+  | "junction"
+  | "placementTransfer"
 
 /** What a key event says, apart from the browser: modifiers, whether it came from a field, and the key. */
 export interface KeyInput {
@@ -149,6 +156,7 @@ const SHEET_ALT_KEYS: ReadonlyMap<string, KeyActionName> = new Map([
   ["c", "drawCircle"],
   ["a", "drawArc"],
   ["t", "drawText"],
+  ["j", "junction"],
 ])
 
 /** The PCB's Alt combinations, by the physical key's letter: Route → Single routing and Route → Via, as EasyEDA. */
@@ -187,6 +195,12 @@ function letterAction(letter: string, input: KeyInput, state: KeyState): KeyResu
     case "u":
       // Edit → Fillet tracks, and with Shift Straighten tracks: the PCB's only.
       return state.view === "pcb" ? act(input.shiftKey ? "straightenTracks" : "filletTracks", true) : null
+    case "l":
+      // Route → Routing corner: the PCB's only; the schematic's L is Alt+L, the polyline.
+      return state.view === "pcb" && !input.shiftKey ? act("routingCorner", true) : null
+    case "x":
+      // Layout → Flip: the selected parts to the other side of the board.
+      return state.view === "pcb" && !input.shiftKey ? act("flip", true) : null
     default:
       return null
   }
@@ -210,6 +224,8 @@ const CTRL_KEYS: ReadonlyMap<string, KeyActionName> = new Map([
   ["o", "openFile"],
   ["a", "selectAll"],
   ["f", "find"],
+  ["c", "copy"],
+  ["v", "paste"],
 ])
 
 /** Ctrl (or Cmd) and Shift with these letters, by the character: Ctrl+Shift+Z redoes, as Ctrl+Y does. */
@@ -217,13 +233,16 @@ const CTRL_SHIFT_KEYS: ReadonlyMap<string, KeyActionName> = new Map([
   ["z", "redo"],
   ["l", "alignLeft"],
   ["h", "distributeH"],
+  ["f", "findSimilar"],
+  ["x", "placementTransfer"],
 ])
 
 /** Ctrl (or Cmd) with Z, Y, O, A or F, or with Shift and Z (redo), L (align left) or H (distribute horizontally); AltGr combinations are not ours. */
 function ctrlAction(input: KeyInput): KeyResult | null {
   if (input.altKey || input.altGraph) return null
   const action = (input.shiftKey ? CTRL_SHIFT_KEYS : CTRL_KEYS).get(input.key.toLowerCase())
-  return action ? act(action, true) : null
+  // Ctrl+C keeps the browser's copy too, for text selected outside the canvas.
+  return action ? act(action, action !== "copy") : null
 }
 
 /** Delete or Backspace removes the selected parts; while a wire is drawn, Backspace takes back its last corner instead. */

@@ -249,9 +249,9 @@ describe("Ctrl+F", () => {
     expect(keyAction(key("F", { metaKey: true }), PCB)?.action).toBe("find")
   })
 
-  test("is not Find in a field, with Shift or Alt, or bare (bare F still fits)", () => {
+  test("is not Find in a field, with Alt, or bare (bare F still fits); with Shift it is Find similar objects", () => {
     expect(keyAction(key("f", { ctrlKey: true, typing: true }), PCB)).toBeNull()
-    expect(keyAction(key("F", { ctrlKey: true, shiftKey: true }), PCB)).toBeNull()
+    expect(keyAction(key("F", { ctrlKey: true, shiftKey: true }), PCB)?.action).toBe("findSimilar")
     expect(keyAction(key("f", { ctrlKey: true, altKey: true }), PCB)).toBeNull()
     expect(keyAction(key("f"), PCB)?.action).toBe("fit")
   })
