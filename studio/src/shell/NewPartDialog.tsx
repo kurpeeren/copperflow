@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react"
 import type { PinTableError } from "../../../src/library/pin-table.js"
+import { PALETTE } from "../pcb/ctx"
 import { footprintPreview, type FootprintPreview } from "./footprint-preview"
 import {
   createdSummary,
@@ -18,11 +19,17 @@ import type { NewPartPanel } from "./new-part-result"
 
 const PREVIEW_SIZE = { width: 240, height: 150 }
 
-/** The preview's colours, from the theme, so it follows light and dark. */
-function themeColours(element: HTMLElement) {
-  const style = getComputedStyle(element)
-  const token = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback
-  return { board: token("--pcb-background", "#000"), pad: token("--copper", "#C8702A"), text: token("--on-copper", "#fff"), line: token("--muted", "#888"), silk: "#e8e8e8" }
+/**
+ * The preview draws in the PCB view's colours (PALETTE), so a footprint looks the same here as on the board: top copper
+ * or plated pads, drills, top silkscreen and the assembly outlines. The PCB view keeps them in both themes, as does this.
+ */
+const PREVIEW_LOOK = {
+  board: PALETTE.background,
+  pad: PALETTE.topCopper,
+  throughPad: PALETTE.multiLayer,
+  drill: PALETTE.drill,
+  outline: PALETTE.topAssembly,
+  silk: PALETTE.topSilk,
 }
 
 function drawPreview(canvas: HTMLCanvasElement, preview: FootprintPreview): void {
@@ -31,9 +38,8 @@ function drawPreview(canvas: HTMLCanvasElement, preview: FootprintPreview): void
   canvas.height = PREVIEW_SIZE.height * ratio
   const context = canvas.getContext("2d")
   if (!context) return
-  const colours = themeColours(canvas)
   context.setTransform(ratio, 0, 0, ratio, 0, 0)
-  context.fillStyle = colours.board
+  context.fillStyle = PREVIEW_LOOK.board
   context.fillRect(0, 0, PREVIEW_SIZE.width, PREVIEW_SIZE.height)
   const stroke = (lines: readonly (readonly { x: number; y: number }[])[], colour: string, closed: boolean, dash: number[] = []) => {
     context.strokeStyle = colour
@@ -47,20 +53,20 @@ function drawPreview(canvas: HTMLCanvasElement, preview: FootprintPreview): void
     }
     context.setLineDash([])
   }
-  stroke([preview.courtyard], colours.line, true, [3, 3])
-  stroke(preview.body, colours.line, false)
-  stroke(preview.silkscreen, colours.silk, false)
+  stroke([preview.courtyard], PREVIEW_LOOK.outline, true, [3, 3])
+  stroke(preview.body, PREVIEW_LOOK.outline, false)
+  stroke(preview.silkscreen, PREVIEW_LOOK.silk, false)
   for (const pad of preview.pads) {
     context.save()
     context.translate(pad.x, pad.y)
     context.rotate((pad.rotation * Math.PI) / 180)
-    context.fillStyle = colours.pad
+    context.fillStyle = pad.through ? PREVIEW_LOOK.throughPad : PREVIEW_LOOK.pad
     context.beginPath()
     if (pad.shape === "circle" || pad.shape === "oval") context.ellipse(0, 0, pad.width / 2, pad.height / 2, 0, 0, 2 * Math.PI)
     else context.rect(-pad.width / 2, -pad.height / 2, pad.width, pad.height)
     context.fill()
     if (pad.drill) {
-      context.fillStyle = colours.board
+      context.fillStyle = PREVIEW_LOOK.drill
       context.beginPath()
       context.arc(0, 0, pad.drill / 2, 0, 2 * Math.PI)
       context.fill()
@@ -69,7 +75,7 @@ function drawPreview(canvas: HTMLCanvasElement, preview: FootprintPreview): void
   }
   const first = preview.pads.find((pad) => pad.number === "1")
   if (first) {
-    context.fillStyle = colours.silk
+    context.fillStyle = PREVIEW_LOOK.silk
     context.font = "10px sans-serif"
     context.fillText("1", first.x - first.width / 2 - 8, first.y + 3)
   }

@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs"
-import { join, relative } from "node:path"
+import { join, relative, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { describe, expect, test } from "vitest"
 import { contrastRatio } from "../studio/src/shell/contrast.js"
@@ -58,6 +58,23 @@ describe("the chrome's tokens", () => {
     const found = sheets()
       .filter((sheet) => sheet !== "shell/theme.css")
       .flatMap((sheet) => [...read(sheet).matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map((m) => `${sheet}: ${m[0]}`))
+    expect(found).toEqual([])
+  })
+
+  test("no script but the palette files names a raw hex colour", () => {
+    // The PCB and schematic palettes and the drawing colour choices are the one source of canvas colours.
+    const palettes = new Set(["pcb/ctx.ts", "pcb/schematic-theme.ts", "pcb/drawing-props.ts"])
+    const scripts = (dir = SRC): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const path = join(dir, entry.name)
+        if (entry.isDirectory()) return scripts(path)
+        return /\.tsx?$/.test(entry.name) ? [relative(SRC, path).split(sep).join("/")] : []
+      })
+    const all = scripts()
+    expect(all).toContain("shell/NewPartDialog.tsx")
+    const found = all
+      .filter((script) => !palettes.has(script))
+      .flatMap((script) => [...read(script).matchAll(/["'`]#[0-9a-fA-F]{3,8}\b/g)].map((m) => `${script}: ${m[0]}`))
     expect(found).toEqual([])
   })
 
