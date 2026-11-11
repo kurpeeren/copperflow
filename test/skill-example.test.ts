@@ -61,12 +61,14 @@ describe("the two-channel sensor board of the skill", () => {
       parts: [{ name: "U1", part: "ATTINY814" }, { name: "C1", kind: "capacitor", value: "100nF", footprint: "0402" }, { name: "J1", kind: "pinheader", props: { pinCount: 4 } }, { name: "J2", kind: "pinheader", props: { pinCount: 3 } }],
       nets: { V5: ["J1.pin1"], GND: ["J1.pin2", "J2.pin3", "U1.GND", "C1.pin2"], S1: ["J1.pin3"], S2: ["J1.pin4"], V3_3: ["U1.VCC", "C1.pin1", "J2.pin1"], UPDI: ["U1.UPDI", "J2.pin2"], ADC1: ["U1.PA4"], ADC2: ["U1.PA5"] },    })
     expect(written.isError, written.text).toBe(false)
-    expect(written.text.split("\n").slice(0, 5)).toEqual([
+    expect(written.text.split("\n").slice(0, 7)).toEqual([
       expect.stringMatching(/^Change c\d+: wrote sensor\.circuit\.tsx, (Power|Channel)\.sheet\.tsx, (Power|Channel)\.sheet\.tsx$/),
       "4 parts, 3 instances",
       "PS1 Power base 100: VIN=V5 VOUT=V3_3 GND=GND",
       "CH1 Channel base 200: IN=S1 OUT=ADC1 GND=GND",
       "CH2 Channel base 300: IN=S2 OUT=ADC2 GND=GND",
+      "8 nets, 14 traces",
+      "Now call check_circuit once.",
     ])
     expect((await call("check_circuit", { file: FILE })).text).toMatch(/^sensor\.circuit\.tsx: 0 errors, \d+ warnings/)
     expect((await call("note_decision", { file: FILE, text: "Schematic approved" })).text).toMatch(/^Change c\d+: noted under Decisions in PROJECT\.md$/)
@@ -78,5 +80,11 @@ describe("the two-channel sensor board of the skill", () => {
     expect((await call("autoplace", { file: FILE, parts: ["J1", "J2"] })).text).toMatch(/^Placed 2 parts/)
     expect((await call("fit_board", { file: FILE })).text).toMatch(/^Change c\d+: board [\d.]+ × [\d.]+ mm \(margin 2 mm\)$/)
     expect((await call("board_summary", { file: FILE })).text).toMatch(/^sensor\.circuit\.tsx: Board [\d.]+ × [\d.]+ mm, 2 layers, courtyards use \d+%; 11 parts, \d+ nets/)
+    // A placed instance stays where it is: nothing to place.
+    expect((await call("autoplace", { file: FILE, instance: "CH1" })).text).toMatch(/^Nothing to place/)
+    expect((await call("add_pour", { file: FILE, net: "GND", layer: "top" })).text).toMatch(/^Change c\d+: added copperpour:1 \(GND, top\)\ncopperpour:1 GND top: [\d.]+ mm², joins \d+ pads/)
+    expect((await call("autoroute", { file: FILE })).text).toMatch(/^Change c\d+: Routed \d+ of \d+ connections in \d+ pass(es)?/)
+    expect((await call("check_circuit", { file: FILE })).text).toMatch(/^sensor\.circuit\.tsx: 0 errors, \d+ warnings/)
+    expect((await call("export_fabrication", { file: FILE })).text).toMatch(/^Wrote \d+ files to sensor-fab\/ and sensor-fab\.zip:/)
   }, 60_000)
 })

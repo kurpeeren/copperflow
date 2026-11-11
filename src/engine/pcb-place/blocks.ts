@@ -195,8 +195,8 @@ function freeShift(body: Body, problem: Problem, taken: readonly Box[], targets:
 }
 
 /**
- * Places each follower as a block once the rest is placed (`positions` and `final`): an instance without an anchor of
- * its own, or whose copy would overlap something or leave the board, moves to the free spot nearest its connections.
+ * Places each follower as a block once the rest is placed (`positions` and `final`): an instance whose copy would overlap
+ * something or leave the board moves to the free spot nearest its connections.
  */
 export function placeCopies(
   design: Design,
@@ -211,7 +211,7 @@ export function placeCopies(
     const body = bodyOf(design, follower, placed.positions)
     if (body.parts.length === 0) continue
     const free = (dx: number, dy: number) => body.boxes.every((b) => inArea(moved(b, dx, dy), problem.area) && !taken.some((t) => tooClose(moved(b, dx, dy), t, problem.clearance)))
-    const stays = follower.instance.pcb !== undefined && free(0, 0)
+    const stays = free(0, 0)
     const shift = stays ? { x: 0, y: 0 } : freeShift(body, problem, taken, targets)
     if (!shift) {
       notes.push(`${follower.instance.path} found no free room as a block; it was left where it is`)
