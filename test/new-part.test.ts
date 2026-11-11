@@ -96,6 +96,34 @@ describe("writing a part from the wizard", () => {
     expect((await readPart(root, "CONN3")).footprint).toBe("footprint.yaml")
   })
 
+  test("the placeholder for more than four pins is a dual in-line outline: 2.54 mm pitch, rows 7.62 mm apart", () => {
+    const pins = (n: number) => Object.fromEntries(Array.from({ length: n }, (_, i) => [String(i + 1), { name: `P${i + 1}`, type: "passive" as const }]))
+    const at = (n: number) => stubFootprint(pins(n)).pads.map((pad) => [pad.number, pad.x, pad.y])
+    expect(at(4).map(([, , y]) => y)).toEqual([0, 0, 0, 0])
+    expect(at(6)).toEqual([
+      ["1", -3.81, 2.54],
+      ["2", -3.81, 0],
+      ["3", -3.81, -2.54],
+      ["4", 3.81, -2.54],
+      ["5", 3.81, 0],
+      ["6", 3.81, 2.54],
+    ])
+    // Odd counts put the extra pin in the first row; the second row starts at the bottom.
+    expect(at(5)).toEqual([
+      ["1", -3.81, 2.54],
+      ["2", -3.81, 0],
+      ["3", -3.81, -2.54],
+      ["4", 3.81, -2.54],
+      ["5", 3.81, 0],
+    ])
+    const eighteen = stubFootprint(pins(18))
+    expect(eighteen.placeholder).toBe(true)
+    const ys = eighteen.pads.map((pad) => pad.y)
+    expect(Math.max(...ys) - Math.min(...ys)).toBeCloseTo(8 * 2.54, 9)
+    expect(new Set(eighteen.pads.map((pad) => pad.x))).toEqual(new Set([-3.81, 3.81]))
+    expect(eighteen.pads.every((pad) => pad.width > pad.height && pad.height < 2.54)).toBe(true)
+  })
+
   test("footprint file with the pads given (create_part's footprint_file) writes them, without the placeholder note", async () => {
     const { placeholder, ...pads } = stubFootprint({ "1": { name: "A", type: "passive" }, "2": { name: "B", type: "passive" } })
     expect(placeholder).toBe(true)

@@ -41,12 +41,14 @@ export interface NewPartResult {
   checklist: string
 }
 
-/** Spacing of the placeholder footprint's pads, in mm: one pad per pin in a row, 0.1 inch apart. */
+/** Spacing of the placeholder footprint's pads, in mm: 0.1 inch apart, in one row up to four pins, else two rows. */
 const STUB_PITCH = 2.54
 const STUB_PAD = { width: 1.2, height: 1.8 }
+const STUB_SINGLE_ROW_MAX = 4
+const STUB_ROW_SPACING = 7.62
 
 export const PLACEHOLDER_NOTE =
-  'footprint.yaml is a placeholder (one pad per pin in a row, 2.54 mm apart): draw every pad from the datasheet\'s recommended land pattern, then delete "placeholder: true". Until then the checks report an error for each use of the part on the board, fabrication files are not written and the part cannot be verified; the schematic works. A footprint file goes into pick-and-place at its own orientation: drawn as copperflow draws (pin 1 top left, rows vertical), a SOIC- or SOP-like part needs fabrication.placementRotations.parts.<id>: 270 in rules.yaml; check it in JLCPCB\'s assembly preview.'
+  'footprint.yaml is a placeholder (pads 2.54 mm apart, in one row up to four pins and in two rows 7.62 mm apart above that): draw every pad from the datasheet\'s recommended land pattern, then delete "placeholder: true". Until then the checks report an error for each use of the part on the board, fabrication files are not written and the part cannot be verified; the schematic works. A footprint file goes into pick-and-place at its own orientation: drawn as copperflow draws (pin 1 top left, rows vertical), a SOIC- or SOP-like part needs fabrication.placementRotations.parts.<id>: 270 in rules.yaml; check it in JLCPCB\'s assembly preview.'
 
 /** Writes the part; throws with one message for the person when it cannot, and then writes nothing. */
 export async function writeNewPart(root: string, input: NewPartInput, options: { now: string; replace?: boolean }): Promise<NewPartResult> {
@@ -133,14 +135,31 @@ export function formatNewPart(result: NewPartResult): string {
   ].join("\n")
 }
 
-/** A footprint.yaml with one pad per pin in a row, centred, for the person to replace with the land pattern. */
+/**
+ * A footprint.yaml for the person to replace with the land pattern: up to four pins one pad per pin in a row, centred;
+ * more in two rows as a dual in-line outline (2.54 mm pitch, rows 7.62 mm apart), pin 1 at the top of the left row,
+ * down the left row and back up the right one, the extra pin of an odd count in the left row.
+ */
 export function stubFootprint(pins: Part["pins"]): FootprintFile {
   const numbers = Object.keys(pins).sort((a, b) => Number(a) - Number(b))
+  if (numbers.length > STUB_SINGLE_ROW_MAX) return { placeholder: true, pads: dualStubPads(numbers) }
   const offset = ((numbers.length - 1) * STUB_PITCH) / 2
   return {
     placeholder: true,
     pads: numbers.map((number, index) => ({ number, shape: "rect" as const, x: round(index * STUB_PITCH - offset), y: 0, ...STUB_PAD })),
   }
+}
+
+function dualStubPads(numbers: readonly string[]): FootprintFile["pads"] {
+  const left = Math.ceil(numbers.length / 2)
+  const top = ((left - 1) * STUB_PITCH) / 2
+  const pad = { shape: "rect" as const, width: STUB_PAD.height, height: STUB_PAD.width }
+  return numbers.map((number, index) => {
+    const inLeft = index < left
+    // The right row runs back up from the bottom position of the left row.
+    const step = inLeft ? index : left - 1 - (index - left)
+    return { number, x: (inLeft ? -1 : 1) * (STUB_ROW_SPACING / 2), y: round(top - step * STUB_PITCH), ...pad }
+  })
 }
 
 /** The pins as part.yaml's record, in number order; a pasted table with problems is refused with every line's. */
