@@ -134,7 +134,7 @@ export function routeDrawing(route: Route, end: Point): RouteDrawing {
   let run = { layer: legs[0]?.layer ?? route.layer, from: route.start.at, legs: [] as Leg[] }
   let from = route.start.at
   const close = () => {
-    const points = routePoints(run.from, run.legs.map((leg) => ({ to: leg.at, mode: leg.mode })))
+    const points = routePoints(run.from, run.legs.map((leg) => ({ to: leg.at, mode: leg.mode })), width)
     if (points.length >= 2) drawing.tracks.push({ layer: run.layer, width, points })
   }
   for (const leg of legs) {

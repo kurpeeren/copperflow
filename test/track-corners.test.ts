@@ -13,6 +13,14 @@ describe("the corner modes", () => {
     expect(CORNER_MODES.map(cornerModeName)).toEqual(["45°", "45° reversed", "90°", "Arc"])
   })
 
+  test("arc: never tighter than half the track's width; a leg too short for that stays a square elbow", () => {
+    // A 0.5 mm track on a 0.2 mm leg: an arc of radius 0.196 would pinch it, so the elbow stays square.
+    expect(cornerLeg(p(0, 0), p(4, 0.2), "arc", 0.5)).toEqual([p(4, 0), p(4, 0.2)])
+    const leg = cornerLeg(p(0, 0), p(4, 2), "arc", 0.5)
+    expect(4 - (leg[0] ?? p(0, 0)).x).toBeGreaterThanOrEqual(0.25)
+    expect(leg.length).toBeGreaterThan(3)
+  })
+
   test("arc: the square elbow rounded into a quarter arc tangent to both legs, ending on the pointer", () => {
     const leg = cornerLeg(p(0, 0), p(4, 2), "arc")
     expect(leg.at(-1)).toEqual(p(4, 2))

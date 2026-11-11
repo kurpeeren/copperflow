@@ -31,23 +31,27 @@ function elbow45(from: Point, to: Point, straightFirst: boolean): Point {
 }
 
 /** The points of one leg after `from`, ending at `to`: one elbow at most. */
-export function cornerLeg(from: Point, to: Point, mode: CornerMode): Point[] {
+export function cornerLeg(from: Point, to: Point, mode: CornerMode, width = 0): Point[] {
   const [adx, ady] = [Math.abs(to.x - from.x), Math.abs(to.y - from.y)]
   if (adx === 0 || ady === 0 || adx === ady) return [to]
   if (mode === "90") return squarePath([from, to]).slice(1)
-  if (mode === "arc") return arcLeg(from, to)
+  if (mode === "arc") return arcLeg(from, to, width)
   return [elbow45(from, to, mode === "45"), to]
 }
 
 /** How much of the shorter leg the arc takes: nearly all, leaving the little straight the fillet keeps. */
 const ARC_SHARE = 0.98
 
-/** The square elbow rounded with about the largest arc both legs hold: a quarter arc tangent to them. */
-function arcLeg(from: Point, to: Point): Point[] {
-  const square = [from, ...squarePath([from, to]).slice(1)]
+/**
+ * The square elbow rounded with about the largest arc both legs hold: a quarter arc tangent to them. An arc tighter
+ * than half the track's width would pinch the copper inside the bend, so a leg too short for one stays a square elbow.
+ */
+function arcLeg(from: Point, to: Point, width: number): Point[] {
+  const square = squarePath([from, to])
   const radius = ARC_SHARE * Math.min(Math.abs(to.x - from.x), Math.abs(to.y - from.y))
+  if (radius < width / 2) return square.slice(1)
   // The arc's points stay as computed: rounding them to the grid would bend the curve.
-  return filletTrack(square, radius, 0).points.slice(1)
+  return filletTrack([from, ...square.slice(1)], radius, width).points.slice(1)
 }
 
 export interface CornerLegSpec {
@@ -55,12 +59,12 @@ export interface CornerLegSpec {
   mode: CornerMode
 }
 
-/** The track from `start` through each leg in its own mode, tidied (copper-geometry.ts tidyTrack). */
-export function routePoints(start: Point, legs: readonly CornerLegSpec[]): Point[] {
+/** The track from `start` through each leg in its own mode, tidied (copper-geometry.ts tidyTrack); `width` is the track's. */
+export function routePoints(start: Point, legs: readonly CornerLegSpec[], width = 0): Point[] {
   const points: Point[] = [start]
   let from = start
   for (const leg of legs) {
-    points.push(...cornerLeg(from, leg.to, leg.mode))
+    points.push(...cornerLeg(from, leg.to, leg.mode, width))
     from = leg.to
   }
   return tidyTrack(points)
