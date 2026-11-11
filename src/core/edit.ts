@@ -305,17 +305,20 @@ const LABEL_KEY = /^pin[1-9][0-9]*$/
 const LABEL_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 /**
- * A pin name close to `name` that LABEL_NAME takes: a supply name puts its volts after the V ("5V" is V5, "3V3" is
- * V3_3); otherwise the characters it refuses become _, and a leading digit gets _ in front.
+ * A pin name close to `name` that LABEL_NAME takes. A leading sign goes ("+5V" as "5V"); a supply name puts its volts
+ * after the V ("5V" is V5, "3V3" is V3_3); other leading digits move behind the letters ("12ABC" is ABC12); the
+ * characters LABEL_NAME refuses become _, and what still starts with a digit gets _ in front.
  */
 export function pinLabelSuggestion(name: string): string {
-  const volts = /^(\d+)[Vv](\d*)$/.exec(name)
+  const unsigned = name.replace(/^[+-]+/, "")
+  const volts = /^(\d+)[Vv](\d*)$/.exec(unsigned)
   if (volts) return `V${volts[1]}${volts[2] ? `_${volts[2]}` : ""}`
-  const cleaned = name.replace(/[^A-Za-z0-9_]/g, "_")
+  const moved = unsigned.replace(/^(\d+)([A-Za-z].*)$/, "$2$1")
+  const cleaned = moved.replace(/[^A-Za-z0-9_]/g, "_")
   return /^[A-Za-z_]/.test(cleaned) ? cleaned : `_${cleaned}`
 }
 
-/** `{ pin1: "cathode", pin2: "anode" }`; keys are pin1, pin2, ... and names are identifiers, as selectors need. */
+/** `{ pin1: "anode", pin2: "cathode" }`; keys are pin1, pin2, ... and names are identifiers, as selectors need. */
 function formatPinLabels(labels: Record<string, string>): string {
   const entries = Object.entries(labels).map(([key, name]) => {
     if (!LABEL_KEY.test(key)) throw new EditError("invalid", `pinLabels key "${key}" must be pin1, pin2, ...`)

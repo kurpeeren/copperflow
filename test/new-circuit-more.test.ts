@@ -8,6 +8,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { createCopperflowServer } from "../src/mcp/server.js"
 import { createPart, generateCircuit, listEntries, redoChange, undoChange, updateAnnotations } from "../src/core/index.js"
 import { addMark } from "../src/core/annotations.js"
+import { pinLabelSuggestion } from "../src/core/edit.js"
 import { BOARD } from "./fixtures.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
 import { DEMO } from "./helpers/new-circuit-demo.js"
@@ -63,7 +64,12 @@ describe("new_circuit round trip and pins", () => {
     expect((await run({ name: "D1", kind: "led", props: { pinLabels: { left: "A" } } })).text).toMatch(/pin1, pin2/)
     expect((await run({ name: "D1", kind: "led", props: { pinLabels: { pin1: "a b" } } })).text).toMatch(/letters, digits and _, not starting with a digit: use "a_b"/)
     expect((await run({ name: "J1", kind: "pinheader", props: { pinCount: 2, pinLabels: { pin1: "5V" } } })).text).toMatch(/pinLabels name "5V" for pin1 must be .*: use "V5"/)
+    expect((await run({ name: "J1", kind: "pinheader", props: { pinCount: 2, pinLabels: { pin1: "+5V" } } })).text).toMatch(/: use "V5"/)
     expect((await run({ name: "D1", kind: "led", props: { other: { pin1: "A" } } })).text).toMatch(/only pinLabels takes an object/)
+  })
+
+  test("the pin label suggestion strips a sign, puts volts after the V and moves leading digits behind the letters", () => {
+    expect(["+5V", "5V", "3V3", "-12V", "12ABC", "a b", "9"].map(pinLabelSuggestion)).toEqual(["V5", "V5", "V3_3", "V12", "ABC12", "a_b", "_9"])
   })
 
   test("a chip gets its pins from the footprint's pads, from pinCount or from pinLabels", async () => {

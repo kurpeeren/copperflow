@@ -180,7 +180,7 @@ export type Edit =
   | { kind: "setTraceHints"; from: string; to: string; schematicRouteHints: Point[] }
   /**
    * `importFrom` adds `import { tag } from "<importFrom>"` when it is missing. `pinLabels` is written as an object
-   * expression, `pinLabels={{ pin1: "cathode" }}`, the way a hand-written file names a built-in part's pins.
+   * expression, `pinLabels={{ pin1: "anode" }}`, the way a hand-written file names a built-in part's pins.
    */
   | {
       kind: "addPart"

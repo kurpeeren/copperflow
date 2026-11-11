@@ -15,7 +15,7 @@ export interface NewPart {
   /** The kind's main value: resistance, capacitance, ... */
   value?: Literal
   footprint?: string
-  /** Literal props, and `pinLabels` as an object (`{ pin1: "cathode" }`) to rename the pins of a built-in part. */
+  /** Literal props, and `pinLabels` as an object (`{ pin1: "anode" }`) to rename the pins of a built-in part. */
   props?: Record<string, Literal | Record<string, string>>
 }
 
