@@ -1,86 +1,113 @@
 ---
 name: copperflow
-description: Work on copperflow circuit projects, where tscircuit *.circuit.tsx files are edited by a human and an agent together. Use when placing, moving, connecting or removing parts in a *.circuit.tsx file, or when the user mentions copperflow, locked parts, marks or undoing a change.
+description: Work on copperflow circuit projects, where tscircuit *.circuit.tsx files are edited by a human and an agent together. Use when designing a board, placing, moving, connecting or removing parts in a *.circuit.tsx file, or when the user mentions copperflow, PROJECT.md, locked parts, marks or undoing a change.
 ---
 
 # Working in a copperflow project
 
 A human edits the same circuit files you do. They lock parts they have placed, leave marks
 with instructions, and undo changes they do not want. Your job is to make progress without
-undoing their work.
+undoing their work. Every tool answers in a few lines that say what it did; read the answers,
+not the files.
 
 ## Every task
 
-0. Call `project_status` first (PROJECT.md and each circuit's state); record choices with `note_decision`, the intent, blocks and open items with `set_project`, and look at the board with `board_summary`.
-1. Call `circuit_summary` for the file before changing it (the default answer is compact; use
-   `detail: "full"` only when you need every prop). Read it fully: `[LOCKED]` parts,
-   `[read-only: ...]` parts, "Marks from the human" and lock violations.
-2. Call `recent_changes`. A change marked `[undone]` was rejected by the human: do not make it
-   again unless they ask.
-3. For a new design, call `new_circuit` once with the parts (`kind` for a built-in part such as
-   `resistor`, `part` for a library id, `value`, `footprint`) and the nets (`{ GND: ["R1.pin2",
-   "U1.GND"] }`); it writes the file, refuses unknown pins and lists the real ones. An existing
-   file needs `replace: true`.
-   A repeated block (the same regulator or channel used twice or more) goes in a sheet once,
-   not as parts written twice: `new_circuit` takes `sheets: { PowerStage: { parts, nets, ports }
-   }` and `instances: [{ sheet: "PowerStage", name: "PS1", connections: { VIN: "VBUS" } }]`, and
-   writes `PowerStage.sheet.tsx` beside the circuit; `edit_circuit` adds another with
-   `add_instance` and rewires one with `set_connections`. Inside a sheet the designators are
-   local (R1); each instance adds its base (R101, R201). For a large schematic use pages
-   (`pages` in `new_circuit`, `page` in `place_part`, `move_to_page` in `edit_circuit`); nets
-   join across pages by name. `check_circuit` and `circuit_summary` take an instance name as
-   `filter` to show only that instance.
-   Write parts and connections, not positions or wire corners: the program places and routes.
-   Change existing parts and traces with `set_props`, `remove_part`, `add_trace` and
-   `remove_trace`, or several at once with `edit_circuit` (one history entry; nothing is written
-   if one edit is refused) and `connect_nets` (`{ GND: ["R1.pin2", "C1.pin2"] }`). These tools
-   enforce locks and record history; editing the file directly does not.
-   A part's name and value on the schematic and its silkscreen designator move with
-   `set_props` `schNameAt`, `schValueAt` and `pcbNameAt`, each a point `{ x, y }` from the
-   part's origin (sheet units, board mm) that moves with the part; `null` puts it back.
-   Copper: place the parts first with `autoplace` (one history entry; parts without a position, or
-   only some `parts` or an `instance`; `fit: true` also fits the board; it answers "Placed 12 parts;
-   wire length 184 mm (was 412); board 42 × 28 mm; 0 overlaps", then any part not placed), then run `autoroute` (one history entry; it routes what is
-   still unrouted, or only some `nets`, `parts` or an `instance`, within `budgetSeconds`, 20 s by
-   default, and names each connection it could not route with the reason), then `check_circuit`
-   once at the end (filter `copper` for the full list). Route by hand only what the router
-   reports: `route_track` (a track of one net, starting on a pad, track or via of that net),
-   `add_via` and `remove_copper`, and round track corners with `fillet_tracks`
-   (`straighten_tracks` squares them again); each is one history entry, and the answer lists the
-   copper violations the change introduced. Or move parts and run `autoroute` again; `unroute`
-   (`nets` or `all: true`) takes back the router's copper and never hand-drawn copper.
-   `copper_summary` shows per net the tracks, vias, length and unrouted connections. A locked part guards only the tracks that start on its
-   pads; vias on it and tracks that only end there are not locked, so leave them alone unless
-   the human asks.
-   Pours: before `autoroute`, a board gets a GND pour on the layer the parts sit on (both layers
-   when a two-layer board is routed on both), checked with `copper_summary`'s 'joins N pads': a
-   pour joins only the pads on its own layer and through pads, so a bottom pour under parts on
-   top joins almost nothing. `add_pour` `{ net: "GND", layer: "top" }` without an `outline`
-   fills the whole board, with thermal spokes to the GND pads, and the connections the fill
-   makes count as routed. Then `autoroute`, then `check_circuit` (`pour-floating` warns of a
-   pour that joins no pad of its net, `pour-sparse` of one joining fewer than half of them,
-   `pour-empty` of one left with no copper, `copper-hole` of copper too near a hole). `props` takes `priority`,
-   `clearance`, `minWidth`, `thermal` (`relief` or `solid`), `thermalWidth` and `thermalGap`.
-   `remove_pour`, `add_hole` and `remove_hole` (mounting holes) work by id (`copperpour:1`,
-   `hole:1`), as do `edit_circuit`'s `add_pour`, `remove_pour`, `add_hole` and `remove_hole`;
-   `new_circuit` takes `pours` and `holes`; `copper_summary` lists each pour (area, the pads it
-   joins) and hole. A part's lock never covers a pour; a pour or hole is locked by its id, and a
-   locked one is left alone.
-4. Call `check_circuit` once at the end (it lists the first 20 findings; `filter` takes `errors`,
-   `warnings`, `copper`, a part or a net). It runs copperflow's own rule checks: the electrical
-   checks (`pin-unconnected`, `output-conflict`, `no-power-source`), the placement checks
-   (`courtyard-overlap`, `outside-board`) and the problems in the code and the model, one line each
-   with the rule, the items and the position: `footprint` (a footprint it cannot make), `unknown-pin`, `ambiguous-pin` (a name
-   several pins share; write `pin<n>` instead), `library-override` (an instance sets a prop its
-   library part owns) and so on. Fix every error before you report success. Warnings such as
-   `unrouted` do not fail the check; mention them. Net classes and fabrication limits live in
-   `rules.yaml` at the project root; do not work around a rule in the circuit.
-5. For a board to be made: after `autoroute` and a clean `check_circuit`, call
-   `export_fabrication`. It writes `<name>-fab/` (Gerbers, drills, pick-and-place, BOM) and
-   `<name>-fab.zip` beside the circuit; a design with errors is refused and nothing is written.
-   Pass on its warnings (unrouted connections, parts without a footprint, designators over pads,
-   parts without an LCSC number). A person uploads the zip to JLCPCB; you do not.
-6. Tell the human what you changed and the change ids, so they can undo a single step.
+1. `project_status` `{}` first. It answers with PROJECT.md (`Intent: …`, `Blocks:`, the last
+   five `Decisions:`, `Open:`), then one line per circuit
+   (`main.circuit.tsx: parts 12, nets 9, unplaced 0, unrouted 3, errors 0, warnings 2`) and its
+   last three changes. `No PROJECT.md yet` means a new project: start the design workflow.
+2. For the file in hand, `circuit_summary` `{ file }`: one line per part and per net, then
+   `Locked:`, the marks (`Mark <id> (pcb x, y): …`) and `Lock violations:`. Use
+   `detail: "full"` only when you need every prop; `filter: "PS1"` shows one instance.
+3. `recent_changes` `{ limit? }`: newest first; a change marked `[undone]` was rejected by the
+   human: do not make it again unless they ask. `list_circuits` lists the circuit files.
+4. Do the work (below), then `check_circuit` once at the end, then tell the human what you
+   changed and the change ids (`c0012`), so they can undo a single step.
+
+## The design workflow
+
+For a new board, or a new block on one, work in this order. Each step names the tool and the
+first line of its answer. The worked example is in
+[references/design-workflow.md](references/design-workflow.md).
+
+1. **Intent.** `set_project` `{ intent, blocks: [{ name, does, status }], open }` writes
+   PROJECT.md: `Change c0001: Intent, Blocks, Open written to PROJECT.md`. Update a block's
+   status the same way as it moves on (`designed`, `placed`, `routed`).
+2. **Blocks first.** One sub-sheet per block (power, MCU, a sensor channel, a connector).
+   `new_circuit` `{ file, parts, nets, sheets, instances, place: false }` writes the circuit and
+   each `<name>.sheet.tsx`: `Change c0002: wrote main.circuit.tsx, Channel.sheet.tsx`, then the
+   counts, one line per instance (`CH1 Channel base 100: IN=AIN1 GND=GND`), `N nets, M traces`
+   and `Now call check_circuit once.` A repeated block (the same regulator or channel used twice
+   or more) goes in a sheet once, not as parts written twice: `sheets: { Channel: { parts, nets,
+   ports } }`, `instances: [{ sheet: "Channel", name: "CH1", connections: { IN: "AIN1" } }]`.
+   Inside a sheet the designators are local (R1); each instance adds its base (R101, R201).
+   Parts already written move into a sheet with `make_sheet` `{ file, name, parts }`
+   (`Change …: wrote X.sheet.tsx; X1 X base 100 replaces 3 parts`, its `Ports:` and
+   `Designators:`). For a large schematic use pages (`pages` in `new_circuit`, `page` in
+   `place_part`, `move_to_page` in `edit_circuit`); nets join across pages by name.
+3. **Design each block.** Write parts and connections, not positions or wire corners: the
+   program places and routes. `edit_circuit` `{ file, edits: [...] }` applies a list as one
+   change (`Change c0004 applied: 3 edits: …`; nothing written if one is refused, and the answer
+   says which). `connect_nets` `{ file, nets: { GND: ["R1.pin2", "C1.pin2"] } }` answers
+   `connected 4 pins (GND +4)`. Single edits: `place_part`, `set_props`, `remove_part`,
+   `add_trace`, `remove_trace`. These tools enforce locks and record history; editing the file
+   directly does not. Labels move with `set_props` `schNameAt`, `schValueAt`, `pcbNameAt`
+   (a point `{ x, y }` from the part's origin; `null` puts it back).
+4. **Clone channels as instances.** Another use of a block is `edit_circuit`'s `add_instance`
+   `{ sheet, name, connections }`; `set_connections` rewires one. Never copy its parts.
+5. **Choose parts**, in this order: a part already in `list_parts` (one line each,
+   `id <chip> title footprint verified|NOT verified`; `part_info` `{ id }` shows its part.yaml);
+   a built-in part with a generated footprint string (`resistor` with `"0402"`, a chip with
+   `"soic8"`); `create_part` from the datasheet (`Created <id>: <title>, N pins, footprint …`,
+   `It is NOT verified: …`); `import_part` `{ lcsc }` only when the human asks for an LCSC
+   number (`Imported C7950 as <id>: …`). An import is for personal, non-commercial use only and
+   is always unverified. See [references/parts-library.md](references/parts-library.md).
+   `bom` `{ file }` lists what the board uses.
+6. **Ask the person before the PCB.** Stop here. Run `check_circuit` and fix its errors, then
+   summarise the blocks and the parts chosen (and which are unverified) and ask whether to go on
+   to the board. Wait for a yes; `note_decision` what they approved.
+7. **Place block by block.** `autoplace` `{ file, instance: "CH1" }` or `{ file, parts: [...] }`
+   (one change): `Placed 12 parts; wire length 184 mm (was 412); board 42 × 28 mm; 0 overlaps`,
+   then `Change c0007; undo_change takes it back.`, then `Not placed:` and `Notes:` if any. Place
+   the block with the most connections (the MCU) first, then the others, then the connectors.
+   Parts a person placed or locked stay and are worked round. A sheet holds one layout for all
+   its instances: after the first is placed the others sit on top of it (`Nothing to place` for
+   them); move each as a whole with `set_props` `{ part: "CH2", props: { pcbX, pcbY } }`.
+8. **Board shape and connectors.** `fit_board` `{ file, margin? }`:
+   `Change c0010: board 42 × 28 mm (margin 2 mm)`; or `autoplace` with `fit: true`.
+   Mounting holes with `add_hole` `{ file, x, y, diameter }`.
+9. **Fine tuning.** `board_summary` `{ file }` is your eyes: `main.circuit.tsx: Board 42 × 28 mm,
+   2 layers, courtyards use 38%; 24 parts, 18 nets`, one line per part
+   (`U1 MCP2515 soic18w @(12.0, 8.5) r90 top [LOCKED]`), the ten longest unrouted connections,
+   `Courtyards overlap (n):`, `Off the board (n):`, `Pours:` and `Unrouted: N connections`. Move
+   a part with `set_props` `{ pcbX, pcbY, pcbRotation }` only when the summary shows a reason.
+10. **Pours.** `add_pour` `{ file, net: "GND", layer: "top" }` on the layer the parts sit on:
+    `Change …: added copperpour:1 (GND, top)` and `copperpour:1 GND top: … mm², joins N pads`.
+11. **Route.** `autoroute` `{ file }`: `Change …: Routed 30 of 32 connections in 2 passes;
+    unrouted: …`. Route by hand only what the router reports. Details in
+    [references/copper.md](references/copper.md) (`route_track`, `add_via`, `remove_copper`,
+    `fillet_tracks`, `straighten_tracks`, `unroute`, `copper_summary`, `remove_pour`,
+    `remove_hole`).
+12. **Check.** `check_circuit` `{ file, filter? }`: `main.circuit.tsx: 0 errors, 2 warnings`, then
+    up to 20 findings, one line each (`error pin-unconnected [U1.pin3]: …`).
+13. **Export.** For a board to be made: after `autoroute` and a clean `check_circuit`, call
+    `export_fabrication` `{ file }`: `Wrote 12 files to main-fab/ and main-fab.zip:`; a design
+    with errors is `Refused: no fabrication files were written.` and nothing is written. Pass on
+    its warnings. A person uploads the zip to JLCPCB; you do not. `export_package` writes the
+    BOM and datasheets folder.
+14. **Remember.** `note_decision` `{ text, file? }` for every choice a later context needs (a part
+    and why, a board size, what the person approved): `Change …: noted under Decisions in
+    PROJECT.md`. Keep `set_project`'s blocks and open items current.
+
+## Checking
+
+`check_circuit` lists the first 20 findings; `filter` takes `errors`, `warnings`, `copper`, a
+part, a net or an instance. Electrical checks (`pin-unconnected`, `output-conflict`,
+`no-power-source`), placement checks (`courtyard-overlap`, `outside-board`), copper and pour
+checks, and code and model problems: `footprint`, `unknown-pin`, `ambiguous-pin` (write
+`pin<n>` instead), `library-override`. Fix every error before you report success. Warnings
+such as `unrouted` do not fail the check; mention them. Net classes and fabrication limits live
+in `rules.yaml` at the project root; do not work around a rule in the circuit.
 
 ## Rules
 
@@ -88,7 +115,8 @@ undoing their work.
   ask the human to unlock it.
 - If a summary lists lock violations, restore those parts to their locked values first.
 - Treat marks as instructions placed on the board. Mention which marks you addressed.
-- You may undo your own changes with `undo_change`. You cannot undo the human's changes.
+- You may undo your own changes with `undo_change` `{ id? }`. You cannot undo the human's
+  changes.
 - Add chips through the parts library (`create_part`, then `place_part`), never as inline
   `<chip>` elements with hand-written pins. Only the human marks a library part verified.
 - Writing new parts directly in the file is fine. Keep them editable: see
@@ -98,6 +126,10 @@ undoing their work.
 
 ## References
 
+- [references/design-workflow.md](references/design-workflow.md): a two-channel sensor board
+  from an empty project to the export, as tool calls and their answers.
+- [references/copper.md](references/copper.md): placing, routing, pours and holes in detail.
+  Read before routing or drawing copper.
 - [references/editable-subset.md](references/editable-subset.md): how to write circuit code
   the human can still edit visually. Read before writing new parts.
 - [references/design-rules.md](references/design-rules.md): starter design rules (decoupling,

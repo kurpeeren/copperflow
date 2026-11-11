@@ -194,9 +194,9 @@ describe("the filters with a sheet inside a sheet", () => {
 })
 
 describe("the guidance for a model", () => {
-  test("the instructions and the skill say to put a repeated block in a sheet and to use pages for a large schematic", async () => {
+  test("the skill says to put a repeated block in a sheet and to use pages for a large schematic", async () => {
     const skill = await readFile(new URL("../skills/copperflow/SKILL.md", import.meta.url), "utf8")
-    for (const text of [client.getInstructions() ?? "", skill]) {
+    for (const text of [skill]) {
       expect(text).toMatch(/repeated block/)
       expect(text).toMatch(/instances/)
       expect(text).toMatch(/pages/)

@@ -11,6 +11,7 @@ import { loadCircuit, updateAnnotations } from "../src/core/workspace.js"
 import { COPPER_RULES } from "../src/mcp/copper-summary.js"
 import { createCopperflowServer } from "../src/mcp/server.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
+import { skillText } from "./helpers/skill-text.js"
 
 const FILE = "index.circuit.tsx"
 const EXAMPLE = fileURLToPath(new URL("../examples/usb-c-ldo", import.meta.url))
@@ -221,10 +222,10 @@ describe("new_circuit with pours and holes", () => {
   })
 })
 
-describe("the instructions and the skill", () => {
-  test("say a GND pour goes on the layer the parts sit on (both layers when routed on both), checked by its joins, before autoroute, then check_circuit", async () => {
-    const skill = await readFile(new URL("../skills/copperflow/SKILL.md", import.meta.url), "utf8")
-    for (const text of [client.getInstructions() ?? "", skill.replace(/\s+/g, " ")]) {
+describe("the skill", () => {
+  test("says a GND pour goes on the layer the parts sit on (both layers when routed on both), checked by its joins, before autoroute, then check_circuit", async () => {
+    {
+      const text = await skillText()
       expect(text).toMatch(/a GND pour on the layer the parts sit on \(both layers when a two-layer board is routed on both\), checked with `?copper_summary`?'s 'joins N pads'/)
       expect(text).not.toMatch(/GND pour on the bottom/)
       expect(text).toMatch(/before `?autoroute`?[^]*?then `?check_circuit`?/)

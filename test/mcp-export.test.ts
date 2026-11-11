@@ -88,10 +88,7 @@ describe("export_fabrication", () => {
     expect(await exists("main-fab.zip")).toBe(false)
   })
 
-  test("the instructions say to export after autoroute and a clean check_circuit, and that a person uploads the zip", async () => {
-    expect(client.getInstructions()).toContain(
-      "When the copper is routed and check_circuit reports no errors, call export_fabrication: it writes <name>-fab/ and <name>-fab.zip beside the circuit. A person uploads the zip to JLCPCB; you do not.",
-    )
+  test("the skill says to export after autoroute and a clean check_circuit, and that a person uploads the zip", async () => {
     const skill = await readFile(new URL("../skills/copperflow/SKILL.md", import.meta.url), "utf8")
     expect(skill).toMatch(/after `autoroute` and a clean `check_circuit`, call\s+`export_fabrication`/)
     expect(skill).toMatch(/A person uploads the\s+zip to JLCPCB/)

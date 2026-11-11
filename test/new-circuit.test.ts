@@ -11,6 +11,7 @@ import { lockParts } from "../src/core/annotations.js"
 import { BOARD } from "./fixtures.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
 import { DEMO } from "./helpers/new-circuit-demo.js"
+import { skillText } from "./helpers/skill-text.js"
 
 const EXAMPLE = fileURLToPath(new URL("../examples/usb-c-ldo", import.meta.url))
 const FILE = DEMO.file
@@ -182,8 +183,8 @@ describe("new_circuit history and replace", () => {
     await expect(undoChange(root, { author: "ai", id: "c0001" })).rejects.toThrow(/has changed since c0001/)
   })
 
-  test("the tool list and the instructions name new_circuit", async () => {
+  test("the tool list and the skill name new_circuit", async () => {
     expect((await client.listTools()).tools.map((t) => t.name)).toContain("new_circuit")
-    expect(client.getInstructions()).toContain("new_circuit")
+    expect(await skillText()).toContain("new_circuit")
   })
 })
