@@ -2,6 +2,7 @@ import { useState } from "react"
 import type { CircuitData, Design, PartsData, TraceInfo } from "./api"
 import { Library } from "./Library"
 import { NetsList } from "./NetsList"
+import { ProjectMemory } from "./ProjectMemory"
 import type { Highlight } from "./pcb/highlight"
 import type { Actions } from "./App"
 import { clicked, type Selection, type SelectionChange } from "./selection"
@@ -46,11 +47,11 @@ interface Props {
   hidden: boolean
 }
 
-const SUB_NAMES: Record<DesignSub, string> = { page: "Page", net: "Net", component: "Component", object: "Object" }
+const SUB_NAMES: Record<DesignSub, string> = { page: "Page", net: "Net", component: "Component", object: "Object", project: "Project" }
 const SUBS = Object.keys(SUB_NAMES) as DesignSub[]
 const DESIGN_PANEL_ID = "design-panel"
 
-/** Page, Net, Component and Object across the top of Project Design. */
+/** Page, Net, Component, Object and Project across the top of Project Design. */
 function SubTabs({ sub, onSub }: { sub: DesignSub; onSub(sub: DesignSub): void }) {
   const list = useTabList({ ids: SUBS, current: sub, onSelect: onSub })
   return (
@@ -89,6 +90,8 @@ function DesignBody(props: Props) {
       return <PartsTree {...props} />
     case "object":
       return <Connections {...props} />
+    case "project":
+      return <ProjectMemory />
   }
 }
 

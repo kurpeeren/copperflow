@@ -37,6 +37,7 @@ import {
 } from "../core/index.js"
 import { Engine } from "../engine/engine.js"
 import { setFilletRadius } from "../core/rules-edit.js"
+import { readProject } from "../core/project.js"
 import { RULES_PATH } from "../engine/rules/load.js"
 import { layoutPathFor, readLayoutText, type TrackRecord } from "../core/layout-file.js"
 import { lockedPartsAt, lockedStart } from "../core/layout-locks.js"
@@ -320,6 +321,8 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         return send(res, await listSheets(root))
       case "GET /api/project":
         return send(res, { name: basename(root) })
+      case "GET /api/project-memory":
+        return send(res, { text: (await readProject(root)) ?? null })
       case "GET /api/circuit": {
         const { model, annotations, violations, file: name } = await loadCircuit(root, query("file"))
         return send(res, { file: name, model, annotations, violations })

@@ -6,3 +6,39 @@
   border-radius: 50%;
   background: var(--copper);
 }
+
+/* The Project tab: PROJECT.md, read-only. */
+.project-memory {
+  padding: 8px;
+  color: var(--text);
+}
+
+.project-memory-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.project-memory h3,
+.project-memory h4 {
+  margin: 8px 0 4px;
+}
+
+.project-memory h4 {
+  color: var(--muted);
+}
+
+.project-memory ul {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.project-memory li {
+  overflow-wrap: anywhere;
+}
+
+.project-memory .empty {
+  margin: 0;
+  color: var(--muted);
+}

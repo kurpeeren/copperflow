@@ -3,7 +3,7 @@ import type { View } from "../pcb/positions.js"
 
 export type LeftStrip = "design" | "library"
 /** The sub-tabs of Project Design. */
-export type DesignSub = "page" | "net" | "component" | "object"
+export type DesignSub = "page" | "net" | "component" | "object" | "project"
 
 export interface LeftState {
   strip: LeftStrip
