@@ -114,18 +114,35 @@ export const designatorAnchor = (part: PlacedFootprint): Point => part.nameAt ??
 
 const possessive = (name: string) => `${name}'s`
 
-/** A warning for each designator that covers pads or another designator, in designator order: "C1's silkscreen overlaps U1's pads". */
-export function silkscreenWarnings(pcb: PcbLayout, fabrication: FabricationProfile): string[] {
+/** A designator that still covers pads or another designator, and the sentence that says so. */
+export interface SilkscreenFinding extends DesignatorPlacement {
+  /** "C1's silkscreen overlaps U1's pads and R3's designator" */
+  message: string
+}
+
+/**
+ * Each designator that covers pads or another designator, in designator order. The one source of both the export's
+ * warnings and check_circuit's `silk-on-pad` findings for designators, so the two name the same parts.
+ */
+export function silkscreenFindings(pcb: Pick<PcbLayout, "parts">, fabrication: FabricationProfile): SilkscreenFinding[] {
+  // A part with no courtyard and no pcbNameAt has its designator on its own centre, over its own pads: there is no
+  // side to put it on, and nothing to say.
+  const shaped = new Set(pcb.parts.filter((part) => part.courtyard.length > 0 || part.nameAt).map((part) => part.component))
   return designatorPlacements(pcb.parts, fabrication.maskExpansion ?? DEFAULT_MASK_EXPANSION)
-    .filter((p) => p.coversPads.length > 0 || p.coversDesignators.length > 0)
+    .filter((p) => shaped.has(p.component) && (p.coversPads.length > 0 || p.coversDesignators.length > 0))
     .sort((a, b) => naturalCompare(a.component, b.component))
     .map((p) => {
       const items = [
         ...(p.coversPads.length > 0 ? [`${listed(p.coversPads.map(possessive))} pads`] : []),
         ...(p.coversDesignators.length > 0 ? [`${listed(p.coversDesignators.map(possessive))} ${p.coversDesignators.length === 1 ? "designator" : "designators"}`] : []),
       ]
-      return `${p.component}'s silkscreen overlaps ${items.join(" and ")}`
+      return { ...p, message: `${p.component}'s silkscreen overlaps ${items.join(" and ")}` }
     })
+}
+
+/** A warning for each designator that covers pads or another designator, in designator order: "C1's silkscreen overlaps U1's pads". */
+export function silkscreenWarnings(pcb: PcbLayout, fabrication: FabricationProfile): string[] {
+  return silkscreenFindings(pcb, fabrication).map((finding) => finding.message)
 }
 
 /** "a", "a and b", "a, b and c". */

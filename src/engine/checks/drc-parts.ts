@@ -1,5 +1,6 @@
 import { MIN_OUTLINE_POINTS, usableOutline } from "../board.js"
 import type { Keepout, Point } from "../model.js"
+import { silkscreenFindings } from "../fab/designators.js"
 import { naturalCompare } from "../order.js"
 import type { PcbLayout, PlacedFootprint, WorldPad } from "../pcb.js"
 import type { Rules } from "../rules/schema.js"
@@ -183,9 +184,21 @@ function silkOnPad(part: PlacedFootprint, pads: PadsBySide, rules: Rules): Viola
   })
 }
 
+/**
+ * Each designator the fabrication export would draw over pads or another designator, as `silk-on-pad`: the same
+ * findings and words as the export's warnings. The items are the part, "<part> designator" (which keeps the id apart
+ * from the part's outline findings) and the parts it covers.
+ */
+function designatorChecks(parts: readonly PlacedFootprint[], rules: Rules): Violation[] {
+  return silkscreenFindings({ parts: [...parts] }, rules.fabrication).map((finding) => {
+    const items = new Set([finding.component, `${finding.component} designator`, ...finding.coversPads, ...finding.coversDesignators])
+    return violation("silk-on-pad", "warning", finding.message, [...items], "pcb", finding.at)
+  })
+}
+
 function silkChecks(parts: readonly PlacedFootprint[], rules: Rules): Violation[] {
   const pads = exposedPads(parts)
-  return parts.flatMap((part) => silkOnPad(part, pads, rules))
+  return [...parts.flatMap((part) => silkOnPad(part, pads, rules)), ...designatorChecks(parts, rules)]
 }
 
 // ---- board-level notes ----

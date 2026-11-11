@@ -147,7 +147,7 @@ position. Anything a check cannot evaluate is reported as `unchecked`, never sil
 | `courtyard-overlap` | error | Two part courtyards overlap. |
 | `keepout` | error | A part lies inside a keep-out area. |
 | `outside-board` | warning | A part is not inside the board outline. |
-| `silk-on-pad` | warning | Silkscreen lies on a pad, closer than `minSilkToPad`. |
+| `silk-on-pad` | warning | Silkscreen lies on a pad, closer than `minSilkToPad`; or a designator covers pads or another designator (the same findings, in the same words, as `export_fabrication`'s warnings: move it with `pcbNameAt` or move the part). |
 | `unplaced` | warning | Parts still on automatic placement. |
 | `unrouted` | warning | Connections are not routed yet. |
 | `unchecked` | warning | A check could not run: an unknown pad shape, no usable board outline, a part with no position, or a duplicate violation id. |
