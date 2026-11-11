@@ -184,9 +184,22 @@ Each round ends with tests passing, a check in the browser and a commit.
 2. **Canvas look.** The schematic and PCB colours, the drawing border and title block, grid style.
 3. **Mouse and keys.** Right-drag pan, context menu, multi-selection with box select, arrow nudge, select all, find.
 4. **Panels in depth.** Layer manager, Filter, the Library table, Find Results.
-5. **Then:** whatever a side-by-side comparison with EasyEDA still shows, and the items that wait on the engine (flip, copy and paste, routing).
+5. **Then:** whatever a side-by-side comparison with EasyEDA still shows, and the items that waited on the engine (flip, copy and paste, routing).
 6. **Wires.** Drawing, selecting and reshaping schematic wires as in §7.1.
+7. **The last menu items (done).** Every menu item now runs; none is shown disabled as still to come. Each one that changes the design writes through `src/core` as one history entry, and locked parts are left as they are and named:
+   - File → **New circuit…**: a dialog for the name and board size; the server writes an empty `<name>.circuit.tsx` through the core (`createCircuitFile`), Undo removes it, and the Studio opens it.
+   - File → **Print…** and Export → **PDF…**: every schematic page (light theme) and the board, drawn by the canvases' own renderers, one A4 landscape SVG sheet each with a title line, printed by the browser; PDF is the print dialog's "Save as PDF" (no PDF library).
+   - Edit → **Copy** (`Ctrl+C`) and **Paste** (`Ctrl+V`, also on the canvas's context menu): the selected parts with their literal props and pin labels, and the traces among them or to named nets; pasted with the next free designators, moved a little on both views, on the open schematic page. Props written as expressions are named and left out.
+   - Edit → **Find similar objects** (`Ctrl+Shift+F`): selects the parts of the same kind, footprint and value as the selected one, or the drawings of its kind.
+   - Place → **No connect flag**: a tool that flags the pin end clicked (the part's `noConnect` prop); the engine's ERC skips pin-unconnected for it and reports one wired anyway; the sheet draws a cross. A second click takes the flag off.
+   - Place → **Junction** (`Alt+J`): a tool that puts a `<junction>` dot on the wire clicked, on that wire's page; it is a drawing, so it selects, moves and deletes as one.
+   - Design → **Annotate designators**: every part renumbered by where its symbol sits (page, then top to bottom, then left to right), the trace ends following, in one `renameParts` edit; locked parts keep their numbers.
+   - Design → **Placement transfer** (`Ctrl+Shift+X`): the selected PCB parts (or all) placed in their schematic arrangement, scaled, about where they are now.
+   - Route → **Routing corner** (`L`): steps the corner mode 45°, 45° reversed, 90°, arc, for the leg being drawn and the routes after it.
+   - Layout → **Flip** (`X`): the selected parts to the other side (`layer="bottom"`, mirrored by the engine, exported on the bottom in the Gerbers and pick-and-place).
+   - Tools → **Footprint manager…**: every part with its kind, value and footprint; changed footprints are written together. Library parts, expressions and locked parts say why they cannot change here.
+   - Settings → **System…**: theme, PCB unit, each document's starting Grid step and hover labels, kept per browser.
 
 ## 11. Out of scope here
 
-Routing, copper regions, flipping parts and copy/paste need the engine (stages 3 to 5). Their menu items are shown disabled until then.
+Board outline and Copper area on the PCB toolbar still wait on hand routing (stage 4) and stay disabled with that reason. Copy and Paste keep their own clipboard inside the Studio tab (parts and their traces, not PCB copper or schematic drawings). Annotate does not rename nets the layout file names after a part's pin. Print sheets carry the drawing as an image, so text in the PDF is not selectable.
