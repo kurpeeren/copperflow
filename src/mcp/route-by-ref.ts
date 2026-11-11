@@ -16,6 +16,7 @@ export function padByRef(design: Design, ref: string): WorldPad {
   const pads = design.pcb.parts.flatMap((part) => part.pads)
   const exact = pads.find((pad) => pad.pin === ref || pad.id === ref)
   if (exact) return exact
+  if (ref.includes("/")) return padByRef(design, flatRef(design, ref))
   const dot = ref.indexOf(".")
   const [part, name] = dot < 0 ? [ref, ""] : [ref.slice(0, dot), ref.slice(dot + 1)]
   const component = design.circuit.components.find((one) => one.id === part)
@@ -23,8 +24,22 @@ export function padByRef(design: Design, ref: string): WorldPad {
   const pins = component.pins.filter((pin) => pin.names.some((one) => one.toLowerCase() === name.toLowerCase()))
   if (pins.length > 1) throw new Error(`${ref} names ${pins.length} pins (${pins.map((pin) => pin.id).join(", ")}); give one as ${part}.pinN. Nothing was written.`)
   const pad = pins[0] === undefined ? undefined : pads.find((one) => one.pin === pins[0]?.id)
-  if (pad === undefined) throw new Error(`${part} has no pad ${name || "(none named)"}; name a pad as ${part}.pin1. Nothing was written.`)
+  if (pad === undefined) {
+    const real = component.pins.map((pin) => (pin.names.length > 0 ? `${pin.id} (${pin.names.join("/")})` : pin.id))
+    throw new Error(`${part} has no pin ${name || "(none named)"}; its pins are ${real.join(", ")}. Nothing was written.`)
+  }
   return pad
+}
+
+/** "PS1/R1.pin2" as the flattened "R101.pin2": the designator inside the instance plus its designator base. */
+function flatRef(design: Design, ref: string): string {
+  const cut = ref.lastIndexOf("/")
+  const [path, local] = [ref.slice(0, cut), ref.slice(cut + 1)]
+  const instance = design.circuit.instances?.find((one) => one.path === path)
+  if (instance === undefined) throw new Error(`The circuit has no sub-sheet instance ${path} (in "${ref}"). Nothing was written.`)
+  const found = /^([A-Za-z_]+)(\d+)(\..+)?$/.exec(local)
+  if (found === null) throw new Error(`"${local}" in "${ref}" is not a designator with a number, such as R1.pin2. Nothing was written.`)
+  return `${found[1]}${Number(found[2]) + instance.designatorBase}${found[3] ?? ""}`
 }
 
 /** The layer the two pads share: a surface pad's own, a through pad's either (top unless asked); refused when they share none. */

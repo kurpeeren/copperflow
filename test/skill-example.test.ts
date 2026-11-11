@@ -104,8 +104,13 @@ describe("the two-channel sensor board of the skill", () => {
     expect(written.isError, written.text).toBe(false)
     const listed = await call("new_circuit", { file: "list.circuit.tsx", place: false, parts: [{ name: "J1", kind: "pinheader", props: { pinCount: 2, pinLabels: ["V5", "GND"] } }], nets: {} })
     expect(listed.isError).toBe(true)
+    expect(listed.text).toMatch(/Invalid input at parts\[0\]\.props\.pinLabels/)
     const inline = await call("new_circuit", { file: "nc.circuit.tsx", place: false, parts: [{ name: "U1", part: "MCP2515", props: { noConnect: "pin3,pin4" } }], nets: { GND: ["U1.VSS"] } })
     expect(inline.isError, inline.text).toBe(false)
+    const flagged = (await call("check_circuit", { file: "nc.circuit.tsx", filter: "U1" })).text
+    expect(flagged).toMatch(/pin-unconnected/)
+    expect(flagged).not.toMatch(/U1\.pin3\b/)
+    expect(flagged).not.toMatch(/U1\.pin4\b/)
     const unused = "TXCAN,RXCAN,CLKOUT,TX0RTS,TX1RTS,TX2RTS,OSC2,OSC1,RX1BF,RX0BF,INT,SCK,SI,SO,CS,RESET"
     expect((await call("set_props", { file, part: "U1", props: { noConnect: unused } })).isError).toBe(false)
     const checked = await call("check_circuit", { file, filter: "U1" })
