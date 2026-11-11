@@ -9,16 +9,16 @@ describe("SOT-223 and SOT-89", () => {
     // Note 1 does not apply (Smin = 6.7 − 2.2 = 4.5 > Amax 3.7), so Jt 0.35, Jh 0.35, Js 0.03.
     // Z = 6.70 + 0.70 + √(0.60² + 0.10² + 0.05²) = 7.40 + 0.6103 = 8.0103 → 8.00
     // Smax = 7.30 − 1.40 = 5.90, CSrms = √(0.60² + 2·0.40²) = 0.8246, Smax' = 5.90 − (1.40 − 0.8246)/2 = 5.6123
-    // G = 5.6123 − 0.70 − √(0.8246² + 0.10² + 0.05²) = 4.9123 − 0.8322 = 4.0801 → 4.10
+    // G = Smax' − 2·Jh − √(CL² + F² + P²) = 5.6123 − 0.70 − 0.6103 = 4.3020 → 4.30
     // X = 0.60 + 0.06 + √(0.20² + 0.10² + 0.05²) = 0.66 + 0.2291 = 0.8891 → 0.90; tab 2.90 + 0.2891 = 3.1891 → 3.20
-    // Pads (8.00 − 4.10)/2 = 1.95 long, centres ±(8.00 + 4.10)/4 = ±3.025.
+    // Pads (8.00 − 4.30)/2 = 1.85 long, centres ±(8.00 + 4.30)/4 = ±3.075.
     const fp = footprint("sot223")
     expect(fp.pads.map((p) => p.number)).toEqual(["1", "2", "3", "4"])
-    expect(pad(fp, 1)).toMatchObject({ x: -2.3, y: -3.025, width: 0.9, height: 1.95 })
-    expect(pad(fp, 2)).toMatchObject({ x: 0, y: -3.025 })
-    expect(pad(fp, 3)).toMatchObject({ x: 2.3, y: -3.025 })
-    expect(pad(fp, 4)).toMatchObject({ x: 0, y: 3.025, width: 3.2, height: 1.95 })
-    // Courtyard: pads reach 3.025 + 0.975 = 4.00 → 4.25; the body 3.35 → 3.60.
+    expect(pad(fp, 1)).toMatchObject({ x: -2.3, y: -3.075, width: 0.9, height: 1.85 })
+    expect(pad(fp, 2)).toMatchObject({ x: 0, y: -3.075 })
+    expect(pad(fp, 3)).toMatchObject({ x: 2.3, y: -3.075 })
+    expect(pad(fp, 4)).toMatchObject({ x: 0, y: 3.075, width: 3.2, height: 1.85 })
+    // Courtyard: pads reach 3.075 + 0.925 = 4.00 → 4.25; the body 3.35 → 3.60.
     expect(courtyardHalf(fp)).toEqual({ x: 3.6, y: 4.25 })
     expectWellFormed(fp)
   })
@@ -28,14 +28,14 @@ describe("SOT-223 and SOT-89", () => {
     // Note 1 applies (Smin = 3.94 − 2.40 = 1.54 ≤ 2.60): Jh 0.15.
     // Z = 3.94 + 0.70 + √(0.31² + 0.10² + 0.05²) = 4.64 + 0.3295 = 4.9695 → 4.95
     // Smax = 4.25 − 1.78 = 2.47, CSrms = √(0.31² + 2·0.31²) = 0.5369, Smax' = 2.47 − (0.93 − 0.5369)/2 = 2.2735
-    // G = 2.2735 − 0.30 − √(0.5369² + 0.10² + 0.05²) = 1.9735 − 0.5485 = 1.4250 → 1.45 (28.5 rounds up)
+    // G = 2.2735 − 0.30 − √(0.31² + 0.10² + 0.05²) = 1.9735 − 0.3295 = 1.6440 → 1.65
     // X = 0.44 + 0.06 + √(0.12² + 0.10² + 0.05²) = 0.50 + 0.1640 = 0.664 → 0.65; tab 1.62 + 0.06 + 0.2379 = 1.918 → 1.90
     const fp = footprint("sot89")
     expect(fp.pads.map((p) => p.number)).toEqual(["1", "2", "3", "2"])
-    expect(pad(fp, 1)).toMatchObject({ x: -1.5, y: -1.6, width: 0.65, height: 1.75 })
-    // The tab land's outer end stays at 1.60 + 1.75/2 = 2.475; it runs in under the body to 0.30 short of the lead
-    // lands, whose inner ends are at −1.60 + 0.875 = −0.725: from −0.425 to 2.475, 2.90 long, centred at 1.025.
-    expect(fp.pads[3]).toMatchObject({ number: "2", x: 0, y: 1.025, width: 1.9, height: 2.9 })
+    expect(pad(fp, 1)).toMatchObject({ x: -1.5, y: -1.65, width: 0.65, height: 1.65 })
+    // The tab land's outer end stays at 1.65 + 1.65/2 = 2.475; it runs in under the body to 0.30 short of the lead
+    // lands, whose inner ends are at −1.65 + 0.825 = −0.825: from −0.525 to 2.475, 3.00 long, centred at 0.975.
+    expect(fp.pads[3]).toMatchObject({ number: "2", x: 0, y: 0.975, width: 1.9, height: 3 })
     expect(fp.pads).toHaveLength(4)
     expect(padCount("sot89")).toBe(3)
     expectWellFormed(fp)

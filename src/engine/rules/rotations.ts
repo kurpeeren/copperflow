@@ -20,6 +20,7 @@ export const FOOTPRINT_FAMILIES = [
   "sot89",
   "soic",
   "sop",
+  "ssop",
   "tssop",
   "qfn",
   "dfn",
@@ -50,7 +51,7 @@ export type PlacementRotations = Partial<Record<FootprintFamily, number>> & { pa
 
 /**
  * The corrections when rules.yaml sets none. copperflow's footprints are drawn at IPC-7351B's zero orientation, pin 1
- * at the top left; JLCPCB's part models for SOIC, SOP and TSSOP packages need the commonly used 270 degrees, and SOT-23
+ * at the top left; JLCPCB's part models for SOIC, SOP, SSOP and TSSOP packages need the commonly used 270 degrees, and SOT-23
  * 180, and SOT-223 180 as well. Chips, pin rows and footprint files stay 0, and so do the families whose correction is
  * not well established (every family added with the generated packages except SOT-223).
  * JLCPCB's assembly preview is the final check: a person who sees a part turned there sets
@@ -64,6 +65,7 @@ export const PLACEMENT_ROTATIONS: Readonly<Record<FootprintFamily, number>> = {
   sot89: 0,
   soic: 270,
   sop: 270,
+  ssop: 270,
   tssop: 270,
   qfn: 0,
   dfn: 0,

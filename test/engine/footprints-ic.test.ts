@@ -82,10 +82,24 @@ const IC_FAMILIES = [
   "soic8",
   "soic14",
   "soic16",
+  "soic10",
+  "soic12",
+  "soic16w",
+  "soic18w",
+  "soic20w",
+  "soic24w",
+  "soic28w",
   "sop8",
+  "sop16",
+  "ssop8",
+  "ssop20",
+  "ssop28",
+  "tssop8",
   "tssop14",
   "tssop16",
   "tssop20",
+  "tssop22",
+  "tssop28",
   "qfp32",
   "qfp48",
   "qfp64",
@@ -211,15 +225,16 @@ describe("published land patterns", () => {
     // Z = 2.70 + 2·0.35 + √(0.30² + 0.10² + 0.05²) = 3.40 + 0.3202 = 3.7202 → 3.70 (74.40 → 74)
     // Smin = 2.70 − 2·0.55 = 1.60, Smax = 3.00 − 2·0.35 = 2.30, CS = 0.70
     // CSrms = √(0.30² + 2·0.20²) = 0.4123, Smax' = 2.30 − (0.70 − 0.4123)/2 = 2.1562
-    // G = 2.1562 − 2·0.15 − √(0.4123² + 0.10² + 0.05²) = 1.8562 − 0.4272 = 1.4290 → 1.45 (28.58 → 29)
+    // G = Smax' − 2·Jh − √(CL² + F² + P²) (ipc7351.ts, gullWingPattern) = 2.1562 − 0.30 − 0.3202
+    //   = 1.5360 → 1.55 (30.72 → 31)
     // X = 0.35 + 2·0.03 + √(0.15² + 0.10² + 0.05²) = 0.41 + 0.1871 = 0.5971 → 0.60 (11.94 → 12)
-    // Pad (3.70 − 1.45)/2 = 1.125 along the lead, 0.60 across, rows (3.70 + 1.45)/2 = 2.575 apart.
-    expectRows("sot23_5", 1, 5, "y", { length: 1.125, width: 0.6, centres: 2.575 }, 0.005)
+    // Pad (3.70 − 1.55)/2 = 1.075 along the lead, 0.60 across, rows (3.70 + 1.55)/2 = 2.625 apart.
+    expectRows("sot23_5", 1, 5, "y", { length: 1.075, width: 0.6, centres: 2.625 }, 0.005)
   })
 
-  test("SOIC-8 follows the cited dimensions and goals", () => {
-    // IPC name: SOIC127P600X175-8N, density level B.
-    // no independent source found
+  test("SOIC-8 (span 5.80–6.20, foot 0.41–1.27, lead 0.33–0.51, body 3.80–4.00) gives the IPC nominal SOIC127P600X175-8N", () => {
+    // IPC name: SOIC127P600X175-8N, density level B: the IPC-7351B nominal pattern has pads
+    // 1.55 × 0.60 with centres ±2.70 (inner edges 3.85 apart); this comes to 1.525 × 0.60 at ±2.6875.
     // Monolithic Power Systems, "Package outline drawing for 8-SOIC", MF-PO-D-0001 revision 3.0
     // (conforms to JEDEC MS-012 AA): span 5.80–6.20, foot 0.41–1.27, lead width 0.33–0.51, body width
     // 3.80–4.00. Table 3-2 level B: Jt 0.35, Js 0.03. Note 2: the terminal tolerance 0.86 exceeds 0.5,
@@ -227,11 +242,27 @@ describe("published land patterns", () => {
     // Z = 5.80 + 0.70 + √(0.40² + 0.10² + 0.05²) = 6.50 + 0.4153 = 6.9153 → 6.90 (138.31 → 138)
     // Smin = 5.80 − 2·1.27 = 3.26, Smax = 6.20 − 2·0.41 = 5.38, CS = 2.12
     // CSrms = √(0.40² + 2·0.86²) = 1.2803, Smax' = 5.38 − (2.12 − 1.2803)/2 = 4.9602
-    // G = 4.9602 − 0.70 − √(1.2803² + 0.10² + 0.05²) = 4.2602 − 1.2852 = 2.97497 → 2.95
-    //   (59.4994 steps, just under the half step, so 59)
+    // G = 4.9602 − 0.70 − √(0.40² + 0.10² + 0.05²) = 4.2602 − 0.4153 = 3.8449 → 3.85 (76.90 → 77)
     // X = 0.33 + 0.06 + √(0.18² + 0.10² + 0.05²) = 0.39 + 0.2119 = 0.6019 → 0.60 (12.04 → 12)
-    // Pad (6.90 − 2.95)/2 = 1.975 along the lead, 0.60 across, columns (6.90 + 2.95)/2 = 4.925 apart.
-    expectRows("soic8", 1, 8, "x", { length: 1.975, width: 0.6, centres: 4.925 }, 0.005)
+    // Pad (6.90 − 3.85)/2 = 1.525 along the lead, 0.60 across, columns (6.90 + 3.85)/2 = 5.375 apart.
+    expectRows("soic8", 1, 8, "x", { length: 1.525, width: 0.6, centres: 5.375 }, 0.005)
+  })
+
+  test("SOIC-18 wide (MS-013: span 10.00–10.65, foot 0.40–1.27, lead 0.31–0.51, body 7.40–7.60) near SOIC127P1030X265-18N", () => {
+    // Table 3-2 level B; Note 2: the terminal tolerance 0.87 exceeds 0.5, so Jh = 0.35.
+    // Z = 10.00 + 0.70 + √(0.65² + 0.10² + 0.05²) = 10.70 + 0.6595 = 11.3595 → 11.35 (227.19 → 227)
+    // Smin = 10.00 − 2.54 = 7.46, Smax = 10.65 − 0.80 = 9.85, CS = 2.39
+    // CSrms = √(0.65² + 2·0.87²) = 1.3915, Smax' = 9.85 − (2.39 − 1.3915)/2 = 9.3508
+    // G = 9.3508 − 0.70 − 0.6595 = 7.9912 → 8.00 (159.82 → 160)
+    // X = 0.31 + 0.06 + √(0.20² + 0.10² + 0.05²) = 0.37 + 0.2291 = 0.5991 → 0.60
+    // Pad (11.35 − 8.00)/2 = 1.675 along the lead, 0.60 across, columns (11.35 + 8.00)/2 = 9.675 apart.
+    expectRows("soic18w", 1, 18, "x", { length: 1.675, width: 0.6, centres: 9.675 }, 0.005)
+    const fp = footprint("soic18w")
+    expect(fp.pads).toHaveLength(18)
+    expect(fp.origin).toBe("IPC-7351B nominal, SOIC-18 wide")
+    // MS-013 AB: D 11.35–11.75, so the body reaches y = ±5.875; the courtyard x is max(4.8375 + 0.8375, 5.325) + 0.25.
+    expect(courtyardHalf(fp).x).toBeCloseTo(5.95, 9)
+    expect(courtyardHalf(fp).y).toBeCloseTo(6.15, 9)
   })
 
   test("TSSOP-20 follows the cited dimensions and goals", () => {
@@ -243,10 +274,10 @@ describe("published land patterns", () => {
     // Z = 6.20 + 0.70 + √(0.40² + 0.10² + 0.05²) = 6.90 + 0.4153 = 7.3153 → 7.30 (146.31 → 146)
     // Smin = 6.20 − 2·0.75 = 4.70, Smax = 6.60 − 2·0.50 = 5.60, CS = 0.90
     // CSrms = √(0.40² + 2·0.25²) = 0.5339, Smax' = 5.60 − (0.90 − 0.5339)/2 = 5.4169
-    // G = 5.4169 − 0.70 − √(0.5339² + 0.10² + 0.05²) = 4.7169 − 0.5454 = 4.1715 → 4.15 (83.43 → 83)
+    // G = 5.4169 − 0.70 − √(0.40² + 0.10² + 0.05²) = 4.7169 − 0.4153 = 4.3016 → 4.30 (86.03 → 86)
     // X = 0.19 + 0.06 + √(0.11² + 0.10² + 0.05²) = 0.25 + 0.1568 = 0.4068 → 0.40 (8.14 → 8)
-    // Pad (7.30 − 4.15)/2 = 1.575 along the lead, 0.40 across, columns (7.30 + 4.15)/2 = 5.725 apart.
-    expectRows("tssop20", 1, 20, "x", { length: 1.575, width: 0.4, centres: 5.725 }, 0.005)
+    // Pad (7.30 − 4.30)/2 = 1.50 along the lead, 0.40 across, columns (7.30 + 4.30)/2 = 5.80 apart.
+    expectRows("tssop20", 1, 20, "x", { length: 1.5, width: 0.4, centres: 5.8 }, 0.005)
   })
 
   test("QFP-48 follows the cited dimensions and goals", () => {
@@ -258,11 +289,11 @@ describe("published land patterns", () => {
     // Z = 8.85 + 0.70 + √(0.30² + 0.10² + 0.05²) = 9.55 + 0.3202 = 9.8702 → 9.85 (197.40 → 197)
     // Smin = 8.85 − 2·0.75 = 7.35, Smax = 9.15 − 2·0.45 = 8.25, CS = 0.90
     // CSrms = √(0.30² + 2·0.30²) = 0.5196, Smax' = 8.25 − (0.90 − 0.5196)/2 = 8.0598
-    // G = 8.0598 − 0.70 − √(0.5196² + 0.10² + 0.05²) = 7.3598 − 0.5315 = 6.8283 → 6.85 (136.57 → 137)
+    // G = 8.0598 − 0.70 − √(0.30² + 0.10² + 0.05²) = 7.3598 − 0.3202 = 7.0396 → 7.05 (140.79 → 141)
     // X = 0.17 − 0.04 + √(0.10² + 0.10² + 0.05²) = 0.13 + 0.15 = 0.28 → 0.30 (5.6 → 6)
-    // Pad (9.85 − 6.85)/2 = 1.50 along the lead, 0.30 across, sides (9.85 + 6.85)/2 = 8.35 apart.
+    // Pad (9.85 − 7.05)/2 = 1.40 along the lead, 0.30 across, sides (9.85 + 7.05)/2 = 8.45 apart.
     // Pad 1 (top of the left side) faces pad 36 (top of the right side).
-    expectRows("qfp48", 1, 36, "x", { length: 1.5, width: 0.3, centres: 8.35 }, 0.005)
+    expectRows("qfp48", 1, 36, "x", { length: 1.4, width: 0.3, centres: 8.45 }, 0.005)
   })
 
   test("QFN-32 follows the cited dimensions and goals", () => {
@@ -289,33 +320,43 @@ describe("the other IC packages, worked by hand", () => {
     // NXP SOT23 (TO-236AB), 9 January 2017: HE 2.1–2.5, Lp 0.15–0.45, bp 0.38–0.48, E 1.2–1.4.
     // Table 3-2 with Note 1 (Smin 1.20 ≤ 1.40, terminal tolerance 0.30): Z 2.80 + 0.4153 = 3.2153 → 3.20;
     // CSrms √(0.16 + 0.18) = 0.5831, Smax' 2.20 − (1.00 − 0.5831)/2 = 1.9915,
-    // G 1.9915 − 0.30 − √(0.34 + 0.0125) = 1.0978 → 1.10; X 0.44 + 0.15 = 0.59 → 0.60.
-    ["sot23", 1, 3, "y", { length: 1.05, width: 0.6, centres: 2.15 }],
+    // G 1.9915 − 0.30 − √(0.16 + 0.0125) = 1.2762 → 1.30; X 0.44 + 0.15 = 0.59 → 0.60.
+    ["sot23", 1, 3, "y", { length: 0.95, width: 0.6, centres: 2.25 }],
     // Diodes SOT26, Rev. 2021-03-02: E 2.70–3.00, L 0.35–0.55, b 0.35–0.50, E1 1.50–1.70: as SOT-23-5.
-    ["sot23_6", 1, 6, "y", { length: 1.125, width: 0.6, centres: 2.575 }],
+    ["sot23_6", 1, 6, "y", { length: 1.075, width: 0.6, centres: 2.625 }],
     // MPS 14-SOIC and 16-SOIC (MS-012 AB, AC): the leads are those of the 8-SOIC above.
-    ["soic14", 1, 14, "x", { length: 1.975, width: 0.6, centres: 4.925 }],
-    ["soic16", 1, 16, "x", { length: 1.975, width: 0.6, centres: 4.925 }],
+    ["soic14", 1, 14, "x", { length: 1.525, width: 0.6, centres: 5.375 }],
+    ["soic16", 1, 16, "x", { length: 1.525, width: 0.6, centres: 5.375 }],
     // Giantec 8L 208mil SOP, Rev. A 04/22/2013: E 7.70–8.10, L 0.51–0.80, b 0.36–0.48, E1 5.18–5.38.
     // Table 3-2, Note 1 does not apply (Smin 6.10 > 5.38): Z 8.40 + 0.4153 = 8.8153 → 8.80;
     // CSrms √(0.16 + 2·0.29²) = 0.5729, Smax' 7.08 − (0.98 − 0.5729)/2 = 6.8764,
-    // G 6.8764 − 0.70 − √(0.3282 + 0.0125) = 5.5927 → 5.60; X 0.42 + 0.1640 = 0.5840 → 0.60.
-    ["sop8", 1, 8, "x", { length: 1.6, width: 0.6, centres: 7.2 }],
+    // G 6.8764 − 0.70 − 0.4153 = 5.7611 → 5.75; X 0.42 + 0.1640 = 0.5840 → 0.60.
+    ["sop8", 1, 8, "x", { length: 1.525, width: 0.6, centres: 7.275 }],
     // NXP TSSOP14 SOT402-1 and TSSOP16 SOT403-1: the leads are those of TSSOP20 SOT360-1.
-    ["tssop14", 1, 14, "x", { length: 1.575, width: 0.4, centres: 5.725 }],
-    ["tssop16", 1, 16, "x", { length: 1.575, width: 0.4, centres: 5.725 }],
+    ["tssop14", 1, 14, "x", { length: 1.5, width: 0.4, centres: 5.8 }],
+    ["tssop16", 1, 16, "x", { length: 1.5, width: 0.4, centres: 5.8 }],
     // NXP LQFP32 SOT358-1: HD 8.85–9.15, Lp 0.45–0.75, bp 0.30–0.40, D 6.9–7.1, pitch 0.8 > 0.625, so
-    // Table 3-2 (Js 0.03): Z and G as QFP-48 (9.85, 6.85); X 0.30 + 0.06 + 0.15 = 0.51 → 0.50.
-    ["qfp32", 1, 24, "x", { length: 1.5, width: 0.5, centres: 8.35 }],
+    // Table 3-2 (Js 0.03): Z and G as QFP-48 (9.85, 7.05); X 0.30 + 0.06 + 0.15 = 0.51 → 0.50.
+    ["qfp32", 1, 24, "x", { length: 1.4, width: 0.5, centres: 8.45 }],
     // NXP LQFP64 SOT314-2: HD 11.85–12.15, Lp 0.45–0.75, bp 0.17–0.27, D 9.9–10.1; Table 3-3:
-    // Z 12.55 + 0.3202 = 12.8702 → 12.85; Smax' 11.25 − 0.1902 = 11.0598, G 11.0598 − 0.70 − 0.5315
-    // = 9.8283 → 9.85; X 0.28 → 0.30.
-    ["qfp64", 1, 48, "x", { length: 1.5, width: 0.3, centres: 11.35 }],
+    // Z 12.55 + 0.3202 = 12.8702 → 12.85; Smax' 11.25 − 0.1902 = 11.0598, G 11.0598 − 0.70 − 0.3202
+    // = 10.0396 → 10.05; X 0.28 → 0.30.
+    ["qfp64", 1, 48, "x", { length: 1.4, width: 0.3, centres: 11.45 }],
     // NXP LQFP100 SOT407-1: HD 15.75–16.25, Lp 0.45–0.75, bp 0.17–0.27, D 13.9–14.1; Table 3-3:
     // Z 16.45 + √(0.25 + 0.0125) = 16.9623 → 16.95; CSrms √(0.25 + 0.18) = 0.6557,
-    // Smax' 15.35 − (1.10 − 0.6557)/2 = 15.1279, G 15.1279 − 0.70 − √(0.43 + 0.0125) = 13.7627 → 13.75;
+    // Smax' 15.35 − (1.10 − 0.6557)/2 = 15.1279, G 15.1279 − 0.70 − √(0.25 + 0.0125) = 13.9156 → 13.90;
     // X 0.28 → 0.30.
-    ["qfp100", 1, 75, "x", { length: 1.6, width: 0.3, centres: 15.35 }],
+    ["qfp100", 1, 75, "x", { length: 1.525, width: 0.3, centres: 15.425 }],
+    // The wider families by pin count: MS-013 (soic<N>w) leads as SOIC-18 wide above; MO-150 SSOP
+    // (E 7.40–8.20, L 0.55–0.95, b 0.22–0.38, E1 5.00–5.60), pitch 0.65 so Table 3-2; Note 1 applies
+    // (Smin 5.50 ≤ 5.60, terminal tolerance 0.40): Z 8.10 + √(0.64 + 0.0125) = 8.9078 → 8.90;
+    // Smin 5.50, Smax 8.20 − 1.10 = 7.10, CSrms √(0.64 + 0.32) = 0.9798, Smax' 7.10 − (1.60 − 0.9798)/2
+    // = 6.7899, G 6.7899 − 0.30 − 0.8078 = 5.6821 → 5.70; X 0.28 + 0.1952 = 0.4752 → 0.50.
+    // TSSOP-8 and TSSOP-28 (MO-153) have the TSSOP-20 leads.
+    ["ssop20", 1, 20, "x", { length: 1.6, width: 0.5, centres: 7.3 }],
+    ["soic28w", 1, 28, "x", { length: 1.675, width: 0.6, centres: 9.675 }],
+    ["tssop8", 1, 8, "x", { length: 1.5, width: 0.4, centres: 5.8 }],
+    ["tssop28", 1, 28, "x", { length: 1.5, width: 0.4, centres: 5.8 }],
     // NXP HVQFN16 SOT758-1 (D 2.9–3.1) and HVQFN48 SOT619-1 (D 6.9–7.1): L and b as HVQFN32, so the
     // pads are the same and only Z and G move with D: Z 3.75 / 7.75, G 2.00 / 6.00.
     ["qfn16", 1, 12, "x", { length: 0.875, width: 0.25, centres: 2.875 }],
@@ -422,8 +463,14 @@ test("strings outside the cited tables are refused", () => {
     "soic9",
     "soic",
     "soic20",
-    "sop14",
-    "tssop8",
+    "soic18",
+    "soic8w",
+    "soic14w",
+    "soic08",
+    "sop18",
+    "ssop30",
+    "tssop6",
+    "tssop30",
     "qfp47",
     "qfn20",
     "sot23_4",

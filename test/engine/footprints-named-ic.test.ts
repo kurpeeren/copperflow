@@ -54,14 +54,14 @@ describe("QFN, QFP and DFN named by body and pitch", () => {
     // (Smin = 11.85 − 1.50 = 10.35 > Amax 10.1).
     // Z = 11.85 + 0.70 + √(0.30² + 0.10² + 0.05²) = 12.55 + 0.3202 = 12.8702 → 12.85
     // Smax = 12.15 − 0.90 = 11.25, CSrms = √(0.30² + 2·0.30²) = 0.5196, Smax' = 11.25 − (0.90 − 0.5196)/2 = 11.0598
-    // G = 11.0598 − 0.70 − √(0.5196² + 0.10² + 0.05²) = 10.3598 − 0.5315 = 9.8283 → 9.85
+    // G = Smax' − 2·Jh − √(CL² + F² + P²) = 11.0598 − 0.70 − 0.3202 = 10.0396 → 10.05
     // X = 0.17 − 0.04 + √(0.10² + 0.10² + 0.05²) = 0.13 + 0.15 = 0.28 → 0.30
-    // Pad (12.85 − 9.85)/2 = 1.50 × 0.30, opposite sides (12.85 + 9.85)/2 = 11.35 apart.
-    expectRow("lqfp64_10x10_p0.5", 1, 48, "x", { length: 1.5, width: 0.3, centres: 11.35 })
+    // Pad (12.85 − 10.05)/2 = 1.40 × 0.30, opposite sides (12.85 + 10.05)/2 = 11.45 apart.
+    expectRow("lqfp64_10x10_p0.5", 1, 48, "x", { length: 1.4, width: 0.3, centres: 11.45 })
     const fp = footprint("lqfp64_10x10_p0.5")
     expect(fp.pads).toHaveLength(64)
-    expect(pad(fp, 1)).toMatchObject({ x: -5.675, y: 3.75 })
-    // Courtyard: pads reach 5.675 + 0.75 = 6.425, + 0.25 = 6.675 → up to 6.70.
+    expect(pad(fp, 1)).toMatchObject({ x: -5.725, y: 3.75 })
+    // Courtyard: pads reach 5.725 + 0.70 = 6.425, + 0.25 = 6.675 → up to 6.70.
     expect(courtyardHalf(fp)).toEqual({ x: 6.7, y: 6.7 })
     expect(fp.pads).toEqual(footprint("qfp64").pads)
   })

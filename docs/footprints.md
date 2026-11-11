@@ -12,8 +12,10 @@ accepts gives the error `copperflow cannot make footprint "<string>" yet`; a par
 
 ## How sure the numbers are
 
-- **Cited**: the package dimensions come from a named maker's outline drawing (chips, SOD-123/323, SOT-23, SOIC, SOP,
-  TSSOP, the `qfn16/32/48` and `qfp32/48/64/100` tables). Each source is named in the module.
+- **Cited**: the package dimensions come from a named maker's outline drawing (chips, SOD-123/323, SOT-23, narrow
+  SOIC, SOP, TSSOP leads, the `qfn16/32/48` and `qfp32/48/64/100` tables). Each source is named in the module. The
+  wide SOIC (MS-013), SSOP (MO-150) and the TSSOP body lengths for 8, 24 and 28 pins are JEDEC values written from
+  general knowledge and say so in `dual.ts`.
 - **Typical**: packages named by body and pitch (`qfn…_<b>x<b>_p…`, `dfn…`, `lqfp…`, `bga…`) and the remaining
   families (DO-214, SOT-223, SOT-89, DIP, TO-220, TO-92, HC-49, radial) take the typical JEDEC or maker dimensions
   written from general knowledge, not transcribed from one drawing. Where those ranges meet a cited table they give
@@ -30,6 +32,11 @@ the `origin` line of each footprint say which package and which numbers were use
 
 | Family | Example | Form |
 | --- | --- | --- |
+| SOIC, narrow (3.9 mm) | `soic8` | `soic<N>`, N even 8–16 (JEDEC MS-012) |
+| SOIC, wide (7.5 mm) | `soic18w` | `soic<N>w`, N 16, 18, 20, 24, 28 (JEDEC MS-013) |
+| SOP (5.3 mm, 1.27 mm pitch) | `sop8` | `sop<N>`, N even 8–16 |
+| SSOP (5.3 mm, 0.65 mm pitch) | `ssop20` | `ssop<N>`, N even 8–28 (JEDEC MO-150) |
+| TSSOP (4.4 mm, 0.65 mm pitch) | `tssop20` | `tssop<N>`, N even 8–28 (JEDEC MO-153) |
 | QFN, from a table | `qfn32_ep` | `qfn16`, `qfn32`, `qfn48`, with `_ep` for the cited exposed pad |
 | QFN, by body and pitch | `qfn32_5x5_p0.5_ep3.1` | `qfn<N>_<b>x<b>_p<pitch>`, pitch 0.4, 0.5 or 0.65; `_ep<size>` or `_ep<w>x<h>` |
 | DFN | `dfn8_3x3_p0.65_ep1.6x2.4` | `dfn<N>_<across>x<along>_p<pitch>`, pitch 0.4, 0.5 or 0.65; `_ep` as for QFN |
@@ -47,8 +54,20 @@ the `origin` line of each footprint say which package and which numbers were use
 | Radial electrolytic | `radial6.3x2.5` | `radial<can diameter>x<lead spacing>` |
 | Two-row header | `pinrow2x5` | `pinrow2x<N>` (N pins per row), optional `_p<pitch>` over 1.7 mm |
 
-The older families (chips `0402`…`2512`, `sot23`, `sot23_5`, `sot23_6`, `soic8`, `sop8`, `tssop20`, `pinrow<N>`) are
-listed in `skills/copperflow/references/editable-subset.md`.
+The older families (chips `0402`…`2512`, `sot23`, `sot23_5`, `sot23_6`, `pinrow<N>`) are listed in
+`skills/copperflow/references/editable-subset.md`.
+
+### Dual gull-wing packages by pin count
+
+`soic`, `soic…w`, `sop`, `ssop` and `tssop` share one generator (`dual.ts`): each series has one lead outline (pitch,
+toe-to-toe span, foot length and lead width with their tolerances, body width), and the pin count only sets the
+number of pads and the body length. The body length is the outline drawing's where it lists that count, and
+otherwise the mean overhang of the listed sizes past the outer leads. The pads come from the IPC-7351B equations with
+the gull-wing goals (Table 3-2 above 0.625 mm pitch). On the heel side the RMS tolerance is taken once: Smax' already
+moves the inner edge by the statistical S tolerance, so G = Smax' − 2·Jh − √(CL² + F² + P²) (`gullWingPattern` in
+`ipc7351.ts`). That puts `soic8` at 1.525 × 0.60 mm pads with centres ±2.69 mm, the IPC-7351B nominal
+SOIC127P600X175-8N (1.55 × 0.60 at ±2.70), and `soic18w` at 1.675 × 0.60 at ±4.84 mm. The same gull-wing row serves
+`sot23…`, `sot223`, `sot89` and the QFP families; the two-terminal SOD and DO-214 patterns keep the general form.
 
 A name is normalised: `QFN32_5mmx5mm_p0.50mm_EP3.10` is made as `qfn32_5x5_p0.5_ep3.1`. Two pads of a generated
 footprint keep at least 0.1 mm of copper between them; a string whose pads would come closer (a large exposed pad, a

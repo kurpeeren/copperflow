@@ -1,5 +1,6 @@
 import {
   gullWingGoals,
+  gullWingPattern,
   gullWingTable,
   IPC_TOLERANCES,
   landPattern,
@@ -45,7 +46,7 @@ function leadOf(pkg: IcPackage) {
 export function gullWingRow(pkg: IcPackage): IcRow {
   const table = gullWingTable(pkg.pitch)
   const goals = gullWingGoals(leadOf(pkg), pkg.bodyAcross.max, table)
-  return { row: padRow(landPattern(leadOf(pkg), goals, IPC_TOLERANCES), table.roundOff), table }
+  return { row: padRow(gullWingPattern(leadOf(pkg), goals, IPC_TOLERANCES), table.roundOff), table }
 }
 
 /** No-lead terminals that end at the body edge: IPC-7351B Table 3-15, with the body as the span. */
