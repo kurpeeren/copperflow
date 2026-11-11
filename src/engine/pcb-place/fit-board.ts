@@ -16,6 +16,9 @@ const up = (v: number) => Math.ceil(v / STEP - 1e-9) * STEP
 const tidy = (v: number) => Math.round(v * 1e6) / 1e6
 
 /**
+ * Call it on the design rebuilt with the placement written: it fits whatever the design holds, auto-placed parts the
+ * build packed off the board included. Keepouts are not kept inside.
+ *
  * The rectangle that holds every part's courtyard and every hole with `margin` to spare (at least the edge
  * clearance), its corners rounded outward to 0.1 mm: the board shrunk or grown to the parts. Refused for an outline
  * that is not a rectangle, and for a design without parts.

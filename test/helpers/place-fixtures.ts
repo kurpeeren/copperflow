@@ -3,9 +3,10 @@ import { join, relative } from "node:path"
 import type { PlacedPosition } from "../../src/engine/pcb-place/index.js"
 
 export const CAN_MAIN = "can-module.circuit.tsx"
-const CAN_FOLDER = join(import.meta.dirname, "..", "fixtures", "can-module")
+export const CAN_FOLDER = join(import.meta.dirname, "..", "fixtures", "can-module")
 
-function filesIn(folder: string): Record<string, string> {
+/** Every file under `folder`, by its path relative to it with forward slashes. */
+export function filesIn(folder: string): Record<string, string> {
   const files: Record<string, string> = {}
   const walk = (dir: string) => {
     for (const name of readdirSync(dir).sort()) {

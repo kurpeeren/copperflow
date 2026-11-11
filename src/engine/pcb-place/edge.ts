@@ -3,7 +3,11 @@ import type { Board, Spot } from "./constructive.js"
 import { GRID, snap, type Box } from "./geometry.js"
 import type { Movable } from "./scope.js"
 
-/** One side of the area: its inward direction, and how a box is put flush against it. */
+/**
+ * One side of the area: its inward direction, and how a box is put flush against it. The sides are those of the
+ * outline's bounds less the edge clearance, so on an outline that is not a rectangle a flush spot often does not fit
+ * and the connector goes on the next side, or inside the board with a note.
+ */
 interface Edge {
   normal: Point
   /** How far the target is from this edge. */

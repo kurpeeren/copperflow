@@ -140,9 +140,9 @@ export function touchesEdge(b: Box, area: Area): boolean {
   return b.minX <= a.minX + EPSILON || b.maxX >= a.maxX - EPSILON || b.minY <= a.minY + EPSILON || b.maxY >= a.maxY - EPSILON
 }
 
-/** How many parts, moved or not, touch the edge clearance. */
-export function edgeTouches(problem: Problem, s: State): number {
-  const moving = problem.movables.filter((_, i) => touchesEdge(boxIn(problem, s, i), problem.area)).length
+/** How many parts, moved or not, touch the edge clearance; those in `skip` (not placed) are left out. */
+export function edgeTouches(problem: Problem, s: State, skip: ReadonlySet<number> = new Set()): number {
+  const moving = problem.movables.filter((_, i) => !skip.has(i) && touchesEdge(boxIn(problem, s, i), problem.area)).length
   const staying = problem.obstacles.filter((o) => o.part && touchesEdge(o.box, problem.area)).length
   return moving + staying
 }

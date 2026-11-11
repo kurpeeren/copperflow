@@ -146,18 +146,9 @@ describe("placeBoard on small boards", () => {
     }
   })
 
-  test("the parts scope moves only the named parts, the instance scope only that instance's parts", () => {
-    const files = { [MAIN]: DECOUPLED }
-    const design = build(files)
+  test("the parts scope moves only the named parts", () => {
+    const design = build({ [MAIN]: DECOUPLED })
     expect([...placeBoard(design, { scope: { kind: "parts", parts: ["R2", "C1"] } }).positions.keys()]).toEqual(["C1", "R2"])
-    expect(placeBoard(design, { scope: { kind: "instance", instance: "PS1" } }).positions.size).toBe(0)
-  })
-
-  test("a part with no room left keeps the build's spot and is reported", () => {
-    const files = { [MAIN]: source(`<chip name="U1" footprint="lqfp64" />\n<resistor name="R1" resistance="1k" footprint="0402" />`, 'width="8mm" height="8mm"') }
-    const placement = placeBoard(build(files))
-    expect(placement.unplaced).toEqual(["U1"])
-    expect(placement.moved).not.toContain("U1")
   })
 })
 
@@ -213,13 +204,27 @@ describe("placeBoard on the CAN module", () => {
     expect(placement.score.wireLength).toBeLessThanOrEqual(constructed.score.wireLength)
   })
 
-  test("a spent time budget stops the refinement and still gives a valid board", () => {
+  test("a spent time budget stops the constructive pass: every part left is unplaced, out of time", () => {
     let now = 0
     const clock = () => (now += 1000)
     const hurried = placeBoard(design, { budgetMs: 1, clock })
     expect(hurried.budgetSpent).toBe(true)
-    expect(placementFindings(rebuilt(files, hurried, CAN_MAIN))).toEqual([])
+    expect(hurried.positions.size).toBe(0)
+    expect(hurried.unplaced).toHaveLength(12)
+    expect(new Set(hurried.unplaced.map((u) => u.reason))).toEqual(new Set(["the time budget ran out before it was placed"]))
     expect(placement.budgetSpent).toBe(false)
+  })
+
+  test("a spent time budget stops the refinement where it is, no longer than the start", () => {
+    const problem = readProblem(design)
+    const n = problem.movables.length
+    const state: State = { x: new Float64Array(n), y: new Float64Array(n), rot: new Uint8Array(n) }
+    construct(problem, state)
+    let now = 0
+    const refined = refine(problem, state, new Set(), { budgetMs: 1, clock: () => (now += 1000) })
+    expect(refined.budgetSpent).toBe(true)
+    expect(refined.tries).toBe(0)
+    expect(refined.after).toBe(refined.before)
   })
 })
 

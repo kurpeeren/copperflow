@@ -68,8 +68,31 @@ export function inArea(b: Box, area: Area): boolean {
     { x: grown.minX, y: grown.maxY },
   ]
   if (!corners.every((c) => pointInPolygon(c, area.polygon as Point[]))) return false
-  // A notch of the outline reaching into the box puts one of its corners inside it.
-  return !area.polygon.some((p) => p.x > grown.minX && p.x < grown.maxX && p.y > grown.minY && p.y < grown.maxY)
+  // A notch of the outline reaching into the box has an edge passing through it, even with every corner outside.
+  const outline = area.polygon
+  return !outline.some((p, k) => segmentEntersBox(p, outline[(k + 1) % outline.length] as Point, grown))
+}
+
+/** Whether the segment from `p` to `q` passes through the inside of the box (touching its sides does not count). */
+export function segmentEntersBox(p: Point, q: Point, b: Box): boolean {
+  // Liang-Barsky: clip the segment's parameter range to each slab of the box shrunk by EPSILON.
+  let [t0, t1] = [0, 1]
+  const [dx, dy] = [q.x - p.x, q.y - p.y]
+  const slabs: [number, number, number, number][] = [
+    [dx, p.x, b.minX + EPSILON, b.maxX - EPSILON],
+    [dy, p.y, b.minY + EPSILON, b.maxY - EPSILON],
+  ]
+  for (const [d, start, low, high] of slabs) {
+    if (Math.abs(d) < 1e-12) {
+      if (start <= low || start >= high) return false
+      continue
+    }
+    const [a, c] = [(low - start) / d, (high - start) / d]
+    t0 = Math.max(t0, Math.min(a, c))
+    t1 = Math.min(t1, Math.max(a, c))
+    if (t0 >= t1) return false
+  }
+  return true
 }
 
 /** Whether the outline is an axis-aligned rectangle (four corners, each side along x or y). */

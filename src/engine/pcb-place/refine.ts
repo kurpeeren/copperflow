@@ -56,7 +56,7 @@ function unitsOf(problem: Problem, frozen: ReadonlySet<number>): number[][] {
   const caps = new Map<number, number[]>()
   problem.movables.forEach((m, i) => {
     const chip = m.decouples ? names.get(m.decouples.part) : undefined
-    if (chip !== undefined && !frozen.has(chip)) caps.set(chip, [...(caps.get(chip) ?? []), i])
+    if (chip !== undefined && !frozen.has(chip) && !frozen.has(i)) caps.set(chip, [...(caps.get(chip) ?? []), i])
   })
   const grouped = new Set([...caps.values()].flat())
   return problem.movables.flatMap((m: Movable, i) => {
@@ -81,9 +81,13 @@ class Annealer {
   constructor(
     readonly problem: Problem,
     readonly state: State,
+    unplaced: ReadonlySet<number>,
   ) {
     problem.obstacles.forEach((o, k) => this.index.set(problem.movables.length + k, o.box))
-    problem.movables.forEach((_, i) => this.index.set(i, this.boxOf(i, state.x[i] as number, state.y[i] as number, state.rot[i] as number)))
+    problem.movables.forEach((_, i) => {
+      // A part that found no room has no courtyard on the board: the build packs it again round the others.
+      if (!unplaced.has(i)) this.index.set(i, this.boxOf(i, state.x[i] as number, state.y[i] as number, state.rot[i] as number))
+    })
     this.model = new NetModel(problem)
     this.netStamp = new Int32Array(problem.nets.length)
   }
@@ -143,10 +147,9 @@ class Annealer {
 }
 
 /** Shift a unit, swap two single parts, or turn one: chosen by `random`, reaching at most `reach` mm. */
-function propose(units: readonly number[][], s: State, random: () => number, reach: number): Move | undefined {
+function propose(units: readonly number[][], singles: readonly number[][], s: State, random: () => number, reach: number): Move | undefined {
   const pick = <T>(list: readonly T[]) => list[Math.floor(random() * list.length)] as T
   const kind = random()
-  const singles = units.filter((u) => u.length === 1)
   if (kind < MOVE_SHARE) {
     const unit = pick(units)
     const dx = snap((random() * 2 - 1) * reach)
@@ -171,13 +174,15 @@ function propose(units: readonly number[][], s: State, random: () => number, rea
  * Simulated annealing on the total ratsnest length with a fixed schedule: a fixed number of tries for the number of
  * parts, the temperature and the move reach falling geometrically, the moves drawn from a seeded generator, so the
  * same input gives the same result. A change that shortens the total is always kept; a longer one sometimes, early
- * on. The best state seen is returned, so the result is never longer than the start. Parts in `frozen` stay.
+ * on. The best state seen is returned, so the result is never longer than the start. Parts in `frozen` (those the
+ * constructive pass found no room for) stay out: they neither move nor hold room on the board.
  */
 export function refine(problem: Problem, start: State, frozen: ReadonlySet<number>, options: RefineOptions = {}): Refined {
   const state = copyState(start)
-  const annealer = new Annealer(problem, state)
+  const annealer = new Annealer(problem, state, frozen)
   const before = annealer.model.measure(state)
   const units = unitsOf(problem, frozen)
+  const singles = units.filter((u) => u.length === 1)
   const tries = units.length === 0 ? 0 : Math.min(MAX_TRIES, Math.max(MIN_TRIES, TRIES_PER_PART * units.length))
   const random = lcg(options.seed ?? DEFAULT_SEED)
   const clock = options.clock ?? (() => performance.now())
@@ -199,7 +204,7 @@ export function refine(problem: Problem, start: State, frozen: ReadonlySet<numbe
     const progress = done / tries
     const heat = heat0 * END_HEAT ** progress
     const reach = Math.max(GRID, reach0 * (GRID / reach0) ** progress)
-    const move = propose(units, state, random, reach)
+    const move = propose(units, singles, state, random, reach)
     if (!move || !annealer.fits(move)) continue
     const { delta, undo } = annealer.apply(move)
     const keep = delta < 0 || (heat > 0 && random() < Math.exp(-delta / heat))

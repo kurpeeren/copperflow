@@ -1,5 +1,5 @@
 import type { Design } from "../design.js"
-import { construct } from "./constructive.js"
+import { construct, OUT_OF_TIME } from "./constructive.js"
 import { EPSILON, ROTATIONS } from "./geometry.js"
 import { refine, type RefineOptions } from "./refine.js"
 import { readProblem, type ScopeOptions } from "./scope.js"
@@ -8,30 +8,50 @@ import { edgeTouches, NetModel, ratsnestLength, type State } from "./score.js"
 export { fitBoard, type FitBoard } from "./fit-board.js"
 export type { PlaceScope } from "./scope.js"
 
-export interface PlaceOptions extends ScopeOptions, RefineOptions {
+export interface PlaceOptions extends ScopeOptions, Omit<RefineOptions, "budgetMs"> {
   /** Whether to run the refinement after the constructive pass; true by default. */
   refine?: boolean
+  /**
+   * The time the whole placement may take, in ms, measured on `clock`: the constructive pass places no part once it
+   * is spent (those left are unplaced, "out of time"), and the refinement gets what is left. No limit by default.
+   */
+  budgetMs?: number
 }
 
-/** A part's centre on the board (mm, the groups' offsets included) and its rotation in degrees. */
+/**
+ * A part's centre on the board and its rotation in degrees, both on the board as a whole: a sub-sheet instance's (or
+ * group's) offset and rotation are included, so writing it as the part's pcbX/pcbY/pcbRotation means taking those
+ * back out.
+ */
 export interface PlacedPosition {
   x: number
   y: number
   rotation: number
 }
 
+/** A part the placer could not place, and why; it stays auto-placed, so the build packs it round the placed ones. */
+export interface UnplacedPart {
+  name: string
+  reason: string
+}
+
 export interface Placement {
-  /** Where each part the placer was given goes. */
+  /** Where each placed part goes; the unplaced parts are not in it. */
   positions: Map<string, PlacedPosition>
-  /** The total ratsnest length after placement (copper ignored), and the parts touching the edge clearance. */
+  /**
+   * The total ratsnest length after placement (copper ignored; an unplaced part counted at the build's spot), and the
+   * placed or fixed parts touching the edge clearance.
+   */
   score: { wireLength: number; edgeTouches: number }
   /** The total ratsnest length with the parts where the build put them. */
   before: { wireLength: number }
-  /** The parts whose position or rotation changed, in natural order. */
+  /** The parts in `positions` whose position or rotation differs from the build's, in natural order. */
   moved: string[]
-  /** The parts no free spot could take: they stay where the build put them. */
-  unplaced: string[]
-  /** Whether the refinement stopped at its time budget. */
+  /** The parts no free spot (or no time) was left for, in placement order, with the reason. */
+  unplaced: UnplacedPart[]
+  /** What else the caller should know, such as a connector no board edge had room for. */
+  notes: string[]
+  /** Whether the time budget ran out, in the constructive pass or the refinement. */
   budgetSpent: boolean
 }
 
@@ -47,31 +67,37 @@ const quarterOf = (rotation: number): number => Math.round(rotation / 90) & 3
  */
 export function placeBoard(design: Design, options: PlaceOptions = {}): Placement {
   const problem = readProblem(design, options)
-  const n = problem.movables.length
   const start: State = {
     x: Float64Array.from(problem.movables, (m) => m.start.x),
     y: Float64Array.from(problem.movables, (m) => m.start.y),
     rot: Uint8Array.from(problem.movables, (m) => quarterOf(m.start.rotation)),
   }
-  const { unplaced } = construct(problem, start)
-  const frozen = new Set(unplaced)
-  const refined = options.refine === false ? undefined : refine(problem, start, frozen, options)
+  const clock = options.clock ?? (() => performance.now())
+  const began = clock()
+  const { budgetMs } = options
+  const late = budgetMs === undefined ? () => false : () => clock() - began >= budgetMs
+  const built = construct(problem, start, late)
+  const frozen = new Set(built.unplaced.map((u) => u.index))
+  const left = budgetMs === undefined ? {} : { budgetMs: Math.max(0, budgetMs - (clock() - began)) }
+  const refined = options.refine === false ? undefined : refine(problem, start, frozen, { ...options, ...left, clock })
   const final = refined?.state ?? start
   const positions = new Map<string, PlacedPosition>()
   const moved: string[] = []
-  for (let i = 0; i < n; i++) {
-    const m = problem.movables[i] as (typeof problem.movables)[number]
-    const at = frozen.has(i) ? m.start : { x: tidy(final.x[i] as number), y: tidy(final.y[i] as number), rotation: ROTATIONS[final.rot[i] as number] as number }
+  problem.movables.forEach((m, i) => {
+    if (frozen.has(i)) return
+    const at = { x: tidy(final.x[i] as number), y: tidy(final.y[i] as number), rotation: ROTATIONS[final.rot[i] as number] as number }
     positions.set(m.name, at)
     const same = Math.abs(at.x - m.start.x) < EPSILON && Math.abs(at.y - m.start.y) < EPSILON && at.rotation === m.start.rotation
     if (!same) moved.push(m.name)
-  }
+  })
+  const outOfTime = built.unplaced.some((u) => u.reason === OUT_OF_TIME)
   return {
     positions,
-    score: { wireLength: refined?.after ?? new NetModel(problem).measure(final), edgeTouches: edgeTouches(problem, final) },
+    score: { wireLength: refined?.after ?? new NetModel(problem).measure(final), edgeTouches: edgeTouches(problem, final, frozen) },
     before: { wireLength: ratsnestLength(design.pcb.parts) },
     moved,
-    unplaced: unplaced.map((i) => problem.movables[i]?.name as string),
-    budgetSpent: refined?.budgetSpent ?? false,
+    unplaced: built.unplaced.map((u) => ({ name: problem.movables[u.index]?.name as string, reason: u.reason })),
+    notes: built.notes,
+    budgetSpent: outOfTime || (refined?.budgetSpent ?? false),
   }
 }

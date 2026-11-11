@@ -1,28 +1,11 @@
-import { readdirSync, readFileSync, statSync } from "node:fs"
-import { join, relative } from "node:path"
 import { describe, expect, test } from "vitest"
 import { buildDesign } from "../../src/engine/design.js"
 import { boxOfPoints } from "../../src/engine/pcb-place/geometry.js"
 import { fitBoard } from "../../src/engine/pcb-place/index.js"
-import { CAN_MAIN } from "../helpers/place-fixtures.js"
-
-const FOLDER = join(import.meta.dirname, "..", "fixtures", "can-module")
-
-function filesIn(folder: string): Record<string, string> {
-  const files: Record<string, string> = {}
-  const walk = (dir: string) => {
-    for (const name of readdirSync(dir).sort()) {
-      const path = join(dir, name)
-      if (statSync(path).isDirectory()) walk(path)
-      else files[relative(folder, path).split("\\").join("/")] = readFileSync(path, "utf8")
-    }
-  }
-  walk(folder)
-  return files
-}
+import { CAN_FOLDER, CAN_MAIN, filesIn } from "../helpers/place-fixtures.js"
 
 describe("fitBoard", () => {
-  const design = buildDesign(filesIn(FOLDER), CAN_MAIN)
+  const design = buildDesign(filesIn(CAN_FOLDER), CAN_MAIN)
   const parts = boxOfPoints(design.pcb.parts.flatMap((p) => p.courtyard))
 
   test("fits the CAN module's rectangle to every courtyard plus the 2 mm margin, rounded out to 0.1 mm", () => {

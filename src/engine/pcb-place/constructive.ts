@@ -216,18 +216,27 @@ function centresFor(board: Board, i: number): Point[] {
     weight += w
     if (xs.length <= SMALL_NET) xs.forEach((x, k) => extra.push({ x, y: ys[k] as number }))
   }
-  return weight === 0 ? [middle] : [{ x: sx / weight, y: sy / weight }, ...extra]
+  // Nothing it connects to is placed yet: its sub-sheet instance's own place, else the middle of the area.
+  return weight === 0 ? [m.anchor ?? middle] : [{ x: sx / weight, y: sy / weight }, ...extra]
 }
 
-/** Places part `i` at its cheapest free spot; false when nothing on the board is free for it. */
-function placeOne(board: Board, i: number): boolean {
+/** What placing one part gave: whether it found a spot, and a note when a connector could not go on an edge. */
+interface Placed {
+  placed: boolean
+  note?: string
+}
+
+/** Places part `i` at its cheapest free spot; not placed when nothing on the board is free for it. */
+function placeOne(board: Board, i: number): Placed {
   const m = board.problem.movables[i] as Movable
+  let note: string | undefined
   if (m.role === "connector") {
     const spot = placeConnector(board, i, centresFor(board, i)[0] as Point)
     if (spot) {
       board.put(i, spot)
-      return true
+      return { placed: true }
     }
+    note = `${m.name} is a connector, but no board edge has room for it, so it is placed inside the board`
   }
   const centres = centresFor(board, i)
   const supply = m.decouples ? board.padAt(m.decouples.part, m.decouples.pad) : undefined
@@ -247,9 +256,9 @@ function placeOne(board: Board, i: number): boolean {
       if (!best || cost < best.cost - 1e-9 || (Math.abs(cost - best.cost) <= 1e-9 && far < best.far - 1e-9)) best = { spot, cost, far }
     }
   }
-  if (!best) return false
+  if (!best) return { placed: false }
   board.put(i, best.spot)
-  return true
+  return note === undefined ? { placed: true } : { placed: true, note }
 }
 
 /** How strongly a part hangs on what is placed: its pads on nets with a placed pad. */
@@ -283,19 +292,53 @@ function nextPart(board: Board, waiting: readonly number[]): number {
   return best
 }
 
-/** Places every movable part; the parts that found no free spot keep where the build put them and are returned. */
-export function construct(problem: Problem, state: State): { board: Board; unplaced: number[] } {
+/** What the constructive pass gave: the parts it found no room for (or no time for), and notes about the rest. */
+export interface Constructed {
+  board: Board
+  unplaced: { index: number; reason: string }[]
+  notes: string[]
+}
+
+/** The reason a part found no spot: its courtyard and how much of the area is left. */
+function noRoom(board: Board, m: Movable): string {
+  const b = m.boxes[0] as Box
+  const a = board.problem.area.box
+  const gap = board.problem.clearance
+  const areaSize = (a.maxX - a.minX) * (a.maxY - a.minY)
+  const clip = (o: Box) => Math.max(0, Math.min(o.maxX, a.maxX) - Math.max(o.minX, a.minX)) * Math.max(0, Math.min(o.maxY, a.maxY) - Math.max(o.minY, a.minY))
+  const taken = board.index.near(a).reduce((sum, id) => sum + clip(board.index.get(id) as Box), 0)
+  const mm = (v: number) => v.toFixed(1)
+  return (
+    `no free spot for its ${mm(b.maxX - b.minX)} x ${mm(b.maxY - b.minY)} mm courtyard with ${gap} mm around it: ` +
+    `the ${mm(a.maxX - a.minX)} x ${mm(a.maxY - a.minY)} mm area inside the edge clearance has about ${mm(Math.max(0, areaSize - taken))} mm2 not under a courtyard, in gaps too small for it`
+  )
+}
+
+export const OUT_OF_TIME = "the time budget ran out before it was placed"
+
+/**
+ * Places every movable part. The parts that find no free spot, and those left when `late` says the time is up, are
+ * returned unplaced with the reason; their state is left as it was.
+ */
+export function construct(problem: Problem, state: State, late: () => boolean = () => false): Constructed {
   const board = new Board(problem, state)
   const capsOf = new Map<string, number[]>()
   problem.movables.forEach((m, i) => {
     if (m.decouples) capsOf.set(m.decouples.part, [...(capsOf.get(m.decouples.part) ?? []), i])
   })
-  const unplaced: number[] = []
+  const unplaced: { index: number; reason: string }[] = []
+  const notes: string[] = []
   const done = new Set<number>()
   const place = (i: number) => {
     done.add(i)
-    if (!placeOne(board, i)) unplaced.push(i)
-    for (const cap of capsOf.get((problem.movables[i] as Movable).name) ?? []) if (!done.has(cap)) place(cap)
+    const m = problem.movables[i] as Movable
+    if (late()) unplaced.push({ index: i, reason: OUT_OF_TIME })
+    else {
+      const result = placeOne(board, i)
+      if (!result.placed) unplaced.push({ index: i, reason: noRoom(board, m) })
+      if (result.note) notes.push(result.note)
+    }
+    for (const cap of capsOf.get(m.name) ?? []) if (!done.has(cap)) place(cap)
   }
   for (const [chip, caps] of capsOf) if (problem.fixedPartPads.has(chip)) caps.forEach((cap) => !done.has(cap) && place(cap))
   for (;;) {
@@ -303,5 +346,5 @@ export function construct(problem: Problem, state: State): { board: Board; unpla
     if (waiting.length === 0) break
     place(nextPart(board, waiting))
   }
-  return { board, unplaced }
+  return { board, unplaced, notes }
 }

@@ -1,5 +1,6 @@
 import { MIN_OUTLINE_POINTS } from "../board.js"
 import type { Design } from "../design.js"
+import { anchorGroups } from "../instance-anchor.js"
 import type { Component, Point } from "../model.js"
 import { naturalCompare } from "../order.js"
 import type { PlacedFootprint } from "../pcb.js"
@@ -30,6 +31,8 @@ export interface Movable {
   role: Role
   /** For a decoupling capacitor: the supply pad it sits beside and its own pad on that net. */
   decouples?: Decoupling
+  /** Its sub-sheet instance's place on the board, when the instance has one: where it starts when nothing pulls it. */
+  anchor?: Point
   /** Pins on nets with another pad. */
   connections: number
   /** Where the build put it. */
@@ -97,6 +100,7 @@ interface PartFacts {
   component: Component
   role: Role
   decouples: Decoupling | undefined
+  anchor: Point | undefined
 }
 
 function movable(part: PlacedFootprint, facts: PartFacts, netIndex: ReadonlyMap<string, number>, connected: ReadonlySet<string>): Movable {
@@ -111,8 +115,8 @@ function movable(part: PlacedFootprint, facts: PartFacts, netIndex: ReadonlyMap<
   )
   const connections = part.pads.filter((pad) => pad.net !== undefined && connected.has(pad.net)).length
   const start = { x: part.x, y: part.y, rotation: part.rotation }
-  const { component, role, decouples } = facts
-  return { name: part.component, component, boxes, pads, role, connections, start, ...(decouples ? { decouples } : {}) }
+  const { component, role, decouples, anchor } = facts
+  return { name: part.component, component, boxes, pads, role, connections, start, ...(decouples ? { decouples } : {}), ...(anchor ? { anchor } : {}) }
 }
 
 /**
@@ -133,13 +137,16 @@ export function readProblem(design: Design, options: ScopeOptions = {}): Problem
     return part.autoPlaced && !locked.has(part.component) && component !== undefined && inScope(component, scope)
   }
   const roleOf = roles(design)
+  const moving = design.pcb.parts.filter(moves).map((p) => components.get(p.component) as Component)
+  const anchors = new Map(anchorGroups(design.circuit, moving, "pcb").flatMap((g) => (g.anchor ? g.parts.map((c) => [c.id, g.anchor as Point] as const) : [])))
   const movables: Movable[] = []
   const obstacles = boardObstacles(design)
   const fixedPads: Point[][] = nets.map(() => [])
   const fixedPartPads = new Map<string, (Point & { net?: number })[]>()
   for (const part of [...design.pcb.parts].sort((a, b) => naturalCompare(a.component, b.component))) {
     if (moves(part)) {
-      const facts = { component: components.get(part.component) as Component, role: roleOf.role(part.component), decouples: roleOf.decouples(part.component) }
+      const name = part.component
+      const facts = { component: components.get(name) as Component, role: roleOf.role(name), decouples: roleOf.decouples(name), anchor: anchors.get(name) }
       movables.push(movable(part, facts, netIndex, connected))
       continue
     }
