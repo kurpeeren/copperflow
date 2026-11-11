@@ -235,7 +235,7 @@ export async function createPart(
   root: string,
   id: string,
   input: unknown,
-  options: { replace?: boolean; footprintFile?: FootprintFile; now: string },
+  options: { replace?: boolean; footprintFile?: FootprintFile; now: string; notes?: readonly string[] },
 ): Promise<{ part: Part; files: string[] }> {
   const dir = partDir(root, id)
   const { verified: _ignored, ...data } = validate(input, "part")
@@ -253,7 +253,7 @@ export async function createPart(
   await writeFileAtomic(yamlPath, stringify(data))
   await writeFileAtomic(join(dir, `${componentName(id)}.tsx`), generateComponent(id, data))
   // Always rewritten, so the checklist describes the pins that are actually in part.yaml.
-  await writeFileAtomic(join(dir, "verification.md"), verificationTemplate(id, data, footprintText))
+  await writeFileAtomic(join(dir, "verification.md"), verificationTemplate(id, data, footprintText, options.notes))
   return {
     part: data,
     files: [
@@ -326,7 +326,8 @@ export function generateComponent(id: string, part: Part): string {
   ].join("\n")
 }
 
-export function verificationTemplate(id: string, part: Part, footprintText?: string): string {
+/** The checklist for a part; `notes` are further things to check, such as what an import approximated. */
+export function verificationTemplate(id: string, part: Part, footprintText?: string, notes: readonly string[] = []): string {
   const pins = Object.entries(part.pins).sort(([a], [b]) => Number(a) - Number(b))
   return [
     `# Verification of ${part.title}`,
@@ -341,6 +342,8 @@ export function verificationTemplate(id: string, part: Part, footprintText?: str
     `- [ ] Footprint ${part.footprint} matches the package drawing`,
     ...(footprintText === undefined ? [] : ["- [ ] Every pad in footprint.yaml matches the recommended land pattern (position, size, drill)"]),
     ...Object.entries(part.suppliers ?? {}).map(([supplier, number]) => `- [ ] ${supplier} part ${number} is this exact part`),
+    ...(part.origin ? [`- [ ] Every pin name and type matches the datasheet (${part.origin}; nothing from the source has been checked)`] : []),
+    ...(notes.length > 0 ? ["", "## Notes", "", ...notes.map((note) => `- [ ] ${note}`)] : []),
     "",
   ].join("\n")
 }

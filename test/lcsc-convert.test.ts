@@ -1,7 +1,4 @@
-// The fixtures in test/fixtures/lcsc are documents written for copperflow in EasyEDA's format for three real parts
-// (dimensions from the packages' standard drawings), not recorded copies of the EasyEDA library: see docs/licences.md.
-import { readFileSync } from "node:fs"
-import { join } from "node:path"
+// Conversion of copperflow's own EasyEDA-format fixtures (see test/helpers/lcsc-fixtures.ts) and of single records.
 import { describe, expect, test } from "vitest"
 import { footprintFromFile, pinErrors } from "../src/engine/footprints/file.js"
 import { stringify } from "yaml"
@@ -9,9 +6,9 @@ import { arcPoints, pathPolylines } from "../src/library/easyeda-path.js"
 import { convertFootprint } from "../src/library/easyeda-footprint.js"
 import { pinName, pinType, symbolPins } from "../src/library/easyeda-symbol.js"
 import { convertLcscAnswer, lcscNumber, matchPins } from "../src/library/lcsc-part.js"
+import { lcscFixture } from "./helpers/lcsc-fixtures.js"
 
 const TODAY = "2026-11-11"
-export const lcscFixture = (lcsc: string): unknown => JSON.parse(readFileSync(join(import.meta.dirname, "fixtures", "lcsc", `${lcsc}.json`), "utf8"))
 const convert = (lcsc: string) => convertLcscAnswer(lcscFixture(lcsc), lcsc, TODAY)
 /** A footprint document with these records around the origin 4000, 3000. */
 const doc = (...shape: string[]) => ({ head: { x: 4000, y: 3000 }, shape })
