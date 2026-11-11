@@ -8,6 +8,10 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { createCopperflowServer } from "../src/mcp/server.js"
 import { listEntries, loadCircuit, updateAnnotations } from "../src/core/index.js"
 import { lockParts } from "../src/core/annotations.js"
+import { buildDesign, type Design } from "../src/engine/design.js"
+import { ENGINE_FILES } from "../src/engine/engine.js"
+import { ratsnestLength } from "../src/engine/pcb-place/score.js"
+import { collectProjectFiles } from "../src/engine/project-files.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
 import { DEMO } from "./helpers/new-circuit-demo.js"
 
@@ -21,6 +25,24 @@ async function call(name: string, args: Record<string, unknown> = {}) {
   const result = await client.callTool({ name, arguments: args })
   const content = result.content as Array<{ type: string; text: string }>
   return { text: content.map((c) => c.text).join("\n"), isError: result.isError === true }
+}
+
+const build = async (file = FILE): Promise<Design> => buildDesign(await collectProjectFiles(root, { include: ENGINE_FILES }), file)
+const positioned = (text: string) => (text.match(/pcbX=\{/g) ?? []).length
+
+/** The placement line's numbers, and those the files before and after give: parts placed, wire lengths, board, overlaps. */
+function checkPlacedLine(line: string, before: { design: Design; text: string }, after: { design: Design; text: string }): void {
+  const match = /^Placed (\d+) parts?; wire length (\d+) mm \(was (\d+)\); board ([\d.]+) × ([\d.]+) mm; (\d+) overlaps?$/.exec(line)
+  expect(match, line).not.toBeNull()
+  const [placed, wire, was, width, height, overlaps] = (match as RegExpExecArray).slice(1).map(Number) as number[]
+  expect(placed).toBe(positioned(after.text) - positioned(before.text))
+  expect(placed).toBeGreaterThan(0)
+  expect(Math.abs((wire as number) - ratsnestLength(after.design.pcb.parts))).toBeLessThanOrEqual(1)
+  expect(Math.abs((was as number) - ratsnestLength(before.design.pcb.parts))).toBeLessThanOrEqual(1)
+  const outline = after.design.pcb.board?.outline ?? []
+  const span = (values: number[]) => Math.round((Math.max(...values) - Math.min(...values)) * 10) / 10
+  expect([width, height]).toEqual([span(outline.map((p) => p.x)), span(outline.map((p) => p.y))])
+  expect(overlaps).toBe(after.design.violations.filter((v) => v.code === "courtyard-overlap").length)
 }
 
 beforeEach(async () => {
@@ -45,6 +67,24 @@ describe("new_circuit places the board", () => {
     expect(entries.some((e) => e.summary.startsWith("Autoplace the board"))).toBe(true)
   })
 
+  test("the placement line gives the real counts and wire lengths; undoing the placement entry leaves the file new_circuit wrote, and it builds", async () => {
+    const answer = await call("new_circuit", DEMO)
+    const placed = { text: await readFile(join(root, FILE), "utf8"), design: await build() }
+    const undone = await call("undo_change", {})
+    expect(undone.isError).toBe(false)
+    const text = await readFile(join(root, FILE), "utf8")
+    const design = await build()
+    expect(design.diagnostics.filter((d) => d.severity === "error")).toEqual([])
+    expect(design.pcb.parts).toHaveLength(DEMO.parts.length)
+    checkPlacedLine(answer.text.split("\n").find((l) => l.startsWith("Placed ")) ?? "", { text, design }, placed)
+    await call("new_circuit", { ...DEMO, place: false, replace: true })
+    expect(await readFile(join(root, FILE), "utf8")).toBe(text)
+    const { tools } = await client.listTools()
+    const description = tools.find((t) => t.name === "new_circuit")?.description ?? ""
+    expect(description).toContain("the placement is a second entry")
+    expect(description).not.toContain("One history entry for the circuit and its sheet files;")
+  })
+
   test("place: false writes the parts without positions", async () => {
     const answer = await call("new_circuit", { ...DEMO, place: false })
     expect(answer.text).not.toMatch(PLACED)
@@ -59,9 +99,10 @@ describe("autoplace and fit_board", () => {
     const locked = model.parts[0]?.name as string
     await updateAnnotations(root, FILE, (a) => lockParts(a, model, [locked], new Date().toISOString()))
     const before = await readFile(join(root, FILE), "utf8")
+    const beforeDesign = await build()
     const placed = await call("autoplace", { file: FILE })
     expect(placed.isError).toBe(false)
-    expect(placed.text.split("\n")[0]).toMatch(PLACED)
+    checkPlacedLine(placed.text.split("\n")[0] ?? "", { text: before, design: beforeDesign }, { text: await readFile(join(root, FILE), "utf8"), design: await build() })
     expect(placed.text).toMatch(/^Change c\d{4}; undo_change takes it back\.$/m)
     const after = await readFile(join(root, FILE), "utf8")
     const line = (text: string) => text.split("\n").find((l) => l.includes(`name="${locked}"`))
@@ -70,6 +111,20 @@ describe("autoplace and fit_board", () => {
     expect(again.text).toMatch(/^Nothing to place/)
     const fit = await call("fit_board", { file: FILE, margin: 1 })
     expect(fit.text).toMatch(/^Change c\d{4}: board [\d.]+ × [\d.]+ mm \(margin 1 mm\)$/)
+  })
+
+  test("when nothing could be written it says so first instead of claiming parts were placed", async () => {
+    await writeFile(join(root, "Stage.sheet.tsx"), `export default function Stage() {\n  return (\n    <sheet>\n      <port name="VIN" />\n      <port name="GND" />\n      <resistor name="R1" resistance="1k" footprint="0603" />\n      <trace from="R1.pin1" to="net.VIN" />\n      <trace from="R1.pin2" to="net.GND" />\n    </sheet>\n  )\n}\n`)
+    const main = "two.circuit.tsx"
+    await writeFile(join(root, main), `import Stage from "./Stage.sheet"\nexport default () => (\n  <board width="40mm" height="30mm">\n    <Stage name="S1" connections={{ VIN: "VBUS", GND: "GND" }} pcbX={8} pcbY={-6} />\n    <Stage name="S2" connections={{ VIN: "VBUS", GND: "GND" }} pcbX={-8} pcbY={8} />\n  </board>\n)\n`)
+    const { model } = await loadCircuit(root, main)
+    await updateAnnotations(root, main, (a) => lockParts(a, model, ["S1"], new Date().toISOString()))
+    const answer = await call("autoplace", { file: main })
+    expect(answer.isError).toBe(false)
+    const lines = answer.text.split("\n")
+    expect(lines[0]).toMatch(/^Nothing to move/)
+    expect(answer.text).not.toMatch(/^Placed /m)
+    expect(answer.text).toMatch(/R201 shares R1 of Stage\.sheet\.tsx with R101, which is locked; it was not moved/)
   })
 
   test("refuses both parts and instance, and an unknown part", async () => {

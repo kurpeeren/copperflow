@@ -9,6 +9,7 @@ import { placementWrites, writePlacement } from "../core/placement-write.js"
 import type { Design } from "../engine/design.js"
 import { DEFAULT_FIT_MARGIN, placeBoard, type Placement } from "../engine/pcb-place/index.js"
 import type { PlaceScope } from "../engine/pcb-place/scope.js"
+import { ratsnestLength } from "../engine/pcb-place/score.js"
 import { fitBoardEdit } from "../studio/fit-board.js"
 import { checkedPlaceScope, lockedNames } from "../studio/place-runner.js"
 import { placeSummary } from "../studio/place-events.js"
@@ -64,11 +65,14 @@ function boardText(design: Design): string | undefined {
   return `board ${mm(Math.max(...xs) - Math.min(...xs))} × ${mm(Math.max(...ys) - Math.min(...ys))} mm`
 }
 
-/** "Placed 12 parts; wire length 184 mm (was 412); board 42 × 28 mm; 0 overlaps" */
-export function placedLine(placed: number, placement: Pick<Placement, "score" | "before">, after: Design): string {
+/**
+ * "Placed 12 parts; wire length 184 mm (was 412); board 42 × 28 mm; 0 overlaps": the wire length is that of the board
+ * as rebuilt from the written files, so parts the build packs round the placed ones count where they end up.
+ */
+export function placedLine(placed: number, placement: Pick<Placement, "before">, after: Design): string {
   const overlaps = after.violations.filter((v) => v.code === "courtyard-overlap").length
   const board = boardText(after)
-  return [`Placed ${plural(placed, "part")}`, `wire length ${Math.round(placement.score.wireLength)} mm (was ${Math.round(placement.before.wireLength)})`, ...(board ? [board] : []), plural(overlaps, "overlap")].join("; ")
+  return [`Placed ${plural(placed, "part")}`, `wire length ${Math.round(ratsnestLength(after.pcb.parts))} mm (was ${Math.round(placement.before.wireLength)})`, ...(board ? [board] : []), plural(overlaps, "overlap")].join("; ")
 }
 
 /** A list line naming at most SHOWN items. */
@@ -108,11 +112,12 @@ export async function autoplace(
     if (why !== undefined) throw new Error(`${why.replace("while the board was routed", "while the board was placed").replace("; route again", "; place again")}. Nothing was written.`)
   }
   const written = await writePlacement(ports.root, circuit.file, writes, { author: "ai", summary: placeSummary(scope, placement.positions.size), guard, ...(input.fit ? { fit: { margin: DEFAULT_FIT_MARGIN } } : {}) })
-  const after = await buildOf(ports, circuit.file)
   const fitError = written.board && "error" in written.board ? [`The board was not fitted: ${written.board.error}`] : []
+  const head = written.entry
+    ? [placedLine(written.written.length, placement, await buildOf(ports, circuit.file)), `Change ${written.entry.id}; undo_change takes it back.`]
+    : [`Nothing to move: ${written.skipped.length > 0 ? "the parts placed could not be written (see the notes)" : "the parts are already where the placer put them"}. Nothing was written.`]
   return [
-    placedLine(written.written.length, placement, after),
-    ...(written.entry ? [`Change ${written.entry.id}; undo_change takes it back.`] : ["Nothing was written: the positions are those the parts already have."]),
+    ...head,
     ...unplaced,
     ...listLine("Notes", [...placement.notes, ...writes.notes, ...written.skipped.map((s) => `${s}; it was not moved`), ...fitError]),
     ...(placement.budgetSpent ? [`Stopped at the ${budgetSeconds} s time budget; run autoplace again (with a larger budgetSeconds) to do better.`] : []),
