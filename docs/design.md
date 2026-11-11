@@ -231,7 +231,10 @@ parts/AP2112K-3.3/
   generator draws the pads. When no generated family fits the package, the part carries a
   `footprint.yaml` with its pads transcribed by hand from the datasheet's recommended land
   pattern; a human checks every pad as part of verifying the part (see
-  [the engine design](engine-design.md)).
+  [the engine design](engine-design.md)). A `footprint.yaml` written as a stub (the part wizard's
+  "footprint file" without pads) says `placeholder: true`: the schematic uses the part, but each use
+  on the board is a check error, so no fabrication files are written and the part cannot be verified
+  until a person draws the pads and deletes that line.
 - The agent creates a part by reading the datasheet itself and calling `create_part`. The
   part starts as *not verified*. Only a human marks it verified (`copperflow parts verify`),
   after checking the items in `verification.md`. The agent has no verify tool.

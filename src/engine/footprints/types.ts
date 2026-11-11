@@ -36,6 +36,8 @@ export interface Footprint {
   fabrication: Point[][]
   /** Where the numbers come from, for example "IPC-7351B nominal, EIA 0603". */
   origin: string
+  /** Set when footprint.yaml says `placeholder: true`: its pads are a stub, not the land pattern. */
+  placeholder?: boolean
 }
 
 /**

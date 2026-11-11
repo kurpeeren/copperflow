@@ -18,7 +18,9 @@ Passive parts (resistors, capacitors, LEDs, headers) are built in and need no en
      datasheet's recommended land pattern, name the page you took it from, and never estimate a
      coordinate. Each pad number must be a pin number; several pads may share one (a shell
      with two legs). Every pin except `no_connect` needs a pad. The part stays unverified
-     until a human checks every pad against the datasheet.
+     until a human checks every pad against the datasheet. Without `footprint_file` a
+     placeholder `footprint.yaml` (`placeholder: true`) is written: the schematic works, but each
+     use on the board is a check error until the human draws the pads and deletes that line.
    - `pins`: every pin by number, with the datasheet's name and an electrical type:
      `power_in`, `power_out`, `ground`, `input`, `output`, `bidirectional`, `passive` or
      `no_connect`. Pin names become selectors, so use letters, digits and `_` only

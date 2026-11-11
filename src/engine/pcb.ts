@@ -159,9 +159,16 @@ function resolveFootprints(circuit: Circuit, footprintOf: FootprintOf): { resolv
       diagnostics.push(diagnostic("footprint", "error", `${component.id}: ${result.error}`, [component.id], component.source))
       return { component, footprint: undefined }
     }
+    // The part is placed with the stub's pads, so the board can be laid out, but nothing is made from it.
+    if (result.placeholder) diagnostics.push(diagnostic("footprint-placeholder", "error", placeholderMessage(component.id, result.name), [component.id], component.source))
     return { component, footprint: result }
   })
   return { resolved, diagnostics, missing }
+}
+
+/** "U3 uses a placeholder footprint; draw its pads in parts/J9/footprint.yaml" and how to clear it. */
+function placeholderMessage(id: string, file: string): string {
+  return `${id} uses a placeholder footprint; draw its pads in ${file} from the datasheet's land pattern, then delete "placeholder: true"`
 }
 
 function pinNets(circuit: Circuit): Map<string, string> {

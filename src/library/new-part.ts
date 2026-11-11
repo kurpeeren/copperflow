@@ -42,7 +42,7 @@ const STUB_PITCH = 2.54
 const STUB_PAD = { width: 1.2, height: 1.8 }
 
 export const PLACEHOLDER_NOTE =
-  "footprint.yaml is a placeholder (one pad per pin in a row, 2.54 mm apart): replace every pad with the datasheet's recommended land pattern before this part goes on a board."
+  'footprint.yaml is a placeholder (one pad per pin in a row, 2.54 mm apart): draw every pad from the datasheet\'s recommended land pattern, then delete "placeholder: true". Until then the checks report an error for each use of the part on the board, fabrication files are not written and the part cannot be verified; the schematic works.'
 
 /** Writes the part; throws with one message for the person when it cannot, and then writes nothing. */
 export async function writeNewPart(root: string, input: NewPartInput, options: { now: string; replace?: boolean }): Promise<NewPartResult> {
@@ -96,6 +96,7 @@ export function stubFootprint(pins: Part["pins"]): FootprintFile {
   const numbers = Object.keys(pins).sort((a, b) => Number(a) - Number(b))
   const offset = ((numbers.length - 1) * STUB_PITCH) / 2
   return {
+    placeholder: true,
     pads: numbers.map((number, index) => ({ number, shape: "rect" as const, x: round(index * STUB_PITCH - offset), y: 0, ...STUB_PAD })),
   }
 }

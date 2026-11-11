@@ -196,6 +196,12 @@ export async function readPart(root: string, id: string): Promise<Part> {
   return part
 }
 
+/** Whether footprint.yaml's text says its pads are a stub (`placeholder: true`). */
+export function isPlaceholder(footprintText: string): boolean {
+  const data: unknown = parse(footprintText)
+  return typeof data === "object" && data !== null && (data as { placeholder?: unknown }).placeholder === true
+}
+
 /** Throws when footprint.yaml is not a valid land pattern for this part's pins; the message names the pad. */
 function checkFootprintText(id: string, part: Part, text: string): void {
   const path = `${PARTS_DIR}/${id}/${FOOTPRINT_FILE}`
@@ -268,7 +274,11 @@ export async function createPart(
 /** Marks the current content of a part as checked by a person. Only the CLI and the Studio call this. */
 export async function verifyPart(root: string, id: string, check: { by: string; against: string }, now: string): Promise<Part> {
   const current = await readPart(root, id)
-  const part: Part = { ...current, verified: { by: check.by, against: check.against, date: now, hash: contentHash(current, await readFootprintText(root, id, current)) } }
+  const footprintText = await readFootprintText(root, id, current)
+  if (footprintText !== undefined && isPlaceholder(footprintText)) {
+    throw new Error(`Part ${id} cannot be verified: ${PARTS_DIR}/${id}/${FOOTPRINT_FILE} is a placeholder; draw its pads from the datasheet's land pattern, then delete "placeholder: true"`)
+  }
+  const part: Part = { ...current, verified: { by: check.by, against: check.against, date: now, hash: contentHash(current, footprintText) } }
   await writeFileAtomic(join(partDir(root, id), "part.yaml"), stringify(validate(part, `${id}/part.yaml`)))
   return part
 }

@@ -271,7 +271,7 @@ export function NewPartForm({ panel, onClose }: { panel: NewPartPanel; onClose()
           <PackagePreview text={fields.packageText} />
         </>
       ) : (
-        <p>footprint.yaml is written as a placeholder, one pad per pin; replace its pads with the datasheet's land pattern before using the part on a board.</p>
+        <p>footprint.yaml is written as a placeholder, one pad per pin. The schematic can use the part now; the board reports an error for it until you draw its pads from the datasheet's land pattern and delete "placeholder: true".</p>
       )}
       <h3>Pins</h3>
       <PinRows pins={fields.pins} onChange={(pins) => set("pins", pins)} />

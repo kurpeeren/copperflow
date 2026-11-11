@@ -94,7 +94,8 @@ describe("writing a part from the wizard", () => {
   })
 
   test("footprint file with the pads given (create_part's footprint_file) writes them, without the placeholder note", async () => {
-    const pads = stubFootprint({ "1": { name: "A", type: "passive" }, "2": { name: "B", type: "passive" } })
+    const { placeholder, ...pads } = stubFootprint({ "1": { name: "A", type: "passive" }, "2": { name: "B", type: "passive" } })
+    expect(placeholder).toBe(true)
     const result = await writeNewPart(root, { ...CRYSTAL, id: "TWO", package: { file: "footprint.yaml" }, footprintFile: { ...pads, pads: pads.pads.map((pad) => ({ ...pad, width: 0.7 })) } }, { now: NOW })
     expect(result.notes).toEqual([])
     expect(await readFile(join(root, "parts", "TWO", "footprint.yaml"), "utf8")).toContain("width: 0.7")

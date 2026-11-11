@@ -31,6 +31,8 @@ export const FootprintFileSchema = z
     courtyard: z.array(point).min(3).optional(),
     silkscreen: z.array(z.array(point).min(2)).optional(),
     body: z.array(point).min(3).optional(),
+    /** The pads are not the land pattern yet (the part wizard's stub): the board refuses the part until a person draws them. */
+    placeholder: z.boolean().optional(),
   })
   .strict()
 
@@ -96,6 +98,7 @@ function buildFootprint(path: string, file: FootprintFile): Footprint {
     silkscreen: (file.silkscreen ?? []).map((line) => line.map(toPoint)),
     fabrication: file.body ? [closed(file.body.map(toPoint))] : [],
     origin: `copperflow footprint file ${path}`,
+    ...(file.placeholder ? { placeholder: true } : {}),
   }
 }
 
