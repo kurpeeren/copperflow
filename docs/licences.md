@@ -43,20 +43,26 @@ What the source says:
 
 What copperflow concludes and does:
 
-- **Allowed, as copperflow does it:** one part at a time, only when the person asks for it by its C-number, fetched on
-  their machine into their own project. That is not bulk or systematic access, and the notice explicitly anticipates
-  tools that retrieve and output the library's parts provided the source is stated.
+- **Personal, non-commercial use only, on the person's explicit request.** The in-data notice permits tools to
+  retrieve and output the library with the source stated. EasyEDA's Terms limit downloads to personal,
+  non-commercial use and forbid derivative works, which a format conversion arguably is. copperflow therefore offers
+  the import for personal, non-commercial use only: one part at a time, only when the person asks for it by its
+  C-number, fetched on their machine into their own project. That is not bulk or systematic access.
+- **The non-commercial limit applies to the download itself**, not only to using the part outside EasyEDA: fetching a
+  part for a commercial design is already outside what the Terms allow. For such a design the person draws the part
+  from the datasheet (the part wizard) or obtains the right from JLCEDA/EasyEDA.
+- **The agent's path is the case the notice addresses.** `import_part`, called by an AI agent over MCP, is the "AI
+  tool" the notice names; its requirement is met by stating the source, which every import does.
 - **The source is stated and kept.** The written `part.yaml` names it (`origin: lcsc Cxxxx, imported <date>` and a
   description naming the JLCEDA/EasyEDA Official Library with both links), and the part folder gets `source.md` with
-  the notice exactly as the document carried it. Nothing in copperflow removes either.
+  the notice exactly as the document carried it. Nothing in copperflow removes either. Every import (CLI, MCP answer,
+  Studio result) prints the limit in one sentence.
 - **Nothing is redistributed by copperflow.** No fetched data is bundled, cached or shipped; copperflow's own tests use
   documents written for copperflow in EasyEDA's format (dimensions from the packages' standard drawings), not recorded
   copies of the library.
-- **Not granted: commercial use outside EasyEDA, and modification.** The notice grants commercial use only inside
-  JLCEDA/EasyEDA, and the Terms forbid derivative works; the conversion is a derivative made for the person's own use.
-  The importer says so on every import and `source.md` repeats it: before using an imported part in a commercial
-  design, the person draws the part from the datasheet (the part wizard) or obtains the right from JLCEDA/EasyEDA.
+- **The endpoint is undocumented.** It is EasyEDA's internal API (`version=6.4.19.5`), not a published one; it may
+  change or be withdrawn at any time, and the importer then fails with a message and writes nothing.
 - **Always Unverified.** An imported part is written with its `verification.md`; only a person verifies it.
 
-These are copperflow's reading of the terms, not legal advice; if JLCEDA/EasyEDA change them, the importer must be
-checked again.
+These are copperflow's reading of the terms, not legal advice; the maintainer is to confirm it (see the terms gate in
+`docs/plans/engine-stage-9.md`). If JLCEDA/EasyEDA change the terms, the importer must be checked again.

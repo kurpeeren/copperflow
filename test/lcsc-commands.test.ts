@@ -35,7 +35,7 @@ describe("copperflow parts import", () => {
     const said = out.join("\n")
     expect(said).toContain("Imported C2838500 as ESP32-C3: ESP32-C3, QFN-32_L5.0-W5.0-P0.50-TL-EP3.7, 33 pins, 33 pads.")
     expect(said).toContain("It is NOT verified: check every pin and pad in parts/ESP32-C3/verification.md against the datasheet.")
-    expect(said).toContain("commercial use only inside JLCEDA/EasyEDA")
+    expect(said).toContain("personal, non-commercial use only")
     out = []
     expect(await cli(fixtureFetch(), "parts")).toBe(0)
     expect(out.join("\n")).toBe("ESP32-C3  <ESP32_C3>  ESP32-C3, QFN-32_L5.0-W5.0-P0.50-TL-EP3.7  footprint.yaml  not verified  lcsc C2838500, imported " + new Date().toISOString().slice(0, 10))

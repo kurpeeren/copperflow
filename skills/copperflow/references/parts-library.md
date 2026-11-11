@@ -37,9 +37,11 @@ with `lcsc` (and `id` if they name one). It fetches the part's symbol, footprint
 from EasyEDA and writes `parts/<id>/` with `part.yaml`, `footprint.yaml`, `verification.md` and
 `source.md`. Pin types are `passive` except supply and ground pins, so set the real types with
 `create_part` (`replace: true`) from the datasheet when the checks need them. Tell the human the
-part is not verified, what the answer's notes say was approximated, and that the source grants
-commercial use only inside JLCEDA/EasyEDA (see `source.md`). Import one part per request; never
-import in bulk. Offline it writes nothing: then create the part from the datasheet instead.
+part is not verified, what the answer's notes say was approximated, and that the import is for
+personal, non-commercial use only, as EasyEDA's terms allow (see `source.md`). Import one part per
+request; never import in bulk. Offline it writes nothing: then create the part from the datasheet
+instead. Parts whose pins are numbered with letters (BGA, many USB-C connectors) and footprints with
+pads on the bottom side are refused; create those from the datasheet with `create_part`.
 
 ## From a photo
 

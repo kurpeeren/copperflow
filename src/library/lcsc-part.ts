@@ -68,7 +68,7 @@ export function convertLcscAnswer(answer: unknown, lcsc: string, today: string):
   const packageName = oneLine(attributes.package ?? result.packageDetail.dataStr.head.c_para?.package ?? "")
   const part: Part = {
     title: limit(packageName ? `${name}, ${packageName}` : name, 200),
-    description: `From the ${SOURCE_NAME} (${SOURCE_LINKS.join(", ")}), LCSC ${lcsc}; copyright JLCEDA/EasyEDA. The source grants commercial use only inside JLCEDA/EasyEDA; see source.md.`,
+    description: `From the ${SOURCE_NAME} (${SOURCE_LINKS.join(", ")}), LCSC ${lcsc}; copyright JLCEDA/EasyEDA. Imported for personal, non-commercial use only; see source.md.`,
     ...(manufacturer ? { manufacturer: limit(manufacturer, 200) } : {}),
     ...(mpn ? { mpn: limit(mpn, 100) } : {}),
     origin: `lcsc ${lcsc}, imported ${today}`,
@@ -155,7 +155,7 @@ function suggestedId(mpn: string, lcsc: string): string {
   }
 }
 
-/** A manufacturer as "onsemi" for "onsemi(安森美)": the bracketed names in other scripts left out. */
+/** A manufacturer without the bracketed name in another script that EasyEDA adds after it ("onsemi(…)" is "onsemi"). */
 function withoutNonAscii(text: string): string {
   return oneLine(text.replace(/[(（][^)）]*[^\x00-\x7f][^)）]*[)）]/g, "").replace(/[^\x20-\x7e]/g, ""))
 }

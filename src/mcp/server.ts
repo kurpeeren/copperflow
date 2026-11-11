@@ -332,7 +332,7 @@ Nothing was written.`)
       }),
   )
 
-  server.registerTool("import_part", { description: IMPORT_PART_DESCRIPTION, inputSchema: importPartInput }, (input) => run(() => importPart(root, input, options.fetch)))
+  server.registerTool("import_part", { description: IMPORT_PART_DESCRIPTION, inputSchema: importPartInput, annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true } }, (input) => run(() => importPart(root, input, options.fetch)))
 
   server.registerTool(
     "place_part",

@@ -160,7 +160,8 @@ string such as `sot23_5`, from which copperflow makes the pads (the strings it k
 recommended land pattern; the example's USB-C connector has one. copperflow generates the part's
 component from `part.yaml`. The agent creates parts from datasheets, or `copperflow parts import
 C7950` fetches one by its LCSC number from EasyEDA (see [licences](docs/licences.md) for what the
-source allows); they stay *not verified*
+source allows: personal, non-commercial use only; parts with letter-numbered pins such as BGAs are
+refused); they stay *not verified*
 until you check `verification.md`, which covers `footprint.yaml` too, and run
 `copperflow parts verify`.
 

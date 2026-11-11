@@ -44,7 +44,7 @@ describe("POST /api/import-part", () => {
     expect(json.ok).toBe(true)
     expect(json.data).toMatchObject({ id: "LM358DR2G", lcsc: "C7950", title: "LM358DR2G, SOIC-8_L4.9-W3.9-P1.27-LS6.0-BL", pins: 8, pads: 8, notes: [] })
     expect(json.data.files).toContain("parts/LM358DR2G/verification.md")
-    expect(json.data.terms).toMatch(/commercial use only inside JLCEDA\/EasyEDA/)
+    expect(json.data.terms).toMatch(/personal, non-commercial use only/)
     const parts = await (await retryLostConnect(() => fetch(`${server.url}/api/parts`, { headers: { "x-copperflow-token": server.token } }))).json()
     expect(parts.data.library).toEqual([expect.objectContaining({ id: "LM358DR2G", verified: false, origin: expect.stringMatching(/^lcsc C7950, imported /) })])
   })

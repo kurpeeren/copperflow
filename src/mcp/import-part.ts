@@ -9,7 +9,7 @@ export const importPartInput = {
 }
 
 export const IMPORT_PART_DESCRIPTION =
-  "Import a part by its LCSC number when the human asks for it: fetches its symbol, footprint and attributes from EasyEDA (the JLCEDA/EasyEDA Official Library) and writes parts/<id>/ with part.yaml, footprint.yaml, verification.md and source.md. Pin types are passive except supply and ground pins; approximated pads are listed as notes. The part is NOT verified: tell the human to check verification.md, and that the source grants commercial use only inside JLCEDA/EasyEDA. One part per request; never import parts in bulk. Needs the internet; offline it writes nothing."
+  "Import a part by its LCSC number when the human asks for it: fetches its symbol, footprint and attributes from EasyEDA (the JLCEDA/EasyEDA Official Library) and writes parts/<id>/ with part.yaml, footprint.yaml, verification.md and source.md. Pin types are passive except supply and ground pins; approximated pads are listed as notes. The part is NOT verified: tell the human to check verification.md, and that the import is for personal, non-commercial use only, as EasyEDA's terms allow. One part per request; never import parts in bulk. Needs the internet; offline it writes nothing. Parts whose pins are numbered with letters (BGA, many USB-C) and pads on the bottom side are refused: create those from the datasheet."
 
 /** Imports the part and answers with what was written and what to check. */
 export async function importPart(root: string, input: { lcsc: string; id?: string; replace?: boolean }, get?: typeof fetch): Promise<string> {

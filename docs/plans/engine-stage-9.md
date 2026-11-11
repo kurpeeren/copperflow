@@ -13,6 +13,8 @@ The repository's constraints hold (English; one-line commits without trailers; s
 - **Importer.** `copperflow parts import C9657` (CLI), `import_part { lcsc }` (MCP), Library → **Import by LCSC number…** (Studio): fetches the part's symbol, footprint and attributes from the public EasyEDA/LCSC part endpoints, converts the footprint to `footprint.yaml` (pads with shapes, drills, slots; the courtyard from the bounds; silkscreen lines and arcs; the body), the pins to `part.yaml` (names from the symbol, types `passive` unless the symbol says power/ground), the MPN, manufacturer and LCSC number, and writes the folder with `verification.md` listing every pin and the footprint for the person to check. Offline the commands say so and write nothing. Task 2 reads the source's terms of use first and records in `docs/licences.md` what may be done with the data; if the terms forbid even per-user conversion, the importer is not written and the plan says what replaces it (the wizard with a datasheet).
 - **Status in the Studio.** Imported and wizard parts show the existing **Unverified** badge; `parts verify` works as today. `list_parts` and the Library panel show the origin (generated / written / imported from LCSC Cxxxx).
 
+**Terms gate (2026-11-11).** Task 2 read the source's terms (`docs/licences.md`): the in-data notice permits tools to retrieve and output the library with the source stated, while EasyEDA's Terms limit downloads to personal, non-commercial use and forbid derivative works. The controller's ruling: the importer stays on that reading, offered for personal, non-commercial use only, on the person's explicit request, with the source stated and kept (`origin` in part.yaml, `source.md`). The maintainer is to confirm this reading before the branch is merged.
+
 ## Task 1: generated packages
 
 - The families above in `src/engine/footprints/` (one module per family, shared IPC helpers in `ipc7351.ts`), the parser extended for the new strings, `docs/footprints.md`.
@@ -30,4 +32,4 @@ The repository's constraints hold (English; one-line commits without trailers; s
 
 ## Task 4: proof (controller)
 
-Import the MCP2515 (C9657) and the TJA1050 (C6271) by LCSC number into the check copy, compare with the hand-written parts (pins and footprint), create a crystal with the wizard, build the CAN module from the imported parts, route, check, export.
+Import the MCP2515-I/SO (C12368; C9657 is a 2SB1260 transistor) and, for the TJA1050 (C6271 does not exist), the TJA1051T/3 (C38695) by LCSC number into the check copy, compare with the hand-written parts (pins and footprint), create a crystal with the wizard, build the CAN module from the imported parts, route, check, export.

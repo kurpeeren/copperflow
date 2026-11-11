@@ -51,7 +51,7 @@ describe("importing by LCSC number", () => {
     const source = await readFile(join(root, "parts", "LM358DR2G", "source.md"), "utf8")
     expect(source).toContain("JLCEDA/EasyEDA Official Library: https://lceda.cn/ and https://easyeda.com")
     expect(source).toContain("> Test document written for copperflow in EasyEDA's format")
-    expect(source).toContain("commercial use only inside JLCEDA/EasyEDA")
+    expect(source).toContain("personal, non-commercial use only")
     for (const name of await readdir(join(root, "parts", "LM358DR2G"))) {
       expect(await readFile(join(root, "parts", "LM358DR2G", name), "utf8"), name).not.toContain("\r")
     }

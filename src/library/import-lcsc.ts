@@ -14,9 +14,9 @@ export const lcscEndpoint = (lcsc: string): string => `https://easyeda.com/api/p
 /** How long the fetch may take before the importer gives up. */
 const FETCH_TIMEOUT_MS = 20_000
 
-/** Said with every import: the source does not grant commercial use outside JLCEDA/EasyEDA. */
+/** Said with every import: what the source's terms allow (docs/licences.md). */
 export const COMMERCIAL_NOTE =
-  "The source grants commercial use only inside JLCEDA/EasyEDA: before using this part in a commercial design or sharing it, draw it from the datasheet or get permission from JLCEDA/EasyEDA (see source.md)."
+  "Imported for personal, non-commercial use only, as EasyEDA's terms allow; for a commercial design, draw the part from the datasheet or get permission from JLCEDA/EasyEDA (see source.md)."
 
 export interface ImportOptions {
   /** The part id; by default the MPN made into an id. */
