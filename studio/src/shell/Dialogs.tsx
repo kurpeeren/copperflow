@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useId, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react"
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react"
 import type { FabricationProfile } from "../../../src/engine/rules/schema.js"
 import { CloseIcon } from "../icons"
 import { dialogKey, trapStep } from "./dialog-keys"
@@ -6,11 +6,13 @@ import { useKeyHold } from "./key-gate"
 import { shortcutList } from "./menus"
 import { ImportPartForm, type ImportPartPanel } from "./ImportPartDialog"
 import { MakeSheetForm, type MakeSheetPanel } from "./MakeSheetDialog"
+import { DialogBoundary, lazyRetrying } from "./lazy-dialog"
 import type { NewPartPanel } from "./new-part-result"
 import { FILLET_RADIUS_LABEL, FILLET_RADIUS_NOTE, filletRadiusField, readFilletRadius } from "./rules-form"
 
-// The New part dialog carries the footprint generator for its preview; it loads when first opened.
-const NewPartForm = lazy(() => import("./NewPartDialog").then((module) => ({ default: module.NewPartForm })))
+// The New part dialog carries the footprint generator for its preview; it loads when first opened, and again on Retry
+// after a failed load.
+const newPartForm = lazyRetrying(() => import("./NewPartDialog").then((module) => module.NewPartForm))
 
 export type DialogName = "keys" | "about" | "rules" | "makeSheet" | "importPart" | "newPart"
 
@@ -108,9 +110,14 @@ export function StudioDialog({ name, onClose, rules, makeSheet, importPart, newP
   if (name === "newPart") {
     return (
       <Dialog title="New part" onClose={onClose} wide>
-        <Suspense fallback={<p>Loading…</p>}>
-          <NewPartForm panel={newPart} onClose={onClose} />
-        </Suspense>
+        <DialogBoundary
+          what="New part"
+          onRetry={newPartForm.retry}
+          render={() => {
+            const NewPartForm = newPartForm.component()
+            return <NewPartForm panel={newPart} onClose={onClose} />
+          }}
+        />
       </Dialog>
     )
   }
