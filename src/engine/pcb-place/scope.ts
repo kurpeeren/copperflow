@@ -68,6 +68,21 @@ export interface ScopeOptions {
   locked?: readonly string[]
 }
 
+/** The parts the placer may move: the auto-placed parts of the scope that nobody locked. */
+export function movingParts(design: Design, options: ScopeOptions = {}): Set<string> {
+  const scope = options.scope ?? { kind: "all" }
+  const locked = new Set(options.locked ?? [])
+  const components = new Map(design.circuit.components.map((c) => [c.id, c]))
+  return new Set(
+    design.pcb.parts
+      .filter((part) => {
+        const component = components.get(part.component)
+        return part.autoPlaced && !locked.has(part.component) && component !== undefined && inScope(component, scope)
+      })
+      .map((part) => part.component),
+  )
+}
+
 function inScope(component: Component, scope: PlaceScope): boolean {
   if (scope.kind === "all") return true
   if (scope.kind === "parts") return scope.parts.includes(component.id)
@@ -121,29 +136,27 @@ function movable(part: PlacedFootprint, facts: PartFacts, netIndex: ReadonlyMap<
 
 /**
  * Reads the design into a placement problem. The parts to place are the auto-placed parts of the scope that nobody
- * locked; every other part, the keepouts and the holes are obstacles.
+ * locked; every other part, the keepouts and the holes are obstacles. The parts in `aside` are neither: they belong to
+ * instances placed as whole blocks once the rest is placed.
  */
-export function readProblem(design: Design, options: ScopeOptions = {}): Problem {
-  const scope = options.scope ?? { kind: "all" }
-  const locked = new Set(options.locked ?? [])
+export function readProblem(design: Design, options: ScopeOptions = {}, aside: ReadonlySet<string> = new Set()): Problem {
   const components = new Map(design.circuit.components.map((c) => [c.id, c]))
   const nets = [...new Set(design.pcb.parts.flatMap((p) => p.pads.flatMap((pad) => (pad.net === undefined ? [] : [pad.net]))))].sort(naturalCompare)
   const netIndex = new Map(nets.map((n, i) => [n, i]))
   const padCounts = new Map<string, number>()
   for (const part of design.pcb.parts) for (const pad of part.pads) if (pad.net !== undefined) padCounts.set(pad.net, (padCounts.get(pad.net) ?? 0) + 1)
   const connected = new Set([...padCounts].filter(([, n]) => n > 1).map(([net]) => net))
-  const moves = (part: PlacedFootprint) => {
-    const component = components.get(part.component)
-    return part.autoPlaced && !locked.has(part.component) && component !== undefined && inScope(component, scope)
-  }
+  const moving = movingParts(design, options)
+  const moves = (part: PlacedFootprint) => moving.has(part.component)
   const roleOf = roles(design)
-  const moving = design.pcb.parts.filter(moves).map((p) => components.get(p.component) as Component)
-  const anchors = new Map(anchorGroups(design.circuit, moving, "pcb").flatMap((g) => (g.anchor ? g.parts.map((c) => [c.id, g.anchor as Point] as const) : [])))
+  const placing = design.pcb.parts.filter((p) => moves(p) && !aside.has(p.component)).map((p) => components.get(p.component) as Component)
+  const anchors = new Map(anchorGroups(design.circuit, placing, "pcb").flatMap((g) => (g.anchor ? g.parts.map((c) => [c.id, g.anchor as Point] as const) : [])))
   const movables: Movable[] = []
   const obstacles = boardObstacles(design)
   const fixedPads: Point[][] = nets.map(() => [])
   const fixedPartPads = new Map<string, (Point & { net?: number })[]>()
   for (const part of [...design.pcb.parts].sort((a, b) => naturalCompare(a.component, b.component))) {
+    if (aside.has(part.component)) continue
     if (moves(part)) {
       const name = part.component
       const facts = { component: components.get(name) as Component, role: roleOf.role(name), decouples: roleOf.decouples(name), anchor: anchors.get(name) }

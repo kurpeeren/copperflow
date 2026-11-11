@@ -11,6 +11,7 @@ import { listEntries } from "../src/core/index.js"
 import { addMark, lockParts } from "../src/core/annotations.js"
 import { BOARD, createPartArgs, LDO, SHARED } from "./fixtures.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
+import { skillText } from "./helpers/skill-text.js"
 
 const FILE = "main.circuit.tsx"
 const EXAMPLE = fileURLToPath(new URL("../examples/usb-c-ldo", import.meta.url))
@@ -414,12 +415,21 @@ describe("connect_nets", () => {
 })
 
 describe("server instructions", () => {
-  test("tell the model to write connections, batch edits and check once", () => {
+  test("point at project_status and the skill, and keep the lock rule", () => {
     const text = client.getInstructions() ?? ""
+    expect(text).toContain("Call project_status first")
+    expect(text).toContain("copperflow skill")
+    expect(text).toContain("[LOCKED]")
+    expect(text).toContain("one history entry")
+    expect(text.split("\n").length).toBeLessThanOrEqual(8)
+  })
+
+  test("the skill tells the model to write connections, batch edits and check once", async () => {
+    const text = await skillText()
     expect(text).toContain("not positions or wire corners")
     expect(text).toContain("edit_circuit")
     expect(text).toContain("connect_nets")
-    expect(text).toContain("check_circuit once at the end")
+    expect(text).toContain("check_circuit` once at the end")
     expect(text).toContain("[LOCKED]")
   })
 })

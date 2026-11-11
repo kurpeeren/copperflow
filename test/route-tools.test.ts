@@ -12,6 +12,7 @@ import { ENGINE_FILES } from "../src/engine/engine.js"
 import { collectProjectFiles } from "../src/engine/project-files.js"
 import { autoroute } from "../src/mcp/route-tools.js"
 import { createCopperflowServer } from "../src/mcp/server.js"
+import { skillText } from "./helpers/skill-text.js"
 
 const FILE = "main.circuit.tsx"
 const LAYOUT = "main.circuit.layout.json"
@@ -130,11 +131,9 @@ describe("the tools' shapes", () => {
     expect(unroute?.annotations?.destructiveHint).toBe(true)
   })
 
-  test("the instructions say: place first, then autoroute, then check_circuit; route by hand only what the router reports", async () => {
-    await open(CROSS)
-    const instructions = client.getInstructions() ?? ""
-    const skill = await readFile(new URL("../skills/copperflow/SKILL.md", import.meta.url), "utf8")
-    for (const text of [instructions, skill.replace(/\s+/g, " ")]) {
+  test("the skill says: place first, then autoroute, then check_circuit; route by hand only what the router reports", async () => {
+    {
+      const text = await skillText()
       expect(text).toMatch(/place the parts first[^]*?, then run `?autoroute`?[^]*?, then `?check_circuit`? once at the end/)
       expect(text).toMatch(/Route by hand only what the router reports/)
       expect(text).toMatch(/`?unroute`?/)

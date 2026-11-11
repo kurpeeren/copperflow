@@ -13,6 +13,7 @@ import { buildDesign } from "../src/engine/design.js"
 import { ENGINE_FILES } from "../src/engine/engine.js"
 import { collectProjectFiles } from "../src/engine/project-files.js"
 import { createCopperflowServer } from "../src/mcp/server.js"
+import { skillText } from "./helpers/skill-text.js"
 
 const FILE = "index.circuit.tsx"
 const LAYOUT = "index.circuit.layout.json"
@@ -328,10 +329,10 @@ describe("check_circuit copper filter", () => {
     expect(summary.split(/\n/).at(-1)).toMatch(/hole-to-hole \d+/)
   })
 
-  test("is mentioned in the tool description and the instructions", async () => {
+  test("is mentioned in the tool description and the skill", async () => {
     const tools = (await client.listTools()).tools
     expect(tools.find((t) => t.name === "check_circuit")?.description).toContain("copper")
-    expect(client.getInstructions()).toMatch(/copper_summary/)
+    expect(await skillText()).toMatch(/copper_summary/)
   })
 })
 
@@ -390,7 +391,7 @@ describe("the tool list", () => {
     const keys = (name: string) => Object.keys(tools.find((t) => t.name === name)?.inputSchema.properties ?? {})
     expect(keys("fillet_tracks")).toEqual(["file", "ids", "radius"])
     expect(keys("straighten_tracks")).toEqual(["file", "ids"])
-    expect(client.getInstructions()).toMatch(/fillet_tracks/)
+    expect(await skillText()).toMatch(/fillet_tracks/)
   })
 })
 

@@ -1,4 +1,5 @@
 import type { Design } from "../design.js"
+import { planCopies, placeCopies, type BlockMove } from "./blocks.js"
 import { construct, OUT_OF_TIME } from "./constructive.js"
 import { EPSILON, ROTATIONS } from "./geometry.js"
 import { refine, type RefineOptions } from "./refine.js"
@@ -7,6 +8,7 @@ import { edgeTouches, NetModel, ratsnestLength, type State } from "./score.js"
 
 export { DEFAULT_FIT_MARGIN, fitBoard, type FitBoard } from "./fit-board.js"
 export type { PlaceScope } from "./scope.js"
+export type { BlockMove } from "./blocks.js"
 
 /** How far a placement is: parts done in the constructive pass, or tries made in the refinement, of the planned. */
 export interface PlaceProgress {
@@ -47,6 +49,8 @@ export interface UnplacedPart {
 export interface Placement {
   /** Where each placed part goes; the unplaced parts are not in it. */
   positions: Map<string, PlacedPosition>
+  /** The other instances of a sheet whose first instance was placed, each moved as a whole by its anchor. */
+  blocks: BlockMove[]
   /**
    * The total ratsnest length after placement (copper ignored; an unplaced part counted at the build's spot), and the
    * placed or fixed parts touching the edge clearance.
@@ -75,7 +79,8 @@ const quarterOf = (rotation: number): number => Math.round(rotation / 90) & 3
  * Pure: it reads the design and returns positions; writing them is the caller's. Same input, same output.
  */
 export function placeBoard(design: Design, options: PlaceOptions = {}): Placement {
-  const problem = readProblem(design, options)
+  const copies = planCopies(design, options)
+  const problem = readProblem(design, options, copies.aside)
   const start: State = {
     x: Float64Array.from(problem.movables, (m) => m.start.x),
     y: Float64Array.from(problem.movables, (m) => m.start.y),
@@ -102,13 +107,15 @@ export function placeBoard(design: Design, options: PlaceOptions = {}): Placemen
     if (!same) moved.push(m.name)
   })
   const outOfTime = built.unplaced.some((u) => u.reason === OUT_OF_TIME)
+  const copied = placeCopies(design, problem, { final, frozen, positions }, copies.followers)
   return {
     positions,
+    blocks: copied.blocks,
     score: { wireLength: refined?.after ?? new NetModel(problem).measure(final), edgeTouches: edgeTouches(problem, final, frozen) },
     before: { wireLength: ratsnestLength(design.pcb.parts) },
     moved,
     unplaced: built.unplaced.map((u) => ({ name: problem.movables[u.index]?.name as string, reason: u.reason })),
-    notes: built.notes,
+    notes: [...built.notes, ...copies.notes, ...copied.notes],
     budgetSpent: outOfTime || (refined?.budgetSpent ?? false),
   }
 }

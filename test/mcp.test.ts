@@ -9,6 +9,7 @@ import { loadCircuit, redoChange, undoChange, updateAnnotations } from "../src/c
 import { addMark, lockParts } from "../src/core/annotations.js"
 import { BOARD, createPartArgs, LDO, SHARED, USBX, USBX_FOOTPRINT } from "./fixtures.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
+import { skillText } from "./helpers/skill-text.js"
 
 const FILE = "main.circuit.tsx"
 let root: string
@@ -239,10 +240,11 @@ describe("MCP server", () => {
     expect(tools.find((t) => t.name === "check_circuit")?.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false })
   })
 
-  test("the instructions say to check after every change and fix every error, as the tool description does", async () => {
-    const instructions = client.getInstructions() ?? ""
-    expect(instructions).toContain("Call check_circuit once at the end, then fix every error before reporting success.")
-    expect(instructions).not.toMatch(/placement errors/)
+  test("the skill says to check once at the end and fix every error, as the tool description does", async () => {
+    const skill = await skillText()
+    expect(skill).toContain("Fix every error before you report success.")
+    expect(skill).not.toMatch(/placement errors/)
+    expect(client.getInstructions() ?? "").not.toMatch(/placement errors/)
   })
 
   test("paths outside the project are rejected", async () => {

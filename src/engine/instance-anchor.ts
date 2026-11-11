@@ -34,6 +34,18 @@ function groupOf(component: Component, byPath: ReadonlyMap<string, SheetInstance
   return { key: paths[paths.length - 1] ?? component.instance }
 }
 
+/**
+ * The turn an instance gives the parts inside it: that of the nearest instance on its path (itself first) that writes
+ * a board position, which records the turns of those round it; none when no instance on the path writes one.
+ */
+export function frameTurn(instances: readonly SheetInstance[], path: string): number {
+  for (let at: string | undefined = path; at; at = at.includes("/") ? at.slice(0, at.lastIndexOf("/")) : undefined) {
+    const placed = instances.find((instance) => instance.path === at)?.pcb
+    if (placed) return placed.rotation
+  }
+  return 0
+}
+
 /** The parts in groups, in the order given: the circuit's own parts first, then each instance's as first met. */
 export function anchorGroups(circuit: Circuit, parts: readonly Component[], view: View): AnchorGroup[] {
   const byPath = new Map((circuit.instances ?? []).map((instance) => [instance.path, instance]))
