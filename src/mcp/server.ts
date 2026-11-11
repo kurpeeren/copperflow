@@ -48,9 +48,9 @@ import { IMPORT_PART_DESCRIPTION, importPart, importPartInput } from "./import-p
 import { MAKE_SHEET_DESCRIPTION, makeSheet, makeSheetInput } from "./make-sheet.js"
 import { NEW_CIRCUIT_DESCRIPTION, newCircuit, newCircuitInput } from "./new-circuit.js"
 
-const INSTRUCTIONS = `copperflow lets you design circuit boards (tscircuit *.circuit.tsx files) together with a human, who edits the same files in the Studio.
+const INSTRUCTIONS = `copperflow lets you design circuit boards (*.circuit.tsx files) together with a human, who edits the same files in the Studio.
 - Call project_status first in every task, then follow the copperflow skill: its design workflow says which tool to call at each step and what its answer looks like.
-- Change files only through these tools: each call is one history entry the human can undo, and the tools enforce locks.
+- Change circuit files through these tools wherever one does the change: each call is one history entry the human can undo, and the tools enforce locks. Write code by hand only for what no tool writes.
 - Never change, move or remove anything marked [LOCKED]; if a summary lists lock violations, restore those parts. "Marks from the human" are instructions; follow them. Do not redo a change the human undid.
 - There is no tool to unlock a part or verify a library part: only the human does that.`
 

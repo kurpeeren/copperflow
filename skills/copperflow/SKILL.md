@@ -15,25 +15,52 @@ not the files.
 1. `project_status` `{}` first. It answers with PROJECT.md (`Intent: …`, `Blocks:`, the last
    five `Decisions:`, `Open:`), then one line per circuit
    (`main.circuit.tsx: parts 12, nets 9, unplaced 0, unrouted 3, errors 0, warnings 2`) and its
-   last three changes. `No PROJECT.md yet` means a new project: start the design workflow.
+   last three changes. `No PROJECT.md yet` with `Circuits: none yet` is a new project: start
+   the design workflow. `No PROJECT.md yet` with `Circuits (n):` is a board begun without one:
+   read `circuit_summary` of each circuit, write the Intent and Blocks from what exists with
+   `set_project` (each block's status as far as it got), and continue from there; never start over.
 2. For the file in hand, `circuit_summary` `{ file }`: one line per part and per net, then
    `Locked:`, the marks (`Mark <id> (pcb x, y): …`) and `Lock violations:`. Use
-   `detail: "full"` only when you need every prop; `filter: "PS1"` shows one instance.
+   `detail: "full"` only when you need every prop; `filter: "PS1"` shows one instance. Read it
+   again whenever the human says they changed something.
 3. `recent_changes` `{ limit? }`: newest first; a change marked `[undone]` was rejected by the
    human: do not make it again unless they ask. `list_circuits` lists the circuit files.
 4. Do the work (below), then `check_circuit` once at the end, then tell the human what you
    changed and the change ids (`c0012`), so they can undo a single step.
 
+## Resuming
+
+On a board already under way, continue from the first step that is not done, read off
+`project_status`: a block with status `planned` → design it (steps 2–5); `errors N` above 0 →
+`check_circuit` and fix them; no approval in `Decisions:` → ask (step 6); `unplaced N` above 0 →
+`autoplace` (step 7); `unrouted N` above 0 → pours and `autoroute` (steps 10–11); all zero →
+check and export (steps 12–13). An `Open:` item the human wrote comes first.
+
 ## The design workflow
 
 For a new board, or a new block on one, work in this order. Each step names the tool and the
 first line of its answer. The worked example is in
-[references/design-workflow.md](references/design-workflow.md).
+[references/design-workflow.md](references/design-workflow.md); what a part in `new_circuit`
+means, `replace`, refused pins and the export's warnings are in
+[references/writing-circuits.md](references/writing-circuits.md).
 
-1. **Intent.** `set_project` `{ intent, blocks: [{ name, does, status }], open }` writes
-   PROJECT.md: `Change c0001: Intent, Blocks, Open written to PROJECT.md`. Update a block's
-   status the same way as it moves on (`designed`, `placed`, `routed`).
-2. **Blocks first.** One sub-sheet per block (power, MCU, a sensor channel, a connector).
+1. **Intent.** When the brief lacks what the Intent needs (supply voltage, connectors, board
+   size, what the board does), ask the person first. Then `set_project`
+   `{ intent, blocks: [{ name, does, status }], open }` writes PROJECT.md:
+   `Change c0001: Intent, Blocks, Open written to PROJECT.md`. Update a block's status the same
+   way as it moves on (`designed`, `placed`, `routed`).
+2. **Choose parts before writing the netlist**: `new_circuit` with `part:` needs the library part
+   to exist. In this order: a part already in `list_parts` (one line each,
+   `id <chip> title footprint verified|NOT verified`; `part_info` `{ id }` shows its part.yaml);
+   a built-in part with a generated footprint string (`kind: "resistor"`, `footprint: "0402"`);
+   for a chip, `create_part` from the datasheet with a generated package string such as
+   `package: "soic8"` (`Created <id>: <title>, N pins, footprint …`, `It is NOT verified: …`);
+   `import_part` `{ lcsc }` only when the human asks for an LCSC number (`Imported C7950 as
+   <id>: …`). An import is for personal, non-commercial use only and is always unverified. The
+   person can make a part themselves in the Studio with Library → New part…. See
+   [references/parts-library.md](references/parts-library.md). `bom` `{ file }` lists what the
+   board uses.
+3. **Blocks first.** One sub-sheet per block (power, MCU, a sensor channel, a connector).
    `new_circuit` `{ file, parts, nets, sheets, instances, place: false }` writes the circuit and
    each `<name>.sheet.tsx`: `Change c0002: wrote main.circuit.tsx, Channel.sheet.tsx`, then the
    counts, one line per instance (`CH1 Channel base 100: IN=AIN1 GND=GND`), `N nets, M traces`
@@ -45,7 +72,7 @@ first line of its answer. The worked example is in
    (`Change …: wrote X.sheet.tsx; X1 X base 100 replaces 3 parts`, its `Ports:` and
    `Designators:`). For a large schematic use pages (`pages` in `new_circuit`, `page` in
    `place_part`, `move_to_page` in `edit_circuit`); nets join across pages by name.
-3. **Design each block.** Write parts and connections, not positions or wire corners: the
+4. **Design each block.** Write parts and connections, not positions or wire corners: the
    program places and routes. `edit_circuit` `{ file, edits: [...] }` applies a list as one
    change (`Change c0004 applied: 3 edits: …`; nothing written if one is refused, and the answer
    says which). `connect_nets` `{ file, nets: { GND: ["R1.pin2", "C1.pin2"] } }` answers
@@ -53,16 +80,8 @@ first line of its answer. The worked example is in
    `add_trace`, `remove_trace`. These tools enforce locks and record history; editing the file
    directly does not. Labels move with `set_props` `schNameAt`, `schValueAt`, `pcbNameAt`
    (a point `{ x, y }` from the part's origin; `null` puts it back).
-4. **Clone channels as instances.** Another use of a block is `edit_circuit`'s `add_instance`
+5. **Clone channels as instances.** Another use of a block is `edit_circuit`'s `add_instance`
    `{ sheet, name, connections }`; `set_connections` rewires one. Never copy its parts.
-5. **Choose parts**, in this order: a part already in `list_parts` (one line each,
-   `id <chip> title footprint verified|NOT verified`; `part_info` `{ id }` shows its part.yaml);
-   a built-in part with a generated footprint string (`resistor` with `"0402"`, a chip with
-   `"soic8"`); `create_part` from the datasheet (`Created <id>: <title>, N pins, footprint …`,
-   `It is NOT verified: …`); `import_part` `{ lcsc }` only when the human asks for an LCSC
-   number (`Imported C7950 as <id>: …`). An import is for personal, non-commercial use only and
-   is always unverified. See [references/parts-library.md](references/parts-library.md).
-   `bom` `{ file }` lists what the board uses.
 6. **Ask the person before the PCB.** Stop here. Run `check_circuit` and fix its errors, then
    summarise the blocks and the parts chosen (and which are unverified) and ask whether to go on
    to the board. Wait for a yes; `note_decision` what they approved.
@@ -80,7 +99,8 @@ first line of its answer. The worked example is in
    2 layers, courtyards use 38%; 24 parts, 18 nets`, one line per part
    (`U1 MCP2515 soic18w @(12.0, 8.5) r90 top [LOCKED]`), the ten longest unrouted connections,
    `Courtyards overlap (n):`, `Off the board (n):`, `Pours:` and `Unrouted: N connections`. Move
-   a part with `set_props` `{ pcbX, pcbY, pcbRotation }` only when the summary shows a reason.
+   a part with `set_props` `{ pcbX, pcbY, pcbRotation }` only when the summary shows a reason,
+   and never one the human placed unless they ask.
 10. **Pours.** `add_pour` `{ file, net: "GND", layer: "top" }` on the layer the parts sit on:
     `Change …: added copperpour:1 (GND, top)` and `copperpour:1 GND top: … mm², joins N pads`.
 11. **Route.** `autoroute` `{ file }`: `Change …: Routed 30 of 32 connections in 2 passes;
@@ -93,11 +113,12 @@ first line of its answer. The worked example is in
 13. **Export.** For a board to be made: after `autoroute` and a clean `check_circuit`, call
     `export_fabrication` `{ file }`: `Wrote 12 files to main-fab/ and main-fab.zip:`; a design
     with errors is `Refused: no fabrication files were written.` and nothing is written. Pass on
-    its warnings. A person uploads the zip to JLCPCB; you do not. `export_package` writes the
+    every `Warning:` line; `out` writes into another project folder. A person uploads the zip to JLCPCB; you do not. `export_package` writes the
     BOM and datasheets folder.
-14. **Remember.** `note_decision` `{ text, file? }` for every choice a later context needs (a part
-    and why, a board size, what the person approved): `Change …: noted under Decisions in
-    PROJECT.md`. Keep `set_project`'s blocks and open items current.
+14. **Remember, throughout.** `note_decision` `{ text, file? }` as each choice is made that a
+    later context needs (a part and why, a board size, what the person approved), not batched at
+    the end: `Change …: noted under Decisions in PROJECT.md`. Keep `set_project`'s blocks and
+    open items current.
 
 ## Checking
 
@@ -117,9 +138,16 @@ in `rules.yaml` at the project root; do not work around a rule in the circuit.
 - Treat marks as instructions placed on the board. Mention which marks you addressed.
 - You may undo your own changes with `undo_change` `{ id? }`. You cannot undo the human's
   changes.
+- A pour or hole is locked by its id, not by a part's lock; leave a locked one alone. A locked
+  part guards only the tracks that start on its pads; leave vias on it and tracks ending there
+  alone unless the human asks.
+- Parts shown `[read-only: …]` cannot be edited by the tools; ask the human to change them.
+- Leave `schX`, `schY`, `pcbX`, `pcbY` and `schematicRouteHints` of parts the human placed alone
+  unless they ask for a new position.
 - Add chips through the parts library (`create_part`, then `place_part`), never as inline
   `<chip>` elements with hand-written pins. Only the human marks a library part verified.
-- Writing new parts directly in the file is fine. Keep them editable: see
+- Change circuit files through these tools wherever one does the change: they enforce locks and
+  record history. Write code by hand only for what no tool writes, and keep it editable: see
   [references/editable-subset.md](references/editable-subset.md).
 - A passing build is not proof that a circuit is correct. Check connections against the
   datasheets and say what you did not verify.
@@ -130,6 +158,8 @@ in `rules.yaml` at the project root; do not work around a rule in the circuit.
   from an empty project to the export, as tool calls and their answers.
 - [references/copper.md](references/copper.md): placing, routing, pours and holes in detail.
   Read before routing or drawing copper.
+- [references/writing-circuits.md](references/writing-circuits.md): what a part in
+  `new_circuit` means, `replace`, refused pins, read-only parts, the export's warnings.
 - [references/editable-subset.md](references/editable-subset.md): how to write circuit code
   the human can still edit visually. Read before writing new parts.
 - [references/design-rules.md](references/design-rules.md): starter design rules (decoupling,

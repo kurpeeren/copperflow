@@ -92,7 +92,7 @@ new_circuit {
   PS1 Power base 100: VIN=V5 VOUT=V3_3 GND=GND
   CH1 Channel base 200: IN=S1 OUT=ADC1 GND=GND
   CH2 Channel base 300: IN=S2 OUT=ADC2 GND=GND
-  8 nets, 15 traces
+  8 nets, 14 traces
   Now call check_circuit once.
 ```
 
@@ -135,7 +135,7 @@ autoplace { file: "sensor.circuit.tsx", parts: ["U1", "C1"] }
 autoplace { file: "sensor.circuit.tsx", instance: "PS1" }
 → Placed 3 parts; …
 autoplace { file: "sensor.circuit.tsx", instance: "CH1" }
-→ Placed 2 parts; wire length 85 mm (was 90); board 30 × 20 mm; 2 overlaps
+→ Placed 2 parts; …
 autoplace { file: "sensor.circuit.tsx", instance: "CH2" }
 → Placed 2 parts; wire length 78 mm (was 85); board 30 × 20 mm; 0 overlaps
   Change c0009; undo_change takes it back.
@@ -147,7 +147,7 @@ fit_board { file: "sensor.circuit.tsx" }
 ```
 
 A sheet holds one layout for all its instances: placing CH1 wrote the positions into
-`Channel.sheet.tsx`, so CH2 took the same layout on top of CH1 (the 2 overlaps). `autoplace` on
+`Channel.sheet.tsx`, so CH2 took the same layout on top of CH1. `autoplace` on
 CH2 (or on the whole board) moves the other instance as a whole: it sets the instance's `pcbX`,
 `pcbY` so its copy overlaps nothing, near what it connects to. A locked instance stays. Then look
 with `board_summary`.

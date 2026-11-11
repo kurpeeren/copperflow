@@ -46,5 +46,7 @@ describe("the copperflow skill", () => {
     const text = client.getInstructions() ?? ""
     expect(text).toMatch(/project_status first/)
     expect(text).toMatch(/copperflow skill/)
+    expect(text.toLowerCase()).not.toContain("tscircuit")
+    expect(text).toMatch(/through these tools wherever one does the change/)
   })
 })
