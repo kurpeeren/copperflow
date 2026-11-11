@@ -2,7 +2,6 @@
 // out), with the same renderers the canvases use: the schematic in the light theme, as paper is, and the board as the
 // PCB view shows it. Then opens the print page in a new window and asks the browser to print it.
 import type { Design } from "../api"
-import { PALETTE } from "../pcb/ctx"
 import { drawingExtents } from "../pcb/drawing-extents"
 import { fitCamera, pointBounds, unionBoxes, type Box, type Camera, type Size } from "../pcb/geometry"
 import { drawPcb } from "../pcb/pcb-draw"
@@ -38,11 +37,14 @@ function sheetImage(design: Design, page: string, size: Size): string | undefine
   return drawn.canvas.toDataURL("image/png")
 }
 
-/** The board drawn as the PCB view shows it, its tracks and vias with it, fitted to the sheet. */
+/** The paper the board prints on: the light sheet's background, not the PCB view's dark one. */
+export const BOARD_PAPER = (): string => schematicThemeFor("light").background
+
+/** The board drawn in the PCB view's layer colours on paper, its tracks and vias with it, fitted to the sheet. */
 function boardImage(design: Design, size: Size): string | undefined {
   const pcb = design.pcb
   const box: Box | undefined = pointBounds(pcb.board?.outline ?? []) ?? unionBoxes(pcb.parts.map((part) => ({ minX: part.x - 1, minY: part.y - 1, maxX: part.x + 1, maxY: part.y + 1 })))
-  const drawn = box && blank(size, PALETTE.background)
+  const drawn = box && blank(size, BOARD_PAPER())
   if (!box || !drawn) return undefined
   const camera: Camera = fitCamera(box, size, MARGIN)
   drawPcb(drawn.ctx, pcb, { camera, size }, { ratio: 1, copper: { tracks: pcb.tracks, vias: pcb.vias, selected: new Set() } })

@@ -6,6 +6,14 @@ import { commandOwner } from "../studio/src/shell/command-owners.js"
 const sheet = { title: "led <test> · PCB", image: "data:image/png;base64,AAAA", width: 10, height: 5 }
 
 describe("File → Print… and Export → PDF…", () => {
+  test("the board prints on the light sheet's paper, not the PCB view's dark background", async () => {
+    const { BOARD_PAPER } = await import("../studio/src/shell/print-render.js")
+    const { schematicTheme } = await import("../studio/src/pcb/schematic-theme.js")
+    const { PALETTE } = await import("../studio/src/pcb/ctx.js")
+    expect(BOARD_PAPER()).toBe(schematicTheme.background)
+    expect(BOARD_PAPER()).not.toBe(PALETTE.background)
+  })
+
   test("are items the app runs, and no menu item is still to come", () => {
     const items = MENUS.flatMap(menuItems)
     expect(items).toContainEqual({ label: "Print…", command: "print" })
