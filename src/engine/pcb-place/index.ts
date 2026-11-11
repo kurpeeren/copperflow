@@ -8,7 +8,14 @@ import { edgeTouches, NetModel, ratsnestLength, type State } from "./score.js"
 export { fitBoard, type FitBoard } from "./fit-board.js"
 export type { PlaceScope } from "./scope.js"
 
-export interface PlaceOptions extends ScopeOptions, Omit<RefineOptions, "budgetMs"> {
+/** How far a placement is: parts done in the constructive pass, or tries made in the refinement, of the planned. */
+export interface PlaceProgress {
+  stage: "construct" | "refine"
+  done: number
+  total: number
+}
+
+export interface PlaceOptions extends ScopeOptions, Omit<RefineOptions, "budgetMs" | "onTries"> {
   /** Whether to run the refinement after the constructive pass; true by default. */
   refine?: boolean
   /**
@@ -16,6 +23,8 @@ export interface PlaceOptions extends ScopeOptions, Omit<RefineOptions, "budgetM
    * is spent (those left are unplaced, "out of time"), and the refinement gets what is left. No limit by default.
    */
   budgetMs?: number
+  /** Told as the placement goes (it does not change the result); a throw from it stops the placement. */
+  onProgress?: (progress: PlaceProgress) => void
 }
 
 /**
@@ -76,10 +85,12 @@ export function placeBoard(design: Design, options: PlaceOptions = {}): Placemen
   const began = clock()
   const { budgetMs } = options
   const late = budgetMs === undefined ? () => false : () => clock() - began >= budgetMs
-  const built = construct(problem, start, late)
+  const tell = options.onProgress
+  const built = construct(problem, start, late, tell && ((done, total) => tell({ stage: "construct", done, total })))
   const frozen = new Set(built.unplaced.map((u) => u.index))
   const left = budgetMs === undefined ? {} : { budgetMs: Math.max(0, budgetMs - (clock() - began)) }
-  const refined = options.refine === false ? undefined : refine(problem, start, frozen, { ...options, ...left, clock })
+  const onTries = tell && ((done: number, total: number) => tell({ stage: "refine", done, total }))
+  const refined = options.refine === false ? undefined : refine(problem, start, frozen, { ...options, ...left, clock, ...(onTries ? { onTries } : {}) })
   const final = refined?.state ?? start
   const positions = new Map<string, PlacedPosition>()
   const moved: string[] = []

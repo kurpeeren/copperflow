@@ -37,6 +37,8 @@ export interface Scan {
   pageNodes: JSXElement[]
   /** A sheet file's `<sheet>` element. */
   sheetNode?: JSXElement
+  /** A circuit's (first) `<board>` element, and its props as read. */
+  boardNode?: { node: JSXElement; props: Record<string, PropInfo> }
 }
 
 /** What every element is, whatever its tag. */
@@ -172,6 +174,7 @@ function collectElement(
     const box = element.tag === "board" ? boardBox(element.props) : undefined
     if (box && scan.model.boardBox === undefined) scan.model.boardBox = box
     if (element.tag === "sheet" && scan.sheetNode === undefined) scan.sheetNode = element.node
+    if (element.tag === "board" && scan.boardNode === undefined) scan.boardNode = { node: element.node, props: element.props }
     return
   }
   if (element.tag === "page") return collectPage(element, scan)

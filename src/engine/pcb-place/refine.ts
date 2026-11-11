@@ -24,6 +24,8 @@ export interface RefineOptions {
   clock?: () => number
   /** The seed of the move sequence; the same seed gives the same moves. */
   seed?: number
+  /** Told every few tries and at the end: the tries made and the tries planned. A throw stops the refinement. */
+  onTries?: (done: number, total: number) => void
 }
 
 export interface Refined {
@@ -197,9 +199,12 @@ export function refine(problem: Problem, start: State, frozen: ReadonlySet<numbe
   let done = 0
   let budgetSpent = false
   for (; done < tries; done++) {
-    if (options.budgetMs !== undefined && done % CLOCK_EVERY === 0 && clock() - began >= options.budgetMs) {
-      budgetSpent = true
-      break
+    if (done % CLOCK_EVERY === 0) {
+      options.onTries?.(done, tries)
+      if (options.budgetMs !== undefined && clock() - began >= options.budgetMs) {
+        budgetSpent = true
+        break
+      }
     }
     const progress = done / tries
     const heat = heat0 * END_HEAT ** progress
@@ -218,6 +223,7 @@ export function refine(problem: Problem, start: State, frozen: ReadonlySet<numbe
       trace.push(current)
     }
   }
+  options.onTries?.(tries, tries)
   // The running total drifts by rounding; the best state is measured afresh (the start measures as `before` again).
   const after = new NetModel(problem).measure(best.state)
   return { state: best.state, before, after, trace, tries: done, budgetSpent }

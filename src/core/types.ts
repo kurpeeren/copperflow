@@ -213,3 +213,5 @@ export type Edit =
   | { kind: "renamePort"; from: string; to: string }
   /** In a sheet file: the sheet symbol's size on `<sheet>`; null removes one, so the ports decide it again. */
   | { kind: "setSheetSize"; width?: number | null; height?: number | null }
+  /** The board as a rectangle of `width` × `height` mm centred on (`x`, `y`): Layout → Fit board. */
+  | { kind: "setBoard"; width: number; height: number; x: number; y: number }

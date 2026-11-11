@@ -318,9 +318,9 @@ export const OUT_OF_TIME = "the time budget ran out before it was placed"
 
 /**
  * Places every movable part. The parts that find no free spot, and those left when `late` says the time is up, are
- * returned unplaced with the reason; their state is left as it was.
+ * returned unplaced with the reason; their state is left as it was. `onPart` is told after each part.
  */
-export function construct(problem: Problem, state: State, late: () => boolean = () => false): Constructed {
+export function construct(problem: Problem, state: State, late: () => boolean = () => false, onPart: (done: number, total: number) => void = () => undefined): Constructed {
   const board = new Board(problem, state)
   const capsOf = new Map<string, number[]>()
   problem.movables.forEach((m, i) => {
@@ -338,6 +338,7 @@ export function construct(problem: Problem, state: State, late: () => boolean = 
       if (!result.placed) unplaced.push({ index: i, reason: noRoom(board, m) })
       if (result.note) notes.push(result.note)
     }
+    onPart(done.size, problem.movables.length)
     for (const cap of capsOf.get(m.name) ?? []) if (!done.has(cap)) place(cap)
   }
   for (const [chip, caps] of capsOf) if (problem.fixedPartPads.has(chip)) caps.forEach((cap) => !done.has(cap) && place(cap))
