@@ -99,14 +99,13 @@ export function landPattern(lead: Lead, goals: FilletGoals, tol: Tolerances): La
 
 /**
  * The land pattern of a row of gull-wing leads at the nominal density level. Z and X are those of
- * `landPattern`. The heel side uses the RMS tolerance once: Smax' (above) already moves the inner
- * edge by the statistical S tolerance, so only the span tolerance with fabrication and placement is
- * taken off again:
+ * `landPattern`. The heel side is
  *   G = Smax' − 2·Jh − √(CL² + F² + P²)
- * `landPattern` takes the whole √(CSrms² + F² + P²) off Smax', which counts the foot length
- * tolerance twice; for a SOIC-8 (L 5.80–6.20, T 0.41–1.27) it put the inner pad edges 2.95 mm apart
- * against 3.85 mm in the IPC-7351B nominal pattern SOIC127P600X175-8N (pads 1.55 × 0.60 at ±2.70),
- * which this form gives (G 3.8449 → 3.85).
+ * with F 0.10 and P 0.05 (IPC_TOLERANCES). This form is chosen because it reproduces the published
+ * IPC-7351B nominal pattern SOIC127P600X175-8N (pads 1.55 × 0.60 at ±2.70, inner edges 3.85 apart):
+ * for L 5.80–6.20, T 0.41–1.27 it gives G 3.8449 → 3.85. The `landPattern` form, with
+ * √(CSrms² + F² + P²) in place of the last term, gives 2.95 for the same package. The IPC-7351B text
+ * for this equation was not seen, so the choice rests on that one published pattern.
  */
 export function gullWingPattern(lead: Lead, goals: FilletGoals, tol: Tolerances): LandPattern {
   const full = landPattern(lead, goals, tol)
