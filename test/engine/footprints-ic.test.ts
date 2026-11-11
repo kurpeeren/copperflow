@@ -514,6 +514,15 @@ describe("the refusal of an unknown string names what exists", () => {
     expect(generateFootprint("soic18")).toEqual({ error: expect.stringMatching(/^copperflow cannot make footprint "soic18": nearest are soic14, soic16, soic18w; known families are /) })
   })
 
+  test("every string the refusal suggests builds a footprint", () => {
+    const suggested = new Set<string>()
+    for (const text of ["soic18", "soic8w", "soic30w", "sop20", "ssop8", "tssop30", "qfn20", "qfp40", "lqfp50", "tqfp20", "0604", "sod999", "sot24", "do214", "dip3", "pinrow0", "to247", "hc50"]) {
+      for (const near of nearestFootprints(text)) suggested.add(near)
+    }
+    expect(suggested.size).toBeGreaterThan(20)
+    for (const text of suggested) expect(generateFootprint(text), text).not.toHaveProperty("error")
+  })
+
   test("a string of no known kind names no nearest strings", () => {
     expect(nearestFootprints("xyz")).toEqual([])
     expect(nearestFootprints("abc12")).toEqual([])
