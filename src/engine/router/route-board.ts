@@ -285,7 +285,17 @@ function settle(run: Run, connections: readonly Connection[]): void {
  */
 export function routeBoard(input: RouteBoardInput, options: RouteBoardOptions = {}): RouteReport {
   const router = (given: RouteBoardInput, asked: RouteBoardOptions) => routeWithPours(given, asked, routeOnce)
-  return ripUpAndRetry(input, router(input, options), withoutProgress(options), router)
+  return ripUpAndRetry(input, router(input, scopedMain(input, options)), withoutProgress(options), router)
+}
+
+/**
+ * The main run's options. A run with a narrower scope than the whole board hands its pour rounds the lines missing
+ * before it (`alreadyMissing`): they are outside its scope, so the rounds route only the pour-net lines its own copper
+ * broke, never an open GND line elsewhere on the board.
+ */
+function scopedMain(input: RouteBoardInput, options: RouteBoardOptions): RouteBoardOptions {
+  if ((options.scope ?? { kind: "all" }).kind === "all" || options.alreadyMissing !== undefined) return options
+  return { ...options, alreadyMissing: new Set(input.layout.ratsnest.map((line) => `${line.net}|${line.from}|${line.to}`)) }
 }
 
 /** The options for the runs after the main one, which do not report their progress. */

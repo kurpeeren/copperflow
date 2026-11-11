@@ -108,7 +108,8 @@ function withLeftover(report: RouteReport, layout: PcbLayout, missing: readonly 
 
 /**
  * Routes the board with `routeOnce`, then routes again what the refilled pours no longer join; see the module comment.
- * The extra rounds take exactly those lines, whatever the run's scope: the run's own copper broke them. Lines still
+ * The extra rounds take exactly those lines, whatever the run's scope: the run's own copper broke them. A line in
+ * `alreadyMissing` was open before the run (a scoped run passes the board's open lines) and is left alone. Lines still
  * missing when the rounds stop (a round routed nothing, the cap, the budget) are reported unrouted.
  */
 export function routeWithPours(input: RouteBoardInput, options: RouteBoardOptions, routeOnce: (input: RouteBoardInput, options: RouteBoardOptions) => RouteReport): RouteReport {

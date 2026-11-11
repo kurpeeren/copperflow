@@ -34,6 +34,32 @@ describe("rip-up and retry stays inside the run's scope", () => {
     expect(left.map((line) => line.net)).toEqual(["net.LED"])
   }, 120_000)
 
+  test("a run scoped to every part but R8 and R9 retries, and routes none of the lines it left out", () => {
+    // R8 and R9 sit in a corner on V5; the line between them is outside the scope and open before the run. The retry
+    // takes up a V5 route (C3-R2) and routes again what that broke: the old retry took every open line of a taken-up
+    // route's net the run had not reported, and so routed R8-R9 too.
+    const files = unroutedFiles()
+    const extra = [
+      '<resistor name="R8" resistance="10k" footprint="0603" pcbX={-13.5} pcbY={-10} pcbRotation={0} />',
+      '<resistor name="R9" resistance="10k" footprint="0603" pcbX={-11} pcbY={-10} pcbRotation={0} />',
+      '<trace from="R8.pin1" to="net.V5" />',
+      '<trace from="R9.pin1" to="net.V5" />',
+      '<trace from="R8.pin2" to="net.SPARE" />',
+      '<trace from="R9.pin2" to="net.SPARE" />',
+    ].join("\n    ")
+    const design = buildDesign({ ...files, [MAIN]: (files[MAIN] as string).replace("</board>", `  ${extra}\n  </board>`) }, MAIN)
+    const outside = new Set(["R8", "R9"])
+    const parts = design.pcb.parts.map((part) => part.component).filter((name) => !outside.has(name))
+    const inScope = (line: { from: string; to: string }) => parts.includes(line.from.split("#")[0] as string) || parts.includes(line.to.split("#")[0] as string)
+    const leftOut = design.pcb.ratsnest.filter((line) => !inScope(line)).map(key)
+    expect(leftOut.filter((line) => line.startsWith("net.V5|"))).toHaveLength(1)
+    const report = routeDesign(design, { ...OFF, scope: { kind: "parts", parts } })
+    expect(report.retried).toBe(1)
+    expect(report.routed.filter((route) => !inScope(route))).toEqual([])
+    const left = refilled(inputOf(design), report.routed).ratsnest.map(key)
+    for (const line of leftOut) expect(left).toContain(line)
+  }, 120_000)
+
   test("a run scoped to an instance is not retried: its copies and replicas stay as the run made them", () => {
     const design = buildDesign(unroutedFiles(), MAIN)
     const failed: RouteReport = { routed: [], unrouted: [{ net: "net.GND", from: "C3#2", to: "U2#2", reason: "no room", blockers: [] }], passes: 1, edits: [], ms: 0, cleanupCapped: false, cleanupSkipped: false, budgetSpent: false, replicas: [{ instance: "P2", copied: 0 }] }
