@@ -311,13 +311,14 @@ describe("copper_summary", () => {
 })
 
 describe("check_circuit copper filter", () => {
-  test("shows only copper findings", async () => {
+  test("shows only copper findings, and the unrouted connections with their pads' positions", async () => {
     await route("VBUS", [pt(-2.275, 0), pt(-2.275, 0.7), pt(-0.725, 0.7)])
     const { text } = await call("check_circuit", { file: FILE, filter: "copper" })
     const lines = text.split("\n")
     expect(lines[0]).toContain("filter: copper")
     expect(lines.slice(1).length).toBeGreaterThan(0)
-    expect(lines.slice(1).every((l) => /(copper-|track-|via-|short|floating|mismatch)/.test(l))).toBe(true)
+    expect(lines.slice(1).every((l) => /(copper-|track-|via-|short|floating|mismatch|unrouted)/.test(l))).toBe(true)
+    expect(lines.some((l) => /^ {2}unrouted: \S+ \(.+\) to \S+ \(.+\)$/.test(l))).toBe(true)
   })
 
   test("shows via holes too close together (hole-to-hole), as copper_summary counts them", async () => {

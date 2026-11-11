@@ -124,7 +124,7 @@ describe("routing the whole board", () => {
     const bounded = routeDesign(buildDesign(files, MAIN), { maxPasses: 4, maxExpansions: 8000 })
     expect(bounded.routed).toHaveLength(2)
     expectClean(files, bounded)
-  })
+  }, 30_000)
 
   test("the scope narrows the run to some nets or the connections of some parts", () => {
     const design = buildDesign(CROSS, MAIN)

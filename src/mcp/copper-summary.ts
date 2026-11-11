@@ -2,6 +2,7 @@ import { trackLength } from "../engine/copper.js"
 import type { Design } from "../engine/design.js"
 import type { Violation } from "../engine/index.js"
 import type { Hole } from "../engine/model.js"
+import { unroutedPlaces } from "../engine/pad-text.js"
 import type { PourFill } from "../engine/pcb.js"
 import { pourJoins } from "../engine/pour/joins.js"
 import { netLabel } from "./copper-under.js"
@@ -84,6 +85,16 @@ function boardItemLines(design: Design): string[] {
   return [`Pours: ${pours.length}, holes: ${holes.length}`, ...pours.map((fill) => pourLine(design, fill)), ...holes.map(holeLine)]
 }
 
+/** The unrouted connections shown with their pad positions; the rest are counted. */
+export const UNROUTED_PLACES_SHOWN = 10
+
+/** "Unrouted: C3.pin2 (12.30, 4.50 top) to U2.pin2 (15.10, 6.00 top)", one line per connection, then "… and N more". */
+export function unroutedLines(design: Pick<Design, "pcb">, most = UNROUTED_PLACES_SHOWN): string[] {
+  const places = unroutedPlaces(design.pcb)
+  const shown = places.slice(0, most).map((place) => `Unrouted: ${place}`)
+  return places.length > most ? [...shown, `… and ${places.length - most} more unrouted`] : shown
+}
+
 /**
  * The default copper_summary: totals, a line per net with copper or unrouted connections, the pours and holes, then
  * violations by rule; at most 60 lines.
@@ -101,7 +112,11 @@ export function formatCopperSummary(file: string, design: Design, limit = SUMMAR
   const items = boardItemLines(design)
   const tail = violationLine(copperViolations(design))
   const room = Math.max(0, limit - 2 - items.length)
-  if (lines.length <= room) return [head, ...lines, ...items, tail].join("\n")
+  if (lines.length <= room) {
+    const unroutedRoom = Math.min(room - lines.length, UNROUTED_PLACES_SHOWN + 1)
+    const places = unroutedLines(design, Math.max(0, unroutedRoom - 1))
+    return [head, ...lines, ...(places.length <= unroutedRoom ? places : []), ...items, tail].join("\n")
+  }
   const shown = lines.slice(0, Math.max(0, room - 1))
   return [head, ...shown, `… and ${lines.length - shown.length} more nets`, ...items, tail].join("\n")
 }

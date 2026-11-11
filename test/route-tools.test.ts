@@ -160,7 +160,7 @@ describe("autoroute", () => {
   test("names each connection it could not route, with the reason, and writes the rest", async () => {
     await open(WALLED)
     const { text } = await call("autoroute", { file: FILE })
-    expect(text.split("\n")[0]).toMatch(/^Change c\d+: Routed 1 of 2 connections in \d+ pass(es)?; unrouted: R1\.pin2 to R2\.pin1 \(no way past keepout:1\)$/)
+    expect(text.split("\n")[0]).toMatch(/^Change c\d+: Routed 1 of 2 connections in \d+ pass(es)?; unrouted: R1\.pin2 \(-5\.22, -3\.00 top\) to R2\.pin1 \(5\.22, -3\.00 top\) \(no way past keepout:1\)$/)
     expect((await design()).pcb.ratsnest).toHaveLength(1)
   }, 30_000)
 
@@ -200,7 +200,7 @@ describe("autoroute", () => {
     let tick = 0
     // Each tick is 1 ms: the start, then one per connection begun; the third is past 2.5 ms.
     const text = await autoroute({ root, engine: { build } as never }, { file: FILE, budgetSeconds: 0.0025 }, { clock: () => tick++ })
-    expect(text).toMatch(/^Change c\d+: Routed 2 of 12 connections in 1 pass; unrouted: \S+ to \S+ \(the time budget ran out before it was routed\)/)
+    expect(text).toMatch(/^Change c\d+: Routed 2 of 12 connections in 1 pass; unrouted: \S+ \(\S+, \S+ top\) to \S+ \(\S+, \S+ top\) \(the time budget ran out before it was routed\)/)
     expect(text).toMatch(/Stopped at the 0\.0025 s time budget/)
     expect(text).toMatch(/\nThe cleanup was skipped because the budget was spent: the routes are clear, maybe not at their shortest\./)
     expect((await entries()).length).toBe(before + 1)

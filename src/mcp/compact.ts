@@ -149,7 +149,7 @@ function matches(finding: Finding, filter: string | undefined): boolean {
   if (filter === undefined || filter === "") return true
   if (filter === "errors") return finding.severity === "error"
   if (filter === "warnings") return finding.severity === "warning"
-  if (filter === "copper") return COPPER_RULES.has(finding.rule)
+  if (filter === "copper") return COPPER_RULES.has(finding.rule) || finding.rule === "unrouted"
   const needle = filter.toLowerCase()
   const whole = (item: string) => item.toLowerCase() === needle || item.toLowerCase().startsWith(`${needle}.`)
   return finding.items.some((item) => whole(item) || whole(item.replace(/^net[.:]/, "")))
@@ -194,5 +194,15 @@ export function formatCompactCheck(file: string, result: CheckResult, filter?: s
   const head = `${file}: ${plural(errors, "error")}, ${plural(sorted.length - errors, "warning")}${filter ? ` (filter: ${filter})` : ""}`
   const lines = sorted.map(findingLine)
   const more = lines.length > COMPACT_LIMIT ? [`… and ${lines.length - COMPACT_LIMIT} more (narrow with filter: errors, warnings, a part or a net)`] : []
-  return [head, ...lines.slice(0, COMPACT_LIMIT), ...more].join("\n")
+  const shown = lines.slice(0, COMPACT_LIMIT)
+  const places = sorted.slice(0, COMPACT_LIMIT).some((f) => f.rule === "unrouted") ? unroutedPlaceLines(result.unrouted ?? []) : []
+  return [head, ...shown, ...places, ...more].join("\n")
+}
+
+/** The unrouted connections shown under the unrouted warning, with their pads' positions. */
+const UNROUTED_SHOWN = 10
+
+function unroutedPlaceLines(places: readonly string[]): string[] {
+  const shown = places.slice(0, UNROUTED_SHOWN).map((place) => `  unrouted: ${place}`)
+  return places.length > UNROUTED_SHOWN ? [...shown, `  … and ${places.length - UNROUTED_SHOWN} more unrouted`] : shown
 }

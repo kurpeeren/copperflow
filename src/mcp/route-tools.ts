@@ -10,6 +10,8 @@ import { unrouteEdits, unrouteSummary, type UnrouteTrack } from "../core/unroute
 import { lockedPartsAt, lockedStart } from "../core/layout-locks.js"
 import type { Design } from "../engine/design.js"
 import { findInstance, routeBoard, type RouteReport, type RouteScope, type UnroutedConnection } from "../engine/router/route-board.js"
+import { connectionPlace, padsById } from "../engine/pad-text.js"
+import type { WorldPad } from "../engine/pcb.js"
 import { discardReason, routeSummary } from "../studio/route-events.js"
 import { contentHashes, lockSafeEdits, routeInput } from "../studio/route-runner.js"
 import { introducedLines } from "./copper-summary.js"
@@ -62,18 +64,22 @@ function scopeOf(design: Design, input: { nets?: string[] | undefined; parts?: s
   return { kind: "all" }
 }
 
-/** "U1.pin3 to R1.pin2 (no room between U1 and C3)": the router's reason without its "could not route" head. */
-export function unroutedText(one: UnroutedConnection): string {
+/**
+ * "U1.pin3 to R1.pin2 (no room between U1 and C3)": the router's reason without its "could not route" head. Given the
+ * pads, the ends say where they are: "U1.pin3 (1.00, 2.00 top) to R1.pin2 (4.00, 2.00 top) (no room …)".
+ */
+export function unroutedText(one: UnroutedConnection, pads?: ReadonlyMap<string, WorldPad>): string {
   const found = /^could not route (.+?): (.+)$/.exec(one.reason)
+  if (pads !== undefined) return `${connectionPlace(pads, one)} (${found ? found[2] : one.reason})`
   return found ? `${found[1]} (${found[2]})` : `${one.from} to ${one.to} (${one.reason})`
 }
 
 /** "Routed 30 of 32 connections in 2 passes; unrouted: U1.pin3 to R1.pin2 (no room between U1 and C3), …" */
-export function routedLine(report: Pick<RouteReport, "routed" | "unrouted" | "passes">): string {
+export function routedLine(report: Pick<RouteReport, "routed" | "unrouted" | "passes">, pads?: ReadonlyMap<string, WorldPad>): string {
   const total = report.routed.length + report.unrouted.length
   const head = `Routed ${report.routed.length} of ${plural(total, "connection")} in ${plural(report.passes, "pass", "passes")}`
   if (report.unrouted.length === 0) return head
-  const shown = report.unrouted.slice(0, UNROUTED_SHOWN).map(unroutedText)
+  const shown = report.unrouted.slice(0, UNROUTED_SHOWN).map((one) => unroutedText(one, pads))
   const more = report.unrouted.length > UNROUTED_SHOWN ? `, … and ${report.unrouted.length - UNROUTED_SHOWN} more` : ""
   return `${head}; unrouted: ${shown.join(", ")}${more}`
 }
@@ -110,7 +116,7 @@ export async function autoroute(ports: Ports, input: { file: string; nets?: stri
   const report = routeBoard(routeInput(design), { scope, budgetMs: budgetSeconds * 1000, ...(options.clock ? { clock: options.clock } : {}) })
   const total = report.routed.length + report.unrouted.length
   if (total === 0) return "Nothing to route: every connection in the scope is already routed. Nothing was written."
-  const line = routedLine(report)
+  const line = routedLine(report, padsById(design.pcb))
   if (report.edits.length === 0) return [`${line}. Nothing was written.`, ...notes(report, budgetSeconds)].join("\n")
   // The locks are read in the write queue, after the guard: a part locked while the board was routed is honoured.
   const edits = () => lockSafeEdits(circuit.path, design, report.edits)

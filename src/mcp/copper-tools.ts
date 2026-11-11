@@ -7,7 +7,9 @@ import { copperPieces, padPieces, type CopperPiece } from "../engine/checks/copp
 import type { Shape } from "../engine/checks/geometry.js"
 import { copperTouches, trackLength } from "../engine/copper.js"
 import type { Design } from "../engine/design.js"
-import type { Point } from "../engine/model.js"
+import type { Net, Point } from "../engine/model.js"
+import { padPlace } from "../engine/pad-text.js"
+import { cornersOf, endsByRef, searchedEdits, sharedLayer } from "./route-by-ref.js"
 import { defaultVia, trackWidth, viaSize } from "../engine/rules/track-defaults.js"
 import { introducedLines } from "./copper-summary.js"
 import { copperAt, findNet, netLabel, type CopperHit } from "./copper-under.js"
@@ -16,15 +18,21 @@ const point = z.object({ x: z.number(), y: z.number() })
 const layer = z.enum(["top", "bottom", "inner1", "inner2"])
 const NETS_SHOWN = 20
 
+const padRef = z.string().min(1)
+
 export const routeTrackInput = {
   file: z.string().describe("Circuit file path relative to the project root"),
-  net: z.string().describe("Net name, e.g. VBUS"),
-  layer: layer.describe('Copper layer: "top" or "bottom"; inner1 and inner2 only on a 4-layer board (they cannot be routed in the Studio)'),
+  net: z.string().optional().describe("Net name, e.g. VBUS; needed with points, taken from the pads with from and to"),
+  layer: layer.optional().describe('Copper layer: "top" or "bottom"; inner1 and inner2 only on a 4-layer board (they cannot be routed in the Studio). Needed with points; with from and to, the pads\' shared layer by default'),
   points: z
     .array(point)
     .min(2)
     .max(200)
-    .describe("Corners in mm, in order. The first point must be on a pad, track or via of the net; no point may land on another net's copper"),
+    .optional()
+    .describe("Corners in mm, in order. The first point must be on a pad, track or via of the net; no point may land on another net's copper. Or give from and to instead"),
+  from: padRef.optional().describe('The pad the track starts on, e.g. "C3.pin2" (or a pin name, "U2.GND"); give with to instead of points'),
+  to: padRef.optional().describe('The pad the track ends on, e.g. "U2.pin2"'),
+  via: z.array(point).max(200).optional().describe("Corners in mm between from and to, on one layer. Without them the router finds the path itself (adding vias if it must), or says what is in the way"),
   width: z.number().positive().optional().describe("Width in mm; default is the net class's width, else the fabrication default"),
 }
 
@@ -51,7 +59,7 @@ export const removeCopperInput = {
 }
 
 export const ROUTE_TRACK_DESCRIPTION =
-  "Draw one track of a net by hand as ONE change: a list of corner points on one layer. It must start on a pad, track or via of the net, and no corner or segment between corners may touch another net's copper. The width comes from the net class unless given. The answer is one line plus the copper violations the change introduced: new ones and existing ones it made worse (check_circuit with filter \"copper\" lists all). The program checks clearance; route by hand what autoroute reports it could not route. A track cannot start on a locked part's pad."
+  "Draw one track of a net by hand as ONE change: a list of corner points on one layer, or its ends by pad reference (from: \"C3.pin2\", to: \"U2.pin2\"), with via points between them for the corners; with from and to only, the router finds the path for that one connection (adding vias if it must) or says what is in the way. It must start on a pad, track or via of the net, and no corner or segment between corners may touch another net's copper. The width comes from the net class unless given. The answer is one line plus the copper violations the change introduced: new ones and existing ones it made worse (check_circuit with filter \"copper\" lists all). The program checks clearance; route by hand what autoroute reports it could not route. A track cannot start on a locked part's pad."
 export const ADD_VIA_DESCRIPTION =
   "Place a via by hand as ONE change. Its net is the net of the pad or track under it unless you give one; its size follows the net class and the fabrication minimum ring."
 export const REMOVE_COPPER_DESCRIPTION =
@@ -143,18 +151,53 @@ function checkSegments(design: Design, netId: string, onLayer: CopperLayer, poin
   }
 }
 
-/** route_track: one track as one change. */
-export async function routeTrack(ports: Ports, input: { file: string; net: string; layer: CopperLayer; points: Point[]; width?: number }): Promise<string> {
+export interface RouteTrackRequest {
+  file: string
+  net?: string | undefined
+  layer?: CopperLayer | undefined
+  points?: Point[] | undefined
+  from?: string | undefined
+  to?: string | undefined
+  via?: Point[] | undefined
+  width?: number | undefined
+}
+
+/** route_track: one track as one change; by points, or by pad references (route-by-ref). */
+export async function routeTrack(ports: Ports, input: RouteTrackRequest): Promise<string> {
+  const byRef = input.from !== undefined || input.to !== undefined
+  if (byRef && input.points !== undefined) throw new Error("Give points, or from and to (with via points if you like), not both. Nothing was written.")
+  if (byRef && (input.from === undefined || input.to === undefined)) throw new Error("Give both from and to, e.g. from: \"C3.pin2\", to: \"U2.pin2\". Nothing was written.")
   const design = await buildOf(ports, input.file)
-  const net = netOrThrow(design, input.net)
-  checkLayers(design, [input.layer])
-  checkPoints(design, net.id, input.layer, input.points, nameOf(net))
-  const width = input.width ?? trackWidth(design.rules, net)
-  checkSegments(design, net.id, input.layer, input.points, width, nameOf(net))
-  const edit: LayoutEdit = { kind: "addTrack", net: nameOf(net), layer: input.layer, width, points: input.points }
-  const segments = input.points.length - 1
-  const line = () => `routed ${nameOf(net)} on ${input.layer}, ${segments} segment${segments === 1 ? "" : "s"}, ${trackLength(input.points).toFixed(1)} mm`
-  return applyCopper(ports, input.file, design, [edit], line)
+  if (byRef) return routeByRef(ports, design, input, input.from as string, input.to as string)
+  if (input.points === undefined || input.net === undefined || input.layer === undefined) throw new Error("Give net, layer and points, or from and to. Nothing was written.")
+  return drawTrack(ports, design, input.file, netOrThrow(design, input.net), input.layer, input.points, input.width)
+}
+
+/** One track through the corners, checked, as one change. */
+function drawTrack(ports: Ports, design: Design, file: string, net: Net, onLayer: CopperLayer, points: Point[], asked: number | undefined): Promise<string> {
+  checkLayers(design, [onLayer])
+  checkPoints(design, net.id, onLayer, points, nameOf(net))
+  const width = asked ?? trackWidth(design.rules, net)
+  checkSegments(design, net.id, onLayer, points, width, nameOf(net))
+  const edit: LayoutEdit = { kind: "addTrack", net: nameOf(net), layer: onLayer, width, points }
+  const segments = points.length - 1
+  const line = () => `routed ${nameOf(net)} on ${onLayer}, ${segments} segment${segments === 1 ? "" : "s"}, ${trackLength(points).toFixed(1)} mm`
+  return applyCopper(ports, file, design, [edit], line)
+}
+
+/** The track between two named pads: through the via points on one layer, or the router's path when none are given. */
+function routeByRef(ports: Ports, design: Design, input: RouteTrackRequest, from: string, to: string): Promise<string> {
+  const ends = endsByRef(design, from, to, input.net, (name) => netOrThrow(design, name).id)
+  const net = design.circuit.nets.find((one) => one.id === ends.net) as Net
+  const between = `${padPlace(ends.from)} to ${padPlace(ends.to)}`
+  if (input.via !== undefined && input.via.length > 0) {
+    return drawTrack(ports, design, input.file, net, sharedLayer(ends.from, ends.to, input.layer), cornersOf(ends, input.via), input.width)
+  }
+  if (input.layer !== undefined || input.width !== undefined) throw new Error("layer and width go with via points; without them the router chooses the layers and the net class gives the width. Nothing was written.")
+  const edits = searchedEdits(design, ends, nameOf(net))
+  const [tracks, vias] = [edits.filter((edit) => edit.kind === "addTrack").length, edits.filter((edit) => edit.kind === "addVia").length]
+  const line = () => `routed ${nameOf(net)} ${between}: ${tracks} track${tracks === 1 ? "" : "s"}, ${vias} via${vias === 1 ? "" : "s"}`
+  return applyCopper(ports, input.file, design, edits, line)
 }
 
 /** The net of the copper under a via centre; refused when it is not the net asked for. */

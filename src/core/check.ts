@@ -1,5 +1,6 @@
 import type { Diagnostic, Severity, SheetInstance } from "../engine/model.js"
 import type { Violation } from "../engine/index.js"
+import { unroutedPlaces } from "../engine/pad-text.js"
 import { buildWith, type DesignSource } from "./design-source.js"
 import { oneLine } from "./summary.js"
 import { resolveCircuit } from "./workspace.js"
@@ -21,6 +22,8 @@ export interface CheckResult {
   instances?: SheetInstance[]
   /** The flattened designators and net names, so a filter that names none of them can be refused. */
   names?: string[]
+  /** Each connection not routed yet, with its pads' positions: "C3.pin2 (12.30, 4.50 top) to U2.pin2 (15.10, 6.00 top)". */
+  unrouted?: string[]
 }
 
 export interface CheckOptions {
@@ -56,6 +59,7 @@ export async function checkCircuit(root: string, file: string, options: CheckOpt
     diagnostics: [...design.diagnostics],
     instances: [...(design.circuit?.instances ?? [])],
     names: [...(design.circuit?.components ?? []).map((c) => c.id), ...(design.circuit?.nets ?? []).flatMap((n) => n.names)],
+    unrouted: design.pcb === undefined ? [] : unroutedPlaces(design.pcb),
   }
 }
 
