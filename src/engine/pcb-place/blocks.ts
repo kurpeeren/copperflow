@@ -85,9 +85,16 @@ export function planCopies(design: Design, options: ScopeOptions): Copies {
       const leader = group.find((instance) => instance !== asked)
       pairs = asked && leader && !own(asked) ? [{ instance: asked, leader }] : []
     }
+    // A locked copy keeps the sheet's shared positions from being written, so the leader's new arrangement never lands.
+    const held = group.find((instance) => isLocked(instance, locked))
+    const unwritten = held !== undefined && scope.kind === "all" && pairs.some((pair) => own(pair.leader))
     for (const pair of pairs) {
       if (isLocked(pair.instance, locked)) {
         copies.notes.push(`${pair.instance.path} is locked; it was left where it is`)
+        continue
+      }
+      if (unwritten) {
+        copies.notes.push(`${pair.instance.path} was not moved as a block: ${held.path} is locked, so ${file} keeps its positions`)
         continue
       }
       copies.followers.push(pair)

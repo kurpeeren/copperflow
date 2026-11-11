@@ -99,6 +99,18 @@ describe("a sheet used twice is placed as rigid copies", () => {
     expect(lineOf(await read(FILE), "CH2")).toBe(lineOf(before, "CH2"))
   })
 
+  test("with a third copy locked the sheet keeps its positions, so CH2 is not moved against them", async () => {
+    const instances = [...circuit().instances, { sheet: "Channel", name: "CH3", connections: { IN: "S1", OUT: "A1", GND: "GND" } }]
+    await call("new_circuit", circuit({ instances }))
+    const { model } = await loadCircuit(root, FILE)
+    await updateAnnotations(root, FILE, (a) => lockParts(a, model, ["CH3"], new Date().toISOString()))
+    const before = await read(FILE)
+    const answer = await call("autoplace", { file: FILE })
+    expect(answer.text).toMatch(/CH2 was not moved as a block: CH3 is locked, so Channel\.sheet\.tsx keeps its positions/)
+    expect(lineOf(await read(FILE), "CH2")).toBe(lineOf(before, "CH2"))
+    expect(await read(SHEET)).not.toMatch(/pcbX/)
+  })
+
   test("the same board placed twice gives the same files", async () => {
     await call("new_circuit", circuit())
     await call("autoplace", { file: FILE })
