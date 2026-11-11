@@ -216,6 +216,14 @@ describe("the router on its own", () => {
     expect(latticePoints(wire).filter((p) => inside({ x: p.x / 10, y: p.y / 10 }, b, 0.05))).toEqual([])
   })
 
+  test("a pin whose way out runs straight into another symbol's body is drawn straight and warns, even with the tight try", () => {
+    const boxes = [box(-0.5, -0.2, 0.5, 0.2, ["A.p"]), box(0.6, -1, 2, 1), box(3, -1.2, 4, -0.8, ["C.p"])]
+    const spots = new Map([["A.p", spot(0.5, 0, "right")], ["C.p", spot(3, -1, "left")]])
+    const routed = routeWires({ boxes, spots }, [], [{ id: "w", net: "n", from: "A.p", to: "C.p" }])
+    expect(routed.diagnostics.map((d) => d.code)).toEqual(["auto-route"])
+    expect(routed.wires[0]?.points).toHaveLength(3)
+  })
+
   test("neighbouring pins of one chip boxed in by a close part are joined with a short stub out of each pin", () => {
     const chip = box(3.9, -1.1, 5.7, 1.3, ["U.4", "U.5", "U.6"])
     const crystal = box(2.6, -0.35, 3.6, 0.35, ["Y.1"])
