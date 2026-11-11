@@ -7,6 +7,7 @@ import type { Studio } from "../src/studio/server.js"
 import { BOARD, SHARED } from "./fixtures.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
 import { fixtureFetch, offlineFetch } from "./helpers/lcsc-fixtures.js"
+import { ORIENTATION_NOTE } from "../src/library/lcsc-part.js"
 import { retryLostConnect, startReachableStudio } from "./helpers/reachable-studio.js"
 
 let root: string
@@ -42,7 +43,7 @@ describe("POST /api/import-part", () => {
     const server = await open(fixtureFetch())
     const { json } = await post(server, "/api/import-part", { lcsc: "C7950" })
     expect(json.ok).toBe(true)
-    expect(json.data).toMatchObject({ id: "LM358DR2G", lcsc: "C7950", title: "LM358DR2G, SOIC-8_L4.9-W3.9-P1.27-LS6.0-BL", pins: 8, pads: 8, notes: [] })
+    expect(json.data).toMatchObject({ id: "LM358DR2G", lcsc: "C7950", title: "LM358DR2G, SOIC-8_L4.9-W3.9-P1.27-LS6.0-BL", pins: 8, pads: 8, notes: [ORIENTATION_NOTE] })
     expect(json.data.files).toContain("parts/LM358DR2G/verification.md")
     expect(json.data.terms).toMatch(/personal, non-commercial use only/)
     const parts = await (await retryLostConnect(() => fetch(`${server.url}/api/parts`, { headers: { "x-copperflow-token": server.token } }))).json()

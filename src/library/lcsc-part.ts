@@ -10,6 +10,12 @@ import { pinName, pinType, symbolPins, type SymbolPin } from "./easyeda-symbol.j
 export const SOURCE_NAME = "JLCEDA/EasyEDA Official Library"
 export const SOURCE_LINKS = ["https://lceda.cn/", "https://easyeda.com"] as const
 
+/**
+ * EasyEDA draws footprints with rows horizontal and pin 1 at the bottom left, which is JLCPCB's assembly orientation
+ * (so pick-and-place needs no correction, `file: 0`) and copperflow's generated convention turned +90°.
+ */
+export const ORIENTATION_NOTE = "The footprint keeps the source's orientation; place at pcbRotation -90 to match a generated footprint of the same package."
+
 const LCSC_NUMBER = /^C[1-9][0-9]{0,9}$/
 const PIN_NUMBER = /^[1-9][0-9]*$/
 
@@ -84,7 +90,7 @@ export function convertLcscAnswer(answer: unknown, lcsc: string, today: string):
     ...(footprint.body ? { body: footprint.body } : {}),
   }
   const notices = [...new Set([result.dataStr.head.license, result.packageDetail.dataStr.head.license].filter((n): n is string => !!n?.trim()))]
-  return { lcsc, suggestedId: suggestedId(mpn, lcsc), part, footprint: file, notes: [...footprint.notes, ...pins.notes], notices }
+  return { lcsc, suggestedId: suggestedId(mpn, lcsc), part, footprint: file, notes: [...footprint.notes, ...pins.notes, ORIENTATION_NOTE], notices }
 }
 
 interface MatchedPins {

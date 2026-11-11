@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { listParts, readPart, rebuildComponents } from "../src/core/library.js"
 import { formatImport, importLcscPart, lcscEndpoint, MAX_ANSWER_BYTES } from "../src/library/import-lcsc.js"
+import { ORIENTATION_NOTE } from "../src/library/lcsc-part.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
 import { fixtureFetch, lcscFixture, noNetwork, offlineFetch as offline } from "./helpers/lcsc-fixtures.js"
 
@@ -62,10 +63,27 @@ describe("importing by LCSC number", () => {
     answer.result.packageDetail.dataStr.shape.push("HOLE~4000~3010~2~h~0")
     const get = (async () => new Response(JSON.stringify(answer))) as typeof fetch
     const result = await importLcscPart(root, "C158012", { now: NOW, fetch: get, id: "XH2" })
-    expect(result.notes).toEqual(["An unplated hole of 1.016 mm at (0, -2.54) is not in footprint.yaml; add it to the board as a hole."])
+    expect(result.notes).toEqual(["An unplated hole of 1.016 mm at (0, -2.54) is not in footprint.yaml; add it to the board as a hole.", ORIENTATION_NOTE])
     const checklist = await readFile(join(root, "parts", "XH2", "verification.md"), "utf8")
     expect(checklist).toContain("## Notes\n\n- [ ] An unplated hole of 1.016 mm")
     expect(formatImport(result)).toContain("Note: An unplated hole")
+  })
+
+  test("the footprint's orientation is stated: in the notes, verification.md and the answer", async () => {
+    expect(ORIENTATION_NOTE).toBe("The footprint keeps the source's orientation; place at pcbRotation -90 to match a generated footprint of the same package.")
+    const result = await importLcscPart(root, "C7950", { now: NOW, fetch: fixtureFetch() })
+    expect(result.notes).toContain(ORIENTATION_NOTE)
+    const checklist = await readFile(join(root, "parts", "LM358DR2G", "verification.md"), "utf8")
+    expect(checklist).toContain(`- [ ] ${ORIENTATION_NOTE}`)
+    expect(formatImport(result)).toContain(`Note: ${ORIENTATION_NOTE}`)
+  })
+
+  test("the datasheet link is LCSC's, built from the number: verification.md asks for the manufacturer's", async () => {
+    await importLcscPart(root, "C7950", { now: NOW, fetch: fixtureFetch() })
+    const checklist = await readFile(join(root, "parts", "LM358DR2G", "verification.md"), "utf8")
+    expect(checklist).toContain(
+      "- [ ] The datasheet link https://www.lcsc.com/datasheet/C7950.pdf was built from the LCSC number, not read from the source: replace it in part.yaml with the manufacturer's datasheet link for this exact part",
+    )
   })
 
   test("all three parts pass parts build and build in a circuit with their pads", async () => {

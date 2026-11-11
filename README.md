@@ -163,7 +163,9 @@ C7950` fetches one by its LCSC number from EasyEDA (see [licences](docs/licences
 source allows: personal, non-commercial use only; parts with letter-numbered pins such as BGAs are
 refused); they stay *not verified*
 until you check `verification.md`, which covers `footprint.yaml` too, and run
-`copperflow parts verify`.
+`copperflow parts verify`. An imported footprint keeps EasyEDA's orientation, which is JLCPCB's,
+so pick-and-place needs no correction; place it at `pcbRotation -90` to match a generated footprint
+of the same package.
 
 **BOM and datasheet package.** `copperflow bom` groups parts by value, footprint and part
 number; `copperflow package` writes the BOM, the local datasheets and every library part's

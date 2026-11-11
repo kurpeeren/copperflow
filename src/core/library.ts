@@ -352,9 +352,15 @@ export function verificationTemplate(id: string, part: Part, footprintText?: str
     ...Object.entries(part.suppliers ?? {}).map(([supplier, number]) => `- [ ] ${supplier} part ${number} is this exact part`),
     // A fetched part's names and types come from its source; a written part's are already in the pin items above.
     ...(part.origin && !isWritten(part.origin) ? [`- [ ] Every pin name and type matches the datasheet (${part.origin}; nothing from the source has been checked)`] : []),
+    ...(builtDatasheet(part) ? [`- [ ] The datasheet link ${part.datasheet?.url} was built from the LCSC number, not read from the source: replace it in part.yaml with the manufacturer's datasheet link for this exact part`] : []),
     ...(notes.length > 0 ? ["", "## Notes", "", ...notes.map((note) => `- [ ] ${note}`)] : []),
     "",
   ].join("\n")
+}
+
+/** An imported part whose datasheet link is the one the importer builds from the LCSC number (lcsc.com), not the manufacturer's. */
+function builtDatasheet(part: Part): boolean {
+  return !!part.origin?.startsWith("lcsc ") && /^https:\/\/www\.lcsc\.com\/datasheet\/C[0-9]+\.pdf$/.test(part.datasheet?.url ?? "")
 }
 
 /** A part written from a datasheet by a person or the agent ("written 2026-11-11"), not fetched from a source. */

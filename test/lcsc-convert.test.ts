@@ -5,7 +5,7 @@ import { stringify } from "yaml"
 import { arcPoints, pathPolylines } from "../src/library/easyeda-path.js"
 import { convertFootprint } from "../src/library/easyeda-footprint.js"
 import { pinName, pinType, symbolPins } from "../src/library/easyeda-symbol.js"
-import { convertLcscAnswer, lcscNumber, matchPins } from "../src/library/lcsc-part.js"
+import { convertLcscAnswer, lcscNumber, matchPins, ORIENTATION_NOTE } from "../src/library/lcsc-part.js"
 import { lcscFixture } from "./helpers/lcsc-fixtures.js"
 
 const TODAY = "2026-11-11"
@@ -67,7 +67,7 @@ describe("SOIC-8 (LM358DR2G, C7950)", () => {
       [2.7, 3.725],
       [-2.7, 3.725],
     ])
-    expect(notes).toEqual([])
+    expect(notes).toEqual([ORIENTATION_NOTE])
   })
 
   test("the written footprint.yaml is valid and has a pad for every pin", () => {
@@ -85,7 +85,7 @@ describe("QFN-32 with an exposed pad (ESP32-C3, C2838500)", () => {
     expect(footprint.pads.find((p) => p.number === "1")).toEqual({ number: "1", shape: "rect", x: -2.45, y: 1.75, width: 0.8, height: 0.28 })
     expect(footprint.pads.find((p) => p.number === "9")).toMatchObject({ x: -1.75, y: -2.45, width: 0.28, height: 0.8 })
     expect(footprint.pads.find((p) => p.number === "33")).toEqual({ number: "33", shape: "rect", x: 0, y: 0, width: 3.7, height: 3.7 })
-    expect(notes).toEqual([])
+    expect(notes).toEqual([ORIENTATION_NOTE])
   })
 
   test("EasyEDA's power type and supply names make power pins, GND ground, the rest passive", () => {
