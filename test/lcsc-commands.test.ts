@@ -56,6 +56,17 @@ describe("copperflow parts import", () => {
     expect(await cli(fixtureFetch(), "parts", "import")).toBe(1)
     expect(err.at(-1)).toContain("Missing LCSC part number")
   })
+
+  test("--help prints the usage; unknown options and a second number are refused before any fetch", async () => {
+    const get = fixtureFetch()
+    expect(await cli(get, "parts", "import", "--help")).toBe(0)
+    expect(out.at(-1)).toBe("Usage: copperflow parts import <C-number> [--id <id>] [--replace]")
+    expect(await cli(get, "parts", "import", "C7950", "--idd", "X")).toBe(1)
+    expect(err.at(-1)).toContain('Unknown option "--idd" for parts import')
+    expect(await cli(get, "parts", "import", "C7950", "C158012")).toBe(1)
+    expect(err.at(-1)).toContain("parts import takes one LCSC part number (got C7950, C158012)")
+    expect(get.calls).toEqual([])
+  })
 })
 
 describe("MCP import_part", () => {

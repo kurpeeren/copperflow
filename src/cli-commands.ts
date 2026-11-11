@@ -203,6 +203,8 @@ async function mark(root: string, rest: string[], io: CliIO): Promise<void> {
   io.out(`Added mark ${id}`)
 }
 
+const IMPORT_USAGE = "Usage: copperflow parts import <C-number> [--id <id>] [--replace]"
+
 async function partsCommand(root: string, rest: string[], io: CliIO, options: CliOptions): Promise<void> {
   const [action, ...args] = rest
   if (action === undefined) {
@@ -222,9 +224,16 @@ async function partsCommand(root: string, rest: string[], io: CliIO, options: Cl
     return
   }
   if (action === "import") {
+    if (args.includes("--help") || args.includes("-h")) {
+      io.out(IMPORT_USAGE)
+      return
+    }
     const [replace, withoutReplace] = takeFlag(args, "--replace")
     const [id, remaining] = takeOption(withoutReplace, "--id")
-    const lcsc = required(remaining[0], "LCSC part number (e.g. C9657)")
+    const unknown = remaining.find((arg) => arg.startsWith("-"))
+    if (unknown) throw new Error(`Unknown option "${unknown}" for parts import. ${IMPORT_USAGE}`)
+    if (remaining.length > 1) throw new Error(`parts import takes one LCSC part number (got ${remaining.join(", ")}). ${IMPORT_USAGE}`)
+    const lcsc = required(remaining[0], "LCSC part number (e.g. C7950)")
     const result = await importLcscPart(root, lcsc, { now: new Date().toISOString(), replace, ...(id ? { id } : {}), ...(options.fetch ? { fetch: options.fetch } : {}) })
     io.out(formatImport(result))
     return

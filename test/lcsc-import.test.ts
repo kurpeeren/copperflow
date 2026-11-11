@@ -4,7 +4,7 @@ import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { listParts, readPart, rebuildComponents } from "../src/core/library.js"
-import { formatImport, importLcscPart, lcscEndpoint } from "../src/library/import-lcsc.js"
+import { formatImport, importLcscPart, lcscEndpoint, MAX_ANSWER_BYTES } from "../src/library/import-lcsc.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
 import { fixtureFetch, lcscFixture, noNetwork, offlineFetch as offline } from "./helpers/lcsc-fixtures.js"
 
@@ -112,6 +112,30 @@ describe("refusals: nothing is written", () => {
     await expect(importLcscPart(root, "C7950", { now: NOW, fetch: failing })).rejects.toThrow(/answered 503/)
     const html = (async () => new Response("<html>")) as typeof fetch
     await expect(importLcscPart(root, "C7950", { now: NOW, fetch: html })).rejects.toThrow(/could not be read/)
+    expect(await partsFolder()).toEqual([])
+  })
+
+  test("a server that does not answer in time is not called offline", async () => {
+    const slow = (async () => {
+      throw new DOMException("The operation was aborted due to timeout", "TimeoutError")
+    }) as typeof fetch
+    await expect(importLcscPart(root, "C7950", { now: NOW, fetch: slow })).rejects.toThrow("easyeda.com did not answer within 20 s for C7950; nothing was written. Try again later.")
+    expect(await partsFolder()).toEqual([])
+  })
+
+  test("an answer larger than the limit is refused, by its stated length or as read", async () => {
+    const stated = (async () => new Response("{}", { headers: { "content-length": String(MAX_ANSWER_BYTES + 1) } })) as typeof fetch
+    await expect(importLcscPart(root, "C7950", { now: NOW, fetch: stated })).rejects.toThrow(/could not be read \(larger than 4 MB\)/)
+    const huge = (async () => new Response(" ".repeat(MAX_ANSWER_BYTES + 1))) as typeof fetch
+    await expect(importLcscPart(root, "C7950", { now: NOW, fetch: huge })).rejects.toThrow(/larger than 4 MB/)
+    expect(await partsFolder()).toEqual([])
+  })
+
+  test("a part the library refuses after conversion leaves no folder behind", async () => {
+    const answer = lcscFixture("C158012") as { result: { packageDetail: { dataStr: { shape: string[] } } } }
+    answer.result.packageDetail.dataStr.shape.push("PAD~RECT~4000~3010~0~4~1~~2~0~~0~g~0~~Y~0")
+    const get = (async () => new Response(JSON.stringify(answer))) as typeof fetch
+    await expect(importLcscPart(root, "C158012", { now: NOW, fetch: get })).rejects.toThrow(/^Cannot import C158012: .*width.*Nothing was written\.$/s)
     expect(await partsFolder()).toEqual([])
   })
 
