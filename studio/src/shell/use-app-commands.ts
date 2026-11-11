@@ -255,6 +255,7 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     annotate: () => annotateDesignators(input),
     systemSettings: () => input.openDialog("system"),
     newCircuit: () => input.openDialog("newCircuit"),
+    footprintManager: () => input.openDialog("footprints"),
     copy: () => copySelection(input),
     paste: () => pasteCopied(input, input.view === "schematic" ? input.page : undefined),
   }

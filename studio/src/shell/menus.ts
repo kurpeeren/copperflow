@@ -272,7 +272,7 @@ export const MENUS: readonly Menu[] = [
   },
   {
     title: "Tools",
-    entries: [run("History", "history"), later("Footprint manager…", SOON)],
+    entries: [run("History", "history"), run("Footprint manager…", "footprintManager")],
   },
   {
     title: "Export",
