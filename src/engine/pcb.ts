@@ -17,6 +17,8 @@ export interface WorldPad extends Pad {
   component: string
   pin?: string
   net?: string
+  /** Set on the pads of a part with no position: the build packed it only to draw it, so its pads have no place to name. */
+  unplaced?: true
 }
 
 export interface PlacedFootprint {
@@ -138,7 +140,7 @@ function place(component: Component, footprint: Footprint | undefined, at: Place
     side: at.side,
     autoPlaced,
     ...(footprint ? { footprint } : {}),
-    pads: footprint ? worldPads(footprint, at, component, nets) : [],
+    pads: footprint ? worldPads(footprint, at, component, nets).map((pad) => (autoPlaced ? { ...pad, unplaced: true as const } : pad)) : [],
     courtyard: move(footprint?.courtyard ?? FALLBACK_COURTYARD),
     silkscreen: (footprint?.silkscreen ?? []).map(move),
     fabrication: (footprint?.fabrication ?? []).map(move),
