@@ -4,6 +4,7 @@ import { buildDesign, type Design } from "../../src/engine/design.js"
 import { placeBoard, type Placement } from "../../src/engine/pcb-place/index.js"
 import type { WorldPad } from "../../src/engine/pcb.js"
 import { filesIn, withPositions } from "../helpers/place-fixtures.js"
+import { routeDesign } from "../helpers/route-check.js"
 
 const FOLDER = join(import.meta.dirname, "..", "fixtures", "can-proof-3")
 const MAIN = "can-module.circuit.tsx"
@@ -62,9 +63,24 @@ describe("the placer keeps a chip's satellites beside their pins", () => {
     expect(nearest(placed, "R3", "D1", "net.LED_A")).toBeLessThanOrEqual(3)
   })
 
-  test("the total wire length is no worse than before", () => {
+  test("the total wire length is no worse than before, and at most 160 mm (157.2 when written)", () => {
     expect(placement.score.wireLength).toBeLessThanOrEqual(WIRE_BEFORE)
+    expect(placement.score.wireLength).toBeLessThanOrEqual(160)
   })
+
+  test("after autoroute every connection is routed and OSC1 and OSC2 each take at most 12 mm of track (8.6 and 8.5 when written)", () => {
+    const report = routeDesign(placed)
+    expect(report.unrouted).toEqual([])
+    const length = (net: string) =>
+      report.routed
+        .filter((route) => route.net === net)
+        .flatMap((route) => route.copper.tracks)
+        .reduce((sum, track) => sum + track.points.slice(1).reduce((s, p, i) => s + Math.hypot(p.x - (track.points[i] as WorldPad).x, p.y - (track.points[i] as WorldPad).y), 0), 0)
+    expect(length("net.OSC1")).toBeGreaterThan(0)
+    expect(length("net.OSC1")).toBeLessThanOrEqual(12)
+    expect(length("net.OSC2")).toBeGreaterThan(0)
+    expect(length("net.OSC2")).toBeLessThanOrEqual(12)
+  }, 120_000)
 
   test("the same board places the same way twice", () => {
     const again = placeBoard(buildDesign(files, MAIN))
