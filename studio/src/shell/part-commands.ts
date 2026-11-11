@@ -102,11 +102,12 @@ export function pasteCopied({ design, circuit, select, actions }: PartCommandInp
 }
 
 /** Edit → Find similar objects (Ctrl+Shift+F): selects the parts, or drawings, like the selected one. */
-export function selectSimilar({ design, selection, select, actions }: PartCommandInput): void {
+export function selectSimilar({ design, circuit, selection, select, actions }: PartCommandInput): void {
   if (!design) return
   const parts = design.circuit.components.map((component) => ({ id: component.id, kind: component.kind, ...(component.footprint ? { footprint: component.footprint } : {}), ...(component.value ? { value: component.value } : {}) }))
-  const found = findSimilar({ parts: selection.names, drawings: selection.drawings }, parts, design.schematic.drawings)
+  const board = (circuit?.model.boardItems ?? []).map((item) => item.id)
+  const found = findSimilar({ parts: selection.names, drawings: selection.drawings, board: selection.board }, parts, design.schematic.drawings, board)
   if ("message" in found) return actions.notify(found.message)
-  select(() => Selection.none.all(found.parts).addDrawings(found.drawings))
+  select(() => Selection.none.all(found.parts).addDrawings(found.drawings).addBoard(found.board ?? []))
   actions.notify(found.note)
 }

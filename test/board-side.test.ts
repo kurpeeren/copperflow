@@ -100,5 +100,7 @@ describe("Edit → Find similar objects", () => {
     const drawings = [{ id: "a", kind: "rect" }, { id: "b", kind: "text" }, { id: "c", kind: "rect" }]
     expect(findSimilar({ parts: [], drawings: ["c"] }, all, drawings)).toEqual({ parts: [], drawings: ["a", "c"], note: "Selected 2 rect drawings" })
     expect(findSimilar({ parts: [], drawings: [] }, all, drawings)).toHaveProperty("message")
+    const items = ["copperpour:1", "hole:1", "copperpour:2"]
+    expect(findSimilar({ parts: [], drawings: [], board: ["copperpour:2"] }, all, drawings, items)).toEqual({ parts: [], drawings: [], board: ["copperpour:1", "copperpour:2"], note: "Selected 2 copper pours" })
   })
 })

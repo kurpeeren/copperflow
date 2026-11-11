@@ -9,12 +9,12 @@ export interface SimilarPart {
   value?: string
 }
 
-export type SimilarResult = { parts: string[]; drawings: string[]; note: string } | { message: string }
+export type SimilarResult = { parts: string[]; drawings: string[]; board?: string[]; note: string } | { message: string }
 
 const same = (a: SimilarPart, b: SimilarPart): boolean => a.kind === b.kind && a.footprint === b.footprint && a.value === b.value
 
 /** What is like the first selected part (or, with no part selected, the first selected drawing). */
-export function findSimilar(selected: { parts: readonly string[]; drawings: readonly string[] }, parts: readonly SimilarPart[], drawings: readonly { id: string; kind: string }[]): SimilarResult {
+export function findSimilar(selected: { parts: readonly string[]; drawings: readonly string[]; board?: readonly string[] }, parts: readonly SimilarPart[], drawings: readonly { id: string; kind: string }[], board?: readonly string[]): SimilarResult {
   const first = parts.find((part) => part.id === selected.parts[0])
   if (first) {
     const found = parts.filter((part) => same(part, first)).map((part) => part.id)
@@ -26,5 +26,12 @@ export function findSimilar(selected: { parts: readonly string[]; drawings: read
     const found = drawings.filter((candidate) => candidate.kind === drawing.kind).map((candidate) => candidate.id)
     return { parts: [], drawings: found, note: `Selected ${found.length} ${drawing.kind} ${found.length === 1 ? "drawing" : "drawings"}` }
   }
-  return { message: "Select a part or a drawing first; Find similar objects selects the ones like it." }
+  const item = selected.board?.[0]
+  if (item !== undefined) {
+    // A board item's id is its kind and number ("copperpour:2", "hole:1").
+    const kind = item.split(":")[0] ?? item
+    const found = (board ?? []).filter((id) => id.split(":")[0] === kind)
+    return { parts: [], drawings: [], board: found, note: `Selected ${found.length} ${kind === "copperpour" ? "copper pour" : kind}${found.length === 1 ? "" : "s"}` }
+  }
+  return { message: "Select a part, a drawing, a pour or a hole first; Find similar objects selects the ones like it." }
 }
