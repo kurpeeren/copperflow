@@ -1,7 +1,7 @@
 // The edits Studio sends to its server. Each one reports a failure itself, then reloads the open file.
 import { useCallback, useMemo } from "react"
 import type { LayoutEdit } from "../../src/core/layout-records.js"
-import { api, type Edit, type RouteScope } from "./api"
+import { api, type Edit, type PlaceScope, type RouteScope } from "./api"
 import { announceHistoryWrite } from "./history-writes"
 import { noteRulesWrite } from "./pcb/rules-writes"
 import { PLACE_DEFAULTS } from "./place-defaults"
@@ -33,6 +33,11 @@ export interface Actions {
   route(scope: RouteScope): Promise<boolean>
   /** Cancels the run going now. */
   cancelRoute(): Promise<boolean>
+  /** Place → Autoplace: starts placing the open circuit's board in the scope; its news comes as place events. */
+  autoplace(scope: PlaceScope): Promise<boolean>
+  cancelAutoplace(): Promise<boolean>
+  /** Layout → Fit board: the board reshaped round the parts, as one history entry, and told. */
+  fitBoard(): Promise<EditOutcome>
   /** Route → Unroute: removes the router's copper among `ids`, or all of it, as one history entry, and tells it. */
   unroute(ids?: readonly string[]): Promise<EditOutcome>
   /** Design rules: writes the fillet radius to rules.yaml (null for the default), as one history entry, and tells it. */
@@ -123,6 +128,35 @@ export function useActions({ file, refresh, refreshParts, notify }: ActionsInput
           return false
         }
       },
+      autoplace: async (scope) => {
+        try {
+          await api("/api/autoplace", { file, scope })
+          return true
+        } catch (error) {
+          notify((error as Error).message)
+          return false
+        }
+      },
+      cancelAutoplace: async () => {
+        try {
+          return (await api<{ cancelled: boolean }>("/api/autoplace/cancel", {})).cancelled
+        } catch (error) {
+          notify((error as Error).message)
+          return false
+        }
+      },
+      fitBoard: () =>
+        announceHistoryWrite(
+          (async () => {
+            let mark: number | undefined
+            const ok = await run(async () => {
+              const done = await api<{ summary: string; writeMark: number }>("/api/fit-board", { file })
+              mark = done.writeMark
+              notify(done.summary)
+            })
+            return { ok, mark }
+          })(),
+        ),
       unroute: (ids) =>
         announceHistoryWrite(
           (async () => {

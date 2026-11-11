@@ -157,17 +157,17 @@ describe("menus", () => {
     expect(itemState(unit, "schematic")).toEqual({ enabled: false, reason: "PCB only" })
   })
 
-  test("an item still to come is disabled in both views with its reason; the rest work in both but Make sub-sheet, the page items, Tidy sheet, Replicate layout and Unit", () => {
+  test("an item still to come is disabled in both views with its reason; the rest work in both but Make sub-sheet, the page items, Tidy sheet, Replicate layout, Unit, Autoplace and Fit board", () => {
     const later = { label: "Bus", pending: "Comes with blocks and sheets (stage 3)" }
     expect(itemState(later, "pcb")).toEqual({ enabled: false, reason: later.pending })
     const views = (["pcb", "schematic"] as const).map((view) =>
       MENUS.flatMap(menuItems).filter((item) => item.command && !itemState(item, view).enabled).map((item) => item.label),
     )
-    expect(views).toEqual([["Make sub-sheet…", "Add page", "Rename page", "Delete page", "Tidy sheet"], ["Unit", "Replicate layout"]])
+    expect(views).toEqual([["Make sub-sheet…", "Add page", "Rename page", "Delete page", "Tidy sheet"], ["Unit", "Autoplace", "Autoplace selection", "Autoplace instance", "Replicate layout", "Fit board"]])
   })
 
-  test("no menu has more than 14 items, but View and Place, which add the copper pour's three, 17", () => {
-    const cap = (title: string) => (title === "Place" || title === "View" ? 17 : 14)
+  test("no menu has more than 14 items, but View and Place, which add the copper pour's three, 17, Place with Autoplace's three 20, and Layout with Fit board 15", () => {
+    const cap = (title: string) => (title === "Place" ? 20 : title === "View" ? 17 : title === "Layout" ? 15 : 14)
     for (const menu of MENUS) expect([menu.title, menuItems(menu).length <= cap(menu.title)]).toEqual([menu.title, true])
   })
 

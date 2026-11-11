@@ -5,9 +5,10 @@ import type { Design } from "../../src/engine/design.js"
 import type { Diagnostic } from "../../src/engine/model.js"
 import type { FabricationExport } from "../../src/core/fabrication.js"
 import type { RouteEvent, RouteScope } from "../../src/studio/route-events.js"
+import type { PlaceEvent, PlaceScope } from "../../src/studio/place-events.js"
 import { requestErrorText } from "./request-error.js"
 
-export type { Annotations, CircuitModel, Design, Diagnostic, Edit, FabricationExport, HistoryListing, HistoryProblem, Literal, LockViolation, PartInfo, PropInfo, RouteEvent, RouteScope, TraceInfo }
+export type { Annotations, CircuitModel, Design, Diagnostic, Edit, FabricationExport, HistoryListing, HistoryProblem, Literal, LockViolation, PartInfo, PropInfo, PlaceEvent, PlaceScope, RouteEvent, RouteScope, TraceInfo }
 
 export interface CircuitData {
   file: string
@@ -118,8 +119,8 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
   return json.data
 }
 
-export type ServerEvent = "change" | "build" | "library" | "route"
-const SERVER_EVENTS: readonly string[] = ["change", "build", "library", "route"] satisfies ServerEvent[]
+export type ServerEvent = "change" | "build" | "library" | "route" | "place"
+const SERVER_EVENTS: readonly string[] = ["change", "build", "library", "route", "place"] satisfies ServerEvent[]
 
 /**
  * Subscribes to file changes, build updates and routing news; returns an unsubscribe function. A "route" event also

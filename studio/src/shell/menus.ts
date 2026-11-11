@@ -53,6 +53,10 @@ export type CommandId =
   | "pourSolid"
   | "pourHatched"
   | "pourOutline"
+  | "autoplace"
+  | "autoplaceSelection"
+  | "autoplaceInstance"
+  | "fitBoard"
   | "autoroute"
   | "autorouteSelection"
   | "autorouteNet"
@@ -186,6 +190,10 @@ export const MENUS: readonly Menu[] = [
       run("Copper pour: Whole board", "placePourBoard"),
       run("Hole", "placeHole"),
       "separator",
+      { label: "Autoplace", command: "autoplace", only: "pcb" },
+      { label: "Autoplace selection", command: "autoplaceSelection", only: "pcb" },
+      { label: "Autoplace instance", command: "autoplaceInstance", only: "pcb" },
+      "separator",
       run("Polyline", "drawPolyline", "Alt+L"),
       run("Arc", "drawArc", "Alt+A"),
       run("Circle", "drawCircle", "Alt+C"),
@@ -243,6 +251,8 @@ export const MENUS: readonly Menu[] = [
       "separator",
       run("Distribute horizontally", "distributeH", "Ctrl+Shift+H"),
       run("Distribute vertically", "distributeV"),
+      "separator",
+      { label: "Fit board", command: "fitBoard", only: "pcb" },
       "separator",
       { label: "Tidy sheet", command: "tidySheet", only: "schematic" },
     ],

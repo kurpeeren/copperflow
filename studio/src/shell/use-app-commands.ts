@@ -25,6 +25,8 @@ import type { DialogName } from "./Dialogs"
 import type { CommandId } from "./menus"
 import { makeSheetStart } from "./make-sheet-form"
 import { netScope, selectionScope, unrouteRequest, type Refusal } from "../pcb/autoroute"
+import { placeInstanceScope, placeSelectionScope } from "../pcb/autoplace"
+import type { PlaceScope } from "../api"
 import type { RouteScope } from "../api"
 import { runPageCommand, type PageCommand } from "./page-commands"
 import type { Design } from "../api"
@@ -87,6 +89,12 @@ interface Input {
 function routeScope(input: Input, scope: RouteScope | Refusal): void {
   if ("message" in scope) return input.actions.notify(scope.message)
   void input.actions.route(scope)
+}
+
+/** Place → Autoplace selection and Autoplace instance: places the scope, or says why there is none. */
+function placeScope(input: Input, scope: PlaceScope | Refusal): void {
+  if ("message" in scope) return input.actions.notify(scope.message)
+  void input.actions.autoplace(scope)
 }
 
 /** Route → Unroute: the selected router copper, or with no copper selected all of it. */
@@ -218,6 +226,10 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     find: input.openFind,
     checkDrc: input.openChecks,
     designRules: () => input.openDialog("rules"),
+    autoplace: () => placeScope(input, { kind: "all" }),
+    autoplaceSelection: () => placeScope(input, placeSelectionScope(input.design, input.selection.names)),
+    autoplaceInstance: () => placeScope(input, placeInstanceScope(input.design, input.selection.names)),
+    fitBoard: () => void input.actions.fitBoard(),
     autoroute: () => routeScope(input, { kind: "all" }),
     autorouteSelection: () => routeScope(input, selectionScope(input.design, input.selection.names)),
     autorouteNet: () => routeScope(input, netScope(input.highlight)),

@@ -26,6 +26,7 @@ import { onPage } from "./page-commands"
 import { designOnPage, pageNames } from "./schematic-pages"
 import { FilterPanel } from "./FilterPanel"
 import { RouteStatus } from "./RouteStatus"
+import { PlaceStatus } from "./PlaceStatus"
 import { LayerPanel } from "./LayerPanel"
 import { pourRows } from "../pcb/layers"
 import { pourNetName } from "../pcb/pour-hit"
@@ -149,6 +150,7 @@ function CenterColumn(props: WorkspaceProps & { onContextMenu: ContextMenuState[
         {sheet && view === "schematic" && <SchematicCanvas key={`${data.file}
 ${page}`} {...sheet} {...gridProps(workspace, "schematic")} markers={checks.markers.schematic} />}
         <RouteStatus route={data.route} onCancel={() => void props.actions.cancelRoute()} />
+        <PlaceStatus place={data.place} onCancel={() => void props.actions.cancelAutoplace()} />
         {find.box.open && <FindBox text={find.box.text} seq={find.box.seq} onText={find.setText} onSearch={find.search} onClose={find.close} status={findStatus(find.results.query, find.results.rows.length)} />}
       </section>
       {workspace.bottom.open && (

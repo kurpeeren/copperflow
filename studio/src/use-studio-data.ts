@@ -1,8 +1,9 @@
 // What Studio loads from its server: the project's circuit files, the open file's circuit, build and history, and
 // the parts; kept in step with the server's change events.
 import { useCallback, useEffect, useState } from "react"
-import { api, subscribe, type BuildState, type CircuitData, type HistoryListing, type HistoryProblem, type HistoryResult, type PartsData, type RouteEvent } from "./api"
+import { api, subscribe, type BuildState, type CircuitData, type HistoryListing, type HistoryProblem, type HistoryResult, type PartsData, type PlaceEvent, type RouteEvent } from "./api"
 import { isRouting, routeProgressText, writtenMark } from "../../src/studio/route-events.js"
+import { isPlacing, placedMark, placeProgressText } from "../../src/studio/place-events.js"
 import { announceHistoryWrite } from "./history-writes"
 import { isStaleKey } from "./request-error"
 
@@ -22,6 +23,8 @@ export interface StudioData {
   parts: PartsData
   /** The open circuit's latest Route → Autoroute news, from this Studio or another viewer's run. */
   route: RouteEvent | undefined
+  /** The open circuit's latest Place → Autoplace news. */
+  place: PlaceEvent | undefined
   /** Reloads the circuit and the history of `file`. */
   refresh(file: string): Promise<void>
   refreshParts(): Promise<void>
@@ -62,6 +65,7 @@ export function useStudioData(notify: (text: string) => void, onFile: () => void
   const [historyProblems, setHistoryProblems] = useState<HistoryProblem[]>([])
   const [parts, setParts] = useState<PartsData>({ library: [], builtin: [] })
   const [route, setRoute] = useState<RouteEvent>()
+  const [place, setPlace] = useState<PlaceEvent>()
   // An out of date key stops every request, so the canvas says so instead of waiting for a build forever.
   const report = useCallback(
     (text: string) => {
@@ -108,10 +112,25 @@ export function useStudioData(notify: (text: string) => void, onFile: () => void
     [notify, refresh, report],
   )
 
+  /** A placement's news: its end is told, and a write is announced as an undo is, so the canvas waits for it. */
+  const onPlace = useCallback(
+    (event: PlaceEvent) => {
+      setPlace(event)
+      if (isPlacing(event)) return
+      notify(placeProgressText(event))
+      const mark = placedMark(event)
+      if (mark === undefined) return
+      void announceHistoryWrite(Promise.resolve({ ok: true, mark }))
+      refresh(event.file).catch((error: Error) => report(error.message))
+    },
+    [notify, refresh, report],
+  )
+
   useEffect(() => {
     if (!file) return
     onFile()
     setRoute(undefined)
+    setPlace(undefined)
     refresh(file).catch((error: Error) => report(error.message))
     api("/api/build", { file })
       .then(() => refreshBuild(file))
@@ -123,10 +142,11 @@ export function useStudioData(notify: (text: string) => void, onFile: () => void
       }
       if (changed !== file) return
       if (event === "route") return onRoute(data as unknown as RouteEvent)
+      if (event === "place") return onPlace(data as unknown as PlaceEvent)
       const update = event === "change" ? refresh(file) : refreshBuild(file)
       update.catch((error: Error) => report(error.message))
     })
-  }, [file, refresh, refreshBuild, refreshParts, report, onFile, onRoute])
+  }, [file, refresh, refreshBuild, refreshParts, report, onFile, onRoute, onPlace])
 
-  return { files, sheets, project, file, setFile, circuit, build, history, historyProblems, parts, route, refresh, refreshParts }
+  return { files, sheets, project, file, setFile, circuit, build, history, historyProblems, parts, route, place, refresh, refreshParts }
 }
