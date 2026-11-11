@@ -131,7 +131,7 @@ export const MENUS: readonly Menu[] = [
     title: "File",
     entries: [
       run("Open circuit file", "openFile", "Ctrl+O"),
-      later("New circuit…", SOON),
+      run("New circuit…", "newCircuit"),
       "separator",
       run("Export BOM", "exportBom"),
       run("Export package", "exportPackage"),

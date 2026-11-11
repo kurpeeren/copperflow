@@ -254,6 +254,7 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     flip: () => flipSelection(input),
     annotate: () => annotateDesignators(input),
     systemSettings: () => input.openDialog("system"),
+    newCircuit: () => input.openDialog("newCircuit"),
   }
   return (table as Partial<Record<CommandId, () => void>>)[command]
 }

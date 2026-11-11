@@ -17,7 +17,9 @@ import {
   addMark,
   applyLayoutEdits,
   circuitPathFor,
+  createCircuitFile,
   editCircuit,
+  projectPath,
   EditError,
   isInside,
   isLayoutFile,
@@ -38,6 +40,7 @@ import {
 import { Engine } from "../engine/engine.js"
 import { setFilletRadius } from "../core/rules-edit.js"
 import { readProject } from "../core/project.js"
+import { boardSkeleton } from "../core/netlist.js"
 import { RULES_PATH } from "../engine/rules/load.js"
 import { layoutPathFor, readLayoutText, type TrackRecord } from "../core/layout-file.js"
 import { lockedPartsAt, lockedStart } from "../core/layout-locks.js"
@@ -244,6 +247,8 @@ const Bodies = {
     instance: z.string().max(64).optional(),
     preview: z.boolean().optional(),
   }),
+  // File → New circuit: an empty circuit file with a board, written through the core as one history entry.
+  newCircuit: z.object({ file: z.string().min(1).max(200).regex(/^[\w\- ./]+\.circuit\.tsx$/), width: z.number().positive().max(1000), height: z.number().positive().max(1000) }),
 }
 
 /**
@@ -362,6 +367,13 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         const writeMark = live.nextMark()
         live.requestBuild(result.entry.file)
         return send(res, { entryId: result.entry.id, preview: result.preview, writeMark })
+      }
+      case "POST /api/new-circuit": {
+        const body = Bodies.newCircuit.parse(await readJson(req))
+        const target = projectPath(root, body.file)
+        const entry = await createCircuitFile(root, target, boardSkeleton({ width: body.width, height: body.height }), { author: "human", summary: `create ${target} (empty, ${body.width} × ${body.height} mm board)` })
+        live.requestBuild(entry.file)
+        return send(res, { file: entry.file, entryId: entry.id })
       }
       // Copper goes to the layout file beside the circuit; the built design tells which tracks start on locked parts.
       case "POST /api/layout": {
