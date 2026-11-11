@@ -11,6 +11,7 @@ import { padChecks } from "./drc-pads.js"
 import { pourChecks } from "./drc-pours.js"
 import { partChecks } from "./drc-parts.js"
 import { electricalChecks } from "./erc.js"
+import { withoutUnplacedPositions } from "./unplaced-parts.js"
 import { violation, type Violation } from "./violation.js"
 
 export type { Violation } from "./violation.js"
@@ -60,7 +61,7 @@ export function checkDesign(
   const classOf = (net: string | undefined): string => (net === undefined ? DEFAULT_CLASS.name : (byNet.get(net) ?? DEFAULT_CLASS.name))
   const placed = { ...layout, parts: layout.parts.filter(hasPosition) }
   const skipped = layout.parts.filter((part) => !hasPosition(part)).map(unplaced)
-  return mergeViolations([
+  const found = mergeViolations([
     ...electricalChecks(circuit, schematic, rules),
     ...padChecks(placed, rules, classOf),
     ...partChecks(placed, rules),
@@ -69,4 +70,5 @@ export function checkDesign(
     ...copperNoteChecks(copperNotes, layout),
     ...skipped,
   ])
+  return withoutUnplacedPositions(found, layout)
 }
