@@ -104,7 +104,8 @@ export async function autoplace(
   const writes = placementWrites(design, placement.positions)
   const unplaced = listLine("Not placed", placement.unplaced.map((u) => `${u.name} (${u.reason})`))
   if (writes.circuit.length + writes.sheets.length === 0 && !input.fit) {
-    const none = placement.unplaced.length === 0 ? "Nothing to place: every part in the scope is placed or locked." : "No part was placed."
+    const which = scope.kind === "instance" ? `every part of ${scope.instance}` : "every part in the scope"
+    const none = placement.unplaced.length === 0 ? `Nothing to place: ${which} already has a position or is locked; autoplace moves only parts without one.` : "No part was placed."
     return [`${none} Nothing was written.`, ...unplaced].join("\n")
   }
   const guard = async () => {

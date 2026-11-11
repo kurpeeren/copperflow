@@ -127,6 +127,23 @@ describe("autoplace and fit_board", () => {
     expect(answer.text).toMatch(/R201 shares R1 of Stage\.sheet\.tsx with R101, which is locked; it was not moved/)
   })
 
+  test("an instance on a schematic page is placed; once placed, the answer says its parts already have positions", async () => {
+    const stage = { parts: [{ name: "R1", kind: "resistor", value: "1k", footprint: "0603" }, { name: "C1", kind: "capacitor", value: "1uF", footprint: "0603" }], nets: { VIN: ["R1.pin1"], VOUT: ["R1.pin2", "C1.pin1"], GND: ["C1.pin2"] }, ports: ["VIN", "VOUT", "GND"] }
+    const spec = {
+      file: "paged.circuit.tsx",
+      sheets: { Power: stage },
+      instances: [{ sheet: "Power", name: "PS1", connections: { VIN: "V5", VOUT: "V3_3", GND: "GND" } }],
+      parts: [{ name: "J1", kind: "pinheader", props: { pinCount: 3 } }],
+      nets: { V5: ["J1.pin1"], V3_3: ["J1.pin2"], GND: ["J1.pin3"] },
+      pages: [{ name: "Power", parts: ["PS1"] }],
+    }
+    expect((await call("new_circuit", { ...spec, place: false })).isError).toBe(false)
+    expect((await call("autoplace", { file: spec.file, instance: "PS1" })).text).toMatch(/^Placed 2 parts/)
+    expect((await call("new_circuit", { ...spec, replace: true })).text).toMatch(PLACED)
+    const again = await call("autoplace", { file: spec.file, instance: "PS1" })
+    expect(again.text).toMatch(/^Nothing to place: every part of PS1 already has a position or is locked; autoplace moves only parts without one\./)
+  })
+
   test("refuses both parts and instance, and an unknown part", async () => {
     await call("new_circuit", { ...DEMO, place: false })
     expect((await call("autoplace", { file: FILE, parts: ["R1"], instance: "PS1" })).text).toMatch(/Give parts or instance/)
