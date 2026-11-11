@@ -342,10 +342,16 @@ export function verificationTemplate(id: string, part: Part, footprintText?: str
     `- [ ] Footprint ${part.footprint} matches the package drawing`,
     ...(footprintText === undefined ? [] : ["- [ ] Every pad in footprint.yaml matches the recommended land pattern (position, size, drill)"]),
     ...Object.entries(part.suppliers ?? {}).map(([supplier, number]) => `- [ ] ${supplier} part ${number} is this exact part`),
-    ...(part.origin ? [`- [ ] Every pin name and type matches the datasheet (${part.origin}; nothing from the source has been checked)`] : []),
+    // A fetched part's names and types come from its source; a written part's are already in the pin items above.
+    ...(part.origin && !isWritten(part.origin) ? [`- [ ] Every pin name and type matches the datasheet (${part.origin}; nothing from the source has been checked)`] : []),
     ...(notes.length > 0 ? ["", "## Notes", "", ...notes.map((note) => `- [ ] ${note}`)] : []),
     "",
   ].join("\n")
+}
+
+/** A part written from a datasheet by a person or the agent ("written 2026-11-11"), not fetched from a source. */
+export function isWritten(origin: string): boolean {
+  return /^written( |$)/.test(origin)
 }
 
 function parsePart(text: string, label: string): Part {
