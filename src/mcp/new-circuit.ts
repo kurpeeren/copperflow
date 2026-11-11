@@ -3,6 +3,8 @@ import { access } from "node:fs/promises"
 import { annotationsPathFor, BUILTIN_PARTS, createCircuitFile, generateCircuit, projectPath, readAnnotations, resolveInRoot, type GeneratedInstance, type NewCircuit } from "../core/index.js"
 import { COMPACT_LIMIT } from "./compact.js"
 import { holeFields, pourFields } from "./pour-tools.js"
+import type { DesignSource } from "../core/design-source.js"
+import { autoplace } from "./place-tools.js"
 
 const literal = z.union([z.string(), z.number(), z.boolean()])
 
@@ -59,10 +61,11 @@ export const newCircuitInput = {
     .describe('Copper pours, e.g. [{ "net": "GND", "layer": "bottom" }]: each fills the whole board, or its outline, with its net; a board gets a GND pour on the layer the parts sit on (both layers when a two-layer board is routed on both)'),
   holes: z.array(z.object(holeFields)).max(50).optional().describe("Non-plated mounting holes, e.g. [{ \"x\": 12, \"y\": 7, \"diameter\": 3.2 }]"),
   replace: z.boolean().optional().describe("Overwrite the file and its sheet files when they exist"),
+  place: z.boolean().optional().describe("Place the parts on the board after writing (default true), as a second change; without board, the board is then fitted round them. false leaves them unplaced"),
 }
 
 export const NEW_CIRCUIT_DESCRIPTION =
-  "Write a whole new circuit file from a netlist in one call: the parts (no positions) and the nets (pin lists, no wire corners). The program places the parts and routes the wires. A block used more than once goes in sheets (written once as <name>.sheet.tsx) and is placed by instances, each joining the sheet's ports to the circuit's nets. Nothing is written if a name, kind, library id, pin, port or base is wrong; the answer then says what is. One history entry for the circuit and its sheet files; undo removes them. An existing file is refused unless replace is true. Call check_circuit once afterwards."
+  "Write a whole new circuit file from a netlist in one call: the parts (no positions) and the nets (pin lists, no wire corners). The program places the parts (on the board too: autoplace runs after writing, and fits the board when no board size is given, unless place is false) and routes the schematic wires. A block used more than once goes in sheets (written once as <name>.sheet.tsx) and is placed by instances, each joining the sheet's ports to the circuit's nets. Nothing is written if a name, kind, library id, pin, port or base is wrong; the answer then says what is. One history entry for the circuit and its sheet files; undo removes them. An existing file is refused unless replace is true. Call check_circuit once afterwards."
 
 /** Marks and locks left from an earlier file of this name, as a line for the answer; they apply to the new file. */
 async function leftovers(root: string, file: string): Promise<string | undefined> {
@@ -87,9 +90,18 @@ function boardItemsLine(spec: NewCircuit): string[] {
   return pours + holes === 0 ? [] : [`${plural(pours, "pour")}, ${plural(holes, "hole")}`]
 }
 
+/** The placement's answer lines, or why it failed: the circuit is written either way. */
+async function placeAfter(root: string, file: string, fit: boolean, engine: DesignSource | undefined): Promise<string[]> {
+  try {
+    return (await autoplace({ root, ...(engine ? { engine } : {}) }, { file, fit })).split("\n")
+  } catch (error) {
+    return [`The circuit was written, but the board was not placed: ${(error as Error).message}`]
+  }
+}
+
 /** Writes the circuit (and its sheet files) and answers in a few lines. */
-export async function newCircuit(root: string, input: { file: string; replace?: boolean } & NewCircuit): Promise<string> {
-  const { file: written, replace, ...spec } = input
+export async function newCircuit(root: string, input: { file: string; replace?: boolean; place?: boolean } & NewCircuit, engine?: DesignSource): Promise<string> {
+  const { file: written, replace, place, ...spec } = input
   const file = projectPath(root, written)
   const { text, traces, sheets, instances } = await generateCircuit(root, file, spec)
   const left = await leftovers(root, file)
@@ -101,6 +113,7 @@ export async function newCircuit(root: string, input: { file: string; replace?: 
     ...(sheets.length > 0 ? { sheets } : {}),
   })
   const sheetFiles = (entry.also ?? []).map((change) => change.file)
+  const placed = place === false ? [] : await placeAfter(root, file, spec.board === undefined, engine)
   return [
     `Change ${entry.id}: wrote ${[entry.file, ...sheetFiles].join(", ")}`,
     counted,
@@ -108,6 +121,7 @@ export async function newCircuit(root: string, input: { file: string; replace?: 
     `${Object.keys(spec.nets).length} nets, ${traces} traces`,
     ...boardItemsLine(spec),
     ...(left ? [left] : []),
+    ...placed,
     "Now call check_circuit once.",
   ].join("\n")
 }

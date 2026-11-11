@@ -38,6 +38,7 @@ import * as copper from "./copper-tools.js"
 import * as fillet from "./fillet-tools.js"
 import * as pour from "./pour-tools.js"
 import * as router from "./route-tools.js"
+import * as placer from "./place-tools.js"
 import { CREATE_PART_DESCRIPTION, createPartInput, createPartTool } from "./create-part.js"
 import { IMPORT_PART_DESCRIPTION, importPart, importPartInput } from "./import-part.js"
 import { MAKE_SHEET_DESCRIPTION, makeSheet, makeSheetInput } from "./make-sheet.js"
@@ -198,6 +199,8 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     { description: fillet.STRAIGHTEN_TRACKS_DESCRIPTION, inputSchema: fillet.straightenTracksInput },
     (input) => run(() => fillet.straightenTracks(ports, input)),
   )
+  server.registerTool("autoplace", { description: placer.AUTOPLACE_DESCRIPTION, inputSchema: placer.autoplaceInput }, (input) => run(() => placer.autoplace(ports, input)))
+  server.registerTool("fit_board", { description: placer.FIT_BOARD_DESCRIPTION, inputSchema: placer.fitBoardInput }, (input) => run(() => placer.fitBoardTool(ports, input)))
   server.registerTool("autoroute", { description: router.AUTOROUTE_DESCRIPTION, inputSchema: router.autorouteInput }, (input) => run(() => router.autoroute(ports, input)))
   server.registerTool(
     "unroute",
@@ -225,7 +228,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
   server.registerTool(
     "new_circuit",
     { description: NEW_CIRCUIT_DESCRIPTION, inputSchema: newCircuitInput },
-    (input) => run(() => newCircuit(root, input)),
+    (input) => run(() => newCircuit(root, input, options.engine)),
   )
 
   server.registerTool("make_sheet", { description: MAKE_SHEET_DESCRIPTION, inputSchema: makeSheetInput }, (input) => run(() => makeSheet(root, input, options.engine)))

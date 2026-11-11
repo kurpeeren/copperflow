@@ -1,0 +1,129 @@
+// The agent's placement tools. autoplace runs the same placer as the Studio's Place → Autoplace, in this process
+// within a time budget, and writes the positions through the same core path: one history entry by the agent, the
+// pcbX/pcbY/pcbRotation of each part as its own props mean them, locked and hand-placed parts left where they are. As
+// autoroute does, it hashes the files a build reads before placing and again in the write queue, and discards the
+// result when they changed. fit_board reshapes a rectangular board round the parts as one entry.
+import { z } from "zod"
+import { editCircuit, resolveCircuit } from "../core/index.js"
+import { placementWrites, writePlacement } from "../core/placement-write.js"
+import type { Design } from "../engine/design.js"
+import { DEFAULT_FIT_MARGIN, placeBoard, type Placement } from "../engine/pcb-place/index.js"
+import type { PlaceScope } from "../engine/pcb-place/scope.js"
+import { fitBoardEdit } from "../studio/fit-board.js"
+import { checkedPlaceScope, lockedNames } from "../studio/place-runner.js"
+import { placeSummary } from "../studio/place-events.js"
+import { discardReason } from "../studio/route-events.js"
+import { contentHashes } from "../studio/route-runner.js"
+import { buildOf, type Ports } from "./copper-tools.js"
+
+export const DEFAULT_PLACE_BUDGET_SECONDS = 20
+const MAX_BUDGET_SECONDS = 300
+/** The unplaced parts and notes an answer names; the rest are counted. */
+const SHOWN = 10
+
+export const autoplaceInput = {
+  file: z.string().describe("Circuit file path relative to the project root"),
+  parts: z.array(z.string().min(1)).min(1).max(500).optional().describe('Place only these parts, e.g. ["U1", "C3"]'),
+  instance: z.string().min(1).optional().describe('Place only the parts of this sub-sheet instance, e.g. "PS1"'),
+  fit: z.boolean().optional().describe("true: then shrink or grow the (rectangular) board round the parts with a 2 mm margin"),
+  budgetSeconds: z.number().positive().max(MAX_BUDGET_SECONDS).optional().describe(`The time the placer may take; ${DEFAULT_PLACE_BUDGET_SECONDS} s by default`),
+}
+
+export const fitBoardInput = {
+  file: z.string().describe("Circuit file path relative to the project root"),
+  margin: z.number().min(0).max(50).optional().describe(`Space round the parts' courtyards in mm; ${DEFAULT_FIT_MARGIN} by default`),
+}
+
+export const AUTOPLACE_DESCRIPTION =
+  "Place the board's parts by their connections as ONE change: every part without a position (or only those of parts or of one sub-sheet instance). Chips go first, decoupling capacitors beside their supply pins, connectors on the nearest edge; the total wire length is then shortened. Parts a person placed or locked stay where they are and are worked round. Run it before autoroute. The answer is one line (parts placed, wire length before and after, board size, overlaps), then the parts it found no room for with the reason, and its notes. fit: true also fits the board round the parts."
+export const FIT_BOARD_DESCRIPTION =
+  "Shrink or grow a rectangular board to the parts' courtyards plus a margin (2 mm by default), as ONE change. Refused for a board drawn with a non-rectangular outline."
+
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`
+const mm = (v: number) => String(Math.round(v * 10) / 10)
+
+/** The scope the arguments ask for: at most one of parts and instance. */
+function scopeOf(design: Design, input: { parts?: string[] | undefined; instance?: string | undefined }): PlaceScope {
+  if (input.parts && input.instance !== undefined) throw new Error("Give parts or instance, or neither to place the board. Nothing was written.")
+  const scope: PlaceScope = input.parts ? { kind: "parts", parts: input.parts } : input.instance !== undefined ? { kind: "instance", instance: input.instance } : { kind: "all" }
+  return checkedPlaceScope(design, scope)
+}
+
+export function budgetOf(asked: number | undefined): number {
+  if (asked === undefined) return DEFAULT_PLACE_BUDGET_SECONDS
+  if (!(asked > 0)) throw new Error(`budgetSeconds must be more than 0 (it was ${asked}). Nothing was written.`)
+  return Math.min(asked, MAX_BUDGET_SECONDS)
+}
+
+/** "board 42 × 28 mm" from the built outline, or nothing without one. */
+function boardText(design: Design): string | undefined {
+  const outline = design.pcb.board?.outline ?? []
+  if (outline.length < 3) return undefined
+  const xs = outline.map((p) => p.x)
+  const ys = outline.map((p) => p.y)
+  return `board ${mm(Math.max(...xs) - Math.min(...xs))} × ${mm(Math.max(...ys) - Math.min(...ys))} mm`
+}
+
+/** "Placed 12 parts; wire length 184 mm (was 412); board 42 × 28 mm; 0 overlaps" */
+export function placedLine(placed: number, placement: Pick<Placement, "score" | "before">, after: Design): string {
+  const overlaps = after.violations.filter((v) => v.code === "courtyard-overlap").length
+  const board = boardText(after)
+  return [`Placed ${plural(placed, "part")}`, `wire length ${Math.round(placement.score.wireLength)} mm (was ${Math.round(placement.before.wireLength)})`, ...(board ? [board] : []), plural(overlaps, "overlap")].join("; ")
+}
+
+/** A list line naming at most SHOWN items. */
+function listLine(head: string, items: readonly string[]): string[] {
+  if (items.length === 0) return []
+  const more = items.length > SHOWN ? `, … and ${items.length - SHOWN} more` : ""
+  return [`${head}: ${items.slice(0, SHOWN).join("; ")}${more}`]
+}
+
+export interface AutoplaceOptions {
+  /** The clock the budget is measured on, in ms; tests pass their own. */
+  clock?: () => number
+}
+
+/** autoplace: places in this process within the budget and writes the positions as one change by the agent. */
+export async function autoplace(
+  ports: Ports,
+  input: { file: string; parts?: string[] | undefined; instance?: string | undefined; fit?: boolean | undefined; budgetSeconds?: number | undefined },
+  options: AutoplaceOptions = {},
+): Promise<string> {
+  const budgetSeconds = budgetOf(input.budgetSeconds)
+  const circuit = await resolveCircuit(ports.root, input.file)
+  if (!circuit.file.endsWith(".circuit.tsx")) throw new Error(`${circuit.file} is a sub-sheet; place the board of the circuit that uses it. Nothing was written.`)
+  const start = await contentHashes(ports.root, circuit.file)
+  const design = await buildOf(ports, circuit.file)
+  const scope = scopeOf(design, input)
+  const locked = await lockedNames(circuit.path, design)
+  const placement = placeBoard(design, { scope, locked, budgetMs: budgetSeconds * 1000, ...(options.clock ? { clock: options.clock } : {}) })
+  const writes = placementWrites(design, placement.positions)
+  const unplaced = listLine("Not placed", placement.unplaced.map((u) => `${u.name} (${u.reason})`))
+  if (writes.circuit.length + writes.sheets.length === 0 && !input.fit) {
+    const none = placement.unplaced.length === 0 ? "Nothing to place: every part in the scope is placed or locked." : "No part was placed."
+    return [`${none} Nothing was written.`, ...unplaced].join("\n")
+  }
+  const guard = async () => {
+    const why = discardReason(start, await contentHashes(ports.root, circuit.file))
+    if (why !== undefined) throw new Error(`${why.replace("while the board was routed", "while the board was placed").replace("; route again", "; place again")}. Nothing was written.`)
+  }
+  const written = await writePlacement(ports.root, circuit.file, writes, { author: "ai", summary: placeSummary(scope, placement.positions.size), guard, ...(input.fit ? { fit: { margin: DEFAULT_FIT_MARGIN } } : {}) })
+  const after = await buildOf(ports, circuit.file)
+  const fitError = written.board && "error" in written.board ? [`The board was not fitted: ${written.board.error}`] : []
+  return [
+    placedLine(written.written.length, placement, after),
+    ...(written.entry ? [`Change ${written.entry.id}; undo_change takes it back.`] : ["Nothing was written: the positions are those the parts already have."]),
+    ...unplaced,
+    ...listLine("Notes", [...placement.notes, ...writes.notes, ...written.skipped.map((s) => `${s}; it was not moved`), ...fitError]),
+    ...(placement.budgetSpent ? [`Stopped at the ${budgetSeconds} s time budget; run autoplace again (with a larger budgetSeconds) to do better.`] : []),
+  ].join("\n")
+}
+
+/** fit_board: the board reshaped round the parts as one change by the agent. */
+export async function fitBoardTool(ports: Ports, input: { file: string; margin?: number | undefined }): Promise<string> {
+  const circuit = await resolveCircuit(ports.root, input.file)
+  const fit = fitBoardEdit(await buildOf(ports, circuit.file), input.margin)
+  if ("error" in fit) throw new Error(`${fit.error}. Nothing was written.`)
+  const result = await editCircuit(ports.root, circuit.file, [fit.edit], { author: "ai", summary: fit.summary })
+  return `Change ${result.entry.id}: board ${mm(fit.width)} × ${mm(fit.height)} mm (margin ${input.margin ?? DEFAULT_FIT_MARGIN} mm)`
+}

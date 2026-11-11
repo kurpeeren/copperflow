@@ -104,7 +104,8 @@ describe("the new_circuit tool with sheets", () => {
   let dir: string
   let client: Client
   const call = async (name: string, args: Record<string, unknown>) => {
-    const result = await client.callTool({ name, arguments: args })
+    // These tests are about the file new_circuit writes; placing it is tested in new-circuit-place.test.ts.
+  const result = await client.callTool({ name, arguments: name === "new_circuit" ? { place: false, ...args } : args })
     const content = result.content as Array<{ type: string; text: string }>
     return { text: content.map((c) => c.text).join("\n"), isError: result.isError === true }
   }

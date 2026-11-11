@@ -27,7 +27,7 @@ beforeEach(async () => {
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
   client = new Client({ name: "test", version: "0.0.0" })
   await Promise.all([server.connect(serverSide), client.connect(clientSide)])
-  await call("new_circuit", { file: FILE, ...STAGE_SPEC })
+  await call("new_circuit", { file: FILE, ...STAGE_SPEC, place: false })
 })
 
 describe("edit_circuit with sub-sheets", () => {
