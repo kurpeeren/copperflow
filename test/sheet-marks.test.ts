@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest"
+import { applyEdits } from "../src/core/index.js"
 import { flaggedPins, noConnectFlags, noConnectNames, toggleNoConnect } from "../src/engine/no-connect.js"
 import { drawingBounds, drawingKindOf, drawingTag, JUNCTION_RADIUS } from "../src/engine/drawing-kinds.js"
 import { junctionClick, noConnectClick, pinEndAt, wirePointAt, type MarkContext } from "../studio/src/pcb/sheet-marks.js"
@@ -48,7 +49,9 @@ describe("Place → No connect flag", () => {
 
   test("a click on a flagged pin takes the flag off", () => {
     const result = noConnectClick(context({ noConnect: prop("pin2") }), { x: 1, y: 0 }, 0.1)
-    expect(result).toEqual({ edit: { kind: "setProps", part: "U1", props: { noConnect: "" } }, summary: "remove the no connect flag from U1.pin2" })
+    expect(result).toEqual({ edit: { kind: "setProps", part: "U1", props: { noConnect: null } }, summary: "remove the no connect flag from U1.pin2" })
+    const src = `export default () => (\n  <board width="9mm" height="9mm">\n    <chip name="U1" pinCount={2} noConnect="pin2" />\n  </board>\n)\n`
+    expect(applyEdits(src, [{ kind: "setProps", part: "U1", props: { noConnect: null } }], new Set())).not.toContain("noConnect")
   })
 
   test("refuses away from a pin, on a locked part and on an expression", () => {

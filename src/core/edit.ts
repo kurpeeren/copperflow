@@ -23,6 +23,7 @@ import { renamePort, setSheetSize } from "./sheet-edits.js"
 import { renameParts } from "./rename-parts.js"
 import { setBoard } from "./board-edits.js"
 import { LABEL_AT_PROPS } from "../engine/component.js"
+import { NO_CONNECT_PROP } from "../engine/no-connect.js"
 import { MAIN_PAGE } from "../engine/model.js"
 import type { Edit, Literal, PartInfo, Point, PropValue } from "./types.js"
 
@@ -112,7 +113,7 @@ function setProps(
   if (!node) throw new EditError("not_found", `No part named ${name}`)
   const out = new MagicString(source)
   for (const [key, value] of Object.entries(props)) {
-    if (value === null && !LABEL_PROPS.has(key)) throw new EditError("invalid", `${key} cannot be removed with null; only ${LABEL_AT_PROPS.join(", ")} can`)
+    if (value === null && !REMOVABLE_PROPS.has(key)) throw new EditError("invalid", `${key} cannot be removed with null; only ${[...REMOVABLE_PROPS].join(", ")} can`)
     const formatted = value === null ? null : formattedProp(key, value)
     const attribute = attributeNamed(source, node, key)
     if (attribute && !part.props[key]?.editable) {
@@ -129,6 +130,8 @@ function setProps(
 }
 
 const LABEL_PROPS: ReadonlySet<string> = new Set(LABEL_AT_PROPS)
+/** Props a null removes: the moved labels' positions, and the no connect flags once the last one goes. */
+const REMOVABLE_PROPS: ReadonlySet<string> = new Set([...LABEL_AT_PROPS, NO_CONNECT_PROP])
 
 /** A prop's value as written: a point for a label's position (rounded, as corners are), else a checked literal. */
 function formattedProp(key: string, value: Literal | Point): string {

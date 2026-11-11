@@ -55,7 +55,7 @@ export function noConnectClick(context: MarkContext, at: Point, reach: number): 
   const value = toggleNoConnect(written?.literal, pin)
   const removed = noConnectNames(value).length < noConnectNames(written?.literal).length
   const summary = `${removed ? "remove the no connect flag from" : "flag no connect on"} ${hit.pin}`
-  return { edit: { kind: "setProps", part: part.name, props: { [NO_CONNECT_PROP]: value } }, summary }
+  return { edit: { kind: "setProps", part: part.name, props: { [NO_CONNECT_PROP]: value === "" ? null : value } }, summary }
 }
 
 /** The point of segment a→b nearest `p`. */
