@@ -1,10 +1,12 @@
 // board_summary: the board in words, the model's eyes on the layout. Board size and layers, the share of the board the
-// courtyards take, a line per part, the longest ratsnest lines, placement findings, pours and the unrouted count; the
+// courtyards take, a line per part, the longest connections with their pads, placement findings, pours and the unrouted count; the
 // default answer stops at about 60 lines and the rest is behind detail "full".
 import type { Design } from "../engine/design.js"
 import type { Point } from "../engine/model.js"
 import { naturalCompare } from "../engine/order.js"
+import { connectionPlace, padsById } from "../engine/pad-text.js"
 import type { PlacedFootprint, RatsnestLine } from "../engine/pcb.js"
+import { ratsnest } from "../engine/ratsnest.js"
 import { netLabel } from "./copper-under.js"
 
 /** board_summary stops near here, so the answer fits a screen. */
@@ -14,7 +16,7 @@ const LONGEST_SHOWN = 10
 const FINDINGS_SHOWN = 10
 
 export const BOARD_SUMMARY_DESCRIPTION =
-  'The board in words, in about 60 lines: board size and layers, the share the courtyards use, one line per part ("U1 MCP2515 soic18w @(12.0, 8.5) r90 top [LOCKED]"; "not placed" for a part without a position), the ten longest unrouted connections with their nets, overlapping courtyards, parts off the board or within the edge clearance, pours per layer and the unrouted count. Long part lists end with "… and N more parts (detail: full)"; detail "full" lists everything.'
+  'The board in words, in about 60 lines: board size and layers, the share the courtyards use, one line per part ("U1 MCP2515 soic18w @(12.0, 8.5) r90 top [LOCKED]"; "not placed" for a part without a position), the ten longest connections, routed or not, with their net, both pads and where they are ("OSC1: U1.pin8 (4.20, 6.10 top) to Y1.pin1 (18.30, 5.90 top) 25.2 mm", "unrouted" when no copper joins them; a part far from the pin it serves shows here), overlapping courtyards, parts off the board or within the edge clearance, pours per layer and the unrouted count. Long part lists end with "… and N more parts (detail: full)"; detail "full" lists everything.'
 
 export type BoardDetail = "compact" | "full"
 
@@ -87,12 +89,25 @@ export function partLine(design: Design, part: PlacedFootprint, locked: Readonly
 }
 
 const lineLength = (line: RatsnestLine) => Math.hypot(line.b.x - line.a.x, line.b.y - line.a.y)
+const lineKey = (line: RatsnestLine) => `${line.net}|${line.from}|${line.to}`
 
+/**
+ * The longest connections, routed or not, each with its two pads and where they are, so a part far from the pin it
+ * serves shows: "OSC1: U1.pin8 (4.20, 6.10 top) to Y1.pin1 (18.30, 5.90 top) 25.2 mm". The connections are the
+ * ratsnest with copper ignored, measured pad to pad in a straight line; a poured net's routed ones are left out (the
+ * pour joins them wherever the parts are), its unrouted ones are not.
+ */
 function longestLines(design: Design, shown: number): string[] {
-  const lines = [...design.pcb.ratsnest].sort((a, b) => lineLength(b) - lineLength(a) || naturalCompare(a.from, b.from))
+  const open = new Set(design.pcb.ratsnest.map(lineKey))
+  const poured = new Set(design.pcb.pours.map((pour) => pour.net))
+  const lines = ratsnest(design.pcb.parts)
+    .filter((line) => open.has(lineKey(line)) || !poured.has(line.net))
+    .sort((a, b) => lineLength(b) - lineLength(a) || naturalCompare(a.from, b.from))
   if (lines.length === 0) return []
-  const head = `Longest unrouted connections (${Math.min(shown, lines.length)} of ${lines.length}):`
-  return [head, ...lines.slice(0, shown).map((l) => `  ${netLabel(design.circuit.nets, l.net)} ${l.from} - ${l.to}: ${mm(lineLength(l))} mm`)]
+  const pads = padsById(design.pcb)
+  const head = `Longest connections, pad to pad (${Math.min(shown, lines.length)} of ${lines.length}):`
+  const line = (l: RatsnestLine) => `  ${netLabel(design.circuit.nets, l.net)}: ${connectionPlace(pads, l)} ${mm(lineLength(l))} mm${open.has(lineKey(l)) ? " unrouted" : ""}`
+  return [head, ...lines.slice(0, shown).map(line)]
 }
 
 function listed(head: string, names: readonly string[], shown: number): string[] {

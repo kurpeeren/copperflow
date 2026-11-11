@@ -118,7 +118,7 @@ means, `replace`, refused pins and the export's warnings are in
    Mounting holes with `add_hole` `{ file, x, y, diameter }`.
 9. **Fine tuning.** `board_summary` `{ file }` is your eyes: `main.circuit.tsx: Board 42 × 28 mm,
    2 layers, courtyards use 38%; 24 parts, 18 nets`, one line per part
-   (`U1 MCP2515 soic18w @(12.0, 8.5) r90 top [LOCKED]`), the ten longest unrouted connections,
+   (`U1 MCP2515 soic18w @(12.0, 8.5) r90 top [LOCKED]`), the ten longest connections with both pads' places,
    `Courtyards overlap (n):`, `Off the board (n):`, `Pours:` and `Unrouted: N connections`. Move
    a part with `set_props` `{ pcbX, pcbY, pcbRotation }` only when the summary shows a reason,
    and never one the human placed unless they ask.

@@ -159,7 +159,9 @@ board_summary { file: "sensor.circuit.tsx" }
 → sensor.circuit.tsx: Board 24 × 17 mm, 2 layers, courtyards use 31%; 11 parts, 8 nets
   C1 100nF 0402 @(4.1, 2.0) r0 top
   …
-  Longest unrouted connections (10 of 17): …
+  Longest connections, pad to pad (10 of 17):
+    ADC1: R201.pin2 (6.10, 3.00 top) to U1.pin2 (9.20, 4.10 top) 3.3 mm unrouted
+  …
   Pours: none
   Unrouted: 17 connections
 add_pour { file: "sensor.circuit.tsx", net: "GND", layer: "top" }

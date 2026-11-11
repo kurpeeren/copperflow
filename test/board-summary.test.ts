@@ -32,6 +32,20 @@ describe("board_summary", () => {
     for (const part of design.pcb.parts) expect(edgeDistance(part.courtyard, outline)).toBeGreaterThanOrEqual(design.rules.fabrication.boardEdgeClearance)
   })
 
+  test("the longest connections name both pads and where they are, routed ones too, so a far crystal shows", () => {
+    const folder = fileURLToPath(new URL("./fixtures/can-proof-3", import.meta.url))
+    const design = buildDesign(filesIn(folder), CAN_MAIN)
+    const text = formatBoardSummary(CAN_MAIN, design, new Set())
+    expect(lines(text).length).toBeLessThanOrEqual(BOARD_SUMMARY_LIMIT)
+    const longest = lines(text).filter((l) => /^ {2}\w+: /.test(l))
+    expect(longest).toHaveLength(10)
+    // The proof run routed every connection, yet the crystal's long lines are listed with both pads' places.
+    const osc = longest.find((l) => l.startsWith("  OSC1: "))
+    expect(osc).toMatch(/^ {2}OSC1: U1\.\S+ \(-?[\d.]+, -?[\d.]+ top\) to Y1\.\S+ \(-?[\d.]+, -?[\d.]+ through\) [\d.]+ mm$|^ {2}OSC1: Y1\.\S+ .* to U1\.\S+ .* [\d.]+ mm$/)
+    // GND is poured on both layers: its routed lines say nothing about placement and are left out.
+    expect(longest.some((l) => l.startsWith("  GND: "))).toBe(false)
+  })
+
   test("the findings: overlapping courtyards, a part off the board and one within the edge clearance", () => {
     const r = (name: string, x: number, y: number) => `    <resistor name="${name}" resistance="1k" footprint="0603" pcbX={${x}} pcbY={${y}} />\n`
     const source = (x4: number) => `export default () => (\n  <board width="20mm" height="10mm">\n${r("R1", 0, 0)}${r("R2", 0.5, 0)}${r("R3", 30, 0)}${r("R4", x4, 0)}${r("R5", -5, 0)}  </board>\n)\n`
@@ -57,7 +71,8 @@ describe("board_summary", () => {
     const text = formatBoardSummary(BENCHMARK_MAIN, design, new Set())
     expect(lines(text).length).toBe(BOARD_SUMMARY_LIMIT)
     expect(text).toMatch(/^… and \d+ more parts \(detail: full\)$/m)
-    expect(text).toMatch(/^Longest unrouted connections \(10 of \d+\):$/m)
+    expect(text).toMatch(/^Longest connections, pad to pad \(10 of \d+\):$/m)
+    expect(text).toMatch(/^ {2}\w+: \S+ \(-?[\d.]+, -?[\d.]+ \w+\) to \S+ \(-?[\d.]+, -?[\d.]+ \w+\) [\d.]+ mm unrouted$/m)
     expect(text).toMatch(/^C1 1uF 0603 not placed$/m)
     const full = formatBoardSummary(BENCHMARK_MAIN, design, new Set(), "full")
     expect(lines(full).length).toBeGreaterThan(200)
