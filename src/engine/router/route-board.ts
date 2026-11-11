@@ -12,6 +12,7 @@ import type { Obstacle } from "./obstacles.js"
 import { routeWithPours } from "./pour-rounds.js"
 import type { RoutedCopper } from "./path.js"
 import { replicate, type Replica } from "./replicate.js"
+import { ripUpAndRetry } from "./rip-up.js"
 
 /**
  * The whole job: the connections the ratsnest still misses (all of them, or those of some nets, of some parts, or
@@ -274,8 +275,12 @@ function settle(run: Run, connections: readonly Connection[]): void {
  * make are left to them, and what the fills no longer join once the routes are laid is routed again (pour-rounds).
  */
 export function routeBoard(input: RouteBoardInput, options: RouteBoardOptions = {}): RouteReport {
-  return routeWithPours(input, options, routeOnce)
+  const router = (given: RouteBoardInput, asked: RouteBoardOptions) => routeWithPours(given, asked, routeOnce)
+  return ripUpAndRetry(input, router(input, options), withoutProgress(options), router)
 }
+
+/** The options for the runs after the main one, which do not report their progress. */
+const withoutProgress = ({ onProgress: _, ...options }: RouteBoardOptions): RouteBoardOptions => options
 
 /** One run over the layout's ratsnest: negotiation, settling, copies, cleanup. */
 function routeOnce(input: RouteBoardInput, options: RouteBoardOptions): RouteReport {

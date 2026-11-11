@@ -1,0 +1,63 @@
+title: MCP2515 stand-alone CAN controller with SPI
+description: CAN 2.0B controller with SPI host interface and oscillator pins for
+  an external crystal. 18-pin SOIC wide body. Written from memory of the
+  Microchip datasheet; NOT verified.
+manufacturer: Microchip
+mpn: MCP2515-I/SO
+origin: written 2026-11-11
+footprint: soic18w
+pins:
+  "1":
+    name: TXCAN
+    type: output
+  "2":
+    name: SOF_CLKOUT
+    type: output
+  "3":
+    name: TX0RTS
+    type: input
+  "4":
+    name: TX1RTS
+    type: input
+  "5":
+    name: TX2RTS
+    type: input
+  "6":
+    name: OSC2
+    type: output
+  "7":
+    name: OSC1
+    type: input
+  "8":
+    name: VSS
+    type: ground
+  "9":
+    name: RX0BF
+    type: bidirectional
+  "10":
+    name: RX1BF
+    type: bidirectional
+  "11":
+    name: INT
+    type: output
+  "12":
+    name: SCK
+    type: input
+  "13":
+    name: SI
+    type: input
+  "14":
+    name: SO
+    type: output
+  "15":
+    name: CS
+    type: input
+  "16":
+    name: RESET
+    type: input
+  "17":
+    name: VDD
+    type: power_in
+  "18":
+    name: RXCAN
+    type: input

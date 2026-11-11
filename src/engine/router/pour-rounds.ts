@@ -43,20 +43,29 @@ const viaRecord = (via: PcbVia): LayoutRecord => ({
   by: via.by,
 })
 
-/** The routes as layout records of their nets, with ids no layout file uses. */
-function routedRecords(routed: readonly RoutedConnection[]): LayoutRecord[] {
+/** The routes as layout records of their nets, with ids no layout file uses: `routed:3:t1` is the first track of the third route. */
+function routedRecords(routed: readonly RoutedConnection[], prefix: string): LayoutRecord[] {
   return routed.flatMap((route, i) => [
-    ...route.copper.tracks.map((track, j): LayoutRecord => ({ t: "track", id: `routed:${i + 1}:t${j + 1}`, net: route.net, ...track, locked: false, by: "router" })),
-    ...route.copper.vias.map((via, j): LayoutRecord => ({ t: "via", id: `routed:${i + 1}:v${j + 1}`, net: route.net, ...via, locked: false, by: "router" })),
+    ...route.copper.tracks.map((track, j): LayoutRecord => ({ t: "track", id: `${prefix}:${i + 1}:t${j + 1}`, net: route.net, ...track, locked: false, by: "router" })),
+    ...route.copper.vias.map((via, j): LayoutRecord => ({ t: "via", id: `${prefix}:${i + 1}:v${j + 1}`, net: route.net, ...via, locked: false, by: "router" })),
   ])
 }
 
-/** The layout with the routes added as copper, the pours filled again around it, and the ratsnest of what is left. */
-export function refilled(input: RouteInput, routed: readonly RoutedConnection[]): PcbLayout {
+/** The route a `routed:N:…` copper id names, as an index into the routes it was made from. */
+export function routedIndex(id: string): number | undefined {
+  const found = /^routed:(\d+):[tv]\d+$/.exec(id)
+  return found ? Number(found[1]) - 1 : undefined
+}
+
+/**
+ * The layout with the routes added as copper, the pours filled again around it, and the ratsnest of what is left.
+ * The routes' copper ids start with `prefix` (`routed` by default), so a layout refilled twice keeps them apart.
+ */
+export function refilled(input: RouteInput, routed: readonly RoutedConnection[], prefix = "routed"): PcbLayout {
   const { layout, rules, nets } = input
   const board = layout.board
   if (board === undefined) return layout
-  const records = [...layout.tracks.map(trackRecord), ...layout.vias.map(viaRecord), ...routedRecords(routed)]
+  const records = [...layout.tracks.map(trackRecord), ...layout.vias.map(viaRecord), ...routedRecords(routed, prefix)]
   const classOf = classLookup(rules, nets)
   const fill: PourFiller = (pads, copper) => cachedPourFills({ board, pads, tracks: copper.tracks, vias: copper.vias, rules, classOf })
   const { copper, pours } = resolveWithPours(layout.parts, records, nets, board.layers, fill)
