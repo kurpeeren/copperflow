@@ -50,6 +50,8 @@ import { PIN_TYPES } from "../core/pin-types.js"
 import { LayoutBody } from "./layout-schema.js"
 import { LiveProject, type DesignBuilder } from "./live.js"
 import { RouteRunner, routeWorkerFactory, type RouteWorkerFactory } from "./route-runner.js"
+import { PlaceRunner, placeWorkerFactory, type PlaceWorkerFactory } from "./place-runner.js"
+import { fitBoardEdit } from "./fit-board.js"
 
 export interface StudioOptions {
   root: string
@@ -66,6 +68,8 @@ export interface StudioOptions {
    * Null routes in the server process.
    */
   routeWorker?: RouteWorkerFactory | null
+  /** Starts a placer worker for each Place → Autoplace run; null places in the server process. */
+  placeWorker?: PlaceWorkerFactory | null
   /** Fetches for Library → Import by LCSC number; tests pass one that answers from fixtures. */
   fetch?: typeof fetch
 }
@@ -207,6 +211,18 @@ const Bodies = {
       z.object({ kind: z.literal("instance"), instance: z.string().min(1).max(200) }).strict(),
     ]),
   }),
+  // Place → Autoplace: the parts nobody placed or locked, on the whole board, of some parts or of one instance.
+  autoplace: z.object({
+    file,
+    scope: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("all") }).strict(),
+      z.object({ kind: z.literal("parts"), parts: z.array(z.string().min(1).max(64)).min(1).max(500) }).strict(),
+      z.object({ kind: z.literal("instance"), instance: z.string().min(1).max(200) }).strict(),
+    ]),
+    fit: z.boolean().optional(),
+  }),
+  // Layout → Fit board: the rectangle round the parts, with a margin in mm.
+  fitBoard: z.object({ file, margin: z.number().min(0).max(50).optional() }),
   // Route → Unroute: the router's copper among the ids, or all of it.
   unroute: z.object({ file, ids: z.array(z.string().min(1).max(32)).max(5000).optional() }),
   // Edit → Make sub-sheet: `preview` answers what it would do and writes nothing.
@@ -252,6 +268,14 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
     nextMark: () => live.nextMark(),
     requestBuild: (circuit) => live.requestBuild(circuit),
     createWorker: options.routeWorker === null ? undefined : (options.routeWorker ?? (await routeWorkerFactory())),
+  })
+  const placer = new PlaceRunner({
+    root,
+    build: (circuit) => building.builder.build(root, circuit),
+    announce: (event) => live.announce("place", event),
+    nextMark: () => live.nextMark(),
+    requestBuild: (circuit) => live.requestBuild(circuit),
+    createWorker: options.placeWorker === null ? undefined : (options.placeWorker ?? (await placeWorkerFactory())),
   })
 
   const server = createServer((req, res) => {
@@ -343,6 +367,25 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       }
       case "POST /api/route/cancel":
         return send(res, { cancelled: router.cancel() })
+      // The run goes on after the answer; its progress and its end come as "place" events.
+      case "POST /api/autoplace": {
+        const body = Bodies.autoplace.parse(await readJson(req))
+        if (placer.running !== undefined) throw new HttpError(409, `The board of ${placer.running} is being placed; cancel it or wait for it to end`)
+        if (router.running !== undefined) throw new HttpError(409, `The board of ${router.running} is being routed; cancel it or wait for it to end`)
+        return send(res, { status: "placing", file: await placer.start(body.file, body.scope, body.fit ?? false) }, 202)
+      }
+      case "POST /api/autoplace/cancel":
+        return send(res, { cancelled: placer.cancel() })
+      case "POST /api/fit-board": {
+        const body = Bodies.fitBoard.parse(await readJson(req))
+        const circuit = await resolveCircuit(root, body.file)
+        const fit = fitBoardEdit(await building.builder.build(root, circuit.file), body.margin)
+        if ("error" in fit) throw new HttpError(400, fit.error)
+        const result = await editCircuit(root, circuit.file, [fit.edit], { author: "human", summary: fit.summary })
+        const writeMark = live.nextMark()
+        live.requestBuild(circuit.file)
+        return send(res, { entryId: result.entry.id, summary: fit.summary, writeMark })
+      }
       case "POST /api/unroute": {
         const body = Bodies.unroute.parse(await readJson(req))
         const layout = await resolveLayoutFile(root, layoutNameOf(body.file))
@@ -518,6 +561,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
     openUrl: `http://127.0.0.1:${port}/#token=${token}`,
     close: async () => {
       router.cancel()
+      placer.cancel()
       live.stop()
       await building.stop()
       for (const stream of streams) stream.end()

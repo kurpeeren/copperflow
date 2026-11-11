@@ -5,7 +5,7 @@ import { refine, type RefineOptions } from "./refine.js"
 import { readProblem, type ScopeOptions } from "./scope.js"
 import { edgeTouches, NetModel, ratsnestLength, type State } from "./score.js"
 
-export { fitBoard, type FitBoard } from "./fit-board.js"
+export { DEFAULT_FIT_MARGIN, fitBoard, type FitBoard } from "./fit-board.js"
 export type { PlaceScope } from "./scope.js"
 
 /** How far a placement is: parts done in the constructive pass, or tries made in the refinement, of the planned. */

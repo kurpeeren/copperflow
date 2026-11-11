@@ -30,7 +30,7 @@ export interface BuildState {
   finishedAt?: string
 }
 
-export type LiveEvent = "change" | "build" | "library" | "route"
+export type LiveEvent = "change" | "build" | "library" | "route" | "place"
 export type Listener = (event: LiveEvent, data: Record<string, unknown>) => void
 
 const IGNORED = /^(node_modules|dist|\.git|\.copperflow|coverage)\//
@@ -213,7 +213,7 @@ export class LiveProject {
   }
 
   /** Tells the listeners news that is not the watcher's or a build's own, such as a routing run's (route-runner.ts). */
-  announce(event: "route", data: object): void {
+  announce(event: "route" | "place", data: object): void {
     this.emit(event, data as Record<string, unknown>)
   }
 
