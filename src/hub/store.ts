@@ -205,6 +205,11 @@ export class HubStore {
     this.sql("UPDATE users SET deleted = 1 WHERE id = ?").run(userId)
   }
 
+  /** Users marked deleted whose rows (and folders) are still to be removed: the running hub finishes them. */
+  deletedUsers(): string[] {
+    return (this.sql("SELECT id FROM users WHERE deleted = 1").all() as Row[]).map((row) => row.id as string)
+  }
+
   /** Marks the project deleted: from now on every route and the proxy answer 404 for it. */
   markProjectDeleted(userId: string, id: string): void {
     this.sql("UPDATE projects SET deleted = 1 WHERE id = ? AND user_id = ?").run(id, userId)

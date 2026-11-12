@@ -8,6 +8,7 @@ import { boundaryOf } from "./multipart.js"
 import { StorageError, streamMultipart } from "./multipart-stream.js"
 import type { Writable } from "node:stream"
 import { projectsPage } from "./pages.js"
+import { removeProjectFolders } from "./project-folders.js"
 import { forgetMeasurement, isOver, measureUser, MAX_ENTRIES_PER_USER, ProjectBusyError, StopUnconfirmedError, withProjectLock } from "./quota.js"
 import { newId } from "./secrets.js"
 import type { Project } from "./store.js"
@@ -33,8 +34,13 @@ export function projectName(text: string | undefined): string | undefined {
 
 /** Runs `work` under the project's lock (its workspace stopped); a project already locked is a short 503. */
 async function lockedOrBusy<T>(hub: Hub, id: string, work: () => Promise<T>): Promise<T> {
+  return busyAsHttp(() => withProjectLock(hub, id, work))
+}
+
+/** A busy project, or a stop the engine could not confirm, as a short 503. */
+async function busyAsHttp<T>(work: () => Promise<T>): Promise<T> {
   try {
-    return await withProjectLock(hub, id, work)
+    return await work()
   } catch (error) {
     if (error instanceof ProjectBusyError) throw new HubError(503, error.message, { "retry-after": "5" })
     if (error instanceof StopUnconfirmedError) throw new HubError(503, error.message, { "retry-after": "60" })
@@ -135,7 +141,7 @@ export async function deleteProject(hub: Hub, req: IncomingMessage, res: ServerR
   }
   // Marked first: from here every route and the proxy answer 404, so nothing restarts the workspace while it goes.
   hub.store.markProjectDeleted(signed.user.id, id)
-  await lockedOrBusy(hub, id, () => hub.files.remove(signed.user.id, id))
+  await busyAsHttp(() => removeProjectFolders(hub, signed.user.id, [id]))
   hub.store.deleteProject(signed.user.id, id)
   forgetMeasurement(hub, signed.user.id)
   audit(hub, address, signed.user.id, "project-deleted", id)
@@ -309,8 +315,8 @@ async function unpackUpload(hub: Hub, address: string, signed: Signed, name: str
   }
   const refused = insertProject(hub, project)
   if (refused) {
-    // No row ever named the folder, so no workspace can have started on it.
-    await hub.files.remove(signed.user.id, project.id)
+    // No row ever named the folder, so no workspace can have started on it; it still goes the one way folders go.
+    await removeProjectFolders(hub, signed.user.id, [project.id])
     return refused
   }
   audit(hub, address, signed.user.id, "project-uploaded", `${project.id} (${zip.files.length} files)`)

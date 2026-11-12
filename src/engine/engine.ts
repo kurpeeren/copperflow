@@ -1,4 +1,4 @@
-import { WORKER_ENV } from "./worker-env.js"
+import { WORKER_ENV, workerHeap } from "./worker-env.js"
 import { Worker } from "node:worker_threads"
 import { resolveCircuit } from "../core/workspace.js"
 import type { Design } from "./design.js"
@@ -36,14 +36,13 @@ interface Started {
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000
-const WORKER_HEAP_MB = 2048
 /** The footprint files of library parts. */
 export const FOOTPRINT_FILE = /^parts\/[^/]+\/footprint\.yaml$/
 /** The only non-source files a build reads: footprint files and the design rules. */
 export const ENGINE_FILES = new RegExp(`${FOOTPRINT_FILE.source}|${RULES_FILE.source}`)
 
 const defaultWorker = (): EngineWorker =>
-  new Worker(new URL("./engine-worker.js", import.meta.url), { env: WORKER_ENV, resourceLimits: { maxOldGenerationSizeMb: WORKER_HEAP_MB } })
+  new Worker(new URL("./engine-worker.js", import.meta.url), { env: WORKER_ENV, resourceLimits: { maxOldGenerationSizeMb: workerHeap() } })
 
 export class Engine {
   private current: Started | undefined

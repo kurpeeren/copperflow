@@ -1,4 +1,4 @@
-import { WORKER_ENV } from "../engine/worker-env.js"
+import { WORKER_ENV, workerHeap } from "../engine/worker-env.js"
 // Route → Autoroute on the server: one run at a time, in a worker thread so the Studio stays responsive, its progress
 // and its end told through the live events ("route"). The board is built afresh from the files whose content hashes
 // are taken at the start (never the live build, which can predate a write the watcher has not counted yet), and the
@@ -42,7 +42,6 @@ export interface RouteWorker {
 
 export type RouteWorkerFactory = () => RouteWorker
 
-const WORKER_HEAP_MB = 2048
 /** Progress is told at most this often; the end of the cleanup always. */
 const PROGRESS_MS = 100
 
@@ -55,7 +54,7 @@ export async function routeWorkerFactory(): Promise<RouteWorkerFactory | undefin
   if (!existsSync(fileURLToPath(file))) return undefined
   try {
     const { Worker } = await import("node:worker_threads")
-    return () => new Worker(file, { env: WORKER_ENV, resourceLimits: { maxOldGenerationSizeMb: WORKER_HEAP_MB } }) as unknown as RouteWorker
+    return () => new Worker(file, { env: WORKER_ENV, resourceLimits: { maxOldGenerationSizeMb: workerHeap() } }) as unknown as RouteWorker
   } catch (error) {
     console.error(`copperflow studio: worker threads are unavailable (${(error as Error).message}); the router runs in the server process`)
     return undefined

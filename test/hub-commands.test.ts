@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest"
+import { describe, expect, test, vi } from "vitest"
 import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -97,8 +97,8 @@ describe("the hub's maintainer commands", () => {
     }
   })
 
-  test("delete-user asks for the email typed and removes the user and their files", async () => {
-    const server = await startTestHub()
+  test("delete-user asks for the email typed; the running hub's sweep removes the user and their files", async () => {
+    const server = await startTestHub({ sweepMs: 50 })
     const data = await dataDirOf(server)
     try {
       const ada = await newUser(server, "ada@example.com")
@@ -109,7 +109,8 @@ describe("the hub's maintainer commands", () => {
       expect(wrong.errors[0]).toContain("Not deleted")
       expect(await runCli(["hub", "delete-user", "ada@example.com", "--data", data], "/", io("ada@example.com"))).toBe(0)
       expect(server.hub.store.userByEmail("ada@example.com")).toBeUndefined()
-      expect(await readdir(join(data, "projects"))).toEqual([])
+      await vi.waitFor(async () => expect(await readdir(join(data, "projects"))).toEqual([]), { timeout: 3000 })
+      expect(server.hub.store.deletedUsers()).toEqual([])
     } finally {
       await server.close()
     }
@@ -156,12 +157,37 @@ describe("the hub's maintainer commands", () => {
 
   test("with the container runner the engine is checked and leftovers swept, and no trusted-accounts warning is needed", async () => {
     const calls: string[][] = []
-    const spawn = engineAnswering(calls, (args) => (args[0] === "ps" ? `cf-ws-${"a".repeat(32)}\n` : ""))
+    const answer = (args: string[]) => {
+      if (args[0] === "version") return "28.0.1\n"
+      if (args[0] === "image") return "node:22-bookworm-slim@sha256:abc\n"
+      if (args[0] === "port") return "127.0.0.1:49000\n"
+      return args[0] === "ps" ? `cf-ws-${"a".repeat(32)}\n` : ""
+    }
+    const spawn = engineAnswering(calls, answer)
     const out = io()
-    const chosen = await runnerFor({ kind: "container", settings: { image: "img" } }, out, spawn)
+    const chosen = await runnerFor({ kind: "container", settings: { image: "img", user: "1000:1000" } }, out, spawn)
     expect(chosen.trustedAccountsOnly).toBeUndefined()
-    expect(calls.map((args) => args.slice(0, 2).join(" "))).toEqual(["version --format", "image inspect", "network create", "network rm", "ps --all", `rm --force`, "network ls"])
+    expect(calls.map((args) => args.slice(0, 2).join(" "))).toEqual([
+      "version --format",
+      "image inspect",
+      "network create",
+      "run --detach",
+      "port cf-check-" + process.pid,
+      "rm --force",
+      "network rm",
+      "ps --all",
+      "rm --force",
+      "network ls",
+    ])
     expect(out.lines).toEqual(["Removed 1 workspace container(s) left from an earlier run."])
+    // An unpinned base is a warning; an old engine is refused with the reason.
+    const unpinned = io()
+    await runnerFor({ kind: "container", settings: { image: "img", user: "1000:1000" } }, unpinned, engineAnswering([], (args) => (args[0] === "image" ? "node:22-bookworm-slim\n" : answer(args))))
+    expect(unpinned.lines[0]).toMatch(/not pinned by digest/)
+    const old = await runnerFor({ kind: "container", settings: { image: "img", user: "1000:1000" } }, io(), engineAnswering([], (args) => (args[0] === "version" ? "25.0.3\n" : answer(args)))).catch((error: Error) => error.message)
+    expect(old).toMatch(/Docker Engine 26 or newer/)
+    const noPublish = await runnerFor({ kind: "container", settings: { image: "img", user: "1000:1000" } }, io(), engineAnswering([], (args) => (args[0] === "port" ? "" : answer(args)))).catch((error: Error) => error.message)
+    expect(noPublish).toMatch(/--workspace-reach network/)
     const data = await mkdtemp(join(tmpdir(), "cf-ctrhub-"))
     const server = await startHub({ dataDir: data, port: 0, publicOrigin: "https://cf.example.test", workspaceDomain: "ws.localhost", ...chosen, log: () => undefined })
     await server.close()

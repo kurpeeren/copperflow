@@ -23,6 +23,7 @@ import { accountPage, signInPage, signUpPage } from "./pages.js"
 import { agentSection } from "./agent-pages.js"
 import { pendingRequest } from "./oauth.js"
 import { revokeUser, type RevokingHub } from "./revocation.js"
+import { removeUserFolders } from "./project-folders.js"
 import { hashPassword, hashSecret, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, newId, verifyAgainstNothing, verifyPassword } from "./secrets.js"
 import { normaliseEmail } from "./store.js"
 import { addressKey } from "./limits.js"
@@ -226,7 +227,8 @@ export async function deleteAccount(hub: Hub, req: IncomingMessage, res: ServerR
 export async function removeUser(hub: RevokingHub & Pick<Hub, "files">, userId: string): Promise<void> {
   hub.store.markUserDeleted(userId)
   await revokeUser(hub, userId)
-  for (const id of hub.store.projectIds(userId)) await hub.runner.stop(id)
-  await hub.files.removeUser(userId)
+  // Every project blocked and confirmed stopped before any folder goes (project-folders.ts); a failure leaves the
+  // user marked deleted, and the hub's sweep tries again.
+  await removeUserFolders(hub, userId, hub.store.projectIds(userId))
   hub.store.deleteUser(userId)
 }

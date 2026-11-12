@@ -7,6 +7,7 @@ import {
   containerRunArgs,
   createContainerRunner,
   sweepLeftovers,
+  workspaceUser,
   type ChildLike,
   type SpawnLike,
 } from "../src/hub/runner/container-runner.js"
@@ -85,16 +86,17 @@ const wait = (ms: number) => new Promise((done) => setTimeout(done, ms))
 
 describe("the container's argument array", () => {
   test("holds every isolation flag, one mount, one variable, and nothing published beyond loopback", () => {
-    const args = containerRunArgs(spec(), { image: "copperflow-workspace" }, KEY)
+    const args = containerRunArgs(spec(), { image: "copperflow-workspace", user: "1000:1000" }, KEY)
     expect(args).toEqual([
       "run",
       "--rm",
       "--interactive",
       "--name", `cf-ws-${ID}`,
       "--label", "org.copperflow.workspace=1",
-      "--user", "10001:10001",
+      "--user", "1000:1000",
+      "--log-driver", "none",
       "--read-only",
-      "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
+      "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=64m",
       "--cap-drop", "ALL",
       "--security-opt", "no-new-privileges",
       "--pids-limit", "128",
@@ -133,7 +135,12 @@ describe("the container's argument array", () => {
     // Two workspaces never share a network.
     const other = containerRunArgs(spec("f".repeat(32)), { image: "img" }, KEY)
     expect(other[other.indexOf("--network") + 1]).toBe(`cf-ws-${"f".repeat(32)}`)
-    expect(args).toEqual(expect.arrayContaining(["1g", "0.5", "64", "nofile=512:512", "/tmp:rw,noexec,nosuid,size=32m"]))
+    expect(args).toEqual(expect.arrayContaining(["1g", "0.5", "64", "nofile=512:512", "/tmp:rw,noexec,nosuid,nodev,size=32m"]))
+    // The containers run as the hub's own uid:gid (or the image's where the platform has none), never root.
+    expect(workspaceUser()).toBe(process.getuid ? `${process.getuid()}:${process.getgid?.()}` : "10001:10001")
+    expect(() => workspaceUser("0:0")).toThrow(/root/)
+    expect(() => workspaceUser("1000:0")).toThrow(/root/)
+    expect(() => workspaceUser("me")).toThrow(/uid/)
     expect(args[args.indexOf("--memory-swap") + 1]).toBe("1g")
   })
 
@@ -271,19 +278,32 @@ describe("before the hub starts", () => {
   test("refuses when the engine does not answer, or the image is missing, with how to build it", async () => {
     const down = fakeEngine((_args, child) => say(child, "", 1))
     await expect(checkEngine({ image: "img" }, down.spawn)).rejects.toThrow(/does not answer/)
-    const noImage = fakeEngine((args, child) => say(child, "", args[0] === "image" ? 1 : 0))
+    const noImage = fakeEngine((args, child) => say(child, args[0] === "version" ? "28.0.1\n" : "", args[0] === "image" ? 1 : 0))
     await expect(checkEngine({ image: "img" }, noImage.spawn)).rejects.toThrow(/docker build -f deploy\/workspace.Dockerfile/)
   })
 
-  test("checks that it can create and remove an internal network", async () => {
-    const fine = fakeEngine((_args, child) => say(child, ""))
-    await checkEngine({ image: "img" }, fine.spawn)
-    expect(fine.calls.slice(2)).toEqual([
-      ["network", "create", "--internal", "--driver", "bridge", "--label", "org.copperflow.workspace=1", `cf-check-${process.pid}`],
-      ["network", "rm", `cf-check-${process.pid}`],
-    ])
-    const cannot = fakeEngine((args, child) => say(child, "", args[1] === "create" ? 1 : 0))
-    await expect(checkEngine({ image: "img" }, cannot.spawn)).rejects.toThrow(/could not create an internal network/)
+  test("probes what the reach needs on an internal network, and refuses a spawn error without leaking the network", async () => {
+    const answer = (args: string[]) => (args[0] === "version" ? "27.1.0\n" : args[0] === "image" ? "node@sha256:x\n" : args[0] === "port" ? "127.0.0.1:49000\n" : "")
+    const fine = fakeEngine((args, child) => say(child, answer(args)))
+    expect(await checkEngine({ image: "img", user: "1000:1000" }, fine.spawn)).toEqual([])
+    expect(fine.calls.slice(2).map((args) => args.slice(0, 2))).toEqual([["network", "create"], ["run", "--detach"], ["port", `cf-check-${process.pid}`], ["rm", "--force"], ["network", "rm"]])
+    expect(fine.calls[3]).toEqual(expect.arrayContaining(["--network", `cf-check-${process.pid}`, "--publish", "127.0.0.1::8080", "--log-driver", "none"]))
+    const joined = fakeEngine((args, child) => say(child, answer(args)))
+    await checkEngine({ image: "img", reach: "network", hubContainer: "cf-hub", user: "1000:1000" }, joined.spawn)
+    expect(joined.calls.slice(2).map((args) => args.slice(0, 2))).toEqual([["network", "create"], ["network", "connect"], ["network", "disconnect"], ["network", "rm"]])
+    const cannot = fakeEngine((args, child) => say(child, answer(args), args[1] === "create" ? 1 : 0))
+    await expect(checkEngine({ image: "img", user: "1000:1000" }, cannot.spawn)).rejects.toThrow(/could not create an internal network/)
+    const podman = fakeEngine((args, child) => say(child, args[0] === "version" ? "4.9.3\n" : answer(args)))
+    await expect(checkEngine({ image: "img", command: "podman", user: "1000:1000" }, podman.spawn)).rejects.toThrow(/Podman 5 or newer/)
+  })
+
+  test("a spawn error on launch still removes the workspace's network", async () => {
+    const engine = fakeEngine((args, child) => {
+      if (args[0] === "run") return void child.emitter.emit("error", new Error("ENOENT"))
+      say(child, "")
+    })
+    await expect(containerLauncher({ image: "img", ticketPublicKey: KEY, user: "1000:1000", spawn: engine.spawn, log: () => undefined })(spec())).rejects.toThrow(/ENOENT/)
+    await vi.waitFor(() => expect(engine.calls.at(-1)).toEqual(["network", "rm", `cf-ws-${ID}`]))
   })
 
   test("the sweep removes leftover workspace containers and networks and nothing else", async () => {

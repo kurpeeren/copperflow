@@ -34,6 +34,7 @@ import { startStudio } from "./studio/server.js"
 import { startMcpHttp } from "./hosted/mcp-http.js"
 import { ticketPublicKeyFromEnv } from "./hosted/ticket.js"
 import { parseWorkspaceArgs, startWorkspace } from "./hosted/workspace.js"
+import { useHostedWorkerHeap } from "./engine/worker-env.js"
 import { VERSION } from "./version.js"
 
 export interface CliIO {
@@ -225,6 +226,8 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
  */
 async function runWorkspaceCommand(rest: string[], cwd: string, io: CliIO, options: CliOptions): Promise<void> {
   const { options: workspaceOptions, stopOnStdinEnd } = parseWorkspaceArgs(rest, cwd, process.env)
+  // A hosted workspace's workers fit its container (deploy/workspace.Dockerfile gives the main thread 160 MB).
+  useHostedWorkerHeap()
   const workspace = await startWorkspace(workspaceOptions, options.engine ? { engine: options.engine } : {})
   let stopping = false
   const stop = () => {

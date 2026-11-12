@@ -5,17 +5,17 @@ import { prepareDataDir } from "./permissions.js"
 import { join, resolve } from "node:path"
 import { writeFileAtomic } from "../core/fs-utils.js"
 import type { CliIO } from "../cli-commands.js"
-import { removeUser } from "./account-routes.js"
 import { AgentSessions } from "./agent-sessions.js"
 import { OAuthState } from "./oauth-state.js"
 import { revokeUser, type RevokingHub } from "./revocation.js"
-import { ProjectFiles } from "./projects.js"
+import { measureTree } from "./safe-files.js"
 import { hashPassword, hashSecret, newSecret } from "./secrets.js"
 import { sameSiteWarning, startHub, TRUSTED_ONLY_WARNING, type HubOptions } from "./server.js"
 import { HubStore, normaliseEmail } from "./store.js"
 import type { WorkspaceRunner } from "./runner/runner.js"
 import {
   CONTAINER_PREFIX,
+  checkDataDirForMounts,
   checkEngine,
   checkSettings,
   createContainerRunner,
@@ -33,7 +33,7 @@ const MAX_INVITES = 100
 
 const USAGE = `Usage:
   copperflow hub --data <dir> --port <n> --public-origin <url> --workspace-domain <domain> --runner container --workspace-image <name>
-                 [--container-command docker] [--workspace-reach loopback | --workspace-reach network --hub-container <name>] [--bind <address>] [--trust-proxy]
+                 [--container-command docker] [--workspace-reach loopback | --workspace-reach network --hub-container <name>] [--workspace-user <uid>:<gid>] [--bind <address>] [--trust-proxy]
   copperflow hub --data <dir> --port <n> --public-origin <url> --workspace-domain <domain> --runner process --trusted-accounts-only [--bind <address>] [--trust-proxy]
   copperflow hub invite --data <dir> [--count n]
   copperflow hub reset-password <email> --data <dir>
@@ -109,7 +109,7 @@ export async function runHubCommand(args: string[], cwd: string, io: CliIO): Pro
 
 export type RunnerChoice = { kind: "process"; trustedAccountsOnly: boolean } | { kind: "container"; settings: ContainerSettings }
 
-const CONTAINER_OPTIONS = ["--workspace-image", "--container-command", "--hub-container", "--workspace-reach"]
+const CONTAINER_OPTIONS = ["--workspace-image", "--container-command", "--hub-container", "--workspace-reach", "--workspace-user"]
 
 /** The runner the flags ask for: `--runner process` (the default, as before) or `--runner container`. */
 export function chooseRunner(options: Map<string, string>, flags: Set<string>): RunnerChoice {
@@ -126,7 +126,8 @@ export function chooseRunner(options: Map<string, string>, flags: Set<string>): 
   if (reach !== "loopback" && reach !== "network") throw new Error(`--workspace-reach must be loopback or network.\n${USAGE}`)
   const command = options.get("--container-command")
   const hubContainer = options.get("--hub-container")
-  const settings: ContainerSettings = { image, reach, ...(command ? { command } : {}), ...(hubContainer ? { hubContainer } : {}) }
+  const user = options.get("--workspace-user")
+  const settings: ContainerSettings = { image, reach, ...(command ? { command } : {}), ...(hubContainer ? { hubContainer } : {}), ...(user ? { user } : {}) }
   checkSettings(settings)
   return { kind, settings }
 }
@@ -134,7 +135,7 @@ export function chooseRunner(options: Map<string, string>, flags: Set<string>): 
 /** With the container runner: the engine is checked and last run's leftovers swept before the hub listens. */
 export async function runnerFor(choice: RunnerChoice, io: CliIO, spawn?: SpawnLike): Promise<Pick<HubOptions, "runner" | "trustedAccountsOnly">> {
   if (choice.kind === "process") return { trustedAccountsOnly: choice.trustedAccountsOnly }
-  await checkEngine(choice.settings, spawn)
+  for (const warning of await checkEngine(choice.settings, spawn)) io.out(warning)
   const removed = await sweepLeftovers(choice.settings, spawn, (line) => io.out(line))
   if (removed > 0) io.out(`Removed ${removed} workspace container(s) left from an earlier run.`)
   return { runner: (ticketPublicKey) => createContainerRunner({ ...choice.settings, ticketPublicKey, ...(spawn ? { spawn } : {}) }) }
@@ -147,6 +148,7 @@ async function serve(options: Map<string, string>, flags: Set<string>, cwd: stri
   const publicOrigin = options.get("--public-origin")
   if (!publicOrigin) throw new Error(`Missing --public-origin <url>.\n${USAGE}`)
   const choice = chooseRunner(options, flags)
+  if (choice.kind === "container") checkDataDirForMounts(dataDir)
   const workspaceDomain = options.get("--workspace-domain")
   if (!workspaceDomain) throw new Error(`Missing --workspace-domain <domain>: each project is served on its own origin under it.\n${USAGE}`)
   const runner = await runnerFor(choice, io)
@@ -235,7 +237,8 @@ async function resetPassword(store: HubStore, email: string | undefined, io: Cli
 
 async function status(store: HubStore, dataDir: string, io: CliIO): Promise<number> {
   const counts = store.counts()
-  const bytes = (await new ProjectFiles(dataDir).list(join(dataDir, "projects"))).reduce((sum, file) => sum + file.size, 0)
+  // lstat only, never opening a file (workspaces may be running), with a generous cap for the whole tree.
+  const measured = await measureTree(join(dataDir, "projects"), { maxEntries: 5_000_000, maxMs: 60_000 })
   let running = "unknown (the hub is not running, or has not written its status in the last 2 minutes)"
   let runner = "unknown"
   let engine: string | undefined
@@ -256,7 +259,7 @@ async function status(store: HubStore, dataDir: string, io: CliIO): Promise<numb
   io.out(`Runner: ${runner}`)
   io.out(`Running workspaces: ${running}`)
   if (engine) for (const line of await containerMemory(engine)) io.out(`  ${line}`)
-  io.out(`Disk used by projects: ${(bytes / (1024 * 1024)).toFixed(1)} MB`)
+  io.out(`Disk used by projects: ${"bytes" in measured ? `${(measured.bytes / (1024 * 1024)).toFixed(1)} MB` : `unknown (${measured.failed})`}`)
   return 0
 }
 
@@ -280,10 +283,13 @@ async function deleteUser(store: HubStore, dataDir: string, email: string | unde
   const projects = store.projectCount(user.id)
   const answer = await io.ask(`This deletes ${user.email}, their sessions and ${projects} project(s) with all files. Type the email to confirm: `)
   if (normaliseEmail(answer) !== user.email) throw new Error(`Not deleted: you typed "${answer.trim()}", not ${user.email}`)
-  await removeUser({ ...offlineHub(store), files: new ProjectFiles(dataDir) }, user.id)
-  // The running hub cuts their streams and stops their workspaces at its next sweep (within 15 seconds).
+  // This command cannot see the hub's containers, so it never removes a folder: it marks the user deleted and revokes
+  // what the database holds; the running hub's sweep (within 15 seconds) blocks their workspaces, confirms them gone,
+  // removes their folders and their rows (project-folders.ts).
+  store.markUserDeleted(user.id)
+  await revokeUser(offlineHub(store), user.id)
   store.requestCut(user.id, Date.now())
   store.audit({ time: Date.now(), userId: user.id, event: "account-deleted", address: "cli", detail: "by the maintainer" })
-  io.out(`Deleted ${user.email} and ${projects} project(s). A running hub cuts their open streams and stops their workspaces within 15 seconds.`)
+  io.out(`Deleted ${user.email}. The running hub stops their workspaces and removes their ${projects} project(s) with all files within 15 seconds (or when it next starts).`)
   return 0
 }

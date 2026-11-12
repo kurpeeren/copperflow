@@ -5,7 +5,7 @@ import { mkdir } from "node:fs/promises"
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
 import type { Socket } from "node:net"
 import { normaliseOrigin } from "../hosted/gate.js"
-import { changePassword, deleteAccount, endAllSessions, showAccount, showSignIn, showSignUp, signIn, signOut, signUp } from "./account-routes.js"
+import { changePassword, deleteAccount, endAllSessions, removeUser, showAccount, showSignIn, showSignUp, signIn, signOut, signUp } from "./account-routes.js"
 import { newLimits, sessionOf, sweepCuts, type Hub, type HubConfig, type Signed } from "./context.js"
 import { clientAddress, HubError, redirect, sameOrigin, sendPage } from "./http.js"
 import { addressKey } from "./limits.js"
@@ -189,7 +189,12 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
   const sweep = setInterval(() => {
     hub.store.sweepSessions(hub.config.now())
     for (const grantId of hub.store.tokens.sweep(hub.config.now())) hub.agents.closeCredential(`grant:${grantId}`)
-    sweepCuts(hub, revokeUser).catch((error: unknown) => hub.log(`sweep failed: ${(error as Error).message}`))
+    sweepCuts(hub, revokeUser)
+      // Users the maintainer deleted: their folders go here, where their workspaces can be blocked first.
+      .then(async () => {
+        for (const userId of hub.store.deletedUsers()) await removeUser(hub, userId)
+      })
+      .catch((error: unknown) => hub.log(`sweep failed: ${(error as Error).message}`))
   }, options.sweepMs ?? SWEEP_MS)
   sweep.unref()
   // Every 5 s: the project folders of running workspaces are measured, and a user over quota has them stopped.

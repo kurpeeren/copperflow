@@ -3,6 +3,7 @@
 // without a shell; nothing in it is taken from user text: the project id is checked against the id the store
 // generates, the project folder and public origin are the hub's own, and every other value is a checked option.
 import { spawn as nodeSpawn } from "node:child_process"
+import { isAbsolute } from "node:path"
 import type { Readable, Writable } from "node:stream"
 import { TICKET_PUBLIC_KEY_ENV } from "../../hosted/ticket.js"
 import { ID_PATTERN } from "../secrets.js"
@@ -33,8 +34,23 @@ export const DEFAULT_CONTAINER_COMMAND = "docker"
 /** The ports the two servers listen on inside every container. */
 export const STUDIO_PORT = 8080
 export const MCP_PORT = 8081
-/** The uid and gid the image's user has, and every container runs as. */
-export const WORKSPACE_USER = "10001:10001"
+/** The uid and gid the image's own user has: the fallback where the hub's own ids are unknown (Windows). */
+export const IMAGE_USER = "10001:10001"
+const USER_SPEC = /^([0-9]{1,9}):([0-9]{1,9})$/
+
+/**
+ * The uid:gid every workspace container runs as: by default the hub's own, so the project folders the hub creates
+ * owner-only (0700) are writable in the container and by nobody else on the host. Never root.
+ */
+export function workspaceUser(override?: string): string {
+  const getuid = process.getuid?.bind(process)
+  const getgid = process.getgid?.bind(process)
+  const user = override ?? (getuid && getgid ? `${getuid()}:${getgid()}` : IMAGE_USER)
+  const match = USER_SPEC.exec(user)
+  if (!match) throw new Error("--workspace-user must be <uid>:<gid> in digits")
+  if (match[1] === "0" || match[2] === "0") throw new Error("The container runner refuses to run workspaces as root: run the hub as its own unprivileged user (or give --workspace-user).")
+  return user
+}
 /** Containers are named this followed by the project id; the leftover sweep removes only names of this shape. */
 export const CONTAINER_PREFIX = "cf-ws-"
 /** The label every workspace container carries, so the sweep never touches another program's containers. */
@@ -82,6 +98,8 @@ export interface ContainerSettings {
   /** How the hub reaches containers; default loopback (the hub on the host). */
   reach?: ContainerReach
   limits?: Partial<ContainerLimits>
+  /** uid:gid the containers run as; default the hub's own (see workspaceUser). */
+  user?: string
 }
 
 export interface ContainerRunnerOptions extends ContainerSettings {
@@ -104,6 +122,7 @@ interface Checked {
   hubContainer: string | undefined
   reach: ContainerReach
   limits: ContainerLimits
+  user: string
 }
 
 /** Checks every setting; each one ends up in an argument array, so each is held to a strict shape. */
@@ -123,7 +142,7 @@ export function checkSettings(settings: ContainerSettings): Checked {
   if (!CPUS.test(limits.cpus)) throw new Error("--cpus must be a number such as 1 or 0.5")
   if (!Number.isInteger(limits.pids) || limits.pids < 16 || limits.pids > 4096) throw new Error("the pids limit must be a whole number from 16 to 4096")
   if (!Number.isInteger(limits.openFiles) || limits.openFiles < 64 || limits.openFiles > 65_536) throw new Error("the open-files limit must be a whole number from 64 to 65536")
-  return { command, image, hubContainer, reach, limits }
+  return { command, image, hubContainer, reach, limits, user: workspaceUser(settings.user) }
 }
 
 export function containerName(projectId: string): string {
@@ -152,9 +171,12 @@ export function containerRunArgs(spec: WorkspaceSpec, settings: ContainerSetting
     "--interactive",
     "--name", name,
     "--label", CONTAINER_LABEL,
-    "--user", WORKSPACE_USER,
+    "--user", checked.user,
+    // Nothing reaches the engine's own log files: the hub reads the ready line and a capped log from the attached
+    // client's streams, so a container that prints forever cannot fill the engine's disk.
+    "--log-driver", "none",
     "--read-only",
-    "--tmpfs", `/tmp:rw,noexec,nosuid,size=${limits.tmpSize}`,
+    "--tmpfs", `/tmp:rw,noexec,nosuid,nodev,size=${limits.tmpSize}`,
     "--cap-drop", "ALL",
     "--security-opt", "no-new-privileges",
     "--pids-limit", String(limits.pids),
@@ -242,21 +264,80 @@ export function runEngine(spawn: SpawnLike, command: string, args: string[], tim
 
 const BUILD_HINT = "Build it from the repository with: docker build -f deploy/workspace.Dockerfile -t copperflow-workspace ."
 
+/** The oldest engines whose internal networks do not forward DNS to the host's resolvers. */
+export const MIN_DOCKER_MAJOR = 26
+export const MIN_PODMAN_MAJOR = 5
+/** The image label the Dockerfile sets from its NODE_IMAGE build argument. */
+export const BASE_LABEL = "org.copperflow.base"
+
 /**
- * What the hub checks before it starts with the container runner: the engine answers, the image is there, and it can
- * create and remove an internal network (each workspace gets one). Throws a message that says what to do.
+ * What the hub checks before it starts with the container runner: the engine answers and is new enough, the image is
+ * there, and the engine can do what the chosen reach needs (an internal network, and either a port published on
+ * 127.0.0.1 on it or the hub's container joined to it). Throws a message that says what to do; returns warnings.
  */
-export async function checkEngine(settings: ContainerSettings, spawn: SpawnLike = defaultSpawn()): Promise<void> {
-  const { command, image } = checkSettings(settings)
+export async function checkEngine(settings: ContainerSettings, spawn: SpawnLike = defaultSpawn()): Promise<string[]> {
+  const checked = checkSettings(settings)
+  const { command, image } = checked
   const version = await runEngine(spawn, command, ["version", "--format", "{{.Server.Version}}"]).catch((error: Error) => ({ code: -1, stdout: "", stderr: error.message }))
   if (version.code !== 0) throw new Error(`The container engine does not answer (\`${command} version\` failed). Start it, and make sure the user the hub runs as may use it.`)
-  const found = await runEngine(spawn, command, ["image", "inspect", "--format", "{{.Id}}", image])
+  checkEngineVersion(command, version.stdout.trim())
+  const found = await runEngine(spawn, command, ["image", "inspect", "--format", `{{index .Config.Labels "${BASE_LABEL}"}}`, image])
   if (found.code !== 0) throw new Error(`The workspace image ${image} is missing. ${BUILD_HINT}`)
+  const warnings: string[] = []
+  if (!found.stdout.includes("@sha256:")) {
+    warnings.push(`Warning: the workspace image's base is not pinned by digest (${found.stdout.trim() || "unknown"}). Rebuild with --build-arg NODE_IMAGE=node:22-bookworm-slim@sha256:... (docs/hosted.md, "Running the hub").`)
+  }
+  await probeReach(checked, spawn)
+  return warnings
+}
+
+/** Refuses an engine too old for internal networks without DNS forwarding. */
+export function checkEngineVersion(command: string, version: string): void {
+  const major = Number(/^v?([0-9]+)\./.exec(version)?.[1])
+  const podman = /podman/i.test(command)
+  const min = podman ? MIN_PODMAN_MAJOR : MIN_DOCKER_MAJOR
+  if (!Number.isInteger(major) || major < min) {
+    throw new Error(
+      `The container engine is version ${version || "unknown"}; the hub needs ${podman ? `Podman ${MIN_PODMAN_MAJOR}` : `Docker Engine ${MIN_DOCKER_MAJOR}`} or newer, because older engines forward DNS lookups from internal networks to the host's resolvers.`,
+    )
+  }
+}
+
+/** Makes an internal network and tries what the reach needs on it; always removes what it made. */
+async function probeReach(checked: Checked, spawn: SpawnLike): Promise<void> {
+  const { command } = checked
   const probe = `cf-check-${process.pid}`
   const made = await runEngine(spawn, command, networkCreateArgs(probe))
   if (made.code !== 0) throw new Error(`The hub could not create an internal network (${command} network create --internal): ${made.stderr.trim().slice(0, 300)}`)
-  const removed = await runEngine(spawn, command, ["network", "rm", probe])
-  if (removed.code !== 0) throw new Error(`The hub could not remove the network ${probe} it made: ${removed.stderr.trim().slice(0, 300)}`)
+  try {
+    if (checked.reach === "network") {
+      const joined = await runEngine(spawn, command, ["network", "connect", probe, checked.hubContainer as string])
+      if (joined.code !== 0) throw new Error(`The hub's container ${checked.hubContainer} could not join an internal network: ${joined.stderr.trim().slice(0, 300)}`)
+      await runEngine(spawn, command, ["network", "disconnect", "--force", probe, checked.hubContainer as string]).catch(() => undefined)
+      return
+    }
+    const started = await runEngine(spawn, command, [
+      "run", "--detach", "--rm", "--name", probe, "--label", CONTAINER_LABEL, "--log-driver", "none", "--user", checked.user,
+      "--network", probe, "--publish", `127.0.0.1::${STUDIO_PORT}`, "--entrypoint", "node", checked.image, "-e", "setTimeout(() => {}, 60000)",
+    ])
+    try {
+      if (started.code !== 0) throw new Error(`A probe container could not start: ${started.stderr.trim().slice(0, 300)}`)
+      const port = await runEngine(spawn, command, ["port", probe, `${STUDIO_PORT}/tcp`])
+      if (port.code !== 0 || !port.stdout.split(/\r?\n/).some((line) => LOOPBACK_PORT.test(line.trim()))) {
+        throw new Error("This engine does not publish ports on 127.0.0.1 for an internal network. Run the hub in a container with --workspace-reach network --hub-container <name> instead.")
+      }
+    } finally {
+      await runEngine(spawn, command, ["rm", "--force", probe]).catch(() => undefined)
+    }
+  } finally {
+    const removed = await runEngine(spawn, command, ["network", "rm", probe]).catch(() => undefined)
+    if (removed && removed.code !== 0) throw new Error(`The hub could not remove the network ${probe} it made: ${removed.stderr.trim().slice(0, 300)}`)
+  }
+}
+
+/** The data directory goes into a --mount value: it must be absolute and hold no comma, quote or newline. */
+export function checkDataDirForMounts(dataDir: string): void {
+  if (!isAbsolute(dataDir) || /[,\0\r\n"]/.test(dataDir)) throw new Error("With the container runner the data directory must be an absolute path with no comma, quote or newline in it.")
 }
 
 /** `network create` for one workspace's own network: internal (no route out), bridge, labelled for the sweep. */
@@ -364,7 +445,11 @@ export function containerLauncher(options: ContainerRunnerOptions): Launcher {
     }
     return openNetwork(checked, name, spawn).then(() => new Promise<Launched>((done, fail) => {
       const child = spawn(checked.command, args, { env: clientEnv(), stdio: ["pipe", "pipe", "pipe"], windowsHide: true, shell: false })
-      const ended = new Promise<void>((over) => child.once("exit", () => over()))
+      // A spawn error may never be followed by an exit: it ends the command too, so the network is still removed.
+      const ended = new Promise<void>((over) => {
+        child.once("exit", () => over())
+        child.once("error", () => over())
+      })
       // When the `run` command ends the container is removed too, so a restart never meets a container of the same
       // name, and then its network, which nothing else ever joined but the hub.
       const exited = ended
