@@ -2,6 +2,7 @@
 
 Chips and connectors go into the project's parts library before they go into a circuit.
 Passive parts (resistors, capacitors, LEDs, headers) are built in and need no entry.
+(Without this skill installed, `guide { "topic": "parts-library" }` returns this page.)
 
 ## From a datasheet
 
@@ -42,8 +43,11 @@ Passive parts (resistors, capacitors, LEDs, headers) are built in and need no en
    - `suppliers` (for example `jlcpcb: C51118`) and `datasheet.url` when you know them.
    An existing id is refused unless you pass `replace: true` (never for a verified part). The
    human can do the same in the Studio with Library → New part….
-3. Tell the human the part is not verified and that `parts/<id>/verification.md` lists what to
-   check, with the datasheet pages you used.
+3. Call `attach_datasheet` with `part`, the datasheet's `url`, its `title` and the `pages` of the
+   pin table: `verification.md` then asks the human to compare each pin with that page. On the
+   hosted service `create_part` refuses a part with more than three pins without `datasheet.url`.
+   Tell the human the part is not verified and that `parts/<id>/verification.md` lists what to
+   check.
 4. Place it with `place_part`, connect it with `add_trace`, then run `check_circuit`.
 
 ## By LCSC number

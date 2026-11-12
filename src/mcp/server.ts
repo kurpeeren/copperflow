@@ -47,12 +47,16 @@ import { CREATE_PART_DESCRIPTION, createPartInput, createPartTool } from "./crea
 import { IMPORT_PART_DESCRIPTION, importPart, importPartInput } from "./import-part.js"
 import { MAKE_SHEET_DESCRIPTION, makeSheet, makeSheetInput } from "./make-sheet.js"
 import { NEW_CIRCUIT_DESCRIPTION, newCircuit, newCircuitInput } from "./new-circuit.js"
+import { fileURLToPath } from "node:url"
+import { GUIDE_DESCRIPTION, guide, guideInput, skillResources } from "./guide.js"
+import { ATTACH_DATASHEET_DESCRIPTION, attachDatasheetInput, attachDatasheetTool, checkDatasheetRule } from "./datasheet-tools.js"
 
 const INSTRUCTIONS = `copperflow lets you design circuit boards (*.circuit.tsx files) together with a human, who edits the same files in the Studio.
 - Call project_status first in every task, then follow the copperflow skill: its design workflow says which tool to call at each step and what its answer looks like.
 - Change circuit files through these tools wherever one does the change: each call is one history entry the human can undo, and the tools enforce locks. Write code by hand only for what no tool writes.
 - Never change, move or remove anything marked [LOCKED]; if a summary lists lock violations, restore those parts. "Marks from the human" are instructions; follow them. Do not redo a change the human undid.
-- There is no tool to unlock a part or verify a library part: only the human does that.`
+- There is no tool to unlock a part or verify a library part: only the human does that.
+- Without the copperflow skill installed, call guide (no topic) for it, then guide { topic } for a reference it names.`
 
 const file = z.string().describe("Circuit file path relative to the project root, e.g. index.circuit.tsx")
 const literal = z.union([z.string(), z.number(), z.boolean()])
@@ -63,6 +67,8 @@ export interface ServerOptions {
   engine?: DesignSource
   /** Fetches for import_part; tests pass one that answers from fixtures. */
   fetch?: typeof fetch
+  /** Behind the hosted hub: create_part refuses a chip without a datasheet link. */
+  hosted?: boolean
 }
 
 export function createCopperflowServer(root: string, options: ServerOptions = {}): McpServer {
@@ -162,7 +168,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "check_circuit",
     {
       description:
-        "Check the circuit with copperflow's own rules: electrical checks (pins left unconnected, outputs shorted together, power pins without a source) and placement checks (overlapping parts, parts off the board), plus problems in the code and the model (footprints it cannot make, unknown or ambiguous pins, library overrides). Answers with the error and warning counts, then up to 20 findings, one line each. Run it once at the end and fix the errors before reporting success; filter narrows it to errors, warnings, copper, a part or a net. Copper clearance, width, via, hole-to-hole, board-edge, keepout, copper-to-hole (copper-hole), hole-off-board and pour (pour-floating, pour-sparse, pour-empty) findings are included.",
+        "Check the circuit with copperflow's own rules: electrical, placement, code and model, copper (clearance, width, vias, holes, board edge, keepouts) and pour findings. Answers with the error and warning counts, then up to 20 findings, one line each. Run it once at the end and fix the errors before reporting success; filter narrows it to errors, warnings, copper, a part or a net.",
       inputSchema: { file, filter: z.string().optional().describe('"errors", "warnings", "copper", a part name, a net name or a sub-sheet instance such as "PS1"') },
       annotations: READ_ONLY,
     },
@@ -317,7 +323,19 @@ Nothing was written.`)
       }),
   )
 
-  server.registerTool("create_part", { description: CREATE_PART_DESCRIPTION, inputSchema: createPartInput }, (input) => run(() => createPartTool(root, input)))
+  server.registerTool("create_part", { description: CREATE_PART_DESCRIPTION, inputSchema: createPartInput }, (input) =>
+    run(async () => {
+      if (options.hosted) checkDatasheetRule(input)
+      return createPartTool(root, input)
+    }),
+  )
+  server.registerTool("attach_datasheet", { description: ATTACH_DATASHEET_DESCRIPTION, inputSchema: attachDatasheetInput }, (input) => run(() => attachDatasheetTool(root, input)))
+  server.registerTool("guide", { description: GUIDE_DESCRIPTION, inputSchema: guideInput, annotations: READ_ONLY }, (input) => run(() => guide(input)))
+  for (const resource of skillResources()) {
+    server.registerResource(resource.name, resource.uri, { mimeType: "text/markdown" }, async (uri) => ({
+      contents: [{ uri: uri.href, mimeType: "text/markdown", text: await readFile(fileURLToPath(resource.file), "utf8") }],
+    }))
+  }
 
   server.registerTool("import_part", { description: IMPORT_PART_DESCRIPTION, inputSchema: importPartInput, annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true } }, (input) => run(() => importPart(root, input, options.fetch)))
 
@@ -354,7 +372,7 @@ Nothing was written.`)
     "export_fabrication",
     {
       description:
-        "Write the fabrication files for JLCPCB: Gerbers, plated and non-plated drills, pick-and-place and BOM in <name>-fab/ and <name>-fab.zip beside the circuit (or in the project folder out). Call it after autoroute and a clean check_circuit. A design with errors is refused and nothing is written; warnings (unrouted connections, parts without a footprint, designators over pads, parts without an LCSC number) are listed. A person uploads the zip for the board and the BOM and pick-and-place CSVs for assembly.",
+        "Write the fabrication files for JLCPCB: Gerbers, plated and non-plated drills, pick-and-place and BOM in <name>-fab/ and <name>-fab.zip beside the circuit (or in the project folder out). Call it after autoroute and a clean check_circuit. A design with errors is refused and nothing is written; warnings are listed.",
       inputSchema: {
         file,
         out: z.string().optional().describe("A project folder to write into instead of the circuit's own, e.g. fab"),

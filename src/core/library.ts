@@ -62,9 +62,13 @@ export const PartSchema = z
       .object({
         file: z.string().regex(/^[\w.-]+\.pdf$/i, "a PDF file name inside the part folder").optional(),
         url: z.url({ protocol: /^https?$/ }).optional(),
+        /** The datasheet's name as the pins' source, e.g. "MCP2515 datasheet DS20001801J". */
+        title: line(200).min(1).optional(),
       })
       .strict()
       .optional(),
+    /** The datasheet pages the pin table was read from, e.g. "3-4" (attach_datasheet). */
+    datasheet_pages: line(100).min(1).optional(),
     verified: z
       .object({ by: line(100).min(1), against: line(300).min(1), date: z.string(), hash: z.string().optional() })
       .strict()
@@ -346,6 +350,7 @@ export function verificationTemplate(id: string, part: Part, footprintText?: str
     "Check each item against the datasheet and write the page next to it. When everything is",
     `checked, run in a terminal: copperflow parts verify ${id} --by "<your name>" --against "<datasheet, revision, page>"`,
     "",
+    ...pinSourceLine(part),
     ...pins.map(([number, pin]) => `- [ ] Pin ${number} is ${pin.name} (${pin.type.replace("_", " ")})`),
     `- [ ] Footprint ${part.footprint} matches the package drawing`,
     ...(footprintText === undefined ? [] : ["- [ ] Every pad in footprint.yaml matches the recommended land pattern (position, size, drill)"]),
@@ -356,6 +361,14 @@ export function verificationTemplate(id: string, part: Part, footprintText?: str
     ...(notes.length > 0 ? ["", "## Notes", "", ...notes.map((note) => `- [ ] ${note}`)] : []),
     "",
   ].join("\n")
+}
+
+/** The item naming where the pin table came from, once a datasheet is attached (a title or pages recorded with its link). */
+function pinSourceLine(part: Part): string[] {
+  const url = part.datasheet?.url
+  if (url === undefined || (part.datasheet?.title === undefined && part.datasheet_pages === undefined)) return []
+  const pages = part.datasheet_pages === undefined ? "" : `, page(s) ${part.datasheet_pages}`
+  return [`- [ ] Pins from ${part.datasheet?.title ?? url}${pages}: compare each pin`]
 }
 
 /** An imported part whose datasheet link is the one the importer builds from the LCSC number (lcsc.com), not the manufacturer's. */

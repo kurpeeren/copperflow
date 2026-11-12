@@ -16,7 +16,7 @@ const LONGEST_SHOWN = 10
 const FINDINGS_SHOWN = 10
 
 export const BOARD_SUMMARY_DESCRIPTION =
-  'The board in words, in about 60 lines: board size and layers, the share the courtyards use, one line per part ("U1 MCP2515 soic18w @(12.0, 8.5) r90 top [LOCKED]"; "not placed" for a part without a position), the ten longest connections, routed or not, with their net, both pads and where they are ("OSC1: U1.pin8 (4.20, 6.10 top) to Y1.pin1 (18.30, 5.90 top) 25.2 mm", "unrouted" when no copper joins them; a part far from the pin it serves shows here), overlapping courtyards, parts off the board or within the edge clearance, pours per layer and the unrouted count. Long part lists end with "… and N more parts (detail: full)"; detail "full" lists everything.'
+  'The board in words, in about 60 lines: board size and layers, the share the courtyards use, one line per part (position, rotation, side, [LOCKED]; "not placed" without a position), the ten longest connections, routed or not, with their net and both pads (a part far from the pin it serves shows here), overlapping courtyards, parts off the board or within the edge clearance, pours per layer and the unrouted count. Long part lists end with "… and N more parts (detail: full)"; detail "full" lists everything.'
 
 export type BoardDetail = "compact" | "full"
 

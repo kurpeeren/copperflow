@@ -40,7 +40,7 @@ export const unrouteInput = {
 }
 
 export const AUTOROUTE_DESCRIPTION =
-  "Route the copper with copperflow's router as ONE change: the connections still unrouted on the whole board, or only those of some nets, of some parts or inside one sub-sheet instance (give at most one of these). Run it after the parts are placed. Existing copper is kept and used (hand-drawn copper is an obstacle the router goes round), and no track starts on a locked part's pad. It stops at its time budget and writes only connections it routed whole. The answer is one line: what was routed, in how many passes, and each connection it could not route with the reason. Route those by hand with route_track, or move parts and run it again; then check_circuit."
+  "Route the copper with copperflow's router as ONE change: the connections still unrouted on the whole board, or only those of some nets, of some parts or inside one sub-sheet instance (give at most one of these). Run it after the parts are placed. Existing copper is kept, and no track starts on a locked part's pad. It writes only connections it routed whole and names each one it could not, with the reason. Route those by hand with route_track, or move parts and run it again; then check_circuit."
 export const UNROUTE_DESCRIPTION =
   "Remove the copper the router made, for some nets or all of it, as ONE change. Hand-drawn copper, locked copper and router tracks that start on a locked part's pad stay; the answer names those it left."
 
