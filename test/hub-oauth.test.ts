@@ -122,6 +122,20 @@ describe("OAuth for MCP clients", () => {
     expect(back.searchParams.get("code")).toBeNull()
   })
 
+  test("revoking an access token closes the agent session it authenticated, while the grant stays", async () => {
+    server = await startTestHub()
+    const clientId = (await registerClient(server, { redirect_uris: [REDIRECT] })).body.client_id as string
+    const browser = new Browser(server.url)
+    await browser.signUp(invite(server), "ada@example.com")
+    const tokens = await tokenRequest(server, { grant_type: "authorization_code", code: await codeFor(browser, clientId), client_id: clientId, redirect_uri: REDIRECT, code_verifier: VERIFIER })
+    const agent = await connectAgent(server, tokens.body.access_token as string)
+    expect(server.hub.agents.size).toBe(1)
+    await send(server.url, "POST", "/oauth/revoke", { host: HOST, "content-type": "application/x-www-form-urlencoded" }, new URLSearchParams({ token: tokens.body.access_token as string, client_id: clientId }).toString())
+    expect(server.hub.agents.size).toBe(0)
+    await agent.close().catch(() => undefined)
+    expect((await tokenRequest(server, { grant_type: "refresh_token", refresh_token: tokens.body.refresh_token as string, client_id: clientId })).status).toBe(200)
+  })
+
   test("a code exchanged twice revokes the grant issued from it, with its tokens and agent sessions", async () => {
     server = await startTestHub()
     const clientId = (await registerClient(server, { redirect_uris: [REDIRECT] })).body.client_id as string

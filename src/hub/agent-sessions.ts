@@ -7,6 +7,8 @@ import { SessionTable, type Reservation } from "../hosted/mcp-sessions.js"
 export interface AgentSessionEntry {
   userId: string
   credential: string
+  /** The hashes of the tokens that authenticated its requests (an OAuth client moves to a new one each hour). */
+  tokenHashes: Set<string>
   /** Hands a request of this session to its transport. */
   handle: (req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse, body: unknown) => Promise<void>
   /** Closes the session's transport (and with it every open stream). */
@@ -78,6 +80,11 @@ export class AgentSessions {
 
   closeUser(userId: string): number {
     return this.closeWhere((entry) => entry.userId === userId)
+  }
+
+  /** Closes the sessions a revoked token authenticated, and with them their streams. */
+  closeToken(hash: string): number {
+    return this.closeWhere((entry) => entry.tokenHashes.has(hash))
   }
 
   closeCredential(credential: string): number {

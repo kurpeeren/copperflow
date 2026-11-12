@@ -100,6 +100,7 @@ async function handle(hub: Hub, req: IncomingMessage, res: ServerResponse, addre
   if (typeof sessionId === "string") {
     const entry = hub.agents.get(sessionId)
     if (!entry || entry.userId !== credential.userId || entry.credential !== credential.credential) return rpcError(res, 404, "Session not found")
+    rememberToken(entry.tokenHashes, hash)
     if (method === "GET") openStream(hub, req, res, sessionId, credential)
     else hub.agents.touch(sessionId)
     for (const [name, value] of Object.entries(CORS)) res.setHeader(name, value)
@@ -107,6 +108,13 @@ async function handle(hub: Hub, req: IncomingMessage, res: ServerResponse, addre
   }
   if (method !== "POST" || !isInitializeRequest(body)) return rpcError(res, 400, "Start a session with an initialize request")
   return initialise(hub, req, res, body, credential, address)
+}
+
+/** The tokens a session was used with, the newest 16 (an OAuth client gets a new access token each hour). */
+function rememberToken(hashes: Set<string>, hash: string): void {
+  hashes.delete(hash)
+  hashes.add(hash)
+  while (hashes.size > 16) hashes.delete(hashes.values().next().value as string)
 }
 
 /** A GET stream: no idle socket timeout, ended at the token's expiry or after 15 minutes, whichever is first. */
@@ -143,6 +151,7 @@ async function initialise(hub: Hub, req: IncomingMessage, res: ServerResponse, b
         hub.agents.register(reservation, id, {
           userId: state.userId,
           credential: state.credential,
+          tokenHashes: new Set([(req as IncomingMessage & { auth?: AuthInfo }).auth?.token ?? ""]),
           handle: (r, s, b) => transport.handleRequest(r, s, b),
           close: () => void transport.close(),
         })

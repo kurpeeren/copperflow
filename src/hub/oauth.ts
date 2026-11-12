@@ -333,6 +333,10 @@ export async function revoke(hub: Hub, req: IncomingMessage, res: ServerResponse
   if (done?.grantId !== undefined) {
     hub.agents.closeCredential(`grant:${done.grantId}`)
     audit(hub, address, done.userId, "grant-revoked", done.grantId)
-  } else if (done) audit(hub, address, done.userId, "token-revoked", "access")
+  } else if (done && hash !== undefined) {
+    // The sessions (and streams) that this access token authenticated close with it.
+    hub.agents.closeToken(hash)
+    audit(hub, address, done.userId, "token-revoked", "access")
+  }
   json(res, 200, {})
 }
