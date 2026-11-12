@@ -30,6 +30,8 @@ export interface WorkspaceRunner {
   state(id: string): WorkspaceState
   /** Workspaces starting or running now. */
   running(): number
+  /** Stops every workspace of one user (sign-out, password change, deletion). */
+  stopUser(userId: string): Promise<void>
   stopAll(): Promise<void>
 }
 
@@ -60,6 +62,8 @@ export class WorkspaceStartError extends Error {
 
 export const DEFAULT_IDLE_MS = 15 * 60_000
 export const DEFAULT_MAX_RUNNING = 20
+export const DEFAULT_MAX_PER_USER = 3
+export const DEFAULT_MAX_HOLD_MS = 12 * 60 * 60_000
 
 export interface ManagedRunnerOptions {
   launch: Launcher
@@ -67,6 +71,10 @@ export interface ManagedRunnerOptions {
   idleMs?: number
   /** Workspaces starting or running at once; default 20. */
   maxRunning?: number
+  /** Workspaces one user runs at once; default 3. */
+  maxPerUser?: number
+  /** The longest a held request (an open stream) keeps a workspace from idling; default 12 hours. */
+  maxHoldMs?: number
   /** Where launch failures and crashes are reported (server side only); default stderr. */
   log?: (line: string) => void
 }
@@ -80,6 +88,7 @@ interface Entry {
   idle?: NodeJS.Timeout
   restarted: boolean
   stopping: boolean
+  lastUsed: number
 }
 
 /** The lifecycle every runner shares, over a launcher that starts one workspace. */
@@ -87,11 +96,15 @@ export class ManagedRunner implements WorkspaceRunner {
   private readonly entries = new Map<string, Entry>()
   private readonly idleMs: number
   private readonly maxRunning: number
+  private readonly maxPerUser: number
+  private readonly maxHoldMs: number
   private readonly log: (line: string) => void
 
   constructor(private readonly options: ManagedRunnerOptions) {
     this.idleMs = options.idleMs ?? DEFAULT_IDLE_MS
     this.maxRunning = options.maxRunning ?? DEFAULT_MAX_RUNNING
+    this.maxPerUser = options.maxPerUser ?? DEFAULT_MAX_PER_USER
+    this.maxHoldMs = options.maxHoldMs ?? DEFAULT_MAX_HOLD_MS
     this.log = options.log ?? ((line) => process.stderr.write(`${line}\n`))
   }
 
@@ -111,28 +124,73 @@ export class ManagedRunner implements WorkspaceRunner {
       throw new Error("A workspace id was reused for another project")
     }
     if (known?.state === "running" && known.launched) {
+      known.lastUsed = Date.now()
       this.armIdle(known)
       return known.launched.address
     }
     if (known?.state === "starting" && known.starting) return known.starting
-    if (this.running() >= this.maxRunning) throw new RunnerFullError(this.maxRunning)
-    const entry: Entry = { spec, state: "starting", holds: 0, restarted: false, stopping: false }
+    // Decided without waiting, so two requests for one workspace cannot both start it.
+    const victim = this.victimFor(spec.userId)
+    if (victim) {
+      await this.stop(victim)
+      return this.ensure(spec)
+    }
+    const entry: Entry = { spec, state: "starting", holds: 0, restarted: false, stopping: false, lastUsed: Date.now() }
     this.entries.set(spec.id, entry)
     return this.start(entry)
+  }
+
+  private live(): Entry[] {
+    return [...this.entries.values()].filter((entry) => entry.state === "starting" || entry.state === "running")
+  }
+
+  private leastRecent(entries: readonly Entry[]): Entry | undefined {
+    return [...entries].sort((a, b) => a.lastUsed - b.lastUsed)[0]
+  }
+
+  /**
+   * A user runs at most `maxPerUser` workspaces: opening one more stops their own least recently used one. When the
+   * whole server is full, the least recently used workspace of a user above their fair share (the cap divided by the
+   * users running workspaces) is stopped; when nobody is above it, the request is refused.
+   */
+  private victimFor(userId: string): string | undefined {
+    const mine = this.live().filter((entry) => entry.spec.userId === userId)
+    if (mine.length >= this.maxPerUser) return this.leastRecent(mine)?.spec.id
+    const all = this.live()
+    if (all.length < this.maxRunning) return undefined
+    const perUser = new Map<string, Entry[]>()
+    for (const entry of all) perUser.set(entry.spec.userId, [...(perUser.get(entry.spec.userId) ?? []), entry])
+    const fairShare = this.maxRunning / Math.max(1, perUser.size + (perUser.has(userId) ? 0 : 1))
+    const over = [...perUser.values()].filter((entries) => entries.length > fairShare).flat()
+    const victim = this.leastRecent(over)
+    if (!victim) throw new RunnerFullError(this.maxRunning)
+    return victim.spec.id
+  }
+
+  /** Stops every workspace of the user. */
+  async stopUser(userId: string): Promise<void> {
+    await Promise.all([...this.entries.values()].filter((entry) => entry.spec.userId === userId).map((entry) => this.stop(entry.spec.id)))
   }
 
   hold(id: string): () => void {
     const entry = this.entries.get(id)
     if (!entry) return () => undefined
     entry.holds += 1
+    entry.lastUsed = Date.now()
     clearTimeout(entry.idle)
     let released = false
-    return () => {
+    const release = () => {
       if (released) return
       released = true
+      clearTimeout(cap)
       entry.holds -= 1
+      entry.lastUsed = Date.now()
       this.armIdle(entry)
     }
+    // An open stream keeps a workspace alive for at most `maxHoldMs`.
+    const cap = setTimeout(release, this.maxHoldMs)
+    cap.unref()
+    return release
   }
 
   async stop(id: string): Promise<void> {

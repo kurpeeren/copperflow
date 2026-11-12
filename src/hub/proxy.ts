@@ -37,6 +37,10 @@ export interface ProxyTarget {
   ticket: string
   /** The most request body bytes forwarded. */
   maxBodyBytes: number
+  /** The longest any exchange (an event stream included) may last; then both sides are cut. */
+  maxDurationMs: number
+  /** Aborting it cuts the exchange at once (sign-out, password change, deletion). */
+  signal?: AbortSignal
 }
 
 function forwardedHeaders(incoming: IncomingHttpHeaders, target: ProxyTarget): Record<string, string | string[]> {
@@ -67,8 +71,19 @@ export function proxyRequest(req: IncomingMessage, res: ServerResponse, target: 
     const finish = () => {
       if (finished) return
       finished = true
+      clearTimeout(timer)
+      target.signal?.removeEventListener("abort", cut)
       done()
     }
+    const cut = () => {
+      upstream.destroy()
+      res.destroy()
+      finish()
+    }
+    const timer = setTimeout(cut, target.maxDurationMs)
+    timer.unref()
+    if (target.signal?.aborted) queueMicrotask(cut)
+    target.signal?.addEventListener("abort", cut)
     const upstream = request(
       { host: url.hostname, port: url.port, method: req.method, path: target.path, headers: forwardedHeaders(req.headers, target) },
       (answer) => {

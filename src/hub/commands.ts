@@ -58,6 +58,7 @@ const NO_RUNNER: WorkspaceRunner = {
   stop: async () => undefined,
   state: () => "stopped",
   running: () => 0,
+  stopUser: async () => undefined,
   stopAll: async () => undefined,
 }
 

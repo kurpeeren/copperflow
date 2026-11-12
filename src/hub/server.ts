@@ -14,7 +14,7 @@ import { createProject, deleteProject, downloadProject, ownProject, renameProjec
 import { ProjectFiles } from "./projects.js"
 import { proxyRequest } from "./proxy.js"
 import { createProcessRunner } from "./runner/process-runner.js"
-import { RunnerFullError, WorkspaceStartError, type WorkspaceRunner } from "./runner/runner.js"
+import { DEFAULT_MAX_HOLD_MS, RunnerFullError, WorkspaceStartError, type WorkspaceRunner } from "./runner/runner.js"
 import { HubStore } from "./store.js"
 import { prepareDataDir } from "./permissions.js"
 
@@ -253,7 +253,7 @@ async function proxy(hub: Hub, req: IncomingMessage, res: ServerResponse, raw: s
   try {
     const iat = nowSeconds()
     const ticket = signTicket({ w: id, u: signed.user.id, iat, exp: iat + TICKET_LIFETIME_S }, hub.keys.privateKey)
-    await proxyRequest(req, res, { origin: address.studio, path: raw, publicHost: hub.config.publicHost, ticket, maxBodyBytes: FORM_BODY_LIMIT })
+    await proxyRequest(req, res, { origin: address.studio, path: raw, publicHost: hub.config.publicHost, ticket, maxBodyBytes: FORM_BODY_LIMIT, maxDurationMs: DEFAULT_MAX_HOLD_MS })
   } finally {
     release()
   }

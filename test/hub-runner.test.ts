@@ -89,6 +89,51 @@ describe("the managed runner", () => {
     expect((await runner.ensure(spec("c"))).studio).toMatch(/^http/)
   })
 
+  test("a user runs at most 3 workspaces: a 4th stops their own least recently used one", async () => {
+    const fake = fakeLauncher()
+    runner = new ManagedRunner({ launch: fake.launch, log: () => undefined })
+    for (const id of ["a", "b", "c"]) {
+      await runner.ensure(spec(id))
+      await wait(2)
+    }
+    await runner.ensure(spec("a"))
+    await runner.ensure(spec("d"))
+    expect(["a", "b", "c", "d"].map((id) => runner?.state(id))).toEqual(["running", "stopped", "running", "running"])
+    expect(fake.launched.find((l) => l.id === "b")?.stopped).toBe(true)
+  })
+
+  test("when the server is full, a user above the fair share gives way; otherwise the request is refused", async () => {
+    runner = new ManagedRunner({ launch: fakeLauncher().launch, maxRunning: 4, log: () => undefined })
+    const of = (id: string, userId: string): WorkspaceSpec => ({ ...spec(id), userId })
+    for (const id of ["a1", "a2", "a3"]) {
+      await runner.ensure(of(id, "ua"))
+      await wait(2)
+    }
+    await runner.ensure(of("b1", "ub"))
+    // ub asks for a second: ua holds 3 of 4 above a fair share of 2, so ua's oldest stops.
+    await runner.ensure(of("b2", "ub"))
+    expect(runner.state("a1")).toBe("stopped")
+    expect(runner.running()).toBe(4)
+    // Now ua has 2 and ub 2: a third user's share is 4/3, both are above it, the oldest gives way.
+    await runner.ensure(of("c1", "uc"))
+    expect(runner.running()).toBe(4)
+    const full = new ManagedRunner({ launch: fakeLauncher().launch, maxRunning: 2, log: () => undefined })
+    await full.ensure(of("x", "ux"))
+    await full.ensure(of("y", "uy"))
+    await expect(full.ensure(of("z", "ux"))).rejects.toThrow(RunnerFullError)
+    await full.stopAll()
+  })
+
+  test("a held request keeps a workspace alive for at most the hold limit", async () => {
+    runner = new ManagedRunner({ launch: fakeLauncher().launch, idleMs: 30, maxHoldMs: 60, log: () => undefined })
+    await runner.ensure(spec("a"))
+    runner.hold("a")
+    await wait(45)
+    expect(runner.state("a")).toBe("running")
+    await wait(150)
+    expect(runner.state("a")).toBe("stopped")
+  })
+
   test("a failed start gives a message without the launcher's error", async () => {
     const lines: string[] = []
     runner = new ManagedRunner({ launch: async () => Promise.reject(new Error("secret /srv/path")), log: (line) => lines.push(line) })
