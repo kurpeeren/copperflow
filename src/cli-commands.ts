@@ -33,6 +33,7 @@ import { createCopperflowServer } from "./mcp/server.js"
 import { startStudio } from "./studio/server.js"
 import { startMcpHttp } from "./hosted/mcp-http.js"
 import { ticketPublicKeyFromEnv } from "./hosted/ticket.js"
+import { parseWorkspaceArgs, startWorkspace } from "./hosted/workspace.js"
 import { VERSION } from "./version.js"
 
 export interface CliIO {
@@ -49,6 +50,10 @@ Usage:
   copperflow mcp --http <port> [--bind <address>] [--workspace <id>] [--public-origin <url>]
                                               serve MCP over HTTP behind the hosted hub (needs
                                               COPPERFLOW_TICKET_PUBLIC_KEY; every request carries the hub's ticket)
+  copperflow workspace --root <folder> --id <id> --public-origin <url> --base-path </p/...>
+                    --studio-port <n> --mcp-port <n> [--bind <address>]
+                                              the hosted Studio and MCP server for one project, as the hub
+                                              starts them (needs COPPERFLOW_TICKET_PUBLIC_KEY; reads nothing else)
   copperflow studio [--port n]                open the visual editor at http://127.0.0.1:4777
   copperflow summary <file>                   print a circuit summary
   copperflow check <file>                     list the errors and warnings of copperflow's own rule checks
@@ -114,6 +119,9 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
         io.out(`copperflow MCP is listening at ${served.url} for workspace ${workspaceId}.`)
         return 0
       }
+      case "workspace":
+        await runWorkspaceCommand(rest, cwd, io, options)
+        return 0
       case "studio": {
         const [port] = takeOption(rest, "--port")
         const studio = await startStudio({ root, ...(port ? { port: positiveInt(port) } : {}) })
@@ -198,6 +206,33 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
     return 1
   }
 }
+
+/**
+ * Starts one hosted workspace and prints where its two servers listen as one JSON line; SIGTERM (and, when asked,
+ * the end of standard input, which the hub's runner holds open) closes both.
+ */
+async function runWorkspaceCommand(rest: string[], cwd: string, io: CliIO, options: CliOptions): Promise<void> {
+  const { options: workspaceOptions, stopOnStdinEnd } = parseWorkspaceArgs(rest, cwd, process.env)
+  const workspace = await startWorkspace(workspaceOptions, options.engine ? { engine: options.engine } : {})
+  let stopping = false
+  const stop = () => {
+    if (stopping) return
+    stopping = true
+    // Closing the servers lets the process end by itself; the timer is the backstop for a stuck connection.
+    setTimeout(() => process.exit(0), STOP_GRACE_MS).unref()
+    void workspace.close().then(() => process.exit(0))
+  }
+  process.once("SIGTERM", stop)
+  process.once("SIGINT", stop)
+  if (stopOnStdinEnd) {
+    process.stdin.on("end", stop)
+    process.stdin.on("error", stop)
+    process.stdin.resume()
+  }
+  io.out(JSON.stringify({ studio: workspace.studio, mcp: workspace.mcp }))
+}
+
+const STOP_GRACE_MS = 5_000
 
 async function changeLocks(root: string, command: "lock" | "unlock", rest: string[], io: CliIO): Promise<void> {
   const file = required(rest[0], "file")
