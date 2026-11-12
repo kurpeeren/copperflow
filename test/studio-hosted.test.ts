@@ -104,12 +104,15 @@ describe("hosted Studio", () => {
     const good = ticket()
     const [body, mac] = good.split(".") as [string, string]
     const forged = Buffer.from(JSON.stringify({ w: "ws-1", u: "someone", exp: later() })).toString("base64url")
+    // Flip a byte of the signature: changing its last characters would leave a signature that ends in zero bits whole.
+    const flipped = Buffer.from(mac, "base64url")
+    flipped[0] = (flipped[0] ?? 0) ^ 0xff
     const cases: Array<[Record<string, string>, string]> = [
       [{}, "Missing workspace ticket"],
       [{ [TICKET_HEADER]: ticket("ws-2") }, "The ticket is for another workspace"],
       [{ [TICKET_HEADER]: ticket("ws-1", Math.floor(Date.now() / 1000) - 1) }, "Expired workspace ticket"],
       [{ [TICKET_HEADER]: `${forged}.${mac}` }, "Invalid workspace ticket"],
-      [{ [TICKET_HEADER]: `${body}.${mac.slice(0, -2)}AA` }, "Invalid workspace ticket"],
+      [{ [TICKET_HEADER]: `${body}.${flipped.toString("base64url")}` }, "Invalid workspace ticket"],
       [{ [TICKET_HEADER]: "not a ticket" }, "Malformed workspace ticket"],
       [{ "x-copperflow-token": "anything" }, "Missing workspace ticket"],
     ]
