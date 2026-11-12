@@ -8,6 +8,7 @@ import { prepareDataDir } from "./permissions.js"
 import { basename, join, resolve } from "node:path"
 import { trashFailures } from "./project-folders.js"
 import { printable, sanitisingLog } from "./printable.js"
+import { CONTAINER_OPTIONS, helpLines, hubCommandNamed, MAX_INVITES, SERVER_OPTIONS, USAGE, VALUELESS_FLAGS } from "./hub-usage.js"
 import { writeFileAtomic } from "../core/fs-utils.js"
 import type { CliIO } from "../cli-commands.js"
 import { AgentSessions } from "./agent-sessions.js"
@@ -36,31 +37,14 @@ import {
 export const STATUS_FILE = "hub-status.json"
 const STATUS_EVERY_MS = 15_000
 const STATUS_STALE_MS = 2 * 60_000
-const MAX_INVITES = 100
-
-const USAGE = `Usage:
-  copperflow hub --data <dir> --port <n> --public-origin <url> --workspace-domain <domain> --runner container --workspace-image <name>
-                 [--container-command docker] [--workspace-reach loopback | --workspace-reach network --hub-container <name>] --workspace-group <gid> [--workspace-user-same-as-hub] [--bind <address>] [--trust-proxy <address|CIDR>] [--hsts-include-subdomains]
-  copperflow hub --data <dir> --port <n> --public-origin <url> --workspace-domain <domain> --runner process --trusted-accounts-only [--bind <address>] [--trust-proxy <address|CIDR>]
-  copperflow hub invite --data <dir> [--count n]
-  copperflow hub reset-password <email> --data <dir>
-  copperflow hub status --data <dir> [--json]
-  copperflow hub backup --data <dir> --to <file>
-  copperflow hub stop-workspace <project id> --data <dir>
-  copperflow hub check-data --data <dir> [--workspace-group <gid>] [--fix [--no-workspaces-running]]
-  copperflow hub delete-user <email> --data <dir>`
-
-/** The options that take no value. */
-const FLAGS = new Set(["--trusted-accounts-only", "--workspace-user-same-as-hub", "--json", "--fix", "--no-workspaces-running", "--hsts-include-subdomains"])
-
-/** Splits `--name value` options from the rest; the flags without a value are named in FLAGS. */
+/** Splits `--name value` options from the rest; the flags without a value are the table's (hub-usage.ts). */
 function parse(args: readonly string[]): { options: Map<string, string>; flags: Set<string>; rest: string[] } {
   const options = new Map<string, string>()
   const flags = new Set<string>()
   const rest: string[] = []
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i] as string
-    if (FLAGS.has(arg)) flags.add(arg)
+    if (VALUELESS_FLAGS.has(arg)) flags.add(arg)
     else if (arg.startsWith("--")) {
       const value = args[i + 1]
       if (value === undefined || value === "") throw new Error(`Missing ${arg} value.\n${USAGE}`)
@@ -96,7 +80,34 @@ const NO_RUNNER: WorkspaceRunner = {
   stopAll: async () => undefined,
 }
 
+/**
+ * `hub --help`, `hub -h`, `hub help [command]` and `hub <command> --help`: the usage from the option table, printed
+ * through `printable`, before any option is parsed or any data directory is touched. Undefined when help was not asked.
+ */
+/** Longer than the longest usage line (the server's). */
+const HELP_LINE_MAX = 1000
+
+function helpRequested(args: readonly string[], io: CliIO): number | undefined {
+  const asked = args[0] === "help" || args.includes("--help") || args.includes("-h")
+  if (!asked) return undefined
+  // The command is the first word that is not an option or an option's value; options this table does not know are not
+  // examined here (a trailing option without a value is not an error when help was asked for).
+  let words: string[] = []
+  try {
+    words = parse((args[0] === "help" ? args.slice(1) : args).filter((arg) => arg !== "--help" && arg !== "-h")).rest
+  } catch {
+    words = []
+  }
+  const named = words[0]
+  const command = named === undefined ? undefined : hubCommandNamed(named)
+  if (named !== undefined && command === undefined) throw new Error(`Unknown hub command "${printable(named)}".\n${USAGE}`)
+  for (const line of helpLines(command)) io.out(printable(line, HELP_LINE_MAX))
+  return 0
+}
+
 export async function runHubCommand(args: string[], cwd: string, io: CliIO): Promise<number> {
+  const helped = helpRequested(args, io)
+  if (helped !== undefined) return helped
   const { options, flags, rest } = parse(args)
   const [command, email] = rest
   if (command === undefined) return serve(args, cwd, io)
@@ -127,8 +138,6 @@ export async function runHubCommand(args: string[], cwd: string, io: CliIO): Pro
 }
 
 export type RunnerChoice = { kind: "process"; trustedAccountsOnly: boolean } | { kind: "container"; settings: ContainerSettings }
-
-const CONTAINER_OPTIONS = ["--workspace-image", "--container-command", "--hub-container", "--workspace-reach", "--workspace-group"]
 
 /** Said at start with --workspace-user-same-as-hub. */
 export const SAME_USER_WARNING =
@@ -191,7 +200,7 @@ export interface ServeArgs {
 export function parseServeArgs(args: readonly string[], cwd: string, identity?: { value: HubIdentity | undefined }): ServeArgs {
   const { options, flags, rest } = parse(args)
   if (rest.length > 0) throw new Error(`Unexpected "${printable(rest[0])}".\n${USAGE}`)
-  const known = new Set(["--data", "--port", "--public-origin", "--workspace-domain", "--bind", "--trust-proxy", "--runner", ...CONTAINER_OPTIONS])
+  const known = new Set(SERVER_OPTIONS)
   const stray = [...options.keys()].find((name) => !known.has(name))
   if (stray) throw new Error(`Unknown option ${printable(stray)}.\n${USAGE}`)
   const dataDir = dataDirOf(options, cwd)

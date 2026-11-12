@@ -95,7 +95,13 @@ copperflow hub backup --data <dir> --to <file>        a consistent copy of hub.d
                                                       its counts as JSON (deploy/backup.sh archives the rest)
 copperflow hub delete-user <email> --data <dir>       asks for the email typed; marks the user deleted, and the
                                                       running hub removes their workspaces and files within 15 s
+copperflow hub --help | -h | help                     every command with each one's options; `hub <command> --help`
+                                                      (or `hub help <command>`) shows one; exit 0, nothing is read
 ```
+
+The usage in `--help` and in every refusal is made from one option table (`src/hub/hub-usage.ts`), which is also the
+parser's list of options without a value and the server's list of known options; text goes through the same `printable`
+filter as all hub output. An unknown command or option is still refused.
 
 `--trust-proxy` names the TLS proxy's address or CIDR (comma-separated for several): `X-Forwarded-For` is honoured
 only on connections from there, and taken as the client's address; from anyone else it is ignored.
