@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS workspace_sessions (
   hash TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  hub_session TEXT NOT NULL REFERENCES sessions(hash) ON DELETE CASCADE,
   expires INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS workspace_sessions_user ON workspace_sessions(user_id);
@@ -242,19 +243,20 @@ export class HubStore {
     this.sql("DELETE FROM workspace_sessions WHERE user_id = ?").run(userId)
   }
 
-  createWorkspaceSession(idHash: string, userId: string, projectId: string, expires: number): void {
-    this.sql("INSERT INTO workspace_sessions (hash, user_id, project_id, expires) VALUES (?, ?, ?, ?)").run(idHash, userId, projectId, expires)
+  /** A workspace session made from the hub session `hubSession`; it ends with it (the row cascades). */
+  createWorkspaceSession(idHash: string, userId: string, projectId: string, hubSession: string, expires: number): void {
+    this.sql("INSERT INTO workspace_sessions (hash, user_id, project_id, hub_session, expires) VALUES (?, ?, ?, ?, ?)").run(idHash, userId, projectId, hubSession, expires)
   }
 
   /** The live workspace session with this id hash. */
-  workspaceSession(idHash: string, now: number): { userId: string; projectId: string } | undefined {
+  workspaceSession(idHash: string, now: number): { userId: string; projectId: string; hubSession: string } | undefined {
     const row = this.sql("SELECT * FROM workspace_sessions WHERE hash = ?").get(idHash) as Row | undefined
     if (!row || !sameSecret(row.hash as string, idHash)) return undefined
     if (Number(row.expires) <= now) {
       this.sql("DELETE FROM workspace_sessions WHERE hash = ?").run(idHash)
       return undefined
     }
-    return { userId: row.user_id as string, projectId: row.project_id as string }
+    return { userId: row.user_id as string, projectId: row.project_id as string, hubSession: row.hub_session as string }
   }
 
   /** Whether a project with this id exists and is not being deleted (for the certificate check). */

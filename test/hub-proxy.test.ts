@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { runCli } from "../src/cli-commands.js"
 import { ticketPublicKey, verifyTicket, TICKET_HEADER } from "../src/hosted/ticket.js"
 import { answerHeaders } from "../src/hub/proxy.js"
+import { hashSecret } from "../src/hub/secrets.js"
 import { createProcessRunner } from "../src/hub/runner/process-runner.js"
 import { ManagedRunner, type Launched } from "../src/hub/runner/runner.js"
 import type { HubServer } from "../src/hub/server.js"
@@ -107,6 +108,32 @@ describe("workspaces on their own origins", () => {
     })
     const again = new URL(String((await ada.get(`/p/${id}/`)).headers.location))
     expect((await ada.onProject(other, "GET", `${again.pathname}${again.search}`)).status).toBe(404)
+  })
+
+  test("a workspace session never outlives the hub session it came from", async () => {
+    let now = Date.now()
+    const studio = await recorder()
+    server = await startTestHub({ now: () => now, runner: () => fixedRunner(() => studio.origin) })
+    const ada = await newUser(server, "ada@example.com")
+    const id = await projectOf(server, ada, "ada@example.com")
+    const hubSession = hashSecret(ada.jar.get("__Host-copperflow-session") as string)
+    // The hub session has 10 s left: the workspace cookie gets no more.
+    server.hub.store.renewSession(hubSession, now, now + 10_000)
+    const { entered: answer } = await ada.openProject(id)
+    expect(String(answer?.headers["set-cookie"])).toContain("Max-Age=10;")
+    expect((await ada.onProject(id, "GET", "/api/circuits")).status).toBe(200)
+    now += 11_000
+    expect((await ada.onProject(id, "GET", "/api/circuits")).status).toBe(404)
+  })
+
+  test("after sign-out the old workspace cookie is refused", async () => {
+    const studio = await recorder()
+    server = await startTestHub({ runner: () => fixedRunner(() => studio.origin) })
+    const { ada, id } = await entered(server)
+    const old = ada.cookie()
+    await ada.submit("/projects", "/signout", {})
+    expect((await send(server.url, "GET", "/api/circuits", { host: new URL(projectOriginOf(id)).host, cookie: old })).status).toBe(404)
+    expect(studio.seen).toEqual([])
   })
 
   test("a token older than 30 seconds is refused", async () => {

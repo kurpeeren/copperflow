@@ -47,7 +47,7 @@ export function enterRedirect(hub: Hub, res: ServerResponse, signed: Signed, pro
   if (hub.enterTokens.size >= MAX_ENTER_TOKENS) for (const [key, token] of hub.enterTokens) if (token.expires <= now) hub.enterTokens.delete(key)
   if (hub.enterTokens.size >= MAX_ENTER_TOKENS) throw new HubError(503, "Too many projects are being opened right now. Try again in a moment.")
   const token = newSecret()
-  hub.enterTokens.set(hashSecret(token), { userId: signed.user.id, projectId, expires: now + ENTER_MS, epoch: epochOf(hub, signed.user.id) })
+  hub.enterTokens.set(hashSecret(token), { userId: signed.user.id, projectId, expires: now + ENTER_MS, epoch: epochOf(hub, signed.user.id), hubSession: signed.sessionHash })
   res.writeHead(303, { location: `${projectOrigin(hub, projectId)}/_enter?t=${token}`, "cache-control": "no-store", "referrer-policy": "no-referrer" })
   res.end()
 }
@@ -65,16 +65,19 @@ function enter(hub: Hub, req: IncomingMessage, res: ServerResponse, projectId: s
   const found = hub.enterTokens.get(hash)
   hub.enterTokens.delete(hash)
   const now = hub.config.now()
-  if (!found || found.expires <= now || found.projectId !== projectId || found.epoch !== epochOf(hub, found.userId) || !owner(hub, found.userId, projectId)) {
+  const hubSession = found ? hub.store.session(found.hubSession, now) : undefined
+  if (!found || !hubSession || hubSession.userId !== found.userId || found.expires <= now || found.projectId !== projectId || found.epoch !== epochOf(hub, found.userId) || !owner(hub, found.userId, projectId)) {
     throw new HubError(404, "There is no such page.")
   }
   const secret = newSecret()
-  hub.store.createWorkspaceSession(hashSecret(secret), found.userId, projectId, now + WORKSPACE_SESSION_MS)
+  // Never beyond the hub session it came from.
+  const expires = Math.min(now + WORKSPACE_SESSION_MS, hubSession.expires)
+  hub.store.createWorkspaceSession(hashSecret(secret), found.userId, projectId, found.hubSession, expires)
   audit(hub, address, found.userId, "workspace-entered", projectId)
   res.writeHead(303, {
     location: "/",
     "cache-control": "no-store",
-    "set-cookie": setCookie(workspaceCookieName(hub), secret, { secure: hub.config.secure, maxAgeS: WORKSPACE_SESSION_MS / 1000 }),
+    "set-cookie": setCookie(workspaceCookieName(hub), secret, { secure: hub.config.secure, maxAgeS: (expires - now) / 1000 }),
   })
   res.end()
 }
@@ -83,8 +86,11 @@ function enter(hub: Hub, req: IncomingMessage, res: ServerResponse, projectId: s
 function workspaceUser(hub: Hub, req: IncomingMessage, projectId: string): string | undefined {
   const secret = cookies(req).get(workspaceCookieName(hub))
   if (secret === undefined || !SECRET_TEXT.test(secret)) return undefined
-  const session = hub.store.workspaceSession(hashSecret(secret), hub.config.now())
+  const now = hub.config.now()
+  const session = hub.store.workspaceSession(hashSecret(secret), now)
   if (!session || session.projectId !== projectId || !owner(hub, session.userId, projectId)) return undefined
+  // The hub session it came from must still be live (not signed out, not expired).
+  if (hub.store.session(session.hubSession, now)?.userId !== session.userId) return undefined
   return session.userId
 }
 
