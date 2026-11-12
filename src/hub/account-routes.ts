@@ -82,7 +82,14 @@ export async function signIn(hub: Hub, req: IncomingMessage, res: ServerResponse
     if (perEmail) hub.limits.signinEmail.refund(email, now)
   }
   // (c) strict mode: attempts without the account's device cookie go through the token bucket.
-  if (!device && !(await passGate(hub, address))) {
+  // A client that goes away while queued leaves the queue (and takes no token).
+  const gone = new AbortController()
+  res.once("close", () => gone.abort())
+  if (!device && !(await passGate(hub, address, gone.signal))) {
+    if (gone.signal.aborted) {
+      refund()
+      return
+    }
     refund()
     audit(hub, address, null, "signin-limited-strict")
     return tooMany(1)

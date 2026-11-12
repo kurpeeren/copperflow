@@ -99,11 +99,11 @@ export function countAttempt(hub: Hub, counter: WindowCounter, key: string, now:
 }
 
 /** In strict mode, an attempt without a device cookie for its account waits for the bucket; false means refuse. */
-export async function passGate(hub: Hub, address: string): Promise<boolean> {
+export async function passGate(hub: Hub, address: string, gone?: AbortSignal): Promise<boolean> {
   const now = hub.config.now()
   if (!hub.limits.gate.strict(now)) return true
   if (hub.limits.gate.announce(now)) audit(hub, address, null, "signin-strict")
-  return hub.limits.gate.pass(addressKey(address))
+  return hub.limits.gate.pass(addressKey(address), gone)
 }
 
 function deviceCookieName(config: HubConfig): string {

@@ -182,16 +182,31 @@ export class SigninGate {
    * queue holds `queue` in all. Waiting addresses are served one attempt each in turn, so one address cannot crowd
    * out the others.
    */
-  pass(addressKey: string): Promise<boolean> {
+  pass(addressKey: string, gone?: AbortSignal): Promise<boolean> {
     this.refill()
     if (this.waitingCount === 0 && this.tokens >= 1) {
       this.tokens -= 1
       return Promise.resolve(true)
     }
     const mine = this.waiting.get(addressKey) ?? []
-    if (mine.length >= this.options.perAddress || this.waitingCount >= this.options.queue) return Promise.resolve(false)
+    if (gone?.aborted || mine.length >= this.options.perAddress || this.waitingCount >= this.options.queue) return Promise.resolve(false)
     return new Promise((done) => {
-      mine.push(() => done(true))
+      const entry = () => {
+        gone?.removeEventListener("abort", leave)
+        done(true)
+      }
+      // A client that goes away leaves the queue at once and takes no token.
+      const leave = () => {
+        const queue = this.waiting.get(addressKey)
+        const at = queue?.indexOf(entry) ?? -1
+        if (!queue || at < 0) return
+        queue.splice(at, 1)
+        if (queue.length === 0) this.waiting.delete(addressKey)
+        this.waitingCount -= 1
+        done(false)
+      }
+      gone?.addEventListener("abort", leave, { once: true })
+      mine.push(entry)
       this.waiting.set(addressKey, mine)
       this.waitingCount += 1
       this.drain()

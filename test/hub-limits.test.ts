@@ -71,6 +71,19 @@ describe("the sign-in limits", () => {
     expect(order.indexOf("person")).toBeLessThan(2)
   })
 
+  test("a queued attempt whose client goes away leaves the queue and takes no token", async () => {
+    const gate = new SigninGate({ threshold: 1, windowMs: 1000, perSecond: 5, queue: 50, perAddress: 2 })
+    for (let i = 0; i < 5; i += 1) await gate.pass("x")
+    const gone = new AbortController()
+    const leaving = gate.pass("a", gone.signal)
+    const staying = gate.pass("b")
+    expect(gate.queued).toBe(2)
+    gone.abort()
+    expect(await leaving).toBe(false)
+    expect(gate.queued).toBe(1)
+    expect(await staying).toBe(true)
+  })
+
   test("an unknown email is limited exactly like a known one, so the limit reveals no account", async () => {
     const fixed = Date.now()
     server = await startTestHub({ trustProxy: true, now: () => fixed })
