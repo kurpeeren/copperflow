@@ -1,0 +1,15 @@
+# Only what the build needs goes into the build context: never data directories, keys, worktree notes or local builds.
+**
+!package.json
+!package-lock.json
+!.npmrc
+!tsconfig.json
+!tsconfig.build.json
+!src/**
+!studio/**
+!skills/**
+!scripts/**
+!LICENSE
+!NOTICE
+studio/node_modules
+**/*.test.ts
