@@ -8,6 +8,8 @@ export const CODE_MS = 60_000
 const MAX_PENDING = 10_000
 const MAX_CODES = 10_000
 const MAX_CODES_PER_USER = 20
+/** Clients one signed-in user can keep from eviction by authorising them. */
+export const PROTECTED_PER_USER = 5
 
 export interface AuthorizationRequest {
   clientId: string
@@ -80,10 +82,23 @@ export class OAuthState {
     return found && found.expires > now ? found : undefined
   }
 
-  /** The clients with a live authorisation request or code: never evicted from the client table. */
+  /**
+   * The clients a signed-in person is in the middle of authorising, never evicted from the client table: a request
+   * protects its client only once it is bound to a user (the consent page was shown to a session), at most
+   * PROTECTED_PER_USER clients per user (their newest), and a live code protects its client. A request from someone
+   * not signed in protects nothing, since anyone can make one.
+   */
   pendingClients(now: number): Set<string> {
     const ids = new Set<string>()
-    for (const value of this.pending.values()) if (value.expires > now) ids.add(value.clientId)
+    const perUser = new Map<string, Set<string>>()
+    for (const value of [...this.pending.values()].reverse()) {
+      if (value.expires <= now || value.userId === undefined) continue
+      const mine = perUser.get(value.userId) ?? new Set<string>()
+      if (mine.size >= PROTECTED_PER_USER && !mine.has(value.clientId)) continue
+      mine.add(value.clientId)
+      perUser.set(value.userId, mine)
+      ids.add(value.clientId)
+    }
     for (const value of this.codes.values()) if (value.expires > now) ids.add(value.clientId)
     return ids
   }

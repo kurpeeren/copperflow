@@ -124,10 +124,11 @@ export async function register(hub: Hub, req: IncomingMessage, res: ServerRespon
   const name = meta.client_name === undefined ? "Unnamed client" : labelOf(meta.client_name)
   if (!name) return oauthError(res, 400, "invalid_client_metadata", "client_name has 1 to 100 characters.")
   const id = newId()
-  // (c) The table holds MAX_CLIENTS. Clients with a live grant or a pending authorisation request are never evicted;
-  // an unused one is protected for 10 minutes, then evictable oldest first. The bucket admits at most 2 x 600 = 1 200
-  // registrations in any 10 minutes, so with 10 000 places eviction finds room unless more than 8 800 clients are in
-  // use (granted or mid-authorisation) at once; only then, which a flood cannot cause, is the answer 503.
+  // (c) The table holds maxClients (10 000). Never evicted: clients with a grant, with a live code, or with a request
+  // bound to a signed-in user (at most 5 per user; an anonymous request protects nothing). An unused client is
+  // protected for 10 minutes after registration, then evictable oldest first. Protected clients are therefore at most
+  // 1 200 (the bucket admits 2 x 600 in any 10 minutes) + 5 x users + 20 x users with live codes + clients with grants;
+  // the table must exceed that sum for registration never to answer 503, which only accounts, not a flood, can grow.
   if (hub.store.tokens.addClient({ id, name, redirectUris: uris }, hub.config.maxClients, hub.config.now(), hub.oauth.pendingClients(hub.config.now())) === "full") {
     hub.log("the OAuth client table is full of clients in use")
     return json(res, 503, { error: "temporarily_unavailable", error_description: "Try again later." })
