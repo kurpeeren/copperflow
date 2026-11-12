@@ -46,6 +46,8 @@ export interface HubOptions {
   trustedAccountsOnly?: boolean
   maxProjects?: number
   maxBytes?: number
+  /** Extra wait per sign-in while the global slow-down is on; default 2 s. */
+  slowDownMs?: number
   now?: () => number
   log?: (line: string) => void
 }
@@ -69,6 +71,7 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
     trustProxy: options.trustProxy ?? false,
     maxProjects: options.maxProjects ?? MAX_PROJECTS,
     maxBytes: options.maxBytes ?? MAX_BYTES,
+    slowDownMs: options.slowDownMs ?? 2_000,
     now: options.now ?? Date.now,
   }
   const files = new ProjectFiles(options.dataDir)

@@ -71,17 +71,10 @@ describe("hub accounts", () => {
     expect((await browser.signIn("ada@example.com")).status).toBe(303)
   })
 
-  test("limits attempts per email across addresses", async () => {
-    server = await startTestHub({ trustProxy: true })
+  test("successful sign-ins are not counted against anyone", async () => {
+    server = await startTestHub()
     await newUser(server, "ada@example.com")
-    for (let i = 0; i < 10; i += 1) {
-      const answer = await new Browser(server.url).signIn("ada@example.com", "wrong password")
-      expect(answer.status).toBe(401)
-    }
-    const other = new Browser(server.url)
-    const token = /name="form" value="([^"]+)"/.exec((await other.get("/signin")).text)?.[1] as string
-    const limited = await other.post("/signin", { form: token, email: "ada@example.com", password: "a good password" }, { "x-forwarded-for": "203.0.113.9" })
-    expect(limited.status).toBe(429)
+    for (let i = 0; i < 25; i += 1) expect((await new Browser(server.url).signIn("ada@example.com")).status).toBe(303)
   })
 
   test("a request with the session cookie twice is signed out, whichever comes first", async () => {

@@ -5,7 +5,7 @@ import type { WorkspaceRunner } from "./runner/runner.js"
 import type { TicketKeys } from "./keys.js"
 import type { ProjectFiles } from "./projects.js"
 import type { HubStore, User } from "./store.js"
-import { addressKey, RateLimiter } from "./limits.js"
+import { addressKey, GlobalSlowdown, WindowCounter } from "./limits.js"
 import { cookies, setCookie } from "./http.js"
 import { formTokenOf, hashSecret, newSecret, sameSecret } from "./secrets.js"
 
@@ -23,6 +23,8 @@ export interface HubConfig {
   trustProxy: boolean
   maxProjects: number
   maxBytes: number
+  /** How much longer each sign-in waits while the global slow-down is on. */
+  slowDownMs: number
   now: () => number
 }
 
@@ -32,7 +34,7 @@ export interface Hub {
   files: ProjectFiles
   runner: WorkspaceRunner
   keys: TicketKeys
-  limits: { signinAddress: RateLimiter; signinEmail: RateLimiter; signupAddress: RateLimiter; signinFailures: RateLimiter }
+  limits: Limits
   /** Per-user queues: operations that add projects or bytes run one at a time for a user. */
   userLocks: Map<string, Promise<void>>
   log: (line: string) => void
@@ -44,18 +46,71 @@ export interface Signed {
   formToken: string
 }
 
-export function newLimits(): Hub["limits"] {
-  const fifteenMinutes = 15 * 60_000
+/**
+ * The sign-in limits. All count FAILED password checks only, so a correct password is refused only by (a) or (b):
+ * (a) per address (IPv4 whole, IPv6 /64): 10 per 15 minutes, then 429;
+ * (b) per email: 20 per 15 minutes, then 429, except for a request carrying that account's device cookie;
+ * (c) globally: past 300 per 15 minutes every attempt waits `slowDownMs` longer, nobody is refused;
+ * (f) re-authentication of a signed-in user: 10 per 15 minutes keyed on the user id, separate from sign-in.
+ */
+export interface Limits {
+  signinAddress: WindowCounter
+  signinEmail: WindowCounter
+  signupAddress: WindowCounter
+  reauth: WindowCounter
+  slowdown: GlobalSlowdown
+}
+
+const FIFTEEN_MINUTES = 15 * 60_000
+export const MAX_FAILED_SIGNINS = 300
+export const ADDRESS_FAILURES = 10
+export const EMAIL_FAILURES = 20
+export const MAX_DEVICES = 10
+const DEVICE_S = 365 * 24 * 60 * 60
+
+export function newLimits(): Limits {
   return {
-    signinAddress: new RateLimiter(10, fifteenMinutes),
-    signinEmail: new RateLimiter(10, fifteenMinutes),
-    signupAddress: new RateLimiter(20, 60 * 60_000),
-    // Failed password checks across everyone: past this, sign-in answers 429 for all until the window moves on.
-    signinFailures: new RateLimiter(MAX_FAILED_SIGNINS, fifteenMinutes),
+    signinAddress: new WindowCounter(ADDRESS_FAILURES, FIFTEEN_MINUTES),
+    signinEmail: new WindowCounter(EMAIL_FAILURES, FIFTEEN_MINUTES),
+    signupAddress: new WindowCounter(20, 60 * 60_000),
+    reauth: new WindowCounter(ADDRESS_FAILURES, FIFTEEN_MINUTES),
+    slowdown: new GlobalSlowdown(MAX_FAILED_SIGNINS, FIFTEEN_MINUTES),
   }
 }
 
-export const MAX_FAILED_SIGNINS = 300
+/** Counts a failed sign-in against (a), (b) and (c); a full limiter table turns on the global slow-down. */
+export function countSigninFailure(hub: Hub, address: string, email: string): void {
+  const now = hub.config.now()
+  hub.limits.slowdown.fail(now)
+  const overflow = [hub.limits.signinAddress.add(addressKey(address), now), hub.limits.signinEmail.add(email, now)].includes("overflow")
+  if (overflow) hub.limits.slowdown.force(now)
+}
+
+/** Waits when the global slow-down is on; the audit log says so once per window. */
+export async function slowDownIfNeeded(hub: Hub, address: string): Promise<void> {
+  const now = hub.config.now()
+  if (!hub.limits.slowdown.slowed(now)) return
+  if (hub.limits.slowdown.announce(now)) audit(hub, address, null, "signin-slowed-global")
+  await new Promise((done) => setTimeout(done, hub.config.slowDownMs))
+}
+
+function deviceCookieName(config: HubConfig): string {
+  return config.secure ? "__Host-copperflow-device" : "copperflow-device"
+}
+
+/** Whether the request carries a remembered device cookie of this user. */
+export function knownDevice(hub: Hub, req: IncomingMessage, userId: string): boolean {
+  const secret = cookies(req).get(deviceCookieName(hub.config))
+  return secret !== undefined && SECRET_TEXT.test(secret) && hub.store.deviceUser(hashSecret(secret)) === userId
+}
+
+/** After a successful sign-in: the device cookie to set, unless this device is already remembered for the user. */
+export function rememberDevice(hub: Hub, req: IncomingMessage, userId: string): string | undefined {
+  if (knownDevice(hub, req, userId)) return undefined
+  const secret = newSecret()
+  hub.store.addDevice(hashSecret(secret), userId, hub.config.now(), MAX_DEVICES)
+  return setCookie(deviceCookieName(hub.config), secret, { secure: hub.config.secure, maxAgeS: DEVICE_S })
+}
 
 /** Runs `work` after every earlier queued operation of the same user has finished. */
 export async function withUserLock<T>(hub: Hub, userId: string, work: () => Promise<T>): Promise<T> {
@@ -73,24 +128,6 @@ export async function withUserLock<T>(hub: Hub, userId: string, work: () => Prom
   }
 }
 
-/**
- * Counts a password check against the same limits as sign-in: the address (by addressKey), the account's email and
- * the global count of failures. Returns the refusal when one applies.
- */
-export function passwordCheckLimit(hub: Hub, address: string, email: string): { ok: false; retryAfterS: number } | undefined {
-  const now = hub.config.now()
-  const global = hub.limits.signinFailures.check("all", now)
-  if (!global.ok) return global
-  const byAddress = hub.limits.signinAddress.hit(addressKey(address), now)
-  if (!byAddress.ok) return byAddress
-  const byEmail = hub.limits.signinEmail.hit(email, now)
-  return byEmail.ok ? undefined : byEmail
-}
-
-/** Records a failed password check toward the global cap. */
-export function countFailure(hub: Hub): void {
-  hub.limits.signinFailures.hit("all", hub.config.now())
-}
 
 export function sessionCookieName(config: HubConfig): string {
   return config.secure ? "__Host-copperflow-session" : "copperflow-session"

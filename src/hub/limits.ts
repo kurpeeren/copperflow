@@ -1,50 +1,118 @@
-// Attempt limits: at most `max` attempts per key in a sliding window. Memory is bounded and the limiter fails closed:
-// a key that is limited is never forgotten early; only keys whose attempts have all left the window are dropped, and
-// when the table is still full a new key is refused rather than an old one evicted.
+// Attempt limits. A WindowCounter counts events per key in a sliding window and says when a key has reached its
+// maximum. Its memory is bounded without ever opening a limited key early or refusing a newcomer: keys under their
+// maximum live in one table, evicted oldest first when it is full; keys at their maximum move to a separate bounded
+// table and stay there until their window has passed. When that table is full too, `add` says "overflow" and the
+// caller slows every attempt down instead (GlobalSlowdown), which never refuses anyone.
 
 export type LimitCheck = { ok: true } | { ok: false; retryAfterS: number }
 
-export class RateLimiter {
-  private readonly attempts = new Map<string, number[]>()
+export const DEFAULT_MAX_OPEN_KEYS = 50_000
+export const DEFAULT_MAX_LIMITED_KEYS = 10_000
+
+export class WindowCounter {
+  private readonly open = new Map<string, number[]>()
+  private readonly limitedKeys = new Map<string, number[]>()
 
   constructor(
     private readonly max: number,
     private readonly windowMs: number,
-    private readonly maxKeys = 50_000,
+    private readonly maxOpen = DEFAULT_MAX_OPEN_KEYS,
+    private readonly maxLimited = DEFAULT_MAX_LIMITED_KEYS,
   ) {}
 
-  /** Counts an attempt for `key` at `now` (ms) when it is allowed; refused attempts are not counted. */
-  hit(key: string, now: number): LimitCheck {
-    const check = this.check(key, now)
-    if (!check.ok) return check
-    let times = this.attempts.get(key)
-    if (!times) {
-      if (this.attempts.size >= this.maxKeys) this.sweep(now)
-      // Still full: refuse the newcomer instead of forgetting anyone who is being limited.
-      if (this.attempts.size >= this.maxKeys) return { ok: false, retryAfterS: Math.ceil(this.windowMs / 1000) }
-      times = []
-      this.attempts.set(key, times)
-    }
-    times.push(now)
-    return check
+  private live(times: readonly number[], now: number): number[] {
+    return times.filter((time) => time > now - this.windowMs)
   }
 
-  /** Whether an attempt would be allowed, without counting it. */
+  private refusal(times: readonly number[], now: number): LimitCheck {
+    return { ok: false, retryAfterS: Math.max(1, Math.ceil(((times[times.length - this.max] as number) + this.windowMs - now) / 1000)) }
+  }
+
+  /** Whether `key` has reached its maximum in the window. */
   check(key: string, now: number): LimitCheck {
-    const times = (this.attempts.get(key) ?? []).filter((time) => time > now - this.windowMs)
-    if (times.length === 0) this.attempts.delete(key)
-    else this.attempts.set(key, times)
-    if (times.length < this.max) return { ok: true }
-    return { ok: false, retryAfterS: Math.max(1, Math.ceil(((times[0] as number) + this.windowMs - now) / 1000)) }
+    const held = this.limitedKeys.get(key)
+    if (held) {
+      const times = this.live(held, now)
+      if (times.length >= this.max) return this.refusal(times, now)
+      this.limitedKeys.delete(key)
+      if (times.length > 0) this.open.set(key, times)
+      return { ok: true }
+    }
+    const times = this.live(this.open.get(key) ?? [], now)
+    // A key that could not move to the limited table (overflow) is still limited where it is.
+    return times.length >= this.max ? this.refusal(times, now) : { ok: true }
   }
 
-  /** Drops only the keys whose attempts have all left the window. */
-  private sweep(now: number): void {
-    for (const [key, times] of this.attempts) if (times.every((time) => time <= now - this.windowMs)) this.attempts.delete(key)
+  /** Counts one event for `key`. "overflow" when the key reached its maximum but the limited table is full. */
+  add(key: string, now: number): "ok" | "overflow" {
+    const held = this.limitedKeys.get(key)
+    if (held) {
+      this.limitedKeys.set(key, [...this.live(held, now), now].slice(-this.max))
+      return "ok"
+    }
+    const times = [...this.live(this.open.get(key) ?? [], now), now].slice(-this.max)
+    this.open.delete(key)
+    if (times.length >= this.max) {
+      if (this.limitedKeys.size >= this.maxLimited) this.sweepLimited(now)
+      if (this.limitedKeys.size < this.maxLimited) {
+        this.limitedKeys.set(key, times)
+        return "ok"
+      }
+      this.putOpen(key, times)
+      return "overflow"
+    }
+    this.putOpen(key, times)
+    return "ok"
   }
 
-  get size(): number {
-    return this.attempts.size
+  private putOpen(key: string, times: number[]): void {
+    // Full: forget the key touched longest ago. Limited keys are not in this table, so none is opened early.
+    while (this.open.size >= this.maxOpen) this.open.delete(this.open.keys().next().value as string)
+    this.open.set(key, times)
+  }
+
+  private sweepLimited(now: number): void {
+    for (const [key, times] of this.limitedKeys) if (this.live(times, now).length < this.max) this.limitedKeys.delete(key)
+  }
+
+  get size(): { open: number; limited: number } {
+    return { open: this.open.size, limited: this.limitedKeys.size }
+  }
+}
+
+/**
+ * The global brake on failed sign-ins: past `threshold` failures in the window (or while forced after an overflow),
+ * every sign-in attempt waits a little longer. It never refuses, so nobody can lock everyone out.
+ */
+export class GlobalSlowdown {
+  private times: number[] = []
+  private forcedUntil = 0
+  private announcedAt = Number.NEGATIVE_INFINITY
+
+  constructor(
+    private readonly threshold: number,
+    private readonly windowMs: number,
+  ) {}
+
+  fail(now: number): void {
+    this.times.push(now)
+    if (this.times.length > this.threshold) this.times = this.times.slice(-this.threshold)
+  }
+
+  /** Slows everyone down for one window (a limiter table overflowed). */
+  force(now: number): void {
+    this.forcedUntil = now + this.windowMs
+  }
+
+  slowed(now: number): boolean {
+    return this.forcedUntil > now || (this.times.length >= this.threshold && (this.times[0] as number) > now - this.windowMs)
+  }
+
+  /** True once per window while slowed, so the audit log says it once. */
+  announce(now: number): boolean {
+    if (now - this.announcedAt < this.windowMs) return false
+    this.announcedAt = now
+    return true
   }
 }
 

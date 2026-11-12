@@ -64,6 +64,12 @@ CREATE TABLE IF NOT EXISTS projects (
   created INTEGER NOT NULL,
   UNIQUE (user_id, name)
 );
+CREATE TABLE IF NOT EXISTS devices (
+  hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS devices_user ON devices(user_id);
 CREATE TABLE IF NOT EXISTS audit (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   time INTEGER NOT NULL,
@@ -190,6 +196,24 @@ export class HubStore {
   endSessions(userId: string, keepHash?: string): void {
     if (keepHash === undefined) this.sql("DELETE FROM sessions WHERE user_id = ?").run(userId)
     else this.sql("DELETE FROM sessions WHERE user_id = ? AND hash <> ?").run(userId, keepHash)
+  }
+
+  /** Remembers a device the user signed in from; keeps the newest `max` per user. */
+  addDevice(idHash: string, userId: string, now: number, max: number): void {
+    this.transaction(() => {
+      this.sql("INSERT INTO devices (hash, user_id, created) VALUES (?, ?, ?)").run(idHash, userId, now)
+      this.sql("DELETE FROM devices WHERE user_id = ? AND hash NOT IN (SELECT hash FROM devices WHERE user_id = ? ORDER BY created DESC, rowid DESC LIMIT ?)").run(userId, userId, max)
+    })
+  }
+
+  /** The user a device cookie belongs to, if it is still remembered. */
+  deviceUser(idHash: string): string | undefined {
+    const row = this.sql("SELECT * FROM devices WHERE hash = ?").get(idHash) as Row | undefined
+    return row && sameSecret(row.hash as string, idHash) ? (row.user_id as string) : undefined
+  }
+
+  deviceCount(userId: string): number {
+    return Number((this.sql("SELECT COUNT(*) AS n FROM devices WHERE user_id = ?").get(userId) as Row).n)
   }
 
   sessionCount(userId: string): number {
