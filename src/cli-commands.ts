@@ -129,6 +129,7 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
         return 0
       // Loaded only when asked for: the local program never loads the hub (or node:sqlite).
       case "hub":
+        await requireSqlite()
         return await (await import("./hub/commands.js")).runHubCommand(rest, cwd, io)
       case "studio": {
         const [port] = takeOption(rest, "--port")
@@ -241,6 +242,15 @@ async function runWorkspaceCommand(rest: string[], cwd: string, io: CliIO, optio
 }
 
 const STOP_GRACE_MS = 5_000
+
+/** The hub keeps its state in node:sqlite, which Node has without a flag from 22.13; the rest of copperflow needs 22. */
+export async function requireSqlite(load: () => Promise<unknown> = () => import("node:sqlite")): Promise<void> {
+  try {
+    await load()
+  } catch {
+    throw new Error(`copperflow hub needs Node 22.13 or later (it keeps its state in node:sqlite); this is Node ${process.versions.node}`)
+  }
+}
 
 async function changeLocks(root: string, command: "lock" | "unlock", rest: string[], io: CliIO): Promise<void> {
   const file = required(rest[0], "file")

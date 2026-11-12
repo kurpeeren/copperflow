@@ -91,9 +91,13 @@ describe("hub projects", () => {
     const nobody = new Browser(server.url)
     for (const path of ["/projects", `/projects/${id}/download`, `/p/${id}/`, "/account"]) expect((await nobody.get(path)).headers.location).toBe("/signin")
     expect((await nobody.get(`/p/${id}/api/circuits`)).status).toBe(404)
+    const adaId = idOf(server, "ada@example.com")
+    const snapshot = () => ({ projects: server?.hub.store.projects(adaId), sessions: server?.hub.store.sessionCount(adaId), hash: server?.hub.store.userById(adaId)?.passwordHash })
+    const before = snapshot()
     for (const path of ["/projects", `/projects/${id}/rename`, `/projects/${id}/delete`, "/account/password", "/account/delete", "/signout"]) {
-      expect((await nobody.post(path, { name: "x", form: "x" })).status).toBe(403)
+      expect((await nobody.post(path, { name: "x", form: "x", confirm: "Amp", password: "another password" })).status).toBe(403)
     }
+    expect(snapshot()).toEqual(before)
     const bob = await newUser(server, "bob@example.com")
     const bobToken = /name="form" value="([^"]+)"/.exec((await bob.get("/projects")).text)?.[1] as string
     for (const path of [`/projects/${id}/download`, `/p/${id}/`, `/p/${id}/api/circuits`]) expect((await bob.get(path)).status).toBe(404)

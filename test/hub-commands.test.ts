@@ -2,7 +2,8 @@ import { describe, expect, test } from "vitest"
 import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { runCli, type CliIO } from "../src/cli-commands.js"
+import { fileURLToPath } from "node:url"
+import { requireSqlite, runCli, type CliIO } from "../src/cli-commands.js"
 import { STATUS_FILE } from "../src/hub/commands.js"
 import { loadOrCreateTicketKey } from "../src/hub/keys.js"
 import { Browser, newUser, startTestHub } from "./helpers/hub-client.js"
@@ -93,10 +94,15 @@ describe("the hub's maintainer commands", () => {
     expect(await readFile(join(data, "ticket-key.pem"), "utf8")).toContain("PRIVATE KEY")
   })
 
+  test("the hub says clearly when node:sqlite is missing", async () => {
+    await expect(requireSqlite(async () => Promise.reject(new Error("No such built-in module")))).rejects.toThrow(/copperflow hub needs Node 22\.13 or later/)
+    await expect(requireSqlite()).resolves.toBeUndefined()
+  })
+
   test("nothing in the engine, core, Studio or MCP server imports the hub", async () => {
     const offenders: string[] = []
     for (const folder of ["engine", "core", "studio", "mcp", "hosted", "library"]) {
-      const root = join(process.cwd(), "src", folder)
+      const root = join(fileURLToPath(new URL("../src/", import.meta.url)), folder)
       for (const name of await readdir(root, { recursive: true })) {
         if (!name.endsWith(".ts")) continue
         if (/from\s+["'][./]*\/?hub\//.test(await readFile(join(root, name), "utf8"))) offenders.push(`${folder}/${name}`)
