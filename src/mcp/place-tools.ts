@@ -6,6 +6,7 @@
 import { z } from "zod"
 import { editCircuit, resolveCircuit } from "../core/index.js"
 import { placementWrites, writePlacement } from "../core/placement-write.js"
+import { buildFilesWith } from "../core/design-source.js"
 import type { Design } from "../engine/design.js"
 import { DEFAULT_FIT_MARGIN, placeBoard, type Placement } from "../engine/pcb-place/index.js"
 import type { PlaceScope } from "../engine/pcb-place/scope.js"
@@ -112,7 +113,7 @@ export async function autoplace(
     const why = discardReason(start, await contentHashes(ports.root, circuit.file))
     if (why !== undefined) throw new Error(`${why.replace("while the board was routed", "while the board was placed").replace("; route again", "; place again")}. Nothing was written.`)
   }
-  const written = await writePlacement(ports.root, circuit.file, writes, { author: "ai", summary: placeSummary(scope, placement.positions.size), guard, ...(input.fit ? { fit: { margin: DEFAULT_FIT_MARGIN } } : {}) })
+  const written = await writePlacement(ports.root, circuit.file, writes, { author: "ai", summary: placeSummary(scope, placement.positions.size), guard, ...(input.fit ? { fit: { margin: DEFAULT_FIT_MARGIN, ...(ports.hosted ? { build: (files: Record<string, string>, main: string) => buildFilesWith(files, main, ports.engine) } : {}) } } : {}) })
   const fitError = written.board && "error" in written.board ? [`The board was not fitted: ${written.board.error}`] : []
   const head = written.entry
     ? [placedLine(written.written.length, placement, await buildOf(ports, circuit.file)), `Change ${written.entry.id}; undo_change takes it back.`]

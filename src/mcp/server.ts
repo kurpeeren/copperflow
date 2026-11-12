@@ -177,7 +177,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
       run(async () => formatCompactCheck(circuit, await checkCircuit(root, circuit, designOptions), filter)),
   )
 
-  const ports = { root, ...(options.engine ? { engine: options.engine } : {}) }
+  const ports = { root, ...(options.engine ? { engine: options.engine } : {}), ...(options.hosted ? { hosted: true } : {}) }
   server.registerTool(
     "route_track",
     { description: copper.ROUTE_TRACK_DESCRIPTION, inputSchema: copper.routeTrackInput },

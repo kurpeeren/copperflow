@@ -139,6 +139,29 @@ describe("hosted Studio", () => {
   })
 })
 
+describe("no circuit code or router in the hosted server's own thread", () => {
+  test("autoplace and autoroute are refused, not run in-process, when no worker thread is available", async () => {
+    const post = (path: string, body: unknown) =>
+      new Promise<Answer>((done, fail) => {
+        const { port } = new URL(studio.url)
+        const req = request({ host: "127.0.0.1", port, path, method: "POST", headers: proxied({ [TICKET_HEADER]: ticket(), "content-type": "application/json" }) }, (res) => {
+          let text = ""
+          res.setEncoding("utf8")
+          res.on("data", (chunk: string) => (text += chunk))
+          res.on("end", () => done({ status: res.statusCode ?? 0, headers: res.headers, body: text }))
+        })
+        req.on("error", fail)
+        req.end(JSON.stringify(body))
+      })
+    const placed = await post(`${BASE}/api/autoplace`, { file: FILE, scope: { kind: "all" }, fit: true })
+    expect(placed.status).toBe(400)
+    expect(JSON.parse(placed.body).error).toBe("Autoplace: this needs a worker thread on the hosted service, and none could be started; nothing was changed")
+    const routed = await post(`${BASE}/api/route`, { file: FILE, scope: { kind: "all" } })
+    expect(routed.status).toBe(400)
+    expect(JSON.parse(routed.body).error).toBe("Autoroute: this needs a worker thread on the hosted service, and none could be started; nothing was changed")
+  })
+})
+
 describe("hosted paths are read once", () => {
   const shapes = [
     `${BASE}//api/circuits`,

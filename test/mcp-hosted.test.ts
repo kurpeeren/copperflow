@@ -8,6 +8,7 @@ import { createCopperflowServer, type ServerOptions } from "../src/mcp/server.js
 import { GUIDE_TOPICS } from "../src/mcp/guide.js"
 import { createPartArgs, LDO } from "./fixtures.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
+import { buildDesign } from "../src/engine/design.js"
 
 const DEMO = join(import.meta.dirname, "..", "examples", "usb-c-ldo")
 const FILE = "index.circuit.tsx"
@@ -79,6 +80,24 @@ describe("guide", () => {
     expect(json).toContain('"destructiveHint":true')
     const refused = await call(hosted, "import_part", { lcsc: "C7950" })
     expect(refused.isError).toBe(true)
+  })
+
+  test("hosted autoplace fits the board through the engine's worker build, never an in-process one", async () => {
+    const calls: string[] = []
+    const engine = {
+      build: inProcessEngine.build,
+      buildFiles: async (files: Record<string, string>, main: string) => {
+        calls.push(main)
+        return buildDesign(files, main)
+      },
+    }
+    const hosted = await memoryClient(await demoCopy(), { hosted: true, engine })
+    const answer = await call(hosted, "autoplace", { file: FILE, fit: true })
+    expect(answer.isError, answer.text).toBe(false)
+    expect(calls).toEqual([FILE])
+    const local = await memoryClient(await demoCopy(), { engine })
+    await call(local, "autoplace", { file: FILE, fit: true })
+    expect(calls).toEqual([FILE])
   })
 
   test("what a hosted client pays to connect: the instructions, tools/list as JSON and the first guide answer", async () => {

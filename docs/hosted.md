@@ -18,9 +18,11 @@ one project folder. It trusts one thing: the workspace ticket the hub adds to ea
 
 ## What the hub must do
 
-1. **Strip incoming headers.** Remove any `x-copperflow-ticket` and `x-forwarded-host` the browser or agent sent,
-   then set them itself: the ticket it signed, and the public host. A workspace cannot tell a header the hub set
-   from one it passed through.
+1. **Strip incoming headers, forward the public Host.** Remove any `x-copperflow-ticket` and `x-forwarded-host`
+   the browser or agent sent, then set the ticket it signed. Forward `Host` as the public host (for example
+   `copperflow.example.com`): the MCP server checks `Host` and nothing else, as does the SDK's allowed-hosts check
+   behind it, and the Studio accepts it too. A workspace cannot tell a header the hub set from one it passed
+   through.
 2. **Authenticate first.** Sign a ticket only for a request whose session cookie or access token names a user who
    may open that workspace.
 3. **Cookies.** Session cookies are `HttpOnly`, `Secure` and `SameSite=Lax` (or `Strict`).
@@ -31,10 +33,20 @@ one project folder. It trusts one thing: the workspace ticket the hub adds to ea
    refuses to start without a ticket key, and without one may listen only on a loopback address.
 6. **Pass the base path.** The Studio of a project is served under its base path (such as `/p/<project>`); the hub
    forwards the path unchanged and the workspace refuses anything outside it.
+7. **Start a workspace with no secrets in its environment.** Give it only `COPPERFLOW_TICKET_PUBLIC_KEY`, the
+   workspace id and the public origin: no private key, database address, token or password. The workspace process
+   is the last line before the container, so nothing in it may be worth stealing.
 
 ## Inside a workspace
 
-- Build, route and place workers start with an empty environment, so circuit code that escaped its `node:vm`
-  context finds no key, token or path in `process.env`.
+- Circuit code is built only in the engine's worker thread, never in the server's main thread: the Studio's and
+  the agent's builds, and the build that fits the board after Autoplace. Behind the hub, Autoroute and Autoplace
+  are refused when no worker thread can be started, instead of running in the server process.
+- Those workers start with an empty environment. That shrinks what code escaping its `node:vm` context can read
+  at once; it is not a boundary, since such code runs in the workspace process. The boundary is the container, and
+  rule 7 above keeps that process's environment free of secrets.
+- Session limits: a user holds at most 4 MCP sessions (at the limit their own longest-idle session is closed, or
+  the request gets 429 when every one holds an open stream); the server holds at most 16 (beyond that, 429).
+  A session with an open stream counts as active; others close after 10 idle minutes.
 - The importer (`import_part`) is not offered; `create_part` refuses a part with more than three pins without a
   datasheet link unless its description says "Pins NOT from a datasheet".

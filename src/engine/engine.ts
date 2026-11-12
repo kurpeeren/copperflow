@@ -65,6 +65,13 @@ export class Engine {
     return run
   }
 
+  /** Builds `main` from the given project files (paths inside the project) instead of the files on disk. */
+  buildFiles(files: Record<string, string>, main: string): Promise<Design> {
+    const run = this.queue.then(() => this.send(files, main))
+    this.queue = run.catch(() => undefined)
+    return run
+  }
+
   /** Ends the worker and refuses further builds. */
   async stop(): Promise<void> {
     this.stopped = true
@@ -73,8 +80,11 @@ export class Engine {
 
   private async run(root: string, file: string): Promise<Design> {
     const circuit = await resolveCircuit(root, file)
-    const files = await collectProjectFiles(root, { include: ENGINE_FILES })
-    if (this.stopped) throw new Error("The engine stopped")
+    return this.send(await collectProjectFiles(root, { include: ENGINE_FILES }), circuit.file)
+  }
+
+  private send(files: Record<string, string>, main: string): Promise<Design> {
+    if (this.stopped) return Promise.reject(new Error("The engine stopped"))
     const started = this.start()
     const id = ++this.nextId
     return new Promise<Design>((done, fail) => {
@@ -90,7 +100,7 @@ export class Engine {
         }
       started.waiting.set(id, { done: settle(done), fail: settle(fail) })
       try {
-        started.worker.postMessage({ id, files, main: circuit.file })
+        started.worker.postMessage({ id, files, main })
       } catch (error) {
         this.reset(started, new Error(`The build could not be sent to the worker: ${(error as Error).message}`))
       }

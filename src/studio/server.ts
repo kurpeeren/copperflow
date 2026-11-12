@@ -54,6 +54,7 @@ import { FOOTPRINT_FILE } from "../core/library.js"
 import { PIN_TYPES } from "../core/pin-types.js"
 import { LayoutBody } from "./layout-schema.js"
 import { LiveProject, type DesignBuilder } from "./live.js"
+import type { Design } from "../engine/design.js"
 import { RouteRunner, routeWorkerFactory, type RouteWorkerFactory } from "./route-runner.js"
 import { PlaceRunner, placeWorkerFactory, type PlaceWorkerFactory } from "./place-runner.js"
 import { fitBoardEdit } from "./fit-board.js"
@@ -293,6 +294,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
     nextMark: () => live.nextMark(),
     requestBuild: (circuit) => live.requestBuild(circuit),
     createWorker: options.routeWorker === null ? undefined : (options.routeWorker ?? (await routeWorkerFactory())),
+    ...(hosted ? { hosted: true } : {}),
   })
   const placer = new PlaceRunner({
     root,
@@ -301,6 +303,8 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
     nextMark: () => live.nextMark(),
     requestBuild: (circuit) => live.requestBuild(circuit),
     createWorker: options.placeWorker === null ? undefined : (options.placeWorker ?? (await placeWorkerFactory())),
+    // Behind the hub the board-fitting build goes to the engine worker too, never this thread.
+    ...(hosted ? { hosted: { buildFiles: hostedFilesBuilder(building.builder) } } : {}),
   })
 
   const server = createServer((req, res) => {
@@ -648,6 +652,14 @@ function hostedOf(given: HostedOptions | undefined): HostedOptions | undefined {
   if (given.workspaceId === "") throw new Error("A hosted Studio needs a workspace id")
   if (given.ticketPublicKey.type !== "public" || given.ticketPublicKey.asymmetricKeyType !== "ed25519") throw new Error("A hosted Studio needs the hub's Ed25519 public key")
   return { ...given, publicOrigin: normaliseOrigin(given.publicOrigin), basePath: normaliseBasePath(given.basePath) }
+}
+
+/** The builder's in-memory build, or a refusal: a hosted Studio never builds circuit code in its own thread. */
+function hostedFilesBuilder(builder: DesignBuilder): (files: Record<string, string>, main: string) => Promise<Design> {
+  return (files, main) => {
+    if (!builder.buildFiles) return Promise.reject(new Error("Fitting the board needs the engine worker on the hosted service; nothing was fitted"))
+    return builder.buildFiles(files, main)
+  }
 }
 
 /** The app's page with the hosted marker the client reads (studio/src/api.ts). */

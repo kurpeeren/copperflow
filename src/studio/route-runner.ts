@@ -75,6 +75,8 @@ export interface RouteRunnerDeps {
   requestBuild(circuit: string): void
   /** Undefined runs the router in the server process. */
   createWorker: RouteWorkerFactory | undefined
+  /** Behind the hub: never route in the server process. */
+  hosted?: boolean
 }
 
 class Cancelled extends Error {}
@@ -171,6 +173,9 @@ export class RouteRunner {
    */
   async start(file: string, scope: RouteScope): Promise<string> {
     if (this.job) throw new Error(`The board of ${this.job.file} is being routed; cancel it or wait for it to end`)
+    if (this.deps.hosted && !this.deps.createWorker) {
+      throw new Error("Autoroute: this needs a worker thread on the hosted service, and none could be started; nothing was changed")
+    }
     const job: Job = { file, cancelled: false, committed: false, stop: () => undefined }
     this.job = job
     try {
