@@ -8,6 +8,7 @@ export const CODE_MS = 60_000
 const MAX_PENDING = 10_000
 const MAX_CODES = 10_000
 const MAX_CODES_PER_USER = 20
+const REDEEMED_MS = 10 * 60_000
 /** Clients one signed-in user can keep from eviction by authorising them. */
 export const PROTECTED_PER_USER = 5
 
@@ -41,6 +42,7 @@ function makeRoom<T extends { expires: number }>(map: Map<string, T>, max: numbe
 export class OAuthState {
   private readonly pending = new Map<string, AuthorizationRequest>()
   private readonly codes = new Map<string, IssuedCode>()
+  private readonly redeemed = new Map<string, { userId: string; grantId: string; expires: number }>()
 
   /** Keeps a request; returns the secret that names it (in a cookie or a form field, never a URL). */
   addRequest(request: Omit<AuthorizationRequest, "expires">, now: number): string {
@@ -79,6 +81,20 @@ export class OAuthState {
     const key = hashSecret(secret)
     const found = this.codes.get(key)
     this.codes.delete(key)
+    return found && found.expires > now ? found : undefined
+  }
+
+  /** Remembers, for 10 minutes, the grant a code was exchanged for, so a second exchange can revoke it (RFC 9700). */
+  markRedeemed(secret: string, userId: string, grantId: string, now: number): void {
+    makeRoom(this.redeemed, MAX_CODES, now)
+    this.redeemed.set(hashSecret(secret), { userId, grantId, expires: now + REDEEMED_MS })
+  }
+
+  /** The grant a code was already exchanged for, if it was; the record is used up. */
+  takeRedeemed(secret: string, now: number): { userId: string; grantId: string } | undefined {
+    const key = hashSecret(secret)
+    const found = this.redeemed.get(key)
+    this.redeemed.delete(key)
     return found && found.expires > now ? found : undefined
   }
 

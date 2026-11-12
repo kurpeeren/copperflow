@@ -278,11 +278,18 @@ function exchangeCode(hub: Hub, res: ServerResponse, form: Map<string, string>, 
     userMayHaveTokens(hub, code.userId) &&
     hub.store.tokens.client(clientId) !== undefined
   if (!code || !good) {
+    // A code exchanged a second time was intercepted or replayed: the grant issued from it goes (RFC 9700 4.2.4).
+    const reused = code === undefined && SECRET_TEXT.test(given) ? hub.oauth.takeRedeemed(given, now) : undefined
+    if (reused && hub.store.tokens.revokeGrant(reused.userId, reused.grantId)) {
+      hub.agents.closeCredential(`grant:${reused.grantId}`)
+      audit(hub, address, reused.userId, "code-reused-grant-revoked", reused.grantId)
+    }
     audit(hub, address, code?.userId ?? null, "token-refused", "authorization_code")
     return oauthError(res, 400, "invalid_grant", "The code is not valid.")
   }
   const grantId = newId()
   hub.store.tokens.createGrant({ id: grantId, userId: code.userId, clientId }, now)
+  hub.oauth.markRedeemed(given, code.userId, grantId, now)
   audit(hub, address, code.userId, "grant-created", grantId)
   issueTokens(hub, res, code.userId, grantId)
 }

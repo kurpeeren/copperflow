@@ -86,7 +86,6 @@ describe("OAuth for MCP clients", () => {
     expect(tokens.body.access_token).toMatch(/^cfa_/)
     expect(tokens.body.refresh_token).toMatch(/^cfr_/)
     expect(tokens.body.expires_in).toBe(3600)
-    expect((await exchange(code2, VERIFIER)).body.error).toBe("invalid_grant")
     const agent = await connectAgent(server, tokens.body.access_token as string)
     expect((await call(agent, "list_projects")).isError).toBe(false)
     expect((await browser.get("/account")).text).toContain("Test &lt;script&gt;")
@@ -121,6 +120,24 @@ describe("OAuth for MCP clients", () => {
     expect(back.searchParams.get("error")).toBe("access_denied")
     expect(back.searchParams.get("state")).toBe("st-1")
     expect(back.searchParams.get("code")).toBeNull()
+  })
+
+  test("a code exchanged twice revokes the grant issued from it, with its tokens and agent sessions", async () => {
+    server = await startTestHub()
+    const clientId = (await registerClient(server, { redirect_uris: [REDIRECT] })).body.client_id as string
+    const browser = new Browser(server.url)
+    await browser.signUp(invite(server), "ada@example.com")
+    const code = await codeFor(browser, clientId)
+    const exchange = () => tokenRequest(server as HubServer, { grant_type: "authorization_code", code, client_id: clientId, redirect_uri: REDIRECT, code_verifier: VERIFIER })
+    const first = await exchange()
+    expect(first.status).toBe(200)
+    const agent = await connectAgent(server, first.body.access_token as string)
+    expect((await call(agent, "list_projects")).isError).toBe(false)
+    expect((await exchange()).body.error).toBe("invalid_grant")
+    await expect(call(agent, "list_projects")).rejects.toThrow()
+    await agent.close().catch(() => undefined)
+    expect((await tokenRequest(server, { grant_type: "refresh_token", refresh_token: first.body.refresh_token as string, client_id: clientId })).body.error).toBe("invalid_grant")
+    expect(server.hub.store.auditLog(20).map((e) => e.event)).toContain("code-reused-grant-revoked")
   })
 
   test("redirect URI rules: http only on loopback, at most 5, exact match, and no open redirect through redirect_uri or state", async () => {
