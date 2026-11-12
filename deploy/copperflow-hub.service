@@ -1,0 +1,61 @@
+# Arrangement B (deploy/README.md): the hub on the host as a systemd service, the reverse proxy beside it on the
+# host, workspaces reached on loopback. Install as /etc/systemd/system/copperflow-hub.service; the build of the
+# repository is in /opt/copperflow (README, step 4b), the environment file is /etc/copperflow/hub.env.
+#
+# The hub's user is in the docker group, which is root-equivalent on this machine: whoever controls the hub's process
+# can ask the engine for a container that mounts /. The hardening below limits what the hub process itself can touch;
+# it cannot limit what it may ask the engine for.
+#
+# Hardening that would break the hub, and is therefore NOT set:
+#   RestrictSUIDSGID=yes   the hub makes project folders setgid (mode 2770) so what a workspace writes keeps the group
+#   PrivateNetwork=yes     the hub and the proxy meet on the host's loopback, as do the hub and its workspaces' ports
+#   PrivateUsers=yes       the workspace and docker groups would not map; the socket would be unreachable
+#   MemoryDenyWriteExecute=yes   Node's JIT needs writable executable memory
+#   InaccessiblePaths= over /run   the hub drives the engine through /run/docker.sock (connecting needs no write access)
+#   UMask=0077              not needed (the hub sets every mode itself) and kept out so nothing it makes loses the group
+
+[Unit]
+Description=copperflow hub
+Documentation=file:///opt/copperflow/deploy/README.md
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=copperflow-hub
+Group=copperflow-hub
+SupplementaryGroups=copperflow-ws docker
+EnvironmentFile=/etc/copperflow/hub.env
+Environment=NODE_ENV=production HOME=/tmp DOCKER_CONFIG=/tmp/.docker
+WorkingDirectory=/opt/copperflow
+ExecStart=/usr/bin/node /opt/copperflow/dist/cli.js hub --data ${CF_DATA_DIR} --port ${CF_HUB_PORT} --bind 127.0.0.1 --public-origin https://${CF_PUBLIC_HOST} --workspace-domain ${CF_WORKSPACE_DOMAIN} --runner container --workspace-image ${CF_WORKSPACE_IMAGE} --container-command docker --workspace-reach loopback --workspace-group ${CF_WORKSPACE_GID} --trust-proxy 127.0.0.1
+# The hub stops its workspaces on SIGTERM and exits within 10 seconds; after an uncaught exception it exits for a restart.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+# Must be the same path as CF_DATA_DIR in /etc/copperflow/hub.env (systemd does not read variables here).
+ReadWritePaths=/var/lib/copperflow
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target
