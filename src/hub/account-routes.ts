@@ -7,6 +7,7 @@ import {
   audit,
   clearSessionCookie,
   countAttempt,
+  forgetThisDevice,
   formTokenMatches,
   knownDevice,
   passGate,
@@ -58,12 +59,12 @@ export async function signIn(hub: Hub, req: IncomingMessage, res: ServerResponse
   const email = normaliseEmail(form.get("email") ?? "").slice(0, 254)
   const now = hub.config.now()
   const user = hub.store.userByEmail(email)
-  const device = user !== undefined && knownDevice(hub, req, user.id)
+  const device = knownDevice(hub, req, user?.id)
   const addressKeyed = addressKey(address)
   // (a) the address, then (b) the email unless this device has signed in to that account before.
   const byAddress = hub.limits.signinAddress.check(addressKeyed, now)
-  // The per-email table holds only emails of accounts that exist, so made-up strings cannot fill it.
-  const byEmail = byAddress.ok && user && !device ? hub.limits.signinEmail.check(email, now) : ({ ok: true } as const)
+  // Every email counts alike, existing or not, in fixed buckets: the limit says nothing about which accounts exist.
+  const byEmail = byAddress.ok && !device ? hub.limits.signinEmail.check(email, now) : ({ ok: true } as const)
   const limited = !byAddress.ok ? byAddress : !byEmail.ok ? byEmail : undefined
   const tooMany = (retryAfterS: number) =>
     showSignIn(hub, req, res, 429, `Too many sign-in attempts. Try again in ${minutes(retryAfterS)}.`, { "retry-after": String(retryAfterS) })
@@ -73,8 +74,8 @@ export async function signIn(hub: Hub, req: IncomingMessage, res: ServerResponse
   }
   // Counted now, before the first await, as if it failed: concurrent attempts cannot pass the check together.
   countAttempt(hub, hub.limits.signinAddress, addressKeyed, now, address)
-  const perEmail = user !== undefined && !device
-  if (perEmail) countAttempt(hub, hub.limits.signinEmail, email, now, address)
+  const perEmail = !device
+  if (perEmail) hub.limits.signinEmail.add(email, now)
   const refund = () => {
     hub.limits.signinAddress.refund(addressKeyed, now)
     if (perEmail) hub.limits.signinEmail.refund(email, now)
@@ -128,10 +129,12 @@ export async function signUp(hub: Hub, req: IncomingMessage, res: ServerResponse
 export async function signOut(hub: Hub, req: IncomingMessage, res: ServerResponse, address: string, signed: Signed): Promise<void> {
   const form = await readForm(req)
   if (!formTokenMatches(signed, form.get("form"))) throw new HubError(403, "The form has expired. Open the page again and retry.")
-  // The device cookie stays, so the person can sign in again past strict mode.
+  // By default the device record stays, so the person can sign in again past strict mode; "Sign out and forget this
+  // device" (forget=1) drops this browser's record and cookie.
   hub.store.endSessions(signed.user.id)
-  audit(hub, address, signed.user.id, "signout")
-  redirect(res, "/", { "set-cookie": clearSessionCookie(hub) })
+  const forget = form.get("forget") === "1"
+  audit(hub, address, signed.user.id, forget ? "signout-forget-device" : "signout")
+  redirect(res, "/", { "set-cookie": [clearSessionCookie(hub), ...(forget ? [forgetThisDevice(hub, req)] : [])] })
 }
 
 /** "End all sessions": every session ends and every remembered device is forgotten. */

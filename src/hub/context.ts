@@ -5,7 +5,7 @@ import type { WorkspaceRunner } from "./runner/runner.js"
 import type { TicketKeys } from "./keys.js"
 import type { ProjectFiles } from "./projects.js"
 import type { HubStore, User } from "./store.js"
-import { addressKey, SigninGate, WindowCounter } from "./limits.js"
+import { addressKey, EmailBuckets, SigninGate, WindowCounter } from "./limits.js"
 import { cookies, setCookie } from "./http.js"
 import { formTokenOf, hashSecret, newSecret, sameSecret } from "./secrets.js"
 
@@ -57,7 +57,7 @@ export interface Signed {
  */
 export interface Limits {
   signinAddress: WindowCounter
-  signinEmail: WindowCounter
+  signinEmail: EmailBuckets
   signupAddress: WindowCounter
   reauth: WindowCounter
   gate: SigninGate
@@ -73,7 +73,7 @@ const DEVICE_S = 365 * 24 * 60 * 60
 export function newLimits(maxKeys?: number): Limits {
   return {
     signinAddress: new WindowCounter(ADDRESS_FAILURES, FIFTEEN_MINUTES, maxKeys),
-    signinEmail: new WindowCounter(EMAIL_FAILURES, FIFTEEN_MINUTES, maxKeys),
+    signinEmail: new EmailBuckets(EMAIL_FAILURES, FIFTEEN_MINUTES),
     signupAddress: new WindowCounter(20, 60 * 60_000, maxKeys),
     reauth: new WindowCounter(ADDRESS_FAILURES, FIFTEEN_MINUTES, maxKeys),
     gate: new SigninGate({ threshold: MAX_FAILED_SIGNINS, windowMs: FIFTEEN_MINUTES, perSecond: 5, queue: 50, perAddress: 2 }),
@@ -100,10 +100,21 @@ function deviceCookieName(config: HubConfig): string {
   return config.secure ? "__Host-copperflow-device" : "copperflow-device"
 }
 
-/** Whether the request carries a remembered device cookie of this user. */
-export function knownDevice(hub: Hub, req: IncomingMessage, userId: string): boolean {
+/**
+ * Whether the request carries a remembered device cookie of this user. The lookup runs whether or not the account
+ * exists (`userId` undefined), so a known and an unknown email take the same path.
+ */
+export function knownDevice(hub: Hub, req: IncomingMessage, userId: string | undefined): boolean {
   const secret = cookies(req).get(deviceCookieName(hub.config))
-  return secret !== undefined && SECRET_TEXT.test(secret) && hub.store.deviceUser(hashSecret(secret)) === userId
+  const owner = secret !== undefined && SECRET_TEXT.test(secret) ? hub.store.deviceUser(hashSecret(secret)) : hub.store.deviceUser(hashSecret(""))
+  return userId !== undefined && owner === userId
+}
+
+/** Forgets this browser's device record, if it has one; returns the cookie that clears it. */
+export function forgetThisDevice(hub: Hub, req: IncomingMessage): string {
+  const secret = cookies(req).get(deviceCookieName(hub.config))
+  if (secret !== undefined && SECRET_TEXT.test(secret)) hub.store.forgetDevice(hashSecret(secret))
+  return setCookie(deviceCookieName(hub.config), "", { secure: hub.config.secure, maxAgeS: 0 })
 }
 
 /** After a successful sign-in: the device cookie to set, unless this device is already remembered for the user. */

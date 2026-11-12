@@ -81,14 +81,16 @@ attempts cannot pass a check together, and a correct password costs nothing. Win
 | What is counted | Per | Limit | At the limit | Exempt |
 | --- | --- | --- | --- | --- |
 | Failed sign-ins | Address (IPv4 whole, IPv6 /64) | 10 | 429 with Retry-After | Nobody |
-| Failed sign-ins | Email of an existing account (an unknown email counts toward its address only) | 20 | 429 with Retry-After | A request with that account's device cookie |
+| Failed sign-ins | Email, existing or not (65 536 fixed buckets by a keyed hash made at start, never stored) | 20 | 429 with Retry-After, the same for every email | A request with that account's device cookie |
 | Failed sign-ins | Everyone (strict mode) | 300, or a full limiter table | Attempts pass a token bucket of 5 per second; at most 2 wait per address, served in turn across addresses, 50 in all; beyond that 429 | A request with that account's device cookie |
 | Failed current-password checks (change password, delete account) | User id | 10 | 429 with Retry-After | Nobody; the sign-in route cannot reach this counter |
 | Sign-ups | Address | 20 per hour | 429 | Nobody |
 
 A device cookie is set at each successful sign-in (random, stored hashed, at most 10 per user, one year). A normal
-sign-out keeps it; a password change or reset, account deletion and "End all sessions" on the account page delete the
-user's devices. A limiter table holds 100 000 keys and never forgets a key with failures in its window; a new key that
+sign-out keeps it, so a person who signed out is not locked out by strangers; that costs nothing, since the per-address
+limit still applies to that browser and the exemption gives it no more guesses than any address has. "Sign out and
+forget this device" drops this browser's record; a password change or reset, account deletion and "End all sessions"
+delete all the user's devices. A limiter table holds 100 000 keys and never forgets a key with failures in its window; a new key that
 does not fit is not counted and turns strict mode on for the window. The audit log says `signin-strict` or
 `signin-strict-table-full` once per window.
 

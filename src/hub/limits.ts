@@ -5,6 +5,8 @@
 // so the caller turns on strict mode. SigninGate is strict mode: a token bucket with a short queue for sign-in attempts
 // that carry no device cookie for the account they name.
 
+import { createHmac, randomBytes } from "node:crypto"
+
 export type LimitCheck = { ok: true } | { ok: false; retryAfterS: number }
 
 export const DEFAULT_MAX_KEYS = 100_000
@@ -58,6 +60,60 @@ export class WindowCounter {
 
   get size(): number {
     return this.events.size
+  }
+}
+
+/**
+ * Failures per email in a fixed table of buckets, indexed by a keyed hash of the email (the key is made at start and
+ * never stored or logged). Every email counts alike, existing or not, so the limit says nothing about which accounts
+ * exist; the memory is fixed, so nothing can fill it. A collision only makes another email's new devices wait.
+ */
+export class EmailBuckets {
+  private readonly buckets: (number[] | undefined)[]
+  private readonly key = randomBytes(32)
+
+  constructor(
+    private readonly max: number,
+    private readonly windowMs: number,
+    readonly size = 65_536,
+  ) {
+    this.buckets = new Array<number[] | undefined>(size)
+  }
+
+  private index(email: string): number {
+    return createHmac("sha256", this.key).update(email, "utf8").digest().readUInt32BE(0) % this.size
+  }
+
+  private live(at: number, now: number): number[] {
+    const times = (this.buckets[at] ?? []).filter((time) => time > now - this.windowMs)
+    this.buckets[at] = times.length > 0 ? times : undefined
+    return times
+  }
+
+  check(email: string, now: number): LimitCheck {
+    const times = this.live(this.index(email), now)
+    if (times.length < this.max) return { ok: true }
+    return { ok: false, retryAfterS: Math.max(1, Math.ceil(((times[times.length - this.max] as number) + this.windowMs - now) / 1000)) }
+  }
+
+  add(email: string, now: number): void {
+    const at = this.index(email)
+    // Bounded per bucket: only the newest `max` events matter.
+    this.buckets[at] = [...this.live(at, now), now].slice(-this.max)
+  }
+
+  refund(email: string, time: number): void {
+    const at = this.index(email)
+    const times = this.buckets[at]
+    if (!times) return
+    const found = times.lastIndexOf(time)
+    if (found >= 0) times.splice(found, 1)
+    if (times.length === 0) this.buckets[at] = undefined
+  }
+
+  /** Buckets holding events now (for tests). */
+  used(): number {
+    return this.buckets.filter((times) => times !== undefined).length
   }
 }
 

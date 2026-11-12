@@ -115,6 +115,8 @@ export function accountPage(viewer: Viewer, error?: string, note?: string): stri
 <h2>End all sessions</h2>
 <p>Signs you out everywhere and forgets every device you signed in from.</p>
 <form method="post" action="/account/end-sessions">${hidden(viewer.formToken)}<button class="quiet" type="submit">End all sessions</button></form>
+<h2>Sign out on a shared computer</h2>
+<form method="post" action="/signout">${hidden(viewer.formToken)}<input type="hidden" name="forget" value="1"><button class="quiet" type="submit">Sign out and forget this device</button></form>
 <h2>Delete my account</h2>
 <p>This deletes your account and every project, with all its files, at once. It cannot be undone.</p>
 <form class="stack" method="post" action="/account/delete">${hidden(viewer.formToken)}

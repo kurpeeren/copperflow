@@ -71,11 +71,40 @@ describe("the sign-in limits", () => {
     expect(order.indexOf("person")).toBeLessThan(2)
   })
 
-  test("an unknown email counts toward its address only", async () => {
+  test("an unknown email is limited exactly like a known one, so the limit reveals no account", async () => {
+    const fixed = Date.now()
+    server = await startTestHub({ trustProxy: true, now: () => fixed })
+    await newUser(server, "ada@example.com")
+    const attempt =async (email: string, i: number) => {
+      const browser = new Browser(server?.url as string)
+      const token = formToken((await browser.get("/signin")).text)
+      return browser.post("/signin", { form: token, email, password: "wrong password" }, { "x-forwarded-for": `203.0.113.${i}` })
+    }
+    const strip = (text: string) => text.replace(/value="[^"]*"/g, "")
+    for (const email of ["ada@example.com", "nobody@example.com"]) {
+      for (let i = 0; i < 20; i += 1) expect((await attempt(email, email.length + i)).status).toBe(401)
+    }
+    const known = await attempt("ada@example.com", 100)
+    const unknown = await attempt("nobody@example.com", 101)
+    expect(known.status).toBe(429)
+    expect(unknown.status).toBe(429)
+    expect(strip(unknown.text)).toBe(strip(known.text))
+    expect(unknown.headers["retry-after"]).toBe(known.headers["retry-after"])
+    expect(server.hub.limits.signinEmail.size).toBe(65_536)
+  })
+
+  test("sign out and forget this device drops this browser's record; a plain sign-out keeps it", async () => {
     server = await startTestHub()
-    for (let i = 0; i < 5; i += 1) await new Browser(server.url).signIn(`nobody${i}@example.com`, "wrong password")
-    expect(server.hub.limits.signinEmail.size).toBe(0)
-    expect(server.hub.limits.signinAddress.size).toBe(1)
+    const ada = await newUser(server, "ada@example.com")
+    const id = server.hub.store.userByEmail("ada@example.com")?.id as string
+    await ada.signIn("ada@example.com")
+    await ada.submit("/projects", "/signout", {})
+    expect(server.hub.store.deviceCount(id)).toBe(1)
+    await ada.signIn("ada@example.com")
+    const out = await ada.submit("/account", "/signout", { forget: "1" })
+    expect(out.status).toBe(303)
+    expect(server.hub.store.deviceCount(id)).toBe(0)
+    expect(ada.jar.has("__Host-copperflow-device")).toBe(false)
   })
 
   test("addresses are keyed by IPv4 address and IPv6 /64", () => {
@@ -96,13 +125,17 @@ describe("the sign-in limits", () => {
   })
 
   test("a full limiter table turns strict mode on instead of refusing", async () => {
-    server = await startTestHub({ limiterKeys: 1 })
+    server = await startTestHub({ limiterKeys: 1, trustProxy: true })
     await newUser(server, "ada@example.com")
-    expect((await new Browser(server.url).signIn("ada@example.com", "wrong password")).status).toBe(401)
+    const fromAddress = async (ip: string, password: string) => {
+      const browser = new Browser(server?.url as string)
+      const token = formToken((await browser.get("/signin")).text)
+      return browser.post("/signin", { form: token, email: "ada@example.com", password }, { "x-forwarded-for": ip })
+    }
+    expect((await fromAddress("203.0.113.1", "wrong password")).status).toBe(401)
     expect(server.hub.limits.gate.strict(Date.now())).toBe(false)
-    // A second account's email does not fit the one-key table: it is not counted, and strict mode turns on.
-    await newUser(server, "bob@example.com")
-    expect((await new Browser(server.url).signIn("bob@example.com", "wrong password")).status).toBe(401)
+    // A second address does not fit the one-key table: it is not counted, and strict mode turns on.
+    expect((await fromAddress("203.0.113.2", "wrong password")).status).toBe(401)
     expect(server.hub.limits.gate.strict(Date.now())).toBe(true)
     expect(server.hub.store.auditLog(5).map((e) => e.event)).toContain("signin-strict-table-full")
     expect((await new Browser(server.url).signIn("ada@example.com")).status).toBe(303)
