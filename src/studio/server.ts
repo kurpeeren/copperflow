@@ -57,6 +57,7 @@ import { LiveProject, type DesignBuilder } from "./live.js"
 import { RouteRunner, routeWorkerFactory, type RouteWorkerFactory } from "./route-runner.js"
 import { PlaceRunner, placeWorkerFactory, type PlaceWorkerFactory } from "./place-runner.js"
 import { fitBoardEdit } from "./fit-board.js"
+import { gateHosted, normaliseBasePath, normaliseOrigin, type HostedOptions } from "../hosted/gate.js"
 
 export interface StudioOptions {
   root: string
@@ -77,6 +78,8 @@ export interface StudioOptions {
   placeWorker?: PlaceWorkerFactory | null
   /** Fetches for Library → Import by LCSC number; tests pass one that answers from fixtures. */
   fetch?: typeof fetch
+  /** Runs behind the hosted hub: binds where told, serves under a base path, and takes the hub's ticket for the token. */
+  hosted?: HostedOptions
 }
 
 export interface Studio {
@@ -273,7 +276,8 @@ class HttpError extends Error {
 export async function startStudio(options: StudioOptions): Promise<Studio> {
   const root = resolve(options.root)
   const staticDir = resolve(options.staticDir ?? fileURLToPath(new URL("../app/", import.meta.url)))
-  const token = randomBytes(24).toString("hex")
+  const hosted = hostedOf(options.hosted)
+  const token = hosted ? "" : randomBytes(24).toString("hex")
   const building = builderFor(options.builder)
   const live = new LiveProject(root, building.builder)
   const streams = new Set<ServerResponse>()
@@ -302,18 +306,39 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
   server.requestTimeout = REQUEST_TIMEOUT_MS
   server.maxConnections = MAX_CONNECTIONS
 
-  async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const host = req.headers.host
-    if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) throw new HttpError(403, "Unexpected Host header")
-    const origin = req.headers.origin
-    if (origin !== undefined && origin !== `http://127.0.0.1:${port}` && origin !== `http://localhost:${port}`) {
-      throw new HttpError(403, "Cross-origin requests are not allowed")
+  /** Behind the hub: the public Host and Origin, the base path and the workspace ticket; the URL with the base removed. */
+  function gateOf(req: IncomingMessage, res: ServerResponse, given: HostedOptions): URL | undefined {
+    const gate = gateHosted(req.method, req.url, req.headers, given)
+    if (gate.kind === "refuse") throw new HttpError(gate.status, gate.reason)
+    if (gate.kind === "redirect") {
+      res.writeHead(308, { location: gate.location, "cache-control": "no-store", ...SECURITY_HEADERS })
+      res.end()
+      return undefined
     }
-    const url = new URL(req.url ?? "/", `http://${host}`)
-    if (!url.pathname.startsWith("/api/")) return serveStatic(url.pathname, res)
+    const url = new URL(req.url ?? "/", "http://workspace.invalid")
+    return new URL(gate.path + url.search, "http://workspace.invalid")
+  }
 
-    const given = req.headers["x-copperflow-token"]
-    if (typeof given !== "string" || !sameToken(given, token)) throw new HttpError(403, "Missing or wrong session token")
+  async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    let url: URL
+    if (hosted) {
+      const passed = gateOf(req, res, hosted)
+      if (passed === undefined) return
+      url = passed
+      if (!url.pathname.startsWith("/api/")) return serveStatic(url.pathname, res)
+    } else {
+      const host = req.headers.host
+      if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) throw new HttpError(403, "Unexpected Host header")
+      const origin = req.headers.origin
+      if (origin !== undefined && origin !== `http://127.0.0.1:${port}` && origin !== `http://localhost:${port}`) {
+        throw new HttpError(403, "Cross-origin requests are not allowed")
+      }
+      url = new URL(req.url ?? "/", `http://${host}`)
+      if (!url.pathname.startsWith("/api/")) return serveStatic(url.pathname, res)
+
+      const given = req.headers["x-copperflow-token"]
+      if (typeof given !== "string" || !sameToken(given, token)) throw new HttpError(403, "Missing or wrong session token")
+    }
 
     /** Builds the circuit a history entry's file belongs to, when there is one. */
     const rebuild = (file: string) => {
@@ -580,7 +605,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
 
   await new Promise<void>((done, fail) => {
     server.once("error", fail)
-    server.listen(options.port ?? DEFAULT_PORT, "127.0.0.1", () => done())
+    server.listen(options.port ?? DEFAULT_PORT, hosted?.bind ?? "127.0.0.1", () => done())
   }).catch(async (error: unknown) => {
     await building.stop()
     throw error
@@ -590,9 +615,10 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
   live.start()
 
   return {
-    url: `http://127.0.0.1:${port}`,
+    url: hosted ? `http://${hostForUrl(hosted.bind)}:${port}` : `http://127.0.0.1:${port}`,
     token,
-    openUrl: `http://127.0.0.1:${port}/#token=${token}`,
+    // Behind the hub the person opens the public address; the hub's session and ticket stand for the token.
+    openUrl: hosted ? `${hosted.publicOrigin}${hosted.basePath}/` : `http://127.0.0.1:${port}/#token=${token}`,
     close: async () => {
       router.cancel()
       placer.cancel()
@@ -603,6 +629,19 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       await new Promise<void>((done) => server.close(() => done()))
     },
   }
+}
+
+/** The hosted options in one form, checked before anything listens. */
+function hostedOf(given: HostedOptions | undefined): HostedOptions | undefined {
+  if (given === undefined) return undefined
+  if (given.workspaceId === "") throw new Error("A hosted Studio needs a workspace id")
+  if (given.ticketKey.length < 32) throw new Error("The ticket key must be at least 32 bytes")
+  return { ...given, publicOrigin: normaliseOrigin(given.publicOrigin), basePath: normaliseBasePath(given.basePath) }
+}
+
+/** An address as it goes in a URL: IPv6 in brackets. */
+function hostForUrl(address: string): string {
+  return address.includes(":") ? `[${address}]` : address
 }
 
 /** The layout file a request names: itself, or the one beside a circuit file. */

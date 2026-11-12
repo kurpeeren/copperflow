@@ -100,8 +100,21 @@ function readToken(): string {
   }
 }
 
-const token = readToken()
-export const hasToken = token !== ""
+/**
+ * The path the Studio is served under: "" locally (the app sits at "/"), "/p/<project>" behind the hosted hub. Every
+ * API path is joined to it, so the same build works at both places.
+ */
+export function basePathOf(pathname: string): string {
+  return pathname.replace(/\/[^/]*$/, "")
+}
+
+const basePath = basePathOf(window.location.pathname)
+/** Behind the hub the session is the hub's cookie and the hub adds the workspace ticket; no fragment token is used. */
+const hosted = basePath !== ""
+const token = hosted ? "" : readToken()
+export const hasToken = hosted || token !== ""
+/** The headers of every API request: the session token locally, none behind the hub. */
+const authHeaders: Record<string, string> = hosted ? {} : { "x-copperflow-token": token }
 
 // Pasting the printed address into an open tab only changes the fragment, which does not reload.
 window.addEventListener("hashchange", () => {
@@ -109,9 +122,9 @@ window.addEventListener("hashchange", () => {
 })
 
 export async function api<T>(path: string, body?: unknown): Promise<T> {
-  const response = await fetch(path, {
+  const response = await fetch(basePath + path, {
     method: body === undefined ? "GET" : "POST",
-    headers: { "x-copperflow-token": token, "content-type": "application/json" },
+    headers: { ...authHeaders, "content-type": "application/json" },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
   const json = (await response.json()) as { ok: boolean; data: T; error?: string }
@@ -139,7 +152,7 @@ export function subscribe(onEvent: (event: ServerEvent, file: string, data: Reco
   const listen = async () => {
     while (!controller.signal.aborted) {
       try {
-        const response = await fetch("/api/events", { headers: { "x-copperflow-token": token }, signal: controller.signal })
+        const response = await fetch(`${basePath}/api/events`, { headers: authHeaders, signal: controller.signal })
         if (!response.ok || !response.body) throw new Error(`Event stream failed (${response.status})`)
         const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
         let buffer = ""
