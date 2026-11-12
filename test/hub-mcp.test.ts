@@ -77,6 +77,19 @@ describe("the hub's /mcp", () => {
     expect(raw.split("\r\n")[0]).toBe("HTTP/1.1 400 Bad Request")
   })
 
+  test("an initialise the transport refuses leaves no server or transport behind", async () => {
+    server = await startTestHub()
+    const ada = await newUser(server, "ada@example.com")
+    const token = await tokenFor(ada)
+    // No Accept header: the transport refuses it before any session exists.
+    const refused = await send(server.url, "POST", "/mcp", { host: HOST, "content-type": "application/json", authorization: `Bearer ${token}` }, initialize)
+    expect(refused.status).toBe(406)
+    expect(server.hub.agents.size).toBe(0)
+    expect(server.hub.agents.servers).toBe(0)
+    expect((await post(server, { authorization: `Bearer ${token}` })).status).toBe(200)
+    expect(server.hub.agents.servers).toBe(1)
+  })
+
   test("project tools, guide, and a forwarded tool before any project is open", async () => {
     server = await startTestHub()
     const ada = await newUser(server, "ada@example.com")

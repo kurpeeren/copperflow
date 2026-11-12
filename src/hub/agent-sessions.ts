@@ -31,6 +31,7 @@ export class AgentSessions {
   private readonly table: SessionTable
   private readonly sessions = new Map<string, AgentSessionEntry>()
   private readonly touched = new Map<string, number>()
+  private openServers = 0
 
   constructor(limits: AgentLimits = DEFAULT_AGENT_LIMITS) {
     this.table = new SessionTable(limits)
@@ -93,6 +94,19 @@ export class AgentSessions {
 
   closeCredential(credential: string): number {
     return this.closeWhere((entry) => entry.credential === credential)
+  }
+
+  /** MCP servers made for sessions and not yet closed, registered or not (for tests: nothing may be left behind). */
+  get servers(): number {
+    return this.openServers
+  }
+
+  serverOpened(): void {
+    this.openServers += 1
+  }
+
+  serverClosed(): void {
+    this.openServers -= 1
   }
 
   /** Whether a personal token's last-used time is due to be written: at most once a minute per token. */

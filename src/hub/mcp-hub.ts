@@ -166,7 +166,10 @@ async function initialise(hub: Hub, req: IncomingMessage, res: ServerResponse, b
         audit(hub, address, state.userId, "agent-connected", state.credential.split(":")[0] ?? "")
       },
     })
+    hub.agents.serverOpened()
     transport.onclose = () => {
+      if (state.closed) return
+      hub.agents.serverClosed()
       state.closed = true
       state.upstream?.close()
       state.upstream = undefined
@@ -181,7 +184,12 @@ async function initialise(hub: Hub, req: IncomingMessage, res: ServerResponse, b
       return rpcError(res, 401, "A valid bearer token is required.", { "www-authenticate": `Bearer resource_metadata="${resourceMetadataUrl(hub)}"` })
     }
     for (const [name, value] of Object.entries(CORS)) res.setHeader(name, value)
-    await transport.handleRequest(req, res, body)
+    try {
+      await transport.handleRequest(req, res, body)
+    } finally {
+      // An initialise the transport refused (no session made): its server and transport are closed, not left behind.
+      if (transport.sessionId === undefined) await transport.close()
+    }
   } finally {
     // A registered session committed already; this gives back only a slot that never became a session.
     reservation.release()
