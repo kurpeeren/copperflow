@@ -105,7 +105,7 @@ export function sameOrigin(req: IncomingMessage, publicOrigin: string): boolean 
 }
 
 /** A 303 to a fixed local path; the path is always one the hub wrote, never one it was given. */
-export function redirect(res: ServerResponse, path: "/" | "/projects" | "/account" | "/signin", headers: Record<string, string | string[]> = {}): void {
+export function redirect(res: ServerResponse, path: "/" | "/projects" | "/account" | "/signin" | "/oauth/continue", headers: Record<string, string | string[]> = {}): void {
   res.writeHead(303, { location: path, "cache-control": "no-store", ...headers })
   res.end()
 }

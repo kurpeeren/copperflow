@@ -23,6 +23,7 @@ import { AgentSessions } from "./agent-sessions.js"
 import { loadCatalog } from "./hub-catalog.js"
 import { OAuthState } from "./oauth-state.js"
 import { serveMcp } from "./mcp-hub.js"
+import { authorizationServer, authorize, consent, continueAuthorization, preflight, protectedResource, register, revoke, token } from "./oauth.js"
 import { createToken, revokeClient, revokeToken } from "./agent-account-routes.js"
 
 export const MAX_PROJECTS = 20
@@ -31,7 +32,15 @@ const SWEEP_MS = 15_000
 const PROXY_PATH = /^\/p\/([0-9a-f]{32})(?=\/|$|\?)/
 const PROJECT_ACTION = /^\/projects\/([0-9a-f]{32})\/(rename|delete|download)$/
 const SAFE_METHODS = new Set(["GET", "HEAD"])
-const AGENT_REVOKE = /^\/account\/(tokens|clients)\/([0-9a-f]{32})\/revoke$/
+const OAUTH_OPEN = new Set([
+  "/.well-known/oauth-protected-resource",
+  "/.well-known/oauth-protected-resource/mcp",
+  "/.well-known/oauth-authorization-server",
+  "/oauth/register",
+  "/oauth/token",
+  "/oauth/revoke",
+])
+const AGENT_REVOKE =/^\/account\/(tokens|clients)\/([0-9a-f]{32})\/revoke$/
 
 /** Said once when the hub starts with the process runner, and by `hub invite`. */
 export const TRUSTED_ONLY_WARNING =
@@ -275,6 +284,15 @@ async function route(hub: Hub, req: IncomingMessage, res: ServerResponse): Promi
   const method = req.method ?? "GET"
   // The agent's endpoint: bearer tokens only, never a cookie, so no form or Origin rule applies.
   if (path === "/mcp") return serveMcp(hub, req, res, address)
+  // OAuth endpoints a client calls directly: no cookie is read on them, so they take requests from any origin.
+  if (OAUTH_OPEN.has(path)) {
+    if (method === "OPTIONS") return preflight(res)
+    if (path.startsWith("/.well-known/") && SAFE_METHODS.has(method)) return path.endsWith("authorization-server") ? authorizationServer(hub, res) : protectedResource(hub, res)
+    if (path === "/oauth/register" && method === "POST") return register(hub, req, res, address)
+    if (path === "/oauth/token" && method === "POST") return token(hub, req, res, address)
+    if (path === "/oauth/revoke" && method === "POST") return revoke(hub, req, res, address)
+    throw new HubError(405, "That method is not allowed here.")
+  }
   if (!SAFE_METHODS.has(method)) {
     if (method !== "POST") throw new HubError(405, "That method is not allowed here.")
     // Before anything is read or decided: a form posted from another site is refused outright.
@@ -302,6 +320,8 @@ async function route(hub: Hub, req: IncomingMessage, res: ServerResponse): Promi
       return sendPage(res, 200, privacyPage(viewerOf(signed)))
     case "GET /terms":
       return sendPage(res, 200, termsPage(viewerOf(signed)))
+    case "GET /oauth/authorize":
+      return authorize(hub, req, res, address, signed)
   }
   if (!signed) {
     // Signed-out visitors learn nothing about what lies behind sign-in.
@@ -342,6 +362,10 @@ async function signedRoute(hub: Hub, req: IncomingMessage, res: ServerResponse, 
       return endAllSessions(hub, req, res, address, signed)
     case "POST /account/tokens":
       return createToken(hub, req, res, address, signed)
+    case "GET /oauth/continue":
+      return continueAuthorization(hub, req, res, signed)
+    case "POST /oauth/consent":
+      return consent(hub, req, res, address, signed)
   }
   const [method, path] = page.split(" ") as [string, string]
   const revoke = AGENT_REVOKE.exec(path)

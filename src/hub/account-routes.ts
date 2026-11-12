@@ -21,6 +21,7 @@ import {
 import { HubError, readForm, redirect, sendPage } from "./http.js"
 import { accountPage, signInPage, signUpPage } from "./pages.js"
 import { agentSection } from "./agent-pages.js"
+import { pendingRequest } from "./oauth.js"
 import { hashPassword, hashSecret, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, newId, verifyAgainstNothing, verifyPassword } from "./secrets.js"
 import { normaliseEmail } from "./store.js"
 import { addressKey } from "./limits.js"
@@ -105,7 +106,9 @@ export async function signIn(hub: Hub, req: IncomingMessage, res: ServerResponse
   refund()
   audit(hub, address, user.id, "signin")
   const deviceCookie = rememberDevice(hub, req, user.id)
-  redirect(res, user.mustChangePassword ? "/account" : "/projects", { "set-cookie": [startSession(hub, user.id), ...(deviceCookie ? [deviceCookie] : [])] })
+  // Back to an OAuth request this browser started before signing in, if any (kept server-side, named by a cookie).
+  const next = user.mustChangePassword ? "/account" : pendingRequest(hub, req) ? "/oauth/continue" : "/projects"
+  redirect(res, next, { "set-cookie": [startSession(hub, user.id), ...(deviceCookie ? [deviceCookie] : [])] })
 }
 
 export async function signUp(hub: Hub, req: IncomingMessage, res: ServerResponse, address: string): Promise<void> {
