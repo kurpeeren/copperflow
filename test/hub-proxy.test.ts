@@ -149,6 +149,21 @@ describe("workspaces on their own origins", () => {
     expect((await ada.onProject(id, "GET", "/sw.js")).status).toBe(200)
   })
 
+  test("a sibling project's same-site request to the API gets no ticket; navigations and same-origin requests do", async () => {
+    const studio = await recorder()
+    server = await startTestHub({ runner: () => fixedRunner(() => studio.origin) })
+    const { ada, id } = await entered(server)
+    for (const site of ["same-site", "cross-site"]) {
+      expect((await ada.onProject(id, "GET", "/api/circuits", { "sec-fetch-site": site, "sec-fetch-mode": "no-cors" })).status).toBe(403)
+      expect((await ada.onProject(id, "GET", "/api/events", { "sec-fetch-site": site, "sec-fetch-mode": "navigate" })).status).toBe(403)
+    }
+    expect(studio.seen).toEqual([])
+    expect((await ada.onProject(id, "GET", "/", { "sec-fetch-site": "same-site", "sec-fetch-mode": "navigate" })).status).toBe(200)
+    expect((await ada.onProject(id, "GET", "/api/circuits", { "sec-fetch-site": "same-origin" })).status).toBe(200)
+    // A browser without Sec-Fetch headers.
+    expect((await ada.onProject(id, "GET", "/api/circuits")).status).toBe(200)
+  })
+
   test("a token older than 30 seconds is refused", async () => {
     let now = Date.now()
     server = await startTestHub({ now: () => now })

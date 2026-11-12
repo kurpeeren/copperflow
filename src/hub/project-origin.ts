@@ -107,6 +107,21 @@ function plainPath(path: string): boolean {
   })
 }
 
+/**
+ * Rule 4 of docs/hosted.md: no ticket is ever made for a request from another origin, sibling projects included (they
+ * are same-site). An Origin, when sent, must be this project's. Without one, `Sec-Fetch-Site` must be `same-origin` or
+ * `none` (typed or bookmarked); a page (not /api/) may also be reached by a top-level navigation from elsewhere. A
+ * browser too old to send Sec-Fetch headers is let through on requests without an Origin (modern browsers send an
+ * Origin on every POST, so such a request is a GET of a page or of the API).
+ */
+export function fromThisOrigin(req: IncomingMessage, method: string, path: string, origin: string): boolean {
+  const sent = header(req, "origin")
+  if (sent !== undefined) return sent === origin
+  const site = header(req, "sec-fetch-site")
+  if (site === undefined || site === "same-origin" || site === "none") return true
+  return SAFE.has(method) && !path.startsWith("/api/") && header(req, "sec-fetch-mode") === "navigate"
+}
+
 /** Every request on a project origin. The hub's own pages are never served here. */
 export async function serveProjectOrigin(hub: Hub, req: IncomingMessage, res: ServerResponse, projectId: string, address: string): Promise<void> {
   const raw = req.url ?? "/"
@@ -127,10 +142,7 @@ export async function serveProjectOrigin(hub: Hub, req: IncomingMessage, res: Se
     }
     throw new HubError(404, "There is no such page.")
   }
-  // Rule 4 of docs/hosted.md: no ticket is ever made for a cross-site request.
-  const origin = header(req, "origin")
-  const crossSite = origin !== undefined ? origin !== projectOrigin(hub, projectId) : header(req, "sec-fetch-site") === "cross-site" && (!SAFE.has(method) || path.startsWith("/api/"))
-  if (crossSite) throw new HubError(403, "Requests from another site are not allowed.")
+  if (!fromThisOrigin(req, method, path, projectOrigin(hub, projectId))) throw new HubError(403, "Requests from another site are not allowed.")
   // Taken before anything waits: a revocation during the wait is seen below.
   const signal = cutSignal(hub, userId)
   const epoch = epochOf(hub, userId)
