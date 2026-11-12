@@ -11,6 +11,8 @@ export default defineConfig(({ mode }) => ({
     // measured at 26 s while the long router tests ran beside it; 5 s failed tests that were only waiting.
     testTimeout: 60_000,
     hookTimeout: 60_000,
+    // Half the cores: other worktrees run their suites on the same machine, and a full-width run beside one stalled.
+    maxWorkers: "50%",
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],
