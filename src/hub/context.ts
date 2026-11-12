@@ -71,8 +71,6 @@ export interface Limits {
   signupAddress: WindowCounter
   reauth: WindowCounter
   gate: SigninGate
-  /** The certificate check (/_tls-ask): 60 per minute per address. */
-  tlsAsk: WindowCounter
 }
 
 const FIFTEEN_MINUTES = 15 * 60_000
@@ -88,7 +86,6 @@ export function newLimits(maxKeys?: number): Limits {
     signinEmail: new EmailBuckets(EMAIL_FAILURES, FIFTEEN_MINUTES),
     signupAddress: new WindowCounter(20, 60 * 60_000, maxKeys),
     reauth: new WindowCounter(ADDRESS_FAILURES, FIFTEEN_MINUTES, maxKeys),
-    tlsAsk: new WindowCounter(60, 60_000, maxKeys),
     gate: new SigninGate({ threshold: MAX_FAILED_SIGNINS, windowMs: FIFTEEN_MINUTES, perSecond: 5, queue: 50, perAddress: 2 }),
   }
 }

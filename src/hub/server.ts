@@ -9,6 +9,7 @@ import { changePassword, deleteAccount, endAllSessions, showAccount, showSignIn,
 import { newLimits, sessionOf, sweepCuts, type Hub, type HubConfig, type Signed } from "./context.js"
 import { clientAddress, HubError, redirect, sameOrigin, sendPage } from "./http.js"
 import { addressKey } from "./limits.js"
+import { isLoopback } from "../hosted/mcp-http.js"
 import { enterRedirect, projectOfHost, serveProjectOrigin, tlsAsk } from "./project-origin.js"
 import { loadOrCreateTicketKey } from "./keys.js"
 import { privacyPage, STYLESHEET, termsPage, textPage } from "./pages.js"
@@ -215,6 +216,12 @@ function answerError(hub: Hub, res: ServerResponse, error: unknown): void {
 
 async function route(hub: Hub, req: IncomingMessage, res: ServerResponse): Promise<void> {
   const address = clientAddress(req, hub.config.trustProxy)
+  // The certificate check, for the reverse proxy on this machine: from loopback only, on any Host, never limited (it is
+  // one indexed lookup, and a limit would be shared by every handshake the proxy makes).
+  if ((req.url ?? "").startsWith("/_tls-ask?") && req.method === "GET") {
+    if (!isLoopback(req.socket.remoteAddress ?? "")) throw new HubError(404, "There is no such page.")
+    return tlsAsk(hub, req, res)
+  }
   // Two kinds of host: the public origin (the hub's pages) and one origin per project. Never the one for the other.
   const host = req.headers.host?.toLowerCase()
   const projectId = projectOfHost(hub, host)
@@ -229,13 +236,6 @@ async function route(hub: Hub, req: IncomingMessage, res: ServerResponse): Promi
     if (method !== "POST") throw new HubError(405, "That method is not allowed here.")
     // Before anything is read or decided: a form posted from another site is refused outright.
     if (!sameOrigin(req, hub.config.publicOrigin)) throw new HubError(403, "Forms can only be sent from this site.")
-  }
-  if (path === "/_tls-ask" && method === "GET") {
-    const now = hub.config.now()
-    const limit = hub.limits.tlsAsk.check(addressKey(address), now)
-    if (!limit.ok) throw new HubError(429, "Too many requests.", { "retry-after": String(limit.retryAfterS) })
-    hub.limits.tlsAsk.add(addressKey(address), now)
-    return tlsAsk(hub, req, res)
   }
   if (path === "/static/hub.css" && SAFE_METHODS.has(method)) {
     res.writeHead(200, { "content-type": "text/css; charset=utf-8", "cache-control": "public, max-age=3600", "x-content-type-options": "nosniff" })

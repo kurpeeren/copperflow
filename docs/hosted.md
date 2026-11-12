@@ -68,8 +68,11 @@ password change or reset and deletion), and the ticket is signed last, just befo
 answers carry only `content-type`, `content-length`, `content-encoding`, `cache-control`, `etag`, `last-modified`,
 `content-disposition` and `vary`, plus `X-Content-Type-Options: nosniff`, `Content-Security-Policy: frame-ancestors
 <public origin>` and a `Location` only when it is a path on the same project origin. A reverse proxy that issues
-certificates on demand asks `GET /_tls-ask?domain=<host>` on the public origin: 200 only for the public host and for
-`<existing project id>.<workspace domain>`, 404 otherwise, 60 per minute per address. The maintainer provides a
+certificates on demand asks `GET /_tls-ask?domain=<host>`: 200 only for the public host and for
+`<existing project id>.<workspace domain>`, 404 otherwise. It is answered only to a connection from loopback (the
+proxy on the same machine), on any Host, and is not rate limited (one indexed lookup; a limit would be shared by every
+handshake). Point the proxy's ask URL at the hub's own port, for example Caddy's
+`on_demand_tls { ask http://127.0.0.1:<hub port>/_tls-ask }`. The maintainer provides a
 wildcard DNS record for the workspace domain and either a wildcard certificate or on-demand certificates.
 
 `--trust-proxy` reads the client's address from the last `X-Forwarded-For` entry; use it only behind a proxy that

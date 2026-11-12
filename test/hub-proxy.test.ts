@@ -385,5 +385,10 @@ describe("workspaces on their own origins", () => {
     expect((await ask(`${"0".repeat(32)}.ws.localhost`)).status).toBe(404)
     expect((await ask("evil.example")).status).toBe(404)
     expect((await ask(`x.${id}.ws.localhost`)).status).toBe(404)
+    // Any Host (the proxy may ask 127.0.0.1:<port>), and never limited.
+    const direct = await send(server.url, "GET", `/_tls-ask?domain=${id}.ws.localhost`, { host: new URL(server.url).host })
+    expect(direct.status).toBe(200)
+    for (let i = 0; i < 100; i += 1) expect((await ask(`${i.toString(16).padStart(32, "0")}.ws.localhost`)).status).toBe(404)
+    expect((await ask(`${id}.ws.localhost`)).status).toBe(200)
   })
 })
