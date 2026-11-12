@@ -50,7 +50,7 @@ import { MAKE_SHEET_DESCRIPTION, makeSheet, makeSheetInput } from "./make-sheet.
 import { NEW_CIRCUIT_DESCRIPTION, newCircuit, newCircuitInput } from "./new-circuit.js"
 import { fileURLToPath } from "node:url"
 import { compactToolList } from "./compact-tool-list.js"
-import { GUIDE_DESCRIPTION, guide, guideInput, skillResources } from "./guide.js"
+import { createGuideMemory, GUIDE_DESCRIPTION, guideInSession, guideInput, skillResources } from "./guide.js"
 import { ATTACH_DATASHEET_DESCRIPTION, attachDatasheetInput, attachDatasheetTool, checkDatasheetRule } from "./datasheet-tools.js"
 
 /** The opening line and the rules that hold wherever the server runs; the hub (hub/hub-catalog.ts) puts its own start order between them. */
@@ -338,7 +338,9 @@ Nothing was written.`)
     }),
   )
   server.registerTool("attach_datasheet", { description: ATTACH_DATASHEET_DESCRIPTION, inputSchema: attachDatasheetInput }, (input) => run(() => attachDatasheetTool(root, input)))
-  server.registerTool("guide", { description: GUIDE_DESCRIPTION, inputSchema: guideInput, annotations: READ_ONLY }, (input) => run(() => guide(input)))
+  // One server is one MCP session (stdio: the process; hosted: makeServer per session), so this memory is the session's.
+  const guideSeen = createGuideMemory()
+  server.registerTool("guide", { description: GUIDE_DESCRIPTION, inputSchema: guideInput, annotations: READ_ONLY }, (input) => run(() => guideInSession(guideSeen, input)))
   for (const resource of skillResources()) {
     server.registerResource(resource.name, resource.uri, { mimeType: "text/markdown" }, async (uri) => ({
       contents: [{ uri: uri.href, mimeType: "text/markdown", text: await readFile(fileURLToPath(resource.file), "utf8") }],

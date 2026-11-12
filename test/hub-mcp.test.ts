@@ -15,8 +15,8 @@ import { call, connectAgent } from "./helpers/hub-mcp.js"
 import { workspaceCli } from "./helpers/workspace-cli.js"
 
 const HOST = new URL(ORIGIN).host
-/** What an agent pays to connect at the hub: instructions + tools/list as JSON (42 725 on 2026-11-12, 43 285 once the tools state their limits and the start order is one text), and the first guide answer (15 390). */
-const HUB_INSTRUCTIONS_AND_TOOLS_BUDGET = 43_500
+/** What an agent pays to connect at the hub: instructions + tools/list as JSON (42 725 on 2026-11-12, 43 487 once the tools state their limits, the start order is one text and guide knows again), and the first guide answer (15 712). */
+const HUB_INSTRUCTIONS_AND_TOOLS_BUDGET = 43_600
 const GUIDE_BUDGET = 16_000
 
 let server: HubServer | undefined
@@ -201,6 +201,24 @@ describe("the hub's /mcp", () => {
     expect(early.isError).toBe(true)
     expect(early.text.split("\n")).toHaveLength(1)
     for (const name of ["list_projects", "open_project", "new_project"]) expect(early.text).toContain(name)
+  })
+
+  test("guide called twice with the same arguments in one hub session answers one short line the second time; another session gets the text", async () => {
+    server = await startTestHub()
+    const ada = await newUser(server, "ada@example.com")
+    const token = await tokenFor(ada)
+    const one = await agent(server, token)
+    const first = await call(one, "guide")
+    expect(first.text.length).toBeGreaterThan(5000)
+    const second = await call(one, "guide")
+    expect(second.isError).toBe(false)
+    expect(second.text).toMatch(/already returned in this session.*again: true/)
+    expect(second.text.length).toBeLessThan(300)
+    expect((await call(one, "guide", { topic: "copper" })).text.length).toBeGreaterThan(1000)
+    expect((await call(one, "guide", { again: true })).text).toBe(first.text)
+    expect((await call(one, "guide", { topic: "nope" })).isError).toBe(true)
+    const two = await agent(server, token)
+    expect((await call(two, "guide")).text).toBe(first.text)
   })
 
   test("what an agent pays to connect at the hub, and the tool list is read without making the catalog folder", async () => {

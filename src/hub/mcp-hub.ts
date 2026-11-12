@@ -9,6 +9,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js"
 import { CallToolRequestSchema, isInitializeRequest, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js"
 import { SessionRefusal } from "../hosted/mcp-sessions.js"
+import { createGuideMemory } from "../mcp/guide.js"
 import { VERSION } from "../version.js"
 import { ACCESS_PREFIX, bearerOf, PAT_PREFIX, tokenHash } from "./agent-tokens.js"
 import { audit, type Hub } from "./context.js"
@@ -144,7 +145,7 @@ function openStream(hub: Hub, req: IncomingMessage, res: ServerResponse, session
 async function initialise(hub: Hub, req: IncomingMessage, res: ServerResponse, body: unknown, credential: Credential, address: string): Promise<void> {
   // Reserved now, before anything waits: concurrent initialises cannot pass the per-user limit together.
   const reservation = hub.agents.reserve(credential.userId)
-  const state: AgentState = { userId: credential.userId, credential: credential.credential, closed: false }
+  const state: AgentState = { userId: credential.userId, credential: credential.credential, guideSeen: createGuideMemory(), closed: false }
   try {
     const server = new Server({ name: "copperflow", version: VERSION }, { capabilities: { tools: {} }, instructions: hub.catalog.instructions })
     server.setRequestHandler(ListToolsRequestSchema, () => ({ tools: hub.catalog.tools }))

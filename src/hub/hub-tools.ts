@@ -4,7 +4,7 @@ import { readdir } from "node:fs/promises"
 import { join } from "node:path"
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js"
 import { z } from "zod"
-import { guide, guideInput } from "../mcp/guide.js"
+import { guideInSession, guideInput, type GuideMemory } from "../mcp/guide.js"
 import { audit, type Hub } from "./context.js"
 import { forwardTool, type Upstream } from "./mcp-forward.js"
 import { addProject, projectName } from "./project-routes.js"
@@ -21,6 +21,8 @@ export interface AgentState {
   upstream?: Upstream | undefined
   /** The connect in flight, shared by concurrent calls (mcp-forward.ts). */
   connecting?: { key: string; promise: Promise<Upstream> } | undefined
+  /** The guide texts this session has been given (at most 32 argument sets); never shared with another session. */
+  guideSeen: GuideMemory
   closed: boolean
 }
 
@@ -75,7 +77,7 @@ export async function callTool(hub: Hub, state: AgentState, auth: CallAuth, name
     case "open_project":
       return openProject(hub, state, args)
     case "guide":
-      return guideTool(args)
+      return guideTool(state, args)
   }
   if (!hub.catalog.forwarded.has(name)) return text(`Unknown tool: ${name}`, true)
   const project = state.projectId === undefined ? undefined : hub.store.project(state.userId, state.projectId)
@@ -148,11 +150,11 @@ function openProject(hub: Hub, state: AgentState, args: Record<string, unknown>)
   return text(`Project "${project.name}" is open (id ${project.id}). ${watchAt(hub, project)}`)
 }
 
-async function guideTool(args: Record<string, unknown>): Promise<CallToolResult> {
+async function guideTool(state: AgentState, args: Record<string, unknown>): Promise<CallToolResult> {
   const parsed = z.object(guideInput).safeParse(args)
-  if (!parsed.success) return text("guide takes { topic? } with a topic name.", true)
+  if (!parsed.success) return text("guide takes { topic?, again? } with a topic name and true or false.", true)
   try {
-    return text(await guide(parsed.data))
+    return text(await guideInSession(state.guideSeen, parsed.data))
   } catch (error) {
     return text((error as Error).message, true)
   }
