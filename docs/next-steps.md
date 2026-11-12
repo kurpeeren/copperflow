@@ -3,6 +3,11 @@
 ## State
 Stages 4–9 are on the branch: hand routing, the router, pages and sub-sheets, fabrication outputs, copper pours and holes, and the part library (generated packages, the part wizard, the LCSC importer). Next: `docs/plans/ai-codesign-2.md` — the board placer, the board in words, and the project memory.
 
+## Hosted service
+- Move the agent tools `route_board` and `place_parts` into the same terminable workers the Studio uses, so a
+  pathological board is cut at a hard wall-clock limit instead of only by their cooperative budget (today the
+  container's CPU limit and the idle stop bound it; docs/hosted.md, "Time limits inside a workspace").
+
 ## Suggested schematic tools
 - Net highlight on hover across pages and sub-sheets.
 - Copy/paste with automatic designator renumbering.
