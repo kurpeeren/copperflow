@@ -7,6 +7,7 @@ import {
   audit,
   clearSessionCookie,
   countAttempt,
+  cutUser,
   forgetThisDevice,
   formTokenMatches,
   knownDevice,
@@ -132,6 +133,7 @@ export async function signOut(hub: Hub, req: IncomingMessage, res: ServerRespons
   // By default the device record stays, so the person can sign in again past strict mode; "Sign out and forget this
   // device" (forget=1) drops this browser's record and cookie.
   hub.store.endSessions(signed.user.id)
+  await cutUser(hub, signed.user.id)
   const forget = form.get("forget") === "1"
   audit(hub, address, signed.user.id, forget ? "signout-forget-device" : "signout")
   redirect(res, "/", { "set-cookie": [clearSessionCookie(hub), ...(forget ? [forgetThisDevice(hub, req)] : [])] })
@@ -143,6 +145,7 @@ export async function endAllSessions(hub: Hub, req: IncomingMessage, res: Server
   if (!formTokenMatches(signed, form.get("form"))) throw new HubError(403, "The form has expired. Open the page again and retry.")
   hub.store.endSessions(signed.user.id)
   hub.store.forgetDevices(signed.user.id)
+  await cutUser(hub, signed.user.id)
   audit(hub, address, signed.user.id, "sessions-ended")
   redirect(res, "/", { "set-cookie": clearSessionCookie(hub) })
 }
@@ -186,6 +189,7 @@ export async function changePassword(hub: Hub, req: IncomingMessage, res: Server
   hub.store.setPassword(signed.user.id, await hashPassword(password as string))
   hub.store.endSessions(signed.user.id)
   hub.store.forgetDevices(signed.user.id)
+  await cutUser(hub, signed.user.id)
   audit(hub, address, signed.user.id, "password-changed")
   redirect(res, "/account", { "set-cookie": startSession(hub, signed.user.id) })
 }
@@ -205,8 +209,9 @@ export async function deleteAccount(hub: Hub, req: IncomingMessage, res: ServerR
  * Marks the user deleted first (every route and the proxy stop finding them), then stops their workspaces, removes
  * their folders and deletes their rows (sessions, devices and projects go with them).
  */
-export async function removeUser(hub: Pick<Hub, "store" | "files" | "runner">, userId: string): Promise<void> {
+export async function removeUser(hub: Pick<Hub, "store" | "files" | "runner" | "userCuts">, userId: string): Promise<void> {
   hub.store.markUserDeleted(userId)
+  await cutUser(hub, userId)
   for (const id of hub.store.projectIds(userId)) await hub.runner.stop(id)
   hub.store.endSessions(userId)
   await hub.files.removeUser(userId)

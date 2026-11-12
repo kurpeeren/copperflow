@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "vitest"
 import { createServer, request, type IncomingHttpHeaders, type Server } from "node:http"
 import { writeFile } from "node:fs/promises"
 import { join } from "node:path"
+import { runCli } from "../src/cli-commands.js"
 import { ticketPublicKey, verifyTicket, TICKET_HEADER } from "../src/hosted/ticket.js"
 import { createProcessRunner } from "../src/hub/runner/process-runner.js"
 import type { HubServer } from "../src/hub/server.js"
@@ -136,6 +137,49 @@ describe("the Studio proxy", () => {
     await studio.streamClosed
     // Once the stream is over, the workspace counts as idle again (no request holds it).
     expect(server.hub.runner.state(id)).toBe("running")
+  })
+
+  /** Opens the events stream and resolves once the first event arrived; `ended` settles when the hub cuts it. */
+  async function openStream(hubUrl: string, path: string, cookie: string): Promise<{ ended: Promise<void> }> {
+    const url = new URL(hubUrl)
+    return new Promise((done, fail) => {
+      const req = request({ host: url.hostname, port: url.port, path, headers: { cookie } }, (res) => {
+        const ended = new Promise<void>((over) => {
+          res.on("close", () => over())
+          res.on("error", () => over())
+        })
+        res.once("data", () => done({ ended }))
+      })
+      req.on("error", (error) => (/socket hang up|aborted|ECONNRESET/.test(error.message) ? undefined : fail(error)))
+      req.end()
+    })
+  }
+
+  test("sign-out cuts the user's open streams and stops their workspaces at once", async () => {
+    const studio = await recorder()
+    server = await startTestHub({ runner: () => fixedRunner(() => studio.origin) })
+    const ada = await newUser(server, "ada@example.com")
+    const id = await projectOf(server, ada, "ada@example.com")
+    const cookie = [...ada.jar].map(([k, v]) => `${k}=${v}`).join("; ")
+    const stream = await openStream(server.url, `/p/${id}/api/events`, cookie)
+    expect(server.hub.runner.state(id)).toBe("running")
+    await ada.submit("/projects", "/signout", {})
+    await stream.ended
+    await studio.streamClosed
+    expect(server.hub.runner.state(id)).toBe("stopped")
+  })
+
+  test("a maintainer's reset-password cuts the streams in the running hub at its next sweep", async () => {
+    const studio = await recorder()
+    server = await startTestHub({ runner: () => fixedRunner(() => studio.origin), sweepMs: 50 })
+    const ada = await newUser(server, "ada@example.com")
+    const id = await projectOf(server, ada, "ada@example.com")
+    const cookie = [...ada.jar].map(([k, v]) => `${k}=${v}`).join("; ")
+    const stream = await openStream(server.url, `/p/${id}/api/events`, cookie)
+    const data = join(server.hub.files.root, "..")
+    expect(await runCli(["hub", "reset-password", "ada@example.com", "--data", data], "/", { out: () => undefined, err: () => undefined })).toBe(0)
+    await stream.ended
+    expect(server.hub.runner.state(id)).toBe("stopped")
   })
 
   test("a request body over 1 MB is refused", async () => {

@@ -37,6 +37,8 @@ export interface Hub {
   limits: Limits
   /** Per-user queues: operations that add projects or bytes run one at a time for a user. */
   userLocks: Map<string, Promise<void>>
+  /** Per user: aborting it cuts every proxied exchange of that user. */
+  userCuts: Map<string, AbortController>
   log: (line: string) => void
 }
 
@@ -123,6 +125,28 @@ export function rememberDevice(hub: Hub, req: IncomingMessage, userId: string): 
   const secret = newSecret()
   hub.store.addDevice(hashSecret(secret), userId, hub.config.now(), MAX_DEVICES)
   return setCookie(deviceCookieName(hub.config), secret, { secure: hub.config.secure, maxAgeS: DEVICE_S })
+}
+
+/** The signal a proxied exchange of the user listens to. */
+export function cutSignal(hub: Hub, userId: string): AbortSignal {
+  let controller = hub.userCuts.get(userId)
+  if (!controller) {
+    controller = new AbortController()
+    hub.userCuts.set(userId, controller)
+  }
+  return controller.signal
+}
+
+/** Cuts the user's open proxied streams and stops their running workspaces, at once. */
+export async function cutUser(hub: Pick<Hub, "userCuts" | "runner">, userId: string): Promise<void> {
+  hub.userCuts.get(userId)?.abort()
+  hub.userCuts.delete(userId)
+  await hub.runner.stopUser(userId)
+}
+
+/** Carries out the cuts the maintainer's commands asked for (the hub's 15-second sweep). */
+export async function sweepCuts(hub: Hub): Promise<void> {
+  for (const userId of hub.store.takeCuts()) await cutUser(hub, userId)
 }
 
 /** Runs `work` after every earlier queued operation of the same user has finished. */

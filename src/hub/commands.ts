@@ -136,6 +136,7 @@ async function resetPassword(store: HubStore, email: string | undefined, io: Cli
   store.setPassword(user.id, await hashPassword(password), true)
   store.endSessions(user.id)
   store.forgetDevices(user.id)
+  store.requestCut(user.id, Date.now())
   store.audit({ time: Date.now(), userId: user.id, event: "password-reset", address: "cli", detail: "" })
   io.out(`A one-time password for ${user.email}, shown only now. Every session of the user has ended; they must choose a new password when they next sign in:`)
   io.out(password)
@@ -168,8 +169,10 @@ async function deleteUser(store: HubStore, dataDir: string, email: string | unde
   const projects = store.projectCount(user.id)
   const answer = await io.ask(`This deletes ${user.email}, their sessions and ${projects} project(s) with all files. Type the email to confirm: `)
   if (normaliseEmail(answer) !== user.email) throw new Error(`Not deleted: you typed "${answer.trim()}", not ${user.email}`)
-  await removeUser({ store, files: new ProjectFiles(dataDir), runner: NO_RUNNER }, user.id)
+  await removeUser({ store, files: new ProjectFiles(dataDir), runner: NO_RUNNER, userCuts: new Map() }, user.id)
+  // The running hub cuts their streams and stops their workspaces at its next sweep (within 15 seconds).
+  store.requestCut(user.id, Date.now())
   store.audit({ time: Date.now(), userId: user.id, event: "account-deleted", address: "cli", detail: "by the maintainer" })
-  io.out(`Deleted ${user.email} and ${projects} project(s). A workspace of theirs that is still running stops after 15 idle minutes.`)
+  io.out(`Deleted ${user.email} and ${projects} project(s). A running hub cuts their open streams and stops their workspaces within 15 seconds.`)
   return 0
 }

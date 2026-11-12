@@ -6,7 +6,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { normaliseOrigin } from "../hosted/gate.js"
 import { nowSeconds, signTicket } from "../hosted/ticket.js"
 import { changePassword, deleteAccount, endAllSessions, showAccount, showSignIn, showSignUp, signIn, signOut, signUp } from "./account-routes.js"
-import { newLimits, sessionOf, type Hub, type HubConfig, type Signed } from "./context.js"
+import { cutSignal, newLimits, sessionOf, sweepCuts, type Hub, type HubConfig, type Signed } from "./context.js"
 import { clientAddress, FORM_BODY_LIMIT, header, HubError, redirect, sameOrigin, sendPage } from "./http.js"
 import { loadOrCreateTicketKey } from "./keys.js"
 import { privacyPage, STYLESHEET, termsPage, textPage } from "./pages.js"
@@ -21,6 +21,7 @@ import { prepareDataDir } from "./permissions.js"
 export const MAX_PROJECTS = 20
 export const MAX_BYTES = 200 * 1024 * 1024
 const TICKET_LIFETIME_S = 60
+const SWEEP_MS = 15_000
 const PROXY_PATH = /^\/p\/([0-9a-f]{32})(?=\/|$|\?)/
 const PROJECT_ACTION = /^\/projects\/([0-9a-f]{32})\/(rename|delete|download)$/
 const SAFE_METHODS = new Set(["GET", "HEAD"])
@@ -46,6 +47,8 @@ export interface HubOptions {
   trustedAccountsOnly?: boolean
   maxProjects?: number
   maxBytes?: number
+  /** How often the hub sweeps sessions and carries out the maintainer's cuts; default 15 s. */
+  sweepMs?: number
   /** Keys each limiter table holds; default 100 000 (tests make it small). */
   limiterKeys?: number
   now?: () => number
@@ -83,6 +86,7 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
     keys,
     limits: newLimits(options.limiterKeys),
     userLocks: new Map(),
+    userCuts: new Map(),
     log: options.log ?? ((line) => process.stderr.write(`copperflow hub: ${line}\n`)),
   }
 }
@@ -102,7 +106,11 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
   })
   const address = server.address()
   const port = typeof address === "object" && address ? address.port : options.port
-  const sweep = setInterval(() => hub.store.sweepSessions(hub.config.now()), 60 * 60_000)
+  // Every 15 s: expired sessions go, and the cuts the maintainer's commands asked for are carried out.
+  const sweep = setInterval(() => {
+    hub.store.sweepSessions(hub.config.now())
+    sweepCuts(hub).catch((error: unknown) => hub.log(`sweep failed: ${(error as Error).message}`))
+  }, options.sweepMs ?? SWEEP_MS)
   sweep.unref()
   return {
     url: `http://${options.bind ?? "127.0.0.1"}:${port}`,
@@ -253,7 +261,7 @@ async function proxy(hub: Hub, req: IncomingMessage, res: ServerResponse, raw: s
   try {
     const iat = nowSeconds()
     const ticket = signTicket({ w: id, u: signed.user.id, iat, exp: iat + TICKET_LIFETIME_S }, hub.keys.privateKey)
-    await proxyRequest(req, res, { origin: address.studio, path: raw, publicHost: hub.config.publicHost, ticket, maxBodyBytes: FORM_BODY_LIMIT, maxDurationMs: DEFAULT_MAX_HOLD_MS })
+    await proxyRequest(req, res, { origin: address.studio, path: raw, publicHost: hub.config.publicHost, ticket, maxBodyBytes: FORM_BODY_LIMIT, maxDurationMs: DEFAULT_MAX_HOLD_MS, signal: cutSignal(hub, signed.user.id) })
   } finally {
     release()
   }

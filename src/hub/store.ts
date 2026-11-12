@@ -72,6 +72,11 @@ CREATE TABLE IF NOT EXISTS devices (
   created INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS devices_user ON devices(user_id);
+CREATE TABLE IF NOT EXISTS user_cuts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  created INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS audit (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   time INTEGER NOT NULL,
@@ -240,6 +245,23 @@ export class HubStore {
   deviceUser(idHash: string): string | undefined {
     const row = this.sql("SELECT * FROM devices WHERE hash = ?").get(idHash) as Row | undefined
     return row && sameSecret(row.hash as string, idHash) ? (row.user_id as string) : undefined
+  }
+
+  /**
+   * Asks the running hub to cut the user's open streams and stop their workspaces (a maintainer command runs in another
+   * process and cannot do it itself); the hub's sweep carries it out within 15 seconds.
+   */
+  requestCut(userId: string, now: number): void {
+    this.sql("INSERT INTO user_cuts (user_id, created) VALUES (?, ?)").run(userId, now)
+  }
+
+  /** The users waiting to be cut, removed from the table as they are read. */
+  takeCuts(): string[] {
+    return this.transaction(() => {
+      const users = (this.sql("SELECT DISTINCT user_id FROM user_cuts").all() as Row[]).map((row) => row.user_id as string)
+      this.sql("DELETE FROM user_cuts").run()
+      return users
+    })
   }
 
   forgetDevice(idHash: string): void {
