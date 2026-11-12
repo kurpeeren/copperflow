@@ -144,8 +144,8 @@ export class StreamZipWriter {
     })
   }
 
-  /** Adds the file at `path` as `name`. */
-  async addFile(name: string, path: string, modified: Date): Promise<void> {
+  /** Adds the bytes of `source` (a file at a path, or an open stream) as `name`. */
+  async addFile(name: string, source: string | Readable, modified: Date): Promise<void> {
     const nameBytes = Buffer.from(name, "utf8")
     const when = dosDateTime(modified)
     const offset = this.offset
@@ -177,7 +177,7 @@ export class StreamZipWriter {
         writer.write(chunk).then(() => next(), next)
       },
     })
-    await pipeline(createReadStream(path), measure, createDeflateRaw({ level: 6 }), sink)
+    await pipeline(typeof source === "string" ? createReadStream(source) : source, measure, createDeflateRaw({ level: 6 }), sink)
     const descriptor = Buffer.alloc(16)
     descriptor.writeUInt32LE(DESCRIPTOR_SIGNATURE, 0)
     descriptor.writeUInt32LE(crc, 4)

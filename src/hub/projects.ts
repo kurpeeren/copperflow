@@ -2,10 +2,11 @@
 // against ID_PATTERN before they become a path; a project's name is a label in the store and never touches the disk.
 import { randomBytes } from "node:crypto"
 import { createWriteStream } from "node:fs"
-import { lstat, mkdir, readdir, rm } from "node:fs/promises"
-import { dirname, join, relative, sep } from "node:path"
+import { mkdir } from "node:fs/promises"
+import { dirname, join } from "node:path"
 import type { Writable } from "node:stream"
 import { resolveInRoot } from "../core/workspace.js"
+import { checkNoLinks, readListed, removeTree, walkProject, type SafeFile } from "./safe-files.js"
 import { ID_PATTERN } from "./secrets.js"
 import { extractEntry, StreamZipWriter, type ZipOnDisk } from "./zip-stream.js"
 
@@ -17,13 +18,7 @@ function checkId(id: string): string {
   return id
 }
 
-export interface ProjectFile {
-  /** Relative path, "/" between folders. */
-  name: string
-  path: string
-  size: number
-  modified: Date
-}
+export type ProjectFile = SafeFile
 
 export class ProjectFiles {
   readonly root: string
@@ -49,50 +44,52 @@ export class ProjectFiles {
     return dir
   }
 
+  /** Removes the project folder without following any link in it (safe-files.ts). */
   async remove(userId: string, projectId: string): Promise<void> {
-    await rm(this.projectDir(userId, projectId), { recursive: true, force: true })
+    await removeTree(this.projectDir(userId, projectId))
   }
 
   async removeUser(userId: string): Promise<void> {
-    await rm(this.userDir(userId), { recursive: true, force: true })
+    await removeTree(this.userDir(userId))
   }
 
-  /** The regular files under a folder; links and special files are skipped, never followed. */
+  /** The regular files under a folder; links and special files are skipped, never followed (safe-files.ts). */
   async list(dir: string): Promise<ProjectFile[]> {
-    const found: ProjectFile[] = []
-    const walk = async (folder: string): Promise<void> => {
-      let names: string[]
-      try {
-        names = await readdir(folder)
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") return
-        throw error
-      }
-      for (const name of names.sort()) {
-        const path = join(folder, name)
-        const info = await lstat(path)
-        if (info.isDirectory()) await walk(path)
-        else if (info.isFile()) found.push({ name: relative(dir, path).split(sep).join("/"), path, size: info.size, modified: info.mtime })
-      }
-    }
-    await walk(dir)
-    return found
+    return walkProject(dir, this.note)
   }
 
-  /** Bytes the user's projects take on disk (regular files). */
+  /** Where skipped links and special files are noted; server side only. */
+  note: (relativePath: string, why: string) => void = () => undefined
+
+  /** Bytes the user's projects take on disk (regular files, each at its full size). */
   async usage(userId: string): Promise<number> {
     return (await this.list(this.userDir(userId))).reduce((sum, file) => sum + file.size, 0)
   }
 
+  /** Bytes one project takes on disk. */
+  async projectUsage(userId: string, projectId: string): Promise<number> {
+    return (await this.list(this.projectDir(userId, projectId))).reduce((sum, file) => sum + file.size, 0)
+  }
+
   /**
    * Streams the project as a zip to `out`, file by file, each deflated as it is read: no whole file, let alone the
-   * whole project, is held in memory. Leftover temporary files of interrupted writes are left out.
+   * whole project, is held in memory. Leftover temporary files of interrupted writes are left out; a file swapped for
+   * anything else after it was listed (each is opened without following links and checked) ends the download.
    */
   async download(userId: string, projectId: string, out: Writable): Promise<void> {
+    const dir = this.projectDir(userId, projectId)
     const zip = new StreamZipWriter(out)
-    for (const file of await this.list(this.projectDir(userId, projectId))) {
+    for (const file of await this.list(dir)) {
       if (ATOMIC_LEFTOVER.test(file.name)) continue
-      await zip.addFile(file.name, file.path, file.modified)
+      let source
+      try {
+        source = await readListed(dir, file)
+      } catch (error) {
+        // A file gone or swapped mid-download ends the download (an archive missing it would look complete).
+        this.note(file.name, `not read: ${(error as Error).message}`)
+        throw error
+      }
+      await zip.addFile(file.name, source, file.modified)
     }
     await zip.finish()
   }
@@ -116,7 +113,10 @@ export class ProjectFiles {
     const dir = await this.create(userId, projectId)
     for (const entry of zip.files) {
       const path = resolveInRoot(dir, entry.name)
+      // The folder is new and no workspace runs on it yet, but the check is cheap: never write through a link.
+      await checkNoLinks(dir, dirname(path))
       await mkdir(dirname(path), { recursive: true, mode: 0o700 })
+      await checkNoLinks(dir, path)
       await extractEntry(zip, entry, path)
     }
   }
