@@ -73,7 +73,12 @@ export async function walkProject(dir: string, note: SkipNote = () => undefined,
     try {
       names = await readdir(folder)
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return
+      const code = (error as NodeJS.ErrnoException).code
+      if (code === "ENOENT") return
+      if (code === "EACCES" || code === "EPERM") {
+        note(relative(dir, folder).split(sep).join("/") || ".", "a folder that could not be read (permission denied)")
+        return
+      }
       throw error
     }
     entries += names.length

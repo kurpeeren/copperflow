@@ -3,6 +3,7 @@
 // without a shell; nothing in it is taken from user text: the project id is checked against the id the store
 // generates, the project folder and public origin are the hub's own, and every other value is a checked option.
 import { spawn as nodeSpawn } from "node:child_process"
+import { randomBytes } from "node:crypto"
 import { isAbsolute } from "node:path"
 import type { Readable, Writable } from "node:stream"
 import { TICKET_PUBLIC_KEY_ENV } from "../../hosted/ticket.js"
@@ -628,6 +629,55 @@ export function containerLauncher(options: ContainerRunnerOptions): Launcher {
   }
 }
 
+/** How long the cleaning container may take. */
+export const CLEAN_TIMEOUT_MS = 120_000
+
+/**
+ * The whole `docker run` argument array of the short-lived cleaning container: the workspace user, ONLY the one trash
+ * folder mounted, no network at all, the workspace hardening, and the fixed command built into the image.
+ */
+export function cleanerRunArgs(trashDir: string, settings: ContainerSettings, name: string): string[] {
+  const checked = checkSettings(settings)
+  if (!/^cf-clean-[0-9a-f]{16}$/.test(name)) throw new Error("refused: not a cleaner name")
+  if (!/^(\/|[A-Za-z]:[\\/])/.test(trashDir) || /[,\0\r\n"]/.test(trashDir)) throw new Error("refused: the trash folder is not a plain absolute path")
+  return [
+    "run",
+    "--rm",
+    "--name", name,
+    "--label", CONTAINER_LABEL,
+    "--user", checked.user,
+    "--log-driver", "none",
+    "--read-only",
+    "--cap-drop", "ALL",
+    "--security-opt", "no-new-privileges",
+    "--network", "none",
+    "--pids-limit", "32",
+    "--memory", "128m",
+    "--memory-swap", "128m",
+    "--cpus", "0.5",
+    "--mount", `type=bind,source=${trashDir},target=/work`,
+    "--workdir", "/work",
+    "--entrypoint", "node",
+    checked.image,
+    "--max-old-space-size=96",
+    "/app/dist/cli.js",
+    "workspace-clean",
+    "/work",
+  ]
+}
+
+/** Empties a trash folder as the workspace user; throws when the container fails or runs past its time limit. */
+export async function runCleaner(settings: ContainerSettings, trashDir: string, spawn: SpawnLike = defaultSpawn(), timeoutMs = CLEAN_TIMEOUT_MS): Promise<void> {
+  const { command } = checkSettings(settings)
+  const name = `cf-clean-${randomBytes(8).toString("hex")}`
+  const args = cleanerRunArgs(trashDir, settings, name)
+  const result = await runEngine(spawn, command, args, timeoutMs).catch((error: Error) => ({ code: -1, stdout: "", stderr: error.message }))
+  if (result.code !== 0) {
+    await runEngine(spawn, command, ["rm", "--force", name]).catch(() => undefined)
+    throw new Error(`the cleaning container failed: ${result.stderr.trim().slice(0, 200)}`)
+  }
+}
+
 /** Whether the engine confirms no container of the workspace exists (running or not); false when it cannot say. */
 export async function containerGone(spawn: SpawnLike, command: string, id: string): Promise<boolean> {
   const name = containerName(id)
@@ -643,6 +693,7 @@ export function createContainerRunner(options: ContainerRunnerOptions): ManagedR
     launch: containerLauncher(options),
     confirmGone: (id) => containerGone(spawn, command, id),
     maintain: retryPendingNetworks,
+    clean: (dir) => runCleaner(options, dir, spawn),
     ...(options.idleMs !== undefined ? { idleMs: options.idleMs } : {}),
     ...(options.maxRunning !== undefined ? { maxRunning: options.maxRunning } : {}),
     ...(options.log ? { log: options.log } : {}),

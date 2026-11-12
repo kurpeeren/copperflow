@@ -1,6 +1,6 @@
 // copperflow hub: the hub server, and the maintainer's commands that work on its data directory directly.
 import { spawn as nodeSpawn } from "node:child_process"
-import { readFile } from "node:fs/promises"
+import { readdir, readFile } from "node:fs/promises"
 import { prepareDataDir } from "./permissions.js"
 import { join, resolve } from "node:path"
 import { writeFileAtomic } from "../core/fs-utils.js"
@@ -270,6 +270,8 @@ async function status(store: HubStore, dataDir: string, io: CliIO): Promise<numb
   io.out(`Runner: ${runner}`)
   io.out(`Running workspaces: ${running}`)
   if (engine) for (const line of await containerMemory(engine)) io.out(`  ${line}`)
+  const trash = await readdir(join(dataDir, "trash")).catch(() => [] as string[])
+  if (trash.length > 0) io.out(`Trash not yet removed: ${trash.length} folder(s) (still counted in their users' usage; the hub retries every 5 seconds)`)
   io.out(`Disk used by projects: ${"bytes" in measured ? `${(measured.bytes / (1024 * 1024)).toFixed(1)} MB` : `unknown (${measured.failed})`}`)
   return 0
 }

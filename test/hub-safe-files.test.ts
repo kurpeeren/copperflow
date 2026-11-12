@@ -4,12 +4,16 @@ import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { ProjectFiles, type ProjectFile } from "../src/hub/projects.js"
+import { removeProjectFolders } from "../src/hub/project-folders.js"
+import { ManagedRunner } from "../src/hub/runner/runner.js"
 import { checkNoLinks, openListed, removeTree, usageOf, walkProject } from "../src/hub/safe-files.js"
 import { readZip } from "./helpers/zip-read.js"
 
 const USER = "a".repeat(32)
 const PROJECT = "b".repeat(32)
 const SECRET = "HOST-SECRET-CONTENT"
+/** A runner with nothing running: blocks succeed at once. */
+const OPEN_RUNNER = new ManagedRunner({ launch: async () => Promise.reject(new Error("no launches here")), log: () => undefined })
 
 /** Makes a link; on Windows a file link may need a privilege the test run lacks, a directory junction does not. */
 async function link(target: string, path: string, kind: "file" | "dir"): Promise<boolean> {
@@ -61,7 +65,7 @@ describe("uploads and deletions never touch a folder a container can mount", () 
   test("deletion moves the folder into the trash first and never follows a link out", async () => {
     const { outside, files, dir } = await setup()
     expect(await link(outside, join(dir, "leakdir"), "dir")).toBe(true)
-    await files.remove(USER, PROJECT)
+    await removeProjectFolders({ runner: OPEN_RUNNER, files }, USER, [PROJECT])
     expect(await readdir(join(dir, ".."))).toEqual([])
     expect(await readdir(files.trash)).toEqual([])
     expect(await readdir(outside)).toEqual(["secret.txt"])
@@ -79,8 +83,10 @@ describe("the hub never follows a link inside a project", () => {
     expect(notes).toEqual(expect.arrayContaining(["leakdir", ...(fileLinked ? ["leak.txt"] : [])]))
     expect(await usageOf(dir)).toBe("export default () => null\n".length)
     const zip = await downloadText(files)
-    expect(zip.names).toEqual(["main.circuit.tsx"])
-    await files.remove(USER, PROJECT)
+    // Skipped links are listed in SKIPPED.txt, never silently left out; their targets never appear.
+    expect(zip.names).toEqual(["main.circuit.tsx", "SKIPPED.txt"])
+    expect(zip.text).not.toContain(SECRET)
+    await removeProjectFolders({ runner: OPEN_RUNNER, files }, USER, [PROJECT])
     expect(await readFile(join(outside, "secret.txt"), "utf8")).toBe(SECRET)
     expect(await readdir(outside)).toEqual(["secret.txt"])
   })

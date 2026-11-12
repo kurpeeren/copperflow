@@ -48,6 +48,11 @@ export interface WorkspaceRunner {
   setStartCheck(check: (spec: WorkspaceSpec) => Promise<void>): void
   /** Periodic upkeep the hub's 5-second sweep asks for (the container runner retries unconfirmed network removals). */
   maintain?(): Promise<void>
+  /**
+   * Empties a folder in the trash as the workspace user, when workspaces run as another user than the hub (the
+   * container runner); absent, the hub removes the folder itself.
+   */
+  cleanFolder?(dir: string): Promise<void>
 }
 
 /** A start refused for a reason the person should be told (not a failure of the workspace). */
@@ -113,6 +118,8 @@ export interface ManagedRunnerOptions {
   confirmGone?: (id: string) => Promise<boolean>
   /** Periodic upkeep of the launcher (see WorkspaceRunner.maintain). */
   maintain?: () => Promise<void>
+  /** Empties a removed project's folder in the trash as the workspace user (the container runner). */
+  clean?: (dir: string) => Promise<void>
 }
 
 interface Entry {
@@ -184,6 +191,10 @@ export class ManagedRunner implements WorkspaceRunner {
 
   async maintain(): Promise<void> {
     await this.options.maintain?.()
+  }
+
+  get cleanFolder(): ((dir: string) => Promise<void>) | undefined {
+    return this.options.clean
   }
 
   async ensure(spec: WorkspaceSpec): Promise<WorkspaceAddress> {

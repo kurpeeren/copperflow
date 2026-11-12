@@ -132,6 +132,10 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
         // --root is required here, so it is handed back rather than defaulted to the current directory.
         await runWorkspaceCommand(rootOption === undefined ? rest : ["--root", rootOption, ...rest], cwd, io, options)
         return 0
+      case "workspace-clean":
+        // Only in the hub's cleaning container: empties /work (a removed project's folder in the trash).
+        await (await import("./hosted/workspace-clean.js")).runWorkspaceClean(rest)
+        return 0
       // Loaded only when asked for: the local program never loads the hub (or node:sqlite).
       case "hub":
         await requireSqlite()

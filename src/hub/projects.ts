@@ -2,16 +2,18 @@
 // against ID_PATTERN before they become a path; a project's name is a label in the store and never touches the disk.
 import { randomBytes } from "node:crypto"
 import { createWriteStream } from "node:fs"
-import { mkdir, rename } from "node:fs/promises"
+import { mkdir, readdir, rename } from "node:fs/promises"
 import { dirname, join } from "node:path"
-import type { Writable } from "node:stream"
+import { Readable, type Writable } from "node:stream"
 import { resolveInRoot } from "../core/workspace.js"
-import { checkNoLinks, measureTree, shareWithWorkspaceGroup, readListed, removeTree, usageOf, walkProject, type Measured, type SafeFile } from "./safe-files.js"
+import { checkNoLinks, isInside, measureTree, shareWithWorkspaceGroup, readListed, removeTree, usageOf, walkProject, type Measured, type SafeFile } from "./safe-files.js"
 import { ID_PATTERN } from "./secrets.js"
 import { extractEntry, StreamZipWriter, type ZipOnDisk } from "./zip-stream.js"
 
 /** Leftovers of an interrupted atomic write (`writeFileAtomic`): `<name>.<pid>.<hex>.tmp`. Never part of a download. */
 const ATOMIC_LEFTOVER = /\.\d+\.[0-9a-f]{8}\.tmp$/
+/** The list of entries a download could not include, added to the zip when there are any. */
+export const SKIPPED_FILE = "SKIPPED.txt"
 
 function checkId(id: string): string {
   if (!ID_PATTERN.test(id)) throw new Error("Not a generated id")
@@ -59,33 +61,40 @@ export class ProjectFiles {
   }
 
   /**
-   * Removes a project folder. The caller has blocked its workspace (confirmed gone); the folder is first renamed into
-   * the trash, out of every mount, and only that copy is removed (never following a link).
+   * Moves a folder (a project's, or a user's) into the trash, out of every mount, under a name that says whose it is;
+   * the trash still counts toward that user's usage until it is really gone. Undefined when there was nothing to move.
+   * Only project-folders.ts calls this, with the project blocked and its container confirmed gone.
    */
-  async remove(userId: string, projectId: string): Promise<void> {
-    await this.removeViaTrash(this.projectDir(userId, projectId))
-  }
-
-  /** Removes a user's folder the same way; the caller has stopped (and blocked) all their workspaces. */
-  async removeUser(userId: string): Promise<void> {
-    await this.removeViaTrash(this.userDir(userId))
-  }
-
-  private async removeViaTrash(dir: string): Promise<void> {
+  async moveToTrash(userId: string, dir: string): Promise<string | undefined> {
     await mkdir(this.trash, { recursive: true, mode: 0o700 })
-    const parked = join(this.trash, `removed-${randomBytes(16).toString("hex")}`)
+    const parked = join(this.trash, `${checkId(userId)}-${randomBytes(16).toString("hex")}`)
     try {
       await rename(dir, parked)
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
       throw error
     }
+    return parked
+  }
+
+  /** Removes a folder in the trash (emptied first by the cleaning container when workspaces run as another user). */
+  async removeParked(parked: string): Promise<void> {
+    if (!isInside(this.trash, parked) || parked === this.trash) throw new Error("Not a folder in the trash")
     await removeTree(parked)
   }
 
+  /** The folders in the trash, with the user each belongs to. */
+  async allTrash(): Promise<{ userId: string; path: string }[]> {
+    const names = await readdir(this.trash).catch(() => [] as string[])
+    return names.flatMap((name) => {
+      const match = /^([0-9a-f]{32})-[0-9a-f]{32}$/.exec(name)
+      return match ? [{ userId: match[1] as string, path: join(this.trash, name) }] : []
+    })
+  }
+
   /** The regular files under a folder; links and special files are skipped, never followed (safe-files.ts). */
-  async list(dir: string): Promise<ProjectFile[]> {
-    return walkProject(dir, this.note)
+  async list(dir: string, note: (relativePath: string, why: string) => void = this.note): Promise<ProjectFile[]> {
+    return walkProject(dir, note)
   }
 
   /** Where skipped links and special files are noted; server side only. */
@@ -101,7 +110,15 @@ export class ProjectFiles {
 
   /** The user's measurement, or why there is none. */
   async measureUser(userId: string, limits: { maxEntries?: number; maxMs?: number } = {}): Promise<Measured> {
-    return measureTree(this.userDir(userId), limits)
+    // The user's trash counts until it is really gone (a removal that failed keeps the quota charged).
+    const trash = (await this.allTrash()).filter((entry) => entry.userId === userId).map((entry) => entry.path)
+    let bytes = 0
+    for (const dir of [this.userDir(userId), ...trash]) {
+      const measured = await measureTree(dir, limits)
+      if ("failed" in measured) return measured
+      bytes += measured.bytes
+    }
+    return { bytes }
   }
 
   /** Bytes one project takes on disk (lstat only). */
@@ -117,17 +134,32 @@ export class ProjectFiles {
   async download(userId: string, projectId: string, out: Writable): Promise<void> {
     const dir = this.projectDir(userId, projectId)
     const zip = new StreamZipWriter(out)
-    for (const file of await this.list(dir)) {
+    // Entries the hub may not read (a workspace made them owner-only) are listed in SKIPPED.txt, never silently left out.
+    const skipped: string[] = []
+    const files = await this.list(dir, (path, why) => {
+      this.note(path, why)
+      skipped.push(`${path}: ${why}`)
+    })
+    for (const file of files) {
       if (ATOMIC_LEFTOVER.test(file.name)) continue
       let source
       try {
         source = await readListed(dir, file)
       } catch (error) {
-        // A file gone or swapped mid-download ends the download (an archive missing it would look complete).
+        const code = (error as NodeJS.ErrnoException).code
         this.note(file.name, `not read: ${(error as Error).message}`)
+        if (code === "EACCES" || code === "EPERM") {
+          skipped.push(`${file.name}: could not be read (permission denied)`)
+          continue
+        }
+        // A file gone or swapped mid-download ends the download (an archive missing it would look complete).
         throw error
       }
       await zip.addFile(file.name, source, file.modified)
+    }
+    if (skipped.length > 0) {
+      const text = `These entries were not included:\n${skipped.map((line) => `- ${line}`).join("\n")}\n`
+      await zip.addFile(SKIPPED_FILE, Readable.from([Buffer.from(text, "utf8")]), new Date())
     }
     await zip.finish()
   }

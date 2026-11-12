@@ -110,7 +110,7 @@ describe("the hub's maintainer commands", () => {
       expect(await runCli(["hub", "delete-user", "ada@example.com", "--data", data], "/", io("ada@example.com"))).toBe(0)
       expect(server.hub.store.userByEmail("ada@example.com")).toBeUndefined()
       await vi.waitFor(async () => expect(await readdir(join(data, "projects"))).toEqual([]), { timeout: 3000 })
-      expect(server.hub.store.deletedUsers()).toEqual([])
+      await vi.waitFor(() => expect(server.hub.store.deletedUsers()).toEqual([]), { timeout: 3000 })
     } finally {
       await server.close()
     }

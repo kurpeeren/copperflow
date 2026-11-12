@@ -17,6 +17,7 @@ import { createProject, deleteProject, downloadProject, ownProject, renameProjec
 import { ProjectFiles } from "./projects.js"
 import { createProcessRunner } from "./runner/process-runner.js"
 import { installStartCheck, QUOTA_SWEEP_MS, sweepQuota } from "./quota.js"
+import { retryTrash } from "./project-folders.js"
 import { trustedProxies, workspaceSubnets, type SubnetSet } from "./peer-guard.js"
 import type { WorkspaceRunner } from "./runner/runner.js"
 import { HubStore } from "./store.js"
@@ -212,6 +213,8 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
     measuring = true
     sweepQuota(hub)
       .then(() => hub.runner.maintain?.())
+      // Trash that could not be removed (still counted in its user's usage) is tried again.
+      .then(() => retryTrash(hub))
       .catch((error: unknown) => hub.log(`quota sweep failed: ${(error as Error).message}`))
       .finally(() => (measuring = false))
   }, options.quotaSweepMs ?? QUOTA_SWEEP_MS)
