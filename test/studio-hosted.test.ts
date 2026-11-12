@@ -139,6 +139,75 @@ describe("hosted Studio", () => {
   })
 })
 
+describe("hosted paths are read once", () => {
+  const shapes = [
+    `${BASE}//api/circuits`,
+    `${BASE}/\\api/circuits`,
+    `${BASE}/api%2fcircuits`,
+    `${BASE}/api%2Fcircuits`,
+    `${BASE}/x%5capi/circuits`,
+    `${BASE}/x/../api/circuits`,
+    `${BASE}/./api/circuits`,
+    `${BASE}/x/%2e%2e/api/circuits`,
+    `${BASE}/api/../api/circuits`,
+    `/p/demo/../other/api/circuits`,
+    `/other${BASE}/api/circuits`,
+  ]
+  test("refuses every ambiguous shape, with or without a ticket, and never serves it", async () => {
+    for (const path of shapes) {
+      for (const headers of [proxied(), proxied({ [TICKET_HEADER]: ticket() })]) {
+        const answer = await send(path, headers)
+        expect([400, 403, 404], path).toContain(answer.status)
+        expect(answer.body, path).not.toContain(FILE)
+      }
+    }
+    expect((await send(`${BASE}/api/circuits?x=1`, proxied({ [TICKET_HEADER]: ticket() }))).status).toBe(200)
+  })
+})
+
+describe("hosted event streams end with their ticket", () => {
+  test("the stream ends when its ticket expires, and an expired ticket cannot reopen it", async () => {
+    const exp = Math.floor(Date.now() / 1000) + 2
+    const started = Date.now()
+    const ended = await send(`${BASE}/api/events`, proxied({ [TICKET_HEADER]: ticket("ws-1", exp) }))
+    expect(ended.status).toBe(200)
+    expect(ended.body).toContain(": connected")
+    expect(Date.now()).toBeGreaterThanOrEqual(exp * 1000 - 50)
+    expect(Date.now() - started).toBeLessThan(5000)
+    const again = await send(`${BASE}/api/events`, proxied({ [TICKET_HEADER]: ticket("ws-1", exp) }))
+    expect(again.status).toBe(403)
+    expect(JSON.parse(again.body).error).toBe("Expired workspace ticket")
+  })
+
+  test("no stream outlives the hosted cap, whatever the ticket", async () => {
+    const capped = await startStudio({
+      root,
+      staticDir: join(root, "static"),
+      builder,
+      port: 0,
+      routeWorker: null,
+      placeWorker: null,
+      hosted: { bind: "127.0.0.1", publicOrigin: PUBLIC, basePath: BASE, workspaceId: "ws-1", ticketKey: KEY, maxStreamMs: 300 },
+    })
+    try {
+      const { port } = new URL(capped.url)
+      const started = Date.now()
+      const status = await new Promise<number>((done, fail) => {
+        const req = request({ host: "127.0.0.1", port, path: `${BASE}/api/events`, headers: proxied({ [TICKET_HEADER]: ticket("ws-1", later() + 3600) }) }, (res) => {
+          res.resume()
+          res.on("end", () => done(res.statusCode ?? 0))
+        })
+        req.on("error", fail)
+        req.end()
+      })
+      expect(status).toBe(200)
+      expect(Date.now() - started).toBeLessThan(3000)
+    } finally {
+      await capped.close()
+    }
+  })
+})
+
 describe("local Studio keeps the local rules", () => {
   test("x-forwarded-host is not honoured locally", async () => {
     const staticDir = join(root, "static")

@@ -1,5 +1,5 @@
 import type { IncomingHttpHeaders } from "node:http"
-import { nowSeconds, TICKET_HEADER, verifyTicket } from "./ticket.js"
+import { nowSeconds, TICKET_HEADER, verifyTicket, type TicketPayload } from "./ticket.js"
 
 /** How a workspace's server runs behind the hub. */
 export interface HostedOptions {
@@ -13,10 +13,14 @@ export interface HostedOptions {
   workspaceId: string
   /** The key the hub signs tickets with (at least 32 bytes). */
   ticketKey: Buffer
+  /** The longest an event stream stays open, in ms; default 15 minutes. It also ends when its ticket expires. */
+  maxStreamMs?: number
 }
 
+export const DEFAULT_MAX_STREAM_MS = 15 * 60_000
+
 export type GateResult =
-  | { kind: "pass"; path: string }
+  | { kind: "pass"; url: URL; ticket?: TicketPayload }
   | { kind: "redirect"; location: string }
   | { kind: "refuse"; status: number; reason: string }
 
@@ -55,14 +59,32 @@ export function gateHosted(method: string | undefined, rawUrl: string | undefine
   if (publicHost(headers) !== origin.host) return { kind: "refuse", status: 403, reason: "Unexpected Host header" }
   const sentOrigin = headers.origin
   if (sentOrigin !== undefined && sentOrigin !== origin.origin) return { kind: "refuse", status: 403, reason: "Cross-origin requests are not allowed" }
-  const pathname = new URL(rawUrl ?? "/", origin.origin).pathname
+  const raw = rawUrl ?? "/"
+  const query = raw.indexOf("?")
+  const rawPath = query < 0 ? raw : raw.slice(0, query)
+  // Read the raw path once and refuse every shape two parsers could read differently.
+  if (!isPlainPath(rawPath)) return { kind: "refuse", status: 400, reason: "Bad path" }
   const base = options.basePath
-  if (base !== "" && pathname === base && method === "GET") return { kind: "redirect", location: `${base}/` }
-  if (base !== "" && !pathname.startsWith(`${base}/`)) return { kind: "refuse", status: 404, reason: "Not found" }
-  const path = pathname.slice(base.length)
-  if (path.startsWith("/api/")) {
-    const check = verifyTicket(header(headers, TICKET_HEADER), options.ticketKey, now, options.workspaceId)
-    if (!check.ok) return { kind: "refuse", status: 403, reason: check.reason }
-  }
-  return { kind: "pass", path }
+  if (base !== "" && rawPath === base && method === "GET") return { kind: "redirect", location: `${base}/` }
+  if (base !== "" && !rawPath.startsWith(`${base}/`)) return { kind: "refuse", status: 404, reason: "Not found" }
+  // The one URL both the ticket check and the router read: set field by field, never parsed from a joined string.
+  const url = new URL("http://workspace.invalid/")
+  url.pathname = rawPath.slice(base.length)
+  url.search = query < 0 ? "" : raw.slice(query)
+  if (url.pathname !== rawPath.slice(base.length)) return { kind: "refuse", status: 400, reason: "Bad path" }
+  if (!url.pathname.startsWith("/api/")) return { kind: "pass", url }
+  const check = verifyTicket(header(headers, TICKET_HEADER), options.ticketKey, now, options.workspaceId)
+  if (!check.ok) return { kind: "refuse", status: 403, reason: check.reason }
+  return { kind: "pass", url, ticket: check.payload }
+}
+
+/** A path with no empty, "." or ".." segment, no backslash and no encoded slash or backslash. */
+function isPlainPath(path: string): boolean {
+  if (!path.startsWith("/") || path.includes("\\") || /%(2f|5c)/i.test(path)) return false
+  const segments = path.slice(1).split("/")
+  return segments.every((segment, index) => {
+    if (segment === "") return index === segments.length - 1
+    const decoded = /%2e/i.test(segment) ? segment.replace(/%2e/gi, ".") : segment
+    return decoded !== "." && decoded !== ".."
+  })
 }

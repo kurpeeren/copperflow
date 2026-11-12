@@ -57,7 +57,8 @@ import { LiveProject, type DesignBuilder } from "./live.js"
 import { RouteRunner, routeWorkerFactory, type RouteWorkerFactory } from "./route-runner.js"
 import { PlaceRunner, placeWorkerFactory, type PlaceWorkerFactory } from "./place-runner.js"
 import { fitBoardEdit } from "./fit-board.js"
-import { gateHosted, normaliseBasePath, normaliseOrigin, type HostedOptions } from "../hosted/gate.js"
+import { DEFAULT_MAX_STREAM_MS, gateHosted, normaliseBasePath, normaliseOrigin, type HostedOptions } from "../hosted/gate.js"
+import type { TicketPayload } from "../hosted/ticket.js"
 
 export interface StudioOptions {
   root: string
@@ -307,7 +308,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
   server.maxConnections = MAX_CONNECTIONS
 
   /** Behind the hub: the public Host and Origin, the base path and the workspace ticket; the URL with the base removed. */
-  function gateOf(req: IncomingMessage, res: ServerResponse, given: HostedOptions): URL | undefined {
+  function gateOf(req: IncomingMessage, res: ServerResponse, given: HostedOptions): { url: URL; ticket?: TicketPayload } | undefined {
     const gate = gateHosted(req.method, req.url, req.headers, given)
     if (gate.kind === "refuse") throw new HttpError(gate.status, gate.reason)
     if (gate.kind === "redirect") {
@@ -315,16 +316,19 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       res.end()
       return undefined
     }
-    const url = new URL(req.url ?? "/", "http://workspace.invalid")
-    return new URL(gate.path + url.search, "http://workspace.invalid")
+    return gate.ticket ? { url: gate.url, ticket: gate.ticket } : { url: gate.url }
   }
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     let url: URL
+    /** Behind the hub: when this request's event stream must end (its ticket's expiry or the stream cap), in ms. */
+    let streamEndsAt: number | undefined
     if (hosted) {
       const passed = gateOf(req, res, hosted)
       if (passed === undefined) return
-      url = passed
+      // The ticket check and the router read this one URL object; nothing parses the path again.
+      url = passed.url
+      if (passed.ticket) streamEndsAt = Math.min(passed.ticket.exp * 1000, Date.now() + (hosted.maxStreamMs ?? DEFAULT_MAX_STREAM_MS))
       if (!url.pathname.startsWith("/api/")) return serveStatic(url.pathname, res)
     } else {
       const host = req.headers.host
@@ -356,7 +360,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
     }
     switch (route) {
       case "GET /api/events":
-        return openEvents(res)
+        return openEvents(res, streamEndsAt)
       case "GET /api/circuits":
         return send(res, await listCircuits(root))
       case "GET /api/sheets":
@@ -584,7 +588,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
     res.end(await readFile(path))
   }
 
-  function openEvents(res: ServerResponse): void {
+  function openEvents(res: ServerResponse, endsAt?: number): void {
     if (streams.size >= maxStreams) throw new HttpError(429, "Too many open event streams")
     res.writeHead(200, {
       "content-type": "text/event-stream",
@@ -596,8 +600,11 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
     streams.add(res)
     const unsubscribe = live.subscribe((event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
     const heartbeat = setInterval(() => res.write(": ping\n\n"), HEARTBEAT_MS)
+    // Behind the hub the stream ends with its ticket; the client reconnects through the hub with a fresh one.
+    const expiry = endsAt === undefined ? undefined : setTimeout(() => res.end(), Math.max(0, endsAt - Date.now()))
     res.on("close", () => {
       clearInterval(heartbeat)
+      if (expiry !== undefined) clearTimeout(expiry)
       unsubscribe()
       streams.delete(res)
     })
