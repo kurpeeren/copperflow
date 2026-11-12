@@ -46,7 +46,7 @@ export interface Hub {
   /** One-time tokens that open a project's origin: hash → who, which project, until when, at which epoch. */
   enterTokens: Map<string, { userId: string; projectId: string; expires: number; epoch: number }>
   /** Transfers in progress: uploads in the whole hub, downloads per user. */
-  transfers: { uploads: number; downloads: Map<string, number> }
+  transfers: { uploads: number; uploadingUsers: Set<string>; downloads: Map<string, number> }
   log: (line: string) => void
 }
 

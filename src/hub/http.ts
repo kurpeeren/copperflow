@@ -14,6 +14,7 @@ export class HubError extends Error {
 }
 
 export const FORM_BODY_LIMIT = 1024 * 1024
+export const BODY_TIMEOUT_MS = 15_000
 const MAX_FORM_FIELDS = 32
 
 export const PAGE_HEADERS: Record<string, string> = {
@@ -34,10 +35,18 @@ export async function readBody(req: IncomingMessage, limit: number): Promise<Buf
   if (Number.isFinite(declared) && declared > limit) throw new HubError(413, "The request is too large.")
   const chunks: Buffer[] = []
   let size = 0
-  for await (const chunk of req) {
-    size += (chunk as Buffer).length
-    if (size > limit) throw new HubError(413, "The request is too large.")
-    chunks.push(chunk as Buffer)
+  // A small body arrives within 15 s or the request is ended.
+  const late = setTimeout(() => req.destroy(new HubError(408, "The request took too long.")), BODY_TIMEOUT_MS)
+  try {
+    for await (const chunk of req) {
+      size += (chunk as Buffer).length
+      if (size > limit) throw new HubError(413, "The request is too large.")
+      chunks.push(chunk as Buffer)
+    }
+  } catch (error) {
+    throw error instanceof HubError ? error : new HubError(408, "The request took too long.")
+  } finally {
+    clearTimeout(late)
   }
   return Buffer.concat(chunks)
 }

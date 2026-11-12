@@ -2,7 +2,8 @@
 // checked for the public Origin and a form token; every project route answers another user's project with 404; the
 // proxy signs a one-minute workspace ticket only after all of that has passed.
 import { mkdir } from "node:fs/promises"
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
+import type { Socket } from "node:net"
 import { normaliseOrigin } from "../hosted/gate.js"
 import { changePassword, deleteAccount, endAllSessions, showAccount, showSignIn, showSignUp, signIn, signOut, signUp } from "./account-routes.js"
 import { newLimits, sessionOf, sweepCuts, type Hub, type HubConfig, type Signed } from "./context.js"
@@ -96,7 +97,7 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
     userCuts: new Map(),
     epochs: new Map(),
     enterTokens: new Map(),
-    transfers: { uploads: 0, downloads: new Map() },
+    transfers: { uploads: 0, uploadingUsers: new Set(), downloads: new Map() },
     log: options.log ?? ((line) => process.stderr.write(`copperflow hub: ${line}\n`)),
   }
 }
@@ -106,10 +107,12 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
   const server = createServer((req, res) => {
     route(hub, req, res).catch((error: unknown) => answerError(hub, res, error))
   })
-  server.headersTimeout = 15_000
-  // Uploads of up to 200 MB need time on a slow line; event streams are responses and are not cut by this.
-  server.requestTimeout = 10 * 60_000
+  // Headers within 10 s. Bodies have their own clocks: forms 15 s (readBody), uploads a minimum rate and an idle limit
+  // (project-routes.ts), proxied bodies at most 1 MB; so the server-wide request timeout is off.
+  server.headersTimeout = HEADERS_TIMEOUT_MS
+  server.requestTimeout = 0
   server.maxConnections = 1024
+  limitConnectionsPerAddress(server, options.trustProxy ? undefined : MAX_CONNECTIONS_PER_ADDRESS)
   await new Promise<void>((done, fail) => {
     server.once("error", fail)
     server.listen(options.port, options.bind ?? "127.0.0.1", () => done())
@@ -133,6 +136,32 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
       hub.store.close()
     },
   }
+}
+
+const HEADERS_TIMEOUT_MS = 10_000
+export const MAX_CONNECTIONS_PER_ADDRESS = 64
+
+/**
+ * At most `max` open connections per client address; more are closed at once. Behind a reverse proxy every
+ * connection comes from the proxy, so the cap is left to the proxy (`max` undefined).
+ */
+function limitConnectionsPerAddress(server: Server, max: number | undefined): void {
+  if (max === undefined) return
+  const open = new Map<string, number>()
+  server.on("connection", (socket: Socket) => {
+    const key = addressKey(socket.remoteAddress ?? "unknown")
+    const count = (open.get(key) ?? 0) + 1
+    if (count > max) {
+      socket.destroy()
+      return
+    }
+    open.set(key, count)
+    socket.once("close", () => {
+      const left = (open.get(key) ?? 1) - 1
+      if (left > 0) open.set(key, left)
+      else open.delete(key)
+    })
+  })
 }
 
 function answerError(hub: Hub, res: ServerResponse, error: unknown): void {

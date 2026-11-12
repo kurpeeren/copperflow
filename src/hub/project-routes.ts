@@ -17,6 +17,10 @@ const MAX_NAME = 100
 const UPLOAD_OVERHEAD = 64 * 1024
 /** Uploads running at once in the whole hub. */
 export const MAX_UPLOADS = 4
+/** An upload is stopped after this long without a byte, or below this average rate once this long has passed. */
+export const UPLOAD_IDLE_MS = 30_000
+export const UPLOAD_MIN_BYTES_PER_S = 32 * 1024
+export const UPLOAD_RATE_AFTER_MS = 30_000
 /** Downloads one user runs at once. */
 export const MAX_DOWNLOADS_PER_USER = 2
 
@@ -145,14 +149,54 @@ async function streamDownload(hub: Hub, res: ServerResponse, address: string, si
  */
 export async function uploadProject(hub: Hub, req: IncomingMessage, res: ServerResponse, address: string, signed: Signed): Promise<void> {
   const boundary = boundaryOf(header(req, "content-type"))
-  if (hub.transfers.uploads >= MAX_UPLOADS) throw new HubError(503, "Too many uploads are running. Try again in a minute.", { "retry-after": "60" })
-  hub.transfers.uploads += 1
+  const userId = signed.user.id
+  // One upload per user, refused at once: a user's parallel uploads never queue while holding hub-wide slots.
+  if (hub.transfers.uploadingUsers.has(userId)) throw new HubError(429, "One of your uploads is still running. Try again when it has finished.", { "retry-after": "30" })
+  hub.transfers.uploadingUsers.add(userId)
   try {
-    const problem = await withUserLock(hub, signed.user.id, () => receiveUpload(hub, req, address, signed, boundary))
+    const problem = await withUserLock(hub, userId, async () => {
+      // The hub-wide slot is taken only when this user's upload actually starts.
+      if (hub.transfers.uploads >= MAX_UPLOADS) throw new HubError(503, "Too many uploads are running. Try again in a minute.", { "retry-after": "60" })
+      hub.transfers.uploads += 1
+      try {
+        return await receiveUpload(hub, req, address, signed, boundary)
+      } finally {
+        hub.transfers.uploads -= 1
+      }
+    })
     if (problem) return showProjects(hub, res, signed, undefined, problem.status, problem.text)
     redirect(res, "/projects")
   } finally {
-    hub.transfers.uploads -= 1
+    hub.transfers.uploadingUsers.delete(userId)
+  }
+}
+
+/**
+ * The request body as it arrives, refused (408) when it stalls for `UPLOAD_IDLE_MS` or averages less than
+ * `UPLOAD_MIN_BYTES_PER_S` once `UPLOAD_RATE_AFTER_MS` have passed.
+ */
+export async function* paced(
+  req: Pick<IncomingMessage, "setTimeout" | "destroy"> & AsyncIterable<unknown>,
+  limits = { idleMs: UPLOAD_IDLE_MS, minBytesPerS: UPLOAD_MIN_BYTES_PER_S, rateAfterMs: UPLOAD_RATE_AFTER_MS, checkMs: 1000 },
+): AsyncGenerator<Buffer> {
+  const started = Date.now()
+  let received = 0
+  const tooSlow = () => new HubError(408, "The upload was too slow and was stopped. Try again on a faster connection.")
+  req.setTimeout(limits.idleMs, () => req.destroy(tooSlow()))
+  const check = setInterval(() => {
+    const elapsed = Date.now() - started
+    if (elapsed >= limits.rateAfterMs && received / (elapsed / 1000) < limits.minBytesPerS) req.destroy(tooSlow())
+  }, limits.checkMs)
+  check.unref()
+  try {
+    for await (const chunk of req) {
+      received += (chunk as Buffer).length
+      yield chunk as Buffer
+    }
+  } catch (error) {
+    throw error instanceof HubError ? error : tooSlow()
+  } finally {
+    clearInterval(check)
   }
 }
 
@@ -163,7 +207,7 @@ async function receiveUpload(hub: Hub, req: IncomingMessage, address: string, si
   if (quota) return { status: 403, text: quota }
   const temp = await hub.files.uploadPath()
   try {
-    const form = await streamMultipart(req, boundary, hub.config.maxBytes + UPLOAD_OVERHEAD, () => createWriteStream(temp, { flags: "wx", mode: 0o600 }))
+    const form = await streamMultipart(paced(req), boundary, hub.config.maxBytes + UPLOAD_OVERHEAD, () => createWriteStream(temp, { flags: "wx", mode: 0o600 }))
     if (!formTokenMatches(signed, form.fields.get("form"))) throw new HubError(403, "The form has expired. Open the page again and retry.")
     const name = projectName(form.fields.get("name"))
     if (!name) return { status: 400, text: `A project name has 1 to ${MAX_NAME} characters.` }

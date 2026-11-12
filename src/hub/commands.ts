@@ -114,8 +114,33 @@ async function serve(options: Map<string, string>, flags: Set<string>, cwd: stri
   }
   process.once("SIGTERM", stop)
   process.once("SIGINT", stop)
+  installSafetyNet(hub.hub.store, stop)
   io.out(`copperflow hub is listening at ${hub.url} for ${new URL(publicOrigin).origin}.`)
   return 0
+}
+
+/**
+ * The last line, not relied on: every stream chain already reports its errors. An unhandled rejection is recorded
+ * and the hub keeps serving (it was a request that failed, and the request's own handler has answered or closed it).
+ * An uncaught exception is recorded and the hub closes cleanly, since its state can no longer be trusted; the service
+ * manager restarts it. The audit line holds only the error's name and code, never its message (it might quote input).
+ */
+export function installSafetyNet(store: HubStore, stop: () => void, on: Pick<NodeJS.Process, "on"> = process): void {
+  const record = (event: string, error: unknown) => {
+    const name = error instanceof Error ? error.name : typeof error
+    const code = (error as NodeJS.ErrnoException | undefined)?.code ?? ""
+    try {
+      store.audit({ time: Date.now(), userId: null, event, address: "hub", detail: `${name}${code ? ` ${code}` : ""}`.slice(0, 80) })
+    } catch {
+      // The store itself may be what failed; stderr still has it.
+    }
+    process.stderr.write(`copperflow hub: ${event}: ${name}${code ? ` ${code}` : ""}\n`)
+  }
+  on.on("unhandledRejection", (error: unknown) => record("hub-unhandled-rejection", error))
+  on.on("uncaughtException", (error: unknown) => {
+    record("hub-uncaught-exception", error)
+    stop()
+  })
 }
 
 function invite(store: HubStore, options: Map<string, string>, io: CliIO): number {

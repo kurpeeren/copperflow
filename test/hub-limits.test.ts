@@ -266,9 +266,12 @@ describe("quotas under concurrency", () => {
     const ada = await newUser(server, "ada@example.com")
     const archive = await zipOf(20_000)
     const token = formToken((await ada.get("/projects")).text)
+    // At once, the second is refused before it is read (one upload per user); after the first, it no longer fits.
     const answers = await Promise.all([ada.upload("one", archive, token), ada.upload("two", archive, token)])
-    expect(answers.map((a) => a.status).sort()).toEqual([303, 400])
-    expect(answers.find((a) => a.status === 400)?.text).toContain("unpacks to more than")
+    expect(answers.map((a) => a.status).sort()).toEqual([303, 429])
+    const later = await ada.upload("three", archive, token)
+    expect(later.status).toBe(400)
+    expect(later.text).toContain("unpacks to more than")
     const userId = server.hub.store.userByEmail("ada@example.com")?.id as string
     expect(await server.hub.files.usage(userId)).toBe(20_000)
   })

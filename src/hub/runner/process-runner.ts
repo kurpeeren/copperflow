@@ -103,6 +103,8 @@ export function processLauncher(options: ProcessRunnerOptions): Launcher {
       child.once("exit", (code) => finish(new Error(`exited with code ${code} before it listened`)))
       // The stream is kept open for the child's --stop-on-stdin-end; its errors only mean the child went away.
       child.stdin.on("error", () => undefined)
+      child.stdout.on("error", (error) => finish(error))
+      child.stderr.on("error", () => undefined)
       child.stdout.setEncoding("utf8")
       child.stdout.on("data", (chunk: string) => {
         if (settled) return

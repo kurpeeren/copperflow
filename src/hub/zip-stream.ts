@@ -4,7 +4,7 @@
 // it is read and records its CRC and sizes in a data descriptor after it.
 import { createReadStream, createWriteStream } from "node:fs"
 import { open, stat } from "node:fs/promises"
-import { Readable, Transform, type Writable } from "node:stream"
+import { Readable, Transform, Writable } from "node:stream"
 import { pipeline } from "node:stream/promises"
 import { createDeflateRaw, createInflateRaw } from "node:zlib"
 import { checkedFiles, locateDirectory, parseDirectory, TAIL_BYTES, ZipRefusal, type Central } from "./zip.js"
@@ -120,16 +120,27 @@ export class StreamZipWriter {
 
   constructor(private readonly out: Writable) {}
 
+  /** Writes to `out`, waiting for it to drain; fails at once when it is gone, and leaves no listener behind. */
   private async write(chunk: Buffer): Promise<void> {
     this.offset += chunk.length
     if (this.offset > MAX_ZIP_OFFSET) throw new Error("The project is too large for a zip archive")
-    if (!this.out.write(chunk)) await new Promise<void>((done, fail) => {
-      const closed = () => fail(new Error("The download was closed"))
-      this.out.once("drain", () => {
-        this.out.off("close", closed)
-        done()
-      })
-      this.out.once("close", closed)
+    const out = this.out
+    if (out.destroyed || out.writableEnded) throw new Error("The download was closed")
+    if (out.write(chunk)) return
+    await new Promise<void>((done, fail) => {
+      const finish = (error?: Error) => {
+        out.off("drain", drained)
+        out.off("close", closed)
+        out.off("error", failed)
+        if (error) fail(error)
+        else done()
+      }
+      const drained = () => finish()
+      const closed = () => finish(new Error("The download was closed"))
+      const failed = (error: Error) => finish(error)
+      out.on("drain", drained)
+      out.on("close", closed)
+      out.on("error", failed)
     })
   }
 
@@ -150,17 +161,23 @@ export class StreamZipWriter {
     let size = 0
     let crc = 0
     let compressed = 0
-    const deflate = createDeflateRaw({ level: 6 })
-    const source = createReadStream(path)
-    source.on("data", (chunk) => {
-      size += (chunk as Buffer).length
-      crc = crc32Update(crc, chunk as Buffer)
+    // read → count and checksum → deflate → this archive; an error on any stage (the file removed, the client gone)
+    // rejects here and destroys the others.
+    const measure = new Transform({
+      transform(chunk: Buffer, _encoding, next) {
+        size += chunk.length
+        crc = crc32Update(crc, chunk)
+        next(null, chunk)
+      },
     })
-    source.pipe(deflate)
-    for await (const chunk of deflate) {
-      compressed += (chunk as Buffer).length
-      await this.write(chunk as Buffer)
-    }
+    const writer = this
+    const sink = new Writable({
+      write(chunk: Buffer, _encoding, next) {
+        compressed += chunk.length
+        writer.write(chunk).then(() => next(), next)
+      },
+    })
+    await pipeline(createReadStream(path), measure, createDeflateRaw({ level: 6 }), sink)
     const descriptor = Buffer.alloc(16)
     descriptor.writeUInt32LE(DESCRIPTOR_SIGNATURE, 0)
     descriptor.writeUInt32LE(crc, 4)
