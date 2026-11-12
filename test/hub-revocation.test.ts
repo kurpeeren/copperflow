@@ -2,8 +2,10 @@
 // new path cannot forget one. A plain sign-out is the one path that leaves agent credentials alone.
 import { afterEach, describe, expect, test } from "vitest"
 import { createHash } from "node:crypto"
+import { request } from "node:http"
 import { join } from "node:path"
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js"
+import type { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { runCli } from "../src/cli-commands.js"
 import { newToken, PAT_PREFIX } from "../src/hub/agent-tokens.js"
 import { hashSecret, newId } from "../src/hub/secrets.js"
@@ -55,8 +57,8 @@ async function holdEverything(hub: HubServer, browser: Browser, email: string, e
   const allowed = await browser.post("/oauth/consent", { form: formToken(page.text), request, decision: "allow" })
   const code = new URL(String(allowed.headers.location)).searchParams.get("code") as string
   const tokens = JSON.parse((await form(hub, "/oauth/token", { grant_type: "authorization_code", code, client_id: clientId, redirect_uri: REDIRECT, code_verifier: VERIFIER })).text) as Record<string, string>
-  const agent = await connectAgent(hub, pat)
-  const oauthAgent = await connectAgent(hub, tokens.access_token as string)
+  const agent = await connectAgent(hub, pat, { ownStream: false })
+  const oauthAgent = await connectAgent(hub, tokens.access_token as string, { ownStream: false })
   clients.push(agent, oauthAgent)
   expect((await call(agent, "list_projects")).isError).toBe(false)
   expect((await call(oauthAgent, "list_projects")).isError).toBe(false)
@@ -72,6 +74,31 @@ async function until(check: () => Promise<boolean> | boolean): Promise<void> {
     if (await check()) return
     await new Promise((done) => setTimeout(done, 20))
   }
+}
+
+/** Opens the agent session's GET stream with `token`; `ended` settles when the hub ends it. */
+function openStream(hub: HubServer, agent: Client, token: string): Promise<{ ended: Promise<void>; isEnded: () => boolean }> {
+  const sessionId = (agent.transport as StreamableHTTPClientTransport).sessionId as string
+  const port = Number(new URL(hub.url).port)
+  return new Promise((ready, fail) => {
+    const req = request({ host: "127.0.0.1", port, method: "GET", path: "/mcp", agent: false, headers: { host: HOST, authorization: `Bearer ${token}`, "mcp-session-id": sessionId, accept: "text/event-stream", "mcp-protocol-version": "2025-06-18" } }, (res) => {
+      if (res.statusCode !== 200) return fail(new Error(`stream refused: ${res.statusCode}`))
+      let ended = false
+      const done = new Promise<void>((settle) => {
+        const finish = () => {
+          ended = true
+          settle()
+        }
+        res.on("end", finish)
+        res.on("close", finish)
+        res.on("error", finish)
+      })
+      res.resume()
+      ready({ ended: done, isEnded: () => ended })
+    })
+    req.on("error", fail)
+    req.end()
+  })
 }
 
 async function agentAlive(agent: Client): Promise<boolean> {
@@ -109,7 +136,19 @@ describe("revocation", () => {
       await browser.signIn("ada@example.com")
       const held = await holdEverything(server, browser, "ada@example.com")
       const oldCookies = new Map(browser.jar)
+      const streams = [await openStream(server, held.agent, held.pat), await openStream(server, held.oauthAgent, held.access)]
+      expect(server.hub.agents.size).toBe(2)
       await path.run(server, held)
+      if (path.revokesAgents) {
+        // The sessions are closed and their open streams ended, not merely refused at the next request.
+        await Promise.race([Promise.all(streams.map((s) => s.ended)), new Promise((done) => setTimeout(done, 3000))])
+        expect(streams.map((s) => s.isEnded()), `${path.name}: open streams`).toEqual([true, true])
+        expect(server.hub.agents.size, `${path.name}: agent sessions`).toBe(0)
+      } else {
+        await new Promise((done) => setTimeout(done, 200))
+        expect(streams.map((s) => s.isEnded()), `${path.name}: open streams`).toEqual([false, false])
+        expect(server.hub.agents.size, `${path.name}: agent sessions`).toBe(2)
+      }
       const now = Date.now()
       const tokens = server.hub.store.tokens
       if (path.revokesAgents) await until(async () => !(await agentAlive(held.agent)))

@@ -30,9 +30,11 @@ export function hostFetch(base: string, host: string): (url: string | URL, init?
     })
 }
 
-export async function connectAgent(server: HubServer, token: string): Promise<Client> {
+/** An agent connected with `token`; `ownStream: false` keeps the client from opening its GET stream (a test opens it). */
+export async function connectAgent(server: HubServer, token: string, options: { ownStream?: boolean } = {}): Promise<Client> {
+  const fetchHost = hostFetch(server.url, new URL(ORIGIN).host)
   const transport = new StreamableHTTPClientTransport(new URL(`${ORIGIN}/mcp`), {
-    fetch: hostFetch(server.url, new URL(ORIGIN).host),
+    fetch: options.ownStream === false ? async (url, init) => ((init?.method ?? "GET") === "GET" ? new Response(null, { status: 405 }) : fetchHost(url, init)) : fetchHost,
     requestInit: { headers: { authorization: `Bearer ${token}` } },
   })
   const client = new Client({ name: "test-agent", version: "0" })
