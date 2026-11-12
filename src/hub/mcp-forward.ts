@@ -7,7 +7,7 @@ import { PassThrough, Readable, Transform } from "node:stream"
 import { pipeline } from "node:stream/promises"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport, StreamableHTTPError } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
-import { CallToolResultSchema, type CallToolResult } from "@modelcontextprotocol/sdk/types.js"
+import { CallToolResultSchema, McpError, type CallToolResult } from "@modelcontextprotocol/sdk/types.js"
 import { nowSeconds, signTicket, TICKET_HEADER } from "../hosted/ticket.js"
 import { epochOf, type Hub } from "./context.js"
 import type { AgentState, CallAuth } from "./hub-tools.js"
@@ -154,6 +154,10 @@ export async function forwardTool(hub: Hub, state: AgentState, auth: CallAuth, p
       try {
         return (await current.client.request({ method: "tools/call", params: { name, arguments: args } }, CallToolResultSchema, { signal, timeout: FORWARD_TIMEOUT_MS })) as CallToolResult
       } catch (error) {
+        // One call cancelled, timed out or refused by the workspace leaves the shared connection to the session's other
+        // calls; only a failure of the transport itself replaces it.
+        const transportFailed = error instanceof StreamableHTTPError || (!(error instanceof McpError) && !signal.aborted)
+        if (!transportFailed) throw error
         current.close()
         if (state.upstream === current) state.upstream = undefined
         // The workspace forgot the session (it restarted): nothing ran, so the call is tried once more.
