@@ -44,18 +44,92 @@ reverse proxy.
 
 ```
 copperflow hub --data <dir> --port <n> --public-origin https://copperflow.example.com \
-  --workspace-domain ws.copperflow.example.com --trusted-accounts-only [--bind 127.0.0.1] [--trust-proxy]
+  --workspace-domain ws.copperflow.example.com --runner container --workspace-image copperflow-workspace \
+  [--container-command docker] [--workspace-reach loopback | --workspace-reach network --hub-container <name>] \
+  [--bind 127.0.0.1] [--trust-proxy]
+copperflow hub ... --runner process --trusted-accounts-only      tests and accounts you trust only (see below)
 copperflow hub invite --data <dir> [--count n]        invite codes, printed once (only their hashes are kept)
 copperflow hub reset-password <email> --data <dir>    a one-time password, printed once; ends the user's sessions
-copperflow hub status --data <dir>                    users, projects, running workspaces, disk used
+copperflow hub status --data <dir>                    users, projects, the runner, running workspaces (and each
+                                                      container's memory), disk used
 copperflow hub delete-user <email> --data <dir>       asks for the email typed; deletes the user and their files
 ```
 
-**The process runner and `--trusted-accounts-only`.** Until Task 3's container runner exists, workspaces run as plain
-child processes of the hub's user. That is not a security boundary: circuit code that escapes the engine's guard can
-read every other account's projects, the database and the ticket key. The hub therefore refuses to start without
-`--trusted-accounts-only`, and with it (and on every `hub invite`) prints that every account can read every other
-account's data and the hub's keys.
+**The container runner (`--runner container`).** This is the security boundary between accounts: each workspace runs
+in a container of its own (`src/hub/runner/container-runner.ts`), started with an argument array (never a shell) from
+values the hub generated or checked. Every container is started as:
+
+- `--rm --name cf-ws-<project id>` (the id must be the 32 lower-case hex characters the store generates), `--user
+  10001:10001`, `--read-only`, `--tmpfs /tmp:rw,noexec,nosuid,size=64m`, `--cap-drop ALL`, `--security-opt
+  no-new-privileges`, `--pids-limit 128`, `--memory 512m --memory-swap 512m` (no swap), `--cpus 1`, `--ulimit
+  nofile=1024:1024`; never `--privileged`, never a host namespace, never the Docker socket;
+- one bind mount, the project folder at `/work`, and nothing else from the host;
+- one environment variable, `COPPERFLOW_TICKET_PUBLIC_KEY` (the hub's PUBLIC key; the workspace command needs nothing
+  else: its id and origin are on its command line). The engine itself adds `PATH` and `HOSTNAME`, and the image its
+  `NODE_VERSION`, `YARN_VERSION` and `NODE_ENV`; none is a secret;
+- a network of its own, `cf-ws-<project id>`, created with `--internal` (no route out, no DNS beyond the network) just
+  before the container and removed after it. Two workspaces never share a network. Inside, both servers bind to
+  `0.0.0.0` on fixed ports 8080 (Studio) and 8081 (MCP); since the bind is not loopback the hub's ticket is required on
+  every request, and the Host accepted is the project origin, as everywhere.
+
+How the hub reaches a workspace is `--workspace-reach`: `loopback` (the default; the hub runs on the host) publishes the
+two ports on `127.0.0.1` only, on ports the engine picks, read back with `docker port`; `network` (the hub runs in a
+container named by `--hub-container`) connects the hub's container to the workspace's network for the workspace's life
+(`docker network connect`, then `disconnect` and `network rm` when it stops) and reaches it by its container name. The
+Compose file of Task 4 runs the hub in a container and uses `--workspace-reach network`.
+
+The runner reads the container's first line (the same JSON address line as the process runner) within 60 s, copies at
+most 64 KiB of its standard error to the hub's log, stops it with `docker stop -t 5` then `docker rm -f`, and restarts a
+crashed one once. Before the hub listens it checks that `docker version` answers, that the image exists, and that it can
+create and remove an internal network, and refuses with what to do otherwise; it then removes every `cf-ws-*`
+container and network (labelled `org.copperflow.workspace=1`) a previous run left. The limits are options of the
+runner with the defaults above; `--container-command podman` uses Podman's identical command line.
+
+Build the image from the repository (`deploy/workspace.Dockerfile`: a build stage runs `npm ci` and `npm run build`;
+the final stage holds only `dist/`, `skills/`, `package.json` and the production `node_modules`, runs as uid/gid 10001
+and starts `node /app/dist/cli.js workspace` in `/work`):
+
+```
+docker pull node:22-bookworm-slim
+docker image inspect --format '{{index .RepoDigests 0}}' node:22-bookworm-slim     # node@sha256:...
+docker build -f deploy/workspace.Dockerfile --build-arg NODE_IMAGE=node:22-bookworm-slim@sha256:... -t copperflow-workspace .
+```
+
+Pin the base by that digest, and refresh it (the same three commands) when Node 22 has a security release.
+
+What the maintainer checks on the server: a current Docker Engine (`docker version` answers, server 24 or later); the
+user the hub runs as may run containers (it is in the `docker` group, which is root-equivalent on that machine: run the
+hub as its own user that does nothing else); disk for the image (about 300 MB) and its old versions; and **the data
+directory on a filesystem of its own**, so a full data directory cannot fill the system disk.
+
+**The disk quota while workspaces run.** A workspace writes into `/work` freely, so every 5 seconds the hub measures the
+project folders of each user with a running workspace (without following links) and, when the user is over the quota
+(200 MB), stops all their running workspaces at once and marks those projects. A marked project does not start again —
+the Studio is not reachable and agents get the same message — until the user is back under the quota; the projects page
+says so and keeps its download and delete actions. What this does not stop: a workspace can write as fast as the disk
+allows for up to 5 seconds past its quota. For a hard cap, the maintainer may add filesystem project quotas (XFS project
+quotas on the projects directory); copperflow does not set them up.
+
+**The hub never follows a link in a project folder.** A project folder is writable from inside its container, so its
+code can plant symbolic links, or swap a file for one between the hub's look and its read. Every hub-side read or
+removal of a project folder (download, usage, the upload's unpack targets, deletion, `hub status`) goes through
+`src/hub/safe-files.ts`: it walks with `lstat`, skips (and logs) links, devices, sockets and FIFOs, never descends
+through a linked folder, opens files with `O_NOFOLLOW` and checks the open file is the one it listed (same device and
+inode); a file swapped mid-download ends that download. Deletion unlinks links and never touches their targets.
+
+**The process runner and `--trusted-accounts-only`.** With `--runner process` (the default when `--runner` is not
+given) workspaces run as plain child processes of the hub's user. That is not a security boundary: circuit code that
+escapes the engine's guard can read every other account's projects, the database and the ticket key. The hub therefore
+refuses to start with the process runner unless `--trusted-accounts-only` is given, and with it (and on every `hub
+invite`) prints that every account can read every other account's data and the hub's keys. With `--runner container`
+the flag is not needed and the warning is not printed.
+
+**Time limits inside a workspace.** A build runs in a worker thread and is cut after 30 s by a timer on the workspace's
+main thread (the worker is terminated and the build reported as a circuit-code error); circuit code cannot reach that
+timer. Studio routing and placing run in workers too, now cut at 10 minutes and at their 20 s budget plus a minute; the
+router and placer run on design data, never circuit code. The agent tools `route_board` and `place_parts` run in the
+workspace's main thread with a budget the tools cap at 300 s, checked between steps: circuit code cannot extend it, but
+the cut is cooperative, and the container's CPU limit and the idle stop are what bound a pathological board there.
 
 **Workspaces on their own origins.** Project `<id>` is served on `https://<id>.<workspace domain>/`, never on the
 public origin, so content a project serves (or a Studio flaw triggered by project data) cannot read or drive the hub's
