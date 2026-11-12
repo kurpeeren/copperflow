@@ -35,6 +35,15 @@ const RESERVED_KEYS = new Set(["__proto__", "constructor", "prototype"])
 const line = (max: number) =>
   z.string().max(max).regex(/^[^\x00-\x1f\x7f]*$/, "must be one line without control characters")
 
+/** The keys a part's datasheet record accepts, in the order the refusal and the tool texts list them. */
+export const DATASHEET_KEYS = ["url", "file", "title"] as const
+
+/** The refusal for a datasheet key that is not one of DATASHEET_KEYS: the field, the keys it accepts and an example. */
+function unknownDatasheetKeys(keys: readonly string[]): string {
+  const shown = keys.map((key) => `"${key.slice(0, 40)}"`).join(", ")
+  return `datasheet has no key ${shown}; accepted keys: ${DATASHEET_KEYS.join(", ")}, e.g. { "url": "https://example.com/ds.pdf", "title": "TJA1051 datasheet" }. The pages of the pin table go to attach_datasheet.`
+}
+
 const PinSchema = z
   .object({
     name: z.string().regex(PIN_NAME, "use letters, digits and _ (pin names become selectors)"),
@@ -59,12 +68,15 @@ export const PartSchema = z
       .record(z.string().regex(/^[a-z0-9_]+$/).refine((key) => !RESERVED_KEYS.has(key), "reserved name"), line(100))
       .optional(),
     datasheet: z
-      .object({
-        file: z.string().regex(/^[\w.-]+\.pdf$/i, "a PDF file name inside the part folder").optional(),
-        url: z.url({ protocol: /^https?$/ }).optional(),
-        /** The datasheet's name as the pins' source, e.g. "MCP2515 datasheet DS20001801J". */
-        title: line(200).min(1).optional(),
-      })
+      .object(
+        {
+          file: z.string().regex(/^[\w.-]+\.pdf$/i, "a PDF file name inside the part folder").optional(),
+          url: z.url({ protocol: /^https?$/ }).optional(),
+          /** The datasheet's name as the pins' source, e.g. "MCP2515 datasheet DS20001801J". */
+          title: line(200).min(1).optional(),
+        },
+        { error: (issue) => (issue.code === "unrecognized_keys" ? unknownDatasheetKeys(issue.keys) : undefined) },
+      )
       .strict()
       .optional(),
     /** The datasheet pages the pin table was read from, e.g. "3-4" (attach_datasheet). */

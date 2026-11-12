@@ -124,6 +124,25 @@ describe("MCP server", () => {
     expect(schema?.required).toEqual(["id", "title", "package", "pins"])
   })
 
+  test("create_part lists the keys datasheet accepts, with one example, and a refusal for another key lists them again", async () => {
+    const { tools } = await client.listTools()
+    const description = tools.find((t) => t.name === "create_part")?.description ?? ""
+    expect(description).toContain("datasheet")
+    for (const key of ["url", "file", "title"]) expect(description).toContain(key)
+    expect(description).toContain('{ "url": "https://example.com/ds.pdf", "title": "TJA1051 datasheet" }')
+    expect(description).toContain("attach_datasheet")
+    const schema = tools.find((t) => t.name === "create_part")?.inputSchema.properties as Record<string, { description?: string }>
+    expect(schema.datasheet?.description).toContain("url, file, title")
+    const refused = await call("create_part", { id: "TJA", title: "TJA1051", package: "hc49s", pins: "1 TXD\n2 GND", datasheet: { url: "https://example.com/ds.pdf", pages: "3-4" } })
+    expect(refused.isError).toBe(true)
+    expect(refused.text).toContain('"pages"')
+    expect(refused.text).toContain("accepted keys: url, file, title")
+    expect(refused.text).toContain("attach_datasheet")
+    const ok = await call("create_part", { id: "TJA", title: "TJA1051", package: "hc49s", pins: "1 TXD\n2 GND", datasheet: { url: "https://example.com/ds.pdf", title: "TJA1051 datasheet" } })
+    expect(ok.text).toContain("Created TJA")
+    expect(ok.isError).toBe(false)
+  })
+
   test("create_part writes a written, unverified part from a pasted pin table and answers compactly", async () => {
     const created = await call("create_part", { id: "X16M", title: "16 MHz crystal", package: "hc49s", pins: "1 XTAL1 passive\n2 XTAL2 passive", suppliers: { lcsc: "C16212" } })
     expect(created.isError).toBe(false)

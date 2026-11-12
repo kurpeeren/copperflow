@@ -40,7 +40,10 @@ Passive parts (resistors, capacitors, LEDs, headers) are built in and need no en
      `pins` may also be the datasheet's pin table as text, one pin per line (`1 VIN power_in`,
      tab or comma separated too; a pin without a type is `passive`); a line with an unknown type
      is refused with its line number, so write the types out.
-   - `suppliers` (for example `jlcpcb: C51118`) and `datasheet.url` when you know them.
+   - `suppliers` (for example `jlcpcb: C51118`) and `datasheet` when you know them: an object
+     with only the keys `url` (an http or https link), `file` (a PDF file name in the part folder)
+     and `title` (at most 200 characters), e.g. `{ "url": "https://example.com/ds.pdf", "title": "TJA1051 datasheet" }`.
+     Any other key (`pages`, `page`) is refused; the pages go to `attach_datasheet` below.
    An existing id is refused unless you pass `replace: true` (never for a verified part). The
    human can do the same in the Studio with Library → New part….
 3. Call `attach_datasheet` with `part`, the datasheet's `url`, its `title` and the `pages` of the
