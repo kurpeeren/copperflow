@@ -17,7 +17,9 @@ import { FORM_BODY_LIMIT } from "./http.js"
 const ENTER_MS = 30_000
 const WORKSPACE_SESSION_MS = 12 * 60 * 60_000
 const TICKET_LIFETIME_S = 60
-const MAX_ENTER_TOKENS = 10_000
+export const MAX_ENTER_TOKENS = 10_000
+/** Live enter tokens one user may hold: a fifth replaces their oldest. */
+export const MAX_ENTER_TOKENS_PER_USER = 4
 const SECRET_TEXT = /^[A-Za-z0-9_-]{43}$/
 const SAFE = new Set(["GET", "HEAD"])
 
@@ -42,13 +44,32 @@ function workspaceCookieName(hub: Hub): string {
   return hub.config.secure ? "__Host-copperflow-workspace" : "copperflow-workspace"
 }
 
+/** Forgets an enter token everywhere it is kept; returns it. */
+function dropEnterToken(hub: Hub, hash: string) {
+  const found = hub.enterTokens.get(hash)
+  hub.enterTokens.delete(hash)
+  if (found) {
+    const rest = (hub.enterByUser.get(found.userId) ?? []).filter((other) => other !== hash)
+    if (rest.length > 0) hub.enterByUser.set(found.userId, rest)
+    else hub.enterByUser.delete(found.userId)
+  }
+  return found
+}
+
 /** The public origin's /p/<id>/: a one-time token, then a redirect to the project's own origin. */
 export function enterRedirect(hub: Hub, res: ServerResponse, signed: Signed, projectId: string): void {
   const now = hub.config.now()
-  if (hub.enterTokens.size >= MAX_ENTER_TOKENS) for (const [key, token] of hub.enterTokens) if (token.expires <= now) hub.enterTokens.delete(key)
+  const userId = signed.user.id
+  // This user's own tokens first: expired ones go, and a fifth live one replaces the oldest, so one user can never hold
+  // more than MAX_ENTER_TOKENS_PER_USER of the hub's slots.
+  for (const hash of [...(hub.enterByUser.get(userId) ?? [])]) if ((hub.enterTokens.get(hash)?.expires ?? 0) <= now) dropEnterToken(hub, hash)
+  for (let mine = hub.enterByUser.get(userId); mine && mine.length >= MAX_ENTER_TOKENS_PER_USER; mine = hub.enterByUser.get(userId)) dropEnterToken(hub, mine[0] as string)
+  if (hub.enterTokens.size >= MAX_ENTER_TOKENS) for (const [hash, found] of [...hub.enterTokens]) if (found.expires <= now) dropEnterToken(hub, hash)
   if (hub.enterTokens.size >= MAX_ENTER_TOKENS) throw new HubError(503, "Too many projects are being opened right now. Try again in a moment.")
   const token = newSecret()
-  hub.enterTokens.set(hashSecret(token), { userId: signed.user.id, projectId, expires: now + ENTER_MS, epoch: epochOf(hub, signed.user.id), hubSession: signed.sessionHash })
+  const hash = hashSecret(token)
+  hub.enterTokens.set(hash, { userId, projectId, expires: now + ENTER_MS, epoch: epochOf(hub, userId), hubSession: signed.sessionHash })
+  hub.enterByUser.set(userId, [...(hub.enterByUser.get(userId) ?? []), hash])
   res.writeHead(303, { location: `${projectOrigin(hub, projectId)}/_enter?t=${token}`, "cache-control": "no-store", "referrer-policy": "no-referrer" })
   res.end()
 }
@@ -63,8 +84,7 @@ function owner(hub: Hub, userId: string, projectId: string) {
 function enter(hub: Hub, req: IncomingMessage, res: ServerResponse, projectId: string, address: string): void {
   const token = new URL(req.url ?? "/", "http://x").searchParams.get("t") ?? ""
   const hash = SECRET_TEXT.test(token) ? hashSecret(token) : ""
-  const found = hub.enterTokens.get(hash)
-  hub.enterTokens.delete(hash)
+  const found = dropEnterToken(hub, hash)
   const now = hub.config.now()
   const hubSession = found ? hub.store.session(found.hubSession, now) : undefined
   if (!found || !hubSession || hubSession.userId !== found.userId || found.expires <= now || found.projectId !== projectId || found.epoch !== epochOf(hub, found.userId) || !owner(hub, found.userId, projectId)) {

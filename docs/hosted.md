@@ -267,7 +267,8 @@ budget plus a minute, never on the main thread.
 **Workspaces on their own origins.** Project `<id>` is served on `https://<id>.<workspace domain>/`, never on the
 public origin, so content a project serves (or a Studio flaw triggered by project data) cannot read or drive the hub's
 pages. `/p/<id>/` on the public origin hands a signed-in owner over: a one-time token (random, single use, 30 s, bound
-to the user, the project and the hub session) in a redirect to `https://<id>.<workspace domain>/_enter?t=…`, which sets
+to the user, the project and the hub session; a user holds at most 4 live ones and a fifth replaces their oldest, so
+one user can never take more than 4 of the hub's 10 000 slots) in a redirect to `https://<id>.<workspace domain>/_enter?t=…`, which sets
 a workspace cookie (`__Host-`, HttpOnly, SameSite=Lax) and redirects to `/`. The workspace session lasts 12 hours at
 most, never beyond the hub session it came from, and ends with it. Every request on a project origin is authenticated
 by that cookie only, checked against the project in the Host and the user's revocation epoch (bumped by sign-out,

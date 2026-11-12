@@ -52,6 +52,8 @@ export interface Hub {
   epochs: Map<string, number>
   /** One-time tokens that open a project's origin: hash → who, which project, until when, at which epoch. */
   enterTokens: Map<string, { userId: string; projectId: string; expires: number; epoch: number; hubSession: string }>
+  /** Per user: the hashes of their live enter tokens, oldest first (at most 4; a fifth replaces the oldest). */
+  enterByUser: Map<string, string[]>
   /** Transfers in progress: uploads in the whole hub, downloads per user. */
   transfers: { uploads: number; uploadingUsers: Set<string>; downloads: Map<string, number> }
   /** The agents' MCP sessions at the hub. */

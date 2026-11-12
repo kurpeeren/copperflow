@@ -159,6 +159,7 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
     userCuts: new Map(),
     epochs: new Map(),
     enterTokens: new Map(),
+    enterByUser: new Map(),
     transfers: { uploads: 0, uploadingUsers: new Set(), downloads: new Map() },
     agents: new AgentSessions(),
     catalog: await loadCatalog(publicOrigin),
