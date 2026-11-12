@@ -67,8 +67,10 @@ export interface GateOptions {
   windowMs: number
   /** Token bucket: attempts per second, and the bucket's size. */
   perSecond: number
-  /** Attempts that may wait for a token; beyond it they are refused. */
+  /** Attempts that may wait for a token in all; beyond it they are refused. */
   queue: number
+  /** Attempts one address may have waiting. */
+  perAddress: number
 }
 
 /**
@@ -82,7 +84,9 @@ export class SigninGate {
   private announcedAt = Number.NEGATIVE_INFINITY
   private tokens: number
   private refilledAt = Date.now()
-  private readonly waiting: (() => void)[] = []
+  /** Waiting attempts per address key, served round-robin across addresses (Map order is the rotation). */
+  private readonly waiting = new Map<string, (() => void)[]>()
+  private waitingCount = 0
   private timer: NodeJS.Timeout | undefined
 
   constructor(private readonly options: GateOptions) {
@@ -117,29 +121,44 @@ export class SigninGate {
     this.refilledAt = now
   }
 
-  /** Waits for a token; false (refuse with 429) when the queue is full. */
-  pass(): Promise<boolean> {
+  /**
+   * Waits for a token; false (refuse with 429) when this address already has `perAddress` attempts waiting or the
+   * queue holds `queue` in all. Waiting addresses are served one attempt each in turn, so one address cannot crowd
+   * out the others.
+   */
+  pass(addressKey: string): Promise<boolean> {
     this.refill()
-    if (this.waiting.length === 0 && this.tokens >= 1) {
+    if (this.waitingCount === 0 && this.tokens >= 1) {
       this.tokens -= 1
       return Promise.resolve(true)
     }
-    if (this.waiting.length >= this.options.queue) return Promise.resolve(false)
+    const mine = this.waiting.get(addressKey) ?? []
+    if (mine.length >= this.options.perAddress || this.waitingCount >= this.options.queue) return Promise.resolve(false)
     return new Promise((done) => {
-      this.waiting.push(() => done(true))
+      mine.push(() => done(true))
+      this.waiting.set(addressKey, mine)
+      this.waitingCount += 1
       this.drain()
     })
+  }
+
+  private serveOne(): void {
+    const [key, queue] = this.waiting.entries().next().value as [string, (() => void)[]]
+    this.waiting.delete(key)
+    const next = queue.shift()
+    // Back of the rotation when it still has attempts waiting.
+    if (queue.length > 0) this.waiting.set(key, queue)
+    this.waitingCount -= 1
+    this.tokens -= 1
+    next?.()
   }
 
   private drain(): void {
     if (this.timer) return
     this.timer = setInterval(() => {
       this.refill()
-      while (this.waiting.length > 0 && this.tokens >= 1) {
-        this.tokens -= 1
-        this.waiting.shift()?.()
-      }
-      if (this.waiting.length === 0) {
+      while (this.waitingCount > 0 && this.tokens >= 1) this.serveOne()
+      if (this.waitingCount === 0) {
         clearInterval(this.timer)
         this.timer = undefined
       }
@@ -148,7 +167,7 @@ export class SigninGate {
   }
 
   get queued(): number {
-    return this.waiting.length
+    return this.waitingCount
   }
 }
 

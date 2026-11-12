@@ -112,6 +112,9 @@ export function accountPage(viewer: Viewer, error?: string, note?: string): stri
 <label>New password (at least 10 characters) <input type="password" name="password" autocomplete="new-password" required minlength="10" maxlength="1024"></label>
 <button type="submit">Change password</button></form>
 <p>Changing the password signs you out everywhere else.</p>
+<h2>End all sessions</h2>
+<p>Signs you out everywhere and forgets every device you signed in from.</p>
+<form method="post" action="/account/end-sessions">${hidden(viewer.formToken)}<button class="quiet" type="submit">End all sessions</button></form>
 <h2>Delete my account</h2>
 <p>This deletes your account and every project, with all its files, at once. It cannot be undone.</p>
 <form class="stack" method="post" action="/account/delete">${hidden(viewer.formToken)}

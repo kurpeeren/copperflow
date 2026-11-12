@@ -5,7 +5,7 @@ import { mkdir } from "node:fs/promises"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import { normaliseOrigin } from "../hosted/gate.js"
 import { nowSeconds, signTicket } from "../hosted/ticket.js"
-import { changePassword, deleteAccount, showAccount, showSignIn, showSignUp, signIn, signOut, signUp } from "./account-routes.js"
+import { changePassword, deleteAccount, endAllSessions, showAccount, showSignIn, showSignUp, signIn, signOut, signUp } from "./account-routes.js"
 import { newLimits, sessionOf, type Hub, type HubConfig, type Signed } from "./context.js"
 import { clientAddress, FORM_BODY_LIMIT, header, HubError, redirect, sameOrigin, sendPage } from "./http.js"
 import { loadOrCreateTicketKey } from "./keys.js"
@@ -201,6 +201,8 @@ async function signedRoute(hub: Hub, req: IncomingMessage, res: ServerResponse, 
       return changePassword(hub, req, res, address, signed)
     case "POST /account/delete":
       return deleteAccount(hub, req, res, address, signed)
+    case "POST /account/end-sessions":
+      return endAllSessions(hub, req, res, address, signed)
   }
   const [method, path] = page.split(" ") as [string, string]
   const action = PROJECT_ACTION.exec(path)

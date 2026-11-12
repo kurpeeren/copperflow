@@ -5,7 +5,7 @@ import type { WorkspaceRunner } from "./runner/runner.js"
 import type { TicketKeys } from "./keys.js"
 import type { ProjectFiles } from "./projects.js"
 import type { HubStore, User } from "./store.js"
-import { SigninGate, WindowCounter } from "./limits.js"
+import { addressKey, SigninGate, WindowCounter } from "./limits.js"
 import { cookies, setCookie } from "./http.js"
 import { formTokenOf, hashSecret, newSecret, sameSecret } from "./secrets.js"
 
@@ -76,13 +76,14 @@ export function newLimits(maxKeys?: number): Limits {
     signinEmail: new WindowCounter(EMAIL_FAILURES, FIFTEEN_MINUTES, maxKeys),
     signupAddress: new WindowCounter(20, 60 * 60_000, maxKeys),
     reauth: new WindowCounter(ADDRESS_FAILURES, FIFTEEN_MINUTES, maxKeys),
-    gate: new SigninGate({ threshold: MAX_FAILED_SIGNINS, windowMs: FIFTEEN_MINUTES, perSecond: 5, queue: 50 }),
+    gate: new SigninGate({ threshold: MAX_FAILED_SIGNINS, windowMs: FIFTEEN_MINUTES, perSecond: 5, queue: 50, perAddress: 2 }),
   }
 }
 
 /** Counts `key` in `counter`; a full table turns strict mode on (said once per window in the audit log). */
 export function countAttempt(hub: Hub, counter: WindowCounter, key: string, now: number, address: string): void {
   if (counter.add(key, now) === "ok") return
+  // The table is full and this key could not be tracked: strict mode (the gate) handles it for the rest of the window.
   hub.limits.gate.enterStrict(now)
   if (hub.limits.gate.announce(now)) audit(hub, address, null, "signin-strict-table-full")
 }
@@ -92,7 +93,7 @@ export async function passGate(hub: Hub, address: string): Promise<boolean> {
   const now = hub.config.now()
   if (!hub.limits.gate.strict(now)) return true
   if (hub.limits.gate.announce(now)) audit(hub, address, null, "signin-strict")
-  return hub.limits.gate.pass()
+  return hub.limits.gate.pass(addressKey(address))
 }
 
 function deviceCookieName(config: HubConfig): string {

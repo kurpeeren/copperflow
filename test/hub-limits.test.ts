@@ -40,7 +40,7 @@ describe("the sign-in limits", () => {
   })
 
   test("strict mode: over the threshold, a token bucket with a short queue, said once per window", async () => {
-    const gate = new SigninGate({ threshold: 3, windowMs: 1000, perSecond: 5, queue: 2 })
+    const gate = new SigninGate({ threshold: 3, windowMs: 1000, perSecond: 5, queue: 2, perAddress: 2 })
     for (let i = 0; i < 3; i += 1) gate.fail(0)
     expect(gate.strict(1)).toBe(false)
     gate.fail(1)
@@ -48,14 +48,34 @@ describe("the sign-in limits", () => {
     expect(gate.announce(2)).toBe(true)
     expect(gate.announce(500)).toBe(false)
     expect(gate.strict(1002)).toBe(false)
-    const passes = Array.from({ length: 5 }, () => gate.pass())
+    const passes = Array.from({ length: 5 }, () => gate.pass("a"))
     const first = await Promise.all(passes)
     expect(first.every(Boolean)).toBe(true)
-    const waiting = [gate.pass(), gate.pass()]
-    expect(await gate.pass()).toBe(false)
+    const waiting = [gate.pass("a"), gate.pass("b")]
+    expect(await gate.pass("c")).toBe(false)
     expect(await Promise.all(waiting)).toEqual([true, true])
     gate.enterStrict(5000)
     expect(gate.strict(5500)).toBe(true)
+  })
+
+  test("the gate's queue is fair: 2 waiting per address, served in turn across addresses", async () => {
+    const gate = new SigninGate({ threshold: 1, windowMs: 1000, perSecond: 5, queue: 50, perAddress: 2 })
+    for (let i = 0; i < 5; i += 1) await gate.pass("flood")
+    const order: string[] = []
+    const flood = [gate.pass("flood"), gate.pass("flood")]
+    expect(await gate.pass("flood")).toBe(false)
+    const person = gate.pass("person").then((ok) => (order.push("person"), ok))
+    void flood[0]?.then(() => order.push("flood"))
+    void flood[1]?.then(() => order.push("flood"))
+    expect(await Promise.all([...flood, person])).toEqual([true, true, true])
+    expect(order.indexOf("person")).toBeLessThan(2)
+  })
+
+  test("an unknown email counts toward its address only", async () => {
+    server = await startTestHub()
+    for (let i = 0; i < 5; i += 1) await new Browser(server.url).signIn(`nobody${i}@example.com`, "wrong password")
+    expect(server.hub.limits.signinEmail.size).toBe(0)
+    expect(server.hub.limits.signinAddress.size).toBe(1)
   })
 
   test("addresses are keyed by IPv4 address and IPv6 /64", () => {
@@ -80,7 +100,8 @@ describe("the sign-in limits", () => {
     await newUser(server, "ada@example.com")
     expect((await new Browser(server.url).signIn("ada@example.com", "wrong password")).status).toBe(401)
     expect(server.hub.limits.gate.strict(Date.now())).toBe(false)
-    // A second email does not fit the one-key table: it is not counted, and strict mode turns on.
+    // A second account's email does not fit the one-key table: it is not counted, and strict mode turns on.
+    await newUser(server, "bob@example.com")
     expect((await new Browser(server.url).signIn("bob@example.com", "wrong password")).status).toBe(401)
     expect(server.hub.limits.gate.strict(Date.now())).toBe(true)
     expect(server.hub.store.auditLog(5).map((e) => e.event)).toContain("signin-strict-table-full")
@@ -108,8 +129,13 @@ describe("the sign-in limits", () => {
     }
     let password = "a good password"
     await signInAgain()
+    // A normal sign-out keeps the device; "End all sessions" forgets it.
     await ada.submit("/projects", "/signout", {})
+    expect(server.hub.store.deviceCount(id)).toBe(1)
+    await signInAgain()
+    await ada.submit("/account", "/account/end-sessions", {})
     expect(server.hub.store.deviceCount(id)).toBe(0)
+    expect(server.hub.store.sessionCount(id)).toBe(0)
     await signInAgain()
     await ada.submit("/account", "/account/password", { current: password, password: "another password" })
     password = "another password"
