@@ -99,6 +99,38 @@ async function connect(hub: Hub, state: AgentState, auth: CallAuth, projectId: s
   return { projectId, mcp, epoch, client, current, close: () => void client.close().catch(() => undefined) }
 }
 
+/**
+ * The session's one connection to the workspace (single flight): concurrent calls share one connect in flight, so a
+ * session never holds more than one workspace MCP session. A connection that finishes after the session closed, or
+ * after another connect replaced it, is closed at once.
+ */
+function upstreamFor(hub: Hub, state: AgentState, auth: CallAuth, projectId: string, mcp: string, epoch: number): Promise<Upstream> {
+  const key = `${projectId} ${mcp} ${epoch}`
+  const known = state.upstream
+  if (known && `${known.projectId} ${known.mcp} ${known.epoch}` === key) return Promise.resolve(known)
+  if (state.connecting?.key === key) return state.connecting.promise
+  known?.close()
+  state.upstream = undefined
+  const promise: Promise<Upstream> = connect(hub, state, auth, projectId, mcp, epoch).then(
+    (made) => {
+      if (state.closed || state.connecting?.promise !== promise) {
+        made.close()
+        throw new Error(REVOKED)
+      }
+      state.connecting = undefined
+      state.upstream = made
+      return made
+    },
+    (error: unknown) => {
+      if (state.connecting?.promise === promise) state.connecting = undefined
+      throw error
+    },
+  )
+  state.connecting = { key, promise }
+  promise.catch(() => undefined)
+  return promise
+}
+
 /** Forwards one call; any failure is an answer the agent can read, never a thrown error. */
 export async function forwardTool(hub: Hub, state: AgentState, auth: CallAuth, projectId: string, name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<CallToolResult> {
   const epoch = epochOf(hub, state.userId)
@@ -116,18 +148,8 @@ export async function forwardTool(hub: Hub, state: AgentState, auth: CallAuth, p
   const release = hub.runner.hold(projectId)
   try {
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const upstream = state.upstream
-      if (!upstream || upstream.projectId !== projectId || upstream.mcp !== address.mcp || upstream.epoch !== epoch) {
-        upstream?.close()
-        state.upstream = undefined
-        const made = await connect(hub, state, auth, projectId, address.mcp, epoch)
-        if (!holds()) {
-          made.close()
-          return text(REVOKED, true)
-        }
-        state.upstream = made
-      }
-      const current = state.upstream as Upstream
+      const current = await upstreamFor(hub, state, auth, projectId, address.mcp, epoch)
+      if (!holds()) return text(REVOKED, true)
       current.current.auth = auth
       try {
         return (await current.client.request({ method: "tools/call", params: { name, arguments: args } }, CallToolResultSchema, { signal, timeout: FORWARD_TIMEOUT_MS })) as CallToolResult

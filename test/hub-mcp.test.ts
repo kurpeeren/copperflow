@@ -155,6 +155,31 @@ describe("the hub's /mcp", () => {
   })
 })
 
+describe("one upstream connection per agent session", () => {
+  test("10 parallel forwarded calls right after open_project start exactly one workspace MCP session", async () => {
+    let initialises = 0
+    upstream = createServer((req, res) => {
+      let body = ""
+      req.on("data", (chunk: Buffer) => (body += chunk.toString()))
+      req.on("end", () => {
+        if (body.includes('"initialize"')) initialises += 1
+        // Slow, so every call arrives while the first connect is still waiting.
+        setTimeout(() => res.writeHead(500).end(), 100)
+      })
+    })
+    await new Promise<void>((done) => upstream?.listen(0, "127.0.0.1", () => done()))
+    const port = (upstream.address() as { port: number }).port
+    server = await startTestHub({ runner: () => fixedRunner(() => `http://127.0.0.1:${port}`) })
+    const ada = await newUser(server, "ada@example.com")
+    const client = await agent(server, await tokenFor(ada))
+    await call(client, "new_project", { name: "Amp" })
+    await call(client, "open_project", { name: "Amp" })
+    const answers = await Promise.all(Array.from({ length: 10 }, () => call(client, "project_status")))
+    expect(answers.every((a) => a.isError)).toBe(true)
+    expect(initialises).toBe(1)
+  })
+})
+
 describe("the whole flow against a real workspace", () => {
   test("a personal token, guide, new_project, new_circuit with two parts, check_circuit, list_projects, and the project in the person's pages", async () => {
     const command = await workspaceCli()

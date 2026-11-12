@@ -19,6 +19,8 @@ export interface AgentState {
   credential: string
   projectId?: string | undefined
   upstream?: Upstream | undefined
+  /** The connect in flight, shared by concurrent calls (mcp-forward.ts). */
+  connecting?: { key: string; promise: Promise<Upstream> } | undefined
   closed: boolean
 }
 
@@ -89,6 +91,8 @@ function open(hub: Hub, state: AgentState, project: Project): void {
   if (state.projectId !== project.id) {
     state.upstream?.close()
     state.upstream = undefined
+    // A connect still in flight for the old project closes itself when it finishes.
+    state.connecting = undefined
   }
   state.projectId = project.id
 }
