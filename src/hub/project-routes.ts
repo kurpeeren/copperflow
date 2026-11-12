@@ -2,11 +2,11 @@
 // A project of another user is answered exactly like one that does not exist (404), so ids are never confirmed.
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { audit, formTokenMatches, withRenewed, withUserLock, type Hub, type Signed } from "./context.js"
-import { createWriteStream } from "node:fs"
 import { rm } from "node:fs/promises"
 import { header, HubError, readForm, redirect, sendPage } from "./http.js"
 import { boundaryOf } from "./multipart.js"
-import { streamMultipart } from "./multipart-stream.js"
+import { StorageError, streamMultipart } from "./multipart-stream.js"
+import type { Writable } from "node:stream"
 import { projectsPage } from "./pages.js"
 import { newId } from "./secrets.js"
 import type { Project } from "./store.js"
@@ -219,16 +219,29 @@ async function receiveUpload(hub: Hub, body: AsyncIterable<Buffer>, address: str
   const quota = await quotaProblem(hub, signed.user.id)
   if (quota) return { status: 403, text: quota }
   const temp = await hub.files.uploadPath()
+  let sink: Writable | undefined
   try {
-    const form = await streamMultipart(body, boundary, hub.config.maxBytes + UPLOAD_OVERHEAD, () => createWriteStream(temp, { flags: "wx", mode: 0o600 }))
+    const form = await streamMultipart(body, boundary, hub.config.maxBytes + UPLOAD_OVERHEAD, () => (sink = hub.files.uploadSink(temp)))
     if (!formTokenMatches(signed, form.fields.get("form"))) throw new HubError(403, "The form has expired. Open the page again and retry.")
     const name = projectName(form.fields.get("name"))
     if (!name) return { status: 400, text: `A project name has 1 to ${MAX_NAME} characters.` }
     if (form.fileField !== "archive") return { status: 400, text: "Choose a zip archive to upload." }
     return await unpackUpload(hub, address, signed, name, temp)
+  } catch (error) {
+    if (error instanceof StorageError) {
+      hub.log(`upload could not be stored: ${(sinkError(sink) as NodeJS.ErrnoException | undefined)?.code ?? "unknown"}`)
+      return { status: error.status, text: error.message }
+    }
+    throw error
   } finally {
+    // The stream must have closed before its file can go (Windows refuses to remove an open file).
+    if (sink && !sink.closed) await new Promise<void>((done) => sink?.once("close", () => done()))
     await rm(temp, { force: true })
   }
+}
+
+function sinkError(sink: Writable | undefined): unknown {
+  return sink?.errored ?? undefined
 }
 
 async function unpackUpload(hub: Hub, address: string, signed: Signed, name: string, temp: string): Promise<Problem> {

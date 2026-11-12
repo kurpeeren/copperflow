@@ -14,24 +14,59 @@ function nameOf(disposition: string, key: "name" | "filename"): string | undefin
 
 interface Part {
   name: string
-  file?: Writable
+  file?: Sink
   text: Buffer[]
   textSize: number
 }
 
-function writeTo(file: Writable, data: Buffer): Promise<void> {
-  if (file.write(data)) return Promise.resolve()
-  return new Promise((done, fail) => {
-    file.once("drain", done)
-    file.once("error", fail)
-  })
+/** The upload could not be stored (disk full, folder not writable): the hub answers it and keeps serving. */
+export class StorageError extends HubError {
+  constructor(cause: unknown) {
+    const full = (cause as NodeJS.ErrnoException | undefined)?.code === "ENOSPC"
+    super(full ? 507 : 500, full ? "The server has no room for this upload right now. Try again later." : "The upload could not be stored. Try again later.")
+  }
 }
 
-function endFile(file: Writable): Promise<void> {
-  return new Promise((done, fail) => {
-    file.once("error", fail)
-    file.end(() => done())
-  })
+/**
+ * The file sink with one error listener from the moment it is made: a write or open error is kept and turns every
+ * later write into a StorageError, so it can never reach the process as an unhandled 'error'.
+ */
+class Sink {
+  error: unknown
+  private waiting: ((error?: unknown) => void) | undefined
+
+  constructor(readonly file: Writable) {
+    file.on("error", (error) => {
+      this.error = error
+      this.waiting?.(error)
+    })
+  }
+
+  private wait(event: "drain" | "finish"): Promise<void> {
+    return new Promise((done, fail) => {
+      const settle = (error?: unknown) => {
+        this.waiting = undefined
+        this.file.off(event, ok)
+        if (error) fail(new StorageError(error))
+        else done()
+      }
+      const ok = () => settle()
+      this.waiting = settle
+      this.file.once(event, ok)
+    })
+  }
+
+  async write(data: Buffer): Promise<void> {
+    if (this.error) throw new StorageError(this.error)
+    if (!this.file.write(data)) await this.wait("drain")
+  }
+
+  async end(): Promise<void> {
+    if (this.error) throw new StorageError(this.error)
+    const finished = this.wait("finish")
+    this.file.end()
+    await finished
+  }
 }
 
 /** Parses the stream; `fileSink` is called once, for the one file part. */
@@ -53,7 +88,7 @@ export async function streamMultipart(source: AsyncIterable<Buffer>, boundary: s
       if (data.some((byte) => byte !== 0x0d && byte !== 0x0a)) throw bad()
       return
     }
-    if (part.file) return writeTo(part.file, data)
+    if (part.file) return part.file.write(data)
     part.textSize += data.length
     if (part.textSize > MAX_FIELD_BYTES) throw bad()
     part.text.push(Buffer.from(data))
@@ -62,7 +97,7 @@ export async function streamMultipart(source: AsyncIterable<Buffer>, boundary: s
   const endPart = async (data: Buffer): Promise<void> => {
     await feed(data)
     if (!part) return
-    if (part.file) await endFile(part.file)
+    if (part.file) await part.file.end()
     else fields.set(part.name, Buffer.concat(part.text).toString("utf8"))
     part = undefined
   }
@@ -81,7 +116,7 @@ export async function streamMultipart(source: AsyncIterable<Buffer>, boundary: s
     if (nameOf(disposition, "filename") !== undefined) {
       if (fileField !== undefined) throw bad()
       fileField = name
-      part = { name, file: fileSink(), text: [], textSize: 0 }
+      part = { name, file: new Sink(fileSink()), text: [], textSize: 0 }
     } else part = { name, text: [], textSize: 0 }
     state = "delimiter"
     return true
@@ -130,7 +165,7 @@ export async function streamMultipart(source: AsyncIterable<Buffer>, boundary: s
       }
     }
   } finally {
-    if (part?.file) part.file.destroy()
+    if (part?.file) part.file.file.destroy()
   }
   if ((state as string) !== "done") throw bad()
   return fileField !== undefined ? { fields, fileField } : { fields }

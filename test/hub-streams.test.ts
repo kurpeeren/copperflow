@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from "vitest"
 import { request, type ClientRequest } from "node:http"
-import { rm, writeFile } from "node:fs/promises"
+import { readdir, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
-import { PassThrough } from "node:stream"
+import { PassThrough, Writable } from "node:stream"
 import { installSafetyNet } from "../src/hub/commands.js"
 import { paced } from "../src/hub/project-routes.js"
 import type { HubServer } from "../src/hub/server.js"
@@ -144,6 +144,23 @@ describe("streams in the hub", () => {
     expect(answer.status).toBe(403)
     expect(answer.connection).toBe("close")
     await answer.socketClosed
+  })
+
+  test("a disk that fails during an upload gets 507, the hub keeps serving and nothing is left behind", async () => {
+    server = await startTestHub()
+    const ada = await newUser(server, "ada@example.com")
+    for (const code of ["ENOSPC", "EACCES"]) {
+      server.hub.files.uploadSink = () =>
+        new Writable({
+          write: (_chunk, _encoding, next) => next(Object.assign(new Error("disk"), { code })),
+        })
+      const answer = await ada.upload(`up ${code}`, Buffer.alloc(200_000, 1))
+      expect(answer.status).toBe(code === "ENOSPC" ? 507 : 500)
+      expect(answer.text).toContain(code === "ENOSPC" ? "no room for this upload" : "could not be stored")
+    }
+    expect((await ada.get("/projects")).status).toBe(200)
+    expect(await readdir(server.hub.files.uploads)).toEqual([])
+    expect(server.hub.store.projects(server.hub.store.userByEmail("ada@example.com")?.id as string)).toEqual([])
   })
 
   test("an upload that stalls or crawls is stopped", async () => {
