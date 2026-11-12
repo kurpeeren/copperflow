@@ -2,6 +2,7 @@
 // sessions, projects and the audit log. Every query is a prepared statement with bound values; nothing a person types
 // is ever joined into SQL. Session ids and invite codes arrive here already hashed.
 import { DatabaseSync, type StatementSync } from "node:sqlite"
+import { printable } from "./printable.js"
 import { sameSecret } from "./secrets.js"
 import { TokenStore } from "./token-store.js"
 
@@ -381,8 +382,9 @@ export class HubStore {
     return Number(this.sql("DELETE FROM projects WHERE id = ? AND user_id = ?").run(id, userId).changes) === 1
   }
 
+  /** Every text field goes through `printable`: a detail may quote a name a person chose or an engine's output. */
   audit(entry: AuditEntry): void {
-    this.sql("INSERT INTO audit (time, user_id, event, address, detail) VALUES (?, ?, ?, ?, ?)").run(entry.time, entry.userId, entry.event, entry.address, entry.detail)
+    this.sql("INSERT INTO audit (time, user_id, event, address, detail) VALUES (?, ?, ?, ?, ?)").run(entry.time, entry.userId, printable(entry.event, 80), printable(entry.address, 80), printable(entry.detail, 400))
   }
 
   /** The newest entries first. */

@@ -7,6 +7,7 @@
 // usage, writes it to the audit log, and is retried by the hub's sweep. If any block fails, nothing is moved and the
 // error says so. A test (hub-project-folders.test.ts) checks that no other file in src/hub removes from the projects tree.
 import type { Hub } from "./context.js"
+import { removalFailure, type RemovalFailure } from "./printable.js"
 
 type FoldersHub = Pick<Hub, "runner" | "files"> & Partial<Pick<Hub, "store" | "log" | "config">>
 
@@ -19,7 +20,7 @@ export interface TrashFailure {
   userId: string
   failures: number
   nextAt: number
-  reason: string
+  reason: RemovalFailure
 }
 
 /** Trash folders whose removal failed, with when to try again (in this hub process). */
@@ -51,8 +52,10 @@ export async function emptyTrash(hub: FoldersHub, userId: string, parked: string
   const before = failures.get(parked)
   const count = (before?.failures ?? 0) + 1
   const delay = Math.min(TRASH_RETRY_MAX_MS, TRASH_RETRY_FIRST_MS * 2 ** (count - 1))
-  failures.set(parked, { path: parked, userId, failures: count, nextAt: now() + delay, reason: reason.slice(0, 200) })
-  hub.log?.(`trash folder of user ${userId} could not be removed yet (${count} attempt(s)): ${reason.slice(0, 200)}`)
+  // A fixed category, never the error's text: that text may come from a container or the engine.
+  const category = removalFailure(reason)
+  failures.set(parked, { path: parked, userId, failures: count, nextAt: now() + delay, reason: category })
+  hub.log?.(`trash folder of user ${userId} could not be removed yet (${count} attempt(s)): ${category}`)
   try {
     hub.store?.audit({ time: hub.config?.now() ?? now(), userId, event: "trash-removal-failed", address: "hub", detail: `attempt ${count}; retried in ${Math.round(delay / 1000)} s` })
   } catch {

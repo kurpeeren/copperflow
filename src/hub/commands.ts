@@ -4,6 +4,7 @@ import { readdir, readFile } from "node:fs/promises"
 import { prepareDataDir } from "./permissions.js"
 import { basename, join, resolve } from "node:path"
 import { trashFailures } from "./project-folders.js"
+import { printable } from "./printable.js"
 import { writeFileAtomic } from "../core/fs-utils.js"
 import type { CliIO } from "../cli-commands.js"
 import { AgentSessions } from "./agent-sessions.js"
@@ -142,10 +143,11 @@ export function chooseRunner(options: Map<string, string>, flags: Set<string>): 
 /** With the container runner: the engine is checked and last run's leftovers swept before the hub listens. */
 export async function runnerFor(choice: RunnerChoice, io: CliIO, spawn?: SpawnLike): Promise<Pick<HubOptions, "runner" | "trustedAccountsOnly" | "workspaceGroup">> {
   if (choice.kind === "process") return { trustedAccountsOnly: choice.trustedAccountsOnly }
-  for (const warning of await checkEngine(choice.settings, spawn)) io.out(warning)
+  for (const warning of await checkEngine(choice.settings, spawn)) io.out(printable(warning, 400))
   if (choice.settings.sameUserAsHub) io.out(SAME_USER_WARNING)
-  io.out(await engineModeLine(choice.settings, spawn))
-  const removed = await sweepLeftovers(choice.settings, spawn, (line) => io.out(line))
+  io.out(printable(await engineModeLine(choice.settings, spawn)))
+  // The engine's stderr can carry text a container influenced: printable only.
+  const removed = await sweepLeftovers(choice.settings, spawn, (line) => io.out(printable(line, 300)))
   if (removed > 0) io.out(`Removed ${removed} workspace container(s) left from an earlier run.`)
   return {
     runner: (ticketPublicKey) => createContainerRunner({ ...choice.settings, ticketPublicKey, ...(spawn ? { spawn } : {}) }),
@@ -235,14 +237,14 @@ function offlineHub(store: HubStore): RevokingHub {
 async function resetPassword(store: HubStore, email: string | undefined, io: CliIO): Promise<number> {
   if (!email) throw new Error(`Missing the email.\n${USAGE}`)
   const user = store.userByEmail(email)
-  if (!user) throw new Error(`There is no user with the email ${normaliseEmail(email)}`)
+  if (!user) throw new Error(`There is no user with the email ${printable(normaliseEmail(email))}`)
   const password = newSecret()
   store.setPassword(user.id, await hashPassword(password), true)
   await revokeUser(offlineHub(store), user.id)
   // The running hub repeats the revocation at its next sweep, with what only it holds (agent sessions, streams).
   store.requestCut(user.id, Date.now())
   store.audit({ time: Date.now(), userId: user.id, event: "password-reset", address: "cli", detail: "" })
-  io.out(`A one-time password for ${user.email}, shown only now. Every session of the user has ended; they must choose a new password when they next sign in:`)
+  io.out(`A one-time password for ${printable(user.email)}, shown only now. Every session of the user has ended; they must choose a new password when they next sign in:`)
   io.out(password)
   return 0
 }
@@ -262,7 +264,7 @@ async function status(store: HubStore, dataDir: string, io: CliIO): Promise<numb
       if (Array.isArray(written.trashFailures)) {
         stuck = (written.trashFailures as { name?: unknown; failures?: unknown; reason?: unknown }[])
           .filter((entry) => typeof entry.name === "string" && typeof entry.failures === "number")
-          .map((entry) => `  ${String(entry.name).slice(0, 80)}: ${entry.failures as number} failed attempts (${String(entry.reason ?? "").slice(0, 200)})`)
+          .map((entry) => `  ${printable(entry.name, 80)}: ${printable(entry.failures, 12)} failed attempts (${printable(entry.reason, 40)})`)
       }
       if (written.runner === "process" || written.runner === "container") runner = written.runner
       // Only the two known engine names are taken from the file and run.
@@ -274,16 +276,16 @@ async function status(store: HubStore, dataDir: string, io: CliIO): Promise<numb
   io.out(`Users: ${counts.users}`)
   io.out(`Projects: ${counts.projects}`)
   io.out(`Unused invite codes: ${counts.unusedInvites}`)
-  io.out(`Runner: ${runner}`)
-  io.out(`Running workspaces: ${running}`)
-  if (engine) for (const line of await containerMemory(engine)) io.out(`  ${line}`)
+  io.out(`Runner: ${printable(runner)}`)
+  io.out(`Running workspaces: ${printable(running)}`)
+  if (engine) for (const line of await containerMemory(engine)) io.out(`  ${printable(line)}`)
   const trash = await readdir(join(dataDir, "trash")).catch(() => [] as string[])
   if (trash.length > 0) io.out(`Trash not yet removed: ${trash.length} folder(s) (still counted in their users' usage; the hub retries with a growing delay)`)
   if (stuck.length > 0) {
     io.out("Trash that failed more than three times:")
     for (const line of stuck) io.out(line)
   }
-  io.out(`Disk used by projects: ${"bytes" in measured ? `${(measured.bytes / (1024 * 1024)).toFixed(1)} MB` : `unknown (${measured.failed})`}`)
+  io.out(`Disk used by projects: ${"bytes" in measured ? `${(measured.bytes / (1024 * 1024)).toFixed(1)} MB` : `unknown (${printable(measured.failed)})`}`)
   return 0
 }
 
@@ -296,17 +298,17 @@ export async function containerMemory(command: string, spawn?: SpawnLike): Promi
     .split(/\r?\n/)
     .map((line) => line.split("\t"))
     .filter(([name, usage]) => name?.startsWith(CONTAINER_PREFIX) && /^[0-9a-f]{32}$/.test(name.slice(CONTAINER_PREFIX.length)) && usage !== undefined)
-    .map(([name, usage]) => `${name}: ${(usage as string).replace(/[^0-9A-Za-z./ ]/g, "").slice(0, 60)}`)
+    .map(([name, usage]) => `${printable(name, 80)}: ${printable((usage as string).replace(/[^0-9A-Za-z./ ]/g, ""), 60)}`)
 }
 
 async function deleteUser(store: HubStore, dataDir: string, email: string | undefined, io: CliIO): Promise<number> {
   if (!email) throw new Error(`Missing the email.\n${USAGE}`)
   const user = store.userByEmail(email)
-  if (!user) throw new Error(`There is no user with the email ${normaliseEmail(email)}`)
+  if (!user) throw new Error(`There is no user with the email ${printable(normaliseEmail(email))}`)
   if (!io.ask) throw new Error("hub delete-user must be run by a person in an interactive terminal")
   const projects = store.projectCount(user.id)
   const answer = await io.ask(`This deletes ${user.email}, their sessions and ${projects} project(s) with all files. Type the email to confirm: `)
-  if (normaliseEmail(answer) !== user.email) throw new Error(`Not deleted: you typed "${answer.trim()}", not ${user.email}`)
+  if (normaliseEmail(answer) !== user.email) throw new Error(`Not deleted: you typed "${printable(answer.trim())}", not ${printable(user.email)}`)
   // This command cannot see the hub's containers, so it never removes a folder: it marks the user deleted and revokes
   // what the database holds; the running hub's sweep (within 15 seconds) blocks their workspaces, confirms them gone,
   // removes their folders and their rows (project-folders.ts).
@@ -314,6 +316,6 @@ async function deleteUser(store: HubStore, dataDir: string, email: string | unde
   await revokeUser(offlineHub(store), user.id)
   store.requestCut(user.id, Date.now())
   store.audit({ time: Date.now(), userId: user.id, event: "account-deleted", address: "cli", detail: "by the maintainer" })
-  io.out(`Deleted ${user.email}. The running hub stops their workspaces and removes their ${projects} project(s) with all files within 15 seconds (or when it next starts).`)
+  io.out(`Deleted ${printable(user.email)}. The running hub stops their workspaces and removes their ${projects} project(s) with all files within 15 seconds (or when it next starts).`)
   return 0
 }

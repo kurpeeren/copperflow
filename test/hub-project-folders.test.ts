@@ -92,7 +92,8 @@ describe("one function removes project folders", () => {
     const [failure] = trashFailures()
     expect(failure?.failures).toBe(2)
     expect(failure?.nextAt).toBe(clock + 10_000)
-    expect(failure?.reason).toBe("engine busy")
+    // A fixed category, never the engine's own text.
+    expect(failure?.reason).toBe("engine-error")
     clock += 10_000
     removable = true
     expect(await retryTrash(hub, now)).toBe(0)
