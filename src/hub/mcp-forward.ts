@@ -96,7 +96,15 @@ async function connect(hub: Hub, state: AgentState, auth: CallAuth, projectId: s
   const transport = new StreamableHTTPClientTransport(new URL(`${mcp}/mcp`), { fetch: ticketFetch(new URL(origin).host, sign) })
   const client = new Client({ name: "copperflow-hub", version: "1" })
   await client.connect(transport)
-  return { projectId, mcp, epoch, client, current, close: () => void client.close().catch(() => undefined) }
+  hub.agents.upstreamOpened()
+  let open = true
+  const close = () => {
+    if (!open) return
+    open = false
+    hub.agents.upstreamClosed()
+    void client.close().catch(() => undefined)
+  }
+  return { projectId, mcp, epoch, client, current, close }
 }
 
 /**
@@ -113,7 +121,8 @@ function upstreamFor(hub: Hub, state: AgentState, auth: CallAuth, projectId: str
   state.upstream = undefined
   const promise: Promise<Upstream> = connect(hub, state, auth, projectId, mcp, epoch).then(
     (made) => {
-      if (state.closed || state.connecting?.promise !== promise) {
+      // Also closed when access was revoked while it connected: the epoch moved or the token no longer holds.
+      if (state.closed || state.connecting?.promise !== promise || epochOf(hub, state.userId) !== epoch || !stillAuthorised(hub, state, made.current.auth)) {
         made.close()
         throw new Error(REVOKED)
       }

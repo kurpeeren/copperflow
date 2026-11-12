@@ -32,6 +32,7 @@ export class AgentSessions {
   private readonly sessions = new Map<string, AgentSessionEntry>()
   private readonly touched = new Map<string, number>()
   private openServers = 0
+  private openUpstreams = 0
 
   constructor(limits: AgentLimits = DEFAULT_AGENT_LIMITS) {
     this.table = new SessionTable(limits)
@@ -99,6 +100,19 @@ export class AgentSessions {
   /** MCP servers made for sessions and not yet closed, registered or not (for tests: nothing may be left behind). */
   get servers(): number {
     return this.openServers
+  }
+
+  /** Connections to workspaces held for agent sessions now (for tests: none may outlive a revocation). */
+  get upstreams(): number {
+    return this.openUpstreams
+  }
+
+  upstreamOpened(): void {
+    this.openUpstreams += 1
+  }
+
+  upstreamClosed(): void {
+    this.openUpstreams -= 1
   }
 
   serverOpened(): void {

@@ -19,8 +19,11 @@ afterEach(async () => {
   workspace = undefined
 })
 
-/** A stand-in workspace MCP server (stateless): project_status answers after `slowMs`, list_circuits at once. */
-async function fakeWorkspace(slowMs: number): Promise<{ origin: string; initialises: () => number }> {
+/**
+ * A stand-in workspace MCP server (stateless): project_status answers after `slowMs`, list_circuits at once; every
+ * answer to a notification waits `notifyMs` (so a connect can be held open).
+ */
+async function fakeWorkspace(slowMs: number, notifyMs = 0): Promise<{ origin: string; initialises: () => number }> {
   let initialises = 0
   workspace = createServer((req, res) => {
     let body = ""
@@ -36,7 +39,8 @@ async function fakeWorkspace(slowMs: number): Promise<{ origin: string; initiali
       mcp.registerTool("list_circuits", {}, () => ({ content: [{ type: "text", text: "main.circuit.tsx" }] }))
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
       res.on("close", () => void transport.close())
-      void mcp.connect(transport).then(() => transport.handleRequest(req, res, parsed))
+      const notification = parsed?.method?.startsWith("notifications/") === true
+      setTimeout(() => void mcp.connect(transport).then(() => transport.handleRequest(req, res, parsed)), notification ? notifyMs : 0)
     })
   })
   await new Promise<void>((done) => workspace?.listen(0, "127.0.0.1", () => done()))
@@ -52,6 +56,20 @@ async function agentWithProject(hub: HubServer): Promise<Client> {
   await call(client, "new_project", { name: "Amp" })
   return client
 }
+
+describe("a connect that completes after a revocation", () => {
+  test("is closed, not installed", async () => {
+    const fake = await fakeWorkspace(0, 300)
+    server = await startTestHub({ runner: () => fixedRunner(() => fake.origin) })
+    const client = await agentWithProject(server)
+    const userId = server.hub.store.userByEmail("ada@example.com")?.id as string
+    const pending = call(client, "list_circuits")
+    // While the connect waits on the workspace, the user's revocation epoch moves (as a sign-out does).
+    setTimeout(() => server?.hub.epochs.set(userId, 1), 100)
+    expect((await pending).text).toBe("Access was revoked. Connect again.")
+    expect(server.hub.agents.upstreams).toBe(0)
+  })
+})
 
 describe("forwarded calls share one upstream connection", () => {
   test("cancelling one of two concurrent calls neither closes the connection nor fails the other", async () => {
