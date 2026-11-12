@@ -180,7 +180,7 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
   // Every 15 s: expired sessions go, and the cuts the maintainer's commands asked for are carried out.
   const sweep = setInterval(() => {
     hub.store.sweepSessions(hub.config.now())
-    hub.store.tokens.sweep(hub.config.now())
+    for (const grantId of hub.store.tokens.sweep(hub.config.now())) hub.agents.closeCredential(`grant:${grantId}`)
     sweepCuts(hub, revokeUser).catch((error: unknown) => hub.log(`sweep failed: ${(error as Error).message}`))
   }, options.sweepMs ?? SWEEP_MS)
   sweep.unref()

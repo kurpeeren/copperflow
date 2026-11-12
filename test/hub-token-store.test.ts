@@ -48,6 +48,7 @@ describe("token store", () => {
     store.tokens.addClient({ id: "c1", name: "one", redirectUris: [] }, 100, 0)
     store.tokens.addClient({ id: "c2", name: "two", redirectUris: [] }, 100, 0)
     store.tokens.createGrant({ id: "g1", userId: "u1", clientId: "c2" }, 0)
+    store.tokens.issue({ hash: "r1", grantId: "g1", userId: "u1", kind: "refresh", expires: 60 * DAY })
     store.tokens.sweep(31 * DAY)
     expect(store.tokens.client("c1")).toBeUndefined()
     expect(store.tokens.client("c2")).toBeDefined()
@@ -94,6 +95,21 @@ describe("token store", () => {
     expect(store.tokens.credential("h2", 1)?.userId).toBe("u2")
     store.deleteUser("u2")
     expect(store.tokens.credential("h2", 1)).toBeUndefined()
+  })
+
+  test("a user holds at most 10 grants: the 11th revokes their least recently used one; grants without a live refresh token are swept", async () => {
+    const store = await storeWithUsers()
+    for (let i = 0; i < 11; i += 1) store.tokens.addClient({ id: `c${i}`, name: "n", redirectUris: [] }, 100, 0)
+    for (let i = 0; i < 10; i += 1) expect(store.tokens.createGrant({ id: `g${i}`, userId: "u1", clientId: `c${i}` }, 10 + i)).toEqual([])
+    store.tokens.issue({ hash: "a0", grantId: "g0", userId: "u1", kind: "access", expires: 1000 })
+    expect(store.tokens.createGrant({ id: "g10", userId: "u1", clientId: "c10" }, 100)).toEqual(["g0"])
+    expect(store.tokens.credential("a0", 50)).toBeUndefined()
+    expect(store.tokens.grants("u1")).toHaveLength(10)
+    store.tokens.issue({ hash: "r5", grantId: "g5", userId: "u1", kind: "refresh", expires: 500 })
+    expect(store.tokens.sweep(400)).toHaveLength(9)
+    expect(store.tokens.grants("u1").map((g) => g.id)).toEqual(["g5"])
+    expect(store.tokens.sweep(600)).toEqual(["g5"])
+    expect(store.tokens.grants("u1")).toEqual([])
   })
 
   test("a grant is revoked only by its owner, and lists its client's name", async () => {

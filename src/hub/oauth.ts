@@ -15,7 +15,8 @@ import { PENDING_MS } from "./oauth-state.js"
 import { textPage } from "./pages.js"
 import { hashSecret, newId, newSecret, sameSecret } from "./secrets.js"
 
-export const MAX_CLIENTS = 10_000
+/** Must exceed 1 200 + 35 x accounts (see register); 50 000 covers 1 394 accounts. */
+export const MAX_CLIENTS = 50_000
 const MAX_REDIRECT_URIS = 5
 const MAX_URI_LENGTH = 2000
 const MAX_STATE_LENGTH = 1000
@@ -124,11 +125,13 @@ export async function register(hub: Hub, req: IncomingMessage, res: ServerRespon
   const name = meta.client_name === undefined ? "Unnamed client" : clientNameOf(meta.client_name)
   if (!name) return oauthError(res, 400, "invalid_client_metadata", "client_name has 1 to 100 characters, without control, direction or invisible characters.")
   const id = newId()
-  // (c) The table holds maxClients (10 000). Never evicted: clients with a grant, with a live code, or with a request
-  // bound to a signed-in user (at most 5 per user; an anonymous request protects nothing). An unused client is
-  // protected for 10 minutes after registration, then evictable oldest first. Protected clients are therefore at most
-  // 1 200 (the bucket admits 2 x 600 in any 10 minutes) + 5 x users + 20 x users with live codes + clients with grants;
-  // the table must exceed that sum for registration never to answer 503, which only accounts, not a flood, can grow.
+  // (c) The table holds maxClients (50 000). Never evicted: clients with a grant (at most 10 per user, swept once their
+  // refresh tokens have all expired), with a live code (at most 20 per user, 60 s each), or with a request bound to a
+  // signed-in user (at most 5 per user; an anonymous request protects nothing). An unused client is protected for 10
+  // minutes after registration, then evictable oldest first. So protected clients are at most
+  //   1 200 (the bucket admits 2 x 600 in any 10 minutes) + (10 + 20 + 5) x accounts = 1 200 + 35 x accounts,
+  // and registration never answers 503 while maxClients exceeds that: 50 000 covers 1 394 accounts. One account can
+  // protect only its own 35, so it cannot make another person's registration fail.
   if (hub.store.tokens.addClient({ id, name, redirectUris: uris }, hub.config.maxClients, hub.config.now(), hub.oauth.pendingClients(hub.config.now())) === "full") {
     hub.log("the OAuth client table is full of clients in use")
     return json(res, 503, { error: "temporarily_unavailable", error_description: "Try again later." })
@@ -313,7 +316,11 @@ function exchangeCode(hub: Hub, res: ServerResponse, form: Map<string, string>, 
     return oauthError(res, 400, "invalid_grant", "The code is not valid.")
   }
   const grantId = newId()
-  hub.store.tokens.createGrant({ id: grantId, userId: code.userId, clientId }, now)
+  // At most 10 grants per user: past it their least recently used one goes, and its sessions close.
+  for (const old of hub.store.tokens.createGrant({ id: grantId, userId: code.userId, clientId }, now)) {
+    hub.agents.closeCredential(`grant:${old}`)
+    audit(hub, address, code.userId, "grant-revoked-over-cap", old)
+  }
   hub.oauth.markRedeemed(given, code.userId, grantId, now)
   audit(hub, address, code.userId, "grant-created", grantId)
   issueTokens(hub, res, code.userId, grantId)

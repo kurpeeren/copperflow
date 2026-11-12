@@ -74,6 +74,8 @@ export interface GrantView {
   lastUsed: number
 }
 
+/** Live OAuth grants (connected clients) one user may hold. */
+export const MAX_GRANTS_PER_USER = 10
 export const UNUSED_CLIENT_MS = 30 * 24 * 60 * 60_000
 /** A full client table makes room only by dropping a never-used client at least this old. */
 export const EVICTABLE_AFTER_MS = 10 * 60_000
@@ -177,9 +179,19 @@ export class TokenStore {
     return { id: row.id as string, name: row.name as string, redirectUris: JSON.parse(row.redirect_uris as string) as string[], created: Number(row.created) }
   }
 
-  createGrant(grant: { id: string; userId: string; clientId: string }, now: number): void {
-    this.sql("INSERT INTO oauth_grants (id, user_id, client_id, created, last_used) VALUES (?, ?, ?, ?, ?)").run(grant.id, grant.userId, grant.clientId, now, now)
-    this.sql("UPDATE oauth_clients SET last_used = ? WHERE id = ?").run(now, grant.clientId)
+  /**
+   * Records a grant. A user holds at most MAX_GRANTS_PER_USER: past it, their least recently used grants are revoked
+   * with their tokens, and their ids returned so the caller closes the sessions they opened.
+   */
+  createGrant(grant: { id: string; userId: string; clientId: string }, now: number): string[] {
+    return this.transaction(() => {
+      const mine = (this.sql("SELECT id FROM oauth_grants WHERE user_id = ? ORDER BY last_used, rowid").all(grant.userId) as Row[]).map((row) => row.id as string)
+      const revoked = mine.slice(0, Math.max(0, mine.length - MAX_GRANTS_PER_USER + 1))
+      for (const id of revoked) this.sql("DELETE FROM oauth_grants WHERE id = ?").run(id)
+      this.sql("INSERT INTO oauth_grants (id, user_id, client_id, created, last_used) VALUES (?, ?, ?, ?, ?)").run(grant.id, grant.userId, grant.clientId, now, now)
+      this.sql("UPDATE oauth_clients SET last_used = ? WHERE id = ?").run(now, grant.clientId)
+      return revoked
+    })
   }
 
   issue(token: { hash: string; grantId: string; userId: string; kind: "access" | "refresh"; expires: number }): void {
@@ -255,8 +267,14 @@ export class TokenStore {
   }
 
   /** Drops expired OAuth tokens and clients unused for 30 days (no grant, and none made for 30 days). */
-  sweep(now: number): void {
-    this.sql("DELETE FROM oauth_tokens WHERE expires <= ?").run(now)
-    this.sql("DELETE FROM oauth_clients WHERE last_used <= ? AND NOT EXISTS (SELECT 1 FROM oauth_grants g WHERE g.client_id = oauth_clients.id)").run(now - UNUSED_CLIENT_MS)
+  sweep(now: number): string[] {
+    return this.transaction(() => {
+      this.sql("DELETE FROM oauth_tokens WHERE expires <= ?").run(now)
+      // A grant with no live refresh token can never be used again: it goes, and its client is then unused like any other.
+      const dead = (this.sql("SELECT id FROM oauth_grants g WHERE NOT EXISTS (SELECT 1 FROM oauth_tokens t WHERE t.grant_id = g.id AND t.kind = 'refresh' AND t.used = 0)").all() as Row[]).map((row) => row.id as string)
+      for (const id of dead) this.sql("DELETE FROM oauth_grants WHERE id = ?").run(id)
+      this.sql("DELETE FROM oauth_clients WHERE last_used <= ? AND NOT EXISTS (SELECT 1 FROM oauth_grants g WHERE g.client_id = oauth_clients.id)").run(now - UNUSED_CLIENT_MS)
+      return dead
+    })
   }
 }

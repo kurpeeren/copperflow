@@ -78,6 +78,27 @@ describe("client registration under a flood", () => {
     expect(server.hub.oauth.request(theirs, Date.now())).toBeDefined()
   })
 
+  test("one account looping register, authorise, allow and token never makes another person's registration fail", async () => {
+    let clock = Date.now()
+    server = await startTestHub({ trustProxy: true, maxClients: 12, now: () => clock })
+    const browser = new Browser(server.url)
+    await browser.signUp(invite(server), "ada@example.com")
+    for (let i = 0; i < 15; i += 1) {
+      const id = (await register(server, `198.51.100.${i}`)).id as string
+      const page = await browser.get(authorizePath(id))
+      const request = /name="request" value="([^"]+)"/.exec(page.text)?.[1] as string
+      const allowed = await browser.post("/oauth/consent", { form: formToken(page.text), request, decision: "allow" })
+      const code = new URL(String(allowed.headers.location)).searchParams.get("code") as string
+      const tokens = await send(server.url, "POST", "/oauth/token", { host: HOST, "content-type": "application/x-www-form-urlencoded" }, new URLSearchParams({ grant_type: "authorization_code", code, client_id: id, redirect_uri: REDIRECT, code_verifier: VERIFIER }).toString())
+      expect(tokens.status).toBe(200)
+      clock += 60_000
+    }
+    const userId = server.hub.store.userByEmail("ada@example.com")?.id as string
+    expect(server.hub.store.tokens.grants(userId)).toHaveLength(10)
+    clock += 11 * 60_000
+    expect((await register(server, "203.0.113.77")).status).toBe(201)
+  })
+
   test("what is not a registration is refused before it counts", async () => {
     server = await startTestHub({ trustProxy: true })
     for (let i = 0; i < 25; i += 1) expect((await register(server, "192.0.2.7", {})).status).toBe(400)
