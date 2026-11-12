@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { readFileSync } from "node:fs"
-import { mkdtemp, stat } from "node:fs/promises"
+import { chmod, mkdtemp, stat, writeFile } from "node:fs/promises"
+import { shareTree } from "../src/hub/safe-files.js"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -35,6 +36,15 @@ describe("memory and paths in a hosted workspace", () => {
     expect(info.mode & 0o7777).toBe(0o2770)
     expect(info.gid).toBe(process.getgid?.())
     expect((await stat(files.userDir("a".repeat(32)))).mode & 0o777).toBe(0o700)
+  })
+
+  test.skipIf(process.platform === "win32" || !process.getgid)("shareTree leaves no setuid, setgid or sticky bit on a file", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "cf-bits-"))
+    const file = join(dir, "x")
+    await writeFile(file, "x")
+    await chmod(file, 0o6660)
+    await shareTree(dir, process.getgid?.() as number)
+    expect((await stat(file)).mode & 0o7777).toBe(0o660)
   })
 
   test("the data directory is checked at start for what a --mount value cannot hold", () => {

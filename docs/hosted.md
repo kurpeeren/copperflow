@@ -122,9 +122,10 @@ keeps the group), and the workspace sets its umask to 007, so the hub can read, 
 writes. Everything the hub itself writes into a project (an uploaded archive, unpacked while still in staging where no
 container sees it; a new empty project) gets the group too: folders 2770, files 0660. Everything else in the data
 directory (the database, the ticket key, the other users' folders above the project folder) stays 0600/0700 with no
-group access, so uid 10001 can read none of it even after a container escape. Before a workspace starts (no container
-runs on its folder then), what the hub owns in the project is given the group and modes again, entry by entry with
-`lstat`, never following a link. To set this up on the server:
+group access, so uid 10001 can read none of it even after a container escape. When a workspace starts, only the project
+folder itself is given the group and mode again, not its contents. Nothing was deployed before this scheme, so a
+project folder made by an earlier version (with 0600/0700 contents) must be removed or re-uploaded. To set this up on
+the server:
 
 ```
 groupadd --system copperflow-ws                         # the group the hub shares with its workspaces
@@ -160,8 +161,10 @@ Podman's identical command line.
 **Memory inside a workspace.** The image starts the workspace with `node --max-old-space-size=160`, and in a hosted
 workspace each build, route and place worker gets a 256 MB heap. Routing and placing are one run at a time per
 workspace, the Studio's and the agent's together (a second answers "a routing or placement run is already in
-progress"), so at most the main thread (160 MB), a build (256 MB) and one route-or-place run (256 MB) are alive at once:
-672 MB inside the container's 768 MB. Unbounded allocation by circuit code ends as an out-of-memory build error before
+progress"), and the Studio and the MCP server share the workspace's one engine, so agent builds queue on its one build
+worker. At most the main thread (160 MB), a build (256 MB) and one route-or-place run (256 MB) are alive at once: 672 MB
+inside the container's 768 MB. The hub's and the runner's log lines, the workspace's forwarded output included, go
+through `printable` one line at a time, and forwarded output is marked `workspace <id> output |`. Unbounded allocation by circuit code ends as an out-of-memory build error before
 the container's limit kills it.
 
 Build the image from the repository (`deploy/workspace.Dockerfile`: a build stage runs `npm ci` and `npm run build`;

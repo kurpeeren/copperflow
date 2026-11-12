@@ -38,6 +38,26 @@ export function trashFailures(min = 0): TrashFailure[] {
  * retried with a growing delay) when the folder is not gone.
  */
 export async function emptyTrash(hub: FoldersHub, userId: string, parked: string, now: () => number = Date.now): Promise<boolean> {
+  // One removal per trash folder at a time: no second share pass, no second cleaner, and never the hub's own pass while
+  // a cleaner has the folder mounted. A folder already being emptied counts as not gone yet.
+  if (inFlight.has(parked)) return false
+  inFlight.add(parked)
+  try {
+    return await emptyOnce(hub, userId, parked, now)
+  } finally {
+    inFlight.delete(parked)
+  }
+}
+
+/** Trash folders an emptyTrash is working on now. */
+const inFlight = new Set<string>()
+
+/** Whether a trash folder is being emptied now (for tests). */
+export function trashInFlight(parked: string): boolean {
+  return inFlight.has(parked)
+}
+
+async function emptyOnce(hub: FoldersHub, userId: string, parked: string, now: () => number): Promise<boolean> {
   let reason = "the folder is still there after both removals"
   try {
     await hub.files.openParked(parked)
@@ -117,9 +137,13 @@ export async function removeUserFolders(hub: FoldersHub, userId: string, ids: re
 /** The sweep's retry of every folder still in the trash whose delay has passed; how many are left. */
 export async function retryTrash(hub: FoldersHub, now: () => number = Date.now): Promise<number> {
   let left = 0
-  for (const { userId, path } of await hub.files.allTrash()) {
+  const present = await hub.files.allTrash()
+  // Failure records of folders that are gone are dropped.
+  for (const path of [...failures.keys()]) if (!present.some((entry) => entry.path === path)) failures.delete(path)
+  for (const { userId, path } of present) {
     const failed = failures.get(path)
-    if (failed && failed.nextAt > now()) {
+    // A folder the delete route (or an earlier sweep) is still emptying is left to it.
+    if (inFlight.has(path) || (failed && failed.nextAt > now())) {
       left += 1
       continue
     }

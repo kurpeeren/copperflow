@@ -308,7 +308,7 @@ async function deleteUser(store: HubStore, dataDir: string, email: string | unde
   if (!user) throw new Error(`There is no user with the email ${printable(normaliseEmail(email))}`)
   if (!io.ask) throw new Error("hub delete-user must be run by a person in an interactive terminal")
   const projects = store.projectCount(user.id)
-  const answer = await io.ask(`This deletes ${user.email}, their sessions and ${projects} project(s) with all files. Type the email to confirm: `)
+  const answer = await io.ask(`This deletes ${printable(user.email)}, their sessions and ${projects} project(s) with all files. Type the email to confirm: `)
   if (normaliseEmail(answer) !== user.email) throw new Error(`Not deleted: you typed "${printable(answer.trim())}", not ${printable(user.email)}`)
   // This command cannot see the hub's containers, so it never removes a folder: it marks the user deleted and revokes
   // what the database holds; the running hub's sweep (within 15 seconds) blocks their workspaces, confirms them gone,

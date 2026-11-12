@@ -6,7 +6,7 @@ import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { runCli, type CliIO } from "../src/cli-commands.js"
 import { STATUS_FILE } from "../src/hub/commands.js"
-import { isUnsafeCodePoint, printable, removalFailure } from "../src/hub/printable.js"
+import { isUnsafeCodePoint, printable, removalFailure, sanitisingLog } from "../src/hub/printable.js"
 import { HubStore } from "../src/hub/store.js"
 import { prepareDataDir } from "../src/hub/permissions.js"
 
@@ -26,6 +26,21 @@ describe("person- and container-controlled text never reaches the maintainer uns
     expect(removalFailure("EACCES: permission denied")).toBe("permission")
     expect(removalFailure("the folder is still there after both removals")).toBe("not-empty")
     expect(removalFailure(HOSTILE)).toBe("unknown")
+  })
+
+  test("zero-width and invisible characters go too, and the cap never splits a surrogate pair", () => {
+    const invisible = ch(0x061c, 0xfeff, 0x200b, 0x200c, 0x200d, 0x2060)
+    expect(printable(`a${invisible}b`)).toBe("a??????b")
+    const faces = ch(0x1f600).repeat(10)
+    const capped = printable(faces, 6)
+    expect(capped).toBe(`${ch(0x1f600).repeat(3)}...`)
+    expect([...capped].every((char) => char.codePointAt(0) !== undefined && !(char.charCodeAt(0) >= 0xd800 && char.charCodeAt(0) <= 0xdfff && char.length === 1))).toBe(true)
+  })
+
+  test("each line of a multi-line message is written on its own, printable, behind the prefix", () => {
+    const written: string[] = []
+    sanitisingLog("copperflow hub: ", (text) => written.push(text))(`one${ch(0x1b)}[2J\r\ncopperflow hub: fake\nthree`)
+    expect(written).toEqual(["copperflow hub: one?[2J\n", "copperflow hub: copperflow hub: fake\n", "copperflow hub: three\n"])
   })
 
   test("a hostile reason in the status file and a hostile name in the audit log come out harmless", async () => {
@@ -49,7 +64,7 @@ describe("person- and container-controlled text never reaches the maintainer uns
     const stored = /\b(user\.email|answer|warning|line|runner|running|measured\.failed|entry\.\w+|email|name|reason|stderr)\b/
     const offenders: string[] = []
     source.split("\n").forEach((text, index) => {
-      if (!/io\.(out|err)\(|throw new Error\(|=> `/.test(text)) return
+      if (!/io\.(out|err|ask)\(|throw new Error\(|=> `/.test(text)) return
       for (const match of text.matchAll(/\$\{([^${}]+)\}/g)) {
         const inner = (match[1] as string).trim()
         if (stored.test(inner) && !inner.startsWith("printable(")) offenders.push(`commands.ts:${index + 1}: ${inner}`)

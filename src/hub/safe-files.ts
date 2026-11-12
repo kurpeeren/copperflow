@@ -209,7 +209,7 @@ export async function readListed(root: string, file: SafeFile): Promise<Readable
  * ever run on a folder no container can write (a staging folder, or a project moved into the trash after its
  * workspace was blocked and confirmed gone): the lstat-then-readdir pair is not atomic.
  */
-export async function removeTree(dir: string): Promise<void> {
+export async function removeTree(dir: string): Promise<void> { // removal: primitive; its callers are checked
   const info = await lstat(dir).catch((error: NodeJS.ErrnoException) => {
     if (error.code === "ENOENT") return undefined
     throw error
@@ -261,7 +261,8 @@ export async function shareTree(dir: string, gid: number): Promise<void> {
       for (const name of await readdir(path).catch(() => [] as string[])) await visit(join(path, name))
     } else if (info.isFile() && ours) {
       if (info.gid !== gid) await chown(path, uid, gid)
-      if ((info.mode & 0o777) !== 0o660) await chmod(path, 0o660)
+      // 0o7777: setuid, setgid and sticky bits never survive on a file.
+      if ((info.mode & 0o7777) !== 0o660) await chmod(path, 0o660)
     }
   }
   await visit(dir)
@@ -271,7 +272,7 @@ export async function shareTree(dir: string, gid: number): Promise<void> {
  * Removes what the hub can under `dir` (only ever a folder in the trash, which no container can see), never following
  * a link, carrying on past entries it may not remove (the cleaning container removes those). True when `dir` is gone.
  */
-export async function removeWhatWeCan(dir: string): Promise<boolean> {
+export async function removeWhatWeCan(dir: string): Promise<boolean> { // removal: primitive; its callers are checked
   const visit = async (path: string): Promise<void> => {
     const info = await lstat(path).catch(() => undefined)
     if (!info) return

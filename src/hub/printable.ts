@@ -3,25 +3,34 @@
 // characters (C0 and C1, which include terminal escape sequences), bidirectional overrides and line breaks are replaced
 // and the length is capped.
 
-/** Code point ranges replaced: C0 controls, DEL and C1 controls, bidi marks, line/paragraph separators, bidi overrides and isolates. */
+/**
+ * Code point ranges replaced: C0 controls, DEL and C1 controls, the Arabic letter mark, zero-width space, joiners and
+ * marks, line/paragraph separators, bidi overrides, the word joiner and invisible operators, bidi isolates, and the
+ * byte-order mark (zero-width no-break space).
+ */
 const UNSAFE_RANGES: readonly [number, number][] = [
   [0x00, 0x1f],
   [0x7f, 0x9f],
-  [0x200e, 0x200f],
+  [0x061c, 0x061c],
+  [0x200b, 0x200f],
   [0x2028, 0x2029],
   [0x202a, 0x202e],
+  [0x2060, 0x2064],
   [0x2066, 0x2069],
+  [0xfeff, 0xfeff],
 ]
 
 export function isUnsafeCodePoint(code: number): boolean {
   return UNSAFE_RANGES.some(([low, high]) => code >= low && code <= high)
 }
 
-/** `text` with every control, bidirectional and line-breaking character replaced by "?", cut to `max` characters. */
+/**
+ * `text` with every control, bidirectional, zero-width and line-breaking character replaced by "?", cut to `max` code
+ * points (never in the middle of a surrogate pair).
+ */
 export function printable(text: unknown, max = 200): string {
-  let plain = ""
-  for (const char of String(text ?? "")) plain += isUnsafeCodePoint(char.codePointAt(0) ?? 0) ? "?" : char
-  return plain.length > max ? `${plain.slice(0, Math.max(0, max - 3))}...` : plain
+  const points = Array.from(String(text ?? ""), (char) => (isUnsafeCodePoint(char.codePointAt(0) ?? 0) ? "?" : char))
+  return points.length > max ? `${points.slice(0, Math.max(0, max - 3)).join("")}...` : points.join("")
 }
 
 /**

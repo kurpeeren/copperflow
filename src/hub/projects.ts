@@ -100,11 +100,6 @@ export class ProjectFiles {
     if (!isInside(this.trash, parked) || parked === this.trash) throw new Error("Not a folder in the trash")
   }
 
-  /** Gives what the hub owns in a project the workspace group again; only while its workspace cannot run. */
-  async repair(dir: string): Promise<void> {
-    if (this.workspaceGroup !== undefined) await shareTree(dir, this.workspaceGroup)
-  }
-
   /** The folders in the trash, with the user each belongs to. */
   async allTrash(): Promise<{ userId: string; path: string }[]> {
     const names = await readdir(this.trash).catch(() => [] as string[])

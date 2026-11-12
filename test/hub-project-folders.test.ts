@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest"
+import { describe, expect, test, vi } from "vitest"
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { createWriteStream } from "node:fs"
 import { chmod, mkdir, mkdtemp, readdir, rm, stat, symlink, writeFile } from "node:fs/promises"
@@ -8,7 +8,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { cleanFolder, runWorkspaceClean } from "../src/hosted/workspace-clean.js"
-import { removeProjectFolders, removeUserFolders, retryTrash, sweepOrphans, trashFailures } from "../src/hub/project-folders.js"
+import { removeProjectFolders, removeUserFolders, retryTrash, sweepOrphans, trashFailures, trashInFlight } from "../src/hub/project-folders.js"
 import { cleanerRunArgs } from "../src/hub/runner/container-runner.js"
 import { ProjectFiles } from "../src/hub/projects.js"
 import { ManagedRunner, StopUnconfirmedError, type Launched } from "../src/hub/runner/runner.js"
@@ -54,8 +54,9 @@ describe("one function removes project folders", () => {
       readFileSync(path, "utf8")
         .split("\n")
         .forEach((line, index) => {
-          if (/^\s*(\/\/|\*)/.test(line) || /\bfunction\s+\w+\(/.test(line)) return
-          const call = /\b(rm|rmdir|unlink|rename|removeTree|removeWhatWeCan)\(|files\.(moveToTrash|removeParked|openParked|discard)\(/.test(line)
+          // Comments are skipped; a line that declares a function is checked like any other.
+          if (/^\s*(\/\/|\*)/.test(line)) return
+          const call = /\b(rm|rmdir|unlink|rename|rmSync|rmdirSync|unlinkSync|renameSync|removeTree|removeWhatWeCan)\(|files\.(moveToTrash|removeParked|openParked|discard)\(/.test(line)
           if (!call) return
           const reason = /\/\/ removal: (.+)$/.exec(line)?.[1]?.trim()
           if (!reason || !allowedReasons.includes(reason)) offenders.push(`${name}:${index + 1}`)
@@ -100,6 +101,42 @@ describe("one function removes project folders", () => {
     expect(trashFailures()).toEqual([])
     expect(await files.measureUser(USER)).toEqual({ bytes: 0 })
     expect(await readdir(files.trash)).toEqual([])
+  })
+
+  test("one removal per trash folder: the sweep never starts on a folder the delete route is still emptying", async () => {
+    const data = await mkdtemp(join(tmpdir(), "cf-folders-"))
+    const files = new ProjectFiles(data)
+    await files.create(USER, P1)
+    let release!: () => void
+    const gate = new Promise<void>((done) => (release = done))
+    let cleaners = 0
+    let shares = 0
+    const realOpen = files.openParked.bind(files)
+    files.openParked = async (parked) => {
+      shares += 1
+      return realOpen(parked)
+    }
+    const managed = new ManagedRunner({
+      log: () => undefined,
+      launch: async () => Promise.reject(new Error("no launches")),
+      clean: async () => {
+        cleaners += 1
+        await gate
+      },
+    })
+    const hub = { runner: managed, files }
+    const removing = removeProjectFolders(hub, USER, [P1])
+    await vi.waitFor(() => expect(cleaners).toBe(1))
+    const [parked] = await files.allTrash()
+    expect(trashInFlight(parked?.path as string)).toBe(true)
+    // The sweep runs meanwhile: it leaves the folder alone.
+    expect(await retryTrash(hub)).toBe(1)
+    expect(cleaners).toBe(1)
+    expect(shares).toBe(1)
+    release()
+    await removing
+    expect(await readdir(files.trash)).toEqual([])
+    expect(trashFailures()).toEqual([])
   })
 
   test("removal uses both hands: the cleaner removes what the workspace owns, then the hub removes what it owns", async () => {
