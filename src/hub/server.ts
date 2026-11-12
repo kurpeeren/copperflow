@@ -17,7 +17,7 @@ import { createProject, deleteProject, downloadProject, ownProject, renameProjec
 import { ProjectFiles } from "./projects.js"
 import { createProcessRunner } from "./runner/process-runner.js"
 import { installStartCheck, QUOTA_SWEEP_MS, sweepQuota } from "./quota.js"
-import { retryTrash } from "./project-folders.js"
+import { retryDeletedProjects, retryTrash, sweepOrphans } from "./project-folders.js"
 import { trustedProxies, workspaceSubnets, type SubnetSet } from "./peer-guard.js"
 import type { WorkspaceRunner } from "./runner/runner.js"
 import { HubStore } from "./store.js"
@@ -194,6 +194,10 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
   })
   const address = server.address()
   const port = typeof address === "object" && address ? address.port : options.port
+  // At start: crash leftovers of an earlier run (stale uploads, folders without a row, unfinished deletions).
+  void retryDeletedProjects(hub)
+    .then(() => sweepOrphans(hub))
+    .catch((error: unknown) => hub.log(`start-up sweep failed: ${(error as Error).message}`))
   // Every 15 s: expired sessions go, and the cuts the maintainer's commands asked for are carried out.
   const sweep = setInterval(() => {
     hub.store.sweepSessions(hub.config.now())
@@ -202,6 +206,8 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
       // Users the maintainer deleted: their folders go here, where their workspaces can be blocked first.
       .then(async () => {
         for (const userId of hub.store.deletedUsers()) await removeUser(hub, userId)
+        await retryDeletedProjects(hub)
+        await sweepOrphans(hub)
       })
       .catch((error: unknown) => hub.log(`sweep failed: ${(error as Error).message}`))
   }, options.sweepMs ?? SWEEP_MS)

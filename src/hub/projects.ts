@@ -2,11 +2,11 @@
 // against ID_PATTERN before they become a path; a project's name is a label in the store and never touches the disk.
 import { randomBytes } from "node:crypto"
 import { createWriteStream } from "node:fs"
-import { mkdir, readdir, rename } from "node:fs/promises"
+import { lstat, mkdir, readdir, rename } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { Readable, type Writable } from "node:stream"
 import { resolveInRoot } from "../core/workspace.js"
-import { checkNoLinks, isInside, measureTree, shareWithWorkspaceGroup, readListed, removeTree, usageOf, walkProject, type Measured, type SafeFile } from "./safe-files.js"
+import { checkNoLinks, isInside, measureTree, removeWhatWeCan, shareTree, shareWithWorkspaceGroup, readListed, removeTree, usageOf, walkProject, type Measured, type SafeFile } from "./safe-files.js"
 import { ID_PATTERN } from "./secrets.js"
 import { extractEntry, StreamZipWriter, type ZipOnDisk } from "./zip-stream.js"
 
@@ -69,7 +69,7 @@ export class ProjectFiles {
     await mkdir(this.trash, { recursive: true, mode: 0o700 })
     const parked = join(this.trash, `${checkId(userId)}-${randomBytes(16).toString("hex")}`)
     try {
-      await rename(dir, parked)
+      await rename(dir, parked) // removal: out of the projects tree, called only from project-folders.ts
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
       throw error
@@ -77,10 +77,32 @@ export class ProjectFiles {
     return parked
   }
 
-  /** Removes a folder in the trash (emptied first by the cleaning container when workspaces run as another user). */
-  async removeParked(parked: string): Promise<void> {
+  /**
+   * Before the cleaning container runs on a folder in the trash: what the hub owns there gets the workspace group, so
+   * the container (the workspace's uid) can enter and remove it too. No container sees the trash meanwhile.
+   */
+  async openParked(parked: string): Promise<void> {
+    this.checkParked(parked)
+    if (this.workspaceGroup !== undefined) await shareTree(parked, this.workspaceGroup)
+  }
+
+  /** Removes what the hub can of a folder in the trash; true when it is gone (with the process runner, it all is). */
+  async removeParked(parked: string): Promise<boolean> {
+    this.checkParked(parked)
+    if (this.workspaceGroup === undefined) {
+      await removeTree(parked) // removal: trash only
+      return true
+    }
+    return removeWhatWeCan(parked) // removal: trash only
+  }
+
+  private checkParked(parked: string): void {
     if (!isInside(this.trash, parked) || parked === this.trash) throw new Error("Not a folder in the trash")
-    await removeTree(parked)
+  }
+
+  /** Gives what the hub owns in a project the workspace group again; only while its workspace cannot run. */
+  async repair(dir: string): Promise<void> {
+    if (this.workspaceGroup !== undefined) await shareTree(dir, this.workspaceGroup)
   }
 
   /** The folders in the trash, with the user each belongs to. */
@@ -191,9 +213,12 @@ export class ProjectFiles {
         await mkdir(dirname(path), { recursive: true, mode: 0o700 })
         await extractEntry(zip, entry, path)
       }
+      // While still in staging, where no container can see it: everything gets the workspace group (folders 2770,
+      // files 0660), so the workspace (another uid) can use it and remove it later.
+      if (this.workspaceGroup !== undefined) await shareTree(dir, this.workspaceGroup)
       return dir
     } catch (error) {
-      await removeTree(dir)
+      await removeTree(dir) // removal: uploads only
       throw error
     }
   }
@@ -201,12 +226,39 @@ export class ProjectFiles {
   /** Moves a finished staging folder into place as the project's folder with one rename (refused if it exists). */
   async place(staged: string, userId: string, projectId: string): Promise<void> {
     await mkdir(this.userDir(userId), { recursive: true, mode: 0o700 })
-    await rename(staged, this.projectDir(userId, projectId))
+    await rename(staged, this.projectDir(userId, projectId)) // removal: into the projects tree, never out of it
     await this.share(this.projectDir(userId, projectId))
   }
 
-  /** Removes a staging folder that was never placed. */
+  /** Removes a staging folder that was never placed (only ever under the uploads folder). */
   async discard(staged: string): Promise<void> {
-    await removeTree(staged)
+    if (!isInside(this.uploads, staged) || staged === this.uploads) throw new Error("Not a staging folder")
+    await removeTree(staged) // removal: uploads only
+  }
+
+  /** Staging folders older than `ms`, left by an upload interrupted by a crash. */
+  async staleStaging(ms: number, now = Date.now()): Promise<string[]> {
+    const names = await readdir(this.uploads).catch(() => [] as string[])
+    const stale: string[] = []
+    for (const name of names.filter((entry) => /^stage-[0-9a-f]{32}$/.test(entry))) {
+      const info = await lstat(join(this.uploads, name)).catch(() => undefined)
+      if (info?.isDirectory() && now - info.mtimeMs > ms) stale.push(join(this.uploads, name))
+    }
+    return stale
+  }
+
+  /** Whether the folder's last change (ctime: also renames and mode changes) is older than `ms`. */
+  async olderThan(dir: string, ms: number, now = Date.now()): Promise<boolean> {
+    const info = await lstat(dir).catch(() => undefined)
+    return info !== undefined && now - info.ctimeMs > ms
+  }
+
+  /** Folders under the projects tree, as (user, project) ids, for the orphan sweep; ids not of our shape are ignored. */
+  async projectFolders(): Promise<{ userId: string; projectId: string }[]> {
+    const found: { userId: string; projectId: string }[] = []
+    for (const userId of (await readdir(this.root).catch(() => [] as string[])).filter((name) => ID_PATTERN.test(name))) {
+      for (const projectId of (await readdir(join(this.root, userId)).catch(() => [] as string[])).filter((name) => ID_PATTERN.test(name))) found.push({ userId, projectId })
+    }
+    return found
   }
 }

@@ -139,9 +139,10 @@ export async function deleteProject(hub: Hub, req: IncomingMessage, res: ServerR
   if ((form.get("confirm") ?? "").trim().normalize("NFC") !== project.name) {
     return showProjects(hub, res, signed, undefined, 400, "Type the project's name exactly to delete it.")
   }
-  // Marked first: from here every route and the proxy answer 404, so nothing restarts the workspace while it goes.
-  hub.store.markProjectDeleted(signed.user.id, id)
-  await busyAsHttp(() => removeProjectFolders(hub, signed.user.id, [id]))
+  // Blocked first: if the block is refused (a download is running, or the engine cannot confirm the stop) the answer
+  // is a 503 and nothing changed. Only with the block held is the project marked deleted (from then on every route
+  // and the proxy answer 404); if the removal then fails, the sweep finishes it (retryDeletedProjects).
+  await busyAsHttp(() => removeProjectFolders(hub, signed.user.id, [id], () => hub.store.markProjectDeleted(signed.user.id, id)))
   hub.store.deleteProject(signed.user.id, id)
   forgetMeasurement(hub, signed.user.id)
   audit(hub, address, signed.user.id, "project-deleted", id)
@@ -275,7 +276,7 @@ async function receiveUpload(hub: Hub, body: AsyncIterable<Buffer>, address: str
   } finally {
     // The stream must have closed before its file can go (Windows refuses to remove an open file).
     if (sink && !sink.closed) await new Promise<void>((done) => sink?.once("close", () => done()))
-    await rm(temp, { force: true })
+    await rm(temp, { force: true }) // removal: uploads only
   }
 }
 
@@ -309,7 +310,7 @@ async function unpackUpload(hub: Hub, address: string, signed: Signed, name: str
   try {
     await hub.files.place(staged, signed.user.id, project.id)
   } catch (error) {
-    await hub.files.discard(staged)
+    await hub.files.discard(staged) // removal: uploads only
     hub.log(`upload could not be moved into place: ${(error as Error).message}`)
     throw new HubError(500, "The archive could not be stored. Try again in a minute.")
   }

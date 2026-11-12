@@ -11,7 +11,7 @@
 // The production target is Linux. On Windows there is no O_NOFOLLOW: there the path's realpath is checked to stay inside
 // the project before and after opening, which narrows the window but does not close it.
 import { constants, type Stats } from "node:fs"
-import { lstat, open, opendir, readdir, realpath, rmdir, unlink, type FileHandle } from "node:fs/promises"
+import { chmod, chown, lstat, open, opendir, readdir, realpath, rmdir, unlink, type FileHandle } from "node:fs/promises"
 import { isAbsolute, join, relative, sep } from "node:path"
 import type { Readable } from "node:stream"
 
@@ -69,10 +69,16 @@ export async function walkProject(dir: string, note: SkipNote = () => undefined,
     return found
   }
   const walk = async (folder: string): Promise<void> => {
-    let names: string[]
+    // Read one entry at a time, the cap checked on each, so a folder of millions is refused before it is held.
+    const names: string[] = []
     try {
-      names = await readdir(folder)
+      for await (const entry of await opendir(folder)) {
+        entries += 1
+        if (entries > maxEntries) throw new TooManyEntriesError(maxEntries)
+        names.push(entry.name)
+      }
     } catch (error) {
+      if (error instanceof TooManyEntriesError) throw error
       const code = (error as NodeJS.ErrnoException).code
       if (code === "ENOENT") return
       if (code === "EACCES" || code === "EPERM") {
@@ -81,8 +87,6 @@ export async function walkProject(dir: string, note: SkipNote = () => undefined,
       }
       throw error
     }
-    entries += names.length
-    if (entries > maxEntries) throw new TooManyEntriesError(maxEntries)
     for (const name of names.sort()) {
       const path = join(folder, name)
       const info = await lstat(path).catch(() => undefined)
@@ -211,9 +215,9 @@ export async function removeTree(dir: string): Promise<void> {
     throw error
   })
   if (!info) return
-  if (!info.isDirectory()) return unlink(dir)
-  for (const name of await readdir(dir)) await removeTree(join(dir, name))
-  await rmdir(dir)
+  if (!info.isDirectory()) return unlink(dir) // removal: primitive; its callers are checked
+  for (const name of await readdir(dir)) await removeTree(join(dir, name)) // removal: primitive; its callers are checked
+  await rmdir(dir) // removal: primitive; its callers are checked
 }
 
 /**
@@ -234,6 +238,52 @@ export async function shareWithWorkspaceGroup(dir: string, gid: number): Promise
   } finally {
     await handle.close()
   }
+}
+
+/**
+ * Gives every entry the hub owns under `dir` the workspace group: folders 2770, files 0660; links and special files
+ * are left alone, never followed. Run ONLY where no container can act meanwhile: a staging folder no container can
+ * see, a project whose workspace is blocked or not yet started, or a folder in the trash. That is what makes the
+ * path-based calls after lstat race-free. Entries the workspace owns are its own to keep. Nothing on Windows.
+ */
+export async function shareTree(dir: string, gid: number): Promise<void> {
+  if (process.platform === "win32" || !process.getuid) return
+  const uid = process.getuid()
+  const visit = async (path: string): Promise<void> => {
+    const info = await lstat(path).catch(() => undefined)
+    if (!info || info.isSymbolicLink()) return
+    const ours = info.uid === uid
+    if (info.isDirectory()) {
+      if (ours) {
+        if (info.gid !== gid) await chown(path, uid, gid)
+        if ((info.mode & 0o7777) !== 0o2770) await chmod(path, 0o2770)
+      }
+      for (const name of await readdir(path).catch(() => [] as string[])) await visit(join(path, name))
+    } else if (info.isFile() && ours) {
+      if (info.gid !== gid) await chown(path, uid, gid)
+      if ((info.mode & 0o777) !== 0o660) await chmod(path, 0o660)
+    }
+  }
+  await visit(dir)
+}
+
+/**
+ * Removes what the hub can under `dir` (only ever a folder in the trash, which no container can see), never following
+ * a link, carrying on past entries it may not remove (the cleaning container removes those). True when `dir` is gone.
+ */
+export async function removeWhatWeCan(dir: string): Promise<boolean> {
+  const visit = async (path: string): Promise<void> => {
+    const info = await lstat(path).catch(() => undefined)
+    if (!info) return
+    if (info.isDirectory()) {
+      for (const name of await readdir(path).catch(() => [] as string[])) await visit(join(path, name))
+      await rmdir(path).catch(() => undefined) // removal: primitive; its callers are checked
+    } else {
+      await unlink(path).catch(() => undefined) // removal: primitive; its callers are checked
+    }
+  }
+  await visit(dir)
+  return (await lstat(dir).catch(() => undefined)) === undefined
 }
 
 /** Throws when any folder between `root` and `path` (both included, `path` only if it exists) is not a real folder. */

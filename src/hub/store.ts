@@ -210,6 +210,11 @@ export class HubStore {
     return (this.sql("SELECT id FROM users WHERE deleted = 1").all() as Row[]).map((row) => row.id as string)
   }
 
+  /** Projects marked deleted whose rows are still there: the running hub finishes their removal. */
+  deletedProjects(): { id: string; userId: string }[] {
+    return (this.sql("SELECT id, user_id FROM projects WHERE deleted = 1").all() as Row[]).map((row) => ({ id: row.id as string, userId: row.user_id as string }))
+  }
+
   /** Marks the project deleted: from now on every route and the proxy answer 404 for it. */
   markProjectDeleted(userId: string, id: string): void {
     this.sql("UPDATE projects SET deleted = 1 WHERE id = ? AND user_id = ?").run(id, userId)

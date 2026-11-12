@@ -2,7 +2,8 @@
 import { spawn as nodeSpawn } from "node:child_process"
 import { readdir, readFile } from "node:fs/promises"
 import { prepareDataDir } from "./permissions.js"
-import { join, resolve } from "node:path"
+import { basename, join, resolve } from "node:path"
+import { trashFailures } from "./project-folders.js"
 import { writeFileAtomic } from "../core/fs-utils.js"
 import type { CliIO } from "../cli-commands.js"
 import { AgentSessions } from "./agent-sessions.js"
@@ -169,7 +170,7 @@ async function serve(options: Map<string, string>, flags: Set<string>, cwd: stri
   if (siteWarning) io.out(siteWarning)
   const runnerStatus = choice.kind === "container" ? { runner: "container", command: choice.settings.command ?? DEFAULT_CONTAINER_COMMAND } : { runner: "process" }
   const writeStatus = () =>
-    writeFileAtomic(join(dataDir, STATUS_FILE), `${JSON.stringify({ updated: Date.now(), pid: process.pid, running: hub.hub.runner.running(), ...runnerStatus })}\n`).catch((error: unknown) =>
+    writeFileAtomic(join(dataDir, STATUS_FILE), `${JSON.stringify({ updated: Date.now(), pid: process.pid, running: hub.hub.runner.running(), ...runnerStatus, trashFailures: trashFailures(3).map((failure) => ({ name: basename(failure.path), failures: failure.failures, reason: failure.reason })) })}\n`).catch((error: unknown) =>
       hub.hub.log(`could not write ${STATUS_FILE}: ${(error as Error).message}`),
     )
   await writeStatus()
@@ -253,10 +254,16 @@ async function status(store: HubStore, dataDir: string, io: CliIO): Promise<numb
   let running = "unknown (the hub is not running, or has not written its status in the last 2 minutes)"
   let runner = "unknown"
   let engine: string | undefined
+  let stuck: string[] = []
   try {
-    const written = JSON.parse(await readFile(join(dataDir, STATUS_FILE), "utf8")) as { updated?: unknown; running?: unknown; runner?: unknown; command?: unknown }
+    const written = JSON.parse(await readFile(join(dataDir, STATUS_FILE), "utf8")) as { updated?: unknown; running?: unknown; runner?: unknown; command?: unknown; trashFailures?: unknown }
     if (typeof written.updated === "number" && typeof written.running === "number" && Date.now() - written.updated < STATUS_STALE_MS) {
       running = String(written.running)
+      if (Array.isArray(written.trashFailures)) {
+        stuck = (written.trashFailures as { name?: unknown; failures?: unknown; reason?: unknown }[])
+          .filter((entry) => typeof entry.name === "string" && typeof entry.failures === "number")
+          .map((entry) => `  ${String(entry.name).slice(0, 80)}: ${entry.failures as number} failed attempts (${String(entry.reason ?? "").slice(0, 200)})`)
+      }
       if (written.runner === "process" || written.runner === "container") runner = written.runner
       // Only the two known engine names are taken from the file and run.
       if (written.runner === "container" && (written.command === "docker" || written.command === "podman")) engine = written.command
@@ -271,7 +278,11 @@ async function status(store: HubStore, dataDir: string, io: CliIO): Promise<numb
   io.out(`Running workspaces: ${running}`)
   if (engine) for (const line of await containerMemory(engine)) io.out(`  ${line}`)
   const trash = await readdir(join(dataDir, "trash")).catch(() => [] as string[])
-  if (trash.length > 0) io.out(`Trash not yet removed: ${trash.length} folder(s) (still counted in their users' usage; the hub retries every 5 seconds)`)
+  if (trash.length > 0) io.out(`Trash not yet removed: ${trash.length} folder(s) (still counted in their users' usage; the hub retries with a growing delay)`)
+  if (stuck.length > 0) {
+    io.out("Trash that failed more than three times:")
+    for (const line of stuck) io.out(line)
+  }
   io.out(`Disk used by projects: ${"bytes" in measured ? `${(measured.bytes / (1024 * 1024)).toFixed(1)} MB` : `unknown (${measured.failed})`}`)
   return 0
 }

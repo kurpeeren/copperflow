@@ -197,6 +197,29 @@ describe("the project block lives in the runner", () => {
   })
 })
 
+describe("deleting a project", () => {
+  test("refused while a download holds the project: a 503, and nothing changed; the sweep finishes an unfinished deletion", async () => {
+    const server = await startTestHub({ sweepMs: 50 })
+    try {
+      const ada = await userWithProjects(server, "ada@example.com", ["Amp"])
+      const id = ada.ids[0] as string
+      // A download in progress holds the block.
+      await server.hub.runner.block(id)
+      const refused = await ada.person.submit("/projects", `/projects/${id}/delete`, { confirm: "Amp" })
+      expect(refused.status).toBe(503)
+      expect(server.hub.store.project(ada.userId, id)).toBeDefined()
+      expect(server.hub.store.deletedProjects()).toEqual([])
+      server.hub.runner.unblock(id)
+      // A deletion marked but never finished (a crash) is finished by the sweep.
+      server.hub.store.markProjectDeleted(ada.userId, id)
+      await vi.waitFor(() => expect(server.hub.store.deletedProjects()).toEqual([]), { timeout: 3000 })
+      expect(server.hub.store.projectIds(ada.userId)).toEqual([])
+    } finally {
+      await server.close()
+    }
+  })
+})
+
 describe("measuring while a workspace runs", () => {
   test("a folder swapped for a link mid-measurement discards the measurement and reports nothing from outside", async () => {
     const base = await mkdtemp(join(tmpdir(), "cf-measure-"))
