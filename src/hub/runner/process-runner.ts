@@ -16,8 +16,6 @@ import { ManagedRunner, type Launched, type Launcher, type WorkspaceAddress, typ
  * workspace behind.
  */
 export interface ProcessRunnerOptions {
-  /** The hub's public origin, such as https://copperflow.example.com. */
-  publicOrigin: string
   /** The hub's ticket PUBLIC key as base64 of its raw 32 bytes (never the private key). */
   ticketPublicKey: string
   /** The program and leading arguments that run the CLI; default this Node and the built dist/cli.js. */
@@ -66,8 +64,8 @@ export function processLauncher(options: ProcessRunnerOptions): Launcher {
         "workspace",
         "--root", spec.projectDir,
         "--id", spec.id,
-        "--public-origin", options.publicOrigin,
-        "--base-path", spec.basePath,
+        "--public-origin", spec.publicOrigin,
+        "--base-path", spec.basePath === "" ? "/" : spec.basePath,
         "--studio-port", "0",
         "--mcp-port", "0",
         "--bind", "127.0.0.1",

@@ -92,7 +92,7 @@ describe("hub projects", () => {
     const id = server.hub.store.projects(idOf(server, "ada@example.com"))[0]?.id as string
     const nobody = new Browser(server.url)
     for (const path of ["/projects", `/projects/${id}/download`, `/p/${id}/`, "/account"]) expect((await nobody.get(path)).headers.location).toBe("/signin")
-    expect((await nobody.get(`/p/${id}/api/circuits`)).status).toBe(404)
+    expect((await nobody.get(`/p/${id}/api/circuits`)).headers.location).toBe("/signin")
     const adaId = idOf(server, "ada@example.com")
     const snapshot = () => ({ projects: server?.hub.store.projects(adaId), sessions: server?.hub.store.sessionCount(adaId), hash: server?.hub.store.userById(adaId)?.passwordHash })
     const before = snapshot()
@@ -138,7 +138,11 @@ describe("hub projects", () => {
     expect(again).not.toContain("<script>")
     const account = (await ada.get("/account")).text
     expect(account).not.toMatch(/<script/i)
-    expect((await ada.get("/projects")).headers["content-security-policy"]).toContain("default-src 'none'")
+    const shown = await ada.get("/projects")
+    expect(shown.headers["content-security-policy"]).toBe("default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+    expect(shown.headers["x-content-type-options"]).toBe("nosniff")
+    expect(shown.headers["referrer-policy"]).toBe("same-origin")
+    expect(shown.headers["cache-control"]).toBe("no-store")
   })
 
   test("quotas: 20 projects, and the disk space of the plan", async () => {

@@ -4,23 +4,22 @@
 import { mkdir } from "node:fs/promises"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import { normaliseOrigin } from "../hosted/gate.js"
-import { nowSeconds, signTicket } from "../hosted/ticket.js"
 import { changePassword, deleteAccount, endAllSessions, showAccount, showSignIn, showSignUp, signIn, signOut, signUp } from "./account-routes.js"
-import { cutSignal, newLimits, sessionOf, sweepCuts, type Hub, type HubConfig, type Signed } from "./context.js"
-import { clientAddress, FORM_BODY_LIMIT, header, HubError, redirect, sameOrigin, sendPage } from "./http.js"
+import { newLimits, sessionOf, sweepCuts, type Hub, type HubConfig, type Signed } from "./context.js"
+import { clientAddress, HubError, redirect, sameOrigin, sendPage } from "./http.js"
+import { addressKey } from "./limits.js"
+import { enterRedirect, projectOfHost, serveProjectOrigin, tlsAsk } from "./project-origin.js"
 import { loadOrCreateTicketKey } from "./keys.js"
 import { privacyPage, STYLESHEET, termsPage, textPage } from "./pages.js"
 import { createProject, deleteProject, downloadProject, ownProject, renameProject, showProjects, uploadProject } from "./project-routes.js"
 import { ProjectFiles } from "./projects.js"
-import { proxyRequest } from "./proxy.js"
 import { createProcessRunner } from "./runner/process-runner.js"
-import { DEFAULT_MAX_HOLD_MS, RunnerFullError, WorkspaceStartError, type WorkspaceRunner } from "./runner/runner.js"
+import type { WorkspaceRunner } from "./runner/runner.js"
 import { HubStore } from "./store.js"
 import { prepareDataDir } from "./permissions.js"
 
 export const MAX_PROJECTS = 20
 export const MAX_BYTES = 200 * 1024 * 1024
-const TICKET_LIFETIME_S = 60
 const SWEEP_MS = 15_000
 const PROXY_PATH = /^\/p\/([0-9a-f]{32})(?=\/|$|\?)/
 const PROJECT_ACTION = /^\/projects\/([0-9a-f]{32})\/(rename|delete|download)$/
@@ -41,8 +40,13 @@ export interface HubOptions {
   bind?: string
   /** Read the client's address from the last X-Forwarded-For entry (only behind a reverse proxy that sets it). */
   trustProxy?: boolean
+  /**
+   * The domain projects are served under: project `<id>` is `<id>.<workspaceDomain>` (such as ws.copperflow.example.com;
+   * in tests ws.localhost). It needs a wildcard DNS record and a wildcard or on-demand certificate.
+   */
+  workspaceDomain: string
   /** The runner. Without one the hub uses the process runner, which is not a security boundary (process-runner.ts). */
-  runner?: (publicKeyBase64: string, publicOrigin: string) => WorkspaceRunner
+  runner?: (publicKeyBase64: string) => WorkspaceRunner
   /** Must be true to start with the process runner: every account can then read every other account's data. */
   trustedAccountsOnly?: boolean
   maxProjects?: number
@@ -67,9 +71,12 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
   const dbFile = await prepareDataDir(options.dataDir)
   const keys = await loadOrCreateTicketKey(options.dataDir)
   const publicOrigin = normaliseOrigin(options.publicOrigin)
+  const workspaceDomain = options.workspaceDomain.toLowerCase()
+  if (!/^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(workspaceDomain)) throw new Error("--workspace-domain must be a domain name, such as ws.copperflow.example.com")
   const config: HubConfig = {
     publicOrigin,
     publicHost: new URL(publicOrigin).host,
+    workspaceDomain,
     secure: publicOrigin.startsWith("https:"),
     trustProxy: options.trustProxy ?? false,
     maxProjects: options.maxProjects ?? MAX_PROJECTS,
@@ -82,11 +89,13 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
     config,
     store: HubStore.open(dbFile),
     files,
-    runner: options.runner ? options.runner(keys.publicKeyBase64, publicOrigin) : createProcessRunner({ publicOrigin, ticketPublicKey: keys.publicKeyBase64 }),
+    runner: options.runner ? options.runner(keys.publicKeyBase64) : createProcessRunner({ ticketPublicKey: keys.publicKeyBase64 }),
     keys,
     limits: newLimits(options.limiterKeys),
     userLocks: new Map(),
     userCuts: new Map(),
+    epochs: new Map(),
+    enterTokens: new Map(),
     transfers: { uploads: 0, downloads: new Map() },
     log: options.log ?? ((line) => process.stderr.write(`copperflow hub: ${line}\n`)),
   }
@@ -142,8 +151,13 @@ function answerError(hub: Hub, res: ServerResponse, error: unknown): void {
 
 async function route(hub: Hub, req: IncomingMessage, res: ServerResponse): Promise<void> {
   const address = clientAddress(req, hub.config.trustProxy)
+  // Two kinds of host: the public origin (the hub's pages) and one origin per project. Never the one for the other.
+  const host = req.headers.host?.toLowerCase()
+  const projectId = projectOfHost(hub, host)
+  if (projectId) return serveProjectOrigin(hub, req, res, projectId, address)
+  if (host !== hub.config.publicHost) throw new HubError(404, "There is no such page.")
   const raw = req.url ?? "/"
-  if (PROXY_PATH.test(raw)) return proxy(hub, req, res, raw)
+  if (PROXY_PATH.test(raw)) return enterProject(hub, req, res, raw)
   const query = raw.indexOf("?")
   const path = query < 0 ? raw : raw.slice(0, query)
   const method = req.method ?? "GET"
@@ -151,6 +165,13 @@ async function route(hub: Hub, req: IncomingMessage, res: ServerResponse): Promi
     if (method !== "POST") throw new HubError(405, "That method is not allowed here.")
     // Before anything is read or decided: a form posted from another site is refused outright.
     if (!sameOrigin(req, hub.config.publicOrigin)) throw new HubError(403, "Forms can only be sent from this site.")
+  }
+  if (path === "/_tls-ask" && method === "GET") {
+    const now = hub.config.now()
+    const limit = hub.limits.tlsAsk.check(addressKey(address), now)
+    if (!limit.ok) throw new HubError(429, "Too many requests.", { "retry-after": String(limit.retryAfterS) })
+    hub.limits.tlsAsk.add(addressKey(address), now)
+    return tlsAsk(hub, req, res)
   }
   if (path === "/static/hub.css" && SAFE_METHODS.has(method)) {
     res.writeHead(200, { "content-type": "text/css; charset=utf-8", "cache-control": "public, max-age=3600", "x-content-type-options": "nosniff" })
@@ -224,46 +245,16 @@ async function signedRoute(hub: Hub, req: IncomingMessage, res: ServerResponse, 
   throw new HubError(404, "There is no such page.")
 }
 
-/** A path two parsers could read differently is refused: backslashes, encoded slashes, and . or .. segments. */
-function plainPath(path: string): boolean {
-  if (path.includes("\\") || /%(2f|5c)/i.test(path)) return false
-  return path.split("/").every((segment, index, all) => {
-    if (segment === "") return index === 0 || index === all.length - 1
-    const decoded = segment.replace(/%2e/gi, ".")
-    return decoded !== "." && decoded !== ".."
-  })
-}
-
-/** /p/<project id>/… → the workspace's Studio, after the session, the owner and the Origin are checked. */
-async function proxy(hub: Hub, req: IncomingMessage, res: ServerResponse, raw: string): Promise<void> {
+/**
+ * The public origin's /p/<project id>/: the project is served on its own origin, so a signed-in owner is handed over
+ * there with a one-time token. Nothing is proxied on the public origin.
+ */
+function enterProject(hub: Hub, req: IncomingMessage, res: ServerResponse, raw: string): void {
   const id = (PROXY_PATH.exec(raw) as RegExpExecArray)[1] as string
-  const query = raw.indexOf("?")
-  if (!plainPath(query < 0 ? raw : raw.slice(0, query))) throw new HubError(400, "That address is not valid.")
-  const method = req.method ?? "GET"
+  if ((req.method ?? "GET") !== "GET") throw new HubError(404, "There is no such page.")
   const { signed } = sessionOf(hub, req)
-  if (!signed) {
-    if (SAFE_METHODS.has(method) && !raw.startsWith(`/p/${id}/api/`)) return redirect(res, "/signin")
-    throw new HubError(404, "There is no such page.")
-  }
-  if (signed.user.mustChangePassword) throw new HubError(403, "Choose a new password on the account page first.")
+  if (!signed) return redirect(res, "/signin")
+  if (signed.user.mustChangePassword) return redirect(res, "/account")
   ownProject(hub, signed, id)
-  // Rule 4 of docs/hosted.md: no ticket is ever made for a cross-site request.
-  const origin = header(req, "origin")
-  const crossSite = origin !== undefined ? origin !== hub.config.publicOrigin : header(req, "sec-fetch-site") === "cross-site" && (!SAFE_METHODS.has(method) || raw.startsWith(`/p/${id}/api/`))
-  if (crossSite) throw new HubError(403, "Requests from another site are not allowed.")
-  let address
-  try {
-    address = await hub.runner.ensure({ id, userId: signed.user.id, projectDir: hub.files.projectDir(signed.user.id, id), basePath: `/p/${id}` })
-  } catch (error) {
-    if (error instanceof RunnerFullError || error instanceof WorkspaceStartError) throw new HubError(503, error.message, { "retry-after": "60" })
-    throw error
-  }
-  const release = hub.runner.hold(id)
-  try {
-    const iat = nowSeconds()
-    const ticket = signTicket({ w: id, u: signed.user.id, iat, exp: iat + TICKET_LIFETIME_S }, hub.keys.privateKey)
-    await proxyRequest(req, res, { origin: address.studio, path: raw, publicHost: hub.config.publicHost, ticket, maxBodyBytes: FORM_BODY_LIMIT, maxDurationMs: DEFAULT_MAX_HOLD_MS, signal: cutSignal(hub, signed.user.id) })
-  } finally {
-    release()
-  }
+  enterRedirect(hub, res, signed, id)
 }

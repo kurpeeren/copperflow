@@ -24,7 +24,8 @@ export const PAGE_HEADERS: Record<string, string> = {
   "referrer-policy": "same-origin",
   "cross-origin-opener-policy": "same-origin",
   "cross-origin-resource-policy": "same-origin",
-  "content-security-policy": "default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+  // form-action 'self' only: a page never posts to a project origin (and /p/<id>/ is a plain link).
+  "content-security-policy": "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
 }
 
 /** The body, refused with 413 once it passes `limit` bytes. */

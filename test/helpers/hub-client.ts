@@ -44,10 +44,36 @@ export function formToken(html: string): string {
 export class Browser {
   readonly jar = new Map<string, string>()
 
+  /** The Host every request names: the public origin's, as a browser on that site would send. */
+  readonly host: string
+
   constructor(
     readonly base: string,
     readonly origin = ORIGIN,
-  ) {}
+  ) {
+    this.host = new URL(origin || ORIGIN).host
+  }
+
+  /** Follows /p/<id>/ to the project's own origin and its /_enter, keeping the workspace cookie; returns the answers. */
+  async openProject(id: string): Promise<{ handover: Answer; entered?: Answer }> {
+    const handover = await this.get(`/p/${id}/`)
+    const location = String(handover.headers.location ?? "")
+    if (handover.status !== 303 || !location.includes("/_enter?")) return { handover }
+    const url = new URL(location)
+    return { handover, entered: await this.onProject(id, "GET", `${url.pathname}${url.search}`) }
+  }
+
+  /** A request on project `id`'s own origin (its Host and Origin), with this browser's cookies. */
+  async onProject(id: string, method: string, path: string, headers: Record<string, string> = {}, body?: string): Promise<Answer> {
+    const origin = projectOriginOf(id)
+    const extra: Record<string, string> = method === "GET" || method === "HEAD" ? {} : { origin }
+    return this.keep(await send(this.base, method, path, { host: new URL(origin).host, ...extra, ...this.cookieHeader(), ...headers }, body))
+  }
+
+  /** The Cookie header this browser would send. */
+  cookie(): string {
+    return [...this.jar].map(([k, v]) => `${k}=${v}`).join("; ")
+  }
 
   private cookieHeader(): Record<string, string> {
     return this.jar.size ? { cookie: [...this.jar].map(([k, v]) => `${k}=${v}`).join("; ") } : {}
@@ -67,12 +93,12 @@ export class Browser {
   }
 
   async get(path: string, headers: Record<string, string> = {}): Promise<Answer> {
-    return this.keep(await send(this.base, "GET", path, { ...this.cookieHeader(), ...headers }))
+    return this.keep(await send(this.base, "GET", path, { host: this.host, ...this.cookieHeader(), ...headers }))
   }
 
   async post(path: string, fields: Record<string, string>, headers: Record<string, string> = {}): Promise<Answer> {
     const body = new URLSearchParams(fields).toString()
-    return this.keep(await send(this.base, "POST", path, { "content-type": "application/x-www-form-urlencoded", ...(this.origin ? { origin: this.origin } : {}), ...this.cookieHeader(), ...headers }, body))
+    return this.keep(await send(this.base, "POST", path, { host: this.host, "content-type": "application/x-www-form-urlencoded", ...(this.origin ? { origin: this.origin } : {}), ...this.cookieHeader(), ...headers }, body))
   }
 
   /** Opens `page` and posts its form with the hidden token. */
@@ -93,7 +119,7 @@ export class Browser {
       `--${boundary}\r\nContent-Disposition: form-data; name="archive"; filename="p.zip"\r\nContent-Type: application/zip\r\n\r\n`,
     ]
     const body = Buffer.concat([Buffer.from(parts.join("")), archive, Buffer.from(`\r\n--${boundary}--\r\n`)])
-    return this.keep(await send(this.base, "POST", "/projects/upload", { "content-type": `multipart/form-data; boundary=${boundary}`, origin: ORIGIN, ...this.cookieHeader() }, body))
+    return this.keep(await send(this.base, "POST", "/projects/upload", { host: this.host, "content-type": `multipart/form-data; boundary=${boundary}`, origin: ORIGIN, ...this.cookieHeader() }, body))
   }
 
   async signUp(code: string, email: string, password = "a good password"): Promise<Answer> {
@@ -115,7 +141,14 @@ export function fixedRunner(studio: () => string): WorkspaceRunner {
 
 export async function startTestHub(options: Partial<HubOptions> = {}): Promise<HubServer> {
   const dataDir = options.dataDir ?? (await mkdtemp(join(tmpdir(), "cf-hub-")))
-  return startHub({ dataDir, port: 0, publicOrigin: ORIGIN, log: () => undefined, runner: () => fixedRunner(() => "http://127.0.0.1:9"), ...options })
+  return startHub({ dataDir, port: 0, publicOrigin: ORIGIN, workspaceDomain: WORKSPACE_DOMAIN, log: () => undefined, runner: () => fixedRunner(() => "http://127.0.0.1:9"), ...options })
+}
+
+export const WORKSPACE_DOMAIN = "ws.localhost"
+
+/** Project `id`'s own origin in the test hub (the public origin's scheme). */
+export function projectOriginOf(id: string, origin = ORIGIN): string {
+  return `${new URL(origin).protocol}//${id}.${WORKSPACE_DOMAIN}`
 }
 
 /** Adds an invite code straight to the store and returns it. */

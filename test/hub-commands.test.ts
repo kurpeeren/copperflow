@@ -100,11 +100,11 @@ describe("the hub's maintainer commands", () => {
   test("the hub refuses the process runner unless every account is trusted, and says what that means", async () => {
     const data = await mkdtemp(join(tmpdir(), "cf-trusted-"))
     const out = io()
-    expect(await runCli(["hub", "--data", data, "--port", "0", "--public-origin", "https://cf.example.test"], "/", out)).toBe(1)
+    expect(await runCli(["hub", "--data", data, "--port", "0", "--public-origin", "https://cf.example.test", "--workspace-domain", "ws.localhost"], "/", out)).toBe(1)
     expect(out.errors[0]).toContain(PROCESS_RUNNER_REFUSAL)
     expect(out.lines).toEqual([])
-    await expect(startHub({ dataDir: data, port: 0, publicOrigin: "https://cf.example.test" })).rejects.toThrow(PROCESS_RUNNER_REFUSAL)
-    const server = await startHub({ dataDir: data, port: 0, publicOrigin: "https://cf.example.test", trustedAccountsOnly: true, log: () => undefined })
+    await expect(startHub({ dataDir: data, port: 0, publicOrigin: "https://cf.example.test", workspaceDomain: "ws.localhost" })).rejects.toThrow(PROCESS_RUNNER_REFUSAL)
+    const server = await startHub({ dataDir: data, port: 0, publicOrigin: "https://cf.example.test", workspaceDomain: "ws.localhost", trustedAccountsOnly: true, log: () => undefined })
     await server.close()
   })
 

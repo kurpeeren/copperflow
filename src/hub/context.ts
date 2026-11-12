@@ -20,6 +20,8 @@ const SECRET_TEXT = /^[A-Za-z0-9_-]{43}$/
 export interface HubConfig {
   publicOrigin: string
   publicHost: string
+  /** Projects are served on `<project id>.<workspaceDomain>`, never on the public origin. */
+  workspaceDomain: string
   /** True when the public origin is https: cookies get Secure and the __Host- prefix. */
   secure: boolean
   trustProxy: boolean
@@ -39,6 +41,10 @@ export interface Hub {
   userLocks: Map<string, Promise<void>>
   /** Per user: aborting it cuts every proxied exchange of that user. */
   userCuts: Map<string, AbortController>
+  /** Per user: bumped whenever their sessions are revoked, so a request that waited sees it and stops. */
+  epochs: Map<string, number>
+  /** One-time tokens that open a project's origin: hash → who, which project, until when, at which epoch. */
+  enterTokens: Map<string, { userId: string; projectId: string; expires: number; epoch: number }>
   /** Transfers in progress: uploads in the whole hub, downloads per user. */
   transfers: { uploads: number; downloads: Map<string, number> }
   log: (line: string) => void
@@ -65,6 +71,8 @@ export interface Limits {
   signupAddress: WindowCounter
   reauth: WindowCounter
   gate: SigninGate
+  /** The certificate check (/_tls-ask): 60 per minute per address. */
+  tlsAsk: WindowCounter
 }
 
 const FIFTEEN_MINUTES = 15 * 60_000
@@ -80,6 +88,7 @@ export function newLimits(maxKeys?: number): Limits {
     signinEmail: new EmailBuckets(EMAIL_FAILURES, FIFTEEN_MINUTES),
     signupAddress: new WindowCounter(20, 60 * 60_000, maxKeys),
     reauth: new WindowCounter(ADDRESS_FAILURES, FIFTEEN_MINUTES, maxKeys),
+    tlsAsk: new WindowCounter(60, 60_000, maxKeys),
     gate: new SigninGate({ threshold: MAX_FAILED_SIGNINS, windowMs: FIFTEEN_MINUTES, perSecond: 5, queue: 50, perAddress: 2 }),
   }
 }
@@ -139,8 +148,13 @@ export function cutSignal(hub: Hub, userId: string): AbortSignal {
   return controller.signal
 }
 
+export function epochOf(hub: Pick<Hub, "epochs">, userId: string): number {
+  return hub.epochs.get(userId) ?? 0
+}
+
 /** Cuts the user's open proxied streams and stops their running workspaces, at once. */
-export async function cutUser(hub: Pick<Hub, "userCuts" | "runner">, userId: string): Promise<void> {
+export async function cutUser(hub: Pick<Hub, "userCuts" | "runner" | "epochs">, userId: string): Promise<void> {
+  hub.epochs.set(userId, epochOf(hub, userId) + 1)
   hub.userCuts.get(userId)?.abort()
   hub.userCuts.delete(userId)
   await hub.runner.stopUser(userId)

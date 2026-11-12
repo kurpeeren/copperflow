@@ -17,7 +17,7 @@ const STATUS_STALE_MS = 2 * 60_000
 const MAX_INVITES = 100
 
 const USAGE = `Usage:
-  copperflow hub --data <dir> --port <n> --public-origin <url> --trusted-accounts-only [--bind <address>] [--trust-proxy]
+  copperflow hub --data <dir> --port <n> --public-origin <url> --workspace-domain <domain> --trusted-accounts-only [--bind <address>] [--trust-proxy]
   copperflow hub invite --data <dir> [--count n]
   copperflow hub reset-password <email> --data <dir>
   copperflow hub status --data <dir>
@@ -93,7 +93,9 @@ async function serve(options: Map<string, string>, flags: Set<string>, cwd: stri
   const publicOrigin = options.get("--public-origin")
   if (!publicOrigin) throw new Error(`Missing --public-origin <url>.\n${USAGE}`)
   const trustedAccountsOnly = flags.has("--trusted-accounts-only")
-  const hub = await startHub({ dataDir, port, publicOrigin, bind: options.get("--bind") ?? "127.0.0.1", trustProxy: flags.has("--trust-proxy"), trustedAccountsOnly })
+  const workspaceDomain = options.get("--workspace-domain")
+  if (!workspaceDomain) throw new Error(`Missing --workspace-domain <domain>: each project is served on its own origin under it.\n${USAGE}`)
+  const hub = await startHub({ dataDir, port, publicOrigin, workspaceDomain, bind: options.get("--bind") ?? "127.0.0.1", trustProxy: flags.has("--trust-proxy"), trustedAccountsOnly })
   if (trustedAccountsOnly) io.out(TRUSTED_ONLY_WARNING)
   const writeStatus = () =>
     writeFileAtomic(join(dataDir, STATUS_FILE), `${JSON.stringify({ updated: Date.now(), pid: process.pid, running: hub.hub.runner.running() })}\n`).catch((error: unknown) =>
@@ -169,7 +171,7 @@ async function deleteUser(store: HubStore, dataDir: string, email: string | unde
   const projects = store.projectCount(user.id)
   const answer = await io.ask(`This deletes ${user.email}, their sessions and ${projects} project(s) with all files. Type the email to confirm: `)
   if (normaliseEmail(answer) !== user.email) throw new Error(`Not deleted: you typed "${answer.trim()}", not ${user.email}`)
-  await removeUser({ store, files: new ProjectFiles(dataDir), runner: NO_RUNNER, userCuts: new Map() }, user.id)
+  await removeUser({ store, files: new ProjectFiles(dataDir), runner: NO_RUNNER, userCuts: new Map(), epochs: new Map() }, user.id)
   // The running hub cuts their streams and stops their workspaces at its next sweep (within 15 seconds).
   store.requestCut(user.id, Date.now())
   store.audit({ time: Date.now(), userId: user.id, event: "account-deleted", address: "cli", detail: "by the maintainer" })

@@ -9,7 +9,7 @@ import { ManagedRunner, RunnerFullError, WorkspaceStartError, type Launched, typ
 import { BOARD } from "./fixtures.js"
 import { workspaceCli } from "./helpers/workspace-cli.js"
 
-const spec = (id: string): WorkspaceSpec => ({ id, userId: "u1", projectDir: `/data/${id}`, basePath: `/p/${id}` })
+const spec = (id: string): WorkspaceSpec => ({ id, userId: "u1", projectDir: `/data/${id}`, basePath: "", publicOrigin: `https://${id}.ws.localhost` })
 const wait = (ms: number) => new Promise((done) => setTimeout(done, ms))
 
 /** A launcher whose workspaces the test can crash. */
@@ -161,8 +161,8 @@ describe("the process runner", () => {
     const keys = generateTicketKeys()
     const projectDir = await mkdtemp(join(tmpdir(), "cf-proc-"))
     await writeFile(join(projectDir, "main.circuit.tsx"), BOARD)
-    runner = createProcessRunner({ publicOrigin: "https://cf.example.test", ticketPublicKey: keys.publicKeyBase64, command: await workspaceCli(), log: () => undefined })
-    const address = await runner.ensure({ id: "p1", userId: "u1", projectDir, basePath: "/p/p1" })
+    runner = createProcessRunner({ ticketPublicKey: keys.publicKeyBase64, command: await workspaceCli(), log: () => undefined })
+    const address = await runner.ensure({ id: "p1", userId: "u1", projectDir, basePath: "/p/p1", publicOrigin: "https://cf.example.test" })
     const now = Math.floor(Date.now() / 1000)
     const ticket = signTicket({ w: "p1", u: "u1", iat: now, exp: now + 60 }, keys.privateKey)
     const body = await new Promise<string>((done, fail) => {

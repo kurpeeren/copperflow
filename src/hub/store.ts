@@ -72,6 +72,13 @@ CREATE TABLE IF NOT EXISTS devices (
   created INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS devices_user ON devices(user_id);
+CREATE TABLE IF NOT EXISTS workspace_sessions (
+  hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  expires INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS workspace_sessions_user ON workspace_sessions(user_id);
 CREATE TABLE IF NOT EXISTS user_cuts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id TEXT NOT NULL,
@@ -231,6 +238,28 @@ export class HubStore {
   endSessions(userId: string, keepHash?: string): void {
     if (keepHash === undefined) this.sql("DELETE FROM sessions WHERE user_id = ?").run(userId)
     else this.sql("DELETE FROM sessions WHERE user_id = ? AND hash <> ?").run(userId, keepHash)
+    // A workspace session never outlives the hub sessions it came from.
+    this.sql("DELETE FROM workspace_sessions WHERE user_id = ?").run(userId)
+  }
+
+  createWorkspaceSession(idHash: string, userId: string, projectId: string, expires: number): void {
+    this.sql("INSERT INTO workspace_sessions (hash, user_id, project_id, expires) VALUES (?, ?, ?, ?)").run(idHash, userId, projectId, expires)
+  }
+
+  /** The live workspace session with this id hash. */
+  workspaceSession(idHash: string, now: number): { userId: string; projectId: string } | undefined {
+    const row = this.sql("SELECT * FROM workspace_sessions WHERE hash = ?").get(idHash) as Row | undefined
+    if (!row || !sameSecret(row.hash as string, idHash)) return undefined
+    if (Number(row.expires) <= now) {
+      this.sql("DELETE FROM workspace_sessions WHERE hash = ?").run(idHash)
+      return undefined
+    }
+    return { userId: row.user_id as string, projectId: row.project_id as string }
+  }
+
+  /** Whether a project with this id exists and is not being deleted (for the certificate check). */
+  projectExists(id: string): boolean {
+    return this.sql("SELECT 1 AS found FROM projects WHERE id = ? AND deleted = 0").get(id) !== undefined
   }
 
   /** Remembers a device the user signed in from; keeps the newest `max` per user. */

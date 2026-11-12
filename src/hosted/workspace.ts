@@ -41,7 +41,7 @@ export interface WorkspaceExtras {
 export const WORKSPACE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/
 
 const USAGE =
-  "Usage: copperflow workspace --root <folder> --id <workspace id> --public-origin <origin> --base-path </p/...> --studio-port <n> --mcp-port <n> [--bind 127.0.0.1] [--stop-on-stdin-end]"
+  "Usage: copperflow workspace --root <folder> --id <workspace id> --public-origin <origin> --base-path </ or /p/...> --studio-port <n> --mcp-port <n> [--bind 127.0.0.1] [--stop-on-stdin-end]"
 
 function portOf(text: string | undefined, name: string): number {
   const value = Number(text)
@@ -77,8 +77,9 @@ export function parseWorkspaceArgs(args: readonly string[], cwd: string, env: No
   }
   const id = need("--id")
   if (!WORKSPACE_ID.test(id)) throw new Error("--id must be lower-case letters, digits and dashes (at most 64)")
+  // "/" serves at the root of the workspace's own origin (as the hub runs it); /p/<id> serves under a path.
   const basePath = normaliseBasePath(need("--base-path"))
-  if (!basePath.startsWith("/p/")) throw new Error("--base-path must start with /p/")
+  if (basePath !== "" && !basePath.startsWith("/p/")) throw new Error("--base-path must be / or start with /p/")
   const ticketPublicKey = ticketPublicKeyFromEnv({ [TICKET_PUBLIC_KEY_ENV]: env[TICKET_PUBLIC_KEY_ENV] })
   return {
     stopOnStdinEnd,

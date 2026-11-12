@@ -11,8 +11,10 @@ export interface WorkspaceSpec {
   userId: string
   /** The project folder, the workspace's only writable place. */
   projectDir: string
-  /** The path the Studio is served under, such as /p/<project id>. */
+  /** The path the Studio is served under: "" on its own origin (as the hub runs it), or such as /p/<project id>. */
   basePath: string
+  /** The workspace's public origin: the project's own origin, such as https://<id>.ws.example.com. */
+  publicOrigin: string
 }
 
 /** Where a running workspace listens, on the private interface: origins, such as http://127.0.0.1:41234. */
@@ -120,7 +122,7 @@ export class ManagedRunner implements WorkspaceRunner {
 
   async ensure(spec: WorkspaceSpec): Promise<WorkspaceAddress> {
     const known = this.entries.get(spec.id)
-    if (known && (known.spec.userId !== spec.userId || known.spec.projectDir !== spec.projectDir || known.spec.basePath !== spec.basePath)) {
+    if (known && (known.spec.userId !== spec.userId || known.spec.projectDir !== spec.projectDir || known.spec.basePath !== spec.basePath || known.spec.publicOrigin !== spec.publicOrigin)) {
       throw new Error("A workspace id was reused for another project")
     }
     if (known?.state === "running" && known.launched) {
