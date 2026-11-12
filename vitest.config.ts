@@ -7,6 +7,10 @@ export default defineConfig(({ mode }) => ({
   test: {
     include: mode === "perf" ? [SPEED_TESTS] : ["test/**/*.test.ts"],
     exclude: mode === "perf" ? configDefaults.exclude : [...configDefaults.exclude, SPEED_TESTS],
+    // Tests that build the real engine take well under a second alone, but in the full parallel run one has been
+    // measured at 26 s while the long router tests ran beside it; 5 s failed tests that were only waiting.
+    testTimeout: 60_000,
+    hookTimeout: 60_000,
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],
