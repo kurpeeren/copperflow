@@ -31,6 +31,8 @@ import { buildWith } from "./core/design-source.js"
 import { formatImport, importLcscPart } from "./library/import-lcsc.js"
 import { createCopperflowServer } from "./mcp/server.js"
 import { startStudio } from "./studio/server.js"
+import { startMcpHttp } from "./hosted/mcp-http.js"
+import { ticketKeyFromEnv } from "./hosted/ticket.js"
 import { VERSION } from "./version.js"
 
 export interface CliIO {
@@ -44,6 +46,9 @@ const HELP = `copperflow ${VERSION}
 
 Usage:
   copperflow mcp                              start the MCP server on stdio
+  copperflow mcp --http <port> [--bind <address>] [--workspace <id>]
+                                              serve MCP over HTTP behind the hosted hub (needs
+                                              COPPERFLOW_TICKET_KEY; every request carries the hub's ticket)
   copperflow studio [--port n]                open the visual editor at http://127.0.0.1:4777
   copperflow summary <file>                   print a circuit summary
   copperflow check <file>                     list the errors and warnings of copperflow's own rule checks
@@ -86,9 +91,26 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
   const [command, ...rest] = afterRoot
   try {
     switch (command) {
-      case "mcp":
-        await createCopperflowServer(root, options).connect(new StdioServerTransport())
+      case "mcp": {
+        const [httpPort, afterHttp] = takeOption(rest, "--http")
+        if (httpPort === undefined) {
+          await createCopperflowServer(root, options).connect(new StdioServerTransport())
+          return 0
+        }
+        const [bind, afterBind] = takeOption(afterHttp, "--bind")
+        const [workspace] = takeOption(afterBind, "--workspace")
+        const workspaceId = workspace ?? process.env.COPPERFLOW_WORKSPACE_ID
+        if (!workspaceId) throw new Error("mcp --http needs --workspace <id> (or COPPERFLOW_WORKSPACE_ID): it trusts only the hub's ticket for that workspace")
+        const key = ticketKeyFromEnv()
+        const served = await startMcpHttp({
+          port: positiveInt(httpPort),
+          ...(bind ? { bind } : {}),
+          makeServer: () => createCopperflowServer(root, { ...options, hosted: true }),
+          ticket: { key, workspaceId },
+        })
+        io.out(`copperflow MCP is listening at ${served.url} for workspace ${workspaceId}.`)
         return 0
+      }
       case "studio": {
         const [port] = takeOption(rest, "--port")
         const studio = await startStudio({ root, ...(port ? { port: positiveInt(port) } : {}) })
