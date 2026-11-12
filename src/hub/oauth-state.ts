@@ -80,6 +80,14 @@ export class OAuthState {
     return found && found.expires > now ? found : undefined
   }
 
+  /** The clients with a live authorisation request or code: never evicted from the client table. */
+  pendingClients(now: number): Set<string> {
+    const ids = new Set<string>()
+    for (const value of this.pending.values()) if (value.expires > now) ids.add(value.clientId)
+    for (const value of this.codes.values()) if (value.expires > now) ids.add(value.clientId)
+    return ids
+  }
+
   /** Forgets every code and request of the user (revocation). */
   forgetUser(userId: string): void {
     for (const [key, value] of this.codes) if (value.userId === userId) this.codes.delete(key)

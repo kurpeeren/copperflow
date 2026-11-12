@@ -24,7 +24,7 @@ import { loadCatalog } from "./hub-catalog.js"
 import { OAuthState } from "./oauth-state.js"
 import { serveMcp } from "./mcp-hub.js"
 import { revokeUser } from "./revocation.js"
-import { authorizationServer, authorize, consent, continueAuthorization, preflight, protectedResource, register, revoke, token } from "./oauth.js"
+import { MAX_CLIENTS, authorizationServer, authorize, consent, continueAuthorization, preflight, protectedResource, register, revoke, token } from "./oauth.js"
 import { createToken, revokeClient, revokeToken } from "./agent-account-routes.js"
 
 export const MAX_PROJECTS = 20
@@ -69,6 +69,8 @@ export interface HubOptions {
   trustedAccountsOnly?: boolean
   maxProjects?: number
   maxBytes?: number
+  /** OAuth clients kept; default 10 000. */
+  maxClients?: number
   /** The longest an ordinary request (not an upload) may take to arrive; default 60 s. */
   requestTimeoutMs?: number
   /** How often the hub sweeps sessions and carries out the maintainer's cuts; default 15 s. */
@@ -121,6 +123,7 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
     trustProxy: options.trustProxy ?? false,
     maxProjects: options.maxProjects ?? MAX_PROJECTS,
     maxBytes: options.maxBytes ?? MAX_BYTES,
+    maxClients: options.maxClients ?? MAX_CLIENTS,
     now: options.now ?? Date.now,
   }
   const files = new ProjectFiles(options.dataDir)

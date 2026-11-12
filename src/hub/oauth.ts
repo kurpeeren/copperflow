@@ -83,20 +83,33 @@ export function allowedRedirectUri(uri: unknown): uri is string {
 
 /** POST /oauth/register: counted per address before the body is read. */
 export async function register(hub: Hub, req: IncomingMessage, res: ServerResponse, address: string): Promise<void> {
-  const now = hub.config.now()
-  const key = addressKey(address)
-  const limit = hub.limits.register.check(key, now)
-  if (!limit.ok) {
-    audit(hub, address, null, "client-register-limited")
-    return json(res, 429, { error: "slow_down", error_description: "Too many registrations. Try again later." }, { "retry-after": String(limit.retryAfterS) })
-  }
-  if (hub.limits.register.add(key, now) === "full") return json(res, 503, { error: "temporarily_unavailable", error_description: "Try again later." })
   let body: unknown
   try {
     body = JSON.parse((await readBody(req, REGISTER_BODY_LIMIT)).toString("utf8"))
   } catch (error) {
     if (error instanceof HubError && error.status === 413) return oauthError(res, 413, "invalid_client_metadata", "The registration is too large.")
     return oauthError(res, 400, "invalid_client_metadata", "The registration must be JSON.")
+  }
+  // A cheap shape check first: what is not even a registration costs no one's limit.
+  if (typeof body !== "object" || body === null || !Array.isArray((body as { redirect_uris?: unknown }).redirect_uris)) {
+    return oauthError(res, 400, "invalid_client_metadata", "The registration needs redirect_uris.")
+  }
+  // (a) Per address (/64): 20 an hour. A full address table refuses nobody; the request then relies on (b).
+  const now = hub.config.now()
+  const key = addressKey(address)
+  const limit = hub.limits.register.check(key, now)
+  const tooMany = (retryAfterS: number) => {
+    audit(hub, address, null, "client-register-limited")
+    json(res, 429, { error: "slow_down", error_description: "Too many registrations. Try again later." }, { "retry-after": String(retryAfterS) })
+  }
+  if (!limit.ok) return tooMany(limit.retryAfterS)
+  hub.limits.register.add(key, now)
+  // (b) Everyone: one token bucket of 2 a second, at most 2 waiting per address and 40 in all, served in turn.
+  const gone = new AbortController()
+  res.once("close", () => gone.abort())
+  if (!(await hub.limits.registerGate.pass(key, gone.signal))) {
+    if (gone.signal.aborted) return
+    return tooMany(1)
   }
   const parsed = OAuthClientMetadataSchema.safeParse(body)
   if (!parsed.success) return oauthError(res, 400, "invalid_client_metadata", "The registration is not valid client metadata.")
@@ -111,7 +124,12 @@ export async function register(hub: Hub, req: IncomingMessage, res: ServerRespon
   const name = meta.client_name === undefined ? "Unnamed client" : labelOf(meta.client_name)
   if (!name) return oauthError(res, 400, "invalid_client_metadata", "client_name has 1 to 100 characters.")
   const id = newId()
-  if (hub.store.tokens.addClient({ id, name, redirectUris: uris }, MAX_CLIENTS, hub.config.now()) === "full") {
+  // (c) The table holds MAX_CLIENTS. Clients with a live grant or a pending authorisation request are never evicted;
+  // an unused one is protected for 10 minutes, then evictable oldest first. The bucket admits at most 2 x 600 = 1 200
+  // registrations in any 10 minutes, so with 10 000 places eviction finds room unless more than 8 800 clients are in
+  // use (granted or mid-authorisation) at once; only then, which a flood cannot cause, is the answer 503.
+  if (hub.store.tokens.addClient({ id, name, redirectUris: uris }, hub.config.maxClients, hub.config.now(), hub.oauth.pendingClients(hub.config.now())) === "full") {
+    hub.log("the OAuth client table is full of clients in use")
     return json(res, 503, { error: "temporarily_unavailable", error_description: "Try again later." })
   }
   audit(hub, address, null, "client-registered", id)

@@ -76,7 +76,7 @@ export interface GrantView {
 
 export const UNUSED_CLIENT_MS = 30 * 24 * 60 * 60_000
 /** A full client table makes room only by dropping a never-used client at least this old. */
-const EVICTABLE_AFTER_MS = 60 * 60_000
+export const EVICTABLE_AFTER_MS = 10 * 60_000
 
 export class TokenStore {
   private readonly statements = new Map<string, StatementSync>()
@@ -152,18 +152,19 @@ export class TokenStore {
   }
 
   /**
-   * Registers a client. With `maxTotal` clients already, the oldest one that was never used for a grant and is over an
-   * hour old makes room; when there is none, "full".
+   * Registers a client. With `maxTotal` clients already, the oldest one without a grant, not in `inUse` (a pending
+   * authorisation) and over 10 minutes old makes room; when there is none, "full".
    */
-  addClient(client: { id: string; name: string; redirectUris: string[] }, maxTotal: number, now: number): "added" | "full" {
+  addClient(client: { id: string; name: string; redirectUris: string[] }, maxTotal: number, now: number, inUse: ReadonlySet<string> = new Set()): "added" | "full" {
     return this.transaction(() => {
       const total = Number((this.sql("SELECT COUNT(*) AS n FROM oauth_clients").get() as Row).n)
       if (total >= maxTotal) {
-        const victim = this.sql(
-          "SELECT id FROM oauth_clients c WHERE created <= ? AND NOT EXISTS (SELECT 1 FROM oauth_grants g WHERE g.client_id = c.id) ORDER BY created, rowid LIMIT 1",
-        ).get(now - EVICTABLE_AFTER_MS) as Row | undefined
-        if (!victim) return "full"
-        this.sql("DELETE FROM oauth_clients WHERE id = ?").run(victim.id as string)
+        const candidates = this.sql(
+          "SELECT id FROM oauth_clients c WHERE created <= ? AND NOT EXISTS (SELECT 1 FROM oauth_grants g WHERE g.client_id = c.id) ORDER BY created, rowid",
+        ).all(now - EVICTABLE_AFTER_MS) as Row[]
+        const victim = candidates.map((row) => row.id as string).find((id) => !inUse.has(id))
+        if (victim === undefined) return "full"
+        this.sql("DELETE FROM oauth_clients WHERE id = ?").run(victim)
       }
       this.sql("INSERT INTO oauth_clients (id, name, redirect_uris, created, last_used) VALUES (?, ?, ?, ?, ?)").run(client.id, client.name, JSON.stringify(client.redirectUris), now, now)
       return "added"

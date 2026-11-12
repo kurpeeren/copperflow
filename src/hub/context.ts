@@ -30,6 +30,8 @@ export interface HubConfig {
   trustProxy: boolean
   maxProjects: number
   maxBytes: number
+  /** OAuth clients the hub keeps; default 10 000 (tests make it small). */
+  maxClients: number
   now: () => number
 }
 
@@ -88,6 +90,8 @@ export interface Limits {
   register: WindowCounter
   /** OAuth authorisation requests per address: 30 per 15 minutes. */
   authorize: WindowCounter
+  /** Every registration passes this bucket: 2 a second, at most 2 waiting per address and 40 in all. */
+  registerGate: SigninGate
 }
 
 const FIFTEEN_MINUTES = 15 * 60_000
@@ -107,6 +111,8 @@ export function newLimits(maxKeys?: number): Limits {
     refusedTokens: new WindowCounter(10, FIFTEEN_MINUTES, maxKeys),
     register: new WindowCounter(20, 60 * 60_000, maxKeys),
     authorize: new WindowCounter(30, FIFTEEN_MINUTES, maxKeys),
+    // Only its bucket and fair queue are used (pass); its strict-mode counting is not.
+    registerGate: new SigninGate({ threshold: Number.POSITIVE_INFINITY, windowMs: FIFTEEN_MINUTES, perSecond: 2, queue: 40, perAddress: 2 }),
     gate: new SigninGate({ threshold: MAX_FAILED_SIGNINS, windowMs: FIFTEEN_MINUTES, perSecond: 5, queue: 50, perAddress: 2 }),
   }
 }
