@@ -7,7 +7,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js"
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js"
-import { DEFAULT_MAX_STREAM_MS, header, normaliseOrigin } from "./gate.js"
+import { DEFAULT_MAX_STREAM_MS, normaliseOrigin } from "./gate.js"
 import { nowSeconds, TICKET_HEADER, verifyTicket, type TicketPayload } from "./ticket.js"
 
 export interface McpHttpOptions {
@@ -23,8 +23,10 @@ export interface McpHttpOptions {
   publicOrigin?: string
   /** Serves without tickets; allowed only on a loopback address (tests and local use). */
   insecureLocal?: boolean
-  /** Sessions open at once; default 16. At the limit the session idle longest is closed. */
+  /** Sessions open at once on the whole server; default 16. At the limit initialize is refused (429). */
   maxSessions?: number
+  /** Sessions one user may hold; default 4. At the limit that user's session idle longest is closed. */
+  maxSessionsPerUser?: number
   /** A session nobody used for this long is closed; default 10 minutes. */
   idleMs?: number
   /** The longest a GET stream stays open; default 15 minutes. It also ends when its ticket expires. */
@@ -43,12 +45,15 @@ interface Session {
   /** The user whose ticket opened it; "" without tickets. */
   user: string
   lastSeen: number
-  idle?: NodeJS.Timeout
+  /** GET streams open now; while any is, the session is active. */
+  streams: number
+  idle?: NodeJS.Timeout | undefined
 }
 
 const PATH = "/mcp"
 const MAX_BODY_BYTES = 4 * 1024 * 1024
 const DEFAULT_MAX_SESSIONS = 16
+const DEFAULT_MAX_SESSIONS_PER_USER = 4
 const DEFAULT_IDLE_MS = 10 * 60_000
 const REQUEST_TIMEOUT_MS = 15_000
 const HEADERS_TIMEOUT_MS = 10_000
@@ -115,6 +120,8 @@ export async function startMcpHttp(options: McpHttpOptions): Promise<McpHttp> {
   const maxStreamMs = options.maxStreamMs ?? DEFAULT_MAX_STREAM_MS
   let port = options.port
 
+  const maxPerUser = options.maxSessionsPerUser ?? DEFAULT_MAX_SESSIONS_PER_USER
+
   const closeSession = (id: string) => {
     const session = sessions.get(id)
     if (!session) return
@@ -122,24 +129,32 @@ export async function startMcpHttp(options: McpHttpOptions): Promise<McpHttp> {
     clearTimeout(session.idle)
     void session.transport.close()
   }
+  /** Marks a session used; while a GET stream is open it is active and no idle timer runs. */
   const touch = (id: string, session: Session) => {
     clearTimeout(session.idle)
     session.lastSeen = Date.now()
-    session.idle = setTimeout(() => closeSession(id), idleMs)
+    session.idle = session.streams > 0 ? undefined : setTimeout(() => closeSession(id), idleMs)
   }
-  /** Makes room for a new session by closing the one idle longest, so initialize never stays refused. */
-  const evictOldest = () => {
-    let oldest: [string, Session] | undefined
-    for (const entry of sessions) if (!oldest || entry[1].lastSeen < oldest[1].lastSeen) oldest = entry
-    if (oldest) closeSession(oldest[0])
+  /**
+   * Makes room for `user`'s new session: at their own limit their session idle longest goes (one holding a stream is
+   * active and stays); none idle, or the whole server full, is a 429. Nobody's session is closed for another user.
+   */
+  const makeRoom = (user: string) => {
+    const own = [...sessions].filter(([, session]) => session.user === user)
+    if (own.length >= maxPerUser) {
+      const idle = own.filter(([, session]) => session.streams === 0).sort((a, b) => a[1].lastSeen - b[1].lastSeen)[0]
+      if (!idle) throw new Refusal(429, "Too many open sessions for this user")
+      closeSession(idle[0])
+    }
+    if (sessions.size >= maxSessions) throw new Refusal(429, "Too many open sessions")
   }
 
-  /** Checks the Origin, then (with tickets) the Host and the ticket; the ticket's payload, if any. */
+  /** Checks the Origin, then (with tickets) the Host the hub forwards and the ticket; the ticket's payload, if any. */
   function admit(req: IncomingMessage): TicketPayload | undefined {
     if (req.headers.origin !== undefined && req.headers.origin !== publicOrigin) throw new Refusal(403, "Cross-origin requests are not allowed")
     if (!options.ticket) return undefined
-    const host = header(req.headers, "x-forwarded-host")?.split(",")[0]?.trim() ?? req.headers.host
-    if (host !== publicHost) throw new Refusal(403, "Unexpected Host header")
+    // The same header the SDK's allowed-hosts check reads: the hub forwards Host as the public host (docs/hosted.md).
+    if (req.headers.host !== publicHost) throw new Refusal(403, "Unexpected Host header")
     const check = verifyTicket(req.headers[TICKET_HEADER], options.ticket.publicKey, nowSeconds(), options.ticket.workspaceId)
     if (!check.ok) throw new Refusal(403, check.reason)
     return check.payload
@@ -161,19 +176,27 @@ export async function startMcpHttp(options: McpHttpOptions): Promise<McpHttp> {
       const session = sessions.get(sessionId)
       if (!session) throw new Refusal(404, "Unknown session")
       if (session.user !== (ticket?.u ?? "")) throw new Refusal(403, "The session belongs to another user")
+      if (req.method === "GET") {
+        session.streams += 1
+        limitStream(res, ticket)
+        res.on("close", () => {
+          session.streams -= 1
+          if (sessions.get(sessionId) === session) touch(sessionId, session)
+        })
+      }
       touch(sessionId, session)
-      if (req.method === "GET") limitStream(res, ticket)
       return session.transport.handleRequest(req, res, body)
     }
     if (req.method !== "POST" || !isInitializeRequest(body)) throw new Refusal(400, "Start a session with an initialize request")
-    if (sessions.size >= maxSessions) evictOldest()
+    const user = ticket?.u ?? ""
+    makeRoom(user)
     const server = options.makeServer()
     const transport: StreamableHTTPServerTransport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       enableDnsRebindingProtection: true,
-      allowedHosts: [hostOf(bind, port), ...(publicHost ? [publicHost] : [`localhost:${port}`])],
+      allowedHosts: publicHost ? [publicHost] : [hostOf(bind, port), `localhost:${port}`],
       onsessioninitialized: (id) => {
-        const session: Session = { transport, user: ticket?.u ?? "", lastSeen: Date.now() }
+        const session: Session = { transport, user, lastSeen: Date.now(), streams: 0 }
         sessions.set(id, session)
         touch(id, session)
       },

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest"
 import { cp, mkdtemp, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { request } from "node:http"
+import { createServer, request } from "node:http"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
@@ -13,8 +13,6 @@ import { inProcessEngine } from "./helpers/in-process-engine.js"
 
 const DEMO = join(import.meta.dirname, "..", "examples", "usb-c-ldo")
 const KEYS = generateTicketKeys()
-const PUBLIC = "https://copperflow.example.test"
-const HOST = "copperflow.example.test"
 const FILE = "index.circuit.tsx"
 const INIT = { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "x", version: "1" } } }
 
@@ -27,7 +25,21 @@ async function demoCopy(): Promise<string> {
 const now = () => Math.floor(Date.now() / 1000)
 const ticket = (over: { w?: string; u?: string; exp?: number } = {}) =>
   signTicket({ w: over.w ?? "ws-1", u: over.u ?? "user-1", iat: now(), exp: over.exp ?? now() + 300 }, KEYS.privateKey)
-const proxied = (extra: Record<string, string> = {}) => ({ "x-forwarded-host": HOST, ...extra })
+/** The hub forwards Host as the public host; here the public origin is the test server's own address. */
+const proxied = (extra: Record<string, string> = {}) => ({ ...extra })
+
+/** A port nothing listens on now, so the public origin can name it before the server starts. */
+function freePort(): Promise<number> {
+  return new Promise((done, fail) => {
+    const probe = createServer()
+    probe.once("error", fail)
+    probe.listen(0, "127.0.0.1", () => {
+      const address = probe.address()
+      const port = typeof address === "object" && address ? address.port : 0
+      probe.close(() => done(port))
+    })
+  })
+}
 
 async function call(client: Client, name: string, args: Record<string, unknown> = {}) {
   const result = await client.callTool({ name, arguments: args })
@@ -40,11 +52,12 @@ let roots: string[]
 
 async function start(extra: Partial<McpHttpOptions> = {}): Promise<McpHttp> {
   const root = roots[1] as string
+  const port = await freePort()
   return startMcpHttp({
-    port: 0,
+    port,
     makeServer: () => createCopperflowServer(root, { engine: inProcessEngine, hosted: true }),
     ticket: { publicKey: KEYS.publicKey, workspaceId: "ws-1" },
-    publicOrigin: PUBLIC,
+    publicOrigin: `http://127.0.0.1:${port}`,
     ...extra,
   })
 }
@@ -99,7 +112,6 @@ describe("MCP over HTTP", () => {
       [proxied(), "Missing workspace ticket"],
       [proxied({ [TICKET_HEADER]: ticket({ w: "ws-2" }) }), "The ticket is for another workspace"],
       [proxied({ [TICKET_HEADER]: ticket(), origin: "https://evil.example" }), "Cross-origin requests are not allowed"],
-      [{ "x-forwarded-host": "evil.example", [TICKET_HEADER]: ticket() }, "Unexpected Host header"],
     ]
     for (const [headers, reason] of cases) {
       const response = await post(INIT, headers)
@@ -108,8 +120,89 @@ describe("MCP over HTTP", () => {
       expect(JSON.parse(text).error.message).toBe(reason)
       expect(text).not.toContain(KEYS.publicKeyBase64)
     }
-    expect((await post(INIT, proxied({ [TICKET_HEADER]: ticket(), origin: PUBLIC }))).status).toBe(200)
+    expect((await post(INIT, proxied({ [TICKET_HEADER]: ticket(), origin: new URL(http.url).origin }))).status).toBe(200)
   })
+
+  test("reads the Host header only, as the SDK's allowed-hosts check does; x-forwarded-host counts for nothing", async () => {
+    const { port } = new URL(http.url)
+    const send = (headers: Record<string, string>) =>
+      new Promise<{ status: number; body: string }>((done, fail) => {
+        const body = JSON.stringify(INIT)
+        const all = { ...headers, [TICKET_HEADER]: ticket(), "content-type": "application/json", accept: "application/json, text/event-stream", "content-length": String(Buffer.byteLength(body)) }
+        const req = request({ host: "127.0.0.1", port, path: "/mcp", method: "POST", headers: all }, (res) => {
+          let text = ""
+          res.setEncoding("utf8")
+          res.on("data", (chunk: string) => (text += chunk))
+          res.on("end", () => done({ status: res.statusCode ?? 0, body: text }))
+        })
+        req.on("error", fail)
+        req.end(body)
+      })
+    const foreign = await send({ host: "evil.example" })
+    expect(foreign.status).toBe(403)
+    expect(JSON.parse(foreign.body).error.message).toBe("Unexpected Host header")
+    expect((await send({ host: "evil.example", "x-forwarded-host": `127.0.0.1:${port}` })).status).toBe(403)
+    expect((await send({ host: `127.0.0.1:${port}`, "x-forwarded-host": "evil.example" })).status).toBe(200)
+  })
+
+  test("session limits are per user: one user's initialises never close another user's session", async () => {
+    const opened = await post(INIT, proxied({ [TICKET_HEADER]: ticket({ u: "alice" }) }))
+    const alice = opened.headers.get("mcp-session-id") as string
+    for (let i = 0; i < 16; i++) expect((await post(INIT, proxied({ [TICKET_HEADER]: ticket({ u: "bob" }) }))).status).toBe(200)
+    expect(http.sessions()).toBe(5)
+    const list = { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }
+    const still = await post(list, proxied({ "mcp-session-id": alice, "mcp-protocol-version": "2025-03-26", [TICKET_HEADER]: ticket({ u: "alice" }) }))
+    expect(still.status).toBe(200)
+  })
+
+  test("the whole server's cap answers 429 without closing anyone's session", async () => {
+    const small = await start({ maxSessions: 2, maxSessionsPerUser: 2 })
+    try {
+      expect((await post(INIT, proxied({ [TICKET_HEADER]: ticket({ u: "alice" }) }), small)).status).toBe(200)
+      expect((await post(INIT, proxied({ [TICKET_HEADER]: ticket({ u: "carol" }) }), small)).status).toBe(200)
+      const refused = await post(INIT, proxied({ [TICKET_HEADER]: ticket({ u: "bob" }) }), small)
+      expect(refused.status).toBe(429)
+      expect((await refused.json()).error.message).toBe("Too many open sessions")
+      expect(small.sessions()).toBe(2)
+    } finally {
+      await small.close()
+    }
+  })
+
+  test("idle sessions close; at a user's own limit their longest-idle session makes room", async () => {
+    const small = await start({ maxSessionsPerUser: 2, idleMs: 300 })
+    try {
+      for (let i = 0; i < 3; i++) expect((await post(INIT, proxied({ [TICKET_HEADER]: ticket() }), small)).status).toBe(200)
+      expect(small.sessions()).toBe(2)
+      await new Promise((done) => setTimeout(done, 600))
+      expect(small.sessions()).toBe(0)
+    } finally {
+      await small.close()
+    }
+  })
+
+  test("a session holding a GET stream is active: the idle timer does not close it, and a user with only such sessions gets 429", async () => {
+    const small = await start({ maxSessionsPerUser: 1, idleMs: 200, maxStreamMs: 5000 })
+    try {
+      const opened = await post(INIT, proxied({ [TICKET_HEADER]: ticket() }), small)
+      const session = opened.headers.get("mcp-session-id") as string
+      const headers = proxied({ [TICKET_HEADER]: ticket(), "mcp-session-id": session, "mcp-protocol-version": "2025-03-26" })
+      await post({ jsonrpc: "2.0", method: "notifications/initialized" }, headers, small)
+      const controller = new AbortController()
+      const stream = await fetch(small.url, { headers: { ...headers, accept: "text/event-stream" }, signal: controller.signal })
+      expect(stream.status).toBe(200)
+      await new Promise((done) => setTimeout(done, 500))
+      expect(small.sessions()).toBe(1)
+      const refused = await post(INIT, proxied({ [TICKET_HEADER]: ticket() }), small)
+      expect(refused.status).toBe(429)
+      expect((await refused.json()).error.message).toBe("Too many open sessions for this user")
+      controller.abort()
+      await new Promise((done) => setTimeout(done, 500))
+      expect(small.sessions()).toBe(0)
+    } finally {
+      await small.close()
+    }
+  }, 10_000)
 
   test("a session belongs to the user whose ticket opened it", async () => {
     const opened = await post(INIT, proxied({ [TICKET_HEADER]: ticket({ u: "alice" }) }))
@@ -121,18 +214,6 @@ describe("MCP over HTTP", () => {
     expect(other.status).toBe(403)
     expect((await other.json()).error.message).toBe("The session belongs to another user")
     expect((await post(list, proxied({ ...base, [TICKET_HEADER]: ticket({ u: "alice" }) }))).status).toBe(200)
-  })
-
-  test("idle sessions close, and at the limit the oldest is evicted so initialize is never refused", async () => {
-    const small = await start({ maxSessions: 2, idleMs: 300 })
-    try {
-      for (let i = 0; i < 3; i++) expect((await post(INIT, proxied({ [TICKET_HEADER]: ticket() }), small)).status).toBe(200)
-      expect(small.sessions()).toBe(2)
-      await new Promise((done) => setTimeout(done, 600))
-      expect(small.sessions()).toBe(0)
-    } finally {
-      await small.close()
-    }
   })
 
   test("a GET stream ends at its ticket's expiry or the cap", async () => {
