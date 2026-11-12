@@ -19,6 +19,8 @@ import { createProcessRunner } from "./runner/process-runner.js"
 import type { WorkspaceRunner } from "./runner/runner.js"
 import { HubStore } from "./store.js"
 import { prepareDataDir } from "./permissions.js"
+import { AgentSessions } from "./agent-sessions.js"
+import { createToken, revokeClient, revokeToken } from "./agent-account-routes.js"
 
 export const MAX_PROJECTS = 20
 export const MAX_BYTES = 200 * 1024 * 1024
@@ -26,6 +28,7 @@ const SWEEP_MS = 15_000
 const PROXY_PATH = /^\/p\/([0-9a-f]{32})(?=\/|$|\?)/
 const PROJECT_ACTION = /^\/projects\/([0-9a-f]{32})\/(rename|delete|download)$/
 const SAFE_METHODS = new Set(["GET", "HEAD"])
+const AGENT_REVOKE = /^\/account\/(tokens|clients)\/([0-9a-f]{32})\/revoke$/
 
 /** Said once when the hub starts with the process runner, and by `hub invite`. */
 export const TRUSTED_ONLY_WARNING =
@@ -121,6 +124,7 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
     epochs: new Map(),
     enterTokens: new Map(),
     transfers: { uploads: 0, uploadingUsers: new Set(), downloads: new Map() },
+    agents: new AgentSessions(),
     log: options.log ?? ((line) => process.stderr.write(`copperflow hub: ${line}\n`)),
   }
 }
@@ -320,15 +324,22 @@ async function signedRoute(hub: Hub, req: IncomingMessage, res: ServerResponse, 
     case "POST /projects/upload":
       return uploadProject(hub, req, res, address, signed)
     case "GET /account":
-      return showAccount(res, signed, renewed)
+      return showAccount(hub, res, signed, renewed)
     case "POST /account/password":
       return changePassword(hub, req, res, address, signed)
     case "POST /account/delete":
       return deleteAccount(hub, req, res, address, signed)
     case "POST /account/end-sessions":
       return endAllSessions(hub, req, res, address, signed)
+    case "POST /account/tokens":
+      return createToken(hub, req, res, address, signed)
   }
   const [method, path] = page.split(" ") as [string, string]
+  const revoke = AGENT_REVOKE.exec(path)
+  if (revoke && method === "POST") {
+    const [, what, id] = revoke as unknown as [string, string, string]
+    return what === "tokens" ? revokeToken(hub, req, res, address, signed, id) : revokeClient(hub, req, res, address, signed, id)
+  }
   const action = PROJECT_ACTION.exec(path)
   if (action) {
     const [, id, verb] = action as unknown as [string, string, string]

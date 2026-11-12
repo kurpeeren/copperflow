@@ -2,6 +2,7 @@
 // session of the request (read from its cookie, renewed on use).
 import type { IncomingMessage, ServerResponse } from "node:http"
 import type { WorkspaceRunner } from "./runner/runner.js"
+import type { AgentSessions } from "./agent-sessions.js"
 import type { TicketKeys } from "./keys.js"
 import type { ProjectFiles } from "./projects.js"
 import type { HubStore, User } from "./store.js"
@@ -47,6 +48,8 @@ export interface Hub {
   enterTokens: Map<string, { userId: string; projectId: string; expires: number; epoch: number; hubSession: string }>
   /** Transfers in progress: uploads in the whole hub, downloads per user. */
   transfers: { uploads: number; uploadingUsers: Set<string>; downloads: Map<string, number> }
+  /** The agents' MCP sessions at the hub. */
+  agents: AgentSessions
   log: (line: string) => void
 }
 
@@ -157,9 +160,23 @@ export async function cutUser(hub: Pick<Hub, "userCuts" | "runner" | "epochs">, 
   await hub.runner.stopUser(userId)
 }
 
+/**
+ * Revokes every agent credential of the user (personal tokens, OAuth grants and their tokens) and closes their agent
+ * sessions, which cuts any open stream: a password change or reset, "End all sessions", deletion, the maintainer's
+ * commands. A plain sign-out does not call it.
+ */
+export function revokeAgents(hub: Pick<Hub, "store" | "agents">, userId: string): void {
+  hub.store.tokens.revokeUser(userId)
+  hub.agents.closeUser(userId)
+}
+
 /** Carries out the cuts the maintainer's commands asked for (the hub's 15-second sweep). */
 export async function sweepCuts(hub: Hub): Promise<void> {
-  for (const userId of hub.store.takeCuts()) await cutUser(hub, userId)
+  for (const userId of hub.store.takeCuts()) {
+    // The command revoked the credentials in the database already; this closes the sessions they opened.
+    revokeAgents(hub, userId)
+    await cutUser(hub, userId)
+  }
 }
 
 /** Runs `work` after every earlier queued operation of the same user has finished. */

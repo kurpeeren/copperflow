@@ -31,7 +31,7 @@ export interface Viewer {
   formToken: string
 }
 
-function hidden(token: string): string {
+export function hidden(token: string): string {
   return `<input type="hidden" name="form" value="${esc(token)}">`
 }
 
@@ -46,7 +46,7 @@ export function layout(title: string, body: string, viewer?: Viewer): string {
 <footer><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></footer></body></html>`
 }
 
-function message(error?: string, note?: string): string {
+export function message(error?: string, note?: string): string {
   return `${error ? `<p class="error" role="alert">${esc(error)}</p>` : ""}${note ? `<p class="note">${esc(note)}</p>` : ""}`
 }
 
@@ -102,10 +102,11 @@ ${projects.length ? `<table><tbody>${rows}</tbody></table>` : "<p>No projects ye
   )
 }
 
-export function accountPage(viewer: Viewer, error?: string, note?: string): string {
+/** `agents` is the agent section (agent-pages.ts), already escaped. */
+export function accountPage(viewer: Viewer, error?: string, note?: string, agents = ""): string {
   return layout(
     "Account",
-    `<h1>Account</h1><p>Signed in as ${esc(viewer.email)}.</p>${message(error, note)}
+    `<h1>Account</h1><p>Signed in as ${esc(viewer.email)}.</p>${message(error, note)}${agents}
 <h2>Change password</h2>
 <form class="stack" method="post" action="/account/password">${hidden(viewer.formToken)}
 <label>Current password <input type="password" name="current" autocomplete="current-password" required maxlength="1024"></label>

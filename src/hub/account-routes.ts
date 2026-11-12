@@ -20,6 +20,7 @@ import {
 } from "./context.js"
 import { HubError, readForm, redirect, sendPage } from "./http.js"
 import { accountPage, signInPage, signUpPage } from "./pages.js"
+import { agentSection } from "./agent-pages.js"
 import { hashPassword, hashSecret, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, newId, verifyAgainstNothing, verifyPassword } from "./secrets.js"
 import { normaliseEmail } from "./store.js"
 import { addressKey } from "./limits.js"
@@ -157,9 +158,15 @@ export async function endAllSessions(hub: Hub, req: IncomingMessage, res: Server
   redirect(res, "/", { "set-cookie": clearSessionCookie(hub) })
 }
 
-export function showAccount(res: ServerResponse, signed: Signed, renewed?: string, status = 200, error?: string, note?: string): void {
+/** The account page; `created` is a personal access token just made, shown this once. */
+export function showAccount(hub: Hub, res: ServerResponse, signed: Signed, renewed?: string, status = 200, error?: string, note?: string, created?: string): void {
   const reset = signed.user.mustChangePassword ? "Your password was reset. Choose a new one to go on." : undefined
-  sendPage(res, status, accountPage({ email: signed.user.email, formToken: signed.formToken }, error, note ?? reset), withRenewed(renewed))
+  const viewer = { email: signed.user.email, formToken: signed.formToken }
+  // While a reset password waits to be replaced, nothing about agents is shown or offered.
+  const agents = signed.user.mustChangePassword
+    ? ""
+    : agentSection(viewer, hub.config.publicOrigin, hub.store.tokens.personalTokens(signed.user.id), hub.store.tokens.grants(signed.user.id), created)
+  sendPage(res, status, accountPage(viewer, error, note ?? reset, agents), withRenewed(renewed))
 }
 
 /**
@@ -181,7 +188,7 @@ async function checkCurrentPassword(hub: Hub, res: ServerResponse, address: stri
     return true
   }
   audit(hub, address, signed.user.id, `${what}-failed`)
-  showAccount(res, signed, undefined, 400, "The current password is wrong.")
+  showAccount(hub, res, signed, undefined, 400, "The current password is wrong.")
   return false
 }
 
@@ -192,7 +199,7 @@ export async function changePassword(hub: Hub, req: IncomingMessage, res: Server
   if (!(await checkCurrentPassword(hub, res, address, signed, form.get("current"), "password-change"))) return
   const password = form.get("password")
   const problem = passwordProblem(password)
-  if (problem) return showAccount(res, signed, undefined, 400, problem)
+  if (problem) return showAccount(hub, res, signed, undefined, 400, problem)
   hub.store.setPassword(signed.user.id, await hashPassword(password as string))
   hub.store.endSessions(signed.user.id)
   hub.store.forgetDevices(signed.user.id)
@@ -205,7 +212,7 @@ export async function changePassword(hub: Hub, req: IncomingMessage, res: Server
 export async function deleteAccount(hub: Hub, req: IncomingMessage, res: ServerResponse, address: string, signed: Signed): Promise<void> {
   const form = await readForm(req)
   if (!formTokenMatches(signed, form.get("form"))) throw new HubError(403, "The form has expired. Open the page again and retry.")
-  if (normaliseEmail(form.get("confirm") ?? "") !== signed.user.email) return showAccount(res, signed, undefined, 400, "Type your email exactly to confirm.")
+  if (normaliseEmail(form.get("confirm") ?? "") !== signed.user.email) return showAccount(hub, res, signed, undefined, 400, "Type your email exactly to confirm.")
   if (!(await checkCurrentPassword(hub, res, address, signed, form.get("password"), "account-delete"))) return
   await removeUser(hub, signed.user.id)
   audit(hub, address, signed.user.id, "account-deleted")
