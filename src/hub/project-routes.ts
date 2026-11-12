@@ -150,8 +150,12 @@ async function streamDownload(hub: Hub, res: ServerResponse, address: string, si
 export async function uploadProject(hub: Hub, req: IncomingMessage, res: ServerResponse, address: string, signed: Signed): Promise<void> {
   const boundary = boundaryOf(header(req, "content-type"))
   const userId = signed.user.id
+  const upload = paced(req)
   // One upload per user, refused at once: a user's parallel uploads never queue while holding hub-wide slots.
-  if (hub.transfers.uploadingUsers.has(userId)) throw new HubError(429, "One of your uploads is still running. Try again when it has finished.", { "retry-after": "30" })
+  if (hub.transfers.uploadingUsers.has(userId)) {
+    upload.stop()
+    throw new HubError(429, "One of your uploads is still running. Try again when it has finished.", { "retry-after": "30" })
+  }
   hub.transfers.uploadingUsers.add(userId)
   try {
     const problem = await withUserLock(hub, userId, async () => {
@@ -159,7 +163,7 @@ export async function uploadProject(hub: Hub, req: IncomingMessage, res: ServerR
       if (hub.transfers.uploads >= MAX_UPLOADS) throw new HubError(503, "Too many uploads are running. Try again in a minute.", { "retry-after": "60" })
       hub.transfers.uploads += 1
       try {
-        return await receiveUpload(hub, req, address, signed, boundary)
+        return await receiveUpload(hub, upload.body, address, signed, boundary)
       } finally {
         hub.transfers.uploads -= 1
       }
@@ -167,6 +171,7 @@ export async function uploadProject(hub: Hub, req: IncomingMessage, res: ServerR
     if (problem) return showProjects(hub, res, signed, undefined, problem.status, problem.text)
     redirect(res, "/projects")
   } finally {
+    upload.stop()
     hub.transfers.uploadingUsers.delete(userId)
   }
 }
@@ -175,39 +180,47 @@ export async function uploadProject(hub: Hub, req: IncomingMessage, res: ServerR
  * The request body as it arrives, refused (408) when it stalls for `UPLOAD_IDLE_MS` or averages less than
  * `UPLOAD_MIN_BYTES_PER_S` once `UPLOAD_RATE_AFTER_MS` have passed.
  */
-export async function* paced(
-  req: Pick<IncomingMessage, "setTimeout" | "destroy"> & AsyncIterable<unknown>,
+export function paced(
+  req: Pick<IncomingMessage, "setTimeout" | "destroy"> & AsyncIterable<unknown> & { socket?: { bytesRead: number } | null },
   limits = { idleMs: UPLOAD_IDLE_MS, minBytesPerS: UPLOAD_MIN_BYTES_PER_S, rateAfterMs: UPLOAD_RATE_AFTER_MS, checkMs: 1000 },
-): AsyncGenerator<Buffer> {
+): { body: AsyncGenerator<Buffer>; stop(): void } {
+  // The clocks start now, when the request arrives, before it waits for a lock or a slot. Bytes are counted as they
+  // reach the socket, so a request that waits is not taken for a slow one.
   const started = Date.now()
-  let received = 0
+  const startBytes = req.socket?.bytesRead ?? 0
+  let read = 0
+  const arrived = () => (req.socket ? req.socket.bytesRead - startBytes : read)
   const tooSlow = () => new HubError(408, "The upload was too slow and was stopped. Try again on a faster connection.")
   req.setTimeout(limits.idleMs, () => req.destroy(tooSlow()))
   const check = setInterval(() => {
     const elapsed = Date.now() - started
-    if (elapsed >= limits.rateAfterMs && received / (elapsed / 1000) < limits.minBytesPerS) req.destroy(tooSlow())
+    if (elapsed >= limits.rateAfterMs && arrived() / (elapsed / 1000) < limits.minBytesPerS) req.destroy(tooSlow())
   }, limits.checkMs)
   check.unref()
-  try {
-    for await (const chunk of req) {
-      received += (chunk as Buffer).length
-      yield chunk as Buffer
+  const stop = () => clearInterval(check)
+  async function* body(): AsyncGenerator<Buffer> {
+    try {
+      for await (const chunk of req) {
+        read += (chunk as Buffer).length
+        yield chunk as Buffer
+      }
+    } catch (error) {
+      throw error instanceof HubError ? error : tooSlow()
+    } finally {
+      stop()
     }
-  } catch (error) {
-    throw error instanceof HubError ? error : tooSlow()
-  } finally {
-    clearInterval(check)
   }
+  return { body: body(), stop }
 }
 
 type Problem = { status: number; text: string } | undefined
 
-async function receiveUpload(hub: Hub, req: IncomingMessage, address: string, signed: Signed, boundary: string): Promise<Problem> {
+async function receiveUpload(hub: Hub, body: AsyncIterable<Buffer>, address: string, signed: Signed, boundary: string): Promise<Problem> {
   const quota = await quotaProblem(hub, signed.user.id)
   if (quota) return { status: 403, text: quota }
   const temp = await hub.files.uploadPath()
   try {
-    const form = await streamMultipart(paced(req), boundary, hub.config.maxBytes + UPLOAD_OVERHEAD, () => createWriteStream(temp, { flags: "wx", mode: 0o600 }))
+    const form = await streamMultipart(body, boundary, hub.config.maxBytes + UPLOAD_OVERHEAD, () => createWriteStream(temp, { flags: "wx", mode: 0o600 }))
     if (!formTokenMatches(signed, form.fields.get("form"))) throw new HubError(403, "The form has expired. Open the page again and retry.")
     const name = projectName(form.fields.get("name"))
     if (!name) return { status: 400, text: `A project name has 1 to ${MAX_NAME} characters.` }

@@ -108,11 +108,49 @@ describe("streams in the hub", () => {
     expect(server.hub.transfers.uploads).toBe(1)
   })
 
+  test("an ordinary request that trickles its body is cut at the request timeout", async () => {
+    server = await startTestHub({ requestTimeoutMs: 300 })
+    const url = new URL(server.url)
+    const closed = await new Promise<number>((done) => {
+      const started = Date.now()
+      const req = request({ agent: false, host: url.hostname, port: url.port, method: "POST", path: "/signin", headers: { host: new URL(ORIGIN).host, origin: ORIGIN, "content-type": "application/x-www-form-urlencoded", "content-length": "1000" } })
+      req.on("error", () => done(Date.now() - started))
+      req.on("response", (res) => {
+        res.resume()
+        res.on("close", () => done(Date.now() - started))
+      })
+      req.write("a")
+      const drip = setInterval(() => req.write("b"), 100)
+      req.on("close", () => clearInterval(drip))
+      open.push(req)
+    })
+    expect(closed).toBeLessThan(3000)
+  })
+
+  test("an early 403 on a POST whose body was not read closes the socket", async () => {
+    server = await startTestHub()
+    const url = new URL(server.url)
+    const answer = await new Promise<{ status: number; connection: string | undefined; socketClosed: Promise<void> }>((done, fail) => {
+      const req = request({ agent: false, host: url.hostname, port: url.port, method: "POST", path: "/projects", headers: { host: new URL(ORIGIN).host, origin: "https://evil.example", "content-type": "application/x-www-form-urlencoded", "content-length": "100000" } }, (res) => {
+        res.resume()
+        const socketClosed = new Promise<void>((over) => req.socket?.once("close", () => over()))
+        done({ status: res.statusCode ?? 0, connection: res.headers.connection, socketClosed })
+      })
+      req.on("error", () => undefined)
+      req.write("x")
+      open.push(req)
+      setTimeout(() => fail(new Error("no answer")), 5000)
+    })
+    expect(answer.status).toBe(403)
+    expect(answer.connection).toBe("close")
+    await answer.socketClosed
+  })
+
   test("an upload that stalls or crawls is stopped", async () => {
     const source = new PassThrough()
     const req = Object.assign(source, { setTimeout: (ms: number, then: () => void) => setTimeout(then, ms).unref() }) as unknown as Parameters<typeof paced>[0]
     const reading = (async () => {
-      for await (const chunk of paced(req, { idleMs: 10_000, minBytesPerS: 1000, rateAfterMs: 50, checkMs: 10 })) void chunk
+      for await (const chunk of paced(req, { idleMs: 10_000, minBytesPerS: 1000, rateAfterMs: 50, checkMs: 10 }).body) void chunk
     })()
     source.write(Buffer.alloc(5))
     await expect(reading).rejects.toThrow("The upload was too slow and was stopped.")

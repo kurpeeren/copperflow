@@ -52,6 +52,8 @@ export interface HubOptions {
   trustedAccountsOnly?: boolean
   maxProjects?: number
   maxBytes?: number
+  /** The longest an ordinary request (not an upload) may take to arrive; default 60 s. */
+  requestTimeoutMs?: number
   /** How often the hub sweeps sessions and carries out the maintainer's cuts; default 15 s. */
   sweepMs?: number
   /** Keys each limiter table holds; default 100 000 (tests make it small). */
@@ -105,12 +107,15 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
 export async function startHub(options: HubOptions): Promise<HubServer> {
   const hub = await openHub(options)
   const server = createServer((req, res) => {
+    guard(req, res, options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS)
     route(hub, req, res).catch((error: unknown) => answerError(hub, res, error))
   })
-  // Headers within 10 s. Bodies have their own clocks: forms 15 s (readBody), uploads a minimum rate and an idle limit
-  // (project-routes.ts), proxied bodies at most 1 MB; so the server-wide request timeout is off.
+  // Headers within 10 s; an idle socket closes after 60 s. Node's request timeout is server-wide, so it stays the
+  // backstop at the longest an upload may take at its minimum rate; every other request gets its own 60 s clock in
+  // `guard` (forms also 15 s in readBody), and uploads their rate and idle clocks (project-routes.ts).
   server.headersTimeout = HEADERS_TIMEOUT_MS
-  server.requestTimeout = 0
+  server.requestTimeout = UPLOAD_BACKSTOP_MS
+  server.timeout = SOCKET_IDLE_MS
   server.maxConnections = 1024
   limitConnectionsPerAddress(server, options.trustProxy ? undefined : MAX_CONNECTIONS_PER_ADDRESS)
   await new Promise<void>((done, fail) => {
@@ -139,6 +144,35 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
 }
 
 const HEADERS_TIMEOUT_MS = 10_000
+const SOCKET_IDLE_MS = 60_000
+const REQUEST_TIMEOUT_MS = 60_000
+/** 200 MB at the upload's minimum rate of 32 kB/s, with room: the longest any request body may take. */
+const UPLOAD_BACKSTOP_MS = 2 * 60 * 60_000
+
+/**
+ * Per request: a body that is not in within `timeoutMs` ends the request (uploads, which keep their own clocks, are
+ * exempt); and an answer given before the body was read says `connection: close` and closes the socket, so a
+ * half-read request cannot linger.
+ */
+function guard(req: IncomingMessage, res: ServerResponse, timeoutMs: number): void {
+  const writeHead = res.writeHead.bind(res)
+  res.writeHead = ((...args: Parameters<ServerResponse["writeHead"]>) => {
+    if (!req.complete) res.setHeader("connection", "close")
+    return writeHead(...args)
+  }) as ServerResponse["writeHead"]
+  const socket = req.socket
+  res.once("finish", () => {
+    if (!req.complete) socket?.destroySoon()
+  })
+  const upload = req.method === "POST" && (req.url ?? "").split("?")[0] === "/projects/upload"
+  if (upload) return
+  const late = setTimeout(() => {
+    if (!req.complete) req.destroy()
+  }, timeoutMs)
+  late.unref()
+  req.once("end", () => clearTimeout(late))
+  res.once("close", () => clearTimeout(late))
+}
 export const MAX_CONNECTIONS_PER_ADDRESS = 64
 
 /**
