@@ -15,14 +15,20 @@
 #   projects/       every project folder, read as it is at that moment; links are stored as links, never followed;
 #                   modes and numeric owners and groups are kept
 # Next to it: the archive's .sha256 and a .log of what tar could not read. The newest 14 archives this script made are
-# kept; other files in the destination are never touched. The destination is made mode 700 when it does not exist,
-# and a destination that group or others may open is refused.
+# kept; other files in the destination are never touched. The destination is made mode 700 when it does not exist;
+# one that group or others may open, or that another user owns, is refused.
 #
 # Who runs what. As the hub's user (the data directory's owner), everything runs as that user; files a workspace made
 # readable to itself only cannot be read then, and tar skips them, says so in the .log, and the script counts them.
 # As root, only with --allow-root: `copperflow hub backup` still runs as the data directory's owner (through runuser;
 # the script refuses if runuser is missing), so root never opens the live database; root is used only for tar, which
 # then reads every project file.
+#
+# The rule for root: it never opens, creates, reads or redirects to a path inside a directory the hub's user or the
+# workspace user can write (the data directory, the staging folder in it), except through tar reading the data
+# directory with links stored as links. Everything in the staging folder is done by the owner, root receives the
+# database copy as a tar stream on standard output and the counts as captured text, and root writes only into the
+# destination, which must be owned by the invoking user with mode 700, with noclobber on every redirection.
 #
 # COPPERFLOW names the command that runs copperflow (default: copperflow):
 #   arrangement A (Compose):  COPPERFLOW="docker exec copperflow-hub node --no-warnings /app/dist/cli.js"
@@ -73,6 +79,11 @@ if [[ $(( 8#$dest_mode & 8#077 )) -ne 0 ]]; then
   echo "$dest has mode $dest_mode: group or others may open it. Run chmod 700 on it." >&2
   exit 1
 fi
+# Only the invoking user may write there, so nothing can be planted where the archive is written.
+if [[ $(stat -c %u -- "$dest") -ne $(id -u) ]]; then
+  echo "$dest must be owned by the user running this script (uid $(id -u)), mode 700." >&2
+  exit 1
+fi
 
 # Outside the data directory, compared by real paths (no .. or link can hide it).
 real_data=$(realpath -e -- "$data")
@@ -101,33 +112,44 @@ if [[ $(id -u) -eq 0 ]]; then
   as_owner=(runuser -u "$owner" --)
 fi
 
-# Staging folders a killed run left behind (each holds a full copy of the database) go after a day.
-find "$data" -mindepth 1 -maxdepth 1 -type d -name '.backup-*' -mmin "+$STALE_MINUTES" -exec rm -rf -- {} +
+# Staging folders a killed run left behind (each holds a full copy of the database) go after a day (as the owner).
+"${as_owner[@]}" find "$data" -mindepth 1 -maxdepth 1 -type d -name '.backup-*' -mmin "+$STALE_MINUTES" -exec rm -rf -- {} +
 
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 name="copperflow-$stamp"
-staging="$data/.backup-$stamp"
-part="$dest/.$name.tar.gz.part"
+# Files root creates live only in the destination, which only the invoking user can write; noclobber (set -C) makes
+# every redirection there fail rather than follow anything already in place.
+set -C
+projects_part="$dest/.$name.projects.tar"
+db_part="$dest/.$name.db.tar"
+gz_part="$dest/.$name.tar.gz.part"
+staging=""
 
 cleanup() {
-  rm -rf -- "$staging"
-  rm -f -- "$part"
+  if [[ -n $staging ]]; then
+    "${as_owner[@]}" rm -rf -- "$staging"
+  fi
+  rm -f -- "$projects_part" "$db_part" "$gz_part"
 }
 trap cleanup EXIT
 
-"${as_owner[@]}" mkdir -m 700 -- "$staging"
-"${as_owner[@]}" "${copperflow[@]}" hub backup --data "$data" --to "$staging/hub.db" > "$staging/counts.json"
+# Everything in the staging folder is done by the owner: making it, the database copy, counts.json, and the small tar
+# of the two that root receives on standard output. Root never opens a path inside it.
+staging=$("${as_owner[@]}" mktemp -d "$data/.backup-XXXXXXXX")
+counts=$("${as_owner[@]}" "${copperflow[@]}" hub backup --data "$data" --to "$staging/hub.db")
+"${as_owner[@]}" sh -c 'printf "%s\n" "$1" > "$0"' "$staging/counts.json" "$counts"
+"${as_owner[@]}" tar --create --file - -C "$staging" hub.db counts.json > "$db_part"
 
 members=(ticket-key.pem)
 if [[ -d $data/projects ]]; then
   members+=(projects)
 fi
 
-# No --dereference: links are archived as links. Exit 1 means a file changed while it was read (a running workspace);
-# anything above 1 is a failure.
+# Root's one read in the data directory: tar, without --dereference, so a link is archived as a link and never
+# followed. Exit 1 means a file changed while it was read (a running workspace); anything above 1 is a failure.
+: > "$projects_part"
 set +e
-tar --create --gzip --file "$part" --numeric-owner --one-file-system --ignore-failed-read \
-  -C "$staging" hub.db counts.json \
+tar --create --file "$projects_part" --numeric-owner --one-file-system --ignore-failed-read \
   -C "$data" "${members[@]}" 2> "$dest/$name.log"
 tar_status=$?
 set -e
@@ -135,12 +157,14 @@ if [[ $tar_status -gt 1 ]]; then
   echo "tar failed with status $tar_status; see $dest/$name.log" >&2
   exit 1
 fi
+tar --concatenate --file "$projects_part" "$db_part"
+gzip -n -c -- "$projects_part" > "$gz_part"
 
-mv -- "$part" "$dest/$name.tar.gz"
+mv -- "$gz_part" "$dest/$name.tar.gz"
 (cd -- "$dest" && sha256sum -- "$name.tar.gz" > "$name.tar.gz.sha256")
 
 skipped=$(grep -c -e "Cannot open" -e "Cannot stat" -- "$dest/$name.log" || true)
-echo "Wrote $dest/$name.tar.gz ($(cat -- "$staging/counts.json"))."
+echo "Wrote $dest/$name.tar.gz ($counts)."
 if [[ $skipped -gt 0 ]]; then
   echo "Warning: $skipped file(s) could not be read and are not in the archive; see $dest/$name.log." >&2
 fi

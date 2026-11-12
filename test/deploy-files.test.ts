@@ -187,6 +187,27 @@ describe("deploy/ against the code", () => {
     expect(read("deploy/backup.sh")).toContain("copperflow-[0-9]{8}T[0-9]{6}Z")
   })
 
+  test("root never redirects into, copies, moves or cats a path under the data or staging directory", () => {
+    for (const path of SCRIPTS) {
+      const script = read(path)
+      expect(script, path).toMatch(/The rule for root/)
+      // A redirection is always opened by the script's own shell (root's, even on a line run through as_owner), unless
+      // it sits inside a single-quoted `sh -c` run as the owner; cat, cp and mv on such a path need as_owner.
+      const offenders = code(script)
+        .split("\n")
+        .map((line) => line.replace(/'[^']*'/g, "''"))
+        .filter((line) => /[^0-9&<]>\s*"?\$\{?(staging|data)\b/.test(line) || (/\b(cat|cp|mv)\b[^|;]*\$\{?(staging|data)\b/.test(line) && !/as_owner|copperflow_cmd/.test(line)))
+      expect(offenders, path).toEqual([])
+      // The pattern does catch the unsafe form.
+      expect(['"${as_owner[@]}" cmd > "$staging/counts.json"'].filter((line) => /[^0-9&<]>\s*"?\$\{?(staging|data)\b/.test(line))).toHaveLength(1)
+    }
+    // The staging folder is made by the owner with mktemp, and the counts are read from a captured variable.
+    const backup = read("deploy/backup.sh")
+    expect(backup).toMatch(/staging=\$\("\$\{as_owner\[@\]\}" mktemp -d /)
+    expect(backup).toMatch(/counts=\$\("\$\{as_owner\[@\]\}"/)
+    expect(backup).toMatch(/^set -C$/m)
+  })
+
   test("every file is LF only", () => {
     for (const path of ALL) expect(read(path).includes("\r"), path).toBe(false)
   })

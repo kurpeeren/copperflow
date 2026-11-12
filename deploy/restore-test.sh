@@ -15,6 +15,11 @@
 # every entry in the wrong group. copperflow itself always runs as the restored data directory's owner (runuser), never
 # as root. CF_WORKSPACE_GID is the workspace group's gid (as in hub.env).
 #
+# The rule for root: it never opens, creates, reads or redirects to a path inside a directory the hub's user or the
+# workspace user can write. Root makes the scratch directory with mktemp -d in a root-owned place, tar alone fills it,
+# root reads counts.json and the database's owner before handing the data directory to that owner, and from then on
+# only the owner (through runuser or docker run --user) touches anything in it; root's last act is removing it.
+#
 # COPPERFLOW names the command that runs copperflow (default: copperflow); arrangement B:
 #   COPPERFLOW="node --no-warnings /opt/copperflow/dist/cli.js"
 # Arrangement A: set COPPERFLOW_IMAGE to the hub's image instead (for example copperflow-hub:1); the script runs it with
@@ -52,7 +57,17 @@ if [[ -f $archive.sha256 ]]; then
   (cd -- "$(dirname -- "$archive")" && sha256sum --check --quiet -- "$(basename -- "$archive").sha256")
 fi
 
-scratch=$(mktemp -d "${RESTORE_PARENT:-${TMPDIR:-/tmp}}/copperflow-restore.XXXXXX")
+parent=${RESTORE_PARENT:-${TMPDIR:-/tmp}}
+# As root, the scratch directory is made by root with mktemp -d in a root-owned place others cannot write into
+# (or a sticky one such as /tmp), so nothing can be planted in or around it.
+if [[ $(id -u) -eq 0 ]]; then
+  parent_mode=$(stat -c %a -- "$parent")
+  if [[ $(stat -c %u -- "$parent") -ne 0 || ( $(( 8#$parent_mode & 8#022 )) -ne 0 && $(( 8#$parent_mode & 8#1000 )) -eq 0 ) ]]; then
+    echo "$parent must be owned by root and not writable by others (or sticky, like /tmp)." >&2
+    exit 1
+  fi
+fi
+scratch=$(mktemp -d "$parent/copperflow-restore.XXXXXX")
 cleanup() {
   rm -rf -- "$scratch"
 }
@@ -67,16 +82,18 @@ else
   tar --extract --gzip --file "$archive" --directory "$data" --numeric-owner --preserve-permissions
 fi
 for required in hub.db counts.json ticket-key.pem; do
-  if [[ ! -f $data/$required ]]; then
-    echo "The archive has no $required." >&2
+  if [[ -L $data/$required || ! -f $data/$required ]]; then
+    echo "The archive has no $required as a plain file." >&2
     exit 1
   fi
 done
-expected=$(cat -- "$data/counts.json")
+# Read while the data directory is still root's alone (700, made by root, filled only by tar), and never again by path.
+expected=$(< "$data/counts.json")
 rm -f -- "$data/counts.json"
 
 # The data directory itself is not in the archive: it gets the owner of the database, as on the server.
 owner_ids=$(stat -c %u:%g -- "$data/hub.db")
+owner_name=$(stat -c %U -- "$data/hub.db")
 copperflow_cmd=()
 if [[ $(id -u) -eq 0 ]]; then
   chown -- "$owner_ids" "$data"
@@ -91,7 +108,7 @@ else
       echo "Running as root needs runuser (util-linux) to run copperflow as the data directory's owner." >&2
       exit 1
     fi
-    copperflow_cmd=(runuser -u "$(stat -c %U -- "$data/hub.db")" -- "${copperflow[@]}")
+    copperflow_cmd=(runuser -u "$owner_name" -- "${copperflow[@]}")
   else
     copperflow_cmd=("${copperflow[@]}")
   fi

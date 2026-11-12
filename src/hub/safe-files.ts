@@ -168,6 +168,75 @@ export async function measureTree(root: string, limits: { maxEntries?: number; m
   return { bytes }
 }
 
+/**
+ * Visits every entry under `root` (not `root` itself) with its lstat, never following a link: a folder is read only
+ * when it is a real folder whose realpath is inside the root, and its device, inode and realpath are checked again
+ * after its entries were visited (as measureTree does). `onEntry` returning false keeps a folder from being entered.
+ * Returns the folders that moved while they were read (their sub-folders are not entered).
+ */
+export async function walkEntries(root: string, onEntry: (path: string, info: Stats) => Promise<boolean>): Promise<string[]> {
+  const realRoot = await realpath(root)
+  const identity = async (folder: string): Promise<string | undefined> => {
+    const [real, info] = await Promise.all([realpath(folder).catch(() => ""), lstat(folder).catch(() => undefined)])
+    if (real === "" || !info?.isDirectory() || !isInside(realRoot, real)) return undefined
+    return `${info.dev}:${info.ino}:${real}`
+  }
+  const moved: string[] = []
+  const pending = [root]
+  while (pending.length > 0) {
+    const folder = pending.pop() as string
+    const before = await identity(folder)
+    if (before === undefined) {
+      moved.push(folder)
+      continue
+    }
+    const folders: string[] = []
+    for (const name of (await readdir(folder)).sort()) {
+      const path = join(folder, name)
+      const info = await lstat(path).catch(() => undefined)
+      if (!info) continue
+      if ((await onEntry(path, info)) && info.isDirectory()) folders.push(path)
+    }
+    if ((await identity(folder)) !== before) {
+      moved.push(folder)
+      continue
+    }
+    pending.push(...folders.reverse())
+  }
+  return moved
+}
+
+export type RepairOutcome = "repaired" | "changed" | "refused"
+
+/**
+ * Changes one entry's mode and/or group through a handle, never through its path: opened with O_NOFOLLOW (and
+ * O_DIRECTORY for a folder), the handle's device and inode must be the ones `seen` by lstat, or nothing is changed
+ * ("changed"). Only regular files with one link and folders are ever changed ("refused" otherwise, and on a platform
+ * without O_NOFOLLOW).
+ */
+export async function repairThroughHandle(path: string, seen: Stats, change: { mode?: number; gid?: number }): Promise<RepairOutcome> {
+  if (NO_FOLLOW === 0) return "refused"
+  if (!seen.isDirectory() && !(seen.isFile() && seen.nlink === 1)) return "refused"
+  const flags = constants.O_RDONLY | NO_FOLLOW | (constants.O_NONBLOCK ?? 0) | (seen.isDirectory() ? (constants.O_DIRECTORY ?? 0) : 0)
+  let handle: FileHandle
+  try {
+    handle = await open(path, flags)
+  } catch (error) {
+    // ELOOP: it became a link; ENOTDIR: no longer a folder; ENOENT: gone. Anything else is not ours to change.
+    return ["ELOOP", "ENOTDIR", "ENOENT"].includes((error as NodeJS.ErrnoException).code ?? "") ? "changed" : "refused"
+  }
+  try {
+    const opened = await handle.stat()
+    if (opened.dev !== seen.dev || opened.ino !== seen.ino) return "changed"
+    if (opened.isFile() && opened.nlink !== 1) return "refused"
+    if (change.gid !== undefined && opened.gid !== change.gid) await handle.chown(opened.uid, change.gid)
+    if (change.mode !== undefined && (opened.mode & 0o7777) !== change.mode) await handle.chmod(change.mode)
+    return "repaired"
+  } finally {
+    await handle.close()
+  }
+}
+
 /** Bytes the regular files under `dir` take, lstat only; a failed measurement throws. */
 export async function usageOf(dir: string): Promise<number> {
   const measured = await measureTree(dir)

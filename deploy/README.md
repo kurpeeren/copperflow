@@ -391,8 +391,18 @@ database and key owner-only and owned by the hub's user; every project folder th
 2770; everything inside readable and writable by that group; nothing open to others; no link pointing out of its
 project. It prints each problem on its own line and exits 1 when there is any; it ends with `The data directory has no
 problems.` otherwise. It takes the workspace group from the running hub's status file, or `--workspace-group <gid>`.
-`--fix` repairs what the hub's user owns and lists what needs root; it refuses while the hub's status file says the
-hub is running (stop it first; after a hard kill wait two minutes). It never follows or removes a link.
+The check alone only looks (lstat and readlink) and may run any time.
+
+`--fix` repairs what the hub's user owns and lists what needs root. It changes an entry only through a handle opened
+without following links whose device and inode match what it looked at, so a link or a swapped entry is reported and
+left alone; links, devices, sockets, FIFOs and files with more than one link are never changed. It runs only when
+nothing else can touch the data, and refuses otherwise with the reason:
+- as root (run it as the hub's user; root's part of a restore is tar alone);
+- while the hub's status file says the hub is running (stop it first; after a hard kill wait two minutes);
+- with the container runner, unless the engine answers that no `cf-ws-*` or `cf-clean-*` container exists; if the
+  engine cannot be asked, check by hand with `docker ps --all` and run it where the engine answers;
+- with the process runner, unless you add `--no-workspaces-running` after making sure no `copperflow workspace`
+  process of the hub's user is left (`ps -u copperflow-hub`).
 
 **The audit log** is the `audit` table in `hub.db`: time (milliseconds), user id or none, event, address, detail
 (a project id, a count or a reason; never a password, cookie, invite code, token or ticket). The events are listed
@@ -446,8 +456,10 @@ The command that runs copperflow, for this section (as `COPPERFLOW`):
 - A: `COPPERFLOW="docker exec copperflow-hub node --no-warnings /app/dist/cli.js"` (the hub running)
 - B: `COPPERFLOW="node --no-warnings /opt/copperflow/dist/cli.js"`
 
-The destination, once, as root: `install -d -m 700 -o copperflow-hub -g copperflow-hub /srv/copperflow-backup` (the
-script also makes it 700 when missing, and refuses one that group or others may open).
+The destination, once, as root: `install -d -m 700 -o copperflow-hub -g copperflow-hub /srv/copperflow-backup` when
+the hub's user runs the script; `install -d -m 700 /srv/copperflow-backup` (root's) when root runs it with
+`--allow-root`. The script refuses a destination owned by anyone but the user running it, or open to group or
+others, and makes it 700 when missing.
 
 ```
 sudo -u copperflow-hub COPPERFLOW="<as above>" /opt/copperflow/deploy/backup.sh /var/lib/copperflow /srv/copperflow-backup
@@ -481,11 +493,11 @@ on the same filesystem, and the archive is extracted as root so every owner, gro
 cfc stop          # A                         | cfc ps shows nothing running
 systemctl stop copperflow-hub   # B            | systemctl is-active copperflow-hub prints inactive
 aside=/var/lib/copperflow/.before-restore-$(date -u +%Y%m%dT%H%M%SZ)
-mkdir -m 700 "$aside"
-find /var/lib/copperflow -mindepth 1 -maxdepth 1 ! -path "$aside" -exec mv -t "$aside" -- {} +
+sudo -u copperflow-hub mkdir -m 700 "$aside"
+sudo -u copperflow-hub find /var/lib/copperflow -mindepth 1 -maxdepth 1 ! -path "$aside" -exec mv -t "$aside" -- {} +
 ls -A /var/lib/copperflow                      | only .before-restore-<time>
 tar --extract --gzip --file <archive> --directory /var/lib/copperflow --same-owner --numeric-owner --preserve-permissions
-rm /var/lib/copperflow/counts.json
+sudo -u copperflow-hub rm /var/lib/copperflow/counts.json
 stat -c '%a %U %G' /var/lib/copperflow         | 700 copperflow-hub copperflow-hub (unchanged: the mount point itself)
 cfoff hub check-data --data /var/lib/copperflow --workspace-group <gid>   # A
 cf hub check-data --data /var/lib/copperflow --workspace-group <gid>      # B
@@ -494,8 +506,10 @@ cf hub status --data /var/lib/copperflow       | (B; A: cfoff hub status ...) th
 ```
 
 Then start the hub (A `cfc up -d`, B `systemctl start copperflow-hub`) and check step 6's lines. When everything works,
-remove the moved-aside contents: `rm -rf /var/lib/copperflow/.before-restore-<time>`. If `check-data` reports problems,
-`--fix` (with the hub stopped) repairs what the hub's user owns and lists what needs root.
+remove the moved-aside contents: `sudo -u copperflow-hub rm -rf /var/lib/copperflow/.before-restore-<time>`. Root's only
+act inside the data directory is the `tar` line. If `check-data` reports problems, run it again with `--fix` as the
+hub's user, before starting the hub (B: `cf hub check-data ... --fix`; A: `cfoff hub check-data ... --fix`, which asks
+the engine that no workspace container is left); it lists what needs root.
 
 On another server, or onto a freshly made filesystem: mount it at `/var/lib/copperflow`, `install -d -m 700 -o
 copperflow-hub -g copperflow-hub` it if new, and continue from the `tar` line. The uids and gids in the archive are

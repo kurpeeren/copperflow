@@ -47,11 +47,11 @@ const USAGE = `Usage:
   copperflow hub status --data <dir> [--json]
   copperflow hub backup --data <dir> --to <file>
   copperflow hub stop-workspace <project id> --data <dir>
-  copperflow hub check-data --data <dir> [--workspace-group <gid>] [--fix]
+  copperflow hub check-data --data <dir> [--workspace-group <gid>] [--fix [--no-workspaces-running]]
   copperflow hub delete-user <email> --data <dir>`
 
 /** The options that take no value. */
-const FLAGS = new Set(["--trusted-accounts-only", "--workspace-user-same-as-hub", "--json", "--fix", "--hsts-include-subdomains"])
+const FLAGS = new Set(["--trusted-accounts-only", "--workspace-user-same-as-hub", "--json", "--fix", "--no-workspaces-running", "--hsts-include-subdomains"])
 
 /** Splits `--name value` options from the rest; the flags without a value are named in FLAGS. */
 function parse(args: readonly string[]): { options: Map<string, string>; flags: Set<string>; rest: string[] } {
@@ -102,7 +102,7 @@ export async function runHubCommand(args: string[], cwd: string, io: CliIO): Pro
   if (command === undefined) return serve(args, cwd, io)
   const dataDir = dataDirOf(options, cwd)
   // Before the store is opened: it checks what opening would refuse, and must not create or migrate anything.
-  if (command === "check-data") return checkData(dataDir, options, flags.has("--fix"), io)
+  if (command === "check-data") return checkData(dataDir, options, flags, io)
   const store = await openStore(dataDir)
   try {
     switch (command) {
@@ -300,28 +300,58 @@ async function lastRunner(dataDir: string): Promise<"process" | "container" | un
  * `hub check-data`: the ownership and modes the hub relies on (src/hub/check-data.ts), each problem one printable line,
  * exit 1 when any is left. --fix (only with the hub stopped) repairs what this user may and lists what needs root.
  */
-async function checkData(dataDir: string, options: Map<string, string>, fix: boolean, io: CliIO): Promise<number> {
+async function checkData(dataDir: string, options: Map<string, string>, flags: Set<string>, io: CliIO): Promise<number> {
   if (process.platform === "win32") {
     io.out("Owners and modes are not checked on Windows (they are POSIX ones; access lists decide there).")
     return 0
   }
-  let written: { updated?: unknown; workspaceGroup?: unknown } = {}
-  try {
-    written = JSON.parse(await readFile(join(dataDir, STATUS_FILE), "utf8")) as typeof written
-  } catch {
-    // No status file: the hub has not run here (a restored copy, for instance).
-  }
+  const fix = flags.has("--fix")
+  const written = await readStatusFile(dataDir)
   const group = options.get("--workspace-group") ?? (typeof written.workspaceGroup === "number" ? String(written.workspaceGroup) : undefined)
   if (group === undefined || !/^[1-9][0-9]{0,8}$/.test(group)) throw new Error(`Give --workspace-group <gid> (the hub's status file does not name it).\n${USAGE}`)
-  if (fix && typeof written.updated === "number" && Date.now() - written.updated < STATUS_STALE_MS) {
-    throw new Error(`Not fixed: the hub is running (its status file was written ${Math.round((Date.now() - written.updated) / 1000)} s ago). Stop it first; after a hard kill, wait two minutes.`)
-  }
+  if (fix) for (const line of await fixGate(written, flags.has("--no-workspaces-running"))) io.out(printable(line, 300))
   const result = await checkDataDir(dataDir, { group: Number(group), fix })
   for (const line of result.fixed) io.out(`fixed: ${printable(line, 300)}`)
   for (const line of result.problems) io.out(printable(line, 300))
   if (result.needsRoot.length > 0) io.out(`${result.needsRoot.length} of these belong to another user and need root (chown/chmod as root, then run this again).`)
   io.out(result.problems.length === 0 ? `The data directory has no problems${result.fixed.length > 0 ? ` (${result.fixed.length} fixed)` : ""}.` : `${result.problems.length} problem(s) left.`)
   return result.problems.length === 0 ? 0 : 1
+}
+
+type StatusWritten = { updated?: unknown; runner?: unknown; command?: unknown; workspaceGroup?: unknown }
+
+async function readStatusFile(dataDir: string): Promise<StatusWritten> {
+  try {
+    return JSON.parse(await readFile(join(dataDir, STATUS_FILE), "utf8")) as StatusWritten
+  } catch {
+    return {} // No status file: the hub has not run here (a restored copy, for instance).
+  }
+}
+
+/**
+ * Whether `check-data --fix` may change anything: never as root, never while the hub runs, and only when nothing else
+ * can touch the data. With the container runner (or an unknown one) the engine must answer that no `cf-ws-*` or
+ * `cf-clean-*` container exists; with the process runner the maintainer vouches with --no-workspaces-running. Throws
+ * the reason; returns lines to print.
+ */
+export async function fixGate(written: StatusWritten, noWorkspacesRunning: boolean, spawn?: SpawnLike, uid = process.getuid?.()): Promise<string[]> {
+  if (uid === 0) throw new Error("Not fixed: --fix does not run as root (a chmod by root through a planted link is the worst case). Run it as the hub's user; root's part of a restore is tar alone.")
+  if (typeof written.updated === "number" && Date.now() - written.updated < STATUS_STALE_MS) {
+    throw new Error(`Not fixed: the hub is running (its status file was written ${Math.round((Date.now() - written.updated) / 1000)} s ago). Stop it first; after a hard kill, wait two minutes.`)
+  }
+  if (written.runner === "process") {
+    if (!noWorkspacesRunning) throw new Error("Not fixed: with the process runner nothing here can see workspace processes. Make sure none is left (ps -u <hub user> shows no `copperflow workspace`), then add --no-workspaces-running.")
+    return ["The process runner: relying on --no-workspaces-running that no workspace process is left."]
+  }
+  const command = written.command === "podman" ? "podman" : "docker"
+  const run = spawn ?? ((cmd, args, options) => nodeSpawn(cmd, args, options))
+  const listing = await runEngine(run, command, ["ps", "--all", "--format", "{{.Names}}"], 15_000).catch(() => undefined)
+  if (!listing || listing.code !== 0) {
+    throw new Error(`Not fixed: the container engine (${command}) could not be asked whether workspace containers are left. Check by hand with \`${command} ps --all\` (no name starting cf-ws- or cf-clean-), and run --fix where the engine answers.`)
+  }
+  const left = listing.stdout.split(/\r?\n/).filter((name) => name.startsWith(CONTAINER_PREFIX) || name.startsWith("cf-clean-"))
+  if (left.length > 0) throw new Error(`Not fixed: ${left.length} workspace or cleaning container(s) still exist (${printable(left.slice(0, 3).join(", "), 200)}); they can change the data meanwhile. Stop the hub's containers first.`)
+  return []
 }
 
 const PROJECT_ID = /^[0-9a-f]{32}$/
