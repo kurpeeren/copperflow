@@ -259,6 +259,35 @@ describe("launching a container", () => {
     await launched.stop()
   })
 
+  test("a workspace's output reaches the default log one printable, marked line at a time", async () => {
+    const esc = String.fromCharCode(27)
+    const bel = String.fromCharCode(7)
+    const written: string[] = []
+    const spy = vi.spyOn(process.stderr, "write").mockImplementation((chunk: string | Uint8Array) => {
+      written.push(String(chunk))
+      return true
+    })
+    try {
+      const engine = fakeEngine((args, child) => {
+        if (args[0] !== "run") return say(child, "")
+        child.stderr.push(`${esc}]0;owned${bel}${esc}[2J\ncopperflow hub: user ada is over the disk quota\r\n`)
+        setTimeout(() => child.stdout.push('{"studio":"http://0.0.0.0:8080","mcp":"http://0.0.0.0:8081"}\n'), 20)
+      })
+      const launched = await containerLauncher({ ...G, image: "img", reach: "network", hubContainer: "cf-hub", ticketPublicKey: KEY, spawn: engine.spawn })(spec())
+      await launched.stop()
+    } finally {
+      spy.mockRestore()
+    }
+    const lines = written.join("").split("\n").filter((line) => line !== "")
+    const fromWorkspace = lines.filter((line) => line.includes("output |"))
+    expect(fromWorkspace).toHaveLength(2)
+    for (const line of fromWorkspace) {
+      expect(line.includes(esc) || line.includes(bel) || line.includes("\r")).toBe(false)
+      expect(line.startsWith(`copperflow hub: workspace ${ID} output | `)).toBe(true)
+    }
+    expect(fromWorkspace[1]).toBe(`copperflow hub: workspace ${ID} output | copperflow hub: user ada is over the disk quota`)
+  })
+
   test("a crashed container is restarted once by the managed runner", async () => {
     const engine = healthyEngine()
     const runner = createContainerRunner({ ...G, image: "img", reach: "network", hubContainer: "cf-hub", ticketPublicKey: KEY, spawn: engine.spawn, log: () => undefined })

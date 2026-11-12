@@ -1,6 +1,7 @@
 // The workspace runner: what the hub needs to start, find and stop a project's workspace. The hub only ever talks to
 // this interface; the process runner (tests, trusted accounts) and the container runner (Task 3) launch workspaces
 // behind it, and ManagedRunner gives both the same lifecycle: start on demand, idle stop, one restart, a cap.
+import { sanitisingLog } from "../printable.js"
 
 export type WorkspaceState = "stopped" | "starting" | "running" | "failed"
 
@@ -148,7 +149,7 @@ export class ManagedRunner implements WorkspaceRunner {
     this.maxRunning = options.maxRunning ?? DEFAULT_MAX_RUNNING
     this.maxPerUser = options.maxPerUser ?? DEFAULT_MAX_PER_USER
     this.maxHoldMs = options.maxHoldMs ?? DEFAULT_MAX_HOLD_MS
-    this.log = options.log ?? ((line) => process.stderr.write(`${line}\n`))
+    this.log = options.log ?? sanitisingLog("copperflow hub: ")
   }
 
   state(id: string): WorkspaceState {

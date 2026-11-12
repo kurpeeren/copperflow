@@ -2,6 +2,7 @@
 import { spawn } from "node:child_process"
 import { fileURLToPath } from "node:url"
 import { TICKET_PUBLIC_KEY_ENV } from "../../hosted/ticket.js"
+import { printable, sanitisingLog } from "../printable.js"
 import { ManagedRunner, type Launched, type Launcher, type WorkspaceAddress, type WorkspaceSpec } from "./runner.js"
 
 /**
@@ -56,7 +57,7 @@ function parseAddress(line: string): WorkspaceAddress {
 export function processLauncher(options: ProcessRunnerOptions): Launcher {
   const command = options.command ?? defaultCommand()
   const timeoutMs = options.startTimeoutMs ?? DEFAULT_START_TIMEOUT_MS
-  const log = options.log ?? ((line: string) => process.stderr.write(`${line}\n`))
+  const log = options.log ?? sanitisingLog("copperflow hub: ")
   return (spec: WorkspaceSpec) =>
     new Promise<Launched>((done, fail) => {
       const args = [
@@ -122,7 +123,7 @@ export function processLauncher(options: ProcessRunnerOptions): Launcher {
       })
       child.stderr.setEncoding("utf8")
       child.stderr.on("data", (chunk: string) => {
-        for (const line of chunk.split(/\r?\n/)) if (line.trim() !== "") log(`workspace ${spec.id}: ${line.slice(0, 500)}`)
+        for (const line of chunk.split(/\r\n|\r|\n/)) if (line.trim() !== "") log(`workspace ${spec.id} output | ${printable(line, 500)}`)
       })
     })
 }

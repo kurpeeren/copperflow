@@ -24,6 +24,16 @@ export function printable(text: unknown, max = 200): string {
   return plain.length > max ? `${plain.slice(0, Math.max(0, max - 3))}...` : plain
 }
 
+/**
+ * A log sink that writes each line of `text` on its own, through `printable`, behind `prefix`: a line break inside a
+ * message (a container's output, an engine's error) can never start a line that looks like the hub's own.
+ */
+export function sanitisingLog(prefix: string, write: (text: string) => void = (text) => void process.stderr.write(text)): (text: string) => void {
+  return (text) => {
+    for (const line of String(text).split(/\r\n|\r|\n/)) if (line.trim() !== "") write(`${prefix}${printable(line, 1000)}\n`)
+  }
+}
+
 /** The fixed categories a trash removal failure is recorded as, never the free text of the error. */
 export type RemovalFailure = "timeout" | "engine-error" | "permission" | "not-empty" | "unknown"
 

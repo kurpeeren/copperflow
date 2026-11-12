@@ -10,6 +10,7 @@ import { TICKET_PUBLIC_KEY_ENV } from "../../hosted/ticket.js"
 import { ID_PATTERN } from "../secrets.js"
 import { parseCidr, workspaceSubnets, type Subnet } from "../peer-guard.js"
 import { shareWithWorkspaceGroup } from "../safe-files.js"
+import { printable, sanitisingLog } from "../printable.js"
 import { ManagedRunner, type Launched, type Launcher, type WorkspaceAddress, type WorkspaceSpec } from "./runner.js"
 
 /** How the hub reaches a workspace container. */
@@ -543,7 +544,7 @@ export function containerLauncher(options: ContainerRunnerOptions): Launcher {
   const spawn = options.spawn ?? defaultSpawn()
   const timeoutMs = options.startTimeoutMs ?? DEFAULT_START_TIMEOUT_MS
   const logCap = options.logCapBytes ?? DEFAULT_LOG_CAP_BYTES
-  const log = options.log ?? ((line: string) => process.stderr.write(`${line}\n`))
+  const log = options.log ?? sanitisingLog("copperflow hub: ")
   return (spec: WorkspaceSpec) => {
     // Every check runs before any command does: a hostile id never reaches the engine.
     let args: string[]
@@ -630,7 +631,9 @@ export function containerLauncher(options: ContainerRunnerOptions): Launcher {
         if (logged >= logCap) return
         const kept = chunk.slice(0, logCap - logged)
         logged += kept.length
-        for (const line of kept.split(/\r?\n/)) if (line.trim() !== "") log(`workspace ${spec.id}: ${line.slice(0, 500)}`)
+        // Marked as the workspace's own output and made printable, so it can neither steer the terminal nor pass for a
+        // line of the hub's.
+        for (const line of kept.split(/\r\n|\r|\n/)) if (line.trim() !== "") log(`workspace ${spec.id} output | ${printable(line, 500)}`)
         if (logged >= logCap) log(`workspace ${spec.id}: log cap of ${logCap} bytes reached; further output is dropped`)
       })
     }))

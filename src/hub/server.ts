@@ -18,6 +18,7 @@ import { ProjectFiles } from "./projects.js"
 import { createProcessRunner } from "./runner/process-runner.js"
 import { installStartCheck, QUOTA_SWEEP_MS, sweepQuota } from "./quota.js"
 import { retryDeletedProjects, retryTrash, sweepOrphans } from "./project-folders.js"
+import { sanitisingLog } from "./printable.js"
 import { trustedProxies, workspaceSubnets, type SubnetSet } from "./peer-guard.js"
 import type { WorkspaceRunner } from "./runner/runner.js"
 import { HubStore } from "./store.js"
@@ -138,7 +139,8 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
   }
   const files = new ProjectFiles(options.dataDir)
   files.workspaceGroup = options.workspaceGroup
-  const log = options.log ?? ((line: string) => process.stderr.write(`copperflow hub: ${line}\n`))
+  // Every line through printable: a logged error can quote an engine's or a workspace's own output.
+  const log = options.log ?? sanitisingLog("copperflow hub: ")
   files.note = (path, why) => log(`project file ${JSON.stringify(path.slice(0, 200))}: ${why}`)
   await mkdir(files.root, { recursive: true, mode: 0o700 })
   const hub: Hub = {

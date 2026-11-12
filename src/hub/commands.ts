@@ -4,7 +4,7 @@ import { readdir, readFile } from "node:fs/promises"
 import { prepareDataDir } from "./permissions.js"
 import { basename, join, resolve } from "node:path"
 import { trashFailures } from "./project-folders.js"
-import { printable } from "./printable.js"
+import { printable, sanitisingLog } from "./printable.js"
 import { writeFileAtomic } from "../core/fs-utils.js"
 import type { CliIO } from "../cli-commands.js"
 import { AgentSessions } from "./agent-sessions.js"
@@ -141,7 +141,7 @@ export function chooseRunner(options: Map<string, string>, flags: Set<string>): 
 }
 
 /** With the container runner: the engine is checked and last run's leftovers swept before the hub listens. */
-export async function runnerFor(choice: RunnerChoice, io: CliIO, spawn?: SpawnLike): Promise<Pick<HubOptions, "runner" | "trustedAccountsOnly" | "workspaceGroup">> {
+export async function runnerFor(choice: RunnerChoice, io: CliIO, spawn?: SpawnLike, log: (text: string) => void = (text) => void process.stderr.write(text)): Promise<Pick<HubOptions, "runner" | "trustedAccountsOnly" | "workspaceGroup">> {
   if (choice.kind === "process") return { trustedAccountsOnly: choice.trustedAccountsOnly }
   for (const warning of await checkEngine(choice.settings, spawn)) io.out(printable(warning, 400))
   if (choice.settings.sameUserAsHub) io.out(SAME_USER_WARNING)
@@ -150,7 +150,8 @@ export async function runnerFor(choice: RunnerChoice, io: CliIO, spawn?: SpawnLi
   const removed = await sweepLeftovers(choice.settings, spawn, (line) => io.out(printable(line, 300)))
   if (removed > 0) io.out(`Removed ${removed} workspace container(s) left from an earlier run.`)
   return {
-    runner: (ticketPublicKey) => createContainerRunner({ ...choice.settings, ticketPublicKey, ...(spawn ? { spawn } : {}) }),
+    // An explicit sanitising log: workspace output and engine errors reach the maintainer one printable line at a time.
+    runner: (ticketPublicKey) => createContainerRunner({ ...choice.settings, ticketPublicKey, log: sanitisingLog("copperflow hub: ", log), ...(spawn ? { spawn } : {}) }),
     ...(choice.settings.group && !choice.settings.sameUserAsHub ? { workspaceGroup: Number(choice.settings.group) } : {}),
   }
 }
