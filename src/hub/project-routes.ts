@@ -8,7 +8,7 @@ import { boundaryOf } from "./multipart.js"
 import { StorageError, streamMultipart } from "./multipart-stream.js"
 import type { Writable } from "node:stream"
 import { projectsPage } from "./pages.js"
-import { ProjectBusyError, withProjectLock } from "./quota.js"
+import { forgetMeasurement, isOver, measureUser, MAX_ENTRIES_PER_USER, ProjectBusyError, StopUnconfirmedError, withProjectLock } from "./quota.js"
 import { newId } from "./secrets.js"
 import type { Project } from "./store.js"
 import { ZipRefusal } from "./zip.js"
@@ -37,14 +37,15 @@ async function lockedOrBusy<T>(hub: Hub, id: string, work: () => Promise<T>): Pr
     return await withProjectLock(hub, id, work)
   } catch (error) {
     if (error instanceof ProjectBusyError) throw new HubError(503, error.message, { "retry-after": "5" })
+    if (error instanceof StopUnconfirmedError) throw new HubError(503, error.message, { "retry-after": "60" })
     throw error
   }
 }
 
 export async function showProjects(hub: Hub, res: ServerResponse, signed: Signed, renewed?: string, status = 200, error?: string, note?: string): Promise<void> {
-  const measured = await hub.files.measureUser(signed.user.id)
+  const measured = await measureUser(hub, signed.user.id)
   const bytes = "failed" in measured ? undefined : measured.bytes
-  const over = bytes === undefined || bytes > hub.config.maxBytes
+  const over = isOver(hub, measured)
   const projects = await Promise.all(
     hub.store.projects(signed.user.id).map(async (project) => {
       if (!over) return project
@@ -52,7 +53,7 @@ export async function showProjects(hub: Hub, res: ServerResponse, signed: Signed
       return { ...project, ...("bytes" in size ? { bytes: size.bytes } : {}) }
     }),
   )
-  const usage = { projects: projects.length, maxProjects: hub.config.maxProjects, bytes, maxBytes: hub.config.maxBytes }
+  const usage = { projects: projects.length, maxProjects: hub.config.maxProjects, bytes, maxBytes: hub.config.maxBytes, maxEntries: MAX_ENTRIES_PER_USER }
   sendPage(res, status, projectsPage({ email: signed.user.email, formToken: signed.formToken }, projects, usage, error, note), withRenewed(renewed))
 }
 
@@ -136,6 +137,7 @@ export async function deleteProject(hub: Hub, req: IncomingMessage, res: ServerR
   hub.store.markProjectDeleted(signed.user.id, id)
   await lockedOrBusy(hub, id, () => hub.files.remove(signed.user.id, id))
   hub.store.deleteProject(signed.user.id, id)
+  forgetMeasurement(hub, signed.user.id)
   audit(hub, address, signed.user.id, "project-deleted", id)
   redirect(res, "/projects")
 }
@@ -287,17 +289,29 @@ async function unpackUpload(hub: Hub, address: string, signed: Signed, name: str
     if (error instanceof ZipRefusal) return refusedWith(error)
     throw error
   }
-  const project = { id: newId(), userId: signed.user.id, name, created: hub.config.now() }
-  const refused = insertProject(hub, project)
-  if (refused) return refused
+  // Unpacked into a staging folder no container can mount and no row names; only the finished folder is moved into
+  // place, with one rename, and only then does the project exist (its row inserted in the same step).
+  let staged
   try {
-    await hub.files.unpack(signed.user.id, project.id, zip)
+    staged = await hub.files.unpackStaged(zip)
   } catch (error) {
-    await hub.files.remove(signed.user.id, project.id)
-    hub.store.deleteProject(signed.user.id, project.id)
     if (error instanceof ZipRefusal) return refusedWith(error)
-    hub.log(`upload into project ${project.id} failed: ${(error as Error).message}`)
+    hub.log(`upload could not be unpacked: ${(error as Error).message}`)
     throw new HubError(400, "The archive could not be unpacked.")
+  }
+  const project = { id: newId(), userId: signed.user.id, name, created: hub.config.now() }
+  try {
+    await hub.files.place(staged, signed.user.id, project.id)
+  } catch (error) {
+    await hub.files.discard(staged)
+    hub.log(`upload could not be moved into place: ${(error as Error).message}`)
+    throw new HubError(500, "The archive could not be stored. Try again in a minute.")
+  }
+  const refused = insertProject(hub, project)
+  if (refused) {
+    // No row ever named the folder, so no workspace can have started on it.
+    await hub.files.remove(signed.user.id, project.id)
+    return refused
   }
   audit(hub, address, signed.user.id, "project-uploaded", `${project.id} (${zip.files.length} files)`)
   return undefined

@@ -79,7 +79,7 @@ export function signUpPage(formToken: string, error?: string): string {
  * `usage.bytes` undefined means the folder could not be measured, which counts as over the limit. Over the limit, no
  * project opens and the projects are listed largest first with their sizes.
  */
-export function projectsPage(viewer: Viewer, projects: readonly (Project & { bytes?: number })[], usage: { projects: number; maxProjects: number; bytes: number | undefined; maxBytes: number }, error?: string, note?: string): string {
+export function projectsPage(viewer: Viewer, projects: readonly (Project & { bytes?: number })[], usage: { projects: number; maxProjects: number; bytes: number | undefined; maxBytes: number; maxEntries?: number }, error?: string, note?: string): string {
   const mb = (bytes: number) => (bytes / (1024 * 1024)).toFixed(1)
   const stopped = usage.bytes === undefined || usage.bytes > usage.maxBytes
   const shown = stopped ? [...projects].sort((a, b) => (b.bytes ?? Infinity) - (a.bytes ?? Infinity)) : projects
@@ -95,7 +95,7 @@ export function projectsPage(viewer: Viewer, projects: readonly (Project & { byt
   return layout(
     "Projects",
     `<h1>Projects</h1>${message(error ?? (stopped ? OVER_QUOTA_MESSAGE : undefined), note)}
-<p>${usage.projects} of ${usage.maxProjects} projects, ${usage.bytes === undefined ? "an unknown amount" : mb(usage.bytes)} of ${mb(usage.maxBytes)} MB used.</p>
+<p>${usage.projects} of ${usage.maxProjects} projects, ${usage.bytes === undefined ? "an unknown amount" : mb(usage.bytes)} of ${mb(usage.maxBytes)} MB used${usage.maxEntries ? ` (and at most ${usage.maxEntries} files and folders in all)` : ""}.</p>
 ${projects.length ? `<table><tbody>${rows}</tbody></table>` : "<p>No projects yet.</p>"}
 <h2>New project</h2>
 <form class="stack" method="post" action="/projects">${hidden(viewer.formToken)}

@@ -2,7 +2,7 @@
 // against ID_PATTERN before they become a path; a project's name is a label in the store and never touches the disk.
 import { randomBytes } from "node:crypto"
 import { createWriteStream } from "node:fs"
-import { mkdir } from "node:fs/promises"
+import { mkdir, rename } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import type { Writable } from "node:stream"
 import { resolveInRoot } from "../core/workspace.js"
@@ -44,13 +44,34 @@ export class ProjectFiles {
     return dir
   }
 
-  /** Removes the project folder without following any link in it (safe-files.ts). */
-  async remove(userId: string, projectId: string): Promise<void> {
-    await removeTree(this.projectDir(userId, projectId))
+  /** Where removed folders go first, out of every mount, before they are removed. */
+  get trash(): string {
+    return join(this.root, "..", "trash")
   }
 
+  /**
+   * Removes a project folder. The caller has blocked its workspace (confirmed gone); the folder is first renamed into
+   * the trash, out of every mount, and only that copy is removed (never following a link).
+   */
+  async remove(userId: string, projectId: string): Promise<void> {
+    await this.removeViaTrash(this.projectDir(userId, projectId))
+  }
+
+  /** Removes a user's folder the same way; the caller has stopped (and blocked) all their workspaces. */
   async removeUser(userId: string): Promise<void> {
-    await removeTree(this.userDir(userId))
+    await this.removeViaTrash(this.userDir(userId))
+  }
+
+  private async removeViaTrash(dir: string): Promise<void> {
+    await mkdir(this.trash, { recursive: true, mode: 0o700 })
+    const parked = join(this.trash, `removed-${randomBytes(16).toString("hex")}`)
+    try {
+      await rename(dir, parked)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return
+      throw error
+    }
+    await removeTree(parked)
   }
 
   /** The regular files under a folder; links and special files are skipped, never followed (safe-files.ts). */
@@ -70,8 +91,8 @@ export class ProjectFiles {
   }
 
   /** The user's measurement, or why there is none. */
-  async measureUser(userId: string): Promise<Measured> {
-    return measureTree(this.userDir(userId))
+  async measureUser(userId: string, limits: { maxEntries?: number; maxMs?: number } = {}): Promise<Measured> {
+    return measureTree(this.userDir(userId), limits)
   }
 
   /** Bytes one project takes on disk (lstat only). */
@@ -114,18 +135,36 @@ export class ProjectFiles {
   }
 
   /**
-   * Inflates a checked archive on disk into a NEW, empty project folder, entry by entry, each through the core's
-   * in-root check and never over an existing file.
+   * Inflates a checked archive into a NEW staging folder under the uploads folder, entry by entry, each through the
+   * core's in-root check and never over an existing file. The staging folder is not a project: no row names it and no
+   * container can mount it. On failure it is removed (no container ever saw it) and the error is thrown.
    */
-  async unpack(userId: string, projectId: string, zip: ZipOnDisk): Promise<void> {
-    const dir = await this.create(userId, projectId)
-    for (const entry of zip.files) {
-      const path = resolveInRoot(dir, entry.name)
-      // The folder is new and no workspace runs on it yet, but the check is cheap: never write through a link.
-      await checkNoLinks(dir, dirname(path))
-      await mkdir(dirname(path), { recursive: true, mode: 0o700 })
-      await checkNoLinks(dir, path)
-      await extractEntry(zip, entry, path)
+  async unpackStaged(zip: ZipOnDisk): Promise<string> {
+    await mkdir(this.uploads, { recursive: true, mode: 0o700 })
+    const dir = join(this.uploads, `stage-${randomBytes(16).toString("hex")}`)
+    await mkdir(dir, { mode: 0o700 })
+    try {
+      for (const entry of zip.files) {
+        const path = resolveInRoot(dir, entry.name)
+        await checkNoLinks(dir, dirname(path))
+        await mkdir(dirname(path), { recursive: true, mode: 0o700 })
+        await extractEntry(zip, entry, path)
+      }
+      return dir
+    } catch (error) {
+      await removeTree(dir)
+      throw error
     }
+  }
+
+  /** Moves a finished staging folder into place as the project's folder with one rename (refused if it exists). */
+  async place(staged: string, userId: string, projectId: string): Promise<void> {
+    await mkdir(this.userDir(userId), { recursive: true, mode: 0o700 })
+    await rename(staged, this.projectDir(userId, projectId))
+  }
+
+  /** Removes a staging folder that was never placed. */
+  async discard(staged: string): Promise<void> {
+    await removeTree(staged)
   }
 }

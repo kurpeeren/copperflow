@@ -16,7 +16,7 @@ import { privacyPage, STYLESHEET, termsPage, textPage } from "./pages.js"
 import { createProject, deleteProject, downloadProject, ownProject, renameProject, showProjects, uploadProject } from "./project-routes.js"
 import { ProjectFiles } from "./projects.js"
 import { createProcessRunner } from "./runner/process-runner.js"
-import { QUOTA_SWEEP_MS, sweepQuota } from "./quota.js"
+import { installStartCheck, QUOTA_SWEEP_MS, sweepQuota } from "./quota.js"
 import type { WorkspaceRunner } from "./runner/runner.js"
 import { HubStore } from "./store.js"
 import { prepareDataDir } from "./permissions.js"
@@ -133,7 +133,7 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
   const log = options.log ?? ((line: string) => process.stderr.write(`copperflow hub: ${line}\n`))
   files.note = (path, why) => log(`project file ${JSON.stringify(path.slice(0, 200))}: ${why}`)
   await mkdir(files.root, { recursive: true, mode: 0o700 })
-  return {
+  const hub: Hub = {
     config,
     store: HubStore.open(dbFile),
     files,
@@ -150,6 +150,9 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
     oauth: new OAuthState(),
     log,
   }
+  // The quota is asked by the runner itself, immediately before every launch.
+  installStartCheck(hub)
+  return hub
 }
 
 export async function startHub(options: HubOptions): Promise<HubServer> {

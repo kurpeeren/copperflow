@@ -10,7 +10,7 @@ import { audit, cutSignal, epochOf, type Hub, type Signed } from "./context.js"
 import { cookies, header, HubError, setCookie } from "./http.js"
 import { proxyRequest } from "./proxy.js"
 import { DEFAULT_MAX_HOLD_MS, RunnerFullError, WorkspaceStartError } from "./runner/runner.js"
-import { checkBeforeStart, OverQuotaError, ProjectBusyError } from "./quota.js"
+import { OverQuotaError, ProjectBusyError } from "./quota.js"
 import { hashSecret, newSecret } from "./secrets.js"
 import { FORM_BODY_LIMIT } from "./http.js"
 
@@ -152,7 +152,6 @@ export async function serveProjectOrigin(hub: Hub, req: IncomingMessage, res: Se
   const stillValid = () => !signal.aborted && epochOf(hub, userId) === epoch && workspaceUser(hub, req, projectId) === userId
   let target
   try {
-    await checkBeforeStart(hub, userId, projectId)
     target = await hub.runner.ensure({ id: projectId, userId, projectDir: hub.files.projectDir(userId, projectId), basePath: "", publicOrigin: projectOrigin(hub, projectId) })
   } catch (error) {
     if (!stillValid()) throw new HubError(404, "There is no such page.")

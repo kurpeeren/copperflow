@@ -439,10 +439,20 @@ export function containerLauncher(options: ContainerRunnerOptions): Launcher {
   }
 }
 
+/** Whether the engine confirms no container of the workspace exists (running or not); false when it cannot say. */
+export async function containerGone(spawn: SpawnLike, command: string, id: string): Promise<boolean> {
+  const name = containerName(id)
+  const result = await runEngine(spawn, command, ["ps", "--all", "--filter", `name=^${name}$`, "--format", "{{.Names}}"]).catch(() => undefined)
+  return result !== undefined && result.code === 0 && result.stdout.trim() === ""
+}
+
 /** A runner of containers, one per workspace, behind the same lifecycle as every runner. */
 export function createContainerRunner(options: ContainerRunnerOptions): ManagedRunner {
+  const { command } = checkSettings(options)
+  const spawn = options.spawn ?? defaultSpawn()
   return new ManagedRunner({
     launch: containerLauncher(options),
+    confirmGone: (id) => containerGone(spawn, command, id),
     ...(options.idleMs !== undefined ? { idleMs: options.idleMs } : {}),
     ...(options.maxRunning !== undefined ? { maxRunning: options.maxRunning } : {}),
     ...(options.log ? { log: options.log } : {}),

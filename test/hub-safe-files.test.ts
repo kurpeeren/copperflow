@@ -45,6 +45,29 @@ async function downloadText(files: ProjectFiles): Promise<{ names: string[]; tex
   return { names: failed ? [] : readZip(new Uint8Array(bytes)).map((entry) => entry.name), text: bytes.toString("latin1"), ...(failed ? { failed } : {}) }
 }
 
+describe("uploads and deletions never touch a folder a container can mount", () => {
+  test("an upload is unpacked into a staging folder outside projects, removed on failure, and placed with one rename", async () => {
+    const { data, files } = await setup()
+    const broken = { path: join(data, "missing.zip"), files: [{ name: "a.txt", offset: 0, compressed: 1, size: 1, crc: 0, method: 8 }] } as never
+    await expect(files.unpackStaged(broken)).rejects.toThrow()
+    expect((await readdir(files.uploads)).filter((name) => name.startsWith("stage-"))).toEqual([])
+    const empty = await files.unpackStaged({ path: join(data, "missing.zip"), files: [] } as never)
+    expect(empty.startsWith(files.uploads)).toBe(true)
+    const placed = "c".repeat(32)
+    await files.place(empty, USER, placed)
+    expect(await readdir(files.projectDir(USER, placed))).toEqual([])
+  })
+
+  test("deletion moves the folder into the trash first and never follows a link out", async () => {
+    const { outside, files, dir } = await setup()
+    expect(await link(outside, join(dir, "leakdir"), "dir")).toBe(true)
+    await files.remove(USER, PROJECT)
+    expect(await readdir(join(dir, ".."))).toEqual([])
+    expect(await readdir(files.trash)).toEqual([])
+    expect(await readdir(outside)).toEqual(["secret.txt"])
+  })
+})
+
 describe("the hub never follows a link inside a project", () => {
   test("a linked file and a linked directory are skipped by listing, usage, download and deletion", async () => {
     const { outside, files, dir } = await setup()

@@ -11,8 +11,8 @@
 // The production target is Linux. On Windows there is no O_NOFOLLOW: there the path's realpath is checked to stay inside
 // the project before and after opening, which narrows the window but does not close it.
 import { constants, type Stats } from "node:fs"
-import { lstat, open, readdir, realpath, rmdir, unlink, type FileHandle } from "node:fs/promises"
-import { join, relative, sep } from "node:path"
+import { lstat, open, opendir, readdir, realpath, rmdir, unlink, type FileHandle } from "node:fs/promises"
+import { isAbsolute, join, relative, sep } from "node:path"
 import type { Readable } from "node:stream"
 
 export interface SafeFile {
@@ -37,9 +37,28 @@ function kindOf(info: Stats): string {
   return "not a regular file"
 }
 
-/** The regular files under `dir`, found with lstat only; everything else is skipped and noted, never followed. */
-export async function walkProject(dir: string, note: SkipNote = () => undefined): Promise<SafeFile[]> {
+/** The most entries a listing (a download) holds in memory. */
+export const MAX_LISTED_ENTRIES = 20_000
+
+export class TooManyEntriesError extends Error {
+  constructor(max: number) {
+    super(`The project holds more than ${max} files and folders, more than the plan allows; delete some before downloading it.`)
+  }
+}
+
+/** `path` relative to `root` stays inside it (a name such as "..x" is inside; "..", "../x" and another drive are not). */
+export function isInside(root: string, path: string): boolean {
+  const rel = relative(root, path)
+  return rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)
+}
+
+/**
+ * The regular files under `dir`, found with lstat only; everything else is skipped and noted, never followed. Refuses
+ * (TooManyEntriesError) beyond `maxEntries` entries instead of holding millions in memory.
+ */
+export async function walkProject(dir: string, note: SkipNote = () => undefined, maxEntries = MAX_LISTED_ENTRIES): Promise<SafeFile[]> {
   const found: SafeFile[] = []
+  let entries = 0
   const top = await lstat(dir).catch((error: NodeJS.ErrnoException) => {
     if (error.code === "ENOENT") return undefined
     throw error
@@ -57,6 +76,8 @@ export async function walkProject(dir: string, note: SkipNote = () => undefined)
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return
       throw error
     }
+    entries += names.length
+    if (entries > maxEntries) throw new TooManyEntriesError(maxEntries)
     for (const name of names.sort()) {
       const path = join(folder, name)
       const info = await lstat(path).catch(() => undefined)
@@ -77,11 +98,15 @@ export type Measured = { bytes: number } | { failed: string }
 export const MEASURE_MAX_ENTRIES = 100_000
 export const MEASURE_MAX_MS = 10_000
 
+const MOVED: Measured = { failed: "a folder moved outside the project while it was measured" }
+
 /**
  * The bytes of the regular files under `root`, each at its full size however many links it has, measured with lstat
- * only: no file is ever opened, so this is safe while a workspace runs. A parent folder swapped for a link while it is
- * walked is caught by checking each folder's realpath stays inside the root before and after reading it; on a mismatch
- * the whole measurement is discarded. A cap on entries and time keeps a swapped or huge tree from walking the host.
+ * only: no file is ever opened, so this is safe while a workspace runs. Each folder is read with opendir, one entry at
+ * a time, the entry count and the time checked on every entry. Before reading a folder and again after all its
+ * entries were looked at, its realpath must still be inside the root and its device and inode unchanged; on any change
+ * the whole measurement is discarded (sizes seen through a swapped parent are never reported). Entries count toward
+ * the cap, so a tree of millions of empty files is over quota too.
  */
 export async function measureTree(root: string, limits: { maxEntries?: number; maxMs?: number; now?: () => number } = {}): Promise<Measured> {
   const maxEntries = limits.maxEntries ?? MEASURE_MAX_ENTRIES
@@ -92,34 +117,44 @@ export async function measureTree(root: string, limits: { maxEntries?: number; m
   if (!top) return { bytes: 0 }
   if (!top.isDirectory()) return { failed: "the folder is not a folder" }
   const realRoot = await realpath(root)
-  const inside = async (folder: string) => {
-    const real = await realpath(folder).catch(() => "")
-    const rel = relative(realRoot, real)
-    return real !== "" && !rel.startsWith("..") && !/^[A-Za-z]:/.test(rel)
+  /** The folder's identity if it is still a real folder inside the root, else undefined. */
+  const identity = async (folder: string): Promise<string | undefined> => {
+    const [real, info] = await Promise.all([realpath(folder).catch(() => ""), lstat(folder).catch(() => undefined)])
+    if (real === "" || !info?.isDirectory() || !isInside(realRoot, real)) return undefined
+    return `${info.dev}:${info.ino}:${real}`
   }
   let bytes = 0
   let entries = 0
   const pending = [root]
   while (pending.length > 0) {
     const folder = pending.pop() as string
-    if (!(await inside(folder))) return { failed: "a folder moved outside the project while it was measured" }
-    let names: string[]
+    const before = await identity(folder)
+    if (before === undefined) return MOVED
+    let dir
     try {
-      names = await readdir(folder)
+      dir = await opendir(folder)
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue
       return { failed: `a folder could not be read (${(error as NodeJS.ErrnoException).code ?? "error"})` }
     }
-    if (!(await inside(folder))) return { failed: "a folder moved outside the project while it was measured" }
-    for (const name of names) {
-      entries += 1
-      if (entries > maxEntries) return { failed: `more than ${maxEntries} entries` }
-      if (now() - started > maxMs) return { failed: `measuring took more than ${maxMs} ms` }
-      const info = await lstat(join(folder, name)).catch(() => undefined)
-      if (!info) continue
-      if (info.isDirectory()) pending.push(join(folder, name))
-      else if (info.isFile()) bytes += info.size
+    let folderBytes = 0
+    const folders: string[] = []
+    try {
+      for await (const entry of dir) {
+        entries += 1
+        if (entries > maxEntries) return { failed: `more than ${maxEntries} entries` }
+        if (now() - started > maxMs) return { failed: `measuring took more than ${maxMs} ms` }
+        const info = await lstat(join(folder, entry.name)).catch(() => undefined)
+        if (!info) continue
+        if (info.isDirectory()) folders.push(join(folder, entry.name))
+        else if (info.isFile()) folderBytes += info.size
+      }
+    } catch (error) {
+      return { failed: `a folder could not be read (${(error as NodeJS.ErrnoException).code ?? "error"})` }
     }
+    // Only now, with the folder unchanged after its entries were looked at, do its sizes and sub-folders count.
+    if ((await identity(folder)) !== before) return MOVED
+    bytes += folderBytes
+    pending.push(...folders)
   }
   return { bytes }
 }
@@ -133,8 +168,7 @@ export async function usageOf(dir: string): Promise<number> {
 
 async function insideRoot(root: string, path: string): Promise<boolean> {
   const [realRoot, realPath] = await Promise.all([realpath(root), realpath(path).catch(() => "")])
-  const rel = relative(realRoot, realPath)
-  return realPath !== "" && rel !== "" && !rel.startsWith("..") && !rel.startsWith(sep) && !/^[A-Za-z]:/.test(rel)
+  return realPath !== "" && relative(realRoot, realPath) !== "" && isInside(realRoot, realPath)
 }
 
 /**
@@ -161,7 +195,11 @@ export async function readListed(root: string, file: SafeFile): Promise<Readable
   return handle.createReadStream({ autoClose: true })
 }
 
-/** Removes `dir` and everything under it without ever following a link: links are unlinked, not their targets. */
+/**
+ * Removes `dir` and everything under it without ever following a link: links are unlinked, not their targets. Only
+ * ever run on a folder no container can write (a staging folder, or a project moved into the trash after its
+ * workspace was blocked and confirmed gone): the lstat-then-readdir pair is not atomic.
+ */
 export async function removeTree(dir: string): Promise<void> {
   const info = await lstat(dir).catch((error: NodeJS.ErrnoException) => {
     if (error.code === "ENOENT") return undefined
@@ -175,8 +213,8 @@ export async function removeTree(dir: string): Promise<void> {
 
 /** Throws when any folder between `root` and `path` (both included, `path` only if it exists) is not a real folder. */
 export async function checkNoLinks(root: string, path: string): Promise<void> {
+  if (!isInside(root, path)) throw new Error("The path is outside the project")
   const rel = relative(root, path)
-  if (rel.startsWith("..") || /^[A-Za-z]:/.test(rel)) throw new Error("The path is outside the project")
   let current = root
   for (const part of ["", ...rel.split(sep).filter((piece) => piece !== "")]) {
     current = part === "" ? root : join(current, part)

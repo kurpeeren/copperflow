@@ -14,7 +14,7 @@ import type { AgentState, CallAuth } from "./hub-tools.js"
 import { stillAuthorised, text } from "./hub-tools.js"
 import { projectOrigin } from "./project-origin.js"
 import { RunnerFullError, WorkspaceStartError } from "./runner/runner.js"
-import { checkBeforeStart, OverQuotaError, ProjectBusyError } from "./quota.js"
+import { OverQuotaError, ProjectBusyError } from "./quota.js"
 
 const TICKET_LIFETIME_S = 60
 /** The longest one forwarded call may take, and the most bytes an answer may have. */
@@ -147,7 +147,6 @@ export async function forwardTool(hub: Hub, state: AgentState, auth: CallAuth, p
   const holds = () => stillAuthorised(hub, state, auth) && epochOf(hub, state.userId) === epoch && state.projectId === projectId && hub.store.project(state.userId, projectId) !== undefined
   let address
   try {
-    await checkBeforeStart(hub, state.userId, projectId)
     address = await hub.runner.ensure({ id: projectId, userId: state.userId, projectDir: hub.files.projectDir(state.userId, projectId), basePath: "", publicOrigin: projectOrigin(hub, projectId) })
   } catch (error) {
     if (!holds()) return text(REVOKED, true)

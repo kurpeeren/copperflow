@@ -37,6 +37,32 @@ export interface WorkspaceRunner {
   /** Stops every workspace of one user (sign-out, password change, deletion). */
   stopUser(userId: string): Promise<void>
   stopAll(): Promise<void>
+  /**
+   * Keeps a project's workspace from running: marks it blocked (every launch path refuses it from then on), waits for
+   * any start or stop in flight, stops it, and confirms it is gone. Throws ProjectBusyError when it is blocked already,
+   * and a plain error (the block released) when its end cannot be confirmed.
+   */
+  block(id: string): Promise<void>
+  unblock(id: string): void
+  /** The check every launch path makes immediately before launching (the quota); it throws a StartRefused to refuse. */
+  setStartCheck(check: (spec: WorkspaceSpec) => Promise<void>): void
+}
+
+/** A start refused for a reason the person should be told (not a failure of the workspace). */
+export class StartRefused extends Error {}
+
+/** Refused because the project is being downloaded or deleted. */
+export class ProjectBusyError extends StartRefused {
+  constructor() {
+    super("The project is being downloaded or deleted. It opens again in a moment.")
+  }
+}
+
+/** Refused because the end of the workspace could not be confirmed; nothing is read while it might run. */
+export class StopUnconfirmedError extends Error {
+  constructor() {
+    super("The project's workspace could not be confirmed stopped, so its files were not touched. Try again in a minute.")
+  }
 }
 
 /** A launched workspace, as a launcher hands it over. */
@@ -81,6 +107,8 @@ export interface ManagedRunnerOptions {
   maxHoldMs?: number
   /** Where launch failures and crashes are reported (server side only); default stderr. */
   log?: (line: string) => void
+  /** Asks the engine whether the workspace's container is gone (the container runner); default: it is. */
+  confirmGone?: (id: string) => Promise<boolean>
 }
 
 interface Entry {
@@ -126,7 +154,32 @@ export class ManagedRunner implements WorkspaceRunner {
     return this.live().map((entry) => ({ id: entry.spec.id, userId: entry.spec.userId }))
   }
 
+  private readonly blocked = new Set<string>()
+  private startCheck: (spec: WorkspaceSpec) => Promise<void> = async () => undefined
+
+  setStartCheck(check: (spec: WorkspaceSpec) => Promise<void>): void {
+    this.startCheck = check
+  }
+
+  async block(id: string): Promise<void> {
+    if (this.blocked.has(id)) throw new ProjectBusyError()
+    this.blocked.add(id)
+    try {
+      // A start in flight settles (and is refused at its launch point) inside stop; loop in case one slipped in.
+      for (let entry = this.entries.get(id); entry; entry = this.entries.get(id)) await this.stop(id)
+      if (!(await (this.options.confirmGone ?? (async () => true))(id))) throw new StopUnconfirmedError()
+    } catch (error) {
+      this.blocked.delete(id)
+      throw error
+    }
+  }
+
+  unblock(id: string): void {
+    this.blocked.delete(id)
+  }
+
   async ensure(spec: WorkspaceSpec): Promise<WorkspaceAddress> {
+    if (this.blocked.has(spec.id)) throw new ProjectBusyError()
     const known = this.entries.get(spec.id)
     if (known && (known.spec.userId !== spec.userId || known.spec.projectDir !== spec.projectDir || known.spec.basePath !== spec.basePath || known.spec.publicOrigin !== spec.publicOrigin)) {
       throw new Error("A workspace id was reused for another project")
@@ -215,9 +268,20 @@ export class ManagedRunner implements WorkspaceRunner {
     await Promise.all([...this.entries.keys()].map((id) => this.stop(id)))
   }
 
+  /**
+   * The one launch point (first start, the retry after a victim is stopped, the crash restart): the start check (the
+   * quota) runs, then the block is checked with no wait between it and the launch.
+   */
+  private async launchChecked(spec: WorkspaceSpec): Promise<Launched> {
+    if (this.blocked.has(spec.id)) throw new ProjectBusyError()
+    await this.startCheck(spec)
+    if (this.blocked.has(spec.id)) throw new ProjectBusyError()
+    return this.options.launch(spec)
+  }
+
   private start(entry: Entry): Promise<WorkspaceAddress> {
     entry.state = "starting"
-    const starting = this.options.launch(entry.spec).then(
+    const starting = this.launchChecked(entry.spec).then(
       (launched) => {
         entry.launched = launched
         entry.starting = undefined
@@ -232,6 +296,12 @@ export class ManagedRunner implements WorkspaceRunner {
       },
       (error: unknown) => {
         entry.starting = undefined
+        if (error instanceof StartRefused) {
+          // Not a failure of the workspace: it simply does not run, and the person is told why.
+          if (this.entries.get(entry.spec.id) === entry) this.entries.delete(entry.spec.id)
+          entry.state = "stopped"
+          throw error
+        }
         entry.state = "failed"
         this.log(`workspace ${entry.spec.id}: start failed: ${(error as Error).message}`)
         throw new WorkspaceStartError()
