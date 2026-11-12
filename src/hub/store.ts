@@ -38,8 +38,8 @@ export interface AuditEntry {
   detail: string
 }
 
+/** Set after the version check, so a refused (newer) database is left exactly as it was. */
 const PRAGMAS = `
-PRAGMA busy_timeout = 5000;
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 `
@@ -159,6 +159,9 @@ export class HubStore {
   private constructor(file: string) {
     this.db = new DatabaseSync(file)
     try {
+      // Waiting for a lock changes nothing in the file; everything else waits until the version is known to be ours.
+      this.db.exec("PRAGMA busy_timeout = 5000")
+      this.refuseNewer()
       this.db.exec(PRAGMAS)
       this.migrate()
     } catch (error) {
@@ -172,15 +175,25 @@ export class HubStore {
    * Brings the schema to SCHEMA_VERSION: refuses a database from a newer version (changing nothing), and runs the
    * additive steps an older one lacks, in order, in one transaction with the new version number.
    */
-  private migrate(): void {
-    const version = Number((this.db.prepare("PRAGMA user_version").get() as Row).user_version)
+  private version(): number {
+    return Number((this.db.prepare("PRAGMA user_version").get() as Row).user_version)
+  }
+
+  private refuseNewer(): void {
+    const version = this.version()
     if (version > SCHEMA_VERSION) {
       throw new Error(
         `hub.db was written by a newer copperflow (schema ${version}; this one knows up to ${SCHEMA_VERSION}). Nothing was changed. Run the newer copperflow, or restore the backup taken before the upgrade; before every upgrade, take one with \`copperflow hub backup --data <dir> --to <file>\`.`,
       )
     }
-    if (version === SCHEMA_VERSION) return
+  }
+
+  private migrate(): void {
+    if (this.version() === SCHEMA_VERSION) return
     this.transaction(() => {
+      // Read again under the write lock: another process may have migrated it meanwhile.
+      const version = this.version()
+      if (version >= SCHEMA_VERSION) return
       if (version < 1) {
         this.db.exec(SCHEMA)
         for (const [table, column] of COLUMNS) this.addColumn(table, column)
@@ -374,13 +387,13 @@ export class HubStore {
     this.sql("INSERT OR REPLACE INTO workspace_stops (project_id, created) VALUES (?, ?)").run(projectId, now)
   }
 
-  /** The workspaces waiting to be stopped, removed from the table as they are read. */
-  takeStops(): string[] {
-    return this.transaction(() => {
-      const ids = (this.sql("SELECT project_id FROM workspace_stops").all() as Row[]).map((row) => row.project_id as string)
-      this.sql("DELETE FROM workspace_stops").run()
-      return ids
-    })
+  /** The workspaces waiting to be stopped, oldest request first; each is removed by clearStop once it is done. */
+  stopRequests(): string[] {
+    return (this.sql("SELECT project_id FROM workspace_stops ORDER BY created, project_id").all() as Row[]).map((row) => row.project_id as string)
+  }
+
+  clearStop(projectId: string): void {
+    this.sql("DELETE FROM workspace_stops WHERE project_id = ?").run(projectId)
   }
 
   forgetDevice(idHash: string): void {

@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest"
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { parse } from "yaml"
+import { parseServeArgs } from "../src/hub/commands.js"
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url))
 const read = (path: string) => readFileSync(ROOT + path, "utf8")
@@ -53,6 +54,37 @@ describe("deploy/ against the code", () => {
     }
   })
 
+  test("the hub's arguments in the Compose file and the unit pass the hub's own parser, values and all", () => {
+    // The template's values, with plausible ones where the maintainer must fill them in.
+    const filled = new Map(templateValues())
+    const samples: Record<string, string> = { CF_WORKSPACE_DOMAIN: "ws.example-workspaces.net", CF_HUB_UID: "990", CF_HUB_GID: "990", CF_WORKSPACE_GID: "991", CF_DOCKER_GID: "992", CF_CADDY_IMAGE: "caddy:2@sha256:" + "0".repeat(64) }
+    for (const [name, value] of Object.entries(samples)) filled.set(name, value)
+    const substitute = (text: string) =>
+      text.replace(/\$\{([A-Z][A-Z0-9_]*)(:\?[^}]*)?\}/g, (_, name: string) => {
+        const value = filled.get(name)
+        if (value === undefined || value === "") throw new Error(`no value for ${name}`)
+        return value
+      })
+    const compose = parse(read(COMPOSE)) as { services: { hub: { command: string[] } } }
+    const fromCompose = compose.services.hub.command.map(substitute)
+    expect(fromCompose[0]).toBe("hub")
+    const execStart = /^ExecStart=\S+ \S+ (.*)$/m.exec(read(UNIT))?.[1] as string
+    const fromUnit = substitute(execStart).split(" ")
+    expect(fromUnit[0]).toBe("hub")
+    for (const args of [fromCompose.slice(1), fromUnit.slice(1)]) {
+      const parsed = parseServeArgs(args, "/", { value: undefined })
+      expect(parsed.choice.kind).toBe("container")
+      expect(parsed.bind).toBe("127.0.0.1")
+      expect(parsed.trustProxy).toBe("127.0.0.1")
+    }
+    // A wrong value shape fails the same parser.
+    for (const [flag, bad] of [["--port", "abc"], ["--trust-proxy", "proxy.example"], ["--workspace-group", "copperflow-ws"], ["--bind", "localhost"]]) {
+      const args = [...fromUnit.slice(1)]
+      args[args.indexOf(flag as string) + 1] = bad as string
+      expect(() => parseServeArgs(args, "/", { value: undefined }), flag).toThrow()
+    }
+  })
+
   test("every environment name a file uses is defined once in the template, and the template defines nothing unused", () => {
     const defined = templateValues()
     const lines = read(TEMPLATE).split("\n").filter((line) => /^[A-Z]/.test(line))
@@ -70,7 +102,11 @@ describe("deploy/ against the code", () => {
   test("the template holds no secret, and the values that must be chosen are empty", () => {
     const values = templateValues()
     expect([...values.keys()].filter((name) => /KEY|SECRET|PASSWORD|TOKEN/.test(name))).toEqual([])
-    for (const name of ["CF_WORKSPACE_DOMAIN", "CF_HUB_UID", "CF_HUB_GID", "CF_WORKSPACE_GID", "CF_DOCKER_GID"]) expect(values.get(name), name).toBe("")
+    for (const name of ["CF_WORKSPACE_DOMAIN", "CF_HUB_UID", "CF_HUB_GID", "CF_WORKSPACE_GID", "CF_DOCKER_GID", "CF_CADDY_IMAGE"]) expect(values.get(name), name).toBe("")
+    for (const name of ["CF_WORKSPACE_DOMAIN", "CF_HUB_UID", "CF_HUB_GID", "CF_WORKSPACE_GID", "CF_DOCKER_GID", "CF_CADDY_IMAGE"]) {
+      // Compose stops with a message while any of them is empty.
+      expect(read(COMPOSE), name).toContain(`\${${name}:?`)
+    }
     expect(values.get("CF_PUBLIC_HOST")).toBe("copperflow.kurpeeren.com")
     // The ticket key is made by the hub in the data directory; no file names a secret to pass in.
     for (const path of ALL) expect(read(path), path).not.toMatch(/PRIVATE KEY-----|COPPERFLOW_TICKET_PUBLIC_KEY=/)
@@ -142,6 +178,13 @@ describe("deploy/ against the code", () => {
     }
     expect(read("deploy/backup.sh")).toContain("hub backup")
     expect(read("deploy/restore-test.sh")).toContain("hub status --json")
+    // The restore is checked for the owners, groups and modes the hub relies on, extracted as root with owners kept.
+    expect(read("deploy/restore-test.sh")).toContain("hub check-data")
+    expect(read("deploy/restore-test.sh")).toContain("--same-owner --numeric-owner --preserve-permissions")
+    // Root never opens the live database: copperflow runs as the data directory's owner.
+    expect(code(read("deploy/backup.sh"))).toMatch(/as_owner=\(runuser -u "\$owner" --\)/)
+    // Rotation touches only the script's own names.
+    expect(read("deploy/backup.sh")).toContain("copperflow-[0-9]{8}T[0-9]{6}Z")
   })
 
   test("every file is LF only", () => {

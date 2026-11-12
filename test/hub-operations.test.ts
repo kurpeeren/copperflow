@@ -210,7 +210,7 @@ describe("the schema version", () => {
     const migrated = HubStore.open(old)
     expect(migrated.userByEmail("ada@example.com")?.id).toBe("u1")
     migrated.requestStop("a".repeat(32), 1)
-    expect(migrated.takeStops()).toEqual(["a".repeat(32)])
+    expect(migrated.stopRequests()).toEqual(["a".repeat(32)])
     migrated.close()
     expect(version(old)).toBe(SCHEMA_VERSION)
     const newer = new DatabaseSync(fresh)
@@ -218,6 +218,69 @@ describe("the schema version", () => {
     newer.close()
     expect(() => HubStore.open(fresh)).toThrow(/newer copperflow .*Nothing was changed.*copperflow hub backup/)
     expect(version(fresh)).toBe(SCHEMA_VERSION + 1)
+  })
+})
+
+describe("HSTS", () => {
+  test("every answer of an https hub carries Strict-Transport-Security, without subdomains unless asked", async () => {
+    const plain = await startTestHub()
+    const wide = await startTestHub({ hstsIncludeSubdomains: true })
+    const local = await startTestHub({ publicOrigin: "http://127.0.0.1:8080" })
+    try {
+      for (const [path, host] of [["/signin", "cf.example.test"], ["/healthz", "cf.example.test"], ["/", new URL(projectOriginOf("a".repeat(32))).host], ["/nowhere", "cf.example.test"]] as const) {
+        expect((await send(plain.url, "GET", path, { host })).headers["strict-transport-security"], path).toBe("max-age=31536000")
+      }
+      expect((await send(wide.url, "GET", "/signin", { host: "cf.example.test" })).headers["strict-transport-security"]).toBe("max-age=31536000; includeSubDomains")
+      expect((await send(local.url, "GET", "/healthz", { host: "127.0.0.1:8080" })).headers["strict-transport-security"]).toBeUndefined()
+    } finally {
+      await Promise.all([plain.close(), wide.close(), local.close()])
+    }
+  })
+
+  test("--hsts-include-subdomains is a flag of the hub's command line", async () => {
+    const { parseServeArgs } = await import("../src/hub/commands.js")
+    const base = ["--data", "/srv/cf", "--port", "8780", "--public-origin", "https://cf.example.test", "--workspace-domain", "ws.example.net", "--trusted-accounts-only"]
+    expect(parseServeArgs(base, "/").hstsIncludeSubdomains).toBe(false)
+    expect(parseServeArgs([...base, "--hsts-include-subdomains"], "/").hstsIncludeSubdomains).toBe(true)
+  })
+})
+
+describe("stop requests", () => {
+  test("are removed one at a time when done; a failed stop is kept and retried, and the others still happen", async () => {
+    const server = await startTestHub({ sweepMs: 50 })
+    const stopped: string[] = []
+    let failOnce = true
+    server.hub.runner.stop = async (id: string) => {
+      if (id === "b".repeat(32) && failOnce) {
+        failOnce = false
+        throw new Error("engine did not answer")
+      }
+      stopped.push(id)
+    }
+    try {
+      server.hub.store.requestStop("b".repeat(32), 1)
+      server.hub.store.requestStop("c".repeat(32), 2)
+      await vi.waitFor(() => expect([...stopped].sort()).toEqual(["b".repeat(32), "c".repeat(32)]), { timeout: 3000 })
+      expect(server.hub.store.stopRequests()).toEqual([])
+    } finally {
+      await server.close()
+    }
+  })
+})
+
+describe("the schema version is checked before anything changes", () => {
+  test("a newer database keeps its journal mode", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), "cf-newer-")), "hub.db")
+    const db = new DatabaseSync(file)
+    db.exec(`PRAGMA user_version = ${SCHEMA_VERSION + 1}`)
+    db.close()
+    expect(() => HubStore.open(file)).toThrow(/newer copperflow/)
+    const after = new DatabaseSync(file, { readOnly: true })
+    try {
+      expect(after.prepare("PRAGMA journal_mode").get()).toEqual({ journal_mode: "delete" })
+    } finally {
+      after.close()
+    }
   })
 })
 

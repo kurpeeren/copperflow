@@ -65,6 +65,8 @@ export interface HubOptions {
    * CIDR (comma-separated), or true for this machine's loopback.
    */
   trustProxy?: boolean | string
+  /** With an https public origin every answer carries HSTS; this adds includeSubDomains (the whole domain is https). */
+  hstsIncludeSubdomains?: boolean
   /**
    * The domain projects are served under: project `<id>` is `<id>.<workspaceDomain>` (such as ws.copperflow.example.com;
    * in tests ws.localhost). It needs a wildcard DNS record and a wildcard or on-demand certificate.
@@ -109,6 +111,9 @@ export function sameSiteWarning(publicOrigin: string, workspaceDomain: string): 
   return "Warning: the workspace domain is on the same site as the hub. A hostile project page can then fill that browser with cookies for the site and make the hub unusable there until they are cleared (it cannot read or forge a session). A workspace domain under a different registrable domain avoids this."
 }
 
+/** A domain name as --workspace-domain takes it (lower case). */
+export const WORKSPACE_DOMAIN = /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]*[a-z0-9])?$/
+
 /** The largest request header block the hub accepts (cookies included); a larger one gets a page about clearing cookies. */
 export const MAX_HEADER_BYTES = 64 * 1024
 
@@ -125,7 +130,7 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
     throw new Error("--public-origin must be https (plain http is allowed only for 127.0.0.1, ::1, localhost or *.localhost)")
   }
   const workspaceDomain = options.workspaceDomain.toLowerCase()
-  if (!/^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(workspaceDomain)) throw new Error("--workspace-domain must be a domain name, such as ws.copperflow.example.com")
+  if (!WORKSPACE_DOMAIN.test(workspaceDomain)) throw new Error("--workspace-domain must be a domain name, such as ws.copperflow.example.com")
   const config: HubConfig = {
     publicOrigin,
     publicHost: new URL(publicOrigin).host,
@@ -167,7 +172,10 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
 
 export async function startHub(options: HubOptions): Promise<HubServer> {
   const hub = await openHub(options)
+  const hsts = hub.config.secure ? `max-age=31536000${options.hstsIncludeSubdomains ? "; includeSubDomains" : ""}` : undefined
   const server = createServer({ maxHeaderSize: MAX_HEADER_BYTES }, (req, res) => {
+    // On every answer, the hub's pages and proxied ones alike (writeHead keeps headers set here).
+    if (hsts) res.setHeader("strict-transport-security", hsts)
     guard(req, res, options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS, hub.config.publicHost)
     route(hub, req, res).catch((error: unknown) => answerError(hub, res, error))
   })
@@ -208,7 +216,13 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
       // Users the maintainer deleted: their folders go here, where their workspaces can be blocked first.
       .then(async () => {
         // The maintainer's `hub stop-workspace`: an asked-for stop, so no crash restart; the next request starts it.
-        for (const projectId of hub.store.takeStops()) await hub.runner.stop(projectId)
+        // One at a time, each removed only when done: a failed stop stays for the next sweep, the others still happen.
+        for (const projectId of hub.store.stopRequests()) {
+          await hub.runner
+            .stop(projectId)
+            .then(() => hub.store.clearStop(projectId))
+            .catch((error: unknown) => hub.log(`stopping workspace ${projectId} failed; tried again at the next sweep: ${(error as Error).message}`))
+        }
         for (const userId of hub.store.deletedUsers()) await removeUser(hub, userId)
         await retryDeletedProjects(hub)
         await sweepOrphans(hub)

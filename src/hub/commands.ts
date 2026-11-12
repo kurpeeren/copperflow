@@ -1,6 +1,9 @@
 // copperflow hub: the hub server, and the maintainer's commands that work on its data directory directly.
 import { spawn as nodeSpawn } from "node:child_process"
 import { open, readdir, readFile } from "node:fs/promises"
+import { isIP } from "node:net"
+import { checkDataDir } from "./check-data.js"
+import { trustedProxies } from "./peer-guard.js"
 import { prepareDataDir } from "./permissions.js"
 import { basename, join, resolve } from "node:path"
 import { trashFailures } from "./project-folders.js"
@@ -12,7 +15,7 @@ import { OAuthState } from "./oauth-state.js"
 import { revokeUser, type RevokingHub } from "./revocation.js"
 import { measureTree } from "./safe-files.js"
 import { hashPassword, hashSecret, newSecret } from "./secrets.js"
-import { sameSiteWarning, startHub, TRUSTED_ONLY_WARNING, type HubOptions } from "./server.js"
+import { sameSiteWarning, startHub, TRUSTED_ONLY_WARNING, WORKSPACE_DOMAIN, type HubOptions } from "./server.js"
 import { HubStore, normaliseEmail } from "./store.js"
 import type { WorkspaceRunner } from "./runner/runner.js"
 import {
@@ -26,6 +29,7 @@ import {
   runEngine,
   sweepLeftovers,
   type ContainerSettings,
+  type HubIdentity,
   type SpawnLike,
 } from "./runner/container-runner.js"
 
@@ -36,23 +40,27 @@ const MAX_INVITES = 100
 
 const USAGE = `Usage:
   copperflow hub --data <dir> --port <n> --public-origin <url> --workspace-domain <domain> --runner container --workspace-image <name>
-                 [--container-command docker] [--workspace-reach loopback | --workspace-reach network --hub-container <name>] --workspace-group <gid> [--workspace-user-same-as-hub] [--bind <address>] [--trust-proxy <address|CIDR>]
+                 [--container-command docker] [--workspace-reach loopback | --workspace-reach network --hub-container <name>] --workspace-group <gid> [--workspace-user-same-as-hub] [--bind <address>] [--trust-proxy <address|CIDR>] [--hsts-include-subdomains]
   copperflow hub --data <dir> --port <n> --public-origin <url> --workspace-domain <domain> --runner process --trusted-accounts-only [--bind <address>] [--trust-proxy <address|CIDR>]
   copperflow hub invite --data <dir> [--count n]
   copperflow hub reset-password <email> --data <dir>
   copperflow hub status --data <dir> [--json]
   copperflow hub backup --data <dir> --to <file>
   copperflow hub stop-workspace <project id> --data <dir>
+  copperflow hub check-data --data <dir> [--workspace-group <gid>] [--fix]
   copperflow hub delete-user <email> --data <dir>`
 
-/** Splits `--name value` options from the rest; the flags without a value are named here. */
+/** The options that take no value. */
+const FLAGS = new Set(["--trusted-accounts-only", "--workspace-user-same-as-hub", "--json", "--fix", "--hsts-include-subdomains"])
+
+/** Splits `--name value` options from the rest; the flags without a value are named in FLAGS. */
 function parse(args: readonly string[]): { options: Map<string, string>; flags: Set<string>; rest: string[] } {
   const options = new Map<string, string>()
   const flags = new Set<string>()
   const rest: string[] = []
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i] as string
-    if (arg === "--trusted-accounts-only" || arg === "--workspace-user-same-as-hub" || arg === "--json") flags.add(arg)
+    if (FLAGS.has(arg)) flags.add(arg)
     else if (arg.startsWith("--")) {
       const value = args[i + 1]
       if (value === undefined || value === "") throw new Error(`Missing ${arg} value.\n${USAGE}`)
@@ -91,8 +99,10 @@ const NO_RUNNER: WorkspaceRunner = {
 export async function runHubCommand(args: string[], cwd: string, io: CliIO): Promise<number> {
   const { options, flags, rest } = parse(args)
   const [command, email] = rest
-  if (command === undefined) return serve(options, flags, cwd, io)
+  if (command === undefined) return serve(args, cwd, io)
   const dataDir = dataDirOf(options, cwd)
+  // Before the store is opened: it checks what opening would refuse, and must not create or migrate anything.
+  if (command === "check-data") return checkData(dataDir, options, flags.has("--fix"), io)
   const store = await openStore(dataDir)
   try {
     switch (command) {
@@ -125,7 +135,7 @@ export const SAME_USER_WARNING =
   "Warning: --workspace-user-same-as-hub runs workspaces as the hub's own user, so a container escape would run as the hub's user and could read its keys and database. Use it only for a trial on your own machine; give strangers' accounts --workspace-group instead."
 
 /** The runner the flags ask for: `--runner process` (the default, as before) or `--runner container`. */
-export function chooseRunner(options: Map<string, string>, flags: Set<string>): RunnerChoice {
+export function chooseRunner(options: Map<string, string>, flags: Set<string>, identity?: { value: HubIdentity | undefined }): RunnerChoice {
   const kind = options.get("--runner") ?? "process"
   if (kind === "process") {
     const stray = CONTAINER_OPTIONS.find((name) => options.has(name)) ?? (flags.has("--workspace-user-same-as-hub") ? "--workspace-user-same-as-hub" : undefined)
@@ -142,7 +152,7 @@ export function chooseRunner(options: Map<string, string>, flags: Set<string>): 
   const group = options.get("--workspace-group")
   const sameUserAsHub = flags.has("--workspace-user-same-as-hub")
   const settings: ContainerSettings = { image, reach, ...(command ? { command } : {}), ...(hubContainer ? { hubContainer } : {}), ...(group ? { group } : {}), ...(sameUserAsHub ? { sameUserAsHub } : {}) }
-  checkSettings(settings)
+  checkSettings(identity ? { ...settings, identity: identity.value } : settings)
   return { kind, settings }
 }
 
@@ -162,22 +172,57 @@ export async function runnerFor(choice: RunnerChoice, io: CliIO, spawn?: SpawnLi
   }
 }
 
-async function serve(options: Map<string, string>, flags: Set<string>, cwd: string, io: CliIO): Promise<number> {
+/** The hub's command line, every value checked for its shape before anything starts. */
+export interface ServeArgs {
+  dataDir: string
+  port: number
+  publicOrigin: string
+  workspaceDomain: string
+  bind: string
+  trustProxy?: string
+  hstsIncludeSubdomains: boolean
+  choice: RunnerChoice
+}
+
+/**
+ * Parses and checks `copperflow hub ...` (the server). `identity`, when given, replaces the process's own uid and groups
+ * in the runner's checks (the deploy-file test checks argument shapes on a machine without the hub's user).
+ */
+export function parseServeArgs(args: readonly string[], cwd: string, identity?: { value: HubIdentity | undefined }): ServeArgs {
+  const { options, flags, rest } = parse(args)
+  if (rest.length > 0) throw new Error(`Unexpected "${printable(rest[0])}".\n${USAGE}`)
+  const known = new Set(["--data", "--port", "--public-origin", "--workspace-domain", "--bind", "--trust-proxy", "--runner", ...CONTAINER_OPTIONS])
+  const stray = [...options.keys()].find((name) => !known.has(name))
+  if (stray) throw new Error(`Unknown option ${printable(stray)}.\n${USAGE}`)
   const dataDir = dataDirOf(options, cwd)
   const port = Number(options.get("--port"))
-  if (!Number.isInteger(port) || port < 0 || port > 65_535) throw new Error(`--port must be a port number.\n${USAGE}`)
+  if (!/^[0-9]{1,5}$/.test(options.get("--port") ?? "") || port > 65_535) throw new Error(`--port must be a port number.\n${USAGE}`)
   const publicOrigin = options.get("--public-origin")
   if (!publicOrigin) throw new Error(`Missing --public-origin <url>.\n${USAGE}`)
-  const choice = chooseRunner(options, flags)
+  if (!URL.canParse(publicOrigin) || !/^https?:$/.test(new URL(publicOrigin).protocol)) throw new Error(`--public-origin must be a URL such as https://copperflow.example.com.\n${USAGE}`)
+  const choice = chooseRunner(options, flags, identity)
   if (choice.kind === "container") checkDataDirForMounts(dataDir)
   const workspaceDomain = options.get("--workspace-domain")
   if (!workspaceDomain) throw new Error(`Missing --workspace-domain <domain>: each project is served on its own origin under it.\n${USAGE}`)
+  if (!WORKSPACE_DOMAIN.test(workspaceDomain.toLowerCase())) throw new Error(`--workspace-domain must be a domain name, such as ws.copperflow.example.com.\n${USAGE}`)
+  const bind = options.get("--bind") ?? "127.0.0.1"
+  if (isIP(bind) === 0) throw new Error(`--bind must be an IP address.\n${USAGE}`)
+  const trustProxy = options.get("--trust-proxy")
+  if (trustProxy !== undefined) trustedProxies(trustProxy)
+  return { dataDir, port, publicOrigin, workspaceDomain, bind, ...(trustProxy !== undefined ? { trustProxy } : {}), hstsIncludeSubdomains: flags.has("--hsts-include-subdomains"), choice }
+}
+
+async function serve(args: readonly string[], cwd: string, io: CliIO): Promise<number> {
+  const { dataDir, port, publicOrigin, workspaceDomain, bind, trustProxy, hstsIncludeSubdomains, choice } = parseServeArgs(args, cwd)
   const runner = await runnerFor(choice, io)
-  const hub = await startHub({ dataDir, port, publicOrigin, workspaceDomain, bind: options.get("--bind") ?? "127.0.0.1", ...(options.has("--trust-proxy") ? { trustProxy: options.get("--trust-proxy") as string } : {}), ...runner })
+  const hub = await startHub({ dataDir, port, publicOrigin, workspaceDomain, bind, ...(trustProxy !== undefined ? { trustProxy } : {}), hstsIncludeSubdomains, ...runner })
   if (choice.kind === "process" && choice.trustedAccountsOnly) io.out(TRUSTED_ONLY_WARNING)
   const siteWarning = sameSiteWarning(publicOrigin, workspaceDomain)
   if (siteWarning) io.out(siteWarning)
-  const runnerStatus = choice.kind === "container" ? { runner: "container", command: choice.settings.command ?? DEFAULT_CONTAINER_COMMAND } : { runner: "process" }
+  const runnerStatus =
+    choice.kind === "container"
+      ? { runner: "container", command: choice.settings.command ?? DEFAULT_CONTAINER_COMMAND, ...(runner.workspaceGroup !== undefined ? { workspaceGroup: runner.workspaceGroup } : {}) }
+      : { runner: "process" }
   const writeStatus = () =>
     writeFileAtomic(join(dataDir, STATUS_FILE), `${JSON.stringify({ updated: Date.now(), pid: process.pid, running: hub.hub.runner.running(), ...runnerStatus, trashFailures: trashFailures(3).map((failure) => ({ name: basename(failure.path), failures: failure.failures, reason: failure.reason })) })}\n`).catch((error: unknown) =>
       hub.hub.log(`could not write ${STATUS_FILE}: ${(error as Error).message}`),
@@ -249,6 +294,34 @@ async function lastRunner(dataDir: string): Promise<"process" | "container" | un
   } catch {
     return undefined
   }
+}
+
+/**
+ * `hub check-data`: the ownership and modes the hub relies on (src/hub/check-data.ts), each problem one printable line,
+ * exit 1 when any is left. --fix (only with the hub stopped) repairs what this user may and lists what needs root.
+ */
+async function checkData(dataDir: string, options: Map<string, string>, fix: boolean, io: CliIO): Promise<number> {
+  if (process.platform === "win32") {
+    io.out("Owners and modes are not checked on Windows (they are POSIX ones; access lists decide there).")
+    return 0
+  }
+  let written: { updated?: unknown; workspaceGroup?: unknown } = {}
+  try {
+    written = JSON.parse(await readFile(join(dataDir, STATUS_FILE), "utf8")) as typeof written
+  } catch {
+    // No status file: the hub has not run here (a restored copy, for instance).
+  }
+  const group = options.get("--workspace-group") ?? (typeof written.workspaceGroup === "number" ? String(written.workspaceGroup) : undefined)
+  if (group === undefined || !/^[1-9][0-9]{0,8}$/.test(group)) throw new Error(`Give --workspace-group <gid> (the hub's status file does not name it).\n${USAGE}`)
+  if (fix && typeof written.updated === "number" && Date.now() - written.updated < STATUS_STALE_MS) {
+    throw new Error(`Not fixed: the hub is running (its status file was written ${Math.round((Date.now() - written.updated) / 1000)} s ago). Stop it first; after a hard kill, wait two minutes.`)
+  }
+  const result = await checkDataDir(dataDir, { group: Number(group), fix })
+  for (const line of result.fixed) io.out(`fixed: ${printable(line, 300)}`)
+  for (const line of result.problems) io.out(printable(line, 300))
+  if (result.needsRoot.length > 0) io.out(`${result.needsRoot.length} of these belong to another user and need root (chown/chmod as root, then run this again).`)
+  io.out(result.problems.length === 0 ? `The data directory has no problems${result.fixed.length > 0 ? ` (${result.fixed.length} fixed)` : ""}.` : `${result.problems.length} problem(s) left.`)
+  return result.problems.length === 0 ? 0 : 1
 }
 
 const PROJECT_ID = /^[0-9a-f]{32}$/

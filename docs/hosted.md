@@ -79,13 +79,15 @@ copperflow hub --data <dir> --port <n> --public-origin https://copperflow.exampl
   --workspace-domain ws.copperflow.example.com --runner container --workspace-image copperflow-workspace \
   --workspace-group <gid> [--container-command docker] \
   [--workspace-reach loopback | --workspace-reach network --hub-container <name>] \
-  [--bind 127.0.0.1] [--trust-proxy <proxy address or CIDR>]
+  [--bind 127.0.0.1] [--trust-proxy <proxy address or CIDR>] [--hsts-include-subdomains]
 copperflow hub ... --runner container --workspace-user-same-as-hub      a trial on your own machine only (see below)
 copperflow hub ... --runner process --trusted-accounts-only      tests and accounts you trust only (see below)
 copperflow hub invite --data <dir> [--count n]        invite codes, printed once (only their hashes are kept); warns
                                                       when the hub last started with the process runner
 copperflow hub stop-workspace <project id> --data <dir>   the running hub stops that workspace within 15 s (not a
                                                       crash: no restart; the next request starts it again)
+copperflow hub check-data --data <dir> [--workspace-group <gid>] [--fix]   owners, groups, modes and links the hub
+                                                      relies on; exit 1 on a problem; --fix only with the hub stopped
 copperflow hub reset-password <email> --data <dir>    a one-time password, printed once; ends the user's sessions
 copperflow hub status --data <dir>                    users, projects, the runner, running workspaces (and each
                                                       container's memory), disk used; --json: one JSON line
@@ -97,6 +99,10 @@ copperflow hub delete-user <email> --data <dir>       asks for the email typed; 
 
 `--trust-proxy` names the TLS proxy's address or CIDR (comma-separated for several): `X-Forwarded-For` is honoured
 only on connections from there, and taken as the client's address; from anyone else it is ignored.
+
+With an https public origin every answer, the hub's pages and proxied project answers alike, carries
+`Strict-Transport-Security: max-age=31536000`; `--hsts-include-subdomains` adds `includeSubDomains` for a maintainer
+whose whole domain is https. The reverse proxy adds no security header of its own.
 
 **The container runner (`--runner container`).** This is the security boundary between accounts: each workspace runs
 in a container of its own (`src/hub/runner/container-runner.ts`), started with an argument array (never a shell) from
