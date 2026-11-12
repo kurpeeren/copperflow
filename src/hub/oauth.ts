@@ -8,7 +8,7 @@ import type { IncomingMessage, ServerResponse } from "node:http"
 import { OAuthClientMetadataSchema, type OAuthMetadata, type OAuthProtectedResourceMetadata, type OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js"
 import { consentPage } from "./agent-pages.js"
 import { ACCESS_MS, ACCESS_PREFIX, labelOf, newToken, REFRESH_MS, REFRESH_PREFIX, tokenHash } from "./agent-tokens.js"
-import { audit, epochOf, formTokenMatches, type Hub, type Signed } from "./context.js"
+import { audit, epochOf, formTokenMatches, sessionOf, type Hub, type Signed } from "./context.js"
 import { cookies, HubError, readBody, readForm, redirect, sendPage, setCookie } from "./http.js"
 import { addressKey } from "./limits.js"
 import { PENDING_MS } from "./oauth-state.js"
@@ -168,7 +168,7 @@ function badRequest(res: ServerResponse, text: string): void {
 }
 
 /** GET /oauth/authorize. Signed out, the request is kept server-side and the person signs in first, then comes back to it. */
-export function authorize(hub: Hub, req: IncomingMessage, res: ServerResponse, address: string, signed: Signed | undefined): void {
+export async function authorize(hub: Hub, req: IncomingMessage, res: ServerResponse, address: string, signed: Signed | undefined): Promise<void> {
   const params = new URL(req.url ?? "/", "http://x").searchParams
   const one = (name: string) => (params.getAll(name).length === 1 ? params.get(name) ?? undefined : undefined)
   const clientId = one("client_id") ?? ""
@@ -176,11 +176,20 @@ export function authorize(hub: Hub, req: IncomingMessage, res: ServerResponse, a
   const redirectUri = one("redirect_uri")
   // Until the client and the exact redirect URI are known, errors are shown here and never redirected.
   if (!client || redirectUri === undefined || !client.redirectUris.includes(redirectUri)) return badRequest(res, "This sign-in link is not valid: the application or its return address is not registered.")
-  const now = hub.config.now()
   const key = addressKey(address)
-  const limit = hub.limits.authorize.check(key, now)
-  if (!limit.ok) return sendPage(res, 429, textPage("Too many requests", "Too many sign-in requests from this address. Try again later."), { "retry-after": String(limit.retryAfterS) })
-  hub.limits.authorize.add(key, now)
+  const tooMany = (retryAfterS: number) => sendPage(res, 429, textPage("Too many requests", "Too many sign-in requests. Try again later."), { "retry-after": String(retryAfterS) })
+  // Per address: 30 per 15 minutes. A full address table refuses nobody; the request then relies on the bucket.
+  const limit = hub.limits.authorize.check(key, hub.config.now())
+  if (!limit.ok) return tooMany(limit.retryAfterS)
+  hub.limits.authorize.add(key, hub.config.now())
+  // Everyone: 5 a second, at most 2 waiting per address and 40 in all. In 10 minutes (a request's life) it admits at
+  // most 3 000 requests, under the table's 10 000, so the table never fills and no request evicts another's.
+  const gone = new AbortController()
+  res.once("close", () => gone.abort())
+  if (!(await hub.limits.authorizeGate.pass(key, gone.signal))) return gone.signal.aborted ? undefined : tooMany(1)
+  // The session is read again after the wait: it may have ended meanwhile.
+  signed = sessionOf(hub, req).signed
+  const now = hub.config.now()
   const state = one("state")
   const fail = (error: string, description: string) => answerClient(res, redirectUri, { error, error_description: description, ...(state !== undefined && state.length <= MAX_STATE_LENGTH ? { state } : {}), iss: hub.config.publicOrigin })
   if (state !== undefined && state.length > MAX_STATE_LENGTH) return fail("invalid_request", "state is too long")
@@ -190,11 +199,16 @@ export function authorize(hub: Hub, req: IncomingMessage, res: ServerResponse, a
   const resource = one("resource")
   if (resource !== undefined && resource !== `${hub.config.publicOrigin}/mcp` && resource !== hub.config.publicOrigin) return fail("invalid_target", "Unknown resource")
   const request = { clientId: client.id, redirectUri, challenge, state }
+  const busy = () => sendPage(res, 503, textPage("Try again", "The service is busy. Try again in a minute."), { "retry-after": "60" })
   if (signed && !signed.user.mustChangePassword) {
-    const secret = hub.oauth.addRequest({ ...request, userId: signed.user.id }, now)
+    const secret = hub.oauth.addRequest({ ...request, userId: signed.user.id }, now, `user:${signed.user.id}`)
+    if (secret === undefined) return busy()
     return sendPage(res, 200, consentPage({ email: signed.user.email, formToken: signed.formToken }, secret, client.name, new URL(redirectUri).host))
   }
-  const secret = hub.oauth.addRequest(request, now)
+  // One request per browser: a new one replaces the one this browser started before.
+  hub.oauth.dropRequest(pendingRequest(hub, req))
+  const secret = hub.oauth.addRequest(request, now, `address:${key}`)
+  if (secret === undefined) return busy()
   const cookie = setCookie(oauthCookieName(hub), secret, { secure: hub.config.secure, maxAgeS: PENDING_MS / 1000 })
   redirect(res, signed ? "/account" : "/signin", { "set-cookie": cookie })
 }

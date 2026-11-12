@@ -92,6 +92,8 @@ export interface Limits {
   authorize: WindowCounter
   /** Every registration passes this bucket: 2 a second, at most 2 waiting per address and 40 in all. */
   registerGate: SigninGate
+  /** Every authorisation request passes this bucket: 5 a second, at most 2 waiting per address and 40 in all. */
+  authorizeGate: SigninGate
 }
 
 const FIFTEEN_MINUTES = 15 * 60_000
@@ -113,6 +115,7 @@ export function newLimits(maxKeys?: number): Limits {
     authorize: new WindowCounter(30, FIFTEEN_MINUTES, maxKeys),
     // Only its bucket and fair queue are used (pass); its strict-mode counting is not.
     registerGate: new SigninGate({ threshold: Number.POSITIVE_INFINITY, windowMs: FIFTEEN_MINUTES, perSecond: 2, queue: 40, perAddress: 2 }),
+    authorizeGate: new SigninGate({ threshold: Number.POSITIVE_INFINITY, windowMs: FIFTEEN_MINUTES, perSecond: 5, queue: 40, perAddress: 2 }),
     gate: new SigninGate({ threshold: MAX_FAILED_SIGNINS, windowMs: FIFTEEN_MINUTES, perSecond: 5, queue: 50, perAddress: 2 }),
   }
 }

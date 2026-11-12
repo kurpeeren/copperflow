@@ -1,11 +1,12 @@
-// What the OAuth flow keeps in memory: authorisation requests waiting for sign-in or consent (10 minutes), and issued
-// codes (60 seconds, single use). Both tables are bounded: a full table drops its oldest entry, so nobody can fill it
-// to lock others out (the person whose request was dropped starts again). Keys are hashes of random secrets.
+// What the OAuth flow keeps in memory: authorisation requests waiting for sign-in or consent (10 minutes, at most 5
+// per owner, never evicted by someone else's), and issued codes (60 seconds, single use, at most 20 per user). Keys are
+// hashes of random secrets.
 import { hashSecret, newSecret } from "./secrets.js"
 
 export const PENDING_MS = 10 * 60_000
 export const CODE_MS = 60_000
-const MAX_PENDING = 10_000
+export const MAX_PENDING = 10_000
+export const PENDING_PER_OWNER = 5
 const MAX_CODES = 10_000
 const MAX_CODES_PER_USER = 20
 const REDEEMED_MS = 10 * 60_000
@@ -18,6 +19,8 @@ export interface AuthorizationRequest {
   challenge: string
   state?: string | undefined
   expires: number
+  /** Who made it: "user:<id>" or "address:<key>"; each owner holds at most PENDING_PER_OWNER. */
+  owner: string
   /** Set when the consent page is shown to a signed-in person: only they may answer it. */
   userId?: string | undefined
 }
@@ -41,15 +44,39 @@ function makeRoom<T extends { expires: number }>(map: Map<string, T>, max: numbe
 
 export class OAuthState {
   private readonly pending = new Map<string, AuthorizationRequest>()
+  /** The request keys of each owner, oldest first (bounded with the table: swept when it is full). */
+  private readonly byOwner = new Map<string, string[]>()
   private readonly codes = new Map<string, IssuedCode>()
   private readonly redeemed = new Map<string, { userId: string; grantId: string; expires: number }>()
 
-  /** Keeps a request; returns the secret that names it (in a cookie or a form field, never a URL). */
-  addRequest(request: Omit<AuthorizationRequest, "expires">, now: number): string {
-    makeRoom(this.pending, MAX_PENDING, now)
+  /**
+   * Keeps a request under `owner` (the signed-in user, or the address of someone not signed in); returns the secret
+   * that names it (in a cookie or a form field, never a URL). An owner holds at most PENDING_PER_OWNER: at that cap
+   * its own oldest goes, never another owner's. A full table only drops expired entries; it is then "full" (the
+   * caller's bucket keeps that from happening: see oauth.ts).
+   */
+  addRequest(request: Omit<AuthorizationRequest, "expires" | "owner">, now: number, owner: string): string | undefined {
+    const mine = (this.byOwner.get(owner) ?? []).filter((key) => (this.pending.get(key)?.expires ?? 0) > now)
+    while (mine.length >= PENDING_PER_OWNER) this.pending.delete(mine.shift() as string)
+    if (this.pending.size >= MAX_PENDING) {
+      for (const [key, value] of this.pending) if (value.expires <= now) this.pending.delete(key)
+      for (const [name, keys] of this.byOwner) {
+        const live = keys.filter((key) => this.pending.has(key))
+        if (live.length > 0) this.byOwner.set(name, live)
+        else this.byOwner.delete(name)
+      }
+    }
+    if (this.pending.size >= MAX_PENDING) return undefined
     const secret = newSecret()
-    this.pending.set(hashSecret(secret), { ...request, expires: now + PENDING_MS })
+    const key = hashSecret(secret)
+    this.pending.set(key, { ...request, owner, expires: now + PENDING_MS })
+    this.byOwner.set(owner, [...mine, key])
     return secret
+  }
+
+  /** Forgets one request (a browser that starts a new one drops its last). */
+  dropRequest(secret: string | undefined): void {
+    if (secret !== undefined) this.pending.delete(hashSecret(secret))
   }
 
   request(secret: string | undefined, now: number): AuthorizationRequest | undefined {

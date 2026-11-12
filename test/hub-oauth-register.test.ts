@@ -60,6 +60,20 @@ describe("client registration under a flood", () => {
     expect(refused[0]?.retryAfter).toBe("1")
   })
 
+  test("a browser holds one pending authorisation: a new one replaces its last", async () => {
+    server = await startTestHub({ trustProxy: true })
+    const clientId = (await register(server)).id as string
+    const browser = new Browser(server.url)
+    await browser.get(authorizePath(clientId))
+    const first = browser.jar.get("__Host-copperflow-oauth") as string
+    expect(server.hub.oauth.request(first, Date.now())).toBeDefined()
+    await browser.get(authorizePath(clientId))
+    const second = browser.jar.get("__Host-copperflow-oauth") as string
+    expect(second).not.toBe(first)
+    expect(server.hub.oauth.request(first, Date.now())).toBeUndefined()
+    expect(server.hub.oauth.request(second, Date.now())).toBeDefined()
+  })
+
   test("what is not a registration is refused before it counts", async () => {
     server = await startTestHub({ trustProxy: true })
     for (let i = 0; i < 25; i += 1) expect((await register(server, "192.0.2.7", {})).status).toBe(400)
