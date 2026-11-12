@@ -30,7 +30,6 @@ export interface ContainerLimits {
 
 export const DEFAULT_LIMITS: ContainerLimits = { memory: "512m", cpus: "1", pids: 128, openFiles: 1024, tmpSize: "64m" }
 export const DEFAULT_CONTAINER_COMMAND = "docker"
-export const DEFAULT_WORKSPACE_NETWORK = "copperflow-workspaces"
 /** The ports the two servers listen on inside every container. */
 export const STUDIO_PORT = 8080
 export const MCP_PORT = 8081
@@ -50,8 +49,7 @@ const MAX_OUTPUT_BYTES = 64 * 1024
 
 const SIZE = /^[1-9][0-9]{0,5}[kmg]$/
 const CPUS = /^(0\.[0-9]{1,2}|[1-9][0-9]?(\.[0-9]{1,2})?)$/
-const NETWORK_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$/
-const RESERVED_NETWORKS = new Set(["host", "bridge", "none", "default"])
+const CONTAINER_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$/
 const IMAGE_NAME = /^[a-z0-9][a-z0-9._/:@-]{0,254}$/
 const PUBLIC_ORIGIN = /^https?:\/\/[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]{1,5})?$/
 const PUBLIC_KEY = /^[A-Za-z0-9+/]{43}=$/
@@ -76,8 +74,11 @@ export interface ContainerSettings {
   image: string
   /** The engine's command line: docker (default) or podman, by name or path. */
   command?: string
-  /** The user-defined network created with --internal; default copperflow-workspaces. */
-  network?: string
+  /**
+   * With network reach: the hub's own container, connected to each workspace's network for the workspace's life.
+   * Every workspace has a network of its own (named like its container, created --internal), so two never share one.
+   */
+  hubContainer?: string
   /** How the hub reaches containers; default loopback (the hub on the host). */
   reach?: ContainerReach
   limits?: Partial<ContainerLimits>
@@ -100,7 +101,7 @@ export interface ContainerRunnerOptions extends ContainerSettings {
 interface Checked {
   command: string
   image: string
-  network: string
+  hubContainer: string | undefined
   reach: ContainerReach
   limits: ContainerLimits
 }
@@ -111,16 +112,18 @@ export function checkSettings(settings: ContainerSettings): Checked {
   if (command === "" || command.startsWith("-") || /[\0\r\n]/.test(command)) throw new Error("--container-command must be docker, podman or the path to one of them")
   const image = settings.image
   if (!IMAGE_NAME.test(image) || image.includes("..")) throw new Error("--workspace-image must be an image name, such as copperflow-workspace")
-  const network = settings.network ?? DEFAULT_WORKSPACE_NETWORK
-  if (!NETWORK_NAME.test(network) || RESERVED_NETWORKS.has(network.toLowerCase())) throw new Error("--workspace-network must name a user-defined network (not host, bridge, none or default)")
   const reach = settings.reach ?? "loopback"
   if (reach !== "network" && reach !== "loopback") throw new Error("--workspace-reach must be network or loopback")
+  const hubContainer = settings.hubContainer
+  if (reach === "network" && hubContainer === undefined) throw new Error("--workspace-reach network needs --hub-container <name>: the hub's own container, joined to each workspace's network")
+  if (reach === "loopback" && hubContainer !== undefined) throw new Error("--hub-container belongs to --workspace-reach network")
+  if (hubContainer !== undefined && (!CONTAINER_NAME.test(hubContainer) || hubContainer.startsWith(CONTAINER_PREFIX))) throw new Error("--hub-container must be a container name")
   const limits = { ...DEFAULT_LIMITS, ...(settings.limits ?? {}) }
   if (!SIZE.test(limits.memory) || !SIZE.test(limits.tmpSize)) throw new Error("memory sizes must be a number and k, m or g, such as 512m")
   if (!CPUS.test(limits.cpus)) throw new Error("--cpus must be a number such as 1 or 0.5")
   if (!Number.isInteger(limits.pids) || limits.pids < 16 || limits.pids > 4096) throw new Error("the pids limit must be a whole number from 16 to 4096")
   if (!Number.isInteger(limits.openFiles) || limits.openFiles < 64 || limits.openFiles > 65_536) throw new Error("the open-files limit must be a whole number from 64 to 65536")
-  return { command, image, network, reach, limits }
+  return { command, image, hubContainer, reach, limits }
 }
 
 export function containerName(projectId: string): string {
@@ -159,7 +162,8 @@ export function containerRunArgs(spec: WorkspaceSpec, settings: ContainerSetting
     "--memory-swap", limits.memory,
     "--cpus", limits.cpus,
     "--ulimit", `nofile=${limits.openFiles}:${limits.openFiles}`,
-    "--network", checked.network,
+    // The workspace's own network (see workspaceNetworkArgs), named like its container.
+    "--network", name,
     ...publish,
     "--mount", `type=bind,source=${spec.projectDir},target=/work`,
     "--workdir", "/work",
@@ -239,40 +243,72 @@ export function runEngine(spawn: SpawnLike, command: string, args: string[], tim
 const BUILD_HINT = "Build it from the repository with: docker build -f deploy/workspace.Dockerfile -t copperflow-workspace ."
 
 /**
- * What the hub checks before it starts with the container runner: the engine answers, the image is there, and the
- * workspace network exists and is internal (it is created with --internal when missing). Throws a message that says
- * what to do.
+ * What the hub checks before it starts with the container runner: the engine answers, the image is there, and it can
+ * create and remove an internal network (each workspace gets one). Throws a message that says what to do.
  */
 export async function checkEngine(settings: ContainerSettings, spawn: SpawnLike = defaultSpawn()): Promise<void> {
-  const { command, image, network } = checkSettings(settings)
+  const { command, image } = checkSettings(settings)
   const version = await runEngine(spawn, command, ["version", "--format", "{{.Server.Version}}"]).catch((error: Error) => ({ code: -1, stdout: "", stderr: error.message }))
   if (version.code !== 0) throw new Error(`The container engine does not answer (\`${command} version\` failed). Start it, and make sure the user the hub runs as may use it.`)
   const found = await runEngine(spawn, command, ["image", "inspect", "--format", "{{.Id}}", image])
   if (found.code !== 0) throw new Error(`The workspace image ${image} is missing. ${BUILD_HINT}`)
-  const net = await runEngine(spawn, command, ["network", "inspect", "--format", "{{.Internal}}", network])
-  if (net.code === 0) {
-    if (net.stdout.trim() !== "true") throw new Error(`The network ${network} exists but is not internal; workspaces must have no route out. Remove it, or name another with --workspace-network.`)
-    return
-  }
-  const made = await runEngine(spawn, command, ["network", "create", "--internal", "--driver", "bridge", "--label", CONTAINER_LABEL, network])
-  if (made.code !== 0) throw new Error(`The network ${network} could not be created: ${made.stderr.trim().slice(0, 300)}`)
+  const probe = `cf-check-${process.pid}`
+  const made = await runEngine(spawn, command, networkCreateArgs(probe))
+  if (made.code !== 0) throw new Error(`The hub could not create an internal network (${command} network create --internal): ${made.stderr.trim().slice(0, 300)}`)
+  const removed = await runEngine(spawn, command, ["network", "rm", probe])
+  if (removed.code !== 0) throw new Error(`The hub could not remove the network ${probe} it made: ${removed.stderr.trim().slice(0, 300)}`)
 }
 
-/** Removes every workspace container a previous run of the hub left behind; how many it removed. */
+/** `network create` for one workspace's own network: internal (no route out), bridge, labelled for the sweep. */
+export function networkCreateArgs(name: string): string[] {
+  return ["network", "create", "--internal", "--driver", "bridge", "--label", CONTAINER_LABEL, name]
+}
+
+/** Names of exactly our shape from an engine listing; anything else is ignored, never passed on. */
+function ourNames(listing: string): string[] {
+  return listing
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((name) => name.startsWith(CONTAINER_PREFIX) && ID_PATTERN.test(name.slice(CONTAINER_PREFIX.length)))
+}
+
+/** Removes every workspace container and network a previous run of the hub left behind; how many containers it removed. */
 export async function sweepLeftovers(settings: ContainerSettings, spawn: SpawnLike = defaultSpawn(), log: (line: string) => void = () => undefined): Promise<number> {
   const { command } = checkSettings(settings)
   const listed = await runEngine(spawn, command, ["ps", "--all", "--filter", `label=${CONTAINER_LABEL}`, "--filter", `name=^${CONTAINER_PREFIX}`, "--format", "{{.Names}}"])
   if (listed.code !== 0) throw new Error(`Could not list leftover workspace containers: ${listed.stderr.trim().slice(0, 300)}`)
-  const names = listed.stdout.split(/\r?\n/).map((line) => line.trim()).filter((line) => line !== "")
   let removed = 0
-  for (const name of names) {
-    // Only names of exactly our shape; anything else in the listing is ignored, never passed on.
-    if (!name.startsWith(CONTAINER_PREFIX) || !ID_PATTERN.test(name.slice(CONTAINER_PREFIX.length))) continue
+  for (const name of ourNames(listed.stdout)) {
     const result = await runEngine(spawn, command, ["rm", "--force", name])
     if (result.code === 0) removed += 1
     else log(`could not remove leftover container ${name}: ${result.stderr.trim().slice(0, 200)}`)
   }
+  const networks = await runEngine(spawn, command, ["network", "ls", "--filter", `label=${CONTAINER_LABEL}`, "--format", "{{.Name}}"])
+  if (networks.code !== 0) throw new Error(`Could not list leftover workspace networks: ${networks.stderr.trim().slice(0, 300)}`)
+  for (const name of ourNames(networks.stdout)) {
+    const result = await runEngine(spawn, command, ["network", "rm", name])
+    if (result.code !== 0) log(`could not remove leftover network ${name}: ${result.stderr.trim().slice(0, 200)}`)
+  }
   return removed
+}
+
+/** Creates the workspace's own network (removing a leftover of the same name first) and joins the hub to it. */
+async function openNetwork(checked: Checked, name: string, spawn: SpawnLike): Promise<void> {
+  await runEngine(spawn, checked.command, ["network", "rm", name]).catch(() => undefined)
+  const made = await runEngine(spawn, checked.command, networkCreateArgs(name))
+  if (made.code !== 0) throw new Error(`the workspace network could not be created: ${made.stderr.trim().slice(0, 200)}`)
+  if (checked.hubContainer === undefined) return
+  const joined = await runEngine(spawn, checked.command, ["network", "connect", name, checked.hubContainer])
+  if (joined.code !== 0) {
+    await closeNetwork(checked, name, spawn)
+    throw new Error(`the hub could not join the workspace network: ${joined.stderr.trim().slice(0, 200)}`)
+  }
+}
+
+/** Takes the hub off the workspace's network and removes it; failures only mean it is gone already. */
+async function closeNetwork(checked: Checked, name: string, spawn: SpawnLike): Promise<void> {
+  if (checked.hubContainer !== undefined) await runEngine(spawn, checked.command, ["network", "disconnect", "--force", name, checked.hubContainer]).catch(() => undefined)
+  await runEngine(spawn, checked.command, ["network", "rm", name]).catch(() => undefined)
 }
 
 const READY = { studio: `http://0.0.0.0:${STUDIO_PORT}`, mcp: `http://0.0.0.0:${MCP_PORT}` }
@@ -326,11 +362,14 @@ export function containerLauncher(options: ContainerRunnerOptions): Launcher {
     } catch (error) {
       return Promise.reject(error as Error)
     }
-    return new Promise<Launched>((done, fail) => {
+    return openNetwork(checked, name, spawn).then(() => new Promise<Launched>((done, fail) => {
       const child = spawn(checked.command, args, { env: clientEnv(), stdio: ["pipe", "pipe", "pipe"], windowsHide: true, shell: false })
       const ended = new Promise<void>((over) => child.once("exit", () => over()))
-      // When the `run` command ends the container is removed too, so a restart never meets a container of the same name.
-      const exited = ended.then(() => runEngine(spawn, checked.command, ["rm", "--force", name]).then(() => undefined, () => undefined))
+      // When the `run` command ends the container is removed too, so a restart never meets a container of the same
+      // name, and then its network, which nothing else ever joined but the hub.
+      const exited = ended
+        .then(() => runEngine(spawn, checked.command, ["rm", "--force", name]).then(() => undefined, () => undefined))
+        .then(() => closeNetwork(checked, name, spawn))
       let settled = false
       let stdout = ""
       let logged = 0
@@ -344,6 +383,7 @@ export function containerLauncher(options: ContainerRunnerOptions): Launcher {
             await ended
             clearTimeout(killer)
           }
+          await exited
         })()
         return stopping
       }
@@ -395,7 +435,7 @@ export function containerLauncher(options: ContainerRunnerOptions): Launcher {
         for (const line of kept.split(/\r?\n/)) if (line.trim() !== "") log(`workspace ${spec.id}: ${line.slice(0, 500)}`)
         if (logged >= logCap) log(`workspace ${spec.id}: log cap of ${logCap} bytes reached; further output is dropped`)
       })
-    })
+    }))
   }
 }
 

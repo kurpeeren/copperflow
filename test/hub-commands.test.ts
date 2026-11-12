@@ -145,22 +145,22 @@ describe("the hub's maintainer commands", () => {
     expect(chooseRunner(options(["--runner", "process"]), flags())).toEqual({ kind: "process", trustedAccountsOnly: false })
     expect(chooseRunner(options(["--runner", "container"], ["--workspace-image", "copperflow-workspace"]), flags())).toEqual({ kind: "container", settings: { image: "copperflow-workspace", reach: "loopback" } })
     expect(
-      chooseRunner(options(["--runner", "container"], ["--workspace-image", "img"], ["--container-command", "podman"], ["--workspace-network", "cf-net"], ["--workspace-reach", "network"]), flags()),
-    ).toEqual({ kind: "container", settings: { image: "img", command: "podman", network: "cf-net", reach: "network" } })
+      chooseRunner(options(["--runner", "container"], ["--workspace-image", "img"], ["--container-command", "podman"], ["--hub-container", "cf-hub"], ["--workspace-reach", "network"]), flags()),
+    ).toEqual({ kind: "container", settings: { image: "img", command: "podman", hubContainer: "cf-hub", reach: "network" } })
     expect(() => chooseRunner(options(["--runner", "container"]), flags())).toThrow(/--workspace-image/)
     expect(() => chooseRunner(options(["--runner", "vm"]), flags())).toThrow(/--runner must be/)
     expect(() => chooseRunner(options(["--workspace-image", "img"]), flags())).toThrow(/belongs to --runner container/)
-    expect(() => chooseRunner(options(["--runner", "container"], ["--workspace-image", "img"], ["--workspace-network", "host"]), flags())).toThrow(/network/)
+    expect(() => chooseRunner(options(["--runner", "container"], ["--workspace-image", "img"], ["--workspace-reach", "network"]), flags())).toThrow(/--hub-container/)
     expect(() => chooseRunner(options(["--runner", "container"], ["--workspace-image", "img"], ["--workspace-reach", "public"]), flags())).toThrow(/reach/)
   })
 
   test("with the container runner the engine is checked and leftovers swept, and no trusted-accounts warning is needed", async () => {
     const calls: string[][] = []
-    const spawn = engineAnswering(calls, (args) => (args[0] === "network" ? "true\n" : args[0] === "ps" ? `cf-ws-${"a".repeat(32)}\n` : ""))
+    const spawn = engineAnswering(calls, (args) => (args[0] === "ps" ? `cf-ws-${"a".repeat(32)}\n` : ""))
     const out = io()
     const chosen = await runnerFor({ kind: "container", settings: { image: "img" } }, out, spawn)
     expect(chosen.trustedAccountsOnly).toBeUndefined()
-    expect(calls.map((args) => args[0])).toEqual(["version", "image", "network", "ps", "rm"])
+    expect(calls.map((args) => args.slice(0, 2).join(" "))).toEqual(["version --format", "image inspect", "network create", "network rm", "ps --all", `rm --force`, "network ls"])
     expect(out.lines).toEqual(["Removed 1 workspace container(s) left from an earlier run."])
     const data = await mkdtemp(join(tmpdir(), "cf-ctrhub-"))
     const server = await startHub({ dataDir: data, port: 0, publicOrigin: "https://cf.example.test", workspaceDomain: "ws.localhost", ...chosen, log: () => undefined })

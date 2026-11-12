@@ -102,7 +102,7 @@ describe("the container's argument array", () => {
       "--memory-swap", "512m",
       "--cpus", "1",
       "--ulimit", "nofile=1024:1024",
-      "--network", "copperflow-workspaces",
+      "--network", `cf-ws-${ID}`,
       "--publish", "127.0.0.1::8080",
       "--publish", "127.0.0.1::8081",
       "--mount", `type=bind,source=/srv/copperflow/projects/u1/${ID},target=/work`,
@@ -127,9 +127,12 @@ describe("the container's argument array", () => {
   })
 
   test("with network reach nothing is published, and limits are options", () => {
-    const args = containerRunArgs(spec(), { image: "img", network: "cf-net", reach: "network", limits: { memory: "1g", cpus: "0.5", pids: 64, openFiles: 512, tmpSize: "32m" } }, KEY)
+    const args = containerRunArgs(spec(), { image: "img", hubContainer: "cf-hub", reach: "network", limits: { memory: "1g", cpus: "0.5", pids: 64, openFiles: 512, tmpSize: "32m" } }, KEY)
     expect(args).not.toContain("--publish")
-    expect(args.slice(args.indexOf("--network"), args.indexOf("--network") + 2)).toEqual(["--network", "cf-net"])
+    expect(args.slice(args.indexOf("--network"), args.indexOf("--network") + 2)).toEqual(["--network", `cf-ws-${ID}`])
+    // Two workspaces never share a network.
+    const other = containerRunArgs(spec("f".repeat(32)), { image: "img" }, KEY)
+    expect(other[other.indexOf("--network") + 1]).toBe(`cf-ws-${"f".repeat(32)}`)
     expect(args).toEqual(expect.arrayContaining(["1g", "0.5", "64", "nofile=512:512", "/tmp:rw,noexec,nosuid,size=32m"]))
     expect(args[args.indexOf("--memory-swap") + 1]).toBe("1g")
   })
@@ -140,8 +143,10 @@ describe("the container's argument array", () => {
     expect(() => containerRunArgs({ ...spec(), projectDir: "relative/dir" }, { image: "img" }, KEY)).toThrow(/refused/)
     expect(() => containerRunArgs({ ...spec(), publicOrigin: "https://x.example.com/path" }, { image: "img" }, KEY)).toThrow(/refused/)
     expect(() => containerRunArgs({ ...spec(), basePath: "/p/x" }, { image: "img" }, KEY)).toThrow(/refused/)
-    expect(() => containerRunArgs(spec(), { image: "img", network: "host" }, KEY)).toThrow(/network/)
-    expect(() => containerRunArgs(spec(), { image: "img", network: "--net=host" }, KEY)).toThrow(/network/)
+    expect(() => containerRunArgs(spec(), { image: "img", reach: "network" }, KEY)).toThrow(/--hub-container/)
+    expect(() => containerRunArgs(spec(), { image: "img", reach: "network", hubContainer: "--net=host" }, KEY)).toThrow(/--hub-container/)
+    expect(() => containerRunArgs(spec(), { image: "img", reach: "network", hubContainer: `cf-ws-${ID}` }, KEY)).toThrow(/--hub-container/)
+    expect(() => containerRunArgs(spec(), { image: "img", hubContainer: "cf-hub" }, KEY)).toThrow(/--hub-container/)
     expect(() => containerRunArgs(spec(), { image: "--privileged" }, KEY)).toThrow(/image/)
     expect(() => containerRunArgs(spec(), { image: "img", limits: { memory: "0" } }, KEY)).toThrow()
     expect(() => containerRunArgs(spec(), { image: "img", limits: { pids: 1_000_000 } }, KEY)).toThrow()
@@ -162,24 +167,42 @@ describe("launching a container", () => {
     const launch = containerLauncher({ image: "img", ticketPublicKey: KEY, spawn: engine.spawn, log: () => undefined })
     const launched = await launch(spec())
     expect(launched.address).toEqual({ studio: "http://127.0.0.1:49001", mcp: "http://127.0.0.1:49002" })
-    expect(engine.calls.map((args) => args.slice(0, 3))).toEqual([["run", "--rm", "--interactive"], ["port", `cf-ws-${ID}`, "8080/tcp"], ["port", `cf-ws-${ID}`, "8081/tcp"]])
+    expect(engine.calls.map((args) => args.slice(0, 3))).toEqual([
+      ["network", "rm", `cf-ws-${ID}`],
+      ["network", "create", "--internal"],
+      ["run", "--rm", "--interactive"],
+      ["port", `cf-ws-${ID}`, "8080/tcp"],
+      ["port", `cf-ws-${ID}`, "8081/tcp"],
+    ])
+    expect(engine.calls[1]).toEqual(["network", "create", "--internal", "--driver", "bridge", "--label", "org.copperflow.workspace=1", `cf-ws-${ID}`])
     await launched.stop()
     await launched.exited
+    expect(engine.calls.at(-1)).toEqual(["network", "rm", `cf-ws-${ID}`])
   })
 
-  test("with network reach the address is the container's name on the network", async () => {
+  test("with network reach the hub joins the workspace's own network, and the address is the container's name on it", async () => {
     const engine = healthyEngine()
-    const launch = containerLauncher({ image: "img", reach: "network", ticketPublicKey: KEY, spawn: engine.spawn, log: () => undefined })
+    const launch = containerLauncher({ image: "img", reach: "network", hubContainer: "cf-hub", ticketPublicKey: KEY, spawn: engine.spawn, log: () => undefined })
     const launched = await launch(spec())
     expect(launched.address).toEqual({ studio: `http://cf-ws-${ID}:8080`, mcp: `http://cf-ws-${ID}:8081` })
+    expect(engine.calls[2]).toEqual(["network", "connect", `cf-ws-${ID}`, "cf-hub"])
     await launched.stop()
+    expect(engine.calls.slice(-2)).toEqual([["network", "disconnect", "--force", `cf-ws-${ID}`, "cf-hub"], ["network", "rm", `cf-ws-${ID}`]])
   })
 
-  test("stopping runs stop -t 5, then rm --force", async () => {
+  test("stopping runs stop -t 5, then rm --force, then removes the network", async () => {
     const engine = healthyEngine()
-    const launched = await containerLauncher({ image: "img", reach: "network", ticketPublicKey: KEY, spawn: engine.spawn, log: () => undefined })(spec())
+    const launched = await containerLauncher({ image: "img", reach: "network", hubContainer: "cf-hub", ticketPublicKey: KEY, spawn: engine.spawn, log: () => undefined })(spec())
     await launched.stop()
-    expect(engine.calls.slice(1, 3)).toEqual([["stop", "-t", "5", `cf-ws-${ID}`], ["rm", "--force", `cf-ws-${ID}`]])
+    const after = engine.calls.slice(engine.calls.findIndex((args) => args[0] === "run") + 1)
+    expect(after.slice(0, 2)).toEqual([["stop", "-t", "5", `cf-ws-${ID}`], ["rm", "--force", `cf-ws-${ID}`]])
+    expect(after.at(-1)).toEqual(["network", "rm", `cf-ws-${ID}`])
+  })
+
+  test("a network that cannot be made stops the launch before any container runs", async () => {
+    const engine = fakeEngine((args, child) => say(child, "", args[1] === "create" ? 1 : 0))
+    await expect(containerLauncher({ image: "img", ticketPublicKey: KEY, spawn: engine.spawn, log: () => undefined })(spec())).rejects.toThrow(/network could not be created/)
+    expect(engine.calls.some((args) => args[0] === "run")).toBe(false)
   })
 
   test("an unexpected ready line, a port off loopback, an early exit and a timeout each fail and clean up", async () => {
@@ -194,12 +217,12 @@ describe("launching a container", () => {
       say(child, args[0] === "port" ? "0.0.0.0:49001\n" : "")
     })
     await expect(containerLauncher({ image: "img", ticketPublicKey: KEY, spawn: wide.spawn, log: () => undefined })(spec())).rejects.toThrow(/127\.0\.0\.1/)
-    const early = fakeEngine((_args, child) => say(child, "", 125))
+    const early = fakeEngine((args, child) => say(child, "", args[0] === "run" ? 125 : 0))
     await expect(containerLauncher({ image: "img", ticketPublicKey: KEY, spawn: early.spawn, log: () => undefined })(spec())).rejects.toThrow(/exited with code 125/)
     const silent = fakeEngine((args, child) => (args[0] === "run" ? undefined : say(child, "")))
     await expect(containerLauncher({ image: "img", ticketPublicKey: KEY, startTimeoutMs: 50, spawn: silent.spawn, log: () => undefined })(spec())).rejects.toThrow(/no address within 50 ms/)
     await wait(20)
-    expect(silent.calls.map((args) => args[0]).slice(0, 3)).toEqual(["run", "stop", "rm"])
+    expect(silent.calls.map((args) => args[0]).slice(2, 5)).toEqual(["run", "stop", "rm"])
   })
 
   test("standard error reaches the log up to its cap", async () => {
@@ -209,7 +232,7 @@ describe("launching a container", () => {
       child.stderr.push(`${"e".repeat(80)}\n`.repeat(10))
       setTimeout(() => child.stdout.push('{"studio":"http://0.0.0.0:8080","mcp":"http://0.0.0.0:8081"}\n'), 20)
     })
-    const launched = await containerLauncher({ image: "img", reach: "network", ticketPublicKey: KEY, logCapBytes: 200, spawn: engine.spawn, log: (line) => lines.push(line) })(spec())
+    const launched = await containerLauncher({ image: "img", reach: "network", hubContainer: "cf-hub", ticketPublicKey: KEY, logCapBytes: 200, spawn: engine.spawn, log: (line) => lines.push(line) })(spec())
     expect(lines.filter((line) => line.includes("eeee")).join("").length).toBeLessThan(400)
     expect(lines.at(-1)).toMatch(/log cap of 200 bytes reached/)
     await launched.stop()
@@ -217,7 +240,7 @@ describe("launching a container", () => {
 
   test("a crashed container is restarted once by the managed runner", async () => {
     const engine = healthyEngine()
-    const runner = createContainerRunner({ image: "img", reach: "network", ticketPublicKey: KEY, spawn: engine.spawn, log: () => undefined })
+    const runner = createContainerRunner({ image: "img", reach: "network", hubContainer: "cf-hub", ticketPublicKey: KEY, spawn: engine.spawn, log: () => undefined })
     await runner.ensure(spec())
     const runs = () => engine.calls.filter((args) => args[0] === "run").length
     // The container dies: its `docker run` process ends without being asked to.
@@ -234,7 +257,7 @@ describe("launching a container", () => {
 
   test("idle containers are stopped and started again on demand", async () => {
     const engine = healthyEngine()
-    const runner = createContainerRunner({ image: "img", reach: "network", ticketPublicKey: KEY, idleMs: 40, spawn: engine.spawn, log: () => undefined })
+    const runner = createContainerRunner({ image: "img", reach: "network", hubContainer: "cf-hub", ticketPublicKey: KEY, idleMs: 40, spawn: engine.spawn, log: () => undefined })
     await runner.ensure(spec())
     await wait(150)
     expect(runner.state(ID)).toBe("stopped")
@@ -254,24 +277,28 @@ describe("before the hub starts", () => {
     await expect(checkEngine({ image: "img" }, noImage.spawn)).rejects.toThrow(/docker build -f deploy\/workspace.Dockerfile/)
   })
 
-  test("creates the workspace network as internal when missing, and refuses one that is not internal", async () => {
-    const missing = fakeEngine((args, child) => say(child, "", args[0] === "network" && args[1] === "inspect" ? 1 : 0))
-    await checkEngine({ image: "img" }, missing.spawn)
-    expect(missing.calls.at(-1)).toEqual(["network", "create", "--internal", "--driver", "bridge", "--label", "org.copperflow.workspace=1", "copperflow-workspaces"])
-    const open = fakeEngine((args, child) => say(child, args[0] === "network" ? "false\n" : "", 0))
-    await expect(checkEngine({ image: "img" }, open.spawn)).rejects.toThrow(/not internal/)
-    const fine = fakeEngine((args, child) => say(child, args[0] === "network" ? "true\n" : "", 0))
+  test("checks that it can create and remove an internal network", async () => {
+    const fine = fakeEngine((_args, child) => say(child, ""))
     await checkEngine({ image: "img" }, fine.spawn)
-    expect(fine.calls.map((args) => args[0])).toEqual(["version", "image", "network"])
+    expect(fine.calls.slice(2)).toEqual([
+      ["network", "create", "--internal", "--driver", "bridge", "--label", "org.copperflow.workspace=1", `cf-check-${process.pid}`],
+      ["network", "rm", `cf-check-${process.pid}`],
+    ])
+    const cannot = fakeEngine((args, child) => say(child, "", args[1] === "create" ? 1 : 0))
+    await expect(checkEngine({ image: "img" }, cannot.spawn)).rejects.toThrow(/could not create an internal network/)
   })
 
-  test("the sweep removes leftover workspace containers and nothing else", async () => {
-    const engine = fakeEngine((args, child) => say(child, args[0] === "ps" ? `cf-ws-${ID}\ncf-ws-evil;rm\nother\ncf-ws-${"f".repeat(32)}\n` : ""))
+  test("the sweep removes leftover workspace containers and networks and nothing else", async () => {
+    const listing = `cf-ws-${ID}\ncf-ws-evil;rm\nother\ncf-ws-${"f".repeat(32)}\n`
+    const engine = fakeEngine((args, child) => say(child, args[0] === "ps" || args[1] === "ls" ? listing : ""))
     expect(await sweepLeftovers({ image: "img" }, engine.spawn)).toBe(2)
     expect(engine.calls).toEqual([
       ["ps", "--all", "--filter", "label=org.copperflow.workspace=1", "--filter", "name=^cf-ws-", "--format", "{{.Names}}"],
       ["rm", "--force", `cf-ws-${ID}`],
       ["rm", "--force", `cf-ws-${"f".repeat(32)}`],
+      ["network", "ls", "--filter", "label=org.copperflow.workspace=1", "--format", "{{.Name}}"],
+      ["network", "rm", `cf-ws-${ID}`],
+      ["network", "rm", `cf-ws-${"f".repeat(32)}`],
     ])
   })
 })

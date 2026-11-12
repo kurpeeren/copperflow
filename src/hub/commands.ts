@@ -33,7 +33,7 @@ const MAX_INVITES = 100
 
 const USAGE = `Usage:
   copperflow hub --data <dir> --port <n> --public-origin <url> --workspace-domain <domain> --runner container --workspace-image <name>
-                 [--container-command docker] [--workspace-network <name>] [--workspace-reach loopback|network] [--bind <address>] [--trust-proxy]
+                 [--container-command docker] [--workspace-reach loopback | --workspace-reach network --hub-container <name>] [--bind <address>] [--trust-proxy]
   copperflow hub --data <dir> --port <n> --public-origin <url> --workspace-domain <domain> --runner process --trusted-accounts-only [--bind <address>] [--trust-proxy]
   copperflow hub invite --data <dir> [--count n]
   copperflow hub reset-password <email> --data <dir>
@@ -105,7 +105,7 @@ export async function runHubCommand(args: string[], cwd: string, io: CliIO): Pro
 
 export type RunnerChoice = { kind: "process"; trustedAccountsOnly: boolean } | { kind: "container"; settings: ContainerSettings }
 
-const CONTAINER_OPTIONS = ["--workspace-image", "--container-command", "--workspace-network", "--workspace-reach"]
+const CONTAINER_OPTIONS = ["--workspace-image", "--container-command", "--hub-container", "--workspace-reach"]
 
 /** The runner the flags ask for: `--runner process` (the default, as before) or `--runner container`. */
 export function chooseRunner(options: Map<string, string>, flags: Set<string>): RunnerChoice {
@@ -121,8 +121,8 @@ export function chooseRunner(options: Map<string, string>, flags: Set<string>): 
   const reach = options.get("--workspace-reach") ?? "loopback"
   if (reach !== "loopback" && reach !== "network") throw new Error(`--workspace-reach must be loopback or network.\n${USAGE}`)
   const command = options.get("--container-command")
-  const network = options.get("--workspace-network")
-  const settings: ContainerSettings = { image, reach, ...(command ? { command } : {}), ...(network ? { network } : {}) }
+  const hubContainer = options.get("--hub-container")
+  const settings: ContainerSettings = { image, reach, ...(command ? { command } : {}), ...(hubContainer ? { hubContainer } : {}) }
   checkSettings(settings)
   return { kind, settings }
 }
