@@ -5,6 +5,9 @@ import { join, resolve } from "node:path"
 import { writeFileAtomic } from "../core/fs-utils.js"
 import type { CliIO } from "../cli-commands.js"
 import { removeUser } from "./account-routes.js"
+import { AgentSessions } from "./agent-sessions.js"
+import { OAuthState } from "./oauth-state.js"
+import { revokeUser, type RevokingHub } from "./revocation.js"
 import { ProjectFiles } from "./projects.js"
 import { hashPassword, hashSecret, newSecret } from "./secrets.js"
 import { sameSiteWarning, startHub, TRUSTED_ONLY_WARNING } from "./server.js"
@@ -157,14 +160,19 @@ function invite(store: HubStore, options: Map<string, string>, io: CliIO): numbe
   return 0
 }
 
+/** What a maintainer's command, in its own process, can revoke: the database; the running hub does the rest. */
+function offlineHub(store: HubStore): RevokingHub {
+  return { store, agents: new AgentSessions(), oauth: new OAuthState(), runner: NO_RUNNER, userCuts: new Map(), epochs: new Map() }
+}
+
 async function resetPassword(store: HubStore, email: string | undefined, io: CliIO): Promise<number> {
   if (!email) throw new Error(`Missing the email.\n${USAGE}`)
   const user = store.userByEmail(email)
   if (!user) throw new Error(`There is no user with the email ${normaliseEmail(email)}`)
   const password = newSecret()
   store.setPassword(user.id, await hashPassword(password), true)
-  store.endSessions(user.id)
-  store.forgetDevices(user.id)
+  await revokeUser(offlineHub(store), user.id)
+  // The running hub repeats the revocation at its next sweep, with what only it holds (agent sessions, streams).
   store.requestCut(user.id, Date.now())
   store.audit({ time: Date.now(), userId: user.id, event: "password-reset", address: "cli", detail: "" })
   io.out(`A one-time password for ${user.email}, shown only now. Every session of the user has ended; they must choose a new password when they next sign in:`)
@@ -198,7 +206,7 @@ async function deleteUser(store: HubStore, dataDir: string, email: string | unde
   const projects = store.projectCount(user.id)
   const answer = await io.ask(`This deletes ${user.email}, their sessions and ${projects} project(s) with all files. Type the email to confirm: `)
   if (normaliseEmail(answer) !== user.email) throw new Error(`Not deleted: you typed "${answer.trim()}", not ${user.email}`)
-  await removeUser({ store, files: new ProjectFiles(dataDir), runner: NO_RUNNER, userCuts: new Map(), epochs: new Map() }, user.id)
+  await removeUser({ ...offlineHub(store), files: new ProjectFiles(dataDir) }, user.id)
   // The running hub cuts their streams and stops their workspaces at its next sweep (within 15 seconds).
   store.requestCut(user.id, Date.now())
   store.audit({ time: Date.now(), userId: user.id, event: "account-deleted", address: "cli", detail: "by the maintainer" })

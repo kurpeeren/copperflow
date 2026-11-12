@@ -22,6 +22,7 @@ import { HubError, readForm, redirect, sendPage } from "./http.js"
 import { accountPage, signInPage, signUpPage } from "./pages.js"
 import { agentSection } from "./agent-pages.js"
 import { pendingRequest } from "./oauth.js"
+import { revokeUser, type RevokingHub } from "./revocation.js"
 import { hashPassword, hashSecret, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, newId, verifyAgainstNothing, verifyPassword } from "./secrets.js"
 import { normaliseEmail } from "./store.js"
 import { addressKey } from "./limits.js"
@@ -154,9 +155,7 @@ export async function signOut(hub: Hub, req: IncomingMessage, res: ServerRespons
 export async function endAllSessions(hub: Hub, req: IncomingMessage, res: ServerResponse, address: string, signed: Signed): Promise<void> {
   const form = await readForm(req)
   if (!formTokenMatches(signed, form.get("form"))) throw new HubError(403, "The form has expired. Open the page again and retry.")
-  hub.store.endSessions(signed.user.id)
-  hub.store.forgetDevices(signed.user.id)
-  await cutUser(hub, signed.user.id)
+  await revokeUser(hub, signed.user.id)
   audit(hub, address, signed.user.id, "sessions-ended")
   redirect(res, "/", { "set-cookie": clearSessionCookie(hub) })
 }
@@ -204,9 +203,7 @@ export async function changePassword(hub: Hub, req: IncomingMessage, res: Server
   const problem = passwordProblem(password)
   if (problem) return showAccount(hub, res, signed, undefined, 400, problem)
   hub.store.setPassword(signed.user.id, await hashPassword(password as string))
-  hub.store.endSessions(signed.user.id)
-  hub.store.forgetDevices(signed.user.id)
-  await cutUser(hub, signed.user.id)
+  await revokeUser(hub, signed.user.id)
   audit(hub, address, signed.user.id, "password-changed")
   redirect(res, "/account", { "set-cookie": startSession(hub, signed.user.id) })
 }
@@ -226,11 +223,10 @@ export async function deleteAccount(hub: Hub, req: IncomingMessage, res: ServerR
  * Marks the user deleted first (every route and the proxy stop finding them), then stops their workspaces, removes
  * their folders and deletes their rows (sessions, devices and projects go with them).
  */
-export async function removeUser(hub: Pick<Hub, "store" | "files" | "runner" | "userCuts" | "epochs">, userId: string): Promise<void> {
+export async function removeUser(hub: RevokingHub & Pick<Hub, "files">, userId: string): Promise<void> {
   hub.store.markUserDeleted(userId)
-  await cutUser(hub, userId)
+  await revokeUser(hub, userId)
   for (const id of hub.store.projectIds(userId)) await hub.runner.stop(id)
-  hub.store.endSessions(userId)
   await hub.files.removeUser(userId)
   hub.store.deleteUser(userId)
 }

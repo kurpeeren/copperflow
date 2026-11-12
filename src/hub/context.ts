@@ -179,22 +179,12 @@ export async function cutUser(hub: Pick<Hub, "userCuts" | "runner" | "epochs">, 
 }
 
 /**
- * Revokes every agent credential of the user (personal tokens, OAuth grants and their tokens) and closes their agent
- * sessions, which cuts any open stream: a password change or reset, "End all sessions", deletion, the maintainer's
- * commands. A plain sign-out does not call it.
+ * Carries out the cuts the maintainer's commands asked for (the hub's 15-second sweep). The command revoked what the
+ * database holds already; `revoke` (revocation.ts's revokeUser) does it all again here, with what only the running hub
+ * holds: open agent sessions, streams, pending OAuth codes and workspaces.
  */
-export function revokeAgents(hub: Pick<Hub, "store" | "agents">, userId: string): void {
-  hub.store.tokens.revokeUser(userId)
-  hub.agents.closeUser(userId)
-}
-
-/** Carries out the cuts the maintainer's commands asked for (the hub's 15-second sweep). */
-export async function sweepCuts(hub: Hub): Promise<void> {
-  for (const userId of hub.store.takeCuts()) {
-    // The command revoked the credentials in the database already; this closes the sessions they opened.
-    revokeAgents(hub, userId)
-    await cutUser(hub, userId)
-  }
+export async function sweepCuts(hub: Hub, revoke: (hub: Hub, userId: string) => Promise<void>): Promise<void> {
+  for (const userId of hub.store.takeCuts()) await revoke(hub, userId)
 }
 
 /** Runs `work` after every earlier queued operation of the same user has finished. */

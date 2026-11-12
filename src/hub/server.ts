@@ -23,6 +23,7 @@ import { AgentSessions } from "./agent-sessions.js"
 import { loadCatalog } from "./hub-catalog.js"
 import { OAuthState } from "./oauth-state.js"
 import { serveMcp } from "./mcp-hub.js"
+import { revokeUser } from "./revocation.js"
 import { authorizationServer, authorize, consent, continueAuthorization, preflight, protectedResource, register, revoke, token } from "./oauth.js"
 import { createToken, revokeClient, revokeToken } from "./agent-account-routes.js"
 
@@ -177,7 +178,7 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
   const sweep = setInterval(() => {
     hub.store.sweepSessions(hub.config.now())
     hub.store.tokens.sweep(hub.config.now())
-    sweepCuts(hub).catch((error: unknown) => hub.log(`sweep failed: ${(error as Error).message}`))
+    sweepCuts(hub, revokeUser).catch((error: unknown) => hub.log(`sweep failed: ${(error as Error).message}`))
   }, options.sweepMs ?? SWEEP_MS)
   sweep.unref()
   return {
