@@ -11,6 +11,7 @@ import { lockedPartsAt, lockedStart } from "../core/layout-locks.js"
 import type { Design } from "../engine/design.js"
 import { findInstance, routeBoard, type RouteReport, type RouteScope, type UnroutedConnection } from "../engine/router/route-board.js"
 import { connectionPlace, padsById } from "../engine/pad-text.js"
+import { joinedByPoursText, padsJoinedByPours } from "../engine/pour/joins.js"
 import type { WorldPad } from "../engine/pcb.js"
 import { discardReason, routeSummary } from "../studio/route-events.js"
 import { contentHashes, lockSafeEdits, routeInput } from "../studio/route-runner.js"
@@ -85,6 +86,16 @@ export function routedLine(report: Pick<RouteReport, "routed" | "unrouted" | "pa
   return `${head}; unrouted: ${shown.join(", ")}${more}`
 }
 
+/**
+ * The routed line, with the pads the board's pours join when there are any: the router is not given those connections
+ * (the fill makes them), which is why its total is smaller than the count before the pour was added. The pads are the
+ * ones check_circuit names, from the same layout.
+ */
+export function withPourNote(line: string, design: Pick<Design, "pcb">): string {
+  const joined = padsJoinedByPours(design.pcb)
+  return joined.length === 0 ? line : `${line}; ${joinedByPoursText(joined)} and ${joined.length === 1 ? "needs" : "need"} no track`
+}
+
 /** The lines after the first: the budget and the cleanup, when they cut the run short. */
 function notes(report: RouteReport, budgetSeconds: number): string[] {
   return [
@@ -122,7 +133,7 @@ export async function autoroute(ports: Ports, input: { file: string; nets?: stri
     : routeBoard(routeInput(design), { scope, budgetMs: budgetSeconds * 1000, ...(options.clock ? { clock: options.clock } : {}) })
   const total = report.routed.length + report.unrouted.length
   if (total === 0) return "Nothing to route: every connection in the scope is already routed. Nothing was written."
-  const line = routedLine(report, padsById(design.pcb))
+  const line = withPourNote(routedLine(report, padsById(design.pcb)), design)
   if (report.edits.length === 0) return [`${line}. Nothing was written.`, ...notes(report, budgetSeconds)].join("\n")
   // The locks are read in the write queue, after the guard: a part locked while the board was routed is honoured.
   const edits = () => lockSafeEdits(circuit.path, design, report.edits)

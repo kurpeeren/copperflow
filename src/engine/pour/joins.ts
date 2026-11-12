@@ -1,6 +1,7 @@
 import { padShape, type Shape } from "../checks/geometry.js"
 import { viaSpan, type PcbTrack, type PcbVia } from "../copper.js"
 import type { Point, PourLayer } from "../model.js"
+import { naturalCompare } from "../order.js"
 import type { WorldPad } from "../pcb.js"
 import { boundsOf, boxesMeet, boxHolds, intersection, regionHolds, toPath, type Bounds, type IntPoint, type Region } from "./clip.js"
 import type { PourFill } from "./fill.js"
@@ -60,6 +61,34 @@ function touches(piece: Piece, item: Item): boolean {
   const outlines = item.shapes.map((shape) => toPath(shapeOutline(shape, TOUCH))).filter((path) => path.length >= 3)
   if (outlines.length === 0 || !boxesMeet(piece.box, boundsOf(outlines))) return false
   return intersection([piece.region.outer, ...piece.region.holes], outlines).length > 0
+}
+
+/**
+ * The pads the fills connect: pads of a pour's net, on its layer or through, in a piece of fill that also touches some
+ * other copper of that net (another pad, a track or a via). A piece that touches one pad alone connects nothing. These
+ * are the pads whose connections the ratsnest leaves out because the fill makes them; the same `pourJoins` the layout's
+ * copper was resolved with gives them.
+ */
+export function padsJoinedByPours(layout: { parts: readonly { pads: readonly WorldPad[] }[]; tracks: readonly PcbTrack[]; vias: readonly PcbVia[]; pours: readonly PourFill[] }): WorldPad[] {
+  const pads = layout.parts.flatMap((part) => part.pads)
+  const byId = new Map(pads.map((pad) => [pad.id, pad]))
+  const joined = new Map<string, WorldPad>()
+  for (const touched of pourJoins(layout.pours, pads, layout.tracks, layout.vias)) {
+    if (touched.length < 2) continue
+    for (const id of touched) {
+      const pad = byId.get(id)
+      if (pad !== undefined) joined.set(id, pad)
+    }
+  }
+  return [...joined.values()]
+}
+
+/** "4 pads on GND are joined by pours": the pads the fills connect, by net (three nets at most are named). */
+export function joinedByPoursText(pads: readonly WorldPad[]): string {
+  const nets = [...new Set(pads.map((pad) => (pad.net ?? "").replace(/^net[.:]/, "")))].sort(naturalCompare)
+  const named = nets.slice(0, 3).join(", ")
+  const more = nets.length > 3 ? ` and ${nets.length - 3} more` : ""
+  return `${pads.length === 1 ? "1 pad" : `${pads.length} pads`} on ${named}${more} ${pads.length === 1 ? "is" : "are"} joined by pours`
 }
 
 /**
