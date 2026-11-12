@@ -120,7 +120,8 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
         return 0
       }
       case "workspace":
-        await runWorkspaceCommand(rest, cwd, io, options)
+        // --root is required here, so it is handed back rather than defaulted to the current directory.
+        await runWorkspaceCommand(rootOption === undefined ? rest : ["--root", rootOption, ...rest], cwd, io, options)
         return 0
       case "studio": {
         const [port] = takeOption(rest, "--port")
