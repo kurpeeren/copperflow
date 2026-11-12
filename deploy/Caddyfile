@@ -6,7 +6,10 @@
 # certificate is issued only when the hub's /_tls-ask says the name exists); HTTP to HTTPS redirect (Caddy's
 # automatic HTTPS redirects port 80 for every site below); Host forwarded unchanged; X-Forwarded-For set to the
 # client's address only; event streams flushed at once; bodies up to 210 MB (the upload cap is 200 MB). Security
-# headers are the hub's own and are not added here.
+# headers are the hub's own and are not added here; that includes Strict-Transport-Security, which the hub sends on
+# every answer of an https public origin.
+#
+# IPv4 only as written (default_bind is an IPv4 address): publish no AAAA records (README, "IPv6").
 #
 # Not here: a per-client connection cap. Caddy has none built in (the hub's own cap is off for the trusted proxy), so
 # the firewall caps connections per client (README, step 6).

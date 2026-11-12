@@ -8,6 +8,9 @@
 # What the Docker socket means: the hub container drives the host's engine through the mounted socket, and anyone
 # who can use that socket is root on the host. A hub compromise is a host compromise in this arrangement; the
 # alternative is arrangement B, the hub on the host as a systemd service (deploy/copperflow-hub.service).
+#
+# IPv4 only as written: publish no AAAA records. IPv6 clients would arrive through docker-proxy from one address, and
+# the hub would see one client for all of them (README, "IPv6").
 
 name: copperflow
 
@@ -84,7 +87,10 @@ services:
         max-file: "5"
 
   proxy:
-    image: ${CF_CADDY_IMAGE}
+    image: ${CF_CADDY_IMAGE:?set CF_CADDY_IMAGE in hub.env, pinned by digest}
+    # Caddy runs as root inside its own container: the official image's user, which owns /data and /config. It has no
+    # capability but binding ports below 1024, a read-only root and no-new-privileges, and it shares only the hub's
+    # network namespace, not its files or the Docker socket.
     network_mode: service:hub
     depends_on:
       hub:

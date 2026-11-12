@@ -68,11 +68,25 @@ Pick A unless you already run a reverse proxy on the host that you want to keep;
 
   shows a SOURCE that is neither the one for `/` nor the one for `/var/lib/docker`.
 - DNS records, made by you (nothing here registers anything):
-  - `copperflow.kurpeeren.com`: A (and AAAA if the server has IPv6) to the server.
-  - `*.<workspace domain>`: a wildcard A/AAAA record to the same server. Project `<id>` is served on
-    `https://<id>.<workspace domain>/`.
+  - `copperflow.kurpeeren.com`: an A record to the server's IPv4 address. **No AAAA record** (see "IPv6" below).
+  - `*.<workspace domain>`: a wildcard A record to the same address, again with no AAAA. Project `<id>` is served
+    on `https://<id>.<workspace domain>/`.
 
-  `dig +short copperflow.kurpeeren.com` and `dig +short anything.<workspace domain>` both print the server's address.
+  `dig +short copperflow.kurpeeren.com` and `dig +short anything.<workspace domain>` both print the server's IPv4
+  address; `dig +short AAAA copperflow.kurpeeren.com` prints nothing.
+
+**IPv6.** These files are IPv4 only as written. In arrangement A, an IPv6 client would reach Caddy through Docker's
+userland proxy from one internal address, so the hub would see one client for all IPv6 users: one attacker's failed
+sign-ins would lock every IPv6 user out, and no per-client cap would apply. In arrangement B, Caddy listens on
+`0.0.0.0` (`CF_PROXY_BIND`) and nginx on IPv4 `listen` lines only. Publish no AAAA records.
+
+*Enabling IPv6 (untested; nothing below was verified):* A needs an IPv6-enabled edge network in `compose.yaml`
+(`enable_ipv6: true` and an IPv6 subnet under `ipam`) with a fixed IPv6 address for the hub container; Caddy's
+`default_bind` needs that address as well; Docker must publish the ports to it without the userland proxy (so the
+client's own address arrives); and the ip6tables rules must mirror the iptables ones below. `--trust-proxy` stays
+127.0.0.1, since Caddy reaches the hub on loopback whatever the client's family. B needs `CF_PROXY_BIND=0.0.0.0 [::]`
+(Caddy) or a `listen [::]:...` line beside each IPv4 one (nginx), and ip6tables rules in INPUT. Only then add AAAA
+records, and check that a sign-in from an IPv6 address is audited with that address.
 
 **Why a separate registrable domain for workspaces is recommended.** Every project origin serves content a project
 controls. If the workspace domain is under the same registrable domain as the public host (for example
@@ -142,7 +156,13 @@ docker build -f deploy/hub.Dockerfile --build-arg NODE_IMAGE=node:22-bookworm-sl
 docker image inspect --format '{{index .Config.Labels "org.copperflow.base"}}' copperflow-workspace:1
 ```
 
-The last command prints `node:22-bookworm-slim@sha256:...`. Put `caddy:2@sha256:<digest>` in `CF_CADDY_IMAGE`.
+The last command prints `node:22-bookworm-slim@sha256:...`. Put `caddy:2@sha256:<digest>` in `CF_CADDY_IMAGE` (A;
+Compose refuses to start while it is empty).
+
+Caddy runs as root inside its container: that is the official image's user and owner of its certificate store
+(`/data`). The container has no capability but binding ports 80 and 443, a read-only root and no-new-privileges, and
+shares only the hub's network namespace (not its files and not the Docker socket); running it as another user would
+need a rebuilt image or a changed owner of the volumes.
 
 **4b. Arrangement B only:** build the program on the host for the systemd unit:
 
@@ -207,15 +227,21 @@ cfc() { docker compose --env-file /opt/copperflow/deploy/hub.env -f /opt/copperf
 cf() { cfc exec hub node --no-warnings /app/dist/cli.js "$@"; }
 ```
 
-**The per-client connection cap.** The hub's own cap (64 per address) is off for its trusted proxy, and Caddy has
-none built in. Cap new connections per client address on the host, in Docker's own chain for published ports:
+**The per-client connection cap (untested).** The hub's own cap (64 per address) is off for its trusted proxy, and
+Caddy has none built in. Cap new connections per client address on the host, in Docker's own chain for forwarded
+traffic. The rule matches only connections INTO the proxy: after Docker's DNAT their destination is the hub
+container's edge address (`CF_HUB_EDGE_IP`) on port 80 or 443, so other containers' outbound HTTPS never matches:
 
 ```
-iptables -I DOCKER-USER -p tcp -m multiport --dports 80,443 -m connlimit --connlimit-above 64 --connlimit-mask 32 -j REJECT --reject-with tcp-reset
-ip6tables -I DOCKER-USER -p tcp -m multiport --dports 80,443 -m connlimit --connlimit-above 64 --connlimit-mask 64 -j REJECT --reject-with tcp-reset
+iptables -I DOCKER-USER -p tcp -d 172.31.250.2 -m multiport --dports 80,443 -m conntrack --ctstate NEW -m connlimit --connlimit-above 64 --connlimit-mask 32 -j REJECT --reject-with tcp-reset
+iptables -L DOCKER-USER -v -n --line-numbers      # the rule, with its pkts/bytes counters
 ```
 
-Make the rules permanent with the distribution's firewall tooling (they are lost at reboot otherwise).
+(Use your `CF_HUB_EDGE_IP` for `172.31.250.2`.) Check it works: open the site, and the rule's counters stay 0 (it
+counts only rejections, and one browser opens far fewer than 64 connections); from one outside machine, open more
+than 64 connections at once (for example 80 parallel `curl -s -o /dev/null https://copperflow.kurpeeren.com/healthz &`)
+and the counters rise. Make the rule permanent with the distribution's firewall tooling (it is lost at reboot
+otherwise). IPv4 only, like the rest (see "IPv6").
 
 ### Arrangement B
 
@@ -232,8 +258,13 @@ Then the proxy on the host:
 
 - **Caddy:** install `deploy/Caddyfile` as `/etc/caddy/Caddyfile` and give Caddy's service the same environment file
   (`systemctl edit caddy`, add `[Service]` and `EnvironmentFile=/etc/copperflow/hub.env`), then
-  `systemctl restart caddy`. Cap connections per client with the same `connlimit` rules in the `INPUT` chain instead
-  of `DOCKER-USER`.
+  `systemctl restart caddy`. Cap connections per client in the `INPUT` chain (inbound to this host only; untested;
+  check the counters as in A):
+
+  ```
+  iptables -I INPUT -p tcp -m multiport --dports 80,443 -m conntrack --ctstate NEW -m connlimit --connlimit-above 64 --connlimit-mask 32 -j REJECT --reject-with tcp-reset
+  ```
+  `CF_PROXY_BIND=0.0.0.0` makes Caddy IPv4 only; see "IPv6".
 - **nginx:** render `deploy/nginx.conf.example` as its header says, obtain the two certificates with the DNS
   challenge as it says, then `nginx -t` prints `syntax is ok` and `test is successful`. nginx caps connections
   itself (`limit_conn perclient 64`).
@@ -319,6 +350,11 @@ Run each and see it pass (docs/hosted.md, "Before the first stranger's account")
 14. `curl -sS -o /dev/null -w '%{http_code}\n' 'https://copperflow.kurpeeren.com/_tls-ask?domain=copperflow.kurpeeren.com'`
     prints `404` (the proxy refuses it; only the proxy itself asks the hub).
 15. A backup and its restore test pass (section 13).
+16. `cf hub check-data --data <data>` ends with `The data directory has no problems.`
+17. `curl -sSI https://copperflow.kurpeeren.com/signin | grep -i strict-transport` prints
+    `strict-transport-security: max-age=31536000` (the hub sets it; add `--hsts-include-subdomains` to the hub's
+    command only if every name under the public host's domain is served over https).
+18. `dig +short AAAA copperflow.kurpeeren.com` and `dig +short AAAA x.<workspace domain>` print nothing.
 
 ## 11. Day to day
 
@@ -349,6 +385,14 @@ within 15 seconds ...`; the hub's sweep stops it as an asked-for stop (not a cra
 project's next request starts it again. The project id is the 32 hex characters in the Studio's address (`/p/<id>/`)
 and in the audit log's detail; the request is audited as `workspace-stop-requested`. Do not use `docker stop` for
 this: the hub treats an end it did not ask for as a crash and restarts the workspace once.
+
+**Checking the data directory.** `cf hub check-data --data <data>` checks what the hub relies on: the data directory,
+database and key owner-only and owned by the hub's user; every project folder the hub's, in the workspace group, mode
+2770; everything inside readable and writable by that group; nothing open to others; no link pointing out of its
+project. It prints each problem on its own line and exits 1 when there is any; it ends with `The data directory has no
+problems.` otherwise. It takes the workspace group from the running hub's status file, or `--workspace-group <gid>`.
+`--fix` repairs what the hub's user owns and lists what needs root; it refuses while the hub's status file says the
+hub is running (stop it first; after a hard kill wait two minutes). It never follows or removes a link.
 
 **The audit log** is the `audit` table in `hub.db`: time (milliseconds), user id or none, event, address, detail
 (a project id, a count or a reason; never a password, cookie, invite code, token or ticket). The events are listed
@@ -397,34 +441,65 @@ copy of the live database); the ticket key and every project folder are archived
 owners kept. The archive is as sensitive as the data directory: it holds the ticket key and every account's files.
 The destination is yours to choose (plan, "For the maintainer to decide", 5); the script only writes to a directory.
 
-Run it as the hub's user. A: with `COPPERFLOW="docker exec copperflow-hub node --no-warnings /app/dist/cli.js"`.
+The command that runs copperflow, for this section (as `COPPERFLOW`):
+
+- A: `COPPERFLOW="docker exec copperflow-hub node --no-warnings /app/dist/cli.js"` (the hub running)
+- B: `COPPERFLOW="node --no-warnings /opt/copperflow/dist/cli.js"`
+
+The destination, once, as root: `install -d -m 700 -o copperflow-hub -g copperflow-hub /srv/copperflow-backup` (the
+script also makes it 700 when missing, and refuses one that group or others may open).
 
 ```
-sudo -u copperflow-hub COPPERFLOW="..." /opt/copperflow/deploy/backup.sh /var/lib/copperflow /srv/copperflow-backup
+sudo -u copperflow-hub COPPERFLOW="<as above>" /opt/copperflow/deploy/backup.sh /var/lib/copperflow /srv/copperflow-backup
 ```
 
 prints `Wrote /srv/copperflow-backup/copperflow-<time>.tar.gz ({"users":..,"projects":..,"unusedInvites":..}).` Files a
 workspace made readable to itself only cannot be read by the hub's user; the script then warns with their number and
-the `.log` names them. Nightly, with a systemd timer or cron as that user, for example
-`15 3 * * * COPPERFLOW="..." /opt/copperflow/deploy/backup.sh /var/lib/copperflow /srv/copperflow-backup`.
+the `.log` names them. Run as root with `--allow-root` to include them: the database copy is still made as the hub's
+user (the script runs copperflow through `runuser`), and only tar runs as root. Nightly, with a systemd timer or cron,
+for example `15 3 * * * COPPERFLOW="<as above>" /opt/copperflow/deploy/backup.sh /var/lib/copperflow
+/srv/copperflow-backup` in the hub user's crontab.
 
-**Restore test** (after the first backup, and monthly): `deploy/restore-test.sh <archive>` checks the `.sha256`,
-restores into a scratch directory, runs `hub status --json` on it and compares the counts. It prints
-`Restore test passed for <archive>: {...}.` (A: see the script's header for running the hub's image on the scratch
-directory.)
-
-**Restore** (the hub stopped):
+**Restore test** (after the first backup, and monthly), as root:
 
 ```
-mv /var/lib/copperflow /var/lib/copperflow.broken
-install -d -m 700 -o copperflow-hub -g copperflow-hub /var/lib/copperflow
-sudo -u copperflow-hub tar --extract --gzip --file <archive> --directory /var/lib/copperflow --preserve-permissions --numeric-owner
-sudo -u copperflow-hub rm /var/lib/copperflow/counts.json
-cf hub status --data /var/lib/copperflow
+CF_WORKSPACE_GID=<gid> COPPERFLOW="node --no-warnings /opt/copperflow/dist/cli.js" /opt/copperflow/deploy/restore-test.sh <archive> --allow-root   # B
+CF_WORKSPACE_GID=<gid> COPPERFLOW_IMAGE=copperflow-hub:1 /opt/copperflow/deploy/restore-test.sh <archive> --allow-root                            # A
 ```
 
-Start the hub. Files owned by uid 10001 come back owned by the hub's user (only root restores other owners); that is
-fine, since the workspace runs in their group with mode 2770 folders.
+It checks the `.sha256`, restores into a scratch directory as the restore below does, runs `hub check-data` (owners,
+groups, modes, links) and `hub status --json` on it as the data's owner, and compares the counts. It prints
+`The data directory has no problems.` and `Restore test passed for <archive>: {...}.`
+
+**Restore.** The data directory is a mount point (step 1), so it is never moved itself: its contents are moved aside
+on the same filesystem, and the archive is extracted as root so every owner, group and mode comes back as it was
+(the workspaces need their group on every file). Each step's check is on the right. With `<data>` =
+`/var/lib/copperflow` and A's stopped-hub command `cfoff() { cfc run --rm --no-deps hub "$@"; }` (untested; B uses
+`cf`):
+
+```
+cfc stop          # A                         | cfc ps shows nothing running
+systemctl stop copperflow-hub   # B            | systemctl is-active copperflow-hub prints inactive
+aside=/var/lib/copperflow/.before-restore-$(date -u +%Y%m%dT%H%M%SZ)
+mkdir -m 700 "$aside"
+find /var/lib/copperflow -mindepth 1 -maxdepth 1 ! -path "$aside" -exec mv -t "$aside" -- {} +
+ls -A /var/lib/copperflow                      | only .before-restore-<time>
+tar --extract --gzip --file <archive> --directory /var/lib/copperflow --same-owner --numeric-owner --preserve-permissions
+rm /var/lib/copperflow/counts.json
+stat -c '%a %U %G' /var/lib/copperflow         | 700 copperflow-hub copperflow-hub (unchanged: the mount point itself)
+cfoff hub check-data --data /var/lib/copperflow --workspace-group <gid>   # A
+cf hub check-data --data /var/lib/copperflow --workspace-group <gid>      # B
+                                               | The data directory has no problems.
+cf hub status --data /var/lib/copperflow       | (B; A: cfoff hub status ...) the users and projects of the backup's Wrote line
+```
+
+Then start the hub (A `cfc up -d`, B `systemctl start copperflow-hub`) and check step 6's lines. When everything works,
+remove the moved-aside contents: `rm -rf /var/lib/copperflow/.before-restore-<time>`. If `check-data` reports problems,
+`--fix` (with the hub stopped) repairs what the hub's user owns and lists what needs root.
+
+On another server, or onto a freshly made filesystem: mount it at `/var/lib/copperflow`, `install -d -m 700 -o
+copperflow-hub -g copperflow-hub` it if new, and continue from the `tar` line. The uids and gids in the archive are
+numeric: the hub's user and the workspace group must have the same ids there, or `check-data` names every entry.
 
 ## 14. When something goes wrong
 

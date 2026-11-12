@@ -14,8 +14,12 @@
 #
 # The DNS credentials file is a secret: root-owned, mode 600, never in the repository or in hub.env.
 #
-# Security headers are the hub's own and are not added here. The hub's /_tls-ask is not used with nginx and is
-# refused below, since a proxied request arrives from loopback and would be answered.
+# Security headers are the hub's own and are not added here; that includes Strict-Transport-Security, which the hub
+# sends on every answer of an https public origin. The hub's /_tls-ask is not used with nginx and is refused below
+# (the hub also refuses any forwarded one).
+#
+# IPv4 only as written: publish no AAAA records. For IPv6, each server needs a second listen line for [::] with the
+# same port (README, "IPv6"; not verified).
 
 # One connection-count table for every client address (the hub's own per-address cap is off for its trusted proxy).
 limit_conn_zone $binary_remote_addr zone=perclient:10m;
@@ -28,7 +32,6 @@ upstream copperflow_hub {
 # HTTP to HTTPS, for the public host and every project host (and the certbot webroot for the public host).
 server {
     listen 80;
-    listen [::]:80;
     server_name ${CF_PUBLIC_HOST} *.${CF_WORKSPACE_DOMAIN};
     location /.well-known/acme-challenge/ {
         root /var/www/letsencrypt;
@@ -41,7 +44,6 @@ server {
 # The public host. The project hosts' server below repeats the same proxy settings.
 server {
     listen 443 ssl;
-    listen [::]:443 ssl;
     http2 on;
     server_name ${CF_PUBLIC_HOST};
     ssl_certificate /etc/letsencrypt/live/${CF_PUBLIC_HOST}/fullchain.pem;
@@ -77,7 +79,6 @@ server {
 
 server {
     listen 443 ssl;
-    listen [::]:443 ssl;
     http2 on;
     server_name *.${CF_WORKSPACE_DOMAIN};
     ssl_certificate /etc/letsencrypt/live/${CF_WORKSPACE_DOMAIN}/fullchain.pem;
