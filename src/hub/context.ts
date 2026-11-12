@@ -5,7 +5,7 @@ import type { WorkspaceRunner } from "./runner/runner.js"
 import type { TicketKeys } from "./keys.js"
 import type { ProjectFiles } from "./projects.js"
 import type { HubStore, User } from "./store.js"
-import { addressKey, GlobalSlowdown, WindowCounter } from "./limits.js"
+import { SigninGate, WindowCounter } from "./limits.js"
 import { cookies, setCookie } from "./http.js"
 import { formTokenOf, hashSecret, newSecret, sameSecret } from "./secrets.js"
 
@@ -23,8 +23,6 @@ export interface HubConfig {
   trustProxy: boolean
   maxProjects: number
   maxBytes: number
-  /** How much longer each sign-in waits while the global slow-down is on. */
-  slowDownMs: number
   now: () => number
 }
 
@@ -47,10 +45,12 @@ export interface Signed {
 }
 
 /**
- * The sign-in limits. All count FAILED password checks only, so a correct password is refused only by (a) or (b):
- * (a) per address (IPv4 whole, IPv6 /64): 10 per 15 minutes, then 429;
+ * The sign-in limits (docs/hosted.md, "Sign-in limits"). Every attempt is counted before its first await, as if it
+ * failed, and refunded when the password is right, so concurrent attempts cannot pass a check together.
+ * (a) per address (IPv4 whole, IPv6 /64): 10 per 15 minutes, then 429, for everyone;
  * (b) per email: 20 per 15 minutes, then 429, except for a request carrying that account's device cookie;
- * (c) globally: past 300 per 15 minutes every attempt waits `slowDownMs` longer, nobody is refused;
+ * (c) strict mode (over 300 failures in 15 minutes, or a full table): attempts without that device cookie pass one
+ *     token bucket of 5 per second with a queue of 50, then 429;
  * (f) re-authentication of a signed-in user: 10 per 15 minutes keyed on the user id, separate from sign-in.
  */
 export interface Limits {
@@ -58,7 +58,7 @@ export interface Limits {
   signinEmail: WindowCounter
   signupAddress: WindowCounter
   reauth: WindowCounter
-  slowdown: GlobalSlowdown
+  gate: SigninGate
 }
 
 const FIFTEEN_MINUTES = 15 * 60_000
@@ -68,30 +68,29 @@ export const EMAIL_FAILURES = 20
 export const MAX_DEVICES = 10
 const DEVICE_S = 365 * 24 * 60 * 60
 
-export function newLimits(): Limits {
+export function newLimits(maxKeys?: number): Limits {
   return {
-    signinAddress: new WindowCounter(ADDRESS_FAILURES, FIFTEEN_MINUTES),
-    signinEmail: new WindowCounter(EMAIL_FAILURES, FIFTEEN_MINUTES),
-    signupAddress: new WindowCounter(20, 60 * 60_000),
-    reauth: new WindowCounter(ADDRESS_FAILURES, FIFTEEN_MINUTES),
-    slowdown: new GlobalSlowdown(MAX_FAILED_SIGNINS, FIFTEEN_MINUTES),
+    signinAddress: new WindowCounter(ADDRESS_FAILURES, FIFTEEN_MINUTES, maxKeys),
+    signinEmail: new WindowCounter(EMAIL_FAILURES, FIFTEEN_MINUTES, maxKeys),
+    signupAddress: new WindowCounter(20, 60 * 60_000, maxKeys),
+    reauth: new WindowCounter(ADDRESS_FAILURES, FIFTEEN_MINUTES, maxKeys),
+    gate: new SigninGate({ threshold: MAX_FAILED_SIGNINS, windowMs: FIFTEEN_MINUTES, perSecond: 5, queue: 50 }),
   }
 }
 
-/** Counts a failed sign-in against (a), (b) and (c); a full limiter table turns on the global slow-down. */
-export function countSigninFailure(hub: Hub, address: string, email: string): void {
-  const now = hub.config.now()
-  hub.limits.slowdown.fail(now)
-  const overflow = [hub.limits.signinAddress.add(addressKey(address), now), hub.limits.signinEmail.add(email, now)].includes("overflow")
-  if (overflow) hub.limits.slowdown.force(now)
+/** Counts `key` in `counter`; a full table turns strict mode on (said once per window in the audit log). */
+export function countAttempt(hub: Hub, counter: WindowCounter, key: string, now: number, address: string): void {
+  if (counter.add(key, now) === "ok") return
+  hub.limits.gate.enterStrict(now)
+  if (hub.limits.gate.announce(now)) audit(hub, address, null, "signin-strict-table-full")
 }
 
-/** Waits when the global slow-down is on; the audit log says so once per window. */
-export async function slowDownIfNeeded(hub: Hub, address: string): Promise<void> {
+/** In strict mode, an attempt without a device cookie for its account waits for the bucket; false means refuse. */
+export async function passGate(hub: Hub, address: string): Promise<boolean> {
   const now = hub.config.now()
-  if (!hub.limits.slowdown.slowed(now)) return
-  if (hub.limits.slowdown.announce(now)) audit(hub, address, null, "signin-slowed-global")
-  await new Promise((done) => setTimeout(done, hub.config.slowDownMs))
+  if (!hub.limits.gate.strict(now)) return true
+  if (hub.limits.gate.announce(now)) audit(hub, address, null, "signin-strict")
+  return hub.limits.gate.pass()
 }
 
 function deviceCookieName(config: HubConfig): string {

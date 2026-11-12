@@ -46,8 +46,8 @@ export interface HubOptions {
   trustedAccountsOnly?: boolean
   maxProjects?: number
   maxBytes?: number
-  /** Extra wait per sign-in while the global slow-down is on; default 2 s. */
-  slowDownMs?: number
+  /** Keys each limiter table holds; default 100 000 (tests make it small). */
+  limiterKeys?: number
   now?: () => number
   log?: (line: string) => void
 }
@@ -71,7 +71,6 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
     trustProxy: options.trustProxy ?? false,
     maxProjects: options.maxProjects ?? MAX_PROJECTS,
     maxBytes: options.maxBytes ?? MAX_BYTES,
-    slowDownMs: options.slowDownMs ?? 2_000,
     now: options.now ?? Date.now,
   }
   const files = new ProjectFiles(options.dataDir)
@@ -82,7 +81,7 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
     files,
     runner: options.runner ? options.runner(keys.publicKeyBase64, publicOrigin) : createProcessRunner({ publicOrigin, ticketPublicKey: keys.publicKeyBase64 }),
     keys,
-    limits: newLimits(),
+    limits: newLimits(options.limiterKeys),
     userLocks: new Map(),
     log: options.log ?? ((line) => process.stderr.write(`copperflow hub: ${line}\n`)),
   }

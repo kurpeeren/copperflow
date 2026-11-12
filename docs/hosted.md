@@ -73,10 +73,26 @@ The audit log (`audit` table: time, user id or none, event, address, detail) rec
 `project-deleted`, `project-downloaded`, `project-uploaded`, `upload-refused`. The detail holds a project id, a file
 count or the reason an upload was refused, never a password, cookie, invite code or ticket.
 
-Limits: sign-in 10 attempts per 15 minutes per address (IPv6 by /64) and per email, shared with the current-password
-checks of the account page; 300 failed password checks per 15 minutes across everyone, then sign-in answers 429 for
-all; sign-up 20 per hour per address; request bodies 1 MB except upload; 20 projects and 200 MB per user, checked under
-a per-user lock. Sessions last 14 days, renewed on use; sign-out and a password change end every session of the user.
+### Sign-in limits
+
+Every password check is counted before it starts, as if it failed, and refunded when the password is right: concurrent
+attempts cannot pass a check together, and a correct password costs nothing. Windows are 15 minutes.
+
+| What is counted | Per | Limit | At the limit | Exempt |
+| --- | --- | --- | --- | --- |
+| Failed sign-ins | Address (IPv4 whole, IPv6 /64) | 10 | 429 with Retry-After | Nobody |
+| Failed sign-ins | Email | 20 | 429 with Retry-After | A request with that account's device cookie |
+| Failed sign-ins | Everyone (strict mode) | 300, or a full limiter table | Attempts pass a token bucket of 5 per second with a queue of 50; a full queue gets 429 | A request with that account's device cookie |
+| Failed current-password checks (change password, delete account) | User id | 10 | 429 with Retry-After | Nobody; the sign-in route cannot reach this counter |
+| Sign-ups | Address | 20 per hour | 429 | Nobody |
+
+A device cookie is set at each successful sign-in (random, stored hashed, at most 10 per user, one year). Sign-out,
+a password change or reset and account deletion delete the user's devices. A limiter table holds 100 000 keys and never
+forgets a key with failures in its window; a new key that does not fit is not counted and turns strict mode on for the
+window. The audit log says `signin-strict` or `signin-strict-table-full` once per window.
+
+Other limits: request bodies 1 MB except upload; 20 projects and 200 MB per user, checked under a per-user lock.
+Sessions last 14 days, renewed on use; sign-out and a password change end every session of the user.
 A download is every regular file of the project except leftovers of interrupted writes (`*.<pid>.<hex>.tmp`);
 `.copperflow/history/` is kept, since it is the undo history and not a cache.
 

@@ -1,118 +1,154 @@
-// Attempt limits. A WindowCounter counts events per key in a sliding window and says when a key has reached its
-// maximum. Its memory is bounded without ever opening a limited key early or refusing a newcomer: keys under their
-// maximum live in one table, evicted oldest first when it is full; keys at their maximum move to a separate bounded
-// table and stay there until their window has passed. When that table is full too, `add` says "overflow" and the
-// caller slows every attempt down instead (GlobalSlowdown), which never refuses anyone.
+// Sign-in limits (the design and its reasons are in docs/hosted.md, "Sign-in limits").
+//
+// WindowCounter counts events per key in a sliding window. It never forgets a key that still has live events, and it
+// never refuses anyone because it is full: a new key that does not fit is simply not counted, and `add` says "full"
+// so the caller turns on strict mode. SigninGate is strict mode: a token bucket with a short queue for sign-in attempts
+// that carry no device cookie for the account they name.
 
 export type LimitCheck = { ok: true } | { ok: false; retryAfterS: number }
 
-export const DEFAULT_MAX_OPEN_KEYS = 50_000
-export const DEFAULT_MAX_LIMITED_KEYS = 10_000
+export const DEFAULT_MAX_KEYS = 100_000
 
 export class WindowCounter {
-  private readonly open = new Map<string, number[]>()
-  private readonly limitedKeys = new Map<string, number[]>()
+  private readonly events = new Map<string, number[]>()
 
   constructor(
     private readonly max: number,
     private readonly windowMs: number,
-    private readonly maxOpen = DEFAULT_MAX_OPEN_KEYS,
-    private readonly maxLimited = DEFAULT_MAX_LIMITED_KEYS,
+    private readonly maxKeys = DEFAULT_MAX_KEYS,
   ) {}
 
-  private live(times: readonly number[], now: number): number[] {
-    return times.filter((time) => time > now - this.windowMs)
-  }
-
-  private refusal(times: readonly number[], now: number): LimitCheck {
-    return { ok: false, retryAfterS: Math.max(1, Math.ceil(((times[times.length - this.max] as number) + this.windowMs - now) / 1000)) }
+  private live(key: string, now: number): number[] {
+    const times = (this.events.get(key) ?? []).filter((time) => time > now - this.windowMs)
+    if (times.length === 0) this.events.delete(key)
+    else this.events.set(key, times)
+    return times
   }
 
   /** Whether `key` has reached its maximum in the window. */
   check(key: string, now: number): LimitCheck {
-    const held = this.limitedKeys.get(key)
-    if (held) {
-      const times = this.live(held, now)
-      if (times.length >= this.max) return this.refusal(times, now)
-      this.limitedKeys.delete(key)
-      if (times.length > 0) this.open.set(key, times)
-      return { ok: true }
-    }
-    const times = this.live(this.open.get(key) ?? [], now)
-    // A key that could not move to the limited table (overflow) is still limited where it is.
-    return times.length >= this.max ? this.refusal(times, now) : { ok: true }
+    const times = this.live(key, now)
+    if (times.length < this.max) return { ok: true }
+    return { ok: false, retryAfterS: Math.max(1, Math.ceil(((times[times.length - this.max] as number) + this.windowMs - now) / 1000)) }
   }
 
-  /** Counts one event for `key`. "overflow" when the key reached its maximum but the limited table is full. */
-  add(key: string, now: number): "ok" | "overflow" {
-    const held = this.limitedKeys.get(key)
-    if (held) {
-      this.limitedKeys.set(key, [...this.live(held, now), now].slice(-this.max))
-      return "ok"
+  /** Counts one event at `now`. "full" when the key is new and the table has no room even after dropping spent keys. */
+  add(key: string, now: number): "ok" | "full" {
+    const times = this.live(key, now)
+    if (times.length === 0 && this.events.size >= this.maxKeys) {
+      this.sweep(now)
+      if (this.events.size >= this.maxKeys) return "full"
     }
-    const times = [...this.live(this.open.get(key) ?? [], now), now].slice(-this.max)
-    this.open.delete(key)
-    if (times.length >= this.max) {
-      if (this.limitedKeys.size >= this.maxLimited) this.sweepLimited(now)
-      if (this.limitedKeys.size < this.maxLimited) {
-        this.limitedKeys.set(key, times)
-        return "ok"
-      }
-      this.putOpen(key, times)
-      return "overflow"
-    }
-    this.putOpen(key, times)
+    this.events.set(key, [...times, now])
     return "ok"
   }
 
-  private putOpen(key: string, times: number[]): void {
-    // Full: forget the key touched longest ago. Limited keys are not in this table, so none is opened early.
-    while (this.open.size >= this.maxOpen) this.open.delete(this.open.keys().next().value as string)
-    this.open.set(key, times)
+  /** Takes back one event counted at `time` (an attempt that turned out right). */
+  refund(key: string, time: number): void {
+    const times = this.events.get(key)
+    if (!times) return
+    const at = times.lastIndexOf(time)
+    if (at >= 0) times.splice(at, 1)
+    if (times.length === 0) this.events.delete(key)
   }
 
-  private sweepLimited(now: number): void {
-    for (const [key, times] of this.limitedKeys) if (this.live(times, now).length < this.max) this.limitedKeys.delete(key)
+  private sweep(now: number): void {
+    for (const [key, times] of this.events) if (times.every((time) => time <= now - this.windowMs)) this.events.delete(key)
   }
 
-  get size(): { open: number; limited: number } {
-    return { open: this.open.size, limited: this.limitedKeys.size }
+  get size(): number {
+    return this.events.size
   }
 }
 
-/**
- * The global brake on failed sign-ins: past `threshold` failures in the window (or while forced after an overflow),
- * every sign-in attempt waits a little longer. It never refuses, so nobody can lock everyone out.
- */
-export class GlobalSlowdown {
-  private times: number[] = []
-  private forcedUntil = 0
-  private announcedAt = Number.NEGATIVE_INFINITY
+export interface GateOptions {
+  /** Failures in the window that turn strict mode on. */
+  threshold: number
+  windowMs: number
+  /** Token bucket: attempts per second, and the bucket's size. */
+  perSecond: number
+  /** Attempts that may wait for a token; beyond it they are refused. */
+  queue: number
+}
 
-  constructor(
-    private readonly threshold: number,
-    private readonly windowMs: number,
-  ) {}
+/**
+ * Strict mode for sign-in: on while more than `threshold` failures fell in the window, or for one window after a
+ * limiter table was full. While on, attempts without a device cookie for their account pass one token bucket; they
+ * wait in a short queue, and are refused (429) when the queue is full. Nobody else is ever refused by it.
+ */
+export class SigninGate {
+  private failures: number[] = []
+  private strictUntil = 0
+  private announcedAt = Number.NEGATIVE_INFINITY
+  private tokens: number
+  private refilledAt = Date.now()
+  private readonly waiting: (() => void)[] = []
+  private timer: NodeJS.Timeout | undefined
+
+  constructor(private readonly options: GateOptions) {
+    this.tokens = options.perSecond
+  }
 
   fail(now: number): void {
-    this.times.push(now)
-    if (this.times.length > this.threshold) this.times = this.times.slice(-this.threshold)
+    this.failures.push(now)
+    if (this.failures.length > this.options.threshold + 1) this.failures = this.failures.slice(-(this.options.threshold + 1))
   }
 
-  /** Slows everyone down for one window (a limiter table overflowed). */
-  force(now: number): void {
-    this.forcedUntil = now + this.windowMs
+  /** A limiter table was full: strict for one window. */
+  enterStrict(now: number): void {
+    this.strictUntil = now + this.options.windowMs
   }
 
-  slowed(now: number): boolean {
-    return this.forcedUntil > now || (this.times.length >= this.threshold && (this.times[0] as number) > now - this.windowMs)
+  strict(now: number): boolean {
+    const over = this.failures.length > this.options.threshold && (this.failures[0] as number) > now - this.options.windowMs
+    return over || this.strictUntil > now
   }
 
-  /** True once per window while slowed, so the audit log says it once. */
+  /** True once per window, so the audit log says it once. */
   announce(now: number): boolean {
-    if (now - this.announcedAt < this.windowMs) return false
+    if (now - this.announcedAt < this.options.windowMs) return false
     this.announcedAt = now
     return true
+  }
+
+  private refill(): void {
+    const now = Date.now()
+    this.tokens = Math.min(this.options.perSecond, this.tokens + ((now - this.refilledAt) / 1000) * this.options.perSecond)
+    this.refilledAt = now
+  }
+
+  /** Waits for a token; false (refuse with 429) when the queue is full. */
+  pass(): Promise<boolean> {
+    this.refill()
+    if (this.waiting.length === 0 && this.tokens >= 1) {
+      this.tokens -= 1
+      return Promise.resolve(true)
+    }
+    if (this.waiting.length >= this.options.queue) return Promise.resolve(false)
+    return new Promise((done) => {
+      this.waiting.push(() => done(true))
+      this.drain()
+    })
+  }
+
+  private drain(): void {
+    if (this.timer) return
+    this.timer = setInterval(() => {
+      this.refill()
+      while (this.waiting.length > 0 && this.tokens >= 1) {
+        this.tokens -= 1
+        this.waiting.shift()?.()
+      }
+      if (this.waiting.length === 0) {
+        clearInterval(this.timer)
+        this.timer = undefined
+      }
+    }, Math.ceil(1000 / this.options.perSecond))
+    this.timer.unref()
+  }
+
+  get queued(): number {
+    return this.waiting.length
   }
 }
 

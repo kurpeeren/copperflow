@@ -212,6 +212,11 @@ export class HubStore {
     return row && sameSecret(row.hash as string, idHash) ? (row.user_id as string) : undefined
   }
 
+  /** Forgets every device of the user (with the sessions, on sign-out, password change or reset). */
+  forgetDevices(userId: string): void {
+    this.sql("DELETE FROM devices WHERE user_id = ?").run(userId)
+  }
+
   deviceCount(userId: string): number {
     return Number((this.sql("SELECT COUNT(*) AS n FROM devices WHERE user_id = ?").get(userId) as Row).n)
   }

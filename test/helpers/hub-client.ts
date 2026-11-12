@@ -76,7 +76,10 @@ export class Browser {
 
   /** Opens `page` and posts its form with the hidden token. */
   async submit(page: string, action: string, fields: Record<string, string>, headers: Record<string, string> = {}): Promise<Answer> {
-    const token = formToken((await this.get(page)).text)
+    const shown = await this.get(page)
+    // Signed in, the sign-in page redirects: the form cookie still holds the anonymous token.
+    const fromCookie = this.jar.get("__Host-copperflow-form") ?? this.jar.get("copperflow-form")
+    const token = shown.status === 303 && page === "/signin" && fromCookie ? fromCookie : formToken(shown.text)
     return this.post(action, { form: token, ...fields }, headers)
   }
 

@@ -134,6 +134,7 @@ async function resetPassword(store: HubStore, email: string | undefined, io: Cli
   const password = newSecret()
   store.setPassword(user.id, await hashPassword(password))
   store.endSessions(user.id)
+  store.forgetDevices(user.id)
   store.audit({ time: Date.now(), userId: user.id, event: "password-reset", address: "cli", detail: "" })
   io.out(`A one-time password for ${user.email}, shown only now. Every session of the user has ended; ask them to change it on the account page:`)
   io.out(password)
