@@ -8,7 +8,7 @@ import { randomBytes } from "node:crypto"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import type { Tool } from "@modelcontextprotocol/sdk/types.js"
-import { createCopperflowServer } from "../mcp/server.js"
+import { createCopperflowServer, INSTRUCTIONS_INTRO, INSTRUCTIONS_RULES } from "../mcp/server.js"
 
 export const HUB_TOOLS = ["list_projects", "new_project", "open_project"] as const
 /** Answered by the hub itself from the skill files, so an agent can learn before any project exists. */
@@ -42,10 +42,14 @@ export interface Catalog {
   forwarded: ReadonlySet<string>
 }
 
-/** The two lines the hub adds to the hosted server's instructions. */
-export function hubInstructions(hosted: string, publicOrigin: string): string {
-  return `${hosted}
-- Work in a project: list_projects, then open_project or new_project, before any tool but guide.
+/**
+ * What a client of the hub reads: the workspace's rules with ONE start order in place of the workspace's own (which
+ * starts at project_status, a tool that needs an open project).
+ */
+export function hubInstructions(publicOrigin: string): string {
+  return `${INSTRUCTIONS_INTRO}
+- Start in this order: open or create a project (list_projects, then open_project or new_project; no workspace tool works before), then project_status, then guide (no topic) once, which is the copperflow skill. Follow its design workflow; call guide { topic } only for a reference it names.
+${INSTRUCTIONS_RULES}
 - The person watches the open project at ${publicOrigin}/p/<project id>/.`
 }
 
@@ -60,7 +64,7 @@ export async function loadCatalog(publicOrigin: string): Promise<Catalog> {
     const { tools } = await client.listTools()
     const hosted = tools.filter((tool) => !(HUB_TOOLS as readonly string[]).includes(tool.name))
     return {
-      instructions: hubInstructions(client.getInstructions() ?? "", publicOrigin),
+      instructions: hubInstructions(publicOrigin),
       tools: [...PROJECT_TOOLS, ...hosted],
       forwarded: new Set(hosted.map((tool) => tool.name).filter((name) => name !== GUIDE_TOOL)),
     }

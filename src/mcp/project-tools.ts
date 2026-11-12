@@ -45,7 +45,7 @@ export const setProjectInput = {
 }
 
 export const PROJECT_STATUS_DESCRIPTION =
-  "Call this first in every task. Answers in a screenful: the project's PROJECT.md (Intent, Blocks, the last five Decisions, Open), then per circuit file its parts, nets, unplaced parts, unrouted connections, errors and warnings, and its last three changes. Without a PROJECT.md the answer says so; set_project writes one."
+  "Call this first in every task (behind the hosted hub: right after a project is open). Answers in a screenful: the project's PROJECT.md (Intent, Blocks, the last five Decisions, Open), then per circuit file its parts, nets, unplaced parts, unrouted connections, errors and warnings, and its last three changes. Without a PROJECT.md the answer says so; set_project writes one."
 export const NOTE_DECISION_DESCRIPTION =
   "Note a design decision in PROJECT.md: one dated line under Decisions (naming the circuit file when file is given), as ONE change. Note each choice a later context should not undo (a part chosen and why, a board size, what the person approved)."
 export const SET_PROJECT_DESCRIPTION =

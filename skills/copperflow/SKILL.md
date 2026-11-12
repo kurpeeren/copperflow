@@ -12,10 +12,10 @@ not the files.
 
 ## Every task
 
-1. `project_status` `{}` first. It answers with PROJECT.md (`Intent: …`, `Blocks:`, the last
-   five `Decisions:`, `Open:`), then one line per circuit
-   (`main.circuit.tsx: parts 12, nets 9, unplaced 0, unrouted 3, errors 0, warnings 2`) and its
-   last three changes. `No PROJECT.md yet` with `Circuits: none yet` is a new project: start
+1. `project_status` `{}` first (on the hosted service after `open_project` or `new_project`). It
+   answers with PROJECT.md (`Intent: …`, `Blocks:`, the last five `Decisions:`, `Open:`), then one
+   line per circuit (`main.circuit.tsx: parts 12, nets 9, unplaced 0, unrouted 3, errors 0,
+   warnings 2`) and its last three changes. `No PROJECT.md yet` with `Circuits: none yet` is a new project: start
    the design workflow. `No PROJECT.md yet` with `Circuits (n):` is a board begun without one:
    read `circuit_summary` of each circuit, write the Intent and Blocks from what exists with
    `set_project` (each block's status as far as it got), and continue from there; never start over.

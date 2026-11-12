@@ -394,8 +394,10 @@ beyond that new ones are refused, never another's evicted, and expired ones are 
 request passes a global bucket of 5 a second (2 waiting per address, 40 in all) after the per-address limit of 30 per
 15 minutes.
 
-**What the hub answers and forwards.** The hub is the MCP server the agent talks to. Its instructions are the hosted
-server's plus two lines (open or create a project first; the person watches at `<public origin>/p/<id>/`). It answers
+**What the hub answers and forwards.** The hub is the MCP server the agent talks to. Its instructions are one text
+(`hubInstructions`): the workspace's rules with a single start order in place of the workspace's own (open or create a
+project, then `project_status`, then `guide` once), and the line saying the person watches at `<public origin>/p/<id>/`;
+the workspace's "call `project_status` first" never reaches a hub client. It answers
 `list_projects`, `new_project { name }` (the project quotas apply; it opens the project) and `open_project { name |
 id }` (another user's project reads exactly as a missing one), and `guide` from the skill files. Every other tool is
 advertised from the hosted tool list, read once at start by an in-memory MCP client from a hosted server made for a
@@ -403,8 +405,9 @@ folder that does not exist (listing tools only serialises schemas: no circuit co
 project's workspace: the hub ensures the workspace and calls the tool on the workspace's MCP server as an MCP client,
 with `Host` set to the project origin's host and a one-minute ticket signed just before each request, only while the
 session, its token, the user's revocation epoch and the project still hold. The answer passes through unchanged. With
-no project open, a forwarded tool answers an error naming the three project tools. Measured 2026-11-12: instructions
-and `tools/list` 42 725 characters (limit 43 000), `guide` 15 390 (limit 16 000).
+no project open, a forwarded tool answers an error, in one line, naming the three project tools. Measured
+2026-11-12: instructions and `tools/list` 43 285 characters (limit 43 500; the tools state the limits of their
+arguments, which the compact list drops from the schemas), `guide` 15 712 (limit 16 000).
 
 **Limits.** 600 requests to /mcp per minute per user (429, counted from the headers before the body is read); 60
 tool calls per minute per user (answered inside the tool result as an error with the wait); a request with more than

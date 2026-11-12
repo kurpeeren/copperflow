@@ -15,7 +15,7 @@ import { call, connectAgent } from "./helpers/hub-mcp.js"
 import { workspaceCli } from "./helpers/workspace-cli.js"
 
 const HOST = new URL(ORIGIN).host
-/** What an agent pays to connect at the hub: instructions + tools/list as JSON (42 725 on 2026-11-12, 43 321 once the tools state their limits), and the first guide answer (15 390). */
+/** What an agent pays to connect at the hub: instructions + tools/list as JSON (42 725 on 2026-11-12, 43 285 once the tools state their limits and the start order is one text), and the first guide answer (15 390). */
 const HUB_INSTRUCTIONS_AND_TOOLS_BUDGET = 43_500
 const GUIDE_BUDGET = 16_000
 
@@ -179,6 +179,28 @@ describe("the hub's /mcp", () => {
     // Refused before the body is read or parsed: a body that is not JSON gets 429, not 400.
     const big = await send(server.url, "POST", "/mcp", { host: HOST, "content-type": "application/json", authorization: `Bearer ${token}` }, "x".repeat(64 * 1024))
     expect(big.status).toBe(429)
+  })
+
+  test("a client at /mcp receives one start order: open or create a project, then project_status, then guide once", async () => {
+    server = await startTestHub()
+    const ada = await newUser(server, "ada@example.com")
+    const client = await agent(server, await tokenFor(ada))
+    const instructions = client.getInstructions() ?? ""
+    expect(instructions).not.toContain("project_status first")
+    expect(instructions).not.toContain("Without the copperflow skill installed")
+    const order = ["list_projects", "open_project", "new_project", "project_status", "guide"].map((word) => instructions.indexOf(word))
+    expect(order.every((at) => at >= 0)).toBe(true)
+    expect(order).toEqual([...order].sort((a, b) => a - b))
+    expect(instructions).toContain("guide (no topic) once")
+    // Every ordering sentence is in the one bullet that starts with "Start".
+    expect(instructions.split("\n").filter((line) => /project_status|list_projects/.test(line))).toHaveLength(1)
+    const status = (await client.listTools()).tools.find((tool) => tool.name === "project_status")
+    expect(status?.description).toContain("right after a project is open")
+    // A workspace tool before any project is open: one line naming the three project tools.
+    const early = await call(client, "project_status")
+    expect(early.isError).toBe(true)
+    expect(early.text.split("\n")).toHaveLength(1)
+    for (const name of ["list_projects", "open_project", "new_project"]) expect(early.text).toContain(name)
   })
 
   test("what an agent pays to connect at the hub, and the tool list is read without making the catalog folder", async () => {

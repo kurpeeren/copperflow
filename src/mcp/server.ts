@@ -53,11 +53,15 @@ import { compactToolList } from "./compact-tool-list.js"
 import { GUIDE_DESCRIPTION, guide, guideInput, skillResources } from "./guide.js"
 import { ATTACH_DATASHEET_DESCRIPTION, attachDatasheetInput, attachDatasheetTool, checkDatasheetRule } from "./datasheet-tools.js"
 
-const INSTRUCTIONS = `copperflow lets you design circuit boards (*.circuit.tsx files) together with a human, who edits the same files in the Studio.
-- Call project_status first in every task, then follow the copperflow skill: its design workflow says which tool to call at each step and what its answer looks like.
-- Change circuit files through these tools wherever one does the change: each call is one history entry the human can undo, and the tools enforce locks. Write code by hand only for what no tool writes.
+/** The opening line and the rules that hold wherever the server runs; the hub (hub/hub-catalog.ts) puts its own start order between them. */
+export const INSTRUCTIONS_INTRO = "copperflow lets you design circuit boards (*.circuit.tsx files) together with a human, who edits the same files in the Studio."
+export const INSTRUCTIONS_RULES = `- Change circuit files through these tools wherever one does the change: each call is one history entry the human can undo, and the tools enforce locks. Write code by hand only for what no tool writes.
 - Never change, move or remove anything marked [LOCKED]; if a summary lists lock violations, restore those parts. "Marks from the human" are instructions; follow them. Do not redo a change the human undid.
-- There is no tool to unlock a part or verify a library part: only the human does that.
+- There is no tool to unlock a part or verify a library part: only the human does that.`
+
+const INSTRUCTIONS = `${INSTRUCTIONS_INTRO}
+- Call project_status first in every task, then follow the copperflow skill: its design workflow says which tool to call at each step and what its answer looks like.
+${INSTRUCTIONS_RULES}
 - Without the copperflow skill installed, call guide (no topic) for it, then guide { topic } for a reference it names.`
 
 const file = z.string().describe("Circuit file, e.g. index.circuit.tsx")
