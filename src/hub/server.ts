@@ -17,6 +17,7 @@ import { createProject, deleteProject, downloadProject, ownProject, renameProjec
 import { ProjectFiles } from "./projects.js"
 import { createProcessRunner } from "./runner/process-runner.js"
 import { installStartCheck, QUOTA_SWEEP_MS, sweepQuota } from "./quota.js"
+import { trustedProxies, workspaceSubnets, type SubnetSet } from "./peer-guard.js"
 import type { WorkspaceRunner } from "./runner/runner.js"
 import { HubStore } from "./store.js"
 import { prepareDataDir } from "./permissions.js"
@@ -57,8 +58,11 @@ export interface HubOptions {
   publicOrigin: string
   /** Defaults to 127.0.0.1: the hub sits behind a TLS reverse proxy. */
   bind?: string
-  /** Read the client's address from the last X-Forwarded-For entry (only behind a reverse proxy that sets it). */
-  trustProxy?: boolean
+  /**
+   * Read the client's address from the last X-Forwarded-For entry, only on connections from the proxy: its address or
+   * CIDR (comma-separated), or true for this machine's loopback.
+   */
+  trustProxy?: boolean | string
   /**
    * The domain projects are served under: project `<id>` is `<id>.<workspaceDomain>` (such as ws.copperflow.example.com;
    * in tests ws.localhost). It needs a wildcard DNS record and a wildcard or on-demand certificate.
@@ -123,7 +127,7 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
     publicHost: new URL(publicOrigin).host,
     workspaceDomain,
     secure: publicOrigin.startsWith("https:"),
-    trustProxy: options.trustProxy ?? false,
+    trustProxy: trustedProxies(options.trustProxy),
     maxProjects: options.maxProjects ?? MAX_PROJECTS,
     maxBytes: options.maxBytes ?? MAX_BYTES,
     maxClients: options.maxClients ?? MAX_CLIENTS,
@@ -178,6 +182,7 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
     }
     socket.end("HTTP/1.1 400 Bad Request\r\nconnection: close\r\n\r\n")
   })
+  refuseWorkspacePeers(server, workspaceSubnets)
   limitConnectionsPerAddress(server, options.trustProxy ? undefined : MAX_CONNECTIONS_PER_ADDRESS)
   await new Promise<void>((done, fail) => {
     server.once("error", fail)
@@ -259,6 +264,13 @@ export const MAX_CONNECTIONS_PER_ADDRESS = 64
  * At most `max` open connections per client address; more are closed at once. Behind a reverse proxy every
  * connection comes from the proxy, so the cap is left to the proxy (`max` undefined).
  */
+/** Closes, before anything is read, every connection whose peer is inside a workspace network's subnet. */
+export function refuseWorkspacePeers(server: Pick<Server, "on">, subnets: SubnetSet): void {
+  server.on("connection", (socket: Socket) => {
+    if (subnets.has(socket.remoteAddress)) socket.destroy()
+  })
+}
+
 function limitConnectionsPerAddress(server: Server, max: number | undefined): void {
   if (max === undefined) return
   const open = new Map<string, number>()

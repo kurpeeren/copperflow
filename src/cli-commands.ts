@@ -57,7 +57,8 @@ Usage:
                                               starts them (needs COPPERFLOW_TICKET_PUBLIC_KEY; reads nothing else)
   copperflow hub --data <dir> --port <n> --public-origin <url> --workspace-domain <domain>
                  --runner container --workspace-image <name> [--container-command docker]
-                 [--workspace-reach loopback | --workspace-reach network --hub-container <name>] [--bind <address>] [--trust-proxy]
+                 [--workspace-reach loopback | --workspace-reach network --hub-container <name>] [--bind <address>]
+                 [--trust-proxy <proxy address|CIDR>]
                  (or --runner process --trusted-accounts-only, for accounts you trust only)
                                               the hosted hub: accounts, projects and the Studio proxy
   copperflow hub invite [--count n] | reset-password <email> | status | delete-user <email>

@@ -12,6 +12,7 @@ import {
   type SpawnLike,
 } from "../src/hub/runner/container-runner.js"
 import type { WorkspaceSpec } from "../src/hub/runner/runner.js"
+import { workspaceSubnets } from "../src/hub/peer-guard.js"
 
 const ID = "0123456789abcdef0123456789abcdef"
 const KEY = `${"A".repeat(43)}=`
@@ -51,7 +52,8 @@ function fakeEngine(answer: (args: string[], child: FakeChild) => void) {
         emitter.emit("exit", code)
       },
     }
-    setImmediate(() => answer(args, child))
+    // Every fake network has a subnet, which the runner records for the hub's peer guard.
+    setImmediate(() => (args[0] === "network" && args[1] === "inspect" ? say(child, "172.30.0.0/16\n") : answer(args, child)))
     return child
   }
   return { spawn, calls }
@@ -177,6 +179,7 @@ describe("launching a container", () => {
     expect(engine.calls.map((args) => args.slice(0, 3))).toEqual([
       ["network", "rm", `cf-ws-${ID}`],
       ["network", "create", "--internal"],
+      ["network", "inspect", "--format"],
       ["run", "--rm", "--interactive"],
       ["port", `cf-ws-${ID}`, "8080/tcp"],
       ["port", `cf-ws-${ID}`, "8081/tcp"],
@@ -192,9 +195,12 @@ describe("launching a container", () => {
     const launch = containerLauncher({ image: "img", reach: "network", hubContainer: "cf-hub", ticketPublicKey: KEY, spawn: engine.spawn, log: () => undefined })
     const launched = await launch(spec())
     expect(launched.address).toEqual({ studio: `http://cf-ws-${ID}:8080`, mcp: `http://cf-ws-${ID}:8081` })
-    expect(engine.calls[2]).toEqual(["network", "connect", `cf-ws-${ID}`, "cf-hub"])
+    expect(engine.calls[3]).toEqual(["network", "connect", `cf-ws-${ID}`, "cf-hub"])
+    // The network's subnet is refused at the hub's listener while it exists.
+    expect(workspaceSubnets.has("172.30.4.5")).toBe(true)
     await launched.stop()
     expect(engine.calls.slice(-2)).toEqual([["network", "disconnect", "--force", `cf-ws-${ID}`, "cf-hub"], ["network", "rm", `cf-ws-${ID}`]])
+    expect(workspaceSubnets.has("172.30.4.5")).toBe(false)
   })
 
   test("stopping runs stop -t 5, then rm --force, then removes the network", async () => {
@@ -229,7 +235,7 @@ describe("launching a container", () => {
     const silent = fakeEngine((args, child) => (args[0] === "run" ? undefined : say(child, "")))
     await expect(containerLauncher({ image: "img", ticketPublicKey: KEY, startTimeoutMs: 50, spawn: silent.spawn, log: () => undefined })(spec())).rejects.toThrow(/no address within 50 ms/)
     await wait(20)
-    expect(silent.calls.map((args) => args[0]).slice(2, 5)).toEqual(["run", "stop", "rm"])
+    expect(silent.calls.map((args) => args[0]).slice(3, 6)).toEqual(["run", "stop", "rm"])
   })
 
   test("standard error reaches the log up to its cap", async () => {

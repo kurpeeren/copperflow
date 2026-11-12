@@ -2,6 +2,7 @@
 // session of the request (read from its cookie, renewed on use).
 import type { IncomingMessage, ServerResponse } from "node:http"
 import type { WorkspaceRunner } from "./runner/runner.js"
+import type { SubnetSet } from "./peer-guard.js"
 import type { AgentSessions } from "./agent-sessions.js"
 import type { Catalog } from "./hub-catalog.js"
 import type { OAuthState } from "./oauth-state.js"
@@ -27,7 +28,8 @@ export interface HubConfig {
   workspaceDomain: string
   /** True when the public origin is https: cookies get Secure and the __Host- prefix. */
   secure: boolean
-  trustProxy: boolean
+  /** The proxy addresses X-Forwarded-For is honoured from; undefined when the hub is reached directly. */
+  trustProxy: SubnetSet | undefined
   maxProjects: number
   maxBytes: number
   /** OAuth clients the hub keeps; default 10 000 (tests make it small). */

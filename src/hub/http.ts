@@ -1,6 +1,7 @@
 // Small HTTP helpers for the hub: bodies with a size limit, forms, cookies, the Origin check, fixed redirects and
 // the headers every hub page carries.
 import type { IncomingMessage, ServerResponse } from "node:http"
+import type { SubnetSet } from "./peer-guard.js"
 
 /** A request the hub answers with a status and a message meant for a person (never a stack or a path). */
 export class HubError extends Error {
@@ -115,9 +116,12 @@ export function sendPage(res: ServerResponse, status: number, html: string, head
   res.end(html)
 }
 
-/** The client's address: the socket's, or with `trustProxy` the last X-Forwarded-For entry (the one the proxy added). */
-export function clientAddress(req: IncomingMessage, trustProxy: boolean): string {
-  if (trustProxy) {
+/**
+ * The client's address: the socket's, or the last X-Forwarded-For entry (the one the proxy added) when the connection
+ * comes from a trusted proxy's address; from anyone else the header is ignored.
+ */
+export function clientAddress(req: IncomingMessage, trustProxy: SubnetSet | undefined): string {
+  if (trustProxy?.has(req.socket.remoteAddress)) {
     const forwarded = header(req, "x-forwarded-for")
     const last = forwarded?.split(",").pop()?.trim()
     if (last && /^[0-9a-fA-F:.]{2,45}$/.test(last)) return last

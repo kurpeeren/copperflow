@@ -33,21 +33,21 @@ const MAX_INVITES = 100
 
 const USAGE = `Usage:
   copperflow hub --data <dir> --port <n> --public-origin <url> --workspace-domain <domain> --runner container --workspace-image <name>
-                 [--container-command docker] [--workspace-reach loopback | --workspace-reach network --hub-container <name>] [--workspace-user <uid>:<gid>] [--bind <address>] [--trust-proxy]
-  copperflow hub --data <dir> --port <n> --public-origin <url> --workspace-domain <domain> --runner process --trusted-accounts-only [--bind <address>] [--trust-proxy]
+                 [--container-command docker] [--workspace-reach loopback | --workspace-reach network --hub-container <name>] [--workspace-user <uid>:<gid>] [--bind <address>] [--trust-proxy <address|CIDR>]
+  copperflow hub --data <dir> --port <n> --public-origin <url> --workspace-domain <domain> --runner process --trusted-accounts-only [--bind <address>] [--trust-proxy <address|CIDR>]
   copperflow hub invite --data <dir> [--count n]
   copperflow hub reset-password <email> --data <dir>
   copperflow hub status --data <dir>
   copperflow hub delete-user <email> --data <dir>`
 
-/** Splits `--name value` options from the rest; `--trust-proxy` is the one flag. */
+/** Splits `--name value` options from the rest; `--trusted-accounts-only` is the one flag. */
 function parse(args: readonly string[]): { options: Map<string, string>; flags: Set<string>; rest: string[] } {
   const options = new Map<string, string>()
   const flags = new Set<string>()
   const rest: string[] = []
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i] as string
-    if (arg === "--trust-proxy" || arg === "--trusted-accounts-only") flags.add(arg)
+    if (arg === "--trusted-accounts-only") flags.add(arg)
     else if (arg.startsWith("--")) {
       const value = args[i + 1]
       if (value === undefined || value === "") throw new Error(`Missing ${arg} value.\n${USAGE}`)
@@ -152,7 +152,7 @@ async function serve(options: Map<string, string>, flags: Set<string>, cwd: stri
   const workspaceDomain = options.get("--workspace-domain")
   if (!workspaceDomain) throw new Error(`Missing --workspace-domain <domain>: each project is served on its own origin under it.\n${USAGE}`)
   const runner = await runnerFor(choice, io)
-  const hub = await startHub({ dataDir, port, publicOrigin, workspaceDomain, bind: options.get("--bind") ?? "127.0.0.1", trustProxy: flags.has("--trust-proxy"), ...runner })
+  const hub = await startHub({ dataDir, port, publicOrigin, workspaceDomain, bind: options.get("--bind") ?? "127.0.0.1", ...(options.has("--trust-proxy") ? { trustProxy: options.get("--trust-proxy") as string } : {}), ...runner })
   if (choice.kind === "process" && choice.trustedAccountsOnly) io.out(TRUSTED_ONLY_WARNING)
   const siteWarning = sameSiteWarning(publicOrigin, workspaceDomain)
   if (siteWarning) io.out(siteWarning)

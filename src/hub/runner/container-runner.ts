@@ -7,6 +7,7 @@ import { isAbsolute } from "node:path"
 import type { Readable, Writable } from "node:stream"
 import { TICKET_PUBLIC_KEY_ENV } from "../../hosted/ticket.js"
 import { ID_PATTERN } from "../secrets.js"
+import { parseCidr, workspaceSubnets, type Subnet } from "../peer-guard.js"
 import { ManagedRunner, type Launched, type Launcher, type WorkspaceAddress, type WorkspaceSpec } from "./runner.js"
 
 /** How the hub reaches a workspace container. */
@@ -378,6 +379,16 @@ async function openNetwork(checked: Checked, name: string, spawn: SpawnLike): Pr
   await runEngine(spawn, checked.command, ["network", "rm", name]).catch(() => undefined)
   const made = await runEngine(spawn, checked.command, networkCreateArgs(name))
   if (made.code !== 0) throw new Error(`the workspace network could not be created: ${made.stderr.trim().slice(0, 200)}`)
+  // The hub refuses connections from inside this network (peer-guard.ts), so its subnets are recorded before anything
+  // runs on it; without them the launch fails.
+  const inspected = await runEngine(spawn, checked.command, ["network", "inspect", "--format", "{{range .IPAM.Config}}{{.Subnet}} {{end}}", name])
+  const subnets = inspected.code === 0 ? inspected.stdout.trim().split(/\s+/).filter((text) => text !== "").map(parseCidr) : []
+  if (subnets.length === 0 || subnets.some((subnet) => subnet === undefined)) {
+    await closeNetwork(checked, name, spawn)
+    throw new Error("the workspace network's subnet could not be read")
+  }
+  for (const subnet of subnets as Subnet[]) workspaceSubnets.add(subnet)
+  networkSubnets.set(name, subnets as Subnet[])
   if (checked.hubContainer === undefined) return
   const joined = await runEngine(spawn, checked.command, ["network", "connect", name, checked.hubContainer])
   if (joined.code !== 0) {
@@ -386,10 +397,16 @@ async function openNetwork(checked: Checked, name: string, spawn: SpawnLike): Pr
   }
 }
 
+/** The subnets recorded for each workspace network, until it is removed. */
+const networkSubnets = new Map<string, Subnet[]>()
+
 /** Takes the hub off the workspace's network and removes it; failures only mean it is gone already. */
 async function closeNetwork(checked: Checked, name: string, spawn: SpawnLike): Promise<void> {
   if (checked.hubContainer !== undefined) await runEngine(spawn, checked.command, ["network", "disconnect", "--force", name, checked.hubContainer]).catch(() => undefined)
   await runEngine(spawn, checked.command, ["network", "rm", name]).catch(() => undefined)
+  // Forgotten only after the network is gone, so nothing on it is ever let through.
+  for (const subnet of networkSubnets.get(name) ?? []) workspaceSubnets.remove(subnet)
+  networkSubnets.delete(name)
 }
 
 const READY = { studio: `http://0.0.0.0:${STUDIO_PORT}`, mcp: `http://0.0.0.0:${MCP_PORT}` }
