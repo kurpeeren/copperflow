@@ -1,12 +1,17 @@
-// What the OAuth flow keeps in memory: authorisation requests waiting for sign-in or consent (10 minutes, at most 5
-// per owner, never evicted by someone else's), and issued codes (60 seconds, single use, at most 20 per user). Keys are
-// hashes of random secrets.
+// What the OAuth flow keeps in memory: authorisation requests waiting for sign-in or consent (10 minutes; at most 3 per
+// browser and 5 per signed-in user, each owner dropping only its own oldest; at most 20 per address, refused beyond),
+// and issued codes (60 seconds, single use, at most 20 per user). Keys are hashes of random secrets.
 import { hashSecret, newSecret } from "./secrets.js"
 
 export const PENDING_MS = 10 * 60_000
 export const CODE_MS = 60_000
 export const MAX_PENDING = 10_000
-export const PENDING_PER_OWNER = 5
+/** Owners (browsers and users) with requests, capped on their own. */
+const MAX_OWNERS = 10_000
+export const PENDING_PER_BROWSER = 3
+export const PENDING_PER_USER = 5
+/** A cap that refuses new requests from one address; it never evicts another browser's. */
+export const PENDING_PER_ADDRESS = 20
 const MAX_CODES = 10_000
 const MAX_CODES_PER_USER = 20
 const REDEEMED_MS = 10 * 60_000
@@ -19,8 +24,10 @@ export interface AuthorizationRequest {
   challenge: string
   state?: string | undefined
   expires: number
-  /** Who made it: "user:<id>" or "address:<key>"; each owner holds at most PENDING_PER_OWNER. */
+  /** Who holds it: "browser:<id>" (a random id in the browser's own cookie) or, once bound, "user:<id>". */
   owner: string
+  /** The address key it came from, for the per-address cap. */
+  address: string
   /** Set when the consent page is shown to a signed-in person: only they may answer it. */
   userId?: string | undefined
 }
@@ -44,44 +51,86 @@ function makeRoom<T extends { expires: number }>(map: Map<string, T>, max: numbe
 
 export class OAuthState {
   private readonly pending = new Map<string, AuthorizationRequest>()
-  /** The request keys of each owner, oldest first (bounded with the table: swept when it is full). */
+  /** The request keys of each owner, oldest first; kept in step with `pending` by `remove`, empty lists deleted. */
   private readonly byOwner = new Map<string, string[]>()
+  /** Live requests per address, for the per-address cap; kept in step by `remove`. */
+  private readonly perAddress = new Map<string, number>()
   private readonly codes = new Map<string, IssuedCode>()
   private readonly redeemed = new Map<string, { userId: string; grantId: string; expires: number }>()
 
+  /** The one way a request leaves: both indexes follow, and an owner or address left with none is deleted. */
+  private remove(key: string): void {
+    const found = this.pending.get(key)
+    if (!found) return
+    this.pending.delete(key)
+    const keys = (this.byOwner.get(found.owner) ?? []).filter((other) => other !== key)
+    if (keys.length > 0) this.byOwner.set(found.owner, keys)
+    else this.byOwner.delete(found.owner)
+    const left = (this.perAddress.get(found.address) ?? 1) - 1
+    if (left > 0) this.perAddress.set(found.address, left)
+    else this.perAddress.delete(found.address)
+  }
+
+  private sweep(now: number): void {
+    for (const [key, value] of this.pending) if (value.expires <= now) this.remove(key)
+  }
+
+  /** Requests and owners held now (for tests). */
+  sizes(): { pending: number; owners: number; addresses: number } {
+    return { pending: this.pending.size, owners: this.byOwner.size, addresses: this.perAddress.size }
+  }
+
   /**
-   * Keeps a request under `owner` (the signed-in user, or the address of someone not signed in); returns the secret
-   * that names it (in a cookie or a form field, never a URL). An owner holds at most PENDING_PER_OWNER: at that cap
-   * its own oldest goes, never another owner's. A full table only drops expired entries; it is then "full" (the
-   * caller's bucket keeps that from happening: see oauth.ts).
+   * Keeps a request under `owner` ("browser:<id>" from the browser's own cookie, or "user:<id>") made from `address`;
+   * returns the secret that names it (in a cookie or a form field, never a URL), or undefined when refused. A browser
+   * holds at most PENDING_PER_BROWSER: its own oldest goes, never another's. An address with PENDING_PER_ADDRESS live
+   * requests, or a full table, refuses new ones and evicts nothing (the caller's bucket keeps the table from filling).
    */
-  addRequest(request: Omit<AuthorizationRequest, "expires" | "owner">, now: number, owner: string): string | undefined {
-    const mine = (this.byOwner.get(owner) ?? []).filter((key) => (this.pending.get(key)?.expires ?? 0) > now)
-    while (mine.length >= PENDING_PER_OWNER) this.pending.delete(mine.shift() as string)
-    if (this.pending.size >= MAX_PENDING) {
-      for (const [key, value] of this.pending) if (value.expires <= now) this.pending.delete(key)
-      for (const [name, keys] of this.byOwner) {
-        const live = keys.filter((key) => this.pending.has(key))
-        if (live.length > 0) this.byOwner.set(name, live)
-        else this.byOwner.delete(name)
-      }
-    }
-    if (this.pending.size >= MAX_PENDING) return undefined
+  addRequest(request: Omit<AuthorizationRequest, "expires" | "owner" | "address">, now: number, owner: string, address: string): string | undefined {
+    if (this.pending.size >= MAX_PENDING || this.byOwner.size >= MAX_OWNERS) this.sweep(now)
+    for (const key of this.byOwner.get(owner) ?? []) if ((this.pending.get(key)?.expires ?? 0) <= now) this.remove(key)
+    const mine = this.byOwner.get(owner) ?? []
+    const cap = owner.startsWith("user:") ? PENDING_PER_USER : PENDING_PER_BROWSER
+    if ((this.perAddress.get(address) ?? 0) - (mine.length >= cap ? 1 : 0) >= PENDING_PER_ADDRESS) return undefined
+    for (const key of mine.slice(0, Math.max(0, mine.length - cap + 1))) this.remove(key)
+    if (this.pending.size >= MAX_PENDING || (!this.byOwner.has(owner) && this.byOwner.size >= MAX_OWNERS)) return undefined
     const secret = newSecret()
     const key = hashSecret(secret)
-    this.pending.set(key, { ...request, owner, expires: now + PENDING_MS })
-    this.byOwner.set(owner, [...mine, key])
+    this.pending.set(key, { ...request, owner, address, expires: now + PENDING_MS })
+    this.byOwner.set(owner, [...(this.byOwner.get(owner) ?? []), key])
+    this.perAddress.set(address, (this.perAddress.get(address) ?? 0) + 1)
     return secret
+  }
+
+  /**
+   * Binds a request to the signed-in person it was shown to: it moves to their own list, where traffic from anyone not
+   * signed in can no longer touch it.
+   */
+  bindRequest(secret: string, userId: string, now: number): AuthorizationRequest | undefined {
+    const key = hashSecret(secret)
+    const found = this.request(secret, now)
+    if (!found) return undefined
+    if (found.userId !== undefined) return found.userId === userId ? found : undefined
+    this.remove(key)
+    const owner = `user:${userId}`
+    for (const old of (this.byOwner.get(owner) ?? []).slice(0, Math.max(0, (this.byOwner.get(owner)?.length ?? 0) - PENDING_PER_USER + 1))) this.remove(old)
+    const bound = { ...found, owner, userId }
+    this.pending.set(key, bound)
+    this.byOwner.set(owner, [...(this.byOwner.get(owner) ?? []), key])
+    this.perAddress.set(bound.address, (this.perAddress.get(bound.address) ?? 0) + 1)
+    return bound
   }
 
   /** Forgets one request (a browser that starts a new one drops its last). */
   dropRequest(secret: string | undefined): void {
-    if (secret !== undefined) this.pending.delete(hashSecret(secret))
+    if (secret !== undefined) this.remove(hashSecret(secret))
   }
 
   request(secret: string | undefined, now: number): AuthorizationRequest | undefined {
     if (secret === undefined) return undefined
-    const found = this.pending.get(hashSecret(secret))
+    const key = hashSecret(secret)
+    const found = this.pending.get(key)
+    if (found && found.expires <= now) this.remove(key)
     if (!found || found.expires <= now) return undefined
     return found
   }
@@ -89,7 +138,7 @@ export class OAuthState {
   /** Removes and returns a request (single use). */
   takeRequest(secret: string | undefined, now: number): AuthorizationRequest | undefined {
     const found = this.request(secret, now)
-    if (secret !== undefined) this.pending.delete(hashSecret(secret))
+    if (secret !== undefined) this.remove(hashSecret(secret))
     return found
   }
 
@@ -149,6 +198,6 @@ export class OAuthState {
   /** Forgets every code and request of the user (revocation). */
   forgetUser(userId: string): void {
     for (const [key, value] of this.codes) if (value.userId === userId) this.codes.delete(key)
-    for (const [key, value] of this.pending) if (value.userId === userId) this.pending.delete(key)
+    for (const [key, value] of this.pending) if (value.userId === userId) this.remove(key)
   }
 }

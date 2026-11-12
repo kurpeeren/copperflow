@@ -60,18 +60,22 @@ describe("client registration under a flood", () => {
     expect(refused[0]?.retryAfter).toBe("1")
   })
 
-  test("a browser holds one pending authorisation: a new one replaces its last", async () => {
+  test("a browser holds 3 pending authorisations, its 4th drops its own oldest, and another browser's stays", async () => {
     server = await startTestHub({ trustProxy: true })
     const clientId = (await register(server)).id as string
+    const other = new Browser(server.url)
+    await other.get(authorizePath(clientId))
+    const theirs = other.jar.get("__Host-copperflow-oauth") as string
     const browser = new Browser(server.url)
-    await browser.get(authorizePath(clientId))
-    const first = browser.jar.get("__Host-copperflow-oauth") as string
-    expect(server.hub.oauth.request(first, Date.now())).toBeDefined()
-    await browser.get(authorizePath(clientId))
-    const second = browser.jar.get("__Host-copperflow-oauth") as string
-    expect(second).not.toBe(first)
-    expect(server.hub.oauth.request(first, Date.now())).toBeUndefined()
-    expect(server.hub.oauth.request(second, Date.now())).toBeDefined()
+    const mine: string[] = []
+    for (let i = 0; i < 4; i += 1) {
+      await browser.get(authorizePath(clientId))
+      mine.push(browser.jar.get("__Host-copperflow-oauth") as string)
+    }
+    expect(browser.jar.get("__Host-copperflow-browser")).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    expect(server.hub.oauth.request(mine[0], Date.now())).toBeUndefined()
+    for (const secret of mine.slice(1)) expect(server.hub.oauth.request(secret, Date.now())).toBeDefined()
+    expect(server.hub.oauth.request(theirs, Date.now())).toBeDefined()
   })
 
   test("what is not a registration is refused before it counts", async () => {

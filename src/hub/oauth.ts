@@ -13,7 +13,7 @@ import { cookies, HubError, readBody, readForm, redirect, sendPage, setCookie } 
 import { addressKey } from "./limits.js"
 import { PENDING_MS } from "./oauth-state.js"
 import { textPage } from "./pages.js"
-import { hashSecret, newId, sameSecret } from "./secrets.js"
+import { hashSecret, newId, newSecret, sameSecret } from "./secrets.js"
 
 export const MAX_CLIENTS = 10_000
 const MAX_REDIRECT_URIS = 5
@@ -199,27 +199,38 @@ export async function authorize(hub: Hub, req: IncomingMessage, res: ServerRespo
   const resource = one("resource")
   if (resource !== undefined && resource !== `${hub.config.publicOrigin}/mcp` && resource !== hub.config.publicOrigin) return fail("invalid_target", "Unknown resource")
   const request = { clientId: client.id, redirectUri, challenge, state }
-  const busy = () => sendPage(res, 503, textPage("Try again", "The service is busy. Try again in a minute."), { "retry-after": "60" })
   if (signed && !signed.user.mustChangePassword) {
-    const secret = hub.oauth.addRequest({ ...request, userId: signed.user.id }, now, `user:${signed.user.id}`)
-    if (secret === undefined) return busy()
+    const secret = hub.oauth.addRequest({ ...request, userId: signed.user.id }, now, `user:${signed.user.id}`, key)
+    if (secret === undefined) return tooMany(60)
     return sendPage(res, 200, consentPage({ email: signed.user.email, formToken: signed.formToken }, secret, client.name, new URL(redirectUri).host))
   }
-  // One request per browser: a new one replaces the one this browser started before.
-  hub.oauth.dropRequest(pendingRequest(hub, req))
-  const secret = hub.oauth.addRequest(request, now, `address:${key}`)
-  if (secret === undefined) return busy()
-  const cookie = setCookie(oauthCookieName(hub), secret, { secure: hub.config.secure, maxAgeS: PENDING_MS / 1000 })
-  redirect(res, signed ? "/account" : "/signin", { "set-cookie": cookie })
+  // Owned by this browser (a random id in its own cookie): only its own requests can push out its oldest.
+  const browser = browserId(hub, req)
+  const secret = hub.oauth.addRequest(request, now, `browser:${hashSecret(browser.id)}`, key)
+  if (secret === undefined) return tooMany(60)
+  const cookies = [setCookie(oauthCookieName(hub), secret, { secure: hub.config.secure, maxAgeS: PENDING_MS / 1000 }), ...(browser.cookie ? [browser.cookie] : [])]
+  redirect(res, signed ? "/account" : "/signin", { "set-cookie": cookies })
+}
+
+function browserCookieName(hub: Hub): string {
+  return hub.config.secure ? "__Host-copperflow-browser" : "copperflow-browser"
+}
+
+/** This browser's random id for owning OAuth requests: from its cookie, or new (with the cookie to set). */
+function browserId(hub: Hub, req: IncomingMessage): { id: string; cookie?: string } {
+  const known = cookies(req).get(browserCookieName(hub))
+  if (known !== undefined && SECRET_TEXT.test(known)) return { id: known }
+  const id = newSecret()
+  return { id, cookie: setCookie(browserCookieName(hub), id, { secure: hub.config.secure, maxAgeS: 24 * 60 * 60 }) }
 }
 
 /** GET /oauth/continue: after sign-in, the consent page for the request this browser started. */
 export function continueAuthorization(hub: Hub, req: IncomingMessage, res: ServerResponse, signed: Signed): void {
   const secret = pendingRequest(hub, req)
-  const request = hub.oauth.request(secret, hub.config.now())
-  if (!secret || !request) return redirect(res, "/projects")
-  if (request.userId !== undefined && request.userId !== signed.user.id) throw new HubError(404, "There is no such page.")
-  request.userId = signed.user.id
+  if (!secret || !hub.oauth.request(secret, hub.config.now())) return redirect(res, "/projects")
+  // Bound to this person: it moves to their own list, out of reach of anonymous traffic.
+  const request = hub.oauth.bindRequest(secret, signed.user.id, hub.config.now())
+  if (!request) throw new HubError(404, "There is no such page.")
   const client = hub.store.tokens.client(request.clientId)
   if (!client) throw new HubError(404, "There is no such page.")
   sendPage(res, 200, consentPage({ email: signed.user.email, formToken: signed.formToken }, secret, client.name, new URL(request.redirectUri).host))
