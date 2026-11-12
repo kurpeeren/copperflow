@@ -9,7 +9,7 @@ import { audit, type Hub } from "./context.js"
 import { forwardTool, type Upstream } from "./mcp-forward.js"
 import { addProject, projectName } from "./project-routes.js"
 import { ID_PATTERN } from "./secrets.js"
-import type { Project } from "./store.js"
+import { projectNameKey, type Project } from "./store.js"
 
 export const TOOL_CALLS_PER_MINUTE = 60
 
@@ -134,10 +134,15 @@ function openProject(hub: Hub, state: AgentState, args: Record<string, unknown>)
   const parsed = openProjectInput.safeParse(args)
   if (!parsed.success || (parsed.data.name === undefined) === (parsed.data.id === undefined)) return text("Give the project's name or its id.", true)
   const { id, name } = parsed.data
-  const project =
-    id !== undefined
-      ? ID_PATTERN.test(id) ? hub.store.project(state.userId, id) : undefined
-      : hub.store.projects(state.userId).find((p) => p.name === projectName(name))
+  let project: Project | undefined
+  if (id !== undefined) project = ID_PATTERN.test(id) ? hub.store.project(state.userId, id) : undefined
+  else {
+    const wanted = projectName(name)
+    const matches = wanted === undefined ? [] : hub.store.projects(state.userId).filter((p) => projectNameKey(p.name) === projectNameKey(wanted))
+    // Names made before they were unique regardless of case can match more than one: the agent must pick by id.
+    if (matches.length > 1) return text(`Several projects have that name: ${matches.map((p) => `"${p.name}" (id ${p.id})`).join(", ")}. Open one by its id.`, true)
+    project = matches[0]
+  }
   if (!project) return text(NOT_FOUND, true)
   open(hub, state, project)
   return text(`Project "${project.name}" is open (id ${project.id}). ${watchAt(hub, project)}`)

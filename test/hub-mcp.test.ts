@@ -2,6 +2,8 @@ import { afterEach, describe, expect, test } from "vitest"
 import { createServer, type IncomingHttpHeaders, type Server } from "node:http"
 import { existsSync } from "node:fs"
 import { connect } from "node:net"
+import { join } from "node:path"
+import { DatabaseSync } from "node:sqlite"
 import { tmpdir } from "node:os"
 import { readdir } from "node:fs/promises"
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -92,6 +94,28 @@ describe("the hub's /mcp", () => {
     expect((await call(client, "open_project", { name: "Amp" })).isError).toBe(false)
     expect((await call(client, "open_project", {})).isError).toBe(true)
     expect((await ada.get("/projects")).text).toContain("Amp")
+  })
+
+  test("project names are unique regardless of case, on the pages and through the tools; an ambiguous legacy name asks for the id", async () => {
+    server = await startTestHub()
+    const ada = await newUser(server, "ada@example.com")
+    expect((await ada.submit("/projects", "/projects", { name: "Amp" })).status).toBe(303)
+    expect((await ada.submit("/projects", "/projects", { name: "amp" })).status).toBe(409)
+    await ada.submit("/projects", "/projects", { name: "Other" })
+    const userId = server.hub.store.userByEmail("ada@example.com")?.id as string
+    const other = server.hub.store.projects(userId).find((p) => p.name === "Other")?.id as string
+    expect((await ada.submit("/projects", `/projects/${other}/rename`, { name: "AMP" })).status).toBe(409)
+    const client = await agent(server, await tokenFor(ada))
+    expect((await call(client, "new_project", { name: "aMp" })).text).toContain("already have a project with that name")
+    expect((await call(client, "open_project", { name: "amp" })).isError).toBe(false)
+    // A name pair made before this rule (written straight into the database).
+    const db = new DatabaseSync(join(server.hub.files.root, "..", "hub.db"))
+    db.prepare("INSERT INTO projects (id, user_id, name, created) VALUES (?, ?, ?, ?)").run("a".repeat(32), userId, "AMP", 0)
+    db.close()
+    const ambiguous = await call(client, "open_project", { name: "Amp" })
+    expect(ambiguous.isError).toBe(true)
+    expect(ambiguous.text).toContain(`(id ${"a".repeat(32)})`)
+    expect(ambiguous.text).toContain("Open one by its id")
   })
 
   test("another user's project by id or name is not found", async () => {

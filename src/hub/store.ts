@@ -112,6 +112,11 @@ const userOf = (row: Row | undefined): User | undefined =>
 const projectOf = (row: Row | undefined): Project | undefined =>
   row ? { id: row.id as string, userId: row.user_id as string, name: row.name as string, created: Number(row.created) } : undefined
 
+/** A project name as compared for uniqueness: NFC and case-folded, so "Amp" and "amp" are one name. */
+export function projectNameKey(name: string): string {
+  return name.normalize("NFC").toLowerCase().normalize("NFC")
+}
+
 /** The email in the one form the store keeps: NFC, trimmed and lower-cased. */
 export function normaliseEmail(email: string): string {
   return email.normalize("NFC").trim().toLowerCase()
@@ -338,20 +343,29 @@ export class HubStore {
   createProject(project: Project, maxProjects = Number.POSITIVE_INFINITY): "created" | "taken" | "full" {
     return this.transaction(() => {
       if (this.projectCount(project.userId) >= maxProjects) return "full"
-      if (this.sql("SELECT 1 AS found FROM projects WHERE user_id = ? AND name = ?").get(project.userId, project.name)) return "taken"
+      if (this.nameTaken(project.userId, project.name)) return "taken"
       this.sql("INSERT INTO projects (id, user_id, name, created) VALUES (?, ?, ?, ?)").run(project.id, project.userId, project.name, project.created)
       return "created"
     })
   }
 
+  /** Whether another of the user's projects (deleted ones included) has this name after NFC and case folding. */
+  private nameTaken(userId: string, name: string, exceptId?: string): boolean {
+    const key = projectNameKey(name)
+    return (this.sql("SELECT id, name FROM projects WHERE user_id = ?").all(userId) as Row[]).some((row) => row.id !== exceptId && projectNameKey(row.name as string) === key)
+  }
+
   renameProject(userId: string, id: string, name: string): "renamed" | "taken" | "missing" {
-    try {
-      const changed = this.sql("UPDATE projects SET name = ? WHERE id = ? AND user_id = ?").run(name, id, userId).changes
-      return Number(changed) === 1 ? "renamed" : "missing"
-    } catch (error) {
-      if (/UNIQUE/.test((error as Error).message)) return "taken"
-      throw error
-    }
+    return this.transaction(() => {
+      if (this.nameTaken(userId, name, id)) return "taken"
+      try {
+        const changed = this.sql("UPDATE projects SET name = ? WHERE id = ? AND user_id = ?").run(name, id, userId).changes
+        return Number(changed) === 1 ? "renamed" : "missing"
+      } catch (error) {
+        if (/UNIQUE/.test((error as Error).message)) return "taken"
+        throw error
+      }
+    })
   }
 
   deleteProject(userId: string, id: string): boolean {
