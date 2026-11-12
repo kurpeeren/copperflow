@@ -7,7 +7,7 @@ import type { CliIO } from "../cli-commands.js"
 import { removeUser } from "./account-routes.js"
 import { ProjectFiles } from "./projects.js"
 import { hashPassword, hashSecret, newSecret } from "./secrets.js"
-import { startHub, TRUSTED_ONLY_WARNING } from "./server.js"
+import { sameSiteWarning, startHub, TRUSTED_ONLY_WARNING } from "./server.js"
 import { HubStore, normaliseEmail } from "./store.js"
 import type { WorkspaceRunner } from "./runner/runner.js"
 
@@ -97,6 +97,8 @@ async function serve(options: Map<string, string>, flags: Set<string>, cwd: stri
   if (!workspaceDomain) throw new Error(`Missing --workspace-domain <domain>: each project is served on its own origin under it.\n${USAGE}`)
   const hub = await startHub({ dataDir, port, publicOrigin, workspaceDomain, bind: options.get("--bind") ?? "127.0.0.1", trustProxy: flags.has("--trust-proxy"), trustedAccountsOnly })
   if (trustedAccountsOnly) io.out(TRUSTED_ONLY_WARNING)
+  const siteWarning = sameSiteWarning(publicOrigin, workspaceDomain)
+  if (siteWarning) io.out(siteWarning)
   const writeStatus = () =>
     writeFileAtomic(join(dataDir, STATUS_FILE), `${JSON.stringify({ updated: Date.now(), pid: process.pid, running: hub.hub.runner.running() })}\n`).catch((error: unknown) =>
       hub.hub.log(`could not write ${STATUS_FILE}: ${(error as Error).message}`),

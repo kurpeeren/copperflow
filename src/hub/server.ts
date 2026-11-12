@@ -69,12 +69,32 @@ export interface HubServer {
   close(): Promise<void>
 }
 
+/**
+ * The warning printed at start when the workspace domain and the public host share their last two labels (one site):
+ * a hostile project page can then stuff cookies that make the hub unusable in that browser (it cannot read or forge a
+ * session). A rough test (the last two labels, not the Public Suffix List), so it errs on the side of warning.
+ */
+export function sameSiteWarning(publicOrigin: string, workspaceDomain: string): string | undefined {
+  const site = (host: string) => host.toLowerCase().split(".").slice(-2).join(".")
+  if (site(new URL(publicOrigin).hostname) !== site(workspaceDomain)) return undefined
+  return "Warning: the workspace domain is on the same site as the hub. A hostile project page can then fill that browser with cookies for the site and make the hub unusable there until they are cleared (it cannot read or forge a session). A workspace domain under a different registrable domain avoids this."
+}
+
+/** The largest request header block the hub accepts (cookies included); a larger one gets a page about clearing cookies. */
+export const MAX_HEADER_BYTES = 64 * 1024
+
 /** Opens the data directory (made owner-only when new) and the store, key and runner in it. */
 export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promise<Hub> {
   if (!options.runner && !options.trustedAccountsOnly) throw new Error(PROCESS_RUNNER_REFUSAL)
   const dbFile = await prepareDataDir(options.dataDir)
   const keys = await loadOrCreateTicketKey(options.dataDir)
   const publicOrigin = normaliseOrigin(options.publicOrigin)
+  // https only, so the hub's cookies always carry the __Host- prefix and cannot be planted from a subdomain; plain http
+  // only on this machine (loopback or *.localhost), for tests and local trials.
+  const publicHostname = new URL(publicOrigin).hostname
+  if (publicOrigin.startsWith("http:") && !isLoopback(publicHostname.replace(/^\[|\]$/g, "")) && publicHostname !== "localhost" && !publicHostname.endsWith(".localhost")) {
+    throw new Error("--public-origin must be https (plain http is allowed only for 127.0.0.1, ::1, localhost or *.localhost)")
+  }
   const workspaceDomain = options.workspaceDomain.toLowerCase()
   if (!/^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(workspaceDomain)) throw new Error("--workspace-domain must be a domain name, such as ws.copperflow.example.com")
   const config: HubConfig = {
@@ -107,7 +127,7 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
 
 export async function startHub(options: HubOptions): Promise<HubServer> {
   const hub = await openHub(options)
-  const server = createServer((req, res) => {
+  const server = createServer({ maxHeaderSize: MAX_HEADER_BYTES }, (req, res) => {
     guard(req, res, options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS, hub.config.publicHost)
     route(hub, req, res).catch((error: unknown) => answerError(hub, res, error))
   })
@@ -118,6 +138,16 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
   server.requestTimeout = UPLOAD_BACKSTOP_MS
   server.timeout = SOCKET_IDLE_MS
   server.maxConnections = 1024
+  // Headers past the limit (usually cookies stuffed by a page on the same site): a page that says what to do.
+  server.on("clientError", (error: NodeJS.ErrnoException, socket: Socket) => {
+    if (!socket.writable) return void socket.destroy()
+    if (error.code === "HPE_HEADER_OVERFLOW") {
+      const page = textPage("Too many cookies", "Your browser sent more cookies than this site accepts. Clear the cookies for this site in your browser's settings, then open the page again.")
+      socket.end(`HTTP/1.1 431 Request Header Fields Too Large\r\ncontent-type: text/html; charset=utf-8\r\ncontent-length: ${Buffer.byteLength(page)}\r\ncache-control: no-store\r\nconnection: close\r\n\r\n${page}`)
+      return
+    }
+    socket.end("HTTP/1.1 400 Bad Request\r\nconnection: close\r\n\r\n")
+  })
   limitConnectionsPerAddress(server, options.trustProxy ? undefined : MAX_CONNECTIONS_PER_ADDRESS)
   await new Promise<void>((done, fail) => {
     server.once("error", fail)

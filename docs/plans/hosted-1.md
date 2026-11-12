@@ -75,4 +75,5 @@ An independent review of Tasks 1–3 before anything is exposed: authentication 
 4. **The LCSC importer**: stays off in hosted mode, or the maintainer asks JLCEDA/EasyEDA for permission.
 5. **Backups**: where the nightly archive goes.
 6. **The domain**: the DNS record for `copperflow.kurpeeren.com`, made by the maintainer when Task 6 step 3 is reached, and a wildcard DNS record for the workspace domain (such as `*.ws.copperflow.kurpeeren.com`) with either a wildcard certificate or on-demand certificates (the reverse proxy asks the hub's `/_tls-ask`).
-7. **The process runner**: until Task 3's container runner is in place, the hub runs only with `--trusted-accounts-only`, so every account can read every other account's data and the hub's keys; invite only people trusted with all of it.
+7. **The workspace domain's site**: a separate domain for workspaces is recommended; with a subdomain of the same site the closed beta carries this limited risk: a hostile project page can stuff cookies that make the hub unusable in that browser until they are cleared (it cannot read or forge a session).
+8. **The process runner**: until Task 3's container runner is in place, the hub runs only with `--trusted-accounts-only`, so every account can read every other account's data and the hub's keys; invite only people trusted with all of it.

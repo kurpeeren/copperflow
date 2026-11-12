@@ -75,6 +75,17 @@ handshake). Point the proxy's ask URL at the hub's own port, for example Caddy's
 `on_demand_tls { ask http://127.0.0.1:<hub port>/_tls-ask }`. The maintainer provides a
 wildcard DNS record for the workspace domain and either a wildcard certificate or on-demand certificates.
 
+**A separate domain for workspaces is recommended; with a subdomain of the same site the closed beta carries this
+limited risk:** a hostile project page can set cookies for the whole site and fill the browser with them, so the hub
+becomes unusable in that browser until the cookies are cleared (the hub accepts headers up to 64 KB and answers a
+larger block with a page that says to clear the site's cookies). It cannot read or forge a session: the public origin
+must be https (plain http only on 127.0.0.1, ::1, localhost or `*.localhost`), so the hub's cookies always carry the
+`__Host-` prefix and cannot be set from a subdomain. The hub prints a warning at start when the two share their last
+two labels. A project origin never serves a worker script (any request with a `Service-Worker` header gets 404), and
+`/_enter` answers with `Clear-Site-Data: "storage"` and `Referrer-Policy: no-referrer`. Without an Origin header, a
+request to a project's `/api/` needs `Sec-Fetch-Site: same-origin` or `none`, so a sibling project (same site) gets no
+ticket; a browser too old to send Sec-Fetch headers is let through on such GETs (it sends an Origin on every POST).
+
 `--trust-proxy` reads the client's address from the last `X-Forwarded-For` entry; use it only behind a proxy that
 sets that header, or every limit counts the proxy's address. With it, the hub's own cap of 64 open connections per
 address is off (every connection comes from the proxy), so the reverse proxy must cap connections per client.

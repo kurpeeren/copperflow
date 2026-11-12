@@ -5,10 +5,10 @@ import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { requireSqlite, runCli, type CliIO } from "../src/cli-commands.js"
 import { STATUS_FILE } from "../src/hub/commands.js"
-import { PROCESS_RUNNER_REFUSAL, startHub, TRUSTED_ONLY_WARNING } from "../src/hub/server.js"
+import { PROCESS_RUNNER_REFUSAL, sameSiteWarning, startHub, TRUSTED_ONLY_WARNING } from "../src/hub/server.js"
 import { loadOrCreateTicketKey } from "../src/hub/keys.js"
 import { looserThanOwner, prepareDataDir } from "../src/hub/permissions.js"
-import { Browser, newUser, startTestHub } from "./helpers/hub-client.js"
+import { Browser, newUser, send, startTestHub } from "./helpers/hub-client.js"
 
 function io(answer?: string): CliIO & { lines: string[]; errors: string[] } {
   const lines: string[] = []
@@ -122,6 +122,28 @@ describe("the hub's maintainer commands", () => {
       await chmod(join(data, "hub.db"), 0o600)
       await chmod(data, 0o755)
       await expect(prepareDataDir(data)).rejects.toThrow(/The data directory .* run chmod 700/)
+    }
+  })
+
+  test("the hub refuses an http public origin outside this machine, and warns about a same-site workspace domain", async () => {
+    const data = await mkdtemp(join(tmpdir(), "cf-http-"))
+    const start = (publicOrigin: string) => startHub({ dataDir: data, port: 0, publicOrigin, workspaceDomain: "ws.localhost", trustedAccountsOnly: true, log: () => undefined })
+    await expect(start("http://copperflow.example.com")).rejects.toThrow(/--public-origin must be https/)
+    for (const ok of ["http://127.0.0.1:8080", "http://localhost:8080", "http://cf.localhost"]) await (await start(ok)).close()
+    expect(sameSiteWarning("https://copperflow.example.com", "ws.copperflow.example.com")).toMatch(/same site as the hub/)
+    expect(sameSiteWarning("https://copperflow.example.com", "ws.example-workspaces.net")).toBeUndefined()
+  })
+
+  test("an oversized header block gets a page that says to clear cookies", async () => {
+    const server = await startTestHub()
+    try {
+      const cookies = (n: number) => Array.from({ length: n }, (_, i) => `c${i}=${"x".repeat(4000)}`).join("; ")
+      expect((await send(server.url, "GET", "/signin", { host: "cf.example.test", cookie: cookies(10) })).status).toBe(200)
+      const over = await send(server.url, "GET", "/signin", { host: "cf.example.test", cookie: cookies(20) })
+      expect(over.status).toBe(431)
+      expect(over.text).toContain("Clear the cookies for this site")
+    } finally {
+      await server.close()
     }
   })
 
