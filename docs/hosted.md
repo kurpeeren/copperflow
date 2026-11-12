@@ -336,6 +336,19 @@ directory in a folder only the hub's account can open):
 A session ends 14 days after its last use and 30 days after sign-in whatever its use. A password set by
 `reset-password` must be changed at the next sign-in before anything else.
 
+Tables that a signed-in user's requests add rows to are bounded; the periodic sweep (every 15 s, the one that removes
+expired sessions) enforces what a count cannot:
+
+| Table | Rule |
+| --- | --- |
+| Workspace sessions | At most 8 live per user per project; a ninth ends that user's oldest for that project. Expired rows are deleted by the periodic sweep. |
+| Sign-in sessions | At most 20 per user; a twenty-first ends that user's oldest. |
+| Audit log | Rows older than 180 days are deleted by the periodic sweep; at most 500 000 rows, oldest deleted first. The prune runs in batches of 2 000 rows (at most 25 a sweep, the event loop given back between them). |
+| Audit rows for refused tool calls | At most 20 per user per 15 minutes; then one `refusals-suppressed` row for that window and no more until the window ends. |
+
+The audit log therefore keeps 180 days. Every cap above is per user: a user's own requests cannot end another user's
+sessions or use up their rows.
+
 The audit log (`audit` table: time, user id or none, event, address, detail) records `signup`, `signup-failed`,
 `signup-limited`, `signin`, `signin-failed`, `signin-limited-address`, `signin-limited-email`,
 `signin-limited-strict`, `signin-strict`, `signin-strict-table-full`, `signout`, `signout-forget-device`,
@@ -350,7 +363,8 @@ Agent events: `token-created`, `token-revoked`, `token-refused` (a bearer token 
 minutes per address; a code or refresh token the token endpoint refused), `token-refreshed`, `client-registered`,
 `client-register-limited`, `consent-allowed`, `consent-denied`, `grant-created`, `grant-revoked`,
 `refresh-reused-grant-revoked`, `code-reused-grant-revoked`, `grant-revoked-over-cap`, `token-create-failed`,
-`token-create-limited`, `agent-connected` and `tool-calls-limited`. The detail holds an id (token, grant or
+`token-create-limited`, `agent-connected`, `tool-calls-limited` (at most 20 per user per 15 minutes) and
+`refusals-suppressed`. The detail holds an id (token, grant or
 client) or the grant type, never a token or code.
 
 ## Connecting an agent

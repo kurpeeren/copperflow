@@ -406,7 +406,9 @@ nothing else can touch the data, and refuses otherwise with the reason:
 
 **The audit log** is the `audit` table in `hub.db`: time (milliseconds), user id or none, event, address, detail
 (a project id, a count or a reason; never a password, cookie, invite code, token or ticket). The events are listed
-in docs/hosted.md. The newest 50 (A: prefix with `cfc exec hub`; B: prefix with `sudo -u copperflow-hub`):
+in docs/hosted.md. **The audit log keeps 180 days** and at most 500 000 rows: the hub's sweep deletes older rows, and
+the oldest first beyond the row limit, in small batches; keep a copy elsewhere (a backup) if you need longer. The
+newest 50 (A: prefix with `cfc exec hub`; B: prefix with `sudo -u copperflow-hub`):
 
 ```
 node --no-warnings -e 'const { DatabaseSync } = require("node:sqlite"); const db = new DatabaseSync(process.argv[1], { readOnly: true }); for (const row of db.prepare("SELECT datetime(time / 1000, ?) AS at, user_id, event, address, detail FROM audit ORDER BY id DESC LIMIT 50").all("unixepoch")) console.log(Object.values(row).join("\t"))' /var/lib/copperflow/hub.db

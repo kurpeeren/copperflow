@@ -88,6 +88,10 @@ export interface Limits {
   gate: SigninGate
   /** Tool calls per user: 60 a minute. */
   toolCalls: WindowCounter
+  /** Audit rows for refused tool calls per user: 20 per 15 minutes. */
+  toolRefusalRows: WindowCounter
+  /** The one `refusals-suppressed` row per user and window, once the rows above are spent. */
+  toolRefusalNotes: WindowCounter
   /** Requests to /mcp per user: 600 a minute. */
   mcpRequests: WindowCounter
   /** Refused bearer tokens audited per address: 10 per 15 minutes (the rest are refused unrecorded). */
@@ -103,6 +107,8 @@ export interface Limits {
 }
 
 const FIFTEEN_MINUTES = 15 * 60_000
+/** Audit rows one user's refused tool calls may write in 15 minutes; then one `refusals-suppressed` row and no more. */
+export const TOOL_REFUSALS_AUDITED = 20
 export const MAX_FAILED_SIGNINS = 300
 export const ADDRESS_FAILURES = 10
 export const EMAIL_FAILURES = 20
@@ -116,6 +122,8 @@ export function newLimits(maxKeys?: number): Limits {
     signupAddress: new WindowCounter(20, 60 * 60_000, maxKeys),
     reauth: new WindowCounter(ADDRESS_FAILURES, FIFTEEN_MINUTES, maxKeys),
     toolCalls: new WindowCounter(60, 60_000, maxKeys),
+    toolRefusalRows: new WindowCounter(TOOL_REFUSALS_AUDITED, FIFTEEN_MINUTES, maxKeys),
+    toolRefusalNotes: new WindowCounter(1, FIFTEEN_MINUTES, maxKeys),
     mcpRequests: new WindowCounter(600, 60_000, maxKeys),
     refusedTokens: new WindowCounter(10, FIFTEEN_MINUTES, maxKeys),
     register: new WindowCounter(20, 60 * 60_000, maxKeys),

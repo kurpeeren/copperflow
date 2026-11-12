@@ -38,6 +38,11 @@ export interface AuditEntry {
   detail: string
 }
 
+/** Sign-in sessions one user holds; a twenty-first ends their oldest. */
+export const MAX_SESSIONS_PER_USER = 20
+/** Workspace sessions one user holds for one project; a ninth ends their oldest for that project. */
+export const MAX_WORKSPACE_SESSIONS = 8
+
 /** Set after the version check, so a refused (newer) database is left exactly as it was. */
 const PRAGMAS = `
 PRAGMA journal_mode = WAL;
@@ -299,8 +304,12 @@ export class HubStore {
     this.sql("DELETE FROM users WHERE id = ?").run(userId)
   }
 
+  /** Starts a session; the user keeps their newest MAX_SESSIONS_PER_USER (the oldest end, with their workspace sessions). */
   createSession(idHash: string, userId: string, now: number, expires: number): void {
-    this.sql("INSERT INTO sessions (hash, user_id, created, expires, last_seen) VALUES (?, ?, ?, ?, ?)").run(idHash, userId, now, expires, now)
+    this.transaction(() => {
+      this.sql("INSERT INTO sessions (hash, user_id, created, expires, last_seen) VALUES (?, ?, ?, ?, ?)").run(idHash, userId, now, expires, now)
+      this.sql("DELETE FROM sessions WHERE user_id = ? AND hash NOT IN (SELECT hash FROM sessions WHERE user_id = ? ORDER BY created DESC, rowid DESC LIMIT ?)").run(userId, userId, MAX_SESSIONS_PER_USER)
+    })
   }
 
   /** The live session with this id hash; an expired one is deleted and not returned. */
@@ -332,7 +341,27 @@ export class HubStore {
 
   /** A workspace session made from the hub session `hubSession`; it ends with it (the row cascades). */
   createWorkspaceSession(idHash: string, userId: string, projectId: string, hubSession: string, expires: number): void {
-    this.sql("INSERT INTO workspace_sessions (hash, user_id, project_id, hub_session, expires) VALUES (?, ?, ?, ?, ?)").run(idHash, userId, projectId, hubSession, expires)
+    this.transaction(() => {
+      this.sql("INSERT INTO workspace_sessions (hash, user_id, project_id, hub_session, expires) VALUES (?, ?, ?, ?, ?)").run(idHash, userId, projectId, hubSession, expires)
+      // The newest MAX_WORKSPACE_SESSIONS for this user and project stay; a ninth ends the oldest.
+      this.sql("DELETE FROM workspace_sessions WHERE user_id = ? AND project_id = ? AND hash NOT IN (SELECT hash FROM workspace_sessions WHERE user_id = ? AND project_id = ? ORDER BY rowid DESC LIMIT ?)").run(
+        userId,
+        projectId,
+        userId,
+        projectId,
+        MAX_WORKSPACE_SESSIONS,
+      )
+    })
+  }
+
+  /** Workspace sessions the user holds for the project (live or not yet swept). */
+  workspaceSessionCount(userId: string, projectId: string): number {
+    return Number((this.sql("SELECT COUNT(*) AS n FROM workspace_sessions WHERE user_id = ? AND project_id = ?").get(userId, projectId) as Row).n)
+  }
+
+  /** Removes expired workspace sessions; returns how many. */
+  sweepWorkspaceSessions(now: number): number {
+    return Number(this.sql("DELETE FROM workspace_sessions WHERE expires <= ?").run(now).changes)
   }
 
   /** The live workspace session with this id hash. */
@@ -467,6 +496,25 @@ export class HubStore {
   /** Every text field goes through `printable`: a detail may quote a name a person chose or an engine's output. */
   audit(entry: AuditEntry): void {
     this.sql("INSERT INTO audit (time, user_id, event, address, detail) VALUES (?, ?, ?, ?, ?)").run(entry.time, entry.userId, printable(entry.event, 80), printable(entry.address, 80), printable(entry.detail, 400))
+  }
+
+  /**
+   * Deletes at most `batch` audit rows in one statement: first rows written before `cutoff`, else, when the log holds
+   * more than `maxRows`, the oldest rows over that. Returns how many went (0 when nothing is left to prune).
+   */
+  pruneAuditBatch(cutoff: number, maxRows: number, batch: number): number {
+    // Rows are written in time order, so the first row tells whether anything is old without scanning the table.
+    const first = this.sql("SELECT id, time FROM audit ORDER BY id LIMIT 1").get() as Row | undefined
+    if (!first) return 0
+    if (Number(first.time) < cutoff) {
+      return Number(this.sql("DELETE FROM audit WHERE id IN (SELECT id FROM audit WHERE time < ? ORDER BY id LIMIT ?)").run(cutoff, batch).changes)
+    }
+    // Ids only rise, so the span between the first and last bounds the row count: count exactly only when it could be over.
+    const last = Number((this.sql("SELECT MAX(id) AS id FROM audit").get() as Row).id)
+    if (last - Number(first.id) < maxRows) return 0
+    const count = Number((this.sql("SELECT COUNT(*) AS n FROM audit").get() as Row).n)
+    if (count <= maxRows) return 0
+    return Number(this.sql("DELETE FROM audit WHERE id IN (SELECT id FROM audit ORDER BY id LIMIT ?)").run(Math.min(batch, count - maxRows)).changes)
   }
 
   /** The newest entries first. */

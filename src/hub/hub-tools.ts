@@ -49,12 +49,24 @@ export function stillAuthorised(hub: Hub, state: AgentState, auth: CallAuth): bo
 const NO_PROJECT = "No project is open. Call list_projects, then open_project { name } or new_project { name }, and call this tool again."
 const NOT_FOUND = "There is no such project. Call list_projects to see yours."
 
+/**
+ * The audit row for a refused call: at most TOOL_REFUSALS_AUDITED per user per 15 minutes, then one
+ * `refusals-suppressed` row and no more until the window ends. A full limiter table writes nothing (never more rows).
+ */
+function auditRefusal(hub: Hub, address: string, userId: string, now: number): void {
+  if (hub.limits.toolRefusalRows.check(userId, now).ok) {
+    if (hub.limits.toolRefusalRows.add(userId, now) === "ok") audit(hub, address, userId, "tool-calls-limited")
+    return
+  }
+  if (hub.limits.toolRefusalNotes.check(userId, now).ok && hub.limits.toolRefusalNotes.add(userId, now) === "ok") audit(hub, address, userId, "refusals-suppressed")
+}
+
 /** Counts the call before anything waits; the refusal the agent reads, if over the limit. */
 function limited(hub: Hub, userId: string, address: string): CallToolResult | undefined {
   const now = hub.config.now()
   const check = hub.limits.toolCalls.check(userId, now)
   if (!check.ok) {
-    audit(hub, address, userId, "tool-calls-limited")
+    auditRefusal(hub, address, userId, now)
     return text(`429 Too many tool calls: at most ${TOOL_CALLS_PER_MINUTE} a minute. Wait ${check.retryAfterS} s, then call again.`, true)
   }
   // Keyed by user id (only signed-in users reach this), so the table holds at most one key per account.

@@ -18,6 +18,7 @@ import { ProjectFiles } from "./projects.js"
 import { createProcessRunner } from "./runner/process-runner.js"
 import { installStartCheck, QUOTA_SWEEP_MS, sweepQuota } from "./quota.js"
 import { retryDeletedProjects, retryTrash, sweepOrphans } from "./project-folders.js"
+import { pruneAudit } from "./audit-prune.js"
 import { sanitisingLog } from "./printable.js"
 import { trustedProxies, workspaceSubnets, type SubnetSet } from "./peer-guard.js"
 import type { WorkspaceRunner } from "./runner/runner.js"
@@ -212,6 +213,7 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
   // Every 15 s: expired sessions go, and the cuts the maintainer's commands asked for are carried out.
   const sweep = setInterval(() => {
     hub.store.sweepSessions(hub.config.now())
+    hub.store.sweepWorkspaceSessions(hub.config.now())
     for (const grantId of hub.store.tokens.sweep(hub.config.now())) hub.agents.closeCredential(`grant:${grantId}`)
     sweepCuts(hub, revokeUser)
       // Users the maintainer deleted: their folders go here, where their workspaces can be blocked first.
@@ -229,6 +231,9 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
         await sweepOrphans(hub)
       })
       .catch((error: unknown) => hub.log(`sweep failed: ${(error as Error).message}`))
+      // Audit rows past 180 days or 500 000 rows, in bounded batches; after the rest, and whatever happened to it.
+      .then(() => pruneAudit(hub.store, hub.config.now()))
+      .catch((error: unknown) => hub.log(`audit prune failed: ${(error as Error).message}`))
   }, options.sweepMs ?? SWEEP_MS)
   sweep.unref()
   // Every 5 s: the project folders of running workspaces are measured, and a user over quota has them stopped.
