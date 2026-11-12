@@ -107,7 +107,7 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
 export async function startHub(options: HubOptions): Promise<HubServer> {
   const hub = await openHub(options)
   const server = createServer((req, res) => {
-    guard(req, res, options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS)
+    guard(req, res, options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS, hub.config.publicHost)
     route(hub, req, res).catch((error: unknown) => answerError(hub, res, error))
   })
   // Headers within 10 s; an idle socket closes after 60 s. Node's request timeout is server-wide, so it stays the
@@ -154,7 +154,7 @@ const UPLOAD_BACKSTOP_MS = 2 * 60 * 60_000
  * exempt); and an answer given before the body was read says `connection: close` and closes the socket, so a
  * half-read request cannot linger.
  */
-function guard(req: IncomingMessage, res: ServerResponse, timeoutMs: number): void {
+function guard(req: IncomingMessage, res: ServerResponse, timeoutMs: number, publicHost: string): void {
   const writeHead = res.writeHead.bind(res)
   res.writeHead = ((...args: Parameters<ServerResponse["writeHead"]>) => {
     if (!req.complete) res.setHeader("connection", "close")
@@ -164,7 +164,8 @@ function guard(req: IncomingMessage, res: ServerResponse, timeoutMs: number): vo
   res.once("finish", () => {
     if (!req.complete) socket?.destroySoon()
   })
-  const upload = req.method === "POST" && (req.url ?? "").split("?")[0] === "/projects/upload"
+  // Only the hub's own upload route, on the public origin; a path of that name on a project origin keeps the clock.
+  const upload = req.method === "POST" && req.headers.host?.toLowerCase() === publicHost && (req.url ?? "").split("?")[0] === "/projects/upload"
   if (upload) return
   const late = setTimeout(() => {
     if (!req.complete) req.destroy()

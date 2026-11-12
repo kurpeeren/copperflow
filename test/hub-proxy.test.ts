@@ -164,6 +164,26 @@ describe("workspaces on their own origins", () => {
     expect((await ada.onProject(id, "GET", "/api/circuits")).status).toBe(200)
   })
 
+  test("a trickled POST /projects/upload on a project origin is cut at the request timeout", async () => {
+    const studio = await recorder()
+    server = await startTestHub({ requestTimeoutMs: 300, runner: () => fixedRunner(() => studio.origin) })
+    const { ada, id } = await entered(server)
+    const url = new URL(server.url)
+    const took = await new Promise<number>((done) => {
+      const started = Date.now()
+      const req = request({ agent: false, host: url.hostname, port: url.port, method: "POST", path: "/projects/upload", headers: { host: new URL(projectOriginOf(id)).host, origin: projectOriginOf(id), cookie: ada.cookie(), "content-length": "1000" } })
+      req.on("error", () => done(Date.now() - started))
+      req.on("response", (res) => {
+        res.resume()
+        res.on("close", () => done(Date.now() - started))
+      })
+      req.write("a")
+      const drip = setInterval(() => req.write("b"), 100)
+      req.on("close", () => clearInterval(drip))
+    })
+    expect(took).toBeLessThan(3000)
+  })
+
   test("a token older than 30 seconds is refused", async () => {
     let now = Date.now()
     server = await startTestHub({ now: () => now })
