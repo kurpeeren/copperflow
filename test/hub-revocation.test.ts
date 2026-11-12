@@ -1,13 +1,14 @@
 // Every path that revokes a user's access, walked one by one, with every kind of credential checked afterwards, so a
 // new path cannot forget one. A plain sign-out is the one path that leaves agent credentials alone.
 import { afterEach, describe, expect, test } from "vitest"
+import { createHash } from "node:crypto"
 import { join } from "node:path"
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { runCli } from "../src/cli-commands.js"
-import { ACCESS_PREFIX, newToken, PAT_PREFIX, REFRESH_PREFIX } from "../src/hub/agent-tokens.js"
+import { newToken, PAT_PREFIX } from "../src/hub/agent-tokens.js"
 import { hashSecret, newId } from "../src/hub/secrets.js"
 import type { HubServer } from "../src/hub/server.js"
-import { Browser, fixedRunner, formToken, newUser, startTestHub } from "./helpers/hub-client.js"
+import { Browser, fixedRunner, formToken, newUser, ORIGIN, send, startTestHub } from "./helpers/hub-client.js"
 import { call, connectAgent } from "./helpers/hub-mcp.js"
 
 let server: HubServer | undefined
@@ -25,8 +26,15 @@ interface Held {
   pat: string
   access: string
   refresh: string
+  clientId: string
   agent: Client
+  oauthAgent: Client
 }
+
+const HOST = new URL(ORIGIN).host
+const REDIRECT = "http://127.0.0.1:33418/callback"
+const VERIFIER = "v".repeat(60)
+const CHALLENGE = createHash("sha256").update(VERIFIER).digest("base64url")
 
 /** Gives the user one of each credential: hub session, device, workspace session, PAT, access and refresh token, agent session. */
 async function holdEverything(hub: HubServer, browser: Browser, email: string, enter = true): Promise<Held> {
@@ -39,18 +47,24 @@ async function holdEverything(hub: HubServer, browser: Browser, email: string, e
   }
   const pat = newToken(PAT_PREFIX)
   hub.hub.store.tokens.addPersonalToken({ id: newId(), hash: hashSecret(pat), userId, name: "t" }, 10, Date.now())
-  const clientId = newId()
-  const grantId = newId()
-  hub.hub.store.tokens.addClient({ id: clientId, name: "c", redirectUris: [] }, 100, Date.now())
-  hub.hub.store.tokens.createGrant({ id: grantId, userId, clientId }, Date.now())
-  const access = newToken(ACCESS_PREFIX)
-  const refresh = newToken(REFRESH_PREFIX)
-  hub.hub.store.tokens.issue({ hash: hashSecret(access), grantId, userId, kind: "access", expires: Date.now() + 3_600_000 })
-  hub.hub.store.tokens.issue({ hash: hashSecret(refresh), grantId, userId, kind: "refresh", expires: Date.now() + 3_600_000 })
+  // OAuth tokens through the real flow: registration, authorise, consent, code exchange.
+  const registered = await send(hub.url, "POST", "/oauth/register", { host: HOST, "content-type": "application/json" }, JSON.stringify({ redirect_uris: [REDIRECT] }))
+  const clientId = JSON.parse(registered.text).client_id as string
+  const page = await browser.get(`/oauth/authorize?${new URLSearchParams({ response_type: "code", client_id: clientId, redirect_uri: REDIRECT, code_challenge: CHALLENGE, code_challenge_method: "S256" })}`)
+  const request = /name="request" value="([^"]+)"/.exec(page.text)?.[1] as string
+  const allowed = await browser.post("/oauth/consent", { form: formToken(page.text), request, decision: "allow" })
+  const code = new URL(String(allowed.headers.location)).searchParams.get("code") as string
+  const tokens = JSON.parse((await form(hub, "/oauth/token", { grant_type: "authorization_code", code, client_id: clientId, redirect_uri: REDIRECT, code_verifier: VERIFIER })).text) as Record<string, string>
   const agent = await connectAgent(hub, pat)
-  clients.push(agent)
+  const oauthAgent = await connectAgent(hub, tokens.access_token as string)
+  clients.push(agent, oauthAgent)
   expect((await call(agent, "list_projects")).isError).toBe(false)
-  return { browser, userId, projectId, pat, access, refresh, agent }
+  expect((await call(oauthAgent, "list_projects")).isError).toBe(false)
+  return { browser, userId, projectId, pat, access: tokens.access_token as string, refresh: tokens.refresh_token as string, clientId, agent, oauthAgent }
+}
+
+function form(hub: HubServer, path: string, fields: Record<string, string>) {
+  return send(hub.url, "POST", path, { host: HOST, "content-type": "application/x-www-form-urlencoded" }, new URLSearchParams(fields).toString())
 }
 
 async function until(check: () => Promise<boolean> | boolean): Promise<void> {
@@ -106,9 +120,11 @@ describe("revocation", () => {
       expect((await stale.onProject(held.projectId as string, "GET", "/api/circuits")).status, path.name).toBe(404)
       expect(tokens.credential(hashSecret(held.pat), now) !== undefined, `${path.name}: personal token`).toBe(!path.revokesAgents)
       expect(tokens.credential(hashSecret(held.access), now) !== undefined, `${path.name}: access token`).toBe(!path.revokesAgents)
-      const refreshLive = tokens.credentialLive(`grant:${[...tokens.grants(held.userId)].map((g) => g.id)[0] ?? "none"}`)
-      expect(refreshLive, `${path.name}: refresh token`).toBe(!path.revokesAgents)
-      expect(await agentAlive(held.agent), `${path.name}: agent session`).toBe(!path.revokesAgents)
+      expect(await agentAlive(held.agent), `${path.name}: agent session (personal token)`).toBe(!path.revokesAgents)
+      expect(await agentAlive(held.oauthAgent), `${path.name}: agent session (OAuth access token)`).toBe(!path.revokesAgents)
+      // The refresh token, used for real at the token endpoint.
+      const refreshed = await form(server, "/oauth/token", { grant_type: "refresh_token", refresh_token: held.refresh, client_id: held.clientId })
+      expect(refreshed.status, `${path.name}: refresh token`).toBe(path.revokesAgents ? 400 : 200)
       if (path.revokesAgents) expect(server.hub.store.deviceCount(held.userId), `${path.name}: devices`).toBe(0)
     })
   }
