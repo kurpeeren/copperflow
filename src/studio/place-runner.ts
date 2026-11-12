@@ -61,7 +61,12 @@ export interface PlaceRunnerDeps {
   createWorker: PlaceWorkerFactory | undefined
   /** Behind the hub: never place in the server process, and fit the board with this engine-worker build. */
   hosted?: { buildFiles: FilesBuilder }
+  /** The hard wall-clock cut of a run in a worker; default PLACE_WORKER_LIMIT_MS. */
+  workerLimitMs?: number
 }
+
+/** The longest a placement may take in its worker before the worker is ended: its budget and a minute's grace. */
+export const PLACE_WORKER_LIMIT_MS = STUDIO_PLACE_BUDGET_MS + 60_000
 
 /** The answer when the hosted Studio has no worker threads: it does not fall back to its own thread. */
 export const NO_WORKER_HOSTED = "this needs a worker thread on the hosted service, and none could be started; nothing was changed"
@@ -183,20 +188,23 @@ export class PlaceRunner {
       this.deps.announce({ file: job.file, state: "running", stage: progress.stage, done: progress.done, total: progress.total })
     }
     const factory = this.deps.createWorker
-    return factory ? inWorker(job, factory, request, tell) : inProcess(job, request, tell)
+    return factory ? inWorker(job, factory, request, tell, this.deps.workerLimitMs ?? PLACE_WORKER_LIMIT_MS) : inProcess(job, request, tell)
   }
 }
 
-function inWorker(job: Job, factory: PlaceWorkerFactory, request: PlaceWorkerRequest, tell: (progress: PlaceProgress) => void): Promise<Placement> {
+/** Places in a worker; cancelling ends the worker, and so does running past `limitMs` (the timer is this thread's). */
+function inWorker(job: Job, factory: PlaceWorkerFactory, request: PlaceWorkerRequest, tell: (progress: PlaceProgress) => void, limitMs: number): Promise<Placement> {
   return new Promise((done, fail) => {
     const worker = factory()
     let settled = false
     const settle = (finish: () => void) => {
       if (settled) return
       settled = true
+      clearTimeout(cap)
       void worker.terminate()
       finish()
     }
+    const cap = setTimeout(() => settle(() => fail(new Error(`The placer took longer than ${Math.round(limitMs / 1000)} s and was stopped`))), limitMs)
     job.stop = () => settle(() => fail(new Cancelled()))
     worker.on("message", (reply) => {
       if (reply.type === "progress") return settled ? undefined : tell(reply.progress)

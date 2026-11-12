@@ -77,7 +77,12 @@ export interface RouteRunnerDeps {
   createWorker: RouteWorkerFactory | undefined
   /** Behind the hub: never route in the server process. */
   hosted?: boolean
+  /** The hard wall-clock cut of a run in a worker: the worker is ended after this; default ROUTE_WORKER_LIMIT_MS. */
+  workerLimitMs?: number
 }
+
+/** The longest a Studio routing run may take in its worker before the worker is ended: 10 minutes. */
+export const ROUTE_WORKER_LIMIT_MS = 10 * 60_000
 
 class Cancelled extends Error {}
 
@@ -264,21 +269,23 @@ export class RouteRunner {
       this.deps.announce({ file: job.file, state: "running", pass: progress.pass, done: progress.done, total: progress.total })
     }
     const factory = this.deps.createWorker
-    return factory ? inWorker(job, factory, request, tell) : inProcess(job, request, tell)
+    return factory ? inWorker(job, factory, request, tell, this.deps.workerLimitMs ?? ROUTE_WORKER_LIMIT_MS) : inProcess(job, request, tell)
   }
 }
 
-/** Routes in a worker; cancelling ends the worker. */
-function inWorker(job: Job, factory: RouteWorkerFactory, request: RouteWorkerRequest, tell: (progress: RouteProgress) => void): Promise<RouteReport> {
+/** Routes in a worker; cancelling ends the worker, and so does running past `limitMs` (the timer is this thread's). */
+function inWorker(job: Job, factory: RouteWorkerFactory, request: RouteWorkerRequest, tell: (progress: RouteProgress) => void, limitMs: number): Promise<RouteReport> {
   return new Promise((done, fail) => {
     const worker = factory()
     let settled = false
     const settle = (finish: () => void) => {
       if (settled) return
       settled = true
+      clearTimeout(cap)
       void worker.terminate()
       finish()
     }
+    const cap = setTimeout(() => settle(() => fail(new Error(`The router took longer than ${Math.round(limitMs / 1000)} s and was stopped`))), limitMs)
     job.stop = () => settle(() => fail(new Cancelled()))
     worker.on("message", (reply) => {
       if (reply.type === "progress") return settled ? undefined : tell(reply.progress)
