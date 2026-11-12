@@ -136,6 +136,19 @@ describe("workspaces on their own origins", () => {
     expect(studio.seen).toEqual([])
   })
 
+  test("no worker script is served on a project origin, and /_enter clears storage and sends no referrer", async () => {
+    const studio = await recorder()
+    server = await startTestHub({ runner: () => fixedRunner(() => studio.origin) })
+    const ada = await newUser(server, "ada@example.com")
+    const id = await projectOf(server, ada, "ada@example.com")
+    const { entered: answer } = await ada.openProject(id)
+    expect(answer?.headers["clear-site-data"]).toBe('"storage"')
+    expect(answer?.headers["referrer-policy"]).toBe("no-referrer")
+    expect((await ada.onProject(id, "GET", "/sw.js", { "service-worker": "script" })).status).toBe(404)
+    expect(studio.seen).toEqual([])
+    expect((await ada.onProject(id, "GET", "/sw.js")).status).toBe(200)
+  })
+
   test("a token older than 30 seconds is refused", async () => {
     let now = Date.now()
     server = await startTestHub({ now: () => now })

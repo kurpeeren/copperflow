@@ -77,6 +77,9 @@ function enter(hub: Hub, req: IncomingMessage, res: ServerResponse, projectId: s
   res.writeHead(303, {
     location: "/",
     "cache-control": "no-store",
+    // Unregisters any Service Worker and clears what the origin's content stored.
+    "clear-site-data": '"storage"',
+    "referrer-policy": "no-referrer",
     "set-cookie": setCookie(workspaceCookieName(hub), secret, { secure: hub.config.secure, maxAgeS: (expires - now) / 1000 }),
   })
   res.end()
@@ -110,6 +113,8 @@ export async function serveProjectOrigin(hub: Hub, req: IncomingMessage, res: Se
   const query = raw.indexOf("?")
   const path = query < 0 ? raw : raw.slice(0, query)
   if (!plainPath(path)) throw new HubError(400, "That address is not valid.")
+  // No worker script is ever served on a project origin: a Service Worker could read the next /_enter token.
+  if (header(req, "service-worker") !== undefined) throw new HubError(404, "There is no such page.")
   const method = req.method ?? "GET"
   if (path === "/_enter" && method === "GET") return enter(hub, req, res, projectId, address)
   const userId = workspaceUser(hub, req, projectId)
