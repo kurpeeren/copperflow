@@ -13,12 +13,21 @@ const isUnbounded = (key: string, value: unknown) =>
 const isPlainStringKeys = (key: string, value: unknown) =>
   key === "propertyNames" && typeof value === "object" && value !== null && Object.keys(value).length === 1 && (value as { type?: unknown }).type === "string"
 
-/** A schema without the dropped keys, unbounded integer limits and `propertyNames: { type: "string" }`. */
+/**
+ * A schema without the dropped keywords, unbounded integer limits and `propertyNames: { type: "string" }`. Keywords
+ * are dropped only where they are keywords: the keys of `properties` are argument names and all stay.
+ */
 export function compactSchema(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(compactSchema)
   if (typeof value !== "object" || value === null) return value
   const entries = Object.entries(value).filter(([key, child]) => !DROPPED_KEYS.has(key) && !isUnbounded(key, child) && !isPlainStringKeys(key, child))
-  return Object.fromEntries(entries.map(([key, child]) => [key, compactSchema(child)]))
+  return Object.fromEntries(entries.map(([key, child]) => [key, key === "properties" ? compactProperties(child) : compactSchema(child)]))
+}
+
+/** The argument schemas of `properties`, each compacted, under their own names whatever those are. */
+function compactProperties(value: unknown): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return compactSchema(value)
+  return Object.fromEntries(Object.entries(value).map(([name, schema]) => [name, compactSchema(schema)]))
 }
 
 interface ToolEntry {
