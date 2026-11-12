@@ -355,12 +355,16 @@ describe("workspaces on their own origins", () => {
         log: () => undefined,
       })
     server = await startTestHub({ runner: slow })
+    const hub = server.hub
     const { ada, id } = await entered(server)
     const pending = ada.onProject(id, "GET", "/api/circuits")
     await new Promise((done) => setTimeout(done, 50))
     // Sign-out revokes at once; stopping the workspace waits for its start to finish.
     const signingOut = ada.submit("/projects", "/signout", {})
-    await new Promise((done) => setTimeout(done, 50))
+    // Wait until the sign-out has revoked, not for a fixed time: reading the form and posting it take longer under load.
+    const revoked = () => [...hub.epochs.values()].some((epoch) => epoch > 0)
+    for (let tries = 0; !revoked() && tries < 400; tries++) await new Promise((done) => setTimeout(done, 25))
+    expect(revoked()).toBe(true)
     release()
     await signingOut
     expect((await pending).status).toBe(404)

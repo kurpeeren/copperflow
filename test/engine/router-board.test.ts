@@ -176,7 +176,8 @@ describe("a long contested channel over every pass", () => {
     expect(report.routed).toHaveLength(2)
     expect(report.unrouted).toHaveLength(3)
     expectClean(CHANNEL, report)
-  }, 60_000)
+    // About 12 s alone; in the whole suite, beside every other file, it has taken more than a minute.
+  }, 180_000)
 })
 
 describe("routing one instance of a sheet", () => {
