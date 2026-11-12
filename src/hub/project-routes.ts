@@ -31,7 +31,7 @@ export function projectName(text: string | undefined): string | undefined {
 }
 
 export async function showProjects(hub: Hub, res: ServerResponse, signed: Signed, renewed?: string, status = 200, error?: string, note?: string): Promise<void> {
-  const projects = hub.store.projects(signed.user.id)
+  const projects = hub.store.projects(signed.user.id).map((project) => ({ ...project, overQuota: hub.store.overQuota(project.id) }))
   const usage = { projects: projects.length, maxProjects: hub.config.maxProjects, bytes: await hub.files.usage(signed.user.id), maxBytes: hub.config.maxBytes }
   sendPage(res, status, projectsPage({ email: signed.user.email, formToken: signed.formToken }, projects, usage, error, note), withRenewed(renewed))
 }

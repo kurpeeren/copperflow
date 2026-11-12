@@ -32,6 +32,8 @@ export interface WorkspaceRunner {
   state(id: string): WorkspaceState
   /** Workspaces starting or running now. */
   running(): number
+  /** The workspaces starting or running now, by id and user (for the quota sweep). */
+  active(): { id: string; userId: string }[]
   /** Stops every workspace of one user (sign-out, password change, deletion). */
   stopUser(userId: string): Promise<void>
   stopAll(): Promise<void>
@@ -118,6 +120,10 @@ export class ManagedRunner implements WorkspaceRunner {
     let count = 0
     for (const entry of this.entries.values()) if (entry.state === "starting" || entry.state === "running") count += 1
     return count
+  }
+
+  active(): { id: string; userId: string }[] {
+    return this.live().map((entry) => ({ id: entry.spec.id, userId: entry.spec.userId }))
   }
 
   async ensure(spec: WorkspaceSpec): Promise<WorkspaceAddress> {

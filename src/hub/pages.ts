@@ -1,6 +1,7 @@
 // The hub's pages: server-rendered HTML with no script at all. Every piece of text that did not come from this file
 // goes through `esc`; attributes are always double-quoted.
 import type { Project } from "./store.js"
+import { OVER_QUOTA_MESSAGE } from "./quota.js"
 
 export const STYLESHEET = `*{box-sizing:border-box}
 body{margin:0;font:15px/1.5 system-ui,sans-serif;color:#1d232a;background:#f5f6f7}
@@ -74,11 +75,12 @@ export function signUpPage(formToken: string, error?: string): string {
   )
 }
 
-export function projectsPage(viewer: Viewer, projects: readonly Project[], usage: { projects: number; maxProjects: number; bytes: number; maxBytes: number }, error?: string, note?: string): string {
+export function projectsPage(viewer: Viewer, projects: readonly (Project & { overQuota?: boolean })[], usage: { projects: number; maxProjects: number; bytes: number; maxBytes: number }, error?: string, note?: string): string {
   const mb = (bytes: number) => (bytes / (1024 * 1024)).toFixed(1)
+  const stopped = projects.some((p) => p.overQuota) && usage.bytes > usage.maxBytes
   const rows = projects
     .map(
-      (p) => `<tr><td><a href="/p/${esc(p.id)}/">${esc(p.name)}</a></td><td>
+      (p) => `<tr><td>${p.overQuota && stopped ? `${esc(p.name)} <em>(stopped: over the disk limit)</em>` : `<a href="/p/${esc(p.id)}/">${esc(p.name)}</a>`}</td><td>
 <a href="/projects/${esc(p.id)}/download">Download</a>
 <form method="post" action="/projects/${esc(p.id)}/rename">${hidden(viewer.formToken)}<input name="name" required maxlength="100" aria-label="New name" value="${esc(p.name)}"><button class="quiet" type="submit">Rename</button></form>
 <form method="post" action="/projects/${esc(p.id)}/delete">${hidden(viewer.formToken)}<input name="confirm" required maxlength="100" aria-label="Type the project's name to delete it" placeholder="Type its name to delete"><button class="quiet" type="submit">Delete</button></form>
@@ -87,7 +89,7 @@ export function projectsPage(viewer: Viewer, projects: readonly Project[], usage
     .join("\n")
   return layout(
     "Projects",
-    `<h1>Projects</h1>${message(error, note)}
+    `<h1>Projects</h1>${message(error ?? (stopped ? OVER_QUOTA_MESSAGE : undefined), note)}
 <p>${usage.projects} of ${usage.maxProjects} projects, ${mb(usage.bytes)} of ${mb(usage.maxBytes)} MB used.</p>
 ${projects.length ? `<table><tbody>${rows}</tbody></table>` : "<p>No projects yet.</p>"}
 <h2>New project</h2>

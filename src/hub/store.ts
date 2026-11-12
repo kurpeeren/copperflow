@@ -103,6 +103,7 @@ const COLUMNS: readonly [string, string][] = [
   ["users", "must_change INTEGER NOT NULL DEFAULT 0"],
   ["users", "deleted INTEGER NOT NULL DEFAULT 0"],
   ["projects", "deleted INTEGER NOT NULL DEFAULT 0"],
+  ["projects", "over_quota INTEGER NOT NULL DEFAULT 0"],
 ]
 
 const userOf = (row: Row | undefined): User | undefined =>
@@ -370,6 +371,15 @@ export class HubStore {
 
   deleteProject(userId: string, id: string): boolean {
     return Number(this.sql("DELETE FROM projects WHERE id = ? AND user_id = ?").run(id, userId).changes) === 1
+  }
+
+  /** Marks a project stopped for being over its user's disk quota (true), or clears the mark. */
+  setOverQuota(id: string, over: boolean): void {
+    this.sql("UPDATE projects SET over_quota = ? WHERE id = ?").run(over ? 1 : 0, id)
+  }
+
+  overQuota(id: string): boolean {
+    return Number((this.sql("SELECT over_quota FROM projects WHERE id = ?").get(id) as Row | undefined)?.over_quota ?? 0) === 1
   }
 
   audit(entry: AuditEntry): void {

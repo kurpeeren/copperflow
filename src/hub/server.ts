@@ -16,6 +16,7 @@ import { privacyPage, STYLESHEET, termsPage, textPage } from "./pages.js"
 import { createProject, deleteProject, downloadProject, ownProject, renameProject, showProjects, uploadProject } from "./project-routes.js"
 import { ProjectFiles } from "./projects.js"
 import { createProcessRunner } from "./runner/process-runner.js"
+import { QUOTA_SWEEP_MS, sweepQuota } from "./quota.js"
 import type { WorkspaceRunner } from "./runner/runner.js"
 import { HubStore } from "./store.js"
 import { prepareDataDir } from "./permissions.js"
@@ -75,6 +76,8 @@ export interface HubOptions {
   requestTimeoutMs?: number
   /** How often the hub sweeps sessions and carries out the maintainer's cuts; default 15 s. */
   sweepMs?: number
+  /** How often running workspaces' folders are measured against the quota; default 5 s. */
+  quotaSweepMs?: number
   /** Keys each limiter table holds; default 100 000 (tests make it small). */
   limiterKeys?: number
   now?: () => number
@@ -127,6 +130,8 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
     now: options.now ?? Date.now,
   }
   const files = new ProjectFiles(options.dataDir)
+  const log = options.log ?? ((line: string) => process.stderr.write(`copperflow hub: ${line}\n`))
+  files.note = (path, why) => log(`project file ${JSON.stringify(path.slice(0, 200))}: ${why}`)
   await mkdir(files.root, { recursive: true, mode: 0o700 })
   return {
     config,
@@ -143,7 +148,7 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
     agents: new AgentSessions(),
     catalog: await loadCatalog(publicOrigin),
     oauth: new OAuthState(),
-    log: options.log ?? ((line) => process.stderr.write(`copperflow hub: ${line}\n`)),
+    log,
   }
 }
 
@@ -184,11 +189,22 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
     sweepCuts(hub, revokeUser).catch((error: unknown) => hub.log(`sweep failed: ${(error as Error).message}`))
   }, options.sweepMs ?? SWEEP_MS)
   sweep.unref()
+  // Every 5 s: the project folders of running workspaces are measured, and a user over quota has them stopped.
+  let measuring = false
+  const quota = setInterval(() => {
+    if (measuring) return
+    measuring = true
+    sweepQuota(hub)
+      .catch((error: unknown) => hub.log(`quota sweep failed: ${(error as Error).message}`))
+      .finally(() => (measuring = false))
+  }, options.quotaSweepMs ?? QUOTA_SWEEP_MS)
+  quota.unref()
   return {
     url: `http://${options.bind ?? "127.0.0.1"}:${port}`,
     hub,
     close: async () => {
       clearInterval(sweep)
+      clearInterval(quota)
       hub.agents.closeAll()
       await hub.runner.stopAll()
       server.closeAllConnections()

@@ -14,6 +14,7 @@ import type { AgentState, CallAuth } from "./hub-tools.js"
 import { stillAuthorised, text } from "./hub-tools.js"
 import { projectOrigin } from "./project-origin.js"
 import { RunnerFullError, WorkspaceStartError } from "./runner/runner.js"
+import { checkQuotaBeforeStart, OverQuotaError } from "./quota.js"
 
 const TICKET_LIFETIME_S = 60
 /** The longest one forwarded call may take, and the most bytes an answer may have. */
@@ -146,10 +147,11 @@ export async function forwardTool(hub: Hub, state: AgentState, auth: CallAuth, p
   const holds = () => stillAuthorised(hub, state, auth) && epochOf(hub, state.userId) === epoch && state.projectId === projectId && hub.store.project(state.userId, projectId) !== undefined
   let address
   try {
+    await checkQuotaBeforeStart(hub, state.userId, projectId)
     address = await hub.runner.ensure({ id: projectId, userId: state.userId, projectDir: hub.files.projectDir(state.userId, projectId), basePath: "", publicOrigin: projectOrigin(hub, projectId) })
   } catch (error) {
     if (!holds()) return text(REVOKED, true)
-    if (error instanceof RunnerFullError || error instanceof WorkspaceStartError) return text(error.message, true)
+    if (error instanceof RunnerFullError || error instanceof WorkspaceStartError || error instanceof OverQuotaError) return text(error.message, true)
     hub.log(`workspace start for an agent failed: ${(error as Error).message}`)
     return text("The workspace could not be started. Try again in a minute.", true)
   }
