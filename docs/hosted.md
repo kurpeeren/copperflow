@@ -136,6 +136,65 @@ The audit log (`audit` table: time, user id or none, event, address, detail) rec
 the hub closes cleanly for its service manager to restart it, after an unhandled rejection it keeps serving). The detail holds a project id, a file
 count or the reason an upload was refused, never a password, cookie, invite code or ticket.
 
+Agent events: `token-created`, `token-revoked`, `token-refused` (a bearer token /mcp refused, at most 10 per 15
+minutes per address; a code or refresh token the token endpoint refused), `token-refreshed`, `client-registered`,
+`client-register-limited`, `consent-allowed`, `consent-denied`, `grant-created`, `grant-revoked`,
+`refresh-reused-grant-revoked`, `agent-connected` and `tool-calls-limited`. The detail holds an id (token, grant or
+client) or the grant type, never a token or code.
+
+## Connecting an agent
+
+An agent connects to `https://<public origin>/mcp` (Streamable HTTP). That endpoint is served only on the public
+origin (404 on a project origin) and authenticated only by `Authorization: Bearer <token>`; a cookie never counts. A
+request without a valid token gets 401 with `WWW-Authenticate: Bearer resource_metadata="<public
+origin>/.well-known/oauth-protected-resource"`.
+
+**Tokens.** All are a prefix and 32 random bytes, stored only as SHA-256 hashes, never logged or put in a URL or an
+error. Personal access tokens (`cfp_`) are made on the account page, shown once, listed by name, creation and last
+use, revocable; at most 10 per user. OAuth access tokens (`cfa_`) last one hour; refresh tokens (`cfr_`) 30 days and
+rotate on every use: a refresh token used twice revokes its whole grant and closes its sessions.
+
+**OAuth 2.1** (the MCP specification's flow, written on `node:http` with the SDK's schemas and types; the SDK's
+express-based helpers are not used):
+`/.well-known/oauth-protected-resource` (also `/mcp` appended) and `/.well-known/oauth-authorization-server`;
+`POST /oauth/register` (public clients only, `token_endpoint_auth_method: none`; 1 to 5 redirect URIs, each https,
+or http on 127.0.0.1, [::1] or localhost, without user, password or fragment, at most 2000 characters; names 1 to 100
+characters; 20 registrations an hour per address; at most 10 000 clients, a full table making room only by dropping
+a never-used client over an hour old; clients unused for 30 days expire); `GET /oauth/authorize` (code with PKCE S256
+required, `state` returned, `resource` if given must be the /mcp URL; the redirect URI must match a registered one
+exactly, otherwise an error page and no redirect; signed out, the request is kept server-side for 10 minutes, named by
+a cookie, and the person comes back to it after signing in; 30 requests per 15 minutes per address); a consent page
+naming the client and the exact redirect host, with Allow and Deny as POSTs with the form token; `POST /oauth/token`
+(codes single use for 60 s, bound to the client, redirect URI, challenge and the user's revocation epoch; a wrong
+verifier uses the code up); `POST /oauth/revoke` (an access token alone, a refresh token with its grant). The token,
+registration, revocation and metadata endpoints read no cookie and answer any origin (CORS `*`). The account page
+lists connected clients (one per grant) with revoke.
+
+**What the hub answers and forwards.** The hub is the MCP server the agent talks to. Its instructions are the hosted
+server's plus two lines (open or create a project first; the person watches at `<public origin>/p/<id>/`). It answers
+`list_projects`, `new_project { name }` (the project quotas apply; it opens the project) and `open_project { name |
+id }` (another user's project reads exactly as a missing one), and `guide` from the skill files. Every other tool is
+advertised from the hosted tool list, read once at start by an in-memory MCP client from a hosted server made for a
+folder that does not exist (listing tools only serialises schemas: no circuit code runs), and forwarded to the open
+project's workspace: the hub ensures the workspace and calls the tool on the workspace's MCP server as an MCP client,
+with `Host` set to the project origin's host and a one-minute ticket signed just before each request, only while the
+session, its token, the user's revocation epoch and the project still hold. The answer passes through unchanged. With
+no project open, a forwarded tool answers an error naming the three project tools. Measured 2026-11-12: instructions
+and `tools/list` 42 725 characters (limit 43 000), `guide` 15 390 (limit 16 000).
+
+**Limits.** 60 tool calls per minute per user (answered inside the tool result as an error with the wait); at most 4
+MCP sessions per user at the hub (mcp-sessions.ts's rule: at the limit the user's longest-idle session without a
+stream closes, else 429), 512 in all, 30 idle minutes, 12 hours at most; a GET stream ends at its access token's
+expiry or after 15 minutes; request bodies 4 MB.
+
+**Revocation.** A password change (also the forced one after a reset), "End all sessions", account deletion and the
+maintainer's `reset-password` and `delete-user` all call one function (`src/hub/revocation.ts`): it ends the hub and
+workspace sessions, forgets the devices, revokes every grant with its access and refresh tokens and every personal
+access token, drops pending OAuth requests and codes, closes the open agent sessions (cutting their streams), bumps
+the revocation epoch and stops the workspaces. The maintainer's commands do the database part themselves and the
+running hub the rest at its next sweep. A plain sign-out touches no agent credential. Every /mcp request checks its
+token again, so a revoked or expired token ends the agent's access at its next request.
+
 ### Sign-in limits
 
 Every password check is counted before it starts, as if it failed, and refunded when the password is right: concurrent
