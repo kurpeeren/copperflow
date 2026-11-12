@@ -187,7 +187,7 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
     socket.end("HTTP/1.1 400 Bad Request\r\nconnection: close\r\n\r\n")
   })
   refuseWorkspacePeers(server, workspaceSubnets)
-  limitConnectionsPerAddress(server, options.trustProxy ? undefined : MAX_CONNECTIONS_PER_ADDRESS)
+  limitConnectionsPerAddress(server, MAX_CONNECTIONS_PER_ADDRESS, hub.config.trustProxy)
   await new Promise<void>((done, fail) => {
     server.once("error", fail)
     server.listen(options.port, options.bind ?? "127.0.0.1", () => done())
@@ -284,10 +284,11 @@ export function refuseWorkspacePeers(server: Pick<Server, "on">, subnets: Subnet
   })
 }
 
-function limitConnectionsPerAddress(server: Server, max: number | undefined): void {
-  if (max === undefined) return
+/** Caps open connections per peer address; the trusted proxy (many clients behind one address) is the one exception. */
+export function limitConnectionsPerAddress(server: Pick<Server, "on">, max: number, trustedProxy: SubnetSet | undefined): void {
   const open = new Map<string, number>()
   server.on("connection", (socket: Socket) => {
+    if (trustedProxy?.has(socket.remoteAddress)) return
     const key = addressKey(socket.remoteAddress ?? "unknown")
     const count = (open.get(key) ?? 0) + 1
     if (count > max) {

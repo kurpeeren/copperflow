@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events"
 import type { IncomingMessage } from "node:http"
 import { clientAddress } from "../src/hub/http.js"
 import { parseCidr, SubnetSet, trustedProxies } from "../src/hub/peer-guard.js"
-import { refuseWorkspacePeers } from "../src/hub/server.js"
+import { limitConnectionsPerAddress, refuseWorkspacePeers } from "../src/hub/server.js"
 
 const request = (peer: string, forwarded?: string) =>
   ({ socket: { remoteAddress: peer }, headers: forwarded === undefined ? {} : { "x-forwarded-for": forwarded } }) as unknown as IncomingMessage
@@ -23,6 +23,20 @@ describe("who may talk to the hub", () => {
     expect(sockets.map((socket) => socket.destroyed)).toEqual([true, true, true, false, false])
     subnets.remove(parseCidr("172.30.0.0/16") as never)
     expect(subnets.has("172.30.0.5")).toBe(false)
+  })
+
+  test("with a trusted proxy the per-address connection cap still applies to every other peer", () => {
+    const server = new EventEmitter()
+    limitConnectionsPerAddress(server as never, 2, trustedProxies("10.0.0.2"))
+    const connect = (remoteAddress: string) => {
+      const socket = Object.assign(new EventEmitter(), { remoteAddress, destroyed: false, destroy: () => void (socket.destroyed = true) })
+      server.emit("connection", socket)
+      return socket
+    }
+    const fromProxy = [1, 2, 3, 4].map(() => connect("10.0.0.2"))
+    expect(fromProxy.some((socket) => socket.destroyed)).toBe(false)
+    const fromOther = [1, 2, 3].map(() => connect("203.0.113.5"))
+    expect(fromOther.map((socket) => socket.destroyed)).toEqual([false, false, true])
   })
 
   test("a subnet added twice stays refused until both instances removed it", () => {

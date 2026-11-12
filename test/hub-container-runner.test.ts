@@ -354,12 +354,15 @@ describe("before the hub starts", () => {
 
   test("the sweep removes leftover workspace containers and networks and nothing else", async () => {
     const listing = `cf-ws-${ID}\ncf-ws-evil;rm\nother\ncf-ws-${"f".repeat(32)}\n`
-    const engine = fakeEngine((args, child) => say(child, args[0] === "ps" || args[1] === "ls" ? listing : ""))
-    expect(await sweepLeftovers({ ...G, image: "img" }, engine.spawn)).toBe(2)
+    const cleaners = "cf-clean-0123456789abcdef\ncf-clean-x;rm\n"
+    const engine = fakeEngine((args, child) => say(child, args[0] === "ps" ? (args.includes("name=^cf-clean-") ? cleaners : listing) : args[1] === "ls" ? listing : ""))
+    expect(await sweepLeftovers({ ...G, image: "img" }, engine.spawn)).toBe(3)
     expect(engine.calls).toEqual([
       ["ps", "--all", "--filter", "label=org.copperflow.workspace=1", "--filter", "name=^cf-ws-", "--format", "{{.Names}}"],
+      ["ps", "--all", "--filter", "label=org.copperflow.workspace=1", "--filter", "name=^cf-clean-", "--format", "{{.Names}}"],
       ["rm", "--force", `cf-ws-${ID}`],
       ["rm", "--force", `cf-ws-${"f".repeat(32)}`],
+      ["rm", "--force", "cf-clean-0123456789abcdef"],
       ["network", "ls", "--filter", "label=org.copperflow.workspace=1", "--format", "{{.Name}}"],
       ["network", "rm", `cf-ws-${ID}`],
       ["network", "rm", `cf-ws-${"f".repeat(32)}`],

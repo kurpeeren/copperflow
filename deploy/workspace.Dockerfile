@@ -20,8 +20,9 @@ RUN npm run build && npm prune --omit=dev
 FROM ${NODE_IMAGE}
 ARG NODE_IMAGE
 LABEL org.copperflow.base="${NODE_IMAGE}"
-# The image's own user. The runner normally starts containers as the hub's own uid:gid instead, so the image works for
-# any uid: the app is root-owned and world-readable, and HOME and caches are under /tmp.
+# The image's own user, uid 10001. The runner starts containers as 10001:<workspace group> (or, with
+# --workspace-user-same-as-hub, as the hub's own uid:gid), so the image works for any gid: the app is root-owned and
+# world-readable, and HOME and caches are under /tmp.
 RUN groupadd --gid 10001 workspace && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin workspace
 WORKDIR /app
 COPY --from=build --chown=root:root /src/package.json ./package.json

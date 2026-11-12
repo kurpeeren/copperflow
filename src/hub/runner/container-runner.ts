@@ -395,7 +395,11 @@ export async function sweepLeftovers(settings: ContainerSettings, spawn: SpawnLi
   const listed = await runEngine(spawn, command, ["ps", "--all", "--filter", `label=${CONTAINER_LABEL}`, "--filter", `name=^${CONTAINER_PREFIX}`, "--format", "{{.Names}}"])
   if (listed.code !== 0) throw new Error(`Could not list leftover workspace containers: ${listed.stderr.trim().slice(0, 300)}`)
   let removed = 0
-  for (const name of ourNames(listed.stdout)) {
+  // Cleaning containers a crashed hub left running, too (cf-clean-<16 hex>).
+  const cleaners = await runEngine(spawn, command, ["ps", "--all", "--filter", `label=${CONTAINER_LABEL}`, "--filter", "name=^cf-clean-", "--format", "{{.Names}}"])
+  if (cleaners.code !== 0) throw new Error(`Could not list leftover cleaning containers: ${cleaners.stderr.trim().slice(0, 300)}`)
+  const cleanerNames = cleaners.stdout.split(/\r?\n/).map((line) => line.trim()).filter((name) => /^cf-clean-[0-9a-f]{16}$/.test(name))
+  for (const name of [...ourNames(listed.stdout), ...cleanerNames]) {
     const result = await runEngine(spawn, command, ["rm", "--force", name])
     if (result.code === 0) removed += 1
     else log(`could not remove leftover container ${name}: ${result.stderr.trim().slice(0, 200)}`)
@@ -655,6 +659,7 @@ export function cleanerRunArgs(trashDir: string, settings: ContainerSettings, na
     "--memory", "128m",
     "--memory-swap", "128m",
     "--cpus", "0.5",
+    "--ulimit", "nofile=1024:1024",
     "--mount", `type=bind,source=${trashDir},target=/work`,
     "--workdir", "/work",
     "--entrypoint", "node",

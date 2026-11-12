@@ -192,6 +192,7 @@ describe("one function removes project folders", () => {
       "--memory", "128m",
       "--memory-swap", "128m",
       "--cpus", "0.5",
+      "--ulimit", "nofile=1024:1024",
       "--mount", `type=bind,source=${trash},target=/work`,
       "--workdir", "/work",
       "--entrypoint", "node",

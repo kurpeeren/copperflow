@@ -183,6 +183,7 @@ describe("the hub's maintainer commands", () => {
       "network rm",
       "info --format",
       "ps --all",
+      "ps --all",
       "rm --force",
       "network ls",
     ])
