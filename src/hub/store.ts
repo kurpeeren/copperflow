@@ -39,6 +39,7 @@ export interface AuditEntry {
 }
 
 const SCHEMA = `
+PRAGMA busy_timeout = 5000;
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS users (
@@ -98,6 +99,17 @@ CREATE TABLE IF NOT EXISTS audit (
 `
 
 type Row = Record<string, unknown>
+
+export interface StoreCounts {
+  users: number
+  projects: number
+  unusedInvites: number
+}
+
+function countsOf(db: DatabaseSync): StoreCounts {
+  const n = (sql: string) => Number((db.prepare(sql).get() as Row).n)
+  return { users: n("SELECT COUNT(*) AS n FROM users"), projects: n("SELECT COUNT(*) AS n FROM projects"), unusedInvites: n("SELECT COUNT(*) AS n FROM invites WHERE used_at IS NULL") }
+}
 
 /** Columns added after the first schema; fixed strings, never input. */
 const COLUMNS: readonly [string, string][] = [
@@ -398,9 +410,28 @@ export class HubStore {
     }))
   }
 
-  counts(): { users: number; projects: number; unusedInvites: number } {
-    const n = (sql: string) => Number((this.sql(sql).get() as Row).n)
-    return { users: n("SELECT COUNT(*) AS n FROM users"), projects: n("SELECT COUNT(*) AS n FROM projects"), unusedInvites: n("SELECT COUNT(*) AS n FROM invites WHERE used_at IS NULL") }
+  counts(): StoreCounts {
+    return countsOf(this.db)
+  }
+
+  /**
+   * A consistent copy of the whole database in `file`, taken online with `VACUUM INTO` (one read transaction, so a
+   * write in progress is either wholly in it or not at all). `file` must not exist or be empty.
+   */
+  backupTo(file: string): void {
+    this.db.prepare("VACUUM INTO ?").run(file)
+  }
+
+  /** Opens a backup read-only, checks its integrity and counts it; throws when it is damaged. */
+  static checkBackup(file: string): StoreCounts {
+    const db = new DatabaseSync(file, { readOnly: true })
+    try {
+      const check = db.prepare("PRAGMA integrity_check").get() as Row
+      if (check.integrity_check !== "ok") throw new Error(`the backup ${file} failed its integrity check`)
+      return countsOf(db)
+    } finally {
+      db.close()
+    }
   }
 
   /** Removes expired sessions; returns how many. */

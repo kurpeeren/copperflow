@@ -1,6 +1,6 @@
 // copperflow hub: the hub server, and the maintainer's commands that work on its data directory directly.
 import { spawn as nodeSpawn } from "node:child_process"
-import { readdir, readFile } from "node:fs/promises"
+import { open, readdir, readFile } from "node:fs/promises"
 import { prepareDataDir } from "./permissions.js"
 import { basename, join, resolve } from "node:path"
 import { trashFailures } from "./project-folders.js"
@@ -40,17 +40,18 @@ const USAGE = `Usage:
   copperflow hub --data <dir> --port <n> --public-origin <url> --workspace-domain <domain> --runner process --trusted-accounts-only [--bind <address>] [--trust-proxy <address|CIDR>]
   copperflow hub invite --data <dir> [--count n]
   copperflow hub reset-password <email> --data <dir>
-  copperflow hub status --data <dir>
+  copperflow hub status --data <dir> [--json]
+  copperflow hub backup --data <dir> --to <file>
   copperflow hub delete-user <email> --data <dir>`
 
-/** Splits `--name value` options from the rest; `--trusted-accounts-only` is the one flag. */
+/** Splits `--name value` options from the rest; the flags without a value are named here. */
 function parse(args: readonly string[]): { options: Map<string, string>; flags: Set<string>; rest: string[] } {
   const options = new Map<string, string>()
   const flags = new Set<string>()
   const rest: string[] = []
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i] as string
-    if (arg === "--trusted-accounts-only" || arg === "--workspace-user-same-as-hub") flags.add(arg)
+    if (arg === "--trusted-accounts-only" || arg === "--workspace-user-same-as-hub" || arg === "--json") flags.add(arg)
     else if (arg.startsWith("--")) {
       const value = args[i + 1]
       if (value === undefined || value === "") throw new Error(`Missing ${arg} value.\n${USAGE}`)
@@ -99,7 +100,9 @@ export async function runHubCommand(args: string[], cwd: string, io: CliIO): Pro
       case "reset-password":
         return await resetPassword(store, email, io)
       case "status":
-        return await status(store, dataDir, io)
+        return await status(store, dataDir, io, flags.has("--json"))
+      case "backup":
+        return await backup(store, options, cwd, io)
       case "delete-user":
         return await deleteUser(store, dataDir, email, io)
       default:
@@ -250,22 +253,37 @@ async function resetPassword(store: HubStore, email: string | undefined, io: Cli
   return 0
 }
 
-async function status(store: HubStore, dataDir: string, io: CliIO): Promise<number> {
-  const counts = store.counts()
+/** What `hub status` reports; every string in it has passed through `printable`. null is "unknown". */
+export interface StatusReport {
+  users: number
+  projects: number
+  unusedInvites: number
+  /** From the running hub's status file, when it was written in the last 2 minutes. */
+  runner: "process" | "container" | null
+  running: number | null
+  containerMemory: string[]
+  trashPending: number
+  trashStuck: { name: string; failures: number; reason: string }[]
+  diskBytes: number | null
+  /** Why the disk could not be measured; not part of the JSON form's fixed fields when it was. */
+  diskFailed?: string
+}
+
+async function statusReport(store: HubStore, dataDir: string): Promise<StatusReport> {
   // lstat only, never opening a file (workspaces may be running), with a generous cap for the whole tree.
   const measured = await measureTree(join(dataDir, "projects"), { maxEntries: 5_000_000, maxMs: 60_000 })
-  let running = "unknown (the hub is not running, or has not written its status in the last 2 minutes)"
-  let runner = "unknown"
+  let running: number | null = null
+  let runner: StatusReport["runner"] = null
   let engine: string | undefined
-  let stuck: string[] = []
+  let stuck: StatusReport["trashStuck"] = []
   try {
     const written = JSON.parse(await readFile(join(dataDir, STATUS_FILE), "utf8")) as { updated?: unknown; running?: unknown; runner?: unknown; command?: unknown; trashFailures?: unknown }
     if (typeof written.updated === "number" && typeof written.running === "number" && Date.now() - written.updated < STATUS_STALE_MS) {
-      running = String(written.running)
+      running = written.running
       if (Array.isArray(written.trashFailures)) {
         stuck = (written.trashFailures as { name?: unknown; failures?: unknown; reason?: unknown }[])
           .filter((entry) => typeof entry.name === "string" && typeof entry.failures === "number")
-          .map((entry) => `  ${printable(entry.name, 80)}: ${printable(entry.failures, 12)} failed attempts (${printable(entry.reason, 40)})`)
+          .map((entry) => ({ name: printable(entry.name, 80), failures: entry.failures as number, reason: printable(entry.reason, 40) }))
       }
       if (written.runner === "process" || written.runner === "container") runner = written.runner
       // Only the two known engine names are taken from the file and run.
@@ -274,19 +292,62 @@ async function status(store: HubStore, dataDir: string, io: CliIO): Promise<numb
   } catch {
     // No status file yet: the hub has not run.
   }
-  io.out(`Users: ${counts.users}`)
-  io.out(`Projects: ${counts.projects}`)
-  io.out(`Unused invite codes: ${counts.unusedInvites}`)
-  io.out(`Runner: ${printable(runner)}`)
-  io.out(`Running workspaces: ${printable(running)}`)
-  if (engine) for (const line of await containerMemory(engine)) io.out(`  ${printable(line)}`)
   const trash = await readdir(join(dataDir, "trash")).catch(() => [] as string[])
-  if (trash.length > 0) io.out(`Trash not yet removed: ${trash.length} folder(s) (still counted in their users' usage; the hub retries with a growing delay)`)
-  if (stuck.length > 0) {
-    io.out("Trash that failed more than three times:")
-    for (const line of stuck) io.out(line)
+  return {
+    ...store.counts(),
+    runner,
+    running,
+    containerMemory: engine ? (await containerMemory(engine)).map((line) => printable(line)) : [],
+    trashPending: trash.length,
+    trashStuck: stuck,
+    diskBytes: "bytes" in measured ? measured.bytes : null,
+    ...("bytes" in measured ? {} : { diskFailed: printable(measured.failed) }),
   }
-  io.out(`Disk used by projects: ${"bytes" in measured ? `${(measured.bytes / (1024 * 1024)).toFixed(1)} MB` : `unknown (${printable(measured.failed)})`}`)
+}
+
+async function status(store: HubStore, dataDir: string, io: CliIO, json: boolean): Promise<number> {
+  const report = await statusReport(store, dataDir)
+  if (json) {
+    // One line for monitoring: the fixed fields only.
+    const { diskFailed: _failed, ...fields } = report
+    io.out(JSON.stringify(fields))
+    return 0
+  }
+  io.out(`Users: ${report.users}`)
+  io.out(`Projects: ${report.projects}`)
+  io.out(`Unused invite codes: ${report.unusedInvites}`)
+  io.out(`Runner: ${printable(report.runner ?? "unknown")}`)
+  io.out(`Running workspaces: ${printable(report.running ?? "unknown (the hub is not running, or has not written its status in the last 2 minutes)")}`)
+  for (const line of report.containerMemory) io.out(`  ${printable(line)}`)
+  if (report.trashPending > 0) io.out(`Trash not yet removed: ${report.trashPending} folder(s) (still counted in their users' usage; the hub retries with a growing delay)`)
+  if (report.trashStuck.length > 0) {
+    io.out("Trash that failed more than three times:")
+    for (const entry of report.trashStuck) io.out(`  ${printable(entry.name, 80)}: ${printable(entry.failures, 12)} failed attempts (${printable(entry.reason, 40)})`)
+  }
+  io.out(`Disk used by projects: ${report.diskBytes !== null ? `${(report.diskBytes / (1024 * 1024)).toFixed(1)} MB` : `unknown (${report.diskFailed ?? ""})`}`)
+  return 0
+}
+
+/**
+ * `hub backup --to <file>`: a consistent online copy of hub.db (VACUUM INTO, the same node:sqlite the hub uses), made
+ * owner-only, checked and counted; prints the counts as one JSON line for the restore test to compare.
+ */
+async function backup(store: HubStore, options: Map<string, string>, cwd: string, io: CliIO): Promise<number> {
+  const to = options.get("--to")
+  if (!to) throw new Error(`Missing --to <file>: where the copy of the database is written.\n${USAGE}`)
+  const file = resolve(cwd, to)
+  // Created empty and owner-only first (VACUUM INTO accepts an empty file), so the copy is never readable by others.
+  const handle = await open(file, "wx", 0o600).catch((error: NodeJS.ErrnoException) => {
+    throw new Error(error.code === "EEXIST" ? `${printable(file)} already exists; give a new file name` : `cannot create ${printable(file)}: ${printable(error.code ?? error.message)}`)
+  })
+  await handle.close()
+  try {
+    store.backupTo(file)
+    io.out(JSON.stringify(HubStore.checkBackup(file)))
+  } catch (error) {
+    // This command removes nothing: the unfinished file is named for the maintainer to delete.
+    throw new Error(`the backup failed (${printable((error as Error).message, 200)}); ${printable(file)} is incomplete, delete it`)
+  }
   return 0
 }
 

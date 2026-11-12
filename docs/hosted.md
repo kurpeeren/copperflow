@@ -85,7 +85,9 @@ copperflow hub ... --runner process --trusted-accounts-only      tests and accou
 copperflow hub invite --data <dir> [--count n]        invite codes, printed once (only their hashes are kept)
 copperflow hub reset-password <email> --data <dir>    a one-time password, printed once; ends the user's sessions
 copperflow hub status --data <dir>                    users, projects, the runner, running workspaces (and each
-                                                      container's memory), disk used
+                                                      container's memory), disk used; --json: one JSON line
+copperflow hub backup --data <dir> --to <file>        a consistent copy of hub.db taken while the hub runs; prints
+                                                      its counts as JSON (deploy/backup.sh archives the rest)
 copperflow hub delete-user <email> --data <dir>       asks for the email typed; marks the user deleted, and the
                                                       running hub removes their workspaces and files within 15 s
 ```

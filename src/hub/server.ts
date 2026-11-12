@@ -328,6 +328,13 @@ async function route(hub: Hub, req: IncomingMessage, res: ServerResponse): Promi
     if (!isLoopback(req.socket.remoteAddress ?? "")) throw new HubError(404, "There is no such page.")
     return tlsAsk(hub, req, res)
   }
+  // The health check, for the service manager and the proxy: on any Host (so it is never proxied to a workspace), no
+  // session, no limit, no detail.
+  if (req.url === "/healthz" && (req.method === "GET" || req.method === "HEAD")) {
+    res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" })
+    res.end(req.method === "HEAD" ? undefined : "ok\n")
+    return
+  }
   // Two kinds of host: the public origin (the hub's pages) and one origin per project. Never the one for the other.
   const host = req.headers.host?.toLowerCase()
   const projectId = projectOfHost(hub, host)
