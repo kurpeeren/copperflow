@@ -54,6 +54,10 @@ Usage:
                     --studio-port <n> --mcp-port <n> [--bind <address>]
                                               the hosted Studio and MCP server for one project, as the hub
                                               starts them (needs COPPERFLOW_TICKET_PUBLIC_KEY; reads nothing else)
+  copperflow hub --data <dir> --port <n> --public-origin <url> [--bind <address>] [--trust-proxy]
+                                              the hosted hub: accounts, projects and the Studio proxy
+  copperflow hub invite [--count n] | reset-password <email> | status | delete-user <email>
+                                              the hub's maintainer commands (each with --data <dir>)
   copperflow studio [--port n]                open the visual editor at http://127.0.0.1:4777
   copperflow summary <file>                   print a circuit summary
   copperflow check <file>                     list the errors and warnings of copperflow's own rule checks
@@ -123,6 +127,9 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
         // --root is required here, so it is handed back rather than defaulted to the current directory.
         await runWorkspaceCommand(rootOption === undefined ? rest : ["--root", rootOption, ...rest], cwd, io, options)
         return 0
+      // Loaded only when asked for: the local program never loads the hub (or node:sqlite).
+      case "hub":
+        return await (await import("./hub/commands.js")).runHubCommand(rest, cwd, io)
       case "studio": {
         const [port] = takeOption(rest, "--port")
         const studio = await startStudio({ root, ...(port ? { port: positiveInt(port) } : {}) })
