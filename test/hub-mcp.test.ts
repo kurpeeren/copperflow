@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "vitest"
 import { createServer, type IncomingHttpHeaders, type Server } from "node:http"
 import { existsSync } from "node:fs"
+import { connect } from "node:net"
 import { tmpdir } from "node:os"
 import { readdir } from "node:fs/promises"
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -60,6 +61,18 @@ describe("the hub's /mcp", () => {
     expect((await post(server, { authorization: `Bearer ${token}` })).status).toBe(200)
     // Never on a project origin.
     expect((await post(server, { authorization: `Bearer ${token}` }, new URL(projectOriginOf("0".repeat(32))).host)).status).toBe(404)
+    // Two Authorization headers are refused, even when the first is valid.
+    const port = Number(new URL(server.url).port)
+    const raw = await new Promise<string>((done, fail) => {
+      const socket = connect(port, "127.0.0.1", () =>
+        socket.end(`POST /mcp HTTP/1.1\r\nhost: ${HOST}\r\nauthorization: Bearer ${token}\r\nAuthorization: Bearer ${forged}\r\ncontent-type: application/json\r\naccept: application/json, text/event-stream\r\ncontent-length: ${Buffer.byteLength(initialize)}\r\nconnection: close\r\n\r\n${initialize}`),
+      )
+      let text = ""
+      socket.on("data", (chunk: Buffer) => (text += chunk.toString()))
+      socket.on("end", () => done(text))
+      socket.on("error", fail)
+    })
+    expect(raw.split("\r\n")[0]).toBe("HTTP/1.1 400 Bad Request")
   })
 
   test("project tools, guide, and a forwarded tool before any project is open", async () => {

@@ -79,6 +79,8 @@ async function handle(hub: Hub, req: IncomingMessage, res: ServerResponse, addre
     return void res.end()
   }
   if (method !== "POST" && method !== "GET" && method !== "DELETE") return rpcError(res, 405, "Method not allowed")
+  // Node keeps only the first Authorization header; more than one is refused rather than guessed at.
+  if (req.rawHeaders.filter((name, index) => index % 2 === 0 && name.toLowerCase() === "authorization").length > 1) return rpcError(res, 400, "Send one Authorization header.")
   if (!authenticate(hub, req)) return unauthorised(hub, req, res, address)
   const raw = method === "POST" ? await readBody(req, MCP_BODY_LIMIT) : undefined
   // Checked again after the body arrived: the token may have been revoked meanwhile.
