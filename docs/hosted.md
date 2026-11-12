@@ -37,6 +37,49 @@ one project folder. It trusts one thing: the workspace ticket the hub adds to ea
    workspace id and the public origin: no private key, database address, token or password. The workspace process
    is the last line before the container, so nothing in it may be worth stealing.
 
+## Running the hub
+
+The hub (`src/hub/`) owns accounts, sessions, projects and the public endpoint; it proxies `/p/<project id>/…` to
+that project's workspace. It listens on loopback behind a TLS reverse proxy.
+
+```
+copperflow hub --data <dir> --port <n> --public-origin https://copperflow.example.com [--bind 127.0.0.1] [--trust-proxy]
+copperflow hub invite --data <dir> [--count n]        invite codes, printed once (only their hashes are kept)
+copperflow hub reset-password <email> --data <dir>    a one-time password, printed once; ends the user's sessions
+copperflow hub status --data <dir>                    users, projects, running workspaces, disk used
+copperflow hub delete-user <email> --data <dir>       asks for the email typed; deletes the user and their files
+```
+
+`--trust-proxy` reads the client's address from the last `X-Forwarded-For` entry; use it only behind a proxy that
+sets that header, or every limit counts the proxy's address. A workspace is started on demand as
+`copperflow workspace --root <folder> --id <project id> --public-origin <origin> --base-path /p/<project id>
+--studio-port 0 --mcp-port 0`, with only `COPPERFLOW_TICKET_PUBLIC_KEY` in its environment; it prints
+`{"studio": "...", "mcp": "..."}` when both servers listen and stops on SIGTERM or when its standard input closes. The
+process runner that starts it is NOT a security boundary (tests and trusted accounts); Task 3's container runner is.
+
+The data directory (made owner-only):
+
+- `hub.db`: SQLite (`node:sqlite`, Node 22.13 or later): users (email lower-cased, scrypt hash with its salt and
+  parameters), invite codes and session ids as SHA-256 hashes, projects (id, owner, name), the audit log.
+- `ticket-key.pem`: the ticket private key, made on first start with mode 600; the hub refuses to start when others
+  can read it. Never logged, never sent; workspaces get the public half.
+- `projects/<user id>/<project id>/`: the project folders. Both ids are generated; a project's name is only a label.
+- `hub-status.json`: written every 15 s for `hub status`.
+
+The audit log (`audit` table: time, user id or none, event, address, detail) records `signup`, `signup-failed`,
+`signup-limited`, `signin`, `signin-failed`, `signin-limited`, `signin-limited-global`, `signout`,
+`password-changed`, `password-change-failed`, `password-change-limited`, `account-delete-failed`,
+`account-delete-limited`, `account-deleted`, `password-reset`, `invites-made`, `project-created`, `project-renamed`,
+`project-deleted`, `project-downloaded`, `project-uploaded`, `upload-refused`. The detail holds a project id, a file
+count or the reason an upload was refused, never a password, cookie, invite code or ticket.
+
+Limits: sign-in 10 attempts per 15 minutes per address (IPv6 by /64) and per email, shared with the current-password
+checks of the account page; 300 failed password checks per 15 minutes across everyone, then sign-in answers 429 for
+all; sign-up 20 per hour per address; request bodies 1 MB except upload; 20 projects and 200 MB per user, checked under
+a per-user lock. Sessions last 14 days, renewed on use; sign-out and a password change end every session of the user.
+A download is every regular file of the project except leftovers of interrupted writes (`*.<pid>.<hex>.tmp`);
+`.copperflow/history/` is kept, since it is the undo history and not a cache.
+
 ## Inside a workspace
 
 - Circuit code is built only in the engine's worker thread, never in the server's main thread: the Studio's and
