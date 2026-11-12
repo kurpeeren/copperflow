@@ -54,14 +54,18 @@ export async function readForm(req: IncomingMessage): Promise<Map<string, string
   return fields
 }
 
-export function cookies(req: IncomingMessage): Map<string, string> {
-  const found = new Map<string, string>()
+/**
+ * The request's cookies by name. A name sent more than once maps to undefined: browsers send the cookie of the
+ * narrowest path first, so a cookie planted for a sub-path would win any "first one" rule. Callers treat a duplicated
+ * session cookie as no session at all.
+ */
+export function cookies(req: IncomingMessage): Map<string, string | undefined> {
+  const found = new Map<string, string | undefined>()
   for (const part of (req.headers.cookie ?? "").split(";")) {
     const at = part.indexOf("=")
     if (at < 1) continue
     const name = part.slice(0, at).trim()
-    // The first one wins, so a cookie set for a narrower path cannot shadow the hub's.
-    if (!found.has(name)) found.set(name, part.slice(at + 1).trim())
+    found.set(name, found.has(name) ? undefined : part.slice(at + 1).trim())
   }
   return found
 }

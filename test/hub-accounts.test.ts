@@ -84,6 +84,18 @@ describe("hub accounts", () => {
     expect(limited.status).toBe(429)
   })
 
+  test("a request with the session cookie twice is signed out, whichever comes first", async () => {
+    server = await startTestHub()
+    const ada = await newUser(server, "ada@example.com")
+    const bob = await newUser(server, "bob@example.com")
+    const name = "__Host-copperflow-session"
+    const both = `${name}=${bob.jar.get(name)}; ${name}=${ada.jar.get(name)}`
+    const answer = await new Browser(server.url).get("/projects", { cookie: both })
+    expect(answer.status).toBe(303)
+    expect(answer.headers.location).toBe("/signin")
+    expect((await ada.get("/projects")).status).toBe(200)
+  })
+
   test("sign-out ends every session of the user", async () => {
     server = await startTestHub()
     const first = await newUser(server, "ada@example.com")
