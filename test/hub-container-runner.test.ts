@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest"
+import { describe, expect, test, vi } from "vitest"
 import { EventEmitter } from "node:events"
 import { PassThrough } from "node:stream"
 import {
@@ -245,13 +245,11 @@ describe("launching a container", () => {
     const runs = () => engine.calls.filter((args) => args[0] === "run").length
     // The container dies: its `docker run` process ends without being asked to.
     engine.running.get(`cf-ws-${ID}`)?.exit(137)
-    await wait(30)
-    expect(runs()).toBe(2)
-    expect(runner.state(ID)).toBe("running")
+    await vi.waitFor(() => expect(runner.state(ID)).toBe("running"), { timeout: 5000 })
+    await vi.waitFor(() => expect(runs()).toBe(2), { timeout: 5000 })
     engine.running.get(`cf-ws-${ID}`)?.exit(137)
-    await wait(30)
+    await vi.waitFor(() => expect(runner.state(ID)).toBe("failed"), { timeout: 5000 })
     expect(runs()).toBe(2)
-    expect(runner.state(ID)).toBe("failed")
     await runner.stopAll()
   })
 

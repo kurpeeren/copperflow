@@ -6,7 +6,7 @@ import { mkdir } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import type { Writable } from "node:stream"
 import { resolveInRoot } from "../core/workspace.js"
-import { checkNoLinks, readListed, removeTree, walkProject, type SafeFile } from "./safe-files.js"
+import { checkNoLinks, measureTree, readListed, removeTree, usageOf, walkProject, type Measured, type SafeFile } from "./safe-files.js"
 import { ID_PATTERN } from "./secrets.js"
 import { extractEntry, StreamZipWriter, type ZipOnDisk } from "./zip-stream.js"
 
@@ -61,14 +61,22 @@ export class ProjectFiles {
   /** Where skipped links and special files are noted; server side only. */
   note: (relativePath: string, why: string) => void = () => undefined
 
-  /** Bytes the user's projects take on disk (regular files, each at its full size). */
+  /**
+   * Bytes the user's projects take on disk (regular files, each at its full size), with lstat only, so it is safe
+   * while workspaces run; a measurement that fails throws (callers that guard the quota treat that as over).
+   */
   async usage(userId: string): Promise<number> {
-    return (await this.list(this.userDir(userId))).reduce((sum, file) => sum + file.size, 0)
+    return usageOf(this.userDir(userId))
   }
 
-  /** Bytes one project takes on disk. */
-  async projectUsage(userId: string, projectId: string): Promise<number> {
-    return (await this.list(this.projectDir(userId, projectId))).reduce((sum, file) => sum + file.size, 0)
+  /** The user's measurement, or why there is none. */
+  async measureUser(userId: string): Promise<Measured> {
+    return measureTree(this.userDir(userId))
+  }
+
+  /** Bytes one project takes on disk (lstat only). */
+  async projectUsage(userId: string, projectId: string): Promise<Measured> {
+    return measureTree(this.projectDir(userId, projectId))
   }
 
   /**

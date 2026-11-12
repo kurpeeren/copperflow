@@ -71,9 +71,64 @@ export async function walkProject(dir: string, note: SkipNote = () => undefined)
   return found
 }
 
-/** Bytes the regular files under `dir` take (each counted at its full size, however many links it has). */
+/** A measurement: the bytes, or why there is none (a failure counts as over quota). */
+export type Measured = { bytes: number } | { failed: string }
+
+export const MEASURE_MAX_ENTRIES = 100_000
+export const MEASURE_MAX_MS = 10_000
+
+/**
+ * The bytes of the regular files under `root`, each at its full size however many links it has, measured with lstat
+ * only: no file is ever opened, so this is safe while a workspace runs. A parent folder swapped for a link while it is
+ * walked is caught by checking each folder's realpath stays inside the root before and after reading it; on a mismatch
+ * the whole measurement is discarded. A cap on entries and time keeps a swapped or huge tree from walking the host.
+ */
+export async function measureTree(root: string, limits: { maxEntries?: number; maxMs?: number; now?: () => number } = {}): Promise<Measured> {
+  const maxEntries = limits.maxEntries ?? MEASURE_MAX_ENTRIES
+  const maxMs = limits.maxMs ?? MEASURE_MAX_MS
+  const now = limits.now ?? Date.now
+  const started = now()
+  const top = await lstat(root).catch((error: NodeJS.ErrnoException) => (error.code === "ENOENT" ? undefined : Promise.reject(error)))
+  if (!top) return { bytes: 0 }
+  if (!top.isDirectory()) return { failed: "the folder is not a folder" }
+  const realRoot = await realpath(root)
+  const inside = async (folder: string) => {
+    const real = await realpath(folder).catch(() => "")
+    const rel = relative(realRoot, real)
+    return real !== "" && !rel.startsWith("..") && !/^[A-Za-z]:/.test(rel)
+  }
+  let bytes = 0
+  let entries = 0
+  const pending = [root]
+  while (pending.length > 0) {
+    const folder = pending.pop() as string
+    if (!(await inside(folder))) return { failed: "a folder moved outside the project while it was measured" }
+    let names: string[]
+    try {
+      names = await readdir(folder)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue
+      return { failed: `a folder could not be read (${(error as NodeJS.ErrnoException).code ?? "error"})` }
+    }
+    if (!(await inside(folder))) return { failed: "a folder moved outside the project while it was measured" }
+    for (const name of names) {
+      entries += 1
+      if (entries > maxEntries) return { failed: `more than ${maxEntries} entries` }
+      if (now() - started > maxMs) return { failed: `measuring took more than ${maxMs} ms` }
+      const info = await lstat(join(folder, name)).catch(() => undefined)
+      if (!info) continue
+      if (info.isDirectory()) pending.push(join(folder, name))
+      else if (info.isFile()) bytes += info.size
+    }
+  }
+  return { bytes }
+}
+
+/** Bytes the regular files under `dir` take, lstat only; a failed measurement throws. */
 export async function usageOf(dir: string): Promise<number> {
-  return (await walkProject(dir)).reduce((sum, file) => sum + file.size, 0)
+  const measured = await measureTree(dir)
+  if ("failed" in measured) throw new Error(`The project folder could not be measured: ${measured.failed}`)
+  return measured.bytes
 }
 
 async function insideRoot(root: string, path: string): Promise<boolean> {

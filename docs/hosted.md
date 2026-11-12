@@ -36,6 +36,11 @@ one project folder. It trusts one thing: the workspace ticket the hub adds to ea
 7. **Start a workspace with no secrets in its environment.** Give it only `COPPERFLOW_TICKET_PUBLIC_KEY`, the
    workspace id and the public origin: no private key, database address, token or password. The workspace process
    is the last line before the container, so nothing in it may be worth stealing.
+8. **The hub never reads a project's file contents while its workspace runs.** A download or deletion first takes the
+   project's lock, which stops the workspace and refuses to start it (a short "being downloaded" answer, and the
+   Studio reconnects afterwards) until the work is done; with the container gone nothing can swap a folder for a link.
+   While workspaces run the hub only measures their folders with `lstat`, checking each folder's real path stays
+   inside the project, and never opens a file.
 
 ## Running the hub
 
@@ -103,10 +108,13 @@ hub as its own user that does nothing else); disk for the image (about 300 MB) a
 directory on a filesystem of its own**, so a full data directory cannot fill the system disk.
 
 **The disk quota while workspaces run.** A workspace writes into `/work` freely, so every 5 seconds the hub measures the
-project folders of each user with a running workspace (without following links) and, when the user is over the quota
-(200 MB), stops all their running workspaces at once and marks those projects. A marked project does not start again —
-the Studio is not reachable and agents get the same message — until the user is back under the quota; the projects page
-says so and keeps its download and delete actions. What this does not stop: a workspace can write as fast as the disk
+project folders of each user with a running workspace (`lstat` only, never opening a file, each folder's real path
+checked to stay inside the project, with caps on entries and time) and, when the user is over the quota (200 MB) or
+cannot be measured (a failure, a cap reached, a folder that moved outside), stops all their running workspaces at once
+and writes it to the audit log; one user's failure never stops the sweep for the others. The quota is per user: before
+any workspace starts the user is measured again, and none of their projects starts — the Studio is not reachable and
+agents get the same message — until they are back under it; the projects page says so, lists the projects largest
+first and keeps its download and delete actions. What this does not stop: a workspace can write as fast as the disk
 allows for up to 5 seconds past its quota. For a hard cap, the maintainer may add filesystem project quotas (XFS project
 quotas on the projects directory); copperflow does not set them up.
 
@@ -115,7 +123,9 @@ code can plant symbolic links, or swap a file for one between the hub's look and
 removal of a project folder (download, usage, the upload's unpack targets, deletion, `hub status`) goes through
 `src/hub/safe-files.ts`: it walks with `lstat`, skips (and logs) links, devices, sockets and FIFOs, never descends
 through a linked folder, opens files with `O_NOFOLLOW` and checks the open file is the one it listed (same device and
-inode); a file swapped mid-download ends that download. Deletion unlinks links and never touches their targets.
+inode); a file swapped mid-download ends that download. Deletion unlinks links and never touches their targets. These
+checks are defence in depth: the hub reads file contents only with the workspace stopped (rule 8 above), since
+`O_NOFOLLOW` guards only the last part of a path and Node has no `openat`.
 
 **The process runner and `--trusted-accounts-only`.** With `--runner process` (the default when `--runner` is not
 given) workspaces run as plain child processes of the hub's user. That is not a security boundary: circuit code that

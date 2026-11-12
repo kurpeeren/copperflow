@@ -75,12 +75,17 @@ export function signUpPage(formToken: string, error?: string): string {
   )
 }
 
-export function projectsPage(viewer: Viewer, projects: readonly (Project & { overQuota?: boolean })[], usage: { projects: number; maxProjects: number; bytes: number; maxBytes: number }, error?: string, note?: string): string {
+/**
+ * `usage.bytes` undefined means the folder could not be measured, which counts as over the limit. Over the limit, no
+ * project opens and the projects are listed largest first with their sizes.
+ */
+export function projectsPage(viewer: Viewer, projects: readonly (Project & { bytes?: number })[], usage: { projects: number; maxProjects: number; bytes: number | undefined; maxBytes: number }, error?: string, note?: string): string {
   const mb = (bytes: number) => (bytes / (1024 * 1024)).toFixed(1)
-  const stopped = projects.some((p) => p.overQuota) && usage.bytes > usage.maxBytes
-  const rows = projects
+  const stopped = usage.bytes === undefined || usage.bytes > usage.maxBytes
+  const shown = stopped ? [...projects].sort((a, b) => (b.bytes ?? Infinity) - (a.bytes ?? Infinity)) : projects
+  const rows = shown
     .map(
-      (p) => `<tr><td>${p.overQuota && stopped ? `${esc(p.name)} <em>(stopped: over the disk limit)</em>` : `<a href="/p/${esc(p.id)}/">${esc(p.name)}</a>`}</td><td>
+      (p) => `<tr><td>${stopped ? `${esc(p.name)} <em>(${p.bytes === undefined ? "size unknown" : `${mb(p.bytes)} MB`}; stopped: over the disk limit)</em>` : `<a href="/p/${esc(p.id)}/">${esc(p.name)}</a>`}</td><td>
 <a href="/projects/${esc(p.id)}/download">Download</a>
 <form method="post" action="/projects/${esc(p.id)}/rename">${hidden(viewer.formToken)}<input name="name" required maxlength="100" aria-label="New name" value="${esc(p.name)}"><button class="quiet" type="submit">Rename</button></form>
 <form method="post" action="/projects/${esc(p.id)}/delete">${hidden(viewer.formToken)}<input name="confirm" required maxlength="100" aria-label="Type the project's name to delete it" placeholder="Type its name to delete"><button class="quiet" type="submit">Delete</button></form>
@@ -90,7 +95,7 @@ export function projectsPage(viewer: Viewer, projects: readonly (Project & { ove
   return layout(
     "Projects",
     `<h1>Projects</h1>${message(error ?? (stopped ? OVER_QUOTA_MESSAGE : undefined), note)}
-<p>${usage.projects} of ${usage.maxProjects} projects, ${mb(usage.bytes)} of ${mb(usage.maxBytes)} MB used.</p>
+<p>${usage.projects} of ${usage.maxProjects} projects, ${usage.bytes === undefined ? "an unknown amount" : mb(usage.bytes)} of ${mb(usage.maxBytes)} MB used.</p>
 ${projects.length ? `<table><tbody>${rows}</tbody></table>` : "<p>No projects yet.</p>"}
 <h2>New project</h2>
 <form class="stack" method="post" action="/projects">${hidden(viewer.formToken)}

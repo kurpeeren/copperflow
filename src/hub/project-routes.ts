@@ -8,6 +8,7 @@ import { boundaryOf } from "./multipart.js"
 import { StorageError, streamMultipart } from "./multipart-stream.js"
 import type { Writable } from "node:stream"
 import { projectsPage } from "./pages.js"
+import { ProjectBusyError, withProjectLock } from "./quota.js"
 import { newId } from "./secrets.js"
 import type { Project } from "./store.js"
 import { ZipRefusal } from "./zip.js"
@@ -30,9 +31,28 @@ export function projectName(text: string | undefined): string | undefined {
   return name.length >= 1 && name.length <= MAX_NAME && !/[\u0000-\u001f\u007f-\u009f]/.test(name) ? name : undefined
 }
 
+/** Runs `work` under the project's lock (its workspace stopped); a project already locked is a short 503. */
+async function lockedOrBusy<T>(hub: Hub, id: string, work: () => Promise<T>): Promise<T> {
+  try {
+    return await withProjectLock(hub, id, work)
+  } catch (error) {
+    if (error instanceof ProjectBusyError) throw new HubError(503, error.message, { "retry-after": "5" })
+    throw error
+  }
+}
+
 export async function showProjects(hub: Hub, res: ServerResponse, signed: Signed, renewed?: string, status = 200, error?: string, note?: string): Promise<void> {
-  const projects = hub.store.projects(signed.user.id).map((project) => ({ ...project, overQuota: hub.store.overQuota(project.id) }))
-  const usage = { projects: projects.length, maxProjects: hub.config.maxProjects, bytes: await hub.files.usage(signed.user.id), maxBytes: hub.config.maxBytes }
+  const measured = await hub.files.measureUser(signed.user.id)
+  const bytes = "failed" in measured ? undefined : measured.bytes
+  const over = bytes === undefined || bytes > hub.config.maxBytes
+  const projects = await Promise.all(
+    hub.store.projects(signed.user.id).map(async (project) => {
+      if (!over) return project
+      const size = await hub.files.projectUsage(signed.user.id, project.id)
+      return { ...project, ...("bytes" in size ? { bytes: size.bytes } : {}) }
+    }),
+  )
+  const usage = { projects: projects.length, maxProjects: hub.config.maxProjects, bytes, maxBytes: hub.config.maxBytes }
   sendPage(res, status, projectsPage({ email: signed.user.email, formToken: signed.formToken }, projects, usage, error, note), withRenewed(renewed))
 }
 
@@ -114,8 +134,7 @@ export async function deleteProject(hub: Hub, req: IncomingMessage, res: ServerR
   }
   // Marked first: from here every route and the proxy answer 404, so nothing restarts the workspace while it goes.
   hub.store.markProjectDeleted(signed.user.id, id)
-  await hub.runner.stop(id)
-  await hub.files.remove(signed.user.id, id)
+  await lockedOrBusy(hub, id, () => hub.files.remove(signed.user.id, id))
   hub.store.deleteProject(signed.user.id, id)
   audit(hub, address, signed.user.id, "project-deleted", id)
   redirect(res, "/projects")
@@ -127,7 +146,8 @@ export async function downloadProject(hub: Hub, res: ServerResponse, address: st
   if (running >= MAX_DOWNLOADS_PER_USER) throw new HubError(429, `You have ${MAX_DOWNLOADS_PER_USER} downloads running. Try again when one has finished.`, { "retry-after": "30" })
   hub.transfers.downloads.set(signed.user.id, running + 1)
   try {
-    await streamDownload(hub, res, address, signed, id)
+    // The workspace is stopped and kept stopped while the files are read (quota.ts withProjectLock).
+    await lockedOrBusy(hub, id, () => streamDownload(hub, res, address, signed, id))
   } finally {
     const left = (hub.transfers.downloads.get(signed.user.id) ?? 1) - 1
     if (left > 0) hub.transfers.downloads.set(signed.user.id, left)
