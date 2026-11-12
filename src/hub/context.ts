@@ -84,6 +84,8 @@ export interface Limits {
   gate: SigninGate
   /** Tool calls per user: 60 a minute. */
   toolCalls: WindowCounter
+  /** Requests to /mcp per user: 600 a minute. */
+  mcpRequests: WindowCounter
   /** Refused bearer tokens audited per address: 10 per 15 minutes (the rest are refused unrecorded). */
   refusedTokens: WindowCounter
   /** OAuth client registrations per address: 20 an hour. */
@@ -110,6 +112,7 @@ export function newLimits(maxKeys?: number): Limits {
     signupAddress: new WindowCounter(20, 60 * 60_000, maxKeys),
     reauth: new WindowCounter(ADDRESS_FAILURES, FIFTEEN_MINUTES, maxKeys),
     toolCalls: new WindowCounter(60, 60_000, maxKeys),
+    mcpRequests: new WindowCounter(600, 60_000, maxKeys),
     refusedTokens: new WindowCounter(10, FIFTEEN_MINUTES, maxKeys),
     register: new WindowCounter(20, 60 * 60_000, maxKeys),
     authorize: new WindowCounter(30, FIFTEEN_MINUTES, maxKeys),

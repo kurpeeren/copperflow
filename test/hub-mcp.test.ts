@@ -107,6 +107,26 @@ describe("the hub's /mcp", () => {
     expect(server.hub.store.auditLog(5).map((e) => e.event)).toContain("tool-calls-limited")
   })
 
+  test("at most 600 /mcp requests a minute per user, and a token's last use is written at most once a minute", async () => {
+    let clock = Date.now()
+    server = await startTestHub({ now: () => clock })
+    const ada = await newUser(server, "ada@example.com")
+    const client = await agent(server, await tokenFor(ada))
+    const userId = server.hub.store.userByEmail("ada@example.com")?.id as string
+    const lastUsed = () => server?.hub.store.tokens.personalTokens(userId)[0]?.lastUsed
+    const first = lastUsed()
+    expect(first).toBe(clock)
+    clock += 30_000
+    await client.listTools()
+    expect(lastUsed()).toBe(first)
+    clock += 31_000
+    await client.listTools()
+    expect(lastUsed()).toBe(clock)
+    let refused = 0
+    for (let i = 0; i < 600 && refused === 0; i += 1) await client.listTools().catch(() => (refused = i))
+    expect(refused).toBeGreaterThan(590)
+  })
+
   test("what an agent pays to connect at the hub, and the tool list is read without making the catalog folder", async () => {
     server = await startTestHub()
     const ada = await newUser(server, "ada@example.com")

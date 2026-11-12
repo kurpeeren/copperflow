@@ -93,7 +93,13 @@ async function handle(hub: Hub, req: IncomingMessage, res: ServerResponse, addre
     }
   }
   const { credential, hash } = auth
-  if (credential.kind === "pat") hub.store.tokens.touchPersonal(credential.credential.slice(4), hub.config.now())
+  // Every request of a user counts: 600 a minute (tool calls have their own 60).
+  const now = hub.config.now()
+  const requests = hub.limits.mcpRequests.check(credential.userId, now)
+  if (!requests.ok) return rpcError(res, 429, "Too many requests. Wait, then try again.", { "retry-after": String(requests.retryAfterS) })
+  hub.limits.mcpRequests.add(credential.userId, now)
+  const patId = credential.credential.slice(4)
+  if (credential.kind === "pat" && hub.agents.shouldTouch(patId, now)) hub.store.tokens.touchPersonal(patId, now)
   const info: AuthInfo = { token: hash, clientId: credential.credential, scopes: [], ...(credential.expires === null ? {} : { expiresAt: Math.floor(credential.expires / 1000) }), extra: { userId: credential.userId } }
   ;(req as IncomingMessage & { auth?: AuthInfo }).auth = info
   const sessionId = req.headers["mcp-session-id"]

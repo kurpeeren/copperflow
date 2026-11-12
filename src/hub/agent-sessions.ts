@@ -22,11 +22,15 @@ export interface AgentLimits {
   lifetimeMs: number
 }
 
+const TOUCH_EVERY_MS = 60_000
+const MAX_TOUCHED = 100_000
+
 export const DEFAULT_AGENT_LIMITS: AgentLimits = { maxSessions: 512, maxPerUser: 4, idleMs: 30 * 60_000, lifetimeMs: 12 * 60 * 60_000 }
 
 export class AgentSessions {
   private readonly table: SessionTable
   private readonly sessions = new Map<string, AgentSessionEntry>()
+  private readonly touched = new Map<string, number>()
 
   constructor(limits: AgentLimits = DEFAULT_AGENT_LIMITS) {
     this.table = new SessionTable(limits)
@@ -89,6 +93,16 @@ export class AgentSessions {
 
   closeCredential(credential: string): number {
     return this.closeWhere((entry) => entry.credential === credential)
+  }
+
+  /** Whether a personal token's last-used time is due to be written: at most once a minute per token. */
+  shouldTouch(tokenId: string, now: number): boolean {
+    const last = this.touched.get(tokenId)
+    if (last !== undefined && now - last < TOUCH_EVERY_MS) return false
+    // Bounded: tokens are at most 10 per account; past this size the memory is simply started afresh.
+    if (this.touched.size >= MAX_TOUCHED) this.touched.clear()
+    this.touched.set(tokenId, now)
+    return true
   }
 
   closeAll(): void {
