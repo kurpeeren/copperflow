@@ -8,6 +8,7 @@ import type { Readable, Writable } from "node:stream"
 import { TICKET_PUBLIC_KEY_ENV } from "../../hosted/ticket.js"
 import { ID_PATTERN } from "../secrets.js"
 import { parseCidr, workspaceSubnets, type Subnet } from "../peer-guard.js"
+import { shareWithWorkspaceGroup } from "../safe-files.js"
 import { ManagedRunner, type Launched, type Launcher, type WorkspaceAddress, type WorkspaceSpec } from "./runner.js"
 
 /** How the hub reaches a workspace container. */
@@ -35,22 +36,40 @@ export const DEFAULT_CONTAINER_COMMAND = "docker"
 /** The ports the two servers listen on inside every container. */
 export const STUDIO_PORT = 8080
 export const MCP_PORT = 8081
-/** The uid and gid the image's own user has: the fallback where the hub's own ids are unknown (Windows). */
-export const IMAGE_USER = "10001:10001"
-const USER_SPEC = /^([0-9]{1,9}):([0-9]{1,9})$/
+/** The uid every workspace container runs as: a dedicated unprivileged user that is never the hub's. */
+export const WORKSPACE_UID = 10001
+const GID = /^[1-9][0-9]{0,8}$/
+
+/** The hub's own identity, as the operating system gives it (undefined on Windows, which has none of these). */
+export interface HubIdentity {
+  uid: number
+  gid: number
+  groups: number[]
+}
+
+export function currentIdentity(): HubIdentity | undefined {
+  if (!process.getuid || !process.getgid || !process.getgroups) return undefined
+  return { uid: process.getuid(), gid: process.getgid(), groups: process.getgroups() }
+}
 
 /**
- * The uid:gid every workspace container runs as: by default the hub's own, so the project folders the hub creates
- * owner-only (0700) are writable in the container and by nobody else on the host. Never root.
+ * The uid:gid every workspace container runs as. Normally 10001:<workspace group>: a user that is not the hub's and
+ * shares only that group with it, so an escaped container reads none of the hub's own files (0600/0700, no group
+ * access). With `sameUserAsHub` (a trial on one's own machine) it is the hub's own uid:gid. Never root.
  */
-export function workspaceUser(override?: string): string {
-  const getuid = process.getuid?.bind(process)
-  const getgid = process.getgid?.bind(process)
-  const user = override ?? (getuid && getgid ? `${getuid()}:${getgid()}` : IMAGE_USER)
-  const match = USER_SPEC.exec(user)
-  if (!match) throw new Error("--workspace-user must be <uid>:<gid> in digits")
-  if (match[1] === "0" || match[2] === "0") throw new Error("The container runner refuses to run workspaces as root: run the hub as its own unprivileged user (or give --workspace-user).")
-  return user
+export function workspaceUser(settings: { group?: string; sameUserAsHub?: boolean }, identity: HubIdentity | undefined = currentIdentity()): string {
+  if (identity?.uid === 0) throw new Error("The container runner refuses to start as root: run the hub as its own unprivileged user.")
+  if (settings.sameUserAsHub) {
+    if (!identity) return `${WORKSPACE_UID}:${WORKSPACE_UID}`
+    return `${identity.uid}:${identity.gid}`
+  }
+  const group = settings.group
+  if (group === undefined || !GID.test(group)) throw new Error("--workspace-group <gid> is required with the container runner: the one group the hub shares with its workspaces (docs/hosted.md).")
+  if (identity) {
+    if (identity.uid === WORKSPACE_UID) throw new Error(`The hub must not run as uid ${WORKSPACE_UID}, the workspaces' own user: give the hub a user of its own.`)
+    if (identity.gid !== Number(group) && !identity.groups.includes(Number(group))) throw new Error(`The hub's user is not a member of group ${group}; add it (usermod -aG) and start the hub again.`)
+  }
+  return `${WORKSPACE_UID}:${group}`
 }
 /** Containers are named this followed by the project id; the leftover sweep removes only names of this shape. */
 export const CONTAINER_PREFIX = "cf-ws-"
@@ -99,8 +118,12 @@ export interface ContainerSettings {
   /** How the hub reaches containers; default loopback (the hub on the host). */
   reach?: ContainerReach
   limits?: Partial<ContainerLimits>
-  /** uid:gid the containers run as; default the hub's own (see workspaceUser). */
-  user?: string
+  /** The gid of the one group the hub shares with its workspaces (--workspace-group); required unless sameUserAsHub. */
+  group?: string
+  /** Run workspaces as the hub's own user (--workspace-user-same-as-hub): for a trial on one's own machine only. */
+  sameUserAsHub?: boolean
+  /** Tests give the hub's identity; default the process's own. */
+  identity?: HubIdentity
 }
 
 export interface ContainerRunnerOptions extends ContainerSettings {
@@ -123,6 +146,7 @@ interface Checked {
   hubContainer: string | undefined
   reach: ContainerReach
   limits: ContainerLimits
+  /** uid:gid for --user. */
   user: string
 }
 
@@ -143,7 +167,8 @@ export function checkSettings(settings: ContainerSettings): Checked {
   if (!CPUS.test(limits.cpus)) throw new Error("--cpus must be a number such as 1 or 0.5")
   if (!Number.isInteger(limits.pids) || limits.pids < 16 || limits.pids > 4096) throw new Error("the pids limit must be a whole number from 16 to 4096")
   if (!Number.isInteger(limits.openFiles) || limits.openFiles < 64 || limits.openFiles > 65_536) throw new Error("the open-files limit must be a whole number from 64 to 65536")
-  return { command, image, hubContainer, reach, limits, user: workspaceUser(settings.user) }
+  const identity = "identity" in settings ? settings.identity : currentIdentity()
+  return { command, image, hubContainer, reach, limits, user: workspaceUser(settings, identity) }
 }
 
 export function containerName(projectId: string): string {
@@ -292,6 +317,15 @@ export async function checkEngine(settings: ContainerSettings, spawn: SpawnLike 
   return warnings
 }
 
+/** One line for the start-up output: whether the engine runs rootless or with user-namespace remapping (from `info`). */
+export async function engineModeLine(settings: ContainerSettings, spawn: SpawnLike = defaultSpawn()): Promise<string> {
+  const { command } = checkSettings(settings)
+  const info = await runEngine(spawn, command, ["info", "--format", "{{json .SecurityOptions}}"]).catch(() => undefined)
+  const text = info?.code === 0 ? info.stdout : ""
+  const modes = [/rootless/i.test(text) ? "rootless" : "", /userns/i.test(text) ? "user-namespace remapping" : ""].filter((mode) => mode !== "")
+  return `Container engine mode: ${modes.length > 0 ? modes.join(" and ") : info?.code === 0 ? "rootful, no user-namespace remapping" : "unknown (docker info did not answer)"}.`
+}
+
 /** Refuses an engine too old for internal networks without DNS forwarding. */
 export function checkEngineVersion(command: string, version: string): void {
   const major = Number(/^v?([0-9]+)\./.exec(version)?.[1])
@@ -374,39 +408,90 @@ export async function sweepLeftovers(settings: ContainerSettings, spawn: SpawnLi
   return removed
 }
 
-/** Creates the workspace's own network (removing a leftover of the same name first) and joins the hub to it. */
-async function openNetwork(checked: Checked, name: string, spawn: SpawnLike): Promise<void> {
-  await runEngine(spawn, checked.command, ["network", "rm", name]).catch(() => undefined)
-  const made = await runEngine(spawn, checked.command, networkCreateArgs(name))
-  if (made.code !== 0) throw new Error(`the workspace network could not be created: ${made.stderr.trim().slice(0, 200)}`)
-  // The hub refuses connections from inside this network (peer-guard.ts), so its subnets are recorded before anything
-  // runs on it; without them the launch fails.
-  const inspected = await runEngine(spawn, checked.command, ["network", "inspect", "--format", "{{range .IPAM.Config}}{{.Subnet}} {{end}}", name])
-  const subnets = inspected.code === 0 ? inspected.stdout.trim().split(/\s+/).filter((text) => text !== "").map(parseCidr) : []
-  if (subnets.length === 0 || subnets.some((subnet) => subnet === undefined)) {
-    await closeNetwork(checked, name, spawn)
-    throw new Error("the workspace network's subnet could not be read")
-  }
-  for (const subnet of subnets as Subnet[]) workspaceSubnets.add(subnet)
-  networkSubnets.set(name, subnets as Subnet[])
-  if (checked.hubContainer === undefined) return
-  const joined = await runEngine(spawn, checked.command, ["network", "connect", name, checked.hubContainer])
-  if (joined.code !== 0) {
-    await closeNetwork(checked, name, spawn)
-    throw new Error(`the hub could not join the workspace network: ${joined.stderr.trim().slice(0, 200)}`)
-  }
+/** One opened workspace network: the engine's id for it, and the subnets this instance added to the peer guard. */
+export interface OpenedNetwork {
+  id: string
+  subnets: Subnet[]
 }
 
-/** The subnets recorded for each workspace network, until it is removed. */
-const networkSubnets = new Map<string, Subnet[]>()
+const NETWORK_ID = /^[0-9a-f]{12,64}$/
 
-/** Takes the hub off the workspace's network and removes it; failures only mean it is gone already. */
-async function closeNetwork(checked: Checked, name: string, spawn: SpawnLike): Promise<void> {
-  if (checked.hubContainer !== undefined) await runEngine(spawn, checked.command, ["network", "disconnect", "--force", name, checked.hubContainer]).catch(() => undefined)
-  await runEngine(spawn, checked.command, ["network", "rm", name]).catch(() => undefined)
-  // Forgotten only after the network is gone, so nothing on it is ever let through.
-  for (const subnet of networkSubnets.get(name) ?? []) workspaceSubnets.remove(subnet)
-  networkSubnets.delete(name)
+/** Opens and closes for one project run one after another, so a restart never interleaves with the old close. */
+const networkQueues = new Map<string, Promise<unknown>>()
+
+function serialised<T>(name: string, work: () => Promise<T>): Promise<T> {
+  const before = networkQueues.get(name) ?? Promise.resolve()
+  const run = before.then(work, work)
+  const settled = run.catch(() => undefined)
+  networkQueues.set(name, settled)
+  void settled.then(() => {
+    if (networkQueues.get(name) === settled) networkQueues.delete(name)
+  })
+  return run
+}
+
+/** Networks whose removal the engine has not confirmed: their subnets stay refused, and removal is tried again. */
+const pendingRemovals = new Map<string, { checked: Checked; spawn: SpawnLike; opened: OpenedNetwork }>()
+
+/** Creates the workspace's own network (removing a leftover of the same name first) and joins the hub to it. */
+function openNetwork(checked: Checked, name: string, spawn: SpawnLike): Promise<OpenedNetwork> {
+  return serialised(name, async () => {
+    await retryPendingNetworks()
+    await runEngine(spawn, checked.command, ["network", "rm", name]).catch(() => undefined)
+    const made = await runEngine(spawn, checked.command, networkCreateArgs(name))
+    const id = made.stdout.trim().split(/\r?\n/)[0] ?? ""
+    if (made.code !== 0) throw new Error(`the workspace network could not be created: ${made.stderr.trim().slice(0, 200)}`)
+    // The hub refuses connections from inside this network (peer-guard.ts), so its subnets are recorded before
+    // anything runs on it; without them the launch fails. Everything after this names the instance by its id.
+    const ref = NETWORK_ID.test(id) ? id : name
+    const inspected = await runEngine(spawn, checked.command, ["network", "inspect", "--format", "{{range .IPAM.Config}}{{.Subnet}} {{end}}", ref])
+    const parsed = inspected.code === 0 ? inspected.stdout.trim().split(/\s+/).filter((text) => text !== "").map(parseCidr) : []
+    const opened: OpenedNetwork = { id: ref, subnets: [] }
+    if (parsed.length === 0 || parsed.some((subnet) => subnet === undefined)) {
+      await removeOpened(checked, spawn, opened)
+      throw new Error("the workspace network's subnet could not be read")
+    }
+    for (const subnet of parsed as Subnet[]) {
+      workspaceSubnets.add(subnet)
+      opened.subnets.push(subnet)
+    }
+    if (checked.hubContainer === undefined) return opened
+    const joined = await runEngine(spawn, checked.command, ["network", "connect", ref, checked.hubContainer])
+    if (joined.code !== 0) {
+      await removeOpened(checked, spawn, opened)
+      throw new Error(`the hub could not join the workspace network: ${joined.stderr.trim().slice(0, 200)}`)
+    }
+    return opened
+  })
+}
+
+/** Takes the hub off one network instance and removes it; its subnets are forgotten only once the engine confirms. */
+function closeNetwork(checked: Checked, name: string, spawn: SpawnLike, opened: OpenedNetwork): Promise<void> {
+  return serialised(name, () => removeOpened(checked, spawn, opened))
+}
+
+async function removeOpened(checked: Checked, spawn: SpawnLike, opened: OpenedNetwork): Promise<void> {
+  if (checked.hubContainer !== undefined) await runEngine(spawn, checked.command, ["network", "disconnect", "--force", opened.id, checked.hubContainer]).catch(() => undefined)
+  const removed = await runEngine(spawn, checked.command, ["network", "rm", opened.id]).catch(() => undefined)
+  let gone = removed?.code === 0
+  if (!gone) {
+    const still = await runEngine(spawn, checked.command, ["network", "inspect", "--format", "{{.Id}}", opened.id]).catch(() => undefined)
+    gone = still !== undefined && still.code !== 0 && /not found|no such network/i.test(still.stderr)
+  }
+  if (!gone) {
+    // Kept refused: the network may still exist with something on it. Tried again before the next network opens.
+    pendingRemovals.set(opened.id, { checked, spawn, opened })
+    process.stderr.write(`copperflow hub: workspace network ${opened.id.slice(0, 12)} could not be confirmed removed; its subnet stays refused\n`)
+    return
+  }
+  pendingRemovals.delete(opened.id)
+  for (const subnet of opened.subnets) workspaceSubnets.remove(subnet)
+  opened.subnets = []
+}
+
+/** Tries again to remove every network whose removal was not confirmed (at each launch and each hub start). */
+export async function retryPendingNetworks(): Promise<void> {
+  for (const { checked, spawn, opened } of [...pendingRemovals.values()]) await removeOpened(checked, spawn, opened)
 }
 
 const READY = { studio: `http://0.0.0.0:${STUDIO_PORT}`, mcp: `http://0.0.0.0:${MCP_PORT}` }
@@ -460,7 +545,9 @@ export function containerLauncher(options: ContainerRunnerOptions): Launcher {
     } catch (error) {
       return Promise.reject(error as Error)
     }
-    return openNetwork(checked, name, spawn).then(() => new Promise<Launched>((done, fail) => {
+    // An older folder gets the workspace group and mode 2770 before its container starts (the folder itself only).
+    const shared = options.sameUserAsHub ? Promise.resolve() : shareWithWorkspaceGroup(spec.projectDir, Number(checked.user.split(":")[1]))
+    return shared.then(() => openNetwork(checked, name, spawn)).then((network) => new Promise<Launched>((done, fail) => {
       const child = spawn(checked.command, args, { env: clientEnv(), stdio: ["pipe", "pipe", "pipe"], windowsHide: true, shell: false })
       // A spawn error may never be followed by an exit: it ends the command too, so the network is still removed.
       const ended = new Promise<void>((over) => {
@@ -471,7 +558,7 @@ export function containerLauncher(options: ContainerRunnerOptions): Launcher {
       // name, and then its network, which nothing else ever joined but the hub.
       const exited = ended
         .then(() => runEngine(spawn, checked.command, ["rm", "--force", name]).then(() => undefined, () => undefined))
-        .then(() => closeNetwork(checked, name, spawn))
+        .then(() => closeNetwork(checked, name, spawn, network))
       let settled = false
       let stdout = ""
       let logged = 0
@@ -555,6 +642,7 @@ export function createContainerRunner(options: ContainerRunnerOptions): ManagedR
   return new ManagedRunner({
     launch: containerLauncher(options),
     confirmGone: (id) => containerGone(spawn, command, id),
+    maintain: retryPendingNetworks,
     ...(options.idleMs !== undefined ? { idleMs: options.idleMs } : {}),
     ...(options.maxRunning !== undefined ? { maxRunning: options.maxRunning } : {}),
     ...(options.log ? { log: options.log } : {}),

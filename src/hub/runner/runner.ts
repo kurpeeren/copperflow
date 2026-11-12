@@ -46,6 +46,8 @@ export interface WorkspaceRunner {
   unblock(id: string): void
   /** The check every launch path makes immediately before launching (the quota); it throws a StartRefused to refuse. */
   setStartCheck(check: (spec: WorkspaceSpec) => Promise<void>): void
+  /** Periodic upkeep the hub's 5-second sweep asks for (the container runner retries unconfirmed network removals). */
+  maintain?(): Promise<void>
 }
 
 /** A start refused for a reason the person should be told (not a failure of the workspace). */
@@ -109,6 +111,8 @@ export interface ManagedRunnerOptions {
   log?: (line: string) => void
   /** Asks the engine whether the workspace's container is gone (the container runner); default: it is. */
   confirmGone?: (id: string) => Promise<boolean>
+  /** Periodic upkeep of the launcher (see WorkspaceRunner.maintain). */
+  maintain?: () => Promise<void>
 }
 
 interface Entry {
@@ -176,6 +180,10 @@ export class ManagedRunner implements WorkspaceRunner {
 
   unblock(id: string): void {
     this.blocked.delete(id)
+  }
+
+  async maintain(): Promise<void> {
+    await this.options.maintain?.()
   }
 
   async ensure(spec: WorkspaceSpec): Promise<WorkspaceAddress> {

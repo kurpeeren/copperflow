@@ -211,6 +211,26 @@ export async function removeTree(dir: string): Promise<void> {
   await rmdir(dir)
 }
 
+/**
+ * Gives a project folder (itself only, never recursively, never through a link) the workspace group and mode 2770:
+ * owned by the hub, writable by the group the hub shares with its workspaces, setgid so what the container creates
+ * keeps that group. Does nothing on Windows, which has no such modes.
+ */
+export async function shareWithWorkspaceGroup(dir: string, gid: number): Promise<void> {
+  if (process.platform === "win32" || !process.getuid) return
+  const info = await lstat(dir)
+  if (!info.isDirectory()) throw new Error("The project folder is not a folder")
+  const handle = await open(dir, constants.O_RDONLY | NO_FOLLOW | (constants.O_DIRECTORY ?? 0))
+  try {
+    const opened = await handle.stat()
+    if (opened.dev !== info.dev || opened.ino !== info.ino) throw new Error("The project folder changed while it was prepared")
+    if (opened.gid !== gid) await handle.chown(process.getuid(), gid)
+    if ((opened.mode & 0o7777) !== 0o2770) await handle.chmod(0o2770)
+  } finally {
+    await handle.close()
+  }
+}
+
 /** Throws when any folder between `root` and `path` (both included, `path` only if it exists) is not a real folder. */
 export async function checkNoLinks(root: string, path: string): Promise<void> {
   if (!isInside(root, path)) throw new Error("The path is outside the project")

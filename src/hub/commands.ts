@@ -15,6 +15,7 @@ import { HubStore, normaliseEmail } from "./store.js"
 import type { WorkspaceRunner } from "./runner/runner.js"
 import {
   CONTAINER_PREFIX,
+  engineModeLine,
   checkDataDirForMounts,
   checkEngine,
   checkSettings,
@@ -33,7 +34,7 @@ const MAX_INVITES = 100
 
 const USAGE = `Usage:
   copperflow hub --data <dir> --port <n> --public-origin <url> --workspace-domain <domain> --runner container --workspace-image <name>
-                 [--container-command docker] [--workspace-reach loopback | --workspace-reach network --hub-container <name>] [--workspace-user <uid>:<gid>] [--bind <address>] [--trust-proxy <address|CIDR>]
+                 [--container-command docker] [--workspace-reach loopback | --workspace-reach network --hub-container <name>] --workspace-group <gid> [--workspace-user-same-as-hub] [--bind <address>] [--trust-proxy <address|CIDR>]
   copperflow hub --data <dir> --port <n> --public-origin <url> --workspace-domain <domain> --runner process --trusted-accounts-only [--bind <address>] [--trust-proxy <address|CIDR>]
   copperflow hub invite --data <dir> [--count n]
   copperflow hub reset-password <email> --data <dir>
@@ -47,7 +48,7 @@ function parse(args: readonly string[]): { options: Map<string, string>; flags: 
   const rest: string[] = []
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i] as string
-    if (arg === "--trusted-accounts-only") flags.add(arg)
+    if (arg === "--trusted-accounts-only" || arg === "--workspace-user-same-as-hub") flags.add(arg)
     else if (arg.startsWith("--")) {
       const value = args[i + 1]
       if (value === undefined || value === "") throw new Error(`Missing ${arg} value.\n${USAGE}`)
@@ -109,13 +110,17 @@ export async function runHubCommand(args: string[], cwd: string, io: CliIO): Pro
 
 export type RunnerChoice = { kind: "process"; trustedAccountsOnly: boolean } | { kind: "container"; settings: ContainerSettings }
 
-const CONTAINER_OPTIONS = ["--workspace-image", "--container-command", "--hub-container", "--workspace-reach", "--workspace-user"]
+const CONTAINER_OPTIONS = ["--workspace-image", "--container-command", "--hub-container", "--workspace-reach", "--workspace-group"]
+
+/** Said at start with --workspace-user-same-as-hub. */
+export const SAME_USER_WARNING =
+  "Warning: --workspace-user-same-as-hub runs workspaces as the hub's own user, so a container escape would run as the hub's user and could read its keys and database. Use it only for a trial on your own machine; give strangers' accounts --workspace-group instead."
 
 /** The runner the flags ask for: `--runner process` (the default, as before) or `--runner container`. */
 export function chooseRunner(options: Map<string, string>, flags: Set<string>): RunnerChoice {
   const kind = options.get("--runner") ?? "process"
   if (kind === "process") {
-    const stray = CONTAINER_OPTIONS.find((name) => options.has(name))
+    const stray = CONTAINER_OPTIONS.find((name) => options.has(name)) ?? (flags.has("--workspace-user-same-as-hub") ? "--workspace-user-same-as-hub" : undefined)
     if (stray) throw new Error(`${stray} belongs to --runner container.\n${USAGE}`)
     return { kind, trustedAccountsOnly: flags.has("--trusted-accounts-only") }
   }
@@ -126,19 +131,25 @@ export function chooseRunner(options: Map<string, string>, flags: Set<string>): 
   if (reach !== "loopback" && reach !== "network") throw new Error(`--workspace-reach must be loopback or network.\n${USAGE}`)
   const command = options.get("--container-command")
   const hubContainer = options.get("--hub-container")
-  const user = options.get("--workspace-user")
-  const settings: ContainerSettings = { image, reach, ...(command ? { command } : {}), ...(hubContainer ? { hubContainer } : {}), ...(user ? { user } : {}) }
+  const group = options.get("--workspace-group")
+  const sameUserAsHub = flags.has("--workspace-user-same-as-hub")
+  const settings: ContainerSettings = { image, reach, ...(command ? { command } : {}), ...(hubContainer ? { hubContainer } : {}), ...(group ? { group } : {}), ...(sameUserAsHub ? { sameUserAsHub } : {}) }
   checkSettings(settings)
   return { kind, settings }
 }
 
 /** With the container runner: the engine is checked and last run's leftovers swept before the hub listens. */
-export async function runnerFor(choice: RunnerChoice, io: CliIO, spawn?: SpawnLike): Promise<Pick<HubOptions, "runner" | "trustedAccountsOnly">> {
+export async function runnerFor(choice: RunnerChoice, io: CliIO, spawn?: SpawnLike): Promise<Pick<HubOptions, "runner" | "trustedAccountsOnly" | "workspaceGroup">> {
   if (choice.kind === "process") return { trustedAccountsOnly: choice.trustedAccountsOnly }
   for (const warning of await checkEngine(choice.settings, spawn)) io.out(warning)
+  if (choice.settings.sameUserAsHub) io.out(SAME_USER_WARNING)
+  io.out(await engineModeLine(choice.settings, spawn))
   const removed = await sweepLeftovers(choice.settings, spawn, (line) => io.out(line))
   if (removed > 0) io.out(`Removed ${removed} workspace container(s) left from an earlier run.`)
-  return { runner: (ticketPublicKey) => createContainerRunner({ ...choice.settings, ticketPublicKey, ...(spawn ? { spawn } : {}) }) }
+  return {
+    runner: (ticketPublicKey) => createContainerRunner({ ...choice.settings, ticketPublicKey, ...(spawn ? { spawn } : {}) }),
+    ...(choice.settings.group && !choice.settings.sameUserAsHub ? { workspaceGroup: Number(choice.settings.group) } : {}),
+  }
 }
 
 async function serve(options: Map<string, string>, flags: Set<string>, cwd: string, io: CliIO): Promise<number> {

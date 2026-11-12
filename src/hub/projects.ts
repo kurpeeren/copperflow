@@ -6,7 +6,7 @@ import { mkdir, rename } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import type { Writable } from "node:stream"
 import { resolveInRoot } from "../core/workspace.js"
-import { checkNoLinks, measureTree, readListed, removeTree, usageOf, walkProject, type Measured, type SafeFile } from "./safe-files.js"
+import { checkNoLinks, measureTree, shareWithWorkspaceGroup, readListed, removeTree, usageOf, walkProject, type Measured, type SafeFile } from "./safe-files.js"
 import { ID_PATTERN } from "./secrets.js"
 import { extractEntry, StreamZipWriter, type ZipOnDisk } from "./zip-stream.js"
 
@@ -38,10 +38,19 @@ export class ProjectFiles {
     return join(this.userDir(userId), checkId(projectId))
   }
 
+  /** The gid of the group the hub shares with container workspaces; project folders get it with mode 2770. */
+  workspaceGroup: number | undefined = undefined
+
   async create(userId: string, projectId: string): Promise<string> {
     const dir = this.projectDir(userId, projectId)
     await mkdir(dir, { recursive: true, mode: 0o700 })
+    await this.share(dir)
     return dir
+  }
+
+  /** The project folder itself gets the workspace group and mode 2770 (nothing else under the data directory does). */
+  async share(dir: string): Promise<void> {
+    if (this.workspaceGroup !== undefined) await shareWithWorkspaceGroup(dir, this.workspaceGroup)
   }
 
   /** Where removed folders go first, out of every mount, before they are removed. */
@@ -161,6 +170,7 @@ export class ProjectFiles {
   async place(staged: string, userId: string, projectId: string): Promise<void> {
     await mkdir(this.userDir(userId), { recursive: true, mode: 0o700 })
     await rename(staged, this.projectDir(userId, projectId))
+    await this.share(this.projectDir(userId, projectId))
   }
 
   /** Removes a staging folder that was never placed. */

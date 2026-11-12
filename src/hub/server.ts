@@ -70,6 +70,8 @@ export interface HubOptions {
   workspaceDomain: string
   /** The runner (the container runner in production). Without one the hub uses the process runner, which is not a security boundary (process-runner.ts). */
   runner?: (publicKeyBase64: string) => WorkspaceRunner
+  /** The gid shared with container workspaces: project folders are created with it and mode 2770. */
+  workspaceGroup?: number
   /** Must be true to start with the process runner: every account can then read every other account's data. */
   trustedAccountsOnly?: boolean
   maxProjects?: number
@@ -134,6 +136,7 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
     now: options.now ?? Date.now,
   }
   const files = new ProjectFiles(options.dataDir)
+  files.workspaceGroup = options.workspaceGroup
   const log = options.log ?? ((line: string) => process.stderr.write(`copperflow hub: ${line}\n`))
   files.note = (path, why) => log(`project file ${JSON.stringify(path.slice(0, 200))}: ${why}`)
   await mkdir(files.root, { recursive: true, mode: 0o700 })
@@ -208,6 +211,7 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
     if (measuring) return
     measuring = true
     sweepQuota(hub)
+      .then(() => hub.runner.maintain?.())
       .catch((error: unknown) => hub.log(`quota sweep failed: ${(error as Error).message}`))
       .finally(() => (measuring = false))
   }, options.quotaSweepMs ?? QUOTA_SWEEP_MS)

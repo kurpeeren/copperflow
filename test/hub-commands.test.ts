@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url"
 import { requireSqlite, runCli, type CliIO } from "../src/cli-commands.js"
 import { EventEmitter } from "node:events"
 import { PassThrough } from "node:stream"
-import { chooseRunner, containerMemory, runnerFor, STATUS_FILE } from "../src/hub/commands.js"
+import { chooseRunner, containerMemory, runnerFor, SAME_USER_WARNING, STATUS_FILE } from "../src/hub/commands.js"
 import type { ChildLike, SpawnLike } from "../src/hub/runner/container-runner.js"
 
 /** A fake engine command that prints `answer(args)` and exits with `code`. */
@@ -144,15 +144,20 @@ describe("the hub's maintainer commands", () => {
     const options = (...pairs: [string, string][]) => new Map(pairs)
     expect(chooseRunner(options(), flags("--trusted-accounts-only"))).toEqual({ kind: "process", trustedAccountsOnly: true })
     expect(chooseRunner(options(["--runner", "process"]), flags())).toEqual({ kind: "process", trustedAccountsOnly: false })
-    expect(chooseRunner(options(["--runner", "container"], ["--workspace-image", "copperflow-workspace"]), flags())).toEqual({ kind: "container", settings: { image: "copperflow-workspace", reach: "loopback" } })
+    // The hub's own uid and groups are checked by workspaceUser (hub-container-runner.test.ts); here the fallback flag
+    // keeps the test independent of the machine's groups.
+    const same = flags("--workspace-user-same-as-hub")
+    expect(chooseRunner(options(["--runner", "container"], ["--workspace-image", "copperflow-workspace"]), same)).toEqual({ kind: "container", settings: { image: "copperflow-workspace", reach: "loopback", sameUserAsHub: true } })
     expect(
-      chooseRunner(options(["--runner", "container"], ["--workspace-image", "img"], ["--container-command", "podman"], ["--hub-container", "cf-hub"], ["--workspace-reach", "network"]), flags()),
-    ).toEqual({ kind: "container", settings: { image: "img", command: "podman", hubContainer: "cf-hub", reach: "network" } })
+      chooseRunner(options(["--runner", "container"], ["--workspace-image", "img"], ["--container-command", "podman"], ["--hub-container", "cf-hub"], ["--workspace-reach", "network"]), same),
+    ).toEqual({ kind: "container", settings: { image: "img", command: "podman", hubContainer: "cf-hub", reach: "network", sameUserAsHub: true } })
+    expect(() => chooseRunner(options(["--runner", "container"], ["--workspace-image", "img"]), flags())).toThrow(/--workspace-group/)
     expect(() => chooseRunner(options(["--runner", "container"]), flags())).toThrow(/--workspace-image/)
     expect(() => chooseRunner(options(["--runner", "vm"]), flags())).toThrow(/--runner must be/)
     expect(() => chooseRunner(options(["--workspace-image", "img"]), flags())).toThrow(/belongs to --runner container/)
-    expect(() => chooseRunner(options(["--runner", "container"], ["--workspace-image", "img"], ["--workspace-reach", "network"]), flags())).toThrow(/--hub-container/)
-    expect(() => chooseRunner(options(["--runner", "container"], ["--workspace-image", "img"], ["--workspace-reach", "public"]), flags())).toThrow(/reach/)
+    expect(() => chooseRunner(options(), flags("--workspace-user-same-as-hub"))).toThrow(/belongs to --runner container/)
+    expect(() => chooseRunner(options(["--runner", "container"], ["--workspace-image", "img"], ["--workspace-reach", "network"]), same)).toThrow(/--hub-container/)
+    expect(() => chooseRunner(options(["--runner", "container"], ["--workspace-image", "img"], ["--workspace-reach", "public"]), same)).toThrow(/reach/)
   })
 
   test("with the container runner the engine is checked and leftovers swept, and no trusted-accounts warning is needed", async () => {
@@ -165,8 +170,9 @@ describe("the hub's maintainer commands", () => {
     }
     const spawn = engineAnswering(calls, answer)
     const out = io()
-    const chosen = await runnerFor({ kind: "container", settings: { image: "img", user: "1000:1000" } }, out, spawn)
+    const chosen = await runnerFor({ kind: "container", settings: { image: "img", group: "2000", identity: undefined } }, out, spawn)
     expect(chosen.trustedAccountsOnly).toBeUndefined()
+    expect(chosen.workspaceGroup).toBe(2000)
     expect(calls.map((args) => args.slice(0, 2).join(" "))).toEqual([
       "version --format",
       "image inspect",
@@ -175,23 +181,27 @@ describe("the hub's maintainer commands", () => {
       "port cf-check-" + process.pid,
       "rm --force",
       "network rm",
+      "info --format",
       "ps --all",
       "rm --force",
       "network ls",
     ])
-    expect(out.lines).toEqual(["Removed 1 workspace container(s) left from an earlier run."])
+    expect(out.lines).toEqual(["Container engine mode: rootful, no user-namespace remapping.", "Removed 1 workspace container(s) left from an earlier run."])
+    const rootless = io()
+    await runnerFor({ kind: "container", settings: { image: "img", sameUserAsHub: true } }, rootless, engineAnswering([], (args) => (args[0] === "info" ? '["name=seccomp","name=rootless"]\n' : answer(args))))
+    expect(rootless.lines).toEqual(expect.arrayContaining([SAME_USER_WARNING, "Container engine mode: rootless."]))
     // An unpinned base is a warning; an old engine is refused with the reason.
     const unpinned = io()
-    await runnerFor({ kind: "container", settings: { image: "img", user: "1000:1000" } }, unpinned, engineAnswering([], (args) => (args[0] === "image" ? "node:22-bookworm-slim\n" : answer(args))))
+    await runnerFor({ kind: "container", settings: { image: "img", sameUserAsHub: true } }, unpinned, engineAnswering([], (args) => (args[0] === "image" ? "node:22-bookworm-slim\n" : answer(args))))
     expect(unpinned.lines[0]).toMatch(/not pinned by digest/)
-    const old = await runnerFor({ kind: "container", settings: { image: "img", user: "1000:1000" } }, io(), engineAnswering([], (args) => (args[0] === "version" ? "25.0.3\n" : answer(args)))).catch((error: Error) => error.message)
+    const old = await runnerFor({ kind: "container", settings: { image: "img", sameUserAsHub: true } }, io(), engineAnswering([], (args) => (args[0] === "version" ? "25.0.3\n" : answer(args)))).catch((error: Error) => error.message)
     expect(old).toMatch(/Docker Engine 26 or newer/)
-    const noPublish = await runnerFor({ kind: "container", settings: { image: "img", user: "1000:1000" } }, io(), engineAnswering([], (args) => (args[0] === "port" ? "" : answer(args)))).catch((error: Error) => error.message)
+    const noPublish = await runnerFor({ kind: "container", settings: { image: "img", sameUserAsHub: true } }, io(), engineAnswering([], (args) => (args[0] === "port" ? "" : answer(args)))).catch((error: Error) => error.message)
     expect(noPublish).toMatch(/--workspace-reach network/)
     const data = await mkdtemp(join(tmpdir(), "cf-ctrhub-"))
     const server = await startHub({ dataDir: data, port: 0, publicOrigin: "https://cf.example.test", workspaceDomain: "ws.localhost", ...chosen, log: () => undefined })
     await server.close()
-    const down = await runnerFor({ kind: "container", settings: { image: "img" } }, io(), engineAnswering([], () => "", 1)).catch((error: Error) => error.message)
+    const down = await runnerFor({ kind: "container", settings: { image: "img", sameUserAsHub: true } }, io(), engineAnswering([], () => "", 1)).catch((error: Error) => error.message)
     expect(down).toMatch(/does not answer/)
   })
 

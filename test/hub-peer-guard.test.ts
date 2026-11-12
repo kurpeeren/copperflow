@@ -25,6 +25,18 @@ describe("who may talk to the hub", () => {
     expect(subnets.has("172.30.0.5")).toBe(false)
   })
 
+  test("a subnet added twice stays refused until both instances removed it", () => {
+    const subnets = new SubnetSet()
+    const net = parseCidr("172.30.0.0/16") as never
+    subnets.add(net)
+    subnets.add(net)
+    subnets.remove(net)
+    expect(subnets.has("172.30.0.1")).toBe(true)
+    subnets.remove(net)
+    expect(subnets.has("172.30.0.1")).toBe(false)
+    expect(subnets.size).toBe(0)
+  })
+
   test("X-Forwarded-For is honoured only from the trusted proxy's address or CIDR", () => {
     const proxy = trustedProxies("10.0.0.2,172.20.0.0/16")
     expect(clientAddress(request("10.0.0.2", "203.0.113.7"), proxy)).toBe("203.0.113.7")

@@ -25,18 +25,27 @@ function familyOf(address: string): "ipv4" | "ipv6" {
   return isIP(address) === 4 ? "ipv4" : "ipv6"
 }
 
-/** A set of subnets, matched against peer addresses (an IPv4-mapped IPv6 peer is matched as IPv4). */
+/**
+ * A set of subnets, matched against peer addresses (an IPv4-mapped IPv6 peer is matched as IPv4). Counted: two
+ * networks may be given the same subnet over time, and a subnet stays refused until every one that added it removed it.
+ */
 export class SubnetSet {
-  private readonly subnets = new Map<string, Subnet>()
+  private readonly subnets = new Map<string, { subnet: Subnet; count: number }>()
   private list = new BlockList()
 
   add(subnet: Subnet): void {
-    this.subnets.set(`${subnet.address}/${subnet.prefix}`, subnet)
+    const key = `${subnet.address}/${subnet.prefix}`
+    const known = this.subnets.get(key)
+    this.subnets.set(key, { subnet, count: (known?.count ?? 0) + 1 })
     this.rebuild()
   }
 
   remove(subnet: Subnet): void {
-    this.subnets.delete(`${subnet.address}/${subnet.prefix}`)
+    const key = `${subnet.address}/${subnet.prefix}`
+    const known = this.subnets.get(key)
+    if (!known) return
+    if (known.count > 1) this.subnets.set(key, { subnet, count: known.count - 1 })
+    else this.subnets.delete(key)
     this.rebuild()
   }
 
@@ -53,7 +62,7 @@ export class SubnetSet {
 
   private rebuild(): void {
     const list = new BlockList()
-    for (const subnet of this.subnets.values()) list.addSubnet(subnet.address, subnet.prefix, familyOf(subnet.address))
+    for (const { subnet } of this.subnets.values()) list.addSubnet(subnet.address, subnet.prefix, familyOf(subnet.address))
     this.list = list
   }
 }
