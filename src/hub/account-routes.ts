@@ -6,7 +6,9 @@ import {
   anonymousFormToken,
   audit,
   clearSessionCookie,
+  countFailure,
   formTokenMatches,
+  passwordCheckLimit,
   startSession,
   withRenewed,
   type Hub,
@@ -16,6 +18,7 @@ import { HubError, readForm, redirect, sendPage } from "./http.js"
 import { accountPage, signInPage, signUpPage } from "./pages.js"
 import { hashPassword, hashSecret, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, newId, verifyAgainstNothing, verifyPassword } from "./secrets.js"
 import { normaliseEmail } from "./store.js"
+import { addressKey } from "./limits.js"
 
 const SIGN_IN_FAILED = "The email or password is wrong."
 const SIGN_UP_FAILED = "That invite code cannot be used with that email. Check the code, or sign in if you already have an account."
@@ -51,18 +54,17 @@ export async function signIn(hub: Hub, req: IncomingMessage, res: ServerResponse
   const form = await readForm(req)
   if (!anonymousFormMatches(hub, req, form.get("form"))) throw new HubError(403, "The form has expired. Open the page again and retry.")
   const email = normaliseEmail(form.get("email") ?? "").slice(0, 254)
-  const now = hub.config.now()
-  const byAddress = hub.limits.signinAddress.hit(address, now)
-  const byEmail = byAddress.ok ? hub.limits.signinEmail.hit(email, now) : byAddress
-  const limited = !byAddress.ok ? byAddress : !byEmail.ok ? byEmail : undefined
-  if (limited && !limited.ok) {
-    audit(hub, address, null, "signin-limited")
+  const limited = passwordCheckLimit(hub, address, email)
+  if (limited) {
+    const global = !hub.limits.signinFailures.check("all", hub.config.now()).ok
+    audit(hub, address, null, global ? "signin-limited-global" : "signin-limited")
     return showSignIn(hub, req, res, 429, `Too many sign-in attempts. Try again in ${minutes(limited.retryAfterS)}.`, { "retry-after": String(limited.retryAfterS) })
   }
   const password = form.get("password") ?? ""
   const user = hub.store.userByEmail(email)
   const ok = user ? await verifyPassword(password, user.passwordHash) : await verifyAgainstNothing(password)
   if (!user || !ok) {
+    countFailure(hub)
     audit(hub, address, user?.id ?? null, "signin-failed")
     return showSignIn(hub, req, res, 401, SIGN_IN_FAILED)
   }
@@ -73,7 +75,7 @@ export async function signIn(hub: Hub, req: IncomingMessage, res: ServerResponse
 export async function signUp(hub: Hub, req: IncomingMessage, res: ServerResponse, address: string): Promise<void> {
   const form = await readForm(req)
   if (!anonymousFormMatches(hub, req, form.get("form"))) throw new HubError(403, "The form has expired. Open the page again and retry.")
-  const limit = hub.limits.signupAddress.hit(address, hub.config.now())
+  const limit = hub.limits.signupAddress.hit(addressKey(address), hub.config.now())
   if (!limit.ok) {
     audit(hub, address, null, "signup-limited")
     sendPage(res, 429, signUpPage(anonymousFormToken(hub, req).token, `Too many sign-up attempts. Try again in ${minutes(limit.retryAfterS)}.`), { "retry-after": String(limit.retryAfterS) })
@@ -108,14 +110,29 @@ export function showAccount(res: ServerResponse, signed: Signed, renewed?: strin
   sendPage(res, status, accountPage({ email: signed.user.email, formToken: signed.formToken }, error, note), withRenewed(renewed))
 }
 
+/**
+ * Checks the signed-in user's password under the sign-in limits (the counters are shared with sign-in and keyed on
+ * the account's email and the address); answers the page itself and returns false when it is wrong or limited.
+ */
+async function checkCurrentPassword(hub: Hub, res: ServerResponse, address: string, signed: Signed, given: string | undefined, what: string): Promise<boolean> {
+  const limited = passwordCheckLimit(hub, address, signed.user.email)
+  if (limited) {
+    audit(hub, address, signed.user.id, `${what}-limited`)
+    sendPage(res, 429, accountPage({ email: signed.user.email, formToken: signed.formToken }, `Too many password attempts. Try again in ${minutes(limited.retryAfterS)}.`), { "retry-after": String(limited.retryAfterS) })
+    return false
+  }
+  if (await verifyPassword(given ?? "", signed.user.passwordHash)) return true
+  countFailure(hub)
+  audit(hub, address, signed.user.id, `${what}-failed`)
+  showAccount(res, signed, undefined, 400, "The current password is wrong.")
+  return false
+}
+
 /** Changes the password and ends every other session: this browser gets a fresh one. */
 export async function changePassword(hub: Hub, req: IncomingMessage, res: ServerResponse, address: string, signed: Signed): Promise<void> {
   const form = await readForm(req)
   if (!formTokenMatches(signed, form.get("form"))) throw new HubError(403, "The form has expired. Open the page again and retry.")
-  if (!(await verifyPassword(form.get("current") ?? "", signed.user.passwordHash))) {
-    audit(hub, address, signed.user.id, "password-change-failed")
-    return showAccount(res, signed, undefined, 400, "The current password is wrong.")
-  }
+  if (!(await checkCurrentPassword(hub, res, address, signed, form.get("current"), "password-change"))) return
   const password = form.get("password")
   const problem = passwordProblem(password)
   if (problem) return showAccount(res, signed, undefined, 400, problem)
@@ -130,7 +147,7 @@ export async function deleteAccount(hub: Hub, req: IncomingMessage, res: ServerR
   const form = await readForm(req)
   if (!formTokenMatches(signed, form.get("form"))) throw new HubError(403, "The form has expired. Open the page again and retry.")
   if (normaliseEmail(form.get("confirm") ?? "") !== signed.user.email) return showAccount(res, signed, undefined, 400, "Type your email exactly to confirm.")
-  if (!(await verifyPassword(form.get("password") ?? "", signed.user.passwordHash))) return showAccount(res, signed, undefined, 400, "The password is wrong.")
+  if (!(await checkCurrentPassword(hub, res, address, signed, form.get("password"), "account-delete"))) return
   await removeUser(hub, signed.user.id)
   audit(hub, address, signed.user.id, "account-deleted")
   redirect(res, "/", { "set-cookie": clearSessionCookie(hub) })

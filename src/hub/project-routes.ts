@@ -1,7 +1,7 @@
 // The projects page and its forms: create, rename, delete (the name typed to confirm), download and upload as zip.
 // A project of another user is answered exactly like one that does not exist (404), so ids are never confirmed.
 import type { IncomingMessage, ServerResponse } from "node:http"
-import { audit, formTokenMatches, withRenewed, type Hub, type Signed } from "./context.js"
+import { audit, formTokenMatches, withRenewed, withUserLock, type Hub, type Signed } from "./context.js"
 import { header, HubError, readBody, readForm, redirect, sendPage } from "./http.js"
 import { boundaryOf, readMultipart } from "./multipart.js"
 import { projectsPage } from "./pages.js"
@@ -48,13 +48,27 @@ export async function createProject(hub: Hub, req: IncomingMessage, res: ServerR
   const form = await checkedForm(req, signed)
   const name = projectName(form.get("name"))
   if (!name) return showProjects(hub, res, signed, undefined, 400, `A project name has 1 to ${MAX_NAME} characters.`)
-  const quota = await quotaProblem(hub, signed.user.id)
-  if (quota) return showProjects(hub, res, signed, undefined, 403, quota)
-  const project = { id: newId(), userId: signed.user.id, name, created: hub.config.now() }
-  if (!hub.store.createProject(project)) return showProjects(hub, res, signed, undefined, 409, "You already have a project with that name.")
-  await hub.files.create(signed.user.id, project.id)
-  audit(hub, address, signed.user.id, "project-created", project.id)
+  // Check, insert and create run under the user's lock, so concurrent requests cannot pass the quota together.
+  const problem = await withUserLock(hub, signed.user.id, async () => {
+    const quota = await quotaProblem(hub, signed.user.id)
+    if (quota) return { status: 403, text: quota }
+    const project = { id: newId(), userId: signed.user.id, name, created: hub.config.now() }
+    const created = insertProject(hub, project)
+    if (created) return created
+    await hub.files.create(signed.user.id, project.id)
+    audit(hub, address, signed.user.id, "project-created", project.id)
+    return undefined
+  })
+  if (problem) return showProjects(hub, res, signed, undefined, problem.status, problem.text)
   redirect(res, "/projects")
+}
+
+/** Inserts the row with the count check in the same transaction; the refusal to show, if any. */
+function insertProject(hub: Hub, project: Project): { status: number; text: string } | undefined {
+  const result = hub.store.createProject(project, hub.config.maxProjects)
+  if (result === "full") return { status: 403, text: `You have ${hub.config.maxProjects} projects, the most the plan allows. Delete one first.` }
+  if (result === "taken") return { status: 409, text: "You already have a project with that name." }
+  return undefined
 }
 
 export async function renameProject(hub: Hub, req: IncomingMessage, res: ServerResponse, address: string, signed: Signed, id: string): Promise<void> {
@@ -109,26 +123,34 @@ export async function uploadProject(hub: Hub, req: IncomingMessage, res: ServerR
   const name = projectName(form.fields.get("name"))
   if (!name) return showProjects(hub, res, signed, undefined, 400, `A project name has 1 to ${MAX_NAME} characters.`)
   if (!form.file || form.file.field !== "archive") return showProjects(hub, res, signed, undefined, 400, "Choose a zip archive to upload.")
-  const quota = await quotaProblem(hub, signed.user.id)
-  if (quota) return showProjects(hub, res, signed, undefined, 403, quota)
-  let entries
-  try {
-    entries = readZipArchive(form.file.data, hub.config.maxBytes - (await hub.files.usage(signed.user.id)))
-  } catch (error) {
-    if (!(error instanceof ZipRefusal)) throw error
-    audit(hub, address, signed.user.id, "upload-refused", error.message)
-    return showProjects(hub, res, signed, undefined, 400, `The archive was not uploaded: ${error.message}`)
-  }
-  const project = { id: newId(), userId: signed.user.id, name, created: hub.config.now() }
-  if (!hub.store.createProject(project)) return showProjects(hub, res, signed, undefined, 409, "You already have a project with that name.")
-  try {
-    await hub.files.unpack(signed.user.id, project.id, entries)
-  } catch (error) {
-    await hub.files.remove(signed.user.id, project.id)
-    hub.store.deleteProject(signed.user.id, project.id)
-    hub.log(`upload into project ${project.id} failed: ${(error as Error).message}`)
-    throw new HubError(400, "The archive could not be unpacked.")
-  }
-  audit(hub, address, signed.user.id, "project-uploaded", `${project.id} (${entries.length} files)`)
+  const archive = form.file.data
+  // The whole check → insert → unpack runs under the user's lock: an upload in progress has written its bytes before
+  // the next one measures what is left, so two uploads that fit alone cannot pass together.
+  const problem = await withUserLock(hub, signed.user.id, async () => {
+    const quota = await quotaProblem(hub, signed.user.id)
+    if (quota) return { status: 403, text: quota }
+    let entries
+    try {
+      entries = readZipArchive(archive, hub.config.maxBytes - (await hub.files.usage(signed.user.id)))
+    } catch (error) {
+      if (!(error instanceof ZipRefusal)) throw error
+      audit(hub, address, signed.user.id, "upload-refused", error.message)
+      return { status: 400, text: `The archive was not uploaded: ${error.message}` }
+    }
+    const project = { id: newId(), userId: signed.user.id, name, created: hub.config.now() }
+    const refused = insertProject(hub, project)
+    if (refused) return refused
+    try {
+      await hub.files.unpack(signed.user.id, project.id, entries)
+    } catch (error) {
+      await hub.files.remove(signed.user.id, project.id)
+      hub.store.deleteProject(signed.user.id, project.id)
+      hub.log(`upload into project ${project.id} failed: ${(error as Error).message}`)
+      throw new HubError(400, "The archive could not be unpacked.")
+    }
+    audit(hub, address, signed.user.id, "project-uploaded", `${project.id} (${entries.length} files)`)
+    return undefined
+  })
+  if (problem) return showProjects(hub, res, signed, undefined, problem.status, problem.text)
   redirect(res, "/projects")
 }

@@ -209,15 +209,14 @@ export class HubStore {
     return Number((this.sql("SELECT COUNT(*) AS n FROM projects WHERE user_id = ?").get(userId) as Row).n)
   }
 
-  /** False when the user already has a project of that name. */
-  createProject(project: Project): boolean {
-    try {
+  /** Inserts the project unless the user already has `maxProjects` or one of that name: count and insert in one transaction. */
+  createProject(project: Project, maxProjects = Number.POSITIVE_INFINITY): "created" | "taken" | "full" {
+    return this.transaction(() => {
+      if (this.projectCount(project.userId) >= maxProjects) return "full"
+      if (this.sql("SELECT 1 AS found FROM projects WHERE user_id = ? AND name = ?").get(project.userId, project.name)) return "taken"
       this.sql("INSERT INTO projects (id, user_id, name, created) VALUES (?, ?, ?, ?)").run(project.id, project.userId, project.name, project.created)
-      return true
-    } catch (error) {
-      if (/UNIQUE/.test((error as Error).message)) return false
-      throw error
-    }
+      return "created"
+    })
   }
 
   renameProject(userId: string, id: string, name: string): "renamed" | "taken" | "missing" {

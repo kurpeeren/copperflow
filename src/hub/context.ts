@@ -5,7 +5,7 @@ import type { WorkspaceRunner } from "./runner/runner.js"
 import type { TicketKeys } from "./keys.js"
 import type { ProjectFiles } from "./projects.js"
 import type { HubStore, User } from "./store.js"
-import { RateLimiter } from "./limits.js"
+import { addressKey, RateLimiter } from "./limits.js"
 import { cookies, setCookie } from "./http.js"
 import { formTokenOf, hashSecret, newSecret, sameSecret } from "./secrets.js"
 
@@ -32,7 +32,9 @@ export interface Hub {
   files: ProjectFiles
   runner: WorkspaceRunner
   keys: TicketKeys
-  limits: { signinAddress: RateLimiter; signinEmail: RateLimiter; signupAddress: RateLimiter }
+  limits: { signinAddress: RateLimiter; signinEmail: RateLimiter; signupAddress: RateLimiter; signinFailures: RateLimiter }
+  /** Per-user queues: operations that add projects or bytes run one at a time for a user. */
+  userLocks: Map<string, Promise<void>>
   log: (line: string) => void
 }
 
@@ -48,7 +50,46 @@ export function newLimits(): Hub["limits"] {
     signinAddress: new RateLimiter(10, fifteenMinutes),
     signinEmail: new RateLimiter(10, fifteenMinutes),
     signupAddress: new RateLimiter(20, 60 * 60_000),
+    // Failed password checks across everyone: past this, sign-in answers 429 for all until the window moves on.
+    signinFailures: new RateLimiter(MAX_FAILED_SIGNINS, fifteenMinutes),
   }
+}
+
+export const MAX_FAILED_SIGNINS = 300
+
+/** Runs `work` after every earlier queued operation of the same user has finished. */
+export async function withUserLock<T>(hub: Hub, userId: string, work: () => Promise<T>): Promise<T> {
+  const before = hub.userLocks.get(userId) ?? Promise.resolve()
+  let release!: () => void
+  const mine = new Promise<void>((done) => (release = done))
+  const queued = before.then(() => mine)
+  hub.userLocks.set(userId, queued)
+  await before
+  try {
+    return await work()
+  } finally {
+    release()
+    if (hub.userLocks.get(userId) === queued) hub.userLocks.delete(userId)
+  }
+}
+
+/**
+ * Counts a password check against the same limits as sign-in: the address (by addressKey), the account's email and
+ * the global count of failures. Returns the refusal when one applies.
+ */
+export function passwordCheckLimit(hub: Hub, address: string, email: string): { ok: false; retryAfterS: number } | undefined {
+  const now = hub.config.now()
+  const global = hub.limits.signinFailures.check("all", now)
+  if (!global.ok) return global
+  const byAddress = hub.limits.signinAddress.hit(addressKey(address), now)
+  if (!byAddress.ok) return byAddress
+  const byEmail = hub.limits.signinEmail.hit(email, now)
+  return byEmail.ok ? undefined : byEmail
+}
+
+/** Records a failed password check toward the global cap. */
+export function countFailure(hub: Hub): void {
+  hub.limits.signinFailures.hit("all", hub.config.now())
 }
 
 export function sessionCookieName(config: HubConfig): string {

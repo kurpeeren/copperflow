@@ -71,6 +71,7 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
     runner: options.runner ? options.runner(keys.publicKeyBase64, publicOrigin) : createProcessRunner({ publicOrigin, ticketPublicKey: keys.publicKeyBase64 }),
     keys,
     limits: newLimits(),
+    userLocks: new Map(),
     log: options.log ?? ((line) => process.stderr.write(`copperflow hub: ${line}\n`)),
   }
 }
