@@ -81,7 +81,14 @@ async function handle(hub: Hub, req: IncomingMessage, res: ServerResponse, addre
   if (method !== "POST" && method !== "GET" && method !== "DELETE") return rpcError(res, 405, "Method not allowed")
   // Node keeps only the first Authorization header; more than one is refused rather than guessed at.
   if (req.rawHeaders.filter((name, index) => index % 2 === 0 && name.toLowerCase() === "authorization").length > 1) return rpcError(res, 400, "Send one Authorization header.")
-  if (!authenticate(hub, req)) return unauthorised(hub, req, res, address)
+  // Authenticated from the headers and counted before the body is read, so a refused request costs no read or parse.
+  const early = authenticate(hub, req)
+  if (!early) return unauthorised(hub, req, res, address)
+  // Every request of a user counts: 600 a minute (tool calls have their own 60).
+  const now = hub.config.now()
+  const requests = hub.limits.mcpRequests.check(early.credential.userId, now)
+  if (!requests.ok) return rpcError(res, 429, "Too many requests. Wait, then try again.", { "retry-after": String(requests.retryAfterS) })
+  hub.limits.mcpRequests.add(early.credential.userId, now)
   const raw = method === "POST" ? await readBody(req, MCP_BODY_LIMIT) : undefined
   // Checked again after the body arrived: the token may have been revoked meanwhile.
   const auth = authenticate(hub, req)
@@ -95,11 +102,6 @@ async function handle(hub: Hub, req: IncomingMessage, res: ServerResponse, addre
     }
   }
   const { credential, hash } = auth
-  // Every request of a user counts: 600 a minute (tool calls have their own 60).
-  const now = hub.config.now()
-  const requests = hub.limits.mcpRequests.check(credential.userId, now)
-  if (!requests.ok) return rpcError(res, 429, "Too many requests. Wait, then try again.", { "retry-after": String(requests.retryAfterS) })
-  hub.limits.mcpRequests.add(credential.userId, now)
   const patId = credential.credential.slice(4)
   if (credential.kind === "pat" && hub.agents.shouldTouch(patId, now)) hub.store.tokens.touchPersonal(patId, now)
   const info: AuthInfo = { token: hash, clientId: credential.credential, scopes: [], ...(credential.expires === null ? {} : { expiresAt: Math.floor(credential.expires / 1000) }), extra: { userId: credential.userId } }

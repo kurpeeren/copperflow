@@ -161,7 +161,8 @@ describe("the hub's /mcp", () => {
     let clock = Date.now()
     server = await startTestHub({ now: () => clock })
     const ada = await newUser(server, "ada@example.com")
-    const client = await agent(server, await tokenFor(ada))
+    const token = await tokenFor(ada)
+    const client = await agent(server, token)
     const userId = server.hub.store.userByEmail("ada@example.com")?.id as string
     const lastUsed = () => server?.hub.store.tokens.personalTokens(userId)[0]?.lastUsed
     const first = lastUsed()
@@ -175,6 +176,9 @@ describe("the hub's /mcp", () => {
     let refused = 0
     for (let i = 0; i < 600 && refused === 0; i += 1) await client.listTools().catch(() => (refused = i))
     expect(refused).toBeGreaterThan(590)
+    // Refused before the body is read or parsed: a body that is not JSON gets 429, not 400.
+    const big = await send(server.url, "POST", "/mcp", { host: HOST, "content-type": "application/json", authorization: `Bearer ${token}` }, "x".repeat(64 * 1024))
+    expect(big.status).toBe(429)
   })
 
   test("what an agent pays to connect at the hub, and the tool list is read without making the catalog folder", async () => {
