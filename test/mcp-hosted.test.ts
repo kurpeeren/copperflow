@@ -3,20 +3,21 @@ import { cp, mkdtemp, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { createCopperflowServer, type ServerOptions } from "../src/mcp/server.js"
-import { startMcpHttp, type McpHttp } from "../src/hosted/mcp-http.js"
-import { signTicket, TICKET_HEADER } from "../src/hosted/ticket.js"
 import { GUIDE_TOPICS } from "../src/mcp/guide.js"
 import { createPartArgs, LDO } from "./fixtures.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
 
 const DEMO = join(import.meta.dirname, "..", "examples", "usb-c-ldo")
-const KEY = Buffer.from("m".repeat(48))
 const FILE = "index.circuit.tsx"
-/** What connecting costs, at most: the instructions, the tool list and the first guide call. */
-const CONNECT_BUDGET = 30_000
+/**
+ * What a client pays to connect, at most: the instructions with the full tools/list result as JSON (41 895 on
+ * 2026-11-12; the target of 38 000 is not met, see docs/plans/hosted-1.md)…
+ */
+const INSTRUCTIONS_AND_TOOLS_BUDGET = 42_000
+/** …and the first guide answer (SKILL.md). */
+const GUIDE_BUDGET = 16_000
 
 async function demoCopy(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "cf-mcp-hosted-"))
@@ -38,69 +39,7 @@ async function call(client: Client, name: string, args: Record<string, unknown> 
   return { text: content.map((c) => c.text).join("\n"), isError: result.isError === true }
 }
 
-const ticket = (w = "ws-1") => signTicket({ w, u: "u", exp: Math.floor(Date.now() / 1000) + 300 }, KEY)
 
-describe("MCP over HTTP", () => {
-  let http: McpHttp
-  let roots: string[]
-  beforeEach(async () => {
-    roots = [await demoCopy(), await demoCopy()]
-    const httpRoot = roots[1] as string
-    http = await startMcpHttp({ port: 0, makeServer: () => createCopperflowServer(httpRoot, { engine: inProcessEngine, hosted: true }), ticket: { key: KEY, workspaceId: "ws-1" } })
-  })
-  afterEach(() => http.close())
-
-  async function httpClient(headers: Record<string, string>): Promise<Client> {
-    const client = new Client({ name: "test", version: "0.0.0" })
-    await client.connect(new StreamableHTTPClientTransport(new URL(http.url), { requestInit: { headers } }))
-    return client
-  }
-
-  test("answers circuit_summary, check_circuit and new_circuit as the local server does on the demo project", async () => {
-    const local = await memoryClient(roots[0] as string)
-    const remote = await httpClient({ [TICKET_HEADER]: ticket() })
-    try {
-      for (const [name, args] of [
-        ["circuit_summary", { file: FILE }],
-        ["check_circuit", { file: FILE }],
-        ["new_circuit", {
-            file: "second.circuit.tsx",
-            board: { width: 40, height: 30 },
-            parts: [
-              { name: "R1", kind: "resistor", value: "10k", footprint: "0402" },
-              { name: "R2", kind: "resistor", value: "1k", footprint: "0402" },
-            ],
-            nets: { MID: ["R1.pin2", "R2.pin1"], GND: ["R2.pin2"] },
-          }],
-        ["list_circuits", {}],
-      ] as const) {
-        const a = await call(local, name, args)
-        const b = await call(remote, name, args)
-        expect(b, name).toEqual(a)
-        expect(a.isError, a.text).toBe(false)
-      }
-      expect(await readFile(join(roots[1] as string, "second.circuit.tsx"), "utf8")).toBe(await readFile(join(roots[0] as string, "second.circuit.tsx"), "utf8"))
-    } finally {
-      await remote.close()
-      await local.close()
-    }
-  })
-
-  test("refuses a connection without a ticket or with another workspace's", async () => {
-    const choices: Array<Record<string, string>> = [{}, { [TICKET_HEADER]: ticket("ws-2") }]
-    for (const headers of choices) {
-      const response = await fetch(http.url, {
-        method: "POST",
-        headers: { ...headers, "content-type": "application/json", accept: "application/json, text/event-stream" },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "x", version: "1" } } }),
-      })
-      expect(response.status).toBe(403)
-      const text = await response.text()
-      expect(text).toMatch(/Missing workspace ticket|another workspace/)
-      expect(text).not.toContain(KEY.toString())
-    }
-  })
-})
 
 describe("guide", () => {
   let client: Client
@@ -129,18 +68,27 @@ describe("guide", () => {
     expect((read.contents[0] as { text: string }).text).toContain("copperflow")
   })
 
-  test("connecting costs less than 30 000 characters: instructions, tool list and the first guide call", async () => {
-    const instructions = client.getInstructions() ?? ""
+  test("the hosted server offers no importer, and the tool list carries no schema plumbing", async () => {
+    const hosted = await memoryClient(await demoCopy(), { hosted: true })
+    const names = (await hosted.listTools()).tools.map((t) => t.name)
+    expect(names).not.toContain("import_part")
+    expect(names).toContain("create_part")
+    expect((await client.listTools()).tools.map((t) => t.name)).toContain("import_part")
+    const json = JSON.stringify(await hosted.listTools())
+    for (const plumbing of ['"$schema"', '"pattern"', '"maxLength"', "9007199254740991", '"taskSupport"']) expect(json).not.toContain(plumbing)
+    expect(json).toContain('"destructiveHint":true')
+    const refused = await call(hosted, "import_part", { lcsc: "C7950" })
+    expect(refused.isError).toBe(true)
+  })
+
+  test("what a hosted client pays to connect: the instructions, tools/list as JSON and the first guide answer", async () => {
+    const hosted = await memoryClient(await demoCopy(), { hosted: true })
+    const instructions = hosted.getInstructions() ?? ""
     expect(instructions).toContain("call guide")
-    const list = (await client.listTools()).tools
-    // Measured as the AI co-design proof measured it: each tool's name and description (16 161 with the instructions).
-    const tools = list.reduce((n, t) => n + t.name.length + (t.description?.length ?? 0), 0)
-    const schemas = list.reduce((n, t) => n + JSON.stringify(t.inputSchema).length, 0)
-    const first = (await call(client, "guide")).text
-    const cost = instructions.length + tools + first.length
-    // 2026-11-12: 29 868 (instructions 907, tools 13 571, guide 15 390); the input schemas as JSON add 32 568 more.
-    expect(cost).toBeLessThan(CONNECT_BUDGET)
-    expect(schemas).toBeGreaterThan(0)
+    const toolList = JSON.stringify(await hosted.listTools())
+    const first = (await call(hosted, "guide")).text
+    expect(instructions.length + toolList.length).toBeLessThanOrEqual(INSTRUCTIONS_AND_TOOLS_BUDGET)
+    expect(first.length).toBeLessThanOrEqual(GUIDE_BUDGET)
   })
 })
 

@@ -48,6 +48,7 @@ import { IMPORT_PART_DESCRIPTION, importPart, importPartInput } from "./import-p
 import { MAKE_SHEET_DESCRIPTION, makeSheet, makeSheetInput } from "./make-sheet.js"
 import { NEW_CIRCUIT_DESCRIPTION, newCircuit, newCircuitInput } from "./new-circuit.js"
 import { fileURLToPath } from "node:url"
+import { compactToolList } from "./compact-tool-list.js"
 import { GUIDE_DESCRIPTION, guide, guideInput, skillResources } from "./guide.js"
 import { ATTACH_DATASHEET_DESCRIPTION, attachDatasheetInput, attachDatasheetTool, checkDatasheetRule } from "./datasheet-tools.js"
 
@@ -58,7 +59,7 @@ const INSTRUCTIONS = `copperflow lets you design circuit boards (*.circuit.tsx f
 - There is no tool to unlock a part or verify a library part: only the human does that.
 - Without the copperflow skill installed, call guide (no topic) for it, then guide { topic } for a reference it names.`
 
-const file = z.string().describe("Circuit file path relative to the project root, e.g. index.circuit.tsx")
+const file = z.string().describe("Circuit file, e.g. index.circuit.tsx")
 const literal = z.union([z.string(), z.number(), z.boolean()])
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false }
 
@@ -67,7 +68,7 @@ export interface ServerOptions {
   engine?: DesignSource
   /** Fetches for import_part; tests pass one that answers from fixtures. */
   fetch?: typeof fetch
-  /** Behind the hosted hub: create_part refuses a chip without a datasheet link. */
+  /** Behind the hosted hub: create_part refuses a chip without a datasheet link, and import_part is not offered. */
   hosted?: boolean
 }
 
@@ -337,7 +338,9 @@ Nothing was written.`)
     }))
   }
 
-  server.registerTool("import_part", { description: IMPORT_PART_DESCRIPTION, inputSchema: importPartInput, annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true } }, (input) => run(() => importPart(root, input, options.fetch)))
+  // The importer is off behind the hub (docs/licences.md: personal use on the person's own machine); there create_part
+  // with a datasheet takes its place.
+  if (!options.hosted) server.registerTool("import_part",{ description: IMPORT_PART_DESCRIPTION, inputSchema: importPartInput, annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true } }, (input) => run(() => importPart(root, input, options.fetch)))
 
   server.registerTool(
     "place_part",
@@ -432,6 +435,7 @@ Nothing was written.`)
       }),
   )
 
+  compactToolList(server)
   return server
 }
 

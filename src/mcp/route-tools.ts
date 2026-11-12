@@ -26,7 +26,7 @@ const UNROUTED_SHOWN = 10
 const names = z.array(z.string().min(1)).min(1).max(200)
 
 export const autorouteInput = {
-  file: z.string().describe("Circuit file path relative to the project root"),
+  file: z.string().describe("Circuit file, e.g. index.circuit.tsx"),
   nets: names.optional().describe('Route only these nets, e.g. ["VBUS", "GND"]'),
   parts: names.optional().describe('Route only the connections of these parts, e.g. ["U1", "C3"]'),
   instance: z.string().min(1).optional().describe('Route only the connections inside this sub-sheet instance, e.g. "PS1"; the route is copied to the other instances of its sheet placed the same way'),
@@ -34,7 +34,7 @@ export const autorouteInput = {
 }
 
 export const unrouteInput = {
-  file: z.string().describe("Circuit file path relative to the project root"),
+  file: z.string().describe("Circuit file, e.g. index.circuit.tsx"),
   nets: names.optional().describe("Remove the router's copper of these nets"),
   all: z.boolean().optional().describe("true: remove all of the router's copper"),
 }

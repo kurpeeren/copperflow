@@ -17,7 +17,7 @@ const part = z.object({
         props: z
           .record(z.string(), z.union([literal, z.record(z.string(), z.string())]))
           .optional()
-          .describe('Other props, e.g. { "pinCount": 4 } or { "pinLabels": { "pin1": "VIN", "pin2": "GND" } } to name the pins of a built-in part (an led or diode already has pin1 = anode, pin2 = cathode) (a chip or connector needs pinLabels, pinCount or a footprint with known pads)'),
+          .describe('Other props, e.g. { "pinLabels": { "pin1": "VIN" } }; a chip or connector needs pinLabels, pinCount or a footprint with known pads (led, diode: pin1 anode)'),
 })
 const nets = z.record(z.string(), z.array(z.string()).min(1))
 

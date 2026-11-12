@@ -23,7 +23,7 @@ const MAX_BUDGET_SECONDS = 300
 const SHOWN = 10
 
 export const autoplaceInput = {
-  file: z.string().describe("Circuit file path relative to the project root"),
+  file: z.string().describe("Circuit file, e.g. index.circuit.tsx"),
   parts: z.array(z.string().min(1)).min(1).max(500).optional().describe('Place only these parts, e.g. ["U1", "C3"]'),
   instance: z.string().min(1).optional().describe('Place only the parts of this sub-sheet instance, e.g. "PS1"'),
   fit: z.boolean().optional().describe("true: then shrink or grow the (rectangular) board round the parts with a 2 mm margin"),
@@ -31,12 +31,12 @@ export const autoplaceInput = {
 }
 
 export const fitBoardInput = {
-  file: z.string().describe("Circuit file path relative to the project root"),
+  file: z.string().describe("Circuit file, e.g. index.circuit.tsx"),
   margin: z.number().min(0).max(50).optional().describe(`Space round the parts' courtyards in mm; ${DEFAULT_FIT_MARGIN} by default`),
 }
 
 export const AUTOPLACE_DESCRIPTION =
-  "Place the board's parts by their connections as ONE change: every part without a position (or only those of parts or of one sub-sheet instance). Chips go first, decoupling capacitors beside their supply pins, connectors on the nearest edge; the total wire length is then shortened. Parts a person placed or locked stay where they are and are worked round. Run it before autoroute. The answer is one line (parts placed, wire length before and after, board size, overlaps), then the parts it found no room for with the reason, and its notes. fit: true also fits the board round the parts."
+  "Place the board's parts by their connections as ONE change: every part without a position (or only those of parts or of one sub-sheet instance). Parts a person placed or locked stay where they are and are worked round. Run it before autoroute. The answer gives parts placed, wire length, board size, overlaps and the parts it found no room for with the reason. fit: true also fits the board round the parts."
 export const FIT_BOARD_DESCRIPTION =
   "Shrink or grow a rectangular board to the parts' courtyards plus a margin (2 mm by default), as ONE change. Refused for a board drawn with a non-rectangular outline."
 

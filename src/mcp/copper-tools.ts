@@ -21,7 +21,7 @@ const NETS_SHOWN = 20
 const padRef = z.string().min(1)
 
 export const routeTrackInput = {
-  file: z.string().describe("Circuit file path relative to the project root"),
+  file: z.string().describe("Circuit file, e.g. index.circuit.tsx"),
   net: z.string().optional().describe("Net name, e.g. VBUS; needed with points, taken from the pads with from and to"),
   layer: layer.optional().describe('Copper layer: "top" or "bottom"; inner1 and inner2 only on a 4-layer board (they cannot be routed in the Studio). Needed with points; with from and to, the pads\' shared layer by default'),
   points: z
@@ -37,7 +37,7 @@ export const routeTrackInput = {
 }
 
 export const addViaInput = {
-  file: z.string().describe("Circuit file path relative to the project root"),
+  file: z.string().describe("Circuit file, e.g. index.circuit.tsx"),
   net: z.string().optional().describe("Net name; by default the net of the copper under the point"),
   at: point.describe("Centre in mm"),
   layers: z.array(layer).min(2).optional().describe('Layers it joins; default ["top", "bottom"]; inner layers only on a 4-layer board'),
@@ -50,7 +50,7 @@ const trackSegment = z.object({
 })
 
 export const removeCopperInput = {
-  file: z.string().describe("Circuit file path relative to the project root"),
+  file: z.string().describe("Circuit file, e.g. index.circuit.tsx"),
   ids: z
     .array(z.union([copperId, trackSegment]))
     .min(1)
@@ -59,13 +59,13 @@ export const removeCopperInput = {
 }
 
 export const ROUTE_TRACK_DESCRIPTION =
-  "Draw one track of a net by hand as ONE change: a list of corner points on one layer, or its ends by pad reference (from: \"C3.pin2\", to: \"U2.pin2\"), with via points between them for the corners; with from and to only, the router finds the path for that one connection (adding vias if it must) or says what is in the way. It must start on a pad, track or via of the net, and no corner or segment between corners may touch another net's copper. The width comes from the net class unless given. The answer is one line plus the copper violations the change introduced: new ones and existing ones it made worse (check_circuit with filter \"copper\" lists all). The program checks clearance; route by hand what autoroute reports it could not route. A track cannot start on a locked part's pad."
+  "Draw one track of a net by hand as ONE change: a list of corner points on one layer, or its ends by pad reference (from: \"C3.pin2\", to: \"U2.pin2\"), with via points between them for the corners; with from and to only, the router finds the path for that one connection (adding vias if it must) or says what is in the way. It must start on a pad, track or via of the net, and no corner or segment between corners may touch another net's copper. The answer lists the copper violations the change introduced or made worse. Route by hand what autoroute could not route. A track cannot start on a locked part's pad."
 export const ADD_VIA_DESCRIPTION =
   "Place a via by hand as ONE change. Its net is the net of the pad or track under it unless you give one; its size follows the net class and the fabrication minimum ring."
 export const REMOVE_COPPER_DESCRIPTION =
   "Remove tracks and vias by id (from copper_summary or check_circuit) as ONE change; { id, segment } removes only that segment of a track, splitting it into the runs left on either side (a run of one point disappears). Locked copper is refused."
 export const COPPER_SUMMARY_DESCRIPTION =
-  'Summarize the copper: totals, then one line per net (tracks, vias, length in mm, connections still unrouted), each copper pour (net, layer, fill area in mm², the pads its fill joins) and each hole by id, then the copper violations counted by rule. At most 60 lines. Call it before and after drawing copper; check_circuit with filter "copper" lists the violations.'
+  'Summarize the copper in at most 60 lines: totals, per net (tracks, vias, length, unrouted), each pour (fill area, pads joined) and hole by id, and copper violations by rule. Call it before and after drawing copper.'
 
 export interface Ports {
   root: string

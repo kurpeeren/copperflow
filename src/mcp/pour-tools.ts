@@ -7,26 +7,26 @@ import { pourLine } from "./copper-summary.js"
 import { findNet } from "./copper-under.js"
 import { buildOf, type Ports } from "./copper-tools.js"
 
-const file = z.string().describe("Circuit file path relative to the project root")
+const file = z.string().describe("Circuit file, e.g. index.circuit.tsx")
 const point = z.object({ x: z.number(), y: z.number() })
 const pourLayer = z.enum(["top", "bottom", "inner1", "inner2"])
 
 /** A pour's optional props; the core checks each value (pour-edits.ts). */
 export const pourProps = z
   .object({
-    priority: z.number().int().optional().describe("Where pours overlap, the higher keeps the copper; default 0"),
-    clearance: z.number().optional().describe("mm to other nets' copper; default the net class's clearance"),
-    minWidth: z.number().optional().describe("mm; copper narrower than this is removed; default 0.25"),
-    thermal: z.enum(["relief", "solid"]).optional().describe('"relief" (default: four spokes to each pad of the net) or "solid"'),
-    thermalWidth: z.number().optional().describe("Spoke width in mm; default 0.3"),
-    thermalGap: z.number().optional().describe("Gap between pad and pour in mm; default 0.25"),
+    priority: z.number().int().optional().describe("Higher wins where pours overlap; default 0"),
+    clearance: z.number().optional().describe("mm to other nets; default the net class's"),
+    minWidth: z.number().optional().describe("Narrowest copper kept, mm; default 0.25"),
+    thermal: z.enum(["relief", "solid"]).optional().describe('"relief" (default, four spokes per pad) or "solid"'),
+    thermalWidth: z.number().optional().describe("Spoke width, mm; default 0.3"),
+    thermalGap: z.number().optional().describe("Pad-to-pour gap, mm; default 0.25"),
   })
   .strict()
 
 export const pourFields = {
   net: z.string().describe('Net name, e.g. "GND"'),
   layer: pourLayer.describe('"top" or "bottom"; inner1 and inner2 only on a 4-layer board'),
-  outline: z.array(point).min(3).max(1000).optional().describe("Corners in mm of the area to fill; without one the pour fills the whole board"),
+  outline: z.array(point).min(3).max(1000).optional().describe("Corners in mm; default the whole board"),
   props: pourProps.optional(),
 }
 
@@ -42,7 +42,7 @@ export const addHoleInput = { file, ...holeFields }
 export const removeHoleInput = { file, id: z.string().describe('The hole\'s id from copper_summary, e.g. "hole:1"') }
 
 export const ADD_POUR_DESCRIPTION =
-  "Add a copper pour of a net on one layer as ONE change: the engine fills it on every build around the other nets' copper, with thermal relief spokes to the net's pads, and the connections the fill makes count as routed. Without an outline it fills the whole board. Before autoroute a board gets a GND pour on the layer the parts sit on (both layers when a two-layer board is routed on both); check the pads it joins. The answer gives its id and its fill (area, pads it joins)."
+  "Add a copper pour of a net on one layer as ONE change: the engine fills it on every build around the other nets' copper, and the connections the fill makes count as routed. The answer gives its id and its fill (area, pads it joins); check the pads it joins."
 export const REMOVE_POUR_DESCRIPTION =
   "Remove a copper pour by id as ONE change. A locked pour is refused, and so is removing an earlier pour that would renumber a locked one. A pour inside a sub-sheet instance (\"PS1/copperpour:1\") is written in its sheet file: edit that file instead."
 export const ADD_HOLE_DESCRIPTION = "Add a non-plated hole (a mounting hole) as ONE change; copper keeps the board-edge clearance from it."
