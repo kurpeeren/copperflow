@@ -1,12 +1,13 @@
-import { describe, expect, test } from "vitest"
+import { describe, expect, test, vi } from "vitest"
 import { spawn } from "node:child_process"
 import { copyFile, cp, mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 import { runCli, type CliIO } from "../src/cli-commands.js"
-import { STATUS_FILE } from "../src/hub/commands.js"
-import { HubStore } from "../src/hub/store.js"
+import { RUNNER_UNKNOWN_NOTE, STATUS_FILE } from "../src/hub/commands.js"
+import { TRUSTED_ONLY_WARNING } from "../src/hub/server.js"
+import { HubStore, SCHEMA_VERSION } from "../src/hub/store.js"
 import { newUser, projectOriginOf, send, startTestHub } from "./helpers/hub-client.js"
 
 function io(): CliIO & { lines: string[]; errors: string[] } {
@@ -137,6 +138,102 @@ describe("hub status --json", () => {
     const out = io()
     expect(await runCli(["hub", "status", "--data", data, "--json"], "/", out)).toBe(0)
     expect(JSON.parse(out.lines[0] as string)).toMatchObject({ runner: null, running: null })
+  })
+})
+
+describe("hub invite and the runner", () => {
+  test("warns about trusted accounts only when the hub last ran the process runner", async () => {
+    const data = await mkdtemp(join(tmpdir(), "cf-invite-"))
+    const run = async () => {
+      const out = io()
+      expect(await runCli(["hub", "invite", "--data", data], "/", out)).toBe(0)
+      return out.lines.slice(2)
+    }
+    expect(await run()).toEqual([RUNNER_UNKNOWN_NOTE])
+    await writeFile(join(data, STATUS_FILE), JSON.stringify({ updated: 0, pid: 1, running: 0, runner: "container" }))
+    expect(await run()).toEqual([])
+    await writeFile(join(data, STATUS_FILE), JSON.stringify({ updated: 0, pid: 1, running: 0, runner: "process" }))
+    expect(await run()).toEqual([TRUSTED_ONLY_WARNING])
+  })
+})
+
+describe("hub stop-workspace", () => {
+  test("the running hub stops that workspace through the runner's stop, and refuses a bad or unknown id", async () => {
+    const server = await startTestHub({ sweepMs: 50 })
+    const data = join(server.hub.files.root, "..")
+    const stopped: string[] = []
+    const stop = server.hub.runner.stop.bind(server.hub.runner)
+    server.hub.runner.stop = async (id: string) => {
+      stopped.push(id)
+      return stop(id)
+    }
+    try {
+      const ada = await newUser(server, "ada@example.com")
+      await ada.submit("/projects", "/projects", { name: "Amp" })
+      const userId = server.hub.store.userByEmail("ada@example.com")?.id as string
+      const id = server.hub.store.projects(userId)[0]?.id as string
+      const out = io()
+      expect(await runCli(["hub", "stop-workspace", id, "--data", data], "/", out)).toBe(0)
+      expect(out.lines[0]).toContain(id)
+      await vi.waitFor(() => expect(stopped).toEqual([id]), { timeout: 3000 })
+      for (const bad of ["../etc", "A".repeat(32), "0".repeat(32), `${"a".repeat(31)}\u001b`]) {
+        const refused = io()
+        expect(await runCli(["hub", "stop-workspace", bad, "--data", data], "/", refused)).toBe(1)
+        expect(refused.errors[0]).not.toContain("\u001b")
+      }
+      expect(stopped).toEqual([id])
+    } finally {
+      await server.close()
+    }
+  })
+})
+
+describe("the schema version", () => {
+  test("a new database gets the current version, an old one is migrated, a newer one is refused", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "cf-schema-"))
+    const fresh = join(dir, "fresh.db")
+    HubStore.open(fresh).close()
+    const version = (file: string) => {
+      const db = new DatabaseSync(file, { readOnly: true })
+      try {
+        return Number((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version)
+      } finally {
+        db.close()
+      }
+    }
+    expect(version(fresh)).toBe(SCHEMA_VERSION)
+    // A database from before versions were kept: the first schema without the later columns and tables.
+    const old = join(dir, "old.db")
+    const db = new DatabaseSync(old)
+    db.exec("CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, password TEXT NOT NULL, created INTEGER NOT NULL); INSERT INTO users VALUES ('u1', 'ada@example.com', 'x', 1)")
+    db.close()
+    const migrated = HubStore.open(old)
+    expect(migrated.userByEmail("ada@example.com")?.id).toBe("u1")
+    migrated.requestStop("a".repeat(32), 1)
+    expect(migrated.takeStops()).toEqual(["a".repeat(32)])
+    migrated.close()
+    expect(version(old)).toBe(SCHEMA_VERSION)
+    const newer = new DatabaseSync(fresh)
+    newer.exec(`PRAGMA user_version = ${SCHEMA_VERSION + 1}`)
+    newer.close()
+    expect(() => HubStore.open(fresh)).toThrow(/newer copperflow .*Nothing was changed.*copperflow hub backup/)
+    expect(version(fresh)).toBe(SCHEMA_VERSION + 1)
+  })
+})
+
+describe("the certificate check behind a proxy", () => {
+  test("a forwarded request is refused even from loopback; the proxy's own ask is answered", async () => {
+    const server = await startTestHub()
+    try {
+      const path = "/_tls-ask?domain=cf.example.test"
+      expect((await send(server.url, "GET", path, { host: "cf.example.test" })).status).toBe(200)
+      const forwarded: Record<string, string>[] = [{ "x-forwarded-for": "203.0.113.9" }, { forwarded: "for=203.0.113.9" }, { via: "1.1 caddy" }]
+      for (const header of forwarded) {
+        expect((await send(server.url, "GET", path, { host: "cf.example.test", ...header })).status).toBe(404)
+      }
+    } finally {
+      await server.close()
+    }
   })
 })
 

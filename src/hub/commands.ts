@@ -42,6 +42,7 @@ const USAGE = `Usage:
   copperflow hub reset-password <email> --data <dir>
   copperflow hub status --data <dir> [--json]
   copperflow hub backup --data <dir> --to <file>
+  copperflow hub stop-workspace <project id> --data <dir>
   copperflow hub delete-user <email> --data <dir>`
 
 /** Splits `--name value` options from the rest; the flags without a value are named here. */
@@ -96,7 +97,9 @@ export async function runHubCommand(args: string[], cwd: string, io: CliIO): Pro
   try {
     switch (command) {
       case "invite":
-        return invite(store, options, io)
+        return await invite(store, dataDir, options, io)
+      case "stop-workspace":
+        return stopWorkspace(store, email, io)
       case "reset-password":
         return await resetPassword(store, email, io)
       case "status":
@@ -221,7 +224,7 @@ export function installSafetyNet(store: HubStore, stop: () => void, on: Pick<Nod
   })
 }
 
-function invite(store: HubStore, options: Map<string, string>, io: CliIO): number {
+async function invite(store: HubStore, dataDir: string, options: Map<string, string>, io: CliIO): Promise<number> {
   const count = Number(options.get("--count") ?? "1")
   if (!Number.isInteger(count) || count < 1 || count > MAX_INVITES) throw new Error(`--count must be a whole number from 1 to ${MAX_INVITES}`)
   const codes = Array.from({ length: count }, () => newSecret())
@@ -229,7 +232,34 @@ function invite(store: HubStore, options: Map<string, string>, io: CliIO): numbe
   store.audit({ time: Date.now(), userId: null, event: "invites-made", address: "cli", detail: String(count) })
   io.out(`${count === 1 ? "An invite code" : `${count} invite codes`}, shown only now (the hub keeps only their hashes):`)
   for (const code of codes) io.out(code)
-  io.out(TRUSTED_ONLY_WARNING)
+  const runner = await lastRunner(dataDir)
+  if (runner === "process") io.out(TRUSTED_ONLY_WARNING)
+  else if (runner === undefined) io.out(RUNNER_UNKNOWN_NOTE)
+  return 0
+}
+
+/** Said by `hub invite` before the hub has ever written its status file. */
+export const RUNNER_UNKNOWN_NOTE = "The hub has not run yet: start the hub first to know which runner is in use (with the process runner every account can read every other account's data)."
+
+/** The runner the hub last started with, from its status file, whatever its age; undefined when it has never run. */
+async function lastRunner(dataDir: string): Promise<"process" | "container" | undefined> {
+  try {
+    const written = JSON.parse(await readFile(join(dataDir, STATUS_FILE), "utf8")) as { runner?: unknown }
+    return written.runner === "process" || written.runner === "container" ? written.runner : undefined
+  } catch {
+    return undefined
+  }
+}
+
+const PROJECT_ID = /^[0-9a-f]{32}$/
+
+/** `hub stop-workspace <project id>`: recorded in the store; the running hub's sweep stops it within 15 seconds. */
+function stopWorkspace(store: HubStore, projectId: string | undefined, io: CliIO): number {
+  if (!projectId || !PROJECT_ID.test(projectId)) throw new Error(`The project id must be 32 lower-case hex characters (it is in the Studio's address, /p/<id>/).\n${USAGE}`)
+  if (!store.projectExists(projectId)) throw new Error(`There is no project ${printable(projectId)}`)
+  store.requestStop(projectId, Date.now())
+  store.audit({ time: Date.now(), userId: null, event: "workspace-stop-requested", address: "cli", detail: projectId })
+  io.out(`The running hub stops the workspace of project ${printable(projectId)} within 15 seconds (nothing happens if it is not running). Its next request starts it again.`)
   return 0
 }
 

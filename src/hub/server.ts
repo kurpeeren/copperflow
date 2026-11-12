@@ -207,6 +207,8 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
     sweepCuts(hub, revokeUser)
       // Users the maintainer deleted: their folders go here, where their workspaces can be blocked first.
       .then(async () => {
+        // The maintainer's `hub stop-workspace`: an asked-for stop, so no crash restart; the next request starts it.
+        for (const projectId of hub.store.takeStops()) await hub.runner.stop(projectId)
         for (const userId of hub.store.deletedUsers()) await removeUser(hub, userId)
         await retryDeletedProjects(hub)
         await sweepOrphans(hub)
@@ -325,7 +327,9 @@ async function route(hub: Hub, req: IncomingMessage, res: ServerResponse): Promi
   // The certificate check, for the reverse proxy on this machine: from loopback only, on any Host, never limited (it is
   // one indexed lookup, and a limit would be shared by every handshake the proxy makes).
   if ((req.url ?? "").startsWith("/_tls-ask?") && req.method === "GET") {
-    if (!isLoopback(req.socket.remoteAddress ?? "")) throw new HubError(404, "There is no such page.")
+    // The proxy's own ask is a direct request; one it forwarded (it says so in these headers) is somebody else's.
+    const forwarded = req.headers["x-forwarded-for"] !== undefined || req.headers.forwarded !== undefined || req.headers.via !== undefined
+    if (forwarded || !isLoopback(req.socket.remoteAddress ?? "")) throw new HubError(404, "There is no such page.")
     return tlsAsk(hub, req, res)
   }
   // The health check, for the service manager and the proxy: on any Host (so it is never proxied to a workspace), no

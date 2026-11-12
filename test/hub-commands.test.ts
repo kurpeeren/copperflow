@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url"
 import { requireSqlite, runCli, type CliIO } from "../src/cli-commands.js"
 import { EventEmitter } from "node:events"
 import { PassThrough } from "node:stream"
-import { chooseRunner, containerMemory, runnerFor, SAME_USER_WARNING, STATUS_FILE } from "../src/hub/commands.js"
+import { chooseRunner, containerMemory, RUNNER_UNKNOWN_NOTE, runnerFor, SAME_USER_WARNING, STATUS_FILE } from "../src/hub/commands.js"
 import type { ChildLike, SpawnLike } from "../src/hub/runner/container-runner.js"
 
 /** A fake engine command that prints `answer(args)` and exits with `code`. */
@@ -50,7 +50,7 @@ describe("the hub's maintainer commands", () => {
     expect(await runCli(["hub", "invite", "--data", data, "--count", "2"], "/", out)).toBe(0)
     const codes = out.lines.slice(1, 3)
     expect(codes).toHaveLength(2)
-    expect(out.lines[3]).toBe(TRUSTED_ONLY_WARNING)
+    expect(out.lines[3]).toBe(RUNNER_UNKNOWN_NOTE)
     for (const code of codes) expect(code).toMatch(/^[A-Za-z0-9_-]{43}$/)
     expect((await readFile(join(data, "hub.db"))).includes(Buffer.from(codes[0] as string))).toBe(false)
     const server = await startTestHub({ dataDir: data })

@@ -82,7 +82,10 @@ copperflow hub --data <dir> --port <n> --public-origin https://copperflow.exampl
   [--bind 127.0.0.1] [--trust-proxy <proxy address or CIDR>]
 copperflow hub ... --runner container --workspace-user-same-as-hub      a trial on your own machine only (see below)
 copperflow hub ... --runner process --trusted-accounts-only      tests and accounts you trust only (see below)
-copperflow hub invite --data <dir> [--count n]        invite codes, printed once (only their hashes are kept)
+copperflow hub invite --data <dir> [--count n]        invite codes, printed once (only their hashes are kept); warns
+                                                      when the hub last started with the process runner
+copperflow hub stop-workspace <project id> --data <dir>   the running hub stops that workspace within 15 s (not a
+                                                      crash: no restart; the next request starts it again)
 copperflow hub reset-password <email> --data <dir>    a one-time password, printed once; ends the user's sessions
 copperflow hub status --data <dir>                    users, projects, the runner, running workspaces (and each
                                                       container's memory), disk used; --json: one JSON line
@@ -238,9 +241,9 @@ last part of a path and Node has no `openat`.
 **The process runner and `--trusted-accounts-only`.** With `--runner process` (the default when `--runner` is not
 given) workspaces run as plain child processes of the hub's user. That is not a security boundary: circuit code that
 escapes the engine's guard can read every other account's projects, the database and the ticket key. The hub therefore
-refuses to start with the process runner unless `--trusted-accounts-only` is given, and with it (and on every `hub
-invite`) prints that every account can read every other account's data and the hub's keys. With `--runner container`
-the flag is not needed and the warning is not printed.
+refuses to start with the process runner unless `--trusted-accounts-only` is given, and with it prints that every account can read every other account's data and the hub's keys. `hub invite` prints the
+same warning when the hub last started with the process runner (read from `hub-status.json`), and says to start the
+hub first when it has not run yet. With `--runner container` the flag is not needed and the warning is not printed.
 
 **Time limits inside a workspace.** A build runs in a worker thread and is cut after 30 s by a timer on the workspace's
 main thread (the worker is terminated and the build reported as a circuit-code error); circuit code cannot reach that
@@ -262,7 +265,8 @@ answers carry only `content-type`, `content-length`, `content-encoding`, `cache-
 <public origin>` and a `Location` only when it is a path on the same project origin. A reverse proxy that issues
 certificates on demand asks `GET /_tls-ask?domain=<host>`: 200 only for the public host and for
 `<existing project id>.<workspace domain>`, 404 otherwise. It is answered only to a connection from loopback (the
-proxy on the same machine), on any Host, and is not rate limited (one indexed lookup; a limit would be shared by every
+proxy on the same machine) that carries no `X-Forwarded-For`, `Forwarded` or `Via` header (a request the proxy
+forwarded is somebody else's, and gets 404; the proxy files in `deploy/` also answer the path with 404), on any Host, and is not rate limited (one indexed lookup; a limit would be shared by every
 handshake). Point the proxy's ask URL at the hub's own port, for example Caddy's
 `on_demand_tls { ask http://127.0.0.1:<hub port>/_tls-ask }`. The maintainer provides a
 wildcard DNS record for the workspace domain and either a wildcard certificate or on-demand certificates.
@@ -308,7 +312,8 @@ directory in a folder only the hub's account can open):
 
 - `hub.db`: SQLite (`node:sqlite`; the hub needs Node 22.13 or later and says so, the rest of copperflow runs on 22):
   users (email NFC and lower-cased, scrypt hash with its salt and parameters), invite codes, session ids, workspace
-  session ids and device ids as SHA-256 hashes, projects (id, owner, name), the audit log.
+  session ids and device ids as SHA-256 hashes, projects (id, owner, name), the audit log. Its schema version is
+  `PRAGMA user_version`: an older database is migrated in one transaction at open, a newer one is refused unchanged.
 - `ticket-key.pem`: the ticket private key, made on first start with mode 600. Never logged, never sent; workspaces
   get the public half.
 - `projects/<user id>/<project id>/`: the project folders. Both ids are generated; a project's name is only a label.
@@ -322,7 +327,7 @@ The audit log (`audit` table: time, user id or none, event, address, detail) rec
 `signup-limited`, `signin`, `signin-failed`, `signin-limited-address`, `signin-limited-email`,
 `signin-limited-strict`, `signin-strict`, `signin-strict-table-full`, `signout`, `signout-forget-device`,
 `sessions-ended`, `password-changed`, `password-change-failed`, `password-change-limited`, `account-delete-failed`,
-`account-delete-limited`, `account-deleted`, `password-reset`, `invites-made`, `project-created`, `project-renamed`,
+`account-delete-limited`, `account-deleted`, `password-reset`, `invites-made`, `workspace-stop-requested`, `project-created`, `project-renamed`,
 `project-deleted`, `project-downloaded`, `project-uploaded`, `upload-refused`, `workspace-entered`,
 `hub-unhandled-rejection` and `hub-uncaught-exception` (the error's name and code only; after an uncaught exception
 the hub closes cleanly for its service manager to restart it, after an unhandled rejection it keeps serving). The detail holds a project id, a file

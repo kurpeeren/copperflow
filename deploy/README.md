@@ -41,8 +41,10 @@ change. Two consequences, both handled in these files:
 - The hub container joins each workspace's network, so Caddy would be reachable from inside every workspace if it
   listened on all addresses. It listens only on the hub container's fixed address on its own small network
   (`CF_HUB_EDGE_IP`, Caddy's `default_bind`), where the published ports 80 and 443 arrive.
-- Every request Caddy forwards arrives from loopback, so `/_tls-ask` would be answered to anyone through the proxy.
-  Both proxy files answer `/_tls-ask` with 404 themselves. (The same holds for a proxy on the host in arrangement B.)
+- Every request Caddy forwards arrives from loopback. The hub therefore refuses `/_tls-ask` (404) when the request
+  carries `X-Forwarded-For`, `Forwarded` or `Via` (a forwarded request is somebody else's; the proxy's own ask is a
+  direct request), and both proxy files also answer the path with 404 themselves. The same holds for a proxy on the
+  host in arrangement B.
 
 Pick A unless you already run a reverse proxy on the host that you want to keep; then pick B with that proxy.
 
@@ -256,9 +258,10 @@ curl -sS -o /dev/null -w '%{http_code}\n' http://copperflow.kurpeeren.com/      
 cf hub invite --data /var/lib/copperflow --count 3
 ```
 
-prints `3 invite codes, shown only now (the hub keeps only their hashes):`, the three codes, and then a warning about
-`--trusted-accounts-only`. That warning is printed by every `hub invite` whatever the runner (the command cannot see
-how the hub was started); with `--runner container` it does not apply. Give each code to one person.
+prints `3 invite codes, shown only now (the hub keeps only their hashes):` and the three codes. Nothing follows when
+the hub last started with the container runner (read from `<data>/hub-status.json`); after a start with the process
+runner a warning follows that every account can read every other account's data; before the hub has ever started a
+line says to start the hub first to know which runner is in use. Give each code to one person.
 
 ## 8. The first account
 
@@ -340,11 +343,12 @@ sessions, tokens and workspaces end within 15 seconds, and they must choose a ne
 --no-warnings /app/dist/cli.js hub delete-user <email> --data <data>`; B `cf hub delete-user <email> --data <data>`.
 Their workspaces stop and their files go within 15 seconds.
 
-**Stopping a workspace.** There is no command for one workspace. A workspace stops by itself 15 minutes after its
-last request. To stop one now: `docker stop cf-ws-<project id>` ends it, but the hub treats an unexpected end as a
-crash and restarts it once on its next use; a second `docker stop` leaves it failed until the next request. To stop
-all of one user's workspaces at once, reset their password (above). The project id is in the Studio's address
-(`/p/<id>/`) and in the audit log's detail.
+**Stopping a workspace.** A workspace stops by itself 15 minutes after its last request. To stop one now:
+`cf hub stop-workspace <project id> --data <data>` prints `The running hub stops the workspace of project <id>
+within 15 seconds ...`; the hub's sweep stops it as an asked-for stop (not a crash, so it is not restarted), and the
+project's next request starts it again. The project id is the 32 hex characters in the Studio's address (`/p/<id>/`)
+and in the audit log's detail; the request is audited as `workspace-stop-requested`. Do not use `docker stop` for
+this: the hub treats an end it did not ask for as a crash and restarts the workspace once.
 
 **The audit log** is the `audit` table in `hub.db`: time (milliseconds), user id or none, event, address, detail
 (a project id, a count or a reason; never a password, cookie, invite code, token or ticket). The events are listed
@@ -367,10 +371,17 @@ Upgrade:
    `CF_WORKSPACE_IMAGE`, `npm ci && npm run build` in `/opt/copperflow`, `systemctl restart copperflow-hub`.
 4. Check step 6's lines and `cf hub status --data <data>`.
 
-**The database is forward-only in practice.** It has no version number. On every start the hub creates missing
-tables (`CREATE TABLE IF NOT EXISTS`) and adds missing columns with defaults (`src/hub/store.ts`, `COLUMNS`); it never
-drops or rewrites anything. An older hub would usually open a newer database (extra tables and columns are ignored),
-but no test proves it and no release promises it. So a rollback is:
+**The database carries a schema version** (`PRAGMA user_version`; `SCHEMA_VERSION` in `src/hub/store.ts`). It is
+set when the database is created and checked every time the hub or a maintainer's command opens it:
+
+- **An older database is migrated** at the first open by the new version: the additive steps it lacks run in order
+  (new tables, new columns with defaults; nothing is dropped or rewritten) inside one transaction that also sets the
+  new version, so it is either fully migrated or untouched. That is why step 1 above (a backup) comes first.
+- **A newer database is refused** with the reason, and nothing in it is changed: `hub.db was written by a newer
+  copperflow (schema <n>; this one knows up to <m>). Nothing was changed. Run the newer copperflow, or restore the
+  backup taken before the upgrade; before every upgrade, take one with copperflow hub backup ...`.
+
+So an older hub cannot run on a database a newer hub has migrated, and a rollback is:
 
 1. Stop the hub (A: `cfc stop`; B: `systemctl stop copperflow-hub`).
 2. Restore the archive taken just before the upgrade (section 13). Accounts, projects and changes made since are lost.

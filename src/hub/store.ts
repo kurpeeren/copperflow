@@ -38,10 +38,25 @@ export interface AuditEntry {
   detail: string
 }
 
-const SCHEMA = `
+const PRAGMAS = `
 PRAGMA busy_timeout = 5000;
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
+`
+
+/** The schema version this code writes (PRAGMA user_version). 0 is a database made before versions were kept. */
+export const SCHEMA_VERSION = 2
+
+/** Version 2: the maintainer's requests to stop one workspace (`hub stop-workspace`), carried out by the hub's sweep. */
+const SCHEMA_2 = `
+CREATE TABLE IF NOT EXISTS workspace_stops (
+  project_id TEXT PRIMARY KEY,
+  created INTEGER NOT NULL
+);
+`
+
+/** Version 1: the first schema, every step idempotent so a database from before versions were kept passes it too. */
+const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
@@ -143,9 +158,37 @@ export class HubStore {
 
   private constructor(file: string) {
     this.db = new DatabaseSync(file)
-    this.db.exec(SCHEMA)
-    for (const [table, column] of COLUMNS) this.addColumn(table, column)
+    try {
+      this.db.exec(PRAGMAS)
+      this.migrate()
+    } catch (error) {
+      this.db.close()
+      throw error
+    }
     this.tokens = new TokenStore(this.db)
+  }
+
+  /**
+   * Brings the schema to SCHEMA_VERSION: refuses a database from a newer version (changing nothing), and runs the
+   * additive steps an older one lacks, in order, in one transaction with the new version number.
+   */
+  private migrate(): void {
+    const version = Number((this.db.prepare("PRAGMA user_version").get() as Row).user_version)
+    if (version > SCHEMA_VERSION) {
+      throw new Error(
+        `hub.db was written by a newer copperflow (schema ${version}; this one knows up to ${SCHEMA_VERSION}). Nothing was changed. Run the newer copperflow, or restore the backup taken before the upgrade; before every upgrade, take one with \`copperflow hub backup --data <dir> --to <file>\`.`,
+      )
+    }
+    if (version === SCHEMA_VERSION) return
+    this.transaction(() => {
+      if (version < 1) {
+        this.db.exec(SCHEMA)
+        for (const [table, column] of COLUMNS) this.addColumn(table, column)
+      }
+      if (version < 2) this.db.exec(SCHEMA_2)
+      // A fixed number, never input.
+      this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
+    })
   }
 
   /** Adds a column a database made by an earlier version lacks. */
@@ -323,6 +366,20 @@ export class HubStore {
       const users = (this.sql("SELECT DISTINCT user_id FROM user_cuts").all() as Row[]).map((row) => row.user_id as string)
       this.sql("DELETE FROM user_cuts").run()
       return users
+    })
+  }
+
+  /** The maintainer's request to stop one project's workspace (`hub stop-workspace`), for the running hub's sweep. */
+  requestStop(projectId: string, now: number): void {
+    this.sql("INSERT OR REPLACE INTO workspace_stops (project_id, created) VALUES (?, ?)").run(projectId, now)
+  }
+
+  /** The workspaces waiting to be stopped, removed from the table as they are read. */
+  takeStops(): string[] {
+    return this.transaction(() => {
+      const ids = (this.sql("SELECT project_id FROM workspace_stops").all() as Row[]).map((row) => row.project_id as string)
+      this.sql("DELETE FROM workspace_stops").run()
+      return ids
     })
   }
 
