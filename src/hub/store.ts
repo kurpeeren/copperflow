@@ -3,6 +3,7 @@
 // is ever joined into SQL. Session ids and invite codes arrive here already hashed.
 import { DatabaseSync, type StatementSync } from "node:sqlite"
 import { sameSecret } from "./secrets.js"
+import { TokenStore } from "./token-store.js"
 
 export interface User {
   id: string
@@ -120,11 +121,14 @@ export function normaliseEmail(email: string): string {
 export class HubStore {
   private readonly db: DatabaseSync
   private readonly statements = new Map<string, StatementSync>()
+  /** Personal access tokens, OAuth clients, grants and their tokens (token-store.ts). */
+  readonly tokens: TokenStore
 
   private constructor(file: string) {
     this.db = new DatabaseSync(file)
     this.db.exec(SCHEMA)
     for (const [table, column] of COLUMNS) this.addColumn(table, column)
+    this.tokens = new TokenStore(this.db)
   }
 
   /** Adds a column a database made by an earlier version lacks. */
