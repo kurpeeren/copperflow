@@ -46,6 +46,14 @@ describe("pending requests are owned per browser", () => {
     expect(state.bindRequest(secret, "u2", 1)).toBeUndefined()
   })
 
+  test("an address whose 20 flows were abandoned is free again once they expire", () => {
+    const state = new OAuthState()
+    for (let i = 0; i < PENDING_PER_ADDRESS; i += 1) expect(state.addRequest(request(`c${i}`), 0, `browser:${i}`, "office")).toBeDefined()
+    expect(state.addRequest(request("late"), 1000, "browser:late", "office")).toBeUndefined()
+    expect(state.addRequest(request("later"), 10 * 60_000 + 1, "browser:late", "office")).toBeDefined()
+    expect(state.sizes()).toEqual({ pending: 1, owners: 1, addresses: 1 })
+  })
+
   test("100 000 add-then-drop cycles leave every index empty", () => {
     const state = new OAuthState()
     for (let i = 0; i < 100_000; i += 1) state.dropRequest(state.addRequest(request("c"), 0, `browser:${i}`, `a${i % 7}`))

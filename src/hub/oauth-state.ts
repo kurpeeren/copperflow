@@ -8,6 +8,7 @@ export const CODE_MS = 60_000
 export const MAX_PENDING = 10_000
 /** Owners (browsers and users) with requests, capped on their own. */
 const MAX_OWNERS = 10_000
+const SWEEP_EVERY_MS = 1000
 export const PENDING_PER_BROWSER = 3
 export const PENDING_PER_USER = 5
 /** A cap that refuses new requests from one address; it never evicts another browser's. */
@@ -55,6 +56,7 @@ export class OAuthState {
   private readonly byOwner = new Map<string, string[]>()
   /** Live requests per address, for the per-address cap; kept in step by `remove`. */
   private readonly perAddress = new Map<string, number>()
+  private sweptAt = Number.NEGATIVE_INFINITY
   private readonly codes = new Map<string, IssuedCode>()
   private readonly redeemed = new Map<string, { userId: string; grantId: string; expires: number }>()
 
@@ -87,7 +89,12 @@ export class OAuthState {
    * requests, or a full table, refuses new ones and evicts nothing (the caller's bucket keeps the table from filling).
    */
   addRequest(request: Omit<AuthorizationRequest, "expires" | "owner" | "address">, now: number, owner: string, address: string): string | undefined {
-    if (this.pending.size >= MAX_PENDING || this.byOwner.size >= MAX_OWNERS) this.sweep(now)
+    // Expired requests of every owner go before the caps are read (at most once a second, or when a table is full),
+    // so abandoned flows free their address again.
+    if (now - this.sweptAt >= SWEEP_EVERY_MS || this.pending.size >= MAX_PENDING || this.byOwner.size >= MAX_OWNERS) {
+      this.sweep(now)
+      this.sweptAt = now
+    }
     for (const key of this.byOwner.get(owner) ?? []) if ((this.pending.get(key)?.expires ?? 0) <= now) this.remove(key)
     const mine = this.byOwner.get(owner) ?? []
     const cap = owner.startsWith("user:") ? PENDING_PER_USER : PENDING_PER_BROWSER
