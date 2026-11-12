@@ -108,9 +108,12 @@ export function basePathOf(pathname: string): string {
   return pathname.replace(/\/[^/]*$/, "")
 }
 
-const basePath = basePathOf(window.location.pathname)
-/** Behind the hub the session is the hub's cookie and the hub adds the workspace ticket; no fragment token is used. */
-const hosted = basePath !== ""
+/**
+ * Behind the hub the server marks the page with a meta tag; then the session is the hub's cookie, the hub adds the
+ * workspace ticket, and no fragment token is used. Locally the app is at "/" and the API at "/api/".
+ */
+const hosted = document.querySelector('meta[name="copperflow-hosted"]') !== null
+const basePath = hosted ? basePathOf(window.location.pathname) : ""
 const token = hosted ? "" : readToken()
 export const hasToken = hosted || token !== ""
 /** The headers of every API request: the session token locally, none behind the hub. */

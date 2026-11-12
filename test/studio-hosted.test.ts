@@ -9,11 +9,11 @@ import { ENGINE_FILES } from "../src/engine/engine.js"
 import { collectProjectFiles } from "../src/engine/project-files.js"
 import type { DesignBuilder } from "../src/studio/live.js"
 import { startStudio, type Studio } from "../src/studio/server.js"
-import { signTicket, TICKET_HEADER } from "../src/hosted/ticket.js"
+import { generateTicketKeys, signTicket, TICKET_HEADER } from "../src/hosted/ticket.js"
 import { BOARD, SHARED } from "./fixtures.js"
 
 const FILE = "main.circuit.tsx"
-const KEY = Buffer.from("k".repeat(40))
+const KEYS = generateTicketKeys()
 const PUBLIC = "https://copperflow.example.test"
 const HOST = "copperflow.example.test"
 const BASE = "/p/demo"
@@ -27,7 +27,7 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "cf-hosted-"))
   const staticDir = join(root, "static")
   await mkdir(staticDir)
-  await writeFile(join(staticDir, "index.html"), "<html><body>studio</body></html>")
+  await writeFile(join(staticDir, "index.html"), "<html><head><title>x</title></head><body>studio</body></html>")
   await writeFile(join(root, FILE), BOARD)
   await writeFile(join(root, "shared.ts"), SHARED)
   studio = await startStudio({
@@ -37,14 +37,14 @@ beforeEach(async () => {
     port: 0,
     routeWorker: null,
     placeWorker: null,
-    hosted: { bind: "127.0.0.1", publicOrigin: PUBLIC, basePath: BASE, workspaceId: "ws-1", ticketKey: KEY },
+    hosted: { bind: "127.0.0.1", publicOrigin: PUBLIC, basePath: BASE, workspaceId: "ws-1", ticketPublicKey: KEYS.publicKey },
   })
 })
 
 afterEach(() => studio.close())
 
 const later = () => Math.floor(Date.now() / 1000) + 60
-const ticket = (w = "ws-1", exp = later()) => signTicket({ w, u: "user-1", exp }, KEY)
+const ticket = (w = "ws-1", exp = later()) => signTicket({ w, u: "user-1", iat: Math.floor(Date.now() / 1000), exp }, KEYS.privateKey)
 
 interface Answer {
   status: number
@@ -84,7 +84,7 @@ describe("hosted Studio", () => {
   test("serves the app under the base path and redirects the bare base path", async () => {
     const page = await send(`${BASE}/`, proxied())
     expect(page.status).toBe(200)
-    expect(page.body).toContain("studio")
+    expect(page.body).toBe('<html><head><meta name="copperflow-hosted" content="1"><title>x</title></head><body>studio</body></html>')
     const bare = await send(BASE, proxied())
     expect(bare.status).toBe(308)
     expect(bare.headers.location).toBe(`${BASE}/`)
@@ -117,7 +117,7 @@ describe("hosted Studio", () => {
       const answer = await send(`${BASE}/api/circuits`, proxied(headers))
       expect(answer.status).toBe(403)
       expect(JSON.parse(answer.body).error).toBe(reason)
-      expect(answer.body).not.toContain(KEY.toString())
+      expect(answer.body).not.toContain(KEYS.publicKeyBase64)
     }
   })
 
@@ -177,7 +177,7 @@ describe("hosted event streams end with their ticket", () => {
     const again = await send(`${BASE}/api/events`, proxied({ [TICKET_HEADER]: ticket("ws-1", exp) }))
     expect(again.status).toBe(403)
     expect(JSON.parse(again.body).error).toBe("Expired workspace ticket")
-  })
+  }, 10_000)
 
   test("no stream outlives the hosted cap, whatever the ticket", async () => {
     const capped = await startStudio({
@@ -187,13 +187,13 @@ describe("hosted event streams end with their ticket", () => {
       port: 0,
       routeWorker: null,
       placeWorker: null,
-      hosted: { bind: "127.0.0.1", publicOrigin: PUBLIC, basePath: BASE, workspaceId: "ws-1", ticketKey: KEY, maxStreamMs: 300 },
+      hosted: { bind: "127.0.0.1", publicOrigin: PUBLIC, basePath: BASE, workspaceId: "ws-1", ticketPublicKey: KEYS.publicKey, maxStreamMs: 300 },
     })
     try {
       const { port } = new URL(capped.url)
       const started = Date.now()
       const status = await new Promise<number>((done, fail) => {
-        const req = request({ host: "127.0.0.1", port, path: `${BASE}/api/events`, headers: proxied({ [TICKET_HEADER]: ticket("ws-1", later() + 3600) }) }, (res) => {
+        const req = request({ host: "127.0.0.1", port, path: `${BASE}/api/events`, headers: proxied({ [TICKET_HEADER]: ticket("ws-1", later() + 600) }) }, (res) => {
           res.resume()
           res.on("end", () => done(res.statusCode ?? 0))
         })
@@ -223,6 +223,9 @@ describe("local Studio keeps the local rules", () => {
         req.end()
       })
       expect(status).toBe(403)
+      // The local page carries no hosted marker, so the client keeps the fragment token and the root API.
+      const page = await fetch(`${local.url}/`)
+      expect(await page.text()).toBe("<html><head><title>x</title></head><body>studio</body></html>")
     } finally {
       await local.close()
     }

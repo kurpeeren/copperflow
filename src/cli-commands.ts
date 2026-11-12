@@ -32,7 +32,7 @@ import { formatImport, importLcscPart } from "./library/import-lcsc.js"
 import { createCopperflowServer } from "./mcp/server.js"
 import { startStudio } from "./studio/server.js"
 import { startMcpHttp } from "./hosted/mcp-http.js"
-import { ticketKeyFromEnv } from "./hosted/ticket.js"
+import { ticketPublicKeyFromEnv } from "./hosted/ticket.js"
 import { VERSION } from "./version.js"
 
 export interface CliIO {
@@ -46,9 +46,9 @@ const HELP = `copperflow ${VERSION}
 
 Usage:
   copperflow mcp                              start the MCP server on stdio
-  copperflow mcp --http <port> [--bind <address>] [--workspace <id>]
+  copperflow mcp --http <port> [--bind <address>] [--workspace <id>] [--public-origin <url>]
                                               serve MCP over HTTP behind the hosted hub (needs
-                                              COPPERFLOW_TICKET_KEY; every request carries the hub's ticket)
+                                              COPPERFLOW_TICKET_PUBLIC_KEY; every request carries the hub's ticket)
   copperflow studio [--port n]                open the visual editor at http://127.0.0.1:4777
   copperflow summary <file>                   print a circuit summary
   copperflow check <file>                     list the errors and warnings of copperflow's own rule checks
@@ -98,15 +98,18 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
           return 0
         }
         const [bind, afterBind] = takeOption(afterHttp, "--bind")
-        const [workspace] = takeOption(afterBind, "--workspace")
+        const [workspace, afterWorkspace] = takeOption(afterBind, "--workspace")
+        const [origin] = takeOption(afterWorkspace, "--public-origin")
         const workspaceId = workspace ?? process.env.COPPERFLOW_WORKSPACE_ID
+        const publicOrigin = origin ?? process.env.COPPERFLOW_PUBLIC_ORIGIN
         if (!workspaceId) throw new Error("mcp --http needs --workspace <id> (or COPPERFLOW_WORKSPACE_ID): it trusts only the hub's ticket for that workspace")
-        const key = ticketKeyFromEnv()
+        if (!publicOrigin) throw new Error("mcp --http needs --public-origin <url> (or COPPERFLOW_PUBLIC_ORIGIN): the hub's public address")
         const served = await startMcpHttp({
           port: positiveInt(httpPort),
           ...(bind ? { bind } : {}),
           makeServer: () => createCopperflowServer(root, { ...options, hosted: true }),
-          ticket: { key, workspaceId },
+          ticket: { publicKey: ticketPublicKeyFromEnv(), workspaceId },
+          publicOrigin,
         })
         io.out(`copperflow MCP is listening at ${served.url} for workspace ${workspaceId}.`)
         return 0

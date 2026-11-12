@@ -1,3 +1,4 @@
+import { WORKER_ENV } from "./worker-env.js"
 import { Worker } from "node:worker_threads"
 import { resolveCircuit } from "../core/workspace.js"
 import type { Design } from "./design.js"
@@ -42,7 +43,7 @@ export const FOOTPRINT_FILE = /^parts\/[^/]+\/footprint\.yaml$/
 export const ENGINE_FILES = new RegExp(`${FOOTPRINT_FILE.source}|${RULES_FILE.source}`)
 
 const defaultWorker = (): EngineWorker =>
-  new Worker(new URL("./engine-worker.js", import.meta.url), { resourceLimits: { maxOldGenerationSizeMb: WORKER_HEAP_MB } })
+  new Worker(new URL("./engine-worker.js", import.meta.url), { env: WORKER_ENV, resourceLimits: { maxOldGenerationSizeMb: WORKER_HEAP_MB } })
 
 export class Engine {
   private current: Started | undefined

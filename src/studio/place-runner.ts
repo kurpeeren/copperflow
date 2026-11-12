@@ -1,3 +1,4 @@
+import { WORKER_ENV } from "../engine/worker-env.js"
 // Place → Autoplace on the server, in the router's pattern (route-runner.ts): one run at a time, in a worker thread,
 // its progress and its end told through the live events ("place"). The design is built afresh after the content hashes
 // are taken; the placement is written through the core as one history entry by the person (pcbX/pcbY/pcbRotation, in
@@ -44,7 +45,7 @@ export async function placeWorkerFactory(): Promise<PlaceWorkerFactory | undefin
   if (!existsSync(fileURLToPath(file))) return undefined
   try {
     const { Worker } = await import("node:worker_threads")
-    return () => new Worker(file, { resourceLimits: { maxOldGenerationSizeMb: WORKER_HEAP_MB } }) as unknown as PlaceWorker
+    return () => new Worker(file, { env: WORKER_ENV, resourceLimits: { maxOldGenerationSizeMb: WORKER_HEAP_MB } }) as unknown as PlaceWorker
   } catch (error) {
     console.error(`copperflow studio: worker threads are unavailable (${(error as Error).message}); the placer runs in the server process`)
     return undefined

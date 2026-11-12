@@ -92,6 +92,8 @@ export interface Studio {
 }
 
 const DEFAULT_PORT = 4777
+/** The meta tag that tells the client it runs behind the hub. */
+export const HOSTED_META = "copperflow-hosted"
 const DEFAULT_MAX_STREAMS = 16
 const MAX_CONNECTIONS = 64
 const REQUEST_TIMEOUT_MS = 15_000
@@ -585,7 +587,9 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
     if (!info?.isFile()) throw new HttpError(404, "Not found")
     const type = TYPES[extname(path)] ?? "application/octet-stream"
     res.writeHead(200, { "content-type": type, "cache-control": "no-store", ...SECURITY_HEADERS })
-    res.end(await readFile(path))
+    const content = await readFile(path)
+    // Behind the hub the page says so, and the client takes no fragment token and builds its API paths from the base.
+    res.end(hosted && relative === "index.html" ? markHosted(content.toString("utf8")) : content)
   }
 
   function openEvents(res: ServerResponse, endsAt?: number): void {
@@ -642,8 +646,13 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
 function hostedOf(given: HostedOptions | undefined): HostedOptions | undefined {
   if (given === undefined) return undefined
   if (given.workspaceId === "") throw new Error("A hosted Studio needs a workspace id")
-  if (given.ticketKey.length < 32) throw new Error("The ticket key must be at least 32 bytes")
+  if (given.ticketPublicKey.type !== "public" || given.ticketPublicKey.asymmetricKeyType !== "ed25519") throw new Error("A hosted Studio needs the hub's Ed25519 public key")
   return { ...given, publicOrigin: normaliseOrigin(given.publicOrigin), basePath: normaliseBasePath(given.basePath) }
+}
+
+/** The app's page with the hosted marker the client reads (studio/src/api.ts). */
+function markHosted(html: string): string {
+  return html.replace(/<head>/i, `<head><meta name="${HOSTED_META}" content="1">`)
 }
 
 /** An address as it goes in a URL: IPv6 in brackets. */

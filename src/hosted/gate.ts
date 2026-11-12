@@ -1,3 +1,4 @@
+import type { KeyObject } from "node:crypto"
 import type { IncomingHttpHeaders } from "node:http"
 import { nowSeconds, TICKET_HEADER, verifyTicket, type TicketPayload } from "./ticket.js"
 
@@ -11,8 +12,8 @@ export interface HostedOptions {
   basePath: string
   /** The workspace this server serves; a ticket for any other is refused. */
   workspaceId: string
-  /** The key the hub signs tickets with (at least 32 bytes). */
-  ticketKey: Buffer
+  /** The hub's Ed25519 public key: a workspace can check tickets, never make them. */
+  ticketPublicKey: KeyObject
   /** The longest an event stream stays open, in ms; default 15 minutes. It also ends when its ticket expires. */
   maxStreamMs?: number
 }
@@ -39,7 +40,7 @@ export function normaliseOrigin(origin: string): string {
   return url.origin
 }
 
-function header(headers: IncomingHttpHeaders, name: string): string | undefined {
+export function header(headers: IncomingHttpHeaders, name: string): string | undefined {
   const value = headers[name]
   return Array.isArray(value) ? value[0] : value
 }
@@ -73,7 +74,7 @@ export function gateHosted(method: string | undefined, rawUrl: string | undefine
   url.search = query < 0 ? "" : raw.slice(query)
   if (url.pathname !== rawPath.slice(base.length)) return { kind: "refuse", status: 400, reason: "Bad path" }
   if (!url.pathname.startsWith("/api/")) return { kind: "pass", url }
-  const check = verifyTicket(header(headers, TICKET_HEADER), options.ticketKey, now, options.workspaceId)
+  const check = verifyTicket(header(headers, TICKET_HEADER), options.ticketPublicKey, now, options.workspaceId)
   if (!check.ok) return { kind: "refuse", status: 403, reason: check.reason }
   return { kind: "pass", url, ticket: check.payload }
 }
