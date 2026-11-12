@@ -52,10 +52,22 @@ one project folder. It trusts one thing: the workspace ticket the hub adds to ea
    trash folder mounted, `--network none`, `--log-driver none`, a read-only root, `--cap-drop ALL`,
    `no-new-privileges`, 32 pids, 128 MB, half a CPU, a 2-minute limit, and the fixed command `copperflow
    workspace-clean /work` built into the image (it makes every entry owner-writable without following links, then
-   removes everything). The hub then removes the emptied folder. Until a trash folder is really gone it counts in its
-   user's usage; a removal that fails is written to the audit log and retried by the 5-second sweep, and `hub status`
-   shows what is left. With the process runner (one uid) the hub removes the trash folder itself. A test fails if any
-   other file in `src/hub` removes anything from the projects tree.
+   removes everything). Removal uses both hands: first the hub gives what it owns in the trash folder the workspace
+   group, then the cleaning container removes what it can (the workspace's own entries), then the hub removes what it
+   owns itself, then the empty folder; either alone is not expected to finish. Until a trash folder is really gone it
+   counts in its user's usage; a removal that fails is written to the audit log as a fixed category (`timeout`,
+   `engine-error`, `permission`, `not-empty`, `unknown`) and retried after 5 seconds, doubling up to 10 minutes, and
+   `hub status` lists trash that failed more than three times. With the process runner (one uid) the hub removes the
+   trash folder itself. A deletion blocks the project first; if the block is refused (a download is running, or the
+   engine cannot confirm the stop) the answer is a 503 and nothing changes, and only then is the project marked
+   deleted. A deletion that did not finish, a staging folder older than an hour and a project folder with no row (a
+   crash between the upload's rename and its row) are finished by the hub's sweep and at its start, and audited. A test
+   fails if any line in `src/hub` but the removal module calls `rm`, `rmdir`, `unlink`, `rename` or the project's own
+   remove helpers without saying on that line that it never removes from the projects tree.
+10. **Nothing a person or a container controls reaches the maintainer unsanitised.** A project or client name, an
+   email, an engine's or a container's error output and a file name go through one `printable` helper (control
+   characters, C1 controls, bidirectional overrides and line breaks replaced, length capped) before the hub's commands
+   print them and before they enter the audit log or `hub-status.json`.
 
 ## Running the hub
 
@@ -87,7 +99,7 @@ values the hub generated or checked. Every container is started as:
 
 - `--rm --name cf-ws-<project id>` (the id must be the 32 lower-case hex characters the store generates), `--user
   10001:<workspace group>`, `--log-driver none`, `--read-only`, `--tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m`,
-  `--cap-drop ALL`, `--security-opt no-new-privileges`, `--pids-limit 128`, `--memory 512m --memory-swap 512m` (no
+  `--cap-drop ALL`, `--security-opt no-new-privileges`, `--pids-limit 128`, `--memory 768m --memory-swap 768m` (no
   swap), `--cpus 1`, `--ulimit nofile=1024:1024`; never `--privileged`, never a host namespace, never the Docker socket.
   With `--log-driver none` nothing the container prints reaches the engine's own log files (which live on the system
   disk, outside every quota): the hub reads the ready line and at most 64 KiB of the log from the attached streams;
@@ -107,10 +119,12 @@ values the hub generated or checked. Every container is started as:
 `--workspace-group <gid>`. The hub refuses the container runner when it runs as root, as uid 10001, or outside that
 group. Each project folder is owned by the hub, in that group, with mode 2770 (setgid, so what the container creates
 keeps the group), and the workspace sets its umask to 007, so the hub can read, measure and remove what the container
-writes. Everything else in the data directory (the database, the ticket key, the other users' folders above the
-project folder) stays 0600/0700 with no group access, so uid 10001 can read none of it even after a container escape.
-An older project folder is given the group and mode when its workspace next starts (the folder itself, never a
-recursive chmod). To set this up on the server:
+writes. Everything the hub itself writes into a project (an uploaded archive, unpacked while still in staging where no
+container sees it; a new empty project) gets the group too: folders 2770, files 0660. Everything else in the data
+directory (the database, the ticket key, the other users' folders above the project folder) stays 0600/0700 with no
+group access, so uid 10001 can read none of it even after a container escape. Before a workspace starts (no container
+runs on its folder then), what the hub owns in the project is given the group and modes again, entry by entry with
+`lstat`, never following a link. To set this up on the server:
 
 ```
 groupadd --system copperflow-ws                         # the group the hub shares with its workspaces
@@ -144,8 +158,11 @@ previous run left. The data directory must be an absolute path with no comma, qu
 Podman's identical command line.
 
 **Memory inside a workspace.** The image starts the workspace with `node --max-old-space-size=160`, and in a hosted
-workspace each build, route and place worker gets a 256 MB heap, so unbounded allocation by circuit code ends as an
-out-of-memory build error before the container's 512 MB limit kills it.
+workspace each build, route and place worker gets a 256 MB heap. Routing and placing are one run at a time per
+workspace, the Studio's and the agent's together (a second answers "a routing or placement run is already in
+progress"), so at most the main thread (160 MB), a build (256 MB) and one route-or-place run (256 MB) are alive at once:
+672 MB inside the container's 768 MB. Unbounded allocation by circuit code ends as an out-of-memory build error before
+the container's limit kills it.
 
 Build the image from the repository (`deploy/workspace.Dockerfile`: a build stage runs `npm ci` and `npm run build`;
 the final stage holds only `dist/`, `skills/`, `package.json` and the production `node_modules`, works for any uid,
@@ -162,23 +179,28 @@ Pin the base by that digest, and refresh it (the same three commands) when Node 
 
 ### Before the first stranger's account
 
-Run and see pass, on the server itself:
+Run these on a machine with an engine, and see each one pass, before any stranger's account exists:
 
-1. `docker version` shows a server of 26 or newer (or Podman 5 or newer).
-2. The base image is pinned: build with `--build-arg NODE_IMAGE=node:22-bookworm-slim@sha256:...` as above; the hub
-   prints no "not pinned by digest" warning at start.
-3. The data directory is on a filesystem of its own (`df <data dir>` shows a different device from `/`), so a full data
-   directory cannot fill the system disk; the engine's own data (`/var/lib/docker`) has room for the image (about
-   300 MB) and its old versions.
-4. The hub runs as its own user (not root, not uid 10001), in the workspace group and the `docker` group, as above.
-5. From a checkout of the same version, as the hub's user with the engine running: `npx vitest run
-   test/hub-container-engine.test.ts`. Every test must run and pass; the file prints one line and skips everything when
-   no engine answers, which does not count. It builds the image and checks, in real containers: the flags, the user
-   and group, the environment, reads and writes outside `/work`, `/proc` and `/sys`, mounts, namespaces, device nodes,
-   network and DNS (including 127.0.0.11, IPv6, the gateway and the metadata address), one workspace reaching another,
-   the memory, pids and `/tmp` limits, a worker running out of memory, the engine log, and the download and deletion
-   races with a running workspace and a planted link.
-6. The hub starts with `--runner container` and says which engine mode it found; `hub status` shows the runner.
+1. `docker version` shows server 26 or newer (or Podman 5 or newer).
+2. Build with `--build-arg NODE_IMAGE=node:22-bookworm-slim@sha256:...`. The hub prints no "not pinned by digest"
+   warning.
+3. `df <data dir>` shows a filesystem separate from `/` and from `/var/lib/docker`.
+4. The hub runs as its own user (not root, not uid 10001), in the workspace group and the docker group. Starting as
+   root, as 10001 or outside the group is refused.
+5. As the hub's user, `npx vitest run test/hub-container-engine.test.ts` shows every test run and pass, with no skip
+   line.
+6. The hub starts with `--runner container` and prints the engine mode line. `hub status` shows the runner.
+7. By hand: upload a zip with a subfolder, open it in the Studio, and the files load. Delete it, and `<data>/trash` is
+   empty within 10 s.
+8. Delete a project while its download is running, and it either deletes or stays listed.
+9. `docker inspect` of a workspace shows LogConfig `none`. Flood stderr for a minute, and `/var/lib/docker` does not
+   grow.
+10. Kill the hub with `kill -9` while a workspace runs. The container ends, and the next start removes any `cf-ws-*` or
+    `cf-clean-*` leftovers.
+11. With `--workspace-reach network`, from inside a workspace, connecting to the hub's port is closed immediately, and
+    no other workspace network is reachable through the hub container.
+12. Run Studio build, autoroute and autoplace at once on the 200-part benchmark, and nothing is OOM-killed
+    (`docker inspect` shows `OOMKilled=false`).
 
 **The disk quota while workspaces run.** A workspace writes into `/work` freely, so every 5 seconds the hub measures the
 project folders of each user with a running workspace, 4 users at a time and at most 2 s each (`lstat` only, never
@@ -193,7 +215,9 @@ so, lists the projects largest first and keeps its download and delete actions. 
 than 20 000 entries instead of holding them in memory, and lists anything it could not include (a link, a special
 file, an entry the workspace made unreadable) in a `SKIPPED.txt` inside the zip. An entry or folder the hub cannot
 read fails the measurement, which counts as over quota. What this does not stop: a workspace can write as fast as the
-disk allows for up to about 5 seconds past its quota. For a hard cap, the maintainer may add filesystem project quotas
+disk allows for up to about 5 seconds past its quota; and a workspace that swaps a folder for a link and back between
+the two identity checks of one folder can add the sizes (never the contents) of host files under names it chose to its
+own usage figure. For a hard cap, the maintainer may add filesystem project quotas
 (XFS project quotas on the projects directory); copperflow does not set them up.
 
 **The hub never follows a link in a project folder.** A project folder is writable from inside its container, so its
@@ -215,11 +239,10 @@ the flag is not needed and the warning is not printed.
 
 **Time limits inside a workspace.** A build runs in a worker thread and is cut after 30 s by a timer on the workspace's
 main thread (the worker is terminated and the build reported as a circuit-code error); circuit code cannot reach that
-timer. Studio routing and placing run in workers too, now cut at 10 minutes and at their 20 s budget plus a minute; the
-router and placer run on design data, never circuit code. The agent tools `route_board` and `place_parts` run in the
-workspace's main thread with a budget the tools cap at 300 s, checked between steps: circuit code cannot extend it, but
-the cut is cooperative, and the container's CPU limit and the idle stop are what bound a pathological board there
-(moving them into workers is in docs/next-steps.md).
+timer. Studio routing and placing run in workers too, cut at 10 minutes and at their 20 s budget plus a minute; the
+router and placer run on design data, never circuit code. In a hosted workspace the agent's `autoroute` and
+`autoplace` run in the same kind of worker, with their budget (at most 300 s) passed in and the worker ended at the
+budget plus a minute, never on the main thread.
 
 **Workspaces on their own origins.** Project `<id>` is served on `https://<id>.<workspace domain>/`, never on the
 public origin, so content a project serves (or a Studio flaw triggered by project data) cannot read or drive the hub's

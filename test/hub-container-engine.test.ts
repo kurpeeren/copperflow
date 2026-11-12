@@ -3,12 +3,15 @@
 // inside a container started with exactly the runner's flags, the entrypoint swapped: this is what circuit code that
 // escaped the engine's `node:vm` guard could do. The guard itself is not the boundary under test.
 import { describe, expect, test } from "vitest"
-import { spawnSync } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
+import { createWriteStream } from "node:fs"
 import { request } from "node:http"
+import { connect } from "node:net"
 import { mkdir, mkdtemp, readdir, symlink, writeFile } from "node:fs/promises"
-import { tmpdir } from "node:os"
+import { networkInterfaces, tmpdir } from "node:os"
 import { join } from "node:path"
-import { PassThrough } from "node:stream"
+import { PassThrough, Readable } from "node:stream"
+import { checkZipFile, StreamZipWriter } from "../src/hub/zip-stream.js"
 import { generateTicketKeys, signTicket, TICKET_HEADER } from "../src/hosted/ticket.js"
 import { removeProjectFolders } from "../src/hub/project-folders.js"
 import { ProjectFiles } from "../src/hub/projects.js"
@@ -207,6 +210,149 @@ describe.skipIf(!engineUp)("the container runner with a real engine", () => {
       expect(await readdir(outside)).toEqual(["host-secret.txt"])
     } finally {
       await runner.stopAll()
+    }
+  }, 180_000)
+})
+
+/** The host's first non-internal IPv4 address (its LAN address), if it has one. */
+function lanAddress(): string | undefined {
+  for (const list of Object.values(networkInterfaces())) for (const entry of list ?? []) if (entry.family === "IPv4" && !entry.internal) return entry.address
+  return undefined
+}
+
+describe.skipIf(!engineUp)("the container runner with a real engine: round 2 cases", () => {
+  const keys = generateTicketKeys()
+
+  test("link-local fe80:: and the host's LAN address are unreachable from a workspace", async () => {
+    const lan = lanAddress() ?? "192.0.2.1"
+    const script = `${TCP}Promise.all([tcp("fe80::1",22),tcp(${JSON.stringify(lan)},22),tcp(${JSON.stringify(lan)},80)]).then(r=>console.log(JSON.stringify(r)))`
+    for (const result of json<string[]>(probe(projectId(), await folder(), script, keys.publicKeyBase64))) expect(result).not.toBe("open")
+  }, 120_000)
+
+  test("ptrace of another process, raw sockets and loading kernel modules are refused", async () => {
+    const script = `const fs=require("fs"),cp=require("child_process");const s=cp.spawn("sleep",["20"]);const mem=(()=>{try{fs.openSync("/proc/"+s.pid+"/mem","r+");return "ok"}catch(e){return "ERR "+e.code}})();const run=(c,a)=>{const r=cp.spawnSync(c,a,{encoding:"utf8"});return r.status===0?"ok":"ERR "+(r.status??r.error?.code)};const out={ptrace:mem,raw:run("ping",["-c","1","-W","1","127.0.0.1"]),modprobe:run("modprobe",["dummy"]),insmod:run("insmod","/nonexistent.ko".split(" ")),modules:(()=>{try{fs.writeFileSync("/proc/sys/kernel/modules_disabled","1");return "ok"}catch(e){return "ERR "+e.code}})()};s.kill();console.log(JSON.stringify(out))`
+    const seen = json<Record<string, string>>(probe(projectId(), await folder(), script, keys.publicKeyBase64))
+    for (const [what, result] of Object.entries(seen)) expect(result, what).not.toBe("ok")
+  }, 120_000)
+
+  test("/dev/shm is not executable, and a setuid file in /work does not elevate", async () => {
+    const script = `const fs=require("fs"),cp=require("child_process");let shm="ERR";try{fs.copyFileSync("/usr/bin/id","/dev/shm/id");fs.chmodSync("/dev/shm/id",0o755);shm=cp.spawnSync("/dev/shm/id").error?.code??"ran"}catch(e){shm="ERR "+e.code};fs.copyFileSync("/usr/bin/id","/work/id");try{fs.chmodSync("/work/id",0o4755)}catch{};const id=cp.spawnSync("/work/id",["-u"],{encoding:"utf8"});console.log(JSON.stringify({shm,euid:(id.stdout||"").trim()}))`
+    const seen = json<{ shm: string; euid: string }>(probe(projectId(), await folder(), script, keys.publicKeyBase64))
+    expect(seen.shm).not.toBe("ran")
+    expect(seen.euid).toBe("10001")
+  }, 120_000)
+
+  test("killing the docker client ends the workspace container", async () => {
+    const id = projectId()
+    const dir = await folder()
+    const args = containerRunArgs({ id, userId: "u", projectDir: dir, basePath: "", publicOrigin: `https://${id}.ws.localhost` }, SETTINGS, keys.publicKeyBase64)
+    docker(networkCreateArgs(`cf-ws-${id}`))
+    try {
+      const client = spawn("docker", args, { stdio: ["pipe", "pipe", "pipe"] })
+      await new Promise<void>((done) => client.stdout.once("data", () => done()))
+      client.kill("SIGKILL")
+      let gone = false
+      for (let i = 0; i < 20 && !gone; i += 1) {
+        await new Promise((done) => setTimeout(done, 500))
+        gone = docker(["ps", "--all", "--filter", `name=^cf-ws-${id}$`, "--format", "{{.Names}}"]).stdout.trim() === ""
+      }
+      expect(gone).toBe(true)
+    } finally {
+      docker(["rm", "--force", `cf-ws-${id}`])
+      docker(["network", "rm", `cf-ws-${id}`])
+    }
+  }, 120_000)
+
+  test("an unbounded allocation in circuit code, through the real engine build path, ends as a build error", async () => {
+    const dir = await folder()
+    await writeFile(join(dir, "main.circuit.tsx"), `const k: number[][] = []\nfor (;;) k.push(new Array(1e6).fill(1))\nexport default () => <board width="10mm" height="10mm" />\n`)
+    const script = `(async()=>{const w=await import("/app/dist/engine/worker-env.js");w.useHostedWorkerHeap();const {Engine}=await import("/app/dist/engine/engine.js");try{await new Engine().build("/work","main.circuit.tsx");console.log(JSON.stringify({result:"built"}))}catch(e){console.log(JSON.stringify({result:"error",message:String(e.message).slice(0,200)}))}process.exit(0)})()`
+    const out = probe(projectId(), dir, script, keys.publicKeyBase64)
+    expect(out.status).toBe(0)
+    expect(json<{ result: string }>(out).result).toBe("error")
+  }, 120_000)
+
+  test("loopback-published ports are not reachable on the host's LAN address", async () => {
+    const lan = lanAddress()
+    const id = projectId()
+    const dir = await folder()
+    await writeFile(join(dir, "main.circuit.tsx"), BOARD)
+    const runner = createContainerRunner({ ...SETTINGS, reach: "loopback", ticketPublicKey: keys.publicKeyBase64, log: () => undefined })
+    try {
+      const address = await runner.ensure({ id, userId: "u", projectDir: dir, basePath: "", publicOrigin: `https://${id}.ws.localhost` })
+      if (lan) {
+        const port = Number(new URL(address.studio).port)
+        const result = await new Promise<string>((done) => {
+          const socket = connect({ host: lan, port, timeout: 3000 })
+          socket.on("connect", () => (socket.destroy(), done("open")))
+          socket.on("timeout", () => (socket.destroy(), done("timeout")))
+          socket.on("error", (error: NodeJS.ErrnoException) => done(`ERR ${error.code}`))
+        })
+        expect(result).not.toBe("open")
+      }
+    } finally {
+      await runner.stopAll()
+    }
+  }, 180_000)
+
+  test("an uploaded project opens in its workspace (uid 10001 reads it) and is deleted without leaving trash", async () => {
+    const data = await mkdtemp(join(tmpdir(), "cf-upload-"))
+    const files = new ProjectFiles(data)
+    files.workspaceGroup = Number(GROUP)
+    const zipPath = join(data, "upload.zip")
+    const out = createWriteStream(zipPath)
+    const zip = new StreamZipWriter(out)
+    await zip.addFile("boards/main.circuit.tsx", Readable.from([Buffer.from(BOARD)]), new Date())
+    await zip.finish()
+    await new Promise<void>((done) => out.end(() => done()))
+    const id = projectId()
+    await files.place(await files.unpackStaged(await checkZipFile(zipPath, 10_000_000)), USER, id)
+    const runner = createContainerRunner({ ...SETTINGS, reach: "loopback", ticketPublicKey: keys.publicKeyBase64, log: () => undefined })
+    try {
+      const read = probe(id, files.projectDir(USER, id), `console.log(JSON.stringify({text:require("fs").readFileSync("/work/boards/main.circuit.tsx","utf8").length}))`, keys.publicKeyBase64)
+      expect(json<{ text: number }>(read).text).toBe(BOARD.length)
+      await removeProjectFolders({ runner, files }, USER, [id])
+      expect(await readdir(files.trash).catch(() => [])).toEqual([])
+    } finally {
+      await runner.stopAll()
+    }
+  }, 180_000)
+
+  test("races, honestly: a swap loop running in a container while the hub downloads and deletes never reads or removes anything outside the project", async () => {
+    const data = await mkdtemp(join(tmpdir(), "cf-swap-"))
+    const outside = join(data, "outside")
+    await mkdir(join(outside, "deep"), { recursive: true })
+    await writeFile(join(outside, "deep", "host-secret.txt"), "HOST-SECRET")
+    const files = new ProjectFiles(data)
+    files.workspaceGroup = Number(GROUP)
+    const id = projectId()
+    const dir = await files.create(USER, id)
+    await mkdir(join(dir, "sub", "deep"), { recursive: true })
+    await writeFile(join(dir, "sub", "deep", "mine.txt"), "mine")
+    // The container swaps /work/sub between a real folder and a link to the host path, as fast as it can, for 20 s. It is
+    // started outside the runner, as an escaped workspace still running would be.
+    const loop = `const fs=require("fs");const end=Date.now()+20000;let n=0;while(Date.now()<end){try{fs.renameSync("/work/sub","/work/sub-real");fs.symlinkSync(${JSON.stringify(outside)},"/work/sub");fs.unlinkSync("/work/sub");fs.renameSync("/work/sub-real","/work/sub");n++}catch{}}console.log(JSON.stringify({n}))`
+    const args = containerRunArgs({ id, userId: "u", projectDir: dir, basePath: "", publicOrigin: `https://${id}.ws.localhost` }, SETTINGS, keys.publicKeyBase64)
+    const at = args.indexOf(IMAGE)
+    docker(networkCreateArgs(`cf-ws-${id}`))
+    const swapper = spawn("docker", [...args.slice(0, at).filter((arg) => arg !== "--interactive"), "--entrypoint", "node", IMAGE, "-e", loop], { stdio: "ignore" })
+    try {
+      await new Promise((done) => setTimeout(done, 2000))
+      const runner = createContainerRunner({ ...SETTINGS, reach: "loopback", ticketPublicKey: keys.publicKeyBase64, log: () => undefined })
+      for (let i = 0; i < 20; i += 1) {
+        const chunks: Buffer[] = []
+        const sink = new PassThrough()
+        sink.on("data", (chunk: Buffer) => chunks.push(chunk))
+        await files.download(USER, id, sink).catch(() => undefined)
+        expect(Buffer.concat(chunks).toString("latin1")).not.toContain("HOST-SECRET")
+      }
+      expect((await files.measureUser(USER)).toString()).toBeDefined()
+      await removeProjectFolders({ runner, files }, USER, [id]).catch(() => undefined)
+      expect(await readdir(join(outside, "deep"))).toEqual(["host-secret.txt"])
+    } finally {
+      swapper.kill("SIGKILL")
+      docker(["rm", "--force", `cf-ws-${id}`])
+      docker(["network", "rm", `cf-ws-${id}`])
     }
   }, 180_000)
 })
