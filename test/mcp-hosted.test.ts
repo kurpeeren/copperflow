@@ -16,9 +16,9 @@ const DEMO = join(import.meta.dirname, "..", "examples", "usb-c-ldo")
 const FILE = "index.circuit.tsx"
 /**
  * What a client pays to connect, at most: the instructions with the full tools/list result as JSON (41 895 on
- * 2026-11-12; the target of 38 000 is not met, see docs/plans/hosted-1.md)…
+ * 2026-11-12, 42 491 once the tools state their limits; the target of 38 000 is not met, see docs/plans/hosted-1.md)…
  */
-const INSTRUCTIONS_AND_TOOLS_BUDGET = 42_000
+const INSTRUCTIONS_AND_TOOLS_BUDGET = 42_600
 /** …and the first guide answer (SKILL.md). */
 const GUIDE_BUDGET = 16_000
 

@@ -198,6 +198,31 @@ describe("the project tools", () => {
     expect(missing.isError).toBe(true)
   })
 
+  test("set_project states the shape of every limited field, and a refusal names the field, the rule and a valid example", async () => {
+    const { tools } = await client.listTools()
+    const description = tools.find((t) => t.name === "set_project")?.description ?? ""
+    for (const rule of ["intent", "at most 2000 characters", "blocks", "array of at most 50", "open", "array of at most 50 non-empty strings"]) expect(description).toContain(rule)
+    const bad = await call("set_project", { open: "route the board" })
+    expect(bad.isError).toBe(true)
+    expect(bad.text).toContain("open")
+    expect(bad.text).toContain("array of at most 50 non-empty strings")
+    expect(bad.text).toContain('e.g. ["route the board"]')
+    const many = await call("set_project", { open: Array.from({ length: 51 }, (_, i) => `item ${i}`) })
+    expect(many.isError).toBe(true)
+    expect(many.text).toContain("array of at most 50 non-empty strings")
+    const blocks = await call("set_project", { blocks: [{ name: "PSU" }] })
+    expect(blocks.isError).toBe(true)
+    expect(blocks.text).toContain("blocks")
+    expect(blocks.text).toContain('e.g. [{ "name": "CAN", "does": "MCP2515 + TJA1051 transceiver", "status": "placed" }]')
+    const intent = await call("set_project", { intent: "x".repeat(2001) })
+    expect(intent.isError).toBe(true)
+    expect(intent.text).toContain("intent")
+    expect(intent.text).toContain("at most 2000 characters")
+    expect(intent.text).toContain('e.g. "A CAN node for the bench."')
+    // The limits are not loosened: 50 items still pass, 2000 characters still pass.
+    expect((await call("set_project", { intent: "x".repeat(2000), open: Array.from({ length: 50 }, (_, i) => `item ${i}`) })).isError).toBe(false)
+  })
+
   test("board_summary answers through the server", async () => {
     const { text, isError } = await call("board_summary", { file: "second.circuit.tsx" })
     expect(isError).toBe(false)

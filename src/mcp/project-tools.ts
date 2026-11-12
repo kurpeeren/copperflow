@@ -21,14 +21,27 @@ export const noteDecisionInput = {
   text: z.string().min(1).max(500).describe('The decision in one line, e.g. "TJA1051 over MCP2551: 3.3 V I/O"'),
 }
 
+const MAX_BLOCKS = 50
+const MAX_OPEN_ITEMS = 50
+const MAX_INTENT_CHARS = 2000
+
+/** The refusal for a field: its name, the rule it broke and one valid value. */
+const INTENT_RULE = `intent must be a string of at most ${MAX_INTENT_CHARS} characters, e.g. "A CAN node for the bench."`
+const BLOCKS_RULE = `blocks must be an array of at most ${MAX_BLOCKS} objects, each with a non-empty name and the strings does and status, e.g. [{ "name": "CAN", "does": "MCP2515 + TJA1051 transceiver", "status": "placed" }]`
+const OPEN_RULE = `open must be an array of at most ${MAX_OPEN_ITEMS} non-empty strings, e.g. ["route the board"]`
+
 export const setProjectInput = {
-  intent: z.string().max(2000).optional().describe("What the design is for, in one paragraph"),
+  intent: z.string(INTENT_RULE).max(MAX_INTENT_CHARS, INTENT_RULE).optional().describe(`What the design is for, in one paragraph (a string of at most ${MAX_INTENT_CHARS} characters)`),
   blocks: z
-    .array(z.object({ name: z.string().min(1), does: z.string(), status: z.string() }))
-    .max(50)
+    .array(z.object({ name: z.string(BLOCKS_RULE).min(1, BLOCKS_RULE), does: z.string(BLOCKS_RULE), status: z.string(BLOCKS_RULE) }, BLOCKS_RULE), BLOCKS_RULE)
+    .max(MAX_BLOCKS, BLOCKS_RULE)
     .optional()
-    .describe('Every block, one each: { name: "CAN", does: "MCP2515 + TJA1051 transceiver", status: "placed" }'),
-  open: z.array(z.string().min(1)).max(50).optional().describe("What is left to do, one item each"),
+    .describe(`Every block, one each (an array of at most ${MAX_BLOCKS}): { name: "CAN", does: "MCP2515 + TJA1051 transceiver", status: "placed" }`),
+  open: z
+    .array(z.string(OPEN_RULE).min(1, OPEN_RULE), OPEN_RULE)
+    .max(MAX_OPEN_ITEMS, OPEN_RULE)
+    .optional()
+    .describe(`What is left to do: an array of at most ${MAX_OPEN_ITEMS} non-empty strings, one item each, e.g. ["route the board"]`),
 }
 
 export const PROJECT_STATUS_DESCRIPTION =
@@ -36,7 +49,7 @@ export const PROJECT_STATUS_DESCRIPTION =
 export const NOTE_DECISION_DESCRIPTION =
   "Note a design decision in PROJECT.md: one dated line under Decisions (naming the circuit file when file is given), as ONE change. Note each choice a later context should not undo (a part chosen and why, a board size, what the person approved)."
 export const SET_PROJECT_DESCRIPTION =
-  "Rewrite sections of PROJECT.md as ONE change: intent (one paragraph), blocks (one line each: name, what it does, status) and open (what is left). Sections not given and Decisions stay as they are. Creates PROJECT.md when the project has none."
+  `Rewrite sections of PROJECT.md as ONE change: intent (a string of at most ${MAX_INTENT_CHARS} characters, one paragraph), blocks (an array of at most ${MAX_BLOCKS} objects { name, does, status }, name non-empty) and open (an array of at most ${MAX_OPEN_ITEMS} non-empty strings, what is left). Sections not given and Decisions stay as they are. Creates PROJECT.md when the project has none.`
 
 /** "parts 12, nets 9, unplaced 0, unrouted 3, errors 0, warnings 2" */
 export function circuitCounts(design: Design): string {

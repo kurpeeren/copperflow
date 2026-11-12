@@ -47,7 +47,9 @@ means, `replace`, refused pins and the export's warnings are in
 1. **Intent.** When the brief lacks what the Intent needs (supply voltage, connectors, board
    size, what the board does), ask the person first. Then `set_project`
    `{ intent, blocks: [{ name, does, status }], open }` writes PROJECT.md:
-   `Change c0001: Intent, Blocks, Open written to PROJECT.md`. Update a block's status the same
+   `Change c0001: Intent, Blocks, Open written to PROJECT.md`. `intent` is a string of at most
+   2000 characters, `blocks` an array of at most 50 objects, `open` an array of at most 50
+   non-empty strings (`["route the board"]`, not one string). Update a block's status the same
    way as it moves on (`designed`, `placed`, `routed`).
 2. **Choose parts before writing the netlist**: `new_circuit` with `part:` needs the library part
    to exist. In this order: a part already in `list_parts` (one line each,

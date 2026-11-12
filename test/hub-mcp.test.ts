@@ -15,8 +15,8 @@ import { call, connectAgent } from "./helpers/hub-mcp.js"
 import { workspaceCli } from "./helpers/workspace-cli.js"
 
 const HOST = new URL(ORIGIN).host
-/** What an agent pays to connect at the hub: instructions + tools/list as JSON (42 725 on 2026-11-12), and the first guide answer (15 390). */
-const HUB_INSTRUCTIONS_AND_TOOLS_BUDGET = 43_000
+/** What an agent pays to connect at the hub: instructions + tools/list as JSON (42 725 on 2026-11-12, 43 321 once the tools state their limits), and the first guide answer (15 390). */
+const HUB_INSTRUCTIONS_AND_TOOLS_BUDGET = 43_500
 const GUIDE_BUDGET = 16_000
 
 let server: HubServer | undefined
