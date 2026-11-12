@@ -54,8 +54,10 @@ Usage:
                     --studio-port <n> --mcp-port <n> [--bind <address>]
                                               the hosted Studio and MCP server for one project, as the hub
                                               starts them (needs COPPERFLOW_TICKET_PUBLIC_KEY; reads nothing else)
-  copperflow hub --data <dir> --port <n> --public-origin <url> --workspace-domain <domain> --trusted-accounts-only
-                 [--bind <address>] [--trust-proxy]
+  copperflow hub --data <dir> --port <n> --public-origin <url> --workspace-domain <domain>
+                 --runner container --workspace-image <name> [--container-command docker] [--workspace-network <name>]
+                 [--workspace-reach loopback|network] [--bind <address>] [--trust-proxy]
+                 (or --runner process --trusted-accounts-only, for accounts you trust only)
                                               the hosted hub: accounts, projects and the Studio proxy
   copperflow hub invite [--count n] | reset-password <email> | status | delete-user <email>
                                               the hub's maintainer commands (each with --data <dir>)

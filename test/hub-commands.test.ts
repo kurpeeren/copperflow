@@ -4,7 +4,34 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { requireSqlite, runCli, type CliIO } from "../src/cli-commands.js"
-import { STATUS_FILE } from "../src/hub/commands.js"
+import { EventEmitter } from "node:events"
+import { PassThrough } from "node:stream"
+import { chooseRunner, containerMemory, runnerFor, STATUS_FILE } from "../src/hub/commands.js"
+import type { ChildLike, SpawnLike } from "../src/hub/runner/container-runner.js"
+
+/** A fake engine command that prints `answer(args)` and exits with `code`. */
+function engineAnswering(calls: string[][], answer: (args: string[]) => string, code = 0): SpawnLike {
+  return (_command, args) => {
+    calls.push(args)
+    const emitter = new EventEmitter()
+    const child = {
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      exitCode: null as number | null,
+      signalCode: null,
+      once: ((event: string, listener: (...values: unknown[]) => void) => emitter.once(event, listener)) as ChildLike["once"],
+      kill: () => true,
+    }
+    setImmediate(() => {
+      child.stdout.end(answer(args))
+      child.stderr.end()
+      child.exitCode = code
+      emitter.emit("exit", code)
+    })
+    return child
+  }
+}
 import { PROCESS_RUNNER_REFUSAL, sameSiteWarning, startHub, TRUSTED_ONLY_WARNING } from "../src/hub/server.js"
 import { loadOrCreateTicketKey } from "../src/hub/keys.js"
 import { looserThanOwner, prepareDataDir } from "../src/hub/permissions.js"
@@ -61,10 +88,10 @@ describe("the hub's maintainer commands", () => {
       await ada.submit("/projects", "/projects", { name: "Amp" })
       const userId = server.hub.store.userByEmail("ada@example.com")?.id as string
       await writeFile(join(server.hub.files.projectDir(userId, server.hub.store.projects(userId)[0]?.id as string), "a.bin"), Buffer.alloc(1024 * 1024))
-      await writeFile(join(data, STATUS_FILE), JSON.stringify({ updated: Date.now(), pid: 1, running: 3 }))
+      await writeFile(join(data, STATUS_FILE), JSON.stringify({ updated: Date.now(), pid: 1, running: 3, runner: "process" }))
       const out = io()
       expect(await runCli(["hub", "status", "--data", data], "/", out)).toBe(0)
-      expect(out.lines).toEqual(["Users: 1", "Projects: 1", "Unused invite codes: 0", "Running workspaces: 3", "Disk used by projects: 1.0 MB"])
+      expect(out.lines).toEqual(["Users: 1", "Projects: 1", "Unused invite codes: 0", "Runner: process", "Running workspaces: 3", "Disk used by projects: 1.0 MB"])
     } finally {
       await server.close()
     }
@@ -106,6 +133,46 @@ describe("the hub's maintainer commands", () => {
     await expect(startHub({ dataDir: data, port: 0, publicOrigin: "https://cf.example.test", workspaceDomain: "ws.localhost" })).rejects.toThrow(PROCESS_RUNNER_REFUSAL)
     const server = await startHub({ dataDir: data, port: 0, publicOrigin: "https://cf.example.test", workspaceDomain: "ws.localhost", trustedAccountsOnly: true, log: () => undefined })
     await server.close()
+    const explicit = io()
+    expect(await runCli(["hub", "--runner", "process", "--data", data, "--port", "0", "--public-origin", "https://cf.example.test", "--workspace-domain", "ws.localhost"], "/", explicit)).toBe(1)
+    expect(explicit.errors[0]).toContain(PROCESS_RUNNER_REFUSAL)
+  })
+
+  test("the runner is chosen from the flags", async () => {
+    const flags = (...names: string[]) => new Set(names)
+    const options = (...pairs: [string, string][]) => new Map(pairs)
+    expect(chooseRunner(options(), flags("--trusted-accounts-only"))).toEqual({ kind: "process", trustedAccountsOnly: true })
+    expect(chooseRunner(options(["--runner", "process"]), flags())).toEqual({ kind: "process", trustedAccountsOnly: false })
+    expect(chooseRunner(options(["--runner", "container"], ["--workspace-image", "copperflow-workspace"]), flags())).toEqual({ kind: "container", settings: { image: "copperflow-workspace", reach: "loopback" } })
+    expect(
+      chooseRunner(options(["--runner", "container"], ["--workspace-image", "img"], ["--container-command", "podman"], ["--workspace-network", "cf-net"], ["--workspace-reach", "network"]), flags()),
+    ).toEqual({ kind: "container", settings: { image: "img", command: "podman", network: "cf-net", reach: "network" } })
+    expect(() => chooseRunner(options(["--runner", "container"]), flags())).toThrow(/--workspace-image/)
+    expect(() => chooseRunner(options(["--runner", "vm"]), flags())).toThrow(/--runner must be/)
+    expect(() => chooseRunner(options(["--workspace-image", "img"]), flags())).toThrow(/belongs to --runner container/)
+    expect(() => chooseRunner(options(["--runner", "container"], ["--workspace-image", "img"], ["--workspace-network", "host"]), flags())).toThrow(/network/)
+    expect(() => chooseRunner(options(["--runner", "container"], ["--workspace-image", "img"], ["--workspace-reach", "public"]), flags())).toThrow(/reach/)
+  })
+
+  test("with the container runner the engine is checked and leftovers swept, and no trusted-accounts warning is needed", async () => {
+    const calls: string[][] = []
+    const spawn = engineAnswering(calls, (args) => (args[0] === "network" ? "true\n" : args[0] === "ps" ? `cf-ws-${"a".repeat(32)}\n` : ""))
+    const out = io()
+    const chosen = await runnerFor({ kind: "container", settings: { image: "img" } }, out, spawn)
+    expect(chosen.trustedAccountsOnly).toBeUndefined()
+    expect(calls.map((args) => args[0])).toEqual(["version", "image", "network", "ps", "rm"])
+    expect(out.lines).toEqual(["Removed 1 workspace container(s) left from an earlier run."])
+    const data = await mkdtemp(join(tmpdir(), "cf-ctrhub-"))
+    const server = await startHub({ dataDir: data, port: 0, publicOrigin: "https://cf.example.test", workspaceDomain: "ws.localhost", ...chosen, log: () => undefined })
+    await server.close()
+    const down = await runnerFor({ kind: "container", settings: { image: "img" } }, io(), engineAnswering([], () => "", 1)).catch((error: Error) => error.message)
+    expect(down).toMatch(/does not answer/)
+  })
+
+  test("status lists each workspace container's memory", async () => {
+    const lines = await containerMemory("docker", engineAnswering([], () => `cf-ws-${"b".repeat(32)}\t41.2MiB / 512MiB\nsomething-else\t1GiB / 2GiB\n`))
+    expect(lines).toEqual([`cf-ws-${"b".repeat(32)}: 41.2MiB / 512MiB`])
+    expect(await containerMemory("docker", engineAnswering([], () => "", 1))).toEqual(["(container memory unavailable: the engine did not answer)"])
   })
 
   test("the data directory and database are owner-only, and a looser one is refused (modes are not checked on Windows)", async () => {

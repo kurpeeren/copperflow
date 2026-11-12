@@ -47,7 +47,7 @@ const AGENT_REVOKE =/^\/account\/(tokens|clients)\/([0-9a-f]{32})\/revoke$/
 export const TRUSTED_ONLY_WARNING =
   "Warning: workspaces run as plain processes of the hub's user, so every account can read every other account's data and the hub's keys. Invite only people you trust with all of it."
 export const PROCESS_RUNNER_REFUSAL =
-  "The hub has only the process runner, which is not a security boundary: every account could read every other account's data and the hub's keys. Start it with --trusted-accounts-only if every account is someone you trust with all of that."
+  "The process runner is not a security boundary: every account could read every other account's data and the hub's keys. Start the hub with --runner container (docs/hosted.md, \"Running the hub\"), or add --trusted-accounts-only if every account is someone you trust with all of that."
 
 export interface HubOptions {
   dataDir: string
@@ -63,7 +63,7 @@ export interface HubOptions {
    * in tests ws.localhost). It needs a wildcard DNS record and a wildcard or on-demand certificate.
    */
   workspaceDomain: string
-  /** The runner. Without one the hub uses the process runner, which is not a security boundary (process-runner.ts). */
+  /** The runner (the container runner in production). Without one the hub uses the process runner, which is not a security boundary (process-runner.ts). */
   runner?: (publicKeyBase64: string) => WorkspaceRunner
   /** Must be true to start with the process runner: every account can then read every other account's data. */
   trustedAccountsOnly?: boolean

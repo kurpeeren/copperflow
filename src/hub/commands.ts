@@ -1,4 +1,5 @@
 // copperflow hub: the hub server, and the maintainer's commands that work on its data directory directly.
+import { spawn as nodeSpawn } from "node:child_process"
 import { readFile } from "node:fs/promises"
 import { prepareDataDir } from "./permissions.js"
 import { join, resolve } from "node:path"
@@ -10,9 +11,20 @@ import { OAuthState } from "./oauth-state.js"
 import { revokeUser, type RevokingHub } from "./revocation.js"
 import { ProjectFiles } from "./projects.js"
 import { hashPassword, hashSecret, newSecret } from "./secrets.js"
-import { sameSiteWarning, startHub, TRUSTED_ONLY_WARNING } from "./server.js"
+import { sameSiteWarning, startHub, TRUSTED_ONLY_WARNING, type HubOptions } from "./server.js"
 import { HubStore, normaliseEmail } from "./store.js"
 import type { WorkspaceRunner } from "./runner/runner.js"
+import {
+  CONTAINER_PREFIX,
+  checkEngine,
+  checkSettings,
+  createContainerRunner,
+  DEFAULT_CONTAINER_COMMAND,
+  runEngine,
+  sweepLeftovers,
+  type ContainerSettings,
+  type SpawnLike,
+} from "./runner/container-runner.js"
 
 export const STATUS_FILE = "hub-status.json"
 const STATUS_EVERY_MS = 15_000
@@ -20,7 +32,9 @@ const STATUS_STALE_MS = 2 * 60_000
 const MAX_INVITES = 100
 
 const USAGE = `Usage:
-  copperflow hub --data <dir> --port <n> --public-origin <url> --workspace-domain <domain> --trusted-accounts-only [--bind <address>] [--trust-proxy]
+  copperflow hub --data <dir> --port <n> --public-origin <url> --workspace-domain <domain> --runner container --workspace-image <name>
+                 [--container-command docker] [--workspace-network <name>] [--workspace-reach loopback|network] [--bind <address>] [--trust-proxy]
+  copperflow hub --data <dir> --port <n> --public-origin <url> --workspace-domain <domain> --runner process --trusted-accounts-only [--bind <address>] [--trust-proxy]
   copperflow hub invite --data <dir> [--count n]
   copperflow hub reset-password <email> --data <dir>
   copperflow hub status --data <dir>
@@ -89,21 +103,56 @@ export async function runHubCommand(args: string[], cwd: string, io: CliIO): Pro
   }
 }
 
+export type RunnerChoice = { kind: "process"; trustedAccountsOnly: boolean } | { kind: "container"; settings: ContainerSettings }
+
+const CONTAINER_OPTIONS = ["--workspace-image", "--container-command", "--workspace-network", "--workspace-reach"]
+
+/** The runner the flags ask for: `--runner process` (the default, as before) or `--runner container`. */
+export function chooseRunner(options: Map<string, string>, flags: Set<string>): RunnerChoice {
+  const kind = options.get("--runner") ?? "process"
+  if (kind === "process") {
+    const stray = CONTAINER_OPTIONS.find((name) => options.has(name))
+    if (stray) throw new Error(`${stray} belongs to --runner container.\n${USAGE}`)
+    return { kind, trustedAccountsOnly: flags.has("--trusted-accounts-only") }
+  }
+  if (kind !== "container") throw new Error(`--runner must be container or process.\n${USAGE}`)
+  const image = options.get("--workspace-image")
+  if (!image) throw new Error(`Missing --workspace-image <name>: the image built from deploy/workspace.Dockerfile.\n${USAGE}`)
+  const reach = options.get("--workspace-reach") ?? "loopback"
+  if (reach !== "loopback" && reach !== "network") throw new Error(`--workspace-reach must be loopback or network.\n${USAGE}`)
+  const command = options.get("--container-command")
+  const network = options.get("--workspace-network")
+  const settings: ContainerSettings = { image, reach, ...(command ? { command } : {}), ...(network ? { network } : {}) }
+  checkSettings(settings)
+  return { kind, settings }
+}
+
+/** With the container runner: the engine is checked and last run's leftovers swept before the hub listens. */
+export async function runnerFor(choice: RunnerChoice, io: CliIO, spawn?: SpawnLike): Promise<Pick<HubOptions, "runner" | "trustedAccountsOnly">> {
+  if (choice.kind === "process") return { trustedAccountsOnly: choice.trustedAccountsOnly }
+  await checkEngine(choice.settings, spawn)
+  const removed = await sweepLeftovers(choice.settings, spawn, (line) => io.out(line))
+  if (removed > 0) io.out(`Removed ${removed} workspace container(s) left from an earlier run.`)
+  return { runner: (ticketPublicKey) => createContainerRunner({ ...choice.settings, ticketPublicKey, ...(spawn ? { spawn } : {}) }) }
+}
+
 async function serve(options: Map<string, string>, flags: Set<string>, cwd: string, io: CliIO): Promise<number> {
   const dataDir = dataDirOf(options, cwd)
   const port = Number(options.get("--port"))
   if (!Number.isInteger(port) || port < 0 || port > 65_535) throw new Error(`--port must be a port number.\n${USAGE}`)
   const publicOrigin = options.get("--public-origin")
   if (!publicOrigin) throw new Error(`Missing --public-origin <url>.\n${USAGE}`)
-  const trustedAccountsOnly = flags.has("--trusted-accounts-only")
+  const choice = chooseRunner(options, flags)
   const workspaceDomain = options.get("--workspace-domain")
   if (!workspaceDomain) throw new Error(`Missing --workspace-domain <domain>: each project is served on its own origin under it.\n${USAGE}`)
-  const hub = await startHub({ dataDir, port, publicOrigin, workspaceDomain, bind: options.get("--bind") ?? "127.0.0.1", trustProxy: flags.has("--trust-proxy"), trustedAccountsOnly })
-  if (trustedAccountsOnly) io.out(TRUSTED_ONLY_WARNING)
+  const runner = await runnerFor(choice, io)
+  const hub = await startHub({ dataDir, port, publicOrigin, workspaceDomain, bind: options.get("--bind") ?? "127.0.0.1", trustProxy: flags.has("--trust-proxy"), ...runner })
+  if (choice.kind === "process" && choice.trustedAccountsOnly) io.out(TRUSTED_ONLY_WARNING)
   const siteWarning = sameSiteWarning(publicOrigin, workspaceDomain)
   if (siteWarning) io.out(siteWarning)
+  const runnerStatus = choice.kind === "container" ? { runner: "container", command: choice.settings.command ?? DEFAULT_CONTAINER_COMMAND } : { runner: "process" }
   const writeStatus = () =>
-    writeFileAtomic(join(dataDir, STATUS_FILE), `${JSON.stringify({ updated: Date.now(), pid: process.pid, running: hub.hub.runner.running() })}\n`).catch((error: unknown) =>
+    writeFileAtomic(join(dataDir, STATUS_FILE), `${JSON.stringify({ updated: Date.now(), pid: process.pid, running: hub.hub.runner.running(), ...runnerStatus })}\n`).catch((error: unknown) =>
       hub.hub.log(`could not write ${STATUS_FILE}: ${(error as Error).message}`),
     )
   await writeStatus()
@@ -184,18 +233,39 @@ async function status(store: HubStore, dataDir: string, io: CliIO): Promise<numb
   const counts = store.counts()
   const bytes = (await new ProjectFiles(dataDir).list(join(dataDir, "projects"))).reduce((sum, file) => sum + file.size, 0)
   let running = "unknown (the hub is not running, or has not written its status in the last 2 minutes)"
+  let runner = "unknown"
+  let engine: string | undefined
   try {
-    const written = JSON.parse(await readFile(join(dataDir, STATUS_FILE), "utf8")) as { updated?: unknown; running?: unknown }
-    if (typeof written.updated === "number" && typeof written.running === "number" && Date.now() - written.updated < STATUS_STALE_MS) running = String(written.running)
+    const written = JSON.parse(await readFile(join(dataDir, STATUS_FILE), "utf8")) as { updated?: unknown; running?: unknown; runner?: unknown; command?: unknown }
+    if (typeof written.updated === "number" && typeof written.running === "number" && Date.now() - written.updated < STATUS_STALE_MS) {
+      running = String(written.running)
+      if (written.runner === "process" || written.runner === "container") runner = written.runner
+      // Only the two known engine names are taken from the file and run.
+      if (written.runner === "container" && (written.command === "docker" || written.command === "podman")) engine = written.command
+    }
   } catch {
     // No status file yet: the hub has not run.
   }
   io.out(`Users: ${counts.users}`)
   io.out(`Projects: ${counts.projects}`)
   io.out(`Unused invite codes: ${counts.unusedInvites}`)
+  io.out(`Runner: ${runner}`)
   io.out(`Running workspaces: ${running}`)
+  if (engine) for (const line of await containerMemory(engine)) io.out(`  ${line}`)
   io.out(`Disk used by projects: ${(bytes / (1024 * 1024)).toFixed(1)} MB`)
   return 0
+}
+
+/** Each running workspace container's memory, from one `stats --no-stream`; nothing when the engine does not answer. */
+export async function containerMemory(command: string, spawn?: SpawnLike): Promise<string[]> {
+  const run = spawn ?? ((cmd, args, options) => nodeSpawn(cmd, args, options))
+  const result = await runEngine(run, command, ["stats", "--no-stream", "--format", "{{.Name}}\t{{.MemUsage}}"], 15_000).catch(() => undefined)
+  if (!result || result.code !== 0) return ["(container memory unavailable: the engine did not answer)"]
+  return result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.split("\t"))
+    .filter(([name, usage]) => name?.startsWith(CONTAINER_PREFIX) && /^[0-9a-f]{32}$/.test(name.slice(CONTAINER_PREFIX.length)) && usage !== undefined)
+    .map(([name, usage]) => `${name}: ${(usage as string).replace(/[^0-9A-Za-z./ ]/g, "").slice(0, 60)}`)
 }
 
 async function deleteUser(store: HubStore, dataDir: string, email: string | undefined, io: CliIO): Promise<number> {
