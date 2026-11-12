@@ -184,6 +184,7 @@ describe("hub projects", () => {
       ["ratio", rawZip([{ name: "zeros.bin", data: Buffer.alloc(200_000), deflate: true }]), "more than 100 times its size"],
       ["lying size", rawZip([{ name: "a.bin", data: Buffer.alloc(5000), deflate: true, declaredSize: 10 }]), "damaged"],
       ["twice", rawZip([{ name: "A.txt" }, { name: "a.txt" }]), "twice"],
+      ["unicode twice", rawZip([{ name: "café.txt" }, { name: "café.txt" }]), "differ only in case or Unicode form"],
       ["not a zip", Buffer.from("hello"), "not a zip archive"],
     ]
     for (const [label, archive, reason] of cases) {

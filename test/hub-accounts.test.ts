@@ -71,6 +71,15 @@ describe("hub accounts", () => {
     expect((await browser.signIn("ada@example.com")).status).toBe(303)
   })
 
+  test("emails are compared after NFC, so two spellings of one address are one account", async () => {
+    server = await startTestHub()
+    await newUser(server, "rené@example.com")
+    const twin = await new Browser(server.url).signUp(invite(server), "rené@example.com")
+    expect(twin.status).toBe(400)
+    expect(server.hub.store.counts().users).toBe(1)
+    expect((await new Browser(server.url).signIn("RENÉ@example.com")).status).toBe(303)
+  })
+
   test("successful sign-ins are not counted against anyone", async () => {
     server = await startTestHub()
     await newUser(server, "ada@example.com")

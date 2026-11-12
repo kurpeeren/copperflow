@@ -87,9 +87,9 @@ const userOf = (row: Row | undefined): User | undefined =>
 const projectOf = (row: Row | undefined): Project | undefined =>
   row ? { id: row.id as string, userId: row.user_id as string, name: row.name as string, created: Number(row.created) } : undefined
 
-/** The email in the one form the store keeps: trimmed and lower-cased. */
+/** The email in the one form the store keeps: NFC, trimmed and lower-cased. */
 export function normaliseEmail(email: string): string {
-  return email.trim().toLowerCase()
+  return email.normalize("NFC").trim().toLowerCase()
 }
 
 /** The hub's state. One instance per data directory; it is not shared between processes. */

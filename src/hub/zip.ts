@@ -134,15 +134,16 @@ function readCentral(buf: Buffer): Central[] {
 
 function checkNamesDistinct(entries: readonly Central[]): void {
   const seen = new Map<string, boolean>()
+  // Compared after NFC and case folding, so the same archive unpacks alike on every file system (APFS normalises).
+  const keyOf = (name: string) => name.normalize("NFC").toLowerCase()
   for (const entry of entries) {
-    // Case-insensitive, so the same archive unpacks alike on every file system.
-    const key = entry.name.toLowerCase()
+    const key = keyOf(entry.name)
     const known = seen.get(key)
-    if (known !== undefined && !(known && entry.isDirectory)) throw new ZipRefusal(`The archive holds ${JSON.stringify(entry.name.slice(0, 80))} twice.`)
+    if (known !== undefined && !(known && entry.isDirectory)) throw new ZipRefusal(`The archive holds ${JSON.stringify(entry.name.slice(0, 80))} twice (names that differ only in case or Unicode form count as the same).`)
     seen.set(key, entry.isDirectory)
   }
   for (const entry of entries) {
-    const parts = entry.name.toLowerCase().split("/")
+    const parts = keyOf(entry.name).split("/")
     for (let i = 1; i < parts.length; i += 1) {
       if (seen.get(parts.slice(0, i).join("/")) === false) throw new ZipRefusal(`${JSON.stringify(entry.name.slice(0, 80))} lies inside a file.`)
     }
