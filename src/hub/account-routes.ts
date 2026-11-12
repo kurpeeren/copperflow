@@ -175,7 +175,7 @@ export function showAccount(hub: Hub, res: ServerResponse, signed: Signed, renew
  * Checks the signed-in user's password under its own limiter, keyed on the user id and counting failures only, so the
  * anonymous sign-in route can never use it up; answers the page itself and returns false when wrong or limited.
  */
-async function checkCurrentPassword(hub: Hub, res: ServerResponse, address: string, signed: Signed, given: string | undefined, what: string): Promise<boolean> {
+export async function checkCurrentPassword(hub: Hub, res: ServerResponse, address: string, signed: Signed, given: string | undefined, what: string): Promise<boolean> {
   const now = hub.config.now()
   const limited = hub.limits.reauth.check(signed.user.id, now)
   if (!limited.ok) {

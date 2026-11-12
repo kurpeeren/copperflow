@@ -29,7 +29,7 @@ afterEach(async () => {
 })
 
 async function tokenFor(browser: Browser, name = "agent"): Promise<string> {
-  const made = await browser.submit("/account", "/account/tokens", { name })
+  const made = await browser.submit("/account", "/account/tokens", { name, password: "a good password" })
   return /cfp_[A-Za-z0-9_-]{43}/.exec(made.text)?.[0] as string
 }
 

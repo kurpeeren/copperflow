@@ -1,7 +1,7 @@
 // The account page's agent forms: make and revoke personal access tokens, revoke a connected client. A token or grant of
 // another user is answered exactly like one that does not exist (404).
 import type { IncomingMessage, ServerResponse } from "node:http"
-import { showAccount } from "./account-routes.js"
+import { checkCurrentPassword, showAccount } from "./account-routes.js"
 import { labelOf, MAX_PERSONAL_TOKENS, newToken, PAT_PREFIX } from "./agent-tokens.js"
 import { audit, formTokenMatches, type Hub, type Signed } from "./context.js"
 import { HubError, readForm, redirect } from "./http.js"
@@ -18,6 +18,10 @@ export async function createToken(hub: Hub, req: IncomingMessage, res: ServerRes
   const form = await checkedForm(req, signed)
   const name = labelOf(form.get("name"))
   if (!name) return showAccount(hub, res, signed, undefined, 400, "A token name has 1 to 100 characters.")
+  // Such a token outlives this session, so the current password is asked (the re-authentication limiter applies).
+  if (!(await checkCurrentPassword(hub, res, address, signed, form.get("password"), "token-create"))) return
+  // The session may have been ended while the password was checked.
+  if (hub.store.session(signed.sessionHash, hub.config.now())?.userId !== signed.user.id) throw new HubError(403, "Sign in first.")
   const token = newToken(PAT_PREFIX)
   const id = newId()
   const added = hub.store.tokens.addPersonalToken({ id, hash: hashSecret(token), userId: signed.user.id, name }, MAX_PERSONAL_TOKENS, hub.config.now())

@@ -30,7 +30,8 @@ ${shown}
 <h2>Personal access tokens</h2>
 ${tokens.length ? `<table><thead>${head}</thead><tbody>${tokenRows}</tbody></table>` : "<p>No tokens.</p>"}
 <form class="stack" method="post" action="/account/tokens">${hidden(viewer.formToken)}
-<label>Token name <input name="name" required maxlength="100" autocomplete="off"></label><button type="submit">Make a token</button></form>
+<label>Token name <input name="name" required maxlength="100" autocomplete="off"></label>
+<label>Current password <input type="password" name="password" autocomplete="current-password" required maxlength="1024"></label><button type="submit">Make a token</button></form>
 <h2>Connected clients</h2>
 ${grants.length ? `<table><thead>${head}</thead><tbody>${grantRows}</tbody></table>` : "<p>No connected clients.</p>"}`
 }
