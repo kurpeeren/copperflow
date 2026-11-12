@@ -7,7 +7,7 @@ import { createHash } from "node:crypto"
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { OAuthClientMetadataSchema, type OAuthMetadata, type OAuthProtectedResourceMetadata, type OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js"
 import { consentPage } from "./agent-pages.js"
-import { ACCESS_MS, ACCESS_PREFIX, labelOf, newToken, REFRESH_MS, REFRESH_PREFIX, tokenHash } from "./agent-tokens.js"
+import { ACCESS_MS, ACCESS_PREFIX, clientNameOf, newToken, REFRESH_MS, REFRESH_PREFIX, tokenHash } from "./agent-tokens.js"
 import { audit, epochOf, formTokenMatches, sessionOf, type Hub, type Signed } from "./context.js"
 import { cookies, HubError, readBody, readForm, redirect, sendPage, setCookie } from "./http.js"
 import { addressKey } from "./limits.js"
@@ -121,8 +121,8 @@ export async function register(hub: Hub, req: IncomingMessage, res: ServerRespon
   if ((meta.token_endpoint_auth_method ?? "none") !== "none") return oauthError(res, 400, "invalid_client_metadata", "Only public clients (token_endpoint_auth_method none) are accepted.")
   if (!(meta.grant_types ?? ["authorization_code"]).every((g) => g === "authorization_code" || g === "refresh_token")) return oauthError(res, 400, "invalid_client_metadata", "Only authorization_code and refresh_token are supported.")
   if (!(meta.response_types ?? ["code"]).every((r) => r === "code")) return oauthError(res, 400, "invalid_client_metadata", "Only the code response type is supported.")
-  const name = meta.client_name === undefined ? "Unnamed client" : labelOf(meta.client_name)
-  if (!name) return oauthError(res, 400, "invalid_client_metadata", "client_name has 1 to 100 characters.")
+  const name = meta.client_name === undefined ? "Unnamed client" : clientNameOf(meta.client_name)
+  if (!name) return oauthError(res, 400, "invalid_client_metadata", "client_name has 1 to 100 characters, without control, direction or invisible characters.")
   const id = newId()
   // (c) The table holds maxClients (10 000). Never evicted: clients with a grant, with a live code, or with a request
   // bound to a signed-in user (at most 5 per user; an anonymous request protects nothing). An unused client is

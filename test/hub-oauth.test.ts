@@ -136,6 +136,17 @@ describe("OAuth for MCP clients", () => {
     expect((await tokenRequest(server, { grant_type: "refresh_token", refresh_token: tokens.body.refresh_token as string, client_id: clientId })).status).toBe(200)
   })
 
+  test("client names with direction or invisible characters are refused; consent shows the redirect host above the name", async () => {
+    server = await startTestHub()
+    for (const name of ["Cla‮edu", "Claude​", "Cl\u0007aude", "A⁦B"]) expect((await registerClient(server, { client_name: name, redirect_uris: [REDIRECT] })).status, JSON.stringify(name)).toBe(400)
+    const clientId = (await registerClient(server, { client_name: "Real Agent", redirect_uris: [REDIRECT] })).body.client_id as string
+    const browser = new Browser(server.url)
+    await browser.signUp(invite(server), "ada@example.com")
+    const page = (await browser.get(authorizePath(clientId))).text
+    expect(page.indexOf("<strong>127.0.0.1:33418</strong>")).toBeGreaterThan(0)
+    expect(page.indexOf("<strong>127.0.0.1:33418</strong>")).toBeLessThan(page.indexOf("Real Agent"))
+  })
+
   test("a code exchanged twice revokes the grant issued from it, with its tokens and agent sessions", async () => {
     server = await startTestHub()
     const clientId = (await registerClient(server, { redirect_uris: [REDIRECT] })).body.client_id as string

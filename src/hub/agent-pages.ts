@@ -43,8 +43,9 @@ export function consentPage(viewer: Viewer, request: string, clientName: string,
   return layout(
     "Allow access",
     `<h1>Allow access to your projects?</h1>${message(error)}
-<p>The application <strong>${esc(clientName)}</strong> asks to work in your copperflow projects as you: list, create and open them and change their circuits.</p>
-<p>After you answer, you go back to <strong>${esc(redirectHost)}</strong>. Allow only if you started this from that application.</p>
+<p>Your answer goes to: <strong>${esc(redirectHost)}</strong></p>
+<p>The application calls itself <strong>${esc(clientName)}</strong> and asks to work in your copperflow projects as you: list, create and open them and change their circuits.</p>
+<p>Allow only if you started this from that application, on that site.</p>
 <p>You can revoke it at any time on the account page.</p>
 ${form("allow", "Allow", false)} ${form("deny", "Deny", true)}`,
     viewer,

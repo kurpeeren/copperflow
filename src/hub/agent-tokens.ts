@@ -31,6 +31,15 @@ export function bearerOf(req: IncomingMessage): { given: boolean; token?: string
   return match ? { given: true, token: match[1] as string } : { given: true }
 }
 
+/**
+ * A client's name as registered: a label without Unicode format characters too (bidirectional overrides, zero-width
+ * characters), so it cannot pass for another agent's name on the consent and account pages.
+ */
+export function clientNameOf(text: string | undefined): string | undefined {
+  const name = labelOf(text)
+  return name !== undefined && !/\p{Cf}/u.test(name) ? name : undefined
+}
+
 /** A label typed by the person (a token's name): 1 to 100 characters without control characters. */
 export function labelOf(text: string | undefined): string | undefined {
   const name = (text ?? "").trim().normalize("NFC")
