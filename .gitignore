@@ -4,3 +4,6 @@ coverage/
 .copperflow/
 *.log
 .DS_Store
+deploy/hub.env
+deploy/*.env
+!deploy/*.env.example
