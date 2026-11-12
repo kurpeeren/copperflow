@@ -25,6 +25,12 @@ const PROXY_PATH = /^\/p\/([0-9a-f]{32})(?=\/|$|\?)/
 const PROJECT_ACTION = /^\/projects\/([0-9a-f]{32})\/(rename|delete|download)$/
 const SAFE_METHODS = new Set(["GET", "HEAD"])
 
+/** Said once when the hub starts with the process runner, and by `hub invite`. */
+export const TRUSTED_ONLY_WARNING =
+  "Warning: workspaces run as plain processes of the hub's user, so every account can read every other account's data and the hub's keys. Invite only people you trust with all of it."
+export const PROCESS_RUNNER_REFUSAL =
+  "The hub has only the process runner, which is not a security boundary: every account could read every other account's data and the hub's keys. Start it with --trusted-accounts-only if every account is someone you trust with all of that."
+
 export interface HubOptions {
   dataDir: string
   /** 0 picks a free port. */
@@ -34,8 +40,10 @@ export interface HubOptions {
   bind?: string
   /** Read the client's address from the last X-Forwarded-For entry (only behind a reverse proxy that sets it). */
   trustProxy?: boolean
-  /** The runner; by default the process runner (not a security boundary, see process-runner.ts). */
+  /** The runner. Without one the hub uses the process runner, which is not a security boundary (process-runner.ts). */
   runner?: (publicKeyBase64: string, publicOrigin: string) => WorkspaceRunner
+  /** Must be true to start with the process runner: every account can then read every other account's data. */
+  trustedAccountsOnly?: boolean
   maxProjects?: number
   maxBytes?: number
   now?: () => number
@@ -50,6 +58,7 @@ export interface HubServer {
 
 /** Opens the data directory (made owner-only when new) and the store, key and runner in it. */
 export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promise<Hub> {
+  if (!options.runner && !options.trustedAccountsOnly) throw new Error(PROCESS_RUNNER_REFUSAL)
   await mkdir(options.dataDir, { recursive: true, mode: 0o700 })
   const keys = await loadOrCreateTicketKey(options.dataDir)
   const publicOrigin = normaliseOrigin(options.publicOrigin)

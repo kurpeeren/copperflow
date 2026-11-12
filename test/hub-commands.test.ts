@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { requireSqlite, runCli, type CliIO } from "../src/cli-commands.js"
 import { STATUS_FILE } from "../src/hub/commands.js"
+import { PROCESS_RUNNER_REFUSAL, startHub, TRUSTED_ONLY_WARNING } from "../src/hub/server.js"
 import { loadOrCreateTicketKey } from "../src/hub/keys.js"
 import { Browser, newUser, startTestHub } from "./helpers/hub-client.js"
 
@@ -19,8 +20,9 @@ describe("the hub's maintainer commands", () => {
     const data = await mkdtemp(join(tmpdir(), "cf-hubcli-"))
     const out = io()
     expect(await runCli(["hub", "invite", "--data", data, "--count", "2"], "/", out)).toBe(0)
-    const codes = out.lines.slice(1)
+    const codes = out.lines.slice(1, 3)
     expect(codes).toHaveLength(2)
+    expect(out.lines[3]).toBe(TRUSTED_ONLY_WARNING)
     for (const code of codes) expect(code).toMatch(/^[A-Za-z0-9_-]{43}$/)
     expect((await readFile(join(data, "hub.db"))).includes(Buffer.from(codes[0] as string))).toBe(false)
     const server = await startTestHub({ dataDir: data })
@@ -92,6 +94,17 @@ describe("the hub's maintainer commands", () => {
     expect(second.publicKeyBase64).toBe(first.publicKeyBase64)
     expect(Buffer.from(first.publicKeyBase64, "base64")).toHaveLength(32)
     expect(await readFile(join(data, "ticket-key.pem"), "utf8")).toContain("PRIVATE KEY")
+  })
+
+  test("the hub refuses the process runner unless every account is trusted, and says what that means", async () => {
+    const data = await mkdtemp(join(tmpdir(), "cf-trusted-"))
+    const out = io()
+    expect(await runCli(["hub", "--data", data, "--port", "0", "--public-origin", "https://cf.example.test"], "/", out)).toBe(1)
+    expect(out.errors[0]).toContain(PROCESS_RUNNER_REFUSAL)
+    expect(out.lines).toEqual([])
+    await expect(startHub({ dataDir: data, port: 0, publicOrigin: "https://cf.example.test" })).rejects.toThrow(PROCESS_RUNNER_REFUSAL)
+    const server = await startHub({ dataDir: data, port: 0, publicOrigin: "https://cf.example.test", trustedAccountsOnly: true, log: () => undefined })
+    await server.close()
   })
 
   test("the hub says clearly when node:sqlite is missing", async () => {

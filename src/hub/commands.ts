@@ -6,7 +6,7 @@ import type { CliIO } from "../cli-commands.js"
 import { removeUser } from "./account-routes.js"
 import { ProjectFiles } from "./projects.js"
 import { hashPassword, hashSecret, newSecret } from "./secrets.js"
-import { startHub } from "./server.js"
+import { startHub, TRUSTED_ONLY_WARNING } from "./server.js"
 import { HubStore, normaliseEmail } from "./store.js"
 import type { WorkspaceRunner } from "./runner/runner.js"
 
@@ -16,7 +16,7 @@ const STATUS_STALE_MS = 2 * 60_000
 const MAX_INVITES = 100
 
 const USAGE = `Usage:
-  copperflow hub --data <dir> --port <n> --public-origin <url> [--bind <address>] [--trust-proxy]
+  copperflow hub --data <dir> --port <n> --public-origin <url> --trusted-accounts-only [--bind <address>] [--trust-proxy]
   copperflow hub invite --data <dir> [--count n]
   copperflow hub reset-password <email> --data <dir>
   copperflow hub status --data <dir>
@@ -29,7 +29,7 @@ function parse(args: readonly string[]): { options: Map<string, string>; flags: 
   const rest: string[] = []
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i] as string
-    if (arg === "--trust-proxy") flags.add(arg)
+    if (arg === "--trust-proxy" || arg === "--trusted-accounts-only") flags.add(arg)
     else if (arg.startsWith("--")) {
       const value = args[i + 1]
       if (value === undefined || value === "") throw new Error(`Missing ${arg} value.\n${USAGE}`)
@@ -91,7 +91,9 @@ async function serve(options: Map<string, string>, flags: Set<string>, cwd: stri
   if (!Number.isInteger(port) || port < 0 || port > 65_535) throw new Error(`--port must be a port number.\n${USAGE}`)
   const publicOrigin = options.get("--public-origin")
   if (!publicOrigin) throw new Error(`Missing --public-origin <url>.\n${USAGE}`)
-  const hub = await startHub({ dataDir, port, publicOrigin, bind: options.get("--bind") ?? "127.0.0.1", trustProxy: flags.has("--trust-proxy") })
+  const trustedAccountsOnly = flags.has("--trusted-accounts-only")
+  const hub = await startHub({ dataDir, port, publicOrigin, bind: options.get("--bind") ?? "127.0.0.1", trustProxy: flags.has("--trust-proxy"), trustedAccountsOnly })
+  if (trustedAccountsOnly) io.out(TRUSTED_ONLY_WARNING)
   const writeStatus = () =>
     writeFileAtomic(join(dataDir, STATUS_FILE), `${JSON.stringify({ updated: Date.now(), pid: process.pid, running: hub.hub.runner.running() })}\n`).catch((error: unknown) =>
       hub.hub.log(`could not write ${STATUS_FILE}: ${(error as Error).message}`),
@@ -121,6 +123,7 @@ function invite(store: HubStore, options: Map<string, string>, io: CliIO): numbe
   store.audit({ time: Date.now(), userId: null, event: "invites-made", address: "cli", detail: String(count) })
   io.out(`${count === 1 ? "An invite code" : `${count} invite codes`}, shown only now (the hub keeps only their hashes):`)
   for (const code of codes) io.out(code)
+  io.out(TRUSTED_ONLY_WARNING)
   return 0
 }
 
