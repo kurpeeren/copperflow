@@ -1,4 +1,5 @@
 import { WORKER_ENV, workerHeap } from "../engine/worker-env.js"
+import { acquireHeavyRun } from "./heavy-runs.js"
 // Route → Autoroute on the server: one run at a time, in a worker thread so the Studio stays responsive, its progress
 // and its end told through the live events ("route"). The board is built afresh from the files whose content hashes
 // are taken at the start (never the live build, which can predate a write the watcher has not counted yet), and the
@@ -27,6 +28,8 @@ import { discardReason, routeSummary, type ContentHashes, type RouteEvent } from
 export interface RouteWorkerRequest {
   input: RouteBoardInput
   scope: RouteScope
+  /** The agent's autoroute passes its budget; the Studio's run has none (its worker's hard cut bounds it). */
+  budgetMs?: number
 }
 
 /** What the worker answers: progress while it routes, then the report or why it failed. */
@@ -180,6 +183,8 @@ export class RouteRunner {
     if (this.deps.hosted && !this.deps.createWorker) {
       throw new Error("Autoroute: this needs a worker thread on the hosted service, and none could be started; nothing was changed")
     }
+    // Hosted: one routing-or-placement run per workspace at a time, the agent's included (heavy-runs.ts).
+    const release = this.deps.hosted ? acquireHeavyRun("studio autoroute") : () => undefined
     const job: Job = { file, cancelled: false, committed: false, stop: () => undefined }
     this.job = job
     try {
@@ -192,10 +197,12 @@ export class RouteRunner {
       const checked = checkedScope(design, scope)
       this.deps.announce({ file: circuit.file, state: "started", scope, ...(this.deps.createWorker ? {} : { inProcess: true }) })
       void this.run(job, circuit, scope, { start, design, checked }).finally(() => {
+        release()
         if (this.job === job) this.job = undefined
       })
       return circuit.file
     } catch (error) {
+      release()
       this.job = undefined
       throw error
     }

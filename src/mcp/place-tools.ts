@@ -16,6 +16,7 @@ import { checkedPlaceScope, lockedNames } from "../studio/place-runner.js"
 import { placeSummary } from "../studio/place-events.js"
 import { discardReason } from "../studio/route-events.js"
 import { contentHashes } from "../studio/route-runner.js"
+import { placeHosted } from "../studio/heavy-runs.js"
 import { buildOf, type Ports } from "./copper-tools.js"
 
 export const DEFAULT_PLACE_BUDGET_SECONDS = 20
@@ -86,6 +87,8 @@ function listLine(head: string, items: readonly string[]): string[] {
 export interface AutoplaceOptions {
   /** The clock the budget is measured on, in ms; tests pass their own. */
   clock?: () => number
+  /** The hosted worker path; tests swap it. */
+  placeHosted?: typeof placeHosted
 }
 
 /** autoplace: places in this process within the budget and writes the positions as one change by the agent. */
@@ -101,7 +104,10 @@ export async function autoplace(
   const design = await buildOf(ports, circuit.file)
   const scope = scopeOf(design, input)
   const locked = await lockedNames(circuit.path, design)
-  const placement = placeBoard(design, { scope, locked, budgetMs: budgetSeconds * 1000, ...(options.clock ? { clock: options.clock } : {}) })
+  // Hosted: in a worker with a hard cut, holding the workspace's one routing-or-placement slot (heavy-runs.ts).
+  const placement = ports.hosted
+    ? await (options.placeHosted ?? placeHosted)({ design, scope, locked, budgetMs: budgetSeconds * 1000 })
+    : placeBoard(design, { scope, locked, budgetMs: budgetSeconds * 1000, ...(options.clock ? { clock: options.clock } : {}) })
   const writes = placementWrites(design, placement.positions, placement.blocks)
   const unplaced = listLine("Not placed", placement.unplaced.map((u) => `${u.name} (${u.reason})`))
   if (writes.circuit.length + writes.sheets.length + writes.blocks.length === 0 && !input.fit) {

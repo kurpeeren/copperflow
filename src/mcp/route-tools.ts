@@ -14,6 +14,7 @@ import { connectionPlace, padsById } from "../engine/pad-text.js"
 import type { WorldPad } from "../engine/pcb.js"
 import { discardReason, routeSummary } from "../studio/route-events.js"
 import { contentHashes, lockSafeEdits, routeInput } from "../studio/route-runner.js"
+import { routeHosted } from "../studio/heavy-runs.js"
 import { introducedLines } from "./copper-summary.js"
 import { applyCopper, buildOf, netOrThrow, type Ports } from "./copper-tools.js"
 
@@ -104,6 +105,8 @@ export function budgetOf(asked: number | undefined): number {
 export interface AutorouteOptions {
   /** The clock the budget is measured on, in ms (the router's own by default); tests pass their own. */
   clock?: () => number
+  /** The hosted worker path; tests swap it. */
+  routeHosted?: typeof routeHosted
 }
 
 export async function autoroute(ports: Ports, input: { file: string; nets?: string[] | undefined; parts?: string[] | undefined; instance?: string | undefined; budgetSeconds?: number | undefined }, options: AutorouteOptions = {}): Promise<string> {
@@ -113,7 +116,10 @@ export async function autoroute(ports: Ports, input: { file: string; nets?: stri
   const start = await contentHashes(ports.root, circuit.file)
   const design = await buildOf(ports, circuit.file)
   const scope = scopeOf(design, input)
-  const report = routeBoard(routeInput(design), { scope, budgetMs: budgetSeconds * 1000, ...(options.clock ? { clock: options.clock } : {}) })
+  // Hosted: in a worker with a hard cut, holding the workspace's one routing-or-placement slot (heavy-runs.ts).
+  const report = ports.hosted
+    ? await (options.routeHosted ?? routeHosted)({ input: routeInput(design), scope, budgetMs: budgetSeconds * 1000 })
+    : routeBoard(routeInput(design), { scope, budgetMs: budgetSeconds * 1000, ...(options.clock ? { clock: options.clock } : {}) })
   const total = report.routed.length + report.unrouted.length
   if (total === 0) return "Nothing to route: every connection in the scope is already routed. Nothing was written."
   const line = routedLine(report, padsById(design.pcb))

@@ -11,7 +11,7 @@ const reply = (message: RouteWorkerReply) => port.postMessage(message)
 
 port.on("message", (request: RouteWorkerRequest) => {
   try {
-    reply({ type: "done", report: routeBoard(request.input, { scope: request.scope, onProgress: (progress) => reply({ type: "progress", progress }) }) })
+    reply({ type: "done", report: routeBoard(request.input, { scope: request.scope, ...(request.budgetMs === undefined ? {} : { budgetMs: request.budgetMs }), onProgress: (progress) => reply({ type: "progress", progress }) }) })
   } catch (error) {
     reply({ type: "error", message: error instanceof Error ? error.message : String(error) })
   }

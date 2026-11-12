@@ -1,4 +1,5 @@
 import { WORKER_ENV, workerHeap } from "../engine/worker-env.js"
+import { acquireHeavyRun } from "./heavy-runs.js"
 // Place → Autoplace on the server, in the router's pattern (route-runner.ts): one run at a time, in a worker thread,
 // its progress and its end told through the live events ("place"). The design is built afresh after the content hashes
 // are taken; the placement is written through the core as one history entry by the person (pcbX/pcbY/pcbRotation, in
@@ -112,6 +113,8 @@ export class PlaceRunner {
   async start(file: string, scope: PlaceScope, fit = false): Promise<string> {
     if (this.job) throw new Error(`The board of ${this.job.file} is being placed; cancel it or wait for it to end`)
     if (this.deps.hosted && !this.deps.createWorker) throw new Error(`Autoplace: ${NO_WORKER_HOSTED}`)
+    // Hosted: one routing-or-placement run per workspace at a time, the agent's included (heavy-runs.ts).
+    const release = this.deps.hosted ? acquireHeavyRun("studio autoplace") : () => undefined
     const job: Job = { file, cancelled: false, committed: false, stop: () => undefined }
     this.job = job
     try {
@@ -124,10 +127,12 @@ export class PlaceRunner {
       const locked = await lockedNames(circuit.path, design)
       this.deps.announce({ file: circuit.file, state: "started", scope, ...(this.deps.createWorker ? {} : { inProcess: true }) })
       void this.run(job, circuit, { scope, fit, start, design, locked }).finally(() => {
+        release()
         if (this.job === job) this.job = undefined
       })
       return circuit.file
     } catch (error) {
+      release()
       this.job = undefined
       throw error
     }

@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js"
 import { z } from "zod"
+import type { placeHosted, routeHosted } from "../studio/heavy-runs.js"
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import YAML from "yaml"
@@ -70,6 +71,8 @@ export interface ServerOptions {
   fetch?: typeof fetch
   /** Behind the hosted hub: create_part refuses a chip without a datasheet link, and import_part is not offered. */
   hosted?: boolean
+  /** Hosted autoroute and autoplace run in workers (studio/heavy-runs.ts); tests, run from sources, swap the worker path. */
+  heavyRuns?: { routeHosted?: typeof routeHosted; placeHosted?: typeof placeHosted }
 }
 
 export function createCopperflowServer(root: string, options: ServerOptions = {}): McpServer {
@@ -199,9 +202,9 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     { description: fillet.STRAIGHTEN_TRACKS_DESCRIPTION, inputSchema: fillet.straightenTracksInput },
     (input) => run(() => fillet.straightenTracks(ports, input)),
   )
-  server.registerTool("autoplace", { description: placer.AUTOPLACE_DESCRIPTION, inputSchema: placer.autoplaceInput }, (input) => run(() => placer.autoplace(ports, input)))
+  server.registerTool("autoplace", { description: placer.AUTOPLACE_DESCRIPTION, inputSchema: placer.autoplaceInput }, (input) => run(() => placer.autoplace(ports, input, options.heavyRuns?.placeHosted ? { placeHosted: options.heavyRuns.placeHosted } : {})))
   server.registerTool("fit_board", { description: placer.FIT_BOARD_DESCRIPTION, inputSchema: placer.fitBoardInput }, (input) => run(() => placer.fitBoardTool(ports, input)))
-  server.registerTool("autoroute", { description: router.AUTOROUTE_DESCRIPTION, inputSchema: router.autorouteInput }, (input) => run(() => router.autoroute(ports, input)))
+  server.registerTool("autoroute", { description: router.AUTOROUTE_DESCRIPTION, inputSchema: router.autorouteInput }, (input) => run(() => router.autoroute(ports, input, options.heavyRuns?.routeHosted ? { routeHosted: options.heavyRuns.routeHosted } : {})))
   server.registerTool(
     "unroute",
     { description: router.UNROUTE_DESCRIPTION, inputSchema: router.unrouteInput, annotations: { destructiveHint: true } },

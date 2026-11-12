@@ -8,7 +8,9 @@ import { createCopperflowServer, type ServerOptions } from "../src/mcp/server.js
 import { GUIDE_TOPICS } from "../src/mcp/guide.js"
 import { createPartArgs, LDO } from "./fixtures.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
-import { buildDesign } from "../src/engine/design.js"
+import { buildDesign, type Design } from "../src/engine/design.js"
+import { placeBoard } from "../src/engine/pcb-place/index.js"
+import type { PlaceScope } from "../src/engine/pcb-place/scope.js"
 
 const DEMO = join(import.meta.dirname, "..", "examples", "usb-c-ldo")
 const FILE = "index.circuit.tsx"
@@ -91,7 +93,9 @@ describe("guide", () => {
         return buildDesign(files, main)
       },
     }
-    const hosted = await memoryClient(await demoCopy(), { hosted: true, engine })
+    // Run from sources there is no built worker file: the worker path is stood in for by the same placer.
+    const placeHosted = async (request: { design: Design; scope: PlaceScope; locked: string[]; budgetMs: number }) => placeBoard(request.design, { scope: request.scope, locked: request.locked, budgetMs: request.budgetMs })
+    const hosted = await memoryClient(await demoCopy(), { hosted: true, engine, heavyRuns: { placeHosted } })
     const answer = await call(hosted, "autoplace", { file: FILE, fit: true })
     expect(answer.isError, answer.text).toBe(false)
     expect(calls).toEqual([FILE])

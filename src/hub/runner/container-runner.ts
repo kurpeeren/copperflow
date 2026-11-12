@@ -32,7 +32,11 @@ export interface ContainerLimits {
   tmpSize: string
 }
 
-export const DEFAULT_LIMITS: ContainerLimits = { memory: "512m", cpus: "1", pids: 128, openFiles: 1024, tmpSize: "64m" }
+/**
+ * 768 MB: the main thread's 160 MB heap, one build worker's 256 MB and one routing-or-placement worker's 256 MB (runs
+ * are exclusive per workspace) make at most 672 MB, with room for native memory.
+ */
+export const DEFAULT_LIMITS: ContainerLimits = { memory: "768m", cpus: "1", pids: 128, openFiles: 1024, tmpSize: "64m" }
 export const DEFAULT_CONTAINER_COMMAND = "docker"
 /** The ports the two servers listen on inside every container. */
 export const STUDIO_PORT = 8080
