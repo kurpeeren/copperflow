@@ -209,7 +209,7 @@ export function installSafetyNet(store: HubStore, stop: () => void, on: Pick<Nod
     } catch {
       // The store itself may be what failed; stderr still has it.
     }
-    process.stderr.write(`copperflow hub: ${event}: ${name}${code ? ` ${code}` : ""}\n`)
+    process.stderr.write(`copperflow hub: ${printable(`${event}: ${name}${code ? ` ${code}` : ""}`, 200)}\n`)
   }
   on.on("unhandledRejection", (error: unknown) => record("hub-unhandled-rejection", error))
   on.on("uncaughtException", (error: unknown) => {
