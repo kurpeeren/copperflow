@@ -60,7 +60,7 @@ function unpackedTotal(declared: readonly { size: number }[]): number {
   return declared.reduce((sum, entry) => sum + entry.size, 0)
 }
 
-interface Central {
+export interface Central {
   name: string
   flags: number
   method: number
@@ -71,10 +71,26 @@ interface Central {
   isDirectory: boolean
 }
 
+/** The most bytes at the end of a file the end record can lie in. */
+export const TAIL_BYTES = END_SIZE + MAX_COMMENT
+
 function findEnd(buf: Buffer): number {
   const earliest = Math.max(0, buf.length - END_SIZE - MAX_COMMENT)
   for (let at = buf.length - END_SIZE; at >= earliest; at -= 1) if (buf.readUInt32LE(at) === END_SIGNATURE) return at
   throw new ZipRefusal("The file is not a zip archive.")
+}
+
+/** Where the central directory lies, from the file's last `TAIL_BYTES` (or fewer) bytes, which start at `tailStart`. */
+export function locateDirectory(tail: Buffer, tailStart: number): { count: number; start: number; size: number } {
+  const end = findEnd(tail)
+  if (tail.readUInt16LE(end + 4) !== 0 || tail.readUInt16LE(end + 6) !== 0) throw new ZipRefusal("Archives split over several files are not supported.")
+  const count = tail.readUInt16LE(end + 10)
+  const size = tail.readUInt32LE(end + 12)
+  const start = tail.readUInt32LE(end + 16)
+  if (count === 0xffff || size === 0xffffffff || start === 0xffffffff) throw new ZipRefusal("ZIP64 archives are not supported.")
+  if (count > MAX_ENTRIES) throw new ZipRefusal(`The archive has more than ${MAX_ENTRIES} entries.`)
+  if (start + size > tailStart + end) throw new ZipRefusal("The archive is damaged.")
+  return { count, start, size }
 }
 
 function kindOf(versionMadeBy: number, external: number, name: string): "file" | "directory" | "other" {
@@ -90,22 +106,20 @@ function kindOf(versionMadeBy: number, external: number, name: string): "file" |
 }
 
 function readCentral(buf: Buffer): Central[] {
-  const end = findEnd(buf)
-  if (buf.readUInt16LE(end + 4) !== 0 || buf.readUInt16LE(end + 6) !== 0) throw new ZipRefusal("Archives split over several files are not supported.")
-  const count = buf.readUInt16LE(end + 10)
-  const size = buf.readUInt32LE(end + 12)
-  const start = buf.readUInt32LE(end + 16)
-  if (count === 0xffff || size === 0xffffffff || start === 0xffffffff) throw new ZipRefusal("ZIP64 archives are not supported.")
-  if (count > MAX_ENTRIES) throw new ZipRefusal(`The archive has more than ${MAX_ENTRIES} entries.`)
-  if (start + size > end) throw new ZipRefusal("The archive is damaged.")
+  const { count, start, size } = locateDirectory(buf, 0)
+  return parseDirectory(buf.subarray(start, start + size), count)
+}
+
+/** The checked entries of a central directory (its bytes, `count` entries as the end record says). */
+export function parseDirectory(buf: Buffer, count: number): Central[] {
   const entries: Central[] = []
-  let at = start
-  while (at < start + size) {
+  let at = 0
+  while (at < buf.length) {
     if (entries.length >= MAX_ENTRIES) throw new ZipRefusal(`The archive has more than ${MAX_ENTRIES} entries.`)
-    if (at + CENTRAL_SIZE > end || buf.readUInt32LE(at) !== CENTRAL_SIGNATURE) throw new ZipRefusal("The archive is damaged.")
+    if (at + CENTRAL_SIZE > buf.length || buf.readUInt32LE(at) !== CENTRAL_SIGNATURE) throw new ZipRefusal("The archive is damaged.")
     const nameLength = buf.readUInt16LE(at + 28)
     const next = at + CENTRAL_SIZE + nameLength + buf.readUInt16LE(at + 30) + buf.readUInt16LE(at + 32)
-    if (next > start + size) throw new ZipRefusal("The archive is damaged.")
+    if (next > buf.length) throw new ZipRefusal("The archive is damaged.")
     if (nameLength > MAX_NAME_BYTES) throw new ZipRefusal("An entry's name is too long.")
     const raw = buf.subarray(at + CENTRAL_SIZE, at + CENTRAL_SIZE + nameLength)
     const name = new TextDecoder("utf-8", { fatal: false }).decode(raw)
@@ -156,7 +170,14 @@ function checkNamesDistinct(entries: readonly Central[]): void {
  * `MAX_RATIO` times the archive's.
  */
 export function readZipArchive(bytes: Buffer, maxUnpacked = MAX_UNPACKED_BYTES): ZipEntry[] {
-  const entries = readCentral(bytes)
+  return checkedFiles(readCentral(bytes), bytes.length, maxUnpacked).map((entry) => ({ name: entry.name, data: inflateEntry(bytes, entry) }))
+}
+
+/**
+ * The file entries of a parsed directory, after every check that needs no inflating: distinct names, methods, the
+ * unpacked total against `maxUnpacked` and against `MAX_RATIO` times the archive's `archiveBytes`.
+ */
+export function checkedFiles(entries: readonly Central[], archiveBytes: number, maxUnpacked: number): Central[] {
   checkNamesDistinct(entries)
   const files = entries.filter((entry) => !entry.isDirectory)
   for (const entry of files) {
@@ -166,8 +187,8 @@ export function readZipArchive(bytes: Buffer, maxUnpacked = MAX_UNPACKED_BYTES):
   }
   const total = unpackedTotal(files)
   if (total > maxUnpacked) throw new ZipRefusal(`The archive unpacks to more than ${Math.floor(maxUnpacked / (1024 * 1024))} MB.`)
-  if (total > MAX_RATIO * Math.max(bytes.length, 1)) throw new ZipRefusal(`The archive unpacks to more than ${MAX_RATIO} times its size.`)
-  return files.map((entry) => ({ name: entry.name, data: inflateEntry(bytes, entry) }))
+  if (total > MAX_RATIO * Math.max(archiveBytes, 1)) throw new ZipRefusal(`The archive unpacks to more than ${MAX_RATIO} times its size.`)
+  return files
 }
 
 function inflateEntry(buf: Buffer, entry: Central): Buffer {

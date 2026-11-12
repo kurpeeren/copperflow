@@ -87,6 +87,7 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
     limits: newLimits(options.limiterKeys),
     userLocks: new Map(),
     userCuts: new Map(),
+    transfers: { uploads: 0, downloads: new Map() },
     log: options.log ?? ((line) => process.stderr.write(`copperflow hub: ${line}\n`)),
   }
 }

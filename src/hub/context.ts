@@ -39,6 +39,8 @@ export interface Hub {
   userLocks: Map<string, Promise<void>>
   /** Per user: aborting it cuts every proxied exchange of that user. */
   userCuts: Map<string, AbortController>
+  /** Transfers in progress: uploads in the whole hub, downloads per user. */
+  transfers: { uploads: number; downloads: Map<string, number> }
   log: (line: string) => void
 }
 

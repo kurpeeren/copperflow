@@ -20,8 +20,9 @@ export interface Answer {
 export function send(base: string, method: string, path: string, headers: Record<string, string> = {}, body?: Buffer | string): Promise<Answer> {
   const url = new URL(base)
   return new Promise((done, fail) => {
-    const req = request({ host: url.hostname, port: url.port, method, path, headers: { ...(body !== undefined ? { "content-length": String(Buffer.byteLength(body)) } : {}), ...headers } }, (res) => {
+    const req = request({ agent: false, host: url.hostname, port: url.port, method, path, headers: { ...(body !== undefined ? { "content-length": String(Buffer.byteLength(body)) } : {}), ...headers } }, (res) => {
       const chunks: Buffer[] = []
+      res.on("error", fail)
       res.on("data", (chunk: Buffer) => chunks.push(chunk))
       res.on("end", () => {
         const all = Buffer.concat(chunks)

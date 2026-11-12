@@ -2,15 +2,23 @@
 // A project of another user is answered exactly like one that does not exist (404), so ids are never confirmed.
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { audit, formTokenMatches, withRenewed, withUserLock, type Hub, type Signed } from "./context.js"
-import { header, HubError, readBody, readForm, redirect, sendPage } from "./http.js"
-import { boundaryOf, readMultipart } from "./multipart.js"
+import { createWriteStream } from "node:fs"
+import { rm } from "node:fs/promises"
+import { header, HubError, readForm, redirect, sendPage } from "./http.js"
+import { boundaryOf } from "./multipart.js"
+import { streamMultipart } from "./multipart-stream.js"
 import { projectsPage } from "./pages.js"
 import { newId } from "./secrets.js"
 import type { Project } from "./store.js"
-import { readZipArchive, ZipRefusal } from "./zip.js"
+import { ZipRefusal } from "./zip.js"
+import { checkZipFile } from "./zip-stream.js"
 
 const MAX_NAME = 100
 const UPLOAD_OVERHEAD = 64 * 1024
+/** Uploads running at once in the whole hub. */
+export const MAX_UPLOADS = 4
+/** Downloads one user runs at once. */
+export const MAX_DOWNLOADS_PER_USER = 2
 
 /** A project name: a label of 1 to 100 characters without control characters. Never a path. */
 export function projectName(text: string | undefined): string | undefined {
@@ -100,6 +108,19 @@ export async function deleteProject(hub: Hub, req: IncomingMessage, res: ServerR
 
 export async function downloadProject(hub: Hub, res: ServerResponse, address: string, signed: Signed, id: string): Promise<void> {
   ownProject(hub, signed, id)
+  const running = hub.transfers.downloads.get(signed.user.id) ?? 0
+  if (running >= MAX_DOWNLOADS_PER_USER) throw new HubError(429, `You have ${MAX_DOWNLOADS_PER_USER} downloads running. Try again when one has finished.`, { "retry-after": "30" })
+  hub.transfers.downloads.set(signed.user.id, running + 1)
+  try {
+    await streamDownload(hub, res, address, signed, id)
+  } finally {
+    const left = (hub.transfers.downloads.get(signed.user.id) ?? 1) - 1
+    if (left > 0) hub.transfers.downloads.set(signed.user.id, left)
+    else hub.transfers.downloads.delete(signed.user.id)
+  }
+}
+
+async function streamDownload(hub: Hub, res: ServerResponse, address: string, signed: Signed, id: string): Promise<void> {
   res.writeHead(200, {
     "content-type": "application/zip",
     // The file is named by the generated id: the person's label never reaches a header.
@@ -109,7 +130,7 @@ export async function downloadProject(hub: Hub, res: ServerResponse, address: st
   })
   audit(hub, address, signed.user.id, "project-downloaded", id)
   try {
-    await hub.files.download(signed.user.id, id, (chunk) => new Promise((done, fail) => res.write(chunk, (error) => (error ? fail(error) : done()))))
+    await hub.files.download(signed.user.id, id, res)
     res.end()
   } catch (error) {
     hub.log(`download of project ${id} failed: ${(error as Error).message}`)
@@ -117,42 +138,66 @@ export async function downloadProject(hub: Hub, res: ServerResponse, address: st
   }
 }
 
-/** A zip into a NEW project: refused whole, before anything is written, when any entry or limit is wrong. */
+/**
+ * A zip into a NEW project. At most `MAX_UPLOADS` run in the hub and one per user (under the user's lock, taken before
+ * the body is read). The body streams to a file under the data directory with the size cap enforced while it arrives;
+ * the archive is checked on disk, then inflated entry by entry. Any refusal leaves nothing behind.
+ */
 export async function uploadProject(hub: Hub, req: IncomingMessage, res: ServerResponse, address: string, signed: Signed): Promise<void> {
-  const body = await readBody(req, hub.config.maxBytes + UPLOAD_OVERHEAD)
-  const form = readMultipart(body, boundaryOf(header(req, "content-type")))
-  if (!formTokenMatches(signed, form.fields.get("form"))) throw new HubError(403, "The form has expired. Open the page again and retry.")
-  const name = projectName(form.fields.get("name"))
-  if (!name) return showProjects(hub, res, signed, undefined, 400, `A project name has 1 to ${MAX_NAME} characters.`)
-  if (!form.file || form.file.field !== "archive") return showProjects(hub, res, signed, undefined, 400, "Choose a zip archive to upload.")
-  const archive = form.file.data
-  // The whole check → insert → unpack runs under the user's lock: an upload in progress has written its bytes before
-  // the next one measures what is left, so two uploads that fit alone cannot pass together.
-  const problem = await withUserLock(hub, signed.user.id, async () => {
-    const quota = await quotaProblem(hub, signed.user.id)
-    if (quota) return { status: 403, text: quota }
-    let entries
-    try {
-      entries = readZipArchive(archive, hub.config.maxBytes - (await hub.files.usage(signed.user.id)))
-    } catch (error) {
-      if (!(error instanceof ZipRefusal)) throw error
-      audit(hub, address, signed.user.id, "upload-refused", error.message)
-      return { status: 400, text: `The archive was not uploaded: ${error.message}` }
-    }
-    const project = { id: newId(), userId: signed.user.id, name, created: hub.config.now() }
-    const refused = insertProject(hub, project)
-    if (refused) return refused
-    try {
-      await hub.files.unpack(signed.user.id, project.id, entries)
-    } catch (error) {
-      await hub.files.remove(signed.user.id, project.id)
-      hub.store.deleteProject(signed.user.id, project.id)
-      hub.log(`upload into project ${project.id} failed: ${(error as Error).message}`)
-      throw new HubError(400, "The archive could not be unpacked.")
-    }
-    audit(hub, address, signed.user.id, "project-uploaded", `${project.id} (${entries.length} files)`)
-    return undefined
-  })
-  if (problem) return showProjects(hub, res, signed, undefined, problem.status, problem.text)
-  redirect(res, "/projects")
+  const boundary = boundaryOf(header(req, "content-type"))
+  if (hub.transfers.uploads >= MAX_UPLOADS) throw new HubError(503, "Too many uploads are running. Try again in a minute.", { "retry-after": "60" })
+  hub.transfers.uploads += 1
+  try {
+    const problem = await withUserLock(hub, signed.user.id, () => receiveUpload(hub, req, address, signed, boundary))
+    if (problem) return showProjects(hub, res, signed, undefined, problem.status, problem.text)
+    redirect(res, "/projects")
+  } finally {
+    hub.transfers.uploads -= 1
+  }
+}
+
+type Problem = { status: number; text: string } | undefined
+
+async function receiveUpload(hub: Hub, req: IncomingMessage, address: string, signed: Signed, boundary: string): Promise<Problem> {
+  const quota = await quotaProblem(hub, signed.user.id)
+  if (quota) return { status: 403, text: quota }
+  const temp = await hub.files.uploadPath()
+  try {
+    const form = await streamMultipart(req, boundary, hub.config.maxBytes + UPLOAD_OVERHEAD, () => createWriteStream(temp, { flags: "wx", mode: 0o600 }))
+    if (!formTokenMatches(signed, form.fields.get("form"))) throw new HubError(403, "The form has expired. Open the page again and retry.")
+    const name = projectName(form.fields.get("name"))
+    if (!name) return { status: 400, text: `A project name has 1 to ${MAX_NAME} characters.` }
+    if (form.fileField !== "archive") return { status: 400, text: "Choose a zip archive to upload." }
+    return await unpackUpload(hub, address, signed, name, temp)
+  } finally {
+    await rm(temp, { force: true })
+  }
+}
+
+async function unpackUpload(hub: Hub, address: string, signed: Signed, name: string, temp: string): Promise<Problem> {
+  const refusedWith = (error: ZipRefusal): Problem => {
+    audit(hub, address, signed.user.id, "upload-refused", error.message)
+    return { status: 400, text: `The archive was not uploaded: ${error.message}` }
+  }
+  let zip
+  try {
+    zip = await checkZipFile(temp, hub.config.maxBytes - (await hub.files.usage(signed.user.id)))
+  } catch (error) {
+    if (error instanceof ZipRefusal) return refusedWith(error)
+    throw error
+  }
+  const project = { id: newId(), userId: signed.user.id, name, created: hub.config.now() }
+  const refused = insertProject(hub, project)
+  if (refused) return refused
+  try {
+    await hub.files.unpack(signed.user.id, project.id, zip)
+  } catch (error) {
+    await hub.files.remove(signed.user.id, project.id)
+    hub.store.deleteProject(signed.user.id, project.id)
+    if (error instanceof ZipRefusal) return refusedWith(error)
+    hub.log(`upload into project ${project.id} failed: ${(error as Error).message}`)
+    throw new HubError(400, "The archive could not be unpacked.")
+  }
+  audit(hub, address, signed.user.id, "project-uploaded", `${project.id} (${zip.files.length} files)`)
+  return undefined
 }

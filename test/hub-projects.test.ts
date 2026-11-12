@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from "vitest"
-import { readFile, writeFile, mkdir } from "node:fs/promises"
+import { readdir, readFile, writeFile, mkdir } from "node:fs/promises"
+import { Writable } from "node:stream"
+import { streamMultipart } from "../src/hub/multipart-stream.js"
 import { join } from "node:path"
 import { deflateRawSync } from "node:zlib"
 import { crc32 } from "../src/engine/fab/zip.js"
@@ -214,6 +216,51 @@ describe("hub projects", () => {
     expect(await server.hub.files.usage(idOf(server, "ada@example.com"))).toBe(0)
     const ok = await ada.upload("fine", rawZip([{ name: "dir/a.txt", data: Buffer.from("hello") }]))
     expect(ok.status).toBe(303)
+  })
+
+  test("uploads stream to a file with the cap enforced while reading, and leave nothing behind", async () => {
+    server = await startTestHub({ maxBytes: 100_000 })
+    const ada = await newUser(server, "ada@example.com")
+    // Refused while it arrives: the client sees 413, or the connection closed under it.
+    const big = await ada.upload("big", Buffer.alloc(300_000, 7)).then((answer) => answer.status, (error: Error) => error.message)
+    expect([413, "read ECONNRESET", "write ECONNRESET", "socket hang up"]).toContain(big)
+    const bad = await ada.upload("bad", rawZip([{ name: "../x" }]))
+    expect(bad.status).toBe(400)
+    const ok = await ada.upload("ok", rawZip([{ name: "a.txt", data: Buffer.from("hi") }]))
+    expect(ok.status).toBe(303)
+    expect(await readdir(server.hub.files.uploads)).toEqual([])
+    expect(server.hub.store.projects(idOf(server, "ada@example.com")).map((p) => p.name)).toEqual(["ok"])
+  })
+
+  test("at most 4 uploads run in the hub and 2 downloads per user", async () => {
+    server = await startTestHub()
+    const ada = await newUser(server, "ada@example.com")
+    await ada.submit("/projects", "/projects", { name: "Amp" })
+    const id = server.hub.store.projects(idOf(server, "ada@example.com"))[0]?.id as string
+    server.hub.transfers.uploads = 4
+    expect((await ada.upload("busy", rawZip([{ name: "a.txt" }]))).status).toBe(503)
+    server.hub.transfers.uploads = 0
+    server.hub.transfers.downloads.set(idOf(server, "ada@example.com"), 2)
+    expect((await ada.get(`/projects/${id}/download`)).status).toBe(429)
+    server.hub.transfers.downloads.clear()
+    expect((await ada.get(`/projects/${id}/download`)).status).toBe(200)
+    expect(server.hub.transfers.downloads.size).toBe(0)
+  })
+
+  test("the streaming form reader gives the same fields however the bytes are split", async () => {
+    const boundary = "b0undary"
+    const body = Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="form"\r\n\r\ntok\r\n--${boundary}\r\nContent-Disposition: form-data; name="archive"; filename="p.zip"\r\n\r\nAB\r\nCD--${boundary}x\r\n--${boundary}--\r\n`,
+    )
+    for (const size of [1, 2, 3, 7, 50, body.length]) {
+      const chunks = Array.from({ length: Math.ceil(body.length / size) }, (_, i) => body.subarray(i * size, (i + 1) * size))
+      const written: Buffer[] = []
+      const sink = new Writable({ write: (chunk: Buffer, _e, next) => (written.push(chunk), next()) })
+      const form = await streamMultipart((async function* () { yield* chunks })(), boundary, 10_000, () => sink)
+      expect(form.fields.get("form")).toBe("tok")
+      expect(form.fileField).toBe("archive")
+      expect(Buffer.concat(written).toString()).toBe(`AB\r\nCD--${boundary}x`)
+    }
   })
 
   test("the zip writer and reader agree", async () => {
