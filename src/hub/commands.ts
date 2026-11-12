@@ -132,11 +132,11 @@ async function resetPassword(store: HubStore, email: string | undefined, io: Cli
   const user = store.userByEmail(email)
   if (!user) throw new Error(`There is no user with the email ${normaliseEmail(email)}`)
   const password = newSecret()
-  store.setPassword(user.id, await hashPassword(password))
+  store.setPassword(user.id, await hashPassword(password), true)
   store.endSessions(user.id)
   store.forgetDevices(user.id)
   store.audit({ time: Date.now(), userId: user.id, event: "password-reset", address: "cli", detail: "" })
-  io.out(`A one-time password for ${user.email}, shown only now. Every session of the user has ended; ask them to change it on the account page:`)
+  io.out(`A one-time password for ${user.email}, shown only now. Every session of the user has ended; they must choose a new password when they next sign in:`)
   io.out(password)
   return 0
 }

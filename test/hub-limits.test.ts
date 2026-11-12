@@ -121,6 +121,11 @@ describe("the sign-in limits", () => {
     expect(server.hub.store.deviceCount(id)).toBe(0)
     password = out.lines[1] as string
     await signInAgain()
+    // The reset password must be replaced first; that is a password change, which forgets the devices too.
+    await ada.submit("/account", "/account/password", { current: password, password: "a third password" })
+    password = "a third password"
+    expect(server.hub.store.deviceCount(id)).toBe(0)
+    await signInAgain()
     await ada.submit("/account", "/account/delete", { confirm: "ada@example.com", password })
     expect(server.hub.store.deviceCount(id)).toBe(0)
   })

@@ -10,6 +10,8 @@ import { cookies, setCookie } from "./http.js"
 import { formTokenOf, hashSecret, newSecret, sameSecret } from "./secrets.js"
 
 export const SESSION_MS = 14 * 24 * 60 * 60_000
+/** The longest a session lives from sign-in, renewed or not. */
+export const MAX_SESSION_MS = 30 * 24 * 60 * 60_000
 /** A session's expiry is pushed back at most this often, so reading pages does not write the store on every click. */
 const RENEW_EVERY_MS = 60_000
 const ANONYMOUS_FORM_S = 60 * 60
@@ -156,12 +158,19 @@ export function sessionOf(hub: Hub, req: IncomingMessage): { signed?: Signed; re
   const now = hub.config.now()
   const session = hub.store.session(sessionHash, now)
   if (!session) return {}
+  // However much it is used, a session ends 30 days after sign-in.
+  const lastPossible = session.created + MAX_SESSION_MS
+  if (now >= lastPossible) {
+    hub.store.endSession(sessionHash)
+    return {}
+  }
   const user = hub.store.userById(session.userId)
   if (!user) return {}
   const signed = { user, sessionHash, formToken: formTokenOf(secret) }
   if (now - session.lastSeen < RENEW_EVERY_MS) return { signed }
-  hub.store.renewSession(sessionHash, now, now + SESSION_MS)
-  return { signed, renewed: setCookie(sessionCookieName(hub.config), secret, { secure: hub.config.secure, maxAgeS: SESSION_MS / 1000 }) }
+  const expires = Math.min(now + SESSION_MS, lastPossible)
+  hub.store.renewSession(sessionHash, now, expires)
+  return { signed, renewed: setCookie(sessionCookieName(hub.config), secret, { secure: hub.config.secure, maxAgeS: (expires - now) / 1000 }) }
 }
 
 /** Whether the form field matches the session's form token. */

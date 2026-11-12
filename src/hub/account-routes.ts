@@ -93,7 +93,7 @@ export async function signIn(hub: Hub, req: IncomingMessage, res: ServerResponse
   refund()
   audit(hub, address, user.id, "signin")
   const deviceCookie = rememberDevice(hub, req, user.id)
-  redirect(res, "/projects", { "set-cookie": [startSession(hub, user.id), ...(deviceCookie ? [deviceCookie] : [])] })
+  redirect(res, user.mustChangePassword ? "/account" : "/projects", { "set-cookie": [startSession(hub, user.id), ...(deviceCookie ? [deviceCookie] : [])] })
 }
 
 export async function signUp(hub: Hub, req: IncomingMessage, res: ServerResponse, address: string): Promise<void> {
@@ -133,7 +133,8 @@ export async function signOut(hub: Hub, req: IncomingMessage, res: ServerRespons
 }
 
 export function showAccount(res: ServerResponse, signed: Signed, renewed?: string, status = 200, error?: string, note?: string): void {
-  sendPage(res, status, accountPage({ email: signed.user.email, formToken: signed.formToken }, error, note), withRenewed(renewed))
+  const reset = signed.user.mustChangePassword ? "Your password was reset. Choose a new one to go on." : undefined
+  sendPage(res, status, accountPage({ email: signed.user.email, formToken: signed.formToken }, error, note ?? reset), withRenewed(renewed))
 }
 
 /**

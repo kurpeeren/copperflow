@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "vitest"
 import type { HubServer } from "../src/hub/server.js"
-import { Browser, invite, newUser, ORIGIN, startTestHub } from "./helpers/hub-client.js"
+import { hashPassword } from "../src/hub/secrets.js"
+import { Browser, formToken, invite, newUser, ORIGIN, startTestHub } from "./helpers/hub-client.js"
 
 let server: HubServer | undefined
 afterEach(async () => {
@@ -78,6 +79,36 @@ describe("hub accounts", () => {
     expect(twin.status).toBe(400)
     expect(server.hub.store.counts().users).toBe(1)
     expect((await new Browser(server.url).signIn("RENÉ@example.com")).status).toBe(303)
+  })
+
+  test("a session ends 30 days after sign-in however much it is used", async () => {
+    let now = Date.now()
+    server = await startTestHub({ now: () => now })
+    const ada = await newUser(server, "ada@example.com")
+    for (let day = 0; day < 29; day += 1) {
+      now += 24 * 60 * 60_000
+      expect((await ada.get("/projects")).status).toBe(200)
+    }
+    now += 24 * 60 * 60_000
+    expect((await ada.get("/projects")).headers.location).toBe("/signin")
+  })
+
+  test("a password reset by the maintainer must be changed before anything else", async () => {
+    server = await startTestHub()
+    await newUser(server, "ada@example.com")
+    const id = server.hub.store.userByEmail("ada@example.com")?.id as string
+    server.hub.store.setPassword(id, await hashPassword("one time password"), true)
+    const ada = new Browser(server.url)
+    const signedIn = await ada.signIn("ada@example.com", "one time password")
+    expect(signedIn.headers.location).toBe("/account")
+    expect((await ada.get("/projects")).headers.location).toBe("/account")
+    expect((await ada.get("/account")).text).toContain("Your password was reset. Choose a new one to go on.")
+    const token = formToken((await ada.get("/account")).text)
+    expect((await ada.post("/projects", { form: token, name: "Amp" })).status).toBe(403)
+    expect(server.hub.store.projectCount(id)).toBe(0)
+    expect((await ada.submit("/account", "/account/password", { current: "one time password", password: "my own password" })).status).toBe(303)
+    expect((await ada.get("/projects")).status).toBe(200)
+    expect(server.hub.store.userById(id)?.mustChangePassword).toBe(false)
   })
 
   test("successful sign-ins are not counted against anyone", async () => {

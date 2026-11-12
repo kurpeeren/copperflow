@@ -178,7 +178,14 @@ function viewerOf(signed: Signed | undefined) {
   return signed ? { email: signed.user.email, formToken: signed.formToken } : undefined
 }
 
+/** While a reset password waits to be replaced, only these routes are open. */
+const WHILE_RESET = new Set(["GET /account", "POST /account/password", "POST /signout"])
+
 async function signedRoute(hub: Hub, req: IncomingMessage, res: ServerResponse, address: string, signed: Signed, renewed: string | undefined, page: string): Promise<void> {
+  if (signed.user.mustChangePassword && !WHILE_RESET.has(page)) {
+    if (page.startsWith("GET ")) return redirect(res, "/account")
+    throw new HubError(403, "Choose a new password on the account page first.")
+  }
   switch (page) {
     case "POST /signout":
       return signOut(hub, req, res, address, signed)
@@ -227,6 +234,7 @@ async function proxy(hub: Hub, req: IncomingMessage, res: ServerResponse, raw: s
     if (SAFE_METHODS.has(method) && !raw.startsWith(`/p/${id}/api/`)) return redirect(res, "/signin")
     throw new HubError(404, "There is no such page.")
   }
+  if (signed.user.mustChangePassword) throw new HubError(403, "Choose a new password on the account page first.")
   ownProject(hub, signed, id)
   // Rule 4 of docs/hosted.md: no ticket is ever made for a cross-site request.
   const origin = header(req, "origin")

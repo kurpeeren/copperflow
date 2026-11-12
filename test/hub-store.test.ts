@@ -47,7 +47,7 @@ describe("the hub store", () => {
     s.addInvite(hashSecret("code-1"), 1)
     s.addInvite(hashSecret("code-2"), 1)
     const user = s.signUp(hashSecret("code-1"), { id: "u1", email: " Ada@Example.COM ", passwordHash: "h" }, 5)
-    expect(user).toEqual({ id: "u1", email: "ada@example.com", passwordHash: "h", created: 5 })
+    expect(user).toEqual({ id: "u1", email: "ada@example.com", passwordHash: "h", created: 5, mustChangePassword: false })
     expect(s.signUp(hashSecret("code-1"), { id: "u2", email: "bob@example.com", passwordHash: "h" }, 6)).toBeUndefined()
     expect(s.signUp(hashSecret("code-2"), { id: "u3", email: "ADA@example.com", passwordHash: "h" }, 6)).toBeUndefined()
     expect(s.signUp(hashSecret("nope"), { id: "u4", email: "c@example.com", passwordHash: "h" }, 6)).toBeUndefined()

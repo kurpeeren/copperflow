@@ -9,6 +9,8 @@ export interface User {
   email: string
   passwordHash: string
   created: number
+  /** Set by the maintainer's reset: the user must choose a new password before anything else. */
+  mustChangePassword: boolean
 }
 
 export interface Session {
@@ -82,8 +84,13 @@ CREATE TABLE IF NOT EXISTS audit (
 
 type Row = Record<string, unknown>
 
+/** Columns added after the first schema; fixed strings, never input. */
+const COLUMNS: readonly [string, string][] = [["users", "must_change INTEGER NOT NULL DEFAULT 0"]]
+
 const userOf = (row: Row | undefined): User | undefined =>
-  row ? { id: row.id as string, email: row.email as string, passwordHash: row.password as string, created: Number(row.created) } : undefined
+  row
+    ? { id: row.id as string, email: row.email as string, passwordHash: row.password as string, created: Number(row.created), mustChangePassword: Number(row.must_change) === 1 }
+    : undefined
 const projectOf = (row: Row | undefined): Project | undefined =>
   row ? { id: row.id as string, userId: row.user_id as string, name: row.name as string, created: Number(row.created) } : undefined
 
@@ -100,6 +107,14 @@ export class HubStore {
   private constructor(file: string) {
     this.db = new DatabaseSync(file)
     this.db.exec(SCHEMA)
+    for (const [table, column] of COLUMNS) this.addColumn(table, column)
+  }
+
+  /** Adds a column a database made by an earlier version lacks. */
+  private addColumn(table: string, column: string): void {
+    const name = column.split(" ")[0] as string
+    const known = (this.db.prepare(`PRAGMA table_info(${table})`).all() as Row[]).some((row) => row.name === name)
+    if (!known) this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column}`)
   }
 
   static open(file: string): HubStore {
@@ -148,7 +163,7 @@ export class HubStore {
       if (this.sql("SELECT 1 AS found FROM users WHERE email = ?").get(email)) return undefined
       this.sql("INSERT INTO users (id, email, password, created) VALUES (?, ?, ?, ?)").run(user.id, email, user.passwordHash, now)
       this.sql("UPDATE invites SET used_at = ?, used_by = ? WHERE hash = ?").run(now, user.id, codeHash)
-      return { id: user.id, email, passwordHash: user.passwordHash, created: now }
+      return { id: user.id, email, passwordHash: user.passwordHash, created: now, mustChangePassword: false }
     })
   }
 
@@ -160,8 +175,9 @@ export class HubStore {
     return userOf(this.sql("SELECT * FROM users WHERE id = ?").get(id) as Row | undefined)
   }
 
-  setPassword(userId: string, passwordHash: string): void {
-    this.sql("UPDATE users SET password = ? WHERE id = ?").run(passwordHash, userId)
+  /** Sets the password; `mustChange` when the maintainer reset it and the user must choose a new one. */
+  setPassword(userId: string, passwordHash: string, mustChange = false): void {
+    this.sql("UPDATE users SET password = ?, must_change = ? WHERE id = ?").run(passwordHash, mustChange ? 1 : 0, userId)
   }
 
   /** Deletes the user with their sessions and project rows (the folders are the caller's to remove). */
