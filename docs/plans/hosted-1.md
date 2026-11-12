@@ -68,7 +68,7 @@ An independent review of Tasks 1–3 before anything is exposed: authentication 
 
 ## For the maintainer to decide (nothing here is assumed)
 
-1. **The server**: its operating system, whether containers (Docker or Podman) can run on it, which reverse proxy already serves `kurpeeren.com`, and how much memory and disk the beta may use. Without containers there is no safe way to run strangers' circuit code; the beta would then be limited to accounts the maintainer trusts.
+1. **The server**: Docker is available on it (the maintainer, 2026-11-12), so workspaces run in containers as decided above. Still open: its operating system, which reverse proxy already serves `kurpeeren.com`, and how much memory and disk the beta may use.
 2. **Who may sign up**: invite codes only (this plan), or open sign-up later, which needs email, abuse handling and a way to answer people.
 3. **The texts**: the privacy and terms pages. The service stores an email address, a password hash, the projects and an audit log; if people in Turkey or the EU use it, the personal-data rules (KVKK, GDPR) apply to the maintainer as the operator.
 4. **The LCSC importer**: stays off in hosted mode, or the maintainer asks JLCEDA/EasyEDA for permission.
