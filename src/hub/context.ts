@@ -3,6 +3,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http"
 import type { WorkspaceRunner } from "./runner/runner.js"
 import type { AgentSessions } from "./agent-sessions.js"
+import type { Catalog } from "./hub-catalog.js"
+import type { OAuthState } from "./oauth-state.js"
 import type { TicketKeys } from "./keys.js"
 import type { ProjectFiles } from "./projects.js"
 import type { HubStore, User } from "./store.js"
@@ -50,6 +52,10 @@ export interface Hub {
   transfers: { uploads: number; uploadingUsers: Set<string>; downloads: Map<string, number> }
   /** The agents' MCP sessions at the hub. */
   agents: AgentSessions
+  /** The hub's MCP instructions and tool list, read once at start (hub-catalog.ts). */
+  catalog: Catalog
+  /** OAuth requests waiting for sign-in or consent, and issued codes (oauth.ts). */
+  oauth: OAuthState
   log: (line: string) => void
 }
 
@@ -74,6 +80,14 @@ export interface Limits {
   signupAddress: WindowCounter
   reauth: WindowCounter
   gate: SigninGate
+  /** Tool calls per user: 60 a minute. */
+  toolCalls: WindowCounter
+  /** Refused bearer tokens audited per address: 10 per 15 minutes (the rest are refused unrecorded). */
+  refusedTokens: WindowCounter
+  /** OAuth client registrations per address: 20 an hour. */
+  register: WindowCounter
+  /** OAuth authorisation requests per address: 30 per 15 minutes. */
+  authorize: WindowCounter
 }
 
 const FIFTEEN_MINUTES = 15 * 60_000
@@ -89,6 +103,10 @@ export function newLimits(maxKeys?: number): Limits {
     signinEmail: new EmailBuckets(EMAIL_FAILURES, FIFTEEN_MINUTES),
     signupAddress: new WindowCounter(20, 60 * 60_000, maxKeys),
     reauth: new WindowCounter(ADDRESS_FAILURES, FIFTEEN_MINUTES, maxKeys),
+    toolCalls: new WindowCounter(60, 60_000, maxKeys),
+    refusedTokens: new WindowCounter(10, FIFTEEN_MINUTES, maxKeys),
+    register: new WindowCounter(20, 60 * 60_000, maxKeys),
+    authorize: new WindowCounter(30, FIFTEEN_MINUTES, maxKeys),
     gate: new SigninGate({ threshold: MAX_FAILED_SIGNINS, windowMs: FIFTEEN_MINUTES, perSecond: 5, queue: 50, perAddress: 2 }),
   }
 }

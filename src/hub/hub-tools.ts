@@ -1,0 +1,150 @@
+// The tools the hub answers itself (list_projects, new_project, open_project, guide), the tool-call limit, and the
+// dispatch to the open project's workspace for every other tool. The open project is state of the agent's session.
+import { readdir } from "node:fs/promises"
+import { join } from "node:path"
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js"
+import { z } from "zod"
+import { guide, guideInput } from "../mcp/guide.js"
+import { audit, type Hub } from "./context.js"
+import { forwardTool, type Upstream } from "./mcp-forward.js"
+import { addProject, projectName } from "./project-routes.js"
+import { ID_PATTERN } from "./secrets.js"
+import type { Project } from "./store.js"
+
+export const TOOL_CALLS_PER_MINUTE = 60
+
+/** One agent session at the hub. */
+export interface AgentState {
+  userId: string
+  credential: string
+  projectId?: string | undefined
+  upstream?: Upstream | undefined
+  closed: boolean
+}
+
+/** The request's credential, as the bearer check found it (the hash only, never the token). */
+export interface CallAuth {
+  hash: string
+  userId: string
+  credential: string
+}
+
+export function text(message: string, isError = false): CallToolResult {
+  return { ...(isError ? { isError: true } : {}), content: [{ type: "text", text: message }] }
+}
+
+/** Whether the session and the token of this request still hold: asked after every wait, before acting. */
+export function stillAuthorised(hub: Hub, state: AgentState, auth: CallAuth): boolean {
+  if (state.closed) return false
+  const found = hub.store.tokens.credential(auth.hash, hub.config.now())
+  if (!found || found.userId !== state.userId || found.credential !== state.credential) return false
+  const user = hub.store.userById(state.userId)
+  return user !== undefined && !user.mustChangePassword
+}
+
+const NO_PROJECT = "No project is open. Call list_projects, then open_project { name } or new_project { name }, and call this tool again."
+const NOT_FOUND = "There is no such project. Call list_projects to see yours."
+
+/** Counts the call before anything waits; the refusal the agent reads, if over the limit. */
+function limited(hub: Hub, userId: string, address: string): CallToolResult | undefined {
+  const now = hub.config.now()
+  const check = hub.limits.toolCalls.check(userId, now)
+  if (!check.ok) {
+    audit(hub, address, userId, "tool-calls-limited")
+    return text(`429 Too many tool calls: at most ${TOOL_CALLS_PER_MINUTE} a minute. Wait ${check.retryAfterS} s, then call again.`, true)
+  }
+  // Keyed by user id (only signed-in users reach this), so the table holds at most one key per account.
+  if (hub.limits.toolCalls.add(userId, now) === "full") {
+    hub.log("the tool-call limiter table is full")
+    return text("The service is busy. Wait a minute, then call again.", true)
+  }
+  return undefined
+}
+
+export async function callTool(hub: Hub, state: AgentState, auth: CallAuth, name: string, args: Record<string, unknown>, address: string, signal: AbortSignal): Promise<CallToolResult> {
+  const refused = limited(hub, state.userId, address)
+  if (refused) return refused
+  if (!stillAuthorised(hub, state, auth)) return text("Access was revoked. Connect again.", true)
+  switch (name) {
+    case "list_projects":
+      return listProjects(hub, state)
+    case "new_project":
+      return newProject(hub, state, auth, args, address)
+    case "open_project":
+      return openProject(hub, state, args)
+    case "guide":
+      return guideTool(args)
+  }
+  if (!hub.catalog.forwarded.has(name)) return text(`Unknown tool: ${name}`, true)
+  const project = state.projectId === undefined ? undefined : hub.store.project(state.userId, state.projectId)
+  if (!project) return text(NO_PROJECT, true)
+  return forwardTool(hub, state, auth, project.id, name, args, signal)
+}
+
+function watchAt(hub: Hub, project: Project): string {
+  return `The person watches it at ${hub.config.publicOrigin}/p/${project.id}/`
+}
+
+function open(hub: Hub, state: AgentState, project: Project): void {
+  if (state.projectId !== project.id) {
+    state.upstream?.close()
+    state.upstream = undefined
+  }
+  state.projectId = project.id
+}
+
+/** Circuit files and parts in the project folder (two directory reads); undefined when they cannot be read. */
+async function counts(hub: Hub, project: Project): Promise<string> {
+  const dir = hub.files.projectDir(project.userId, project.id)
+  try {
+    const circuits = (await readdir(dir)).filter((file) => file.endsWith(".circuit.tsx")).length
+    const parts = await readdir(join(dir, "parts")).then((entries) => entries.length, () => 0)
+    return `, ${circuits} circuit${circuits === 1 ? "" : "s"}, ${parts} part${parts === 1 ? "" : "s"}`
+  } catch {
+    return ""
+  }
+}
+
+async function listProjects(hub: Hub, state: AgentState): Promise<CallToolResult> {
+  const projects = hub.store.projects(state.userId)
+  if (projects.length === 0) return text("You have no projects yet. Call new_project { name } to make one.")
+  const lines = await Promise.all(projects.map(async (p) => `- ${p.name} (id ${p.id}${await counts(hub, p)})${p.id === state.projectId ? " [open]" : ""}`))
+  return text(`Your projects (${projects.length} of ${hub.config.maxProjects}):\n${lines.join("\n")}`)
+}
+
+const newProjectInput = z.object({ name: z.string().max(1000) })
+const openProjectInput = z.object({ name: z.string().max(1000).optional(), id: z.string().max(100).optional() })
+
+async function newProject(hub: Hub, state: AgentState, auth: CallAuth, args: Record<string, unknown>, address: string): Promise<CallToolResult> {
+  const parsed = newProjectInput.safeParse(args)
+  const name = parsed.success ? projectName(parsed.data.name) : undefined
+  if (!name) return text("A project name has 1 to 100 characters.", true)
+  const made = await addProject(hub, state.userId, name, address, () => stillAuthorised(hub, state, auth))
+  if ("problem" in made) return text(made.problem.text, true)
+  if (!stillAuthorised(hub, state, auth)) return text("Access was revoked. Connect again.", true)
+  open(hub, state, made.project)
+  return text(`Project "${made.project.name}" created and open (id ${made.project.id}). ${watchAt(hub, made.project)}`)
+}
+
+function openProject(hub: Hub, state: AgentState, args: Record<string, unknown>): CallToolResult {
+  const parsed = openProjectInput.safeParse(args)
+  if (!parsed.success || (parsed.data.name === undefined) === (parsed.data.id === undefined)) return text("Give the project's name or its id.", true)
+  const { id, name } = parsed.data
+  const project =
+    id !== undefined
+      ? ID_PATTERN.test(id) ? hub.store.project(state.userId, id) : undefined
+      : hub.store.projects(state.userId).find((p) => p.name === projectName(name))
+  if (!project) return text(NOT_FOUND, true)
+  open(hub, state, project)
+  return text(`Project "${project.name}" is open (id ${project.id}). ${watchAt(hub, project)}`)
+}
+
+async function guideTool(args: Record<string, unknown>): Promise<CallToolResult> {
+  const parsed = z.object(guideInput).safeParse(args)
+  if (!parsed.success) return text("guide takes { topic? } with a topic name.", true)
+  try {
+    return text(await guide(parsed.data))
+  } catch (error) {
+    return text((error as Error).message, true)
+  }
+}

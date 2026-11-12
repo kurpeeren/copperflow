@@ -128,6 +128,8 @@ export async function serveProjectOrigin(hub: Hub, req: IncomingMessage, res: Se
   const query = raw.indexOf("?")
   const path = query < 0 ? raw : raw.slice(0, query)
   if (!plainPath(path)) throw new HubError(400, "That address is not valid.")
+  // The agent's endpoint lives on the public origin only.
+  if (path === "/mcp" || path.startsWith("/mcp/")) throw new HubError(404, "There is no such page.")
   // No worker script is ever served on a project origin: a Service Worker could read the next /_enter token.
   if (header(req, "service-worker") !== undefined) throw new HubError(404, "There is no such page.")
   const method = req.method ?? "GET"

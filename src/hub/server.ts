@@ -20,6 +20,9 @@ import type { WorkspaceRunner } from "./runner/runner.js"
 import { HubStore } from "./store.js"
 import { prepareDataDir } from "./permissions.js"
 import { AgentSessions } from "./agent-sessions.js"
+import { loadCatalog } from "./hub-catalog.js"
+import { OAuthState } from "./oauth-state.js"
+import { serveMcp } from "./mcp-hub.js"
 import { createToken, revokeClient, revokeToken } from "./agent-account-routes.js"
 
 export const MAX_PROJECTS = 20
@@ -125,6 +128,8 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
     enterTokens: new Map(),
     transfers: { uploads: 0, uploadingUsers: new Set(), downloads: new Map() },
     agents: new AgentSessions(),
+    catalog: await loadCatalog(publicOrigin),
+    oauth: new OAuthState(),
     log: options.log ?? ((line) => process.stderr.write(`copperflow hub: ${line}\n`)),
   }
 }
@@ -162,6 +167,7 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
   // Every 15 s: expired sessions go, and the cuts the maintainer's commands asked for are carried out.
   const sweep = setInterval(() => {
     hub.store.sweepSessions(hub.config.now())
+    hub.store.tokens.sweep(hub.config.now())
     sweepCuts(hub).catch((error: unknown) => hub.log(`sweep failed: ${(error as Error).message}`))
   }, options.sweepMs ?? SWEEP_MS)
   sweep.unref()
@@ -170,6 +176,7 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
     hub,
     close: async () => {
       clearInterval(sweep)
+      hub.agents.closeAll()
       await hub.runner.stopAll()
       server.closeAllConnections()
       await new Promise<void>((done) => server.close(() => done()))
@@ -266,6 +273,8 @@ async function route(hub: Hub, req: IncomingMessage, res: ServerResponse): Promi
   const query = raw.indexOf("?")
   const path = query < 0 ? raw : raw.slice(0, query)
   const method = req.method ?? "GET"
+  // The agent's endpoint: bearer tokens only, never a cookie, so no form or Origin rule applies.
+  if (path === "/mcp") return serveMcp(hub, req, res, address)
   if (!SAFE_METHODS.has(method)) {
     if (method !== "POST") throw new HubError(405, "That method is not allowed here.")
     // Before anything is read or decided: a form posted from another site is refused outright.

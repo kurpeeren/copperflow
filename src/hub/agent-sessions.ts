@@ -1,26 +1,69 @@
 // The agents' MCP sessions at the hub: who opened each, with which credential (a personal token or an OAuth grant), and
-// how to close it. Revoking a credential or a user closes their sessions at once, which ends any open stream.
+// how to close it. The limits are mcp-sessions.ts's (4 per user, reserved before any await, idle and absolute
+// lifetimes, fair share when the hub is full). Revoking a credential or a user closes their sessions at once, which
+// ends any open stream.
+import { SessionTable, type Reservation } from "../hosted/mcp-sessions.js"
 
 export interface AgentSessionEntry {
   userId: string
   credential: string
+  /** Hands a request of this session to its transport. */
+  handle: (req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse, body: unknown) => Promise<void>
+  /** Closes the session's transport (and with it every open stream). */
   close: () => void
 }
 
+export interface AgentLimits {
+  maxSessions: number
+  maxPerUser: number
+  idleMs: number
+  lifetimeMs: number
+}
+
+export const DEFAULT_AGENT_LIMITS: AgentLimits = { maxSessions: 512, maxPerUser: 4, idleMs: 30 * 60_000, lifetimeMs: 12 * 60 * 60_000 }
+
 export class AgentSessions {
+  private readonly table: SessionTable
   private readonly sessions = new Map<string, AgentSessionEntry>()
 
-  add(id: string, entry: AgentSessionEntry): void {
+  constructor(limits: AgentLimits = DEFAULT_AGENT_LIMITS) {
+    this.table = new SessionTable(limits)
+  }
+
+  /** Holds a slot for the user, synchronously; throws SessionRefusal (429) at the limits. */
+  reserve(userId: string): Reservation {
+    return this.table.reserve(userId)
+  }
+
+  /** Registers an initialised session in its reservation. */
+  register(reservation: Reservation, id: string, entry: AgentSessionEntry): void {
     this.sessions.set(id, entry)
+    reservation.commit(id, () => {
+      this.sessions.delete(id)
+      entry.close()
+    })
   }
 
   get(id: string): AgentSessionEntry | undefined {
     return this.sessions.get(id)
   }
 
+  touch(id: string): void {
+    this.table.touch(id)
+  }
+
+  streamOpened(id: string): void {
+    this.table.streamOpened(id)
+  }
+
+  streamClosed(id: string): void {
+    this.table.streamClosed(id)
+  }
+
   /** Forgets a session that closed itself. */
   forget(id: string): void {
     this.sessions.delete(id)
+    this.table.forget(id)
   }
 
   get size(): number {
@@ -28,11 +71,8 @@ export class AgentSessions {
   }
 
   private closeWhere(match: (entry: AgentSessionEntry) => boolean): number {
-    const doomed = [...this.sessions].filter(([, entry]) => match(entry))
-    for (const [id, entry] of doomed) {
-      this.sessions.delete(id)
-      entry.close()
-    }
+    const doomed = [...this.sessions].filter(([, entry]) => match(entry)).map(([id]) => id)
+    for (const id of doomed) this.table.close(id)
     return doomed.length
   }
 
@@ -45,6 +85,7 @@ export class AgentSessions {
   }
 
   closeAll(): void {
-    this.closeWhere(() => true)
+    this.table.closeAll()
+    this.sessions.clear()
   }
 }

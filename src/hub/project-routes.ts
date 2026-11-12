@@ -60,19 +60,30 @@ export async function createProject(hub: Hub, req: IncomingMessage, res: ServerR
   const form = await checkedForm(req, signed)
   const name = projectName(form.get("name"))
   if (!name) return showProjects(hub, res, signed, undefined, 400, `A project name has 1 to ${MAX_NAME} characters.`)
-  // Check, insert and create run under the user's lock, so concurrent requests cannot pass the quota together.
-  const problem = await withUserLock(hub, signed.user.id, async () => {
-    const quota = await quotaProblem(hub, signed.user.id)
-    if (quota) return { status: 403, text: quota }
-    const project = { id: newId(), userId: signed.user.id, name, created: hub.config.now() }
-    const created = insertProject(hub, project)
-    if (created) return created
-    await hub.files.create(signed.user.id, project.id)
-    audit(hub, address, signed.user.id, "project-created", project.id)
-    return undefined
-  })
-  if (problem) return showProjects(hub, res, signed, undefined, problem.status, problem.text)
+  const made = await addProject(hub, signed.user.id, name, address)
+  if ("problem" in made) return showProjects(hub, res, signed, undefined, made.problem.status, made.problem.text)
   redirect(res, "/projects")
+}
+
+/**
+ * Creates a project: check, insert and create run under the user's lock, so concurrent requests cannot pass the quota
+ * together. `stillValid` is asked after every wait, before anything is written (an agent's token may be revoked
+ * meanwhile); when it says no, nothing is made.
+ */
+export async function addProject(hub: Hub, userId: string, name: string, address: string, stillValid: () => boolean = () => true): Promise<{ project: Project } | { problem: { status: number; text: string } }> {
+  const revoked = { problem: { status: 403, text: "Access was revoked." } }
+  return withUserLock(hub, userId, async () => {
+    if (!stillValid()) return revoked
+    const quota = await quotaProblem(hub, userId)
+    if (quota) return { problem: { status: 403, text: quota } }
+    if (!stillValid()) return revoked
+    const project = { id: newId(), userId, name, created: hub.config.now() }
+    const refused = insertProject(hub, project)
+    if (refused) return { problem: refused }
+    await hub.files.create(userId, project.id)
+    audit(hub, address, userId, "project-created", project.id)
+    return { project }
+  })
 }
 
 /** Inserts the row with the count check in the same transaction; the refusal to show, if any. */
