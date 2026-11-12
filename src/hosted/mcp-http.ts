@@ -9,6 +9,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js"
 import { DEFAULT_MAX_STREAM_MS, normaliseOrigin } from "./gate.js"
 import { nowSeconds, TICKET_HEADER, verifyTicket, type TicketPayload } from "./ticket.js"
+import { SessionRefusal, SessionTable, type Reservation } from "./mcp-sessions.js"
 
 export interface McpHttpOptions {
   /** 0 picks a free port. */
@@ -23,12 +24,17 @@ export interface McpHttpOptions {
   publicOrigin?: string
   /** Serves without tickets; allowed only on a loopback address (tests and local use). */
   insecureLocal?: boolean
-  /** Sessions open at once on the whole server; default 16. At the limit initialize is refused (429). */
+  /**
+   * Sessions open at once on the whole server; default 16. At the limit the longest-idle session of a user above
+   * their fair share is closed, or initialize is refused (429).
+   */
   maxSessions?: number
   /** Sessions one user may hold; default 4. At the limit that user's session idle longest is closed. */
   maxSessionsPerUser?: number
-  /** A session nobody used for this long is closed; default 10 minutes. */
+  /** A session nobody used for this long is closed (never while a stream is open); default 10 minutes. */
   idleMs?: number
+  /** Every session is closed this long after it opened, streams or not; default 60 minutes. */
+  lifetimeMs?: number
   /** The longest a GET stream stays open; default 15 minutes. It also ends when its ticket expires. */
   maxStreamMs?: number
 }
@@ -40,21 +46,12 @@ export interface McpHttp {
   close(): Promise<void>
 }
 
-interface Session {
-  transport: StreamableHTTPServerTransport
-  /** The user whose ticket opened it; "" without tickets. */
-  user: string
-  lastSeen: number
-  /** GET streams open now; while any is, the session is active. */
-  streams: number
-  idle?: NodeJS.Timeout | undefined
-}
-
 const PATH = "/mcp"
 const MAX_BODY_BYTES = 4 * 1024 * 1024
 const DEFAULT_MAX_SESSIONS = 16
 const DEFAULT_MAX_SESSIONS_PER_USER = 4
 const DEFAULT_IDLE_MS = 10 * 60_000
+const DEFAULT_LIFETIME_MS = 60 * 60_000
 const REQUEST_TIMEOUT_MS = 15_000
 const HEADERS_TIMEOUT_MS = 10_000
 const MAX_CONNECTIONS = 64
@@ -114,7 +111,6 @@ export async function startMcpHttp(options: McpHttpOptions): Promise<McpHttp> {
   const bind = options.bind ?? "127.0.0.1"
   const publicOrigin = checkStart(options, bind)
   const publicHost = publicOrigin === undefined ? undefined : new URL(publicOrigin).host
-  const sessions = new Map<string, Session>()
   const maxSessions = options.maxSessions ?? DEFAULT_MAX_SESSIONS
   const idleMs = options.idleMs ?? DEFAULT_IDLE_MS
   const maxStreamMs = options.maxStreamMs ?? DEFAULT_MAX_STREAM_MS
@@ -122,32 +118,8 @@ export async function startMcpHttp(options: McpHttpOptions): Promise<McpHttp> {
 
   const maxPerUser = options.maxSessionsPerUser ?? DEFAULT_MAX_SESSIONS_PER_USER
 
-  const closeSession = (id: string) => {
-    const session = sessions.get(id)
-    if (!session) return
-    sessions.delete(id)
-    clearTimeout(session.idle)
-    void session.transport.close()
-  }
-  /** Marks a session used; while a GET stream is open it is active and no idle timer runs. */
-  const touch = (id: string, session: Session) => {
-    clearTimeout(session.idle)
-    session.lastSeen = Date.now()
-    session.idle = session.streams > 0 ? undefined : setTimeout(() => closeSession(id), idleMs)
-  }
-  /**
-   * Makes room for `user`'s new session: at their own limit their session idle longest goes (one holding a stream is
-   * active and stays); none idle, or the whole server full, is a 429. Nobody's session is closed for another user.
-   */
-  const makeRoom = (user: string) => {
-    const own = [...sessions].filter(([, session]) => session.user === user)
-    if (own.length >= maxPerUser) {
-      const idle = own.filter(([, session]) => session.streams === 0).sort((a, b) => a[1].lastSeen - b[1].lastSeen)[0]
-      if (!idle) throw new Refusal(429, "Too many open sessions for this user")
-      closeSession(idle[0])
-    }
-    if (sessions.size >= maxSessions) throw new Refusal(429, "Too many open sessions")
-  }
+  const table = new SessionTable({ maxSessions, maxPerUser, idleMs, lifetimeMs: options.lifetimeMs ?? DEFAULT_LIFETIME_MS })
+  const transports = new Map<string, StreamableHTTPServerTransport>()
 
   /** Checks the Origin, then (with tickets) the Host the hub forwards and the ticket; the ticket's payload, if any. */
   function admit(req: IncomingMessage): TicketPayload | undefined {
@@ -173,44 +145,55 @@ export async function startMcpHttp(options: McpHttpOptions): Promise<McpHttp> {
     const sessionId = req.headers["mcp-session-id"]
     const body = req.method === "POST" ? await readBody(req) : undefined
     if (typeof sessionId === "string") {
-      const session = sessions.get(sessionId)
-      if (!session) throw new Refusal(404, "Unknown session")
-      if (session.user !== (ticket?.u ?? "")) throw new Refusal(403, "The session belongs to another user")
+      const transport = transports.get(sessionId)
+      const owner = table.userOf(sessionId)
+      if (!transport || owner === undefined) throw new Refusal(404, "Unknown session")
+      if (owner !== (ticket?.u ?? "")) throw new Refusal(403, "The session belongs to another user")
       if (req.method === "GET") {
-        session.streams += 1
+        table.streamOpened(sessionId)
         limitStream(res, ticket)
-        res.on("close", () => {
-          session.streams -= 1
-          if (sessions.get(sessionId) === session) touch(sessionId, session)
-        })
-      }
-      touch(sessionId, session)
-      return session.transport.handleRequest(req, res, body)
+        res.on("close", () => table.streamClosed(sessionId))
+      } else table.touch(sessionId)
+      return transport.handleRequest(req, res, body)
     }
     if (req.method !== "POST" || !isInitializeRequest(body)) throw new Refusal(400, "Start a session with an initialize request")
-    const user = ticket?.u ?? ""
-    makeRoom(user)
-    const server = options.makeServer()
-    const transport: StreamableHTTPServerTransport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: () => randomUUID(),
-      enableDnsRebindingProtection: true,
-      allowedHosts: publicHost ? [publicHost] : [hostOf(bind, port), `localhost:${port}`],
-      onsessioninitialized: (id) => {
-        const session: Session = { transport, user, lastSeen: Date.now(), streams: 0 }
-        sessions.set(id, session)
-        touch(id, session)
-      },
-    })
-    transport.onclose = () => {
-      const id = transport.sessionId
-      if (id !== undefined) {
-        clearTimeout(sessions.get(id)?.idle)
-        sessions.delete(id)
-      }
-      void server.close()
+    return initialise(req, res, body, ticket?.u ?? "")
+  }
+
+  /** A new session: its slot is reserved before the first await and given back if it never registers. */
+  async function initialise(req: IncomingMessage, res: ServerResponse, body: unknown, user: string): Promise<void> {
+    let reservation: Reservation
+    try {
+      reservation = table.reserve(user)
+    } catch (error) {
+      if (error instanceof SessionRefusal) throw new Refusal(error.status, error.message)
+      throw error
     }
-    await server.connect(transport)
-    await transport.handleRequest(req, res, body)
+    try {
+      const server = options.makeServer()
+      const transport: StreamableHTTPServerTransport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        enableDnsRebindingProtection: true,
+        allowedHosts: publicHost ? [publicHost] : [hostOf(bind, port), `localhost:${port}`],
+        onsessioninitialized: (id) => {
+          transports.set(id, transport)
+          reservation.commit(id, () => void transport.close())
+        },
+      })
+      transport.onclose = () => {
+        const id = transport.sessionId
+        if (id !== undefined) {
+          transports.delete(id)
+          table.forget(id)
+        }
+        void server.close()
+      }
+      await server.connect(transport)
+      await transport.handleRequest(req, res, body)
+    } finally {
+      // Registered sessions committed already; this gives back only a slot that never became a session.
+      reservation.release()
+    }
   }
 
   const http = createServer((req, res) => {
@@ -232,9 +215,9 @@ export async function startMcpHttp(options: McpHttpOptions): Promise<McpHttp> {
   port = typeof address === "object" && address ? address.port : options.port
   return {
     url: `http://${hostOf(bind, port)}${PATH}`,
-    sessions: () => sessions.size,
+    sessions: () => table.size,
     close: async () => {
-      for (const id of [...sessions.keys()]) closeSession(id)
+      table.closeAll()
       http.closeAllConnections()
       await new Promise<void>((done) => http.close(() => done()))
     },

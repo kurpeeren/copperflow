@@ -155,6 +155,61 @@ describe("MCP over HTTP", () => {
     expect(still.status).toBe(200)
   })
 
+  test("20 concurrent initialises by one user never leave more than the per-user limit", async () => {
+    const answers = await Promise.all(Array.from({ length: 20 }, () => post(INIT, proxied({ [TICKET_HEADER]: ticket({ u: "eve" }) }))))
+    const statuses = answers.map((answer) => answer.status)
+    expect(statuses.every((status) => status === 200 || status === 429)).toBe(true)
+    expect(statuses.filter((status) => status === 200).length).toBeGreaterThanOrEqual(4)
+    expect(http.sessions()).toBeLessThanOrEqual(4)
+  })
+
+  test("a failed initialise gives its reservation back", async () => {
+    let fail = true
+    const root = roots[1] as string
+    const port = await freePort()
+    const flaky = await startMcpHttp({
+      port,
+      makeServer: () => {
+        if (fail) {
+          fail = false
+          throw new Error("could not start")
+        }
+        return createCopperflowServer(root, { engine: inProcessEngine, hosted: true })
+      },
+      ticket: { publicKey: KEYS.publicKey, workspaceId: "ws-1" },
+      publicOrigin: `http://127.0.0.1:${port}`,
+      maxSessionsPerUser: 1,
+    })
+    try {
+      expect((await post(INIT, proxied({ [TICKET_HEADER]: ticket() }), flaky)).status).toBe(500)
+      expect((await post(INIT, proxied({ [TICKET_HEADER]: ticket() }), flaky)).status).toBe(200)
+      expect(flaky.sessions()).toBe(1)
+    } finally {
+      await flaky.close()
+    }
+  })
+
+  test("every session closes at its absolute lifetime, and a full server makes room from a user above their fair share", async () => {
+    const short = await start({ lifetimeMs: 300 })
+    try {
+      expect((await post(INIT, proxied({ [TICKET_HEADER]: ticket() }), short)).status).toBe(200)
+      expect(short.sessions()).toBe(1)
+      await new Promise((done) => setTimeout(done, 600))
+      expect(short.sessions()).toBe(0)
+    } finally {
+      await short.close()
+    }
+    const shared = await start({ maxSessions: 4, maxSessionsPerUser: 4 })
+    try {
+      for (let i = 0; i < 3; i++) expect((await post(INIT, proxied({ [TICKET_HEADER]: ticket({ u: "hog" }) }), shared)).status).toBe(200)
+      expect((await post(INIT, proxied({ [TICKET_HEADER]: ticket({ u: "fair" }) }), shared)).status).toBe(200)
+      expect((await post(INIT, proxied({ [TICKET_HEADER]: ticket({ u: "new" }) }), shared)).status).toBe(200)
+      expect(shared.sessions()).toBe(4)
+    } finally {
+      await shared.close()
+    }
+  })
+
   test("the whole server's cap answers 429 without closing anyone's session", async () => {
     const small = await start({ maxSessions: 2, maxSessionsPerUser: 2 })
     try {

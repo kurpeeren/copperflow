@@ -46,7 +46,12 @@ one project folder. It trusts one thing: the workspace ticket the hub adds to ea
   at once; it is not a boundary, since such code runs in the workspace process. The boundary is the container, and
   rule 7 above keeps that process's environment free of secrets.
 - Session limits: a user holds at most 4 MCP sessions (at the limit their own longest-idle session is closed, or
-  the request gets 429 when every one holds an open stream); the server holds at most 16 (beyond that, 429).
-  A session with an open stream counts as active; others close after 10 idle minutes.
+  the request gets 429 when every one holds an open stream). The server holds at most 16: when full, the
+  longest-idle session of a user holding more than their fair share (16 divided by the users with sessions) is
+  closed, else 429. Slots are reserved before a session finishes initialising, so concurrent initialises cannot
+  pass the limits together. A session with an open stream counts as active; others close after 10 idle minutes,
+  and every session closes 60 minutes after it opened.
+- In round 1 a workspace serves one user, so the per-user limit is the one that applies; the server-wide cap and
+  fair share matter once workspaces are shared.
 - The importer (`import_part`) is not offered; `create_part` refuses a part with more than three pins without a
   datasheet link unless its description says "Pins NOT from a datasheet".
