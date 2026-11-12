@@ -7,6 +7,7 @@ import { requireSqlite, runCli, type CliIO } from "../src/cli-commands.js"
 import { STATUS_FILE } from "../src/hub/commands.js"
 import { PROCESS_RUNNER_REFUSAL, startHub, TRUSTED_ONLY_WARNING } from "../src/hub/server.js"
 import { loadOrCreateTicketKey } from "../src/hub/keys.js"
+import { looserThanOwner, prepareDataDir } from "../src/hub/permissions.js"
 import { Browser, newUser, startTestHub } from "./helpers/hub-client.js"
 
 function io(answer?: string): CliIO & { lines: string[]; errors: string[] } {
@@ -105,6 +106,23 @@ describe("the hub's maintainer commands", () => {
     await expect(startHub({ dataDir: data, port: 0, publicOrigin: "https://cf.example.test" })).rejects.toThrow(PROCESS_RUNNER_REFUSAL)
     const server = await startHub({ dataDir: data, port: 0, publicOrigin: "https://cf.example.test", trustedAccountsOnly: true, log: () => undefined })
     await server.close()
+  })
+
+  test("the data directory and database are owner-only, and a looser one is refused (modes are not checked on Windows)", async () => {
+    expect(looserThanOwner(0o40700)).toBe(false)
+    expect(looserThanOwner(0o100600)).toBe(false)
+    expect(looserThanOwner(0o40750)).toBe(true)
+    expect(looserThanOwner(0o100644)).toBe(true)
+    const data = join(await mkdtemp(join(tmpdir(), "cf-perm-")), "data")
+    expect(await prepareDataDir(data)).toBe(join(data, "hub.db"))
+    if (process.platform !== "win32") {
+      const { chmod } = await import("node:fs/promises")
+      await chmod(join(data, "hub.db"), 0o644)
+      await expect(prepareDataDir(data)).rejects.toThrow(/hub\.db .* must be readable by its owner only: run chmod 600/)
+      await chmod(join(data, "hub.db"), 0o600)
+      await chmod(data, 0o755)
+      await expect(prepareDataDir(data)).rejects.toThrow(/The data directory .* run chmod 700/)
+    }
   })
 
   test("the hub says clearly when node:sqlite is missing", async () => {

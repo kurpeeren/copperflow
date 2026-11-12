@@ -16,7 +16,7 @@ import { proxyRequest } from "./proxy.js"
 import { createProcessRunner } from "./runner/process-runner.js"
 import { RunnerFullError, WorkspaceStartError, type WorkspaceRunner } from "./runner/runner.js"
 import { HubStore } from "./store.js"
-import { join } from "node:path"
+import { prepareDataDir } from "./permissions.js"
 
 export const MAX_PROJECTS = 20
 export const MAX_BYTES = 200 * 1024 * 1024
@@ -61,7 +61,7 @@ export interface HubServer {
 /** Opens the data directory (made owner-only when new) and the store, key and runner in it. */
 export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promise<Hub> {
   if (!options.runner && !options.trustedAccountsOnly) throw new Error(PROCESS_RUNNER_REFUSAL)
-  await mkdir(options.dataDir, { recursive: true, mode: 0o700 })
+  const dbFile = await prepareDataDir(options.dataDir)
   const keys = await loadOrCreateTicketKey(options.dataDir)
   const publicOrigin = normaliseOrigin(options.publicOrigin)
   const config: HubConfig = {
@@ -77,7 +77,7 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
   await mkdir(files.root, { recursive: true, mode: 0o700 })
   return {
     config,
-    store: HubStore.open(join(options.dataDir, "hub.db")),
+    store: HubStore.open(dbFile),
     files,
     runner: options.runner ? options.runner(keys.publicKeyBase64, publicOrigin) : createProcessRunner({ publicOrigin, ticketPublicKey: keys.publicKeyBase64 }),
     keys,

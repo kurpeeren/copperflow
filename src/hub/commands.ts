@@ -1,5 +1,6 @@
 // copperflow hub: the hub server, and the maintainer's commands that work on its data directory directly.
-import { mkdir, readFile } from "node:fs/promises"
+import { readFile } from "node:fs/promises"
+import { prepareDataDir } from "./permissions.js"
 import { join, resolve } from "node:path"
 import { writeFileAtomic } from "../core/fs-utils.js"
 import type { CliIO } from "../cli-commands.js"
@@ -47,8 +48,7 @@ function dataDirOf(options: Map<string, string>, cwd: string): string {
 }
 
 async function openStore(dataDir: string): Promise<HubStore> {
-  await mkdir(dataDir, { recursive: true, mode: 0o700 })
-  return HubStore.open(join(dataDir, "hub.db"))
+  return HubStore.open(await prepareDataDir(dataDir))
 }
 
 /** A stand-in for the maintainer's commands, which run beside the hub and cannot reach its workspaces. */
