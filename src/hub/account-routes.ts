@@ -201,9 +201,13 @@ export async function deleteAccount(hub: Hub, req: IncomingMessage, res: ServerR
   redirect(res, "/", { "set-cookie": clearSessionCookie(hub) })
 }
 
-/** Stops the user's workspaces, removes their folders and deletes their rows (sessions and projects go with them). */
+/**
+ * Marks the user deleted first (every route and the proxy stop finding them), then stops their workspaces, removes
+ * their folders and deletes their rows (sessions, devices and projects go with them).
+ */
 export async function removeUser(hub: Pick<Hub, "store" | "files" | "runner">, userId: string): Promise<void> {
-  for (const project of hub.store.projects(userId)) await hub.runner.stop(project.id)
+  hub.store.markUserDeleted(userId)
+  for (const id of hub.store.projectIds(userId)) await hub.runner.stop(id)
   hub.store.endSessions(userId)
   await hub.files.removeUser(userId)
   hub.store.deleteUser(userId)

@@ -89,6 +89,8 @@ export async function deleteProject(hub: Hub, req: IncomingMessage, res: ServerR
   if ((form.get("confirm") ?? "").trim().normalize("NFC") !== project.name) {
     return showProjects(hub, res, signed, undefined, 400, "Type the project's name exactly to delete it.")
   }
+  // Marked first: from here every route and the proxy answer 404, so nothing restarts the workspace while it goes.
+  hub.store.markProjectDeleted(signed.user.id, id)
   await hub.runner.stop(id)
   await hub.files.remove(signed.user.id, id)
   hub.store.deleteProject(signed.user.id, id)

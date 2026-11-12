@@ -5,7 +5,7 @@ import { deflateRawSync } from "node:zlib"
 import { crc32 } from "../src/engine/fab/zip.js"
 import type { HubServer } from "../src/hub/server.js"
 import { readZipArchive, ZipWriter } from "../src/hub/zip.js"
-import { Browser, newUser, startTestHub } from "./helpers/hub-client.js"
+import { Browser, formToken, newUser, startTestHub } from "./helpers/hub-client.js"
 
 let server: HubServer | undefined
 afterEach(async () => {
@@ -106,6 +106,23 @@ describe("hub projects", () => {
     // An id that was never made reads the same.
     expect((await bob.get(`/projects/${"0".repeat(32)}/download`)).status).toBe(404)
     expect(server.hub.store.projects(idOf(server, "ada@example.com"))[0]?.name).toBe("Amp")
+  })
+
+  test("a project or user marked deleted is answered 404 everywhere and its workspace is not started", async () => {
+    server = await startTestHub()
+    const ada = await newUser(server, "ada@example.com")
+    await ada.submit("/projects", "/projects", { name: "Amp" })
+    const adaId = idOf(server, "ada@example.com")
+    const id = server.hub.store.projects(adaId)[0]?.id as string
+    const token = formToken((await ada.get("/projects")).text)
+    server.hub.store.markProjectDeleted(adaId, id)
+    for (const path of [`/projects/${id}/download`, `/p/${id}/`, `/p/${id}/api/circuits`]) expect((await ada.get(path)).status).toBe(404)
+    expect((await ada.post(`/projects/${id}/rename`, { form: token, name: "B" })).status).toBe(404)
+    expect(server.hub.runner.state(id)).toBe("stopped")
+    expect((await ada.get("/projects")).text).not.toContain(id)
+    server.hub.store.markUserDeleted(adaId)
+    expect((await ada.get("/projects")).headers.location).toBe("/signin")
+    expect((await new Browser(server.url).signIn("ada@example.com")).status).toBe(401)
   })
 
   test("no page reflects a name unescaped", async () => {

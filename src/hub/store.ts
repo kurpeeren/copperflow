@@ -85,7 +85,11 @@ CREATE TABLE IF NOT EXISTS audit (
 type Row = Record<string, unknown>
 
 /** Columns added after the first schema; fixed strings, never input. */
-const COLUMNS: readonly [string, string][] = [["users", "must_change INTEGER NOT NULL DEFAULT 0"]]
+const COLUMNS: readonly [string, string][] = [
+  ["users", "must_change INTEGER NOT NULL DEFAULT 0"],
+  ["users", "deleted INTEGER NOT NULL DEFAULT 0"],
+  ["projects", "deleted INTEGER NOT NULL DEFAULT 0"],
+]
 
 const userOf = (row: Row | undefined): User | undefined =>
   row
@@ -168,11 +172,21 @@ export class HubStore {
   }
 
   userByEmail(email: string): User | undefined {
-    return userOf(this.sql("SELECT * FROM users WHERE email = ?").get(normaliseEmail(email)) as Row | undefined)
+    return userOf(this.sql("SELECT * FROM users WHERE email = ? AND deleted = 0").get(normaliseEmail(email)) as Row | undefined)
   }
 
   userById(id: string): User | undefined {
-    return userOf(this.sql("SELECT * FROM users WHERE id = ?").get(id) as Row | undefined)
+    return userOf(this.sql("SELECT * FROM users WHERE id = ? AND deleted = 0").get(id) as Row | undefined)
+  }
+
+  /** Marks the user deleted: from now on no route, session or proxy finds them, while their files are removed. */
+  markUserDeleted(userId: string): void {
+    this.sql("UPDATE users SET deleted = 1 WHERE id = ?").run(userId)
+  }
+
+  /** Marks the project deleted: from now on every route and the proxy answer 404 for it. */
+  markProjectDeleted(userId: string, id: string): void {
+    this.sql("UPDATE projects SET deleted = 1 WHERE id = ? AND user_id = ?").run(id, userId)
   }
 
   /** Sets the password; `mustChange` when the maintainer reset it and the user must choose a new one. */
@@ -246,12 +260,17 @@ export class HubStore {
   }
 
   projects(userId: string): Project[] {
-    return (this.sql("SELECT * FROM projects WHERE user_id = ? ORDER BY name COLLATE NOCASE, id").all(userId) as Row[]).map((row) => projectOf(row) as Project)
+    return (this.sql("SELECT * FROM projects WHERE user_id = ? AND deleted = 0 ORDER BY name COLLATE NOCASE, id").all(userId) as Row[]).map((row) => projectOf(row) as Project)
   }
 
-  /** The project only when it belongs to the user. */
+  /** Every project id of the user, deleted ones included (to stop their workspaces). */
+  projectIds(userId: string): string[] {
+    return (this.sql("SELECT id FROM projects WHERE user_id = ?").all(userId) as Row[]).map((row) => row.id as string)
+  }
+
+  /** The project only when it belongs to the user and is not being deleted. */
   project(userId: string, id: string): Project | undefined {
-    return projectOf(this.sql("SELECT * FROM projects WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined)
+    return projectOf(this.sql("SELECT * FROM projects WHERE id = ? AND user_id = ? AND deleted = 0").get(id, userId) as Row | undefined)
   }
 
   projectCount(userId: string): number {
