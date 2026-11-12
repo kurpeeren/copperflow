@@ -39,38 +39,87 @@ one project folder. It trusts one thing: the workspace ticket the hub adds to ea
 
 ## Running the hub
 
-The hub (`src/hub/`) owns accounts, sessions, projects and the public endpoint; it proxies `/p/<project id>/…` to
-that project's workspace. It listens on loopback behind a TLS reverse proxy.
+The hub (`src/hub/`) owns accounts, sessions, projects and the public endpoint. It listens on loopback behind a TLS
+reverse proxy.
 
 ```
-copperflow hub --data <dir> --port <n> --public-origin https://copperflow.example.com [--bind 127.0.0.1] [--trust-proxy]
+copperflow hub --data <dir> --port <n> --public-origin https://copperflow.example.com \
+  --workspace-domain ws.copperflow.example.com --trusted-accounts-only [--bind 127.0.0.1] [--trust-proxy]
 copperflow hub invite --data <dir> [--count n]        invite codes, printed once (only their hashes are kept)
 copperflow hub reset-password <email> --data <dir>    a one-time password, printed once; ends the user's sessions
 copperflow hub status --data <dir>                    users, projects, running workspaces, disk used
 copperflow hub delete-user <email> --data <dir>       asks for the email typed; deletes the user and their files
 ```
 
+**The process runner and `--trusted-accounts-only`.** Until Task 3's container runner exists, workspaces run as plain
+child processes of the hub's user. That is not a security boundary: circuit code that escapes the engine's guard can
+read every other account's projects, the database and the ticket key. The hub therefore refuses to start without
+`--trusted-accounts-only`, and with it (and on every `hub invite`) prints that every account can read every other
+account's data and the hub's keys.
+
+**Workspaces on their own origins.** Project `<id>` is served on `https://<id>.<workspace domain>/`, never on the
+public origin, so content a project serves (or a Studio flaw triggered by project data) cannot read or drive the hub's
+pages. `/p/<id>/` on the public origin hands a signed-in owner over: a one-time token (random, single use, 30 s, bound
+to the user, the project and the hub session) in a redirect to `https://<id>.<workspace domain>/_enter?t=…`, which sets
+a workspace cookie (`__Host-`, HttpOnly, SameSite=Lax) and redirects to `/`. The workspace session lasts 12 hours at
+most, never beyond the hub session it came from, and ends with it. Every request on a project origin is authenticated
+by that cookie only, checked against the project in the Host and the user's revocation epoch (bumped by sign-out,
+password change or reset and deletion), and the ticket is signed last, just before the upstream request. Proxied
+answers carry only `content-type`, `content-length`, `content-encoding`, `cache-control`, `etag`, `last-modified`,
+`content-disposition` and `vary`, plus `X-Content-Type-Options: nosniff`, `Content-Security-Policy: frame-ancestors
+<public origin>` and a `Location` only when it is a path on the same project origin. A reverse proxy that issues
+certificates on demand asks `GET /_tls-ask?domain=<host>` on the public origin: 200 only for the public host and for
+`<existing project id>.<workspace domain>`, 404 otherwise, 60 per minute per address. The maintainer provides a
+wildcard DNS record for the workspace domain and either a wildcard certificate or on-demand certificates.
+
 `--trust-proxy` reads the client's address from the last `X-Forwarded-For` entry; use it only behind a proxy that
-sets that header, or every limit counts the proxy's address. A workspace is started on demand as
-`copperflow workspace --root <folder> --id <project id> --public-origin <origin> --base-path /p/<project id>
---studio-port 0 --mcp-port 0`, with only `COPPERFLOW_TICKET_PUBLIC_KEY` in its environment; it prints
-`{"studio": "...", "mcp": "..."}` when both servers listen and stops on SIGTERM or when its standard input closes. The
-process runner that starts it is NOT a security boundary (tests and trusted accounts); Task 3's container runner is.
+sets that header, or every limit counts the proxy's address. With it, the hub's own cap of 64 open connections per
+address is off (every connection comes from the proxy), so the reverse proxy must cap connections per client.
 
-The data directory (made owner-only):
+Timeouts: headers within 10 s; an idle socket closes after 60 s; an ordinary request's body within 60 s (forms
+15 s); an upload is stopped after 30 s without a byte or below 32 kB/s on average after 30 s, and Node's request
+timeout (2 hours, the longest a 200 MB upload may take at that rate) is the backstop. An answer given before a body
+was read closes the connection. At most 4 uploads run in the hub, one per user (a second gets 429 at once); at most 2
+downloads per user. Uploads stream to `<data>/uploads/` with the size cap enforced as they arrive, and downloads
+stream file by file. A user runs at most 3 workspaces (opening a 4th stops their least recently used one); when the
+server's 20 are taken, a user above their fair share gives way, else 503. An open stream keeps a workspace alive for
+12 hours at most.
 
-- `hub.db`: SQLite (`node:sqlite`, Node 22.13 or later): users (email lower-cased, scrypt hash with its salt and
-  parameters), invite codes and session ids as SHA-256 hashes, projects (id, owner, name), the audit log.
-- `ticket-key.pem`: the ticket private key, made on first start with mode 600; the hub refuses to start when others
-  can read it. Never logged, never sent; workspaces get the public half.
+Revocation: sign-out, a password change, "End all sessions" and account deletion end the user's sessions and
+workspace sessions, cut their open proxied streams and stop their workspaces at once. The maintainer's
+`reset-password` and `delete-user` run in another process: they record the request in the database and the running
+hub carries it out at its next sweep, within 15 seconds. A deleted project or user is marked deleted first, so every
+route and the proxy answer 404 while its workspace stops and its files go.
+
+A workspace is started on demand as `copperflow workspace --root <folder> --id <project id> --public-origin
+https://<id>.<workspace domain> --base-path / --studio-port 0 --mcp-port 0`, with only `COPPERFLOW_TICKET_PUBLIC_KEY`
+in its environment; it prints `{"studio": "...", "mcp": "..."}` when both servers listen and stops on SIGTERM or when
+its standard input closes.
+
+The data directory (created owner-only; an existing directory, `hub.db` or key file that group or others may read is
+refused with a message; on Windows these modes are not checked, since access lists decide there, so keep the data
+directory in a folder only the hub's account can open):
+
+- `hub.db`: SQLite (`node:sqlite`; the hub needs Node 22.13 or later and says so, the rest of copperflow runs on 22):
+  users (email NFC and lower-cased, scrypt hash with its salt and parameters), invite codes, session ids, workspace
+  session ids and device ids as SHA-256 hashes, projects (id, owner, name), the audit log.
+- `ticket-key.pem`: the ticket private key, made on first start with mode 600. Never logged, never sent; workspaces
+  get the public half.
 - `projects/<user id>/<project id>/`: the project folders. Both ids are generated; a project's name is only a label.
+- `uploads/`: uploads in progress, removed when each ends.
 - `hub-status.json`: written every 15 s for `hub status`.
 
+A session ends 14 days after its last use and 30 days after sign-in whatever its use. A password set by
+`reset-password` must be changed at the next sign-in before anything else.
+
 The audit log (`audit` table: time, user id or none, event, address, detail) records `signup`, `signup-failed`,
-`signup-limited`, `signin`, `signin-failed`, `signin-limited`, `signin-limited-global`, `signout`,
-`password-changed`, `password-change-failed`, `password-change-limited`, `account-delete-failed`,
+`signup-limited`, `signin`, `signin-failed`, `signin-limited-address`, `signin-limited-email`,
+`signin-limited-strict`, `signin-strict`, `signin-strict-table-full`, `signout`, `signout-forget-device`,
+`sessions-ended`, `password-changed`, `password-change-failed`, `password-change-limited`, `account-delete-failed`,
 `account-delete-limited`, `account-deleted`, `password-reset`, `invites-made`, `project-created`, `project-renamed`,
-`project-deleted`, `project-downloaded`, `project-uploaded`, `upload-refused`. The detail holds a project id, a file
+`project-deleted`, `project-downloaded`, `project-uploaded`, `upload-refused`, `workspace-entered`,
+`hub-unhandled-rejection` and `hub-uncaught-exception` (the error's name and code only; after an uncaught exception
+the hub closes cleanly for its service manager to restart it, after an unhandled rejection it keeps serving). The detail holds a project id, a file
 count or the reason an upload was refused, never a password, cookie, invite code or ticket.
 
 ### Sign-in limits
