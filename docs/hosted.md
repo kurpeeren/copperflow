@@ -139,7 +139,8 @@ count or the reason an upload was refused, never a password, cookie, invite code
 Agent events: `token-created`, `token-revoked`, `token-refused` (a bearer token /mcp refused, at most 10 per 15
 minutes per address; a code or refresh token the token endpoint refused), `token-refreshed`, `client-registered`,
 `client-register-limited`, `consent-allowed`, `consent-denied`, `grant-created`, `grant-revoked`,
-`refresh-reused-grant-revoked`, `agent-connected` and `tool-calls-limited`. The detail holds an id (token, grant or
+`refresh-reused-grant-revoked`, `code-reused-grant-revoked`, `grant-revoked-over-cap`, `token-create-failed`,
+`token-create-limited`, `agent-connected` and `tool-calls-limited`. The detail holds an id (token, grant or
 client) or the grant type, never a token or code.
 
 ## Connecting an agent
@@ -150,8 +151,9 @@ request without a valid token gets 401 with `WWW-Authenticate: Bearer resource_m
 origin>/.well-known/oauth-protected-resource"`.
 
 **Tokens.** All are a prefix and 32 random bytes, stored only as SHA-256 hashes, never logged or put in a URL or an
-error. Personal access tokens (`cfp_`) are made on the account page, shown once, listed by name, creation and last
-use, revocable; at most 10 per user. OAuth access tokens (`cfa_`) last one hour; refresh tokens (`cfr_`) 30 days and
+error. Personal access tokens (`cfp_`) are made on the account page after the current password is typed (the
+re-authentication limiter applies, since such a token outlives the session), shown once, listed by name, creation and
+last use (written at most once a minute), revocable; at most 10 per user. OAuth access tokens (`cfa_`) last one hour; refresh tokens (`cfr_`) 30 days and
 rotate on every use: a refresh token used twice revokes its whole grant and closes its sessions.
 
 **OAuth 2.1** (the MCP specification's flow, written on `node:http` with the SDK's schemas and types; the SDK's
@@ -159,16 +161,35 @@ express-based helpers are not used):
 `/.well-known/oauth-protected-resource` (also `/mcp` appended) and `/.well-known/oauth-authorization-server`;
 `POST /oauth/register` (public clients only, `token_endpoint_auth_method: none`; 1 to 5 redirect URIs, each https,
 or http on 127.0.0.1, [::1] or localhost, without user, password or fragment, at most 2000 characters; names 1 to 100
-characters; 20 registrations an hour per address; at most 10 000 clients, a full table making room only by dropping
-a never-used client over an hour old; clients unused for 30 days expire); `GET /oauth/authorize` (code with PKCE S256
+characters without control, direction or invisible characters); `GET /oauth/authorize` (code with PKCE S256
 required, `state` returned, `resource` if given must be the /mcp URL; the redirect URI must match a registered one
-exactly, otherwise an error page and no redirect; signed out, the request is kept server-side for 10 minutes, named by
-a cookie, and the person comes back to it after signing in; 30 requests per 15 minutes per address); a consent page
-naming the client and the exact redirect host, with Allow and Deny as POSTs with the form token; `POST /oauth/token`
-(codes single use for 60 s, bound to the client, redirect URI, challenge and the user's revocation epoch; a wrong
-verifier uses the code up); `POST /oauth/revoke` (an access token alone, a refresh token with its grant). The token,
-registration, revocation and metadata endpoints read no cookie and answer any origin (CORS `*`). The account page
-lists connected clients (one per grant) with revoke.
+exactly, otherwise an error page and no redirect); a consent page showing first the exact host the answer goes to,
+then the client's name, with Allow and Deny as POSTs with the form token; `POST /oauth/token` (codes single use for
+60 s, bound to the client, redirect URI, challenge and the user's revocation epoch; a wrong verifier uses the code up;
+a code exchanged a second time revokes the grant issued from it); `POST /oauth/revoke` (an access token alone, closing
+the sessions it authenticated; a refresh token with its whole grant). The token, registration, revocation and metadata
+endpoints read no cookie and answer any origin (CORS `*`). The account page lists connected clients (one per grant)
+with revoke; a person holds at most 10, and an 11th revokes their least recently used one with its tokens and
+sessions. A grant whose refresh tokens have all expired is swept.
+
+**Registration under load.** The body's shape is checked first (what is not a registration counts against nothing).
+Then: 20 an hour per address (/64; a full address table refuses nobody), and every registration passes one global
+bucket of 2 a second with at most 2 waiting per address and 40 in all (429 with Retry-After beyond it). The client
+table holds 50 000. Never evicted: a client with a grant, with a live code, or with a request bound to a signed-in
+person (at most 5 per person; an anonymous request protects nothing). An unused client is protected for 10 minutes
+after registration, then evictable oldest first; clients unused for 30 days expire. Protected clients are at most
+1 200 (what the bucket admits in 10 minutes) + 35 per account (10 grants, 20 codes, 5 bound requests), so the table
+never fills while it exceeds that: 50 000 covers 1 394 accounts. A person whose client was evicted mid-flow (only
+possible after 10 minutes without reaching the consent page) sees "This sign-in link is not valid", or at consent
+"This request has expired. Start again from your application."; the application registers again.
+
+**Pending authorisation requests.** Signed out, the request is kept server-side for 10 minutes, named by a cookie,
+and the person comes back to it after signing in. Each browser gets a random id in its own `__Host-` cookie and holds
+at most 3 requests (a 4th drops its own oldest); once the consent page is shown to a signed-in person the request
+moves to that person (at most 5), out of reach of anonymous traffic. An address holds at most 20 live requests;
+beyond that new ones are refused, never another's evicted, and expired ones are swept at least once a second. Every
+request passes a global bucket of 5 a second (2 waiting per address, 40 in all) after the per-address limit of 30 per
+15 minutes.
 
 **What the hub answers and forwards.** The hub is the MCP server the agent talks to. Its instructions are the hosted
 server's plus two lines (open or create a project first; the person watches at `<public origin>/p/<id>/`). It answers
@@ -182,7 +203,9 @@ session, its token, the user's revocation epoch and the project still hold. The 
 no project open, a forwarded tool answers an error naming the three project tools. Measured 2026-11-12: instructions
 and `tools/list` 42 725 characters (limit 43 000), `guide` 15 390 (limit 16 000).
 
-**Limits.** 60 tool calls per minute per user (answered inside the tool result as an error with the wait); at most 4
+**Limits.** 600 requests to /mcp per minute per user (429, counted from the headers before the body is read); 60
+tool calls per minute per user (answered inside the tool result as an error with the wait); a request with more than
+one Authorization header gets 400; project names are unique per person regardless of case; at most 4
 MCP sessions per user at the hub (mcp-sessions.ts's rule: at the limit the user's longest-idle session without a
 stream closes, else 429), 512 in all, 30 idle minutes, 12 hours at most; a GET stream ends at its access token's
 expiry or after 15 minutes; request bodies 4 MB.
@@ -194,6 +217,16 @@ access token, drops pending OAuth requests and codes, closes the open agent sess
 the revocation epoch and stops the workspaces. The maintainer's commands do the database part themselves and the
 running hub the rest at its next sweep. A plain sign-out touches no agent credential. Every /mcp request checks its
 token again, so a revoked or expired token ends the agent's access at its next request.
+
+Each agent session holds one connection to the open project's workspace, shared by its concurrent calls; one call
+cancelled, timed out or refused leaves it in place, and only a failure of the connection itself replaces it. A
+connection that finishes connecting after a revocation is closed.
+
+What this does not stop:
+
+- Anyone who sees an authorisation code can spend it first (then the real client's exchange fails) or, after the real
+  exchange, present it again within 10 minutes and so revoke the grant issued from it (RFC 9700, 4.2.4). Both cost
+  only availability: codes travel only in the redirect to the registered URI, are never logged, and live 60 s.
 
 ### Sign-in limits
 
