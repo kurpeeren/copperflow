@@ -10,6 +10,8 @@ import { KEY_FILE } from "./keys.js"
 import { isInside, repairThroughHandle, walkEntries } from "./safe-files.js"
 
 export const PROJECT_MODE = 0o2770
+/** setuid and setgid. */
+const SPECIAL_BITS = 0o6000
 
 export interface CheckOptions {
   /** The workspace group's gid. */
@@ -122,13 +124,19 @@ async function checkProject(context: Context, project: string): Promise<void> {
     if (special(context, path, entry)) return false
     if (entry.isFile() && entry.nlink > 1) {
       context.result.problems.push(`${shown(context, path)}: a file with ${entry.nlink} links (never changed by --fix; look at it)`)
+      if ((entry.mode & SPECIAL_BITS) !== 0) context.result.problems.push(`${shown(context, path)}: mode ${octal(entry.mode)}: a setuid or setgid bit on a file with ${entry.nlink} links (never changed by --fix; look at it)`)
       return false
     }
     await inGroup(context, path, entry)
     await noOthers(context, path, entry)
+    // A workspace may set these on its own files; nothing on the host should ever run them, so they are reported, and
+    // --fix clears them through the checked handle like its other repairs. The final mode also has no other access.
+    if (entry.isFile() && (entry.mode & SPECIAL_BITS) !== 0) {
+      await repair(context, path, entry, `mode ${octal(entry.mode)}: a setuid or setgid bit (a workspace set it; nothing on the host should run this file)`, { mode: entry.mode & 0o7777 & ~SPECIAL_BITS & ~0o007 })
+    }
     const groupBits = entry.isDirectory() ? 0o070 : 0o060
     if ((entry.mode & groupBits) !== groupBits) {
-      const wanted = (entry.mode & 0o7777 & ~0o007) | groupBits | (entry.isDirectory() ? 0o2000 : 0)
+      const wanted = ((entry.mode & 0o7777 & ~0o007) | groupBits | (entry.isDirectory() ? 0o2000 : 0)) & (entry.isFile() ? ~SPECIAL_BITS : 0o7777)
       await repair(context, path, entry, `mode ${octal(entry.mode)}: the workspace group cannot ${entry.isDirectory() ? "open and change" : "read and write"} it`, { mode: wanted })
     }
     return true

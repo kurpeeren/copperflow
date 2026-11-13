@@ -130,6 +130,51 @@ describe("hub check-data", () => {
     expect(text).toMatch(/swap\.json: .*changed while it was checked/)
   })
 
+  test.runIf(POSIX)("reports setuid and setgid bits on regular files in a project, and --fix clears them (and leaves the folder's own setgid bit)", async () => {
+    const group = process.getgid?.() as number
+    const { data, project } = await goodDataDir(group)
+    const suid = join(project, "board", "suid.bin")
+    const sgid = join(project, "board", "sgid.bin")
+    await writeFile(suid, "x")
+    await writeFile(sgid, "x")
+    await chmod(suid, 0o4770)
+    await chmod(sgid, 0o2770)
+    const found = await checkDataDir(data, { group, fix: false })
+    const text = found.problems.join("\n")
+    expect(text).toMatch(/suid\.bin: mode 4770: a setuid or setgid bit/)
+    expect(text).toMatch(/sgid\.bin: mode 2770: a setuid or setgid bit/)
+    expect((await stat(suid)).mode & 0o7777).toBe(0o4770)
+    const fixed = await checkDataDir(data, { group, fix: true })
+    expect(fixed.fixed.join("\n")).toMatch(/suid\.bin/)
+    expect((await stat(suid)).mode & 0o7777).toBe(0o770)
+    expect((await stat(sgid)).mode & 0o7777).toBe(0o770)
+    expect((await stat(join(project, "board"))).mode & 0o7777).toBe(0o2770)
+    expect((await checkDataDir(data, { group, fix: false })).problems).toEqual([])
+  })
+
+  test.runIf(POSIX)("a setuid file that also lacks group rights or has others access ends with the plain group mode", async () => {
+    const group = process.getgid?.() as number
+    const { data, project } = await goodDataDir(group)
+    const odd = join(project, "board", "odd.bin")
+    await writeFile(odd, "x")
+    await chmod(odd, 0o4607)
+    await checkDataDir(data, { group, fix: true })
+    expect((await stat(odd)).mode & 0o7777).toBe(0o660)
+  })
+
+  test.runIf(POSIX)("--fix does not clear a setuid bit on a file with two links (reported only), nor follow a link", async () => {
+    const group = process.getgid?.() as number
+    const { data, project } = await goodDataDir(group)
+    const outside = join(data, "..", "outside-suid")
+    await writeFile(outside, "x")
+    await chmod(outside, 0o4755)
+    await link(outside, join(project, "board", "hard"))
+    await symlink(outside, join(project, "board", "soft"))
+    const result = await checkDataDir(data, { group, fix: true })
+    expect(result.problems.join("\n")).toMatch(/hard: mode \d+: a setuid or setgid bit on a file with 2 links/)
+    expect((await stat(outside)).mode & 0o7777).toBe(0o4755)
+  })
+
   test("--fix refuses as root, while workspace containers are left, and when the engine cannot be asked", async () => {
     const engine = (stdout: string, code = 0): SpawnLike => () => {
       const emitter = new EventEmitter()

@@ -213,7 +213,7 @@ Run these on a machine with an engine, and see each one pass, before any strange
 1. `docker version` shows server 26 or newer (or Podman 5 or newer).
 2. Build with `--build-arg NODE_IMAGE=node:22-bookworm-slim@sha256:...`. The hub prints no "not pinned by digest"
    warning.
-3. `df <data dir>` shows a filesystem separate from `/` and from `/var/lib/docker`.
+3. `df <data dir>` shows a filesystem separate from `/` and from `/var/lib/docker`. It is mounted `nosuid,nodev` (`findmnt --target <data dir> -o TARGET,OPTIONS` lists both): a workspace can set setuid and setgid bits on its own files, which `hub check-data` reports and `--fix` clears.
 4. The hub runs as its own user (not root, not uid 10001), in the workspace group and the docker group. Starting as
    root, as 10001 or outside the group is refused.
 5. As the hub's user, `npx vitest run test/hub-container-engine.test.ts` shows every test run and pass, with no skip

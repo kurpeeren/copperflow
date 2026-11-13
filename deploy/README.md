@@ -66,7 +66,10 @@ Pick A unless you already run a reverse proxy on the host that you want to keep;
   findmnt --target /var/lib/copperflow
   ```
 
-  shows a SOURCE that is neither the one for `/` nor the one for `/var/lib/docker`.
+  shows a SOURCE that is neither the one for `/` nor the one for `/var/lib/docker`. Mount that filesystem `nosuid,nodev`
+  (in `/etc/fstab` or the mount unit's options): a workspace can set setuid and setgid bits on its own files, and
+  nothing on the host should ever honour them. `findmnt --target /var/lib/copperflow -o TARGET,OPTIONS` prints options
+  that include `nosuid` and `nodev`. (`hub check-data` reports such bits too.)
 - DNS records, made by you (nothing here registers anything):
   - `copperflow.kurpeeren.com`: an A record to the server's IPv4 address. **No AAAA record** (see "IPv6" below).
   - `*.<workspace domain>`: a wildcard A record to the same address, again with no AAAA. Project `<id>` is served
@@ -394,11 +397,11 @@ this: the hub treats an end it did not ask for as a crash and restarts the works
 **Checking the data directory.** `cf hub check-data --data <data>` checks what the hub relies on: the data directory,
 database and key owner-only and owned by the hub's user; every project folder the hub's, in the workspace group, mode
 2770; everything inside readable and writable by that group; nothing open to others; no link pointing out of its
-project. It prints each problem on its own line and exits 1 when there is any; it ends with `The data directory has no
+project; no setuid or setgid bit on a regular file in a project. It prints each problem on its own line and exits 1 when there is any; it ends with `The data directory has no
 problems.` otherwise. It takes the workspace group from the running hub's status file, or `--workspace-group <gid>`.
 The check alone only looks (lstat and readlink) and may run any time.
 
-`--fix` repairs what the hub's user owns and lists what needs root. It changes an entry only through a handle opened
+`--fix` repairs what the hub's user owns (clearing a setuid or setgid bit through the same checked handle, on files with one link only) and lists what needs root. It changes an entry only through a handle opened
 without following links whose device and inode match what it looked at, so a link or a swapped entry is reported and
 left alone; links, devices, sockets, FIFOs and files with more than one link are never changed. It runs only when
 nothing else can touch the data, and refuses otherwise with the reason:
