@@ -168,10 +168,10 @@ need a rebuilt image or a changed owner of the volumes.
 
 ```
 cd /opt/copperflow && npm ci --no-audit --no-fund && npm run build
-node /opt/copperflow/dist/cli.js hub status --data /tmp/cf-try && rm -rf /tmp/cf-try
+sudo -u copperflow-hub node /opt/copperflow/dist/cli.js hub status --data /tmp/cf-try && rm -rf /tmp/cf-try
 ```
 
-The second line prints `Users: 0` and the other status lines.
+The second line (as the hub's user: `hub` commands refuse root) prints `Users: 0` and the other status lines.
 
 ## 5. The environment file
 
@@ -323,7 +323,7 @@ Run each and see it pass (docs/hosted.md, "Before the first stranger's account")
 4. `id copperflow-hub` lists `copperflow-ws` and `docker`, and the uid is neither 0 nor 10001. Starting the hub as
    root is refused: `sudo node /opt/copperflow/dist/cli.js hub --data /tmp/x --port 0 --public-origin https://x.example
    --workspace-domain ws.x.example --runner container --workspace-image copperflow-workspace:1 --workspace-group <gid>`
-   ends with `The container runner refuses to start as root`. (On A, run this with a host Node, or skip it: the
+   ends with `Refused: a hub command run as root can leave files in the data directory that the hub's user cannot open.` (every `copperflow hub` command refuses uid 0 before it touches the data directory; the container runner refuses root as well). (On A, run this with a host Node, or skip it: the
    Compose file sets the user.)
 5. As the hub's user, in a checkout with its development dependencies (`npm ci` in `/opt/copperflow`; on A this needs
    Node on the host for this check only): `sudo -u copperflow-hub npx vitest run test/hub-container-engine.test.ts`

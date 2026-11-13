@@ -99,6 +99,11 @@ copperflow hub --help | -h | help                     every command with each on
                                                       (or `hub help <command>`) shows one; exit 0, nothing is read
 ```
 
+Every `copperflow hub` command that opens the data directory (the hub itself, `invite`, `reset-password`, `status`,
+`backup`, `delete-user`, `stop-workspace`, `check-data`) refuses to run as uid 0 with one line naming the fix (`sudo -u
+<the hub's user> copperflow hub ...`): root would leave files, such as a database journal, that the hub's user cannot
+open. `deploy/backup.sh` and `deploy/restore-test.sh` run them as the data directory's owner.
+
 The usage in `--help` and in every refusal is made from one option table (`src/hub/hub-usage.ts`), which is also the
 parser's list of options without a value and the server's list of known options; text goes through the same `printable`
 filter as all hub output. An unknown command or option is still refused.

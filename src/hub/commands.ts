@@ -106,11 +106,17 @@ function helpRequested(args: readonly string[], io: CliIO): number | undefined {
   return 0
 }
 
-export async function runHubCommand(args: string[], cwd: string, io: CliIO): Promise<number> {
+/** One line: root would leave files in the data directory (a database journal, a key) that the hub's user cannot open. */
+export const ROOT_REFUSAL =
+  "Refused: a hub command run as root can leave files in the data directory that the hub's user cannot open. Run it as the hub's user: sudo -u <the hub's user> copperflow hub ..."
+
+export async function runHubCommand(args: string[], cwd: string, io: CliIO, uid: number | undefined = process.getuid?.()): Promise<number> {
   const helped = helpRequested(args, io)
   if (helped !== undefined) return helped
   const { options, flags, rest } = parse(args)
   const [command, email] = rest
+  // Every command below opens the data directory (the hub itself included); none runs as root.
+  if (uid === 0) throw new Error(ROOT_REFUSAL)
   if (command === undefined) return serve(args, cwd, io)
   const dataDir = dataDirOf(options, cwd)
   // Before the store is opened: it checks what opening would refuse, and must not create or migrate anything.

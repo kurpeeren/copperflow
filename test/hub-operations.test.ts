@@ -122,7 +122,7 @@ describe("hub status --json", () => {
       expect(await runCli(["hub", "status", "--json", "--data", data], "/", out)).toBe(0)
       expect(out.lines).toHaveLength(1)
       const status = JSON.parse(out.lines[0] as string) as Record<string, unknown>
-      expect(Object.keys(status).sort()).toEqual(["containerMemory", "diskBytes", "projects", "runner", "running", "trashPending", "trashStuck", "unusedInvites", "users"].sort())
+      expect(Object.keys(status).sort()).toEqual(["auditOverCap", "auditRows", "containerMemory", "diskBytes", "projects", "runner", "running", "trashPending", "trashStuck", "unusedInvites", "users"].sort())
       expect(status).toMatchObject({ users: 1, projects: 0, unusedInvites: 0, runner: "process", running: 2, trashPending: 0, diskBytes: 0, containerMemory: [] })
       const stuck = status.trashStuck as { name: string; failures: number; reason: string }[]
       expect(stuck).toHaveLength(1)
