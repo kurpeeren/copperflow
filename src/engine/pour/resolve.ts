@@ -20,11 +20,12 @@ export function resolveWithPours(
   nets: readonly Net[],
   boardLayers: 2 | 4,
   fill?: PourFiller,
-): { copper: Copper; pours: PourFill[] } {
+): { copper: Copper; pours: PourFill[]; bare: Copper } {
   const first = resolveCopper(parts, records, nets, boardLayers)
   const pads = parts.flatMap((part) => part.pads)
   const pours = fill?.(pads, first) ?? []
-  if (pours.length === 0) return { copper: first, pours }
+  if (pours.length === 0) return { copper: first, pours, bare: first }
   const joins = pourJoins(pours, pads, first.tracks, first.vias)
-  return { copper: resolveCopper(parts, records, nets, boardLayers, joins), pours }
+  // `bare` is the copper without the fill's joins: its islands give the ratsnest as it would be with no pours.
+  return { copper: resolveCopper(parts, records, nets, boardLayers, joins), pours, bare: first }
 }

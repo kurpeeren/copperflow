@@ -63,32 +63,20 @@ function touches(piece: Piece, item: Item): boolean {
   return intersection([piece.region.outer, ...piece.region.holes], outlines).length > 0
 }
 
-/**
- * The pads the fills connect: pads of a pour's net, on its layer or through, in a piece of fill that also touches some
- * other copper of that net (another pad, a track or a via). A piece that touches one pad alone connects nothing. These
- * are the pads whose connections the ratsnest leaves out because the fill makes them; the same `pourJoins` the layout's
- * copper was resolved with gives them.
- */
-export function padsJoinedByPours(layout: { parts: readonly { pads: readonly WorldPad[] }[]; tracks: readonly PcbTrack[]; vias: readonly PcbVia[]; pours: readonly PourFill[] }): WorldPad[] {
-  const pads = layout.parts.flatMap((part) => part.pads)
-  const byId = new Map(pads.map((pad) => [pad.id, pad]))
-  const joined = new Map<string, WorldPad>()
-  for (const touched of pourJoins(layout.pours, pads, layout.tracks, layout.vias)) {
-    if (touched.length < 2) continue
-    for (const id of touched) {
-      const pad = byId.get(id)
-      if (pad !== undefined) joined.set(id, pad)
-    }
-  }
-  return [...joined.values()]
-}
+/** The connections the pours make per net (`PcbLayout.pourMade`). */
+export type PourMade = readonly { net: string; count: number }[]
 
-/** "4 pads on GND are joined by pours": the pads the fills connect, by net (three nets at most are named). */
-export function joinedByPoursText(pads: readonly WorldPad[]): string {
-  const nets = [...new Set(pads.map((pad) => (pad.net ?? "").replace(/^net[.:]/, "")))].sort(naturalCompare)
-  const named = nets.slice(0, 3).join(", ")
-  const more = nets.length > 3 ? ` and ${nets.length - 3} more` : ""
-  return `${pads.length === 1 ? "1 pad" : `${pads.length} pads`} on ${named}${more} ${pads.length === 1 ? "is" : "are"} joined by pours`
+/**
+ * "3 connections on GND are made by pours" (or, with `more`, "3 more on GND are made by pours"): the total and the nets
+ * (three at most are named), as the sentence the check and the router both use. Undefined when the pours make none.
+ */
+export function pourMadeText(made: PourMade, more = false): string | undefined {
+  const total = made.reduce((sum, one) => sum + one.count, 0)
+  if (total === 0) return undefined
+  const nets = [...new Set(made.map((one) => one.net.replace(/^net[.:]/, "")))].sort(naturalCompare)
+  const named = `${nets.slice(0, 3).join(", ")}${nets.length > 3 ? ` and ${nets.length - 3} more` : ""}`
+  const what = more ? `${total} more` : total === 1 ? "1 connection" : `${total} connections`
+  return `${what} on ${named} ${total === 1 ? "is" : "are"} made by pours`
 }
 
 /**

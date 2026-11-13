@@ -32,7 +32,7 @@ test("a GND pin pair joined only by the pour counts as routed: its line leaves t
   const design = build(POUR)
   expect(design.pcb.pours[0]?.area).toBeGreaterThan(100)
   expect(design.pcb.ratsnest.map((line) => line.net)).toEqual(["net:R1.pin2"])
-  expect(design.violations.find((v) => v.code === "unrouted")?.message).toBe("1 connection is not routed yet and needs a track; 2 pads on GND are joined by pours and need none")
+  expect(design.violations.find((v) => v.code === "unrouted")?.message).toBe("1 connection is not routed yet and needs a track; 1 more on GND is made by pours and needs none")
 })
 
 test("a pour on the other layer joins nothing of the top-side pads, so the line stays", () => {

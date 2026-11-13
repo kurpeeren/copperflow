@@ -149,7 +149,7 @@ position. Anything a check cannot evaluate is reported as `unchecked`, never sil
 | `outside-board` | warning | A part is not inside the board outline. |
 | `silk-on-pad` | warning | Silkscreen lies on a pad, closer than `minSilkToPad`; or a designator covers pads or another designator (the same findings, in the same words, as `export_fabrication`'s warnings: move it with `pcbNameAt` or move the part). |
 | `unplaced` | warning | Parts still on automatic placement. |
-| `unrouted` | warning | Connections are not routed yet. With pours it also says how many pads they join (those need no track), the same pads `autoroute` leaves out of its total. |
+| `unrouted` | warning | Connections are not routed yet. With pours it also says how many more connections the pours make (those need no track), the same number `autoroute` leaves out of its total. |
 | `unchecked` | warning | A check could not run: an unknown pad shape, no usable board outline, a part with no position, or a duplicate violation id. |
 
 Rules the checks follow:

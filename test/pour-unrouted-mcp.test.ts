@@ -4,7 +4,9 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
+import { buildDesign } from "../src/engine/design.js"
 import { createCopperflowServer } from "../src/mcp/server.js"
+import { withPourNote } from "../src/mcp/route-tools.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
 
 const FILE = "main.circuit.tsx"
@@ -34,17 +36,34 @@ async function agent(): Promise<(name: string, args?: Record<string, unknown>) =
   return async (name, args = {}) => ((await client.callTool({ name, arguments: args })).content as Array<{ text: string }>).map((c) => c.text).join("\n")
 }
 
+const numberAfter = (text: string, pattern: RegExp): number => Number(pattern.exec(text)?.[1] ?? Number.NaN)
+
 describe("check_circuit and autoroute tell the same story about a GND pour", () => {
-  test("before the pour every connection counts; after it check_circuit separates the connections that need a track from the pads the pour joins, and autoroute's total is the first count", async () => {
+  test("the proof run's shape: K connections before the pour, K - M need a track after it, M are made by the pour, and the router routes K - M of K - M", async () => {
     const call = await agent()
     const before = await call("check_circuit", { file: FILE })
-    expect(before).toContain("warning unrouted: 5 connections are not routed yet")
-    expect(before).not.toContain("joined by pours")
+    const all = numberAfter(before, /unrouted: (\d+) connections are not routed yet/)
+    expect(all).toBe(5)
+    expect(before).not.toContain("made by pours")
     expect(await call("add_pour", { file: FILE, net: "GND", layer: "top" })).toContain("joins 4 pads")
     const after = await call("check_circuit", { file: FILE })
-    expect(after).toContain("unrouted: 2 connections are not routed yet and need a track; 4 pads on GND are joined by pours and need none")
+    const needTrack = numberAfter(after, /unrouted: (\d+) connections are not routed yet and need a track/)
+    const made = numberAfter(after, /; (\d+) more on GND are made by pours and need none/)
+    expect(needTrack + made).toBe(all)
     const routed = await call("autoroute", { file: FILE })
-    expect(routed).toMatch(/Routed 2 of 2 connections in \d+ (?:pass|passes); 4 pads on GND are joined by pours and need no track/)
+    expect(numberAfter(routed, /Routed (\d+) of \d+ connections/)).toBe(needTrack)
+    expect(numberAfter(routed, /Routed \d+ of (\d+) connections/)).toBe(needTrack)
+    expect(numberAfter(routed, /; (\d+) connections on GND are made by pours/)).toBe(made)
     expect(await call("check_circuit", { file: FILE })).not.toContain("not routed yet")
+  })
+
+  test("the sentence covers only the nets in the route's scope", () => {
+    const design = buildDesign({ [FILE]: BOARD.replace("  </board>", '    <copperpour net="GND" layer="top" />\n  </board>') }, FILE)
+    const line = "Routed 2 of 2 connections in 1 pass"
+    expect(withPourNote(line, design, { kind: "all" })).toBe(`${line}; 3 connections on GND are made by pours`)
+    expect(withPourNote(line, design, { kind: "nets", nets: ["net.GND"] })).toBe(`${line}; 3 connections on GND are made by pours`)
+    expect(withPourNote(line, design, { kind: "nets", nets: ["net.SIG"] })).toBe(line)
+    expect(withPourNote(line, design, { kind: "parts", parts: ["R1"] })).toBe(`${line}; 3 connections on GND are made by pours`)
+    expect(withPourNote(line, design, { kind: "parts", parts: [] })).toBe(line)
   })
 })

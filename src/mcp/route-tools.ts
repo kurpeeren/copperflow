@@ -11,7 +11,7 @@ import { lockedPartsAt, lockedStart } from "../core/layout-locks.js"
 import type { Design } from "../engine/design.js"
 import { findInstance, routeBoard, type RouteReport, type RouteScope, type UnroutedConnection } from "../engine/router/route-board.js"
 import { connectionPlace, padsById } from "../engine/pad-text.js"
-import { joinedByPoursText, padsJoinedByPours } from "../engine/pour/joins.js"
+import { pourMadeText } from "../engine/pour/joins.js"
 import type { WorldPad } from "../engine/pcb.js"
 import { discardReason, routeSummary } from "../studio/route-events.js"
 import { contentHashes, lockSafeEdits, routeInput } from "../studio/route-runner.js"
@@ -86,14 +86,23 @@ export function routedLine(report: Pick<RouteReport, "routed" | "unrouted" | "pa
   return `${head}; unrouted: ${shown.join(", ")}${more}`
 }
 
+/** Whether a net id is one of the scope's: named by the scope, or on a pad of a part it covers. */
+function netInScope(design: Pick<Design, "pcb" | "circuit">, scope: RouteScope, net: string): boolean {
+  const bare = (id: string) => id.replace(/^net[.:]/, "")
+  if (scope.kind === "all") return true
+  if (scope.kind === "nets") return scope.nets.some((one) => bare(one) === bare(net))
+  const parts = new Set(scope.kind === "parts" ? scope.parts : (findInstance(design.circuit.instances, scope.instance)?.parts ?? []))
+  return design.pcb.parts.some((part) => parts.has(part.component) && part.pads.some((pad) => pad.net === net))
+}
+
 /**
- * The routed line, with the pads the board's pours join when there are any: the router is not given those connections
- * (the fill makes them), which is why its total is smaller than the count before the pour was added. The pads are the
- * ones check_circuit names, from the same layout.
+ * The routed line, with how many connections the board's pours make on the nets in scope, when they make any: the
+ * router is not given those connections, which is why its total is smaller than the count before the pour was added.
+ * The number is the one check_circuit gives (`PcbLayout.pourMade`).
  */
-export function withPourNote(line: string, design: Pick<Design, "pcb">): string {
-  const joined = padsJoinedByPours(design.pcb)
-  return joined.length === 0 ? line : `${line}; ${joinedByPoursText(joined)} and ${joined.length === 1 ? "needs" : "need"} no track`
+export function withPourNote(line: string, design: Pick<Design, "pcb" | "circuit">, scope: RouteScope = { kind: "all" }): string {
+  const made = pourMadeText((design.pcb.pourMade ?? []).filter((one) => netInScope(design, scope, one.net)))
+  return made === undefined ? line : `${line}; ${made}`
 }
 
 /** The lines after the first: the budget and the cleanup, when they cut the run short. */
@@ -133,7 +142,7 @@ export async function autoroute(ports: Ports, input: { file: string; nets?: stri
     : routeBoard(routeInput(design), { scope, budgetMs: budgetSeconds * 1000, ...(options.clock ? { clock: options.clock } : {}) })
   const total = report.routed.length + report.unrouted.length
   if (total === 0) return "Nothing to route: every connection in the scope is already routed. Nothing was written."
-  const line = withPourNote(routedLine(report, padsById(design.pcb)), design)
+  const line = withPourNote(routedLine(report, padsById(design.pcb)), design, scope)
   if (report.edits.length === 0) return [`${line}. Nothing was written.`, ...notes(report, budgetSeconds)].join("\n")
   // The locks are read in the write queue, after the guard: a part locked while the board was routed is honoured.
   const edits = () => lockSafeEdits(circuit.path, design, report.edits)

@@ -2,7 +2,7 @@ import { MIN_OUTLINE_POINTS, usableOutline } from "../board.js"
 import type { Keepout, Point } from "../model.js"
 import { silkscreenFindings } from "../fab/designators.js"
 import { naturalCompare } from "../order.js"
-import { joinedByPoursText, padsJoinedByPours } from "../pour/joins.js"
+import { pourMadeText } from "../pour/joins.js"
 import type { PcbLayout, PlacedFootprint, WorldPad } from "../pcb.js"
 import type { Rules } from "../rules/schema.js"
 import { bounds, padShape, pointInPolygon, polygonsOverlap, shapeDistance, shapeToSegmentDistance, type Shape } from "./geometry.js"
@@ -214,14 +214,14 @@ function unplaced(parts: readonly PlacedFootprint[]): Violation[] {
 
 /**
  * One line: the connections that still need a track (the ratsnest, which is what the router is given), and, when pours
- * make connections, the pads they join (the pads the ratsnest leaves out because the fill connects them).
+ * make connections, how many more they make (the ratsnest without the pours' joins less the ratsnest, per net).
  */
 function unrouted(layout: PcbLayout): Violation[] {
   const count = layout.ratsnest.length
   if (count === 0) return []
-  const joined = padsJoinedByPours(layout)
+  const made = pourMadeText(layout.pourMade ?? [], true)
   const plain = count === 1 ? "1 connection is not routed yet" : `${count} connections are not routed yet`
-  const message = joined.length === 0 ? plain : `${plain} and ${count === 1 ? "needs" : "need"} a track; ${joinedByPoursText(joined)} and ${joined.length === 1 ? "needs" : "need"} none`
+  const message = made === undefined ? plain : `${plain} and ${count === 1 ? "needs" : "need"} a track; ${made} and ${made.startsWith("1 ") ? "needs" : "need"} none`
   return [violation("unrouted", "warning", message, [], "pcb")]
 }
 

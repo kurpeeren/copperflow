@@ -9,7 +9,7 @@ import type { Board, Circuit, Component, Diagnostic, Hole, Point } from "./model
 import { naturalCompare } from "./order.js"
 import type { PourFill } from "./pour/fill.js"
 import { resolveWithPours, type PourFiller } from "./pour/resolve.js"
-import { ratsnest } from "./ratsnest.js"
+import { pourMadeConnections, ratsnest } from "./ratsnest.js"
 
 export interface WorldPad extends Pad {
   /** "<component>#<pad number>"; a repeated number adds "#2", "#3" and so on. */
@@ -58,6 +58,8 @@ export interface PcbLayout {
   vias: PcbVia[]
   /** The connections copper does not join yet. */
   ratsnest: RatsnestLine[]
+  /** The connections the pours make per net, which the ratsnest therefore leaves out; absent or empty without pours. */
+  pourMade?: { net: string; count: number }[]
   /** The board's copper pours as filled, in the board's pour order (empty when layoutPcb is given no filler). */
   pours: PourFill[]
   /** The board's non-plated holes, in source order. */
@@ -221,13 +223,15 @@ export function layoutPcb(
   if (missing.length > 0) {
     diagnostics.push(diagnostic("no-footprint", "warning", "These parts have no footprint and are drawn as 1 x 1 mm squares without pads", missing))
   }
-  const { copper, pours } = resolveWithPours(parts, records, circuit.nets, circuit.board?.layers ?? 2, fill)
+  const { copper, pours, bare } = resolveWithPours(parts, records, circuit.nets, circuit.board?.layers ?? 2, fill)
+  const pourMade = pours.length === 0 ? [] : pourMadeConnections(parts, bare.islands, copper.islands)
   const layout: PcbLayout = {
     ...(circuit.board ? { board: circuit.board } : {}),
     parts,
     tracks: copper.tracks,
     vias: copper.vias,
     ratsnest: ratsnest(parts, copper.islands),
+    ...(pourMade.length > 0 ? { pourMade } : {}),
     pours,
     holes: circuit.board?.holes ?? [],
   }

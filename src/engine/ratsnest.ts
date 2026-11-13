@@ -61,6 +61,17 @@ function spanningTree(net: string, pads: readonly WorldPad[], islands: PadIsland
 }
 
 /**
+ * How many connections the pours make, per net (nets with none are left out, sorted by net): the airwires with only
+ * the copper's islands less the airwires with the pours' joins as well, both from `ratsnest` itself.
+ */
+export function pourMadeConnections(parts: readonly PlacedFootprint[], bareIslands: PadIslands, islands: PadIslands): { net: string; count: number }[] {
+  const perNet = new Map<string, number>()
+  for (const line of ratsnest(parts, bareIslands)) perNet.set(line.net, (perNet.get(line.net) ?? 0) + 1)
+  for (const line of ratsnest(parts, islands)) perNet.set(line.net, (perNet.get(line.net) ?? 0) - 1)
+  return [...perNet].filter(([, count]) => count > 0).sort(([a], [b]) => naturalCompare(a, b)).map(([net, count]) => ({ net, count }))
+}
+
+/**
  * The airwires: for each net, a minimum spanning tree over its pads by centre distance, where pads that copper
  * already joins (`islands`) cost nothing and get no line, so only the connections still missing are drawn.
  */
