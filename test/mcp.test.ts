@@ -7,6 +7,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { createCopperflowServer } from "../src/mcp/server.js"
 import { loadCircuit, redoChange, undoChange, updateAnnotations } from "../src/core/workspace.js"
 import { addMark, lockParts } from "../src/core/annotations.js"
+import { DATASHEET_KEYS, PartSchema } from "../src/core/library.js"
 import { BOARD, createPartArgs, LDO, SHARED, USBX, USBX_FOOTPRINT } from "./fixtures.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
 import { skillText } from "./helpers/skill-text.js"
@@ -141,6 +142,10 @@ describe("MCP server", () => {
     const ok = await call("create_part", { id: "TJA", title: "TJA1051", package: "hc49s", pins: "1 TXD\n2 GND", datasheet: { url: "https://example.com/ds.pdf", title: "TJA1051 datasheet" } })
     expect(ok.text).toContain("Created TJA")
     expect(ok.isError).toBe(false)
+  })
+
+  test("the keys the datasheet refusal lists are the schema's own keys", () => {
+    expect([...DATASHEET_KEYS].sort()).toEqual(Object.keys(PartSchema.shape.datasheet.unwrap().shape).sort())
   })
 
   test("create_part writes a written, unverified part from a pasted pin table and answers compactly", async () => {

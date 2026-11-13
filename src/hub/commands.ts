@@ -82,13 +82,13 @@ const NO_RUNNER: WorkspaceRunner = {
   stopAll: async () => undefined,
 }
 
+/** Longer than the longest usage line (the server's). */
+const HELP_LINE_MAX = 1000
+
 /**
  * `hub --help`, `hub -h`, `hub help [command]` and `hub <command> --help`: the usage from the option table, printed
  * through `printable`, before any option is parsed or any data directory is touched. Undefined when help was not asked.
  */
-/** Longer than the longest usage line (the server's). */
-const HELP_LINE_MAX = 1000
-
 function helpRequested(args: readonly string[], io: CliIO): number | undefined {
   const asked = args[0] === "help" || args.includes("--help") || args.includes("-h")
   if (!asked) return undefined
