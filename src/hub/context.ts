@@ -54,6 +54,8 @@ export interface Hub {
   enterTokens: Map<string, { userId: string; projectId: string; expires: number; epoch: number; hubSession: string }>
   /** Per user: the hashes of their live enter tokens, oldest first (at most 4; a fifth replaces the oldest). */
   enterByUser: Map<string, string[]>
+  /** Per user: the event streams open through the proxy now (at most 8). */
+  streamsOpen: Map<string, number>
   /** Transfers in progress: uploads in the whole hub, downloads per user. */
   transfers: { uploads: number; uploadingUsers: Set<string>; downloads: Map<string, number> }
   /** The agents' MCP sessions at the hub. */

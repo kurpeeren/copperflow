@@ -20,6 +20,9 @@ const TICKET_LIFETIME_S = 60
 export const MAX_ENTER_TOKENS = 10_000
 /** Live enter tokens one user may hold: a fifth replaces their oldest. */
 export const MAX_ENTER_TOKENS_PER_USER = 4
+/** The one route of the workspace the hub proxies as a long-lived event stream (the Studio's), and the most one user holds. */
+export const STREAM_PATH = "/api/events"
+export const MAX_STREAMS_PER_USER = 8
 const SECRET_TEXT = /^[A-Za-z0-9_-]{43}$/
 const SAFE = new Set(["GET", "HEAD"])
 
@@ -166,6 +169,21 @@ export async function serveProjectOrigin(hub: Hub, req: IncomingMessage, res: Se
     throw new HubError(404, "There is no such page.")
   }
   if (!fromThisOrigin(req, method, path, projectOrigin(hub, projectId))) throw new HubError(403, "Requests from another site are not allowed.")
+  // Only the Studio's events route may be a long-lived stream, and one user holds at most MAX_STREAMS_PER_USER of them.
+  if (method !== "GET" || path !== STREAM_PATH) return proxyToWorkspace(hub, req, res, projectId, userId, raw, false)
+  const open = hub.streamsOpen.get(userId) ?? 0
+  if (open >= MAX_STREAMS_PER_USER) throw new HubError(429, "Too many open event streams. Close one, then try again.", { "retry-after": "5" })
+  hub.streamsOpen.set(userId, open + 1)
+  try {
+    await proxyToWorkspace(hub, req, res, projectId, userId, raw, true)
+  } finally {
+    const left = (hub.streamsOpen.get(userId) ?? 1) - 1
+    if (left > 0) hub.streamsOpen.set(userId, left)
+    else hub.streamsOpen.delete(userId)
+  }
+}
+
+async function proxyToWorkspace(hub: Hub, req: IncomingMessage, res: ServerResponse, projectId: string, userId: string, raw: string, longLived: boolean): Promise<void> {
   // Taken before anything waits: a revocation during the wait is seen below.
   const signal = cutSignal(hub, userId)
   const epoch = epochOf(hub, userId)
@@ -198,6 +216,7 @@ export async function serveProjectOrigin(hub: Hub, req: IncomingMessage, res: Se
       },
       maxBodyBytes: FORM_BODY_LIMIT,
       maxDurationMs: DEFAULT_MAX_HOLD_MS,
+      longLived,
       signal,
     })
   } finally {

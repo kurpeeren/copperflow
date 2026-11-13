@@ -315,7 +315,9 @@ was read closes the connection. At most 4 uploads run in the hub, one per user (
 downloads per user. Uploads stream to `<data>/uploads/` with the size cap enforced as they arrive, and downloads
 stream file by file. A user runs at most 3 workspaces (opening a 4th stops their least recently used one); when the
 server's 20 are taken, a user above their fair share gives way, else 503. An open stream keeps a workspace alive for
-12 hours at most.
+12 hours at most. Only `GET /api/events` (the Studio's event stream; the MCP stream is never proxied on a project
+origin) may be a long-lived stream, and only when the answer is an event stream; every other answer, whatever its
+content type, keeps the 64 MB and 60 s caps. A user holds at most 8 event streams at once; a ninth gets 429.
 
 Revocation: sign-out, a password change, "End all sessions" and account deletion end the user's sessions and
 workspace sessions, cut their open proxied streams and stop their workspaces at once. The maintainer's

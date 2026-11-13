@@ -50,6 +50,11 @@ export interface ProxyTarget {
   maxBodyBytes: number
   /** The longest any exchange (an event stream included) may last; then both sides are cut. */
   maxDurationMs: number
+  /**
+   * Whether the request is for a route that really is a long-lived event stream (the caller decides from the path). Only
+   * then is an answer labelled as an event stream exempt from the size and time caps; every other answer keeps them.
+   */
+  longLived: boolean
   /** Aborting it cuts the exchange at once (sign-out, password change, deletion). */
   signal?: AbortSignal
 }
@@ -128,7 +133,7 @@ export async function proxyRequest(req: IncomingMessage, res: ServerResponse, ta
     // Request body: client → size limit → workspace. Any failure rejects and destroys every stage.
     const sending = pipeline(req, limitTo(target.maxBodyBytes, () => plain(res, 413, "The request is too large.")), upstream).catch(() => cut())
     const answer = await answered
-    const stream = String(answer.headers["content-type"] ?? "").startsWith("text/event-stream")
+    const stream = target.longLived && String(answer.headers["content-type"] ?? "").startsWith("text/event-stream")
     // A non-stream answer must arrive within its own time limit.
     const slow = stream ? undefined : setTimeout(cut, UPSTREAM_TIMEOUT_MS)
     slow?.unref()
