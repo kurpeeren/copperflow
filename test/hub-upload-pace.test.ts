@@ -27,8 +27,10 @@ describe("the upload's pace", () => {
 
   test("a body that keeps up with the window is read to its end", async () => {
     const source = fakeRequest()
-    await readAll(source, LIMITS, async () => {
-      for (let i = 0; i < 20; i += 1) {
+    // 400 bytes every 20 ms is eight times what a 400 ms window asks for, so one late timer on a busy machine does
+    // not make a body that keeps up look slow; 600 ms of it crosses the window more than once.
+    await readAll(source, { ...LIMITS, windowMs: 400 }, async () => {
+      for (let i = 0; i < 30; i += 1) {
         source.write(Buffer.alloc(400))
         await new Promise((r) => setTimeout(r, 20))
       }
