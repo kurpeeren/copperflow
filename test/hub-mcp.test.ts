@@ -102,7 +102,7 @@ describe("the hub's /mcp", () => {
     const made = await call(client, "new_project", { name: "Amp" })
     const id = server.hub.store.projects(server.hub.store.userByEmail("ada@example.com")?.id as string)[0]?.id as string
     expect(made.text).toBe(`Project "Amp" created and open (id ${id}). The person watches it at ${ORIGIN}/p/${id}/`)
-    expect((await call(client, "list_projects")).text).toBe(`Your projects (1 of 20):\n- Amp (id ${id}, 0 circuits, 0 parts) [open]`)
+    expect((await call(client, "list_projects")).text).toBe(`Your projects (1 of 20):\n- Amp (id ${id}, 0 circuits) [open]`)
     expect((await call(client, "new_project", { name: "Amp" })).text).toContain("already have a project with that name")
     expect((await call(client, "open_project", { name: "Amp" })).isError).toBe(false)
     expect((await call(client, "open_project", {})).isError).toBe(true)
@@ -310,7 +310,7 @@ describe("the whole flow against a real workspace", () => {
     expect(made.isError, made.text).toBe(false)
     const checked = await call(client, "check_circuit", { file: "main.circuit.tsx" })
     expect(checked.text.length).toBeGreaterThan(0)
-    expect((await call(client, "list_projects")).text).toMatch(/- Divider \(id [0-9a-f]{32}, 1 circuit, 0 parts\) \[open\]/)
+    expect((await call(client, "list_projects")).text).toMatch(/- Divider \(id [0-9a-f]{32}, 1 circuit\) \[open\]/)
     const page = await ada.get("/projects")
     expect(page.text).toContain("Divider")
   }, 120_000)

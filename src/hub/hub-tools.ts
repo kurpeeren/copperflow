@@ -1,7 +1,6 @@
 // The tools the hub answers itself (list_projects, new_project, open_project, guide), the tool-call limit, and the
 // dispatch to the open project's workspace for every other tool. The open project is state of the agent's session.
 import { readdir } from "node:fs/promises"
-import { join } from "node:path"
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js"
 import { z } from "zod"
 import { guideInSession, guideInput, type GuideMemory } from "../mcp/guide.js"
@@ -99,13 +98,16 @@ function open(hub: Hub, state: AgentState, project: Project): void {
   state.projectId = project.id
 }
 
-/** Circuit files and parts in the project folder (two directory reads); undefined when they cannot be read. */
+/**
+ * Circuit files in the project folder: one listing of names in the folder itself, which the hub made and a workspace
+ * cannot replace. Nothing below it is read (rule 8 of docs/hosted.md): a `parts` directory the workspace made may be a
+ * planted link, so the number of parts is not counted here; the workspace's own project_status reports it.
+ */
 async function counts(hub: Hub, project: Project): Promise<string> {
   const dir = hub.files.projectDir(project.userId, project.id)
   try {
     const circuits = (await readdir(dir)).filter((file) => file.endsWith(".circuit.tsx")).length
-    const parts = await readdir(join(dir, "parts")).then((entries) => entries.length, () => 0)
-    return `, ${circuits} circuit${circuits === 1 ? "" : "s"}, ${parts} part${parts === 1 ? "" : "s"}`
+    return `, ${circuits} circuit${circuits === 1 ? "" : "s"}`
   } catch {
     return ""
   }

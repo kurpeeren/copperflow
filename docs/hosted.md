@@ -430,7 +430,8 @@ request passes a global bucket of 5 a second (2 waiting per address, 40 in all) 
 (`hubInstructions`): the workspace's rules with a single start order in place of the workspace's own (open or create a
 project, then `project_status`, then `guide` once), and the line saying the person watches at `<public origin>/p/<id>/`;
 the workspace's "call `project_status` first" never reaches a hub client. It answers
-`list_projects`, `new_project { name }` (the project quotas apply; it opens the project) and `open_project { name |
+`list_projects` (names, ids and the number of circuit files, one listing of the project folder's own names; it reads nothing
+below it, so no link a workspace planted is followed), `new_project { name }` (the project quotas apply; it opens the project) and `open_project { name |
 id }` (another user's project reads exactly as a missing one), and `guide` from the skill files (the same arguments a second time in one session answer one short line unless `again: true`; the memory belongs to that MCP session, holds at most 32 argument sets and is never shared). Every other tool is
 advertised from the hosted tool list, read once at start by an in-memory MCP client from a hosted server made for a
 folder that does not exist (listing tools only serialises schemas: no circuit code runs), and forwarded to the open
