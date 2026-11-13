@@ -3,6 +3,8 @@ import { describe, expect, test } from "vitest"
 import { buildDesign, type Design } from "../../src/engine/design.js"
 import { placeBoard } from "../../src/engine/pcb-place/index.js"
 import { filesIn, withPositions } from "../helpers/place-fixtures.js"
+import { checkRoutedAll, routeDesign } from "../helpers/route-check.js"
+
 /** The shortest pad-to-pad distance between `a`'s and `b`'s pads on `net` (mm). */
 function onNet(design: Design, a: string, b: string, net: string): number {
   const of = (part: string) => design.pcb.parts.find((p) => p.component === part)?.pads.filter((p) => p.net === net) ?? []
@@ -16,16 +18,17 @@ interface Bus {
   wire: number
 }
 
-/** Places `files` (connectors last only, when `old`) and builds the board with those positions. */
-function placed(files: Record<string, string>, main: string, old = false): { design: Design; wire: number } {
-  const placement = placeBoard(buildDesign(files, main), old ? { connectorsAhead: false } : {})
+/** Places `files` (connectors ahead of their parts tried, or connectors last only) and builds the placed board. */
+function placed(files: Record<string, string>, main: string, ahead: boolean): { design: Design; files: Record<string, string>; wire: number } {
+  const placement = placeBoard(buildDesign(files, main), { connectorsAhead: ahead })
   expect(placement.unplaced).toEqual([])
-  return { design: buildDesign({ ...files, [main]: withPositions(files[main] as string, placement.positions) }, main), wire: placement.score.wireLength }
+  const written = { ...files, [main]: withPositions(files[main] as string, placement.positions) }
+  return { design: buildDesign(written, main), files: written, wire: placement.score.wireLength }
 }
 
 /** Places `files` and measures the bus nets on the placed board. */
-function measure(files: Record<string, string>, main: string, nets: { canh: [string, string]; term: [string, string] }, old = false): Bus {
-  const { design, wire } = placed(files, main, old)
+function measure(files: Record<string, string>, main: string, nets: { canh: [string, string]; term: [string, string] }, ahead = true): Bus {
+  const { design, wire } = placed(files, main, ahead)
   return {
     canh: onNet(design, ...nets.canh, "net.CANH"),
     canl: onNet(design, ...nets.canh, "net.CANL"),
@@ -51,9 +54,49 @@ function proofBoard(width: number, height: number): Record<string, string> {
   return { ...files, [PROOF_MAIN]: main, [PROOF_LAYOUT]: `${(files[PROOF_LAYOUT] as string).split("\n")[0]}\n` }
 }
 const PROOF_NETS = { canh: ["J2", "U2"], term: ["JP1", "R2"] } as { canh: [string, string]; term: [string, string] }
-const proof = (width: number, height: number, old = false) => measure(proofBoard(width, height), PROOF_MAIN, PROOF_NETS, old)
+const proof = (width: number, height: number, ahead = true) => measure(proofBoard(width, height), PROOF_MAIN, PROOF_NETS, ahead)
+const SIZES = [[32, 23], [30, 22], [32, 20], [44, 20], [40, 30]] as const
 
-describe("the bus header of the proof board sits near the transceiver it serves", () => {
+/** Routes the placed board: its unrouted connections and the copper findings of the routed copper. */
+function routed(files: Record<string, string>, ahead: boolean) {
+  const board = placed(files, PROOF_MAIN, ahead)
+  const report = routeDesign(board.design)
+  return { unrouted: report.unrouted, copper: checkRoutedAll(board.files, PROOF_MAIN, report.routed.map((r) => r.copper)).copper }
+}
+
+describe("connectors ahead of the parts they serve is not the default", () => {
+  test("by default the proof board and the satellites board place exactly as with connectorsAhead: false", () => {
+    // The board of pcb-place-satellites: the proof board at its own size.
+    const satellites = { ...proofBoard(32, 23), [PROOF_MAIN]: (filesIn(PROOF)[PROOF_MAIN] as string).replace(/ pcbX=\{[^}]*\} pcbY=\{[^}]*\} pcbRotation=\{[^}]*\}/g, "") }
+    for (const files of [proofBoard(32, 23), satellites]) {
+      const design = buildDesign(files, PROOF_MAIN)
+      expect([...placeBoard(design).positions]).toEqual([...placeBoard(design, { connectorsAhead: false }).positions])
+    }
+  })
+})
+
+describe("the placements route", () => {
+  // Routing ten boards takes about 45 s on an idle machine; each test has its own limit.
+  for (const [width, height] of SIZES) {
+    test(`on ${width} x ${height} mm, connectors last: no connection unrouted, no copper findings`, () => {
+      const result = routed(proofBoard(width, height), false)
+      expect(result.unrouted).toEqual([])
+      expect(result.copper).toEqual([])
+    }, 180_000)
+  }
+  for (const [width, height] of SIZES) {
+    // On 30 x 22 mm, connectors ahead leave one GND connection (D1.pin2 to C4.pin2) unrouted, which is why connectors
+    // ahead is not the default.
+    if (width === 30 && height === 22) continue
+    test(`on ${width} x ${height} mm, connectors ahead: no connection unrouted, no copper findings`, () => {
+      const result = routed(proofBoard(width, height), true)
+      expect(result.unrouted).toEqual([])
+      expect(result.copper).toEqual([])
+    }, 180_000)
+  }
+})
+
+describe("with connectors ahead, the bus header of the proof board sits near the transceiver it serves", () => {
   // With connectors last only, these were 9.3 / 5.6 / 14.1, 20.6 / 15.4 / 23.7 and 25.5 / 20.3 / 34.1 mm.
   for (const [width, height] of [[32, 23], [30, 22], [44, 20]] as const) {
     test(`on ${width} x ${height} mm CANH, CANL and TERM are each at most 12 mm pad to pad`, () => {
@@ -63,12 +106,12 @@ describe("the bus header of the proof board sits near the transceiver it serves"
   }
 
   test("on 32 x 20 mm the bus nets together are shorter than with connectors last (37.3 mm then)", () => {
-    const [bus, old] = [proof(32, 20), proof(32, 20, true)]
+    const [bus, old] = [proof(32, 20), proof(32, 20, false)]
     expect(bus.canh + bus.canl + bus.term).toBeLessThan(old.canh + old.canl + old.term)
   })
 
   test("on 40 x 30 mm CANH and CANL are no longer than with connectors last (10.4 and 15.6 then), TERM within 0.5 mm (11.1)", () => {
-    const [bus, old] = [proof(40, 30), proof(40, 30, true)]
+    const [bus, old] = [proof(40, 30), proof(40, 30, false)]
     expect(bus.canh).toBeLessThanOrEqual(old.canh)
     expect(bus.canl).toBeLessThanOrEqual(old.canl)
     expect(bus.term).toBeLessThanOrEqual(old.term + 0.5)
@@ -76,8 +119,8 @@ describe("the bus header of the proof board sits near the transceiver it serves"
 
   test("the same board places the same way twice", () => {
     const files = proofBoard(32, 23)
-    const once = placeBoard(buildDesign(files, PROOF_MAIN))
-    const twice = placeBoard(buildDesign(files, PROOF_MAIN))
+    const once = placeBoard(buildDesign(files, PROOF_MAIN), { connectorsAhead: true })
+    const twice = placeBoard(buildDesign(files, PROOF_MAIN), { connectorsAhead: true })
     expect([...twice.positions]).toEqual([...once.positions])
   })
 })
