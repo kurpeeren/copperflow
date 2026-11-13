@@ -355,6 +355,11 @@ Run each and see it pass (docs/hosted.md, "Before the first stranger's account")
     `strict-transport-security: max-age=31536000` (the hub sets it; add `--hsts-include-subdomains` to the hub's
     command only if every name under the public host's domain is served over https).
 18. `dig +short AAAA copperflow.kurpeeren.com` and `dig +short AAAA x.<workspace domain>` print nothing.
+19. A only: from inside a workspace, the proxy's own address (`CF_HUB_EDGE_IP`) cannot be reached. With a workspace
+    running: `docker run --rm --network cf-ws-<project id> node:22-bookworm-slim node -e "require('net').connect({ port: 443, host: process.argv[1], timeout: 5000 }).on('connect', () => console.log('open')).on('timeout', () => console.log('timeout')).on('error', (e) => console.log(e.code))" <CF_HUB_EDGE_IP>`
+    prints an error code (usually `ENETUNREACH`, or `timeout`) and never `open`. If it prints `open`, the hub still
+    refuses a request that arrives through the proxy from a workspace network (it closes the connection), but fix the
+    routing before any stranger's account exists.
 
 ## 11. Day to day
 

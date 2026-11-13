@@ -176,6 +176,9 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
   const hub = await openHub(options)
   const hsts = hub.config.secure ? `max-age=31536000${options.hstsIncludeSubdomains ? "; includeSubDomains" : ""}` : undefined
   const server = createServer({ maxHeaderSize: MAX_HEADER_BYTES }, (req, res) => {
+    // The same guard as for a workspace peer, applied to the client address a trusted proxy forwarded: a request that
+    // came through the proxy from inside a workspace network gets the same answer, the connection closed unread.
+    if (refuseForwardedWorkspaceClient(req, hub.config.trustProxy, workspaceSubnets)) return
     // On every answer, the hub's pages and proxied ones alike (writeHead keeps headers set here).
     if (hsts) res.setHeader("strict-transport-security", hsts)
     guard(req, res, options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS, hub.config.publicHost)
@@ -306,6 +309,18 @@ export function refuseWorkspacePeers(server: Pick<Server, "on">, subnets: Subnet
   server.on("connection", (socket: Socket) => {
     if (subnets.has(socket.remoteAddress)) socket.destroy()
   })
+}
+
+/**
+ * When the request came through a trusted proxy (its forwarded client address differs from the socket's) and that client
+ * address is inside a workspace subnet, closes the connection and says so. Same answer as `refuseWorkspacePeers` gives.
+ */
+export function refuseForwardedWorkspaceClient(req: IncomingMessage, trustProxy: SubnetSet | undefined, subnets: SubnetSet): boolean {
+  if (!trustProxy) return false
+  const client = clientAddress(req, trustProxy)
+  if (client === req.socket.remoteAddress || !subnets.has(client)) return false
+  req.socket.destroy()
+  return true
 }
 
 /** Caps open connections per peer address; the trusted proxy (many clients behind one address) is the one exception. */

@@ -225,6 +225,11 @@ Run these on a machine with an engine, and see each one pass, before any strange
     no other workspace network is reachable through the hub container.
 12. Run Studio build, autoroute and autoplace at once on the 200-part benchmark, and nothing is OOM-killed
     (`docker inspect` shows `OOMKilled=false`).
+13. With the Compose arrangement, from inside a workspace container a connection to the proxy's address
+    (`CF_HUB_EDGE_IP`, port 443) fails: `docker run --rm --network cf-ws-<project id> node:22-bookworm-slim node -e
+    "require('net').connect({ port: 443, host: process.argv[1], timeout: 5000 }).on('connect', () => console.log('open')).on('timeout', () => console.log('timeout')).on('error', (e) => console.log(e.code))" <CF_HUB_EDGE_IP>`
+    prints an error code (usually `ENETUNREACH`) or `timeout`, never `open`. The hub also closes, unread, a request
+    that a trusted proxy forwarded for a client inside a workspace subnet (the same answer as for a workspace peer).
 
 **The disk quota while workspaces run.** A workspace writes into `/work` freely, so every 5 seconds the hub measures the
 project folders of each user with a running workspace, 4 users at a time and at most 2 s each (`lstat` only, never
