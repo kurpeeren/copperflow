@@ -9,6 +9,8 @@ export interface HubOption {
   /** The value's placeholder, e.g. "<dir>"; absent for an option that takes no value. */
   value?: string
   required?: boolean
+  /** Needed whenever this runner is chosen (not otherwise): the usage and the help say so. */
+  requiredWith?: "container" | "process"
   /** Only meaningful with this runner; the server refuses a container option under `--runner process`. */
   runner?: "container" | "process"
   note: string
@@ -35,8 +37,8 @@ export const HUB_COMMANDS: readonly HubCommand[] = [
       { name: "--public-origin", value: "<url>", required: true, note: "the address people use, e.g. https://copperflow.example.com" },
       { name: "--workspace-domain", value: "<domain>", required: true, note: "each project is served on its own origin under this domain, e.g. ws.copperflow.example.com" },
       { name: "--runner", value: "<container|process>", note: "how workspaces run (default process)" },
-      { name: "--trusted-accounts-only", runner: "process", note: "required with the process runner: every account can read every other account's data, so use it for accounts you trust only" },
-      { name: "--workspace-image", value: "<name>", runner: "container", note: "required with the container runner: the image built from deploy/workspace.Dockerfile" },
+      { name: "--trusted-accounts-only", runner: "process", requiredWith: "process", note: "every account can read every other account's data, so use it for accounts you trust only" },
+      { name: "--workspace-image", value: "<name>", runner: "container", requiredWith: "container", note: "the image built from deploy/workspace.Dockerfile" },
       { name: "--container-command", value: "<command>", runner: "container", note: "the container engine's command (default docker)" },
       { name: "--hub-container", value: "<name>", runner: "container", note: "with --workspace-reach network: the hub's own container" },
       { name: "--workspace-reach", value: "<loopback|network>", runner: "container", note: "how the hub reaches workspaces (default loopback)" },
@@ -83,20 +85,24 @@ export const hubCommandNamed = (name: string): HubCommand | undefined => HUB_COM
 
 const shown = (option: HubOption): string => (option.value === undefined ? option.name : `${option.name} ${option.value}`)
 
+/** " (required with --runner container)" for an option a runner needs; nothing otherwise. */
+const requirementText = (option: HubOption): string => (option.requiredWith ? ` (required with --runner ${option.requiredWith})` : "")
+
 /** `copperflow hub invite --data <dir> [--count <n>]` */
 export function usageLine(command: HubCommand): string {
   const words = ["copperflow hub", ...(command.name === "" ? [] : [command.name]), ...(command.positional ? [command.positional] : [])]
-  const options = command.options.map((option) => (option.required ? shown(option) : `[${shown(option)}]`))
+  const options = command.options.map((option) => (option.required ? shown(option) : option.requiredWith ? `${shown(option)}${requirementText(option)}` : `[${shown(option)}]`))
   return [...words, ...options].join(" ")
 }
 
 /** What follows "Usage:" in a refusal: one line per command. */
 export const USAGE: string = `Usage:\n${HUB_COMMANDS.map((command) => `  ${usageLine(command)}`).join("\n")}`
 
-const WIDTH = 30
+/** The option column: the longest option as shown anywhere in the table, plus two spaces before its note. */
+const WIDTH = Math.max(...ALL_OPTIONS.map((option) => shown(option).length)) + 2
 
 function optionLines(command: HubCommand): string[] {
-  return command.options.map((option) => `    ${shown(option).padEnd(WIDTH)}${option.note}`)
+  return command.options.map((option) => `    ${shown(option).padEnd(WIDTH)}${option.note}${requirementText(option)}`)
 }
 
 /** The text of `hub --help` (every command) or `hub <command> --help` (one), as lines. */

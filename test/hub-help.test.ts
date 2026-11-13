@@ -79,4 +79,21 @@ describe("hub --help", () => {
     expect(parseServeArgs([...base, "--hsts-include-subdomains"], "/").hstsIncludeSubdomains).toBe(true)
     expect(() => parseServeArgs([...base, "--workspace-image", "x"], "/")).toThrow(/belongs to --runner container/)
   })
+
+  test("every option line keeps at least two spaces before its note, however long the option is", async () => {
+    await requireSqlite()
+    const out = io()
+    expect(await runCli(["hub", "--help"], "/", out)).toBe(0)
+    const optionLines = out.lines.filter((line) => line.startsWith("    --"))
+    expect(optionLines.length).toBe(HUB_COMMANDS.reduce((sum, command) => sum + command.options.length, 0))
+    for (const line of optionLines) expect(line, line).toMatch(/^ {4}--\S+(?: <[^>]+>)? {2,}\S/)
+    expect(out.lines.some((line) => line.includes("--workspace-reach <loopback|network>  how"))).toBe(true)
+  })
+
+  test("the usage in every refusal says which option each runner needs, from the table", () => {
+    expect(USAGE).toContain("--workspace-image <name> (required with --runner container)")
+    expect(USAGE).toContain("--trusted-accounts-only (required with --runner process)")
+    expect(USAGE).not.toContain("[--workspace-image")
+    expect(USAGE).toContain("[--bind <address>]")
+  })
 })
