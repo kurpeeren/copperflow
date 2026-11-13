@@ -6,6 +6,7 @@ import {
   anonymousFormToken,
   audit,
   clearSessionCookie,
+  correctPasswordGate,
   countAttempt,
   cutUser,
   forgetThisDevice,
@@ -24,7 +25,7 @@ import { agentSection } from "./agent-pages.js"
 import { pendingRequest } from "./oauth.js"
 import { revokeUser, type RevokingHub } from "./revocation.js"
 import { removeUserFolders } from "./project-folders.js"
-import { hashPassword, hashSecret, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, newId, verifyAgainstNothing, verifyPassword } from "./secrets.js"
+import { hashPassword, hashSecret, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, newId, verifyAgainstNothing, verifyPasswordAdmitted } from "./secrets.js"
 import { normaliseEmail } from "./store.js"
 import { addressKey } from "./limits.js"
 
@@ -99,8 +100,17 @@ export async function signIn(hub: Hub, req: IncomingMessage, res: ServerResponse
     return tooMany(1)
   }
   const password = form.get("password") ?? ""
-  const ok = user ? await verifyPassword(password, user.passwordHash) : await verifyAgainstNothing(password)
+  // A user's correct passwords are counted too (30 per 15 minutes), asked inside the hashing slot right before the hash.
+  const correct = user ? correctPasswordGate(hub, user.id) : undefined
+  const ok = user && correct ? await verifyPasswordAdmitted(password, user.passwordHash, correct.admit) : await verifyAgainstNothing(password)
+  if (user && correct && ok === "refused") {
+    // No hash ran: not a failed guess either.
+    refund()
+    audit(hub, address, user.id, "signin-limited-password")
+    return tooMany(correct.retryAfterS())
+  }
   if (!user || !ok) {
+    correct?.release()
     hub.limits.gate.fail(hub.config.now())
     audit(hub, address, user?.id ?? null, "signin-failed")
     return showSignIn(hub, req, res, 401, SIGN_IN_FAILED)
@@ -186,10 +196,20 @@ export async function checkCurrentPassword(hub: Hub, res: ServerResponse, addres
   }
   // Counted before the await, refunded when right.
   countAttempt(hub, hub.limits.reauth, signed.user.id, now, address)
-  if (await verifyPassword(given ?? "", signed.user.passwordHash)) {
+  const correct = correctPasswordGate(hub, signed.user.id)
+  const ok = await verifyPasswordAdmitted(given ?? "", signed.user.passwordHash, correct.admit)
+  if (ok === "refused") {
+    // Too many right passwords in the window: refused before any hash, and not counted as a failure.
+    hub.limits.reauth.refund(signed.user.id, now)
+    audit(hub, address, signed.user.id, `${what}-limited`)
+    sendPage(res, 429, accountPage({ email: signed.user.email, formToken: signed.formToken }, `Too many password attempts. Try again in ${minutes(correct.retryAfterS())}.`), { "retry-after": String(correct.retryAfterS()) })
+    return false
+  }
+  if (ok) {
     hub.limits.reauth.refund(signed.user.id, now)
     return true
   }
+  correct.release()
   audit(hub, address, signed.user.id, `${what}-failed`)
   showAccount(hub, res, signed, undefined, 400, "The current password is wrong.")
   return false

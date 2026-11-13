@@ -16,8 +16,40 @@ const MAX_N = 2 ** 20
 const MAX_R = 16
 const MAX_P = 4
 
+/** Password hashes (scrypt, any route) that run at once in the hub; the rest wait in arrival order. */
+export const MAX_CONCURRENT_HASHES = 2
+let hashesRunning = 0
+let hashesPeak = 0
+let hashesStarted = 0
+const hashQueue: (() => void)[] = []
+
+/** What the shared hashing slots are doing (for tests and `hub status`): running now, the most at once, started in all, waiting. */
+export function hashLoad(): { running: number; peak: number; started: number; waiting: number } {
+  return { running: hashesRunning, peak: hashesPeak, started: hashesStarted, waiting: hashQueue.length }
+}
+
+export function resetHashPeak(): void {
+  hashesPeak = hashesRunning
+}
+
+/** Runs `work` in one of the MAX_CONCURRENT_HASHES slots; later callers wait in arrival order. */
+async function inHashSlot<T>(work: () => Promise<T>): Promise<T> {
+  if (hashesRunning >= MAX_CONCURRENT_HASHES) await new Promise<void>((go) => hashQueue.push(go))
+  else hashesRunning += 1
+  // A slot handed over by a finishing hash keeps the count: the running figure never passes the limit.
+  hashesPeak = Math.max(hashesPeak, hashesRunning)
+  try {
+    return await work()
+  } finally {
+    const next = hashQueue.shift()
+    if (next) next()
+    else hashesRunning -= 1
+  }
+}
+
 function derive(password: string, salt: Buffer, params: { N: number; r: number; p: number }): Promise<Buffer> {
   const options: ScryptOptions = { ...params, maxmem: 256 * params.N * params.r + 1024 * 1024 }
+  hashesStarted += 1
   return new Promise((done, fail) => scrypt(password.normalize("NFC"), salt, KEY_BYTES, options, (error, key) => (error ? fail(error) : done(key))))
 }
 
@@ -25,12 +57,24 @@ function derive(password: string, salt: Buffer, params: { N: number; r: number; 
 export async function hashPassword(password: string): Promise<string> {
   if (password.length > MAX_PASSWORD_LENGTH) throw new Error("Password too long")
   const salt = randomBytes(SALT_BYTES)
-  const key = await derive(password, salt, SCRYPT)
+  const key = await inHashSlot(() => derive(password, salt, SCRYPT))
   return ["scrypt", SCRYPT.N, SCRYPT.r, SCRYPT.p, salt.toString("base64"), key.toString("base64")].join("$")
 }
 
 /** Whether the password matches the stored hash; a malformed hash never matches. */
 export async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  return inHashSlot(() => check(password, stored))
+}
+
+/**
+ * Like verifyPassword, but `admit` is asked inside the slot, immediately before the hash would start, and a false
+ * answer means no hash runs and "refused" comes back (the correct-password limit, docs/hosted.md).
+ */
+export async function verifyPasswordAdmitted(password: string, stored: string, admit: () => boolean): Promise<boolean | "refused"> {
+  return inHashSlot<boolean | "refused">(() => (admit() ? check(password, stored) : Promise.resolve("refused")))
+}
+
+async function check(password: string, stored: string): Promise<boolean> {
   if (password.length > MAX_PASSWORD_LENGTH) return false
   const [kind, n, r, p, salt, key] = stored.split("$")
   const params = { N: Number(n), r: Number(r), p: Number(p) }

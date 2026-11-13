@@ -85,6 +85,8 @@ export interface Limits {
   signinEmail: EmailBuckets
   signupAddress: WindowCounter
   reauth: WindowCounter
+  /** Correct passwords (sign-in and current-password checks) per user id: 30 per 15 minutes; only a right password raises it. */
+  correctPasswords: WindowCounter
   gate: SigninGate
   /** Tool calls per user: 60 a minute. */
   toolCalls: WindowCounter
@@ -109,6 +111,8 @@ export interface Limits {
 const FIFTEEN_MINUTES = 15 * 60_000
 /** Routine audit rows one user may write per kind in 15 minutes; then one `audit-suppressed` row and no more of that kind. */
 export const ROUTINE_ROWS_PER_WINDOW = 20
+/** Correct passwords one user may present (sign-in, current-password checks) in 15 minutes. */
+export const CORRECT_PASSWORDS_PER_WINDOW = 30
 export const MAX_FAILED_SIGNINS = 300
 export const ADDRESS_FAILURES = 10
 export const EMAIL_FAILURES = 20
@@ -121,6 +125,7 @@ export function newLimits(maxKeys?: number): Limits {
     signinEmail: new EmailBuckets(EMAIL_FAILURES, FIFTEEN_MINUTES),
     signupAddress: new WindowCounter(20, 60 * 60_000, maxKeys),
     reauth: new WindowCounter(ADDRESS_FAILURES, FIFTEEN_MINUTES, maxKeys),
+    correctPasswords: new WindowCounter(CORRECT_PASSWORDS_PER_WINDOW, FIFTEEN_MINUTES, maxKeys),
     toolCalls: new WindowCounter(60, 60_000, maxKeys),
     routineRows: new WindowCounter(ROUTINE_ROWS_PER_WINDOW, FIFTEEN_MINUTES, maxKeys),
     routineNotes: new WindowCounter(1, FIFTEEN_MINUTES, maxKeys),
@@ -132,6 +137,34 @@ export function newLimits(maxKeys?: number): Limits {
     registerGate: new SigninGate({ threshold: Number.POSITIVE_INFINITY, windowMs: FIFTEEN_MINUTES, perSecond: 2, queue: 40, perAddress: 2 }),
     authorizeGate: new SigninGate({ threshold: Number.POSITIVE_INFINITY, windowMs: FIFTEEN_MINUTES, perSecond: 5, queue: 40, perAddress: 2 }),
     gate: new SigninGate({ threshold: MAX_FAILED_SIGNINS, windowMs: FIFTEEN_MINUTES, perSecond: 5, queue: 50, perAddress: 2 }),
+  }
+}
+
+/**
+ * The admission for one password check of user `userId`, asked inside the hashing slot right before the hash: counts
+ * the attempt in the correct-password counter, or says no (`retryAfterS` is then set). A full table says no, never yes.
+ * The caller takes the count back with `release` when the password turns out wrong, so only a right password stays counted.
+ */
+export function correctPasswordGate(hub: Hub, userId: string): { admit: () => boolean; release: () => void; retryAfterS: () => number } {
+  let counted: number | undefined
+  let retry = 60
+  return {
+    admit: () => {
+      const now = hub.config.now()
+      const check = hub.limits.correctPasswords.check(userId, now)
+      if (!check.ok) {
+        retry = check.retryAfterS
+        return false
+      }
+      if (hub.limits.correctPasswords.add(userId, now) !== "ok") return false
+      counted = now
+      return true
+    },
+    release: () => {
+      if (counted !== undefined) hub.limits.correctPasswords.refund(userId, counted)
+      counted = undefined
+    },
+    retryAfterS: () => retry,
   }
 }
 

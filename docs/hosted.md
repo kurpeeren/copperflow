@@ -353,7 +353,7 @@ sessions or use up their rows.
 
 The audit log (`audit` table: time, user id or none, event, address, detail) records `signup`, `signup-failed`,
 `signup-limited`, `signin`, `signin-failed`, `signin-limited-address`, `signin-limited-email`,
-`signin-limited-strict`, `signin-strict`, `signin-strict-table-full`, `signout`, `signout-forget-device`,
+`signin-limited-strict`, `signin-limited-password`, `signin-strict`, `signin-strict-table-full`, `signout`, `signout-forget-device`,
 `sessions-ended`, `password-changed`, `password-change-failed`, `password-change-limited`, `account-delete-failed`,
 `account-delete-limited`, `account-deleted`, `password-reset`, `invites-made`, `workspace-stop-requested`, `project-created`, `project-renamed`,
 `project-deleted`, `project-downloaded`, `project-uploaded`, `upload-refused`, `workspace-entered` (a routine kind),
@@ -460,7 +460,9 @@ What this does not stop:
 ### Sign-in limits
 
 Every password check is counted before it starts, as if it failed, and refunded when the password is right: concurrent
-attempts cannot pass a check together, and a correct password costs nothing. Windows are 15 minutes.
+attempts cannot pass a check together, and a correct password costs nothing against the failure limits. Windows are 15
+minutes. At most 2 password hashes (scrypt, on any route: sign-in, sign-up, change password, delete account) run at
+once in the hub; the rest wait in arrival order.
 
 | What is counted | Per | Limit | At the limit | Exempt |
 | --- | --- | --- | --- | --- |
@@ -468,6 +470,7 @@ attempts cannot pass a check together, and a correct password costs nothing. Win
 | Failed sign-ins | Email, existing or not (65 536 fixed buckets by a keyed hash made at start, never stored) | 20 | 429 with Retry-After, the same for every email | A request with that account's device cookie |
 | Failed sign-ins | Everyone (strict mode) | 300, or a full limiter table | Attempts pass a token bucket of 5 per second; at most 2 wait per address, served in turn across addresses, 50 in all; beyond that 429 | A request with that account's device cookie |
 | Failed current-password checks (change password, delete account) | User id | 10 | 429 with Retry-After | Nobody; the sign-in route cannot reach this counter |
+| Correct passwords (sign-in, and current-password checks) | User id | 30 per 15 minutes | 429 with Retry-After, checked before the hash | Nobody. Only someone who knows the password can raise this counter, so a stranger cannot lock anyone out with it. |
 | Sign-ups | Address | 20 per hour | 429 | Nobody |
 
 A device cookie is set at each successful sign-in (random, stored hashed, at most 10 per user, one year). A normal
