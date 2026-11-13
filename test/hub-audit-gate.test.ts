@@ -3,10 +3,10 @@ import { mkdtemp } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
-import { AUDIT_FULL_ROWS_PER_KEY, AUDIT_FULL_ROWS_PER_KIND, AUDIT_MAX_KEYS, AUDIT_WINDOW_MS, AuditGate } from "../src/hub/audit-gate.js"
+import { MANY_DISTINCT_LIMIT, MANY_TOP, AUDIT_FULL_ROWS_PER_KEY, AUDIT_FULL_ROWS_PER_KIND, AUDIT_MAX_KEYS, AUDIT_WINDOW_MS, AuditGate } from "../src/hub/audit-gate.js"
 import { COUNT_CHECK_EVERY_MS, pruneAudit } from "../src/hub/audit-prune.js"
 import type { HubServer } from "../src/hub/server.js"
-import { HubStore, ROUTINE_PRUNE_SQL } from "../src/hub/store.js"
+import { AUDIT_COUNT_DETAIL_MAX, HubStore, ROUTINE_PRUNE_SQL } from "../src/hub/store.js"
 import { Browser, newUser, send, startTestHub } from "./helpers/hub-client.js"
 
 let store: HubStore | undefined
@@ -99,20 +99,59 @@ describe("the audit rule", () => {
     const count = rowsOf(s, "audit-count").filter((row) => row.detail.includes("actor=many"))
     expect(count).toHaveLength(1)
     expect(count[0]?.detail).toContain("n=300 ")
+    expect(count[0]?.detail).toContain("distinct=300 ")
     expect(count[0]?.address).toBe("many")
+    // The first merged event wrote the one summary row naming the kind and the window.
+    const summary = rowsOf(s, "audit-summarised").filter((row) => row.detail.startsWith("kind=signin-limited-address actor=many window="))
+    expect(summary).toHaveLength(1)
   }, 60_000)
 
-  test("when the key table is full a new key is counted under many, and nothing is dropped", async () => {
-    const s = await open({ gate: new AuditGate({ maxKeys: 3 }) })
-    for (let i = 0; i < 6; i += 1) s.audit({ time: T0 + i, userId: `user-${i}`, event: "project-created", address: "a", detail: "" })
-    expect(rowsOf(s, "project-created")).toHaveLength(3)
-    // A known key still writes in full.
-    s.audit({ time: T0 + 10, userId: "user-0", event: "project-created", address: "a", detail: "again" })
-    expect(rowsOf(s, "project-created")).toHaveLength(4)
+  test("when the address table is full a new address is counted under many; a user's key is never merged, whatever the caps", async () => {
+    const s = await open({ gate: new AuditGate({ maxKeys: 3, fullPerKind: 6 }) })
+    for (let i = 0; i < 6; i += 1) s.audit({ time: T0 + i, userId: null, event: "signup-failed", address: `203.0.113.${i}`, detail: "" })
+    // Three addresses took the table, three more were merged; the kind's hub-wide row budget (6) is spent as well.
+    expect(rowsOf(s, "signup-failed")).toHaveLength(3)
+    s.audit({ time: T0 + 10, userId: "user-0", event: "signup-failed", address: "198.51.100.1", detail: "user" })
+    s.audit({ time: T0 + 11, userId: "user-1", event: "signup-failed", address: "198.51.100.1", detail: "user" })
+    expect(rowsOf(s, "signup-failed").filter((row) => row.detail === "user")).toHaveLength(2)
+    for (let i = 0; i < 25; i += 1) s.audit({ time: T0 + 20 + i, userId: "user-0", event: "signup-failed", address: "198.51.100.1", detail: "u0" })
+    expect(rowsOf(s, "signup-failed").filter((row) => row.userId === "user-0")).toHaveLength(20)
     s.flushAuditCounts(T0 + 2 * AUDIT_WINDOW_MS)
-    const count = rowsOf(s, "audit-count")
-    expect(count).toHaveLength(1)
-    expect(count[0]?.detail).toContain("actor=many n=3 ")
+    const counts = rowsOf(s, "audit-count")
+    expect(counts.filter((row) => row.detail.includes("actor=many"))).toHaveLength(1)
+    expect(counts.filter((row) => row.detail.includes("actor=many"))[0]?.detail).toContain("n=3 ")
+    expect(counts.filter((row) => row.userId === "user-0")).toHaveLength(1)
+  })
+
+  test("the many count row lists the busiest addresses with correct counts and the distinct number", async () => {
+    const s = await open({ gate: new AuditGate({ fullPerKind: 0 }) })
+    const plan: [string, number][] = [["203.0.113.1", 7], ["203.0.113.2", 3], ["203.0.113.3", 5], ["203.0.113.4", 1]]
+    let t = T0
+    for (const [address, times] of plan) for (let i = 0; i < times; i += 1) s.audit({ time: (t += 1), userId: null, event: "client-register-limited", address, detail: "" })
+    s.flushAuditCounts(T0 + 2 * AUDIT_WINDOW_MS)
+    const detail = rowsOf(s, "audit-count")[0]?.detail as string
+    expect(detail).toContain("actor=many n=16 distinct=4 ")
+    expect(detail.endsWith("top=203.0.113.1:7,203.0.113.3:5,203.0.113.2:3,203.0.113.4:1")).toBe(true)
+  })
+
+  test("the merged-address map never exceeds 10 000 addresses, names the 100 busiest, and the row detail stays bounded", async () => {
+    const gate = new AuditGate({ fullPerKind: 0 })
+    for (let i = 0; i < MANY_DISTINCT_LIMIT + 50; i += 1) gate.decide("signup-failed", `10.${(i >> 16) & 255}.${(i >> 8) & 255}.${i & 255}`, false, T0)
+    // An address already remembered still counts after the map is full.
+    gate.decide("signup-failed", "10.0.0.0", false, T0)
+    const [done] = gate.ended(T0 + 2 * AUDIT_WINDOW_MS)
+    expect(done?.count).toBe(MANY_DISTINCT_LIMIT + 51)
+    expect(done?.distinct).toBe(MANY_DISTINCT_LIMIT)
+    expect(done?.moreDistinctThanLimit).toBe(true)
+    expect(done?.top).toHaveLength(MANY_TOP)
+    expect(done?.top?.[0]).toEqual(["10.0.0.0", 2])
+    // Written to the log, with long IPv6 keys, the detail is bounded.
+    const s = await open({ gate: new AuditGate({ fullPerKind: 0 }) })
+    for (let i = 0; i < 400; i += 1) s.audit({ time: T0 + i, userId: null, event: "signup-failed", address: `2001:db8:${i.toString(16)}:abcd:0:0:0:1`, detail: "" })
+    s.flushAuditCounts(T0 + 2 * AUDIT_WINDOW_MS)
+    const detail = rowsOf(s, "audit-count")[0]?.detail as string
+    expect(detail.length).toBeLessThanOrEqual(AUDIT_COUNT_DETAIL_MAX)
+    expect(detail).toContain("n=400 distinct=400 ")
   })
 
   test("a maintainer command is the actor maintainer", async () => {

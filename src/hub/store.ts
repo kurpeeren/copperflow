@@ -2,7 +2,10 @@
 // sessions, projects and the audit log. Every query is a prepared statement with bound values; nothing a person types
 // is ever joined into SQL. Session ids and invite codes arrive here already hashed.
 import { DatabaseSync, type StatementSync } from "node:sqlite"
-import { actorOf, AuditGate, type EndedCount } from "./audit-gate.js"
+import { actorOf, AuditGate, MANY_DISTINCT_LIMIT, type EndedCount } from "./audit-gate.js"
+
+/** The longest detail of an `audit-count` row: room for 100 addresses and their counts. */
+export const AUDIT_COUNT_DETAIL_MAX = 6_000
 import { printable } from "./printable.js"
 import { sameSecret } from "./secrets.js"
 import { TokenStore } from "./token-store.js"
@@ -579,25 +582,39 @@ export class HubStore {
     for (const done of decided.ended) this.writeCount(done, entry.time)
     if (decided.verdict === "write") this.insertAudit(entry)
     else if (decided.verdict === "summarise") {
-      this.insertAudit({ time: entry.time, userId: isUser ? entry.userId : null, event: "audit-summarised", address: entry.address, detail: `kind=${entry.event} actor=${actor}` })
+      const merged = decided.summaryActor !== actor
+      this.insertAudit({
+        time: entry.time,
+        userId: isUser && !merged ? entry.userId : null,
+        event: "audit-summarised",
+        address: merged ? "many" : entry.address,
+        detail: `kind=${entry.event} actor=${decided.summaryActor}${merged ? ` window=${new Date(decided.window).toISOString()}` : ""}`,
+      })
     }
   }
 
   /** Every text field goes through `printable`: a detail may quote a name a person chose or an engine's output. */
-  private insertAudit(entry: AuditEntry): void {
-    this.sql("INSERT INTO audit (time, user_id, event, address, detail) VALUES (?, ?, ?, ?, ?)").run(entry.time, entry.userId, printable(entry.event, 80), printable(entry.address, 80), printable(entry.detail, 400))
+  private insertAudit(entry: AuditEntry, detailMax = 400): void {
+    this.sql("INSERT INTO audit (time, user_id, event, address, detail) VALUES (?, ?, ?, ?, ?)").run(entry.time, entry.userId, printable(entry.event, 80), printable(entry.address, 80), printable(entry.detail, detailMax))
   }
 
   private writeCount(done: EndedCount, now: number): void {
     const from = new Date(done.from).toISOString()
     const to = new Date(done.to).toISOString()
-    this.insertAudit({
-      time: now,
-      userId: done.isUser ? done.actor : null,
-      event: "audit-count",
-      address: done.isUser ? "hub" : done.actor,
-      detail: `kind=${done.kind} actor=${done.actor} n=${done.count} from=${from} to=${to}`,
-    })
+    let detail = `kind=${done.kind} actor=${done.actor} n=${done.count}`
+    if (done.top) {
+      // `many` keeps who did it as far as bounded storage allows: the distinct addresses and the busiest ones.
+      detail += ` distinct=${done.moreDistinctThanLimit ? "more than " : ""}${done.moreDistinctThanLimit ? MANY_DISTINCT_LIMIT : done.distinct} from=${from} to=${to} top=`
+      const room = AUDIT_COUNT_DETAIL_MAX - detail.length
+      let list = ""
+      for (const [address, n] of done.top) {
+        const item = `${list === "" ? "" : ","}${address}:${n}`
+        if (list.length + item.length > room) break
+        list += item
+      }
+      detail += list
+    } else detail += ` from=${from} to=${to}`
+    this.insertAudit({ time: now, userId: done.isUser ? done.actor : null, event: "audit-count", address: done.isUser ? "hub" : done.actor, detail }, AUDIT_COUNT_DETAIL_MAX)
   }
 
   /**

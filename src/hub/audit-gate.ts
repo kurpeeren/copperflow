@@ -3,8 +3,11 @@
 // writes one `audit-summarised` row instead, later events are only counted, and when the window ends one `audit-count`
 // row says how many were only counted. So one actor writes at most 22 rows of a kind per window and no event is lost.
 // Per kind the hub writes at most 5 000 full rows per window; beyond that events whose actor is an address are counted
-// under the one actor `many` (events of a signed-in user are always tracked under that user). The state is at most
-// 100 000 keys; an event with a new key beyond that is counted under `many` too. Nothing is ever refused or delayed.
+// under the one actor `many`, which keeps who did it as far as bounded storage allows: the total, the number of distinct
+// addresses (exact up to 10 000) and the 100 busiest addresses with their counts. The address state is at most 100 000
+// keys; an event with a new address key beyond that is merged into `many` too. Events of a signed-in user are always
+// tracked under that user and are subject to neither cap: their keys are bounded by accounts x kinds. Nothing is ever
+// refused or delayed.
 import { addressKey } from "./limits.js"
 
 export const AUDIT_WINDOW_MS = 15 * 60_000
@@ -15,6 +18,10 @@ export const AUDIT_MAX_KEYS = 100_000
 export const MANY = "many"
 /** The actor of the maintainer's commands. */
 export const MAINTAINER = "maintainer"
+/** Distinct addresses `many` remembers per kind and window (past it a new address is only added to the total). */
+export const MANY_DISTINCT_LIMIT = 10_000
+/** The busiest addresses a `many` count row names. */
+export const MANY_TOP = 100
 
 export interface AuditGateOptions {
   windowMs?: number
@@ -35,6 +42,10 @@ export interface EndedCount {
   count: number
   from: number
   to: number
+  /** For `many` only: the distinct addresses merged (exact up to MANY_DISTINCT_LIMIT), and the busiest with their counts. */
+  distinct?: number
+  moreDistinctThanLimit?: boolean
+  top?: [string, number][]
 }
 
 interface Key {
@@ -44,6 +55,9 @@ interface Key {
   start: number
   events: number
   counted: number
+  /** `many` only: events per merged address, at most MANY_DISTINCT_LIMIT addresses. */
+  addresses?: Map<string, number>
+  overflowed?: boolean
 }
 
 /** The actor of an event: the maintainer for a command, the user id when it has one, else the address key the limiters use. */
@@ -55,6 +69,8 @@ export function actorOf(userId: string | null, address: string): { actor: string
 
 export class AuditGate {
   private readonly keys = new Map<string, Key>()
+  /** Signed-in users' keys: no cap here, they are bounded by accounts x kinds. */
+  private readonly users = new Map<string, Key>()
   private readonly many = new Map<string, Key>()
   private readonly kinds = new Map<string, { start: number; full: number }>()
   private readonly windowMs: number
@@ -69,9 +85,14 @@ export class AuditGate {
     this.maxKeys = options.maxKeys ?? AUDIT_MAX_KEYS
   }
 
-  /** Keys tracked now (for tests). */
+  /** Address keys tracked now (for tests). */
   get size(): number {
     return this.keys.size
+  }
+
+  /** Keys of users tracked now (for tests). */
+  get userKeys(): number {
+    return this.users.size
   }
 
   private endedOf(key: Key, now: number): boolean {
@@ -79,53 +100,70 @@ export class AuditGate {
   }
 
   private countOf(key: Key, to: number): EndedCount | undefined {
-    return key.counted > 0 ? { kind: key.kind, actor: key.actor, isUser: key.isUser, count: key.counted, from: key.start, to } : undefined
+    if (key.counted === 0) return undefined
+    const done: EndedCount = { kind: key.kind, actor: key.actor, isUser: key.isUser, count: key.counted, from: key.start, to }
+    if (key.addresses) {
+      done.distinct = key.addresses.size
+      done.moreDistinctThanLimit = key.overflowed === true
+      done.top = [...key.addresses].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, MANY_TOP)
+    }
+    return done
   }
 
-  /** Decides what to do with one event at `now`; `ended` are counts of windows that ended meanwhile, to be written first. */
-  decide(kind: string, actor: string, isUser: boolean, now: number): { verdict: Verdict; ended: EndedCount[] } {
+  /**
+   * Decides what to do with one event at `now`; `ended` are counts of windows that ended meanwhile, to be written first.
+   * `summaryActor` names who a `summarise` row is about (the actor, or `many` when a kind first spills into it).
+   */
+  decide(kind: string, actor: string, isUser: boolean, now: number): { verdict: Verdict; ended: EndedCount[]; summaryActor: string; window: number } {
     const ended: EndedCount[] = []
     let window = this.kinds.get(kind)
     if (!window || now >= window.start + this.windowMs) {
       window = { start: now, full: 0 }
       this.kinds.set(kind, window)
     }
+    const table = isUser ? this.users : this.keys
     const name = `${kind}\u0000${actor}`
-    let key = this.keys.get(name)
+    let key = table.get(name)
     if (key && this.endedOf(key, now)) {
       const done = this.countOf(key, key.start + this.windowMs)
       if (done) ended.push(done)
-      this.keys.delete(name)
+      table.delete(name)
       key = undefined
     }
-    // Address actors lose their own budget once the kind's hub-wide budget is spent; users never do.
-    const spent = !isUser && window.full >= this.fullPerKind
-    if (spent || (!key && this.keys.size >= this.maxKeys)) {
+    // Only address actors are merged: once the kind's hub-wide budget is spent, or when the address table is full. A
+    // user's events are always tracked under that user.
+    if (!isUser && (window.full >= this.fullPerKind || (!key && this.keys.size >= this.maxKeys))) {
       let together = this.many.get(kind)
       if (together && this.endedOf(together, now)) {
         const done = this.countOf(together, together.start + this.windowMs)
         if (done) ended.push(done)
         together = undefined
       }
+      const first = !together
       if (!together) {
-        together = { kind, actor: MANY, isUser: false, start: now, events: 0, counted: 0 }
+        together = { kind, actor: MANY, isUser: false, start: now, events: 0, counted: 0, addresses: new Map() }
         this.many.set(kind, together)
       }
       together.events += 1
       together.counted += 1
-      return { verdict: "count", ended }
+      const seen = together.addresses as Map<string, number>
+      if (seen.has(actor)) seen.set(actor, (seen.get(actor) as number) + 1)
+      else if (seen.size < MANY_DISTINCT_LIMIT) seen.set(actor, 1)
+      else together.overflowed = true
+      // The first event a kind merges writes the one summary row naming the kind and the window.
+      return { verdict: first ? "summarise" : "count", ended, summaryActor: MANY, window: together.start }
     }
     if (!key) {
       key = { kind, actor, isUser, start: now, events: 0, counted: 0 }
-      this.keys.set(name, key)
+      table.set(name, key)
     }
     key.events += 1
     if (key.events <= this.fullPerKey) {
       window.full += 1
-      return { verdict: "write", ended }
+      return { verdict: "write", ended, summaryActor: actor, window: key.start }
     }
     key.counted += 1
-    return { verdict: key.events === this.fullPerKey + 1 ? "summarise" : "count", ended }
+    return { verdict: key.events === this.fullPerKey + 1 ? "summarise" : "count", ended, summaryActor: actor, window: key.start }
   }
 
   /**
@@ -134,11 +172,13 @@ export class AuditGate {
    */
   ended(now: number, force = false): EndedCount[] {
     const out: EndedCount[] = []
-    for (const [name, key] of this.keys) {
-      if (!force && !this.endedOf(key, now)) continue
-      const done = this.countOf(key, force ? now : key.start + this.windowMs)
-      if (done) out.push(done)
-      this.keys.delete(name)
+    for (const table of [this.keys, this.users]) {
+      for (const [name, key] of table) {
+        if (!force && !this.endedOf(key, now)) continue
+        const done = this.countOf(key, force ? now : key.start + this.windowMs)
+        if (done) out.push(done)
+        table.delete(name)
+      }
     }
     for (const [kind, key] of this.many) {
       if (!force && !this.endedOf(key, now)) continue
