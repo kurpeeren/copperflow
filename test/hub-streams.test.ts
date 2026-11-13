@@ -28,9 +28,19 @@ async function project(hub: HubServer, ada: Browser): Promise<{ id: string; dir:
   return { id, dir: hub.hub.files.projectDir(userId, id) }
 }
 
-/** Starts a download and hands back the request, its response once it begins, and how it ended. */
-function startDownload(hub: HubServer, ada: Browser, id: string): { req: ClientRequest; first: Promise<void>; ended: Promise<"complete" | "broken"> } {
+/**
+ * Starts a download and hands back the request, its response once it begins, and how it ended. The response is held
+ * unread until `resumeWhen` settles (100 ms when not given), so the hub is still sending when the test acts.
+ */
+function startDownload(
+  hub: HubServer,
+  ada: Browser,
+  id: string,
+  resumeWhen?: Promise<unknown>,
+): { req: ClientRequest; started: Promise<void>; first: Promise<void>; ended: Promise<"complete" | "broken"> } {
   const url = new URL(hub.url)
+  let responded!: () => void
+  const started = new Promise<void>((done) => (responded = done))
   let firstData!: () => void
   const first = new Promise<void>((done) => (firstData = done))
   let settle!: (how: "complete" | "broken") => void
@@ -42,12 +52,13 @@ function startDownload(hub: HubServer, ada: Browser, id: string): { req: ClientR
     res.on("aborted", () => settle("broken"))
     res.on("close", () => settle(res.complete ? "complete" : "broken"))
     res.pause()
-    setTimeout(() => res.resume(), 100)
+    responded()
+    void (resumeWhen ?? wait(100)).then(() => res.resume())
   })
   req.on("error", () => settle("broken"))
   req.end()
   open.push(req)
-  return { req, first, ended }
+  return { req, started, first, ended }
 }
 
 describe("streams in the hub", () => {
@@ -57,9 +68,14 @@ describe("streams in the hub", () => {
     const { id, dir } = await project(server, ada)
     await writeFile(join(dir, "a.bin"), noise(4 * 1024 * 1024))
     await writeFile(join(dir, "b.bin"), noise(1024))
-    const download = startDownload(server, ada, id)
-    await wait(30)
+    // The response stays unread until the file is gone: the hub is held on a.bin by the full socket, however late a
+    // timer fires on a busy machine, and reaches b.bin only after it was removed.
+    let removed!: () => void
+    const afterRemoval = new Promise<void>((done) => (removed = done))
+    const download = startDownload(server, ada, id, afterRemoval)
+    await download.started
     await rm(join(dir, "b.bin"))
+    removed()
     expect(await download.ended).toBe("broken")
     expect((await ada.get("/projects")).status).toBe(200)
     expect(server.hub.transfers.downloads.size).toBe(0)
