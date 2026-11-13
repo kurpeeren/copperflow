@@ -60,7 +60,13 @@ export function guideFile(topic?: string): URL | undefined {
 export async function guide(input: { topic?: string | undefined }): Promise<string> {
   const target = guideFile(input.topic)
   if (target === undefined) throw new Error(`No guide topic "${input.topic}". Topics: ${Object.keys(GUIDE_TOPICS).join(", ")}; or no topic for SKILL.md.`)
-  return readFile(fileURLToPath(target), "utf8")
+  return withoutFrontmatter(await readFile(fileURLToPath(target), "utf8"))
+}
+
+/** The text less a leading `---` block (the skill's name and trigger description, which the agent has no use for). */
+function withoutFrontmatter(text: string): string {
+  const found = /^---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n+/.exec(text)
+  return found ? text.slice(found[0].length) : text
 }
 
 /**

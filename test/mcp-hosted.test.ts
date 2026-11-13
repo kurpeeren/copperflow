@@ -52,7 +52,9 @@ describe("guide", () => {
 
   test("returns SKILL.md, each reference by name, and the names for an unknown topic", async () => {
     const skill = await call(client, "guide")
-    expect(skill.text).toBe(await readFile(join(import.meta.dirname, "..", "skills", "copperflow", "SKILL.md"), "utf8"))
+    // SKILL.md less its frontmatter block.
+    const skillFile = await readFile(join(import.meta.dirname, "..", "skills", "copperflow", "SKILL.md"), "utf8")
+    expect(skill.text).toBe(skillFile.slice(skillFile.indexOf("\n---\n", 4) + "\n---\n".length).replace(/^\n+/, ""))
     for (const [topic, file] of Object.entries(GUIDE_TOPICS)) {
       expect((await call(client, "guide", { topic })).text).toBe(await readFile(join(import.meta.dirname, "..", "skills", "copperflow", file), "utf8"))
     }

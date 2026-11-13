@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
-import { createGuideMemory, GUIDE_MEMORY_LIMIT, guideInSession, guideInput } from "../src/mcp/guide.js"
+import { createGuideMemory, GUIDE_MEMORY_LIMIT, GUIDE_TOPICS, guide, guideInSession, guideInput } from "../src/mcp/guide.js"
 import { createCopperflowServer } from "../src/mcp/server.js"
 
 const SHORT_LINE = /already returned in this session.*again: true/
@@ -18,6 +18,19 @@ async function guideCall(client: Client, args: Record<string, unknown> = {}): Pr
   const result = await client.callTool({ name: "guide", arguments: args })
   return { text: (result.content as Array<{ text: string }>).map((c) => c.text).join("\n"), isError: result.isError === true }
 }
+
+describe("what guide returns", () => {
+  test("no answer carries the skill's frontmatter: no line of --- and no word that must not reach a user", async () => {
+    for (const topic of [undefined, ...Object.keys(GUIDE_TOPICS)]) {
+      const text = await guide(topic === undefined ? {} : { topic })
+      expect(text, String(topic)).not.toMatch(/^---\s*$/m)
+      expect(text.toLowerCase(), String(topic)).not.toContain("tscircuit")
+      expect(text, String(topic)).not.toMatch(/^name: copperflow/m)
+      expect(text.length, String(topic)).toBeGreaterThan(500)
+    }
+    expect(await guide({})).toMatch(/^# Working in a copperflow project/)
+  })
+})
 
 describe("guide in one session", () => {
   test("the second call with the same arguments answers one short line, again: true gives the text again", async () => {

@@ -462,7 +462,7 @@ with `Host` set to the project origin's host and a one-minute ticket signed just
 session, its token, the user's revocation epoch and the project still hold. The answer passes through unchanged. With
 no project open, a forwarded tool answers an error, in one line, naming the three project tools. Measured
 2026-11-12: instructions and `tools/list` 43 487 characters (limit 43 600; the tools state the limits of their
-arguments, which the compact list drops from the schemas), `guide` 15 637 (limit 16 000).
+arguments, which the compact list drops from the schemas), `guide` 15 290 (limit 16 000).
 
 **Limits.** 600 requests to /mcp per minute per user (429, counted from the headers before the body is read); 60
 tool calls per minute per user (answered inside the tool result as an error with the wait); a request with more than
