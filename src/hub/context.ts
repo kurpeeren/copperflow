@@ -94,10 +94,6 @@ export interface Limits {
   gate: SigninGate
   /** Tool calls per user: 60 a minute. */
   toolCalls: WindowCounter
-  /** Routine audit rows per user and kind: 20 per 15 minutes. */
-  routineRows: WindowCounter
-  /** The one `audit-suppressed` row per user, kind and window, once the rows above are spent. */
-  routineNotes: WindowCounter
   /** Requests to /mcp per user: 600 a minute. */
   mcpRequests: WindowCounter
   /** Refused bearer tokens audited per address: 10 per 15 minutes (the rest are refused unrecorded). */
@@ -113,8 +109,6 @@ export interface Limits {
 }
 
 const FIFTEEN_MINUTES = 15 * 60_000
-/** Routine audit rows one user may write per kind in 15 minutes; then one `audit-suppressed` row and no more of that kind. */
-export const ROUTINE_ROWS_PER_WINDOW = 20
 /** Correct passwords one user may present (sign-in, current-password checks) in 15 minutes. */
 export const CORRECT_PASSWORDS_PER_WINDOW = 30
 export const MAX_FAILED_SIGNINS = 300
@@ -131,8 +125,6 @@ export function newLimits(maxKeys?: number): Limits {
     reauth: new WindowCounter(ADDRESS_FAILURES, FIFTEEN_MINUTES, maxKeys),
     correctPasswords: new WindowCounter(CORRECT_PASSWORDS_PER_WINDOW, FIFTEEN_MINUTES, maxKeys),
     toolCalls: new WindowCounter(60, 60_000, maxKeys),
-    routineRows: new WindowCounter(ROUTINE_ROWS_PER_WINDOW, FIFTEEN_MINUTES, maxKeys),
-    routineNotes: new WindowCounter(1, FIFTEEN_MINUTES, maxKeys),
     mcpRequests: new WindowCounter(600, 60_000, maxKeys),
     refusedTokens: new WindowCounter(10, FIFTEEN_MINUTES, maxKeys),
     register: new WindowCounter(20, 60 * 60_000, maxKeys),
@@ -331,21 +323,6 @@ export function anonymousFormMatches(hub: Hub, req: IncomingMessage, given: stri
 
 export function audit(hub: Hub, address: string, userId: string | null, event: string, detail = ""): void {
   hub.store.audit({ time: hub.config.now(), userId, event, address, detail })
-}
-
-/**
- * A routine audit row (kinds in ROUTINE_AUDIT_KINDS): at most ROUTINE_ROWS_PER_WINDOW per user and kind per 15 minutes,
- * then one `audit-suppressed` row naming the kind and no more of that kind until the window ends. A full limiter
- * table writes nothing. Security rows go through `audit` and are never suppressed.
- */
-export function auditRoutine(hub: Hub, address: string, userId: string, event: "workspace-entered" | "tool-calls-limited", detail = ""): void {
-  const now = hub.config.now()
-  const key = `${userId}\u0000${event}`
-  if (hub.limits.routineRows.check(key, now).ok) {
-    if (hub.limits.routineRows.add(key, now) === "ok") audit(hub, address, userId, event, detail)
-    return
-  }
-  if (hub.limits.routineNotes.check(key, now).ok && hub.limits.routineNotes.add(key, now) === "ok") audit(hub, address, userId, "audit-suppressed", event)
 }
 
 /** Adds the renewed session cookie, if any, to the headers of a response. */

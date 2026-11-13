@@ -220,8 +220,14 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
     .then(() => sweepOrphans(hub))
     .catch((error: unknown) => hub.log(`start-up sweep failed: ${(error as Error).message}`))
   // Every 15 s: expired sessions go, and the cuts the maintainer's commands asked for are carried out.
+  let sweeping = false
   const sweep = setInterval(() => {
+    // A tick that finds the previous one still running is skipped.
+    if (sweeping) return
+    sweeping = true
     hub.store.sweepSessions(hub.config.now())
+    // Audit counts of windows that ended (audit-gate.ts).
+    hub.store.flushAuditCounts(hub.config.now())
     hub.store.sweepWorkspaceSessions(hub.config.now())
     hub.store.pruneTlsNames(hub.config.now() - TLS_WINDOW_MS)
     for (const grantId of hub.store.tokens.sweep(hub.config.now())) hub.agents.closeCredential(`grant:${grantId}`)
@@ -244,6 +250,7 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
       // Audit rows past 180 days or 500 000 rows, in bounded batches; after the rest, and whatever happened to it.
       .then(() => pruneAudit(hub.store, hub.config.now(), { log: hub.log }))
       .catch((error: unknown) => hub.log(`audit prune failed: ${(error as Error).message}`))
+      .finally(() => (sweeping = false))
   }, options.sweepMs ?? SWEEP_MS)
   sweep.unref()
   // Every 5 s: the project folders of running workspaces are measured, and a user over quota has them stopped.
@@ -269,6 +276,8 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
       await hub.runner.stopAll()
       server.closeAllConnections()
       await new Promise<void>((done) => server.close(() => done()))
+      // An orderly stop writes the audit counts still pending; a kill loses those of the open windows only.
+      hub.store.flushAuditCounts(hub.config.now(), true)
       hub.store.close()
     },
   }

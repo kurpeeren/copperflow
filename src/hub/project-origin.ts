@@ -6,7 +6,7 @@
 // ticket signed last, just before the upstream request.
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { signTicket, nowSeconds } from "../hosted/ticket.js"
-import { auditRoutine, cutSignal, epochOf, type Hub, type Signed } from "./context.js"
+import { audit, cutSignal, epochOf, type Hub, type Signed } from "./context.js"
 import { cookies, header, HubError, setCookie } from "./http.js"
 import { proxyRequest } from "./proxy.js"
 import { DEFAULT_MAX_HOLD_MS, RunnerFullError, WorkspaceBackoffError, WorkspaceStartError } from "./runner/runner.js"
@@ -110,7 +110,7 @@ function enter(hub: Hub, req: IncomingMessage, res: ServerResponse, projectId: s
   // Never beyond the hub session it came from.
   const expires = Math.min(now + WORKSPACE_SESSION_MS, hubSession.expires)
   hub.store.createWorkspaceSession(hashSecret(secret), found.userId, projectId, found.hubSession, expires)
-  auditRoutine(hub, address, found.userId, "workspace-entered", projectId)
+  audit(hub, address, found.userId, "workspace-entered", projectId)
   res.writeHead(303, {
     location: "/",
     "cache-control": "no-store",

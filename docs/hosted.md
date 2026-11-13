@@ -375,9 +375,11 @@ expired sessions) enforces what a count cannot:
 | Workspace sessions | At most 8 live per user per project; a ninth ends that user's oldest for that project. Expired rows are deleted by the periodic sweep. |
 | Sign-in sessions | At most 20 per user; a twenty-first ends that user's oldest. |
 | Audit log, by age | Rows older than 180 days are deleted by the periodic sweep. This is the only rule that deletes a security event. The prune runs in batches of 2 000 rows (at most 25 a sweep, the event loop given back between them). |
-| Audit log, by count | Events are of two classes. Routine: `workspace-entered`, refused tool calls (`tool-calls-limited`) and the suppression rows (`audit-suppressed`); the one list is `ROUTINE_AUDIT_KINDS` in `src/hub/audit-prune.ts`. Security: everything else, so a new kind is kept by default. Above 500 000 rows the sweep deletes the oldest routine rows only, in the same batches. Security rows are never deleted by count: if the table is still above the cap with no routine row left, nothing more is deleted, `hub status` (text and `--json`: `auditRows`, `auditOverCap`) reports it, and the hub logs one line a day. |
-| Routine audit rows, per user | At most 20 rows per user per kind per 15 minutes; then one `audit-suppressed` row naming the kind for that window and no more of that kind until the window ends. |
-| Security audit rows | Not suppressed; each kind is bounded by the limit on the action itself (sign-in limits, token and client caps, upload and project limits). |
+| Audit log, by count | Events are of two classes. Routine: `workspace-entered` and refused tool calls (`tool-calls-limited`); the one list is `ROUTINE_AUDIT_KINDS` in `src/hub/audit-prune.ts`. Security: everything else, so a new kind is kept by default. Above 500 000 rows the sweep deletes the oldest routine rows only, in the same batches. Security rows are never deleted by count: if the table is still above the cap with no routine row left, nothing more is deleted, `hub status` (text and `--json`: `auditRows`, `auditOverCap`) reports it, and the hub logs one line a day. |
+| Every audit row, one rule (`AuditGate`, written through the one function `HubStore.audit`) | Key = (kind, actor): the actor is the user id when the event has one, else the address key the limiters use (IPv4 whole, IPv6 /64); a maintainer command is the actor `maintainer`. In a fixed window of 15 minutes the first 20 rows of a key are written in full; the 21st event writes one `audit-summarised` row (kind and actor) instead; later events are only counted, and when the window ends the sweep writes one `audit-count` row with the number that were only counted. So at most 22 rows per key per window, and no event is lost. |
+| Hub-wide, per kind | At most 5 000 full rows per window; beyond that, events whose actor is an address are counted under the one actor `many` for that kind (one `audit-count` row at the window's end). Events whose actor is a user id are always tracked under that user. |
+| State | A counter table of at most 100 000 keys; an event with a new key beyond that is counted under `many` for its kind. No request is ever refused or delayed because of auditing and nothing is dropped without being counted. When the hub stops in an orderly way it writes the pending `audit-count` rows; a kill loses the pending counts of the windows still open. `audit-summarised` and `audit-count` are security rows. |
+| Count-based prune | The row count is checked at most every 10 minutes; the delete of routine rows walks an index on `audit(event, id)` (schema version 4), never the security rows. The periodic sweep never overlaps itself: a tick that finds the previous one running is skipped. |
 
 The audit log therefore keeps 180 days. Every cap above is per user: a user's own requests cannot end another user's
 sessions or use up their rows.
@@ -396,8 +398,8 @@ Agent events: `token-created`, `token-revoked`, `token-refused` (a bearer token 
 minutes per address; a code or refresh token the token endpoint refused), `token-refreshed`, `client-registered`,
 `client-register-limited`, `consent-allowed`, `consent-denied`, `grant-created`, `grant-revoked`,
 `refresh-reused-grant-revoked`, `code-reused-grant-revoked`, `grant-revoked-over-cap`, `token-create-failed`,
-`token-create-limited`, `agent-connected`, `tool-calls-limited` (a routine kind: at most 20 per user per 15 minutes) and
-`audit-suppressed` (the detail names the routine kind that was cut off). The detail holds an id (token, grant or
+`token-create-limited`, `agent-connected`, `tool-calls-limited` (a routine kind), `audit-summarised` and `audit-count` (see the
+rule above). The detail holds an id (token, grant or
 client) or the grant type, never a token or code.
 
 ## Connecting an agent
@@ -535,6 +537,9 @@ What this does not stop:
 - Once strict mode is on, a slow guess spread over many addresses still gets the gate's rate (5 per second for all).
   Below the strict threshold the limits allow 10 guesses per address per 15 minutes. Passwords therefore need at
   least 10 characters, and the audit log shows the failures.
+- During a flood from very many addresses the audit log keeps the first 5 000 rows of a kind per 15 minutes in full and
+  only counts the rest (in one `audit-count` row naming the actor `many`); rows whose actor is a signed-in user are
+  never merged.
 
 Other limits: request bodies 1 MB except upload; 20 projects and 200 MB per user, checked under a per-user lock.
 Sessions last 14 days, renewed on use; sign-out and a password change end every session of the user.

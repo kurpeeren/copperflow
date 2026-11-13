@@ -2,7 +2,6 @@ import { afterEach, describe, expect, test } from "vitest"
 import { mkdtemp } from "node:fs/promises"
 import { DatabaseSync } from "node:sqlite"
 import { runCli } from "../src/cli-commands.js"
-import { ROUTINE_ROWS_PER_WINDOW } from "../src/hub/context.js"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { AUDIT_KEEP_MS, AUDIT_MAX_ROWS, pruneAudit, ROUTINE_AUDIT_KINDS } from "../src/hub/audit-prune.js"
@@ -105,7 +104,7 @@ describe("the audit log is pruned", () => {
   test("pruneAudit loops over batches and yields between them, up to a bound per sweep", async () => {
     const s = await openStore()
     const now = 1_000 * DAY
-    for (let i = 0; i < 50; i += 1) s.audit({ time: now - 300 * DAY + i, userId: null, event: "old", address: "a", detail: "" })
+    for (let i = 0; i < 50; i += 1) s.audit({ time: now - 300 * DAY + i, userId: null, event: "old", address: `a${i}`, detail: "" })
     expect(await pruneAudit(s, now, { batch: 10, maxBatches: 3 })).toBe(30)
     expect(s.auditLog(100)).toHaveLength(20)
     expect(await pruneAudit(s, now, { batch: 10, maxBatches: 3 })).toBe(20)
@@ -150,49 +149,6 @@ async function agentOf(hub: HubServer, browser: Browser): Promise<Client> {
   return client
 }
 
-describe("routine audit rows are limited per user and kind", () => {
-  test("at most 20 refused-call rows per user per 15 minutes, then one audit-suppressed row naming the kind, then none until the window ends", async () => {
-    let clock = Date.now()
-    server = await startTestHub({ now: () => clock })
-    const ada = await newUser(server, "ada@example.com")
-    const bob = await newUser(server, "bob@example.com")
-    const adaClient = await agentOf(server, ada)
-    const bobClient = await agentOf(server, bob)
-    const events = (email: string) => {
-      const id = server?.hub.store.userByEmail(email)?.id
-      return server?.hub.store.auditLog(100000).filter((e) => e.userId === id && (e.event === "tool-calls-limited" || e.event === "audit-suppressed")) ?? []
-    }
-    expect(ROUTINE_ROWS_PER_WINDOW).toBe(20)
-    for (let i = 0; i < 60; i += 1) await call(adaClient, "list_projects")
-    for (let i = 0; i < 40; i += 1) expect((await call(adaClient, "list_projects")).isError).toBe(true)
-    const ours = events("ada@example.com")
-    expect(ours.filter((e) => e.event === "tool-calls-limited")).toHaveLength(ROUTINE_ROWS_PER_WINDOW)
-    const notes = ours.filter((e) => e.event === "audit-suppressed")
-    expect(notes).toHaveLength(1)
-    expect(notes[0]?.detail).toBe("tool-calls-limited")
-    for (let i = 0; i < 60; i += 1) await call(bobClient, "list_projects")
-    await call(bobClient, "list_projects")
-    expect(events("bob@example.com").map((e) => e.event)).toEqual(["tool-calls-limited"])
-    clock += 16 * 60_000
-    for (let i = 0; i < 60; i += 1) await call(adaClient, "list_projects")
-    await call(adaClient, "list_projects")
-    expect(events("ada@example.com").filter((e) => e.event === "tool-calls-limited")).toHaveLength(ROUTINE_ROWS_PER_WINDOW + 1)
-  })
-
-  test("workspace-entered rows follow the same rule, per kind; security rows are not suppressed", async () => {
-    server = await startTestHub()
-    const ada = await newUser(server, "ada@example.com")
-    await ada.submit("/projects", "/projects", { name: "Amp" })
-    const userId = server.hub.store.userByEmail("ada@example.com")?.id as string
-    const id = server.hub.store.projects(userId)[0]?.id as string
-    for (let i = 0; i < 30; i += 1) await ada.openProject(id)
-    const rows = server.hub.store.auditLog(1000).filter((e) => e.userId === userId)
-    expect(rows.filter((e) => e.event === "workspace-entered")).toHaveLength(ROUTINE_ROWS_PER_WINDOW)
-    expect(rows.filter((e) => e.event === "audit-suppressed").map((e) => e.detail)).toEqual(["workspace-entered"])
-    expect(rows.some((e) => e.event === "signup")).toBe(true)
-  })
-})
-
 describe("the audit log by count", () => {
   const DAY = 24 * 60 * 60_000
   const R = ROUTINE_AUDIT_KINDS
@@ -236,7 +192,7 @@ describe("the audit log by count", () => {
   })
 
   test("the class of a kind is one explicit list; anything not on it is security", () => {
-    expect([...R].sort()).toEqual(["audit-suppressed", "tool-calls-limited", "workspace-entered"])
+    expect([...R].sort()).toEqual(["tool-calls-limited", "workspace-entered"])
   })
 
   test("a user who writes 600 000 routine rows cannot remove another user's sign-in row", async () => {

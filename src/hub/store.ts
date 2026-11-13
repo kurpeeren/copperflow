@@ -2,6 +2,7 @@
 // sessions, projects and the audit log. Every query is a prepared statement with bound values; nothing a person types
 // is ever joined into SQL. Session ids and invite codes arrive here already hashed.
 import { DatabaseSync, type StatementSync } from "node:sqlite"
+import { actorOf, AuditGate, type EndedCount } from "./audit-gate.js"
 import { printable } from "./printable.js"
 import { sameSecret } from "./secrets.js"
 import { TokenStore } from "./token-store.js"
@@ -50,7 +51,15 @@ PRAGMA foreign_keys = ON;
 `
 
 /** The schema version this code writes (PRAGMA user_version). 0 is a database made before versions were kept. */
-export const SCHEMA_VERSION = 3
+export const SCHEMA_VERSION = 4
+
+/** Version 4: the index the count-based prune of routine rows walks, so it never reads the security rows between them. */
+const SCHEMA_4 = `
+CREATE INDEX IF NOT EXISTS audit_event ON audit(event, id);
+`
+
+/** The statement that deletes the oldest rows of one routine kind (a range scan of the audit_event index). */
+export const ROUTINE_PRUNE_SQL = "DELETE FROM audit WHERE id IN (SELECT id FROM audit WHERE event = ? AND id < ? ORDER BY id LIMIT ?)"
 
 /**
  * Version 3: the project names a certificate was approved for (on-demand TLS, `/_tls-ask`). No foreign keys: a row
@@ -173,8 +182,11 @@ export class HubStore {
   private readonly statements = new Map<string, StatementSync>()
   /** Personal access tokens, OAuth clients, grants and their tokens (token-store.ts). */
   readonly tokens: TokenStore
+  /** The one rule every audit row passes (audit-gate.ts). */
+  private readonly gate: AuditGate
 
-  private constructor(file: string) {
+  private constructor(file: string, gate: AuditGate) {
+    this.gate = gate
     this.db = new DatabaseSync(file)
     try {
       // Waiting for a lock changes nothing in the file; everything else waits until the version is known to be ours.
@@ -218,6 +230,7 @@ export class HubStore {
       }
       if (version < 2) this.db.exec(SCHEMA_2)
       if (version < 3) this.db.exec(SCHEMA_3)
+      if (version < 4) this.db.exec(SCHEMA_4)
       // A fixed number, never input.
       this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
     })
@@ -230,8 +243,8 @@ export class HubStore {
     if (!known) this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column}`)
   }
 
-  static open(file: string): HubStore {
-    return new HubStore(file)
+  static open(file: string, options: { gate?: AuditGate } = {}): HubStore {
+    return new HubStore(file, options.gate ?? new AuditGate())
   }
 
   close(): void {
@@ -555,9 +568,46 @@ export class HubStore {
     return Number(this.sql("DELETE FROM projects WHERE id = ? AND user_id = ?").run(id, userId).changes) === 1
   }
 
-  /** Every text field goes through `printable`: a detail may quote a name a person chose or an engine's output. */
+  /**
+   * The one function every audit row goes through. The rule (audit-gate.ts): per (kind, actor) the first 20 events of a
+   * 15-minute window are written in full, the 21st writes one `audit-summarised` row, later ones are only counted and the
+   * sweep (or an orderly stop) writes one `audit-count` row when the window ends. Nothing is refused and nothing is lost.
+   */
   audit(entry: AuditEntry): void {
+    const { actor, isUser } = actorOf(entry.userId, entry.address)
+    const decided = this.gate.decide(entry.event, actor, isUser, entry.time)
+    for (const done of decided.ended) this.writeCount(done, entry.time)
+    if (decided.verdict === "write") this.insertAudit(entry)
+    else if (decided.verdict === "summarise") {
+      this.insertAudit({ time: entry.time, userId: isUser ? entry.userId : null, event: "audit-summarised", address: entry.address, detail: `kind=${entry.event} actor=${actor}` })
+    }
+  }
+
+  /** Every text field goes through `printable`: a detail may quote a name a person chose or an engine's output. */
+  private insertAudit(entry: AuditEntry): void {
     this.sql("INSERT INTO audit (time, user_id, event, address, detail) VALUES (?, ?, ?, ?, ?)").run(entry.time, entry.userId, printable(entry.event, 80), printable(entry.address, 80), printable(entry.detail, 400))
+  }
+
+  private writeCount(done: EndedCount, now: number): void {
+    const from = new Date(done.from).toISOString()
+    const to = new Date(done.to).toISOString()
+    this.insertAudit({
+      time: now,
+      userId: done.isUser ? done.actor : null,
+      event: "audit-count",
+      address: done.isUser ? "hub" : done.actor,
+      detail: `kind=${done.kind} actor=${done.actor} n=${done.count} from=${from} to=${to}`,
+    })
+  }
+
+  /**
+   * Writes the `audit-count` rows of windows that ended by `now` (every pending one with `force`, on an orderly stop).
+   * Returns how many rows it wrote. A kill loses only the counts of windows still open.
+   */
+  flushAuditCounts(now: number, force = false): number {
+    const ended = this.gate.ended(now, force)
+    for (const done of ended) this.writeCount(done, now)
+    return ended.length
   }
 
   /** Whether the log holds more than `maxRows` rows (ids only rise, so their span bounds the count: count exactly only when it could be over). */
@@ -575,20 +625,28 @@ export class HubStore {
   /**
    * Deletes at most `batch` audit rows in one statement: first rows of any kind written before `cutoff` (the only rule
    * that deletes a security event), else, when the log holds more than `maxRows`, the oldest rows of the `routine`
-   * kinds only. Returns how many went (0 when nothing is left that may be pruned).
+   * kinds only (and only when `checkCount`, which the caller allows every few minutes). Returns how many went (0 when
+   * nothing is left that may be pruned).
    */
-  pruneAuditBatch(cutoff: number, maxRows: number, batch: number, routine: readonly string[]): number {
-    // Rows are written in time order, so the first row tells whether anything is old without scanning the table.
+  pruneAuditBatch(cutoff: number, maxRows: number, batch: number, routine: readonly string[], checkCount = true): number {
+    // Rows are written in time order, so the first row tells whether anything is old without scanning the table. (A clock
+    // that stepped back leaves later rows with older times until the first row ages out; the count rule still bounds it.)
     const first = this.sql("SELECT id, time FROM audit ORDER BY id LIMIT 1").get() as Row | undefined
     if (!first) return 0
     if (Number(first.time) < cutoff) {
       return Number(this.sql("DELETE FROM audit WHERE id IN (SELECT id FROM audit WHERE time < ? ORDER BY id LIMIT ?)").run(cutoff, batch).changes)
     }
-    if (!this.auditOverCap(maxRows) || routine.length === 0) return 0
+    if (!checkCount || !this.auditOverCap(maxRows) || routine.length === 0) return 0
     const over = this.auditRowCount() - maxRows
-    // The marks are one `?` per entry of a fixed list in code, never input.
-    const marks = routine.map(() => "?").join(", ")
-    return Number(this.sql(`DELETE FROM audit WHERE id IN (SELECT id FROM audit WHERE event IN (${marks}) ORDER BY id LIMIT ?)`).run(...routine, Math.min(batch, over)).changes)
+    // The routine kind with the oldest row goes first, and only below the next kind's oldest row, so the order across
+    // kinds stays exact while every delete is a range scan of the audit_event index, never of the security rows.
+    const oldest = routine
+      .map((kind) => ({ kind, id: (this.sql("SELECT MIN(id) AS id FROM audit WHERE event = ?").get(kind) as Row).id as number | null }))
+      .filter((entry): entry is { kind: string; id: number } => entry.id !== null)
+      .sort((a, b) => a.id - b.id)
+    const [head, next] = oldest
+    if (!head) return 0
+    return Number(this.sql(ROUTINE_PRUNE_SQL).run(head.kind, next?.id ?? Number.MAX_SAFE_INTEGER, Math.min(batch, over)).changes)
   }
 
   /** The newest entries first. */

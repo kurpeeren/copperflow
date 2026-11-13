@@ -104,9 +104,9 @@ export async function signIn(hub: Hub, req: IncomingMessage, res: ServerResponse
   const correct = user ? correctPasswordGate(hub, user.id) : undefined
   const ok = user && correct ? await verifyPasswordAdmitted(password, user.passwordHash, correct.admit) : await verifyAgainstNothing(password)
   if (user && correct && ok === "refused") {
-    // No hash ran: not a failed guess either.
-    refund()
-    audit(hub, address, user.id, "signin-limited-password")
+    // No hash ran, but the attempt stays charged to the address and the email like any attempt that is not a right
+    // password (so it is no free probe), and the row carries no user id: nobody can attribute rows to an account.
+    audit(hub, address, null, "signin-limited-password")
     return tooMany(correct.retryAfterS())
   }
   if (!user || !ok) {

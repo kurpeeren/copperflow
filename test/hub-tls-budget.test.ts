@@ -31,7 +31,7 @@ describe("the certificate budget for project names", () => {
     expect(TLS_PER_USER).toBe(5)
     expect(DEFAULT_TLS_ASK_WEEKLY).toBe(40)
     expect(TLS_WINDOW_MS).toBe(7 * DAY)
-    expect(SCHEMA_VERSION).toBe(3)
+    expect(SCHEMA_VERSION).toBe(4)
   })
 
   test("a user's sixth new project name in a week is refused while another user's first is approved; the public host is always answered", async () => {
@@ -159,7 +159,7 @@ describe("the sweep and the schema", () => {
     expect(store.tlsApprove("a".repeat(32), "u1", 1, TLS_WINDOW_MS, 5, 40)).toBe("approved")
     store.close()
     const check = new DatabaseSync(file, { readOnly: true })
-    expect(Number((check.prepare("PRAGMA user_version").get() as { user_version: number }).user_version)).toBe(3)
+    expect(Number((check.prepare("PRAGMA user_version").get() as { user_version: number }).user_version)).toBe(4)
     check.close()
   })
 })

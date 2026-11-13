@@ -426,7 +426,7 @@ nothing else can touch the data, and refuses otherwise with the reason:
 (a project id, a count or a reason; never a password, cookie, invite code, token or ticket). The events are listed
 in docs/hosted.md. **The audit log keeps 180 days**: the hub's sweep deletes older rows in small batches, and only age
 ever deletes a security event. Above 500 000 rows it also deletes the oldest routine rows (`workspace-entered`,
-`tool-calls-limited`, `audit-suppressed`); if only security events remain, nothing is deleted, `hub status` shows
+`tool-calls-limited`); if only security events remain, nothing is deleted, `hub status` shows
 `Audit log rows: N (over the 500000 cap ...)` and the hub logs a line a day. Keep a copy elsewhere (a backup) if you
 need longer than 180 days. The
 newest 50 (A: prefix with `cfc exec hub`; B: prefix with `sudo -u copperflow-hub`):

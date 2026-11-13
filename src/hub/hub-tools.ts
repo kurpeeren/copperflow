@@ -4,7 +4,7 @@ import { readdir } from "node:fs/promises"
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js"
 import { z } from "zod"
 import { guideInSession, guideInput, type GuideMemory } from "../mcp/guide.js"
-import { auditRoutine, type Hub } from "./context.js"
+import { audit, type Hub } from "./context.js"
 import { forwardTool, type Upstream } from "./mcp-forward.js"
 import { addProject, projectName } from "./project-routes.js"
 import { ID_PATTERN } from "./secrets.js"
@@ -53,7 +53,7 @@ function limited(hub: Hub, userId: string, address: string): CallToolResult | un
   const now = hub.config.now()
   const check = hub.limits.toolCalls.check(userId, now)
   if (!check.ok) {
-    auditRoutine(hub, address, userId, "tool-calls-limited")
+    audit(hub, address, userId, "tool-calls-limited")
     return text(`429 Too many tool calls: at most ${TOOL_CALLS_PER_MINUTE} a minute. Wait ${check.retryAfterS} s, then call again.`, true)
   }
   // Keyed by user id (only signed-in users reach this), so the table holds at most one key per account.
