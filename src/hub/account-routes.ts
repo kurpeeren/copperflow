@@ -139,8 +139,10 @@ export async function signUp(hub: Hub, req: IncomingMessage, res: ServerResponse
   const problem = passwordProblem(password)
   if (problem) return showSignUp(hub, req, res, 400, problem)
   const code = (form.get("code") ?? "").trim()
-  const passwordHash = await hashPassword(password as string)
-  const user = code.length > 0 && code.length <= 200 ? hub.store.signUp(hashSecret(code), { id: newId(), email, passwordHash }, hub.config.now()) : undefined
+  // The invite is looked up BEFORE anything is hashed: a request without a usable code never reaches a hash slot.
+  const usable = code.length > 0 && code.length <= 200 && hub.store.inviteLive(hashSecret(code))
+  const passwordHash = usable ? await hashPassword(password as string, "anonymous") : undefined
+  const user = usable && passwordHash !== undefined ? hub.store.signUp(hashSecret(code), { id: newId(), email, passwordHash }, hub.config.now()) : undefined
   if (!user) {
     audit(hub, address, null, "signup-failed")
     return showSignUp(hub, req, res, 400, SIGN_UP_FAILED)

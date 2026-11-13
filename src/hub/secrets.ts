@@ -16,34 +16,88 @@ const MAX_N = 2 ** 20
 const MAX_R = 16
 const MAX_P = 4
 
-/** Password hashes (scrypt, any route) that run at once in the hub; the rest wait in arrival order. */
+/** Password hashes (scrypt, any route) that run at once in the hub. */
 export const MAX_CONCURRENT_HASHES = 2
+/**
+ * Who a hash is for. "anonymous": a person with no account (sign-up, a sign-in for an email that has none); it may hold
+ * at most ONE slot at a time and has its own waiting line of at most 16. "account": everything else (sign-in of an
+ * existing account, current-password checks, a new password) waits in one line of at most 64. A request that finds its
+ * line full is refused at once with HashBusyError (503, Retry-After 2).
+ */
+export type HashClass = "anonymous" | "account"
+export const ANONYMOUS_HASH_SLOTS = 1
+export const HASH_LINE_LIMIT: Readonly<Record<HashClass, number>> = { anonymous: 16, account: 64 }
+
+export class HashBusyError extends Error {
+  readonly retryAfterS = 2
+  constructor() {
+    super("The service is busy checking passwords. Try again in a moment.")
+  }
+}
+
+interface Waiter {
+  seq: number
+  go: () => void
+}
 let hashesRunning = 0
+let anonymousRunning = 0
 let hashesPeak = 0
 let hashesStarted = 0
-const hashQueue: (() => void)[] = []
+let arrivals = 0
+const lines: Record<HashClass, Waiter[]> = { anonymous: [], account: [] }
 
-/** What the shared hashing slots are doing (for tests and `hub status`): running now, the most at once, started in all, waiting. */
-export function hashLoad(): { running: number; peak: number; started: number; waiting: number } {
-  return { running: hashesRunning, peak: hashesPeak, started: hashesStarted, waiting: hashQueue.length }
+/** What the shared hashing slots are doing (for tests): running now, the most at once, started in all, waiting per line. */
+export function hashLoad(): { running: number; peak: number; started: number; waiting: number; waitingAnonymous: number; waitingAccount: number } {
+  return {
+    running: hashesRunning,
+    peak: hashesPeak,
+    started: hashesStarted,
+    waiting: lines.anonymous.length + lines.account.length,
+    waitingAnonymous: lines.anonymous.length,
+    waitingAccount: lines.account.length,
+  }
 }
 
 export function resetHashPeak(): void {
   hashesPeak = hashesRunning
 }
 
-/** Runs `work` in one of the MAX_CONCURRENT_HASHES slots; later callers wait in arrival order. */
-async function inHashSlot<T>(work: () => Promise<T>): Promise<T> {
-  if (hashesRunning >= MAX_CONCURRENT_HASHES) await new Promise<void>((go) => hashQueue.push(go))
-  else hashesRunning += 1
-  // A slot handed over by a finishing hash keeps the count: the running figure never passes the limit.
-  hashesPeak = Math.max(hashesPeak, hashesRunning)
+/** Starts waiting hashes while a slot is free: the one that waited longest, an anonymous one only below its slot limit. */
+function dispatch(): void {
+  while (hashesRunning < MAX_CONCURRENT_HASHES) {
+    const account = lines.account[0]
+    const anonymous = anonymousRunning < ANONYMOUS_HASH_SLOTS ? lines.anonymous[0] : undefined
+    const next = account && anonymous ? (account.seq < anonymous.seq ? account : anonymous) : (account ?? anonymous)
+    if (!next) return
+    const kind: HashClass = next === account ? "account" : "anonymous"
+    lines[kind].shift()
+    hashesRunning += 1
+    if (kind === "anonymous") anonymousRunning += 1
+    hashesPeak = Math.max(hashesPeak, hashesRunning)
+    next.go()
+  }
+}
+
+/** Runs `work` in a hashing slot; later callers wait in arrival order in their class's line; a full line refuses at once. */
+async function inHashSlot<T>(kind: HashClass, work: () => Promise<T>): Promise<T> {
+  const line = lines[kind]
+  let go!: () => void
+  const started = new Promise<void>((done) => (go = done))
+  const waiter: Waiter = { seq: (arrivals += 1), go }
+  line.push(waiter)
+  dispatch()
+  const place = line.indexOf(waiter)
+  if (place >= HASH_LINE_LIMIT[kind]) {
+    line.splice(place, 1)
+    throw new HashBusyError()
+  }
+  await started
   try {
     return await work()
   } finally {
-    const next = hashQueue.shift()
-    if (next) next()
-    else hashesRunning -= 1
+    hashesRunning -= 1
+    if (kind === "anonymous") anonymousRunning -= 1
+    dispatch()
   }
 }
 
@@ -54,16 +108,16 @@ function derive(password: string, salt: Buffer, params: { N: number; r: number; 
 }
 
 /** A password hash: `scrypt$N$r$p$salt$key`, salt and key in base64. */
-export async function hashPassword(password: string): Promise<string> {
+export async function hashPassword(password: string, kind: HashClass = "account"): Promise<string> {
   if (password.length > MAX_PASSWORD_LENGTH) throw new Error("Password too long")
   const salt = randomBytes(SALT_BYTES)
-  const key = await inHashSlot(() => derive(password, salt, SCRYPT))
+  const key = await inHashSlot(kind, () => derive(password, salt, SCRYPT))
   return ["scrypt", SCRYPT.N, SCRYPT.r, SCRYPT.p, salt.toString("base64"), key.toString("base64")].join("$")
 }
 
 /** Whether the password matches the stored hash; a malformed hash never matches. */
-export async function verifyPassword(password: string, stored: string): Promise<boolean> {
-  return inHashSlot(() => check(password, stored))
+export async function verifyPassword(password: string, stored: string, kind: HashClass = "account"): Promise<boolean> {
+  return inHashSlot(kind, () => check(password, stored))
 }
 
 /**
@@ -71,7 +125,7 @@ export async function verifyPassword(password: string, stored: string): Promise<
  * answer means no hash runs and "refused" comes back (the correct-password limit, docs/hosted.md).
  */
 export async function verifyPasswordAdmitted(password: string, stored: string, admit: () => boolean): Promise<boolean | "refused"> {
-  return inHashSlot<boolean | "refused">(() => (admit() ? check(password, stored) : Promise.resolve("refused")))
+  return inHashSlot<boolean | "refused">("account", () => (admit() ? check(password, stored) : Promise.resolve("refused")))
 }
 
 async function check(password: string, stored: string): Promise<boolean> {
@@ -90,8 +144,12 @@ async function check(password: string, stored: string): Promise<boolean> {
 let dummyHash: Promise<string> | undefined
 /** Spends the same time as checking a real password, so an unknown email answers no faster than a wrong password. */
 export async function verifyAgainstNothing(password: string): Promise<false> {
-  dummyHash ??= hashPassword(randomBytes(16).toString("hex"))
-  await verifyPassword(password, await dummyHash)
+  // A refused (busy) first hash is forgotten, so the next call makes it again.
+  dummyHash ??= hashPassword(randomBytes(16).toString("hex"), "anonymous").catch((error: unknown) => {
+    dummyHash = undefined
+    throw error
+  })
+  await verifyPassword(password, await dummyHash, "anonymous")
   return false
 }
 

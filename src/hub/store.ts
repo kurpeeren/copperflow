@@ -280,6 +280,12 @@ export class HubStore {
     })
   }
 
+  /** Whether the invite code (its hash) exists and is unused: signing up checks this before it hashes a password. */
+  inviteLive(codeHash: string): boolean {
+    const invite = this.sql("SELECT hash FROM invites WHERE hash = ? AND used_at IS NULL").get(codeHash) as Row | undefined
+    return invite !== undefined && sameSecret(invite.hash as string, codeHash)
+  }
+
   userByEmail(email: string): User | undefined {
     return userOf(this.sql("SELECT * FROM users WHERE email = ? AND deleted = 0").get(normaliseEmail(email)) as Row | undefined)
   }

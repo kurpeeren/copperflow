@@ -24,6 +24,7 @@ import { trustedProxies, workspaceSubnets, type SubnetSet } from "./peer-guard.j
 import type { WorkspaceRunner } from "./runner/runner.js"
 import { HubStore } from "./store.js"
 import { prepareDataDir } from "./permissions.js"
+import { HashBusyError } from "./secrets.js"
 import { AgentSessions } from "./agent-sessions.js"
 import { loadCatalog } from "./hub-catalog.js"
 import { OAuthState } from "./oauth-state.js"
@@ -351,6 +352,10 @@ export function limitConnectionsPerAddress(server: Pick<Server, "on">, max: numb
 function answerError(hub: Hub, res: ServerResponse, error: unknown): void {
   if (res.headersSent) {
     res.destroy()
+    return
+  }
+  if (error instanceof HashBusyError) {
+    sendPage(res, 503, textPage("That did not work", error.message), { "retry-after": String(error.retryAfterS) })
     return
   }
   if (error instanceof HubError) {

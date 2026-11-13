@@ -508,6 +508,16 @@ once in the hub; the rest wait in arrival order.
 | Correct passwords (sign-in, and current-password checks) | User id | 30 per 15 minutes | 429 with Retry-After, checked before the hash | Nobody. Only someone who knows the password can raise this counter, so a stranger cannot lock anyone out with it. |
 | Sign-ups | Address | 20 per hour | 429 | Nobody |
 
+Hashing has two lines. Work for a person with no account (sign-up, and a sign-in for an email that has no account) may
+hold at most ONE of the two hashing slots at a time and has its own waiting line of 16; everything else (sign-in of an
+existing account, current-password checks, a new password) waits in one line of 64. A request that finds its line full
+is answered 503 with `Retry-After: 2` before anything is hashed. Sign-up looks the invite code up before it hashes the
+password, so a request without a usable code never reaches a slot (the answer is the same as before). A refused request
+is counted by the sign-in limits exactly as the attempt it was (the address and email failure counters stay charged, as
+for any attempt that does not end in a right password) and nothing is added to the correct-password counter, since no
+hash ran; it therefore costs a victim no more than any other request that names the victim's email, which the limits
+already count (a person with the account's device cookie is exempt from the email limit).
+
 A device cookie is set at each successful sign-in (random, stored hashed, at most 10 per user, one year). A normal
 sign-out keeps it, so a person who signed out is not locked out by strangers; that costs nothing, since the per-address
 limit still applies to that browser and the exemption gives it no more guesses than any address has. "Sign out and
