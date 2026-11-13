@@ -65,13 +65,15 @@ function routed(files: Record<string, string>, ahead: boolean) {
 }
 
 describe("connectors ahead of the parts they serve is not the default", () => {
-  test("by default the proof board and the satellites board place exactly as with connectorsAhead: false", () => {
-    // The board of pcb-place-satellites: the proof board at its own size.
-    const satellites = { ...proofBoard(32, 23), [PROOF_MAIN]: (filesIn(PROOF)[PROOF_MAIN] as string).replace(/ pcbX=\{[^}]*\} pcbY=\{[^}]*\} pcbRotation=\{[^}]*\}/g, "") }
-    for (const files of [proofBoard(32, 23), satellites]) {
-      const design = buildDesign(files, PROOF_MAIN)
-      expect([...placeBoard(design).positions]).toEqual([...placeBoard(design, { connectorsAhead: false }).positions])
-    }
+  test("on the proof board the default places differently from connectorsAhead: true, and says nothing about it", () => {
+    // That the default does one run is in pcb-place-runs; that its figures are the old ones, in pcb-place-satellites.
+    const design = buildDesign(proofBoard(32, 23), PROOF_MAIN)
+    const usual = placeBoard(design)
+    const ahead = placeBoard(design, { connectorsAhead: true })
+    expect([...usual.positions]).not.toEqual([...ahead.positions])
+    expect(usual.notes.some((note) => note.includes("Connectors ahead"))).toBe(false)
+    // Kept here, so no note either.
+    expect(ahead.notes.some((note) => note.includes("Connectors ahead"))).toBe(false)
   })
 })
 

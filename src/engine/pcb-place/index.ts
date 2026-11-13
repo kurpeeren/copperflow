@@ -143,7 +143,13 @@ export function placeBoard(design: Design, options: PlaceOptions = {}): Placemen
   }
   const last = run(start, false, true)
   const tryAhead = options.connectorsAhead === true && !spent(last) && !late() && connectorsServe(problem)
-  const { built, frozen, refined, final } = chooseOrder(problem, last, tryAhead ? run(initial, true, false) : undefined)
+  const chosen = chooseOrder(problem, last, tryAhead ? run(initial, true, false) : undefined)
+  const { built, frozen, refined, final } = chosen
+  // Asked for and not kept: the caller is told, so that it does not compare two placements that are the same.
+  const orderNotes =
+    options.connectorsAhead === true && chosen === last
+      ? ["Connectors ahead was not kept (no connector serves a part, the time ran out, or it gave no less wire); this is the placement with connectors last"]
+      : []
   const positions = new Map<string, PlacedPosition>()
   const moved: string[] = []
   problem.movables.forEach((m, i) => {
@@ -162,7 +168,7 @@ export function placeBoard(design: Design, options: PlaceOptions = {}): Placemen
     before: { wireLength: ratsnestLength(design.pcb.parts) },
     moved,
     unplaced: built.unplaced.map((u) => ({ name: problem.movables[u.index]?.name as string, reason: u.reason })),
-    notes: [...built.notes, ...copies.notes, ...copied.notes],
+    notes: [...built.notes, ...copies.notes, ...copied.notes, ...orderNotes],
     budgetSpent: outOfTime || (refined?.budgetSpent ?? false),
   }
 }

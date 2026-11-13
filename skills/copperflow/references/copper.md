@@ -22,10 +22,13 @@ from the pin it serves shows there with both pads' places. Move it with `set_pro
 
 Connectors are placed last, into the edge room the other parts left, so on a tight board a
 connector can land far from the part it serves. If `board_summary` or `copper_summary` shows a
-connector's nets much longer than the rest, run `autoplace` again with `connectors: "ahead"`
-(each connector goes on the edge before the part it serves), then `autoroute`, and compare the
-unrouted connections and those nets' lengths with the first try. Keep the better one; otherwise
-`undo_change` both. "ahead" is not the default because it can route worse.
+connector's nets much longer than the rest, note the unrouted count and those nets' lengths,
+then `undo_change` the `autoroute` and the `autoplace` (`autoplace` moves only parts without a
+position, so a second run over placed parts does nothing). Run `autoplace` with
+`connectors: "ahead"` (each connector goes on the edge before the part it serves) and
+`autoroute` again, and compare with what you noted. If it is not better, `undo_change` both and
+place and route as before; a note in the answer says so when "ahead" was not kept and the
+placement is the usual one. "ahead" is not the default because it can route worse.
 
 `autoroute` answers `Change c0012: Routed 30 of 32 connections in 2 passes; unrouted: U1.pin3
 (4.10, 2.00 top) to R1.pin2 (9.30, 2.00 top) (no room between U1 and C3), …`, then the copper

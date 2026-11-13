@@ -36,8 +36,18 @@ describe("how many placement runs a board gets", () => {
   test("a connector on ground only serves no part: one run", () => {
     const parts = Array.from({ length: 9 }, (_, i) => `<resistor name="R${i + 1}" resistance="1k" footprint="0603" />\n<trace from="R${i + 1}.pin1" to="net.GND" />`)
     const files = board([`<pinheader name="J1" pinCount={2} pitch="2.54mm" />`, `<trace from="J1.pin1" to="net.GND" />`, ...parts].join("\n"))
-    placeBoard(buildDesign(files, MAIN), AHEAD)
+    const placement = placeBoard(buildDesign(files, MAIN), AHEAD)
     expect(runs()).toBe(1)
+    // Asked for and not kept: the caller is told, so it does not compare two boards that are the same.
+    expect(placement.notes.some((note) => note.startsWith("Connectors ahead was not kept"))).toBe(true)
+  })
+
+  test("the note about connectors ahead appears only when it was asked for", () => {
+    const parts = Array.from({ length: 9 }, (_, i) => `<resistor name="R${i + 1}" resistance="1k" footprint="0603" />\n<trace from="R${i + 1}.pin1" to="net.GND" />`)
+    const files = board([`<pinheader name="J1" pinCount={2} pitch="2.54mm" />`, `<trace from="J1.pin1" to="net.GND" />`, ...parts].join("\n"))
+    const said = (options?: { connectorsAhead: boolean }) => placeBoard(buildDesign(files, MAIN), options).notes.some((note) => note.includes("Connectors ahead"))
+    expect(said()).toBe(false)
+    expect(said({ connectorsAhead: false })).toBe(false)
   })
 
   const served = board(
