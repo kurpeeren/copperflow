@@ -1,8 +1,8 @@
 import type { Design } from "../design.js"
 import { planCopies, placeCopies, type BlockMove } from "./blocks.js"
-import { construct, OUT_OF_TIME } from "./constructive.js"
+import { connectorsServe, construct, LARGE_NET, OUT_OF_TIME, type Constructed } from "./constructive.js"
 import { EPSILON, ROTATIONS } from "./geometry.js"
-import { refine, type RefineOptions } from "./refine.js"
+import { refine, type Refined, type RefineOptions } from "./refine.js"
 import { readProblem, type Problem, type ScopeOptions } from "./scope.js"
 import { edgeTouches, NetModel, ratsnestLength, type State } from "./score.js"
 
@@ -27,6 +27,11 @@ export interface PlaceOptions extends ScopeOptions, Omit<RefineOptions, "budgetM
   budgetMs?: number
   /** Told as the placement goes (it does not change the result); a throw from it stops the placement. */
   onProgress?: (progress: PlaceProgress) => void
+  /**
+   * Whether to also try putting each connector on the edge ahead of the part it serves, and keep that when it is
+   * better; true by default. False places connectors last only.
+   */
+  connectorsAhead?: boolean
 }
 
 /**
@@ -68,16 +73,35 @@ export interface Placement {
   budgetSpent: boolean
 }
 
-/** A net with more pads than this (ground, a supply) is not one of a connector's own nets. */
-const CONNECTOR_NET = 8
-
 /** The ratsnest length of the small nets that reach a connector, with the parts where `s` puts them. */
 function connectorWire(problem: Problem, s: State): number {
   const model = new NetModel(problem)
   const nets = new Set(problem.movables.flatMap((m) => (m.role === "connector" ? (m.pads[0] ?? []).map((p) => p.net) : [])))
   let total = 0
-  for (const net of nets) if (net >= 0 && (model.members[net]?.length ?? 0) + (problem.fixedPads[net]?.length ?? 0) <= CONNECTOR_NET) total += model.netLength(net, s)
+  for (const net of nets) if (net >= 0 && (model.members[net]?.length ?? 0) + (problem.fixedPads[net]?.length ?? 0) <= LARGE_NET) total += model.netLength(net, s)
   return total
+}
+
+/** One constructive pass and its refinement. */
+interface Run {
+  built: Constructed
+  frozen: Set<number>
+  refined: Refined | undefined
+  final: State
+  wire: number
+}
+
+/** Whether a run stopped for the time budget, in the constructive pass or the refinement. */
+const spent = (r: Run): boolean => r.built.unplaced.some((u) => u.reason === OUT_OF_TIME) || (r.refined?.budgetSpent ?? false)
+
+/**
+ * The run to keep: the one with connectors ahead of the parts they serve when it finished in time, put a connector
+ * ahead at all, places as many parts, and has less wire in all and on the connectors' own nets; else the old order.
+ */
+function chooseOrder(problem: Problem, last: Run, ahead: Run | undefined): Run {
+  if (ahead === undefined || spent(ahead) || ahead.built.ahead === 0) return last
+  if (ahead.built.unplaced.length > last.built.unplaced.length || ahead.wire >= last.wire - 1e-9) return last
+  return connectorWire(problem, ahead.final) <= connectorWire(problem, last.final) + 1e-9 ? ahead : last
 }
 
 /** Positions are given to the micrometre: the steps the placer takes leave float noise below that. */
@@ -89,6 +113,8 @@ const quarterOf = (rotation: number): number => Math.round(rotation / 90) & 3
  * connections first, each next part at the spot that costs least wire, decoupling capacitors beside their supply
  * pins and every other two-pin part a chip's net ties it to beside that pin (a crystal across its two pins, the load
  * capacitors beside the crystal on the side away from the chip, a pull-up, an LED's resistor beside the LED), connectors on the nearest edge with their pins inward), then simulated annealing on the total ratsnest length.
+ * When a connector serves a part, the whole is run a second time with that connector put on the edge just before
+ * its part, and that second placement is kept when it is better (see `chooseOrder`).
  * Pure: it reads the design and returns positions; writing them is the caller's. Same input, same output.
  */
 export function placeBoard(design: Design, options: PlaceOptions = {}): Placement {
@@ -106,7 +132,7 @@ export function placeBoard(design: Design, options: PlaceOptions = {}): Placemen
   const tell = options.onProgress
   const initial: State = { x: start.x.slice(), y: start.y.slice(), rot: start.rot.slice() }
   const onTries = tell && ((done: number, total: number) => tell({ stage: "refine", done, total }))
-  const run = (state: State, ahead: boolean, report: boolean) => {
+  const run = (state: State, ahead: boolean, report: boolean): Run => {
     const built = construct(problem, state, late, report && tell ? (done, total) => tell({ stage: "construct", done, total }) : undefined, ahead)
     const frozen = new Set(built.unplaced.map((u) => u.index))
     const left = budgetMs === undefined ? {} : { budgetMs: Math.max(0, budgetMs - (clock() - began)) }
@@ -114,20 +140,9 @@ export function placeBoard(design: Design, options: PlaceOptions = {}): Placemen
     const final = refined?.state ?? state
     return { built, frozen, refined, final, wire: refined?.after ?? new NetModel(problem).measure(final) }
   }
-  // Connectors last, then again with each connector on the edge ahead of the part it serves; the second is kept when
-  // it finished in time and places as many parts with less wire in all and on the connectors' own nets. Only the
-  // first is told to `onProgress`; the second has what is left of the time budget.
   const last = run(start, false, true)
-  const spent = (r: typeof last) => r.built.unplaced.some((u) => u.reason === OUT_OF_TIME) || (r.refined?.budgetSpent ?? false)
-  const trial = !spent(last) && !late() && problem.movables.some((m) => m.role === "connector") ? run(initial, true, false) : undefined
-  const better =
-    trial !== undefined &&
-    !spent(trial) &&
-    trial.built.ahead > 0 &&
-    trial.built.unplaced.length <= last.built.unplaced.length &&
-    trial.wire < last.wire - 1e-9 &&
-    connectorWire(problem, trial.final) <= connectorWire(problem, last.final) + 1e-9
-  const { built, frozen, refined, final } = better ? trial : last
+  const tryAhead = options.connectorsAhead !== false && !spent(last) && !late() && connectorsServe(problem)
+  const { built, frozen, refined, final } = chooseOrder(problem, last, tryAhead ? run(initial, true, false) : undefined)
   const positions = new Map<string, PlacedPosition>()
   const moved: string[] = []
   problem.movables.forEach((m, i) => {

@@ -8,7 +8,7 @@ import type { State } from "./score.js"
 /** Once a ring has a free spot, the scan looks this many rings further for a cheaper one (2 mm at the 0.5 mm grid). */
 const EXTRA_RINGS = 4
 /** A net with more pads than this pulls the scan's centre a quarter as hard: GND should not drag every part. */
-const LARGE_NET = 8
+export const LARGE_NET = 8
 const LARGE_NET_WEIGHT = 0.25
 /** The placed pads of a net this small are scan centres of their own. */
 const SMALL_NET = 4
@@ -76,12 +76,13 @@ export class Board {
   }
 
   /** Places part `i` at `spot`; what it returns takes the part off again, while nothing else was placed since. */
-  put(i: number, spot: Spot): () => void {
+  putUndoable(i: number, spot: Spot): () => void {
     const m = this.problem.movables[i] as Movable
     const nets = [...new Set((m.pads[spot.rot] ?? []).map((pad) => pad.net).filter((net) => net >= 0))]
     const before = nets.map((net) => ({ net, count: this.padsX[net]?.length ?? 0, box: this.netBox[net] as Box }))
     const was = { x: this.state.x[i] as number, y: this.state.y[i] as number, rot: this.state.rot[i] as number }
-    const undo = () => {
+    this.put(i, spot)
+    return () => {
       this.state.x[i] = was.x
       this.state.y[i] = was.y
       this.state.rot[i] = was.rot
@@ -93,6 +94,10 @@ export class Board {
         this.netBox[net] = box
       }
     }
+  }
+
+  put(i: number, spot: Spot): void {
+    const m = this.problem.movables[i] as Movable
     this.state.x[i] = spot.x
     this.state.y[i] = spot.y
     this.state.rot[i] = spot.rot
@@ -106,7 +111,6 @@ export class Board {
       const b = this.netBox[pad.net] as Box
       this.netBox[pad.net] = { minX: Math.min(b.minX, x), minY: Math.min(b.minY, y), maxX: Math.max(b.maxX, x), maxY: Math.max(b.maxY, y) }
     }
-    return undo
   }
 
   /** Where the pad `pad` of part `part` is now: a placed movable part or a fixed one; undefined when not placed. */
@@ -425,6 +429,14 @@ function servedParts(problem: Problem, netSize: readonly number[]): Map<number, 
   return served
 }
 
+/** Whether some connector serves a part (so placing connectors ahead can differ from placing them last). */
+export function connectorsServe(problem: Problem): boolean {
+  if (!problem.movables.some((m) => m.role === "connector")) return false
+  const netSize = problem.fixedPads.map((pads) => pads.length)
+  for (const m of problem.movables) for (const pad of m.pads[0] ?? []) if (pad.net >= 0) netSize[pad.net] = (netSize[pad.net] ?? 0) + 1
+  return servedParts(problem, netSize).size > 0
+}
+
 /** Where the pads of part `i` that share a net with part `other` would be, on average, with `i` at `spot`. */
 function sharedPads(board: Board, i: number, spot: Spot, other: number): Point {
   const nets = new Set((board.problem.movables[other]?.pads[0] ?? []).map((p) => p.net).filter((n) => n >= 0))
@@ -446,7 +458,7 @@ function placeConnectorsFirst(board: Board, i: number, served: ReadonlyMap<numbe
     if (!ahead) continue
     const spot = placeConnector(board, connector, sharedPads(board, i, ahead, connector))
     if (!spot) continue
-    const undo = board.put(connector, spot)
+    const undo = board.putUndoable(connector, spot)
     // The connector took the room the part was going to use, and the part would now go further from it than where
     // the connector was put for: the connector waits for its turn.
     const after = cheapestSpot(board, i)
