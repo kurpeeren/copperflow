@@ -508,9 +508,11 @@ once in the hub; the rest wait in arrival order.
 | Correct passwords (sign-in, and current-password checks) | User id | 30 per 15 minutes | 429 with Retry-After, checked before the hash | Nobody. Only someone who knows the password can raise this counter, so a stranger cannot lock anyone out with it. |
 | Sign-ups | Address | 20 per hour | 429 | Nobody |
 
-Hashing has two lines. Work for a person with no account (sign-up, and a sign-in for an email that has no account) may
-hold at most ONE of the two hashing slots at a time and has its own waiting line of 16; everything else (sign-in of an
-existing account, current-password checks, a new password) waits in one line of 64. A request that finds its line full
+Hashing has two lines. Work for a person with no account (sign-up) may
+hold at most ONE of the two hashing slots at a time and has its own waiting line of 16; everything else (every sign-in, for a known or an unknown email alike, current-password checks, a new password) waits
+in one line of 64: the lane is chosen by the route, never by what the lookup found, so it cannot tell a stranger which
+emails have accounts. Sign-ins from strangers are bounded before the hash by the failed-sign-in limits (10 per address, 20
+per email, strict mode's 5 per second). A request that finds its line full
 is answered 503 with `Retry-After: 2` before anything is hashed. Sign-up looks the invite code up before it hashes the
 password, so a request without a usable code never reaches a slot (the answer is the same as before). A refused request
 is counted by the sign-in limits exactly as the attempt it was (the address and email failure counters stay charged, as

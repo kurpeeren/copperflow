@@ -24,7 +24,7 @@ import { trustedProxies, workspaceSubnets, type SubnetSet } from "./peer-guard.j
 import type { WorkspaceRunner } from "./runner/runner.js"
 import { HubStore } from "./store.js"
 import { prepareDataDir } from "./permissions.js"
-import { HashBusyError } from "./secrets.js"
+import { HashBusyError, primeDummyHash } from "./secrets.js"
 import { AgentSessions } from "./agent-sessions.js"
 import { loadCatalog } from "./hub-catalog.js"
 import { OAuthState } from "./oauth-state.js"
@@ -147,6 +147,7 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
     tlsAskWeekly: options.tlsAskWeekly ?? DEFAULT_TLS_ASK_WEEKLY,
     now: options.now ?? Date.now,
   }
+  await primeDummyHash()
   const files = new ProjectFiles(options.dataDir)
   files.workspaceGroup = options.workspaceGroup
   // Every line through printable: a logged error can quote an engine's or a workspace's own output.

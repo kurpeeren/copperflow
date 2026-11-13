@@ -43,12 +43,15 @@ let hashesRunning = 0
 let anonymousRunning = 0
 let hashesPeak = 0
 let hashesStarted = 0
+const startedIn: Record<HashClass, number> = { anonymous: 0, account: 0 }
 let arrivals = 0
 const lines: Record<HashClass, Waiter[]> = { anonymous: [], account: [] }
 
 /** What the shared hashing slots are doing (for tests): running now, the most at once, started in all, waiting per line. */
-export function hashLoad(): { running: number; peak: number; started: number; waiting: number; waitingAnonymous: number; waitingAccount: number } {
+export function hashLoad(): { running: number; peak: number; started: number; waiting: number; waitingAnonymous: number; waitingAccount: number; slotsAnonymous: number; slotsAccount: number } {
   return {
+    slotsAnonymous: startedIn.anonymous,
+    slotsAccount: startedIn.account,
     running: hashesRunning,
     peak: hashesPeak,
     started: hashesStarted,
@@ -74,6 +77,7 @@ function dispatch(): void {
     hashesRunning += 1
     if (kind === "anonymous") anonymousRunning += 1
     hashesPeak = Math.max(hashesPeak, hashesRunning)
+    startedIn[kind] += 1
     next.go()
   }
 }
@@ -142,14 +146,25 @@ async function check(password: string, stored: string): Promise<boolean> {
 }
 
 let dummyHash: Promise<string> | undefined
-/** Spends the same time as checking a real password, so an unknown email answers no faster than a wrong password. */
-export async function verifyAgainstNothing(password: string): Promise<false> {
-  // A refused (busy) first hash is forgotten, so the next call makes it again.
-  dummyHash ??= hashPassword(randomBytes(16).toString("hex"), "anonymous").catch((error: unknown) => {
+/** The hash an unknown email is checked against; made once, in the account lane, and made again if that first try was refused as busy. */
+function dummyHashOf(): Promise<string> {
+  dummyHash ??= hashPassword(randomBytes(16).toString("hex"), "account").catch((error: unknown) => {
     dummyHash = undefined
     throw error
   })
-  await verifyPassword(password, await dummyHash, "anonymous")
+  return dummyHash
+}
+
+/** Makes the dummy hash now (at start), so the first sign-in for an unknown email costs no more than any other. */
+export async function primeDummyHash(): Promise<void> {
+  await dummyHashOf()
+}
+
+/** Spends the same time as checking a real password, so an unknown email answers no faster than a wrong password. */
+export async function verifyAgainstNothing(password: string): Promise<false> {
+  // The lane is the route's (sign-in: the account lane), never what the lookup found: a sign-in for an email with no
+  // account takes exactly the lane a sign-in for an existing one takes.
+  await verifyPassword(password, await dummyHashOf(), "account")
   return false
 }
 

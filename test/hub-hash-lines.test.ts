@@ -97,3 +97,26 @@ describe("sign-up", () => {
     expect(signInDone).toBeLessThan(Math.max(...finished))
   }, 120_000)
 })
+
+describe("the lane is the route's, not what the lookup found", () => {
+  test("a sign-in for an unknown email and one for a known email with a wrong password take the same lane, and neither gets a 503 with the anonymous line full", async () => {
+    server = await startTestHub()
+    await newUser(server, "ada@example.com")
+    const stored = await hashPassword("a good password")
+    // Fill the anonymous lane: one running, 16 waiting.
+    const anonymous = Array.from({ length: 17 }, () => verifyPassword("x", stored, "anonymous").then(() => "done", () => "refused"))
+    expect(hashLoad().waitingAnonymous).toBe(16)
+    const before = { anonymous: hashLoad().slotsAnonymous, account: hashLoad().slotsAccount }
+    const known = await new Browser(server.url).signIn("ada@example.com", "not the password")
+    const afterKnown = { anonymous: hashLoad().slotsAnonymous, account: hashLoad().slotsAccount }
+    const unknown = await new Browser(server.url).signIn("nobody@example.com", "not the password")
+    const afterUnknown = { anonymous: hashLoad().slotsAnonymous, account: hashLoad().slotsAccount }
+    expect(known.status).toBe(401)
+    expect(unknown.status).toBe(401)
+    // One hash each, both in the account lane; the anonymous lane's count moved only by its own waiting work.
+    expect(afterKnown.account - before.account).toBe(1)
+    expect(afterUnknown.account - afterKnown.account).toBe(1)
+    expect(afterUnknown.anonymous - before.anonymous).toBeLessThanOrEqual(16)
+    await Promise.all(anonymous)
+  }, 120_000)
+})
