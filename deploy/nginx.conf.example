@@ -71,9 +71,9 @@ server {
         proxy_buffering off;
         proxy_request_buffering off;
         proxy_cache off;
-        # An open event stream lives up to 12 hours; an upload up to 2 hours.
+        # An open event stream lives up to 12 hours; the hub ends an upload after 15 minutes (20 minutes here is the margin).
         proxy_read_timeout 13h;
-        proxy_send_timeout 2h;
+        proxy_send_timeout 20m;
     }
 }
 
@@ -104,6 +104,6 @@ server {
         proxy_request_buffering off;
         proxy_cache off;
         proxy_read_timeout 13h;
-        proxy_send_timeout 2h;
+        proxy_send_timeout 20m;
     }
 }

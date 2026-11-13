@@ -153,6 +153,9 @@ describe("the project block lives in the runner", () => {
     overQuota = false
     // Blocked while it crashes: the block's stop wins and nothing relaunches.
     await stub.runner.ensure(spec("b"))
+    // Past the 60-second quick-exit mark (a quick exit takes the backoff path instead of a restart), then it crashes
+    // while the block is taken: the restart path runs and the block must win.
+    clock.mockReturnValue(Date.now() + 240_000)
     stub.live.get("b")?.()
     await stub.runner.block("b")
     await new Promise((done) => setTimeout(done, 20))
