@@ -225,13 +225,25 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
     // A tick that finds the previous one still running is skipped.
     if (sweeping) return
     sweeping = true
-    hub.store.sweepSessions(hub.config.now())
+    // Each step on its own: one that throws (a busy database) is logged, the others and every later sweep still run.
+    const step = (name: string, run: () => void): void => {
+      try {
+        run()
+      } catch (error) {
+        hub.log(`sweep step ${name} failed; tried again at the next sweep: ${(error as Error).message}`)
+      }
+    }
+    step("sessions", () => hub.store.sweepSessions(hub.config.now()))
     // Audit counts of windows that ended (audit-gate.ts).
-    hub.store.flushAuditCounts(hub.config.now())
-    hub.store.sweepWorkspaceSessions(hub.config.now())
-    hub.store.pruneTlsNames(hub.config.now() - TLS_WINDOW_MS)
-    for (const grantId of hub.store.tokens.sweep(hub.config.now())) hub.agents.closeCredential(`grant:${grantId}`)
-    sweepCuts(hub, revokeUser)
+    step("audit counts", () => hub.store.flushAuditCounts(hub.config.now()))
+    step("workspace sessions", () => hub.store.sweepWorkspaceSessions(hub.config.now()))
+    step("certificate names", () => hub.store.pruneTlsNames(hub.config.now() - TLS_WINDOW_MS))
+    step("tokens", () => {
+      for (const grantId of hub.store.tokens.sweep(hub.config.now())) hub.agents.closeCredential(`grant:${grantId}`)
+    })
+    // Inside the chain, so that a throw before the first promise still reaches the handlers below.
+    Promise.resolve()
+      .then(() => sweepCuts(hub, revokeUser))
       // Users the maintainer deleted: their folders go here, where their workspaces can be blocked first.
       .then(async () => {
         // The maintainer's `hub stop-workspace`: an asked-for stop, so no crash restart; the next request starts it.
@@ -258,7 +270,9 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
   const quota = setInterval(() => {
     if (measuring) return
     measuring = true
-    sweepQuota(hub)
+    // Inside the chain, so that a throw before the first promise still clears the flag.
+    Promise.resolve()
+      .then(() => sweepQuota(hub))
       .then(() => hub.runner.maintain?.())
       // Trash that could not be removed (still counted in its user's usage) is tried again.
       .then(() => retryTrash(hub))

@@ -139,6 +139,40 @@ describe("the hub's sweep calls the prunes", () => {
     expect(server.hub.store.auditLog(1000).some((e) => e.event === "signup")).toBe(false)
     expect(server.hub.store.auditLog(1000)).toHaveLength(0)
   })
+
+  test("a sweep step that fails once is logged and the later sweeps still run", async () => {
+    let now = Date.now()
+    const lines: string[] = []
+    server = await startTestHub({ now: () => now, sweepMs: 20, log: (line: string) => lines.push(line) })
+    const ada = await newUser(server, "ada@example.com")
+    await ada.submit("/projects", "/projects", { name: "Amp" })
+    const userId = server.hub.store.userByEmail("ada@example.com")?.id as string
+    const id = server.hub.store.projects(userId)[0]?.id as string
+    await ada.openProject(id)
+    expect(server.hub.store.workspaceSessionCount(userId, id)).toBe(1)
+    const until = async (done: () => boolean) => {
+      const deadline = Date.now() + 5000
+      while (Date.now() < deadline && !done()) await new Promise((r) => setTimeout(r, 25))
+    }
+    // The first step of one sweep throws, as a busy database would.
+    const store = server.hub.store
+    const real = store.sweepSessions.bind(store)
+    let failed = 0
+    store.sweepSessions = (...args: Parameters<typeof real>) => {
+      if (failed === 0) {
+        failed += 1
+        throw new Error("database is busy")
+      }
+      return real(...args)
+    }
+    await until(() => failed === 1)
+    expect(failed).toBe(1)
+    // The steps after it in that sweep and every later sweep still happen: the expired workspace session goes.
+    now += 13 * 60 * 60_000
+    await until(() => server?.hub.store.workspaceSessionCount(userId, id) === 0)
+    expect(server.hub.store.workspaceSessionCount(userId, id)).toBe(0)
+    expect(lines.some((line) => line.includes("database is busy"))).toBe(true)
+  })
 })
 
 async function agentOf(hub: HubServer, browser: Browser): Promise<Client> {
