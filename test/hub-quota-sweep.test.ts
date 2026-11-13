@@ -144,6 +144,9 @@ describe("the project block lives in the runner", () => {
     })
     await stub.runner.ensure(spec("a"))
     overQuota = true
+    // It ran for two minutes: not a quick exit, so a restart is tried (and refused by the quota).
+    const clock = vi.spyOn(Date, "now")
+    clock.mockReturnValue(Date.now() + 120_000)
     stub.live.get("a")?.()
     await vi.waitFor(() => expect(stub.runner.state("a")).toBe("stopped"))
     expect(stub.launched).toEqual(["a"])
@@ -155,6 +158,7 @@ describe("the project block lives in the runner", () => {
     await new Promise((done) => setTimeout(done, 20))
     expect(stub.launched.filter((id) => id === "b").length).toBeLessThanOrEqual(2)
     expect(stub.runner.state("b")).toBe("stopped")
+    clock.mockRestore()
   })
 
   test("withProjectLock stops the workspace first, refuses starts until it ends, and releases on errors", async () => {

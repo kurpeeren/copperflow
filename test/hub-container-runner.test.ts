@@ -293,13 +293,19 @@ describe("launching a container", () => {
     const runner = createContainerRunner({ ...G, image: "img", reach: "network", hubContainer: "cf-hub", ticketPublicKey: KEY, spawn: engine.spawn, log: () => undefined })
     await runner.ensure(spec())
     const runs = () => engine.calls.filter((args) => args[0] === "run").length
-    // The container dies: its `docker run` process ends without being asked to.
+    // It ran for two minutes (a quick exit is not restarted at once: the runner backs off), then dies: its `docker run`
+    // process ends without being asked to.
+    const clock = vi.spyOn(Date, "now")
+    const start = Date.now()
+    clock.mockReturnValue(start + 120_000)
     engine.running.get(`cf-ws-${ID}`)?.exit(137)
     await vi.waitFor(() => expect(runner.state(ID)).toBe("running"), { timeout: 5000 })
     await vi.waitFor(() => expect(runs()).toBe(2), { timeout: 5000 })
+    clock.mockReturnValue(start + 240_000)
     engine.running.get(`cf-ws-${ID}`)?.exit(137)
     await vi.waitFor(() => expect(runner.state(ID)).toBe("failed"), { timeout: 5000 })
     expect(runs()).toBe(2)
+    clock.mockRestore()
     await runner.stopAll()
   })
 

@@ -169,7 +169,7 @@ export class ManagedRunner implements WorkspaceRunner {
     this.maxPerUser = options.maxPerUser ?? DEFAULT_MAX_PER_USER
     this.maxHoldMs = options.maxHoldMs ?? DEFAULT_MAX_HOLD_MS
     this.log = options.log ?? sanitisingLog("copperflow hub: ")
-    this.clock = options.now ?? Date.now
+    this.clock = options.now ?? (() => Date.now())
   }
 
   /** Milliseconds this workspace's next start must still wait. */
