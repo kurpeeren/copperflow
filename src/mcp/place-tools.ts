@@ -30,6 +30,7 @@ export const autoplaceInput = {
   instance: z.string().min(1).optional().describe('Place only the parts of this sub-sheet instance, e.g. "PS1"'),
   fit: z.boolean().optional().describe("true: then shrink or grow the (rectangular) board round the parts with a 2 mm margin"),
   budgetSeconds: z.number().positive().max(MAX_BUDGET_SECONDS).optional().describe(`The time the placer may take; ${DEFAULT_PLACE_BUDGET_SECONDS} s by default`),
+  connectors: z.enum(["last", "ahead"]).optional().describe("ahead: each connector by its part; route and compare"),
 }
 
 export const fitBoardInput = {
@@ -94,10 +95,18 @@ export interface AutoplaceOptions {
 /** autoplace: places in this process within the budget and writes the positions as one change by the agent. */
 export async function autoplace(
   ports: Ports,
-  input: { file: string; parts?: string[] | undefined; instance?: string | undefined; fit?: boolean | undefined; budgetSeconds?: number | undefined },
+  input: {
+    file: string
+    parts?: string[] | undefined
+    instance?: string | undefined
+    fit?: boolean | undefined
+    budgetSeconds?: number | undefined
+    connectors?: "last" | "ahead" | undefined
+  },
   options: AutoplaceOptions = {},
 ): Promise<string> {
   const budgetSeconds = budgetOf(input.budgetSeconds)
+  const ahead = input.connectors === "ahead" ? { connectorsAhead: true } : {}
   const circuit = await resolveCircuit(ports.root, input.file)
   if (!circuit.file.endsWith(".circuit.tsx")) throw new Error(`${circuit.file} is a sub-sheet; place the board of the circuit that uses it. Nothing was written.`)
   const start = await contentHashes(ports.root, circuit.file)
@@ -106,8 +115,8 @@ export async function autoplace(
   const locked = await lockedNames(circuit.path, design)
   // Hosted: in a worker with a hard cut, holding the workspace's one routing-or-placement slot (heavy-runs.ts).
   const placement = ports.hosted
-    ? await (options.placeHosted ?? placeHosted)({ design, scope, locked, budgetMs: budgetSeconds * 1000 })
-    : placeBoard(design, { scope, locked, budgetMs: budgetSeconds * 1000, ...(options.clock ? { clock: options.clock } : {}) })
+    ? await (options.placeHosted ?? placeHosted)({ design, scope, locked, budgetMs: budgetSeconds * 1000, ...ahead })
+    : placeBoard(design, { scope, locked, budgetMs: budgetSeconds * 1000, ...ahead, ...(options.clock ? { clock: options.clock } : {}) })
   const writes = placementWrites(design, placement.positions, placement.blocks)
   const unplaced = listLine("Not placed", placement.unplaced.map((u) => `${u.name} (${u.reason})`))
   if (writes.circuit.length + writes.sheets.length + writes.blocks.length === 0 && !input.fit) {

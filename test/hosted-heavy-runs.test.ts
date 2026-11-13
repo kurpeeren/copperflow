@@ -76,4 +76,18 @@ describe("one routing or placement run per hosted workspace", () => {
     expect(routed).toEqual([2000])
     expect(placed).toEqual([3000])
   })
+
+  test("autoplace asks the worker for connectors ahead only with connectors: \"ahead\"", async () => {
+    const { root } = await project()
+    const ports = { root, engine: inProcessEngine as never, hosted: true }
+    const asked: unknown[] = []
+    const placeHosted = async (request: { connectorsAhead?: boolean }) => {
+      asked.push(request.connectorsAhead)
+      throw new Error("stub worker")
+    }
+    for (const connectors of [undefined, "last", "ahead"] as const) {
+      await autoplace(ports, { file: "main.circuit.tsx", ...(connectors ? { connectors } : {}) }, { placeHosted: placeHosted as never }).catch((error: Error) => expect(error.message).toBe("stub worker"))
+    }
+    expect(asked).toEqual([undefined, undefined, true])
+  })
 })

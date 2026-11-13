@@ -14,6 +14,7 @@ port.on("message", (request: PlaceWorkerRequest) => {
       scope: request.scope,
       locked: request.locked,
       ...(request.budgetMs === undefined ? {} : { budgetMs: request.budgetMs }),
+      ...(request.connectorsAhead ? { connectorsAhead: true } : {}),
       onProgress: (progress) => reply({ type: "progress", progress }),
     })
     reply({ type: "done", placement })

@@ -23,6 +23,8 @@ export interface PlaceWorkerRequest {
   scope: PlaceScope
   locked: string[]
   budgetMs?: number
+  /** Try connectors ahead of the parts they serve (`PlaceOptions.connectorsAhead`); the Studio never sets it. */
+  connectorsAhead?: boolean
 }
 
 export type PlaceWorkerReply = { type: "progress"; progress: PlaceProgress } | { type: "done"; placement: Placement } | { type: "error"; message: string }
@@ -232,6 +234,7 @@ async function inProcess(job: Job, request: PlaceWorkerRequest, tell: (progress:
     scope: request.scope,
     locked: request.locked,
     ...(request.budgetMs === undefined ? {} : { budgetMs: request.budgetMs }),
+    ...(request.connectorsAhead ? { connectorsAhead: true } : {}),
     onProgress: (progress) => {
       if (job.cancelled) throw new Cancelled()
       tell(progress)
