@@ -10,6 +10,7 @@ vi.mock("../../src/engine/pcb-place/constructive.js", async (original) => {
 })
 
 const MAIN = "main.circuit.tsx"
+const AHEAD = { connectorsAhead: true }
 const board = (body: string) => ({ [MAIN]: `export default () => (\n  <board width="40mm" height="30mm">\n${body}\n  </board>\n)\n` })
 const counted = (constructive as unknown as { counted: ReturnType<typeof vi.fn> }).counted
 const runs = () => counted.mock.calls.length
@@ -28,27 +29,33 @@ describe("how many placement runs a board gets", () => {
         `<trace from="R1.pin1" to="U1.pin3" />`,
       ].join("\n"),
     )
-    placeBoard(buildDesign(files, MAIN))
+    placeBoard(buildDesign(files, MAIN), AHEAD)
     expect(runs()).toBe(1)
   })
 
   test("a connector on ground only serves no part: one run", () => {
     const parts = Array.from({ length: 9 }, (_, i) => `<resistor name="R${i + 1}" resistance="1k" footprint="0603" />\n<trace from="R${i + 1}.pin1" to="net.GND" />`)
     const files = board([`<pinheader name="J1" pinCount={2} pitch="2.54mm" />`, `<trace from="J1.pin1" to="net.GND" />`, ...parts].join("\n"))
-    placeBoard(buildDesign(files, MAIN))
+    placeBoard(buildDesign(files, MAIN), AHEAD)
     expect(runs()).toBe(1)
   })
 
+  const served = board(
+    [
+      `<pinheader name="J1" pinCount={2} pitch="2.54mm" />`,
+      `<chip name="U1" footprint="soic8" pinLabels={{ pin1: "A", pin2: "B" }} />`,
+      `<trace from="J1.pin1" to="U1.pin1" />`,
+      `<trace from="J1.pin2" to="U1.pin2" />`,
+    ].join("\n"),
+  )
+
   test("a connector wired to a part that moves serves it: two runs", () => {
-    const files = board(
-      [
-        `<pinheader name="J1" pinCount={2} pitch="2.54mm" />`,
-        `<chip name="U1" footprint="soic8" pinLabels={{ pin1: "A", pin2: "B" }} />`,
-        `<trace from="J1.pin1" to="U1.pin1" />`,
-        `<trace from="J1.pin2" to="U1.pin2" />`,
-      ].join("\n"),
-    )
-    placeBoard(buildDesign(files, MAIN))
+    placeBoard(buildDesign(served, MAIN), AHEAD)
     expect(runs()).toBe(2)
+  })
+
+  test("the same board without connectorsAhead (the default): one run", () => {
+    placeBoard(buildDesign(served, MAIN))
+    expect(runs()).toBe(1)
   })
 })

@@ -28,8 +28,9 @@ export interface PlaceOptions extends ScopeOptions, Omit<RefineOptions, "budgetM
   /** Told as the placement goes (it does not change the result); a throw from it stops the placement. */
   onProgress?: (progress: PlaceProgress) => void
   /**
-   * Whether to also try putting each connector on the edge ahead of the part it serves, and keep that when it is
-   * better; true by default. False places connectors last only.
+   * Whether to also try putting each connector on the edge ahead of the part it serves, and keep that when it has
+   * less wire; false by default (connectors last only). Not the default because it can route worse: on the proof
+   * CAN board at 30 x 22 mm it leaves one ground connection unrouted. A caller choosing it should route and compare.
    */
   connectorsAhead?: boolean
 }
@@ -113,7 +114,7 @@ const quarterOf = (rotation: number): number => Math.round(rotation / 90) & 3
  * connections first, each next part at the spot that costs least wire, decoupling capacitors beside their supply
  * pins and every other two-pin part a chip's net ties it to beside that pin (a crystal across its two pins, the load
  * capacitors beside the crystal on the side away from the chip, a pull-up, an LED's resistor beside the LED), connectors on the nearest edge with their pins inward), then simulated annealing on the total ratsnest length.
- * When a connector serves a part, the whole is run a second time with that connector put on the edge just before
+ * With `connectorsAhead`, when a connector serves a part, the whole is run a second time with that connector put on the edge just before
  * its part, and that second placement is kept when it is better (see `chooseOrder`).
  * Pure: it reads the design and returns positions; writing them is the caller's. Same input, same output.
  */
@@ -141,7 +142,7 @@ export function placeBoard(design: Design, options: PlaceOptions = {}): Placemen
     return { built, frozen, refined, final, wire: refined?.after ?? new NetModel(problem).measure(final) }
   }
   const last = run(start, false, true)
-  const tryAhead = options.connectorsAhead !== false && !spent(last) && !late() && connectorsServe(problem)
+  const tryAhead = options.connectorsAhead === true && !spent(last) && !late() && connectorsServe(problem)
   const { built, frozen, refined, final } = chooseOrder(problem, last, tryAhead ? run(initial, true, false) : undefined)
   const positions = new Map<string, PlacedPosition>()
   const moved: string[] = []
