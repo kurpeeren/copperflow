@@ -3,7 +3,7 @@ import { planCopies, placeCopies, type BlockMove } from "./blocks.js"
 import { construct, OUT_OF_TIME } from "./constructive.js"
 import { EPSILON, ROTATIONS } from "./geometry.js"
 import { refine, type RefineOptions } from "./refine.js"
-import { readProblem, type ScopeOptions } from "./scope.js"
+import { readProblem, type Problem, type ScopeOptions } from "./scope.js"
 import { edgeTouches, NetModel, ratsnestLength, type State } from "./score.js"
 
 export { DEFAULT_FIT_MARGIN, fitBoard, type FitBoard } from "./fit-board.js"
@@ -68,6 +68,18 @@ export interface Placement {
   budgetSpent: boolean
 }
 
+/** A net with more pads than this (ground, a supply) is not one of a connector's own nets. */
+const CONNECTOR_NET = 8
+
+/** The ratsnest length of the small nets that reach a connector, with the parts where `s` puts them. */
+function connectorWire(problem: Problem, s: State): number {
+  const model = new NetModel(problem)
+  const nets = new Set(problem.movables.flatMap((m) => (m.role === "connector" ? (m.pads[0] ?? []).map((p) => p.net) : [])))
+  let total = 0
+  for (const net of nets) if (net >= 0 && (model.members[net]?.length ?? 0) + (problem.fixedPads[net]?.length ?? 0) <= CONNECTOR_NET) total += model.netLength(net, s)
+  return total
+}
+
 /** Positions are given to the micrometre: the steps the placer takes leave float noise below that. */
 const tidy = (v: number): number => Math.round(v * 1e6) / 1e6
 const quarterOf = (rotation: number): number => Math.round(rotation / 90) & 3
@@ -92,12 +104,30 @@ export function placeBoard(design: Design, options: PlaceOptions = {}): Placemen
   const { budgetMs } = options
   const late = budgetMs === undefined ? () => false : () => clock() - began >= budgetMs
   const tell = options.onProgress
-  const built = construct(problem, start, late, tell && ((done, total) => tell({ stage: "construct", done, total })))
-  const frozen = new Set(built.unplaced.map((u) => u.index))
-  const left = budgetMs === undefined ? {} : { budgetMs: Math.max(0, budgetMs - (clock() - began)) }
+  const initial: State = { x: start.x.slice(), y: start.y.slice(), rot: start.rot.slice() }
   const onTries = tell && ((done: number, total: number) => tell({ stage: "refine", done, total }))
-  const refined = options.refine === false ? undefined : refine(problem, start, frozen, { ...options, ...left, clock, ...(onTries ? { onTries } : {}) })
-  const final = refined?.state ?? start
+  const run = (state: State, ahead: boolean, report: boolean) => {
+    const built = construct(problem, state, late, report && tell ? (done, total) => tell({ stage: "construct", done, total }) : undefined, ahead)
+    const frozen = new Set(built.unplaced.map((u) => u.index))
+    const left = budgetMs === undefined ? {} : { budgetMs: Math.max(0, budgetMs - (clock() - began)) }
+    const refined = options.refine === false ? undefined : refine(problem, state, frozen, { ...options, ...left, clock, ...(report && onTries ? { onTries } : {}) })
+    const final = refined?.state ?? state
+    return { built, frozen, refined, final, wire: refined?.after ?? new NetModel(problem).measure(final) }
+  }
+  // Connectors last, then again with each connector on the edge ahead of the part it serves; the second is kept when
+  // it finished in time and places as many parts with less wire in all and on the connectors' own nets. Only the
+  // first is told to `onProgress`; the second has what is left of the time budget.
+  const last = run(start, false, true)
+  const spent = (r: typeof last) => r.built.unplaced.some((u) => u.reason === OUT_OF_TIME) || (r.refined?.budgetSpent ?? false)
+  const trial = !spent(last) && !late() && problem.movables.some((m) => m.role === "connector") ? run(initial, true, false) : undefined
+  const better =
+    trial !== undefined &&
+    !spent(trial) &&
+    trial.built.ahead > 0 &&
+    trial.built.unplaced.length <= last.built.unplaced.length &&
+    trial.wire < last.wire - 1e-9 &&
+    connectorWire(problem, trial.final) <= connectorWire(problem, last.final) + 1e-9
+  const { built, frozen, refined, final } = better ? trial : last
   const positions = new Map<string, PlacedPosition>()
   const moved: string[] = []
   problem.movables.forEach((m, i) => {

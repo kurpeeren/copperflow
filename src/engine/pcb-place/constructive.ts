@@ -20,6 +20,11 @@ const ABUT_BAND = 2
 const ABUT_STEP = 0.01
 /** How much more a part's distance to the pins it sits beside (a decoupling capacitor's supply pin) weighs than its other wiring. */
 const BESIDE_WEIGHT = 4
+/**
+ * A connector placed ahead of the part it serves is taken back when that part, placed next, would end up this much
+ * further from it than where the connector was put for (mm, between their pads on the nets they share).
+ */
+const DISPLACED = 6
 
 export interface Spot {
   x: number
@@ -70,8 +75,24 @@ export class Board {
     return inArea(box, this.problem.area) && !this.index.clashes(box, this.problem.clearance)
   }
 
-  put(i: number, spot: Spot): void {
+  /** Places part `i` at `spot`; what it returns takes the part off again, while nothing else was placed since. */
+  put(i: number, spot: Spot): () => void {
     const m = this.problem.movables[i] as Movable
+    const nets = [...new Set((m.pads[spot.rot] ?? []).map((pad) => pad.net).filter((net) => net >= 0))]
+    const before = nets.map((net) => ({ net, count: this.padsX[net]?.length ?? 0, box: this.netBox[net] as Box }))
+    const was = { x: this.state.x[i] as number, y: this.state.y[i] as number, rot: this.state.rot[i] as number }
+    const undo = () => {
+      this.state.x[i] = was.x
+      this.state.y[i] = was.y
+      this.state.rot[i] = was.rot
+      this.placed[i] = 0
+      this.index.remove(i)
+      for (const { net, count, box } of before) {
+        this.padsX[net]?.splice(count)
+        this.padsY[net]?.splice(count)
+        this.netBox[net] = box
+      }
+    }
     this.state.x[i] = spot.x
     this.state.y[i] = spot.y
     this.state.rot[i] = spot.rot
@@ -85,6 +106,7 @@ export class Board {
       const b = this.netBox[pad.net] as Box
       this.netBox[pad.net] = { minX: Math.min(b.minX, x), minY: Math.min(b.minY, y), maxX: Math.max(b.maxX, x), maxY: Math.max(b.maxY, y) }
     }
+    return undo
   }
 
   /** Where the pad `pad` of part `part` is now: a placed movable part or a fixed one; undefined when not placed. */
@@ -294,6 +316,15 @@ function placeOne(board: Board, i: number): Placed {
     }
     note = `${m.name} is a connector, but no board edge has room for it, so it is placed inside the board`
   }
+  const spot = cheapestSpot(board, i)
+  if (!spot) return { placed: false }
+  board.put(i, spot)
+  return note === undefined ? { placed: true } : { placed: true, note }
+}
+
+/** The cheapest free spot for part `i` round its scan centres; undefined when nothing on the board is free for it. */
+function cheapestSpot(board: Board, i: number): Spot | undefined {
+  const m = board.problem.movables[i] as Movable
   const centres = centresFor(board, i)
   const hosts = board.hosts(m)
   const first = centres[0] as Point
@@ -312,9 +343,7 @@ function placeOne(board: Board, i: number): Placed {
       if (!best || cost < best.cost - 1e-9 || (Math.abs(cost - best.cost) <= 1e-9 && far < best.far - 1e-9)) best = { spot, cost, far }
     }
   }
-  if (!best) return { placed: false }
-  board.put(i, best.spot)
-  return note === undefined ? { placed: true } : { placed: true, note }
+  return best?.spot
 }
 
 /** How strongly a part hangs on what is placed: its pads on nets with a placed pad. */
@@ -353,6 +382,8 @@ export interface Constructed {
   board: Board
   unplaced: { index: number; reason: string }[]
   notes: string[]
+  /** How many connectors were put on the edge ahead of the part they serve. */
+  ahead: number
 }
 
 /** The reason a part found no spot: its courtyard and how much of the area is left. */
@@ -370,13 +401,86 @@ function noRoom(board: Board, m: Movable): string {
   )
 }
 
+/**
+ * For each connector, the one part it serves: the movable part, not a connector, it shares most small nets (not
+ * ground or a supply) with; ties go to the name. Undefined when it shares none, or when one of its nets reaches a
+ * fixed part (it then has a pull from the start).
+ */
+function servedParts(problem: Problem, netSize: readonly number[]): Map<number, number> {
+  const smallNets = (m: Movable) => new Set((m.pads[0] ?? []).map((p) => p.net).filter((n) => n >= 0 && (netSize[n] as number) <= LARGE_NET))
+  const served = new Map<number, number>()
+  problem.movables.forEach((m, i) => {
+    if (m.role !== "connector") return
+    const mine = smallNets(m)
+    if ([...mine].some((n) => (problem.fixedPads[n]?.length ?? 0) > 0)) return
+    let best: { k: number; shared: number } | undefined
+    problem.movables.forEach((other, k) => {
+      if (k === i || other.role === "connector") return
+      const shared = [...smallNets(other)].filter((n) => mine.has(n)).length
+      if (shared === 0) return
+      if (!best || shared > best.shared || (shared === best.shared && naturalCompare(other.name, (problem.movables[best.k] as Movable).name) < 0)) best = { k, shared }
+    })
+    if (best) served.set(i, best.k)
+  })
+  return served
+}
+
+/** Where the pads of part `i` that share a net with part `other` would be, on average, with `i` at `spot`. */
+function sharedPads(board: Board, i: number, spot: Spot, other: number): Point {
+  const nets = new Set((board.problem.movables[other]?.pads[0] ?? []).map((p) => p.net).filter((n) => n >= 0))
+  const pads = (board.problem.movables[i]?.pads[spot.rot] ?? []).filter((p) => nets.has(p.net))
+  if (pads.length === 0) return { x: spot.x, y: spot.y }
+  return { x: spot.x + pads.reduce((s, p) => s + p.x, 0) / pads.length, y: spot.y + pads.reduce((s, p) => s + p.y, 0) / pads.length }
+}
+
+/**
+ * Puts the connectors that serve part `i` on the edge before `i` itself, at the edge nearest where `i` is pulled: a
+ * connector left to last finds the edge beside its part already filled by that part and the small parts after it.
+ * A connector with no room on any edge is left for its turn.
+ */
+function placeConnectorsFirst(board: Board, i: number, served: ReadonlyMap<number, number>, done: ReadonlySet<number>): number[] {
+  const placed: number[] = []
+  for (const [connector, part] of served) {
+    if (part !== i || done.has(connector)) continue
+    const ahead = cheapestSpot(board, i)
+    if (!ahead) continue
+    const spot = placeConnector(board, connector, sharedPads(board, i, ahead, connector))
+    if (!spot) continue
+    const undo = board.put(connector, spot)
+    // The connector took the room the part was going to use, and the part would now go further from it than where
+    // the connector was put for: the connector waits for its turn.
+    const after = cheapestSpot(board, i)
+    const own = sharedPads(board, connector, spot, i)
+    const apart = (at: Spot) => {
+      const pads = sharedPads(board, i, at, connector)
+      return Math.hypot(pads.x - own.x, pads.y - own.y)
+    }
+    if (!after || apart(after) > apart(ahead) + DISPLACED) {
+      undo()
+      continue
+    }
+    placed.push(connector)
+  }
+  return placed
+}
+
 export const OUT_OF_TIME = "the time budget ran out before it was placed"
 
 /**
  * Places every movable part. The parts that find no free spot, and those left when `late` says the time is up, are
  * returned unplaced with the reason; their state is left as it was. `onPart` is told after each part.
+ *
+ * Connectors go last, into the edge room the other parts left; with `connectorsAhead`, each connector instead goes
+ * on the edge just before the part it serves, so that part and the small parts after it do not fill the edge beside
+ * it first. `ahead` says how many connectors went early.
  */
-export function construct(problem: Problem, state: State, late: () => boolean = () => false, onPart: (done: number, total: number) => void = () => undefined): Constructed {
+export function construct(
+  problem: Problem,
+  state: State,
+  late: () => boolean = () => false,
+  onPart: (done: number, total: number) => void = () => undefined,
+  connectorsAhead = false,
+): Constructed {
   const board = new Board(problem, state)
   const capsOf = new Map<string, number[]>()
   problem.movables.forEach((m, i) => {
@@ -385,9 +489,18 @@ export function construct(problem: Problem, state: State, late: () => boolean = 
   const unplaced: { index: number; reason: string }[] = []
   const notes: string[] = []
   const done = new Set<number>()
+  const served = servedParts(problem, board.netSize)
+  let ahead = 0
   const place = (i: number) => {
-    done.add(i)
     const m = problem.movables[i] as Movable
+    if (connectorsAhead && !late() && m.role !== "connector" && board.placed.some((p) => p === 1)) {
+      for (const connector of placeConnectorsFirst(board, i, served, done)) {
+        done.add(connector)
+        ahead++
+        onPart(done.size, problem.movables.length)
+      }
+    }
+    done.add(i)
     if (late()) unplaced.push({ index: i, reason: OUT_OF_TIME })
     else {
       const result = placeOne(board, i)
@@ -403,5 +516,5 @@ export function construct(problem: Problem, state: State, late: () => boolean = 
     if (waiting.length === 0) break
     place(nextPart(board, waiting))
   }
-  return { board, unplaced, notes }
+  return { board, unplaced, notes, ahead }
 }
