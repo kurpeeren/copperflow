@@ -98,6 +98,19 @@ export class WorkspaceStartError extends Error {
   }
 }
 
+/** Refused because this workspace keeps failing and its next start is still being waited for (backoff). */
+export class WorkspaceBackoffError extends Error {
+  constructor(readonly retryAfterS: number) {
+    super(`The workspace keeps failing to start. Try again in ${retryAfterS} seconds.`)
+  }
+}
+
+/** After a failed start or an exit within this long of starting, the next start waits (2 s, doubling to 5 min). */
+export const QUICK_EXIT_MS = 60_000
+export const BACKOFF_FIRST_MS = 2_000
+export const BACKOFF_MAX_MS = 5 * 60_000
+/** A workspace that ran this long resets its wait. */
+export const BACKOFF_RESET_MS = 10 * 60_000
 export const DEFAULT_IDLE_MS = 15 * 60_000
 export const DEFAULT_MAX_RUNNING = 20
 export const DEFAULT_MAX_PER_USER = 3
@@ -113,6 +126,8 @@ export interface ManagedRunnerOptions {
   maxPerUser?: number
   /** The longest a held request (an open stream) keeps a workspace from idling; default 12 hours. */
   maxHoldMs?: number
+  /** The clock the restart backoff reads (tests inject one); default Date.now. */
+  now?: () => number
   /** Where launch failures and crashes are reported (server side only); default stderr. */
   log?: (line: string) => void
   /** Asks the engine whether the workspace's container is gone (the container runner); default: it is. */
@@ -133,6 +148,7 @@ interface Entry {
   restarted: boolean
   stopping: boolean
   lastUsed: number
+  startedAt?: number
 }
 
 /** The lifecycle every runner shares, over a launcher that starts one workspace. */
@@ -143,6 +159,9 @@ export class ManagedRunner implements WorkspaceRunner {
   private readonly maxPerUser: number
   private readonly maxHoldMs: number
   private readonly log: (line: string) => void
+  private readonly clock: () => number
+  /** Per workspace (project id): how long the next start waits, and until when. Bounded by the number of projects. */
+  private readonly backoff = new Map<string, { delayMs: number; until: number }>()
 
   constructor(private readonly options: ManagedRunnerOptions) {
     this.idleMs = options.idleMs ?? DEFAULT_IDLE_MS
@@ -150,6 +169,18 @@ export class ManagedRunner implements WorkspaceRunner {
     this.maxPerUser = options.maxPerUser ?? DEFAULT_MAX_PER_USER
     this.maxHoldMs = options.maxHoldMs ?? DEFAULT_MAX_HOLD_MS
     this.log = options.log ?? sanitisingLog("copperflow hub: ")
+    this.clock = options.now ?? Date.now
+  }
+
+  /** Milliseconds this workspace's next start must still wait. */
+  private backoffLeft(id: string): number {
+    return Math.max(0, (this.backoff.get(id)?.until ?? 0) - this.clock())
+  }
+
+  private recordFailure(id: string): void {
+    const previous = this.backoff.get(id)
+    const delayMs = previous ? Math.min(previous.delayMs * 2, BACKOFF_MAX_MS) : BACKOFF_FIRST_MS
+    this.backoff.set(id, { delayMs, until: this.clock() + delayMs })
   }
 
   state(id: string): WorkspaceState {
@@ -191,6 +222,9 @@ export class ManagedRunner implements WorkspaceRunner {
   }
 
   async maintain(): Promise<void> {
+    // A wait long over, for a workspace that is not here, is forgotten.
+    const now = this.clock()
+    for (const [id, wait] of this.backoff) if (!this.entries.has(id) && wait.until + BACKOFF_RESET_MS < now) this.backoff.delete(id)
     await this.options.maintain?.()
   }
 
@@ -205,11 +239,15 @@ export class ManagedRunner implements WorkspaceRunner {
       throw new Error("A workspace id was reused for another project")
     }
     if (known?.state === "running" && known.launched) {
+      if (this.backoff.has(spec.id) && this.clock() - (known.startedAt ?? this.clock()) >= BACKOFF_RESET_MS) this.backoff.delete(spec.id)
       known.lastUsed = Date.now()
       this.armIdle(known)
       return known.launched.address
     }
     if (known?.state === "starting" && known.starting) return known.starting
+    // While this workspace waits out its backoff, no launch happens and nobody else's start is touched.
+    const left = this.backoffLeft(spec.id)
+    if (left > 0) throw new WorkspaceBackoffError(Math.ceil(left / 1000))
     // Decided without waiting, so two requests for one workspace cannot both start it.
     const victim = this.victimFor(spec.userId)
     if (victim) {
@@ -310,6 +348,7 @@ export class ManagedRunner implements WorkspaceRunner {
           throw new WorkspaceStartError()
         }
         entry.state = "running"
+        entry.startedAt = this.clock()
         void launched.exited.then(() => this.exited(entry, launched))
         this.armIdle(entry)
         return launched.address
@@ -323,6 +362,7 @@ export class ManagedRunner implements WorkspaceRunner {
           throw error
         }
         entry.state = "failed"
+        this.recordFailure(entry.spec.id)
         this.log(`workspace ${entry.spec.id}: start failed: ${(error as Error).message}`)
         throw new WorkspaceStartError()
       },
@@ -338,6 +378,14 @@ export class ManagedRunner implements WorkspaceRunner {
     if (entry.stopping || entry.launched !== launched || this.entries.get(entry.spec.id) !== entry) return
     clearTimeout(entry.idle)
     entry.launched = undefined
+    const ranMs = this.clock() - (entry.startedAt ?? this.clock())
+    if (ranMs >= BACKOFF_RESET_MS) this.backoff.delete(entry.spec.id)
+    else if (ranMs < QUICK_EXIT_MS) this.recordFailure(entry.spec.id)
+    if (this.backoffLeft(entry.spec.id) > 0) {
+      entry.state = "failed"
+      this.log(`workspace ${entry.spec.id}: ended within a minute of starting; marked failed, its next start waits`)
+      return
+    }
     if (entry.restarted) {
       entry.state = "failed"
       this.log(`workspace ${entry.spec.id}: ended again after its restart; marked failed`)

@@ -165,7 +165,11 @@ Compose file of Task 4 runs the hub in a container and uses `--workspace-reach n
 
 The runner reads the container's first line (the same JSON address line as the process runner) within 60 s, copies at
 most 64 KiB of its standard error to the hub's log, stops it with `docker stop -t 5` then `docker rm -f`, and restarts a
-crashed one once (unless the project is blocked or its user is over quota). Before the hub listens it checks that
+crashed one once (unless the project is blocked or its user is over quota). A workspace that keeps failing is not
+restarted on every request: per workspace, after a start that fails or a workspace that exits within 60 seconds of
+starting, the next start waits 2 s, then 4 s, 8 s, doubling to at most 5 minutes (a quick exit is not restarted at once
+either); a workspace that has run for 10 minutes resets the wait. While waiting, requests for that workspace get 503
+with `Retry-After` and nothing is launched. The state is per project, so one user's backoff never delays another's start. Before the hub listens it checks that
 `docker version` answers with Docker Engine 26 or newer (Podman 5 or newer), since older engines forward DNS lookups
 from internal networks to the host's resolvers; that the image exists (and warns when its base was not pinned by
 digest); and that the engine can do what the chosen reach needs: create an internal network and either publish a port

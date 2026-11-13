@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { generateTicketKeys, signTicket, TICKET_HEADER, TICKET_PUBLIC_KEY_ENV } from "../src/hosted/ticket.js"
 import { createProcessRunner, workspaceEnvironment } from "../src/hub/runner/process-runner.js"
-import { ManagedRunner, RunnerFullError, WorkspaceStartError, type Launched, type WorkspaceSpec } from "../src/hub/runner/runner.js"
+import { ManagedRunner, RunnerFullError, WorkspaceBackoffError, WorkspaceStartError, type Launched, type WorkspaceSpec } from "../src/hub/runner/runner.js"
 import { BOARD } from "./fixtures.js"
 import { workspaceCli } from "./helpers/workspace-cli.js"
 
@@ -62,12 +62,16 @@ describe("the managed runner", () => {
   test("restarts a crashed workspace once, then marks it failed", async () => {
     const fake = fakeLauncher()
     const lines: string[] = []
-    runner = new ManagedRunner({ launch: fake.launch, log: (line) => lines.push(line) })
+    let now = 1_000_000
+    runner = new ManagedRunner({ launch: fake.launch, log: (line) => lines.push(line), now: () => now })
     await runner.ensure(spec("a"))
+    // It ran for two minutes: not a quick exit, so it is restarted at once.
+    now += 120_000
     fake.launched[0]?.crash()
     await wait(20)
     expect(fake.launched).toHaveLength(2)
     expect(runner.state("a")).toBe("running")
+    now += 120_000
     fake.launched[1]?.crash()
     await wait(20)
     expect(fake.launched).toHaveLength(2)
@@ -148,6 +152,107 @@ describe("the managed runner", () => {
     runner = new ManagedRunner({ launch: fakeLauncher().launch, log: () => undefined })
     await runner.ensure(spec("a"))
     await expect(runner.ensure({ ...spec("a"), userId: "u2" })).rejects.toThrow("A workspace id was reused for another project")
+  })
+})
+
+describe("a workspace that keeps failing is not restarted on every request", () => {
+  /** A launcher that fails its first `failures` launches, then works; every launch is counted. */
+  function flaky(failures: number) {
+    const state = { launches: 0, crashes: [] as (() => void)[] }
+    const launch = async (s: WorkspaceSpec): Promise<Launched> => {
+      state.launches += 1
+      if (state.launches <= failures) throw new Error(`boom ${s.id}`)
+      let end!: () => void
+      const exited = new Promise<void>((done) => (end = done))
+      state.crashes.push(end)
+      return { address: { studio: "http://127.0.0.1:1", mcp: "http://127.0.0.1:2" }, exited, stop: async () => end() }
+    }
+    return { state, launch }
+  }
+
+  test("after a failed start the next waits 2 s, then 4 s, 8 s, up to 5 minutes; requests meanwhile get a backoff error and no launch", async () => {
+    let now = 1_000_000
+    const fake = flaky(100)
+    runner = new ManagedRunner({ launch: fake.launch, log: () => undefined, now: () => now })
+    await expect(runner.ensure(spec("a"))).rejects.toBeInstanceOf(WorkspaceStartError)
+    expect(fake.state.launches).toBe(1)
+    for (let i = 0; i < 5; i += 1) {
+      const refusal = (await runner.ensure(spec("a")).catch((error: unknown) => error)) as WorkspaceBackoffError
+      expect(refusal).toBeInstanceOf(WorkspaceBackoffError)
+      expect(refusal.retryAfterS).toBe(2)
+    }
+    expect(fake.state.launches).toBe(1)
+    now += 2_000
+    await expect(runner.ensure(spec("a"))).rejects.toBeInstanceOf(WorkspaceStartError)
+    expect(fake.state.launches).toBe(2)
+    now += 3_999
+    expect(((await runner.ensure(spec("a")).catch((error: unknown) => error)) as WorkspaceBackoffError).retryAfterS).toBe(1)
+    now += 1
+    await expect(runner.ensure(spec("a"))).rejects.toBeInstanceOf(WorkspaceStartError)
+    expect(fake.state.launches).toBe(3)
+    const waits: number[] = []
+    for (let i = 0; i < 10; i += 1) {
+      const left = ((await runner.ensure(spec("a")).catch((error: unknown) => error)) as WorkspaceBackoffError).retryAfterS
+      waits.push(left)
+      now += left * 1000
+      await runner.ensure(spec("a")).catch(() => undefined)
+    }
+    expect(Math.max(...waits)).toBe(300)
+    expect(waits.at(-1)).toBe(300)
+  })
+
+  test("one workspace's backoff never delays another's start", async () => {
+    const now = 1_000_000
+    const launches: string[] = []
+    runner = new ManagedRunner({
+      launch: async (s) => {
+        launches.push(s.id)
+        if (s.id === "bad") throw new Error("boom")
+        return fakeLauncher().launch(s)
+      },
+      log: () => undefined,
+      now: () => now,
+    })
+    await expect(runner.ensure(spec("bad"))).rejects.toBeInstanceOf(WorkspaceStartError)
+    await expect(runner.ensure(spec("bad"))).rejects.toBeInstanceOf(WorkspaceBackoffError)
+    await expect(runner.ensure({ ...spec("good"), userId: "u2" })).resolves.toBeDefined()
+    expect(launches).toEqual(["bad", "good"])
+  })
+
+  test("a workspace that exits within 60 s of starting waits; one that ran 10 minutes resets the wait", async () => {
+    let now = 1_000_000
+    const fake = flaky(0)
+    runner = new ManagedRunner({ launch: fake.launch, log: () => undefined, now: () => now })
+    await runner.ensure(spec("a"))
+    now += 10_000
+    fake.state.crashes[0]?.()
+    await wait(20)
+    // No immediate restart, and the next request waits 2 s.
+    expect(fake.state.launches).toBe(1)
+    expect(runner.state("a")).toBe("failed")
+    await expect(runner.ensure(spec("a"))).rejects.toBeInstanceOf(WorkspaceBackoffError)
+    now += 2_000
+    await runner.ensure(spec("a"))
+    expect(fake.state.launches).toBe(2)
+    // A second quick exit doubles the wait to 4 s.
+    now += 5_000
+    fake.state.crashes[1]?.()
+    await wait(20)
+    expect(((await runner.ensure(spec("a")).catch((error: unknown) => error)) as WorkspaceBackoffError).retryAfterS).toBe(4)
+    now += 4_000
+    await runner.ensure(spec("a"))
+    expect(fake.state.launches).toBe(3)
+    // It runs 11 minutes, then ends: the wait is reset, so the restart is at once (not a quick exit).
+    now += 11 * 60_000
+    fake.state.crashes[2]?.()
+    await wait(20)
+    expect(fake.state.launches).toBe(4)
+    expect(runner.state("a")).toBe("running")
+    // And a later quick exit starts again from 2 s.
+    now += 1_000
+    fake.state.crashes[3]?.()
+    await wait(20)
+    expect(((await runner.ensure(spec("a")).catch((error: unknown) => error)) as WorkspaceBackoffError).retryAfterS).toBe(2)
   })
 })
 
