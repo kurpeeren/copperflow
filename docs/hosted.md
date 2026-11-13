@@ -309,8 +309,9 @@ sets that header, or every limit counts the proxy's address. With it, the hub's 
 address is off (every connection comes from the proxy), so the reverse proxy must cap connections per client.
 
 Timeouts: headers within 10 s; an idle socket closes after 60 s; an ordinary request's body within 60 s (forms
-15 s); an upload is stopped after 30 s without a byte or below 32 kB/s on average after 30 s, and Node's request
-timeout (2 hours, the longest a 200 MB upload may take at that rate) is the backstop. An answer given before a body
+15 s); an upload is stopped after 30 s without a byte, below 32 kB/s on average after 30 s, when it receives fewer than
+262 144 bytes in any 30 seconds, and 15 minutes after it began whatever its speed (so a slot cannot be parked); Node's
+request timeout (20 minutes) is the backstop. An answer given before a body
 was read closes the connection. At most 4 uploads run in the hub, one per user (a second gets 429 at once); at most 2
 downloads per user. Uploads stream to `<data>/uploads/` with the size cap enforced as they arrive, and downloads
 stream file by file. A user runs at most 3 workspaces (opening a 4th stops their least recently used one); when the

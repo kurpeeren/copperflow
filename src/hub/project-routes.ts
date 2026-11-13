@@ -23,6 +23,11 @@ export const MAX_UPLOADS = 4
 export const UPLOAD_IDLE_MS = 30_000
 export const UPLOAD_MIN_BYTES_PER_S = 32 * 1024
 export const UPLOAD_RATE_AFTER_MS = 30_000
+/** An upload that receives fewer than this many bytes in any window of this length is stopped. */
+export const UPLOAD_WINDOW_MS = 30_000
+export const UPLOAD_WINDOW_BYTES = 262_144
+/** No upload lasts longer than this, however fast it is. */
+export const UPLOAD_MAX_MS = 15 * 60_000
 /** Downloads one user runs at once. */
 export const MAX_DOWNLOADS_PER_USER = 2
 
@@ -220,9 +225,19 @@ export async function uploadProject(hub: Hub, req: IncomingMessage, res: ServerR
  * The request body as it arrives, refused (408) when it stalls for `UPLOAD_IDLE_MS` or averages less than
  * `UPLOAD_MIN_BYTES_PER_S` once `UPLOAD_RATE_AFTER_MS` have passed.
  */
+export interface PaceLimits {
+  idleMs: number
+  minBytesPerS: number
+  rateAfterMs: number
+  checkMs: number
+  windowMs?: number
+  windowBytes?: number
+  maxMs?: number
+}
+
 export function paced(
   req: Pick<IncomingMessage, "setTimeout" | "destroy"> & AsyncIterable<unknown> & { socket?: { bytesRead: number } | null },
-  limits = { idleMs: UPLOAD_IDLE_MS, minBytesPerS: UPLOAD_MIN_BYTES_PER_S, rateAfterMs: UPLOAD_RATE_AFTER_MS, checkMs: 1000 },
+  limits: PaceLimits = { idleMs: UPLOAD_IDLE_MS, minBytesPerS: UPLOAD_MIN_BYTES_PER_S, rateAfterMs: UPLOAD_RATE_AFTER_MS, checkMs: 1000 },
 ): { body: AsyncGenerator<Buffer>; stop(): void } {
   // The clocks start now, when the request arrives, before it waits for a lock or a slot. Bytes are counted as they
   // reach the socket, so a request that waits is not taken for a slow one.
@@ -232,9 +247,23 @@ export function paced(
   const arrived = () => (req.socket ? req.socket.bytesRead - startBytes : read)
   const tooSlow = () => new HubError(408, "The upload was too slow and was stopped. Try again on a faster connection.")
   req.setTimeout(limits.idleMs, () => req.destroy(tooSlow()))
+  const windowMs = limits.windowMs ?? UPLOAD_WINDOW_MS
+  const windowBytes = limits.windowBytes ?? UPLOAD_WINDOW_BYTES
+  const maxMs = limits.maxMs ?? UPLOAD_MAX_MS
+  // Bytes seen at each check, so "fewer than windowBytes in the last windowMs" can be told at any moment.
+  let samples: { at: number; bytes: number }[] = [{ at: started, bytes: 0 }]
   const check = setInterval(() => {
-    const elapsed = Date.now() - started
-    if (elapsed >= limits.rateAfterMs && arrived() / (elapsed / 1000) < limits.minBytesPerS) req.destroy(tooSlow())
+    const now = Date.now()
+    const elapsed = now - started
+    const bytes = arrived()
+    if (elapsed >= maxMs) return void req.destroy(new HubError(408, "The upload took too long and was stopped (15 minutes at most). Try again on a faster connection."))
+    samples.push({ at: now, bytes })
+    const from = samples.findLastIndex((sample) => sample.at <= now - windowMs)
+    if (from >= 0) {
+      if (bytes - (samples[from] as { bytes: number }).bytes < windowBytes) return void req.destroy(tooSlow())
+      samples = samples.slice(from)
+    }
+    if (elapsed >= limits.rateAfterMs && bytes / (elapsed / 1000) < limits.minBytesPerS) req.destroy(tooSlow())
   }, limits.checkMs)
   check.unref()
   const stop = () => clearInterval(check)

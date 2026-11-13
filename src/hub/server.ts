@@ -271,8 +271,8 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
 const HEADERS_TIMEOUT_MS = 10_000
 const SOCKET_IDLE_MS = 60_000
 const REQUEST_TIMEOUT_MS = 60_000
-/** 200 MB at the upload's minimum rate of 32 kB/s, with room: the longest any request body may take. */
-const UPLOAD_BACKSTOP_MS = 2 * 60 * 60_000
+/** An upload ends after 15 minutes in all (project-routes.ts); a little more is Node's backstop for any request body. */
+const UPLOAD_BACKSTOP_MS = 20 * 60_000
 
 /**
  * Per request: a body that is not in within `timeoutMs` ends the request (uploads, which keep their own clocks, are
