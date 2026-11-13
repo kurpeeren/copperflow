@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, test } from "vitest"
 import { mkdtemp } from "node:fs/promises"
+import { DatabaseSync } from "node:sqlite"
+import { runCli } from "../src/cli-commands.js"
+import { ROUTINE_ROWS_PER_WINDOW } from "../src/hub/context.js"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { AUDIT_KEEP_MS, AUDIT_MAX_ROWS, pruneAudit } from "../src/hub/audit-prune.js"
-import { TOOL_REFUSALS_AUDITED } from "../src/hub/context.js"
+import { AUDIT_KEEP_MS, AUDIT_MAX_ROWS, pruneAudit, ROUTINE_AUDIT_KINDS } from "../src/hub/audit-prune.js"
 import { HubStore, MAX_SESSIONS_PER_USER, MAX_WORKSPACE_SESSIONS } from "../src/hub/store.js"
 import type { HubServer } from "../src/hub/server.js"
 import { newUser, startTestHub } from "./helpers/hub-client.js"
@@ -100,34 +102,6 @@ describe("the audit log is pruned", () => {
     expect(AUDIT_MAX_ROWS).toBe(500_000)
   })
 
-  test("rows older than the retention go, in batches, and newer ones stay", async () => {
-    const s = await openStore()
-    const now = 1_000 * DAY
-    for (let i = 0; i < 25; i += 1) s.audit({ time: now - 200 * DAY + i, userId: null, event: "old", address: "a", detail: "" })
-    for (let i = 0; i < 5; i += 1) s.audit({ time: now - 10 * DAY + i, userId: null, event: "new", address: "a", detail: "" })
-    expect(s.pruneAuditBatch(now - AUDIT_KEEP_MS, AUDIT_MAX_ROWS, 10)).toBe(10)
-    expect(s.auditLog(100)).toHaveLength(20)
-    expect(s.pruneAuditBatch(now - AUDIT_KEEP_MS, AUDIT_MAX_ROWS, 10)).toBe(10)
-    expect(s.pruneAuditBatch(now - AUDIT_KEEP_MS, AUDIT_MAX_ROWS, 10)).toBe(5)
-    expect(s.pruneAuditBatch(now - AUDIT_KEEP_MS, AUDIT_MAX_ROWS, 10)).toBe(0)
-    expect(s.auditLog(100).map((e) => e.event)).toEqual(["new", "new", "new", "new", "new"])
-  })
-
-  test("over the row cap, the oldest go first", async () => {
-    const s = await openStore()
-    const now = 1_000 * DAY
-    for (let i = 0; i < 30; i += 1) s.audit({ time: now - i, userId: null, event: `e${i}`, address: "a", detail: "" })
-    // ids rise with insertion: e0 is the oldest row by id.
-    expect(s.pruneAuditBatch(0, 20, 4)).toBe(4)
-    expect(s.pruneAuditBatch(0, 20, 4)).toBe(4)
-    expect(s.pruneAuditBatch(0, 20, 4)).toBe(2)
-    expect(s.pruneAuditBatch(0, 20, 4)).toBe(0)
-    const left = s.auditLog(100).map((e) => e.event)
-    expect(left).toHaveLength(20)
-    expect(left).not.toContain("e0")
-    expect(left).toContain("e29")
-  })
-
   test("pruneAudit loops over batches and yields between them, up to a bound per sweep", async () => {
     const s = await openStore()
     const now = 1_000 * DAY
@@ -176,8 +150,8 @@ async function agentOf(hub: HubServer, browser: Browser): Promise<Client> {
   return client
 }
 
-describe("audit rows for refused tool calls", () => {
-  test("at most 20 per user per 15 minutes, then one refusals-suppressed row, then none until the window ends", async () => {
+describe("routine audit rows are limited per user and kind", () => {
+  test("at most 20 refused-call rows per user per 15 minutes, then one audit-suppressed row naming the kind, then none until the window ends", async () => {
     let clock = Date.now()
     server = await startTestHub({ now: () => clock })
     const ada = await newUser(server, "ada@example.com")
@@ -186,22 +160,117 @@ describe("audit rows for refused tool calls", () => {
     const bobClient = await agentOf(server, bob)
     const events = (email: string) => {
       const id = server?.hub.store.userByEmail(email)?.id
-      return server?.hub.store.auditLog(100000).filter((e) => e.userId === id && (e.event === "tool-calls-limited" || e.event === "refusals-suppressed")).map((e) => e.event) ?? []
+      return server?.hub.store.auditLog(100000).filter((e) => e.userId === id && (e.event === "tool-calls-limited" || e.event === "audit-suppressed")) ?? []
     }
-    expect(TOOL_REFUSALS_AUDITED).toBe(20)
+    expect(ROUTINE_ROWS_PER_WINDOW).toBe(20)
     for (let i = 0; i < 60; i += 1) await call(adaClient, "list_projects")
     for (let i = 0; i < 40; i += 1) expect((await call(adaClient, "list_projects")).isError).toBe(true)
     const ours = events("ada@example.com")
-    expect(ours.filter((e) => e === "tool-calls-limited")).toHaveLength(TOOL_REFUSALS_AUDITED)
-    expect(ours.filter((e) => e === "refusals-suppressed")).toHaveLength(1)
-    // Another user's first refusal is still recorded.
+    expect(ours.filter((e) => e.event === "tool-calls-limited")).toHaveLength(ROUTINE_ROWS_PER_WINDOW)
+    const notes = ours.filter((e) => e.event === "audit-suppressed")
+    expect(notes).toHaveLength(1)
+    expect(notes[0]?.detail).toBe("tool-calls-limited")
     for (let i = 0; i < 60; i += 1) await call(bobClient, "list_projects")
     await call(bobClient, "list_projects")
-    expect(events("bob@example.com")).toEqual(["tool-calls-limited"])
-    // A new window records again.
+    expect(events("bob@example.com").map((e) => e.event)).toEqual(["tool-calls-limited"])
     clock += 16 * 60_000
     for (let i = 0; i < 60; i += 1) await call(adaClient, "list_projects")
     await call(adaClient, "list_projects")
-    expect(events("ada@example.com").filter((e) => e === "tool-calls-limited")).toHaveLength(TOOL_REFUSALS_AUDITED + 1)
+    expect(events("ada@example.com").filter((e) => e.event === "tool-calls-limited")).toHaveLength(ROUTINE_ROWS_PER_WINDOW + 1)
   })
+
+  test("workspace-entered rows follow the same rule, per kind; security rows are not suppressed", async () => {
+    server = await startTestHub()
+    const ada = await newUser(server, "ada@example.com")
+    await ada.submit("/projects", "/projects", { name: "Amp" })
+    const userId = server.hub.store.userByEmail("ada@example.com")?.id as string
+    const id = server.hub.store.projects(userId)[0]?.id as string
+    for (let i = 0; i < 30; i += 1) await ada.openProject(id)
+    const rows = server.hub.store.auditLog(1000).filter((e) => e.userId === userId)
+    expect(rows.filter((e) => e.event === "workspace-entered")).toHaveLength(ROUTINE_ROWS_PER_WINDOW)
+    expect(rows.filter((e) => e.event === "audit-suppressed").map((e) => e.detail)).toEqual(["workspace-entered"])
+    expect(rows.some((e) => e.event === "signup")).toBe(true)
+  })
+})
+
+describe("the audit log by count", () => {
+  const DAY = 24 * 60 * 60_000
+  const R = ROUTINE_AUDIT_KINDS
+
+  test("rows older than the retention go, whatever their kind, in batches", async () => {
+    const s = await openStore()
+    const now = 1_000 * DAY
+    for (let i = 0; i < 25; i += 1) s.audit({ time: now - 200 * DAY + i, userId: null, event: i % 2 ? "signin" : "workspace-entered", address: "a", detail: "" })
+    for (let i = 0; i < 5; i += 1) s.audit({ time: now - 10 * DAY + i, userId: null, event: "new", address: "a", detail: "" })
+    expect(s.pruneAuditBatch(now - AUDIT_KEEP_MS, AUDIT_MAX_ROWS, 10, R)).toBe(10)
+    expect(s.pruneAuditBatch(now - AUDIT_KEEP_MS, AUDIT_MAX_ROWS, 10, R)).toBe(10)
+    expect(s.pruneAuditBatch(now - AUDIT_KEEP_MS, AUDIT_MAX_ROWS, 10, R)).toBe(5)
+    expect(s.pruneAuditBatch(now - AUDIT_KEEP_MS, AUDIT_MAX_ROWS, 10, R)).toBe(0)
+    expect(s.auditLog(100).map((e) => e.event)).toEqual(["new", "new", "new", "new", "new"])
+  })
+
+  test("over the row cap only routine rows go, oldest first; security rows stay", async () => {
+    const s = await openStore()
+    const now = 1_000 * DAY
+    for (let i = 0; i < 12; i += 1) s.audit({ time: now, userId: "u", event: "signin", address: "a", detail: `s${i}` })
+    for (let i = 0; i < 18; i += 1) s.audit({ time: now, userId: "u", event: "workspace-entered", address: "a", detail: `r${i}` })
+    expect(s.pruneAuditBatch(0, 20, 4, R)).toBe(4)
+    expect(s.pruneAuditBatch(0, 20, 4, R)).toBe(4)
+    expect(s.pruneAuditBatch(0, 20, 4, R)).toBe(2)
+    expect(s.pruneAuditBatch(0, 20, 4, R)).toBe(0)
+    const left = s.auditLog(100)
+    expect(left).toHaveLength(20)
+    expect(left.filter((e) => e.event === "signin")).toHaveLength(12)
+    const routine = left.filter((e) => e.event === "workspace-entered").map((e) => e.detail)
+    expect(routine).not.toContain("r0")
+    expect(routine).toContain("r17")
+  })
+
+  test("a log of only security rows above the cap loses nothing and says it is over", async () => {
+    const s = await openStore()
+    for (let i = 0; i < 30; i += 1) s.audit({ time: 5, userId: null, event: i % 2 ? "signin" : "token-created", address: "a", detail: "" })
+    expect(s.auditOverCap(20)).toBe(true)
+    expect(s.pruneAuditBatch(0, 20, 100, R)).toBe(0)
+    expect(s.auditRowCount()).toBe(30)
+    expect(s.auditOverCap(30)).toBe(false)
+  })
+
+  test("the class of a kind is one explicit list; anything not on it is security", () => {
+    expect([...R].sort()).toEqual(["audit-suppressed", "tool-calls-limited", "workspace-entered"])
+  })
+
+  test("a user who writes 600 000 routine rows cannot remove another user's sign-in row", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "cf-flood-"))
+    const file = join(dir, "hub.db")
+    const s = HubStore.open(file)
+    store = s
+    const now = 1_000 * DAY
+    s.audit({ time: now, userId: "bob", event: "signin", address: "b", detail: "bobs row" })
+    const raw = new DatabaseSync(file)
+    raw.exec(`WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM c WHERE n < 600000) INSERT INTO audit (time, user_id, event, address, detail) SELECT ${now}, 'mallory', 'workspace-entered', 'm', '' FROM c`)
+    raw.close()
+    expect(s.auditRowCount()).toBe(600_001)
+    let rounds = 0
+    while ((await pruneAudit(s, now)) > 0 && rounds < 20) rounds += 1
+    expect(s.auditRowCount()).toBe(AUDIT_MAX_ROWS)
+    expect(s.auditLog(AUDIT_MAX_ROWS).some((e) => e.detail === "bobs row")).toBe(true)
+  }, 120_000)
+
+  test("hub status reports the row count and the over-cap flag, in text and in JSON", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "cf-status-"))
+    const file = join(dir, "hub.db")
+    HubStore.open(file).close()
+    const raw = new DatabaseSync(file)
+    raw.exec(`WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM c WHERE n < ${AUDIT_MAX_ROWS + 1}) INSERT INTO audit (time, user_id, event, address, detail) SELECT 1, NULL, 'signin', 'a', '' FROM c`)
+    raw.close()
+    const lines: string[] = []
+    const out = { out: (t: string) => lines.push(t), err: () => undefined }
+    expect(await runCli(["hub", "status", "--data", dir, "--json"], "/", out)).toBe(0)
+    const report = JSON.parse(lines[0] as string) as { auditRows: number; auditOverCap: boolean }
+    expect(report.auditRows).toBe(AUDIT_MAX_ROWS + 1)
+    expect(report.auditOverCap).toBe(true)
+    lines.length = 0
+    expect(await runCli(["hub", "status", "--data", dir], "/", out)).toBe(0)
+    expect(lines.find((l) => l.startsWith("Audit log rows:"))).toContain("over the 500000 cap")
+  }, 120_000)
 })

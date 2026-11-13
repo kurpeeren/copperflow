@@ -498,23 +498,35 @@ export class HubStore {
     this.sql("INSERT INTO audit (time, user_id, event, address, detail) VALUES (?, ?, ?, ?, ?)").run(entry.time, entry.userId, printable(entry.event, 80), printable(entry.address, 80), printable(entry.detail, 400))
   }
 
+  /** Whether the log holds more than `maxRows` rows (ids only rise, so their span bounds the count: count exactly only when it could be over). */
+  auditOverCap(maxRows: number): boolean {
+    const first = this.sql("SELECT MIN(id) AS id FROM audit").get() as Row
+    const last = this.sql("SELECT MAX(id) AS id FROM audit").get() as Row
+    if (first.id === null || Number(last.id) - Number(first.id) < maxRows) return false
+    return this.auditRowCount() > maxRows
+  }
+
+  auditRowCount(): number {
+    return Number((this.sql("SELECT COUNT(*) AS n FROM audit").get() as Row).n)
+  }
+
   /**
-   * Deletes at most `batch` audit rows in one statement: first rows written before `cutoff`, else, when the log holds
-   * more than `maxRows`, the oldest rows over that. Returns how many went (0 when nothing is left to prune).
+   * Deletes at most `batch` audit rows in one statement: first rows of any kind written before `cutoff` (the only rule
+   * that deletes a security event), else, when the log holds more than `maxRows`, the oldest rows of the `routine`
+   * kinds only. Returns how many went (0 when nothing is left that may be pruned).
    */
-  pruneAuditBatch(cutoff: number, maxRows: number, batch: number): number {
+  pruneAuditBatch(cutoff: number, maxRows: number, batch: number, routine: readonly string[]): number {
     // Rows are written in time order, so the first row tells whether anything is old without scanning the table.
     const first = this.sql("SELECT id, time FROM audit ORDER BY id LIMIT 1").get() as Row | undefined
     if (!first) return 0
     if (Number(first.time) < cutoff) {
       return Number(this.sql("DELETE FROM audit WHERE id IN (SELECT id FROM audit WHERE time < ? ORDER BY id LIMIT ?)").run(cutoff, batch).changes)
     }
-    // Ids only rise, so the span between the first and last bounds the row count: count exactly only when it could be over.
-    const last = Number((this.sql("SELECT MAX(id) AS id FROM audit").get() as Row).id)
-    if (last - Number(first.id) < maxRows) return 0
-    const count = Number((this.sql("SELECT COUNT(*) AS n FROM audit").get() as Row).n)
-    if (count <= maxRows) return 0
-    return Number(this.sql("DELETE FROM audit WHERE id IN (SELECT id FROM audit ORDER BY id LIMIT ?)").run(Math.min(batch, count - maxRows)).changes)
+    if (!this.auditOverCap(maxRows) || routine.length === 0) return 0
+    const over = this.auditRowCount() - maxRows
+    // The marks are one `?` per entry of a fixed list in code, never input.
+    const marks = routine.map(() => "?").join(", ")
+    return Number(this.sql(`DELETE FROM audit WHERE id IN (SELECT id FROM audit WHERE event IN (${marks}) ORDER BY id LIMIT ?)`).run(...routine, Math.min(batch, over)).changes)
   }
 
   /** The newest entries first. */

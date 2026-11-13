@@ -91,7 +91,7 @@ describe("the hub's maintainer commands", () => {
       await writeFile(join(data, STATUS_FILE), JSON.stringify({ updated: Date.now(), pid: 1, running: 3, runner: "process" }))
       const out = io()
       expect(await runCli(["hub", "status", "--data", data], "/", out)).toBe(0)
-      expect(out.lines).toEqual(["Users: 1", "Projects: 1", "Unused invite codes: 0", "Runner: process", "Running workspaces: 3", "Disk used by projects: 1.0 MB"])
+      expect(out.lines).toEqual(["Users: 1", "Projects: 1", "Unused invite codes: 0", `Audit log rows: ${server.hub.store.auditRowCount()}`, "Runner: process", "Running workspaces: 3", "Disk used by projects: 1.0 MB"])
     } finally {
       await server.close()
     }

@@ -232,7 +232,7 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
       })
       .catch((error: unknown) => hub.log(`sweep failed: ${(error as Error).message}`))
       // Audit rows past 180 days or 500 000 rows, in bounded batches; after the rest, and whatever happened to it.
-      .then(() => pruneAudit(hub.store, hub.config.now()))
+      .then(() => pruneAudit(hub.store, hub.config.now(), { log: hub.log }))
       .catch((error: unknown) => hub.log(`audit prune failed: ${(error as Error).message}`))
   }, options.sweepMs ?? SWEEP_MS)
   sweep.unref()

@@ -343,8 +343,10 @@ expired sessions) enforces what a count cannot:
 | --- | --- |
 | Workspace sessions | At most 8 live per user per project; a ninth ends that user's oldest for that project. Expired rows are deleted by the periodic sweep. |
 | Sign-in sessions | At most 20 per user; a twenty-first ends that user's oldest. |
-| Audit log | Rows older than 180 days are deleted by the periodic sweep; at most 500 000 rows, oldest deleted first. The prune runs in batches of 2 000 rows (at most 25 a sweep, the event loop given back between them). |
-| Audit rows for refused tool calls | At most 20 per user per 15 minutes; then one `refusals-suppressed` row for that window and no more until the window ends. |
+| Audit log, by age | Rows older than 180 days are deleted by the periodic sweep. This is the only rule that deletes a security event. The prune runs in batches of 2 000 rows (at most 25 a sweep, the event loop given back between them). |
+| Audit log, by count | Events are of two classes. Routine: `workspace-entered`, refused tool calls (`tool-calls-limited`) and the suppression rows (`audit-suppressed`); the one list is `ROUTINE_AUDIT_KINDS` in `src/hub/audit-prune.ts`. Security: everything else, so a new kind is kept by default. Above 500 000 rows the sweep deletes the oldest routine rows only, in the same batches. Security rows are never deleted by count: if the table is still above the cap with no routine row left, nothing more is deleted, `hub status` (text and `--json`: `auditRows`, `auditOverCap`) reports it, and the hub logs one line a day. |
+| Routine audit rows, per user | At most 20 rows per user per kind per 15 minutes; then one `audit-suppressed` row naming the kind for that window and no more of that kind until the window ends. |
+| Security audit rows | Not suppressed; each kind is bounded by the limit on the action itself (sign-in limits, token and client caps, upload and project limits). |
 
 The audit log therefore keeps 180 days. Every cap above is per user: a user's own requests cannot end another user's
 sessions or use up their rows.
@@ -354,7 +356,7 @@ The audit log (`audit` table: time, user id or none, event, address, detail) rec
 `signin-limited-strict`, `signin-strict`, `signin-strict-table-full`, `signout`, `signout-forget-device`,
 `sessions-ended`, `password-changed`, `password-change-failed`, `password-change-limited`, `account-delete-failed`,
 `account-delete-limited`, `account-deleted`, `password-reset`, `invites-made`, `workspace-stop-requested`, `project-created`, `project-renamed`,
-`project-deleted`, `project-downloaded`, `project-uploaded`, `upload-refused`, `workspace-entered`,
+`project-deleted`, `project-downloaded`, `project-uploaded`, `upload-refused`, `workspace-entered` (a routine kind),
 `hub-unhandled-rejection` and `hub-uncaught-exception` (the error's name and code only; after an uncaught exception
 the hub closes cleanly for its service manager to restart it, after an unhandled rejection it keeps serving). The detail holds a project id, a file
 count or the reason an upload was refused, never a password, cookie, invite code or ticket.
@@ -363,8 +365,8 @@ Agent events: `token-created`, `token-revoked`, `token-refused` (a bearer token 
 minutes per address; a code or refresh token the token endpoint refused), `token-refreshed`, `client-registered`,
 `client-register-limited`, `consent-allowed`, `consent-denied`, `grant-created`, `grant-revoked`,
 `refresh-reused-grant-revoked`, `code-reused-grant-revoked`, `grant-revoked-over-cap`, `token-create-failed`,
-`token-create-limited`, `agent-connected`, `tool-calls-limited` (at most 20 per user per 15 minutes) and
-`refusals-suppressed`. The detail holds an id (token, grant or
+`token-create-limited`, `agent-connected`, `tool-calls-limited` (a routine kind: at most 20 per user per 15 minutes) and
+`audit-suppressed` (the detail names the routine kind that was cut off). The detail holds an id (token, grant or
 client) or the grant type, never a token or code.
 
 ## Connecting an agent

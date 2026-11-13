@@ -16,6 +16,7 @@ import { OAuthState } from "./oauth-state.js"
 import { revokeUser, type RevokingHub } from "./revocation.js"
 import { measureTree } from "./safe-files.js"
 import { hashPassword, hashSecret, newSecret } from "./secrets.js"
+import { AUDIT_MAX_ROWS } from "./audit-prune.js"
 import { sameSiteWarning, startHub, TRUSTED_ONLY_WARNING, WORKSPACE_DOMAIN, type HubOptions } from "./server.js"
 import { HubStore, normaliseEmail } from "./store.js"
 import type { WorkspaceRunner } from "./runner/runner.js"
@@ -400,6 +401,9 @@ export interface StatusReport {
   users: number
   projects: number
   unusedInvites: number
+  /** Rows in the audit log, and whether it is over its 500 000-row cap (only security events left that are under 180 days old). */
+  auditRows: number
+  auditOverCap: boolean
   /** From the running hub's status file, when it was written in the last 2 minutes. */
   runner: "process" | "container" | null
   running: number | null
@@ -437,6 +441,8 @@ async function statusReport(store: HubStore, dataDir: string): Promise<StatusRep
   const trash = await readdir(join(dataDir, "trash")).catch(() => [] as string[])
   return {
     ...store.counts(),
+    auditRows: store.auditRowCount(),
+    auditOverCap: store.auditOverCap(AUDIT_MAX_ROWS),
     runner,
     running,
     containerMemory: engine ? (await containerMemory(engine)).map((line) => printable(line)) : [],
@@ -458,6 +464,7 @@ async function status(store: HubStore, dataDir: string, io: CliIO, json: boolean
   io.out(`Users: ${report.users}`)
   io.out(`Projects: ${report.projects}`)
   io.out(`Unused invite codes: ${report.unusedInvites}`)
+  io.out(`Audit log rows: ${report.auditRows}${report.auditOverCap ? ` (over the ${AUDIT_MAX_ROWS} cap: nothing but security events is left to delete before they are 180 days old)` : ""}`)
   io.out(`Runner: ${printable(report.runner ?? "unknown")}`)
   io.out(`Running workspaces: ${printable(report.running ?? "unknown (the hub is not running, or has not written its status in the last 2 minutes)")}`)
   for (const line of report.containerMemory) io.out(`  ${printable(line)}`)
