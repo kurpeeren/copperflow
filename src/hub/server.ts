@@ -10,7 +10,7 @@ import { newLimits, sessionOf, sweepCuts, type Hub, type HubConfig, type Signed 
 import { clientAddress, HubError, redirect, sameOrigin, sendPage } from "./http.js"
 import { addressKey } from "./limits.js"
 import { isLoopback } from "../hosted/mcp-http.js"
-import { enterRedirect, projectOfHost, serveProjectOrigin, tlsAsk } from "./project-origin.js"
+import { DEFAULT_TLS_ASK_WEEKLY, enterRedirect, projectOfHost, serveProjectOrigin, tlsAsk, TLS_WINDOW_MS } from "./project-origin.js"
 import { loadOrCreateTicketKey } from "./keys.js"
 import { privacyPage, STYLESHEET, termsPage, textPage } from "./pages.js"
 import { createProject, deleteProject, downloadProject, ownProject, renameProject, showProjects, uploadProject } from "./project-routes.js"
@@ -83,6 +83,8 @@ export interface HubOptions {
   maxBytes?: number
   /** OAuth clients kept; default 10 000. */
   maxClients?: number
+  /** New project-name certificates approved per week, all users together; default 40, 0 approves none. */
+  tlsAskWeekly?: number
   /** The longest an ordinary request (not an upload) may take to arrive; default 60 s. */
   requestTimeoutMs?: number
   /** How often the hub sweeps sessions and carries out the maintainer's cuts; default 15 s. */
@@ -141,6 +143,7 @@ export async function openHub(options: Omit<HubOptions, "port" | "bind">): Promi
     maxProjects: options.maxProjects ?? MAX_PROJECTS,
     maxBytes: options.maxBytes ?? MAX_BYTES,
     maxClients: options.maxClients ?? MAX_CLIENTS,
+    tlsAskWeekly: options.tlsAskWeekly ?? DEFAULT_TLS_ASK_WEEKLY,
     now: options.now ?? Date.now,
   }
   const files = new ProjectFiles(options.dataDir)
@@ -218,6 +221,7 @@ export async function startHub(options: HubOptions): Promise<HubServer> {
   const sweep = setInterval(() => {
     hub.store.sweepSessions(hub.config.now())
     hub.store.sweepWorkspaceSessions(hub.config.now())
+    hub.store.pruneTlsNames(hub.config.now() - TLS_WINDOW_MS)
     for (const grantId of hub.store.tokens.sweep(hub.config.now())) hub.agents.closeCredential(`grant:${grantId}`)
     sweepCuts(hub, revokeUser)
       // Users the maintainer deleted: their folders go here, where their workspaces can be blocked first.

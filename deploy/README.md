@@ -196,6 +196,16 @@ There is no secret in this file, and none may be added: the hub makes its ticket
 start (`ticket-key.pem`, mode 600) and reads no environment variable of its own. If `CF_DATA_DIR` is not
 `/var/lib/copperflow`, change `ReadWritePaths=` in the systemd unit to the same path (B).
 
+**Certificates for project names (`CF_TLS_ASK_WEEKLY`, `--tls-ask-weekly`).** Caddy gets a certificate on demand for
+each new project's name, one per project, and a certificate authority limits new certificates per registered domain
+per week (Let's Encrypt: about 50). The hub therefore tells Caddy yes to at most 5 new project names per user and
+`CF_TLS_ASK_WEEKLY` (default 40) in all, in any 7 days; a name that was approved is approved again for renewals at no
+cost, deleting a project does not give its name back until the week is over, and `0` approves no new name. A signed-in
+owner who opens such a project then sees "This project's address has no certificate yet: the weekly limit for new
+certificates is reached. Try again later, or ask the maintainer." On-demand certificates suit a small closed beta; a
+wildcard certificate for the workspace domain (DNS challenge, which needs a DNS-provider plugin for Caddy that these
+files do not set up) is the arrangement for anything larger: Caddy then never asks, and the limit is not met at all.
+
 Arrangement A, check what Compose will run:
 
 ```

@@ -50,7 +50,20 @@ PRAGMA foreign_keys = ON;
 `
 
 /** The schema version this code writes (PRAGMA user_version). 0 is a database made before versions were kept. */
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
+
+/**
+ * Version 3: the project names a certificate was approved for (on-demand TLS, `/_tls-ask`). No foreign keys: a row
+ * outlives its project and counts against its owner until it is a week old (docs/hosted.md, "Workspaces on their own origins").
+ */
+const SCHEMA_3 = `
+CREATE TABLE IF NOT EXISTS tls_names (
+  project_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  approved_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS tls_names_user ON tls_names(user_id, approved_at);
+`
 
 /** Version 2: the maintainer's requests to stop one workspace (`hub stop-workspace`), carried out by the hub's sweep. */
 const SCHEMA_2 = `
@@ -204,6 +217,7 @@ export class HubStore {
         for (const [table, column] of COLUMNS) this.addColumn(table, column)
       }
       if (version < 2) this.db.exec(SCHEMA_2)
+      if (version < 3) this.db.exec(SCHEMA_3)
       // A fixed number, never input.
       this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
     })
@@ -378,6 +392,48 @@ export class HubStore {
   /** Whether a project with this id exists and is not being deleted (for the certificate check). */
   projectExists(id: string): boolean {
     return this.sql("SELECT 1 AS found FROM projects WHERE id = ? AND deleted = 0").get(id) !== undefined
+  }
+
+  /** The owner of a project that exists and is not being deleted, or undefined (for the certificate check). */
+  projectOwner(id: string): string | undefined {
+    const row = this.sql("SELECT user_id FROM projects WHERE id = ? AND deleted = 0").get(id) as Row | undefined
+    return row ? (row.user_id as string) : undefined
+  }
+
+  /** Whether a certificate was approved for this project's name. */
+  tlsNameKnown(projectId: string): boolean {
+    return this.sql("SELECT 1 AS found FROM tls_names WHERE project_id = ?").get(projectId) !== undefined
+  }
+
+  /** Whether any project name was ever approved (a deployment with a wildcard certificate has none). */
+  tlsNamesExist(): boolean {
+    return this.sql("SELECT 1 AS found FROM tls_names LIMIT 1").get() !== undefined
+  }
+
+  /** Whether another name could be approved for `userId` at `now`: under `perUser` of their own and `hubWide` in all, within `windowMs`. */
+  tlsRoom(userId: string, now: number, windowMs: number, perUser: number, hubWide: number): boolean {
+    const since = now - windowMs
+    const mine = Number((this.sql("SELECT COUNT(*) AS n FROM tls_names WHERE user_id = ? AND approved_at > ?").get(userId, since) as Row).n)
+    const all = Number((this.sql("SELECT COUNT(*) AS n FROM tls_names WHERE approved_at > ?").get(since) as Row).n)
+    return mine < perUser && all < hubWide
+  }
+
+  /**
+   * Approves the project's name when it has a row already (renewals cost nothing), or when both budgets have room,
+   * and records it; count and insert in one transaction. "refused" inserts nothing.
+   */
+  tlsApprove(projectId: string, userId: string, now: number, windowMs: number, perUser: number, hubWide: number): "known" | "approved" | "refused" {
+    return this.transaction(() => {
+      if (this.tlsNameKnown(projectId)) return "known"
+      if (!this.tlsRoom(userId, now, windowMs, perUser, hubWide)) return "refused"
+      this.sql("INSERT INTO tls_names (project_id, user_id, approved_at) VALUES (?, ?, ?)").run(projectId, userId, now)
+      return "approved"
+    })
+  }
+
+  /** Removes rows older than `olderThan` whose project no longer exists; returns how many. */
+  pruneTlsNames(olderThan: number): number {
+    return Number(this.sql("DELETE FROM tls_names WHERE approved_at < ? AND project_id NOT IN (SELECT id FROM projects)").run(olderThan).changes)
   }
 
   /** Remembers a device the user signed in from; keeps the newest `max` per user. */

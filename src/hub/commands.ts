@@ -17,6 +17,7 @@ import { revokeUser, type RevokingHub } from "./revocation.js"
 import { measureTree } from "./safe-files.js"
 import { hashPassword, hashSecret, newSecret } from "./secrets.js"
 import { AUDIT_MAX_ROWS } from "./audit-prune.js"
+import { DEFAULT_TLS_ASK_WEEKLY } from "./project-origin.js"
 import { sameSiteWarning, startHub, TRUSTED_ONLY_WARNING, WORKSPACE_DOMAIN, type HubOptions } from "./server.js"
 import { HubStore, normaliseEmail } from "./store.js"
 import type { WorkspaceRunner } from "./runner/runner.js"
@@ -197,6 +198,8 @@ export interface ServeArgs {
   bind: string
   trustProxy?: string
   hstsIncludeSubdomains: boolean
+  /** New project-name certificates per week (--tls-ask-weekly). */
+  tlsAskWeekly: number
   choice: RunnerChoice
 }
 
@@ -225,13 +228,15 @@ export function parseServeArgs(args: readonly string[], cwd: string, identity?: 
   if (isIP(bind) === 0) throw new Error(`--bind must be an IP address.\n${USAGE}`)
   const trustProxy = options.get("--trust-proxy")
   if (trustProxy !== undefined) trustedProxies(trustProxy)
-  return { dataDir, port, publicOrigin, workspaceDomain, bind, ...(trustProxy !== undefined ? { trustProxy } : {}), hstsIncludeSubdomains: flags.has("--hsts-include-subdomains"), choice }
+  const weekly = options.get("--tls-ask-weekly") ?? String(DEFAULT_TLS_ASK_WEEKLY)
+  if (!/^[0-9]{1,4}$/.test(weekly)) throw new Error(`--tls-ask-weekly must be a whole number from 0 to 9999.\n${USAGE}`)
+  return { dataDir, port, publicOrigin, workspaceDomain, bind, ...(trustProxy !== undefined ? { trustProxy } : {}), hstsIncludeSubdomains: flags.has("--hsts-include-subdomains"), tlsAskWeekly: Number(weekly), choice }
 }
 
 async function serve(args: readonly string[], cwd: string, io: CliIO): Promise<number> {
-  const { dataDir, port, publicOrigin, workspaceDomain, bind, trustProxy, hstsIncludeSubdomains, choice } = parseServeArgs(args, cwd)
+  const { dataDir, port, publicOrigin, workspaceDomain, bind, trustProxy, hstsIncludeSubdomains, tlsAskWeekly, choice } = parseServeArgs(args, cwd)
   const runner = await runnerFor(choice, io)
-  const hub = await startHub({ dataDir, port, publicOrigin, workspaceDomain, bind, ...(trustProxy !== undefined ? { trustProxy } : {}), hstsIncludeSubdomains, ...runner })
+  const hub = await startHub({ dataDir, port, publicOrigin, workspaceDomain, bind, ...(trustProxy !== undefined ? { trustProxy } : {}), hstsIncludeSubdomains, tlsAskWeekly, ...runner })
   if (choice.kind === "process" && choice.trustedAccountsOnly) io.out(TRUSTED_ONLY_WARNING)
   const siteWarning = sameSiteWarning(publicOrigin, workspaceDomain)
   if (siteWarning) io.out(siteWarning)

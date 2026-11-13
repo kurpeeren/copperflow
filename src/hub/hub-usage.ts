@@ -44,6 +44,7 @@ export const HUB_COMMANDS: readonly HubCommand[] = [
       { name: "--workspace-user-same-as-hub", runner: "container", note: "run workspaces as the hub's own user (a trial on your own machine only)" },
       { name: "--bind", value: "<address>", note: "the IP address to listen on (default 127.0.0.1)" },
       { name: "--trust-proxy", value: "<address|CIDR>", note: "a reverse proxy whose forwarded address is believed" },
+      { name: "--tls-ask-weekly", value: "<n>", note: "new project-name certificates the proxy may be told to get per week, all users together (default 40; 0 approves none)" },
       { name: "--hsts-include-subdomains", note: "add includeSubDomains to the HSTS header" },
     ],
   },

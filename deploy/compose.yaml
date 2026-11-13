@@ -50,6 +50,8 @@ services:
       - "${CF_WORKSPACE_GID}"
       - --trust-proxy
       - 127.0.0.1
+      - --tls-ask-weekly
+      - "${CF_TLS_ASK_WEEKLY}"
     volumes:
       # The same path inside as on the host: the host's engine mounts each project folder by the path the hub names.
       - ${CF_DATA_DIR}:${CF_DATA_DIR}

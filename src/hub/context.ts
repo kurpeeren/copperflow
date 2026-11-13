@@ -34,6 +34,8 @@ export interface HubConfig {
   maxBytes: number
   /** OAuth clients the hub keeps; default 10 000 (tests make it small). */
   maxClients: number
+  /** New project-name certificates the hub may approve per week (--tls-ask-weekly); 0 approves none. */
+  tlsAskWeekly: number
   now: () => number
 }
 

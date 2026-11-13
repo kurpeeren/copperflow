@@ -79,7 +79,7 @@ copperflow hub --data <dir> --port <n> --public-origin https://copperflow.exampl
   --workspace-domain ws.copperflow.example.com --runner container --workspace-image copperflow-workspace \
   --workspace-group <gid> [--container-command docker] \
   [--workspace-reach loopback | --workspace-reach network --hub-container <name>] \
-  [--bind 127.0.0.1] [--trust-proxy <proxy address or CIDR>] [--hsts-include-subdomains]
+  [--bind 127.0.0.1] [--trust-proxy <proxy address or CIDR>] [--tls-ask-weekly <n>] [--hsts-include-subdomains]
 copperflow hub ... --runner container --workspace-user-same-as-hub      a trial on your own machine only (see below)
 copperflow hub ... --runner process --trusted-accounts-only      tests and accounts you trust only (see below)
 copperflow hub invite --data <dir> [--count n]        invite codes, printed once (only their hashes are kept); warns
@@ -291,12 +291,26 @@ answers carry only `content-type`, `content-length`, `content-encoding`, `cache-
 `content-disposition` and `vary`, plus `X-Content-Type-Options: nosniff`, `Content-Security-Policy: frame-ancestors
 <public origin>` and a `Location` only when it is a path on the same project origin. A reverse proxy that issues
 certificates on demand asks `GET /_tls-ask?domain=<host>`: 200 only for the public host and for
-`<existing project id>.<workspace domain>`, 404 otherwise. It is answered only to a connection from loopback (the
+`<existing project id>.<workspace domain>` when it passes the certificate budget below, 404 otherwise. It is answered only to a connection from loopback (the
 proxy on the same machine) that carries no `X-Forwarded-For`, `Forwarded` or `Via` header (a request the proxy
 forwarded is somebody else's, and gets 404; the proxy files in `deploy/` also answer the path with 404), on any Host, and is not rate limited (one indexed lookup; a limit would be shared by every
 handshake). Point the proxy's ask URL at the hub's own port, for example Caddy's
 `on_demand_tls { ask http://127.0.0.1:<hub port>/_tls-ask }`. The maintainer provides a
 wildcard DNS record for the workspace domain and either a wildcard certificate or on-demand certificates.
+
+**The certificate budget.** A certificate authority limits new certificates per registered domain per week (Let's
+Encrypt: about 50), and with on-demand certificates every new project name costs one. The hub keeps a table
+`tls_names(project_id, user_id, approved_at)` (schema version 3). For the public host `/_tls-ask` is unchanged. For a
+project name: if the project exists and has a row, 200 (renewals cost nothing, `--tls-ask-weekly 0` included); if it
+exists and has none, 200 and a row only when both budgets have room: the project's owner has fewer than 5 rows
+younger than 7 days, and the hub fewer than `--tls-ask-weekly <n>` (default 40; `0` approves no new name); otherwise
+404. Rows are not deleted when a project is deleted: the sweep prunes a row once it is older than 7 days and its
+project no longer exists, so a create-and-delete loop counts against the user who runs it. When a signed-in owner opens
+`/p/<id>/` for a project with no row while a budget is used up, the hub answers 503 with "This project's address has no
+certificate yet: the weekly limit for new certificates is reached. Try again later, or ask the maintainer." instead of
+redirecting to a host that cannot complete TLS; the page is only ever shown when the table holds at least one row (a
+deployment with a wildcard certificate never asks, has no rows, and never sees it). On-demand certificates suit a small
+closed beta; a wildcard certificate (DNS challenge) is the arrangement for anything larger.
 
 **A separate domain for workspaces is recommended; with a subdomain of the same site the closed beta carries this
 limited risk:** a hostile project page can set cookies for the whole site and fill the browser with them, so the hub

@@ -17,6 +17,12 @@ import { FORM_BODY_LIMIT } from "./http.js"
 const ENTER_MS = 30_000
 const WORKSPACE_SESSION_MS = 12 * 60 * 60_000
 const TICKET_LIFETIME_S = 60
+/** A certificate authority limits new certificates per registered domain per week: so many new project names a week. */
+export const TLS_WINDOW_MS = 7 * 24 * 60 * 60_000
+/** New project-name certificates one user may have approved in a week. */
+export const TLS_PER_USER = 5
+export const DEFAULT_TLS_ASK_WEEKLY = 40
+export const TLS_BUDGET_TEXT = "This project's address has no certificate yet: the weekly limit for new certificates is reached. Try again later, or ask the maintainer."
 export const MAX_ENTER_TOKENS = 10_000
 /** Live enter tokens one user may hold: a fifth replaces their oldest. */
 export const MAX_ENTER_TOKENS_PER_USER = 4
@@ -63,6 +69,13 @@ function dropEnterToken(hub: Hub, hash: string) {
 export function enterRedirect(hub: Hub, res: ServerResponse, signed: Signed, projectId: string): void {
   const now = hub.config.now()
   const userId = signed.user.id
+  // With on-demand certificates a project name with no approved certificate and no budget left cannot complete TLS:
+  // say so instead of redirecting there. Only when some name was ever approved (a wildcard certificate never asks).
+  if (!hub.store.tlsNameKnown(projectId) && hub.store.tlsNamesExist() && !hub.store.tlsRoom(userId, now, TLS_WINDOW_MS, TLS_PER_USER, hub.config.tlsAskWeekly)) {
+    res.writeHead(503, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store", "retry-after": "3600", "x-content-type-options": "nosniff" })
+    res.end(TLS_BUDGET_TEXT)
+    return
+  }
   // This user's own tokens first: expired ones go, and a fifth live one replaces the oldest, so one user can never hold
   // more than MAX_ENTER_TOKENS_PER_USER of the hub's slots.
   for (const hash of [...(hub.enterByUser.get(userId) ?? [])]) if ((hub.enterTokens.get(hash)?.expires ?? 0) <= now) dropEnterToken(hub, hash)
@@ -224,13 +237,18 @@ async function proxyToWorkspace(hub: Hub, req: IncomingMessage, res: ServerRespo
   }
 }
 
-/** For a reverse proxy that issues certificates on demand: 200 only for the public host and existing projects. */
+/**
+ * For a reverse proxy that issues certificates on demand: 200 for the public host (always), and for an existing
+ * project's name when it has an approved row already (renewals cost nothing) or both budgets have room, which records
+ * it: its owner has fewer than TLS_PER_USER rows younger than a week and the hub fewer than `--tls-ask-weekly`. 404 otherwise.
+ */
 export function tlsAsk(hub: Hub, req: IncomingMessage, res: ServerResponse): void {
   const domain = (new URL(req.url ?? "/", "http://x").searchParams.get("domain") ?? "").toLowerCase()
   const publicHostname = new URL(hub.config.publicOrigin).hostname
   const suffix = `.${hub.config.workspaceDomain}`
   const id = domain.endsWith(suffix) ? domain.slice(0, -suffix.length) : ""
-  const ok = domain === publicHostname || (/^[0-9a-f]{32}$/.test(id) && hub.store.projectExists(id))
+  const owner = /^[0-9a-f]{32}$/.test(id) ? hub.store.projectOwner(id) : undefined
+  const ok = domain === publicHostname || (owner !== undefined && hub.store.tlsApprove(id, owner, hub.config.now(), TLS_WINDOW_MS, TLS_PER_USER, hub.config.tlsAskWeekly) !== "refused")
   res.writeHead(ok ? 200 : 404, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" })
   res.end(ok ? "ok" : "no")
 }

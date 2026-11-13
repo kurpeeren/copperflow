@@ -29,7 +29,7 @@ SupplementaryGroups=copperflow-ws docker
 EnvironmentFile=/etc/copperflow/hub.env
 Environment=NODE_ENV=production HOME=/tmp DOCKER_CONFIG=/tmp/.docker
 WorkingDirectory=/opt/copperflow
-ExecStart=/usr/bin/node /opt/copperflow/dist/cli.js hub --data ${CF_DATA_DIR} --port ${CF_HUB_PORT} --bind 127.0.0.1 --public-origin https://${CF_PUBLIC_HOST} --workspace-domain ${CF_WORKSPACE_DOMAIN} --runner container --workspace-image ${CF_WORKSPACE_IMAGE} --container-command docker --workspace-reach loopback --workspace-group ${CF_WORKSPACE_GID} --trust-proxy 127.0.0.1
+ExecStart=/usr/bin/node /opt/copperflow/dist/cli.js hub --data ${CF_DATA_DIR} --port ${CF_HUB_PORT} --bind 127.0.0.1 --public-origin https://${CF_PUBLIC_HOST} --workspace-domain ${CF_WORKSPACE_DOMAIN} --runner container --workspace-image ${CF_WORKSPACE_IMAGE} --container-command docker --workspace-reach loopback --workspace-group ${CF_WORKSPACE_GID} --trust-proxy 127.0.0.1 --tls-ask-weekly ${CF_TLS_ASK_WEEKLY}
 # The hub stops its workspaces on SIGTERM and exits within 10 seconds; after an uncaught exception it exits for a restart.
 KillSignal=SIGTERM
 TimeoutStopSec=20
