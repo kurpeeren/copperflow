@@ -1,7 +1,7 @@
 // create_part: a library part written from a datasheet, the same as the Studio's Library → New part….
 import { z } from "zod"
 import { DATASHEET_KEYS, FOOTPRINT_FILE, PartSchema } from "../core/library.js"
-import { FootprintFileSchema } from "../engine/footprints/file.js"
+import { FootprintFileInputSchema, FootprintFileSchema } from "../engine/footprints/file.js"
 import { formatNewPart, writeNewPart } from "../library/new-part.js"
 
 const fields = PartSchema.shape
@@ -20,7 +20,7 @@ export const createPartInput = {
     .describe('Every pin by number: { "1": { "name": "VIN", "type": "power_in" } }, or the datasheet\'s pin table as text, one pin per line ("1 VIN power_in", tab or comma separated too; no type means passive)'),
   suppliers: fields.suppliers.describe('e.g. { "lcsc": "C51118" }'),
   datasheet: fields.datasheet.describe(`Only the keys ${DATASHEET_KEYS.join(", ")} (others are refused), e.g. { "url": "https://example.com/ds.pdf", "title": "TJA1051 datasheet" }`),
-  footprint_file: FootprintFileSchema.optional().describe('With package { "file": "footprint.yaml" }: every pad in mm (y up, origin at the part centre) from the datasheet land pattern. Without it footprint.yaml is a placeholder the human completes.'),
+  footprint_file: FootprintFileInputSchema.optional().describe('With package { "file": "footprint.yaml" }: every pad in mm (y up, origin at the part centre) from the datasheet land pattern. Without it footprint.yaml is a placeholder the human completes.'),
   replace: z.boolean().optional().describe("Overwrite an existing, unverified part"),
 }
 
@@ -32,6 +32,8 @@ type CreatePartArgs = z.infer<z.ZodObject<typeof createPartInput>>
 /** Writes the part and answers with what was written and what to check. */
 export async function createPartTool(root: string, input: CreatePartArgs): Promise<string> {
   const { footprint_file, replace, ...part } = input
-  const result = await writeNewPart(root, { ...part, ...(footprint_file ? { footprintFile: footprint_file } : {}) }, { now: new Date().toISOString(), replace: replace === true })
+  // The input writes a point as a list of two numbers; the land pattern's own schema makes the pairs of them.
+  const footprintFile = footprint_file ? { footprintFile: FootprintFileSchema.parse(footprint_file) } : {}
+  const result = await writeNewPart(root, { ...part, ...footprintFile }, { now: new Date().toISOString(), replace: replace === true })
   return [formatNewPart(result), `Use it with place_part (part "${result.id}"). Tell the human it is Unverified until they check verification.md.`].join("\n")
 }

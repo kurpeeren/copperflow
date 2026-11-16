@@ -24,17 +24,28 @@ const PadEntrySchema = z
   })
   .strict()
 
+/** The land pattern with `pair` as the way a point is written. */
+const footprintFile = <P extends z.ZodType>(pair: P) =>
+  z
+    .object({
+      pads: z.array(PadEntrySchema).min(1),
+      courtyard: z.array(pair).min(3).optional(),
+      silkscreen: z.array(z.array(pair).min(2)).optional(),
+      body: z.array(pair).min(3).optional(),
+      /** The pads are not the land pattern yet (the part wizard's stub): the board refuses the part until a person draws them. */
+      placeholder: z.boolean().optional(),
+    })
+    .strict()
+
 /** The land pattern as a person writes it in footprint.yaml: pads in mm, y up, origin at the part centre. */
-export const FootprintFileSchema = z
-  .object({
-    pads: z.array(PadEntrySchema).min(1),
-    courtyard: z.array(point).min(3).optional(),
-    silkscreen: z.array(z.array(point).min(2)).optional(),
-    body: z.array(point).min(3).optional(),
-    /** The pads are not the land pattern yet (the part wizard's stub): the board refuses the part until a person draws them. */
-    placeholder: z.boolean().optional(),
-  })
-  .strict()
+export const FootprintFileSchema = footprintFile(point)
+
+/**
+ * The same land pattern for a tool's input: a point is a list of exactly two numbers, not a pair type. A pair's JSON
+ * schema writes `items` as a list, and a client that reads schemas as JSON Schema 2020-12 drops the whole tool for it.
+ * Parse what arrives with FootprintFileSchema to get the pairs.
+ */
+export const FootprintFileInputSchema = footprintFile(z.array(length).length(2))
 
 export type FootprintFile = z.infer<typeof FootprintFileSchema>
 
