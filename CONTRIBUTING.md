@@ -23,6 +23,24 @@ npm run build
   text from books, standards or projects without a compatible license.
 - Keep pull requests focused on one change.
 
+## Releasing
+
+A version is published to npm by pushing its tag; `.github/workflows/release.yml` does the rest.
+
+1. Set the new version in `package.json` and in `src/version.ts` (a test fails when they differ), and
+   run `npm install` so `package-lock.json` follows.
+2. Commit, and push `main`. Wait for CI to pass.
+3. Tag that commit and push the tag:
+
+   ```bash
+   git tag v0.3.1
+   git push origin v0.3.1
+   ```
+
+The workflow checks that the tag matches the version, runs the type check and the tests, builds
+and publishes. It needs no token: on npmjs.com the package's Settings list this repository and
+`release.yml` under Trusted publishing. A version number can be published only once.
+
 ## License of contributions
 
 By submitting a contribution you agree that it is licensed under the Apache License 2.0,
