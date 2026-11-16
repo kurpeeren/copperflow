@@ -118,6 +118,31 @@ describe("B2: a block is packed tight", () => {
   }, 120_000)
 })
 
+/** How many tracks a net has: by the net the record names, since copper on copies stacked on each other resolves to none. */
+const tracksOn = (design: Design, net: string) => design.pcb.tracks.filter((t) => [t.net, t.named].some((one) => one === net || one === `net.${net}`)).length
+
+describe("B3: a block is routed on its own", () => {
+  test("autoroute { instance: CH1 } right after placing it routes all its inner connections", async () => {
+    await call("new_circuit", eightInputs)
+    await call("autoplace", { file: FILE, instance: "CH1" })
+    const answer = await call("autoroute", { file: FILE, instance: "CH1" })
+    expect(answer.text).toMatch(/Routed 4 of 4 connections/)
+    const design = await build()
+    expect(tracksOn(design, "CH1/DIV")).toBeGreaterThan(0)
+    // The copies stacked on CH1 (no place of their own yet) got no copper on top of CH1's.
+    expect(tracksOn(design, "CH2/DIV")).toBe(0)
+  }, 120_000)
+
+  test("the route still copies to another instance placed the same way", async () => {
+    await call("new_circuit", eightInputs)
+    await call("autoplace", { file: FILE, instance: "CH1" })
+    await call("set_props", { file: FILE, part: "CH2", props: { pcbX: 8, pcbY: 0 } })
+    const answer = await call("autoroute", { file: FILE, instance: "CH1" })
+    expect(answer.text).toMatch(/Routed 8 of 8 connections/)
+    expect(tracksOn(await build(), "CH2/DIV")).toBeGreaterThan(0)
+  }, 120_000)
+})
+
 describe("B1: no instance is placed on another", () => {
   test("whole-board autoplace without fit: no two courtyards overlap, an instance with no room is named", async () => {
     await call("new_circuit", eightInputs)

@@ -143,6 +143,10 @@ export function replicate(
   const walls: Obstacle[] = [...congestion.placed.values()].sort((a, b) => a.index - b.index).flatMap((placed) => placed.pieces)
   const copies: Copies = { routed: [], unrouted: [], replicas: [] }
   for (const target of targets) {
+    if (input.aside?.includes(target.path)) {
+      copies.replicas.push({ instance: target.name, copied: 0, reason: `it has no place of its own yet (it sits on ${source.name})` })
+      continue
+    }
     const parts = partMap(input, source, target)
     if (parts === undefined) {
       copies.replicas.push({ instance: target.name, copied: 0, reason: `its placement differs from ${source.name}` })

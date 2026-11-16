@@ -33,6 +33,8 @@ export type RouteScope =
 export interface RouteBoardInput extends RouteInput {
   components?: readonly Component[]
   instances?: readonly SheetInstance[]
+  /** Instances (by path) set aside for an instance's run: they sit on it with no place of their own, and get no copy. */
+  aside?: readonly string[]
 }
 
 /** How far a run is: a negotiation pass's connections done of its total, or the cleanup, which says whether it hit its pass cap. */
@@ -285,7 +287,32 @@ function settle(run: Run, connections: readonly Connection[]): void {
  */
 export function routeBoard(input: RouteBoardInput, options: RouteBoardOptions = {}): RouteReport {
   const router = (given: RouteBoardInput, asked: RouteBoardOptions) => routeWithPours(given, asked, routeOnce)
-  return ripUpAndRetry(input, router(input, scopedMain(input, options)), withoutProgress(options), router)
+  const own = blockOnly(input, options.scope ?? { kind: "all" })
+  return ripUpAndRetry(own, router(own, scopedMain(own, options)), withoutProgress(options), router)
+}
+
+const sameFrame = (a: SheetInstance, b: SheetInstance): boolean => {
+  const [p, q] = [a.pcb ?? { x: 0, y: 0, rotation: 0 }, b.pcb ?? { x: 0, y: 0, rotation: 0 }]
+  return Math.abs(p.x - q.x) < 1e-6 && Math.abs(p.y - q.y) < 1e-6 && Math.abs(p.rotation - q.rotation) < 1e-6
+}
+
+/**
+ * For one instance, the board as the block sees it on its own: the parts of the rest of the board with no place yet are
+ * taken out, and so are the other instances of its sheet that sit on it (same frame: they have no place of their own
+ * yet, the sheet's positions put them on top of it). Those instances are named in `aside` and get no copy of the route.
+ */
+function blockOnly(input: RouteBoardInput, scope: RouteScope): RouteBoardInput {
+  if (scope.kind !== "instance") return input
+  const source = findInstance(input.instances, scope.instance)
+  if (source === undefined) return input
+  const stacked = (input.instances ?? []).filter((one) => one.file === source.file && one.path !== source.path && sameFrame(one, source))
+  const mine = new Set(source.parts)
+  const away = new Set(stacked.flatMap((one) => one.parts))
+  const parts = input.layout.parts.filter((part) => mine.has(part.component) || !(part.autoPlaced || away.has(part.component)))
+  if (parts.length === input.layout.parts.length) return input
+  const kept = new Set(parts.map((part) => part.component))
+  const ratsnest = input.layout.ratsnest.filter((line) => kept.has(componentOf(line.from)) && kept.has(componentOf(line.to)))
+  return { ...input, layout: { ...input.layout, parts, ratsnest }, aside: stacked.map((one) => one.path) }
 }
 
 /**
