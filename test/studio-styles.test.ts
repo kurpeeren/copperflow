@@ -39,7 +39,8 @@ describe("Studio style sheets", () => {
   test("the workspace row and its centre column are laid out in workspace.css alone", () => {
     for (const sheet of SHEETS) expect([sheet, /\.center\b|\.workspace\b/.test(read(sheet))]).toEqual([sheet, false])
     const layout = read("shell/workspace.css")
-    expect(rule(layout, ".workspace > .center")).toContain("grid-template-rows: auto minmax(0, 1fr) auto;")
+    // Four rows: the document tabs, the AI lock's band, the canvas, the bottom panel.
+    expect(rule(layout, ".workspace > .center")).toContain("grid-template-rows: auto auto minmax(0, 1fr) auto;")
   })
 
   test("a side tab is as tall as its label, not the 24px square the global button rule makes", () => {

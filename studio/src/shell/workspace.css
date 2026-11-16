@@ -16,7 +16,8 @@
 .workspace > .center {
   position: relative;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  /* The document tabs, the AI lock's band, the canvas, the bottom panel. */
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   flex: 1 1 0;
   min-width: 0;
   min-height: 0;
