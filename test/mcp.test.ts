@@ -60,8 +60,10 @@ describe("MCP server", () => {
       "import_board",
       "import_part",
       "list_circuits",
+      "list_modules",
       "list_parts",
       "make_sheet",
+      "module_info",
       "new_circuit",
       "note_decision",
       "part_info",
@@ -75,11 +77,13 @@ describe("MCP server", () => {
       "remove_trace",
       "render",
       "route_track",
+      "save_module",
       "set_project",
       "set_props",
       "straighten_tracks",
       "undo_change",
       "unroute",
+      "use_module",
     ])
   })
 

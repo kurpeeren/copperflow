@@ -66,7 +66,8 @@ goes back to the person if step 1 did not settle it.
 
 ## 3. The block tree
 
-Split the board into blocks before choosing a single part.
+Split the board into blocks before choosing a single part. Look at `list_modules` first: a module
+on the person's shelf that does a block's job is used, not designed again ([modules.md](modules.md)).
 
 - A block does one job and has **ports**: the nets that cross its edge. Name every port and say
   what it carries: `VIN 7 to 24 V in`, `V3_3 3.3 V 300 mA out`, `IN 0 to 24 V from the field`,

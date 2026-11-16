@@ -37,9 +37,15 @@ describe("the copperflow skill", () => {
     }
   })
 
-  test("SKILL.md links every reference", async () => {
+  // SKILL.md is at its line limit: a reference may instead be linked from a reference SKILL.md links.
+  test("SKILL.md links every reference, itself or through a reference it links", async () => {
     const files = await skillFiles()
-    for (const path of Object.keys(files).filter((p) => p.startsWith("references/"))) expect(files["SKILL.md"]).toContain(`(${path})`)
+    const references = Object.keys(files).filter((p) => p.startsWith("references/"))
+    const linked = references.filter((path) => files["SKILL.md"]?.includes(`(${path})`))
+    for (const path of references) {
+      const reached = linked.includes(path) || linked.some((from) => files[from]?.includes(`(${path.replace("references/", "")})`))
+      expect(reached, path).toBe(true)
+    }
   })
 
   test("the instructions say to call project_status first and follow the skill", () => {

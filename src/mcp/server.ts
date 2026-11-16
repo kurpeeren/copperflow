@@ -54,6 +54,7 @@ import { compactToolList } from "./compact-tool-list.js"
 import { createGuideMemory, GUIDE_DESCRIPTION, guideInSession, guideInput, skillResources } from "./guide.js"
 import { ATTACH_DATASHEET_DESCRIPTION, attachDatasheetInput, attachDatasheetTool } from "./datasheet-tools.js"
 import { RENDER_DESCRIPTION, renderInput, renderTool } from "./render-tool.js"
+import { registerModuleTools } from "./module-tools.js"
 import type { Renderer } from "../core/render.js"
 
 /** The opening line and the rules that hold wherever the server runs. */
@@ -451,6 +452,7 @@ Nothing was written.`)
       }),
   )
 
+  registerModuleTools(server, root, run, options.engine)
   compactToolList(server)
   return server
 }

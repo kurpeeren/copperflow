@@ -37,6 +37,7 @@ import { createCopperflowServer } from "./mcp/server.js"
 import { startStudio } from "./studio/server.js"
 import { VERSION } from "./version.js"
 import { installSkill } from "./skill-install.js"
+import { modulesCommand } from "./cli-modules.js"
 
 export interface CliIO {
   out(text: string): void
@@ -66,6 +67,10 @@ Usage:
   copperflow parts import <C-number> [--id <id>] [--replace]
                                               fetch a part by its LCSC number from EasyEDA into parts/,
                                               not verified (needs the internet; see docs/licences.md)
+  copperflow modules                          list the shelf of modules (COPPERFLOW_MODULES, default ~/.copperflow/modules)
+  copperflow modules verify <name> --by <name>
+                                              mark a module as checked by you
+  copperflow modules remove <name>            take a module off the shelf
   copperflow place <file> <part> <name> [key=value ...]
                                               add a library or built-in part to a circuit
   copperflow bom <file> [--csv]               print the bill of materials
@@ -142,6 +147,9 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
       }
       case "parts":
         await partsCommand(root, rest, io, options)
+        return 0
+      case "modules":
+        await modulesCommand(rest, io, takeOption)
         return 0
       case "place": {
         const [file, part, name, ...props] = rest
