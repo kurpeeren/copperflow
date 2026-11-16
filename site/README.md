@@ -22,7 +22,4 @@ curl -sS -o /dev/null -w '%{http_code}
 
 To update the page, copy `public/` again; nginx serves the new files at once.
 
-The line that says the npm release is in preparation (`#release-note` in `public/index.html` and in
-`public/connect.html`) comes out when the package is published.
-
 The fonts are IBM Plex Sans and IBM Plex Mono under the SIL Open Font License; see the two licence files in `public/fonts/`.
