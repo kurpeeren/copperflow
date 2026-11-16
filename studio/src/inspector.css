@@ -152,3 +152,19 @@
   padding: 0;
   accent-color: var(--copper);
 }
+
+/* An instance's card: what its sheet does, its sources, and each port's type and what it carries. */
+.insp-value .port-about {
+  display: block;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.instance-sources {
+  margin: 0 0 6px;
+  padding-left: 16px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}

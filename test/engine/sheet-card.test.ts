@@ -117,3 +117,20 @@ test("a driving port speaks for the part that drives it inside: one instance is 
   const found = electricalChecks(built.circuit, built.schematic, built.rules).map((v) => v.code)
   expect(found).not.toContain("output-conflict")
 })
+
+test("the sheet symbol writes each port's name at its pin, inside the box", () => {
+  const built = design(`<Driver name="D1" connections={{ IN: "A", OUT: "B", GND: "GND" }} />`)
+  const symbol = built.schematic.symbols.find((placed) => placed.component === "D1")?.symbol
+  const box = symbol?.shapes.find((shape) => shape.type === "polyline")
+  const xs = box?.type === "polyline" ? box.points.map((p) => p.x) : []
+  const ys = box?.type === "polyline" ? box.points.map((p) => p.y) : []
+  const names = symbol?.shapes.filter((shape) => shape.type === "text" && shape.role === "pin-name") ?? []
+  expect(names.map((shape) => (shape.type === "text" ? shape.text : ""))).toEqual(["IN", "OUT", "GND", "AUX"])
+  for (const shape of names) {
+    if (shape.type !== "text") continue
+    expect(shape.at.x).toBeGreaterThanOrEqual(Math.min(...xs))
+    expect(shape.at.x).toBeLessThanOrEqual(Math.max(...xs))
+    expect(shape.at.y).toBeGreaterThanOrEqual(Math.min(...ys))
+    expect(shape.at.y).toBeLessThanOrEqual(Math.max(...ys))
+  }
+})

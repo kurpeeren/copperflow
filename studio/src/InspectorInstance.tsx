@@ -9,6 +9,7 @@ import { Row, Section } from "./InspectorRows"
 import { connectionsWith, instancePart, partsOfInstance, sheetUses, topInstance, usedLine } from "./pcb/instances"
 import { sheetName } from "./pcb/sheet-names"
 import type { SelectionChange } from "./selection"
+import { InstanceCard, portAbout } from "./instance-card"
 
 /** A text field that commits on Enter or when it loses the focus, and goes back on Esc or a refused commit. */
 function TextField({ id, value, disabled, placeholder, onCommit }: { id: string; value: string; disabled: boolean; placeholder?: string; onCommit(text: string): Promise<boolean> }) {
@@ -76,9 +77,11 @@ export function InstanceSection({ design, name, editable, actions, onOpenSheet, 
           Open {instance.sheet}
         </button>
       </div>
+      <InstanceCard instance={instance} />
       {instance.ports.map((port) => (
         <Row key={port.name} label={`${port.name}${port.bus ? " (bus)" : ""}`} htmlFor={`${id}-${port.name}`}>
           <TextField id={`${id}-${port.name}`} value={instance.connections[port.name] ?? ""} placeholder="not connected" disabled={!editable} onCommit={(net) => connect(port.name, net)} />
+          {portAbout(port) ? <span className="port-about">{portAbout(port)}</span> : null}
         </Row>
       ))}
       <Row label="base" htmlFor={`${id}-base`}>
