@@ -158,8 +158,13 @@ export function readProblem(design: Design, options: ScopeOptions = {}, aside: R
   const fixedPads: Point[][] = nets.map(() => [])
   const fixedPartPads = new Map<string, (Point & { net?: number })[]>()
   const fixedBeside = new Map<string, Beside>()
+  // An instance is laid out on its own: the parts of the rest of the board that have no place yet (and that nobody
+  // locked) are not there for it, neither as obstacles nor as pads its nets pull toward.
+  const own = options.scope?.kind === "instance"
+  const locked = new Set(options.locked ?? [])
+  const absent = (part: PlacedFootprint) => own && part.autoPlaced && !moves(part) && !locked.has(part.component)
   for (const part of [...design.pcb.parts].sort((a, b) => naturalCompare(a.component, b.component))) {
-    if (aside.has(part.component)) continue
+    if (aside.has(part.component) || absent(part)) continue
     if (moves(part)) {
       const name = part.component
       const facts = { component: components.get(name) as Component, role: roleOf.role(name), beside: roleOf.beside(name), anchor: anchors.get(name) }

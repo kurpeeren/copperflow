@@ -75,6 +75,49 @@ beforeEach(async () => {
   await Promise.all([server.connect(serverSide), client.connect(clientSide)])
 })
 
+/** The parts of instance CHn: R n01..R n03 and C n01. */
+const partsOf = (design: Design, n: number) => design.pcb.parts.filter((p) => new RegExp(`^[RC]${n}0\\d$`).test(p.component))
+
+/** The longest edge of each net's shortest tree over the given parts' pads, for nets two of them share. */
+function innerLinks(parts: Design["pcb"]["parts"]): number[] {
+  const byNet = new Map<string, { x: number; y: number; part: string }[]>()
+  for (const part of parts) for (const pad of part.pads) if (pad.net) byNet.set(pad.net, [...(byNet.get(pad.net) ?? []), { x: pad.x, y: pad.y, part: part.component }])
+  const longest: number[] = []
+  for (const pads of byNet.values()) {
+    if (new Set(pads.map((p) => p.part)).size < 2) continue
+    const inTree = [pads[0]!]
+    const rest = pads.slice(1)
+    let worst = 0
+    while (rest.length > 0) {
+      let best = { k: 0, d: Infinity }
+      rest.forEach((p, k) => {
+        for (const q of inTree) {
+          const d = Math.hypot(p.x - q.x, p.y - q.y)
+          if (d < best.d) best = { k, d }
+        }
+      })
+      worst = Math.max(worst, best.d)
+      inTree.push(...rest.splice(best.k, 1))
+    }
+    longest.push(worst)
+  }
+  return longest
+}
+
+describe("B2: a block is packed tight", () => {
+  test("autoplace { instance: CH1 } packs the four parts on their own, the inner connections short", async () => {
+    await call("new_circuit", eightInputs)
+    expect((await call("autoplace", { file: FILE, instance: "CH1" })).text).toMatch(/^Placed 4 parts/)
+    const parts = partsOf(await build(), 1)
+    expect(parts).toHaveLength(4)
+    const boxes = parts.map((p) => boxOfPoints(p.courtyard))
+    const area = boxes.reduce((s, b) => s + (b.maxX - b.minX) * (b.maxY - b.minY), 0)
+    const all = boxOfPoints(boxes.flatMap((b) => [{ x: b.minX, y: b.minY }, { x: b.maxX, y: b.maxY }]))
+    expect((all.maxX - all.minX) * (all.maxY - all.minY)).toBeLessThanOrEqual(2.0 * area)
+    for (const d of innerLinks(parts)) expect(d).toBeLessThanOrEqual(3)
+  }, 120_000)
+})
+
 describe("B1: no instance is placed on another", () => {
   test("whole-board autoplace without fit: no two courtyards overlap, an instance with no room is named", async () => {
     await call("new_circuit", eightInputs)
