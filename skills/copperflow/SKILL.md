@@ -45,7 +45,7 @@ means, `replace`, refused pins and the export's warnings are in
 [references/writing-circuits.md](references/writing-circuits.md).
 
 1. **Plan.** A new board starts with [references/planning.md](references/planning.md): every
-   question for the person in one message, blocks with ports, a sub-agent per block. Then `set_project`
+   question in one message, a search for sources, blocks with ports, a sub-agent each. Then `set_project`
    `{ intent, blocks: [{ name, does, status }], open }` writes PROJECT.md:
    `Change c0001: Intent, Blocks, Open written to PROJECT.md`. `intent` is a string of at most
    2000 characters, `blocks` an array of at most 50 objects, `open` an array of at most 50

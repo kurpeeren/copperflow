@@ -1,7 +1,8 @@
-# Planning a board: questions, blocks, sub-agents
+# Planning a board: questions, sources, blocks, sub-agents
 
 Read this before the first circuit file of a new board. The plan comes before parts and nets: what
-the person wants, the board as a tree of blocks with named ports, and who designs each block. A
+the person wants, how such a circuit is usually built, the board as a tree of blocks with named
+ports, and who designs each block. A
 block that is used eight times is designed once and placed eight times; that is what keeps a
 large board small enough to think about.
 
@@ -31,7 +32,39 @@ with the default you assumed; do not come back later with a question you could h
 9. **Conditions.** Temperature range, automotive or industrial supply, what a standard requires.
 10. **Later.** What the person wants to decide later.
 
-## 2. The block tree
+## 2. Look it up
+
+Nobody designs a circuit from nothing, and neither should you: before the blocks, find how this
+kind of circuit is usually built. Search with your own web access; copperflow fetches nothing.
+
+- **What to look for**, for the board and then for each function in it: the datasheet of every
+  chip in question with its typical application circuit; the makers' application notes and
+  reference designs (an evaluation board's schematic is the best source there is); open hardware
+  projects that do the same job; and pictures of schematics and boards, which you open when your
+  client can show you images.
+- **How far to trust it.** A maker's document is a source. A forum post, a blog or a picture is a
+  lead: take the idea, then check every value and every pin against the datasheet. Never copy pin
+  numbers from a picture.
+- **What to bring back** for each function: the usual way to build it and why, the parts it
+  takes, the values that have to be worked out for this board, and what goes wrong when a part is
+  left out. Three or four good sources are enough; stop when they agree.
+- **Write the sources down** as you use them: `note_decision`
+  `{ text: "Source: <link> (what it is): what was taken from it" }`, so the person can check
+  where a circuit came from. A design under an open hardware licence carries that licence's
+  terms: tell the person before you build on one.
+- Without web access say so, ask the person for the datasheets and any reference they have, and
+  put in `Open` what you could not check. Do not draw a chip's circuit from memory.
+
+An example. "A relay driver module: 12 V supply, switched by 0 V and by 3.3 V or 5 V logic." The
+search finds the low-side switch the sources agree on: a transistor or a logic-level MOSFET under
+the coil, a diode across the coil for the spike at turn-off, a resistor to the input sized so
+that 3.3 V still switches the coil's current fully, a pull-down so that an open input is off, and
+often an LED or an optocoupler. From the relay's datasheet come the coil's voltage and current;
+from the transistor's, the gain or the threshold that sizes the resistor. Those become the
+block's parts, and what the search raised (how many relays, what they switch, isolated or not)
+goes back to the person if step 1 did not settle it.
+
+## 3. The block tree
 
 Split the board into blocks before choosing a single part.
 
@@ -68,7 +101,7 @@ set_project {
 Then show the person the block list, the supply tree and what you assumed, and ask whether to go
 on. Wait for a yes and `note_decision` it. Changing the split is cheap now and costly later.
 
-## 3. One sub-agent per block
+## 4. One sub-agent per block
 
 When your client can start sub-agents, give each block to one, several at a time. A repeated
 block goes to one sub-agent, once. Without sub-agents, do the same yourself, one block after
@@ -79,9 +112,10 @@ The brief is all a sub-agent knows. Give it:
 - the board in one or two lines (from the Intent);
 - the block: its job, every port with what it carries, and the limits from the answers (packages,
   supplier, parts the person fixed);
+- the sources step 2 found for this block, to read and to look further from in the same way;
 - the tools: `guide` for how to work, `list_parts`, `part_info`, `create_part` and
   `attach_datasheet` for parts. **It writes no circuit file**: no `new_circuit`, `edit_circuit`,
-  `place_part` or `connect_nets`. Only you write the circuit, once, in step 4;
+  `place_part` or `connect_nets`. Only you write the circuit, once, in step 5;
 - what to send back, below.
 
 A sub-agent sends back the block as one sheet in the shape `new_circuit` takes, and a few lines:
@@ -97,6 +131,7 @@ Input: {
   ports: ["IN", "OUT", "GND"] }
 parts created: none
 decisions: 10k over 1.5k gives 3.1 V at 24 V in; the 1k and 100 nF filter at 1.6 kHz
+sources: none beyond the divider and filter formulas
 questions: V3_3 is not needed by this block; drop the port?
 ```
 
@@ -108,7 +143,7 @@ questions: V3_3 is not needed by this block; drop the port?
   access; `attach_datasheet` records the link and the page. It reports each created part and
   that it is not verified.
 
-## 4. Put the blocks together
+## 5. Put the blocks together
 
 1. Check each block against the plan: its ports are the plan's ports, every `part:` id is in
    `list_parts`, and its nets name only its own parts. Settle the sub-agents' questions, with the
