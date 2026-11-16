@@ -31,10 +31,6 @@ import { buildWith } from "./core/design-source.js"
 import { formatImport, importLcscPart } from "./library/import-lcsc.js"
 import { createCopperflowServer } from "./mcp/server.js"
 import { startStudio } from "./studio/server.js"
-import { startMcpHttp } from "./hosted/mcp-http.js"
-import { ticketPublicKeyFromEnv } from "./hosted/ticket.js"
-import { parseWorkspaceArgs, startWorkspace } from "./hosted/workspace.js"
-import { HOSTED_UMASK, useHostedWorkerHeap } from "./engine/worker-env.js"
 import { VERSION } from "./version.js"
 
 export interface CliIO {
@@ -48,21 +44,6 @@ const HELP = `copperflow ${VERSION}
 
 Usage:
   copperflow mcp                              start the MCP server on stdio
-  copperflow mcp --http <port> [--bind <address>] [--workspace <id>] [--public-origin <url>]
-                                              serve MCP over HTTP behind the hosted hub (needs
-                                              COPPERFLOW_TICKET_PUBLIC_KEY; every request carries the hub's ticket)
-  copperflow workspace --root <folder> --id <id> --public-origin <url> --base-path </p/...>
-                    --studio-port <n> --mcp-port <n> [--bind <address>]
-                                              the hosted Studio and MCP server for one project, as the hub
-                                              starts them (needs COPPERFLOW_TICKET_PUBLIC_KEY; reads nothing else)
-  copperflow hub --data <dir> --port <n> --public-origin <url> --workspace-domain <domain>
-                 --runner container --workspace-image <name> [--container-command docker]
-                 [--workspace-reach loopback | --workspace-reach network --hub-container <name>] [--bind <address>]
-                 [--trust-proxy <proxy address|CIDR>]
-                 (or --runner process --trusted-accounts-only, for accounts you trust only)
-                                              the hosted hub: accounts, projects and the Studio proxy
-  copperflow hub invite [--count n] | reset-password <email> | status | delete-user <email>
-                                              the hub's maintainer commands (each with --data <dir>)
   copperflow studio [--port n]                open the visual editor at http://127.0.0.1:4777
   copperflow summary <file>                   print a circuit summary
   copperflow check <file>                     list the errors and warnings of copperflow's own rule checks
@@ -105,41 +86,9 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
   const [command, ...rest] = afterRoot
   try {
     switch (command) {
-      case "mcp": {
-        const [httpPort, afterHttp] = takeOption(rest, "--http")
-        if (httpPort === undefined) {
-          await createCopperflowServer(root, options).connect(new StdioServerTransport())
-          return 0
-        }
-        const [bind, afterBind] = takeOption(afterHttp, "--bind")
-        const [workspace, afterWorkspace] = takeOption(afterBind, "--workspace")
-        const [origin] = takeOption(afterWorkspace, "--public-origin")
-        const workspaceId = workspace ?? process.env.COPPERFLOW_WORKSPACE_ID
-        const publicOrigin = origin ?? process.env.COPPERFLOW_PUBLIC_ORIGIN
-        if (!workspaceId) throw new Error("mcp --http needs --workspace <id> (or COPPERFLOW_WORKSPACE_ID): it trusts only the hub's ticket for that workspace")
-        if (!publicOrigin) throw new Error("mcp --http needs --public-origin <url> (or COPPERFLOW_PUBLIC_ORIGIN): the hub's public address")
-        const served = await startMcpHttp({
-          port: positiveInt(httpPort),
-          ...(bind ? { bind } : {}),
-          makeServer: () => createCopperflowServer(root, { ...options, hosted: true }),
-          ticket: { publicKey: ticketPublicKeyFromEnv(), workspaceId },
-          publicOrigin,
-        })
-        io.out(`copperflow MCP is listening at ${served.url} for workspace ${workspaceId}.`)
+      case "mcp":
+        await createCopperflowServer(root, options).connect(new StdioServerTransport())
         return 0
-      }
-      case "workspace":
-        // --root is required here, so it is handed back rather than defaulted to the current directory.
-        await runWorkspaceCommand(rootOption === undefined ? rest : ["--root", rootOption, ...rest], cwd, io, options)
-        return 0
-      case "workspace-clean":
-        // Only in the hub's cleaning container: empties /work (a removed project's folder in the trash).
-        await (await import("./hosted/workspace-clean.js")).runWorkspaceClean(rest)
-        return 0
-      // Loaded only when asked for: the local program never loads the hub (or node:sqlite).
-      case "hub":
-        await requireSqlite()
-        return await (await import("./hub/commands.js")).runHubCommand(rest, cwd, io)
       case "studio": {
         const [port] = takeOption(rest, "--port")
         const studio = await startStudio({ root, ...(port ? { port: positiveInt(port) } : {}) })
@@ -222,46 +171,6 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
   } catch (error) {
     io.err(`copperflow: ${(error as Error).message}`)
     return 1
-  }
-}
-
-/**
- * Starts one hosted workspace and prints where its two servers listen as one JSON line; SIGTERM (and, when asked,
- * the end of standard input, which the hub's runner holds open) closes both.
- */
-async function runWorkspaceCommand(rest: string[], cwd: string, io: CliIO, options: CliOptions): Promise<void> {
-  const { options: workspaceOptions, stopOnStdinEnd } = parseWorkspaceArgs(rest, cwd, process.env)
-  // A hosted workspace's workers fit its container (deploy/workspace.Dockerfile gives the main thread 160 MB).
-  useHostedWorkerHeap()
-  // What the workspace writes stays readable and removable by the hub, which shares only the group (docs/hosted.md).
-  process.umask(HOSTED_UMASK)
-  const workspace = await startWorkspace(workspaceOptions, options.engine ? { engine: options.engine } : {})
-  let stopping = false
-  const stop = () => {
-    if (stopping) return
-    stopping = true
-    // Closing the servers lets the process end by itself; the timer is the backstop for a stuck connection.
-    setTimeout(() => process.exit(0), STOP_GRACE_MS).unref()
-    void workspace.close().then(() => process.exit(0))
-  }
-  process.once("SIGTERM", stop)
-  process.once("SIGINT", stop)
-  if (stopOnStdinEnd) {
-    process.stdin.on("end", stop)
-    process.stdin.on("error", stop)
-    process.stdin.resume()
-  }
-  io.out(JSON.stringify({ studio: workspace.studio, mcp: workspace.mcp }))
-}
-
-const STOP_GRACE_MS = 5_000
-
-/** The hub keeps its state in node:sqlite, which Node has without a flag from 22.13; the rest of copperflow needs 22. */
-export async function requireSqlite(load: () => Promise<unknown> = () => import("node:sqlite")): Promise<void> {
-  try {
-    await load()
-  } catch {
-    throw new Error(`copperflow hub needs Node 22.13 or later (it keeps its state in node:sqlite); this is Node ${process.versions.node}`)
   }
 }
 

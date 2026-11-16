@@ -113,14 +113,8 @@ export interface WritePlacementOptions {
   /** Runs first inside the project's write queue: a throw stops the write. The Studio checks there that the files are still those it placed from. */
   guard?: () => Promise<void>
   /** Fits the board round the parts after placing them, with this margin in mm, in the same entry. */
-  fit?: { margin: number; build?: FilesBuilder }
+  fit?: { margin: number }
 }
-
-/**
- * Builds a circuit from project files held in memory. Behind the hub this is the engine worker, so no circuit code
- * runs in the server's main thread; without one the build runs here, as it always has locally.
- */
-export type FilesBuilder = (files: Record<string, string>, main: string) => Promise<Design>
 
 export interface WrittenPlacement {
   /** The history entry; absent when nothing changed. */
@@ -211,10 +205,10 @@ interface Texts {
 }
 
 /** The board fitted round the parts as the files would be after the write, and its edit; or why not. */
-async function fitted(root: string, texts: Texts, fit: { margin: number; build?: FilesBuilder }): Promise<{ board: FitBoard; edit?: Edit }> {
+async function fitted(root: string, texts: Texts, fit: { margin: number }): Promise<{ board: FitBoard; edit?: Edit }> {
   const files = { ...(await collectProjectFiles(root, { include: ENGINE_FILES })), [texts.circuit.file]: texts.circuit.after }
   for (const sheet of texts.sheets) files[sheet.file] = sheet.after
-  const design = fit.build ? await fit.build(files, texts.circuit.file) : buildDesign(files, texts.circuit.file)
+  const design = buildDesign(files, texts.circuit.file)
   const board = fitBoard(design, fit.margin)
   if ("error" in board) return { board }
   return { board, edit: { kind: "setBoard", width: board.width, height: board.height, x: board.centre.x, y: board.centre.y } }

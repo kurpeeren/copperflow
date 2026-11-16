@@ -6,7 +6,6 @@
 import { z } from "zod"
 import { editCircuit, resolveCircuit } from "../core/index.js"
 import { placementWrites, writePlacement } from "../core/placement-write.js"
-import { buildFilesWith } from "../core/design-source.js"
 import type { Design } from "../engine/design.js"
 import { DEFAULT_FIT_MARGIN, placeBoard, type Placement } from "../engine/pcb-place/index.js"
 import type { PlaceScope } from "../engine/pcb-place/scope.js"
@@ -16,7 +15,6 @@ import { checkedPlaceScope, lockedNames } from "../studio/place-runner.js"
 import { placeSummary } from "../studio/place-events.js"
 import { discardReason } from "../studio/route-events.js"
 import { contentHashes } from "../studio/route-runner.js"
-import { placeHosted } from "../studio/heavy-runs.js"
 import { buildOf, type Ports } from "./copper-tools.js"
 
 export const DEFAULT_PLACE_BUDGET_SECONDS = 20
@@ -88,8 +86,6 @@ function listLine(head: string, items: readonly string[]): string[] {
 export interface AutoplaceOptions {
   /** The clock the budget is measured on, in ms; tests pass their own. */
   clock?: () => number
-  /** The hosted worker path; tests swap it. */
-  placeHosted?: typeof placeHosted
 }
 
 /** autoplace: places in this process within the budget and writes the positions as one change by the agent. */
@@ -113,10 +109,7 @@ export async function autoplace(
   const design = await buildOf(ports, circuit.file)
   const scope = scopeOf(design, input)
   const locked = await lockedNames(circuit.path, design)
-  // Hosted: in a worker with a hard cut, holding the workspace's one routing-or-placement slot (heavy-runs.ts).
-  const placement = ports.hosted
-    ? await (options.placeHosted ?? placeHosted)({ design, scope, locked, budgetMs: budgetSeconds * 1000, ...ahead })
-    : placeBoard(design, { scope, locked, budgetMs: budgetSeconds * 1000, ...ahead, ...(options.clock ? { clock: options.clock } : {}) })
+  const placement = placeBoard(design, { scope, locked, budgetMs: budgetSeconds * 1000, ...ahead, ...(options.clock ? { clock: options.clock } : {}) })
   const writes = placementWrites(design, placement.positions, placement.blocks)
   const unplaced = listLine("Not placed", placement.unplaced.map((u) => `${u.name} (${u.reason})`))
   if (writes.circuit.length + writes.sheets.length + writes.blocks.length === 0 && !input.fit) {
@@ -128,7 +121,7 @@ export async function autoplace(
     const why = discardReason(start, await contentHashes(ports.root, circuit.file))
     if (why !== undefined) throw new Error(`${why.replace("while the board was routed", "while the board was placed").replace("; route again", "; place again")}. Nothing was written.`)
   }
-  const written = await writePlacement(ports.root, circuit.file, writes, { author: "ai", summary: placeSummary(scope, placement.positions.size), guard, ...(input.fit ? { fit: { margin: DEFAULT_FIT_MARGIN, ...(ports.hosted ? { build: (files: Record<string, string>, main: string) => buildFilesWith(files, main, ports.engine) } : {}) } } : {}) })
+  const written = await writePlacement(ports.root, circuit.file, writes, { author: "ai", summary: placeSummary(scope, placement.positions.size), guard, ...(input.fit ? { fit: { margin: DEFAULT_FIT_MARGIN } } : {}) })
   const fitError = written.board && "error" in written.board ? [`The board was not fitted: ${written.board.error}`] : []
   const head = written.entry
     ? [placedLine(written.written.length, placement, await buildOf(ports, circuit.file)), `Change ${written.entry.id}; undo_change takes it back.`]

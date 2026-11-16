@@ -130,7 +130,7 @@ describe("with connectors ahead, the bus header of the proof board sits near the
 const MAIN = "main.circuit.tsx"
 
 /**
- * A board like the one in the hosted proof run, rebuilt from its description: a microcontroller, a CAN transceiver,
+ * A board like the one in an earlier proof run, rebuilt from its description: a microcontroller, a CAN transceiver,
  * a 4-pin bus header wired to the transceiver and its split termination, a 3-pin power header wired to a regulator,
  * a crystal with its two load capacitors, and decoupling capacitors.
  */

@@ -1,5 +1,4 @@
 import { WORKER_ENV, workerHeap } from "../engine/worker-env.js"
-import { acquireHeavyRun } from "./heavy-runs.js"
 // Place → Autoplace on the server, in the router's pattern (route-runner.ts): one run at a time, in a worker thread,
 // its progress and its end told through the live events ("place"). The design is built afresh after the content hashes
 // are taken; the placement is written through the core as one history entry by the person (pcbX/pcbY/pcbRotation, in
@@ -7,7 +6,7 @@ import { acquireHeavyRun } from "./heavy-runs.js"
 import { existsSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { lockedPartsAt, withInstanceParts } from "../core/layout-locks.js"
-import { placementWrites, writePlacement, type FilesBuilder } from "../core/placement-write.js"
+import { placementWrites, writePlacement } from "../core/placement-write.js"
 import { resolveCircuit } from "../core/workspace.js"
 import type { Design } from "../engine/design.js"
 import { DEFAULT_FIT_MARGIN, placeBoard, type Placement, type PlaceProgress } from "../engine/pcb-place/index.js"
@@ -61,8 +60,6 @@ export interface PlaceRunnerDeps {
   nextMark(): number
   requestBuild(circuit: string): void
   createWorker: PlaceWorkerFactory | undefined
-  /** Behind the hub: never place in the server process, and fit the board with this engine-worker build. */
-  hosted?: { buildFiles: FilesBuilder }
   /** The hard wall-clock cut of a run in a worker; default PLACE_WORKER_LIMIT_MS. */
   workerLimitMs?: number
 }
@@ -70,8 +67,6 @@ export interface PlaceRunnerDeps {
 /** The longest a placement may take in its worker before the worker is ended: its budget and a minute's grace. */
 export const PLACE_WORKER_LIMIT_MS = STUDIO_PLACE_BUDGET_MS + 60_000
 
-/** The answer when the hosted Studio has no worker threads: it does not fall back to its own thread. */
-export const NO_WORKER_HOSTED = "this needs a worker thread on the hosted service, and none could be started; nothing was changed"
 
 class Cancelled extends Error {}
 class Discarded extends Error {}
@@ -114,9 +109,6 @@ export class PlaceRunner {
   /** Starts placing `file` in `scope` (fitting the board after, with `fit`); answers its project path once under way. */
   async start(file: string, scope: PlaceScope, fit = false): Promise<string> {
     if (this.job) throw new Error(`The board of ${this.job.file} is being placed; cancel it or wait for it to end`)
-    if (this.deps.hosted && !this.deps.createWorker) throw new Error(`Autoplace: ${NO_WORKER_HOSTED}`)
-    // Hosted: one routing-or-placement run per workspace at a time, the agent's included (heavy-runs.ts).
-    const release = this.deps.hosted ? acquireHeavyRun("studio autoplace") : () => undefined
     const job: Job = { file, cancelled: false, committed: false, stop: () => undefined }
     this.job = job
     try {
@@ -129,12 +121,10 @@ export class PlaceRunner {
       const locked = await lockedNames(circuit.path, design)
       this.deps.announce({ file: circuit.file, state: "started", scope, ...(this.deps.createWorker ? {} : { inProcess: true }) })
       void this.run(job, circuit, { scope, fit, start, design, locked }).finally(() => {
-        release()
         if (this.job === job) this.job = undefined
       })
       return circuit.file
     } catch (error) {
-      release()
       this.job = undefined
       throw error
     }
@@ -162,7 +152,7 @@ export class PlaceRunner {
       }
       const nothing = writes.circuit.length + writes.sheets.length + writes.blocks.length === 0 && !fit
       if (nothing) await guard()
-      const written = nothing ? undefined : await writePlacement(this.deps.root, file, writes, { author: "human", summary: placeSummary(scope, placement.positions.size), guard, ...(fit ? { fit: { margin: DEFAULT_FIT_MARGIN, ...(this.deps.hosted ? { build: this.deps.hosted.buildFiles } : {}) } } : {}) })
+      const written = nothing ? undefined : await writePlacement(this.deps.root, file, writes, { author: "human", summary: placeSummary(scope, placement.positions.size), guard, ...(fit ? { fit: { margin: DEFAULT_FIT_MARGIN } } : {}) })
       const mark = written?.entry ? { entryId: written.entry.id, writeMark: this.deps.nextMark() } : {}
       if (written?.entry) this.deps.requestBuild(file)
       const board = written?.board === undefined ? {} : { board: "error" in written.board ? { error: written.board.error } : { width: written.board.width, height: written.board.height } }

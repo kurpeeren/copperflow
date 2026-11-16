@@ -70,8 +70,6 @@ export const COPPER_SUMMARY_DESCRIPTION =
 export interface Ports {
   root: string
   engine?: DesignSource
-  /** Behind the hub: every build of circuit code goes through an engine worker, never this thread. */
-  hosted?: boolean
 }
 
 const mmText = (n: number) => String(Math.round(n * 1e6) / 1e6)

@@ -8,22 +8,11 @@ import { createCopperflowServer, type ServerOptions } from "../src/mcp/server.js
 import { GUIDE_TOPICS } from "../src/mcp/guide.js"
 import { createPartArgs, LDO } from "./fixtures.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
-import { buildDesign, type Design } from "../src/engine/design.js"
-import { placeBoard } from "../src/engine/pcb-place/index.js"
-import type { PlaceScope } from "../src/engine/pcb-place/scope.js"
 
 const DEMO = join(import.meta.dirname, "..", "examples", "usb-c-ldo")
-const FILE = "index.circuit.tsx"
-/**
- * What a client pays to connect, at most: the instructions with the full tools/list result as JSON (41 895 on
- * 2026-11-12, 42 748 once the tools state their limits and guide knows again, 42 872 with autoplace's connectors field; the target of 38 000 is not met, see docs/plans/hosted-1.md)…
- */
-const INSTRUCTIONS_AND_TOOLS_BUDGET = 42_872
-/** …and the first guide answer (SKILL.md). */
-const GUIDE_BUDGET = 16_000
 
 async function demoCopy(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "cf-mcp-hosted-"))
+  const root = await mkdtemp(join(tmpdir(), "cf-mcp-guide-"))
   await cp(DEMO, root, { recursive: true })
   return root
 }
@@ -41,8 +30,6 @@ async function call(client: Client, name: string, args: Record<string, unknown> 
   const content = result.content as Array<{ type: string; text: string }>
   return { text: content.map((c) => c.text).join("\n"), isError: result.isError === true }
 }
-
-
 
 describe("guide", () => {
   let client: Client
@@ -73,48 +60,15 @@ describe("guide", () => {
     expect((read.contents[0] as { text: string }).text).toContain("copperflow")
   })
 
-  test("the hosted server offers no importer, and the tool list carries no schema plumbing", async () => {
-    const hosted = await memoryClient(await demoCopy(), { hosted: true })
-    const names = (await hosted.listTools()).tools.map((t) => t.name)
-    expect(names).not.toContain("import_part")
+  test("the server offers the importer, and the tool list carries no schema plumbing", async () => {
+    const names = (await client.listTools()).tools.map((t) => t.name)
+    expect(names).toContain("import_part")
     expect(names).toContain("create_part")
-    expect((await client.listTools()).tools.map((t) => t.name)).toContain("import_part")
-    const json = JSON.stringify(await hosted.listTools())
+    const json = JSON.stringify(await client.listTools())
     for (const plumbing of ['"$schema"', '"pattern"', '"maxLength"', "9007199254740991", '"taskSupport"']) expect(json).not.toContain(plumbing)
     expect(json).toContain('"destructiveHint":true')
-    const refused = await call(hosted, "import_part", { lcsc: "C7950" })
-    expect(refused.isError).toBe(true)
   })
 
-  test("hosted autoplace fits the board through the engine's worker build, never an in-process one", async () => {
-    const calls: string[] = []
-    const engine = {
-      build: inProcessEngine.build,
-      buildFiles: async (files: Record<string, string>, main: string) => {
-        calls.push(main)
-        return buildDesign(files, main)
-      },
-    }
-    // Run from sources there is no built worker file: the worker path is stood in for by the same placer.
-    const placeHosted = async (request: { design: Design; scope: PlaceScope; locked: string[]; budgetMs: number }) => placeBoard(request.design, { scope: request.scope, locked: request.locked, budgetMs: request.budgetMs })
-    const hosted = await memoryClient(await demoCopy(), { hosted: true, engine, heavyRuns: { placeHosted } })
-    const answer = await call(hosted, "autoplace", { file: FILE, fit: true })
-    expect(answer.isError, answer.text).toBe(false)
-    expect(calls).toEqual([FILE])
-    const local = await memoryClient(await demoCopy(), { engine })
-    await call(local, "autoplace", { file: FILE, fit: true })
-    expect(calls).toEqual([FILE])
-  })
-
-  test("what a hosted client pays to connect: the instructions, tools/list as JSON and the first guide answer", async () => {
-    const hosted = await memoryClient(await demoCopy(), { hosted: true })
-    const instructions = hosted.getInstructions() ?? ""
-    expect(instructions).toContain("call guide")
-    const toolList = JSON.stringify(await hosted.listTools())
-    const first = (await call(hosted, "guide")).text
-    expect(instructions.length + toolList.length).toBeLessThanOrEqual(INSTRUCTIONS_AND_TOOLS_BUDGET)
-    expect(first.length).toBeLessThanOrEqual(GUIDE_BUDGET)
-  })
 })
 
 describe("datasheets", () => {
@@ -148,16 +102,7 @@ describe("datasheets", () => {
     expect((await call(client, "attach_datasheet", { part: "nothing", url: "https://x.example/a.pdf" })).isError).toBe(true)
   })
 
-  test("hosted create_part refuses a chip without a datasheet link unless its description says so; locally unchanged", async () => {
-    const hosted = await memoryClient(await demoCopy(), { hosted: true })
-    const refused = await call(hosted, "create_part", createPartArgs("LDO-X", CHIP))
-    expect(refused.isError).toBe(true)
-    expect(refused.text).toContain('write "Pins NOT from a datasheet" in the description')
-    expect((await call(hosted, "create_part", createPartArgs("LDO-X", LDO))).isError).toBe(false)
-    const honest = { ...CHIP, description: "Pins NOT from a datasheet: copied from the board's silkscreen" }
-    expect((await call(hosted, "create_part", createPartArgs("Other-1", honest))).isError).toBe(false)
-    const small = { ...CHIP, footprint: "0402", pins: { "1": { name: "A", type: "passive" as const }, "2": { name: "B", type: "passive" as const } } }
-    expect((await call(hosted, "create_part", createPartArgs("Small-1", small))).isError).toBe(false)
+  test("create_part takes a chip without a datasheet link", async () => {
     const local = await memoryClient(await demoCopy())
     expect((await call(local, "create_part", createPartArgs("LDO-X", CHIP))).isError).toBe(false)
   })

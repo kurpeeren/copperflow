@@ -10,8 +10,6 @@ export type BuildStatus = "idle" | "building" | "done" | "failed"
 /** Builds one circuit file of a project. The Studio uses the engine; `file` is a path inside `root`. */
 export interface DesignBuilder {
   build(root: string, file: string): Promise<Design>
-  /** Builds from files held in memory (the Engine does it in its worker); the hosted Studio fits boards with it. */
-  buildFiles?(files: Record<string, string>, main: string): Promise<Design>
 }
 
 export interface BuildState {

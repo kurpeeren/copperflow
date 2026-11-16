@@ -54,12 +54,9 @@ import { FOOTPRINT_FILE } from "../core/library.js"
 import { PIN_TYPES } from "../core/pin-types.js"
 import { LayoutBody } from "./layout-schema.js"
 import { LiveProject, type DesignBuilder } from "./live.js"
-import type { Design } from "../engine/design.js"
 import { RouteRunner, routeWorkerFactory, type RouteWorkerFactory } from "./route-runner.js"
 import { PlaceRunner, placeWorkerFactory, type PlaceWorkerFactory } from "./place-runner.js"
 import { fitBoardEdit } from "./fit-board.js"
-import { DEFAULT_MAX_STREAM_MS, gateHosted, normaliseBasePath, normaliseOrigin, type HostedOptions } from "../hosted/gate.js"
-import type { TicketPayload } from "../hosted/ticket.js"
 
 export interface StudioOptions {
   root: string
@@ -80,8 +77,6 @@ export interface StudioOptions {
   placeWorker?: PlaceWorkerFactory | null
   /** Fetches for Library → Import by LCSC number; tests pass one that answers from fixtures. */
   fetch?: typeof fetch
-  /** Runs behind the hosted hub: binds where told, serves under a base path, and takes the hub's ticket for the token. */
-  hosted?: HostedOptions
 }
 
 export interface Studio {
@@ -93,8 +88,6 @@ export interface Studio {
 }
 
 const DEFAULT_PORT = 4777
-/** The meta tag that tells the client it runs behind the hub. */
-export const HOSTED_META = "copperflow-hosted"
 const DEFAULT_MAX_STREAMS = 16
 const MAX_CONNECTIONS = 64
 const REQUEST_TIMEOUT_MS = 15_000
@@ -280,8 +273,7 @@ class HttpError extends Error {
 export async function startStudio(options: StudioOptions): Promise<Studio> {
   const root = resolve(options.root)
   const staticDir = resolve(options.staticDir ?? fileURLToPath(new URL("../app/", import.meta.url)))
-  const hosted = hostedOf(options.hosted)
-  const token = hosted ? "" : randomBytes(24).toString("hex")
+  const token = randomBytes(24).toString("hex")
   const building = builderFor(options.builder)
   const live = new LiveProject(root, building.builder)
   const streams = new Set<ServerResponse>()
@@ -294,7 +286,6 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
     nextMark: () => live.nextMark(),
     requestBuild: (circuit) => live.requestBuild(circuit),
     createWorker: options.routeWorker === null ? undefined : (options.routeWorker ?? (await routeWorkerFactory())),
-    ...(hosted ? { hosted: true } : {}),
   })
   const placer = new PlaceRunner({
     root,
@@ -303,8 +294,6 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
     nextMark: () => live.nextMark(),
     requestBuild: (circuit) => live.requestBuild(circuit),
     createWorker: options.placeWorker === null ? undefined : (options.placeWorker ?? (await placeWorkerFactory())),
-    // Behind the hub the board-fitting build goes to the engine worker too, never this thread.
-    ...(hosted ? { hosted: { buildFiles: hostedFilesBuilder(building.builder) } } : {}),
   })
 
   const server = createServer((req, res) => {
@@ -313,42 +302,18 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
   server.requestTimeout = REQUEST_TIMEOUT_MS
   server.maxConnections = MAX_CONNECTIONS
 
-  /** Behind the hub: the public Host and Origin, the base path and the workspace ticket; the URL with the base removed. */
-  function gateOf(req: IncomingMessage, res: ServerResponse, given: HostedOptions): { url: URL; ticket?: TicketPayload } | undefined {
-    const gate = gateHosted(req.method, req.url, req.headers, given)
-    if (gate.kind === "refuse") throw new HttpError(gate.status, gate.reason)
-    if (gate.kind === "redirect") {
-      res.writeHead(308, { location: gate.location, "cache-control": "no-store", ...SECURITY_HEADERS })
-      res.end()
-      return undefined
-    }
-    return gate.ticket ? { url: gate.url, ticket: gate.ticket } : { url: gate.url }
-  }
-
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    let url: URL
-    /** Behind the hub: when this request's event stream must end (its ticket's expiry or the stream cap), in ms. */
-    let streamEndsAt: number | undefined
-    if (hosted) {
-      const passed = gateOf(req, res, hosted)
-      if (passed === undefined) return
-      // The ticket check and the router read this one URL object; nothing parses the path again.
-      url = passed.url
-      if (passed.ticket) streamEndsAt = Math.min(passed.ticket.exp * 1000, Date.now() + (hosted.maxStreamMs ?? DEFAULT_MAX_STREAM_MS))
-      if (!url.pathname.startsWith("/api/")) return serveStatic(url.pathname, res)
-    } else {
-      const host = req.headers.host
-      if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) throw new HttpError(403, "Unexpected Host header")
-      const origin = req.headers.origin
-      if (origin !== undefined && origin !== `http://127.0.0.1:${port}` && origin !== `http://localhost:${port}`) {
-        throw new HttpError(403, "Cross-origin requests are not allowed")
-      }
-      url = new URL(req.url ?? "/", `http://${host}`)
-      if (!url.pathname.startsWith("/api/")) return serveStatic(url.pathname, res)
-
-      const given = req.headers["x-copperflow-token"]
-      if (typeof given !== "string" || !sameToken(given, token)) throw new HttpError(403, "Missing or wrong session token")
+    const host = req.headers.host
+    if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) throw new HttpError(403, "Unexpected Host header")
+    const origin = req.headers.origin
+    if (origin !== undefined && origin !== `http://127.0.0.1:${port}` && origin !== `http://localhost:${port}`) {
+      throw new HttpError(403, "Cross-origin requests are not allowed")
     }
+    const url = new URL(req.url ?? "/", `http://${host}`)
+    if (!url.pathname.startsWith("/api/")) return serveStatic(url.pathname, res)
+
+    const given = req.headers["x-copperflow-token"]
+    if (typeof given !== "string" || !sameToken(given, token)) throw new HttpError(403, "Missing or wrong session token")
 
     /** Builds the circuit a history entry's file belongs to, when there is one. */
     const rebuild = (file: string) => {
@@ -366,7 +331,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
     }
     switch (route) {
       case "GET /api/events":
-        return openEvents(res, streamEndsAt)
+        return openEvents(res)
       case "GET /api/circuits":
         return send(res, await listCircuits(root))
       case "GET /api/sheets":
@@ -592,11 +557,10 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
     const type = TYPES[extname(path)] ?? "application/octet-stream"
     res.writeHead(200, { "content-type": type, "cache-control": "no-store", ...SECURITY_HEADERS })
     const content = await readFile(path)
-    // Behind the hub the page says so, and the client takes no fragment token and builds its API paths from the base.
-    res.end(hosted && relative === "index.html" ? markHosted(content.toString("utf8")) : content)
+    res.end(content)
   }
 
-  function openEvents(res: ServerResponse, endsAt?: number): void {
+  function openEvents(res: ServerResponse): void {
     if (streams.size >= maxStreams) throw new HttpError(429, "Too many open event streams")
     res.writeHead(200, {
       "content-type": "text/event-stream",
@@ -608,11 +572,8 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
     streams.add(res)
     const unsubscribe = live.subscribe((event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
     const heartbeat = setInterval(() => res.write(": ping\n\n"), HEARTBEAT_MS)
-    // Behind the hub the stream ends with its ticket; the client reconnects through the hub with a fresh one.
-    const expiry = endsAt === undefined ? undefined : setTimeout(() => res.end(), Math.max(0, endsAt - Date.now()))
     res.on("close", () => {
       clearInterval(heartbeat)
-      if (expiry !== undefined) clearTimeout(expiry)
       unsubscribe()
       streams.delete(res)
     })
@@ -620,7 +581,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
 
   await new Promise<void>((done, fail) => {
     server.once("error", fail)
-    server.listen(options.port ?? DEFAULT_PORT, hosted?.bind ?? "127.0.0.1", () => done())
+    server.listen(options.port ?? DEFAULT_PORT, "127.0.0.1", () => done())
   }).catch(async (error: unknown) => {
     await building.stop()
     throw error
@@ -630,10 +591,9 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
   live.start()
 
   return {
-    url: hosted ? `http://${hostForUrl(hosted.bind)}:${port}` : `http://127.0.0.1:${port}`,
+    url: `http://127.0.0.1:${port}`,
     token,
-    // Behind the hub the person opens the public address; the hub's session and ticket stand for the token.
-    openUrl: hosted ? `${hosted.publicOrigin}${hosted.basePath}/` : `http://127.0.0.1:${port}/#token=${token}`,
+    openUrl: `http://127.0.0.1:${port}/#token=${token}`,
     close: async () => {
       router.cancel()
       placer.cancel()
@@ -644,32 +604,6 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       await new Promise<void>((done) => server.close(() => done()))
     },
   }
-}
-
-/** The hosted options in one form, checked before anything listens. */
-function hostedOf(given: HostedOptions | undefined): HostedOptions | undefined {
-  if (given === undefined) return undefined
-  if (given.workspaceId === "") throw new Error("A hosted Studio needs a workspace id")
-  if (given.ticketPublicKey.type !== "public" || given.ticketPublicKey.asymmetricKeyType !== "ed25519") throw new Error("A hosted Studio needs the hub's Ed25519 public key")
-  return { ...given, publicOrigin: normaliseOrigin(given.publicOrigin), basePath: normaliseBasePath(given.basePath) }
-}
-
-/** The builder's in-memory build, or a refusal: a hosted Studio never builds circuit code in its own thread. */
-function hostedFilesBuilder(builder: DesignBuilder): (files: Record<string, string>, main: string) => Promise<Design> {
-  return (files, main) => {
-    if (!builder.buildFiles) return Promise.reject(new Error("Fitting the board needs the engine worker on the hosted service; nothing was fitted"))
-    return builder.buildFiles(files, main)
-  }
-}
-
-/** The app's page with the hosted marker the client reads (studio/src/api.ts). */
-function markHosted(html: string): string {
-  return html.replace(/<head>/i, `<head><meta name="${HOSTED_META}" content="1">`)
-}
-
-/** An address as it goes in a URL: IPv6 in brackets. */
-function hostForUrl(address: string): string {
-  return address.includes(":") ? `[${address}]` : address
 }
 
 /** The layout file a request names: itself, or the one beside a circuit file. */

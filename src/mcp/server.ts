@@ -1,7 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js"
 import { z } from "zod"
-import type { placeHosted, routeHosted } from "../studio/heavy-runs.js"
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import YAML from "yaml"
@@ -51,11 +50,11 @@ import { NEW_CIRCUIT_DESCRIPTION, newCircuit, newCircuitInput } from "./new-circ
 import { fileURLToPath } from "node:url"
 import { compactToolList } from "./compact-tool-list.js"
 import { createGuideMemory, GUIDE_DESCRIPTION, guideInSession, guideInput, skillResources } from "./guide.js"
-import { ATTACH_DATASHEET_DESCRIPTION, attachDatasheetInput, attachDatasheetTool, checkDatasheetRule } from "./datasheet-tools.js"
+import { ATTACH_DATASHEET_DESCRIPTION, attachDatasheetInput, attachDatasheetTool } from "./datasheet-tools.js"
 
-/** The opening line and the rules that hold wherever the server runs; the hub (hub/hub-catalog.ts) puts its own start order between them. */
-export const INSTRUCTIONS_INTRO = "copperflow lets you design circuit boards (*.circuit.tsx files) together with a human, who edits the same files in the Studio."
-export const INSTRUCTIONS_RULES = `- Change circuit files through these tools wherever one does the change: each call is one history entry the human can undo, and the tools enforce locks. Write code by hand only for what no tool writes.
+/** The opening line and the rules that hold wherever the server runs. */
+const INSTRUCTIONS_INTRO = "copperflow lets you design circuit boards (*.circuit.tsx files) together with a human, who edits the same files in the Studio."
+const INSTRUCTIONS_RULES = `- Change circuit files through these tools wherever one does the change: each call is one history entry the human can undo, and the tools enforce locks. Write code by hand only for what no tool writes.
 - Never change, move or remove anything marked [LOCKED]; if a summary lists lock violations, restore those parts. "Marks from the human" are instructions; follow them. Do not redo a change the human undid.
 - There is no tool to unlock a part or verify a library part: only the human does that.`
 
@@ -73,10 +72,6 @@ export interface ServerOptions {
   engine?: DesignSource
   /** Fetches for import_part; tests pass one that answers from fixtures. */
   fetch?: typeof fetch
-  /** Behind the hosted hub: create_part refuses a chip without a datasheet link, and import_part is not offered. */
-  hosted?: boolean
-  /** Hosted autoroute and autoplace run in workers (studio/heavy-runs.ts); tests, run from sources, swap the worker path. */
-  heavyRuns?: { routeHosted?: typeof routeHosted; placeHosted?: typeof placeHosted }
 }
 
 export function createCopperflowServer(root: string, options: ServerOptions = {}): McpServer {
@@ -184,7 +179,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
       run(async () => formatCompactCheck(circuit, await checkCircuit(root, circuit, designOptions), filter)),
   )
 
-  const ports = { root, ...(options.engine ? { engine: options.engine } : {}), ...(options.hosted ? { hosted: true } : {}) }
+  const ports = { root, ...(options.engine ? { engine: options.engine } : {}) }
   server.registerTool(
     "route_track",
     { description: copper.ROUTE_TRACK_DESCRIPTION, inputSchema: copper.routeTrackInput },
@@ -206,9 +201,9 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     { description: fillet.STRAIGHTEN_TRACKS_DESCRIPTION, inputSchema: fillet.straightenTracksInput },
     (input) => run(() => fillet.straightenTracks(ports, input)),
   )
-  server.registerTool("autoplace", { description: placer.AUTOPLACE_DESCRIPTION, inputSchema: placer.autoplaceInput }, (input) => run(() => placer.autoplace(ports, input, options.heavyRuns?.placeHosted ? { placeHosted: options.heavyRuns.placeHosted } : {})))
+  server.registerTool("autoplace", { description: placer.AUTOPLACE_DESCRIPTION, inputSchema: placer.autoplaceInput }, (input) => run(() => placer.autoplace(ports, input)))
   server.registerTool("fit_board", { description: placer.FIT_BOARD_DESCRIPTION, inputSchema: placer.fitBoardInput }, (input) => run(() => placer.fitBoardTool(ports, input)))
-  server.registerTool("autoroute", { description: router.AUTOROUTE_DESCRIPTION, inputSchema: router.autorouteInput }, (input) => run(() => router.autoroute(ports, input, options.heavyRuns?.routeHosted ? { routeHosted: options.heavyRuns.routeHosted } : {})))
+  server.registerTool("autoroute", { description: router.AUTOROUTE_DESCRIPTION, inputSchema: router.autorouteInput }, (input) => run(() => router.autoroute(ports, input)))
   server.registerTool(
     "unroute",
     { description: router.UNROUTE_DESCRIPTION, inputSchema: router.unrouteInput, annotations: { destructiveHint: true } },
@@ -331,14 +326,9 @@ Nothing was written.`)
       }),
   )
 
-  server.registerTool("create_part", { description: CREATE_PART_DESCRIPTION, inputSchema: createPartInput }, (input) =>
-    run(async () => {
-      if (options.hosted) checkDatasheetRule(input)
-      return createPartTool(root, input)
-    }),
-  )
+  server.registerTool("create_part", { description: CREATE_PART_DESCRIPTION, inputSchema: createPartInput }, (input) => run(() => createPartTool(root, input)))
   server.registerTool("attach_datasheet", { description: ATTACH_DATASHEET_DESCRIPTION, inputSchema: attachDatasheetInput }, (input) => run(() => attachDatasheetTool(root, input)))
-  // One server is one MCP session (stdio: the process; hosted: makeServer per session), so this memory is the session's.
+  // One server is one MCP session (stdio: the process), so this memory is the session's.
   const guideSeen = createGuideMemory()
   server.registerTool("guide", { description: GUIDE_DESCRIPTION, inputSchema: guideInput, annotations: READ_ONLY }, (input) => run(() => guideInSession(guideSeen, input)))
   for (const resource of skillResources()) {
@@ -347,9 +337,7 @@ Nothing was written.`)
     }))
   }
 
-  // The importer is off behind the hub (docs/licences.md: personal use on the person's own machine); there create_part
-  // with a datasheet takes its place.
-  if (!options.hosted) server.registerTool("import_part",{ description: IMPORT_PART_DESCRIPTION, inputSchema: importPartInput, annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true } }, (input) => run(() => importPart(root, input, options.fetch)))
+  server.registerTool("import_part", { description: IMPORT_PART_DESCRIPTION, inputSchema: importPartInput, annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true } }, (input) => run(() => importPart(root, input, options.fetch)))
 
   server.registerTool(
     "place_part",

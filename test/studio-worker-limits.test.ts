@@ -47,7 +47,7 @@ describe("the wall-clock cut of Studio runs in a worker", () => {
     const { root, build } = await project()
     const workers = stuckWorkers()
     const events: { state: string; error?: string }[] = []
-    const runner = new RouteRunner({ root, build, announce: (event) => events.push(event), nextMark: () => 1, requestBuild: () => undefined, createWorker: workers.factory as never, hosted: true, workerLimitMs: 100 })
+    const runner = new RouteRunner({ root, build, announce: (event) => events.push(event), nextMark: () => 1, requestBuild: () => undefined, createWorker: workers.factory as never, workerLimitMs: 100 })
     await runner.start("main.circuit.tsx", { kind: "all" })
     await vi.waitFor(() => expect(events.at(-1)?.state).toBe("failed"), { timeout: 5000 })
     expect(events.at(-1)?.error).toMatch(/router took longer than 0 s and was stopped/)

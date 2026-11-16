@@ -93,6 +93,11 @@ describe("security", () => {
     expect(await rawGet("/api/circuits", token)).toBe(200)
   })
 
+  test("x-forwarded-host is not honoured", async () => {
+    const { port } = new URL(studio.url)
+    expect(await rawGet("/api/circuits", { host: "copperflow.example.test", "x-forwarded-host": `127.0.0.1:${port}`, "x-copperflow-token": studio.token })).toBe(403)
+  })
+
   test("the event stream takes the token only as a header", async () => {
     expect((await reach(`${studio.url}/api/events?token=${studio.token}`)).status).toBe(403)
   })

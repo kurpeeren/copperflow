@@ -100,24 +100,8 @@ function readToken(): string {
   }
 }
 
-/**
- * The path the Studio is served under: "" locally (the app sits at "/"), "/p/<project>" behind the hosted hub. Every
- * API path is joined to it, so the same build works at both places.
- */
-export function basePathOf(pathname: string): string {
-  return pathname.replace(/\/[^/]*$/, "")
-}
-
-/**
- * Behind the hub the server marks the page with a meta tag; then the session is the hub's cookie, the hub adds the
- * workspace ticket, and no fragment token is used. Locally the app is at "/" and the API at "/api/".
- */
-const hosted = document.querySelector('meta[name="copperflow-hosted"]') !== null
-const basePath = hosted ? basePathOf(window.location.pathname) : ""
-const token = hosted ? "" : readToken()
-export const hasToken = hosted || token !== ""
-/** The headers of every API request: the session token locally, none behind the hub. */
-const authHeaders: Record<string, string> = hosted ? {} : { "x-copperflow-token": token }
+const token = readToken()
+export const hasToken = token !== ""
 
 // Pasting the printed address into an open tab only changes the fragment, which does not reload.
 window.addEventListener("hashchange", () => {
@@ -125,9 +109,9 @@ window.addEventListener("hashchange", () => {
 })
 
 export async function api<T>(path: string, body?: unknown): Promise<T> {
-  const response = await fetch(basePath + path, {
+  const response = await fetch(path, {
     method: body === undefined ? "GET" : "POST",
-    headers: { ...authHeaders, "content-type": "application/json" },
+    headers: { "x-copperflow-token": token, "content-type": "application/json" },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
   const json = (await response.json()) as { ok: boolean; data: T; error?: string }
@@ -155,7 +139,7 @@ export function subscribe(onEvent: (event: ServerEvent, file: string, data: Reco
   const listen = async () => {
     while (!controller.signal.aborted) {
       try {
-        const response = await fetch(`${basePath}/api/events`, { headers: authHeaders, signal: controller.signal })
+        const response = await fetch("/api/events", { headers: { "x-copperflow-token": token }, signal: controller.signal })
         if (!response.ok || !response.body) throw new Error(`Event stream failed (${response.status})`)
         const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
         let buffer = ""
