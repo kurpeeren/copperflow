@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Connect your agent to copperflow</title>
+    <meta
+      name="description"
+      content="How to connect Claude Code, Claude Desktop, Cursor, VS Code, Codex or Gemini to copperflow over MCP, install the copperflow skill, and check that it works."
+    />
+    <link rel="canonical" href="https://copperflow.kurpeeren.com/connect.html" />
+    <link rel="preload" href="fonts/ibm-plex-sans-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="site.css" />
+    <script src="site.js" defer></script>
+  </head>
+  <body>
+    <header class="top">
+      <a class="wordmark" href="/">copperflow</a>
+      <nav aria-label="Site">
+        <a href="/#start">Start</a>
+        <a href="connect.html" aria-current="page">Connect</a>
+        <a href="https://github.com/kurpeeren/copperflow">Source</a>
+      </nav>
+    </header>
+
+    <main class="guide">
+      <section class="hero">
+        <h1>Connect your agent</h1>
+        <p class="lead">
+          An agent needs two things to design with copperflow: the tools, which come from copperflow's MCP server,
+          and the way of working, which comes from the copperflow skill. Both are in the package you installed.
+        </p>
+        <nav class="toc" aria-label="On this page">
+          <ul>
+            <li><a href="#before">Before you start</a></li>
+            <li><a href="#claude-code">Claude Code</a></li>
+            <li><a href="#claude-desktop">Claude Desktop</a></li>
+            <li><a href="#cursor">Cursor</a></li>
+            <li><a href="#vscode">VS Code</a></li>
+            <li><a href="#codex">Codex</a></li>
+            <li><a href="#gemini">Gemini CLI</a></li>
+            <li><a href="#other">Any other agent</a></li>
+            <li><a href="#skill">The skill</a></li>
+            <li><a href="#check">Check that it works</a></li>
+            <li><a href="#trouble">If it does not connect</a></li>
+          </ul>
+        </nav>
+      </section>
+
+      <section id="before" aria-labelledby="before-title">
+        <h2 id="before-title">Before you start</h2>
+        <p>Install copperflow (it needs Node.js 22 or newer) and make a folder for your board.</p>
+        <div class="command" data-copy>
+          <pre><code><span class="prompt" aria-hidden="true">$ </span>npm install -g copperflow
+<span class="prompt" aria-hidden="true">$ </span>mkdir my-board
+<span class="prompt" aria-hidden="true">$ </span>cd my-board</code></pre>
+          <button type="button">Copy</button>
+        </div>
+        <p>
+          The MCP server is the command <code>copperflow mcp</code>. Your agent starts it and talks to it; you never
+          run it yourself. It works on one project folder: the folder it is started in, or the one you name with
+          <code>--root</code>.
+        </p>
+        <p>
+          We have tested these steps with Claude Code. The entries for the other agents follow each program's own
+          documentation for local MCP servers; if one does not work for you, please open an issue.
+        </p>
+      </section>
+
+      <section id="claude-code" aria-labelledby="claude-code-title">
+        <h2 id="claude-code-title">Claude Code</h2>
+        <p>In the board's folder, add the server and install the skill:</p>
+        <div class="command" data-copy>
+          <pre><code><span class="prompt" aria-hidden="true">$ </span>claude mcp add copperflow -- copperflow mcp
+<span class="prompt" aria-hidden="true">$ </span>copperflow skill</code></pre>
+          <button type="button">Copy</button>
+        </div>
+        <p>Then check the connection:</p>
+        <div class="command" data-copy>
+          <pre><code><span class="prompt" aria-hidden="true">$ </span>claude mcp list</code></pre>
+          <button type="button">Copy</button>
+        </div>
+        <p>
+          The line for copperflow ends with <code>Connected</code>. Start a new session in the folder so Claude Code
+          picks up the server and the skill.
+        </p>
+      </section>
+
+      <section id="claude-desktop" aria-labelledby="claude-desktop-title">
+        <h2 id="claude-desktop-title">Claude Desktop</h2>
+        <p>
+          Open Settings, then Developer, then Edit Config. Add copperflow to the file it opens, with the full path of
+          your board's folder, and restart the app.
+        </p>
+        <div class="command" data-copy>
+          <pre><code>{
+  "mcpServers": {
+    "copperflow": {
+      "command": "copperflow",
+      "args": ["mcp", "--root", "/full/path/to/my-board"]
+    }
+  }
+}</code></pre>
+          <button type="button">Copy</button>
+        </div>
+      </section>
+
+      <section id="cursor" aria-labelledby="cursor-title">
+        <h2 id="cursor-title">Cursor</h2>
+        <p>Create <code>.cursor/mcp.json</code> in the board's folder and open that folder in Cursor.</p>
+        <div class="command" data-copy>
+          <pre><code>{
+  "mcpServers": {
+    "copperflow": {
+      "command": "copperflow",
+      "args": ["mcp", "--root", "/full/path/to/my-board"]
+    }
+  }
+}</code></pre>
+          <button type="button">Copy</button>
+        </div>
+      </section>
+
+      <section id="vscode" aria-labelledby="vscode-title">
+        <h2 id="vscode-title">VS Code</h2>
+        <p>
+          Create <code>.vscode/mcp.json</code> in the board's folder, open the folder, and use Copilot Chat in agent
+          mode.
+        </p>
+        <div class="command" data-copy>
+          <pre><code>{
+  "servers": {
+    "copperflow": {
+      "type": "stdio",
+      "command": "copperflow",
+      "args": ["mcp", "--root", "${workspaceFolder}"]
+    }
+  }
+}</code></pre>
+          <button type="button">Copy</button>
+        </div>
+      </section>
+
+      <section id="codex" aria-labelledby="codex-title">
+        <h2 id="codex-title">Codex</h2>
+        <p>Add copperflow to <code>~/.codex/config.toml</code>:</p>
+        <div class="command" data-copy>
+          <pre><code>[mcp_servers.copperflow]
+command = "copperflow"
+args = ["mcp", "--root", "/full/path/to/my-board"]</code></pre>
+          <button type="button">Copy</button>
+        </div>
+      </section>
+
+      <section id="gemini" aria-labelledby="gemini-title">
+        <h2 id="gemini-title">Gemini CLI</h2>
+        <p>Create <code>.gemini/settings.json</code> in the board's folder and start Gemini CLI there.</p>
+        <div class="command" data-copy>
+          <pre><code>{
+  "mcpServers": {
+    "copperflow": {
+      "command": "copperflow",
+      "args": ["mcp", "--root", "/full/path/to/my-board"]
+    }
+  }
+}</code></pre>
+          <button type="button">Copy</button>
+        </div>
+      </section>
+
+      <section id="other" aria-labelledby="other-title">
+        <h2 id="other-title">Any other agent</h2>
+        <p>
+          Any program that can start a local MCP server over standard input and output can use copperflow. Give it
+          this command, with your board's folder:
+        </p>
+        <div class="command" data-copy>
+          <pre><code>copperflow mcp --root /full/path/to/my-board</code></pre>
+          <button type="button">Copy</button>
+        </div>
+        <p>
+          Agents that run only in a web browser cannot start a program on your computer, so they cannot connect.
+          Use a desktop or terminal agent.
+        </p>
+      </section>
+
+      <section id="skill" aria-labelledby="skill-title">
+        <h2 id="skill-title">The skill</h2>
+        <p>
+          The skill is a short guide written for agents: which tool to call at each step of a design, what its answer
+          looks like, how to respect your locks and notes, and reference pages on parts, copper and design rules.
+        </p>
+        <dl class="pairs">
+          <div>
+            <dt>Agents with skills</dt>
+            <dd>
+              Run <code>copperflow skill</code> in the board's folder. It copies the skill to
+              <code>.claude/skills/copperflow</code>, where Claude Code finds it. Add <code>--global</code> to
+              install it once for every project instead.
+            </dd>
+          </div>
+          <div>
+            <dt>Agents without skills</dt>
+            <dd>
+              Nothing to install. The server tells the agent to call its <code>guide</code> tool, which answers with
+              the same text. The agent reads it once at the start of a session.
+            </dd>
+          </div>
+        </dl>
+      </section>
+
+      <section id="check" aria-labelledby="check-title">
+        <h2 id="check-title">Check that it works</h2>
+        <p>In a new session, ask your agent:</p>
+        <blockquote>Call copperflow's project_status and tell me what it says.</blockquote>
+        <p>In an empty folder the answer is:</p>
+        <div class="command">
+          <pre><code>No PROJECT.md yet: write the Intent and Blocks with set_project.
+Circuits: none yet (new_circuit starts one)</code></pre>
+        </div>
+        <p>Now open the editor in a second terminal, in the same folder, and ask for a board.</p>
+        <div class="command" data-copy>
+          <pre><code><span class="prompt" aria-hidden="true">$ </span>copperflow studio</code></pre>
+          <button type="button">Copy</button>
+        </div>
+        <blockquote>
+          Design a CAN bus node: an MCP2515 controller, a TJA1051 transceiver, an 8 MHz crystal, one header for SPI
+          and one for the bus. Two layers, as small as it routes.
+        </blockquote>
+        <p>
+          For a chip that is not in the parts library, the agent finds and reads the datasheet with its own web
+          access and writes the part from it. copperflow records the link and the page, and marks the part as
+          unverified until you have checked it yourself.
+        </p>
+      </section>
+
+      <section id="trouble" aria-labelledby="trouble-title">
+        <h2 id="trouble-title">If it does not connect</h2>
+        <dl class="pairs">
+          <div>
+            <dt>The agent cannot start copperflow</dt>
+            <dd>
+              Run <code>copperflow --help</code> in a terminal. If the command is not found, install it again with
+              <code>npm install -g copperflow</code> and open a new terminal.
+            </dd>
+          </div>
+          <div>
+            <dt>It starts in a terminal but not from the agent, on Windows</dt>
+            <dd>
+              Some programs cannot start a command installed by npm directly. Use <code>cmd</code> as the command and
+              <code>"/c", "copperflow", "mcp", "--root", "C:\\path\\to\\my-board"</code> as the arguments.
+            </dd>
+          </div>
+          <div>
+            <dt>It reports an old Node.js</dt>
+            <dd><code>node --version</code> must print 22 or newer.</dd>
+          </div>
+          <div>
+            <dt>The agent sees no circuits, or the wrong ones</dt>
+            <dd>
+              The server is working on another folder. Name the board's folder with <code>--root</code>, as in the
+              examples above.
+            </dd>
+          </div>
+        </dl>
+      </section>
+    </main>
+
+    <footer>
+      <dl class="titleblock" aria-label="About this page">
+        <div class="wide">
+          <dt>Title</dt>
+          <dd>Connect your agent</dd>
+        </div>
+        <div>
+          <dt>Rev</dt>
+          <dd>0.3.0</dd>
+        </div>
+        <div>
+          <dt>Licence</dt>
+          <dd>Apache 2.0</dd>
+        </div>
+        <div class="wider">
+          <dt>Source</dt>
+          <dd><a href="https://github.com/kurpeeren/copperflow">github.com/kurpeeren/copperflow</a></dd>
+        </div>
+        <div class="last">
+          <dt>Sheet</dt>
+          <dd>2 of 2</dd>
+        </div>
+      </dl>
+    </footer>
+  </body>
+</html>
