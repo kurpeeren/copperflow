@@ -1,3 +1,4 @@
+import type { Design } from "../engine/design.js"
 import type { Diagnostic, Severity, SheetInstance } from "../engine/model.js"
 import type { Violation } from "../engine/index.js"
 import { unroutedPlaces } from "../engine/pad-text.js"
@@ -48,7 +49,11 @@ interface Issue {
  */
 export async function checkCircuit(root: string, file: string, options: CheckOptions = {}): Promise<CheckResult> {
   const circuit = await resolveCircuit(root, file)
-  const design = await buildWith(root, circuit.file, options.engine)
+  return checkDesign(await buildWith(root, circuit.file, options.engine))
+}
+
+/** The check of a design that is already built, as checkCircuit reports it. */
+export function checkDesign(design: Design): CheckResult {
   const issues = [...design.violations.map(fromViolation), ...design.diagnostics.map(fromDiagnostic)]
   const errors = groupIssues(issues, "error")
   return {
@@ -61,6 +66,12 @@ export async function checkCircuit(root: string, file: string, options: CheckOpt
     names: [...(design.circuit?.components ?? []).map((c) => c.id), ...(design.circuit?.nets ?? []).flatMap((n) => n.names)],
     unrouted: design.pcb === undefined ? [] : unroutedPlaces(design.pcb),
   }
+}
+
+/** How many errors and warnings a check found, each group's findings added up. */
+export function checkCounts(result: Pick<CheckResult, "errors" | "warnings">): { errors: number; warnings: number } {
+  const total = (groups: readonly IssueGroup[]) => groups.reduce((sum, g) => sum + g.count, 0)
+  return { errors: total(result.errors), warnings: total(result.warnings) }
 }
 
 export function formatCheck(file: string, result: CheckResult): string {

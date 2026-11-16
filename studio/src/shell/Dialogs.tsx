@@ -17,7 +17,7 @@ import { FILLET_RADIUS_LABEL, FILLET_RADIUS_NOTE, filletRadiusField, readFilletR
 // after a failed load.
 const newPartForm = lazyRetrying(() => import("./NewPartDialog").then((module) => module.NewPartForm))
 
-export type DialogName = "keys" | "about" | "rules" | "makeSheet" | "importPart" | "newPart" | "system" | "newCircuit" | "footprints"
+export type DialogName = "keys" | "about" | "rules" | "makeSheet" | "importPart" | "newPart" | "system" | "newCircuit" | "footprints" | "exportChecks"
 
 /** What Design → Design rules shows and writes: the rules the build read, and the save of a new fillet radius. */
 export interface RulesPanel {
@@ -45,7 +45,8 @@ function Dialog({ title, onClose, children, wide = false }: { title: string; onC
   // Focus moves into the dialog on open and goes back to what had it on close.
   useEffect(() => {
     const before = document.activeElement
-    const first = box.current?.querySelector<HTMLElement>(FOCUSABLE)
+    // A form can name its default control with data-default; else the first control (the Close button) takes the focus.
+    const first = box.current?.querySelector<HTMLElement>("[data-default]") ?? box.current?.querySelector<HTMLElement>(FOCUSABLE)
     ;(first ?? box.current)?.focus()
     return () => {
       if (before instanceof HTMLElement && before.isConnected) before.focus()
@@ -108,8 +109,41 @@ function RulesForm({ rules, onClose }: { rules: RulesPanel; onClose(): void }) {
   )
 }
 
+/** What Export → Fabrication files asks when the checks report errors: look at them (the default), or export anyway. */
+export interface ExportChecksPanel {
+  question: string
+  showChecks(): void
+  exportAnyway(): void
+}
+
+function ExportChecksForm({ panel, onClose }: { panel: ExportChecksPanel; onClose(): void }) {
+  const done = (step: () => void) => () => {
+    onClose()
+    step()
+  }
+  // Show checks is the default: it has the focus when the dialog opens, so Enter takes it.
+  return (
+    <div className="rules-form">
+      <p>{panel.question}</p>
+      <button type="button" data-default onClick={done(panel.showChecks)}>
+        Show checks
+      </button>
+      <button type="button" onClick={done(panel.exportAnyway)}>
+        Export anyway
+      </button>
+    </div>
+  )
+}
+
 /** Help → Keys, Help → About, Design → Design rules, Edit → Make sub-sheet, Library → Import by LCSC number and Library → New part. */
-export function StudioDialog({ name, onClose, rules, makeSheet, importPart, newPart, system, newCircuit, footprints }: { name: DialogName; onClose(): void; rules: RulesPanel; makeSheet: MakeSheetPanel; importPart: ImportPartPanel; newPart: NewPartPanel; system: SystemPanel; newCircuit: NewCircuitPanel; footprints: FootprintPanel }) {
+export function StudioDialog({ name, onClose, rules, makeSheet, importPart, newPart, system, newCircuit, footprints, exportChecks }: { name: DialogName; onClose(): void; rules: RulesPanel; makeSheet: MakeSheetPanel; importPart: ImportPartPanel; newPart: NewPartPanel; system: SystemPanel; newCircuit: NewCircuitPanel; footprints: FootprintPanel; exportChecks: ExportChecksPanel }) {
+  if (name === "exportChecks") {
+    return (
+      <Dialog title="Fabrication files" onClose={onClose}>
+        <ExportChecksForm panel={exportChecks} onClose={onClose} />
+      </Dialog>
+    )
+  }
   if (name === "footprints") {
     return (
       <Dialog title="Footprint manager" onClose={onClose} wide>

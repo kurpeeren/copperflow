@@ -4,7 +4,8 @@
 import { useCallback, useEffect, useState } from "react"
 import { api, type BomLine, type CircuitData, type FabricationExport } from "../api"
 import { bomCsv, bomFileName } from "./bom-csv"
-import { fabricationNote } from "./fabrication-note"
+import { exportAsks, fabricationNote } from "./fabrication-note"
+import type { CheckCounts } from "../../../src/core/checks-line.js"
 import type { Actions } from "../App"
 import { keyAction, keyInput, type KeyActionName } from "../pcb/canvas-keys"
 import { copperLock, type CopperRecords } from "../pcb/copper-edits"
@@ -75,6 +76,8 @@ interface Input {
   copperRecords: CopperRecords | undefined
   workspace: WorkspaceCommands
   openChecks(): void
+  /** The DRC tab's counts: Export → Fabrication files asks first when they have errors. */
+  checkCounts: CheckCounts
   /** Opens the find box and focuses its field, or selects the text of the field when the box is open. */
   openFind(): void
   openDialog(name: DialogName): void
@@ -136,8 +139,15 @@ function printDesign(input: Input, pdf: boolean): void {
   actions.notify(pdf ? `Choose "Save as PDF" in the print dialog to save ${name}.pdf (${sheets.length} sheets)` : `Printing ${sheets.length} sheets`)
 }
 
-/** Export → Fabrication files (JLCPCB): written beside the circuit by the server; the note says where, or why not. */
-function exportFabrication(file: string | undefined, actions: Actions): void {
+/** Export → Fabrication files (JLCPCB): asks first when the checks report errors, else writes the files. */
+function exportFabrication(input: Input): void {
+  if (!input.file) return
+  if (exportAsks(input.checkCounts)) return input.openDialog("exportChecks")
+  writeFabricationFiles(input.file, input.actions)
+}
+
+/** Writes the fabrication files beside the circuit through the server; the note says where, or why not. */
+export function writeFabricationFiles(file: string | undefined, actions: Pick<Actions, "notify">): void {
   if (!file) return
   actions.notify("Writing the fabrication files…")
   api<FabricationExport>("/api/export", { file })
@@ -230,7 +240,7 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     openFile: input.workspace.openPageTree,
     exportBom: () => exportBom(input.file, input.actions),
     exportPackage: () => exportPackage(input.file, input.actions),
-    exportFabrication: () => exportFabrication(input.file, input.actions),
+    exportFabrication: () => exportFabrication(input),
     undo: () => void input.actions.undo(),
     redo: () => void input.actions.redo(),
     // Every part of the circuit that may be picked (both views show the same parts, and the circuit is there before a
@@ -305,7 +315,7 @@ function useAppKeys(runCommand: (command: CommandId) => void, view: View): void 
 /** Returns the function the menu bar and toolbar call; it changes only when what the commands read changes. */
 export function useAppCommands(input: Input): (command: CommandId) => void {
   const [waiting, setWaiting] = useState<{ command: CommandId; view: View } | null>(null)
-  const { file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, openChecks, openFind, openDialog, design, page, openPage, highlight } = input
+  const { file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, openChecks, checkCounts, openFind, openDialog, design, page, openPage, highlight } = input
   // The workspace object is new on every render, but its functions are stable.
   const { run, openBottom, openPageTree, setTheme, toggleHoverLabels, setPourFill } = input.workspace
   // A command waiting for its view runs once that view's canvas has mounted and subscribed.
@@ -319,7 +329,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
   }, [waiting, view, actions])
   const runCommand = useCallback(
     (command: CommandId) => {
-      const own = appCommand({ file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, workspace: { run, openBottom, openPageTree, setTheme, toggleHoverLabels, setPourFill }, openChecks, openFind, openDialog, design, page, openPage, highlight }, command)
+      const own = appCommand({ file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, workspace: { run, openBottom, openPageTree, setTheme, toggleHoverLabels, setPourFill }, openChecks, checkCounts, openFind, openDialog, design, page, openPage, highlight }, command)
       if (own) return own()
       const only = viewOf(command)
       if (only && view !== only) {
@@ -329,7 +339,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
       }
       if (!send(command)) actions.notify("Wait for the build to finish, then try again.")
     },
-    [file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, run, openBottom, openPageTree, setTheme, toggleHoverLabels, setPourFill, openChecks, openFind, openDialog, design, page, openPage, highlight],
+    [file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, run, openBottom, openPageTree, setTheme, toggleHoverLabels, setPourFill, openChecks, checkCounts, openFind, openDialog, design, page, openPage, highlight],
   )
   useAppKeys(runCommand, view)
   return runCommand

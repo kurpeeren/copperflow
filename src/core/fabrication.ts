@@ -7,6 +7,10 @@ import type { Design } from "../engine/design.js"
 import { fabricationSet, writeFabrication } from "../engine/fab/export.js"
 import { uploadStep } from "../engine/fab/names.js"
 import { buildBom } from "./bom.js"
+import { checkCounts, checkDesign } from "./check.js"
+import { checksLine, type CheckCounts } from "./checks-line.js"
+
+export { checksLine, type CheckCounts }
 import { buildWith, type DesignSource } from "./design-source.js"
 import { inProjectQueue, isInside } from "./file-writes.js"
 import { resolveCircuit, resolveInRoot } from "./workspace.js"
@@ -24,7 +28,7 @@ export interface FabricationOptions {
 
 /** What an export wrote, every path relative to the project root with "/" between folders; or why it wrote nothing. */
 export type FabricationExport =
-  | { written: true; folder: string; zip: string; files: string[]; warnings: string[] }
+  | { written: true; folder: string; zip: string; files: string[]; warnings: string[]; checks: CheckCounts }
   | { written: false; errors: string[] }
 
 /** A folder of the project, the root itself included (resolveInRoot accepts only what is inside it). */
@@ -89,7 +93,8 @@ export function exportFabrication(root: string, file: string, options: Fabricati
       throw writeError(root, error)
     })
     const inProject = (path: string) => relative(root, path).split(sep).join("/")
-    return { written: true, folder: inProject(written.folder), zip: inProject(written.zip), files: written.files.map((path) => path.split(sep).pop() ?? path), warnings: set.warnings }
+    const checks = checkCounts(checkDesign(design))
+    return { written: true, folder: inProject(written.folder), zip: inProject(written.zip), files: written.files.map((path) => path.split(sep).pop() ?? path), warnings: set.warnings, checks }
   })
 }
 
@@ -106,6 +111,7 @@ export function formatFabrication(result: FabricationExport, options: { compact?
     `Wrote ${result.files.length} files to ${result.folder}/ and ${result.zip}:`,
     ...files,
     ...result.warnings.map((warning) => `Warning: ${warning}`),
+    checksLine(result.checks),
     `Next, a person should ${uploadStep(result.zip, result.folder, result.files)}.`,
   ].join("\n")
 }
