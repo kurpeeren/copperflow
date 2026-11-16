@@ -12,7 +12,7 @@ not the files.
 
 ## Every task
 
-1. `project_status` `{}` first (on the hosted service after `open_project` or `new_project`). It
+1. `project_status` `{}` first. It
    answers with PROJECT.md (`Intent: …`, `Blocks:`, the last five `Decisions:`, `Open:`), then one
    line per circuit (`main.circuit.tsx: parts 12, nets 9, unplaced 0, unrouted 3, errors 0,
    warnings 2`) and its last three changes. `No PROJECT.md yet` with `Circuits: none yet` is a new project: start
