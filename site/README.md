@@ -1,6 +1,7 @@
 # The copperflow site
 
-A static page: what copperflow is and how to install and connect it. No accounts, no data, no scripts from other
+Two static pages: what copperflow is and how to install it (`index.html`), and how to connect an agent and
+install the skill (`connect.html`). No accounts, no data, no scripts from other
 sites.
 
 - `public/` is the whole site. Open `public/index.html` through any static file server to look at it.
@@ -21,7 +22,7 @@ curl -sS -o /dev/null -w '%{http_code}
 
 To update the page, copy `public/` again; nginx serves the new files at once.
 
-The line under the install command that says the npm release is in preparation (`#release-note` in
-`public/index.html`) comes out when the package is published.
+The line that says the npm release is in preparation (`#release-note` in `public/index.html` and in
+`public/connect.html`) comes out when the package is published.
 
 The fonts are IBM Plex Sans and IBM Plex Mono under the SIL Open Font License; see the two licence files in `public/fonts/`.
