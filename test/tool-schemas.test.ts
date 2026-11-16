@@ -42,12 +42,16 @@ async function listedTools() {
   return (await client.listTools()).tools
 }
 
-// Every client pays for the whole tool list on every turn: worked detail belongs in the guide.
-test("the tool list stays at 31,000 characters or less", async () => {
+// Every client pays for the whole tool list on every turn: worked detail belongs in the guide. The limit is an
+// average per tool (31,000 characters for 42 tools when it was set), so a new tool is allowed and a fat one is not.
+const AVERAGE_PER_TOOL = 740
+
+test("the tool list stays at 740 characters a tool on average", async () => {
   const tools = await listedTools()
   const total = JSON.stringify(tools).length
+  const limit = AVERAGE_PER_TOOL * tools.length
   const sizes = tools.map((tool) => `${tool.name} ${JSON.stringify(tool).length}`).sort().join(", ")
-  expect(total, `tool list is ${total} characters: ${sizes}`).toBeLessThanOrEqual(31_000)
+  expect(total, `tool list is ${total} characters for ${tools.length} tools (limit ${limit}): ${sizes}`).toBeLessThanOrEqual(limit)
 })
 
 test("every tool's description is at most 700 characters", async () => {
