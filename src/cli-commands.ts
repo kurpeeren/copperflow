@@ -32,6 +32,7 @@ import { formatImport, importLcscPart } from "./library/import-lcsc.js"
 import { createCopperflowServer } from "./mcp/server.js"
 import { startStudio } from "./studio/server.js"
 import { VERSION } from "./version.js"
+import { installSkill } from "./skill-install.js"
 
 export interface CliIO {
   out(text: string): void
@@ -45,6 +46,8 @@ const HELP = `copperflow ${VERSION}
 Usage:
   copperflow mcp                              start the MCP server on stdio
   copperflow studio [--port n]                open the visual editor at http://127.0.0.1:4777
+  copperflow skill [--global]                 copy the copperflow skill into .claude/skills of this folder
+                                              (or of your home folder), for agents that read skills
   copperflow summary <file>                   print a circuit summary
   copperflow check <file>                     list the errors and warnings of copperflow's own rule checks
   copperflow lock <file> <part...>            lock parts so the agent cannot change them
@@ -95,6 +98,9 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
         io.out(`copperflow studio is running. Open this address (it contains a key for this session):\n${studio.openUrl}\nPress Ctrl+C to stop.`)
         return 0
       }
+      case "skill":
+        io.out(await installSkill({ cwd: root, global: rest.includes("--global") }))
+        return 0
       case "summary":
         io.out(formatSummary(await loadCircuit(root, required(rest[0], "file"))))
         return 0

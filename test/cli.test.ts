@@ -149,3 +149,16 @@ describe("cli", () => {
     expect(err.join("\n")).toContain("Unknown command")
   })
 })
+
+describe("cli skill", () => {
+  test("copies the skill into the project folder and says where", async () => {
+    expect(await run("skill")).toBe(0)
+    expect(out.join("\n")).toMatch(/^Installed the copperflow skill in /)
+    expect(await readFile(join(root, ".claude", "skills", "copperflow", "SKILL.md"), "utf8")).toContain("name: copperflow")
+  })
+
+  test("the usage text lists it", async () => {
+    await run("--help")
+    expect(out.join("\n")).toMatch(/copperflow skill \[--global\]/)
+  })
+})
