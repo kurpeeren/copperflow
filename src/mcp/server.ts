@@ -55,6 +55,7 @@ import { createGuideMemory, GUIDE_DESCRIPTION, guideInSession, guideInput, skill
 import { ATTACH_DATASHEET_DESCRIPTION, attachDatasheetInput, attachDatasheetTool } from "./datasheet-tools.js"
 import { RENDER_DESCRIPTION, renderInput, renderTool } from "./render-tool.js"
 import { registerModuleTools } from "./module-tools.js"
+import { OPEN_STUDIO_DESCRIPTION, openStudio, openStudioInput } from "./open-studio.js"
 import type { Renderer } from "../core/render.js"
 
 /** The opening line and the rules that hold wherever the server runs. */
@@ -67,6 +68,7 @@ const INSTRUCTIONS = `${INSTRUCTIONS_INTRO}
 - Call project_status first in every task, then follow the copperflow skill: its design workflow says which tool to call at each step and what its answer looks like.
 ${INSTRUCTIONS_RULES}
 - Without the copperflow skill installed, call guide (no topic) for it, then guide { topic } for a reference it names.
+- When the person asks to open copperflow or to see the board, call open_studio and give them the address it returns.
 - A new board starts with a plan, before any circuit file: guide { topic: "planning" } (the questions to ask the person, what to look up first, the blocks and their ports, one sub-agent per block).`
 
 const file = z.string().describe("Circuit file")
@@ -452,6 +454,7 @@ Nothing was written.`)
       }),
   )
 
+  server.registerTool("open_studio", { description: OPEN_STUDIO_DESCRIPTION, inputSchema: openStudioInput, annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false } }, (input) => run(() => openStudio({ root }, input)))
   registerModuleTools(server, root, run, options.engine)
   compactToolList(server)
   return server

@@ -58,6 +58,9 @@ from the pin it serves shows there with both pads' places. Move it with `set_pro
 `{ pcbX, pcbY, pcbRotation }`; it then has a position, and `autoplace` leaves it alone.
 Look at the board with `render` `{ file }` after `autoplace` and again after `autoroute`: it is the
 Studio's own drawing, what the person sees; `parts: ["U1", "C3"]` zooms to those parts.
+When the person wants to watch, or asks to open copperflow or the editor, `open_studio {}` starts the
+Studio (or finds the running one), opens it in their browser and answers with the address and its
+key: give that address to the person only.
 
 Connectors are placed last, into the edge room the other parts left, so on a tight board a
 connector can land far from the part it serves. If `board_summary` or `copper_summary` shows a

@@ -58,6 +58,7 @@ import { RouteRunner, routeWorkerFactory, type RouteWorkerFactory } from "./rout
 import { PlaceRunner, placeWorkerFactory, type PlaceWorkerFactory } from "./place-runner.js"
 import { fitBoardEdit } from "./fit-board.js"
 import { formatBoardImport, importBoard } from "../core/board-import.js"
+import { watchIdle } from "./idle.js"
 
 export interface StudioOptions {
   root: string
@@ -78,6 +79,9 @@ export interface StudioOptions {
   placeWorker?: PlaceWorkerFactory | null
   /** Fetches for Library → Import by LCSC number; tests pass one that answers from fixtures. */
   fetch?: typeof fetch
+  /** With onIdle: called once when no browser tab (no event stream) has been connected for this many ms in a row. */
+  idleMs?: number
+  onIdle?: () => void
 }
 
 export interface Studio {
@@ -340,7 +344,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       case "GET /api/sheets":
         return send(res, await listSheets(root))
       case "GET /api/project":
-        return send(res, { name: basename(root) })
+        return send(res, { name: basename(root), pid: process.pid })
       case "GET /api/project-memory":
         return send(res, { text: (await readProject(root)) ?? null })
       case "GET /api/circuit": {
@@ -581,12 +585,14 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
     })
     res.write(": connected\n\n")
     streams.add(res)
+    idle?.streams(streams.size)
     const unsubscribe = live.subscribe((event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
     const heartbeat = setInterval(() => res.write(": ping\n\n"), HEARTBEAT_MS)
     res.on("close", () => {
       clearInterval(heartbeat)
       unsubscribe()
       streams.delete(res)
+      idle?.streams(streams.size)
     })
   }
 
@@ -600,12 +606,14 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
   const address = server.address()
   port = typeof address === "object" && address ? address.port : 0
   live.start()
+  const idle = options.idleMs !== undefined && options.onIdle ? watchIdle(options.idleMs, options.onIdle) : undefined
 
   return {
     url: `http://127.0.0.1:${port}`,
     token,
     openUrl: `http://127.0.0.1:${port}/#token=${token}`,
     close: async () => {
+      idle?.stop()
       router.cancel()
       placer.cancel()
       live.stop()

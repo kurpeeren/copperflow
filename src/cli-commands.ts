@@ -34,7 +34,7 @@ import type { DesignSource } from "./core/bom.js"
 import { buildWith } from "./core/design-source.js"
 import { formatImport, importLcscPart } from "./library/import-lcsc.js"
 import { createCopperflowServer } from "./mcp/server.js"
-import { startStudio } from "./studio/server.js"
+import { studioCommand } from "./cli-studio.js"
 import { VERSION } from "./version.js"
 import { installSkill } from "./skill-install.js"
 import { modulesCommand } from "./cli-modules.js"
@@ -50,7 +50,10 @@ const HELP = `copperflow ${VERSION}
 
 Usage:
   copperflow mcp                              start the MCP server on stdio
-  copperflow studio [--port n]                open the visual editor at http://127.0.0.1:4777
+  copperflow studio [--port n] [--idle-minutes n]
+                                              open the visual editor at http://127.0.0.1:4777 (or a free port);
+                                              with --idle-minutes it stops after n minutes with no tab open
+  copperflow studio stop                      stop the Studio of this folder
   copperflow skill [--global]                 copy the copperflow skills into .claude/skills of this folder
                                               (or of your home folder), for agents that read skills
   copperflow summary <file>                   print a circuit summary
@@ -108,12 +111,9 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
       case "mcp":
         await createCopperflowServer(root, options).connect(new StdioServerTransport())
         return 0
-      case "studio": {
-        const [port] = takeOption(rest, "--port")
-        const studio = await startStudio({ root, ...(port ? { port: positiveInt(port) } : {}) })
-        io.out(`copperflow studio is running. Open this address (it contains a key for this session):\n${studio.openUrl}\nPress Ctrl+C to stop.`)
+      case "studio":
+        io.out(await studioCommand(root, rest, takeOption))
         return 0
-      }
       case "skill":
         io.out(await installSkill({ cwd: root, global: rest.includes("--global") }))
         return 0
