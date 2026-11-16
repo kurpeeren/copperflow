@@ -15,6 +15,7 @@ export const GUIDE_TOPICS: Readonly<Record<string, string>> = {
   "parts-library": "references/parts-library.md",
   "design-rules": "references/design-rules.md",
   "editable-subset": "references/editable-subset.md",
+  modules: "references/modules.md",
 }
 
 export const guideInput = {

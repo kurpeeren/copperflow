@@ -123,13 +123,16 @@ A sub-agent sends back the block as one sheet in the shape `new_circuit` takes, 
 
 ```
 Input: {
+  does: "24 V digital input: divider, clamp, RC filter",
   parts: [ { name: "R1", kind: "resistor", value: "10k", footprint: "0603" },
            { name: "R2", kind: "resistor", value: "1.5k", footprint: "0603" },
            { name: "C1", kind: "capacitor", value: "100nF", footprint: "0603" },
            { name: "R3", kind: "resistor", value: "1k", footprint: "0603" } ],
   nets: { IN: ["R1.pin1"], DIV: ["R1.pin2", "R2.pin1", "R3.pin1"],
           OUT: ["R3.pin2", "C1.pin1"], GND: ["R2.pin2", "C1.pin2"] },
-  ports: ["IN", "OUT", "GND"] }
+  ports: [ { name: "IN", type: "input", carries: "0 to 24 V from the field" },
+           { name: "OUT", type: "output", carries: "0 to 3.1 V logic, filtered" },
+           { name: "GND", type: "ground" } ] }
 parts created: none
 decisions: 10k over 1.5k gives 3.1 V at 24 V in; the 1k and 100 nF filter at 1.6 kHz
 sources: none beyond the divider and filter formulas

@@ -32,7 +32,12 @@ test("a block written once and used eight times builds as the planning reference
           { name: "R3", kind: "resistor", value: "1k", footprint: "0603" },
         ],
         nets: { IN: ["R1.pin1"], DIV: ["R1.pin2", "R2.pin1", "R3.pin1"], OUT: ["R3.pin2", "C1.pin1"], GND: ["R2.pin2", "C1.pin2"] },
-        ports: ["IN", "OUT", "GND"],
+        does: "24 V digital input: divider, clamp, RC filter",
+        ports: [
+          { name: "IN", type: "input", carries: "0 to 24 V from the field" },
+          { name: "OUT", type: "output", carries: "0 to 3.1 V logic, filtered" },
+          { name: "GND", type: "ground" },
+        ],
       },
     },
     instances: channels.map((n) => ({ sheet: "Input", name: `CH${n}`, connections: { IN: `IN${n}`, OUT: `DI${n}`, GND: "GND" } })),
