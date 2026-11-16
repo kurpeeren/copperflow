@@ -4,6 +4,7 @@
   "description": "Design circuits in code with a human and an AI agent editing the same files.",
   "license": "Apache-2.0",
   "author": "Eren Kürpe",
+  "homepage": "https://copperflow.kurpeeren.com",
   "repository": {
     "type": "git",
     "url": "https://github.com/kurpeeren/copperflow.git"

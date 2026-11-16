@@ -1,0 +1,36 @@
+# The copperflow site behind an existing Traefik (here: the one Coolify runs, on the external network "coolify").
+# Copy this folder to the server and run `docker compose up -d` in it. See README.md.
+services:
+  site:
+    image: nginxinc/nginx-unprivileged:stable-alpine
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 64m
+    pids_limit: 64
+    volumes:
+      - ./public:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - coolify
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=coolify
+      - traefik.http.middlewares.copperflow-site-https.redirectscheme.scheme=https
+      - traefik.http.routers.copperflow-site-http.entrypoints=http
+      - traefik.http.routers.copperflow-site-http.rule=Host(`copperflow.kurpeeren.com`)
+      - traefik.http.routers.copperflow-site-http.middlewares=copperflow-site-https
+      - traefik.http.routers.copperflow-site.entrypoints=https
+      - traefik.http.routers.copperflow-site.rule=Host(`copperflow.kurpeeren.com`)
+      - traefik.http.routers.copperflow-site.tls=true
+      - traefik.http.routers.copperflow-site.tls.certresolver=letsencrypt
+      - traefik.http.services.copperflow-site.loadbalancer.server.port=8080
+
+networks:
+  coolify:
+    external: true

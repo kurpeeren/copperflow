@@ -19,7 +19,13 @@ for example Claude Code, through MCP.
 
 ## Quick start
 
-Requires Node.js 22 or newer. copperflow is not on npm yet, so install it from source:
+Requires Node.js 22 or newer.
+
+```bash
+npm install -g copperflow
+```
+
+To work on copperflow itself, install it from source instead:
 
 ```bash
 git clone https://github.com/kurpeeren/copperflow.git
@@ -29,7 +35,7 @@ npm run build
 npm link
 ```
 
-Try it on the example board:
+Try it on the example board (in the source tree):
 
 ```bash
 copperflow summary --root examples/usb-c-ldo index.circuit.tsx
@@ -53,11 +59,12 @@ From your circuit project:
 claude mcp add copperflow -- copperflow mcp
 ```
 
-Then copy the skill so the agent knows the workflow:
+The agent learns the workflow from the guide that comes with the server (the `guide` tool), so
+nothing else is needed. To have the same text as a Claude Code skill, copy it from the package:
 
 ```bash
 mkdir -p .claude/skills
-cp -r /path/to/copperflow/skills/copperflow .claude/skills/
+cp -r "$(npm root -g)/copperflow/skills/copperflow" .claude/skills/
 ```
 
 Any other MCP client can run `copperflow mcp` over stdio from the project folder

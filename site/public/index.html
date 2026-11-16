@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>copperflow: design circuit boards with the agent you already use</title>
+    <meta
+      name="description"
+      content="copperflow is a PCB design program that runs on your computer. You draw in the editor, your agent works on the same files through MCP, and every change it makes is one undo step."
+    />
+    <meta property="og:title" content="copperflow" />
+    <meta property="og:description" content="Design circuit boards with the agent you already use. Runs on your computer, no account." />
+    <meta property="og:image" content="https://copperflow.kurpeeren.com/editor-pcb.png" />
+    <meta property="og:url" content="https://copperflow.kurpeeren.com/" />
+    <link rel="canonical" href="https://copperflow.kurpeeren.com/" />
+    <link rel="preload" href="fonts/ibm-plex-sans-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="site.css" />
+    <script src="site.js" defer></script>
+  </head>
+  <body>
+    <header class="top">
+      <a class="wordmark" href="/">copperflow</a>
+      <nav aria-label="Site">
+        <a href="#start">Start</a>
+        <a href="https://github.com/kurpeeren/copperflow">Source</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <h1>Design circuit boards with the agent you already use.</h1>
+        <p class="lead">
+          copperflow is a PCB design program that runs on your computer. You draw in the editor, your agent works on
+          the same files through MCP, and every change it makes is one step you can undo.
+        </p>
+
+        <div class="command" data-copy>
+          <pre><code><span class="prompt" aria-hidden="true">$ </span>npm install -g copperflow</code></pre>
+          <button type="button">Copy</button>
+        </div>
+        <p class="note" id="release-note">
+          The first npm release is in preparation. Until it is out, this command will not find the package.
+        </p>
+
+        <figure class="shot">
+          <img
+            src="editor-pcb.png"
+            width="1440"
+            height="900"
+            alt="The copperflow editor showing a routed two-layer board with a CAN controller, a transceiver, a crystal and three pin headers, beside its bill of materials."
+          />
+          <figcaption>
+            A CAN bus node an agent drew, placed and routed in 25 tool calls: 14 parts, all 26 connections routed, no
+            copper rule broken.
+          </figcaption>
+        </figure>
+      </section>
+
+      <section id="start" aria-labelledby="start-title">
+        <h2 id="start-title">Start</h2>
+        <ol class="steps">
+          <li>
+            <h3>Install it</h3>
+            <p>copperflow needs Node.js 22 or newer.</p>
+            <div class="command" data-copy>
+              <pre><code><span class="prompt" aria-hidden="true">$ </span>npm install -g copperflow</code></pre>
+              <button type="button">Copy</button>
+            </div>
+          </li>
+          <li>
+            <h3>Connect your agent</h3>
+            <p>Make a folder for the board and add copperflow to your agent there. With Claude Code:</p>
+            <div class="command" data-copy>
+              <pre><code><span class="prompt" aria-hidden="true">$ </span>mkdir my-board
+<span class="prompt" aria-hidden="true">$ </span>cd my-board
+<span class="prompt" aria-hidden="true">$ </span>claude mcp add copperflow -- copperflow mcp</code></pre>
+              <button type="button">Copy</button>
+            </div>
+            <p>
+              Any other MCP client works the same way: add a server that runs <code>copperflow mcp</code> in the
+              project folder.
+            </p>
+            <div class="command" data-copy>
+              <pre><code>{
+  "mcpServers": {
+    "copperflow": { "command": "copperflow", "args": ["mcp"] }
+  }
+}</code></pre>
+              <button type="button">Copy</button>
+            </div>
+          </li>
+          <li>
+            <h3>Open the editor</h3>
+            <div class="command" data-copy>
+              <pre><code><span class="prompt" aria-hidden="true">$ </span>copperflow studio</code></pre>
+              <button type="button">Copy</button>
+            </div>
+            <p>
+              Open the address it prints. The address carries a key for this session, so other web pages and other
+              programs on your computer cannot use the editor.
+            </p>
+          </li>
+          <li>
+            <h3>Say what you want built</h3>
+            <blockquote>
+              Design a CAN bus node: an MCP2515 controller, a TJA1051 transceiver, an 8 MHz crystal, one header for
+              SPI and one for the bus. Two layers, as small as it routes.
+            </blockquote>
+            <p>
+              The agent reads the guide that comes with copperflow, so you do not have to explain the tools. Watch
+              the board appear in the editor and step in whenever you like.
+            </p>
+          </li>
+        </ol>
+      </section>
+
+      <section aria-labelledby="together-title">
+        <h2 id="together-title">Two pairs of hands on one board</h2>
+        <dl class="pairs">
+          <div>
+            <dt>Lock what you have placed</dt>
+            <dd>The agent cannot move or change a locked part. Only you unlock it.</dd>
+          </div>
+          <div>
+            <dt>Leave a note on the board</dt>
+            <dd>Write "route ground under this part" on a part or a spot on the canvas. The agent reads it as an instruction.</dd>
+          </div>
+          <div>
+            <dt>Undo anything</dt>
+            <dd>Each change the agent makes is one entry in the history. Undo it and the agent does not make it again.</dd>
+          </div>
+          <div>
+            <dt>Your files stay yours</dt>
+            <dd>Circuits are plain TSX files in your folder. Edits are written back as small text changes, so the rest of your code stays as you wrote it.</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section aria-labelledby="scope-title">
+        <h2 id="scope-title">From an idea to files a factory accepts</h2>
+        <ul class="plain">
+          <li>A schematic editor and a PCB editor over the same circuit.</li>
+          <li>Automatic placement and routing, copper pours and mounting holes, with hand routing where you want it.</li>
+          <li>Electrical and design rule checks against a fabrication profile: JLCPCB two-layer by default.</li>
+          <li>A parts library where a person, not the agent, marks a part as checked against its datasheet.</li>
+          <li>A bill of materials, and Gerber and drill files ready to order.</li>
+        </ul>
+        <p class="status">copperflow is at version 0.3 and early. Expect rough edges, and tell us where you find them.</p>
+      </section>
+
+      <section aria-labelledby="local-title">
+        <h2 id="local-title">It stays on your computer</h2>
+        <p>
+          There is no account and nothing is uploaded. This page sets no cookies and loads nothing from other sites. The editor is a page served from your own machine, the agent
+          talks to a program on your own machine, and the project is a folder on your own disk. copperflow is open
+          source under the Apache 2.0 licence.
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <dl class="titleblock" aria-label="About this page">
+        <div class="wide">
+          <dt>Title</dt>
+          <dd>copperflow</dd>
+        </div>
+        <div>
+          <dt>Rev</dt>
+          <dd>0.3.0</dd>
+        </div>
+        <div>
+          <dt>Licence</dt>
+          <dd>Apache 2.0</dd>
+        </div>
+        <div class="wider">
+          <dt>Source</dt>
+          <dd><a href="https://github.com/kurpeeren/copperflow">github.com/kurpeeren/copperflow</a></dd>
+        </div>
+        <div class="last">
+          <dt>Sheet</dt>
+          <dd>1 of 1</dd>
+        </div>
+      </dl>
+    </footer>
+  </body>
+</html>
