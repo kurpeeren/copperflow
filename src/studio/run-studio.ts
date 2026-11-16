@@ -1,8 +1,7 @@
 // `copperflow studio`: start the Studio on 4777 or a free port, leave the note, and close it (and remove the note)
 // on stop, on the idle stop, or when the process is told to end.
-import { resolve } from "node:path"
 import { startStudio, type Studio, type StudioOptions } from "./server.js"
-import { removeNote, writeNote, type StudioNote } from "./studio-note.js"
+import { projectRoot, removeNote, writeNote, type StudioNote } from "./studio-note.js"
 
 export const DEFAULT_STUDIO_PORT = 4777
 const MS_PER_MINUTE = 60_000
@@ -37,7 +36,7 @@ export async function runStudio(options: RunStudioOptions): Promise<RunningStudi
     pid: process.pid,
     port: Number(new URL(studio.url).port),
     key: studio.token,
-    root: resolve(options.root),
+    root: projectRoot(options.root),
     started: new Date().toISOString(),
   }
   let settle: () => void = () => {}

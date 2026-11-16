@@ -5,6 +5,7 @@
 import { createHash } from "node:crypto"
 import { request } from "node:http"
 import { homedir } from "node:os"
+import { realpathSync } from "node:fs"
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import { z } from "zod"
@@ -35,8 +36,21 @@ export function copperflowHome(env: NodeJS.ProcessEnv = process.env): string {
   return chosen !== undefined && chosen !== "" ? chosen : join(homedir(), ".copperflow")
 }
 
+/**
+ * The folder's real path: one spelling for a folder reached through a link, a relative path or, on Windows, another
+ * case of the drive letter. A folder that is not there keeps its resolved path.
+ */
+export function projectRoot(root: string): string {
+  const resolved = resolve(root)
+  try {
+    return realpathSync.native(resolved)
+  } catch {
+    return resolved
+  }
+}
+
 export function notePath(root: string): string {
-  const hash = createHash("sha256").update(resolve(root)).digest("hex")
+  const hash = createHash("sha256").update(projectRoot(root)).digest("hex")
   return join(copperflowHome(), "run", `${hash}.json`)
 }
 
@@ -63,7 +77,7 @@ export async function readNote(root: string): Promise<StudioNote | undefined> {
   if (text === undefined) return undefined
   try {
     const parsed = NoteSchema.safeParse(JSON.parse(text))
-    return parsed.success && parsed.data.root === resolve(root) ? parsed.data : undefined
+    return parsed.success && parsed.data.root === projectRoot(root) ? parsed.data : undefined
   } catch {
     return undefined
   }
@@ -99,7 +113,7 @@ export async function studioAnswers(root: string, note: StudioNote): Promise<boo
   if (answer?.status !== 200) return false
   try {
     const parsed = JSON.parse(answer.body) as { ok?: boolean; data?: { root?: unknown } }
-    return parsed.ok === true && parsed.data?.root === resolve(root)
+    return parsed.ok === true && parsed.data?.root === projectRoot(root)
   } catch {
     return false
   }

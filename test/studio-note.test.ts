@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, expect, test } from "vitest"
 import { createServer, type Server } from "node:http"
-import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readdir, readFile, stat, symlink, writeFile } from "node:fs/promises"
 import { existsSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { runStudio, type RunningStudio } from "../src/studio/run-studio.js"
-import { notePath, readNote, stopStudio, studioAnswers, writeNote } from "../src/studio/studio-note.js"
+import { notePath, projectRoot, readNote, stopStudio, studioAnswers, writeNote } from "../src/studio/studio-note.js"
 
 const builder = { build: async () => { throw new Error("no builds here") } }
 const running: RunningStudio[] = []
@@ -50,7 +50,7 @@ test("a running Studio leaves its note in the person's folder, not in the projec
   const { root, studio } = await start()
   expect(notePath(root).startsWith(join(process.env["COPPERFLOW_HOME"]!, "run"))).toBe(true)
   const note = JSON.parse(await readFile(notePath(root), "utf8"))
-  expect(note).toEqual({ pid: process.pid, port: Number(new URL(studio.studio.url).port), key: studio.studio.token, root, started: expect.any(String) })
+  expect(note).toEqual({ pid: process.pid, port: Number(new URL(studio.studio.url).port), key: studio.studio.token, root: projectRoot(root), started: expect.any(String) })
   expect(await readdir(root)).toEqual(["static"])
   if (process.platform !== "win32") expect((await stat(notePath(root))).mode & 0o077).toBe(0)
 })
@@ -138,4 +138,27 @@ test("a Studio answers as this project's only with its key", async () => {
   const { root, studio } = await start()
   expect(await studioAnswers(root, studio.note)).toBe(true)
   expect(await studioAnswers(root, { ...studio.note, key: KEY })).toBe(false)
+})
+
+test("one folder has one note, however its path is spelled", async () => {
+  const { root } = await project()
+  const link = join(await mkdtemp(join(tmpdir(), "cf-link-")), "board")
+  await symlink(root, link, "junction")
+  expect(notePath(link)).toBe(notePath(root))
+  expect(notePath(join(root, "static", ".."))).toBe(notePath(root))
+  if (process.platform === "win32") {
+    const other = root[0] === root[0]!.toUpperCase() ? root[0]!.toLowerCase() + root.slice(1) : root[0]!.toUpperCase() + root.slice(1)
+    expect(notePath(other)).toBe(notePath(root))
+  }
+})
+
+test("a Studio started through a link to the folder is found from the folder itself", async () => {
+  const dirs = await project()
+  const link = join(await mkdtemp(join(tmpdir(), "cf-link-")), "board")
+  await symlink(dirs.root, link, "junction")
+  const studio = await runStudio({ ...dirs, root: link, builder: builder as never, routeWorker: null, placeWorker: null, port: 0 })
+  running.push(studio)
+  const note = await readNote(dirs.root)
+  expect(note?.port).toBe(Number(new URL(studio.studio.url).port))
+  expect(await studioAnswers(dirs.root, note!)).toBe(true)
 })

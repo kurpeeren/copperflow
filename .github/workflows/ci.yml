@@ -21,6 +21,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      # Built first: the test that starts the real command needs dist/cli.js.
+      - run: npm run build
       - run: npm run coverage
       - run: npm run test:perf
-      - run: npm run build

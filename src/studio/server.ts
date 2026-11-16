@@ -60,6 +60,7 @@ import { fitBoardEdit } from "./fit-board.js"
 import { formatBoardImport, importBoard } from "../core/board-import.js"
 import { watchIdle } from "./idle.js"
 import { controlRoute } from "./studio-control.js"
+import { projectRoot } from "./studio-note.js"
 
 export interface StudioOptions {
   root: string
@@ -339,7 +340,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       if (!value) throw new HttpError(400, `Missing ${name}`)
       return value
     }
-    const control = controlRoute(route, root, () => (options.onStop ?? (() => void studio.close()))())
+    const control = controlRoute(route, projectRoot(root), () => (options.onStop ?? (() => void studio.close()))())
     if (control !== undefined) return send(res, control)
     switch (route) {
       case "GET /api/events":
