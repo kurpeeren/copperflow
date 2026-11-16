@@ -4,3 +4,4 @@ coverage/
 .copperflow/
 *.log
 .DS_Store
+bench/results/
