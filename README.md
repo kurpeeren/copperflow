@@ -223,7 +223,7 @@ There is no unlock tool and no verify tool on purpose.
 ```text
 copperflow mcp                              start the MCP server on stdio
 copperflow studio [--port n]                open the visual editor at http://127.0.0.1:4777
-copperflow skill [--global]                 copy the copperflow skill into .claude/skills
+copperflow skill [--global]                 copy the copperflow skills into .claude/skills
 copperflow summary <file>                   print a circuit summary
 copperflow check <file>                     list the errors and warnings of copperflow's own rule checks
 copperflow lock <file> <part...>            lock parts so the agent cannot change them

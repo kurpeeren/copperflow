@@ -191,20 +191,26 @@ args = ["mcp", "--root", "/full/path/to/my-board"]</code></pre>
           The skill is a short guide written for agents: which tool to call at each step of a design, what its answer
           looks like, how to respect your locks and notes, and reference pages on parts, copper and design rules.
         </p>
+        <p>
+          A second skill, <code>copperflow-plan</code>, makes the agent plan before it draws. It asks you every
+          question the design needs in one message (what the board does, how many inputs and outputs, the supply,
+          the connectors), splits the board into blocks with named inputs and outputs, and designs a block that
+          repeats only once: eight inputs are one block used eight times.
+        </p>
         <dl class="pairs">
           <div>
             <dt>Agents with skills</dt>
             <dd>
-              Run <code>copperflow skill</code> in the board's folder. It copies the skill to
-              <code>.claude/skills/copperflow</code>, where Claude Code finds it. Add <code>--global</code> to
-              install it once for every project instead.
+              Run <code>copperflow skill</code> in the board's folder. It copies both skills to
+              <code>.claude/skills</code>, where Claude Code finds them. Add <code>--global</code> to
+              install them once for every project instead.
             </dd>
           </div>
           <div>
             <dt>Agents without skills</dt>
             <dd>
               Nothing to install. The server tells the agent to call its <code>guide</code> tool, which answers with
-              the same text. The agent reads it once at the start of a session.
+              the same texts, the planning one included. The agent reads each once in a session.
             </dd>
           </div>
         </dl>

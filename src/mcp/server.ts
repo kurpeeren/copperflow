@@ -61,7 +61,8 @@ const INSTRUCTIONS_RULES = `- Change circuit files through these tools wherever 
 const INSTRUCTIONS = `${INSTRUCTIONS_INTRO}
 - Call project_status first in every task, then follow the copperflow skill: its design workflow says which tool to call at each step and what its answer looks like.
 ${INSTRUCTIONS_RULES}
-- Without the copperflow skill installed, call guide (no topic) for it, then guide { topic } for a reference it names.`
+- Without the copperflow skill installed, call guide (no topic) for it, then guide { topic } for a reference it names.
+- A new board starts with a plan, before any circuit file: guide { topic: "planning" } (the questions to ask the person, the blocks and their ports, one sub-agent per block).`
 
 const file = z.string().describe("Circuit file, e.g. index.circuit.tsx")
 const literal = z.union([z.string(), z.number(), z.boolean()])

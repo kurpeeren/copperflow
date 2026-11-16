@@ -3,8 +3,11 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 
-/** The skill as it ships: `skills/copperflow` beside `dist` in the package (and beside `src` in the source tree). */
-const SHIPPED_SKILL = fileURLToPath(new URL("../skills/copperflow", import.meta.url))
+/** The skills as they ship: `skills/` beside `dist` in the package (and beside `src` in the source tree). */
+const SHIPPED = fileURLToPath(new URL("../skills", import.meta.url))
+
+/** The skills by folder name: how to work in a project, and how to plan a board before the first circuit file. */
+const SKILLS = ["copperflow", "copperflow-plan"] as const
 
 export interface InstallSkillOptions {
   /** The project folder. */
@@ -21,17 +24,30 @@ async function countFiles(folder: string): Promise<number> {
   return entries.filter((entry) => entry.isFile()).length
 }
 
-/**
- * Copies the copperflow skill into `.claude/skills/copperflow` of the project (or of the home folder), where an agent
- * that reads skills finds it, and answers with one line saying where. Files of an earlier copy are replaced.
- */
-export async function installSkill(options: InstallSkillOptions): Promise<string> {
-  const base = options.global ? (options.home ?? homedir()) : options.cwd
-  const target = join(base, ".claude", "skills", "copperflow")
+/** Whether `target` is already a skill folder; a link or a file in its place is refused. */
+async function alreadyThere(target: string): Promise<boolean> {
   const there = await lstat(target).catch(() => undefined)
   if (there?.isSymbolicLink()) throw new Error(`${target} is a link; remove it and run this again`)
   if (there && !there.isDirectory()) throw new Error(`${target} is a file; remove it and run this again`)
-  await mkdir(target, { recursive: true })
-  await cp(SHIPPED_SKILL, target, { recursive: true, force: true })
-  return `${there ? "Updated" : "Installed"} the copperflow skill in ${target} (${await countFiles(SHIPPED_SKILL)} files). Start a new agent session to load it.`
+  return there !== undefined
+}
+
+/**
+ * Copies the copperflow skills into `.claude/skills` of the project (or of the home folder), where an agent that
+ * reads skills finds them, and answers with one line saying where. Files of an earlier copy are replaced; other
+ * skills in that folder are left alone. Every target is checked before anything is copied.
+ */
+export async function installSkill(options: InstallSkillOptions): Promise<string> {
+  const base = options.global ? (options.home ?? homedir()) : options.cwd
+  const folder = join(base, ".claude", "skills")
+  const before: boolean[] = []
+  for (const name of SKILLS) before.push(await alreadyThere(join(folder, name)))
+  let files = 0
+  for (const name of SKILLS) {
+    await mkdir(join(folder, name), { recursive: true })
+    await cp(join(SHIPPED, name), join(folder, name), { recursive: true, force: true })
+    files += await countFiles(join(SHIPPED, name))
+  }
+  const verb = before.some(Boolean) ? "Updated" : "Installed"
+  return `${verb} the copperflow skills (${SKILLS.join(", ")}; ${files} files) in ${folder}. Start a new agent session to load them.`
 }

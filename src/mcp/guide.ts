@@ -8,6 +8,7 @@ const SKILL_DIR = new URL("../../skills/copperflow/", import.meta.url)
 
 /** The references by name. A topic is only ever looked up here, so it can never name another file. */
 export const GUIDE_TOPICS: Readonly<Record<string, string>> = {
+  planning: "references/planning.md",
   "design-workflow": "references/design-workflow.md",
   copper: "references/copper.md",
   "writing-circuits": "references/writing-circuits.md",

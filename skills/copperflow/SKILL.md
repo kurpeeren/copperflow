@@ -44,8 +44,8 @@ first line of its answer. The worked example is in
 means, `replace`, refused pins and the export's warnings are in
 [references/writing-circuits.md](references/writing-circuits.md).
 
-1. **Intent.** When the brief lacks what the Intent needs (supply voltage, connectors, board
-   size, what the board does), ask the person first. Then `set_project`
+1. **Plan.** A new board starts with [references/planning.md](references/planning.md): every
+   question for the person in one message, blocks with ports, a sub-agent per block. Then `set_project`
    `{ intent, blocks: [{ name, does, status }], open }` writes PROJECT.md:
    `Change c0001: Intent, Blocks, Open written to PROJECT.md`. `intent` is a string of at most
    2000 characters, `blocks` an array of at most 50 objects, `open` an array of at most 50
@@ -78,9 +78,9 @@ means, `replace`, refused pins and the export's warnings are in
    Unused inputs of a chip: tie them off as the datasheet says and `note_decision` it, or flag
    them with `set_props` `{ part: "U1", props: { noConnect: "pin4,pin5" } }` (null removes), or
    give `noConnect` in the part's `props` in `new_circuit`.
-3. **Blocks first.** A sub-sheet is for a block used more than once (or one the person wants on
-   its own page); every other block is named in PROJECT.md's Blocks, its parts written at the top
-   level and later placed together with `autoplace { parts: [...] }`.
+3. **Blocks first.** Every block of the plan is a sub-sheet with ports, also a block used once;
+   only a small board (about fifteen parts, nothing repeated) is written flat, its blocks named in
+   PROJECT.md's Blocks and later placed together with `autoplace { parts: [...] }`.
    `new_circuit` `{ file, parts, nets, sheets, instances, place: false }` writes the circuit and
    each `<name>.sheet.tsx`: `Change c0002: wrote main.circuit.tsx, Channel.sheet.tsx`, then the
    counts, one line per instance (`CH1 Channel base 100: IN=AIN1 GND=GND`), `N nets, M traces`

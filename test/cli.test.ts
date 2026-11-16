@@ -153,7 +153,7 @@ describe("cli", () => {
 describe("cli skill", () => {
   test("copies the skill into the project folder and says where", async () => {
     expect(await run("skill")).toBe(0)
-    expect(out.join("\n")).toMatch(/^Installed the copperflow skill in /)
+    expect(out.join("\n")).toMatch(/^Installed the copperflow skills \(copperflow, copperflow-plan; /)
     expect(await readFile(join(root, ".claude", "skills", "copperflow", "SKILL.md"), "utf8")).toContain("name: copperflow")
   })
 
