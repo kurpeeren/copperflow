@@ -41,6 +41,7 @@
             <li><a href="#codex">Codex</a></li>
             <li><a href="#gemini">Gemini CLI</a></li>
             <li><a href="#other">Any other agent</a></li>
+            <li><a href="#self">Let the agent set itself up</a></li>
             <li><a href="#skill">The skill</a></li>
             <li><a href="#check">Check that it works</a></li>
             <li><a href="#trouble">If it does not connect</a></li>
@@ -61,6 +62,11 @@
           The MCP server is the command <code>copperflow mcp</code>. Your agent starts it and talks to it; you never
           run it yourself. It works on one project folder: the folder it is started in, or the one you name with
           <code>--root</code>.
+        </p>
+        <p>
+          To try copperflow without installing it, use the command <code>npx</code> with the arguments
+          <code>-y copperflow mcp</code> wherever these steps say <code>copperflow mcp</code>. The first start
+          takes about a quarter of a minute while npm fetches the package.
         </p>
         <p>
           We have tested these steps with Claude Code. The entries for the other agents follow each program's own
@@ -185,6 +191,17 @@ args = ["mcp", "--root", "/full/path/to/my-board"]</code></pre>
         </p>
       </section>
 
+      <section id="self" aria-labelledby="self-title">
+        <h2 id="self-title">Let the agent set itself up</h2>
+        <p>An agent that can run commands can do the steps above for you. In the board's folder, say:</p>
+        <blockquote>Set up copperflow for yourself here: follow https://copperflow.kurpeeren.com/llms.txt</blockquote>
+        <p>
+          <a href="llms.txt">That page</a> holds the same steps as plain text, written for an agent to read. Most
+          programs load their MCP servers when a session starts, so the tools appear in the next session, not in
+          the one that added them: the agent will ask you to start a new one.
+        </p>
+      </section>
+
       <section id="skill" aria-labelledby="skill-title">
         <h2 id="skill-title">The skill</h2>
         <p>
@@ -225,11 +242,18 @@ args = ["mcp", "--root", "/full/path/to/my-board"]</code></pre>
           <pre><code>No PROJECT.md yet: write the Intent and Blocks with set_project.
 Circuits: none yet (new_circuit starts one)</code></pre>
         </div>
-        <p>Now open the editor in a second terminal, in the same folder, and ask for a board.</p>
+        <p>Now ask it to open the editor:</p>
+        <blockquote>Open copperflow.</blockquote>
+        <p>
+          The agent starts the editor for this folder and opens it in your browser. An editor it started stops by
+          itself an hour after you close the last tab. You can also start it yourself in a second terminal, in
+          the same folder:
+        </p>
         <div class="command" data-copy>
           <pre><code><span class="prompt" aria-hidden="true">$ </span>copperflow studio</code></pre>
           <button type="button">Copy</button>
         </div>
+        <p>Then ask for a board:</p>
         <blockquote>
           Design a CAN bus node: an MCP2515 controller, a TJA1051 transceiver, an 8 MHz crystal, one header for SPI
           and one for the bus. Two layers, as small as it routes.

@@ -1,0 +1,46 @@
+# copperflow
+
+> A local PCB design program. A person edits in the Studio, a web editor that runs on their own computer; an agent
+> edits the same circuit files through an MCP server. There is no account and nothing is hosted: a project is a folder.
+
+## If you are an agent asked to set copperflow up
+
+Do these in the folder that will hold the board.
+
+1. Node.js: `node --version` must print 22 or newer. If it does not, stop and tell the person.
+2. copperflow: `copperflow --help` prints the version on its first line. If the command is not found, run
+   `npm install -g copperflow`. To use it without installing, give `npx -y copperflow mcp` as the server command
+   instead of `copperflow mcp`; the first start takes about a quarter of a minute.
+3. Add the MCP server to the program you run in:
+   - Claude Code: `claude mcp add copperflow -- copperflow mcp`, then `copperflow skill` (copies the skills to
+     `.claude/skills`), then `claude mcp list` (the line for copperflow ends with `Connected`).
+   - Cursor: `.cursor/mcp.json` in the folder:
+     `{ "mcpServers": { "copperflow": { "command": "copperflow", "args": ["mcp", "--root", "<full path of the folder>"] } } }`
+   - VS Code: `.vscode/mcp.json` in the folder:
+     `{ "servers": { "copperflow": { "type": "stdio", "command": "copperflow", "args": ["mcp", "--root", "${workspaceFolder}"] } } }`
+   - Gemini CLI: `.gemini/settings.json` in the folder, the same shape as Cursor's.
+   - Codex: in `~/.codex/config.toml`:
+     `[mcp_servers.copperflow]`, `command = "copperflow"`, `args = ["mcp", "--root", "<full path of the folder>"]`
+   - Claude Desktop: the person opens Settings, Developer, Edit Config and adds the same entry as Cursor's.
+   - Any other program: start `copperflow mcp --root <full path of the folder>` over standard input and output.
+   On Windows, a program that cannot start a command installed by npm needs `cmd` as the command and
+   `/c`, `copperflow`, `mcp`, `--root`, `<folder>` as the arguments.
+4. Tell the person to start a new session in the folder. Most programs load their MCP servers when a session starts,
+   so the tools do not appear in the session that added them. Until then, do not design the board by writing circuit
+   files by hand: the tools keep the history and the person's locks.
+
+## When the tools are connected
+
+- "Open copperflow", "show me the board": call `open_studio`. It starts the editor for the folder if none runs, opens
+  it in the person's browser and answers with the address. The address holds a key for that session: give it to the
+  person only.
+- First call in a session: `project_status`.
+- A new board starts with a plan, before any circuit file: `guide { topic: "planning" }`. Ask the person every
+  question the design needs in one message.
+- Only the person unlocks a part, verifies a library part and verifies a module. There is no tool for these on purpose.
+
+## Links
+
+- Steps for each program, for people: https://copperflow.kurpeeren.com/connect.html
+- Source: https://github.com/kurpeeren/copperflow
+- Package: https://www.npmjs.com/package/copperflow

@@ -72,6 +72,14 @@ copperflow skill
 Any other MCP client can run `copperflow mcp` over stdio from the project folder
 (or pass `--root <dir>`).
 
+Without installing, the same server starts through npx: give `npx -y copperflow mcp` wherever a
+client asks for the command. The first start takes about a quarter of a minute while npm fetches
+the package.
+
+An agent that can run commands can set copperflow up for itself: the steps are at
+<https://copperflow.kurpeeren.com/llms.txt> as plain text. Most programs load their MCP servers
+when a session starts, so the tools appear in the next session, not in the one that added them.
+
 ### Open the visual editor
 
 ```bash
@@ -80,6 +88,10 @@ copperflow studio --root examples/usb-c-ldo
 
 Then open the address it prints. The address carries a key for this session, so other web
 pages and other programs on your computer cannot use the editor's API.
+
+A connected agent opens it for you: ask it to open copperflow and it calls `open_studio`, which
+starts the editor for the project if none runs and opens it in your browser. An editor started
+that way stops by itself an hour after the last tab closes; `copperflow studio stop` stops it at once.
 
 The schematic and the PCB are drawn from the design copperflow's engine builds, with
 copperflow's own footprints and schematic symbols. The PCB shows the ratsnest, a straight line
@@ -209,6 +221,7 @@ The agent sees what you undid and does not repeat it.
 | `fillet_tracks` / `straighten_tracks` | Rounds the square corners of tracks (by id, or every track) into short chords on an arc of the design rules' fillet radius, or puts rounded corners back, each as one change; a corner too close to other copper, a pad, a keepout or the board edge, or with legs too short, stays square and is counted |
 | `copper_summary` | Per net: tracks, vias, length and unrouted connections, then copper violations by rule (at most 60 lines) |
 | `board_summary` / `project_status` / `note_decision` / `set_project` | The board in about 60 lines (size, one line per part, longest connections with both pads' places, overlaps, edge, pours; `detail: "full"` for the rest); and the project memory `PROJECT.md` (Intent, Blocks, Decisions, Open) with each circuit's counts and last changes, a dated decision, or rewritten sections, each write one change |
+| `open_studio` | Starts the Studio for the project if none runs, opens it in your browser and answers with the address |
 | `render` | A PNG of the board or of one schematic page, drawn by the Studio's own code; `parts` zooms to some parts (needs the optional package `@napi-rs/canvas`) |
 | `list_parts` / `part_info` | Shows the parts library and a part's data and checklist |
 | `create_part` | Adds a part from a datasheet: pins, footprint string or footprint file, MPN, suppliers |
