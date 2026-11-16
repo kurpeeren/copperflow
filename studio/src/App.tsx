@@ -356,7 +356,7 @@ export function App() {
   if (!hasToken) return <NoToken />
   return (
     <div className="app">
-      <MenuBar run={runCommand} view={tab} selected={selection.size} toggles={toggles} off={off} center={<AiLockButton closed={aiLock.closed} onToggle={aiLock.toggle} />}>
+      <MenuBar run={runCommand} view={tab} selected={selection.size} toggles={toggles} off={off}>
         <StatusPill build={build} errors={checks.counts.errors} onOpen={openChecks} />
       </MenuBar>
       <Toolbar view={tab} unit={workspace.unit} selected={selection.size} toggles={toggles} off={off} run={runCommand} />
@@ -393,6 +393,7 @@ export function App() {
         sheetParent={sheetParent}
         openChecks={openChecks}
         aiLocked={aiLock.closed}
+        lockControl={<AiLockButton closed={aiLock.closed} onToggle={aiLock.toggle} />}
       />
       <BottomStrip state={workspace.bottom} onClick={workspace.clickBottomTab} onOpen={workspace.openBottom} />
       {message && (

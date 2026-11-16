@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useMemo, type ReactNode } from "react"
 import type { Edit } from "../api"
 import type { Actions } from "../use-actions"
 import { Inspector } from "../Inspector"
@@ -47,6 +47,8 @@ const rightStrip = (view: View) => rightTabIds(view).map((id) => ({ id, label: R
 export interface WorkspaceProps {
   /** The AI lock is closed: the canvas carries the lock's frame. */
   aiLocked?: boolean
+  /** The AI lock's control, drawn over the top of the canvas where the eyes are. */
+  lockControl?: ReactNode
   data: StudioData
   workspace: ReturnType<typeof useWorkspace>
   checks: ReturnType<typeof useChecks>
@@ -147,6 +149,7 @@ function CenterColumn(props: WorkspaceProps & { onContextMenu: ContextMenuState[
     <div className="center">
       <DocTabs file={data.file} view={view} pages={pages} page={page} onView={props.onView} onPage={props.onPage} {...parentTabs(props)} />
       <section className={props.aiLocked ? "canvas ai-locked" : "canvas"} id="doc-panel" role="tabpanel" aria-labelledby={`doc-tab-${view}`} tabIndex={-1}>
+        {props.lockControl && <div className="ai-lock-slot">{props.lockControl}</div>}
         {!build.design && <p className="empty">{build.status === "failed" ? build.error : "Building the circuit…"}</p>}
         {canvas && view === "pcb" && <PcbCanvas key={data.file} {...canvas} {...gridProps(workspace, "pcb")} markers={checks.markers.pcb} activeLayer={workspace.activeLayer} onActiveLayer={workspace.setActiveLayer} pourFill={workspace.pourFill} hiddenPours={workspace.hiddenPours} />}
         {sheet && view === "schematic" && <SchematicCanvas key={`${data.file}
