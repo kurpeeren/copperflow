@@ -17,8 +17,8 @@ const CHANGES_SHOWN = 3
 const HISTORY_READ = 500
 
 export const noteDecisionInput = {
-  file: z.string().optional().describe("The circuit file the decision is about, if one; it is named in the line"),
-  text: z.string().min(1).max(500).describe('The decision in one line, e.g. "TJA1051 over MCP2551: 3.3 V I/O"'),
+  file: z.string().optional(),
+  text: z.string().min(1).max(500).describe('e.g. "TJA1051 over MCP2551: 3.3 V I/O"'),
 }
 
 const MAX_BLOCKS = 50
@@ -31,25 +31,25 @@ const BLOCKS_RULE = `blocks must be an array of at most ${MAX_BLOCKS} objects, e
 const OPEN_RULE = `open must be an array of at most ${MAX_OPEN_ITEMS} non-empty strings, e.g. ["route the board"]`
 
 export const setProjectInput = {
-  intent: z.string(INTENT_RULE).max(MAX_INTENT_CHARS, INTENT_RULE).optional().describe(`What the design is for, in one paragraph (a string of at most ${MAX_INTENT_CHARS} characters)`),
+  intent: z.string(INTENT_RULE).max(MAX_INTENT_CHARS, INTENT_RULE).optional().describe("One paragraph"),
   blocks: z
     .array(z.object({ name: z.string(BLOCKS_RULE).min(1, BLOCKS_RULE), does: z.string(BLOCKS_RULE), status: z.string(BLOCKS_RULE) }, BLOCKS_RULE), BLOCKS_RULE)
     .max(MAX_BLOCKS, BLOCKS_RULE)
     .optional()
-    .describe(`Every block, one each (an array of at most ${MAX_BLOCKS}): { name: "CAN", does: "MCP2515 + TJA1051 transceiver", status: "placed" }`),
+    .describe('e.g. [{ name: "CAN", does: "TJA1051 transceiver", status: "placed" }]'),
   open: z
     .array(z.string(OPEN_RULE).min(1, OPEN_RULE), OPEN_RULE)
     .max(MAX_OPEN_ITEMS, OPEN_RULE)
     .optional()
-    .describe(`What is left to do: an array of at most ${MAX_OPEN_ITEMS} non-empty strings, one item each, e.g. ["route the board"]`),
+    .describe('e.g. ["route the board"]'),
 }
 
 export const PROJECT_STATUS_DESCRIPTION =
-  "Call this first in every task. Answers in a screenful: the project's PROJECT.md (Intent, Blocks, the last five Decisions, Open), then per circuit file its parts, nets, unplaced parts, unrouted connections, errors and warnings, and its last three changes. Without a PROJECT.md the answer says so; set_project writes one."
+  "Call this first in every task: PROJECT.md (intent, blocks, last decisions, open items), then per circuit file its counts, unplaced, unrouted, errors, warnings and last changes."
 export const NOTE_DECISION_DESCRIPTION =
-  "Note a design decision in PROJECT.md: one dated line under Decisions (naming the circuit file when file is given), as ONE change. Note each choice a later context should not undo (a part chosen and why, a board size, what the person approved)."
+  "Note a design decision in PROJECT.md as one dated line, as ONE change: each choice a later context should not undo (a part and why, a board size, what the person approved)."
 export const SET_PROJECT_DESCRIPTION =
-  `Rewrite sections of PROJECT.md as ONE change: intent (a string of at most ${MAX_INTENT_CHARS} characters, one paragraph), blocks (an array of at most ${MAX_BLOCKS} objects { name, does, status }, name non-empty) and open (an array of at most ${MAX_OPEN_ITEMS} non-empty strings, what is left). Sections not given and Decisions stay as they are. Creates PROJECT.md when the project has none.`
+  `Rewrite sections of PROJECT.md as ONE change: intent (at most ${MAX_INTENT_CHARS} characters), blocks (an array of at most ${MAX_BLOCKS} { name, does, status }) and open (an array of at most ${MAX_OPEN_ITEMS} non-empty strings). Sections not given and Decisions stay.`
 
 /** "parts 12, nets 9, unplaced 0, unrouted 3, errors 0, warnings 2" */
 export function circuitCounts(design: Design): string {

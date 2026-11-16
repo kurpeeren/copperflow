@@ -6,14 +6,14 @@ import type { DesignSource } from "../core/design-source.js"
 import { renderCircuit, renderedLine, type Renderer } from "../core/render.js"
 
 export const RENDER_DESCRIPTION =
-  "A picture (PNG) of the board or of one schematic page, drawn by the Studio's own code: what the person sees. Look at the board after autoplace and after autoroute, before asking the person. parts zooms to those parts."
+  "A PNG of the board or one schematic page, as the person sees it. Look after autoplace and after autoroute, before asking the person."
 
 export const renderInput = {
-  file: z.string().describe("Circuit file, e.g. index.circuit.tsx"),
-  view: z.enum(["pcb", "schematic"]).optional().describe('"pcb" (default) or "schematic"'),
-  page: z.string().optional().describe("Schematic page; the first when left out"),
-  parts: z.array(z.string()).min(1).max(50).optional().describe('Zoom to these parts, e.g. ["U1", "C3"]'),
-  width: z.number().int().min(320).max(2000).optional().describe("Image width in pixels, 320 to 2000; 1024 by default"),
+  file: z.string().describe("Circuit file"),
+  view: z.enum(["pcb", "schematic"]).optional().describe('Default "pcb"'),
+  page: z.string().optional(),
+  parts: z.array(z.string()).min(1).max(50).optional().describe('Zoom to these, e.g. ["U1"]'),
+  width: z.number().int().min(320).max(2000).optional().describe("Pixels; default 1024"),
 }
 
 export interface RenderPorts {

@@ -74,7 +74,28 @@ track or via of that net). `add_via` and `remove_copper` add and remove, and rou
 `fillet_tracks` (`straighten_tracks` squares them again); each is one history entry, and the
 answer lists the copper violations the change introduced. Or move parts and run `autoroute`
 again; `unroute` (`nets` or `all: true`) takes back the router's copper and never hand-drawn
-copper.
+copper, locked copper or router tracks that start on a locked part's pad (the answer names those).
+
+Details of the copper tools:
+- `layer` is `top` or `bottom`; `inner1` and `inner2` exist only on a 4-layer board and cannot be
+  routed in the Studio. With `from` and `to`, the layer defaults to the pads' shared layer; a
+  `from` or `to` may name a pin by name (`"U2.GND"`). `width` defaults to the net class's width,
+  else the fabrication default. No corner or segment may touch another net's copper.
+- `add_via` takes its net from the pad or track under it unless `net` is given; its size follows
+  the net class and the fabrication minimum ring; `layers` defaults to `["top", "bottom"]`.
+- `remove_copper` `{ id, segment }` removes one segment (0 is from the first point to the
+  second): the run before it stays as the track and the run after it becomes a new track; a run
+  of one point disappears.
+- `fillet_tracks` rounds with chords on an arc tangent to both legs, of the design rules' fillet
+  radius (1 mm unless `rules.yaml` sets `fabrication.filletRadius`; a track's width is the floor).
+  A corner stays square when its arc would break clearance, its legs are too short or its net's
+  copper joins the replaced part; `straighten_tracks` keeps a corner round when the square corner
+  would break clearance. Both leave locked tracks and tracks starting on a locked part alone; with
+  no `tracks` they take every track of the board.
+- `autoroute`'s `instance` route is copied to the other instances of its sheet placed the same
+  way. When `budgetSeconds` runs out, what is routed is written and the rest is reported.
+- `fit_board` and `autoplace` `fit: true` leave a 2 mm margin round the parts' courtyards by
+  default; `fit_board` refuses a board drawn with a non-rectangular outline.
 
 `copper_summary` shows per net the tracks, vias, length and unrouted connections, each pour
 (`copperpour:1 GND top: 812.40 mm², joins 14 pads`) and each hole (`hole:1 at (3, 3), 3.2 mm`),
@@ -98,8 +119,11 @@ answers `Change c0010: added copperpour:1 (GND, top)` and the fill line. Then `a
 one joining fewer than half of them, `pour-empty` of one left with no copper, `copper-hole` of
 copper too near a hole).
 
-`props` takes `priority`, `clearance`, `minWidth`, `thermal` (`relief` or `solid`),
-`thermalWidth` and `thermalGap`.
+`props` takes `priority` (higher wins where pours overlap; default 0), `clearance` (mm to other
+nets; default the net class's), `minWidth` (narrowest copper kept; default 0.25 mm), `thermal`
+(`relief`, the default, four spokes per pad, or `solid`), `thermalWidth` (spoke width; default
+0.3 mm) and `thermalGap` (pad-to-pour gap; default 0.25 mm). `new_circuit` gives a board a GND
+pour on the layer the parts sit on (both layers when a two-layer board is routed on both).
 
 ## Holes and ids
 

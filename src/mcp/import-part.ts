@@ -3,13 +3,13 @@ import { z } from "zod"
 import { formatImport, importLcscPart } from "../library/import-lcsc.js"
 
 export const importPartInput = {
-  lcsc: z.string().describe("The LCSC part number, e.g. C7950"),
-  id: z.string().optional().describe("The part id (folder name); default the MPN made into an id"),
-  replace: z.boolean().optional().describe("Overwrite an existing, unverified part with this id"),
+  lcsc: z.string().describe("e.g. C7950"),
+  id: z.string().optional().describe("Default from the MPN"),
+  replace: z.boolean().optional(),
 }
 
 export const IMPORT_PART_DESCRIPTION =
-  "Import a part by its LCSC number when the human asks for it: fetches its symbol, footprint and attributes from EasyEDA (the JLCEDA/EasyEDA Official Library) and writes parts/<id>/ with part.yaml, footprint.yaml, verification.md and source.md. Pin types are passive except supply and ground pins; approximated pads are listed as notes. The part is NOT verified: tell the human to check verification.md, and that the import is for personal, non-commercial use only, as EasyEDA's terms allow. One part per request; never import parts in bulk. Needs the internet; offline it writes nothing. Parts whose pins are numbered with letters (BGA, many USB-C) and pads on the bottom side are refused: create those from the datasheet."
+  "Import one part by its LCSC number when the human asks: symbol, footprint and attributes from the JLCEDA/EasyEDA library into parts/<id>/. It is NOT verified: tell the human to check verification.md, and that the import is for personal, non-commercial use only (EasyEDA's terms). Never import in bulk. Needs the internet. Letter-numbered pins (BGA, many USB-C) and bottom pads are refused: use create_part."
 
 /** Imports the part and answers with what was written and what to check. */
 export async function importPart(root: string, input: { lcsc: string; id?: string; replace?: boolean }, get?: typeof fetch): Promise<string> {

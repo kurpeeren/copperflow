@@ -38,21 +38,21 @@ export const editItem = z
     remove_part: z.object({ part: z.string() }).optional(),
     add_instance: z
       .object({
-        sheet: z.string().describe("Sheet name, e.g. PowerStage for PowerStage.sheet.tsx beside the circuit"),
-        name: z.string().describe("Instance name, e.g. PS3"),
-        connections: z.record(z.string(), z.string()).optional().describe('Port to net, e.g. { "VIN": "VBUS" }'),
-        base: z.number().int().positive().optional().describe("Added to every designator inside; default the next free hundred"),
+        sheet: z.string().describe("e.g. PowerStage"),
+        name: z.string(),
+        connections: z.record(z.string(), z.string()).optional().describe('e.g. { "VIN": "VBUS" }'),
+        base: z.number().int().positive().optional(),
         page: z.string().optional(),
       })
       .optional(),
-    set_connections: z.object({ instance: z.string(), connections: z.record(z.string(), z.string()).describe("Every port to its net; ports left out are open") }).optional(),
-    move_to_page: z.object({ part: z.string().describe("A part or an instance"), page: z.string().describe('Page name, made when missing; "Main" is the first page') }).optional(),
+    set_connections: z.object({ instance: z.string(), connections: z.record(z.string(), z.string()).describe("Ports left out are open") }).optional(),
+    move_to_page: z.object({ part: z.string().describe("Part or instance"), page: z.string() }).optional(),
     add_pour: z.object(pourFields).optional(),
-    remove_pour: z.object({ id: z.string().describe('e.g. "copperpour:1"') }).optional(),
+    remove_pour: z.object({ id: z.string() }).optional(),
     add_hole: z.object(holeFields).optional(),
-    remove_hole: z.object({ id: z.string().describe('e.g. "hole:1"') }).optional(),
+    remove_hole: z.object({ id: z.string() }).optional(),
   })
-  .describe("Exactly one of set_props, connect, disconnect, place_part, remove_part, add_instance, set_connections, move_to_page, add_pour, remove_pour, add_hole, remove_hole")
+  .describe("Exactly one key")
 export type EditItem = z.infer<typeof editItem>
 
 const KINDS = ["set_props", "connect", "disconnect", "place_part", "remove_part", "add_instance", "set_connections", "move_to_page", "add_pour", "remove_pour", "add_hole", "remove_hole"] as const

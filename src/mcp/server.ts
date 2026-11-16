@@ -5,7 +5,6 @@ import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import YAML from "yaml"
 import {
-  BUILTIN_PARTS,
   buildBom,
   exportFabrication,
   exportPackage,
@@ -66,7 +65,7 @@ ${INSTRUCTIONS_RULES}
 - Without the copperflow skill installed, call guide (no topic) for it, then guide { topic } for a reference it names.
 - A new board starts with a plan, before any circuit file: guide { topic: "planning" } (the questions to ask the person, what to look up first, the blocks and their ports, one sub-agent per block).`
 
-const file = z.string().describe("Circuit file, e.g. index.circuit.tsx")
+const file = z.string().describe("Circuit file")
 const literal = z.union([z.string(), z.number(), z.boolean()])
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false }
 
@@ -100,10 +99,10 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "circuit_summary",
     {
       description:
-        'Summarize a circuit. The default is compact: one line per part (name, type, value, footprint, positions) and per net, then locked parts, marks from the human and lock violations; long lists end with "… and N more". A sub-sheet instance is one line followed by its parts. filter with an instance name (e.g. "PS1") shows only that instance, its parts and the nets they are on. detail "full" lists every prop and trace.',
+        'Summarize a circuit: one line per part and per net, then locked parts, marks from the human and lock violations. filter "PS1" shows one sub-sheet instance; detail "full" lists every prop and trace.',
       inputSchema: {
         file,
-        detail: z.enum(["compact", "full"]).optional().describe('"compact" (default) or "full"'),
+        detail: z.enum(["compact", "full"]).optional().describe('Default "compact"'),
         filter: z.string().optional().describe('A sub-sheet instance, e.g. "PS1"'),
       },
       annotations: READ_ONLY,
@@ -122,13 +121,13 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "set_props",
     {
       description:
-        "Set literal props of a part, e.g. pcbX, pcbY, pcbRotation, schX, schY, resistance, footprint. Missing props are added. schNameAt and schValueAt move the part's name and value on the schematic, pcbNameAt its silkscreen designator: each is a point { x, y }, an offset from the part's origin (sheet units, board mm), which moves with the part. null removes one of these three props, which puts the label back where the layout puts it. noConnect: \"pin3,pin10\" flags pins meant to stay unconnected (no pin-unconnected error, a cross on the schematic); null removes the flags.",
+        "Set literal props of a part (pcbX, pcbY, pcbRotation, schX, resistance, footprint, …); missing props are added. schNameAt, schValueAt and pcbNameAt are label offsets { x, y }; noConnect: \"pin3,pin10\" flags pins meant to stay open. null removes these.",
       inputSchema: {
         file,
         part: z.string().describe("Part name, e.g. R1"),
         props: z
           .record(z.string(), z.union([literal, z.object({ x: z.number(), y: z.number() }), z.null()]))
-          .describe("Props to set, e.g. { \"pcbX\": 4, \"resistance\": \"10k\", \"schNameAt\": { \"x\": 0, \"y\": 0.4 } }; null removes schNameAt, schValueAt or pcbNameAt"),
+          .describe('e.g. { "pcbX": 4, "resistance": "10k" }'),
       },
     },
     ({ file: circuit, part, props }) => {
@@ -176,8 +175,8 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "check_circuit",
     {
       description:
-        "Check the circuit with copperflow's own rules: electrical, placement, code and model, copper (clearance, width, vias, holes, board edge, keepouts) and pour findings. Answers with the error and warning counts, then up to 20 findings, one line each. Run it once at the end and fix the errors before reporting success; filter narrows it to errors, warnings, copper, a part or a net.",
-      inputSchema: { file, filter: z.string().optional().describe('"errors", "warnings", "copper", a part name, a net name, a rule such as "silk-on-pad" or a sub-sheet instance such as "PS1"') },
+        "Check the circuit: electrical, placement, copper and pour rules. Answers with the error and warning counts, then up to 20 findings. Run it once at the end and fix the errors before reporting success.",
+      inputSchema: { file, filter: z.string().optional().describe('"errors", "warnings", "copper", a part, net, rule or instance') },
       annotations: READ_ONLY,
     },
     ({ file: circuit, filter }) =>
@@ -264,7 +263,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "edit_circuit",
     {
       description:
-        "Apply several edits in order as ONE change (one history entry). Each edit has exactly one key: set_props { part, props }, connect { from, to }, disconnect { from, to }, place_part { part, name, props?, page? }, remove_part { part }, add_instance { sheet, name, connections, base?, page? } (another use of a sub-sheet), set_connections { instance, connections } (every port to its net), move_to_page { part, page } (a part or an instance; nets join across pages by name), add_pour { net, layer, outline?, props? }, remove_pour { id }, add_hole { x, y, diameter } or remove_hole { id }. If an edit is refused, nothing is written and the answer says which edit failed and why.",
+        "Apply several edits in order as ONE change. Each edit has exactly one key (set_props, connect, disconnect, place_part, remove_part, add_instance, set_connections, move_to_page, add_pour, remove_pour, add_hole, remove_hole), shaped like the tool of that name. If one is refused nothing is written and the answer names it.",
       inputSchema: { file, edits: z.array(editItem).min(1).max(100) },
     },
     ({ file: circuit, edits }) =>
@@ -297,7 +296,7 @@ Nothing was written.`)
     "connect_nets",
     {
       description:
-        'Connect pins to named nets in one change, e.g. { "GND": ["R1.pin2", "C1.pin2"], "V3_3": ["U1.VOUT"] }. Writes one connection per pin and skips pins already on that net.',
+        'Connect pins to named nets as ONE change, e.g. { "GND": ["R1.pin2", "C1.pin2"] }; pins already on the net are skipped.',
       inputSchema: { file, nets: z.record(z.string(), z.array(z.string()).min(1)) },
     },
     ({ file: circuit, nets }) =>
@@ -312,7 +311,7 @@ Nothing was written.`)
 
   server.registerTool(
     "list_parts",
-    { description: "List the parts library (parts/ in the project) with each part's verification status.", annotations: READ_ONLY },
+    { description: "List the parts library with each part's verification status.", annotations: READ_ONLY },
     () =>
       run(async () => {
         const parts = await listParts(root)
@@ -325,7 +324,7 @@ Nothing was written.`)
 
   server.registerTool(
     "part_info",
-    { description: "Show a library part's part.yaml and its verification checklist.", inputSchema: { id: z.string() }, annotations: READ_ONLY },
+    { description: "Show a library part's part.yaml and verification checklist.", inputSchema: { id: z.string() }, annotations: READ_ONLY },
     ({ id }) =>
       run(async () => {
         const part = await readPart(root, id)
@@ -350,13 +349,13 @@ Nothing was written.`)
   server.registerTool(
     "place_part",
     {
-      description: `Add a part to a circuit: a library part id from list_parts (its import is added) or a built-in part: ${BUILTIN_PARTS.join(", ")}.`,
+      description: 'Add a part to a circuit: a library part id from list_parts or a built-in kind (guide { topic: "writing-circuits" }).',
       inputSchema: {
         file,
         part: z.string(),
         name: z.string().describe("New designator, e.g. U2 or R5"),
-        props: z.record(z.string(), literal).optional().describe('Literal props, e.g. { "resistance": "10k", "pcbX": 4 }'),
-        page: z.string().optional().describe('Schematic page, e.g. "Power"; made when missing. Without one the part goes on the first page, "Main". Nets join across pages by name.'),
+        props: z.record(z.string(), literal).optional().describe('e.g. { "resistance": "10k" }'),
+        page: z.string().optional().describe('Schematic page, made when missing; default "Main"'),
       },
     },
     ({ file: circuit, part, name, props, page }) =>
@@ -369,7 +368,7 @@ Nothing was written.`)
   server.registerTool(
     "bom",
     {
-      description: "Bill of materials for a circuit, grouped by part. It is read from the design the engine builds from the circuit code, so parts made in loops are counted.",
+      description: "Bill of materials for a circuit, grouped by part.",
       inputSchema: { file },
       annotations: READ_ONLY,
     },
@@ -380,10 +379,10 @@ Nothing was written.`)
     "export_fabrication",
     {
       description:
-        "Write the fabrication files for JLCPCB: Gerbers, plated and non-plated drills, pick-and-place and BOM in <name>-fab/ and <name>-fab.zip beside the circuit (or in the project folder out). Call it after autoroute and a clean check_circuit. A design with errors is refused and nothing is written; warnings are listed.",
+        "Write the JLCPCB fabrication files (Gerbers, drills, pick-and-place, BOM) to <name>-fab/ and a zip. Call it after a clean check_circuit: a design with errors is refused.",
       inputSchema: {
         file,
-        out: z.string().optional().describe("A project folder to write into instead of the circuit's own, e.g. fab"),
+        out: z.string().optional().describe("Project folder to write into, e.g. fab"),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
@@ -400,7 +399,7 @@ Nothing was written.`)
   server.registerTool(
     "export_package",
     {
-      description: "Write a folder with BOM.csv, BOM.md, the local datasheets and a list of library parts with their verification status.",
+      description: "Write a folder with the BOM, local datasheets and the library parts' verification status.",
       inputSchema: { file },
     },
     ({ file: circuit }) =>
@@ -414,7 +413,7 @@ Nothing was written.`)
   server.registerTool(
     "recent_changes",
     {
-      description: "List recent changes by the agent and the human, newest first, including undos and redos.",
+      description: "List recent changes by you and the human, newest first, with undos and redos.",
       inputSchema: { limit: z.number().int().min(1).max(200).optional() },
       annotations: READ_ONLY,
     },
@@ -428,8 +427,8 @@ Nothing was written.`)
     "undo_change",
     {
       description:
-        'Undo one of your own changes: the newest one, or the given change id. When the human redoes an undone change, it comes back as the human\'s own "Redo:" entry, which you cannot undo.',
-      inputSchema: { id: z.string().optional().describe("Change id such as c0003") },
+        'Undo one of your own changes: the newest, or the given id. A human\'s "Redo:" of it is theirs; you cannot undo it.',
+      inputSchema: { id: z.string().optional().describe("e.g. c0003") },
     },
     ({ id }) =>
       run(async () => {

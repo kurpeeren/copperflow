@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { access } from "node:fs/promises"
-import { annotationsPathFor, BUILTIN_PARTS, createCircuitFile, generateCircuit, projectPath, readAnnotations, resolveInRoot, type GeneratedInstance, type NewCircuit } from "../core/index.js"
+import { annotationsPathFor, createCircuitFile, generateCircuit, projectPath, readAnnotations, resolveInRoot, type GeneratedInstance, type NewCircuit } from "../core/index.js"
 import { COMPACT_LIMIT } from "./compact.js"
 import { holeFields, pourFields } from "./pour-tools.js"
 import type { DesignSource } from "../core/design-source.js"
@@ -9,63 +9,63 @@ import { autoplace } from "./place-tools.js"
 const literal = z.union([z.string(), z.number(), z.boolean()])
 
 const part = z.object({
-        name: z.string().describe("Designator, e.g. R1 or U1"),
-        kind: z.string().optional().describe(`Built-in part: ${BUILTIN_PARTS.join(", ")}, chip or connector`),
-        part: z.string().optional().describe("Library part id from list_parts (instead of kind)"),
-        value: literal.optional().describe('The main value of a built-in part: resistance "10k", capacitance "100nF", ...'),
-        footprint: z.string().optional().describe('Footprint of a built-in part, e.g. "0402"'),
+        name: z.string().describe("e.g. R1"),
+        kind: z.string().optional().describe("Built-in kind, e.g. resistor, chip, connector"),
+        part: z.string().optional().describe("Library part id (instead of kind)"),
+        value: literal.optional().describe('e.g. "10k", "100nF"'),
+        footprint: z.string().optional().describe('e.g. "0402"'),
         props: z
           .record(z.string(), z.union([literal, z.record(z.string(), z.string())]))
           .optional()
-          .describe('Other props, e.g. { "pinLabels": { "pin1": "VIN" } }; a chip or connector needs pinLabels, pinCount or a footprint with known pads (led, diode: pin1 anode)'),
+          .describe('e.g. { "pinLabels": { "pin1": "VIN" } }; a chip or connector needs pinLabels, pinCount or a footprint'),
 })
 const nets = z.record(z.string(), z.array(z.string()).min(1))
 
 export const newCircuitInput = {
-  file: z.string().describe("New circuit file, e.g. power.circuit.tsx"),
-  parts: z.array(part).max(200).describe("The circuit's own parts; may be empty when instances make them"),
-  nets: nets.describe('Net name to its pins, e.g. { "GND": ["R1.pin2", "U1.GND"] }'),
-  board: z.object({ width: z.number(), height: z.number() }).optional().describe("Board size in mm; default 30 x 20"),
+  file: z.string().describe("e.g. power.circuit.tsx"),
+  parts: z.array(part).max(200).describe("May be empty when instances make them"),
+  nets: nets.describe('e.g. { "GND": ["R1.pin2", "U1.GND"] }'),
+  board: z.object({ width: z.number(), height: z.number() }).optional().describe("mm; default 30 x 20"),
   pages: z
-    .array(z.object({ name: z.string().describe('Page name, e.g. "Power"'), parts: z.array(z.string()).describe("Names of the parts drawn on it") }))
+    .array(z.object({ name: z.string(), parts: z.array(z.string()) }))
     .max(50)
     .optional()
-    .describe('Schematic pages after the first, "Main", which holds every part not listed. Pages are drawing only: a net name joins its pins on every page.'),
+    .describe('Pages after "Main", which holds the rest'),
   sheets: z
     .record(
       z.string(),
       z.object({
         parts: z.array(part).min(1).max(200),
-        nets: nets.describe("Nets inside the sheet; a net named like a port is that port's, any other is local to each instance"),
-        ports: z.array(z.string()).max(50).describe('The nets an instance connects to the circuit, e.g. ["VIN", "VOUT", "GND"]'),
+        nets: nets.describe("A net named like a port is that port"),
+        ports: z.array(z.string()).max(50).describe('e.g. ["VIN", "GND"]'),
       }),
     )
     .optional()
-    .describe('Sub-sheets by name, e.g. { "PowerStage": { parts, nets, ports } }: each is written as <name>.sheet.tsx beside the circuit, with local designators (R1, C1)'),
+    .describe('e.g. { "PowerStage": { parts, nets, ports } }, each written as <name>.sheet.tsx'),
   instances: z
     .array(
       z.object({
-        sheet: z.string().describe("A sheet given in sheets, or one whose <name>.sheet.tsx is beside the circuit"),
-        name: z.string().describe("Instance name, e.g. PS1"),
-        connections: z.record(z.string(), z.string()).describe('Each port to a net of the circuit, e.g. { "VIN": "VBUS", "GND": "GND" }'),
-        base: z.number().int().positive().optional().describe("Added to every designator inside: base 100 makes R1 into R101. Default 100, 200, … in order"),
+        sheet: z.string(),
+        name: z.string().describe("e.g. PS1"),
+        connections: z.record(z.string(), z.string()).describe('e.g. { "VIN": "VBUS" }'),
+        base: z.number().int().positive().optional().describe("100 makes R1 into R101; default 100, 200, …"),
       }),
     )
     .max(50)
     .optional()
-    .describe("Uses of the sheets; list an instance's name in pages to put it on a page"),
+    ,
   pours: z
-    .array(z.object({ ...pourFields, layer: z.enum(["top", "bottom"]).describe('"top" or "bottom"') }))
+    .array(z.object({ ...pourFields, layer: z.enum(["top", "bottom"]) }))
     .max(20)
     .optional()
-    .describe('Copper pours, e.g. [{ "net": "GND", "layer": "bottom" }]: each fills the whole board, or its outline, with its net; a board gets a GND pour on the layer the parts sit on (both layers when a two-layer board is routed on both)'),
-  holes: z.array(z.object(holeFields)).max(50).optional().describe("Non-plated mounting holes, e.g. [{ \"x\": 12, \"y\": 7, \"diameter\": 3.2 }]"),
-  replace: z.boolean().optional().describe("Overwrite the file and its sheet files when they exist"),
-  place: z.boolean().optional().describe("Place the parts on the board after writing (default true), as a second change; without board, the board is then fitted round them. false leaves them unplaced"),
+    .describe('e.g. [{ "net": "GND", "layer": "bottom" }]'),
+  holes: z.array(z.object(holeFields)).max(50).optional().describe('e.g. [{ "x": 12, "y": 7, "diameter": 3.2 }]'),
+  replace: z.boolean().optional(),
+  place: z.boolean().optional().describe("Default true"),
 }
 
 export const NEW_CIRCUIT_DESCRIPTION =
-  "Write a whole new circuit file from a netlist in one call: the parts (no positions) and the nets (pin lists, no wire corners). The program places the parts (on the board too: autoplace runs after writing, and fits the board when no board size is given, unless place is false) and routes the schematic wires. A block used more than once goes in sheets (written once as <name>.sheet.tsx) and is placed by instances, each joining the sheet's ports to the circuit's nets. Nothing is written if a name, kind, library id, pin, port or base is wrong; the answer then says what is. One history entry for the circuit and its sheet files, and when the board is placed the placement is a second entry: undo takes the placement back first, leaving the file as written without positions, and a second undo removes the files. An existing file is refused unless replace is true. Call check_circuit once afterwards."
+  "Write a whole new circuit file from a netlist in one call: parts (no positions) and nets (pin lists). Unless place is false the board is then placed too (fitted when no board is given): the placement is a second entry, undone first. A block used more than once goes in sheets and is used by instances. Nothing is written if a name, kind, part id, pin, port or base is wrong; the answer says which. An existing file is refused unless replace. guide { topic: \"writing-circuits\" } has the details. Call check_circuit once afterwards."
 
 /** Marks and locks left from an earlier file of this name, as a line for the answer; they apply to the new file. */
 async function leftovers(root: string, file: string): Promise<string | undefined> {

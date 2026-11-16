@@ -7,47 +7,47 @@ import { pourLine } from "./copper-summary.js"
 import { findNet } from "./copper-under.js"
 import { buildOf, type Ports } from "./copper-tools.js"
 
-const file = z.string().describe("Circuit file, e.g. index.circuit.tsx")
+const file = z.string().describe("Circuit file")
 const point = z.object({ x: z.number(), y: z.number() })
 const pourLayer = z.enum(["top", "bottom", "inner1", "inner2"])
 
 /** A pour's optional props; the core checks each value (pour-edits.ts). */
 export const pourProps = z
   .object({
-    priority: z.number().int().optional().describe("Higher wins where pours overlap; default 0"),
-    clearance: z.number().optional().describe("mm to other nets; default the net class's"),
-    minWidth: z.number().optional().describe("Narrowest copper kept, mm; default 0.25"),
-    thermal: z.enum(["relief", "solid"]).optional().describe('"relief" (default, four spokes per pad) or "solid"'),
-    thermalWidth: z.number().optional().describe("Spoke width, mm; default 0.3"),
-    thermalGap: z.number().optional().describe("Pad-to-pour gap, mm; default 0.25"),
+    priority: z.number().int().optional(),
+    clearance: z.number().optional(),
+    minWidth: z.number().optional(),
+    thermal: z.enum(["relief", "solid"]).optional(),
+    thermalWidth: z.number().optional(),
+    thermalGap: z.number().optional(),
   })
   .strict()
 
 export const pourFields = {
   net: z.string().describe('Net name, e.g. "GND"'),
-  layer: pourLayer.describe('"top" or "bottom"; inner1 and inner2 only on a 4-layer board'),
-  outline: z.array(point).min(3).max(1000).optional().describe("Corners in mm; default the whole board"),
+  layer: pourLayer.describe("inner1, inner2 only on 4 layers"),
+  outline: z.array(point).min(3).max(1000).optional().describe("Default the whole board"),
   props: pourProps.optional(),
 }
 
 export const holeFields = {
-  x: z.number().describe("Centre in mm"),
-  y: z.number().describe("Centre in mm"),
-  diameter: z.number().describe("Drill diameter in mm"),
+  x: z.number(),
+  y: z.number(),
+  diameter: z.number().describe("mm"),
 }
 
 export const addPourInput = { file, ...pourFields }
-export const removePourInput = { file, id: z.string().describe('The pour\'s id from copper_summary, e.g. "copperpour:1"') }
+export const removePourInput = { file, id: z.string().describe('e.g. "copperpour:1"') }
 export const addHoleInput = { file, ...holeFields }
-export const removeHoleInput = { file, id: z.string().describe('The hole\'s id from copper_summary, e.g. "hole:1"') }
+export const removeHoleInput = { file, id: z.string().describe('e.g. "hole:1"') }
 
 export const ADD_POUR_DESCRIPTION =
-  "Add a copper pour of a net on one layer as ONE change: the engine fills it on every build around the other nets' copper, and the connections the fill makes count as routed. The answer gives its id and its fill (area, pads it joins); check the pads it joins."
+  "Add a copper pour of a net on one layer as ONE change; it fills round other nets' copper on every build, and what it joins counts as routed. The answer gives its id and the pads it joins: check them."
 export const REMOVE_POUR_DESCRIPTION =
-  "Remove a copper pour by id as ONE change. A locked pour is refused, and so is removing an earlier pour that would renumber a locked one. A pour inside a sub-sheet instance (\"PS1/copperpour:1\") is written in its sheet file: edit that file instead."
-export const ADD_HOLE_DESCRIPTION = "Add a non-plated hole (a mounting hole) as ONE change; copper keeps the board-edge clearance from it."
+  "Remove a copper pour by id as ONE change. Locked pours are refused; a pour inside an instance (\"PS1/copperpour:1\") lives in its sheet file."
+export const ADD_HOLE_DESCRIPTION = "Add a non-plated mounting hole as ONE change."
 export const REMOVE_HOLE_DESCRIPTION =
-  "Remove a non-plated hole by id as ONE change. A locked hole is refused. A hole inside a sub-sheet instance (\"PS1/hole:1\") is written in its sheet file: edit that file instead."
+  "Remove a non-plated hole by id as ONE change. Locked holes are refused; a hole inside an instance (\"PS1/hole:1\") lives in its sheet file."
 
 type PourRequest = { net: string; layer: string; outline?: { x: number; y: number }[]; props?: z.infer<typeof pourProps> }
 type HoleRequest = { x: number; y: number; diameter: number }

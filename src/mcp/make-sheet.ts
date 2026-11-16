@@ -5,15 +5,15 @@ import type { DesignSource } from "../core/design-source.js"
 import { COMPACT_LIMIT } from "./compact.js"
 
 export const makeSheetInput = {
-  file: z.string().describe("Circuit file, e.g. index.circuit.tsx"),
-  name: z.string().describe("The new sheet's name, e.g. PowerStage: written as PowerStage.sheet.tsx beside the circuit"),
-  parts: z.array(z.string()).min(1).max(200).describe('The parts to move, e.g. ["U2", "C4", "C5"]; the wires among them move too'),
-  rename: z.boolean().optional().describe("Give the parts local designators from 1 (R5, R7 → R1, R2); default false keeps theirs"),
-  instance: z.string().optional().describe("The instance's name; default the sheet's name and a free number, e.g. PowerStage1"),
+  file: z.string().describe("Circuit file"),
+  name: z.string().describe("e.g. PowerStage"),
+  parts: z.array(z.string()).min(1).max(200).describe('e.g. ["U2", "C4"]'),
+  rename: z.boolean().optional().describe("Number the parts from 1"),
+  instance: z.string().optional().describe("Default e.g. PowerStage1"),
 }
 
 export const MAKE_SHEET_DESCRIPTION =
-  "Move parts of one page into a new sub-sheet <name>.sheet.tsx and put an instance of it in their place, as one change (undo takes both files back). Every net crossing the boundary becomes a port named after the net, and the instance connects each port to its net, so the netlist stays the same. Its parts' designators become local designator + base (100 or the next free one)."
+  "Move parts into a new sub-sheet <name>.sheet.tsx and put an instance of it in their place, as ONE change. Each net crossing the boundary becomes a port of that name, so the netlist stays the same."
 
 /** `C3 → C1 (C101)`: the designator now, in the sheet and on the board. */
 const mappingText = (m: MakeSheetPreview["mapping"][number]): string => (m.from === m.to ? `${m.from} (${m.flat})` : `${m.from} → ${m.to} (${m.flat})`)

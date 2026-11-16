@@ -16,7 +16,7 @@ const LONGEST_SHOWN = 10
 const FINDINGS_SHOWN = 10
 
 export const BOARD_SUMMARY_DESCRIPTION =
-  'The board in words, in about 60 lines: board size and layers, the share the courtyards use, one line per part (position, rotation, side, [LOCKED]; "not placed" without a position), the ten longest connections, routed or not, with their net and both pads (a part far from the pin it serves shows here), overlapping courtyards, parts off the board or within the edge clearance, pours per layer and the unrouted count. Long part lists end with "… and N more parts (detail: full)"; detail "full" lists everything.'
+  "The board in about 60 lines: size, layers, courtyard use, one line per part (position, side, [LOCKED] or \"not placed\"), the ten longest connections, overlaps, parts off the board, pours, unrouted count."
 
 export type BoardDetail = "compact" | "full"
 

@@ -21,51 +21,51 @@ const NETS_SHOWN = 20
 const padRef = z.string().min(1)
 
 export const routeTrackInput = {
-  file: z.string().describe("Circuit file, e.g. index.circuit.tsx"),
-  net: z.string().optional().describe("Net name, e.g. VBUS; needed with points, taken from the pads with from and to"),
-  layer: layer.optional().describe('Copper layer: "top" or "bottom"; inner1 and inner2 only on a 4-layer board (they cannot be routed in the Studio). Needed with points; with from and to, the pads\' shared layer by default'),
+  file: z.string().describe("Circuit file"),
+  net: z.string().optional().describe("Needed with points"),
+  layer: layer.optional().describe("Needed with points; inner1, inner2 only on 4 layers"),
   points: z
     .array(point)
     .min(2)
     .max(200)
     .optional()
-    .describe("Corners in mm, in order. The first point must be on a pad, track or via of the net; no point may land on another net's copper. Or give from and to instead"),
-  from: padRef.optional().describe('The pad the track starts on, e.g. "C3.pin2" (or a pin name, "U2.GND"); give with to instead of points'),
-  to: padRef.optional().describe('The pad the track ends on, e.g. "U2.pin2"'),
-  via: z.array(point).max(200).optional().describe("Corners in mm between from and to, on one layer. Without them the router finds the path itself (adding vias if it must), or says what is in the way"),
-  width: z.number().positive().optional().describe("Width in mm; default is the net class's width, else the fabrication default"),
+    .describe("Corners in mm; the first on the net's copper"),
+  from: padRef.optional().describe('e.g. "C3.pin2" or "U2.GND"'),
+  to: padRef.optional(),
+  via: z.array(point).max(200).optional().describe("Corners between from and to; none: the router finds the path"),
+  width: z.number().positive().optional().describe("mm; default the net class's"),
 }
 
 export const addViaInput = {
-  file: z.string().describe("Circuit file, e.g. index.circuit.tsx"),
-  net: z.string().optional().describe("Net name; by default the net of the copper under the point"),
-  at: point.describe("Centre in mm"),
-  layers: z.array(layer).min(2).optional().describe('Layers it joins; default ["top", "bottom"]; inner layers only on a 4-layer board'),
+  file: z.string().describe("Circuit file"),
+  net: z.string().optional(),
+  at: point,
+  layers: z.array(layer).min(2).optional().describe('Default ["top", "bottom"]'),
 }
 
 const copperId = z.string().regex(/^[tv]\d+$/, 'a track id such as "t0001" or a via id such as "v0001"')
 const trackSegment = z.object({
   id: z.string().regex(/^t\d+$/, 'a track id such as "t0001"'),
-  segment: z.number().int().min(0).describe("The segment's index: 0 is from the first point to the second"),
+  segment: z.number().int().min(0).describe("0 is the first point to the second"),
 })
 
 export const removeCopperInput = {
-  file: z.string().describe("Circuit file, e.g. index.circuit.tsx"),
+  file: z.string().describe("Circuit file"),
   ids: z
     .array(z.union([copperId, trackSegment]))
     .min(1)
     .max(100)
-    .describe('Track and via ids, or { id, segment } to remove one segment of a track: the track keeps the run before it and the run after it becomes a new track'),
+    .describe("Ids, or { id, segment }"),
 }
 
 export const ROUTE_TRACK_DESCRIPTION =
-  "Draw one track of a net by hand as ONE change: a list of corner points on one layer, or its ends by pad reference (from: \"C3.pin2\", to: \"U2.pin2\"), with via points between them for the corners; with from and to only, the router finds the path for that one connection (adding vias if it must) or says what is in the way. It must start on a pad, track or via of the net, and no corner or segment between corners may touch another net's copper. The answer lists the copper violations the change introduced or made worse. Route by hand what autoroute could not route. A track cannot start on a locked part's pad."
+  "Draw one track of a net by hand as ONE change: corner points on one layer, or from and to pads (via: corners between them; none: the router finds the path or says what is in the way). It must start on the net's copper, not on a locked part's pad, and touch no other net. The answer lists copper violations it made. Use it for what autoroute could not route."
 export const ADD_VIA_DESCRIPTION =
-  "Place a via by hand as ONE change. Its net is the net of the pad or track under it unless you give one; its size follows the net class and the fabrication minimum ring."
+  "Place a via by hand as ONE change; its net is that of the copper under it unless given."
 export const REMOVE_COPPER_DESCRIPTION =
-  "Remove tracks and vias by id (from copper_summary or check_circuit) as ONE change; { id, segment } removes only that segment of a track, splitting it into the runs left on either side (a run of one point disappears). Locked copper is refused."
+  "Remove tracks and vias by id (from copper_summary or check_circuit) as ONE change; { id, segment } removes one segment. Locked copper is refused."
 export const COPPER_SUMMARY_DESCRIPTION =
-  'Summarize the copper in at most 60 lines: totals, per net (tracks, vias, length, unrouted), each pour (fill area, pads joined) and hole by id, and copper violations by rule. Call it before and after drawing copper.'
+  "Summarize the copper in at most 60 lines: totals, per net (tracks, vias, unrouted), pours and holes by id, violations by rule. Call it before and after drawing copper."
 
 export interface Ports {
   root: string

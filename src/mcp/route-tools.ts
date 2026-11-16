@@ -27,23 +27,23 @@ const UNROUTED_SHOWN = 10
 const names = z.array(z.string().min(1)).min(1).max(200)
 
 export const autorouteInput = {
-  file: z.string().describe("Circuit file, e.g. index.circuit.tsx"),
-  nets: names.optional().describe('Route only these nets, e.g. ["VBUS", "GND"]'),
-  parts: names.optional().describe('Route only the connections of these parts, e.g. ["U1", "C3"]'),
-  instance: z.string().min(1).optional().describe('Route only the connections inside this sub-sheet instance, e.g. "PS1"; the route is copied to the other instances of its sheet placed the same way'),
-  budgetSeconds: z.number().positive().max(MAX_BUDGET_SECONDS).optional().describe(`The time the router may take; ${DEFAULT_BUDGET_SECONDS} s by default. When it runs out, what is routed is written and the rest is reported`),
+  file: z.string().describe("Circuit file"),
+  nets: names.optional().describe('e.g. ["VBUS"]'),
+  parts: names.optional().describe('e.g. ["U1"]'),
+  instance: z.string().min(1).optional().describe('e.g. "PS1"; copied to its sheet\'s other instances placed alike'),
+  budgetSeconds: z.number().positive().max(MAX_BUDGET_SECONDS).optional().describe(`Default ${DEFAULT_BUDGET_SECONDS}`),
 }
 
 export const unrouteInput = {
-  file: z.string().describe("Circuit file, e.g. index.circuit.tsx"),
-  nets: names.optional().describe("Remove the router's copper of these nets"),
-  all: z.boolean().optional().describe("true: remove all of the router's copper"),
+  file: z.string().describe("Circuit file"),
+  nets: names.optional(),
+  all: z.boolean().optional(),
 }
 
 export const AUTOROUTE_DESCRIPTION =
-  "Route the copper with copperflow's router as ONE change: the connections still unrouted on the whole board, or only those of some nets, of some parts or inside one sub-sheet instance (give at most one of these). Run it after the parts are placed. Existing copper is kept, and no track starts on a locked part's pad. It writes only connections it routed whole and names each one it could not, with the reason. Route those by hand with route_track, or move parts and run it again; then check_circuit."
+  "Route the unrouted connections as ONE change: the whole board, or only some nets, parts or one instance (one of these). Run it after placing; existing copper is kept. It names each connection it could not route, with the reason: route those with route_track, or move parts and run it again."
 export const UNROUTE_DESCRIPTION =
-  "Remove the copper the router made, for some nets or all of it, as ONE change. Hand-drawn copper, locked copper and router tracks that start on a locked part's pad stay; the answer names those it left."
+  "Remove the router's copper, for some nets or all, as ONE change. Hand-drawn and locked copper stay."
 
 const plural = (count: number, word: string, many = `${word}s`) => `${count} ${count === 1 ? word : many}`
 

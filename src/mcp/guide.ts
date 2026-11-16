@@ -18,12 +18,12 @@ export const GUIDE_TOPICS: Readonly<Record<string, string>> = {
 }
 
 export const guideInput = {
-  topic: z.string().max(100).optional().describe(`One reference: ${Object.keys(GUIDE_TOPICS).join(", ")}; none gives SKILL.md`),
-  again: z.boolean().optional().describe("true returns a text this session already received"),
+  topic: z.string().max(100).optional().describe(`One of ${Object.keys(GUIDE_TOPICS).join(", ")}`),
+  again: z.boolean().optional(),
 }
 
 export const GUIDE_DESCRIPTION =
-  "The copperflow skill: how to design with these tools. Without a topic SKILL.md; with one, that reference. Read each text once: a second call with the same arguments in a session answers a short line unless again is true. Call it when the copperflow skill is not installed."
+  "The copperflow skill: SKILL.md without a topic, a reference with one. A text already read this session answers a short line unless again. Call it when the skill is not installed."
 
 /** The most argument sets one session remembers having answered. */
 export const GUIDE_MEMORY_LIMIT = 32

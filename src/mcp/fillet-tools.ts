@@ -10,23 +10,23 @@ const trackIds = z
   .min(1)
   .max(200)
   .optional()
-  .describe("Track ids (from copper_summary or check_circuit); every track of the board when left out")
+  .describe("Default every track")
 
 export const filletTracksInput = {
-  file: z.string().describe("Circuit file, e.g. index.circuit.tsx"),
+  file: z.string().describe("Circuit file"),
   ids: trackIds,
-  radius: z.number().positive().optional().describe("Radius in mm; default is the design rules' fillet radius (1 mm unless rules.yaml sets fabrication.filletRadius). A track's width is the floor"),
+  radius: z.number().positive().optional().describe("mm; default the rules' fillet radius"),
 }
 
 export const straightenTracksInput = {
-  file: z.string().describe("Circuit file, e.g. index.circuit.tsx"),
+  file: z.string().describe("Circuit file"),
   ids: trackIds,
 }
 
 export const FILLET_TRACKS_DESCRIPTION =
-  "Round the square corners of tracks as ONE change (chords on an arc tangent to both legs). A corner stays square when its arc would break clearance, its legs are too short or its net's copper joins the replaced part; the answer counts those with the reasons. Locked tracks and tracks starting on a locked part are left alone; straighten_tracks puts corners back."
+  "Round the square corners of tracks as ONE change. A corner stays square where the arc would break clearance; the answer counts those with reasons. Locked tracks are left alone; straighten_tracks undoes it."
 export const STRAIGHTEN_TRACKS_DESCRIPTION =
-  "Put back the corners fillet_tracks rounded, as ONE change. A corner stays round when the square corner would break clearance or leave its net's copper joining the arc; the answer counts those with the reasons. Locked tracks and tracks starting on a locked part are left alone."
+  "Put back the square corners fillet_tracks rounded, as ONE change, where clearance allows. Locked tracks are left alone."
 
 /** Refuses ids that name no track of the layout, before anything is written. */
 function checkIds(design: Design, ids: readonly string[] | undefined): void {

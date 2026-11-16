@@ -31,3 +31,27 @@ test("no tool's input schema writes items as a list", async () => {
   expect(tools.length).toBeGreaterThan(30)
   expect(tools.flatMap((tool) => listItems(tool.inputSchema, tool.name))).toEqual([])
 })
+
+/** The tool list the client receives, from a fresh in-process server. */
+async function listedTools() {
+  const root = await mkdtemp(join(tmpdir(), "cf-size-"))
+  const server = createCopperflowServer(root, { engine: inProcessEngine as never })
+  const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
+  const client = new Client({ name: "test", version: "0.0.0" })
+  await Promise.all([server.connect(serverSide), client.connect(clientSide)])
+  return (await client.listTools()).tools
+}
+
+// Every client pays for the whole tool list on every turn: worked detail belongs in the guide.
+test("the tool list stays at 31,000 characters or less", async () => {
+  const tools = await listedTools()
+  const total = JSON.stringify(tools).length
+  const sizes = tools.map((tool) => `${tool.name} ${JSON.stringify(tool).length}`).sort().join(", ")
+  expect(total, `tool list is ${total} characters: ${sizes}`).toBeLessThanOrEqual(31_000)
+})
+
+test("every tool's description is at most 700 characters", async () => {
+  const tools = await listedTools()
+  const long = tools.filter((tool) => (tool.description ?? "").length > 700).map((tool) => `${tool.name} ${tool.description?.length}`)
+  expect(long, `descriptions over 700 characters: ${long.join(", ")}`).toEqual([])
+})

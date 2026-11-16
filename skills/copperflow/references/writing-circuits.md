@@ -6,8 +6,11 @@ Read before your first `new_circuit` or `edit_circuit` in a project.
 
 - `part`: a library part id from `list_parts` (a chip made with `create_part` or `import_part`).
   Create the library part first; `new_circuit` refuses an id the library does not have.
-- `kind`: a built-in part (`resistor`, `capacitor`, `inductor`, `led`, `diode`, `pinheader`,
-  …). Never `kind: "chip"` with hand-written pins: chips come from the library.
+- `kind`: a built-in part: `resistor`, `capacitor`, `inductor`, `led`, `diode`, `fuse`,
+  `crystal`, `resonator`, `pinheader`, `pushbutton`, `switch`, `testpoint`, `transistor`,
+  `mosfet`, `battery`, `potentiometer`, `chip` or `connector` (`place_part` takes the same names
+  as `part`). Never `kind: "chip"` with hand-written pins: chips come from the library. A chip or
+  connector needs `pinLabels`, `pinCount` or a footprint with known pads.
 - `value`: the main value of a built-in part (`"10k"`, `"100nF"`).
 - `footprint`: a generated footprint string for a built-in part (`"0402"`, `"0603"`); a
   library part brings its own.
@@ -26,6 +29,27 @@ A net names pins as `R1.pin1` or by a library pin name (`U1.VOUT`). A pin the pa
 have is refused before anything is written, and the answer lists the part's real pins: use one
 of those. `new_circuit` refuses a file that exists; pass `replace: true` to overwrite it and its
 sheet files (one history entry, so `undo_change` brings the old text back).
+
+`new_circuit` places the schematic and routes its wires, then (unless `place: false`) places the
+board as a second history entry, fitting the board round the parts when no `board` is given (the
+default board is 30 x 20 mm). `undo_change` takes the placement back first, leaving the file as
+written without positions; a second undo removes the files. `pages` lists the pages after the
+first, `"Main"`, which holds every part not listed; an instance's name may be listed there too.
+Pages are drawing only: a net name joins its pins on every page. In `sheets`, a net named like a
+port is that port's and any other is local to each instance; each sheet is written as
+`<name>.sheet.tsx` beside the circuit with local designators (R1, C1), and an instance's `sheet`
+may also name a `<name>.sheet.tsx` already there. `base` 100 makes R1 into R101 (default 100, 200,
+… in order). `make_sheet` does the opposite on a written circuit: the parts it moves get local
+designator + base (100 or the next free one), and `rename` numbers them from 1.
+
+In `edit_circuit`, `add_instance` is `{ sheet, name, connections, base?, page? }` (another use of a
+sub-sheet, base default the next free hundred), `set_connections` `{ instance, connections }`
+gives every port its net (ports left out are open), and `move_to_page` `{ part, page }` takes a
+part or an instance (the page is made when missing). `set_props` sets `schNameAt` and `schValueAt`
+(the part's name and value on the schematic, in sheet units) and `pcbNameAt` (its silkscreen
+designator, in mm) as an offset `{ x, y }` from the part's origin that moves with the part; null
+puts the label back. `noConnect: "pin3,pin10"` flags pins meant to stay open (no pin-unconnected
+error, a cross on the schematic); null removes the flags.
 
 ## Reading what is there
 
@@ -51,7 +75,9 @@ datasheet or a choice only they can make, suggest that instead.
 `export_fabrication` `{ file, out? }` writes into the circuit's folder, or into the project
 folder `out` (e.g. `"fab"`). Pass on every `Warning:` line: connections not routed, parts
 without a footprint, silkscreen over pads, parts without an LCSC number (JLCPCB assembly will
-not match them). A design with errors is refused and nothing is written.
+not match them). A design with errors is refused and nothing is written. It writes Gerbers,
+plated and non-plated drills, pick-and-place and the BOM into `<name>-fab/` and
+`<name>-fab.zip`. `bom` and `export_package` read the built design, so parts made in loops count.
 
 Export only a clean board: `check_circuit` with 0 errors and no `unrouted` warning. With
 connections still unrouted the files are written with a warning, but the board is not finished

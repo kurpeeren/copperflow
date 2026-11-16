@@ -23,23 +23,23 @@ const MAX_BUDGET_SECONDS = 300
 const SHOWN = 10
 
 export const autoplaceInput = {
-  file: z.string().describe("Circuit file, e.g. index.circuit.tsx"),
-  parts: z.array(z.string().min(1)).min(1).max(500).optional().describe('Place only these parts, e.g. ["U1", "C3"]'),
-  instance: z.string().min(1).optional().describe('Place only the parts of this sub-sheet instance, e.g. "PS1"'),
-  fit: z.boolean().optional().describe("true: then shrink or grow the (rectangular) board round the parts with a 2 mm margin"),
-  budgetSeconds: z.number().positive().max(MAX_BUDGET_SECONDS).optional().describe(`The time the placer may take; ${DEFAULT_PLACE_BUDGET_SECONDS} s by default`),
+  file: z.string().describe("Circuit file"),
+  parts: z.array(z.string().min(1)).min(1).max(500).optional().describe('e.g. ["U1"]'),
+  instance: z.string().min(1).optional().describe('e.g. "PS1"'),
+  fit: z.boolean().optional().describe("Also fit the board round the parts"),
+  budgetSeconds: z.number().positive().max(MAX_BUDGET_SECONDS).optional().describe(`Default ${DEFAULT_PLACE_BUDGET_SECONDS}`),
   connectors: z.enum(["last", "ahead"]).optional().describe("ahead: each connector by its part; route and compare"),
 }
 
 export const fitBoardInput = {
-  file: z.string().describe("Circuit file, e.g. index.circuit.tsx"),
-  margin: z.number().min(0).max(50).optional().describe(`Space round the parts' courtyards in mm; ${DEFAULT_FIT_MARGIN} by default`),
+  file: z.string().describe("Circuit file"),
+  margin: z.number().min(0).max(50).optional().describe(`mm; default ${DEFAULT_FIT_MARGIN}`),
 }
 
 export const AUTOPLACE_DESCRIPTION =
-  "Place the board's parts by their connections as ONE change: every part without a position (or only those of parts or of one sub-sheet instance). Parts a person placed or locked stay where they are and are worked round. Run it before autoroute. The answer gives parts placed, wire length, board size, overlaps and the parts it found no room for with the reason. fit: true also fits the board round the parts."
+  "Place parts by their connections as ONE change: every part without a position, or only some parts or one instance. Placed and locked parts stay. Run it before autoroute. The answer gives wire length, board size, overlaps and parts with no room."
 export const FIT_BOARD_DESCRIPTION =
-  "Shrink or grow a rectangular board to the parts' courtyards plus a margin (2 mm by default), as ONE change. Refused for a board drawn with a non-rectangular outline."
+  "Shrink or grow a rectangular board round the parts plus a margin, as ONE change. Refused for a non-rectangular outline."
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`
 const mm = (v: number) => String(Math.round(v * 10) / 10)
