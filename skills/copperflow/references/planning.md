@@ -137,7 +137,9 @@ questions: V3_3 is not needed by this block; drop the port?
 3. `check_circuit` once. An error inside a block is the block's: correct the sheet and write the
    board again with `replace: true`, so every use gets the correction.
 4. `set_project` with each block's status `designed`, then go on with SKILL.md at "Ask the
-   person before the PCB". On the board, place block by block: `autoplace` `{ file, instance }`.
+   person before the PCB". On the board, blocks first (`autoplace` and `autoroute` with
+   `{ file, instance }`, `render` to look), then the whole board and the tracks between blocks:
+   the order and the answers are in [copper.md](copper.md), "Placing and routing".
 
 One more input later is one more instance (`edit_circuit` with `add_instance`), not eight more
 parts.

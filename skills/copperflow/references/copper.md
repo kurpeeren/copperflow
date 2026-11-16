@@ -12,9 +12,35 @@ an `instance`, within `budgetSeconds`, 20 s by default, and names each connectio
 route with the reason), then `check_circuit` once at the end (filter `copper` for the full list).
 
 One `autoplace` over the whole board is right for a small board (a dozen or two parts on one
-sheet). A larger board, or one with sub-sheets, is placed block by block: `{ instance }` or
-`{ parts: [...] }` for each block, the one with most connections first, connectors last. The
-placer keeps decoupling capacitors beside their supply pins, a crystal beside the two chip pins
+sheet). A board with sub-sheets is laid out the way a person does it, blocks first:
+
+1. Each sheet's first instance on its own: `autoplace` `{ file, instance: "CH1" }` answers
+   `Placed 4 parts; …`. Its parts are packed tight, turned so the pads of a shared net face each
+   other; the unplaced parts of the rest of the board are not in its way. A sheet holds one layout
+   for all its instances, so the other copies sit on it for now.
+2. Its inside routed on its own: `autoroute` `{ file, instance: "CH1" }` answers
+   `Change …: Routed 4 of 4 connections in 1 pass`. Copies still sitting on it get no copy of the
+   route and show as a `short` until the board is placed; copies already placed the same way
+   elsewhere get the route copied.
+3. `render` `{ file, parts: ["R101", "C101"] }` to look at the block.
+4. The board: `autoplace` `{ file, fit: true }`. Connectors go on the edge nearest the blocks they
+   serve, pins inward; the block or chip with most connections first; then every instance as one
+   rigid block, side by side with the courtyard clearance between them, all instances of a sheet
+   with the same arrangement and the same turn (the one with least wire). Each copy takes its
+   block's inner copper. It answers `Placed 34 parts; …; 0 overlaps`, then `Notes: CH2 was moved as a
+   block, keeping the arrangement of CH1; …; Copper: 32 pieces of copper went with CH1, …`. A block
+   with no room on the board is put beside it, never on another block: without `fit` it is named
+   in `Not placed: CH8 (no free room on the board for its … block; …)`, with `fit` the board grows
+   round it.
+5. Pours, then `autoroute` `{ file }` for the tracks between blocks and to the connectors.
+
+An instance is one thing on the board: `set_props` `{ file, part: "CH3", props: { pcbX, pcbY,
+pcbRotation } }` moves and turns it with its inner copper (`Copper: 4 pieces of copper went with
+CH3`); copper that left it (to a connector or another block) is removed and shows as unrouted
+again (`… removed (now unrouted)`). The Studio's moves and the placer's do the same.
+
+On a board without sub-sheets, place block by block with `{ parts: [...] }`, the part with most
+connections first, connectors last. The placer keeps decoupling capacitors beside their supply pins, a crystal beside the two chip pins
 it is across with its load capacitors on its far side, and a pull-up or an LED's resistor beside
 the pin it serves. After `autoplace`, read `board_summary`'s longest connections: a part far
 from the pin it serves shows there with both pads' places. Move it with `set_props`

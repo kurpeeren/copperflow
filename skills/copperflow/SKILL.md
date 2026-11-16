@@ -105,21 +105,21 @@ means, `replace`, refused pins and the export's warnings are in
 6. **Ask the person before the PCB.** Stop here. Run `check_circuit` and fix its errors, then
    summarise the blocks and the parts chosen (and which are unverified) and ask whether to go on
    to the board. Wait for a yes; `note_decision` what they approved.
-7. **Place.** A small board (a dozen or two parts, no sheets): one `autoplace` `{ file }`. A larger
-   one, or with sheets, block by block: `{ file, instance: "CH1" }` or `{ file, parts: [...] }`, the
-   block with most connections (the MCU) first, connectors last. One change: `Placed 12 parts; wire
-   length 184 mm (was 412); board 42 × 28 mm; 0 overlaps`, `Change c0007; …`, `Not placed:`, `Notes:`.
-   Parts a person placed or locked stay and are worked round. A sheet holds one layout for all
-   its instances: the first one placed sets it, and `autoplace` moves each other instance as a
-   whole by its anchor (`{ instance: "CH2" }`, or the whole board), noting `CH2 was moved as a block`.
-   `Not placed: U1 (no free spot …)`: make the board larger (`fit_board` with a larger `margin`) and run
-   `autoplace` again, or place that part with `set_props` `{ pcbX, pcbY }` and `autoplace` the
-   rest. Then read `board_summary`'s longest connections: a part far from the pin it serves (a
-   crystal, a pull-up) shows there with both pads' places; move it with `set_props` `{ pcbX, pcbY }`
-   and `autoplace` leaves it alone from then on. Do not repeat `autoplace` hoping for better.
-8. **Board shape and connectors.** `fit_board` `{ file, margin? }`:
-   `Change c0010: board 42 × 28 mm (margin 2 mm)`; or `autoplace` with `fit: true`.
-   Mounting holes with `add_hole` `{ file, x, y, diameter }`.
+7. **Place.** A small board (a dozen or two parts, no sheets): one `autoplace` `{ file }`. With
+   sheets, blocks first: `autoplace` `{ file, instance: "CH1" }` packs one sheet's first instance
+   on its own, `autoroute` `{ file, instance: "CH1" }` routes its inside (`Routed 4 of 4 connections`;
+   a `short` with copies still sitting on it lasts until the board is placed), `render` to look.
+   Then the board, `autoplace` `{ file, fit: true }`: connectors on the edges, the block with most
+   connections first, every instance whole, side by side, turned alike, with its block's copper
+   (`CH2 was moved as a block, keeping the arrangement of CH1`, `Copper: 32 pieces of copper went
+   with …`); then pours and `autoroute` for the tracks between blocks. One change: `Placed 34 parts;
+   wire length 233 mm (was 197); board 32 × 24 mm; 0 overlaps`, `Change c0007; …`, `Not placed:`, `Notes:`.
+   Parts a person placed or locked stay. `set_props` `{ pcbX, pcbY, pcbRotation }` on an instance's
+   name moves it with its copper; copper leaving it is removed (unrouted again).
+   `Not placed: U1 (no free spot …)`: `fit: true`, or place it with `set_props` `{ pcbX, pcbY }`.
+   `board_summary`'s longest connections show a part far from the pin it serves; move it with
+   `set_props`. Do not repeat `autoplace` hoping for better. Details: [references/copper.md](references/copper.md).
+8. **Board shape.** `fit_board` `{ file, margin? }`: `Change c0010: board 42 × 28 mm (margin 2 mm)`; holes: `add_hole`.
 9. **Fine tuning.** `board_summary` `{ file }` reads the board: `main.circuit.tsx: Board 42 × 28 mm,
    2 layers, courtyards use 38%; 24 parts, 18 nets`, one line per part
    (`U1 MCP2515 soic18w @(12.0, 8.5) r90 top [LOCKED]`), the ten longest connections with both pads' places,

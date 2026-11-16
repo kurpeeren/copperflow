@@ -1,6 +1,6 @@
 // Laying out a board by its blocks: the eight-input board (one Input sheet used eight times, two 9-pin headers).
 import { beforeEach, describe, expect, test } from "vitest"
-import { mkdtemp } from "node:fs/promises"
+import { mkdtemp, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -258,4 +258,21 @@ describe("B1: no instance is placed on another", () => {
     expect(overlapping(design)).toEqual([])
     expect(outside(design)).toEqual([])
   }, 120_000)
+})
+
+describe("B6: the skill tells the agent the block flow", () => {
+  const skill = (file: string) => readFile(join(process.cwd(), "skills", "copperflow", file), "utf8")
+
+  test("SKILL.md step 7, copper.md and planning.md step 4 give blocks first, then the board, then the tracks between", async () => {
+    const main = await skill("SKILL.md")
+    const place = main.slice(main.indexOf("7. **Place.**"), main.indexOf("8. **"))
+    for (const call of ['`autoplace` `{ file, instance: "CH1" }`', '`autoroute` `{ file, instance: "CH1" }`', "`render`", "`autoplace` `{ file, fit: true }`", "tracks between blocks"]) {
+      expect(place).toContain(call)
+    }
+    expect(place.indexOf("instance:")).toBeLessThan(place.indexOf("fit: true"))
+    const copper = await skill("references/copper.md")
+    for (const answer of ["Placed 4 parts", "Routed 4 of 4 connections", "CH2 was moved as a", "removed (now unrouted)"]) expect(copper).toContain(answer)
+    const planning = await skill("references/planning.md")
+    expect(planning.slice(planning.indexOf("## 4."))).toContain("[copper.md](copper.md)")
+  })
 })
