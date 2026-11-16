@@ -8,6 +8,8 @@ on:
 jobs:
   test:
     strategy:
+      # Each system reports on its own: a failure on one does not cancel the other.
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}

@@ -1,0 +1,2 @@
+# Text files are checked out with Unix line endings on every system: the program and the tests read files as stored.
+* text=auto eol=lf
