@@ -52,10 +52,16 @@ function pcbFrame(design: Design, parts: readonly string[] | undefined): Frame {
     return { box: grown(partBoxes(parts, boxes, "on the board"), PART_MARGIN, MIN_PART_MARGIN), what: `PCB, around ${parts.join(", ")}`, design }
   }
   const outline = pointBounds(pcb.board?.outline ?? [])
-  const box = outline ?? unionBoxes(pcb.parts.flatMap((part) => pointBounds(part.courtyard) ?? []))
-  if (!box) throw new Error("The board is empty: it has no outline and no parts to draw")
-  const size = `${round1(box.maxX - box.minX)} x ${round1(box.maxY - box.minY)} mm`
-  return { box: grown(box, WHOLE_MARGIN, 0), what: outline ? `PCB, whole board ${size}` : `PCB, all parts ${size}`, design }
+  const courtyards = pcb.parts.flatMap((part) => pointBounds(part.courtyard) ?? [])
+  const board = outline ?? unionBoxes(courtyards)
+  if (!board) throw new Error("The board is empty: it has no outline and no parts to draw")
+  const size = `${round1(board.maxX - board.minX)} x ${round1(board.maxY - board.minY)} mm`
+  if (!outline) return { box: grown(board, WHOLE_MARGIN, 0), what: `PCB, all parts ${size}`, design }
+  // A part that lies off the board is a fault the picture must show, so the box grows to hold it.
+  const outside = courtyards.filter((yard) => yard.minX < outline.minX || yard.maxX > outline.maxX || yard.minY < outline.minY || yard.maxY > outline.maxY)
+  const box = unionBoxes([outline, ...outside]) ?? outline
+  const also = outside.length === 0 ? "" : `, and ${outside.length} ${outside.length === 1 ? "part" : "parts"} outside it`
+  return { box: grown(box, WHOLE_MARGIN, 0), what: `PCB, whole board ${size}${also}`, design }
 }
 
 function schematicFrame(design: Design, page: string | undefined, parts: readonly string[] | undefined): Frame {
