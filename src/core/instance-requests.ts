@@ -5,7 +5,8 @@ import { scanCircuit } from "./analyze.js"
 import { SHEET_IMPORT, SHEET_TAG } from "./instance-edits.js"
 import { connectionRefusal } from "./connection-names.js"
 import { sheetFileIn } from "./selectors.js"
-import { checkNewInstance, nextFreeBase, placeInstances, sheetLayout } from "./sheet-layout.js"
+import { checkNewInstance, nextFreeBase, placeInstances, sheetLayout, type PlacedInstance } from "./sheet-layout.js"
+import { withBase } from "../engine/sheets.js"
 import { resolveInRoot } from "./workspace.js"
 import type { CircuitModel, Edit } from "./types.js"
 
@@ -66,14 +67,15 @@ export interface InstanceRequest {
  * the base and the designators it makes against the circuit's parts and instances. Without a base it is written
  * past every instance's span, so its designators stay put when instances are moved or reordered; when an instance
  * of the circuit takes the default base, the new one does too (the default then depends on the order written, and
- * the engine's defaults never collide). Writes nothing.
+ * the engine's defaults never collide). `earlier` are the edits of the same change that come before this one: an
+ * instance one of them adds is counted as there already, so two added together do not get one base. Writes nothing.
  */
-export async function instanceEdit(root: string, circuit: { file: string; model: CircuitModel }, request: InstanceRequest): Promise<Edit> {
+export async function instanceEdit(root: string, circuit: { file: string; model: CircuitModel }, request: InstanceRequest, earlier: readonly Edit[] = []): Promise<Edit> {
   if (!SHEET_TAG.test(request.sheet)) throw new Error(`"${request.sheet}" is not a sheet name; a sheet name starts with a capital letter, e.g. PowerStage`)
   const { file, importFrom } = sheetFileFor(circuit, request.sheet)
   const sheetPortsRead = await portsOfFile(root, request.sheet, file)
   checkPorts(request.sheet, sheetPortsRead.ports, request.connections, sheetPortsRead.buses)
-  const placed = await placeInstances(root, circuit.file, circuit.model)
+  const placed = [...(await placeInstances(root, circuit.file, circuit.model)), ...(await addedBefore(root, circuit, earlier))]
   const base = request.base ?? (placed.every((instance) => instance.written) ? nextFreeBase(placed) : undefined)
   if (base !== undefined) {
     const parts = circuit.model.parts.filter((part) => sheetFileIn(circuit.model, part.name) === undefined).map((part) => part.name)
@@ -88,6 +90,18 @@ export async function instanceEdit(root: string, circuit: { file: string; model:
     importFrom,
     ...(request.page === undefined ? {} : { page: request.page }),
   }
+}
+
+/** The instances that earlier edits of the same change add with a base, as if they were written already. */
+async function addedBefore(root: string, circuit: { file: string; model: CircuitModel }, earlier: readonly Edit[]): Promise<PlacedInstance[]> {
+  const added: PlacedInstance[] = []
+  for (const edit of earlier) {
+    if (edit.kind !== "addInstance" || edit.base === undefined) continue
+    const layout = await sheetLayout(root, sheetFileFor(circuit, edit.tag).file, [circuit.file])
+    const base = edit.base
+    added.push({ name: edit.name, sheet: edit.tag, base, written: true, span: layout.span, designators: layout.designators.map((id) => withBase(id, base)) })
+  }
+  return added
 }
 
 /** The edit that sets an instance's connections, checked against its sheet file's ports. Writes nothing. */

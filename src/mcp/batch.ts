@@ -64,8 +64,8 @@ function kindOf(item: EditItem): (typeof KINDS)[number] {
   return present[0] as (typeof KINDS)[number]
 }
 
-/** Turns one step into the core's edit, or throws why it cannot. */
-export async function toEdit(root: string, file: string, item: EditItem): Promise<{ edit: Edit; label: string }> {
+/** Turns one step into the core's edit, or throws why it cannot. `earlier` are the edits of the steps before it. */
+export async function toEdit(root: string, file: string, item: EditItem, earlier: readonly Edit[] = []): Promise<{ edit: Edit; label: string }> {
   switch (kindOf(item)) {
     case "set_props": {
       const { part, props: values } = item.set_props!
@@ -85,7 +85,7 @@ export async function toEdit(root: string, file: string, item: EditItem): Promis
       return { edit: { kind: "removePart", part: item.remove_part!.part }, label: `remove ${item.remove_part!.part}` }
     case "add_instance": {
       const { connections = {}, ...rest } = item.add_instance!
-      const edit = await instanceEdit(root, await loadCircuit(root, file), { ...rest, connections })
+      const edit = await instanceEdit(root, await loadCircuit(root, file), { ...rest, connections }, earlier)
       return { edit, label: `add instance ${rest.name} (${rest.sheet})` }
     }
     case "set_connections": {

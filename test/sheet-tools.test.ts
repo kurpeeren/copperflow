@@ -40,6 +40,18 @@ describe("edit_circuit with sub-sheets", () => {
     expect((await call("circuit_summary", { file: FILE })).text).toContain("PS3 PowerStage base 300: VIN=V1_8 VOUT=V1_2 GND=GND, 3 parts")
   })
 
+  test("two instances added in one change get bases of their own", async () => {
+    const answer = await edit(
+      { add_instance: { sheet: "PowerStage", name: "PS3", connections: { VIN: "V1_8", VOUT: "V1_2", GND: "GND" } } },
+      { add_instance: { sheet: "PowerStage", name: "PS4", connections: { VIN: "V1_8", VOUT: "V0_9", GND: "GND" } } },
+    )
+    expect(answer).toMatchObject({ isError: false })
+    const text = await source()
+    expect(text).toContain(`<PowerStage name="PS3" connections={{ VIN: "V1_8", VOUT: "V1_2", GND: "GND" }} base={300} />`)
+    expect(text).toContain(`<PowerStage name="PS4" connections={{ VIN: "V1_8", VOUT: "V0_9", GND: "GND" }} base={400} />`)
+    expect((await call("check_circuit", { file: FILE })).text).toMatch(/^main\.circuit\.tsx: 0 errors/)
+  })
+
   test("add_instance refuses a port the sheet has not and a sheet that is not there; nothing is written", async () => {
     const before = await source()
     const port = await edit({ add_instance: { sheet: "PowerStage", name: "PS3", connections: { VCC: "X" } } })

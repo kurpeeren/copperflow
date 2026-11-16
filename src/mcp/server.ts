@@ -281,10 +281,10 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     },
     ({ file: circuit, edits }) =>
       run(async () => {
-        const converted = []
+        const converted: Awaited<ReturnType<typeof toEdit>>[] = []
         for (const [index, item] of edits.entries()) {
           try {
-            converted.push(await toEdit(root, circuit, item))
+            converted.push(await toEdit(root, circuit, item, converted.map((done) => done.edit)))
           } catch (error) {
             throw new Error(describeRefusal({ index, reason: (error as Error).message }, edits.length, Object.keys(item)[0] ?? "edit"))
           }
