@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Has an agent build each bench brief headless through this checkout's MCP server, then measures the project.
-// node bench/run.mjs [--brief can-node] [--model haiku] [--runs 1] [--out bench/results] [--timeout-min 20]
+// node bench/run.mjs [--brief can-node] [--model haiku] [--runs 1] [--out bench/results] [--timeout-min 20] [--web on]
 import { spawn, spawnSync } from "node:child_process"
 import { copyFileSync, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { basename, dirname, join, relative, resolve } from "node:path"
@@ -15,7 +15,7 @@ const IS_WINDOWS = process.platform === "win32"
 const MEASURE_TIMEOUT_MS = 10 * 60_000
 
 function options(argv) {
-  const found = { brief: null, model: "haiku", runs: 1, out: join(REPO, "bench", "results"), timeoutMin: 20 }
+  const found = { brief: null, model: "haiku", runs: 1, out: join(REPO, "bench", "results"), timeoutMin: 20, web: false }
   for (let i = 0; i < argv.length; i += 2) {
     const [flag, value] = [argv[i], argv[i + 1]]
     if (value === undefined) throw new Error(`${flag} needs a value`)
@@ -24,6 +24,7 @@ function options(argv) {
     else if (flag === "--runs") found.runs = Number(value)
     else if (flag === "--out") found.out = resolve(value)
     else if (flag === "--timeout-min") found.timeoutMin = Number(value)
+    else if (flag === "--web") found.web = value === "on"
     else throw new Error(`Unknown option ${flag}`)
   }
   if (!Number.isInteger(found.runs) || found.runs < 1) throw new Error("--runs must be a whole number of at least 1")
@@ -42,7 +43,9 @@ function briefs(only) {
 const stamp = () => new Date().toISOString().replace(/[:T]/g, "-").replace(/\..*$/, "")
 
 /** The arguments the agent is started with; see bench/README.md for why each is there. */
-export function agentArgs(model, mcpConfigPath) {
+export function agentArgs(model, mcpConfigPath, web = false) {
+  // With web: the agent's own search and fetch tools too, for a brief that asks it to look things up first.
+  const webTools = web ? ["WebSearch", "WebFetch"] : []
   return [
     "-p",
     "--model", model,
@@ -50,8 +53,8 @@ export function agentArgs(model, mcpConfigPath) {
     "--verbose",
     "--mcp-config", mcpConfigPath,
     "--strict-mcp-config",
-    "--tools", "",
-    "--allowedTools", "mcp__copperflow",
+    "--tools", webTools.join(","),
+    "--allowedTools", ["mcp__copperflow", ...webTools].join(","),
     "--permission-mode", "dontAsk",
     "--setting-sources", "project",
     "--disable-slash-commands",
@@ -72,11 +75,11 @@ function stopTree(child) {
   else child.kill("SIGTERM")
 }
 
-async function runAgent(prompt, model, project, runDir, timeoutMin) {
+async function runAgent(prompt, model, project, runDir, timeoutMin, web) {
   const mcpConfigPath = join(runDir, "mcp.json")
   const config = { mcpServers: { copperflow: { command: process.execPath, args: [CLI, "mcp", "--root", project] } } }
   writeFileSync(mcpConfigPath, `${JSON.stringify(config, null, 2)}\n`)
-  const args = agentArgs(model, mcpConfigPath)
+  const args = agentArgs(model, mcpConfigPath, web)
   writeFileSync(join(runDir, "command.txt"), `claude ${args.map((a) => (a === "" ? '""' : a)).join(" ")}  (prompt on stdin, cwd ${project})\n`)
   const started = Date.now()
   const child = startAgent(args, project)
@@ -163,13 +166,13 @@ export async function measure(project, runDir) {
   }
 }
 
-async function oneRun(brief, model, run, invocationDir, timeoutMin) {
+async function oneRun(brief, model, run, invocationDir, timeoutMin, web) {
   const runDir = join(invocationDir, `${brief}-${model}-${run}`)
   const project = join(runDir, "project")
   mkdirSync(project, { recursive: true })
   const prompt = readFileSync(join(HERE, "briefs", `${brief}.md`), "utf8")
   console.log(`${brief} ${model} run ${run}: agent started in ${project}`)
-  const agent = await runAgent(prompt, model, project, runDir, timeoutMin)
+  const agent = await runAgent(prompt, model, project, runDir, timeoutMin, web)
   const transcript = parseTranscript(readFileSync(join(runDir, "transcript.jsonl"), "utf8"))
   const ended = agent.timedOut ? "timed out" : transcript.ended === "no result" ? `error: exit ${agent.exitCode}` : transcript.ended
   console.log(`${brief} ${model} run ${run}: ${ended} after ${(agent.wallMs / 60_000).toFixed(1)} min, measuring`)
@@ -192,7 +195,7 @@ async function main() {
   const results = []
   for (const brief of briefs(opts.brief)) {
     for (let run = 1; run <= opts.runs; run++) {
-      results.push(await oneRun(brief, opts.model, run, invocationDir, opts.timeoutMin))
+      results.push(await oneRun(brief, opts.model, run, invocationDir, opts.timeoutMin, opts.web))
       writeFileSync(join(invocationDir, "summary.md"), summaryMarkdown(results))
     }
   }

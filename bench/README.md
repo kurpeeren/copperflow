@@ -9,10 +9,10 @@ behind, not from what the agent said.
 
 ```
 npm run build
-node bench/run.mjs [--brief can-node] [--model haiku] [--runs 1] [--out bench/results] [--timeout-min 20]
+node bench/run.mjs [--brief can-node] [--model haiku] [--runs 1] [--out bench/results] [--timeout-min 20] [--web on]
 ```
 
-Without `--brief` every brief runs. `--model` takes what the `claude` program accepts (`haiku`, `sonnet`, `opus`).
+Without `--brief` every brief runs. `--web on` also gives the agent its own web search and fetch tools, for a brief that asks it to look things up first (`relay-driver`); without it the agent has only copperflow's tools. `--model` takes what the `claude` program accepts (`haiku`, `sonnet`, `opus`).
 Each run gets an empty project folder; results land in `bench/results/<date-time>/` (ignored by git):
 
 - `<brief>-<model>-<n>/project/`: what the agent built;
