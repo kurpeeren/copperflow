@@ -13,3 +13,12 @@ export function requestErrorText(status: number, serverError: string | undefined
 export function isStaleKey(message: string): boolean {
   return message === STALE_KEY_MESSAGE
 }
+
+/** Shown when a request cannot reach the server at all, as after the `copperflow studio` process stopped. */
+export const SERVER_GONE_MESSAGE = 'The copperflow Studio server is not answering. Start "copperflow studio" again in the project folder, then reload this page.'
+
+/** The words for an error a request threw: a network failure (fetch's TypeError) is the server being gone. */
+export function networkErrorText(error: unknown): string {
+  if (error instanceof TypeError) return SERVER_GONE_MESSAGE
+  return error instanceof Error ? error.message : String(error)
+}

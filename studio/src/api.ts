@@ -6,7 +6,7 @@ import type { Diagnostic } from "../../src/engine/model.js"
 import type { FabricationExport } from "../../src/core/fabrication.js"
 import type { RouteEvent, RouteScope } from "../../src/studio/route-events.js"
 import type { PlaceEvent, PlaceScope } from "../../src/studio/place-events.js"
-import { requestErrorText } from "./request-error.js"
+import { networkErrorText, requestErrorText } from "./request-error.js"
 
 export type { Annotations, CircuitModel, Design, Diagnostic, Edit, FabricationExport, HistoryListing, HistoryProblem, Literal, LockViolation, PartInfo, PropInfo, PlaceEvent, PlaceScope, RouteEvent, RouteScope, TraceInfo }
 
@@ -109,11 +109,17 @@ window.addEventListener("hashchange", () => {
 })
 
 export async function api<T>(path: string, body?: unknown): Promise<T> {
-  const response = await fetch(path, {
-    method: body === undefined ? "GET" : "POST",
-    headers: { "x-copperflow-token": token, "content-type": "application/json" },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  })
+  let response: Response
+  try {
+    response = await fetch(path, {
+      method: body === undefined ? "GET" : "POST",
+      headers: { "x-copperflow-token": token, "content-type": "application/json" },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    })
+  } catch (error) {
+    // The browser's own words ("Failed to fetch") say nothing; a refused connection is the server process gone.
+    throw new Error(networkErrorText(error))
+  }
   const json = (await response.json()) as { ok: boolean; data: T; error?: string }
   if (!json.ok) throw new Error(requestErrorText(response.status, json.error))
   return json.data
@@ -125,8 +131,9 @@ const SERVER_EVENTS: readonly string[] = ["change", "build", "library", "route",
 /**
  * Subscribes to file changes, build updates and routing news; returns an unsubscribe function. A "route" event also
  * gives its data, a RouteEvent. Uses fetch rather than EventSource so the token goes in a header, not in the URL.
+ * `onConnection` hears false when the stream cannot connect and true when it is open again.
  */
-export function subscribe(onEvent: (event: ServerEvent, file: string, data: Record<string, unknown>) => void): () => void {
+export function subscribe(onEvent: (event: ServerEvent, file: string, data: Record<string, unknown>) => void, onConnection?: (connected: boolean) => void): () => void {
   const controller = new AbortController()
   const handle = (block: string) => {
     const event = /^event: (.+)$/m.exec(block)?.[1]
@@ -141,6 +148,7 @@ export function subscribe(onEvent: (event: ServerEvent, file: string, data: Reco
       try {
         const response = await fetch("/api/events", { headers: { "x-copperflow-token": token }, signal: controller.signal })
         if (!response.ok || !response.body) throw new Error(`Event stream failed (${response.status})`)
+        onConnection?.(true)
         const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
         let buffer = ""
         for (;;) {
@@ -152,8 +160,9 @@ export function subscribe(onEvent: (event: ServerEvent, file: string, data: Reco
             buffer = buffer.slice(end + 2)
           }
         }
-      } catch {
+      } catch (error) {
         if (controller.signal.aborted) return
+        if (error instanceof TypeError) onConnection?.(false)
       }
       await new Promise((resolve) => setTimeout(resolve, RECONNECT_MS))
     }

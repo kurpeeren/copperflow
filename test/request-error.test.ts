@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { STALE_KEY_MESSAGE, isStaleKey, requestErrorText } from "../studio/src/request-error.js"
+import { SERVER_GONE_MESSAGE, STALE_KEY_MESSAGE, isStaleKey, networkErrorText, requestErrorText } from "../studio/src/request-error.js"
 
 describe("requestErrorText", () => {
   it("names an out of date key when the server refuses the session token", () => {
@@ -19,5 +19,20 @@ describe("requestErrorText", () => {
   it("tells the out of date key apart from other messages", () => {
     expect(isStaleKey(STALE_KEY_MESSAGE)).toBe(true)
     expect(isStaleKey("Missing file")).toBe(false)
+  })
+})
+
+describe("the server is gone", () => {
+  it("says the server is not answering when a request fails at the network level", () => {
+    expect(SERVER_GONE_MESSAGE).toBe('The copperflow Studio server is not answering. Start "copperflow studio" again in the project folder, then reload this page.')
+    expect(networkErrorText(new TypeError("Failed to fetch"))).toBe(SERVER_GONE_MESSAGE)
+  })
+
+  it("keeps the message of any other failure", () => {
+    expect(networkErrorText(new Error("Missing file"))).toBe("Missing file")
+  })
+
+  it("leaves a cancelled request alone", () => {
+    expect(networkErrorText(new DOMException("aborted", "AbortError"))).toBe("aborted")
   })
 })

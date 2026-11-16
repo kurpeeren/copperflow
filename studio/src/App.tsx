@@ -36,6 +36,7 @@ import { useActions, usePlace, type Actions } from "./use-actions"
 import { useChecks } from "./use-checks"
 import { useFind } from "./use-find"
 import { useStudioData, type StudioData } from "./use-studio-data"
+import { SERVER_GONE_MESSAGE } from "./request-error"
 import { useWorkspace } from "./use-workspace"
 
 export type { Actions } from "./use-actions"
@@ -343,6 +344,11 @@ export function App() {
       </MenuBar>
       <Toolbar view={tab} unit={workspace.unit} selected={selection.size} toggles={toggles} run={runCommand} />
       {dialog && <StudioDialog name={dialog} onClose={closeDialog} rules={{ fabrication: build.design?.rules.fabrication, save: actions.setFilletRadius }} makeSheet={makeSheet} importPart={importPart} newPart={newPart} system={system} newCircuit={newCircuit} footprints={footprints} />}
+      {data.serverGone && (
+        <div className="banner" role="alert">
+          {SERVER_GONE_MESSAGE}
+        </div>
+      )}
       {circuit && circuit.violations.length > 0 && (
         <div className="banner" role="alert">
           Locked parts changed outside the editor: {circuit.violations.map((v) => `${v.part} (${v.detail})`).join(", ")}. Lock them again to accept the change, or undo it in the code.

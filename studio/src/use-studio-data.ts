@@ -25,6 +25,8 @@ export interface StudioData {
   route: RouteEvent | undefined
   /** The open circuit's latest Place → Autoplace news. */
   place: PlaceEvent | undefined
+  /** True while the server's event stream cannot connect: the Studio server process has stopped. */
+  serverGone: boolean
   /** Reloads the circuit and the history of `file`. */
   refresh(file: string): Promise<void>
   refreshParts(): Promise<void>
@@ -70,6 +72,8 @@ export function useStudioData(notify: (text: string) => void, onFile: () => void
   const [parts, setParts] = useState<PartsData>({ library: [], builtin: [] })
   const [route, setRoute] = useState<RouteEvent>()
   const [place, setPlace] = useState<PlaceEvent>()
+  const [serverGone, setServerGone] = useState(false)
+  const onConnection = useCallback((connected: boolean) => setServerGone(!connected), [])
   // An out of date key stops every request, so the canvas says so instead of waiting for a build forever.
   const report = useCallback(
     (text: string) => {
@@ -149,8 +153,8 @@ export function useStudioData(notify: (text: string) => void, onFile: () => void
       if (event === "place") return onPlace(data as unknown as PlaceEvent)
       const update = event === "change" ? refresh(file) : refreshBuild(file)
       update.catch((error: Error) => report(error.message))
-    })
-  }, [file, refresh, refreshBuild, refreshParts, report, onFile, onRoute, onPlace])
+    }, onConnection)
+  }, [file, refresh, refreshBuild, refreshParts, report, onFile, onRoute, onPlace, onConnection])
 
-  return { files, sheets, project, file, setFile, circuit, build, history, historyProblems, parts, route, place, refresh, refreshParts, refreshFiles }
+  return { files, sheets, project, file, setFile, circuit, build, history, historyProblems, parts, route, place, serverGone, refresh, refreshParts, refreshFiles }
 }
