@@ -20,6 +20,7 @@ import { addPage, insertOnPage, movePartToPage, removePage, renamePage } from ".
 import { localNet, localNetRefusal } from "../engine/selectors.js"
 import { partsInSelector, sheetFileIn } from "./selectors.js"
 import { renamePort, setSheetSize } from "./sheet-edits.js"
+import { describeSheet } from "./sheet-card.js"
 import { renameParts } from "./rename-parts.js"
 import { setBoard } from "./board-edits.js"
 import { setBoardShape } from "./board-shape-edit.js"
@@ -97,6 +98,8 @@ function editSource(source: string, scan: Scan, edit: Edit, locked: ReadonlySet<
       return renamePort(source, scan, edit.from, edit.to)
     case "setSheetSize":
       return setSheetSize(source, scan, edit)
+    case "describeSheet":
+      return describeSheet(source, scan, edit)
     case "setBoard":
       return setBoard(source, scan, edit)
     case "setBoardShape":

@@ -19,6 +19,7 @@ const part = z.object({
           .optional()
           .describe('e.g. { "pinLabels": { "pin1": "VIN" } }; a chip or connector needs pinLabels, pinCount or a footprint'),
 })
+export const cardPort = z.object({ name: z.string(), type: z.string().optional(), carries: z.string().optional() })
 const nets = z.record(z.string(), z.array(z.string()).min(1))
 
 export const newCircuitInput = {
@@ -37,11 +38,13 @@ export const newCircuitInput = {
       z.object({
         parts: z.array(part).min(1).max(200),
         nets: nets.describe("A net named like a port is that port"),
-        ports: z.array(z.string()).max(50).describe('e.g. ["VIN", "GND"]'),
+        ports: z.array(z.union([z.string(), cardPort])).max(50).describe('e.g. ["GND", { name, type, carries }]'),
+        does: z.string().optional(),
+        sources: z.array(z.string()).max(8).optional(),
       }),
     )
     .optional()
-    .describe('e.g. { "PowerStage": { parts, nets, ports } }, each written as <name>.sheet.tsx'),
+    .describe('e.g. { "PowerStage": { parts, nets, ports, does, sources } }, each written as <name>.sheet.tsx'),
   instances: z
     .array(
       z.object({

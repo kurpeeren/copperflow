@@ -50,6 +50,7 @@ describe("MCP server", () => {
       "connect_nets",
       "copper_summary",
       "create_part",
+      "describe_sheet",
       "edit_circuit",
       "export_fabrication",
       "export_package",

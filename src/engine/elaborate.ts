@@ -24,6 +24,7 @@ import {
   type Net,
   type SheetInstance,
   type SheetPortSpec,
+  type SheetCard,
   type SheetSize,
   type SourceRef,
 } from "./model.js"
@@ -31,7 +32,7 @@ import { mergeNets } from "./nets.js"
 import { naturalCompare } from "./order.js"
 import { buildPour, resolvePours, type PourDraft } from "./pour/build.js"
 import { PropReader, type Props } from "./read-props.js"
-import { placePorts, portMembers, readPorts, readSheetSize } from "./sheet-ports.js"
+import { placePorts, portMembers, readPorts, readSheetCard, readSheetSize } from "./sheet-ports.js"
 import { Bases, flatNet, readBase, readConnections, SHEET_FILE, sheetName, traceScope, withBase, type InstanceScope } from "./sheets.js"
 import { resolveTraces, type TraceDraft } from "./traces.js"
 
@@ -223,6 +224,8 @@ class Elaboration {
       connections: Object.fromEntries(read.connections),
       ports: symbol.ports.map((port) => instancePort(port, scope, read.connections)),
       ...(symbol.size ? { size: symbol.size } : {}),
+      ...(symbol.does ? { does: symbol.does } : {}),
+      ...(symbol.sources ? { sources: symbol.sources } : {}),
       parts: parts.sort(naturalCompare),
       ...placed.record,
       ...onPage(frame.page),
@@ -231,16 +234,24 @@ class Elaboration {
   }
 
   /** A sheet's ports placed on its symbol and its symbol size; what is wrong with them is reported once per sheet file. */
-  private sheetPorts(body: CfElement, file: string, sheet: string, frame: Frame, at: SourceRef): { ports: SheetPortSpec[]; size?: SheetSize } {
+  private sheetPorts(body: CfElement, file: string, sheet: string, frame: Frame, at: SourceRef): { ports: SheetPortSpec[]; size?: SheetSize } & SheetCard {
     const written = readPorts(body.children, (port) => this.sourceOf(port, frame))
     const placed = placePorts(written.ports, sheet, at)
     const size = readSheetSize(body.props, sheet, at)
+    const card = readSheetCard(body.props, sheet, at)
     if (!this.sheetsRead.has(file)) {
       this.sheetsRead.add(file)
-      this.diagnostics.push(...written.diagnostics, ...placed.diagnostics, ...size.diagnostics)
+      this.diagnostics.push(...written.diagnostics, ...placed.diagnostics, ...size.diagnostics, ...card.diagnostics)
     }
-    const ports = placed.ports.map(({ name, side, order, bus }): SheetPortSpec => ({ name, side, order, ...(bus ? { bus: true as const } : {}) }))
-    return { ports, ...(Object.keys(size.size).length > 0 ? { size: size.size } : {}) }
+    const ports = placed.ports.map(({ name, side, order, bus, type, carries }): SheetPortSpec => ({
+      name,
+      side,
+      order,
+      ...(bus ? { bus: true as const } : {}),
+      ...(type ? { type } : {}),
+      ...(carries ? { carries } : {}),
+    }))
+    return { ports, ...(Object.keys(size.size).length > 0 ? { size: size.size } : {}), ...card.card }
   }
 
   /** A unique path: a second instance of the same name in the same parent is an error and gets "~2", "~3" and so on. */

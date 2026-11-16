@@ -32,7 +32,9 @@ import { FootprintFileSchema } from "../engine/footprints/file.js"
 import { VERSION } from "../version.js"
 import { batchSummary, describeRefusal, editItem, firstRefusal, moveNotes, planNets, toEdit, unknownPourNet } from "./batch.js"
 import { formatCompactCheck, formatCompactSummary, formatInstanceSummary, type SheetView } from "./compact.js"
-import { importsSheet, type Flattened } from "./compact-sheets.js"
+import { importsSheet, instanceAt, type Flattened } from "./compact-sheets.js"
+import { readCard } from "../core/sheet-card.js"
+import { DESCRIBE_SHEET_DESCRIPTION, describeSheetInput, describeSheetTool, instanceCard, withCard } from "./sheet-card-tools.js"
 import { formatCopperSummary } from "./copper-summary.js"
 import { BOARD_SUMMARY_DESCRIPTION, formatBoardSummary } from "./board-summary.js"
 import * as project from "./project-tools.js"
@@ -67,6 +69,7 @@ ${INSTRUCTIONS_RULES}
 - A new board starts with a plan, before any circuit file: guide { topic: "planning" } (the questions to ask the person, what to look up first, the blocks and their ports, one sub-agent per block).`
 
 const file = z.string().describe("Circuit file")
+const SHEET_FILE = /\.sheet\.tsx$/
 const literal = z.union([z.string(), z.number(), z.boolean()])
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false }
 
@@ -111,10 +114,16 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     ({ file: circuit, detail, filter }) =>
       run(async () => {
         const loaded = await loadCircuit(root, circuit)
-        if (filter) return formatInstanceSummary(loaded, await flatDesign(root, loaded.file, options.engine), filter)
-        if (detail === "full") return formatSummary(loaded)
+        if (filter) {
+          const flat = await flatDesign(root, loaded.file, options.engine)
+          const card = instanceCard(instanceAt(loaded.file, flat, filter))
+          const described = card.does !== undefined || card.ports.some((port) => port.type || port.carries)
+          return described ? withCard(formatInstanceSummary(loaded, flat, filter), card) : formatInstanceSummary(loaded, flat, filter)
+        }
+        const card = (text: string) => (SHEET_FILE.test(loaded.file) ? withCard(text, readCard(loaded.source)) : text)
+        if (detail === "full") return card(formatSummary(loaded))
         const usesSheets = loaded.model.imports.some((spec) => importsSheet(spec.source))
-        return formatCompactSummary(loaded, usesSheets ? await sheetView(root, circuit, options.engine) : undefined)
+        return card(formatCompactSummary(loaded, usesSheets ? await sheetView(root, circuit, options.engine) : undefined))
       }),
   )
 
@@ -259,6 +268,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     (input) => run(() => newCircuit(root, input, options.engine)),
   )
 
+  server.registerTool("describe_sheet", { description: DESCRIBE_SHEET_DESCRIPTION, inputSchema: describeSheetInput }, (input) => run(() => describeSheetTool(root, input)))
   server.registerTool("make_sheet", { description: MAKE_SHEET_DESCRIPTION, inputSchema: makeSheetInput }, (input) => run(() => makeSheet(root, input, options.engine)))
 
   server.registerTool(

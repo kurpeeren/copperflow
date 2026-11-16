@@ -10,13 +10,25 @@ import { checkPorts, sheetPorts } from "./instance-requests.js"
 import { boardSkeleton, checkNets, checkParts, NET_NAME, PART_NAME, partEdit, type NewPart } from "./netlist.js"
 import type { Edit } from "./types.js"
 import { resolveInRoot } from "./workspace.js"
+import { CARD_LIMITS, PORT_TYPES } from "./sheet-card.js"
+import { formatLiteral } from "./literals.js"
 
 export interface NewSheet {
   parts: NewPart[]
   /** Net name to the pins on it inside the sheet; a net named like a port is that port's. */
   nets: Record<string, string[]>
-  /** The nets an instance connects to the circuit, in the order the sheet symbol shows them. */
-  ports: string[]
+  /** The nets an instance connects to the circuit, in the order the sheet symbol shows them; a port may carry its type and what it carries. */
+  ports: (string | NewPort)[]
+  /** What the sheet does, in one line. */
+  does?: string
+  /** Links or document names it was designed from. */
+  sources?: string[]
+}
+
+export interface NewPort {
+  name: string
+  type?: string
+  carries?: string
 }
 
 export interface NewInstance {
@@ -64,21 +76,48 @@ function checkSheetPorts(name: string, ports: readonly string[]): void {
   }
 }
 
+const portName = (port: string | NewPort): string => (typeof port === "string" ? port : port.name)
+
+function cardText(what: string, value: unknown, limit: number): string {
+  if (typeof value !== "string" || value.trim() === "" || value.length > limit || /[\r\n]/.test(value)) throw new Error(`${what} must be one line of text, at most ${limit} characters`)
+  return value
+}
+
+/** A port's card as written: ` type="input" carries="…"`. */
+function portAttributes(name: string, port: string | NewPort): string {
+  if (typeof port === "string") return ""
+  if (port.type !== undefined && !(PORT_TYPES as readonly string[]).includes(port.type)) throw new Error(`${name}: port ${port.name}: type must be one of ${PORT_TYPES.join(", ")}`)
+  const carries = port.carries === undefined ? undefined : cardText(`${name}: port ${port.name}: carries`, port.carries, CARD_LIMITS.carries)
+  return `${port.type ? ` type="${port.type}"` : ""}${carries ? ` carries=${formatLiteral(carries)}` : ""}`
+}
+
+/** The sheet's card as written on `<sheet>`: ` does="…" sources={[…]}`. */
+function sheetAttributes(name: string, sheet: NewSheet): string {
+  const does = sheet.does === undefined ? "" : ` does=${formatLiteral(cardText(`${name}: does`, sheet.does, CARD_LIMITS.does))}`
+  const sources = sheet.sources ?? []
+  if (sources.length > CARD_LIMITS.sources) throw new Error(`${name}: sources holds at most ${CARD_LIMITS.sources} entries`)
+  sources.forEach((source) => cardText(`${name}: each source`, source, CARD_LIMITS.source))
+  return `${does}${sources.length > 0 ? ` sources={${JSON.stringify(sources)}}` : ""}`
+}
+
 /** A board file's body re-written as a sheet: the same imports, a function named after the sheet returning `<sheet>` with the ports first. */
-function asSheet(text: string, name: string, ports: readonly string[]): string {
+function asSheet(text: string, name: string, sheet: NewSheet): string {
   const lines = text.split("\n")
   const exported = lines.findIndex((line) => line.startsWith("export default"))
   const open = lines.findIndex((line) => line.trimStart().startsWith("<board"))
   const close = lines.findIndex((line) => line.trim() === "</board>")
   const body = lines.slice(open + 1, close).map((line) => `  ${line}`)
-  const portLines = ports.map((port) => `      <port name="${port}" />`)
-  return [...lines.slice(0, exported), `export default function ${name}() {`, "  return (", "    <sheet>", ...portLines, ...body, "    </sheet>", "  )", "}", ""].join("\n")
+  const portLines = sheet.ports.map((port) => `      <port name="${portName(port)}"${portAttributes(name, port)} />`)
+  const head = `    <sheet${sheetAttributes(name, sheet)}>`
+  return [...lines.slice(0, exported), `export default function ${name}() {`, "  return (", head, ...portLines, ...body, "    </sheet>", "  )", "}", ""].join("\n")
 }
 
 /** The text of a sheet file, or throws, naming the sheet, why it cannot be written. */
 async function sheetText(root: string, file: string, name: string, sheet: NewSheet): Promise<string> {
   checkSheetName(name)
-  checkSheetPorts(name, sheet.ports)
+  checkSheetPorts(name, sheet.ports.map(portName))
+  sheetAttributes(name, sheet)
+  sheet.ports.forEach((port) => portAttributes(name, port))
   if (sheet.parts.length === 0) throw new Error(`${name}: a sheet needs at least one part`)
   const { table, props } = await checkParts(root, sheet.parts).catch((error: Error) => Promise.reject(new Error(`${name}: ${error.message}`)))
   const nets = prefixed(name, () => checkNets(table, sheet.nets))
@@ -87,7 +126,7 @@ async function sheetText(root: string, file: string, name: string, sheet: NewShe
   const edits: Edit[] = []
   for (const part of sheet.parts) edits.push(await partEdit(root, circuit, part, props.get(part.name) ?? { props: {} }, undefined))
   for (const [net, selectors] of nets) for (const from of selectors) edits.push({ kind: "addTrace", from, to: `net.${net}` })
-  return asSheet(applyEdits(skeleton, edits, new Set()), name, sheet.ports)
+  return asSheet(applyEdits(skeleton, edits, new Set()), name, sheet)
 }
 
 /** The ports and parts of a sheet file already in the project, or undefined when there is none. */
@@ -145,7 +184,7 @@ export async function planSheets(
   const facts = new Map<string, SheetFacts>()
   for (const [name, sheet] of Object.entries(spec.sheets ?? {})) {
     files.push({ file: sheetFile(name), text: await sheetText(root, sheetFile(name), name, sheet) })
-    facts.set(name, { ports: sheet.ports, parts: sheet.parts.map((part) => part.name) })
+    facts.set(name, { ports: sheet.ports.map(portName), parts: sheet.parts.map((part) => part.name) })
   }
   const names = new Set(partNames)
   const instances = spec.instances ?? []

@@ -24,6 +24,25 @@ interface Context {
   globalNets: ReadonlySet<string>
   /** The pins a no connect flag marks (no-connect.ts): meant to stay unconnected, as a no_connect pin is. */
   flagged: ReadonlySet<string>
+  /** By net id: the typed ports of instances on it, each a pin "<instance>.<port>" of its port's type. */
+  portPins: Map<string, Pin[]>
+  /** By part id: the instance it is in. */
+  instanceOf: Map<string, string>
+}
+
+/** Each sub-sheet instance's typed ports as pins of the net they join, so a check sees across blocks; passive ones add nothing. */
+function portPinsOf(circuit: Circuit): Map<string, Pin[]> {
+  const byName = new Map(circuit.nets.flatMap((net) => net.names.map((name): [string, Net] => [name, net])))
+  const found = new Map<string, Pin[]>()
+  for (const instance of circuit.instances ?? []) {
+    for (const port of instance.ports) {
+      const net = byName.get(port.net)
+      if (port.bus || !port.type || port.type === "passive" || !net) continue
+      const pin: Pin = { id: `${instance.path}.${port.name}`, component: instance.path, number: 0, names: [port.name], type: port.type }
+      found.set(net.id, [...(found.get(net.id) ?? []), pin])
+    }
+  }
+  return found
 }
 
 function contextOf(circuit: Circuit, schematic: SchematicLayout, rules: Rules): Context {
@@ -31,7 +50,8 @@ function contextOf(circuit: Circuit, schematic: SchematicLayout, rules: Rules): 
   const kindOf = new Map(pins.map((p) => [p.id, circuit.components.find((c) => c.id === p.component)?.kind ?? ""]))
   const netOf = new Map(circuit.nets.flatMap((net) => net.pins.map((pin): [string, Net] => [pin, net])))
   const ends = new Map(schematic.symbols.flatMap((s) => Object.entries(s.pinEnds)))
-  return { pins, kindOf, netOf, ends, globalNets: new Set(rules.globalNets), flagged: flaggedPinSet(circuit.components) }
+  const instanceOf = new Map(circuit.components.flatMap((c): [string, string][] => (c.instance ? [[c.id, c.instance]] : [])))
+  return { pins, kindOf, netOf, ends, globalNets: new Set(rules.globalNets), flagged: flaggedPinSet(circuit.components), portPins: portPinsOf(circuit), instanceOf }
 }
 
 /** "U1.pin3 (EN)": the pin id and its first name beyond pin<n>, when it has one. */
@@ -79,8 +99,26 @@ function sourceCount(drivers: readonly Pin[]): number {
   return outputs + supplies.size
 }
 
+/** The pins and typed instance ports on a net. */
+const allOn = (context: Context, net: Net): Pin[] => [...pinsOn(context, net), ...(context.portPins.get(net.id) ?? [])]
+
+/** Whether a pin is inside an instance at `path`: a part in it, or a port of an instance in it. */
+function inside(context: Context, pin: Pin, path: string): boolean {
+  // A port's pin is numbered 0 and belongs to its instance; a part's pin belongs to the instance the part is in.
+  if (pin.number === 0) return pin.component.startsWith(`${path}/`)
+  const owner = context.instanceOf.get(pin.component)
+  return owner !== undefined && (owner === path || owner.startsWith(`${path}/`))
+}
+
+/** The net's sources: a driving port speaks for what drives the net inside its instance. */
+function driversOn(context: Context, net: Net): Pin[] {
+  const drivers = allOn(context, net).filter((p) => DRIVERS.has(p.type))
+  const ports = drivers.filter((p) => p.number === 0).map((p) => p.component)
+  return drivers.filter((p) => !ports.some((path) => inside(context, p, path)))
+}
+
 function outputConflict(context: Context, net: Net): Violation[] {
-  const drivers = pinsOn(context, net).filter((p) => DRIVERS.has(p.type))
+  const drivers = driversOn(context, net)
   if (sourceCount(drivers) < 2) return []
   const ids = drivers.map((p) => p.id)
   const message = `net ${netLabel(net)} is driven by more than one output: ${ids.join(", ")}`
@@ -93,7 +131,7 @@ function hasSource(context: Context, net: Net, pins: readonly Pin[]): boolean {
 }
 
 function noPowerSource(context: Context, net: Net): Violation[] {
-  const pins = pinsOn(context, net)
+  const pins = allOn(context, net)
   const inputs = pins.filter((p) => p.type === "power_in")
   if (inputs.length === 0 || hasSource(context, net, pins)) return []
   const ids = inputs.map((p) => p.id)

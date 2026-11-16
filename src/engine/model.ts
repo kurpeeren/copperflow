@@ -206,6 +206,16 @@ export interface SheetPortSpec {
   order: number
   /** A bus port: joins the members of the bus its name stands for ("D[0:7]" is D0 … D7) by name. */
   bus?: true
+  /** The electrical type of the instance's pin; absent, passive. */
+  type?: PinType
+  /** What it carries, e.g. "0 to 24 V from the field". */
+  carries?: string
+}
+
+/** What a sheet says of itself on `<sheet does sources>`. */
+export interface SheetCard {
+  does?: string
+  sources?: string[]
 }
 
 /** The symbol size a `<sheet width height>` writes, in sheet units; absent, the ports decide it. */
@@ -244,6 +254,9 @@ export interface SheetInstance {
   connections: Record<string, string>
   /** The sheet's ports in the order they are written. */
   ports: InstancePort[]
+  /** What the sheet says it does, and its sources, when it says. */
+  does?: string
+  sources?: string[]
   /** The flattened ids of every part inside, nested instances included, in natural order. */
   parts: string[]
   /** The sheet symbol's size as the sheet file writes it; absent when it writes none. */
@@ -274,6 +287,6 @@ export interface Circuit {
   /** The sub-sheet instances in source order, outer before inner; absent when there are none. */
   instances?: SheetInstance[]
   /** When the file built is a sheet itself: its name, its ports with their places on the symbol, and the symbol size. */
-  sheet?: { name: string; ports: SheetPortSpec[]; size?: SheetSize }
+  sheet?: { name: string; ports: SheetPortSpec[]; size?: SheetSize } & SheetCard
   diagnostics: Diagnostic[]
 }

@@ -135,6 +135,9 @@ sources: none beyond the divider and filter formulas
 questions: V3_3 is not needed by this block; drop the port?
 ```
 
+- Each port goes back with its type and what it carries, `{ name: "IN", type: "input", carries:
+  "0 to 24 V from the field" }`, and the sheet with its `does`; `describe_sheet` writes them into a
+  sheet that has none.
 - Designators are local and start at 1 in every block (R1, C1, U1); each use gets its own on the
   board (R101, R201).
 - Every port is a net of the block, and no net leaves the block except through a port.

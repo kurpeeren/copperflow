@@ -4,11 +4,15 @@
 import { diagnostic } from "./diagnostics.js"
 import { busMembers } from "./drawing-kinds.js"
 import { isElement, type CfElement } from "./jsx-runtime.js"
-import type { Diagnostic, SheetSize, Side, SourceRef } from "./model.js"
+import type { Diagnostic, PinType, SheetCard, SheetSize, Side, SourceRef } from "./model.js"
 import { labelStyle } from "./schematic-nets.js"
 import { NET_NAME } from "./selectors.js"
 
 export const PORT_SIDES: readonly Side[] = ["left", "right", "top", "bottom"]
+/** The pin types a port may be: the instance's pin is of that type. */
+export const PORT_TYPES: readonly PinType[] = ["power_in", "power_out", "ground", "input", "output", "bidirectional", "passive"]
+/** The longest `does`, `carries` and source a card holds, and how many sources. */
+export const CARD_LIMITS = { does: 160, carries: 80, source: 200, sources: 8 } as const
 
 const WHOLE_NET_NAME = new RegExp(`^${NET_NAME.source}$`)
 /** A name an output is known by: OUT, VOUT, DOUT, OUT1, TX_OUT. */
@@ -21,6 +25,8 @@ export interface WrittenPort {
   order?: number
   /** A bus port: its name is a bus name ("D[0:7]" or a plain net name) and it joins the bus's members by name. */
   bus: boolean
+  type?: PinType
+  carries?: string
 }
 
 /** A port with its place on the symbol: the side, and the 1-based slot along it, from the top or from the left. */
@@ -45,7 +51,7 @@ export function defaultPortSide(name: string): Side {
 }
 
 function readOne(element: CfElement, at: SourceRef, found: Diagnostic[]): WrittenPort | undefined {
-  const { name, side, order, bus } = element.props
+  const { name, side, order, bus, type, carries } = element.props
   const isBus = bus === true
   const bad = (what: string, item: string) => found.push(diagnostic("bad-value", "error", what, [item], at))
   if (bus !== undefined && typeof bus !== "boolean") bad(`<port> bus must be true or false; it is read as false`, "port.bus")
@@ -63,7 +69,33 @@ function readOne(element: CfElement, at: SourceRef, found: Diagnostic[]): Writte
     if (typeof order === "number" && Number.isInteger(order) && order > 0) port.order = order
     else bad(`Port ${name}: order must be a whole number above 0; the next free place is used`, `${name}.order`)
   }
+  if (type !== undefined) {
+    if (typeof type === "string" && (PORT_TYPES as readonly string[]).includes(type)) port.type = type as PinType
+    else bad(`Port ${name}: type must be one of ${PORT_TYPES.join(", ")}; it is read as passive`, `${name}.type`)
+  }
+  if (carries !== undefined) {
+    if (typeof carries === "string" && carries.trim() !== "" && carries.length <= CARD_LIMITS.carries) port.carries = carries
+    else bad(`Port ${name}: carries must be a text of at most ${CARD_LIMITS.carries} characters; it is ignored`, `${name}.carries`)
+  }
   return port
+}
+
+/** What a `<sheet does sources>` says of itself; a bad one is an error and left out. */
+export function readSheetCard(props: Readonly<Record<string, unknown>>, sheet: string, at: SourceRef): { card: SheetCard; diagnostics: Diagnostic[] } {
+  const card: SheetCard = {}
+  const diagnostics: Diagnostic[] = []
+  const bad = (what: string, item: string) => diagnostics.push(diagnostic("bad-value", "error", `${sheet}: <sheet> ${what}; it is ignored`, [`${sheet}.${item}`], at))
+  const { does, sources } = props
+  if (does !== undefined) {
+    if (typeof does === "string" && does.trim() !== "" && does.length <= CARD_LIMITS.does) card.does = does
+    else bad(`does must be a text of at most ${CARD_LIMITS.does} characters`, "does")
+  }
+  if (sources !== undefined) {
+    const ok = (item: unknown) => typeof item === "string" && item.trim() !== "" && item.length <= CARD_LIMITS.source
+    if (Array.isArray(sources) && sources.length <= CARD_LIMITS.sources && sources.every(ok)) card.sources = [...(sources as string[])]
+    else bad(`sources must be a list of at most ${CARD_LIMITS.sources} texts of at most ${CARD_LIMITS.source} characters`, "sources")
+  }
+  return { card, diagnostics }
 }
 
 /**
