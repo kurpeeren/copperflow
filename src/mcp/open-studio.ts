@@ -3,7 +3,7 @@
 import { spawn } from "node:child_process"
 import { fileURLToPath } from "node:url"
 import { z } from "zod"
-import { runningStudio, studioAnswers, readNote, type StudioNote } from "../studio/studio-note.js"
+import { runningStudio, studioAnswers, studioOpenUrl, studioUrl, readNote, type StudioNote } from "../studio/studio-note.js"
 
 export const OPEN_STUDIO_DESCRIPTION =
   "Open the Studio, the visual editor, for the person: reuses this project's running Studio or starts one, and opens it in their browser. Call it when the person asks to open copperflow, the editor or the board, or wants to watch. Give them the address it returns, to them only."
@@ -31,7 +31,7 @@ export const IDLE_MINUTES = 60
 const WAIT_MS = 30_000
 const POLL_MS = 150
 
-/** Studios this process started, by address, and starts in flight, by project. */
+/** Studios this process started, by address with key, and starts in flight, by project. */
 const startedHere = new Set<string>()
 const starting = new Map<string, Promise<StudioNote>>()
 
@@ -51,13 +51,14 @@ export async function openStudio(ports: OpenStudioPorts, input: { open?: boolean
     }
     note = await pending
   }
-  const lines = [`The Studio is running at ${note.url} (${fresh ? "started now" : "already running"}).`]
+  const url = studioUrl(note)
+  const lines = [`The Studio is running at ${url} (${fresh ? "started now" : "already running"}).`]
   if (input.open !== false) {
-    const opened = await (ports.openBrowser ?? openInBrowser)(note.openUrl).catch(() => false)
+    const opened = await (ports.openBrowser ?? openInBrowser)(studioOpenUrl(note)).catch(() => false)
     lines[0] += opened ? " Opened it in the browser." : " Could not open a browser here: give the person this address."
   }
-  lines.push(note.openUrl)
-  const ownStop = startedHere.has(note.url) ? ` It stops by itself ${IDLE_MINUTES} minutes after the last tab closes.` : ""
+  lines.push(studioOpenUrl(note))
+  const ownStop = startedHere.has(studioOpenUrl(note)) ? ` It stops by itself ${IDLE_MINUTES} minutes after the last tab closes.` : ""
   lines.push(`The address holds this session's key: give it to the person only.${ownStop}`)
   return lines.join("\n")
 }
@@ -75,7 +76,7 @@ async function startAndWait(ports: OpenStudioPorts): Promise<StudioNote> {
   for (let waited = 0; waited < waitMs; waited += POLL_MS) {
     const note = await readNote(ports.root)
     if (note !== undefined && (await studioAnswers(ports.root, note))) {
-      startedHere.add(note.url)
+      startedHere.add(studioOpenUrl(note))
       return note
     }
     if (hasEnded) throw new Error(`The Studio did not start: its process ended (exit code ${ended ?? "unknown"}).`)

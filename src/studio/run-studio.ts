@@ -1,12 +1,13 @@
 // `copperflow studio`: start the Studio on 4777 or a free port, leave the note, and close it (and remove the note)
 // on stop, on the idle stop, or when the process is told to end.
+import { resolve } from "node:path"
 import { startStudio, type Studio, type StudioOptions } from "./server.js"
 import { removeNote, writeNote, type StudioNote } from "./studio-note.js"
 
 export const DEFAULT_STUDIO_PORT = 4777
 const MS_PER_MINUTE = 60_000
 
-export interface RunStudioOptions extends Omit<StudioOptions, "port" | "idleMs" | "onIdle"> {
+export interface RunStudioOptions extends Omit<StudioOptions, "port" | "idleMs" | "onIdle" | "onStop"> {
   /** The person's --port; without it the default port is tried, then a free one. */
   port?: number | undefined
   /** Tests only: the port tried first when none is given. */
@@ -29,13 +30,14 @@ export async function runStudio(options: RunStudioOptions): Promise<RunningStudi
   const { port, defaultPort, idleMinutes, idleMs, ...rest } = options
   const idlePeriod = idleMs ?? (idleMinutes !== undefined ? idleMinutes * MS_PER_MINUTE : undefined)
   let stop: () => Promise<void> = async () => {}
-  const studioOptions: StudioOptions = { ...rest, ...(idlePeriod !== undefined ? { idleMs: idlePeriod, onIdle: () => void stop() } : {}) }
+  // The idle stop, a stop request and Ctrl+C all take the same close path.
+  const studioOptions: StudioOptions = { ...rest, onStop: () => void stop(), ...(idlePeriod !== undefined ? { idleMs: idlePeriod, onIdle: () => void stop() } : {}) }
   const studio = await listen(studioOptions, port, defaultPort ?? DEFAULT_STUDIO_PORT)
   const note: StudioNote = {
     pid: process.pid,
     port: Number(new URL(studio.url).port),
-    url: studio.url,
-    openUrl: studio.openUrl,
+    key: studio.token,
+    root: resolve(options.root),
     started: new Date().toISOString(),
   }
   let settle: () => void = () => {}

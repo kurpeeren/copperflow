@@ -1,15 +1,22 @@
-import { afterEach, expect, test, vi } from "vitest"
+import { afterEach, beforeEach, expect, test } from "vitest"
 import { createServer, type Server } from "node:http"
-import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from "node:fs/promises"
 import { existsSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { runStudio, type RunningStudio } from "../src/studio/run-studio.js"
-import { notePath, readNote, stopStudio, writeNote } from "../src/studio/studio-note.js"
+import { notePath, readNote, stopStudio, studioAnswers, writeNote } from "../src/studio/studio-note.js"
 
 const builder = { build: async () => { throw new Error("no builds here") } }
 const running: RunningStudio[] = []
 const servers: Server[] = []
+let requests = 0
+const KEY = "a".repeat(48)
+
+beforeEach(async () => {
+  process.env["COPPERFLOW_HOME"] = await mkdtemp(join(tmpdir(), "cf-home-"))
+  requests = 0
+})
 
 afterEach(async () => {
   for (const one of running.splice(0)) await one.stop()
@@ -33,26 +40,19 @@ async function start(extra: Record<string, unknown> = {}): Promise<{ root: strin
 
 /** A plain HTTP server on a free port that answers 200 to everything. */
 async function otherProgram(): Promise<number> {
-  const server = createServer((_req, res) => res.end('{"ok":true,"data":{"name":"x"}}'))
+  const server = createServer((_req, res) => (requests++, res.end('{"ok":true,"data":{"name":"x"}}')))
   servers.push(server)
   await new Promise<void>((done) => server.listen(0, "127.0.0.1", () => done()))
   return (server.address() as { port: number }).port
 }
 
-test("a running Studio leaves its note, and a .gitignore that ignores it", async () => {
+test("a running Studio leaves its note in the person's folder, not in the project", async () => {
   const { root, studio } = await start()
+  expect(notePath(root).startsWith(join(process.env["COPPERFLOW_HOME"]!, "run"))).toBe(true)
   const note = JSON.parse(await readFile(notePath(root), "utf8"))
-  expect(note).toEqual({ pid: process.pid, port: Number(new URL(studio.studio.url).port), url: studio.studio.url, openUrl: studio.studio.openUrl, started: expect.any(String) })
-  expect(await readFile(join(root, ".copperflow", ".gitignore"), "utf8")).toBe("studio.json\n")
+  expect(note).toEqual({ pid: process.pid, port: Number(new URL(studio.studio.url).port), key: studio.studio.token, root, started: expect.any(String) })
+  expect(await readdir(root)).toEqual(["static"])
   if (process.platform !== "win32") expect((await stat(notePath(root))).mode & 0o077).toBe(0)
-})
-
-test("an existing .copperflow/.gitignore is left as it is", async () => {
-  const dirs = await project()
-  await mkdir(join(dirs.root, ".copperflow"))
-  await writeFile(join(dirs.root, ".copperflow", ".gitignore"), "history/\n")
-  running.push(await runStudio({ ...dirs, builder: builder as never, routeWorker: null, placeWorker: null, port: 0 }))
-  expect(await readFile(join(dirs.root, ".copperflow", ".gitignore"), "utf8")).toBe("history/\n")
 })
 
 test("the note is gone after the Studio closes", async () => {
@@ -83,30 +83,59 @@ test("studio stop with none running says so", async () => {
   expect(await stopStudio(root)).toBe("No Studio is running for this folder.")
 })
 
-test("studio stop ends this project's Studio and removes the note", async () => {
+test("studio stop asks this project's Studio to stop itself and the note goes", async () => {
   const { root, studio } = await start()
-  const kill = vi.fn(() => void studio.stop())
-  expect(await stopStudio(root, kill)).toBe(`Stopped the Studio at ${studio.studio.url}.`)
-  expect(kill).toHaveBeenCalledWith(process.pid)
+  expect(await stopStudio(root)).toBe(`Stopped the Studio at ${studio.studio.url}.`)
+  await studio.stopped
   expect(existsSync(notePath(root))).toBe(false)
+})
+
+test("a stop request without the key is refused", async () => {
+  const { studio } = await start()
+  const answer = await fetch(`${studio.studio.url}/api/stop`, { method: "POST" })
+  expect(answer.status).toBe(403)
+  expect(existsSync(notePath(studio.note.root))).toBe(true)
 })
 
 test("a stale note (nothing listens) is removed and nothing is ended", async () => {
   const { root } = await project()
-  await writeNote(root, { pid: 999999, port: 1, url: "http://127.0.0.1:1", openUrl: "http://127.0.0.1:1/#token=ab", started: "x" })
-  const kill = vi.fn()
-  expect(await stopStudio(root, kill)).toBe("No Studio is running for this folder.")
-  expect(kill).not.toHaveBeenCalled()
+  await writeNote(root, { pid: 999999, port: 1, key: KEY, root, started: "x" })
+  expect(await stopStudio(root)).toBe("No Studio is running for this folder.")
   expect(await readNote(root)).toBeUndefined()
 })
 
-test("a note naming another program's port is stale and that program is not touched", async () => {
+test("a program that answers 200 to anything is stale and that program is not touched", async () => {
   const { root } = await project()
   const port = await otherProgram()
-  const url = `http://127.0.0.1:${port}`
-  await writeNote(root, { pid: process.pid, port, url, openUrl: `${url}/#token=ab`, started: "x" })
-  const kill = vi.fn()
-  expect(await stopStudio(root, kill)).toBe("No Studio is running for this folder.")
-  expect(kill).not.toHaveBeenCalled()
-  expect((await fetch(url)).status).toBe(200)
+  await writeNote(root, { pid: process.pid, port, key: KEY, root, started: "x" })
+  expect(await stopStudio(root)).toBe("No Studio is running for this folder.")
+  expect(requests).toBe(1)
+  expect(await readNote(root)).toBeUndefined()
+  expect((await fetch(`http://127.0.0.1:${port}`)).status).toBe(200)
+})
+
+test("a note with a bad key, a bad port or another root is stale and nothing is requested", async () => {
+  const { root } = await project()
+  const port = await otherProgram()
+  const bad = [
+    { pid: 1, port, key: "Z".repeat(48), root, started: "x" },
+    { pid: 1, port, key: `${KEY}&x`, root, started: "x" },
+    { pid: 1, port: 70000, key: KEY, root, started: "x" },
+    { pid: 1, port: 0, key: KEY, root, started: "x" },
+    { pid: 1, port, key: KEY, root: join(root, "other"), started: "x" },
+  ]
+  for (const note of bad) {
+    await mkdir(join(process.env["COPPERFLOW_HOME"]!, "run"), { recursive: true })
+    await writeFile(notePath(root), JSON.stringify(note))
+    expect(await readNote(root)).toBeUndefined()
+    expect(await stopStudio(root)).toBe("No Studio is running for this folder.")
+    expect(existsSync(notePath(root))).toBe(false)
+  }
+  expect(requests).toBe(0)
+})
+
+test("a Studio answers as this project's only with its key", async () => {
+  const { root, studio } = await start()
+  expect(await studioAnswers(root, studio.note)).toBe(true)
+  expect(await studioAnswers(root, { ...studio.note, key: KEY })).toBe(false)
 })

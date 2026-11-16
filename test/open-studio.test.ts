@@ -1,26 +1,24 @@
-import { afterEach, expect, test, vi } from "vitest"
-import { get } from "node:http"
+import { afterEach, beforeEach, expect, test, vi } from "vitest"
+import { createServer, get, type Server } from "node:http"
 import { existsSync } from "node:fs"
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { cliStarter, openStudio, studioArgs, type StudioStarter } from "../src/mcp/open-studio.js"
 import { runStudio, type RunningStudio } from "../src/studio/run-studio.js"
-import { notePath, readNote, stopStudio, writeNote } from "../src/studio/studio-note.js"
+import { notePath, readNote, stopStudio, studioOpenUrl, studioUrl, writeNote } from "../src/studio/studio-note.js"
 
 const builder = { build: async () => { throw new Error("no builds here") } }
 const running: RunningStudio[] = []
-const children: number[] = []
+const servers: Server[] = []
+
+beforeEach(async () => {
+  process.env["COPPERFLOW_HOME"] = await mkdtemp(join(tmpdir(), "cf-home-"))
+})
 
 afterEach(async () => {
   for (const one of running.splice(0)) await one.stop()
-  for (const pid of children.splice(0)) {
-    try {
-      process.kill(pid)
-    } catch {
-      // already ended
-    }
-  }
+  for (const server of servers.splice(0)) await new Promise((done) => server.close(done))
 })
 
 async function project(): Promise<{ root: string; staticDir: string }> {
@@ -52,9 +50,9 @@ test("starts a Studio, opens the browser and answers in the agreed shape", async
   const { root, staticDir } = await project()
   const opened: string[] = []
   const text = await openStudio({ root, start: inProcess(staticDir), openBrowser: async (url) => (opened.push(url), true) }, {})
-  const note = await readNote(root)
-  expect(text).toBe(`The Studio is running at ${note?.url} (started now). Opened it in the browser.\n${note?.openUrl}\n${SESSION_LINE} ${IDLE_SENTENCE}`)
-  expect(opened).toEqual([note?.openUrl])
+  const note = (await readNote(root))!
+  expect(text).toBe(`The Studio is running at ${studioUrl(note)} (started now). Opened it in the browser.\n${studioOpenUrl(note)}\n${SESSION_LINE} ${IDLE_SENTENCE}`)
+  expect(opened).toEqual([studioOpenUrl(note)])
 })
 
 test("a browser that cannot be opened is not a failure", async () => {
@@ -96,7 +94,7 @@ test("a Studio started by hand is reused without the idle sentence", async () =>
 
 test("a stale note is replaced by a new Studio", async () => {
   const { root, staticDir } = await project()
-  await writeNote(root, { pid: 999999, port: 1, url: "http://127.0.0.1:1", openUrl: "http://127.0.0.1:1/#token=ab", started: "x" })
+  await writeNote(root, { pid: 999999, port: 1, key: "a".repeat(48), root, started: "x" })
   const start = inProcess(staticDir)
   const text = await openStudio({ root, start, openBrowser: async () => true }, { open: false })
   expect(start.calls).toBe(1)
@@ -124,6 +122,29 @@ test("the CLI child is started with the idle stop of 60 minutes", () => {
   expect(studioArgs("/x/cli.js", "/p")).toEqual(["/x/cli.js", "studio", "--root", "/p", "--idle-minutes", "60"])
 })
 
+test("a planted note with another address, host or key opens nothing and requests nothing", async () => {
+  const { root } = await project()
+  let requests = 0
+  const server = createServer((_req, res) => (requests++, res.end('{"ok":true,"data":{}}')))
+  servers.push(server)
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", () => done()))
+  const port = (server.address() as { port: number }).port
+  const planted = [
+    { pid: 1, port, key: "a".repeat(48), root: "/elsewhere", started: "x", url: "file:///etc/passwd", openUrl: "file:///etc/passwd" },
+    { pid: 1, port: "evil.example:80", key: "a".repeat(48), root, started: "x" },
+    { pid: 1, port, key: "a".repeat(47) + "#", root, started: "x" },
+  ]
+  for (const note of planted) {
+    await mkdir(join(process.env["COPPERFLOW_HOME"]!, "run"), { recursive: true })
+    await writeFile(notePath(root), JSON.stringify(note))
+    const openBrowser = vi.fn(async () => true)
+    const start = () => ({ exited: Promise.resolve(1) })
+    await expect(openStudio({ root, start, openBrowser }, {})).rejects.toThrow("The Studio did not start")
+    expect(openBrowser).not.toHaveBeenCalled()
+  }
+  expect(requests).toBe(0)
+})
+
 const CLI = resolve("dist/cli.js")
 
 test.skipIf(!existsSync(CLI))("a real round trip: start the built CLI, reuse it, GET it, stop it", { timeout: 30_000 }, async () => {
@@ -141,10 +162,10 @@ test.skipIf(!existsSync(CLI))("a real round trip: start the built CLI, reuse it,
     const second = await openStudio(ports, { open: false })
     expect(second.split("\n")[1]).toBe(first.split("\n")[1])
     expect(second).toContain("(already running)")
-    const note = await readNote(root)
-    const status = await new Promise<number | undefined>((done, fail) => get(note!.url, (res) => (res.resume(), done(res.statusCode))).on("error", fail))
+    const note = (await readNote(root))!
+    const status = await new Promise<number | undefined>((done, fail) => get(studioUrl(note), (res) => (res.resume(), done(res.statusCode))).on("error", fail))
     expect(status).toBe(200)
-    expect(await stopStudio(root)).toBe(`Stopped the Studio at ${note!.url}.`)
+    expect(await stopStudio(root)).toBe(`Stopped the Studio at ${studioUrl(note)}.`)
     expect(existsSync(notePath(root))).toBe(false)
   } finally {
     if (pid !== undefined) {

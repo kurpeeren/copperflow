@@ -59,6 +59,7 @@ import { PlaceRunner, placeWorkerFactory, type PlaceWorkerFactory } from "./plac
 import { fitBoardEdit } from "./fit-board.js"
 import { formatBoardImport, importBoard } from "../core/board-import.js"
 import { watchIdle } from "./idle.js"
+import { controlRoute } from "./studio-control.js"
 
 export interface StudioOptions {
   root: string
@@ -82,6 +83,8 @@ export interface StudioOptions {
   /** With onIdle: called once when no browser tab (no event stream) has been connected for this many ms in a row. */
   idleMs?: number
   onIdle?: () => void
+  /** Called on an authenticated POST /api/stop; by default the Studio closes. */
+  onStop?: () => void
 }
 
 export interface Studio {
@@ -336,6 +339,8 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       if (!value) throw new HttpError(400, `Missing ${name}`)
       return value
     }
+    const control = controlRoute(route, root, () => (options.onStop ?? (() => void studio.close()))())
+    if (control !== undefined) return send(res, control)
     switch (route) {
       case "GET /api/events":
         return openEvents(res)
@@ -344,7 +349,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       case "GET /api/sheets":
         return send(res, await listSheets(root))
       case "GET /api/project":
-        return send(res, { name: basename(root), pid: process.pid })
+        return send(res, { name: basename(root) })
       case "GET /api/project-memory":
         return send(res, { text: (await readProject(root)) ?? null })
       case "GET /api/circuit": {
@@ -608,7 +613,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
   live.start()
   const idle = options.idleMs !== undefined && options.onIdle ? watchIdle(options.idleMs, options.onIdle) : undefined
 
-  return {
+  const studio: Studio = {
     url: `http://127.0.0.1:${port}`,
     token,
     openUrl: `http://127.0.0.1:${port}/#token=${token}`,
@@ -623,6 +628,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       await new Promise<void>((done) => server.close(() => done()))
     },
   }
+  return studio
 }
 
 /** The layout file a request names: itself, or the one beside a circuit file. */
