@@ -121,6 +121,20 @@ function movedLabels(reader: PropReader): Pick<Component, (typeof LABEL_AT_PROPS
   }))
 }
 
+/** The prop that turns a part's silkscreen designator: 0 or 90. */
+export const NAME_ROTATION_PROP = "pcbNameRotation"
+
+/** The designator's turn the props give; anything but 0 or 90 is a bad-value warning and left out. */
+function nameRotation(reader: PropReader, props: Props, id: string, source: SourceRef): { turn?: 0 | 90; diagnostics: Diagnostic[] } {
+  const value = props[NAME_ROTATION_PROP]
+  if (value === undefined) return { diagnostics: [] }
+  const angle = reader.angle(NAME_ROTATION_PROP)
+  if (angle === undefined) return { diagnostics: [] }
+  if (angle === 0 || angle === 90) return { turn: angle, diagnostics: [] }
+  const message = `${id}: ${NAME_ROTATION_PROP} must be 0 or 90`
+  return { diagnostics: [diagnostic("bad-value", "warning", message, [`${id}.${NAME_ROTATION_PROP}`], source)] }
+}
+
 /** A part's footprint string, declared or implied by its kind, and how many pads it has, if known. */
 export interface PartFootprint {
   name: string | undefined
@@ -143,6 +157,7 @@ export function buildPart(tag: string, id: string, props: Props, origin: PartOri
   const rawValue = valueProp ? props[valueProp] : undefined
   const mpn = reader.string("manufacturerPartNumber")
   const labelsAt = movedLabels(reader)
+  const turn = nameRotation(reader, props, id, origin.source)
   const component: Component = {
     id,
     kind: tag,
@@ -156,9 +171,10 @@ export function buildPart(tag: string, id: string, props: Props, origin: PartOri
     ...(sch ? { sch } : {}),
     ...(pcb ? { pcb } : {}),
     ...labelsAt,
+    ...(turn.turn !== undefined ? { pcbNameRotation: turn.turn } : {}),
     groupOffset: { pcb: { x: origin.offset.pcbX, y: origin.offset.pcbY }, sch: { x: origin.offset.schX, y: origin.offset.schY } },
     props: jsonProps(props),
     source: origin.source,
   }
-  return { component, diagnostics: [...reader.diagnostics, ...pinSides.diagnostics, ...diagnostics] }
+  return { component, diagnostics: [...reader.diagnostics, ...pinSides.diagnostics, ...turn.diagnostics, ...diagnostics] }
 }

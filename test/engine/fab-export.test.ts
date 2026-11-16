@@ -141,7 +141,8 @@ describe("what the fabrication set refuses or warns about", () => {
     if (u1 === undefined) throw new Error("no U1 pad 9")
     const parts = design.pcb.parts.map((part) => (part.component === "C1" ? { ...part, nameAt: { x: u1.x, y: u1.y } } : part))
     const set = accepted(fabricationSet({ ...design, pcb: { ...design.pcb, parts } }, bom, CREATED))
-    expect(set.warnings).toContain("C1's silkscreen overlaps U1's pads")
+    // On U1's pads it lies on U1's courtyard too, and the warning says both.
+    expect(set.warnings).toContain("C1's silkscreen overlaps U1's pads and U1's courtyard")
     expect(accepted(fabricationSet(design, bom, CREATED)).warnings.some((w) => w.includes("silkscreen"))).toBe(false)
   })
 })

@@ -137,8 +137,11 @@ describe("Properties of a name, value or designator", () => {
       { label: "Offset X", value: "-1 mm" },
       { label: "Offset Y", value: "0.5 mm" },
       { label: "Position", value: "Moved (pcbNameAt)" },
+      { label: "Turn", value: "0°" },
     ])
     expect(shown?.moved).toBe(true)
+    const turned = setup(" pcbNameAt={{ x: -1, y: 0.5 }} pcbNameRotation={90}")
+    expect(textProperties(turned.design, turned.circuit, "R1:pcbNameAt", new Set())?.rows.at(-1)).toEqual({ label: "Turn", value: "90° (pcbNameRotation)" })
     const plain = setup()
     const value = textProperties(plain.design, plain.circuit, "R2:schValueAt", new Set(["R2"]))
     expect(value).toMatchObject({ title: "Value", moved: false, blocker: "R2 is locked" })

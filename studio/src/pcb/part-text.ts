@@ -8,7 +8,7 @@ import type { Selection } from "../selection.js"
 import { nudgeDirection, type KeyResult } from "./canvas-keys.js"
 import { nudgeOffset } from "./group-edits.js"
 import { partLabelId, partLabels, parsePartLabelId, textBox } from "../../../src/engine/part-labels.js"
-import { designatorAnchor } from "../../../src/engine/fab/designators.js"
+import { designatorAnchor, designatorTurn } from "../../../src/engine/fab/designators.js"
 import type { PcbLayout, PlacedFootprint } from "../../../src/engine/pcb.js"
 import { rotatePoint } from "../../../src/engine/schematic-geometry.js"
 import type { PlacedSymbol, SchematicLayout } from "../../../src/engine/schematic.js"
@@ -35,6 +35,8 @@ export interface PartText {
   /** `at` less the part's origin: what the prop holds. */
   offset: Point
   box: Box
+  /** A designator's turn: 90 when it reads from the bottom up; absent on the sheet's texts. */
+  rotation?: 0 | 90
 }
 
 /** The view a text id belongs to, from its prop; undefined for an id that is not a text's. */
@@ -53,7 +55,11 @@ export function sheetTexts(layout: SchematicLayout): PartText[] {
 export function designatorText(part: PlacedFootprint): PartText {
   const at = designatorAnchor(part)
   const offset = { x: at.x - part.x, y: at.y - part.y }
-  return { id: partLabelId(part.component, "pcbNameAt"), part: part.component, prop: "pcbNameAt", text: part.component, at, offset, box: textBox(at, DESIGNATOR_MM, part.component.length) }
+  const rotation = designatorTurn(part)
+  const flat = textBox(at, DESIGNATOR_MM, part.component.length)
+  const [halfX, halfY] = [(flat.maxX - flat.minX) / 2, (flat.maxY - flat.minY) / 2]
+  const box = rotation === 90 ? { minX: at.x - halfY, maxX: at.x + halfY, minY: at.y - halfX, maxY: at.y + halfX } : flat
+  return { id: partLabelId(part.component, "pcbNameAt"), part: part.component, prop: "pcbNameAt", text: part.component, at, offset, box, rotation }
 }
 
 /** Every part's silkscreen designator. */
@@ -110,6 +116,9 @@ export function textMoved(circuit: SourceCircuit, id: string): boolean {
   const parsed = parsePartLabelId(id)
   return parsed !== undefined && circuit.model.parts.find((p) => p.name === parsed.part)?.props[parsed.prop] !== undefined
 }
+
+/** Whether the source turns the part's designator with pcbNameRotation. */
+const turnSet = (circuit: SourceCircuit, part: string): boolean => circuit.model.parts.find((p) => p.name === part)?.props["pcbNameRotation"] !== undefined
 
 /** Why the text cannot be moved or put back: its part is locked, read-only or not in the source, or its prop is an expression; else null. */
 export function textBlocker(circuit: SourceCircuit, locked: ReadonlySet<string>, id: string): string | null {
@@ -190,6 +199,7 @@ export function textProperties(layout: { schematic: SchematicLayout; pcb: PcbLay
     { label: "Offset X", value: `${shownNumber(text.offset.x)}${unit}` },
     { label: "Offset Y", value: `${shownNumber(text.offset.y)}${unit}` },
     { label: "Position", value: moved ? `Moved (${text.prop})` : "Where the layout puts it" },
+    ...(text.rotation === undefined ? [] : [{ label: "Turn", value: `${text.rotation}°${turnSet(circuit, text.part) ? " (pcbNameRotation)" : ""}` }]),
   ]
   return { title: TEXT_NAMES[text.prop] ?? text.prop, rows, moved, blocker: textBlocker(circuit, locked, id) }
 }

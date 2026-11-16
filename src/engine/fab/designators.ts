@@ -1,116 +1,331 @@
-// Where each part's designator goes on the silkscreen. A designator sits just outside its courtyard, on the first side
-// (above, below, left, right) where its text overlaps no pad's mask opening on that side of the board and no other
-// designator; when every side is taken it stays above. A designator a person placed with pcbNameAt keeps its place.
-// Either way, a designator that still covers pads or another designator gives a warning naming them, since the board
-// house clips silkscreen off the pads. Pure.
+// Where each part's designator goes on the silkscreen. A designator a person placed with pcbNameAt keeps its place
+// (and pcbNameRotation its turn) and is set first. Every other one takes the nearest place round its part
+// (designator-places.ts) where its text covers no pad, hole, via, other part's courtyard or designator and stays on the
+// board; the copies of one sheet's part take the same place round their parts when it is clear for all of them. When
+// no place is clear it takes the least bad one. A designator that still covers pads, another designator or the board's
+// edge gives a warning naming them, since the board house clips silkscreen off the pads. Pure.
+import { usableOutline } from "../board.js"
 import type { Point } from "../model.js"
 import { naturalCompare } from "../order.js"
-import type { PcbLayout, PlacedFootprint, WorldPad } from "../pcb.js"
+import type { PcbLayout, PlacedFootprint } from "../pcb.js"
 import type { FabricationProfile } from "../rules/schema.js"
-import { textWidth } from "./stroke-font.js"
+import { BETWEEN, boxOf, maskBox, placesAround, SilkObstacles, textBox, type Covered, type DesignatorTurn, type Place } from "./designator-places.js"
 
-/** The silkscreen line width, in mm: JLCPCB's minimum legible line. */
-export const SILK_WIDTH = 0.15
-/** The silkscreen designator's height, in mm: JLCPCB's minimum legible character height. */
-export const DESIGNATOR_HEIGHT = 1
+export { DESIGNATOR_HEIGHT, SILK_WIDTH, type DesignatorTurn } from "./designator-places.js"
+
 /** The mask opening's growth past each pad when the profile sets none, in mm. */
 export const DEFAULT_MASK_EXPANSION = 0.05
-
-interface Box {
-  minX: number
-  minY: number
-  maxX: number
-  maxY: number
-}
+/** The gap kept between a designator and its courtyard, and between designators, when none is given, in mm. */
+export const DEFAULT_SILK_CLEARANCE = 0.15
 
 export interface DesignatorPlacement {
   component: string
   side: "top" | "bottom"
   /** The middle of the designator's text. */
   at: Point
+  /** 0 reads left to right; 90 reads from the bottom up. */
+  rotation: DesignatorTurn
   /** The parts whose mask openings the text still covers, in designator order. */
   coversPads: string[]
   /** The other designators the text still covers, in designator order. */
   coversDesignators: string[]
+  /** The other parts whose courtyards the text lies on, in designator order. */
+  coversParts: string[]
+  /** Whether the text runs off the board. */
+  offBoard: boolean
 }
 
-const overlap = (a: Box, b: Box) => a.minX < b.maxX && b.minX < a.maxX && a.minY < b.maxY && b.minY < a.maxY
-
-/** The box the designator's ink covers when centred on `at`, the stroke's half width included. */
-function textBox(text: string, at: Point): Box {
-  const halfWidth = textWidth(text, DESIGNATOR_HEIGHT) / 2 + SILK_WIDTH / 2
-  const halfHeight = DESIGNATOR_HEIGHT / 2 + SILK_WIDTH / 2
-  return { minX: at.x - halfWidth, minY: at.y - halfHeight, maxX: at.x + halfWidth, maxY: at.y + halfHeight }
-}
-
-/** The box around a pad's mask opening, turned with the pad: the pad grown by the expansion on every side. */
-function maskBox(pad: WorldPad, expansion: number): Box {
-  const radians = (pad.rotation * Math.PI) / 180
-  const [cos, sin] = [Math.abs(Math.cos(radians)), Math.abs(Math.sin(radians))]
-  const [w, h] = [pad.width / 2 + expansion, pad.height / 2 + expansion]
-  const [dx, dy] = pad.shape === "circle" ? [w, w] : [w * cos + h * sin, w * sin + h * cos]
-  return { minX: pad.x - dx, minY: pad.y - dy, maxX: pad.x + dx, maxY: pad.y + dy }
-}
-
-/** The places tried for a part's designator, in order: centred above, below, left and right of its courtyard. */
-export function candidates(part: PlacedFootprint): Point[] {
-  if (part.courtyard.length === 0) return [{ x: part.x, y: part.y }]
-  const xs = part.courtyard.map((c) => c.x)
-  const ys = part.courtyard.map((c) => c.y)
-  const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)]
-  const [cx, cy] = [(minX + maxX) / 2, (minY + maxY) / 2]
-  const [halfWidth, halfHeight] = [textWidth(part.component, DESIGNATOR_HEIGHT) / 2, DESIGNATOR_HEIGHT / 2]
-  return [
-    { x: cx, y: maxY + halfHeight },
-    { x: cx, y: minY - halfHeight },
-    { x: minX - halfWidth, y: cy },
-    { x: maxX + halfWidth, y: cy },
-  ]
-}
+/** The board a designator is placed on: its parts, and the outline, vias and holes when there are any. */
+export type SilkBoard = Pick<PcbLayout, "parts"> & Partial<Pick<PcbLayout, "board" | "vias" | "holes">>
 
 const unique = (names: readonly string[]) => [...new Set(names)].sort(naturalCompare)
+const sameTurn = (degrees: number) => ((Math.round(degrees) % 360) + 360) % 360
+
+function obstaclesOf(pcb: SilkBoard, expansion: number, clearance: number): SilkObstacles {
+  const outline = usableOutline(pcb.board) ? pcb.board?.outline : undefined
+  const obstacles = new SilkObstacles(outline, clearance)
+  for (const part of pcb.parts) {
+    for (const pad of part.pads) obstacles.add("pad", part.component, pad.layers === "through" ? "both" : pad.layers, maskBox(pad, expansion))
+    if (part.courtyard.length > 0) obstacles.add("courtyard", part.component, part.side, boxOf(part.courtyard))
+  }
+  for (const via of pcb.vias ?? []) {
+    const r = via.diameter / 2
+    obstacles.add("via", "", "both", { minX: via.at.x - r, minY: via.at.y - r, maxX: via.at.x + r, maxY: via.at.y + r })
+  }
+  for (const hole of pcb.holes ?? []) {
+    const r = hole.diameter / 2
+    obstacles.add("hole", "", "both", { minX: hole.x - r, minY: hole.y - r, maxX: hole.x + r, maxY: hole.y + r })
+  }
+  return obstacles
+}
+
+/** The parts each copy group holds: the same part of one sheet in every instance, turned alike. */
+function copyGroups(parts: readonly PlacedFootprint[]): Map<string, PlacedFootprint[]> {
+  const groups = new Map<string, PlacedFootprint[]>()
+  for (const part of parts) {
+    if (part.copyOf === undefined) continue
+    const key = `${part.copyOf}@${sameTurn(part.rotation)}${part.side}`
+    groups.set(key, [...(groups.get(key) ?? []), part])
+  }
+  return groups
+}
 
 /**
  * Each part's designator with the parts whose pads, and the designators, it still covers. Designators placed by
- * pcbNameAt are set first, so the others go around them; the rest follow in the order of `parts`.
+ * pcbNameAt are set first, so the others go around them. The rest follow with the parts that have the fewest clear
+ * places first (then in the order of `parts`), each copy group as one, so a part with room to spare does not take the
+ * one place a crowded part had; parts with no clear place at all come last.
  */
-export function designatorPlacements(parts: readonly PlacedFootprint[], expansion: number): DesignatorPlacement[] {
-  const pinnedFirst = [...parts.filter((part) => part.nameAt), ...parts.filter((part) => !part.nameAt)].filter((part) => part.component !== "")
-  const placed: { component: string; side: string; box: Box }[] = []
-  const padsOn = (side: "top" | "bottom") =>
-    parts.flatMap((part) => part.pads.filter((pad) => pad.layers === "through" || pad.layers === side).map((pad) => ({ component: part.component, box: maskBox(pad, expansion) })))
-  const masks = { top: padsOn("top"), bottom: padsOn("bottom") }
-  const covers = (part: PlacedFootprint, at: Point) => {
-    const box = textBox(part.component, at)
-    const pads = masks[part.side].filter((mask) => overlap(box, mask.box)).map((mask) => mask.component)
-    const designators = placed.filter((other) => other.component !== part.component && other.side === part.side && overlap(box, other.box)).map((other) => other.component)
-    return { pads, designators }
+export function designatorPlacements(pcb: SilkBoard, expansion: number, clearance = DEFAULT_SILK_CLEARANCE): DesignatorPlacement[] {
+  // The check and the design both ask for the same board's designators: the answer is kept per parts list.
+  const key = `${expansion}/${clearance}/${pcb.board?.outline.length ?? 0}/${pcb.vias?.length ?? 0}/${pcb.holes?.length ?? 0}`
+  const kept = remembered.get(pcb.parts)
+  if (kept?.key === key && kept.vias === pcb.vias && kept.holes === pcb.holes && kept.board === pcb.board) return kept.placements
+  const placements = placeDesignators(pcb, expansion, clearance)
+  remembered.set(pcb.parts, { key, vias: pcb.vias, holes: pcb.holes, board: pcb.board, placements })
+  return placements
+}
+
+const remembered = new WeakMap<readonly PlacedFootprint[], { key: string; vias: unknown; holes: unknown; board: unknown; placements: DesignatorPlacement[] }>()
+
+/** The first clear place, else the first fair one (only other parts between it and its own part), in one pass. */
+function goodPlace(places: readonly Place[], covered: (place: Place) => Covered): Place | undefined {
+  let fair: Place | undefined
+  for (const place of places) {
+    const found = covered(place)
+    if (found.score === 0) return place
+    if (fair === undefined && found.score === found.between * BETWEEN) fair = place
   }
-  const chosen = pinnedFirst.map((part) => {
-    const tries = part.nameAt ? [part.nameAt] : candidates(part)
-    const free = tries.find((point) => {
-      const { pads, designators } = covers(part, point)
-      return pads.length === 0 && designators.length === 0
-    })
-    const at = free ?? (tries[0] as Point)
-    placed.push({ component: part.component, side: part.side, box: textBox(part.component, at) })
-    return { part, at }
-  })
+  return fair
+}
+
+/** How many clear and fair places a part has, counted up to ROOM_COUNT each: enough to order the parts. */
+function roomAround(part: PlacedFootprint, places: readonly Place[], covered: (place: Place) => Covered): { clear: number; fair: number } {
+  let [clear, fair] = [0, 0]
+  for (const place of places) {
+    const found = covered(place)
+    if (found.score === 0) clear++
+    if (found.score === found.between * BETWEEN) fair++
+    if (clear >= ROOM_COUNT) break
+  }
+  return { clear, fair }
+}
+
+function placeDesignators(pcb: SilkBoard, expansion: number, clearance: number): DesignatorPlacement[] {
+  const parts = pcb.parts.filter((part) => part.component !== "")
+  const obstacles = obstaclesOf(pcb, expansion, clearance)
+  const chosen = new Map<string, Place>()
+  const settle = (part: PlacedFootprint, place: Place) => {
+    chosen.set(part.component, place)
+    obstacles.add("designator", part.component, part.side, textBox(part.component, place.at, place.rotation))
+  }
+  const placesOf = new Map<string, Place[]>()
+  const tries = (part: PlacedFootprint): Place[] => {
+    const known = placesOf.get(part.component)
+    if (known) return known
+    const made = placesAround(part, clearance, part.nameRotation)
+    placesOf.set(part.component, made)
+    return made
+  }
+  const clear = (part: PlacedFootprint, place: Place) => obstacles.covered(part, place).score === 0
+  // A place with another part standing between it and its own part, but nothing under it, is second best.
+  const fair = (part: PlacedFootprint, place: Place) => {
+    const covered = obstacles.covered(part, place)
+    return covered.score === covered.between * BETWEEN
+  }
+  const best = (part: PlacedFootprint): Place => {
+    const all = tries(part)
+    const free = goodPlace(all, (place) => obstacles.covered(part, place))
+    if (free) return free
+    let least = { place: all[0] as Place, score: Infinity }
+    for (const place of all) {
+      const score = obstacles.covered(part, place).score
+      if (score < least.score) least = { place, score }
+    }
+    return least.place
+  }
+  for (const part of parts) if (part.nameAt) settle(part, { at: part.nameAt, rotation: part.nameRotation ?? 0 })
+  const room = new Map(parts.filter((part) => !part.nameAt).map((part) => [part.component, roomAround(part, tries(part), (place) => obstacles.covered(part, place))]))
+  const ordered = placingOrder(parts.filter((part) => !part.nameAt), (part) => room.get(part.component) ?? { clear: 0, fair: 0 })
+  for (const members of ordered) {
+    if (members.length > 1) placeCopies(members, tries, clear, best, settle)
+    else settle(members[0] as PlacedFootprint, best(members[0] as PlacedFootprint))
+  }
+  makeRoom(parts, chosen, { tries, clear, fair, settle, covered: (part, place) => obstacles.covered(part, place), remove: (part) => obstacles.remove(part.component) })
   // What each still covers is judged against every designator, those placed after it included.
-  return chosen.map(({ part, at }) => {
-    const { pads, designators } = covers(part, at)
-    return { component: part.component, side: part.side, at, coversPads: unique(pads), coversDesignators: unique(designators) }
+  return parts.map((part) => {
+    const place = chosen.get(part.component) as Place
+    const covered: Covered = obstacles.covered(part, place, false)
+    return {
+      component: part.component,
+      side: part.side,
+      at: place.at,
+      rotation: place.rotation,
+      coversPads: unique(covered.pads),
+      coversDesignators: unique(covered.designators),
+      coversParts: unique(covered.courtyards),
+      offBoard: covered.edge,
+    }
   })
 }
 
-/** The board with each part's designator anchor (`designatorAt`) set where the export draws it. */
-export function withDesignators(pcb: PcbLayout, fabrication: FabricationProfile): PcbLayout {
-  const placed = new Map(designatorPlacements(pcb.parts, fabrication.maskExpansion ?? DEFAULT_MASK_EXPANSION).map((p) => [p.component, p.at]))
-  return { ...pcb, parts: pcb.parts.map((part) => (placed.has(part.component) ? { ...part, designatorAt: placed.get(part.component) as Point } : part)) }
+/**
+ * The order the designators without a place of their own are placed in, each copy group as one: first the parts with
+ * clear places, fewest first, so a part with room to spare does not take the one place a crowded part had; then those
+ * whose only places have another part between them and their own; last those with no such place at all, which cover
+ * something wherever they go. A copy that is more crowded than its group goes on its own; ties keep the parts' order.
+ */
+function placingOrder(parts: readonly PlacedFootprint[], room: (part: PlacedFootprint) => { clear: number; fair: number }): PlacedFootprint[][] {
+  const tier = (part: PlacedFootprint) => (room(part).clear > 0 ? 0 : room(part).fair > 0 ? 1 : 2)
+  const size = (part: PlacedFootprint) => [room(part).clear, room(part).fair, 0][tier(part)] as number
+  const groupOf = new Map([...copyGroups(parts).values()].flatMap((members) => members.map((member) => [member.component, members] as const)))
+  const units: PlacedFootprint[][] = []
+  const seen = new Set<string>()
+  for (const part of parts) {
+    if (seen.has(part.component)) continue
+    const members = groupOf.get(part.component) ?? [part]
+    members.forEach((member) => seen.add(member.component))
+    const roomy = members.filter((member) => tier(member) === 0)
+    if (roomy.length > 0) units.push(roomy)
+    units.push(...members.filter((member) => tier(member) > 0).map((member) => [member]))
+  }
+  const key = (members: readonly PlacedFootprint[]) => ({ tier: Math.max(...members.map(tier)), size: Math.min(...members.map(size)) })
+  return units
+    .map((members, i) => ({ members, i, ...key(members) }))
+    .sort((a, b) => a.tier - b.tier || a.size - b.size || a.i - b.i)
+    .map((unit) => unit.members)
 }
 
-/** Where the Studio draws a part's designator: pcbNameAt's place, else the anchor the design carries, else above the courtyard. */
-export const designatorAnchor = (part: PlacedFootprint): Point => part.nameAt ?? part.designatorAt ?? (candidates(part)[0] as Point)
+/** How many of a crowded part's places are tried when moving the designators in their way. */
+const ROOM_TRIES = 4
+/** Clear places counted per part to order them; more than this is plenty of room. */
+const ROOM_COUNT = 12
+/** How many times the second pass goes over the board: a move can open room for a part met before it. */
+const ROOM_PASSES = 2
+
+interface Placer {
+  tries: (part: PlacedFootprint) => Place[]
+  clear: (part: PlacedFootprint, place: Place) => boolean
+  fair: (part: PlacedFootprint, place: Place) => boolean
+  settle: (part: PlacedFootprint, place: Place) => void
+  covered: (part: PlacedFootprint, place: Place) => Covered
+  remove: (part: PlacedFootprint) => void
+}
+
+/**
+ * A second pass for each designator that found no clear place: it takes a place where only other designators are in
+ * the way when each of those can move to a clear place of its own. Designators placed by pcbNameAt never move.
+ */
+function makeRoom(parts: readonly PlacedFootprint[], chosen: Map<string, Place>, placer: Placer): void {
+  const byName = new Map(parts.map((part) => [part.component, part]))
+  const pinned = new Set(parts.filter((part) => part.nameAt).map((part) => part.component))
+  for (let pass = 0; pass < ROOM_PASSES; pass++) {
+    let changed = false
+    for (const part of parts) {
+      const now = chosen.get(part.component) as Place
+      if (pinned.has(part.component) || placer.clear(part, now)) continue
+      const wasFair = placer.fair(part, now)
+      placer.remove(part)
+      const found = goodPlace(placer.tries(part), (place) => placer.covered(part, place))
+      const free = found && (placer.clear(part, found) || !wasFair) ? found : undefined
+      const open: Place[] = []
+      for (const place of free ? [] : placer.tries(part)) {
+        const covered = placer.covered(part, place)
+        if (covered.fixed === 0 && (covered.between === 0 || !wasFair) && !covered.designators.some((name) => pinned.has(name))) open.push(place)
+        if (open.length >= ROOM_TRIES) break
+      }
+      if (free) placer.settle(part, free)
+      const moved = free !== undefined || open.some((place) => tryMoving(part, place, byName, chosen, placer))
+      if (!moved) placer.settle(part, now)
+      changed ||= moved
+    }
+    if (!changed) return
+  }
+}
+
+/** Puts `part` at `place` and moves the designators in its way to clear places; puts everything back when one cannot move. */
+function tryMoving(part: PlacedFootprint, place: Place, byName: ReadonlyMap<string, PlacedFootprint>, chosen: Map<string, Place>, placer: Placer): boolean {
+  const blockers = unique(placer.covered(part, place).designators).map((name) => byName.get(name) as PlacedFootprint)
+  const before = blockers.map((blocker) => [blocker, chosen.get(blocker.component) as Place] as const)
+  blockers.forEach(placer.remove)
+  placer.settle(part, place)
+  const moved: PlacedFootprint[] = []
+  for (const blocker of blockers) {
+    const free = goodPlace(placer.tries(blocker), (option) => placer.covered(blocker, option))
+    if (!free) break
+    placer.settle(blocker, free)
+    moved.push(blocker)
+  }
+  if (moved.length === blockers.length) return true
+  moved.forEach(placer.remove)
+  placer.remove(part)
+  before.forEach(([blocker, was]) => placer.settle(blocker, was))
+  return false
+}
+
+/**
+ * The copies of one part take the first place (in the first copy's order) that is clear round every one of them; when
+ * there is none, the place clear round the most of them goes to those, and the others take their own best.
+ */
+function placeCopies(
+  members: readonly PlacedFootprint[],
+  tries: (part: PlacedFootprint) => Place[],
+  clear: (part: PlacedFootprint, place: Place) => boolean,
+  best: (part: PlacedFootprint) => Place,
+  settle: (part: PlacedFootprint, place: Place) => void,
+): void {
+  const lists = members.map(tries)
+  const count = Math.min(...lists.map((list) => list.length))
+  const fitsAll = (i: number) => members.every((member, m) => clear(member, lists[m]?.[i] as Place)) && copiesApart(members, lists, i)
+  for (let i = 0; i < count; i++) {
+    if (!fitsAll(i)) continue
+    members.forEach((member, m) => settle(member, lists[m]?.[i] as Place))
+    return
+  }
+  // No place suits them all: the place clear for the most copies goes to those, one by one, and the rest find their own.
+  let most = { index: -1, clear: 0 }
+  for (let i = 0; i < count; i++) {
+    const fits = members.filter((member, m) => clear(member, lists[m]?.[i] as Place)).length
+    if (fits > most.clear) most = { index: i, clear: fits }
+  }
+  const rest: PlacedFootprint[] = []
+  members.forEach((member, m) => {
+    const same = most.index >= 0 ? lists[m]?.[most.index] : undefined
+    if (same && clear(member, same)) settle(member, same)
+    else rest.push(member)
+  })
+  rest.forEach((member) => settle(member, best(member)))
+}
+
+/** Whether the copies' texts at place `i` keep clear of one another (they are not obstacles to each other yet). */
+function copiesApart(members: readonly PlacedFootprint[], lists: readonly Place[][], i: number): boolean {
+  const boxes = members.map((member, m) => {
+    const place = lists[m]?.[i] as Place
+    return textBox(member.component, place.at, place.rotation)
+  })
+  return boxes.every((a, j) => boxes.every((b, k) => k <= j || !(a.minX < b.maxX && b.minX < a.maxX && a.minY < b.maxY && b.minY < a.maxY)))
+}
+
+/** The board with each part's designator place (`designatorAt`) and turn (`designatorRotation`), where the export draws it. */
+export function withDesignators(pcb: PcbLayout, fabrication: FabricationProfile): PcbLayout {
+  const placed = new Map(designatorPlacements(pcb, fabrication.maskExpansion ?? DEFAULT_MASK_EXPANSION, silkClearance(fabrication)).map((p) => [p.component, p]))
+  return {
+    ...pcb,
+    parts: pcb.parts.map((part) => {
+      const found = placed.get(part.component)
+      return found ? { ...part, designatorAt: found.at, designatorRotation: found.rotation } : part
+    }),
+  }
+}
+
+/** The gap a profile keeps silkscreen from pads, used for designators too. */
+export const silkClearance = (fabrication: Pick<FabricationProfile, "minSilkToPad">) => fabrication.minSilkToPad ?? DEFAULT_SILK_CLEARANCE
+
+/** Where the Studio draws a part's designator: pcbNameAt's place, else the place the design carries, else above the courtyard. */
+export const designatorAnchor = (part: PlacedFootprint): Point => part.nameAt ?? part.designatorAt ?? (placesAround(part, DEFAULT_SILK_CLEARANCE, 0).find((p) => p.at.y > part.y)?.at ?? { x: part.x, y: part.y })
+
+/** The turn the Studio draws a part's designator with: pcbNameRotation's, else the design's, else flat. */
+export const designatorTurn = (part: PlacedFootprint): DesignatorTurn => (part.nameAt ? part.nameRotation : undefined) ?? part.designatorRotation ?? part.nameRotation ?? 0
 
 const possessive = (name: string) => `${name}'s`
 
@@ -121,27 +336,29 @@ export interface SilkscreenFinding extends DesignatorPlacement {
 }
 
 /**
- * Each designator that covers pads or another designator, in designator order. The one source of both the export's
- * warnings and check_circuit's `silk-on-pad` findings for designators, so the two name the same parts.
+ * Each designator that covers pads, another designator, another part's courtyard or the board's edge, in designator order. The one source of
+ * both the export's warnings and check_circuit's `silk-on-pad` findings for designators, so the two name the same parts.
  */
-export function silkscreenFindings(pcb: Pick<PcbLayout, "parts">, fabrication: FabricationProfile): SilkscreenFinding[] {
+export function silkscreenFindings(pcb: SilkBoard, fabrication: FabricationProfile): SilkscreenFinding[] {
   // A part with no courtyard and no pcbNameAt has its designator on its own centre, over its own pads: there is no
   // side to put it on, and nothing to say.
   const shaped = new Set(pcb.parts.filter((part) => part.courtyard.length > 0 || part.nameAt).map((part) => part.component))
-  return designatorPlacements(pcb.parts, fabrication.maskExpansion ?? DEFAULT_MASK_EXPANSION)
-    .filter((p) => shaped.has(p.component) && (p.coversPads.length > 0 || p.coversDesignators.length > 0))
+  return designatorPlacements(pcb, fabrication.maskExpansion ?? DEFAULT_MASK_EXPANSION, silkClearance(fabrication))
+    .filter((p) => shaped.has(p.component) && (p.coversPads.length > 0 || p.coversDesignators.length > 0 || p.coversParts.length > 0 || p.offBoard))
     .sort((a, b) => naturalCompare(a.component, b.component))
     .map((p) => {
       const items = [
         ...(p.coversPads.length > 0 ? [`${listed(p.coversPads.map(possessive))} pads`] : []),
         ...(p.coversDesignators.length > 0 ? [`${listed(p.coversDesignators.map(possessive))} ${p.coversDesignators.length === 1 ? "designator" : "designators"}`] : []),
+        ...(p.coversParts.length > 0 ? [`${listed(p.coversParts.map(possessive))} ${p.coversParts.length === 1 ? "courtyard" : "courtyards"}`] : []),
+        ...(p.offBoard ? ["the board's edge"] : []),
       ]
-      return { ...p, message: `${p.component}'s silkscreen overlaps ${items.join(" and ")}` }
+      return { ...p, message: `${p.component}'s silkscreen overlaps ${listed(items)}` }
     })
 }
 
 /** A warning for each designator that covers pads or another designator, in designator order: "C1's silkscreen overlaps U1's pads". */
-export function silkscreenWarnings(pcb: PcbLayout, fabrication: FabricationProfile): string[] {
+export function silkscreenWarnings(pcb: SilkBoard, fabrication: FabricationProfile): string[] {
   return silkscreenFindings(pcb, fabrication).map((finding) => finding.message)
 }
 

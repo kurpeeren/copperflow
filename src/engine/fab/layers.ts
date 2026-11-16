@@ -8,7 +8,7 @@ import type { Point } from "../model.js"
 import type { PcbLayout, PlacedFootprint, WorldPad } from "../pcb.js"
 import { pathArea, regions, toPath, toPoints } from "../pour/clip.js"
 import type { FabricationProfile } from "../rules/schema.js"
-import { DEFAULT_MASK_EXPANSION, DESIGNATOR_HEIGHT, designatorPlacements, SILK_WIDTH } from "./designators.js"
+import { DEFAULT_MASK_EXPANSION, DESIGNATOR_HEIGHT, designatorPlacements, silkClearance, SILK_WIDTH } from "./designators.js"
 import { writeGerber, type GerberLayer, type GerberObject } from "./gerber.js"
 import { fabFileName, GERBER_LAYERS, type GerberLayerName } from "./names.js"
 import { textStrokes } from "./stroke-font.js"
@@ -128,11 +128,11 @@ function copperObjects(pcb: PcbLayout, layer: CopperLayer): GerberObject[] {
   return [...pourObjects(pcb, layer), ...padCopper.filter(present), ...tracks, ...vias]
 }
 
-function silkObjects(parts: readonly PlacedFootprint[], side: Side, expansion: number): GerberObject[] {
-  const designators = designatorPlacements(parts, expansion).filter((placed) => placed.side === side)
+function silkObjects(pcb: PcbLayout, side: Side, expansion: number, clearance: number): GerberObject[] {
+  const designators = designatorPlacements(pcb, expansion, clearance).filter((placed) => placed.side === side)
   return [
-    ...parts.filter((part) => part.side === side).flatMap((part) => part.silkscreen),
-    ...designators.flatMap((placed) => textStrokes(placed.component, placed.at, DESIGNATOR_HEIGHT, side === "bottom")),
+    ...pcb.parts.filter((part) => part.side === side).flatMap((part) => part.silkscreen),
+    ...designators.flatMap((placed) => textStrokes(placed.component, placed.at, DESIGNATOR_HEIGHT, side === "bottom", placed.rotation === 90)),
   ]
     .filter((line) => line.length > 0)
     .map((points): GerberObject => ({ kind: "draw", points, width: SILK_WIDTH, function: LEGEND_FUNCTION }))
@@ -162,7 +162,7 @@ export function gerberLayers(pcb: PcbLayout, fabrication: FabricationProfile): {
     const paste = onSide.filter(isSmd).map((pad) => padObject(pad, -reduction, padFunction(pad))).filter(present)
     layers.set(`${SIDE_KEY[side]}_Mask`, { fileFunction: `Soldermask,${SIDE_X2[side]}`, polarity: "Negative", objects: mask })
     layers.set(`${SIDE_KEY[side]}_Paste`, { fileFunction: `Paste,${SIDE_X2[side]}`, polarity: "Positive", objects: paste })
-    layers.set(`${SIDE_KEY[side]}_Silkscreen`, { fileFunction: `Legend,${SIDE_X2[side]}`, polarity: "Positive", objects: silkObjects(pcb.parts, side, expansion) })
+    layers.set(`${SIDE_KEY[side]}_Silkscreen`, { fileFunction: `Legend,${SIDE_X2[side]}`, polarity: "Positive", objects: silkObjects(pcb, side, expansion, silkClearance(fabrication)) })
   }
   layers.set("Edge_Cuts", { fileFunction: "Profile,NP", polarity: "Positive", objects: outlineObjects(pcb) })
   return GERBER_LAYERS.flatMap((name) => {

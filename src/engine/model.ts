@@ -69,6 +69,8 @@ export interface Component {
   schNameAt?: Point
   schValueAt?: Point
   pcbNameAt?: Point
+  /** The silkscreen designator's turn when the file sets it (pcbNameRotation): 0 reads left to right, 90 from the bottom up. */
+  pcbNameRotation?: 0 | 90
 }
 
 /** Named: "net.GND". Unnamed: "net:" + the first pin id. */

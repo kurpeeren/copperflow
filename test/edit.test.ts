@@ -283,6 +283,12 @@ describe("setProps: label positions", () => {
     expect(twice).toBe(BOARD.replace("pcbX={-4} pcbY={2}", "pcbX={-4} pcbY={2} schValueAt={{ x: -0.25, y: 0 }}"))
   })
 
+  test("pcbNameRotation is written as a number, and null removes it", () => {
+    const turned = applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { pcbNameRotation: 90 } }], none)
+    expect(turned).toContain("pcbNameRotation={90}")
+    expect(applyEdits(turned, [{ kind: "setProps", part: "R1", props: { pcbNameRotation: null } }], none)).toBe(BOARD)
+  })
+
   test("null removes the prop, and leaves the rest as it was", () => {
     const moved = applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { schNameAt: { x: 1, y: 1 } } }], none)
     expect(applyEdits(moved, [{ kind: "setProps", part: "R1", props: { schNameAt: null } }], none)).toBe(BOARD)
@@ -294,7 +300,7 @@ describe("setProps: label positions", () => {
     try {
       applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { pcbX: null } }], none)
     } catch (error) {
-      expect((error as Error).message).toBe("pcbX cannot be removed with null; only schNameAt, schValueAt, pcbNameAt, noConnect can")
+      expect((error as Error).message).toBe("pcbX cannot be removed with null; only schNameAt, schValueAt, pcbNameAt, pcbNameRotation, noConnect can")
     }
   })
 

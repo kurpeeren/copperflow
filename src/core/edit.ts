@@ -24,7 +24,7 @@ import { describeSheet } from "./sheet-card.js"
 import { renameParts } from "./rename-parts.js"
 import { setBoard } from "./board-edits.js"
 import { setBoardShape } from "./board-shape-edit.js"
-import { LABEL_AT_PROPS } from "../engine/component.js"
+import { LABEL_AT_PROPS, NAME_ROTATION_PROP } from "../engine/component.js"
 import { NO_CONNECT_PROP } from "../engine/no-connect.js"
 import { MAIN_PAGE } from "../engine/model.js"
 import type { Edit, Literal, PartInfo, Point, PropValue } from "./types.js"
@@ -136,8 +136,8 @@ function setProps(
 }
 
 const LABEL_PROPS: ReadonlySet<string> = new Set(LABEL_AT_PROPS)
-/** Props a null removes: the moved labels' positions, and the no connect flags once the last one goes. */
-const REMOVABLE_PROPS: ReadonlySet<string> = new Set([...LABEL_AT_PROPS, NO_CONNECT_PROP])
+/** Props a null removes: the moved labels' positions, the designator's turn, and the no connect flags once the last one goes. */
+const REMOVABLE_PROPS: ReadonlySet<string> = new Set([...LABEL_AT_PROPS, NAME_ROTATION_PROP, NO_CONNECT_PROP])
 
 /** A prop's value as written: a point for a label's position (rounded, as corners are), else a checked literal. */
 function formattedProp(key: string, value: Literal | Point): string {

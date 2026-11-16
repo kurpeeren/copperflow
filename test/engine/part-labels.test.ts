@@ -99,6 +99,14 @@ describe("silkscreen designator", () => {
     expect(part?.nameAt).toEqual({ x: 3, y: 6.5 })
   })
 
+  test("pcbNameRotation turns it: 0 or 90, anything else a bad-value warning", () => {
+    const [part] = layoutPcb(build(`<resistor name="R1" pcbX={3} pcbY={4} pcbNameRotation={90} />`), footprintOf).layout.parts
+    expect(part?.nameRotation).toBe(90)
+    const circuit = build(`<resistor name="R1" pcbX={3} pcbY={4} pcbNameRotation={45} />`)
+    expect(circuit.diagnostics.filter((d) => d.code === "bad-value").map((d) => d.items)).toEqual([["R1.pcbNameRotation"]])
+    expect(layoutPcb(circuit, footprintOf).layout.parts[0]?.nameRotation).toBeUndefined()
+  })
+
   test("without it the part has no nameAt and is drawn as before", () => {
     const [part] = layoutPcb(build(`<resistor name="R1" pcbX={3} pcbY={4} />`), footprintOf).layout.parts
     expect(part && "nameAt" in part).toBe(false)

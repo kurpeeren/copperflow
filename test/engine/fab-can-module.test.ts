@@ -88,7 +88,7 @@ describe("the CAN module's Gerbers after the router runs on it", () => {
 
     // C1 and C2 sit just below U1, whose pads 9 and 10 their designators would cover above them: they go elsewhere,
     // and no silkscreen line of either side has a point inside a mask opening.
-    const designators = new Map(designatorPlacements(routed.pcb.parts, 0.05).map((p) => [p.component, p.at]))
+    const designators = new Map(designatorPlacements(routed.pcb, 0.05).map((p) => [p.component, p.at]))
     expect(designators.get("C1")).not.toEqual({ x: -12.5, y: -3.8 })
     expect(designators.get("C2")).not.toEqual({ x: -1.5, y: -3.8 })
     for (const [side, file] of [["top", "can-module-F_Silkscreen.gto"], ["bottom", "can-module-B_Silkscreen.gbo"]] as const) {

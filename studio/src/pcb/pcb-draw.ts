@@ -1,6 +1,6 @@
 // copperflow's PCB renderer: draws the engine's board layout onto a 2D canvas in layer order.
 // Only types come from the engine: its runtime modules reach Node-only code the Studio bundle cannot hold.
-import { designatorAnchor } from "../../../src/engine/fab/designators.js"
+import { designatorAnchor, designatorTurn } from "../../../src/engine/fab/designators.js"
 import type { PcbLayout, PlacedFootprint, WorldPad } from "../../../src/engine/pcb.js"
 import { drawCopperItems, type CopperScene } from "./copper-draw.js"
 import { devicePixelIn } from "./crisp.js"
@@ -343,7 +343,8 @@ function drawLine(ctx: Ctx, a: Point, b: Point): void {
 
 /**
  * The component id as silkscreen text, from 7 device pixels (text-level.ts): centred where the fabrication export
- * draws it (designators.ts), or on where pcbNameAt puts it (`nameAt`).
+ * draws it (designators.ts), or on where pcbNameAt puts it (`nameAt`); turned to read from the bottom up when its
+ * turn is 90.
  */
 function drawDesignator(ctx: Ctx, part: PlacedFootprint, camera: Camera, size: Size, shift: Point, ratio: number): void {
   const devicePx = devicePxFor(DESIGNATOR_MM, camera.scale, ratio)
@@ -355,7 +356,13 @@ function drawDesignator(ctx: Ctx, part: PlacedFootprint, camera: Camera, size: S
   ctx.font = canvasFont(TEXT_WEIGHT.strong, devicePx / ratio)
   ctx.textAlign = "center"
   ctx.textBaseline = "middle"
-  ctx.fillText(part.component, p.x, p.y)
+  if (designatorTurn(part) === 90) {
+    ctx.save()
+    ctx.translate(p.x, p.y)
+    ctx.rotate(-Math.PI / 2)
+    ctx.fillText(part.component, 0, 0)
+    ctx.restore()
+  } else ctx.fillText(part.component, p.x, p.y)
   ctx.globalAlpha = 1
 }
 

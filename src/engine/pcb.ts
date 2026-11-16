@@ -40,6 +40,12 @@ export interface PlacedFootprint {
    * else the first free side of the courtyard. buildDesign sets it; the Studio draws the designator there.
    */
   designatorAt?: Point
+  /** The designator's turn (0 or 90) when the part's pcbNameRotation sets it. */
+  nameRotation?: 0 | 90
+  /** The designator's turn as the fabrication export draws it; buildDesign sets it beside `designatorAt`. */
+  designatorRotation?: 0 | 90
+  /** "<sheet>/<name in the sheet>" for a part of a sub-sheet instance: the copies of one part share it. */
+  copyOf?: string
 }
 
 export interface RatsnestLine {
@@ -147,7 +153,19 @@ function place(component: Component, footprint: Footprint | undefined, at: Place
     silkscreen: (footprint?.silkscreen ?? []).map(move),
     fabrication: (footprint?.fabrication ?? []).map(move),
     ...(component.pcbNameAt ? { nameAt: { x: at.x + component.pcbNameAt.x, y: at.y + component.pcbNameAt.y } } : {}),
+    ...(component.pcbNameRotation !== undefined ? { nameRotation: component.pcbNameRotation } : {}),
   }
+}
+
+/** The parts with the sheet part each copies, for the parts of sub-sheet instances. */
+function withCopies(circuit: Circuit, parts: readonly PlacedFootprint[]): PlacedFootprint[] {
+  const sheets = new Map((circuit.instances ?? []).map((instance) => [instance.path, instance.sheet]))
+  const byId = new Map(circuit.components.map((component) => [component.id, component]))
+  return parts.map((part) => {
+    const component = byId.get(part.component)
+    const sheet = component?.instance === undefined ? undefined : sheets.get(component.instance)
+    return sheet !== undefined && component?.localId !== undefined ? { ...part, copyOf: `${sheet}/${component.localId}` } : part
+  })
 }
 
 function resolveFootprints(circuit: Circuit, footprintOf: FootprintOf): { resolved: Resolved[]; diagnostics: Diagnostic[]; missing: string[] } {
@@ -219,7 +237,7 @@ export function layoutPcb(
   fill?: PourFiller,
 ): { layout: PcbLayout; diagnostics: Diagnostic[] } {
   const { resolved, diagnostics, missing } = resolveFootprints(circuit, footprintOf)
-  const { parts } = placeAll(circuit, resolved, pinNets(circuit))
+  const parts = withCopies(circuit, placeAll(circuit, resolved, pinNets(circuit)).parts)
   if (missing.length > 0) {
     diagnostics.push(diagnostic("no-footprint", "warning", "These parts have no footprint and are drawn as 1 x 1 mm squares without pads", missing))
   }

@@ -143,3 +143,14 @@ pour on the layer the parts sit on (both layers when a two-layer board is routed
 `new_circuit` takes `pours` and `holes`. A part's lock never covers a pour; a pour or hole is
 locked by its id, and a locked one is left alone. A pour or hole inside a sub-sheet instance
 (`PS1/copperpour:1`) is written in its sheet file: edit that file instead.
+
+## Designators
+
+Each part's name goes on the silkscreen by itself at every build: beside a side of its courtyard,
+running along that side (standing beside a left or right side, never upside down), clear of pads,
+holes, vias, other parts, other names and the board's edge, and the same round every copy of a
+sheet's part where that place is free. A name with no free place within 2 mm takes the least bad
+one, and `check_circuit` gives a `silk-on-pad` warning naming what it covers. For such a name,
+give the part room (move it or its neighbours), or put the name yourself with `set_props`:
+`pcbNameAt` (`{ x, y }`, the name's middle as an offset from the part's origin, in mm) and
+`pcbNameRotation` (0 flat, 90 standing); the other names go round it. `null` removes either.

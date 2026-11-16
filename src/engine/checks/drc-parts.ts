@@ -190,16 +190,16 @@ function silkOnPad(part: PlacedFootprint, pads: PadsBySide, rules: Rules): Viola
  * findings and words as the export's warnings. The items are the part, "<part> designator" (which keeps the id apart
  * from the part's outline findings) and the parts it covers.
  */
-function designatorChecks(parts: readonly PlacedFootprint[], rules: Rules): Violation[] {
-  return silkscreenFindings({ parts: [...parts] }, rules.fabrication).map((finding) => {
-    const items = new Set([finding.component, `${finding.component} designator`, ...finding.coversPads, ...finding.coversDesignators])
+function designatorChecks(layout: PcbLayout, rules: Rules): Violation[] {
+  return silkscreenFindings(layout, rules.fabrication).map((finding) => {
+    const items = new Set([finding.component, `${finding.component} designator`, ...finding.coversPads, ...finding.coversDesignators, ...finding.coversParts])
     return violation("silk-on-pad", "warning", finding.message, [...items], "pcb", finding.at)
   })
 }
 
-function silkChecks(parts: readonly PlacedFootprint[], rules: Rules): Violation[] {
-  const pads = exposedPads(parts)
-  return [...parts.flatMap((part) => silkOnPad(part, pads, rules)), ...designatorChecks(parts, rules)]
+function silkChecks(layout: PcbLayout, rules: Rules): Violation[] {
+  const pads = exposedPads(layout.parts)
+  return [...layout.parts.flatMap((part) => silkOnPad(part, pads, rules)), ...designatorChecks(layout, rules)]
 }
 
 // ---- board-level notes ----
@@ -237,7 +237,7 @@ export function partChecks(layout: PcbLayout, rules: Rules): Violation[] {
     ...courtyardOverlaps(parts),
     ...(outline ? outsideBoard(parts, outline) : [noOutline()]),
     ...keepoutChecks(parts, board?.keepouts ?? []),
-    ...silkChecks(parts, rules),
+    ...silkChecks(layout, rules),
     ...unplaced(parts),
     ...unrouted(layout),
   ]

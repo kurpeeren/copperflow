@@ -78,19 +78,20 @@ export function textWidth(text: string, height: number): number {
 
 /**
  * The text as polylines in mm, `height` tall, centred on `at`; `mirrored` reverses it left to right, as text on the
- * bottom side reads from below.
+ * bottom side reads from below; `turned` turns it a quarter turn counter-clockwise about `at`, to read from the bottom up.
  */
-export function textStrokes(text: string, at: Point, height: number, mirrored = false): Point[][] {
+export function textStrokes(text: string, at: Point, height: number, mirrored = false, turned = false): Point[][] {
   const unit = height / GLYPH_HEIGHT
   const chars = [...text]
   const width = textWidth(text, GLYPH_HEIGHT)
   const side = mirrored ? -1 : 1
   return chars.flatMap((char, i) =>
     strokesOf(char).map((line) =>
-      line.map((p) => ({
-        x: at.x + side * (i * ADVANCE + p.x - width / 2) * unit,
-        y: at.y + (p.y - GLYPH_HEIGHT / 2) * unit,
-      })),
+      line.map((p) => {
+        const dx = side * (i * ADVANCE + p.x - width / 2) * unit
+        const dy = (p.y - GLYPH_HEIGHT / 2) * unit
+        return turned ? { x: at.x - dy, y: at.y + dx } : { x: at.x + dx, y: at.y + dy }
+      }),
     ),
   )
 }
