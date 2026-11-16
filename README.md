@@ -208,6 +208,7 @@ The agent sees what you undid and does not repeat it.
 | `fillet_tracks` / `straighten_tracks` | Rounds the square corners of tracks (by id, or every track) into short chords on an arc of the design rules' fillet radius, or puts rounded corners back, each as one change; a corner too close to other copper, a pad, a keepout or the board edge, or with legs too short, stays square and is counted |
 | `copper_summary` | Per net: tracks, vias, length and unrouted connections, then copper violations by rule (at most 60 lines) |
 | `board_summary` / `project_status` / `note_decision` / `set_project` | The board in about 60 lines (size, one line per part, longest connections with both pads' places, overlaps, edge, pours; `detail: "full"` for the rest); and the project memory `PROJECT.md` (Intent, Blocks, Decisions, Open) with each circuit's counts and last changes, a dated decision, or rewritten sections, each write one change |
+| `render` | A PNG of the board or of one schematic page, drawn by the Studio's own code; `parts` zooms to some parts (needs the optional package `@napi-rs/canvas`) |
 | `list_parts` / `part_info` | Shows the parts library and a part's data and checklist |
 | `create_part` | Adds a part from a datasheet: pins, footprint string or footprint file, MPN, suppliers |
 | `import_part` | Fetches one part by its LCSC number from EasyEDA into `parts/<id>/`, unverified, for personal, non-commercial use only (see [licences](docs/licences.md)) |
@@ -243,6 +244,8 @@ copperflow place <file> <part> <name> [key=value ...]
 copperflow bom <file> [--csv]               print the bill of materials
 copperflow package <file> [--out dir]
                                             write BOM, datasheets and part status to a folder
+copperflow render <file> [--view pcb|schematic] [--page <name>] [--parts U1,C3] [--width n] [--out file.png]
+                                            draw the board or a schematic page to a PNG, as the Studio shows it
 copperflow history [--limit n]              list recent changes
 copperflow undo [id]                        undo the newest change, or the given one
 ```

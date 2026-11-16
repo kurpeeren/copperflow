@@ -46,7 +46,7 @@ const exists = (path: string) => lstat(path).then(
  * itself when it exists, even as a link) must resolve inside the project root or be the root. A link that leads
  * nowhere counts as outside, since writing through it would create its target.
  */
-async function assertLandsInProject(root: string, path: string): Promise<void> {
+export async function assertLandsInProject(root: string, path: string): Promise<void> {
   const realRoot = await realpath(resolve(root))
   let existing = path
   while (!(await exists(existing)) && dirname(existing) !== existing) existing = dirname(existing)

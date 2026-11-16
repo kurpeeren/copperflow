@@ -19,6 +19,8 @@ it is across with its load capacitors on its far side, and a pull-up or an LED's
 the pin it serves. After `autoplace`, read `board_summary`'s longest connections: a part far
 from the pin it serves shows there with both pads' places. Move it with `set_props`
 `{ pcbX, pcbY, pcbRotation }`; it then has a position, and `autoplace` leaves it alone.
+Look at the board with `render` `{ file }` after `autoplace` and again after `autoroute`: it is the
+Studio's own drawing, what the person sees; `parts: ["U1", "C3"]` zooms to those parts.
 
 Connectors are placed last, into the edge room the other parts left, so on a tight board a
 connector can land far from the part it serves. If `board_summary` or `copper_summary` shows a

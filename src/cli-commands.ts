@@ -24,7 +24,9 @@ import {
   undoChange,
   unlockParts,
   updateAnnotations,
+  writeRender,
   type MarkInput,
+  type Renderer,
 } from "./core/index.js"
 import type { DesignSource } from "./core/bom.js"
 import { buildWith } from "./core/design-source.js"
@@ -70,6 +72,9 @@ Usage:
   copperflow export <file> [--out dir]        write the fabrication files for JLCPCB: Gerbers, drills,
                                               pick-and-place and BOM in <name>-fab/ and <name>-fab.zip
                                               beside the circuit (or in the project folder --out)
+  copperflow render <file> [--view pcb|schematic] [--page <name>] [--parts U1,C3] [--width n] [--out file.png]
+                                              draw the board or a schematic page to a PNG, as the Studio shows it
+                                              (<name>-pcb.png or <name>-schematic-<page>.png beside the circuit)
   copperflow history [--limit n]              list recent changes
   copperflow undo [id]                        undo the newest change, or the given one
 
@@ -81,6 +86,8 @@ export interface CliOptions {
   engine?: DesignSource
   /** Fetches for parts import; tests pass one that answers from fixtures. */
   fetch?: typeof fetch
+  /** Loads the renderer for render; tests pass the source module. */
+  renderer?: () => Promise<Renderer>
 }
 
 export async function runCli(args: string[], cwd: string, io: CliIO, options: CliOptions = {}): Promise<number> {
@@ -159,6 +166,9 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
         io.out(formatFabrication(result))
         return result.written ? 0 : 1
       }
+      case "render":
+        io.out(await renderCommand(root, rest, options))
+        return 0
       case "undo": {
         // The built design tells which tracks start on locked parts, so copper can be undone while parts are locked.
         const design = (circuit: string) => buildWith(root, circuit, options.engine)
@@ -178,6 +188,23 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
     io.err(`copperflow: ${(error as Error).message}`)
     return 1
   }
+}
+
+async function renderCommand(root: string, rest: string[], options: CliOptions): Promise<string> {
+  const [view, afterView] = takeOption(rest, "--view")
+  const [page, afterPage] = takeOption(afterView, "--page")
+  const [parts, afterParts] = takeOption(afterPage, "--parts")
+  const [width, afterWidth] = takeOption(afterParts, "--width")
+  const [out, args] = takeOption(afterWidth, "--out")
+  if (view !== undefined && view !== "pcb" && view !== "schematic") throw new Error(`--view must be pcb or schematic, not ${view}`)
+  const request = {
+    view: view ?? "pcb",
+    ...(page !== undefined ? { page } : {}),
+    ...(parts !== undefined ? { parts: parts.split(",").map((name) => name.trim()).filter((name) => name !== "") } : {}),
+    ...(width !== undefined ? { width: Number(width) } : {}),
+  } as const
+  const renderOptions = { ...designOptions(options), ...(options.renderer ? { renderer: options.renderer } : {}) }
+  return writeRender(root, required(args[0], "file"), request, out, renderOptions)
 }
 
 async function changeLocks(root: string, command: "lock" | "unlock", rest: string[], io: CliIO): Promise<void> {

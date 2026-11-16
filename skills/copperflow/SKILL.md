@@ -120,12 +120,12 @@ means, `replace`, refused pins and the export's warnings are in
 8. **Board shape and connectors.** `fit_board` `{ file, margin? }`:
    `Change c0010: board 42 × 28 mm (margin 2 mm)`; or `autoplace` with `fit: true`.
    Mounting holes with `add_hole` `{ file, x, y, diameter }`.
-9. **Fine tuning.** `board_summary` `{ file }` is your eyes: `main.circuit.tsx: Board 42 × 28 mm,
+9. **Fine tuning.** `board_summary` `{ file }` reads the board: `main.circuit.tsx: Board 42 × 28 mm,
    2 layers, courtyards use 38%; 24 parts, 18 nets`, one line per part
    (`U1 MCP2515 soic18w @(12.0, 8.5) r90 top [LOCKED]`), the ten longest connections with both pads' places,
-   `Courtyards overlap (n):`, `Off the board (n):`, `Pours:` and `Unrouted: N connections`. Move
-   a part with `set_props` `{ pcbX, pcbY, pcbRotation }` only when the summary shows a reason,
-   and never one the human placed unless they ask.
+   `Courtyards overlap (n):`, `Off the board (n):`, `Pours:` and `Unrouted: N connections`. `render` `{ file }`
+   is your eyes, a PNG of the board as the person sees it: look after `autoplace` and after `autoroute`; `parts` zooms.
+   Move a part with `set_props` `{ pcbX, pcbY, pcbRotation }` only for a reason, never one the human placed unless asked.
 10. **Pours.** `add_pour` `{ file, net: "GND", layer: "top" }` on the layer the parts sit on:
     `Change …: added copperpour:1 (GND, top)` and `copperpour:1 GND top: … mm², joins N pads`.
     On a two-layer board pour GND on both layers (`top` and `bottom`) before `autoroute`.

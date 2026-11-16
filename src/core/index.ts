@@ -19,3 +19,4 @@ export { lockedStart, withInstanceParts, type DesignSource, type InstanceParts, 
 export { applyLayoutEdits, describeLayoutEdits, type LayoutEditOptions, type LayoutEditResult } from "./layout-edits.js"
 export { renameDesignators, netRenamer, renamedNetIds, type RenameMapping } from "./rename-designators.js"
 export { makeSubSheet, previewSubSheet, type MakeSheetPreview, type MakeSheetRequest } from "./make-sheet.js"
+export { CANVAS_MISSING, renderCircuit, renderedLine, writeRender, type Renderer, type RenderOptions, type RenderRequest, type Rendered } from "./render.js"

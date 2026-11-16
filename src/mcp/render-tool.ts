@@ -1,0 +1,47 @@
+// The render tool: a PNG of the board or of one schematic page, drawn by the Studio's own code, and one line saying
+// what it shows.
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js"
+import { z } from "zod"
+import type { DesignSource } from "../core/design-source.js"
+import { renderCircuit, renderedLine, type Renderer } from "../core/render.js"
+
+export const RENDER_DESCRIPTION =
+  "A picture (PNG) of the board or of one schematic page, drawn by the Studio's own code: what the person sees. Look at the board after autoplace and after autoroute, before asking the person. parts zooms to those parts."
+
+export const renderInput = {
+  file: z.string().describe("Circuit file, e.g. index.circuit.tsx"),
+  view: z.enum(["pcb", "schematic"]).optional().describe('"pcb" (default) or "schematic"'),
+  page: z.string().optional().describe("Schematic page; the first when left out"),
+  parts: z.array(z.string()).min(1).max(50).optional().describe('Zoom to these parts, e.g. ["U1", "C3"]'),
+  width: z.number().int().min(320).max(2000).optional().describe("Image width in pixels, 320 to 2000; 1024 by default"),
+}
+
+export interface RenderPorts {
+  root: string
+  engine?: DesignSource
+  renderer?: () => Promise<Renderer>
+}
+
+type RenderInput = { file: string; view?: "pcb" | "schematic" | undefined; page?: string | undefined; parts?: string[] | undefined; width?: number | undefined }
+
+/** The image and its line, or the refusal as an error answer. */
+export async function renderTool(ports: RenderPorts, input: RenderInput): Promise<CallToolResult> {
+  try {
+    const request = {
+      view: input.view ?? "pcb",
+      ...(input.page !== undefined ? { page: input.page } : {}),
+      ...(input.parts !== undefined ? { parts: input.parts } : {}),
+      ...(input.width !== undefined ? { width: input.width } : {}),
+    } as const
+    const options = { ...(ports.engine ? { engine: ports.engine } : {}), ...(ports.renderer ? { renderer: ports.renderer } : {}) }
+    const rendered = await renderCircuit(ports.root, input.file, request, options)
+    return {
+      content: [
+        { type: "image", data: Buffer.from(rendered.png).toString("base64"), mimeType: "image/png" },
+        { type: "text", text: renderedLine(rendered) },
+      ],
+    }
+  } catch (error) {
+    return { isError: true, content: [{ type: "text", text: (error as Error).message }] }
+  }
+}

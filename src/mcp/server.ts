@@ -51,6 +51,8 @@ import { fileURLToPath } from "node:url"
 import { compactToolList } from "./compact-tool-list.js"
 import { createGuideMemory, GUIDE_DESCRIPTION, guideInSession, guideInput, skillResources } from "./guide.js"
 import { ATTACH_DATASHEET_DESCRIPTION, attachDatasheetInput, attachDatasheetTool } from "./datasheet-tools.js"
+import { RENDER_DESCRIPTION, renderInput, renderTool } from "./render-tool.js"
+import type { Renderer } from "../core/render.js"
 
 /** The opening line and the rules that hold wherever the server runs. */
 const INSTRUCTIONS_INTRO = "copperflow lets you design circuit boards (*.circuit.tsx files) together with a human, who edits the same files in the Studio."
@@ -73,6 +75,8 @@ export interface ServerOptions {
   engine?: DesignSource
   /** Fetches for import_part; tests pass one that answers from fixtures. */
   fetch?: typeof fetch
+  /** Loads the renderer for render; tests pass the source module. */
+  renderer?: () => Promise<Renderer>
 }
 
 export function createCopperflowServer(root: string, options: ServerOptions = {}): McpServer {
@@ -240,6 +244,9 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
         const design = await copper.buildOf(ports, resolved.file)
         return formatBoardSummary(resolved.file, design, new Set(await lockedNames(resolved.path, design)), detail)
       }),
+  )
+  server.registerTool("render", { description: RENDER_DESCRIPTION, inputSchema: renderInput, annotations: READ_ONLY }, (input) =>
+    renderTool({ ...ports, ...(options.renderer ? { renderer: options.renderer } : {}) }, input),
   )
   server.registerTool("project_status", { description: project.PROJECT_STATUS_DESCRIPTION, inputSchema: {}, annotations: READ_ONLY }, () => run(() => project.projectStatus(ports)))
   server.registerTool("note_decision", { description: project.NOTE_DECISION_DESCRIPTION, inputSchema: project.noteDecisionInput }, (input) => run(() => project.noteDecisionTool(ports, input)))

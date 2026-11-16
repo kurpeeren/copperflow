@@ -71,6 +71,7 @@ describe("MCP server", () => {
       "remove_part",
       "remove_pour",
       "remove_trace",
+      "render",
       "route_track",
       "set_project",
       "set_props",
