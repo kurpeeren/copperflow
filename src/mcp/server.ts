@@ -177,7 +177,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     {
       description:
         "Check the circuit with copperflow's own rules: electrical, placement, code and model, copper (clearance, width, vias, holes, board edge, keepouts) and pour findings. Answers with the error and warning counts, then up to 20 findings, one line each. Run it once at the end and fix the errors before reporting success; filter narrows it to errors, warnings, copper, a part or a net.",
-      inputSchema: { file, filter: z.string().optional().describe('"errors", "warnings", "copper", a part name, a net name or a sub-sheet instance such as "PS1"') },
+      inputSchema: { file, filter: z.string().optional().describe('"errors", "warnings", "copper", a part name, a net name, a rule such as "silk-on-pad" or a sub-sheet instance such as "PS1"') },
       annotations: READ_ONLY,
     },
     ({ file: circuit, filter }) =>

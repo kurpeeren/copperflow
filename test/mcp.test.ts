@@ -255,6 +255,26 @@ describe("MCP server", () => {
     expect(result.text).toContain("More than one part is named RX")
   })
 
+  test("check_circuit refuses a filter that names nothing, also in a circuit without sheets", async () => {
+    // An empty answer would read as a clean check: an agent once looped on "0 errors, 0 warnings (filter: silk)".
+    const result = await call("check_circuit", { file: FILE, filter: "nosuchthing" })
+    expect(result.isError).toBe(true)
+    expect(result.text).toMatch(/^There is no part, net or rule nosuchthing in main\.circuit\.tsx; filter takes "errors", "warnings", "copper", a part, a net or a rule/)
+  })
+
+  test("check_circuit filters by a rule's code, and still by a part", async () => {
+    const all = await call("check_circuit", { file: FILE })
+    const rule = /^(?:error|warning) ([a-z-]+)/m.exec(all.text)?.[1] as string
+    expect(rule).toBeTruthy()
+    const byRule = await call("check_circuit", { file: FILE, filter: rule })
+    expect(byRule.isError).toBe(false)
+    expect(byRule.text.split("\n")[0]).toContain(`(filter: ${rule})`)
+    const found = byRule.text.split("\n").slice(1).filter((l) => /^(error|warning) /.test(l))
+    expect(found.length).toBeGreaterThan(0)
+    for (const line of found) expect(line).toMatch(new RegExp(`^(error|warning) ${rule}\\b`))
+    expect((await call("check_circuit", { file: FILE, filter: "R1" })).isError).toBe(false)
+  })
+
   test("check_circuit says what it checks and does not name the old toolkit", async () => {
     const { tools } = await client.listTools()
     const description = tools.find((t) => t.name === "check_circuit")?.description ?? ""

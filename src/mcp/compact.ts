@@ -151,6 +151,8 @@ function matches(finding: Finding, filter: string | undefined): boolean {
   if (filter === "warnings") return finding.severity === "warning"
   if (filter === "copper") return COPPER_RULES.has(finding.rule) || finding.rule === "unrouted"
   const needle = filter.toLowerCase()
+  // A rule by its code or the code's first word: "silk-on-pad", or "silk" for every silk rule.
+  if (finding.rule === needle || finding.rule.startsWith(`${needle}-`)) return true
   const whole = (item: string) => item.toLowerCase() === needle || item.toLowerCase().startsWith(`${needle}.`)
   return finding.items.some((item) => whole(item) || whole(item.replace(/^net[.:]/, "")))
 }
@@ -166,19 +168,30 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
 const FILTER_WORDS = new Set(["errors", "warnings", "copper"])
 
 /**
- * In a circuit with sub-sheet instances, a filter that is no instance, part or net is refused, naming the instances,
- * rather than answering an empty list that reads as a clean instance.
+ * A filter that matches no finding and names no instance, part or net is refused, rather than answering an empty
+ * list that reads as a clean check. With sub-sheet instances the refusal names them; without, it says what a filter
+ * takes, the rules that have findings here, and the counts without a filter.
  */
 function refuseUnknownName(file: string, result: CheckResult, filter: string): void {
   const instances = result.instances ?? []
-  if (FILTER_WORDS.has(filter) || instances.length === 0 || result.names === undefined) return
-  if (findings(result).some((f) => matches(f, filter))) return
+  if (FILTER_WORDS.has(filter) || result.names === undefined) return
+  const all = findings(result)
+  if (all.some((f) => matches(f, filter))) return
   // A pin (R101.pin2) or a port (PS1.VIN) names its part or instance before the dot; names match in any case.
   const name = filter.replace(/^net[.:]/, "").toLowerCase()
   const known = [...result.names, ...instances.map((i) => i.path)].map((n) => n.toLowerCase())
   if (known.some((n) => name === n || name.startsWith(`${n}.`))) return
-  throw new Error(`There is no instance, part or net ${filter} in ${file}; the instances are ${instances.map((i) => i.path).join(", ")}`)
+  if (instances.length > 0) throw new Error(`There is no instance, part or net ${filter} in ${file}; the instances are ${instances.map((i) => i.path).join(", ")}`)
+  const rules = [...new Set(all.map((f) => f.rule))]
+  const here = rules.length > 0 ? ` (with findings here: ${rules.slice(0, RULES_NAMED).join(", ")})` : ""
+  const errors = all.filter((f) => f.severity === "error").length
+  throw new Error(
+    `There is no part, net or rule ${filter} in ${file}; filter takes "errors", "warnings", "copper", a part, a net or a rule${here}. Without a filter: ${plural(errors, "error")}, ${plural(all.length - errors, "warning")}.`,
+  )
 }
+
+/** How many rule codes a refused filter's answer names. */
+const RULES_NAMED = 8
 
 /**
  * The default check_circuit: counts, then up to 20 violations, one line each, errors first. A filter naming a
