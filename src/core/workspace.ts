@@ -343,7 +343,9 @@ function redoableUndos(entries: readonly HistoryEntry[]): HistoryEntry[] {
 
 /** The project-relative path with `/` that a circuit file name means, whatever way it was written; refuses a path outside the project. */
 export function projectPath(root: string, file: string): string {
-  return relative(resolve(root), resolveInRoot(root, file)).split(sep).join("/")
+  // A backslash separates folders here on every system: where it is an ordinary character in a file name, a Windows
+  // path would otherwise make one file with a backslash in its name at the project root.
+  return relative(resolve(root), resolveInRoot(root, file.replaceAll("\\", "/"))).split(sep).join("/")
 }
 
 /**
