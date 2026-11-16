@@ -16,6 +16,8 @@ export interface BlockMove {
   instance: string
   dx: number
   dy: number
+  /** The instance's new turn on the board in degrees, when it changes. */
+  rotation?: number
   parts: string[]
 }
 
@@ -38,7 +40,7 @@ interface Pose {
   rotation: number
 }
 
-interface Body {
+export interface Body {
   parts: string[]
   boxes: Box[]
   pads: { x: number; y: number; net: string }[]
@@ -203,7 +205,7 @@ const boundsOf = (body: Body): Box => boxOfPoints(body.boxes.flatMap((b) => [{ x
  * The shift that puts the body in free room beside the board when the board has none: the area widened on every side
  * by the block's size (and its clearance), step by step, nearest its connections.
  */
-function besideShift(body: Body, problem: Problem, taken: readonly Box[], targets: ReadonlyMap<string, Point[]>): Point | undefined {
+export function besideShift(body: Body, problem: Problem, taken: readonly Box[], targets: ReadonlyMap<string, Point[]>): Point | undefined {
   const bounds = boundsOf(body)
   const grow = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) + 2 * problem.clearance
   const box = problem.area.box

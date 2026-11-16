@@ -1,4 +1,5 @@
 import type { Design } from "../design.js"
+import { placeByBlocks, placesByBlocks } from "./block-board.js"
 import { planCopies, placeCopies, type BlockMove } from "./blocks.js"
 import { connectorsServe, construct, LARGE_NET, OUT_OF_TIME, type Constructed } from "./constructive.js"
 import { EPSILON, ROTATIONS } from "./geometry.js"
@@ -124,6 +125,10 @@ const quarterOf = (rotation: number): number => Math.round(rotation / 90) & 3
  * Pure: it reads the design and returns positions; writing them is the caller's. Same input, same output.
  */
 export function placeBoard(design: Design, options: PlaceOptions = {}): Placement {
+  if (placesByBlocks(design, options)) {
+    const byBlocks = placeByBlocks(design, options, (instance) => placeBoard(design, { ...options, scope: { kind: "instance", instance } }))
+    if (byBlocks) return byBlocks
+  }
   const copies = planCopies(design, options)
   const problem = readProblem(design, options, copies.aside)
   const start: State = {

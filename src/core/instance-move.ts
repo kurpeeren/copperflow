@@ -66,8 +66,8 @@ export async function movedCopper(
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
   const names = asked.map((move) => move.instance).join(", ")
   const parts = [
-    ...(result.carried > 0 ? [`${plural(result.carried, "track or via")} went with ${names}`] : []),
-    ...(result.removed > 0 ? [`${plural(result.removed, "track or via")} that left ${names} ${result.removed === 1 ? "was" : "were"} removed (now unrouted)`] : []),
+    ...(result.carried > 0 ? [`${plural(result.carried, "piece")} of copper went with ${names}`] : []),
+    ...(result.removed > 0 ? [`${plural(result.removed, "piece")} of copper that left ${names} ${result.removed === 1 ? "was" : "were"} removed (now unrouted)`] : []),
     ...result.notes,
   ]
   return { changes: after === before ? [] : [{ file: layoutFile, before, after }], note: `Copper: ${parts.join("; ")}` }

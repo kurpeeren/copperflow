@@ -484,7 +484,8 @@ export const OUT_OF_TIME = "the time budget ran out before it was placed"
  *
  * Connectors go last, into the edge room the other parts left; with `connectorsAhead`, each connector instead goes
  * on the edge just before the part it serves, so that part and the small parts after it do not fill the edge beside
- * it first. `ahead` says how many connectors went early.
+ * it first. `ahead` says how many connectors went early. With `connectorsFirst`, the connectors it names go before
+ * every other part, each on the edge nearest the point given for it.
  */
 export function construct(
   problem: Problem,
@@ -492,6 +493,7 @@ export function construct(
   late: () => boolean = () => false,
   onPart: (done: number, total: number) => void = () => undefined,
   connectorsAhead = false,
+  connectorsFirst?: ReadonlyMap<number, Point>,
 ): Constructed {
   const board = new Board(problem, state)
   const capsOf = new Map<string, number[]>()
@@ -521,6 +523,15 @@ export function construct(
     }
     onPart(done.size, problem.movables.length)
     for (const cap of capsOf.get(m.name) ?? []) if (!done.has(cap)) place(cap)
+  }
+  // Connectors given a place to serve go first, on the edge nearest it; one with no room there waits for its turn.
+  for (const [i, target] of [...(connectorsFirst ?? new Map<number, Point>())].sort(([a], [b]) => a - b)) {
+    if (late() || done.has(i)) continue
+    const spot = placeConnector(board, i, target)
+    if (!spot) continue
+    board.put(i, spot)
+    done.add(i)
+    onPart(done.size, problem.movables.length)
   }
   for (const [chip, caps] of capsOf) if (problem.fixedPartPads.has(chip)) caps.forEach((cap) => !done.has(cap) && place(cap))
   for (;;) {

@@ -129,9 +129,12 @@ export function carriedCopper(design: Design, doc: LayoutDoc, moves: readonly In
   if (moving.size === 0 || doc.records.length === 0) return result
   const resolved = new Map<string, string | undefined>([...design.pcb.tracks.map((t) => [t.id, t.net] as const), ...design.pcb.vias.map((v) => [v.id, v.net] as const)])
   const blocks = new Map([...moving.keys()].map((path) => [path, blockOf(design, byPath.get(path) as SheetInstance)]))
-  // An instance stacked on another of its sheet that stays: the copper there is the other's.
+  // Instances of one sheet stacked in one frame: the copper there is the first one's (in natural order), the one routed.
   const stackedOn = (instance: SheetInstance) =>
-    instances.find((other) => other.file === instance.file && other.path !== instance.path && !other.path.includes("/") && !moving.has(other.path) && sameFrame(frameOf(other), frameOf(instance)))
+    instances
+      .filter((other) => other.file === instance.file && !other.path.includes("/") && sameFrame(frameOf(other), frameOf(instance)))
+      .sort((a, b) => naturalCompare(a.path, b.path))
+      .find((first) => first.path !== instance.path && naturalCompare(first.path, instance.path) < 0)
   const records: LayoutRecord[] = []
   const added: LayoutRecord[] = []
   let next: LayoutDoc = doc

@@ -195,6 +195,40 @@ describe("B4: a block is one thing on the board", () => {
   }, 120_000)
 })
 
+/** How far a part's courtyard is from the nearest board edge, in mm. */
+function edgeGap(design: Design, name: string): number {
+  const board = boxOfPoints(design.pcb.board?.outline ?? [])
+  const part = design.pcb.parts.find((p) => p.component === name)
+  const b = boxOfPoints(part?.courtyard ?? [])
+  return Math.min(b.minX - board.minX, board.maxX - b.maxX, b.minY - board.minY, board.maxY - b.maxY)
+}
+
+describe("B5: the order on a board with blocks", () => {
+  for (const blocksFirst of [true, false]) {
+    test(`whole-board autoplace${blocksFirst ? " after CH1 is laid out" : " from nothing"}: connectors on edges, blocks whole, side by side, turned alike`, async () => {
+      await call("new_circuit", eightInputs)
+      if (blocksFirst) await call("autoplace", { file: FILE, instance: "CH1" })
+      const answer = await call("autoplace", { file: FILE, fit: true })
+      expect(answer.text).toMatch(/^Placed 34 parts; .*; 0 overlaps$/m)
+      const design = await build()
+      expect(overlapping(design)).toEqual([])
+      expect(outside(design)).toEqual([])
+      // On an edge: no farther from it than the 2 mm margin the fitted board leaves round the parts.
+      for (const connector of ["J1", "J2"]) expect(edgeGap(design, connector)).toBeLessThanOrEqual(2.01)
+      // Every instance keeps CH1's arrangement and all have one turn.
+      const turns = new Set((design.circuit.instances ?? []).map((instance) => instance.pcb?.rotation ?? 0))
+      expect(turns.size).toBe(1)
+      const shape = (n: number) => partsOf(design, n).map((p) => `${p.component.slice(0, 1)}${p.component.slice(-1)} ${(p.x - partsOf(design, n)[0]!.x).toFixed(2)} ${(p.y - partsOf(design, n)[0]!.y).toFixed(2)} ${p.rotation}`)
+      for (const n of CHANNELS) expect(shape(n)).toEqual(shape(1))
+      // A block is whole: its parts lie closer together than to any other block's.
+      for (const n of CHANNELS) {
+        const mine = boxOfPoints(partsOf(design, n).flatMap((p) => p.courtyard))
+        expect((mine.maxX - mine.minX) * (mine.maxY - mine.minY)).toBeLessThan(40)
+      }
+    }, 120_000)
+  }
+})
+
 describe("B1: no instance is placed on another", () => {
   test("whole-board autoplace without fit: no two courtyards overlap, an instance with no room is named", async () => {
     await call("new_circuit", eightInputs)

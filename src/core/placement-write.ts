@@ -196,7 +196,8 @@ function blockEdits(model: CircuitModel, blocks: readonly BlockMove[], locked: R
       skipped.push(`${block.instance} ${why ?? "has a position that is not a plain number"}`)
       continue
     }
-    edits.push({ kind: "setProps", part: block.instance, props: { pcbX: round(x + block.dx), pcbY: round(y + block.dy) } })
+    const turned: Record<string, number> = block.rotation === undefined ? {} : { pcbRotation: block.rotation }
+    edits.push({ kind: "setProps", part: block.instance, props: { pcbX: round(x + block.dx), pcbY: round(y + block.dy), ...turned } })
     names.push(...block.parts)
   }
   return { edits, names }
@@ -271,6 +272,6 @@ export function writePlacement(root: string, file: string, writes: PlacementWrit
         ? await movedCopper(root, loaded.file, (design) => movesOf(design, moves.edits), { design: buildDesign(await collectProjectFiles(root, { include: ENGINE_FILES }), loaded.file) }, (one) => resolveInRoot(root, one))
         : { changes: [] }
     const entry = await record(root, texts, { author: options.author, summary: options.summary }, copper.changes)
-    return { ...(entry ? { entry } : {}), written: written.sort(naturalCompare), skipped, ...(fit ? { board: fit.board } : {}), ...(copper.note ? { copperNote: copper.note } : {}) }
+    return { ...(entry ? { entry } : {}), written: [...new Set(written)].sort(naturalCompare), skipped, ...(fit ? { board: fit.board } : {}), ...(copper.note ? { copperNote: copper.note } : {}) }
   })
 }
