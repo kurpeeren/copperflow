@@ -25,6 +25,8 @@ import { alsoField, checkSheetFiles, invertChanges, planSheetWrites, sheetFilesF
 import { RULES_PATH } from "../engine/rules/load.js"
 import { PROJECT_PATH } from "./project-text.js"
 import type { CircuitModel, Edit } from "./types.js"
+import { frameEdits, movedCopper, movesOf } from "./instance-move.js"
+import type { DesignSource as BuildSource } from "./design-source.js"
 
 const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "coverage", ".copperflow"])
 const CIRCUIT_FILE = /\.circuit\.tsx$/
@@ -46,6 +48,8 @@ export interface EditResult {
   violations: LockViolation[]
   /** The ids of the pours and holes the edits wrote or changed (none left in place as it was), in source order. */
   boardItemsAdded: string[]
+  /** What became of the copper of instances the edits moved, when they had any. */
+  copperNote?: string
 }
 
 /** The pours and holes of `next` that are no element of `source` left in place: those the change wrote or changed. */
@@ -120,7 +124,7 @@ export function editCircuit(
   root: string,
   file: string,
   edits: Edit[],
-  meta: { author: Author; summary: string },
+  meta: { author: Author; summary: string; engine?: BuildSource },
 ): Promise<EditResult> {
   return inProjectQueue(root, async () => {
     assertMeta(meta)
@@ -129,9 +133,21 @@ export function editCircuit(
     const locked = new Set(loaded.annotations.locks.map((lock) => lock.part))
     const after = applyEdits(loaded.source, edits, locked)
     if (after === loaded.source) throw new EditError("invalid", "The edit made no change")
-    const entry = await writeWithHistory(root, loaded, after, { ...meta, file: loaded.file, before: loaded.source, after })
+    // A moved instance takes its inner copper with it, in the same entry.
+    const frames = frameEdits(loaded.model, edits)
+    const copper = frames.length === 0 ? { changes: [] } : await movedCopper(root, loaded.file, (design) => movesOf(design, frames), meta.engine ? { engine: meta.engine } : {}, (one) => resolveInRoot(root, one))
+    const { engine: _engine, ...history } = meta
+    const entry = await sheetFilesFirst(root, copper.changes, "after", () =>
+      writeWithHistory(root, loaded, after, { ...history, file: loaded.file, before: loaded.source, after, ...alsoField(copper.changes) }),
+    )
     const model = analyzeCircuit(after)
-    return { entry, model, violations: verifyLocks(loaded.annotations, model), boardItemsAdded: boardItemsAdded(loaded.source, loaded.model, after, model) }
+    return {
+      entry,
+      model,
+      violations: verifyLocks(loaded.annotations, model),
+      boardItemsAdded: boardItemsAdded(loaded.source, loaded.model, after, model),
+      ...(copper.note ? { copperNote: copper.note } : {}),
+    }
   })
 }
 

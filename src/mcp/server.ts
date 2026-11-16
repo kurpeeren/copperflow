@@ -84,9 +84,9 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
   const designOptions = options.engine ? { engine: options.engine } : {}
 
   const apply = async (circuit: string, edits: Edit[], summary: string, note = summary, after: string[] = []) => {
-    const result = await editCircuit(root, circuit, edits, { author: "ai", summary })
+    const result = await editCircuit(root, circuit, edits, { author: "ai", summary, ...designOptions })
     const warnings = result.violations.map((v) => `Lock violation: ${v.part} ${v.kind}: ${v.detail}`)
-    return [`Change ${result.entry.id} applied: ${note}`, ...after, ...warnings].join("\n")
+    return [`Change ${result.entry.id} applied: ${note}`, ...(result.copperNote ? [result.copperNote] : []), ...after, ...warnings].join("\n")
   }
   const edit = (circuit: string, edits: Edit[], summary: string) => run(() => apply(circuit, edits, summary))
 

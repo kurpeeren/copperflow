@@ -143,6 +143,58 @@ describe("B3: a block is routed on its own", () => {
   }, 120_000)
 })
 
+/** The ratsnest lines (unrouted connections) of a net. */
+const openOn = (design: Design, net: string) => design.pcb.ratsnest.filter((line) => line.net === net || line.net === `net.${net}`).length
+
+/** Whether every point of the net's tracks lies inside the bounds of the instance's courtyards (0.05 mm slack). */
+function copperInside(design: Design, net: string, n: number): boolean {
+  const all = boxOfPoints(partsOf(design, n).flatMap((p) => p.courtyard))
+  const tracks = design.pcb.tracks.filter((t) => [t.net, t.named].some((one) => one === net || one === `net.${net}`))
+  return tracks.length > 0 && tracks.every((t) => t.points.every((p) => p.x >= all.minX - 0.05 && p.x <= all.maxX + 0.05 && p.y >= all.minY - 0.05 && p.y <= all.maxY + 0.05))
+}
+
+describe("B4: a block is one thing on the board", () => {
+  test("set_props moving and turning an instance carries its inner copper", async () => {
+    await call("new_circuit", eightInputs)
+    await call("autoplace", { file: FILE, instance: "CH1" })
+    await call("set_props", { file: FILE, part: "CH2", props: { pcbX: 8, pcbY: 0 } })
+    await call("autoroute", { file: FILE, instance: "CH1" })
+    expect(openOn(await build(), "CH2/DIV")).toBe(0)
+    const answer = await call("set_props", { file: FILE, part: "CH2", props: { pcbX: 9, pcbY: 9, pcbRotation: 90 } })
+    expect(answer.text).toMatch(/^Copper: .* went with CH2/m)
+    const design = await build()
+    expect(openOn(design, "CH2/DIV")).toBe(0)
+    expect(copperInside(design, "CH2/DIV", 2)).toBe(true)
+    expect((await call("undo_change", {})).isError).toBe(false)
+    expect(copperInside(await build(), "CH2/DIV", 2)).toBe(true)
+  }, 120_000)
+
+  test("copper that leaves the block is removed by the move and shows as unrouted again", async () => {
+    await call("new_circuit", eightInputs)
+    await call("autoplace", { file: FILE, instance: "CH1" })
+    await call("autoplace", { file: FILE, fit: true })
+    expect((await call("autoroute", { file: FILE, nets: ["IN2"] })).text).toMatch(/Routed 1 of 1/)
+    expect(tracksOn(await build(), "IN2")).toBeGreaterThan(0)
+    const answer = await call("set_props", { file: FILE, part: "CH2", props: { pcbX: 40, pcbY: 40 } })
+    expect(answer.text).toMatch(/removed \(now unrouted\)/)
+    const design = await build()
+    expect(tracksOn(design, "IN2")).toBe(0)
+    expect(openOn(design, "IN2")).toBe(1)
+  }, 120_000)
+
+  test("copies moved off the instance they sat on by the placer take a copy of its inner copper", async () => {
+    await call("new_circuit", eightInputs)
+    await call("autoplace", { file: FILE, instance: "CH1" })
+    await call("autoroute", { file: FILE, instance: "CH1" })
+    await call("autoplace", { file: FILE, fit: true })
+    const design = await build()
+    for (const n of CHANNELS) {
+      expect(openOn(design, `CH${n}/DIV`)).toBe(0)
+      expect(copperInside(design, `CH${n}/DIV`, n)).toBe(true)
+    }
+  }, 120_000)
+})
+
 describe("B1: no instance is placed on another", () => {
   test("whole-board autoplace without fit: no two courtyards overlap, an instance with no room is named", async () => {
     await call("new_circuit", eightInputs)

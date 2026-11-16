@@ -15,7 +15,8 @@ import { inProjectQueue, writeWithHistory } from "./file-writes.js"
 import { assertMeta, type Author, type FileChange, type HistoryEntry } from "./history.js"
 import { alsoField, sheetFilesFirst } from "./sheet-files.js"
 import type { CircuitModel, Edit, PropInfo } from "./types.js"
-import { loadCircuit, resolveCircuit } from "./workspace.js"
+import { movedCopper, movesOf } from "./instance-move.js"
+import { loadCircuit, resolveCircuit, resolveInRoot } from "./workspace.js"
 
 /** The edits that write a placement: the circuit's own parts, and the parts each sheet file holds. */
 export interface PlacementWrites {
@@ -125,6 +126,8 @@ export interface WrittenPlacement {
   skipped: string[]
   /** The board fitted round the parts, or why it could not be. */
   board?: FitBoard
+  /** What became of the copper of the instances moved as blocks, when they had any. */
+  copperNote?: string
 }
 
 /** Why the source cannot take a part's position props, or undefined when it can. */
@@ -215,9 +218,9 @@ async function fitted(root: string, texts: Texts, fit: { margin: number }): Prom
 }
 
 /** Writes the changed files as one entry: the circuit as its file when it changed, else the first sheet file. */
-async function record(root: string, texts: Texts, meta: { author: Author; summary: string }): Promise<HistoryEntry | undefined> {
+async function record(root: string, texts: Texts, meta: { author: Author; summary: string }, extra: readonly FileChange[] = []): Promise<HistoryEntry | undefined> {
   const { circuit } = texts
-  const sheets = texts.sheets.map(({ path: _path, ...change }) => change)
+  const sheets = [...texts.sheets.map(({ path: _path, ...change }) => change), ...extra]
   if (circuit.after !== circuit.source) {
     const also = alsoField(sheets)
     return sheetFilesFirst(root, sheets, "after", () => writeWithHistory(root, circuit, circuit.after, { ...meta, file: circuit.file, before: circuit.source, after: circuit.after, ...also }))
@@ -262,7 +265,12 @@ export function writePlacement(root: string, file: string, writes: PlacementWrit
       after = applyEdits(after, [fit.edit], locked)
       texts.circuit.after = after
     }
-    const entry = await record(root, texts, { author: options.author, summary: options.summary })
-    return { ...(entry ? { entry } : {}), written: written.sort(naturalCompare), skipped, ...(fit ? { board: fit.board } : {}) }
+    // Instances moved as blocks take their inner copper; not when the sheet's own positions change in this write.
+    const copper =
+      moves.edits.length > 0 && sheets.length === 0
+        ? await movedCopper(root, loaded.file, (design) => movesOf(design, moves.edits), { design: buildDesign(await collectProjectFiles(root, { include: ENGINE_FILES }), loaded.file) }, (one) => resolveInRoot(root, one))
+        : { changes: [] }
+    const entry = await record(root, texts, { author: options.author, summary: options.summary }, copper.changes)
+    return { ...(entry ? { entry } : {}), written: written.sort(naturalCompare), skipped, ...(fit ? { board: fit.board } : {}), ...(copper.note ? { copperNote: copper.note } : {}) }
   })
 }

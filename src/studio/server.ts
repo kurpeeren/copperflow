@@ -356,7 +356,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       }
       case "POST /api/edit": {
         const body = Bodies.edit.parse(await readJson(req))
-        const result = await editCircuit(root, body.file, body.edits, { author: "human", summary: body.summary })
+        const result = await editCircuit(root, body.file, body.edits, { author: "human", summary: body.summary, engine: { build: (_root, circuit) => designOf(circuit) } })
         // After the write and before the build it asks for: a build with a larger start mark read this change.
         const writeMark = live.nextMark()
         live.requestBuild(result.entry.file)

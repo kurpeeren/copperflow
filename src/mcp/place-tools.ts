@@ -132,7 +132,7 @@ export async function autoplace(
   return [
     ...head,
     ...unplaced,
-    ...listLine("Notes", [...placement.notes, ...grown, ...writes.notes, ...written.skipped.map((s) => `${s}; it was not moved`), ...fitError]),
+    ...listLine("Notes", [...placement.notes, ...grown, ...writes.notes, ...written.skipped.map((s) => `${s}; it was not moved`), ...fitError, ...(written.copperNote ? [written.copperNote] : [])]),
     ...(placement.budgetSpent ? [`Stopped at the ${budgetSeconds} s time budget; run autoplace again (with a larger budgetSeconds) to do better.`] : []),
   ].join("\n")
 }
