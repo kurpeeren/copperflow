@@ -27,7 +27,7 @@ with the default you assumed; do not come back later with a question you could h
 6. **Signals that set rules.** Bus speeds (USB, CAN bit rate, SPI clock), analog accuracy,
    currents in power paths, isolation, lengths that matter.
 7. **The board.** Size or shape limits, layers (two unless said), mounting holes, height limits,
-   the enclosure.
+   the enclosure. When the board must fit something, ask for a DXF of its outline in the project folder.
 8. **Bring-up.** Programming or debug connector, test points, status LEDs, buttons.
 9. **Conditions.** Temperature range, automotive or industrial supply, what a standard requires.
 10. **Later.** What the person wants to decide later.

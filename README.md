@@ -201,6 +201,7 @@ The agent sees what you undid and does not repeat it.
 | `new_circuit` | Writes a whole new circuit from a netlist in one call: parts (a built-in `kind` or a library `part`, `value`, `footprint`, `props` such as `pinCount` or a `pinLabels` object to name pins, no positions) and `nets` (`{ GND: ["R1.pin2", "U1.GND"] }`, no wire corners). Pins are checked first (a wrong one is refused with the part's real pin names); an existing file needs `replace: true`; one history entry, and undo removes the file. It then places the board (`autoplace`, a second entry; the board is fitted when no `board` size is given) unless `place: false` |
 | `autoplace` | Places the parts nobody placed or locked (or only `parts`, or one `instance`) by their connections, as one change: answers "Placed 12 parts; wire length 184 mm (was 412); board 42 × 28 mm; 0 overlaps", then the parts it found no room for and its notes; `fit: true` fits the board too; `budgetSeconds` (20 s by default); `connectors: "ahead"` tries each connector beside the part it serves (route and compare before keeping it) |
 | `fit_board` | Shrinks or grows a rectangular board to the parts' courtyards plus `margin` (2 mm by default), as one change |
+| `import_board` | Sets the board's outline, mounting holes and keepouts from a DXF drawing in the project folder, as one change |
 | `edit_circuit` | Several edits in one call, applied as one change (one history entry); stops at the first refused edit and writes nothing |
 | `connect_nets` | Connects many pins to named nets in one call, e.g. `{ "GND": ["R1.pin2", "C1.pin2"] }` |
 | `route_track` | Draws one track of a net by hand from a pad, track or via of that net, as one change; refused when a point lands on another net's copper; the answer lists the copper violations it introduced |
@@ -246,6 +247,8 @@ copperflow package <file> [--out dir]
                                             write BOM, datasheets and part status to a folder
 copperflow render <file> [--view pcb|schematic] [--page <name>] [--parts U1,C3] [--width n] [--out file.png]
                                             draw the board or a schematic page to a PNG, as the Studio shows it
+copperflow board <file> --dxf <path> [--layer <name>] [--units mm|inch] [--origin keep] [--replace]
+                                            set the board's outline, holes and keepouts from a DXF drawing
 copperflow history [--limit n]              list recent changes
 copperflow undo [id]                        undo the newest change, or the given one
 ```

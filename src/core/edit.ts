@@ -22,6 +22,7 @@ import { partsInSelector, sheetFileIn } from "./selectors.js"
 import { renamePort, setSheetSize } from "./sheet-edits.js"
 import { renameParts } from "./rename-parts.js"
 import { setBoard } from "./board-edits.js"
+import { setBoardShape } from "./board-shape-edit.js"
 import { LABEL_AT_PROPS } from "../engine/component.js"
 import { NO_CONNECT_PROP } from "../engine/no-connect.js"
 import { MAIN_PAGE } from "../engine/model.js"
@@ -98,6 +99,8 @@ function editSource(source: string, scan: Scan, edit: Edit, locked: ReadonlySet<
       return setSheetSize(source, scan, edit)
     case "setBoard":
       return setBoard(source, scan, edit)
+    case "setBoardShape":
+      return setBoardShape(source, scan, edit, locked)
   }
 }
 

@@ -2,6 +2,17 @@
 
 Read before you place or route a board, or draw copper by hand.
 
+## The board from a drawing
+
+When the person has put a `.dxf` in the project folder, `import_board` `{ file, dxf }` first, then
+`render` to look, then place. One change: the largest closed shape is the outline (centred on the
+origin; `origin: "keep"` leaves it as drawn), circles inside it are mounting holes, other closed
+shapes inside it become keepouts on all layers (not cut out of the board). It answers
+`Change c0003: board outline from enclosure.dxf: 12 corners, 82 x 54 mm (drawing in mm, moved by
+-41, -27)`, then the holes, the keepouts and `Not used: 2 SPLINE, …`. `layer` picks the outline's
+layer when the largest shape is not the board; `units` overrides the file's; a board that has holes
+or keepouts already needs `replace: true`. Placed parts stay; the answer names those now outside.
+
 ## Placing and routing
 
 Copper: place the parts first with `autoplace` (one history entry; parts without a position, or

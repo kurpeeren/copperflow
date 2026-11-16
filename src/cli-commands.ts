@@ -15,8 +15,10 @@ import {
   addMark,
   checkCircuit,
   formatCheck,
+  formatBoardImport,
   formatHistory,
   formatSummary,
+  importBoard,
   listHistory,
   loadCircuit,
   lockParts,
@@ -75,6 +77,8 @@ Usage:
   copperflow render <file> [--view pcb|schematic] [--page <name>] [--parts U1,C3] [--width n] [--out file.png]
                                               draw the board or a schematic page to a PNG, as the Studio shows it
                                               (<name>-pcb.png or <name>-schematic-<page>.png beside the circuit)
+  copperflow board <file> --dxf <path> [--layer <name>] [--units mm|inch] [--origin keep] [--replace]
+                                              set the board's outline, holes and keepouts from a DXF drawing
   copperflow history [--limit n]              list recent changes
   copperflow undo [id]                        undo the newest change, or the given one
 
@@ -169,6 +173,9 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
       case "render":
         io.out(await renderCommand(root, rest, options))
         return 0
+      case "board":
+        io.out(await boardCommand(root, rest, options))
+        return 0
       case "undo": {
         // The built design tells which tracks start on locked parts, so copper can be undone while parts are locked.
         const design = (circuit: string) => buildWith(root, circuit, options.engine)
@@ -188,6 +195,25 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
     io.err(`copperflow: ${(error as Error).message}`)
     return 1
   }
+}
+
+async function boardCommand(root: string, rest: string[], options: CliOptions): Promise<string> {
+  const [dxf, afterDxf] = takeOption(rest, "--dxf")
+  const [layer, afterLayer] = takeOption(afterDxf, "--layer")
+  const [units, afterUnits] = takeOption(afterLayer, "--units")
+  const [origin, afterOrigin] = takeOption(afterUnits, "--origin")
+  const [replace, args] = takeFlag(afterOrigin, "--replace")
+  if (units !== undefined && units !== "mm" && units !== "inch") throw new Error(`--units must be mm or inch, not ${units}`)
+  if (origin !== undefined && origin !== "keep") throw new Error(`--origin takes keep, not ${origin}`)
+  const request = {
+    dxf: required(dxf, "--dxf"),
+    ...(layer !== undefined ? { layer } : {}),
+    units: units === "inch" ? ("inch" as const) : units === "mm" ? ("mm" as const) : undefined,
+    origin: origin === "keep" ? ("keep" as const) : undefined,
+    replace,
+  }
+  const result = await importBoard(root, required(args[0], "file"), request, { author: "human", ...designOptions(options) })
+  return formatBoardImport(result).join("\n")
 }
 
 async function renderCommand(root: string, rest: string[], options: CliOptions): Promise<string> {

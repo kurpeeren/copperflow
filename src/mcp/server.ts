@@ -44,6 +44,7 @@ import * as router from "./route-tools.js"
 import * as placer from "./place-tools.js"
 import { CREATE_PART_DESCRIPTION, createPartInput, createPartTool } from "./create-part.js"
 import { IMPORT_PART_DESCRIPTION, importPart, importPartInput } from "./import-part.js"
+import { IMPORT_BOARD_DESCRIPTION, importBoardInput, importBoardTool } from "./board-import-tool.js"
 import { MAKE_SHEET_DESCRIPTION, makeSheet, makeSheetInput } from "./make-sheet.js"
 import { NEW_CIRCUIT_DESCRIPTION, newCircuit, newCircuitInput } from "./new-circuit.js"
 import { fileURLToPath } from "node:url"
@@ -207,6 +208,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
   )
   server.registerTool("autoplace", { description: placer.AUTOPLACE_DESCRIPTION, inputSchema: placer.autoplaceInput }, (input) => run(() => placer.autoplace(ports, input)))
   server.registerTool("fit_board", { description: placer.FIT_BOARD_DESCRIPTION, inputSchema: placer.fitBoardInput }, (input) => run(() => placer.fitBoardTool(ports, input)))
+  server.registerTool("import_board", { description: IMPORT_BOARD_DESCRIPTION, inputSchema: importBoardInput }, (input) => run(() => importBoardTool(ports, input)))
   server.registerTool("autoroute", { description: router.AUTOROUTE_DESCRIPTION, inputSchema: router.autorouteInput }, (input) => run(() => router.autoroute(ports, input)))
   server.registerTool(
     "unroute",

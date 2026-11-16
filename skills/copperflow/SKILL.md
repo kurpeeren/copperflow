@@ -119,7 +119,7 @@ means, `replace`, refused pins and the export's warnings are in
    `Not placed: U1 (no free spot …)`: `fit: true`, or place it with `set_props` `{ pcbX, pcbY }`.
    `board_summary`'s longest connections show a part far from the pin it serves; move it with
    `set_props`. Do not repeat `autoplace` hoping for better. Details: [references/copper.md](references/copper.md).
-8. **Board shape.** `fit_board` `{ file, margin? }`: `Change c0010: board 42 × 28 mm (margin 2 mm)`; holes: `add_hole`.
+8. **Board shape.** `fit_board` `{ file, margin? }`: `Change c0010: board 42 × 28 mm (margin 2 mm)`; holes: `add_hole`. A `.dxf` in the project: step 7 starts with `import_board`, then `render` (copper.md).
 9. **Fine tuning.** `board_summary` `{ file }` reads the board: `main.circuit.tsx: Board 42 × 28 mm,
    2 layers, courtyards use 38%; 24 parts, 18 nets`, one line per part
    (`U1 MCP2515 soic18w @(12.0, 8.5) r90 top [LOCKED]`), the ten longest connections with both pads' places,

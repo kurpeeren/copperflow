@@ -20,3 +20,4 @@ export { applyLayoutEdits, describeLayoutEdits, type LayoutEditOptions, type Lay
 export { renameDesignators, netRenamer, renamedNetIds, type RenameMapping } from "./rename-designators.js"
 export { makeSubSheet, previewSubSheet, type MakeSheetPreview, type MakeSheetRequest } from "./make-sheet.js"
 export { CANVAS_MISSING, renderCircuit, renderedLine, writeRender, type Renderer, type RenderOptions, type RenderRequest, type Rendered } from "./render.js"
+export { formatBoardImport, importBoard, type ImportBoardOptions, type ImportBoardResult } from "./board-import.js"

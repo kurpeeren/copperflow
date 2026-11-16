@@ -56,6 +56,7 @@ describe("MCP server", () => {
       "fillet_tracks",
       "fit_board",
       "guide",
+      "import_board",
       "import_part",
       "list_circuits",
       "list_parts",
