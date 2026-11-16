@@ -70,6 +70,11 @@ export interface Placement {
   unplaced: UnplacedPart[]
   /** What else the caller should know, such as a connector no board edge had room for. */
   notes: string[]
+  /**
+   * Instances of a sheet that found no free room on the board as a block and were put beside it instead (never on
+   * another instance), with the reason; fitting the board afterwards grows it round them.
+   */
+  beside: { instance: string; reason: string }[]
   /** Whether the time budget ran out, in the constructive pass or the refinement. */
   budgetSpent: boolean
 }
@@ -169,6 +174,7 @@ export function placeBoard(design: Design, options: PlaceOptions = {}): Placemen
     moved,
     unplaced: built.unplaced.map((u) => ({ name: problem.movables[u.index]?.name as string, reason: u.reason })),
     notes: [...built.notes, ...copies.notes, ...copied.notes, ...orderNotes],
+    beside: copied.beside,
     budgetSpent: outOfTime || (refined?.budgetSpent ?? false),
   }
 }

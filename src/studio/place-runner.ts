@@ -163,7 +163,7 @@ export class PlaceRunner {
         wireLength: placement.score.wireLength,
         before: placement.before.wireLength,
         unplaced: placement.unplaced,
-        notes: [...placement.notes, ...writes.notes, ...(written?.skipped ?? []).map((s) => `${s}; it was not moved`)],
+        notes: [...placement.notes, ...placement.beside.map((b) => `${b.instance}: ${b.reason}${fit ? "; the board was grown round it" : ""}`), ...writes.notes, ...(written?.skipped ?? []).map((s) => `${s}; it was not moved`)],
         ...board,
         ...mark,
       })

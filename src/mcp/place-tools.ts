@@ -111,7 +111,10 @@ export async function autoplace(
   const locked = await lockedNames(circuit.path, design)
   const placement = placeBoard(design, { scope, locked, budgetMs: budgetSeconds * 1000, ...ahead, ...(options.clock ? { clock: options.clock } : {}) })
   const writes = placementWrites(design, placement.positions, placement.blocks)
-  const unplaced = listLine("Not placed", placement.unplaced.map((u) => `${u.name} (${u.reason})`))
+  // A block put beside the board is on it once the board is fitted round it; without fit it is named as not placed.
+  const beside = input.fit ? [] : placement.beside.map((b) => `${b.instance} (${b.reason}; fit: true grows the board round it)`)
+  const grown = input.fit ? placement.beside.map((b) => `${b.instance} had no free room on the board; the board was grown round it`) : []
+  const unplaced = listLine("Not placed", [...placement.unplaced.map((u) => `${u.name} (${u.reason})`), ...beside])
   if (writes.circuit.length + writes.sheets.length + writes.blocks.length === 0 && !input.fit) {
     const which = scope.kind === "instance" ? `every part of ${scope.instance}` : "every part in the scope"
     const none = placement.unplaced.length === 0 ? `Nothing to place: ${which} already has a position or is locked; autoplace moves only parts without one.` : "No part was placed."
@@ -129,7 +132,7 @@ export async function autoplace(
   return [
     ...head,
     ...unplaced,
-    ...listLine("Notes", [...placement.notes, ...writes.notes, ...written.skipped.map((s) => `${s}; it was not moved`), ...fitError]),
+    ...listLine("Notes", [...placement.notes, ...grown, ...writes.notes, ...written.skipped.map((s) => `${s}; it was not moved`), ...fitError]),
     ...(placement.budgetSpent ? [`Stopped at the ${budgetSeconds} s time budget; run autoplace again (with a larger budgetSeconds) to do better.`] : []),
   ].join("\n")
 }

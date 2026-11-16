@@ -7,7 +7,7 @@ import { frameTurn } from "../instance-anchor.js"
 import type { Component, Point, SheetInstance } from "../model.js"
 import { naturalCompare } from "../order.js"
 import type { PlacedFootprint } from "../pcb.js"
-import { boxOfPoints, GRID, inArea, moved, tooClose, turn, type Box } from "./geometry.js"
+import { boxOfPoints, GRID, inArea, moved, tooClose, turn, type Area, type Box } from "./geometry.js"
 import { movingParts, type Problem, type ScopeOptions } from "./scope.js"
 import type { State } from "./score.js"
 
@@ -168,15 +168,15 @@ function surroundings(problem: Problem, final: State, frozen: ReadonlySet<number
   return { taken, targets }
 }
 
-/** The shift that puts the body in free room nearest the pads it connects to, or undefined when there is none. */
-function freeShift(body: Body, problem: Problem, taken: readonly Box[], targets: ReadonlyMap<string, Point[]>): Point | undefined {
+/** The shift that puts the body in free room of `room` nearest the pads it connects to, or undefined when there is none. */
+function freeShift(body: Body, problem: Problem, taken: readonly Box[], targets: ReadonlyMap<string, Point[]>, room: Area = problem.area): Point | undefined {
   const fits = (dx: number, dy: number) =>
     body.boxes.every((b) => {
       const at = moved(b, dx, dy)
-      return inArea(at, problem.area) && !taken.some((t) => tooClose(at, t, problem.clearance))
+      return inArea(at, room) && !taken.some((t) => tooClose(at, t, problem.clearance))
     })
   const bounds = boxOfPoints(body.boxes.flatMap((b) => [{ x: b.minX, y: b.minY }, { x: b.maxX, y: b.maxY }]))
-  const area = problem.area.box
+  const area = room.box
   const range = { lo: { x: area.minX - bounds.minX, y: area.minY - bounds.minY }, hi: { x: area.maxX - bounds.maxX, y: area.maxY - bounds.maxY } }
   if (range.lo.x > range.hi.x || range.lo.y > range.hi.y) return undefined
   const step = Math.ceil(Math.max(range.hi.x - range.lo.x, range.hi.y - range.lo.y) / STEPS / GRID) * GRID || GRID
@@ -194,25 +194,63 @@ function freeShift(body: Body, problem: Problem, taken: readonly Box[], targets:
   return found ? { x: found.dx, y: found.dy } : undefined
 }
 
+/** How many times the room round the board is widened, by the block's own size each time, before giving up. */
+const GROW_STEPS = 8
+
+const boundsOf = (body: Body): Box => boxOfPoints(body.boxes.flatMap((b) => [{ x: b.minX, y: b.minY }, { x: b.maxX, y: b.maxY }]))
+
+/**
+ * The shift that puts the body in free room beside the board when the board has none: the area widened on every side
+ * by the block's size (and its clearance), step by step, nearest its connections.
+ */
+function besideShift(body: Body, problem: Problem, taken: readonly Box[], targets: ReadonlyMap<string, Point[]>): Point | undefined {
+  const bounds = boundsOf(body)
+  const grow = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) + 2 * problem.clearance
+  const box = problem.area.box
+  for (let k = 1; k <= GROW_STEPS; k++) {
+    const g = grow * k
+    const room: Area = { box: { minX: box.minX - g, minY: box.minY - g, maxX: box.maxX + g, maxY: box.maxY + g }, edge: problem.area.edge }
+    const found = freeShift(body, problem, taken, targets, room)
+    if (found) return found
+  }
+  return undefined
+}
+
+/** What placing the followers gave: the moves, the notes, and the instances that had to go beside the board. */
+export interface Copied {
+  blocks: BlockMove[]
+  notes: string[]
+  /** Instances with no free room on the board, put beside it (never on another instance), with the reason. */
+  beside: { instance: string; reason: string }[]
+}
+
 /**
  * Places each follower as a block once the rest is placed (`positions` and `final`): an instance whose copy would overlap
- * something or leave the board moves to the free spot nearest its connections.
+ * something or leave the board moves to the free spot nearest its connections; with no free spot on the board, to the
+ * nearest free room beside it (fitting the board then grows it round the block), and it is named in `beside`.
  */
 export function placeCopies(
   design: Design,
   problem: Problem,
   placed: { final: State; frozen: ReadonlySet<number>; positions: ReadonlyMap<string, Pose> },
   followers: readonly Follower[],
-): { blocks: BlockMove[]; notes: string[] } {
+): Copied {
   const { taken, targets } = surroundings(problem, placed.final, placed.frozen)
   const blocks: BlockMove[] = []
   const notes: string[] = []
+  const beside: Copied["beside"] = []
   for (const follower of followers) {
     const body = bodyOf(design, follower, placed.positions)
     if (body.parts.length === 0) continue
     const free = (dx: number, dy: number) => body.boxes.every((b) => inArea(moved(b, dx, dy), problem.area) && !taken.some((t) => tooClose(moved(b, dx, dy), t, problem.clearance)))
     const stays = free(0, 0)
-    const shift = stays ? { x: 0, y: 0 } : freeShift(body, problem, taken, targets)
+    const inside = stays ? { x: 0, y: 0 } : freeShift(body, problem, taken, targets)
+    const shift = inside ?? besideShift(body, problem, taken, targets)
+    if (!inside && shift) {
+      const b = boundsOf(body)
+      const size = `${(b.maxX - b.minX).toFixed(1)} x ${(b.maxY - b.minY).toFixed(1)} mm`
+      beside.push({ instance: follower.instance.path, reason: `no free room on the board for its ${size} block; it was put beside the board` })
+    }
     if (!shift) {
       notes.push(`${follower.instance.path} found no free room as a block; it was left where it is`)
       continue
@@ -221,7 +259,7 @@ export function placeCopies(
     for (const pad of body.pads) targets.set(pad.net, [...(targets.get(pad.net) ?? []), { x: pad.x + shift.x, y: pad.y + shift.y }])
     if (stays) continue
     blocks.push({ instance: follower.instance.path, dx: shift.x, dy: shift.y, parts: body.parts })
-    notes.push(`${follower.instance.path} was moved as a block, keeping the arrangement of ${follower.leader.path}`)
+    if (inside) notes.push(`${follower.instance.path} was moved as a block, keeping the arrangement of ${follower.leader.path}`)
   }
-  return { blocks, notes }
+  return { blocks, notes, beside }
 }
