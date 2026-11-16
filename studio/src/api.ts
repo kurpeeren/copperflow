@@ -7,6 +7,8 @@ import type { FabricationExport } from "../../src/core/fabrication.js"
 import type { RouteEvent, RouteScope } from "../../src/studio/route-events.js"
 import type { PlaceEvent, PlaceScope } from "../../src/studio/place-events.js"
 import { networkErrorText, requestErrorText } from "./request-error.js"
+import { AI_LOCK_MESSAGE, blocksRequest } from "./ai-lock.js"
+import { lockGate } from "./ai-lock-gate.js"
 
 export type { Annotations, CircuitModel, Design, Diagnostic, Edit, FabricationExport, HistoryListing, HistoryProblem, Literal, LockViolation, PartInfo, PropInfo, PlaceEvent, PlaceScope, RouteEvent, RouteScope, TraceInfo }
 
@@ -109,6 +111,8 @@ window.addEventListener("hashchange", () => {
 })
 
 export async function api<T>(path: string, body?: unknown): Promise<T> {
+  // Every Studio write comes through here: while the AI lock is closed it is not sent.
+  if (lockGate.closed() && blocksRequest(path, body)) throw new Error(AI_LOCK_MESSAGE)
   let response: Response
   try {
     response = await fetch(path, {

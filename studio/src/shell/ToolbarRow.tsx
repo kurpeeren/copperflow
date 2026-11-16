@@ -3,7 +3,7 @@ import { TOOL_ICONS } from "../icons"
 import { blurAfterPointerClick } from "./focus"
 import type { View } from "../pcb/positions"
 import type { Unit } from "../pcb/units"
-import type { CommandId, Toggles } from "./menus"
+import type { CommandId, CommandsOff, Toggles } from "./menus"
 import { buttonPressed, buttonState, hasPressedState, toolbarGroups, type ToolbarButton } from "./toolbar"
 import { clickAction, useToolState } from "./tool-state"
 import { VIEW_SLOT_ID } from "./ViewTools"
@@ -17,6 +17,8 @@ interface Props {
   selected: number
   /** The settings the switch buttons show: pressed while on. */
   toggles: Toggles
+  /** Commands turned off for now, with the reason each button's tooltip gives. */
+  off?: CommandsOff
   /** The function the menu bar runs its items with. */
   run(command: CommandId): void
 }
@@ -28,7 +30,7 @@ function ButtonFace({ item, unit }: { item: ToolbarButton; unit: Unit }) {
 }
 
 /** EasyEDA's toolbar: 24px icon buttons in groups, and at the right the open canvas's own tools. */
-export function Toolbar({ view, unit, selected, toggles, run }: Props) {
+export function Toolbar({ view, unit, selected, toggles, off, run }: Props) {
   const tools = useToolState()
   return (
     <div className="studio-toolbar hairline-b" role="toolbar" aria-label="Tools">
@@ -37,7 +39,7 @@ export function Toolbar({ view, unit, selected, toggles, run }: Props) {
           {i > 0 && <span className="toolbar-separator" role="separator" aria-orientation="vertical" />}
           {group.map((item) => {
             const pressed = item.command !== undefined && buttonPressed(item.command, tools.active, toggles)
-            const state = buttonState(item, selected)
+            const state = buttonState(item, selected, off)
             return (
               <button
                 key={item.id}

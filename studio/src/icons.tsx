@@ -6,6 +6,8 @@ import type { ToolIconName } from "./shell/toolbar"
 
 export const LockIcon = (p: IconProps) => iconSvg("lock", p)
 export const UnlockIcon = (p: IconProps) => iconSvg("unlock", p)
+export const PadlockIcon = (p: IconProps) => iconSvg("padlock", p)
+export const PadlockOpenIcon = (p: IconProps) => iconSvg("padlockOpen", p)
 export const RotateIcon = (p: IconProps) => iconSvg("rotate", p)
 export const TrashIcon = (p: IconProps) => iconSvg("trash", p)
 export const UndoIcon = (p: IconProps) => iconSvg("undo", p)

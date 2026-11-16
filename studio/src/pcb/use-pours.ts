@@ -3,6 +3,7 @@
 // pour by its outline or a hole, the corner drag of the selected pour, the one under the pointer, and what they look
 // like (pour-draw.ts PourScene). The logic is in pour-tool.ts and pour-hit.ts; this hook holds the state and sends the
 // edits, one history entry each.
+import { lockGate } from "../ai-lock-gate.js"
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent, type RefObject } from "react"
 import type { CircuitData, Design } from "../api"
 import type { Actions } from "../App"
@@ -374,6 +375,8 @@ export function withPourDrag<H extends Handlers>(pours: PourState, handlers: H, 
       const { input } = pours.latest.current
       const far = Math.hypot(world.x - drag.start.x, world.y - drag.start.y) * (input.camera?.scale ?? 1) >= DRAG_THRESHOLD_PX
       if (!drag.moved && !far) return
+      // While the AI lock is closed a pour or hole does not follow the pointer.
+      if (lockGate.refuses()) return
       pours.put({ ...drag, moved: true, to: snapPoint(world, input.step, input.snap) })
     },
     onPointerUp: (event) => {

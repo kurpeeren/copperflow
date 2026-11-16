@@ -37,6 +37,11 @@ import { useChecks } from "./use-checks"
 import { useFind } from "./use-find"
 import { useStudioData, type StudioData } from "./use-studio-data"
 import { SERVER_GONE_MESSAGE } from "./request-error"
+import { blocksCommand, lockedOff } from "./ai-lock"
+import type { CommandId } from "./shell/menus"
+import { lockGate } from "./ai-lock-gate"
+import { useAiLock } from "./use-ai-lock"
+import { AiLockButton } from "./shell/AiLockButton"
 import { exportChecksQuestion } from "./shell/fabrication-note"
 import type { CheckCounts } from "../../src/core/checks-line.js"
 import { useWorkspace } from "./use-workspace"
@@ -234,8 +239,11 @@ function useStudio() {
   const pcbCopper = useMemo(() => (tab === "pcb" && pcb ? copperBoxes(pcb, workspace.layerVisibility).map(({ kind, id }) => ({ kind, id })) : []), [tab, pcb, workspace.layerVisibility])
   const copperRecords = tab === "pcb" ? pcb : undefined
   const sheetIds = { sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords }
-  const runCommand = useAppCommands({ file, view: tab, setView: setTab, selection, select, circuit, actions, pickLayers, pickFilter: workspace.pickFilter, ...sheetIds, workspace, openChecks, checkCounts: checks.counts, openFind: find.open, openDialog: setDialog, design: build.design, page, openPage, highlight: workspace.highlight })
-  return { toast, tab, setTab, dialog, closeDialog, openImportPart, openNewPart, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, openSheet, sheetParent, runCommand, page, openPage }
+  const aiLock = useAiLock(data.history, circuit !== undefined, tab, toast.notify)
+  const runAny = useAppCommands({ file, view: tab, setView: setTab, selection, select, circuit, actions, pickLayers, pickFilter: workspace.pickFilter, ...sheetIds, workspace, openChecks, checkCounts: checks.counts, openFind: find.open, openDialog: setDialog, design: build.design, page, openPage, highlight: workspace.highlight })
+  // Every menu, toolbar and context menu command comes through here: while the AI lock is closed no editing one runs.
+  const runCommand = useCallback((command: CommandId) => (aiLock.closed && blocksCommand(command) ? void lockGate.refuses() : runAny(command)), [aiLock.closed, runAny])
+  return { aiLock, toast, tab, setTab, dialog, closeDialog, openImportPart, openNewPart, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, openSheet, sheetParent, runCommand, page, openPage }
 }
 
 /** The circuit a sheet file was opened from, and its design as it was then. */
@@ -330,11 +338,12 @@ function useMakeSheetPanel(file: string | undefined, parts: readonly string[], a
 }
 
 export function App() {
-  const { toast, tab, setTab, dialog, closeDialog, openImportPart, openNewPart, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, openSheet, sheetParent, runCommand, page, openPage } = useStudio()
+  const { aiLock, toast, tab, setTab, dialog, closeDialog, openImportPart, openNewPart, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, openSheet, sheetParent, runCommand, page, openPage } = useStudio()
   const { build, circuit } = data
   const { message, dismiss } = toast
   const toggles = { snap: workspace.snap, hoverLabels: workspace.hoverLabels, ...themeToggles(workspace.theme), ...pourFillToggles(workspace.pourFill) }
-  const off = useCommandsOff(build.design)
+  const designOff = useCommandsOff(build.design)
+  const off = useMemo(() => ({ ...designOff, ...lockedOff(aiLock.closed) }), [designOff, aiLock.closed])
   const makeSheet = useMakeSheetPanel(data.file, selection.names, actions)
   const importPart = useImportPartPanel(data.refreshParts, toast.notify)
   const newPart = useNewPartPanel(data.refreshParts, toast.notify)
@@ -347,10 +356,10 @@ export function App() {
   if (!hasToken) return <NoToken />
   return (
     <div className="app">
-      <MenuBar run={runCommand} view={tab} selected={selection.size} toggles={toggles} off={off}>
+      <MenuBar run={runCommand} view={tab} selected={selection.size} toggles={toggles} off={off} center={<AiLockButton closed={aiLock.closed} onToggle={aiLock.toggle} />}>
         <StatusPill build={build} errors={checks.counts.errors} onOpen={openChecks} />
       </MenuBar>
-      <Toolbar view={tab} unit={workspace.unit} selected={selection.size} toggles={toggles} run={runCommand} />
+      <Toolbar view={tab} unit={workspace.unit} selected={selection.size} toggles={toggles} off={off} run={runCommand} />
       {dialog && <StudioDialog name={dialog} onClose={closeDialog} rules={{ fabrication: build.design?.rules.fabrication, save: actions.setFilletRadius }} makeSheet={makeSheet} importPart={importPart} newPart={newPart} system={system} newCircuit={newCircuit} footprints={footprints} exportChecks={exportChecks} />}
       {data.serverGone && (
         <div className="banner" role="alert">
@@ -383,6 +392,7 @@ export function App() {
         onOpenSheet={openSheet}
         sheetParent={sheetParent}
         openChecks={openChecks}
+        aiLocked={aiLock.closed}
       />
       <BottomStrip state={workspace.bottom} onClick={workspace.clickBottomTab} onOpen={workspace.openBottom} />
       {message && (

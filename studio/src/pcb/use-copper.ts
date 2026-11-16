@@ -3,6 +3,7 @@
 // segment or corner, a via), the segment a double click picks, the arrow keys that move copper selected on its own, and
 // Delete's part for copper (a selected segment splits its track). The
 // logic is in copper-hit.ts, copper-gesture.ts and copper-edits.ts; this hook holds the state and sends the edits.
+import { lockGate } from "../ai-lock-gate.js"
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent, type RefObject } from "react"
 import type { Design } from "../api"
 import type { Actions } from "../App"
@@ -296,6 +297,8 @@ export function withCopperDrag<H extends Handlers>(copper: CopperState, handlers
       if (!drag || !world) return handlers.onPointerMove(event)
       setCursor(world)
       if (event.buttons === 0) return void copper.put(undefined)
+      // While the AI lock is closed copper does not follow the pointer; the release only selects it.
+      if (lockGate.refuses()) return
       followCopper(copper, drag, world)
     },
     onPointerUp: (event) => {

@@ -4,7 +4,7 @@ import type { View } from "../pcb/positions.js"
 import { commandDisabledReason } from "../pcb/selection-rules.js"
 import { DRAW_COMMANDS, DRAW_TOOL_COMMAND } from "../pcb/draw-commands.js"
 import type { DrawTool } from "../pcb/draw-tools.js"
-import type { CommandId, Toggles } from "./menus.js"
+import type { CommandId, CommandsOff, Toggles } from "./menus.js"
 import { WAITS_FOR_ROUTING } from "./pending.js"
 
 export type ToolIconName = "undo" | "redo" | "zoomIn" | "zoomOut" | "fit" | "fitSelection" | "fitArea" | "component" | "wire" | "netLabel" | "ground" | "power" | "rotate" | "rotateRight" | "snap" | "check" | "grid" | "alignLeft" | "distributeH" | "polyline" | "arc" | "circle" | "rectangle" | "text" | "bus" | "noConnect" | "via" | "boardOutline" | "copperArea" | "singleRouting" | "gerber"
@@ -102,8 +102,10 @@ export function rowWidth(view: View, buttons: readonly ToolbarButton[] = TOOLBAR
 }
 
 /** Whether a button runs with `selected` parts selected, and its tooltip: the title, with the reason after it when it cannot (a pending button never can). */
-export function buttonState(item: ToolbarButton, selected: number): { enabled: boolean; title: string } {
+export function buttonState(item: ToolbarButton, selected: number, off: CommandsOff = {}): { enabled: boolean; title: string } {
   if (item.pending !== undefined) return { enabled: false, title: `${item.title}: ${item.pending}` }
+  const why = off[item.command]
+  if (why !== undefined) return { enabled: false, title: `${item.title}: ${why}` }
   const reason = commandDisabledReason(item.command, selected)
   return reason ? { enabled: false, title: `${item.title}: ${reason}` } : { enabled: true, title: item.title }
 }

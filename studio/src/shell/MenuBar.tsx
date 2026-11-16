@@ -17,6 +17,8 @@ interface Props {
   toggles: Toggles
   /** Commands turned off for now, with the reason each item's tooltip gives. */
   off: CommandsOff
+  /** What sits in the middle of the bar: the AI lock. */
+  center?: ReactNode
   /** The build status, at the right end of the bar. */
   children?: ReactNode
 }
@@ -118,7 +120,7 @@ function MenuTitle({ menu, index, open, current, onPointer, onHover, onKeyboard,
 }
 
 /** EasyEDA's menu bar: brand, File … Help, and Studio's build status at the right end. The keys are menu-keys.ts. */
-export function MenuBar({ run, view, selected, toggles, off, children }: Props) {
+export function MenuBar({ run, view, selected, toggles, off, center, children }: Props) {
   const [state, dispatch] = useReducer(menuReducer, { open: null })
   const [current, setCurrent] = useState(0)
   const bar = useRef<HTMLElement>(null)
@@ -161,6 +163,7 @@ export function MenuBar({ run, view, selected, toggles, off, children }: Props) 
           <MenuTitle key={menu.title} menu={menu} index={i} open={open === i} current={current === i} onPointer={onPointer} onHover={onHover} onKeyboard={apply} view={view} selected={selected} off={off} toggles={toggles} onRun={onRun} />
         ))}
       </nav>
+      {center && <div className="ai-lock-slot">{center}</div>}
       <div className="menubar-end">{children}</div>
     </header>
   )

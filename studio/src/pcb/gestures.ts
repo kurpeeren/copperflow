@@ -14,6 +14,8 @@ import { anchorLookup, moveEach, type GroupEdit, type GroupEditActions } from ".
 import { VIEWS, ZERO, type Anchor, type SourceCircuit, type View } from "./positions.js"
 import { areaCamera } from "./view-fit.js"
 import { picks, type Pickable, type PickContext } from "./pick.js"
+import { blocksGesture } from "../ai-lock.js"
+import { lockGate } from "../ai-lock-gate.js"
 import { gestureStart, hasMoved, rightButtonHeld, stillRelease, type ArmedTool, type ContextTarget, type GestureStart, type Press, type StillRelease, type Under } from "./press.js"
 import { endReshape, followReshape, gripOf, handleUnder, startReshape, type ReshapeGesture, type WireDrag } from "./wire-drag.js"
 import { withMovedWires, type MovedWires, type WireFollow } from "./wire-follow.js"
@@ -288,6 +290,8 @@ export function startGesture(input: GestureInput, event: Press, point: Point): G
   const world = screenToWorld(camera, input.size, point)
   const { target, under, corner } = pressedAt(input, world, camera)
   const start = gestureStart(event, under, input.tool.armed)
+  // While the AI lock is closed a press only selects: nothing is dragged, so nothing is written.
+  if (blocksGesture(start) && lockGate.refuses()) return selectOnly(input, target, start)
   const still = stillRelease(start, input.tool.armed)
   if (start === "pan" || start === "rightPress") return { kind: "pan", start: point, camera, moved: false, still, target }
   if (start === "note" || start === "zoom") return { kind: start, start: point, current: point }
@@ -303,6 +307,17 @@ export function startGesture(input: GestureInput, event: Press, point: Point): G
     return undefined
   }
   return start === "move" || start === "moveGroup" ? startDrag(input, { part }, start, point, still) : undefined
+}
+
+/** What a press that may not drag selects: the thing pressed alone, or the selection kept when it was in it. */
+function selectOnly(input: GestureInput, target: ContextTarget, start: GestureStart): undefined {
+  if (start === "moveGroup") return undefined
+  if (target.kind === "part") input.onSelect((current) => current.only(target.name))
+  else if (target.kind === "label") input.onSelect((current) => current.onlyLabel(target.label.id))
+  else if (target.kind === "wire") input.onSelect((current) => current.onlyWire(target.id))
+  else if (target.kind === "drawing") input.onSelect((current) => current.onlyDrawing(target.id))
+  else if (target.kind === "text") input.onSelect((current) => current.onlyText(target.id))
+  return undefined
 }
 
 /** A press on a label: Shift or Ctrl toggles it, one selected with other things drags the selection, else it is selected alone and dragged alone. */

@@ -24,6 +24,9 @@ export const ICONS = {
   lock: [...LOCK_BODY, path("M5.5 7V5a2.5 2.5 0 0 1 5 0v2")],
   /** The shackle's right leg stops short of the body: open. */
   unlock: [...LOCK_BODY, path("M5.5 7V5a2.5 2.5 0 0 1 5 0")],
+  // The AI lock: a taller padlock than a part's, its shackle closed, or swung up and open.
+  padlock: [rect(2.5, 7, 11, 7.5, 1.5), path("M5 7V5a3 3 0 0 1 6 0v2"), path("M8 10v2")],
+  padlockOpen: [rect(2.5, 7, 11, 7.5, 1.5), path("M11 7V4a3 3 0 0 0-6 0v.5"), path("M8 10v2")],
   trash: [path("M2.5 4.5h11M6 4.5V2.5h4v2"), path("M4 4.5l.5 9h7l.5-9"), path("M6.5 7v4M9.5 7v4")],
   close: [path("M4 4l8 8M12 4l-8 8")],
   chevron: [path("M6 4l4 4-4 4")],
