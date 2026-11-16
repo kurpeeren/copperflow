@@ -57,6 +57,7 @@ import { LiveProject, type DesignBuilder } from "./live.js"
 import { RouteRunner, routeWorkerFactory, type RouteWorkerFactory } from "./route-runner.js"
 import { PlaceRunner, placeWorkerFactory, type PlaceWorkerFactory } from "./place-runner.js"
 import { fitBoardEdit } from "./fit-board.js"
+import { formatBoardImport, importBoard } from "../core/board-import.js"
 
 export interface StudioOptions {
   root: string
@@ -237,6 +238,8 @@ const Bodies = {
   }),
   // Layout → Fit board: the rectangle round the parts, with a margin in mm.
   fitBoard: z.object({ file, margin: z.number().min(0).max(50).optional() }),
+  // File → Import board outline (DXF): the picked drawing's file name and text.
+  importBoard: z.object({ file, name: z.string().min(1).max(260), text: z.string().max(MAX_BODY_BYTES) }),
   // Route → Unroute: the router's copper among the ids, or all of it.
   unroute: z.object({ file, ids: z.array(z.string().min(1).max(32)).max(5000).optional() }),
   // Edit → Make sub-sheet: `preview` answers what it would do and writes nothing.
@@ -419,6 +422,14 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         const writeMark = live.nextMark()
         live.requestBuild(circuit.file)
         return send(res, { entryId: result.entry.id, summary: fit.summary, writeMark })
+      }
+      case "POST /api/import-board": {
+        const body = Bodies.importBoard.parse(await readJson(req))
+        const circuit = await resolveCircuit(root, body.file)
+        const result = await importBoard(root, circuit.file, { dxf: { name: body.name, text: body.text } }, { author: "human", engine: building.builder })
+        const writeMark = live.nextMark()
+        live.requestBuild(circuit.file)
+        return send(res, { entryId: result.entry.id, summary: formatBoardImport(result)[0], writeMark })
       }
       case "POST /api/unroute": {
         const body = Bodies.unroute.parse(await readJson(req))

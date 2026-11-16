@@ -41,7 +41,7 @@ describe("the AI lock's state", () => {
 
 describe("what the closed lock blocks", () => {
   test("the requests that write the circuit, the layout, the rules or the history", () => {
-    for (const path of ["/api/edit", "/api/layout", "/api/undo", "/api/redo", "/api/rename-parts", "/api/route", "/api/autoplace", "/api/fit-board", "/api/unroute", "/api/rules", "/api/place", "/api/new-circuit"]) {
+    for (const path of ["/api/edit", "/api/layout", "/api/undo", "/api/redo", "/api/rename-parts", "/api/route", "/api/autoplace", "/api/fit-board", "/api/import-board", "/api/unroute", "/api/rules", "/api/place", "/api/new-circuit"]) {
       expect(blocksRequest(path, {}), path).toBe(true)
     }
     expect(blocksRequest("/api/make-sheet", { parts: ["R1"] })).toBe(true)

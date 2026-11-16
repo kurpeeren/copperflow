@@ -57,6 +57,7 @@ export type CommandId =
   | "autoplaceSelection"
   | "autoplaceInstance"
   | "fitBoard"
+  | "importBoardDxf"
   | "autoroute"
   | "autorouteSelection"
   | "autorouteNet"
@@ -130,6 +131,7 @@ export const MENUS: readonly Menu[] = [
     entries: [
       run("Open circuit file", "openFile", "Ctrl+O"),
       run("New circuit…", "newCircuit"),
+      run("Import board outline (DXF)…", "importBoardDxf"),
       "separator",
       run("Export BOM", "exportBom"),
       run("Export package", "exportPackage"),

@@ -156,6 +156,24 @@ export function writeFabricationFiles(file: string | undefined, actions: Pick<Ac
 }
 
 /** Saves the BOM as a CSV file through the browser's download. */
+/** The largest drawing the Studio sends; the server takes requests up to 1 MB. */
+const MAX_DRAWING_BYTES = 1000 * 1000
+
+/** File → Import board outline (DXF)…: the system file picker, then the drawing's text to the server. */
+function pickBoardDrawing(actions: Actions): void {
+  const picker = Object.assign(document.createElement("input"), { type: "file", accept: ".dxf" })
+  picker.addEventListener("change", () => {
+    const picked = picker.files?.[0]
+    if (!picked) return
+    if (picked.size > MAX_DRAWING_BYTES) return actions.notify(`${picked.name} is larger than 1 MB; import it with the agent's import_board or copperflow board --dxf`)
+    picked
+      .text()
+      .then((text) => actions.importBoard(picked.name, text))
+      .catch((error: Error) => actions.notify(error.message))
+  })
+  picker.click()
+}
+
 function exportBom(file: string | undefined, actions: Actions): void {
   if (!file) return
   api<BomLine[]>(`/api/bom?file=${encodeURIComponent(file)}`)
@@ -256,6 +274,7 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     autoplaceSelection: () => placeScope(input, placeSelectionScope(input.design, input.selection.names)),
     autoplaceInstance: () => placeScope(input, placeInstanceScope(input.design, input.selection.names)),
     fitBoard: () => void input.actions.fitBoard(),
+    importBoardDxf: () => pickBoardDrawing(input.actions),
     autoroute: () => routeScope(input, { kind: "all" }),
     autorouteSelection: () => routeScope(input, selectionScope(input.design, input.selection.names)),
     autorouteNet: () => routeScope(input, netScope(input.highlight)),

@@ -40,6 +40,8 @@ export interface Actions {
   cancelAutoplace(): Promise<boolean>
   /** Layout → Fit board: the board reshaped round the parts, as one history entry, and told. */
   fitBoard(): Promise<EditOutcome>
+  /** File → Import board outline (DXF): the picked drawing's board written to the open circuit, as one history entry, and told. */
+  importBoard(name: string, text: string): Promise<EditOutcome>
   /** Route → Unroute: removes the router's copper among `ids`, or all of it, as one history entry, and tells it. */
   unroute(ids?: readonly string[]): Promise<EditOutcome>
   /** Design rules: writes the fillet radius to rules.yaml (null for the default), as one history entry, and tells it. */
@@ -154,6 +156,18 @@ export function useActions({ file, refresh, refreshParts, notify }: ActionsInput
             let mark: number | undefined
             const ok = await run(async () => {
               const done = await api<{ summary: string; writeMark: number }>("/api/fit-board", { file })
+              mark = done.writeMark
+              notify(done.summary)
+            })
+            return { ok, mark }
+          })(),
+        ),
+      importBoard: (name, text) =>
+        announceHistoryWrite(
+          (async () => {
+            let mark: number | undefined
+            const ok = await run(async () => {
+              const done = await api<{ summary: string; writeMark: number }>("/api/import-board", { file, name, text })
               mark = done.writeMark
               notify(done.summary)
             })
