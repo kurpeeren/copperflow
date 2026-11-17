@@ -69,6 +69,8 @@ export const PartSchema = z
     origin: line(200).optional(),
     footprint: z.string().regex(/^[A-Za-z0-9_.(),-]+$/, "use a copperflow footprint string such as sot23_5 or 0402, or footprint.yaml for the part's own footprint file"),
     pins: z.record(z.string().regex(PIN_NUMBER, "pin numbers start at 1"), PinSchema),
+    /** How tall the part stands above the board, in mm, for the 3D model; without it a height by package is used. */
+    height: z.number().positive().max(100).optional(),
     suppliers: z
       .record(z.string().regex(/^[a-z0-9_]+$/).refine((key) => !RESERVED_KEYS.has(key), "reserved name"), line(100))
       .optional(),
@@ -369,6 +371,7 @@ export function generateComponent(id: string, part: Part): string {
     `pinLabels={${JSON.stringify(labels)}}`,
     `pinAttributes={${JSON.stringify(attributes)}}`,
     Object.keys(sides).length > 0 ? `pinSides={${JSON.stringify(sides)}}` : undefined,
+    part.height !== undefined ? `height={${JSON.stringify(part.height)}}` : undefined,
     "{...props}",
   ].filter((entry): entry is string => entry !== undefined)
   return [
