@@ -56,6 +56,8 @@ export interface PourAt {
 }
 export interface CheckAt {
   id: string
+  /** The rule or diagnostic code; findings of one code and severity are told as one group. */
+  code?: string
   severity: Severity
   message: string
   at?: Point
@@ -299,8 +301,8 @@ function rulesDiff(before: unknown, after: unknown, path = "", out: DesignDiff["
 
 /** The design-rule findings and the diagnostics about the code, each with a key that stays the same from build to build. */
 function checksOf(design: Design): CheckAt[] {
-  const violations = design.violations.map((v) => ({ id: v.id, severity: v.severity, message: v.message, ...(v.at ? { at: v.at } : {}) }))
-  const diagnostics = design.diagnostics.map((d) => ({ id: `${d.code}:${d.items.join(",")}:${d.message}`, severity: d.severity, message: d.message }))
+  const violations = design.violations.map((v) => ({ id: v.id, code: v.code, severity: v.severity, message: v.message, ...(v.at ? { at: v.at } : {}) }))
+  const diagnostics = design.diagnostics.map((d) => ({ id: `${d.code}:${d.items.join(",")}:${d.message}`, code: d.code, severity: d.severity, message: d.message }))
   return [...violations, ...diagnostics]
 }
 

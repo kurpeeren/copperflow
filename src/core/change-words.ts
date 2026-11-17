@@ -1,6 +1,6 @@
 // A change in words, for the agent (recent_changes), the CLI (history <id>) and the Studio's change bar: at most 30
 // lines, the important first, ending with what was left out as counts.
-import type { DesignDiff, PartAt } from "../engine/design-diff.js"
+import type { CheckAt, DesignDiff, PartAt } from "../engine/design-diff.js"
 import { onBoard } from "../engine/design-diff.js"
 import type { Point } from "../engine/model.js"
 import type { ChangeTarget } from "./change-files.js"
@@ -38,6 +38,8 @@ export interface ChangeLine {
   kind: LineKind
   /** Where on the board it is, for the view to centre on. */
   at?: Point
+  /** A group's findings, one line each: the Studio opens the group to list them. */
+  items?: ChangeLine[]
 }
 
 /** How a file's text changed, by lines. */
@@ -81,12 +83,13 @@ export function changeTitle(target: ChangeTarget, entries: readonly Pick<History
     const entry = entries[0]
     return entry ? `Change ${entry.id} by ${who(entry.author)}: ${entry.summary}` : `Change ${target.id}`
   }
-  if (entries.length === 0) return `Since ${target.since}: no changes`
+  const from = target.since === "c0000" ? "From the start" : `Since ${target.since}`
+  if (entries.length === 0) return `${from}: no changes`
   const agent = entries.filter((entry) => entry.author === "ai").length
   const person = entries.length - agent
   const by = [agent > 0 ? `${agent} by the agent` : "", person > 0 ? `${person} by the person` : ""].filter(Boolean).join(", ")
   const span = entries.length === 1 ? (entries[0] as { id: string }).id : `${entries[0]?.id} to ${entries.at(-1)?.id}`
-  return `Since ${target.since}: ${plural(entries.length, "change", "changes")}, ${span} (${by})`
+  return `${from}: ${plural(entries.length, "change", "changes")}, ${span} (${by})`
 }
 
 const lineCount = (text: string | undefined) => (text === undefined || text === "" ? [] : text.replace(/\n$/, "").split("\n"))
@@ -185,10 +188,36 @@ function copperLines(diff: DesignDiff): ChangeLine[] {
   return lines
 }
 
+/** Findings of one code and severity, from this many, are one line: the count and the first two. */
+const GROUP_FROM = 3
+const SHOWN_IN_GROUP = 2
+
+/** One line per finding, or per group of GROUP_FROM or more of one code, in the order the first of each came. */
+function grouped(checks: readonly CheckAt[], kind: LineKind, one: (check: CheckAt) => string, many: (count: number, code: string) => string): ChangeLine[] {
+  const groups = new Map<string, CheckAt[]>()
+  for (const check of checks) {
+    const key = check.code ?? check.id
+    groups.set(key, [...(groups.get(key) ?? []), check])
+  }
+  const line = (check: CheckAt): ChangeLine => ({ kind, text: one(check), ...(check.at ? { at: check.at } : {}) })
+  return [...groups.values()].flatMap((list) => {
+    const first = list[0] as CheckAt
+    if (list.length < GROUP_FROM || first.code === undefined) return list.map(line)
+    const shown = list.slice(0, SHOWN_IN_GROUP).map((check) => check.message).join("; ")
+    const text = `${many(list.length, first.code.replace(/-/g, " "))}: ${shown}; and ${list.length - SHOWN_IN_GROUP} more`
+    return [{ kind, text, ...(first.at ? { at: first.at } : {}), items: list.map(line) }]
+  })
+}
+
 function checkLines(diff: DesignDiff, severity: "error" | "warning"): ChangeLine[] {
-  return diff.checks.appeared
-    .filter((check) => check.severity === severity)
-    .map((check) => ({ kind: severity, text: `New ${severity}: ${check.message}`, ...(check.at ? { at: check.at } : {}) }))
+  const found = diff.checks.appeared.filter((check) => check.severity === severity)
+  return grouped(found, severity, (check) => `New ${severity}: ${check.message}`, (count, code) => `${count} new ${code} ${severity}s`)
+}
+
+function goneLines(diff: DesignDiff): ChangeLine[] {
+  return (["error", "warning"] as const).flatMap((severity) =>
+    grouped(diff.checks.went.filter((check) => check.severity === severity), "gone", (check) => `Check gone: ${check.message}`, (count, code) => `${count} ${code} ${severity}s gone`),
+  )
 }
 
 /** Every line, the important first, before the cap. */
@@ -208,7 +237,7 @@ export function bodyLines(diff: DesignDiff, unsure: readonly string[], files: re
     ...boardLines(diff),
     ...diff.rules.map((rule): ChangeLine => ({ kind: "rule", text: `Rule ${rule.path}: ${rule.from} to ${rule.to}` })),
     ...checkLines(diff, "warning"),
-    ...diff.checks.went.map((check): ChangeLine => ({ kind: "gone", text: `Check gone: ${check.message}`, ...(check.at ? { at: check.at } : {}) })),
+    ...goneLines(diff),
     ...(moved.length > 0 ? [{ kind: "moved" as const, text: `Moved ${plural(moved.length, "part", "parts")}: ${names(moved.map((m) => m.name))}`, at: where((moved[0] as { to: PartAt }).to) }] : []),
     ...copperLines(diff),
   ]

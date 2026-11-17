@@ -120,3 +120,32 @@ describe("a change in words", () => {
     expect(none).toEqual(["t", "No difference in the built design", "File a.ts: 1 line added, 1 removed"])
   })
 })
+
+describe("findings of one rule and severity are grouped", () => {
+  const clearance = (i: number) => ({ id: `c${i}`, code: "copper-clearance", severity: "error" as const, message: `J2#${i} and t01${80 + i} are 0.045 mm apart`, at: { x: i, y: 0 } })
+  const grouped: DesignDiff = { ...blank, checks: { appeared: [...Array.from({ length: 9 }, (_, i) => clearance(i + 1)), { id: "s", code: "short", severity: "error", message: "t1 joins A and B" }], went: [] } }
+
+  test("one line with the count and the first two, errors still first; each finding kept under it with its place", () => {
+    const lines = changeLines({ title: "t", diff: { ...grouped, parts: { ...blank.parts, removed: [part("R9", 0, 0)] } }, unsure: [], files: [] })
+    expect(lines.map((line) => line.text)).toEqual([
+      "t",
+      "9 new copper clearance errors: J2#1 and t0181 are 0.045 mm apart; J2#2 and t0182 are 0.045 mm apart; and 7 more",
+      "New error: t1 joins A and B",
+      "Removed R9",
+    ])
+    const items = lines[1]?.items ?? []
+    expect(items).toHaveLength(9)
+    expect(items[8]).toEqual({ kind: "error", text: "New error: J2#9 and t0189 are 0.045 mm apart", at: { x: 9, y: 0 } })
+  })
+
+  test("two of a kind stay two lines; gone checks group the same way", () => {
+    const two: DesignDiff = { ...blank, checks: { appeared: [clearance(1), clearance(2)], went: [1, 2, 3].map((i) => ({ ...clearance(i), severity: "warning" as const })) } }
+    expect(changeLines({ title: "t", diff: two, unsure: [], files: [] }).map((line) => line.text)).toEqual([
+      "t",
+      "Nothing on the board changed",
+      "New error: J2#1 and t0181 are 0.045 mm apart",
+      "New error: J2#2 and t0182 are 0.045 mm apart",
+      "3 copper clearance warnings gone: J2#1 and t0181 are 0.045 mm apart; J2#2 and t0182 are 0.045 mm apart; and 1 more",
+    ])
+  })
+})
