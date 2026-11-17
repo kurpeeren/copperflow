@@ -5,6 +5,7 @@ export const TJA1051T_3 = (props: { name: string; [prop: string]: unknown }) => 
     manufacturerPartNumber={"TJA1051T/3/1J"}
     pinLabels={{"pin1":"TXD","pin2":"GND","pin3":"VCC","pin4":"RXD","pin5":"VIO","pin6":"CANL","pin7":"CANH","pin8":"S"}}
     pinAttributes={{"pin1":{"isInput":true},"pin2":{"requiresGround":true},"pin3":{"requiresPower":true},"pin4":{"isOutput":true},"pin5":{"requiresPower":true},"pin6":{"isBidirectional":true},"pin7":{"isBidirectional":true},"pin8":{"isInput":true}}}
+    height={1.75}
     {...props}
   />
 )

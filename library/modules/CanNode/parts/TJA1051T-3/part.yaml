@@ -3,6 +3,8 @@ manufacturer: NXP Semiconductors
 mpn: TJA1051T/3/1J
 origin: written 2026-11-17
 footprint: soic8
+height: 1.75
+height_source: "p15, Fig 9, SOT96-1 (SO8), A max 1.75 mm"
 pins:
   "1":
     name: TXD

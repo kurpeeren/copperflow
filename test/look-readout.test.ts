@@ -26,10 +26,10 @@ describe("the 3D view's readout", () => {
   test("gives the board's size, the tallest part on each side and the total height", () => {
     expect(lookReadout(model)).toEqual({
       board: "Board 40 × 25 mm, 1.6 mm thick",
-      top: "Tallest on top: J1, 8.5 mm",
-      bottom: "Tallest on bottom: C1, 1.45 mm",
+      top: "Tallest on top: J1, 8.5 mm, typical",
+      bottom: "Tallest on bottom: C1, 1.45 mm, typical",
       total: "Total height: 11.55 mm",
-      limits: "Parts are boxes, not their real shapes; heights marked assumed are guesses.",
+      limits: "Parts are simple shapes, not their real models; heights marked typical come from a package table, assumed ones are guesses.",
     })
   })
 
@@ -42,15 +42,16 @@ describe("the 3D view's readout", () => {
   test("is drawn as a list a screen reader reads, with the limits line", () => {
     const html = renderToStaticMarkup(createElement(LookReadout, { model }))
     expect(html).toContain("Board 40 × 25 mm, 1.6 mm thick")
-    expect(html).toContain("Tallest on bottom: C1, 1.45 mm")
-    expect(html).toContain("Parts are boxes, not their real shapes; heights marked assumed are guesses.")
+    expect(html).toContain("Tallest on bottom: C1, 1.45 mm, typical")
+    expect(html).toContain("Parts are simple shapes, not their real models; heights marked typical come from a package table, assumed ones are guesses.")
   })
 })
 
 describe("naming a part", () => {
-  test("the hover text names the part and its height, and says assumed when it is", () => {
+  test("the hover text names the part and its height, and says typical or assumed when it is", () => {
     const [j1, , , u1] = model.parts
-    expect(hoverText(j1!)).toBe("J1, 8.5 mm high (top)")
+    expect(hoverText(j1!)).toBe("J1, 8.5 mm high, typical (top)")
+    expect(hoverText({ ...j1!, state: "given", assumed: false })).toBe("J1, 8.5 mm high (top)")
     expect(hoverText(u1!)).toBe("U1, 1 mm high, assumed (bottom)")
   })
 

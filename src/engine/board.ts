@@ -50,10 +50,12 @@ export function buildBoard(props: Props, source: SourceRef): { board: Board; dia
   const layers = props["layers"]
   if (layers !== undefined && layers !== 2 && layers !== 4) warn("board: layers must be 2 or 4", "board.layers")
   const maxTrace = reader.length("schMaxTraceDistance")
+  const thickness = reader.length("thickness")
   const board: Board = {
     outline,
     layers: layers === 4 ? 4 : 2,
-    thickness: reader.length("thickness") ?? DEFAULT_THICKNESS,
+    thickness: thickness ?? DEFAULT_THICKNESS,
+    ...(thickness !== undefined ? { thicknessGiven: true as const } : {}),
     keepouts: [],
     ...(maxTrace !== undefined ? { schMaxTraceDistance: maxTrace } : {}),
   }

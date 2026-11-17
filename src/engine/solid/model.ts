@@ -8,7 +8,8 @@ import type { Design } from "../design.js"
 import type { Footprint, Pad } from "../footprints/types.js"
 import type { Point } from "../model.js"
 import type { PlacedFootprint } from "../pcb.js"
-import { partHeight } from "./heights.js"
+import { partHeight, type HeightState } from "./heights.js"
+import { boardThickness } from "./thickness.js"
 
 /** A straight edge, or an arc around `centre` that turns counter-clockwise (seen from +z) when `ccw`, clockwise if not. */
 export type Segment = { kind: "line"; from: Point; to: Point } | { kind: "arc"; from: Point; to: Point; centre: Point; radius: number; ccw: boolean }
@@ -33,6 +34,7 @@ export interface PartSolid {
   height: number
   /** Where the height comes from: "given", "assumed", or the height table's source. */
   source: string
+  state: HeightState
   assumed: boolean
 }
 
@@ -116,7 +118,7 @@ function drillHole(pad: Pad): Segment[] | undefined {
   return drill.width === drill.height ? circleHole(pad, drill.width / 2) : slotHole(pad, drill)
 }
 
-function boardSolid(design: Design): BoardSolid | undefined {
+function boardSolid(design: Design, thickness: number): BoardSolid | undefined {
   const board = design.pcb.board
   if (board === undefined || board.outline.length < 3) return undefined
   const outline = doubledArea(board.outline) < 0 ? [...board.outline].reverse() : board.outline
@@ -125,7 +127,7 @@ function boardSolid(design: Design): BoardSolid | undefined {
     return hole === undefined ? [] : [hole]
   }))
   const mounting = design.pcb.holes.map((hole) => circleHole(hole, hole.diameter / 2))
-  return { outline: lines(outline), holes: [...mounting, ...drills], thickness: board.thickness }
+  return { outline: lines(outline), holes: [...mounting, ...drills], thickness }
 }
 
 /** The rectangle the part's box stands on, in the part's own frame: its courtyard's bounds, else its pads'. */
@@ -170,15 +172,15 @@ function partSolid(part: PlacedFootprint, props: Readonly<Record<string, unknown
   ]
   const world = local.map((p) => placed(p, part))
   const corners = (doubledArea(world) < 0 ? [world[0], world[3], world[2], world[1]] : world) as [Point, Point, Point, Point]
-  const { height, source, assumed } = partHeight({ ...(footprintText === undefined ? {} : { footprint: footprintText }), props })
+  const { height, source, state, assumed } = partHeight({ ...(footprintText === undefined ? {} : { footprint: footprintText }), props })
   const [bottom, top] = part.side === "top" ? [thickness, thickness + height] : [-height, 0]
-  return { name: part.component, side: part.side, corners, bottom, top, height, source, assumed }
+  return { name: part.component, side: part.side, corners, bottom, top, height, source, state, assumed }
 }
 
-/** The board and every part of a built design as solids. Without a board the parts stand on a 1.6 mm one. */
+/** The board and every part of a built design as solids, at the thickness boardThickness gives. */
 export function solidModel(design: Design): SolidModel {
-  const board = boardSolid(design)
-  const thickness = board?.thickness ?? design.pcb.board?.thickness ?? 1.6
+  const thickness = boardThickness(design)
+  const board = boardSolid(design, thickness)
   const components = new Map(design.circuit.components.map((component) => [component.id, component]))
   const parts = design.pcb.parts.map((part) => {
     const component = components.get(part.component)

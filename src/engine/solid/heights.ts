@@ -1,19 +1,23 @@
 // How tall a part stands above the board, for the 3D model: the height the part gives (`height` in part.yaml, which
 // the generated component passes on, or a `height` prop on a built-in part), else a height by package from the table
-// below, else ASSUMED_HEIGHT, marked assumed. Every figure is the largest seated height (the "A max" of the outline)
-// that the named standard or makers' drawings give for the package, written from general knowledge of those drawings,
-// not transcribed from them; a part's own datasheet should confirm it.
+// below, else ASSUMED_HEIGHT, marked assumed. Every figure is the largest seated height (the "A max" of the outline).
+// A row with a `document` was read from that document (its page named); every other row is typical: written from
+// general knowledge of the standards and makers' drawings, not read from them, and named "typical" wherever it shows.
 import { parseFootprint, type ParsedFootprint } from "../footprints/parse.js"
 import { parseLength } from "../units.js"
 
 /** The height of a part whose package the table does not know, in mm. */
 export const ASSUMED_HEIGHT = 1
 
+/** given: the part says its height; read: a table row read from a named document; typical: a table row not read from a document; assumed: nothing known. */
+export type HeightState = "given" | "read" | "typical" | "assumed"
+
 export interface PartHeight {
   /** Above the board's surface, in mm. */
   height: number
   /** "given", "assumed", or the table row's source. */
   source: string
+  state: HeightState
   assumed: boolean
 }
 
@@ -22,6 +26,8 @@ export interface HeightRow {
   packages: string
   height: number
   source: string
+  /** The document and page the figure was read from; a row without one is typical. */
+  document?: string
   matches(parsed: ParsedFootprint): boolean
 }
 
@@ -51,8 +57,20 @@ export const HEIGHT_TABLE: readonly HeightRow[] = [
   chip("0603", 0.9),
   chip("0805", 1.45),
   chip("1206", 1.8),
-  { packages: "SOIC (narrow)", height: 1.75, source: "JEDEC MS-012, A max 1.75 mm", matches: (p) => p.kind === "soic" && p.suffix === undefined },
-  { packages: "SOIC (wide)", height: 2.65, source: "JEDEC MS-013, A max 2.65 mm", matches: (p) => p.kind === "soic" && p.suffix === "w" },
+  {
+    packages: "SOIC (narrow)",
+    height: 1.75,
+    source: "JEDEC MS-012, A max 1.75 mm",
+    document: "NXP TJA1051 data sheet Rev. 9, p15, Fig 9, SOT96-1 (SO8, JEDEC MS-012): A max 1.75 mm",
+    matches: (p) => p.kind === "soic" && p.suffix === undefined,
+  },
+  {
+    packages: "SOIC (wide)",
+    height: 2.65,
+    source: "JEDEC MS-013, A max 2.65 mm",
+    document: "Microchip MCP2515 data sheet DS20001801J, p82, 18-lead SOIC 7.50 mm body (drawing C04-051C): A max 2.65 mm",
+    matches: (p) => p.kind === "soic" && p.suffix === "w",
+  },
   { packages: "SOT-23 (3 leads)", height: 1.12, source: "JEDEC TO-236 AB, A max 1.12 mm", matches: (p) => p.kind === "sot" && p.code === "23" && p.variant === undefined },
   { packages: "SOT-23-5, SOT-23-6", height: 1.45, source: "JEDEC MO-178, A max 1.45 mm", matches: (p) => p.kind === "sot" && p.code === "23" && (p.variant === "5" || p.variant === "6") },
   { packages: "QFN", height: 1, source: "JEDEC MO-220, A max 1.00 mm", matches: (p) => p.kind === "qfn" },
@@ -87,8 +105,9 @@ function givenHeight(props: Readonly<Record<string, unknown>>): number | undefin
 /** How tall the part is: given, by package, or ASSUMED_HEIGHT and assumed. */
 export function partHeight(part: { footprint?: string; props: Readonly<Record<string, unknown>> }): PartHeight {
   const given = givenHeight(part.props)
-  if (given !== undefined) return { height: given, source: "given", assumed: false }
+  if (given !== undefined) return { height: given, source: "given", state: "given", assumed: false }
   const parsed = part.footprint === undefined || part.footprint.includes("/") ? undefined : parseFootprint(part.footprint)
   const row = parsed === undefined ? undefined : HEIGHT_TABLE.find((candidate) => candidate.matches(parsed))
-  return row === undefined ? { height: ASSUMED_HEIGHT, source: "assumed", assumed: true } : { height: row.height, source: row.source, assumed: false }
+  if (row === undefined) return { height: ASSUMED_HEIGHT, source: "assumed", state: "assumed", assumed: true }
+  return row.document === undefined ? { height: row.height, source: row.source, state: "typical", assumed: false } : { height: row.height, source: row.document, state: "read", assumed: false }
 }

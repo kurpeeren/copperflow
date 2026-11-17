@@ -7,6 +7,8 @@ manufacturer: Ningbo Songle Relay
 mpn: SRD-12VDC-SL-C
 origin: written 2026-11-17
 footprint: footprint.yaml
+height: 15.3
+height_source: "p1, 5. DIMENSION, body 15.3 mm max"
 pins:
   "1":
     name: COM

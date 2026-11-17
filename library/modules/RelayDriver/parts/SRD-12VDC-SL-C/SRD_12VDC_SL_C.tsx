@@ -6,6 +6,7 @@ export const SRD_12VDC_SL_C = (props: { name: string; [prop: string]: unknown })
     supplierPartNumbers={{"lcsc":["C30431"]}}
     pinLabels={{"pin1":"COM","pin2":"COIL1","pin3":"COIL2","pin4":"NO","pin5":"NC"}}
     pinAttributes={{"pin1":{"isPassive":true},"pin2":{"isPassive":true},"pin3":{"isPassive":true},"pin4":{"isPassive":true},"pin5":{"isPassive":true}}}
+    height={15.3}
     {...props}
   />
 )

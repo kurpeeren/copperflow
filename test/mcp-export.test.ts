@@ -58,7 +58,7 @@ describe("export_fabrication", () => {
     expect(answer.isError).toBe(false)
     const files = ["F_Cu.gtl", "B_Cu.gbl", "F_Mask.gts", "B_Mask.gbs", "F_Paste.gtp", "B_Paste.gbp", "F_Silkscreen.gto", "B_Silkscreen.gbo", "Edge_Cuts.gm1", "PTH.drl", "NPTH.drl", "pick-and-place.csv", "bom.csv"]
     expect(answer.text).toBe(
-      ["Wrote 16 files to led-fab/ and led-fab.zip:", [...files.map((name) => `led-${name}`), "led.step", "led-top.png", "led-bottom.png"].join(", "), "led.step: parts are boxes, not their real shapes; heights marked assumed are guesses (none assumed).", "Checks: 0 errors, 2 warnings.", "Next, a person should upload led-fab.zip to JLCPCB's PCB order, and led-bom.csv and led-pick-and-place.csv from led-fab/ at its assembly step (the zip holds them too).", "Ready for bare boards: yes", "Ready for assembly: yes", "The whole order report: the bom tool, or copperflow bom led.circuit.tsx."].join("\n"),
+      ["Wrote 16 files to led-fab/ and led-fab.zip:", [...files.map((name) => `led-${name}`), "led.step", "led-top.png", "led-bottom.png"].join(", "), "led.step: parts are boxes, not their real shapes; heights marked typical come from a package table, assumed ones are guesses (typical: R1; none assumed).", "Checks: 0 errors, 2 warnings.", "Next, a person should upload led-fab.zip to JLCPCB's PCB order, and led-bom.csv and led-pick-and-place.csv from led-fab/ at its assembly step (the zip holds them too).", "Ready for bare boards: yes", "Ready for assembly: yes", "The whole order report: the bom tool, or copperflow bom led.circuit.tsx."].join("\n"),
     )
     expect(await readdir(join(root, "led-fab"))).toHaveLength(16)
     expect((await readFile(join(root, "led-fab.zip"))).subarray(0, 4).toString("hex")).toBe("504b0304")

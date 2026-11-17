@@ -1,7 +1,7 @@
 # Verification of MCP2515 stand-alone CAN controller with SPI, SOIC-18 wide
 
 Status: not verified
-Content: 5cff0330a85f (changes when part.yaml changes)
+Content: 1cf0d2ad3ec8 (changes when part.yaml changes)
 
 Check each item against the datasheet and write the page next to it. When everything is
 checked, run in a terminal: copperflow parts verify MCP2515-I-SO --by "<your name>" --against "<datasheet, revision, page>"
@@ -26,6 +26,7 @@ checked, run in a terminal: copperflow parts verify MCP2515-I-SO --by "<your nam
 - [ ] Pin 17 is RESET (input)
 - [ ] Pin 18 is VDD (power in)
 - [ ] Footprint soic18w matches the package drawing
+- [ ] Height 2.65 mm, p82, 18-lead SOIC 7.50 mm body, overall height A max 2.65 mm: compare
 
 ## Notes
 

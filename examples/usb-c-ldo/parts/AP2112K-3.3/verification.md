@@ -1,7 +1,7 @@
 # Verification of AP2112K-3.3 LDO regulator, 600 mA
 
 Status: not verified
-Content: 03a68af9b35d (changes when part.yaml changes)
+Content: 821ef1844e17 (changes when part.yaml changes)
 
 Check each item against the datasheet and write the page next to it. When everything is
 checked, run in a terminal: copperflow parts verify AP2112K-3.3 --by "<your name>" --against "<datasheet, revision, page>"
@@ -13,3 +13,4 @@ checked, run in a terminal: copperflow parts verify AP2112K-3.3 --by "<your name
 - [ ] Pin 5 is VOUT (power out)
 - [ ] Footprint sot23_5 matches the package drawing
 - [ ] jlcpcb part C51118 is this exact part
+- [ ] Height 1.4 mm, p14, SOT25 outline, K max 1.30 mm plus standoff J max 0.10 mm: compare

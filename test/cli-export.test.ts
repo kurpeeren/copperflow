@@ -48,7 +48,7 @@ describe("copperflow export", () => {
         "  led.step",
         "  led-top.png",
         "  led-bottom.png",
-        "led.step: parts are boxes, not their real shapes; heights marked assumed are guesses (none assumed).",
+        "led.step: parts are boxes, not their real shapes; heights marked typical come from a package table, assumed ones are guesses (typical: R1; none assumed).",
         "Checks: 0 errors, 2 warnings.",
         "Next, a person should upload led-fab.zip to JLCPCB's PCB order, and led-bom.csv and led-pick-and-place.csv from boards/led-fab/ at its assembly step (the zip holds them too).",
         "Ready for bare boards: yes",

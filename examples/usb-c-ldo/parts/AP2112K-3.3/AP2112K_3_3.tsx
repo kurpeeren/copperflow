@@ -6,6 +6,7 @@ export const AP2112K_3_3 = (props: { name: string; [prop: string]: unknown }) =>
     supplierPartNumbers={{"jlcpcb":["C51118"]}}
     pinLabels={{"pin1":"VIN","pin2":"GND","pin3":"EN","pin4":"NC","pin5":"VOUT"}}
     pinAttributes={{"pin1":{"requiresPower":true},"pin2":{"requiresGround":true},"pin3":{"isInput":true},"pin4":{"doNotConnect":true},"pin5":{"providesPower":true}}}
+    height={1.4}
     {...props}
   />
 )

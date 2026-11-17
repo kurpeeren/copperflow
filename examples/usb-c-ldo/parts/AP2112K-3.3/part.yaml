@@ -2,6 +2,8 @@ title: AP2112K-3.3 LDO regulator, 600 mA
 manufacturer: Diodes Incorporated
 mpn: AP2112K-3.3TRG1
 footprint: sot23_5
+height: 1.4
+height_source: "p14, SOT25 outline, K max 1.30 mm plus standoff J max 0.10 mm"
 pins:
   "1":
     name: VIN

@@ -27,7 +27,7 @@ function boardLine(model: SolidModel): string {
 
 export function lookReadout(model: SolidModel): Readout {
   const [top, bottom] = [tallest(model.parts, "top"), tallest(model.parts, "bottom")]
-  const line = (side: string, part: PartSolid | undefined) => `Tallest on ${side}: ${part ? `${part.name}, ${mm(part.height)} mm` : "none"}`
+  const line = (side: string, part: PartSolid | undefined) => `Tallest on ${side}: ${part ? `${part.name}, ${mm(part.height)} mm${stateWord(part)}` : "none"}`
   const thickness = model.board?.thickness ?? 0
   return {
     board: boardLine(model),
@@ -38,5 +38,8 @@ export function lookReadout(model: SolidModel): Readout {
   }
 }
 
-/** "U1, 1.75 mm high (top)", with "assumed" when the height is a guess. */
-export const hoverText = (part: PartSolid): string => `${part.name}, ${mm(part.height)} mm high${part.assumed ? ", assumed" : ""} (${part.side})`
+/** ", typical" or ", assumed" when the height is not the part's own or read from a document. */
+const stateWord = (part: Pick<PartSolid, "state">): string => (part.state === "typical" || part.state === "assumed" ? `, ${part.state}` : "")
+
+/** "U1, 1.75 mm high (top)", with "typical" or "assumed" when the height is one. */
+export const hoverText = (part: PartSolid): string => `${part.name}, ${mm(part.height)} mm high${stateWord(part)} (${part.side})`

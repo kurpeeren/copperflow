@@ -3,6 +3,8 @@ manufacturer: Microchip Technology
 mpn: MCP2515-I/SO
 origin: written 2026-11-17
 footprint: soic18w
+height: 2.65
+height_source: "p82, 18-lead SOIC 7.50 mm body, overall height A max 2.65 mm"
 pins:
   "1":
     name: TXCAN

@@ -12,8 +12,8 @@ describe("the note after Export → Fabrication files", () => {
   })
 
   test("says what the STEP model is not, after the upload step", () => {
-    const model = "led.step: parts are boxes, not their real shapes; heights marked assumed are guesses (assumed: J1)."
-    expect(fabricationNote({ ...written([]), model })).toMatch(/at its assembly step \(the zip holds them too\)\. led\.step: parts are boxes, not their real shapes; heights marked assumed are guesses \(assumed: J1\)\. Checks: /)
+    const model = "led.step: parts are boxes, not their real shapes; heights marked typical come from a package table, assumed ones are guesses (assumed: J1)."
+    expect(fabricationNote({ ...written([]), model })).toMatch(/at its assembly step \(the zip holds them too\)\. led\.step: parts are boxes, not their real shapes; heights marked typical come from a package table, assumed ones are guesses \(assumed: J1\)\. Checks: /)
   })
 
   test("adds each warning in full", () => {

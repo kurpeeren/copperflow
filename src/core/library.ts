@@ -71,6 +71,8 @@ export const PartSchema = z
     pins: z.record(z.string().regex(PIN_NUMBER, "pin numbers start at 1"), PinSchema),
     /** How tall the part stands above the board, in mm, for the 3D model; without it a height by package is used. */
     height: z.number().positive().max(100).optional(),
+    /** Where the height was read, e.g. "p1, 5. DIMENSION, 15.3 mm max". */
+    height_source: line(200).min(1).optional(),
     suppliers: z
       .record(z.string().regex(/^[a-z0-9_]+$/).refine((key) => !RESERVED_KEYS.has(key), "reserved name"), line(100))
       .optional(),
@@ -402,6 +404,7 @@ export function verificationTemplate(id: string, part: Part, footprintText?: str
     `- [ ] Footprint ${part.footprint} matches the package drawing`,
     ...(footprintText === undefined ? [] : ["- [ ] Every pad in footprint.yaml matches the recommended land pattern (position, size, drill)"]),
     ...Object.entries(part.suppliers ?? {}).map(([supplier, number]) => `- [ ] ${supplier} part ${number} is this exact part`),
+    ...(part.height === undefined ? [] : [`- [ ] Height ${part.height} mm${part.height_source === undefined ? "" : `, ${part.height_source}`}: compare`]),
     // A wrong model figure is as wrong as a wrong pin: each is an item to compare with its page.
     ...(part.model ? modelChecklist(part.model).map((item) => `- [ ] ${item}`) : []),
     // A fetched part's names and types come from its source; a written part's are already in the pin items above.

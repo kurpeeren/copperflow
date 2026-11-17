@@ -137,6 +137,8 @@ export interface Board {
   outline: Point[]
   layers: 2 | 4
   thickness: number
+  /** True when the circuit gave the thickness; otherwise `thickness` is the default and the rules' figure comes first. */
+  thicknessGiven?: true
   schMaxTraceDistance?: number
   keepouts: Keepout[]
   /** The copper pours, in source order; absent when there are none. */

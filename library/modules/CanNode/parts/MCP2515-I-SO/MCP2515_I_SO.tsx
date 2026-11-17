@@ -5,6 +5,7 @@ export const MCP2515_I_SO = (props: { name: string; [prop: string]: unknown }) =
     manufacturerPartNumber={"MCP2515-I/SO"}
     pinLabels={{"pin1":"TXCAN","pin2":"RXCAN","pin3":"CLKOUT","pin4":"TX0RTS","pin5":"TX1RTS","pin6":"TX2RTS","pin7":"OSC2","pin8":"OSC1","pin9":"VSS","pin10":"RX1BF","pin11":"RX0BF","pin12":"INT","pin13":"SCK","pin14":"SI","pin15":"SO","pin16":"CS","pin17":"RESET","pin18":"VDD"}}
     pinAttributes={{"pin1":{"isOutput":true},"pin2":{"isInput":true},"pin3":{"isOutput":true},"pin4":{"isInput":true},"pin5":{"isInput":true},"pin6":{"isInput":true},"pin7":{"isOutput":true},"pin8":{"isInput":true},"pin9":{"requiresGround":true},"pin10":{"isOutput":true},"pin11":{"isOutput":true},"pin12":{"isOutput":true},"pin13":{"isInput":true},"pin14":{"isInput":true},"pin15":{"isOutput":true},"pin16":{"isInput":true},"pin17":{"isInput":true},"pin18":{"requiresPower":true}}}
+    height={2.65}
     {...props}
   />
 )

@@ -41,7 +41,7 @@ describe("copperflow step", () => {
     expect(err).toEqual([])
     expect(code).toBe(0)
     expect(out.join("\n")).toBe(
-      ["Wrote boards/led.step: the board and 2 parts as solids.", "led.step: parts are boxes, not their real shapes; heights marked assumed are guesses (assumed: U1)."].join("\n"),
+      ["Wrote boards/led.step: the board and 2 parts as solids.", "led.step: parts are boxes, not their real shapes; heights marked typical come from a package table, assumed ones are guesses (typical: R1; assumed: U1)."].join("\n"),
     )
     const file = readStep(await readFile(join(root, "boards", "led.step"), "utf8"))
     expect(productNames(file)).toEqual(["led", "board", "R1", "U1"])

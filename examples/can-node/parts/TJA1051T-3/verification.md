@@ -1,7 +1,7 @@
 # Verification of TJA1051T/3 high-speed CAN transceiver with VIO, SO8
 
 Status: not verified
-Content: f4e84bf9c2e0 (changes when part.yaml changes)
+Content: 7fd5fc15d390 (changes when part.yaml changes)
 
 Check each item against the datasheet and write the page next to it. When everything is
 checked, run in a terminal: copperflow parts verify TJA1051T-3 --by "<your name>" --against "<datasheet, revision, page>"
@@ -16,6 +16,7 @@ checked, run in a terminal: copperflow parts verify TJA1051T-3 --by "<your name>
 - [ ] Pin 7 is CANH (bidirectional)
 - [ ] Pin 8 is S (input)
 - [ ] Footprint soic8 matches the package drawing
+- [ ] Height 1.75 mm, p15, Fig 9, SOT96-1 (SO8), A max 1.75 mm: compare
 
 ## Where each item was read
 
