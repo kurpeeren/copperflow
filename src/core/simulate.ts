@@ -6,6 +6,7 @@ import { runCases } from "../engine/sim/cases.js"
 import { HONEST_LINE } from "../engine/sim/answer.js"
 import type { Model } from "../engine/sim/model-schema.js"
 import { simulateCircuit } from "../engine/sim/run.js"
+import { spiceNetlist } from "../engine/sim/spice.js"
 import type { Circuit } from "../engine/model.js"
 import { recordCaseResults } from "./case-results.js"
 import { buildWith, type DesignSource } from "./design-source.js"
@@ -59,4 +60,22 @@ export async function simulate(root: string, input: SimulateInput, engine?: Desi
   recordCaseResults(name, lines)
   const passed = lines.filter((line) => line.passed).length
   return [HONEST_LINE, `Cases of ${name}: ${passed} of ${lines.length} passed`, ...lines.map((line) => `  ${line.text}`)].join("\n")
+}
+
+/**
+ * The SPICE netlist of the circuit or sheet, with the sources the input sets, else those of the sheet's first case,
+ * else none (another simulator's user adds them).
+ */
+export async function spiceText(root: string, input: SimulateInput, engine?: DesignSource): Promise<string> {
+  const file = await target(root, input)
+  const design = await buildWith(root, file.file, engine)
+  const models = await libraryModels(root, design.circuit)
+  const first = readCard(await readFile(file.path, "utf8")).cases?.[0]
+  const given = input.set !== undefined && Object.keys(input.set).length > 0
+  const chosen = given ? input : first
+  const request = { set: chosen?.set ?? {}, ...(chosen?.closed ? { closed: chosen.closed } : {}), ...(chosen?.coil ? { coil: chosen.coil } : {}) }
+  const text = spiceNetlist(design.circuit, models, request, file.file)
+  if (given || first === undefined) return text
+  const [title, ...rest] = text.split("\n")
+  return [title, `* sources of the case "${first.name}"`, ...rest].join("\n")
 }

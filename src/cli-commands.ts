@@ -44,6 +44,7 @@ import { modulesCommand } from "./cli-modules.js"
 import { libraryCommand } from "./cli-library.js"
 import { changeTarget, changeText, changeView } from "./core/change-view.js"
 import { changeRequest } from "./core/change-render.js"
+import { simulateCommand, spiceCommand } from "./cli-simulate.js"
 
 export interface CliIO {
   out(text: string): void
@@ -100,6 +101,12 @@ Usage:
                   [--change <id> | --since <id>]
                                               draw the board or a schematic page to a PNG, as the Studio shows it
                                               (<name>-pcb.png or <name>-schematic-<page>.png beside the circuit)
+  copperflow simulate <file> --set V12=12 --set CTRL=3.3 [--sheet <name>] [--closed SW1,J2] [--coil K1] [--all]
+                                              the DC operating point from ideal sources and simple models: no time,
+                                              no frequency, no temperature, no tolerance; chips are not modelled.
+                                              With --sheet and no --set it runs the sheet's cases
+  copperflow spice <file> [--sheet <name>] [--set net=volts ...] [--out file.cir]
+                                              write the same circuit as a SPICE3 netlist for another simulator
   copperflow board <file> --dxf <path> [--layer <name>] [--units mm|inch] [--origin keep] [--replace]
                                               set the board's outline, holes and keepouts from a DXF drawing
   copperflow import kicad <board.kicad_pcb> [--name <circuit name>] [--replace] [--origin keep]
@@ -219,6 +226,12 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
       }
       case "render":
         io.out(await renderCommand(root, rest, options))
+        return 0
+      case "simulate":
+        io.out(await simulateCommand(root, rest, options.engine))
+        return 0
+      case "spice":
+        io.out(await spiceCommand(root, rest, options.engine))
         return 0
       case "board":
         io.out(await boardCommand(root, rest, options))
