@@ -35,6 +35,9 @@ const RESERVED_KEYS = new Set(["__proto__", "constructor", "prototype"])
 const line = (max: number) =>
   z.string().max(max).regex(/^[^\x00-\x1f\x7f]*$/, "must be one line without control characters")
 
+/** A datasheet file's name: a PDF inside the part folder, no folder in the name. */
+export const DATASHEET_FILE = /^[\w.-]+\.pdf$/i
+
 /** The keys a part's datasheet record accepts, in the order the refusal and the tool texts list them. */
 export const DATASHEET_KEYS = ["url", "file", "title"] as const
 
@@ -70,7 +73,7 @@ export const PartSchema = z
     datasheet: z
       .object(
         {
-          file: z.string().regex(/^[\w.-]+\.pdf$/i, "a PDF file name inside the part folder").optional(),
+          file: z.string().regex(DATASHEET_FILE, "a PDF file name inside the part folder").optional(),
           url: z.url({ protocol: /^https?$/ }).optional(),
           /** The datasheet's name as the pins' source, e.g. "MCP2515 datasheet DS20001801J". */
           title: line(200).min(1).optional(),
@@ -98,6 +101,8 @@ export interface PartSummary {
   component: string
   verified: boolean
   verifiedBy?: string
+  /** What the person checked it against, when it is verified. */
+  verifiedAgainst?: string
   /** Where the part came from, when part.yaml says (an imported part). */
   origin?: string
   /** Set when part.yaml cannot be read; the part is listed so the problem is visible. */
@@ -189,7 +194,7 @@ export async function listParts(root: string): Promise<PartSummary[]> {
         footprint: part.footprint,
         component: componentName(id),
         verified,
-        ...(verified && part.verified ? { verifiedBy: part.verified.by } : {}),
+        ...(verified && part.verified ? { verifiedBy: part.verified.by, verifiedAgainst: part.verified.against } : {}),
         ...(part.origin ? { origin: part.origin } : {}),
       })
     } catch (error) {
@@ -285,12 +290,17 @@ export async function createPart(
   }
 }
 
+/** Why a part whose footprint.yaml is a placeholder cannot be verified. */
+export function placeholderRefusal(id: string): string {
+  return `Part ${id} cannot be verified: ${PARTS_DIR}/${id}/${FOOTPRINT_FILE} is a placeholder; draw its pads from the datasheet's land pattern, then delete "placeholder: true"`
+}
+
 /** Marks the current content of a part as checked by a person. Only the CLI and the Studio call this. */
 export async function verifyPart(root: string, id: string, check: { by: string; against: string }, now: string): Promise<Part> {
   const current = await readPart(root, id)
   const footprintText = await readFootprintText(root, id, current)
   if (footprintText !== undefined && isPlaceholder(footprintText)) {
-    throw new Error(`Part ${id} cannot be verified: ${PARTS_DIR}/${id}/${FOOTPRINT_FILE} is a placeholder; draw its pads from the datasheet's land pattern, then delete "placeholder: true"`)
+    throw new Error(placeholderRefusal(id))
   }
   const part: Part = { ...current, verified: { by: check.by, against: check.against, date: now, hash: contentHash(current, footprintText) } }
   await writeFileAtomic(join(partDir(root, id), "part.yaml"), stringify(validate(part, `${id}/part.yaml`)))

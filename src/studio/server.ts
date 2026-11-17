@@ -61,6 +61,8 @@ import { formatBoardImport, importBoard } from "../core/board-import.js"
 import { watchIdle } from "./idle.js"
 import { controlRoute } from "./studio-control.js"
 import { projectRoot } from "./studio-note.js"
+import { HttpError } from "./http-error.js"
+import { checklistRefusal, datasheetPdf, partScreen, tickChecklist } from "./verify-routes.js"
 
 export interface StudioOptions {
   root: string
@@ -114,6 +116,8 @@ const SECURITY_HEADERS = {
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
     "worker-src 'self' blob:",
+    // The Verify screen frames the part's own datasheet PDF, fetched with the session token and shown from a blob.
+    "frame-src blob:",
     "connect-src 'self'",
     "object-src 'none'",
     "base-uri 'none'",
@@ -208,6 +212,8 @@ const Bodies = {
   build: z.object({ file }),
   place: z.object({ file, part: z.string().min(1).max(64), name: z.string().max(40).optional(), props: props.optional(), page: z.string().max(64).optional() }),
   verify: z.object({ id: z.string().min(1).max(64), by: z.string().min(1).max(100), against: z.string().min(1).max(300), confirm: z.string() }),
+  // The Verify screen: items of verification.md ticked by their text, against the text the page showed.
+  tick: z.object({ id: z.string().min(1).max(64), items: z.array(z.string().min(1).max(500)).min(1).max(2000), ticked: z.boolean(), shown: z.string().max(MAX_BODY_BYTES) }),
   // Library → Import by LCSC number: one part, written unverified.
   importPart: z.object({ lcsc: z.string().min(1).max(20), id: z.string().min(1).max(64).optional(), replace: z.boolean().optional() }),
   // Library → New part…: the part written from a datasheet; the writer checks every field again.
@@ -270,15 +276,6 @@ const Bodies = {
  * itself: the watcher builds every circuit again when an engine file changes.
  */
 const builtFrom = (file: string): string | undefined => (file === RULES_PATH ? undefined : isLayoutFile(file) ? circuitPathFor(file) : file)
-
-class HttpError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message)
-  }
-}
 
 /** Starts the Studio web server on 127.0.0.1. */
 export async function startStudio(options: StudioOptions): Promise<Studio> {
@@ -494,11 +491,18 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       }
       case "GET /api/parts":
         return send(res, { library: await listParts(root), builtin: BUILTIN_PARTS })
-      case "GET /api/part": {
-        const id = query("id")
-        const part = await readPart(root, id)
-        const checklist = await readFile(resolve(partDir(root, id), "verification.md"), "utf8").catch(() => "")
-        return send(res, { id, part, checklist })
+      case "GET /api/part":
+        return send(res, await partScreen(root, query("id")))
+      case "GET /api/part-datasheet": {
+        const sheet = await datasheetPdf(root, query("id"), query("file"))
+        res.writeHead(200, { ...SECURITY_HEADERS, "content-type": "application/pdf", "content-disposition": `inline; filename="${sheet.name}"`, "cache-control": "no-store" })
+        res.end(sheet.bytes)
+        return
+      }
+      case "POST /api/tick": {
+        const ticked = await tickChecklist(root, Bodies.tick.parse(await readJson(req)))
+        if ("changed" in ticked) return sendRefusal(res, 409, "verification.md changed since the screen showed it; it shows the file as it is now", { checklist: ticked.changed })
+        return send(res, ticked)
       }
       case "POST /api/place": {
         const { file: name, ...request } = Bodies.place.parse(await readJson(req))
@@ -510,6 +514,9 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         const body = Bodies.verify.parse(await readJson(req))
         // The person types the id back, as in the CLI, so a stray click cannot verify a part.
         if (body.confirm.trim() !== body.id) throw new HttpError(400, `Type ${body.id} exactly to confirm`)
+        // Every item of verification.md ticked for the part as it is now; the CLI's verify does not ask this.
+        const open = await checklistRefusal(root, body.id)
+        if (open !== undefined) throw new HttpError(400, open)
         await verifyPart(root, body.id, { by: body.by, against: body.against }, new Date().toISOString())
         return send(res, { id: body.id })
       }
@@ -652,6 +659,12 @@ function builderFor(given: DesignBuilder | undefined): { builder: DesignBuilder;
 function send(res: ServerResponse, data: unknown, status = 200): void {
   res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store", ...SECURITY_HEADERS })
   res.end(JSON.stringify({ ok: true, data }))
+}
+
+/** A refusal that carries data for the page, such as the file as it is now. */
+function sendRefusal(res: ServerResponse, status: number, error: string, data: unknown): void {
+  res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store", ...SECURITY_HEADERS })
+  res.end(JSON.stringify({ ok: false, error, data }))
 }
 
 function sendError(res: ServerResponse, error: unknown, root: string): void {

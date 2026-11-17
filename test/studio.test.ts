@@ -389,8 +389,11 @@ describe("parts library", () => {
     expect((await data(await api("/api/place", { file: FILE, part: "LDO" }))).name).toBe("U2")
   })
 
-  test("verifying from the browser needs the part id typed back", async () => {
+  test("verifying from the browser needs every item ticked and the part id typed back", async () => {
     await createPart(root, "LDO", LDO, { now: "t" })
+    const shown = (await data(await api("/api/part?id=LDO"))).checklist as string
+    const items = shown.split("\n").filter((line) => line.startsWith("- [ ] ")).map((line) => line.slice(6))
+    await data(await api("/api/tick", { id: "LDO", items, ticked: true, shown }))
     const wrong = await api("/api/verify", { id: "LDO", by: "Eren", against: "datasheet p.2", confirm: "ldo" })
     expect(wrong.status).toBe(400)
     await data(await api("/api/verify", { id: "LDO", by: "Eren", against: "datasheet p.2", confirm: "LDO" }))
