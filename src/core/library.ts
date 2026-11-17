@@ -4,6 +4,7 @@ import { join, posix } from "node:path"
 import { parse, stringify } from "yaml"
 import { z } from "zod"
 import { footprintFromFile, pinErrors, type FootprintFile } from "../engine/footprints/file.js"
+import { modelChecklist, ModelSchema, unknownModelPins } from "../engine/sim/model-schema.js"
 import { withStatus } from "./checklist-text.js"
 import { writeFileAtomic } from "./fs-utils.js"
 import { PART_ID, PIN_NAME, PIN_NUMBER, PIN_TYPES, type PinType } from "./pin-types.js"
@@ -85,12 +86,19 @@ export const PartSchema = z
       .optional(),
     /** The datasheet pages the pin table was read from, e.g. "3-4" (attach_datasheet). */
     datasheet_pages: line(100).min(1).optional(),
+    /** What the DC simulator uses for this part: its kind, pin roles and figures, each with its datasheet page. */
+    model: ModelSchema.optional(),
     verified: z
       .object({ by: line(100).min(1), against: line(300).min(1), date: z.string(), hash: z.string().optional() })
       .strict()
       .optional(),
   })
   .strict()
+  .superRefine((part, context) => {
+    if (part.model === undefined) return
+    const names = new Set(Object.values(part.pins).map((pin) => pin.name))
+    for (const name of unknownModelPins(part.model, names)) context.addIssue({ code: "custom", path: ["model"], message: `the model names pin ${name}, but the part has no pin ${name}` })
+  })
 
 export type Part = z.infer<typeof PartSchema>
 
@@ -391,6 +399,8 @@ export function verificationTemplate(id: string, part: Part, footprintText?: str
     `- [ ] Footprint ${part.footprint} matches the package drawing`,
     ...(footprintText === undefined ? [] : ["- [ ] Every pad in footprint.yaml matches the recommended land pattern (position, size, drill)"]),
     ...Object.entries(part.suppliers ?? {}).map(([supplier, number]) => `- [ ] ${supplier} part ${number} is this exact part`),
+    // A wrong model figure is as wrong as a wrong pin: each is an item to compare with its page.
+    ...(part.model ? modelChecklist(part.model).map((item) => `- [ ] ${item}`) : []),
     // A fetched part's names and types come from its source; a written part's are already in the pin items above.
     ...(part.origin && !isWritten(part.origin) ? [`- [ ] Every pin name and type matches the datasheet (${part.origin}; nothing from the source has been checked)`] : []),
     ...(builtDatasheet(part) ? [`- [ ] The datasheet link ${part.datasheet?.url} was built from the LCSC number, not read from the source: replace it in part.yaml with the manufacturer's datasheet link for this exact part`] : []),

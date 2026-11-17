@@ -76,10 +76,12 @@ class System {
   }
   /** Adds g at (row, col) of node numbers; node 0 is the reference and has no row. */
   add(row: number, col: number, g: number): void {
-    if (row > 0 && col > 0) this.matrix[(row - 1) * this.size + (col - 1)] += g
+    if (row <= 0 || col <= 0) return
+    const at = (row - 1) * this.size + (col - 1)
+    this.matrix[at] = (this.matrix[at] ?? 0) + g
   }
   inject(node: number, amps: number): void {
-    if (node > 0) this.rhs[node - 1] += amps
+    if (node > 0) this.rhs[node - 1] = (this.rhs[node - 1] ?? 0) + amps
   }
   conductance(a: number, b: number, g: number): void {
     this.add(a, a, g)
@@ -99,7 +101,7 @@ class System {
   }
 }
 
-const voltage = (x: Float64Array, node: number) => (node === 0 ? 0 : (x[node - 1] ?? 0))
+const voltage = (x: Vector, node: number) => (node === 0 ? 0 : (x[node - 1] ?? 0))
 
 /** The junction node of a diode: its internal node, or the anode when it has no series resistance. */
 const junctionNode = (lay: Layout, index: number, anode: number) => lay.internal.get(index) ?? anode
@@ -189,7 +191,7 @@ function stampBjt(sys: System, element: Bjt, s: State): void {
 }
 
 /** The next controlling voltages from the solution, limited against the previous ones; `limited` when any was. */
-function nextState(circuit: SimCircuit, lay: Layout, x: Float64Array, previous: readonly State[]): { state: State[]; limited: boolean } {
+function nextState(circuit: SimCircuit, lay: Layout, x: Vector, previous: readonly State[]): { state: State[]; limited: boolean } {
   let limited = false
   const limit = (next: number, before: number, model: { is: number; n: number }) => {
     const value = limitJunction(next, before, model.n * VT, criticalVoltage(model))
@@ -236,12 +238,13 @@ function nextState(circuit: SimCircuit, lay: Layout, x: Float64Array, previous: 
   return { state, limited }
 }
 
-type Attempt = { ok: true; x: Float64Array; state: State[]; iterations: number } | { ok: false; x: Float64Array; delta: Float64Array }
+type Vector = Float64Array<ArrayBufferLike>
+type Attempt = { ok: true; x: Vector; state: State[]; iterations: number } | { ok: false; x: Vector; delta: Vector }
 
-function newton(circuit: SimCircuit, lay: Layout, start: Float64Array, startState: State[], scale: number, maxIterations: number): Attempt {
+function newton(circuit: SimCircuit, lay: Layout, start: Vector, startState: State[], scale: number, maxIterations: number): Attempt {
   let x = start
   let state = startState
-  let delta = new Float64Array(lay.size)
+  let delta: Vector = new Float64Array(lay.size)
   for (let iteration = 1; iteration <= maxIterations; iteration++) {
     const sys = stamp(circuit, lay, state, scale)
     const next = solveLinear(sys.matrix, sys.rhs, lay.size)
@@ -258,7 +261,7 @@ function newton(circuit: SimCircuit, lay: Layout, start: Float64Array, startStat
 
 /** Raises the sources from zero to full in steps, halving a step that fails. */
 function sourceStepping(circuit: SimCircuit, lay: Layout, maxIterations: number): Attempt {
-  let x = new Float64Array(lay.size)
+  let x: Vector = new Float64Array(lay.size)
   let state: State[] = circuit.elements.map(() => [])
   let scale = 0
   let step = 0.1
@@ -281,7 +284,7 @@ function sourceStepping(circuit: SimCircuit, lay: Layout, maxIterations: number)
   return { ok: true, x, state, iterations }
 }
 
-function results(circuit: SimCircuit, lay: Layout, x: Float64Array, iterations: number): Solved {
+function results(circuit: SimCircuit, lay: Layout, x: Vector, iterations: number): Solved {
   const v = (node: number) => voltage(x, node)
   const elements = circuit.elements.map((element, index): ElementResult => {
     switch (element.kind) {

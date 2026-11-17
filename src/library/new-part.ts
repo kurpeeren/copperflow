@@ -26,6 +26,8 @@ export interface NewPartInput {
   pins: readonly PinRow[] | Part["pins"] | string
   suppliers?: Record<string, string>
   datasheet?: { url?: string; file?: string }
+  /** What the DC simulator uses: kind, pin roles and figures with their datasheet pages. */
+  model?: Part["model"]
   /** With package { file }: the pads transcribed from the datasheet. Without them footprint.yaml is a placeholder. */
   footprintFile?: FootprintFile
 }
@@ -77,6 +79,7 @@ export async function writeNewPart(root: string, input: NewPartInput, options: {
     pins,
     ...(input.suppliers && Object.keys(input.suppliers).length > 0 ? { suppliers: input.suppliers } : {}),
     ...(input.datasheet && (input.datasheet.url || input.datasheet.file) ? { datasheet: input.datasheet } : {}),
+    ...(input.model ? { model: input.model } : {}),
   }
   const existed = await access(dir).then(
     () => true,

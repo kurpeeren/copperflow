@@ -20,6 +20,7 @@ export const createPartInput = {
     .describe('e.g. { "1": { "name": "VIN", "type": "power_in" } }, or the pin table as text, "1 VIN power_in" per line'),
   suppliers: fields.suppliers.describe('e.g. { "lcsc": "C51118" }'),
   datasheet: fields.datasheet.describe(`Only ${DATASHEET_KEYS.join(", ")}`),
+  model: fields.model.describe('For simulate, e.g. { "kind": "nmos", "pins": { "gate": "G", "source": "S", "drain": "D" }, "figures": { "vth": { "value": 1.45, "source": "p2, Table 1" } } }'),
   footprint_file: FootprintFileInputSchema.optional().describe("Pads in mm, y up, origin at the centre"),
   replace: z.boolean().optional(),
 }
