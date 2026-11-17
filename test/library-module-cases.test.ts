@@ -16,13 +16,8 @@ const names = (await readdir(MODULES)).sort()
 /**
  * Cases that show a module not doing what its card says, as found: kept as written, not bent to pass, and listed
  * here so the suite stays a check of everything else. A finding that changes, or a new miss, fails the test.
- * DigitalInput24V, "24 V in": the card promises 3.4 V; the zener fitted to the datasheet's 3.6 V at 5 mA with its
- * 90 ohm impedance there (Diodes Inc. DS18004 p2) gives 2.24 V, because the zener runs near 0.24 mA, far below the
- * 5 mA where the datasheet states its voltage. Only an ideal sharp knee gives 3.5 V.
  */
-const FINDINGS: Readonly<Record<string, string>> = {
-  "DigitalInput24V/24 V in": "MISSED: 24 V in: OUT 2.24 V, wanted 3.20 V to 3.60 V; R1.i 463 µA, wanted 400 µA to 460 µA",
-}
+const FINDINGS: Readonly<Record<string, string>> = {}
 
 test("the library has modules with cases", async () => {
   expect(names.length).toBeGreaterThan(0)
