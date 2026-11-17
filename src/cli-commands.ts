@@ -45,6 +45,7 @@ import { modulesCommand } from "./cli-modules.js"
 import { libraryCommand } from "./cli-library.js"
 import { changeTarget, changeText, changeView } from "./core/change-view.js"
 import { changeRequest } from "./core/change-render.js"
+import type { LookRequest } from "./engine/fab/picture/looks.js"
 import { simulateCommand, spiceCommand } from "./cli-simulate.js"
 import { exportStep, formatStepExport } from "./core/step-export.js"
 
@@ -101,7 +102,8 @@ Usage:
                                               beside the circuit (or in the project folder --out), with <name>.step
   copperflow step <file> [--out file.step]   write the board and its parts (as boxes) as a STEP file for CAD,
                                               <name>.step beside the circuit
-  copperflow render <file> [--view pcb|schematic] [--page <name>] [--parts U1,C3] [--width n] [--out file.png]
+  copperflow render <file> [--view pcb|schematic|board] [--page <name>] [--parts U1,C3] [--width n] [--out file.png]
+      board: the bare board as made [--side bottom] [--mask black] [--finish hasl] [--silk black] [--background #rrggbb]
                   [--change <id> | --since <id>]
                                               draw the board or a schematic page to a PNG, as the Studio shows it
                                               (<name>-pcb.png or <name>-schematic-<page>.png beside the circuit)
@@ -318,10 +320,19 @@ async function renderCommand(root: string, rest: string[], options: CliOptions):
   const [width, afterWidth] = takeOption(afterParts, "--width")
   const [out, afterOut] = takeOption(afterWidth, "--out")
   const [change, afterChange] = takeOption(afterOut, "--change")
-  const [since, args] = takeOption(afterChange, "--since")
-  if (view !== undefined && view !== "pcb" && view !== "schematic") throw new Error(`--view must be pcb or schematic, not ${view}`)
+  const [since, afterSince] = takeOption(afterChange, "--since")
+  const [side, afterSide] = takeOption(afterSince, "--side")
+  const [mask, afterMask] = takeOption(afterSide, "--mask")
+  const [finish, afterFinish] = takeOption(afterMask, "--finish")
+  const [silk, afterSilk] = takeOption(afterFinish, "--silk")
+  const [background, args] = takeOption(afterSilk, "--background")
+  if (view !== undefined && view !== "pcb" && view !== "schematic" && view !== "board") throw new Error(`--view must be pcb, schematic or board, not ${view}`)
+  if (side !== undefined && side !== "top" && side !== "bottom") throw new Error(`--side must be top or bottom, not ${side}`)
+  const look = { ...(mask !== undefined ? { mask } : {}), ...(finish !== undefined ? { finish } : {}), ...(silk !== undefined ? { silk } : {}), ...(background !== undefined ? { background } : {}) } as LookRequest
   const request = {
     view: view ?? "pcb",
+    ...(side !== undefined ? { side: side as "top" | "bottom" } : {}),
+    ...(Object.keys(look).length > 0 ? { look } : {}),
     ...(page !== undefined ? { page } : {}),
     ...(parts !== undefined ? { parts: parts.split(",").map((name) => name.trim()).filter((name) => name !== "") } : {}),
     ...(width !== undefined ? { width: Number(width) } : {}),

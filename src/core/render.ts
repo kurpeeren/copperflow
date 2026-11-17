@@ -1,22 +1,31 @@
 // A picture of a circuit's board or of one schematic page, for the CLI and the MCP server: builds the design and hands
 // it to the Studio's renderer, bundled to dist/render/render.js (studio/src/render/node-render.ts), which draws it with
-// the Studio's own drawing code on a canvas from the optional package @napi-rs/canvas. Also writes the picture for the CLI.
+// the Studio's own drawing code on a canvas from the optional package @napi-rs/canvas; the board as made (view "board")
+// is drawn from the fabrication layers instead (src/engine/fab/picture). Also writes the picture for the CLI.
 import { mkdir, writeFile } from "node:fs/promises"
 import { basename, dirname, relative, resolve, sep } from "node:path"
 import type { Design } from "../engine/design.js"
 import type { DesignDiff } from "../engine/design-diff.js"
+import { renderBoardView } from "../engine/fab/picture/board-view.js"
+import type { Side } from "../engine/fab/picture/board-picture.js"
+import type { LookRequest } from "../engine/fab/picture/looks.js"
+import type { CanvasLoader } from "../engine/fab/picture/png.js"
 import { buildWith, type DesignSource } from "./design-source.js"
 import { assertLandsInProject } from "./fabrication.js"
 import { resolveCircuit } from "./workspace.js"
 
 /** What to draw; the Studio's renderer defines the same. */
 export interface RenderRequest {
-  view: "pcb" | "schematic"
+  /** "board": the bare board as made, from the fabrication layers. */
+  view: "pcb" | "schematic" | "board"
+  /** The board view's side and look; refused for the others. */
+  side?: Side
+  look?: LookRequest
   /** The schematic page; the first one when left out. Refused for the PCB. */
   page?: string
   /** Zoom to these parts (their courtyards plus a margin) instead of the whole board or sheet. */
   parts?: string[]
-  /** Width of the image in pixels, 320 to 2000; 1024 by default. The height follows the drawing's shape. */
+  /** Width of the image in pixels, 320 to 2000 (4000 for the board); 1024 by default. The height follows the drawing's shape. */
   width?: number
   /** A change marked over the dimmed board, and the words the line ends with (change-render.ts). The PCB only. */
   change?: { diff: DesignDiff; caption: string }
@@ -30,6 +39,8 @@ export interface Rendered {
   what: string
   /** The schematic page drawn; none for the PCB. */
   page?: string
+  /** What the line names in place of the file: the design's name for the board view. */
+  label?: string
 }
 
 export interface Renderer {
@@ -43,6 +54,8 @@ export interface RenderOptions {
   engine?: DesignSource
   /** Loads the renderer; tests pass the source module. Without it the bundled dist/render/render.js is loaded. */
   renderer?: () => Promise<Renderer>
+  /** Loads the canvas package for the board view; tests pass one that fails. */
+  canvas?: CanvasLoader
 }
 
 export const CANVAS_MISSING =
@@ -62,8 +75,10 @@ function canvasMissing(error: unknown): boolean {
 /** Builds the circuit and draws the requested view of it; the canvas package missing is said in plain words. */
 export async function renderCircuit(root: string, file: string, request: RenderRequest, options: RenderOptions = {}): Promise<Rendered & { file: string }> {
   const { file: circuit } = await resolveCircuit(root, file)
+  if (request.view !== "board" && (request.side !== undefined || request.look !== undefined)) throw new Error("side and look are for view board only")
   const design = options.design ?? (await buildWith(root, circuit, options.engine))
   try {
+    if (request.view === "board") return { ...(await renderBoardView(design, request, options.canvas)), file: circuit }
     const renderer = await (options.renderer ?? bundledRenderer)()
     return { ...(await renderer.renderDesign(design, request)), file: circuit }
   } catch (error) {
@@ -73,12 +88,12 @@ export async function renderCircuit(root: string, file: string, request: RenderR
 }
 
 /** The one-line answer: `io.circuit.tsx: PCB, whole board 32.3 x 23.6 mm; 1024 x 748 px`. */
-export const renderedLine = (rendered: Rendered & { file: string }): string => `${rendered.file}: ${rendered.what}; ${rendered.width} x ${rendered.height} px`
+export const renderedLine = (rendered: Rendered & { file: string }): string => `${rendered.label ?? rendered.file}: ${rendered.what}; ${rendered.width} x ${rendered.height} px`
 
-/** `<name>-pcb.png` or `<name>-schematic-<page>.png` beside the circuit, the page made safe for a file name. */
-export function defaultPictureName(circuit: string, view: RenderRequest["view"], page: string | undefined): string {
+/** `<name>-pcb.png`, `<name>-board-<side>.png` or `<name>-schematic-<page>.png` beside the circuit, the page made safe for a file name. */
+export function defaultPictureName(circuit: string, view: RenderRequest["view"], page: string | undefined, side: Side = "top"): string {
   const name = basename(circuit).replace(/\.(circuit|sheet)\.tsx$/, "")
-  const suffix = view === "pcb" ? "pcb" : `schematic-${(page ?? "Main").replace(/[^A-Za-z0-9_-]+/g, "-")}`
+  const suffix = view === "pcb" ? "pcb" : view === "board" ? `board-${side}` : `schematic-${(page ?? "Main").replace(/[^A-Za-z0-9_-]+/g, "-")}`
   const folder = dirname(circuit)
   return `${folder === "." ? "" : `${folder}/`}${name}-${suffix}.png`
 }
@@ -88,7 +103,7 @@ export async function writeRender(root: string, file: string, request: RenderReq
   if (out !== undefined && !out.toLowerCase().endsWith(".png")) throw new Error(`--out must name a .png file, not ${out}`)
   if (out !== undefined) await assertLandsInProject(root, resolve(root, out))
   const rendered = await renderCircuit(root, file, request, options)
-  const target = resolve(root, out ?? defaultPictureName(rendered.file, request.view, rendered.page))
+  const target = resolve(root, out ?? defaultPictureName(rendered.file, request.view, rendered.page, request.side))
   await assertLandsInProject(root, target)
   await mkdir(dirname(target), { recursive: true })
   await writeFile(target, rendered.png)

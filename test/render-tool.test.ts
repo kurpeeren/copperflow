@@ -41,7 +41,7 @@ describe("the render tool", () => {
   test("is read only and answers a PNG image and the line saying what it shows", async () => {
     const tool = (await client.listTools()).tools.find((t) => t.name === "render")
     expect(tool?.annotations).toMatchObject({ readOnlyHint: true })
-    expect(Object.keys(tool?.inputSchema.properties ?? {})).toEqual(["file", "view", "page", "parts", "width", "change", "since"])
+    expect(Object.keys(tool?.inputSchema.properties ?? {})).toEqual(["file", "view", "page", "parts", "width", "side", "look", "change", "since"])
     const result = await client.callTool({ name: "render", arguments: { file: "io.circuit.tsx", width: 400 } })
     const [image, text] = result.content as Array<{ type: string; data?: string; mimeType?: string; text?: string }>
     expect(result.isError).not.toBe(true)
