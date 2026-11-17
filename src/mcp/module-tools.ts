@@ -4,6 +4,7 @@ import { z } from "zod"
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js"
 import { buildWith, type DesignSource } from "../core/design-source.js"
+import { allLibraryModules, isLibraryName, libraryModuleInfo, useLibraryModule } from "../core/library-modules.js"
 import { listModules, moduleInfo, saveModule, useModule } from "../core/modules.js"
 
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false }
@@ -24,16 +25,16 @@ export function registerModuleTools(server: McpServer, root: string, run: (task:
   server.registerTool(
     "list_modules",
     { description: "The shelf, one line a module. Look here before designing a block.", inputSchema: { filter: z.string().optional() }, annotations: READ_ONLY },
-    ({ filter }) => run(() => listModules(filter)),
+    ({ filter }) => run(async () => listModules(filter, await allLibraryModules())),
   )
   server.registerTool(
     "module_info",
     { description: "A module's card, ports, parts, sources and origin.", inputSchema: { name: z.string() }, annotations: READ_ONLY },
-    ({ name }) => run(() => moduleInfo(name)),
+    ({ name }) => run(() => (isLibraryName(name) ? libraryModuleInfo(name) : moduleInfo(name))),
   )
   server.registerTool(
     "use_module",
     { description: "Copy a module's sheet (and parts the project lacks) beside the circuit file; then add_instance.", inputSchema: { module: z.string(), file: z.string() } },
-    (input) => run(() => useModule(root, input)),
+    (input) => run(() => (isLibraryName(input.module) ? useLibraryModule(root, input) : useModule(root, input))),
   )
 }

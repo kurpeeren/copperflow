@@ -112,7 +112,7 @@ function sheetImports(text: string): { parts: Map<string, string>; others: strin
 }
 
 /** The text with each library import pointing at `parts/<id>/` as seen from `folder` (project-relative, "" for the root). */
-function partsFrom(text: string, folder: string): string {
+export function partsFrom(text: string, folder: string): string {
   let out = text
   for (const [source, id] of sheetImports(text).parts) {
     const component = source.slice(source.lastIndexOf("/") + 1)
@@ -165,12 +165,14 @@ export async function saveModule(root: string, request: SaveRequest, build: (fil
   return `Saved ${name} to the shelf${kept}. It is NOT verified: only a person verifies it (copperflow modules verify ${name} --by <name>).`
 }
 
-interface ShelfModule {
+export interface ShelfModule {
   name: string
   text: string
   card: SheetCardText
   verifiedBy?: string
   origin?: ModuleOrigin
+  /** Where a library's module is from, as its line says it: `team (git)`. */
+  from?: string
 }
 
 async function readModule(name: string, folder: string): Promise<ShelfModule | undefined> {
@@ -199,18 +201,24 @@ const status = (module: ShelfModule) => (module.verifiedBy ? `verified by ${modu
 
 /** `Input: 24 V digital input …; ports IN (input, …), GND (ground); 4 parts; NOT verified`, at most 200 characters. */
 export function moduleLine(module: ShelfModule): string {
-  const tail = `; ${partLines(module.text).length} parts; ${status(module)}`
+  const tail = `; ${partLines(module.text).length} parts; ${status(module)}${module.from ? `; from ${module.from}` : ""}`
   const ports = module.card.ports.map(portText).join(", ")
   const head = `${module.name}: ${module.card.does ?? "(does not say what it does)"}; ports ${ports || "none"}`
   const room = LINE_LIMIT - tail.length
   return `${head.length > room ? `${head.slice(0, room - 1)}…` : head}${tail}`
 }
 
-/** One line a module, at most 60; `filter` matches the name, what it does and its port names. */
-export async function listModules(filter?: string): Promise<string> {
-  const all = await shelfModules()
+const cardText = (module: ShelfModule) => [
+  module.card.does ?? "",
+  ...(module.card.sources ?? []),
+  ...module.card.ports.flatMap((port) => [port.name, port.type ?? "", port.carries ?? ""]),
+]
+
+/** One line a module, at most 60: the shelf, then `libraries`; `filter` matches the name (with its library) and the card's text. */
+export async function listModules(filter?: string, libraries: readonly ShelfModule[] = []): Promise<string> {
+  const all = [...(await shelfModules()), ...libraries]
   const needle = filter?.toLowerCase() ?? ""
-  const hit = (module: ShelfModule) => [module.name, module.card.does ?? "", ...module.card.ports.map((port) => port.name)].some((text) => text.toLowerCase().includes(needle))
+  const hit = (module: ShelfModule) => [module.name, ...cardText(module)].some((text) => text.toLowerCase().includes(needle))
   const shown = all.filter(hit)
   if (shown.length === 0) return all.length === 0 ? `The shelf (${shelfDir()}) has no modules yet. save_module puts a described sheet there.` : `No modules match ${filter}.`
   const more = shown.length - LIST_LIMIT
@@ -219,11 +227,8 @@ export async function listModules(filter?: string): Promise<string> {
 
 const VALUE_PROPS = ["resistance", "capacitance", "inductance", "value", "frequency", "color"]
 
-/** The card, the ports, the parts with values and footprints, the sources and where and when it was saved; not the code. */
-export async function moduleInfo(name: string): Promise<string> {
-  const folder = await existingModule(name)
-  const module = await readModule(name, folder)
-  if (!module) throw new Error(`The shelf's ${name} has no ${name}.sheet.tsx`)
+/** The card, the ports, the parts with values and footprints and the sources; not the code. */
+export function moduleDetails(name: string, module: ShelfModule): string[] {
   const library = new Map([...sheetImports(module.text).parts.entries()].map(([source, id]) => [source.slice(source.lastIndexOf("/") + 1), id]))
   const parts = partLines(module.text).map((part) => {
     const value = VALUE_PROPS.map((key) => part.props[key]?.literal).find((literal) => literal !== undefined)
@@ -238,6 +243,16 @@ export async function moduleInfo(name: string): Promise<string> {
     `Parts (${parts.length}):`,
     ...parts,
     ...(module.card.sources ? [`Sources: ${module.card.sources.join("; ")}`] : []),
+  ]
+}
+
+/** A shelf module's details and where and when it was saved. */
+export async function moduleInfo(name: string): Promise<string> {
+  const folder = await existingModule(name)
+  const module = await readModule(name, folder)
+  if (!module) throw new Error(`The shelf's ${name} has no ${name}.sheet.tsx`)
+  return [
+    ...moduleDetails(name, module),
     module.origin ? `Saved from ${module.origin.savedFrom} on ${module.origin.savedAt.slice(0, 10)}` : "Saved from: not recorded",
   ].join("\n")
 }

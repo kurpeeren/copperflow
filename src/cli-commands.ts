@@ -38,6 +38,7 @@ import { studioCommand } from "./cli-studio.js"
 import { VERSION } from "./version.js"
 import { installSkill } from "./skill-install.js"
 import { modulesCommand } from "./cli-modules.js"
+import { libraryCommand } from "./cli-library.js"
 
 export interface CliIO {
   out(text: string): void
@@ -72,8 +73,14 @@ Usage:
                                               not verified (needs the internet; see docs/licences.md)
   copperflow modules                          list the shelf of modules (COPPERFLOW_MODULES, default ~/.copperflow/modules)
   copperflow modules verify <name> --by <name>
-                                              mark a module as checked by you
+                                              mark a module (or <library>/<name>) as checked by you
   copperflow modules remove <name>            take a module off the shelf
+  copperflow library                          list the libraries of modules: built in, git and folders
+  copperflow library add <name> <address or folder> [--ref <branch or tag>]
+                                              add a library from git (https://, ssh:// or user@host:path)
+                                              or a folder; its modules read NOT verified until you verify them
+  copperflow library update [name]            bring git libraries to the newest commit of their ref
+  copperflow library remove <name>            forget a library (a clone is deleted, a folder never)
   copperflow place <file> <part> <name> [key=value ...]
                                               add a library or built-in part to a circuit
   copperflow bom <file> [--csv]               print the bill of materials
@@ -150,6 +157,9 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
         return 0
       case "modules":
         await modulesCommand(rest, io, takeOption)
+        return 0
+      case "library":
+        await libraryCommand(root, rest, (text) => io.out(text), takeOption)
         return 0
       case "place": {
         const [file, part, name, ...props] = rest
