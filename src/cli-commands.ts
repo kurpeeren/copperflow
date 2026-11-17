@@ -32,6 +32,7 @@ import {
 } from "./core/index.js"
 import type { DesignSource } from "./core/bom.js"
 import { buildWith } from "./core/design-source.js"
+import { Engine } from "./engine/engine.js"
 import { formatImport, importLcscPart } from "./library/import-lcsc.js"
 import { createCopperflowServer } from "./mcp/server.js"
 import { studioCommand } from "./cli-studio.js"
@@ -115,9 +116,14 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
   const [command, ...rest] = afterRoot
   try {
     switch (command) {
-      case "mcp":
-        await createCopperflowServer(root, options).connect(new StdioServerTransport())
+      case "mcp": {
+        // One engine for the whole session. A new one for each call starts a worker and loads the builder again,
+        // which cost most of a second on every call that builds. It stops when the agent's program closes the pipe.
+        const own = options.engine ? undefined : new Engine()
+        if (own) for (const event of ["end", "close"] as const) process.stdin.once(event, () => void own.stop())
+        await createCopperflowServer(root, own ? { ...options, engine: own } : options).connect(new StdioServerTransport())
         return 0
+      }
       case "studio":
         io.out(await studioCommand(root, rest, takeOption))
         return 0
