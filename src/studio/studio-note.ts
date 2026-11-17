@@ -4,11 +4,13 @@
 // key and names this project's root counts.
 import { createHash } from "node:crypto"
 import { request } from "node:http"
-import { homedir } from "node:os"
 import { realpathSync } from "node:fs"
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import { z } from "zod"
+import { copperflowHome } from "../core/home.js"
+
+export { copperflowHome }
 
 export interface StudioNote {
   pid: number
@@ -30,11 +32,6 @@ const ANSWER_TIMEOUT_MS = 2000
 const STOP_WAIT_MS = 10_000
 const POLL_MS = 100
 
-/** The person's copperflow folder: COPPERFLOW_HOME, else .copperflow in the home folder. */
-export function copperflowHome(env: NodeJS.ProcessEnv = process.env): string {
-  const chosen = env["COPPERFLOW_HOME"]
-  return chosen !== undefined && chosen !== "" ? chosen : join(homedir(), ".copperflow")
-}
 
 /**
  * The folder's real path: one spelling for a folder reached through a link, a relative path or, on Windows, another
