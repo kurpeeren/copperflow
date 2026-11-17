@@ -53,6 +53,11 @@ export function fitCamera(box: Box, size: Size, margin = 0.12): Camera {
 }
 
 /** The same zoom, with `at` in the middle of the view. */
+/** The camera a drag from `start` to `point` (screen pixels) leaves, from the camera at the press: the board follows the pointer. */
+export function pannedCamera(camera: Camera, start: Point, point: Point): Camera {
+  return { ...camera, cx: camera.cx - (point.x - start.x) / camera.scale, cy: camera.cy + (point.y - start.y) / camera.scale }
+}
+
 export function centredCamera(camera: Camera, at: Point): Camera {
   return { ...camera, cx: at.x, cy: at.y }
 }

@@ -1,14 +1,16 @@
 /* The bar over a shown change (ChangeBar.tsx) and the canvas beside it (ChangeCanvas.tsx). */
+/* Fills the canvas section, whatever its own layout, so the board gets all the room the bar leaves. */
 .change-view {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
-  height: 100%;
   min-height: 0;
 }
 
 .change-bar {
   flex: none;
-  max-height: 40%;
+  max-height: 45%;
   overflow: auto;
   padding: 6px 10px;
   border-bottom: 1px solid var(--line);
@@ -48,9 +50,13 @@
   color: var(--danger-text);
 }
 
+/* Up to eight lines before the list scrolls; the bar itself stops at 45% of the area, so the board stays in view. */
 .change-lines {
   margin: 4px 0 0;
   padding-left: 18px;
+  line-height: 1.45;
+  max-height: calc(8 * 1.45em);
+  overflow: auto;
 }
 
 .change-line {
@@ -67,6 +73,8 @@
   flex: 1 1 auto;
   min-height: 0;
   position: relative;
+  cursor: grab;
+  touch-action: none;
 }
 
 .change-canvas canvas {

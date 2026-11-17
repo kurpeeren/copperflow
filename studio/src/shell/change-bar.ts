@@ -19,15 +19,19 @@ export interface ChangeBarProps {
   onClose(): void
 }
 
-function lineItem(line: { text: string; at?: Point }, index: number, onLine: (at: Point) => void): ReactElement {
-  const { at } = line
+type Line = { text: string; at?: Point; items?: Line[] }
+
+function lineItem(line: Line, index: number, onLine: (at: Point) => void): ReactElement {
+  const { at, items } = line
+  // A group of findings opens to list each one.
+  if (items) return h("li", { key: index }, h("details", null, h("summary", null, line.text), h("ul", null, items.map((item, i) => lineItem(item, i, onLine)))))
   if (!at) return h("li", { key: index }, line.text)
   return h("li", { key: index }, h("button", { type: "button", className: "change-line", title: "Centre the view on it", onClick: () => onLine(at) }, line.text))
 }
 
 export function ChangeBar({ state, onMode, onLine, onClose }: ChangeBarProps): ReactElement {
   const data = state.status === "ready" ? state.data : undefined
-  const fallback = "id" in state.request ? `Change ${state.request.id}` : `Since ${state.request.since}`
+  const fallback = "id" in state.request ? `Change ${state.request.id}` : state.request.since === "c0000" ? "Everything the agent did" : `Since ${state.request.since}`
   const modes = data?.onBoard
     ? h(
         "span",

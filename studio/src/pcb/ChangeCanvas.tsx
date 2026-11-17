@@ -1,15 +1,12 @@
-import { useEffect, useMemo, useRef } from "react"
+import { useEffect, useRef } from "react"
 import type { Design } from "../api"
 import type { DesignDiff } from "../../../src/engine/design-diff.js"
-import type { ChangeMode } from "../change-view"
-import { prepareCanvas, useElementSize } from "./canvas-common"
+import { changeFit, type ChangeMode } from "../change-view"
+import { prepareCanvas, toLocal, useCamera, useElementSize } from "./canvas-common"
 import { dimBoard, drawChangeLegend, drawChangeMarks } from "./change-draw"
 import { PALETTE, type Ctx } from "./ctx"
-import { fitCamera, pointBounds, unionBoxes, type Box, type Camera, type Point } from "./geometry"
+import { centredCamera, pannedCamera, type Camera, type Point } from "./geometry"
 import { drawPcb } from "./pcb-draw"
-
-/** How much closer the view comes when a line of the change is picked. */
-const FOCUS_ZOOM = 3
 
 interface Props {
   design: Design
@@ -19,22 +16,23 @@ interface Props {
   focus?: { at: Point; seq: number }
 }
 
-function boardBox(design: Design): Box | undefined {
-  const pcb = design.pcb
-  return pointBounds(pcb.board?.outline ?? []) ?? unionBoxes(pcb.parts.flatMap((part) => pointBounds(part.courtyard) ?? []))
-}
-
-/** The board as the change left it (or as it was, for Before), dimmed, with the change marked over it. Nothing on it can be edited. */
+/**
+ * The board as the change left it (or as it was, for Before), dimmed, with the change marked over it. It is fitted to
+ * its area when shown and when the mode changes; the wheel zooms and a drag pans as in the PCB view. Nothing is edited.
+ */
 export function ChangeCanvas({ design, diff, mode, focus }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   const size = useElementSize(host)
-  const camera = useMemo<Camera | undefined>(() => {
-    const box = boardBox(design)
-    if (!box || size.width === 0) return undefined
-    const fit = fitCamera(box, size)
-    return focus ? { cx: focus.at.x, cy: focus.at.y, scale: fit.scale * FOCUS_ZOOM } : fit
-  }, [design, size, focus])
+  const { camera, setCamera } = useCamera(host, size, undefined)
+  const pan = useRef<{ start: Point; camera: Camera } | undefined>(undefined)
+  useEffect(() => {
+    const fitted = changeFit(design, size)
+    if (fitted) setCamera(fitted)
+  }, [design, mode, size, setCamera])
+  useEffect(() => {
+    if (focus) setCamera((current) => (current ? centredCamera(current, focus.at) : current))
+  }, [focus, setCamera])
   useEffect(() => {
     if (!camera) return
     const prepared = prepareCanvas(canvas.current, size, camera, PALETTE.background, () => undefined)
@@ -46,8 +44,22 @@ export function ChangeCanvas({ design, diff, mode, focus }: Props) {
     drawChangeMarks(ctx, view, diff, mode)
     drawChangeLegend(ctx, size, mode)
   }, [camera, size, design, diff, mode])
+  const at = (event: { clientX: number; clientY: number }) => toLocal(host.current, size, event)
   return (
-    <div className="change-canvas" ref={host}>
+    <div
+      className="change-canvas"
+      ref={host}
+      onPointerDown={(event) => {
+        if (!camera) return
+        event.currentTarget.setPointerCapture(event.pointerId)
+        pan.current = { start: at(event), camera }
+      }}
+      onPointerMove={(event) => {
+        if (pan.current) setCamera(pannedCamera(pan.current.camera, pan.current.start, at(event)))
+      }}
+      onPointerUp={() => (pan.current = undefined)}
+      onPointerCancel={() => (pan.current = undefined)}
+    >
       <canvas ref={canvas} role="img" aria-label="The board with the change marked; it cannot be edited here" />
     </div>
   )

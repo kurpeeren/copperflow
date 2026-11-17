@@ -7,7 +7,7 @@ import type { Selection, SelectionChange } from "../selection.js"
 import { boxMode, boxSelection, labelsInBox, partsInBox, wiresInBox } from "./box-select.js"
 import { copperInBox, type CopperArea } from "./copper-hit.js"
 import { drawingsInBox, type DrawingHit } from "./drawing-hit.js"
-import { hitsAt, roundPosition, screenToWorld, snapPosition, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
+import { hitsAt, pannedCamera, roundPosition, screenToWorld, snapPosition, type Box, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
 import type { PickLayers } from "./layers.js"
 import type { PickFilter } from "./pick-filter.js"
 import { anchorLookup, moveEach, type GroupEdit, type GroupEditActions } from "./group-edits.js"
@@ -402,9 +402,7 @@ function startDrag(input: GestureInput, pressed: Pressed, start: GestureStart, p
 /** The gesture after the pointer moved to `point`; undefined when it stays the same. A pan moves the camera. */
 export function followGesture(input: GestureInput, gesture: Gesture, point: Point, camera: Camera): Gesture | undefined {
   if (gesture.kind === "pan") {
-    const dx = (point.x - gesture.start.x) / gesture.camera.scale
-    const dy = (point.y - gesture.start.y) / gesture.camera.scale
-    input.setCamera({ ...gesture.camera, cx: gesture.camera.cx - dx, cy: gesture.camera.cy + dy })
+    input.setCamera(pannedCamera(gesture.camera, gesture.start, point))
     return !gesture.moved && hasMoved(gesture.start, point) ? { ...gesture, moved: true } : undefined
   }
   if (gesture.kind === "box" || gesture.kind === "note" || gesture.kind === "zoom") return { ...gesture, current: point }

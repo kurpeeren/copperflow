@@ -25,9 +25,8 @@ const bar = (extra: Partial<ChangeViewState> = {}) => renderToStaticMarkup(creat
 
 describe("the change view's rules", () => {
   test("since my last change: the person's newest change while the agent's came after it; hidden when the newest is the person's", () => {
-    expect(sinceMyLast([entry("c0003", "ai"), entry("c0002", "ai"), entry("c0001", "human")])).toBe("c0001")
+    expect(sinceMyLast([entry("c0003", "ai"), entry("c0002", "ai"), entry("c0001", "human")])).toEqual({ since: "c0001", label: "Since my last change" })
     expect(sinceMyLast([entry("c0003", "human"), entry("c0002", "ai")])).toBeUndefined()
-    expect(sinceMyLast([entry("c0002", "ai")])).toBeUndefined()
     expect(sinceMyLast([])).toBeUndefined()
   })
 
@@ -96,4 +95,35 @@ describe("the Log", () => {
     expect(list.indexOf("<SinceMine")).toBeLessThan(list.indexOf('<ul className="history">'))
     expect(list).toContain("<ShowButton entry={entry} onShow={onShow} />")
   })
+})
+
+describe("everything the agent did, and the fitted board", () => {
+  test("with no change of the person's at all, the button shows everything the agent did, from the first change", () => {
+    expect(sinceMyLast([entry("c0003", "ai"), entry("c0001", "ai")])).toEqual({ since: "c0000", label: "Everything the agent did" })
+    expect(sinceMyLast([entry("c0003", "ai"), entry("c0001", "human")])).toEqual({ since: "c0001", label: "Since my last change" })
+    const html = renderToStaticMarkup(createElement(SinceMine, { history: [entry("c0002", "ai"), entry("c0001", "ai")], onShow: () => undefined }))
+    expect(html).toContain(">Everything the agent did</button>")
+  })
+
+  test("a grouped line opens to list each finding, each one clickable", () => {
+    const grouped = { ...shown, lines: [{ kind: "error" as const, text: "3 new copper clearance errors: a; b; and 1 more", items: ["a", "b", "c"].map((t, i) => ({ kind: "error" as const, text: `New error: ${t}`, at: { x: i, y: 0 } })) }] }
+    const html = renderToStaticMarkup(createElement(ChangeBar, { state: state({ data: grouped }), onMode: () => undefined, onLine: () => undefined, onClose: () => undefined }))
+    expect(html).toContain("<details><summary>3 new copper clearance errors: a; b; and 1 more</summary>")
+    expect(html.match(/class="change-line"/g)).toHaveLength(3)
+  })
+
+  test("the board fills the area it has: fitted to its width or height", async () => {
+    const { changeFit } = await import("../studio/src/change-view.js")
+    const board = { pcb: { board: { outline: [{ x: -20, y: -10 }, { x: 20, y: -10 }, { x: 20, y: 10 }, { x: -20, y: 10 }] }, parts: [] } } as never
+    const size = { width: 1400, height: 600 }
+    const camera = changeFit(board, size)!
+    // The board's width on screen, or its height, is most of the area.
+    expect(Math.max((40 * camera.scale) / size.width, (20 * camera.scale) / size.height)).toBeGreaterThan(0.85)
+    expect(camera).toMatchObject({ cx: 0, cy: 0 })
+  })
+})
+
+test("a drag pans the camera with the pointer, the one rule the PCB view and the change view share", async () => {
+  const { pannedCamera } = await import("../studio/src/pcb/geometry.js")
+  expect(pannedCamera({ cx: 0, cy: 0, scale: 10 }, { x: 100, y: 100 }, { x: 150, y: 80 })).toEqual({ cx: -5, cy: -2, scale: 10 })
 })

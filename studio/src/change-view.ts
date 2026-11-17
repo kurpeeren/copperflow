@@ -6,6 +6,10 @@ import type { ChangeShown } from "../../src/studio/change-route.js"
 import { LOCKED_COMMANDS } from "./ai-lock.js"
 import type { ChangeMode } from "./pcb/change-draw.js"
 import type { CommandsOff } from "./shell/menus.js"
+import { fitCamera, pointBounds, unionBoxes, type Camera, type Size } from "./pcb/geometry.js"
+
+/** The share of the area left round the board when it is fitted. */
+const FIT_MARGIN = 0.04
 
 export type { ChangeMode }
 
@@ -23,10 +27,21 @@ export interface ChangeViewState {
 /** What the bar says, and what an editing command says while a change is shown. */
 export const CHANGE_VIEW_MESSAGE = "A change is shown: the board cannot be edited. Close it to edit."
 
-/** The person's newest change, when the agent made changes after it (the history newest first); otherwise none. */
-export function sinceMyLast(history: readonly Pick<HistoryListing, "id" | "author">[]): string | undefined {
+/**
+ * What the Log's button above the list shows, the history newest first: everything after the person's newest change
+ * when the agent changed things after it; everything the agent did when the person made no change at all; else none.
+ */
+export function sinceMyLast(history: readonly Pick<HistoryListing, "id" | "author">[]): { since: string; label: string } | undefined {
   if (history[0]?.author !== "ai") return undefined
-  return history.find((entry) => entry.author === "human")?.id
+  const mine = history.find((entry) => entry.author === "human")?.id
+  return mine ? { since: mine, label: "Since my last change" } : { since: "c0000", label: "Everything the agent did" }
+}
+
+/** The camera that fits the board (or its parts) to the area, as the PCB view fits it. */
+export function changeFit(design: Design, size: Size): Camera | undefined {
+  const pcb = design.pcb
+  const box = pointBounds(pcb.board?.outline ?? []) ?? unionBoxes(pcb.parts.flatMap((part) => pointBounds(part.courtyard) ?? []))
+  return box && size.width > 0 && size.height > 0 ? fitCamera(box, size, FIT_MARGIN) : undefined
 }
 
 /** What a key does while a change is shown. */
