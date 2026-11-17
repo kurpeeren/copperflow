@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react"
+import { useMemo, useState, type ReactNode } from "react"
 import type { Edit } from "../api"
 import type { Actions } from "../use-actions"
 import { Inspector } from "../Inspector"
@@ -19,6 +19,7 @@ import type { DrawingRename } from "../pcb/drawing-selection"
 import type { SheetParent } from "../App"
 import { BottomPanel } from "./BottomPanel"
 import { ChangeView } from "./ChangeView"
+import { Look3d } from "../look/Look3d"
 import { useChangeView } from "../change-store"
 import { ContextMenu } from "./ContextMenu"
 import { DocTabs } from "./DocTabs"
@@ -149,14 +150,18 @@ function CenterColumn(props: WorkspaceProps & { onContextMenu: ContextMenuState[
   const pages = useMemo(() => pageNames(build.design), [build.design])
   // A change shown takes the canvas's place: nothing that edits is on screen while it is.
   const change = useChangeView()
+  // The 3D view shows over the PCB while its tab is open; it edits nothing, so the PCB's panels stay as they are.
+  const [lookOpen, setLook] = useState(false)
+  const look = lookOpen && view === "pcb"
   return (
     <div className="center">
-      <DocTabs file={data.file} view={view} pages={pages} page={page} onView={props.onView} onPage={props.onPage} {...parentTabs(props)} />
+      <DocTabs file={data.file} view={view} pages={pages} page={page} onView={props.onView} onPage={props.onPage} look={look} onLook={setLook} {...parentTabs(props)} />
       <div className="ai-lock-band">{props.lockControl}</div>
-      <section className={props.aiLocked ? "canvas ai-locked" : "canvas"} id="doc-panel" role="tabpanel" aria-labelledby={`doc-tab-${view}`} tabIndex={-1}>
+      <section className={props.aiLocked ? "canvas ai-locked" : "canvas"} id="doc-panel" role="tabpanel" aria-labelledby={look ? "doc-tab-3d" : `doc-tab-${view}`} tabIndex={-1}>
         {!build.design && <p className="empty">{build.status === "failed" ? build.error : "Building the circuit…"}</p>}
         {change && <ChangeView state={change} />}
-        {!change && canvas && view === "pcb" && <PcbCanvas key={data.file} {...canvas} {...gridProps(workspace, "pcb")} markers={checks.markers.pcb} activeLayer={workspace.activeLayer} onActiveLayer={workspace.setActiveLayer} pourFill={workspace.pourFill} hiddenPours={workspace.hiddenPours} />}
+        {!change && look && build.design && <Look3d design={build.design} />}
+        {!change && !look && canvas && view === "pcb" && <PcbCanvas key={data.file} {...canvas} {...gridProps(workspace, "pcb")} markers={checks.markers.pcb} activeLayer={workspace.activeLayer} onActiveLayer={workspace.setActiveLayer} pourFill={workspace.pourFill} hiddenPours={workspace.hiddenPours} />}
         {!change && sheet && view === "schematic" && <SchematicCanvas key={`${data.file}
 ${page}`} {...sheet} {...gridProps(workspace, "schematic")} markers={checks.markers.schematic} />}
         <RouteStatus route={data.route} onCancel={() => void props.actions.cancelRoute()} />

@@ -13,6 +13,8 @@ export interface DocTab {
   active: boolean
   /** A tab of the circuit a sheet was opened from: it opens that circuit again, in its view. */
   parent?: true
+  /** The 3D tab: it shows the board in 3D in place of the PCB. */
+  look?: true
 }
 
 /** The views in tab order, for the tab keys of a one-page schematic. */
@@ -20,9 +22,12 @@ export const DOC_TAB_ORDER: readonly DocView[] = DOC_VIEWS.map((v) => v.view)
 
 const PAGE_ID = "schematic:"
 const PARENT_ID = "parent:"
+/** The 3D tab's id. */
+export const LOOK_ID = "3d"
 
 /** The document a tab id opens; a parent's tab opens the circuit the sheet was opened from. */
-export function tabTarget(id: string): { view: DocView; page?: string; parent?: true } {
+export function tabTarget(id: string): { view: DocView; page?: string; parent?: true; look?: true } {
+  if (id === LOOK_ID) return { view: "pcb", look: true }
   if (id.startsWith(PARENT_ID)) return { ...tabTarget(id.slice(PARENT_ID.length)), parent: true }
   if (id.startsWith(PAGE_ID)) return { view: "schematic", page: id.slice(PAGE_ID.length) }
   return { view: id === "pcb" ? "pcb" : "schematic" }
@@ -49,4 +54,15 @@ export function docTabs(file: string | undefined, openView: DocView, pages: read
     if (view === "pcb" || pages.length <= 1) return [{ id: view, view, title: titled(label, " "), active: view === openView }]
     return pages.map((page) => ({ id: `${PAGE_ID}${page}`, view, page, title: titled(page, " — "), active: openView === "schematic" && page === openPage }))
   })
+}
+
+/**
+ * The tabs with the 3D tab after the PCB tab, "index 3D"; while `look` is on it is the open one and the PCB is not.
+ * A sheet has no 3D tab, as it has no PCB of its own.
+ */
+export function withLookTab(tabs: readonly DocTab[], file: string | undefined, look: boolean): DocTab[] {
+  if (file !== undefined && isSheetFile(file)) return [...tabs]
+  const name = (file ?? "").replace(/\.circuit\.tsx$/, "")
+  const shown = tabs.map((tab) => (look && tab.active ? { ...tab, active: false } : tab))
+  return [...shown, { id: LOOK_ID, view: "pcb", title: name ? `${name} 3D` : "3D", active: look, look: true }]
 }

@@ -1,0 +1,90 @@
+.look {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  min-height: 0;
+}
+
+.look-view {
+  flex: 1 1 auto;
+  position: relative;
+  min-width: 0;
+  cursor: grab;
+  touch-action: none;
+  outline-offset: -2px;
+}
+
+.look-view canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.look-tools {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  gap: 4px;
+}
+
+.look-tools button,
+.look-parts button {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.look-status {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  margin: 0;
+  padding: 2px 6px;
+  color: #ffffff;
+  background: rgb(0 0 0 / 70%);
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+.look-side {
+  flex: 0 0 240px;
+  overflow: auto;
+  padding: 8px;
+  background: var(--panel);
+  color: var(--text);
+  border-left: 1px solid var(--line);
+}
+
+.look-readout {
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+  line-height: 1.6;
+}
+
+.look-limits {
+  color: var(--muted);
+}
+
+.look-parts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.look-parts button {
+  width: 100%;
+  text-align: left;
+  margin-bottom: 2px;
+  border-color: transparent;
+}
+
+.look-parts button[aria-pressed="true"] {
+  border-color: var(--line-strong);
+}

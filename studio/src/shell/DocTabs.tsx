@@ -1,4 +1,4 @@
-import { docTabs, tabTarget } from "./doc-tabs"
+import { docTabs, tabTarget, withLookTab } from "./doc-tabs"
 import type { DocView } from "./page-tree"
 import { useTabList } from "./use-tab-list"
 import "./doc-tabs.css"
@@ -14,15 +14,20 @@ interface Props {
   /** While a sheet is open: the circuit it was opened from, whose tabs go back to it. */
   parent?: string
   onParent?(view: DocView): void
+  /** The 3D view is open over the PCB. */
+  look?: boolean
+  onLook?(look: boolean): void
 }
 
-/** The tab bar above the canvas: a Schematic tab per page of the open file, then its PCB; all are always there. */
-export function DocTabs({ file, view, pages, page, onView, onPage, parent, onParent }: Props) {
-  const tabs = docTabs(file, view, pages, page, parent)
+/** The tab bar above the canvas: a Schematic tab per page of the open file, then its PCB and 3D; all are always there. */
+export function DocTabs({ file, view, pages, page, onView, onPage, parent, onParent, look = false, onLook }: Props) {
+  const tabs = withLookTab(docTabs(file, view, pages, page, parent), file, look)
   const current = tabs.find((tab) => tab.active)?.id ?? view
   const open = (id: string) => {
     const target = tabTarget(id)
-    if (target.parent) onParent?.(target.view)
+    onLook?.(target.look === true)
+    if (target.look) onView(target.view)
+    else if (target.parent) onParent?.(target.view)
     else if (target.page !== undefined) onPage(target.page)
     else onView(target.view)
   }
@@ -34,7 +39,7 @@ export function DocTabs({ file, view, pages, page, onView, onPage, parent, onPar
           key={tab.id}
           role="tab"
           // The canvas panel is labelled by doc-tab-<view>: the open tab of each view carries that id.
-          id={tab.active || (tab.page === undefined && !tab.parent) ? `doc-tab-${tab.view}` : `doc-tab-${tab.view}-${index}`}
+          id={tab.look ? "doc-tab-3d" : tab.active || (tab.page === undefined && !tab.parent) ? `doc-tab-${tab.view}` : `doc-tab-${tab.view}-${index}`}
           aria-controls="doc-panel"
           aria-selected={tab.active}
           className={`doc-tab${tab.active ? " on" : ""}`}
