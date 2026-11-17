@@ -43,6 +43,7 @@ import { installSkill } from "./skill-install.js"
 import { modulesCommand } from "./cli-modules.js"
 import { libraryCommand } from "./cli-library.js"
 import { changeTarget, changeText, changeView } from "./core/change-view.js"
+import { changeRequest } from "./core/change-render.js"
 
 export interface CliIO {
   out(text: string): void
@@ -96,6 +97,7 @@ Usage:
                                               pick-and-place and BOM in <name>-fab/ and <name>-fab.zip
                                               beside the circuit (or in the project folder --out)
   copperflow render <file> [--view pcb|schematic] [--page <name>] [--parts U1,C3] [--width n] [--out file.png]
+                  [--change <id> | --since <id>]
                                               draw the board or a schematic page to a PNG, as the Studio shows it
                                               (<name>-pcb.png or <name>-schematic-<page>.png beside the circuit)
   copperflow board <file> --dxf <path> [--layer <name>] [--units mm|inch] [--origin keep] [--replace]
@@ -286,7 +288,9 @@ async function renderCommand(root: string, rest: string[], options: CliOptions):
   const [page, afterPage] = takeOption(afterView, "--page")
   const [parts, afterParts] = takeOption(afterPage, "--parts")
   const [width, afterWidth] = takeOption(afterParts, "--width")
-  const [out, args] = takeOption(afterWidth, "--out")
+  const [out, afterOut] = takeOption(afterWidth, "--out")
+  const [change, afterChange] = takeOption(afterOut, "--change")
+  const [since, args] = takeOption(afterChange, "--since")
   if (view !== undefined && view !== "pcb" && view !== "schematic") throw new Error(`--view must be pcb or schematic, not ${view}`)
   const request = {
     view: view ?? "pcb",
@@ -295,7 +299,10 @@ async function renderCommand(root: string, rest: string[], options: CliOptions):
     ...(width !== undefined ? { width: Number(width) } : {}),
   } as const
   const renderOptions = { ...designOptions(options), ...(options.renderer ? { renderer: options.renderer } : {}) }
-  return writeRender(root, required(args[0], "file"), request, out, renderOptions)
+  const file = required(args[0], "file")
+  const marked = await changeRequest(root, file, request, { change, since }, options.engine)
+  if (marked) return writeRender(root, file, marked.request, out, { ...renderOptions, design: marked.design })
+  return writeRender(root, file, request, out, renderOptions)
 }
 
 async function changeLocks(root: string, command: "lock" | "unlock", rest: string[], io: CliIO): Promise<void> {

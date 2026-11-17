@@ -4,6 +4,7 @@
 import { mkdir, writeFile } from "node:fs/promises"
 import { basename, dirname, relative, resolve, sep } from "node:path"
 import type { Design } from "../engine/design.js"
+import type { DesignDiff } from "../engine/design-diff.js"
 import { buildWith, type DesignSource } from "./design-source.js"
 import { assertLandsInProject } from "./fabrication.js"
 import { resolveCircuit } from "./workspace.js"
@@ -17,6 +18,8 @@ export interface RenderRequest {
   parts?: string[]
   /** Width of the image in pixels, 320 to 2000; 1024 by default. The height follows the drawing's shape. */
   width?: number
+  /** A change marked over the dimmed board, and the words the line ends with (change-render.ts). The PCB only. */
+  change?: { diff: DesignDiff; caption: string }
 }
 
 /** The picture and one line saying what it shows. */

@@ -6,6 +6,8 @@ import type { Design } from "../../../src/engine/design.js"
 import type { Ctx } from "../pcb/ctx.js"
 import { PALETTE } from "../pcb/ctx.js"
 import { drawPcb } from "../pcb/pcb-draw.js"
+import type { DesignDiff } from "../../../src/engine/design-diff.js"
+import { dimBoard, drawChangeLegend, drawChangeMarks } from "../pcb/change-draw.js"
 import { drawSchematic } from "../pcb/schematic-draw.js"
 import { resetSheetPalette, schematicThemeFor, setSheetPalette } from "../pcb/schematic-theme.js"
 import { cameraFor, frameFor, imageSize, widthOf } from "./render-frame.js"
@@ -18,6 +20,8 @@ export interface RenderRequest {
   parts?: string[]
   /** Width of the image in pixels, 320 to 2000; 1024 by default. The height follows the drawing's shape. */
   width?: number
+  /** A change to mark over the board, dimmed, and the words the picture's line ends with. The PCB only. */
+  change?: { diff: DesignDiff; caption: string }
 }
 
 export interface Rendered {
@@ -43,6 +47,11 @@ export async function renderDesign(design: Design, request: RenderRequest): Prom
     ctx.fillRect(0, 0, size.width, size.height)
     const pcb = frame.design.pcb
     drawPcb(ctx as unknown as Ctx, pcb, view, { ratio: 1, copper: { tracks: pcb.tracks, vias: pcb.vias, selected: new Set() } })
+    if (request.change) {
+      dimBoard(ctx as unknown as Ctx, size)
+      drawChangeMarks(ctx as unknown as Ctx, view, request.change.diff, "both")
+      drawChangeLegend(ctx as unknown as Ctx, size)
+    }
   } else {
     const colours = schematicThemeFor("light")
     ctx.fillStyle = colours.background
@@ -55,5 +64,6 @@ export async function renderDesign(design: Design, request: RenderRequest): Prom
     }
   }
   const png = await canvas.encode("png")
-  return { png: new Uint8Array(png), width: size.width, height: size.height, what: frame.what, ...(frame.page !== undefined ? { page: frame.page } : {}) }
+  const what = request.change ? `${frame.what}; ${request.change.caption}` : frame.what
+  return { png: new Uint8Array(png), width: size.width, height: size.height, what, ...(frame.page !== undefined ? { page: frame.page } : {}) }
 }
