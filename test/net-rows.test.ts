@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { buildDesign } from "../src/engine/design.js"
 import { labelStyle } from "../src/engine/schematic-nets.js"
-import { netBadge, netRows } from "../studio/src/net-rows.js"
+import { lengthText, netBadge, netRows, type NetRow } from "../studio/src/net-rows.js"
 
 const FILE = "main.circuit.tsx"
 const build = (body: string) =>
@@ -61,5 +61,25 @@ describe("netBadge", () => {
   test("takes the first name that is a ground or power name, as the engine's label does", () => {
     expect(netBadge(["SIG", "GND"])).toBe("ground")
     expect(netBadge([])).toBeUndefined()
+  })
+})
+
+describe("netRows with fast lines", () => {
+  test("a net of a pair shows its length, partner and skew", () => {
+    const design = buildDesign({ [FILE]: `export default () => <board width="10mm" height="10mm" />` }, FILE)
+    const nets = [
+      { id: "net.P", names: ["P"], pins: ["U1.1", "J1.1"] },
+      { id: "net.N", names: ["N"], pins: ["U1.2", "J1.2"] },
+    ]
+    const lines = [
+      { net: "net.P", length: 10, from: "J1#1", to: "U1#1", vias: 0, partner: "net.N", skew: 1 },
+      { net: "net.N", length: 11, from: "J1#2", to: "U1#2", vias: 0, partner: "net.P", skew: 1 },
+    ]
+    const rows = netRows({ ...design, circuit: { ...design.circuit, nets }, lines })
+    expect(rows.map((row) => [row.label, row.length, row.partner, row.skew])).toEqual([
+      ["N", 11, "P", 1],
+      ["P", 10, "N", 1],
+    ])
+    expect(lengthText(rows[0] as NetRow)).toBe("11.0 mm, pair P, skew 1.0 mm")
   })
 })

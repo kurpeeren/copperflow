@@ -1,7 +1,7 @@
 import { useMemo } from "react"
 import type { Design } from "./api"
 import { NO_HIGHLIGHT, type Highlight } from "./pcb/highlight"
-import { netRows } from "./net-rows"
+import { lengthText, netRows } from "./net-rows"
 
 interface Props {
   design: Design | undefined
@@ -26,6 +26,7 @@ export function NetsList({ design, highlight, onHighlight }: Props) {
           >
             <span className="name">{row.label}</span>
             {row.badge && <span className={`badge ${row.badge}`}>{row.badge}</span>}
+            {row.length !== undefined && <span className="value">{lengthText(row)}</span>}
             <span className="value">{row.pins === 1 ? "1 pin" : `${row.pins} pins`}</span>
           </button>
         </li>

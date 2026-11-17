@@ -12,6 +12,10 @@ export interface NetRow {
   pins: number
   named: boolean
   badge?: NetBadge
+  /** For a net of a pair, length or impedance class: its length pad to pad, in mm, and for a pair the partner's label and the skew. */
+  length?: number
+  partner?: string
+  skew?: number
 }
 
 // The engine's own rules for what a ground or power name is (src/engine/schematic-nets.ts). The
@@ -43,16 +47,30 @@ export function netLabel(net: Net): string {
   return nameOf(net.names) ?? `(unnamed) ${net.pins[0] ?? net.id}`
 }
 
+/** "11.0 mm, pair P, skew 1.0 mm": what the nets list shows of a measured net. */
+export function lengthText(row: NetRow): string {
+  if (row.length === undefined) return ""
+  const pair = row.partner === undefined ? "" : `, pair ${row.partner}${row.skew === undefined ? "" : `, skew ${row.skew.toFixed(1)} mm`}`
+  return `${row.length.toFixed(1)} mm${pair}`
+}
+
 export function netRows(design: Design): NetRow[] {
+  const lines = new Map((design.lines ?? []).map((line) => [line.net, line]))
+  const byId = new Map(design.circuit.nets.map((net) => [net.id, net]))
   const rows = design.circuit.nets.map((net): NetRow => {
     const name = nameOf(net.names)
     const badge = netBadge(net.names)
+    const line = lines.get(net.id)
+    const partner = line?.partner === undefined ? undefined : byId.get(line.partner)
     return {
       id: net.id,
       label: netLabel(net),
       pins: net.pins.length,
       named: name !== undefined,
       ...(badge ? { badge } : {}),
+      ...(line ? { length: line.length } : {}),
+      ...(partner ? { partner: netLabel(partner) } : {}),
+      ...(line?.skew === undefined ? {} : { skew: line.skew }),
     }
   })
   return rows.sort((a, b) => Number(b.named) - Number(a.named) || collator.compare(a.label, b.label))
