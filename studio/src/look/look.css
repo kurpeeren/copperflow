@@ -89,3 +89,23 @@
 .look-parts button[aria-pressed="true"] {
   border-color: var(--line-strong);
 }
+
+.look-chooser {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.look-chooser select {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+.look-note {
+  margin: 0;
+  color: var(--muted, var(--text));
+}

@@ -21,6 +21,8 @@ export type Role = "body" | "cap" | "leg" | "pin" | "lead" | "pin1" | "cathode" 
 export interface Paint {
   /** Writes the colour (0 to 255) at x, y, z into out[0..2] and answers its alpha, 0 to 1; 0 leaves the pixel to what is behind. */
   at(x: number, y: number, z: number, out: Float32Array, fine: boolean): number
+  /** Set for the board's picture: the drawing then reads its pixels directly, which is much quicker. */
+  texture?: import("./texture.js").BoardTexture
 }
 
 export interface Face {
@@ -109,8 +111,10 @@ function litBoard(board: NonNullable<SolidModel["board"]>, options: SceneOptions
   const loops = [board.outline, ...board.holes].map(loopPoints)
   const t = board.thickness
   const at = (z: number) => (p: { x: number; y: number }): Vec3 => [p.x, p.y, z]
-  const top: Face = { loops: loops.map((loop) => loop.map(at(t))), normal: [0, 0, 1], color: colours.mask, alpha: 1, part: -1, material: "matt", role: "board", ...(options.textures?.top ? { paint: texturePaint(options.textures.top) } : {}) }
-  const bottom: Face = { loops: loops.map((loop) => [...loop].reverse().map(at(0))), normal: [0, 0, -1], color: colours.mask, alpha: 1, part: -1, material: "matt", role: "board", ...(options.textures?.bottom ? { paint: texturePaint(options.textures.bottom) } : {}) }
+  // With its picture, a face needs only its outline: the picture is see-through at every hole.
+  const faceLoops = (texture: unknown) => (texture ? loops.slice(0, 1) : loops)
+  const top: Face = { loops: faceLoops(options.textures?.top).map((loop) => loop.map(at(t))), normal: [0, 0, 1], color: colours.mask, alpha: 1, part: -1, material: "matt", role: "board", ...(options.textures?.top ? { paint: texturePaint(options.textures.top) } : {}) }
+  const bottom: Face = { loops: faceLoops(options.textures?.bottom).map((loop) => [...loop].reverse().map(at(0))), normal: [0, 0, -1], color: colours.mask, alpha: 1, part: -1, material: "matt", role: "board", ...(options.textures?.bottom ? { paint: texturePaint(options.textures.bottom) } : {}) }
   const edge = edgePaint(t, options.layers ?? 2, colours.mask)
   const mounting = options.mounting ?? 0
   const walls = loops.flatMap((loop, index) =>

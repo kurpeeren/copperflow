@@ -10,6 +10,7 @@ export function texturePaint(texture: BoardTexture): Paint {
   const { rgba, width, height, origin, pxPerMm, mirrored } = texture
   const sign = mirrored ? -1 : 1
   return {
+    texture,
     at(x, y, _z, out, fine) {
       const u = origin.x + sign * x * pxPerMm
       const v = origin.y - y * pxPerMm

@@ -113,12 +113,8 @@ export function renderScene(scene: Scene, orbit: Orbit, width: number, height: n
   const frame = frameOf(width, height, options.reuse)
   const view = viewFrame(orbit, scene, width, height)
   const [br, bg, bb] = options.background
-  for (let i = 0; i < width * height; i++) {
-    frame.color[i * 4] = br
-    frame.color[i * 4 + 1] = bg
-    frame.color[i * 4 + 2] = bb
-    frame.color[i * 4 + 3] = 255
-  }
+  frame.color.subarray(0, 4).set([br, bg, bb, 255])
+  for (let filled = 4; filled < frame.color.length; filled *= 2) frame.color.copyWithin(filled, 0, Math.min(filled, frame.color.length - filled))
   frame.ids.fill(-1)
   frame.depth.fill(Infinity)
   frame.faces.fill(-1)
@@ -167,6 +163,8 @@ function drawLit(scene: Scene, view: ViewFrame, frame: Frame, options: RenderOpt
   const sample = new Float32Array(3)
   const { width, height } = frame
   scene.faces.forEach((face, index) => {
+    // Every solid here is closed, or stands on the board: a face turned away from the eye is always hidden.
+    if (dot(face.normal, view.eye) <= 0) return
     const projected = projectFace(face, view)
     if (!projected) return
     const { scale, add } = lightFace(face.normal, view.eye, key, face.material)
@@ -186,18 +184,49 @@ function drawLit(scene: Scene, view: ViewFrame, frame: Frame, options: RenderOpt
       })
       return
     }
-    // The board point at a pixel: target + X·right + Y·up − depth·eye, X and Y from the pixel's centre.
+    // The board point at a pixel is affine in its column and row: x = A·col + B·row + C (pixel centres).
     const s = view.scale
+    const { a, b, c } = projected
+    const axis = (k: 0 | 1 | 2) => ({
+      A: view.right[k] / s - a * view.eye[k],
+      B: -view.up[k] / s - b * view.eye[k],
+      C: view.target[k] + ((0.5 - width / 2) * view.right[k]) / s + ((height / 2 - 0.5) * view.up[k]) / s - (0.5 * a + 0.5 * b + c) * view.eye[k],
+    })
+    const [X, Y, Z] = [axis(0), axis(1), axis(2)]
     const fine = options.fine ?? false
+    const texture = paint.texture
+    if (texture && !fine) {
+      // The picture's pixel, straight: u and v are affine too.
+      const sign = texture.mirrored ? -1 : 1
+      const p = texture.pxPerMm
+      const [Au, Bu, Cu] = [sign * p * X.A, sign * p * X.B, texture.origin.x + sign * p * X.C]
+      const [Av, Bv, Cv] = [-p * Y.A, -p * Y.B, texture.origin.y - p * Y.C]
+      const { rgba, width: tw, height: th } = texture
+      scan(projected, width, height, (i, depth) => {
+        if (depth >= (frame.depth[i] as number)) return
+        const row = (i / width) | 0
+        const col = i - row * width
+        const u = Math.floor(Au * col + Bu * row + Cu)
+        const v = Math.floor(Av * col + Bv * row + Cv)
+        if (u < 0 || v < 0 || u >= tw || v >= th) return
+        const k = (v * tw + u) * 4
+        if ((rgba[k + 3] as number) < 128) return
+        frame.depth[i] = depth
+        frame.ids[i] = -1
+        frame.faces[i] = index
+        frame.color[i * 4] = tone(rgba[k] as number)
+        frame.color[i * 4 + 1] = tone(rgba[k + 1] as number)
+        frame.color[i * 4 + 2] = tone(rgba[k + 2] as number)
+      })
+      return
+    }
     scan(projected, width, height, (i, depth) => {
       if (depth >= (frame.depth[i] as number)) return
-      const col = (i % width) + 0.5
-      const row = Math.floor(i / width) + 0.5
-      const X = (col - width / 2) / s
-      const Y = (height / 2 - row) / s
-      const x = view.target[0] + X * view.right[0] + Y * view.up[0] - depth * view.eye[0]
-      const y = view.target[1] + X * view.right[1] + Y * view.up[1] - depth * view.eye[1]
-      const z = view.target[2] + X * view.right[2] + Y * view.up[2] - depth * view.eye[2]
+      const row = (i / width) | 0
+      const col = i - row * width
+      const x = X.A * col + X.B * row + X.C
+      const y = Y.A * col + Y.B * row + Y.C
+      const z = Z.A * col + Z.B * row + Z.C
       if (paint.at(x, y, z, sample, fine) < 0.5) return
       frame.depth[i] = depth
       frame.ids[i] = face.part
@@ -226,8 +255,9 @@ function darkenEdges(scene: Scene, frame: Frame, scale: number): void {
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = y * width + x
-      if (x + 1 < width && differ(i, i + 1)) edge[(depth[i] as number) > (depth[i + 1] as number) ? i + 1 : i] = 1
-      if (y + 1 < height && differ(i, i + width)) edge[(depth[i] as number) > (depth[i + width] as number) ? i + width : i] = 1
+      const own = faces[i] as number
+      if (x + 1 < width && faces[i + 1] !== own && differ(i, i + 1)) edge[(depth[i] as number) > (depth[i + 1] as number) ? i + 1 : i] = 1
+      if (y + 1 < height && faces[i + width] !== own && differ(i, i + width)) edge[(depth[i] as number) > (depth[i + width] as number) ? i + width : i] = 1
     }
   }
   for (let i = 0; i < edge.length; i++) {

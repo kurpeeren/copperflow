@@ -1,24 +1,38 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react"
 import type { Design } from "../api"
+import type { LookRequest } from "../../../src/engine/fab/picture/looks.js"
 import { solidModel } from "../../../src/engine/solid/model.js"
 import { useElementSize } from "../pcb/canvas-common"
 import { PALETTE } from "../pcb/ctx"
-import { LookParts, LookReadout } from "./LookPanel"
+import { LookChooser, LookParts, LookReadout } from "./LookPanel"
 import { BOTTOM, dragged, orbitKey, START, TOP, wheeled, type Orbit } from "./orbit"
-import { renderScene, type Frame } from "./raster"
+import { partFaces } from "./parts/index"
+import { renderScene, renderSmooth, type Frame } from "./raster"
 import { hoverText } from "./readout"
 import { buildScene, rgb } from "./scene"
+import { useBoardTextures } from "./use-textures"
 import "./look.css"
+
+/** After the view has been still this long, it is drawn again finer: smooth edges and the board's picture blended. */
+const REST_MS = 160
 
 const HELP = "Drag to turn, wheel to zoom. Keys: arrows turn, + and − zoom, T top, B bottom, Home resets."
 
 /**
- * The 3D view: the board and its parts as boxes, turned with the mouse or the keys. It is a look, not an editor:
- * nothing can be changed here. The solids are made only while this view is open.
+ * The 3D view: the board as made, with its parts as lit simple shapes, turned with the mouse or the keys. It is a
+ * look, not an editor: nothing can be changed here. The solids and pictures are made only while this view is open.
+ * While it moves it is drawn at the screen's pixels; at rest, twice as fine and averaged down.
  */
 export function Look3d({ design }: { design: Design }) {
   const model = useMemo(() => solidModel(design), [design])
-  const scene = useMemo(() => buildScene(model), [model])
+  const [look, setLook] = useState<LookRequest>({})
+  const { textures } = useBoardTextures(design, model, look)
+  const parts = useMemo(() => partFaces(design, model), [design, model])
+  const scene = useMemo(
+    () => buildScene(model, { parts, ...(textures ? { textures } : {}), look, mounting: design.pcb.holes.length, layers: design.pcb.board?.layers ?? 2 }),
+    [model, parts, textures, look, design],
+  )
+  const [resting, setResting] = useState(true)
   const host = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   const frame = useRef<Frame | undefined>(undefined)
@@ -35,12 +49,20 @@ export function Look3d({ design }: { design: Design }) {
     const { width, height } = size
     if (!element || width === 0 || height === 0) return
     const started = performance.now()
-    frame.current = renderScene(scene, orbit, width, height, { background: rgb(PALETTE.background), highlight: active, reuse: frame.current })
+    const options = { background: rgb(PALETTE.background), highlight: active, reuse: frame.current, lit: true }
+    frame.current = resting ? renderSmooth(scene, orbit, width, height, options) : renderScene(scene, orbit, width, height, options)
     if (element.width !== width) element.width = width
     if (element.height !== height) element.height = height
     element.getContext("2d")?.putImageData(new ImageData(frame.current.color as Uint8ClampedArray<ArrayBuffer>, width, height), 0, 0)
-    setFrameMs(performance.now() - started)
-  }, [scene, orbit, size, active])
+    if (!resting) setFrameMs(performance.now() - started)
+  }, [scene, orbit, size, active, resting])
+
+  // Moving: draw fast now, and finely once the view has been still a moment.
+  useEffect(() => {
+    setResting(false)
+    const timer = setTimeout(() => setResting(true), REST_MS)
+    return () => clearTimeout(timer)
+  }, [orbit, size])
 
   // The wheel zooms the view, not the page: the listener must be able to stop the page from scrolling.
   useEffect(() => {
@@ -117,6 +139,7 @@ export function Look3d({ design }: { design: Design }) {
       </div>
       <aside className="look-side">
         <LookReadout model={model} />
+        <LookChooser look={look} onLook={setLook} ready={textures !== undefined} />
         <LookParts model={model} active={active} onActive={setFocused} />
       </aside>
     </div>

@@ -13,7 +13,9 @@ import { boardTextures } from "../look/texture.js"
 
 export type Angle = "top" | "bottom" | "front" | "iso"
 
-export const ANGLES: Record<Angle, Orbit> = { top: TOP, bottom: BOTTOM, front: { yaw: 0, pitch: 18, zoom: 1 }, iso: START }
+/** A picture has no buttons beside it: the board fills more of it than the Studio's starting view. */
+const FILL = 1.3
+export const ANGLES: Record<Angle, Orbit> = { top: { ...TOP, zoom: FILL }, bottom: { ...BOTTOM, zoom: FILL }, front: { yaw: 0, pitch: 18, zoom: FILL }, iso: { ...START, zoom: FILL } }
 export const LOOK_MIN_WIDTH = 320
 export const LOOK_MAX_WIDTH = 2000
 const DEFAULT_WIDTH = 1024
@@ -28,11 +30,14 @@ export interface LookRequestOptions {
   width?: number
 }
 
-/** "heights typical: R1, U1; none assumed". */
+const NAMED = 4
+
+/** "heights typical: R1, U1; none assumed", or "heights 40 typical; none assumed". */
 function heightWords(model: ReturnType<typeof solidModel>): string {
   const names = (state: string) => model.parts.filter((p) => p.state === state).map((p) => p.name).sort(naturalCompare)
   const [typical, assumed] = [names("typical"), names("assumed")]
-  const part = (list: string[], word: string) => (list.length === 0 ? `none ${word}` : `${word}: ${list.join(", ")}`)
+  // A few are named; more are counted, to keep the line short.
+  const part = (list: string[], word: string) => (list.length === 0 ? `none ${word}` : list.length <= NAMED ? `${word}: ${list.join(", ")}` : `${list.length} ${word}`)
   return `heights ${part(typical, "typical")}; ${part(assumed, "assumed")}`
 }
 

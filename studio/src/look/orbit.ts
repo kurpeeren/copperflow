@@ -10,6 +10,8 @@ export interface Orbit {
   pitch: number
   /** 1 fits the model to the view. */
   zoom: number
+  /** The point the view turns about; the model's middle when left out. */
+  target?: Vec3
 }
 
 export const START: Orbit = { yaw: -30, pitch: 35, zoom: 1 }
@@ -89,7 +91,7 @@ export function viewFrame(orbit: Orbit, scene: Scene, width: number, height: num
   const right: Vec3 = [Math.cos(yaw), Math.sin(yaw), 0]
   const up = cross(eye, right)
   const [min, max] = scene.bounds
-  const target: Vec3 = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2]
+  const target: Vec3 = orbit.target ?? [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2]
   const diagonal = Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) || 1
   return { eye, right, up, target, scale: ((Math.min(width, height) * FIT) / diagonal) * orbit.zoom, width, height }
 }

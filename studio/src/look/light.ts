@@ -11,8 +11,8 @@ const unit = (v: Vec3): Vec3 => {
 /** Towards the key light, seen from above the top. */
 export const KEY_LIGHT: Vec3 = unit([-0.55, 0.5, 0.78])
 
-const AMBIENT = 0.34
-const FILL = 0.16
+const AMBIENT = 0.36
+const FILL = 0.2
 /** The key's share: a face square to the light from straight above shows its colour as it is. */
 const KEY = (1 - AMBIENT - FILL) / KEY_LIGHT[2]
 /** A metal face's highlight: how strong and how tight. */
