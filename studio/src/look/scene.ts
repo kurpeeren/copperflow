@@ -30,7 +30,7 @@ export interface Scene {
 export const BOARD_ALPHA = 0.45
 const BOARD_COLOR: Rgb = [40, 120, 70]
 
-/** "#33cc99" as numbers. */
+/** A "#rrggbb" colour as numbers. */
 export function rgb(hex: string): Rgb {
   const value = Number.parseInt(hex.slice(1), 16)
   return [(value >> 16) & 255, (value >> 8) & 255, value & 255]

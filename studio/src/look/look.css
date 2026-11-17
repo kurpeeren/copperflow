@@ -46,8 +46,9 @@
   bottom: 8px;
   margin: 0;
   padding: 2px 6px;
-  color: #ffffff;
-  background: rgb(0 0 0 / 70%);
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
   border-radius: 3px;
   pointer-events: none;
 }
