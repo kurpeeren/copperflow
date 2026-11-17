@@ -79,9 +79,13 @@ test("a MOSFET between off and fully on is named with its gate and threshold", a
     <trace from="Q1.source" to="net.GND" />
     <trace from="Q1.gate" to="net.G" />`)
   const between = simulateCircuit(circuit, none, { set: { V12: 12, GND: 0, G: 2 } })
-  expect(between.text).toContain("Q1 is neither off nor fully on: gate 2.00 V, threshold 1.45 V, fully on from 2.50 V")
+  expect(between.text).toContain("Q1 is between off and on: gate 2.00 V, threshold 1.45 V, fully on from 2.50 V")
   const on = simulateCircuit(circuit, none, { set: { V12: 12, GND: 0, G: 3.3 } })
   expect(on.text).toContain("Beyond a limit: none")
+  expect(on.text).toContain("Q1 nmos 817 µV 30.0 mA 24.5 µW, gate 3.30 V, on (Vds 817 µV)")
+  expect(between.text).toMatch(/Q1 nmos .*, gate 2.00 V, between off and on/)
+  const off = simulateCircuit(circuit, none, { set: { V12: 12, GND: 0, G: 0 } })
+  expect(off.text).toMatch(/Q1 nmos .*, gate 0 V, off/)
   expect(on.ok && on.figures.get("Q1.vgs")).toBeCloseTo(3.3)
 })
 

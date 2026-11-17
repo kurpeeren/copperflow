@@ -69,7 +69,7 @@ function mosLines(name: string, main: Solved["elements"][number], f: Built["part
   const on = f.rdsonAt ?? 0
   const off = vgs < vth
   const fullyOn = vgs >= on && main.region === "linear"
-  if (!off && !fullyOn) lines.push(`${name} is neither off nor fully on: gate ${V(vgs)}, threshold ${V(vth)}, fully on from ${V(on)} (the gate voltage of its rdson)${main.region === "saturation" ? "; it limits the current" : ""}`)
+  if (!off && !fullyOn) lines.push(`${name} is between off and on: gate ${V(vgs)}, threshold ${V(vth)}, fully on from ${V(on)} (the gate voltage of its rdson)${main.region === "saturation" ? "; it limits the current" : ""}`)
   if (f.idmax !== undefined && Math.abs(main.i) > f.idmax) lines.push(`${name} carries ${A(Math.abs(main.i))}, over its idmax ${A(f.idmax)}`)
   if (f.vgsmax !== undefined && Math.abs(vgs) > f.vgsmax) lines.push(`${name} has ${V(Math.abs(vgs))} on its gate, over its vgsmax ${V(f.vgsmax)}`)
   if (f.vdsmax !== undefined && Math.abs(main.v) > f.vdsmax) lines.push(`${name} has ${V(Math.abs(main.v))} drain to source, over its vdsmax ${V(f.vdsmax)}`)

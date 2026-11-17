@@ -249,14 +249,19 @@ export function moduleDetails(name: string, module: ShelfModule): string[] {
   ]
 }
 
+export const CASES_ARE_NOT_VERIFICATION = "A case that passes shows the block's DC levels with the models given, not that the module is verified."
+
 /** One line a case, with its last result in this session (simulate with the sheet runs them). */
 function caseLines(name: string, card: SheetCardText): string[] {
   const sheet = name.slice(name.lastIndexOf("/") + 1)
-  return (card.cases ?? []).map((one) => {
+  const cases = card.cases ?? []
+  if (cases.length === 0) return []
+  const lines = cases.map((one) => {
     const last = lastCaseResult(sheet, one.name)
     const result = last === undefined ? "not run in this session" : last.passed ? "passed" : last.text.slice(0, 120)
     return `  case ${caseText(one)} (last run: ${result})`
   })
+  return [...lines, `  ${CASES_ARE_NOT_VERIFICATION}`]
 }
 
 /** A shelf module's details and where and when it was saved. */

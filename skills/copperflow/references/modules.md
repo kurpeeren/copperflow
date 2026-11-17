@@ -63,13 +63,14 @@ frequency, temperature, tolerance; chips are not modelled, their pins draw nothi
 or MOSFET with none is refused. A library part carries `model:` in part.yaml with the datasheet page
 of each figure; each figure is an item of its verification checklist.
 
-A sheet's card can carry `cases` (write them with `describe_sheet`): `[{ name, set, closed?,
-coil?, expect: { OUT: [3.2, 3.6], "K1.coil.i": [0.027, 0.033] } }]`. A figure is a net's voltage,
-or a part's `.v`, `.i`, `.p` (`Q1.vgs` for a MOSFET, `K1.coil.i` for a relay). `simulate { file,
-sheet }` with no `set` runs them, one line each; `module_info` shows the last result. Cases that
-pass are a simulation of simple models, not a person's check of the module. If a case shows a
-block not doing what its card says, say so to the person; do not change the case or the figures
-until it passes. `copperflow spice <file> --out x.cir` writes the same circuit for another simulator.
+A sheet's card can carry `cases` (write them with `describe_sheet`): `[{ name, set, closed?, coil?,
+expect: { OUT: [3.2, 3.6], "K1.coil.i": [0.027, 0.033] } }]`. A figure is a net's voltage, or a
+part's `.v`, `.i`, `.p` (`Q1.vgs` for a MOSFET, `K1.coil.i` for a relay). `simulate { file, sheet
+}` with no `set` runs them, one line each; `module_info` shows the last result. A case that passes
+shows the block's DC levels with the models given, not that the module is verified. If a case shows
+a block not doing what its card says, say so to the person; do not change the case or the figures
+until it passes. `copperflow spice <file> --out x.cir` writes the same circuit for another
+simulator.
 
 ## After the person approved a board: save_module
 

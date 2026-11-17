@@ -53,7 +53,8 @@ test("simulate runs a module's sheet with sources set, and its cases without", a
   expect(cases.text).toContain("Cases of RelayDriver: 4 of 4 passed")
   const info = await call("module_info", { name: "copperflow/RelayDriver" })
   expect(info.text).toContain('  case "3.3 V control": V12=12, GND=0, CTRL=3.3; expects K1.coil.i 0.027 to 0.033, Q1.vgs 2.5 to 12, LED1.i 0.0015 to 0.0025 (last run: passed)')
-  expect(info.text).not.toMatch(/case .*verified/i)
+  expect(info.text.split("\n").filter((line) => line.startsWith("  case ") && /verified/i.test(line))).toEqual([])
+  expect(info.text).toContain("  A case that passes shows the block's DC levels with the models given, not that the module is verified.")
 })
 
 test("a circuit without set and without cases is told what to give", async () => {

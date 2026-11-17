@@ -50,11 +50,19 @@ export function figureValues(built: Built, solved: Solved): Map<string, number> 
   return values
 }
 
+/** A MOSFET as a designer reads a switch: off, on (with its Vds), or between off and on. */
+function switchState(main: Solved["elements"][number], f: Built["parts"][number]["figures"]): string {
+  const vgs = main.control ?? 0
+  if (vgs < (f.vth ?? 0)) return "off"
+  if (vgs >= (f.rdsonAt ?? Number.POSITIVE_INFINITY) && main.region === "linear") return `on (Vds ${V(Math.abs(main.v))})`
+  return "between off and on"
+}
+
 function partLine(solved: Solved, part: Built["parts"][number]): { power: number; line: string } {
   const main = solved.elements[part.main]
   const power = part.elements.reduce((sum, index) => sum + (solved.elements[index]?.p ?? 0), 0)
   const what = part.kind === "relay" ? "relay coil" : part.kind
-  const extra = main?.control === undefined ? "" : part.kind === "nmos" || part.kind === "pmos" ? `, gate ${V(main.control)}, ${main.region}` : `, base ${V(main.control)}`
+  const extra = main?.control === undefined ? "" : part.kind === "nmos" || part.kind === "pmos" ? `, gate ${V(main.control)}, ${switchState(main, part.figures)}` : `, base ${V(main.control)}`
   return { power, line: `  ${part.name} ${what} ${V(main?.v ?? 0)} ${A(main?.i ?? 0)} ${W(power)}${extra}` }
 }
 
