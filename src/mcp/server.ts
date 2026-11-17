@@ -134,7 +134,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "set_props",
     {
       description:
-        "Set literal props of a part (pcbX, pcbY, pcbRotation, schX, resistance, footprint, …); missing props are added. schNameAt, schValueAt and pcbNameAt are label offsets { x, y }; noConnect: \"pin3,pin10\" flags pins meant to stay open. null removes these.",
+        "Set literal props of a part (pcbX, pcbY, pcbRotation, schX, resistance, footprint, …); missing props are added. schNameAt, schValueAt and pcbNameAt are label offsets { x, y }; noConnect: \"pin3,pin10\" flags pins meant to stay open; supplierPartNumbers: \"jlcpcb:C25804\". null removes these.",
       inputSchema: {
         file,
         part: z.string().describe("Part name, e.g. R1"),

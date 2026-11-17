@@ -15,6 +15,7 @@ import {
   validateOrThrow,
 } from "./edit-text.js"
 import { formatLiteral, formatPoint, formatPointList, readPointList } from "./literals.js"
+import { formatSupplierProp, SUPPLIER_PROP } from "./supplier-prop.js"
 import { addInstance, setConnections } from "./instance-edits.js"
 import { addPage, insertOnPage, movePartToPage, removePage, renamePage } from "./page-edits.js"
 import { localNet, localNetRefusal } from "../engine/selectors.js"
@@ -136,11 +137,12 @@ function setProps(
 }
 
 const LABEL_PROPS: ReadonlySet<string> = new Set(LABEL_AT_PROPS)
-/** Props a null removes: the moved labels' positions, the designator's turn, and the no connect flags once the last one goes. */
-const REMOVABLE_PROPS: ReadonlySet<string> = new Set([...LABEL_AT_PROPS, NAME_ROTATION_PROP, NO_CONNECT_PROP])
+/** Props a null removes: the moved labels' positions, the designator's turn, the no connect flags once the last one goes, and the supplier numbers. */
+const REMOVABLE_PROPS: ReadonlySet<string> = new Set([...LABEL_AT_PROPS, NAME_ROTATION_PROP, NO_CONNECT_PROP, SUPPLIER_PROP])
 
 /** A prop's value as written: a point for a label's position (rounded, as corners are), else a checked literal. */
 function formattedProp(key: string, value: Literal | Point): string {
+  if (key === SUPPLIER_PROP) return formatSupplierProp(value)
   if (typeof value !== "object") {
     validateOrThrow(key, value)
     return formatLiteral(value)

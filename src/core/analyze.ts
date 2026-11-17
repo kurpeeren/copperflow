@@ -6,6 +6,7 @@ import { parseLength } from "../engine/units.js"
 import { isBoardItemTag, scanBoardItems, type BoardItemTagFacts } from "./board-items.js"
 import { NAME_NOT_LITERAL, scanDrawings, type DrawingTag, type NamedElement } from "./drawing-scan.js"
 import { readLiteral, readPoint, readPointList } from "./literals.js"
+import { isSupplierObject, SUPPLIER_PROP } from "./supplier-prop.js"
 import type { BoardBox, CircuitModel, PartInfo, Point, PropInfo, TraceInfo } from "./types.js"
 
 const SKIP_KEYS = new Set(["loc", "start", "end", "extra", "comments", "leadingComments", "trailingComments", "innerComments"])
@@ -275,9 +276,11 @@ function readProps(source: string, attributes: JSXAttribute[]): Record<string, P
     attributes.map((attribute): [string, PropInfo] => {
       const literal = readLiteral(attribute.value)
       // A literal point (a moved label's offset) is written back as a whole, so it is editable too.
-      const editable = literal !== undefined || readPoint(attribute.value) !== undefined
+      // So is a literal supplier object, which set_props writes from "<supplier>:<number>".
+      const name = slice(source, attribute.name)
+      const editable = literal !== undefined || readPoint(attribute.value) !== undefined || (name === SUPPLIER_PROP && isSupplierObject(attribute.value))
       const info = { literal, source: attribute.value ? slice(source, attribute.value) : "", editable }
-      return [slice(source, attribute.name), info]
+      return [name, info]
     }),
   )
 }
