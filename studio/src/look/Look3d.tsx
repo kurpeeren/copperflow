@@ -36,8 +36,8 @@ export function Look3d({ design }: { design: Design }) {
     if (!element || width === 0 || height === 0) return
     const started = performance.now()
     frame.current = renderScene(scene, orbit, width, height, { background: rgb(PALETTE.background), highlight: active, reuse: frame.current })
-    element.width = width
-    element.height = height
+    if (element.width !== width) element.width = width
+    if (element.height !== height) element.height = height
     element.getContext("2d")?.putImageData(new ImageData(frame.current.color as Uint8ClampedArray<ArrayBuffer>, width, height), 0, 0)
     setFrameMs(performance.now() - started)
   }, [scene, orbit, size, active])
@@ -84,6 +84,8 @@ export function Look3d({ design }: { design: Design }) {
           setOrbit(next)
         }}
         onPointerDown={(event) => {
+          // A press on a button stays the button's: capturing the pointer would take its click away.
+          if ((event.target as Element).closest("button")) return
           event.currentTarget.setPointerCapture(event.pointerId)
           drag.current = { ...local(event), orbit }
         }}
