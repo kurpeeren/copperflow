@@ -3,7 +3,10 @@
 // short straight pieces; each part's box is six quads. Faces carry their outward normal, colour and translucency, and
 // the index of the part they belong to (-1 for the board). Pure.
 import { arcSweep, type PartSolid, type Segment, type SolidModel } from "../../../src/engine/solid/model.js"
+import type { LookRequest } from "../../../src/engine/fab/picture/looks.js"
 import { PALETTE } from "../pcb/ctx.js"
+import { edgePaint, plainBoardColours, texturePaint } from "./paint.js"
+import type { BoardTextures } from "./texture.js"
 
 export type Vec3 = readonly [number, number, number]
 export type Rgb = readonly [number, number, number]
@@ -87,10 +90,55 @@ function prismFaces(loops: readonly { x: number; y: number }[][], z0: number, z1
   return [top, bottom, ...sides]
 }
 
-export function buildScene(model: SolidModel): Scene {
+/** The lit scene's extras: the parts' shapes, the board's pictures and look, and how many holes are mounting holes. */
+export interface SceneOptions {
+  /** The parts' faces (parts/index.ts); boxes in the side's colour when left out. */
+  parts?: Face[]
+  /** The board's two pictures; until they are made, the faces are the mask's plain colour. */
+  textures?: BoardTextures
+  look?: LookRequest
+  /** The first this many of the board's holes are unplated mounting holes; the others are plated drills. */
+  mounting?: number
+  /** The board's copper layers, for the lines on its edge. */
+  layers?: 2 | 4
+}
+
+/** The board as made, opaque: its faces painted with its pictures, its edge with the laminate, its holes' walls. */
+function litBoard(board: NonNullable<SolidModel["board"]>, options: SceneOptions): Face[] {
+  const colours = plainBoardColours(options.look ?? {})
+  const loops = [board.outline, ...board.holes].map(loopPoints)
+  const t = board.thickness
+  const at = (z: number) => (p: { x: number; y: number }): Vec3 => [p.x, p.y, z]
+  const top: Face = { loops: loops.map((loop) => loop.map(at(t))), normal: [0, 0, 1], color: colours.mask, alpha: 1, part: -1, material: "matt", role: "board", ...(options.textures?.top ? { paint: texturePaint(options.textures.top) } : {}) }
+  const bottom: Face = { loops: loops.map((loop) => [...loop].reverse().map(at(0))), normal: [0, 0, -1], color: colours.mask, alpha: 1, part: -1, material: "matt", role: "board", ...(options.textures?.bottom ? { paint: texturePaint(options.textures.bottom) } : {}) }
+  const edge = edgePaint(t, options.layers ?? 2, colours.mask)
+  const mounting = options.mounting ?? 0
+  const walls = loops.flatMap((loop, index) =>
+    loop.map((p, i): Face => {
+      const q = loop[(i + 1) % loop.length] as { x: number; y: number }
+      const length = Math.hypot(q.x - p.x, q.y - p.y) || 1
+      const outer = index === 0
+      const plated = !outer && index - 1 >= mounting
+      return {
+        loops: [[at(0)(p), at(0)(q), at(t)(q), at(t)(p)]],
+        normal: [(q.y - p.y) / length, -(q.x - p.x) / length, 0],
+        color: plated ? colours.barrel : colours.laminate,
+        alpha: 1,
+        part: -1,
+        material: plated ? "metal" : "matt",
+        role: "board",
+        ...(outer ? { paint: edge } : {}),
+      }
+    }),
+  )
+  return [top, bottom, ...walls]
+}
+
+/** The scene: with options, the lit board as made and the parts' shapes; without, the see-through board and boxes. */
+export function buildScene(model: SolidModel, options?: SceneOptions): Scene {
   const board = model.board
-  const boardFaces = board ? prismFaces([board.outline, ...board.holes].map(loopPoints), 0, board.thickness, BOARD_COLOR, BOARD_ALPHA, -1) : []
-  const partFaces = model.parts.flatMap((part, index) => prismFaces([part.corners], part.bottom, part.top, sideColor(part.side), 1, index))
+  const boardFaces = board ? (options ? litBoard(board, options) : prismFaces([board.outline, ...board.holes].map(loopPoints), 0, board.thickness, BOARD_COLOR, BOARD_ALPHA, -1)) : []
+  const partFaces = options?.parts ?? model.parts.flatMap((part, index) => prismFaces([part.corners], part.bottom, part.top, sideColor(part.side), 1, index))
   const faces = [...partFaces, ...boardFaces]
   const min = [Infinity, Infinity, Infinity]
   const max = [-Infinity, -Infinity, -Infinity]
