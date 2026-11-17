@@ -1,0 +1,21 @@
+title: AO3400A 30 V N-channel MOSFET, RDS(on) < 48 mOhm at VGS 2.5 V
+manufacturer: Alpha and Omega Semiconductor
+mpn: AO3400A
+origin: written 2026-11-17
+footprint: sot23
+pins:
+  "1":
+    name: G
+    type: input
+  "2":
+    name: S
+    type: passive
+  "3":
+    name: D
+    type: passive
+suppliers:
+  lcsc: C20917
+datasheet:
+  url: https://www.aosmd.com/res/datasheets/AO3400A.pdf
+  title: AO3400A datasheet
+datasheet_pages: 1 (SOT23 pin drawing), 2 (VGS(th), RDS(on))

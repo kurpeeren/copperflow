@@ -1,0 +1,64 @@
+title: MCP2515 stand-alone CAN controller with SPI, SOIC-18 wide
+manufacturer: Microchip Technology
+mpn: MCP2515-I/SO
+origin: written 2026-11-17
+footprint: soic18w
+pins:
+  "1":
+    name: TXCAN
+    type: output
+  "2":
+    name: RXCAN
+    type: input
+  "3":
+    name: CLKOUT
+    type: output
+  "4":
+    name: TX0RTS
+    type: input
+  "5":
+    name: TX1RTS
+    type: input
+  "6":
+    name: TX2RTS
+    type: input
+  "7":
+    name: OSC2
+    type: output
+  "8":
+    name: OSC1
+    type: input
+  "9":
+    name: VSS
+    type: ground
+  "10":
+    name: RX1BF
+    type: output
+  "11":
+    name: RX0BF
+    type: output
+  "12":
+    name: INT
+    type: output
+  "13":
+    name: SCK
+    type: input
+  "14":
+    name: SI
+    type: input
+  "15":
+    name: SO
+    type: output
+  "16":
+    name: CS
+    type: input
+  "17":
+    name: RESET
+    type: input
+  "18":
+    name: VDD
+    type: power_in
+datasheet:
+  url: https://ww1.microchip.com/downloads/en/DeviceDoc/MCP2515-Stand-Alone-CAN-Controller-with-SPI-20001801J.pdf
+  title: MCP2515 datasheet DS20001801J
+datasheet_pages: 1 (18-lead SOIC pinout), 4 (Table 1-1 pinout description)
