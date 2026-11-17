@@ -11,6 +11,7 @@ import { padChecks } from "./drc-pads.js"
 import { pourChecks } from "./drc-pours.js"
 import { partChecks } from "./drc-parts.js"
 import { electricalChecks } from "./erc.js"
+import { fastLineChecks, viaThickness } from "./fast-lines.js"
 import { withoutUnplacedPositions } from "./unplaced-parts.js"
 import { violation, type Violation } from "./violation.js"
 
@@ -68,6 +69,7 @@ export function checkDesign(
     ...copperChecks(placed, rules, classOf),
     ...pourChecks(placed, rules, classOf, (net) => circuit.nets.find((one) => one.id === net)?.names[0] ?? net),
     ...copperNoteChecks(copperNotes, layout),
+    ...fastLineChecks(circuit.nets, placed, rules, viaThickness(circuit.board?.thickness, rules)),
     ...skipped,
   ])
   return withoutUnplacedPositions(found, layout)

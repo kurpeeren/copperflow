@@ -2,6 +2,8 @@ import { layoutPathFor, parseLayout, type LayoutRecord } from "../core/layout-fi
 import { isCopperNote } from "./checks/copper-notes.js"
 import { checkDesign } from "./checks/index.js"
 import type { Violation } from "./checks/violation.js"
+import { lineRows, viaThickness, type LineRow } from "./checks/fast-lines.js"
+import { classPairs, hasFastClasses } from "./rules/pairs.js"
 import { elaborate } from "./elaborate.js"
 import { evaluateCircuit } from "./evaluate.js"
 import { generateFootprint, type FootprintResult } from "./footprints/index.js"
@@ -28,6 +30,8 @@ export interface Design {
   diagnostics: Diagnostic[]
   /** Electrical and design-rule findings about the design itself, apart from the diagnostics about the code. */
   violations: Violation[]
+  /** The lengths of the nets of pair, length and impedance classes; absent on a board without such classes. */
+  lines?: LineRow[]
 }
 
 type Files = Readonly<Record<string, string>>
@@ -76,9 +80,12 @@ export function buildDesign(files: Files, main: string): Design {
   const layers = layerCountWarnings(loaded.rules, circuit.board)
   const notes = pcb.diagnostics.filter(isCopperNote)
   const placement = pcb.diagnostics.filter((d) => !isCopperNote(d))
-  const diagnostics = [...circuit.diagnostics, ...wiring, ...copper.diagnostics, ...placement, ...loaded.diagnostics, ...layers, ...classes.diagnostics]
+  const fast = hasFastClasses(loaded.rules)
+  const pairs = fast ? classPairs(loaded.rules, circuit.nets, classes.byNet).diagnostics : []
+  const diagnostics = [...circuit.diagnostics, ...wiring, ...copper.diagnostics, ...placement, ...loaded.diagnostics, ...layers, ...classes.diagnostics, ...pairs]
   const layout = pcb.layout
   const violations = checkDesign(circuit, schematic, layout, loaded.rules, notes)
   const board = withDesignators(layout, loaded.rules.fabrication)
-  return { version: 1, file: main, circuit, schematic, pcb: board, rules: loaded.rules, diagnostics, violations }
+  const lines = fast ? lineRows(circuit.nets, layout, loaded.rules, viaThickness(circuit.board?.thickness, loaded.rules)) : undefined
+  return { version: 1, file: main, circuit, schematic, pcb: board, rules: loaded.rules, diagnostics, violations, ...(lines ? { lines } : {}) }
 }

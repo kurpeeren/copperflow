@@ -157,7 +157,7 @@ function resolveClass(name: string, written: NonNullable<RulesFile["netClasses"]
   }
 }
 
-const FAST_KEYS = ["impedance", "pair", "differentialImpedance", "gap", "maxSkew", "maxLength", "matchGroup", "maxSpread"] as const
+const FAST_KEYS = ["impedance", "pair", "differentialImpedance", "gap", "maxSkew", "maxLength", "matchGroup", "maxSpread", "minCoupled"] as const
 
 /** The optional fast-line keys a class wrote, as written (lengths already in mm). */
 function fastKeys(written: NonNullable<RulesFile["netClasses"]>[string]): Partial<NetClass> {

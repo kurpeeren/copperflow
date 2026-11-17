@@ -63,6 +63,8 @@ export interface NetClass {
   /** Nets that must be the same length; `maxSpread` is the most longest and shortest may differ, in mm. */
   matchGroup?: string
   maxSpread?: number
+  /** The share of a pair's length, in percent, that must run side by side; 80 when left out. */
+  minCoupled?: number
   /** Set when trackWidth (and gap) came from the impedance: "50 ohm single" or "90 ohm differential at a 0.2 mm gap". */
   widthFrom?: string
 }
@@ -142,6 +144,7 @@ const NetClassSchema = z
     maxLength: length.optional(),
     matchGroup: z.string().min(1).optional(),
     maxSpread: nonNegativeLength.optional(),
+    minCoupled: z.number().min(0, "a share from 0 to 100 %").max(100, "a share from 0 to 100 %").optional(),
   })
   .strict()
   .refine((c) => c.maxSpread === undefined || c.matchGroup !== undefined, { message: "maxSpread needs a matchGroup", path: ["maxSpread"] })
