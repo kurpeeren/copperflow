@@ -2,7 +2,8 @@
 // and the bill of materials, as files in `<name>-fab/` and the same files in `<name>-fab.zip` beside it. A design with
 // errors is refused, and so is one with a blind or buried via; unrouted connections, parts without a footprint,
 // designators left over pads and parts without an LCSC part number give warnings that name them. The set is pure and deterministic (the only date in it is
-// the creation date passed in); writeFabrication puts it on disk.
+// the creation date passed in); writeFabrication puts it on disk. The set ends with the board and its parts as a STEP
+// model, for the enclosure's designer.
 import { mkdir, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import type { BomLine } from "../../core/bom.js"
@@ -16,6 +17,9 @@ import { designName, fabFileName, fabFolderName, fabZipName, GERBER_LAYERS, OTHE
 import { naturalCompare } from "../order.js"
 import { pickAndPlaceCsv } from "./pick-and-place.js"
 import { zipFiles } from "./zip.js"
+import { modelLine, stepFileName } from "../solid/limits.js"
+import { solidModel } from "../solid/model.js"
+import { stepText } from "../solid/step.js"
 
 export interface FabricationFile {
   file: string
@@ -29,10 +33,12 @@ export interface FabricationSet {
   /** The folder's and the zip's names, without a directory. */
   folder: string
   zip: string
-  /** In the order they are written and zipped: Gerbers, plated and non-plated drills, pick-and-place, BOM. */
+  /** In the order they are written and zipped: Gerbers, plated and non-plated drills, pick-and-place, BOM, STEP model. */
   files: FabricationFile[]
   zipData: Uint8Array
   warnings: string[]
+  /** What the STEP model is not, and whose heights it assumes: one line for the answer. */
+  model: string
 }
 
 export type FabricationResult = FabricationSet | { ok: false; errors: string[] }
@@ -109,18 +115,21 @@ export function fabricationSet(design: Design, bom: readonly BomLine[], created:
   const errors = fabricationErrors(design)
   if (errors.length > 0) return { ok: false, errors }
   const name = designName(design.file)
+  // The solids are made here, when the export is asked for, and never in an ordinary build.
+  const solids = solidModel(design)
   const files: FabricationFile[] = [
     ...gerberFiles(design.pcb, design.rules.fabrication, name, created),
     ...drillFiles(design.pcb, name, created),
     { file: fabFileName(name, "pick-and-place"), text: pickAndPlaceCsv(design.pcb, design.rules.fabrication) },
     { file: fabFileName(name, "bom"), text: jlcpcbBomCsv(bom) },
+    { file: stepFileName(name), text: stepText(solids, name) },
   ]
   const zipData = zipFiles(
     files.map(({ file, text }) => ({ name: file, text })),
     created,
   )
   const warnings = [...unroutedWarnings(design), ...footprintWarnings(design), ...silkscreenWarnings(design.pcb, design.rules.fabrication), ...supplierWarnings(bom)]
-  return { ok: true, name, folder: fabFolderName(name), zip: fabZipName(name), files, zipData, warnings }
+  return { ok: true, name, folder: fabFolderName(name), zip: fabZipName(name), files, zipData, warnings, model: modelLine(stepFileName(name), solids.parts) }
 }
 
 /**

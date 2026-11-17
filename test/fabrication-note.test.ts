@@ -11,6 +11,11 @@ describe("the note after Export → Fabrication files", () => {
     )
   })
 
+  test("says what the STEP model is not, after the upload step", () => {
+    const model = "led.step: parts are boxes, not their real shapes; heights marked assumed are guesses (assumed: J1)."
+    expect(fabricationNote({ ...written([]), model })).toMatch(/at its assembly step \(the zip holds them too\)\. led\.step: parts are boxes, not their real shapes; heights marked assumed are guesses \(assumed: J1\)\. Checks: /)
+  })
+
   test("adds each warning in full", () => {
     const warnings = [
       "5 connections are not routed: net.A: R1#1 to R2#1, net.B: R1#2 to R2#2, net.C: U1#1 to U1#2, net.D: J1#1 to U1#3, net.E: J1#2 to U1#4",

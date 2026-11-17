@@ -17,7 +17,8 @@ function warningLines(warnings: readonly string[]): string[] {
 export function fabricationNote(result: FabricationExport): string {
   if (!result.written) return `No fabrication files written: ${result.errors.join("; ")}`
   const upload = uploadStep(result.zip, result.folder, result.files)
-  return [`Wrote ${result.files.length} fabrication files to ${result.folder}/ and ${result.zip}.`, `U${upload.slice(1)}.`, ...warningLines(result.warnings), checksLine(result.checks)].join(" ")
+  const model = result.model === undefined ? [] : [result.model]
+  return [`Wrote ${result.files.length} fabrication files to ${result.folder}/ and ${result.zip}.`, `U${upload.slice(1)}.`, ...model, ...warningLines(result.warnings), checksLine(result.checks)].join(" ")
 }
 
 /** Whether Export → Fabrication files asks first: when the checks report errors. */

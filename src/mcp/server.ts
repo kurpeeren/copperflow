@@ -402,7 +402,7 @@ Nothing was written.`)
     "export_fabrication",
     {
       description:
-        "Write the JLCPCB fabrication files (Gerbers, drills, pick-and-place, BOM) to <name>-fab/ and a zip. Call it after a clean check_circuit: a design with errors is refused.",
+        "Write the JLCPCB fabrication files (Gerbers, drills, pick-and-place, BOM) and a STEP model to <name>-fab/ and a zip. Call it after a clean check_circuit: a design with errors is refused.",
       inputSchema: {
         file,
         out: z.string().optional().describe("Project folder to write into, e.g. fab"),

@@ -100,7 +100,7 @@ describe("the CAN module's Gerbers after the router runs on it", () => {
     const set = fabricationSet(routed, await buildBom(FOLDER, MAIN, { design: routed }), CREATED)
     if (!set.ok) throw new Error(set.errors.join("; "))
     expect(set.warnings).toEqual(["No LCSC part number for C1, C2, C3, C4, J1, J2, J3, R1, R2, Y1; JLCPCB assembly will not match them"])
-    expect(readZip(set.zipData)).toHaveLength(13)
+    expect(readZip(set.zipData)).toHaveLength(14)
     const placed = (set.files.find((f) => f.file === "can-module-pick-and-place.csv")?.text ?? "").trimEnd().split("\n").slice(1)
     expect(placed.map((row) => row.split(",")[0])).toEqual(["C1", "C2", "C3", "C4", "J1", "J2", "J3", "R1", "R2", "U1", "U2", "Y1"])
   }, 60_000)

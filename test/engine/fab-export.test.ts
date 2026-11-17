@@ -40,7 +40,7 @@ const NAMES = [
   "NPTH.drl",
   "pick-and-place.csv",
   "bom.csv",
-].map((name) => `can-module-${name}`)
+].map((name) => `can-module-${name}`).concat("can-module.step")
 
 let design: Design
 let bom: BomLine[]

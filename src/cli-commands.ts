@@ -46,6 +46,7 @@ import { libraryCommand } from "./cli-library.js"
 import { changeTarget, changeText, changeView } from "./core/change-view.js"
 import { changeRequest } from "./core/change-render.js"
 import { simulateCommand, spiceCommand } from "./cli-simulate.js"
+import { exportStep, formatStepExport } from "./core/step-export.js"
 
 export interface CliIO {
   out(text: string): void
@@ -97,7 +98,9 @@ Usage:
                                               which net is on each pin of the library chips and connectors
   copperflow export <file> [--out dir]        write the fabrication files for JLCPCB: Gerbers, drills,
                                               pick-and-place and BOM in <name>-fab/ and <name>-fab.zip
-                                              beside the circuit (or in the project folder --out)
+                                              beside the circuit (or in the project folder --out), with <name>.step
+  copperflow step <file> [--out file.step]   write the board and its parts (as boxes) as a STEP file for CAD,
+                                              <name>.step beside the circuit
   copperflow render <file> [--view pcb|schematic] [--page <name>] [--parts U1,C3] [--width n] [--out file.png]
                   [--change <id> | --since <id>]
                                               draw the board or a schematic page to a PNG, as the Studio shows it
@@ -227,6 +230,11 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
         const result = await exportFabrication(root, required(args[0], "file"), { ...designOptions(options), ...(outDir ? { outDir } : {}) })
         io.out(formatFabrication(result))
         return result.written ? 0 : 1
+      }
+      case "step": {
+        const [out, args] = takeOption(rest, "--out")
+        io.out(formatStepExport(await exportStep(root, required(args[0], "file"), { ...designOptions(options), ...(out ? { out } : {}) })))
+        return 0
       }
       case "render":
         io.out(await renderCommand(root, rest, options))

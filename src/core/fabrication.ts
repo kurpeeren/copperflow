@@ -29,7 +29,7 @@ export interface FabricationOptions {
 
 /** What an export wrote, every path relative to the project root with "/" between folders; or why it wrote nothing. */
 export type FabricationExport =
-  | { written: true; folder: string; zip: string; files: string[]; warnings: string[]; checks: CheckCounts; order?: string }
+  | { written: true; folder: string; zip: string; files: string[]; warnings: string[]; checks: CheckCounts; order?: string; model?: string }
   | { written: false; errors: string[]; order?: string }
 
 /** A folder of the project, the root itself included (resolveInRoot accepts only what is inside it). */
@@ -96,7 +96,7 @@ export function exportFabrication(root: string, file: string, options: Fabricati
     })
     const inProject = (path: string) => relative(root, path).split(sep).join("/")
     const checks = checkCounts(checkDesign(design))
-    return { written: true, folder: inProject(written.folder), zip: inProject(written.zip), files: written.files.map((path) => path.split(sep).pop() ?? path), warnings: set.warnings, checks, order }
+    return { written: true, folder: inProject(written.folder), zip: inProject(written.zip), files: written.files.map((path) => path.split(sep).pop() ?? path), warnings: set.warnings, checks, order, model: set.model }
   })
 }
 
@@ -105,7 +105,8 @@ export function exportFabrication(root: string, file: string, options: Fabricati
 const orderLines = (result: FabricationExport): string[] => (result.order === undefined ? [] : [result.order])
 
 /**
- * The export as text: the folder and zip, the files (one per line, or on one line when `compact`), each warning, and
+ * The export as text: the folder and zip, the files (one per line, or on one line when `compact`), what the STEP model
+ * is not, each warning, and
  * the next step, a person uploading the zip for the board and the CSVs for assembly; or each error and that nothing was
  * written; then the order report's two verdicts.
  */
@@ -115,6 +116,7 @@ export function formatFabrication(result: FabricationExport, options: { compact?
   return [
     `Wrote ${result.files.length} files to ${result.folder}/ and ${result.zip}:`,
     ...files,
+    ...(result.model === undefined ? [] : [result.model]),
     ...result.warnings.map((warning) => `Warning: ${warning}`),
     checksLine(result.checks),
     `Next, a person should ${uploadStep(result.zip, result.folder, result.files)}.`,
