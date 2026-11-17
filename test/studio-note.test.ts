@@ -99,7 +99,7 @@ test("a stop request without the key is refused", async () => {
 
 test("a stale note (nothing listens) is removed and nothing is ended", async () => {
   const { root } = await project()
-  await writeNote(root, { pid: 999999, port: 1, key: KEY, root, started: "x" })
+  await writeNote(root, { pid: 999999, port: 1, key: KEY, root: projectRoot(root), started: "x" })
   expect(await stopStudio(root)).toBe("No Studio is running for this folder.")
   expect(await readNote(root)).toBeUndefined()
 })
@@ -107,7 +107,8 @@ test("a stale note (nothing listens) is removed and nothing is ended", async () 
 test("a program that answers 200 to anything is stale and that program is not touched", async () => {
   const { root } = await project()
   const port = await otherProgram()
-  await writeNote(root, { pid: process.pid, port, key: KEY, root, started: "x" })
+  // The note names the folder as a Studio writes it, by its real path: only then is the program asked at all.
+  await writeNote(root, { pid: process.pid, port, key: KEY, root: projectRoot(root), started: "x" })
   expect(await stopStudio(root)).toBe("No Studio is running for this folder.")
   expect(requests).toBe(1)
   expect(await readNote(root)).toBeUndefined()
@@ -117,12 +118,13 @@ test("a program that answers 200 to anything is stale and that program is not to
 test("a note with a bad key, a bad port or another root is stale and nothing is requested", async () => {
   const { root } = await project()
   const port = await otherProgram()
+  const real = projectRoot(root)
   const bad = [
-    { pid: 1, port, key: "Z".repeat(48), root, started: "x" },
-    { pid: 1, port, key: `${KEY}&x`, root, started: "x" },
-    { pid: 1, port: 70000, key: KEY, root, started: "x" },
-    { pid: 1, port: 0, key: KEY, root, started: "x" },
-    { pid: 1, port, key: KEY, root: join(root, "other"), started: "x" },
+    { pid: 1, port, key: "Z".repeat(48), root: real, started: "x" },
+    { pid: 1, port, key: `${KEY}&x`, root: real, started: "x" },
+    { pid: 1, port: 70000, key: KEY, root: real, started: "x" },
+    { pid: 1, port: 0, key: KEY, root: real, started: "x" },
+    { pid: 1, port, key: KEY, root: join(real, "other"), started: "x" },
   ]
   for (const note of bad) {
     await mkdir(join(process.env["COPPERFLOW_HOME"]!, "run"), { recursive: true })

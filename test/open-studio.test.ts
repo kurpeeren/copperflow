@@ -6,7 +6,7 @@ import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { cliStarter, openStudio, studioArgs, type StudioStarter } from "../src/mcp/open-studio.js"
 import { runStudio, type RunningStudio } from "../src/studio/run-studio.js"
-import { notePath, readNote, stopStudio, studioOpenUrl, studioUrl, writeNote } from "../src/studio/studio-note.js"
+import { notePath, projectRoot, readNote, stopStudio, studioOpenUrl, studioUrl, writeNote } from "../src/studio/studio-note.js"
 
 const builder = { build: async () => { throw new Error("no builds here") } }
 const running: RunningStudio[] = []
@@ -94,7 +94,7 @@ test("a Studio started by hand is reused without the idle sentence", async () =>
 
 test("a stale note is replaced by a new Studio", async () => {
   const { root, staticDir } = await project()
-  await writeNote(root, { pid: 999999, port: 1, key: "a".repeat(48), root, started: "x" })
+  await writeNote(root, { pid: 999999, port: 1, key: "a".repeat(48), root: projectRoot(root), started: "x" })
   const start = inProcess(staticDir)
   const text = await openStudio({ root, start, openBrowser: async () => true }, { open: false })
   expect(start.calls).toBe(1)
@@ -131,8 +131,8 @@ test("a planted note with another address, host or key opens nothing and request
   const port = (server.address() as { port: number }).port
   const planted = [
     { pid: 1, port, key: "a".repeat(48), root: "/elsewhere", started: "x", url: "file:///etc/passwd", openUrl: "file:///etc/passwd" },
-    { pid: 1, port: "evil.example:80", key: "a".repeat(48), root, started: "x" },
-    { pid: 1, port, key: "a".repeat(47) + "#", root, started: "x" },
+    { pid: 1, port: "evil.example:80", key: "a".repeat(48), root: projectRoot(root), started: "x" },
+    { pid: 1, port, key: "a".repeat(47) + "#", root: projectRoot(root), started: "x" },
   ]
   for (const note of planted) {
     await mkdir(join(process.env["COPPERFLOW_HOME"]!, "run"), { recursive: true })
