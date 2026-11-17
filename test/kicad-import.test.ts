@@ -140,7 +140,7 @@ describe("refusals: nothing is written", () => {
 
   test("an existing circuit of the same name without replace", async () => {
     await importKicad(root, { kicad: "boards/fixture.kicad_pcb" }, meta)
-    expect(await refused({ kicad: "boards/fixture.kicad_pcb" })).toBe("fixture.circuit.tsx already exists; pass replace to overwrite it, or choose another name")
+    expect(await refused({ kicad: "boards/fixture.kicad_pcb" })).toBe("fixture.circuit.tsx already exists; pass replace: true to overwrite it, or choose another file")
   })
 
   test("a path outside the project folder, when only the project is given", async () => {
@@ -153,6 +153,23 @@ describe("refusals: nothing is written", () => {
     await writeFile(join(root, "boards", "huge.kicad_pcb"), Buffer.alloc(33 * 1024 * 1024, 32))
     expect(await refused({ kicad: "boards/huge.kicad_pcb" })).toBe("huge.kicad_pcb is 33 MB; copperflow reads KiCad boards of up to 32 MB")
     expect(await exists(join(root, "parts"))).toBe(false)
+  })
+})
+
+describe("versions", () => {
+  test("a file newer than the newest version tested is read, and the answer says so in one line", async () => {
+    const text = (await readFile(join(root, "boards", "fixture.kicad_pcb"), "utf8")).replace("(version 20260206)", "(version 20290101)")
+    const result = await importKicad(root, { kicad: "future.kicad_pcb", text }, meta)
+    const lines = formatKicadImport(result)
+    expect(lines.filter((line) => line.startsWith("Note: "))).toEqual([
+      "Note: this file's version, 20290101, is newer than 20260206, the newest copperflow was tested with (saved by KiCad 10.0.5); look at the result closely.",
+    ])
+    expect(result.padErrors).toEqual([])
+  })
+
+  test("the tested version gives no such line", async () => {
+    const result = await importKicad(root, { kicad: "boards/fixture.kicad_pcb" }, meta)
+    expect(formatKicadImport(result).some((line) => line.startsWith("Note: "))).toBe(false)
   })
 })
 
@@ -187,6 +204,14 @@ describe("copperflow import kicad", () => {
     expect(out.join("\n").split("\n")[0]).toMatch(/^Change c\d+: imported fixture\.kicad_pcb \(KiCad file version 20260206\) as main\.circuit\.tsx/)
     expect(code).toBe(0)
     expect(await exists(join(root, "main.circuit.tsx"))).toBe(true)
+  })
+
+  test("an existing circuit is refused with the command line's own flags", async () => {
+    const out: string[] = []
+    const io = { out: (text: string) => out.push(text), err: (text: string) => out.push(text) }
+    await runCli(["import", "kicad", "boards/fixture.kicad_pcb", "--name", "main"], root, io, { engine: inProcessEngine })
+    expect(await runCli(["import", "kicad", "boards/fixture.kicad_pcb", "--name", "main"], root, io, { engine: inProcessEngine })).toBe(1)
+    expect(out.at(-1)).toBe("copperflow: main.circuit.tsx already exists; pass --replace to overwrite it, or choose another name with --name")
   })
 
   test("says how it is used when the path is missing or the kind is not kicad", async () => {

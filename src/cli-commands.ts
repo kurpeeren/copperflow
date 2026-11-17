@@ -272,7 +272,7 @@ async function importCommand(cwd: string, root: string, rest: string[], options:
   if (unknown) throw new Error(`Unknown option "${unknown}" for import kicad. ${KICAD_USAGE}`)
   if (remaining[0] === undefined) throw new Error(`Missing the KiCad board (.kicad_pcb). ${KICAD_USAGE}`)
   const request = { kicad: resolve(cwd, remaining[0]), replace, ...(name !== undefined ? { name } : {}), ...(origin === "keep" ? { origin: "keep" as const } : {}) }
-  return formatKicadImport(await importKicad(root, request, { author: "human", ...designOptions(options) })).join("\n")
+  return formatKicadImport(await importKicad(root, request, { author: "human", caller: "cli", ...designOptions(options) })).join("\n")
 }
 
 async function renderCommand(root: string, rest: string[], options: CliOptions): Promise<string> {

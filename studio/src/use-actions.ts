@@ -43,6 +43,8 @@ export interface Actions {
   fitBoard(): Promise<EditOutcome>
   /** File → Import board outline (DXF): the picked drawing's board written to the open circuit, as one history entry, and told. */
   importBoard(name: string, text: string): Promise<EditOutcome>
+  /** File → Import board with a KiCad board: a new circuit written as one history entry; its file, or undefined when refused. */
+  importKicad(name: string, text: string): Promise<string | undefined>
   /** Route → Unroute: removes the router's copper among `ids`, or all of it, as one history entry, and tells it. */
   unroute(ids?: readonly string[]): Promise<EditOutcome>
   /** Design rules: writes the fillet radius to rules.yaml (null for the default), as one history entry, and tells it. */
@@ -171,6 +173,15 @@ export function useActions({ file, refresh, notify, openVerify }: ActionsInput):
             return { ok, mark }
           })(),
         ),
+      importKicad: async (name, text) => {
+        let made: string | undefined
+        await run(async () => {
+          const done = await api<{ summary: string; file: string }>("/api/import-board", { file: file ?? "", name, text })
+          made = done.file
+          notify(done.summary)
+        })
+        return made
+      },
       unroute: (ids) =>
         announceHistoryWrite(
           (async () => {

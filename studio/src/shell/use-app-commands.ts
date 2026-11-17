@@ -53,6 +53,8 @@ interface WorkspaceCommands {
 
 interface Input {
   file: string | undefined
+  /** Opens a circuit a KiCad import just wrote, after the file list is read again. */
+  openImported(file: string): void
   view: View
   setView(view: View): void
   selection: Selection
@@ -159,16 +161,21 @@ export function writeFabricationFiles(file: string | undefined, actions: Pick<Ac
 /** The largest drawing the Studio sends; the server takes requests up to 1 MB. */
 const MAX_DRAWING_BYTES = 1000 * 1000
 
-/** File → Import board outline (DXF)…: the system file picker, then the drawing's text to the server. */
-function pickBoardDrawing(actions: Actions): void {
-  const picker = Object.assign(document.createElement("input"), { type: "file", accept: ".dxf" })
+/** File → Import board (DXF or KiCad)…: the system file picker, then the file's text to the server; a KiCad board opens as a new circuit. */
+function pickBoardDrawing(actions: Actions, openImported: (file: string) => void): void {
+  const picker = Object.assign(document.createElement("input"), { type: "file", accept: ".dxf,.kicad_pcb" })
   picker.addEventListener("change", () => {
     const picked = picker.files?.[0]
     if (!picked) return
-    if (picked.size > MAX_DRAWING_BYTES) return actions.notify(`${picked.name} is larger than 1 MB; import it with the agent's import_board or copperflow board --dxf`)
+    const kicad = /\.kicad_pcb$/i.test(picked.name)
+    if (picked.size > MAX_DRAWING_BYTES) return actions.notify(`${picked.name} is larger than 1 MB; import it with the agent's import_board or ${kicad ? "copperflow import kicad" : "copperflow board --dxf"}`)
     picked
       .text()
-      .then((text) => actions.importBoard(picked.name, text))
+      .then(async (text) => {
+        if (!kicad) return void (await actions.importBoard(picked.name, text))
+        const made = await actions.importKicad(picked.name, text)
+        if (made !== undefined) openImported(made)
+      })
       .catch((error: Error) => actions.notify(error.message))
   })
   picker.click()
@@ -274,7 +281,7 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     autoplaceSelection: () => placeScope(input, placeSelectionScope(input.design, input.selection.names)),
     autoplaceInstance: () => placeScope(input, placeInstanceScope(input.design, input.selection.names)),
     fitBoard: () => void input.actions.fitBoard(),
-    importBoardDxf: () => pickBoardDrawing(input.actions),
+    importBoardDxf: () => pickBoardDrawing(input.actions, input.openImported),
     autoroute: () => routeScope(input, { kind: "all" }),
     autorouteSelection: () => routeScope(input, selectionScope(input.design, input.selection.names)),
     autorouteNet: () => routeScope(input, netScope(input.highlight)),
@@ -334,7 +341,7 @@ function useAppKeys(runCommand: (command: CommandId) => void, view: View): void 
 /** Returns the function the menu bar and toolbar call; it changes only when what the commands read changes. */
 export function useAppCommands(input: Input): (command: CommandId) => void {
   const [waiting, setWaiting] = useState<{ command: CommandId; view: View } | null>(null)
-  const { file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, openChecks, checkCounts, openFind, openDialog, design, page, openPage, highlight } = input
+  const { file, openImported, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, openChecks, checkCounts, openFind, openDialog, design, page, openPage, highlight } = input
   // The workspace object is new on every render, but its functions are stable.
   const { run, openBottom, openPageTree, setTheme, toggleHoverLabels, setPourFill } = input.workspace
   // A command waiting for its view runs once that view's canvas has mounted and subscribed.
@@ -348,7 +355,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
   }, [waiting, view, actions])
   const runCommand = useCallback(
     (command: CommandId) => {
-      const own = appCommand({ file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, workspace: { run, openBottom, openPageTree, setTheme, toggleHoverLabels, setPourFill }, openChecks, checkCounts, openFind, openDialog, design, page, openPage, highlight }, command)
+      const own = appCommand({ file, openImported, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, workspace: { run, openBottom, openPageTree, setTheme, toggleHoverLabels, setPourFill }, openChecks, checkCounts, openFind, openDialog, design, page, openPage, highlight }, command)
       if (own) return own()
       const only = viewOf(command)
       if (only && view !== only) {
@@ -358,7 +365,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
       }
       if (!send(command)) actions.notify("Wait for the build to finish, then try again.")
     },
-    [file, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, run, openBottom, openPageTree, setTheme, toggleHoverLabels, setPourFill, openChecks, checkCounts, openFind, openDialog, design, page, openPage, highlight],
+    [file, openImported, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, run, openBottom, openPageTree, setTheme, toggleHoverLabels, setPourFill, openChecks, checkCounts, openFind, openDialog, design, page, openPage, highlight],
   )
   useAppKeys(runCommand, view)
   return runCommand

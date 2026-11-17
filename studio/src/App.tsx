@@ -245,7 +245,8 @@ function useStudio() {
   const copperRecords = tab === "pcb" ? pcb : undefined
   const sheetIds = { sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords }
   const aiLock = useAiLock(data.history, circuit !== undefined, tab, toast.notify)
-  const runAny = useAppCommands({ file, view: tab, setView: setTab, selection, select, circuit, actions, pickLayers, pickFilter: workspace.pickFilter, ...sheetIds, workspace, openChecks, checkCounts: checks.counts, openFind: find.open, openDialog: setDialog, design: build.design, page, openPage, highlight: workspace.highlight })
+  const openImported = useCallback((made: string) => void data.refreshFiles().then(() => openDocument(made, "pcb")), [data, openDocument])
+  const runAny = useAppCommands({ file, openImported, view: tab, setView: setTab, selection, select, circuit, actions, pickLayers, pickFilter: workspace.pickFilter, ...sheetIds, workspace, openChecks, checkCounts: checks.counts, openFind: find.open, openDialog: setDialog, design: build.design, page, openPage, highlight: workspace.highlight })
   // Every menu, toolbar and context menu command comes through here: while the AI lock is closed no editing one runs.
   const runCommand = useCallback((command: CommandId) => (aiLock.closed && blocksCommand(command) ? void lockGate.refuses() : runAny(command)), [aiLock.closed, runAny])
   return { verifying, closeVerify, aiLock, toast, tab, setTab, dialog, closeDialog, openImportPart, openNewPart, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, openSheet, sheetParent, runCommand, page, openPage }

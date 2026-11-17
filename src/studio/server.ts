@@ -58,6 +58,7 @@ import { RouteRunner, routeWorkerFactory, type RouteWorkerFactory } from "./rout
 import { PlaceRunner, placeWorkerFactory, type PlaceWorkerFactory } from "./place-runner.js"
 import { fitBoardEdit } from "./fit-board.js"
 import { formatBoardImport, importBoard } from "../core/board-import.js"
+import { formatKicadImport, importKicad } from "../library/kicad/import.js"
 import { watchIdle } from "./idle.js"
 import { controlRoute } from "./studio-control.js"
 import { projectRoot } from "./studio-note.js"
@@ -252,7 +253,7 @@ const Bodies = {
   }),
   // Layout → Fit board: the rectangle round the parts, with a margin in mm.
   fitBoard: z.object({ file, margin: z.number().min(0).max(50).optional() }),
-  // File → Import board outline (DXF): the picked drawing's file name and text.
+  // File → Import board (DXF or KiCad): the picked drawing's or board's file name and text.
   importBoard: z.object({ file, name: z.string().min(1).max(260), text: z.string().max(MAX_BODY_BYTES) }),
   // Route → Unroute: the router's copper among the ids, or all of it.
   unroute: z.object({ file, ids: z.array(z.string().min(1).max(32)).max(5000).optional() }),
@@ -432,6 +433,13 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       }
       case "POST /api/import-board": {
         const body = Bodies.importBoard.parse(await readJson(req))
+        if (/\.kicad_pcb$/i.test(body.name)) {
+          // A KiCad board is a whole new circuit, named after the board file; the Studio opens it.
+          const made = await importKicad(root, { kicad: body.name, text: body.text }, { author: "human", caller: "studio", engine: building.builder })
+          const writeMark = live.nextMark()
+          live.requestBuild(made.file)
+          return send(res, { entryId: made.entry.id, summary: formatKicadImport(made).join("\n"), writeMark, file: made.file })
+        }
         const circuit = await resolveCircuit(root, body.file)
         const result = await importBoard(root, circuit.file, { dxf: { name: body.name, text: body.text } }, { author: "human", engine: building.builder })
         const writeMark = live.nextMark()

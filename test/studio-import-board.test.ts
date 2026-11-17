@@ -52,7 +52,7 @@ const api = (path: string, body: unknown) =>
 describe("File → Import board outline (DXF)", () => {
   test("is in the File menu and off while the AI lock is closed, as its request is", () => {
     const file = MENUS.find((menu) => menu.title === "File")
-    expect(menuItems(file!).find((item) => item.command === "importBoardDxf")?.label).toBe("Import board outline (DXF)…")
+    expect(menuItems(file!).find((item) => item.command === "importBoardDxf")?.label).toBe("Import board (DXF or KiCad)…")
     expect(lockedOff(true).importBoardDxf).toBe(AI_LOCK_MESSAGE)
     expect(blocksRequest("/api/import-board", { file: FILE, name: "a.dxf", text: "" })).toBe(true)
   })
@@ -76,5 +76,19 @@ describe("File → Import board outline (DXF)", () => {
     expect(json.error).toBe("notes.dxf: The file is not an ASCII DXF: it has no group codes")
     expect(await readEntries(root)).toEqual([])
     expect(await readFile(join(root, FILE), "utf8")).toBe(SOURCE)
+  })
+
+  test("a KiCad board picked there becomes a new circuit, as one human entry, and the answer names it", async () => {
+    const text = await readFile(new URL("./fixtures/kicad/fixture.kicad_pcb", import.meta.url), "utf8")
+    const response = await api("/api/import-board", { file: FILE, name: "fixture.kicad_pcb", text })
+    const json = (await response.json()) as { ok: boolean; data: { summary: string; file: string } }
+    expect(json.ok).toBe(true)
+    expect(json.data.file).toBe("fixture.circuit.tsx")
+    expect(json.data.summary.split("\n")[0]).toMatch(/^Change c\d+: imported fixture\.kicad_pcb \(KiCad file version 20260206\) as fixture\.circuit\.tsx/)
+    expect(json.data.summary).toContain("Pads: all 49 copper pads have the net they had in the file")
+    expect(await readEntries(root)).toHaveLength(1)
+    expect(await readFile(join(root, FILE), "utf8")).toBe(SOURCE)
+    const again = (await (await api("/api/import-board", { file: FILE, name: "fixture.kicad_pcb", text })).json()) as { ok: boolean; error: string }
+    expect(again).toMatchObject({ ok: false, error: "fixture.circuit.tsx already exists; remove it or rename the board file first" })
   })
 })

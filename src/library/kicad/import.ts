@@ -13,6 +13,7 @@ import { PARTS_DIR } from "../../core/library.js"
 import { createCircuitFile, isInside, projectPath, resolveInRoot } from "../../core/workspace.js"
 import type { Design } from "../../engine/design.js"
 import { KicadError, readKicadBoard, type KicadBoard } from "./read.js"
+import { TESTED_KICAD, TESTED_VERSION } from "./board.js"
 import { netPins, planImport, type Library, type LibraryPart, type PlannedImport } from "./write.js"
 
 /** The largest board file read: a large real board is a few MB. */
@@ -23,14 +24,25 @@ export const MAX_PARTS = 2000
 export const MAX_COPPER = 100_000
 
 export interface KicadImportOptions {
-  /** The board file: inside the project for the agent; for a person, any path they give. */
+  /** The board file: inside the project for the agent; for a person, any path they give. With `text`, only its name. */
   kicad: string
+  /** The file's text, when the caller read it already (the Studio sends the file the person picked). */
+  text?: string
   /** The circuit file to write; by default the board file's name, in the project's top folder. */
   file?: string
   /** The circuit's name instead of `file`: name.circuit.tsx. */
   name?: string
   replace?: boolean
   origin?: "centre" | "keep"
+}
+
+/** Who asks: each is told the way to overwrite in its own words. */
+export type KicadCaller = "agent" | "cli" | "studio"
+
+const OVERWRITE: Record<KicadCaller, string> = {
+  agent: "pass replace: true to overwrite it, or choose another file",
+  cli: "pass --replace to overwrite it, or choose another name with --name",
+  studio: "remove it or rename the board file first",
 }
 
 export interface KicadImportResult {
@@ -174,13 +186,15 @@ async function checkAfter(root: string, file: string, board: KicadBoard, plan: P
 }
 
 /** Reads the board and writes it into the project as one change; refuses, writing nothing, what it cannot import. */
-export async function importKicad(root: string, options: KicadImportOptions, meta: { author: Author; engine?: DesignSource; inProject?: boolean }): Promise<KicadImportResult> {
+export async function importKicad(root: string, options: KicadImportOptions, meta: { author: Author; engine?: DesignSource; inProject?: boolean; caller?: KicadCaller }): Promise<KicadImportResult> {
   const source = basename(options.kicad)
   const file = circuitFile(root, options)
   if (!options.replace && (await readIfThere(resolveInRoot(root, file))) !== undefined) {
-    throw new EditError("invalid", `${file} already exists; pass replace to overwrite it, or choose another name`)
+    throw new EditError("invalid", `${file} already exists; ${OVERWRITE[meta.caller ?? "agent"]}`)
   }
-  const board = readBoard(await boardText(root, options.kicad, meta.inProject === true), source, options.origin)
+  const text = options.text ?? (await boardText(root, options.kicad, meta.inProject === true))
+  if (Buffer.byteLength(text) > MAX_FILE_BYTES) throw new EditError("invalid", `${source} is larger than ${MAX_FILE_BYTES / (1024 * 1024)} MB, the largest KiCad board copperflow reads`)
+  const board = readBoard(text, source, options.origin)
   const plan = planImport(board, { source, file, library: await readLibrary(root), author: meta.author })
   const written = plan.parts.filter((part) => part.written).length
   board.left.add("unnamedPours", board.pours.filter((pour) => !plan.nets.names.has(pour.net)).length)
@@ -248,6 +262,7 @@ export function formatKicadImport(result: KicadImportResult): string[] {
     netsLine(result),
     copperLine(result),
     ...renamedLine(result),
+    ...(result.board.version > TESTED_VERSION ? [`Note: this file's version, ${result.board.version}, is newer than ${TESTED_VERSION}, the newest copperflow was tested with (saved by KiCad ${TESTED_KICAD}); look at the result closely.`] : []),
     ...checkLines(result),
     ...(left.length === 0 ? ["Not carried over: nothing"] : ["Not carried over:", ...left.map((line) => `- ${line}`)]),
     "The parts are NOT verified: they came from the file. Compare every pad with its datasheet (parts/<id>/verification.md).",

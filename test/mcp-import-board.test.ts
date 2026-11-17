@@ -82,6 +82,8 @@ describe("import_board", () => {
     expect(result.text.split("\n")[0]).toMatch(/^Change c\d+: imported fixture\.kicad_pcb \(KiCad file version 20260206\) as kicad\.circuit\.tsx, its layout file and 4 new library parts$/)
     expect(result.text).toContain("Pads: all 49 copper pads have the net they had in the file")
     expect(await entries()).toBe(before + 1)
+    const twice = await call("import_board", { file: "kicad.circuit.tsx", dxf: "drawings/fixture.kicad_pcb" })
+    expect(twice.text).toBe("import_board was refused: kicad.circuit.tsx already exists; pass replace: true to overwrite it, or choose another file. Nothing was written.")
     expect((await call("undo_change")).isError).toBe(false)
     expect(await readFile(join(root, "kicad.circuit.tsx"), "utf8").catch(() => "gone")).toBe("gone")
   })
