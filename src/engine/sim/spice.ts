@@ -33,15 +33,22 @@ export function spiceNetlist(circuit: Circuit, models: ReadonlyMap<string, Model
   const built = buildSimCircuit(circuit, models, request)
   const head = [`* copperflow netlist of ${file}, SPICE3 syntax as the ngspice manual documents it`, `* ${HONEST_LINE}`]
   if ("refused" in built) return [...head, ...built.refused.map((line) => `* not written: ${line}`), ".end", ""].join("\n")
-  const used = new Set<string>()
-  const names = built.sim.nodes.map((name) => {
-    let candidate = safe(name) === "0" ? "N0" : safe(name)
+  // A net set to 0 V is the reference node 0 itself: ngspice also reads a node named GND as 0, so a 0 V source on
+  // it would be a shorted source. Any other node called GND or 0 is renamed.
+  const grounded = new Set(built.sim.sources.filter((source) => source.volts === 0).map((source) => source.node))
+  const used = new Set<string>(["0", "GND"])
+  const names = built.sim.nodes.map((name, k) => {
+    if (grounded.has(k + 1)) return "0"
+    let candidate = safe(name)
     for (let k = 2; used.has(candidate.toUpperCase()); k++) candidate = `${safe(name)}_${k}`
     used.add(candidate.toUpperCase())
     return candidate
   })
   const node = (n: number) => (n === 0 ? "0" : (names[n - 1] ?? `N${n}`))
-  const lines = [...head, ...built.sim.sources.map((source) => `V_${safe(source.name)} ${node(source.node)} 0 DC ${number(source.volts)}`)]
+  const sources = built.sim.sources.map((source) =>
+    grounded.has(source.node) ? `* ${source.name} is set to 0 V: it is node 0` : `V_${safe(source.name)} ${node(source.node)} 0 DC ${number(source.volts)}`,
+  )
+  const lines = [...head, ...sources]
   built.sim.elements.forEach((element, index) => {
     const id = safe(element.part)
     switch (element.kind) {

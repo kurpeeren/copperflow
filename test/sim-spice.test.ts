@@ -10,14 +10,14 @@ import { inProcessEngine } from "./helpers/in-process-engine.js"
 const EXPECTED = `* copperflow netlist of main.circuit.tsx, SPICE3 syntax as the ngspice manual documents it
 * DC operating point from ideal sources and simple models: no time, no frequency, no temperature, no tolerance; chips are not modelled.
 V_IN IN 0 DC 5
-V_GND GND 0 DC 0
+* GND is set to 0 V: it is node 0
 R_R1 IN OUT 10000
-R_R2 OUT GND 10000
-D_D1 OUT GND DM_D1
+R_R2 OUT 0 10000
+D_D1 OUT 0 DM_D1
 .model DM_D1 D(IS=1.31904e-9 N=2 RS=0)
-M_Q1 OUT IN GND GND MM_Q1 L=1 W=1
+M_Q1 OUT IN 0 0 MM_Q1 L=1 W=1
 .model MM_Q1 NMOS(LEVEL=1 VTO=1.45 KP=19.8413)
-D_Q1_BODY GND OUT DM_Q1_BODY
+D_Q1_BODY 0 OUT DM_Q1_BODY
 .model DM_Q1_BODY D(IS=1.09747e-9 N=1.5 RS=0)
 * C1 capacitor: open at DC
 .op

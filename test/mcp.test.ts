@@ -81,6 +81,7 @@ describe("MCP server", () => {
       "save_module",
       "set_project",
       "set_props",
+      "simulate",
       "straighten_tracks",
       "undo_change",
       "unroute",
