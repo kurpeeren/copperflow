@@ -9,8 +9,10 @@ export default defineConfig(({ mode }) => ({
     exclude: mode === "perf" ? configDefaults.exclude : [...configDefaults.exclude, SPEED_TESTS],
     // Tests that build the real engine take well under a second alone, but in the full parallel run one has been
     // measured at 26 s while the long router tests ran beside it; 5 s failed tests that were only waiting.
-    testTimeout: 60_000,
-    hookTimeout: 60_000,
+    // Under coverage the full run is slower still: two fabrication exports, each drawing the board's two pictures,
+    // took 63 s there against 5 s alone, so the limit is two minutes.
+    testTimeout: 120_000,
+    hookTimeout: 120_000,
     // Half the cores: other worktrees run their suites on the same machine, and a full-width run beside one stalled.
     maxWorkers: "50%",
     coverage: {
