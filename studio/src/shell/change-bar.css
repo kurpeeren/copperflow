@@ -1,0 +1,81 @@
+/* The bar over a shown change (ChangeBar.tsx) and the canvas beside it (ChangeCanvas.tsx). */
+.change-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.change-bar {
+  flex: none;
+  max-height: 40%;
+  overflow: auto;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.change-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.change-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.change-modes {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.change-modes button[aria-pressed="true"] {
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.change-note {
+  margin: 4px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.change-error {
+  margin: 4px 0;
+  color: var(--danger-text);
+}
+
+.change-lines {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.change-line {
+  border: none;
+  background: none;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  text-decoration: underline dotted;
+  cursor: pointer;
+}
+
+.change-canvas {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+}
+
+.change-canvas canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.history-since {
+  margin: 4px 0;
+}

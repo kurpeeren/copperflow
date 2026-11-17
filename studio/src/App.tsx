@@ -41,6 +41,8 @@ import { SERVER_GONE_MESSAGE } from "./request-error"
 import { blocksCommand, lockedOff } from "./ai-lock"
 import type { CommandId } from "./shell/menus"
 import { lockGate } from "./ai-lock-gate"
+import { useChangeView } from "./change-store"
+import { CHANGE_VIEW_MESSAGE, changeOff } from "./change-view"
 import { useAiLock } from "./use-ai-lock"
 import { AiLockButton } from "./shell/AiLockButton"
 import { exportChecksQuestion } from "./shell/fabrication-note"
@@ -248,7 +250,12 @@ function useStudio() {
   const openImported = useCallback((made: string) => void data.refreshFiles().then(() => openDocument(made, "pcb")), [data, openDocument])
   const runAny = useAppCommands({ file, openImported, view: tab, setView: setTab, selection, select, circuit, actions, pickLayers, pickFilter: workspace.pickFilter, ...sheetIds, workspace, openChecks, checkCounts: checks.counts, openFind: find.open, openDialog: setDialog, design: build.design, page, openPage, highlight: workspace.highlight })
   // Every menu, toolbar and context menu command comes through here: while the AI lock is closed no editing one runs.
-  const runCommand = useCallback((command: CommandId) => (aiLock.closed && blocksCommand(command) ? void lockGate.refuses() : runAny(command)), [aiLock.closed, runAny])
+  // While a change is shown the board cannot be edited either; the command says why.
+  const changeShown = useChangeView() !== undefined
+  const runCommand = useCallback(
+    (command: CommandId) => (changeShown && blocksCommand(command) ? toast.notify(CHANGE_VIEW_MESSAGE) : aiLock.closed && blocksCommand(command) ? void lockGate.refuses() : runAny(command)),
+    [aiLock.closed, changeShown, runAny, toast.notify],
+  )
   return { verifying, closeVerify, aiLock, toast, tab, setTab, dialog, closeDialog, openImportPart, openNewPart, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, openSheet, sheetParent, runCommand, page, openPage }
 }
 
@@ -349,7 +356,8 @@ export function App() {
   const { message, dismiss } = toast
   const toggles = { snap: workspace.snap, hoverLabels: workspace.hoverLabels, ...themeToggles(workspace.theme), ...pourFillToggles(workspace.pourFill) }
   const designOff = useCommandsOff(build.design)
-  const off = useMemo(() => ({ ...designOff, ...lockedOff(aiLock.closed) }), [designOff, aiLock.closed])
+  const changeShown = useChangeView() !== undefined
+  const off = useMemo(() => ({ ...designOff, ...lockedOff(aiLock.closed), ...changeOff(changeShown) }), [designOff, aiLock.closed, changeShown])
   const makeSheet = useMakeSheetPanel(data.file, selection.names, actions)
   const importPart = useImportPartPanel(data.refreshParts, toast.notify)
   const newPart = useNewPartPanel(data.refreshParts, toast.notify)

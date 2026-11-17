@@ -5,6 +5,7 @@ import { FindResults } from "../FindResults"
 import type { FindResultsProps } from "../use-find"
 import type { CheckCounts, CheckRow } from "../checks-list"
 import { HistoryList } from "../HistoryList"
+import { changeStore } from "../change-store"
 import { LibraryTable } from "../LibraryTable"
 import { BOTTOM_PANEL_ID, bottomTabId, type BottomTab } from "./bottom-state"
 import { blurAfterPointerClick } from "./focus"
@@ -45,7 +46,7 @@ function Content(props: Props) {
     case "log":
       return (
         <div className="bottom-scroll">
-          <HistoryList history={props.history} problems={props.historyProblems} actions={props.actions} />
+          <HistoryList history={props.history} problems={props.historyProblems} actions={props.actions} onShow={(request) => void changeStore.show(request)} />
         </div>
       )
     case "drc":

@@ -18,6 +18,8 @@ import type { useWorkspace } from "../use-workspace"
 import type { DrawingRename } from "../pcb/drawing-selection"
 import type { SheetParent } from "../App"
 import { BottomPanel } from "./BottomPanel"
+import { ChangeView } from "./ChangeView"
+import { useChangeView } from "../change-store"
 import { ContextMenu } from "./ContextMenu"
 import { DocTabs } from "./DocTabs"
 import type { CommandId } from "./menus"
@@ -145,14 +147,17 @@ function CenterColumn(props: WorkspaceProps & { onContextMenu: ContextMenuState[
   const canvas = canvasProps(props, props.onContextMenu)
   const sheet = usePageCanvas(canvas, page)
   const pages = useMemo(() => pageNames(build.design), [build.design])
+  // A change shown takes the canvas's place: nothing that edits is on screen while it is.
+  const change = useChangeView()
   return (
     <div className="center">
       <DocTabs file={data.file} view={view} pages={pages} page={page} onView={props.onView} onPage={props.onPage} {...parentTabs(props)} />
       <div className="ai-lock-band">{props.lockControl}</div>
       <section className={props.aiLocked ? "canvas ai-locked" : "canvas"} id="doc-panel" role="tabpanel" aria-labelledby={`doc-tab-${view}`} tabIndex={-1}>
         {!build.design && <p className="empty">{build.status === "failed" ? build.error : "Building the circuit…"}</p>}
-        {canvas && view === "pcb" && <PcbCanvas key={data.file} {...canvas} {...gridProps(workspace, "pcb")} markers={checks.markers.pcb} activeLayer={workspace.activeLayer} onActiveLayer={workspace.setActiveLayer} pourFill={workspace.pourFill} hiddenPours={workspace.hiddenPours} />}
-        {sheet && view === "schematic" && <SchematicCanvas key={`${data.file}
+        {change && <ChangeView state={change} />}
+        {!change && canvas && view === "pcb" && <PcbCanvas key={data.file} {...canvas} {...gridProps(workspace, "pcb")} markers={checks.markers.pcb} activeLayer={workspace.activeLayer} onActiveLayer={workspace.setActiveLayer} pourFill={workspace.pourFill} hiddenPours={workspace.hiddenPours} />}
+        {!change && sheet && view === "schematic" && <SchematicCanvas key={`${data.file}
 ${page}`} {...sheet} {...gridProps(workspace, "schematic")} markers={checks.markers.schematic} />}
         <RouteStatus route={data.route} onCancel={() => void props.actions.cancelRoute()} />
         <PlaceStatus place={data.place} onCancel={() => void props.actions.cancelAutoplace()} />
