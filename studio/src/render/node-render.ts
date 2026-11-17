@@ -11,9 +11,15 @@ import { dimBoard, drawChangeLegend, drawChangeMarks } from "../pcb/change-draw.
 import { drawSchematic } from "../pcb/schematic-draw.js"
 import { resetSheetPalette, schematicThemeFor, setSheetPalette } from "../pcb/schematic-theme.js"
 import { cameraFor, frameFor, imageSize, widthOf } from "./render-frame.js"
+import { renderLook, type Angle } from "./look-render.js"
+import type { LookRequest } from "../../../src/engine/fab/picture/looks.js"
 
 export interface RenderRequest {
-  view: "pcb" | "schematic"
+  /** "3d": the board as made with its parts as lit simple shapes (look-render.ts). */
+  view: "pcb" | "schematic" | "3d"
+  /** View 3d's angle and look. */
+  angle?: Angle
+  look?: LookRequest
   /** The schematic page; the first one when left out. Refused for the PCB. */
   page?: string
   /** Zoom to these parts (their courtyards plus a margin) instead of the whole board or sheet. */
@@ -31,12 +37,15 @@ export interface Rendered {
   what: string
   /** The schematic page drawn; none for the PCB. */
   page?: string
+  /** What the line names in place of the file: the design's name for view 3d. */
+  label?: string
 }
 
 /** Draws the request's view of the design into a PNG; a page for the PCB, a missing page or part, or a bad width is refused. */
 export async function renderDesign(design: Design, request: RenderRequest): Promise<Rendered> {
+  if (request.view === "3d") return renderLook(design, { ...(request.angle ? { angle: request.angle } : {}), ...(request.look ? { look: request.look } : {}), ...(request.width !== undefined ? { width: request.width } : {}) })
   const width = widthOf(request.width)
-  const frame = frameFor(design, request)
+  const frame = frameFor(design, { ...request, view: request.view })
   const size = imageSize(frame.box, width)
   const view = { camera: cameraFor(frame.box, size), size }
   const { createCanvas } = await import("@napi-rs/canvas")

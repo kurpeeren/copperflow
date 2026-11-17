@@ -102,8 +102,9 @@ Usage:
                                               beside the circuit (or in the project folder --out), with <name>.step
   copperflow step <file> [--out file.step]   write the board and its parts (as boxes) as a STEP file for CAD,
                                               <name>.step beside the circuit
-  copperflow render <file> [--view pcb|schematic|board] [--page <name>] [--parts U1,C3] [--width n] [--out file.png]
+  copperflow render <file> [--view pcb|schematic|board|3d] [--page <name>] [--parts U1,C3] [--width n] [--out file.png]
       board: the bare board as made [--side bottom] [--mask black] [--finish hasl] [--silk black] [--background #rrggbb]
+      3d: the board as made with its parts as simple shapes [--angle top|bottom|front|iso] and the same look options
                   [--change <id> | --since <id>]
                                               draw the board or a schematic page to a PNG, as the Studio shows it
                                               (<name>-pcb.png or <name>-schematic-<page>.png beside the circuit)
@@ -325,13 +326,16 @@ async function renderCommand(root: string, rest: string[], options: CliOptions):
   const [mask, afterMask] = takeOption(afterSide, "--mask")
   const [finish, afterFinish] = takeOption(afterMask, "--finish")
   const [silk, afterSilk] = takeOption(afterFinish, "--silk")
-  const [background, args] = takeOption(afterSilk, "--background")
-  if (view !== undefined && view !== "pcb" && view !== "schematic" && view !== "board") throw new Error(`--view must be pcb, schematic or board, not ${view}`)
+  const [background, afterBackground] = takeOption(afterSilk, "--background")
+  const [angle, args] = takeOption(afterBackground, "--angle")
+  if (view !== undefined && view !== "pcb" && view !== "schematic" && view !== "board" && view !== "3d") throw new Error(`--view must be pcb, schematic, board or 3d, not ${view}`)
+  if (angle !== undefined && !["top", "bottom", "front", "iso"].includes(angle)) throw new Error(`--angle must be top, bottom, front or iso, not ${angle}`)
   if (side !== undefined && side !== "top" && side !== "bottom") throw new Error(`--side must be top or bottom, not ${side}`)
   const look = { ...(mask !== undefined ? { mask } : {}), ...(finish !== undefined ? { finish } : {}), ...(silk !== undefined ? { silk } : {}), ...(background !== undefined ? { background } : {}) } as LookRequest
   const request = {
     view: view ?? "pcb",
     ...(side !== undefined ? { side: side as "top" | "bottom" } : {}),
+    ...(angle !== undefined ? { angle: angle as "top" | "bottom" | "front" | "iso" } : {}),
     ...(Object.keys(look).length > 0 ? { look } : {}),
     ...(page !== undefined ? { page } : {}),
     ...(parts !== undefined ? { parts: parts.split(",").map((name) => name.trim()).filter((name) => name !== "") } : {}),

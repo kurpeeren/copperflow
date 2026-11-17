@@ -8,20 +8,21 @@ import { renderCircuit, renderedLine, type Renderer } from "../core/render.js"
 import { FINISH_NAMES, MASK_NAMES, SILK_NAMES, type LookRequest } from "../engine/fab/picture/looks.js"
 
 export const RENDER_DESCRIPTION =
-  "A PNG of the board or one schematic page, as the person sees it; view board: the bare board as made. Look after autoplace and after autoroute, before asking the person."
+  "A PNG of the board or one schematic page, as the person sees it; view board: the bare board as made; 3d: with parts as simple shapes, at an angle. Look after autoplace and autoroute, before asking the person."
 
 export const renderInput = {
   file: z.string().describe("Circuit file"),
-  view: z.enum(["pcb", "schematic", "board"]).optional().describe('Default "pcb"'),
+  view: z.enum(["pcb", "schematic", "board", "3d"]).optional().describe('Default "pcb"'),
   page: z.string().optional(),
-  parts: z.array(z.string()).min(1).max(50).optional().describe('Zoom to these, e.g. ["U1"]'),
+  parts: z.array(z.string()).min(1).max(50).optional().describe("Zoom to these"),
   width: z.number().int().min(320).max(4000).optional().describe("Pixels; default 1024"),
   side: z.enum(["top", "bottom"]).optional(),
+  angle: z.enum(["top", "bottom", "front", "iso"]).optional(),
   look: z
     .object({ mask: z.enum(MASK_NAMES as [string, ...string[]]), silk: z.enum(SILK_NAMES as [string, ...string[]]), finish: z.enum(FINISH_NAMES as [string, ...string[]]), background: z.string() })
     .partial()
     .optional(),
-  change: z.string().optional().describe("Mark what this change did"),
+  change: z.string().optional().describe("Mark this change"),
   since: z.string().optional().describe("Mark all after it"),
 }
 
@@ -31,7 +32,7 @@ export interface RenderPorts {
   renderer?: () => Promise<Renderer>
 }
 
-type RenderInput = { file: string; view?: "pcb" | "schematic" | "board" | undefined; side?: "top" | "bottom" | undefined; look?: Record<string, string | undefined> | undefined; page?: string | undefined; parts?: string[] | undefined; width?: number | undefined; change?: string | undefined; since?: string | undefined }
+type RenderInput = { file: string; view?: "pcb" | "schematic" | "board" | "3d" | undefined; side?: "top" | "bottom" | undefined; angle?: "top" | "bottom" | "front" | "iso" | undefined; look?: Record<string, string | undefined> | undefined; page?: string | undefined; parts?: string[] | undefined; width?: number | undefined; change?: string | undefined; since?: string | undefined }
 
 /** The image and its line, or the refusal as an error answer. */
 export async function renderTool(ports: RenderPorts, input: RenderInput): Promise<CallToolResult> {
@@ -42,6 +43,7 @@ export async function renderTool(ports: RenderPorts, input: RenderInput): Promis
       ...(input.parts !== undefined ? { parts: input.parts } : {}),
       ...(input.width !== undefined ? { width: input.width } : {}),
       ...(input.side !== undefined ? { side: input.side } : {}),
+      ...(input.angle !== undefined ? { angle: input.angle } : {}),
       ...(input.look !== undefined ? { look: input.look as LookRequest } : {}),
     } as const
     const options = { ...(ports.engine ? { engine: ports.engine } : {}), ...(ports.renderer ? { renderer: ports.renderer } : {}) }

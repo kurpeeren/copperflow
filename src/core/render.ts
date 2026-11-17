@@ -17,10 +17,13 @@ import { resolveCircuit } from "./workspace.js"
 /** What to draw; the Studio's renderer defines the same. */
 export interface RenderRequest {
   /** "board": the bare board as made, from the fabrication layers. */
-  view: "pcb" | "schematic" | "board"
-  /** The board view's side and look; refused for the others. */
+  view: "pcb" | "schematic" | "board" | "3d"
+  /** The board view's side; refused for the others. */
   side?: Side
+  /** The look of the board and 3d views; refused for the others. */
   look?: LookRequest
+  /** View 3d's angle: top, bottom, front or iso (the default). */
+  angle?: "top" | "bottom" | "front" | "iso"
   /** The schematic page; the first one when left out. Refused for the PCB. */
   page?: string
   /** Zoom to these parts (their courtyards plus a margin) instead of the whole board or sheet. */
@@ -75,7 +78,9 @@ function canvasMissing(error: unknown): boolean {
 /** Builds the circuit and draws the requested view of it; the canvas package missing is said in plain words. */
 export async function renderCircuit(root: string, file: string, request: RenderRequest, options: RenderOptions = {}): Promise<Rendered & { file: string }> {
   const { file: circuit } = await resolveCircuit(root, file)
-  if (request.view !== "board" && (request.side !== undefined || request.look !== undefined)) throw new Error("side and look are for view board only")
+  if (request.view === "3d" && request.side !== undefined) throw new Error("side is for view board only; view 3d takes angle")
+  if (request.view !== "3d" && request.angle !== undefined) throw new Error("angle is for view 3d only")
+  if (request.view !== "board" && request.view !== "3d" && (request.side !== undefined || request.look !== undefined)) throw new Error("side and look are for view board only")
   const design = options.design ?? (await buildWith(root, circuit, options.engine))
   try {
     if (request.view === "board") return { ...(await renderBoardView(design, request, options.canvas)), file: circuit }
@@ -91,9 +96,9 @@ export async function renderCircuit(root: string, file: string, request: RenderR
 export const renderedLine = (rendered: Rendered & { file: string }): string => `${rendered.label ?? rendered.file}: ${rendered.what}; ${rendered.width} x ${rendered.height} px`
 
 /** `<name>-pcb.png`, `<name>-board-<side>.png` or `<name>-schematic-<page>.png` beside the circuit, the page made safe for a file name. */
-export function defaultPictureName(circuit: string, view: RenderRequest["view"], page: string | undefined, side: Side = "top"): string {
+export function defaultPictureName(circuit: string, view: RenderRequest["view"], page: string | undefined, side: Side = "top", angle = "iso"): string {
   const name = basename(circuit).replace(/\.(circuit|sheet)\.tsx$/, "")
-  const suffix = view === "pcb" ? "pcb" : view === "board" ? `board-${side}` : `schematic-${(page ?? "Main").replace(/[^A-Za-z0-9_-]+/g, "-")}`
+  const suffix = view === "pcb" ? "pcb" : view === "board" ? `board-${side}` : view === "3d" ? `3d-${angle}` : `schematic-${(page ?? "Main").replace(/[^A-Za-z0-9_-]+/g, "-")}`
   const folder = dirname(circuit)
   return `${folder === "." ? "" : `${folder}/`}${name}-${suffix}.png`
 }
@@ -103,7 +108,7 @@ export async function writeRender(root: string, file: string, request: RenderReq
   if (out !== undefined && !out.toLowerCase().endsWith(".png")) throw new Error(`--out must name a .png file, not ${out}`)
   if (out !== undefined) await assertLandsInProject(root, resolve(root, out))
   const rendered = await renderCircuit(root, file, request, options)
-  const target = resolve(root, out ?? defaultPictureName(rendered.file, request.view, rendered.page, request.side))
+  const target = resolve(root, out ?? defaultPictureName(rendered.file, request.view, rendered.page, request.side, request.angle))
   await assertLandsInProject(root, target)
   await mkdir(dirname(target), { recursive: true })
   await writeFile(target, rendered.png)
