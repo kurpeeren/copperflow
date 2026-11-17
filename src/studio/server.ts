@@ -54,6 +54,7 @@ import { FOOTPRINT_FILE } from "../core/library.js"
 import { PIN_TYPES } from "../core/pin-types.js"
 import { LayoutBody } from "./layout-schema.js"
 import { LiveProject, type DesignBuilder } from "./live.js"
+import { changeShown } from "./change-route.js"
 import { RouteRunner, routeWorkerFactory, type RouteWorkerFactory } from "./route-runner.js"
 import { PlaceRunner, placeWorkerFactory, type PlaceWorkerFactory } from "./place-runner.js"
 import { fitBoardEdit } from "./fit-board.js"
@@ -360,6 +361,9 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         return send(res, live.getBuild((await resolveCircuit(root, query("file"))).file))
       case "GET /api/history":
         return send(res, await listHistory(root, Number(url.searchParams.get("limit") ?? 50) || 50))
+      // A change shown on the board: both sides built on request, through the Studio's own engine.
+      case "GET /api/change":
+        return send(res, await changeShown(root, url.searchParams, building.builder))
       case "POST /api/build": {
         const body = Bodies.build.parse(await readJson(req))
         live.requestBuild((await resolveCircuit(root, body.file)).file)
