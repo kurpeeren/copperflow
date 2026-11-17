@@ -17,8 +17,8 @@ export const GERBER_LAYERS = [
 ] as const
 export type GerberLayerName = (typeof GERBER_LAYERS)[number]
 
-/** The other files of the set: plated and non-plated drills, pick-and-place and the bill of materials. */
-export const OTHER_FILES = ["PTH", "NPTH", "pick-and-place", "bom"] as const
+/** The other files of the set: plated and non-plated drills, pick-and-place, the bill of materials and the pictures. */
+export const OTHER_FILES = ["PTH", "NPTH", "pick-and-place", "bom", "top", "bottom"] as const
 export type OtherFileName = (typeof OTHER_FILES)[number]
 
 const EXTENSIONS: Readonly<Record<GerberLayerName | OtherFileName, string>> = {
@@ -37,6 +37,8 @@ const EXTENSIONS: Readonly<Record<GerberLayerName | OtherFileName, string>> = {
   NPTH: "drl",
   "pick-and-place": "csv",
   bom: "csv",
+  top: "png",
+  bottom: "png",
 }
 
 const CIRCUIT_SUFFIX = ".circuit.tsx"

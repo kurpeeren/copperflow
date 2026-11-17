@@ -43,9 +43,11 @@ describe("copperflow export", () => {
     expect(err).toEqual([])
     expect(out.join("\n")).toBe(
       [
-        "Wrote 14 files to boards/led-fab/ and boards/led-fab.zip:",
+        "Wrote 16 files to boards/led-fab/ and boards/led-fab.zip:",
         ...NAMES.map((name) => `  led-${name}`),
         "  led.step",
+        "  led-top.png",
+        "  led-bottom.png",
         "led.step: parts are boxes, not their real shapes; heights marked assumed are guesses (none assumed).",
         "Checks: 0 errors, 2 warnings.",
         "Next, a person should upload led-fab.zip to JLCPCB's PCB order, and led-bom.csv and led-pick-and-place.csv from boards/led-fab/ at its assembly step (the zip holds them too).",
@@ -54,14 +56,14 @@ describe("copperflow export", () => {
         "The whole order report: the bom tool, or copperflow bom boards/led.circuit.tsx.",
       ].join("\n"),
     )
-    expect((await readdir(join(root, "boards", "led-fab"))).sort()).toEqual([...NAMES.map((name) => `led-${name}`), "led.step"].sort())
+    expect((await readdir(join(root, "boards", "led-fab"))).sort()).toEqual([...NAMES.map((name) => `led-${name}`), "led.step", "led-top.png", "led-bottom.png"].sort())
     expect(await exists("boards/led-fab.zip")).toBe(true)
   })
 
   test("--out writes into that project folder instead", async () => {
     await writeFile(join(root, "led.circuit.tsx"), CLEAN)
     expect(await run("export", "led.circuit.tsx", "--out", "fab/today")).toBe(0)
-    expect(out[0]).toMatch(/^Wrote 14 files to fab\/today\/led-fab\/ and fab\/today\/led-fab\.zip:/)
+    expect(out[0]).toMatch(/^Wrote 16 files to fab\/today\/led-fab\/ and fab\/today\/led-fab\.zip:/)
     expect(await exists("fab/today/led-fab.zip")).toBe(true)
     expect(await exists("led-fab.zip")).toBe(false)
   })
@@ -70,7 +72,7 @@ describe("copperflow export", () => {
     await cp(CAN, root, { recursive: true })
     expect(await run("export", "can-module.circuit.tsx")).toBe(0)
     const text = out.join("\n")
-    expect(text).toMatch(/^Wrote 14 files to can-module-fab\/ and can-module-fab\.zip:\n {2}can-module-F_Cu\.gtl\n/)
+    expect(text).toMatch(/^Wrote 16 files to can-module-fab\/ and can-module-fab\.zip:\n {2}can-module-F_Cu\.gtl\n/)
     expect(text).toMatch(/\nWarning: \d+ connections are not routed: /)
     expect(text).toMatch(/\nChecks: \d+ errors?, \d+ warnings?\.( Run check_circuit .*)?\nNext, /)
     expect(text).toContain("\nNext, a person should upload can-module-fab.zip to JLCPCB's PCB order, and can-module-bom.csv and can-module-pick-and-place.csv from can-module-fab/ at its assembly step (the zip holds them too).\nReady for bare boards: no: ")
@@ -146,6 +148,6 @@ describe("copperflow export keeps to the project", () => {
     await writeFile(join(root, "led-fab", "order-notes.txt"), "4 boards, green")
     expect(await run("export", "led.circuit.tsx")).toBe(0)
     expect(await readFile(join(root, "led-fab", "order-notes.txt"), "utf8")).toBe("4 boards, green")
-    expect(await readdir(join(root, "led-fab"))).toHaveLength(15)
+    expect(await readdir(join(root, "led-fab"))).toHaveLength(17)
   })
 })

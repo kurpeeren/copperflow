@@ -24,6 +24,8 @@ test("the files follow JLCPCB's names, in a folder and a zip named after the des
     "can-NPTH.drl",
     "can-pick-and-place.csv",
     "can-bom.csv",
+    "can-top.png",
+    "can-bottom.png",
   ])
   expect(fabFolderName("can")).toBe("can-fab")
   expect(fabZipName("can")).toBe("can-fab.zip")

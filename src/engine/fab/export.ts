@@ -26,6 +26,12 @@ export interface FabricationFile {
   text: string
 }
 
+/** A picture of the board as made, as a PNG. */
+export interface FabricationPicture {
+  file: string
+  png: Uint8Array
+}
+
 export interface FabricationSet {
   ok: true
   /** The design's name, from its circuit file. */
@@ -39,6 +45,8 @@ export interface FabricationSet {
   warnings: string[]
   /** What the STEP model is not, and whose heights it assumes: one line for the answer. */
   model: string
+  /** The board as made, each side, after the files in the folder and the zip; none until withPictures adds them. */
+  pictures?: FabricationPicture[]
 }
 
 export type FabricationResult = FabricationSet | { ok: false; errors: string[] }
@@ -132,6 +140,13 @@ export function fabricationSet(design: Design, bom: readonly BomLine[], created:
   return { ok: true, name, folder: fabFolderName(name), zip: fabZipName(name), files, zipData, warnings, model: modelLine(stepFileName(name), solids.parts) }
 }
 
+/** The set with the board's pictures (top, then bottom) added to its files and its zip. */
+export function withPictures(set: FabricationSet, pictures: readonly { side: "top" | "bottom"; png: Uint8Array }[], created: Date): FabricationSet {
+  const named = pictures.map(({ side, png }) => ({ file: fabFileName(set.name, side), png }))
+  const zipData = zipFiles([...set.files.map(({ file, text }) => ({ name: file, text })), ...named.map(({ file, png }) => ({ name: file, text: png }))], created)
+  return { ...set, pictures: named, zipData }
+}
+
 /**
  * Writes the set into `dir`: the folder with every file, and the zip beside it. Files an earlier export wrote that
  * this one does not (an inner copper layer of a board that now has two) are removed; other files are left alone.
@@ -139,13 +154,18 @@ export function fabricationSet(design: Design, bom: readonly BomLine[], created:
 export async function writeFabrication(dir: string, set: FabricationSet): Promise<{ folder: string; zip: string; files: string[] }> {
   const folder = join(dir, set.folder)
   await mkdir(folder, { recursive: true })
-  const current = new Set(set.files.map((f) => f.file))
+  const current = new Set([...set.files, ...(set.pictures ?? [])].map((f) => f.file))
   const known = [...GERBER_LAYERS, ...OTHER_FILES].map((kind) => fabFileName(set.name, kind))
   for (const stale of known.filter((file) => !current.has(file))) await rm(join(folder, stale), { force: true })
   const files: string[] = []
   for (const { file, text } of set.files) {
     const path = join(folder, file)
     await writeFile(path, text, "utf8")
+    files.push(path)
+  }
+  for (const { file, png } of set.pictures ?? []) {
+    const path = join(folder, file)
+    await writeFile(path, png)
     files.push(path)
   }
   const zip = join(dir, set.zip)

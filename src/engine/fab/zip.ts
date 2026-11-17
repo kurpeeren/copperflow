@@ -6,7 +6,8 @@ import { deflateRawSync } from "node:zlib"
 export interface ZipInput {
   /** The entry's name inside the archive, "/" between folders. */
   name: string
-  text: string
+  /** Text is written as UTF-8; bytes as they are. */
+  text: string | Uint8Array
 }
 
 const LOCAL_SIGNATURE = 0x04034b50
@@ -79,7 +80,7 @@ export function zipFiles(files: readonly ZipInput[], modified: Date): Uint8Array
   const entries: Entry[] = []
   let offset = 0
   for (const file of files) {
-    const data = Buffer.from(file.text, "utf8")
+    const data = typeof file.text === "string" ? Buffer.from(file.text, "utf8") : Buffer.from(file.text)
     const deflated = deflateRawSync(data, { level: DEFLATE_LEVEL })
     const smaller = deflated.length < data.length
     const entry: Entry = { name: Buffer.from(file.name, "utf8"), method: smaller ? DEFLATED : STORED, crc: crc32(data), size: data.length, body: smaller ? deflated : data, offset }

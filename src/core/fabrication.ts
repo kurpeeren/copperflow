@@ -4,8 +4,9 @@
 import { lstat, realpath } from "node:fs/promises"
 import { dirname, join, relative, resolve, sep } from "node:path"
 import type { Design } from "../engine/design.js"
-import { fabricationSet, writeFabrication } from "../engine/fab/export.js"
-import { uploadStep } from "../engine/fab/names.js"
+import { fabricationSet, withPictures, writeFabrication, type FabricationSet } from "../engine/fab/export.js"
+import { fabFileName, uploadStep } from "../engine/fab/names.js"
+import { exportPictures, type CanvasLoader } from "../engine/fab/picture/png.js"
 import { buildBom } from "./bom.js"
 import { formatOrderReport } from "./order-report.js"
 import { checkCounts, checkDesign } from "./check.js"
@@ -25,6 +26,17 @@ export interface FabricationOptions {
   outDir?: string
   /** The creation date written into the files; now when left out. */
   created?: Date
+  /** Loads the canvas package the board's pictures are encoded with; tests pass one that fails. */
+  canvas?: CanvasLoader
+}
+
+/** The set with the pictures of the board as made, or a warning that says they were left out and how to get them. */
+async function pictured(set: FabricationSet, design: Design, created: Date, canvas: CanvasLoader | undefined): Promise<FabricationSet> {
+  const pictures = await exportPictures(design, canvas)
+  if (pictures !== undefined) return withPictures(set, pictures, created)
+  const names = `${fabFileName(set.name, "top")}, ${fabFileName(set.name, "bottom")}`
+  const missing = `The board pictures (${names}) were left out: drawing them needs the optional package @napi-rs/canvas (npm install -g @napi-rs/canvas), then export again.`
+  return { ...set, warnings: [...set.warnings, missing] }
 }
 
 /** What an export wrote, every path relative to the project root with "/" between folders; or why it wrote nothing. */
@@ -87,10 +99,12 @@ export function exportFabrication(root: string, file: string, options: Fabricati
     await assertLandsInProject(root, outDir)
     const design = options.design ?? (await buildWith(root, circuit, options.engine))
     const bom = await buildBom(root, circuit, { design })
-    const set = fabricationSet(design, bom, options.created ?? new Date())
+    const created = options.created ?? new Date()
+    const plain = fabricationSet(design, bom, created)
     const order = formatOrderReport(design, bom, { short: true })
-    if (!set.ok) return { written: false, errors: set.errors, order }
-    for (const path of [join(outDir, set.folder), join(outDir, set.zip), ...set.files.map((f) => join(outDir, set.folder, f.file))]) await assertLandsInProject(root, path)
+    if (!plain.ok) return { written: false, errors: plain.errors, order }
+    const set = await pictured(plain, design, created, options.canvas)
+    for (const path of [join(outDir, set.folder), join(outDir, set.zip), ...[...set.files, ...(set.pictures ?? [])].map((f) => join(outDir, set.folder, f.file))]) await assertLandsInProject(root, path)
     const written = await writeFabrication(outDir, set).catch((error: unknown) => {
       throw writeError(root, error)
     })

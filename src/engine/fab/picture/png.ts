@@ -39,8 +39,12 @@ export async function encodePng(picture: Pick<BoardPicture, "width" | "height" |
 /** The export's pictures' long side, in pixels. */
 export const EXPORT_PICTURE_SIDE = 1600
 
-/** Both sides at 1600 px on the long side, in the default look, as PNGs; undefined when the canvas package is missing. */
+/**
+ * Both sides at 1600 px on the long side, in the default look, as PNGs; none for a board without an outline, and
+ * undefined when the canvas package is missing.
+ */
 export async function exportPictures(design: PictureDesign, canvas: CanvasLoader = loadCanvas, look: LookRequest = {}): Promise<{ side: Side; png: Uint8Array }[] | undefined> {
+  if ((design.pcb.board?.outline.length ?? 0) < 3) return []
   const box = outlineBox(design.pcb)
   const pxPerMm = EXPORT_PICTURE_SIDE / Math.max(box.maxX - box.minX, box.maxY - box.minY)
   let loaded: CanvasModule

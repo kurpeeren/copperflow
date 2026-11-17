@@ -222,7 +222,7 @@ The agent sees what you undid and does not repeat it.
 | `copper_summary` | Per net: tracks, vias, length and unrouted connections, then copper violations by rule (at most 60 lines) |
 | `board_summary` / `project_status` / `note_decision` / `set_project` | The board in about 60 lines (size, one line per part, longest connections with both pads' places, overlaps, edge, pours; `detail: "full"` for the rest); and the project memory `PROJECT.md` (Intent, Blocks, Decisions, Open) with each circuit's counts and last changes, a dated decision, or rewritten sections, each write one change |
 | `open_studio` | Starts the Studio for the project if none runs, opens it in your browser and answers with the address |
-| `render` | A PNG of the board or of one schematic page, drawn by the Studio's own code; `parts` zooms to some parts (needs the optional package `@napi-rs/canvas`) |
+| `render` | A PNG of the board or of one schematic page, drawn by the Studio's own code, or (`view: "board"`) of the bare board as made: mask, finish, print and holes drawn from the fabrication layers, either side, in the maker's usual colours; `parts` zooms to some parts (needs the optional package `@napi-rs/canvas`) |
 | `list_parts` / `part_info` | Shows the parts library and a part's data and checklist |
 | `create_part` | Adds a part from a datasheet: pins, footprint string or footprint file, MPN, suppliers |
 | `import_part` | Fetches one part by its LCSC number from EasyEDA into `parts/<id>/`, unverified, for personal, non-commercial use only (see [licences](docs/licences.md)) |
@@ -258,7 +258,8 @@ copperflow place <file> <part> <name> [key=value ...]
 copperflow bom <file> [--csv]               print the bill of materials
 copperflow package <file> [--out dir]
                                             write BOM, datasheets and part status to a folder
-copperflow render <file> [--view pcb|schematic] [--page <name>] [--parts U1,C3] [--width n] [--out file.png]
+copperflow render <file> [--view pcb|schematic|board] [--page <name>] [--parts U1,C3] [--width n] [--out file.png]
+    [--side bottom] [--mask black] [--finish hasl] [--silk black] [--background #rrggbb]   (view board)
                                             draw the board or a schematic page to a PNG, as the Studio shows it
 copperflow board <file> --dxf <path> [--layer <name>] [--units mm|inch] [--origin keep] [--replace]
                                             set the board's outline, holes and keepouts from a DXF drawing
