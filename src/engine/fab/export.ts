@@ -100,8 +100,13 @@ function unroutedWarnings(design: Design): string[] {
 }
 
 /** The fabrication files of a built design and its BOM lines, or the design's errors when it has any. */
+/** Why the export refuses a design: each of its errors and each via the drill files cannot make; empty when it does not. */
+export function fabricationErrors(design: Design): string[] {
+  return [...designErrors(design), ...viaSpanErrors(design)]
+}
+
 export function fabricationSet(design: Design, bom: readonly BomLine[], created: Date): FabricationResult {
-  const errors = [...designErrors(design), ...viaSpanErrors(design)]
+  const errors = fabricationErrors(design)
   if (errors.length > 0) return { ok: false, errors }
   const name = designName(design.file)
   const files: FabricationFile[] = [
