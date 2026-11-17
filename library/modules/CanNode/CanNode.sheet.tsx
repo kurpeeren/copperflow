@@ -2,7 +2,7 @@ import { MCP2515_I_SO } from "./parts/MCP2515-I-SO/MCP2515_I_SO"
 import { TJA1051T_3 } from "./parts/TJA1051T-3/TJA1051T_3"
 export default function CanNode() {
   return (
-    <sheet does="CAN node: MCP2515 on 3.3 V, 8 MHz crystal (CL 18 pF, 27 pF caps), TJA1051T/3 with VIO 3.3 V and VCC 5 V, 120 ohm termination to the TERM port" sources={["https://ww1.microchip.com/downloads/en/DeviceDoc/MCP2515-Stand-Alone-CAN-Controller-with-SPI-20001801J.pdf (p1 pinout, p4 Table 1-1)","https://www.nxp.com/docs/en/data-sheet/TJA1051.pdf (p4 Table 3; S low selects Normal mode, p5)","https://abracon.com/Resonators/abl.pdf (ABL HC49/US: CL 18 pF, C0 7 pF max, p1)"]}>
+    <sheet does="CAN node: MCP2515 on 3.3 V, 8 MHz crystal (CL 18 pF, 27 pF caps), TJA1051T/3 with VIO 3.3 V and VCC 5 V, 120 ohm termination to the TERM port" sources={["https://ww1.microchip.com/downloads/en/DeviceDoc/MCP2515-Stand-Alone-CAN-Controller-with-SPI-20001801J.pdf (p1 pinout, p4 Table 1-1)","https://www.nxp.com/docs/en/data-sheet/TJA1051.pdf (p4 Table 3; S low selects Normal mode, p5)","https://abracon.com/Resonators/abl.pdf (ABL HC49/US: CL 18 pF, C0 7 pF max, p1)"]} cases={[{ name: "termination: 1 V across CANH and TERM", set: { V5: 5, V3V3: 3.3, GND: 0, CANH: 1, TERM: 0 }, expect: { "R2.i": [0.0083, 0.00837] } }, { name: "supplies reach the pins", set: { V5: 5, V3V3: 3.3, GND: 0 }, expect: { RESET: [3.29, 3.31], V3V3: [3.29, 3.31], V5: [4.99, 5.01] } }]}>
       <port name="V5" type="power_in" carries="5 V in, 70 mA at most (transceiver, bus dominant)" />
       <port name="V3V3" type="power_in" carries="3.3 V in, 10 mA (controller 5 mA typ, VIO)" />
       <port name="GND" type="ground" carries="logic and bus ground" />

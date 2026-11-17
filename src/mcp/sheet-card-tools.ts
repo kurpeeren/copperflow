@@ -3,14 +3,16 @@ import { z } from "zod"
 import { editCircuit, loadCircuit } from "../core/index.js"
 import { cardLines, readCard, type CardChange, type SheetCardText } from "../core/sheet-card.js"
 import type { SheetInstance } from "../engine/model.js"
+import type { SimCase } from "../engine/sim/cases.js"
 
 export const DESCRIBE_SHEET_DESCRIPTION =
-  "Write a sheet's card: does (one line), sources, each port's type and what it carries. \"\" or [] removes. One history entry. Limits and a good card: guide { topic: \"modules\" }."
+  "Write a sheet's card: does (one line), sources, each port's type and what it carries, cases for simulate. \"\" or [] removes. One history entry. Limits and a good card: guide { topic: \"modules\" }."
 
 export const describeSheetInput = {
   file: z.string(),
   does: z.string().optional(),
   sources: z.array(z.string()).max(8).optional(),
+  cases: z.array(z.unknown()).optional().describe('e.g. [{ "name": "24 V in", "set": { "IN": 24, "GND": 0 }, "expect": { "OUT": [3.2, 3.6] } }]'),
   ports: z
     .record(z.string(), z.object({ type: z.string().optional(), carries: z.string().optional() }))
     .optional()
@@ -21,6 +23,7 @@ interface DescribeInput {
   file: string
   does?: string | undefined
   sources?: string[] | undefined
+  cases?: unknown[] | undefined
   ports?: Record<string, { type?: string | undefined; carries?: string | undefined }> | undefined
 }
 
@@ -35,6 +38,7 @@ function asChange(input: DescribeInput): CardChange {
   return {
     ...(input.does !== undefined ? { does: input.does === "" ? null : input.does } : {}),
     ...(input.sources !== undefined ? { sources: input.sources.length === 0 ? null : input.sources } : {}),
+    ...(input.cases !== undefined ? { cases: input.cases.length === 0 ? null : (input.cases as SimCase[]) } : {}),
     ...(input.ports ? { ports } : {}),
   }
 }

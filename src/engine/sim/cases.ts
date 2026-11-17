@@ -65,3 +65,11 @@ export function runCases(circuit: Circuit, models: ReadonlyMap<string, Model>, c
     return { name: one.name, passed: true, text: `passed: ${one.name}` }
   })
 }
+
+/** `"24 V in": IN=24, GND=0; expects OUT 3.2 to 3.6` */
+export function caseText(one: SimCase): string {
+  const set = Object.entries(one.set).map(([net, volts]) => `${net}=${volts}`)
+  const switches = [...(one.closed ?? []).map((name) => `${name} closed`), ...(one.coil ?? []).map((name) => `${name} energised`)]
+  const expects = Object.entries(one.expect).map(([figure, [low, high]]) => `${figure} ${low} to ${high}`)
+  return `"${one.name}": ${[...set, ...switches].join(", ")}; expects ${expects.join(", ")}`
+}

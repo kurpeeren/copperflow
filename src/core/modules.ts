@@ -10,6 +10,8 @@ import { scanCircuit } from "./analyze.js"
 import { PART_ID } from "./pin-types.js"
 import { PARTS_DIR } from "./library.js"
 import { cardGaps, CARD_LIMITS, portText, readCard, type SheetCardText } from "./sheet-card.js"
+import { caseText } from "../engine/sim/cases.js"
+import { lastCaseResult } from "./case-results.js"
 import { projectPath, resolveCircuit, resolveInRoot } from "./workspace.js"
 
 /** A module's name: a letter, then letters, digits, "_" and "-". It is a folder name, so nothing else. */
@@ -240,10 +242,21 @@ export function moduleDetails(name: string, module: ShelfModule): string[] {
     `${name}: ${status(module)}`,
     `Does: ${module.card.does ?? "(not written)"}`,
     ...module.card.ports.map((port) => `  port ${portText(port)}`),
+    ...caseLines(name, module.card),
     `Parts (${parts.length}):`,
     ...parts,
     ...(module.card.sources ? [`Sources: ${module.card.sources.join("; ")}`] : []),
   ]
+}
+
+/** One line a case, with its last result in this session (simulate with the sheet runs them). */
+function caseLines(name: string, card: SheetCardText): string[] {
+  const sheet = name.slice(name.lastIndexOf("/") + 1)
+  return (card.cases ?? []).map((one) => {
+    const last = lastCaseResult(sheet, one.name)
+    const result = last === undefined ? "not run in this session" : last.passed ? "passed" : last.text.slice(0, 120)
+    return `  case ${caseText(one)} (last run: ${result})`
+  })
 }
 
 /** A shelf module's details and where and when it was saved. */

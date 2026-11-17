@@ -4,7 +4,7 @@ import type { JSXElement, Node } from "@babel/types"
 import MagicString from "magic-string"
 import { CARD_LIMITS, PORT_TYPES } from "../engine/sheet-ports.js"
 import type { PinType } from "../engine/model.js"
-import { CasesSchema, type SimCase } from "../engine/sim/cases.js"
+import { CasesSchema, caseText, type SimCase } from "../engine/sim/cases.js"
 import { scanCircuit, type Scan } from "./analyze.js"
 import { EditError } from "./edit-error.js"
 import { attributeNamed, putAttribute } from "./edit-text.js"
@@ -120,6 +120,7 @@ export function cardLines(card: SheetCardText): string[] {
     `Does: ${card.does ?? "(not written; describe_sheet)"}`,
     ...(card.sources ? [`Sources: ${card.sources.join("; ")}`] : []),
     ...card.ports.map((port) => `  port ${portText(port)}`),
+    ...(card.cases ?? []).map((one) => `  case ${caseText(one)}`),
   ]
 }
 

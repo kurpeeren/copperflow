@@ -19,3 +19,37 @@ datasheet:
   url: https://www.aosmd.com/res/datasheets/AO3400A.pdf
   title: AO3400A datasheet
 datasheet_pages: 1 (SOT23 pin drawing), 2 (VGS(th), RDS(on))
+model:
+  kind: nmos
+  pins:
+    gate: G
+    source: S
+    drain: D
+  figures:
+    vth:
+      value: 1.45
+      source: p2, Electrical Characteristics, VGS(th) max
+    rdson:
+      value: 0.048
+      source: p2, Electrical Characteristics, RDS(ON) max at VGS 2.5 V
+    rdsonAt:
+      value: 2.5
+      source: p2, Electrical Characteristics, RDS(ON) at VGS 2.5 V
+    vsd:
+      value: 1
+      source: p2, Electrical Characteristics, VSD max at IS 1 A
+    vsdAt:
+      value: 1
+      source: p2, Electrical Characteristics, VSD at IS 1 A
+    vdsmax:
+      value: 30
+      source: p1, Absolute Maximum Ratings, VDS
+    vgsmax:
+      value: 12
+      source: p1, Absolute Maximum Ratings, VGS
+    idmax:
+      value: 5.7
+      source: p1, Absolute Maximum Ratings, ID at TA 25 C
+    pdmax:
+      value: 1.4
+      source: p1, Absolute Maximum Ratings, PD at TA 25 C

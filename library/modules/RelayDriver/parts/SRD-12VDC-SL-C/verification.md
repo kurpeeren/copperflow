@@ -1,7 +1,7 @@
 # Verification of Songle SRD relay, 12 V coil (400 ohm, 30 mA), SPDT changeover, 10 A
 
 Status: not verified
-Content: 23f012c42e27 (changes when part.yaml or footprint.yaml changes)
+Content: 136dabcca192 (changes when part.yaml or footprint.yaml changes)
 
 Check each item against the datasheet and write the page next to it. When everything is
 checked, run in a terminal: copperflow parts verify SRD-12VDC-SL-C --by "<your name>" --against "<datasheet, revision, page>"
@@ -15,6 +15,8 @@ checked, run in a terminal: copperflow parts verify SRD-12VDC-SL-C --by "<your n
 - [ ] Footprint footprint.yaml matches the package drawing
 - [ ] Every pad in footprint.yaml matches the recommended land pattern (position, size, drill)
 - [ ] lcsc part C30431 is this exact part
+- [ ] Model relay pins: coil1 COIL1, coil2 COIL2, com COM, no NO, nc NC
+- [ ] Model coil 400 Ω, p2, 6. Coil data chart, SRD high sensitivity 12 V: compare
 
 ## Where each item was read
 

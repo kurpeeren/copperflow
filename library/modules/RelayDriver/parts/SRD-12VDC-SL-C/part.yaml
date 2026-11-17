@@ -29,3 +29,15 @@ datasheet:
   url: https://www.circuitbasics.com/wp-content/uploads/2015/11/SRD-05VDC-SL-C-Datasheet.pdf
   title: Songle Relay SRD datasheet
 datasheet_pages: 1 (DRILLING and WIRING DIAGRAM), 2 (coil data, contact rating)
+model:
+  kind: relay
+  pins:
+    coil1: COIL1
+    coil2: COIL2
+    com: COM
+    no: NO
+    nc: NC
+  figures:
+    coil:
+      value: 400
+      source: p2, 6. Coil data chart, SRD high sensitivity 12 V

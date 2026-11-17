@@ -2,7 +2,7 @@ import { SRD_12VDC_SL_C } from "./parts/SRD-12VDC-SL-C/SRD_12VDC_SL_C"
 import { AO3400A } from "./parts/AO3400A/AO3400A"
 export default function RelayDriver() {
   return (
-    <sheet does="12 V SPDT relay switched by 3.3 V or 5 V logic: AO3400A low side (RDS(on) spec at 2.5 V), 1N4148W flyback, 100k pull-down, LED on while driven" sources={["https://www.circuitbasics.com/wp-content/uploads/2015/11/SRD-05VDC-SL-C-Datasheet.pdf (Songle SRD: p1 drilling and wiring, p2 coil 12 V 400 ohm 30 mA, contacts)","https://www.aosmd.com/res/datasheets/AO3400A.pdf (p2: VGS(th) 1.45 V max, RDS(on) < 48 mOhm at VGS 2.5 V)","https://www.diodes.com/assets/Datasheets/ds30086.pdf (1N4148W-7-F, SOD123, p1)","https://www.kingbrightusa.com/images/catalog/SPEC/APTD1608LZGCK.pdf (p2: VF 2.65 V typ at 2 mA)"]}>
+    <sheet does="12 V SPDT relay switched by 3.3 V or 5 V logic: AO3400A low side (RDS(on) spec at 2.5 V), 1N4148W flyback, 100k pull-down, LED on while driven" sources={["https://www.circuitbasics.com/wp-content/uploads/2015/11/SRD-05VDC-SL-C-Datasheet.pdf (Songle SRD: p1 drilling and wiring, p2 coil 12 V 400 ohm 30 mA, contacts)","https://www.aosmd.com/res/datasheets/AO3400A.pdf (p2: VGS(th) 1.45 V max, RDS(on) < 48 mOhm at VGS 2.5 V)","https://www.diodes.com/assets/Datasheets/ds30086.pdf (1N4148W-7-F, SOD123, p1)","https://www.kingbrightusa.com/images/catalog/SPEC/APTD1608LZGCK.pdf (p2: VF 2.65 V typ at 2 mA)"]} cases={[{ name: "3.3 V control", set: { V12: 12, GND: 0, CTRL: 3.3 }, expect: { "K1.coil.i": [0.027, 0.033], "Q1.vgs": [2.5, 12], "LED1.i": [0.0015, 0.0025] } }, { name: "5 V control", set: { V12: 12, GND: 0, CTRL: 5 }, expect: { "K1.coil.i": [0.027, 0.033], "Q1.vgs": [2.5, 12], "LED1.i": [0.0015, 0.0025] } }, { name: "0 V control", set: { V12: 12, GND: 0, CTRL: 0 }, expect: { "K1.coil.i": [0, 0.0001], "LED1.i": [-0.000001, 0.00001] } }, { name: "control open", set: { V12: 12, GND: 0, CTRL: "open" }, expect: { "K1.coil.i": [0, 0.0001], "LED1.i": [-0.000001, 0.00001] } }]}>
       <port name="V12" type="power_in" carries="12 V in, 33 mA (coil 30 mA, LED 2 mA)" />
       <port name="GND" type="ground" carries="return of coil and logic, 33 mA" />
       <port name="CTRL" type="input" carries="0 off; 3.3 V or 5 V logic on, 0.03 mA; open is off" />
@@ -11,11 +11,11 @@ export default function RelayDriver() {
       <port name="NC" type="passive" carries="normally closed contact, open while CTRL is high, 10 A at most" />
       <SRD_12VDC_SL_C name="K1" pcbX={0} pcbY={0} pcbRotation={0} />
       <AO3400A name="Q1" pcbX={-12} pcbY={-5} pcbRotation={0} />
-      <diode name="D1" manufacturerPartNumber="1N4148W-7-F" footprint="sod123" pcbX={-11.15} pcbY={0} pcbRotation={90} />
+      <diode name="D1" manufacturerPartNumber="1N4148W-7-F" vf="0.715V" vfAt="1mA" vf2="0.855V" vf2At="10mA" ifmax="300mA" pdmax="400mW" footprint="sod123" pcbX={-11.15} pcbY={0} pcbRotation={90} />
       <resistor name="R1" resistance="100" footprint="0603" pcbX={-12.25} pcbY={-7.85} pcbRotation={180} />
       <resistor name="R2" resistance="100k" footprint="0603" pcbX={-9} pcbY={-9} pcbRotation={0} />
       <resistor name="R3" resistance="4.7k" footprint="0603" pcbX={-7} pcbY={9} pcbRotation={180} />
-      <led name="LED1" color="green" manufacturerPartNumber="APTD1608LZGCK" footprint="0603" pcbX={-10.8} pcbY={4.3} pcbRotation={270} />
+      <led name="LED1" color="green" manufacturerPartNumber="APTD1608LZGCK" vf="2.65V" vfAt="2mA" ifmax="25mA" pdmax="102.5mW" footprint="0603" pcbX={-10.8} pcbY={4.3} pcbRotation={270} />
       <trace from="K1.COIL1" to="net.V12" />
       <trace from="D1.cathode" to="net.V12" />
       <trace from="R3.pin1" to="net.V12" />

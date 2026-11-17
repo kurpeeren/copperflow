@@ -45,6 +45,8 @@ import * as pour from "./pour-tools.js"
 import * as router from "./route-tools.js"
 import * as placer from "./place-tools.js"
 import { CREATE_PART_DESCRIPTION, createPartInput, createPartTool } from "./create-part.js"
+import { SIMULATE_DESCRIPTION, simulateInput } from "./simulate-tool.js"
+import { simulate } from "../core/simulate.js"
 import { IMPORT_PART_DESCRIPTION, importPart, importPartInput } from "./import-part.js"
 import { IMPORT_BOARD_DESCRIPTION, importBoardInput, importBoardTool } from "./board-import-tool.js"
 import { MAKE_SHEET_DESCRIPTION, makeSheet, makeSheetInput } from "./make-sheet.js"
@@ -273,6 +275,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
   )
 
   server.registerTool("describe_sheet", { description: DESCRIBE_SHEET_DESCRIPTION, inputSchema: describeSheetInput }, (input) => run(() => describeSheetTool(root, input)))
+  server.registerTool("simulate", { description: SIMULATE_DESCRIPTION, inputSchema: simulateInput, annotations: READ_ONLY }, (input) => run(() => simulate(root, input, options.engine)))
   server.registerTool("make_sheet", { description: MAKE_SHEET_DESCRIPTION, inputSchema: makeSheetInput }, (input) => run(() => makeSheet(root, input, options.engine)))
 
   server.registerTool(
