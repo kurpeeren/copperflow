@@ -46,6 +46,31 @@ instance, shows the card.
 4. Say to the person which modules you used and whether each is verified. A module that is NOT
    verified is a draft: check it as you would your own block.
 
+## Checking a block's voltages: simulate and cases
+
+Run `simulate` before a block is built, when its job is a voltage or a current: a divider, a clamp,
+a switch that must be fully on, a resistor that must not burn. `simulate { file, set: { V12: 12,
+GND: 0, CTRL: 3.3 }, sheet?, closed?, coil? }` gives each net's voltage, each source's current and
+the power drawn, then the parts beyond a limit (a resistor's power against its package, a diode's
+current against `ifmax`, a MOSFET neither off nor fully on, a capacitor over `voltageRating`), then
+each part. A net set to `"open"` floats; `closed` names switches, `coil` relays that are energised.
+
+What it is: a DC operating point from ideal sources and simple models (resistors, diodes and LEDs
+fitted to `vf` at `vfAt`, zeners to `vz` at `vzAt` and `zz`, MOSFETs to `vth` and `rdson` at
+`rdsonAt`, transistors to `hfe` and `vbe` at `vbeAt`, relay coils). What it does not know: time,
+frequency, temperature, tolerance; chips are not modelled, their pins draw nothing unless the part's
+`model` gives `loads`. A diode or LED with no figures uses generic ones marked assumed; a transistor
+or MOSFET with none is refused. A library part carries `model:` in part.yaml with the datasheet page
+of each figure; each figure is an item of its verification checklist.
+
+A sheet's card can carry `cases` (write them with `describe_sheet`): `[{ name, set, closed?,
+coil?, expect: { OUT: [3.2, 3.6], "K1.coil.i": [0.027, 0.033] } }]`. A figure is a net's voltage,
+or a part's `.v`, `.i`, `.p` (`Q1.vgs` for a MOSFET, `K1.coil.i` for a relay). `simulate { file,
+sheet }` with no `set` runs them, one line each; `module_info` shows the last result. Cases that
+pass are a simulation of simple models, not a person's check of the module. If a case shows a
+block not doing what its card says, say so to the person; do not change the case or the figures
+until it passes. `copperflow spice <file> --out x.cir` writes the same circuit for another simulator.
+
 ## After the person approved a board: save_module
 
 `save_module { file: "Input.sheet.tsx", name, replace }` copies a sheet and its library parts to
