@@ -54,8 +54,8 @@ export const FINISHES = {
   hasl: { name: "HASL", sentence: "Hot-air levelled solder: silver grey, a little domed.", face: [190, 193, 198], rim: [124, 127, 132], shine: [236, 238, 242] },
 } as const satisfies Record<string, FinishLook>
 
-/** The board's glass-fibre laminate where light comes through it, and where copper on the far side blocks the light. */
-export const LAMINATE = { lit: [196, 178, 120] as Rgb, shaded: [150, 132, 82] as Rgb }
+/** The board's glass-fibre laminate, a pale grey-beige (never gold, so it is not taken for a finish), where light comes through it, and where copper on the far side blocks the light. */
+export const LAMINATE = { lit: [184, 180, 156] as Rgb, shaded: [138, 132, 106] as Rgb }
 /** The wall of a plated hole, seen down the hole. */
 export const BARREL: Rgb = [70, 62, 46]
 

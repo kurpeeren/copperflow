@@ -1,7 +1,7 @@
 // The picture put together from coverage images made by hand, so each step's answer is known.
 import { describe, expect, test } from "vitest"
 import { bodyStep, compose, type SideImages } from "../../src/engine/fab/picture/compose.js"
-import { FINISHES, lookWords, MASK_NAMES, MASKS, resolveLook, SILKS } from "../../src/engine/fab/picture/looks.js"
+import { FINISHES, LAMINATE, lookWords, MASK_NAMES, MASKS, resolveLook, SILKS } from "../../src/engine/fab/picture/looks.js"
 import type { Coverage } from "../../src/engine/fab/picture/raster.js"
 
 const SIZE = 24
@@ -87,6 +87,16 @@ describe("the picture put together", () => {
     expect(near(pixel(compose(images, resolveLook({ silk: "black" }), PX_PER_MM), 20, 12), SILKS.black.colour, 12)).toBe(true)
     expect(near(pixel(compose(images, resolveLook({ finish: "hasl" }), PX_PER_MM), 3, 12), FINISHES.hasl.face, 40)).toBe(true)
     expect(near(pixel(compose(images, look, PX_PER_MM), 3, 12), FINISHES.enig.face, 40)).toBe(true)
+  })
+
+  test("bare laminate in a mask opening round a pad is the laminate's pale colour, never gold, on either finish", () => {
+    const images = blank({ copper: square(0, 0, 8, 24), openings: square(0, 0, 16, 24) })
+    for (const finish of ["hasl", "enig"] as const) {
+      const ring = pixel(compose(images, resolveLook({ finish }), PX_PER_MM), 12, 12)
+      expect(near(ring, LAMINATE.lit, 12), finish).toBe(true)
+      // Gold is red well above blue; the laminate is a pale grey-beige.
+      expect((ring[2] as number) / (ring[0] as number), finish).toBeGreaterThan(0.75)
+    }
   })
 
   test("the look's words, defaults and refusals", () => {
