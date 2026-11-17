@@ -229,6 +229,7 @@ test("the board is a rectangle or an outline, and there is only one", () => {
     ],
     layers: 4,
     thickness: 1,
+    thicknessGiven: true,
     schMaxTraceDistance: 5,
     keepouts: [],
   })
