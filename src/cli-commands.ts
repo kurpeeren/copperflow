@@ -35,6 +35,7 @@ import { PIN_FORMATS, pinMapText, type PinFormat } from "./core/pin-map.js"
 import { buildWith } from "./core/design-source.js"
 import { Engine } from "./engine/engine.js"
 import { formatImport, importLcscPart } from "./library/import-lcsc.js"
+import { formatKicadImport, importKicad } from "./library/kicad/import.js"
 import { createCopperflowServer } from "./mcp/server.js"
 import { studioCommand } from "./cli-studio.js"
 import { VERSION } from "./version.js"
@@ -98,6 +99,9 @@ Usage:
                                               (<name>-pcb.png or <name>-schematic-<page>.png beside the circuit)
   copperflow board <file> --dxf <path> [--layer <name>] [--units mm|inch] [--origin keep] [--replace]
                                               set the board's outline, holes and keepouts from a DXF drawing
+  copperflow import kicad <board.kicad_pcb> [--name <circuit name>] [--replace] [--origin keep]
+                                              make a new circuit from a KiCad board: its outline, parts (as
+                                              library parts, not verified), nets, tracks, vias and pours
   copperflow history [--limit n]              list recent changes
   copperflow undo [id]                        undo the newest change, or the given one
 
@@ -211,6 +215,9 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
       case "board":
         io.out(await boardCommand(root, rest, options))
         return 0
+      case "import":
+        io.out(await importCommand(cwd, root, rest, options))
+        return 0
       case "undo": {
         // The built design tells which tracks start on locked parts, so copper can be undone while parts are locked.
         const design = (circuit: string) => buildWith(root, circuit, options.engine)
@@ -249,6 +256,23 @@ async function boardCommand(root: string, rest: string[], options: CliOptions): 
   }
   const result = await importBoard(root, required(args[0], "file"), request, { author: "human", ...designOptions(options) })
   return formatBoardImport(result).join("\n")
+}
+
+const KICAD_USAGE = "Usage: copperflow import kicad <board.kicad_pcb> [--name <circuit name>] [--replace] [--origin keep]"
+
+/** `import kicad <path>`: the path is read from where the command runs, as a person typed it. */
+async function importCommand(cwd: string, root: string, rest: string[], options: CliOptions): Promise<string> {
+  const [kind, ...args] = rest
+  if (kind !== "kicad") throw new Error(`import reads kicad boards only. ${KICAD_USAGE}`)
+  const [name, afterName] = takeOption(args, "--name")
+  const [origin, afterOrigin] = takeOption(afterName, "--origin")
+  const [replace, remaining] = takeFlag(afterOrigin, "--replace")
+  if (origin !== undefined && origin !== "keep") throw new Error(`--origin takes keep, not ${origin}`)
+  const unknown = remaining.find((arg) => arg.startsWith("-"))
+  if (unknown) throw new Error(`Unknown option "${unknown}" for import kicad. ${KICAD_USAGE}`)
+  if (remaining[0] === undefined) throw new Error(`Missing the KiCad board (.kicad_pcb). ${KICAD_USAGE}`)
+  const request = { kicad: resolve(cwd, remaining[0]), replace, ...(name !== undefined ? { name } : {}), ...(origin === "keep" ? { origin: "keep" as const } : {}) }
+  return formatKicadImport(await importKicad(root, request, { author: "human", ...designOptions(options) })).join("\n")
 }
 
 async function renderCommand(root: string, rest: string[], options: CliOptions): Promise<string> {

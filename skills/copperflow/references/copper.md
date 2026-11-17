@@ -13,6 +13,14 @@ shapes inside it become keepouts on all layers (not cut out of the board). It an
 layer when the largest shape is not the board; `units` overrides the file's; a board that has holes
 or keepouts already needs `replace: true`. Placed parts stay; the answer names those now outside.
 
+A KiCad board (`.kicad_pcb`, saved by KiCad 6 or newer, two copper layers) goes in the same tool:
+`import_board` `{ file: "new.circuit.tsx", dxf: "old.kicad_pcb" }` writes `file` as a new circuit in one
+change: the outline from Edge.Cuts, every footprint as a placed part (one library part per land
+pattern, pin list and value, never verified), the nets, tracks, vias and pours. It builds and checks
+the result and answers what it wrote against what the file held, whether every pad kept its net, and
+a list `Not carried over:` by kind and count (silkscreen, texts, 3D models, rules, …). Tell the person
+the parts must be compared with their datasheets before they are verified.
+
 ## Placing and routing
 
 Copper: place the parts first with `autoplace` (one history entry; parts without a position, or

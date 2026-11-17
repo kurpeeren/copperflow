@@ -9,11 +9,16 @@ import type { FileChange } from "./history.js"
 import { SHEET_FILE } from "../engine/sheets.js"
 import { isLayoutFile } from "./layout-file.js"
 
-/** A sheet (or layout) file's path on disk, refused unless it is a `.sheet.tsx` (or `.circuit.layout.json`) file whose nearest existing folder is inside the project. */
+/** A library part's own file, `parts/<id>/<name>`: an import of a board writes its parts in the same change. */
+const PART_FILE = /^parts\/[A-Za-z][A-Za-z0-9._-]*\/(part\.yaml|footprint\.yaml|verification\.md|[A-Za-z][A-Za-z0-9_]*\.tsx)$/
+
+const isPartFile = (root: string, path: string) => PART_FILE.test(projectFile(root, path))
+
+/** A sheet (or layout, or library part) file's path on disk, refused unless it is a `.sheet.tsx` (or `.circuit.layout.json`, or part) file whose nearest existing folder is inside the project. */
 async function sheetPath(root: string, file: string): Promise<string> {
   if (file.includes("\0")) throw new Error("A file path cannot contain a NUL character")
   const path = resolve(root, file)
-  if (!SHEET_FILE.test(basename(path)) && !isLayoutFile(basename(path))) throw new Error(`${file} must end in .sheet.tsx`)
+  if (!SHEET_FILE.test(basename(path)) && !isLayoutFile(basename(path)) && !isPartFile(root, path)) throw new Error(`${file} must end in .sheet.tsx`)
   if (!isInside(resolve(root), path)) throw new Error(`${file} is outside the project root`)
   let folder = dirname(path)
   while (!(await stat(folder).then(() => true, () => false))) folder = dirname(folder)
@@ -97,8 +102,11 @@ export async function writeSheetFiles(root: string, changes: readonly FileChange
   try {
     for (const [index, change] of changes.entries()) {
       const path = found[index]?.path ?? ""
-      const top = await putText(path, textOn(change, side))
+      const text = textOn(change, side)
+      const top = await putText(path, text)
       if (top !== undefined) made.push({ path, top })
+      // A part folder whose last file goes is removed too, so an undone import leaves no empty part behind.
+      if (text === undefined && isPartFile(root, path)) await rmdir(dirname(path)).catch(() => undefined)
     }
   } catch (error) {
     await putBack()

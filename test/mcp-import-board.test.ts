@@ -74,6 +74,25 @@ describe("import_board", () => {
     expect(await source()).toBe(before)
   })
 
+  test("reads a KiCad board too: a new circuit with its copper and parts, as one change the agent can undo", async () => {
+    await cp(fileURLToPath(new URL("./fixtures/kicad/fixture.kicad_pcb", import.meta.url)), join(root, "drawings", "fixture.kicad_pcb"))
+    const before = await entries()
+    const result = await call("import_board", { file: "kicad.circuit.tsx", dxf: "drawings/fixture.kicad_pcb" })
+    expect(result.isError).toBe(false)
+    expect(result.text.split("\n")[0]).toMatch(/^Change c\d+: imported fixture\.kicad_pcb \(KiCad file version 20260206\) as kicad\.circuit\.tsx, its layout file and 4 new library parts$/)
+    expect(result.text).toContain("Pads: all 49 copper pads have the net they had in the file")
+    expect(await entries()).toBe(before + 1)
+    expect((await call("undo_change")).isError).toBe(false)
+    expect(await readFile(join(root, "kicad.circuit.tsx"), "utf8").catch(() => "gone")).toBe("gone")
+  })
+
+  test("refuses a KiCad board outside the project, and layer or units with one", async () => {
+    const outside = await call("import_board", { file: "kicad.circuit.tsx", dxf: "../fixture.kicad_pcb" })
+    expect(outside).toEqual({ isError: true, text: "import_board was refused: ../fixture.kicad_pcb is outside the project folder. Nothing was written." })
+    const layer = await call("import_board", { file: "kicad.circuit.tsx", dxf: "drawings/fixture.kicad_pcb", layer: "Edge.Cuts" })
+    expect(layer).toEqual({ isError: true, text: "import_board was refused: layer and units are for a DXF drawing; a KiCad board's outline is its Edge.Cuts layer, in mm. Nothing was written." })
+  })
+
   test("after an import the circuit builds, check_circuit runs and reports a part off the new outline", async () => {
     const result = await call("import_board", { file: FILE, dxf: "drawings/inner-shape.dxf", layer: "Cutout" })
     expect(result.text).toMatch(/placed parts are now outside the outline: .*J1/)

@@ -1,0 +1,93 @@
+[
+ {
+  "ref": "Q1",
+  "number": "1",
+  "x": 19.727276,
+  "y": 16.427628,
+  "angle": 30.0,
+  "width": 0.6,
+  "height": 0.6,
+  "drill": 0,
+  "plated": true,
+  "bottom": false,
+  "net": "GND"
+ },
+ {
+  "ref": "Q1",
+  "number": "2",
+  "x": 21.372724,
+  "y": 15.477628,
+  "angle": 30.0,
+  "width": 0.6,
+  "height": 0.8,
+  "drill": 0,
+  "plated": true,
+  "bottom": false,
+  "net": "/sense"
+ },
+ {
+  "ref": "Q1",
+  "number": "3",
+  "x": 19.45,
+  "y": 14.047372,
+  "angle": 30.0,
+  "width": 0.6,
+  "height": 0.9,
+  "drill": 0,
+  "plated": true,
+  "bottom": false,
+  "net": "Net-(Q1-Pad3)"
+ },
+ {
+  "ref": "R5",
+  "number": "1",
+  "x": 29.434315,
+  "y": 15.848528,
+  "angle": 225.0,
+  "width": 1.0,
+  "height": 1.2,
+  "drill": 0,
+  "plated": true,
+  "bottom": true,
+  "net": "Net-(Q1-Pad3)"
+ },
+ {
+  "ref": "R5",
+  "number": "2",
+  "x": 30.848528,
+  "y": 14.151472,
+  "angle": 225.0,
+  "width": 0.8,
+  "height": 1.2,
+  "drill": 0,
+  "plated": true,
+  "bottom": true,
+  "net": "+5V"
+ },
+ {
+  "ref": "J2",
+  "number": "1",
+  "x": 10.0,
+  "y": 24.0,
+  "angle": 270.0,
+  "width": 1.6,
+  "height": 1.6,
+  "drill": 0.9,
+  "plated": true,
+  "bottom": false,
+  "net": "+5V"
+ },
+ {
+  "ref": "J2",
+  "number": "2",
+  "x": 7.46,
+  "y": 24.0,
+  "angle": 270.0,
+  "width": 1.6,
+  "height": 2.2,
+  "drill": 0.9,
+  "plated": true,
+  "bottom": false,
+  "net": "GND"
+ }
+]

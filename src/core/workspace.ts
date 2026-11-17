@@ -374,7 +374,7 @@ export function createCircuitFile(
   root: string,
   file: string,
   text: string,
-  meta: { author: Author; summary: string; replace?: boolean; sheets?: readonly { file: string; text: string }[] },
+  meta: { author: Author; summary: string; replace?: boolean; sheets?: readonly { file: string; text: string }[]; also?: readonly FileChange[] },
 ): Promise<HistoryEntry> {
   return inProjectQueue(root, async () => {
     assertMeta(meta)
@@ -382,7 +382,8 @@ export function createCircuitFile(
     if (!CIRCUIT_FILE.test(basename(path))) throw new Error(`${file} must end in .circuit.tsx`)
     const source = await readIfThere(path)
     if (source !== undefined && !meta.replace) throw new Error(`${file} already exists; pass replace: true to overwrite it, or choose another file name`)
-    const also = await planSheetWrites(root, meta.sheets ?? [], meta.replace === true)
+    // `also`: further files the same change writes, planned by the caller (an imported board's layout file and parts).
+    const also = [...(await planSheetWrites(root, meta.sheets ?? [], meta.replace === true)), ...(meta.also ?? [])]
     const info = { author: meta.author, summary: meta.summary, ...alsoField(also) }
     if (source === undefined) return sheetFilesFirst(root, also, "after", () => writeNew(root, path, text, info))
     const existing = await resolveCircuit(root, file)

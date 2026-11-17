@@ -264,8 +264,7 @@ export async function createPart(
   options: { replace?: boolean; footprintFile?: FootprintFile; now: string; notes?: readonly string[] },
 ): Promise<{ part: Part; files: string[] }> {
   const dir = partDir(root, id)
-  const { verified: _ignored, ...data } = validate(input, "part")
-  const footprintText = footprintFileText(id, data, options.footprintFile)
+  const { part: data, files } = partTexts(id, input, options)
   const others = (await libraryIds(root)).filter((other) => other !== id)
   const clash = others.find((other) => other.toLowerCase() === id.toLowerCase() || componentName(other) === componentName(id))
   if (clash) throw new Error(`Part id "${id}" collides with the existing part "${clash}"; choose another id`)
@@ -275,18 +274,25 @@ export async function createPart(
     if (await isPartVerified(root, id, await readPart(root, id))) throw new Error(`Part ${id} is verified; only a human can change it`)
   }
   await mkdir(dir, { recursive: true })
-  if (footprintText !== undefined) await writeFileAtomic(join(dir, FOOTPRINT_FILE), footprintText)
-  await writeFileAtomic(yamlPath, stringify(data))
-  await writeFileAtomic(join(dir, `${componentName(id)}.tsx`), generateComponent(id, data))
-  // Always rewritten, so the checklist describes the pins that are actually in part.yaml.
-  await writeFileAtomic(join(dir, "verification.md"), verificationTemplate(id, data, footprintText, options.notes))
+  for (const file of files) await writeFileAtomic(join(dir, file.name), file.text)
+  return { part: data, files: ["part.yaml", ...files.map((file) => file.name).filter((name) => name !== "part.yaml")].map((name) => `${PARTS_DIR}/${id}/${name}`) }
+}
+
+/**
+ * The files a new part is: footprint.yaml (when given), part.yaml, the generated component and a fresh verification
+ * checklist, in the order createPart writes them, checked as createPart checks them; nothing is written. The checklist
+ * is always rewritten, so it describes the pins that are actually in part.yaml.
+ */
+export function partTexts(id: string, input: unknown, options: { footprintFile?: FootprintFile; notes?: readonly string[] }): { part: Part; files: { name: string; text: string }[] } {
+  const { verified: _ignored, ...data } = validate(input, "part")
+  const footprintText = footprintFileText(id, data, options.footprintFile)
   return {
     part: data,
     files: [
-      `${PARTS_DIR}/${id}/part.yaml`,
-      ...(footprintText === undefined ? [] : [`${PARTS_DIR}/${id}/${FOOTPRINT_FILE}`]),
-      `${PARTS_DIR}/${id}/${componentName(id)}.tsx`,
-      `${PARTS_DIR}/${id}/verification.md`,
+      ...(footprintText === undefined ? [] : [{ name: FOOTPRINT_FILE, text: footprintText }]),
+      { name: "part.yaml", text: stringify(data) },
+      { name: `${componentName(id)}.tsx`, text: generateComponent(id, data) },
+      { name: "verification.md", text: verificationTemplate(id, data, footprintText, options.notes) },
     ],
   }
 }
