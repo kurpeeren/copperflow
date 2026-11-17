@@ -129,7 +129,7 @@ describe("MCP server", () => {
   test("create_part takes the part's fields, the package and the pins, the same as Library → New part…", async () => {
     const { tools } = await client.listTools()
     const schema = tools.find((t) => t.name === "create_part")?.inputSchema
-    expect(Object.keys(schema?.properties ?? {})).toEqual(["id", "title", "description", "manufacturer", "mpn", "package", "pins", "suppliers", "datasheet", "footprint_file", "replace"])
+    expect(Object.keys(schema?.properties ?? {})).toEqual(["id", "title", "description", "manufacturer", "mpn", "package", "pins", "suppliers", "datasheet", "model", "footprint_file", "replace"])
     expect(schema?.required).toEqual(["id", "title", "package", "pins"])
   })
 
