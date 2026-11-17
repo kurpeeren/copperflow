@@ -1,7 +1,7 @@
 // verification.md as a list of ticks: the items are its "- [ ]" lines; ticking changes one character of a line and
 // nothing else, and ticks count only for the content hash the file names.
 import { describe, expect, test } from "vitest"
-import { checklistContent, checklistItems, openItems, withoutTicks, withTicks } from "../src/core/checklist-text.js"
+import { checklistContent, checklistItems, openItems, withoutTicks, withStatus, withTicks } from "../src/core/checklist-text.js"
 
 const HASH = "5cff0330a85f0123456789abcdef"
 const FILE = [
@@ -53,5 +53,13 @@ describe("the items of verification.md", () => {
     const cleared = withoutTicks(FILE, "abcdef012345ffff")
     expect(cleared).toBe(FILE.replace("- [x] Pin 2", "- [ ] Pin 2").replace("Content: 5cff0330a85f", "Content: abcdef012345"))
     expect(checklistItems(cleared).every((item) => !item.ticked)).toBe(true)
+  })
+
+  test("the status line says who verified, against what and when; nothing else changes", () => {
+    const status = "Status: verified by Eren against MCP2515 datasheet, page 4 on 2026-11-17"
+    expect(withStatus(FILE, status)).toBe(FILE.replace("Status: not verified", status))
+    const crlf = FILE.replace(/\n/g, "\r\n")
+    expect(withStatus(crlf, status)).toBe(crlf.replace("Status: not verified", status))
+    expect(withStatus("- [x] A\n", status)).toBe("- [x] A\n")
   })
 })

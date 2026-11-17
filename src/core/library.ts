@@ -4,6 +4,7 @@ import { join, posix } from "node:path"
 import { parse, stringify } from "yaml"
 import { z } from "zod"
 import { footprintFromFile, pinErrors, type FootprintFile } from "../engine/footprints/file.js"
+import { withStatus } from "./checklist-text.js"
 import { writeFileAtomic } from "./fs-utils.js"
 import { PART_ID, PIN_NAME, PIN_NUMBER, PIN_TYPES, type PinType } from "./pin-types.js"
 import type { CircuitModel } from "./types.js"
@@ -304,6 +305,13 @@ export async function verifyPart(root: string, id: string, check: { by: string; 
   }
   const part: Part = { ...current, verified: { by: check.by, against: check.against, date: now, hash: contentHash(current, footprintText) } }
   await writeFileAtomic(join(partDir(root, id), "part.yaml"), stringify(validate(part, `${id}/part.yaml`)))
+  // verification.md's status line says who verified, against what and when; the content hash does not read this file.
+  const checklistPath = join(partDir(root, id), "verification.md")
+  const checklist = await readFile(checklistPath, "utf8").catch(() => undefined)
+  if (checklist !== undefined) {
+    const status = withStatus(checklist, `Status: verified by ${check.by} against ${check.against} on ${now.slice(0, 10)}`)
+    if (status !== checklist) await writeFileAtomic(checklistPath, status)
+  }
   return part
 }
 

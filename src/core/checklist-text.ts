@@ -54,6 +54,13 @@ export function withTicks(text: string, items: readonly string[], ticked: boolea
   return missing.length > 0 ? { missing } : { text: changed.join("\n") }
 }
 
+const STATUS = /^Status: [^\r\n]*/m
+
+/** The file with its first "Status:" line replaced by `status`, every other byte unchanged; as it is without one. */
+export function withStatus(text: string, status: string): string {
+  return text.replace(STATUS, () => status)
+}
+
 /** The file with every item unticked and its "Content:" line naming `hash`, the rest unchanged. */
 export function withoutTicks(text: string, hash: string): string {
   return text
