@@ -147,6 +147,17 @@
   justify-self: end;
 }
 
+.verify-missing-line {
+  grid-column: 1 / -1;
+  margin: 0;
+  justify-self: end;
+  color: var(--muted);
+}
+
+.verify-missing-line:empty {
+  display: none;
+}
+
 .verify-url {
   overflow-wrap: anywhere;
 }

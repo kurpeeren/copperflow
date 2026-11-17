@@ -69,6 +69,18 @@ export function canMark(id: string, items: ScreenItems, form: MarkForm, placehol
   return !placeholder && items.open === 0 && form.by.trim() !== "" && form.against.trim() !== "" && form.confirm.trim() === id
 }
 
+/** What Mark verified still needs, in one short line ("Still missing: 3 items open; your name; type the id."), or "". */
+export function markMissing(id: string, items: ScreenItems, form: MarkForm, placeholder: boolean): string {
+  const missing = [
+    ...(placeholder ? ["a real footprint (this one is a placeholder)"] : []),
+    ...(items.open > 0 ? [`${items.open} item${items.open === 1 ? "" : "s"} open`] : []),
+    ...(form.by.trim() === "" ? ["your name"] : []),
+    ...(form.against.trim() === "" ? ["what it was checked against"] : []),
+    ...(form.confirm.trim() !== id ? ["type the id"] : []),
+  ]
+  return missing.length === 0 ? "" : `Still missing: ${missing.join("; ")}.`
+}
+
 /** The pin items, for "Tick all pins": only those not ticked yet. */
 export function openPinItems(items: ScreenItems): string[] {
   return items.pins.flatMap((row) => (row.item && !row.item.ticked ? [row.item.text] : []))

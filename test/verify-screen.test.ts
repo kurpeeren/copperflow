@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest"
 import { generateFootprint } from "../src/engine/footprints/index.js"
 import type { Footprint } from "../src/engine/footprints/types.js"
 import { checkedAgainst, datasheetLink, firstPage } from "../studio/src/shell/verify-datasheet.js"
-import { canMark, screenItems } from "../studio/src/shell/verify-checklist.js"
+import { canMark, markMissing, screenItems } from "../studio/src/shell/verify-checklist.js"
 import { printFootprintHtml } from "../studio/src/shell/verify-print.js"
 
 const HASH = "aaaaaaaaaaaa0000"
@@ -77,6 +77,17 @@ describe("the items on the screen", () => {
     expect(canMark("U1", done, { ...form, by: " " }, false)).toBe(false)
     expect(canMark("U1", done, { ...form, confirm: "u1" }, false)).toBe(false)
     expect(canMark("U1", done, form, true)).toBe(false)
+  })
+})
+
+describe("what Mark verified still needs", () => {
+  test("open items, the name, what it was checked against, the id, in one short line", () => {
+    const open = screenItems(CHECKLIST, HASH, PINS, sot23())
+    expect(markMissing("U1", open, { by: "", against: "x", confirm: "" }, false)).toBe("Still missing: 4 items open; your name; type the id.")
+    const done = screenItems(CHECKLIST.replace(/- \[ \]/g, "- [x]"), HASH, PINS, sot23())
+    expect(markMissing("U1", done, { by: "Eren", against: " ", confirm: "U1" }, false)).toBe("Still missing: what it was checked against.")
+    expect(markMissing("U1", done, { by: "Eren", against: "x", confirm: "U1" }, true)).toBe("Still missing: a real footprint (this one is a placeholder).")
+    expect(markMissing("U1", done, { by: "Eren", against: "x", confirm: "U1" }, false)).toBe("")
   })
 })
 

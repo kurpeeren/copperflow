@@ -96,8 +96,14 @@ describe("the Verify screen", () => {
     expect(html).toContain('value="Regulator datasheet rev B, page(s) 3-4"')
   })
 
-  test("Mark verified stays off until every item is ticked and the form is filled", () => {
-    expect(render(DETAILS)).toMatch(/<button type="submit" class="primary" disabled="">Mark verified<\/button>/)
+  test("Mark verified stays off until every item is ticked and the form is filled, and says what is missing", () => {
+    const html = render(DETAILS)
+    expect(html).toMatch(/<button type="submit" class="primary" disabled="" aria-describedby="([^"]+)">Mark verified<\/button><p id="\1" class="verify-missing-line">Still missing: 4 items open; your name; type the id.<\/p>/)
+  })
+
+  test("Tick all pins is off when every pin is ticked", () => {
+    const pinsDone = CHECKLIST.replace("- [ ] Pin 2", "- [x] Pin 2").replace("- [ ] Pin 3", "- [x] Pin 3")
+    expect(render(DETAILS, pinsDone)).toMatch(/<button type="button" disabled="">Tick all pins…<\/button>/)
   })
 
   test("a part with no datasheet says so and what to do", () => {
@@ -109,7 +115,7 @@ describe("the Verify screen", () => {
     const placeholder = 'Part U1 cannot be verified: parts/U1/footprint.yaml is a placeholder; draw its pads from the datasheet\'s land pattern, then delete "placeholder: true"'
     const html = render({ ...DETAILS, placeholder, checklist: CHECKLIST.replace(/- \[ \]/g, "- [x]") })
     expect(html).toContain(placeholder.replace(/'/g, "&#x27;").replace(/"/g, "&quot;"))
-    expect(html).toMatch(/disabled="">Mark verified/)
+    expect(html).toMatch(/disabled="" aria-describedby="[^"]+">Mark verified/)
   })
 
   test("ticks made before the part changed: the screen says so and shows them open", () => {

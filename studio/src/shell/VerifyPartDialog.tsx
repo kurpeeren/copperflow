@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from "react"
 import type { Footprint } from "../../../src/engine/footprints/types.js"
 import type { PartDetails } from "../api"
-import { canMark, screenItems, type ScreenItems } from "./verify-checklist"
+import { canMark, markMissing, openPinItems, screenItems, type ScreenItems } from "./verify-checklist"
 import { checkedAgainst } from "./verify-datasheet"
 import { VerifyDatasheet } from "./VerifyDatasheet"
 import { VerifyFootprint } from "./VerifyFootprint"
@@ -86,7 +86,7 @@ function TickAllPins({ items, off, onTick }: { items: ScreenItems; off: boolean;
   if (pins.length === 0) return null
   if (!asking) {
     return (
-      <button type="button" onClick={() => setAsking(true)} disabled={off}>
+      <button type="button" onClick={() => setAsking(true)} disabled={off || openPinItems(items).length === 0}>
         Tick all pins…
       </button>
     )
@@ -127,9 +127,12 @@ function MarkForm({ details, items, busy, onMark }: { details: PartDetails; item
       <input id={`${field}-by`} value={form.by} onChange={(event) => set("by", event.target.value)} />
       <label htmlFor={`${field}-confirm`}>Type {id} to confirm</label>
       <input id={`${field}-confirm`} value={form.confirm} onChange={(event) => set("confirm", event.target.value)} spellCheck={false} />
-      <button type="submit" className="primary" disabled={!ready || busy}>
+      <button type="submit" className="primary" disabled={!ready || busy} aria-describedby={`${field}-missing`}>
         Mark verified
       </button>
+      <p id={`${field}-missing`} className="verify-missing-line">
+        {markMissing(id, items, form, details.placeholder !== undefined)}
+      </p>
     </form>
   )
 }
