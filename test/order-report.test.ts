@@ -111,6 +111,11 @@ describe("the order report", () => {
     expect(lines.at(-1)).toBe(CAN_NODE.at(-1))
   })
 
+  test("a line without a value says its MPN: io-8's diodes", async () => {
+    await cp(join(EXAMPLES, "io-8"), root, { recursive: true })
+    expect((await report("io-8.circuit.tsx")).split("\n")).toContain("  D101, D201, D301, D401, D501, D601, D701, D801: diode BZT52C3V6-7-F sod123")
+  })
+
   test("the lines are plain strings, deterministic", async () => {
     await cp(join(EXAMPLES, "can-node"), root, { recursive: true })
     const design = await inProcessEngine.build(root, "can-node.circuit.tsx")

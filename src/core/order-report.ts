@@ -50,7 +50,8 @@ function bareBoardReasons(design: Design): string[] {
 
 const verdict = (what: string, reasons: readonly string[]) => `Ready for ${what}: ${reasons.length === 0 ? "yes" : `no: ${reasons.join("; ")}`}`
 
-const describeLine = (line: BomLine) => `  ${line.designators.join(", ")}: ${[line.kind, line.value, line.footprint].filter((s) => s !== "").join(" ")}`
+/** "R101: resistor 10k 0603"; a line without a value names its MPN. */
+const describeLine = (line: BomLine) => `  ${line.designators.join(", ")}: ${[line.kind, line.value || line.mpn, line.footprint].filter((s) => s !== "").join(" ")}`
 
 function unverifiedParts(bom: readonly BomLine[]): string[] {
   const parts = new Map<string, string[]>()
