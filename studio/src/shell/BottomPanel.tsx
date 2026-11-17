@@ -40,7 +40,7 @@ function Content(props: Props) {
   switch (props.tab) {
     case "library":
       return (
-        <LibraryTable parts={props.parts} onPlace={props.onPlace} />
+        <LibraryTable parts={props.parts} onPlace={props.onPlace} onVerify={props.actions.openVerify} />
       )
     case "log":
       return (

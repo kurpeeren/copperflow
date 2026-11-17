@@ -299,6 +299,11 @@ button.menu-title.open:hover:not(:disabled) {
   width: min(680px, calc(100vw - 32px));
 }
 
+/* Library → Verify…: the large dialog, set here so it has its size while its content loads. */
+.dialog.large {
+  width: min(1440px, calc(100vw - 32px));
+}
+
 .new-part-form h3,
 .new-part-form .new-part-pins,
 .new-part-form .new-part-paste,

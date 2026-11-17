@@ -6,6 +6,8 @@ import "./library-table.css"
 interface Props {
   parts: PartsData
   onPlace(part: string): void
+  /** Opens the Verify screen of a library part (read-only for a verified one). */
+  onVerify(part: string, title: string): void
 }
 
 /** Places a part once per intent: a double click or a held key asks again within PLACE_GAP_MS. */
@@ -28,6 +30,7 @@ function LibraryHead() {
         <th>Footprint</th>
         <th className="wide">Description</th>
         <th>Verified</th>
+        <th className="action" aria-label="Verify" />
         <th className="action" aria-label="Place" />
       </tr>
     </thead>
@@ -40,11 +43,12 @@ interface RowProps {
   tabStop: boolean
   onFocus(): void
   onPlace(): void
+  onVerify(): void
   onKey(event: KeyboardEvent<HTMLTableRowElement>): void
 }
 
 /** One part: a double click or Enter on the row places it, and so does its Place button. */
-function PartRow({ row, tabStop, onFocus, onPlace, onKey }: RowProps) {
+function PartRow({ row, tabStop, onFocus, onPlace, onVerify, onKey }: RowProps) {
   return (
     <tr tabIndex={tabStop ? 0 : -1} title={row.tooltip} onFocus={onFocus} onDoubleClick={onPlace} onKeyDown={onKey}>
       <td className="wide">{row.name}</td>
@@ -52,6 +56,14 @@ function PartRow({ row, tabStop, onFocus, onPlace, onKey }: RowProps) {
       <td>{row.footprint}</td>
       <td className="wide">{row.description}</td>
       <td>{row.verified && <span className={`badge ${row.verified === "Verified" ? "verified" : "unverified"}`} title={row.verifiedTip}>{row.verified}</span>}</td>
+      {/* The focused row's Verify button is the next Tab stop, so the keyboard reaches it too. */}
+      <td className="action">
+        {row.verified && (
+          <button className="lib-place" tabIndex={tabStop ? 0 : -1} onClick={onVerify} onDoubleClick={(e) => e.stopPropagation()} aria-label={row.verified === "Verified" ? `Look again at ${row.description}` : `Verify ${row.description}`}>
+            {row.verified === "Verified" ? "Look again" : "Verify…"}
+          </button>
+        )}
+      </td>
       <td className="action">
         <button className="lib-place" tabIndex={-1} onClick={(e) => clickPlaces(e.detail) && onPlace()} onDoubleClick={(e) => e.stopPropagation()} aria-label={`Place ${row.name}`}>
           Place
@@ -62,7 +74,7 @@ function PartRow({ row, tabStop, onFocus, onPlace, onKey }: RowProps) {
 }
 
 /** The Library tab of the bottom panel: every part as a table row, with one search over all columns. */
-export function LibraryTable({ parts, onPlace }: Props) {
+export function LibraryTable({ parts, onPlace, onVerify }: Props) {
   const [query, setQuery] = useState("")
   const body = useRef<HTMLTableSectionElement>(null)
   const [active, setActive] = useState(0)
@@ -91,7 +103,7 @@ export function LibraryTable({ parts, onPlace }: Props) {
           <LibraryHead />
           <tbody ref={body}>
             {rows.map((row, index) => (
-              <PartRow key={row.part} row={row} tabStop={index === stop} onFocus={() => setActive(index)} onPlace={() => place(row.part)} onKey={(e) => onKey(e, index, row.part)} />
+              <PartRow key={row.part} row={row} tabStop={index === stop} onFocus={() => setActive(index)} onPlace={() => place(row.part)} onVerify={() => onVerify(row.part, row.description)} onKey={(e) => onKey(e, index, row.part)} />
             ))}
           </tbody>
         </table>

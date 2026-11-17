@@ -65,47 +65,20 @@ export function LibraryInfo({ id, verified, actions }: Props) {
       <p className="hint">These come from parts/{id}/part.yaml and are the same for every copy of the part.</p>
 
       {verified ? (
-        <p className="note ok">Verified by {part.verified?.by} against {part.verified?.against}.</p>
+        <>
+          <p className="note ok">Verified by {part.verified?.by} against {part.verified?.against}.</p>
+          <button type="button" onClick={() => actions.openVerify(id, part.title)} aria-label={`Look again at ${part.title}`}>
+            Look again
+          </button>
+        </>
       ) : (
-        <VerifyForm id={id} checklist={checklist} actions={actions} />
+        <>
+          <p className="note warn">Not verified: {checklist.length} item{checklist.length === 1 ? "" : "s"} in parts/{id}/verification.md to check against the datasheet.</p>
+          <button type="button" className="primary" onClick={() => actions.openVerify(id, part.title)} aria-label={`Verify ${part.title}`}>
+            Verify…
+          </button>
+        </>
       )}
     </>
-  )
-}
-
-function VerifyForm({ id, checklist, actions }: { id: string; checklist: string[]; actions: Actions }) {
-  const [by, setBy] = useState("")
-  const [against, setAgainst] = useState("")
-  const [confirm, setConfirm] = useState("")
-  return (
-    <form
-      className="verify"
-      onSubmit={(e) => {
-        e.preventDefault()
-        void actions.verify(id, by.trim(), against.trim(), confirm)
-      }}
-    >
-      <p className="note warn">Not verified. Check each item against the datasheet:</p>
-      <ul className="checklist">
-        {checklist.map((item) => (
-          <li key={item}>{item.replace(/^- \[ \] /, "")}</li>
-        ))}
-      </ul>
-      <label>
-        Checked against
-        <input value={against} onChange={(e) => setAgainst(e.target.value)} placeholder="Datasheet, revision, page" required />
-      </label>
-      <label>
-        Your name
-        <input aria-label="Your name" value={by} onChange={(e) => setBy(e.target.value)} required />
-      </label>
-      <label>
-        Type {id} to confirm
-        <input aria-label={`Type ${id} to confirm`} value={confirm} onChange={(e) => setConfirm(e.target.value)} spellCheck={false} required />
-      </label>
-      <button type="submit" className="primary" disabled={confirm.trim() !== id || !by.trim() || !against.trim()}>
-        Mark verified
-      </button>
-    </form>
   )
 }

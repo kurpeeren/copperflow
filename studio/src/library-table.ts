@@ -36,7 +36,7 @@ export function libraryRows(parts: PartsData): LibraryRow[] {
     description: p.title,
     verified: p.verified ? "Verified" : "Unverified",
     tooltip: `${p.title} (${p.component})`,
-    verifiedTip: p.verified ? `Checked by ${p.verifiedBy}` : "Not checked against the datasheet yet",
+    verifiedTip: p.verified ? `Checked by ${p.verifiedBy}${p.verifiedAgainst ? ` against ${p.verifiedAgainst}` : ""}` : "Not checked against the datasheet yet",
     extra: `${p.id} ${p.mpn ?? ""} ${p.component}`,
   }))
   const builtin = parts.builtin.map((kind): LibraryRow => ({

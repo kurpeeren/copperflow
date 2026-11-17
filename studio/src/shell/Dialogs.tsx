@@ -11,11 +11,14 @@ import { SystemForm, type SystemPanel } from "./SystemDialog"
 import { NewCircuitForm, type NewCircuitPanel } from "./NewCircuitDialog"
 import { FootprintManagerForm, type FootprintPanel } from "./FootprintManagerDialog"
 import type { NewPartPanel } from "./new-part-result"
+import type { VerifyPanel } from "./VerifyPartDialog"
 import { FILLET_RADIUS_LABEL, FILLET_RADIUS_NOTE, filletRadiusField, readFilletRadius } from "./rules-form"
 
 // The New part dialog carries the footprint generator for its preview; it loads when first opened, and again on Retry
 // after a failed load.
 const newPartForm = lazyRetrying(() => import("./NewPartDialog").then((module) => module.NewPartForm))
+// The Verify screen carries the footprint drawing, the figures and the datasheet frame: loaded when first opened.
+const verifyForm = lazyRetrying(() => import("./VerifyPartDialog").then((module) => module.VerifyPartForm))
 
 export type DialogName = "keys" | "about" | "rules" | "makeSheet" | "importPart" | "newPart" | "system" | "newCircuit" | "footprints" | "exportChecks"
 
@@ -40,7 +43,7 @@ function useDialogKeys(box: RefObject<HTMLElement | null>, onClose: () => void):
   })
 }
 
-function Dialog({ title, onClose, children, wide = false }: { title: string; onClose(): void; children: ReactNode; wide?: boolean }) {
+function Dialog({ title, onClose, children, wide = false, large = false }: { title: string; onClose(): void; children: ReactNode; wide?: boolean; large?: boolean }) {
   const box = useRef<HTMLElement>(null)
   // Focus moves into the dialog on open and goes back to what had it on close.
   useEffect(() => {
@@ -55,7 +58,7 @@ function Dialog({ title, onClose, children, wide = false }: { title: string; onC
   useDialogKeys(box, onClose)
   return (
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
-      <section ref={box} tabIndex={-1} className={wide ? "dialog wide" : "dialog"} role="dialog" aria-modal="true" aria-label={title}>
+      <section ref={box} tabIndex={-1} className={large ? "dialog large" : wide ? "dialog wide" : "dialog"} role="dialog" aria-modal="true" aria-label={title}>
         <header className="hairline-b">
           <h2>{title}</h2>
           <button className="icon" aria-label="Close" onClick={onClose}>
@@ -214,6 +217,22 @@ export function StudioDialog({ name, onClose, rules, makeSheet, importPart, newP
       </p>
       <p>Design circuits in code with a human and an AI agent editing the same files.</p>
       <p>Apache License 2.0</p>
+    </Dialog>
+  )
+}
+
+/** Library → Verify… on a part: the large Verify screen, loaded when first opened. */
+export function VerifyDialog({ target, panel, onClose }: { target: { id: string; title: string }; panel: VerifyPanel; onClose(): void }) {
+  return (
+    <Dialog title={`Verify ${target.title}`} onClose={onClose} large>
+      <DialogBoundary
+        what="Verify"
+        onRetry={verifyForm.retry}
+        render={() => {
+          const VerifyPartForm = verifyForm.component()
+          return <VerifyPartForm panel={panel} id={target.id} />
+        }}
+      />
     </Dialog>
   )
 }

@@ -1,0 +1,164 @@
+/* Library → Verify…: a large dialog; the footprint, the pins and checklist, and the datasheet side by side on a wide
+   window, one under another on a narrow one. */
+.verify-screen {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  font-size: 12px;
+}
+
+.verify-notes {
+  grid-column: 1 / -1;
+}
+
+.verify-notes:empty {
+  display: none;
+}
+
+.verify-notes .note {
+  margin: 0 0 4px;
+}
+
+@media (max-width: 1000px) {
+  .verify-screen {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.verify-column {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.verify-column h3 {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.verify-column .note,
+.verify-column .hint {
+  margin: 0;
+}
+
+.verify-drawing {
+  width: 100%;
+  max-height: 46vh;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--pcb-background);
+}
+
+.verify-pad {
+  cursor: pointer;
+  outline: none;
+}
+
+.verify-pad:focus-visible > g {
+  stroke: var(--copper);
+  stroke-width: 0.12;
+}
+
+.verify-pad text {
+  pointer-events: none;
+  font-family: sans-serif;
+}
+
+.verify-readout {
+  margin: 0;
+  min-height: 2.6em;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.verify-actions,
+.verify-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dialog .verify-figures th,
+.dialog .verify-pins th {
+  text-align: left;
+  font-weight: normal;
+  color: var(--muted);
+  padding: 0 8px 0 0;
+}
+
+.dialog .verify-figures td:first-child,
+.dialog .verify-pins td:first-child {
+  width: auto;
+  color: var(--text);
+}
+
+.verify-kind {
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+.verify-power .verify-kind {
+  color: var(--danger-text);
+}
+
+.verify-ground .verify-kind {
+  color: var(--muted);
+}
+
+.verify-pads,
+.verify-missing {
+  color: var(--muted);
+}
+
+.verify-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.verify-items label {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  overflow-wrap: anywhere;
+}
+
+.verify-count {
+  margin: 0;
+  color: var(--muted);
+}
+
+.verify-mark {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.verify-mark button {
+  grid-column: 2;
+  justify-self: end;
+}
+
+.verify-url {
+  overflow-wrap: anywhere;
+}
+
+.verify-open {
+  justify-self: start;
+}
+
+.verify-pdf {
+  width: 100%;
+  height: 60vh;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+}

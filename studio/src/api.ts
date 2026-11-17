@@ -2,6 +2,7 @@ import type { Annotations, LockViolation } from "../../src/core/annotations.js"
 import type { HistoryListing, HistoryProblem } from "../../src/core/history.js"
 import type { CircuitModel, Edit, Literal, PartInfo, PropInfo, TraceInfo } from "../../src/core/types.js"
 import type { Design } from "../../src/engine/design.js"
+import type { Footprint } from "../../src/engine/footprints/types.js"
 import type { Diagnostic } from "../../src/engine/model.js"
 import type { FabricationExport } from "../../src/core/fabrication.js"
 import type { RouteEvent, RouteScope } from "../../src/studio/route-events.js"
@@ -27,6 +28,7 @@ export interface LibraryPart {
   component: string
   verified: boolean
   verifiedBy?: string
+  verifiedAgainst?: string
   /** Where the part came from, e.g. "lcsc C7950, imported 2026-11-11". */
   origin?: string
 }
@@ -36,6 +38,7 @@ export interface PartsData {
   builtin: string[]
 }
 
+/** What GET /api/part answers: part.yaml, verification.md, and what the Verify screen needs besides. */
 export interface PartDetails {
   id: string
   part: {
@@ -43,11 +46,21 @@ export interface PartDetails {
     manufacturer?: string
     mpn?: string
     footprint: string
+    pins: Record<string, { name: string; type: string; description?: string }>
     suppliers?: Record<string, string>
-    datasheet?: { file?: string; url?: string }
+    datasheet?: { file?: string; url?: string; title?: string }
+    datasheet_pages?: string
     verified?: { by: string; against: string; date: string }
   }
   checklist: string
+  /** The content hash of part.yaml and footprint.yaml now; ticks in verification.md count for it only. */
+  hash: string
+  verified: boolean
+  /** The pads the build uses: footprint.yaml, else the generated footprint. */
+  footprint?: Footprint
+  footprintError?: string
+  /** Why the part cannot be verified while its footprint.yaml is a placeholder. */
+  placeholder?: string
 }
 
 export interface BomLine {
@@ -125,8 +138,24 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
     throw new Error(networkErrorText(error))
   }
   const json = (await response.json()) as { ok: boolean; data: T; error?: string }
-  if (!json.ok) throw new Error(requestErrorText(response.status, json.error))
+  // A refusal can carry data for the page (the Verify screen's file as it is now): it rides on the error.
+  if (!json.ok) throw Object.assign(new Error(requestErrorText(response.status, json.error)), { status: response.status, data: json.data })
   return json.data
+}
+
+/** A file the Studio serves under /api (a part's datasheet PDF), fetched with the session token. */
+export async function apiBlob(path: string): Promise<Blob> {
+  let response: Response
+  try {
+    response = await fetch(path, { headers: { "x-copperflow-token": token } })
+  } catch (error) {
+    throw new Error(networkErrorText(error))
+  }
+  if (!response.ok) {
+    const json = (await response.json().catch(() => ({}))) as { error?: string }
+    throw new Error(requestErrorText(response.status, json.error))
+  }
+  return response.blob()
 }
 
 export type ServerEvent = "change" | "build" | "library" | "route" | "place"

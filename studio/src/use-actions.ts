@@ -26,7 +26,8 @@ export interface Actions {
   undo(id?: string): Promise<EditOutcome>
   /** Redoes the newest undone change, or the named one, announced as undo is. */
   redo(id?: string): Promise<EditOutcome>
-  verify(id: string, by: string, against: string, confirm: string): Promise<boolean>
+  /** Opens the Verify screen of a library part; only the person verifies, there. */
+  openVerify(id: string, title: string): void
   /** Design → Annotate designators: parts renamed, and the layout file's nets with them, as one history entry. */
   renameParts(mapping: readonly { from: string; to: string }[], summary: string): Promise<EditOutcome>
   /** Edit → Make sub-sheet: the parts moved into a new sheet file and an instance in their place, as one history entry. */
@@ -58,12 +59,12 @@ export interface EditOutcome {
 interface ActionsInput {
   file: string | undefined
   refresh(file: string): Promise<void>
-  refreshParts(): Promise<void>
   notify(text: string): void
+  openVerify(id: string, title: string): void
 }
 
 /** Memoised, so panels can depend on the actions in effects without refetching on every render. */
-export function useActions({ file, refresh, refreshParts, notify }: ActionsInput): Actions {
+export function useActions({ file, refresh, notify, openVerify }: ActionsInput): Actions {
   const run = useCallback(
     async (task: () => Promise<unknown>): Promise<boolean> => {
       try {
@@ -106,11 +107,7 @@ export function useActions({ file, refresh, refreshParts, notify }: ActionsInput
       unmark: (id) => run(() => api("/api/unmark", { file, id })),
       undo: (id) => announceHistoryWrite(postMarked("/api/undo", id ? { id } : {})),
       redo: (id) => announceHistoryWrite(postMarked("/api/redo", id ? { id } : {})),
-      verify: async (id, by, against, confirm) => {
-        const ok = await run(() => api("/api/verify", { id, by, against, confirm }))
-        if (ok) await refreshParts()
-        return ok
-      },
+      openVerify,
       makeSheet: (request) =>
         run(async () => {
           const made = await api<{ preview: MakeSheetPreview }>("/api/make-sheet", { file, ...request })
@@ -194,12 +191,12 @@ export function useActions({ file, refresh, refreshParts, notify }: ActionsInput
         }),
       notify,
     }),
-    [file, run, notify, refreshParts, editMarked, editLayout, postMarked],
+    [file, run, notify, editMarked, editLayout, postMarked, openVerify],
   )
 }
 
 /** Places a built-in or library part with its starting values and selects it. */
-export function usePlace({ file, refresh, notify }: ActionsInput, onPlaced: (name: string) => void, page = "Main"): (part: string) => void {
+export function usePlace({ file, refresh, notify }: Omit<ActionsInput, "openVerify">, onPlaced: (name: string) => void, page = "Main"): (part: string) => void {
   return useCallback(
     (part: string) => {
       const props = PLACE_DEFAULTS[part]

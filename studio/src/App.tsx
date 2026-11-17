@@ -12,7 +12,8 @@ import { boardTexts, sheetTexts } from "./pcb/part-text"
 import { goneFrom, Selection, type SelectionChange } from "./selection"
 import { BottomStrip } from "./shell/BottomStrip"
 import { watchDpr } from "./shell/dpr"
-import { StudioDialog, type DialogName, type ExportChecksPanel } from "./shell/Dialogs"
+import { StudioDialog, VerifyDialog, type DialogName, type ExportChecksPanel } from "./shell/Dialogs"
+import { useVerifyPanel } from "./shell/verify-panel"
 import { importSummary, type ImportPartRequest, type ImportPartResult } from "./shell/import-part-form"
 import type { ImportPartPanel } from "./shell/ImportPartDialog"
 import { createdSummary, type CreatePartRequest, type CreatePartResult } from "./shell/new-part-result"
@@ -196,16 +197,20 @@ function useStudio() {
   const selectOnly = useCallback((name: string) => select((current) => current.only(name)), [])
   const [tab, setTab] = useState<Tab>("pcb")
   const [dialog, setDialog] = useState<DialogName | null>(null)
+  // The part whose Verify screen is open, opened from the Library table or the inspector.
+  const [verifying, setVerifying] = useState<{ id: string; title: string }>()
+  const openVerify = useCallback((id: string, title: string) => setVerifying({ id, title }), [])
+  const closeVerify = useCallback(() => setVerifying(undefined), [])
   const workspace = useWorkspace(tab)
   const data = useFileData(toast.notify, select, workspace.setHighlight)
   const { file, setFile, build, circuit } = data
   usePruneSelection(circuit, select)
   const { seen, onRenameDrawing } = usePruneWire(build.design, select)
   const selection = useShownSelection(picked, circuit, build.design, tab, seen.current)
-  const actions = useActions({ file, refresh: data.refresh, refreshParts: data.refreshParts, notify: toast.notify })
+  const actions = useActions({ file, refresh: data.refresh, notify: toast.notify, openVerify })
   const [wantedPage, setWantedPage] = useState(MAIN_PAGE)
   const page = shownPage(build.design, wantedPage)
-  const place = usePlace({ file, refresh: data.refresh, refreshParts: data.refreshParts, notify: toast.notify }, selectOnly, tab === "schematic" ? page : MAIN_PAGE)
+  const place = usePlace({ file, refresh: data.refresh, notify: toast.notify }, selectOnly, tab === "schematic" ? page : MAIN_PAGE)
   const { checks, find, openChecks } = useChecksAndFind({ data, tab, setTab, select, selectOnly, workspace })
   useEscapeClearsSelection(select)
   useHighlightFollowsBuild(build.design, workspace.setHighlight)
@@ -243,7 +248,7 @@ function useStudio() {
   const runAny = useAppCommands({ file, view: tab, setView: setTab, selection, select, circuit, actions, pickLayers, pickFilter: workspace.pickFilter, ...sheetIds, workspace, openChecks, checkCounts: checks.counts, openFind: find.open, openDialog: setDialog, design: build.design, page, openPage, highlight: workspace.highlight })
   // Every menu, toolbar and context menu command comes through here: while the AI lock is closed no editing one runs.
   const runCommand = useCallback((command: CommandId) => (aiLock.closed && blocksCommand(command) ? void lockGate.refuses() : runAny(command)), [aiLock.closed, runAny])
-  return { aiLock, toast, tab, setTab, dialog, closeDialog, openImportPart, openNewPart, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, openSheet, sheetParent, runCommand, page, openPage }
+  return { verifying, closeVerify, aiLock, toast, tab, setTab, dialog, closeDialog, openImportPart, openNewPart, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, openSheet, sheetParent, runCommand, page, openPage }
 }
 
 /** The circuit a sheet file was opened from, and its design as it was then. */
@@ -338,7 +343,7 @@ function useMakeSheetPanel(file: string | undefined, parts: readonly string[], a
 }
 
 export function App() {
-  const { aiLock, toast, tab, setTab, dialog, closeDialog, openImportPart, openNewPart, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, openSheet, sheetParent, runCommand, page, openPage } = useStudio()
+  const { verifying, closeVerify, aiLock, toast, tab, setTab, dialog, closeDialog, openImportPart, openNewPart, workspace, data, selection, select, onRenameDrawing, actions, place, checks, find, openChecks, openDocument, openSheet, sheetParent, runCommand, page, openPage } = useStudio()
   const { build, circuit } = data
   const { message, dismiss } = toast
   const toggles = { snap: workspace.snap, hoverLabels: workspace.hoverLabels, ...themeToggles(workspace.theme), ...pourFillToggles(workspace.pourFill) }
@@ -347,6 +352,7 @@ export function App() {
   const makeSheet = useMakeSheetPanel(data.file, selection.names, actions)
   const importPart = useImportPartPanel(data.refreshParts, toast.notify)
   const newPart = useNewPartPanel(data.refreshParts, toast.notify)
+  const verifyPanel = useVerifyPanel(data.refreshParts)
   const newCircuit = useNewCircuitPanel(data.refreshFiles, openDocument, toast.notify)
   const footprints = useFootprintPanel(build.design, circuit, actions)
   const exportChecks = useExportChecksPanel(data.file, checks.counts, openChecks, actions)
@@ -361,6 +367,7 @@ export function App() {
       </MenuBar>
       <Toolbar view={tab} unit={workspace.unit} selected={selection.size} toggles={toggles} off={off} run={runCommand} />
       {dialog && <StudioDialog name={dialog} onClose={closeDialog} rules={{ fabrication: build.design?.rules.fabrication, save: actions.setFilletRadius }} makeSheet={makeSheet} importPart={importPart} newPart={newPart} system={system} newCircuit={newCircuit} footprints={footprints} exportChecks={exportChecks} />}
+      {verifying && <VerifyDialog target={verifying} panel={verifyPanel} onClose={closeVerify} />}
       {data.serverGone && (
         <div className="banner" role="alert">
           {SERVER_GONE_MESSAGE}
