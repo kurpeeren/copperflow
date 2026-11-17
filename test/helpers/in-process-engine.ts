@@ -7,4 +7,5 @@ import { collectProjectFiles } from "../../src/engine/project-files.js"
 export const inProcessEngine = {
   build: async (root: string, file: string) =>
     buildDesign(await collectProjectFiles(root, { include: FOOTPRINT_FILE }), (await resolveCircuit(root, file)).file),
+  buildFiles: async (files: Record<string, string>, main: string) => buildDesign(files, main),
 }

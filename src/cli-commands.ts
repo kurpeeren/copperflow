@@ -42,6 +42,7 @@ import { VERSION } from "./version.js"
 import { installSkill } from "./skill-install.js"
 import { modulesCommand } from "./cli-modules.js"
 import { libraryCommand } from "./cli-library.js"
+import { changeTarget, changeText, changeView } from "./core/change-view.js"
 
 export interface CliIO {
   out(text: string): void
@@ -103,6 +104,7 @@ Usage:
                                               make a new circuit from a KiCad board: its outline, parts (as
                                               library parts, not verified), nets, tracks, vias and pours
   copperflow history [--limit n]              list recent changes
+  copperflow history <id> | --since <id>      what one change did, or everything after it
   copperflow undo [id]                        undo the newest change, or the given one
 
 Every command accepts --root <dir> (default: the current directory).
@@ -158,11 +160,15 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
         io.out(`Removed mark ${rest[1]}`)
         return 0
       case "history": {
-        const [limit] = takeOption(rest, "--limit")
-        {
-          const { entries, problems } = await listHistory(root, positiveInt(limit ?? "20"))
-          io.out(formatHistory(entries, problems))
+        const [limit, afterLimit] = takeOption(rest, "--limit")
+        const [since, args] = takeOption(afterLimit, "--since")
+        const target = changeTarget(args[0], since)
+        if (target) {
+          io.out(changeText(await changeView(root, target, options.engine ? { engine: options.engine } : {})))
+          return 0
         }
+        const { entries, problems } = await listHistory(root, positiveInt(limit ?? "20"))
+        io.out(formatHistory(entries, problems))
         return 0
       }
       case "parts":

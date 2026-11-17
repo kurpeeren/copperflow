@@ -54,6 +54,7 @@ import { compactToolList } from "./compact-tool-list.js"
 import { createGuideMemory, GUIDE_DESCRIPTION, guideInSession, guideInput, skillResources } from "./guide.js"
 import { ATTACH_DATASHEET_DESCRIPTION, attachDatasheetInput, attachDatasheetTool } from "./datasheet-tools.js"
 import { RENDER_DESCRIPTION, renderInput, renderTool } from "./render-tool.js"
+import { changeTarget, changeText, changeView } from "../core/change-view.js"
 import { registerModuleTools } from "./module-tools.js"
 import { OPEN_STUDIO_DESCRIPTION, openStudio, openStudioInput } from "./open-studio.js"
 import type { Renderer } from "../core/render.js"
@@ -432,11 +433,13 @@ Nothing was written.`)
   server.registerTool(
     "recent_changes",
     {
-      description: "List recent changes by you and the human, newest first, with undos and redos.",
-      inputSchema: { limit: z.number().int().min(1).max(200).optional() },
+      description: "List recent changes by you and the human, newest first, with undos and redos. id: what one change did; since: all after it.",
+      inputSchema: { limit: z.number().int().min(1).max(200).optional(), id: z.string().optional(), since: z.string().optional() },
       annotations: READ_ONLY,
     },
-    ({ limit }) => run(async () => {
+    ({ limit, id, since }) => run(async () => {
+      const target = changeTarget(id, since)
+      if (target) return changeText(await changeView(root, target, options.engine ? { engine: options.engine } : {}))
       const { entries, problems } = await listHistory(root, limit ?? 20)
       return formatHistory(entries, problems)
     }),
