@@ -172,7 +172,7 @@
 /* The order report above the BOM table: plain lines that wrap. */
 .order-report {
   margin: 0 0 8px;
-  font-size: 11px;
+  font-size: 12px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--muted);
