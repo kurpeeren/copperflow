@@ -78,6 +78,9 @@ without a footprint, silkscreen over pads, parts without an LCSC number (JLCPCB 
 not match them). A design with errors is refused and nothing is written. It writes Gerbers,
 plated and non-plated drills, pick-and-place and the BOM into `<name>-fab/` and
 `<name>-fab.zip`. `bom` and `export_package` read the built design, so parts made in loops count.
+`bom` ends with the order report (ready for bare boards, ready for assembly, each line without a
+supplier part number and how to add one) and `export_fabrication` with its two verdicts;
+`export_package` also writes `pins.md` and a `<part>_pins.h` per library chip, the pin map for the firmware.
 
 Export only a clean board: `check_circuit` with 0 errors and no `unrouted` warning. With
 connections still unrouted the files are written with a warning, but the board is not finished

@@ -6,6 +6,7 @@ import type { Component } from "../engine/model.js"
 import { buildWith, type DesignSource } from "./design-source.js"
 import { isPartVerified, libraryValues, PARTS_DIR, readPart, type Part } from "./library.js"
 import { formatOrderReport } from "./order-report.js"
+import { formatPins, isLibraryChip, libraryTitles, mappedParts, pinMapParts } from "./pin-map.js"
 import { resolveCircuit, resolveInRoot } from "./workspace.js"
 
 export interface BomLine {
@@ -157,7 +158,7 @@ function markdownUrl(url: string): string {
   return url.replace(/[()[\]|<>\s]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`)
 }
 
-/** Writes BOM.csv, BOM.md, README.md and copies of local datasheets into a folder in the project. */
+/** Writes BOM.csv, BOM.md, pins.md, a pin header per library chip, README.md and copies of local datasheets into a folder in the project. */
 export async function exportPackage(
   root: string,
   file: string,
@@ -178,6 +179,10 @@ export async function exportPackage(
   }
   await write("BOM.csv", formatBomCsv(lines))
   await write("BOM.md", formatBomMarkdown(lines))
+  const pinParts = pinMapParts(design)
+  const pins = mappedParts(design, pinParts, await libraryTitles(root, design, pinParts))
+  await write("pins.md", `${formatPins(design, pins, "md", "")}\n`)
+  for (const part of pins.filter((p) => isLibraryChip(design, p.id))) await write(`${part.id}_pins.h`, `${formatPins(design, [part], "c", part.id)}\n`)
 
   const rows: string[] = []
   for (const line of lines.filter((l) => l.libraryPart)) {

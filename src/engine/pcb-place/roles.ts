@@ -43,6 +43,13 @@ export const isConnector = (c: Component): boolean => CONNECTOR_KINDS.has(c.kind
 /** The last segment of each name: "PS1/VCC" is a VCC. */
 const shortNames = (net: Net): string[] => net.names.map((n) => n.split("/").pop() as string)
 
+const POWER_TYPES: ReadonlySet<Pin["type"]> = new Set(["power_in", "power_out", "ground"])
+
+/** A supply or ground net: a pin on it takes or gives power, or a name reads like one (VCC, 5V, GND, VSS). */
+export function isPowerNet(net: Net, typeOf: (pin: string) => Pin["type"] | undefined): boolean {
+  return net.pins.some((pin) => POWER_TYPES.has(typeOf(pin) as Pin["type"])) || shortNames(net).some((n) => SUPPLY_NAME.test(n) || GROUND_NAME.test(n))
+}
+
 /** What `roles` reads: each part's role, and the part (and pads) it sits beside. */
 export interface Roles {
   role: (part: string) => Role

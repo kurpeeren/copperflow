@@ -170,7 +170,9 @@ describe("exportPackage", () => {
       "exports/boards/main/BOM.csv",
       "exports/boards/main/BOM.md",
       "exports/boards/main/README.md",
+      "exports/boards/main/U1_pins.h",
       "exports/boards/main/datasheets/LDO.pdf",
+      "exports/boards/main/pins.md",
     ])
     const readme = await readFile(join(root, "exports", "boards", "main", "README.md"), "utf8")
     expect(readme).toContain("| U1 | AP2112K-3.3 LDO regulator | not verified | [datasheet](datasheets/LDO.pdf) |")

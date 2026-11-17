@@ -31,6 +31,7 @@ import {
   type Renderer,
 } from "./core/index.js"
 import type { DesignSource } from "./core/bom.js"
+import { PIN_FORMATS, pinMapText, type PinFormat } from "./core/pin-map.js"
 import { buildWith } from "./core/design-source.js"
 import { Engine } from "./engine/engine.js"
 import { formatImport, importLcscPart } from "./library/import-lcsc.js"
@@ -86,7 +87,9 @@ Usage:
                                               add a library or built-in part to a circuit
   copperflow bom <file> [--csv]               print the bill of materials
   copperflow package <file> [--out dir]
-                                              write BOM, datasheets and part status to a folder
+                                              write BOM, datasheets, part status and pin maps to a folder
+  copperflow pins <file> [--part <name>] [--format md|csv|c]
+                                              which net is on each pin of the library chips and connectors
   copperflow export <file> [--out dir]        write the fabrication files for JLCPCB: Gerbers, drills,
                                               pick-and-place and BOM in <name>-fab/ and <name>-fab.zip
                                               beside the circuit (or in the project folder --out)
@@ -186,6 +189,14 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
         const file = required(args[0], "file")
         const result = await exportPackage(root, file, { ...designOptions(options), ...(outDir ? { outDir } : {}) })
         io.out(`Wrote ${result.outDir}:\n${result.files.join("\n")}`)
+        return 0
+      }
+      case "pins": {
+        const [part, afterPart] = takeOption(rest, "--part")
+        const [format, args] = takeOption(afterPart, "--format")
+        if (format !== undefined && !PIN_FORMATS.includes(format as PinFormat)) throw new Error(`--format takes ${PIN_FORMATS.join(", ")} (got ${format})`)
+        const text = await pinMapText(root, required(args[0], "file"), { ...designOptions(options), ...(part ? { part } : {}), ...(format ? { format: format as PinFormat } : {}) })
+        io.out(text)
         return 0
       }
       case "export": {
