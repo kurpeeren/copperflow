@@ -61,3 +61,20 @@ A saved module is NOT verified. The person checks it and runs, at a terminal,
 that changes afterwards reads NOT verified again. No tool verifies a module or a part; do not ask
 for a way around that. `copperflow modules` lists the shelf, `copperflow modules remove <name>` takes
 one off. The shelf is `~/.copperflow/modules/`, or the folder `COPPERFLOW_MODULES` names.
+
+## Libraries
+
+Besides the shelf, modules come from libraries: `copperflow`, which ships with copperflow, and the
+ones the person added from a git address or a folder. `list_modules` lists the shelf, then each
+library; a library's module is named `<library>/<Name>` (`copperflow/Input`), and `module_info` and
+`use_module` take that name. `use_module` brings a library's sheet only when it is plain (part
+imports, one function returning tags with literal values) and writes its parts' component files
+itself; a sheet that is not plain is refused with the first thing found and its line. The history
+entry says which library the sheet came from.
+
+A library's modules are NOT verified here until the person runs
+`copperflow modules verify <library>/<Name> --by <name>`; anything a library says about itself counts
+for nothing. Adding a library is the person's choice, by command only:
+`copperflow library add <name> <git address or folder> [--ref <branch or tag>]`,
+`copperflow library update [name]`, `copperflow library remove <name>`, `copperflow library` to list.
+Asked to add one, tell the person the command; run it only if they asked you to and you have a shell.

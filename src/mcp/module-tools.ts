@@ -24,7 +24,7 @@ export function registerModuleTools(server: McpServer, root: string, run: (task:
   )
   server.registerTool(
     "list_modules",
-    { description: "The shelf, one line a module. Look here before designing a block.", inputSchema: { filter: z.string().optional() }, annotations: READ_ONLY },
+    { description: "The shelf, then each library (modules named library/Name), one line a module. Look here before designing a block.", inputSchema: { filter: z.string().optional() }, annotations: READ_ONLY },
     ({ filter }) => run(async () => listModules(filter, await allLibraryModules())),
   )
   server.registerTool(
@@ -34,7 +34,7 @@ export function registerModuleTools(server: McpServer, root: string, run: (task:
   )
   server.registerTool(
     "use_module",
-    { description: "Copy a module's sheet (and parts the project lacks) beside the circuit file; then add_instance.", inputSchema: { module: z.string(), file: z.string() } },
+    { description: "Copy a module's sheet (and parts the project lacks) beside the circuit file; then add_instance. A library's sheet must be plain; its parts come as data.", inputSchema: { module: z.string(), file: z.string() } },
     (input) => run(() => (isLibraryName(input.module) ? useLibraryModule(root, input) : useModule(root, input))),
   )
 }

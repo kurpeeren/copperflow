@@ -29,6 +29,7 @@
   },
   "files": [
     "dist",
+    "library",
     "skills",
     "LICENSE",
     "NOTICE"

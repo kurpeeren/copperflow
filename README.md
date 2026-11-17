@@ -266,6 +266,26 @@ copperflow history [--limit n]              list recent changes
 copperflow undo [id]                        undo the newest change, or the given one
 ```
 
+## Libraries
+
+A library is a folder of modules laid out as the shelf is: `modules/<Name>/` (or `<Name>/` at the top
+when there is no `modules` folder), each holding `<Name>.sheet.tsx`, `parts/<id>/part.yaml` (and
+`footprint.yaml`) and an optional `module.json`. copperflow comes with one, named `copperflow`; you
+add your own:
+
+```text
+copperflow library add <name> <git address or folder> [--ref <branch or tag>]
+copperflow library update [name]
+copperflow library remove <name>
+```
+
+`copperflow library` lists them. The agent sees their modules as `<library>/<Name>` in
+`list_modules`, `module_info` and `use_module`. A circuit file is code that runs when the board
+builds, so a sheet from a library enters a project only when copperflow has proved it plain (part
+imports, one function returning tags with literal values, nothing else), and its parts come as data,
+their component files written by copperflow. A library module reads NOT verified until you run
+`copperflow modules verify <library>/<Name> --by <name>`.
+
 ## Roadmap
 
 - **0.2** (done) Visual editor in the browser: drag, rotate, lock, delete and reconnect wires, marks.

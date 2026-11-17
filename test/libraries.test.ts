@@ -212,3 +212,17 @@ describe("a git library, through a local bare repository", () => {
     await expect(addLibrary("team", ADDRESS, { now: "2026-11-17", ref: "--upload-pack=x", git: seam() })).rejects.toThrow("not a branch or tag name")
   })
 })
+
+describe("told where it is read", () => {
+  test("the skill, the help, the README and the package name the libraries", async () => {
+    const root = join(import.meta.dirname, "..")
+    const skill = await readFile(join(root, "skills", "copperflow", "references", "modules.md"), "utf8")
+    for (const text of ["## Libraries", "<library>/<Name>", "copperflow library add <name>", "copperflow modules verify <library>/<Name>"]) expect(skill).toContain(text)
+    const help = await cli(["help"])
+    for (const text of ["copperflow library add <name>", "copperflow library update [name]", "copperflow library remove <name>"]) expect(help.text).toContain(text)
+    const readme = await readFile(join(root, "README.md"), "utf8")
+    expect(readme).toContain("## Libraries")
+    expect(readme).toContain("proved it plain")
+    expect(JSON.parse(await readFile(join(root, "package.json"), "utf8")).files).toContain("library")
+  })
+})
