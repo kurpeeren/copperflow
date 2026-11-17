@@ -5,6 +5,9 @@ import { collectProjectFiles, isProjectFile } from "../engine/project-files.js"
 import { EditError } from "./edit-error.js"
 import { readEntries, type HistoryEntry } from "./history.js"
 
+/** `since` this: everything from the first change in the history. */
+export const FROM_THE_START = "c0000"
+
 /** One change, or everything after one. */
 export type ChangeTarget = { id: string } | { since: string }
 
@@ -74,13 +77,13 @@ const sameText = (a: Readonly<Record<string, string>>, b: Readonly<Record<string
 export async function changeFiles(root: string, target: ChangeTarget): Promise<ChangeFiles> {
   const id = "id" in target ? target.id : target.since
   const all = await readEntries(root)
-  const index = all.findIndex((entry) => entry.id === id)
-  if (index < 0) throw new EditError("not_found", `No change ${id} in the history`)
+  const index = id === FROM_THE_START ? -1 : all.findIndex((entry) => entry.id === id)
+  if (index < 0 && id !== FROM_THE_START) throw new EditError("not_found", `No change ${id} in the history`)
   const built = (file: string) => isProjectFile(file, ENGINE_FILES)
   const entries = all.map((entry) => ({ ...entry, also: entry.also?.filter((change) => built(change.file)) })).filter((entry) => built(entry.file))
   const disk = await collectProjectFiles(root, { include: ENGINE_FILES })
   const count = entries.findIndex((entry) => entry.id === id)
-  const position = count < 0 ? entries.filter((entry) => Number(entry.id.slice(1)) < Number(id.slice(1))).length : count
+  const position = id === FROM_THE_START ? -1 : count < 0 ? entries.filter((entry) => Number(entry.id.slice(1)) < Number(id.slice(1))).length : count
   const before = "id" in target ? projectAt(entries, disk, position) : projectAt(entries, disk, position + 1)
   const after = "id" in target ? projectAt(entries, disk, position + 1) : { files: { ...disk }, unsure: [] }
   const files = [...new Set([...Object.keys(before.files), ...Object.keys(after.files)])].sort()

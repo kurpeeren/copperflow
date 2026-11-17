@@ -122,3 +122,9 @@ describe("the project as it was around a change", () => {
     expect(projectAt([], { "a.ts": "x" }, 0)).toEqual({ files: { "a.ts": "x" }, unsure: [] })
   })
 })
+
+test("since c0000: everything from the first change in the history", async () => {
+  const all = await changeFiles(root, { since: "c0000" })
+  expect(all.entries.map((entry) => entry.id)).toEqual(entries.map((entry) => entry.id))
+  expect(all.before.files[MAIN]).toBeUndefined()
+})

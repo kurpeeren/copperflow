@@ -10,9 +10,9 @@ export function ShowButton({ entry, onShow }: { entry: Pick<HistoryListing, "id"
   return h("button", { type: "button", "aria-label": `Show change ${entry.id}: ${entry.summary}`, onClick: () => onShow({ id: entry.id }) }, "Show")
 }
 
-/** Everything the agent did after the person's newest change; nothing when the newest change is the person's own. */
+/** Everything the agent did after the person's newest change, or all it did when the person made none; nothing when the newest change is the person's own. */
 export function SinceMine({ history, onShow }: { history: readonly Pick<HistoryListing, "id" | "author">[]; onShow: Show }): ReactElement | null {
-  const since = sinceMyLast(history)
-  if (since === undefined) return null
-  return h("p", { className: "history-since" }, h("button", { type: "button", onClick: () => onShow({ since }) }, "Since my last change"))
+  const shown = sinceMyLast(history)
+  if (shown === undefined) return null
+  return h("p", { className: "history-since" }, h("button", { type: "button", onClick: () => onShow({ since: shown.since }) }, shown.label))
 }
