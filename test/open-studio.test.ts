@@ -156,7 +156,9 @@ test.skipIf(!existsSync(CLI))("a real round trip: start the built CLI, reuse it,
       pid = child.pid
       return child
     }
-    const ports = { root, start, openBrowser: async () => false }
+    // Shorter than the test's own limit: a build that never writes its note (an old dist) fails here, and the
+    // child is ended below instead of being left behind when the test times out.
+    const ports = { root, start, openBrowser: async () => false, waitMs: 20_000 }
     const first = await openStudio(ports, { open: false })
     expect((await readNote(root))?.pid).toBe(pid)
     const second = await openStudio(ports, { open: false })

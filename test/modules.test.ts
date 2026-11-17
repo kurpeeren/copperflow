@@ -12,18 +12,25 @@ import { inProcessEngine } from "./helpers/in-process-engine.js"
 let shelf: string
 let first: string
 let second: string
-const before = process.env["COPPERFLOW_MODULES"]
+// The shelf alone: a home folder of its own (no libraries the person added) and no built-in library.
+const KEPT = ["COPPERFLOW_MODULES", "COPPERFLOW_HOME", "COPPERFLOW_BUILTIN_LIBRARY"] as const
+const before = KEPT.map((name) => process.env[name])
 
 beforeEach(async () => {
   shelf = await mkdtemp(join(tmpdir(), "cf-shelf-"))
+  const home = await mkdtemp(join(tmpdir(), "cf-home-"))
   process.env["COPPERFLOW_MODULES"] = shelf
+  process.env["COPPERFLOW_HOME"] = home
+  process.env["COPPERFLOW_BUILTIN_LIBRARY"] = join(home, "no-library")
   first = await mkdtemp(join(tmpdir(), "cf-mod-a-"))
   second = await mkdtemp(join(tmpdir(), "cf-mod-b-"))
 })
 
 afterEach(() => {
-  if (before === undefined) delete process.env["COPPERFLOW_MODULES"]
-  else process.env["COPPERFLOW_MODULES"] = before
+  KEPT.forEach((name, i) => {
+    if (before[i] === undefined) delete process.env[name]
+    else process.env[name] = before[i]
+  })
 })
 
 async function connect(root: string) {
