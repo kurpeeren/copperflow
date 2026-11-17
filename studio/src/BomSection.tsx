@@ -9,14 +9,18 @@ interface Props {
   actions: Actions
 }
 
-/** The bill of materials of the open circuit, and the datasheet package export. */
+/** The bill of materials of the open circuit with its order report above it, and the datasheet package export. */
 export function BomSection({ file, buildId, actions }: Props) {
   const [lines, setLines] = useState<BomLine[]>([])
+  const [report, setReport] = useState("")
   const [exporting, setExporting] = useState(false)
 
   useEffect(() => {
-    api<BomLine[]>(`/api/bom?file=${encodeURIComponent(file)}`)
-      .then(setLines)
+    api<{ lines: BomLine[]; report: string }>(`/api/bom?file=${encodeURIComponent(file)}`)
+      .then((bom) => {
+        setLines(bom.lines)
+        setReport(bom.report)
+      })
       .catch((error: Error) => actions.notify(error.message))
   }, [file, buildId, actions])
 
@@ -26,6 +30,7 @@ export function BomSection({ file, buildId, actions }: Props) {
       <h3>
         Bill of materials <span className="count">{total} parts</span>
       </h3>
+      {report && <pre className="order-report">{report}</pre>}
       <table className="bom">
         <thead>
           <tr>

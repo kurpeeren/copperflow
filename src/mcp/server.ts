@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import YAML from "yaml"
 import {
-  buildBom,
+  bomWithReport,
   exportFabrication,
   exportPackage,
   formatFabrication,
@@ -383,11 +383,15 @@ Nothing was written.`)
   server.registerTool(
     "bom",
     {
-      description: "Bill of materials for a circuit, grouped by part.",
+      description: "Bill of materials for a circuit, grouped by part, and whether the board is ready to order.",
       inputSchema: { file },
       annotations: READ_ONLY,
     },
-    ({ file: circuit }) => run(async () => formatBomMarkdown(await buildBom(root, circuit, designOptions))),
+    ({ file: circuit }) =>
+      run(async () => {
+        const { lines, report } = await bomWithReport(root, circuit, designOptions)
+        return `${formatBomMarkdown(lines)}\n${report}`
+      }),
   )
 
   server.registerTool(

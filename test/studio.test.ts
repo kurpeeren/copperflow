@@ -398,7 +398,7 @@ describe("parts library", () => {
   })
 
   test("the BOM and the package come from the open circuit", async () => {
-    const lines = await data(await api(`/api/bom?file=${FILE}`))
+    const { lines } = await data(await api(`/api/bom?file=${FILE}`))
     expect(lines.map((l: { designators: string[] }) => l.designators[0])).toContain("R1")
     const pkg = await data(await api("/api/package", { file: FILE }))
     expect(pkg.files).toContain("exports/main/BOM.csv")
@@ -453,13 +453,13 @@ describe("parts library", () => {
     await data(await api(`/api/bom?file=${FILE}`))
     expect(build).not.toHaveBeenCalled()
     await writeFile(join(root, FILE), BOARD.replace('"R1"', '"R7"'))
-    const lines = await data(await api(`/api/bom?file=${FILE}`))
+    const { lines } = await data(await api(`/api/bom?file=${FILE}`))
     expect(lines.map((l: { designators: string[] }) => l.designators[0])).toContain("R7")
     build.mockRestore()
   })
 
   test("the BOM builds when no build has run yet", async () => {
-    const lines = await data(await api(`/api/bom?file=${FILE}`))
+    const { lines } = await data(await api(`/api/bom?file=${FILE}`))
     expect(lines.length).toBeGreaterThan(0)
   })
 })

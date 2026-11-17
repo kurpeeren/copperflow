@@ -7,6 +7,7 @@ import type { Design } from "../engine/design.js"
 import { fabricationSet, writeFabrication } from "../engine/fab/export.js"
 import { uploadStep } from "../engine/fab/names.js"
 import { buildBom } from "./bom.js"
+import { formatOrderReport } from "./order-report.js"
 import { checkCounts, checkDesign } from "./check.js"
 import { checksLine, type CheckCounts } from "./checks-line.js"
 
@@ -28,8 +29,8 @@ export interface FabricationOptions {
 
 /** What an export wrote, every path relative to the project root with "/" between folders; or why it wrote nothing. */
 export type FabricationExport =
-  | { written: true; folder: string; zip: string; files: string[]; warnings: string[]; checks: CheckCounts }
-  | { written: false; errors: string[] }
+  | { written: true; folder: string; zip: string; files: string[]; warnings: string[]; checks: CheckCounts; order?: string }
+  | { written: false; errors: string[]; order?: string }
 
 /** A folder of the project, the root itself included (resolveInRoot accepts only what is inside it). */
 function projectFolder(root: string, folder: string): string {
@@ -87,25 +88,29 @@ export function exportFabrication(root: string, file: string, options: Fabricati
     const design = options.design ?? (await buildWith(root, circuit, options.engine))
     const bom = await buildBom(root, circuit, { design })
     const set = fabricationSet(design, bom, options.created ?? new Date())
-    if (!set.ok) return { written: false, errors: set.errors }
+    const order = formatOrderReport(design, bom, { short: true })
+    if (!set.ok) return { written: false, errors: set.errors, order }
     for (const path of [join(outDir, set.folder), join(outDir, set.zip), ...set.files.map((f) => join(outDir, set.folder, f.file))]) await assertLandsInProject(root, path)
     const written = await writeFabrication(outDir, set).catch((error: unknown) => {
       throw writeError(root, error)
     })
     const inProject = (path: string) => relative(root, path).split(sep).join("/")
     const checks = checkCounts(checkDesign(design))
-    return { written: true, folder: inProject(written.folder), zip: inProject(written.zip), files: written.files.map((path) => path.split(sep).pop() ?? path), warnings: set.warnings, checks }
+    return { written: true, folder: inProject(written.folder), zip: inProject(written.zip), files: written.files.map((path) => path.split(sep).pop() ?? path), warnings: set.warnings, checks, order }
   })
 }
 
 
+/** The order report's short form, when the export carries one. */
+const orderLines = (result: FabricationExport): string[] => (result.order === undefined ? [] : [result.order])
+
 /**
  * The export as text: the folder and zip, the files (one per line, or on one line when `compact`), each warning, and
  * the next step, a person uploading the zip for the board and the CSVs for assembly; or each error and that nothing was
- * written.
+ * written; then the order report's two verdicts.
  */
 export function formatFabrication(result: FabricationExport, options: { compact?: boolean } = {}): string {
-  if (!result.written) return ["Refused: no fabrication files were written. Fix these errors first:", ...result.errors.map((error) => `  ${error}`)].join("\n")
+  if (!result.written) return ["Refused: no fabrication files were written. Fix these errors first:", ...result.errors.map((error) => `  ${error}`), ...orderLines(result)].join("\n")
   const files = options.compact ? [result.files.join(", ")] : result.files.map((name) => `  ${name}`)
   return [
     `Wrote ${result.files.length} files to ${result.folder}/ and ${result.zip}:`,
@@ -113,5 +118,6 @@ export function formatFabrication(result: FabricationExport, options: { compact?
     ...result.warnings.map((warning) => `Warning: ${warning}`),
     checksLine(result.checks),
     `Next, a person should ${uploadStep(result.zip, result.folder, result.files)}.`,
+    ...orderLines(result),
   ].join("\n")
 }

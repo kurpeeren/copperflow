@@ -176,8 +176,8 @@ function pickBoardDrawing(actions: Actions): void {
 
 function exportBom(file: string | undefined, actions: Actions): void {
   if (!file) return
-  api<BomLine[]>(`/api/bom?file=${encodeURIComponent(file)}`)
-    .then((lines) => {
+  api<{ lines: BomLine[] }>(`/api/bom?file=${encodeURIComponent(file)}`)
+    .then(({ lines }) => {
       const url = URL.createObjectURL(new Blob([bomCsv(lines)], { type: "text/csv" }))
       const link = Object.assign(document.createElement("a"), { href: url, download: bomFileName(file) })
       link.click()

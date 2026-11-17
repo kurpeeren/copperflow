@@ -5,6 +5,7 @@ import { csvCell } from "../engine/fab/csv.js"
 import type { Component } from "../engine/model.js"
 import { buildWith, type DesignSource } from "./design-source.js"
 import { isPartVerified, libraryValues, PARTS_DIR, readPart, type Part } from "./library.js"
+import { formatOrderReport } from "./order-report.js"
 import { resolveCircuit, resolveInRoot } from "./workspace.js"
 
 export interface BomLine {
@@ -46,6 +47,14 @@ async function designFor(root: string, file: string, options: BomOptions): Promi
 export async function buildBom(root: string, file: string, options: BomOptions = {}): Promise<BomLine[]> {
   const { file: circuitFile } = await resolveCircuit(root, file)
   return bomFromDesign(root, await designFor(root, circuitFile, options))
+}
+
+/** The BOM lines and the order report of a circuit, from one build. */
+export async function bomWithReport(root: string, file: string, options: BomOptions = {}): Promise<{ lines: BomLine[]; report: string }> {
+  const { file: circuitFile } = await resolveCircuit(root, file)
+  const design = await designFor(root, circuitFile, options)
+  const lines = await bomFromDesign(root, design)
+  return { lines, report: formatOrderReport(design, lines) }
 }
 
 async function bomFromDesign(root: string, design: Design): Promise<BomLine[]> {
@@ -158,7 +167,8 @@ export async function exportPackage(
   // The circuit's own path, so boards/a/main and boards/b/main do not share a folder.
   const outDir = (options.outDir ?? `exports/${circuitFile.replace(/\.circuit\.tsx$/, "")}`).split("\\").join("/")
   const outPath = resolveInRoot(root, outDir)
-  const lines = await bomFromDesign(root, await designFor(root, circuitFile, options))
+  const design = await designFor(root, circuitFile, options)
+  const lines = await bomFromDesign(root, design)
   await rm(join(outPath, "datasheets"), { recursive: true, force: true })
   await mkdir(join(outPath, "datasheets"), { recursive: true })
   const files: string[] = []
@@ -192,6 +202,10 @@ export async function exportPackage(
       "| Designators | Part | Status | Datasheet |",
       "| --- | --- | --- | --- |",
       ...rows,
+      "",
+      "## Ready to order?",
+      "",
+      formatOrderReport(design, lines),
       "",
     ].join("\n"),
   )

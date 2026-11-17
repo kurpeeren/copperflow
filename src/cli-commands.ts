@@ -1,7 +1,7 @@
 import { resolve } from "node:path"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
-  buildBom,
+  bomWithReport,
   exportFabrication,
   exportPackage,
   formatFabrication,
@@ -177,8 +177,8 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
       case "bom": {
         const [csv, withoutCsv] = takeFlag(rest, "--csv")
         const file = required(rejectBuildFlag(withoutCsv)[0], "file")
-        const lines = await buildBom(root, file, designOptions(options))
-        io.out(csv ? formatBomCsv(lines) : formatBomMarkdown(lines))
+        const { lines, report } = await bomWithReport(root, file, designOptions(options))
+        io.out(csv ? formatBomCsv(lines) : `${formatBomMarkdown(lines)}\n${report}`)
         return 0
       }
       case "package": {

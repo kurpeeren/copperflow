@@ -47,6 +47,9 @@ describe("copperflow export", () => {
         ...NAMES.map((name) => `  led-${name}`),
         "Checks: 0 errors, 2 warnings.",
         "Next, a person should upload led-fab.zip to JLCPCB's PCB order, and led-bom.csv and led-pick-and-place.csv from boards/led-fab/ at its assembly step (the zip holds them too).",
+        "Ready for bare boards: yes",
+        "Ready for assembly: yes",
+        "The whole order report: the bom tool, or copperflow bom boards/led.circuit.tsx.",
       ].join("\n"),
     )
     expect((await readdir(join(root, "boards", "led-fab"))).sort()).toEqual(NAMES.map((name) => `led-${name}`).sort())
@@ -68,7 +71,7 @@ describe("copperflow export", () => {
     expect(text).toMatch(/^Wrote 13 files to can-module-fab\/ and can-module-fab\.zip:\n {2}can-module-F_Cu\.gtl\n/)
     expect(text).toMatch(/\nWarning: \d+ connections are not routed: /)
     expect(text).toMatch(/\nChecks: \d+ errors?, \d+ warnings?\.( Run check_circuit .*)?\nNext, /)
-    expect(text.endsWith("\nNext, a person should upload can-module-fab.zip to JLCPCB's PCB order, and can-module-bom.csv and can-module-pick-and-place.csv from can-module-fab/ at its assembly step (the zip holds them too).")).toBe(true)
+    expect(text).toContain("\nNext, a person should upload can-module-fab.zip to JLCPCB's PCB order, and can-module-bom.csv and can-module-pick-and-place.csv from can-module-fab/ at its assembly step (the zip holds them too).\nReady for bare boards: no: ")
   })
 
   test("a circuit with errors is refused: each error printed, nothing written, exit code 1", async () => {

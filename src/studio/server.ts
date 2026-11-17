@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url"
 import { z, ZodError } from "zod"
 import {
   BUILTIN_PARTS,
-  buildBom,
+  bomWithReport,
   exportFabrication,
   exportPackage,
   listParts,
@@ -528,7 +528,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       }
       case "GET /api/bom": {
         const circuit = (await loadCircuit(root, query("file"))).file
-        return send(res, await buildBom(root, circuit, { design: await designOf(circuit) }))
+        return send(res, await bomWithReport(root, circuit, { design: await designOf(circuit) }))
       }
       case "POST /api/package": {
         const circuit = (await loadCircuit(root, Bodies.build.parse(await readJson(req)).file)).file
