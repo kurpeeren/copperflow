@@ -1,9 +1,10 @@
 // A sheet's card: what `<sheet does sources>` says it does and where it comes from, and each `<port type carries>`.
 // Read from the file's text without building it, written by describe_sheet, and shown by the summaries and the shelf.
-import type { JSXElement } from "@babel/types"
+import type { JSXElement, Node } from "@babel/types"
 import MagicString from "magic-string"
 import { CARD_LIMITS, PORT_TYPES } from "../engine/sheet-ports.js"
 import type { PinType } from "../engine/model.js"
+import { CasesSchema, type SimCase } from "../engine/sim/cases.js"
 import { scanCircuit, type Scan } from "./analyze.js"
 import { EditError } from "./edit-error.js"
 import { attributeNamed, putAttribute } from "./edit-text.js"
@@ -21,12 +22,15 @@ export interface SheetCardText {
   does?: string
   sources?: string[]
   ports: CardPort[]
+  /** The cases simulate runs, when the card has them and they read as cases. */
+  cases?: SimCase[]
 }
 
 /** What describe_sheet changes: a value sets, null removes, absent keeps. */
 export interface CardChange {
   does?: string | null
   sources?: string[] | null
+  cases?: SimCase[] | null
   ports?: Record<string, { type?: string | null; carries?: string | null }>
 }
 
@@ -41,6 +45,38 @@ function readSources(source: string, node: JSXElement): string[] | undefined {
   if (value?.type !== "JSXExpressionContainer" || value.expression.type !== "ArrayExpression") return undefined
   const items = value.expression.elements.map((item) => (item?.type === "StringLiteral" ? item.value : undefined))
   return items.every((item): item is string => item !== undefined) ? items : undefined
+}
+
+/** A literal written in the file as plain JSON: strings, numbers, booleans, arrays and objects of them. */
+function literalValue(node: Node): unknown {
+  switch (node.type) {
+    case "StringLiteral":
+    case "NumericLiteral":
+    case "BooleanLiteral":
+      return node.value
+    case "UnaryExpression":
+      return node.operator === "-" && node.argument.type === "NumericLiteral" ? -node.argument.value : undefined
+    case "ArrayExpression":
+      return node.elements.map((item) => (item === null || item.type === "SpreadElement" ? undefined : literalValue(item)))
+    case "ObjectExpression": {
+      const entries = node.properties.map((property) => {
+        if (property.type !== "ObjectProperty" || property.computed) return undefined
+        const key = property.key.type === "Identifier" ? property.key.name : property.key.type === "StringLiteral" ? property.key.value : undefined
+        return key === undefined ? undefined : ([key, literalValue(property.value)] as const)
+      })
+      return entries.every((entry) => entry !== undefined) ? Object.fromEntries(entries) : undefined
+    }
+    default:
+      return undefined
+  }
+}
+
+/** The `cases={[…]}` of a sheet when it reads as a list of cases. */
+function readCases(source: string, node: JSXElement): SimCase[] | undefined {
+  const value = attributeNamed(source, node, "cases")?.value
+  if (value?.type !== "JSXExpressionContainer" || value.expression.type === "JSXEmptyExpression") return undefined
+  const parsed = CasesSchema.safeParse(literalValue(value.expression))
+  return parsed.success && parsed.data.length > 0 ? parsed.data : undefined
 }
 
 function readDoes(source: string, node: JSXElement): string | undefined {
@@ -61,7 +97,8 @@ export function readCard(text: string, scan: Scan = scanCircuit(text)): SheetCar
   const node = scan.sheetNode
   const does = node ? readDoes(text, node) : undefined
   const sources = node ? readSources(text, node) : undefined
-  return { ...(does ? { does } : {}), ...(sources && sources.length > 0 ? { sources } : {}), ports }
+  const cases = node ? readCases(text, node) : undefined
+  return { ...(does ? { does } : {}), ...(sources && sources.length > 0 ? { sources } : {}), ports, ...(cases ? { cases } : {}) }
 }
 
 /** What a card lacks before it can go on the shelf: `does`, and a port with neither a type nor what it carries. */
@@ -96,6 +133,12 @@ function checkText(value: unknown, limit: number, what: string): string {
 function checkSources(value: unknown): string[] {
   if (!Array.isArray(value) || value.length > CARD_LIMITS.sources) throw new EditError("invalid", `sources must be a list of at most ${CARD_LIMITS.sources} entries`)
   return value.map((item) => checkText(item, CARD_LIMITS.source, "Each source"))
+}
+
+function checkCases(value: unknown): SimCase[] {
+  const parsed = CasesSchema.safeParse(value)
+  if (!parsed.success) throw new EditError("invalid", `cases: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`)
+  return parsed.data
 }
 
 /** Puts or removes one attribute; `formatted` undefined removes it. */
@@ -136,6 +179,10 @@ export function describeSheet(source: string, scan: Scan, change: CardChange): s
   if (change.sources !== undefined) {
     const sources = change.sources === null || change.sources.length === 0 ? undefined : checkSources(change.sources)
     setAttribute(out, source, node, "sources", sources === undefined ? undefined : `{${JSON.stringify(sources)}}`)
+  }
+  if (change.cases !== undefined) {
+    const cases = change.cases === null || change.cases.length === 0 ? undefined : checkCases(change.cases)
+    setAttribute(out, source, node, "cases", cases === undefined ? undefined : `{${JSON.stringify(cases)}}`)
   }
   describePorts(out, source, scan, change.ports ?? {})
   return out.toString()
