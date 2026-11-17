@@ -45,6 +45,7 @@
             <li><a href="#skill">The skill</a></li>
             <li><a href="#check">Check that it works</a></li>
             <li><a href="#modules">Modules and libraries</a></li>
+            <li><a href="#ask">More to ask for</a></li>
             <li><a href="#trouble">If it does not connect</a></li>
           </ul>
         </nav>
@@ -314,6 +315,71 @@ Circuits: none yet (new_circuit starts one)</code></pre>
         </p>
       </section>
 
+      <section id="ask" aria-labelledby="ask-title">
+        <h2 id="ask-title">More to ask for</h2>
+        <p>The agent has a tool for each of these, and the same thing is a command in your terminal.</p>
+        <dl class="pairs">
+          <div>
+            <dt>"Show me what you changed"</dt>
+            <dd>
+              The agent says what a change did and draws it on the board: what was added, removed and moved. In
+              the editor, each row of the Log has Show. In a terminal: <code>copperflow history &lt;id&gt;</code>.
+            </dd>
+          </div>
+          <div>
+            <dt>"Does this block do what it says?"</dt>
+            <dd>
+              <code>simulate</code> finds the DC operating point of a circuit or one block from ideal sources and
+              simple part models. It knows no time, frequency, temperature or tolerance, and chips are not
+              modelled. A module carries its own cases, such as the output voltage at 24 V in.
+            </dd>
+          </div>
+          <div>
+            <dt>"Show me the board as it will be made"</dt>
+            <dd>
+              <code>copperflow render &lt;file&gt; --view board</code> draws the bare board from its fabrication
+              layers: mask, finish, print and holes. <code>--view 3d</code> and the editor's 3D tab stand the parts
+              on it as simple shapes, not their real models.
+            </dd>
+          </div>
+          <div>
+            <dt>"Is it ready to order?"</dt>
+            <dd>
+              The bill of materials ends with whether the board is ready to order bare and for assembly, and names
+              the lines with no supplier part number. <code>copperflow export &lt;file&gt;</code> writes the
+              Gerbers, drills, pick-and-place file, a STEP model and a picture of each side.
+            </dd>
+          </div>
+          <div>
+            <dt>"Which pin is which, for the firmware?"</dt>
+            <dd>
+              <code>copperflow pins &lt;file&gt;</code> lists the net on each pin of the chips and connectors, as
+              a table, CSV or a C header.
+            </dd>
+          </div>
+          <div>
+            <dt>"This pair is USB, keep it at 90 ohms"</dt>
+            <dd>
+              Net classes take an impedance, a differential pair, a longest length and matched groups, and the
+              checks report what breaks them. The figures are estimates, and the router does not yet route a pair
+              together or tune lengths.
+            </dd>
+          </div>
+          <div>
+            <dt>"Start from my KiCad board"</dt>
+            <dd>
+              <code>copperflow import kicad board.kicad_pcb</code> makes a new circuit from a KiCad 6 or newer
+              board: outline, parts, nets, tracks, vias and pours. The parts arrive not verified.
+            </dd>
+          </div>
+        </dl>
+        <p>
+          Checking a library part against its datasheet stays yours. Verify in the editor opens the footprint with
+          its dimensions, each pin as a row to tick and the datasheet beside them, and marks the part verified only
+          when every row is ticked.
+        </p>
+      </section>
+
       <section id="trouble" aria-labelledby="trouble-title">
         <h2 id="trouble-title">If it does not connect</h2>
         <dl class="pairs">
@@ -354,7 +420,7 @@ Circuits: none yet (new_circuit starts one)</code></pre>
         </div>
         <div>
           <dt>Rev</dt>
-          <dd>0.3.4</dd>
+          <dd>0.4.0</dd>
         </div>
         <div>
           <dt>Licence</dt>

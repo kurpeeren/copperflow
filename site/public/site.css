@@ -265,6 +265,9 @@ blockquote {
 .status {
   color: var(--muted);
 }
+.shot + .status {
+  margin-top: 1.5rem;
+}
 
 footer {
   margin-top: clamp(4rem, 9vw, 7rem);

@@ -143,9 +143,27 @@
           <li>Automatic placement and routing, copper pours and mounting holes, with hand routing where you want it.</li>
           <li>Electrical and design rule checks against a fabrication profile: JLCPCB two-layer by default.</li>
           <li>A parts library where a person, not the agent, marks a part as checked against its datasheet.</li>
-          <li>A bill of materials, and Gerber and drill files ready to order.</li>
+          <li>A bill of materials that says whether the board is ready to order, and Gerber and drill files to order it with.</li>
+          <li>A DC simulation of each block, and rules for impedance, differential pairs and matched lengths.</li>
+          <li>A pin map for your firmware, a STEP file for your mechanical CAD, and a board you already have in KiCad brought in as a new circuit.</li>
+          <li>A picture of the board as it will be made, drawn from the same layers the factory gets, and a 3D view with the parts on it.</li>
         </ul>
-        <p class="status">copperflow is at version 0.3 and early. Expect rough edges, and tell us where you find them.</p>
+
+        <figure class="shot">
+          <img
+            src="board-3d.png"
+            width="1440"
+            height="979"
+            loading="lazy"
+            alt="The same CAN bus node in copperflow's 3D view: a green board with white print, two chips, a crystal can and three pin headers standing on it."
+          />
+          <figcaption>
+            The CAN bus node above, as copperflow draws it before you order it. The board is drawn from its
+            fabrication layers; the parts are simple shapes, not their real models.
+          </figcaption>
+        </figure>
+
+        <p class="status">copperflow is at version 0.4 and early. Expect rough edges, and tell us where you find them.</p>
       </section>
 
       <section aria-labelledby="local-title">
@@ -166,7 +184,7 @@
         </div>
         <div>
           <dt>Rev</dt>
-          <dd>0.3.4</dd>
+          <dd>0.4.0</dd>
         </div>
         <div>
           <dt>Licence</dt>

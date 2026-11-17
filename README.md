@@ -14,8 +14,8 @@ its own engine. You and your agent work on them together:
 Everything runs locally. There is no chat inside copperflow: use the agent you already use,
 for example Claude Code, through MCP.
 
-> **Status: 0.3, early.** The core, the MCP server, the CLI, the visual editor and the parts
-> library work. The project hierarchy for large boards is next; see [docs/design.md](docs/design.md).
+> **Status: 0.4, early.** The core, the MCP server, the CLI, the visual editor, the parts library,
+> placement, routing and the fabrication export work. Expect rough edges; see [docs/design.md](docs/design.md).
 
 ## Quick start
 
@@ -95,8 +95,8 @@ that way stops by itself an hour after the last tab closes; `copperflow studio s
 
 The schematic and the PCB are drawn from the design copperflow's engine builds, with
 copperflow's own footprints and schematic symbols. The PCB shows the ratsnest, a straight line
-for each connection still to be made, until routing arrives: hand routing in stage 4 and the
-router in stage 5 of [the engine design](docs/engine-design.md#stages).
+for each connection still to be made, until it is routed by hand or by the router. A third tab,
+3D, shows the board as it will be made with its parts on it (see [Pictures and 3D](#beyond-drawing)).
 
 The window is laid out like a desktop EDA editor:
 
@@ -200,6 +200,50 @@ is no `--build` option.
 who made it. `copperflow undo` reverts the newest change; the agent can undo only its own.
 The agent sees what you undid and does not repeat it.
 
+## Beyond drawing
+
+**Checking a part against its datasheet.** Verify on a library part opens a screen in the Studio: the
+footprint drawn with its dimensions, each pin as a row to tick, and the recorded datasheet beside them.
+The part can be marked verified only when every item is ticked, and only a person can do it.
+
+**What a change did.** `copperflow history <id>` (the agent's `recent_changes { id }`) says what one
+change did: parts added, removed and moved, nets and copper; `--since <id>` covers everything after
+it. `copperflow render <file> --change <id>` draws it on the board, and each row of the Studio's Log
+has Show.
+
+**Ready to order.** `copperflow bom` ends with whether the board is ready to order bare and ready for
+assembly, and names the lines with no supplier part number. No price or stock is checked.
+
+**Pin map for firmware.** `copperflow pins <file>` lists which net is on each pin of the chips and
+connectors, as a table, CSV or a C header (`--format c`); `copperflow package` writes them too.
+
+**Fabrication files.** `copperflow export <file>` writes the Gerbers, drills, pick-and-place file and
+BOM for JLCPCB into `<name>-fab/` and a zip, with `<name>.step` for a mechanical CAD program and a
+picture of each side of the board. A circuit with errors is refused.
+
+**Pictures and 3D.** `copperflow render <file> --view board` draws the bare board as made: every
+fabrication layer is drawn by itself, from the same data the Gerbers are written from, and they are
+put together as mask, finish, print and holes, in the maker's usual colours (`--mask`, `--finish`,
+`--silk`). `--view 3d` and the Studio's 3D tab lay that picture on the board and stand the parts on
+it. The parts are simple shapes, not their real models, in the 3D view and in the STEP file; a part's
+height comes from its `height` in `part.yaml`, else a typical figure for its package, else 1 mm, and
+the view says which.
+
+**Fast lines.** Net classes in `rules.yaml` take an impedance, a differential pair with its gap and
+skew, a longest length and length-matched groups; the checks report a pair that runs apart or differs
+in length, and `copperflow impedance` gives widths and gaps for the board's stack. The figures are
+estimates, and the router does not route pairs together or tune lengths yet. See
+[design-rules.md](skills/copperflow/references/design-rules.md).
+
+**Simulation.** `copperflow simulate` (the agent's `simulate`) finds the DC operating point from ideal
+sources and simple part models: no time, no frequency, no temperature, no tolerance, and chips are not
+modelled. A sheet's card can hold cases ("at 24 V in, the output is between 3.0 and 3.5 V") that it
+runs; `copperflow spice` writes the same circuit as a SPICE netlist for another simulator.
+
+**A board from KiCad.** `copperflow import kicad board.kicad_pcb` (the agent's `import_board`, or
+File, Import board in the Studio) makes a new circuit from a KiCad 6 or newer board: its outline,
+parts, nets, tracks, vias and pours. The parts arrive as library parts, not verified.
+
 ## MCP tools
 
 | Tool | What it does |
@@ -213,7 +257,14 @@ The agent sees what you undid and does not repeat it.
 | `new_circuit` | Writes a whole new circuit from a netlist in one call: parts (a built-in `kind` or a library `part`, `value`, `footprint`, `props` such as `pinCount` or a `pinLabels` object to name pins, no positions) and `nets` (`{ GND: ["R1.pin2", "U1.GND"] }`, no wire corners). Pins are checked first (a wrong one is refused with the part's real pin names); an existing file needs `replace: true`; one history entry, and undo removes the file. It then places the board (`autoplace`, a second entry; the board is fitted when no `board` size is given) unless `place: false` |
 | `autoplace` | Places the parts nobody placed or locked (or only `parts`, or one `instance`) by their connections, as one change: answers "Placed 12 parts; wire length 184 mm (was 412); board 42 × 28 mm; 0 overlaps", then the parts it found no room for and its notes; `fit: true` fits the board too; `budgetSeconds` (20 s by default); `connectors: "ahead"` tries each connector beside the part it serves (route and compare before keeping it) |
 | `fit_board` | Shrinks or grows a rectangular board to the parts' courtyards plus `margin` (2 mm by default), as one change |
-| `import_board` | Sets the board's outline, mounting holes and keepouts from a DXF drawing in the project folder, as one change |
+| `import_board` | Sets the board's outline, mounting holes and keepouts from a DXF drawing in the project folder, as one change; a `.kicad_pcb` file makes a new circuit from a KiCad board |
+| `autoroute` / `unroute` | Routes the unrouted connections (the whole board, some nets, some parts or one instance) and names each one it could not route with the reason; or removes the router's copper |
+| `add_pour` / `remove_pour` / `add_hole` / `remove_hole` | A copper pour of a net on one layer, or a non-plated mounting hole, each as one change |
+| `simulate` | The DC operating point of a circuit or a sheet: set nets to volts, close switches, energise relay coils; with a sheet and no values it runs the sheet's cases |
+| `make_sheet` / `describe_sheet` | Moves parts into a sub-sheet with ports, and writes a sheet's card: what it does, its ports and its cases |
+| `list_modules` / `module_info` / `use_module` / `save_module` | The shelf of modules and the libraries: read one, bring one into the project, save a described sheet |
+| `export_fabrication` | Writes the fabrication files, the STEP model and the board's pictures; refused when the circuit has errors |
+| `attach_datasheet` / `guide` | Records the datasheet a part came from; and the copperflow skill's texts for an agent that has no skills |
 | `edit_circuit` | Several edits in one call, applied as one change (one history entry); stops at the first refused edit and writes nothing |
 | `connect_nets` | Connects many pins to named nets in one call, e.g. `{ "GND": ["R1.pin2", "C1.pin2"] }` |
 | `route_track` | Draws one track of a net by hand from a pad, track or via of that net, as one change; refused when a point lands on another net's copper; the answer lists the copper violations it introduced |
@@ -222,13 +273,13 @@ The agent sees what you undid and does not repeat it.
 | `copper_summary` | Per net: tracks, vias, length and unrouted connections, then copper violations by rule (at most 60 lines) |
 | `board_summary` / `project_status` / `note_decision` / `set_project` | The board in about 60 lines (size, one line per part, longest connections with both pads' places, overlaps, edge, pours; `detail: "full"` for the rest); and the project memory `PROJECT.md` (Intent, Blocks, Decisions, Open) with each circuit's counts and last changes, a dated decision, or rewritten sections, each write one change |
 | `open_studio` | Starts the Studio for the project if none runs, opens it in your browser and answers with the address |
-| `render` | A PNG of the board or of one schematic page, drawn by the Studio's own code, or (`view: "board"`) of the bare board as made: mask, finish, print and holes drawn from the fabrication layers, either side, in the maker's usual colours; `parts` zooms to some parts (needs the optional package `@napi-rs/canvas`) |
+| `render` | A PNG of the board or of one schematic page, drawn by the Studio's own code; `view: "board"` is the bare board as made: mask, finish, print and holes drawn from the fabrication layers, either side, in the maker's usual colours; `view: "3d"` is that board with its parts as simple shapes, at an angle; `change` or `since` draws what a change did; `parts` zooms to some parts (needs the optional package `@napi-rs/canvas`) |
 | `list_parts` / `part_info` | Shows the parts library and a part's data and checklist |
 | `create_part` | Adds a part from a datasheet: pins, footprint string or footprint file, MPN, suppliers |
 | `import_part` | Fetches one part by its LCSC number from EasyEDA into `parts/<id>/`, unverified, for personal, non-commercial use only (see [licences](docs/licences.md)) |
 | `place_part` | Adds a library or built-in part to a circuit, with its import |
-| `bom` / `export_package` | Bill of materials; folder with BOM, datasheets and part status |
-| `recent_changes` | Recent changes by you and the agent, including undos |
+| `bom` / `export_package` | Bill of materials, with whether the board is ready to order; folder with BOM, datasheets, part status and pin maps |
+| `recent_changes` | Recent changes by you and the agent, including undos; `id` says what one change did, `since` everything after it |
 | `undo_change` | Undoes one of the agent's own changes |
 
 There is no unlock tool and no verify tool on purpose.
@@ -237,8 +288,12 @@ There is no unlock tool and no verify tool on purpose.
 
 ```text
 copperflow mcp                              start the MCP server on stdio
-copperflow studio [--port n]                open the visual editor at http://127.0.0.1:4777
-copperflow skill [--global]                 copy the copperflow skills into .claude/skills
+copperflow studio [--port n] [--idle-minutes n]
+                                            open the visual editor at http://127.0.0.1:4777 (or a free port);
+                                            with --idle-minutes it stops after n minutes with no tab open
+copperflow studio stop                      stop the Studio of this folder
+copperflow skill [--global]                 copy the copperflow skills into .claude/skills of this folder
+                                            (or of your home folder), for agents that read skills
 copperflow summary <file>                   print a circuit summary
 copperflow check <file>                     list the errors and warnings of copperflow's own rule checks
 copperflow lock <file> <part...>            lock parts so the agent cannot change them
@@ -253,19 +308,54 @@ copperflow parts verify <id> --by <name> --against <datasheet, page>
 copperflow parts import <C-number> [--id <id>] [--replace]
                                             fetch a part by its LCSC number from EasyEDA into parts/,
                                             not verified (needs the internet; see docs/licences.md)
+copperflow modules                          list the shelf of modules (COPPERFLOW_MODULES, default ~/.copperflow/modules)
+copperflow modules verify <name> --by <name>
+                                            mark a module (or <library>/<name>) as checked by you
+copperflow modules remove <name>            take a module off the shelf
+copperflow library                          list the libraries of modules: built in, git and folders
+copperflow library add <name> <address or folder> [--ref <branch or tag>]
+                                            add a library from git (https://, ssh:// or user@host:path)
+                                            or a folder; its modules read NOT verified until you verify them
+copperflow library update [name]            bring git libraries to the newest commit of their ref
+copperflow library remove <name>            forget a library (a clone is deleted, a folder never)
 copperflow place <file> <part> <name> [key=value ...]
                                             add a library or built-in part to a circuit
 copperflow bom <file> [--csv]               print the bill of materials
 copperflow package <file> [--out dir]
-                                            write BOM, datasheets and part status to a folder
-copperflow render <file> [--view pcb|schematic|board] [--page <name>] [--parts U1,C3] [--width n] [--out file.png]
-    [--side bottom] [--mask black] [--finish hasl] [--silk black] [--background #rrggbb]   (view board)
+                                            write BOM, datasheets, part status and pin maps to a folder
+copperflow pins <file> [--part <name>] [--format md|csv|c]
+                                            which net is on each pin of the library chips and connectors
+copperflow export <file> [--out dir]        write the fabrication files for JLCPCB: Gerbers, drills,
+                                            pick-and-place and BOM in <name>-fab/ and <name>-fab.zip
+                                            beside the circuit (or in the project folder --out), with <name>.step
+copperflow step <file> [--out file.step]   write the board and its parts (as boxes) as a STEP file for CAD,
+                                            <name>.step beside the circuit
+copperflow render <file> [--view pcb|schematic|board|3d] [--page <name>] [--parts U1,C3] [--width n] [--out file.png]
+    board: the bare board as made [--side bottom] [--mask black] [--finish hasl] [--silk black] [--background #rrggbb]
+    3d: the board as made with its parts as simple shapes [--angle top|bottom|front|iso] and the same look options
+                [--change <id> | --since <id>]
                                             draw the board or a schematic page to a PNG, as the Studio shows it
+                                            (<name>-pcb.png or <name>-schematic-<page>.png beside the circuit)
+copperflow simulate <file> --set V12=12 --set CTRL=3.3 [--sheet <name>] [--closed SW1,J2] [--coil K1] [--all]
+                                            the DC operating point from ideal sources and simple models: no time,
+                                            no frequency, no temperature, no tolerance; chips are not modelled.
+                                            With --sheet and no --set it runs the sheet's cases
+copperflow spice <file> [--sheet <name>] [--set net=volts ...] [--out file.cir]
+                                            write the same circuit as a SPICE3 netlist for another simulator
 copperflow board <file> --dxf <path> [--layer <name>] [--units mm|inch] [--origin keep] [--replace]
                                             set the board's outline, holes and keepouts from a DXF drawing
+copperflow import kicad <board.kicad_pcb> [--name <circuit name>] [--replace] [--origin keep]
+                                            make a new circuit from a KiCad board: its outline, parts (as
+                                            library parts, not verified), nets, tracks, vias and pours
+copperflow impedance [--single 50] [--pair 90] [--gap 0.2] [--width 0.3]
+                                            line widths and gaps for an impedance on the board's stack (rules.yaml);
+                                            an estimate: the router does not route pairs together or tune lengths
 copperflow history [--limit n]              list recent changes
+copperflow history <id> | --since <id>      what one change did, or everything after it
 copperflow undo [id]                        undo the newest change, or the given one
 ```
+
+Every command accepts `--root <dir>` (default: the current directory).
 
 ## Libraries
 
@@ -291,7 +381,10 @@ their component files written by copperflow. A library module reads NOT verified
 
 - **0.2** (done) Visual editor in the browser: drag, rotate, lock, delete and reconnect wires, marks.
 - **0.3** (done) Parts library (one folder per part) and datasheet-to-part import; BOM and datasheet package.
-- **0.4** Project hierarchy for large boards: a project map, blocks with interfaces, generated summaries, project rules.
+- **0.4** (done) Placement, routing, pours and the fabrication export; sheets, modules and libraries; part
+  verification on screen, the change view, the order report, pin maps, STEP and the 3D view, fast-line rules,
+  DC simulation, KiCad board import and the board drawn as made.
+- **Next** Routing pairs together and tuning lengths, time and frequency in the simulator, real part models in 3D.
 
 ## Contributing
 

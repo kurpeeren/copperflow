@@ -44,7 +44,20 @@ Do these in the folder that will hold the board.
 - The person adds a library of their own with `copperflow library add <name> <git address or folder>`; its modules
   appear as `<name>/<Module>`. No tool adds a library: ask the person to run the command.
 - A board drawn in a mechanical program comes in with `import_board`: the outline, the mounting holes and the keepouts
-  from a DXF file.
+  from a DXF file. A `.kicad_pcb` file (KiCad 6 or newer) makes a new circuit from that board; its parts arrive not
+  verified.
+- To show the person what you did: `recent_changes { id }` says what one change did and `render { change: id }` draws
+  it; `since` covers everything after a change.
+- Before saying a block works, run `simulate`: the DC operating point from ideal sources and simple models (no time,
+  no frequency, no tolerance; chips are not modelled). A module's card holds cases; `simulate` with `sheet` and no
+  values runs them.
+- `render` with `view: "board"` is the bare board as made, drawn from the fabrication layers; `view: "3d"` adds the
+  parts as simple shapes, not their real models. Look at one before asking the person to.
+- `bom` ends with whether the board is ready to order. `export_fabrication` writes the Gerbers, drills,
+  pick-and-place file, a STEP model and a picture of each side; it refuses a circuit with errors.
+- Impedance, differential pairs and matched lengths are net classes in `rules.yaml`
+  (`guide { topic: "design-rules" }`). The figures are estimates; the router does not route a pair together or tune
+  lengths.
 
 ## Links
 
