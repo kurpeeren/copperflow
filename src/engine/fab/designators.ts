@@ -77,16 +77,43 @@ function copyGroups(parts: readonly PlacedFootprint[]): Map<string, PlacedFootpr
  * one place a crowded part had; parts with no clear place at all come last.
  */
 export function designatorPlacements(pcb: SilkBoard, expansion: number, clearance = DEFAULT_SILK_CLEARANCE): DesignatorPlacement[] {
-  // The check and the design both ask for the same board's designators: the answer is kept per parts list.
-  const key = `${expansion}/${clearance}/${pcb.board?.outline.length ?? 0}/${pcb.vias?.length ?? 0}/${pcb.holes?.length ?? 0}`
-  const kept = remembered.get(pcb.parts)
-  if (kept?.key === key && kept.vias === pcb.vias && kept.holes === pcb.holes && kept.board === pcb.board) return kept.placements
+  const key = `${expansion}/${clearance}`
+  const kept = recalled(pcb, key)
+  if (kept) return kept
   const placements = placeDesignators(pcb, expansion, clearance)
-  remembered.set(pcb.parts, { key, vias: pcb.vias, holes: pcb.holes, board: pcb.board, placements })
+  remember(pcb, key, placements)
   return placements
 }
 
-const remembered = new WeakMap<readonly PlacedFootprint[], { key: string; vias: unknown; holes: unknown; board: unknown; placements: DesignatorPlacement[] }>()
+interface Remembered {
+  key: string
+  parts: readonly PlacedFootprint[]
+  vias: unknown
+  holes: unknown
+  board: unknown
+  placements: DesignatorPlacement[]
+}
+
+/**
+ * The check, the design and the export all ask for the same board's designators, each through a list of its own (the
+ * check leaves out unplaced parts, the design adds each designator's place), so the answer is kept by the parts
+ * themselves: under the first part, for the same parts in the same order on the same board.
+ */
+const remembered = new WeakMap<PlacedFootprint, Remembered>()
+
+function recalled(pcb: SilkBoard, key: string): DesignatorPlacement[] | undefined {
+  const first = pcb.parts[0]
+  const kept = first && remembered.get(first)
+  if (!kept || kept.key !== key || kept.vias !== pcb.vias || kept.holes !== pcb.holes || kept.board !== pcb.board) return undefined
+  if (kept.parts.length !== pcb.parts.length) return undefined
+  for (let i = 0; i < kept.parts.length; i++) if (kept.parts[i] !== pcb.parts[i]) return undefined
+  return kept.placements
+}
+
+function remember(pcb: SilkBoard, key: string, placements: DesignatorPlacement[]): void {
+  const first = pcb.parts[0]
+  if (first) remembered.set(first, { key, parts: pcb.parts, vias: pcb.vias, holes: pcb.holes, board: pcb.board, placements })
+}
 
 /** The first clear place, else the first fair one (only other parts between it and its own part), in one pass. */
 function goodPlace(places: readonly Place[], covered: (place: Place) => Covered): Place | undefined {
@@ -308,14 +335,19 @@ function copiesApart(members: readonly PlacedFootprint[], lists: readonly Place[
 
 /** The board with each part's designator place (`designatorAt`) and turn (`designatorRotation`), where the export draws it. */
 export function withDesignators(pcb: PcbLayout, fabrication: FabricationProfile): PcbLayout {
-  const placed = new Map(designatorPlacements(pcb, fabrication.maskExpansion ?? DEFAULT_MASK_EXPANSION, silkClearance(fabrication)).map((p) => [p.component, p]))
-  return {
+  const [expansion, clearance] = [fabrication.maskExpansion ?? DEFAULT_MASK_EXPANSION, silkClearance(fabrication)]
+  const placements = designatorPlacements(pcb, expansion, clearance)
+  const placed = new Map(placements.map((p) => [p.component, p]))
+  const board = {
     ...pcb,
     parts: pcb.parts.map((part) => {
       const found = placed.get(part.component)
       return found ? { ...part, designatorAt: found.at, designatorRotation: found.rotation } : part
     }),
   }
+  // The places do not depend on designatorAt, so the board that carries them has the same answer.
+  remember(board, `${expansion}/${clearance}`, placements)
+  return board
 }
 
 /** The gap a profile keeps silkscreen from pads, used for designators too. */

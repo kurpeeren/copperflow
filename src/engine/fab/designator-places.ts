@@ -110,6 +110,8 @@ function sidePlaces(part: PlacedFootprint, clearance: number, turnFor: (flat: bo
   const long = textWidth(part.component, DESIGNATOR_HEIGHT) / 2 + SILK_WIDTH / 2
   const short = DESIGNATOR_HEIGHT / 2 + SILK_WIDTH / 2
   const found: Place[] = []
+  // The slides along a side are the same on every ring.
+  const along = { flat: slides(halfW, turnFor(true) === 0 ? long : short), upright: slides(halfH, turnFor(false) === 0 ? short : long) }
   for (const ring of RINGS) {
     const gap = clearance + ring
     for (const side of ["top", "bottom", "left", "right"] as const) {
@@ -120,14 +122,14 @@ function sidePlaces(part: PlacedFootprint, clearance: number, turnFor: (flat: bo
         const top = side === "top"
         const y = top ? box.maxY + gap + acrossHalf : box.minY - gap - acrossHalf
         const [low, high] = top ? [box.maxY, y + acrossHalf] : [y - acrossHalf, box.minY]
-        for (const dx of slides(halfW, alongHalf)) {
+        for (const dx of along.flat) {
           found.push({ at: { x: cx + dx, y }, rotation, reach: { minX: cx + dx - alongHalf, maxX: cx + dx + alongHalf, minY: low, maxY: high } })
         }
       } else {
         const right = side === "right"
         const x = right ? box.maxX + gap + acrossHalf : box.minX - gap - acrossHalf
         const [low, high] = right ? [box.maxX, x + acrossHalf] : [x - acrossHalf, box.minX]
-        for (const dy of slides(halfH, alongHalf)) {
+        for (const dy of along.upright) {
           found.push({ at: { x, y: cy + dy }, rotation, reach: { minX: low, maxX: high, minY: cy + dy - alongHalf, maxY: cy + dy + alongHalf } })
         }
       }
@@ -174,7 +176,8 @@ export class SilkObstacles {
   /** The designators placed so far. */
   private readonly textIndex = new CellIndex()
   private readonly designators = new Map<string, Obstacle>()
-  private readonly fixedOf = new WeakMap<Place, Covered>()
+  /** Per place tried (a place belongs to one part): its text's box grown by the clearance, and what it covers that never moves. */
+  private readonly keptOf = new WeakMap<Place, { near: Box; fixed: Covered }>()
 
   constructor(
     private readonly outline: readonly Point[] | undefined,
@@ -201,18 +204,31 @@ export class SilkObstacles {
 
   /** What the text of `part` at `place` covers; with `spaced`, designators closer than the clearance count too. */
   covered(part: PlacedFootprint, place: Place, spaced = true): Covered {
-    const box = textBox(part.component, place.at, place.rotation)
-    const near = spaced ? grown(box, this.clearance) : box
-    const known = spaced ? this.fixedOf.get(place) : undefined
-    const fixed = known ?? this.fixedCovered(part, place, box, spaced)
-    if (spaced && !known) this.fixedOf.set(place, fixed)
-    const found: Covered = { ...fixed, pads: [...fixed.pads], courtyards: [...fixed.courtyards], designators: [] }
+    const { near, fixed } = spaced ? this.kept(part, place) : this.measured(part, place, false)
+    // Called for every place tried, so nothing is made until a designator is in the way: with none, the answer is the
+    // kept one itself. Nobody changes an answer.
+    if (this.designators.size === 0) return fixed
+    let found: Covered | undefined
     for (const obstacle of this.textIndex.query(near)) {
       if (obstacle.gone || obstacle.side !== part.side || obstacle.component === part.component || !overlap(near, obstacle.box)) continue
+      found ??= { ...fixed, designators: [] }
       found.score += WEIGHT.designator * (1 + overlapArea(near, obstacle.box))
       found.designators.push(obstacle.component)
     }
-    return found
+    return found ?? fixed
+  }
+
+  private kept(part: PlacedFootprint, place: Place): { near: Box; fixed: Covered } {
+    const known = this.keptOf.get(place)
+    if (known) return known
+    const made = this.measured(part, place, true)
+    this.keptOf.set(place, made)
+    return made
+  }
+
+  private measured(part: PlacedFootprint, place: Place, spaced: boolean): { near: Box; fixed: Covered } {
+    const box = textBox(part.component, place.at, place.rotation)
+    return { near: spaced ? grown(box, this.clearance) : box, fixed: this.fixedCovered(part, place, box, spaced) }
   }
 
   /** What the text covers of the things that never move, and whether it leaves the board. */
