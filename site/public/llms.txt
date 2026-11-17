@@ -38,6 +38,13 @@ Do these in the folder that will hold the board.
 - A new board starts with a plan, before any circuit file: `guide { topic: "planning" }`. Ask the person every
   question the design needs in one message.
 - Only the person unlocks a part, verifies a library part and verifies a module. There is no tool for these on purpose.
+- Before drawing a block, call `list_modules`: a module is a block already drawn, with named ports. copperflow ships
+  `copperflow/RelayDriver`, `copperflow/DigitalInput24V` and `copperflow/CanNode`; `module_info` reads one and
+  `use_module` brings it into the project. Every module reads NOT verified until the person has verified it: say so.
+- The person adds a library of their own with `copperflow library add <name> <git address or folder>`; its modules
+  appear as `<name>/<Module>`. No tool adds a library: ask the person to run the command.
+- A board drawn in a mechanical program comes in with `import_board`: the outline, the mounting holes and the keepouts
+  from a DXF file.
 
 ## Links
 
