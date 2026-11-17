@@ -79,13 +79,6 @@ button.primary {
   font-weight: 600;
 }
 
-/* A primary button that cannot be pressed yet reads as off: no copper fill. */
-button.primary:disabled {
-  border-color: var(--line);
-  background: var(--raised);
-  color: var(--disabled);
-}
-
 button.primary:hover:not(:disabled) {
   background: var(--copper-text);
   border-color: var(--copper-text);

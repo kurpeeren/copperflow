@@ -299,6 +299,13 @@ button.menu-title.open:hover:not(:disabled) {
   width: min(680px, calc(100vw - 32px));
 }
 
+/* A primary button that cannot be pressed yet reads as off: no copper fill. */
+button.primary:disabled {
+  border-color: var(--line);
+  background: var(--raised);
+  color: var(--disabled);
+}
+
 /* Library → Verify…: the large dialog, set here so it has its size while its content loads. */
 .dialog.large {
   width: min(1440px, calc(100vw - 32px));
