@@ -8,6 +8,18 @@ import { PALETTE } from "../pcb/ctx.js"
 export type Vec3 = readonly [number, number, number]
 export type Rgb = readonly [number, number, number]
 
+/** How a lit face takes the light: plastic and laminate are matt, metal has a soft highlight. */
+export type Material = "matt" | "metal"
+
+/** What a face is part of, for the tests and for drawing: a part's body, an end cap, a leg, a pin, a lead below the board, a mark. */
+export type Role = "body" | "cap" | "leg" | "pin" | "lead" | "pin1" | "cathode" | "board"
+
+/** A colour that changes across a face, at a point of the board's space: the board's picture or its edge. */
+export interface Paint {
+  /** Writes the colour (0 to 255) at x, y, z into out[0..2] and answers its alpha, 0 to 1; 0 leaves the pixel to what is behind. */
+  at(x: number, y: number, z: number, out: Float32Array, fine: boolean): number
+}
+
 export interface Face {
   /** The first loop is the outline, any others are holes; all in one plane. */
   loops: Vec3[][]
@@ -18,6 +30,10 @@ export interface Face {
   alpha: number
   /** The part's index in the model's parts, or -1 for the board. */
   part: number
+  material?: Material
+  role?: Role
+  /** Colour from a paint instead of `color`. */
+  paint?: Paint
 }
 
 export interface Scene {
