@@ -38,6 +38,7 @@ import { formatImport, importLcscPart } from "./library/import-lcsc.js"
 import { formatKicadImport, importKicad } from "./library/kicad/import.js"
 import { createCopperflowServer } from "./mcp/server.js"
 import { studioCommand } from "./cli-studio.js"
+import { impedanceCommand } from "./cli-impedance.js"
 import { VERSION } from "./version.js"
 import { installSkill } from "./skill-install.js"
 import { modulesCommand } from "./cli-modules.js"
@@ -112,6 +113,9 @@ Usage:
   copperflow import kicad <board.kicad_pcb> [--name <circuit name>] [--replace] [--origin keep]
                                               make a new circuit from a KiCad board: its outline, parts (as
                                               library parts, not verified), nets, tracks, vias and pours
+  copperflow impedance [--single 50] [--pair 90] [--gap 0.2] [--width 0.3]
+                                              line widths and gaps for an impedance on the board's stack (rules.yaml);
+                                              an estimate: the router does not route pairs together or tune lengths
   copperflow history [--limit n]              list recent changes
   copperflow history <id> | --since <id>      what one change did, or everything after it
   copperflow undo [id]                        undo the newest change, or the given one
@@ -238,6 +242,9 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
         return 0
       case "import":
         io.out(await importCommand(cwd, root, rest, options))
+        return 0
+      case "impedance":
+        io.out(await impedanceCommand(root, rest))
         return 0
       case "undo": {
         // The built design tells which tracks start on locked parts, so copper can be undone while parts are locked.
