@@ -121,6 +121,47 @@ globalNets: [GND, V24, V3_3]
 The `usb-c-ldo` example keeps one class: `power` for `VBUS`, `V3_3` and `GND`, with a 0.4 mm
 track width and 0.2 mm clearance. It names no profile, so the default applies.
 
+## Pairs, matched lengths and impedance
+
+The router does not route pairs together and does not tune lengths: copperflow knows the classes and checks
+them, and the tracks are yours to route. Calculated impedance is an estimate (about 1 % for a single line,
+about 10 % for a pair, solder mask not counted): for a controlled impedance order, ask the board maker for
+their stack and widths.
+
+```yaml
+fabrication:
+  boardThickness: 1.6     # the profile's stack; each may be overridden
+  permittivity: 4.6
+  copperThickness: 0.035
+  solderMask: true
+  dielectricHeight: 1.53  # under an outer track; on 2 layers the board minus its two coppers when left out
+netClasses:
+  can:
+    nets: [CANH, CANL]
+    pair: by-name           # or a list: [[CANH, CANL]]
+    differentialImpedance: 120
+    gap: 0.2                # the track width then comes from the impedance
+    maxSkew: 2
+    minCoupled: 80          # percent of the pair's length side by side; 80 when left out
+  addr:
+    nets: ["A?"]
+    matchGroup: addr
+    maxSpread: 1
+    maxLength: 60
+    impedance: 50           # single line
+```
+
+- `pair: by-name` pairs names ending in `_P`/`_N`, `+`/`-`, `DP`/`DM` and `H`/`L` (CANH/CANL) within the class.
+- When `impedance` or `differentialImpedance` is given and `trackWidth` is not, the width (and a pair's gap, at
+  twice the profile's smallest gap unless `gap` is set) come from the stack; `copper_summary` says so. A target
+  the board cannot make (a gap or width under the profile's smallest) is a `rules` warning that says what it needs.
+- The `jlcpcb-4layer` profile has no `dielectricHeight`: set it to calculate there.
+- A length runs pad to pad along the joined copper, the farthest two pads of the net; a via adds the board's thickness.
+
+To work with a pair: declare the class, route the two nets by hand with `route_track` side by side at the class's
+width and gap (or let `autoroute` route them and read the checks), read `check_circuit` and `copper_summary`, and
+fix a finding by re-routing. `copperflow impedance --single 50 --pair 90` prints the calculation for the project.
+
 ## What the checks report
 
 `copperflow check`, the agent's `check_circuit` and the Studio Checks panel (the `\` key) show the
@@ -150,6 +191,13 @@ position. Anything a check cannot evaluate is reported as `unchecked`, never sil
 | `silk-on-pad` | warning | Silkscreen lies on a pad, closer than `minSilkToPad`; or a designator covers pads or another designator (the same findings, in the same words, as `export_fabrication`'s warnings: move it with `pcbNameAt` or move the part). |
 | `unplaced` | warning | Parts still on automatic placement. |
 | `unrouted` | warning | Connections are not routed yet. With pours it also says how many more connections the pours make (those need no track), the same number `autoroute` leaves out of its total. |
+| `pair-skew` | warning | The two nets of a pair differ in length by more than `maxSkew`. |
+| `pair-apart` | warning | Less of a pair's length than `minCoupled` (80 %) runs within twice its gap of the other on one layer. |
+| `pair-gap` | warning | Where a pair runs side by side, its gap is off the class's `gap`: how long and from where. |
+| `pair-vias` | warning | The two nets of a pair have a different number of vias. |
+| `net-length` | warning | A net is longer than its class's `maxLength`. |
+| `match-spread` | warning | The nets of a `matchGroup` differ in length by more than `maxSpread`. |
+| `impedance-width` | warning | A track of an impedance or pair class is wider than its class's width (narrower is `track-width`). |
 | `unchecked` | warning | A check could not run: an unknown pad shape, no usable board outline, a part with no position, or a duplicate violation id. |
 
 Rules the checks follow:
