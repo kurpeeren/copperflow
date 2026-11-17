@@ -1,6 +1,7 @@
 import { LineCounter, isNode, parseDocument, visit, type Document } from "yaml"
 import { diagnostic } from "../diagnostics.js"
 import type { Board, Diagnostic } from "../model.js"
+import { deriveWidths } from "./impedance-widths.js"
 import { DEFAULT_CLASS, DEFAULT_PROFILE, PROFILES } from "./profiles.js"
 import { RulesFileSchema, type FabricationProfile, type NetClass, type Rules, type RulesFile } from "./schema.js"
 
@@ -13,7 +14,7 @@ interface Problem {
   path: readonly (string | number)[]
 }
 
-const OVERRIDABLE = ["minTrackWidth", "minClearance", "minDrill", "minAnnularRing", "boardEdgeClearance", "minHoleToHole", "minSilkToPad", "filletRadius", "maskExpansion", "pasteReduction", "placementRotations"] as const
+const OVERRIDABLE = ["minTrackWidth", "minClearance", "minDrill", "minAnnularRing", "boardEdgeClearance", "minHoleToHole", "minSilkToPad", "filletRadius", "maskExpansion", "pasteReduction", "placementRotations", "boardThickness", "permittivity", "copperThickness", "solderMask", "dielectricHeight"] as const
 
 const defaultProfile = (): FabricationProfile => PROFILES[DEFAULT_PROFILE] as FabricationProfile
 
@@ -53,7 +54,9 @@ function readDocument(document: Document, lines: LineCounter): { rules: Rules; d
   const resolved = parsed.success ? resolve(parsed.data) : undefined
   const problems = resolved ? resolved.problems : schemaProblems(parsed.error?.issues ?? [])
   if (!resolved || problems.length > 0) return failed(problems.map((problem) => report(problem, locate(problem.path))))
-  return { rules: resolved.rules, diagnostics: [] }
+  const written = Object.entries(parsed.data?.netClasses ?? {}).filter(([, one]) => one.trackWidth !== undefined).map(([name]) => name)
+  const derived = deriveWidths(resolved.rules, new Set(written))
+  return { rules: derived.rules, diagnostics: derived.diagnostics }
 }
 
 const failed = (diagnostics: Diagnostic[]) => ({ rules: defaultRules(RULES_PATH), diagnostics })
@@ -150,7 +153,15 @@ function resolveClass(name: string, written: NonNullable<RulesFile["netClasses"]
     clearance: written.clearance ?? DEFAULT_CLASS.clearance,
     via: { drill: written.via?.drill ?? DEFAULT_CLASS.via.drill, diameter: written.via?.diameter ?? DEFAULT_CLASS.via.diameter },
     patterns: written.nets,
+    ...fastKeys(written),
   }
+}
+
+const FAST_KEYS = ["impedance", "pair", "differentialImpedance", "gap", "maxSkew", "maxLength", "matchGroup", "maxSpread"] as const
+
+/** The optional fast-line keys a class wrote, as written (lengths already in mm). */
+function fastKeys(written: NonNullable<RulesFile["netClasses"]>[string]): Partial<NetClass> {
+  return Object.fromEntries(FAST_KEYS.flatMap((key) => (written[key] === undefined ? [] : [[key, written[key]]])))
 }
 
 /** A `rules` warning when the fabrication profile is for another number of copper layers than the board has. */

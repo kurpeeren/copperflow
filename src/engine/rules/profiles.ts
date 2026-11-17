@@ -20,6 +20,18 @@ const SOURCE_2 =
 const SOURCE_4 =
   "JLCPCB PCB Manufacturing & Assembly Capabilities, https://jlcpcb.com/capabilities/pcb-capabilities, read 2026-11-06; sections Traces, Drilling, Outline, Legend; multilayer rows for 4 layers, 1 oz"
 
+/**
+ * The 2-layer stack, for impedance and via lengths:
+ * - board thickness 1.6 mm: the standard (default) finished thickness of the capabilities page above, "Board Thickness"
+ * - permittivity 4.6: JLCPCB Impedance Calculator page, https://jlcpcb.com/impedance, read 2026-11-17, section
+ *   "3. Core dielectric constant"
+ * - copper 0.035 mm (1 oz outer): the same page's stackup tables, "Copper 0.035mm"
+ * - solder mask: on by default (the green mask of the standard order); the same page, "2. Solder mask Parameters",
+ *   gives 0.6 mil over a trace at a dielectric constant of 3.8, which the estimate does not count
+ * The 4-layer profile has no dielectric height here: the page's 4-layer stackups vary by thickness, so it is left out.
+ */
+const STACK_2 = { boardThickness: 1.6, permittivity: 4.6, copperThickness: 0.035, solderMask: true } as const
+
 export const DEFAULT_PROFILE = "jlcpcb-2layer"
 
 export const PROFILES: Readonly<Record<string, FabricationProfile>> = {
@@ -34,6 +46,7 @@ export const PROFILES: Readonly<Record<string, FabricationProfile>> = {
     boardEdgeClearance: 0.2,
     minHoleToHole: 0.45,
     minSilkToPad: 0.15,
+    ...STACK_2,
   },
   "jlcpcb-4layer": {
     name: "jlcpcb-4layer",
@@ -46,6 +59,10 @@ export const PROFILES: Readonly<Record<string, FabricationProfile>> = {
     boardEdgeClearance: 0.2,
     minHoleToHole: 0.45,
     minSilkToPad: 0.15,
+    boardThickness: 1.6,
+    permittivity: 4.6,
+    copperThickness: 0.035,
+    solderMask: true,
   },
 }
 
