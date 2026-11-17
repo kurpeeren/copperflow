@@ -26,7 +26,7 @@ test("impedance with --width gives the impedance of that width, and the gap for 
   const root = await shortTempDir("cf-imp-")
   const { out } = await run(["impedance", "--width", "0.5", "--pair", "120"], root)
   expect(out).toMatch(/0\.5 mm width gives [\d.]+ ohm single/)
-  expect(out).toMatch(/120 ohm differential: 0\.3 mm width at a [\d.]+ mm gap on a 1\.6 mm board/)
+  expect(out).toMatch(/120 ohm differential: 0\.5 mm width at a [\d.]+ mm gap on a 1\.6 mm board/)
 })
 
 test("impedance refuses with a sentence when the stack is not known", async () => {
