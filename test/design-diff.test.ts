@@ -124,3 +124,9 @@ test("an unnamed net keeps its name when a pin that sorts first joins it", () =>
   const nets = diffDesigns({ design: one }, { design: more }).nets
   expect(nets).toEqual({ appeared: [], went: [], joined: [{ pin: "A1.pin1", net: name }], left: [] })
 })
+
+test("copper that stayed where it was is not added or removed when only the net it carries changed", () => {
+  const changedNet: Design = { ...before, pcb: { ...before.pcb, tracks: before.pcb.tracks.map((t) => ({ ...t, net: "net.OTHER" })) } }
+  const copper = diffDesigns({ design: before }, { design: changedNet })
+  expect(copper.tracks).toEqual({ added: [], removed: [] })
+})

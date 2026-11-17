@@ -246,12 +246,14 @@ function copperDiff(before: Design, after: Design): Pick<DesignDiff, "tracks" | 
   const via = (one: Design["pcb"]["vias"][number]): ViaAt => ({ id: one.id, ...(one.net !== undefined ? { net: one.net } : {}), at: one.at, diameter: one.diameter })
   const pours = (design: Design): PourAt[] =>
     (design.pcb.board?.pours ?? []).map((pour) => ({ id: pour.id, net: pour.net, layer: pour.layer, ...(pour.outline ? { outline: pour.outline } : {}) }))
-  // A track or via whose shape changed under the same id is the old one removed and the new one added.
-  const shape = (item: TrackAt | ViaAt | PourAt) => JSON.stringify(item)
+  // A track or via whose copper changed under the same id is the old one removed and the new one added. The net it
+  // carries is left out: moving a part can change which net still-standing copper resolves to.
+  const shape = ({ net: _net, ...copper }: TrackAt | ViaAt) => JSON.stringify(copper)
+  const pourShape = (item: PourAt) => JSON.stringify(item)
   return {
     tracks: added(before.pcb.tracks.map(track), after.pcb.tracks.map(track), shape, byId),
     vias: added(before.pcb.vias.map(via), after.pcb.vias.map(via), shape, byId),
-    pours: added(pours(before), pours(after), shape, byId),
+    pours: added(pours(before), pours(after), pourShape, byId),
   }
 }
 
