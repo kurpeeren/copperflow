@@ -1,0 +1,9 @@
+netClasses:
+  contact:
+    trackWidth: 1.5
+    clearance: 1.0
+    nets: [COM, NO, NC]
+  power:
+    trackWidth: 0.5
+    nets: [V12, GND]
+globalNets: [V12, GND]

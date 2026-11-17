@@ -1,0 +1,31 @@
+title: Songle SRD relay, 12 V coil (400 ohm, 30 mA), SPDT changeover, 10 A
+description: "Pads from the DRILLING drawing on page 1 of the Songle SRD
+  datasheet, read as the bottom view and mirrored to the top view. The datasheet
+  gives no hole size: 1.3 mm drill chosen for the 1.1 x 0.4 mm contact leads.
+  Pin numbers are this library's own (the datasheet numbers none)."
+manufacturer: Ningbo Songle Relay
+mpn: SRD-12VDC-SL-C
+origin: written 2026-11-17
+footprint: footprint.yaml
+pins:
+  "1":
+    name: COM
+    type: passive
+  "2":
+    name: COIL1
+    type: passive
+  "3":
+    name: COIL2
+    type: passive
+  "4":
+    name: NO
+    type: passive
+  "5":
+    name: NC
+    type: passive
+suppliers:
+  lcsc: C30431
+datasheet:
+  url: https://www.circuitbasics.com/wp-content/uploads/2015/11/SRD-05VDC-SL-C-Datasheet.pdf
+  title: Songle Relay SRD datasheet
+datasheet_pages: 1 (DRILLING and WIRING DIAGRAM), 2 (coil data, contact rating)

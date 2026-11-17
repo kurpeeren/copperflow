@@ -1,0 +1,34 @@
+title: TJA1051T/3 high-speed CAN transceiver with VIO, SO8
+manufacturer: NXP Semiconductors
+mpn: TJA1051T/3/1J
+origin: written 2026-11-17
+footprint: soic8
+pins:
+  "1":
+    name: TXD
+    type: input
+  "2":
+    name: GND
+    type: ground
+  "3":
+    name: VCC
+    type: power_in
+  "4":
+    name: RXD
+    type: output
+  "5":
+    name: VIO
+    type: power_in
+  "6":
+    name: CANL
+    type: bidirectional
+  "7":
+    name: CANH
+    type: bidirectional
+  "8":
+    name: S
+    type: input
+datasheet:
+  url: https://www.nxp.com/docs/en/data-sheet/TJA1051.pdf
+  title: TJA1051 product data sheet Rev. 9
+datasheet_pages: 4 (Table 3 pin description, Fig 2 pin configuration)
