@@ -12,10 +12,14 @@ export class KicadError extends Error {}
 
 /**
  * The oldest file version read: 20211014, the version KiCad 6.0 writes (the first with `footprint` in place of
- * `module`, quoted layer names and pads whose turn includes their footprint's). The version is the date of the format
- * change, written in every file's (version …); KiCad 7 writes 20221018, 8 20240108, 9 20241229 and 10 20260206.
+ * `module`, quoted layer names and pads whose turn includes their footprint's). Every later version is read; the
+ * version is the date of the format change, written in every file's (version …).
  */
 export const MIN_VERSION = 20211014
+
+/** The newest version copperflow was tested with: the files KiCad 10.0.5 saves. A newer file is read, and the answer says so. */
+export const TESTED_VERSION = 20260206
+export const TESTED_KICAD = "10.0.5"
 
 export const EDGE_LAYER = "Edge.Cuts"
 
