@@ -98,21 +98,38 @@ describe("the pin map of can-node", () => {
     expect(text).toMatch(/\n#define U101_CS_NET +"CS" +\/\* pad 16, input \*\/\n/)
     expect(text).toMatch(/\n#define U101_VDD_NET +"V3V3" +\/\* pad 18, power_in \*\/\n/)
     expect(text).toContain("\n/* U101 CLKOUT: pad 3, output, not connected */\n")
-    expect(text).toMatch(/\n#define CS_PIN +"CS" +\/\* U101 pad 16 \*\/\n/)
-    expect(text).toMatch(/\n#define CS_PIN_ID +CS\n/)
-    expect(text).toMatch(/\n#define CAN1_TXCAN_PIN +"TXCAN" +\/\* U101 pad 1 \*\/\n/)
+    expect(text).toMatch(/\n#define U101_CS_PIN +"CS" +\/\* U101 pad 16 \*\/\n/)
+    expect(text).toMatch(/\n#define U101_CS_PIN_ID +CS\n/)
+    expect(text).toMatch(/\n#define U101_CAN1_TXCAN_PIN +"TXCAN" +\/\* U101 pad 1 \*\/\n/)
     // Power and ground are not signals: no reverse define for them.
     expect(text).not.toMatch(/V3V3_PIN|GND_PIN/)
   })
 
-  test("names that collide get the pad number, and the header says so", async () => {
+  test("the reverse names carry the part, so two parts on one net never collide", async () => {
     const { text } = await cli("pins", "can-node.circuit.tsx", "--format", "c")
     expect(text).toContain("#ifndef CAN_NODE_PINS_H")
     // CS reaches U101 pad 16 and J1 pad 7.
-    expect(text).toMatch(/\n#define CS_PIN_7 +"CS" +\/\* J1 pad 7 \*\/\n/)
-    expect(text).toMatch(/\n#define CS_PIN_16 +"CS" +\/\* U101 pad 16 \*\/\n/)
-    expect(text).toMatch(/\n\/\* Names that collided have the pad number added: [^\n]*CS_PIN_16[^\n]*\*\/\n/)
-    expect(text).not.toMatch(/\n#define CS_PIN /)
+    expect(text).toMatch(/\n#define J1_CS_PIN +"CS" +\/\* J1 pad 7 \*\/\n/)
+    expect(text).toMatch(/\n#define U101_CS_PIN +"CS" +\/\* U101 pad 16 \*\/\n/)
+    expect(text).not.toContain("collided")
+  })
+
+  test("the package's two chip headers share no define name", async () => {
+    await exportPackage(root, "can-node.circuit.tsx", { engine: inProcessEngine })
+    const names = async (file: string) =>
+      new Set([...(await readFile(join(root, "exports", "can-node", file), "utf8")).matchAll(/^#define (\w+)/gm)].map((m) => m[1]))
+    const u101 = await names("U101_pins.h")
+    const shared = [...(await names("U102_pins.h"))].filter((name) => u101.has(name))
+    expect(shared).toEqual([])
+  })
+
+  test("one net on two pins of one part gets the pad number, and the header names just those", async () => {
+    const body = '    <pinheader name="J1" pinCount={2} pitch="2.54mm" pinLabels={{ pin1: "A", pin2: "B" }} pcbX={0} pcbY={0} />\n    <trace from="J1.pin1" to="net.SIG" />\n    <trace from="J1.pin2" to="net.SIG" />'
+    await writeFile(join(root, "two.circuit.tsx"), `export default () => (\n  <board width="10mm" height="10mm">\n${body}\n  </board>\n)\n`)
+    const { text } = await cli("pins", "two.circuit.tsx", "--format", "c")
+    expect(text).toMatch(/\n#define J1_SIG_PIN_1 +"A" +\/\* J1 pad 1 \*\/\n/)
+    expect(text).toMatch(/\n#define J1_SIG_PIN_2 +"B" +\/\* J1 pad 2 \*\/\n/)
+    expect(text).toContain("\n/* Names that collided have the pad number added: J1_SIG_PIN_1, J1_SIG_PIN_2 */\n")
   })
 
   test("the same design gives the same bytes", async () => {
@@ -165,8 +182,8 @@ describe("the pin map of io-8", () => {
 
   test("the header has a reverse define per input, and none for ground", async () => {
     const { text } = await cli("pins", "io-8.circuit.tsx", "--format", "c")
-    expect(text).toMatch(/\n#define IN1_PIN +"IN1" +\/\* J1 pad 1 \*\/\n/)
-    expect(text).toMatch(/\n#define DI8_PIN +"DI8" +\/\* J2 pad 8 \*\/\n/)
+    expect(text).toMatch(/\n#define J1_IN1_PIN +"IN1" +\/\* J1 pad 1 \*\/\n/)
+    expect(text).toMatch(/\n#define J2_DI8_PIN +"DI8" +\/\* J2 pad 8 \*\/\n/)
     expect(text).not.toMatch(/GND_PIN/)
   })
 

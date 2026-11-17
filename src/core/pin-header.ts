@@ -1,6 +1,7 @@
 // The pin map as a C header: for each part, a define per wired pin naming its net, and for each named signal net on
-// the part, the reverse (the pin's name, and the name itself when it is an identifier). Names are made valid C
-// identifiers; two that collide get the pad number added. Deterministic: the same rows give the same bytes.
+// the part, the reverse <PART>_<NET>_PIN (the pin's name, and the name itself when it is an identifier). Names are
+// made valid C identifiers and carry the part, so two parts never collide; one net on two pins of a part gets the
+// pad number added. Deterministic: the same rows give the same bytes.
 import type { MappedPart, PinRow } from "./pin-map.js"
 
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/
@@ -48,7 +49,7 @@ const forwardDefine = (part: string, row: PinRow): Define | string => {
 const reverseDefine = (part: string, row: PinRow): Define => ({
   part,
   pad: row.pad,
-  base: `${cIdentifier(row.net)}_PIN`,
+  base: `${cIdentifier(part)}_${cIdentifier(row.net)}_PIN`,
   value: cString(row.pin),
   note: `${part} pad ${row.pad}`,
   ...(IDENTIFIER.test(row.pin) ? { id: row.pin } : {}),
