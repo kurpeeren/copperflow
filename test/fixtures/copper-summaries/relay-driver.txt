@@ -1,0 +1,13 @@
+relay-driver.circuit.tsx: 16 tracks, 1 via, 111.6 mm of copper, 0 connections unrouted
+COM: 1 track, 0 vias, 14.2 mm, 0 unrouted
+CTRL: 1 track, 0 vias, 6.6 mm, 0 unrouted
+GND: 2 tracks, 0 vias, 12.6 mm, 0 unrouted
+NC: 1 track, 0 vias, 7.5 mm, 0 unrouted
+NO: 1 track, 0 vias, 24.3 mm, 0 unrouted
+RL1/DRV: 3 tracks, 0 vias, 14.9 mm, 0 unrouted
+RL1/GATE: 2 tracks, 0 vias, 6.6 mm, 0 unrouted
+RL1/LEDA: 1 track, 0 vias, 5.1 mm, 0 unrouted
+V12: 4 tracks, 1 via, 19.8 mm, 0 unrouted
+Pours: 1, holes: 0
+copperpour:1 GND bottom: 683.81 mm², joins 2 pads
+Copper violations: none

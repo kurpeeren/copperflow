@@ -1,0 +1,30 @@
+io-8.circuit.tsx: 61 tracks, 8 vias, 245.6 mm of copper, 0 connections unrouted
+CH1/DIV: 3 tracks, 0 vias, 8.1 mm, 0 unrouted
+CH2/DIV: 3 tracks, 0 vias, 8.0 mm, 0 unrouted
+CH3/DIV: 3 tracks, 0 vias, 8.1 mm, 0 unrouted
+CH4/DIV: 3 tracks, 0 vias, 8.1 mm, 0 unrouted
+CH5/DIV: 3 tracks, 0 vias, 8.1 mm, 0 unrouted
+CH6/DIV: 3 tracks, 0 vias, 8.1 mm, 0 unrouted
+CH7/DIV: 3 tracks, 0 vias, 8.0 mm, 0 unrouted
+CH8/DIV: 3 tracks, 0 vias, 10.2 mm, 0 unrouted
+DI1: 2 tracks, 0 vias, 9.7 mm, 0 unrouted
+DI2: 2 tracks, 0 vias, 8.2 mm, 0 unrouted
+DI3: 2 tracks, 0 vias, 7.1 mm, 0 unrouted
+DI4: 2 tracks, 0 vias, 7.6 mm, 0 unrouted
+DI5: 2 tracks, 0 vias, 8.7 mm, 0 unrouted
+DI6: 2 tracks, 0 vias, 11.4 mm, 0 unrouted
+DI7: 2 tracks, 0 vias, 14.1 mm, 0 unrouted
+DI8: 2 tracks, 0 vias, 17.4 mm, 0 unrouted
+GND: 13 tracks, 8 vias, 17.9 mm, 0 unrouted
+IN1: 1 track, 0 vias, 7.2 mm, 0 unrouted
+IN2: 1 track, 0 vias, 6.1 mm, 0 unrouted
+IN3: 1 track, 0 vias, 5.9 mm, 0 unrouted
+IN4: 1 track, 0 vias, 7.0 mm, 0 unrouted
+IN5: 1 track, 0 vias, 8.8 mm, 0 unrouted
+IN6: 1 track, 0 vias, 11.4 mm, 0 unrouted
+IN7: 1 track, 0 vias, 14.1 mm, 0 unrouted
+IN8: 1 track, 0 vias, 16.4 mm, 0 unrouted
+Pours: 2, holes: 0
+copperpour:1 GND bottom: 953.61 mm², joins 2 pads
+copperpour:2 GND top: 722.53 mm², joins 26 pads
+Copper violations: none

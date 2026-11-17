@@ -6,6 +6,9 @@ import { unroutedPlaces } from "../engine/pad-text.js"
 import type { PourFill } from "../engine/pcb.js"
 import { pourJoins } from "../engine/pour/joins.js"
 import { netLabel } from "./copper-under.js"
+import { fastLineBlock } from "./fast-summary.js"
+
+export { fastLineBlock }
 
 /** The rule codes of copper findings: the copper checks and what copper joining reports. */
 export const COPPER_RULES: ReadonlySet<string> = new Set(["copper-clearance", "track-width", "via-drill", "via-ring", "hole-to-hole", "copper-edge", "copper-keepout", "short", "floating", "mismatch", "copper-layer", "copper-hole", "hole-off-board", "pour-floating", "pour-sparse", "pour-empty", "pour-net", "pair-skew", "pair-apart", "pair-gap", "pair-vias", "net-length", "match-spread", "impedance-width"])
@@ -109,7 +112,7 @@ export function formatCopperSummary(file: string, design: Design, limit = SUMMAR
     .map(([id, one]) => ({ name: id === "" ? "(no net)" : netLabel(design.circuit.nets, id), one }))
     .sort((a, b) => natural.compare(a.name, b.name))
     .map(({ name, one }) => netLine(name, one))
-  const items = boardItemLines(design)
+  const items = [...fastLineBlock(design), ...boardItemLines(design)]
   const tail = violationLine(copperViolations(design))
   const room = Math.max(0, limit - 2 - items.length)
   if (lines.length <= room) {

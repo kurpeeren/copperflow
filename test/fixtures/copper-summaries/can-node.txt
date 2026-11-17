@@ -1,0 +1,20 @@
+can-node.circuit.tsx: 30 tracks, 6 vias, 234.4 mm of copper, 0 connections unrouted
+CAN1/OSC1: 2 tracks, 0 vias, 8.8 mm, 0 unrouted
+CAN1/OSC2: 2 tracks, 0 vias, 9.1 mm, 0 unrouted
+CAN1/RESET: 1 track, 0 vias, 6.1 mm, 0 unrouted
+CAN1/RXCAN: 3 tracks, 2 vias, 14.2 mm, 0 unrouted
+CAN1/TXCAN: 1 track, 0 vias, 21.3 mm, 0 unrouted
+CANH: 3 tracks, 1 via, 14.7 mm, 0 unrouted
+CANL: 3 tracks, 1 via, 23.9 mm, 0 unrouted
+CS: 1 track, 0 vias, 17.8 mm, 0 unrouted
+INT: 2 tracks, 1 via, 15.5 mm, 0 unrouted
+MISO: 1 track, 0 vias, 15.3 mm, 0 unrouted
+MOSI: 1 track, 0 vias, 13.0 mm, 0 unrouted
+SCK: 1 track, 0 vias, 11.1 mm, 0 unrouted
+TERM: 2 tracks, 1 via, 20.6 mm, 0 unrouted
+V3V3: 5 tracks, 0 vias, 23.8 mm, 0 unrouted
+V5: 2 tracks, 0 vias, 19.5 mm, 0 unrouted
+Pours: 2, holes: 0
+copperpour:1 GND top: 494.17 mm², joins 10 pads
+copperpour:2 GND bottom: 642.95 mm², joins 2 pads
+Copper violations: none

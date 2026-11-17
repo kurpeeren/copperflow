@@ -1,0 +1,19 @@
+index.circuit.tsx: 0 tracks, 0 vias, 0.0 mm of copper, 22 connections unrouted
+CC1: 0 tracks, 0 vias, 0.0 mm, 1 unrouted
+CC2: 0 tracks, 0 vias, 0.0 mm, 1 unrouted
+GND: 0 tracks, 0 vias, 0.0 mm, 12 unrouted
+LED_A: 0 tracks, 0 vias, 0.0 mm, 1 unrouted
+V3_3: 0 tracks, 0 vias, 0.0 mm, 3 unrouted
+VBUS: 0 tracks, 0 vias, 0.0 mm, 4 unrouted
+Unrouted: J1.pin3 (-6.75, 0.50 top) to R1.pin1 (-4.93, 4.00 top)
+Unrouted: J1.pin4 (-6.75, -0.50 top) to R2.pin1 (-4.93, -4.00 top)
+Unrouted: C1.pin2 (-0.72, 0.00 top) to U1.pin2 (2.50, -1.31 top)
+Unrouted: U1.pin2 (2.50, -1.31 top) to C2.pin2 (7.28, 0.00 top)
+Unrouted: C1.pin2 (-0.72, 0.00 top) to R1.pin2 (-4.07, 4.00 top)
+Unrouted: R1.pin2 (-4.07, 4.00 top) to J1.pin7 (-6.80, 4.32 through)
+Unrouted: J1.pin7 (-6.80, 4.32 through) to J1.pin1 (-6.75, 2.70 top)
+Unrouted: J1.pin7 (-6.80, 4.32 through) to J1.pin7 (-10.60, 4.32 through)
+Unrouted: C1.pin2 (-0.72, 0.00 top) to R2.pin2 (-4.07, -4.00 top)
+Unrouted: R2.pin2 (-4.07, -4.00 top) to J1.pin7 (-6.80, -4.32 through)
+… and 12 more unrouted
+Copper violations: none
