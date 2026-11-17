@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { parse, stringify } from "yaml"
-import { createPart } from "../src/core/library.js"
+import { contentHash, createPart, readPart, verifyPart } from "../src/core/library.js"
 import type { Studio } from "../src/studio/server.js"
 import { projectRoot } from "../src/studio/studio-note.js"
 import { BOARD, SHARED } from "./fixtures.js"
@@ -124,6 +124,15 @@ describe("POST /api/verify needs every item ticked", () => {
     expect(parse(await readFile(join(root, "parts", "X1", "part.yaml"), "utf8")).verified).toMatchObject({ by: "Eren", against: "Crystal datasheet rev 2, page(s) 3-4" })
     expect((await json("/api/part?id=X1")).data.verified).toBe(true)
   })
+
+  test("verifyPart (the CLI's and the Studio's) writes who, against what and when into the status line, nothing else", async () => {
+    const before = await readFile(checklistPath(), "utf8")
+    const part = await verifyPart(root, "X1", { by: "Eren", against: "Crystal datasheet rev 2, page 3" }, "2026-11-17T10:00:00.000Z")
+    const after = await readFile(checklistPath(), "utf8")
+    expect(after).toBe(before.replace("Status: not verified", "Status: verified by Eren against Crystal datasheet rev 2, page 3 on 2026-11-17"))
+    expect(part.verified?.hash).toBe(contentHash(await readPart(root, "X1")))
+    expect((await json("/api/part?id=X1")).data.verified).toBe(true)
+  })
 })
 
 describe("GET /api/part-datasheet", () => {
@@ -166,6 +175,17 @@ describe("GET /api/part-datasheet", () => {
     const response = await sheet("ds.pdf")
     expect(response.status).toBe(403)
     expect(((await response.json()) as { error: string }).error).toBe("parts/X1/ds.pdf leads out of the part's folder")
+  })
+
+  test("a part folder that is a link out of the project is refused", async () => {
+    const outside = projectRoot(await mkdtemp(join(tmpdir(), "cf-verify-outside-")))
+    await createPart(outside, "L1", PART, { now: "t" })
+    await writeFile(join(outside, "parts", "L1", "ds.pdf"), PDF)
+    // A junction on Windows (no rights needed), a folder link elsewhere.
+    await symlink(join(outside, "parts", "L1"), join(root, "parts", "L1"), "junction")
+    const response = await call("/api/part-datasheet?id=L1&file=ds.pdf")
+    expect(response.status).toBe(403)
+    expect(((await response.json()) as { error: string }).error).toBe("parts/L1 leads out of the project")
   })
 
   test("a part without a datasheet file says so", async () => {

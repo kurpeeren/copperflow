@@ -4,6 +4,7 @@
 import { readFile, realpath, stat } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { checklistContent, checklistItems, openItems, ticksCurrent, withoutTicks, withTicks } from "../core/checklist-text.js"
+import { isInside } from "../core/file-writes.js"
 import { writeFileAtomic } from "../core/fs-utils.js"
 import { contentHash, DATASHEET_FILE, FOOTPRINT_FILE, isVerified, PARTS_DIR, partDir, placeholderRefusal, readFootprintText, readPart, type Part } from "../core/library.js"
 import { footprintFromFile } from "../engine/footprints/file.js"
@@ -107,6 +108,8 @@ export async function datasheetPdf(root: string, id: string, file: string): Prom
   const shown = `${PARTS_DIR}/${id}/${recorded}`
   if (!DATASHEET_FILE.test(recorded) || recorded.includes("..")) throw new HttpError(400, `${shown} is not a PDF file name`)
   const folder = await realpath(partDir(root, id))
+  // The part's own folder must be in the project too: a parts/<id> that is a link out is not served from.
+  if (!isInside(await realpath(root), folder)) throw new HttpError(403, `${PARTS_DIR}/${id} leads out of the project`)
   const target = await realpath(join(folder, recorded)).catch(() => undefined)
   if (target === undefined) throw new HttpError(404, `${shown} is not there`)
   if (dirname(target) !== folder) throw new HttpError(403, `${shown} leads out of the part's folder`)
