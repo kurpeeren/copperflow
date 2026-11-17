@@ -46,6 +46,23 @@ describe("buildBom", () => {
     expect(lines.find((l) => l.designators[0] === "R1")?.supplier).toBe("jlcpcb C25905")
   })
 
+  test("the same part on the top and on the bottom of the board is one line", async () => {
+    const file = "boards/sides.circuit.tsx"
+    await writeFile(
+      join(root, file),
+      `export default () => (
+  <board width="10mm" height="10mm">
+    <capacitor name="C1" capacitance="100nF" footprint="0402" pcbX={-2} pcbY={0} />
+    <capacitor name="C2" capacitance="100nF" footprint="0402" pcbX={2} pcbY={0} layer="bottom" />
+    <capacitor name="C3" capacitance="100nF" footprint="0402" pcbX={0} pcbY={2} layer="top" />
+  </board>
+)
+`,
+    )
+    const lines = await buildBom(root, file, { engine })
+    expect(lines.map((l) => [l.designators.join(" "), l.quantity])).toEqual([["C1 C2 C3", 3]])
+  })
+
   test("parts made in a .map() loop appear, one line for equal parts", async () => {
     await writeFile(
       join(root, FILE),

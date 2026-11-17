@@ -27,8 +27,8 @@ export interface BomLine {
 
 const VALUE_PROPS = ["resistance", "capacitance", "inductance", "frequency", "color", "voltage", "maxResistance", "standard"]
 const COLUMNS = ["Designators", "Quantity", "Kind", "Value", "Footprint", "Manufacturer", "MPN", "Supplier part", "Datasheet"]
-/** Props that name or place a part, or hold its children; they never keep two parts on separate lines. */
-const NON_IDENTITY_PROPS = new Set(["name", "key", "children"])
+/** Props that name or place a part (`layer` is its side of the board), or hold its children; they never keep two parts on separate lines. */
+const NON_IDENTITY_PROPS = new Set(["name", "key", "children", "layer"])
 
 export type { DesignSource } from "./design-source.js"
 
