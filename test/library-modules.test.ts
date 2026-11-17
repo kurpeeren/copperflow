@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
-import { cp, mkdir, mkdtemp, readdir, readFile, symlink, writeFile } from "node:fs/promises"
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { stringify } from "yaml"
@@ -214,6 +214,55 @@ describe("library modules for the agent", () => {
     expect((await call("list_modules", { filter: "team" })).text).toContain("verified by Ada")
     // A change to a part's data voids the mark as a change to the sheet does.
     await writeFile(join(lib, "modules", "Input", "parts", "tvs1", "part.yaml"), stringify({ ...TVS, title: "Other diode" }))
+    expect((await call("list_modules", { filter: "team" })).text).toContain("NOT verified")
+  })
+
+  test("a module whose parts folder is a link to a folder outside is refused everywhere", async () => {
+    await teamLibrary()
+    const outside = await mkdtemp(join(tmpdir(), "cf-outside-"))
+    await cp(join(lib, "modules", "Input", "parts"), outside, { recursive: true })
+    await rm(join(lib, "modules", "Input", "parts"), { recursive: true })
+    await symlink(outside, join(lib, "modules", "Input", "parts"), "junction")
+    const call = await connect(project)
+    expect((await call("list_modules", { filter: "team" })).text).not.toContain("team/Input")
+    expect((await call("use_module", { module: "team/Input", file: "io.circuit.tsx" })).isError).toBe(true)
+    expect((await cli(["modules", "verify", "team/Input", "--by", "Ada"], "team/Input")).code).toBe(1)
+    expect(await tree(project)).toEqual([])
+  })
+
+  test("a module whose parts/<id> is a link is refused", async () => {
+    await teamLibrary()
+    const outside = await mkdtemp(join(tmpdir(), "cf-outside-"))
+    const part = join(lib, "modules", "Input", "parts", "tvs1")
+    await cp(part, outside, { recursive: true })
+    await rm(part, { recursive: true })
+    await symlink(outside, part, "junction")
+    expect((await (await connect(project))("use_module", { module: "team/Input", file: "io.circuit.tsx" })).text).toContain("link")
+    expect((await cli(["modules", "verify", "team/Input", "--by", "Ada"], "team/Input")).code).toBe(1)
+  })
+
+  test("an imported part the library does not hold refuses use and verify alike", async () => {
+    await teamLibrary()
+    await rm(join(lib, "modules", "Input", "parts", "tvs1"), { recursive: true })
+    expect((await (await connect(project))("use_module", { module: "team/Input", file: "io.circuit.tsx" })).text).toContain("does not hold part tvs1")
+    expect((await cli(["modules", "verify", "team/Input", "--by", "Ada"], "team/Input")).code).toBe(1)
+  })
+
+  test("the hash covers the imported parts' footprint.yaml and nothing the sheet does not import", async () => {
+    await teamLibrary()
+    const part = join(lib, "modules", "Input", "parts", "tvs1")
+    const FOOT = ['pads:', '  - { number: "1", shape: rect, x: -0.8, y: 0, width: 0.8, height: 0.9 }', '  - { number: "2", shape: rect, x: 0.8, y: 0, width: 0.8, height: 0.9 }', ""].join(String.fromCharCode(10))
+    await writeFile(join(part, "part.yaml"), stringify({ ...TVS, footprint: "footprint.yaml" }))
+    await writeFile(join(part, "footprint.yaml"), FOOT)
+    await mkdir(join(lib, "modules", "Input", "parts", "unused"), { recursive: true })
+    await writeFile(join(lib, "modules", "Input", "parts", "unused", "part.yaml"), stringify(TVS))
+    expect((await cli(["modules", "verify", "team/Input", "--by", "Ada"], "team/Input")).code).toBe(0)
+    const call = await connect(project)
+    await writeFile(join(lib, "modules", "Input", "parts", "unused", "part.yaml"), stringify({ ...TVS, title: "changed" }))
+    expect((await call("list_modules", { filter: "team" })).text).toContain("verified by Ada")
+    expect((await call("use_module", { module: "team/Input", file: "io.circuit.tsx" })).isError).toBe(false)
+    expect((await tree(project)).some((path) => path.includes("unused"))).toBe(false)
+    await writeFile(join(part, "footprint.yaml"), FOOT.replace("0.9", "1.0"))
     expect((await call("list_modules", { filter: "team" })).text).toContain("NOT verified")
   })
 })

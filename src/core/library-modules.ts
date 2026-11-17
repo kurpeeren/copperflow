@@ -25,6 +25,7 @@ interface LibraryModule extends ShelfModule {
   library: LibrarySource
   module: string
   folder: string
+  parts: PartFiles[]
 }
 
 async function kind(path: string): Promise<"none" | "link" | "dir" | "file" | "other"> {
@@ -82,19 +83,72 @@ async function readMarks(): Promise<Record<string, z.infer<typeof MarkSchema>>> 
   return parsed.data.marks
 }
 
-/** The hash a mark holds: the sheet's text and every part's part.yaml and footprint.yaml. */
-async function moduleHash(folder: string, text: string): Promise<string> {
-  const hash = createHash("sha256").update(`sheet\0${text}\0`)
-  const partsDir = join(folder, PARTS_DIR)
-  if ((await kind(partsDir)) === "dir") {
-    for (const id of (await readdir(partsDir)).sort()) {
-      for (const file of ["part.yaml", FOOTPRINT_FILE]) {
-        const part = join(partsDir, id, file)
-        const body = (await kind(part)) === "file" ? await readFile(part, "utf8") : ""
-        hash.update(`${id}/${file}\0${body}\0`)
-      }
-    }
+/** One imported part's files as the library holds them: the bytes use_module brings into a project. */
+interface PartFiles {
+  id: string
+  yaml: string
+  footprint?: string
+}
+
+/** The ids of the parts a sheet imports: from the plain check, else from each `./parts/<id>/…` import's text. */
+function importedIds(text: string): string[] {
+  let ids: string[]
+  try {
+    ids = checkPlainSheet(text).parts.map((part) => part.id)
+  } catch {
+    ids = [...text.matchAll(/from\s+["']\.\/parts\/([^/"']+)\//g)].map((found) => found[1] as string)
   }
+  return [...new Set(ids)].sort()
+}
+
+/** A folder or file of a module, refused unless it is plain (not a link) and its real path is inside the module's. */
+async function insideModule(realModule: string, path: string, want: "dir" | "file", shown: string): Promise<boolean> {
+  const found = await kind(path)
+  if (found === "none") return false
+  if (found !== want) throw new Error(`${shown} is ${found === "link" ? "a link" : `not a plain ${want === "dir" ? "folder" : "file"}`}; copperflow does not follow links in a library`)
+  if (!(await realpath(path)).startsWith(realModule + sep)) throw new Error(`${shown} is outside the module`)
+  return true
+}
+
+/**
+ * The one reading of a module's parts, for its hash and for use_module alike: each part the sheet imports, in id
+ * order, its part.yaml and, when part.yaml names it, its footprint.yaml. Anything that is a link or outside the
+ * module, or an imported part the library does not hold, refuses the module.
+ */
+async function moduleParts(name: string, folder: string, text: string): Promise<PartFiles[]> {
+  const ids = importedIds(text)
+  if (ids.length === 0) return []
+  const realModule = await realpath(folder)
+  const partsDir = join(folder, PARTS_DIR)
+  if (!(await insideModule(realModule, partsDir, "dir", `${name}/${PARTS_DIR}`))) throw new Error(`${name} does not hold part ${ids[0]}, which its sheet imports`)
+  const found: PartFiles[] = []
+  for (const id of ids) {
+    const shown = `${name}/${PARTS_DIR}/${id}`
+    validatePartId(id)
+    const dir = join(partsDir, id)
+    if (!(await insideModule(realModule, dir, "dir", shown))) throw new Error(`${name} does not hold part ${id}, which its sheet imports`)
+    if (!(await insideModule(realModule, join(dir, "part.yaml"), "file", `${shown}/part.yaml`))) throw new Error(`${name} does not hold part ${id}: ${shown} has no part.yaml`)
+    const yaml = await readFile(join(dir, "part.yaml"), "utf8")
+    let named: unknown
+    try {
+      named = (parse(yaml) as { footprint?: unknown } | null)?.footprint
+    } catch {
+      throw new Error(`${shown}/part.yaml is not valid YAML`)
+    }
+    if (named !== FOOTPRINT_FILE) {
+      found.push({ id, yaml })
+      continue
+    }
+    if (!(await insideModule(realModule, join(dir, FOOTPRINT_FILE), "file", `${shown}/${FOOTPRINT_FILE}`))) throw new Error(`${shown} has no ${FOOTPRINT_FILE}, which its part.yaml names`)
+    found.push({ id, yaml, footprint: await readFile(join(dir, FOOTPRINT_FILE), "utf8") })
+  }
+  return found
+}
+
+/** The hash a mark holds: the sheet's text, then for each imported part in id order its part.yaml and footprint.yaml. */
+function moduleHash(text: string, parts: readonly PartFiles[]): string {
+  const hash = createHash("sha256").update(`sheet\0${text}\0`)
+  for (const part of parts) hash.update(`${part.id}/part.yaml\0${part.yaml}\0${part.id}/${FOOTPRINT_FILE}\0${part.footprint ?? ""}\0`)
   return hash.digest("hex")
 }
 
@@ -105,8 +159,9 @@ async function readLibraryModule(library: LibrarySource, name: string, folder: s
   if (text === undefined) return undefined
   const full = `${library.name}/${name}`
   const mark = marks[full]
-  const verified = mark !== undefined && mark.hash === (await moduleHash(folder, text))
-  return { name: full, text, card: readCard(text), library, module: name, folder, from: fromText(library), ...(verified ? { verifiedBy: mark.by } : {}) }
+  const parts = await moduleParts(full, folder, text)
+  const verified = mark !== undefined && mark.hash === moduleHash(text, parts)
+  return { name: full, text, card: readCard(text), library, module: name, folder, parts, from: fromText(library), ...(verified ? { verifiedBy: mark.by } : {}) }
 }
 
 /** Every module of a library; what is not a module (a link, a file, a bad name) is left out. */
@@ -168,12 +223,11 @@ interface PartWrite {
 }
 
 /** A part brought as data: part.yaml checked and written again, footprint.yaml checked, the component generated here. */
-async function partAsData(module: LibraryModule, id: string): Promise<PartWrite> {
+function partAsData(module: LibraryModule, id: string): PartWrite {
   const shown = `${module.name}/${PARTS_DIR}/${id}`
-  const dir = join(module.folder, PARTS_DIR, id)
-  if ((await kind(dir)) !== "dir") throw new Error(`${module.name} has no plain folder ${PARTS_DIR}/${id}`)
-  const yaml = await plainFile(join(dir, "part.yaml"), `${shown}/part.yaml`)
-  if (yaml === undefined) throw new Error(`${shown} has no part.yaml`)
+  const held = module.parts.find((part) => part.id === id)
+  if (held === undefined) throw new Error(`${module.name} does not hold part ${id}, which its sheet imports`)
+  const yaml = held.yaml
   let data: unknown
   try {
     data = parse(yaml)
@@ -187,7 +241,7 @@ async function partAsData(module: LibraryModule, id: string): Promise<PartWrite>
   const files = [{ path: `${PARTS_DIR}/${id}/part.yaml`, text: stringify(part) }]
   let footprint: string | undefined
   if (part.footprint === FOOTPRINT_FILE) {
-    footprint = await plainFile(join(dir, FOOTPRINT_FILE), `${shown}/${FOOTPRINT_FILE}`)
+    footprint = held.footprint
     if (footprint === undefined) throw new Error(`${shown} has no ${FOOTPRINT_FILE}, which its part.yaml names`)
     const checked = footprintFromFile(`${shown}/${FOOTPRINT_FILE}`, footprint)
     if ("error" in checked) throw new Error(checked.error)
@@ -205,7 +259,7 @@ async function partsToBring(root: string, module: LibraryModule, plain: PlainShe
     validatePartId(id)
     if (component !== componentName(id)) throw new Error(`${module.name} imports ${component} from ${PARTS_DIR}/${id}, but that part's component is ${componentName(id)}`)
     if (writes.some((write) => write.id === id) || (await kind(resolveInRoot(root, `${PARTS_DIR}/${id}`))) !== "none") continue
-    writes.push(await partAsData(module, id))
+    writes.push(partAsData(module, id))
   }
   return writes
 }
@@ -257,7 +311,7 @@ export async function verifyLibraryModule(full: string, by: string, now: string)
   if (by.trim() === "" || by.length > CARD_LIMITS.carries) throw new Error("--by names the person who checked the module")
   const module = await findModule(full)
   const marks = await readMarks()
-  const next = { ...marks, [module.name]: { by: by.trim(), at: now, hash: await moduleHash(module.folder, module.text) } }
+  const next = { ...marks, [module.name]: { by: by.trim(), at: now, hash: moduleHash(module.text, module.parts) } }
   await mkdir(copperflowHome(), { recursive: true })
   await writeFile(marksFile(), `${JSON.stringify({ marks: next }, null, 2)}\n`)
 }
