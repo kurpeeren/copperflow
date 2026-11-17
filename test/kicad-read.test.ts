@@ -72,6 +72,31 @@ describe("reading a board saved by KiCad 10", () => {
   })
 })
 
+describe("nothing unknown makes it crash", () => {
+  test("every cut of the file, and every list emptied or given a strange token, is read or refused with a sentence", () => {
+    const lines = board.split("\n")
+    const tries: string[] = []
+    for (let n = 1; n < lines.length; n += 7) tries.push(lines.slice(0, n).join("\n"))
+    for (let n = 1; n < lines.length; n += 5) {
+      tries.push(lines.map((line, i) => (i === n ? line.replace(/\(([a-z_]+)[^()]*/, "($1") : line)).join("\n"))
+      tries.push(lines.map((line, i) => (i === n ? line.replace(/\(([a-z_]+)/, "(strange_$1 (x)") : line)).join("\n"))
+      tries.push(lines.map((line, i) => (i === n ? line.replace(/-?\d+(\.\d+)?/, "NaN") : line)).join("\n"))
+    }
+    for (const text of tries) {
+      try {
+        readKicadBoard(text)
+      } catch (error) {
+        expect(error, (error as Error).stack).toBeInstanceOf(KicadError)
+      }
+    }
+  })
+
+  test("an unknown token is skipped and counted by name", () => {
+    const read = readKicadBoard(board.replace("(embedded_fonts no)\n)", '(embedded_fonts no)\n\t(future_thing 1)\n\t(future_thing 2)\n)'))
+    expect(read.left.lines()).toContain("not understood, skipped: (future_thing) 2 times")
+  })
+})
+
 describe("refusals", () => {
   const refused = (text: string) => {
     try {
