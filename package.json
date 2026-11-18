@@ -1,6 +1,6 @@
 {
   "name": "copperflow",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Design circuits in code with a human and an AI agent editing the same files.",
   "license": "Apache-2.0",
   "author": "Eren Kürpe",
