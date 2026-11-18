@@ -1,6 +1,8 @@
 import { useEffect, useId, useState, type ReactNode } from "react"
 import type { Literal, PropInfo } from "./api"
 import { ChevronIcon } from "./icons"
+import { inspectorEdit } from "./shell/packages-choice"
+import { packagesRequests } from "./shell/packages-request"
 
 /** One labelled row: the label on the left, the control on the right. */
 export function Row({ label, htmlFor, children }: { label: string; htmlFor?: string; children: ReactNode }) {
@@ -140,5 +142,36 @@ export function MarkForm({ label, onAdd }: { label: string; onAdd(text: string):
         <button type="submit">Add</button>
       </div>
     </form>
+  )
+}
+
+/**
+ * Under the Footprint row: opens Packages to choose a standard package; the choice is written as typing it in the
+ * field would write it, one history entry.
+ */
+export function FootprintBrowseRow({ part, kind, footprint, disabled, onEdit }: {
+  part: string
+  kind: string
+  footprint: string
+  disabled: boolean
+  onEdit(edits: ReturnType<typeof inspectorEdit>["edits"], summary: string): Promise<boolean>
+}) {
+  const open = () =>
+    packagesRequests.open({
+      purpose: { kind: "inspector", part },
+      kind,
+      initial: footprint,
+      choose: (chosen) => {
+        if (chosen === footprint) return
+        const { edits, summary } = inspectorEdit(part, chosen)
+        void onEdit(edits, summary)
+      },
+    })
+  return (
+    <div className="inspector-actions">
+      <button type="button" disabled={disabled} onClick={open} title="Search the standard packages and see their pads and shape">
+        Choose a package…
+      </button>
+    </div>
   )
 }

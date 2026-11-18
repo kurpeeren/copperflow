@@ -299,6 +299,11 @@ button.menu-title.open:hover:not(:disabled) {
   width: min(680px, calc(100vw - 32px));
 }
 
+/* Tools → Packages: set here, not in its lazy sheet, so it opens at its width. */
+.dialog.packages-dialog {
+  width: min(980px, calc(100vw - 32px));
+}
+
 /* A primary button that cannot be pressed yet reads as off: no copper fill. */
 button.primary:disabled {
   border-color: var(--line);

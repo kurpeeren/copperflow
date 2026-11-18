@@ -16,6 +16,7 @@ import {
   type PinField,
 } from "./new-part-form"
 import type { NewPartPanel } from "./new-part-result"
+import { packagesRequests } from "./packages-request"
 
 const PREVIEW_SIZE = { width: 240, height: 150 }
 
@@ -275,7 +276,12 @@ export function NewPartForm({ panel, onClose }: { panel: NewPartPanel; onClose()
         {fields.packageKind === "string" ? (
           <>
             <label htmlFor={`${id}-package`}>Footprint</label>
-            <input id={`${id}-package`} value={fields.packageText} placeholder="soic8, qfn32_5x5_p0.5, hc49s" onChange={(e) => set("packageText", e.target.value)} />
+            <div className="new-part-package">
+              <input id={`${id}-package`} value={fields.packageText} placeholder="soic8, qfn32_5x5_p0.5, hc49s" onChange={(e) => set("packageText", e.target.value)} />
+              <button type="button" title="Search the standard packages and see their pads and shape" onClick={() => packagesRequests.open({ purpose: { kind: "newPart" }, initial: fields.packageText, choose: (chosen) => set("packageText", chosen) })}>
+                Choose…
+              </button>
+            </div>
             <PackagePreview text={fields.packageText} />
           </>
         ) : (

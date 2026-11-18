@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import type { PartsData } from "./api"
 import { originLabel } from "./shell/import-part-form"
+import { openPackagesToLook } from "./shell/packages-request"
 
 interface Props {
   parts: PartsData
@@ -48,6 +49,9 @@ export function Library({ parts, onPlace, onImport, onNewPart, focus, onFocused 
       </button>
       <button className="library-import" onClick={onImport}>
         Import by LCSC number…
+      </button>
+      <button className="library-import" onClick={openPackagesToLook} title="Search the standard packages, see their pads and shape, and copy a footprint string">
+        Packages…
       </button>
       {parts.library.length === 0 && (
         <p className="note">No parts yet. Write one from its datasheet with New part…, import one by its LCSC number, or ask the agent to create one.</p>

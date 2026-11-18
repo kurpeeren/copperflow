@@ -1,4 +1,4 @@
-import type { PropInfo } from "../../src/core/types.js"
+import type { Edit, Literal, PropInfo } from "../../src/core/types.js"
 import { lockChange } from "./pcb/group-edits.js"
 import type { CommandId } from "./shell/menus.js"
 
@@ -23,6 +23,11 @@ export interface InspectorSection {
  * in, in a section that is open. A locked or read-only part has none, and the focus stays where it was.
  */
 export const FIRST_FIELD = ".insp-body:not([hidden]) .insp-value input:not([disabled]):not([type=\"checkbox\"])"
+
+/** The edit a typed property makes, as one history entry: the inspector's fields and its footprint browser share it. */
+export function propEdit(part: string, key: string, value: Literal): { edits: Edit[]; summary: string } {
+  return { edits: [{ kind: "setProps", part, props: { [key]: value } }], summary: `set ${part} ${key}=${JSON.stringify(value)}` }
+}
 
 /** The props people usually set on each built-in part, with an example value. */
 export const SUGGESTED_PROPS: Record<string, [string, string][]> = {

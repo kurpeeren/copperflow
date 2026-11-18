@@ -25,6 +25,7 @@ import { send } from "./commands"
 import type { DialogName } from "./Dialogs"
 import type { CommandId } from "./menus"
 import { makeSheetStart } from "./make-sheet-form"
+import { openPackagesToLook } from "./packages-request"
 import { netScope, selectionScope, unrouteRequest, type Refusal } from "../pcb/autoroute"
 import { placeInstanceScope, placeSelectionScope } from "../pcb/autoplace"
 import type { PlaceScope } from "../api"
@@ -307,6 +308,7 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     systemSettings: () => input.openDialog("system"),
     newCircuit: () => input.openDialog("newCircuit"),
     footprintManager: () => input.openDialog("footprints"),
+    packages: openPackagesToLook,
     print: () => printDesign(input, false),
     exportPdf: () => printDesign(input, true),
     copy: () => copySelection(input),

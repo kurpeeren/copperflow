@@ -1,9 +1,9 @@
-import { useEffect, useId, useRef, useState, type RefObject } from "react"
+import { Fragment, useEffect, useId, useRef, useState, type RefObject } from "react"
 import type { BuildState, CircuitData, Design, Literal, PartInfo, PartsData } from "./api"
 import type { Actions } from "./App"
 import { BomSection } from "./BomSection"
 import { checkSummary, type CheckCounts } from "./checks-list"
-import { FIRST_FIELD, groupActionEnabled, partLockButton, PLACED_ROW, propertiesKind, propertiesView, SUGGESTED_PROPS, type PropertiesView } from "./inspector-sections"
+import { FIRST_FIELD, groupActionEnabled, partLockButton, PLACED_ROW, propEdit, propertiesKind, propertiesView, SUGGESTED_PROPS, type PropertiesView } from "./inspector-sections"
 import { GroupView } from "./InspectorGroup"
 import { LabelView } from "./InspectorLabel"
 import { DrawingView } from "./InspectorDrawing"
@@ -11,7 +11,7 @@ import { CopperView } from "./InspectorCopper"
 import { PourView } from "./InspectorPour"
 import { WireView } from "./InspectorWire"
 import { TextView } from "./InspectorText"
-import { MarkForm, NewPropRow, PropRow, Row, Section } from "./InspectorRows"
+import { FootprintBrowseRow, MarkForm, NewPropRow, PropRow, Row, Section } from "./InspectorRows"
 import { LibraryInfo } from "./LibraryInfo"
 import { FlattenedPartView, InstanceSection, PortSection, SheetPartNote } from "./InspectorInstance"
 import { instancePart, topInstance } from "./pcb/instances"
@@ -136,11 +136,27 @@ function centreOnBoard(design: Design | undefined, name: string): { x: number; y
 function PartView({ circuit, build, parts, part, locks, actions, onSelect, run, view, collapsed, toggle, onOpenSheet, parentDesign }: Props & SectionState & { part: PartInfo; locks: Locks }) {
   const locked = locks.locked.has(part.name)
   const library = parts.library.find((p) => p.component === part.tag)
-  const setProp = (key: string, value: Literal) =>
-    actions.edit([{ kind: "setProps", part: part.name, props: { [key]: value } }], `set ${part.name} ${key}=${JSON.stringify(value)}`)
+  const setProp = (key: string, value: Literal) => {
+    const { edits, summary } = propEdit(part.name, key, value)
+    return actions.edit(edits, summary)
+  }
   const canEdit = part.editable && !locked
   const traces = circuit.model.traces.filter((t) => touches(t, part.name))
   const renderRow = (id: string) => {
+    const [kind, key = ""] = id.split(":")
+    if (key === "footprint" && (kind === "prop" || kind === "suggest")) {
+      const prop = part.props[key]
+      const fixed = !canEdit || (prop !== undefined && !prop.editable)
+      return (
+        <Fragment key={id}>
+          {renderField(id)}
+          <FootprintBrowseRow part={part.name} kind={part.tag} footprint={prop?.literal === undefined ? "" : String(prop.literal)} disabled={fixed} onEdit={actions.edit} />
+        </Fragment>
+      )
+    }
+    return renderField(id)
+  }
+  const renderField = (id: string) => {
     const [kind, key = ""] = id.split(":")
     const prop = part.props[key]
     if (kind === "name") return <Row key={id} label="Name"><span className="static">{part.name}</span></Row>

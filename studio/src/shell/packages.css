@@ -1,0 +1,162 @@
+/* Tools → Packages: the list and its search on the left, the selected package's pictures and facts on the right. The
+   dialog's width is in shell.css, so it has it before this sheet loads. */
+.packages {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.packages-browse,
+.packages-side {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.packages-search {
+  display: flex;
+  gap: 6px;
+}
+
+.packages-search input {
+  flex: 1;
+  min-width: 0;
+}
+
+.packages-count,
+.packages-note,
+.packages-empty {
+  margin: 0;
+  color: var(--muted);
+}
+
+.packages-list {
+  scroll-padding-top: 26px;
+  max-height: 46vh;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.packages-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.2fr) 40px 96px 40px;
+  gap: 8px;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  cursor: default;
+}
+
+.packages-row > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.packages-head {
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+
+.packages-row[role="option"]:hover {
+  background: var(--raised);
+}
+
+.packages-row[aria-selected="true"] {
+  background: var(--copper-wash);
+  color: var(--text);
+}
+
+.packages-forms summary {
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.packages-forms pre {
+  margin: 4px 0 0;
+  max-height: 20vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.packages-preview {
+  display: grid;
+  gap: 6px;
+}
+
+.packages-preview h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.packages-pictures {
+  display: grid;
+  gap: 6px;
+}
+
+.packages-canvas {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  max-width: 100%;
+}
+
+.packages-shape {
+  touch-action: none;
+  cursor: grab;
+}
+
+.packages-shape:active {
+  cursor: grabbing;
+}
+
+.packages-facts {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 2px 8px;
+  margin: 0;
+}
+
+.packages-facts dt {
+  color: var(--muted);
+}
+
+.packages-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.packages-problem {
+  margin: 0;
+  max-height: 30vh;
+  overflow: auto;
+  color: var(--danger-text);
+  overflow-wrap: anywhere;
+}
+
+.packages-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.packages-status {
+  flex: 1;
+  color: var(--muted);
+}
+
+@media (max-width: 760px) {
+  .packages {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -95,6 +95,7 @@ export type CommandId =
   | "routingCorner"
   | "flip"
   | "footprintManager"
+  | "packages"
   | "systemSettings"
 
 export interface MenuItem {
@@ -272,7 +273,7 @@ export const MENUS: readonly Menu[] = [
   },
   {
     title: "Tools",
-    entries: [run("History", "history"), run("Footprint manager…", "footprintManager")],
+    entries: [run("History", "history"), run("Footprint manager…", "footprintManager"), run("Packages…", "packages")],
   },
   {
     title: "Export",

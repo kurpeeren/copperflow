@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { api, hasToken, type CircuitData, type Design } from "./api"
 import { tidyReason } from "./pcb/auto-placed"
 import { isSheetFile } from "./pcb/sheet-names"
@@ -12,7 +12,8 @@ import { boardTexts, sheetTexts } from "./pcb/part-text"
 import { goneFrom, Selection, type SelectionChange } from "./selection"
 import { BottomStrip } from "./shell/BottomStrip"
 import { watchDpr } from "./shell/dpr"
-import { StudioDialog, VerifyDialog, type DialogName, type ExportChecksPanel } from "./shell/Dialogs"
+import { PackagesDialog, StudioDialog, VerifyDialog, type DialogName, type ExportChecksPanel } from "./shell/Dialogs"
+import { packagesRequests } from "./shell/packages-request"
 import { useVerifyPanel } from "./shell/verify-panel"
 import { importSummary, type ImportPartRequest, type ImportPartResult } from "./shell/import-part-form"
 import type { ImportPartPanel } from "./shell/ImportPartDialog"
@@ -365,6 +366,7 @@ export function App() {
   const newCircuit = useNewCircuitPanel(data.refreshFiles, openDocument, toast.notify)
   const footprints = useFootprintPanel(build.design, circuit, actions)
   const exportChecks = useExportChecksPanel(data.file, checks.counts, openChecks, actions)
+  const packages = useSyncExternalStore(packagesRequests.subscribe, packagesRequests.current)
   const system = { settings: { theme: workspace.theme, unit: workspace.unit, grid: workspace.gridSteps, hoverLabels: workspace.hoverLabels }, apply: workspace.applySystem }
   // Hairlines stay one device pixel through zoom and display-scale changes.
   useEffect(() => watchDpr(window), [])
@@ -376,6 +378,7 @@ export function App() {
       </MenuBar>
       <Toolbar view={tab} unit={workspace.unit} selected={selection.size} toggles={toggles} off={off} run={runCommand} />
       {dialog && <StudioDialog name={dialog} onClose={closeDialog} rules={{ fabrication: build.design?.rules.fabrication, save: actions.setFilletRadius }} makeSheet={makeSheet} importPart={importPart} newPart={newPart} system={system} newCircuit={newCircuit} footprints={footprints} exportChecks={exportChecks} />}
+      {packages && <PackagesDialog request={packages} onClose={packagesRequests.close} />}
       {verifying && <VerifyDialog target={verifying} panel={verifyPanel} onClose={closeVerify} />}
       {data.serverGone && (
         <div className="banner" role="alert">
