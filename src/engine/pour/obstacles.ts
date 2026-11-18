@@ -1,6 +1,7 @@
 import type { ClassOf } from "../checks/copper-pieces.js"
 import { padShape, type Shape } from "../checks/geometry.js"
 import { viaSpan, type PcbTrack, type PcbVia } from "../copper.js"
+import { drawingOutlines } from "../drawing-copper.js"
 import type { Board, CopperPour, Point, PourLayer } from "../model.js"
 import type { WorldPad } from "../pcb.js"
 import { requiredClearance } from "../rules/classes.js"
@@ -98,22 +99,19 @@ function otherNets(pour: CopperPour, inputs: PourInputs): Paths {
 }
 
 /**
- * The drawings on copper on the pour's layer, grown by the clearance: a drawing belongs to no net, so every pour keeps
- * clear of it. Its areas are grown whole (a hole in it shrinks, and a pour may still fill a large one); its lines one
- * segment at a time.
+ * The drawings on copper on the pour's layer that are not of its net, grown by the clearance: a drawing of no net, or of
+ * another net, is kept clear of. Its areas are grown whole (a hole in it shrinks, and a pour may still fill a large
+ * one); its lines one segment at a time. A drawing of the pour's own net is not in the way: the fill runs over it.
  */
 function drawings(pour: CopperPour, inputs: PourInputs): Paths {
-  const here = (inputs.board.graphics ?? []).filter((graphic) => graphic.layer === pour.layer)
-  if (here.length === 0) return []
-  const gap = gapTo(pour, inputs, undefined) + MARGIN
-  return here.flatMap((graphic) => {
-    const rings = graphic.areas.flatMap((area) => [counterClockwise(toPath(area.outer)), ...area.holes.map((hole) => [...counterClockwise(toPath(hole))].reverse())])
-    const areas = rings.length === 0 ? [] : offset(rings, gap, "round")
-    const lines = graphic.lines.flatMap((line) =>
-      (line.points.length === 1 ? [[line.points[0] as Point]] : line.points.slice(1).map((p, i) => [line.points[i] as Point, p])).map((core) => counterClockwise(toPath(shapeOutline({ core, radius: line.width / 2 }, gap)))),
-    )
-    return [...areas, ...lines]
-  })
+  const here = (inputs.board.graphics ?? []).filter((graphic) => graphic.layer === pour.layer && graphic.net !== pour.net)
+  return here.flatMap((graphic) => drawingOutlines(graphic, gapTo(pour, inputs, graphic.net) + MARGIN))
+}
+
+/** The drawings of the pour's own net on its layer, grown so meeting at an edge counts: fill touching one is no island. */
+function ownDrawings(pour: CopperPour, inputs: PourInputs): Paths {
+  const here = (inputs.board.graphics ?? []).filter((graphic) => graphic.layer === pour.layer && graphic.net === pour.net)
+  return here.length === 0 ? [] : offset(here.flatMap((graphic) => drawingOutlines(graphic, 0)), TOUCH, "round")
 }
 
 /** The earlier fills of other nets on the layer grown by the clearance; each comes out of the offset with its holes. */
@@ -143,7 +141,7 @@ function ownNet(pour: CopperPour, inputs: PourInputs): Pick<LayerCopper, "relief
       cut: toPath(relief.cut),
       spokes: relief.spokes.map((spoke, i) => ({ path: toPath(spoke), tip: toPath([relief.tips[i] as Point])[0] as IntPoint })),
     })),
-    anchors: shapes.map((shape) => toPath(shapeOutline(shape, TOUCH))).filter((path) => path.length >= 3),
+    anchors: [...shapes.map((shape) => toPath(shapeOutline(shape, TOUCH))).filter((path) => path.length >= 3), ...ownDrawings(pour, inputs)],
   }
 }
 

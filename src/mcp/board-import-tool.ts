@@ -1,4 +1,4 @@
-// import_board: the board's outline, mounting holes and inner shapes from a DXF drawing in the project folder, as ONE
+// import_board: the board's outline, mounting holes and inner shapes from a DXF or SVG drawing in the project folder, as ONE
 // change by the agent (core/board-import.ts); or, for a KiCad board (.kicad_pcb), a whole new circuit (library/kicad).
 import { z } from "zod"
 import { formatBoardImport, importBoard } from "../core/index.js"
@@ -7,15 +7,15 @@ import { formatKicadImport, importKicad } from "../library/kicad/import.js"
 
 export const importBoardInput = {
   file: z.string().describe("Circuit file, e.g. index.circuit.tsx; for a KiCad board, the new one"),
-  dxf: z.string().describe("The ASCII DXF drawing or KiCad board, a path inside the project folder, e.g. enclosure.dxf or old.kicad_pcb"),
-  layer: z.string().optional().describe("Only this layer's shapes may make the outline"),
+  dxf: z.string().describe("A DXF, SVG (sized in mm, in…) or KiCad board in the project folder, e.g. case.dxf or old.kicad_pcb"),
+  layer: z.string().optional().describe("DXF: only this layer may make the outline"),
   units: z.enum(["mm", "inch"]).optional().describe("Overrides the drawing's own units"),
   origin: z.enum(["centre", "keep"]).optional().describe('"centre" (default) centres the outline on the origin; "keep" leaves it as drawn'),
   replace: z.boolean().optional().describe("Replace the board's holes and keepouts; without it a board that has some is refused"),
 }
 
 export const IMPORT_BOARD_DESCRIPTION =
-  "Set the board from a DXF drawing as ONE change: the largest closed shape is the outline, circles in it mounting holes, other shapes keepouts. Parts are not moved; the answer lists those now outside. A .kicad_pcb instead makes file a new circuit (outline, parts, nets, copper); the answer lists what did not come over."
+  "Set the board from a DXF or SVG drawing as ONE change: the largest closed shape is the outline, circles in it mounting holes, other shapes keepouts. Parts are not moved; the answer lists those now outside. A .kicad_pcb instead makes file a new circuit (outline, parts, nets, copper); the answer lists what did not come over."
 
 export async function importBoardTool(ports: Ports, input: { file: string; dxf: string; layer?: string | undefined; units?: "mm" | "inch" | undefined; origin?: "centre" | "keep" | undefined; replace?: boolean | undefined }): Promise<string> {
   try {

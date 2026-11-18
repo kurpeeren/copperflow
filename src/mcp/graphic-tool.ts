@@ -6,21 +6,22 @@ import type { Ports } from "./copper-tools.js"
 
 export const importGraphicInput = {
   file: z.string(),
-  source: z.string().describe("Project .svg/.dxf path"),
+  source: z.string(),
   layer: z.enum(["top-silkscreen", "bottom-silkscreen", "top-mask", "bottom-mask", "top", "bottom", "inner1", "inner2"]),
   x: z.number().optional(),
   y: z.number().optional(),
-  width: z.number().optional().describe("mm"),
+  width: z.number().optional(),
   scale: z.number().optional(),
   rotation: z.number().optional(),
   fill: z.boolean().optional(),
   name: z.string().optional(),
+  net: z.string().optional(),
 }
 
 export const IMPORT_GRAPHIC_DESCRIPTION =
-  "Place an SVG/DXF drawing (logo, mark) on the board as ONE change; kept in graphics/. Centre x,y mm (default board centre); width keeps aspect; fill fills closed outlines. Answers its id, size, omissions."
+  "Place a drawing (logo, mark) from source, a project .svg/.dxf, on the board as ONE change; kept in graphics/. Centre x,y and width in mm (else board centre); width keeps aspect; fill fills closed outlines; net (copper) makes it that net's copper. Answers id, size, omissions."
 
-type Input = { file: string; source: string; layer: string } & Partial<Record<"x" | "y" | "width" | "scale" | "rotation", number>> & { fill?: boolean | undefined; name?: string | undefined }
+type Input = { file: string; source: string; layer: string } & Partial<Record<"x" | "y" | "width" | "scale" | "rotation", number>> & { fill?: boolean | undefined; name?: string | undefined; net?: string | undefined }
 
 export async function importGraphicTool(ports: Ports, input: Input): Promise<string> {
   try {

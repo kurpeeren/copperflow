@@ -69,7 +69,7 @@ export function refilled(input: RouteInput, routed: readonly RoutedConnection[],
   const records = [...layout.tracks.map(trackRecord), ...layout.vias.map(viaRecord), ...routedRecords(routed, prefix)]
   const classOf = classLookup(rules, nets)
   const fill: PourFiller = (pads, copper) => cachedPourFills({ board, pads, tracks: copper.tracks, vias: copper.vias, rules, classOf })
-  const { copper, pours } = resolveWithPours(layout.parts, records, nets, board.layers, fill)
+  const { copper, pours } = resolveWithPours(layout.parts, records, nets, board.layers, fill, board.graphics)
   return { ...layout, tracks: copper.tracks, vias: copper.vias, pours, ratsnest: ratsnest(layout.parts, copper.islands) }
 }
 

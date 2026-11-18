@@ -134,7 +134,7 @@ export const MENUS: readonly Menu[] = [
     entries: [
       run("Open circuit file", "openFile", "Ctrl+O"),
       run("New circuit…", "newCircuit"),
-      run("Import board (DXF or KiCad)…", "importBoardDxf"),
+      run("Import board (DXF, SVG or KiCad)…", "importBoardDxf"),
       run("Import a drawing (SVG or DXF)…", "importGraphic"),
       "separator",
       run("Export BOM", "exportBom"),

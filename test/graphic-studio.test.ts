@@ -12,7 +12,7 @@ import { drawPcb } from "../studio/src/pcb/pcb-draw.js"
 import { boardFieldEdit, boardProperties } from "../studio/src/pcb/pour-props.js"
 import { boardRemoval } from "../studio/src/pcb/pour-tool.js"
 import { silkTextMove } from "../studio/src/pcb/silk-text-edit.js"
-import { graphicImportRequest } from "../studio/src/shell/graphic-import-form.js"
+import { graphicImportRequest, readPickedDrawing, startForm } from "../studio/src/shell/graphic-import-form.js"
 import { analyzeCircuit } from "../src/core/analyze.js"
 import { recorder } from "./helpers/fake-ctx.js"
 
@@ -93,12 +93,12 @@ describe("editing it", () => {
 })
 
 describe("File → Import a drawing", () => {
-  const picked = { name: "logo.svg", text: SVG }
-  test("reads the layer by name or number and the width, or says why not", () => {
-    expect(graphicImportRequest(picked, "2", "")).toEqual({ ...picked, layer: "bottom-silkscreen" })
-    expect(graphicImportRequest(picked, "top-mask", "12.5")).toEqual({ ...picked, layer: "top-mask", width: 12.5 })
-    expect(graphicImportRequest(picked, "copper", "")).toEqual({ message: "The layer must be one of top-silkscreen, bottom-silkscreen, top-mask, bottom-mask, top, bottom, inner1, inner2" })
-    expect(graphicImportRequest(picked, "1", "wide")).toEqual({ message: "The width must be a number of mm above 0" })
-    expect(graphicImportRequest(picked, null, "")).toBeUndefined()
+  test("the dialog's request for the picked file: the chosen layer and the width, or why not (graphic-import-dialog.test.ts has the rest)", () => {
+    const picked = readPickedDrawing("logo.svg", SVG)
+    if ("message" in picked) throw new Error(picked.message)
+    const form = startForm(picked)
+    expect(graphicImportRequest(picked, { ...form, layer: "bottom-silkscreen" })).toEqual({ name: "logo.svg", text: SVG, layer: "bottom-silkscreen", width: 10, title: "logo" })
+    expect(graphicImportRequest(picked, { ...form, layer: "top-mask", width: "12.5" })).toMatchObject({ layer: "top-mask", width: 12.5 })
+    expect(graphicImportRequest(picked, { ...form, width: "wide" })).toEqual({ message: "The width must be a number of mm above 0" })
   })
 })

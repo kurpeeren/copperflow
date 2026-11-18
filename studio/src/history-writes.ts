@@ -21,7 +21,7 @@ export function onHistoryWrite(listener: Listener): () => void {
 }
 
 /** Tells the listeners that an Undo or Redo was sent, with its outcome to come; returns that outcome. */
-export function announceHistoryWrite(outcome: Promise<WriteOutcome>): Promise<WriteOutcome> {
+export function announceHistoryWrite<T extends WriteOutcome>(outcome: Promise<T>): Promise<T> {
   for (const listener of listeners) listener(outcome)
   return outcome
 }

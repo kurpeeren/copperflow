@@ -99,13 +99,13 @@ describe("the <boardgraphic> element", () => {
     expect(built.pcb.graphics?.[0]).toMatchObject({ x: 2, width: 10, height: 2.5, layer: "bottom-mask" })
   })
 
-  test("a bad prop, a missing or unreadable file, or a copper layer is a warning naming the reason, and it is left out", () => {
+  test("a bad prop, a missing or unreadable file, or a net off copper is a warning naming the reason, and it is left out", () => {
     const cases: [string, RegExp][] = [
       [`<boardgraphic file="logo.svg" x={0} y={0} />`, /file must be "graphics\/<name>.svg"/],
       [`<boardgraphic file="graphics/../x.svg" x={0} y={0} />`, /file must be/],
       [`<boardgraphic file="graphics/none.svg" x={0} y={0} />`, /graphics\/none.svg was not found in the project/],
       [`<boardgraphic file="graphics/bad.svg" x={0} y={0} />`, /graphics\/bad.svg could not be read: it is not a drawing/],
-      [`<boardgraphic file="graphics/ring.svg" layer="top" net="GND" x={0} y={0} />`, /a drawing on copper belongs to no net yet/],
+      [`<boardgraphic file="graphics/ring.svg" layer="top-silkscreen" net="GND" x={0} y={0} />`, /net is only for a drawing on copper/],
       [`<boardgraphic file="graphics/ring.svg" layer="paste" x={0} y={0} />`, /layer must be one of top-silkscreen/],
       [`<boardgraphic file="graphics/ring.svg" x={0} y={0} width={5} scale={2} />`, /give width or scale, not both/],
       [`<boardgraphic file="graphics/ring.svg" x={0} y={0} width={500} />`, /width must be from 0.5 to 300 mm/],

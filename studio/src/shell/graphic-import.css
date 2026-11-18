@@ -1,0 +1,53 @@
+/* File → Import a drawing: the picture and facts of the chosen file across the form, the width with the height beside
+   it, and the fill checkbox across the form. Every rule is for elements inside the lazily loaded form. */
+.graphic-import .graphic-import-choose {
+  grid-column: 2;
+  justify-self: start;
+}
+
+.graphic-import-about {
+  grid-column: 1 / -1;
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+}
+
+.graphic-preview {
+  max-width: 100%;
+  height: auto;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--raised);
+  color: var(--text);
+  fill: currentColor;
+}
+
+.graphic-preview .graphic-preview-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.graphic-import-size {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.graphic-import-size input {
+  width: 90px;
+}
+
+.graphic-import-size span {
+  color: var(--muted);
+}
+
+.graphic-import .graphic-import-fill {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}

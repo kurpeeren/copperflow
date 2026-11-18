@@ -44,6 +44,8 @@ export interface HtmlOptions {
   /** Loads the renderer; tests pass the source module. Without it the bundled dist/render/render.js is loaded. */
   renderer?: () => Promise<Renderer>
   canvas?: CanvasLoader
+  /** Draws every picture of the page this many pixels wide instead of the full sizes; tests pass a small one. */
+  pictureWidth?: number
 }
 
 export interface HtmlExport {
@@ -61,7 +63,7 @@ type Draw = (request: RenderRequest) => Promise<PagePicture>
 function drawer(root: string, circuit: string, design: Design, options: HtmlOptions): Draw {
   const renderOptions = { design, ...(options.renderer ? { renderer: options.renderer } : {}), ...(options.canvas ? { canvas: options.canvas } : {}) }
   return async (request) => {
-    const rendered = await renderCircuit(root, circuit, request, renderOptions)
+    const rendered = await renderCircuit(root, circuit, options.pictureWidth === undefined ? request : { ...request, width: options.pictureWidth }, renderOptions)
     return { png: rendered.png, width: rendered.width, height: rendered.height, alt: rendered.what }
   }
 }

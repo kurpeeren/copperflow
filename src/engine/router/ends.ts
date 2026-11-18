@@ -1,6 +1,8 @@
 import type { CopperLayer } from "../../core/layout-file.js"
 import { copperTouches, padsUnder } from "../copper.js"
 import { copperPieces, padPieces, type CopperPiece } from "../checks/copper-pieces.js"
+import { bounds, type Shape } from "../checks/geometry.js"
+import type { Box } from "../checks/grid-index.js"
 import type { Point } from "../model.js"
 import { naturalCompare } from "../order.js"
 import type { PcbLayout, WorldPad } from "../pcb.js"
@@ -35,15 +37,44 @@ class Groups {
 
 const shareLayer = (a: CopperPiece, b: CopperPiece) => a.layers.some((layer) => b.layers.includes(layer))
 
-/** A track joins the pads copper.ts listed for it; a via the pads under its centre; copper the copper it touches. */
+/** How far apart two boxes may be and their copper still count as touching, in mm (more than copper.ts's tolerance). */
+const BOX_SLACK = 0.01
+const boxesNear = (a: Box, b: Box) => a.minX <= b.maxX + BOX_SLACK && b.minX <= a.maxX + BOX_SLACK && a.minY <= b.maxY + BOX_SLACK && b.minY <= a.maxY + BOX_SLACK
+
+/** Each piece's shapes with their boxes and the box round them all, worked out once per piece object. */
+const boxed = new WeakMap<CopperPiece, { box: Box; shapes: { shape: Shape; box: Box }[] }>()
+function boxesOf(piece: CopperPiece): { box: Box; shapes: { shape: Shape; box: Box }[] } {
+  const known = boxed.get(piece)
+  if (known !== undefined) return known
+  const shapes = piece.shapes.map((shape) => ({ shape, box: bounds(shape) }))
+  const box = shapes.reduce<Box>((all, one) => ({ minX: Math.min(all.minX, one.box.minX), minY: Math.min(all.minY, one.box.minY), maxX: Math.max(all.maxX, one.box.maxX), maxY: Math.max(all.maxY, one.box.maxY) }), { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity })
+  const made = { box, shapes }
+  boxed.set(piece, made)
+  return made
+}
+
+/** Whether the copper of two pieces on a shared layer meets: boxes first, so a drawing's many triangles are rarely measured. */
+function copperMeets(a: CopperPiece, b: CopperPiece): boolean {
+  if (!shareLayer(a, b)) return false
+  const [ka, kb] = [boxesOf(a), boxesOf(b)]
+  if (!boxesNear(ka.box, kb.box)) return false
+  const near = kb.shapes.filter((one) => boxesNear(one.box, ka.box))
+  return ka.shapes.some((sa) => boxesNear(sa.box, kb.box) && near.some((sb) => boxesNear(sa.box, sb.box) && copperTouches(sa.shape, sb.shape)))
+}
+
+/**
+ * A track joins the pads copper.ts listed for it; a via the pads under its centre; a drawing on the net the pads its
+ * copper touches; copper the copper it touches.
+ */
 function joined(layout: PcbLayout, a: CopperPiece, b: CopperPiece): boolean {
   if (a.kind === "pad" && b.kind === "pad") return false
   if (b.kind === "pad") return joined(layout, b, a)
   if (a.kind === "pad") {
     if (b.kind === "track") return b.pads?.includes(a.id) ?? false
+    if (b.kind === "drawing") return copperMeets(a, b)
     return b.layers.some((layer) => padsUnder(layout.parts, b.at, layer).some((pad) => pad.id === a.id))
   }
-  return shareLayer(a, b) && a.shapes.some((sa) => b.shapes.some((sb) => copperTouches(sa, sb)))
+  return copperMeets(a, b)
 }
 
 /** The net's pads and copper already joined to the pad, the pad first, then in natural id order. */

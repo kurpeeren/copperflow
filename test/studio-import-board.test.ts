@@ -52,7 +52,7 @@ const api = (path: string, body: unknown) =>
 describe("File → Import board outline (DXF)", () => {
   test("is in the File menu and off while the AI lock is closed, as its request is", () => {
     const file = MENUS.find((menu) => menu.title === "File")
-    expect(menuItems(file!).find((item) => item.command === "importBoardDxf")?.label).toBe("Import board (DXF or KiCad)…")
+    expect(menuItems(file!).find((item) => item.command === "importBoardDxf")?.label).toBe("Import board (DXF, SVG or KiCad)…")
     expect(lockedOff(true).importBoardDxf).toBe(AI_LOCK_MESSAGE)
     expect(blocksRequest("/api/import-board", { file: FILE, name: "a.dxf", text: "" })).toBe(true)
   })

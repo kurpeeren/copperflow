@@ -58,13 +58,45 @@ describe("import_graphic", () => {
     expect(summary.text).toContain("Drawings (1):\n  boardgraphic:1 graphics/logo.svg top-silkscreen at (0.0, 0.0), 8.0 x 4.0 mm")
   })
 
-  test("puts it on copper, says thin parts of fills are not measured, and copper_summary lists it", async () => {
+  test("puts it on copper, says what is checked, and copper_summary lists it", async () => {
     const result = await call("import_graphic", { file: FILE, source: "art/logo.svg", layer: "bottom", x: 5, y: 4, width: 6 })
     expect(result.isError, result.text).toBe(false)
     expect(result.text).toContain("on the bottom, 6 x 3 mm")
     expect(result.text).toContain("On copper it belongs to no net")
     const summary = await call("copper_summary", { file: FILE })
     expect(summary.text).toContain("Drawings on copper: boardgraphic:1 graphics/logo.svg bottom at (5, 4), 6.0 x 3.0 mm, no net")
+  })
+
+  test("takes a net on copper, and refuses one the circuit lacks or one off copper, writing nothing", async () => {
+    const missing = await call("import_graphic", { file: FILE, source: "art/logo.svg", layer: "top", net: "NOPE" })
+    expect(missing.text).toMatch(/import_graphic was refused: The drawing names the net NOPE, which the circuit does not have \(.*\)\. Nothing was written\.$/)
+    const silk = await call("import_graphic", { file: FILE, source: "art/logo.svg", layer: "top-silkscreen", net: "GND" })
+    expect(silk.text).toContain("net is only for a drawing on copper")
+    expect(await source()).toBe(CIRCUIT)
+    expect(graphicRequest(["main.circuit.tsx", "art/logo.svg", "--layer", "top", "--net", "GND"]).options.net).toBe("GND")
+  })
+
+  test("on a net it names the net, and the centre of an off-centre board is written to the micron", async () => {
+    await writeFile(join(root, FILE), `export default () => (
+  <board width={43.4} height={24.2} pcbX={0.9} pcbY={-1}>
+    <resistor name="R1" resistance="1k" footprint="0603" pcbX={-10} pcbY={-6} />
+    <trace from="R1.pin1" to="net.GND" />
+  </board>
+)
+`)
+    const result = await call("import_graphic", { file: FILE, source: "art/logo.svg", layer: "top", net: "GND", width: 4 })
+    expect(result.isError, result.text).toBe(false)
+    expect(result.text).toMatch(/^Change c0001: boardgraphic:1 from graphics\/logo.svg on the top on net GND, 4 x 2 mm, centred at \(0.9, -1\)/)
+    expect(await source()).toContain('layer="top" net="GND" x={0.9} y={-1} width={4}')
+  })
+
+  test("a drawing of light shapes only is drawn as ink, and the answer says so without calling it left out", async () => {
+    await writeFile(join(root, "art", "white.svg"), `<svg xmlns="http://www.w3.org/2000/svg" width="8mm" height="4mm" viewBox="0 0 8 4"><rect width="8" height="4" fill="white"/></svg>`)
+    const result = await call("import_graphic", { file: FILE, source: "art/white.svg", layer: "top-silkscreen" })
+    expect(result.isError, result.text).toBe(false)
+    expect(result.text).toContain("Nothing in the file was left out.")
+    expect(result.text).toContain("The file has no dark shape, so its light shapes are drawn as ink; gradients and images are not read.")
+    expect(result.text).not.toContain("Dark shapes are ink")
   })
 
   test("refuses a missing file and an unreadable one in plain words, writing nothing", async () => {
@@ -84,7 +116,13 @@ describe("edit_circuit on a drawing", () => {
     expect(set.isError, set.text).toBe(false)
     expect(await source()).toContain('<boardgraphic file="graphics/logo.svg" layer="bottom-mask" x={-2} y={3} scale={0.5} rotation={90} fill={true} />')
     const copper = await call("edit_circuit", { file: FILE, edits: [{ set_drawing: { id: "boardgraphic:1", net: "GND" } }] })
-    expect(copper.text).toContain("a drawing on copper belongs to no net yet")
+    expect(copper.text).toContain("net is only for a drawing on copper")
+    const netted = await call("edit_circuit", { file: FILE, edits: [{ set_drawing: { id: "boardgraphic:1", layer: "top", net: "GND", fill: null } }] })
+    expect(netted.isError, netted.text).toBe(false)
+    expect(await source()).toContain('layer="top" x={-2} y={3} scale={0.5} rotation={90} net="GND"')
+    const cleared = await call("edit_circuit", { file: FILE, edits: [{ set_drawing: { id: "boardgraphic:1", net: null } }] })
+    expect(cleared.isError, cleared.text).toBe(false)
+    expect(await source()).not.toContain('net="GND"')
     const removed = await call("edit_circuit", { file: FILE, edits: [{ remove_drawing: { id: "boardgraphic:1" } }] })
     expect(removed.isError, removed.text).toBe(false)
     expect(await source()).not.toContain("boardgraphic")

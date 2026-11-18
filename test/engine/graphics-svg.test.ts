@@ -89,8 +89,8 @@ describe("SVG elements", () => {
     expect(notes).toMatch(/style sheet/)
     expect(r.fills).toHaveLength(1)
   })
-  it("leaves out display:none and visibility:hidden, and fills a white shape like any other", () => {
-    const r = read('<rect width="1" height="1" style="display:none"/><g visibility="hidden"><rect width="1" height="1"/></g><rect width="3" height="3" fill="#fff"/>')
+  it("leaves out display:none and visibility:hidden", () => {
+    const r = read('<rect width="1" height="1" style="display:none"/><g visibility="hidden"><rect width="1" height="1"/></g><rect width="3" height="3" fill="#123"/>')
     expect(r.fills).toHaveLength(1)
   })
   it("fills nothing with fill none and strokes nothing by default", () => {

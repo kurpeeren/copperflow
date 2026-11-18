@@ -173,6 +173,8 @@ export interface BoardGraphic {
   rotation: number
   fill: boolean
   name?: string
+  /** On copper: the net id it belongs to, when it names one; without it, it belongs to no net. */
+  net?: string
   areas: { outer: Point[]; holes: Point[][] }[]
   lines: { points: Point[]; width: number }[]
   /** On copper: the filled areas as triangles (holes left open), the shapes the checks, router and Gerber use. */

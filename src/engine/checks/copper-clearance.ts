@@ -81,7 +81,7 @@ function measureLayer(slots: readonly Slot[], reach: number, cell: number, found
  * centred on the pad. A pad with no net is never one conductor with copper, so copper on it is always reported.
  */
 function joined({ a, b }: Nearest): boolean {
-  // A drawing on copper belongs to no net: whatever it meets, it is never one conductor with it.
+  // A drawing on copper is never one conductor with copper of another net (its own net's copper is never measured).
   if (a.piece.kind === "drawing" || b.piece.kind === "drawing") return false
   if (a.piece.kind !== "pad" && b.piece.kind !== "pad") return copperTouches(a.shape, b.shape)
   const [pad, other] = a.piece.kind === "pad" ? [a, b] : [b, a]
@@ -103,16 +103,42 @@ export function ruleText(rules: Rules, a: string, b: string, required: number): 
   return byClasses < required ? `the fabrication minimum is ${mm(required)} mm` : `${pairName(rules, a, b)} needs ${mm(required)} mm`
 }
 
+/** Whether the piece carries a net of the circuit (not a drawing's private one). */
+const hasRealNet = (piece: CopperPiece): piece is CopperPiece & { net: string } => piece.net !== undefined && !isDrawingNet(piece.net)
+const netWords = (net: string) => net.replace(/^net[.:]/, "")
+
 /** "the track t0007 of GND": a piece in words, its net named when it has a real one. */
 function pieceWords(piece: CopperPiece): string {
   const kind = piece.kind === "drawing" ? "drawing" : piece.kind
-  return `the ${kind} ${piece.id}${piece.net !== undefined && !isDrawingNet(piece.net) ? ` of ${piece.net.replace(/^net\./, "")}` : ""}`
+  return `the ${kind} ${piece.id}${hasRealNet(piece) ? ` of ${netWords(piece.net)}` : ""}`
+}
+
+/** The drawing of the pair and the other piece, a drawing of no net first when both are drawings; undefined for two other pieces. */
+function drawingPair({ a, b }: Nearest): [CopperPiece, CopperPiece] | undefined {
+  const pairs: [CopperPiece, CopperPiece][] = [
+    [a.piece, b.piece],
+    [b.piece, a.piece],
+  ]
+  const drawings = pairs.filter(([one]) => one.kind === "drawing")
+  return drawings.find(([one]) => !hasRealNet(one)) ?? drawings[0]
+}
+
+/** A drawing on a net touching copper of another net: a short, as copper.ts reports for tracks. */
+function isDrawingShort(nearest: Nearest): boolean {
+  const pair = drawingPair(nearest)
+  return pair !== undefined && nearest.distance <= 0 && hasRealNet(pair[0]) && hasRealNet(pair[1])
 }
 
 /** A drawing on copper too near or touching other copper, in words for a person; undefined for two other pieces. */
-function drawingMessage({ a, b, distance }: Nearest, required: number, rules: Rules): string | undefined {
-  const [drawing, other] = a.piece.kind === "drawing" ? [a.piece, b.piece] : b.piece.kind === "drawing" ? [b.piece, a.piece] : [undefined, undefined]
-  if (drawing === undefined || other === undefined) return undefined
+function drawingMessage(nearest: Nearest, required: number, rules: Rules): string | undefined {
+  const pair = drawingPair(nearest)
+  if (pair === undefined) return undefined
+  const [drawing, other] = pair
+  const distance = nearest.distance
+  if (isDrawingShort(nearest) && hasRealNet(drawing) && hasRealNet(other)) {
+    return `${drawing.id} of ${netWords(drawing.net)} touches ${pieceWords(other)}: a short between ${netWords(drawing.net)} and ${netWords(other.net)}`
+  }
+  if (distance <= 0 && hasRealNet(drawing)) return `${drawing.id} of ${netWords(drawing.net)} touches ${pieceWords(other)}, which is on no net; copper of ${netWords(drawing.net)} must stand clear of it`
   if (distance <= 0) return `${drawing.id} touches ${pieceWords(other)}; a drawing on copper must stand clear of every net`
   return `${drawing.id} is ${mm(distance)} mm from ${pieceWords(other)}; ${ruleText(rules, drawing.className, other.className, required)}`
 }
@@ -130,7 +156,7 @@ function judge(nearest: Nearest, rules: Rules): Violation | undefined {
   const required = requiredClearance(rules, a.piece.className, b.piece.className)
   if (!breaksMinimum(distance, required)) return undefined
   const message = drawingMessage(nearest, required, rules) ?? `${a.piece.id} and ${b.piece.id} are ${gap(distance)}; ${ruleText(rules, a.piece.className, b.piece.className, required)}`
-  return copperViolation("copper-clearance", message, [a.piece.id, b.piece.id], [a.piece.id, b.piece.id], midpoint(closestPoints(a.shape, b.shape)))
+  return copperViolation(isDrawingShort(nearest) ? "short" : "copper-clearance", message, [a.piece.id, b.piece.id], [a.piece.id, b.piece.id], midpoint(closestPoints(a.shape, b.shape)))
 }
 
 const onLayer = (layer: CopperLayer) => (slot: Slot) => slot.piece.layers.includes(layer)

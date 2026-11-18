@@ -4,7 +4,7 @@
 import type { PlacedFootprint } from "../../../src/engine/pcb.js"
 import { PALETTE } from "./ctx.js"
 
-export const LAYER_IDS = ["top", "bottom", "topSilk", "bottomSilk", "topAssembly", "bottomAssembly", "courtyard", "boardOutline", "multiLayer", "hole", "ratline", "keepout"] as const
+export const LAYER_IDS = ["top", "bottom", "inner1", "inner2", "topSilk", "bottomSilk", "topAssembly", "bottomAssembly", "courtyard", "boardOutline", "multiLayer", "hole", "ratline", "keepout"] as const
 export type LayerId = (typeof LAYER_IDS)[number]
 
 export type LayerGroup = "copper" | "non-copper"
@@ -30,6 +30,8 @@ export interface LayerRow {
 
 const LAYER_ROWS: readonly LayerRow[] = [
   { id: "top", name: "Top Layer", group: "copper", color: PALETTE.topCopper },
+  { id: "inner1", name: "Inner Layer 1", group: "copper", color: PALETTE.inner1Copper },
+  { id: "inner2", name: "Inner Layer 2", group: "copper", color: PALETTE.inner2Copper },
   { id: "bottom", name: "Bottom Layer", group: "copper", color: PALETTE.bottomCopper },
   { id: "topSilk", name: "Top Silkscreen", group: "non-copper", color: PALETTE.topSilk },
   { id: "bottomSilk", name: "Bottom Silkscreen", group: "non-copper", color: PALETTE.bottomSilk },
@@ -43,9 +45,24 @@ const LAYER_ROWS: readonly LayerRow[] = [
   { id: "keepout", name: "Keepout", group: "non-copper", color: PALETTE.keepout },
 ]
 
-/** The panel's rows: Keepout only when the board has keepouts, and only the layers the filter names. */
-export function layerRows(hasKeepouts: boolean, filter: LayerFilter): LayerRow[] {
-  return LAYER_ROWS.filter((row) => (hasKeepouts || row.id !== "keepout") && (filter === "all" || row.group === filter))
+/** The inner copper layers, which only a 4-layer board has. */
+const INNER_LAYERS: ReadonlySet<LayerId> = new Set(["inner1", "inner2"])
+const FOUR_LAYERS = 4
+
+/**
+ * The panel's rows: the inner copper layers only on a 4-layer board, Keepout only when the board has keepouts, and
+ * only the layers the filter names.
+ */
+export function layerRows(hasKeepouts: boolean, filter: LayerFilter, boardLayers = 2): LayerRow[] {
+  const listed = (row: LayerRow) => (hasKeepouts || row.id !== "keepout") && (boardLayers === FOUR_LAYERS || !INNER_LAYERS.has(row.id))
+  return LAYER_ROWS.filter((row) => listed(row) && (filter === "all" || row.group === filter))
+}
+
+const COPPER_LAYERS: ReadonlySet<string> = new Set<LayerId>(["top", "bottom", "inner1", "inner2"])
+
+/** Whether copper on `layer` ("top", "inner1" …) is shown: its row's eye; false for a name that is not a copper layer. */
+export function copperLayerShown(layer: string, visible: LayerVisibility): boolean {
+  return COPPER_LAYERS.has(layer) && visible[layer as LayerId]
 }
 
 /** The swatch's CSS background: the layer's colour, or the top and bottom colours split on the diagonal, top first. */

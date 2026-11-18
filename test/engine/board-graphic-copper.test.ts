@@ -47,10 +47,10 @@ describe("the element on copper", () => {
     expect(about(design)).toEqual([])
   })
 
-  test("a net, and an inner layer on a 2-layer board, are refused with the reason", () => {
-    const withNet = build(`<boardgraphic file="graphics/frame.svg" layer="top" net="GND" x={0} y={0} width={6} />`)
+  test("a net the circuit lacks, and an inner layer on a 2-layer board, are refused with the reason", () => {
+    const withNet = build(`<boardgraphic file="graphics/frame.svg" layer="top" net="NOPE" x={0} y={0} width={6} />`)
     expect(withNet.pcb.graphics).toBeUndefined()
-    expect(withNet.diagnostics.map((d) => d.message).join("\n")).toContain("a drawing on copper belongs to no net yet")
+    expect(withNet.diagnostics.map((d) => d.message).join("\n")).toContain("names the net NOPE, which the circuit does not have (its nets are GND, SIG)")
     const inner = build(`<boardgraphic file="graphics/frame.svg" layer="inner1" x={0} y={0} width={6} />`)
     expect(inner.pcb.graphics).toBeUndefined()
     expect(inner.diagnostics.map((d) => d.message).join("\n")).toContain("a 2-layer board has no inner1")

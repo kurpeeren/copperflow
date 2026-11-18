@@ -1,10 +1,10 @@
 // `copperflow graphic <file> <drawing.svg|dxf> --layer … [--at x,y] [--width mm | --scale n] [--rotation deg] [--fill]
-// [--name …]`: a drawing in the project placed on the board as one change, as import_graphic does.
+// [--name …] [--net …]`: a drawing in the project placed on the board as one change, as import_graphic does.
 import { formatGraphicImport, importGraphic, type ImportGraphicOptions } from "./core/graphic-import.js"
 import type { DesignSource } from "./core/design-source.js"
 
 export const GRAPHIC_USAGE =
-  "Usage: copperflow graphic <file> <drawing.svg|dxf> --layer top-silkscreen|bottom-silkscreen|top-mask|bottom-mask|top|bottom|inner1|inner2 [--at x,y] [--width mm | --scale n] [--rotation deg] [--fill] [--name text]"
+  "Usage: copperflow graphic <file> <drawing.svg|dxf> --layer top-silkscreen|bottom-silkscreen|top-mask|bottom-mask|top|bottom|inner1|inner2 [--at x,y] [--width mm | --scale n] [--rotation deg] [--fill] [--name text] [--net name]"
 
 /** The value after `name`, and the arguments without the two. */
 function take(args: readonly string[], name: string): [string | undefined, string[]] {
@@ -36,7 +36,8 @@ export function graphicRequest(args: readonly string[]): { file: string; options
   const [width, a3] = take(a2, "--width")
   const [scale, a4] = take(a3, "--scale")
   const [rotation, a5] = take(a4, "--rotation")
-  const [name, a6] = take(a5, "--name")
+  const [name, a6a] = take(a5, "--name")
+  const [net, a6] = take(a6a, "--net")
   const fill = a6.includes("--fill")
   const [file, source, ...extra] = a6.filter((arg) => arg !== "--fill")
   if (file === undefined || source === undefined || layer === undefined) throw new Error(`Missing ${file === undefined ? "the circuit file" : source === undefined ? "the drawing" : "--layer"}. ${GRAPHIC_USAGE}`)
@@ -50,6 +51,7 @@ export function graphicRequest(args: readonly string[]): { file: string; options
     rotation: number(rotation, "--rotation"),
     ...(fill ? { fill: true } : {}),
     ...(name === undefined ? {} : { name }),
+    ...(net === undefined ? {} : { net }),
   }
   return { file, options }
 }

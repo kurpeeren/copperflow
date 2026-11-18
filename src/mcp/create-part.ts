@@ -26,7 +26,7 @@ export const createPartInput = {
 }
 
 export const CREATE_PART_DESCRIPTION =
-  "Create a library part from a datasheet you have read: pins by number with names and types, a footprint string (sot23_5, 0402), MPN, suppliers. When no string fits, package { \"file\": \"footprint.yaml\" } with footprint_file pads copied from the datasheet land pattern (never estimated). datasheet takes only url, file and title, e.g. { \"url\": \"https://example.com/ds.pdf\", \"title\": \"TJA1051 datasheet\" }; pin table pages go to attach_datasheet. An existing id is refused unless replace. The part starts NOT verified: tell the human to check verification.md."
+  "Create a library part from a datasheet you have read: pins by number with names and types, a footprint string (sot23_5, 0402), MPN, suppliers. When no string fits, package { \"file\": \"footprint.yaml\" } with footprint_file pads copied from the datasheet land pattern (never estimated). datasheet (url, file, title) e.g. { \"url\": \"https://example.com/ds.pdf\", \"title\": \"TJA1051 datasheet\" }; pin table pages go to attach_datasheet. An existing id is refused unless replace. The part starts NOT verified: tell the human to check verification.md."
 
 type CreatePartArgs = z.infer<z.ZodObject<typeof createPartInput>>
 

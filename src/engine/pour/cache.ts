@@ -29,12 +29,12 @@ function hash(text: string): number {
  */
 export function pourInputKey(inputs: PourInputs): string {
   const { board, pads, tracks, vias, rules } = inputs
-  const nets = [...new Set([...pads.map((p) => p.net), ...tracks.map((t) => t.net), ...vias.map((v) => v.net), ...(board.pours ?? []).map((p) => p.net)])]
+  const nets = [...new Set([...pads.map((p) => p.net), ...tracks.map((t) => t.net), ...vias.map((v) => v.net), ...(board.pours ?? []).map((p) => p.net), ...(board.graphics ?? []).map((g) => g.net)])]
   return JSON.stringify({
     outline: board.outline,
     keepouts: board.keepouts.map((k) => [k.outline, k.layers]),
     holes: (board.holes ?? []).map((h) => [h.x, h.y, h.diameter]),
-    drawings: (board.graphics ?? []).filter((g) => ["top", "bottom", "inner1", "inner2"].includes(g.layer)).map((g) => [g.layer, g.areas, g.lines]),
+    drawings: (board.graphics ?? []).filter((g) => ["top", "bottom", "inner1", "inner2"].includes(g.layer)).map((g) => [g.layer, g.net ?? null, g.areas, g.lines]),
     pours: (board.pours ?? []).map(({ source: _source, ...pour }) => pour),
     pads: pads.map((p) => [p.shape, p.x, p.y, p.width, p.height, p.rotation, p.layers, p.cornerRadius ?? null, p.net ?? null]),
     tracks: tracks.map((t) => [t.layer, t.width, t.points, t.net ?? null, t.missingLayer ?? null]),

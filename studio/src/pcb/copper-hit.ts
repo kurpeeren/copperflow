@@ -6,7 +6,7 @@
 import type { PcbTrack, PcbVia } from "../../../src/engine/pcb.js"
 import { areasInBox, type BoxMode } from "./box-select.js"
 import { roundPosition, type Box, type Point } from "./geometry.js"
-import type { LayerVisibility } from "./layers.js"
+import { copperLayerShown, type LayerVisibility } from "./layers.js"
 import { canPick, type PickContext } from "./pick.js"
 import { segmentOn, type TrackSegment } from "../selection.js"
 import { cornerAt, distanceToSegment, segmentAt, WIRE_REACH_PX } from "./wire-hit.js"
@@ -37,14 +37,14 @@ export const stray = (item: { missingLayer?: PcbTrack["layer"] }): { missingLaye
   item.missingLayer === undefined ? {} : { missingLayer: item.missingLayer }
 
 /**
- * Whether a track or via is drawn with these layers shown: a track on its copper layer's row (inner layers have no row
- * yet, so they are not drawn), a via on Multi-Layer's, as a plated pad is. Copper on a layer the board lacks is an
+ * Whether a track or via is drawn with these layers shown: a track on its copper layer's row (an inner layer's too,
+ * listed on a 4-layer board), a via on Multi-Layer's, as a plated pad is. Copper on a layer the board lacks is an
  * error drawn in the keepout colour, so it follows the Keepout row.
  */
 export function copperShown(item: ShownCopper, visible: LayerVisibility): boolean {
   if (item.missingLayer !== undefined) return visible.keepout
   if (item.kind === "via") return visible.multiLayer
-  return (item.layer === "top" || item.layer === "bottom") && visible[item.layer]
+  return copperLayerShown(item.layer, visible)
 }
 
 /** How far past a drawn edge the pointer still reaches copper, in CSS pixels. */

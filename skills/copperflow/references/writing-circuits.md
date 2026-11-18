@@ -114,18 +114,21 @@ stays in the project's `graphics/` folder (only `graphics/<name>.svg|dxf` is rea
 in mm keeping its aspect (or `scale`; its own size when neither), turned `rotation` degrees. `layer` is
 `top-silkscreen`, `bottom-silkscreen` (ink; the bottom is mirrored to read from below), `top-mask` or `bottom-mask`
 (an opening in the solder mask: copper or bare board shows through), or a copper layer as pours name them (`top`,
-`bottom`, `inner1`, `inner2`; inner ones on a 4-layer board only). On copper a drawing belongs to no net (`net` is
-refused): the router goes round it, pours keep clear of it, and `check_circuit` reports any copper closer than the
-clearance (`copper-clearance`, "boardgraphic:1 touches the track t0007 of GND"), the board edge (`copper-edge`), a
-`<hole>` (`copper-hole`) and lines thinner than the minimum track width (`drawing-width`); thin parts of a filled shape
-are not measured. A bare-copper logo is the same drawing on `top` and on `top-mask`. At most 5000 triangles on copper:
+`bottom`, `inner1`, `inner2`; inner ones on a 4-layer board only). On copper a drawing belongs to no net unless
+`net="GND"` (any net of the circuit; refused off copper or for a net the circuit lacks, `drawing-net`). Of no net, the
+router goes round it, pours keep clear of it, and `check_circuit` reports any copper closer than the clearance
+(`copper-clearance`, "boardgraphic:1 touches the track t0007 of GND"). On a net it is that net's copper: it joins the
+net's pads, tracks and vias it touches (their airwires go), the net's tracks may run onto it, a pour of the net merges
+with it, other nets keep the clearance, touching another net is a `short`, and touching nothing of its net is an island
+(`drawing-floating`). Either way the board edge (`copper-edge`), a `<hole>` (`copper-hole`), and lines or parts of a
+filled shape thinner than the minimum track width (`drawing-width`, with a point in the thin part) are reported. A bare-copper logo is the same drawing on `top` and on `top-mask`. At most 5000 triangles on copper:
 simplify a larger drawing. Write the SVG yourself with your file tools, then `import_graphic` `{ file, source, layer, x?, y?, width?,
-scale?, rotation?, fill?, name? }` (source elsewhere in the project is copied into `graphics/`; no x, y: the board's
+scale?, rotation?, fill?, name?, net? }` (source elsewhere in the project is copied into `graphics/`; no x, y: the board's
 centre); the answer names its id (`boardgraphic:1`), its size in mm and what the reader left out (text, images).
-Colour is not read: every filled shape is ink, so white details over black come out solid unless they are holes in
-one `<path>` (fill-rule). SVG lines keep their `stroke-width`; a DXF has lines of no width (they print at 0.15 mm)
+Dark shapes are ink and light shapes cut them out, in the file's order (a white letter over a black disc is a gap);
+gradients and images are not read. SVG lines keep their `stroke-width`; a DXF has lines of no width (they print at 0.15 mm)
 and fills only from SOLID or HATCH, so give `fill: true` to fill its closed outlines. Move, resize, re-layer or
-remove it with `set_drawing` (`file`, `layer`, `x`, `y`, `width`, `scale`, `rotation`, `fill`, `name`) and
+remove it with `set_drawing` (`file`, `layer`, `x`, `y`, `width`, `scale`, `rotation`, `fill`, `name`, `net`; null removes `net`) and
 `remove_drawing`; `board_summary` lists it. A bad or missing file is a build warning and the drawing is left out.
 `check_circuit` reports silkscreen ink over a pad or hole (`silk-on-pad`), off the board (`silk-off-board`) and
 lines thinner than a board house prints (`silk-too-thin`). The CLI is `copperflow graphic <file> <drawing> --layer …`.

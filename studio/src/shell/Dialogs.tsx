@@ -13,6 +13,7 @@ import { FootprintManagerForm, type FootprintPanel } from "./FootprintManagerDia
 import type { NewPartPanel } from "./new-part-result"
 import type { VerifyPanel } from "./VerifyPartDialog"
 import type { PackagesRequest } from "./packages-request"
+import type { GraphicImportPanel } from "./GraphicImportDialog"
 import { FILLET_RADIUS_LABEL, FILLET_RADIUS_NOTE, filletRadiusField, readFilletRadius } from "./rules-form"
 
 // The New part dialog carries the footprint generator for its preview; it loads when first opened, and again on Retry
@@ -22,8 +23,10 @@ const newPartForm = lazyRetrying(() => import("./NewPartDialog").then((module) =
 const packagesForm = lazyRetrying(() => import("./PackagesDialog").then((module) => module.PackagesForm))
 // The Verify screen carries the footprint drawing, the figures and the datasheet frame: loaded when first opened.
 const verifyForm = lazyRetrying(() => import("./VerifyPartDialog").then((module) => module.VerifyPartForm))
+// Import a drawing carries the engine's SVG and DXF reader for its preview: loaded when first opened.
+const graphicImportForm = lazyRetrying(() => import("./GraphicImportDialog").then((module) => module.GraphicImportForm))
 
-export type DialogName = "keys" | "about" | "rules" | "makeSheet" | "importPart" | "newPart" | "system" | "newCircuit" | "footprints" | "exportChecks"
+export type DialogName = "keys" | "about" | "rules" | "makeSheet" | "importPart" | "newPart" | "system" | "newCircuit" | "footprints" | "exportChecks" | "importGraphic"
 
 /** What Design → Design rules shows and writes: the rules the build read, and the save of a new fillet radius. */
 export interface RulesPanel {
@@ -144,8 +147,26 @@ function ExportChecksForm({ panel, onClose }: { panel: ExportChecksPanel; onClos
   )
 }
 
-/** Help → Keys, Help → About, Design → Design rules, Edit → Make sub-sheet, Library → Import by LCSC number and Library → New part. */
-export function StudioDialog({ name, onClose, rules, makeSheet, importPart, newPart, system, newCircuit, footprints, exportChecks }: { name: DialogName; onClose(): void; rules: RulesPanel; makeSheet: MakeSheetPanel; importPart: ImportPartPanel; newPart: NewPartPanel; system: SystemPanel; newCircuit: NewCircuitPanel; footprints: FootprintPanel; exportChecks: ExportChecksPanel }) {
+/** File → Import a drawing (SVG or DXF)…, loaded when first opened; its form takes Enter, which imports when it is ready. */
+function GraphicImportDialog({ panel, onClose }: { panel: GraphicImportPanel; onClose(): void }) {
+  const keys = useRef<((event: KeyboardEvent) => void) | undefined>(undefined)
+  return (
+    <Dialog title="Import a drawing" onClose={onClose} onKey={(event) => keys.current?.(event)}>
+      <DialogBoundary
+        what="Import a drawing"
+        onRetry={graphicImportForm.retry}
+        render={() => {
+          const GraphicImportForm = graphicImportForm.component()
+          return <GraphicImportForm panel={panel} onClose={onClose} keys={keys} />
+        }}
+      />
+    </Dialog>
+  )
+}
+
+/** Help → Keys, Help → About, Design → Design rules, Edit → Make sub-sheet, Library → Import by LCSC number, Library → New part and File → Import a drawing. */
+export function StudioDialog({ name, onClose, rules, makeSheet, importPart, newPart, system, newCircuit, footprints, exportChecks, importGraphic }: { name: DialogName; onClose(): void; rules: RulesPanel; makeSheet: MakeSheetPanel; importPart: ImportPartPanel; newPart: NewPartPanel; system: SystemPanel; newCircuit: NewCircuitPanel; footprints: FootprintPanel; exportChecks: ExportChecksPanel; importGraphic: GraphicImportPanel }) {
+  if (name === "importGraphic") return <GraphicImportDialog panel={importGraphic} onClose={onClose} />
   if (name === "exportChecks") {
     return (
       <Dialog title="Fabrication files" onClose={onClose}>

@@ -12,7 +12,7 @@ import { holeDiameter } from "./pour-tool.js"
 export type PourField = "net" | "layer" | "priority" | "clearance" | "minWidth" | "thermal"
 export type HoleField = "x" | "y" | "diameter"
 export type TextField = "text" | "x" | "y" | "height" | "rotation" | "layer"
-export type GraphicField = "layer" | "x" | "y" | "width" | "rotation" | "fill"
+export type GraphicField = "layer" | "net" | "x" | "y" | "width" | "rotation" | "fill"
 export type BoardField = PourField | HoleField | TextField | GraphicField
 
 export interface BoardRow {
@@ -106,10 +106,19 @@ const FILL_CHOICES = [
   { value: "true", label: "Fill closed outlines" },
 ] as const
 
-function graphicRows(graphic: BoardGraphic, layers: number | undefined): BoardRow[] {
+/** A drawing on copper's Net row: the circuit's nets by first name, or "No net" (the empty value). */
+function graphicNetRow(design: PourDesign, graphic: BoardGraphic): BoardRow[] {
+  if (!["top", "bottom", "inner1", "inner2"].includes(graphic.layer)) return []
+  const nets = design.circuit.nets.flatMap((net) => (net.names[0] ? [{ value: net.names[0], label: net.names[0] }] : []))
+  const value = graphic.net === undefined ? "" : pourNetName(design, graphic.net)
+  return [{ label: "Net", value, field: "net", choices: [{ value: "", label: "No net" }, ...nets] }]
+}
+
+function graphicRows(design: PourDesign, graphic: BoardGraphic, layers: number | undefined): BoardRow[] {
   return [
     { label: "File", value: graphic.file },
     { label: "Layer", value: graphic.layer, field: "layer", choices: layers === 4 ? [...GRAPHIC_LAYER_CHOICES, ...GRAPHIC_INNER_CHOICES] : GRAPHIC_LAYER_CHOICES },
+    ...graphicNetRow(design, graphic),
     { label: "X (mm)", value: number(graphic.x), field: "x" },
     { label: "Y (mm)", value: number(graphic.y), field: "y" },
     { label: "Width (mm)", value: number(graphic.width), field: "width" },
@@ -120,7 +129,8 @@ function graphicRows(graphic: BoardGraphic, layers: number | undefined): BoardRo
 }
 
 /** A drawing row's value: the layer, fill as true or false, or a number (a width above 0). */
-function graphicValue(field: GraphicField, raw: string): string | number | boolean | { message: string } {
+function graphicValue(field: GraphicField, raw: string): string | number | boolean | null | { message: string } {
+  if (field === "net") return raw.trim() === "" ? null : raw
   if (field === "layer") return raw
   if (field === "fill") return raw === "true"
   return numberOf(raw, field, field === "width" ? "positive" : "any")
@@ -133,7 +143,7 @@ export function boardProperties(design: PourDesign, id: string): BoardProperties
   const text = (design.pcb.silkTexts ?? []).find((one) => one.id === id)
   if (text) return { kind: "text", title: "Silkscreen text", rows: textRows(text) }
   const graphic = (design.pcb.graphics ?? []).find((one) => one.id === id)
-  if (graphic) return { kind: "graphic", title: "Drawing", rows: graphicRows(graphic, design.pcb.board?.layers) }
+  if (graphic) return { kind: "graphic", title: "Drawing", rows: graphicRows(design, graphic, design.pcb.board?.layers) }
   const hole = design.pcb.holes.find((one) => one.id === id)
   return hole && { kind: "hole", title: "Hole", rows: holeRows(hole) }
 }
@@ -176,10 +186,10 @@ export function boardFieldEdit(design: PourDesign, id: string, field: BoardField
   }
   if (isBoardGraphicId(id)) {
     const value = graphicValue(field as GraphicField, raw)
-    if (typeof value === "object") return value
+    if (value !== null && typeof value === "object") return value
     // A width replaces a scale written in the file, so the drawing keeps its aspect at the width asked.
     const props = field === "width" ? { width: value, scale: null } : { [field]: value }
-    return { edit: { kind: "setBoardGraphic", id, props }, summary: `set ${id} ${field}=${value}` }
+    return { edit: { kind: "setBoardGraphic", id, props }, summary: `set ${id} ${field}=${value ?? "no net"}` }
   }
   const isHole = isHoleId(id)
   const value = isHole ? holeValue(field as HoleField, raw) : pourValue(field as PourField, raw)

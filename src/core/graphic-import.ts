@@ -4,15 +4,15 @@
 // `copperflow graphic` and the Studio's File → Import a drawing all call importGraphic and show formatGraphicImport.
 import { lstat, mkdir, readFile, realpath, rm } from "node:fs/promises"
 import { basename, dirname, resolve } from "node:path"
-import { GRAPHIC_FILE, graphicLayerProblem, leftOut, graphicScaleProblem, graphicWidthProblem, MAX_GRAPHIC_SIZE } from "../engine/board-graphic.js"
-import { graphicKind, parseGraphic, type GraphicShapes } from "../engine/graphics/index.js"
+import { GRAPHIC_FILE, graphicLayerProblem, graphicNetId, graphicNetProblem, leftOut, graphicScaleProblem, graphicWidthProblem, MAX_GRAPHIC_SIZE, missingNetText } from "../engine/board-graphic.js"
+import { ALL_LIGHT_NOTE, graphicKind, parseGraphic, type GraphicShapes } from "../engine/graphics/index.js"
 import { newBoardItemId } from "./board-items.js"
 import { EditError } from "./edit-error.js"
 import { applyEdits } from "./edit.js"
 import { isInside } from "./file-writes.js"
 import { writeFileAtomic } from "./fs-utils.js"
 import type { Author, HistoryEntry } from "./history.js"
-import type { DesignSource as BuildSource } from "./design-source.js"
+import { buildWith, type DesignSource as BuildSource } from "./design-source.js"
 import { editCircuit, loadCircuit, projectPath, resolveInRoot } from "./workspace.js"
 
 export interface ImportGraphicOptions {
@@ -27,6 +27,8 @@ export interface ImportGraphicOptions {
   rotation?: number | undefined
   fill?: boolean | undefined
   name?: string | undefined
+  /** On copper: the net it belongs to, by name; without it, no net. */
+  net?: string | undefined
 }
 
 export interface ImportGraphicResult {
@@ -35,6 +37,8 @@ export interface ImportGraphicResult {
   /** The drawing's path in the project, under graphics/. */
   file: string
   layer: string
+  /** The net it belongs to, as given; absent for none. */
+  net?: string
   at: { x: number; y: number }
   size: { width: number; height: number }
   skipped: string[]
@@ -90,13 +94,20 @@ function checkOptions(options: ImportGraphicOptions, shapes: GraphicShapes): num
     graphicLayerProblem(options.layer) ??
     (options.width !== undefined && options.scale !== undefined ? "give width or scale, not both" : undefined) ??
     (options.width === undefined ? undefined : graphicWidthProblem(options.width)) ??
-    (options.scale === undefined ? undefined : graphicScaleProblem(options.scale))
+    (options.scale === undefined ? undefined : graphicScaleProblem(options.scale)) ??
+    (options.net === undefined ? undefined : graphicNetProblem(options.net, options.layer))
   if (problem) throw new EditError("invalid", `${problem}. Nothing was written.`)
   const scale = options.scale ?? (options.width === undefined ? 1 : options.width / shapes.width)
   if (Math.max(shapes.width, shapes.height) * scale > MAX_GRAPHIC_SIZE) {
     throw new EditError("invalid", `At this size the drawing is ${(shapes.width * scale).toFixed(1)} x ${(shapes.height * scale).toFixed(1)} mm, larger than ${MAX_GRAPHIC_SIZE} mm; give a width. Nothing was written.`)
   }
   return scale
+}
+
+/** Refuses a net the circuit does not have, naming the nets it has: the circuit is built to know them. */
+async function requireNet(root: string, file: string, net: string, engine: BuildSource | undefined): Promise<void> {
+  const design = await buildWith(root, file, engine)
+  if (graphicNetId(design.circuit.nets, net) === undefined) throw new EditError("invalid", `The drawing ${missingNetText(net, design.circuit.nets)}. Nothing was written.`)
 }
 
 /** Writes the drawing to graphics/ when it is not there yet; true when this call created it. */
@@ -119,13 +130,16 @@ export async function importGraphic(root: string, file: string, options: ImportG
   const scale = checkOptions(options, shapes)
   const loaded = await loadCircuit(root, file)
   const box = loaded.model.boardBox
-  const at = { x: options.x ?? (box ? (box.minX + box.maxX) / 2 : 0), y: options.y ?? (box ? (box.minY + box.maxY) / 2 : 0) }
+  // The board's centre to the micron: half a sum of two decimals is rarely a decimal, and the number is written into the file.
+  const at = { x: options.x ?? (box ? micron((box.minX + box.maxX) / 2) : 0), y: options.y ?? (box ? micron((box.minY + box.maxY) / 2) : 0) }
+  if (options.net !== undefined) await requireNet(root, loaded.file, options.net, meta.engine)
   const kept = await keptAt(root, drawing)
   const id = newBoardItemId(loaded.model.boardItems ?? [], "boardgraphic")
   const edit = {
     kind: "addBoardGraphic" as const,
     file: kept,
     layer: options.layer,
+    ...(options.net === undefined ? {} : { net: options.net }),
     ...at,
     ...(options.width === undefined ? {} : { width: options.width }),
     ...(options.scale === undefined ? {} : { scale: options.scale }),
@@ -145,22 +159,27 @@ export async function importGraphic(root: string, file: string, options: ImportG
     if (created) await rm(resolveInRoot(root, kept), { force: true })
     throw error
   })
-  return { entry: result.entry, id, file: kept, layer: options.layer, at, size: { width: shapes.width * scale, height: shapes.height * scale }, skipped: shapes.skipped }
+  return { entry: result.entry, id, file: kept, layer: options.layer, ...(options.net === undefined ? {} : { net: options.net }), at, size: { width: shapes.width * scale, height: shapes.height * scale }, skipped: shapes.skipped }
 }
 
-const mm = (n: number) => String(Math.round(n * 1e3) / 1e3)
+const micron = (n: number) => Math.round(n * 1e3) / 1e3
+const mm = (n: number) => String(micron(n))
 
 /** The answer's lines: what was placed, where and how large, and what the reader left out. */
 export function formatGraphicImport(result: ImportGraphicResult): string[] {
   const lines = [
-    `Change ${result.entry.id}: ${result.id} from ${result.file} on the ${result.layer}, ${mm(result.size.width)} x ${mm(result.size.height)} mm, centred at (${mm(result.at.x)}, ${mm(result.at.y)})`,
+    `Change ${result.entry.id}: ${result.id} from ${result.file} on the ${result.layer}${result.net === undefined ? "" : ` on net ${result.net}`}, ${mm(result.size.width)} x ${mm(result.size.height)} mm, centred at (${mm(result.at.x)}, ${mm(result.at.y)})`,
   ]
-  lines.push(result.skipped.length === 0 ? "Nothing in the file was left out." : `Left out of the file: ${result.skipped.join("; ")}`)
+  // The reader's notes are what it left out, but for one: a drawing of light shapes only, which it draws as ink.
+  const left = result.skipped.filter((note) => note !== ALL_LIGHT_NOTE)
+  const allLight = left.length < result.skipped.length
+  lines.push(left.length === 0 ? "Nothing in the file was left out." : `Left out of the file: ${left.join("; ")}`)
   lines.push(`The drawing is kept as ${result.file}; it stays there if the change is undone.`)
   if (["top", "bottom", "inner1", "inner2"].includes(result.layer)) {
-    lines.push("On copper it belongs to no net: every net keeps clear of it. Its lines are checked against the minimum track width; thin parts of its filled shapes are not.")
+    const net = result.net === undefined ? "On copper it belongs to no net: every net keeps clear of it." : `On copper it is ${result.net}'s copper: it joins the ${result.net} pads, tracks and vias it touches; other nets keep clear of it.`
+    lines.push(`${net} Its lines and the narrowest parts of its filled shapes are checked against the minimum track width (drawing-width).`)
   }
-  lines.push("Colour is not read: every filled shape is ink (or an opening); white details over black come out solid unless drawn as holes in one path.")
+  lines.push(`${allLight ? "The file has no dark shape, so its light shapes are drawn as ink" : "Dark shapes are ink and light shapes cut them out, in the file's order"}; gradients and images are not read.`)
   lines.push(`Move, resize or remove it with edit_circuit set_drawing / remove_drawing { "id": "${result.id}" }.`)
   return lines
 }

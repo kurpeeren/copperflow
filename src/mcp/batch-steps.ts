@@ -135,7 +135,7 @@ function setDrawingStep(value: unknown): Step {
   if (Object.keys(props).length === 0) throw new Error(`set_drawing names nothing to change. It takes ${STEP_SHAPES.set_drawing}`)
   if (isSilkTextId(id) || isBoardGraphicId(id)) {
     const literal = Object.entries(props).find(([, one]) => Array.isArray(one))
-    const takes = isSilkTextId(id) ? "a silkscreen text takes text, x, y, layer, height, rotation and name" : "a board drawing takes file, layer, x, y, width, scale, rotation, fill and name"
+    const takes = isSilkTextId(id) ? "a silkscreen text takes text, x, y, layer, height, rotation and name" : "a board drawing takes file, layer, net, x, y, width, scale, rotation, fill and name"
     if (literal) throw new Error(`set_drawing ${literal[0]}: ${takes}`)
     const kind = isSilkTextId(id) ? "setSilkText" : "setBoardGraphic"
     return { edit: { kind, id, props: props as Record<string, string | number | boolean | null> }, label: `set ${id} ${Object.keys(props).join(",")}` }

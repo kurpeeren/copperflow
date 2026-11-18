@@ -380,7 +380,7 @@ export function App() {
         <StatusPill build={build} errors={checks.counts.errors} noCircuit={data.filesListed && hasNoCircuit(data.files)} onOpen={openChecks} />
       </MenuBar>
       <Toolbar view={tab} unit={workspace.unit} selected={selection.size} toggles={toggles} off={off} run={runCommand} />
-      {dialog && <StudioDialog name={dialog} onClose={closeDialog} rules={{ fabrication: build.design?.rules.fabrication, save: actions.setFilletRadius }} makeSheet={makeSheet} importPart={importPart} newPart={newPart} system={system} newCircuit={newCircuit} footprints={footprints} exportChecks={exportChecks} />}
+      {dialog && <StudioDialog name={dialog} onClose={closeDialog} rules={{ fabrication: build.design?.rules.fabrication, save: actions.setFilletRadius }} makeSheet={makeSheet} importPart={importPart} newPart={newPart} system={system} newCircuit={newCircuit} footprints={footprints} exportChecks={exportChecks} importGraphic={{ boardLayers: build.design?.pcb.board?.layers ?? 2, nets: build.design?.circuit.nets ?? [], send: actions.importGraphic }} />}
       {packages && <PackagesDialog request={packages} onClose={packagesRequests.close} />}
       {verifying && <VerifyDialog target={verifying} panel={verifyPanel} onClose={closeVerify} />}
       {data.serverGone && (

@@ -128,13 +128,14 @@ Usage:
   copperflow spice <file> [--sheet <name>] [--set net=volts ...] [--out file.cir]
                                               write the same circuit as a SPICE3 netlist for another simulator
   copperflow board <file> --dxf <path> [--layer <name>] [--units mm|inch] [--origin keep] [--replace]
+  copperflow board <file> --svg <path> [--origin keep] [--replace]
                                               set the board's outline, holes and keepouts from a DXF drawing
   copperflow graphic <file> <drawing.svg|dxf> --layer top-silkscreen|bottom-silkscreen|top-mask|bottom-mask|top|bottom|inner1|inner2
-                  [--at x,y] [--width mm | --scale n] [--rotation deg] [--fill] [--name text]
+                  [--at x,y] [--width mm | --scale n] [--rotation deg] [--fill] [--name text] [--net name]
                                               place a drawing (a logo, a mark) from the project on the board, kept
                                               in graphics/; at the board's centre unless --at; --fill fills closed
-                                              outlines (a DXF has no fill of its own); on copper it belongs to no
-                                              net and every net keeps clear of it
+                                              outlines (a DXF has no fill of its own); on copper --net makes it that
+                                              net's copper, else it belongs to no net and every net keeps clear of it
   copperflow import kicad <board.kicad_pcb> [--name <circuit name>] [--replace] [--origin keep]
                                               make a new circuit from a KiCad board: its outline, parts (as
                                               library parts, not verified), nets, tracks, vias and pours
@@ -327,14 +328,16 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
 
 async function boardCommand(root: string, rest: string[], options: CliOptions): Promise<string> {
   const [dxf, afterDxf] = takeOption(rest, "--dxf")
-  const [layer, afterLayer] = takeOption(afterDxf, "--layer")
+  const [svg, afterSvg] = takeOption(afterDxf, "--svg")
+  if (dxf !== undefined && svg !== undefined) throw new Error("Give --dxf or --svg, not both")
+  const [layer, afterLayer] = takeOption(afterSvg, "--layer")
   const [units, afterUnits] = takeOption(afterLayer, "--units")
   const [origin, afterOrigin] = takeOption(afterUnits, "--origin")
   const [replace, args] = takeFlag(afterOrigin, "--replace")
   if (units !== undefined && units !== "mm" && units !== "inch") throw new Error(`--units must be mm or inch, not ${units}`)
   if (origin !== undefined && origin !== "keep") throw new Error(`--origin takes keep, not ${origin}`)
   const request = {
-    dxf: required(dxf, "--dxf"),
+    dxf: required(dxf ?? svg, "--dxf or --svg"),
     ...(layer !== undefined ? { layer } : {}),
     units: units === "inch" ? ("inch" as const) : units === "mm" ? ("mm" as const) : undefined,
     origin: origin === "keep" ? ("keep" as const) : undefined,

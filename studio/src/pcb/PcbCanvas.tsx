@@ -48,6 +48,9 @@ import { useSilkTexts, withSilkTextDrag } from "./use-silk-texts"
 import type { SilkTextScene } from "./silk-text-draw"
 import { pcbPress } from "./press-order"
 import { usePartPlaceTool, type PartPlaceTool } from "./use-part-place-tool"
+import { useBoardTextTool } from "./use-board-text-tool"
+import { InlineTextField } from "./DrawText"
+import { disarmPart } from "../shell/armed-part"
 
 const BACKGROUND = PALETTE.background
 
@@ -352,10 +355,11 @@ export function PcbCanvas(props: PcbCanvasProps) {
   useTrackShape({ design, builtMark, selection, lockedParts: parts.locked, routing: trackArm.route !== null, send: (change) => copper.latest.current.send(change), busy: () => copper.latest.current.inFlight, notify: actions.notify })
   const track = useTrackTool({ design, builtMark, copper: copper.shown, camera, cursor, step, snap, layers, activeLayer: props.activeLayer, onActiveLayer: props.onActiveLayer, locked: parts.locked, actions, arm: trackArm, onArm: note.disarm })
   usePcbToolState(track.command ?? boxToolCommand(note.which), note.disarm, trackArm.disarm)
-  const partPlace = usePartPlaceTool({ view: "pcb", step, snap, othersArmed: note.armed || trackArm.armed !== null || pours.armed, putOthersAway: () => {
-    disarmNoteAndTrack()
-    pours.disarm()
-  } })
+  // Arming the board text or a Library part puts the other PCB tools away, and each of the two the other.
+  const putAway = (other: () => void) => () => [disarmNoteAndTrack, pours.disarm, other].forEach((stop) => stop())
+  const boardText = useBoardTextTool({ design, circuit, actions, step, snap, activeLayer: props.activeLayer, othersArmed: note.armed || trackArm.armed !== null || pours.armed, putOthersAway: putAway(disarmPart), onSelect })
+  const partPlace = usePartPlaceTool({ view: "pcb", step, snap, othersArmed: note.armed || trackArm.armed !== null || pours.armed || boardText.armed, putOthersAway: putAway(boardText.disarm) })
+  const firstTool: PartPlaceTool = { armed: partPlace.armed || boardText.armed, press: (event, world) => partPlace.press(event, world) || boardText.press(event, world), hint: partPlace.hint ?? boardText.hint }
   const silkShown = useCallback((name: string) => {
     const part = design.pcb.parts.find((p) => p.component === name)
     return part !== undefined && layers[part.side === "top" ? "topSilk" : "bottomSilk"]
@@ -378,12 +382,13 @@ export function PcbCanvas(props: PcbCanvasProps) {
   const probe = scene && { pick: (world: Point) => hoverTarget(world, scene), still: (target: HoverTarget, world: Point) => stillOver(target, world, scene) }
   const hoverLabel = useHoverLabel({ enabled: props.hoverLabels, busy: track.routing, probe, camera, design })
   const label = { ...hoverLabel, at: (world: Point) => camera && hoverLabel.move(world, worldToScreen(camera, size, world)) }
-  const { pointer, onLeave } = pcbPointer({ copper, pours, silk, track, hover, boxes: parts.boxes, context, texts: texts.tools, camera, size, canvasRef, gestures, setCursor, onOpenProperties: props.onOpenProperties, onSelect, label, partPlace })
-  const cursorStyle = track.armed || partPlace.armed ? "crosshair" : (silk.cursor ?? pours.cursor ?? copperCursor(copper) ?? cursorFor(gesture, note.armed, hover.part !== undefined || hover.text !== undefined))
+  const { pointer, onLeave } = pcbPointer({ copper, pours, silk, track, hover, boxes: parts.boxes, context, texts: texts.tools, camera, size, canvasRef, gestures, setCursor, onOpenProperties: props.onOpenProperties, onSelect, label, partPlace: firstTool })
+  const cursorStyle = track.armed || firstTool.armed ? "crosshair" : (silk.cursor ?? pours.cursor ?? copperCursor(copper) ?? cursorFor(gesture, note.armed, hover.part !== undefined || hover.text !== undefined))
   return (
     <div className="pcb-canvas" ref={wrapRef}>
-      <PcbSurface canvasRef={canvasRef} size={size} cursorStyle={cursorStyle} pointer={pointer} onLeave={onLeave} hint={partPlace.hint ?? note.hint ?? pours.hint ?? track.hint} />
+      <PcbSurface canvasRef={canvasRef} size={size} cursorStyle={cursorStyle} pointer={pointer} onLeave={onLeave} hint={firstTool.hint ?? note.hint ?? pours.hint ?? track.hint} />
       {pours.state?.tool === "hole" && <HoleDiameterField value={pours.diameter} onChange={pours.setDiameter} />}
+      {boardText.at && camera && <InlineTextField field={{ label: "Text", initial: "", at: boardText.at }} camera={camera} size={size} actions={boardText} />}
       <HoverLabel state={hoverLabel.state} />
       <PcbTools unit={unit} step={step} setStep={setStep} keep={{ show: parts.autoPlaced, onKeep: () => keepAutoPlaced(design, "pcb", parts.blockerFor, actions, circuit) }} />
       <CanvasStatus cursor={cursor} zoom={camera?.scale} unit={unit} onToggleUnit={onToggleUnit} detail={track.status ?? (hover.pad && padLabel(design, hover.pad))} gesture={gesture} rotateHeld={rotateHeld} snap={snap} />

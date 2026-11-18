@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { APP_COMMANDS, CAMERA_COMMANDS, CANVAS_TOOL_COMMANDS, COPPER_COMMANDS, FIT_COMMANDS, PART_COMMANDS, PCB_COMMANDS, SHEET_COMMANDS, SHEET_LAYOUT_COMMANDS, WIRE_COMMANDS, WORKSPACE_COMMANDS, commandOwner } from "../studio/src/shell/command-owners.js"
+import { APP_COMMANDS, CAMERA_COMMANDS, CANVAS_TOOL_COMMANDS, COPPER_COMMANDS, FIT_COMMANDS, PART_COMMANDS, PCB_COMMANDS, SHEET_COMMANDS, SHEET_LAYOUT_COMMANDS, TEXT_COMMANDS, WIRE_COMMANDS, WORKSPACE_COMMANDS, commandOwner } from "../studio/src/shell/command-owners.js"
 import { MENUS, menuItems, type CommandId } from "../studio/src/shell/menus.js"
 import { TOOLBARS } from "../studio/src/shell/toolbar.js"
 import { buildTone, statusText } from "../studio/src/shell/status-pill.js"
@@ -15,7 +15,7 @@ describe("command owners", () => {
   })
 
   test("no command has two owners", () => {
-    const all: string[] = [...APP_COMMANDS, ...Object.keys(WORKSPACE_COMMANDS), ...CAMERA_COMMANDS, ...FIT_COMMANDS, ...PART_COMMANDS, ...CANVAS_TOOL_COMMANDS, ...SHEET_COMMANDS, ...SHEET_LAYOUT_COMMANDS, ...WIRE_COMMANDS, ...PCB_COMMANDS, ...COPPER_COMMANDS]
+    const all: string[] = [...APP_COMMANDS, ...Object.keys(WORKSPACE_COMMANDS), ...CAMERA_COMMANDS, ...FIT_COMMANDS, ...PART_COMMANDS, ...CANVAS_TOOL_COMMANDS, ...TEXT_COMMANDS, ...SHEET_COMMANDS, ...SHEET_LAYOUT_COMMANDS, ...WIRE_COMMANDS, ...PCB_COMMANDS, ...COPPER_COMMANDS]
     expect(new Set(all).size).toBe(all.length)
   })
 
@@ -64,7 +64,7 @@ describe("command owners", () => {
 
   test("the schematic's tools are the schematic's alone", () => {
     expect(SHEET_COMMANDS.map(commandOwner)).toEqual(SHEET_COMMANDS.map(() => "schematic"))
-    expect(SHEET_COMMANDS).toHaveLength(10)
+    expect(SHEET_COMMANDS).toHaveLength(9)
   })
 
   test("Single routing, Via and Routing corner are the PCB's alone", () => {
@@ -105,7 +105,8 @@ describe("build status pill", () => {
 })
 
 describe("the drawing tools", () => {
-  test("are the schematic's", () => {
-    for (const command of ["drawBus", "drawPolyline", "drawArc", "drawCircle", "drawRectangle", "drawText"] as const) expect([command, commandOwner(command)]).toEqual([command, "schematic"])
+  test("are the schematic's, but Text, which either canvas answers (the PCB puts it on the board)", () => {
+    for (const command of ["drawBus", "drawPolyline", "drawArc", "drawCircle", "drawRectangle"] as const) expect([command, commandOwner(command)]).toEqual([command, "schematic"])
+    expect(commandOwner("drawText")).toBe("canvas")
   })
 })

@@ -4,6 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { basename, extname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { exportHtml } from "../core/html-export.js"
+import type { CanvasLoader } from "../engine/fab/picture/png.js"
 import { z, ZodError } from "zod"
 import {
   BUILTIN_PARTS,
@@ -92,6 +93,8 @@ export interface StudioOptions {
   onIdle?: () => void
   /** Called on an authenticated POST /api/stop; by default the Studio closes. */
   onStop?: () => void
+  /** Loads the canvas package the fabrication export draws its board pictures with; tests pass one that is missing, to skip them. */
+  canvas?: CanvasLoader
 }
 
 export interface Studio {
@@ -270,10 +273,11 @@ const Bodies = {
   }),
   // Layout → Fit board: the rectangle round the parts, with a margin in mm.
   fitBoard: z.object({ file, margin: z.number().min(0).max(50).optional() }),
-  // File → Import board (DXF or KiCad): the picked drawing's or board's file name and text.
+  // File → Import board (DXF, SVG or KiCad): the picked drawing's or board's file name and text.
   importBoard: z.object({ file, name: z.string().min(1).max(260), text: z.string().max(MAX_BODY_BYTES) }),
-  // File → Import a drawing (SVG or DXF): the picked file's name and text, the layer and the width; it lands at the board's centre.
-  importGraphic: z.object({ file, name: z.string().min(1).max(260), text: z.string().max(MAX_BODY_BYTES), layer: z.string().max(64), width: z.number().finite().optional() }),
+  // File → Import a drawing (SVG or DXF): the picked file's name and text, the layer, the width, whether closed outlines
+  // are filled and the drawing's own name (`title`); it lands at the board's centre.
+  importGraphic: z.object({ file, name: z.string().min(1).max(260), text: z.string().max(MAX_BODY_BYTES), layer: z.string().max(64), width: z.number().finite().optional(), fill: z.boolean().optional(), title: z.string().min(1).max(100).optional(), net: z.string().min(1).max(200).optional() }),
   // Route → Unroute: the router's copper among the ids, or all of it.
   unroute: z.object({ file, ids: z.array(z.string().min(1).max(32)).max(5000).optional() }),
   // Edit → Make sub-sheet: `preview` answers what it would do and writes nothing.
@@ -471,7 +475,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       case "POST /api/import-graphic": {
         const body = Bodies.importGraphic.parse(await readJson(req))
         const circuit = await resolveCircuit(root, body.file)
-        const options = { source: { name: body.name, text: body.text }, layer: body.layer, ...(body.width === undefined ? {} : { width: body.width }) }
+        const options = { source: { name: body.name, text: body.text }, layer: body.layer, width: body.width, fill: body.fill, name: body.title, net: body.net }
         const result = await importGraphic(root, circuit.file, options, { author: "human", engine: building.builder })
         const writeMark = live.nextMark()
         live.requestBuild(circuit.file)
@@ -585,7 +589,7 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       case "POST /api/export": {
         const circuit = (await resolveCircuit(root, Bodies.build.parse(await readJson(req)).file)).file
         if (router.running !== undefined) throw new HttpError(409, `The board of ${router.running} is being routed; cancel it or wait for it to end before exporting`)
-        const result = await exportFabrication(root, circuit, { engine: { build: (_root, file) => designOf(file) } })
+        const result = await exportFabrication(root, circuit, { engine: { build: (_root, file) => designOf(file) }, ...(options.canvas ? { canvas: options.canvas } : {}) })
         if (!result.written) throw new HttpError(422, `No fabrication files written: ${result.errors.join("; ")}`)
         return send(res, result)
       }

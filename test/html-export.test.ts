@@ -5,6 +5,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
 import { runCli } from "../src/cli-commands.js"
+import { exportHtml } from "../src/core/html-export.js"
 import { createCopperflowServer } from "../src/mcp/server.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
 import { shortTempDir } from "./helpers/short-temp.js"
@@ -29,12 +30,22 @@ const BROKEN = `export default () => (
 )
 `
 const DATE = new Date("2026-03-04T05:06:08Z")
+/**
+ * The page's seven pictures at the smallest width the renderer takes. Tests that look at what the page holds, not at
+ * how big its pictures are, draw them this small: at full size an export takes 20 s or more on a loaded machine
+ * under coverage, and two of them in one test came within seconds of the limit.
+ */
+const SMALL_PICTURES = 320
+/** For the tests that do draw and embed every picture at full size, or run two exports back to back, under coverage. */
+const LOADED_MACHINE_MS = 300_000
 const renderer = () => import("../studio/src/render/node-render.js")
 
 let root: string
 let out: string[]
 let err: string[]
 const run = (...args: string[]) => runCli(args, root, { out: (s) => out.push(s), err: (s) => err.push(s) }, { engine: inProcessEngine, renderer, date: DATE })
+/** The page as `copperflow html` writes it, with small pictures; the same engine, renderer and date as `run`. */
+const exportSmallPage = (file: string, look?: { mask: "black" }) => exportHtml(root, file, { engine: inProcessEngine, renderer, date: DATE, pictureWidth: SMALL_PICTURES, ...(look ? { look } : {}) })
 const exists = (path: string) => stat(join(root, path)).then(
   () => true,
   () => false,
@@ -79,11 +90,11 @@ describe("copperflow html", () => {
     expect(html).not.toMatch(/https?:\/\//)
     // Nothing but the page is left beside the circuit.
     expect((await readdir(join(root, "boards"))).sort()).toEqual(["led.circuit.tsx", "led.html"])
-  })
+  }, LOADED_MACHINE_MS)
 
   test("the embedded files are the ones the other commands write", async () => {
     await writeFile(join(root, "led.circuit.tsx"), CLEAN)
-    expect(await run("html", "led.circuit.tsx")).toBe(0)
+    await exportSmallPage("led.circuit.tsx")
     const files = links(await readFile(join(root, "led.html"), "utf8"))
     expect([...files.keys()]).toEqual(["led-fab.zip", "led.glb", "led.step", "led-bom.csv"])
     expect([...files.values()].map((file) => file.mime)).toEqual(["application/zip", "model/gltf-binary", "model/step", "text/csv"])
@@ -100,16 +111,21 @@ describe("copperflow html", () => {
     expect(files.get("led.step")!.bytes.equals(await readFile(join(root, "led.step")))).toBe(true)
     expect(await run("bom", "led.circuit.tsx", "--csv")).toBe(0)
     expect(files.get("led-bom.csv")!.bytes.toString("utf8")).toBe(out.at(-1))
-  })
+  }, LOADED_MACHINE_MS)
 
+  // The page's own determinism is proven picture by picture in html-page.test.ts; this is the one end-to-end check that
+  // the whole export (pictures, zip, GLB, STEP, BOM) carries nothing of the run into the bytes. Small pictures keep it
+  // to the work that matters: a second full-size export doubled a test that was already the slowest of the file.
   test("the same design, look and date write the same bytes", async () => {
     await writeFile(join(root, "led.circuit.tsx"), CLEAN)
-    expect(await run("html", "led.circuit.tsx", "--mask", "black")).toBe(0)
+    await exportSmallPage("led.circuit.tsx", { mask: "black" })
     const first = await readFile(join(root, "led.html"))
-    expect(await run("html", "led.circuit.tsx", "--mask", "black")).toBe(0)
+    expect(first.length).toBeGreaterThan(100_000)
+    await exportSmallPage("led.circuit.tsx", { mask: "black" })
     expect((await readFile(join(root, "led.html"))).equals(first)).toBe(true)
     expect(first.toString("utf8")).toContain("2026-03-04")
-  })
+    expect(links(first.toString("utf8")).size).toBe(4)
+  }, LOADED_MACHINE_MS)
 
   test("a design with errors is still written, without the fabrication files and saying why", async () => {
     await writeFile(join(root, "bad.circuit.tsx"), BROKEN)
@@ -143,22 +159,24 @@ describe("copperflow html", () => {
     const html = await readFile(join(root, "share", "io-8.html"))
     expect(html.length).toBeLessThan(6_000_000)
     expect((html.toString("utf8").match(/<h3>/g) ?? []).length).toBeGreaterThanOrEqual(1)
-  }, 120_000)
+  }, LOADED_MACHINE_MS)
 })
 
 describe("export_html", () => {
   test("writes the page and answers the CLI's lines", async () => {
+    // The client gives up on a request after 60 s by default, which one full-size export outlasts on a loaded machine.
+    const patient = { timeout: LOADED_MACHINE_MS }
     await writeFile(join(root, "led.circuit.tsx"), CLEAN)
     const server = createCopperflowServer(root, { engine: inProcessEngine, renderer })
     const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
     const client = new Client({ name: "test", version: "0.0.0" })
     await Promise.all([server.connect(serverSide), client.connect(clientSide)])
-    const result = (await client.callTool({ name: "export_html", arguments: { file: "led.circuit.tsx", out: "share/led.html", look: { mask: "blue" } } })) as { isError?: boolean; content: { text: string }[] }
+    const result = (await client.callTool({ name: "export_html", arguments: { file: "led.circuit.tsx", out: "share/led.html", look: { mask: "blue" } } }, undefined, patient)) as { isError?: boolean; content: { text: string }[] }
     expect(result.isError).toBeFalsy()
     expect(result.content[0]!.text).toMatch(/^Wrote share\/led\.html \(\d+ kB\): the design as one page/)
     expect(await exists("share/led.html")).toBe(true)
-    const refused = (await client.callTool({ name: "export_html", arguments: { file: "led.circuit.tsx", out: "led.png" } })) as { isError?: boolean; content: { text: string }[] }
+    const refused = (await client.callTool({ name: "export_html", arguments: { file: "led.circuit.tsx", out: "led.png" } }, undefined, patient)) as { isError?: boolean; content: { text: string }[] }
     expect(refused.isError).toBe(true)
     await client.close()
-  })
+  }, LOADED_MACHINE_MS)
 })

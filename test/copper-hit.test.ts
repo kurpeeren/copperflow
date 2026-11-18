@@ -48,8 +48,9 @@ describe("copperAt", () => {
     expect(at(5, 0, { armed: "note" })).toBeUndefined()
   })
 
-  test("a layer the Layer panel has no row for (inner copper) is not shown", () => {
-    expect(copperShown({ kind: "track", layer: "inner1" }, DEFAULT_LAYERS)).toBe(false)
+  test("inner copper follows its own row (listed on a 4-layer board)", () => {
+    expect(copperShown({ kind: "track", layer: "inner1" }, DEFAULT_LAYERS)).toBe(true)
+    expect(copperShown({ kind: "track", layer: "inner1" }, { ...DEFAULT_LAYERS, inner1: false })).toBe(false)
     expect(copperShown({ kind: "track", layer: "inner1", missingLayer: "inner1" }, DEFAULT_LAYERS)).toBe(true)
     expect(copperShown({ kind: "via", missingLayer: "inner1" }, { ...DEFAULT_LAYERS, keepout: false })).toBe(false)
     expect(copperShown({ kind: "track", layer: "top" }, DEFAULT_LAYERS)).toBe(true)

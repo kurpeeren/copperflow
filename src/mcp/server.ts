@@ -291,7 +291,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "edit_circuit",
     {
       description:
-        'Apply several edits in order as ONE change. Each edit has exactly one key, shaped like the tool of that name; connect takes corners too. add_drawing, set_drawing, remove_drawing, add_page, rename_page, remove_page, wire_corners, rename_parts, rename_port, sheet_size, set_pour and set_hole: guide { topic: "writing-circuits" }. If one is refused nothing is written and the answer names it.',
+        'Apply several edits in order as ONE change, each with one key shaped like the tool of that name (connect also takes corners). add_drawing, set_drawing, remove_drawing, add_page, rename_page, remove_page, wire_corners, rename_parts, rename_port, sheet_size, set_pour, set_hole: guide { topic: "writing-circuits" }. One refused edit writes nothing; the answer names it.',
       inputSchema: { file, edits: z.array(editItem).min(1).max(100) },
     },
     ({ file: circuit, edits }) =>

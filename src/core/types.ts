@@ -223,10 +223,11 @@ export type Edit =
   | { kind: "removeSilkText"; id: string }
   /**
    * Adds a `<boardgraphic>`: the drawing in `file` (graphics/<name>.svg or .dxf) centred on x, y in mm on `layer`;
-   * `width` in mm keeping its aspect, or `scale`; rotation in degrees; `fill` fills its closed lines.
+   * `width` in mm keeping its aspect, or `scale`; rotation in degrees; `fill` fills its closed lines; `net`, on copper only,
+   * makes it that net's copper.
    */
-  | { kind: "addBoardGraphic"; file: string; layer: string; x: number; y: number; width?: number; scale?: number; rotation?: number; fill?: boolean; name?: string }
-  /** Moves, resizes, turns, re-layers or renames a drawing: any of file, layer, x, y, width, scale, rotation, fill, name (null removes width, scale, rotation, fill or name). */
+  | { kind: "addBoardGraphic"; file: string; layer: string; net?: string; x: number; y: number; width?: number; scale?: number; rotation?: number; fill?: boolean; name?: string }
+  /** Moves, resizes, turns, re-layers or renames a drawing: any of file, layer, net, x, y, width, scale, rotation, fill, name (null removes width, scale, rotation, fill, name or net). */
   | { kind: "setBoardGraphic"; id: string; props: Record<string, Literal | null> }
   | { kind: "removeBoardGraphic"; id: string }
   /** In a sheet file: renames a `<port>` and the trace ends that name its net (`net.<from>`). */

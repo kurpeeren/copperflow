@@ -11,6 +11,7 @@ import { ENGINE_FILES } from "../src/engine/engine.js"
 import { collectProjectFiles } from "../src/engine/project-files.js"
 import { routeBoard } from "../src/engine/router/route-board.js"
 import { applyLayoutEdits } from "../src/core/layout-edits.js"
+import type { CanvasLoader } from "../src/engine/fab/picture/png.js"
 import type { DesignBuilder } from "../src/studio/live.js"
 import type { RouteEvent } from "../src/studio/route-events.js"
 import type { RouteWorker, RouteWorkerFactory, RouteWorkerReply, RouteWorkerRequest } from "../src/studio/route-runner.js"
@@ -31,6 +32,16 @@ ${[resistor("R1", -5.5, 0), resistor("R2", 5.5, 0), resistor("R3", 0, -4.5, "pcb
   </board>
 )
 `
+/** What a test that exports gets: the work is small without the pictures, but a loaded machine under coverage is slow at everything. */
+const EXPORT_TEST_MS = 120_000
+/**
+ * The canvas package as if it were not installed: an export then leaves out the board's two 1600 px pictures. The
+ * tests that use it prove when an export runs, not what is in it, and with the pictures one export took 13 to 25 s
+ * under coverage on a loaded machine, against the 30 s these tests were given.
+ */
+const noCanvas = (): never => {
+  throw Object.assign(new Error("Cannot find package '@napi-rs/canvas'"), { code: "ERR_MODULE_NOT_FOUND" })
+}
 /** Builds in this process; while `slow` is set, a build first says it began and waits for `release`. */
 const pace = { slow: false, began: (): void => undefined, release: Promise.resolve() }
 const builder: DesignBuilder = {
@@ -48,8 +59,8 @@ let studio: Studio
 let events: RouteEvent[]
 let stopEvents: () => void
 
-async function open(routeWorker?: RouteWorkerFactory | null) {
-  studio = await startReachableStudio({ root, staticDir: join(root, "static"), builder, ...(routeWorker === undefined ? {} : { routeWorker }) })
+async function open(routeWorker?: RouteWorkerFactory | null, canvas?: CanvasLoader) {
+  studio = await startReachableStudio({ root, staticDir: join(root, "static"), builder, ...(routeWorker === undefined ? {} : { routeWorker }), ...(canvas ? { canvas } : {}) })
   events = []
   const controller = new AbortController()
   stopEvents = () => controller.abort()
@@ -106,7 +117,7 @@ async function data(response: Response) {
 
 /** The run's last event once it has ended. */
 async function ended(): Promise<RouteEvent> {
-  await vi.waitFor(() => expect(events.some((event) => ["done", "discarded", "cancelled", "failed"].includes(event.state))).toBe(true), { timeout: 20_000 })
+  await vi.waitFor(() => expect(events.some((event) => ["done", "discarded", "cancelled", "failed"].includes(event.state))).toBe(true), { timeout: 60_000 })
   return events.at(-1) as RouteEvent
 }
 
@@ -170,7 +181,7 @@ describe("Route → Autoroute on the server", () => {
 
   test("Export → Fabrication files waits for no route: while one runs it is a 409, and it exports once the run ends", async () => {
     const silent = fakeWorker(() => undefined)
-    await open(silent.factory)
+    await open(silent.factory, noCanvas)
     await data(await api("/api/route", { file: FILE, scope: { kind: "all" } }))
     const during = await api("/api/export", { file: FILE })
     expect(during.status).toBe(409)
@@ -179,10 +190,10 @@ describe("Route → Autoroute on the server", () => {
     await data(await api("/api/route/cancel", {}))
     await ended()
     expect((await data(await api("/api/export", { file: FILE }))).zip).toBe("main-fab.zip")
-  }, 30_000)
+  }, EXPORT_TEST_MS)
 
   test("Export → Fabrication files runs in the project's write queue, so it waits for a write in progress", async () => {
-    await open(null)
+    await open(null, noCanvas)
     let release = (): void => undefined
     const held = inProjectQueue(root, () => new Promise<void>((done) => (release = done)))
     let finished = false
@@ -197,7 +208,7 @@ describe("Route → Autoroute on the server", () => {
     await held
     expect((await exported).status).toBe(200)
     expect((await readFile(join(root, "main-fab.zip"))).subarray(0, 2).toString()).toBe("PK")
-  }, 30_000)
+  }, EXPORT_TEST_MS)
 
   test("one run at a time; cancel ends the worker and writes nothing", async () => {
     const silent = fakeWorker(() => undefined)

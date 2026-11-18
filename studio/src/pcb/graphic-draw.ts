@@ -6,7 +6,7 @@ import { graphicBox } from "../../../src/engine/graphic-place.js"
 import type { BoardGraphic } from "../../../src/engine/model.js"
 import { PALETTE, type Ctx } from "./ctx.js"
 import type { Point } from "./geometry.js"
-import type { LayerVisibility } from "./layers.js"
+import { copperLayerShown, type LayerVisibility } from "./layers.js"
 import type { SilkTextScene } from "./silk-text-draw.js"
 
 const RING_GAP_PX = 3
@@ -23,10 +23,10 @@ const bottom = (graphic: BoardGraphic) => graphic.layer.startsWith("bottom")
 const isMask = (graphic: BoardGraphic) => graphic.layer.endsWith("mask")
 const isCopper = (graphic: BoardGraphic) => COPPER_COLOURS[graphic.layer] !== undefined
 
-/** Whether the drawing's layer is shown: the silk layer of its side; for a mask opening or copper on a side, that side's copper; inner copper always. */
+/** Whether the drawing's layer is shown: the silk layer of its side; for a mask opening that side's copper; for copper its own copper layer, an inner one too. */
 export function graphicShown(layers: LayerVisibility, graphic: BoardGraphic): boolean {
-  if (graphic.layer === "inner1" || graphic.layer === "inner2") return true
-  if (isMask(graphic) || isCopper(graphic)) return layers[bottom(graphic) ? "bottom" : "top"]
+  if (isCopper(graphic)) return copperLayerShown(graphic.layer, layers)
+  if (isMask(graphic)) return layers[bottom(graphic) ? "bottom" : "top"]
   return layers[bottom(graphic) ? "bottomSilk" : "topSilk"]
 }
 

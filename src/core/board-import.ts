@@ -1,10 +1,11 @@
-// Import board: the outline, mounting holes and inner shapes of a DXF drawing written to a circuit's board as one
-// history entry (board-shape-edit.ts). The agent's import_board, the CLI's `copperflow board --dxf` and the Studio's
-// File → Import board outline (DXF) all call importBoard and show formatBoardImport's lines.
+// Import board: the outline, mounting holes and inner shapes of a DXF or SVG drawing (board-import-svg.ts) written to
+// a circuit's board as one history entry (board-shape-edit.ts). The agent's import_board, the CLI's `copperflow board
+// --dxf | --svg` and the Studio's File → Import board all call importBoard and show formatBoardImport's lines.
 import { readFile } from "node:fs/promises"
 import { basename } from "node:path"
 import { pointInPolygon } from "../engine/checks/geometry.js"
-import { boardFromDxf, DxfError, type BoardFromDrawing } from "../engine/dxf/index.js"
+import { boardFromDxf, DxfError, type BoardFromDrawing, type BoardFromDrawingOptions } from "../engine/dxf/index.js"
+import { boardFromSvg, SvgBoardError } from "./board-import-svg.js"
 import { scanCircuit } from "./analyze.js"
 import { boardShapeItems } from "./board-shape-edit.js"
 import { buildWith, type DesignSource } from "./design-source.js"
@@ -13,7 +14,7 @@ import type { Author, HistoryEntry } from "./history.js"
 import { editCircuit, loadCircuit, projectPath, resolveInRoot } from "./workspace.js"
 
 export interface ImportBoardOptions {
-  /** A DXF file inside the project, or a drawing's name and text (the Studio sends the file it picked). */
+  /** A DXF or SVG file (by its ".svg" name) inside the project, or a drawing's name and text (the Studio sends the file it picked). */
   dxf: string | { name: string; text: string }
   layer?: string | undefined
   units?: "mm" | "inch" | undefined
@@ -62,15 +63,16 @@ async function partsOutside(root: string, file: string, outline: BoardFromDrawin
  */
 export async function importBoard(root: string, file: string, options: ImportBoardOptions, meta: { author: Author; engine?: DesignSource }): Promise<ImportBoardResult> {
   const drawing = await drawingText(root, options.dxf)
+  const read: BoardFromDrawingOptions = {
+    ...(options.layer !== undefined ? { layer: options.layer } : {}),
+    ...(options.units !== undefined ? { units: options.units } : {}),
+    ...(options.origin !== undefined ? { origin: options.origin } : {}),
+  }
   let board: BoardFromDrawing
   try {
-    board = boardFromDxf(drawing.text, {
-      ...(options.layer !== undefined ? { layer: options.layer } : {}),
-      ...(options.units !== undefined ? { units: options.units } : {}),
-      ...(options.origin !== undefined ? { origin: options.origin } : {}),
-    })
+    board = /\.svg$/i.test(drawing.name) ? boardFromSvg(drawing.text, read) : boardFromDxf(drawing.text, read)
   } catch (error) {
-    if (error instanceof DxfError) throw new EditError("invalid", `${basename(drawing.name)}: ${error.message}`)
+    if (error instanceof DxfError || error instanceof SvgBoardError) throw new EditError("invalid", `${basename(drawing.name)}: ${error.message}`)
     throw error
   }
   const loaded = await loadCircuit(root, file)

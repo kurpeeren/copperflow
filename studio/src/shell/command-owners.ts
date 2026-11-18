@@ -3,7 +3,8 @@
 // so a test can check that every command shown has someone to run it.
 import { ALIGN_COMMANDS } from "../pcb/align-rules.js"
 import type { KeyActionName } from "../pcb/canvas-keys.js"
-import { DRAW_COMMANDS } from "../pcb/draw-commands.js"
+import type { DrawCommand } from "../pcb/draw-commands.js"
+import type { View } from "../pcb/positions.js"
 import type { CommandId } from "./menus.js"
 
 /** Run by use-app-commands.ts. */
@@ -38,8 +39,18 @@ export type PartCommand = (typeof PART_COMMANDS)[number]
 export const CANVAS_TOOL_COMMANDS = ["noteBox", "fitArea"] as const satisfies readonly CommandId[]
 export type CanvasToolCommand = (typeof CANVAS_TOOL_COMMANDS)[number]
 
+/**
+ * Answered by either canvas, each its own way: Place → Text arms the schematic's text tool on the schematic
+ * (use-draw-tools.ts) and the board text tool on the PCB (use-board-text-tool.ts), so it never switches views.
+ */
+export const TEXT_COMMANDS = ["drawText"] as const satisfies readonly DrawCommand[]
+export type TextCommand = (typeof TEXT_COMMANDS)[number]
+
+/** The schematic's drawing tools, every one but Text: Bus, Polyline, Arc, Circle and Rectangle. */
+const SHEET_DRAW_COMMANDS = ["drawBus", "drawPolyline", "drawArc", "drawCircle", "drawRectangle"] as const satisfies readonly Exclude<DrawCommand, TextCommand>[]
+
 /** Answered by the schematic only (SchematicCanvas.tsx); sent while the PCB is open, they switch to the schematic first. */
-export const SHEET_COMMANDS = ["wire", "netLabel", "groundFlag", "powerFlag", ...DRAW_COMMANDS] as const satisfies readonly CommandId[]
+export const SHEET_COMMANDS = ["wire", "netLabel", "groundFlag", "powerFlag", ...SHEET_DRAW_COMMANDS] as const satisfies readonly CommandId[]
 export type SheetCommand = (typeof SHEET_COMMANDS)[number]
 
 /** Answered by the schematic only, which knows its parts and their locks: Layout → Tidy sheet (auto-placed.ts). */
@@ -80,7 +91,13 @@ const has = (list: readonly CommandId[], command: CommandId) => list.includes(co
 export function commandOwner(command: CommandId): CommandOwner | undefined {
   if (has(APP_COMMANDS, command)) return "app"
   if (command in WORKSPACE_COMMANDS) return "workspace"
-  if (has(CAMERA_COMMANDS, command) || has(FIT_COMMANDS, command) || has(PART_COMMANDS, command) || has(CANVAS_TOOL_COMMANDS, command)) return "canvas"
+  if (has(CAMERA_COMMANDS, command) || has(FIT_COMMANDS, command) || has(PART_COMMANDS, command) || has(CANVAS_TOOL_COMMANDS, command) || has(TEXT_COMMANDS, command)) return "canvas"
   if (has(PCB_COMMANDS, command) || has(COPPER_COMMANDS, command) || has(POUR_COMMANDS, command)) return "pcb"
   return has(SHEET_COMMANDS, command) || has(SHEET_LAYOUT_COMMANDS, command) || has(WIRE_COMMANDS, command) || has(MARK_COMMANDS, command) ? "schematic" : undefined
+}
+
+/** The one view a command runs in when it is a view's own tool: sent while the other view is open, it switches first. */
+export function commandView(command: CommandId): View | undefined {
+  if (has(SHEET_COMMANDS, command) || has(MARK_COMMANDS, command)) return "schematic"
+  return has(PCB_COMMANDS, command) || has(COPPER_COMMANDS, command) || has(POUR_COMMANDS, command) ? "pcb" : undefined
 }

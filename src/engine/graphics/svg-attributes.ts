@@ -1,6 +1,7 @@
 // What an SVG element's attributes say: its paint (inherited down the tree), its basic shape as path data, and the
-// root's user unit in mm. Colours are not kept: a white fill fills like a black one, and the placing side decides
-// what ink means. Opacity is ignored.
+// root's user unit in mm. Each paint's colour is read as ink or clear (colour.ts); an opacity of 0 draws nothing,
+// any other opacity is drawn in full.
+import { isZeroOpacity, readColour, type Tone } from "./colour.js"
 import { GraphicError } from "./shapes.js"
 import { multiply, scaling, translation, type Matrix } from "./transform.js"
 import type { XmlElement } from "./xml.js"
@@ -10,12 +11,20 @@ export interface Paint {
   fill: boolean
   fillRule: FillRule
   stroke: boolean
+  /** Whether the fill and the stroke are dark (ink) or light (clear). */
+  fillTone: Tone
+  strokeTone: Tone
+  /** False under an opacity of 0 (it multiplies down the tree, so no child undoes it). */
+  opaque: boolean
+  /** A fill-opacity or stroke-opacity of 0, inherited until a child gives its own. */
+  fillTransparent: boolean
+  strokeTransparent: boolean
   /** In user units. */
   strokeWidth: number
   visible: boolean
 }
 
-export const DEFAULT_PAINT: Paint = { fill: true, fillRule: "nonzero", stroke: false, strokeWidth: 1, visible: true }
+export const DEFAULT_PAINT: Paint = { fill: true, fillRule: "nonzero", stroke: false, fillTone: "ink", strokeTone: "ink", opaque: true, fillTransparent: false, strokeTransparent: false, strokeWidth: 1, visible: true }
 
 export const MM_PER_PX = 25.4 / 96
 const MM_PER_UNIT: Record<string, number> = { "": MM_PER_PX, px: MM_PER_PX, mm: 1, cm: 10, in: 25.4, pt: 25.4 / 72, pc: 25.4 / 6 }
@@ -38,22 +47,44 @@ export function numberOf(value: string | undefined, what: string): number | unde
   return number
 }
 
-/** The element's paint, given its parent's; `usesUrl` tells a gradient or pattern paint, drawn as a plain one. */
-export function paintOf(properties: ReadonlyMap<string, string>, parent: Paint): { paint: Paint; usesUrl: boolean } {
+/** One paint property (fill or stroke) given the parent's: whether it paints, its tone, and whether its colour was unread. */
+function paintPart(value: string | undefined, painted: boolean, tone: Tone): { painted: boolean; tone: Tone; unread: boolean } {
+  if (value === undefined || value === "inherit") return { painted, tone, unread: false }
+  if (value.startsWith("url(")) return { painted: true, tone: "ink", unread: false }
+  const colour = readColour(value)
+  if (colour === "none") return { painted: false, tone, unread: false }
+  if (colour === "unread") return { painted: true, tone: "ink", unread: true }
+  return { painted: true, tone: colour.tone, unread: false }
+}
+
+/** An inherited opacity property of 0: the element's own value when it gives one, else the parent's. */
+const transparent = (value: string | undefined, parent: boolean) => (value === undefined || value.trim() === "inherit" ? parent : isZeroOpacity(value))
+
+/**
+ * The element's paint, given its parent's; `usesUrl` tells a gradient or pattern paint, drawn as a plain one, and
+ * `unread` counts the colours that could not be read (drawn as ink).
+ */
+export function paintOf(properties: ReadonlyMap<string, string>, parent: Paint): { paint: Paint; usesUrl: boolean; unread: number } {
   const fill = properties.get("fill")?.trim()
   const stroke = properties.get("stroke")?.trim()
   const rule = properties.get("fill-rule")?.trim()
   const visibility = properties.get("visibility")?.trim()
   const width = numberOf(properties.get("stroke-width"), "stroke width")
-  const painted = (value: string | undefined, inherited: boolean) => (value === undefined || value === "inherit" ? inherited : value !== "none" && value !== "transparent")
+  const fillPart = paintPart(fill, parent.fill, parent.fillTone)
+  const strokePart = paintPart(stroke, parent.stroke, parent.strokeTone)
   const paint: Paint = {
-    fill: painted(fill, parent.fill),
+    fill: fillPart.painted,
     fillRule: rule === "evenodd" || rule === "nonzero" ? rule : parent.fillRule,
-    stroke: painted(stroke, parent.stroke),
+    stroke: strokePart.painted,
+    fillTone: fillPart.tone,
+    strokeTone: strokePart.tone,
+    opaque: parent.opaque && !isZeroOpacity(properties.get("opacity")),
+    fillTransparent: transparent(properties.get("fill-opacity"), parent.fillTransparent),
+    strokeTransparent: transparent(properties.get("stroke-opacity"), parent.strokeTransparent),
     strokeWidth: width === undefined ? parent.strokeWidth : Math.abs(width),
     visible: visibility === undefined || visibility === "inherit" ? parent.visible : visibility === "visible",
   }
-  return { paint, usesUrl: [fill, stroke].some((v) => v?.startsWith("url(")) }
+  return { paint, usesUrl: [fill, stroke].some((v) => v?.startsWith("url(")), unread: Number(fillPart.unread) + Number(strokePart.unread) }
 }
 
 const num = (element: XmlElement, name: string) => numberOf(element.attributes.get(name), `attribute ${name}`) ?? 0

@@ -2,11 +2,12 @@
 // `use` of a local "#id" (one level: a `use` inside what a `use` draws is left out). defs, symbol and the like are
 // drawn only through a `use`; a symbol's own viewBox is not applied, nor a nested svg's. Nothing is fetched: an href
 // to a file or a URL is counted and left alone. Text, images, style sheets, clipping and masking are left out and
-// counted.
+// counted. Dark paint is ink and light paint is clear, applied in the file's order (paint-order.ts).
 import type { Point } from "../model.js"
+import { applyInOrder, type PaintedItem } from "./paint-order.js"
 import { parsePathData } from "./path-data.js"
 import { fillsFromRings } from "./rings.js"
-import { counted, CURVE_TOLERANCE_MM, finish, GraphicError, type GraphicFill, type GraphicShapes, type GraphicStroke } from "./shapes.js"
+import { counted, CURVE_TOLERANCE_MM, finish, GraphicError, type GraphicShapes } from "./shapes.js"
 import { DEFAULT_PAINT, numberOf, paintOf, propertiesOf, rootMatrix, shapeData, type Paint } from "./svg-attributes.js"
 import { apply, maxScale, meanScale, multiply, parseTransform, translation, type Matrix } from "./transform.js"
 import { parseXml, type XmlElement } from "./xml.js"
@@ -31,6 +32,7 @@ const NOTES = {
   missingUse: ["use of an id the file does not have", "uses of ids the file does not have"],
   broken: ["path with bad data drawn up to the error", "paths with bad data drawn up to the error"],
   foreign: ["foreign object", "foreign objects"],
+  paint: ["paint not read, drawn as ink", "paints not read, drawn as ink"],
 } as const
 
 type Note = keyof typeof NOTES
@@ -42,8 +44,8 @@ interface Context {
 }
 
 interface Collected {
-  fills: GraphicFill[]
-  strokes: GraphicStroke[]
+  /** Each element's fill and stroke, in the file's order. */
+  items: PaintedItem[]
   notes: Map<Note, number>
   ids: ReadonlyMap<string, XmlElement>
   points: number
@@ -70,10 +72,10 @@ function drawShape(element: XmlElement, data: string, ctx: Context, out: Collect
   if (path.broken) note(out, "broken")
   const subpaths = path.subpaths.map((s) => ({ closed: s.closed, points: s.points.map((p): Point => apply(ctx.matrix, p)) }))
   out.points += subpaths.reduce((sum, s) => sum + s.points.length, 0)
-  if (ctx.paint.fill && element.name !== "line") out.fills.push(...fillsFromRings(subpaths.map((s) => s.points), ctx.paint.fillRule))
-  if (ctx.paint.stroke) {
+  if (ctx.paint.fill && !ctx.paint.fillTransparent && element.name !== "line") out.items.push({ tone: ctx.paint.fillTone, fills: fillsFromRings(subpaths.map((s) => s.points), ctx.paint.fillRule), strokes: [] })
+  if (ctx.paint.stroke && !ctx.paint.strokeTransparent) {
     const width = ctx.paint.strokeWidth * meanScale(ctx.matrix)
-    out.strokes.push(...subpaths.map((s) => ({ points: s.points, width, closed: s.closed })))
+    out.items.push({ tone: ctx.paint.strokeTone, fills: [], strokes: subpaths.map((s) => ({ points: s.points, width, closed: s.closed })) })
   }
 }
 
@@ -103,29 +105,51 @@ function visit(element: XmlElement, parent: Context, out: Collected): void {
   if (leftOut(element, out)) return
   const properties = propertiesOf(element)
   if (properties.get("display")?.trim() === "none") return
-  const { paint, usesUrl } = paintOf(properties, parent.paint)
+  const { paint, usesUrl, unread } = paintOf(properties, parent.paint)
+  for (let i = 0; i < unread; i++) note(out, "paint")
   const transform = element.attributes.get("transform")
   const ctx: Context = { ...parent, paint, matrix: transform === undefined ? parent.matrix : multiply(parent.matrix, parseTransform(transform)) }
   if (properties.has("clip-path") || properties.has("mask")) note(out, "clip")
   if (element.name === "use") return drawUse(element, ctx, out)
   if (GROUPS.has(element.name)) return element.children.forEach((child) => visit(child, ctx, out))
   const data = shapeData(element)
-  if (data === undefined || !paint.visible || (!paint.fill && !paint.stroke)) return
+  if (data === undefined || !paint.visible || !paint.opaque || (!paint.fill && !paint.stroke)) return
   if (usesUrl) note(out, "url")
   drawShape(element, data, ctx, out)
 }
 
 const notesOf = (notes: ReadonlyMap<Note, number>): string[] => [...notes].map(([key, count]) => counted(count, NOTES[key][0], NOTES[key][1]))
 
-/** Reads an SVG file's text; throws a GraphicError saying what is wrong with it. */
-export function readSvgGraphic(text: string): GraphicShapes {
+/** How the drawing is read: `colour: false` reads every painted shape as ink, in place (as for a board's outline). */
+export interface SvgReadOptions {
+  colour?: boolean
+}
+
+function svgRoot(text: string): XmlElement {
   if (text.length > MAX_SVG_TEXT) throw new GraphicError("The SVG file is larger than 2 MB; simplify it first")
   const root = parseXml(text)
   if (root.name !== "svg") throw new GraphicError(`The file's root element is <${root.name}>, not <svg>`)
-  const out: Collected = { fills: [], strokes: [], notes: new Map(), ids: idsOf(root), points: 0 }
+  return root
+}
+
+const PHYSICAL_LENGTH = /^\s*[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?\s*(?:mm|cm|in|pt|pc)\s*$/
+
+/** Whether the root's width and height are both given in a physical unit (mm, cm, in, pt or pc; not px). */
+export function svgHasPhysicalSize(text: string): boolean {
+  const root = svgRoot(text)
+  return [root.attributes.get("width"), root.attributes.get("height")].every((value) => value !== undefined && PHYSICAL_LENGTH.test(value))
+}
+
+/** Reads an SVG file's text; throws a GraphicError saying what is wrong with it. */
+export function readSvgGraphic(text: string, options: SvgReadOptions = {}): GraphicShapes {
+  const root = svgRoot(text)
+  const out: Collected = { items: [], notes: new Map(), ids: idsOf(root), points: 0 }
   // The root's own position and transform do not place it; its paint is inherited like a group's.
-  const { paint } = paintOf(propertiesOf(root), DEFAULT_PAINT)
+  const { paint, unread } = paintOf(propertiesOf(root), DEFAULT_PAINT)
+  for (let i = 0; i < unread; i++) note(out, "paint")
   const ctx: Context = { matrix: rootMatrix(root), paint, inUse: false }
   root.children.forEach((child) => visit(child, ctx, out))
-  return finish(out.fills, out.strokes, notesOf(out.notes))
+  const items = options.colour === false ? out.items.map((item) => ({ ...item, tone: "ink" as const })) : out.items
+  const { fills, strokes, notes } = applyInOrder(items)
+  return finish(fills, strokes, [...notesOf(out.notes), ...notes])
 }

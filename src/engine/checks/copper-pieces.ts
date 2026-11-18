@@ -68,27 +68,29 @@ export const isDrawingNet = (net: string | undefined): boolean => net?.startsWit
 
 /**
  * A drawing on copper (`<boardgraphic layer="top|bottom|inner1|inner2">`) as one piece: its filled areas as triangles
- * (its holes left open, so copper inside a hole is inside no shape), its lines as segments of their width. It has a
- * private net of its own, so the clearance rules keep every net, and every other drawing, clear of it.
+ * (its holes left open, so copper inside a hole is inside no shape), its lines as segments of their width. On a net
+ * it is that net's copper, in that net's class; without one it has a private net of its own, so the clearance rules
+ * keep every net, and every other drawing, clear of it.
  */
-function drawingPiece(graphic: BoardGraphic): CopperPiece {
+function drawingPiece(graphic: BoardGraphic, classOf: ClassOf): CopperPiece {
   const lines = graphic.lines.flatMap((line): Shape[] =>
     line.points.length === 1 ? [{ core: [line.points[0] as Point], radius: line.width / 2 }] : line.points.slice(1).map((p, i) => ({ core: [line.points[i] as Point, p], radius: line.width / 2 })),
   )
   const shapes = [...(graphic.triangles ?? []).map((core): Shape => ({ core, radius: 0 })), ...lines]
-  return { id: graphic.id, kind: "drawing", net: drawingNet(graphic.id), className: DEFAULT_CLASS.name, layers: [graphic.layer as CopperLayer], shapes, at: { x: graphic.x, y: graphic.y } }
+  const [net, className] = graphic.net === undefined ? [drawingNet(graphic.id), DEFAULT_CLASS.name] : [graphic.net, classOf(graphic.net)]
+  return { id: graphic.id, kind: "drawing", net, className, layers: [graphic.layer as CopperLayer], shapes, at: { x: graphic.x, y: graphic.y } }
 }
 
 /** The drawings on copper layers the board has, as pieces; none on a board without them. */
-export function drawingPieces(layout: PcbLayout): CopperPiece[] {
+export function drawingPieces(layout: PcbLayout, classOf: ClassOf): CopperPiece[] {
   const graphics = layout.graphics
   if (graphics === undefined || graphics.length === 0) return []
-  return graphics.filter((graphic) => (COPPER_LAYERS as readonly string[]).includes(graphic.layer)).map(drawingPiece)
+  return graphics.filter((graphic) => (COPPER_LAYERS as readonly string[]).includes(graphic.layer)).map((graphic) => drawingPiece(graphic, classOf))
 }
 
 /** The tracks, vias and drawings on copper on layers the board has, in natural id order; copper on a missing layer is only a copper-layer error. */
 export function copperPieces(layout: PcbLayout, classOf: ClassOf): CopperPiece[] {
   const onBoard = <T extends { missingLayer?: unknown }>(item: T) => item.missingLayer === undefined
-  const pieces = [...layout.tracks.filter(onBoard).map((track) => trackPiece(track, classOf)), ...layout.vias.filter(onBoard).map((via) => viaPiece(via, classOf)), ...drawingPieces(layout)]
+  const pieces = [...layout.tracks.filter(onBoard).map((track) => trackPiece(track, classOf)), ...layout.vias.filter(onBoard).map((via) => viaPiece(via, classOf)), ...drawingPieces(layout, classOf)]
   return pieces.filter((piece) => piece.shapes.length > 0).sort((a, b) => naturalCompare(a.id, b.id))
 }

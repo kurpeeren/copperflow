@@ -5,7 +5,8 @@ import { pcbPoint, type Offset } from "./component.js"
 import { diagnostic } from "./diagnostics.js"
 import { MAX_COPPER_TRIANGLES, placeGraphic, triangulate } from "./graphic-place.js"
 import { graphicKind, parseGraphic } from "./graphics/index.js"
-import type { BoardGraphic, BoardGraphicLayer, Diagnostic, Point, SourceRef } from "./model.js"
+import type { BoardGraphic, BoardGraphicLayer, Diagnostic, Net, Point, SourceRef } from "./model.js"
+import { naturalCompare } from "./order.js"
 import { PropReader, type Props } from "./read-props.js"
 
 export const BOARD_GRAPHIC_TAG = "boardgraphic"
@@ -13,8 +14,15 @@ export const BOARD_GRAPHIC_LAYERS: readonly BoardGraphicLayer[] = ["top-silkscre
 /** The copper layers a drawing can be on, named as pours name them; inner ones only on a 4-layer board. */
 export const COPPER_GRAPHIC_LAYERS: readonly BoardGraphicLayer[] = ["top", "bottom", "inner1", "inner2"]
 export const isCopperGraphic = (graphic: { layer: BoardGraphicLayer }): boolean => COPPER_GRAPHIC_LAYERS.includes(graphic.layer)
-/** Why a drawing cannot carry a net in this release. */
-export const GRAPHIC_NET_REFUSAL = "a drawing on copper belongs to no net yet; leave net out (it stands clear of every net)"
+/** The longest net name a drawing may give, in characters. */
+const MAX_NET_NAME = 200
+
+/** What is wrong with a drawing's net as written, or undefined: a net name, and only on a copper layer. */
+export function graphicNetProblem(net: unknown, layer: unknown): string | undefined {
+  if (typeof net !== "string" || net.trim() === "" || net.length > MAX_NET_NAME) return 'net must be a net name such as "GND"'
+  if (!(COPPER_GRAPHIC_LAYERS as readonly unknown[]).includes(layer)) return `net is only for a drawing on copper (${COPPER_GRAPHIC_LAYERS.join(", ")}); leave it out on ${String(layer)}`
+  return undefined
+}
 /** The smallest and largest placed width or height, in mm. */
 export const MIN_GRAPHIC_SIZE = 0.5
 export const MAX_GRAPHIC_SIZE = 300
@@ -73,6 +81,8 @@ interface Wanted {
   width?: number
   scale?: number
   name?: string
+  /** The net as written; finishBoard turns it into the net's id, or refuses it. */
+  net?: string
 }
 
 /** The props as written, or the reason they cannot be used. */
@@ -84,10 +94,10 @@ function readWanted(props: Props, reader: PropReader): Wanted | string {
   const rotation = props["rotation"] === undefined ? 0 : reader.angle("rotation")
   const fill = props["fill"] ?? false
   if (x === undefined || y === undefined) return "needs x and y"
-  if (props["net"] !== undefined) return GRAPHIC_NET_REFUSAL
   const problem =
     graphicFileProblem(props["file"]) ??
     graphicLayerProblem(layer) ??
+    (props["net"] === undefined ? undefined : graphicNetProblem(props["net"], layer)) ??
     (props["width"] !== undefined && scale !== undefined ? "give width or scale, not both" : undefined) ??
     (props["width"] === undefined ? undefined : graphicWidthProblem(width)) ??
     (scale === undefined ? undefined : graphicScaleProblem(scale)) ??
@@ -105,6 +115,7 @@ function readWanted(props: Props, reader: PropReader): Wanted | string {
     ...(width === undefined ? {} : { width }),
     ...(typeof scale === "number" ? { scale } : {}),
     ...(name === undefined ? {} : { name }),
+    ...(typeof props["net"] === "string" ? { net: props["net"].trim() } : {}),
   }
 }
 
@@ -154,6 +165,17 @@ function deepFreeze<T>(value: T): T {
   return value
 }
 
+/** The cached shape each placed drawing's areas were moved from, and where to: a drawing's work done once per shape. */
+const placedShapes = new WeakMap<object, { shape: Readonly<Geometry>; at: Point }>()
+
+/**
+ * The shape the drawing's areas were placed from (shared by every build of the same file, size, turn and side) and the
+ * point it was moved to; undefined for a drawing not built here.
+ */
+export function placedShape(graphic: Pick<BoardGraphic, "areas">): { shape: Readonly<Pick<BoardGraphic, "areas">>; at: Point } | undefined {
+  return placedShapes.get(graphic.areas)
+}
+
 /** The drawing placed, or the reason it cannot be: the file missing or refused by the reader, or too small or large once sized. */
 function placed(wanted: Wanted, origin: Origin, readFile: ReadFile | undefined): Omit<BoardGraphic, "id" | "source"> | string {
   const text = readFile?.(wanted.file)
@@ -165,9 +187,11 @@ function placed(wanted: Wanted, origin: Origin, readFile: ReadFile | undefined):
   if (typeof shape === "string") return shape
   const move = (p: Point): Point => ({ x: p.x + at.x, y: p.y + at.y })
   const { width: _w, scale: _s, ...rest } = wanted
+  const areas = shape.areas.map((area) => ({ outer: area.outer.map(move), holes: area.holes.map((hole) => hole.map(move)) }))
+  placedShapes.set(areas, { shape, at })
   return {
     ...rest,
-    areas: shape.areas.map((area) => ({ outer: area.outer.map(move), holes: area.holes.map((hole) => hole.map(move)) })),
+    areas,
     lines: shape.lines.map((line) => ({ points: line.points.map(move), width: line.width })),
     ...(shape.triangles ? { triangles: shape.triangles.map((triangle) => triangle.map(move)) } : {}),
     width: shape.width,
@@ -195,4 +219,39 @@ export function buildBoardGraphic(props: Props, origin: Origin, readFile: ReadFi
     return { diagnostics: [...reader.diagnostics, warning] }
   }
   return { graphic: { id, ...result, source: origin.source }, diagnostics: reader.diagnostics }
+}
+
+/** The most net names a refusal lists. */
+const NETS_LISTED = 20
+
+/** "GND, SIG, VCC" (and "and N more"): the circuit's nets by their first name, as a refusal lists them. */
+function netList(nets: readonly Net[]): string {
+  const names = nets.flatMap((net) => net.names[0] ?? []).sort(naturalCompare)
+  if (names.length === 0) return "it has none"
+  const more = names.length > NETS_LISTED ? ` and ${names.length - NETS_LISTED} more` : ""
+  return `its nets are ${names.slice(0, NETS_LISTED).join(", ")}${more}`
+}
+
+/** The id of the net a drawing names (by id or by any of its names), or undefined when the circuit has none such. */
+export const graphicNetId = (nets: readonly Net[], written: string): string | undefined =>
+  nets.find((net) => net.id === written)?.id ?? nets.find((net) => net.names.includes(written))?.id
+
+/** "names the net NOPE, which the circuit does not have (its nets are GND, SIG)". */
+export const missingNetText = (written: string, nets: readonly Net[]): string => `names the net ${written}, which the circuit does not have (${netList(nets)})`
+
+/**
+ * Each drawing's net as written turned into the net's id; a drawing naming a net the circuit lacks is a `drawing-net`
+ * error listing the nets it has, and is left out.
+ */
+export function resolveGraphicNets(graphics: readonly BoardGraphic[], nets: readonly Net[]): { graphics: BoardGraphic[]; diagnostics: Diagnostic[] } {
+  const diagnostics: Diagnostic[] = []
+  const kept = graphics.flatMap((graphic): BoardGraphic[] => {
+    if (graphic.net === undefined) return [graphic]
+    const id = graphicNetId(nets, graphic.net)
+    if (id !== undefined) return [{ ...graphic, net: id }]
+    const message = `${graphic.id} ${missingNetText(graphic.net, nets)}; it is ignored`
+    diagnostics.push(diagnostic("drawing-net", "error", message, [graphic.id], graphic.source))
+    return []
+  })
+  return { graphics: kept, diagnostics }
 }

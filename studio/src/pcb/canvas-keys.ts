@@ -159,10 +159,11 @@ const SHEET_ALT_KEYS: ReadonlyMap<string, KeyActionName> = new Map([
   ["j", "junction"],
 ])
 
-/** The PCB's Alt combinations, by the physical key's letter: Route → Single routing and Route → Via, as EasyEDA. */
+/** The PCB's Alt combinations, by the physical key's letter: Route → Single routing, Route → Via and Place → Text. */
 const PCB_ALT_KEYS: ReadonlyMap<string, KeyActionName> = new Map([
   ["w", "route"],
   ["v", "placeVia"],
+  ["t", "drawText"],
 ])
 
 function altAction(input: KeyInput, state: KeyState): KeyResult | null {

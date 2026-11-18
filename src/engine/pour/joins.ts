@@ -3,7 +3,7 @@ import { viaSpan, type PcbTrack, type PcbVia } from "../copper.js"
 import type { Point, PourLayer } from "../model.js"
 import { naturalCompare } from "../order.js"
 import type { WorldPad } from "../pcb.js"
-import { boundsOf, boxesMeet, boxHolds, intersection, regionHolds, toPath, type Bounds, type IntPoint, type Region } from "./clip.js"
+import { boundsOf, boxesMeet, boxHolds, intersection, regionHolds, toPath, type Bounds, type IntPoint, type Path, type Region } from "./clip.js"
 import type { PourFill } from "./fill.js"
 import { shapeOutline } from "./shapes.js"
 
@@ -22,6 +22,19 @@ interface Item {
   id: string
   points: Point[]
   shapes: Shape[]
+}
+
+/** An item ready to test: its points and outlines in clipper units and the box round its outlines, built once. */
+interface Prepared {
+  id: string
+  points: IntPoint[]
+  outlines: Path[]
+  box: Bounds | undefined
+}
+
+function prepared(item: Item): Prepared {
+  const outlines = item.shapes.map((shape) => toPath(shapeOutline(shape, TOUCH))).filter((path) => path.length >= 3)
+  return { id: item.id, points: toPath(item.points), outlines, box: outlines.length === 0 ? undefined : boundsOf(outlines) }
 }
 
 interface Piece {
@@ -56,11 +69,10 @@ function itemsOf(fill: PourFill, pads: readonly WorldPad[], tracks: readonly Pcb
 
 const holds = (piece: Piece, p: IntPoint): boolean => boxHolds(piece.box, p) && regionHolds(piece.region, p)
 
-function touches(piece: Piece, item: Item): boolean {
-  if (toPath(item.points).some((p) => holds(piece, p))) return true
-  const outlines = item.shapes.map((shape) => toPath(shapeOutline(shape, TOUCH))).filter((path) => path.length >= 3)
-  if (outlines.length === 0 || !boxesMeet(piece.box, boundsOf(outlines))) return false
-  return intersection([piece.region.outer, ...piece.region.holes], outlines).length > 0
+function touches(piece: Piece, item: Prepared): boolean {
+  if (item.box === undefined || !boxesMeet(piece.box, item.box)) return item.points.some((p) => holds(piece, p))
+  if (item.points.some((p) => holds(piece, p))) return true
+  return intersection([piece.region.outer, ...piece.region.holes], item.outlines).length > 0
 }
 
 /** The connections the pours make per net (`PcbLayout.pourMade`). */
@@ -85,7 +97,7 @@ export function pourMadeText(made: PourMade, more = false): string | undefined {
  */
 export function pourJoins(fills: readonly PourFill[], pads: readonly WorldPad[], tracks: readonly PcbTrack[], vias: readonly PcbVia[]): string[][] {
   return fills.flatMap((fill) => {
-    const items = itemsOf(fill, pads, tracks, vias)
+    const items = itemsOf(fill, pads, tracks, vias).map(prepared)
     return fill.polygons.map((polygon) => {
       const region: Region = { outer: toPath(polygon.outer), holes: polygon.holes.map(toPath) }
       const piece: Piece = { region, box: boundsOf([region.outer]) }

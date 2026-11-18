@@ -11,7 +11,7 @@ import { fastLineBlock } from "./fast-summary.js"
 export { fastLineBlock }
 
 /** The rule codes of copper findings: the copper checks and what copper joining reports. */
-export const COPPER_RULES: ReadonlySet<string> = new Set(["copper-clearance", "track-width", "via-drill", "via-ring", "hole-to-hole", "copper-edge", "copper-keepout", "short", "floating", "mismatch", "copper-layer", "copper-hole", "hole-off-board", "pour-floating", "pour-sparse", "pour-empty", "pour-net", "pair-skew", "pair-apart", "pair-gap", "pair-vias", "net-length", "match-spread", "impedance-width", "drawing-width"])
+export const COPPER_RULES: ReadonlySet<string> = new Set(["copper-clearance", "track-width", "via-drill", "via-ring", "hole-to-hole", "copper-edge", "copper-keepout", "short", "floating", "mismatch", "copper-layer", "copper-hole", "hole-off-board", "pour-floating", "pour-sparse", "pour-empty", "pour-net", "pair-skew", "pair-apart", "pair-gap", "pair-vias", "net-length", "match-spread", "impedance-width", "drawing-width", "drawing-floating", "drawing-net"])
 
 /** copper_summary stops here, so the answer fits a screen. */
 export const SUMMARY_LIMIT = 60
@@ -98,11 +98,12 @@ export function unroutedLines(design: Pick<Design, "pcb">, most = UNROUTED_PLACE
   return places.length > most ? [...shown, `… and ${places.length - most} more unrouted`] : shown
 }
 
-/** The drawings on copper, by id, with their layer and size: copper of no net, not counted as tracks. */
-export function copperDrawingLines(design: Pick<Design, "pcb">): string[] {
+/** The drawings on copper, by id, with their layer, size and net ("no net" for one of none): not counted as tracks. */
+export function copperDrawingLines(design: Pick<Design, "pcb" | "circuit">): string[] {
   const drawings = (design.pcb.graphics ?? []).filter((graphic) => ["top", "bottom", "inner1", "inner2"].includes(graphic.layer))
   if (drawings.length === 0) return []
-  const line = (g: (typeof drawings)[number]) => `${g.id} ${g.file} ${g.layer} at (${mmText(g.x)}, ${mmText(g.y)}), ${mm(g.width)} x ${mm(g.height)} mm, no net`
+  const netText = (net: string | undefined) => (net === undefined ? "no net" : `on ${netLabel(design.circuit.nets, net)}`)
+  const line = (g: (typeof drawings)[number]) => `${g.id} ${g.file} ${g.layer} at (${mmText(g.x)}, ${mmText(g.y)}), ${mm(g.width)} x ${mm(g.height)} mm, ${netText(g.net)}`
   return [`Drawings on copper: ${drawings.map(line).join("; ")}`]
 }
 

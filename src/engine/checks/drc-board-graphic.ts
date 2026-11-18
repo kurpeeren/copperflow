@@ -11,6 +11,7 @@ import type { PcbLayout } from "../pcb.js"
 import type { Rules } from "../rules/schema.js"
 import { obstaclesFor, type Obstacle } from "./drc-silk-text.js"
 import { bounds, pointInPolygon, shapeToSegmentDistance } from "./geometry.js"
+import { islandChecks, thinPartChecks, thinPartText } from "./drc-drawing-copper.js"
 import { breaksMinimum, LENGTH_TOLERANCE } from "./limits.js"
 import { violation, type Violation } from "./violation.js"
 
@@ -74,19 +75,33 @@ function tooThin(graphic: BoardGraphic): Violation[] {
   return [violation("silk-too-thin", "warning", message, [graphic.id], "pcb", { x: graphic.x, y: graphic.y })]
 }
 
-/**
- * Each drawing on copper whose lines are narrower than the fabrication's minimum track width. Thin parts of a filled
- * shape are not measured (the guide says so); its clearance, edge, keepout and hole checks are the copper checks'.
- */
-export function copperGraphicChecks(layout: PcbLayout, rules: Rules): Violation[] {
-  const minimum = rules.fabrication.minTrackWidth
-  return (layout.graphics ?? []).filter(isCopperGraphic).flatMap((graphic) => {
+/** Each drawing on copper whose lines are narrower than the fabrication's minimum track width. */
+function thinLines(graphics: readonly BoardGraphic[], minimum: number): Violation[] {
+  return graphics.flatMap((graphic) => {
     let thinnest = Infinity
     for (const line of graphic.lines) thinnest = Math.min(thinnest, line.width)
     if (!(thinnest < minimum - LENGTH_TOLERANCE)) return []
     const message = `Drawing on copper ${named(graphic)} has lines ${mm(thinnest)} mm wide; the fabrication minimum track width is ${mm(minimum)} mm: give it a larger width or thicker lines in the file`
     return [violation("drawing-width", "warning", message, [graphic.id], "pcb", { x: graphic.x, y: graphic.y })]
   })
+}
+
+/**
+ * Each drawing on copper whose lines, or a part of whose filled shapes, are narrower than the fabrication's minimum
+ * track width (one `drawing-width` warning per drawing, both findings in it), and each drawing on a net that is an
+ * island. Its clearance, edge, keepout and hole checks are the copper checks'.
+ */
+export function copperGraphicChecks(layout: PcbLayout, rules: Rules): Violation[] {
+  const graphics = (layout.graphics ?? []).filter(isCopperGraphic)
+  if (graphics.length === 0) return []
+  const minimum = rules.fabrication.minTrackWidth
+  const lines = thinLines(graphics, minimum)
+  const areas = thinPartChecks(graphics, minimum)
+  const merged = [...lines, ...areas.filter((area) => !lines.some((line) => line.id === area.id))].map((found) => {
+    const area = areas.find((one) => one.id === found.id)
+    return area === undefined || area === found || area.at === undefined ? found : { ...found, message: `${found.message}. It also ${thinPartText(minimum, area.at)}` }
+  })
+  return [...merged, ...islandChecks(layout)]
 }
 
 /** Every silkscreen drawing against the pads and holes under it, the board's outline and the thinnest printable line. */

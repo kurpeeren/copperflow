@@ -2,7 +2,7 @@
 // board-items.ts). The file, layer and size are held to the engine's limits (engine/board-graphic.ts), so a drawing
 // the build would drop for a bad prop is refused here with the same reason. Each edit writes only its element's text.
 import MagicString from "magic-string"
-import { BOARD_GRAPHIC_TAG, GRAPHIC_NET_REFUSAL, graphicFileProblem, graphicLayerProblem, graphicScaleProblem, graphicWidthProblem } from "../engine/board-graphic.js"
+import { BOARD_GRAPHIC_TAG, COPPER_GRAPHIC_LAYERS, graphicFileProblem, graphicNetProblem, graphicLayerProblem, graphicScaleProblem, graphicWidthProblem } from "../engine/board-graphic.js"
 import type { Scan } from "./analyze.js"
 import { EditError } from "./edit-error.js"
 import { atTop, attributeNamed, MAX_COORDINATE, putAttribute } from "./edit-text.js"
@@ -14,8 +14,8 @@ import type { BoardBox, Edit, Literal } from "./types.js"
 const MAX_NAME = 100
 /** A turn beyond this many degrees either way is a slip. */
 const MAX_TURN = 360
-/** The props that may be removed: the drawing then takes its own size, no turn, no fill or no name. */
-const REMOVABLE = new Set(["width", "scale", "rotation", "fill", "name"])
+/** The props that may be removed: the drawing then takes its own size, no turn, no fill, no name or no net. */
+const REMOVABLE = new Set(["width", "scale", "rotation", "fill", "name", "net"])
 
 type Check = (value: unknown) => string | undefined
 
@@ -31,7 +31,8 @@ const PROPS: Record<string, Check> = {
   scale: graphicScaleProblem,
   rotation: (value) => (typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= MAX_TURN ? undefined : `rotation must be a number of degrees from -${MAX_TURN} to ${MAX_TURN}`),
   fill: (value) => (typeof value === "boolean" ? undefined : "fill must be true or false"),
-  net: () => GRAPHIC_NET_REFUSAL,
+  // The layer is checked with the net once both are known (netOnCopper); the circuit's nets are checked by the build.
+  net: (value) => graphicNetProblem(value, COPPER_GRAPHIC_LAYERS[0]),
   name: (value) => (typeof value === "string" && value.trim() !== "" && value.length <= MAX_NAME ? undefined : `name must be some words of at most ${MAX_NAME} characters`),
 }
 
@@ -43,6 +44,13 @@ function formatted(key: string, value: unknown): string {
   return formatLiteral(value as Literal)
 }
 
+/** Refuses a net on a drawing that is not on copper. */
+function netOnCopper(net: unknown, layer: unknown): void {
+  if (net === undefined || net === null) return
+  const problem = graphicNetProblem(net, layer ?? "top-silkscreen")
+  if (problem) throw new EditError("invalid", problem)
+}
+
 /** Refuses a centre off the board's rectangle, when the board's rectangle is known. */
 function checkOnBoard(x: unknown, y: unknown, box: BoardBox | undefined): void {
   if (!box || typeof x !== "number" || typeof y !== "number") return
@@ -51,9 +59,10 @@ function checkOnBoard(x: unknown, y: unknown, box: BoardBox | undefined): void {
 
 export function addBoardGraphic(source: string, scan: Scan, edit: Extract<Edit, { kind: "addBoardGraphic" }>): string {
   if (edit.width !== undefined && edit.scale !== undefined) throw new EditError("invalid", "give width or scale, not both")
-  const ordered = { name: edit.name, file: edit.file, layer: edit.layer, x: edit.x, y: edit.y, width: edit.width, scale: edit.scale, rotation: edit.rotation, fill: edit.fill }
+  const ordered = { name: edit.name, file: edit.file, layer: edit.layer, net: edit.net, x: edit.x, y: edit.y, width: edit.width, scale: edit.scale, rotation: edit.rotation, fill: edit.fill }
   const attributes = Object.entries(ordered).flatMap(([key, value]) => (value === undefined ? [] : [`${key}=${formatted(key, value)}`]))
   checkOnBoard(edit.x, edit.y, scan.model.boardBox)
+  netOnCopper(edit.net, edit.layer)
   return addItem(source, scan, BOARD_GRAPHIC_TAG, `<${BOARD_GRAPHIC_TAG} ${attributes.join(" ")} />`)
 }
 
@@ -71,6 +80,7 @@ export function setBoardGraphic(source: string, scan: Scan, edit: Extract<Edit, 
   const props = sizeProps(edit.props, (key) => attributeNamed(source, node, key) !== undefined)
   const value = (key: string) => (key in props ? props[key] : item.props[key]?.literal)
   if (atTop(item.parent)) checkOnBoard(value("x"), value("y"), scan.model.boardBox)
+  netOnCopper(value("net"), value("layer"))
   const out = new MagicString(source)
   for (const [key, one] of Object.entries(props)) {
     if (one === null) {

@@ -413,13 +413,13 @@ describe("rows that are placed parts (the Component tree)", () => {
 describe("the drawing tool keys", () => {
   const tools = [["b", "drawBus"], ["l", "drawPolyline"], ["r", "drawRectangle"], ["c", "drawCircle"], ["a", "drawArc"], ["t", "drawText"]] as const
 
-  test("Alt+B, Alt+L, Alt+R, Alt+C, Alt+A and Alt+T arm the bus and drawing tools on the schematic only, by the physical key", () => {
+  test("Alt+B, Alt+L, Alt+R, Alt+C and Alt+A arm the bus and drawing tools on the schematic only, Alt+T the text tool on either, by the physical key", () => {
     for (const [letter, action] of tools) {
       const code = `Key${letter.toUpperCase()}`
       expect(keyAction(key(letter, { altKey: true, code }), SCHEMATIC)).toEqual({ action, preventDefault: true })
       // Alt changes the character on some layouts; the physical key still counts.
       expect(keyAction(key("¬", { altKey: true, code }), SCHEMATIC)?.action).toBe(action)
-      expect(keyAction(key(letter, { altKey: true, code }), PCB)).toBeNull()
+      expect(keyAction(key(letter, { altKey: true, code }), PCB)).toEqual(action === "drawText" ? { action, preventDefault: true } : null)
       expect(keyAction(key(letter, { altKey: true, code, typing: true }), SCHEMATIC)).toBeNull()
       expect(keyAction(key(letter, { altKey: true, shiftKey: true, code }), SCHEMATIC)).toBeNull()
     }

@@ -12,6 +12,10 @@ shapes inside it become keepouts on all layers (not cut out of the board). It an
 -41, -27)`, then the holes, the keepouts and `Not used: 2 SPLINE, …`. `layer` picks the outline's
 layer when the largest shape is not the board; `units` overrides the file's; a board that has holes
 or keepouts already needs `replace: true`. Placed parts stay; the answer names those now outside.
+An `.svg` goes in the same `dxf` field (CLI `copperflow board <file> --svg <path>`): its width and height
+must be physical (`60mm`, `2in`), as a board has real dimensions; the largest closed shape (a filled
+area's ring or a closed line) is the outline, a circle inside it a hole, another closed shape a keepout.
+An SVG has no layers, so `layer` and `units` are refused; an open path is not an outline.
 
 A KiCad board (`.kicad_pcb`, saved by KiCad 6 or newer, two copper layers) goes in the same tool:
 `import_board` `{ file: "new.circuit.tsx", dxf: "old.kicad_pcb" }` writes `file` as a new circuit in one

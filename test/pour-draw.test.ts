@@ -140,7 +140,7 @@ describe("the fills' paths and hatch", () => {
 })
 
 describe("inner-layer pours", () => {
-  test("are drawn in their own colour and follow only their own eye", () => {
+  test("are drawn in their own colour and follow their own eye and their layer's row", () => {
     const inner = [{ id: "copperpour:3", net: "n", layer: "inner1" as const, polygons: [{ outer: square(0, 0, 2), holes: [] }], area: 4 }]
     const { ctx, records } = recorder()
     drawPourFills(ctx, { pours: inner }, scene(), { ...DEFAULT_LAYERS, top: false, bottom: false }, PX)
@@ -148,5 +148,8 @@ describe("inner-layer pours", () => {
     const hidden = recorder()
     drawPourFills(hidden.ctx, { pours: inner }, scene({ hidden: new Set(["copperpour:3"]) }), DEFAULT_LAYERS, PX)
     expect(hidden.records.filter((r) => r.name === "fill")).toHaveLength(0)
+    const layerOff = recorder()
+    drawPourFills(layerOff.ctx, { pours: inner }, scene(), { ...DEFAULT_LAYERS, inner1: false }, PX)
+    expect(layerOff.records.filter((r) => r.name === "fill")).toHaveLength(0)
   })
 })

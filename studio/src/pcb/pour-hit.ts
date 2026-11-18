@@ -5,7 +5,7 @@
 import type { Design } from "../../../src/engine/design.js"
 import type { CopperPour, Hole, Point } from "../../../src/engine/model.js"
 import type { PourFill } from "../../../src/engine/pcb.js"
-import type { LayerVisibility } from "./layers.js"
+import { copperLayerShown, type LayerVisibility } from "./layers.js"
 import { distanceToSegment, WIRE_REACH_PX } from "./wire-hit.js"
 
 /** How near (CSS pixels) a corner handle of the selected pour's outline takes a press. */
@@ -37,12 +37,11 @@ const mmText = (value: number): string => `${Number(value.toFixed(4))} mm`
 export const holeLabel = (hole: Pick<Hole, "diameter">): string => `hole ${mmText(hole.diameter)}`
 
 /**
- * Whether a pour (by its layer and id) is drawn and picked: the Layer panel's eye for it open, and for a top or bottom
- * pour its copper layer shown too. An inner layer has no row of its own yet, so its pours follow their own eyes alone.
+ * Whether a pour (by its layer and id) is drawn and picked: the Layer panel's eye for it open, and its copper layer
+ * (top, bottom or an inner one) shown too.
  */
 export function pourShown(pour: { id: string; layer: string }, visible: LayerVisibility, hidden: ReadonlySet<string>): boolean {
-  if (hidden.has(pour.id)) return false
-  return pour.layer === "top" || pour.layer === "bottom" ? visible[pour.layer] : pour.layer === "inner1" || pour.layer === "inner2"
+  return !hidden.has(pour.id) && copperLayerShown(pour.layer, visible)
 }
 
 /** The ring of points closed back to its first, as edges. */

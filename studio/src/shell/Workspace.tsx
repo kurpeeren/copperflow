@@ -262,7 +262,7 @@ function RightSide({ data, workspace, checks, selection, onSelect, onRenameDrawi
         onOpenSheet={onOpenSheet}
         parentDesign={sheetParent?.design}
       />
-      {layerOpen && <LayerPanel visibility={workspace.layerVisibility} filter={workspace.layerFilter} hasKeepouts={keepouts.length > 0} onFilter={workspace.setLayerFilter} onToggle={workspace.toggleLayerShown} active={workspace.activeLayer} onActive={workspace.setActiveLayer} pours={pours} onTogglePour={workspace.togglePourShown} />}
+      {layerOpen && <LayerPanel visibility={workspace.layerVisibility} filter={workspace.layerFilter} hasKeepouts={keepouts.length > 0} boardLayers={design?.pcb.board?.layers ?? 2} onFilter={workspace.setLayerFilter} onToggle={workspace.toggleLayerShown} active={workspace.activeLayer} onActive={workspace.setActiveLayer} pours={pours} onTogglePour={workspace.togglePourShown} />}
       {filterOpen && <FilterPanel view={view} filter={workspace.pickFilter} onToggle={workspace.togglePickable} />}
     </>
   )

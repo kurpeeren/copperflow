@@ -2,7 +2,6 @@
 // the rest go to the open canvas over the command bus (command-owners.ts says which is which). A view's own commands
 // (the schematic's tools, the PCB's routing) sent while the other view is open switch to it first.
 import { useCallback, useEffect, useState } from "react"
-import { graphicImportRequest, LAYER_QUESTION, WIDTH_QUESTION } from "./graphic-import-form"
 import { api, type BomLine, type CircuitData, type FabricationExport } from "../api"
 import { bomCsv, bomFileName } from "./bom-csv"
 import { exportAsks, fabricationNote } from "./fabrication-note"
@@ -20,7 +19,7 @@ import type { View } from "../pcb/positions"
 import type { Selection, SelectionChange } from "../selection"
 import type { ThemeName } from "./theme-state"
 import type { BottomTab } from "./bottom-state"
-import { COPPER_COMMANDS, MARK_COMMANDS, PCB_COMMANDS, POUR_COMMANDS, SHEET_COMMANDS, WORKSPACE_COMMANDS, type AppCommand } from "./command-owners"
+import { commandView, WORKSPACE_COMMANDS, type AppCommand } from "./command-owners"
 import { POUR_FILL_COMMANDS, type PourFillMode } from "../pcb/pour-view"
 import { send } from "./commands"
 import type { DialogName } from "./Dialogs"
@@ -36,11 +35,6 @@ import { openPrint, printSheets } from "./print-render"
 import { annotateDesignators, copySelection, flipSelection, pasteCopied, selectSimilar, transferPlacement } from "./part-commands"
 import type { Design } from "../api"
 
-const SCHEMATIC_ONLY: ReadonlySet<CommandId> = new Set([...SHEET_COMMANDS, ...MARK_COMMANDS])
-const PCB_ONLY: ReadonlySet<CommandId> = new Set([...PCB_COMMANDS, ...COPPER_COMMANDS, ...POUR_COMMANDS])
-
-/** The one view a command runs in, if it is a view's own (the other view switches to it first). */
-const viewOf = (command: CommandId): View | undefined => (SCHEMATIC_ONLY.has(command) ? "schematic" : PCB_ONLY.has(command) ? "pcb" : undefined)
 const WORKSPACE: Partial<Record<CommandId, KeyActionName>> = WORKSPACE_COMMANDS
 
 /** The workspace functions the commands use; each is stable across renders. */
@@ -175,9 +169,9 @@ function exportHtml(file: string | undefined, actions: Actions): void {
 /** The largest drawing the Studio sends; the server takes requests up to 1 MB. */
 const MAX_DRAWING_BYTES = 1000 * 1000
 
-/** File → Import board (DXF or KiCad)…: the system file picker, then the file's text to the server; a KiCad board opens as a new circuit. */
+/** File → Import board (DXF, SVG or KiCad)…: the system file picker, then the file's text to the server; a KiCad board opens as a new circuit. */
 function pickBoardDrawing(actions: Actions, openImported: (file: string) => void): void {
-  const picker = Object.assign(document.createElement("input"), { type: "file", accept: ".dxf,.kicad_pcb" })
+  const picker = Object.assign(document.createElement("input"), { type: "file", accept: ".dxf,.svg,.kicad_pcb" })
   picker.addEventListener("change", () => {
     const picked = picker.files?.[0]
     if (!picked) return
@@ -189,26 +183,6 @@ function pickBoardDrawing(actions: Actions, openImported: (file: string) => void
         if (!kicad) return void (await actions.importBoard(picked.name, text))
         const made = await actions.importKicad(picked.name, text)
         if (made !== undefined) openImported(made)
-      })
-      .catch((error: Error) => actions.notify(error.message))
-  })
-  picker.click()
-}
-
-/** File → Import a drawing (SVG or DXF)…: the system file picker, then the layer and width asked, then the file to the server. */
-function pickGraphic(actions: Actions): void {
-  const picker = Object.assign(document.createElement("input"), { type: "file", accept: ".svg,.dxf" })
-  picker.addEventListener("change", () => {
-    const picked = picker.files?.[0]
-    if (!picked) return
-    if (picked.size > MAX_DRAWING_BYTES) return actions.notify(`${picked.name} is larger than 1 MB; put it in the project and use the agent's import_graphic or copperflow graphic`)
-    picked
-      .text()
-      .then(async (text) => {
-        const request = graphicImportRequest({ name: picked.name, text }, window.prompt(LAYER_QUESTION, "1"), window.prompt(WIDTH_QUESTION, ""))
-        if (request === undefined) return
-        if ("message" in request) return actions.notify(request.message)
-        await actions.importGraphic(request)
       })
       .catch((error: Error) => actions.notify(error.message))
   })
@@ -317,7 +291,7 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     autoplaceInstance: () => placeScope(input, placeInstanceScope(input.design, input.selection.names)),
     fitBoard: () => void input.actions.fitBoard(),
     importBoardDxf: () => pickBoardDrawing(input.actions, input.openImported),
-    importGraphic: () => pickGraphic(input.actions),
+    importGraphic: () => (input.file ? input.openDialog("importGraphic") : input.actions.notify(NO_CIRCUIT_OPEN)),
     autoroute: () => routeScope(input, { kind: "all" }),
     autorouteSelection: () => routeScope(input, selectionScope(input.design, input.selection.names)),
     autorouteNet: () => routeScope(input, netScope(input.highlight)),
@@ -394,7 +368,7 @@ export function useAppCommands(input: Input): (command: CommandId) => void {
     (command: CommandId) => {
       const own = appCommand({ file, openImported, view, setView, selection, select, circuit, actions, pickLayers, pickFilter, sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords, workspace: { run, openBottom, openPageTree, setTheme, toggleHoverLabels, setPourFill }, openChecks, checkCounts, openFind, openDialog, design, page, openPage, highlight }, command)
       if (own) return own()
-      const only = viewOf(command)
+      const only = commandView(command)
       if (only && view !== only) {
         setView(only)
         setWaiting({ command, view: only })

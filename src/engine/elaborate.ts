@@ -11,7 +11,7 @@ import { Fragment, isElement, type CfElement, type ComponentFunction } from "./j
 import { buildHole } from "./hole.js"
 import { buildKeepout } from "./keepout.js"
 import { buildSilkText, SILK_TEXT_TAG } from "./silk-text.js"
-import { BOARD_GRAPHIC_TAG, buildBoardGraphic } from "./board-graphic.js"
+import { BOARD_GRAPHIC_TAG, buildBoardGraphic, resolveGraphicNets } from "./board-graphic.js"
 import { kindOf } from "./kinds.js"
 import {
   MAIN_PAGE,
@@ -473,8 +473,10 @@ class Elaboration {
     const onBoard = this.board.layers === 4 ? this.graphics : this.graphics.filter((graphic) => graphic.layer !== "inner1" && graphic.layer !== "inner2")
     const lost = this.graphics.filter((graphic) => !onBoard.includes(graphic))
     const lostWarnings = lost.map((graphic) => diagnostic("bad-value", "warning", `boardgraphic ${graphic.id}: a 2-layer board has no ${graphic.layer}; it is ignored`, [graphic.id], graphic.source))
-    const graphics = onBoard.length > 0 ? { graphics: onBoard } : {}
-    return { board: { ...this.board, keepouts: this.keepouts, ...pours, ...holes, ...silkTexts, ...graphics }, diagnostics: [...resolved.diagnostics, ...lostWarnings] }
+    const netted = resolveGraphicNets(onBoard, nets)
+    const graphics = netted.graphics.length > 0 ? { graphics: netted.graphics } : {}
+    const diagnostics = [...resolved.diagnostics, ...lostWarnings, ...netted.diagnostics]
+    return { board: { ...this.board, keepouts: this.keepouts, ...pours, ...holes, ...silkTexts, ...graphics }, diagnostics }
   }
 
   private part(element: CfElement, tag: string, frame: Frame, source: SourceRef): void {

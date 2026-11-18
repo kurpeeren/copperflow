@@ -39,7 +39,7 @@ export interface CopperScene {
 
 type Highlight = { nets: readonly string[] } | undefined
 
-const LAYER_COLORS: Record<PcbTrack["layer"], string> = { top: PALETTE.topCopper, bottom: PALETTE.bottomCopper, inner1: PALETTE.topCopper, inner2: PALETTE.topCopper }
+const LAYER_COLORS: Record<PcbTrack["layer"], string> = { top: PALETTE.topCopper, bottom: PALETTE.bottomCopper, inner1: PALETTE.inner1Copper, inner2: PALETTE.inner2Copper }
 
 /** A track's colour: its layer's, or the keepout colour for a layer the board lacks. */
 export const trackColor = (track: CopperTrackDraw): string => (track.missingLayer === undefined ? LAYER_COLORS[track.layer] : PALETTE.keepout)

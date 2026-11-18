@@ -55,7 +55,7 @@ function pourRegion(pour: CopperPour, inputs: PourInputs): Paths {
  * sharp tips included (a mitred grow would rebuild them); convex corners come back rounded by half `width`. The result
  * is cut back to the area it came from, so the open never adds copper.
  */
-function open(paths: Paths, width: number): Paths {
+export function open(paths: Paths, width: number): Paths {
   if (paths.length === 0) return []
   return intersection(offset(offset(paths, -width / 2, "miter"), width / 2, "round"), paths)
 }

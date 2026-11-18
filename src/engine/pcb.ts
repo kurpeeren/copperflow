@@ -245,7 +245,7 @@ export function layoutPcb(
   if (missing.length > 0) {
     diagnostics.push(diagnostic("no-footprint", "warning", "These parts have no footprint and are drawn as 1 x 1 mm squares without pads", missing))
   }
-  const { copper, pours, bare } = resolveWithPours(parts, records, circuit.nets, circuit.board?.layers ?? 2, fill)
+  const { copper, pours, bare } = resolveWithPours(parts, records, circuit.nets, circuit.board?.layers ?? 2, fill, circuit.board?.graphics)
   const pourMade = pours.length === 0 ? [] : pourMadeConnections(parts, bare.islands, copper.islands)
   const layout: PcbLayout = {
     ...(circuit.board ? { board: circuit.board } : {}),

@@ -46,7 +46,7 @@ export interface Actions {
   /** File → Import board with a KiCad board: a new circuit written as one history entry; its file, or undefined when refused. */
   importKicad(name: string, text: string): Promise<string | undefined>
   /** File → Import a drawing: the picked SVG or DXF kept in graphics/ and placed at the board's centre, as one history entry, and told. */
-  importGraphic(request: GraphicImportRequest): Promise<EditOutcome>
+  importGraphic(request: GraphicImportRequest): Promise<EditOutcome & { refusal?: string }>
   /** Route → Unroute: removes the router's copper among `ids`, or all of it, as one history entry, and tells it. */
   unroute(ids?: readonly string[]): Promise<EditOutcome>
   /** Design rules: writes the fillet radius to rules.yaml (null for the default), as one history entry, and tells it. */
@@ -179,12 +179,17 @@ export function useActions({ file, refresh, notify, openVerify }: ActionsInput):
         announceHistoryWrite(
           (async () => {
             let mark: number | undefined
+            let refusal: string | undefined
+            // A refusal is kept for the dialog to show, not told in the status line.
             const ok = await run(async () => {
-              const done = await api<{ summary: string; writeMark: number }>("/api/import-graphic", { file, ...request })
+              const done = await api<{ summary: string; writeMark: number }>("/api/import-graphic", { file, ...request }).catch((error: Error) => {
+                refusal = error.message
+              })
+              if (!done) return
               mark = done.writeMark
               notify(done.summary)
             })
-            return { ok, mark }
+            return refusal === undefined ? { ok, mark } : { ok: false, refusal }
           })(),
         ),
       importKicad: async (name, text) => {

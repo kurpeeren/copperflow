@@ -19,6 +19,8 @@ interface Props {
   filter: LayerFilter
   /** Keepout is listed only when the board has keepouts. */
   hasKeepouts: boolean
+  /** The board's copper layers: on a 4-layer board the two inner layers are listed too. */
+  boardLayers: number
   onFilter(filter: LayerFilter): void
   onToggle(id: LayerId): void
   /** The copper layer tracks are drawn on; V changes it too. */
@@ -88,13 +90,13 @@ function LayerFilters({ filter, onFilter }: Pick<Props, "filter" | "onFilter">) 
 }
 
 /** The PCB's layers: the filters at the top, the active layer, then a 28px row for each layer with its colour, its name and an eye. */
-export function LayerPanel({ visibility, filter, hasKeepouts, onFilter, onToggle, active, onActive, pours, onTogglePour }: Props) {
+export function LayerPanel({ visibility, filter, hasKeepouts, boardLayers, onFilter, onToggle, active, onActive, pours, onTogglePour }: Props) {
   return (
     <aside className="panel right layer-panel" id={stripPanelId("right")} role="tabpanel" aria-labelledby={sideTabId("layer")} onClick={blurAfterPointerClick}>
       <LayerFilters filter={filter} onFilter={onFilter} />
       <ActiveLayerSelect active={active} onActive={onActive} />
       <ul className="layer-list">
-        {layerRows(hasKeepouts, filter).map((row) => {
+        {layerRows(hasKeepouts, filter, boardLayers).map((row) => {
           const shown = visibility[row.id]
           return (
             <li key={row.id} className={`layer-row${shown ? "" : " off"}`}>
