@@ -89,6 +89,11 @@ describe("importBoard", () => {
   test("takes a drawing's text, as the Studio sends it", async () => {
     const text = await readFile(join(FIXTURES, "bulges.dxf"), "utf8")
     const result = await importBoard(root, FILE, { dxf: { name: "case.dxf", text } }, meta)
-    expect(formatBoardImport(result)[0]).toMatch(/board outline from case\.dxf: \d+ corners, 59\.9\d* x 20 mm/)
+    const line = formatBoardImport(result)[0] ?? ""
+    expect(line).toMatch(/board outline from case\.dxf: \d+ corners, [\d.]+ x 20 mm/)
+    // The slot's round ends are chords: its length is 60 mm, or short of it by less than the arc tolerance twice.
+    const length = Number(/, ([\d.]+) x 20 mm/.exec(line)?.[1])
+    expect(length).toBeGreaterThan(59.98)
+    expect(length).toBeLessThanOrEqual(60)
   })
 })

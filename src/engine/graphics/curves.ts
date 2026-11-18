@@ -1,16 +1,37 @@
 // Curves as straight segments within a tolerance: Bézier curves by their second differences, elliptical arcs by
 // the angle a chord may span; the arc's endpoint form converted to its centre form (the SVG specification's
 // implementation notes, F.6.5 and F.6.6).
+//
+// A distance alone leaves a small curve with corners once the drawing is placed larger than it was drawn: an icon of
+// 6 mm shown at 60 has ten times the stray. So a curve is also held to a part of its own size (`heldTo`), which no
+// scale changes: a full turn is at least CHORDS_PER_TURN chords, except where that would hold it closer than a part
+// of the tolerance (FINEST_PART: a circle under about 0.2 mm in radius gets fewer).
 import type { Point } from "../model.js"
 import { MAX_POINTS_PER_CURVE } from "./shapes.js"
 
-const segmentsFor = (wanted: number) => Math.min(MAX_POINTS_PER_CURVE, Math.max(1, Math.ceil(Number.isFinite(wanted) ? wanted : MAX_POINTS_PER_CURVE)))
+/** The fewest chords a full circle is drawn with, down to the size FINEST_PART stops at. */
+const CHORDS_PER_TURN = 32
+/** How far a chord strays from a circle of radius 1 drawn with that many. */
+const STRAY_PER_RADIUS = 1 - Math.cos(Math.PI / CHORDS_PER_TURN)
+/** The same bound for a Bézier, as a part of the distance its control points span: a quarter turn comes to about 8 chords. */
+const STRAY_PER_SPAN = 1 / 256
+/** No curve is held closer than this part of the tolerance (1 µm of 5): detail too small to see stays coarse. */
+const FINEST_PART = 1 / 5
+/** Under this, a count that should be whole is whole (a quarter turn is 8 chords, not 9 by rounding). */
+const WHOLE = 1e-9
+
+const segmentsFor = (wanted: number) => Math.min(MAX_POINTS_PER_CURVE, Math.max(1, Math.ceil(Number.isFinite(wanted) ? wanted - WHOLE : MAX_POINTS_PER_CURVE)))
+
+/** The tolerance a curve is flattened to: the caller's, or the part of its own size if that is finer, but never finer than FINEST_PART of the caller's. */
+const heldTo = (tolerance: number, ownStray: number) => Math.max(tolerance * FINEST_PART, Math.min(tolerance, ownStray))
+
+const span = (from: Point, ...others: Point[]) => Math.max(...others.map((p) => Math.hypot(p.x - from.x, p.y - from.y)))
 
 /** The points after `p0` along a cubic Bézier, ending at `p3`. */
 export function cubic(p0: Point, p1: Point, p2: Point, p3: Point, tolerance: number): Point[] {
   const dd = Math.max(Math.hypot(p0.x - 2 * p1.x + p2.x, p0.y - 2 * p1.y + p2.y), Math.hypot(p1.x - 2 * p2.x + p3.x, p1.y - 2 * p2.y + p3.y))
   // |B''| <= 6 dd, and a chord of a curve of curvature bound K over a step h strays at most K h^2 / 8.
-  const n = segmentsFor(Math.sqrt((0.75 * dd) / tolerance))
+  const n = segmentsFor(Math.sqrt((0.75 * dd) / heldTo(tolerance, span(p0, p1, p2, p3) * STRAY_PER_SPAN)))
   return Array.from({ length: n }, (_, i) => {
     const t = (i + 1) / n
     const u = 1 - t
@@ -22,7 +43,7 @@ export function cubic(p0: Point, p1: Point, p2: Point, p3: Point, tolerance: num
 /** The points after `p0` along a quadratic Bézier, ending at `p2`. */
 export function quadratic(p0: Point, p1: Point, p2: Point, tolerance: number): Point[] {
   const dd = Math.hypot(p0.x - 2 * p1.x + p2.x, p0.y - 2 * p1.y + p2.y)
-  const n = segmentsFor(Math.sqrt(dd / (4 * tolerance)))
+  const n = segmentsFor(Math.sqrt(dd / (4 * heldTo(tolerance, span(p0, p1, p2) * STRAY_PER_SPAN))))
   return Array.from({ length: n }, (_, i) => {
     const t = (i + 1) / n
     const u = 1 - t
@@ -32,7 +53,8 @@ export function quadratic(p0: Point, p1: Point, p2: Point, tolerance: number): P
 
 /** How many chords an arc of this radius and sweep needs to stay within the tolerance. */
 export function arcSegments(radius: number, sweep: number, tolerance: number): number {
-  const ratio = 1 - tolerance / radius
+  // A radius of nothing has no curve to follow: a quarter turn a chord, as a tolerance wider than the radius gives.
+  const ratio = radius > 0 ? 1 - heldTo(tolerance, radius * STRAY_PER_RADIUS) / radius : 0
   const step = ratio <= 0 ? Math.PI / 2 : Math.min(Math.PI / 2, 2 * Math.acos(ratio))
   return segmentsFor(Math.abs(sweep) / step)
 }

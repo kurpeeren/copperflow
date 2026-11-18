@@ -20,8 +20,8 @@ export type GraphicKind = "svg" | "dxf"
 export type GraphicFill = GraphicShapes["fills"][number]
 export type GraphicStroke = GraphicShapes["strokes"][number]
 
-/** The largest distance of a flattened curve from the curve, in mm. */
-export const CURVE_TOLERANCE_MM = 0.02
+/** The largest distance of a flattened curve from the curve, in mm: a quarter of a pixel in a picture at 50 px per mm. */
+export const CURVE_TOLERANCE_MM = 0.005
 /** The most points one curve segment is flattened into. */
 export const MAX_POINTS_PER_CURVE = 1000
 /** The most points a whole drawing may come to. */

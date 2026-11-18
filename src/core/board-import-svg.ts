@@ -13,7 +13,7 @@ export class SvgBoardError extends Error {}
 
 /** A closed shape is a circle when every corner and every edge's middle lies this close to the fitted circle, in mm. */
 const CIRCLE_FIT_MM = 0.05
-/** The fewest corners a flattened circle has (the reader flattens a curve to within 0.02 mm, so any real one has more). */
+/** The fewest corners a flattened circle has (the reader flattens a full turn of 0.2 mm radius or more into at least 32, and one of 0.02 mm into 10). */
 const MIN_CIRCLE_CORNERS = 8
 /** The most closed shapes a board drawing may have: each is compared with the outline. */
 export const MAX_BOARD_SHAPES = 5000

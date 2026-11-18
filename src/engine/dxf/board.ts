@@ -1,15 +1,17 @@
 // The board a mechanical drawing gives: lines, arcs and polylines that meet end to end are joined into closed shapes,
 // the largest is the outline, circles inside it are mounting holes and the other closed shapes inside it are places to
-// keep clear. Arcs and bulges become straight edges at most ARC_TOLERANCE from the true arc. Everything else is counted
-// in `notUsed`. The drawing is moved so the outline's box is centred on the origin, as copperflow's boards are.
+// keep clear. Arcs and bulges become straight edges at most ARC_TOLERANCE from the true arc, a full turn at least 32 of
+// them unless it is under about 0.2 mm in radius. Everything else is counted in `notUsed`. The drawing is moved so the
+// outline's box is centred on the origin, as copperflow's boards are.
 import { pointInPolygon } from "../checks/geometry.js"
+import { arcSegments } from "../graphics/curves.js"
 import type { Point } from "../model.js"
 import { DxfError, readDxf, type DxfDrawing, type DxfEntity, type DxfUnits, type DxfVertex } from "./reader.js"
 
 /** Ends closer than this, in mm, meet. */
 export const JOIN_TOLERANCE = 0.01
 /** The largest distance of a straight edge from the arc it stands for, in mm. */
-export const ARC_TOLERANCE = 0.02
+export const ARC_TOLERANCE = 0.005
 
 const MM_PER: Record<DxfUnits, number> = { mm: 1, cm: 10, m: 1000, inch: 25.4 }
 
@@ -70,9 +72,7 @@ const meets = (a: Point, b: Point) => distance(a, b) <= JOIN_TOLERANCE
 
 /** Points along an arc from `start` radians, turning `sweep` radians (counter-clockwise when positive), ends included. */
 export function arcPoints(centre: Point, radius: number, start: number, sweep: number): Point[] {
-  const ratio = 1 - ARC_TOLERANCE / radius
-  const step = ratio <= 0 ? Math.PI / 2 : Math.min(Math.PI / 2, 2 * Math.acos(ratio))
-  const count = Math.max(1, Math.ceil(Math.abs(sweep) / step))
+  const count = arcSegments(radius, sweep, ARC_TOLERANCE)
   return Array.from({ length: count + 1 }, (_, i) => {
     const angle = start + (sweep * i) / count
     return { x: centre.x + radius * Math.cos(angle), y: centre.y + radius * Math.sin(angle) }

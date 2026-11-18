@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import { describe, expect, test } from "vitest"
-import { boardFromDxf, type BoardFromDrawing } from "../src/engine/dxf/index.js"
+import { ARC_TOLERANCE, boardFromDxf, type BoardFromDrawing } from "../src/engine/dxf/index.js"
 import type { Point } from "../src/engine/model.js"
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/dxf/${name}`, import.meta.url), "utf8")
@@ -92,17 +92,17 @@ describe("the board from a drawing", () => {
     expect(board.notUsed).toEqual(["2 SPLINE", "1 open chain of 3 lines"])
   })
 
-  test("bulges become arcs within 0.02 mm", () => {
+  test("bulges become arcs within the arc tolerance", () => {
     const board = boardFromDxf(fixture("bulges.dxf"))
     const { width, height } = size(board.outline)
     // Each half circle's corners lie on it, so the width falls short of 60 by at most the tolerance on each side.
     expect(60 - width).toBeGreaterThanOrEqual(0)
-    expect(60 - width).toBeLessThanOrEqual(0.04)
+    expect(60 - width).toBeLessThanOrEqual(2 * ARC_TOLERANCE)
     expect(height).toBeCloseTo(20, 6)
     // The right half circle is centred at (40, 10) of the drawing: (20, 0) once centred.
     const error = worstArcError(board, { x: 20, y: 0 }, 10)
     expect(error).toBeGreaterThan(0)
-    expect(error).toBeLessThanOrEqual(0.02)
+    expect(error).toBeLessThanOrEqual(ARC_TOLERANCE)
   })
 
   test("layer picks the outline from that layer only", () => {
