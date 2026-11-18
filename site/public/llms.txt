@@ -56,6 +56,8 @@ Do these in the folder that will hold the board.
 - `export_model` writes the board and its parts as one 3D model file beside the circuit, for a board that is not
   finished too: `format: "step"` for mechanical CAD (parts as boxes), `format: "glb"` for a 3D viewer (the board as
   made, parts as simple shapes).
+- `guide { topic: "packages" }` lists the standard packages copperflow makes a footprint and a 3D shape for, each
+  with the string to type as a part's `footprint`; `guide { topic: "packages sot" }` searches them.
 - `bom` ends with whether the board is ready to order. `export_fabrication` writes the Gerbers, drills,
   pick-and-place file, a STEP model and a picture of each side; it refuses a circuit with errors.
 - Impedance, differential pairs and matched lengths are net classes in `rules.yaml`
