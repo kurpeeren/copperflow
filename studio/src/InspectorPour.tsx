@@ -1,6 +1,6 @@
-// Properties for one selected copper pour or hole: Delete, then the Copper pour section (net, layer, priority,
-// clearance, minimum width and thermal relief editable; the outline and the fill area shown) or the Hole section
-// (position and diameter), with a Lock button as a part has. Each change is one edit of the circuit file, so one history
+// Properties for one selected copper pour, hole or silkscreen text: Delete, then the Copper pour section (net, layer,
+// priority, clearance, minimum width and thermal relief editable; the outline and the fill area shown), the Hole
+// section (position and diameter) or the Silkscreen text section (words, position, height, turn and side), with a Lock button as a part has. Each change is one edit of the circuit file, so one history
 // entry (pour-props.ts); a locked or read-only pour or hole shows its rows without fields.
 import { useEffect, useId, useState } from "react"
 import type { CircuitData, Design } from "./api"
@@ -10,6 +10,8 @@ import { CloseIcon, LockIcon, TrashIcon, UnlockIcon } from "./icons"
 import { boardFieldEdit, boardLockButton, boardProperties, type BoardField, type BoardRow } from "./pcb/pour-props"
 import { boardItemBlocker } from "./pcb/pour-tool"
 import type { CommandId } from "./shell/menus"
+
+const DELETE_WORD = { pour: "copper pour", hole: "hole", text: "silkscreen text", graphic: "drawing" } as const
 
 interface PourViewProps {
   design: Design
@@ -52,7 +54,7 @@ export function PourView({ design, circuit, id, locks, actions, run, onClear, co
           {lock.pressed ? <LockIcon /> : <UnlockIcon />}
           {lock.label}
         </button>
-        <button className="danger" disabled={blocker !== null} title={blocker ?? `Delete this ${shown.kind === "hole" ? "hole" : "copper pour"} (Delete)`} onClick={() => run("delete")}>
+        <button className="danger" disabled={blocker !== null} title={blocker ?? `Delete this ${DELETE_WORD[shown.kind]} (Delete)`} onClick={() => run("delete")}>
           <TrashIcon /> Delete
         </button>
       </div>
@@ -110,7 +112,7 @@ function NumberField({ id, row, field, onCommit }: { id: string; row: BoardRow; 
       <input
         id={id}
         value={draft}
-        inputMode="decimal"
+        inputMode={field === "text" ? "text" : "decimal"}
         spellCheck={false}
         placeholder={field === "clearance" ? "Net class" : undefined}
         onChange={(e) => setDraft(e.target.value)}

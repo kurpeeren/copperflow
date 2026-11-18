@@ -5,6 +5,7 @@
 // run it against a recording context.
 import type { CopperPour, Hole, Point } from "../../../src/engine/model.js"
 import type { PcbLayout, PourFill } from "../../../src/engine/pcb.js"
+import { INACTIVE_COPPER_ALPHA } from "./copper-draw.js"
 import { PALETTE, type Ctx } from "./ctx.js"
 import type { ActiveLayer, LayerVisibility } from "./layers.js"
 import { pourOutline, pourShown } from "./pour-hit.js"
@@ -143,7 +144,12 @@ function strokeHatch(ctx: Ctx, fill: Pick<PourFill, "polygons">, px: number): vo
   ctx.stroke()
 }
 
-function drawFill(ctx: Ctx, fill: PourFill, mode: PourFillMode, px: number): void {
+/**
+ * One fill. `dim` scales its fill and hatch as the tracks of its layer are scaled: a pour on the layer not being worked
+ * on is dimmed with that layer's tracks, so they stay brighter than the copper round them (the same colour at the same
+ * alpha, a track on its pour shows only as the pour's black clearance gap round it).
+ */
+function drawFill(ctx: Ctx, fill: PourFill, mode: PourFillMode, px: number, dim: number): void {
   const color = LAYER_COLOR[fill.layer] ?? PALETTE.topCopper
   ctx.fillStyle = color
   ctx.strokeStyle = color
@@ -152,12 +158,12 @@ function drawFill(ctx: Ctx, fill: PourFill, mode: PourFillMode, px: number): voi
     strokeRings(ctx, fill, OUTLINE_PX * px)
     return
   }
-  ctx.globalAlpha = POUR_FILL_ALPHA
+  ctx.globalAlpha = POUR_FILL_ALPHA * dim
   if (mode === "solid") return fillRings(ctx, fill, "fill")
   ctx.save()
   fillRings(ctx, fill, "clip")
   ctx.lineWidth = OUTLINE_PX * px
-  ctx.globalAlpha = 1
+  ctx.globalAlpha = dim
   strokeHatch(ctx, fill, px)
   ctx.restore()
   ctx.globalAlpha = 1
@@ -168,7 +174,7 @@ function drawFill(ctx: Ctx, fill: PourFill, mode: PourFillMode, px: number): voi
 export function drawPourFills(ctx: Ctx, layout: Pick<PcbLayout, "pours">, scene: PourScene, layers: LayerVisibility, px: number): void {
   const shown = (layout.pours ?? []).filter((fill) => pourShown(fill, layers, scene.hidden))
   const ordered = [...shown.filter((fill) => fill.layer !== scene.activeLayer), ...shown.filter((fill) => fill.layer === scene.activeLayer)]
-  for (const fill of ordered) drawFill(ctx, fill, scene.mode, px)
+  for (const fill of ordered) drawFill(ctx, fill, scene.mode, px, fill.layer === scene.activeLayer ? 1 : INACTIVE_COPPER_ALPHA)
   ctx.globalAlpha = 1
 }
 

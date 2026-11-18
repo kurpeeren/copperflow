@@ -15,7 +15,7 @@ export const importBoardInput = {
 }
 
 export const IMPORT_BOARD_DESCRIPTION =
-  "Set the board from a mechanical DXF drawing as ONE change: the largest closed shape is the outline, circles inside it are mounting holes, other closed shapes inside it become keepouts (not cut out). Placed parts are not moved; the answer lists those now outside. Then render to look. A .kicad_pcb instead makes file a new circuit: outline, parts, nets, tracks, vias, pours; the answer lists what did not come over."
+  "Set the board from a DXF drawing as ONE change: the largest closed shape is the outline, circles in it mounting holes, other shapes keepouts. Parts are not moved; the answer lists those now outside. A .kicad_pcb instead makes file a new circuit (outline, parts, nets, copper); the answer lists what did not come over."
 
 export async function importBoardTool(ports: Ports, input: { file: string; dxf: string; layer?: string | undefined; units?: "mm" | "inch" | undefined; origin?: "centre" | "keep" | undefined; replace?: boolean | undefined }): Promise<string> {
   try {

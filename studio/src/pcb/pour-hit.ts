@@ -12,7 +12,7 @@ import { distanceToSegment, WIRE_REACH_PX } from "./wire-hit.js"
 export const POUR_CORNER_PX = 7
 
 /** What these functions read of the built design. */
-export type PourDesign = Pick<Design, "circuit"> & { pcb: Pick<Design["pcb"], "board" | "pours" | "holes"> }
+export type PourDesign = Pick<Design, "circuit"> & { pcb: Pick<Design["pcb"], "board" | "pours" | "holes"> & Partial<Pick<Design["pcb"], "silkTexts" | "graphics">> }
 
 /** The pours the design writes (the intent, with its outline), in source order. */
 export const poursOf = (design: PourDesign): readonly CopperPour[] => design.pcb.board?.pours ?? []

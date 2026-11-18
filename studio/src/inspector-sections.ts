@@ -1,5 +1,6 @@
 import type { Edit, Literal, PropInfo } from "../../src/core/types.js"
 import { lockChange } from "./pcb/group-edits.js"
+import { PLACE_DEFAULTS, propText } from "./place-defaults.js"
 import type { CommandId } from "./shell/menus.js"
 
 /** What the sections need to know about a part. */
@@ -29,16 +30,9 @@ export function propEdit(part: string, key: string, value: Literal): { edits: Ed
   return { edits: [{ kind: "setProps", part, props: { [key]: value } }], summary: `set ${part} ${key}=${JSON.stringify(value)}` }
 }
 
-/** The props people usually set on each built-in part, with an example value. */
-export const SUGGESTED_PROPS: Record<string, [string, string][]> = {
-  resistor: [["resistance", "10k"], ["footprint", "0402"]],
-  capacitor: [["capacitance", "100nF"], ["footprint", "0402"]],
-  inductor: [["inductance", "10uH"], ["footprint", "0805"]],
-  led: [["color", "green"], ["footprint", "0603"]],
-  diode: [["footprint", "sod123"]],
-  fuse: [["currentRating", "500mA"], ["footprint", "1206"]],
-  crystal: [["frequency", "16MHz"], ["footprint", "hc49"]],
-  pinheader: [["pinCount", "4"], ["pitch", "2.54mm"]],
+/** The props people usually set on each built-in part, with an example value: the parts' starting props, one table. */
+export const SUGGESTED_PROPS: Readonly<Record<string, [string, string][]>> = {
+  ...Object.fromEntries(Object.entries(PLACE_DEFAULTS).map(([kind, props]) => [kind, Object.entries(props).map(([key, value]): [string, string] => [key, propText(value)])])),
   // A sheet's port: where its pin sits on the sheet symbol.
   port: [["side", "left"], ["order", "1"]],
 }

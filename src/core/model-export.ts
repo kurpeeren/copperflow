@@ -1,6 +1,7 @@
 // Writes a circuit's board and parts as a GLB file (copperflow glb, export_model): `<name>.glb` beside the circuit, or
 // the project file given. The model is the scene render's view "3d" draws, made by the Studio's renderer bundled to
 // dist/render/render.js; a design with errors is still written, since the file is a look at the board, not an order.
+import { refuseStreamName } from "./out-name.js"
 import { mkdir, writeFile } from "node:fs/promises"
 import { basename, dirname, join, relative, sep } from "node:path"
 import type { Design } from "../engine/design.js"
@@ -40,6 +41,7 @@ const bundledModeller = (): Promise<Modeller> => import(new URL("../render/rende
 /** Builds the circuit and writes its GLB file to `out` or beside the circuit. */
 export function exportGlb(root: string, file: string, options: GlbOptions = {}): Promise<GlbExport> {
   if (options.out !== undefined && !options.out.toLowerCase().endsWith(".glb")) throw new Error(`--out takes a file ending in .glb (got ${options.out})`)
+  if (options.out !== undefined) refuseStreamName(options.out)
   return inProjectQueue(root, async () => {
     const { file: circuit } = await resolveCircuit(root, file)
     const path = resolveInRoot(root, options.out ?? join(dirname(circuit), `${designName(circuit)}.glb`))

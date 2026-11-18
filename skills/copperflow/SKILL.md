@@ -62,7 +62,7 @@ means, `replace`, refused pins and the export's warnings are in
    `import_part` `{ lcsc }` only when the human asks for an LCSC number (`Imported C7950 as
    <id>: …`). An import is for personal, non-commercial use only and is always unverified. The
    person can make a part themselves in the Studio with Library → New part…. See
-   [references/parts-library.md](references/parts-library.md). `bom` `{ file }` lists what the
+   [references/parts-library.md](references/parts-library.md); `part_info` lists each pad, `set_part_fields` `{ id, suppliers: { lcsc: "C6186" } }` sets a supplier number or MPN. `bom` `{ file }` lists what the
    board uses. Built-in kinds taking `value`: `resistor` (resistance, `"10k"`), `capacitor`
    (capacitance, `"100nF"`; `props: { polarized: true }`), `inductor`, `crystal` (frequency,
    `"8MHz"`), `resonator` (frequency), `fuse`, `battery`, `potentiometer`. `led` and `diode` take no value (`led`:
@@ -114,26 +114,26 @@ means, `replace`, refused pins and the export's warnings are in
    (`CH2 was moved as a block, keeping the arrangement of CH1`, `Copper: 32 pieces of copper went
    with …`); then pours and `autoroute` for the tracks between blocks. One change: `Placed 34 parts;
    wire length 233 mm (was 197); board 32 × 24 mm; 0 overlaps`, `Change c0007; …`, `Not placed:`, `Notes:`.
-   Parts a person placed or locked stay. `set_props` `{ pcbX, pcbY, pcbRotation }` on an instance's
+   Parts placed or locked by a person stay. `set_props` `{ pcbX, pcbY, pcbRotation }` on an instance's
    name moves it with its copper; copper leaving it is removed (unrouted again).
-   `Not placed: U1 (no free spot …)`: `fit: true`, or place it with `set_props` `{ pcbX, pcbY }`.
+   `Not placed: U1 (no free spot …)`: `fit: true` grows the board for it in the same call, or `set_props` `{ pcbX, pcbY }`. `Copper left behind: t0012 …` (copper does not follow a part): `remove_copper` those ids or `unroute`, then `autoroute`.
    `board_summary`'s longest connections show a part far from the pin it serves; move it with
    `set_props`. Do not repeat `autoplace` hoping for better. Details: [references/copper.md](references/copper.md).
-8. **Board shape.** `fit_board` `{ file, margin? }`: `Change c0010: board 42 × 28 mm (margin 2 mm)`; holes: `add_hole`. A `.dxf` in the project: step 7 starts with `import_board`, then `render` (copper.md).
+8. **Board shape.** `fit_board` `{ file, margin? }`: `Change c0010: board 42 × 28 mm (margin 2 mm)`; an exact size is `{ file, width, height }`, a shape `{ file, outline }`, copper layers `{ file, layers: 4 }` (copper.md); holes: `add_hole`. A `.dxf` in the project: step 7 starts with `import_board`, then `render` (copper.md). A logo or mark: write an SVG, then `import_graphic` (writing-circuits.md).
 9. **Fine tuning.** `board_summary` `{ file }` reads the board: `main.circuit.tsx: Board 42 × 28 mm,
    2 layers, courtyards use 38%; 24 parts, 18 nets`, one line per part
    (`U1 MCP2515 soic18w @(12.0, 8.5) r90 top [LOCKED]`), the ten longest connections with both pads' places,
    `Courtyards overlap (n):`, `Off the board (n):`, `Pours:` and `Unrouted: N connections`. `render` `{ file }`
-   is your eyes, a PNG of the board as the person sees it: look after `autoplace` and after `autoroute`; `parts` zooms.
+   is your eyes, a PNG of the board as the person sees it: look after `autoplace` and after `autoroute`; `parts` zooms; `out: "pics/top.png"` also writes it.
    Move a part with `set_props` `{ pcbX, pcbY, pcbRotation }` only for a reason, never one the human placed unless asked.
-10. **Pours.** `add_pour` `{ file, net: "GND", layer: "top" }` on the layer the parts sit on:
+10. **Rules, then pours.** Wider power tracks, a clearance or 4 layers before routing: `set_rules` `{ rules: { netClasses: { power: { nets: ["GND", "V5"], trackWidth: 0.5 } } } }` ([references/design-rules.md](references/design-rules.md)). **Pours.** `add_pour` `{ file, net: "GND", layer: "top" }` on the layer the parts sit on:
     `Change …: added copperpour:1 (GND, top)` and `copperpour:1 GND top: … mm², joins N pads`.
     On a two-layer board pour GND on both layers (`top` and `bottom`) before `autoroute`.
 11. **Route.** `autoroute` `{ file }`: `Change …: Routed 30 of 32 connections in 2 passes;
     unrouted: C3.pin2 (12.30, 4.50 top) to U2.pin2 (15.10, 6.00 top) (…)`. Route each one it
     reports with `route_track` `{ file, from: "C3.pin2", to: "U2.pin2" }` (the router's search for
     that one connection; add `via` points to draw it yourself), or move the part and `autoroute`
-    again. Details in [references/copper.md](references/copper.md) (`route_track`, `add_via`,
+    again; `N connections wait for parts that are not placed: J1`: place it (step 7), then `autoroute`. Details in [references/copper.md](references/copper.md) (`route_track`, `add_via`,
     `remove_copper`, `fillet_tracks`, `straighten_tracks`, `unroute`, `copper_summary`, `remove_pour`, `remove_hole`).
 12. **Check.** `check_circuit` `{ file, filter? }`: `main.circuit.tsx: 0 errors, 2 warnings`, then
     up to 20 findings, one line each (`error pin-unconnected [U1.pin3]: …`).
@@ -159,7 +159,7 @@ straight because symbols stand too close for a way round) is fixed by moving a s
 `set_props` `{ schX, schY }`. Fix every error before you report success. Warnings do not fail
 the check; mention them, but `unrouted` means the board is not finished (step 13). A part not
 placed yet gets only the `unplaced` warning. Net classes and fabrication limits live
-in `rules.yaml` at the project root; do not work around a rule in the circuit.
+in `rules.yaml` at the project root; change them with `set_rules`, never work around a rule in the circuit.
 
 ## Rules
 

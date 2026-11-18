@@ -92,12 +92,16 @@ export function sheetFor(extents: Box | undefined, atLeast?: SheetSize): Sheet {
 export function keepSheet(previous: Sheet | undefined, extents: Box | undefined): Sheet {
   if (!extents) return previous ?? sheetFor(undefined)
   if (previous && !previous.empty && sheetHolds(previous, extents)) return previous
+  // The first parts on an empty sheet keep its frame when it holds them, so a part clicked into place stays under the click.
+  if (previous?.empty && sheetHolds(previous, extents)) return { ...previous, empty: false }
   return sheetFor(extents, previous && !previous.empty ? previous.size : undefined)
 }
 
-/** The camera refits when the first parts arrive on a sheet that had none. */
+const sameBox = (a: Box, b: Box): boolean => a.minX === b.minX && a.minY === b.minY && a.maxX === b.maxX && a.maxY === b.maxY
+
+/** The camera refits when the first parts arrive on a sheet that had none and the frame moved to take them. */
 export function firstDrawing(before: Sheet | undefined, after: Sheet): boolean {
-  return (before?.empty ?? false) && !after.empty
+  return before !== undefined && before.empty && !after.empty && !sameBox(before.outer, after.outer)
 }
 
 export interface ZoneLabel {

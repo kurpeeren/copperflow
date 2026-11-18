@@ -10,6 +10,8 @@ import { PIN_ROW_DEFAULT_PITCH, pinRowName } from "./footprints/pinrow.js"
 import { Fragment, isElement, type CfElement, type ComponentFunction } from "./jsx-runtime.js"
 import { buildHole } from "./hole.js"
 import { buildKeepout } from "./keepout.js"
+import { buildSilkText, SILK_TEXT_TAG } from "./silk-text.js"
+import { BOARD_GRAPHIC_TAG, buildBoardGraphic } from "./board-graphic.js"
 import { kindOf } from "./kinds.js"
 import {
   MAIN_PAGE,
@@ -20,6 +22,8 @@ import {
   type DrawingKind,
   type Hole,
   type Keepout,
+  type SilkText,
+  type BoardGraphic,
   type InstancePort,
   type Net,
   type SheetInstance,
@@ -39,6 +43,8 @@ import { resolveTraces, type TraceDraft } from "./traces.js"
 export interface ElaborateOptions {
   /** How many pads a footprint string has, if known. */
   padCount(footprint: string): number | undefined
+  /** A project file's text by its path, for the drawings a `<boardgraphic>` names; without it a drawing is left out. */
+  readFile?: (path: string) => string | undefined
 }
 
 /**
@@ -94,6 +100,8 @@ class Elaboration {
   readonly keepouts: Keepout[] = []
   readonly pours: PourDraft[] = []
   readonly holes: Hole[] = []
+  readonly silkTexts: SilkText[] = []
+  readonly graphics: BoardGraphic[] = []
   /** The pages in the order they are first written, MAIN_PAGE first. */
   readonly pages: string[] = [MAIN_PAGE]
   /** Every drawing tag; ids are given after the walk, so a drawing never renames a part. */
@@ -306,6 +314,8 @@ class Elaboration {
     if (tag === "keepout") return this.keepout(element, frame, source)
     if (tag === "copperpour") return this.copperpour(element, frame, source)
     if (tag === "hole") return this.hole(element, frame, source)
+    if (tag === SILK_TEXT_TAG) return this.silkText(element, frame, source)
+    if (tag === BOARD_GRAPHIC_TAG) return this.boardGraphic(element, frame, source)
     if (tag === "trace") {
       this.traces.push({ props: element.props, source, ...onPage(frame.page), ...(frame.instance ? { scope: traceScope(frame.instance) } : {}) })
       return
@@ -396,7 +406,7 @@ class Elaboration {
   }
 
   /** The 1-based place of a pour or hole tag among those of its kind in its own file (its instance's, or the circuit's). */
-  private boardItemIndex(tag: "copperpour" | "hole", frame: Frame): number {
+  private boardItemIndex(tag: "copperpour" | "hole" | typeof SILK_TEXT_TAG | typeof BOARD_GRAPHIC_TAG, frame: Frame): number {
     const key = `${tag} ${frame.instance?.path ?? ""}`
     const index = (this.boardItemTags.get(key) ?? 0) + 1
     this.boardItemTags.set(key, index)
@@ -416,6 +426,22 @@ class Elaboration {
     this.diagnostics.push(...built.diagnostics)
     this.boardThings.push({ tag: "hole", source })
     if (built.hole) this.holes.push(built.hole)
+  }
+
+  private silkText(element: CfElement, frame: Frame, source: SourceRef): void {
+    const index = this.boardItemIndex(SILK_TEXT_TAG, frame)
+    const built = buildSilkText(element.props, { offset: frame.offset, index, source, instance: frame.instance?.path })
+    this.diagnostics.push(...built.diagnostics)
+    this.boardThings.push({ tag: SILK_TEXT_TAG, source })
+    if (built.text) this.silkTexts.push(built.text)
+  }
+
+  private boardGraphic(element: CfElement, frame: Frame, source: SourceRef): void {
+    const index = this.boardItemIndex(BOARD_GRAPHIC_TAG, frame)
+    const built = buildBoardGraphic(element.props, { offset: frame.offset, index, source, instance: frame.instance?.path }, this.options.readFile)
+    this.diagnostics.push(...built.diagnostics)
+    this.boardThings.push({ tag: BOARD_GRAPHIC_TAG, source })
+    if (built.graphic) this.graphics.push(built.graphic)
   }
 
   private drawing(element: CfElement, kind: DrawingKind, frame: Frame, source: SourceRef): void {
@@ -443,7 +469,12 @@ class Elaboration {
     const resolved = resolvePours(this.pours, nets, this.board)
     const pours = resolved.pours.length > 0 ? { pours: resolved.pours } : {}
     const holes = this.holes.length > 0 ? { holes: this.holes } : {}
-    return { board: { ...this.board, keepouts: this.keepouts, ...pours, ...holes }, diagnostics: resolved.diagnostics }
+    const silkTexts = this.silkTexts.length > 0 ? { silkTexts: this.silkTexts } : {}
+    const onBoard = this.board.layers === 4 ? this.graphics : this.graphics.filter((graphic) => graphic.layer !== "inner1" && graphic.layer !== "inner2")
+    const lost = this.graphics.filter((graphic) => !onBoard.includes(graphic))
+    const lostWarnings = lost.map((graphic) => diagnostic("bad-value", "warning", `boardgraphic ${graphic.id}: a 2-layer board has no ${graphic.layer}; it is ignored`, [graphic.id], graphic.source))
+    const graphics = onBoard.length > 0 ? { graphics: onBoard } : {}
+    return { board: { ...this.board, keepouts: this.keepouts, ...pours, ...holes, ...silkTexts, ...graphics }, diagnostics: [...resolved.diagnostics, ...lostWarnings] }
   }
 
   private part(element: CfElement, tag: string, frame: Frame, source: SourceRef): void {

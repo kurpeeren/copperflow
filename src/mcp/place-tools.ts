@@ -6,8 +6,10 @@
 import { z } from "zod"
 import { editCircuit, resolveCircuit } from "../core/index.js"
 import { placementWrites, writePlacement } from "../core/placement-write.js"
+import { strandedCopper, strandedLines } from "../engine/checks/stranded-copper.js"
 import type { Design } from "../engine/design.js"
 import { DEFAULT_FIT_MARGIN, placeBoard, type Placement } from "../engine/pcb-place/index.js"
+import { placeBoardFitting } from "../engine/pcb-place/grow.js"
 import type { PlaceScope } from "../engine/pcb-place/scope.js"
 import { ratsnestLength } from "../engine/pcb-place/score.js"
 import { fitBoardEdit } from "../studio/fit-board.js"
@@ -28,7 +30,7 @@ export const autoplaceInput = {
   instance: z.string().min(1).optional().describe('e.g. "PS1"'),
   fit: z.boolean().optional().describe("Also fit the board round the parts"),
   budgetSeconds: z.number().positive().max(MAX_BUDGET_SECONDS).optional().describe(`Default ${DEFAULT_PLACE_BUDGET_SECONDS}`),
-  connectors: z.enum(["last", "ahead"]).optional().describe("ahead: each connector by its part; route and compare"),
+  connectors: z.enum(["last", "ahead"]).optional().describe("last (default): connectors after the rest; ahead: each just before the part it serves"),
 }
 
 export const fitBoardInput = {
@@ -37,7 +39,7 @@ export const fitBoardInput = {
 }
 
 export const AUTOPLACE_DESCRIPTION =
-  "Place parts by their connections as ONE change: every part without a position, or only some parts or one instance. Placed and locked parts stay. Run it before autoroute. The answer gives wire length, board size, overlaps and parts with no room."
+  "Place parts by their connections as ONE change: every part without a position, or only some parts or one instance. Placed and locked parts stay. Run it before autoroute. With fit: true a part with no room grows the board. The answer gives wire length, board size, overlaps, parts with no room and copper a move left behind."
 export const FIT_BOARD_DESCRIPTION =
   "Shrink or grow a rectangular board round the parts plus a margin, as ONE change. Refused for a non-rectangular outline."
 
@@ -76,6 +78,9 @@ export function placedLine(placed: number, placement: Pick<Placement, "before">,
   return [`Placed ${plural(placed, "part")}`, `wire length ${Math.round(ratsnestLength(after.pcb.parts))} mm (was ${Math.round(placement.before.wireLength)})`, ...(board ? [board] : []), plural(overlaps, "overlap")].join("; ")
 }
 
+/** A net's first name ("GND"), or its id when it has none. */
+const netName = (design: Design, id: string): string => design.circuit.nets.find((net) => net.id === id)?.names[0] ?? id
+
 /** A list line naming at most SHOWN items. */
 function listLine(head: string, items: readonly string[]): string[] {
   if (items.length === 0) return []
@@ -109,7 +114,8 @@ export async function autoplace(
   const design = await buildOf(ports, circuit.file)
   const scope = scopeOf(design, input)
   const locked = await lockedNames(circuit.path, design)
-  const placement = placeBoard(design, { scope, locked, budgetMs: budgetSeconds * 1000, ...ahead, ...(options.clock ? { clock: options.clock } : {}) })
+  // With fit the board is reshaped anyway, so a part with no free spot grows it rather than staying unplaced.
+  const placement = (input.fit ? placeBoardFitting : placeBoard)(design, { scope, locked, budgetMs: budgetSeconds * 1000, ...ahead, ...(options.clock ? { clock: options.clock } : {}) })
   const writes = placementWrites(design, placement.positions, placement.blocks)
   // A block put beside the board is on it once the board is fitted round it; without fit it is named as not placed.
   const beside = input.fit ? [] : placement.beside.map((b) => `${b.instance} (${b.reason}; fit: true grows the board round it)`)
@@ -126,8 +132,9 @@ export async function autoplace(
   }
   const written = await writePlacement(ports.root, circuit.file, writes, { author: "ai", summary: placeSummary(scope, placement.positions.size), guard, ...(input.fit ? { fit: { margin: DEFAULT_FIT_MARGIN } } : {}) })
   const fitError = written.board && "error" in written.board ? [`The board was not fitted: ${written.board.error}`] : []
-  const head = written.entry
-    ? [placedLine(written.written.length, placement, await buildOf(ports, circuit.file)), `Change ${written.entry.id}; undo_change takes it back.`]
+  const after = written.entry ? await buildOf(ports, circuit.file) : undefined
+  const head = after && written.entry
+    ? [placedLine(written.written.length, placement, after), `Change ${written.entry.id}; undo_change takes it back.`, ...strandedLines(strandedCopper(design, after), (net) => netName(after, net))]
     : [`Nothing to move: ${written.skipped.length > 0 ? "the parts placed could not be written (see the notes)" : "the parts are already where the placer put them"}. Nothing was written.`]
   return [
     ...head,

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest"
+import { INACTIVE_COPPER_ALPHA } from "../studio/src/pcb/copper-draw.js"
 import { PALETTE } from "../studio/src/pcb/ctx.js"
 import { DEFAULT_LAYERS } from "../studio/src/pcb/layers.js"
 import { drawHoles, drawPourFills, drawPourOutlines, HATCH_MIN_PX, pourHatch, type PourScene } from "../studio/src/pcb/pour-draw.js"
@@ -31,12 +32,12 @@ const BOARD = {
 const scene = (over: Partial<PourScene> = {}): PourScene => ({ mode: "solid", hidden: new Set(), selected: new Set(), activeLayer: "top", ...over })
 
 describe("the pours' fills", () => {
-  test("solid: each fill in its layer's colour at 35%, even-odd so the reliefs show, the active layer's last", () => {
+  test("solid: each fill in its layer's colour at 35% (dimmed as its tracks are off the active layer), even-odd so the reliefs show, the active layer's last", () => {
     const { ctx, records } = recorder()
     drawPourFills(ctx, { pours: FILLS }, scene(), DEFAULT_LAYERS, PX)
     const fills = records.filter((r) => r.name === "fill")
     expect(fills.map((r) => [r.fillStyle, r.globalAlpha, r.args[0]])).toEqual([
-      [PALETTE.bottomCopper, POUR_FILL_ALPHA, "evenodd"],
+      [PALETTE.bottomCopper, POUR_FILL_ALPHA * INACTIVE_COPPER_ALPHA, "evenodd"],
       [PALETTE.topCopper, POUR_FILL_ALPHA, "evenodd"],
     ])
     expect(POUR_FILL_ALPHA).toBe(0.35)

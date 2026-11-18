@@ -97,6 +97,25 @@ function otherNets(pour: CopperPour, inputs: PourInputs): Paths {
   ]
 }
 
+/**
+ * The drawings on copper on the pour's layer, grown by the clearance: a drawing belongs to no net, so every pour keeps
+ * clear of it. Its areas are grown whole (a hole in it shrinks, and a pour may still fill a large one); its lines one
+ * segment at a time.
+ */
+function drawings(pour: CopperPour, inputs: PourInputs): Paths {
+  const here = (inputs.board.graphics ?? []).filter((graphic) => graphic.layer === pour.layer)
+  if (here.length === 0) return []
+  const gap = gapTo(pour, inputs, undefined) + MARGIN
+  return here.flatMap((graphic) => {
+    const rings = graphic.areas.flatMap((area) => [counterClockwise(toPath(area.outer)), ...area.holes.map((hole) => [...counterClockwise(toPath(hole))].reverse())])
+    const areas = rings.length === 0 ? [] : offset(rings, gap, "round")
+    const lines = graphic.lines.flatMap((line) =>
+      (line.points.length === 1 ? [[line.points[0] as Point]] : line.points.slice(1).map((p, i) => [line.points[i] as Point, p])).map((core) => counterClockwise(toPath(shapeOutline({ core, radius: line.width / 2 }, gap)))),
+    )
+    return [...areas, ...lines]
+  })
+}
+
 /** The earlier fills of other nets on the layer grown by the clearance; each comes out of the offset with its holes. */
 function earlierFills(pour: CopperPour, inputs: PourInputs, earlier: readonly EarlierFill[]): Paths {
   const fills = earlier.filter((fill) => fill.layer === pour.layer && fill.net !== pour.net)
@@ -131,5 +150,5 @@ function ownNet(pour: CopperPour, inputs: PourInputs): Pick<LayerCopper, "relief
 /** Everything the pour meets on its layer, from the inputs and the fills of the pours that come before it. */
 export function layerCopper(pour: CopperPour, inputs: PourInputs, earlier: readonly EarlierFill[]): LayerCopper {
   const outlines = [...otherNets(pour, inputs), ...boardObstacles(pour, inputs)].map(counterClockwise)
-  return { obstacles: union([...outlines, ...earlierFills(pour, inputs, earlier)]), ...ownNet(pour, inputs) }
+  return { obstacles: union([...outlines, ...earlierFills(pour, inputs, earlier), ...drawings(pour, inputs)]), ...ownNet(pour, inputs) }
 }

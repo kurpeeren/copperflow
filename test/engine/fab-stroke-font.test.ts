@@ -1,5 +1,5 @@
 import { expect, test } from "vitest"
-import { textStrokes } from "../../src/engine/fab/stroke-font.js"
+import { textStrokes, undrawable } from "../../src/engine/fab/stroke-font.js"
 
 const box = (lines: { x: number; y: number }[][]) => {
   const points = lines.flat()
@@ -20,8 +20,15 @@ test("draws every character a designator uses, centred on the point and as tall 
   }
 })
 
-test("lower case is drawn as upper case, an unknown character as a box, and a space as nothing", () => {
-  expect(textStrokes("r", { x: 0, y: 0 }, 1)).toEqual(textStrokes("R", { x: 0, y: 0 }, 1))
+test("lower case has glyphs of its own, an unknown character is a box, and a space is nothing", () => {
+  expect(textStrokes("r", { x: 0, y: 0 }, 1)).not.toEqual(textStrokes("R", { x: 0, y: 0 }, 1))
+  for (const char of "abcdefghijklmnopqrstuvwxyz:%=,!") {
+    expect(undrawable(char), char).toEqual([])
+    expect(textStrokes(char, { x: 0, y: 0 }, 1).length, char).toBeGreaterThan(0)
+  }
+  // Lower case stands two thirds as tall as a capital.
+  expect(box(textStrokes("x", { x: 0, y: 0 }, 1.2)).maxY).toBeCloseTo(-0.6 + 0.8, 9)
+  expect(undrawable("Ré€ ok é")).toEqual(["é", "€"])
   expect(textStrokes("é", { x: 0, y: 0 }, 1)).toHaveLength(1)
   expect(textStrokes(" ", { x: 0, y: 0 }, 1)).toEqual([])
   expect(textStrokes("", { x: 0, y: 0 }, 1)).toEqual([])

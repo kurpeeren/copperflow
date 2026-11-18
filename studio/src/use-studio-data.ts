@@ -9,6 +9,10 @@ import { isStaleKey } from "./request-error"
 
 export interface StudioData {
   files: string[]
+  /** Whether the server has listed the circuit files yet: an empty list before that says nothing. */
+  filesListed: boolean
+  /** Why the circuit files could not be listed, when that failed. */
+  filesError: string | undefined
   /** The project's sub-sheet files, which open as their own schematic. */
   sheets: string[]
   /** The project folder's name, once the server has said it. */
@@ -37,15 +41,25 @@ export interface StudioData {
 /** The file list, the project name and the parts, once at start. */
 function useProject(notify: (text: string) => void, setFile: (pick: (current: string | undefined) => string | undefined) => void, refreshParts: () => Promise<void>) {
   const [files, setFiles] = useState<string[]>([])
+  const [filesListed, setFilesListed] = useState(false)
+  const [filesError, setFilesError] = useState<string>()
   const [sheets, setSheets] = useState<string[]>([])
   const [project, setProject] = useState<string>()
-  useEffect(() => {
-    api<string[]>("/api/circuits")
-      .then((list) => {
+  /** Lists the circuit files and opens the first when none is open yet. */
+  const listFiles = useCallback(
+    () =>
+      api<string[]>("/api/circuits").then((list) => {
         setFiles(list)
+        setFilesListed(true)
         setFile((current) => current ?? list[0])
-      })
-      .catch((error: Error) => notify(error.message))
+      }),
+    [setFile],
+  )
+  useEffect(() => {
+    listFiles().catch((error: Error) => {
+      setFilesError(error.message)
+      notify(error.message)
+    })
     api<string[]>("/api/sheets")
       .then(setSheets)
       .catch((error: Error) => notify(error.message))
@@ -53,10 +67,18 @@ function useProject(notify: (text: string) => void, setFile: (pick: (current: st
       .then((info) => setProject(info.name))
       .catch((error: Error) => notify(error.message))
     refreshParts().catch((error: Error) => notify(error.message))
-  }, [notify, setFile, refreshParts])
+  }, [notify, listFiles, refreshParts])
+  // While the folder has no circuit, a file written there (by an agent, say) is listed and opened.
+  const empty = filesListed && files.length === 0
+  useEffect(() => {
+    if (!empty) return
+    return subscribe((event, changed) => {
+      if (event === "change" && changed !== "") listFiles().catch((error: Error) => notify(error.message))
+    })
+  }, [empty, listFiles, notify])
   /** Reads the file list again, as after File → New circuit. */
   const refreshFiles = useCallback(() => api<string[]>("/api/circuits").then(setFiles), [])
-  return { files, sheets, project, refreshFiles }
+  return { files, filesListed, filesError, sheets, project, refreshFiles }
 }
 
 /**
@@ -104,7 +126,7 @@ export function useStudioData(notify: (text: string) => void, onFile: () => void
     setBuild((previous) => (next.status === "building" && previous.design ? { ...next, design: previous.design } : next))
   }, [])
 
-  const { files, sheets, project, refreshFiles } = useProject(report, setFile, refreshParts)
+  const { files, filesListed, filesError, sheets, project, refreshFiles } = useProject(report, setFile, refreshParts)
   /** A run's news: kept for the status line and the Checks list; its end is told, and a write reloads the history. */
   const onRoute = useCallback(
     (event: RouteEvent) => {
@@ -156,5 +178,5 @@ export function useStudioData(notify: (text: string) => void, onFile: () => void
     }, onConnection)
   }, [file, refresh, refreshBuild, refreshParts, report, onFile, onRoute, onPlace, onConnection])
 
-  return { files, sheets, project, file, setFile, circuit, build, history, historyProblems, parts, route, place, serverGone, refresh, refreshParts, refreshFiles }
+  return { files, filesListed, filesError, sheets, project, file, setFile, circuit, build, history, historyProblems, parts, route, place, serverGone, refresh, refreshParts, refreshFiles }
 }

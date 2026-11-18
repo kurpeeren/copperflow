@@ -12,6 +12,7 @@ export type CommandId =
   | "exportBom"
   | "exportPackage"
   | "exportFabrication"
+  | "exportHtml"
   | "undo"
   | "redo"
   | "delete"
@@ -58,6 +59,7 @@ export type CommandId =
   | "autoplaceInstance"
   | "fitBoard"
   | "importBoardDxf"
+  | "importGraphic"
   | "autoroute"
   | "autorouteSelection"
   | "autorouteNet"
@@ -133,10 +135,12 @@ export const MENUS: readonly Menu[] = [
       run("Open circuit file", "openFile", "Ctrl+O"),
       run("New circuit…", "newCircuit"),
       run("Import board (DXF or KiCad)…", "importBoardDxf"),
+      run("Import a drawing (SVG or DXF)…", "importGraphic"),
       "separator",
       run("Export BOM", "exportBom"),
       run("Export package", "exportPackage"),
       run("Export Gerber", "exportFabrication"),
+      run("Export web page (HTML)", "exportHtml"),
       run("Print…", "print"),
     ],
   },

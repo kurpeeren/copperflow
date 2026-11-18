@@ -9,15 +9,15 @@ import { autoplace } from "./place-tools.js"
 const literal = z.union([z.string(), z.number(), z.boolean()])
 
 const part = z.object({
-        name: z.string().describe("e.g. R1"),
-        kind: z.string().optional().describe("Built-in kind, e.g. resistor, chip, connector"),
-        part: z.string().optional().describe("Library part id (instead of kind)"),
-        value: literal.optional().describe('e.g. "10k", "100nF"'),
-        footprint: z.string().optional().describe('e.g. "0402"'),
+        name: z.string(),
+        kind: z.string().optional().describe("Built-in, e.g. resistor"),
+        part: z.string().optional().describe("Or a library part id"),
+        value: literal.optional(),
+        footprint: z.string().optional(),
         props: z
           .record(z.string(), z.union([literal, z.record(z.string(), z.string())]))
           .optional()
-          .describe('e.g. { "pinLabels": { "pin1": "VIN" } }; a chip or connector needs pinLabels, pinCount or a footprint'),
+          .describe("A chip or connector needs pinLabels, pinCount or footprint"),
 })
 export const cardPort = z.object({ name: z.string(), type: z.string().optional(), carries: z.string().optional() })
 const nets = z.record(z.string(), z.array(z.string()).min(1))
@@ -44,7 +44,7 @@ export const newCircuitInput = {
       }),
     )
     .optional()
-    .describe('e.g. { "PowerStage": { parts, nets, ports, does, sources } }, each written as <name>.sheet.tsx'),
+    .describe("Each written as <name>.sheet.tsx"),
   instances: z
     .array(
       z.object({
@@ -60,15 +60,14 @@ export const newCircuitInput = {
   pours: z
     .array(z.object({ ...pourFields, layer: z.enum(["top", "bottom"]) }))
     .max(20)
-    .optional()
-    .describe('e.g. [{ "net": "GND", "layer": "bottom" }]'),
-  holes: z.array(z.object(holeFields)).max(50).optional().describe('e.g. [{ "x": 12, "y": 7, "diameter": 3.2 }]'),
+    .optional(),
+  holes: z.array(z.object(holeFields)).max(50).optional(),
   replace: z.boolean().optional(),
   place: z.boolean().optional().describe("Default true"),
 }
 
 export const NEW_CIRCUIT_DESCRIPTION =
-  "Write a whole new circuit file from a netlist in one call: parts (no positions) and nets (pin lists). Unless place is false the board is then placed too (fitted when no board is given): the placement is a second entry, undone first. A block used more than once goes in sheets and is used by instances. Nothing is written if a name, kind, part id, pin, port or base is wrong; the answer says which. An existing file is refused unless replace. guide { topic: \"writing-circuits\" } has the details. Call check_circuit once afterwards."
+  "Write a whole new circuit file from a netlist in one call: parts (no positions) and nets (pin lists). Unless place is false the board is then placed (fitted when no board is given) as a second entry. A block used more than once goes in sheets, used by instances. Nothing is written if anything is wrong; the answer says what. An existing file is refused unless replace. Details: guide { topic: \"writing-circuits\" }."
 
 /** Marks and locks left from an earlier file of this name, as a line for the answer; they apply to the new file. */
 async function leftovers(root: string, file: string): Promise<string | undefined> {

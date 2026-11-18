@@ -75,8 +75,8 @@ export interface DrawingInfo {
   end: number
 }
 
-/** The tags of the board's own items: copper pours and non-plated holes. */
-export type BoardItemTag = "copperpour" | "hole"
+/** The tags of the board's own items: copper pours, non-plated holes, silkscreen texts and drawings from SVG or DXF files. */
+export type BoardItemTag = "copperpour" | "hole" | "silkscreentext" | "boardgraphic"
 
 /**
  * A copper pour (`<copperpour>`) or hole (`<hole>`), addressed by the id the engine gives it: "copperpour:<n>" or
@@ -216,6 +216,19 @@ export type Edit =
   | { kind: "addHole"; x: number; y: number; diameter: number }
   | { kind: "setHole"; id: string; props: Record<string, number> }
   | { kind: "removeHole"; id: string }
+  /** Adds a `<silkscreentext>`: words centred on x, y in mm, on the top or bottom silkscreen; height in mm, rotation in degrees. */
+  | { kind: "addSilkText"; text: string; x: number; y: number; layer: "top" | "bottom"; height?: number; rotation?: number; name?: string }
+  /** Rewords, moves, turns, resizes or flips a board text: any of text, x, y, layer, height, rotation, name (null removes name, height or rotation). */
+  | { kind: "setSilkText"; id: string; props: Record<string, Literal | null> }
+  | { kind: "removeSilkText"; id: string }
+  /**
+   * Adds a `<boardgraphic>`: the drawing in `file` (graphics/<name>.svg or .dxf) centred on x, y in mm on `layer`;
+   * `width` in mm keeping its aspect, or `scale`; rotation in degrees; `fill` fills its closed lines.
+   */
+  | { kind: "addBoardGraphic"; file: string; layer: string; x: number; y: number; width?: number; scale?: number; rotation?: number; fill?: boolean; name?: string }
+  /** Moves, resizes, turns, re-layers or renames a drawing: any of file, layer, x, y, width, scale, rotation, fill, name (null removes width, scale, rotation, fill or name). */
+  | { kind: "setBoardGraphic"; id: string; props: Record<string, Literal | null> }
+  | { kind: "removeBoardGraphic"; id: string }
   /** In a sheet file: renames a `<port>` and the trace ends that name its net (`net.<from>`). */
   | { kind: "renamePort"; from: string; to: string }
   /** In a sheet file: the sheet symbol's size on `<sheet>`; null removes one, so the ports decide it again. */
@@ -226,6 +239,9 @@ export type Edit =
   | { kind: "setBoard"; width: number; height: number; x: number; y: number }
   /**
    * The board from a drawing: its outline, its holes and its keepouts (on all layers) at once. A board that has holes or
-   * keepouts already is refused unless `replace`, which removes them first.
+   * keepouts already is refused unless `replace`, which removes them first. `keepItems` changes only the outline and
+   * leaves the holes and keepouts as they are (then `holes` and `keepouts` must be empty).
    */
-  | { kind: "setBoardShape"; outline: Point[]; holes: { x: number; y: number; diameter: number }[]; keepouts: Point[][]; replace: boolean }
+  | { kind: "setBoardShape"; outline: Point[]; holes: { x: number; y: number; diameter: number }[]; keepouts: Point[][]; replace: boolean; keepItems?: boolean }
+  /** The board's copper layer count, `layers` on `<board>`. */
+  | { kind: "setBoardLayers"; layers: 2 | 4 }

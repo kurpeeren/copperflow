@@ -56,7 +56,7 @@ export async function attachDatasheet(root: string, input: AttachDatasheetInput,
 }
 
 /** The notes the checklist already carries (what an import approximated, a placeholder footprint), kept on a rewrite. */
-async function keptNotes(path: string): Promise<string[]> {
+export async function keptNotes(path: string): Promise<string[]> {
   const text = await readFile(path, "utf8").catch(() => "")
   const start = text.indexOf(`\n${NOTES_HEADING}\n`)
   if (start < 0) return []

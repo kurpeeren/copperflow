@@ -52,3 +52,15 @@ export function setBoard(source: string, scan: Scan, given: SetBoard): string {
   if (edit.y !== 0 || board.props["pcbY"]) put("pcbY", formatLiteral(edit.y))
   return out.toString()
 }
+
+/** Gives the board `layers` copper layers; refuses a value other than 2 or 4 and a prop written as an expression. */
+export function setBoardLayers(source: string, scan: Scan, layers: number): string {
+  const board = scan.boardNode
+  if (!board) throw new EditError("invalid", "The file has no <board> element to change")
+  if (layers !== 2 && layers !== 4) throw new EditError("invalid", "board layers must be 2 or 4")
+  const prop = board.props["layers"]
+  if (prop && !prop.editable) throw new EditError("readonly", `board.layers is an expression (${prop.source}) and cannot be edited`)
+  const out = new MagicString(source)
+  putAttribute(out, source, board.node, "layers", formatLiteral(layers))
+  return out.toString()
+}

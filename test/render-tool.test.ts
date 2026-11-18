@@ -38,10 +38,10 @@ afterEach(async () => {
 })
 
 describe("the render tool", () => {
-  test("is read only and answers a PNG image and the line saying what it shows", async () => {
+  test("changes nothing but the file out names, and answers a PNG image and the line saying what it shows", async () => {
     const tool = (await client.listTools()).tools.find((t) => t.name === "render")
-    expect(tool?.annotations).toMatchObject({ readOnlyHint: true })
-    expect(Object.keys(tool?.inputSchema.properties ?? {})).toEqual(["file", "view", "page", "parts", "width", "side", "angle", "look", "change", "since"])
+    expect(tool?.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false })
+    expect(Object.keys(tool?.inputSchema.properties ?? {})).toEqual(["file", "view", "page", "parts", "width", "side", "angle", "look", "change", "since", "out"])
     const result = await client.callTool({ name: "render", arguments: { file: "io.circuit.tsx", width: 400 } })
     const [image, text] = result.content as Array<{ type: string; data?: string; mimeType?: string; text?: string }>
     expect(result.isError).not.toBe(true)

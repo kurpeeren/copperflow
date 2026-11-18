@@ -17,10 +17,10 @@ export const createPartInput = {
     .describe('e.g. sot23_5, soic8, or { "file": "footprint.yaml" }'),
   pins: z
     .union([fields.pins, z.string()])
-    .describe('e.g. { "1": { "name": "VIN", "type": "power_in" } }, or the pin table as text, "1 VIN power_in" per line'),
+    .describe('e.g. { "1": { "name": "VIN", "type": "power_in" } }, or text, "1 VIN power_in" per line. A repeated name (a tab) is addressed as pin<n>'),
   suppliers: fields.suppliers.describe('e.g. { "lcsc": "C51118" }'),
   datasheet: fields.datasheet.describe(`Only ${DATASHEET_KEYS.join(", ")}`),
-  model: fields.model.describe('For simulate, e.g. { "kind": "nmos", "pins": { "gate": "G", "source": "S", "drain": "D" }, "figures": { "vth": { "value": 1.45, "source": "p2, Table 1" } } }'),
+  model: fields.model.describe('For simulate (guide { topic: "modules" })'),
   footprint_file: FootprintFileInputSchema.optional().describe("Pads in mm, y up, origin at the centre"),
   replace: z.boolean().optional(),
 }

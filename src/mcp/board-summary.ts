@@ -1,5 +1,6 @@
 // board_summary: the board in words, the model's eyes on the layout. Board size and layers, the share of the board the
-// courtyards take, a line per part, the longest connections with their pads, placement findings, pours and the unrouted count; the
+// courtyards take, a line per part, the longest connections with their pads, placement findings, pours, the silkscreen
+// texts by id and the unrouted count; the
 // default answer stops at about 60 lines and the rest is behind detail "full".
 import type { Design } from "../engine/design.js"
 import type { Point } from "../engine/model.js"
@@ -14,9 +15,13 @@ export const BOARD_SUMMARY_LIMIT = 60
 const LONGEST_SHOWN = 10
 /** The finding lists name at most this many parts each in the default answer. */
 const FINDINGS_SHOWN = 10
+/** The default answer lists at most this many silkscreen texts. */
+const TEXTS_SHOWN = 10
+/** A text is quoted up to this many characters. */
+const QUOTED = 40
 
 export const BOARD_SUMMARY_DESCRIPTION =
-  "The board in about 60 lines: size, layers, courtyard use, one line per part (position, side, [LOCKED] or \"not placed\"), the ten longest connections, overlaps, parts off the board, pours, unrouted count."
+  "The board in about 60 lines: size, layers, courtyard use, one line per part (position, side, [LOCKED] or \"not placed\"), the ten longest connections, overlaps, parts off the board, pours, silkscreen texts, drawings, unrouted count."
 
 export type BoardDetail = "compact" | "full"
 
@@ -138,6 +143,31 @@ function pourLines(design: Design): string[] {
   return [`Pours: ${[...byLayer].map(([layer, nets]) => `${layer} ${nets.join(", ")}`).join("; ")}`]
 }
 
+/** One line per silkscreen text, by id, so set_drawing and remove_drawing can name it; none on a board without text. */
+function silkTextLines(design: Design, shown: number): string[] {
+  const texts = design.pcb.silkTexts ?? []
+  if (texts.length === 0) return []
+  const line = (t: (typeof texts)[number]) => {
+    const words = t.text.length > QUOTED ? `${t.text.slice(0, QUOTED)}…` : t.text
+    const turn = t.rotation === 0 ? "" : `, turned ${t.rotation}°`
+    return `  ${t.id}${t.name ? ` (${t.name})` : ""} "${words}" ${t.layer} at (${mm(t.x)}, ${mm(t.y)}), ${t.height} mm${turn}`
+  }
+  const more = texts.length > shown ? [`  … and ${texts.length - shown} more (detail: full)`] : []
+  return [`Silkscreen text (${texts.length}):`, ...texts.slice(0, shown).map(line), ...more]
+}
+
+/** One line per board drawing (`<boardgraphic>`), by id, with its file, layer, centre and size. */
+function graphicLines(design: Design, shown: number): string[] {
+  const graphics = design.pcb.graphics ?? []
+  if (graphics.length === 0) return []
+  const line = (g: (typeof graphics)[number]) => {
+    const turn = g.rotation === 0 ? "" : `, turned ${g.rotation}°`
+    return `  ${g.id}${g.name ? ` (${g.name})` : ""} ${g.file} ${g.layer} at (${mm(g.x)}, ${mm(g.y)}), ${mm(g.width)} x ${mm(g.height)} mm${turn}`
+  }
+  const more = graphics.length > shown ? [`  … and ${graphics.length - shown} more (detail: full)`] : []
+  return [`Drawings (${graphics.length}):`, ...graphics.slice(0, shown).map(line), ...more]
+}
+
 /**
  * The board summary. The default fits about 60 lines: the part lines are cut first and end with "… and N more (detail:
  * full)"; detail "full" lists every part, every unrouted connection and every finding.
@@ -150,6 +180,8 @@ export function formatBoardSummary(file: string, design: Design, locked: Readonl
     ...longestLines(design, full ? Infinity : LONGEST_SHOWN),
     ...findingLines(design, full ? Infinity : FINDINGS_SHOWN),
     ...pourLines(design),
+    ...silkTextLines(design, full ? Infinity : TEXTS_SHOWN),
+    ...graphicLines(design, full ? Infinity : TEXTS_SHOWN),
     `Unrouted: ${plural(design.pcb.ratsnest.length, "connection")}`,
   ]
   const room = BOARD_SUMMARY_LIMIT - head.length - tail.length

@@ -34,6 +34,7 @@ export function pourInputKey(inputs: PourInputs): string {
     outline: board.outline,
     keepouts: board.keepouts.map((k) => [k.outline, k.layers]),
     holes: (board.holes ?? []).map((h) => [h.x, h.y, h.diameter]),
+    drawings: (board.graphics ?? []).filter((g) => ["top", "bottom", "inner1", "inner2"].includes(g.layer)).map((g) => [g.layer, g.areas, g.lines]),
     pours: (board.pours ?? []).map(({ source: _source, ...pour }) => pour),
     pads: pads.map((p) => [p.shape, p.x, p.y, p.width, p.height, p.rotation, p.layers, p.cornerRadius ?? null, p.net ?? null]),
     tracks: tracks.map((t) => [t.layer, t.width, t.points, t.net ?? null, t.missingLayer ?? null]),

@@ -20,7 +20,8 @@ import "./left-panel.css"
 interface Props {
   circuit: CircuitData
   parts: PartsData
-  onPlace(part: string): void
+  /** `atOnce`: the Place button was pressed with the keyboard, so the part is added without a click on the canvas. */
+  onPlace(part: string, atOnce?: boolean): void
   /** Library → Import by LCSC number…. */
   onImport(): void
   /** Library → New part…. */

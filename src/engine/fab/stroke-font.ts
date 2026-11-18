@@ -1,6 +1,7 @@
-// A small single-stroke font for silkscreen text (designators): capitals, digits and a few signs, each glyph a set of
-// polylines on a 4 wide by 6 high grid. copperflow's own glyphs. Lower case is drawn as upper case; a character
-// without a glyph is drawn as a box, so it is never silently lost.
+// A small single-stroke font for silkscreen text (designators and the board's own text): capitals, lower case, digits
+// and the signs a board legend needs, each glyph a set of polylines on a 4 wide by 6 high grid; lower case stands 4
+// high and its tails reach 2 below the line. copperflow's own glyphs. A character without a glyph is drawn as a box, so
+// it is never silently lost; the board's text refuses one (undrawable).
 import type { Point } from "../model.js"
 
 /** Glyph polylines: points "x,y" separated by spaces, polylines by ";". */
@@ -50,6 +51,37 @@ const GLYPHS: Readonly<Record<string, string>> = {
   "(": "3,6 2,5 2,1 3,0",
   ")": "1,6 2,5 2,1 1,0",
   "#": "1,0 1,6;3,0 3,6;0,2 4,2;0,4 4,4",
+  ":": "2,1 2,1;2,4 2,4",
+  "%": "0,6 1,6 1,5 0,5 0,6;3,1 4,1 4,0 3,0 3,1;0,0 4,6",
+  "=": "0,2 4,2;0,4 4,4",
+  ",": "2,0 1,-1",
+  "!": "2,6 2,2;2,0 2,0",
+  a: "4,4 4,0;4,3 3,4 1,4 0,3 0,1 1,0 3,0 4,1",
+  b: "0,6 0,0;0,1 1,0 3,0 4,1 4,3 3,4 1,4 0,3",
+  c: "4,3 3,4 1,4 0,3 0,1 1,0 3,0 4,1",
+  d: "4,6 4,0;4,1 3,0 1,0 0,1 0,3 1,4 3,4 4,3",
+  e: "0,2 4,2 4,3 3,4 1,4 0,3 0,1 1,0 3,0 4,1",
+  f: "3,6 2,6 1,5 1,0;0,4 3,4",
+  g: "4,4 4,-1 3,-2 1,-2 0,-1;4,3 3,4 1,4 0,3 0,1 1,0 3,0 4,1",
+  h: "0,6 0,0;0,3 1,4 3,4 4,3 4,0",
+  i: "2,4 2,0;2,5.5 2,5.5",
+  j: "3,4 3,-1 2,-2 1,-2 0,-1;3,5.5 3,5.5",
+  k: "0,6 0,0;0,1 3,4;1,2 4,0",
+  l: "1,6 2,6 2,1 3,0",
+  m: "0,4 0,0;0,3 1,4 2,3 2,0;2,3 3,4 4,3 4,0",
+  n: "0,4 0,0;0,3 1,4 3,4 4,3 4,0",
+  o: "1,0 0,1 0,3 1,4 3,4 4,3 4,1 3,0 1,0",
+  p: "0,4 0,-2;0,3 1,4 3,4 4,3 4,1 3,0 1,0 0,1",
+  q: "4,4 4,-2;4,3 3,4 1,4 0,3 0,1 1,0 3,0 4,1",
+  r: "0,4 0,0;0,2 2,4 4,4",
+  s: "4,4 1,4 0,3 1,2 3,2 4,1 3,0 0,0",
+  t: "1,6 1,1 2,0 3,0;0,4 3,4",
+  u: "0,4 0,1 1,0 3,0 4,1;4,4 4,0",
+  v: "0,4 2,0 4,4",
+  w: "0,4 1,0 2,2 3,0 4,4",
+  x: "0,0 4,4;0,4 4,0",
+  y: "0,4 2,0;4,4 1,-2",
+  z: "0,4 4,4 0,0 4,0",
   " ": "",
 }
 const MISSING = "0,0 4,0 4,6 0,6 0,0"
@@ -59,8 +91,16 @@ const GLYPH_HEIGHT = 6
 /** From one glyph's left edge to the next one's. */
 const ADVANCE = 6
 
+/** The characters the font draws, in one line, for the words of a refusal. */
+export const DRAWABLE_CHARACTERS = "A-Z a-z 0-9, space and - _ + . / ~ ( ) # : % = , !"
+
+/** The characters of `text` the font has no glyph for, each once, in the order met. */
+export function undrawable(text: string): string[] {
+  return [...new Set([...text].filter((char) => !Object.hasOwn(GLYPHS, char)))]
+}
+
 function strokesOf(char: string): Point[][] {
-  const glyph = GLYPHS[char.toUpperCase()] ?? MISSING
+  const glyph = (Object.hasOwn(GLYPHS, char) ? GLYPHS[char] : undefined) ?? MISSING
   if (glyph === "") return []
   return glyph.split(";").map((line) =>
     line.split(" ").map((pair) => {

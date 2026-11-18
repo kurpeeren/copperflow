@@ -4,7 +4,7 @@ import type { Point } from "../model.js"
 import { naturalCompare } from "../order.js"
 import { requiredClearance } from "../rules/classes.js"
 import type { Rules } from "../rules/schema.js"
-import type { CopperPiece } from "./copper-pieces.js"
+import { isDrawingNet, type CopperPiece } from "./copper-pieces.js"
 import { bounds, closestPoints, shapeDistance, type Shape } from "./geometry.js"
 import { GridIndex, type Box } from "./grid-index.js"
 import { breaksMinimum } from "./limits.js"
@@ -81,6 +81,8 @@ function measureLayer(slots: readonly Slot[], reach: number, cell: number, found
  * centred on the pad. A pad with no net is never one conductor with copper, so copper on it is always reported.
  */
 function joined({ a, b }: Nearest): boolean {
+  // A drawing on copper belongs to no net: whatever it meets, it is never one conductor with it.
+  if (a.piece.kind === "drawing" || b.piece.kind === "drawing") return false
   if (a.piece.kind !== "pad" && b.piece.kind !== "pad") return copperTouches(a.shape, b.shape)
   const [pad, other] = a.piece.kind === "pad" ? [a, b] : [b, a]
   if (pad.piece.net === undefined) return false
@@ -101,6 +103,20 @@ export function ruleText(rules: Rules, a: string, b: string, required: number): 
   return byClasses < required ? `the fabrication minimum is ${mm(required)} mm` : `${pairName(rules, a, b)} needs ${mm(required)} mm`
 }
 
+/** "the track t0007 of GND": a piece in words, its net named when it has a real one. */
+function pieceWords(piece: CopperPiece): string {
+  const kind = piece.kind === "drawing" ? "drawing" : piece.kind
+  return `the ${kind} ${piece.id}${piece.net !== undefined && !isDrawingNet(piece.net) ? ` of ${piece.net.replace(/^net\./, "")}` : ""}`
+}
+
+/** A drawing on copper too near or touching other copper, in words for a person; undefined for two other pieces. */
+function drawingMessage({ a, b, distance }: Nearest, required: number, rules: Rules): string | undefined {
+  const [drawing, other] = a.piece.kind === "drawing" ? [a.piece, b.piece] : b.piece.kind === "drawing" ? [b.piece, a.piece] : [undefined, undefined]
+  if (drawing === undefined || other === undefined) return undefined
+  if (distance <= 0) return `${drawing.id} touches ${pieceWords(other)}; a drawing on copper must stand clear of every net`
+  return `${drawing.id} is ${mm(distance)} mm from ${pieceWords(other)}; ${ruleText(rules, drawing.className, other.className, required)}`
+}
+
 /** Two named nets that differ: copper.ts never leaves joined copper so, unless the copper touches no pad. */
 const twoNets = ({ a, b }: Nearest) => a.piece.net !== undefined && b.piece.net !== undefined && a.piece.net !== b.piece.net
 
@@ -113,7 +129,7 @@ function judge(nearest: Nearest, rules: Rules): Violation | undefined {
   const { a, b, distance } = nearest
   const required = requiredClearance(rules, a.piece.className, b.piece.className)
   if (!breaksMinimum(distance, required)) return undefined
-  const message = `${a.piece.id} and ${b.piece.id} are ${gap(distance)}; ${ruleText(rules, a.piece.className, b.piece.className, required)}`
+  const message = drawingMessage(nearest, required, rules) ?? `${a.piece.id} and ${b.piece.id} are ${gap(distance)}; ${ruleText(rules, a.piece.className, b.piece.className, required)}`
   return copperViolation("copper-clearance", message, [a.piece.id, b.piece.id], [a.piece.id, b.piece.id], midpoint(closestPoints(a.shape, b.shape)))
 }
 

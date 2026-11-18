@@ -1,6 +1,7 @@
 // What each Gerber file holds, from the built board: copper (pours, pads, tracks, vias) per copper layer, solder mask openings
 // (pads grown by the mask expansion; vias are tented), paste (SMD pads only, shrunk by the paste reduction),
-// silkscreen (footprint outlines and designators) and the board outline. Keepouts are not exported; the mask and paste
+// silkscreen (footprint outlines, designators, the board's own texts and drawings) and the board outline; a drawing on a
+// mask layer is an opening there. Keepouts are not exported; the mask and paste
 // ignore the pours. Pure.
 import { boardCopperLayers, type CopperLayer } from "../../core/layout-file.js"
 import { viaSpan } from "../copper.js"
@@ -10,7 +11,9 @@ import { pathArea, regions, toPath, toPoints } from "../pour/clip.js"
 import type { FabricationProfile } from "../rules/schema.js"
 import { DEFAULT_MASK_EXPANSION, DESIGNATOR_HEIGHT, designatorPlacements, silkClearance, SILK_WIDTH } from "./designators.js"
 import { writeGerber, type GerberLayer, type GerberObject } from "./gerber.js"
+import { graphicObjects } from "./graphic-objects.js"
 import { fabFileName, GERBER_LAYERS, type GerberLayerName } from "./names.js"
+import { silkTextLineWidth, silkTextStrokes } from "./silk-text-strokes.js"
 import { textStrokes } from "./stroke-font.js"
 
 export { DEFAULT_MASK_EXPANSION, DESIGNATOR_HEIGHT, SILK_WIDTH }
@@ -115,6 +118,46 @@ function pourObjects(pcb: PcbLayout, layer: CopperLayer): GerberObject[] {
   ])
 }
 
+/**
+ * The drawings on this copper layer: each area one dark region whose holes are joined to its outline by cut-in lines
+ * (no clear region, so nothing else on the layer can be erased by a drawing's hole), then their lines; after the
+ * pours, whose clear regions would erase them otherwise.
+ */
+function drawingCopper(pcb: PcbLayout, layer: CopperLayer): GerberObject[] {
+  const here = (pcb.graphics ?? []).filter((graphic) => graphic.layer === layer)
+  return here.flatMap((graphic): GerberObject[] => [
+    ...graphic.areas.map((area): GerberObject => ({ kind: "region", points: withCutIns(area), function: "Conductor" })),
+    ...graphic.lines.filter((line) => line.points.length > 0).map((line): GerberObject => ({ kind: "draw", points: line.points, width: line.width, function: "Conductor" })),
+  ])
+}
+
+const wound = (ring: readonly Point[], counterClockwise: boolean): Point[] => {
+  const twice = ring.reduce((sum, a, i) => {
+    const b = ring[(i + 1) % ring.length] as Point
+    return sum + a.x * b.y - b.x * a.y
+  }, 0)
+  return twice > 0 === counterClockwise ? [...ring] : [...ring].reverse()
+}
+
+/**
+ * One contour for an area with holes: the outline counter-clockwise, and each hole, clockwise, entered from the
+ * outline's nearest corner and left back to it along the same line, so the hole stays open under the non-zero rule.
+ */
+export function withCutIns(area: { outer: Point[]; holes: Point[][] }): Point[] {
+  return area.holes.reduce((ring, raw) => {
+    const hole = wound(raw, false)
+    let [best, at, from] = [Infinity, 0, 0]
+    hole.forEach((h, j) =>
+      ring.forEach((o, i) => {
+        const d = (o.x - h.x) ** 2 + (o.y - h.y) ** 2
+        if (d < best) [best, at, from] = [d, i, j]
+      }),
+    )
+    const loop = [...hole.slice(from), ...hole.slice(0, from), hole[from] as Point]
+    return [...ring.slice(0, at + 1), ...loop, ...ring.slice(at)]
+  }, wound(area.outer, true))
+}
+
 function copperObjects(pcb: PcbLayout, layer: CopperLayer): GerberObject[] {
   const padCopper = pads(pcb.parts)
     .filter((pad) => pad.layers === "through" || pad.layers === layer)
@@ -125,17 +168,31 @@ function copperObjects(pcb: PcbLayout, layer: CopperLayer): GerberObject[] {
   const vias = pcb.vias
     .filter((via) => via.missingLayer === undefined && viaSpan(via).has(layer))
     .map((via): GerberObject => ({ kind: "flash", at: via.at, aperture: { shape: "circle", diameter: via.diameter }, function: "ViaPad" }))
-  return [...pourObjects(pcb, layer), ...padCopper.filter(present), ...tracks, ...vias]
+  return [...pourObjects(pcb, layer), ...drawingCopper(pcb, layer), ...padCopper.filter(present), ...tracks, ...vias]
 }
 
 function silkObjects(pcb: PcbLayout, side: Side, expansion: number, clearance: number): GerberObject[] {
   const designators = designatorPlacements(pcb, expansion, clearance).filter((placed) => placed.side === side)
+  const draw = (width: number) => (points: Point[]): GerberObject => ({ kind: "draw", points, width, function: LEGEND_FUNCTION })
+  const texts = (pcb.silkTexts ?? []).filter((text) => text.layer === side).flatMap((text) => silkTextStrokes(text).map(draw(silkTextLineWidth(text.height))))
+  const drawings = graphicObjects(pcb.graphics, `${side}-silkscreen`, LEGEND_FUNCTION)
   return [
-    ...pcb.parts.filter((part) => part.side === side).flatMap((part) => part.silkscreen),
-    ...designators.flatMap((placed) => textStrokes(placed.component, placed.at, DESIGNATOR_HEIGHT, side === "bottom", placed.rotation === 90)),
+    ...drawings.areas,
+    ...[
+      ...pcb.parts.filter((part) => part.side === side).flatMap((part) => part.silkscreen),
+      ...designators.flatMap((placed) => textStrokes(placed.component, placed.at, DESIGNATOR_HEIGHT, side === "bottom", placed.rotation === 90)),
+    ]
+      .filter((line) => line.length > 0)
+      .map(draw(SILK_WIDTH)),
+    ...texts,
+    ...drawings.lines,
   ]
-    .filter((line) => line.length > 0)
-    .map((points): GerberObject => ({ kind: "draw", points, width: SILK_WIDTH, function: LEGEND_FUNCTION }))
+}
+
+/** The solder mask openings on a side: the board's drawings on that mask (areas first), then the pads grown by the expansion. */
+function maskObjects(pcb: PcbLayout, side: Side, onSide: readonly WorldPad[], expansion: number): GerberObject[] {
+  const drawings = graphicObjects(pcb.graphics, `${side}-mask`)
+  return [...drawings.areas, ...onSide.map((pad) => padObject(pad, expansion, padFunction(pad))).filter(present), ...drawings.lines]
 }
 
 function outlineObjects(pcb: PcbLayout): GerberObject[] {
@@ -158,7 +215,7 @@ export function gerberLayers(pcb: PcbLayout, fabrication: FabricationProfile): {
   })
   for (const side of SIDES) {
     const onSide = pads(pcb.parts).filter((pad) => padOnSide(pad, side))
-    const mask = onSide.map((pad) => padObject(pad, expansion, padFunction(pad))).filter(present)
+    const mask = maskObjects(pcb, side, onSide, expansion)
     const paste = onSide.filter(isSmd).map((pad) => padObject(pad, -reduction, padFunction(pad))).filter(present)
     layers.set(`${SIDE_KEY[side]}_Mask`, { fileFunction: `Soldermask,${SIDE_X2[side]}`, polarity: "Negative", objects: mask })
     layers.set(`${SIDE_KEY[side]}_Paste`, { fileFunction: `Paste,${SIDE_X2[side]}`, polarity: "Positive", objects: paste })

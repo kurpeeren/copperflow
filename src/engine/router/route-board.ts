@@ -14,6 +14,7 @@ import type { RoutedCopper } from "./path.js"
 import { replicate, type Replica } from "./replicate.js"
 import { keepClearOf } from "./keep-clear.js"
 import { ripUpAndRetry } from "./rip-up.js"
+import { withoutUnplaced } from "./unplaced.js"
 
 /**
  * The whole job: the connections the ratsnest still misses (all of them, or those of some nets, of some parts, or
@@ -101,6 +102,8 @@ export interface RouteReport {
   budgetSpent: boolean
   /** How many failed connections rip-up tried again (rip-up); absent when none. */
   retried?: number
+  /** The parts with no position that connections in `unrouted` wait for (unplaced.ts); absent when none. */
+  waitingFor?: string[]
 }
 
 /** The reason given to a connection the time budget left unrouted, after "could not route A to B: ". */
@@ -287,8 +290,12 @@ function settle(run: Run, connections: readonly Connection[]): void {
  */
 export function routeBoard(input: RouteBoardInput, options: RouteBoardOptions = {}): RouteReport {
   const router = (given: RouteBoardInput, asked: RouteBoardOptions) => routeWithPours(given, asked, routeOnce)
-  const own = blockOnly(input, options.scope ?? { kind: "all" })
-  return ripUpAndRetry(own, router(own, scopedMain(own, options)), withoutProgress(options), router)
+  const scope = options.scope ?? { kind: "all" }
+  const own = blockOnly(input, scope)
+  // The connections to parts with no position wait for them (unplaced.ts): routed, they would end where no part stays.
+  const split = withoutUnplaced(own, (one) => linesIn(one, scope))
+  const report = ripUpAndRetry(split.input, router(split.input, scopedMain(split.input, options)), withoutProgress(options), router)
+  return split.waiting.length === 0 ? report : { ...report, unrouted: [...report.unrouted, ...split.waiting], waitingFor: split.parts }
 }
 
 const sameFrame = (a: SheetInstance, b: SheetInstance): boolean => {

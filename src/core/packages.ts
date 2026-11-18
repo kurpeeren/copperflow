@@ -1,6 +1,9 @@
 // The catalogue of standard packages as text, for the command line and for agents: search and compact listing. Pure.
 import { findPackages, PACKAGE_FORMS, PACKAGE_GROUPS, packageFacts, type PackageEntry } from "../engine/footprints/catalogue.js"
+import { generateFootprint } from "../engine/footprints/index.js"
 import { nearestFootprints } from "../engine/footprints/known.js"
+import { padRoles } from "../engine/footprints/pad-roles.js"
+import { padLines } from "./pad-lines.js"
 
 export interface FormatOptions {
   /** Show each package's other strings after its name (useful when a search was made). */
@@ -61,10 +64,23 @@ export function noPackageText(words: readonly string[]): string {
   return `No package matches "${words.join(" ")}".${near} Search with no words lists them all.`
 }
 
-/** The answer to a search: the whole catalogue for no words, the matching packages otherwise, or the no-match line. */
+/** A search that matches at most this many packages lists each one's pads. */
+export const PADS_LISTED_UP_TO = 3
+
+/** "dcjack pads: number, centre, size (mm), hole, role" and one line per pad. */
+export function packagePadLines(entry: PackageEntry): string[] {
+  const footprint = generateFootprint(entry.footprint)
+  if ("error" in footprint) return []
+  const roles = padRoles(entry)
+  return [`${entry.footprint} pads: number, centre, size (mm), hole${roles ? ", role" : ""}`, ...padLines(footprint.pads, (number) => roles?.[number])]
+}
+
+/** The answer to a search: the whole catalogue for no words, the matching packages otherwise (with their pads when few), or the no-match line. */
 export function packagesText(words: readonly string[]): { text: string; found: boolean } {
   const entries = findPackages(words)
   if (entries.length === 0) return { text: noPackageText(words), found: false }
   const whole = words.length === 0
-  return { text: formatPackages(entries, { also: !whole, forms: whole, hideExtras: whole }), found: true }
+  const list = formatPackages(entries, { also: !whole, forms: whole, hideExtras: whole })
+  const pads = !whole && entries.length <= PADS_LISTED_UP_TO ? entries.flatMap(packagePadLines) : []
+  return { text: [list, ...pads].join("\n"), found: true }
 }

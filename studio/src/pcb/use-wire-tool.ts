@@ -8,6 +8,7 @@ import { keyAction, keyInput } from "./canvas-keys"
 import { snapPoint, type Camera, type Point } from "./geometry"
 import { wirePath } from "./wire-path"
 import { endAt, freePin, memberEnd, type Meet, namedNetsJoined, pinAt, PIN_REACH_PX, portWire, sameEnd, wireEdits, type WireEnd } from "./wire-tool"
+import { keepWireEnds, type KeepOptions } from "./wire-keeps-ends"
 
 /**
  * A wire being drawn: where it starts, the pin it starts on if any, the corners clicked so far (on the grid)
@@ -57,6 +58,8 @@ export interface WireInput {
   buildId: string | undefined
   /** When the build behind the shown design started (ms). */
   builtFrom: number
+  /** What a wire's pinned ends may not change, and the source that keeps their turns (wire-keeps-ends.ts). */
+  keep?: KeepOptions
 }
 
 interface PendingWire {
@@ -71,7 +74,7 @@ const sameUnder = (a: Under, b: Under) =>
   a.pin === b.pin && a.end?.selector === b.end?.selector && a.end?.at.x === b.end?.at.x && a.end?.at.y === b.end?.at.y
 
 /** The edit for a wire from the drawing to `target`, or what to tell the person instead. */
-function planWire(design: Design, drawing: Drawing, target: WireEnd): WirePlan {
+function planWire(design: Design, drawing: Drawing, target: WireEnd, keep: KeepOptions = {}): WirePlan {
   const { start, corners } = drawing
   if (sameEnd(target, start)) return {}
   const port = portWire(design, start, target)
@@ -85,7 +88,9 @@ function planWire(design: Design, drawing: Drawing, target: WireEnd): WirePlan {
   if (nets && !window.confirm(`This wire joins ${nets[0]} and ${nets[1]} into one net, a short circuit if they carry different voltages. Connect them anyway?`)) {
     return {}
   }
-  return { edits, points: drawnPath(drawing, target.at), summary: `connect ${start.label} to ${target.label}` }
+  // A hand-drawn wire pins the engine-placed parts at its ends where they are now, in the same edit.
+  const kept = keepWireEnds(design, { edits, summary: `connect ${start.label} to ${target.label}` }, [start.selector, target.selector], keep)
+  return { ...kept, points: drawnPath(drawing, target.at) }
 }
 
 /** What is under the pointer, kept as the same object while it does not change so the sheet is not redrawn; reset by each build. */
@@ -206,10 +211,10 @@ function usePicking(design: Design, drawing: Drawing | null, setDrawing: (drawin
 }
 
 /** Sends a finished wire and draws it dashed until its build; a wire that cannot be written says why. */
-function useFinish(design: Design, actions: Actions, pending: ReturnType<typeof usePendingWires>, setDrawing: (drawing: Drawing | null) => void) {
+function useFinish(design: Design, actions: Actions, pending: ReturnType<typeof usePendingWires>, setDrawing: (drawing: Drawing | null) => void, keep?: KeepOptions) {
   return (current: Drawing, target: WireEnd) => {
     setDrawing(null)
-    const plan = planWire(design, current, target)
+    const plan = planWire(design, current, target, keep)
     if (!("edits" in plan)) return plan.notice && actions.notify(plan.notice)
     const sent = pending.add(plan.points)
     void actions.edit(plan.edits, plan.summary).then((ok) => ok || pending.drop(sent))
@@ -227,7 +232,7 @@ export function useWireTool(input: WireInput) {
   const [drawing, setDrawing] = useState<Drawing | null>(null)
   const { under, setUnder, underRef } = useUnder(input.buildId)
   const pending = usePendingWires(input.builtFrom)
-  const finish = useFinish(design, input.actions, pending, setDrawing)
+  const finish = useFinish(design, input.actions, pending, setDrawing, input.keep)
   const picks = usePicking(design, drawing, setDrawing, finish)
   const escape = () => (picks.picking ? picks.cancelPick() : drawing ? setDrawing(null) : setWiring(false))
   useWireKeys({ drawing, setDrawing, setWiring, underRef, start: picks.start, escape })

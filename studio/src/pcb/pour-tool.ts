@@ -3,7 +3,7 @@
 // the hole's diameter field, and the edits they send: a pour on the active layer, of GND when the circuit has it, and
 // a hole. A pour's corners can be dragged afterwards (pourCornerEdit), and Delete removes pours and holes
 // (boardRemoval). Plain TypeScript with .js imports, so the tests run it without a DOM.
-import { boardItemInstance, instanceItemRefusal, isHoleId, outlineProblem } from "../../../src/core/board-items.js"
+import { boardItemInstance, boardItemWord, instanceItemRefusal, isBoardGraphicId, isHoleId, isSilkTextId, outlineProblem } from "../../../src/core/board-items.js"
 import { sheetFileIn } from "../../../src/core/selectors.js"
 import type { BoardItemInfo, CircuitModel, Edit } from "../../../src/core/types.js"
 import type { Design } from "../../../src/engine/design.js"
@@ -151,7 +151,8 @@ export interface BoardRemoval {
 }
 
 const indexOf = (id: string): number => Number(id.slice(id.indexOf(":") + 1))
-const nameOf = (item: Pick<BoardItemInfo, "tag" | "id">): string => (item.tag === "hole" ? `hole ${indexOf(item.id)}` : `copper pour ${indexOf(item.id)}`)
+const nameOf = (item: Pick<BoardItemInfo, "tag" | "id">): string => `${boardItemWord(item.id)} ${indexOf(item.id)}`
+const removalOf = (id: string): Edit => (isHoleId(id) ? { kind: "removeHole", id } : isSilkTextId(id) ? { kind: "removeSilkText", id } : isBoardGraphicId(id) ? { kind: "removeBoardGraphic", id } : { kind: "removePour", id })
 
 /**
  * The removal of the selected pours and holes that may go, the last of each kind first: removing one renumbers the
@@ -162,7 +163,7 @@ export function boardRemoval(model: Pick<CircuitModel, "boardItems"> & Partial<P
     const blockers = ids.map((id) => ({ id, blocker: boardItemBlocker(model, locked, id) }))
     const removed = blockers.flatMap((one) => (one.blocker === null ? [one.id] : []))
     const backwards = [...removed].sort((a, b) => indexOf(b) - indexOf(a))
-    const edits = backwards.map((id): Edit => (isHoleId(id) ? { kind: "removeHole", id } : { kind: "removePour", id }))
+    const edits = backwards.map(removalOf)
     const items = removed.flatMap((id) => model.boardItems?.find((one) => one.id === id) ?? [])
     return { edits, names: items.map(nameOf), skipped: blockers.flatMap((one) => one.blocker ?? []), removed }
   }

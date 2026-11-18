@@ -2,22 +2,24 @@ import { useId, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import type { PartsData } from "./api"
 import { allowPlace, clampActive, clickPlaces, filterRows, libraryRows, rowKey, type LibraryRow } from "./library-table.js"
 import "./library-table.css"
+import { placeAtOnce } from "./pcb/part-place"
 
 interface Props {
   parts: PartsData
-  onPlace(part: string): void
+  /** `atOnce`: the Place button was pressed with the keyboard, so the part is added without a click on the canvas. */
+  onPlace(part: string, atOnce?: boolean): void
   /** Opens the Verify screen of a library part (read-only for a verified one). */
   onVerify(part: string, title: string): void
 }
 
 /** Places a part once per intent: a double click or a held key asks again within PLACE_GAP_MS. */
-function usePlaceOnce(onPlace: (part: string) => void): (part: string) => void {
+function usePlaceOnce(onPlace: (part: string, atOnce?: boolean) => void): (part: string, atOnce?: boolean) => void {
   const lastPlace = useRef<number | null>(null)
-  return (part: string) => {
+  return (part: string, atOnce = false) => {
     const now = Date.now()
     if (!allowPlace(lastPlace.current, now)) return
     lastPlace.current = now
-    onPlace(part)
+    onPlace(part, atOnce)
   }
 }
 
@@ -42,7 +44,8 @@ interface RowProps {
   /** The row holds the table's one tab stop. */
   tabStop: boolean
   onFocus(): void
-  onPlace(): void
+  /** `atOnce`: pressed with the keyboard. */
+  onPlace(atOnce: boolean): void
   onVerify(): void
   onKey(event: KeyboardEvent<HTMLTableRowElement>): void
 }
@@ -50,7 +53,7 @@ interface RowProps {
 /** One part: a double click or Enter on the row places it, and so does its Place button. */
 function PartRow({ row, tabStop, onFocus, onPlace, onVerify, onKey }: RowProps) {
   return (
-    <tr tabIndex={tabStop ? 0 : -1} title={row.tooltip} onFocus={onFocus} onDoubleClick={onPlace} onKeyDown={onKey}>
+    <tr tabIndex={tabStop ? 0 : -1} title={row.tooltip} onFocus={onFocus} onDoubleClick={() => onPlace(false)} onKeyDown={onKey}>
       <td className="wide">{row.name}</td>
       <td>{row.value}</td>
       <td>{row.footprint}</td>
@@ -65,7 +68,7 @@ function PartRow({ row, tabStop, onFocus, onPlace, onVerify, onKey }: RowProps) 
         )}
       </td>
       <td className="action">
-        <button className="lib-place" tabIndex={-1} onClick={(e) => clickPlaces(e.detail) && onPlace()} onDoubleClick={(e) => e.stopPropagation()} aria-label={`Place ${row.name}`}>
+        <button className="lib-place" tabIndex={-1} onClick={(e) => clickPlaces(e.detail) && onPlace(placeAtOnce(e.detail))} onDoubleClick={(e) => e.stopPropagation()} aria-label={`Place ${row.name}`}>
           Place
         </button>
       </td>
@@ -88,7 +91,7 @@ export function LibraryTable({ parts, onPlace, onVerify }: Props) {
     const result = rowKey(event.key, index, rows.length, event.repeat)
     if (!result) return
     event.preventDefault()
-    if ("place" in result) place(part)
+    if ("place" in result) place(part, true)
     else (body.current?.rows[result.move] as HTMLElement | undefined)?.focus()
   }
 
@@ -96,14 +99,14 @@ export function LibraryTable({ parts, onPlace, onVerify }: Props) {
     <div className="lib-table">
       <input className="lib-table-search" type="search" placeholder="Search parts" aria-label="Search parts" value={query} onChange={(e) => setQuery(e.target.value)} />
       <p id={hint} className="lib-table-hint">
-        Enter places the focused part; so does a double click on a row.
+        Enter adds the focused part at once and Studio picks the spot; a double click on a row arms it for a click on the schematic or the PCB.
       </p>
       <div className="lib-table-scroll hairline-t">
         <table aria-label="Library parts" aria-describedby={hint}>
           <LibraryHead />
           <tbody ref={body}>
             {rows.map((row, index) => (
-              <PartRow key={row.part} row={row} tabStop={index === stop} onFocus={() => setActive(index)} onPlace={() => place(row.part)} onVerify={() => onVerify(row.part, row.description)} onKey={(e) => onKey(e, index, row.part)} />
+              <PartRow key={row.part} row={row} tabStop={index === stop} onFocus={() => setActive(index)} onPlace={(atOnce) => place(row.part, atOnce)} onVerify={() => onVerify(row.part, row.description)} onKey={(e) => onKey(e, index, row.part)} />
             ))}
           </tbody>
         </table>

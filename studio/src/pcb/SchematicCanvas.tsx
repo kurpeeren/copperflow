@@ -10,7 +10,7 @@ import { clearToolState, setToolState } from "../shell/tool-state"
 import { ViewTools } from "../shell/ViewTools"
 import { keepAutoPlaced, tidySheet } from "./auto-placed"
 import { drawEditorLayer, prepareCanvas, useCamera, useCameraFocus, useElementSize, useKeyMenuPlace, useLayout, usePlacedParts, type CanvasProps, type Moving, type PropertiesTarget } from "./canvas-common"
-import { CanvasStatus, GridSelect, KeepButton } from "./CanvasTools"
+import { CanvasHint, CanvasStatus, GridSelect, KeepButton } from "./CanvasTools"
 import { gridStepOptions, type GridLook } from "./grid"
 import { unionBoxes, worldToScreen, type Camera, type PartBox, type Point, type Size } from "./geometry"
 import { highlightOf, partNets, schematicNetAt, type Highlight } from "./highlight"
@@ -38,6 +38,7 @@ import { useLabelPalette } from "./use-label-palette"
 import { boxToolCommand } from "./box-tool"
 import { useFitSelection } from "./use-fit-selection"
 import { useNoteTool } from "./use-note-tool"
+import { usePartPlaceTool, type PartPlaceTool } from "./use-part-place-tool"
 import { usePartKeys } from "./use-part-keys"
 import type { KeyMove } from "./use-key-edits"
 import { labelsAfterMove, previewMoving } from "./move-preview"
@@ -269,11 +270,7 @@ function SheetView({ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave,
         role="img"
         aria-label="Schematic. Drag symbols, net labels and drawings to move them, click a wire to select it, Shift or Ctrl click parts, wires, net labels and drawings to add them, drag a wire or its corner handles to reshape it, drag the background to select, drag with the right button to pan, scroll to zoom. Double click a net label to rename its net. Click a free pin or press W over a pin to draw a wire. Place → Bus draws a bus, and a wire that ends on a bus picks one of its members. Place → Polyline, Arc, Circle, Rectangle and Text draw on the sheet."
       />
-      {hint && (
-        <div className="canvas-top">
-          <div className="canvas-hint">{hint}</div>
-        </div>
-      )}
+      <CanvasHint hint={hint} />
       <NameInput palette={palette} camera={camera} size={size} />
       <DrawTextInput draw={draw} camera={camera} size={size} />
       <BusMemberList wire={wire} camera={camera} size={size} />
@@ -512,6 +509,8 @@ interface SheetPointerInput extends Omit<PointerInput, "tool" | "open" | "gestur
   note: NoteTool
   draw: DrawTools
   marks: Marks
+  /** Click to place a part picked in the Library: it sees a press before every other tool. */
+  partPlace: PartPlaceTool
   /** What a double click picks with: the selection and the armed tool. */
   picking: PickContext
   onOpenProperties(target: PropertiesTarget): void
@@ -527,15 +526,15 @@ interface SheetPointerInput extends Omit<PointerInput, "tool" | "open" | "gestur
  * click does what doubleClickAction says: removes a corner of a wire selected before it began, else opens Properties
  * on a part or a wire, or renames the net of a label, while no tool is armed.
  */
-function sheetPointer({ boxes, labels, wires, drawings, corners, wire, palette, note, draw, marks, picking, onOpenProperties, symbolEdit, sheetOf, onOpenSheet, ...input }: SheetPointerInput) {
+function sheetPointer({ boxes, labels, wires, drawings, corners, wire, palette, note, draw, marks, partPlace, picking, onOpenProperties, symbolEdit, sheetOf, onOpenSheet, ...input }: SheetPointerInput) {
   const idle = () => !note.armed && !palette.armed && !draw.armed && !marks.armed && !wire.wiring && wire.drawing === null
-  const tool = (event: Press, world: Point) => (idle() && symbolEdit.press(event, world)) || (!note.armed && (marks.press(event, world) || draw.press(event, world) || palette.press(event, world) || wire.press(event, world)))
+  const tool = (event: Press, world: Point) => partPlace.press(event, world) || (idle() && symbolEdit.press(event, world)) || (!note.armed && (marks.press(event, world) || draw.press(event, world) || palette.press(event, world) || wire.press(event, world)))
   const toolRelease = (world: Point) => {
     draw.release(world)
     symbolEdit.release(world)
   }
   const open = (world: Point) => {
-    const busy = note.armed || palette.armed || draw.armed || marks.armed || wire.wiring || wire.drawing !== null
+    const busy = partPlace.armed || note.armed || palette.armed || draw.armed || marks.armed || wire.wiring || wire.drawing !== null
     const target = targetAt(boxes, labels, world, picking, wires, drawings)
     const action = doubleClickAction({ busy, handle: corners.at(world, picking), target, selectedBefore: input.gestures.wireBeforeDoubleClick() })
     if (action.kind === "removeCorner") corners.drop(action.id, action.index)
@@ -566,7 +565,7 @@ export function SchematicCanvas(props: CanvasProps) {
   const border = useMemo(() => sheetArt(sheet, { project: project ?? "", page: "Schematic", file: circuit.file, date: sheetDate(buildId), rev: "" }), [sheet, project, circuit.file, buildId])
   useCameraFocus("schematic", focus, camera, setCamera, onFocused)
   useFitSelection({ selection, boxes: parts.boxes, size, setCamera, notify: actions.notify })
-  const wire = useWireTool({ design, actions, camera, cursor, step, snap, buildId, builtFrom })
+  const wire = useWireTool({ design, actions, camera, cursor, step, snap, buildId, builtFrom, keep: { blocked: parts.blockerFor, source: circuit } })
   const symbolEdit = useSymbolEdit({ design, selection, camera, actions })
   const palette = useLabelPalette({ design, circuit, actions, camera, cursor, builtFrom, onArm: wire.cancel })
   const note = useSheetNoteTool(wire, palette)
@@ -581,6 +580,10 @@ export function SchematicCanvas(props: CanvasProps) {
   const marks = useMarkTools({ design, circuit, actions, camera, locked: parts.locked }, wire, palette, note, draw)
   const tool = useArmedForGestures(note, palette, draw, marks)
   useArmedTool(wire, palette, note, draw, marks)
+  const partPlace = usePartPlaceTool({ view: "schematic", step, snap, othersArmed: tool.armed !== null || wire.wiring || wire.drawing !== null, putOthersAway: () => {
+      tool.disarm()
+      wire.cancel()
+    } })
   const gestures = useCanvasGestures({ ...common, camera, setCamera, size, boxes: parts.boxes, anchors: parts.anchors, step, snap, builtFrom, labels: labels.tools, wires: wires.hits, drawings: drawings.hits, texts: texts.tools, selection, tool, filter: props.pickFilter, onContextMenu: props.onContextMenu })
   useLabelRenameAction(design, palette, actions)
   const layout = useLayout(parts, step, snap)
@@ -611,15 +614,15 @@ export function SchematicCanvas(props: CanvasProps) {
     hoverLabel.leave()
     hover.leave()
   }
-  const sheetHandlers = sheetPointer({ symbolEdit, sheetOf, onOpenSheet: props.onOpenSheet, camera, size, element: wrapRef, gestures, setCursor, hover: hoverAt, boxes: parts.boxes, labels: labels.tools, wires: wires.hits, drawings: drawings.hits, corners: wires.corners, wire, palette, note, draw, marks, picking, onOpenProperties: props.onOpenProperties })
+  const sheetHandlers = sheetPointer({ symbolEdit, sheetOf, onOpenSheet: props.onOpenSheet, camera, size, element: wrapRef, gestures, setCursor, hover: hoverAt, boxes: parts.boxes, labels: labels.tools, wires: wires.hits, drawings: drawings.hits, corners: wires.corners, wire, palette, note, draw, marks, partPlace, picking, onOpenProperties: props.onOpenProperties })
   // The handlers are on the sheet's element, so a move over the status line or a field on it is not a move over the canvas.
   const pointer = withHoverLabel(sheetHandlers, hoverLabel, canvasRef)
-  const cursorStyle = cursorFor(gesture, wire.drawing !== null || wire.overPin || palette.armed || note.armed || draw.armed || marks.armed, hover.over)
+  const cursorStyle = cursorFor(gesture, wire.drawing !== null || wire.overPin || palette.armed || note.armed || draw.armed || marks.armed || partPlace.armed, hover.over)
   // The toolbar's controls sit beside the sheet: inside it, their portal's events would reach the sheet's handlers.
   return (
     <>
       <SheetTools step={step} setStep={setStep} keep={{ show: parts.autoPlaced, onKeep: () => keepAutoPlaced(design, "schematic", parts.blockerFor, actions, circuit) }} />
-      <SheetView {...{ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave, cursorStyle, wire, palette, note, draw, gesture, rotateHeld, snap }} empty={parts.boxes.length === 0} symbolHint={symbolEdit.hint} label={hoverLabel.state} markHint={marks.hint} />
+      <SheetView {...{ wrapRef, canvasRef, size, camera, cursor, pointer, onLeave, cursorStyle, wire, palette, note, draw, gesture, rotateHeld, snap }} empty={parts.boxes.length === 0} symbolHint={symbolEdit.hint} label={hoverLabel.state} markHint={partPlace.hint ?? marks.hint} />
     </>
   )
 }

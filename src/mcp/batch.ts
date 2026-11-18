@@ -19,6 +19,7 @@ import type { Circuit, Component, Net } from "../engine/model.js"
 import { pinName } from "./compact.js"
 import { findNet } from "./copper-under.js"
 import { holeFields, pointText, pourFields } from "./pour-tools.js"
+import { connectCorners, STEP_KEYS, stepEdit, type StepKey } from "./batch-steps.js"
 
 type LoadedModel = Awaited<ReturnType<typeof loadCircuit>>["model"]
 
@@ -27,12 +28,15 @@ const props = z.record(z.string(), literal)
 /** set_props also takes a point for schNameAt, schValueAt and pcbNameAt, and null to remove one of them. */
 const setValues = z.record(z.string(), z.union([literal, z.object({ x: z.number(), y: z.number() }), z.null()]))
 const ends = { from: z.string(), to: z.string() }
+/** A newer step: its shape is checked in batch-steps.ts, which answers a wrong one with the right one. */
+const step = z.record(z.string(), z.unknown()).optional()
+const steps = Object.fromEntries(STEP_KEYS.map((key) => [key, step])) as Record<StepKey, typeof step>
 
 /** One step of edit_circuit: exactly one of these keys is set. */
 export const editItem = z
   .object({
     set_props: z.object({ part: z.string(), props: setValues }).optional(),
-    connect: z.object(ends).optional(),
+    connect: z.object({ ...ends, corners: z.unknown().optional() }).optional(),
     disconnect: z.object(ends).optional(),
     place_part: z.object({ part: z.string(), name: z.string(), props: props.optional(), page: z.string().optional() }).optional(),
     remove_part: z.object({ part: z.string() }).optional(),
@@ -51,15 +55,17 @@ export const editItem = z
     remove_pour: z.object({ id: z.string() }).optional(),
     add_hole: z.object(holeFields).optional(),
     remove_hole: z.object({ id: z.string() }).optional(),
+    ...steps,
   })
   .describe("Exactly one key")
 export type EditItem = z.infer<typeof editItem>
 
-const KINDS = ["set_props", "connect", "disconnect", "place_part", "remove_part", "add_instance", "set_connections", "move_to_page", "add_pour", "remove_pour", "add_hole", "remove_hole"] as const
+const KINDS = ["set_props", "connect", "disconnect", "place_part", "remove_part", "add_instance", "set_connections", "move_to_page", "add_pour", "remove_pour", "add_hole", "remove_hole", ...STEP_KEYS] as const
 const SUMMARY_LIMIT = 100
 
-function kindOf(item: EditItem): (typeof KINDS)[number] {
+export function kindOf(item: EditItem): (typeof KINDS)[number] {
   const present = KINDS.filter((kind) => item[kind] !== undefined)
+  if (present.length === 0) throw new Error(`This edit has none of the keys edit_circuit takes (${KINDS.join(", ")}). Copper, the board's size and shape, design rules and library parts are not edited through it: use route_track, autoroute, fit_board, set_rules, create_part or set_part_fields. The shapes of the keys are in guide { topic: "writing-circuits" }`)
   if (present.length !== 1) throw new Error(`Give exactly one of ${KINDS.join(", ")}`)
   return present[0] as (typeof KINDS)[number]
 }
@@ -72,8 +78,9 @@ export async function toEdit(root: string, file: string, item: EditItem, earlier
       return { edit: { kind: "setProps", part, props: values }, label: `set ${part} ${Object.keys(values).join(",")}` }
     }
     case "connect": {
-      const { from, to } = item.connect!
-      return { edit: { kind: "addTrace", from, to }, label: `connect ${from} -> ${to}` }
+      const { from, to, corners } = item.connect!
+      const hints = connectCorners(corners)
+      return { edit: { kind: "addTrace", from, to, ...(hints ? { schematicRouteHints: hints } : {}) }, label: `connect ${from} -> ${to}` }
     }
     case "disconnect": {
       const { from, to } = item.disconnect!
@@ -110,6 +117,11 @@ export async function toEdit(root: string, file: string, item: EditItem, earlier
     }
     case "remove_hole":
       return { edit: { kind: "removeHole", id: item.remove_hole!.id }, label: `remove ${item.remove_hole!.id}` }
+    default: {
+      const key = kindOf(item) as StepKey
+      const model = key === "add_drawing" ? (await loadCircuit(root, file)).model : { parts: [], traces: [], drawings: [], skipped: [], imports: [] }
+      return stepEdit(key, item[key], model, earlier)
+    }
   }
 }
 

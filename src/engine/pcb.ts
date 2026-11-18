@@ -5,7 +5,7 @@ import type { PcbTrack, PcbVia } from "./copper.js"
 import { diagnostic } from "./diagnostics.js"
 import { anchorGroups } from "./instance-anchor.js"
 import type { Footprint, Pad } from "./footprints/types.js"
-import type { Board, Circuit, Component, Diagnostic, Hole, Point } from "./model.js"
+import type { Board, BoardGraphic, Circuit, Component, Diagnostic, Hole, Point, SilkText } from "./model.js"
 import { naturalCompare } from "./order.js"
 import type { PourFill } from "./pour/fill.js"
 import { resolveWithPours, type PourFiller } from "./pour/resolve.js"
@@ -70,6 +70,10 @@ export interface PcbLayout {
   pours: PourFill[]
   /** The board's non-plated holes, in source order. */
   holes: Hole[]
+  /** The board's silkscreen texts, in source order; absent when there are none. */
+  silkTexts?: SilkText[]
+  /** The drawings from SVG or DXF files, placed; absent when there are none. */
+  graphics?: BoardGraphic[]
 }
 
 export type { PcbTrack, PcbVia, PourFill }
@@ -252,6 +256,8 @@ export function layoutPcb(
     ...(pourMade.length > 0 ? { pourMade } : {}),
     pours,
     holes: circuit.board?.holes ?? [],
+    ...(circuit.board?.silkTexts ? { silkTexts: circuit.board.silkTexts } : {}),
+    ...(circuit.board?.graphics ? { graphics: circuit.board.graphics } : {}),
   }
   return { layout, diagnostics: [...diagnostics, ...copper.diagnostics] }
 }

@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react"
 import type { PartsData } from "./api"
 import { originLabel } from "./shell/import-part-form"
 import { openPackagesToLook } from "./shell/packages-request"
+import { placeAtOnce } from "./pcb/part-place"
 
 interface Props {
   parts: PartsData
-  onPlace(part: string): void
+  /** `atOnce`: the Place button was pressed with the keyboard, so the part is added without a click on the canvas. */
+  onPlace(part: string, atOnce?: boolean): void
   /** Library → Import by LCSC number…: opens the dialog. */
   onImport(): void
   /** Library → New part…: opens the dialog. */
@@ -69,7 +71,7 @@ export function Library({ parts, onPlace, onImport, onNewPart, focus, onFocused 
             <span className={`badge ${part.verified ? "verified" : "unverified"}`} title={part.verified ? `Checked by ${part.verifiedBy}` : "Not checked against the datasheet yet"}>
               {part.verified ? "Verified" : "Unverified"}
             </span>
-            <button onClick={() => onPlace(part.id)} aria-label={`Place ${part.title}`}>
+            <button onClick={(e) => onPlace(part.id, placeAtOnce(e.detail))} aria-label={`Place ${part.title}`}>
               Place
             </button>
           </li>
@@ -80,13 +82,13 @@ export function Library({ parts, onPlace, onImport, onNewPart, focus, onFocused 
       <ul className="builtin">
         {builtin.map((name) => (
           <li key={name}>
-            <button className="chip-button" onClick={() => onPlace(name)} aria-label={`Place a ${name}`}>
+            <button className="chip-button" onClick={(e) => onPlace(name, placeAtOnce(e.detail))} aria-label={`Place a ${name}`}>
               {name}
             </button>
           </li>
         ))}
       </ul>
-      <p className="hint">Placed parts start at the board centre; drag them into position on the PCB.</p>
+      <p className="hint">Click Place, then click on the schematic or the PCB where the part goes (Esc stops); Place pressed with Enter or Space adds it at once and Studio picks the spot.</p>
     </div>
   )
 }

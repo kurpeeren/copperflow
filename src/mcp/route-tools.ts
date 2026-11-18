@@ -41,7 +41,7 @@ export const unrouteInput = {
 }
 
 export const AUTOROUTE_DESCRIPTION =
-  "Route the unrouted connections as ONE change: the whole board, or only some nets, parts or one instance (one of these). Run it after placing; existing copper is kept. It names each connection it could not route, with the reason: route those with route_track, or move parts and run it again."
+  "Route the unrouted connections as ONE change: the whole board, or only some nets, parts or one instance (one of these). Run it after placing; parts with no position get no copper; existing copper is kept. It names each connection it could not route, with the reason: route those with route_track, or move parts and run it again."
 export const UNROUTE_DESCRIPTION =
   "Remove the router's copper, for some nets or all, as ONE change. Hand-drawn and locked copper stay."
 
@@ -106,7 +106,9 @@ export function withPourNote(line: string, design: Pick<Design, "pcb" | "circuit
 
 /** The lines after the first: the budget and the cleanup, when they cut the run short. */
 function notes(report: RouteReport, budgetSeconds: number): string[] {
+  const waiting = report.unrouted.filter((one) => / (is|are) not placed$/.test(one.reason)).length
   return [
+    ...(report.waitingFor ? [`${plural(waiting, "connection waits", "connections wait")} for parts that are not placed: ${report.waitingFor.join(", ")}; place them (autoplace) and run autoroute again.`] : []),
     ...(report.budgetSpent ? [`Stopped at the ${budgetSeconds} s time budget; run autoroute again (with a larger budgetSeconds) to route the rest.`] : []),
     ...(report.cleanupCapped ? ["The cleanup stopped at its pass cap: the routes are clear, maybe not at their shortest."] : []),
     ...(report.cleanupSkipped ? ["The cleanup was skipped because the budget was spent: the routes are clear, maybe not at their shortest."] : []),

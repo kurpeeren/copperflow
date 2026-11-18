@@ -59,7 +59,7 @@ export const removeCopperInput = {
 }
 
 export const ROUTE_TRACK_DESCRIPTION =
-  "Draw one track of a net by hand as ONE change: corner points on one layer, or from and to pads (via: corners between them; none: the router finds the path or says what is in the way). It must start on the net's copper, not on a locked part's pad, and touch no other net. The answer lists copper violations it made. Use it for what autoroute could not route."
+  "Copper track (not a schematic trace): draw one of a net by hand as ONE change: corners on one layer, or from and to pads (via: corners between; none: the router finds the path or says what is in the way). It starts on the net's copper, not a locked part's pad, and touches no other net. The answer lists copper violations. For what autoroute could not route."
 export const ADD_VIA_DESCRIPTION =
   "Place a via by hand as ONE change; its net is that of the copper under it unless given."
 export const REMOVE_COPPER_DESCRIPTION =

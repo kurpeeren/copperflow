@@ -100,7 +100,7 @@ function formatHoleProp(key: string, value: unknown): string {
   return formatLiteral(value as number)
 }
 
-const itemsOf = (scan: Scan): BoardItemInfo[] => scan.model.boardItems ?? []
+export const itemsOf = (scan: Scan): BoardItemInfo[] => scan.model.boardItems ?? []
 
 /**
  * Where a new pour or hole goes, always after every one of its tag, so it takes the next id and no id already in the
@@ -108,7 +108,7 @@ const itemsOf = (scan: Scan): BoardItemInfo[] => scan.model.boardItems ?? []
  * it is at the top of the board on its own line; else (the last is in a group or a page) just before </board>.
  */
 function itemInsertion(source: string, scan: Scan, tag: BoardItemTag): { lineStart: number; indent: string } {
-  const what = tag === "hole" ? "a hole" : "a copper pour"
+  const what = `a ${WORD[tag]}`
   const usual = boardInsertion(source, scan, what)
   const last = itemsOf(scan).filter((item) => item.tag === tag).at(-1)
   if (!last || last.end <= usual.lineStart) return usual
@@ -127,7 +127,7 @@ function beforeBoardClose(source: string, scan: Scan, what: string): { lineStart
 }
 
 /** Adds an element of `tag` and refuses the result when it would change the id of a pour or hole already in the file. */
-function addItem(source: string, scan: Scan, tag: BoardItemTag, element: string): string {
+export function addItem(source: string, scan: Scan, tag: BoardItemTag, element: string): string {
   const { lineStart, indent } = itemInsertion(source, scan, tag)
   const next = source.slice(0, lineStart) + indent + element + lineEnding(source) + source.slice(lineStart)
   const added = lineStart + indent.length
@@ -155,9 +155,9 @@ export function addHole(source: string, scan: Scan, edit: Extract<Edit, { kind: 
   return addItem(source, scan, "hole", `<hole ${attributes.join(" ")} />`)
 }
 
-const WORD: Record<BoardItemTag, string> = { copperpour: "copper pour", hole: "hole" }
+const WORD: Record<BoardItemTag, string> = { copperpour: "copper pour", hole: "hole", silkscreentext: "silkscreen text", boardgraphic: "board drawing" }
 
-function requireEditableItem(scan: Scan, tag: BoardItemTag, id: string, locked: ReadonlySet<string>): { item: BoardItemInfo; node: JSXElement } {
+export function requireEditableItem(scan: Scan, tag: BoardItemTag, id: string, locked: ReadonlySet<string>): { item: BoardItemInfo; node: JSXElement } {
   const instance = boardItemInstance(id)
   if (instance !== undefined) throw new EditError("readonly", instanceItemRefusal(id, instance, sheetFileIn(scan.model, instance)))
   const item = itemsOf(scan).find((one) => one.id === id && one.tag === tag)
@@ -169,7 +169,7 @@ function requireEditableItem(scan: Scan, tag: BoardItemTag, id: string, locked: 
 }
 
 /** Removes an attribute and the space before it. */
-function removeAttribute(out: MagicString, source: string, node: JSXElement, key: string): void {
+export function removeAttribute(out: MagicString, source: string, node: JSXElement, key: string): void {
   const attribute = attributeNamed(source, node, key)
   if (!attribute) return
   const attributes = jsxAttributes(node)

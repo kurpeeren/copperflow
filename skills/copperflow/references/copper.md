@@ -117,7 +117,15 @@ Details of the copper tools:
 - `autoroute`'s `instance` route is copied to the other instances of its sheet placed the same
   way. When `budgetSeconds` runs out, what is routed is written and the rest is reported.
 - `fit_board` and `autoplace` `fit: true` leave a 2 mm margin round the parts' courtyards by
-  default; `fit_board` refuses a board drawn with a non-rectangular outline.
+  default; fitting refuses a board drawn with a non-rectangular outline.
+- `fit_board` `{ file, width, height, x?, y? }` sets that rectangle, centred on (x, y) (default the
+  board's own centre): `Change c0011: board 40 × 30 mm at (0, 0)`. `outline: [{ x, y }, …]` sets a
+  polygon instead (its holes and keepouts stay). `layers: 2 | 4` sets the copper layers, alone or with
+  a size; a 4-layer board also wants the `jlcpcb-4layer` profile (`set_rules`, design-rules.md).
+  After a resize the answer names the placed parts now outside the board:
+  `2 placed parts are now outside the board: J1, J2; move them inside or make the board larger`.
+- `render` `{ file, out: "pics/top.png" }` also writes the picture into the project (a name not
+  ending in `.png` and a path outside the project are refused); the answer adds `Wrote pics/top.png`.
 
 `copper_summary` shows per net the tracks, vias, length and unrouted connections, each pour
 (`copperpour:1 GND top: 812.40 mm², joins 14 pads`) and each hole (`hole:1 at (3, 3), 3.2 mm`),

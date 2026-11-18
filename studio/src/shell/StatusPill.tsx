@@ -3,7 +3,7 @@ import { blurAfterPointerClick } from "./focus"
 import { buildTone, statusText } from "./status-pill"
 
 /** The build state and its error count (error violations and error diagnostics); clicking it opens the DRC tab. */
-export function StatusPill({ build, errors, onOpen }: { build: BuildState; errors: number; onOpen(): void }) {
+export function StatusPill({ build, errors, noCircuit, onOpen }: { build: BuildState; errors: number; noCircuit: boolean; onOpen(): void }) {
   return (
     <button
       className={`build ${buildTone(build, errors)}`}
@@ -14,7 +14,7 @@ export function StatusPill({ build, errors, onOpen }: { build: BuildState; error
       title="Show DRC"
     >
       <span className="dot" aria-hidden="true" />
-      <span role="status">{statusText(build, errors)}</span>
+      <span role="status">{statusText(build, errors, noCircuit)}</span>
     </button>
   )
 }

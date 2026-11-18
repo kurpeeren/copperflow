@@ -3,6 +3,7 @@ import { readFile, stat } from "node:fs/promises"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import { basename, extname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
+import { exportHtml } from "../core/html-export.js"
 import { z, ZodError } from "zod"
 import {
   BUILTIN_PARTS,
@@ -59,6 +60,7 @@ import { RouteRunner, routeWorkerFactory, type RouteWorkerFactory } from "./rout
 import { PlaceRunner, placeWorkerFactory, type PlaceWorkerFactory } from "./place-runner.js"
 import { fitBoardEdit } from "./fit-board.js"
 import { formatBoardImport, importBoard } from "../core/board-import.js"
+import { formatGraphicImport, importGraphic } from "../core/graphic-import.js"
 import { formatKicadImport, importKicad } from "../library/kicad/import.js"
 import { watchIdle } from "./idle.js"
 import { controlRoute } from "./studio-control.js"
@@ -196,6 +198,20 @@ const EditSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("addHole"), x: z.number().finite(), y: z.number().finite(), diameter: z.number().finite() }),
   z.object({ kind: z.literal("setHole"), id: z.string().max(64), props: z.record(z.string().max(64), z.number().finite()) }),
   z.object({ kind: z.literal("removeHole"), id: z.string().max(64) }),
+  z.object({
+    kind: z.literal("addSilkText"),
+    text: z.string().max(200),
+    x: z.number().finite(),
+    y: z.number().finite(),
+    layer: z.enum(["top", "bottom"]),
+    height: z.number().finite().optional(),
+    rotation: z.number().finite().optional(),
+    name: z.string().max(200).optional(),
+  }),
+  z.object({ kind: z.literal("setSilkText"), id: z.string().max(64), props: z.record(z.string().max(64), z.union([literal, z.null()])) }),
+  z.object({ kind: z.literal("removeSilkText"), id: z.string().max(64) }),
+  z.object({ kind: z.literal("setBoardGraphic"), id: z.string().max(64), props: z.record(z.string().max(64), z.union([literal, z.null()])) }),
+  z.object({ kind: z.literal("removeBoardGraphic"), id: z.string().max(64) }),
 ])
 const Bodies = {
   // "Keep these positions" writes every auto-placed part in one request.
@@ -256,6 +272,8 @@ const Bodies = {
   fitBoard: z.object({ file, margin: z.number().min(0).max(50).optional() }),
   // File → Import board (DXF or KiCad): the picked drawing's or board's file name and text.
   importBoard: z.object({ file, name: z.string().min(1).max(260), text: z.string().max(MAX_BODY_BYTES) }),
+  // File → Import a drawing (SVG or DXF): the picked file's name and text, the layer and the width; it lands at the board's centre.
+  importGraphic: z.object({ file, name: z.string().min(1).max(260), text: z.string().max(MAX_BODY_BYTES), layer: z.string().max(64), width: z.number().finite().optional() }),
   // Route → Unroute: the router's copper among the ids, or all of it.
   unroute: z.object({ file, ids: z.array(z.string().min(1).max(32)).max(5000).optional() }),
   // Edit → Make sub-sheet: `preview` answers what it would do and writes nothing.
@@ -450,6 +468,15 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         live.requestBuild(circuit.file)
         return send(res, { entryId: result.entry.id, summary: formatBoardImport(result)[0], writeMark })
       }
+      case "POST /api/import-graphic": {
+        const body = Bodies.importGraphic.parse(await readJson(req))
+        const circuit = await resolveCircuit(root, body.file)
+        const options = { source: { name: body.name, text: body.text }, layer: body.layer, ...(body.width === undefined ? {} : { width: body.width }) }
+        const result = await importGraphic(root, circuit.file, options, { author: "human", engine: building.builder })
+        const writeMark = live.nextMark()
+        live.requestBuild(circuit.file)
+        return send(res, { entryId: result.entry.id, summary: formatGraphicImport(result).slice(0, 2).join(" "), writeMark })
+      }
       case "POST /api/unroute": {
         const body = Bodies.unroute.parse(await readJson(req))
         const layout = await resolveLayoutFile(root, layoutNameOf(body.file))
@@ -561,6 +588,11 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         const result = await exportFabrication(root, circuit, { engine: { build: (_root, file) => designOf(file) } })
         if (!result.written) throw new HttpError(422, `No fabrication files written: ${result.errors.join("; ")}`)
         return send(res, result)
+      }
+      // The design as one web page beside the circuit; written for a design with errors too, as copperflow html does.
+      case "POST /api/html": {
+        const circuit = (await resolveCircuit(root, Bodies.build.parse(await readJson(req)).file)).file
+        return send(res, await exportHtml(root, circuit, { engine: { build: (_root, file) => designOf(file) } }))
       }
       // Undo and redo write the file too: their write mark, as an edit's, lets the keys wait for the build that read them.
       case "POST /api/undo": {

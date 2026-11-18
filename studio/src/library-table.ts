@@ -1,5 +1,5 @@
 import type { PartsData } from "./api.js"
-import { PLACE_DEFAULTS } from "./place-defaults.js"
+import { placeDefaults, propText } from "./place-defaults.js"
 
 export type VerifiedLabel = "Verified" | "Unverified" | ""
 
@@ -21,9 +21,10 @@ export interface LibraryRow {
 
 /** The starting value of a built-in: its first property that is not the footprint. */
 function startingValue(kind: string): string {
-  const props = PLACE_DEFAULTS[kind] ?? {}
+  const props = placeDefaults(kind)
   const key = Object.keys(props).find((k) => k !== "footprint")
-  return key ? (props[key] ?? "") : ""
+  const value = key === undefined ? undefined : props[key]
+  return value === undefined ? "" : propText(value)
 }
 
 /** Library parts first, then the built-ins. */
@@ -43,7 +44,7 @@ export function libraryRows(parts: PartsData): LibraryRow[] {
     part: kind,
     name: kind,
     value: startingValue(kind),
-    footprint: PLACE_DEFAULTS[kind]?.footprint ?? "",
+    footprint: propText(placeDefaults(kind).footprint ?? ""),
     description: "",
     verified: "",
     tooltip: kind,

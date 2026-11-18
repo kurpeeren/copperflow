@@ -35,3 +35,29 @@
     min-height: 320px;
   }
 }
+
+/* The canvas of a project with no circuit file: one sentence, the two ways to start, and a note. */
+.start-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 24px;
+  color: var(--muted);
+}
+
+.start-screen p {
+  margin: 0;
+}
+
+.start-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* No hint: the status region stays for screen readers but draws nothing. */
+.canvas-hint:empty {
+  padding: 0;
+  background: none;
+}

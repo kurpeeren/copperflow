@@ -38,8 +38,11 @@ interface Started {
 const DEFAULT_TIMEOUT_MS = 30_000
 /** The footprint files of library parts. */
 export const FOOTPRINT_FILE = /^parts\/[^/]+\/footprint\.yaml$/
-/** The only non-source files a build reads: footprint files and the design rules. */
-export const ENGINE_FILES = new RegExp(`${FOOTPRINT_FILE.source}|${RULES_FILE.source}`)
+/** The drawings a `<boardgraphic>` places (board-graphic.ts reads only these). */
+/** Any case of the extension, as board-graphic.ts's GRAPHIC_FILE takes (the flag would not survive joining the sources below). */
+export const GRAPHIC_FILES = /^graphics\/[^/]+\.([sS][vV][gG]|[dD][xX][fF])$/
+/** The only non-source files a build reads: footprint files, drawings and the design rules. */
+export const ENGINE_FILES = new RegExp(`${FOOTPRINT_FILE.source}|${GRAPHIC_FILES.source}|${RULES_FILE.source}`)
 
 const defaultWorker = (): EngineWorker =>
   new Worker(new URL("./engine-worker.js", import.meta.url), { env: WORKER_ENV, resourceLimits: { maxOldGenerationSizeMb: workerHeap() } })

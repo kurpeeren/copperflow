@@ -53,6 +53,23 @@ Passive parts (resistors, capacitors, LEDs, headers) are built in and need no en
    check.
 4. Place it with `place_part`, connect it with `add_trace`, then run `check_circuit`.
 
+`part_info` `{ id }` shows part.yaml, then the footprint's pads under the pins
+(`  5  at (1.1, -0.95)  0.6 x 1.1 roundrect  VOUT`: number, centre in mm, size, hole, pin name),
+then verification.md. For a generated package, `guide { topic: "packages dcjack" }` lists the pads
+when the search finds at most three packages, with what each pad is where the footprint says so:
+the pins of `dcjack` (1 centre pin, 2 sleeve, 3 switch contact), `usb_b` and `usb_c16`, the joined
+pairs of the tact switches, anode and cathode of diodes and two-pad LEDs, plus and minus of tantalum
+and electrolytic capacitors.
+
+### Supplier numbers and small fields
+
+`set_part_fields` `{ id, suppliers?, mpn?, manufacturer?, description? }` changes only those fields
+of an existing part; its pins and footprint stay. `suppliers` merges by name
+(`{ "lcsc": "C6186" }` adds or replaces the LCSC number), and `null` removes a field or a supplier:
+`Changed AMS1117-3.3: mpn "AMS1117-3.3", lcsc C6186.` A verified part is refused: its verification
+covers every field, so the human changes it. Use `create_part` with `replace` only to change pins
+or the package.
+
 ## By LCSC number
 
 When the human asks for a part by its LCSC number (for example `C7950`), call `import_part`

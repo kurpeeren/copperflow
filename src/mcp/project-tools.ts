@@ -10,6 +10,7 @@ import { noteDecision, readProject, setProject, type ProjectUpdate } from "../co
 import { PROJECT_PATH, sectionLines, sectionText } from "../core/project-text.js"
 import type { Design } from "../engine/design.js"
 import { buildOf, type Ports } from "./copper-tools.js"
+import { rulesLine } from "./rules-tool.js"
 
 const DECISIONS_SHOWN = 5
 const CHANGES_SHOWN = 3
@@ -110,6 +111,7 @@ export async function projectStatus(ports: Ports): Promise<string> {
   for (const file of circuits) perCircuit.push(...(await circuitLines(ports, file, history)))
   return [
     ...projectLines(await readProject(ports.root)),
+    await rulesLine(ports.root),
     circuits.length === 0 ? "Circuits: none yet (new_circuit starts one)" : `Circuits (${circuits.length}):`,
     ...perCircuit,
   ].join("\n")

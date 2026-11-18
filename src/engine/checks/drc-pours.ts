@@ -10,6 +10,7 @@ import type { Rules } from "../rules/schema.js"
 import { ruleText } from "./copper-clearance.js"
 import { copperPieces, padPieces, type ClassOf, type CopperPiece } from "./copper-pieces.js"
 import { copperViolation, gap, mm } from "./copper-violation.js"
+import { fillPoint } from "./fill-point.js"
 import { bounds, closestPoints, pointInPolygon, shapeDistance, type Shape } from "./geometry.js"
 import { GridIndex, type Box } from "./grid-index.js"
 import { breaksMinimum } from "./limits.js"
@@ -235,7 +236,6 @@ function takenBy(layout: PcbLayout, fill: PourFill): string[] {
  * (`pour-sparse`): a pour on the far side of a board whose parts sit on top joins only their through pads.
  */
 function pourUse(layout: PcbLayout, fill: PourFill, net: string): Violation | undefined {
-  const at = fill.polygons[0]?.outer[0]
   if (fill.polygons.length === 0) {
     if (layout.board === undefined || !usableOutline(layout.board)) return undefined
     const took = takenBy(layout, fill)
@@ -244,13 +244,13 @@ function pourUse(layout: PcbLayout, fill: PourFill, net: string): Violation | un
   }
   const pads = layout.parts.flatMap((part) => part.pads).filter((pad) => pad.net === fill.net)
   const joined = padsJoined(layout, [fill], pads).size
-  if (joined === 0) return violation("pour-floating", "warning", `${fill.id} joins no pad of ${net}`, [fill.id], "pcb", at)
+  if (joined === 0) return violation("pour-floating", "warning", `${fill.id} joins no pad of ${net}`, [fill.id], "pcb", fillPoint(fill))
   if (joined * 2 >= pads.length) return undefined
   // A pour on each side together joining most of the net's pads is the usual two-layer board: no warning.
   const together = layout.pours.filter((one) => one.net === fill.net)
   if (together.length > 1 && padsJoined(layout, together, pads).size * 2 >= pads.length) return undefined
   const message = `${fill.id} joins only ${joined} of ${pads.length} ${net} pads; a pour joins the pads on its own layer and through pads, so put one on the layer the parts sit on`
-  return violation("pour-sparse", "warning", message, [fill.id], "pcb", at)
+  return violation("pour-sparse", "warning", message, [fill.id], "pcb", fillPoint(fill))
 }
 
 /** Every check on the pours and the holes, sorted by id. `classOf` gives a net's class. */

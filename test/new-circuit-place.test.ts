@@ -81,7 +81,7 @@ describe("new_circuit places the board", () => {
     expect(await readFile(join(root, FILE), "utf8")).toBe(text)
     const { tools } = await client.listTools()
     const description = tools.find((t) => t.name === "new_circuit")?.description ?? ""
-    expect(description).toContain("the placement is a second entry")
+    expect(description).toContain("placed (fitted when no board is given) as a second entry")
     expect(description).not.toContain("One history entry for the circuit and its sheet files;")
   })
 

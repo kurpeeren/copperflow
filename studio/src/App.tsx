@@ -29,12 +29,14 @@ import type { CommandsOff } from "./shell/menus"
 import type { DocView } from "./shell/page-tree"
 import { designOnPage, MAIN_PAGE, shownPage } from "./shell/schematic-pages"
 import { StatusPill } from "./shell/StatusPill"
+import { hasNoCircuit } from "./shell/canvas-notice"
 import { themeToggles } from "./shell/theme-state"
 import { pourFillToggles } from "./pcb/pour-view"
 import { Toolbar } from "./shell/ToolbarRow"
 import { useAppCommands, writeFabricationFiles } from "./shell/use-app-commands"
 import { Workspace } from "./shell/Workspace"
-import { useActions, usePlace, type Actions } from "./use-actions"
+import { useActions, type Actions } from "./use-actions"
+import { useDisarmPartOnLock, usePlace } from "./use-place"
 import { useChecks } from "./use-checks"
 import { useFind } from "./use-find"
 import { useStudioData, type StudioData } from "./use-studio-data"
@@ -137,7 +139,7 @@ function useShownSelection(selection: Selection, circuit: CircuitData | undefine
     const ids = <T extends { id: string }>(items: readonly T[] | undefined) => items?.map((item) => item.id)
     const drawings = sheet && stableDrawings(before?.schematic.drawings, sheet.drawings)
     const copper = design && [...design.pcb.tracks, ...design.pcb.vias].map((item) => item.id)
-    const board = design && [...(design.pcb.board?.pours ?? []), ...(design.pcb.holes ?? [])].map((item) => item.id)
+    const board = design && [...(design.pcb.board?.pours ?? []), ...(design.pcb.holes ?? []), ...(design.pcb.silkTexts ?? []), ...(design.pcb.graphics ?? [])].map((item) => item.id)
     const texts = design && ids(view === "pcb" ? boardTexts(design.pcb) : view === "schematic" ? sheetTexts(design.schematic) : [])
     return shownSelection(selection, { view, parts, wires: ids(sheet?.wires), labels: ids(sheet?.labels), drawings, copper, texts, board })
   }, [selection, circuit, design, view, before])
@@ -248,6 +250,7 @@ function useStudio() {
   const copperRecords = tab === "pcb" ? pcb : undefined
   const sheetIds = { sheetWires, sheetLabels, sheetDrawings, pcbCopper, copperRecords }
   const aiLock = useAiLock(data.history, circuit !== undefined, tab, toast.notify)
+  useDisarmPartOnLock(aiLock.closed)
   const openImported = useCallback((made: string) => void data.refreshFiles().then(() => openDocument(made, "pcb")), [data, openDocument])
   const runAny = useAppCommands({ file, openImported, view: tab, setView: setTab, selection, select, circuit, actions, pickLayers, pickFilter: workspace.pickFilter, ...sheetIds, workspace, openChecks, checkCounts: checks.counts, openFind: find.open, openDialog: setDialog, design: build.design, page, openPage, highlight: workspace.highlight })
   // Every menu, toolbar and context menu command comes through here: while the AI lock is closed no editing one runs.
@@ -374,7 +377,7 @@ export function App() {
   return (
     <div className="app">
       <MenuBar run={runCommand} view={tab} selected={selection.size} toggles={toggles} off={off}>
-        <StatusPill build={build} errors={checks.counts.errors} onOpen={openChecks} />
+        <StatusPill build={build} errors={checks.counts.errors} noCircuit={data.filesListed && hasNoCircuit(data.files)} onOpen={openChecks} />
       </MenuBar>
       <Toolbar view={tab} unit={workspace.unit} selected={selection.size} toggles={toggles} off={off} run={runCommand} />
       {dialog && <StudioDialog name={dialog} onClose={closeDialog} rules={{ fabrication: build.design?.rules.fabrication, save: actions.setFilletRadius }} makeSheet={makeSheet} importPart={importPart} newPart={newPart} system={system} newCircuit={newCircuit} footprints={footprints} exportChecks={exportChecks} />}

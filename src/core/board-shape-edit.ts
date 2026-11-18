@@ -108,7 +108,8 @@ export function setBoardShape(source: string, scan: Scan, edit: SetBoardShape, l
     ...edit.holes.map((hole) => holeElement(hole, outline)),
     ...edit.keepouts.map((keepout, i) => `<keepout outline=${formatPointList(polygonOrThrow(keepout, `Inner shape ${i + 1}`))} layers="all" />`),
   ]
-  const existing = holesAndKeepouts(source)
+  if (edit.keepItems && elements.length > 0) throw new EditError("invalid", "keepItems changes only the outline: give no holes or keepouts with it")
+  const existing = edit.keepItems ? [] : holesAndKeepouts(source)
   if (existing.length > 0 && !edit.replace) {
     const holes = existing.filter((item) => item.tag === "hole").length
     const words = [holes > 0 ? plural(holes, "hole") : "", existing.length > holes ? plural(existing.length - holes, "keepout") : ""].filter((w) => w !== "")
@@ -116,7 +117,7 @@ export function setBoardShape(source: string, scan: Scan, edit: SetBoardShape, l
   }
   const nested = existing.find((item) => !item.direct)
   if (nested) throw new EditError("readonly", `A <${nested.tag}> on line ${source.slice(0, nested.start).split("\n").length} is not written right inside the board; remove it by hand first`)
-  const lockedHole = (scan.model.boardItems ?? []).find((item) => item.tag === "hole" && locked.has(item.id))
+  const lockedHole = edit.keepItems ? undefined : (scan.model.boardItems ?? []).find((item) => item.tag === "hole" && locked.has(item.id))
   if (lockedHole) throw new EditError("locked", `${lockedHole.id} is locked; ask the human to unlock it`)
 
   const out = new MagicString(source)

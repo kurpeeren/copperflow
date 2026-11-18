@@ -11,7 +11,7 @@ import { fastLineBlock } from "./fast-summary.js"
 export { fastLineBlock }
 
 /** The rule codes of copper findings: the copper checks and what copper joining reports. */
-export const COPPER_RULES: ReadonlySet<string> = new Set(["copper-clearance", "track-width", "via-drill", "via-ring", "hole-to-hole", "copper-edge", "copper-keepout", "short", "floating", "mismatch", "copper-layer", "copper-hole", "hole-off-board", "pour-floating", "pour-sparse", "pour-empty", "pour-net", "pair-skew", "pair-apart", "pair-gap", "pair-vias", "net-length", "match-spread", "impedance-width"])
+export const COPPER_RULES: ReadonlySet<string> = new Set(["copper-clearance", "track-width", "via-drill", "via-ring", "hole-to-hole", "copper-edge", "copper-keepout", "short", "floating", "mismatch", "copper-layer", "copper-hole", "hole-off-board", "pour-floating", "pour-sparse", "pour-empty", "pour-net", "pair-skew", "pair-apart", "pair-gap", "pair-vias", "net-length", "match-spread", "impedance-width", "drawing-width"])
 
 /** copper_summary stops here, so the answer fits a screen. */
 export const SUMMARY_LIMIT = 60
@@ -98,6 +98,14 @@ export function unroutedLines(design: Pick<Design, "pcb">, most = UNROUTED_PLACE
   return places.length > most ? [...shown, `… and ${places.length - most} more unrouted`] : shown
 }
 
+/** The drawings on copper, by id, with their layer and size: copper of no net, not counted as tracks. */
+export function copperDrawingLines(design: Pick<Design, "pcb">): string[] {
+  const drawings = (design.pcb.graphics ?? []).filter((graphic) => ["top", "bottom", "inner1", "inner2"].includes(graphic.layer))
+  if (drawings.length === 0) return []
+  const line = (g: (typeof drawings)[number]) => `${g.id} ${g.file} ${g.layer} at (${mmText(g.x)}, ${mmText(g.y)}), ${mm(g.width)} x ${mm(g.height)} mm, no net`
+  return [`Drawings on copper: ${drawings.map(line).join("; ")}`]
+}
+
 /**
  * The default copper_summary: totals, a line per net with copper or unrouted connections, the pours and holes, then
  * violations by rule; at most 60 lines.
@@ -112,7 +120,7 @@ export function formatCopperSummary(file: string, design: Design, limit = SUMMAR
     .map(([id, one]) => ({ name: id === "" ? "(no net)" : netLabel(design.circuit.nets, id), one }))
     .sort((a, b) => natural.compare(a.name, b.name))
     .map(({ name, one }) => netLine(name, one))
-  const items = [...fastLineBlock(design), ...boardItemLines(design)]
+  const items = [...fastLineBlock(design), ...boardItemLines(design), ...copperDrawingLines(design)]
   const tail = violationLine(copperViolations(design))
   const room = Math.max(0, limit - 2 - items.length)
   if (lines.length <= room) {

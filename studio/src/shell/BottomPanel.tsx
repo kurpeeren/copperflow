@@ -14,7 +14,8 @@ import "./bottom.css"
 interface Props {
   tab: BottomTab
   parts: PartsData
-  onPlace(part: string): void
+  /** `atOnce`: the Place button was pressed with the keyboard, so the part is added without a click on the canvas. */
+  onPlace(part: string, atOnce?: boolean): void
   history: HistoryListing[]
   historyProblems: HistoryProblem[]
   actions: Actions

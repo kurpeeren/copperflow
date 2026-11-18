@@ -3,6 +3,8 @@ import { scanCircuit, type Scan } from "./analyze.js"
 import { addDrawing, keepLockedDrawings, removeDrawing, setDrawingProps } from "./drawing-edits.js"
 import { EditError } from "./edit-error.js"
 import { addHole, addPour, keepLockedBoardItems, removeBoardItem, setHole, setPour } from "./pour-edits.js"
+import { addSilkText, setSilkText } from "./silk-text-edits.js"
+import { addBoardGraphic, setBoardGraphic } from "./board-graphic-edits.js"
 import {
   attributeNamed,
   cleanPoint,
@@ -23,7 +25,7 @@ import { partsInSelector, sheetFileIn } from "./selectors.js"
 import { renamePort, setSheetSize } from "./sheet-edits.js"
 import { describeSheet } from "./sheet-card.js"
 import { renameParts } from "./rename-parts.js"
-import { setBoard } from "./board-edits.js"
+import { setBoard, setBoardLayers } from "./board-edits.js"
 import { setBoardShape } from "./board-shape-edit.js"
 import { LABEL_AT_PROPS, NAME_ROTATION_PROP } from "../engine/component.js"
 import { NO_CONNECT_PROP } from "../engine/no-connect.js"
@@ -95,6 +97,18 @@ function editSource(source: string, scan: Scan, edit: Edit, locked: ReadonlySet<
       return setHole(source, scan, edit, locked)
     case "removeHole":
       return removeBoardItem(source, scan, "hole", edit.id, locked)
+    case "addSilkText":
+      return addSilkText(source, scan, edit)
+    case "setSilkText":
+      return setSilkText(source, scan, edit, locked)
+    case "removeSilkText":
+      return removeBoardItem(source, scan, "silkscreentext", edit.id, locked)
+    case "addBoardGraphic":
+      return addBoardGraphic(source, scan, edit)
+    case "setBoardGraphic":
+      return setBoardGraphic(source, scan, edit, locked)
+    case "removeBoardGraphic":
+      return removeBoardItem(source, scan, "boardgraphic", edit.id, locked)
     case "renamePort":
       return renamePort(source, scan, edit.from, edit.to)
     case "setSheetSize":
@@ -105,6 +119,8 @@ function editSource(source: string, scan: Scan, edit: Edit, locked: ReadonlySet<
       return setBoard(source, scan, edit)
     case "setBoardShape":
       return setBoardShape(source, scan, edit, locked)
+    case "setBoardLayers":
+      return setBoardLayers(source, scan, edit.layers)
   }
 }
 

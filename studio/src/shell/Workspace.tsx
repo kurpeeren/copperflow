@@ -34,6 +34,8 @@ import { LayerPanel } from "./LayerPanel"
 import { pourRows } from "../pcb/layers"
 import { pourNetName } from "../pcb/pour-hit"
 import { SideStrip } from "./SideStrip"
+import { bottomNotice, canvasNotice, type CanvasNotice } from "./canvas-notice"
+import { StartScreen } from "./StartScreen"
 import { useContextMenu, type ContextMenuState } from "./use-context-menu"
 import { rightTabIds, type LeftStrip, type RightStrip } from "./strip-state"
 import "./workspace.css"
@@ -68,7 +70,8 @@ export interface WorkspaceProps {
   actions: Actions
   /** Runs a menu command, as the menu bar does. */
   run(command: CommandId): void
-  onPlace(part: string): void
+  /** `atOnce`: the Place button was pressed with the keyboard, so the part is added without a click on the canvas. */
+  onPlace(part: string, atOnce?: boolean): void
   /** Library → Import by LCSC number…: opens the dialog. */
   onImportPart(): void
   /** Library → New part…: opens the dialog. */
@@ -141,6 +144,12 @@ function parentTabs({ sheetParent, onOpenDocument }: WorkspaceProps) {
   return { parent: sheetParent.file, onParent: (view: DocView) => onOpenDocument(sheetParent.file, view) }
 }
 
+/** The canvas area while there is no design: the start screen, the build's error, or that it is building. */
+function NoDesign({ notice, run }: { notice: CanvasNotice; run(command: CommandId): void }) {
+  if (notice.kind === "start") return <StartScreen run={run} />
+  return notice.kind === "text" ? <p className="empty">{notice.text}</p> : null
+}
+
 /** The document tabs, the open document's canvas and the bottom panel, between the side panels. */
 function CenterColumn(props: WorkspaceProps & { onContextMenu: ContextMenuState["show"] }) {
   const { data, workspace, checks, find, view, page } = props
@@ -153,12 +162,14 @@ function CenterColumn(props: WorkspaceProps & { onContextMenu: ContextMenuState[
   // The 3D view shows over the PCB while its tab is open; it edits nothing, so the PCB's panels stay as they are.
   const [lookOpen, setLook] = useState(false)
   const look = lookOpen && view === "pcb"
+  const noticeInput = { files: data.filesListed ? data.files : undefined, build, listError: data.filesError }
+  const notice = canvasNotice(noticeInput)
   return (
     <div className="center">
       <DocTabs file={data.file} view={view} pages={pages} page={page} onView={props.onView} onPage={props.onPage} look={look} onLook={setLook} {...parentTabs(props)} />
       <div className="ai-lock-band">{props.lockControl}</div>
       <section className={props.aiLocked ? "canvas ai-locked" : "canvas"} id="doc-panel" role="tabpanel" aria-labelledby={look ? "doc-tab-3d" : `doc-tab-${view}`} tabIndex={-1}>
-        {!build.design && <p className="empty">{build.status === "failed" ? build.error : "Building the circuit…"}</p>}
+        <NoDesign notice={notice} run={props.run} />
         {change && <ChangeView state={change} />}
         {!change && look && build.design && <Look3d design={build.design} />}
         {!change && !look && canvas && view === "pcb" && <PcbCanvas key={data.file} {...canvas} {...gridProps(workspace, "pcb")} markers={checks.markers.pcb} activeLayer={workspace.activeLayer} onActiveLayer={workspace.setActiveLayer} pourFill={workspace.pourFill} hiddenPours={workspace.hiddenPours} />}
@@ -177,7 +188,7 @@ ${page}`} {...sheet} {...gridProps(workspace, "schematic")} markers={checks.mark
           historyProblems={data.historyProblems}
           actions={props.actions}
           built={build.design !== undefined}
-          buildError={build.status === "failed" ? (build.error ?? "The build failed.") : undefined}
+          buildError={bottomNotice(noticeInput)}
           rows={checks.rows}
           counts={checks.counts}
           active={checks.active}

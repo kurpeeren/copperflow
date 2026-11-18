@@ -121,6 +121,29 @@ globalNets: [GND, V24, V3_3]
   `profile`, `jlcpcb-2layer` is used. A profile made for another number of copper layers than the
   board's `layers` gives a `rules` warning.
 
+### Changing the rules: set_rules
+
+`set_rules` `{ rules, file? }` merges a part of this file into `rules.yaml` as one change the human
+can undo: objects merge key by key, any other value (a list, a number) replaces what is there, and
+`null` removes a key. The result is checked exactly as a build reads the file; a refused value
+leaves the file as it was and the answer gives the schema's reason
+(`rules.yaml was not changed: netClasses.power.trackWidth: "wide" is not a positive length …`).
+
+- A power class: `{ "netClasses": { "power": { "nets": ["GND", "V5"], "trackWidth": 0.5 } } }`.
+  The answer: `Change c0012: rules.yaml netClasses = …`, then `GND, V5 are class power: 0.5 mm
+  tracks, 0.2 mm clearance; 3 existing tracks are narrower: unroute and autoroute GND, V5`. Set the
+  classes before `autoroute`; afterwards, `unroute` and `autoroute` the nets it names.
+- Four layers: `{ "fabrication": { "profile": "jlcpcb-4layer" } }`, then `fit_board` `{ file,
+  layers: 4 }` gives the board its inner layers `inner1` and `inner2` (the answer says so when the
+  profile and the board disagree).
+- A clearance: `{ "fabrication": { "minClearance": 0.15 } }`, or a class's `clearance`.
+- A pick-and-place rotation for one library part:
+  `{ "fabrication": { "placementRotations": { "parts": { "MCP2515": 270 } } } }`.
+- `file` names the circuit the answer reports on; with one circuit in the project it is that one.
+
+`project_status` shows the rules in force in one line:
+`Rules: jlcpcb-2layer (2 layers); default tracks 0.25 mm, clearance 0.2 mm; class power 0.5/0.2 mm: GND, V5`.
+
 The `usb-c-ldo` example keeps one class: `power` for `VBUS`, `V3_3` and `GND`, with a 0.4 mm
 track width and 0.2 mm clearance. It names no profile, so the default applies.
 
@@ -191,7 +214,10 @@ position. Anything a check cannot evaluate is reported as `unchecked`, never sil
 | `courtyard-overlap` | error | Two part courtyards overlap. |
 | `keepout` | error | A part lies inside a keep-out area. |
 | `outside-board` | warning | A part is not inside the board outline. |
-| `silk-on-pad` | warning | Silkscreen lies on a pad, closer than `minSilkToPad`; or a designator covers pads or another designator (the same findings, in the same words, as `export_fabrication`'s warnings: move it with `pcbNameAt` or move the part). |
+| `silk-on-pad` | warning | Silkscreen lies on a pad, closer than `minSilkToPad`; or a designator covers pads or another designator (the same findings, in the same words, as `export_fabrication`'s warnings: move it with `pcbNameAt` or move the part); or a `<silkscreentext>` or silkscreen `<boardgraphic>` lies on an exposed pad, a drill or a `<hole>` (move it). |
+| `silk-off-board` | warning | A `<silkscreentext>`'s or silkscreen `<boardgraphic>`'s ink runs past the board outline, where the board house clips it: move it inside or shorten it. |
+| `drawing-width` | warning | A `<boardgraphic>` on copper has lines narrower than `minTrackWidth`; the message names the thinnest. Thin parts of its filled shapes are not measured. |
+| `silk-too-thin` | warning | A silkscreen `<boardgraphic>` has lines thinner than about 0.15 mm, which a board house may not print: the message names the thinnest; give a larger width or thicker lines. |
 | `unplaced` | warning | Parts still on automatic placement. |
 | `unrouted` | warning | Connections are not routed yet. With pours it also says how many more connections the pours make (those need no track), the same number `autoroute` leaves out of its total. |
 | `pair-skew` | warning | The two nets of a pair differ in length by more than `maxSkew`. |

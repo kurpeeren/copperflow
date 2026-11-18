@@ -40,7 +40,7 @@ describe("inspectorSections", () => {
   })
 
   test("a part with no footprint and none to offer has no Footprint section", () => {
-    const header: InspectorPart = { tag: "pinheader", props: { pinCount: prop(4) } }
+    const header: InspectorPart = { tag: "connector", props: { pinCount: prop(4) } }
     expect(inspectorSections(header, { library: false }).map((s) => s.title)).toEqual(["Basic", "Position", "Connections", "Notes"])
   })
 

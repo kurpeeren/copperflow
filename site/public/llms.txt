@@ -57,7 +57,14 @@ Do these in the folder that will hold the board.
   finished too: `format: "step"` for mechanical CAD (parts as boxes), `format: "glb"` for a 3D viewer (the board as
   made, parts as simple shapes).
 - `guide { topic: "packages" }` lists the standard packages copperflow makes a footprint and a 3D shape for, each
-  with the string to type as a part's `footprint`; `guide { topic: "packages sot" }` searches them.
+  with the string to type as a part's `footprint`; `guide { topic: "packages sot" }` searches them, and a search
+  that finds a few lists each one's pads and what each pad is.
+- `export_html` writes the whole design as one HTML file to hand to a person: every schematic page, the board, the
+  3D view and the BOM, with the fabrication files and the 3D models inside it as downloads. It opens offline.
+- `set_rules` changes `rules.yaml` (net classes, clearances, the 4-layer profile); `fit_board` also takes an exact
+  width and height, an outline or the layer count; `render` takes `out` to write its picture to a file.
+- `add_text` with a `layer` puts words on the board's silkscreen; `import_graphic` places a drawing from an SVG or
+  DXF file in the project on the silkscreen, as a solder-mask opening, or as copper that belongs to no net.
 - `bom` ends with whether the board is ready to order. `export_fabrication` writes the Gerbers, drills,
   pick-and-place file, a STEP model and a picture of each side; it refuses a circuit with errors.
 - Impedance, differential pairs and matched lengths are net classes in `rules.yaml`

@@ -7,7 +7,7 @@ import type { JSXElement } from "@babel/types"
 import { readPointList } from "./literals.js"
 import type { BoardItemInfo, BoardItemTag, Point, PropInfo } from "./types.js"
 
-export const BOARD_ITEM_TAGS: readonly BoardItemTag[] = ["copperpour", "hole"]
+export const BOARD_ITEM_TAGS: readonly BoardItemTag[] = ["copperpour", "hole", "silkscreentext", "boardgraphic"]
 
 /** The copper layers a pour can name. */
 export const POUR_LAYERS = ["top", "bottom", "inner1", "inner2"] as const
@@ -38,10 +38,19 @@ export function boardItemInstance(id: string): string | undefined {
 /** Whether the id is a hole's, the file's own or an instance's. */
 export const isHoleId = (id: string): boolean => /(^|\/)hole:\d+$/.test(id)
 
+/** Whether the id is a silkscreen text's, the file's own or an instance's. */
+export const isSilkTextId = (id: string): boolean => /(^|\/)silkscreentext:\d+$/.test(id)
+
+/** Whether the id is a board drawing's (`<boardgraphic>`), the file's own or an instance's. */
+export const isBoardGraphicId = (id: string): boolean => /(^|\/)boardgraphic:\d+$/.test(id)
+
+/** A board item's kind in words, from its id: "hole", "silkscreen text", "board drawing" or "copper pour". */
+export const boardItemWord = (id: string): string =>
+  isHoleId(id) ? "hole" : isSilkTextId(id) ? "silkscreen text" : isBoardGraphicId(id) ? "board drawing" : "copper pour"
+
 /** Why a pour or hole of a sub-sheet instance is not edited here: it is written in its sheet file. */
 export function instanceItemRefusal(id: string, instance: string, sheetFile: string | undefined): string {
-  const word = isHoleId(id) ? "hole" : "copper pour"
-  return `${id} is a ${word} inside the sub-sheet instance ${instance}; edit ${sheetFile ?? "its sheet file"} instead`
+  return `${id} is a ${boardItemWord(id)} inside the sub-sheet instance ${instance}; edit ${sheetFile ?? "its sheet file"} instead`
 }
 
 export const isBoardItemTag = (tag: string): tag is BoardItemTag => (BOARD_ITEM_TAGS as readonly string[]).includes(tag)

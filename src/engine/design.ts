@@ -71,7 +71,7 @@ function pourFiller(board: Board | undefined, rules: Rules, byNet: ReadonlyMap<s
 /** Evaluates the circuit code in `main`, then lays out the schematic and the board. Throws CircuitCodeError. */
 export function buildDesign(files: Files, main: string): Design {
   const footprintOf = footprintCache(files)
-  const circuit = elaborate(evaluateCircuit(files, main), main, { padCount: (text) => pinPads(footprintOf(text)) })
+  const circuit = elaborate(evaluateCircuit(files, main), main, { padCount: (text) => pinPads(footprintOf(text)), readFile: (path) => files[path] })
   const { layout: schematic, diagnostics: wiring } = layoutSchematicWithDiagnostics(circuit)
   const copper = readCopper(files, main)
   const loaded = loadRules(files)

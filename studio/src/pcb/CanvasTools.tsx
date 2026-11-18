@@ -71,3 +71,17 @@ export function CanvasStatus({ cursor, zoom, unit, onToggleUnit, detail, gesture
     </div>
   )
 }
+
+/**
+ * The armed tool's hint over the canvas: a status region that is always there, so a screen reader announces each new
+ * hint; with no hint it is empty and draws nothing.
+ */
+export function CanvasHint({ hint }: { hint: string | undefined }) {
+  return (
+    <div className="canvas-top">
+      <div className="canvas-hint" role="status">
+        {hint ?? ""}
+      </div>
+    </div>
+  )
+}

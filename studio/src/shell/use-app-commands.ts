@@ -2,6 +2,7 @@
 // the rest go to the open canvas over the command bus (command-owners.ts says which is which). A view's own commands
 // (the schematic's tools, the PCB's routing) sent while the other view is open switch to it first.
 import { useCallback, useEffect, useState } from "react"
+import { graphicImportRequest, LAYER_QUESTION, WIDTH_QUESTION } from "./graphic-import-form"
 import { api, type BomLine, type CircuitData, type FabricationExport } from "../api"
 import { bomCsv, bomFileName } from "./bom-csv"
 import { exportAsks, fabricationNote } from "./fabrication-note"
@@ -142,9 +143,12 @@ function printDesign(input: Input, pdf: boolean): void {
   actions.notify(pdf ? `Choose "Save as PDF" in the print dialog to save ${name}.pdf (${sheets.length} sheets)` : `Printing ${sheets.length} sheets`)
 }
 
+/** What an export says when no circuit is open, rather than doing nothing. */
+const NO_CIRCUIT_OPEN = "Open a circuit first"
+
 /** Export → Fabrication files (JLCPCB): asks first when the checks report errors, else writes the files. */
 function exportFabrication(input: Input): void {
-  if (!input.file) return
+  if (!input.file) return input.actions.notify(NO_CIRCUIT_OPEN)
   if (exportAsks(input.checkCounts)) return input.openDialog("exportChecks")
   writeFabricationFiles(input.file, input.actions)
 }
@@ -155,6 +159,15 @@ export function writeFabricationFiles(file: string | undefined, actions: Pick<Ac
   actions.notify("Writing the fabrication files…")
   api<FabricationExport>("/api/export", { file })
     .then((result) => actions.notify(fabricationNote(result)))
+    .catch((error: Error) => actions.notify(error.message))
+}
+
+/** File → Export web page (HTML): the design as one page beside the circuit, written by the server; the note says where. */
+function exportHtml(file: string | undefined, actions: Actions): void {
+  if (!file) return actions.notify(NO_CIRCUIT_OPEN)
+  actions.notify("Writing the web page…")
+  api<{ file: string; bytes: number }>("/api/html", { file })
+    .then((result) => actions.notify(`Wrote ${result.file} (${Math.max(1, Math.round(result.bytes / 1000))} kB): the design as one web page with its files inside`))
     .catch((error: Error) => actions.notify(error.message))
 }
 
@@ -176,6 +189,26 @@ function pickBoardDrawing(actions: Actions, openImported: (file: string) => void
         if (!kicad) return void (await actions.importBoard(picked.name, text))
         const made = await actions.importKicad(picked.name, text)
         if (made !== undefined) openImported(made)
+      })
+      .catch((error: Error) => actions.notify(error.message))
+  })
+  picker.click()
+}
+
+/** File → Import a drawing (SVG or DXF)…: the system file picker, then the layer and width asked, then the file to the server. */
+function pickGraphic(actions: Actions): void {
+  const picker = Object.assign(document.createElement("input"), { type: "file", accept: ".svg,.dxf" })
+  picker.addEventListener("change", () => {
+    const picked = picker.files?.[0]
+    if (!picked) return
+    if (picked.size > MAX_DRAWING_BYTES) return actions.notify(`${picked.name} is larger than 1 MB; put it in the project and use the agent's import_graphic or copperflow graphic`)
+    picked
+      .text()
+      .then(async (text) => {
+        const request = graphicImportRequest({ name: picked.name, text }, window.prompt(LAYER_QUESTION, "1"), window.prompt(WIDTH_QUESTION, ""))
+        if (request === undefined) return
+        if ("message" in request) return actions.notify(request.message)
+        await actions.importGraphic(request)
       })
       .catch((error: Error) => actions.notify(error.message))
   })
@@ -267,6 +300,7 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     exportBom: () => exportBom(input.file, input.actions),
     exportPackage: () => exportPackage(input.file, input.actions),
     exportFabrication: () => exportFabrication(input),
+    exportHtml: () => exportHtml(input.file, input.actions),
     undo: () => void input.actions.undo(),
     redo: () => void input.actions.redo(),
     // Every part of the circuit that may be picked (both views show the same parts, and the circuit is there before a
@@ -283,6 +317,7 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
     autoplaceInstance: () => placeScope(input, placeInstanceScope(input.design, input.selection.names)),
     fitBoard: () => void input.actions.fitBoard(),
     importBoardDxf: () => pickBoardDrawing(input.actions, input.openImported),
+    importGraphic: () => pickGraphic(input.actions),
     autoroute: () => routeScope(input, { kind: "all" }),
     autorouteSelection: () => routeScope(input, selectionScope(input.design, input.selection.names)),
     autorouteNet: () => routeScope(input, netScope(input.highlight)),

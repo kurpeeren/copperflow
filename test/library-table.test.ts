@@ -20,7 +20,7 @@ describe("library table rows", () => {
 
   test("built-ins take their starting value and footprint, with no stamp", () => {
     expect(rows[2]).toMatchObject({ part: "resistor", value: "10k", footprint: "0402", verified: "" })
-    expect(rows[3]).toMatchObject({ part: "crystal", value: "16MHz", footprint: "" })
+    expect(rows[3]).toMatchObject({ part: "crystal", value: "16MHz", footprint: "hc49s" })
     expect(rows[4]).toMatchObject({ part: "connector", value: "", footprint: "" })
   })
 

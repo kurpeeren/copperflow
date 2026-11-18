@@ -1,10 +1,10 @@
 // The edits Studio sends to its server. Each one reports a failure itself, then reloads the open file.
 import { useCallback, useMemo } from "react"
+import type { GraphicImportRequest } from "./shell/graphic-import-form"
 import type { LayoutEdit } from "../../src/core/layout-records.js"
 import { api, type Edit, type PlaceScope, type RouteScope } from "./api"
 import { announceHistoryWrite } from "./history-writes"
 import { noteRulesWrite } from "./pcb/rules-writes"
-import { PLACE_DEFAULTS } from "./place-defaults"
 import { madeNote, type MakeSheetPreview } from "./shell/make-sheet-form"
 
 /** Every action reports failures itself and resolves to whether it succeeded. */
@@ -45,6 +45,8 @@ export interface Actions {
   importBoard(name: string, text: string): Promise<EditOutcome>
   /** File → Import board with a KiCad board: a new circuit written as one history entry; its file, or undefined when refused. */
   importKicad(name: string, text: string): Promise<string | undefined>
+  /** File → Import a drawing: the picked SVG or DXF kept in graphics/ and placed at the board's centre, as one history entry, and told. */
+  importGraphic(request: GraphicImportRequest): Promise<EditOutcome>
   /** Route → Unroute: removes the router's copper among `ids`, or all of it, as one history entry, and tells it. */
   unroute(ids?: readonly string[]): Promise<EditOutcome>
   /** Design rules: writes the fillet radius to rules.yaml (null for the default), as one history entry, and tells it. */
@@ -58,7 +60,7 @@ export interface EditOutcome {
   mark?: number
 }
 
-interface ActionsInput {
+export interface ActionsInput {
   file: string | undefined
   refresh(file: string): Promise<void>
   notify(text: string): void
@@ -173,6 +175,18 @@ export function useActions({ file, refresh, notify, openVerify }: ActionsInput):
             return { ok, mark }
           })(),
         ),
+      importGraphic: (request) =>
+        announceHistoryWrite(
+          (async () => {
+            let mark: number | undefined
+            const ok = await run(async () => {
+              const done = await api<{ summary: string; writeMark: number }>("/api/import-graphic", { file, ...request })
+              mark = done.writeMark
+              notify(done.summary)
+            })
+            return { ok, mark }
+          })(),
+        ),
       importKicad: async (name, text) => {
         let made: string | undefined
         await run(async () => {
@@ -203,24 +217,5 @@ export function useActions({ file, refresh, notify, openVerify }: ActionsInput):
       notify,
     }),
     [file, run, notify, editMarked, editLayout, postMarked, openVerify],
-  )
-}
-
-/** Places a built-in or library part with its starting values and selects it. */
-export function usePlace({ file, refresh, notify }: Omit<ActionsInput, "openVerify">, onPlaced: (name: string) => void, page = "Main"): (part: string) => void {
-  return useCallback(
-    (part: string) => {
-      const props = PLACE_DEFAULTS[part]
-      api<{ name: string }>("/api/place", { file, part, ...(props ? { props } : {}), ...(page === "Main" ? {} : { page }) })
-        .then((result) => {
-          onPlaced(result.name)
-          notify(`Placed ${result.name}${props ? " with a starting value; change it on the right" : ""}. Drag it into position on the PCB.`)
-        })
-        .catch((error: Error) => notify(error.message))
-        .finally(() => {
-          if (file) refresh(file).catch(() => undefined)
-        })
-    },
-    [file, refresh, notify, onPlaced, page],
   )
 }

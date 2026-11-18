@@ -1,6 +1,7 @@
 // Writes a circuit's board and parts as a STEP file alone (copperflow step): `<name>.step` beside the circuit, or the
 // project file given. The design is built, made into solids and written; a design with errors is still written, since
 // the file is a look at the shape, not an order.
+import { refuseStreamName } from "./out-name.js"
 import { mkdir, writeFile } from "node:fs/promises"
 import { basename, dirname, join, relative, sep } from "node:path"
 import { designName } from "../engine/fab/names.js"
@@ -25,6 +26,7 @@ export interface StepExport {
 /** Builds the circuit and writes its STEP file to `out` (a project path ending in .step) or beside the circuit. */
 export function exportStep(root: string, file: string, options: { engine?: DesignSource; out?: string } = {}): Promise<StepExport> {
   if (options.out !== undefined && !options.out.toLowerCase().endsWith(".step")) throw new Error(`--out takes a file ending in .step (got ${options.out})`)
+  if (options.out !== undefined) refuseStreamName(options.out)
   return inProjectQueue(root, async () => {
     const { file: circuit } = await resolveCircuit(root, file)
     const name = designName(circuit)

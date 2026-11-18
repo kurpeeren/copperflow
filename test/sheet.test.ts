@@ -250,6 +250,17 @@ describe("keepSheet", () => {
     expect(firstDrawing(next, keepSheet(next, around(4, 2, 40, 40)))).toBe(false)
     expect(firstDrawing(undefined, next)).toBe(false)
   })
+
+  test("the first part clicked onto an empty sheet keeps the frame, so it stays where it was clicked", () => {
+    const empty = keepSheet(undefined, undefined)
+    // A resistor placed at schX -2.4, schY 1.8: its box, in the same sheet coordinates as the click.
+    const resistor = around(0.4, 0.2, -2.6, 1.7)
+    const next = keepSheet(empty, resistor)
+    expect(next.outer).toEqual(empty.outer)
+    expect(next.empty).toBe(false)
+    expect(firstDrawing(empty, next)).toBe(false)
+    expect(keepSheet(next, around(3, 2, -2.6, -1))).toBe(next)
+  })
 })
 
 describe("drawingExtents", () => {

@@ -39,6 +39,7 @@ import { formatKicadImport, importKicad } from "./library/kicad/import.js"
 import { createCopperflowServer } from "./mcp/server.js"
 import { studioCommand } from "./cli-studio.js"
 import { impedanceCommand } from "./cli-impedance.js"
+import { graphicCommand } from "./cli-graphic.js"
 import { VERSION } from "./version.js"
 import { installSkill } from "./skill-install.js"
 import { modulesCommand } from "./cli-modules.js"
@@ -48,6 +49,7 @@ import { changeRequest } from "./core/change-render.js"
 import type { LookRequest } from "./engine/fab/picture/looks.js"
 import { simulateCommand, spiceCommand } from "./cli-simulate.js"
 import { exportGlb, formatGlbExport } from "./core/model-export.js"
+import { exportHtml, formatHtmlExport } from "./core/html-export.js"
 import { exportStep, formatStepExport } from "./core/step-export.js"
 import { packagesText } from "./core/packages.js"
 
@@ -109,6 +111,10 @@ Usage:
   copperflow glb <file> [--out file.glb] [--mask black] [--finish hasl] [--silk black]
                                               write the board as made and its parts (as simple shapes) as a GLB
                                               file a 3D viewer turns, <name>.glb beside the circuit
+  copperflow html <file> [--out file.html] [--mask black] [--finish hasl] [--silk black]
+                                              write the design as one web page to hand on: schematic pages, board,
+                                              3D and BOM, with the fabrication files and 3D models inside,
+                                              <name>.html beside the circuit; opens from disk with no network
   copperflow render <file> [--view pcb|schematic|board|3d] [--page <name>] [--parts U1,C3] [--width n] [--out file.png]
       board: the bare board as made [--side bottom] [--mask black] [--finish hasl] [--silk black] [--background #rrggbb]
       3d: the board as made with its parts as simple shapes [--angle top|bottom|front|iso] and the same look options
@@ -123,6 +129,12 @@ Usage:
                                               write the same circuit as a SPICE3 netlist for another simulator
   copperflow board <file> --dxf <path> [--layer <name>] [--units mm|inch] [--origin keep] [--replace]
                                               set the board's outline, holes and keepouts from a DXF drawing
+  copperflow graphic <file> <drawing.svg|dxf> --layer top-silkscreen|bottom-silkscreen|top-mask|bottom-mask|top|bottom|inner1|inner2
+                  [--at x,y] [--width mm | --scale n] [--rotation deg] [--fill] [--name text]
+                                              place a drawing (a logo, a mark) from the project on the board, kept
+                                              in graphics/; at the board's centre unless --at; --fill fills closed
+                                              outlines (a DXF has no fill of its own); on copper it belongs to no
+                                              net and every net keeps clear of it
   copperflow import kicad <board.kicad_pcb> [--name <circuit name>] [--replace] [--origin keep]
                                               make a new circuit from a KiCad board: its outline, parts (as
                                               library parts, not verified), nets, tracks, vias and pours
@@ -143,6 +155,8 @@ export interface CliOptions {
   fetch?: typeof fetch
   /** Loads the renderer for render; tests pass the source module. */
   renderer?: () => Promise<Renderer>
+  /** The day html writes on the page; today when left out. Tests pass a fixed one. */
+  date?: Date
 }
 
 export async function runCli(args: string[], cwd: string, io: CliIO, options: CliOptions = {}): Promise<number> {
@@ -260,6 +274,15 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
         io.out(formatGlbExport(await exportGlb(root, required(args[0], "file"), { ...designOptions(options), ...(out ? { out } : {}), ...(Object.keys(look).length > 0 ? { look } : {}), ...(options.renderer ? { renderer: options.renderer } : {}) })))
         return 0
       }
+      case "html": {
+        const [out, afterOut] = takeOption(rest, "--out")
+        const [mask, afterMask] = takeOption(afterOut, "--mask")
+        const [finish, afterFinish] = takeOption(afterMask, "--finish")
+        const [silk, args] = takeOption(afterFinish, "--silk")
+        const look = { ...(mask !== undefined ? { mask } : {}), ...(finish !== undefined ? { finish } : {}), ...(silk !== undefined ? { silk } : {}) } as LookRequest
+        io.out(formatHtmlExport(await exportHtml(root, required(args[0], "file"), { ...designOptions(options), ...(out ? { out } : {}), ...(Object.keys(look).length > 0 ? { look } : {}), ...(options.renderer ? { renderer: options.renderer } : {}), ...(options.date ? { date: options.date } : {}) })))
+        return 0
+      }
       case "render":
         io.out(await renderCommand(root, rest, options))
         return 0
@@ -271,6 +294,9 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
         return 0
       case "board":
         io.out(await boardCommand(root, rest, options))
+        return 0
+      case "graphic":
+        io.out(await graphicCommand(root, rest, options.engine))
         return 0
       case "import":
         io.out(await importCommand(cwd, root, rest, options))

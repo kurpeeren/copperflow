@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises"
 import { z } from "zod"
-import { boardItemInstance, instanceItemRefusal, isHoleId } from "./board-items.js"
+import { boardItemInstance, boardItemWord, instanceItemRefusal, isBoardGraphicId, isHoleId, isSilkTextId } from "./board-items.js"
 import { writeFileAtomic } from "./fs-utils.js"
 import { sheetFileIn } from "./selectors.js"
 import type { CircuitModel, PropInfo } from "./types.js"
@@ -76,7 +76,7 @@ export function lockKind(lock: Lock): "part" | "drawing" {
 export function lockWord(lock: Lock): string {
   if (!lock.drawing) return "part"
   if (lock.part.startsWith("copperpour:")) return "copper pour"
-  return isHoleId(lock.part) ? "hole" : "drawing"
+  return isHoleId(lock.part) || isSilkTextId(lock.part) || isBoardGraphicId(lock.part) ? boardItemWord(lock.part) : "drawing"
 }
 
 /** Locks parts by name and drawings, copper pours and holes by id, with a snapshot of their props. */

@@ -133,6 +133,54 @@ export interface Hole {
   source: SourceRef
 }
 
+/**
+ * Words on the board's silkscreen (`<silkscreentext>`): centred on x, y in mm, `height` mm tall, turned `rotation`
+ * degrees counter-clockwise, on the top or bottom legend (the bottom one reads from below). `id` is
+ * "silkscreentext:<n>" in source order; `name` is the writer's own label for it and does not change the id.
+ */
+export interface SilkText {
+  id: string
+  text: string
+  x: number
+  y: number
+  layer: "top" | "bottom"
+  height: number
+  rotation: number
+  name?: string
+  source: SourceRef
+}
+
+/**
+ * The layers a board drawing (`<boardgraphic>`) can go on: the silkscreen as ink, the solder mask as an opening, a
+ * copper layer (named as pours name them) as copper of no net.
+ */
+export type BoardGraphicLayer = "top-silkscreen" | "bottom-silkscreen" | "top-mask" | "bottom-mask" | "top" | "bottom" | "inner1" | "inner2"
+
+/**
+ * A drawing from an SVG or DXF file in the project (`<boardgraphic>`), placed on the board: `areas` are its filled
+ * shapes and `lines` its stroked lines, both already in board mm (scaled, turned, moved, and mirrored on the bottom so
+ * they read right from below). `x`, `y` is its centre, `width` × `height` its placed size in mm. `id` is
+ * "boardgraphic:<n>" in source order; `skipped` is what the reader left out of the file, in words.
+ */
+export interface BoardGraphic {
+  id: string
+  file: string
+  layer: BoardGraphicLayer
+  x: number
+  y: number
+  width: number
+  height: number
+  rotation: number
+  fill: boolean
+  name?: string
+  areas: { outer: Point[]; holes: Point[][] }[]
+  lines: { points: Point[]; width: number }[]
+  /** On copper: the filled areas as triangles (holes left open), the shapes the checks, router and Gerber use. */
+  triangles?: Point[][]
+  skipped: string[]
+  source: SourceRef
+}
+
 export interface Board {
   outline: Point[]
   layers: 2 | 4
@@ -145,6 +193,10 @@ export interface Board {
   pours?: CopperPour[]
   /** The non-plated holes, in source order; absent when there are none. */
   holes?: Hole[]
+  /** The silkscreen texts, in source order; absent when there are none. */
+  silkTexts?: SilkText[]
+  /** The drawings from SVG or DXF files, in source order; absent when there are none. */
+  graphics?: BoardGraphic[]
 }
 
 export type DrawingKind = "path" | "rect" | "circle" | "arc" | "text" | "bus" | "junction"

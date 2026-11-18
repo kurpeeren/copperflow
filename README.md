@@ -228,7 +228,11 @@ put together as mask, finish, print and holes, in the maker's usual colours (`--
 `--silk`). `--view 3d` and the Studio's 3D tab lay that picture on the board and stand the parts on
 it. `copperflow glb <file>` writes that same board and its parts as a GLB file, a 3D model a viewer, a
 3D editor or a web page opens and turns; `copperflow step <file>` writes the STEP file alone. Both
-write a board that is not finished too. The parts are simple shapes, not their real models, in the 3D
+write a board that is not finished too. `copperflow html <file>` (MCP `export_html`) writes the whole design as
+one web page to hand to someone: every schematic page, the PCB view, the board as made top and bottom,
+3D from three angles and the BOM as a table, with the fabrication zip, the GLB, the STEP file and the
+BOM as CSV inside it as downloads. It opens from disk with no network; a design with errors is written
+too, without the fabrication files, and says why. The parts are simple shapes, not their real models, in the 3D
 view, the GLB file and the STEP file; a part's height comes from its `height` in `part.yaml`, else a
 typical figure for its package, else 1 mm, and the view says which.
 
@@ -268,6 +272,7 @@ parts, nets, tracks, vias and pours. The parts arrive as library parts, not veri
 | `list_modules` / `module_info` / `use_module` / `save_module` | The shelf of modules and the libraries: read one, bring one into the project, save a described sheet |
 | `export_fabrication` | Writes the fabrication files, the STEP model and the board's pictures; refused when the circuit has errors |
 | `export_model` | Writes the board and its parts as one 3D model file, STEP for mechanical CAD or GLB for a 3D viewer; an unfinished board too |
+| `export_html` | Writes the design as one web page (schematic, board, 3D, BOM, with the fabrication and model files inside) to hand to a person; opens offline |
 | `attach_datasheet` / `guide` | Records the datasheet a part came from; and the copperflow skill's texts for an agent that has no skills |
 | `edit_circuit` | Several edits in one call, applied as one change (one history entry); stops at the first refused edit and writes nothing |
 | `connect_nets` | Connects many pins to named nets in one call, e.g. `{ "GND": ["R1.pin2", "C1.pin2"] }` |
@@ -339,6 +344,9 @@ copperflow step <file> [--out file.step]   write the board and its parts (as box
 copperflow glb <file> [--out file.glb] [--mask black] [--finish hasl] [--silk black]
                                             write the board as made and its parts (as simple shapes) as a GLB
                                             file a 3D viewer turns, <name>.glb beside the circuit
+copperflow html <file> [--out file.html] [--mask black] [--finish hasl] [--silk black]
+                                            write the design as one web page with its files inside,
+                                            <name>.html beside the circuit
 copperflow render <file> [--view pcb|schematic|board|3d] [--page <name>] [--parts U1,C3] [--width n] [--out file.png]
     board: the bare board as made [--side bottom] [--mask black] [--finish hasl] [--silk black] [--background #rrggbb]
     3d: the board as made with its parts as simple shapes [--angle top|bottom|front|iso] and the same look options

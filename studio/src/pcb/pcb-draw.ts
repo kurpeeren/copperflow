@@ -9,6 +9,8 @@ import { worldToScreen, type Camera, type PartBox, type Point, type Size } from 
 import { DEFAULT_LAYERS, padLayer, type LayerVisibility } from "./layers.js"
 import { drawViolationMarkers, type ViolationMarker } from "./markers.js"
 import { drawHoles, drawPourFills, drawPourOutlines, type PourScene } from "./pour-draw.js"
+import { drawSilkTexts, type SilkTextScene } from "./silk-text-draw.js"
+import { drawGraphics } from "./graphic-draw.js"
 import { DESIGNATOR_MM } from "./part-text.js"
 import { devicePxFor, sharpenText, textAnchorAt, textShown } from "./text-level.js"
 
@@ -31,6 +33,8 @@ export interface PcbDrawOptions {
   copper?: CopperScene
   /** How the pours are drawn and which are selected, hovered or hidden; without it the fills are solid and nothing is marked. */
   pours?: PourScene
+  /** Which of the board's silkscreen texts are selected, hovered or being dragged. */
+  silkTexts?: SilkTextScene
 }
 
 const PLAIN_POURS: PourScene = { mode: "solid", hidden: new Set(), selected: new Set(), activeLayer: "top" }
@@ -98,6 +102,8 @@ export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDra
   each((part) => {
     if (shownOn(layers, part, "Silk")) drawPolylines(ctx, part.silkscreen, part.side === "top" ? PALETTE.topSilk : PALETTE.bottomSilk, Math.max(SILK_WIDTH_MM, hair), false)
   })
+  drawGraphics(ctx, layout.graphics ?? [], layers, options.silkTexts, px, options.copper?.activeLayer)
+  drawSilkTexts(ctx, layout.silkTexts ?? [], layers, options.silkTexts, px)
   if (layers.courtyard) drawCourtyards(ctx, each, px, hair)
   each((part) => {
     if (shownOn(layers, part, "Assembly")) drawPolylines(ctx, part.fabrication, assemblyColor(part), hair, false)

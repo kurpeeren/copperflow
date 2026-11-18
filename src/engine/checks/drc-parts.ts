@@ -7,6 +7,8 @@ import type { PcbLayout, PlacedFootprint, WorldPad } from "../pcb.js"
 import type { Rules } from "../rules/schema.js"
 import { bounds, padShape, pointInPolygon, polygonsOverlap, shapeDistance, shapeToSegmentDistance, type Shape } from "./geometry.js"
 import { GridIndex, type Box } from "./grid-index.js"
+import { silkTextChecks } from "./drc-silk-text.js"
+import { boardGraphicChecks, copperGraphicChecks } from "./drc-board-graphic.js"
 import { breaksMinimum, LENGTH_TOLERANCE } from "./limits.js"
 import { violation, type Violation } from "./violation.js"
 
@@ -199,7 +201,7 @@ function designatorChecks(layout: PcbLayout, rules: Rules): Violation[] {
 
 function silkChecks(layout: PcbLayout, rules: Rules): Violation[] {
   const pads = exposedPads(layout.parts)
-  return [...layout.parts.flatMap((part) => silkOnPad(part, pads, rules)), ...designatorChecks(layout, rules)]
+  return [...layout.parts.flatMap((part) => silkOnPad(part, pads, rules)), ...designatorChecks(layout, rules), ...silkTextChecks(layout, rules), ...boardGraphicChecks(layout, rules), ...copperGraphicChecks(layout, rules)]
 }
 
 // ---- board-level notes ----
