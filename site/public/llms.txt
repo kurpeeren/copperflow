@@ -44,8 +44,8 @@ Do these in the folder that will hold the board.
 - The person adds a library of their own with `copperflow library add <name> <git address or folder>`; its modules
   appear as `<name>/<Module>`. No tool adds a library: ask the person to run the command.
 - A board drawn in a mechanical program comes in with `import_board`: the outline, the mounting holes and the keepouts
-  from a DXF file. A `.kicad_pcb` file (KiCad 6 or newer) makes a new circuit from that board; its parts arrive not
-  verified.
+  from a DXF or SVG file (the file goes in the parameter named `dxf` either way). A `.kicad_pcb` file (KiCad 6 or
+  newer) makes a new circuit from that board; its parts arrive not verified.
 - To show the person what you did: `recent_changes { id }` says what one change did and `render { change: id }` draws
   it; `since` covers everything after a change.
 - Before saying a block works, run `simulate`: the DC operating point from ideal sources and simple models (no time,
@@ -64,7 +64,9 @@ Do these in the folder that will hold the board.
 - `set_rules` changes `rules.yaml` (net classes, clearances, the 4-layer profile); `fit_board` also takes an exact
   width and height, an outline or the layer count; `render` takes `out` to write its picture to a file.
 - `add_text` with a `layer` puts words on the board's silkscreen; `import_graphic` places a drawing from an SVG or
-  DXF file in the project on the silkscreen, as a solder-mask opening, or as copper that belongs to no net.
+  DXF file in the project on the silkscreen, as a solder-mask opening, or as copper. Copper with a `net` is that
+  net's copper: it joins the net's pads and tracks and shorts against any other net. In an SVG the dark shapes are
+  ink and light shapes over them are cut out.
 - `bom` ends with whether the board is ready to order. `export_fabrication` writes the Gerbers, drills,
   pick-and-place file, a STEP model and a picture of each side; it refuses a circuit with errors.
 - Impedance, differential pairs and matched lengths are net classes in `rules.yaml`
