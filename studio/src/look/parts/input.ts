@@ -3,7 +3,7 @@
 import type { ParsedFootprint } from "../../../../src/engine/footprints/parse.js"
 import type { Pad } from "../../../../src/engine/footprints/types.js"
 import type { FamilyLook } from "./family.js"
-import { circle, hanging, rectOf, type Flat, type Piece, type Rect } from "./kit.js"
+import { circle, hanging, rectOf, rectPolygon, type Flat, type Piece, type Rect } from "./kit.js"
 
 export interface ShapeInput {
   pads: readonly Pad[]
@@ -12,7 +12,11 @@ export interface ShapeInput {
   limit: Rect
   /** The bounds of the footprint's body outline (its fabrication lines), when it has one. */
   body?: Rect
+  /** The fabrication lines one by one, the body's first: a clipped corner or a tab shows in them. */
+  outlines?: readonly (readonly Flat[])[]
   look: FamilyLook
+  /** The name of the look in FAMILY_LOOKS, for a shape that dresses differently by what the part is (bands, a cathode). */
+  lookName?: string
   parsed?: ParsedFootprint
   /** The board's thickness, for leads that go through it. */
   thickness: number
@@ -34,12 +38,15 @@ export const padsRect = (pads: readonly Pad[]): Rect | undefined => rectOf(pads.
 /** How far a lead reaches below the board's far side. */
 export const LEAD_TAIL = 1.6
 
-/** A lead through every through-hole pad: a round wire in the hole, from the board's surface to below its far side. */
-export function leads(input: ShapeInput, color = input.look.metal): Piece[] {
+/**
+ * A lead through every through-hole pad, from the board's surface to below its far side: a round wire in the hole, or a
+ * flat strip of the half sizes `half` (x, y) when the part's leads are flat.
+ */
+export function leads(input: ShapeInput, color = input.look.metal, half?: { x: number; y: number }): Piece[] {
   return input.pads.flatMap((pad) => {
     if (pad.layers !== "through" || pad.drill === undefined) return []
     const radius = Math.min(pad.drill.width, pad.drill.height) * 0.32
-    const wire: Flat[] = circle(pad.x, pad.y, radius, 8)
+    const wire: Flat[] = half ? rectPolygon({ minX: pad.x - half.x, maxX: pad.x + half.x, minY: pad.y - half.y, maxY: pad.y + half.y }) : circle(pad.x, pad.y, radius, 8)
     return hanging(wire, 0, -(input.thickness + LEAD_TAIL), color, "metal", "lead")
   })
 }

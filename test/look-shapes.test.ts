@@ -91,7 +91,7 @@ describe("each family's shape", () => {
     expect(families(designs["relay-driver"])).toMatchObject({ K101: "block", Q101: "gullwing", LED101: "chip", J3: "block" })
     expect(familyOf("chip", "qfn32_5x5_p0.5").family).toBe("leadless")
     expect(familyOf("capacitor", "radial6.3x2.5").family).toBe("electrolytic")
-    expect(familyOf("chip", "to220", true, "U9").family).toBe("block")
+    expect(familyOf("chip", "to220", true, "U9").family).toBe("to220")
     expect(familyOf("chip", "parts/K/footprint.yaml", true, "K1").look).toBe("relay")
     expect(familyOf("chip", undefined).family).toBe("box")
     for (const look of Object.values(FAMILY_LOOKS)) expect(look.sentence.length).toBeGreaterThan(10)

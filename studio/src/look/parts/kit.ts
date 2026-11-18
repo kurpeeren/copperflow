@@ -54,12 +54,79 @@ export function prism(polygon: readonly Flat[], z0: number, z1: number, colors: 
   return [cap, ...sides]
 }
 
+/** One flat piece on `loop`, wound counter-clockwise seen from the side `outward` points to; its normal is the winding's. */
+export function facet(loop: readonly Vec3[], outward: Vec3, color: Rgb, material: Material, role: Role): Piece {
+  const wound = windNormal(loop)
+  const flip = wound[0] * outward[0] + wound[1] * outward[1] + wound[2] * outward[2] < 0
+  const turned = flip ? [...loop].reverse() : [...loop]
+  return { loops: [turned], normal: flip ? [-wound[0], -wound[1], -wound[2]] : wound, color, material, role }
+}
+
 /** A prism that hangs below z0 down to z1 < z0 (a lead under the board): its sides and its lower end. */
 export function hanging(polygon: readonly Flat[], z0: number, z1: number, color: Rgb, material: Material, role: Role): Piece[] {
   if (!(z0 > z1)) return []
   const end: Piece = { loops: [[...polygon].reverse().map((p): Vec3 => [p.x, p.y, z1])], normal: [0, 0, -1], color, material, role }
   const sides = prism(polygon, z1, z0, color, material, role).slice(1)
   return [end, ...sides]
+}
+
+/**
+ * A prism lying along x: a counter-clockwise polygon in the y–z plane (the polygon's x is the part's y, its y the
+ * part's z, seen from +x) swept from x0 to x1, with both end faces. For round bodies that lie on the board.
+ */
+export function lying(polygon: readonly Flat[], x0: number, x1: number, colors: Rgb | BoxColors, material: Material, role: Role): Piece[] {
+  if (!(x1 > x0) || polygon.length < 3) return []
+  const { top, side } = colorsOf(colors)
+  const at = (x: number, p: Flat): Vec3 => [x, p.x, p.y]
+  const far: Piece = { loops: [polygon.map((p) => at(x1, p))], normal: [1, 0, 0], color: top, material, role }
+  const near: Piece = { loops: [[...polygon].reverse().map((p) => at(x0, p))], normal: [-1, 0, 0], color: top, material, role }
+  const sides = polygon.map((p, i): Piece => {
+    const q = polygon[(i + 1) % polygon.length] as Flat
+    const length = Math.hypot(q.x - p.x, q.y - p.y) || 1
+    return {
+      loops: [[at(x0, p), at(x0, q), at(x1, q), at(x1, p)]],
+      normal: [0, (q.y - p.y) / length, -(q.x - p.x) / length],
+      color: side,
+      material,
+      role,
+    }
+  })
+  return [far, near, ...sides]
+}
+
+const cross = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+const minus = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+
+/** The unit normal a loop's first three corners wind about (counter-clockwise from the side it points to). */
+function windNormal(loop: readonly Vec3[]): Vec3 {
+  const n = cross(minus(loop[1] as Vec3, loop[0] as Vec3), minus(loop[2] as Vec3, loop[1] as Vec3))
+  const length = Math.hypot(n[0], n[1], n[2]) || 1
+  return [n[0] / length, n[1] / length, n[2] / length]
+}
+
+/**
+ * A profile of (radius, z) pairs, running up from the bottom, turned about the vertical axis through (cx, cy) into
+ * `sides` flat trapezoids per step (a triangle where a radius is 0), and a flat top when the last radius is above 0.
+ * No bottom. For domes, balls and rounded cans.
+ */
+export function lathe(profile: readonly (readonly [number, number])[], cx: number, cy: number, sides: number, colors: Rgb | BoxColors, material: Material, role: Role): Piece[] {
+  if (profile.length < 2 || sides < 3) return []
+  const { top, side } = colorsOf(colors)
+  const ring = (radius: number, z: number, i: number): Vec3 => {
+    const angle = (2 * Math.PI * i) / sides
+    return [cx + radius * Math.cos(angle), cy + radius * Math.sin(angle), z]
+  }
+  const bands = profile.slice(1).flatMap(([r1, z1], k) => {
+    const [r0, z0] = profile[k] as readonly [number, number]
+    return Array.from({ length: sides }, (_, i): Piece[] => {
+      const corners = [ring(r0, z0, i), ring(r0, z0, i + 1), ring(r1, z1, i + 1), ring(r1, z1, i)]
+      const loop = corners.filter((p, j) => j === 0 || Math.hypot(p[0] - (corners[j - 1] as Vec3)[0], p[1] - (corners[j - 1] as Vec3)[1]) > 1e-12 || p[2] !== (corners[j - 1] as Vec3)[2])
+      return loop.length < 3 ? [] : [{ loops: [loop], normal: windNormal(loop), color: side, material, role }]
+    }).flat()
+  })
+  const [lastR, lastZ] = profile[profile.length - 1] as readonly [number, number]
+  const lid: Piece[] = lastR > 0 ? [{ loops: [Array.from({ length: sides }, (_, i) => ring(lastR, lastZ, i))], normal: [0, 0, 1], color: top, material, role }] : []
+  return [...lid, ...bands]
 }
 
 export const rectPolygon = (r: Rect): Flat[] => [

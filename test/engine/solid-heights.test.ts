@@ -35,6 +35,28 @@ describe("part heights", () => {
       ["hc49s", 3.5],
       ["radial6.3x2.5", 11],
       ["radial10x5", 16],
+      ["0201", 0.33],
+      ["1210", 2.5],
+      ["1812", 3.2],
+      ["2010", 0.7],
+      ["2512", 0.7],
+      ["sod323", 1.1],
+      ["sma", 2.4],
+      ["do214ac", 2.4],
+      ["smb", 2.4],
+      ["do214aa", 2.4],
+      ["smc", 2.7],
+      ["do214ab", 2.7],
+      ["sot223", 1.8],
+      ["sot89", 1.6],
+      ["sop8", 2.2],
+      ["ssop20", 2],
+      ["tssop20", 1.2],
+      ["bga64_8x8_p0.8", 1.4],
+      ["dip8", 5.1],
+      ["dip28_w15.24", 5.1],
+      ["to220", 20.5],
+      ["to92", 5.2],
     ]
     for (const [footprint, height] of cases) {
       const found = partHeight(part(footprint))
@@ -45,10 +67,16 @@ describe("part heights", () => {
   })
 
   test("a package the table does not know, a footprint file or no footprint gets 1 mm, assumed", () => {
-    for (const footprint of ["to220", "pinrow3_p5.08mm", "parts/X/footprint.yaml", "radial7x3", undefined]) {
+    for (const footprint of ["pinrow3_p5.08mm", "parts/X/footprint.yaml", undefined]) {
       expect(partHeight(part(footprint)), String(footprint)).toEqual({ height: ASSUMED_HEIGHT, source: "assumed", state: "assumed", assumed: true })
     }
     expect(ASSUMED_HEIGHT).toBe(1)
+  })
+
+  test("none of the added rows claims a document: they are typical figures", () => {
+    for (const footprint of ["0201", "1210", "sma", "do214ab", "sot223", "sot89", "sop8", "bga64_8x8_p0.8", "dip8", "to220", "to92"]) {
+      expect(partHeight(part(footprint)).state, footprint).toBe("typical")
+    }
   })
 
   test("every row of the table names its source", () => {

@@ -25,7 +25,10 @@ describe("a height's state", () => {
   })
 
   test("assumed when nothing is known", () => {
-    expect(partHeight(part("to220"))).toMatchObject({ height: 1, state: "assumed", assumed: true })
+    // a footprint file has no table row by construction, and a string of no known family never will
+    expect(partHeight(part("parts/MCP2515/footprint.yaml"))).toMatchObject({ height: 1, state: "assumed", assumed: true })
+    expect(partHeight(part("zzz9"))).toMatchObject({ height: 1, state: "assumed", assumed: true })
+    expect(partHeight(part(undefined))).toMatchObject({ height: 1, state: "assumed", assumed: true })
   })
 })
 
