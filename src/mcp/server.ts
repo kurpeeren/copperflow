@@ -58,6 +58,7 @@ import { ATTACH_DATASHEET_DESCRIPTION, attachDatasheetInput, attachDatasheetTool
 import { RENDER_DESCRIPTION, renderInput, renderTool } from "./render-tool.js"
 import { changeTarget, changeText, changeView } from "../core/change-view.js"
 import { registerModuleTools } from "./module-tools.js"
+import { EXPORT_MODEL_DESCRIPTION, exportModelInput, exportModelTool } from "./model-tool.js"
 import { OPEN_STUDIO_DESCRIPTION, openStudio, openStudioInput } from "./open-studio.js"
 import type { Renderer } from "../core/render.js"
 
@@ -417,6 +418,10 @@ Nothing was written.`)
         return { isError: true, content: [{ type: "text", text: (error as Error).message }] }
       }
     },
+  )
+
+  server.registerTool("export_model", { description: EXPORT_MODEL_DESCRIPTION, inputSchema: exportModelInput, annotations: { readOnlyHint: false, destructiveHint: false } }, (input) =>
+    run(() => exportModelTool({ root, ...designOptions, ...(options.renderer ? { renderer: options.renderer } : {}) }, input)),
   )
 
   server.registerTool(

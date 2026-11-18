@@ -225,9 +225,11 @@ picture of each side of the board. A circuit with errors is refused.
 fabrication layer is drawn by itself, from the same data the Gerbers are written from, and they are
 put together as mask, finish, print and holes, in the maker's usual colours (`--mask`, `--finish`,
 `--silk`). `--view 3d` and the Studio's 3D tab lay that picture on the board and stand the parts on
-it. The parts are simple shapes, not their real models, in the 3D view and in the STEP file; a part's
-height comes from its `height` in `part.yaml`, else a typical figure for its package, else 1 mm, and
-the view says which.
+it. `copperflow glb <file>` writes that same board and its parts as a GLB file, a 3D model a viewer, a
+3D editor or a web page opens and turns; `copperflow step <file>` writes the STEP file alone. Both
+write a board that is not finished too. The parts are simple shapes, not their real models, in the 3D
+view, the GLB file and the STEP file; a part's height comes from its `height` in `part.yaml`, else a
+typical figure for its package, else 1 mm, and the view says which.
 
 **Fast lines.** Net classes in `rules.yaml` take an impedance, a differential pair with its gap and
 skew, a longest length and length-matched groups; the checks report a pair that runs apart or differs
@@ -264,6 +266,7 @@ parts, nets, tracks, vias and pours. The parts arrive as library parts, not veri
 | `make_sheet` / `describe_sheet` | Moves parts into a sub-sheet with ports, and writes a sheet's card: what it does, its ports and its cases |
 | `list_modules` / `module_info` / `use_module` / `save_module` | The shelf of modules and the libraries: read one, bring one into the project, save a described sheet |
 | `export_fabrication` | Writes the fabrication files, the STEP model and the board's pictures; refused when the circuit has errors |
+| `export_model` | Writes the board and its parts as one 3D model file, STEP for mechanical CAD or GLB for a 3D viewer; an unfinished board too |
 | `attach_datasheet` / `guide` | Records the datasheet a part came from; and the copperflow skill's texts for an agent that has no skills |
 | `edit_circuit` | Several edits in one call, applied as one change (one history entry); stops at the first refused edit and writes nothing |
 | `connect_nets` | Connects many pins to named nets in one call, e.g. `{ "GND": ["R1.pin2", "C1.pin2"] }` |
@@ -330,6 +333,9 @@ copperflow export <file> [--out dir]        write the fabrication files for JLCP
                                             beside the circuit (or in the project folder --out), with <name>.step
 copperflow step <file> [--out file.step]   write the board and its parts (as boxes) as a STEP file for CAD,
                                             <name>.step beside the circuit
+copperflow glb <file> [--out file.glb] [--mask black] [--finish hasl] [--silk black]
+                                            write the board as made and its parts (as simple shapes) as a GLB
+                                            file a 3D viewer turns, <name>.glb beside the circuit
 copperflow render <file> [--view pcb|schematic|board|3d] [--page <name>] [--parts U1,C3] [--width n] [--out file.png]
     board: the bare board as made [--side bottom] [--mask black] [--finish hasl] [--silk black] [--background #rrggbb]
     3d: the board as made with its parts as simple shapes [--angle top|bottom|front|iso] and the same look options

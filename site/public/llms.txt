@@ -53,6 +53,9 @@ Do these in the folder that will hold the board.
   values runs them.
 - `render` with `view: "board"` is the bare board as made, drawn from the fabrication layers; `view: "3d"` adds the
   parts as simple shapes, not their real models. Look at one before asking the person to.
+- `export_model` writes the board and its parts as one 3D model file beside the circuit, for a board that is not
+  finished too: `format: "step"` for mechanical CAD (parts as boxes), `format: "glb"` for a 3D viewer (the board as
+  made, parts as simple shapes).
 - `bom` ends with whether the board is ready to order. `export_fabrication` writes the Gerbers, drills,
   pick-and-place file, a STEP model and a picture of each side; it refuses a circuit with errors.
 - Impedance, differential pairs and matched lengths are net classes in `rules.yaml`

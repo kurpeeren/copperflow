@@ -14,6 +14,8 @@ import { cameraFor, frameFor, imageSize, widthOf } from "./render-frame.js"
 import { renderLook, type Angle } from "./look-render.js"
 import type { LookRequest } from "../../../src/engine/fab/picture/looks.js"
 
+export { modelGlb } from "./model-render.js"
+
 export interface RenderRequest {
   /** "3d": the board as made with its parts as lit simple shapes (look-render.ts). */
   view: "pcb" | "schematic" | "3d"

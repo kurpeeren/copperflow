@@ -82,6 +82,12 @@ plated and non-plated drills, pick-and-place and the BOM into `<name>-fab/` and
 supplier part number and how to add one) and `export_fabrication` with its two verdicts;
 `export_package` also writes `pins.md` and a `<part>_pins.h` per library chip, the pin map for the firmware.
 
+`export_model` `{ file, format, out?, look? }` writes one 3D model file beside the circuit, for a
+design that still has errors too: `format: "step"` is the STEP file for mechanical CAD (the board
+and each part as a box), `format: "glb"` a GLB file a 3D viewer turns (the board as made, in the
+`look` asked for, and the parts as simple shapes, not their real models). Its answer names the parts
+whose height is typical or assumed; pass that on when the person will fit an enclosure around it.
+
 Export only a clean board: `check_circuit` with 0 errors and no `unrouted` warning. With
 connections still unrouted the files are written with a warning, but the board is not finished
 and must not be ordered: say so, then route them with `route_track` by reference

@@ -53,6 +53,7 @@ describe("MCP server", () => {
       "describe_sheet",
       "edit_circuit",
       "export_fabrication",
+      "export_model",
       "export_package",
       "fillet_tracks",
       "fit_board",

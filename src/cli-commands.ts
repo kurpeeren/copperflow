@@ -47,6 +47,7 @@ import { changeTarget, changeText, changeView } from "./core/change-view.js"
 import { changeRequest } from "./core/change-render.js"
 import type { LookRequest } from "./engine/fab/picture/looks.js"
 import { simulateCommand, spiceCommand } from "./cli-simulate.js"
+import { exportGlb, formatGlbExport } from "./core/model-export.js"
 import { exportStep, formatStepExport } from "./core/step-export.js"
 
 export interface CliIO {
@@ -102,6 +103,9 @@ Usage:
                                               beside the circuit (or in the project folder --out), with <name>.step
   copperflow step <file> [--out file.step]   write the board and its parts (as boxes) as a STEP file for CAD,
                                               <name>.step beside the circuit
+  copperflow glb <file> [--out file.glb] [--mask black] [--finish hasl] [--silk black]
+                                              write the board as made and its parts (as simple shapes) as a GLB
+                                              file a 3D viewer turns, <name>.glb beside the circuit
   copperflow render <file> [--view pcb|schematic|board|3d] [--page <name>] [--parts U1,C3] [--width n] [--out file.png]
       board: the bare board as made [--side bottom] [--mask black] [--finish hasl] [--silk black] [--background #rrggbb]
       3d: the board as made with its parts as simple shapes [--angle top|bottom|front|iso] and the same look options
@@ -237,6 +241,15 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
       case "step": {
         const [out, args] = takeOption(rest, "--out")
         io.out(formatStepExport(await exportStep(root, required(args[0], "file"), { ...designOptions(options), ...(out ? { out } : {}) })))
+        return 0
+      }
+      case "glb": {
+        const [out, afterOut] = takeOption(rest, "--out")
+        const [mask, afterMask] = takeOption(afterOut, "--mask")
+        const [finish, afterFinish] = takeOption(afterMask, "--finish")
+        const [silk, args] = takeOption(afterFinish, "--silk")
+        const look = { ...(mask !== undefined ? { mask } : {}), ...(finish !== undefined ? { finish } : {}), ...(silk !== undefined ? { silk } : {}) } as LookRequest
+        io.out(formatGlbExport(await exportGlb(root, required(args[0], "file"), { ...designOptions(options), ...(out ? { out } : {}), ...(Object.keys(look).length > 0 ? { look } : {}), ...(options.renderer ? { renderer: options.renderer } : {}) })))
         return 0
       }
       case "render":

@@ -1,5 +1,6 @@
 // Bundles the Node renderer (studio/src/render/node-render.ts) to dist/render/render.js for the CLI and the MCP
 // server's render. The canvas package stays outside the bundle: it is an optional dependency with a native binary.
+// So does earcut (the triangles of a model file), an ordinary dependency that keeps its own licence file.
 import { build } from "esbuild"
 import { fileURLToPath } from "node:url"
 
@@ -13,6 +14,6 @@ await build({
   format: "esm",
   platform: "node",
   target: "node22",
-  external: ["@napi-rs/canvas"],
+  external: ["@napi-rs/canvas", "earcut"],
   logLevel: "warning",
 })

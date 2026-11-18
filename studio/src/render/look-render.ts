@@ -41,6 +41,22 @@ function heightWords(model: ReturnType<typeof solidModel>): string {
   return `heights ${part(typical, "typical")}; ${part(assumed, "assumed")}`
 }
 
+/** The lit scene of a design in a look: the board as made with its pictures, and the parts' shapes. */
+export function lookScene(design: Design, look: LookRequest) {
+  const model = solidModel(design)
+  const textures = boardTextures(design, model, look)
+  const scene = buildScene(model, { parts: partFaces(design, model), textures, look, mounting: design.pcb.holes.length, layers: design.pcb.board?.layers ?? 2 })
+  return { model, scene }
+}
+
+/** "the board as made (green mask, ENIG) and 42 parts as simple shapes, not their real models; heights 42 typical; none assumed" */
+export function shapesWords(model: ReturnType<typeof solidModel>, look: LookRequest): string {
+  return `the board as made (${lookWords(resolveLook(look))}) and ${partsWords(model)}`
+}
+
+/** "42 parts as simple shapes, not their real models; heights 42 typical; none assumed" */
+export const partsWords = (model: ReturnType<typeof solidModel>): string => `${model.parts.length} parts as simple shapes, not their real models; ${heightWords(model)}`
+
 /** The 3D picture as RGBA pixels and its line, before encoding. */
 export function lookPicture(design: Design, request: LookRequestOptions) {
   const width = request.width ?? DEFAULT_WIDTH
@@ -48,12 +64,10 @@ export function lookPicture(design: Design, request: LookRequestOptions) {
   const height = Math.round(width * ASPECT)
   const angle = request.angle ?? "iso"
   const look = request.look ?? {}
-  const resolved = resolveLook(look)
-  const model = solidModel(design)
-  const textures = boardTextures(design, model, look)
-  const scene = buildScene(model, { parts: partFaces(design, model), textures, look, mounting: design.pcb.holes.length, layers: design.pcb.board?.layers ?? 2 })
+  resolveLook(look)
+  const { model, scene } = lookScene(design, look)
+  const what = `3D from ${angle}, ${shapesWords(model, look)}`
   const frame = renderSmooth(scene, ANGLES[angle], width, height, { background: [...LOOK_BACKGROUND], lit: true })
-  const what = `3D from ${angle}, the board as made (${lookWords(resolved)}) and ${model.parts.length} parts as simple shapes, not their real models; ${heightWords(model)}`
   return { rgba: frame.color, width, height, what, label: designName(design.file) }
 }
 

@@ -12,6 +12,7 @@ import type { LookRequest } from "../engine/fab/picture/looks.js"
 import type { CanvasLoader } from "../engine/fab/picture/png.js"
 import { buildWith, type DesignSource } from "./design-source.js"
 import { assertLandsInProject } from "./fabrication.js"
+import type { Modeller } from "./model-export.js"
 import { resolveCircuit } from "./workspace.js"
 
 /** What to draw; the Studio's renderer defines the same. */
@@ -46,7 +47,7 @@ export interface Rendered {
   label?: string
 }
 
-export interface Renderer {
+export interface Renderer extends Modeller {
   renderDesign(design: Design, request: RenderRequest): Promise<Rendered>
 }
 
