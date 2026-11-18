@@ -42,7 +42,17 @@ const VISHAY_SIZES: Readonly<Record<string, ChipSize>> = {
   "2512": { length: pm(6.3, 0.2), width: pm(3.15, 0.15), terminal: pm(0.6, 0.2) },
 }
 
-const CHIP_SIZES: Readonly<Record<string, ChipSize>> = { ...KEMET_SIZES, ...VISHAY_SIZES }
+/**
+ * 01005 (0402 metric): L 0.4 ± 0.02, W 0.2 ± 0.02, terminal 0.1 ± 0.03; 2220 (5750 metric): L 5.7 ± 0.4,
+ * W 5.0 ± 0.4, terminal 0.6 ± 0.35. Written from general knowledge of MLCC makers' dimension tables,
+ * not transcribed from one drawing.
+ */
+const TYPICAL_SIZES: Readonly<Record<string, ChipSize>> = {
+  "01005": { length: pm(0.4, 0.02), width: pm(0.2, 0.02), terminal: pm(0.1, 0.03) },
+  "2220": { length: pm(5.7, 0.4), width: pm(5.0, 0.4), terminal: pm(0.6, 0.35) },
+}
+
+const CHIP_SIZES: Readonly<Record<string, ChipSize>> = { ...KEMET_SIZES, ...VISHAY_SIZES, ...TYPICAL_SIZES }
 
 /** The IPC-7351B nominal footprint for an EIA chip size such as "0603", or undefined. */
 export function chipFootprint(code: string): Footprint | undefined {

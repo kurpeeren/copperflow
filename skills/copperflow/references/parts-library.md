@@ -17,7 +17,8 @@ Passive parts (resistors, capacitors, LEDs, headers) are built in and need no en
    - `package`: a footprint string for the package, such as `sot23_5`, `soic8`,
      `qfn32_p0.5mm` or `tssop20`; copperflow makes the pads from it. The strings it knows are
      listed in [editable-subset.md](editable-subset.md). Use a footprint string whenever a family
-     fits the package.
+     fits the package. To find the string for a package by its name, call `guide` with the topic
+     `packages` (add search words: `packages sot 5`).
      When none fits, set `package` to `{ "file": "footprint.yaml" }` and pass `footprint_file`: transcribe
      every pad (number, shape, x, y, width, height, and a drill for through-hole pads) from the
      datasheet's recommended land pattern, name the page you took it from, and never estimate a

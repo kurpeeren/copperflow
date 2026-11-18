@@ -49,11 +49,27 @@ const sot2x = (pins: number): IcPackage => ({
   bodyAlong: range(2.9, 3.1),
 })
 
-/** Keyed by the variant after "sot23": none, "5" or "6". */
+/**
+ * SOT-23-8, 0.65 mm pitch: span 2.6–3.0, foot 0.3–0.6, lead width 0.22–0.38, body width 1.5–1.7 (as
+ * SOT-23-6), body length 2.8–3.0 (MO-178 nominal 2.9, not the 2.9–3.1 of the cited SOT26 drawing). Written from general knowledge of makers' SOT-23-8 drawings
+ * (JEDEC MO-178 BA), not transcribed from one drawing.
+ */
+const SOT23_8: IcPackage = {
+  label: "SOT-23-8",
+  pitch: 0.65,
+  span: range(2.6, 3.0),
+  terminal: range(0.3, 0.6),
+  leadWidth: range(0.22, 0.38),
+  bodyAcross: range(1.5, 1.7),
+  bodyAlong: range(2.8, 3.0),
+}
+
+/** Keyed by the variant after "sot23": none, "5", "6" or "8". */
 const VARIANTS = new Map<string | undefined, SotVariant>([
   [undefined, SOT23],
   ["5", { pkg: sot2x(5), bottom: [-1, 0, 1], top: [1, -1] }],
   ["6", { pkg: sot2x(6), bottom: [-1, 0, 1], top: [1, 0, -1] }],
+  ["8", { pkg: SOT23_8, bottom: [-1.5, -0.5, 0.5, 1.5], top: [1.5, 0.5, -0.5, -1.5] }],
 ])
 
 function sotPads(variant: SotVariant, centre: number, length: number, width: number): Pad[] {
@@ -64,7 +80,7 @@ function sotPads(variant: SotVariant, centre: number, length: number, width: num
   return [...bottom, ...top]
 }
 
-/** The IPC-7351B nominal footprint for "sot23", "sot23_5" or "sot23_6", or undefined. */
+/** The IPC-7351B nominal footprint for "sot23", "sot23_5", "sot23_6" or "sot23_8", or undefined. */
 export function sotFootprint(parsed: ParsedFootprint): Footprint | undefined {
   const variant = parsed.kind === "sot" && parsed.code === "23" ? VARIANTS.get(parsed.variant) : undefined
   if (!variant || !isSimple(parsed) || !confirmsPackage(parsed.params, variant.pkg)) return undefined

@@ -2,6 +2,7 @@
 import { readFile } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
 import { z } from "zod"
+import { packagesText } from "../core/packages.js"
 
 /** The skill's folder: skills/copperflow beside src/ and dist/. */
 const SKILL_DIR = new URL("../../skills/copperflow/", import.meta.url)
@@ -18,13 +19,16 @@ export const GUIDE_TOPICS: Readonly<Record<string, string>> = {
   modules: "references/modules.md",
 }
 
+/** The topic made from the footprint catalogue at call time, not read from a file; words after it narrow the list. */
+export const PACKAGES_TOPIC = "packages"
+
 export const guideInput = {
-  topic: z.string().max(100).optional().describe(`One of ${Object.keys(GUIDE_TOPICS).join(", ")}`),
+  topic: z.string().max(100).optional().describe(`One of ${Object.keys(GUIDE_TOPICS).join(", ")}, or ${PACKAGES_TOPIC} [words]: the footprint strings`),
   again: z.boolean().optional(),
 }
 
 export const GUIDE_DESCRIPTION =
-  "The copperflow skill: SKILL.md without a topic, a reference with one. A text already read this session answers a short line unless again. Call it when the skill is not installed."
+  "The copperflow skill: SKILL.md, or a reference with a topic. A text already read answers a short line unless again. Call it when the skill is not installed."
 
 /** The most argument sets one session remembers having answered. */
 export const GUIDE_MEMORY_LIMIT = 32
@@ -51,6 +55,12 @@ export function createGuideMemory(): GuideMemory {
   }
 }
 
+/** The search words after "packages" in a topic, or undefined when the topic is not the packages one. */
+function packageWords(topic: string | undefined): string[] | undefined {
+  const [first, ...words] = (topic ?? "").trim().split(/\s+/)
+  return first?.toLowerCase() === PACKAGES_TOPIC ? words : undefined
+}
+
 /** The skill file a topic names, as a URL inside the skill folder. */
 export function guideFile(topic?: string): URL | undefined {
   if (topic === undefined || topic === "") return new URL("SKILL.md", SKILL_DIR)
@@ -60,8 +70,10 @@ export function guideFile(topic?: string): URL | undefined {
 
 /** SKILL.md, a reference, or the list of topics for one it does not know. */
 export async function guide(input: { topic?: string | undefined }): Promise<string> {
+  const words = packageWords(input.topic)
+  if (words !== undefined) return packagesText(words).text
   const target = guideFile(input.topic)
-  if (target === undefined) throw new Error(`No guide topic "${input.topic}". Topics: ${Object.keys(GUIDE_TOPICS).join(", ")}; or no topic for SKILL.md.`)
+  if (target === undefined) throw new Error(`No guide topic "${input.topic}". Topics: ${Object.keys(GUIDE_TOPICS).join(", ")}, ${PACKAGES_TOPIC}; or no topic for SKILL.md.`)
   return withoutFrontmatter(await readFile(fileURLToPath(target), "utf8"))
 }
 
@@ -77,7 +89,7 @@ function withoutFrontmatter(text: string): string {
  */
 export async function guideInSession(memory: GuideMemory, input: { topic?: string | undefined; again?: boolean | undefined }): Promise<string> {
   const text = await guide(input)
-  const key = input.topic ?? ""
+  const key = (input.topic ?? "").trim().replace(/\s+/g, " ").toLowerCase()
   if (memory.has(key) && input.again !== true) {
     const what = key === "" ? "SKILL.md" : `The guide topic "${key}"`
     return `${what} was already returned in this session; use the text above. To get it again, call guide with the same arguments and again: true.`

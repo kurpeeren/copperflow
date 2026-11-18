@@ -1,21 +1,42 @@
+import { arrayFootprint } from "./array.js"
+import { axialFootprint } from "./axial.js"
 import { bgaFootprint } from "./bga.js"
 import { chipFootprint } from "./chip.js"
 import { crystalFootprint } from "./crystal.js"
+import { dcJackFootprint } from "./dcjack.js"
 import { dfnFootprint } from "./dfn.js"
 import { dipFootprint } from "./dip.js"
-import { dualFootprint } from "./dual.js"
+import { dpakFootprint } from "./dpak.js"
+import { dualExposedFootprint, dualFootprint } from "./dual.js"
 import { footprintFromFile } from "./file.js"
+import { inductorFootprint } from "./inductor.js"
 import { unknownFootprint } from "./known.js"
+import { ledSmdFootprint } from "./ledsmd.js"
+import { ledThroughHoleFootprint } from "./ledth.js"
+import { melfFootprint } from "./melf.js"
 import { isSimple, parseFootprint, type ParsedFootprint } from "./parse.js"
 import { moldedFootprint } from "./molded.js"
 import { pinRowFootprint } from "./pinrow.js"
+import { plccFootprint } from "./plcc.js"
 import { quadFootprint } from "./quad.js"
 import { radialFootprint } from "./radial.js"
-import { sodFootprint } from "./sod.js"
+import { resonatorFootprint } from "./resonator.js"
+import { screwFootprint } from "./screw.js"
+import { smallSotFootprint } from "./smallsot.js"
+import { smdCanFootprint } from "./smdcan.js"
+import { smdipFootprint } from "./smdip.js"
+import { socketFootprint } from "./socket.js"
+import { sodFamily } from "./sod.js"
 import { sotFootprint } from "./sot.js"
+import { tactFootprint } from "./tact.js"
 import { powerSotFootprint } from "./sotpower.js"
+import { tantalumFootprint } from "./tantalum.js"
 import { to220Footprint } from "./to220.js"
 import { to92Footprint } from "./to92.js"
+import { to92InlineFootprint } from "./to92inline.js"
+import { toPowerFootprint } from "./topower.js"
+import { usbFootprint } from "./usb.js"
+import { xtalFootprint } from "./xtal.js"
 import { isRefusal, type Footprint, type Refusal } from "./types.js"
 
 export type FootprintResult = Footprint | { error: string }
@@ -33,20 +54,42 @@ const isPlain = (parsed: ParsedFootprint) =>
 /** Tried in order; the first family that accepts the string makes the footprint. */
 const FAMILIES: readonly Family[] = [
   (parsed) => (parsed.kind === "" && isPlain(parsed) ? chipFootprint(parsed.code) : undefined),
-  (parsed) => (parsed.kind === "sod" && isPlain(parsed) ? sodFootprint(parsed.code) : undefined),
+  sodFamily,
+  melfFootprint,
   sotFootprint,
+  smallSotFootprint,
   powerSotFootprint,
+  dpakFootprint,
   moldedFootprint,
+  axialFootprint,
+  tantalumFootprint,
+  arrayFootprint,
   dualFootprint,
+  dualExposedFootprint,
+  smdipFootprint,
+  plccFootprint,
   quadFootprint,
   dfnFootprint,
   bgaFootprint,
   pinRowFootprint,
+  socketFootprint,
+  screwFootprint,
   dipFootprint,
   to220Footprint,
+  toPowerFootprint,
   to92Footprint,
+  to92InlineFootprint,
   crystalFootprint,
+  xtalFootprint,
   radialFootprint,
+  smdCanFootprint,
+  ledThroughHoleFootprint,
+  ledSmdFootprint,
+  resonatorFootprint,
+  usbFootprint,
+  dcJackFootprint,
+  tactFootprint,
+  inductorFootprint,
 ]
 
 /** Footprint strings in a project are few; the bound only guards against unbounded growth. */

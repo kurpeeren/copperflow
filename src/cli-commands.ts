@@ -49,6 +49,7 @@ import type { LookRequest } from "./engine/fab/picture/looks.js"
 import { simulateCommand, spiceCommand } from "./cli-simulate.js"
 import { exportGlb, formatGlbExport } from "./core/model-export.js"
 import { exportStep, formatStepExport } from "./core/step-export.js"
+import { packagesText } from "./core/packages.js"
 
 export interface CliIO {
   out(text: string): void
@@ -91,6 +92,8 @@ Usage:
                                               or a folder; its modules read NOT verified until you verify them
   copperflow library update [name]            bring git libraries to the newest commit of their ref
   copperflow library remove <name>            forget a library (a clone is deleted, a folder never)
+  copperflow packages [words...]              the standard packages and the footprint string for each, with pads and
+                                              size; words narrow the list (soic, sot 5, sc70, crystal); exits 1 if none match
   copperflow place <file> <part> <name> [key=value ...]
                                               add a library or built-in part to a circuit
   copperflow bom <file> [--csv]               print the bill of materials
@@ -203,6 +206,11 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
       case "library":
         await libraryCommand(root, rest, (text) => io.out(text), takeOption)
         return 0
+      case "packages": {
+        const { text, found } = packagesText(rest)
+        io.out(text)
+        return found ? 0 : 1
+      }
       case "place": {
         const [file, part, name, ...props] = rest
         const request = { part: required(part, "part"), name: required(name, "name"), props: parseProps(props) }

@@ -178,7 +178,8 @@ other way.
 **Parts library.** Chips and connectors live in `parts/<id>/part.yaml` in your project: pins
 with names and electrical types, a footprint, MPN and supplier numbers. The footprint is either a
 string such as `sot23_5`, from which copperflow makes the pads (the strings it knows are listed in
-[editable-subset.md](skills/copperflow/references/editable-subset.md#footprint-strings)), or
+[editable-subset.md](skills/copperflow/references/editable-subset.md#footprint-strings), and
+`copperflow packages [words]` browses the standard packages by name, with pads and size), or
 `footprint.yaml`, a file next to `part.yaml` with every pad transcribed from the datasheet's
 recommended land pattern; the example's USB-C connector has one. copperflow generates the part's
 component from `part.yaml`. The agent creates parts from datasheets, or `copperflow parts import
@@ -321,6 +322,8 @@ copperflow library add <name> <address or folder> [--ref <branch or tag>]
                                             or a folder; its modules read NOT verified until you verify them
 copperflow library update [name]            bring git libraries to the newest commit of their ref
 copperflow library remove <name>            forget a library (a clone is deleted, a folder never)
+copperflow packages [words...]              the standard packages with their footprint strings, pads and size
+                                            (words narrow the list: soic, sot 5, sc70, crystal)
 copperflow place <file> <part> <name> [key=value ...]
                                             add a library or built-in part to a circuit
 copperflow bom <file> [--csv]               print the bill of materials

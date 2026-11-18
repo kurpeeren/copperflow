@@ -1,8 +1,9 @@
 import { confirmsPackage, gullWingRow, range, type IcPackage } from "./ic.js"
 import { roundRectPad, type PadRow, type Range } from "./ipc7351.js"
-import { bodyOutline, centredOffsets, courtyard, dualSilkscreen } from "./outline.js"
+import { crowded, mm } from "./exposed.js"
+import { bodyOutline, centredOffsets, courtyard, dualSilkscreen, type Extent } from "./outline.js"
 import { parseFootprint, type ParsedFootprint } from "./parse.js"
-import type { Footprint, Pad } from "./types.js"
+import { isRefusal, refuse, type Footprint, type Pad, type Refusal } from "./types.js"
 
 /**
  * A series of gull-wing dual packages that share their lead outline and differ only in pin count:
@@ -141,7 +142,56 @@ const TSSOP: DualSeries = {
   bodyTolerance: 0.1,
 }
 
-const SERIES: readonly DualSeries[] = [SOIC, SOIC_WIDE, SOP, SSOP, TSSOP]
+/**
+ * MSOP-8, 0.65 mm pitch, 3 mm body (JEDEC MO-187 AA): Diodes Incorporated, "MSOP-8 Package
+ * Information", Rev. 2021-09-17, page 1, table "Package Outline Dimensions": E 4.70–5.10, L 0.40–0.80,
+ * b 0.22–0.38, E1 2.90–3.10, D 2.90–3.10, e 0.65.
+ * https://www.diodes.com/assets/Package-Files/MSOP-8.pdf
+ */
+const MSOP8: DualSeries = {
+  kind: "msop",
+  suffix: "",
+  label: (pins) => `MSOP-${pins}`,
+  pins: [8],
+  lead: { pitch: 0.65, span: range(4.7, 5.1), terminal: range(0.4, 0.8), leadWidth: range(0.22, 0.38), bodyAcross: range(2.9, 3.1) },
+  bodyLength: new Map([[8, range(2.9, 3.1)]]),
+  overhang: 0.55,
+  bodyTolerance: 0.1,
+}
+
+/**
+ * MSOP-10, 0.5 mm pitch (JEDEC MO-187 BA): the MSOP-8 outline above with b 0.17–0.27 and e 0.50.
+ * Written from general knowledge of MO-187, not transcribed from one drawing.
+ */
+const MSOP10: DualSeries = {
+  ...MSOP8,
+  pins: [10],
+  lead: { ...MSOP8.lead, pitch: 0.5, leadWidth: range(0.17, 0.27) },
+  bodyLength: new Map([[10, range(2.9, 3.1)]]),
+}
+
+/**
+ * QSOP, 0.635 mm pitch, 3.9 mm body: JEDEC MO-137, in millimetres: E 5.80–6.20, L 0.40–1.27,
+ * b 0.20–0.30, E1 3.80–4.00, e 0.635, and D 4.80–5.00 (16 leads), 8.56–8.74 (20 and 24), 9.80–10.00
+ * (28). Written from general knowledge of MO-137, not transcribed from one drawing.
+ */
+const QSOP: DualSeries = {
+  kind: "qsop",
+  suffix: "",
+  label: (pins) => `QSOP-${pins}`,
+  pins: [16, 20, 24, 28],
+  lead: { pitch: 0.635, span: range(5.8, 6.2), terminal: range(0.4, 1.27), leadWidth: range(0.2, 0.3), bodyAcross: range(3.8, 4.0) },
+  bodyLength: new Map([
+    [16, range(4.8, 5.0)],
+    [20, range(8.56, 8.74)],
+    [24, range(8.56, 8.74)],
+    [28, range(9.8, 10.0)],
+  ]),
+  overhang: 0.5,
+  bodyTolerance: 0.1,
+}
+
+const SERIES: readonly DualSeries[] = [SOIC, SOIC_WIDE, SOP, SSOP, TSSOP, MSOP8, MSOP10, QSOP]
 
 /** The string forms, for messages: `soic<N>` and the pin counts each takes. */
 export const DUAL_FORMS: readonly { form: string; pins: readonly number[] }[] = SERIES.map((s) => ({
@@ -150,12 +200,19 @@ export const DUAL_FORMS: readonly { form: string; pins: readonly number[] }[] = 
 }))
 
 /** The series whose outline was written from general knowledge, not taken from a drawing: MS-013 and MO-150. */
-const FROM_MEMORY: ReadonlySet<DualSeries> = new Set([SOIC_WIDE, SSOP])
+const FROM_MEMORY: ReadonlySet<DualSeries> = new Set([SOIC_WIDE, SSOP, MSOP10, QSOP])
 
 /** Whether a footprint string names a package whose outline was not taken from a drawing ("soic18w", "ssop20"). */
 export function outlineFromMemory(text: string): boolean {
   const parsed = parseFootprint(text)
-  return parsed !== undefined && SERIES.some((s) => FROM_MEMORY.has(s) && s.kind === parsed.kind && s.suffix === (parsed.suffix ?? ""))
+  return parsed !== undefined && FROM_MEMORY.has(seriesOf(parsed) as DualSeries)
+}
+
+/** The series whose kind, suffix and pin count the string has (msop8 and msop10 share kind "msop"). */
+function seriesOf(parsed: ParsedFootprint): DualSeries | undefined {
+  const pins = Number(parsed.code)
+  const matching = SERIES.filter((s) => s.kind === parsed.kind && s.suffix === (parsed.suffix ?? ""))
+  return matching.find((s) => s.pins.includes(pins)) ?? matching[0]
 }
 
 function packageOf(series: DualSeries, pins: number): IcPackage {
@@ -173,31 +230,80 @@ export function dualPads(pins: number, pitch: number, row: PadRow): Pad[] {
   return [...left, ...right]
 }
 
-/** The pin count a series takes from this string, or undefined. */
+/** The pin count a series takes from this string, or undefined. Pairs are only the exposed pad's. */
 function pinsOf(parsed: ParsedFootprint, series: DualSeries): number | undefined {
-  if (parsed.cross !== undefined || parsed.size !== undefined || parsed.pairs !== undefined || parsed.variant !== undefined) return undefined
+  const onlyEp = parsed.pairs === undefined || Object.keys(parsed.pairs).every((key) => key === "ep")
+  if (parsed.cross !== undefined || parsed.size !== undefined || !onlyEp || parsed.variant !== undefined) return undefined
   const pins = Number(parsed.code)
   return String(pins) === parsed.code && series.pins.includes(pins) ? pins : undefined
 }
 
-/** The IPC-7351B nominal footprint for "soic8", "soic18w", "sop8", "ssop20", "tssop20" and the like, or undefined. */
+/** The dual packages that come with an exposed pad: SOIC-8, MSOP-8, MSOP-10 and every TSSOP. */
+const takesExposedPad = (series: DualSeries, pins: number) => (series === SOIC && pins === 8) || series === MSOP8 || series === MSOP10 || series === TSSOP
+
+const EP_SIZE_NEEDED =
+  "_ep needs the exposed pad's size, such as _ep2.3x2.3, because it differs from part to part for this package; take it from the part's drawing"
+
+/**
+ * The exposed pad a dual string asks for (`_ep<w>x<h>` or `_ep<side>`), undefined without one, a refusal
+ * for a bare `_ep` or a size of 0. Expects `ep` to be present only for a series that takes one.
+ */
+function dualExposedPad(parsed: ParsedFootprint): Extent | Refusal | undefined {
+  const side = parsed.params["ep"]
+  const sides = parsed.pairs?.["ep"]
+  if (side === true) return refuse(EP_SIZE_NEEDED)
+  const size = typeof side === "number" ? { x: side, y: side } : sides ? { x: sides[0], y: sides[1] } : undefined
+  if (size && (size.x <= 0 || size.y <= 0)) return refuse("the exposed pad needs a size above 0")
+  return size
+}
+
+const withoutEp = (params: ParsedFootprint["params"]) => Object.fromEntries(Object.entries(params).filter(([key]) => key !== "ep"))
+
+const asksExposedPad = (parsed: ParsedFootprint) => Object.hasOwn(parsed.params, "ep") || parsed.pairs !== undefined
+
+/**
+ * The IPC-7351B nominal footprint for "soic8", "soic18w", "sop8", "ssop20", "tssop20", "msop8",
+ * "qsop16" and the like, or undefined. Strings with `_ep` are left to `dualExposedFootprint`.
+ */
 export function dualFootprint(parsed: ParsedFootprint): Footprint | undefined {
-  const series = SERIES.find((s) => s.kind === parsed.kind && s.suffix === (parsed.suffix ?? ""))
+  if (asksExposedPad(parsed)) return undefined
+  const result = dualWithPad(parsed)
+  return isRefusal(result) ? undefined : result
+}
+
+/**
+ * The dual packages with an exposed pad: "soic8_ep<w>x<h>", "msop8_ep…", "msop10_ep…" and
+ * "tssop<N>_ep…", the pad numbered pins + 1 as QFN's; a refusal for a bare `_ep` (the size differs
+ * from part to part) or a pad that would touch the pins; undefined for any other string.
+ */
+export function dualExposedFootprint(parsed: ParsedFootprint): Footprint | Refusal | undefined {
+  return asksExposedPad(parsed) ? dualWithPad(parsed) : undefined
+}
+
+function dualWithPad(parsed: ParsedFootprint): Footprint | Refusal | undefined {
+  const series = seriesOf(parsed)
   const pins = series && pinsOf(parsed, series)
   if (!series || pins === undefined) return undefined
+  const asksEp = asksExposedPad(parsed)
+  if (asksEp && !takesExposedPad(series, pins)) return undefined
   const pkg = packageOf(series, pins)
-  if (!confirmsPackage(parsed.params, pkg)) return undefined
+  if (!confirmsPackage(withoutEp(parsed.params), pkg)) return undefined
+  const thermal = asksEp ? dualExposedPad(parsed) : undefined
+  if (isRefusal(thermal)) return thermal
   const { row, table } = gullWingRow(pkg)
-  const pads = dualPads(pins, pkg.pitch, row)
+  const signal = dualPads(pins, pkg.pitch, row)
+  const pads = thermal ? [...signal, roundRectPad(String(pins + 1), 0, 0, thermal.x, thermal.y)] : signal
+  const tooClose = thermal ? crowded(pads, true) : undefined
+  if (tooClose) return tooClose
   const body = { x: pkg.bodyAcross.max / 2, y: pkg.bodyAlong.max / 2 }
   const outerLead = ((pins / 2 - 1) / 2) * pkg.pitch + pkg.leadWidth.max / 2
   const component = { x: pkg.span.max / 2, y: Math.max(body.y, outerLead) }
   return {
-    name: `${parsed.kind}${parsed.code}${series.suffix}`,
+    name: `${parsed.kind}${parsed.code}${series.suffix}${thermal ? `_ep${mm(thermal.x)}x${mm(thermal.y)}` : ""}`,
     pads,
     courtyard: courtyard(pads, component, table),
-    silkscreen: dualSilkscreen(pads, body),
+    silkscreen: dualSilkscreen(signal, body),
     fabrication: bodyOutline(body),
-    origin: `IPC-7351B nominal, ${pkg.label}`,
+    origin: `IPC-7351B nominal, ${pkg.label}${thermal ? " with exposed pad" : ""}`,
   }
 }

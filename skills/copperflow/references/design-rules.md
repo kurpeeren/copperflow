@@ -87,12 +87,15 @@ globalNets: [GND, V24, V3_3]
   left out), and `fabrication.pasteReduction` how far the solder paste shrinks inside each SMD pad
   (0 when left out); both may be 0. The fabrication (Gerber) files use them.
 - `fabrication.placementRotations` adds degrees (counter-clockwise) to the parts' rotation in the
-  pick-and-place file, per footprint family: `chip` (0603, 0805 ...), `sod`, `sot` (SOT-23),
-  `sot223`, `sot89`, `soic`, `sop`, `tssop`, `qfn`, `dfn`, `qfp`, `lqfp`, `tqfp`, `bga`, `sma`,
-  `smb`, `smc`, `do214ac`, `do214aa`, `do214ab`, `dip`, `to220`, `to92`, `hc49`, `hc49s`,
-  `radial`, `pinrow`, `pinrow2x` (two-row headers) and `file` (footprint files). Left out, `soic`,
-  `sop` and `tssop` are 270 and `sot` and `sot223` 180, the corrections commonly used for JLCPCB's
-  part models; every other family is 0. JLCPCB's assembly preview is the final check: set a family only after the
+  pick-and-place file, per footprint family: `chip` (0603, 0805 ...), `sod` (also MELF), `sot` (SOT-23
+  and the small SOTs), `sot223`, `sot89`, `soic`, `sop`, `ssop`, `tssop`, `msop`, `qsop`, `qfn`, `dfn`,
+  `qfp`, `lqfp`, `tqfp`, `bga`, `sma`, `smb`, `smc`, `do214ac`, `do214aa`, `do214ab`, `tant`, `array`,
+  `dpak` (also `to252`), `d2pak` (also `to263`), `plcc`, `smdip`, `dip`, `axial` (also `do35` ...),
+  `to220`, `to247`, `to126`, `to92`, `hc49`, `hc49s`, `hc49smd`, `xtal`, `radial`, `smdcan`, `ledth`
+  (`led3mm`, `led5mm`), `ledsmd` (`led3528`, `led5050`), `pinrow`, `pinrow2x` (two-row headers),
+  `socket`, `socket2x`, `screw`, `resonator`, `usb`, `dcjack`, `tact`, `ind` and `file` (footprint files). Left out, `soic`, `sop`, `ssop`, `tssop`,
+  `msop` and `qsop` are 270 and `sot` and `sot223` 180, the corrections commonly used for JLCPCB's
+  part models; the small SOTs (`sot323`, `sc70`, `sot143` ...) take `sot`'s 180 because they are drawn as SOT-23 is, which has not been checked in the assembly preview for each, so set `sot` to override; every other family is 0. JLCPCB's assembly preview is the final check: set a family only after the
   preview shows its parts turned, for example `placementRotations: { qfn: 270 }`, and `0` takes a
   default back out. A library part drawn with its own footprint file can have
   its own correction by its id under `parts`, which takes the place of the `file` family's for that

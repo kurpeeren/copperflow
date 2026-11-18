@@ -477,7 +477,6 @@ test("strings outside the cited tables are refused", () => {
     "qfn20",
     "sot23_4",
     "sot23_5_ep",
-    "tssop20_ep",
     "soic8_5",
     "qfn32_x1",
     "qfn32_ep2mm",
@@ -492,6 +491,13 @@ test("strings outside the cited tables are refused", () => {
   ]) {
     expect(generateFootprint(text)).toEqual({ error: unknownFootprint(text) })
   }
+})
+
+test("a bare _ep on a dual package that takes one is refused with the reason, not as unknown", () => {
+  const reason =
+    "_ep needs the exposed pad's size, such as _ep2.3x2.3, because it differs from part to part for this package; take it from the part's drawing"
+  expect(generateFootprint("tssop20_ep")).toEqual({ error: `copperflow cannot make footprint "tssop20_ep": ${reason}` })
+  expect(generateFootprint("tssop20_ep3x4")).not.toHaveProperty("error")
 })
 
 describe("the refusal of an unknown string names what exists", () => {

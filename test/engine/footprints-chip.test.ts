@@ -343,7 +343,8 @@ test("padCount", () => {
   expect(padCount("0603")).toBe(2)
   expect(padCount("sod123")).toBe(2)
   expect(padCount("bga64")).toBeUndefined()
-  expect(padCount("sod523")).toBeUndefined()
+  expect(padCount("sod523")).toBe(2)
+  expect(padCount("sod999")).toBeUndefined()
 })
 
 test("unknown strings are refused", () => {
@@ -351,11 +352,19 @@ test("unknown strings are refused", () => {
   for (const text of ["0604", "0603_p0.5mm", "", "sod999", "sod123_w2"]) {
     expect(generateFootprint(text)).toEqual({ error: unknownFootprint(text) })
   }
-  expect(unknownFootprint("sod999")).toMatch(/^copperflow cannot make footprint "sod999": nearest are sod123, sod323; known families are /)
+  expect(unknownFootprint("sod999")).toMatch(/^copperflow cannot make footprint "sod999": nearest are sod323, sod523, sod923; known families are /)
 })
 
-test("SOD-523 waits for IPC-7351B flat-lead goals", () => {
-  expect(generateFootprint("sod523")).toEqual({ error: unknownFootprint("sod523") })
+test("SOD-523 is made from the cited NXP numbers", () => {
+  const fp = footprint("sod523")
+  expect(fp.pads.map((pad) => pad.number)).toEqual(["1", "2"])
+  // anode at the left, cathode at the right (Z 2.40 over the pads, pad length 0.45 across the body)
+  expect(fp.pads[0]?.x).toBeCloseTo(-(fp.pads[1]?.x ?? 0), 9)
+  expect((fp.pads[1]?.x ?? 0) + (fp.pads[1]?.width ?? 0) / 2).toBeCloseTo(1.2, 9)
+  expect(fp.pads[1]?.height).toBeCloseTo(0.45, 9)
+  expect(fp.origin).toContain("SOD-523")
+  // the near misses are still refused, naming the nearest valid ones
+  expect(generateFootprint("sod524")).toEqual({ error: unknownFootprint("sod524") })
 })
 
 test("results are cached by text and cannot be changed", () => {

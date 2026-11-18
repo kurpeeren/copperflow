@@ -23,7 +23,7 @@ describe("the footprint families' rotation corrections", () => {
     expect(footprintFamily("pinrow2_p4.88mm")).toBe("pinrow")
     expect(footprintFamily("parts/MCP2515/footprint.yaml")).toBe("file")
     const nonZero = Object.fromEntries(Object.entries(PLACEMENT_ROTATIONS).filter(([, degrees]) => degrees !== 0))
-    expect(nonZero).toEqual({ sot: 180, sot223: 180, soic: 270, sop: 270, ssop: 270, tssop: 270 })
+    expect(nonZero).toEqual({ sot: 180, sot223: 180, soic: 270, sop: 270, ssop: 270, tssop: 270, msop: 270, qsop: 270 })
     expect(placementCorrection("soic8", PROFILE)).toBe(270)
     expect(placementCorrection("soic18w", PROFILE)).toBe(270)
     expect(placementCorrection("ssop20", PROFILE)).toBe(270)
@@ -39,11 +39,11 @@ describe("the footprint families' rotation corrections", () => {
     expect(placementCorrection("soic8", set.rules.fabrication)).toBe(270)
     expect(placementCorrection("0603", set.rules.fabrication)).toBe(-90)
     expect(placementCorrection("sot23", set.rules.fabrication)).toBe(180)
-    expect(loadRules({ "rules.yaml": "fabrication:\n  placementRotations:\n    to247: 90\n" }).diagnostics[0]?.message).toMatch(/placementRotations/)
+    expect(loadRules({ "rules.yaml": "fabrication:\n  placementRotations:\n    to3: 90\n" }).diagnostics[0]?.message).toMatch(/placementRotations/)
     expect(loadRules({ "rules.yaml": "fabrication:\n  placementRotations:\n    soic: left\n" }).diagnostics[0]?.message).toMatch(/placementRotations\.soic/)
   })
 
-  test("every generated family has its own entry: SOT-223 180, SOT-89 and the rest 0", () => {
+  test("every generated family has its own entry: SOT-223 180, MSOP and QSOP 270, SOT-89 and the rest 0", () => {
     const cases: [string, string, number][] = [
       ["sot223", "sot223", 180],
       ["sot89", "sot89", 0],
@@ -64,6 +64,13 @@ describe("the footprint families' rotation corrections", () => {
       ["radial6.3x2.5", "radial", 0],
       ["pinrow2x5", "pinrow2x", 0],
       ["pinrow5", "pinrow", 0],
+      ["msop8", "msop", 270],
+      ["qsop16", "qsop", 270],
+      ["sot323", "sot", 180],
+      ["minimelf", "sod", 0],
+      ["to247", "to247", 0],
+      ["d2pak", "d2pak", 0],
+      ["xtal3225", "xtal", 0],
     ]
     for (const [text, family, degrees] of cases) {
       expect(footprintFamily(text), text).toBe(family)

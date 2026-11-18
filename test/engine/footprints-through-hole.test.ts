@@ -107,7 +107,11 @@ describe("TO-220 and TO-92", () => {
       "to221": null,
       "to92s": null,
       "to92_5": null,
-      "to247": null,
+      "to247_3": "TO-247 has three leads and takes no variant",
+      "to126_2": "TO-126 has three leads and takes no variant",
+      "to220_4": "TO-220 comes as to220 (3 leads), to220_2 or to220_5",
+      "to248": null,
+      "to92_inline_3": null,
     })
   })
 })
