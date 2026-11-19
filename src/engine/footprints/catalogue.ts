@@ -308,6 +308,7 @@ export const PACKAGES: readonly PackageEntry[] = [
 /** The families that take numbers: any size of these works, the listed ones are examples. */
 export const PACKAGE_FORMS: readonly PackageForm[] = [
   { form: "soic<N>[w] sop<N> ssop<N> tssop<N>", says: "dual gull-wing ICs by pin count" },
+  { form: "soic<N>_ep<w>x<h>", says: "with an exposed pad (ESOP, PowerPAD; msop, tssop too): w across the rows" },
   { form: "qfn<N>_<b>x<b>_p<pitch>[_ep<size>]", says: "any square QFN by body and pitch" },
   { form: "dfn<N>_<a>x<b>_p<pitch>[_ep<w>x<h>]", says: "any DFN by body and pitch" },
   { form: "lqfp<N>_<b>x<b>_p<pitch>", says: "any square QFP (tqfp, qfp too)" },
@@ -316,7 +317,7 @@ export const PACKAGE_FORMS: readonly PackageForm[] = [
   { form: "plcc<N>", says: "PLCC 20, 28, 32, 44, 52, 68, 84" },
   { form: "pinrow<N>[_p<pitch>] pinrow2x<N>", says: "pin headers" },
   { form: "socket<N> socket2x<N>", says: "pin sockets" },
-  { form: "screw<N>[_p<pitch>]", says: "screw terminals, 2-24 poles" },
+  { form: "screw<N>[_p<pitch>]", says: "screw terminals (terminal blocks), 2-24 poles" },
   { form: "radial<can>x<spacing>", says: "radial electrolytic" },
   { form: "axial<body>x<spacing>[_d<dia>]", says: "axial resistor" },
   { form: "ind<a>x<a>", says: "power inductor 4 to 12 mm" },
@@ -351,8 +352,8 @@ export function packageFacts(entry: PackageEntry): PackageFacts {
   }
 }
 
-/** Case, dashes and spaces of a written name do not matter: "SOT-23-5" finds "sot23_5". */
-const plain = (text: string) => text.toLowerCase().replace(/[\s-]+/g, "")
+/** Case, dashes, underscores and spaces of a written name do not matter: "SOT-23-5" finds "sot23_5", "USB-C" "usb_c16". */
+const plain = (text: string) => text.toLowerCase().replace(/[\s_-]+/g, "")
 
 /**
  * The packages in which every word is found, in catalogue order, in the footprint string, the name, the group or one
@@ -363,5 +364,19 @@ export function findPackages(words: readonly string[]): readonly PackageEntry[] 
   return PACKAGES.filter((entry) => {
     const fields = [entry.footprint, entry.name, entry.group, ...(entry.also ?? [])].map(plain)
     return wanted.every((word) => fields.some((field) => field.includes(word)))
+  })
+}
+
+/** The packages in which at least one word is found: what a search shows when no package has every word. */
+export function findPackagesWithAny(words: readonly string[]): readonly PackageEntry[] {
+  return [...new Set(words.flatMap((word) => findPackages([word])))]
+}
+
+/** The general forms one of the words is found in (in the form or what it says), for the strings no list can hold. */
+export function findForms(words: readonly string[]): readonly PackageForm[] {
+  const wanted = words.map(plain).filter((word) => word !== "")
+  return PACKAGE_FORMS.filter((one) => {
+    const fields = [one.form, one.says].map(plain)
+    return wanted.some((word) => fields.some((field) => field.includes(word)))
   })
 }

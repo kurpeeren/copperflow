@@ -184,3 +184,30 @@ describe("the guide topic packages", () => {
     expect((bad.content as Array<{ text: string }>)[0]?.text).toContain("packages")
   })
 })
+
+describe("searching packages the way people write them", () => {
+  test("a dash or a space where the string has an underscore still finds it", () => {
+    for (const words of [["usb-c"], ["USB", "C"], ["usb_c"]]) expect(packagesText(words).text, words.join(" ")).toContain("usb_c16")
+  })
+
+  test("words no single package has all of list the packages with any of them, and say so", () => {
+    const { text, found } = packagesText(["ssop16", "soic16"])
+    expect(found).toBe(true)
+    expect(text.split(NL)[0]).toBe('No package has all of "ssop16 soic16"; each below has one of the words.')
+    expect(text).toMatch(/^\s+ssop16\s/m)
+    expect(text).toMatch(/^\s+soic16\s/m)
+  })
+
+  test("a family's name finds its general form, even with no listed size", () => {
+    for (const words of [["esop"], ["exposed", "pad"], ["powerpad"]]) {
+      const { text, found } = packagesText(words)
+      expect(found, words.join(" ")).toBe(true)
+      expect(text, words.join(" ")).toContain("soic<N>_ep<w>x<h>")
+    }
+    expect(packagesText(["terminal", "block"]).text).toContain("screw<N>")
+  })
+
+  test("nothing at all still answers the no-match line", () => {
+    expect(packagesText(["zzqq"]).found).toBe(false)
+  })
+})

@@ -1,5 +1,5 @@
 // The catalogue of standard packages as text, for the command line and for agents: search and compact listing. Pure.
-import { findPackages, PACKAGE_FORMS, PACKAGE_GROUPS, packageFacts, type PackageEntry } from "../engine/footprints/catalogue.js"
+import { findForms, findPackages, findPackagesWithAny, PACKAGE_FORMS, PACKAGE_GROUPS, packageFacts, type PackageEntry, type PackageForm } from "../engine/footprints/catalogue.js"
 import { generateFootprint } from "../engine/footprints/index.js"
 import { nearestFootprints } from "../engine/footprints/known.js"
 import { padRoles } from "../engine/footprints/pad-roles.js"
@@ -40,9 +40,9 @@ function groupLines(entries: readonly PackageEntry[], options: FormatOptions): s
   return all.map((cell) => `  ${cell.footprint.padEnd(footprintWidth)}${GAP}${cell.name.padEnd(nameWidth)}${GAP}${cell.rest}`)
 }
 
-function formLines(): string[] {
-  const width = Math.max(...PACKAGE_FORMS.map((one) => one.form.length))
-  return [FORMS_HEADING, ...PACKAGE_FORMS.map((one) => `  ${one.form.padEnd(width)}${GAP}${one.says}`)]
+function formLines(forms: readonly PackageForm[] = PACKAGE_FORMS, heading = FORMS_HEADING): string[] {
+  const width = Math.max(...forms.map((one) => one.form.length))
+  return [heading, ...forms.map((one) => `  ${one.form.padEnd(width)}${GAP}${one.says}`)]
 }
 
 /** The packages as text: a heading per group (in catalogue order) over one line per package. */
@@ -75,12 +75,23 @@ export function packagePadLines(entry: PackageEntry): string[] {
   return [`${entry.footprint} pads: number, centre, size (mm), hole${roles ? ", role" : ""}`, ...padLines(footprint.pads, (number) => roles?.[number])]
 }
 
-/** The answer to a search: the whole catalogue for no words, the matching packages otherwise (with their pads when few), or the no-match line. */
+const FORMS_FOUND_HEADING = "General forms that match (any size of these works):"
+const ANY_WORD_LINE = (words: readonly string[]) => `No package has all of "${words.join(" ")}"; each below has one of the words.`
+
+/**
+ * The answer to a search: the whole catalogue for no words; otherwise the packages with every word (with their pads
+ * when few), or, when none has every word, those with any of them; and the general forms a word is found in, since a
+ * form covers sizes no list holds. The no-match line when nothing is found at all.
+ */
 export function packagesText(words: readonly string[]): { text: string; found: boolean } {
-  const entries = findPackages(words)
-  if (entries.length === 0) return { text: noPackageText(words), found: false }
   const whole = words.length === 0
-  const list = formatPackages(entries, { also: !whole, forms: whole, hideExtras: whole })
-  const pads = !whole && entries.length <= PADS_LISTED_UP_TO ? entries.flatMap(packagePadLines) : []
-  return { text: [list, ...pads].join("\n"), found: true }
+  const every = findPackages(words)
+  const entries = every.length > 0 || whole ? every : findPackagesWithAny(words)
+  const forms = whole ? [] : findForms(words)
+  if (entries.length === 0 && forms.length === 0) return { text: noPackageText(words), found: false }
+  const lead = every.length === 0 && entries.length > 0 ? [ANY_WORD_LINE(words)] : []
+  const list = entries.length === 0 ? [] : [formatPackages(entries, { also: !whole, forms: whole, hideExtras: whole })]
+  const pads = !whole && every.length > 0 && every.length <= PADS_LISTED_UP_TO ? every.flatMap(packagePadLines) : []
+  const formText = forms.length === 0 ? [] : [formLines(forms, FORMS_FOUND_HEADING).join("\n")]
+  return { text: [...lead, ...list, ...pads, ...formText].join("\n"), found: true }
 }
