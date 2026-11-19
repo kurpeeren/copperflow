@@ -6,6 +6,7 @@ import { PALETTE } from "../studio/src/pcb/ctx.js"
 import { drawGrid, drawLockBadge, drawMark, drawNoteBox, drawOutline, drawSelectionBox, PCB_LOOK, SHEET_LOOK, type OverlayLook } from "../studio/src/pcb/overlays.js"
 import { drawPcb } from "../studio/src/pcb/pcb-draw.js"
 import { schematicTheme } from "../studio/src/pcb/schematic-theme.js"
+import { SILK_WIDTH } from "../src/engine/fab/designators.js"
 import { recorder } from "./helpers/fake-ctx.js"
 
 const CIRCUIT = `export default () => (
@@ -167,7 +168,7 @@ describe("PCB colours (spec section 6)", () => {
     drawPcb(ctx, bottom, VIEW, { ratio: 1 })
     expect(bottom.parts[0]?.side).toBe("bottom")
     expect(records.some((r) => r.name === "fill" && r.fillStyle === "#0000ff")).toBe(true)
-    expect(records.some((r) => r.name === "fillText" && r.fillStyle === "#66cc33")).toBe(true)
+    expect(records.some((r) => r.name === "stroke" && r.strokeStyle === "#66cc33" && r.lineWidth === SILK_WIDTH)).toBe(true)
     expect(records.some((r) => r.name === "stroke" && r.strokeStyle === "#5555ff")).toBe(true)
   })
 

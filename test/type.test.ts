@@ -75,9 +75,9 @@ describe("canvas text weights", () => {
     expect(sheet.get("R1")?.endsWith(STACK)).toBe(true)
   })
 
-  test("PCB designators are 600", () => {
+  test("PCB designators are not canvas text: they are drawn as the silkscreen's strokes (pcb-draw.test.ts)", () => {
     const pcb = fontsOf((ctx) => drawPcb(ctx as never, design.pcb, { camera: { cx: 0, cy: 0, scale: 20 }, size: SIZE }, { ratio: 1 }))
-    expect(pcb.get("R1")).toMatch(/^600 [\d.]+px /)
+    expect(pcb.get("R1")).toBeUndefined()
   })
 })
 

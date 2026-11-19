@@ -46,7 +46,7 @@ export function drawSilkTexts(ctx: Ctx, texts: readonly SilkText[], layers: Laye
  * One stroke of a glyph; a dot (a stroke that starts and ends where it began, as "." and "i" have) is filled as a round
  * spot of the line's width, since a canvas draws nothing for a path of no length.
  */
-function strokeLine(ctx: Ctx, line: readonly Point[]): void {
+export function strokeLine(ctx: Ctx, line: readonly Point[]): void {
   const first = line[0]
   if (!first || line.length < 2) return
   ctx.beginPath()

@@ -1,7 +1,7 @@
 // The places a designator may take round its part, and what is in the way of each: the geometry behind
 // designators.ts. A place is beside one side of the courtyard, centred or slid along it, at the silkscreen clearance
 // (then a little further out), its text running along that side. What is in the way: pads' mask openings, holes and
-// vias, other parts' courtyards, designators already placed, and the board's edge. Pure.
+// vias, other parts' courtyards, the board's own silkscreen texts, designators already placed, and the board's edge. Pure.
 import { pointInPolygon } from "../checks/geometry.js"
 import type { Point } from "../model.js"
 import type { PlacedFootprint, WorldPad } from "../pcb.js"
@@ -45,7 +45,7 @@ const CELL = 2
  * What covering each kind of thing costs: each pad, hole, via or designator covered costs its weight and the weight
  * again per mm² covered, so covering one more of them always costs more than any part body; a courtyard costs by area.
  */
-const WEIGHT = { pad: 100, hole: 100, via: 50, designator: 100, courtyard: 2, edge: 1000 } as const
+const WEIGHT = { pad: 100, hole: 100, via: 50, designator: 100, text: 100, courtyard: 2, edge: 1000 } as const
 /** What another part standing between a designator and its own part costs, whatever the overlap. */
 export const BETWEEN = 1
 
@@ -143,7 +143,7 @@ function sidePlaces(part: PlacedFootprint, clearance: number, turnFor: (flat: bo
 type Kind = keyof typeof WEIGHT
 interface Obstacle {
   kind: Kind
-  /** The part it belongs to; "" for vias and holes. */
+  /** The part it belongs to; "" for vias and holes; the text's id for a silkscreen text. */
   component: string
   side: "top" | "bottom" | "both"
   box: Box
@@ -158,6 +158,8 @@ export interface Covered {
   pads: string[]
   designators: string[]
   courtyards: string[]
+  /** The ids of the board's silkscreen texts covered. */
+  texts: string[]
   vias: boolean
   holes: boolean
   edge: boolean
@@ -234,7 +236,7 @@ export class SilkObstacles {
   /** What the text covers of the things that never move, and whether it leaves the board. */
   private fixedCovered(part: PlacedFootprint, place: Place, box: Box, spaced: boolean): Covered {
     const reach = place.reach ?? box
-    const found: Covered = { pads: [], designators: [], courtyards: [], vias: false, holes: false, edge: false, score: 0, fixed: 0, between: 0 }
+    const found: Covered = { pads: [], designators: [], courtyards: [], texts: [], vias: false, holes: false, edge: false, score: 0, fixed: 0, between: 0 }
     for (const obstacle of this.fixedIndex.query(spaced ? hull(box, reach) : box)) {
       if (obstacle.side !== "both" && obstacle.side !== part.side) continue
       if (obstacle.component === part.component && obstacle.kind !== "pad") continue
@@ -248,6 +250,7 @@ export class SilkObstacles {
       if (between) continue
       if (obstacle.kind === "pad") found.pads.push(obstacle.component)
       else if (obstacle.kind === "courtyard") found.courtyards.push(obstacle.component)
+      else if (obstacle.kind === "text") found.texts.push(obstacle.component)
       else if (obstacle.kind === "via") found.vias = true
       else found.holes = true
     }

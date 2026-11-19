@@ -16,6 +16,7 @@ import {
 import { canPick } from "../studio/src/pcb/pick.js"
 import { ALL_PICKABLE } from "../studio/src/pcb/pick-filter.js"
 import { Selection } from "../studio/src/selection.js"
+import { SILK_WIDTH } from "../src/engine/fab/designators.js"
 import { recorder } from "./helpers/fake-ctx.js"
 
 const CIRCUIT = `export default () => (
@@ -156,9 +157,9 @@ describe("what each layer hides in the draw", () => {
 
   test("a hidden Top Silkscreen also hides the designators", () => {
     const text = (layers?: Partial<Record<LayerId, boolean>>) => {
-      const { ctx, calls } = recorder()
+      const { ctx, records } = recorder()
       drawPcb(ctx, layout, VIEW, { ratio: 1, layers })
-      return calls.filter((c) => c === "fillText").length
+      return records.filter((r) => r.name === "stroke" && r.lineWidth === SILK_WIDTH).length
     }
     expect(text()).toBeGreaterThan(0)
     expect(text({ topSilk: false })).toBe(0)

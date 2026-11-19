@@ -3,7 +3,17 @@ import { buildDesign } from "../src/engine/design.js"
 import { PALETTE } from "../studio/src/pcb/ctx.js"
 import { worldToScreen } from "../studio/src/pcb/geometry.js"
 import { drawPcb, hatchLines, MAX_HATCH_LINES, padAt, pcbBoxes } from "../studio/src/pcb/pcb-draw.js"
-import { recorder } from "./helpers/fake-ctx.js"
+import { recorder, type DrawCall } from "./helpers/fake-ctx.js"
+import { DESIGNATOR_HEIGHT, designatorAnchor, designatorTurn, SILK_WIDTH } from "../src/engine/fab/designators.js"
+import { textStrokes } from "../src/engine/fab/stroke-font.js"
+import type { PlacedFootprint } from "../src/engine/pcb.js"
+
+/** The strokes the silkscreen carries for a part's designator. */
+const strokesOf = (part: PlacedFootprint) => textStrokes(part.component, designatorAnchor(part), DESIGNATOR_HEIGHT, part.side === "bottom", designatorTurn(part) === 90)
+const isDot = (line: readonly { x: number; y: number }[]) => line.every((p) => p.x === line[0]!.x && p.y === line[0]!.y)
+/** The designators' strokes: the silkscreen's line width (a part's own silk outline is thinner). */
+const designatorInk = (records: readonly DrawCall[]) => records.filter((r) => r.name === "stroke" && r.lineWidth === SILK_WIDTH)
+const startsAt = (records: readonly DrawCall[], p: { x: number; y: number }) => records.some((r) => r.name === "moveTo" && r.args[0] === p.x && r.args[1] === p.y)
 
 const CIRCUIT = `export default () => (
   <board width="30mm" height="18mm">
@@ -86,47 +96,44 @@ describe("drawPcb", () => {
     expect(moved.map((a) => a[0])).toEqual(still.map((a) => (a[0] as number) + 1))
   })
 
-  test("reference designators are silkscreen text above the courtyard", () => {
+  test("reference designators are the silkscreen's own strokes, at its height and line width, where the export puts them", () => {
     const { ctx, records } = recorder()
     drawPcb(ctx, layout, VIEW, { ratio: 1 })
-    const texts = records.filter((r) => r.name === "fillText")
-    expect(texts.map((r) => r.args[0]).sort()).toEqual(["J1", "R1", "R2"])
-    expect(texts.every((r) => r.fillStyle === PALETTE.topSilk)).toBe(true)
+    const ink = designatorInk(records)
+    const expected = layout.parts.flatMap((part) => strokesOf(part)).filter((line) => !isDot(line))
+    expect(ink).toHaveLength(expected.length)
+    expect(ink.every((r) => r.strokeStyle === PALETTE.topSilk)).toBe(true)
+    for (const part of layout.parts) expect(startsAt(records, strokesOf(part)[0]![0]!), part.component).toBe(true)
   })
 
   test("a designator pcbNameAt moves is centred on its spot, and follows its part while the part is dragged", () => {
     const moved = { ...layout, parts: layout.parts.map((p) => (p.component === "R2" ? { ...p, nameAt: { x: 6, y: 1 } } : p)) }
-    const r2 = (by?: { x: number; y: number }) => {
-      const { ctx, records } = recorder()
-      drawPcb(ctx, moved, VIEW, { ratio: 1, ...(by ? { moving: { components: ["R2"], by } } : {}) })
-      return records.find((r) => r.name === "fillText" && r.args[0] === "R2")
-    }
-    const spot = worldToScreen(VIEW.camera, VIEW.size, { x: 6, y: 1 })
-    expect(r2()?.args.slice(1)).toEqual([spot.x, spot.y])
-    expect(r2()?.textBaseline).toBe("middle")
-    const shifted = worldToScreen(VIEW.camera, VIEW.size, { x: 7, y: 1 })
-    expect(r2({ x: 1, y: 0 })?.args.slice(1)).toEqual([shifted.x, shifted.y])
+    const first = textStrokes("R2", { x: 6, y: 1 }, DESIGNATOR_HEIGHT)[0]![0]!
+    const still = recorder()
+    drawPcb(still.ctx, moved, VIEW, { ratio: 1 })
+    expect(startsAt(still.records, first)).toBe(true)
+    const dragged = recorder()
+    drawPcb(dragged.ctx, moved, VIEW, { ratio: 1, moving: { components: ["R2"], by: { x: 1, y: 0 } } })
+    expect(startsAt(dragged.records, first)).toBe(true)
+    expect(dragged.records.some((r) => r.name === "translate" && r.args[0] === 1 && r.args[1] === 0)).toBe(true)
   })
 
-  test("designators are written at whole device pixel sizes on device pixels, from 7 device px", () => {
+  test("designators are drawn once their letters are 7 device px tall", () => {
     const at = (scale: number, ratio: number) => {
       const { ctx, records } = recorder()
       drawPcb(ctx, layout, { ...VIEW, camera: { cx: 0.37, cy: -0.21, scale } }, { ratio })
-      return records.filter((r) => r.name === "fillText")
+      return designatorInk(records)
     }
-    // 0.8 mm at 10.1 px/mm is 8 device px and is drawn; at 8 px/mm it is 6 and is not
-    expect(at(10.1, 1)).toHaveLength(3)
-    expect(at(8, 1)).toEqual([])
-    const whole = (v: number) => Math.abs(v - Math.round(v)) < 1e-9
-    for (const text of at(13.37, 1.25)) {
-      expect(whole(Number(/([\d.]+)px/.exec(text.font)?.[1]) * 1.25)).toBe(true)
-      expect([whole((text.args[1] as number) * 1.25), whole((text.args[2] as number) * 1.25)]).toEqual([true, true])
-    }
+    // 1 mm letters at 8 px/mm are 8 device px and are drawn; at 6 px/mm they are 6 and are not
+    expect(at(8, 1).length).toBeGreaterThan(0)
+    expect(at(6, 1)).toEqual([])
+    expect(at(4, 2).length).toBeGreaterThan(0)
   })
 
   test("designators are skipped when they would be too small to read", () => {
     const { ctx, records } = recorder()
     drawPcb(ctx, layout, { ...VIEW, camera: { ...VIEW.camera, scale: 1 } }, { ratio: 1 })
+    expect(designatorInk(records)).toEqual([])
     expect(records.some((r) => r.name === "fillText")).toBe(false)
   })
 
@@ -157,8 +164,8 @@ describe("drawPcb", () => {
     drawPcb(hidden.ctx, auto, VIEW, { ratio: 1, layers: { courtyard: false } })
     expect(hidden.records.filter((r) => r.name === "stroke" && r.strokeStyle === PALETTE.topAssembly)).toHaveLength(0)
     expect(records.some((r) => r.name === "setLineDash" && (r.args[0] as number[]).length > 0)).toBe(true)
-    const r2 = records.find((r) => r.name === "fillText" && r.args[0] === "R2")
-    expect(r2?.globalAlpha).toBe(0.6)
+    const r2 = strokesOf(auto.parts.find((p) => p.component === "R2")!)[0]![0]!
+    expect(records.find((r) => r.name === "moveTo" && r.args[0] === r2.x && r.args[1] === r2.y)?.globalAlpha).toBe(0.6)
   })
 
   test("a board with nothing in it still draws", () => {

@@ -169,3 +169,25 @@ describe("copies of one sheet's part", () => {
     expect(b).not.toBe(a)
   })
 })
+
+describe("the board's own silkscreen texts", () => {
+  const text = (id: string, words: string, x: number, y: number, layer: "top" | "bottom" = "top") =>
+    ({ id, text: words, x, y, layer, height: 1, rotation: 0, source: { file: "main.circuit.tsx", line: 1, column: 1 } }) as unknown as NonNullable<PcbLayout["silkTexts"]>[number]
+
+  test("a designator goes round a text as it goes round another part's pads", () => {
+    expect(at({ parts: [part([])], silkTexts: [text("silkscreentext:1", "5V", 0, 1.8)] } as PcbLayout)).toEqual({ x: 0, y: -1.725 })
+  })
+
+  test("a text on the other side is not in the way", () => {
+    expect(at({ parts: [part([])], silkTexts: [text("silkscreentext:1", "5V", 0, 1.8, "bottom")] } as PcbLayout)).toEqual({ x: 0, y: 1.725 })
+  })
+
+  test("a designator with no other place says which text it lies on", () => {
+    // One big text over the part and every place within 2 mm round it.
+    const ring = [{ ...text("silkscreentext:1", "MMMM", 0, 0), height: 10 }]
+    const crowded = { parts: [part([], { courtyard: [{ x: -1, y: -1 }, { x: 1, y: -1 }, { x: 1, y: 1 }, { x: -1, y: 1 }] })], silkTexts: ring } as unknown as PcbLayout
+    const found = placed(crowded)
+    expect(found?.coversTexts.length).toBeGreaterThan(0)
+    expect(silkscreenWarnings(crowded, PROFILE).join(" ")).toContain(`P1's silkscreen overlaps the text "MMMM"`)
+  })
+})

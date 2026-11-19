@@ -7,16 +7,15 @@ import type { Edit } from "../../../src/core/types.js"
 import type { Selection } from "../selection.js"
 import { nudgeDirection, type KeyResult } from "./canvas-keys.js"
 import { nudgeOffset } from "./group-edits.js"
-import { partLabelId, partLabels, parsePartLabelId, textBox } from "../../../src/engine/part-labels.js"
-import { designatorAnchor, designatorTurn } from "../../../src/engine/fab/designators.js"
+import { partLabelId, partLabels, parsePartLabelId } from "../../../src/engine/part-labels.js"
+import { DESIGNATOR_HEIGHT, designatorAnchor, designatorTurn, SILK_WIDTH } from "../../../src/engine/fab/designators.js"
+import { textWidth } from "../../../src/engine/fab/stroke-font.js"
 import type { PcbLayout, PlacedFootprint } from "../../../src/engine/pcb.js"
 import { rotatePoint } from "../../../src/engine/schematic-geometry.js"
 import type { PlacedSymbol, SchematicLayout } from "../../../src/engine/schematic.js"
 import { roundPosition, type Box, type Point } from "./geometry.js"
 import type { SourceCircuit, View } from "./positions.js"
 
-/** The silkscreen designator's height, in mm. */
-export const DESIGNATOR_MM = 0.8
 
 /** The props that move a part's texts, by view: its name and value on the schematic, its designator on the board. */
 export const TEXT_PROPS: Readonly<Record<View, readonly string[]>> = { schematic: ["schNameAt", "schValueAt"], pcb: ["pcbNameAt"] }
@@ -56,7 +55,9 @@ export function designatorText(part: PlacedFootprint): PartText {
   const at = designatorAnchor(part)
   const offset = { x: at.x - part.x, y: at.y - part.y }
   const rotation = designatorTurn(part)
-  const flat = textBox(at, DESIGNATOR_MM, part.component.length)
+  // The box the silkscreen's strokes fill: the text's width and height plus the line's width.
+  const [halfLong, halfShort] = [(textWidth(part.component, DESIGNATOR_HEIGHT) + SILK_WIDTH) / 2, (DESIGNATOR_HEIGHT + SILK_WIDTH) / 2]
+  const flat = { minX: at.x - halfLong, maxX: at.x + halfLong, minY: at.y - halfShort, maxY: at.y + halfShort }
   const [halfX, halfY] = [(flat.maxX - flat.minX) / 2, (flat.maxY - flat.minY) / 2]
   const box = rotation === 90 ? { minX: at.x - halfY, maxX: at.x + halfY, minY: at.y - halfX, maxY: at.y + halfX } : flat
   return { id: partLabelId(part.component, "pcbNameAt"), part: part.component, prop: "pcbNameAt", text: part.component, at, offset, box, rotation }

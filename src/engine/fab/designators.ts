@@ -1,7 +1,7 @@
 // Where each part's designator goes on the silkscreen. A designator a person placed with pcbNameAt keeps its place
 // (and pcbNameRotation its turn) and is set first. Every other one takes the nearest place round its part
-// (designator-places.ts) where its text covers no pad, hole, via, other part's courtyard or designator and stays on the
-// board; the copies of one sheet's part take the same place round their parts when it is clear for all of them. When
+// (designator-places.ts) where its text covers no pad, hole, via, other part's courtyard, silkscreen text or designator
+// and stays on the board; the copies of one sheet's part take the same place round their parts when it is clear for all of them. When
 // no place is clear it takes the least bad one. A designator that still covers pads, another designator or the board's
 // edge gives a warning naming them, since the board house clips silkscreen off the pads. Pure.
 import { usableOutline } from "../board.js"
@@ -9,6 +9,7 @@ import type { Point } from "../model.js"
 import { naturalCompare } from "../order.js"
 import type { PcbLayout, PlacedFootprint } from "../pcb.js"
 import type { FabricationProfile } from "../rules/schema.js"
+import { silkTextBox } from "./silk-text-strokes.js"
 import { BETWEEN, boxOf, maskBox, placesAround, SilkObstacles, textBox, type Covered, type DesignatorTurn, type Place } from "./designator-places.js"
 
 export { DESIGNATOR_HEIGHT, SILK_WIDTH, type DesignatorTurn } from "./designator-places.js"
@@ -31,12 +32,14 @@ export interface DesignatorPlacement {
   coversDesignators: string[]
   /** The other parts whose courtyards the text lies on, in designator order. */
   coversParts: string[]
+  /** The ids of the board's silkscreen texts the designator lies on. */
+  coversTexts: string[]
   /** Whether the text runs off the board. */
   offBoard: boolean
 }
 
 /** The board a designator is placed on: its parts, and the outline, vias and holes when there are any. */
-export type SilkBoard = Pick<PcbLayout, "parts"> & Partial<Pick<PcbLayout, "board" | "vias" | "holes">>
+export type SilkBoard = Pick<PcbLayout, "parts"> & Partial<Pick<PcbLayout, "board" | "vias" | "holes" | "silkTexts">>
 
 const unique = (names: readonly string[]) => [...new Set(names)].sort(naturalCompare)
 const sameTurn = (degrees: number) => ((Math.round(degrees) % 360) + 360) % 360
@@ -56,6 +59,7 @@ function obstaclesOf(pcb: SilkBoard, expansion: number, clearance: number): Silk
     const r = hole.diameter / 2
     obstacles.add("hole", "", "both", { minX: hole.x - r, minY: hole.y - r, maxX: hole.x + r, maxY: hole.y + r })
   }
+  for (const text of pcb.silkTexts ?? []) obstacles.add("text", text.id, text.layer, silkTextBox(text))
   return obstacles
 }
 
@@ -91,6 +95,7 @@ interface Remembered {
   vias: unknown
   holes: unknown
   board: unknown
+  texts: unknown
   placements: DesignatorPlacement[]
 }
 
@@ -104,7 +109,7 @@ const remembered = new WeakMap<PlacedFootprint, Remembered>()
 function recalled(pcb: SilkBoard, key: string): DesignatorPlacement[] | undefined {
   const first = pcb.parts[0]
   const kept = first && remembered.get(first)
-  if (!kept || kept.key !== key || kept.vias !== pcb.vias || kept.holes !== pcb.holes || kept.board !== pcb.board) return undefined
+  if (!kept || kept.key !== key || kept.vias !== pcb.vias || kept.holes !== pcb.holes || kept.board !== pcb.board || kept.texts !== pcb.silkTexts) return undefined
   if (kept.parts.length !== pcb.parts.length) return undefined
   for (let i = 0; i < kept.parts.length; i++) if (kept.parts[i] !== pcb.parts[i]) return undefined
   return kept.placements
@@ -112,7 +117,7 @@ function recalled(pcb: SilkBoard, key: string): DesignatorPlacement[] | undefine
 
 function remember(pcb: SilkBoard, key: string, placements: DesignatorPlacement[]): void {
   const first = pcb.parts[0]
-  if (first) remembered.set(first, { key, parts: pcb.parts, vias: pcb.vias, holes: pcb.holes, board: pcb.board, placements })
+  if (first) remembered.set(first, { key, parts: pcb.parts, vias: pcb.vias, holes: pcb.holes, board: pcb.board, texts: pcb.silkTexts, placements })
 }
 
 /** The first clear place, else the first fair one (only other parts between it and its own part), in one pass. */
@@ -191,6 +196,7 @@ function placeDesignators(pcb: SilkBoard, expansion: number, clearance: number):
       coversPads: unique(covered.pads),
       coversDesignators: unique(covered.designators),
       coversParts: unique(covered.courtyards),
+      coversTexts: unique(covered.texts),
       offBoard: covered.edge,
     }
   })
@@ -375,14 +381,16 @@ export function silkscreenFindings(pcb: SilkBoard, fabrication: FabricationProfi
   // A part with no courtyard and no pcbNameAt has its designator on its own centre, over its own pads: there is no
   // side to put it on, and nothing to say.
   const shaped = new Set(pcb.parts.filter((part) => part.courtyard.length > 0 || part.nameAt).map((part) => part.component))
+  const textOf = new Map((pcb.silkTexts ?? []).map((text) => [text.id, text.text]))
   return designatorPlacements(pcb, fabrication.maskExpansion ?? DEFAULT_MASK_EXPANSION, silkClearance(fabrication))
-    .filter((p) => shaped.has(p.component) && (p.coversPads.length > 0 || p.coversDesignators.length > 0 || p.coversParts.length > 0 || p.offBoard))
+    .filter((p) => shaped.has(p.component) && (p.coversPads.length > 0 || p.coversDesignators.length > 0 || p.coversParts.length > 0 || p.coversTexts.length > 0 || p.offBoard))
     .sort((a, b) => naturalCompare(a.component, b.component))
     .map((p) => {
       const items = [
         ...(p.coversPads.length > 0 ? [`${listed(p.coversPads.map(possessive))} pads`] : []),
         ...(p.coversDesignators.length > 0 ? [`${listed(p.coversDesignators.map(possessive))} ${p.coversDesignators.length === 1 ? "designator" : "designators"}`] : []),
         ...(p.coversParts.length > 0 ? [`${listed(p.coversParts.map(possessive))} ${p.coversParts.length === 1 ? "courtyard" : "courtyards"}`] : []),
+        ...(p.coversTexts.length > 0 ? [`the ${p.coversTexts.length === 1 ? "text" : "texts"} ${listed(p.coversTexts.map((id) => `"${textOf.get(id) ?? id}"`))}`] : []),
         ...(p.offBoard ? ["the board's edge"] : []),
       ]
       return { ...p, message: `${p.component}'s silkscreen overlaps ${listed(items)}` }

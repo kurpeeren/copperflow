@@ -1,18 +1,18 @@
 // copperflow's PCB renderer: draws the engine's board layout onto a 2D canvas in layer order.
 // Only types come from the engine: its runtime modules reach Node-only code the Studio bundle cannot hold.
-import { designatorAnchor, designatorTurn } from "../../../src/engine/fab/designators.js"
+import { DESIGNATOR_HEIGHT, designatorAnchor, designatorTurn, SILK_WIDTH } from "../../../src/engine/fab/designators.js"
+import { textStrokes } from "../../../src/engine/fab/stroke-font.js"
 import type { PcbLayout, PlacedFootprint, WorldPad } from "../../../src/engine/pcb.js"
 import { drawCopperItems, type CopperScene } from "./copper-draw.js"
 import { devicePixelIn } from "./crisp.js"
-import { canvasFont, PALETTE, PCB_DIM, TEXT_WEIGHT, type Ctx } from "./ctx.js"
-import { worldToScreen, type Camera, type PartBox, type Point, type Size } from "./geometry.js"
+import { PALETTE, PCB_DIM, type Ctx } from "./ctx.js"
+import { type Camera, type PartBox, type Point, type Size } from "./geometry.js"
 import { DEFAULT_LAYERS, padLayer, type LayerVisibility } from "./layers.js"
 import { drawViolationMarkers, type ViolationMarker } from "./markers.js"
 import { drawHoles, drawPourFills, drawPourOutlines, type PourScene } from "./pour-draw.js"
-import { drawSilkTexts, type SilkTextScene } from "./silk-text-draw.js"
+import { drawSilkTexts, strokeLine, type SilkTextScene } from "./silk-text-draw.js"
 import { drawGraphics } from "./graphic-draw.js"
-import { DESIGNATOR_MM } from "./part-text.js"
-import { devicePxFor, sharpenText, textAnchorAt, textShown } from "./text-level.js"
+import { devicePxFor, sharpenText, textShown } from "./text-level.js"
 
 export interface PcbDrawOptions {
   /** Device pixels per CSS pixel. */
@@ -104,6 +104,11 @@ export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDra
   })
   drawGraphics(ctx, layout.graphics ?? [], layers, options.silkTexts, px, options.copper?.activeLayer)
   drawSilkTexts(ctx, layout.silkTexts ?? [], layers, options.silkTexts, px)
+  if (textShown("name", devicePxFor(DESIGNATOR_HEIGHT, camera.scale, options.ratio), devicePxFor(DESIGNATOR_HEIGHT, camera.scale, options.ratio))) {
+    each((part) => {
+      if (shownOn(layers, part, "Silk")) drawDesignator(ctx, part, hair)
+    })
+  }
   if (layers.courtyard) drawCourtyards(ctx, each, px, hair)
   each((part) => {
     if (shownOn(layers, part, "Assembly")) drawPolylines(ctx, part.fabrication, assemblyColor(part), hair, false)
@@ -120,7 +125,6 @@ export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDra
   // Text is drawn in screen space so it stays upright and readable at any zoom.
   ctx.setTransform(options.ratio, 0, 0, options.ratio, 0, 0)
   sharpenText(ctx)
-  for (const part of layout.parts) if (shownOn(layers, part, "Silk")) drawDesignator(ctx, part, camera, size, shiftOf(part), options.ratio)
   drawViolationMarkers(ctx, view, options.violations ?? [], options.activeViolation, true)
   ctx.restore()
 }
@@ -348,28 +352,17 @@ function drawLine(ctx: Ctx, a: Point, b: Point): void {
 }
 
 /**
- * The component id as silkscreen text, from 7 device pixels (text-level.ts): centred where the fabrication export
- * draws it (designators.ts), or on where pcbNameAt puts it (`nameAt`); turned to read from the bottom up when its
- * turn is 90.
+ * The component id as the silkscreen carries it: the same strokes, height and line width the fabrication export writes
+ * (designators.ts, stroke-font.ts), where it puts them or where pcbNameAt does, turned to read from the bottom up when
+ * its turn is 90, mirrored on the bottom side. Drawn in world units, under the canvas's world transform.
  */
-function drawDesignator(ctx: Ctx, part: PlacedFootprint, camera: Camera, size: Size, shift: Point, ratio: number): void {
-  const devicePx = devicePxFor(DESIGNATOR_MM, camera.scale, ratio)
-  if (!textShown("name", devicePx, devicePx)) return
-  const spot = designatorAnchor(part)
-  const p = textAnchorAt(worldToScreen(camera, size, { x: spot.x + shift.x, y: spot.y + shift.y }), ratio)
-  ctx.fillStyle = part.side === "top" ? PALETTE.topSilk : PALETTE.bottomSilk
-  ctx.globalAlpha = alphaOf(part)
-  ctx.font = canvasFont(TEXT_WEIGHT.strong, devicePx / ratio)
-  ctx.textAlign = "center"
-  ctx.textBaseline = "middle"
-  if (designatorTurn(part) === 90) {
-    ctx.save()
-    ctx.translate(p.x, p.y)
-    ctx.rotate(-Math.PI / 2)
-    ctx.fillText(part.component, 0, 0)
-    ctx.restore()
-  } else ctx.fillText(part.component, p.x, p.y)
-  ctx.globalAlpha = 1
+function drawDesignator(ctx: Ctx, part: PlacedFootprint, hair: number): void {
+  const strokes = textStrokes(part.component, designatorAnchor(part), DESIGNATOR_HEIGHT, part.side === "bottom", designatorTurn(part) === 90)
+  const colour = part.side === "top" ? PALETTE.topSilk : PALETTE.bottomSilk
+  ctx.strokeStyle = colour
+  ctx.fillStyle = colour
+  ctx.lineWidth = Math.max(SILK_WIDTH, hair)
+  for (const line of strokes) strokeLine(ctx, line)
 }
 
 /**

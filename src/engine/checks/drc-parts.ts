@@ -194,7 +194,7 @@ function silkOnPad(part: PlacedFootprint, pads: PadsBySide, rules: Rules): Viola
  */
 function designatorChecks(layout: PcbLayout, rules: Rules): Violation[] {
   return silkscreenFindings(layout, rules.fabrication).map((finding) => {
-    const items = new Set([finding.component, `${finding.component} designator`, ...finding.coversPads, ...finding.coversDesignators, ...finding.coversParts])
+    const items = new Set([finding.component, `${finding.component} designator`, ...finding.coversPads, ...finding.coversDesignators, ...finding.coversParts, ...finding.coversTexts])
     return violation("silk-on-pad", "warning", finding.message, [...items], "pcb", finding.at)
   })
 }
