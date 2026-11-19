@@ -157,7 +157,8 @@ export function buildPart(tag: string, id: string, props: Props, origin: PartOri
   }
   const valueProp = kindOf(tag)?.valueProp
   const rawValue = valueProp ? props[valueProp] : undefined
-  const mpn = reader.string("manufacturerPartNumber")
+  // People and agents write either name; both are the manufacturer's part number.
+  const mpn = reader.string("manufacturerPartNumber") ?? reader.string("mpn")
   const labelsAt = movedLabels(reader)
   const turn = nameRotation(reader, props, id, origin.source)
   const component: Component = {

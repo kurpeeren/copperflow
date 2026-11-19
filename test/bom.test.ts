@@ -200,3 +200,26 @@ describe("exportPackage", () => {
     await expect(exportPackage(root, FILE, { outDir: "../out", engine })).rejects.toThrow(/outside the project/)
   })
 })
+
+describe("what an order needs on each line", () => {
+  test("a capacitor's rated voltage is part of its value, so two ratings are two lines", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "cf-bom-rating-"))
+    await writeFile(
+      join(dir, "m.circuit.tsx"),
+      `export default () => (<board width="20mm" height="20mm">
+  <capacitor name="C1" capacitance="100uF" voltageRating="50V" polarized footprint="smdcan8x10.2" />
+  <capacitor name="C2" capacitance="100uF" voltageRating="25V" polarized footprint="smdcan8x10.2" />
+  <capacitor name="C3" capacitance="100nF" footprint="0402" />
+  <diode name="D1" mpn="SS34" footprint="sma" />
+</board>)
+`,
+    )
+    const lines = await buildBom(dir, "m.circuit.tsx", { engine })
+    expect(lines.map((line) => [line.designators.join(" "), line.value, line.mpn])).toEqual([
+      ["C1", "100uF 50V", ""],
+      ["C2", "100uF 25V", ""],
+      ["C3", "100nF", ""],
+      ["D1", "", "SS34"],
+    ])
+  })
+})

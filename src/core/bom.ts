@@ -104,7 +104,7 @@ function componentLine(component: Component, entry: LibraryEntry | undefined): B
     designators: [component.id],
     quantity: 1,
     kind: component.kind,
-    value: part?.title ?? component.value ?? propValue(component),
+    value: part?.title ?? withRating(component, component.value ?? propValue(component)),
     footprint: component.footprint ?? part?.footprint ?? "",
     manufacturer: part?.manufacturer ?? "",
     mpn: component.mpn ?? part?.mpn ?? "",
@@ -126,6 +126,14 @@ function keepsLibraryValues(component: Component, id: string, part: Part): boole
     component.mpn === expected.mpn &&
     sorted(component.supplierPartNumbers) === sorted(expected.supplierPartNumbers)
   )
+}
+
+/** A capacitor's value with its rated voltage ("100uF 50V"), which is half of what is ordered; else the value as is. */
+function withRating(component: Component, value: string): string {
+  const rating = component.props["voltageRating"] ?? component.props["maxVoltageRating"]
+  if (component.kind !== "capacitor" || (typeof rating !== "string" && typeof rating !== "number")) return value
+  const volts = typeof rating === "number" ? `${rating}V` : rating
+  return value === "" ? volts : `${value} ${volts}`
 }
 
 /** The first of the props that give a part its value, e.g. an LED's color. */
