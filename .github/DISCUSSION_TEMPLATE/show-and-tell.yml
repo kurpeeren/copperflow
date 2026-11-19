@@ -1,0 +1,67 @@
+title: "[Board] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Show a board you made with copperflow. Pictures and the one-page HTML from `export_html` are the best way:
+        the HTML holds the schematic, the board, the 3D view and the BOM, and opens in any browser without running
+        anything from your project.
+  - type: input
+    id: board
+    attributes:
+      label: The board
+      description: Its name and what it does, in one line.
+      placeholder: "USB-C to 3.3 V power board, 600 mA, for breadboard projects"
+    validations:
+      required: true
+  - type: textarea
+    id: pictures
+    attributes:
+      label: Pictures
+      description: Drag in the pictures from `render` (the board as made, the 3D view, the schematic) or screenshots of the editor.
+    validations:
+      required: true
+  - type: textarea
+    id: html
+    attributes:
+      label: The one-page HTML
+      description: Attach the file `export_html` wrote (zip it if GitHub refuses the .html), or link to it.
+  - type: input
+    id: repository
+    attributes:
+      label: The project, if it is public
+      description: A link to the repository or folder. Add the topic copperflow-project to a repository so others find it.
+  - type: dropdown
+    id: licence
+    attributes:
+      label: Licence of the design
+      description: Under which terms others may build or change your board.
+      options:
+        - CERN-OHL-P-2.0 (permissive)
+        - CERN-OHL-W-2.0 (weakly reciprocal)
+        - CERN-OHL-S-2.0 (strongly reciprocal)
+        - CC-BY-4.0
+        - CC-BY-SA-4.0
+        - MIT
+        - Not decided, ask me
+        - All rights reserved
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: How it was made
+      description: The agent or client you used, if any, and how much you drew by hand.
+      placeholder: "Claude Code over MCP; I placed the connector and the agent did the rest"
+  - type: textarea
+    id: notes
+    attributes:
+      label: What you learned, what was hard, what copperflow should do better
+  - type: checkboxes
+    id: code
+    attributes:
+      label: Before others open your project
+      options:
+        - label: I understand that a copperflow project's .circuit.tsx files are code that runs when someone opens the project, and I share nothing I would not want others to run.
+          required: true

@@ -1,0 +1,8 @@
+netClasses:
+  power:
+    nets:
+      - VBUS
+      - V5
+      - V3_3
+      - GND
+    trackWidth: 0.5
