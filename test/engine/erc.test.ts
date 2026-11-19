@@ -141,6 +141,30 @@ describe("no-power-source", () => {
     for (const source of sources) expect(coded(run(design(`${sink}\n${source}`)), "no-power-source")).toEqual([])
   })
 
+  test("a supply reached through a series resistor, diode or inductor counts as a source", () => {
+    const connector = `<connector name="J1" pinCount={2} />
+<trace from="J1.pin1" to="net.VIN" />`
+    for (const kind of [`<resistor name="R9" resistance="100" footprint="0603" />`, `<diode name="D9" footprint="sod123" />`, `<inductor name="L9" inductance="10uH" footprint="0805" />`]) {
+      const name = /name="(\w+)"/.exec(kind)?.[1]
+      const body = `${sink}
+${connector}
+${kind}
+<trace from="${name}.pin1" to="net.VIN" />
+<trace from="${name}.pin2" to="net.VBUS" />`
+      expect(coded(run(design(body)), "no-power-source"), kind).toEqual([])
+    }
+  })
+
+  test("a capacitor between a supply and the net does not carry its supply", () => {
+    const body = `${sink}
+<connector name="J1" pinCount={2} />
+<trace from="J1.pin1" to="net.VIN" />
+<capacitor name="C9" capacitance="1uF" footprint="0603" />
+<trace from="C9.pin1" to="net.VIN" />
+<trace from="C9.pin2" to="net.VBUS" />`
+    expect(coded(run(design(body)), "no-power-source")).toHaveLength(1)
+  })
+
   test("a name in globalNets counts as a source", () => {
     const built = design(fedByResistor)
     const rules: Rules = { ...built.rules, globalNets: [...built.rules.globalNets, "VBUS"] }

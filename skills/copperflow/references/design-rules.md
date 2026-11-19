@@ -199,7 +199,7 @@ position. Anything a check cannot evaluate is reported as `unchecked`, never sil
 | `pin-unconnected` | error for power-in, ground and input pins; warning for others | A pin shares its net with no other pin. A pin alone on a named net gets this and `single-pin-net`. |
 | `nc-connected` | error | A pin marked no-connect is wired to other pins. |
 | `output-conflict` | error | Several outputs drive one net. |
-| `no-power-source` | warning | A net has power inputs but no power output, connector, pin header or battery pin, and is not a global net. |
+| `no-power-source` | warning | A net has power inputs but no power output, connector, pin header or battery pin, is not a global net, and reaches none through up to three series resistors, diodes, inductors, fuses or switches. |
 | `single-pin-net` | warning | A named net has only one pin. |
 | `case-size` | warning | An electrolytic capacitor's capacitance and `voltageRating` are made in a larger or smaller can (in a general-purpose series' table) than its radial footprint is for. |
 | `lead-spacing` | warning | A radial electrolytic footprint's lead spacing is not the one makers set for its can diameter (5 mm: 2, 6.3: 2.5, 8: 3.5, 10 and 12.5: 5, 16 and 18: 7.5, 20 and 22: 10, 25: 12.5). |

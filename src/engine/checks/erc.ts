@@ -14,6 +14,11 @@ const ERROR_WHEN_UNCONNECTED: ReadonlySet<PinType> = new Set(["power_in", "groun
 const DRIVERS: ReadonlySet<PinType> = new Set(["output", "power_out"])
 /** Parts that bring power in from outside the board. */
 const SUPPLY_KINDS: ReadonlySet<string> = new Set(["connector", "pinheader", "battery"])
+/** Two-pin parts a supply reaches a pin through: a series resistor (an RC filter), a diode (OR-ing, reverse
+ * protection), an inductor or a fuse, a switch. A capacitor passes no direct current, so it is not one. */
+const SERIES_KINDS: ReadonlySet<string> = new Set(["resistor", "diode", "inductor", "fuse", "switch"])
+/** How many such parts in a row the search looks through. */
+const SERIES_HOPS = 3
 
 /** Everything a check looks up: pins, the part each belongs to, the net each is on, and where it is drawn. */
 interface Context {
@@ -125,9 +130,33 @@ function outputConflict(context: Context, net: Net): Violation[] {
   return [violation("output-conflict", "error", message, ids, "schematic", singleAt(context, ids))]
 }
 
-function hasSource(context: Context, net: Net, pins: readonly Pin[]): boolean {
+function suppliedHere(context: Context, net: Net, pins: readonly Pin[]): boolean {
   if (net.names.some((name) => context.globalNets.has(name))) return true
   return pins.some((p) => p.type === "power_out" || SUPPLY_KINDS.has(context.kindOf.get(p.id) ?? ""))
+}
+
+/** The nets on the far side of the two-pin series parts on this net. */
+function acrossSeries(context: Context, pins: readonly Pin[]): Net[] {
+  return pins.flatMap((pin) => {
+    if (!SERIES_KINDS.has(context.kindOf.get(pin.id) ?? "")) return []
+    const own = context.pins.filter((other) => other.component === pin.component)
+    const far = own.length === 2 ? own.find((other) => other.id !== pin.id) : undefined
+    const net = far === undefined ? undefined : context.netOf.get(far.id)
+    return net === undefined ? [] : [net]
+  })
+}
+
+/** Whether the net is supplied: by a source on it, or on a net it reaches through up to SERIES_HOPS series parts. */
+function hasSource(context: Context, net: Net, pins: readonly Pin[]): boolean {
+  const seen = new Set([net.id])
+  let frontier: { net: Net; pins: readonly Pin[] }[] = [{ net, pins }]
+  for (let hop = 0; hop <= SERIES_HOPS && frontier.length > 0; hop++) {
+    if (frontier.some((one) => suppliedHere(context, one.net, one.pins))) return true
+    const next = frontier.flatMap((one) => acrossSeries(context, one.pins)).filter((far) => !seen.has(far.id))
+    for (const far of next) seen.add(far.id)
+    frontier = [...new Map(next.map((far) => [far.id, far])).values()].map((far) => ({ net: far, pins: allOn(context, far) }))
+  }
+  return false
 }
 
 function noPowerSource(context: Context, net: Net): Violation[] {
