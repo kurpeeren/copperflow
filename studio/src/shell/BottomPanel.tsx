@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import type { Actions } from "../App"
 import type { HistoryListing, HistoryProblem, PartsData } from "../api"
 import { ChecksPanel } from "../ChecksPanel"
@@ -27,12 +28,15 @@ interface Props {
   active: string | null
   onPick(row: CheckRow): void
   find: FindResultsProps
+  /** The splitter on the panel's top edge, which sizes its height. */
+  splitter?: ReactNode
 }
 
-/** The open bottom panel: the content of the chosen tab, above the strip. */
+/** The open bottom panel: the content of the chosen tab, above the strip, with its splitter on top. */
 export function BottomPanel(props: Props) {
   return (
     <div className="bottom-panel hairline-t" id={BOTTOM_PANEL_ID} role="tabpanel" aria-labelledby={bottomTabId(props.tab)} onClick={blurAfterPointerClick}>
+      {props.splitter}
       <Content {...props} />
     </div>
   )

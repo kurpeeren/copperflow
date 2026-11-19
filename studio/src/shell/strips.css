@@ -58,13 +58,14 @@
 
 /* The left panel's right edge is its hairline-r; the right panel's left edge is drawn by the centre column
    (hairline.css), because the panel scrolls. */
-/* As wide as the right panel: Project Design's six sub-tabs (Page to Files) fit at their padding. */
+/* The widths are the workspace row's properties, set by its splitters (use-panel-sizes.ts); the fallbacks are the
+   defaults, at which Project Design's six sub-tabs (Page to Files) fit at their padding. */
 .panel.left {
-  width: 262px;
+  width: var(--left-panel-width, 262px);
 }
 
 .panel.right {
-  width: 262px;
+  width: var(--right-panel-width, 262px);
 }
 
 .sub-tabs {

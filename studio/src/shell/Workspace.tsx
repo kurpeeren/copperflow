@@ -38,6 +38,10 @@ import { bottomNotice, canvasNotice, type CanvasNotice } from "./canvas-notice"
 import { StartScreen } from "./StartScreen"
 import { useContextMenu, type ContextMenuState } from "./use-context-menu"
 import { rightTabIds, type LeftStrip, type RightStrip } from "./strip-state"
+import { BOTTOM_PANEL_ID } from "./bottom-state"
+import { stripPanelId } from "./SideStrip"
+import { Splitter } from "./Splitter"
+import { usePanelSizes, type PanelSplitter } from "./use-panel-sizes"
 import "./workspace.css"
 
 const LEFT_STRIP: ReadonlyArray<{ id: LeftStrip; label: string }> = [
@@ -151,7 +155,7 @@ function NoDesign({ notice, run }: { notice: CanvasNotice; run(command: CommandI
 }
 
 /** The document tabs, the open document's canvas and the bottom panel, between the side panels. */
-function CenterColumn(props: WorkspaceProps & { onContextMenu: ContextMenuState["show"] }) {
+function CenterColumn(props: WorkspaceProps & { onContextMenu: ContextMenuState["show"]; bottomSize: PanelSplitter }) {
   const { data, workspace, checks, find, view, page } = props
   const { build } = data
   const canvas = canvasProps(props, props.onContextMenu)
@@ -194,6 +198,7 @@ ${page}`} {...sheet} {...gridProps(workspace, "schematic")} markers={checks.mark
           active={checks.active}
           onPick={checks.pick}
           find={find.results}
+          splitter={<Splitter edge="bottom" controls={BOTTOM_PANEL_ID} {...props.bottomSize} />}
         />
       )}
     </div>
@@ -272,11 +277,17 @@ function RightSide({ data, workspace, checks, selection, onSelect, onRenameDrawi
 export function Workspace(props: WorkspaceProps) {
   const { data, workspace, selection, onSelect } = props
   const contextMenu = useContextMenu({ circuit: data.circuit, design: data.build.design, selection, onSelect, run: props.run, openProperties: workspace.openProperties, edit: props.actions.edit, onHighlight: workspace.setHighlight })
+  // The side panels exist once the circuit has loaded, and show while their strips have them open.
+  const loaded = Boolean(data.circuit)
+  const open = { left: workspace.leftOpen && loaded, right: workspace.right.open && loaded }
+  const sizes = usePanelSizes(open)
   return (
-    <main className="workspace">
+    <main className="workspace" ref={sizes.root} style={sizes.style}>
       <SideStrip side="left" tabs={LEFT_STRIP} active={workspace.left.strip} open={workspace.left.open} onClick={workspace.clickLeft} onSelect={workspace.selectLeft} />
       <LeftSide {...props} />
-      <CenterColumn {...props} onContextMenu={contextMenu.show} />
+      {open.left && <Splitter edge="left" controls={stripPanelId("left")} {...sizes.left} />}
+      <CenterColumn {...props} onContextMenu={contextMenu.show} bottomSize={sizes.bottom} />
+      {open.right && <Splitter edge="right" controls={stripPanelId("right")} {...sizes.right} />}
       <RightSide {...props} />
       <SideStrip side="right" tabs={rightStrip(props.view)} active={workspace.right.active} open={workspace.right.open} onClick={workspace.clickRight} onSelect={workspace.selectRight} />
       {contextMenu.open && <ContextMenu entries={contextMenu.open.entries} at={contextMenu.open.at} onRun={contextMenu.runItem} onClose={contextMenu.close} />}
