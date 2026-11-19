@@ -55,3 +55,16 @@ export function radialCase(props: Readonly<Record<string, unknown>>): RadialCase
   const row = RATINGS.find(([v, c]) => same(v, volts) && same(c, microfarads))
   return row === undefined ? undefined : { volts: row[0], microfarads: row[1], diameter: row[2], length: row[3] }
 }
+
+export const LEAD_SPACING_DOCUMENT =
+  "Nichicon radial lead drawings: UVR data sheet CAT.8100M p1 (8 to 18 mm cans) and the same table in the maker's radial lead type drawing for 5, 6.3 and 20 to 25 mm cans"
+
+/** [can diameter mm, lead spacing P mm] */
+const LEAD_SPACING: readonly (readonly [number, number])[] = [
+  [5, 2], [6.3, 2.5], [8, 3.5], [10, 5], [12.5, 5], [16, 7.5], [18, 7.5], [20, 10], [22, 10], [25, 12.5],
+]
+
+/** The lead spacing makers give a can of this diameter, or undefined for a diameter not in their table. */
+export function standardSpacing(diameter: number): number | undefined {
+  return LEAD_SPACING.find(([d]) => same(d, diameter))?.[1]
+}

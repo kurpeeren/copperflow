@@ -5,7 +5,7 @@ import { describe, expect, test } from "vitest"
 import { buildDesign } from "../../src/engine/design.js"
 import { caseSizeChecks } from "../../src/engine/checks/case-size.js"
 import { partHeight } from "../../src/engine/solid/heights.js"
-import { radialCase, RADIAL_RATINGS_DOCUMENT } from "../../src/engine/solid/radial-ratings.js"
+import { radialCase, RADIAL_RATINGS_DOCUMENT, standardSpacing } from "../../src/engine/solid/radial-ratings.js"
 import { solidModel } from "../../src/engine/solid/model.js"
 import { partFaces } from "../../studio/src/look/parts/index.js"
 import { printedLines } from "../../studio/src/look/parts/sleeve-print.js"
@@ -60,6 +60,26 @@ describe("the case-size check", () => {
     expect(caseSizeChecks(circuit("radial10x5", `capacitance="1000uF" voltageRating="16V"`).circuit)).toEqual([])
     expect(caseSizeChecks(circuit("radial5x2", `capacitance="10uF" voltageRating="16V"`).circuit)).toEqual([])
     expect(caseSizeChecks(circuit("radial5x2", `capacitance="10uF"`).circuit)).toEqual([])
+  })
+})
+
+describe("the lead-spacing check", () => {
+  test("knows the spacing makers set for each listed can", () => {
+    expect([5, 6.3, 8, 10, 12.5, 16, 18, 20, 22, 25].map(standardSpacing)).toEqual([2, 2.5, 3.5, 5, 5, 7.5, 7.5, 10, 10, 12.5])
+    expect(standardSpacing(4)).toBeUndefined()
+  })
+
+  test("warns when a footprint's leads are not as far apart as makers set them, naming the footprint to use", () => {
+    const found = caseSizeChecks(circuit("radial10x3.5", `capacitance="100uF"`).circuit)
+    expect(found).toHaveLength(1)
+    expect(found[0]).toMatchObject({ code: "lead-spacing", severity: "warning", items: ["C1"] })
+    expect(found[0]!.message).toContain("3.5 mm apart")
+    expect(found[0]!.message).toContain("radial10x5")
+  })
+
+  test("is quiet for the standard spacing and for a can makers do not list", () => {
+    for (const footprint of ["radial5x2", "radial6.3x2.5", "radial8x3.5", "radial10x5", "radial16x7.5"]) expect(caseSizeChecks(circuit(footprint, ``).circuit), footprint).toEqual([])
+    expect(caseSizeChecks(circuit("radial4x1.5", ``).circuit)).toEqual([])
   })
 })
 

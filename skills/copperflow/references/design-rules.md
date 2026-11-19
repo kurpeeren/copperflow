@@ -202,6 +202,7 @@ position. Anything a check cannot evaluate is reported as `unchecked`, never sil
 | `no-power-source` | warning | A net has power inputs but no power output, connector, pin header or battery pin, and is not a global net. |
 | `single-pin-net` | warning | A named net has only one pin. |
 | `case-size` | warning | An electrolytic capacitor's capacitance and `voltageRating` are made in a larger or smaller can (in a general-purpose series' table) than its radial footprint is for. |
+| `lead-spacing` | warning | A radial electrolytic footprint's lead spacing is not the one makers set for its can diameter (5 mm: 2, 6.3: 2.5, 8: 3.5, 10 and 12.5: 5, 16 and 18: 7.5, 20 and 22: 10, 25: 12.5). |
 | `clearance` | error | Copper of two pads of different nets is closer than the larger clearance of their classes. |
 | `board-edge` | error | A pad or its hole is closer to the board edge than `boardEdgeClearance`, or outside the board. |
 | `drill-size` | error | A drill is below `minDrill`. |
