@@ -216,12 +216,28 @@ function viaNet(design: Design, centre: Point, layers: readonly CopperLayer[], w
 }
 
 /** add_via: one via as one change. */
+/**
+ * Refuses a via whose copper would lie on another via's: the two holes would be drilled into each other. Saying so
+ * before anything is written beats a hole-to-hole error after it.
+ */
+function refuseOnTopOfVia(design: Design, at: Point, diameter: number): void {
+  const there = design.pcb.vias.find((via) => Math.hypot(via.at.x - at.x, via.at.y - at.y) < (via.diameter + diameter) / 2)
+  if (there === undefined) return
+  const gap = (there.diameter + diameter) / 2
+  throw new Error(
+    `Via ${there.id} is already at ${pointWords(there.at)}, and a via here would lie on it. Put it at least ${mmText(gap)} mm from that centre, or remove ${there.id} first with remove_copper { ids: ["${there.id}"] }. Nothing was written.`,
+  )
+}
+
+const pointWords = (p: Point) => `(${mmText(p.x)}, ${mmText(p.y)})`
+
 export async function addVia(ports: Ports, input: { file: string; net?: string; at: Point; layers?: CopperLayer[] }): Promise<string> {
   const design = await buildOf(ports, input.file)
   const layers = input.layers ?? ["top", "bottom"]
   checkLayers(design, layers)
   const net = viaNet(design, input.at, layers, input.net)
   const size = net ? viaSize(design.rules, net) : defaultVia(design.rules)
+  refuseOnTopOfVia(design, input.at, size.diameter)
   const edit: LayoutEdit = { kind: "addVia", ...(net ? { net: nameOf(net) } : {}), at: input.at, drill: size.drill, diameter: size.diameter, ...(input.layers ? { layers } : {}) }
   const on = net ? nameOf(net) : "no net"
   return applyCopper(ports, input.file, design, [edit], ([id]) => `added via ${id} on ${on} at ${at(input.at)}, ${mmText(size.drill)}/${mmText(size.diameter)} mm`)

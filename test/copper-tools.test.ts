@@ -175,6 +175,16 @@ describe("add_via", () => {
     expect((await layoutRecords())[2]).toMatchObject({ t: "via", net: "VBUS" })
   })
 
+  test("on top of another via, it is refused naming that via and what to do, and nothing is written", async () => {
+    await call("add_via", { file: FILE, at: pt(0, 5) })
+    const before = await layoutRecords()
+    const refused = await call("add_via", { file: FILE, at: pt(0.2, 5) })
+    expect(refused.isError).toBe(true)
+    expect(refused.text).toMatch(/^Via v0001 is already at \(0, 5\), and a via here would lie on it\. Put it at least 0\.66 mm from that centre, or remove v0001 first/)
+    expect(await layoutRecords()).toEqual(before)
+    expect((await call("add_via", { file: FILE, at: pt(0.7, 5) })).isError).toBe(false)
+  })
+
   test("without copper under it and without a net, it has no net", async () => {
     const { text } = await call("add_via", { file: FILE, at: pt(0, 5) })
     expect(text).toContain("on no net")
@@ -323,7 +333,8 @@ describe("check_circuit copper filter", () => {
 
   test("shows via holes too close together (hole-to-hole), as copper_summary counts them", async () => {
     await call("add_via", { file: FILE, net: "GND", at: pt(10, 6) })
-    await call("add_via", { file: FILE, net: "GND", at: pt(10.65, 6) })
+    // Far enough apart that their copper does not touch (a via on a via is refused), too close for the drill.
+    await call("add_via", { file: FILE, net: "GND", at: pt(10.7, 6) })
     const { text } = await call("check_circuit", { file: FILE, filter: "copper" })
     expect(text).toMatch(/hole-to-hole/)
     const summary = (await call("copper_summary", { file: FILE })).text
@@ -423,10 +434,10 @@ describe("fix round 1", () => {
     expect(await lines([], [was])).toHaveLength(1)
   })
 
-  test("a via without a net takes the net of the copper under it, track and via of one net alike", async () => {
+  test("a via without a net takes the net of the track under it, beside another via of that net", async () => {
     await route("VBUS", [pt(-2.275, 0), pt(-2.275, -3)])
     await call("add_via", { file: FILE, net: "VBUS", at: pt(-2.275, -1) })
-    const { text, isError } = await call("add_via", { file: FILE, at: pt(-2.275, -1) })
+    const { text, isError } = await call("add_via", { file: FILE, at: pt(-2.275, -2.2) })
     expect(isError).toBe(false)
     expect(text).toContain("on VBUS")
   })
