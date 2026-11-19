@@ -13,8 +13,9 @@
     "pcb",
     "schematic",
     "circuit",
-    "tscircuit",
+    "pcb-design",
     "mcp",
+    "mcp-server",
     "eda"
   ],
   "type": "module",

@@ -1,10 +1,32 @@
 # copperflow
 
-Design circuits in code while a human and an AI agent edit the same files.
+<p align="center">
+  <img src="docs/images/workshop.gif" width="640" alt="Small agents carry a USB-C socket, a regulator, capacitors, a resistor, an LED and a pin header from a tray onto a circuit board, then walk the connections laying copper tracks, while a line below names each copperflow tool they use.">
+</p>
 
-Circuits are TSX files written with [tscircuit](https://github.com/tscircuit/tscircuit)'s
-elements, such as `<board>`, `<resistor>` and `<trace>`. copperflow builds and draws them with
-its own engine. You and your agent work on them together:
+**A PCB design program you and your AI agent use together.** The agent places, routes, checks and
+exports the board through MCP, with or without a window open; you work in the same files in the
+editor, and every change it makes is one step you can undo. Schematic, PCB, autorouting, DRC,
+Gerbers, BOM and a 3D view, on your own computer.
+
+[Website](https://copperflow.kurpeeren.com) ·
+[Download the desktop app](https://github.com/kurpeeren/copperflow/releases/latest) ·
+[Connect your agent](https://copperflow.kurpeeren.com/connect.html) ·
+`npm install -g copperflow`
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/board-turn.gif" alt="A USB-C to 3.3 V power board turning once in copperflow's 3D view: a green board with a USB-C socket, a regulator, capacitors, an LED and two pin headers."></td>
+    <td width="50%"><img src="docs/images/usb-board-top.png" alt="The same board from above as it will be made: copper pads, white print with the board name and pin labels, and four mounting holes."></td>
+  </tr>
+  <tr>
+    <td>One agent session, an empty folder, no window open: 23 of 23 connections routed, 0 errors, 16 files for the factory.</td>
+    <td>The board as made, drawn from the same Gerber layers the factory gets.</td>
+  </tr>
+</table>
+
+Circuits are TSX files with elements such as `<board>`, `<resistor>` and `<trace>`, which
+copperflow builds and draws with its own engine. You and your agent work on them together:
 
 - the agent changes the circuit through an MCP server, and every change is one undo step;
 - you lock the parts you have placed, and the agent cannot move or change them;
@@ -12,10 +34,15 @@ its own engine. You and your agent work on them together:
 - edits are written back as minimal text changes, so the rest of your code stays as you wrote it.
 
 Everything runs locally. There is no chat inside copperflow: use the agent you already use,
-for example Claude Code, through MCP.
+for example Claude Code or Claude Desktop, through MCP.
 
-> **Status: 0.4, early.** The core, the MCP server, the CLI, the visual editor, the parts library,
-> placement, routing and the fabrication export work. Expect rough edges; see [docs/design.md](docs/design.md).
+<p align="center">
+  <img src="docs/images/desktop-app.png" width="820" alt="The copperflow desktop app: the Files tab lists the project folder with an icon for each kind of file, beside the routed board in the PCB view and the bill of materials.">
+</p>
+
+> **Status: 0.5, early.** The core, the MCP server, the CLI, the editor, the desktop app, the parts
+> library, placement, routing and the fabrication export work. Expect rough edges; see
+> [docs/design.md](docs/design.md).
 
 ## Quick start
 
