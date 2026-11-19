@@ -191,3 +191,16 @@ describe("the board's own silkscreen texts", () => {
     expect(silkscreenWarnings(crowded, PROFILE).join(" ")).toContain(`P1's silkscreen overlaps the text "MMMM"`)
   })
 })
+
+describe("a hidden designator", () => {
+  test("pcbNameHidden leaves the name off the silkscreen and out of everyone's way", async () => {
+    const { buildDesign } = await import("../../src/engine/design.js")
+    const design = (hidden: boolean) =>
+      buildDesign({ "m.circuit.tsx": `export default () => (<board width="20mm" height="20mm"><pinheader name="J1" pinCount={1} footprint="wirepad2_d1" pcbX={0} pcbY={0}${hidden ? " pcbNameHidden" : ""} /><resistor name="R1" resistance="1k" footprint="0603" pcbX={4} pcbY={0} /></board>)` }, "m.circuit.tsx")
+    const shown = designatorPlacements(design(false).pcb, EXPANSION).map((p) => p.component)
+    const hidden = design(true)
+    expect(shown).toEqual(["J1", "R1"])
+    expect(designatorPlacements(hidden.pcb, EXPANSION).map((p) => p.component)).toEqual(["R1"])
+    expect(hidden.pcb.parts.find((p) => p.component === "J1")?.nameHidden).toBe(true)
+  })
+})

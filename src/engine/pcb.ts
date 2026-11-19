@@ -42,6 +42,8 @@ export interface PlacedFootprint {
   designatorAt?: Point
   /** The designator's turn (0 or 90) when the part's pcbNameRotation sets it. */
   nameRotation?: 0 | 90
+  /** Set when the part's pcbNameHidden leaves its designator off the silkscreen. */
+  nameHidden?: true
   /** The designator's turn as the fabrication export draws it; buildDesign sets it beside `designatorAt`. */
   designatorRotation?: 0 | 90
   /** "<sheet>/<name in the sheet>" for a part of a sub-sheet instance: the copies of one part share it. */
@@ -158,6 +160,7 @@ function place(component: Component, footprint: Footprint | undefined, at: Place
     fabrication: (footprint?.fabrication ?? []).map(move),
     ...(component.pcbNameAt ? { nameAt: { x: at.x + component.pcbNameAt.x, y: at.y + component.pcbNameAt.y } } : {}),
     ...(component.pcbNameRotation !== undefined ? { nameRotation: component.pcbNameRotation } : {}),
+    ...(component.pcbNameHidden ? { nameHidden: true as const } : {}),
   }
 }
 

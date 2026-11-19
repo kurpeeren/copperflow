@@ -144,7 +144,8 @@ function roomAround(part: PlacedFootprint, places: readonly Place[], covered: (p
 }
 
 function placeDesignators(pcb: SilkBoard, expansion: number, clearance: number): DesignatorPlacement[] {
-  const parts = pcb.parts.filter((part) => part.component !== "")
+  // A hidden designator is not printed, so it takes no place and is in nobody's way.
+  const parts = pcb.parts.filter((part) => part.component !== "" && !part.nameHidden)
   const obstacles = obstaclesOf(pcb, expansion, clearance)
   const chosen = new Map<string, Place>()
   const settle = (part: PlacedFootprint, place: Place) => {

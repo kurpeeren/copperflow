@@ -65,7 +65,7 @@ export function designatorText(part: PlacedFootprint): PartText {
 
 /** Every part's silkscreen designator. */
 export function boardTexts(layout: PcbLayout): PartText[] {
-  return layout.parts.map(designatorText)
+  return layout.parts.filter((part) => !part.nameHidden).map(designatorText)
 }
 
 /** The texts of a view's layout. */

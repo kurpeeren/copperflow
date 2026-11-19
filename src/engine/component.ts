@@ -123,6 +123,8 @@ function movedLabels(reader: PropReader): Pick<Component, (typeof LABEL_AT_PROPS
 
 /** The prop that turns a part's silkscreen designator: 0 or 90. */
 export const NAME_ROTATION_PROP = "pcbNameRotation"
+/** The prop that leaves a part's silkscreen designator off the board (a wire pad whose label is the board's own text). */
+export const NAME_HIDDEN_PROP = "pcbNameHidden"
 
 /** The designator's turn the props give; anything but 0 or 90 is a bad-value warning and left out. */
 function nameRotation(reader: PropReader, props: Props, id: string, source: SourceRef): { turn?: 0 | 90; diagnostics: Diagnostic[] } {
@@ -172,6 +174,7 @@ export function buildPart(tag: string, id: string, props: Props, origin: PartOri
     ...(pcb ? { pcb } : {}),
     ...labelsAt,
     ...(turn.turn !== undefined ? { pcbNameRotation: turn.turn } : {}),
+    ...(props[NAME_HIDDEN_PROP] === true ? { pcbNameHidden: true as const } : {}),
     groupOffset: { pcb: { x: origin.offset.pcbX, y: origin.offset.pcbY }, sch: { x: origin.offset.schX, y: origin.offset.schY } },
     props: jsonProps(props),
     source: origin.source,

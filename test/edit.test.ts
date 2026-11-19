@@ -297,7 +297,7 @@ describe("setProps: label positions", () => {
 
   test("null removes only the place and label props; any other prop is refused, naming those", () => {
     expect(() => applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { resistance: null } }], none)).toThrow(
-      "resistance cannot be removed with null; only pcbX, pcbY, pcbRotation, schX, schY, schRotation, schNameAt, schValueAt, pcbNameAt, pcbNameRotation, noConnect, supplierPartNumbers can",
+      "resistance cannot be removed with null; only pcbX, pcbY, pcbRotation, schX, schY, schRotation, schNameAt, schValueAt, pcbNameAt, pcbNameRotation, pcbNameHidden, noConnect, supplierPartNumbers can",
     )
     expectEditError(() => applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { resistance: null } }], none), "invalid")
   })

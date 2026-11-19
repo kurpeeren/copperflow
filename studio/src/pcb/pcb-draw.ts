@@ -106,7 +106,7 @@ export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDra
   drawSilkTexts(ctx, layout.silkTexts ?? [], layers, options.silkTexts, px)
   if (textShown("name", devicePxFor(DESIGNATOR_HEIGHT, camera.scale, options.ratio), devicePxFor(DESIGNATOR_HEIGHT, camera.scale, options.ratio))) {
     each((part) => {
-      if (shownOn(layers, part, "Silk")) drawDesignator(ctx, part, hair)
+      if (shownOn(layers, part, "Silk") && !part.nameHidden) drawDesignator(ctx, part, hair)
     })
   }
   if (layers.courtyard) drawCourtyards(ctx, each, px, hair)

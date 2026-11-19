@@ -71,6 +71,8 @@ export interface Component {
   pcbNameAt?: Point
   /** The silkscreen designator's turn when the file sets it (pcbNameRotation): 0 reads left to right, 90 from the bottom up. */
   pcbNameRotation?: 0 | 90
+  /** Set when the file hides the part's silkscreen designator (pcbNameHidden): nothing is printed or placed for it. */
+  pcbNameHidden?: true
 }
 
 /** Named: "net.GND". Unnamed: "net:" + the first pin id. */
