@@ -1,5 +1,5 @@
 import { expect, test } from "vitest"
-import { fastestMs } from "../helpers/fastest.js"
+import { fastestWithinMs } from "../helpers/fastest.js"
 import { elaborate } from "../../src/engine/elaborate.js"
 import { evaluateCircuit } from "../../src/engine/evaluate.js"
 import { layoutSchematicWithDiagnostics } from "../../src/engine/schematic.js"
@@ -15,6 +15,14 @@ const name = (row: number, column: number): string => `R${row * COLUMNS + column
 const trace = (from: string, to: string): string => `<trace from="${from}" to="${to}" />`
 
 const LONG = 60
+/** The most a layout may take, in ms. */
+const LIMIT_MS = 50
+/**
+ * Timed runs per round. One run takes about 25 ms, so five fit in an eighth of a second, and a burst of other work on
+ * the machine that long slowed every one of them past the limit (about one suite run in six). Twenty spread over half
+ * a second; a round still over the limit is measured again (fastestWithinMs), as the machine has stayed busy for longer.
+ */
+const RUNS = 20
 
 /** 200 resistors in a 20 x 10 grid, or with no position at all so the engine places them. */
 function gridParts(placed: boolean): string[] {
@@ -50,27 +58,27 @@ function longSheet(): string {
   return sheet(traces)
 }
 
-function measure(label: string, source: string, connections: number): number {
+async function measure(label: string, source: string, connections: number): Promise<number> {
   const circuit = elaborate(evaluateCircuit({ [MAIN]: source }, MAIN), MAIN, { padCount: () => undefined })
   expect(circuit.components).toHaveLength(200)
   expect(circuit.connections).toHaveLength(connections)
   const result = layoutSchematicWithDiagnostics(circuit)
   console.log(`${label}: auto-route fallbacks ${result.diagnostics.length} of ${connections}`)
-  const fastest = fastestMs(() => void layoutSchematicWithDiagnostics(circuit), 5)
-  console.log(`${label}: layoutSchematic, fastest of 5: ${fastest.toFixed(1)} ms`)
+  const fastest = await fastestWithinMs(() => void layoutSchematicWithDiagnostics(circuit), RUNS, LIMIT_MS)
+  console.log(`${label}: layoutSchematic, fastest of ${RUNS}: ${fastest.toFixed(1)} ms`)
   return fastest
 }
 
-test("routes a 200-part, 400-trace schematic in under 50 ms", () => {
-  expect(measure("400 near traces", bigSheet(), 400)).toBeLessThan(50)
+test("routes a 200-part, 400-trace schematic in under 50 ms", async () => {
+  expect(await measure("400 near traces", bigSheet(), 400)).toBeLessThan(LIMIT_MS)
 })
 
-test("routes 60 traces across a 200-part schematic in under 50 ms", () => {
-  expect(measure("60 long traces", longSheet(), LONG)).toBeLessThan(50)
+test("routes 60 traces across a 200-part schematic in under 50 ms", async () => {
+  expect(await measure("60 long traces", longSheet(), LONG)).toBeLessThan(LIMIT_MS)
 })
 
-test("places and routes the same 200 parts and 400 traces with no position given in under 50 ms", () => {
-  expect(measure("400 near traces, nothing placed", bigSheet(false), 400)).toBeLessThan(50)
+test("places and routes the same 200 parts and 400 traces with no position given in under 50 ms", async () => {
+  expect(await measure("400 near traces, nothing placed", bigSheet(false), 400)).toBeLessThan(LIMIT_MS)
 })
 
 const CHIPS = 50
@@ -89,6 +97,6 @@ function chipSheet(): string {
   return `export default () => (<board width="100mm" height="60mm">${parts.join("")}${traces.join("")}</board>)`
 }
 
-test("places and routes 50 chips with their passives, nothing placed, in under 50 ms", () => {
-  expect(measure("50 chips with passives, nothing placed", chipSheet(), CHIPS * 8)).toBeLessThan(50)
+test("places and routes 50 chips with their passives, nothing placed, in under 50 ms", async () => {
+  expect(await measure("50 chips with passives, nothing placed", chipSheet(), CHIPS * 8)).toBeLessThan(LIMIT_MS)
 })
