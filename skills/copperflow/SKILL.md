@@ -21,8 +21,8 @@ not the files.
    `set_project` (each block's status as far as it got), and continue from there; never start over.
 2. For the file in hand, `circuit_summary` `{ file }`: one line per part and per net, then
    `Locked:`, the marks (`Mark <id> (pcb x, y): …`) and `Lock violations:`. Use
-   `detail: "full"` only when you need every prop; `filter: "PS1"` shows one instance. Read it
-   again whenever the human says they changed something.
+   `detail: "full"` only when you need every prop; `filter: "J2"` shows one part (its props and
+   nets), `filter: "PS1"` one instance. Read it again whenever the human says they changed something.
 3. `recent_changes` `{ limit? }`: newest first; a change marked `[undone]` was rejected by the
    human: do not make it again unless they ask. `list_circuits` lists the circuit files.
 4. Do the work (below), then `check_circuit` once at the end, then tell the human what you

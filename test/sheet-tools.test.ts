@@ -136,9 +136,18 @@ describe("check_circuit and circuit_summary for one instance", () => {
     ])
   })
 
+  test("a part's name shows that part and the nets its pins are on", async () => {
+    const answer = await call("circuit_summary", { file: FILE, filter: "U101" })
+    expect(answer.isError).toBeFalsy()
+    const lines = answer.text.split("\n")
+    expect(lines[0]).toMatch(/^main\.circuit\.tsx, part U101: \d+ nets?$/)
+    expect(lines[1]).toMatch(/^U101 /)
+    expect(lines.some((line) => line.startsWith("V3_3:") && line.includes("U101.pin2"))).toBe(true)
+  })
+
   test("an unknown instance is refused, naming the instances", async () => {
     const answer = await call("circuit_summary", { file: FILE, filter: "PS9" })
-    expect(answer).toEqual({ isError: true, text: "There is no instance PS9 in main.circuit.tsx; the instances are PS1, PS2" })
+    expect(answer).toEqual({ isError: true, text: "There is no part or sub-sheet instance PS9 in main.circuit.tsx; the instances are PS1, PS2" })
     const check = await call("check_circuit", { file: FILE, filter: "PS9" })
     expect(check).toEqual({ isError: true, text: "There is no instance, part or net PS9 in main.circuit.tsx; the instances are PS1, PS2" })
     expect((await call("check_circuit", { file: FILE, filter: "V1_8" })).isError).toBe(false)

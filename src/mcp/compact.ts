@@ -1,6 +1,6 @@
 import type { CheckResult, LoadedCircuit, PartInfo, TraceInfo } from "../core/index.js"
 import { oneLine } from "../core/summary.js"
-import { aboutInstance, flatCounts, instanceAt, instancePartLines, partLinesWithSheets, type Flattened } from "./compact-sheets.js"
+import { aboutInstance, flatCounts, flatPartLine, instanceAt, instancePartLines, partLinesWithSheets, type Flattened } from "./compact-sheets.js"
 import { COPPER_RULES } from "./copper-summary.js"
 
 /** Lists in a default answer stop here, so the whole answer fits a screen. */
@@ -125,6 +125,32 @@ export function formatInstanceSummary(circuit: LoadedCircuit, flat: Flattened, p
     .sort((a, b) => natural.compare(a.names[0] ?? "", b.names[0] ?? ""))
   const head = `${circuit.file}, instance ${path}: ${plural(parts.size, "part")}, ${plural(nets.length, "net")}`
   return [head, ...capped(instancePartLines(flat, instance, locked)), ...capped(nets.map(netLine))].join("\n")
+}
+
+/** Every literal prop of a part as `key=value`, in the file's order. */
+function propsText(part: PartInfo): string {
+  return Object.entries(part.props)
+    .map(([key, prop]) => `${key}=${oneLine(String(prop.literal ?? prop.source))}`)
+    .join(" ")
+}
+
+/**
+ * circuit_summary for one part (`filter`): its line, every prop it is written with, and the nets its pins are on, with
+ * every pin of those nets. Undefined when the circuit has no such part.
+ */
+export function formatPartSummary(circuit: LoadedCircuit, flat: Flattened, name: string): string | undefined {
+  const component = flat.components.find((one) => one.id === name)
+  if (component === undefined) return undefined
+  const locked = new Set(circuit.annotations.locks.map((lock) => lock.part))
+  const written = circuit.model.parts.find((part) => part.name === name)
+  const line = written ? partLine(written, locked) : flatPartLine(component)
+  const nets = flat.nets
+    .filter((net) => net.pins.some((pin) => pin.split(".")[0] === name))
+    .map((net) => ({ names: net.names, pins: net.pins }))
+    .sort((a, b) => natural.compare(a.names[0] ?? "", b.names[0] ?? ""))
+  const head = `${circuit.file}, part ${name}: ${plural(nets.length, "net")}`
+  const props = written && Object.keys(written.props).length > 0 ? [`  props: ${propsText(written)}`] : []
+  return [head, line, ...props, ...capped(nets.map(netLine))].join("\n")
 }
 
 interface Finding {

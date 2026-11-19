@@ -27,7 +27,7 @@ import { buildWith } from "../core/design-source.js"
 import { FootprintFileSchema } from "../engine/footprints/file.js"
 import { VERSION } from "../version.js"
 import { batchSummary, describeRefusal, editItem, firstRefusal, kindOf, moveNotes, planNets, toEdit, unknownPourNet } from "./batch.js"
-import { formatCompactCheck, formatCompactSummary, formatInstanceSummary, type SheetView } from "./compact.js"
+import { formatCompactCheck, formatCompactSummary, formatInstanceSummary, formatPartSummary, type SheetView } from "./compact.js"
 import { importsSheet, instanceAt, type Flattened } from "./compact-sheets.js"
 import { readCard } from "../core/sheet-card.js"
 import { DESCRIBE_SHEET_DESCRIPTION, describeSheetInput, describeSheetTool, instanceCard, withCard } from "./sheet-card-tools.js"
@@ -118,11 +118,11 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "circuit_summary",
     {
       description:
-        'Summarize a circuit: one line per part and per net, then locked parts, marks from the human and lock violations. filter "PS1" shows one sub-sheet instance; detail "full" lists every prop and trace.',
+        'Summarize a circuit: one line per part and per net, then locked parts, marks from the human and lock violations. filter shows one part or sub-sheet instance; detail "full" lists every prop and trace.',
       inputSchema: {
         file,
         detail: z.enum(["compact", "full"]).optional().describe('Default "compact"'),
-        filter: z.string().optional().describe('A sub-sheet instance, e.g. "PS1"'),
+        filter: z.string().optional().describe("A part or instance, e.g. J2 or PS1"),
       },
       annotations: READ_ONLY,
     },
@@ -131,6 +131,14 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
         const loaded = await loadCircuit(root, circuit)
         if (filter) {
           const flat = await flatDesign(root, loaded.file, options.engine)
+          const isInstance = (flat.instances ?? []).some((instance) => instance.path === filter)
+          const part = isInstance ? undefined : formatPartSummary(loaded, flat, filter)
+          if (part !== undefined) return part
+          if (!isInstance) {
+            const instances = (flat.instances ?? []).map((instance) => instance.path)
+            const also = instances.length > 0 ? `; the instances are ${instances.join(", ")}` : ""
+            throw new Error(`There is no part or sub-sheet instance ${filter} in ${loaded.file}${also}`)
+          }
           const card = instanceCard(instanceAt(loaded.file, flat, filter))
           const described = card.does !== undefined || card.ports.some((port) => port.type || port.carries)
           return described ? withCard(formatInstanceSummary(loaded, flat, filter), card) : formatInstanceSummary(loaded, flat, filter)
