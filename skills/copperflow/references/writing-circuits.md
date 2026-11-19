@@ -49,10 +49,12 @@ In `edit_circuit`, `add_instance` is `{ sheet, name, connections, base?, page? }
 sub-sheet, base default the next free hundred), `set_connections` `{ instance, connections }`
 gives every port its net (ports left out are open), and `move_to_page` `{ part, page }` takes a
 part or an instance (the page is made when missing). `set_props` sets `schNameAt` and `schValueAt`
-(the part's name and value on the schematic, in sheet units) and `pcbNameAt` (its silkscreen
+(the part's name and value on the schematic, in sheet units: inches, on a 0.1 grid, a chip's
+pins 0.2 apart, y up, as `schX` and `schY` are) and `pcbNameAt` (its silkscreen
 designator, in mm) as an offset `{ x, y }` from the part's origin that moves with the part; null
 puts the label back. A null on `pcbX` and `pcbY` takes a part off the board, so `autoplace` places
-it again; on `schX` and `schY` it goes back to the place the schematic gives it by itself. `noConnect: "pin3,pin10"` flags pins meant to stay open (no pin-unconnected
+it again; on `schX` and `schY` it goes back to the place the schematic gives it by itself.
+`noConnect: "pin3,pin10"` flags pins meant to stay open (no pin-unconnected
 error, a cross on the schematic); null removes the flags.
 
 ## Reading what is there

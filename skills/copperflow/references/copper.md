@@ -108,10 +108,12 @@ Details of the copper tools:
   `from` or `to` may name a pin by name (`"U2.GND"`). `width` defaults to the net class's width,
   else the fabrication default. No corner or segment may touch another net's copper.
 - `add_via` takes its net from the pad or track under it unless `net` is given; its size follows
-  the net class and the fabrication minimum ring; `layers` defaults to `["top", "bottom"]`.
-- `remove_copper` `{ id, segment }` removes one segment (0 is from the first point to the
-  second): the run before it stays as the track and the run after it becomes a new track; a run
-  of one point disappears.
+  the net class and the fabrication minimum ring; `layers` defaults to `["top", "bottom"]`. A via
+  whose copper would lie on another via's is refused, naming that via.
+- `remove_copper` takes a list, `{ ids: ["t0003", "v0002"] }`: whole tracks and vias by id. An
+  entry `{ id: "t0003", segment: 1 }` in that list removes one segment instead (0 is from the
+  first point to the second): the run before it stays as the track and the run after it becomes
+  a new track; a run of one point disappears.
 - `fillet_tracks` rounds with chords on an arc tangent to both legs, of the design rules' fillet
   radius (1 mm unless `rules.yaml` sets `fabrication.filletRadius`; a track's width is the floor).
   A corner stays square when its arc would break clearance, its legs are too short or its net's
