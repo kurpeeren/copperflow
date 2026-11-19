@@ -21,6 +21,7 @@ import { plccFootprint } from "./plcc.js"
 import { quadFootprint } from "./quad.js"
 import { radialFootprint } from "./radial.js"
 import { trimmerFootprint } from "./trimmer.js"
+import { wirepadFootprint } from "./wirepad.js"
 import { resonatorFootprint } from "./resonator.js"
 import { screwFootprint } from "./screw.js"
 import { smallSotFootprint } from "./smallsot.js"
@@ -84,6 +85,7 @@ const FAMILIES: readonly Family[] = [
   xtalFootprint,
   radialFootprint,
   trimmerFootprint,
+  wirepadFootprint,
   smdCanFootprint,
   ledThroughHoleFootprint,
   ledSmdFootprint,

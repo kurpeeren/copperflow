@@ -6,7 +6,7 @@ import type { Rgb } from "../scene.js"
 import { SMD_LOOKS, smdFamilyOf, type SmdFamily } from "./smd-family.js"
 import { UNO_LOOKS, unoFamilyOf, type UnoFamily } from "./uno-family.js"
 
-export type Family = "chip" | "molded" | "gullwing" | "leadless" | "header" | "crystal" | "electrolytic" | "block" | "box" | "bga" | "dip" | "to220" | "to92" | "tab" | "axial" | "ledth" | "screw" | "socket" | "trimmer" | SmdFamily | UnoFamily
+export type Family = "chip" | "molded" | "gullwing" | "leadless" | "header" | "crystal" | "electrolytic" | "block" | "box" | "bga" | "dip" | "to220" | "to92" | "tab" | "axial" | "ledth" | "screw" | "socket" | "trimmer" | "bare" | SmdFamily | UnoFamily
 
 /** The colours a shape is painted with; each family's table row says which it uses. */
 export interface FamilyLook {
@@ -108,6 +108,7 @@ export function familyOf(kind: string, footprint: string | undefined, through = 
     if (p.kind === "screw") return withParsed("screw", "screw")
     if (p.kind === "socket") return withParsed("socket", "socket")
     if (p.kind === "trimmer") return withParsed("trimmer", "trimmer")
+    if (p.kind === "wirepad") return withParsed("bare", "box")
     if (p.kind === "to" && p.code === "92") return withParsed("to92", "to92")
     const uno = unoFamilyOf(p)
     if (uno !== undefined) return withParsed(uno, uno)

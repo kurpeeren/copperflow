@@ -46,6 +46,8 @@ export const SHAPES: Record<Family, (input: ShapeInput) => Piece[]> = {
   axial: axialShape,
   ledth: ledShape,
   trimmer: trimmerShape,
+  // A bare pad has no body: the board picture already shows its tinned copper.
+  bare: () => [],
   screw: screwShape,
   socket: socketShape,
   ...SMD_SHAPES,
@@ -91,7 +93,7 @@ export function partFaces(design: Design, model: SolidModel): Face[] {
     const paint = family === "ledth" ? ledLook(FAMILY_LOOKS[look], component?.props) : FAMILY_LOOKS[look]
     const input = shapeInput(part, solid.height, paint, parsed, thickness, look, component?.props)
     const shaped = part.footprint === undefined ? [] : SHAPES[family](input)
-    const pieces = shaped.length === 0 ? plainBox(input) : shaped
+    const pieces = shaped.length === 0 && family !== "bare" ? plainBox(input) : shaped
     const place = placer(part, thickness)
     return pieces.map((piece): Face => ({
       loops: piece.loops.map((loop) => loop.map(place.point)),

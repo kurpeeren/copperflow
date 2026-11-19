@@ -281,6 +281,7 @@ const CONNECTORS_EXTRA = rows(
     ["usb_b", "USB Type-B receptacle, through-hole"],
     ["usb_c16", "USB Type-C receptacle, 16 pins (USB 2.0)"],
     ["dcjack", "DC barrel jack 5.5 / 2.1 mm", "dcjack2.1", "dcjack2.5"],
+    ["wirepad2_d1", "Wire pad 2 mm, 1 mm hole (solder pad)"],
   ],
   true,
 )
@@ -318,6 +319,7 @@ export const PACKAGE_FORMS: readonly PackageForm[] = [
   { form: "plcc<N>", says: "PLCC 20, 28, 32, 44, 52, 68, 84" },
   { form: "pinrow<N>[_p<pitch>] pinrow2x<N>", says: "pin headers" },
   { form: "socket<N> socket2x<N>", says: "pin sockets" },
+  { form: "wirepad<land>_d<hole>", says: "one wire solder pad" },
   { form: "screw<N>[_p<pitch>]", says: "screw terminals (terminal blocks), 2-24 poles" },
   { form: "radial<can>x<spacing>", says: "radial electrolytic" },
   { form: "axial<body>x<spacing>[_d<dia>]", says: "axial resistor" },

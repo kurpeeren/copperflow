@@ -98,6 +98,7 @@ export const THROUGH_HOLE_ROWS: readonly HeightRow[] = [
   diode("DO-41", "41", undefined, 2.7),
   diode("DO-15", "15", undefined, 3.6),
   diode("DO-201AD", "201", "ad", 5.3),
+  { packages: "wire pad", height: 0.1, source: "a bare solder pad: only its solder above the board", matches: (p) => p.kind === "wirepad" },
   {
     packages: "Bourns 3296W trimmer",
     height: 11.55,
