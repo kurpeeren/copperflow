@@ -7,7 +7,7 @@ import { COPPER_RULES } from "./copper-summary.js"
 export const COMPACT_LIMIT = 20
 const PINS_PER_NET = 12
 const ITEMS_PER_ISSUE = 6
-const VALUE_PROPS = ["resistance", "capacitance", "inductance", "color", "voltage"]
+const VALUE_PROPS = ["resistance", "capacitance", "inductance", "maxResistance", "frequency", "color", "voltage"]
 
 const natural = new Intl.Collator("en", { numeric: true })
 

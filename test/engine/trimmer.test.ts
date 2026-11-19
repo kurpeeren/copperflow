@@ -63,3 +63,16 @@ describe("its 3D shape", () => {
     expect(resistanceCode("x")).toBeUndefined()
   })
 })
+
+describe("in the circuit summary", () => {
+  test("a potentiometer's line shows its value, as a resistor's does", async () => {
+    const { mkdtemp, writeFile } = await import("node:fs/promises")
+    const { tmpdir } = await import("node:os")
+    const { join } = await import("node:path")
+    const { loadCircuit } = await import("../../src/core/index.js")
+    const { formatCompactSummary } = await import("../../src/mcp/compact.js")
+    const dir = await mkdtemp(join(tmpdir(), "cf-pot-summary-"))
+    await writeFile(join(dir, "m.circuit.tsx"), `export default () => (<board width="20mm" height="20mm"><potentiometer name="RV1" maxResistance="10k" footprint="trimmer3296w" /></board>)\n`)
+    expect(formatCompactSummary(await loadCircuit(dir, "m.circuit.tsx"))).toMatch(/^RV1 potentiometer 10k trimmer3296w/m)
+  })
+})
