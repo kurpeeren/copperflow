@@ -32,29 +32,40 @@ export function crystalShape(input: ShapeInput): Piece[] {
 
 /** Enough sides that the can reads round, not faceted. */
 const SIDES = 48
-/** The sleeve: a bevel where it sits on the board, the sealing groove rolled into the can above it, and the lip it
- * rolls over the top edge. In mm, shrunk on small cans. */
+/** The sleeve: a bevel where it sits on the board, the sealing groove rolled into the can above it, and its top
+ * shrunk over the can's edge into a flat dark ring round the lid. In mm, shrunk on small cans. */
 const SEAT = 0.2
 const GROOVE_DEPTH = 0.18
 const GROOVE_HEIGHT = 0.5
+/** How far down the side the sleeve starts to curl over, and how wide the dark ring it makes on top is (a share of the
+ * radius, at least RING_LEAST). */
 const LIP = 0.35
+const RING_SHARE = 0.18
+const RING_LEAST = 0.5
+/** The aluminium lid lies this far below the ring. */
+const LID_SINK = 0.15
 /** The print keeps this far from the groove and the lip. */
 const PRINT_MARGIN = 0.3
-/** The vent scored into the lid: a small cross at the centre, its bars this wide, each arm this share of the lid's
- * radius (a fine score line, well inside the lid, as on a real can). */
-const VENT_WIDTH = 0.08
-const VENT_SHARE = 0.38
+/** The vent pressed into the lid: a ridge from the centre out along each arm, three arms (a "Y") on cans from 8 mm,
+ * a cross below; each arm this share of the lid's radius, each side of the ridge this wide. */
+const VENT_ARM = 0.68
+const VENT_SIDE = 0.1
+const Y_FROM_DIAMETER = 8 - 0.4
 /** Makers score a pressure relief vent into the lid from 6.3 mm cans up (Nichicon's radial lead drawing); the can drawn
  * is a little narrower than its footprint's circle, so the threshold allows for that. */
 const VENT_FROM_DIAMETER = 6.3 - 0.4
-/** The vent is pressed into the lid, so it reads a little darker. */
-const VENT_SHADE = 0.8
+/** The ridge catches the light on one side and is in shade on the other. */
+const VENT_LIGHT = 1.12
+const VENT_SHADE = 0.72
 
-/** The sleeve's profile, (radius, z) from the board up: seat bevel, groove, straight side, the lip rolled over the top. */
+/** The sleeve's profile, (radius, z) from the board up: seat bevel, groove, straight side, the edge rolled over into a
+ * flat ring on top, and its inner edge down to the lid, which the lathe closes at the last point. */
 function sleeveProfile(radius: number, h: number): [number, number][] {
   const s = Math.min(1, radius / 2.5, h / 5)
   const [seat, depth, groove, lip] = [SEAT * s, GROOVE_DEPTH * s, GROOVE_HEIGHT * s, LIP * s]
+  const ring = Math.min(Math.max(RING_LEAST * s, radius * RING_SHARE), radius * 0.3)
   const g0 = Math.min(1.0, h * 0.15)
+  const top = h - 0.02
   return [
     [radius - seat, 0],
     [radius, seat],
@@ -63,23 +74,34 @@ function sleeveProfile(radius: number, h: number): [number, number][] {
     [radius - depth, g0 + groove * 0.7],
     [radius, g0 + groove],
     [radius, h - lip],
-    [radius - lip * 0.25, h - lip * 0.35],
-    [radius - lip * 0.7, h - lip * 0.05],
-    [radius - lip, h - lip * 0.05],
+    [radius - lip * 0.3, h - lip * 0.3],
+    [radius - lip * 0.7, top],
+    [radius - ring, top],
+    [radius - ring, top - LID_SINK * s],
   ]
 }
 
-/** The vent: two bars crossing at the lid's centre, laid on it, at 45° so they do not line up with the stripe. */
-function vent(cx: number, cy: number, radius: number, z: number, color: ShapeInput["look"]["metal"], canRadius: number): Piece[] {
+type Rgb3 = ShapeInput["look"]["metal"]
+const scaled = (color: Rgb3, by: number): Rgb3 => color.map((c) => Math.min(255, Math.round(c * by))) as unknown as Rgb3
+
+/**
+ * The vent: a pressed ridge from the lid's centre out along each arm, its lit side and its shaded side as two thin
+ * strips, the arms turned so none lines up with the stripe. A "Y" on cans from 8 mm, a cross below; none under 6.3 mm.
+ */
+function vent(cx: number, cy: number, radius: number, z: number, lid: Rgb3, canRadius: number, towards: number): Piece[] {
   if (canRadius * 2 < VENT_FROM_DIAMETER || radius < 1.2) return []
-  const half = radius * VENT_SHARE
-  const w = (VENT_WIDTH * Math.min(1, radius / 2.5)) / 2
-  const bar = (angle: number): Flat[] => {
+  const arms = canRadius * 2 >= Y_FROM_DIAMETER ? 3 : 4
+  const length = radius * VENT_ARM
+  const side = VENT_SIDE * Math.min(1, radius / 2.5)
+  const strip = (angle: number, from: number, to: number): Flat[] => {
     const [c, s] = [Math.cos(angle), Math.sin(angle)]
     const at = (u: number, v: number): Flat => ({ x: cx + u * c - v * s, y: cy + u * s + v * c })
-    return [at(-half, -w), at(half, -w), at(half, w), at(-half, w)]
+    return [at(0, from), at(length, from), at(length, to), at(0, to)]
   }
-  return [...prism(bar(Math.PI / 4), z, z + 0.02, color, "metal", "body"), ...prism(bar(-Math.PI / 4), z, z + 0.02, color, "metal", "body")]
+  return Array.from({ length: arms }, (_, i) => towards + Math.PI / arms + (2 * Math.PI * i) / arms).flatMap((angle) => [
+    ...prism(strip(angle, -side, 0), z, z + 0.02, scaled(lid, VENT_LIGHT), "metal", "body"),
+    ...prism(strip(angle, 0, side), z, z + 0.02, scaled(lid, VENT_SHADE), "metal", "body"),
+  ])
 }
 
 export function electrolyticShape(input: ShapeInput): Piece[] {
@@ -99,11 +121,10 @@ export function electrolyticShape(input: ShapeInput): Piece[] {
   }
   const profile = sleeveProfile(radius, h)
   const [lidRadius, lidZ] = profile[profile.length - 1] as [number, number]
-  const shade = lidColor.map((c) => Math.round(c * VENT_SHADE)) as unknown as typeof lidColor
-  const pieces = [
-    ...lathe(profile, cx, cy, SIDES, { top: lidColor, side: look.body }, "matt", "body", stripe),
-    ...vent(cx, cy, lidRadius, lidZ, shade, radius),
-  ]
+  // The sleeve is matt; the lid the lathe closes it with is the can's aluminium.
+  const turned = lathe(profile, cx, cy, SIDES, { top: lidColor, side: look.body }, "matt", "body", stripe)
+  const lid = turned.filter((piece) => piece.normal[2] > 0.99 && piece.color === lidColor).map((piece): Piece => ({ ...piece, material: "metal" }))
+  const pieces = [...turned.filter((piece) => !lid.some((one) => one.loops === piece.loops)), ...lid, ...vent(cx, cy, lidRadius, lidZ, lidColor, radius, towards)]
   // Printed between the groove and the lip: the value and voltage reading up the can, minus signs on the stripe.
   const [grooveTop, lipStart] = [(profile[5] as [number, number])[1], (profile[6] as [number, number])[1]]
   const band = { z0: grooveTop + PRINT_MARGIN, z1: lipStart - PRINT_MARGIN }
