@@ -11,6 +11,7 @@ import { padChecks } from "./drc-pads.js"
 import { pourChecks } from "./drc-pours.js"
 import { partChecks } from "./drc-parts.js"
 import { electricalChecks } from "./erc.js"
+import { caseSizeChecks } from "./case-size.js"
 import { fastLineChecks, viaThickness } from "./fast-lines.js"
 import { withoutUnplacedPositions } from "./unplaced-parts.js"
 import { violation, type Violation } from "./violation.js"
@@ -64,6 +65,7 @@ export function checkDesign(
   const skipped = layout.parts.filter((part) => !hasPosition(part)).map(unplaced)
   const found = mergeViolations([
     ...electricalChecks(circuit, schematic, rules),
+    ...caseSizeChecks(circuit),
     ...padChecks(placed, rules, classOf),
     ...partChecks(placed, rules),
     ...copperChecks(placed, rules, classOf),

@@ -10,6 +10,8 @@ export interface Piece {
   color: Rgb
   material: Material
   role: Role
+  /** Below 1 the piece is see-through (a clear lens); 1 when not given. */
+  alpha?: number
 }
 
 export interface Flat {
@@ -109,7 +111,7 @@ function windNormal(loop: readonly Vec3[]): Vec3 {
  * `sides` flat trapezoids per step (a triangle where a radius is 0), and a flat top when the last radius is above 0.
  * No bottom. For domes, balls and rounded cans.
  */
-export function lathe(profile: readonly (readonly [number, number])[], cx: number, cy: number, sides: number, colors: Rgb | BoxColors, material: Material, role: Role): Piece[] {
+export function lathe(profile: readonly (readonly [number, number])[], cx: number, cy: number, sides: number, colors: Rgb | BoxColors, material: Material, role: Role, sideColor?: (i: number) => Rgb | undefined): Piece[] {
   if (profile.length < 2 || sides < 3) return []
   const { top, side } = colorsOf(colors)
   const ring = (radius: number, z: number, i: number): Vec3 => {
@@ -121,7 +123,7 @@ export function lathe(profile: readonly (readonly [number, number])[], cx: numbe
     return Array.from({ length: sides }, (_, i): Piece[] => {
       const corners = [ring(r0, z0, i), ring(r0, z0, i + 1), ring(r1, z1, i + 1), ring(r1, z1, i)]
       const loop = corners.filter((p, j) => j === 0 || Math.hypot(p[0] - (corners[j - 1] as Vec3)[0], p[1] - (corners[j - 1] as Vec3)[1]) > 1e-12 || p[2] !== (corners[j - 1] as Vec3)[2])
-      return loop.length < 3 ? [] : [{ loops: [loop], normal: windNormal(loop), color: side, material, role }]
+      return loop.length < 3 ? [] : [{ loops: [loop], normal: windNormal(loop), color: sideColor?.(i) ?? side, material, role }]
     }).flat()
   })
   const [lastR, lastZ] = profile[profile.length - 1] as readonly [number, number]
@@ -135,6 +137,26 @@ export const rectPolygon = (r: Rect): Flat[] => [
   { x: r.maxX, y: r.maxY },
   { x: r.minX, y: r.maxY },
 ]
+
+/**
+ * A box whose sides lean: the rectangle `below` at z0 to the rectangle `above` at z1 (a moulded body's draft), its four
+ * sides and, unless `open`, its top. No bottom.
+ */
+export function frustum(below: Rect, above: Rect, z0: number, z1: number, colors: Rgb | BoxColors, material: Material, role: Role, open = false): Piece[] {
+  if (!(z1 > z0)) return []
+  const { top, side } = colorsOf(colors)
+  const [a, b] = [rectPolygon(below), rectPolygon(above)]
+  const sides = a.map((p, i): Piece => {
+    const q = a[(i + 1) % 4] as Flat
+    const [pp, qq] = [b[i] as Flat, b[(i + 1) % 4] as Flat]
+    const mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }
+    const centre = { x: (below.minX + below.maxX) / 2, y: (below.minY + below.maxY) / 2 }
+    const outward: Vec3 = [mid.x - centre.x, mid.y - centre.y, 0]
+    return facet([[p.x, p.y, z0], [q.x, q.y, z0], [qq.x, qq.y, z1], [pp.x, pp.y, z1]], outward, side, material, role)
+  })
+  const cap: Piece[] = open ? [] : [{ loops: [b.map((p): Vec3 => [p.x, p.y, z1])], normal: [0, 0, 1], color: top, material, role }]
+  return [...cap, ...sides]
+}
 
 /** A box on a rectangle from z0 to z1. */
 export const box = (r: Rect, z0: number, z1: number, colors: Rgb | BoxColors, material: Material, role: Role): Piece[] =>

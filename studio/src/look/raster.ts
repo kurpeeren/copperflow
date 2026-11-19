@@ -1,8 +1,9 @@
 // Draws the 3D view's scene into pixels with a depth buffer, written here without a library. Every opaque face is
 // filled row by row (its holes left empty, by the even-odd rule) and a pixel is kept only where the face is nearer
 // than what is already there, so what is in front always hides what is behind, whatever the order of the faces and
-// even where boxes overlap in ways no back-to-front order can draw. The see-through board is drawn after them: it
-// tints only what lies behind it and never hides it. Each pixel also keeps the part it shows, for hover. Pure.
+// even where boxes overlap in ways no back-to-front order can draw. See-through faces (the plain view's board, a clear
+// LED lens) are drawn after them, farthest first and without writing depth: each tints what lies behind it and never
+// hides it. Each pixel also keeps the part it shows, for hover. Pure.
 import { keyFor, lightFace } from "./light.js"
 import { dot, viewFrame, type Orbit, type ViewFrame } from "./orbit.js"
 import type { Face, Rgb, Scene, Vec3 } from "./scene.js"
@@ -108,6 +109,25 @@ function shade(face: Face, view: ViewFrame, highlight: number | undefined): Rgb 
   return face.color.map((channel) => Math.round(channel * light + (255 - channel * light) * lift)) as unknown as Rgb
 }
 
+/** How far a face's middle lies from the eye, along the view: larger is farther. */
+function farness(face: Face, view: ViewFrame): number {
+  const loop = face.loops[0] ?? []
+  let sum = 0
+  for (const p of loop) sum -= dot(p, view.eye)
+  return loop.length === 0 ? 0 : sum / loop.length
+}
+
+/**
+ * See-through faces farthest first: each one blends over what is drawn already and writes no depth, so a clear face
+ * behind another clear one, or the inside of a clear lens, still shows through the nearer one.
+ */
+function backToFront(faces: readonly Face[], view: ViewFrame): Face[] {
+  return faces
+    .map((face) => ({ face, far: farness(face, view) }))
+    .sort((a, b) => b.far - a.far)
+    .map(({ face }) => face)
+}
+
 /** Draws the scene from `orbit` into a width × height frame. */
 export function renderScene(scene: Scene, orbit: Orbit, width: number, height: number, options: RenderOptions): Frame {
   const frame = frameOf(width, height, options.reuse)
@@ -123,7 +143,7 @@ export function renderScene(scene: Scene, orbit: Orbit, width: number, height: n
     return frame
   }
   const opaque = scene.faces.filter((face) => face.alpha >= 1)
-  const clear = scene.faces.filter((face) => face.alpha < 1)
+  const clear = backToFront(scene.faces.filter((face) => face.alpha < 1), view)
   for (const face of opaque) {
     const projected = projectFace(face, view)
     if (!projected) continue
@@ -164,7 +184,7 @@ function drawLit(scene: Scene, view: ViewFrame, frame: Frame, options: RenderOpt
   const { width, height } = frame
   scene.faces.forEach((face, index) => {
     // Every solid here is closed, or stands on the board: a face turned away from the eye is always hidden.
-    if (dot(face.normal, view.eye) <= 0) return
+    if (face.alpha < 1 || dot(face.normal, view.eye) <= 0) return
     const projected = projectFace(face, view)
     if (!projected) return
     const { scale, add } = lightFace(face.normal, view.eye, key, face.material)
@@ -237,6 +257,48 @@ function drawLit(scene: Scene, view: ViewFrame, frame: Frame, options: RenderOpt
     })
   })
   darkenEdges(scene, frame, view.scale)
+  drawLitClear(scene, view, frame, options, key)
+}
+
+/** A clear face is this much more opaque towards its rim, where it is seen edge-on, as glass and epoxy are. */
+const RIM_POWER = 3
+/** The key light's glint on a clear face: how strong and how tight. */
+const GLOSS = 0.45
+const GLOSS_TIGHTNESS = 40
+
+/**
+ * The see-through faces (a clear LED lens) over the opaque drawing, farthest first: lit like the rest, blended by
+ * their alpha (more opaque edge-on), with the key light's glint on top. Only the side towards the eye: the epoxy is
+ * solid, so its far side is not a second surface to look through. A pixel they cover shows their part, for hover.
+ */
+function drawLitClear(scene: Scene, view: ViewFrame, frame: Frame, options: RenderOptions, key: Vec3): void {
+  const facing = scene.faces.filter((face) => face.alpha < 1 && dot(face.normal, view.eye) > 0)
+  const { width, height, color } = frame
+  for (const face of backToFront(facing, view)) {
+    const projected = projectFace(face, view)
+    if (!projected) continue
+    const square = dot(face.normal, view.eye)
+    const alpha = face.alpha + (1 - face.alpha) * (1 - square) ** RIM_POWER
+    const { scale } = lightFace(face.normal, view.eye, key, face.material)
+    const half = unit([key[0] + view.eye[0], key[1] + view.eye[1], key[2] + view.eye[2]])
+    const glint = 255 * GLOSS * Math.max(0, dot(face.normal, half)) ** GLOSS_TIGHTNESS
+    const lift = face.part >= 0 && face.part === options.highlight ? HIGHLIGHT : 0
+    const tone = (c: number) => (Math.min(255, c * scale) * (1 - lift) + 255 * lift) * alpha
+    const [r, g, b] = [tone(face.color[0]), tone(face.color[1]), tone(face.color[2])]
+    const keep = 1 - alpha
+    scan(projected, width, height, (i, depth) => {
+      if (depth >= (frame.depth[i] as number)) return
+      frame.ids[i] = face.part
+      color[i * 4] = (color[i * 4] as number) * keep + r + glint
+      color[i * 4 + 1] = (color[i * 4 + 1] as number) * keep + g + glint
+      color[i * 4 + 2] = (color[i * 4 + 2] as number) * keep + b + glint
+    })
+  }
+}
+
+const unit = (v: Vec3): Vec3 => {
+  const length = Math.hypot(v[0], v[1], v[2]) || 1
+  return [v[0] / length, v[1] / length, v[2] / length]
 }
 
 function darkenEdges(scene: Scene, frame: Frame, scale: number): void {

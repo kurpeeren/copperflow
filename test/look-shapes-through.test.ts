@@ -226,6 +226,14 @@ describe("axial parts", () => {
   })
 })
 
+const spanOf = (face: Face, axis: 0 | 1) => {
+  const values = face.loops.flat().map((p) => p[axis])
+  return Math.max(...values) - Math.min(...values)
+}
+const spanX = (face: Face) => spanOf(face, 0)
+/** At least one round of the lathe's sides: the epoxy is more than a few faces. */
+const SIDES_AT_LEAST = 24
+
 describe("a round LED", () => {
   test("a flange ring on the board, a cylinder and a dome on top, two leads, the flat at the cathode", () => {
     for (const name of ["LED1", "LED2"]) {
@@ -246,6 +254,73 @@ describe("a round LED", () => {
     }
   })
 
+  test("the epoxy is see-through: every flange and lens face has an alpha below 1, the metal inside is opaque", () => {
+    for (const name of ["LED1", "LED2"]) {
+      const { faces } = partOf(name)
+      const epoxy = faces.filter((face) => face.role === "body" || face.role === "cathode")
+      expect(epoxy.length, name).toBeGreaterThan(SIDES_AT_LEAST)
+      for (const face of epoxy) {
+        expect(face.alpha, name).toBeGreaterThan(0.2)
+        expect(face.alpha, name).toBeLessThan(1)
+      }
+      for (const face of faces.filter((one) => one.material === "metal")) expect(face.alpha, name).toBe(1)
+    }
+  })
+
+  test("inside the lens the cathode's wide anvil (pad 2) and the anode's thin post (pad 1) stand up from the board", () => {
+    for (const name of ["LED1", "LED2"]) {
+      const { faces, placed, solid } = partOf(name)
+      const one = placed.pads.find((pad) => pad.number === "1")!
+      const two = placed.pads.find((pad) => pad.number === "2")!
+      // The lens: the epoxy above the flange's top (the ring with the lens's hole in it).
+      const ring = faces.find((face) => face.role === "body" && face.normal[2] > 0.99 && face.loops.length === 2)!
+      const flangeTop = ring.loops[0]![0]![2]
+      const lensFaces = faces.filter((face) => face.role === "body" && face !== ring && Math.min(...zs([face])) >= flangeTop - EPS)
+      const lens = Math.max(...points(lensFaces).map((p) => Math.hypot(p[0] - placed.x, p[1] - placed.y)))
+      const frames = faces.filter((face) => face.role === "pin" && face.material === "metal")
+      for (const [x, y, z] of points(frames)) {
+        expect(Math.hypot(x - placed.x, y - placed.y), name).toBeLessThan(lens + EPS)
+        expect(z, name).toBeGreaterThanOrEqual(solid.bottom - EPS)
+        expect(z, name).toBeLessThan(solid.top - 1)
+      }
+      // The two plates face the front (−y): the anvil's is the wider and sits towards pad 2, the post's towards pad 1.
+      const plates = frames.filter((face) => face.normal[1] < -0.99 && spanX(face) > 0.3).sort((a, b) => spanX(b) - spanX(a))
+      expect(plates.length, name).toBe(2)
+      const [anvil, post] = plates as [Face, Face]
+      expect(spanX(anvil), name).toBeGreaterThan(1.5 * spanX(post))
+      expect(Math.abs(centre(anvil)[0] - two.x), name).toBeLessThan(Math.abs(centre(anvil)[0] - one.x))
+      expect(Math.abs(centre(post)[0] - one.x), name).toBeLessThan(Math.abs(centre(post)[0] - two.x))
+    }
+  })
+
+  test("the die sits in the reflector cup on the axis, a bond wire from its top to the post", () => {
+    for (const name of ["LED1", "LED2"]) {
+      const { faces, placed } = partOf(name)
+      const one = placed.pads.find((pad) => pad.number === "1")!
+      const die = faces.filter((face) => face.role === "cap")
+      expect(die.length, name).toBeGreaterThan(0)
+      const dieTop = faces.find((face) => face.role === "cap" && face.normal[2] > 0.99)!
+      const [dx, dy] = centre(dieTop)
+      expect(Math.hypot(dx - placed.x, dy - placed.y), name).toBeLessThan(0.05)
+      const radial = (face: Face) => Math.max(...face.loops.flat().map((p) => Math.hypot(p[0] - placed.x, p[1] - placed.y)))
+      const metal = FAMILY_LOOKS.ledlens.metal.join(",")
+      // The cup: the round bowl's slanted sides about the axis (the plates' faces all face along x, y or z, or lie in x–z).
+      const cup = faces.filter((face) => face.role === "pin" && face.color.join(",") === metal && radial(face) < 0.9 && Math.abs(face.normal[1]) > 0.05 && Math.abs(face.normal[1]) < 0.99)
+      expect(cup.length, name).toBeGreaterThan(8)
+      expect(Math.max(...zs(cup)), name).toBeGreaterThan(Math.max(...zs(die)))
+      expect(Math.min(...zs(cup)), name).toBeLessThan(Math.min(...zs(die)))
+      expect(Math.max(...die.map(radial)), name).toBeLessThan(Math.min(...cup.map(radial)))
+      // The wire: thin pieces of another metal (gold), from the die's top towards the anode.
+      const wire = faces.filter((face) => face.role === "pin" && face.color.join(",") !== metal)
+      expect(wire.length, name).toBeGreaterThan(4)
+      for (const face of wire) expect(spanOf(face, 1), name).toBeLessThan(0.1)
+      const ends = points(wire)
+      expect(Math.min(...ends.map((p) => p[2])), name).toBeCloseTo(Math.max(...zs([dieTop])), 1)
+      const reach = Math.min(...ends.map((p) => Math.abs(p[0] - one.x)))
+      expect(reach, name).toBeLessThan(Math.abs(placed.x - one.x) - 0.3)
+    }
+  })
+
   test("red by default, and coloured by the part's color prop; anything else red", () => {
     const hue = (name: string) => {
       const dome = partOf(name).faces.filter((face) => face.role === "body" && face.normal[2] > 0.3).sort((a, b) => Math.max(...zs([b])) - Math.max(...zs([a])))[0]!
@@ -260,7 +335,7 @@ describe("a round LED", () => {
 })
 
 describe("a screw terminal block", () => {
-  test("a green block, a slotted round head over every pin, a dark wire opening per pole on the front", () => {
+  test("a green block in poles, a slotted head down a well over every pin, a wire entry with its clamp per pole on the front", () => {
     for (const [name, poles] of [["J1", 2], ["J2", 4], ["J3", 24]] as const) {
       const { faces, placed, solid } = partOf(name)
       expect(placed.pads.length).toBe(poles)
@@ -273,12 +348,21 @@ describe("a screw terminal block", () => {
       for (const pad of placed.pads) expect(heads.some((face) => Math.hypot(centre(face)[0] - pad.x, centre(face)[1] - pad.y) < 0.2), `${name} head ${pad.number}`).toBe(true)
       const slots = faces.filter((face) => face.role === "cap" && face.normal[2] > 0.99 && dark(face))
       expect(slots.length, name).toBe(poles)
-      const openings = faces.filter((face) => face.role === "body" && face.normal[1] < -0.99 && dark(face))
-      expect(openings.length, name).toBe(poles)
-      for (const pad of placed.pads) expect(openings.some((face) => Math.abs(centre(face)[0] - pad.x) < 0.2), `${name} opening ${pad.number}`).toBe(true)
-      // The openings are on the front (−y) face of the block, below the heads.
+      // Each head sits at the floor of a well cut into the block's top: the top of every pole has a round hole over its pin.
+      const tops = faces.filter((face) => face.role === "body" && face.normal[2] > 0.99 && face.loops.length === 2)
+      expect(tops.length, name).toBe(poles)
+      const topZ = Math.max(...tops.flatMap((face) => face.loops[0]!.map((p) => p[2])))
+      for (const head of heads) expect(topZ, name).toBeGreaterThan(head.loops[0]![0]![2] + 0.5)
+      // A wire entry per pole: a square hole in the front (−y) face, at the pin, with the metal clamp behind it.
       const frontY = Math.min(...points(faces.filter((face) => face.role !== "lead")).map((p) => p[1]))
-      for (const opening of openings) expect(centre(opening)[1]).toBeLessThan(frontY + 0.1)
+      const fronts = faces.filter((face) => face.role === "body" && face.normal[1] < -0.99 && face.loops.length === 2)
+      expect(fronts.length, name).toBe(poles)
+      for (const front of fronts) expect(centre(front)[1]).toBeLessThan(frontY + 0.1)
+      const entries = fronts.map((face) => face.loops[1]!.reduce((s, p) => s + p[0], 0) / face.loops[1]!.length)
+      for (const pad of placed.pads) expect(entries.some((x) => Math.abs(x - pad.x) < 0.2), `${name} entry ${pad.number}`).toBe(true)
+      const clamps = faces.filter((face) => face.material === "metal" && face.role === "body" && face.normal[1] < -0.99)
+      expect(clamps.length, name).toBe(poles)
+      for (const clamp of clamps) expect(centre(clamp)[1]).toBeGreaterThan(frontY + 0.5)
       expect(Math.max(...zs(faces.filter((face) => face.role !== "lead")))).toBeCloseTo(solid.top, 6)
     }
   })

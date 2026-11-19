@@ -69,11 +69,11 @@ function placer(part: PlacedFootprint, thickness: number) {
 }
 
 /** The shape input of one placed part, in its own frame. */
-export function shapeInput(part: PlacedFootprint, height: number, look: ShapeInput["look"], parsed: ShapeInput["parsed"], thickness: number, lookName?: string): ShapeInput {
+export function shapeInput(part: PlacedFootprint, height: number, look: ShapeInput["look"], parsed: ShapeInput["parsed"], thickness: number, lookName?: string, props?: ShapeInput["props"]): ShapeInput {
   const footprint = part.footprint
   const limit = rectOf(footprint?.courtyard ?? []) ?? rectOf((footprint?.pads ?? []).map((p) => ({ x: p.x, y: p.y }))) ?? FALLBACK
   const body = rectOf((footprint?.fabrication ?? []).flat())
-  return { pads: footprint?.pads ?? [], height, limit, ...(body ? { body } : {}), ...(footprint?.fabrication.length ? { outlines: footprint.fabrication } : {}), look, ...(lookName ? { lookName } : {}), ...(parsed ? { parsed } : {}), thickness }
+  return { pads: footprint?.pads ?? [], height, limit, ...(body ? { body } : {}), ...(footprint?.fabrication.length ? { outlines: footprint.fabrication } : {}), look, ...(lookName ? { lookName } : {}), ...(parsed ? { parsed } : {}), ...(props ? { props } : {}), thickness }
 }
 
 /** Every part's faces; each face carries its part's index in the model. */
@@ -87,7 +87,7 @@ export function partFaces(design: Design, model: SolidModel): Face[] {
     const through = part.pads.some((pad) => pad.layers === "through")
     const { family, look, parsed } = familyOf(component?.kind ?? "", component?.footprint, through, part.component)
     const paint = family === "ledth" ? ledLook(FAMILY_LOOKS[look], component?.props) : FAMILY_LOOKS[look]
-    const input = shapeInput(part, solid.height, paint, parsed, thickness, look)
+    const input = shapeInput(part, solid.height, paint, parsed, thickness, look, component?.props)
     const shaped = part.footprint === undefined ? [] : SHAPES[family](input)
     const pieces = shaped.length === 0 ? plainBox(input) : shaped
     const place = placer(part, thickness)
@@ -95,7 +95,7 @@ export function partFaces(design: Design, model: SolidModel): Face[] {
       loops: piece.loops.map((loop) => loop.map(place.point)),
       normal: place.normal(piece.normal),
       color: piece.color,
-      alpha: 1,
+      alpha: piece.alpha ?? 1,
       part: index,
       material: piece.material,
       role: piece.role,

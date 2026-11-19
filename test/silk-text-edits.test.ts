@@ -54,7 +54,7 @@ describe("editing the board's silkscreen texts", () => {
     const add = (fields: Partial<Extract<Edit, { kind: "addSilkText" }>>): Edit => ({ kind: "addSilkText", text: "OK", x: 0, y: 0, layer: "top", ...fields })
     expect(refusal([add({ text: "" })])).toBe("text must be some words, not empty")
     expect(refusal([add({ height: 0.3 })])).toBe("height must be at least 0.8 mm, the smallest text a board house prints legibly")
-    expect(refusal([add({ text: "5 µA" })])).toMatch(/^the silkscreen lettering cannot draw "µ"; it draws A-Z a-z 0-9/)
+    expect(refusal([add({ text: "5 Ω" })])).toMatch(/^the silkscreen lettering cannot draw "Ω"; it draws A-Z a-z 0-9/)
     expect(refusal([add({ layer: "inner1" as "top" })])).toBe('layer must be "top" or "bottom"')
     expect(refusal([add({ x: 40 })])).toBe("the text's middle (40, 0) lies outside the board; put it on the board")
     expect(refusal([{ kind: "setSilkText", id: "silkscreentext:1", props: { text: null } }])).toBe("text cannot be removed; only height, rotation, name can")

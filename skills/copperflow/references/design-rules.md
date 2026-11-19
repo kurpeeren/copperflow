@@ -201,6 +201,7 @@ position. Anything a check cannot evaluate is reported as `unchecked`, never sil
 | `output-conflict` | error | Several outputs drive one net. |
 | `no-power-source` | warning | A net has power inputs but no power output, connector, pin header or battery pin, and is not a global net. |
 | `single-pin-net` | warning | A named net has only one pin. |
+| `case-size` | warning | An electrolytic capacitor's capacitance and `voltageRating` are made in a larger or smaller can (in a general-purpose series' table) than its radial footprint is for. |
 | `clearance` | error | Copper of two pads of different nets is closer than the larger clearance of their classes. |
 | `board-edge` | error | A pad or its hole is closer to the board edge than `boardEdgeClearance`, or outside the board. |
 | `drill-size` | error | A drill is below `minDrill`. |

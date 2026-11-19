@@ -18,6 +18,8 @@ export interface ShapeInput {
   /** The name of the look in FAMILY_LOOKS, for a shape that dresses differently by what the part is (bands, a cathode). */
   lookName?: string
   parsed?: ParsedFootprint
+  /** The part's props in the circuit (its value, voltage, colour), for a shape that prints or shows them. */
+  props?: Readonly<Record<string, unknown>>
   /** The board's thickness, for leads that go through it. */
   thickness: number
 }

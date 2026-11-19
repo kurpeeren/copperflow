@@ -1,10 +1,11 @@
 // A surface-mount aluminium can: a black plastic base (the footprint's body outline, two corners clipped on the plus
 // side) under an aluminium can with a rounded top edge, a dark segment on the lid at the minus side (pad 2) and a
-// J-lead from the base's side to each pad. Pure.
+// J-lead from the base's side to each pad; its value and voltage are printed on the lid beside the segment. Pure.
 import { clipPieces } from "./chip.js"
 import { padsRect, type ShapeInput } from "./input.js"
 import { clipped, grown, lathe, prism, rectOf, type Flat, type Piece, type Rect } from "./kit.js"
 import { jLead, sideOf } from "./smd.js"
+import { lidPrint, printedLines } from "./sleeve-print.js"
 
 /** The base stands this far off the board (the lead's thickness), and is this share of the height, between these limits, mm. */
 const STANDOFF = 0.12
@@ -68,6 +69,8 @@ export function smdCanShape(input: ShapeInput): Piece[] {
     ...prism(baseOutline(input, body), standoff, baseTop, look.body, "matt", "body"),
     ...lathe(profile, 0, 0, SIDES, { top: look.top ?? look.metal, side: look.metal }, "metal", "body"),
     ...prism(dark, lidZ, h, look.mark, "matt", "cathode"),
+    // The value and voltage, in the lid's plain part beside the segment.
+    ...lidPrint({ x: (-lidRadius + lidRadius * SEGMENT_FROM * SEGMENT_SHARE) / 2, y: 0 }, lidRadius * 1.3, lidRadius * (1 + SEGMENT_FROM * SEGMENT_SHARE) * 0.8, lidZ, printedLines(input.props), look.mark),
   ]
   const strip = Math.min(STRIP, standoff)
   const rise = (standoff + baseTop) / 2 + strip / 2

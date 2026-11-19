@@ -36,14 +36,14 @@ describe("<silkscreentext> in the circuit file", () => {
   test("refuses empty text, too small a height, a character the lettering lacks, a bad side and no position, each with its reason", () => {
     const circuit = build(`<silkscreentext text="  " x={0} y={0} />
 <silkscreentext text="tiny" x={0} y={0} height={0.5} />
-<silkscreentext text="5 µA" x={0} y={0} />
+<silkscreentext text="5 Ω" x={0} y={0} />
 <silkscreentext text="side" x={0} y={0} layer="inner1" />
 <silkscreentext text="where" />
 <silkscreentext text="kept" x={0} y={0} />`)
     expect(messages(circuit)).toEqual([
       "silkscreentext silkscreentext:1: text must be some words, not empty; it is ignored",
       "silkscreentext silkscreentext:2: height must be at least 0.8 mm, the smallest text a board house prints legibly; it is ignored",
-      'silkscreentext silkscreentext:3: the silkscreen lettering cannot draw "µ"; it draws A-Z a-z 0-9, space and - _ + . / ~ ( ) # : % = , !; it is ignored',
+      'silkscreentext silkscreentext:3: the silkscreen lettering cannot draw "Ω"; it draws A-Z a-z 0-9, space and - _ + . / ~ ( ) # : % = , ! µ; it is ignored',
       'silkscreentext silkscreentext:4: layer must be "top" or "bottom"; it is ignored',
       "silkscreentext silkscreentext:5: needs x and y; it is ignored",
     ])

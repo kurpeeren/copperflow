@@ -79,6 +79,33 @@ describe("the 3D view's drawing", () => {
     expect(over).toEqual({ part: 4, rgb: [255, 0, 0] })
   })
 
+  test("lit, a clear face (an LED's lens) tints what is behind it, hides nothing, and is hidden by what is in front", () => {
+    const litAt = (faces: Face[], p: Vec3) => {
+      const s = scene(faces)
+      const frame = renderScene(s, TOP, 100, 100, { background: BACK, lit: true })
+      const { x, y } = project(viewFrame(TOP, s, 100, 100), p)
+      const i = Math.floor(y) * 100 + Math.floor(x)
+      return { part: frame.ids[i], rgb: [frame.color[i * 4], frame.color[i * 4 + 1], frame.color[i * 4 + 2]] as number[] }
+    }
+    const inside = face(square(2, 2, 3, 0), BLUE, 3)
+    const lens = face(square(1, 1, 5, 2), RED, 4, 0.5)
+    const seen = litAt([lens, inside], [3, 3, 0])
+    expect(seen.part).toBe(4)
+    expect(seen.rgb[0]).toBeGreaterThan(40)
+    expect(seen.rgb[2]).toBeGreaterThan(40)
+    const cover = face(square(0, 0, 10, 3), BLUE, 5)
+    expect(litAt([lens, cover], [3, 3, 3])).toEqual(litAt([cover], [3, 3, 3]))
+  })
+
+  test("clear faces are drawn farthest first, so two of them show the same whichever comes first in the scene", () => {
+    const near = face(square(1, 1, 5, 2), RED, 4, 0.5)
+    const far = face(square(1, 1, 5, 1), [0, 255, 0], 5, 0.5)
+    for (const lit of [false, true]) {
+      const draw = (faces: Face[]) => Array.from(renderScene(scene(faces), TOP, 100, 100, { background: BACK, lit }).color)
+      expect(draw([near, far]), `lit ${lit}`).toEqual(draw([far, near]))
+    }
+  })
+
   test("the highlighted part is drawn lighter", () => {
     const plain = renderScene(scene([near]), TOP, 100, 100, { background: BACK })
     const lit = renderScene(scene([near]), TOP, 100, 100, { background: BACK, highlight: 0 })

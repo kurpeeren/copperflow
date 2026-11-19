@@ -45,7 +45,7 @@ export const FAMILY_LOOKS = {
   socket: { sentence: "Pin socket: a black body with a dark square opening over every pin and a gold pin through each hole.", body: [26, 26, 28], metal: GOLD, mark: [8, 8, 10] },
   header: { sentence: "Pin header: a black plastic base with a gold pin on every pad.", body: [28, 28, 30], metal: GOLD, mark: [28, 28, 30] },
   crystal: { sentence: "Crystal: a plain metal can with rounded ends.", body: [188, 190, 194], metal: TIN, mark: [188, 190, 194] },
-  electrolytic: { sentence: "Electrolytic capacitor: a dark blue sleeve with a pale stripe at the minus lead, a metal lid.", body: [38, 52, 98], top: [182, 186, 192], metal: TIN, mark: [198, 204, 214] },
+  electrolytic: { sentence: "Electrolytic capacitor: a black sleeve with a white stripe of chevrons and minus bars at the minus lead, its value and voltage printed up the can, a metal lid with a vent.", body: [30, 30, 33], top: [186, 190, 196], metal: TIN, mark: [228, 230, 232] },
   relay: { sentence: "Relay: a mid-blue box with its leads.", body: [46, 86, 156], top: [58, 100, 170], metal: TIN, mark: [46, 86, 156] },
   terminal: { sentence: "Connector at another pitch, such as a terminal block: a green box with its leads.", body: [44, 128, 78], metal: TIN, mark: [44, 128, 78] },
   block: { sentence: "Any other through-hole part: a dark grey box with its leads.", body: [72, 74, 78], metal: TIN, mark: [72, 74, 78] },

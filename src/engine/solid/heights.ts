@@ -4,6 +4,7 @@
 // A row with a `document` was read from that document (its page named); every other row is typical: written from
 // general knowledge of the standards and makers' drawings, not read from them, and named "typical" wherever it shows.
 import { parseFootprint, type ParsedFootprint } from "../footprints/parse.js"
+import { RADIAL_RATINGS_DOCUMENT, radialCase } from "./radial-ratings.js"
 import { parseLength } from "../units.js"
 import { SMD_ROWS } from "./heights-smd.js"
 import { THROUGH_HOLE_ROWS } from "./heights-through.js"
@@ -134,6 +135,11 @@ export function partHeight(part: { footprint?: string; props: Readonly<Record<st
   const given = givenHeight(part.props)
   if (given !== undefined) return { height: given, source: "given", state: "given", assumed: false }
   const parsed = part.footprint === undefined || part.footprint.includes("/") ? undefined : parseFootprint(part.footprint)
+  const can = parsed?.kind === "radial" ? radialCase(part.props) : undefined
+  if (can !== undefined && can.diameter === Number(parsed?.code)) {
+    const source = `${RADIAL_RATINGS_DOCUMENT}: ${can.volts} V ${can.microfarads} µF is a ${can.diameter} x ${can.length} mm can`
+    return { height: can.length, source, state: "read", assumed: false }
+  }
   const row = parsed === undefined ? undefined : HEIGHT_TABLE.find((candidate) => candidate.matches(parsed))
   if (row === undefined) return { height: ASSUMED_HEIGHT, source: "assumed", state: "assumed", assumed: true }
   const height = row.heightOf?.(parsed as ParsedFootprint) ?? row.height
