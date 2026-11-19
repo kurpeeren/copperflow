@@ -87,7 +87,8 @@ describe("copperflow html", () => {
     expect(pictureWidths(html)).toEqual([1600, 1600, 1600, 1600, 1200, 1200, 1200])
     expect(html).toContain('<td class="designators">R1</td>')
     expect(html).toMatch(/<span class="file-name">[^<]+-fab\.zip<\/span><span class="file-size">\d+ kB<\/span><span class="file-what">Download the fabrication files \(Gerbers, drills, pick-and-place, BOM, STEP, board pictures\)<\/span>/)
-    expect(html).not.toMatch(/https?:\/\//)
+    // The credit line's link is the one address on the page, and it is only followed when a person clicks it.
+    expect(html.replaceAll("https://copperflow.kurpeeren.com", "")).not.toMatch(/https?:\/\//)
     // Nothing but the page is left beside the circuit.
     expect((await readdir(join(root, "boards"))).sort()).toEqual(["led.circuit.tsx", "led.html"])
   }, LOADED_MACHINE_MS)

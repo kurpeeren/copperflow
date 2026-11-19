@@ -1,6 +1,7 @@
 // The one-file web page of a design (html-page.ts): pure, data in, HTML out.
 import { describe, expect, test } from "vitest"
 import { escapeHtml, htmlPage, type PageData } from "../src/core/html-page.js"
+import { formatHtmlExport } from "../src/core/html-export.js"
 
 const PNG = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])
 const picture = (alt: string) => ({ png: PNG, width: 1600, height: 900, alt })
@@ -22,6 +23,16 @@ function data(overrides: Partial<PageData> = {}): PageData {
     ...overrides,
   }
 }
+
+describe("the credit line", () => {
+  test("is the last line of the page and links to the project in a new tab", () => {
+    const html = htmlPage(data())
+    const line = '<p class="made-with">Made with <a href="https://copperflow.kurpeeren.com" target="_blank" rel="noopener">copperflow</a> 0.4.1</p>'
+    expect(html).toContain(line)
+    expect(html.indexOf(line)).toBeGreaterThan(html.indexOf("</footer>"))
+    expect(html.indexOf(line)).toBeLessThan(html.indexOf("<script>"))
+  })
+})
 
 const count = (text: string, pattern: RegExp) => (text.match(pattern) ?? []).length
 
@@ -97,7 +108,8 @@ describe("the page", () => {
 
   test("refers to nothing outside the file", () => {
     const html = htmlPage(data())
-    expect(html).not.toMatch(/https?:\/\//)
+    // The credit line's link is the one address on the page, and it is only followed when a person clicks it.
+    expect(html.replaceAll("https://copperflow.kurpeeren.com", "")).not.toMatch(/https?:\/\//)
     expect(html).not.toMatch(/<script[^>]*src/i)
     expect(html).not.toMatch(/<link/i)
     expect(html).not.toMatch(/@import|url\(/i)
@@ -109,5 +121,13 @@ describe("the page", () => {
 
   test("escapeHtml escapes the five characters", () => {
     expect(escapeHtml(`<a href="x">'&'</a>`)).toBe("&lt;a href=&quot;x&quot;&gt;&#39;&amp;&#39;&lt;/a&gt;")
+  })
+})
+
+describe("the answer to an export", () => {
+  test("ends with an offer of a README badge, and nothing is added to the person's files", () => {
+    const lines = formatHtmlExport({ file: "io-8.html", bytes: 2_100_000, what: "the design as one page", split: undefined } as never).split("\n")
+    expect(lines[0]).toContain("Wrote io-8.html")
+    expect(lines.at(-1)).toBe("To credit copperflow in a README: [![Made with copperflow](https://img.shields.io/badge/made%20with-copperflow-c8702a)](https://copperflow.kurpeeren.com)")
   })
 })

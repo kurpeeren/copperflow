@@ -5,6 +5,7 @@
 // a hole or an arc edge runs through the board. The board and every part is a product of its own ("board", "U1", …),
 // placed without a transformation in one assembly named after the design. Units are mm. The text is deterministic:
 // the same model writes the same bytes, so the header's time stamp is a fixed one, not the day it was written.
+import { VERSION } from "../../version.js"
 import type { Point } from "../model.js"
 import type { PartSolid, Segment, SolidModel } from "./model.js"
 
@@ -200,7 +201,7 @@ export function stepText(model: SolidModel, name: string): string {
     "ISO-10303-21;\n",
     "HEADER;\n",
     "FILE_DESCRIPTION(('The board and its parts as boxes'),'2;1');\n",
-    `FILE_NAME(${quoted(`${name}.step`)},'${FIXED_STAMP}',(''),(''),'copperflow','copperflow','');\n`,
+    `FILE_NAME(${quoted(`${name}.step`)},'${FIXED_STAMP}',(''),(''),'copperflow ${VERSION}','copperflow ${VERSION}','');\n`,
     "FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));\n",
     "ENDSEC;\n",
     "DATA;\n",

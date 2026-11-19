@@ -1,0 +1,28 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.kurpeeren/copperflow",
+  "title": "copperflow",
+  "description": "Design PCBs with an agent: schematic, placement, autorouting, DRC, Gerber, BOM and STEP export.",
+  "websiteUrl": "https://copperflow.kurpeeren.com",
+  "repository": {
+    "url": "https://github.com/kurpeeren/copperflow",
+    "source": "github"
+  },
+  "version": "0.5.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "copperflow",
+      "version": "0.5.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
+    }
+  ]
+}

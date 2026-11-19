@@ -165,10 +165,14 @@ export function exportHtml(root: string, file: string, options: HtmlOptions = {}
   })
 }
 
+/** The badge a person may paste into their own repository's README; offered in the answer, never added to their files. */
+const README_BADGE = "[![Made with copperflow](https://img.shields.io/badge/made%20with-copperflow-c8702a)](https://copperflow.kurpeeren.com)"
+
 /** "Wrote io-8.html (2100 kB): the design as one page: ..." and what opens it. */
 export function formatHtmlExport(result: HtmlExport): string {
   return [
     `Wrote ${result.file} (${Math.max(1, Math.round(result.bytes / 1000))} kB): ${result.what}`,
     "Any web browser opens it from disk, with no network; it is a look at the design and its files, not an editor.",
+    `To credit copperflow in a README: ${README_BADGE}`,
   ].join("\n")
 }

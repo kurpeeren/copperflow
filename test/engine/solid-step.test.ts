@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest"
 import { buildDesign } from "../../src/engine/design.js"
 import { boardVolume, partVolume, solidModel } from "../../src/engine/solid/model.js"
 import { stepText } from "../../src/engine/solid/step.js"
+import { VERSION } from "../../src/version.js"
 import { productNames, readStep, solids } from "../helpers/step-read.js"
 
 const MAIN = "main.circuit.tsx"
@@ -20,6 +21,7 @@ describe("the STEP file", () => {
     const file = readStep(text)
     expect(file.header).toContain("FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));")
     expect(file.header).toContain("'main.step','2000-01-01T00:00:00'")
+    expect(file.header).toContain(`'copperflow ${VERSION}','copperflow ${VERSION}',''`)
     expect(text).toContain("(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.))")
   })
 

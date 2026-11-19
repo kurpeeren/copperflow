@@ -457,6 +457,20 @@ their component files written by copperflow. A library module reads NOT verified
   DC simulation, KiCad board import and the board drawn as made.
 - **Next** Routing pairs together and tuning lengths, time and frequency in the simulator, real part models in 3D.
 
+## Share your board
+
+Share the one-page HTML from `export_html` (or `copperflow html`) in
+[GitHub Discussions, Show and tell](https://github.com/kurpeeren/copperflow/discussions/categories/show-and-tell). It shows
+the schematic, the board, 3D and the BOM, and it runs no code from the project. Add the topic `copperflow-project` to a
+repository that holds a copperflow project. To credit copperflow in its README:
+
+```md
+[![Made with copperflow](https://img.shields.io/badge/made%20with-copperflow-c8702a)](https://copperflow.kurpeeren.com)
+```
+
+A copperflow project's `.circuit.tsx` files are code that runs when the project is opened, so open other people's
+projects only when you trust them, and look at their HTML first.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).

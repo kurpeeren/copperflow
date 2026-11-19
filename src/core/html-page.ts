@@ -4,6 +4,9 @@
 import type { BomLine } from "./bom.js"
 import { PAGE_SCRIPT, PAGE_STYLE } from "./html-style.js"
 
+/** Where a reader of a shared page finds the program. */
+export const PROJECT_URL = "https://copperflow.kurpeeren.com"
+
 export interface PagePicture {
   png: Uint8Array
   width: number
@@ -160,6 +163,8 @@ export function htmlPage(data: PageData): string {
     picturesSection("three-d", "3D", data.threeD),
     bomSection(data),
     `<footer>${escapeHtml(data.name)}, ${escapeHtml(data.date)}. The pictures and the files are inside this page.</footer>`,
+    // A quiet credit so a shared page tells the reader which program made it; the only link that leaves the page.
+    `<p class="made-with">Made with <a href="${PROJECT_URL}" target="_blank" rel="noopener">copperflow</a> ${escapeHtml(data.version)}</p>`,
     "</main>",
     `<script>${PAGE_SCRIPT}</script>`,
     "</body>",

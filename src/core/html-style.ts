@@ -71,6 +71,8 @@ th { font-weight: 600; font-size: 0.8rem; color: var(--muted); border-bottom: 2p
 th.number, td.number { text-align: right; }
 .unverified { font-weight: 600; color: var(--no); }
 footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 0.85rem; }
+.made-with { margin: 8px 0 0; color: var(--muted); font-size: 0.8rem; }
+.made-with a { color: inherit; }
 @media (max-width: 640px) {
   figure.wide img { min-width: 640px; max-width: none; }
   figure.wide figcaption::before { content: "Swipe sideways to see the rest. "; }
