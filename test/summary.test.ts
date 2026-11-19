@@ -71,7 +71,7 @@ test("summary lists drawings by id, with locks and read-only props", () => {
   expect(text).toContain("sheet.circuit.tsx: 1 parts, 1 traces, 6 drawings")
   expect(text).toContain("Drawings:\n  G1 <schematicrect> [LOCKED] x={1} y={2} width={3} height={1.5}\n  drawing:path:1 <schematicpath> points=")
   expect(text).toContain('  D[0:7]~2 <bus> name="D[0:7]" points={[{ x: 4, y: 3 }, { x: 4, y: 5 }]}')
-  expect(text).toContain('  G2 <schematictext> x={1 + 1} (read-only) y={1} text="Power"')
+  expect(text).toContain('  G2 <schematictext> x={1 + 1} (code: set_props cannot change it) y={1} text="Power"')
 })
 
 test("a circuit without drawings keeps its summary as it was", () => {

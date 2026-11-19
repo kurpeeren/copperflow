@@ -75,9 +75,12 @@ export function formatHistory(entries: HistoryListing[], problems: readonly { fi
   return [...rows, ...skipped].join("\n")
 }
 
+/** Marks a prop whose value is written as code (not a plain value): set_props cannot change it, the rest of the part can be. */
+const CODE_VALUE = " (code: set_props cannot change it)"
+
 function formatProps(props: Record<string, PropInfo>): string {
   return Object.entries(props)
-    .map(([key, prop]) => `${prop.source ? `${key}=${oneLine(prop.source)}` : key}${prop.editable ? "" : " (read-only)"}`)
+    .map(([key, prop]) => `${prop.source ? `${key}=${oneLine(prop.source)}` : key}${prop.editable ? "" : CODE_VALUE}`)
     .join(" ")
 }
 

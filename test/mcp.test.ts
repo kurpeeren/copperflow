@@ -206,7 +206,7 @@ describe("MCP server", () => {
     expect(summary).toContain('R1 <resistor> resistance="5.1k" footprint="0402" pcbX={-4} pcbY={2}')
     expect(summary).toContain("C1 <capacitor> [LOCKED]")
     expect(summary).toContain("RX <resistor> [read-only: inside a callback such as .map()]")
-    expect(summary).toContain("pcbX={offset + 2} (read-only)")
+    expect(summary).toContain("pcbX={offset + 2} (code: set_props cannot change it)")
     expect(summary).toContain(".R1 > .pin1 -> net.GND")
     expect(summary).toContain("m1 (pcb 1, 2): route GND here")
     expect(summary).toContain("Lock violations: none")

@@ -85,8 +85,8 @@ describe("measurement parsers", () => {
       "io.circuit.tsx: 3 parts, 3 traces",
       "Parts:",
       "  J1 <pinheader> pinCount={3}",
-      '  CH1 <Input> connections={{ IN: "IN1" }} (read-only) base={100}',
-      '  CH2 <Input> connections={{ IN: "IN2" }} (read-only) base={200}',
+      '  CH1 <Input> connections={{ IN: "IN1" }} (code: set_props cannot change it) base={100}',
+      '  CH2 <Input> connections={{ IN: "IN2" }} (code: set_props cannot change it) base={200}',
     ].join("\n")
     expect(countInstances(text)).toBe(2)
   })
