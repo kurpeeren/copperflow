@@ -24,11 +24,11 @@ export const PACKAGES_TOPIC = "packages"
 
 export const guideInput = {
   topic: z.string().max(100).optional().describe(`One of ${Object.keys(GUIDE_TOPICS).join(", ")}, or ${PACKAGES_TOPIC} [words]: the footprint strings`),
-  again: z.boolean().optional(),
+  again: z.boolean().optional().describe("Answer a text already read in full"),
 }
 
 export const GUIDE_DESCRIPTION =
-  "The copperflow skill: SKILL.md, or a reference with a topic. A text already read answers a short line unless again. Call it when the skill is not installed."
+  "Read how to design with these tools: no topic gives the copperflow skill (SKILL.md), a topic one reference. A text already read answers a short line unless again. Call it when the skill is not installed."
 
 /** The most argument sets one session remembers having answered. */
 export const GUIDE_MEMORY_LIMIT = 32

@@ -44,9 +44,11 @@ async function listedTools() {
 
 // Every client pays for the whole tool list on every turn: worked detail belongs in the guide. The limit is an
 // average per tool (31,000 characters for 42 tools when it was set), so a new tool is allowed and a fat one is not.
-const AVERAGE_PER_TOOL = 740
+// Raised from 740 to 760 so every argument says what it is (the module tools', add_hole's): an argument without a
+// description was the commonest reason an agent called a tool wrongly.
+const AVERAGE_PER_TOOL = 760
 
-test("the tool list stays at 740 characters a tool on average", async () => {
+test("the tool list stays at 760 characters a tool on average", async () => {
   const tools = await listedTools()
   const total = JSON.stringify(tools).length
   const limit = AVERAGE_PER_TOOL * tools.length

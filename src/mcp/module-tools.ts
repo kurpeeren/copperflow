@@ -17,24 +17,39 @@ export function registerModuleTools(server: McpServer, root: string, run: (task:
   server.registerTool(
     "save_module",
     {
-      description: "Copy a described sheet and its library parts to the person's shelf of modules, after they approved the board. Refused without does or with a port that has no type and no carries (describe_sheet).",
-      inputSchema: { file: z.string(), name: z.string().optional(), replace: z.boolean().optional() },
+      description: "Copy a described sheet and its library parts to the person's shelf of modules, only after they approved the board. Refused without does or with a port that has no type and no carries: run describe_sheet first.",
+      inputSchema: {
+        file: z.string().describe("The sheet, <Name>.sheet.tsx"),
+        name: z.string().optional().describe("Default the sheet's name"),
+        replace: z.boolean().optional().describe("Overwrite a module of that name"),
+      },
     },
     (input) => run(() => saveModule(root, input, errors)),
   )
   server.registerTool(
     "list_modules",
-    { description: "The shelf, then each library (modules named library/Name), one line a module. Look here before designing a block.", inputSchema: { filter: z.string().optional() }, annotations: READ_ONLY },
+    {
+      description: "List the modules: the person's shelf, then each library's (named library/Name), one line each. Look here before designing a block; module_info reads one.",
+      inputSchema: { filter: z.string().optional().describe("Words to narrow the list") },
+      annotations: READ_ONLY,
+    },
     ({ filter }) => run(async () => listModules(filter, await allLibraryModules())),
   )
   server.registerTool(
     "module_info",
-    { description: "A module's card, ports, parts, sources and origin.", inputSchema: { name: z.string() }, annotations: READ_ONLY },
+    {
+      description: "Read one module before using it: what it does, each port's type and what it carries, its parts, sources and origin. An unknown name is refused; use_module copies it.",
+      inputSchema: { name: z.string().describe("As list_modules shows it: Name or library/Name") },
+      annotations: READ_ONLY,
+    },
     ({ name }) => run(() => (isLibraryName(name) ? libraryModuleInfo(name) : moduleInfo(name))),
   )
   server.registerTool(
     "use_module",
-    { description: "Copy a module's sheet (and parts the project lacks) beside the circuit file; then add_instance. A library's sheet must be plain; its parts come as data.", inputSchema: { module: z.string(), file: z.string() } },
+    {
+      description: "Copy a module's sheet (and parts the project lacks) beside the circuit file; the answer gives the add_instance step to run next. A library's sheet must be plain; its parts come as data.",
+      inputSchema: { module: z.string().describe("As list_modules shows it"), file: z.string().describe("The circuit it goes into") },
+    },
     (input) => run(() => (isLibraryName(input.module) ? useLibraryModule(root, input) : useModule(root, input))),
   )
 }

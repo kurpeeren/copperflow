@@ -450,7 +450,7 @@ Nothing was written.`)
   server.registerTool(
     "export_package",
     {
-      description: "Write a folder with the BOM, local datasheets and the library parts' verification status.",
+      description: "Write a folder for whoever orders and checks the parts: the BOM, local datasheets and each library part's verification status. The factory's files come from export_fabrication.",
       inputSchema: { file },
     },
     ({ file: circuit }) =>

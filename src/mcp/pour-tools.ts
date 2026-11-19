@@ -31,9 +31,9 @@ export const pourFields = {
 }
 
 export const holeFields = {
-  x: z.number(),
-  y: z.number(),
-  diameter: z.number().describe("mm"),
+  x: z.number().describe("Centre, mm"),
+  y: z.number().describe("Centre, mm"),
+  diameter: z.number().describe("Drill, mm"),
 }
 
 export const addPourInput = { file, ...pourFields }
@@ -45,7 +45,7 @@ export const ADD_POUR_DESCRIPTION =
   "Add a copper pour of a net on one layer as ONE change; it fills round other nets' copper on every build, and what it joins counts as routed. The answer gives its id and the pads it joins: check them."
 export const REMOVE_POUR_DESCRIPTION =
   "Remove a copper pour by id as ONE change. Locked pours are refused; a pour inside an instance (\"PS1/copperpour:1\") lives in its sheet file."
-export const ADD_HOLE_DESCRIPTION = "Add a non-plated mounting hole as ONE change."
+export const ADD_HOLE_DESCRIPTION = "Add a non-plated mounting hole (no copper, no net) on the board as ONE change; the answer gives its id for remove_hole."
 export const REMOVE_HOLE_DESCRIPTION =
   "Remove a non-plated hole by id as ONE change. Locked holes are refused; a hole inside an instance (\"PS1/hole:1\") lives in its sheet file."
 
