@@ -86,7 +86,15 @@ footer {
 }
 .top nav {
   display: flex;
-  gap: 1.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.25rem 1.5rem;
+}
+@media (max-width: 30rem) {
+  .top nav {
+    gap: 0.25rem 1rem;
+    font-size: 0.9375rem;
+  }
 }
 .top nav a {
   color: var(--ink);
@@ -125,6 +133,144 @@ p {
 
 .hero {
   padding-block: clamp(2.5rem, 7vw, 5rem) 0;
+}
+/* The words on the left, the workshop beside them on a wide screen and under them on a narrow one. */
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2rem;
+  align-items: center;
+}
+@media (min-width: 64rem) {
+  .hero-grid {
+    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+    gap: 3rem;
+  }
+}
+
+/* The hero's workshop (workshop.js): agents carry parts from a tray onto a board and lay its copper. */
+.workshop {
+  aspect-ratio: 640 / 400;
+  border-radius: 6px;
+  background: var(--canvas);
+}
+.workshop-scene {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.ws-tray {
+  fill: #1b1e23;
+  stroke: #2f343c;
+}
+.ws-tray-rule {
+  stroke: #2f343c;
+}
+.ws-board {
+  fill: #0f4a2c;
+  stroke: #1d6a40;
+  stroke-width: 2;
+  transition: stroke 400ms ease-out;
+}
+.ws-finished .ws-board {
+  stroke: var(--silk);
+}
+.ws-hole {
+  fill: var(--canvas);
+}
+.ws-silk {
+  fill: none;
+  stroke: #ecebe4;
+  stroke-opacity: 0.55;
+  stroke-width: 1.2;
+}
+.ws-track {
+  fill: none;
+  stroke: #e3a64e;
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ws-pin {
+  fill: #d9a441;
+}
+.ws-chip,
+.ws-header,
+.ws-res {
+  fill: #17191d;
+  stroke: #4a505a;
+  stroke-width: 1;
+}
+.ws-dot {
+  fill: #8a9099;
+}
+.ws-usb {
+  fill: #c5cad1;
+}
+.ws-usb-mouth {
+  fill: #3a3f47;
+}
+.ws-cap {
+  fill: #b98a5e;
+}
+.ws-led {
+  fill: #40d672;
+}
+.ws-body,
+.ws-visor {
+  stroke: #0c0c0d;
+  stroke-width: 1.5;
+}
+.ws-visor {
+  fill: #0c0c0d;
+}
+.ws-antenna {
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.ws-leg {
+  stroke: #e8e6df;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  transform-box: fill-box;
+  transform-origin: top;
+}
+.walking .ws-leg {
+  animation: ws-step 0.26s ease-in-out infinite alternate;
+}
+.walking .ws-leg-b {
+  animation-delay: -0.13s;
+}
+.ws-tip {
+  animation: ws-blink 2.4s steps(1) infinite;
+}
+.ws-log {
+  fill: #c9c7bf;
+  font: 400 13px "Plex Mono", ui-monospace, Consolas, monospace;
+}
+@keyframes ws-step {
+  from {
+    transform: rotate(-22deg);
+  }
+  to {
+    transform: rotate(22deg);
+  }
+}
+@keyframes ws-blink {
+  0%,
+  86% {
+    opacity: 1;
+  }
+  87%,
+  100% {
+    opacity: 0.25;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ws-tip,
+  .walking .ws-leg {
+    animation: none;
+  }
 }
 .lead {
   font-size: 1.25rem;
@@ -182,9 +328,55 @@ code {
   font-family: "Plex Mono", ui-monospace, Consolas, monospace;
   font-size: 0.92em;
 }
+/* A command written inside a sentence may break anywhere rather than push the page sideways on a phone. */
+p code {
+  overflow-wrap: anywhere;
+}
 
 .shot {
   margin: clamp(2rem, 5vw, 3.5rem) 0 0;
+}
+
+/* The headless session: its tool calls, then the two pictures it drew side by side (one column on a phone). */
+.headless {
+  display: grid;
+  gap: 1.25rem;
+  margin-top: 1.5rem;
+}
+.transcript {
+  max-width: 44rem;
+  background: var(--canvas);
+  color: var(--canvas-ink);
+  border-radius: 4px;
+  overflow-x: auto;
+}
+.transcript pre {
+  margin: 0;
+  padding: 1.125rem 1.25rem;
+  font: 400 0.875rem/1.85 "Plex Mono", ui-monospace, Consolas, monospace;
+}
+.transcript .call {
+  color: var(--silk);
+}
+.results {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: 0.75rem;
+}
+.results figcaption {
+  grid-column: 1 / -1;
+}
+.results img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+}
+.results figcaption {
+  color: var(--muted);
+  font-size: 0.9375rem;
 }
 
 /* The two ways to install side by side, the server first; one column on a phone. */

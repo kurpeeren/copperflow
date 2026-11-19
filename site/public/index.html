@@ -17,6 +17,7 @@
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="site.css" />
     <script src="site.js" defer></script>
+    <script src="workshop.js" defer></script>
   </head>
   <body>
     <header class="top">
@@ -31,17 +32,22 @@
 
     <main>
       <section class="hero">
-        <h1>Design circuit boards with the agent you already use.</h1>
-        <p class="lead">
-          copperflow is a PCB design program that runs on your computer. You draw in the editor, your agent works on
-          the same files through MCP, and every change it makes is one step you can undo.
-        </p>
-
-        <div class="command" data-copy>
-          <pre><code><span class="prompt" aria-hidden="true">$ </span>npm install -g copperflow</code></pre>
-          <button type="button">Copy</button>
+        <div class="hero-grid">
+          <div class="hero-copy">
+            <h1>Design circuit boards with the agent you already use.</h1>
+            <p class="lead">
+              copperflow is a PCB design program that runs on your computer. Your agent places, routes and checks the
+              board through MCP, with or without a window open; you draw in the same files, and every change it makes
+              is one step you can undo.
+            </p>
+            <div class="command" data-copy>
+              <pre><code><span class="prompt" aria-hidden="true">$ </span>npm install -g copperflow</code></pre>
+              <button type="button">Copy</button>
+            </div>
+            <p class="note">That is the MCP server, which works headless. Or <a href="#download">download the desktop app</a> for Windows, macOS or Linux: a window, and the same server inside.</p>
+          </div>
+          <div class="workshop" data-workshop></div>
         </div>
-        <p class="note">That is the MCP server, which works headless. Or <a href="#download">download the desktop app</a> for Windows, macOS or Linux: a window, and the same server inside.</p>
 
         <figure class="shot">
           <img
@@ -111,6 +117,34 @@
           Linux make the AppImage executable first. Each release lists the files' SHA-256 checksums on
           <a href="https://github.com/kurpeeren/copperflow/releases/latest">its GitHub page</a>.
         </p>
+      </section>
+
+      <section id="headless" aria-labelledby="headless-title">
+        <h2 id="headless-title">A whole board with no window open</h2>
+        <p>
+          This USB-C to 3.3 V board came out of one agent session in an empty folder. The agent saw it only as the
+          tools' short answers and the pictures they draw; nobody opened the editor.
+        </p>
+        <div class="headless">
+          <div class="transcript" role="figure" aria-label="The tool calls of that session and their answers">
+            <pre><code><span class="call">set_project</span>         Intent, Blocks, Open written to PROJECT.md
+<span class="call">create_part</span>         Created AP2112K-3.3: 5 pins, footprint sot23_5
+<span class="call">create_part</span>         Created TYPE-C-16P: 13 pins, footprint usb_c16
+<span class="call">new_circuit</span>         Wrote usb-c-3v3.circuit.tsx: 12 parts, 7 nets
+<span class="call">add_hole</span>            4 holes, 3.2 mm, one in each corner
+<span class="call">autoplace</span>           Placed 12 parts; 0 overlaps
+<span class="call">add_pour</span>            GND on both sides
+<span class="call">autoroute</span>           Routed 23 of 23 connections in 5 passes
+<span class="call">check_circuit</span>       0 errors, 0 warnings
+<span class="call">render</span>              The board as made, the PCB, the 3D view
+<span class="call">export_fabrication</span>  16 files: Gerbers, drills, BOM, STEP</code></pre>
+          </div>
+          <figure class="results">
+            <img src="usb-board-3d.png" width="1000" height="680" loading="lazy" alt="The USB-C power board in 3D: a green board with a USB-C socket on the left edge, a regulator, small capacitors, an LED, two pin headers and a lightning bolt printed beside the board name." />
+            <img src="usb-board-top.png" width="1000" height="647" loading="lazy" alt="The same board from above as it will be made: copper pads, the white print with the names USB-C 3V3, 5V, 3V3 and GND, and four mounting holes." />
+            <figcaption>What the agent drew to check its own work, and what goes to the factory.</figcaption>
+          </figure>
+        </div>
       </section>
 
       <section id="start" aria-labelledby="start-title">
@@ -221,7 +255,7 @@
           </figcaption>
         </figure>
 
-        <p class="status">copperflow is at version 0.4 and early. Expect rough edges, and tell us where you find them.</p>
+        <p class="status">copperflow is at version 0.5 and early. Expect rough edges, and tell us where you find them.</p>
       </section>
 
       <section aria-labelledby="local-title">
