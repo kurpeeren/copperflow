@@ -2,7 +2,8 @@ import { describe, expect, test } from "vitest"
 import { dialogKey, trapStep } from "../studio/src/shell/dialog-keys.js"
 import { createKeyGate } from "../studio/src/shell/key-gate.js"
 import { firstMenuItem, menuKey, type MenuShape } from "../studio/src/shell/menu-keys.js"
-import { MENUS, menuReducer, menuShapes } from "../studio/src/shell/menus.js"
+import { desktopOff } from "../studio/src/shell/desktop-bridge.js"
+import { MENUS, menuReducer, menuShapes, type CommandsOff } from "../studio/src/shell/menus.js"
 
 // Three menus: [item, separator, item, item], [separator, item], [item].
 const SHAPES: MenuShape[] = [["item", "separator", "item", "item"], ["separator", "item"], ["item"]]
@@ -126,13 +127,15 @@ describe("the real menus", () => {
     }
   })
   test("a menu opens at its first enabled item; Route at Single routing, and Settings at System…", () => {
-    const opening = (title: string) => {
+    const opening = (title: string, off: CommandsOff = desktopOff(undefined)) => {
       const i = MENUS.findIndex((m) => m.title === title)
-      const at = firstMenuItem(menuShapes("schematic")[i])
+      const at = firstMenuItem(menuShapes("schematic", undefined, off)[i])
       const entry = at === null ? undefined : MENUS[i]?.entries[at]
       return entry === "separator" ? "separator" : entry?.label
     }
+    // In a browser File → Projects… is off; in the desktop app it is the first item.
     expect(opening("File")).toBe("Open circuit file")
+    expect(opening("File", desktopOff({ backToProjects: async () => {} }))).toBe("Projects…")
     expect(opening("Route")).toBe("Single routing")
     expect(opening("Settings")).toBe("System…")
   })

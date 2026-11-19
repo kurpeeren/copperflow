@@ -5,3 +5,6 @@ coverage/
 *.log
 .DS_Store
 bench/results/
+desktop/build/
+desktop/stage/
+desktop/out/

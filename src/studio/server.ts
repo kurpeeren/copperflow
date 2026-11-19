@@ -64,7 +64,8 @@ import { formatBoardImport, importBoard } from "../core/board-import.js"
 import { formatGraphicImport, importGraphic } from "../core/graphic-import.js"
 import { formatKicadImport, importKicad } from "../library/kicad/import.js"
 import { watchIdle } from "./idle.js"
-import { controlRoute } from "./studio-control.js"
+import { controlRoute, type StudioHost } from "./studio-control.js"
+import { AgentActivitySchema } from "./activity-event.js"
 import { projectRoot } from "./studio-note.js"
 import { HttpError } from "./http-error.js"
 import { checklistRefusal, datasheetPdf, partScreen, tickChecklist } from "./verify-routes.js"
@@ -93,6 +94,10 @@ export interface StudioOptions {
   onIdle?: () => void
   /** Called on an authenticated POST /api/stop; by default the Studio closes. */
   onStop?: () => void
+  /** Who shows this Studio: "desktop" when the desktop app's window does; GET /api/studio says so. */
+  host?: StudioHost | undefined
+  /** Called on an authenticated POST /api/focus to bring the hosting window to the front; without it that route is a 404. */
+  onFocus?: (() => void) | undefined
   /** Loads the canvas package the fabrication export draws its board pictures with; tests pass one that is missing, to skip them. */
   canvas?: CanvasLoader
 }
@@ -361,11 +366,16 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
       if (!value) throw new HttpError(400, `Missing ${name}`)
       return value
     }
-    const control = controlRoute(route, projectRoot(root), () => (options.onStop ?? (() => void studio.close()))())
+    const stop = () => (options.onStop ?? (() => void studio.close()))()
+    const control = controlRoute(route, projectRoot(root), { stop, focus: options.onFocus, host: options.host })
     if (control !== undefined) return send(res, control)
     switch (route) {
       case "GET /api/events":
         return openEvents(res)
+      // The agent's MCP process says what it is doing; every open viewer hears it as an "activity" event.
+      case "POST /api/activity":
+        live.announce("activity", AgentActivitySchema.parse(await readJson(req)))
+        return send(res, { told: true })
       case "GET /api/circuits":
         return send(res, await listCircuits(root))
       case "GET /api/sheets":

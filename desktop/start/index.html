@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; form-action 'none'; base-uri 'none'" />
+    <title>copperflow</title>
+    <link rel="stylesheet" href="start.css" />
+  </head>
+  <body>
+    <main class="start">
+      <header class="brand">
+        <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M9 23 L9 15 L17 9 L23 9" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="23" r="4" fill="currentColor"/><circle cx="9" cy="23" r="1.6" class="hole"/><circle cx="23" cy="9" r="4" fill="currentColor"/><circle cx="23" cy="9" r="1.6" class="hole"/></svg>
+        <div>
+          <h1>copperflow</h1>
+          <p class="version" id="version"></p>
+        </div>
+      </header>
+
+      <section class="actions" aria-label="Start">
+        <button type="button" class="primary" id="open-folder">Open a project folder</button>
+        <form id="new-project" class="new-project">
+          <label for="project-name">New project</label>
+          <div class="row">
+            <input id="project-name" name="name" type="text" placeholder="Name, for example power-board" autocomplete="off" spellcheck="false" maxlength="100" />
+            <button type="submit">Make it</button>
+          </div>
+          <p class="hint">You choose the folder it goes in next. It starts with an empty 30 × 20 mm board.</p>
+        </form>
+        <p class="problem" id="problem" role="alert" hidden></p>
+      </section>
+
+      <section class="recent" aria-labelledby="recent-title">
+        <h2 id="recent-title">Recent projects</h2>
+        <ul id="recent-list" class="recent-list"></ul>
+        <p class="empty" id="recent-empty" hidden>Projects you open appear here.</p>
+      </section>
+
+      <section class="agents" aria-labelledby="agents-title">
+        <h2 id="agents-title">Design with an agent</h2>
+        <p>An agent works on the same project folders through copperflow's MCP server, without this window. When a project is open here, its changes appear in the window as it writes them.</p>
+        <div class="agent">
+          <div>
+            <h3>Claude Desktop</h3>
+            <p>Adds copperflow to its MCP servers. Restart Claude Desktop afterwards.</p>
+          </div>
+          <button type="button" id="connect-desktop">Connect</button>
+        </div>
+        <div class="agent">
+          <div>
+            <h3>Claude Code</h3>
+            <p>Copies the one command that adds copperflow; run it in a terminal.</p>
+          </div>
+          <button type="button" id="copy-code">Copy the command</button>
+        </div>
+        <p class="note" id="agent-note" role="status" hidden></p>
+      </section>
+    </main>
+    <script src="start.js"></script>
+  </body>
+</html>

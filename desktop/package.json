@@ -1,0 +1,19 @@
+{
+  "name": "copperflow-desktop",
+  "private": true,
+  "description": "The copperflow desktop app: the Studio in a window, and the MCP server, in one Windows installer.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "build/main.js",
+  "scripts": {
+    "compile": "tsc -p tsconfig.json",
+    "stage": "npm run compile && node scripts/stage.mjs",
+    "start": "npm run compile && electron .",
+    "dist": "npm run stage && electron-builder --config electron-builder.yml --win --x64"
+  },
+  "devDependencies": {
+    "electron": "45.2.3",
+    "electron-builder": "26.18.0",
+    "typescript": "7.0.2"
+  }
+}

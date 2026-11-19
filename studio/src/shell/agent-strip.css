@@ -1,0 +1,46 @@
+/* The strip under the toolbar that says what the agent is doing (AgentStrip.tsx): one quiet line in the agent's colour
+   with a thin bar when the work is counted; a failure in the danger colours until clicked or replaced. */
+.agent-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 22px;
+  padding: 0 12px;
+  border-top: 1px solid var(--line);
+  background: var(--strip);
+  color: var(--agent);
+  font-size: 12px;
+  flex: none;
+  overflow: hidden;
+}
+
+.agent-strip.failed {
+  border-top-color: var(--danger);
+  background: var(--danger-wash);
+  color: var(--danger-text);
+  cursor: pointer;
+}
+
+.agent-strip-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.agent-strip-bar {
+  position: relative;
+  width: 96px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+  flex: none;
+}
+
+.agent-strip-bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--copper);
+  transition: width var(--ease);
+}

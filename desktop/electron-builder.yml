@@ -1,0 +1,39 @@
+# The Windows installer: copperflow-Setup.exe, installed for the current user (no administrator rights),
+# with a Start menu entry and a desktop shortcut. The app is desktop/stage (scripts/stage.mjs).
+appId: com.kurpeeren.copperflow
+productName: copperflow
+copyright: Copyright © Eren Kürpe
+directories:
+  app: stage
+  output: out
+  buildResources: build-resources
+electronVersion: 45.2.3
+# The browser engine's own messages (its context menus, its dialogs) in English and Turkish only; the app is in English.
+electronLanguages:
+  - en-US
+  - tr
+# Not packed into one archive: the engine starts worker threads from its own files, and esbuild and the canvas package
+# load native files from node_modules, which all need real paths on disk.
+asar: false
+npmRebuild: false
+nodeGypRebuild: false
+files:
+  - "**/*"
+  - "!**/*.map"
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: build-resources/icon.ico
+  # One name for every version, so https://github.com/kurpeeren/copperflow/releases/latest/download/copperflow-Setup.exe
+  # always gives the newest installer.
+  artifactName: copperflow-Setup.${ext}
+nsis:
+  oneClick: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: copperflow
+  uninstallDisplayName: copperflow
+publish: null

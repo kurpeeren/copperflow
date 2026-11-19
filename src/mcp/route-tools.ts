@@ -1,20 +1,25 @@
-// The agent's router tools. autoroute runs the same router as the Studio's Route → Autoroute, in this process and
-// within a time budget, and writes its copper through the same core path: one history entry (author ai, records by the
-// router), no track starting on a locked part's pad, hand copper an obstacle. The MCP server and the Studio are
-// separate processes, so a Studio run on the same board cannot be seen from here; instead the files a build reads are
-// hashed before routing and again inside the write queue, and a change in between (the Studio's own write, a hand edit)
-// discards the result, as the Studio does with its own runs. unroute takes back only the router's unlocked copper.
+// The agent's router tools. autoroute runs the same router as the Studio's Route → Autoroute within a time budget, in
+// this process or, while someone watches its progress, in the Studio's router worker (told-runs.ts), and writes its
+// copper through the same core path: one history entry (author ai, records by the router), no track starting on a
+// locked part's pad, hand copper an obstacle. The MCP server and the Studio are separate processes, so a Studio run on
+// the same board cannot be seen from here; instead the files a build reads are hashed before routing and again inside
+// the write queue, and a change in between (the Studio's own write, a hand edit) discards the result, as the Studio
+// does with its own runs. unroute takes back only the router's unlocked copper.
 import { z } from "zod"
 import { applyLayoutEdits, resolveCircuit } from "../core/index.js"
 import { unrouteEdits, unrouteSummary, type UnrouteTrack } from "../core/unroute.js"
 import { lockedPartsAt, lockedStart } from "../core/layout-locks.js"
 import type { Design } from "../engine/design.js"
-import { findInstance, routeBoard, type RouteReport, type RouteScope, type UnroutedConnection } from "../engine/router/route-board.js"
+import { findInstance, type RouteReport, type RouteScope, type UnroutedConnection } from "../engine/router/route-board.js"
 import { connectionPlace, padsById } from "../engine/pad-text.js"
 import { pourMadeText } from "../engine/pour/joins.js"
 import type { WorldPad } from "../engine/pcb.js"
 import { discardReason, routeSummary } from "../studio/route-events.js"
-import { contentHashes, lockSafeEdits, routeInput } from "../studio/route-runner.js"
+import { contentHashes, lockSafeEdits, routeInput, type RouteWorkerFactory } from "../studio/route-runner.js"
+import { BUILDING_STEP } from "./build-steps.js"
+import { QUIET, type Reporter } from "./tool-activity.js"
+import { routeTold } from "./told-runs.js"
+import { throwIfCancelled } from "./worker-run.js"
 import { introducedLines } from "./copper-summary.js"
 import { applyCopper, buildOf, netOrThrow, type Ports } from "./copper-tools.js"
 
@@ -115,7 +120,7 @@ function notes(report: RouteReport, budgetSeconds: number): string[] {
   ]
 }
 
-/** autoroute: routes in this process within the budget and writes the routed connections as one change. */
+/** autoroute: routes within the budget (in a worker while someone listens) and writes the routed connections as one change. */
 /** The budget asked for, held to 300 s; refused unless it is more than 0. */
 export function budgetOf(asked: number | undefined): number {
   if (asked === undefined) return DEFAULT_BUDGET_SECONDS
@@ -126,28 +131,43 @@ export function budgetOf(asked: number | undefined): number {
 export interface AutorouteOptions {
   /** The clock the budget is measured on, in ms (the router's own by default); tests pass their own. */
   clock?: () => number
+  /** Hears the steps and the routing progress. */
+  report?: Reporter
+  /** The router worker used while someone listens; null routes in this process. Tests pass a double. */
+  worker?: RouteWorkerFactory | null
+  /** The client's cancel of the call: the run is ended and nothing is written after it. */
+  signal?: AbortSignal
 }
 
 export async function autoroute(ports: Ports, input: { file: string; nets?: string[] | undefined; parts?: string[] | undefined; instance?: string | undefined; budgetSeconds?: number | undefined }, options: AutorouteOptions = {}): Promise<string> {
   const budgetSeconds = budgetOf(input.budgetSeconds)
+  const told = options.report ?? QUIET
   const circuit = await resolveCircuit(ports.root, input.file)
   if (!circuit.file.endsWith(".circuit.tsx")) throw new Error(`${circuit.file} is a sub-sheet; route the board of the circuit that uses it. Nothing was written.`)
+  told.step(BUILDING_STEP)
   const start = await contentHashes(ports.root, circuit.file)
   const design = await buildOf(ports, circuit.file)
   const scope = scopeOf(design, input)
-  const report = routeBoard(routeInput(design), { scope, budgetMs: budgetSeconds * 1000, ...(options.clock ? { clock: options.clock } : {}) })
+  const run = await routeTold(routeInput(design), { scope, budgetMs: budgetSeconds * 1000, clock: options.clock, worker: options.worker, signal: options.signal }, told)
+  throwIfCancelled(options.signal, "router")
+  const report = run.result
+  const ranHere = run.note === undefined ? [] : [run.note]
   const total = report.routed.length + report.unrouted.length
-  if (total === 0) return "Nothing to route: every connection in the scope is already routed. Nothing was written."
+  if (total === 0) return ["Nothing to route: every connection in the scope is already routed. Nothing was written.", ...ranHere].join("\n")
   const line = withPourNote(routedLine(report, padsById(design.pcb)), design, scope)
-  if (report.edits.length === 0) return [`${line}. Nothing was written.`, ...notes(report, budgetSeconds)].join("\n")
+  if (report.edits.length === 0) return [`${line}. Nothing was written.`, ...notes(report, budgetSeconds), ...ranHere].join("\n")
   // The locks are read in the write queue, after the guard: a part locked while the board was routed is honoured.
   const edits = () => lockSafeEdits(circuit.path, design, report.edits)
   const guard = async () => {
+    // Checked again in the write queue: a cancel that came while the write waited its turn still writes nothing.
+    throwIfCancelled(options.signal, "router")
     const why = discardReason(start, await contentHashes(ports.root, circuit.file))
     if (why !== undefined) throw new Error(`${why}. Nothing was written.`)
   }
+  told.step("Writing the copper")
   const result = await applyLayoutEdits(ports.root, circuit.file, edits, { author: "ai", router: true, summary: routeSummary(scope, report.routed.length, total), design, guard })
-  const head = [`Change ${result.entry.id}: ${line}`, ...notes(report, budgetSeconds)]
+  const head = [`Change ${result.entry.id}: ${line}`, ...notes(report, budgetSeconds), ...ranHere]
+  told.step("Checking the new copper")
   try {
     return [...head, ...introducedLines(design, await buildOf(ports, circuit.file))].join("\n")
   } catch (error) {

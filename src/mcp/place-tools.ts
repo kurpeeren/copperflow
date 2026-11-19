@@ -1,23 +1,27 @@
-// The agent's placement tools. autoplace runs the same placer as the Studio's Place → Autoplace, in this process
-// within a time budget, and writes the positions through the same core path: one history entry by the agent, the
-// pcbX/pcbY/pcbRotation of each part as its own props mean them, locked and hand-placed parts left where they are. As
-// autoroute does, it hashes the files a build reads before placing and again in the write queue, and discards the
-// result when they changed. fit_board reshapes a rectangular board round the parts as one entry.
+// The agent's placement tools. autoplace runs the same placer as the Studio's Place → Autoplace within a time budget,
+// in this process or, while someone watches its progress, in the Studio's placer worker (told-runs.ts), and writes the
+// positions through the same core path: one history entry by the agent, the pcbX/pcbY/pcbRotation of each part as its
+// own props mean them, locked and hand-placed parts left where they are. As autoroute does, it hashes the files a build
+// reads before placing and again in the write queue, and discards the result when they changed. fit_board reshapes a
+// rectangular board round the parts as one entry.
 import { z } from "zod"
 import { editCircuit, resolveCircuit } from "../core/index.js"
 import { placementWrites, writePlacement } from "../core/placement-write.js"
 import { strandedCopper, strandedLines } from "../engine/checks/stranded-copper.js"
 import type { Design } from "../engine/design.js"
-import { DEFAULT_FIT_MARGIN, placeBoard, type Placement } from "../engine/pcb-place/index.js"
-import { placeBoardFitting } from "../engine/pcb-place/grow.js"
+import { DEFAULT_FIT_MARGIN, type Placement } from "../engine/pcb-place/index.js"
 import type { PlaceScope } from "../engine/pcb-place/scope.js"
 import { ratsnestLength } from "../engine/pcb-place/score.js"
 import { fitBoardEdit } from "../studio/fit-board.js"
-import { checkedPlaceScope, lockedNames } from "../studio/place-runner.js"
+import { checkedPlaceScope, lockedNames, type PlaceWorkerFactory } from "../studio/place-runner.js"
 import { placeSummary } from "../studio/place-events.js"
 import { discardReason } from "../studio/route-events.js"
 import { contentHashes } from "../studio/route-runner.js"
 import { buildOf, type Ports } from "./copper-tools.js"
+import { BUILDING_STEP } from "./build-steps.js"
+import { QUIET, type Reporter } from "./tool-activity.js"
+import { placeTold } from "./told-runs.js"
+import { throwIfCancelled } from "./worker-run.js"
 
 export const DEFAULT_PLACE_BUDGET_SECONDS = 20
 const MAX_BUDGET_SECONDS = 300
@@ -91,31 +95,40 @@ function listLine(head: string, items: readonly string[]): string[] {
 export interface AutoplaceOptions {
   /** The clock the budget is measured on, in ms; tests pass their own. */
   clock?: () => number
+  /** Hears the steps and the placing progress. */
+  report?: Reporter
+  /** The placer worker used while someone listens (not with fit); null places in this process. Tests pass a double. */
+  worker?: PlaceWorkerFactory | null
+  /** The client's cancel of the call: the run is ended and nothing is written after it. */
+  signal?: AbortSignal
 }
 
-/** autoplace: places in this process within the budget and writes the positions as one change by the agent. */
-export async function autoplace(
-  ports: Ports,
-  input: {
-    file: string
-    parts?: string[] | undefined
-    instance?: string | undefined
-    fit?: boolean | undefined
-    budgetSeconds?: number | undefined
-    connectors?: "last" | "ahead" | undefined
-  },
-  options: AutoplaceOptions = {},
-): Promise<string> {
+export interface AutoplaceInput {
+  file: string
+  parts?: string[] | undefined
+  instance?: string | undefined
+  fit?: boolean | undefined
+  budgetSeconds?: number | undefined
+  connectors?: "last" | "ahead" | undefined
+}
+
+/** autoplace: places within the budget (in a worker while someone listens) and writes the positions as one change by the agent. */
+export async function autoplace(ports: Ports, input: AutoplaceInput, options: AutoplaceOptions = {}): Promise<string> {
   const budgetSeconds = budgetOf(input.budgetSeconds)
-  const ahead = input.connectors === "ahead" ? { connectorsAhead: true } : {}
+  const told = options.report ?? QUIET
   const circuit = await resolveCircuit(ports.root, input.file)
   if (!circuit.file.endsWith(".circuit.tsx")) throw new Error(`${circuit.file} is a sub-sheet; place the board of the circuit that uses it. Nothing was written.`)
+  told.step(BUILDING_STEP)
   const start = await contentHashes(ports.root, circuit.file)
   const design = await buildOf(ports, circuit.file)
   const scope = scopeOf(design, input)
   const locked = await lockedNames(circuit.path, design)
   // With fit the board is reshaped anyway, so a part with no free spot grows it rather than staying unplaced.
-  const placement = (input.fit ? placeBoardFitting : placeBoard)(design, { scope, locked, budgetMs: budgetSeconds * 1000, ...ahead, ...(options.clock ? { clock: options.clock } : {}) })
+  const run = { scope, locked, budgetMs: budgetSeconds * 1000, connectorsAhead: input.connectors === "ahead", fit: input.fit === true, clock: options.clock, worker: options.worker, signal: options.signal }
+  const placed = await placeTold(design, run, told)
+  throwIfCancelled(options.signal, "placer")
+  const placement = placed.result
+  const ranHere = placed.note === undefined ? [] : [placed.note]
   const writes = placementWrites(design, placement.positions, placement.blocks)
   // A block put beside the board is on it once the board is fitted round it; without fit it is named as not placed.
   const beside = input.fit ? [] : placement.beside.map((b) => `${b.instance} (${b.reason}; fit: true grows the board round it)`)
@@ -124,12 +137,15 @@ export async function autoplace(
   if (writes.circuit.length + writes.sheets.length + writes.blocks.length === 0 && !input.fit) {
     const which = scope.kind === "instance" ? `every part of ${scope.instance}` : "every part in the scope"
     const none = placement.unplaced.length === 0 ? `Nothing to place: ${which} already has a position or is locked; autoplace moves only parts without one.` : "No part was placed."
-    return [`${none} Nothing was written.`, ...unplaced].join("\n")
+    return [`${none} Nothing was written.`, ...unplaced, ...ranHere].join("\n")
   }
   const guard = async () => {
+    // Checked again in the write queue: a cancel that came while the write waited its turn still writes nothing.
+    throwIfCancelled(options.signal, "placer")
     const why = discardReason(start, await contentHashes(ports.root, circuit.file))
     if (why !== undefined) throw new Error(`${why.replace("while the board was routed", "while the board was placed").replace("; route again", "; place again")}. Nothing was written.`)
   }
+  told.step("Writing the positions")
   const written = await writePlacement(ports.root, circuit.file, writes, { author: "ai", summary: placeSummary(scope, placement.positions.size), guard, ...(input.fit ? { fit: { margin: DEFAULT_FIT_MARGIN } } : {}) })
   const fitError = written.board && "error" in written.board ? [`The board was not fitted: ${written.board.error}`] : []
   const after = written.entry ? await buildOf(ports, circuit.file) : undefined
@@ -141,6 +157,7 @@ export async function autoplace(
     ...unplaced,
     ...listLine("Notes", [...placement.notes, ...grown, ...writes.notes, ...written.skipped.map((s) => `${s}; it was not moved`), ...fitError, ...(written.copperNote ? [written.copperNote] : [])]),
     ...(placement.budgetSpent ? [`Stopped at the ${budgetSeconds} s time budget; run autoplace again (with a larger budgetSeconds) to do better.`] : []),
+    ...ranHere,
   ].join("\n")
 }
 

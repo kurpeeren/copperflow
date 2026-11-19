@@ -4,9 +4,7 @@ import { z } from "zod"
 import { readFile } from "node:fs/promises"
 import {
   bomWithReport,
-  exportFabrication,
   exportPackage,
-  formatFabrication,
   formatBomMarkdown,
   listParts,
   PartSchema,
@@ -66,6 +64,9 @@ import { SET_RULES_DESCRIPTION, setRulesInput, setRulesTool } from "./rules-tool
 import type { Renderer } from "../core/render.js"
 import { renameMapping } from "./batch-steps.js"
 import { ADD_TEXT_DESCRIPTION, addTextInput, textEdit } from "./text-tool.js"
+import { currentReporter, tellToolActivity, type Reporter } from "./tool-activity.js"
+import { studioLink, type StudioLink } from "./studio-activity.js"
+import { exportFabricationTool } from "./fabrication-tool.js"
 
 /** The opening line and the rules that hold wherever the server runs. */
 const INSTRUCTIONS_INTRO = "copperflow lets you design circuit boards (*.circuit.tsx files) together with a human, who edits the same files in the Studio."
@@ -92,6 +93,8 @@ export interface ServerOptions {
   fetch?: typeof fetch
   /** Loads the renderer for render; tests pass the source module. */
   renderer?: () => Promise<Renderer>
+  /** Where the agent's activity goes besides the client: this project's running Studio by default; null for none. */
+  studio?: StudioLink | null
 }
 
 export function createCopperflowServer(root: string, options: ServerOptions = {}): McpServer {
@@ -227,12 +230,13 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     { description: fillet.STRAIGHTEN_TRACKS_DESCRIPTION, inputSchema: fillet.straightenTracksInput },
     (input) => run(() => fillet.straightenTracks(ports, input)),
   )
-  server.registerTool("autoplace", { description: placer.AUTOPLACE_DESCRIPTION, inputSchema: placer.autoplaceInput }, (input) => run(() => placer.autoplace(ports, input)))
+  // The two long runs hear the client's cancel (extra.signal): the worker is ended and nothing is written afterwards.
+  server.registerTool("autoplace", { description: placer.AUTOPLACE_DESCRIPTION, inputSchema: placer.autoplaceInput }, (input, extra) => run((report) => placer.autoplace(ports, input, { report, signal: extra.signal })))
   server.registerTool("fit_board", { description: BOARD_DESCRIPTION, inputSchema: boardInput }, (input) => run(() => boardTool(ports, input)))
   server.registerTool("set_rules", { description: SET_RULES_DESCRIPTION, inputSchema: setRulesInput }, (input) => run(() => setRulesTool(ports, input)))
   server.registerTool("import_board", { description: IMPORT_BOARD_DESCRIPTION, inputSchema: importBoardInput }, (input) => run(() => importBoardTool(ports, input)))
   server.registerTool("import_graphic", { description: IMPORT_GRAPHIC_DESCRIPTION, inputSchema: importGraphicInput }, (input) => run(() => importGraphicTool(ports, input)))
-  server.registerTool("autoroute", { description: router.AUTOROUTE_DESCRIPTION, inputSchema: router.autorouteInput }, (input) => run(() => router.autoroute(ports, input)))
+  server.registerTool("autoroute", { description: router.AUTOROUTE_DESCRIPTION, inputSchema: router.autorouteInput }, (input, extra) => run((report) => router.autoroute(ports, input, { report, signal: extra.signal })))
   server.registerTool(
     "unroute",
     { description: router.UNROUTE_DESCRIPTION, inputSchema: router.unrouteInput, annotations: { destructiveHint: true } },
@@ -271,7 +275,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
   )
   // Not read-only: out writes the picture into the project.
   server.registerTool("render", { description: RENDER_DESCRIPTION, inputSchema: renderInput, annotations: { readOnlyHint: false, destructiveHint: false } }, (input) =>
-    renderTool({ ...ports, ...(options.renderer ? { renderer: options.renderer } : {}) }, input),
+    renderTool({ ...ports, ...(options.renderer ? { renderer: options.renderer } : {}), report: currentReporter() }, input),
   )
   server.registerTool("project_status", { description: project.PROJECT_STATUS_DESCRIPTION, inputSchema: {}, annotations: READ_ONLY }, () => run(() => project.projectStatus(ports)))
   server.registerTool("note_decision", { description: project.NOTE_DECISION_DESCRIPTION, inputSchema: project.noteDecisionInput }, (input) => run(() => project.noteDecisionTool(ports, input)))
@@ -424,14 +428,7 @@ Nothing was written.`)
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
-    async ({ file: circuit, out }) => {
-      try {
-        const result = await exportFabrication(root, circuit, { ...designOptions, ...(out ? { outDir: out } : {}) })
-        return { ...(result.written ? {} : { isError: true }), content: [{ type: "text", text: formatFabrication(result, { compact: true }) }] }
-      } catch (error) {
-        return { isError: true, content: [{ type: "text", text: (error as Error).message }] }
-      }
-    },
+    (input) => exportFabricationTool({ ...ports, report: currentReporter() }, input),
   )
 
   server.registerTool("export_model", { description: EXPORT_MODEL_DESCRIPTION, inputSchema: exportModelInput, annotations: { readOnlyHint: false, destructiveHint: false } }, (input) =>
@@ -439,7 +436,7 @@ Nothing was written.`)
   )
 
   server.registerTool("export_html", { description: EXPORT_HTML_DESCRIPTION, inputSchema: exportHtmlInput, annotations: { readOnlyHint: false, destructiveHint: false } }, (input) =>
-    run(() => exportHtmlTool({ root, ...designOptions, ...(options.renderer ? { renderer: options.renderer } : {}) }, input)),
+    run((report) => exportHtmlTool({ root, ...designOptions, ...(options.renderer ? { renderer: options.renderer } : {}), report }, input)),
   )
 
   server.registerTool(
@@ -516,6 +513,7 @@ Nothing was written.`)
   server.registerTool("open_studio", { description: OPEN_STUDIO_DESCRIPTION, inputSchema: openStudioInput, annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false } }, (input) => run(() => openStudio({ root }, input)))
   registerModuleTools(server, root, run, options.engine)
   compactToolList(server)
+  tellToolActivity(server, options.studio === null ? undefined : (options.studio ?? studioLink({ root })))
   return server
 }
 
@@ -542,9 +540,10 @@ async function sheetView(root: string, circuit: string, engine: DesignSource | u
   }
 }
 
-async function run(task: () => Promise<string>): Promise<CallToolResult> {
+/** The tool's text as its answer, or its error as an error answer; the task gets the call's reporter (tool-activity.ts). */
+async function run(task: (report: Reporter) => Promise<string>): Promise<CallToolResult> {
   try {
-    return { content: [{ type: "text", text: await task() }] }
+    return { content: [{ type: "text", text: await task(currentReporter()) }] }
   } catch (error) {
     return { isError: true, content: [{ type: "text", text: (error as Error).message }] }
   }

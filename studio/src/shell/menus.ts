@@ -8,6 +8,7 @@ import { commandDisabledReason } from "../pcb/selection-rules.js"
 import { WAITS_FOR_ENGINE } from "./pending.js"
 
 export type CommandId =
+  | "projects"
   | "openFile"
   | "exportBom"
   | "exportPackage"
@@ -132,6 +133,8 @@ export const MENUS: readonly Menu[] = [
   {
     title: "File",
     entries: [
+      run("Projects…", "projects"),
+      "separator",
       run("Open circuit file", "openFile", "Ctrl+O"),
       run("New circuit…", "newCircuit"),
       run("Import board (DXF, SVG or KiCad)…", "importBoardDxf"),

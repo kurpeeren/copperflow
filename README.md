@@ -80,6 +80,29 @@ An agent that can run commands can set copperflow up for itself: the steps are a
 <https://copperflow.kurpeeren.com/llms.txt> as plain text. Most programs load their MCP servers
 when a session starts, so the tools appear in the next session, not in the one that added them.
 
+`copperflow connect claude-desktop` adds the server to Claude Desktop's config (it keeps every other
+setting and leaves a backup of the original); `copperflow connect claude-code` prints the line for
+Claude Code.
+
+While a tool runs long (autoroute, autoplace, the exports, a 3D picture) the server sends MCP
+progress notifications, so a client that shows them says "Routing: 3 of 8 connections". When the
+Studio is open on the same project, every tool call also shows in a strip under its toolbar, and
+`open_studio` brings that window to the front instead of opening another.
+
+### Desktop app (Windows)
+
+`copperflow-Setup.exe` from the [latest release](https://github.com/kurpeeren/copperflow/releases/latest)
+installs copperflow for the current user, with its own runtime: no Node.js or npm needed. It opens to a
+start screen (recent projects, open a folder, a new project) and then the Studio of that folder; File →
+Projects… goes back. The same program is the MCP server: the start screen's **Connect** writes it into
+Claude Desktop, and **Copy the command** gives the line for Claude Code. An agent works headless; when
+the window has its project open, the agent's changes and what it is doing appear there as it goes.
+
+The installer is not signed yet, so Windows shows "Windows protected your PC" the first time: choose
+More info, then Run anyway. The release carries the installer's SHA-256 beside it. To build it from
+source: `npm run build`, then in `desktop/`, `npm ci` and `npm run dist` (the installer is in
+`desktop/out/`).
+
 ### Open the visual editor
 
 ```bash

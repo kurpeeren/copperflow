@@ -1,7 +1,8 @@
 name: Release
 
-# Pushing a version tag (v0.3.1) publishes that version to npm. No token is stored: npm trusts this workflow of this
-# repository (npmjs.com, the package's Settings, Trusted publishing), and the publish proves where it came from.
+# Pushing a version tag (v0.3.1) publishes that version to npm, then builds the Windows desktop app's installer and
+# attaches it to the GitHub release of that tag. No npm token is stored: npm trusts this workflow of this repository
+# (npmjs.com, the package's Settings, Trusted publishing), and the publish proves where it came from.
 on:
   push:
     tags:
@@ -32,3 +33,53 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm publish
+
+  desktop:
+    needs: publish
+    runs-on: windows-latest
+    # Builds with read rights only: npm ci runs dependency install scripts, which must not see a token that can write.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run build
+      - run: npm ci
+        working-directory: desktop
+      - run: npm run dist
+        working-directory: desktop
+      - name: The installer's SHA-256, to check a download against
+        shell: bash
+        working-directory: desktop/out
+        run: sha256sum copperflow-Setup.exe > copperflow-Setup.exe.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: |
+            desktop/out/copperflow-Setup.exe
+            desktop/out/copperflow-Setup.exe.sha256
+          if-no-files-found: error
+
+  release:
+    needs: desktop
+    runs-on: ubuntu-latest
+    # The only job that can write: it runs no code from the repository or its dependencies.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: installer
+      - name: Attach the installer to the release of this tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --verify-tag --title "copperflow $version" --notes "Windows: download copperflow-Setup.exe and run it (the .sha256 file holds its checksum). npm: npx copperflow@$version"
+          gh release upload "$GITHUB_REF_NAME" copperflow-Setup.exe copperflow-Setup.exe.sha256 --clobber

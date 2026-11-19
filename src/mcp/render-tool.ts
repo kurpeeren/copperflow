@@ -13,6 +13,8 @@ import { refuseStreamName } from "../core/html-export.js"
 import { resolveInRoot } from "../core/workspace.js"
 import { renderCircuit, renderedLine, type Renderer } from "../core/render.js"
 import { FINISH_NAMES, MASK_NAMES, SILK_NAMES, type LookRequest } from "../engine/fab/picture/looks.js"
+import { stepsAroundBuild } from "./build-steps.js"
+import { QUIET, type Reporter } from "./tool-activity.js"
 
 export const RENDER_DESCRIPTION =
   "A PNG of the board or one schematic page, as the person sees it; view board: the bare board as made; 3d: with parts as simple shapes, at an angle. Look after autoplace and autoroute, before asking the person."
@@ -38,6 +40,8 @@ export interface RenderPorts {
   root: string
   engine?: DesignSource
   renderer?: () => Promise<Renderer>
+  /** Hears the steps of a 3D view, the slow one: the build, then the drawing. */
+  report?: Reporter
 }
 
 type RenderInput = { file: string; view?: "pcb" | "schematic" | "board" | "3d" | undefined; side?: "top" | "bottom" | undefined; angle?: "top" | "bottom" | "front" | "iso" | undefined; look?: Record<string, string | undefined> | undefined; page?: string | undefined; parts?: string[] | undefined; width?: number | undefined; change?: string | undefined; since?: string | undefined; out?: string | undefined }
@@ -57,8 +61,9 @@ export async function renderTool(ports: RenderPorts, input: RenderInput): Promis
       ...(input.angle !== undefined ? { angle: input.angle } : {}),
       ...(input.look !== undefined ? { look: input.look as LookRequest } : {}),
     } as const
-    const options = { ...(ports.engine ? { engine: ports.engine } : {}), ...(ports.renderer ? { renderer: ports.renderer } : {}) }
-    const marked = await changeRequest(ports.root, input.file, request, input, ports.engine)
+    const engine = request.view === "3d" ? stepsAroundBuild(ports.engine, ports.report ?? QUIET, "Drawing the 3D view") : ports.engine
+    const options = { ...(engine ? { engine } : {}), ...(ports.renderer ? { renderer: ports.renderer } : {}) }
+    const marked = await changeRequest(ports.root, input.file, request, input, engine)
     const rendered = marked
       ? await renderCircuit(ports.root, input.file, marked.request, { ...options, design: marked.design })
       : await renderCircuit(ports.root, input.file, request, options)

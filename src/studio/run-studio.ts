@@ -38,6 +38,7 @@ export async function runStudio(options: RunStudioOptions): Promise<RunningStudi
     key: studio.token,
     root: projectRoot(options.root),
     started: new Date().toISOString(),
+    ...(options.host === undefined ? {} : { host: options.host }),
   }
   let settle: () => void = () => {}
   const stopped = new Promise<void>((done) => (settle = done))

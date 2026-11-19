@@ -34,6 +34,8 @@ import { runPageCommand, type PageCommand } from "./page-commands"
 import { openPrint, printSheets } from "./print-render"
 import { annotateDesignators, copySelection, flipSelection, pasteCopied, selectSimilar, transferPlacement } from "./part-commands"
 import type { Design } from "../api"
+import { desktopBridge } from "./desktop-bridge"
+import { showProjects } from "./projects-command"
 
 const WORKSPACE: Partial<Record<CommandId, KeyActionName>> = WORKSPACE_COMMANDS
 
@@ -270,6 +272,7 @@ function appCommand(input: Input, command: CommandId): (() => void) | undefined 
   const action = WORKSPACE[command]
   if (action) return () => input.workspace.run(action)
   const table: Record<AppCommand, () => void> = {
+    projects: () => void showProjects(desktopBridge(), input.actions.notify),
     openFile: input.workspace.openPageTree,
     exportBom: () => exportBom(input.file, input.actions),
     exportPackage: () => exportPackage(input.file, input.actions),

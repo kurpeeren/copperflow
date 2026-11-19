@@ -9,6 +9,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import { z } from "zod"
 import { copperflowHome } from "../core/home.js"
+import type { AgentActivity } from "./activity-event.js"
 
 export { copperflowHome }
 
@@ -18,6 +19,8 @@ export interface StudioNote {
   key: string
   root: string
   started: string
+  /** "desktop" when the desktop app's window shows this Studio; open_studio then brings it to the front. */
+  host?: "desktop"
 }
 
 const NoteSchema = z.object({
@@ -26,6 +29,7 @@ const NoteSchema = z.object({
   key: z.string().regex(/^[0-9a-f]{48}$/),
   root: z.string(),
   started: z.string(),
+  host: z.literal("desktop").optional(),
 })
 
 const ANSWER_TIMEOUT_MS = 2000
@@ -86,27 +90,38 @@ export async function removeNote(root: string, pid?: number): Promise<void> {
   await rm(notePath(root), { force: true })
 }
 
-function call(note: StudioNote, method: "GET" | "POST", path: string): Promise<{ status: number; body: string } | undefined> {
+interface CallOptions {
+  /** Sent as JSON. */
+  body?: unknown
+  /** The whole request's limit, answer included; ANSWER_TIMEOUT_MS by default. */
+  timeoutMs?: number
+}
+
+/** One request to the note's Studio with its key; undefined when it could not be made or took too long. */
+function call(note: StudioNote, method: "GET" | "POST", path: string, options: CallOptions = {}): Promise<{ status: number; body: string } | undefined> {
+  const payload = options.body === undefined ? undefined : JSON.stringify(options.body)
+  const headers = { "x-copperflow-token": note.key, ...(payload === undefined ? {} : { "content-type": "application/json", "content-length": String(Buffer.byteLength(payload)) }) }
   return new Promise((done) => {
-    const req = request(
-      { host: "127.0.0.1", port: note.port, method, path, headers: { "x-copperflow-token": note.key }, timeout: ANSWER_TIMEOUT_MS },
-      (res) => {
-        let body = ""
-        res.setEncoding("utf8")
-        res.on("data", (chunk: string) => (body += chunk))
-        res.on("end", () => done({ status: res.statusCode ?? 0, body }))
-        res.on("error", () => done(undefined))
-      },
-    )
-    req.on("timeout", () => req.destroy())
-    req.on("error", () => done(undefined))
-    req.end()
+    const req = request({ host: "127.0.0.1", port: note.port, method, path, headers }, (res) => {
+      let body = ""
+      res.setEncoding("utf8")
+      res.on("data", (chunk: string) => (body += chunk))
+      res.on("end", () => (clearTimeout(limit), done({ status: res.statusCode ?? 0, body })))
+      res.on("error", () => (clearTimeout(limit), done(undefined)))
+    })
+    // A limit on the whole request, not on idle time only: a Studio that answers slowly counts as not answering.
+    const limit = setTimeout(() => req.destroy(), options.timeoutMs ?? ANSWER_TIMEOUT_MS)
+    req.on("error", () => (clearTimeout(limit), done(undefined)))
+    req.end(payload)
   })
 }
 
-/** True when the note's Studio answers GET /api/studio, with the note's key, naming this project's root. */
-export async function studioAnswers(root: string, note: StudioNote): Promise<boolean> {
-  const answer = await call(note, "GET", "/api/studio")
+/**
+ * True when the note's Studio answers GET /api/studio, with the note's key, naming this project's root, within
+ * `timeoutMs` (ANSWER_TIMEOUT_MS by default).
+ */
+export async function studioAnswers(root: string, note: StudioNote, timeoutMs?: number): Promise<boolean> {
+  const answer = await call(note, "GET", "/api/studio", timeoutMs === undefined ? {} : { timeoutMs })
   if (answer?.status !== 200) return false
   try {
     const parsed = JSON.parse(answer.body) as { ok?: boolean; data?: { root?: unknown } }
@@ -122,6 +137,16 @@ export async function runningStudio(root: string): Promise<StudioNote | undefine
   if (note !== undefined && (await studioAnswers(root, note))) return note
   await rm(notePath(root), { force: true })
   return undefined
+}
+
+/** Asks a Studio the desktop app shows to bring its window to the front; whether it did. */
+export async function focusStudio(note: StudioNote): Promise<boolean> {
+  return (await call(note, "POST", "/api/focus"))?.status === 200
+}
+
+/** Tells the note's Studio what the agent is doing (POST /api/activity) within `timeoutMs`; whether it took it. */
+export async function postActivity(note: StudioNote, activity: AgentActivity, timeoutMs: number): Promise<boolean> {
+  return (await call(note, "POST", "/api/activity", { body: activity, timeoutMs }))?.status === 200
 }
 
 const wait = (ms: number) => new Promise((done) => setTimeout(done, ms))

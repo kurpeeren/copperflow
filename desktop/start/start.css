@@ -1,0 +1,306 @@
+/* The start screen, in the Studio's colours (studio/src/shell/theme.css) and fonts, light or dark as Windows is. */
+:root {
+  --copper: #c8702a;
+  --copper-strong: #b0601f;
+  --copper-text: #9a4e12;
+  --on-copper: #ffffff;
+  --panel: #ffffff;
+  --ground: #f5f6f8;
+  --raised: #f5f6f8;
+  --line: #e3e5e8;
+  --line-strong: #cfd3d8;
+  --text: #1f2328;
+  --muted: #656d76;
+  --danger-text: #b62324;
+  --good: #1a7f37;
+  --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --mono: "Cascadia Mono", ui-monospace, Consolas, monospace;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --copper: #d98a3f;
+    --copper-strong: #d98a3f;
+    --copper-text: #e89a4f;
+    --on-copper: #1a1206;
+    --panel: #1d2026;
+    --ground: #16181d;
+    --raised: #23272e;
+    --line: #2a2e36;
+    --line-strong: #3a3f49;
+    --text: #e6e8eb;
+    --muted: #9aa1a9;
+    --danger-text: #ff8182;
+    --good: #57ab5a;
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--ground);
+  color: var(--text);
+  font: 14px/1.5 var(--sans);
+}
+
+.start {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(320px, 1fr);
+  grid-template-areas: "brand recent" "actions recent" "agents recent";
+  grid-template-rows: auto auto 1fr;
+  gap: 24px 48px;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 56px 40px 40px;
+}
+
+.brand {
+  grid-area: brand;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.mark {
+  width: 44px;
+  height: 44px;
+  color: var(--copper);
+}
+
+.mark .hole {
+  fill: var(--ground);
+}
+
+h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+p {
+  margin: 0;
+}
+
+.version,
+.hint,
+.agents p,
+.empty {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.actions {
+  grid-area: actions;
+  display: grid;
+  gap: 20px;
+}
+
+button {
+  font: inherit;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  padding: 7px 14px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--raised);
+}
+
+button:active {
+  background: var(--line-strong);
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--copper);
+  outline-offset: 1px;
+}
+
+button.primary {
+  justify-self: start;
+  padding: 10px 18px;
+  border-color: var(--copper-strong);
+  background: var(--copper);
+  color: var(--on-copper);
+  font-weight: 600;
+}
+
+button.primary:hover {
+  background: var(--copper-strong);
+}
+
+.new-project {
+  display: grid;
+  gap: 6px;
+}
+
+.new-project label {
+  font-weight: 600;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+}
+
+input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  padding: 7px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.problem {
+  color: var(--danger-text);
+}
+
+.recent {
+  grid-area: recent;
+  min-width: 0;
+}
+
+.recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.recent-list:empty {
+  display: none;
+}
+
+.recent-list li {
+  display: flex;
+  align-items: center;
+  border-top: 1px solid var(--line);
+}
+
+.recent-list li:first-child {
+  border-top: 0;
+}
+
+.project {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.project:hover {
+  background: var(--raised);
+}
+
+.project .name {
+  font-weight: 600;
+}
+
+.project .path,
+.project .meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.project .path {
+  font-family: var(--mono);
+}
+
+.project.missing .name::after {
+  content: " (folder not found)";
+  color: var(--danger-text);
+  font-weight: 400;
+}
+
+.forget {
+  margin-right: 10px;
+  padding: 4px 10px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.forget:hover {
+  border-color: var(--line-strong);
+  background: var(--raised);
+  color: var(--text);
+}
+
+.agents {
+  grid-area: agents;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.agent {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.agent button {
+  flex: none;
+}
+
+.note {
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.note.done {
+  color: var(--good);
+}
+
+.note.failed {
+  color: var(--danger-text);
+}
+
+@media (max-width: 820px) {
+  .start {
+    grid-template-columns: 1fr;
+    grid-template-areas: "brand" "actions" "recent" "agents";
+    padding: 32px 20px;
+  }
+}

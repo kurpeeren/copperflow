@@ -48,9 +48,11 @@ import { useChangeView } from "./change-store"
 import { CHANGE_VIEW_MESSAGE, changeOff } from "./change-view"
 import { useAiLock } from "./use-ai-lock"
 import { AiLockButton } from "./shell/AiLockButton"
+import { AgentStrip } from "./shell/AgentStrip"
 import { exportChecksQuestion } from "./shell/fabrication-note"
 import type { CheckCounts } from "../../src/core/checks-line.js"
 import { useWorkspace } from "./use-workspace"
+import { desktopOff } from "./shell/desktop-bridge"
 
 export type { Actions } from "./use-actions"
 
@@ -361,7 +363,7 @@ export function App() {
   const toggles = { snap: workspace.snap, hoverLabels: workspace.hoverLabels, ...themeToggles(workspace.theme), ...pourFillToggles(workspace.pourFill) }
   const designOff = useCommandsOff(build.design)
   const changeShown = useChangeView() !== undefined
-  const off = useMemo(() => ({ ...designOff, ...lockedOff(aiLock.closed), ...changeOff(changeShown) }), [designOff, aiLock.closed, changeShown])
+  const off = useMemo(() => ({ ...designOff, ...lockedOff(aiLock.closed), ...changeOff(changeShown), ...desktopOff() }), [designOff, aiLock.closed, changeShown])
   const makeSheet = useMakeSheetPanel(data.file, selection.names, actions)
   const importPart = useImportPartPanel(data.refreshParts, toast.notify)
   const newPart = useNewPartPanel(data.refreshParts, toast.notify)
@@ -380,6 +382,7 @@ export function App() {
         <StatusPill build={build} errors={checks.counts.errors} noCircuit={data.filesListed && hasNoCircuit(data.files)} onOpen={openChecks} />
       </MenuBar>
       <Toolbar view={tab} unit={workspace.unit} selected={selection.size} toggles={toggles} off={off} run={runCommand} />
+      <AgentStrip />
       {dialog && <StudioDialog name={dialog} onClose={closeDialog} rules={{ fabrication: build.design?.rules.fabrication, save: actions.setFilletRadius }} makeSheet={makeSheet} importPart={importPart} newPart={newPart} system={system} newCircuit={newCircuit} footprints={footprints} exportChecks={exportChecks} importGraphic={{ boardLayers: build.design?.pcb.board?.layers ?? 2, nets: build.design?.circuit.nets ?? [], send: actions.importGraphic }} />}
       {packages && <PackagesDialog request={packages} onClose={packagesRequests.close} />}
       {verifying && <VerifyDialog target={verifying} panel={verifyPanel} onClose={closeVerify} />}

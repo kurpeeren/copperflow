@@ -1,9 +1,10 @@
 // The open_studio tool: reuse this project's running Studio or start one as its own process, open it in the
-// person's browser, and give the address with its key.
+// person's browser (or, when the desktop app shows that Studio, bring its window to the front), and give the address
+// with its key.
 import { spawn } from "node:child_process"
 import { fileURLToPath } from "node:url"
 import { z } from "zod"
-import { runningStudio, studioAnswers, studioOpenUrl, studioUrl, readNote, type StudioNote } from "../studio/studio-note.js"
+import { focusStudio, runningStudio, studioAnswers, studioOpenUrl, studioUrl, readNote, type StudioNote } from "../studio/studio-note.js"
 
 export const OPEN_STUDIO_DESCRIPTION =
   "Open the Studio, the visual editor, for the person: reuses this project's running Studio or starts one, and opens it in their browser. Call it when the person asks to open copperflow, the editor or the board, or wants to watch. Give them the address it returns, to them only."
@@ -16,6 +17,8 @@ export const openStudioInput = {
 export type StudioStarter = (root: string) => { pid?: number | undefined; exited?: Promise<number | null> }
 /** Opens an address in the person's browser; false when it could not. */
 export type BrowserOpener = (url: string) => Promise<boolean>
+/** Asks a Studio the desktop app shows to bring its window to the front; false when it could not. */
+export type WindowFocuser = (note: StudioNote) => Promise<boolean>
 
 export interface OpenStudioPorts {
   root: string
@@ -23,6 +26,7 @@ export interface OpenStudioPorts {
   /** The CLI the default starter runs; defaults to the running copperflow's cli.js. */
   cli?: string
   openBrowser?: BrowserOpener
+  focus?: WindowFocuser
   /** How long to wait for a started Studio's note. */
   waitMs?: number
 }
@@ -51,16 +55,25 @@ export async function openStudio(ports: OpenStudioPorts, input: { open?: boolean
     }
     note = await pending
   }
-  const url = studioUrl(note)
-  const lines = [`The Studio is running at ${url} (${fresh ? "started now" : "already running"}).`]
-  if (input.open !== false) {
-    const opened = await (ports.openBrowser ?? openInBrowser)(studioOpenUrl(note)).catch(() => false)
-    lines[0] += opened ? " Opened it in the browser." : " Could not open a browser here: give the person this address."
-  }
+  const lines = [await shownLine(ports, note, fresh, input.open !== false)]
   lines.push(studioOpenUrl(note))
   const ownStop = startedHere.has(studioOpenUrl(note)) ? ` It stops by itself ${IDLE_MINUTES} minutes after the last tab closes.` : ""
   lines.push(`The address holds this session's key: give it to the person only.${ownStop}`)
   return lines.join("\n")
+}
+
+/** The answer's first line, after showing the Studio: its window brought to the front, or the browser opened. */
+async function shownLine(ports: OpenStudioPorts, note: StudioNote, fresh: boolean, open: boolean): Promise<string> {
+  if (note.host === "desktop") {
+    if (!open) return "copperflow is open on this project in the desktop app. A browser can open the same Studio at this address:"
+    // A window that cannot be reached is shown in the browser instead, as any other Studio is.
+    const focused = await (ports.focus ?? focusStudio)(note).catch(() => false)
+    if (focused) return "copperflow is open on this project in the desktop app; it was brought to the front. A browser can open the same Studio at this address:"
+  }
+  const line = `The Studio is running at ${studioUrl(note)} (${fresh ? "started now" : "already running"}).`
+  if (!open) return line
+  const opened = await (ports.openBrowser ?? openInBrowser)(studioOpenUrl(note)).catch(() => false)
+  return `${line}${opened ? " Opened it in the browser." : " Could not open a browser here: give the person this address."}`
 }
 
 async function startAndWait(ports: OpenStudioPorts): Promise<StudioNote> {
