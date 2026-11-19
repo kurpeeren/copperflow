@@ -48,7 +48,8 @@ gives every port its net (ports left out are open), and `move_to_page` `{ part, 
 part or an instance (the page is made when missing). `set_props` sets `schNameAt` and `schValueAt`
 (the part's name and value on the schematic, in sheet units) and `pcbNameAt` (its silkscreen
 designator, in mm) as an offset `{ x, y }` from the part's origin that moves with the part; null
-puts the label back. `noConnect: "pin3,pin10"` flags pins meant to stay open (no pin-unconnected
+puts the label back. A null on `pcbX` and `pcbY` takes a part off the board, so `autoplace` places
+it again; on `schX` and `schY` it goes back to the place the schematic gives it by itself. `noConnect: "pin3,pin10"` flags pins meant to stay open (no pin-unconnected
 error, a cross on the schematic); null removes the flags.
 
 ## Reading what is there

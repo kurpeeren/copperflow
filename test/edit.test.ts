@@ -295,13 +295,18 @@ describe("setProps: label positions", () => {
     expect(applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { schNameAt: null } }], none)).toBe(BOARD)
   })
 
-  test("null removes only the label props; any other prop is refused, naming the three", () => {
+  test("null removes only the place and label props; any other prop is refused, naming those", () => {
+    expect(() => applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { resistance: null } }], none)).toThrow(
+      "resistance cannot be removed with null; only pcbX, pcbY, pcbRotation, schX, schY, schRotation, schNameAt, schValueAt, pcbNameAt, pcbNameRotation, noConnect, supplierPartNumbers can",
+    )
     expectEditError(() => applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { resistance: null } }], none), "invalid")
-    try {
-      applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { pcbX: null } }], none)
-    } catch (error) {
-      expect((error as Error).message).toBe("pcbX cannot be removed with null; only schNameAt, schValueAt, pcbNameAt, pcbNameRotation, noConnect, supplierPartNumbers can")
-    }
+  })
+
+  test("null on pcbX and pcbY takes a part off the board, so it is placed again", () => {
+    const placed = applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { pcbX: 3, pcbY: 4 } }], none)
+    const off = applyEdits(placed, [{ kind: "setProps", part: "R1", props: { pcbX: null, pcbY: null } }], none)
+    expect(off).not.toMatch(/name="R1"[^>]*pcbX=/)
+    expect(off).not.toMatch(/name="R1"[^>]*pcbY=/)
   })
 
   test("a point is refused for any other prop, and a point must be two finite numbers", () => {
