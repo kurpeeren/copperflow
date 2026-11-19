@@ -2,6 +2,7 @@
 // that shapes it from its pads, courtyard, body outline and height, in its own frame; the pieces are then turned,
 // mirrored and moved as the PCB places the part, standing on the board's top or hanging below its bottom. Pure.
 import type { Design } from "../../../../src/engine/design.js"
+import { trimmerShape } from "./trimmer.js"
 import type { PlacedFootprint } from "../../../../src/engine/pcb.js"
 import type { SolidModel } from "../../../../src/engine/solid/model.js"
 import type { Face, Vec3 } from "../scene.js"
@@ -44,6 +45,7 @@ export const SHAPES: Record<Family, (input: ShapeInput) => Piece[]> = {
   tab: tabShape,
   axial: axialShape,
   ledth: ledShape,
+  trimmer: trimmerShape,
   screw: screwShape,
   socket: socketShape,
   ...SMD_SHAPES,

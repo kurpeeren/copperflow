@@ -40,14 +40,15 @@ const GROOVE_HEIGHT = 0.5
 const LIP = 0.35
 /** The print keeps this far from the groove and the lip. */
 const PRINT_MARGIN = 0.3
-/** The vent scored into the lid: a cross, its bars this wide, this share of the lid across. */
-const VENT_WIDTH = 0.14
-const VENT_SHARE = 0.75
+/** The vent scored into the lid: a small cross at the centre, its bars this wide, each arm this share of the lid's
+ * radius (a fine score line, well inside the lid, as on a real can). */
+const VENT_WIDTH = 0.08
+const VENT_SHARE = 0.38
 /** Makers score a pressure relief vent into the lid from 6.3 mm cans up (Nichicon's radial lead drawing); the can drawn
  * is a little narrower than its footprint's circle, so the threshold allows for that. */
 const VENT_FROM_DIAMETER = 6.3 - 0.4
 /** The vent is pressed into the lid, so it reads a little darker. */
-const VENT_SHADE = 0.72
+const VENT_SHADE = 0.8
 
 /** The sleeve's profile, (radius, z) from the board up: seat bevel, groove, straight side, the lip rolled over the top. */
 function sleeveProfile(radius: number, h: number): [number, number][] {

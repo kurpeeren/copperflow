@@ -2,6 +2,7 @@
 // blocks, pin sockets, and the larger TO power packages. Every row is typical: written from general knowledge of makers'
 // drawings, none read from a document. heights.ts puts them in its table.
 import type { ParsedFootprint } from "../footprints/parse.js"
+import { TRIMMER_3296_DOCUMENT } from "../footprints/trimmer.js"
 import type { HeightRow } from "./heights.js"
 
 /** How far an axial body's lowest point stands above the board: the lead's bend and the lead's own thickness. */
@@ -97,6 +98,13 @@ export const THROUGH_HOLE_ROWS: readonly HeightRow[] = [
   diode("DO-41", "41", undefined, 2.7),
   diode("DO-15", "15", undefined, 3.6),
   diode("DO-201AD", "201", "ad", 5.3),
+  {
+    packages: "Bourns 3296W trimmer",
+    height: 11.55,
+    source: "Bourns 3296 trimmer drawings: 10.03 mm to the top and the adjusting screw 1.52 mm above it",
+    document: `${TRIMMER_3296_DOCUMENT}: 10.03 mm to the top, the adjusting screw 1.52 mm above it`,
+    matches: (p) => p.kind === "trimmer" && p.code === "3296" && p.suffix === "w",
+  },
   { packages: "3 mm round LED", height: 5.5, source: "makers' 3 mm (T-1) round LED drawings: flange and lens seated on the board, about 5.5 mm", matches: (p) => p.kind === "led" && p.suffix === "mm" && p.code === "3" },
   { packages: "5 mm round LED", height: 8.7, source: "makers' 5 mm (T-1 3/4) round LED drawings: flange and lens seated on the board, about 8.7 mm", matches: (p) => p.kind === "led" && p.suffix === "mm" && p.code === "5" },
   screw("screw terminal block, 5 and 5.08 mm pitch", 10, [5, 5.08]),

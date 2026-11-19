@@ -196,6 +196,7 @@ const THROUGH_HOLE = rows("Through-hole", [
   ["axial6.3x10.16", "Axial 1/4 W resistor"],
   ["axial9x12.7", "Axial 1/2 W resistor"],
   ["axial11x15.24", "Axial 1 W resistor"],
+  ["trimmer3296w", "Trimmer 3296W"],
 ])
 
 const CONNECTORS = rows("Connectors", [

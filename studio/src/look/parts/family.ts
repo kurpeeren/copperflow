@@ -6,7 +6,7 @@ import type { Rgb } from "../scene.js"
 import { SMD_LOOKS, smdFamilyOf, type SmdFamily } from "./smd-family.js"
 import { UNO_LOOKS, unoFamilyOf, type UnoFamily } from "./uno-family.js"
 
-export type Family = "chip" | "molded" | "gullwing" | "leadless" | "header" | "crystal" | "electrolytic" | "block" | "box" | "bga" | "dip" | "to220" | "to92" | "tab" | "axial" | "ledth" | "screw" | "socket" | SmdFamily | UnoFamily
+export type Family = "chip" | "molded" | "gullwing" | "leadless" | "header" | "crystal" | "electrolytic" | "block" | "box" | "bga" | "dip" | "to220" | "to92" | "tab" | "axial" | "ledth" | "screw" | "socket" | "trimmer" | SmdFamily | UnoFamily
 
 /** The colours a shape is painted with; each family's table row says which it uses. */
 export interface FamilyLook {
@@ -42,6 +42,7 @@ export const FAMILY_LOOKS = {
   axialPlain: { sentence: "Any other axial part: a plain grey body lying above the board, a wire from each end bent down through its hole.", body: [122, 126, 132], metal: TIN, mark: [122, 126, 132] },
   ledlens: { sentence: "Round LED: a flange ring on the board with a flat at the cathode, a translucent-looking lens (red unless the part says another colour) with a domed top, two tinned leads.", body: [214, 48, 44], top: [236, 96, 88], metal: TIN, mark: [244, 240, 232] },
   screw: { sentence: "Screw terminal block: a green block in poles, a slotted screw head down a well on top and a wire entry with its clamp on the front (-y) of every pole, a tinned pin through each hole.", body: [44, 128, 78], metal: TIN, mark: [16, 18, 18] },
+  trimmer: { sentence: "Trimmer potentiometer: a blue square body, a brass adjusting screw with its slot on top at the pin 1 end, its value code printed beside it.", body: [40, 88, 190], top: [70, 52, 24], metal: [200, 162, 84], mark: [236, 238, 240] },
   socket: { sentence: "Pin socket: a black body with a dark square opening over every pin and a gold pin through each hole.", body: [26, 26, 28], metal: GOLD, mark: [8, 8, 10] },
   header: { sentence: "Pin header: a black plastic base with a gold pin on every pad.", body: [28, 28, 30], metal: GOLD, mark: [28, 28, 30] },
   crystal: { sentence: "Crystal: a plain metal can with rounded ends.", body: [188, 190, 194], metal: TIN, mark: [188, 190, 194] },
@@ -106,6 +107,7 @@ export function familyOf(kind: string, footprint: string | undefined, through = 
     if (p.kind === "led" && p.suffix === "mm") return withParsed("ledth", "ledlens")
     if (p.kind === "screw") return withParsed("screw", "screw")
     if (p.kind === "socket") return withParsed("socket", "socket")
+    if (p.kind === "trimmer") return withParsed("trimmer", "trimmer")
     if (p.kind === "to" && p.code === "92") return withParsed("to92", "to92")
     const uno = unoFamilyOf(p)
     if (uno !== undefined) return withParsed(uno, uno)

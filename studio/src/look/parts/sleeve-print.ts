@@ -158,18 +158,20 @@ function flatStrip(a: Flat, b: Flat, width: number, z: number, color: Rgb): Piec
 }
 
 /**
- * The lines printed flat on a can's lid, reading up the lid (+y) in a column centred on (x, y): at most `along` long
- * and `across` wide, as a surface-mount can carries them beside its dark minus segment.
+ * The lines printed flat on a part's top, centred on (x, y): at most `along` long and `across` wide. `turned` (the
+ * default) reads them up the top (+y), as a surface-mount can carries them beside its dark minus segment; otherwise
+ * they read along x, the lines stacked down y.
  */
-export function lidPrint(at: Flat, along: number, across: number, z: number, lines: readonly string[], ink: Rgb): Piece[] {
+export function lidPrint(at: Flat, along: number, across: number, z: number, lines: readonly string[], ink: Rgb, turned = true): Piece[] {
   if (lines.length === 0) return []
   const widest = Math.max(...lines.map((line) => textWidth(line, 1)))
   const letter = Math.min(MAX_LETTER, along / widest, across / (lines.length * LINE_GAP))
   if (!(letter > 0.2)) return []
   return lines.flatMap((line, i) => {
     const offset = (i - (lines.length - 1) / 2) * letter * LINE_GAP
-    // Turned a quarter: the text reads up the lid; its lines stack from left to right.
-    return textStrokes(line, { x: at.x + offset, y: at.y }, letter, false, true).flatMap((stroke) => {
+    // Turned a quarter, the text reads up the lid and its lines stack from left to right; flat, they stack downwards.
+    const centre = turned ? { x: at.x + offset, y: at.y } : { x: at.x, y: at.y - offset }
+    return textStrokes(line, centre, letter, false, turned).flatMap((stroke) => {
       if (stroke.length === 1) return flatStrip(stroke[0] as Flat, stroke[0] as Flat, letter * STROKE_SHARE, z, ink)
       return stroke.slice(1).flatMap((q, k) => flatStrip(stroke[k] as Flat, q, letter * STROKE_SHARE, z, ink))
     })

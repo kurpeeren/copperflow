@@ -20,6 +20,7 @@ import { pinRowFootprint } from "./pinrow.js"
 import { plccFootprint } from "./plcc.js"
 import { quadFootprint } from "./quad.js"
 import { radialFootprint } from "./radial.js"
+import { trimmerFootprint } from "./trimmer.js"
 import { resonatorFootprint } from "./resonator.js"
 import { screwFootprint } from "./screw.js"
 import { smallSotFootprint } from "./smallsot.js"
@@ -82,6 +83,7 @@ const FAMILIES: readonly Family[] = [
   crystalFootprint,
   xtalFootprint,
   radialFootprint,
+  trimmerFootprint,
   smdCanFootprint,
   ledThroughHoleFootprint,
   ledSmdFootprint,

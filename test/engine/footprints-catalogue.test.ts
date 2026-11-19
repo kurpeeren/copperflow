@@ -28,6 +28,7 @@ const PROBES: Readonly<Record<string, string>> = {
   plcc: "plcc44",
   quad: "lqfp64_10x10_p0.5",
   radial: "radial6.3x2.5",
+  trimmer: "trimmer3296w",
   screw: "screw2",
   smallsot: "sot323",
   smdcan: "smdcan8x10.2",
