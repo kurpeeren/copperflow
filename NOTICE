@@ -2,4 +2,5 @@ copperflow
 Copyright 2026 Eren Kürpe and copperflow contributors
 
 This product is licensed under the Apache License, Version 2.0.
-It depends on tscircuit packages, which are licensed under the MIT License.
+The third-party packages it uses, and their licences, are listed in docs/licences.md
+in the source repository: https://github.com/kurpeeren/copperflow/blob/main/docs/licences.md

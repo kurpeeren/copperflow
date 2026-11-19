@@ -1,6 +1,6 @@
 ---
 name: copperflow
-description: Work on copperflow circuit projects, where tscircuit *.circuit.tsx files are edited by a human and an agent together. Use when designing a board, placing, moving, connecting or removing parts in a *.circuit.tsx file, or when the user mentions copperflow, PROJECT.md, locked parts, marks or undoing a change.
+description: Work on copperflow circuit projects, where *.circuit.tsx files are edited by a human and an agent together. Use when designing a board, placing, moving, connecting or removing parts in a *.circuit.tsx file, or when the user mentions copperflow, PROJECT.md, locked parts, marks or undoing a change.
 ---
 
 # Working in a copperflow project
