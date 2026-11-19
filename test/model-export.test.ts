@@ -160,7 +160,10 @@ describe("export_model", () => {
     const answer = await call({ format: "step" })
     expect(answer).toEqual({
       isError: false,
-      text: ["Wrote led.step: the board and 2 parts as solids.", "led.step: parts are boxes, not their real shapes; heights marked typical come from a package table, assumed ones are guesses (typical: R1; assumed: U1)."].join("\n"),
+      text: [
+        "Wrote led.step: the board as a solid and 2 parts as coloured faces.",
+        "led.step: parts are the 3D view's shapes as coloured faces (surfaces, not solids), not their real models; heights marked typical come from a package table, assumed ones are guesses (typical: R1; assumed: U1).",
+      ].join("\n"),
     })
     expect(productNames(readStep(await readFile(join(root, "led.step"), "utf8")))).toEqual(["led", "board", "R1", "U1"])
   })

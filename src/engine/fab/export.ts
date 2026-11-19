@@ -3,7 +3,8 @@
 // errors is refused, and so is one with a blind or buried via; unrouted connections, parts without a footprint,
 // designators left over pads and parts without an LCSC part number give warnings that name them. The set is pure and deterministic (the only date in it is
 // the creation date passed in); writeFabrication puts it on disk. The set ends with the board and its parts as a STEP
-// model, for the enclosure's designer.
+// model, for the enclosure's designer: its parts as the 3D view draws them when the caller hands their faces in (the
+// engine does not shape them itself), else as boxes.
 import { mkdir, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import type { BomLine } from "../../core/bom.js"
@@ -20,6 +21,7 @@ import { zipFiles } from "./zip.js"
 import { modelLine, stepFileName } from "../solid/limits.js"
 import { solidModel } from "../solid/model.js"
 import { stepText } from "../solid/step.js"
+import type { PartShapes } from "../solid/step-faces.js"
 
 export interface FabricationFile {
   file: string
@@ -113,13 +115,13 @@ function unroutedWarnings(design: Design): string[] {
   return [`${head}: ${lines.map((line) => `${line.net}: ${line.from} to ${line.to}`).join(", ")}`]
 }
 
-/** The fabrication files of a built design and its BOM lines, or the design's errors when it has any. */
 /** Why the export refuses a design: each of its errors and each via the drill files cannot make; empty when it does not. */
 export function fabricationErrors(design: Design): string[] {
   return [...designErrors(design), ...viaSpanErrors(design)]
 }
 
-export function fabricationSet(design: Design, bom: readonly BomLine[], created: Date): FabricationResult {
+/** The fabrication files of a built design and its BOM lines, or the design's errors; `shapes` are the STEP model's parts. */
+export function fabricationSet(design: Design, bom: readonly BomLine[], created: Date, shapes: PartShapes = {}): FabricationResult {
   const errors = fabricationErrors(design)
   if (errors.length > 0) return { ok: false, errors }
   const name = designName(design.file)
@@ -130,14 +132,14 @@ export function fabricationSet(design: Design, bom: readonly BomLine[], created:
     ...drillFiles(design.pcb, name, created),
     { file: fabFileName(name, "pick-and-place"), text: pickAndPlaceCsv(design.pcb, design.rules.fabrication) },
     { file: fabFileName(name, "bom"), text: jlcpcbBomCsv(bom) },
-    { file: stepFileName(name), text: stepText(solids, name) },
+    { file: stepFileName(name), text: stepText(solids, name, shapes.faces) },
   ]
   const zipData = zipFiles(
     files.map(({ file, text }) => ({ name: file, text })),
     created,
   )
   const warnings = [...unroutedWarnings(design), ...footprintWarnings(design), ...silkscreenWarnings(design.pcb, design.rules.fabrication), ...supplierWarnings(bom)]
-  return { ok: true, name, folder: fabFolderName(name), zip: fabZipName(name), files, zipData, warnings, model: modelLine(stepFileName(name), solids.parts) }
+  return { ok: true, name, folder: fabFolderName(name), zip: fabZipName(name), files, zipData, warnings, model: modelLine(stepFileName(name), solids.parts, shapes) }
 }
 
 /** The set with the board's pictures (top, then bottom) added to its files and its zip. */

@@ -7,6 +7,9 @@ import { buildBom, type BomLine } from "../../src/core/bom.js"
 import { buildDesign, type Design } from "../../src/engine/design.js"
 import { fabricationSet, writeFabrication, type FabricationSet } from "../../src/engine/fab/export.js"
 import type { PcbVia } from "../../src/engine/pcb.js"
+import { solidModel } from "../../src/engine/solid/model.js"
+import { stepPartFaces } from "../../studio/src/render/step-faces.js"
+import { readStep, solids, surfaces } from "../helpers/step-read.js"
 import { readZip } from "../helpers/zip-read.js"
 
 const FOLDER = join(import.meta.dirname, "..", "fixtures", "can-module")
@@ -73,6 +76,19 @@ describe("the fabrication set", () => {
     const csv = set.files.find((f) => f.file === "can-module-bom.csv")?.text ?? ""
     expect(csv.split("\n")[0]).toBe("Comment,Designator,Footprint,LCSC Part #")
     expect(csv).toMatch(/\n[^\n]*,U1,[^\n]*,C9657\n/)
+  })
+
+  test("the STEP model's parts are the faces handed in, else boxes; the model line says which, and why", () => {
+    const step = (set: FabricationSet) => readStep(set.files.find((f) => f.file === "can-module.step")?.text ?? "")
+    const model = solidModel(design)
+    const shaped = accepted(fabricationSet(design, bom, CREATED, { faces: stepPartFaces(design, model) }))
+    expect(solids(step(shaped)).map((s) => s.name)).toEqual(["board"])
+    expect(surfaces(step(shaped))).toHaveLength(model.parts.length)
+    expect(shaped.model).toMatch(/^can-module\.step: parts are the 3D view's shapes as coloured faces \(surfaces, not solids\), not their real models; /)
+    const boxes = accepted(fabricationSet(design, bom, CREATED, { missing: "the bundle is missing" }))
+    expect(solids(step(boxes))).toHaveLength(model.parts.length + 1)
+    expect(boxes.model).toMatch(/^can-module\.step: parts are boxes, not their real shapes, since their 3D shapes could not be loaded \(the bundle is missing\); /)
+    expect(accepted(fabricationSet(design, bom, CREATED)).model).toMatch(/^can-module\.step: parts are boxes, not their real shapes; /)
   })
 
   test("a board with unrouted connections is exported with a warning that names each of them", () => {

@@ -110,6 +110,9 @@ describe("copperflow html", () => {
     expect(await run("step", "led.circuit.tsx")).toBe(0)
     expect(files.get("led.step")!.bytes.toString("utf8").startsWith("ISO-10303-21")).toBe(true)
     expect(files.get("led.step")!.bytes.equals(await readFile(join(root, "led.step")))).toBe(true)
+    // The STEP model is the parts as the 3D view draws them, the same inside the fabrication zip as beside it.
+    expect(files.get("led.step")!.bytes.toString("utf8")).toContain("SHELL_BASED_SURFACE_MODEL('R1'")
+    expect(embedded.find((entry) => entry.name === "led.step")!.data.equals(files.get("led.step")!.bytes)).toBe(true)
     expect(await run("bom", "led.circuit.tsx", "--csv")).toBe(0)
     expect(files.get("led-bom.csv")!.bytes.toString("utf8")).toBe(out.at(-1))
   }, LOADED_MACHINE_MS)
@@ -126,6 +129,18 @@ describe("copperflow html", () => {
     expect((await readFile(join(root, "led.html"))).equals(first)).toBe(true)
     expect(first.toString("utf8")).toContain("2026-03-04")
     expect(links(first.toString("utf8")).size).toBe(4)
+  }, LOADED_MACHINE_MS)
+
+  test("names what the STEP model's parts are, and says so when their shapes could not be had", async () => {
+    await writeFile(join(root, "led.circuit.tsx"), CLEAN)
+    await exportSmallPage("led.circuit.tsx")
+    expect(await readFile(join(root, "led.html"), "utf8")).toContain("Download the 3D model for CAD (STEP, parts in colour as the 3D view draws them)")
+    const broken = () => renderer().then((module) => ({ ...module, stepPartFaces: () => { throw new Error("no shapes today") } }))
+    const result = await exportHtml(root, "led.circuit.tsx", { engine: inProcessEngine, renderer: broken, date: DATE, pictureWidth: SMALL_PICTURES })
+    expect(result.what).toMatch(/; the STEP model's parts are boxes, since their 3D shapes could not be loaded \(no shapes today\)$/)
+    const html = await readFile(join(root, "led.html"), "utf8")
+    expect(html).toContain("Download the 3D model for CAD (STEP, parts as boxes)")
+    expect(links(html).get("led.step")!.bytes.toString("utf8")).not.toContain("SHELL_BASED_SURFACE_MODEL")
   }, LOADED_MACHINE_MS)
 
   test("a design with errors is still written, without the fabrication files and saying why", async () => {

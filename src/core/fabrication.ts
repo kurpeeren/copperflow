@@ -1,12 +1,15 @@
 // Writes a circuit's fabrication files (Gerbers, drills, pick-and-place, BOM and their zip) for the CLI, the MCP
 // server and the Studio: builds the design, takes its BOM from the parts library, and puts `<name>-fab/` and
-// `<name>-fab.zip` beside the circuit or into a folder of the project. A design with errors writes nothing.
+// `<name>-fab.zip` beside the circuit or into a folder of the project. A design with errors writes nothing. The STEP
+// model in the set gets its parts' shapes from the Studio's renderer bundle (part-shapes.ts), boxes without it.
 import { lstat, realpath } from "node:fs/promises"
 import { dirname, join, relative, resolve, sep } from "node:path"
 import type { Design } from "../engine/design.js"
-import { fabricationSet, withPictures, writeFabrication, type FabricationSet } from "../engine/fab/export.js"
+import { fabricationErrors, fabricationSet, withPictures, writeFabrication, type FabricationSet } from "../engine/fab/export.js"
 import { fabFileName, uploadStep } from "../engine/fab/names.js"
 import { exportPictures, type CanvasLoader } from "../engine/fab/picture/png.js"
+import { solidModel } from "../engine/solid/model.js"
+import { loadPartShapes, type ShapesLoader } from "./part-shapes.js"
 import { buildBom } from "./bom.js"
 import { formatOrderReport } from "./order-report.js"
 import { checkCounts, checkDesign } from "./check.js"
@@ -28,6 +31,8 @@ export interface FabricationOptions {
   created?: Date
   /** Loads the canvas package the board's pictures are encoded with; tests pass one that fails. */
   canvas?: CanvasLoader
+  /** Loads the module that shapes the STEP model's parts; tests pass the renderer's source. The bundle when left out. */
+  shapes?: ShapesLoader
 }
 
 /** The set with the pictures of the board as made, or a warning that says they were left out and how to get them. */
@@ -100,7 +105,8 @@ export function exportFabrication(root: string, file: string, options: Fabricati
     const design = options.design ?? (await buildWith(root, circuit, options.engine))
     const bom = await buildBom(root, circuit, { design })
     const created = options.created ?? new Date()
-    const plain = fabricationSet(design, bom, created)
+    const shapes = fabricationErrors(design).length === 0 ? await loadPartShapes(design, solidModel(design), options.shapes) : {}
+    const plain = fabricationSet(design, bom, created, shapes)
     const order = formatOrderReport(design, bom, { short: true })
     if (!plain.ok) return { written: false, errors: plain.errors, order }
     const set = await pictured(plain, design, created, options.canvas)

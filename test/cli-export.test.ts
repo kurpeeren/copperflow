@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest"
 import { runCli } from "../src/cli-commands.js"
 import { BOARD, SHARED } from "./fixtures.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
+import { readStep, solids, surfaces } from "./helpers/step-read.js"
 
 const CAN = join(import.meta.dirname, "fixtures", "can-module")
 /** A circuit the engine builds and exports without errors or warnings: one resistor with its LCSC number, nothing to route. */
@@ -19,7 +20,8 @@ const NAMES = ["F_Cu.gtl", "B_Cu.gbl", "F_Mask.gts", "B_Mask.gbs", "F_Paste.gtp"
 let root: string
 let out: string[]
 let err: string[]
-const run = (...args: string[]) => runCli(args, root, { out: (s) => out.push(s), err: (s) => err.push(s) }, { engine: inProcessEngine })
+const renderer = () => import("../studio/src/render/node-render.js")
+const run = (...args: string[]) => runCli(args, root, { out: (s) => out.push(s), err: (s) => err.push(s) }, { engine: inProcessEngine, renderer })
 const exists = (path: string) => stat(join(root, path)).then(
   () => true,
   () => false,
@@ -48,7 +50,7 @@ describe("copperflow export", () => {
         "  led.step",
         "  led-top.png",
         "  led-bottom.png",
-        "led.step: parts are boxes, not their real shapes; heights marked typical come from a package table, assumed ones are guesses (typical: R1; none assumed).",
+        "led.step: parts are the 3D view's shapes as coloured faces (surfaces, not solids), not their real models; heights marked typical come from a package table, assumed ones are guesses (typical: R1; none assumed).",
         "Checks: 0 errors, 2 warnings.",
         "Next, a person should upload led-fab.zip to JLCPCB's PCB order, and led-bom.csv and led-pick-and-place.csv from boards/led-fab/ at its assembly step (the zip holds them too).",
         "Ready for bare boards: yes",
@@ -58,6 +60,9 @@ describe("copperflow export", () => {
     )
     expect((await readdir(join(root, "boards", "led-fab"))).sort()).toEqual([...NAMES.map((name) => `led-${name}`), "led.step", "led-top.png", "led-bottom.png"].sort())
     expect(await exists("boards/led-fab.zip")).toBe(true)
+    const step = readStep(await readFile(join(root, "boards", "led-fab", "led.step"), "utf8"))
+    expect(solids(step).map((solid) => solid.name)).toEqual(["board"])
+    expect(surfaces(step).map((surface) => surface.name)).toEqual(["R1"])
   })
 
   test("--out writes into that project folder instead", async () => {

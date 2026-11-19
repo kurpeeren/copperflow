@@ -8,7 +8,7 @@ import { exportStep, formatStepExport } from "../core/step-export.js"
 import type { LookRequest } from "../engine/fab/picture/looks.js"
 
 export const EXPORT_MODEL_DESCRIPTION =
-  'Write the board and its parts as one 3D model file beside the circuit: a STEP file for mechanical CAD (parts as boxes) or a GLB file a 3D viewer turns (the board as made). An unfinished design is written too.'
+  'Write the board and its parts as one 3D model file beside the circuit: a STEP file for mechanical CAD (the parts as the 3D view draws them, in colour) or a GLB file a 3D viewer turns (the board as made). An unfinished design is written too.'
 
 export const exportModelInput = {
   file: z.string().describe("Circuit file"),
@@ -32,7 +32,7 @@ export async function exportModelTool(ports: ModelPorts, input: ModelInput): Pro
   const options = { ...(ports.engine ? { engine: ports.engine } : {}), ...(input.out !== undefined ? { out: input.out } : {}) }
   if (input.format === "step") {
     if (Object.values(input.look ?? {}).some((value) => value !== undefined)) throw new Error("look is for format glb: a STEP file has no colours of the board as made")
-    return formatStepExport(await exportStep(ports.root, input.file, options))
+    return formatStepExport(await exportStep(ports.root, input.file, { ...options, ...(ports.renderer ? { shapes: ports.renderer } : {}) }))
   }
   return formatGlbExport(await exportGlb(ports.root, input.file, { ...options, ...(input.look !== undefined ? { look: input.look as LookRequest } : {}), ...(ports.renderer ? { renderer: ports.renderer } : {}) }))
 }

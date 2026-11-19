@@ -66,7 +66,7 @@ export interface CliOptions {
   engine?: DesignSource
   /** Fetches for parts import; tests pass one that answers from fixtures. */
   fetch?: typeof fetch
-  /** Loads the renderer for render; tests pass the source module. */
+  /** Loads the renderer for render, glb, html and the STEP model's part shapes; tests pass the source module. */
   renderer?: () => Promise<Renderer>
   /** The day html writes on the page; today when left out. Tests pass a fixed one. */
   date?: Date
@@ -172,13 +172,13 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
       }
       case "export": {
         const [outDir, args] = takeOption(rest, "--out")
-        const result = await exportFabrication(root, required(args[0], "file"), { ...designOptions(options), ...(outDir ? { outDir } : {}) })
+        const result = await exportFabrication(root, required(args[0], "file"), { ...designOptions(options), ...(outDir ? { outDir } : {}), ...(options.renderer ? { shapes: options.renderer } : {}) })
         io.out(formatFabrication(result))
         return result.written ? 0 : 1
       }
       case "step": {
         const [out, args] = takeOption(rest, "--out")
-        io.out(formatStepExport(await exportStep(root, required(args[0], "file"), { ...designOptions(options), ...(out ? { out } : {}) })))
+        io.out(formatStepExport(await exportStep(root, required(args[0], "file"), { ...designOptions(options), ...(out ? { out } : {}), ...(options.renderer ? { shapes: options.renderer } : {}) })))
         return 0
       }
       case "glb": {

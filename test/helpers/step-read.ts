@@ -1,7 +1,8 @@
 // A small reader of ISO 10303-21 text for the tests: splits the DATA section into entities, parses their arguments,
 // checks every reference resolves and that the entities copperflow writes have the right number of arguments, and
 // measures each solid: whether its shell is closed (every edge used by two faces, once each way) and its volume from
-// the faces written (the divergence theorem with F = (0, 0, z): only horizontal planar faces count).
+// the faces written (the divergence theorem with F = (0, 0, z): only horizontal planar faces count); and each part
+// written as its faces: their count, their colours, and how often each edge is used.
 
 export type Arg = { ref: number } | { str: string } | { enum: string } | { num: number } | { list: Arg[] } | { typed: string; args: Arg[] } | "$" | "*"
 
@@ -49,6 +50,18 @@ const ARITY: Record<string, number> = {
   ITEM_DEFINED_TRANSFORMATION: 4,
   CONTEXT_DEPENDENT_SHAPE_REPRESENTATION: 2,
   PRODUCT_RELATED_PRODUCT_CATEGORY: 3,
+  MANIFOLD_SURFACE_SHAPE_REPRESENTATION: 3,
+  SHELL_BASED_SURFACE_MODEL: 2,
+  OPEN_SHELL: 2,
+  COLOUR_RGB: 4,
+  FILL_AREA_STYLE_COLOUR: 2,
+  FILL_AREA_STYLE: 2,
+  SURFACE_STYLE_FILL_AREA: 1,
+  SURFACE_SIDE_STYLE: 2,
+  SURFACE_STYLE_USAGE: 2,
+  PRESENTATION_STYLE_ASSIGNMENT: 1,
+  STYLED_ITEM: 3,
+  MECHANICAL_DESIGN_GEOMETRIC_PRESENTATION_REPRESENTATION: 3,
 }
 
 function tokens(text: string): string[] {
@@ -240,3 +253,82 @@ export function solids(file: StepFile): SolidReport[] {
 
 /** The names of the products, in file order. */
 export const productNames = (file: StepFile): string[] => [...file.entities.values()].filter((e) => e.name === "PRODUCT").map((e) => str(e.args[0]))
+
+export interface SurfaceReport {
+  name: string
+  faces: number
+  /** Each face's colour, 0 to 255 each, in the shell's order; undefined for a face no STYLED_ITEM colours. */
+  colours: ([number, number, number] | undefined)[]
+  /** The most faces any one edge is used by, and whether every edge used twice is used once each way. */
+  mostUses: number
+  pairedOpposite: boolean
+  /** The PLANE's normal of each face, times its sense, and the outer loop's area vector (Newell), in the shell's order. */
+  orientation: { normal: number[]; area: number[] }[]
+}
+
+/** Each SHELL_BASED_SURFACE_MODEL of the file, by name: its faces, their colours and how its edges are shared. */
+export function surfaces(file: StepFile): SurfaceReport[] {
+  const get = (id: number) => {
+    const entity = file.entities.get(id)
+    if (!entity) throw new Error(`#${id} missing`)
+    return entity
+  }
+  const point = (vertex: number) => nums(get(ref(get(vertex).args[1])).args[1])
+  const colourOf = new Map<number, [number, number, number]>()
+  for (const styled of [...file.entities.values()].filter((e) => e.name === "STYLED_ITEM")) {
+    const assignment = get(refs(styled.args[1])[0] as number)
+    const usage = get(refs(assignment.args[0])[0] as number)
+    const side = get(ref(usage.args[1]))
+    const fillArea = get(refs(side.args[1])[0] as number)
+    const fill = get(ref(fillArea.args[0]))
+    const fillColour = get(refs(fill.args[1])[0] as number)
+    const rgb = get(ref(fillColour.args[1]))
+    colourOf.set(ref(styled.args[2]), [1, 2, 3].map((i) => Math.round(num(rgb.args[i]) * 255)) as [number, number, number])
+  }
+  return [...file.entities.values()]
+    .filter((e) => e.name === "SHELL_BASED_SURFACE_MODEL")
+    .map((model) => {
+      const faceIds = refs(model.args[1]).flatMap((shell) => refs(get(shell).args[1]))
+      const uses = new Map<number, { t: number; f: number }>()
+      const orientation = faceIds.map((faceId) => {
+        const face = get(faceId)
+        const placement = get(ref(get(ref(face.args[2])).args[1]))
+        const sense = flag(face.args[3]) ? 1 : -1
+        const normal = nums(get(ref(placement.args[2])).args[1]).map((c) => c * sense)
+        let outer: number[][] = []
+        for (const boundId of refs(face.args[1])) {
+          const bound = get(boundId)
+          const loop: number[][] = []
+          for (const orientedId of refs(get(ref(bound.args[1])).args[1])) {
+            const oriented = get(orientedId)
+            const forward = flag(oriented.args[4])
+            const edgeId = ref(oriented.args[3])
+            const use = uses.get(edgeId) ?? { t: 0, f: 0 }
+            uses.set(edgeId, forward ? { ...use, t: use.t + 1 } : { ...use, f: use.f + 1 })
+            const edge = get(edgeId)
+            loop.push(point(ref(edge.args[forward ? 1 : 2])))
+          }
+          if (bound.name === "FACE_OUTER_BOUND") outer = loop
+        }
+        let [ax, ay, az] = [0, 0, 0]
+        outer.forEach((p, i) => {
+          const q = outer[(i + 1) % outer.length] as number[]
+          const [px = 0, py = 0, pz = 0] = p
+          const [qx = 0, qy = 0, qz = 0] = q
+          ax += (py - qy) * (pz + qz)
+          ay += (pz - qz) * (px + qx)
+          az += (px - qx) * (py + qy)
+        })
+        return { normal, area: [ax, ay, az] }
+      })
+      const counts = [...uses.values()]
+      return {
+        name: str(model.args[0]),
+        faces: faceIds.length,
+        colours: faceIds.map((id) => colourOf.get(id)),
+        mostUses: Math.max(0, ...counts.map((u) => u.t + u.f)),
+        pairedOpposite: counts.every((u) => u.t <= 1 && u.f <= 1),
+        orientation,
+      }
+    })
+}

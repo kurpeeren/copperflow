@@ -393,8 +393,8 @@ copperflow pins <file> [--part <name>] [--format md|csv|c]
 copperflow export <file> [--out dir]        write the fabrication files for JLCPCB: Gerbers, drills,
                                             pick-and-place and BOM in <name>-fab/ and <name>-fab.zip
                                             beside the circuit (or in the project folder --out), with <name>.step
-copperflow step <file> [--out file.step]   write the board and its parts (as boxes) as a STEP file for CAD,
-                                            <name>.step beside the circuit
+copperflow step <file> [--out file.step]   write the board and its parts (in colour, as the 3D view draws
+                                            them) as a STEP file for CAD, <name>.step beside the circuit
 copperflow glb <file> [--out file.glb] [--mask black] [--finish hasl] [--silk black]
                                             write the board as made and its parts (as simple shapes) as a GLB
                                             file a 3D viewer turns, <name>.glb beside the circuit

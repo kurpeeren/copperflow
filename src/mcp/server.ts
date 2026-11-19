@@ -436,7 +436,7 @@ Nothing was written.`)
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
-    (input) => exportFabricationTool({ ...ports, report: currentReporter() }, input),
+    (input) => exportFabricationTool({ ...ports, ...(options.renderer ? { renderer: options.renderer } : {}), report: currentReporter() }, input),
   )
 
   server.registerTool("export_model", { description: EXPORT_MODEL_DESCRIPTION, inputSchema: exportModelInput, annotations: { readOnlyHint: false, destructiveHint: false } }, (input) =>

@@ -14,6 +14,7 @@ import { resolveLook, type LookRequest } from "../engine/fab/picture/looks.js"
 import { MAIN_PAGE } from "../engine/model.js"
 import { solidModel } from "../engine/solid/model.js"
 import { stepText } from "../engine/solid/step.js"
+import type { PartShapes } from "../engine/solid/step-faces.js"
 import { VERSION } from "../version.js"
 import { buildBom, formatBomCsv, type BomLine } from "./bom.js"
 import { buildWith, type DesignSource } from "./design-source.js"
@@ -21,6 +22,7 @@ import { assertLandsInProject } from "./fabrication.js"
 import { inProjectQueue } from "./file-writes.js"
 import { htmlPage, type PageData, type PageDownload, type PagePicture } from "./html-page.js"
 import { orderReportLines } from "./order-report.js"
+import { loadPartShapes } from "./part-shapes.js"
 import { renderCircuit, type RenderRequest, type Renderer } from "./render.js"
 import { resolveCircuit, resolveInRoot } from "./workspace.js"
 
@@ -87,8 +89,8 @@ async function pictures(draw: Draw, design: Design, look: LookRequest) {
 }
 
 /** The fabrication zip as `copperflow export` makes it, built in memory; or why the export refuses the design. */
-async function fabricationZip(design: Design, bom: BomLine[], date: Date, canvas: CanvasLoader | undefined): Promise<{ zip: PageDownload } | { missing: string }> {
-  const set = fabricationSet(design, bom, date)
+async function fabricationZip(design: Design, bom: BomLine[], date: Date, canvas: CanvasLoader | undefined, shapes: PartShapes): Promise<{ zip: PageDownload } | { missing: string }> {
+  const set = fabricationSet(design, bom, date, shapes)
   if (!set.ok) {
     const more = set.errors.length > REASONS_SHOWN ? ` and ${set.errors.length - REASONS_SHOWN} more` : ""
     return { missing: `the export refuses this design until its errors are fixed: ${set.errors.slice(0, REASONS_SHOWN).join("; ")}${more}.` }
@@ -101,17 +103,19 @@ async function fabricationZip(design: Design, bom: BomLine[], date: Date, canvas
 
 async function downloads(design: Design, bom: BomLine[], options: HtmlOptions & { date: Date }) {
   const name = designName(design.file)
-  const fab = await fabricationZip(design, bom, options.date, options.canvas)
   const renderer = await (options.renderer ?? bundledRenderer)()
+  const solids = solidModel(design)
+  const shapes = await loadPartShapes(design, solids, () => Promise.resolve(renderer))
+  const fab = await fabricationZip(design, bom, options.date, options.canvas, shapes)
   const glb = renderer.modelGlb(design, options.look ? { look: options.look } : {}).glb
-  const step = new TextEncoder().encode(stepText(solidModel(design), name))
+  const step = new TextEncoder().encode(stepText(solids, name, shapes.faces))
   const files: PageDownload[] = [
     ...("zip" in fab ? [fab.zip] : []),
     { name: `${name}.glb`, mime: "model/gltf-binary", label: "Download the 3D model (GLB)", bytes: glb },
-    { name: `${name}.step`, mime: "model/step", label: "Download the 3D model for CAD (STEP, parts as boxes)", bytes: step },
+    { name: `${name}.step`, mime: "model/step", label: `Download the 3D model for CAD (STEP, ${shapes.faces ? "parts in colour as the 3D view draws them" : "parts as boxes"})`, bytes: step },
     { name: `${name}-bom.csv`, mime: "text/csv", label: "Download the bill of materials (CSV)", bytes: new TextEncoder().encode(formatBomCsv(bom)) },
   ]
-  return { files, ...("missing" in fab ? { missing: fab.missing } : {}), sizes: { zip: "zip" in fab ? fab.zip.bytes.length : 0, glb: glb.length, step: step.length } }
+  return { files, ...("missing" in fab ? { missing: fab.missing } : {}), ...(shapes.missing !== undefined ? { stepMissing: shapes.missing } : {}), sizes: { zip: "zip" in fab ? fab.zip.bytes.length : 0, glb: glb.length, step: step.length } }
 }
 
 /** The bundle sits beside dist/core: dist/render/render.js. Its path is built at run time, so tsc leaves it alone. */
@@ -135,15 +139,16 @@ async function gather(root: string, circuit: string, design: Design, options: Ht
     ...(files.missing !== undefined ? { fabricationMissing: files.missing } : {}),
   }
   const pictureBytes = [...drawn.schematic.map((s) => s.picture), ...drawn.board, ...drawn.threeD].reduce((sum, p) => sum + p.png.length, 0)
-  return { data, split: { pictures: pictureBytes, ...files.sizes } }
+  return { data, split: { pictures: pictureBytes, ...files.sizes }, ...(files.stepMissing !== undefined ? { stepMissing: files.stepMissing } : {}) }
 }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
 
-function whatLine(data: PageData): string {
+function whatLine(data: PageData, stepMissing: string | undefined): string {
   const files = data.downloads.map((file) => file.name).join(", ")
   const fab = data.fabricationMissing === undefined ? "" : "; no fabrication files: the design has errors"
-  return `the design as one page: ${plural(data.schematic.length, "schematic page")}, the board (PCB view, top and bottom as made), 3D from ${ANGLES.length} angles, the BOM (${plural(data.bom.length, "line")}); files inside: ${files}${fab}`
+  const step = stepMissing === undefined ? "" : `; the STEP model's parts are boxes, since their 3D shapes could not be loaded (${stepMissing})`
+  return `the design as one page: ${plural(data.schematic.length, "schematic page")}, the board (PCB view, top and bottom as made), 3D from ${ANGLES.length} angles, the BOM (${plural(data.bom.length, "line")}); files inside: ${files}${fab}${step}`
 }
 
 export { refuseStreamName } from "./out-name.js"
@@ -157,11 +162,11 @@ export function exportHtml(root: string, file: string, options: HtmlOptions = {}
     const path = resolveInRoot(root, options.out ?? join(dirname(circuit), `${designName(circuit)}.html`))
     await assertLandsInProject(root, path)
     const design = await buildWith(root, circuit, options.engine)
-    const { data, split } = await gather(root, circuit, design, { ...options, date: options.date ?? new Date() })
+    const { data, split, stepMissing } = await gather(root, circuit, design, { ...options, date: options.date ?? new Date() })
     const text = htmlPage(data)
     await mkdir(dirname(path), { recursive: true })
     await writeFileAtomic(path, text)
-    return { file: relative(root, path).split(sep).join("/"), bytes: Buffer.byteLength(text, "utf8"), what: whatLine(data), split }
+    return { file: relative(root, path).split(sep).join("/"), bytes: Buffer.byteLength(text, "utf8"), what: whatLine(data, stepMissing), split }
   })
 }
 

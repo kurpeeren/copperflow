@@ -152,8 +152,9 @@ supplier part number and how to add one) and `export_fabrication` with its two v
 
 `export_model` `{ file, format, out?, look? }` writes one 3D model file beside the circuit, for a
 design that still has errors too: `format: "step"` is the STEP file for mechanical CAD (the board
-and each part as a box), `format: "glb"` a GLB file a 3D viewer turns (the board as made, in the
-`look` asked for, and the parts as simple shapes, not their real models). Its answer names the parts
+as a solid, each part as the 3D view draws it, as coloured faces), `format: "glb"` a GLB file a 3D
+viewer turns (the board as made, in the `look` asked for, and the parts as simple shapes, not their
+real models). Its answer names the parts
 whose height is typical or assumed; pass that on when the person will fit an enclosure around it.
 
 `export_html` `{ file, out?, look? }` writes `<name>.html`: the whole design as one web page (every

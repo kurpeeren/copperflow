@@ -1,53 +1,17 @@
-// The solids as an ISO 10303-21 exchange file, written here without a library. The application protocol is AP214
-// (AUTOMOTIVE_DESIGN): every mechanical CAD program reads it, it carries named products in an assembly and exact
-// boundary representations, and the few entities written here mean the same in AP242, so nothing AP242 adds is
-// needed. Each solid is a MANIFOLD_SOLID_BREP: planar faces, straight and circular edges, and cylindrical faces where
-// a hole or an arc edge runs through the board. The board and every part is a product of its own ("board", "U1", …),
-// placed without a transformation in one assembly named after the design. Units are mm. The text is deterministic:
-// the same model writes the same bytes, so the header's time stamp is a fixed one, not the day it was written.
+// The board and its parts as an ISO 10303-21 exchange file, written here without a library. The application protocol
+// is AP214 (AUTOMOTIVE_DESIGN): every mechanical CAD program reads it, it carries named products in an assembly, exact
+// boundary representations and colours, and the few entities written here mean the same in AP242, so nothing AP242
+// adds is needed. The board is a MANIFOLD_SOLID_BREP: planar faces, straight and circular edges, and cylindrical faces
+// where a hole or an arc edge runs through it. A part given its faces (the shapes the 3D view draws) is written as
+// those faces in their colours (step-faces.ts); a part without them is a box, a MANIFOLD_SOLID_BREP like the board.
+// The board and every part is a product of its own ("board", "U1", …), placed without a transformation in one
+// assembly named after the design. Units are mm. The text is deterministic: the same model writes the same bytes, so
+// the header's time stamp is a fixed one, not the day it was written.
 import { VERSION } from "../../version.js"
 import type { Point } from "../model.js"
 import type { PartSolid, Segment, SolidModel } from "./model.js"
-
-/** A real as the format wants it: always with a decimal point, rounded to 1e-10 mm so float noise does not show. */
-export function stepReal(value: number): string {
-  const rounded = Math.round(value * 1e10) / 1e10
-  const clean = Object.is(rounded, -0) || rounded === 0 ? 0 : rounded
-  const text = String(clean)
-  if (/e/i.test(text)) {
-    const [mantissa = "0", exponent = "0"] = text.toUpperCase().split("E")
-    return `${mantissa.includes(".") ? mantissa : `${mantissa}.`}E${exponent.startsWith("-") ? exponent : `+${exponent.replace("+", "")}`}`
-  }
-  return text.includes(".") ? text : `${text}.`
-}
-
-/** A string as the format quotes it. */
-const quoted = (text: string) => `'${text.replace(/'/g, "''")}'`
-
-type Vec = readonly [number, number, number]
-
-class Entities {
-  private readonly lines: string[] = []
-  add(text: string): number {
-    this.lines.push(text)
-    return this.lines.length
-  }
-  text(): string {
-    return this.lines.map((line, i) => `#${i + 1}=${line};\n`).join("")
-  }
-  point(p: Vec): number {
-    return this.add(`CARTESIAN_POINT('',(${p.map(stepReal).join(",")}))`)
-  }
-  direction(d: Vec): number {
-    return this.add(`DIRECTION('',(${d.map(stepReal).join(",")}))`)
-  }
-  placement(at: Vec, axis: Vec, ref: Vec): number {
-    return this.add(`AXIS2_PLACEMENT_3D('',#${this.point(at)},#${this.direction(axis)},#${this.direction(ref)})`)
-  }
-  line(at: Vec, along: Vec): number {
-    return this.add(`LINE('',#${this.point(at)},#${this.add(`VECTOR('',#${this.direction(along)},1.)`)})`)
-  }
-}
+import { Entities, quoted, refList, stepReal, type Vec } from "./step-entities.js"
+import { Styles, surfaceModel, type PartFaces } from "./step-faces.js"
 
 const UP: Vec = [0, 0, 1]
 const DOWN: Vec = [0, 0, -1]
@@ -167,26 +131,41 @@ const ORIGIN: Vec = [0, 0, 0]
 /** The header's time stamp: the same for every file, so a design always writes the same bytes. */
 const FIXED_STAMP = "2000-01-01T00:00:00"
 
-/** The exchange file of the model: an assembly named `name` holding the board and every part. */
-export function stepText(model: SolidModel, name: string): string {
-  const out = new Entities()
-  const context = contexts(out)
-  const assembly = product(out, context, name)
-  const solids: { name: string; loops: (readonly Segment[])[]; z0: number; z1: number }[] = [
-    ...(model.board ? [{ name: "board", loops: [model.board.outline, ...model.board.holes], z0: 0, z1: model.board.thickness }] : []),
-    ...model.parts.map((part) => ({ name: part.name, loops: [boxLoop(part)], z0: part.bottom, z1: part.top })),
-  ]
-  const children = solids.map((solid) => {
-    const made = product(out, context, solid.name)
-    const brep = out.add(`MANIFOLD_SOLID_BREP(${quoted(solid.name)},#${prism(out, solid.loops, solid.z0, solid.z1)})`)
-    const origin = out.placement(ORIGIN, UP, EAST)
-    const representation = out.add(`ADVANCED_BREP_SHAPE_REPRESENTATION(${quoted(solid.name)},(#${brep},#${origin}),#${context.geometry})`)
-    out.add(`SHAPE_DEFINITION_REPRESENTATION(#${made.shape},#${representation})`)
-    return { ...made, name: solid.name, origin, representation }
-  })
+interface Child {
+  name: string
+  definition: number
+  shape: number
+  origin: number
+  representation: number
+}
+
+/** The board or a part as a box: a product whose shape is one MANIFOLD_SOLID_BREP. */
+function solidChild(out: Entities, context: Context, name: string, loops: readonly (readonly Segment[])[], z0: number, z1: number): Child {
+  const made = product(out, context, name)
+  const brep = out.add(`MANIFOLD_SOLID_BREP(${quoted(name)},#${prism(out, loops, z0, z1)})`)
+  const origin = out.placement(ORIGIN, UP, EAST)
+  const representation = out.add(`ADVANCED_BREP_SHAPE_REPRESENTATION(${quoted(name)},(#${brep},#${origin}),#${context.geometry})`)
+  out.add(`SHAPE_DEFINITION_REPRESENTATION(#${made.shape},#${representation})`)
+  return { ...made, name, origin, representation }
+}
+
+/** A part as its coloured faces: a product whose shape is a surface model, and its faces' styles; none when no face has area. */
+function surfaceChild(out: Entities, context: Context, styles: Styles, name: string, faces: PartFaces[number]): Child | undefined {
+  const surface = surfaceModel(out, styles, name, faces)
+  if (surface === undefined) return undefined
+  const made = product(out, context, name)
+  const origin = out.placement(ORIGIN, UP, EAST)
+  const representation = out.add(`MANIFOLD_SURFACE_SHAPE_REPRESENTATION(${quoted(name)},(#${surface.model},#${origin}),#${context.geometry})`)
+  out.add(`SHAPE_DEFINITION_REPRESENTATION(#${made.shape},#${representation})`)
+  out.add(`MECHANICAL_DESIGN_GEOMETRIC_PRESENTATION_REPRESENTATION('',${refList(surface.styled)},#${context.geometry})`)
+  return { ...made, name, origin, representation }
+}
+
+/** The assembly's shape and, for each child, its use in the assembly, placed without a transformation. */
+function assemble(out: Entities, context: Context, assembly: { definition: number; shape: number }, name: string, children: readonly Child[]): void {
   const places = children.map(() => out.placement(ORIGIN, UP, EAST))
   const assemblyOrigin = out.placement(ORIGIN, UP, EAST)
-  const assemblyShape = out.add(`SHAPE_REPRESENTATION(${quoted(name)},(${[assemblyOrigin, ...places].map((p) => `#${p}`).join(",")}),#${context.geometry})`)
+  const assemblyShape = out.add(`SHAPE_REPRESENTATION(${quoted(name)},${refList([assemblyOrigin, ...places])},#${context.geometry})`)
   out.add(`SHAPE_DEFINITION_REPRESENTATION(#${assembly.shape},#${assemblyShape})`)
   children.forEach((child, i) => {
     const usage = out.add(`NEXT_ASSEMBLY_USAGE_OCCURRENCE('NAUO${i + 1}',${quoted(child.name)},'',#${assembly.definition},#${child.definition},$)`)
@@ -197,10 +176,36 @@ export function stepText(model: SolidModel, name: string): string {
     )
     out.add(`CONTEXT_DEPENDENT_SHAPE_REPRESENTATION(#${relation},#${placementShape})`)
   })
+}
+
+const BOXES_DESCRIPTION = "The board and its parts as boxes"
+const SHAPES_DESCRIPTION = "The board as a solid and its parts as coloured faces, as copperflow's 3D view draws them"
+
+/**
+ * The exchange file of the model: an assembly named `name` holding the board and every part. With `faces` (one list
+ * per part of the model, in its order), each part is written as its faces in their colours; without them, or for a
+ * part whose faces have no area, as a box.
+ */
+export function stepText(model: SolidModel, name: string, faces?: PartFaces): string {
+  const out = new Entities()
+  const context = contexts(out)
+  const assembly = product(out, context, name)
+  const shapes = faces !== undefined && faces.length === model.parts.length ? faces : undefined
+  const styles = new Styles(out)
+  const board = model.board ? [solidChild(out, context, "board", [model.board.outline, ...model.board.holes], 0, model.board.thickness)] : []
+  let shaped = 0
+  const parts = model.parts.map((part, i) => {
+    const partFaces = shapes?.[i] ?? []
+    const surface = partFaces.length > 0 ? surfaceChild(out, context, styles, part.name, partFaces) : undefined
+    if (surface !== undefined) shaped++
+    return surface ?? solidChild(out, context, part.name, [boxLoop(part)], part.bottom, part.top)
+  })
+  assemble(out, context, assembly, name, [...board, ...parts])
+  const description = shaped > 0 ? SHAPES_DESCRIPTION : BOXES_DESCRIPTION
   return [
     "ISO-10303-21;\n",
     "HEADER;\n",
-    "FILE_DESCRIPTION(('The board and its parts as boxes'),'2;1');\n",
+    `FILE_DESCRIPTION((${quoted(description)}),'2;1');\n`,
     `FILE_NAME(${quoted(`${name}.step`)},'${FIXED_STAMP}',(''),(''),'copperflow ${VERSION}','copperflow ${VERSION}','');\n`,
     "FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));\n",
     "ENDSEC;\n",

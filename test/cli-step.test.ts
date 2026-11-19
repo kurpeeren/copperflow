@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest"
 import { runCli } from "../src/cli-commands.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
 import { shortTempDir } from "./helpers/short-temp.js"
-import { productNames, readStep, solids } from "./helpers/step-read.js"
+import { productNames, readStep, solids, surfaces } from "./helpers/step-read.js"
 
 const CIRCUIT = `export default () => (
   <board width="10mm" height="10mm">
@@ -14,10 +14,14 @@ const CIRCUIT = `export default () => (
 )
 `
 
+const renderer = () => import("../studio/src/render/node-render.js")
+/** A renderer bundle that is not there, as when dist/render/render.js was never built. */
+const noBundle = () => Promise.reject(Object.assign(new Error("Cannot find module 'dist/render/render.js'"), { code: "ERR_MODULE_NOT_FOUND" }))
+
 let root: string
 let out: string[]
 let err: string[]
-const run = (...args: string[]) => runCli(args, root, { out: (s) => out.push(s), err: (s) => err.push(s) }, { engine: inProcessEngine })
+const run = (...args: string[]) => runCli(args, root, { out: (s) => out.push(s), err: (s) => err.push(s) }, { engine: inProcessEngine, renderer })
 const exists = (path: string) => stat(join(root, path)).then(
   () => true,
   () => false,
@@ -34,24 +38,44 @@ afterEach(async () => {
 })
 
 describe("copperflow step", () => {
-  test("writes <name>.step beside the circuit and says what it holds and is not", async () => {
+  test("writes <name>.step beside the circuit with the parts as the 3D view draws them, and says what it holds and is not", async () => {
     await mkdir(join(root, "boards"))
     await writeFile(join(root, "boards", "led.circuit.tsx"), CIRCUIT)
     const code = await run("step", "boards/led.circuit.tsx")
     expect(err).toEqual([])
     expect(code).toBe(0)
     expect(out.join("\n")).toBe(
-      ["Wrote boards/led.step: the board and 2 parts as solids.", "led.step: parts are boxes, not their real shapes; heights marked typical come from a package table, assumed ones are guesses (typical: R1; assumed: U1)."].join("\n"),
+      [
+        "Wrote boards/led.step: the board as a solid and 2 parts as coloured faces.",
+        "led.step: parts are the 3D view's shapes as coloured faces (surfaces, not solids), not their real models; heights marked typical come from a package table, assumed ones are guesses (typical: R1; assumed: U1).",
+      ].join("\n"),
     )
     const file = readStep(await readFile(join(root, "boards", "led.step"), "utf8"))
     expect(productNames(file)).toEqual(["led", "board", "R1", "U1"])
+    expect(solids(file).map((solid) => [solid.name, solid.closed])).toEqual([["board", true]])
+    expect(surfaces(file).map((surface) => surface.name)).toEqual(["R1", "U1"])
+    for (const surface of surfaces(file)) expect(surface.colours.every((colour) => colour !== undefined), surface.name).toBe(true)
+  })
+
+  test("without the renderer bundle the parts are boxes, and the answer says why", async () => {
+    await writeFile(join(root, "led.circuit.tsx"), CIRCUIT)
+    const code = await runCli(["step", "led.circuit.tsx"], root, { out: (s) => out.push(s), err: (s) => err.push(s) }, { engine: inProcessEngine, renderer: noBundle })
+    expect(code).toBe(0)
+    expect(out.join("\n")).toBe(
+      [
+        "Wrote led.step: the board and 2 parts as solids.",
+        "led.step: parts are boxes, not their real shapes, since their 3D shapes could not be loaded (the renderer bundle dist/render/render.js is missing; npm run build makes it); heights marked typical come from a package table, assumed ones are guesses (typical: R1; assumed: U1).",
+      ].join("\n"),
+    )
+    const file = readStep(await readFile(join(root, "led.step"), "utf8"))
+    expect(solids(file).map((solid) => solid.name)).toEqual(["board", "R1", "U1"])
     expect(solids(file).every((solid) => solid.closed)).toBe(true)
   })
 
   test("--out writes to that file in the project; the same design writes the same bytes", async () => {
     await writeFile(join(root, "led.circuit.tsx"), CIRCUIT)
     expect(await run("step", "led.circuit.tsx", "--out", "cad/board.step")).toBe(0)
-    expect(out[0]?.split("\n")[0]).toBe("Wrote cad/board.step: the board and 2 parts as solids.")
+    expect(out[0]?.split("\n")[0]).toBe("Wrote cad/board.step: the board as a solid and 2 parts as coloured faces.")
     const first = await readFile(join(root, "cad", "board.step"), "utf8")
     expect(await run("step", "led.circuit.tsx", "--out", "cad/board.step")).toBe(0)
     expect(await readFile(join(root, "cad", "board.step"), "utf8")).toBe(first)
