@@ -175,5 +175,7 @@ holes, vias, other parts, other names and the board's edge, and the same round e
 sheet's part where that place is free. A name with no free place within 2 mm takes the least bad
 one, and `check_circuit` gives a `silk-on-pad` warning naming what it covers. For such a name,
 give the part room (move it or its neighbours), or put the name yourself with `set_props`:
-`pcbNameAt` (`{ x, y }`, the name's middle as an offset from the part's origin, in mm) and
-`pcbNameRotation` (0 flat, 90 standing); the other names go round it. `null` removes either.
+`pcbNameAt` (`{ x, y }`, the name's middle as an offset from the part's origin, in mm, along the
+board's x and y whatever the part's rotation) and `pcbNameRotation` (0 flat, 90 standing); the
+other names go round it, and so do the board's `<silkscreentext>`s. `null` removes either. A name
+is 1 mm tall, as the silkscreen prints it; `add_text`'s answer gives a text's ink box.

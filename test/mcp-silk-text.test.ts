@@ -42,7 +42,11 @@ describe("board text through MCP", () => {
   test("add_text with a layer puts the words on the silkscreen and names their id", async () => {
     const result = await call("add_text", { file: FILE, text: "IO-8 v1", x: 0, y: 8, layer: "top", height: 2 })
     expect(result.isError, result.text).toBe(false)
-    expect(result.text).toMatch(/^Change c0001 applied: add silkscreentext:1 "IO-8 v1" on the top silkscreen/)
+    expect(result.text).toMatch(/^Change c0001 applied: add silkscreentext:1 "IO-8 v1" on the top silkscreen, its ink x -[\d.]+ to [\d.]+, y [\d.]+ to [\d.]+ mm/)
+    // 2 mm tall about y = 8: the ink is the letters' height and a stroke wider.
+    const [, low, high] = /y ([\d.]+) to ([\d.]+) mm/.exec(result.text) ?? []
+    expect(Number(high) - Number(low)).toBeGreaterThan(2)
+    expect(Number(high) - Number(low)).toBeLessThan(2.6)
     expect(await source()).toContain('<silkscreentext text="IO-8 v1" x={0} y={8} layer="top" height={2} />')
   })
 

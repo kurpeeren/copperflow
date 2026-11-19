@@ -43,7 +43,7 @@ describe("<silkscreentext> in the circuit file", () => {
     expect(messages(circuit)).toEqual([
       "silkscreentext silkscreentext:1: text must be some words, not empty; it is ignored",
       "silkscreentext silkscreentext:2: height must be at least 0.8 mm, the smallest text a board house prints legibly; it is ignored",
-      'silkscreentext silkscreentext:3: the silkscreen lettering cannot draw "Ω"; it draws A-Z a-z 0-9, space and - _ + . / ~ ( ) # : % = , ! µ; it is ignored',
+      `silkscreentext silkscreentext:3: the silkscreen lettering cannot draw "Ω"; it draws A-Z a-z 0-9, space and - _ + . / ~ ( ) # : % = , ! µ > < ' *; it is ignored`,
       'silkscreentext silkscreentext:4: layer must be "top" or "bottom"; it is ignored',
       "silkscreentext silkscreentext:5: needs x and y; it is ignored",
     ])

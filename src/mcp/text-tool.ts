@@ -2,6 +2,8 @@
 // (the Studio's Place → Text), named G<n> as the Studio does; with a layer it is text on the board's silkscreen, named by
 // its id (silkscreentext:<n>). Either way set_drawing and remove_drawing reach it.
 import { z } from "zod"
+import { silkTextBox } from "../engine/fab/silk-text-strokes.js"
+import { DEFAULT_SILK_TEXT_HEIGHT } from "../engine/silk-text.js"
 import { newBoardItemId } from "../core/board-items.js"
 import { loadCircuit, type Edit } from "../core/index.js"
 import { stepEdit } from "./batch-steps.js"
@@ -34,6 +36,9 @@ type TextRequest = {
 }
 
 /** The edit for the text, and the words the answer uses: a note's name, or a board text's id and side. */
+/** A length to 0.01 mm, as the answers write them. */
+const round = (mm: number) => Number(mm.toFixed(2))
+
 export async function textEdit(root: string, input: TextRequest): Promise<{ edit: Edit; label: string }> {
   const { file, ...rest } = input
   const value = Object.fromEntries(Object.entries(rest).filter(([, one]) => one !== undefined))
@@ -47,5 +52,9 @@ export async function textEdit(root: string, input: TextRequest): Promise<{ edit
   const { edit, label } = stepEdit("add_drawing", value, model, [])
   if (edit.kind !== "addSilkText") return { edit, label: `${label} "${input.text.slice(0, 40)}"` }
   const id = newBoardItemId(model.boardItems ?? [], "silkscreentext")
-  return { edit, label: `add ${id} "${input.text.slice(0, 40)}" on the ${edit.layer} silkscreen` }
+  // The ink's box, so a label can be fitted beside a pin or an edge without a picture.
+  const box = silkTextBox({ text: edit.text, x: edit.x, y: edit.y, layer: edit.layer, height: edit.height ?? DEFAULT_SILK_TEXT_HEIGHT, rotation: edit.rotation ?? 0 })
+  const span = (low: number, high: number) => `${round(low)} to ${round(high)}`
+  const extent = `, its ink x ${span(box.minX, box.maxX)}, y ${span(box.minY, box.maxY)} mm`
+  return { edit, label: `add ${id} "${input.text.slice(0, 40)}" on the ${edit.layer} silkscreen${extent}` }
 }

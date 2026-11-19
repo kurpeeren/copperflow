@@ -57,6 +57,10 @@ const GLYPHS: Readonly<Record<string, string>> = {
   ",": "2,0 1,-1",
   "!": "2,6 2,2;2,0 2,0",
   "µ": "0,-2 0,4;0,1 1,0 3,0 4,1;4,4 4,0",
+  ">": "1,5 3,3 1,1",
+  "<": "3,5 1,3 3,1",
+  "'": "2,6 2,4",
+  "*": "2,1 2,5;0,2 4,4;0,4 4,2",
   a: "4,4 4,0;4,3 3,4 1,4 0,3 0,1 1,0 3,0 4,1",
   b: "0,6 0,0;0,1 1,0 3,0 4,1 4,3 3,4 1,4 0,3",
   c: "4,3 3,4 1,4 0,3 0,1 1,0 3,0 4,1",
@@ -93,7 +97,7 @@ const GLYPH_HEIGHT = 6
 const ADVANCE = 6
 
 /** The characters the font draws, in one line, for the words of a refusal. */
-export const DRAWABLE_CHARACTERS = "A-Z a-z 0-9, space and - _ + . / ~ ( ) # : % = , ! µ"
+export const DRAWABLE_CHARACTERS = "A-Z a-z 0-9, space and - _ + . / ~ ( ) # : % = , ! µ > < ' *"
 
 /** The characters of `text` the font has no glyph for, each once, in the order met. */
 export function undrawable(text: string): string[] {
