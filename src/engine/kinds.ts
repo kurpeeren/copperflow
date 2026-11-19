@@ -19,6 +19,18 @@ const DIODE_PINS = [
   { number: 1, names: ["pin1", "anode", "pos"] },
   { number: 2, names: ["pin2", "cathode", "neg"] },
 ]
+/**
+ * A crystal on a four-pad crystal footprint (xtal2016, xtal2520, xtal3225, xtal5032): the crystal is across pads 1 and
+ * 3, and pads 2 and 4 are its lid (xtal.ts, from Abracon's ABM8 sheet), so all four are pins, numbered as the pads.
+ */
+const FOUR_PAD_CRYSTAL = [
+  { number: 1, names: ["pin1", "left", "x1"] },
+  { number: 2, names: ["pin2", "gnd"] },
+  { number: 3, names: ["pin3", "right", "x2"] },
+  { number: 4, names: ["pin4", "gnd2"] },
+]
+/** The four-pad crystal footprints (not the xtal7050 oscillator, whose pads are enable, ground, output and supply). */
+export const FOUR_PAD_CRYSTAL_FOOTPRINT = /^xtal(2016|2520|3225|5032)$/
 const BATTERY_PINS = [
   { number: 1, names: ["pin1", "pos"] },
   { number: 2, names: ["pin2", "neg"] },
@@ -107,6 +119,8 @@ export interface PinSources {
   pinCount: unknown
   polarized: boolean
   padCount: number | undefined
+  /** The footprint string, when the part names one: a crystal's pins depend on it. */
+  footprint?: unknown
 }
 
 function pinNumber(key: string): number | undefined {
@@ -144,7 +158,8 @@ export function pinSpecs(tag: string, sources: PinSources): PinSpec[] {
   let numbers: number[]
   if (info.pins === "from-props") numbers = countedPins(labelled, sources)
   else {
-    const table = tag === "capacitor" && sources.polarized ? POLARISED : info.pins
+    const fourPads = tag === "crystal" && typeof sources.footprint === "string" && FOUR_PAD_CRYSTAL_FOOTPRINT.test(sources.footprint)
+    const table = tag === "capacitor" && sources.polarized ? POLARISED : fourPads ? FOUR_PAD_CRYSTAL : info.pins
     for (const pin of table) aliases.set(pin.number, pin.names.slice(1))
     numbers = table.map((pin) => pin.number)
   }

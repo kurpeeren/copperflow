@@ -1,4 +1,5 @@
 import type { Circuit, Component, Net, Pin, PinType, Point } from "../model.js"
+import { FOUR_PAD_CRYSTAL_FOOTPRINT } from "../kinds.js"
 import { flaggedPinSet } from "../no-connect.js"
 import { naturalCompare } from "../order.js"
 import type { SchematicLayout } from "../schematic.js"
@@ -175,12 +176,30 @@ function singlePinNet(context: Context, net: Net): Violation[] {
   return [violation("single-pin-net", "warning", message, [net.id], "schematic", context.ends.get(only))]
 }
 
+/**
+ * A crystal on a four-pad footprint wired as if it had two pins: its second end on pin2 (the lid) and nothing on pin3,
+ * the crystal's other end. Every board made from it would have the crystal open, so it is an error.
+ */
+function crystalPads(context: Context, circuit: Circuit): Violation[] {
+  return circuit.components.flatMap((component) => {
+    if (component.kind !== "crystal" || typeof component.footprint !== "string" || !FOUR_PAD_CRYSTAL_FOOTPRINT.test(component.footprint)) return []
+    const [lid, other] = [`${component.id}.pin2`, `${component.id}.pin3`]
+    const lidNet = context.netOf.get(lid)
+    if (lidNet === undefined || lidNet.pins.length < 2 || !isAlone(context, { id: other } as Pin)) return []
+    const message =
+      `${component.id} (${component.footprint}) has its crystal across pin1 and pin3 (left and right); pin2 and pin4 are its lid. ` +
+      `${lid} is on ${netLabel(lidNet)} and ${other} on nothing: connect the crystal's second end to ${other}, and pin2 and pin4 to GND`
+    return [violation("crystal-pads", "error", message, [lid, other], "schematic", context.ends.get(lid))]
+  })
+}
+
 /** Every electrical check on the circuit, sorted by id. Nothing here changes the circuit or the schematic. */
 export function electricalChecks(circuit: Circuit, schematic: SchematicLayout, rules: Rules): Violation[] {
   const context = contextOf(circuit, schematic, rules)
   const found = [
     ...context.pins.flatMap((pin) => [...unconnectedPin(context, pin), ...connectedNoConnect(context, pin)]),
     ...circuit.nets.flatMap((net) => [...outputConflict(context, net), ...noPowerSource(context, net), ...singlePinNet(context, net)]),
+    ...crystalPads(context, circuit),
   ]
   return found.sort((a, b) => naturalCompare(a.id, b.id))
 }

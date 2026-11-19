@@ -86,7 +86,7 @@ function schPlacement(reader: PropReader, id: string, origin: PartOrigin, out: D
 
 function makePins(tag: string, id: string, props: Props, padCount: number | undefined): Pin[] {
   const attributes = record(props["pinAttributes"])
-  const sources = { pinLabels: record(props["pinLabels"]), pinCount: props["pinCount"], polarized: props["polarized"] === true, padCount }
+  const sources = { pinLabels: record(props["pinLabels"]), pinCount: props["pinCount"], polarized: props["polarized"] === true, padCount, footprint: props["footprint"] }
   return pinSpecs(tag, sources).map(({ number, names }) => {
     const found = names.map((name) => record(attributes?.[name])).find((value) => value !== undefined)
     return { id: `${id}.pin${number}`, component: id, number, names, type: pinTypeFromAttributes(found) }

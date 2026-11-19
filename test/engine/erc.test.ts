@@ -200,3 +200,37 @@ describe("the usb-c-ldo example", () => {
     expect(run(built).filter((v) => v.severity === "error")).toEqual([])
   })
 })
+
+describe("crystal-pads", () => {
+  const crystal = (footprint: string, wiring: string) =>
+    design(`<crystal name="Y1" frequency="16MHz" footprint="${footprint}" />
+<resistor name="R1" resistance="1M" footprint="0603" />
+<trace from="R1.pin1" to="net.X1" />
+<trace from="R1.pin2" to="net.X2" />
+${wiring}`)
+
+  test("a four-pad crystal wired on pin1 and pin2 is an error that says the crystal's other end is pin3", () => {
+    const found = coded(run(crystal("xtal3225", `<trace from="Y1.pin1" to="net.X1" />
+<trace from="Y1.pin2" to="net.X2" />`)), "crystal-pads")
+    expect(found).toHaveLength(1)
+    expect(found[0]).toMatchObject({ severity: "error", items: ["Y1.pin2", "Y1.pin3"] })
+    expect(found[0]!.message).toContain("connect the crystal's second end to Y1.pin3")
+  })
+
+  test("wired on pin1 and pin3 (left and right) with the lid on GND, it is quiet", () => {
+    const wiring = `<trace from="Y1.left" to="net.X1" />
+<trace from="Y1.right" to="net.X2" />
+<trace from="Y1.gnd" to="net.GND" />
+<trace from="Y1.gnd2" to="net.GND" />`
+    expect(coded(run(crystal("xtal3225", wiring)), "crystal-pads")).toEqual([])
+  })
+
+  test("a two-pad crystal and the four-pad oscillator keep two pins and pin numbers as they were", () => {
+    expect(coded(run(crystal("xtal5032_2", `<trace from="Y1.pin1" to="net.X1" />
+<trace from="Y1.pin2" to="net.X2" />`)), "crystal-pads")).toEqual([])
+    const pins = (footprint: string) => crystal(footprint, "").circuit.components.find((c) => c.id === "Y1")!.pins.map((p) => p.names.slice(0, 2).join(" "))
+    expect(pins("xtal3225")).toEqual(["pin1 left", "pin2 gnd", "pin3 right", "pin4 gnd2"])
+    expect(pins("xtal5032_2")).toEqual(["pin1 left", "pin2 right"])
+    expect(pins("xtal7050")).toEqual(["pin1 left", "pin2 right"])
+  })
+})

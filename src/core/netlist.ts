@@ -91,7 +91,7 @@ async function pinsOf(root: string, part: NewPart, own: PartProps): Promise<Part
   if (part.kind !== undefined) {
     const { props, pinLabels } = own
     const padCount = footprintPins(props.footprint)
-    const specs = pinSpecs(part.kind, { pinLabels, pinCount: props.pinCount, polarized: props.polarized === true, padCount })
+    const specs = pinSpecs(part.kind, { pinLabels, pinCount: props.pinCount, polarized: props.polarized === true, padCount, footprint: props.footprint })
     return { description: part.kind, pins: specs.map((spec) => spec.names) }
   }
   const id = part.part as string

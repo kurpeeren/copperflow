@@ -23,7 +23,10 @@ Read before your first `new_circuit` or `edit_circuit` in a project.
   between has letters, digits, `.`, `_` or `-` (at most 64: `AP2112K-3.3`).
 
 The built-in `led` and `diode` have `pin1` = `anode` and `pin2` = `cathode` (`D1.anode`,
-`D1.cathode`); a resistor's or capacitor's pins are `pin1` and `pin2`.
+`D1.cathode`); a resistor's or capacitor's pins are `pin1` and `pin2`. A `crystal` on a four-pad
+footprint (`xtal2016`, `xtal2520`, `xtal3225`, `xtal5032`) has four pins, numbered as its pads: the
+crystal is `left` (pin1) and `right` (pin3), and `gnd` (pin2) and `gnd2` (pin4) are its lid, which
+goes to GND; on `xtal5032_2` and the other two-pad footprints it has `left` and `right` only.
 
 A net names pins as `R1.pin1` or by a library pin name (`U1.VOUT`). A pin the part does not
 have is refused before anything is written, and the answer lists the part's real pins: use one
