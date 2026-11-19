@@ -67,12 +67,19 @@ export function noPackageText(words: readonly string[]): string {
 /** A search that matches at most this many packages lists each one's pads. */
 export const PADS_LISTED_UP_TO = 3
 
-/** "dcjack pads: number, centre, size (mm), hole, role" and one line per pad. */
+/** The connectors a plug or wire goes into from one side: their mating face is at −y when the part is not turned. */
+const FACES_FRONT = /^(usb|dcjack|screw)/
+
+/** Which way a connector's mating face points, and where a turn takes it (turns are counter-clockwise). */
+const FACING_LINE = "Mating face (where the plug or wire goes in) at -y at rotation 0; 90 points it to +x, 180 to +y, 270 to -x."
+
+/** "dcjack pads: number, centre, size (mm), hole, role" and one line per pad; a connector says which way it faces. */
 export function packagePadLines(entry: PackageEntry): string[] {
   const footprint = generateFootprint(entry.footprint)
   if ("error" in footprint) return []
   const roles = padRoles(entry)
-  return [`${entry.footprint} pads: number, centre, size (mm), hole${roles ? ", role" : ""}`, ...padLines(footprint.pads, (number) => roles?.[number])]
+  const facing = FACES_FRONT.test(entry.footprint) ? [FACING_LINE] : []
+  return [`${entry.footprint} pads: number, centre, size (mm), hole${roles ? ", role" : ""}`, ...padLines(footprint.pads, (number) => roles?.[number]), ...facing]
 }
 
 const FORMS_FOUND_HEADING = "General forms that match (any size of these works):"

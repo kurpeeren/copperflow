@@ -211,3 +211,12 @@ describe("searching packages the way people write them", () => {
     expect(packagesText(["zzqq"]).found).toBe(false)
   })
 })
+
+describe("which way a connector faces", () => {
+  test("a USB, barrel jack or screw terminal search says its mating face is at -y unturned, and where a turn takes it", () => {
+    for (const words of [["usb_c16"], ["dcjack"], ["screw2_p3.5"]]) {
+      expect(packagesText(words).text, words.join(" ")).toContain("Mating face (where the plug or wire goes in) at -y at rotation 0; 90 points it to +x")
+    }
+    expect(packagesText(["sot23_5"]).text).not.toContain("Mating face")
+  })
+})

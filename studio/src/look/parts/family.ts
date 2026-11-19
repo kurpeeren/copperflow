@@ -41,7 +41,7 @@ export const FAMILY_LOOKS = {
   axialGlass: { sentence: "Glass diode: an orange glass body with a dark band at the cathode end, a wire from each end bent down through its hole.", body: [214, 122, 44], metal: TIN, mark: [34, 30, 28] },
   axialPlain: { sentence: "Any other axial part: a plain grey body lying above the board, a wire from each end bent down through its hole.", body: [122, 126, 132], metal: TIN, mark: [122, 126, 132] },
   ledlens: { sentence: "Round LED: a flange ring on the board with a flat at the cathode, a translucent-looking lens (red unless the part says another colour) with a domed top, two tinned leads.", body: [214, 48, 44], top: [236, 96, 88], metal: TIN, mark: [244, 240, 232] },
-  screw: { sentence: "Screw terminal block: a green block with a slotted round screw head on top and a dark wire opening on the front of every pole, a tinned pin through each hole.", body: [44, 128, 78], metal: TIN, mark: [16, 18, 18] },
+  screw: { sentence: "Screw terminal block: a green block in poles, a slotted screw head down a well on top and a wire entry with its clamp on the front (-y) of every pole, a tinned pin through each hole.", body: [44, 128, 78], metal: TIN, mark: [16, 18, 18] },
   socket: { sentence: "Pin socket: a black body with a dark square opening over every pin and a gold pin through each hole.", body: [26, 26, 28], metal: GOLD, mark: [8, 8, 10] },
   header: { sentence: "Pin header: a black plastic base with a gold pin on every pad.", body: [28, 28, 30], metal: GOLD, mark: [28, 28, 30] },
   crystal: { sentence: "Crystal: a plain metal can with rounded ends.", body: [188, 190, 194], metal: TIN, mark: [188, 190, 194] },
