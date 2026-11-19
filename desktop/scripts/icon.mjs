@@ -1,5 +1,5 @@
 // Makes build-resources/icon.ico from the site's icon (site/public/favicon.svg): one PNG image per size Windows asks
-// for, in one .ico file. Run it again only when the icon changes; the .ico is kept in the repository.
+// for, in one .ico file; and build-resources/icon.png at 1024 px, which macOS and Linux are built from. Run it again only when the icon changes; the .ico is kept in the repository.
 // usage: node scripts/icon.mjs (from desktop/, after `npm ci` in the repository root, which brings @napi-rs/canvas)
 import { readFileSync, writeFileSync } from "node:fs"
 import { createRequire } from "node:module"
@@ -11,6 +11,8 @@ const root = join(here, "..", "..")
 // The canvas package is optional in the root; CANVAS_FROM names another install that has it.
 const { createCanvas, loadImage } = createRequire(process.env.CANVAS_FROM ?? join(root, "package.json"))("@napi-rs/canvas")
 const SIZES = [16, 24, 32, 48, 64, 128, 256]
+/** The size macOS makes its icon set from (it needs 512 or more) and Linux takes as is. */
+const LARGE = 1024
 const ICO_HEADER = 6
 const ICO_ENTRY = 16
 
@@ -41,5 +43,7 @@ const entries = SIZES.map((size, i) => {
 })
 const out = join(here, "..", "build-resources", "icon.ico")
 writeFileSync(out, Buffer.concat([header, ...entries, ...pngs]))
-writeFileSync(join(here, "..", "build-resources", "icon.png"), pngs[pngs.length - 1])
+const large = createCanvas(LARGE, LARGE)
+large.getContext("2d").drawImage(image, 0, 0, LARGE, LARGE)
+writeFileSync(join(here, "..", "build-resources", "icon.png"), large.toBuffer("image/png"))
 console.log(`Wrote ${out}: ${SIZES.join(", ")} px`)

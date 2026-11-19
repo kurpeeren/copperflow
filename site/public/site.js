@@ -21,3 +21,8 @@ for (const block of document.querySelectorAll("[data-copy]")) {
     }, 2000)
   })
 }
+
+// The download for the visitor's own system is outlined; the others stay one glance away.
+const platform = (navigator.userAgentData?.platform ?? navigator.platform ?? "").toLowerCase()
+const os = platform.startsWith("win") ? "windows" : platform.startsWith("mac") ? "mac" : platform.includes("linux") ? "linux" : undefined
+if (os) document.querySelector(`.downloads [data-os="${os}"]`)?.classList.add("yours")

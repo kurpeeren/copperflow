@@ -89,19 +89,23 @@ progress notifications, so a client that shows them says "Routing: 3 of 8 connec
 Studio is open on the same project, every tool call also shows in a strip under its toolbar, and
 `open_studio` brings that window to the front instead of opening another.
 
-### Desktop app (Windows)
+### Desktop app (Windows, macOS, Linux)
 
-`copperflow-Setup.exe` from the [latest release](https://github.com/kurpeeren/copperflow/releases/latest)
-installs copperflow for the current user, with its own runtime: no Node.js or npm needed. It opens to a
-start screen (recent projects, open a folder, a new project) and then the Studio of that folder; File →
-Projects… goes back. The same program is the MCP server: the start screen's **Connect** writes it into
+The [latest release](https://github.com/kurpeeren/copperflow/releases/latest) has the app with its own
+runtime, so no Node.js or npm is needed: `copperflow-Setup.exe` for Windows (installs for the current
+user), `copperflow-mac-arm64.dmg` or `copperflow-mac-x64.dmg` for macOS, and
+`copperflow-linux-x86_64.AppImage` or `copperflow-linux-amd64.deb` for Linux. It opens to a start screen
+(recent projects, open a folder, a new project) and then the Studio of that folder; File → Projects… goes
+back, and the Files tab of Project Design shows the folder file by file, with a preview of its text and
+pictures. The same program is the MCP server: the start screen's **Connect** writes it into
 Claude Desktop, and **Copy the command** gives the line for Claude Code. An agent works headless; when
 the window has its project open, the agent's changes and what it is doing appear there as it goes.
 
-The installer is not signed yet, so Windows shows "Windows protected your PC" the first time: choose
-More info, then Run anyway. The release carries the installer's SHA-256 beside it. To build it from
-source: `npm run build`, then in `desktop/`, `npm ci` and `npm run dist` (the installer is in
-`desktop/out/`).
+The apps are not signed with a developer certificate yet: Windows shows "Windows protected your PC" the
+first time (More info, then Run anyway), and macOS asks once in System Settings, Privacy & Security (Open
+Anyway). The release carries each file's SHA-256 beside it. Every version tag builds all of them
+(`.github/workflows/desktop.yml`). To build one from source: `npm run build`, then in `desktop/`, `npm ci`
+and `npm run dist` (Windows), `npm run dist:mac` or `npm run dist:linux`; the files are in `desktop/out/`.
 
 ### Open the visual editor
 

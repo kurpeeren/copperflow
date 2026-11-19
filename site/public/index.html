@@ -22,6 +22,7 @@
     <header class="top">
       <a class="wordmark" href="/">copperflow</a>
       <nav aria-label="Site">
+        <a href="#download">Install</a>
         <a href="#start">Start</a>
         <a href="connect.html">Connect</a>
         <a href="https://github.com/kurpeeren/copperflow">Source</a>
@@ -40,6 +41,7 @@
           <pre><code><span class="prompt" aria-hidden="true">$ </span>npm install -g copperflow</code></pre>
           <button type="button">Copy</button>
         </div>
+        <p class="note">That is the MCP server, which works headless. Or <a href="#download">download the desktop app</a> for Windows, macOS or Linux: a window, and the same server inside.</p>
 
         <figure class="shot">
           <img
@@ -55,12 +57,68 @@
         </figure>
       </section>
 
+      <section id="download" aria-labelledby="download-title">
+        <h2 id="download-title">Two ways to install</h2>
+        <p>
+          copperflow runs headless: your agent designs a whole board through MCP with no window open, and answers with
+          pictures of the schematic, the board and its 3D view, a one-page HTML of the design and the files a factory
+          takes. Open the editor only when you want to watch the work or put your own hands on it.
+        </p>
+        <div class="ways">
+          <div class="way">
+            <h3>Only the MCP server</h3>
+            <p>
+              For an agent that works on its own, a server or a terminal. Needs Node.js 22 or newer; the editor opens in
+              your browser with <code>copperflow studio</code> when you want it.
+            </p>
+            <div class="command" data-copy>
+              <pre><code><span class="prompt" aria-hidden="true">$ </span>npm install -g copperflow</code></pre>
+              <button type="button">Copy</button>
+            </div>
+            <p class="note">Or with nothing installed, give your agent <code>npx -y copperflow mcp</code> as the command. The <a href="#start">steps below</a> connect it.</p>
+          </div>
+          <div class="way">
+            <h3>The desktop app</h3>
+            <p>
+              The editor in its own window with a start screen for your projects, and the same MCP server inside: its
+              start screen connects Claude Desktop in one click. The agent still works with the window closed; with it
+              open, you watch each change land. No Node.js needed.
+            </p>
+            <ul class="downloads">
+              <li data-os="windows">
+                <h4>Windows</h4>
+                <a class="get" href="https://github.com/kurpeeren/copperflow/releases/latest/download/copperflow-Setup.exe">Installer (.exe)</a>
+                <p class="note">Windows 10 or 11, 64-bit. Installs for you alone, no administrator needed.</p>
+              </li>
+              <li data-os="mac">
+                <h4>macOS</h4>
+                <a class="get" href="https://github.com/kurpeeren/copperflow/releases/latest/download/copperflow-mac-arm64.dmg">Apple silicon (.dmg)</a>
+                <a class="get" href="https://github.com/kurpeeren/copperflow/releases/latest/download/copperflow-mac-x64.dmg">Intel (.dmg)</a>
+                <p class="note">macOS 12 or newer.</p>
+              </li>
+              <li data-os="linux">
+                <h4>Linux</h4>
+                <a class="get" href="https://github.com/kurpeeren/copperflow/releases/latest/download/copperflow-linux-x86_64.AppImage">AppImage</a>
+                <a class="get" href="https://github.com/kurpeeren/copperflow/releases/latest/download/copperflow-linux-amd64.deb">Debian, Ubuntu (.deb)</a>
+                <p class="note">64-bit x86.</p>
+              </li>
+            </ul>
+          </div>
+        </div>
+        <p class="note">
+          The apps are not signed by a developer certificate yet. On Windows choose More info, then Run anyway. On macOS,
+          if it says it cannot check the app, open System Settings, Privacy &amp; Security, and choose Open Anyway. On
+          Linux make the AppImage executable first. Each release lists the files' SHA-256 checksums on
+          <a href="https://github.com/kurpeeren/copperflow/releases/latest">its GitHub page</a>.
+        </p>
+      </section>
+
       <section id="start" aria-labelledby="start-title">
         <h2 id="start-title">Start</h2>
         <ol class="steps">
           <li>
             <h3>Install it</h3>
-            <p>copperflow needs Node.js 22 or newer.</p>
+            <p>With the <a href="#download">desktop app</a> you are done here. From npm, copperflow needs Node.js 22 or newer.</p>
             <div class="command" data-copy>
               <pre><code><span class="prompt" aria-hidden="true">$ </span>npm install -g copperflow</code></pre>
               <button type="button">Copy</button>
@@ -184,7 +242,7 @@
         </div>
         <div>
           <dt>Rev</dt>
-          <dd>0.4.4</dd>
+          <dd>0.5.0</dd>
         </div>
         <div>
           <dt>Licence</dt>

@@ -65,6 +65,7 @@ import { formatGraphicImport, importGraphic } from "../core/graphic-import.js"
 import { formatKicadImport, importKicad } from "../library/kicad/import.js"
 import { watchIdle } from "./idle.js"
 import { controlRoute, type StudioHost } from "./studio-control.js"
+import { fileRoute } from "./file-routes.js"
 import { AgentActivitySchema } from "./activity-event.js"
 import { projectRoot } from "./studio-note.js"
 import { HttpError } from "./http-error.js"
@@ -369,6 +370,10 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
     const stop = () => (options.onStop ?? (() => void studio.close()))()
     const control = controlRoute(route, projectRoot(root), { stop, focus: options.onFocus, host: options.host })
     if (control !== undefined) return send(res, control)
+    // The Files tab: the folder as a list (JSON) and one file for the preview (JSON text, or an image's own bytes).
+    const files = await fileRoute(route, url.searchParams, root)
+    if (files !== undefined && "json" in files) return send(res, files.json)
+    if (files !== undefined) return void res.writeHead(200, { ...SECURITY_HEADERS, ...files.headers }).end(files.bytes)
     switch (route) {
       case "GET /api/events":
         return openEvents(res)

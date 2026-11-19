@@ -14,4 +14,5 @@ contextBridge.exposeInMainWorld("copperflowDesktop", {
   connectClaudeDesktop: call("claude:connect-desktop"),
   copyClaudeCodeCommand: call("claude:copy-code-command"),
   backToProjects: call("studio:projects"),
+  showInFolder: call("studio:show-in-folder"),
 })

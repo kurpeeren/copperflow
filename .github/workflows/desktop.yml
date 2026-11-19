@@ -1,0 +1,72 @@
+name: Desktop
+
+# Builds the desktop app's installers on Windows, macOS and Linux and keeps them as this run's artifacts. The release
+# workflow calls it for a version tag and attaches the files to that release; started by hand (Actions, Desktop, Run
+# workflow) it only builds, to try a change before a release.
+on:
+  workflow_dispatch:
+  workflow_call:
+
+# Read rights only: npm ci runs dependency install scripts, which must not see a token that can write.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: --win --x64
+            files: |
+              desktop/out/copperflow-Setup.exe
+          - os: macos-latest
+            platform: --mac
+            files: |
+              desktop/out/copperflow-mac-arm64.dmg
+              desktop/out/copperflow-mac-x64.dmg
+          - os: ubuntu-latest
+            platform: --linux
+            files: |
+              desktop/out/copperflow-linux-x86_64.AppImage
+              desktop/out/copperflow-linux-amd64.deb
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run build
+      - run: npm ci
+        working-directory: desktop
+      - run: npm run stage
+        working-directory: desktop
+      - name: Package
+        working-directory: desktop
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          # No signing identity: the apps are not signed yet (say so on the site), and the build must not look for one.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        shell: bash
+        run: npx electron-builder --config electron-builder.yml $PLATFORM --publish never
+      - name: The files' SHA-256, to check a download against
+        shell: bash
+        env:
+          FILES: ${{ matrix.files }}
+        run: |
+          for file in $FILES; do
+            name="$(basename "$file")"
+            if command -v sha256sum > /dev/null; then sum=(sha256sum); else sum=(shasum -a 256); fi
+            (cd "$(dirname "$file")" && "${sum[@]}" "$name" > "$name.sha256")
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: |
+            ${{ matrix.files }}
+            desktop/out/*.sha256
+          if-no-files-found: error

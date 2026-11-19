@@ -9,7 +9,9 @@
     "compile": "tsc -p tsconfig.json",
     "stage": "npm run compile && node scripts/stage.mjs",
     "start": "npm run compile && electron .",
-    "dist": "npm run stage && electron-builder --config electron-builder.yml --win --x64"
+    "dist": "npm run stage && electron-builder --config electron-builder.yml --win --x64",
+    "dist:mac": "npm run stage && electron-builder --config electron-builder.yml --mac",
+    "dist:linux": "npm run stage && electron-builder --config electron-builder.yml --linux"
   },
   "devDependencies": {
     "electron": "45.2.3",

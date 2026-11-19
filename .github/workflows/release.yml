@@ -1,8 +1,9 @@
 name: Release
 
-# Pushing a version tag (v0.3.1) publishes that version to npm, then builds the Windows desktop app's installer and
-# attaches it to the GitHub release of that tag. No npm token is stored: npm trusts this workflow of this repository
-# (npmjs.com, the package's Settings, Trusted publishing), and the publish proves where it came from.
+# Pushing a version tag (v0.3.1) publishes that version to npm, then builds the desktop app for Windows, macOS and
+# Linux (desktop.yml) and attaches the installers to the GitHub release of that tag. No npm token is stored: npm trusts
+# this workflow of this repository (npmjs.com, the package's Settings, Trusted publishing), and the publish proves where
+# it came from.
 on:
   push:
     tags:
@@ -36,34 +37,7 @@ jobs:
 
   desktop:
     needs: publish
-    runs-on: windows-latest
-    # Builds with read rights only: npm ci runs dependency install scripts, which must not see a token that can write.
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: npm ci
-      - run: npm run build
-      - run: npm ci
-        working-directory: desktop
-      - run: npm run dist
-        working-directory: desktop
-      - name: The installer's SHA-256, to check a download against
-        shell: bash
-        working-directory: desktop/out
-        run: sha256sum copperflow-Setup.exe > copperflow-Setup.exe.sha256
-      - uses: actions/upload-artifact@v4
-        with:
-          name: installer
-          path: |
-            desktop/out/copperflow-Setup.exe
-            desktop/out/copperflow-Setup.exe.sha256
-          if-no-files-found: error
+    uses: ./.github/workflows/desktop.yml
 
   release:
     needs: desktop
@@ -74,12 +48,14 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: installer
-      - name: Attach the installer to the release of this tag
+          pattern: desktop-*
+          merge-multiple: true
+      - name: Attach the installers to the release of this tag
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           version="${GITHUB_REF_NAME#v}"
-          gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --verify-tag --title "copperflow $version" --notes "Windows: download copperflow-Setup.exe and run it (the .sha256 file holds its checksum). npm: npx copperflow@$version"
-          gh release upload "$GITHUB_REF_NAME" copperflow-Setup.exe copperflow-Setup.exe.sha256 --clobber
+          notes="Desktop app: Windows copperflow-Setup.exe; macOS copperflow-mac-arm64.dmg (Apple silicon) or copperflow-mac-x64.dmg (Intel); Linux copperflow-linux-x86_64.AppImage or copperflow-linux-amd64.deb. Each .sha256 file holds the checksum of the file of the same name. The apps are not signed yet. npm: npx copperflow@$version"
+          gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --verify-tag --title "copperflow $version" --notes "$notes"
+          gh release upload "$GITHUB_REF_NAME" copperflow-* --clobber

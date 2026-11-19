@@ -11,7 +11,7 @@ const desktop = join(dirname(fileURLToPath(import.meta.url)), "..")
 const root = join(desktop, "..")
 const stage = join(desktop, "stage")
 const FROM_ROOT = ["dist", "library", "skills", "LICENSE", "NOTICE", "package-lock.json"]
-const FROM_DESKTOP = ["build", "start", "preload.cjs", "build-resources/icon.ico"]
+const FROM_DESKTOP = ["build", "start", "preload.cjs", "build-resources/icon.ico", "build-resources/icon.png"]
 
 for (const needed of [join(root, "dist", "cli.js"), join(root, "dist", "app", "index.html"), join(desktop, "build", "main.js")]) {
   if (!existsSync(needed)) throw new Error(`${needed} is missing: run npm run build in the repository root and npm run compile here first`)

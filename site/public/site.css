@@ -186,6 +186,60 @@ code {
 .shot {
   margin: clamp(2rem, 5vw, 3.5rem) 0 0;
 }
+
+/* The two ways to install side by side, the server first; one column on a phone. */
+.ways {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: clamp(1.5rem, 4vw, 3rem);
+  margin-block: 1.5rem 1rem;
+}
+.way > h3 {
+  margin-bottom: 0.5rem;
+}
+.way h4 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+/* The three downloads: one column each, the visitor's own system outlined in copper (site.js). */
+.downloads {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.75rem;
+}
+.downloads > li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1.25rem;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+}
+.downloads > li.yours {
+  border-color: var(--copper);
+  box-shadow: inset 0 0 0 1px var(--copper);
+}
+.downloads .note {
+  margin: 0.25rem 0 0;
+}
+.get {
+  display: block;
+  padding: 0.55rem 0.8rem;
+  border-radius: 3px;
+  background: var(--canvas);
+  color: var(--canvas-ink);
+  font-weight: 600;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.get:hover {
+  color: var(--silk);
+}
 .shot img {
   display: block;
   width: 100%;

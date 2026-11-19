@@ -8,6 +8,7 @@ import type { Actions } from "./App"
 import { clicked, type Selection, type SelectionChange } from "./selection"
 import { blurAfterPointerClick } from "./shell/focus"
 import { PageTree } from "./shell/PageTree"
+import { FilesPanel } from "./shell/FilesPanel"
 import type { PageTree as PageTreeData, DocView } from "./shell/page-tree"
 import { sideTabId, stripPanelId } from "./shell/SideStrip"
 import type { DesignSub, LeftState } from "./shell/strip-state"
@@ -48,11 +49,11 @@ interface Props {
   hidden: boolean
 }
 
-const SUB_NAMES: Record<DesignSub, string> = { page: "Page", net: "Net", component: "Component", object: "Object", project: "Project" }
+const SUB_NAMES: Record<DesignSub, string> = { page: "Page", net: "Net", component: "Component", object: "Object", project: "Project", files: "Files" }
 const SUBS = Object.keys(SUB_NAMES) as DesignSub[]
 const DESIGN_PANEL_ID = "design-panel"
 
-/** Page, Net, Component, Object and Project across the top of Project Design. */
+/** Page, Net, Component, Object, Project and Files across the top of Project Design. */
 function SubTabs({ sub, onSub }: { sub: DesignSub; onSub(sub: DesignSub): void }) {
   const list = useTabList({ ids: SUBS, current: sub, onSelect: onSub })
   return (
@@ -66,7 +67,7 @@ function SubTabs({ sub, onSub }: { sub: DesignSub; onSub(sub: DesignSub): void }
   )
 }
 
-/** Project Design (Page, Net, Component, Object) or Common Library, depending on the strip. */
+/** Project Design (Page, Net, Component, Object, Project, Files) or Common Library, depending on the strip. */
 export function LeftPanel(props: Props) {
   const { left, onSub } = props
   const design = left.strip === "design"
@@ -93,6 +94,8 @@ function DesignBody(props: Props) {
       return <Connections {...props} />
     case "project":
       return <ProjectMemory />
+    case "files":
+      return <FilesPanel onOpenDocument={props.onOpenDocument} />
   }
 }
 

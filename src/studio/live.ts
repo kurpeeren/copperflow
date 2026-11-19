@@ -4,6 +4,7 @@ import { join } from "node:path"
 import type { Design } from "../engine/design.js"
 import { ENGINE_FILES } from "../engine/engine.js"
 import { isProjectFile } from "../engine/project-files.js"
+import { isSkippedPath } from "./file-list.js"
 
 export type BuildStatus = "idle" | "building" | "done" | "failed"
 
@@ -32,7 +33,7 @@ export interface BuildState {
   finishedAt?: string
 }
 
-export type LiveEvent = "change" | "build" | "library" | "route" | "place" | "activity"
+export type LiveEvent = "change" | "build" | "library" | "route" | "place" | "activity" | "files"
 export type Listener = (event: LiveEvent, data: Record<string, unknown>) => void
 
 const IGNORED = /^(node_modules|dist|\.git|\.copperflow|coverage)\//
@@ -43,7 +44,10 @@ const PART_YAML = /^parts\/[^/]+\/part\.yaml$/
 const LIBRARY_TIMER = "\0library"
 const REBUILD_TIMER = "\0rebuild"
 const BUILT_CIRCUIT_TIMER = "\0built:"
+const FILES_TIMER = "\0files"
 const DEBOUNCE_MS = 50
+/** The Files tab reads the whole folder again on a "files" event, so a burst of writes sends one, once it settles. */
+export const FILES_DEBOUNCE_MS = 300
 const MAX_KEPT_BUILDS = 5
 
 /** What a kept build started from: the circuit text, and how many changes to the files the engine reads came before it. */
@@ -174,6 +178,8 @@ export class LiveProject {
   }
 
   private onFileEvent(name: string): void {
+    // Before the build filter: the Files tab shows dist, coverage and .copperflow, which no build reads.
+    if (!isSkippedPath(name)) this.debounce(FILES_TIMER, () => this.emit("files", {}), FILES_DEBOUNCE_MS)
     if (IGNORED.test(name)) return
     if (PART_YAML.test(name)) this.debounce(LIBRARY_TIMER, () => this.emit("library", {}))
     const annotations = ANNOTATIONS.test(name)
@@ -203,14 +209,14 @@ export class LiveProject {
     })
   }
 
-  private debounce(key: string, task: () => void): void {
+  private debounce(key: string, task: () => void, ms = DEBOUNCE_MS): void {
     clearTimeout(this.timers.get(key))
     this.timers.set(
       key,
       setTimeout(() => {
         this.timers.delete(key)
         task()
-      }, DEBOUNCE_MS),
+      }, ms),
     )
   }
 

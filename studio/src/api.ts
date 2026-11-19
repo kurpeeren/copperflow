@@ -158,11 +158,12 @@ export async function apiBlob(path: string): Promise<Blob> {
   return response.blob()
 }
 
-export type ServerEvent = "change" | "build" | "library" | "route" | "place" | "activity"
-const SERVER_EVENTS: readonly string[] = ["change", "build", "library", "route", "place", "activity"] satisfies ServerEvent[]
+export type ServerEvent = "change" | "build" | "library" | "route" | "place" | "activity" | "files"
+const SERVER_EVENTS: readonly string[] = ["change", "build", "library", "route", "place", "activity", "files"] satisfies ServerEvent[]
 
 /**
- * Subscribes to file changes, build updates, routing news and what the agent is doing; returns an unsubscribe function.
+ * Subscribes to file changes, build updates, routing news, what the agent is doing and changes to the project folder
+ * ("files", for the Files tab); returns an unsubscribe function.
  * A "route" event also gives its data, a RouteEvent; an "activity" event an AgentActivity, with no file. Uses fetch rather than EventSource so the token goes in a header, not in the URL.
  * `onConnection` hears false when the stream cannot connect and true when it is open again.
  */

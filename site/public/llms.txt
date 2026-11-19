@@ -67,6 +67,10 @@ Do these in the folder that will hold the board.
   DXF file in the project on the silkscreen, as a solder-mask opening, or as copper. Copper with a `net` is that
   net's copper: it joins the net's pads and tracks and shorts against any other net. In an SVG the dark shapes are
   ink and light shapes over them are cut out.
+- Long tools (autoroute, autoplace, the exports, a 3D render) send MCP progress notifications when the client asks
+  for them. When the person has the Studio open on the same project (in a browser or in the desktop app), every tool
+  call also shows there as it runs, and `open_studio` brings the desktop app's window to the front instead of opening a
+  browser. `copperflow connect claude-desktop` adds the server to Claude Desktop; the desktop app has the same button.
 - `bom` ends with whether the board is ready to order. `export_fabrication` writes the Gerbers, drills,
   pick-and-place file, a STEP model and a picture of each side; it refuses a circuit with errors.
 - Impedance, differential pairs and matched lengths are net classes in `rules.yaml`

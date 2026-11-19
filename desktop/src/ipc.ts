@@ -1,6 +1,7 @@
 // The calls the pages may make to the main process. The start screen may make all of them; the Studio page only the
 // one that goes back to the start screen. A call from any other page is refused.
-import { app, clipboard, dialog, ipcMain, type IpcMainInvokeEvent } from "electron"
+import { isAbsolute, relative, resolve } from "node:path"
+import { app, clipboard, dialog, ipcMain, shell, type IpcMainInvokeEvent } from "electron"
 import { claudeCodeCommand, claudeDesktopConfigFile, connectClaudeDesktop, createProject, mcpLaunch, type RecentProjects } from "../../dist/desktop/index.js"
 import { VERSION } from "../../dist/version.js"
 import { APP_DIR } from "./paths.js"
@@ -12,6 +13,8 @@ export interface IpcHost {
   /** Whether an address is the start screen, and whether it is a page of the Studio that is open now. */
   isStartPage: (url: string) => boolean
   isStudio: (url: string) => boolean
+  /** The folder of the project open in the window, while one is. */
+  projectRoot: () => string | undefined
 }
 
 type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown
@@ -34,6 +37,16 @@ export function registerIpc(host: IpcHost): void {
   ipcMain.handle("claude:connect-desktop", fromStart(() => connectClaudeDesktop(claudeDesktopConfigFile(), launch())))
   ipcMain.handle("claude:copy-code-command", fromStart(() => copyCodeCommand()))
   ipcMain.handle("studio:projects", fromStudio(() => host.backToProjects()))
+  ipcMain.handle("studio:show-in-folder", fromStudio((_event, path) => showInFolder(host, text(path, "path"))))
+}
+
+/** Explorer at a file of the open project; a path outside it is refused, so a page cannot point Explorer anywhere. */
+function showInFolder(host: IpcHost, path: string): void {
+  const root = host.projectRoot()
+  const target = resolve(path)
+  const inside = root === undefined ? undefined : relative(root, target)
+  if (inside === undefined || inside.startsWith("..") || isAbsolute(inside)) throw new Error("Only a file of the open project can be shown")
+  shell.showItemInFolder(target)
 }
 
 function text(value: unknown, what: string): string {

@@ -14,5 +14,5 @@ export const CLI = join(APP_DIR, "dist", "cli.js")
 export const START_PAGE = join(build, "..", "start", "index.html")
 /** The only script the pages get from the app: a few calls to the main process, through contextBridge. */
 export const PRELOAD = join(build, "..", "preload.cjs")
-/** The window and taskbar icon. */
-export const ICON = join(build, "..", "build-resources", "icon.ico")
+/** The window and taskbar icon: .ico on Windows, the large PNG elsewhere (macOS takes the app bundle's own). */
+export const ICON = join(build, "..", "build-resources", process.platform === "win32" ? "icon.ico" : "icon.png")

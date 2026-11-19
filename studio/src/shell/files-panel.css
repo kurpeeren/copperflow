@@ -1,0 +1,142 @@
+/* The Files tab of Project Design: the project folder as a tree, and its read-only preview dialog. */
+
+.files-panel {
+  font-size: 12px;
+}
+
+.files-root {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  padding-left: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.files-panel ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.files-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding-right: 8px;
+  color: var(--text);
+  cursor: default;
+  white-space: nowrap;
+}
+
+.files-row:hover {
+  background: var(--raised);
+}
+
+.files-row:focus-visible {
+  outline-offset: -2px;
+}
+
+/* A link is listed, never followed: it reads as quieter than the files the tree can open. */
+.files-row.link {
+  color: var(--muted);
+}
+
+.files-twisty {
+  display: inline-flex;
+  flex: none;
+  width: 16px;
+  color: var(--muted);
+}
+
+.files-twisty svg {
+  transition: transform var(--ease);
+}
+
+.files-twisty svg.open {
+  transform: rotate(90deg);
+}
+
+.files-icon {
+  flex: none;
+  color: var(--muted);
+}
+
+/* Each family of files in its own colour from the theme, so a folder of exports reads at a glance. */
+.files-icon.k-folder,
+.files-icon.k-circuit,
+.files-icon.k-sheet,
+.files-icon.k-layout {
+  color: var(--copper-text);
+}
+
+.files-icon.k-gerber,
+.files-icon.k-drill,
+.files-icon.k-table {
+  color: var(--mask);
+}
+
+.files-icon.k-image,
+.files-icon.k-model {
+  color: var(--warning);
+}
+
+.files-icon.k-pdf,
+.files-icon.k-web {
+  color: var(--danger-text);
+}
+
+.files-icon.k-markdown,
+.files-icon.k-text,
+.files-icon.k-code {
+  color: var(--text);
+}
+
+.files-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.files-panel .note {
+  padding: 4px 12px;
+}
+
+.files-notice:empty {
+  display: none;
+}
+
+.files-preview h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.files-preview-image {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 160px);
+  margin: 0 auto;
+  object-fit: contain;
+}
+
+.files-preview-text {
+  max-height: calc(100vh - 180px);
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  background: var(--ground);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.files-preview-text.wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

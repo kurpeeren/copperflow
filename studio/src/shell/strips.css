@@ -58,8 +58,9 @@
 
 /* The left panel's right edge is its hairline-r; the right panel's left edge is drawn by the centre column
    (hairline.css), because the panel scrolls. */
+/* As wide as the right panel: Project Design's six sub-tabs (Page to Files) fit at their padding. */
 .panel.left {
-  width: 231px;
+  width: 262px;
 }
 
 .panel.right {
@@ -71,13 +72,16 @@
   height: 24px;
   flex: none;
   background: var(--strip);
+  /* A larger font scrolls the row rather than hiding the last tab under the canvas. */
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
 .sub-tab {
   position: relative;
   flex: 1 1 auto;
   height: 24px;
-  padding: 0 6px;
+  padding: 0 4px;
   border: 0;
   border-radius: 0;
   background: transparent;

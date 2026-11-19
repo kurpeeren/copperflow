@@ -4,7 +4,7 @@
 import { stat } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
-import { app, BrowserWindow, dialog, session, shell } from "electron"
+import { app, BrowserWindow, dialog, Menu, session, shell } from "electron"
 import { appMode, recentProjects } from "../../dist/desktop/index.js"
 import { runStudio, type RunningStudio } from "../../dist/studio/run-studio.js"
 import { registerIpc } from "./ipc.js"
@@ -34,12 +34,24 @@ export function startWindowApp(open: string | undefined): void {
   })
   app.on("window-all-closed", () => void quit())
   app.whenReady().then(() => {
-    registerIpc({ recent, openProject, backToProjects, isStartPage, isStudio })
+    registerIpc({ recent, openProject, backToProjects, isStartPage, isStudio, projectRoot: () => running?.note.root })
+    setMacMenu()
     limitPermissions()
     window = createWindow()
     if (open !== undefined) void openProject(open)
     else void window.loadFile(START_PAGE)
   }, fail)
+}
+
+/**
+ * macOS has one menu bar for the app, and text fields copy and paste through its Edit menu. Only Cut, Copy and Paste
+ * are there: Undo, Redo and Select All stay the Studio's own keys. Windows and Linux have no app menu (removeMenu).
+ */
+function setMacMenu(): void {
+  if (process.platform !== "darwin") return
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([{ role: "appMenu" }, { label: "Edit", submenu: [{ role: "cut" }, { role: "copy" }, { role: "paste" }] }, { role: "windowMenu" }]),
+  )
 }
 
 function createWindow(): BrowserWindow {
