@@ -49,6 +49,8 @@ export interface NetClass {
   via: { drill: number; diameter: number }
   /** Net name patterns with `*` and `?`. */
   patterns: string[]
+  /** The current its nets carry, in amperes: the track-current check sizes their tracks for it. */
+  current?: number
   /** Single-line impedance, in ohm. */
   impedance?: number
   /** The pairs of this class. */
@@ -136,6 +138,7 @@ const NetClassSchema = z
     clearance: length.optional(),
     via: z.object({ drill: length.optional(), diameter: length.optional() }).strict().optional(),
     nets: z.array(z.string().min(1)),
+    current: z.number().positive("a current above 0, in amperes, such as 2").finite().optional(),
     impedance: z.number().min(10, "an impedance from 10 to 200 ohm").max(200, "an impedance from 10 to 200 ohm").optional(),
     differentialImpedance: z.number().min(20, "a differential impedance from 20 to 300 ohm").max(300, "a differential impedance from 20 to 300 ohm").optional(),
     pair: z.union([z.literal("by-name"), z.array(z.tuple([z.string().min(1), z.string().min(1)]))]).optional(),

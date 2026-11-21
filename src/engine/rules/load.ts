@@ -153,6 +153,7 @@ function resolveClass(name: string, written: NonNullable<RulesFile["netClasses"]
     clearance: written.clearance ?? DEFAULT_CLASS.clearance,
     via: { drill: written.via?.drill ?? DEFAULT_CLASS.via.drill, diameter: written.via?.diameter ?? DEFAULT_CLASS.via.diameter },
     patterns: written.nets,
+    ...(written.current === undefined ? {} : { current: written.current }),
     ...fastKeys(written),
   }
 }

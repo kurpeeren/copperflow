@@ -28,6 +28,20 @@ Example: 0.6 A on an outer layer with a 10 °C rise needs about 8 mil², which i
 
 IPC-2152 replaces the IPC-2221 charts with more detailed data; use it when the margin is small.
 
+`check_circuit` applies this formula as the `track-current` warning:
+
+- **Where the current comes from:** a net's current is the largest current any sheet port on it
+  names in its `carries` text, such as "10 A at most" or "33 mA". A net class's `current` (in
+  amperes, in `rules.yaml`) counts as well, and the larger of the two is used.
+- **The width it asks for:** the width for a 10 °C rise in `fabrication.copperThickness` (1 oz,
+  0.035 mm, when the file does not set it). An inner layer needs about 2.6 times the outer width.
+- **What it reports:** one warning per net, naming the tracks narrower than that width. Vias and
+  pours are not measured.
+- **Fixing it:** give the net a class with that `trackWidth`, then `unroute` and `autoroute` it,
+  or carry it in a pour. Write a port's `carries` with the most current it really takes, as a
+  number with `A`, `mA` or `µA` ("2 A", "350 mA"); a text that names no current that way gives
+  no warning.
+
 Source: IPC-2221, *Generic Standard on Printed Board Design*; IPC-2152, *Standard for
 Determining Current Carrying Capacity in Printed Board Design*.
 
@@ -69,6 +83,7 @@ netClasses:
     trackWidth: 0.5
     clearance: 0.3
     via: { drill: 0.4, diameter: 0.8 }
+    current: 1.4             # amperes its nets carry; optional, for the track-current check
     nets: [GND, VBUS, "V*"]  # net names or patterns with * and ?
   field:
     nets: ["IN*", V24]
@@ -107,6 +122,9 @@ globalNets: [GND, V24, V3_3]
   `source` names the page, its sections and the date it was read.
 - A class field left out takes the default class's value: track 0.25 mm, clearance 0.2 mm, via drill
   0.3 mm and diameter 0.6 mm. These are copperflow's own conservative choice, above the profile minimums.
+- `current` is the current a class's nets carry, in amperes. It does not change the router's width:
+  the `track-current` warning compares the tracks with the width that current needs (see "Trace
+  width for current"). Set `trackWidth` to that width yourself.
 - Patterns are case-sensitive and match a net's names. `*` alone matches every net, named or not.
   An unnamed net is in no class otherwise.
 - A pattern that starts with `*` must be quoted (`"*GND"`): unquoted, YAML reads it as an alias.

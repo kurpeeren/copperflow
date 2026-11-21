@@ -13,6 +13,7 @@ import { partChecks } from "./drc-parts.js"
 import { electricalChecks } from "./erc.js"
 import { caseSizeChecks } from "./case-size.js"
 import { fastLineChecks, viaThickness } from "./fast-lines.js"
+import { trackCurrentChecks } from "./track-current.js"
 import { withoutUnplacedPositions } from "./unplaced-parts.js"
 import { violation, type Violation } from "./violation.js"
 
@@ -72,6 +73,7 @@ export function checkDesign(
     ...pourChecks(placed, rules, classOf, (net) => circuit.nets.find((one) => one.id === net)?.names[0] ?? net),
     ...copperNoteChecks(copperNotes, layout),
     ...fastLineChecks(circuit.nets, placed, rules, viaThickness(circuit.board?.thickness, rules)),
+    ...trackCurrentChecks(circuit, placed, rules),
     ...skipped,
   ])
   return withoutUnplacedPositions(found, layout)
