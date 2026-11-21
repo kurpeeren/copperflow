@@ -41,6 +41,10 @@ Passive parts (resistors, capacitors, LEDs, headers) are built in and need no en
      `pins` may also be the datasheet's pin table as text, one pin per line (`1 VIN power_in`,
      tab or comma separated too; a pin without a type is `passive`); a line with an unknown type
      is refused with its line number, so write the types out.
+   - `color` (optional): the body's colour in the 3D view, one of `clear`, `black`, `white`, `grey`,
+     `blue`, `red`, `green`, `yellow`. `clear` draws a relay's case see-through with its coil and
+     contacts inside, as on the common clear-cased relays. The same `color:` line can be added to
+     part.yaml later; run `copperflow parts build` after editing it.
    - `suppliers` (for example `jlcpcb: C51118`) and `datasheet` when you know them: an object
      with only the keys `url` (an http or https link), `file` (a PDF file name in the part folder)
      and `title` (at most 200 characters), e.g. `{ "url": "https://example.com/ds.pdf", "title": "TJA1051 datasheet" }`.

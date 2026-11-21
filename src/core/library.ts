@@ -59,6 +59,9 @@ const PinSchema = z
   })
   .strict()
 
+/** The body colours a part may name for its 3D view; clear is a see-through case. */
+export const PART_COLORS = ["clear", "black", "white", "grey", "blue", "red", "green", "yellow"] as const
+
 export const PartSchema = z
   .object({
     title: line(200).min(1),
@@ -73,6 +76,8 @@ export const PartSchema = z
     height: z.number().positive().max(100).optional(),
     /** Where the height was read, e.g. "p1, 5. DIMENSION, 15.3 mm max". */
     height_source: line(200).min(1).optional(),
+    /** The body's colour in the 3D view: a colour name, or clear for a see-through case. */
+    color: z.enum(PART_COLORS).optional(),
     suppliers: z
       .record(z.string().regex(/^[a-z0-9_]+$/).refine((key) => !RESERVED_KEYS.has(key), "reserved name"), line(100))
       .optional(),
@@ -374,6 +379,7 @@ export function generateComponent(id: string, part: Part): string {
     `pinAttributes={${JSON.stringify(attributes)}}`,
     Object.keys(sides).length > 0 ? `pinSides={${JSON.stringify(sides)}}` : undefined,
     part.height !== undefined ? `height={${JSON.stringify(part.height)}}` : undefined,
+    part.color !== undefined ? `color={${JSON.stringify(part.color)}}` : undefined,
     "{...props}",
   ].filter((entry): entry is string => entry !== undefined)
   return [

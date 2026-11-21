@@ -1,6 +1,7 @@
 // The shapes of through-hole library parts drawn as blocks: a relay (K), a pluggable terminal header (J) and an axial
 // diode with two holes (D), each from its footprint file's pads and body outline.
 import { describe, expect, test } from "vitest"
+import { generateComponent, PartSchema } from "../src/core/library.js"
 import type { Pad } from "../src/engine/footprints/types.js"
 import { FAMILY_LOOKS, familyOf } from "../studio/src/look/parts/family.js"
 import { blockShape } from "../studio/src/look/parts/block.js"
@@ -27,6 +28,17 @@ const RELAY_PADS = [hole("1", -3.8, 12.7), hole("2", 3.8, 12.7), hole("3", -3.8,
 const RELAY_BODY: Rect = { minX: -6.3, maxX: 6.3, minY: -14.5, maxY: 14.5 }
 const nineHoles = Array.from({ length: 9 }, (_, k) => hole(String(k + 1), (k - 4) * 7.62, 0, 3.2, 2.0))
 const TERMINAL_BODY: Rect = { minX: -33.48, maxX: 33.48, minY: -3.5, maxY: 9.5 }
+
+describe("a library part's 3D colour", () => {
+  const part = { title: "Relay", footprint: "footprint.yaml", pins: { "1": { name: "COIL", type: "passive" as const } } }
+
+  test("part.yaml takes a colour name or clear, and the part's component passes it on", () => {
+    expect(PartSchema.safeParse({ ...part, color: "clear" }).success).toBe(true)
+    expect(PartSchema.safeParse({ ...part, color: "purple" }).success).toBe(false)
+    expect(generateComponent("K-RELAY", PartSchema.parse({ ...part, color: "clear" }))).toContain('color={"clear"}')
+    expect(generateComponent("K-RELAY", PartSchema.parse(part))).not.toContain("color=")
+  })
+})
 
 describe("which block look a library part gets", () => {
   test("by the letter of its name: K relay, J terminal, D diode, anything else a plain block", () => {
@@ -58,6 +70,26 @@ describe("relay", () => {
     const ink = pieces.filter((piece) => piece.color[0] > 220 && piece.loops.flat().every((p) => p[2] >= 20.6 - 0.03 - 1e-6))
     expect(ink.length).toBeGreaterThan(20)
     expect(pieces.filter((piece) => piece.role === "lead").length).toBeGreaterThanOrEqual(RELAY_PADS.length)
+  })
+
+  test("a clear case is see-through and shows the coil and a blade over each contact column", () => {
+    const clear = relayShape(input(RELAY_PADS, RELAY_BODY, "relay", 20.6, { manufacturerPartNumber: "HLS-14F2L-DC24V-C", color: "clear" }))
+    const shell = clear.filter((piece) => (piece.alpha ?? 1) < 1)
+    expect(shell.length).toBeGreaterThan(4)
+    const opaque = clear.filter((piece) => (piece.alpha ?? 1) === 1 && piece.role === "body")
+    // The copper winding lies at the coil end (+y, where pins 1 and 2 are).
+    const copper = opaque.filter((piece) => piece.color[0] === 184 && piece.color[1] === 104).flatMap((piece) => piece.loops.flat())
+    expect(copper.length).toBeGreaterThan(0)
+    expect(copper.reduce((sum, p) => sum + p[1], 0) / copper.length).toBeGreaterThan(4)
+    // The blades stand over the two contact columns, at the other end.
+    const blades = opaque.filter((piece) => piece.color[0] === 150 && piece.normal[2] > 0.99).flatMap((piece) => piece.loops.flat())
+    expect(new Set(blades.filter((p) => p[1] < 0).map((p) => Math.round(((p[0] > 0 ? 1 : -1) * 10)))).size).toBe(2)
+    for (const p of clear.flatMap((piece) => piece.loops.flat())) expect(p[2]).toBeLessThanOrEqual(20.6 + 1e-6)
+  })
+
+  test("a colour name paints the case", () => {
+    const red = relayShape(input(RELAY_PADS, RELAY_BODY, "relay", 20.6, { color: "red" }))
+    expect(red.some((piece) => piece.color[0] === 184 && piece.color[1] === 40)).toBe(true)
   })
 
   test("without a part number nothing is printed", () => {
