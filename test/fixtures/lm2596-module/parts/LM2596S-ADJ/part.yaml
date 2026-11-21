@@ -1,0 +1,37 @@
+title: LM2596 3 A 150 kHz step-down regulator, adjustable, TO-263-5
+description: SIMPLE SWITCHER buck regulator, 4.5 to 40 V in, adjustable 1.2 to
+  37 V out, 3 A. Pins from Table 6-1 Pin Functions and Figure 6-2 (5-pin TO-263
+  KTT top view); the metal tab is GND (pin 3).
+manufacturer: Texas Instruments
+mpn: LM2596S-ADJ/NOPB
+origin: written 2026-11-19
+footprint: d2pak_5
+pins:
+  "1":
+    name: VIN
+    type: power_in
+    description: Positive input supply; needs an input bypass capacitor at this pin
+  "2":
+    name: OUTPUT
+    type: power_out
+    description: Internal switch output; keep its copper area small
+  "3":
+    name: GND
+    type: ground
+    description: Circuit ground
+  "4":
+    name: FEEDBACK
+    type: input
+    description: Senses the regulated output voltage
+  "5":
+    name: ON_OFF
+    type: input
+    description: Shutdown, active high; tie to GND or leave open for always on
+  "6":
+    name: GND
+    type: ground
+    description: Metal tab, GND (Figure 6-2), same as pin 3
+datasheet:
+  url: https://www.ti.com/lit/ds/symlink/lm2596.pdf
+  title: TI LM2596 data sheet SNVS124G
+datasheet_pages: "4"

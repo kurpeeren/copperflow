@@ -1,0 +1,12 @@
+netClasses:
+  power:
+    nets:
+      - VIN
+      - VOUT
+      - GND
+      - SW
+    trackWidth: 1
+    clearance: 0.3
+    via:
+      drill: 0.5
+      diameter: 1

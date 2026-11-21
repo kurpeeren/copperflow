@@ -2,6 +2,7 @@ import type { Point } from "../model.js"
 import { naturalCompare } from "../order.js"
 import { BoxIndex, GRID, inArea, moved, snap, type Box } from "./geometry.js"
 import { placeConnector, type EdgeSpot } from "./edge.js"
+import { packedSpot } from "./pack-spot.js"
 import type { Movable, Problem } from "./scope.js"
 import type { State } from "./score.js"
 
@@ -51,6 +52,8 @@ export class Board {
   readonly netBox: Box[]
   /** Every pad of each net, placed or not. */
   readonly netSize: number[]
+  /** How much a mm of side against a wall or a courtyard is worth in wire (mm) when packing a crowded board; 0 does not pack. */
+  packing = 0
 
   constructor(
     readonly problem: Problem,
@@ -324,7 +327,7 @@ function placeOne(board: Board, i: number): Placed {
     }
     note = `${m.name} is a connector, but no board edge has room for it, so it is placed inside the board`
   }
-  const spot = cheapestSpot(board, i)
+  const spot = (board.packing > 0 ? packedSpot(board, m) : undefined) ?? cheapestSpot(board, i)
   if (!spot) return { placed: false }
   board.put(i, spot)
   return note === undefined ? { placed: true } : { placed: true, note }
@@ -383,6 +386,20 @@ function nextPart(board: Board, waiting: readonly number[]): number {
     }
   }
   return best
+}
+
+/** The first part of `order` that is waiting and whose host (the part it sits beside) is not; the first waiting else. */
+function nextInOrder(board: Board, waiting: readonly number[], order: readonly number[]): number {
+  const movables = board.problem.movables
+  const names = new Set(waiting.map((i) => (movables[i] as Movable).name))
+  const ready = order.filter((i) => waiting.includes(i))
+  return ready.find((i) => !names.has((movables[i] as Movable).beside?.part ?? "")) ?? (ready[0] as number)
+}
+
+/** A packing pass: the parts in this order, each at its packed spot (see `packedSpot`), with this weight on contact. */
+export interface Packing {
+  order: readonly number[]
+  weight: number
 }
 
 /** What the constructive pass gave: the parts it found no room for (or no time for), and notes about the rest. */
@@ -491,7 +508,8 @@ export const OUT_OF_TIME = "the time budget ran out before it was placed"
  * Connectors go last, into the edge room the other parts left; with `connectorsAhead`, each connector instead goes
  * on the edge just before the part it serves, so that part and the small parts after it do not fill the edge beside
  * it first. `ahead` says how many connectors went early. With `connectorsFirst`, the connectors it names go before
- * every other part, each on the edge nearest the point given for it.
+ * every other part, each on the edge nearest the point given for it. With `packing`, the parts go in its order and fill
+ * the board from its walls (see `packedSpot`).
  */
 export function construct(
   problem: Problem,
@@ -500,8 +518,10 @@ export function construct(
   onPart: (done: number, total: number) => void = () => undefined,
   connectorsAhead = false,
   connectorsFirst?: ReadonlyMap<number, Point>,
+  packing?: Packing,
 ): Constructed {
   const board = new Board(problem, state)
+  board.packing = packing?.weight ?? 0
   const capsOf = new Map<string, number[]>()
   problem.movables.forEach((m, i) => {
     if (m.beside) capsOf.set(m.beside.part, [...(capsOf.get(m.beside.part) ?? []), i])
@@ -543,7 +563,7 @@ export function construct(
   for (;;) {
     const waiting = problem.movables.map((_, i) => i).filter((i) => !done.has(i))
     if (waiting.length === 0) break
-    place(nextPart(board, waiting))
+    place(packing ? nextInOrder(board, waiting, packing.order) : nextPart(board, waiting))
   }
   return { board, unplaced, notes, ahead }
 }

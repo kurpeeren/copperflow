@@ -72,7 +72,7 @@ function roomyBoard(design: Design, options: PlaceOptions, missing: readonly str
     const budget = remaining()
     if (budget !== undefined && budget <= 0) return undefined
     board = grown(board, growthFor(design, left))
-    const pass = placeBoard(board, { ...options, refine: false, connectorsAhead: false, ...(budget === undefined ? {} : { budgetMs: budget }) })
+    const pass = placeBoard(board, { ...options, pack: false, refine: false, connectorsAhead: false, ...(budget === undefined ? {} : { budgetMs: budget }) })
     if (pass.unplaced.some((u) => u.reason === OUT_OF_TIME)) return undefined
     left = noRoom(pass)
   }
@@ -96,13 +96,16 @@ export function placeBoardFitting(design: Design, options: PlaceOptions = {}): P
   const clock = options.clock ?? (() => performance.now())
   const began = clock()
   const remaining: Remaining = () => (options.budgetMs === undefined ? undefined : Math.max(0, options.budgetMs - (clock() - began)))
-  const first = placeBoard(design, { ...options, clock })
+  // A rectangle is grown for a part with no room, rather than packed: it is fitted round the parts afterwards anyway.
+  // Any other outline cannot grow, so it is packed as placeBoard does.
+  if (rectangleOf(design) === undefined) return placeBoard(design, { ...options, clock })
+  const first = placeBoard(design, { ...options, pack: false, clock })
   const missing = noRoom(first)
-  if (missing.length === 0 || rectangleOf(design) === undefined) return first
+  if (missing.length === 0) return first
   const board = roomyBoard(design, { ...options, clock }, missing, remaining)
   const budget = remaining()
   if (board === undefined || (budget !== undefined && budget <= 0)) return outOfTime(first, missing)
-  const placement = placeBoard(board, { ...options, ...(budget === undefined ? {} : { budgetMs: budget }), clock })
+  const placement = placeBoard(board, { ...options, pack: false, ...(budget === undefined ? {} : { budgetMs: budget }), clock })
   const still = noRoom(placement)
   const placedNow = missing.filter((name) => !still.includes(name))
   const note =

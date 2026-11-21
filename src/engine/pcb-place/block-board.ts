@@ -12,6 +12,7 @@ import { naturalCompare } from "../order.js"
 import type { PlacedFootprint } from "../pcb.js"
 import { besideShift } from "./blocks.js"
 import { construct, OUT_OF_TIME } from "./constructive.js"
+import { connectorTargets } from "./edge.js"
 import { boxOfPoints, EPSILON, moved as movedBox, ROTATIONS, turn, type Box } from "./geometry.js"
 import type { BlockMove, PlacedPosition, Placement, PlaceOptions } from "./index.js"
 import { refine } from "./refine.js"
@@ -120,27 +121,6 @@ interface Solved {
   notes: string[]
   wire: number
   budgetSpent: boolean
-}
-
-/** For each connector, where the pads it connects to are on average in `sketch` (its own and unplaced ones left out). */
-function connectorTargets(problem: Problem, sketch: State, unplaced: ReadonlySet<number>): Map<number, Point> {
-  const targets = new Map<number, Point>()
-  problem.movables.forEach((m, c) => {
-    if (m.role !== "connector") return
-    const nets = new Set((m.pads[0] ?? []).map((p) => p.net).filter((n) => n >= 0))
-    let [sx, sy, n] = [0, 0, 0]
-    problem.movables.forEach((other, k) => {
-      if (k === c || unplaced.has(k) || other.role === "connector") return
-      for (const pad of other.pads[sketch.rot[k] as number] ?? []) {
-        if (!nets.has(pad.net)) continue
-        sx += (sketch.x[k] as number) + pad.x
-        sy += (sketch.y[k] as number) + pad.y
-        n++
-      }
-    })
-    if (n > 0) targets.set(c, { x: sx / n, y: sy / n })
-  })
-  return targets
 }
 
 /** Whether whole-board placement goes by blocks: the scope is the board and it has top-level instances, none locked. */

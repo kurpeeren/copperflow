@@ -40,6 +40,12 @@ right, top or bottom; the board is y up, so top is the largest y). Any part with
 against that edge, a connector or not (an LED or a switch at the front). With no room there it goes
 on another edge and the answer's `Notes:` say so; `null` removes the choice.
 
+On a crowded board, when placing by connections leaves a part with no room, `autoplace` packs the
+parts against each other and the board edges until they all fit (`Notes: The parts did not all
+fit by their connections, so they were packed …`). The wire is then longer: look at the board with
+`render`, and move a part with `set_props` where a short loop matters (a regulator's input
+capacitor beside its input pin).
+
 One `autoplace` over the whole board is right for a small board (a dozen or two parts on one
 sheet). A board with sub-sheets is laid out the way a person does it, blocks first:
 

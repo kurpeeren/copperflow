@@ -1,11 +1,14 @@
 import type { Design } from "../design.js"
 import { placeByBlocks, placesByBlocks } from "./block-board.js"
 import { planCopies, placeCopies, type BlockMove } from "./blocks.js"
+import type { Point } from "../model.js"
 import { connectorsServe, construct, LARGE_NET, OUT_OF_TIME, type Constructed } from "./constructive.js"
+import { connectorTargets } from "./edge.js"
 import { EPSILON, ROTATIONS } from "./geometry.js"
 import { refine, type Refined, type RefineOptions } from "./refine.js"
 import { readProblem, type Problem, type ScopeOptions } from "./scope.js"
 import { edgeTouches, NetModel, ratsnestLength, type State } from "./score.js"
+import { packTight } from "./tight.js"
 
 export { DEFAULT_FIT_MARGIN, fitBoard, type FitBoard } from "./fit-board.js"
 export type { PlaceScope } from "./scope.js"
@@ -34,6 +37,11 @@ export interface PlaceOptions extends ScopeOptions, Omit<RefineOptions, "budgetM
    * CAN board at 30 x 22 mm it leaves one ground connection unrouted. A caller choosing it should route and compare.
    */
   connectorsAhead?: boolean
+  /**
+   * Whether parts left with no room on a crowded board are packed against each other and the edges until they fit;
+   * true by default. A caller that grows the board for them instead (fitting it afterwards) passes false.
+   */
+  pack?: boolean
 }
 
 /**
@@ -98,6 +106,18 @@ interface Run {
   wire: number
 }
 
+/**
+ * The parts that name a board edge (pcbEdge), each with where the parts it connects to land in a first sketch of the
+ * board: they are then placed before every other part, on their edge across from that spot, so the edge they ask for
+ * is still free. Undefined when no part names an edge.
+ */
+function edgeFirst(problem: Problem, start: State, late: () => boolean): Map<number, Point> | undefined {
+  if (!problem.movables.some((m) => m.component.pcbEdge !== undefined)) return undefined
+  const sketch: State = { x: start.x.slice(), y: start.y.slice(), rot: start.rot.slice() }
+  const built = construct(problem, sketch, late)
+  return connectorTargets(problem, sketch, new Set(built.unplaced.map((u) => u.index)), (m) => m.component.pcbEdge !== undefined)
+}
+
 /** Whether a run stopped for the time budget, in the constructive pass or the refinement. */
 const spent = (r: Run): boolean => r.built.unplaced.some((u) => u.reason === OUT_OF_TIME) || (r.refined?.budgetSpent ?? false)
 
@@ -111,6 +131,8 @@ function chooseOrder(problem: Problem, last: Run, ahead: Run | undefined): Run {
   return connectorWire(problem, ahead.final) <= connectorWire(problem, last.final) + 1e-9 ? ahead : last
 }
 
+const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? "" : "s"}`
+
 /** Positions are given to the micrometre: the steps the placer takes leave float noise below that. */
 const tidy = (v: number): number => Math.round(v * 1e6) / 1e6
 const quarterOf = (rotation: number): number => Math.round(rotation / 90) & 3
@@ -121,7 +143,9 @@ const quarterOf = (rotation: number): number => Math.round(rotation / 90) & 3
  * pins and every other two-pin part a chip's net ties it to beside that pin (a crystal across its two pins, the load
  * capacitors beside the crystal on the side away from the chip, a pull-up, an LED's resistor beside the LED), connectors on the nearest edge with their pins inward), then simulated annealing on the total ratsnest length.
  * With `connectorsAhead`, when a connector serves a part, the whole is run a second time with that connector put on the edge just before
- * its part, and that second placement is kept when it is better (see `chooseOrder`).
+ * its part, and that second placement is kept when it is better (see `chooseOrder`). Parts that name a board edge
+ * (pcbEdge) go first, on that edge. When parts are left with no room on a crowded board, the board is packed from its
+ * walls instead (see `packTight`), and that is kept when it places more.
  * Pure: it reads the design and returns positions; writing them is the caller's. Same input, same output.
  */
 export function placeBoard(design: Design, options: PlaceOptions = {}): Placement {
@@ -142,9 +166,12 @@ export function placeBoard(design: Design, options: PlaceOptions = {}): Placemen
   const late = budgetMs === undefined ? () => false : () => clock() - began >= budgetMs
   const tell = options.onProgress
   const initial: State = { x: start.x.slice(), y: start.y.slice(), rot: start.rot.slice() }
+  const unpacked: State = { x: start.x.slice(), y: start.y.slice(), rot: start.rot.slice() }
   const onTries = tell && ((done: number, total: number) => tell({ stage: "refine", done, total }))
-  const run = (state: State, ahead: boolean, report: boolean): Run => {
-    const built = construct(problem, state, late, report && tell ? (done, total) => tell({ stage: "construct", done, total }) : undefined, ahead)
+  const first = edgeFirst(problem, start, late)
+  const run = (state: State, ahead: boolean, report: boolean): Run =>
+    finish(state, construct(problem, state, late, report && tell ? (done, total) => tell({ stage: "construct", done, total }) : undefined, ahead, first), report)
+  const finish = (state: State, built: Constructed, report: boolean): Run => {
     const frozen = new Set(built.unplaced.map((u) => u.index))
     const left = budgetMs === undefined ? {} : { budgetMs: Math.max(0, budgetMs - (clock() - began)) }
     const refined = options.refine === false ? undefined : refine(problem, state, frozen, { ...options, ...left, clock, ...(report && onTries ? { onTries } : {}) })
@@ -153,11 +180,18 @@ export function placeBoard(design: Design, options: PlaceOptions = {}): Placemen
   }
   const last = run(start, false, true)
   const tryAhead = options.connectorsAhead === true && !spent(last) && !late() && connectorsServe(problem)
-  const chosen = chooseOrder(problem, last, tryAhead ? run(initial, true, false) : undefined)
+  const ordered = chooseOrder(problem, last, tryAhead ? run(initial, true, false) : undefined)
+  // Parts left with no room on a crowded board: the board packed from its walls, kept when it places more.
+  const crowded = options.pack !== false && ordered.built.unplaced.length > 0 && !spent(ordered) && !late()
+  const packed = crowded ? packTight(problem, unpacked, ordered.built.unplaced.length, late, first) : undefined
+  const chosen = packed ? finish(packed.state, packed.built, false) : ordered
   const { built, frozen, refined, final } = chosen
   // Asked for and not kept: the caller is told, so that it does not compare two placements that are the same.
+  const packNotes = packed
+    ? [`The parts did not all fit by their connections, so they were packed against each other and the board edges (${plural(ordered.built.unplaced.length, "part")} had no room before)`]
+    : []
   const orderNotes =
-    options.connectorsAhead === true && chosen === last
+    options.connectorsAhead === true && ordered === last
       ? ["Connectors ahead was not kept (no connector serves a part, the time ran out, or it gave no less wire); this is the placement with connectors last"]
       : []
   const positions = new Map<string, PlacedPosition>()
@@ -178,7 +212,7 @@ export function placeBoard(design: Design, options: PlaceOptions = {}): Placemen
     before: { wireLength: ratsnestLength(design.pcb.parts) },
     moved,
     unplaced: built.unplaced.map((u) => ({ name: problem.movables[u.index]?.name as string, reason: u.reason })),
-    notes: [...built.notes, ...copies.notes, ...copied.notes, ...orderNotes],
+    notes: [...built.notes, ...copies.notes, ...copied.notes, ...orderNotes, ...packNotes],
     beside: copied.beside,
     budgetSpent: outOfTime || (refined?.budgetSpent ?? false),
   }

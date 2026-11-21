@@ -1,7 +1,8 @@
 import type { Point, Side } from "../model.js"
 import type { Board, Spot } from "./constructive.js"
 import { GRID, snap, type Box } from "./geometry.js"
-import type { Movable } from "./scope.js"
+import type { Movable, Problem } from "./scope.js"
+import type { State } from "./score.js"
 
 /**
  * One side of the area: its inward direction, and how a box is put flush against it. The sides are those of the
@@ -102,4 +103,28 @@ export function placeConnector(board: Board, i: number, target: Point): EdgeSpot
     if (best) return { spot: best.spot, side: edge.side }
   }
   return undefined
+}
+
+/**
+ * For each connector `which` takes (every one by default), where the pads it connects to are on average in `sketch`
+ * (its own, other connectors' and unplaced parts' left out); a connector whose nets reach none is left out.
+ */
+export function connectorTargets(problem: Problem, sketch: State, unplaced: ReadonlySet<number>, which: (m: Movable) => boolean = () => true): Map<number, Point> {
+  const targets = new Map<number, Point>()
+  problem.movables.forEach((m, c) => {
+    if (m.role !== "connector" || !which(m)) return
+    const nets = new Set((m.pads[0] ?? []).map((p) => p.net).filter((n) => n >= 0))
+    let [sx, sy, n] = [0, 0, 0]
+    problem.movables.forEach((other, k) => {
+      if (k === c || unplaced.has(k) || other.role === "connector") return
+      for (const pad of other.pads[sketch.rot[k] as number] ?? []) {
+        if (!nets.has(pad.net)) continue
+        sx += (sketch.x[k] as number) + pad.x
+        sy += (sketch.y[k] as number) + pad.y
+        n++
+      }
+    })
+    if (n > 0) targets.set(c, { x: sx / n, y: sy / n })
+  })
+  return targets
 }
