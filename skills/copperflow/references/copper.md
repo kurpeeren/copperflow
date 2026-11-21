@@ -195,5 +195,7 @@ other names go round it, and so do the board's `<silkscreentext>`s. `null` remov
 is 1 mm tall, as the silkscreen prints it; `add_text`'s answer gives a text's ink box.
 `pcbNameText: "IN+"` prints that text in place of the name, placed the same way, so a wire pad's
 or a jack's label stays beside it when the part moves (better than a board `<silkscreentext>`,
-which stays where it was written); `null` prints the name again.
+which stays where it was written); `null` prints the name again. A label goes before the plain
+names, never nearer another part's pad than its own, with a letter's room past either end so no
+name reads on from it.
 `pcbNameHidden: true` leaves a part's name off the silkscreen altogether; `null` prints it again.

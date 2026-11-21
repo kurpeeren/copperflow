@@ -234,3 +234,39 @@ describe("a designator with its own text (pcbNameText)", () => {
     expect(designatorPlacements(bad.pcb, EXPANSION)[0]?.text).toBe("J1")
   })
 })
+
+describe("a designator never reads as another part's", () => {
+  test("each wire pad's label is nearer its own pad than any other part's pad", async () => {
+    // A crowded 5 V regulator board as autoplace and autoroute left it: VIN and GND wire pads 3 mm apart on the left
+    // edge, a via and parts beside them. VIN's label once stood beside the GND pad.
+    const { buildDesign } = await import("../../src/engine/design.js")
+    const { filesIn } = await import("../helpers/place-fixtures.js")
+    const { join } = await import("node:path")
+    const design = buildDesign(filesIn(join(import.meta.dirname, "..", "fixtures", "ldo-labels")), "ldo.circuit.tsx")
+    const pads = design.pcb.parts.flatMap((part) => part.pads.map((pad) => ({ part: part.component, x: pad.x, y: pad.y })))
+    const labels = designatorPlacements(design.pcb, EXPANSION).filter((p) => p.component.startsWith("J"))
+    expect(labels.map((p) => p.text)).toEqual(["VIN", "GND", "5V", "GND"])
+    for (const placed of labels) {
+      const nearest = [...pads].sort((a, b) => Math.hypot(a.x - placed.at.x, a.y - placed.at.y) - Math.hypot(b.x - placed.at.x, b.y - placed.at.y))[0]
+      expect(nearest?.part, `${placed.component} "${placed.text}" at ${placed.at.x}, ${placed.at.y}`).toBe(placed.component)
+    }
+  })
+
+  test("no other name is written in line with a label, a letter's room past either end", async () => {
+    const { buildDesign } = await import("../../src/engine/design.js")
+    const { filesIn } = await import("../helpers/place-fixtures.js")
+    const { join } = await import("node:path")
+    const { keptBox, textBox } = await import("../../src/engine/fab/designator-places.js")
+    const design = buildDesign(filesIn(join(import.meta.dirname, "..", "fixtures", "ldo-labels")), "ldo.circuit.tsx")
+    const all = designatorPlacements(design.pcb, EXPANSION)
+    const partOf = (name: string) => design.pcb.parts.find((p) => p.component === name) as PcbLayout["parts"][number]
+    for (const label of all.filter((p) => p.component.startsWith("J"))) {
+      const kept = keptBox(partOf(label.component), label)
+      for (const other of all.filter((p) => p.component !== label.component)) {
+        const box = textBox(other.text, other.at, other.rotation)
+        const touches = box.minX < kept.maxX && kept.minX < box.maxX && box.minY < kept.maxY && kept.minY < box.maxY
+        expect(touches, `${other.text} by ${label.text}`).toBe(false)
+      }
+    }
+  })
+})

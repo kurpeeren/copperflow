@@ -46,16 +46,39 @@ const CELL = 2
  * again per mm² covered, so covering one more of them always costs more than any part body; a courtyard costs by area.
  */
 const WEIGHT = { pad: 100, hole: 100, via: 50, designator: 100, text: 100, courtyard: 2, edge: 1000 } as const
+/**
+ * What a label's place costs (a part's pcbNameText, such as IN+ on a wire pad) whose text is nearer another part's pad
+ * than its own part's: it would read as that part's label. A plain designator is not weighed so: in a dense board most
+ * places beside a small part lie near its neighbours' pads, and its name is read off the assembly drawing anyway.
+ */
+const NEARER = 100
 /** What another part standing between a designator and its own part costs, whatever the overlap. */
 export const BETWEEN = 1
 
 export const overlap = (a: Box, b: Box) => a.minX < b.maxX && b.minX < a.maxX && a.minY < b.maxY && b.minY < a.maxY
 const overlapArea = (a: Box, b: Box) => Math.max(0, Math.min(a.maxX, b.maxX) - Math.max(a.minX, b.minX)) * Math.max(0, Math.min(a.maxY, b.maxY) - Math.max(a.minY, b.minY))
 const hull = (a: Box, b: Box): Box => ({ minX: Math.min(a.minX, b.minX), minY: Math.min(a.minY, b.minY), maxX: Math.max(a.maxX, b.maxX), maxY: Math.max(a.maxY, b.maxY) })
+/** How far a point is from a box (0 inside it). */
+const toBox = (p: Point, b: Box): number => Math.hypot(Math.max(b.minX - p.x, 0, p.x - b.maxX), Math.max(b.minY - p.y, 0, p.y - b.maxY))
+/** Distances closer than this are the same. */
+const DISTANCE_EPSILON = 1e-6
 const grown = (box: Box, by: number): Box => ({ minX: box.minX - by, minY: box.minY - by, maxX: box.maxX + by, maxY: box.maxY + by })
 
 /** The text a part's designator prints: its pcbNameText, else its name. */
 export const printedName = (part: Pick<PlacedFootprint, "component" | "nameText">): string => part.nameText ?? part.component
+
+/** The room kept clear past each end of a label (one letter), so no other name is written on in line with it. */
+export const WORD_GAP = DESIGNATOR_HEIGHT
+
+/**
+ * The room a placed designator keeps from the others: its ink box, and for a label (pcbNameText) a letter more at each
+ * end along its line, so "VIN" and a "C1" after it are not read as one word "VINC1".
+ */
+export function keptBox(part: Pick<PlacedFootprint, "component" | "nameText">, place: Pick<Place, "at" | "rotation">): Box {
+  const box = textBox(printedName(part), place.at, place.rotation)
+  if (part.nameText === undefined) return box
+  return place.rotation === 90 ? { ...box, minY: box.minY - WORD_GAP, maxY: box.maxY + WORD_GAP } : { ...box, minX: box.minX - WORD_GAP, maxX: box.maxX + WORD_GAP }
+}
 
 /** The box the designator's ink covers when centred on `at`, the stroke's half width included, turned or not. */
 export function textBox(text: string, at: Point, rotation: DesignatorTurn = 0): Box {
@@ -236,6 +259,19 @@ export class SilkObstacles {
     return { near: spaced ? grown(box, this.clearance) : box, fixed: this.fixedCovered(part, place, box, spaced) }
   }
 
+  /**
+   * Whether some other part's pad is nearer the text's middle than every pad of its own part: a reader would take the
+   * text for that part's. A part without pads has nothing to be read against.
+   */
+  private nearerOther(part: PlacedFootprint, at: Point): boolean {
+    if (part.pads.length === 0) return false
+    const own = Math.min(...part.pads.map((pad) => toBox(at, maskBox(pad, 0))))
+    const around = { minX: at.x - own, minY: at.y - own, maxX: at.x + own, maxY: at.y + own }
+    return this.fixedIndex
+      .query(around)
+      .some((o) => o.kind === "pad" && o.component !== part.component && (o.side === "both" || o.side === part.side) && toBox(at, o.box) < own - DISTANCE_EPSILON)
+  }
+
   /** What the text covers of the things that never move, and whether it leaves the board. */
   private fixedCovered(part: PlacedFootprint, place: Place, box: Box, spaced: boolean): Covered {
     const reach = place.reach ?? box
@@ -256,6 +292,10 @@ export class SilkObstacles {
       else if (obstacle.kind === "text") found.texts.push(obstacle.component)
       else if (obstacle.kind === "via") found.vias = true
       else found.holes = true
+    }
+    if (spaced && part.nameText !== undefined && this.nearerOther(part, place.at)) {
+      found.score += NEARER
+      found.fixed += NEARER
     }
     if (this.outline && !insideOutline(box, this.outline)) {
       found.edge = true

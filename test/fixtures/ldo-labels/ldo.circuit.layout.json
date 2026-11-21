@@ -1,0 +1,14 @@
+{"t":"meta","next":{"track":13,"via":2}}
+{"t":"track","id":"t0001","net":"net.GND","layer":"top","width":0.25,"points":[{"x":-3.15,"y":-0.02499999999999991},{"x":-5.3,"y":-0.025000000000000022}],"locked":false,"by":"router"}
+{"t":"track","id":"t0002","net":"net.GND","layer":"top","width":0.25,"points":[{"x":-5.3,"y":-0.025000000000000022},{"x":-5.975,"y":0.65},{"x":-5.975,"y":2.5}],"locked":false,"by":"router"}
+{"t":"track","id":"t0003","net":"net.VIN","layer":"top","width":0.25,"points":[{"x":-3.15,"y":-2.975},{"x":-2.325,"y":-3.8},{"x":-0.5750000000000006,"y":-3.7999999999999994}],"locked":false,"by":"router"}
+{"t":"track","id":"t0004","net":"net.GND","layer":"top","width":0.25,"points":[{"x":-3.15,"y":-0.02499999999999991},{"x":-2.25,"y":0.25},{"x":-1.5,"y":0.25},{"x":-1.25,"y":0.5},{"x":-0.5749999999999997,"y":0.8000000000000003}],"locked":false,"by":"router"}
+{"t":"track","id":"t0005","net":"net.VOUT","layer":"top","width":0.25,"points":[{"x":5.575,"y":-1.5000000000000007},{"x":7.75,"y":-1.5},{"x":8.55,"y":-1}],"locked":false,"by":"router"}
+{"t":"track","id":"t0006","net":"net.GND","layer":"top","width":0.25,"points":[{"x":-5.3,"y":-0.025000000000000022},{"x":-5.75,"y":-0.25},{"x":-7.75,"y":-0.25},{"x":-8.55,"y":-0.5}],"locked":false,"by":"router"}
+{"t":"track","id":"t0007","net":"net.LED","layer":"top","width":0.25,"points":[{"x":-5.3,"y":-1.5750000000000002},{"x":-5.5,"y":-2},{"x":-5.5,"y":-3.75},{"x":-4.5,"y":-4.75},{"x":-4.275,"y":-5}],"locked":false,"by":"router"}
+{"t":"track","id":"t0008","net":"net.VOUT","layer":"top","width":0.25,"points":[{"x":-0.5750000000000002,"y":-1.4999999999999993},{"x":0.75,"y":-2.825},{"x":0.75,"y":-4.25},{"x":0,"y":-5},{"x":-2.725,"y":-5}],"locked":false,"by":"router"}
+{"t":"track","id":"t0009","net":"net.VOUT","layer":"top","width":0.25,"points":[{"x":-3.025,"y":2.5},{"x":-0.5,"y":2.5},{"x":0.75,"y":1.25},{"x":0.75,"y":-0.175},{"x":-0.5750000000000002,"y":-1.4999999999999993}],"locked":false,"by":"router"}
+{"t":"track","id":"t0010","net":"net.VIN","layer":"top","width":0.25,"points":[{"x":-3.15,"y":-2.975},{"x":-4,"y":-2.75},{"x":-4.75,"y":-2.75}],"locked":false,"by":"router"}
+{"t":"track","id":"t0011","net":"net.VIN","layer":"bottom","width":0.25,"points":[{"x":-4.75,"y":-2.75},{"x":-7.5,"y":-2.75},{"x":-7.75,"y":-3},{"x":-8.55,"y":-3.5}],"locked":false,"by":"router"}
+{"t":"via","id":"v0001","net":"net.VIN","at":{"x":-4.75,"y":-2.75},"drill":0.3,"diameter":0.66,"layers":["top","bottom"],"locked":false,"by":"router"}
+{"t":"track","id":"t0012","net":"net.VOUT","layer":"top","width":0.25,"points":[{"x":-0.5750000000000002,"y":-1.4999999999999993},{"x":5.575,"y":-1.5000000000000007}],"locked":false,"by":"router"}

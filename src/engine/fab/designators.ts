@@ -10,7 +10,7 @@ import { naturalCompare } from "../order.js"
 import type { PcbLayout, PlacedFootprint } from "../pcb.js"
 import type { FabricationProfile } from "../rules/schema.js"
 import { silkTextBox } from "./silk-text-strokes.js"
-import { BETWEEN, boxOf, maskBox, placesAround, printedName, SilkObstacles, textBox, type Covered, type DesignatorTurn, type Place } from "./designator-places.js"
+import { BETWEEN, boxOf, keptBox, maskBox, placesAround, printedName, SilkObstacles, textBox, type Covered, type DesignatorTurn, type Place } from "./designator-places.js"
 
 export { DESIGNATOR_HEIGHT, printedName, SILK_WIDTH, type DesignatorTurn } from "./designator-places.js"
 
@@ -152,7 +152,7 @@ function placeDesignators(pcb: SilkBoard, expansion: number, clearance: number):
   const chosen = new Map<string, Place>()
   const settle = (part: PlacedFootprint, place: Place) => {
     chosen.set(part.component, place)
-    obstacles.add("designator", part.component, part.side, textBox(printedName(part), place.at, place.rotation))
+    obstacles.add("designator", part.component, part.side, keptBox(part, place))
   }
   const placesOf = new Map<string, Place[]>()
   const tries = (part: PlacedFootprint): Place[] => {
@@ -181,7 +181,10 @@ function placeDesignators(pcb: SilkBoard, expansion: number, clearance: number):
   }
   for (const part of parts) if (part.nameAt) settle(part, { at: part.nameAt, rotation: part.nameRotation ?? 0 })
   const room = new Map(parts.filter((part) => !part.nameAt).map((part) => [part.component, roomAround(part, tries(part), (place) => obstacles.covered(part, place))]))
-  const ordered = placingOrder(parts.filter((part) => !part.nameAt), (part) => room.get(part.component) ?? { clear: 0, fair: 0 })
+  const roomOf = (part: PlacedFootprint) => room.get(part.component) ?? { clear: 0, fair: 0 }
+  // Labels (pcbNameText: a wire pad's IN+) go before the plain names, which are read off the assembly drawing anyway.
+  const free = parts.filter((part) => !part.nameAt)
+  const ordered = [...placingOrder(free.filter((part) => part.nameText !== undefined), roomOf), ...placingOrder(free.filter((part) => part.nameText === undefined), roomOf)]
   for (const members of ordered) {
     if (members.length > 1) placeCopies(members, tries, clear, best, settle)
     else settle(members[0] as PlacedFootprint, best(members[0] as PlacedFootprint))
