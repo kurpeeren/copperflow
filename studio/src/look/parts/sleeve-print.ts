@@ -8,7 +8,7 @@ import type { Rgb, Vec3 } from "../scene.js"
 import { facet, prism, type Flat, type Piece } from "./kit.js"
 
 /** The print stands this far off the sleeve, so it is never inside the can's faceted side. */
-const LIFT = 0.03
+export const LIFT = 0.03
 /** The tallest a printed letter is (across the can), and its stroke as a share of that. */
 const MAX_LETTER = 1.1
 const STROKE_SHARE = 0.15
