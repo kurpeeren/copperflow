@@ -1,6 +1,6 @@
 // copperflow's PCB renderer: draws the engine's board layout onto a 2D canvas in layer order.
 // Only types come from the engine: its runtime modules reach Node-only code the Studio bundle cannot hold.
-import { DESIGNATOR_HEIGHT, designatorAnchor, designatorTurn, SILK_WIDTH } from "../../../src/engine/fab/designators.js"
+import { DESIGNATOR_HEIGHT, designatorAnchor, designatorTurn, printedName, SILK_WIDTH } from "../../../src/engine/fab/designators.js"
 import { textStrokes } from "../../../src/engine/fab/stroke-font.js"
 import type { PcbLayout, PlacedFootprint, WorldPad } from "../../../src/engine/pcb.js"
 import { drawCopperItems, type CopperScene } from "./copper-draw.js"
@@ -357,7 +357,7 @@ function drawLine(ctx: Ctx, a: Point, b: Point): void {
  * its turn is 90, mirrored on the bottom side. Drawn in world units, under the canvas's world transform.
  */
 function drawDesignator(ctx: Ctx, part: PlacedFootprint, hair: number): void {
-  const strokes = textStrokes(part.component, designatorAnchor(part), DESIGNATOR_HEIGHT, part.side === "bottom", designatorTurn(part) === 90)
+  const strokes = textStrokes(printedName(part), designatorAnchor(part), DESIGNATOR_HEIGHT, part.side === "bottom", designatorTurn(part) === 90)
   const colour = part.side === "top" ? PALETTE.topSilk : PALETTE.bottomSilk
   ctx.strokeStyle = colour
   ctx.fillStyle = colour

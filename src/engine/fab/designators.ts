@@ -10,9 +10,9 @@ import { naturalCompare } from "../order.js"
 import type { PcbLayout, PlacedFootprint } from "../pcb.js"
 import type { FabricationProfile } from "../rules/schema.js"
 import { silkTextBox } from "./silk-text-strokes.js"
-import { BETWEEN, boxOf, maskBox, placesAround, SilkObstacles, textBox, type Covered, type DesignatorTurn, type Place } from "./designator-places.js"
+import { BETWEEN, boxOf, maskBox, placesAround, printedName, SilkObstacles, textBox, type Covered, type DesignatorTurn, type Place } from "./designator-places.js"
 
-export { DESIGNATOR_HEIGHT, SILK_WIDTH, type DesignatorTurn } from "./designator-places.js"
+export { DESIGNATOR_HEIGHT, printedName, SILK_WIDTH, type DesignatorTurn } from "./designator-places.js"
 
 /** The mask opening's growth past each pad when the profile sets none, in mm. */
 export const DEFAULT_MASK_EXPANSION = 0.05
@@ -21,6 +21,8 @@ export const DEFAULT_SILK_CLEARANCE = 0.15
 
 export interface DesignatorPlacement {
   component: string
+  /** What it prints: the part's pcbNameText, else its name. */
+  text: string
   side: "top" | "bottom"
   /** The middle of the designator's text. */
   at: Point
@@ -150,7 +152,7 @@ function placeDesignators(pcb: SilkBoard, expansion: number, clearance: number):
   const chosen = new Map<string, Place>()
   const settle = (part: PlacedFootprint, place: Place) => {
     chosen.set(part.component, place)
-    obstacles.add("designator", part.component, part.side, textBox(part.component, place.at, place.rotation))
+    obstacles.add("designator", part.component, part.side, textBox(printedName(part), place.at, place.rotation))
   }
   const placesOf = new Map<string, Place[]>()
   const tries = (part: PlacedFootprint): Place[] => {
@@ -191,6 +193,7 @@ function placeDesignators(pcb: SilkBoard, expansion: number, clearance: number):
     const covered: Covered = obstacles.covered(part, place, false)
     return {
       component: part.component,
+      text: printedName(part),
       side: part.side,
       at: place.at,
       rotation: place.rotation,
@@ -335,7 +338,7 @@ function placeCopies(
 function copiesApart(members: readonly PlacedFootprint[], lists: readonly Place[][], i: number): boolean {
   const boxes = members.map((member, m) => {
     const place = lists[m]?.[i] as Place
-    return textBox(member.component, place.at, place.rotation)
+    return textBox(printedName(member), place.at, place.rotation)
   })
   return boxes.every((a, j) => boxes.every((b, k) => k <= j || !(a.minX < b.maxX && b.minX < a.maxX && a.minY < b.maxY && b.minY < a.maxY)))
 }

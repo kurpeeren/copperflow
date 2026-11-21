@@ -180,7 +180,7 @@ function silkObjects(pcb: PcbLayout, side: Side, expansion: number, clearance: n
     ...drawings.areas,
     ...[
       ...pcb.parts.filter((part) => part.side === side).flatMap((part) => part.silkscreen),
-      ...designators.flatMap((placed) => textStrokes(placed.component, placed.at, DESIGNATOR_HEIGHT, side === "bottom", placed.rotation === 90)),
+      ...designators.flatMap((placed) => textStrokes(placed.text, placed.at, DESIGNATOR_HEIGHT, side === "bottom", placed.rotation === 90)),
     ]
       .filter((line) => line.length > 0)
       .map(draw(SILK_WIDTH)),

@@ -1,4 +1,5 @@
 import { diagnostic } from "./diagnostics.js"
+import { undrawable } from "./fab/stroke-font.js"
 import { kindOf, pinSpecs, pinTypeFromAttributes } from "./kinds.js"
 import type { Component, Diagnostic, Pin, Point, Side, SourceRef } from "./model.js"
 import { jsonProps, PropReader, type Props } from "./read-props.js"
@@ -126,6 +127,20 @@ export const NAME_ROTATION_PROP = "pcbNameRotation"
 /** The prop that leaves a part's silkscreen designator off the board (a wire pad whose label is the board's own text). */
 export const NAME_HIDDEN_PROP = "pcbNameHidden"
 
+/** The prop that prints other text as the part's silkscreen designator (IN+ on a wire pad). */
+export const NAME_TEXT_PROP = "pcbNameText"
+
+/** The designator text the props give; one the silkscreen font cannot draw, or not a text, is a warning and left out. */
+function nameText(props: Props, id: string, source: SourceRef): { text?: string; diagnostics: Diagnostic[] } {
+  const value = props[NAME_TEXT_PROP]
+  if (value === undefined) return { diagnostics: [] }
+  const warn = (message: string) => ({ diagnostics: [diagnostic("bad-value", "warning", `${id}: ${message}`, [`${id}.${NAME_TEXT_PROP}`], source)] })
+  if (typeof value !== "string" || value.trim() === "") return warn(`${NAME_TEXT_PROP} must be a text`)
+  const missing = undrawable(value)
+  if (missing.length > 0) return warn(`${NAME_TEXT_PROP} has characters the silkscreen font cannot draw: ${missing.join(" ")}`)
+  return { text: value, diagnostics: [] }
+}
+
 /** The prop that asks autoplace for one board edge: left, right, top or bottom (an input on the left, say). */
 export const EDGE_PROP = "pcbEdge"
 
@@ -174,6 +189,7 @@ export function buildPart(tag: string, id: string, props: Props, origin: PartOri
   const labelsAt = movedLabels(reader)
   const turn = nameRotation(reader, props, id, origin.source)
   const edge = chosenEdge(props, id, origin.source)
+  const printed = nameText(props, id, origin.source)
   const component: Component = {
     id,
     kind: tag,
@@ -190,9 +206,10 @@ export function buildPart(tag: string, id: string, props: Props, origin: PartOri
     ...(turn.turn !== undefined ? { pcbNameRotation: turn.turn } : {}),
     ...(props[NAME_HIDDEN_PROP] === true ? { pcbNameHidden: true as const } : {}),
     ...(edge.edge ? { pcbEdge: edge.edge } : {}),
+    ...(printed.text !== undefined ? { pcbNameText: printed.text } : {}),
     groupOffset: { pcb: { x: origin.offset.pcbX, y: origin.offset.pcbY }, sch: { x: origin.offset.schX, y: origin.offset.schY } },
     props: jsonProps(props),
     source: origin.source,
   }
-  return { component, diagnostics: [...reader.diagnostics, ...pinSides.diagnostics, ...turn.diagnostics, ...edge.diagnostics, ...diagnostics] }
+  return { component, diagnostics: [...reader.diagnostics, ...pinSides.diagnostics, ...turn.diagnostics, ...edge.diagnostics, ...printed.diagnostics, ...diagnostics] }
 }

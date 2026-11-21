@@ -204,3 +204,33 @@ describe("a hidden designator", () => {
     expect(hidden.pcb.parts.find((p) => p.component === "J1")?.nameHidden).toBe(true)
   })
 })
+
+describe("a designator with its own text (pcbNameText)", () => {
+  const jack = (x: number, extra = "") =>
+    `export default () => (<board width="20mm" height="20mm"><pinheader name="J1" pinCount={1} footprint="wirepad2_d1" pcbX={${x}} pcbY={0} pcbNameText="IN+"${extra} /></board>)`
+  const build = async (x: number, extra = "") => (await import("../../src/engine/design.js")).buildDesign({ "m.circuit.tsx": jack(x, extra) }, "m.circuit.tsx")
+
+  test("prints the text instead of the name, and is placed by the text's own width", async () => {
+    const design = await build(0)
+    const found = designatorPlacements(design.pcb, EXPANSION)
+    expect(found.map((p) => [p.component, p.text])).toEqual([["J1", "IN+"]])
+    const silk = readGerber(gerberFiles(design.pcb, PROFILE, "b", CREATED).find((f) => f.file === "b-F_Silkscreen.gto")?.text ?? "")
+    const placedAt = found[0]?.at ?? { x: 0, y: 0 }
+    const expected = textStrokes("IN+", placedAt, 1, false, found[0]?.rotation === 90)
+    expect(silk.strokes.length).toBeGreaterThanOrEqual(expected.length)
+  })
+
+  test("moves with its part: placed beside the pad wherever the part goes", async () => {
+    const left = designatorPlacements((await build(-5)).pcb, EXPANSION)[0]
+    const right = designatorPlacements((await build(5)).pcb, EXPANSION)[0]
+    expect((right?.at.x ?? 0) - (left?.at.x ?? 0)).toBeCloseTo(10, 6)
+    expect(right?.coversPads).toEqual([])
+  })
+
+  test("a text the silkscreen font cannot draw is a warning, and the name is printed", async () => {
+    expect((await build(0)).pcb.parts[0]?.nameText).toBe("IN+")
+    const bad = (await import("../../src/engine/design.js")).buildDesign({ "m.circuit.tsx": jack(0).replace('pcbNameText="IN+"', 'pcbNameText="IN→"') }, "m.circuit.tsx")
+    expect(bad.diagnostics.map((d) => d.message)).toContain("J1: pcbNameText has characters the silkscreen font cannot draw: →")
+    expect(designatorPlacements(bad.pcb, EXPANSION)[0]?.text).toBe("J1")
+  })
+})

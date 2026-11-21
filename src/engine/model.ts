@@ -73,6 +73,8 @@ export interface Component {
   pcbNameRotation?: 0 | 90
   /** Set when the file hides the part's silkscreen designator (pcbNameHidden): nothing is printed or placed for it. */
   pcbNameHidden?: true
+  /** The text printed as the part's silkscreen designator in place of its name (pcbNameText), such as IN+ on a wire pad. */
+  pcbNameText?: string
   /** The board edge the file asks autoplace to put the part against (pcbEdge), its pins facing inward. */
   pcbEdge?: Side
 }

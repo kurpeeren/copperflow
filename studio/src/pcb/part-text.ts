@@ -8,7 +8,7 @@ import type { Selection } from "../selection.js"
 import { nudgeDirection, type KeyResult } from "./canvas-keys.js"
 import { nudgeOffset } from "./group-edits.js"
 import { partLabelId, partLabels, parsePartLabelId } from "../../../src/engine/part-labels.js"
-import { DESIGNATOR_HEIGHT, designatorAnchor, designatorTurn, SILK_WIDTH } from "../../../src/engine/fab/designators.js"
+import { DESIGNATOR_HEIGHT, designatorAnchor, designatorTurn, printedName, SILK_WIDTH } from "../../../src/engine/fab/designators.js"
 import { textWidth } from "../../../src/engine/fab/stroke-font.js"
 import type { PcbLayout, PlacedFootprint } from "../../../src/engine/pcb.js"
 import { rotatePoint } from "../../../src/engine/schematic-geometry.js"
@@ -56,11 +56,11 @@ export function designatorText(part: PlacedFootprint): PartText {
   const offset = { x: at.x - part.x, y: at.y - part.y }
   const rotation = designatorTurn(part)
   // The box the silkscreen's strokes fill: the text's width and height plus the line's width.
-  const [halfLong, halfShort] = [(textWidth(part.component, DESIGNATOR_HEIGHT) + SILK_WIDTH) / 2, (DESIGNATOR_HEIGHT + SILK_WIDTH) / 2]
+  const [halfLong, halfShort] = [(textWidth(printedName(part), DESIGNATOR_HEIGHT) + SILK_WIDTH) / 2, (DESIGNATOR_HEIGHT + SILK_WIDTH) / 2]
   const flat = { minX: at.x - halfLong, maxX: at.x + halfLong, minY: at.y - halfShort, maxY: at.y + halfShort }
   const [halfX, halfY] = [(flat.maxX - flat.minX) / 2, (flat.maxY - flat.minY) / 2]
   const box = rotation === 90 ? { minX: at.x - halfY, maxX: at.x + halfY, minY: at.y - halfX, maxY: at.y + halfX } : flat
-  return { id: partLabelId(part.component, "pcbNameAt"), part: part.component, prop: "pcbNameAt", text: part.component, at, offset, box, rotation }
+  return { id: partLabelId(part.component, "pcbNameAt"), part: part.component, prop: "pcbNameAt", text: printedName(part), at, offset, box, rotation }
 }
 
 /** Every part's silkscreen designator. */

@@ -193,5 +193,7 @@ give the part room (move it or its neighbours), or put the name yourself with `s
 board's x and y whatever the part's rotation) and `pcbNameRotation` (0 flat, 90 standing); the
 other names go round it, and so do the board's `<silkscreentext>`s. `null` removes either. A name
 is 1 mm tall, as the silkscreen prints it; `add_text`'s answer gives a text's ink box.
-`pcbNameHidden: true` leaves a part's name off the silkscreen altogether (a wire pad labelled
-`IN+` by the board's own text needs no `J1` beside it); `null` prints it again.
+`pcbNameText: "IN+"` prints that text in place of the name, placed the same way, so a wire pad's
+or a jack's label stays beside it when the part moves (better than a board `<silkscreentext>`,
+which stays where it was written); `null` prints the name again.
+`pcbNameHidden: true` leaves a part's name off the silkscreen altogether; `null` prints it again.

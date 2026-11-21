@@ -54,6 +54,9 @@ const overlapArea = (a: Box, b: Box) => Math.max(0, Math.min(a.maxX, b.maxX) - M
 const hull = (a: Box, b: Box): Box => ({ minX: Math.min(a.minX, b.minX), minY: Math.min(a.minY, b.minY), maxX: Math.max(a.maxX, b.maxX), maxY: Math.max(a.maxY, b.maxY) })
 const grown = (box: Box, by: number): Box => ({ minX: box.minX - by, minY: box.minY - by, maxX: box.maxX + by, maxY: box.maxY + by })
 
+/** The text a part's designator prints: its pcbNameText, else its name. */
+export const printedName = (part: Pick<PlacedFootprint, "component" | "nameText">): string => part.nameText ?? part.component
+
 /** The box the designator's ink covers when centred on `at`, the stroke's half width included, turned or not. */
 export function textBox(text: string, at: Point, rotation: DesignatorTurn = 0): Box {
   const long = textWidth(text, DESIGNATOR_HEIGHT) / 2 + SILK_WIDTH / 2
@@ -107,7 +110,7 @@ function sidePlaces(part: PlacedFootprint, clearance: number, turnFor: (flat: bo
   const box = boxOf(part.courtyard)
   const [cx, cy] = [(box.minX + box.maxX) / 2, (box.minY + box.maxY) / 2]
   const [halfW, halfH] = [(box.maxX - box.minX) / 2, (box.maxY - box.minY) / 2]
-  const long = textWidth(part.component, DESIGNATOR_HEIGHT) / 2 + SILK_WIDTH / 2
+  const long = textWidth(printedName(part), DESIGNATOR_HEIGHT) / 2 + SILK_WIDTH / 2
   const short = DESIGNATOR_HEIGHT / 2 + SILK_WIDTH / 2
   const found: Place[] = []
   // The slides along a side are the same on every ring.
@@ -229,7 +232,7 @@ export class SilkObstacles {
   }
 
   private measured(part: PlacedFootprint, place: Place, spaced: boolean): { near: Box; fixed: Covered } {
-    const box = textBox(part.component, place.at, place.rotation)
+    const box = textBox(printedName(part), place.at, place.rotation)
     return { near: spaced ? grown(box, this.clearance) : box, fixed: this.fixedCovered(part, place, box, spaced) }
   }
 
