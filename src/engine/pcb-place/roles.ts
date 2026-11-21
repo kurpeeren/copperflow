@@ -149,7 +149,8 @@ export function roles(design: Design): Roles {
   const role = (part: string): Role => {
     const c = byId.get(part)
     if (!c) return "other"
-    if (isConnector(c)) return "connector"
+    // A part that names a board edge is put against it as a connector is, whatever it is.
+    if (isConnector(c) || c.pcbEdge !== undefined) return "connector"
     if (decoupling.has(part)) return "decoupling"
     return c.kind === "chip" ? "chip" : "other"
   }

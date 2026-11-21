@@ -1,7 +1,7 @@
 import type { Point } from "../model.js"
 import { naturalCompare } from "../order.js"
 import { BoxIndex, GRID, inArea, moved, snap, type Box } from "./geometry.js"
-import { placeConnector } from "./edge.js"
+import { placeConnector, type EdgeSpot } from "./edge.js"
 import type { Movable, Problem } from "./scope.js"
 import type { State } from "./score.js"
 
@@ -308,15 +308,19 @@ interface Placed {
   note?: string
 }
 
+/** Whether a connector's part names an edge (pcbEdge) and `at` is on another one. */
+const missedEdge = (m: Movable, at: EdgeSpot): boolean => m.component.pcbEdge !== undefined && at.side !== m.component.pcbEdge
+
 /** Places part `i` at its cheapest free spot; not placed when nothing on the board is free for it. */
 function placeOne(board: Board, i: number): Placed {
   const m = board.problem.movables[i] as Movable
   let note: string | undefined
   if (m.role === "connector") {
-    const spot = placeConnector(board, i, centresFor(board, i)[0] as Point)
-    if (spot) {
-      board.put(i, spot)
-      return { placed: true }
+    const at = placeConnector(board, i, centresFor(board, i)[0] as Point)
+    if (at) {
+      board.put(i, at.spot)
+      if (!missedEdge(m, at)) return { placed: true }
+      return { placed: true, note: `${m.name} asks for the ${m.component.pcbEdge} edge (pcbEdge), but it has no room there; it went on the ${at.side} edge` }
     }
     note = `${m.name} is a connector, but no board edge has room for it, so it is placed inside the board`
   }
@@ -456,8 +460,10 @@ function placeConnectorsFirst(board: Board, i: number, served: ReadonlyMap<numbe
     if (part !== i || done.has(connector)) continue
     const ahead = cheapestSpot(board, i)
     if (!ahead) continue
-    const spot = placeConnector(board, connector, sharedPads(board, i, ahead, connector))
-    if (!spot) continue
+    const at = placeConnector(board, connector, sharedPads(board, i, ahead, connector))
+    // Off the edge it names, it waits for its turn, which says so.
+    if (!at || missedEdge(board.problem.movables[connector] as Movable, at)) continue
+    const spot = at.spot
     const undo = board.putUndoable(connector, spot)
     // The connector took the room the part was going to use, and the part would now go further from it than where
     // the connector was put for: the connector waits for its turn.
@@ -527,9 +533,9 @@ export function construct(
   // Connectors given a place to serve go first, on the edge nearest it; one with no room there waits for its turn.
   for (const [i, target] of [...(connectorsFirst ?? new Map<number, Point>())].sort(([a], [b]) => a - b)) {
     if (late() || done.has(i)) continue
-    const spot = placeConnector(board, i, target)
-    if (!spot) continue
-    board.put(i, spot)
+    const at = placeConnector(board, i, target)
+    if (!at || missedEdge(problem.movables[i] as Movable, at)) continue
+    board.put(i, at.spot)
     done.add(i)
     onPart(done.size, problem.movables.length)
   }

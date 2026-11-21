@@ -73,6 +73,8 @@ export interface Component {
   pcbNameRotation?: 0 | 90
   /** Set when the file hides the part's silkscreen designator (pcbNameHidden): nothing is printed or placed for it. */
   pcbNameHidden?: true
+  /** The board edge the file asks autoplace to put the part against (pcbEdge), its pins facing inward. */
+  pcbEdge?: Side
 }
 
 /** Named: "net.GND". Unnamed: "net:" + the first pin id. */

@@ -289,6 +289,13 @@ describe("setProps: label positions", () => {
     expect(applyEdits(turned, [{ kind: "setProps", part: "R1", props: { pcbNameRotation: null } }], none)).toBe(BOARD)
   })
 
+  test("pcbEdge takes a board side, and null removes it", () => {
+    const left = applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { pcbEdge: "left" } }], none)
+    expect(left).toContain('pcbEdge="left"')
+    expect(applyEdits(left, [{ kind: "setProps", part: "R1", props: { pcbEdge: null } }], none)).toBe(BOARD)
+    expect(() => applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { pcbEdge: "front" } }], none)).toThrow("pcbEdge must be left, right, top or bottom")
+  })
+
   test("null removes the prop, and leaves the rest as it was", () => {
     const moved = applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { schNameAt: { x: 1, y: 1 } } }], none)
     expect(applyEdits(moved, [{ kind: "setProps", part: "R1", props: { schNameAt: null } }], none)).toBe(BOARD)
@@ -297,7 +304,7 @@ describe("setProps: label positions", () => {
 
   test("null removes only the place and label props; any other prop is refused, naming those", () => {
     expect(() => applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { resistance: null } }], none)).toThrow(
-      "resistance cannot be removed with null; only pcbX, pcbY, pcbRotation, schX, schY, schRotation, schNameAt, schValueAt, pcbNameAt, pcbNameRotation, pcbNameHidden, noConnect, supplierPartNumbers can",
+      "resistance cannot be removed with null; only pcbX, pcbY, pcbRotation, schX, schY, schRotation, schNameAt, schValueAt, pcbNameAt, pcbNameRotation, pcbNameHidden, pcbEdge, noConnect, supplierPartNumbers can",
     )
     expectEditError(() => applyEdits(BOARD, [{ kind: "setProps", part: "R1", props: { resistance: null } }], none), "invalid")
   })

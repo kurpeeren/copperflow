@@ -145,6 +145,54 @@ describe("connectors", () => {
   })
 })
 
+describe("a chosen edge (pcbEdge)", () => {
+  const chip = `<chip name="U1" footprint="soic8" pcbX={10} pcbY={0} pinLabels={{ pin1: "A", pin2: "B" }} />`
+  const header = (edge: string) => `<pinheader name="J1" pinCount={2} pitch="2.54mm" footprint="pinrow2" pcbEdge="${edge}" />`
+  const traces = `<trace from="J1.pin1" to="U1.pin1" />\n<trace from="J1.pin2" to="U1.pin2" />`
+  /** J1's courtyard bounds on the placed 40 x 30 mm board, and the edge clearance. */
+  function placedJ1(body: string): { box: Box; edge: number; placement: Placement } {
+    const files = { [MAIN]: board('width="40mm" height="30mm"', body) }
+    const placement = placeBoard(build(files))
+    const after = build({ ...files, [MAIN]: withPositions(files[MAIN], placement.positions) })
+    return { box: boxOfPoints(partOf(after, "J1").courtyard), edge: after.rules.fabrication.boardEdgeClearance, placement }
+  }
+
+  test("a connector goes against the edge it names, not the one nearest its chip", () => {
+    const left = placedJ1([chip, header("left"), traces].join("\n"))
+    expect(left.placement.notes).toEqual([])
+    expect(left.box.minX).toBeCloseTo(-20 + left.edge, 6)
+    const top = placedJ1([chip, header("top"), traces].join("\n"))
+    expect(top.box.maxY).toBeCloseTo(15 - top.edge, 6)
+    const bottom = placedJ1([chip, header("bottom"), traces].join("\n"))
+    expect(bottom.box.minY).toBeCloseTo(-15 + bottom.edge, 6)
+  })
+
+  test("its pin row runs along the chosen edge", () => {
+    const { box } = placedJ1([chip, header("left"), traces].join("\n"))
+    expect(box.maxY - box.minY).toBeGreaterThan(box.maxX - box.minX)
+  })
+
+  test("any part that names an edge goes against it, a connector or not", () => {
+    const led = `<led name="J1" color="red" footprint="0805" pcbEdge="bottom" />`
+    const { box, edge } = placedJ1([chip, led, `<trace from="J1.anode" to="U1.pin1" />`].join("\n"))
+    expect(box.minY).toBeCloseTo(-15 + edge, 6)
+  })
+
+  test("with no room on the chosen edge it goes on another, and a note says so", () => {
+    const wall = `<keepout pcbX={-18.5} pcbY={0} width={3} height={30} />`
+    const { box, edge, placement } = placedJ1([chip, header("left"), traces, wall].join("\n"))
+    expect(placement.notes).toEqual(["J1 asks for the left edge (pcbEdge), but it has no room there; it went on the right edge"])
+    expect(box.maxX).toBeCloseTo(20 - edge, 6)
+  })
+
+  test("a value that is not an edge is a warning and the part is placed as before", () => {
+    const files = { [MAIN]: board('width="40mm" height="30mm"', [chip, header("front"), traces].join("\n")) }
+    const design = build(files)
+    expect(design.diagnostics.map((d) => d.message)).toContain("J1: pcbEdge must be left, right, top or bottom")
+    expect(placeBoard(design).positions.has("J1")).toBe(true)
+  })
+})
+
 describe("the outline test", () => {
   test("a narrow notch whose corners all lie outside a box still keeps it out", () => {
     // A 20 mm square with a 0.4 mm slot cut from the top down to y = 2, through the middle.

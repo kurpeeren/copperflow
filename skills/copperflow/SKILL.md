@@ -109,7 +109,7 @@ means, `replace`, refused pins and the export's warnings are in
    sheets, blocks first: `autoplace` `{ file, instance: "CH1" }` packs one sheet's first instance
    on its own, `autoroute` `{ file, instance: "CH1" }` routes its inside (`Routed 4 of 4 connections`;
    a `short` with copies still sitting on it lasts until the board is placed), `render` to look.
-   Then the board, `autoplace` `{ file, fit: true }`: connectors on the edges, the block with most
+   Then the board, `autoplace` `{ file, fit: true }`: connectors on the edges (`pcbEdge: "left"` picks one), the block with most
    connections first, every instance whole, side by side, turned alike, with its block's copper
    (`CH2 was moved as a block, keeping the arrangement of CH1`, `Copper: 32 pieces of copper went
    with …`); then pours and `autoroute` for the tracks between blocks. One change: `Placed 34 parts;

@@ -34,6 +34,12 @@ wire length 184 mm (was 412); board 42 × 28 mm; 0 overlaps", then any part not 
 an `instance`, within `budgetSeconds`, 20 s by default, and names each connection it could not
 route with the reason), then `check_circuit` once at the end (filter `copper` for the full list).
 
+Connectors go on the board edge nearest the parts they serve, pins inward. To choose the edge (input
+on the left, output on the right), give the part `pcbEdge`: `set_props` `{ pcbEdge: "left" }` (left,
+right, top or bottom; the board is y up, so top is the largest y). Any part with `pcbEdge` goes
+against that edge, a connector or not (an LED or a switch at the front). With no room there it goes
+on another edge and the answer's `Notes:` say so; `null` removes the choice.
+
 One `autoplace` over the whole board is right for a small board (a dozen or two parts on one
 sheet). A board with sub-sheets is laid out the way a person does it, blocks first:
 

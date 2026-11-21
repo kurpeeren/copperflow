@@ -126,6 +126,18 @@ export const NAME_ROTATION_PROP = "pcbNameRotation"
 /** The prop that leaves a part's silkscreen designator off the board (a wire pad whose label is the board's own text). */
 export const NAME_HIDDEN_PROP = "pcbNameHidden"
 
+/** The prop that asks autoplace for one board edge: left, right, top or bottom (an input on the left, say). */
+export const EDGE_PROP = "pcbEdge"
+
+/** The edge the props ask for; anything but a side is a bad-value warning and left out. */
+function chosenEdge(props: Props, id: string, source: SourceRef): { edge?: Side; diagnostics: Diagnostic[] } {
+  const value = props[EDGE_PROP]
+  if (value === undefined) return { diagnostics: [] }
+  if (typeof value === "string" && SIDES.includes(value)) return { edge: value as Side, diagnostics: [] }
+  const message = `${id}: ${EDGE_PROP} must be left, right, top or bottom`
+  return { diagnostics: [diagnostic("bad-value", "warning", message, [`${id}.${EDGE_PROP}`], source)] }
+}
+
 /** The designator's turn the props give; anything but 0 or 90 is a bad-value warning and left out. */
 function nameRotation(reader: PropReader, props: Props, id: string, source: SourceRef): { turn?: 0 | 90; diagnostics: Diagnostic[] } {
   const value = props[NAME_ROTATION_PROP]
@@ -161,6 +173,7 @@ export function buildPart(tag: string, id: string, props: Props, origin: PartOri
   const mpn = reader.string("manufacturerPartNumber") ?? reader.string("mpn")
   const labelsAt = movedLabels(reader)
   const turn = nameRotation(reader, props, id, origin.source)
+  const edge = chosenEdge(props, id, origin.source)
   const component: Component = {
     id,
     kind: tag,
@@ -176,9 +189,10 @@ export function buildPart(tag: string, id: string, props: Props, origin: PartOri
     ...labelsAt,
     ...(turn.turn !== undefined ? { pcbNameRotation: turn.turn } : {}),
     ...(props[NAME_HIDDEN_PROP] === true ? { pcbNameHidden: true as const } : {}),
+    ...(edge.edge ? { pcbEdge: edge.edge } : {}),
     groupOffset: { pcb: { x: origin.offset.pcbX, y: origin.offset.pcbY }, sch: { x: origin.offset.schX, y: origin.offset.schY } },
     props: jsonProps(props),
     source: origin.source,
   }
-  return { component, diagnostics: [...reader.diagnostics, ...pinSides.diagnostics, ...turn.diagnostics, ...diagnostics] }
+  return { component, diagnostics: [...reader.diagnostics, ...pinSides.diagnostics, ...turn.diagnostics, ...edge.diagnostics, ...diagnostics] }
 }

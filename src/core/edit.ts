@@ -27,7 +27,7 @@ import { describeSheet } from "./sheet-card.js"
 import { renameParts } from "./rename-parts.js"
 import { setBoard, setBoardLayers } from "./board-edits.js"
 import { setBoardShape } from "./board-shape-edit.js"
-import { LABEL_AT_PROPS, NAME_HIDDEN_PROP, NAME_ROTATION_PROP } from "../engine/component.js"
+import { EDGE_PROP, LABEL_AT_PROPS, NAME_HIDDEN_PROP, NAME_ROTATION_PROP } from "../engine/component.js"
 import { NO_CONNECT_PROP } from "../engine/no-connect.js"
 import { MAIN_PAGE } from "../engine/model.js"
 import type { Edit, Literal, PartInfo, Point, PropValue } from "./types.js"
@@ -157,11 +157,15 @@ const LABEL_PROPS: ReadonlySet<string> = new Set(LABEL_AT_PROPS)
  * or back to the place the schematic gives it by itself. */
 const PLACE_PROPS = ["pcbX", "pcbY", "pcbRotation", "schX", "schY", "schRotation"] as const
 /** Props a null removes: the part's place, the moved labels' positions, the designator's turn, the no connect flags once the last one goes, and the supplier numbers. */
-const REMOVABLE_PROPS: ReadonlySet<string> = new Set([...PLACE_PROPS, ...LABEL_AT_PROPS, NAME_ROTATION_PROP, NAME_HIDDEN_PROP, NO_CONNECT_PROP, SUPPLIER_PROP])
+/** The board sides pcbEdge takes. */
+const EDGES: readonly unknown[] = ["left", "right", "top", "bottom"]
+
+const REMOVABLE_PROPS: ReadonlySet<string> = new Set([...PLACE_PROPS, ...LABEL_AT_PROPS, NAME_ROTATION_PROP, NAME_HIDDEN_PROP, EDGE_PROP, NO_CONNECT_PROP, SUPPLIER_PROP])
 
 /** A prop's value as written: a point for a label's position (rounded, as corners are), else a checked literal. */
 function formattedProp(key: string, value: Literal | Point): string {
   if (key === SUPPLIER_PROP) return formatSupplierProp(value)
+  if (key === EDGE_PROP && !EDGES.includes(value as string)) throw new EditError("invalid", `${EDGE_PROP} must be left, right, top or bottom`)
   if (typeof value !== "object") {
     validateOrThrow(key, value)
     return formatLiteral(value)

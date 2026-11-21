@@ -1,4 +1,4 @@
-import type { Point } from "../model.js"
+import type { Point, Side } from "../model.js"
 import type { Board, Spot } from "./constructive.js"
 import { GRID, snap, type Box } from "./geometry.js"
 import type { Movable } from "./scope.js"
@@ -9,6 +9,7 @@ import type { Movable } from "./scope.js"
  * and the connector goes on the next side, or inside the board with a note.
  */
 interface Edge {
+  side: Side
   normal: Point
   /** How far the target is from this edge. */
   distance: (target: Point, area: Box) => number
@@ -17,10 +18,11 @@ interface Edge {
 }
 
 const EDGES: readonly Edge[] = [
-  { normal: { x: 1, y: 0 }, distance: (t, a) => t.x - a.minX, flush: (b, a) => a.minX - b.minX },
-  { normal: { x: -1, y: 0 }, distance: (t, a) => a.maxX - t.x, flush: (b, a) => a.maxX - b.maxX },
-  { normal: { x: 0, y: 1 }, distance: (t, a) => t.y - a.minY, flush: (b, a) => a.minY - b.minY },
-  { normal: { x: 0, y: -1 }, distance: (t, a) => a.maxY - t.y, flush: (b, a) => a.maxY - b.maxY },
+  { side: "left", normal: { x: 1, y: 0 }, distance: (t, a) => t.x - a.minX, flush: (b, a) => a.minX - b.minX },
+  { side: "right", normal: { x: -1, y: 0 }, distance: (t, a) => a.maxX - t.x, flush: (b, a) => a.maxX - b.maxX },
+  // The board is y up: the bottom edge is the least y.
+  { side: "bottom", normal: { x: 0, y: 1 }, distance: (t, a) => t.y - a.minY, flush: (b, a) => a.minY - b.minY },
+  { side: "top", normal: { x: 0, y: -1 }, distance: (t, a) => a.maxY - t.y, flush: (b, a) => a.maxY - b.maxY },
 ]
 
 /** Spots along the edge past the first free one that are still weighed, each way. */
@@ -71,14 +73,23 @@ function alongEdge(board: Board, m: Movable, edge: Edge, rot: number, target: Po
   return spots
 }
 
+/** A spot against an edge, and which edge. */
+export interface EdgeSpot {
+  spot: Spot
+  side: Side
+}
+
 /**
- * Puts a connector against the edge nearest `target` (where the parts it connects to are), its pins facing inward,
- * at the cheapest free spot along it; the next nearest edge when that one is full. Undefined when no edge has room.
+ * Puts a connector against the edge its part names (pcbEdge), else the edge nearest `target` (where the parts it
+ * connects to are), its pins facing inward, at the cheapest free spot along it; the next nearest edge when that one is
+ * full. Undefined when no edge has room.
  */
-export function placeConnector(board: Board, i: number, target: Point): Spot | undefined {
+export function placeConnector(board: Board, i: number, target: Point): EdgeSpot | undefined {
   const m = board.problem.movables[i] as Movable
   const area = board.problem.area.box
-  const edges = EDGES.map((edge, order) => ({ edge, order, distance: edge.distance(target, area) })).sort((a, b) => a.distance - b.distance || a.order - b.order)
+  const chosen = m.component.pcbEdge
+  const rank = (edge: Edge) => (edge.side === chosen ? 0 : 1)
+  const edges = EDGES.map((edge, order) => ({ edge, order, distance: edge.distance(target, area) })).sort((a, b) => rank(a.edge) - rank(b.edge) || a.distance - b.distance || a.order - b.order)
   for (const { edge } of edges) {
     let best: { spot: Spot; cost: number; far: number } | undefined
     for (const rot of inwardRotations(m, edge.normal)) {
@@ -88,7 +99,7 @@ export function placeConnector(board: Board, i: number, target: Point): Spot | u
         if (!best || cost < best.cost - 1e-9 || (Math.abs(cost - best.cost) <= 1e-9 && far < best.far - 1e-9)) best = { spot, cost, far }
       }
     }
-    if (best) return best.spot
+    if (best) return { spot: best.spot, side: edge.side }
   }
   return undefined
 }
