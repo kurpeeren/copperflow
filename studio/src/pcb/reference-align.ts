@@ -5,7 +5,7 @@ import type { ReferenceRecord } from "../../../src/core/layout-references.js"
 import { fitReference, invertMatrix, mapPoint, type BoardFrame, type FitPoint, type Matrix3 } from "../../../src/engine/reference-fit.js"
 import type { PcbLayout } from "../../../src/engine/pcb.js"
 import type { Aligning } from "./reference-store.js"
-import type { Ctx } from "./ctx.js"
+import { PALETTE, type Ctx } from "./ctx.js"
 
 /** How near a hole or pad centre a click must be to land on it, in screen pixels. */
 const SNAP_PIXELS = 14
@@ -56,14 +56,12 @@ export function alignMarks(matrix: Matrix3, aligning: Aligning | null): { placed
   return { placed: aligning.points.map((p) => p.board), ...(aligning.picked ? { picked: mapPoint(matrix, aligning.picked) } : {}) }
 }
 
-/** The marks' colour: cyan, apart from every layer colour. */
-const MARK_COLOUR = "#00e5ff"
 const MARK_RADIUS = 6
 
 /** Rings on the board points picked in this run and a cross on the pixel waiting for its pair, in screen pixels. */
 export function drawAlignMarks(ctx: Pick<Ctx, "save" | "restore" | "beginPath" | "arc" | "moveTo" | "lineTo" | "stroke" | "strokeStyle" | "lineWidth">, marks: { placed: FitPoint[]; picked?: FitPoint }, toScreen: (p: FitPoint) => FitPoint): void {
   ctx.save()
-  ctx.strokeStyle = MARK_COLOUR
+  ctx.strokeStyle = PALETTE.referenceMark
   ctx.lineWidth = 2
   for (const p of marks.placed.map(toScreen)) {
     ctx.beginPath()

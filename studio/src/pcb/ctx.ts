@@ -83,6 +83,8 @@ export const PALETTE = {
   topAssembly: "#33cc99",
   bottomAssembly: "#5555ff",
   ratsnest: "#6464ff",
+  /** The points picked while aligning a reference image: cyan, apart from every layer colour. */
+  referenceMark: "#00e5ff",
   keepout: "#f022f0",
   /** The document layer: our notes for the agent and the lock badges. */
   document: "#ffffff",
