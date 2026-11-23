@@ -80,7 +80,18 @@ The CLI groups findings by code, with their positions; the agent's `check_circui
 
 ### Connect Claude Code
 
-From your circuit project:
+The copperflow plugin brings the MCP server and the copperflow skill in one install, for every project.
+It starts the server through npx, so only Node.js is needed:
+
+```bash
+claude plugin marketplace add kurpeeren/copperflow
+claude plugin install copperflow@copperflow
+```
+
+Inside a session, `/plugin marketplace add kurpeeren/copperflow` and `/plugin install copperflow@copperflow`
+do the same. The server works on the folder the session starts in.
+
+Without the plugin, from your circuit project:
 
 ```bash
 claude mcp add copperflow -- copperflow mcp
@@ -95,6 +106,20 @@ copperflow skill
 
 `copperflow skill --global` installs it once for every project. Steps for other agents are at
 <https://copperflow.kurpeeren.com/connect.html>.
+
+### Connect Antigravity
+
+Antigravity installs copperflow as a plugin, with the MCP server and both skills (`copperflow` and
+`copperflow-plan`), for every project:
+
+```bash
+agy plugin install https://github.com/kurpeeren/copperflow
+```
+
+`agy plugin list` then shows copperflow with 2 skills and 1 MCP server. Start a new conversation in the
+board's folder: the server starts through npx and works on that folder. For the server alone, put the
+`copperflow` entry in `.agents/mcp_config.json` of the board's folder (or `~/.gemini/config/mcp_config.json`
+for every project), in the same form as [`mcp_config.json`](mcp_config.json) at the root of this repository.
 
 Any other MCP client can run `copperflow mcp` over stdio from the project folder
 (or pass `--root <dir>`).

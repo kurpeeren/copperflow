@@ -6,7 +6,7 @@
     <title>Connect your agent to copperflow</title>
     <meta
       name="description"
-      content="How to connect Claude Code, Claude Desktop, Cursor, VS Code, Codex or Gemini to copperflow over MCP, install the copperflow skill, and check that it works."
+      content="How to connect Claude Code, Claude Desktop, Cursor, VS Code, Codex, Gemini or Antigravity to copperflow over MCP, install the copperflow skill, and check that it works."
     />
     <link rel="canonical" href="https://copperflow.kurpeeren.com/connect.html" />
     <link rel="preload" href="fonts/ibm-plex-sans-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin />
@@ -40,6 +40,7 @@
             <li><a href="#vscode">VS Code</a></li>
             <li><a href="#codex">Codex</a></li>
             <li><a href="#gemini">Gemini CLI</a></li>
+            <li><a href="#antigravity">Antigravity</a></li>
             <li><a href="#other">Any other agent</a></li>
             <li><a href="#self">Let the agent set itself up</a></li>
             <li><a href="#skill">The skill</a></li>
@@ -71,14 +72,28 @@
           takes about a quarter of a minute while npm fetches the package.
         </p>
         <p>
-          We have tested these steps with Claude Code. The entries for the other agents follow each program's own
-          documentation for local MCP servers; if one does not work for you, please open an issue.
+          We have tested these steps with Claude Code and Antigravity. The entries for the other agents follow each
+          program's own documentation for local MCP servers; if one does not work for you, please open an issue.
         </p>
       </section>
 
       <section id="claude-code" aria-labelledby="claude-code-title">
         <h2 id="claude-code-title">Claude Code</h2>
-        <p>In the board's folder, add the server and install the skill:</p>
+        <p>
+          The copperflow plugin brings the server and the skill in one install, for every project. It starts the
+          server through npx, so only Node.js is needed:
+        </p>
+        <div class="command" data-copy>
+          <pre><code><span class="prompt" aria-hidden="true">$ </span>claude plugin marketplace add kurpeeren/copperflow
+<span class="prompt" aria-hidden="true">$ </span>claude plugin install copperflow@copperflow</code></pre>
+          <button type="button">Copy</button>
+        </div>
+        <p>
+          Inside a session, <code>/plugin marketplace add kurpeeren/copperflow</code> and
+          <code>/plugin install copperflow@copperflow</code> do the same. The server works on the folder the session
+          starts in, and the skill is called <code>copperflow:copperflow</code>.
+        </p>
+        <p>Without the plugin, in the board's folder, add the server and install the skill:</p>
         <div class="command" data-copy>
           <pre><code><span class="prompt" aria-hidden="true">$ </span>claude mcp add copperflow -- copperflow mcp
 <span class="prompt" aria-hidden="true">$ </span>copperflow skill</code></pre>
@@ -177,6 +192,37 @@ args = ["mcp", "--root", "/full/path/to/my-board"]</code></pre>
         </div>
       </section>
 
+      <section id="antigravity" aria-labelledby="antigravity-title">
+        <h2 id="antigravity-title">Antigravity</h2>
+        <p>
+          Antigravity installs copperflow as a plugin: the server and both skills, for every project. In a terminal:
+        </p>
+        <div class="command" data-copy>
+          <pre><code><span class="prompt" aria-hidden="true">$ </span>agy plugin install https://github.com/kurpeeren/copperflow
+<span class="prompt" aria-hidden="true">$ </span>agy plugin list</code></pre>
+          <button type="button">Copy</button>
+        </div>
+        <p>
+          The list shows copperflow with 2 skills and 1 MCP server. The server starts through npx and works on the
+          folder the conversation is in, so start a new conversation in the board's folder.
+        </p>
+        <p>
+          For the server alone, create <code>.agents/mcp_config.json</code> in the board's folder, or add the same
+          entry to <code>~/.gemini/config/mcp_config.json</code> for every project:
+        </p>
+        <div class="command" data-copy>
+          <pre><code>{
+  "mcpServers": {
+    "copperflow": {
+      "command": "copperflow",
+      "args": ["mcp", "--root", "/full/path/to/my-board"]
+    }
+  }
+}</code></pre>
+          <button type="button">Copy</button>
+        </div>
+      </section>
+
       <section id="other" aria-labelledby="other-title">
         <h2 id="other-title">Any other agent</h2>
         <p>
@@ -222,7 +268,8 @@ args = ["mcp", "--root", "/full/path/to/my-board"]</code></pre>
             <dd>
               Run <code>copperflow skill</code> in the board's folder. It copies both skills to
               <code>.claude/skills</code>, where Claude Code finds them. Add <code>--global</code> to
-              install them once for every project instead.
+              install them once for every project instead. The Claude Code plugin brings the copperflow skill and the
+              Antigravity plugin brings both, so they need no copy.
             </dd>
           </div>
           <div>
@@ -397,6 +444,14 @@ Circuits: none yet (new_circuit starts one)</code></pre>
             <dd>
               Some programs cannot start a command installed by npm directly. Use <code>cmd</code> as the command and
               <code>"/c", "copperflow", "mcp", "--root", "C:\\path\\to\\my-board"</code> as the arguments.
+            </dd>
+          </div>
+          <div>
+            <dt>The plugin's server shows as failed</dt>
+            <dd>
+              Through npx the first start fetches the package, and on a slow connection that can take longer than the
+              agent waits. Reconnect it (<code>/mcp</code> in Claude Code), or in Claude Code start it with
+              <code>MCP_TIMEOUT=60000</code> set for a longer wait.
             </dd>
           </div>
           <div>
