@@ -292,7 +292,8 @@ async function renderCommand(root: string, rest: string[], options: CliOptions):
   const [finish, afterFinish] = takeOption(afterMask, "--finish")
   const [silk, afterSilk] = takeOption(afterFinish, "--silk")
   const [background, afterBackground] = takeOption(afterSilk, "--background")
-  const [angle, args] = takeOption(afterBackground, "--angle")
+  const [angle, afterAngle] = takeOption(afterBackground, "--angle")
+  const [reference, args] = takeFlag(afterAngle, "--reference")
   if (view !== undefined && view !== "pcb" && view !== "schematic" && view !== "board" && view !== "3d") throw new Error(`--view must be pcb, schematic, board or 3d, not ${view}`)
   if (angle !== undefined && !["top", "bottom", "front", "iso"].includes(angle)) throw new Error(`--angle must be top, bottom, front or iso, not ${angle}`)
   if (side !== undefined && side !== "top" && side !== "bottom") throw new Error(`--side must be top or bottom, not ${side}`)
@@ -305,6 +306,7 @@ async function renderCommand(root: string, rest: string[], options: CliOptions):
     ...(page !== undefined ? { page } : {}),
     ...(parts !== undefined ? { parts: parts.split(",").map((name) => name.trim()).filter((name) => name !== "") } : {}),
     ...(width !== undefined ? { width: Number(width) } : {}),
+    ...(reference ? { reference: true } : {}),
   } as const
   const renderOptions = { ...designOptions(options), ...(options.renderer ? { renderer: options.renderer } : {}) }
   const file = required(args[0], "file")

@@ -8,6 +8,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { createCanvas, loadImage } from "@napi-rs/canvas"
 import { createCopperflowServer } from "../src/mcp/server.js"
+import { runCli } from "../src/cli-commands.js"
 import { inProcessEngine } from "./helpers/in-process-engine.js"
 
 const sourceRenderer = () => import("../studio/src/render/node-render.js")
@@ -91,6 +92,14 @@ describe("import_graphic with layer reference", () => {
     await rm(join(root, "references", "top.png"))
     const missing = await client.callTool({ name: "render", arguments: { file: FILE, reference: true } })
     expect((missing.content as Array<{ text?: string }>)[1]?.text).toMatch(/r1's references\/top.png is missing/)
+  })
+
+  test("the CLI's render draws it with --reference", async () => {
+    await call({ source: "photos/top.png" })
+    const out: string[] = []
+    const code = await runCli(["render", FILE, "--reference", "--out", "pics/ref.png"], root, { out: (s) => out.push(s), err: (s) => out.push(s) }, { engine: inProcessEngine, renderer: sourceRenderer })
+    expect(code).toBe(0)
+    expect(out.join(" ")).toMatch(/^Wrote pics\/ref.png \(\d+ x \d+ px\): PCB, whole board 40 x 20 mm; under it reference r1 \(0 points\)$/)
   })
 
   test("the layout file holds it and no export carries it", async () => {

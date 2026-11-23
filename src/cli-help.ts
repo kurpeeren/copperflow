@@ -60,7 +60,7 @@ Usage:
   copperflow render <file> [--view pcb|schematic|board|3d] [--page <name>] [--parts U1,C3] [--width n] [--out file.png]
       board: the bare board as made [--side bottom] [--mask black] [--finish hasl] [--silk black] [--background #rrggbb]
       3d: the board as made with its parts as simple shapes [--angle top|bottom|front|iso] and the same look options
-                  [--change <id> | --since <id>]
+                  [--change <id> | --since <id>] [--reference: the reference images under the PCB]
                                               draw the board or a schematic page to a PNG, as the Studio shows it
                                               (<name>-pcb.png or <name>-schematic-<page>.png beside the circuit)
   copperflow simulate <file> --set V12=12 --set CTRL=3.3 [--sheet <name>] [--closed SW1,J2] [--coil K1] [--all]
