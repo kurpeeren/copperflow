@@ -214,13 +214,13 @@ export default () => (
     ])
   })
 
-  test("a local net is refused by add_trace, edit_circuit and connect_nets, pointing at the sheet", async () => {
+  test("a local net is refused by add_trace (both forms) and edit_circuit, pointing at the sheet", async () => {
     const message = "PS1/FB is local to instance PS1; edit PowerStage.sheet.tsx and use FB there"
     const added = await call("add_trace", { file: "sheets.circuit.tsx", from: "R1.pin2", to: "net.PS1/FB" })
     expect(added.text).toContain(message)
     const edited = await call("edit_circuit", { file: "sheets.circuit.tsx", edits: [{ connect: { from: "R1.pin2", to: "net.PS1/FB" } }] })
     expect(edited.text).toContain(message)
-    const connected = await call("connect_nets", { file: "sheets.circuit.tsx", nets: { "PS1/FB": ["R1.pin2"] } })
+    const connected = await call("add_trace", { file: "sheets.circuit.tsx", nets: { "PS1/FB": ["R1.pin2"] } })
     expect(connected.isError).toBe(true)
     expect(connected.text).toContain(message)
   })
@@ -349,9 +349,9 @@ describe("edit_circuit", () => {
   })
 })
 
-describe("connect_nets", () => {
+describe("add_trace with nets", () => {
   test("writes one connection per pin as one change and skips pins already on the net", async () => {
-    const first = await call("connect_nets", { file: FILE, nets: { GND: ["R1.pin1", "C1.pin2", "LED1.pin2"], V3_3: ["R1.pin2", "U1.pin1"] } })
+    const first = await call("add_trace", { file: FILE, nets: { GND: ["R1.pin1", "C1.pin2", "LED1.pin2"], V3_3: ["R1.pin2", "U1.pin1"] } })
     expect(first.isError).toBe(false)
     expect(first.text).toMatch(/^Change c0001 applied: connected 4 pins \(GND \+2, V3_3 \+2; 1 already connected\)/)
     const source = await readFile(join(root, FILE), "utf8")
@@ -362,13 +362,13 @@ describe("connect_nets", () => {
   })
 
   test("names the pins it added, per net", async () => {
-    const { text } = await call("connect_nets", { file: FILE, nets: { GND: ["R1.pin1", "C1.pin2", "LED1.pin2"], V3_3: ["U1.pin1"] } })
+    const { text } = await call("add_trace", { file: FILE, nets: { GND: ["R1.pin1", "C1.pin2", "LED1.pin2"], V3_3: ["U1.pin1"] } })
     expect(text.split("\n").slice(1, 3)).toEqual(["GND +2: C1.pin2 LED1.pin2", "V3_3 +1: U1.pin1"])
   })
 
   test("refuses every unknown part or pin in one answer and writes nothing", async () => {
     const before = await readFile(join(root, FILE), "utf8")
-    const { text, isError } = await call("connect_nets", { file: FILE, nets: { GND: ["R1.pin7", "C1.pin2"], VCC: ["Q9.pin1", "U1.FOO"] } })
+    const { text, isError } = await call("add_trace", { file: FILE, nets: { GND: ["R1.pin7", "C1.pin2"], VCC: ["Q9.pin1", "U1.FOO"] } })
     expect(isError).toBe(true)
     expect(text).toMatch(/^Unknown pins; nothing was written:/)
     expect(text).toContain("R1.pin7 (R1 has pin1, pin2)")
@@ -378,14 +378,23 @@ describe("connect_nets", () => {
     expect(await listEntries(root, 10)).toHaveLength(0)
   })
 
-  test("add_trace points at connect_nets for many pins", async () => {
+  test("takes from and to, or nets, never both or neither", async () => {
     const { tools } = await client.listTools()
-    expect(tools.find((tool) => tool.name === "add_trace")?.description).toContain("connect_nets")
+    const tool = tools.find((one) => one.name === "add_trace")
+    expect(Object.keys(tool?.inputSchema.properties ?? {})).toEqual(["file", "from", "to", "props", "nets"])
+    expect(tool?.inputSchema.required).toEqual(["file"])
+    const both = await call("add_trace", { file: FILE, from: "R1.pin1", to: "net.GND", nets: { GND: ["C1.pin2"] } })
+    expect(both.isError).toBe(true)
+    expect(both.text).toMatch(/Give from and to for one connection, or nets for many pins/)
+    const half = await call("add_trace", { file: FILE, from: "R1.pin1" })
+    expect(half.isError).toBe(true)
+    expect(half.text).toMatch(/Give from and to/)
+    expect(await listEntries(root, 10)).toHaveLength(0)
   })
 
   test("a repeat call changes nothing", async () => {
-    await call("connect_nets", { file: FILE, nets: { GND: ["C1.pin2"] } })
-    const again = await call("connect_nets", { file: FILE, nets: { GND: ["C1.pin2"] } })
+    await call("add_trace", { file: FILE, nets: { GND: ["C1.pin2"] } })
+    const again = await call("add_trace", { file: FILE, nets: { GND: ["C1.pin2"] } })
     expect(again.text).toMatch(/^Nothing to do/)
     expect(await listEntries(root, 10)).toHaveLength(1)
   })
@@ -401,22 +410,22 @@ describe("connect_nets", () => {
 )
 `
     await writeFile(join(root, "alias.circuit.tsx"), source)
-    const alias = await call("connect_nets", { file: "alias.circuit.tsx", nets: { GND: ["R1.left"], VCC: ["R2.pin1", ".R2 > .pin1"] } })
+    const alias = await call("add_trace", { file: "alias.circuit.tsx", nets: { GND: ["R1.left"], VCC: ["R2.pin1", ".R2 > .pin1"] } })
     expect(alias.text).toMatch(/^Nothing to do/)
-    const fresh = await call("connect_nets", { file: "alias.circuit.tsx", nets: { GND: ["R1.left", "R2.right"] } })
+    const fresh = await call("add_trace", { file: "alias.circuit.tsx", nets: { GND: ["R1.left", "R2.right"] } })
     expect(fresh.text).toContain("connected 1 pins (GND +1; 1 already connected)")
   })
 
   test("the same pin on two nets in one call is refused", async () => {
-    const { text, isError } = await call("connect_nets", { file: FILE, nets: { A: ["C1.pin2"], B: ["C1.pin2"] } })
+    const { text, isError } = await call("add_trace", { file: FILE, nets: { A: ["C1.pin2"], B: ["C1.pin2"] } })
     expect(isError).toBe(true)
     expect(text).toContain("both A and B")
   })
 
   test("the same pin under two spellings on two nets is refused", async () => {
-    const { text, isError } = await call("connect_nets", { file: FILE, nets: { GND: ["C1.pin2"], VCC: ["C1.pin2"] } })
+    const { text, isError } = await call("add_trace", { file: FILE, nets: { GND: ["C1.pin2"], VCC: ["C1.pin2"] } })
     expect(isError).toBe(true)
-    const alias = await call("connect_nets", { file: FILE, nets: { GND: ["R1.left"], VCC: ["R1.pin1"] } })
+    const alias = await call("add_trace", { file: FILE, nets: { GND: ["R1.left"], VCC: ["R1.pin1"] } })
     expect(alias.isError).toBe(true)
     expect(alias.text).toContain("both GND and VCC")
     expect(text).toContain("both GND and VCC")
@@ -424,15 +433,15 @@ describe("connect_nets", () => {
 
   test("a circuit that does not build is refused and nothing is written", async () => {
     await writeFile(join(root, "broken.circuit.tsx"), 'export default () => { throw new Error("boom") }')
-    const { text, isError } = await call("connect_nets", { file: "broken.circuit.tsx", nets: { GND: ["R1.pin1"] } })
+    const { text, isError } = await call("add_trace", { file: "broken.circuit.tsx", nets: { GND: ["R1.pin1"] } })
     expect(isError).toBe(true)
-    expect(text).toContain("The circuit does not build, so connect_nets cannot tell which pins are already connected")
+    expect(text).toContain("The circuit does not build, so add_trace cannot tell which pins are already connected")
     expect(await listEntries(root, 10)).toHaveLength(0)
   })
 
   test("rejects a bad net name or pin", async () => {
-    expect((await call("connect_nets", { file: FILE, nets: { "a b": ["R1.pin1"] } })).isError).toBe(true)
-    expect((await call("connect_nets", { file: FILE, nets: { GND: ["R1"] } })).isError).toBe(true)
+    expect((await call("add_trace", { file: FILE, nets: { "a b": ["R1.pin1"] } })).isError).toBe(true)
+    expect((await call("add_trace", { file: FILE, nets: { GND: ["R1"] } })).isError).toBe(true)
   })
 })
 
@@ -450,7 +459,7 @@ describe("server instructions", () => {
     const text = await skillText()
     expect(text).toContain("not positions or wire corners")
     expect(text).toContain("edit_circuit")
-    expect(text).toContain("connect_nets")
+    expect(text).toContain("`add_trace` `{ file, nets:")
     expect(text).toContain("check_circuit` once at the end")
     expect(text).toContain("[LOCKED]")
   })

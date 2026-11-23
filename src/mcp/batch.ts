@@ -258,12 +258,12 @@ function resolvePin(circuit: Circuit, selector: string): string | undefined {
   return component?.pins.find((pin) => pin.names.includes(parsed.pin))?.id
 }
 
-/** The built design's circuit; connect_nets cannot tell what is connected without it. */
+/** The built design's circuit; add_trace's nets cannot tell what is connected without it. */
 async function builtCircuit(root: string, file: string, engine: DesignSource | undefined): Promise<Circuit> {
   try {
     return (await buildWith(root, file, engine)).circuit
   } catch {
-    throw new Error("The circuit does not build, so connect_nets cannot tell which pins are already connected: fix the build errors first (check_circuit)")
+    throw new Error("The circuit does not build, so add_trace cannot tell which pins are already connected: fix the build errors first (check_circuit)")
   }
 }
 

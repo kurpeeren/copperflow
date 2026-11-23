@@ -55,7 +55,7 @@ Passive parts (resistors, capacitors, LEDs, headers) are built in and need no en
    pin table: `verification.md` then asks the human to compare each pin with that page.
    Tell the human the part is not verified and that `parts/<id>/verification.md` lists what to
    check.
-4. Place it with `place_part`, connect it with `connect_nets` (or `add_trace` for one connection), then run `check_circuit`.
+4. Place it with `place_part`, connect it with `add_trace` (`nets` for many pins, `from` and `to` for one), then run `check_circuit`.
 
 `part_info` `{ id }` shows part.yaml, then the footprint's pads under the pins
 (`  5  at (1.1, -0.95)  0.6 x 1.1 roundrect  VOUT`: number, centre in mm, size, hole, pin name),

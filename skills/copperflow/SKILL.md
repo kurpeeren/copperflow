@@ -95,7 +95,7 @@ means, `replace`, refused pins and the export's warnings are in
 4. **Design each block.** Write parts and connections, not positions or wire corners: the
    program places and routes. `edit_circuit` `{ file, edits: [...] }` applies a list as one
    change (`Change c0004 applied: 3 edits: …`; nothing written if one is refused, and the answer
-   says which). Many pins of a written circuit: `connect_nets` `{ file, nets: { GND: ["R1.pin2", "C1.pin2"] } }`
+   says which). Many pins of a written circuit: `add_trace` `{ file, nets: { GND: ["R1.pin2", "C1.pin2"] } }`
    answers `connected 4 pins (GND +4)` and the pins per net; unknown pins: nothing written. Single edits: `place_part`, `set_props`, `remove_part`,
    `add_trace`, `remove_trace`. These tools enforce locks and record history; editing the file
    directly does not. Labels move with `set_props` `schNameAt`, `schValueAt`, `pcbNameAt`

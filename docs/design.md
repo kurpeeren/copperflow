@@ -108,12 +108,11 @@ human undid.
 | `circuit_summary` | compact by default: a line per part and per net, locks, marks, lock violations (lists cut at 20); `detail: "full"` gives every prop and trace |
 | `set_props` | change literal props of a part (position, rotation, value, footprint) |
 | `remove_part` | remove a part and the traces connected to it |
-| `add_trace` | add a trace between two selectors |
+| `add_trace` | add a trace between two selectors; with `nets` (`{ NET: [pins] }`) one connection per pin, pins already on the net skipped, one change |
 | `remove_trace` | remove a trace |
 | `check_circuit` | build with copperflow's engine; error and warning counts, then up to 20 findings one per line; `filter` takes `errors`, `warnings`, `copper`, a part or a net (read-only); copper violations are included |
 | `new_circuit` | a fresh `*.circuit.tsx` from `parts` and `nets` (no positions, no wire corners), board 30 x 20 mm unless given; everything is validated before anything is written (names, kinds, library ids, pins, a pin on two nets); an existing file is refused unless `replace`; one history entry, and undo removes the file (or restores the replaced one) |
 | `edit_circuit` | several edits (`set_props`, `connect`, `disconnect`, `place_part`, `remove_part`) applied in order as one change; a refused edit stops the batch, writes nothing and is named in the answer |
-| `connect_nets` | `{ NET: [pins] }`: one connection per pin, pins already on the net skipped, one change |
 | `route_track` | one track of a net from a pad, track or via of that net (`net`, `layer`, `points`, `width?`; the width defaults to the net class); a point on another net's copper is refused naming both nets; one change through the layout file, with locks; the answer is a line plus the copper violations it introduced |
 | `add_via` | a via (`net?`, `at`, `layers?`): the net of the copper under it, the size from the net class and the fabrication minimum ring; one change |
 | `remove_copper` | tracks and vias by `ids`, one change; an `{ id, segment }` among them removes one segment of a track, splitting it into the runs left; locked copper is refused |

@@ -116,7 +116,7 @@ The brief is all a sub-agent knows. Give it:
 - the sources step 2 found for this block, to read and to look further from in the same way;
 - the tools: `guide` for how to work, `list_parts`, `part_info`, `create_part` and
   `attach_datasheet` for parts. **It writes no circuit file**: no `new_circuit`, `edit_circuit`,
-  `place_part` or `connect_nets`. Only you write the circuit, once, in step 5;
+  `place_part` or `add_trace`. Only you write the circuit, once, in step 5;
 - what to send back, below.
 
 A sub-agent sends back the block as one sheet in the shape `new_circuit` takes, and a few lines:

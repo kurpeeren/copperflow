@@ -48,7 +48,6 @@ describe("MCP server", () => {
       "bom",
       "check_circuit",
       "circuit_summary",
-      "connect_nets",
       "copper_summary",
       "create_part",
       "describe_sheet",

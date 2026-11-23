@@ -107,6 +107,16 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     return [`Change ${result.entry.id} applied: ${note}`, ...(result.copperNote ? [result.copperNote] : []), ...after, ...warnings].join("\n")
   }
   const edit = (circuit: string, edits: Edit[], summary: string) => run(() => apply(circuit, edits, summary))
+  /** add_trace's nets form: one connection per pin not yet on its net, as one change, and the pins added per net. */
+  const connectNets = (circuit: string, nets: Record<string, string[]>) =>
+    run(async () => {
+      const plan = await planNets(root, circuit, nets, options.engine)
+      const counts = Object.entries(plan.added).map(([name, n]) => `${name} +${n}`).join(", ")
+      if (plan.edits.length === 0) return `Nothing to do: all ${plan.skipped} pins are already on their nets.`
+      const skipped = plan.skipped > 0 ? `; ${plan.skipped} already connected` : ""
+      const added = Object.entries(plan.pins).map(([name, pins]) => `${name} +${pins.length}: ${pins.join(" ")}`)
+      return apply(circuit, plan.edits, `connect nets ${counts}`, `connected ${plan.edits.length} pins (${counts}${skipped})`, added)
+    })
 
   server.registerTool(
     "list_circuits",
@@ -182,16 +192,24 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
   server.registerTool(
     "add_trace",
     {
-      description: 'Schematic trace (a connection, no copper): connect two ports or nets, e.g. from ".R1 > .pin1" to "net.GND". Many pins to nets: connect_nets, one call.',
+      description:
+        'Schematic trace (a connection, no copper): connect two ports or nets with from and to, e.g. from ".R1 > .pin1" to "net.GND". Or many pins of a circuit with nets instead, as ONE change, e.g. { "GND": ["R1.pin2", "C1.pin2"] }: pins already on the net are skipped, an unknown part or pin is refused and nothing is written, and the answer lists the pins added per net.',
       inputSchema: {
         file,
-        from: z.string(),
-        to: z.string(),
+        from: z.string().optional(),
+        to: z.string().optional(),
         props: z.record(z.string(), literal).optional().describe('Extra trace props, e.g. { "thickness": "0.4mm" }'),
+        nets: z.record(z.string(), z.array(z.string()).min(1)).optional().describe("Net name to pins, in place of from and to"),
       },
     },
-    ({ file: circuit, from, to, props }) =>
-      edit(circuit, [{ kind: "addTrace", from, to, ...(props ? { props } : {}) }], `add trace ${from} -> ${to}`),
+    ({ file: circuit, from, to, props, nets }) => {
+      if (nets !== undefined) {
+        if (from !== undefined || to !== undefined || props !== undefined) return run(async () => refuseTraceForm())
+        return connectNets(circuit, nets)
+      }
+      if (from === undefined || to === undefined) return run(async () => refuseTraceForm())
+      return edit(circuit, [{ kind: "addTrace", from, to, ...(props ? { props } : {}) }], `add trace ${from} -> ${to}`)
+    },
   )
 
   server.registerTool(
@@ -343,24 +361,6 @@ Nothing was written.`)
   )
 
   server.registerTool(
-    "connect_nets",
-    {
-      description:
-        'Connect pins of an existing circuit to named nets as ONE change, e.g. { "GND": ["R1.pin2", "C1.pin2"] }; pins already on the net are skipped, an unknown part or pin is refused and nothing is written. The answer lists the pins added per net.',
-      inputSchema: { file, nets: z.record(z.string(), z.array(z.string()).min(1)) },
-    },
-    ({ file: circuit, nets }) =>
-      run(async () => {
-        const plan = await planNets(root, circuit, nets, options.engine)
-        const counts = Object.entries(plan.added).map(([name, n]) => `${name} +${n}`).join(", ")
-        if (plan.edits.length === 0) return `Nothing to do: all ${plan.skipped} pins are already on their nets.`
-        const skipped = plan.skipped > 0 ? `; ${plan.skipped} already connected` : ""
-        const added = Object.entries(plan.pins).map(([name, pins]) => `${name} +${pins.length}: ${pins.join(" ")}`)
-        return apply(circuit, plan.edits, `connect nets ${counts}`, `connected ${plan.edits.length} pins (${counts}${skipped})`, added)
-      }),
-  )
-
-  server.registerTool(
     "list_parts",
     { description: 'List the parts library (parts/) with verification status. Built-in kinds (resistor, capacitor, led, pinheader, …) are not here: guide { topic: "writing-circuits" } lists them.', annotations: READ_ONLY },
     () =>
@@ -408,7 +408,7 @@ Nothing was written.`)
     ({ file: circuit, part, name, props, page }) =>
       run(async () => {
         const result = await placePart(root, circuit, { part, name, ...(props ? { props } : {}), ...(page ? { page } : {}) }, { author: "ai" })
-        return `Change ${result.entry.id} applied: ${result.entry.summary}. Connect it with add_trace or connect_nets; run check_circuit once at the end.`
+        return `Change ${result.entry.id} applied: ${result.entry.summary}. Connect it with add_trace; run check_circuit once at the end.`
       }),
   )
 
@@ -547,6 +547,11 @@ async function sheetView(root: string, circuit: string, engine: DesignSource | u
   } catch (error) {
     return { failure: error instanceof Error ? error.message : String(error) }
   }
+}
+
+/** add_trace takes from and to (one connection) or nets (many pins), never both. */
+function refuseTraceForm(): never {
+  throw new Error('Give from and to for one connection, or nets for many pins, e.g. { "GND": ["R1.pin2", "C1.pin2"] }; not both. Nothing was written.')
 }
 
 /** The tool's text as its answer, or its error as an error answer; the task gets the call's reporter (tool-activity.ts). */
