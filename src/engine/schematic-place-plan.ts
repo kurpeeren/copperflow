@@ -109,15 +109,16 @@ function layersOf(names: readonly string[], edges: ReadonlyMap<string, ReadonlyS
   return layer
 }
 
-/** The chips left to right: sources of signal and power first, the chips they feed after them, ties by name. */
-export function flowOrder(anchors: readonly Component[], netlist: Netlist): string[] {
-  const names = anchors.map((anchor) => anchor.id).sort(naturalCompare)
-  const layer = layersOf(names, flowEdges(anchors, netlist))
-  return [...names].sort((a, b) => (layer.get(a) ?? 0) - (layer.get(b) ?? 0))
+/** Each chip's step in the signal flow: sources of signal and power at 0, the chips they feed after them. */
+export function flowLayers(anchors: readonly Component[], netlist: Netlist): Map<string, number> {
+  return layersOf(anchors.map((anchor) => anchor.id).sort(naturalCompare), flowEdges(anchors, netlist))
 }
 
-/** The chip pins on each net, best first: by preference, then the chip's place in the row, then pin number. */
-export function anchorPinsByNet(anchors: readonly Component[], netlist: Netlist): Map<string, AnchorPin[]> {
+/**
+ * The chip pins on each net, best first: a chip's before a connector's (the anchors from `core` on), then by
+ * preference, then the chip's place in the row, then pin number.
+ */
+export function anchorPinsByNet(anchors: readonly Component[], netlist: Netlist, core = anchors.length): Map<string, AnchorPin[]> {
   const byNet = new Map<string, AnchorPin[]>()
   for (const [index, anchor] of anchors.entries()) {
     for (const pin of anchor.pins) {
@@ -125,8 +126,9 @@ export function anchorPinsByNet(anchors: readonly Component[], netlist: Netlist)
       if (net !== undefined) pushTo(byNet, net, { anchor: anchor.id, index, pin })
     }
   }
+  const edge = (pin: AnchorPin): number => (pin.index >= core ? 1 : 0)
   const better = (a: AnchorPin, b: AnchorPin): number =>
-    PREFERENCE[a.pin.type] - PREFERENCE[b.pin.type] || a.index - b.index || a.pin.number - b.pin.number
+    edge(a) - edge(b) || PREFERENCE[a.pin.type] - PREFERENCE[b.pin.type] || a.index - b.index || a.pin.number - b.pin.number
   for (const pins of byNet.values()) pins.sort(better)
   return byNet
 }

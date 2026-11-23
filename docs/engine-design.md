@@ -286,9 +286,12 @@ The original plan:
     points to the place on the block's sheet.
 - Parts with `schX`/`schY` stay exactly there. Parts without a position are placed by
   connectivity (`schematic-place.ts`), deterministically and never closer than 0.2 to another
-  symbol: chips stand in one row in signal-flow order, a two-pin passive or a chain of them hangs
-  beside the chip pin it serves (to ground below, to power above, in series in line, between two
-  chips in the gap), and only parts that share no net with a chip pin line up right of them, one
+  symbol: connectors stand in a column at an edge (left for an input, right for an output, as the
+  pin types say; else towards the chip pins they meet), the other chips in a grid between them in
+  signal-flow order with chips that share nets side by side, wrapping into even rows when one row
+  would be too wide, towards a landscape page; a two-pin passive or a chain of them hangs beside the
+  chip pin it serves, a chip's before a connector's (to ground below, to power above, in series in
+  line, between two chips side by side in the gap), and only parts that share no net with a chip pin line up right of them, one
   chain of joined two-pin parts per row. The Studio marks them as auto-placed until
   someone moves them.
 - A trace with `schematicRouteHints` is drawn through its corners, as today, but natively.

@@ -1,5 +1,7 @@
-// Placement by connectivity for parts without schX/schY. Chips stand in one row by signal flow; two-pin
-// passives, and chains of them, hang beside the chip pin they serve; the rest goes right of them, one chain of
+// Placement by connectivity for parts without schX/schY. Connectors stand in a column at the left or right edge and
+// the other chips in a grid between, by signal flow and with those that share nets side by side, in rows when one
+// would be too wide (schematic-place-arrange.ts, schematic-place-grid.ts); two-pin passives, and chains of them,
+// hang beside the chip pin they serve, a chip's before a connector's; the rest goes right of them, one chain of
 // parts per row. Placed parts never move: they are obstacles. Every origin is on the 0.1 grid and no two symbols
 // come closer than CLEARANCE; a unit that would is pushed away from the chip it hangs from (down for the rest),
 // in the order placed. Deterministic: no randomness, and every list is in natural name order or derived from it.
@@ -7,19 +9,21 @@ import type { Circuit, Component, Point, Side } from "./model.js"
 import { naturalCompare } from "./order.js"
 import { sheetBounds, snap, snapDown, snapUp, tidy, type Spot } from "./schematic-geometry.js"
 import { chainEnds, chainsOf, isPair, reversed, type Link } from "./schematic-place-chains.js"
-import { anchorPinsByNet, attachmentOf, flowOrder, netlistOf, type Attachment, type Hook, type Netlist, type AnchorPin } from "./schematic-place-plan.js"
+import { arrangementOf, membersByNet, pullsOf, type Arrangement, type Members } from "./schematic-place-arrange.js"
+import { anchorPinsByNet, attachmentOf, netlistOf, type Attachment, type Hook, type Netlist, type AnchorPin } from "./schematic-place-plan.js"
+import { columnsFor, layoutOf, type Cell, type Cells, type Reach } from "./schematic-place-grid.js"
 import { anchorGroups, type AnchorGroup } from "./instance-anchor.js"
 import { CLEARANCE, crowds, Sheet, unitOf, type Direction, type Symbols, type Unit } from "./schematic-place-units.js"
 import { drawnAsBox, type Bounds, type SchSymbol } from "./symbols/index.js"
 
-/** The least room between two chips in the row. */
-const ANCHOR_GAP = 1.0
 /** Room between a chip's bounds and a passive that hangs from it. */
 const BODY_GAP = 0.3
 /** Room on each side of a passive that sits between two chips. */
 const BETWEEN_ROOM = 0.4
 /** Room between the links of a chain that hangs from a chip: enough for a short straight wire. */
 const HANG_GAP = 0.4
+/** Room before a box in series whose joined pin faces away from the chip, for the wire round it. */
+const AROUND_GAP = 1.0
 /** Room beside a box part that hangs at a chip's corner, for the wires of its sideways pins. */
 const BOX_GAP = 0.5
 /** Gap between the placed symbols and the leftovers placed right of them, as the column had. */
@@ -74,12 +78,24 @@ const sideGap = (unit: Unit, symbols: Symbols): number => (unit.pieces.every((pi
 
 const SERIES_WAY: Readonly<Record<Side, Direction>> = { left: "left", right: "right", top: "up", bottom: "down" }
 
-/** A series unit sits in line with its pin, BODY_GAP out from the chip. */
-function seriesSpot(side: Side, end: Point, box: Bounds, chip: Bounds): Spot {
-  if (side === "left") return { x: snapDown(chip.minX - BODY_GAP - box.maxX), y: end.y, rotation: 0 }
-  if (side === "right") return { x: snapUp(chip.maxX + BODY_GAP - box.minX), y: end.y, rotation: 0 }
-  if (side === "top") return { x: end.x, y: snapUp(chip.maxY + BODY_GAP - box.minY), rotation: 0 }
-  return { x: end.x, y: snapDown(chip.minY - BODY_GAP - box.maxY), rotation: 0 }
+/** A series unit sits in line with its pin, `gap` out from the chip. */
+function seriesSpot(side: Side, end: Point, box: Bounds, chip: Bounds, gap: number): Spot {
+  if (side === "left") return { x: snapDown(chip.minX - gap - box.maxX), y: end.y, rotation: 0 }
+  if (side === "right") return { x: snapUp(chip.maxX + gap - box.minX), y: end.y, rotation: 0 }
+  if (side === "top") return { x: end.x, y: snapUp(chip.maxY + gap - box.minY), rotation: 0 }
+  return { x: end.x, y: snapDown(chip.minY - gap - box.maxY), rotation: 0 }
+}
+
+const FACING: Readonly<Record<Side, Side>> = { left: "right", right: "left", top: "bottom", bottom: "top" }
+
+/**
+ * The room before a series unit: BODY_GAP, or AROUND_GAP when its first part is a box whose joined pin faces away
+ * from the chip, so that the wire can go round the box to that pin.
+ */
+function seriesGap(chain: readonly Link[], own: number, side: Side, symbols: Symbols): number {
+  const first = chain[0] && symbols.get(chain[0].part.id)
+  if (!first || isPair(first)) return BODY_GAP
+  return first.pins.find((pin) => pin.number === own)?.side === FACING[side] ? BODY_GAP : AROUND_GAP
 }
 
 /** Where one attachment goes relative to its chip; `outer` keeps the outer edge reached at each corner. */
@@ -88,7 +104,8 @@ function hangerOf(chip: SchSymbol, attachment: Hanging, links: readonly Link[], 
   const chain = oriented(links, attachment.hook.own.id, symbols)
   if (attachment.kind === "series") {
     const unit = unitOf(chain, SERIES_WAY[side], HANG_GAP, symbols)
-    return { unit, spot: seriesSpot(side, end, unit.box, chip.bounds), push: SERIES_WAY[side] }
+    const gap = seriesGap(chain, attachment.hook.own.number, side, symbols)
+    return { unit, spot: seriesSpot(side, end, unit.box, chip.bounds, gap), push: SERIES_WAY[side] }
   }
   const way: Direction = attachment.kind === "ground" ? "down" : "up"
   const unit = unitOf(chain, way, HANG_GAP, symbols)
@@ -100,47 +117,36 @@ function hangerOf(chip: SchSymbol, attachment: Hanging, links: readonly Link[], 
   return { unit, spot, push: way }
 }
 
-/** How far the hangers reach out of the chip's bounds on the left and on the right. */
-function reachOf(chip: Bounds, hangers: readonly Local[]): { left: number; right: number } {
+/** How far the hangers reach out of the chip's bounds on each side. */
+function reachOf(chip: Bounds, hangers: readonly Local[]): Reach {
+  const boxes = hangers.map((h) => sheetBounds(h.unit.box, h.spot))
   return {
-    left: Math.max(0, ...hangers.map((h) => chip.minX - (h.spot.x + h.unit.box.minX))),
-    right: Math.max(0, ...hangers.map((h) => h.spot.x + h.unit.box.maxX - chip.maxX)),
+    left: Math.max(0, ...boxes.map((box) => chip.minX - box.minX)),
+    right: Math.max(0, ...boxes.map((box) => box.maxX - chip.maxX)),
+    up: Math.max(0, ...boxes.map((box) => box.maxY - chip.maxY)),
+    down: Math.max(0, ...boxes.map((box) => chip.minY - box.minY)),
   }
 }
 
-interface Row {
-  anchors: readonly Component[]
-  hangers: readonly Local[][]
-  /** The width the gap after each chip (by its index) needs for the parts between chips. */
-  betweenNeed: ReadonlyMap<number, number>
-}
-
-/** The chips left to right, each gap wide enough for what hangs into it; then their passives. */
-function placeRow(row: Row, symbols: Symbols, sheet: Sheet): void {
-  const start = sheet.right()
-  let previous: { maxX: number; right: number } | undefined
-  for (const [index, anchor] of row.anchors.entries()) {
-    const symbol = symbols.get(anchor.id)
-    if (!symbol) continue
-    const reach = reachOf(symbol.bounds, row.hangers[index] ?? [])
-    const gap = previous ? Math.max(ANCHOR_GAP, previous.right + CLEARANCE + reach.left, row.betweenNeed.get(index - 1) ?? 0) : 0
-    const edge = previous ? previous.maxX + gap : (start === undefined ? 0 : start + COLUMN_GAP) + reach.left
-    const unit = unitOf([{ part: anchor, rotation: 0 }], "right", 0, symbols)
-    const spot = sheet.put(unit, { x: snapUp(edge - symbol.bounds.minX), y: 0, rotation: 0 })
-    previous = { maxX: spot.x + symbol.bounds.maxX, right: reach.right }
+/** The chips, each at its origin, then what hangs from each. */
+function placeAnchors(anchors: readonly Component[], origins: ReadonlyMap<string, Point>, hangers: readonly Local[][], symbols: Symbols, sheet: Sheet): void {
+  for (const anchor of anchors) {
+    const origin = origins.get(anchor.id)
+    if (!origin || !symbols.has(anchor.id)) continue
+    sheet.put(unitOf([{ part: anchor, rotation: 0 }], "right", 0, symbols), { x: origin.x, y: origin.y, rotation: 0 })
   }
-  for (const [index, anchor] of row.anchors.entries()) {
+  for (const [index, anchor] of anchors.entries()) {
     const origin = sheet.spots.get(anchor.id)
     if (!origin) continue
-    for (const local of row.hangers[index] ?? []) {
+    for (const local of hangers[index] ?? []) {
       sheet.put(local.unit, { x: tidy(origin.x + local.spot.x), y: tidy(origin.y + local.spot.y), rotation: 0 }, local.push)
     }
   }
 }
 
-/** A unit between two chips: in the middle of the gap after the left one, level with the left chip's pin. */
-function placeBetween(between: Between, links: readonly Link[], row: Row, symbols: Symbols, sheet: Sheet): void {
-  const [left, next] = [row.anchors[between.left.at.index], row.anchors[between.left.at.index + 1]]
+/** A unit between two chips side by side: in the middle of the gap between them, level with the left chip's pin. */
+function placeBetween(between: Between, links: readonly Link[], anchors: readonly Component[], symbols: Symbols, sheet: Sheet): void {
+  const [left, next] = [anchors[between.left.at.index], anchors[between.right.at.index]]
   const [leftSymbol, nextSymbol] = [left && symbols.get(left.id), next && symbols.get(next.id)]
   const [leftSpot, nextSpot] = [left && sheet.spots.get(left.id), next && sheet.spots.get(next.id)]
   if (!leftSymbol || !nextSymbol || !leftSpot || !nextSpot) return
@@ -227,27 +233,78 @@ function hang(loose: readonly Component[], chips: ReadonlySet<string>, circuit: 
   return hung
 }
 
-/** The row: the chips in signal-flow order and everything that hangs from them. */
-function rowOf(loose: readonly Component[], circuit: Circuit, symbols: Symbols): { row: Row; between: Between[]; hung: Hung } {
-  const netlist = netlistOf(circuit)
-  const chips = new Map(loose.filter((c) => isAnchor(c, symbols.get(c.id))).map((c) => [c.id, c]))
-  const anchors = flowOrder([...chips.values()], netlist).flatMap((name) => chips.get(name) ?? [])
-  const hung = hang(loose, new Set(chips.keys()), circuit, symbols, netlist, anchorPinsByNet(anchors, netlist))
-  const between = hung.attachments.filter((a): a is Between => a.kind === "between")
-  const hangers = anchors.map((anchor) => {
+/** What hangs from each anchor, by the anchor's index, placed relative to its origin. */
+function hangersOf(anchors: readonly Component[], attachments: readonly Hanging[], strands: ReadonlyMap<string, Link[]>, symbols: Symbols): Local[][] {
+  return anchors.map((anchor) => {
     const chip = symbols.get(anchor.id)
     const outer = new Map<string, number>()
-    const hanging = hung.attachments.filter((a): a is Hanging => a.kind !== "between" && a.hook.at.anchor === anchor.id)
-    return chip ? hanging.map((a) => hangerOf(chip, a, hung.strands.get(a.part) ?? [], outer, symbols)) : []
+    const hanging = attachments.filter((a) => a.hook.at.anchor === anchor.id)
+    return chip ? hanging.map((a) => hangerOf(chip, a, strands.get(a.part) ?? [], outer, symbols)) : []
   })
-  return { row: { anchors, hangers, betweenNeed: betweenNeeds(between, hung.strands, symbols) }, between, hung }
 }
 
-/** Places `loose` by connectivity on `sheet`. */
+/** The chips at the edges and in the grid as cells: their bounds and the reach of what hangs from them. */
+function cellsOf(arrangement: Arrangement, hangers: readonly Local[][], symbols: Symbols): Cells {
+  let index = 0
+  const cells = (parts: readonly Component[]): Cell[] =>
+    parts.flatMap((part) => {
+      const at = index++
+      const bounds = symbols.get(part.id)?.bounds
+      return bounds ? [{ name: part.id, bounds, reach: reachOf(bounds, hangers[at] ?? []) }] : []
+    })
+  return { core: cells(arrangement.core), left: cells(arrangement.left), right: cells(arrangement.right) }
+}
+
+/** The origin y that levels a connector's pins with the chip pins they meet, on average; none when it meets none. */
+function levelOf(connector: Component, chips: ReadonlySet<string>, grid: ReadonlyMap<string, Point>, symbols: Symbols, netlist: Netlist, byNet: Members): number | undefined {
+  const own = symbols.get(connector.id)
+  if (!own) return undefined
+  const offsets = pullsOf(connector, chips, netlist, byNet).flatMap((contact) =>
+    contact.others.flatMap((other) => {
+      const [at, symbol] = [grid.get(other.part), symbols.get(other.part)]
+      return at && symbol ? [at.y + pinOf(symbol, other.pin.number).end.y - pinOf(own, contact.own.number).end.y] : []
+    }),
+  )
+  return offsets.length > 0 ? snap(offsets.reduce((sum, y) => sum + y, 0) / offsets.length) : undefined
+}
+
+/** Whether a part between two chips can stay between them: they stand side by side in one row of the grid. */
+const sideBySide = (between: Between, core: number, columns: number): boolean =>
+  between.right.at.index === between.left.at.index + 1 &&
+  between.right.at.index < core &&
+  Math.floor(between.left.at.index / columns) === Math.floor(between.right.at.index / columns)
+
+/**
+ * Places `loose` by connectivity on `sheet`: the chips in a grid with the connectors at its edges (arrangementOf,
+ * layoutOf), what hangs from each around it, and the rest right of everything. A part between two chips that do
+ * not stand side by side hangs in line with the pin of the first.
+ */
 function placeParts(loose: readonly Component[], circuit: Circuit, symbols: Symbols, sheet: Sheet): void {
-  const { row, between, hung } = rowOf(loose, circuit, symbols)
-  placeRow(row, symbols, sheet)
-  for (const part of between) placeBetween(part, hung.strands.get(part.part) ?? [], row, symbols, sheet)
+  const netlist = netlistOf(circuit)
+  const byNet = membersByNet(circuit, netlist)
+  const chips = loose.filter((c) => isAnchor(c, symbols.get(c.id)))
+  const arrangement = arrangementOf(chips, symbols, netlist, byNet)
+  const anchors = [...arrangement.core, ...arrangement.left, ...arrangement.right]
+  const core = arrangement.core.length
+  const hung = hang(loose, new Set(chips.map((c) => c.id)), circuit, symbols, netlist, anchorPinsByNet(anchors, netlist, core))
+  const between = hung.attachments.filter((a): a is Between => a.kind === "between")
+  const hanging = hung.attachments.filter((a): a is Hanging => a.kind !== "between")
+  const needs = betweenNeeds(between, hung.strands, symbols)
+  const columns = columnsFor(cellsOf(arrangement, hangersOf(anchors, hanging, hung.strands, symbols), symbols), (index) => needs.get(index) ?? 0)
+  const kept = between.filter((part) => sideBySide(part, core, columns))
+  const inline = between.filter((part) => !sideBySide(part, core, columns)).map((part): Hanging => ({ kind: "series", part: part.part, hook: part.left }))
+  const hangers = hangersOf(anchors, [...hanging, ...inline], hung.strands, symbols)
+  const keptNeeds = betweenNeeds(kept, hung.strands, symbols)
+  const right = sheet.right()
+  const names = new Set(arrangement.core.map((c) => c.id))
+  const byName = new Map(anchors.map((anchor) => [anchor.id, anchor]))
+  const level = (name: string, grid: ReadonlyMap<string, Point>): number | undefined => {
+    const connector = byName.get(name)
+    return connector && levelOf(connector, names, grid, symbols, netlist, byNet)
+  }
+  const origins = layoutOf(cellsOf(arrangement, hangers, symbols), columns, (index) => keptNeeds.get(index) ?? 0, right === undefined ? 0 : right + COLUMN_GAP, level)
+  placeAnchors(anchors, origins, hangers, symbols, sheet)
+  for (const part of kept) placeBetween(part, hung.strands.get(part.part) ?? [], anchors, symbols, sheet)
   placeLeftovers(hung.leftovers, symbols, sheet)
 }
 
