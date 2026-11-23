@@ -34,7 +34,8 @@ read pixel positions by eye from a picture shown smaller than its file.
   connected components (`scipy.ndimage.label`, then `center_of_mass`). Print them with numbers
   and look at a picture with the numbers drawn on, zoomed in tiles.
 - **Board coordinates.** The board is centred on the origin, x right, y up (top is the largest
-  y); an image has y down. A picture of the bottom side is a mirror image: flip x. A scan needs
+  y); an image has y down. A picture of the bottom side is a mirror image: flip one axis (x
+  when the board was turned over left to right). A scan needs
   a scale, a turn and a shift; a photo needs four or more points for its slant (a perspective
   fit, `numpy.linalg.svd` on the point pairs).
 - **Both sides.** Fit the back to the front by the holes they share: try the eight right-angle
@@ -72,9 +73,10 @@ person's notes; a part whose value or polarity you could not read is a question,
 
 ## 4. Place each part at its measured position
 
-`part_info` `{ id }` lists each pad's place from the part's origin (pin 1 of a terminal block is
-not at its origin). From the board positions of two of a part's holes, its `pcbX`, `pcbY` and `pcbRotation`
-(degrees, counter-clockwise) follow; compute them in the script. Write all parts in one call:
+`part_info` `{ id }` lists each pad's place from the part's origin (pin 1 of a terminal block
+is not at its origin). From the board positions of two of a part's holes, its `pcbX`, `pcbY`
+and `pcbRotation` (degrees, counter-clockwise) follow; compute them in the script. Write all
+parts in one call:
 `new_circuit` `{ file, board, holes, parts: [{ name: "K1", part: "HLS-14F2L-DC24V-C", props: { pcbX: -51.25, pcbY: -5.1, pcbRotation: 0 } }, { name: "D1", kind: "diode", footprint: "axial9.5x14_d5.3", props: { … } }], place: false }`.
 `place: false` keeps your positions; a redrawn board needs no `autoplace`. A part moved later:
 `set_props` `{ file, part, props: { pcbX, pcbY, pcbRotation } }`.
@@ -82,8 +84,8 @@ not at its origin). From the board positions of two of a part's holes, its `pcbX
 Check every pad, not the look: in the script, put each pad of the circuit (from `part_info`,
 turned and moved) on the picture and find its nearest hole. Each part should sit within about
 0.3 mm; one off by a whole pitch (a terminal block shifted one pin) is the usual miss. Draw the
-pin names on the picture and look at it zoomed in. copperflow places parts on the top side
-only: a part soldered on the bottom is a question for the person, and an `open: true` note.
+pin names on the picture and look at it zoomed in. A part soldered on the bottom side takes
+`layer: "bottom"` in its props; its pads' x offsets are then mirrored.
 
 ## 5. Nets from the visible copper
 
