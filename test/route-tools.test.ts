@@ -293,6 +293,29 @@ describe("unroute", () => {
     expect(none.text).toMatch(/no unlocked router copper/)
   }, 30_000)
 
+  test("a short made by the router's copper after the nets were rewritten: check_circuit points at unroute, which takes it back", async () => {
+    await open(CROSS)
+    await call("autoroute", { file: FILE })
+    const source = await readFile(join(root, FILE), "utf8")
+    await writeFile(join(root, FILE), source.replace('<trace from="R2.pin1" to="net.A" />', '<trace from="R2.pin1" to="net.C" />'))
+    const check = (await call("check_circuit", { file: FILE })).text
+    expect(check).toMatch(/^error short \[net\.A, net\.C, t\d{4}/m)
+    expect(check).toMatch(/^ {2}The router made t\d{4}.*: unroute \{ file: "main\.circuit\.tsx", nets: \["A", "C"\] \} removes (it|them), then autoroute$/m)
+    const taken = await call("unroute", { file: FILE, nets: ["C"] })
+    expect(taken.isError).toBe(false)
+    expect((await design()).violations.filter((v) => v.code === "short")).toEqual([])
+    expect((await records()).length).toBeGreaterThan(0)
+  }, 30_000)
+
+  test("a short with hand-drawn copper in it gets no unroute line", async () => {
+    await open(CROSS)
+    await applyLayoutEdits(root, FILE, [{ kind: "addTrack", layer: "top", width: 0.25, points: [{ x: -4.7, y: 0 }, { x: 4.7, y: 0 }] }], { author: "human", summary: "Add track" })
+    await writeFile(join(root, FILE), CROSS.replace('<trace from="R2.pin1" to="net.A" />', '<trace from="R2.pin1" to="net.C" />'))
+    const check = (await call("check_circuit", { file: FILE })).text
+    expect(check).toMatch(/^error short /m)
+    expect(check).not.toContain("The router made")
+  }, 30_000)
+
   test("asks for nets or all, not both and not neither", async () => {
     await open(CROSS)
     expect((await call("unroute", { file: FILE })).text).toMatch(/Give nets or all: true/)

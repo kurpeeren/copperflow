@@ -8,6 +8,7 @@
 import { z } from "zod"
 import { applyLayoutEdits, resolveCircuit } from "../core/index.js"
 import { unrouteEdits, unrouteSummary, type UnrouteTrack } from "../core/unroute.js"
+import { copperShorts } from "../core/copper-shorts.js"
 import { lockedPartsAt, lockedStart } from "../core/layout-locks.js"
 import type { Design } from "../engine/design.js"
 import { findInstance, type RouteReport, type RouteScope, type UnroutedConnection } from "../engine/router/route-board.js"
@@ -48,7 +49,7 @@ export const unrouteInput = {
 export const AUTOROUTE_DESCRIPTION =
   "Route the unrouted connections as ONE change: the whole board, or only some nets, parts or one instance (one of these). Run it after placing; parts with no position get no copper; existing copper is kept. It names each connection it could not route, with the reason: route those with route_track, or move parts and run it again."
 export const UNROUTE_DESCRIPTION =
-  "Remove the router's copper, for some nets or all, as ONE change. Hand-drawn and locked copper stay."
+  "Remove the router's copper, for some nets (with any of its copper shorting them to another net) or all, as ONE change. Hand-drawn and locked copper stay."
 
 const plural = (count: number, word: string, many = `${word}s`) => `${count} ${count === 1 ? word : many}`
 
@@ -175,10 +176,15 @@ export async function autoroute(ports: Ports, input: { file: string; nets?: stri
   }
 }
 
-/** The ids of the copper on the nets named. */
+/**
+ * The ids of the copper on the nets named, and of the copper in a short that joins one of them to another net: a
+ * piece in a short carries no net, so it is found through the short.
+ */
 function copperOfNets(design: Design, nets: readonly string[]): string[] {
   const ids = new Set(nets.map((name) => netOrThrow(design, name).id))
-  return [...design.pcb.tracks, ...design.pcb.vias].filter((one) => one.net !== undefined && ids.has(one.net)).map((one) => one.id)
+  const carried = [...design.pcb.tracks, ...design.pcb.vias].filter((one) => one.net !== undefined && ids.has(one.net)).map((one) => one.id)
+  const shorted = copperShorts(design).filter((short) => short.nets.some((net) => ids.has(net))).flatMap((short) => short.copper)
+  return [...new Set([...carried, ...shorted])]
 }
 
 /** unroute: the router's unlocked copper of some nets, or all of it, removed as one change. */

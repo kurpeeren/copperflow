@@ -113,6 +113,10 @@ track or via of that net). `add_via` and `remove_copper` add and remove, and rou
 answer lists the copper violations the change introduced. Or move parts and run `autoroute`
 again; `unroute` (`nets` or `all: true`) takes back the router's copper and never hand-drawn
 copper, locked copper or router tracks that start on a locked part's pad (the answer names those).
+After a circuit's nets are rewritten, the router's tracks for the old nets can join pads of two new
+nets: `check_circuit` reports a `short` and, when only the router's copper makes it, a second line
+`The router made t0012, t0013: unroute { file, nets: ["A", "C"] } removes them, then autoroute`.
+`unroute` with either net takes back the copper of a short on it.
 
 Details of the copper tools:
 - `layer` is `top` or `bottom`; `inner1` and `inner2` exist only on a 4-layer board and cannot be

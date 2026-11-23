@@ -2,6 +2,7 @@ import type { Design } from "../engine/design.js"
 import type { Diagnostic, Severity, SheetInstance } from "../engine/model.js"
 import type { Violation } from "../engine/index.js"
 import { unroutedPlaces } from "../engine/pad-text.js"
+import { routerShorts, type CopperShort } from "./copper-shorts.js"
 import { buildWith, type DesignSource } from "./design-source.js"
 import { oneLine } from "./summary.js"
 import { resolveCircuit } from "./workspace.js"
@@ -25,6 +26,8 @@ export interface CheckResult {
   names?: string[]
   /** Each connection not routed yet, with its pads' positions: "C3.pin2 (12.30, 4.50 top) to U2.pin2 (15.10, 6.00 top)". */
   unrouted?: string[]
+  /** The shorts only the router's unlocked copper makes, which unroute takes back. */
+  routerShorts?: CopperShort[]
 }
 
 export interface CheckOptions {
@@ -65,6 +68,7 @@ export function checkDesign(design: Design): CheckResult {
     instances: [...(design.circuit?.instances ?? [])],
     names: [...(design.circuit?.components ?? []).map((c) => c.id), ...(design.circuit?.nets ?? []).flatMap((n) => n.names)],
     unrouted: design.pcb === undefined ? [] : unroutedPlaces(design.pcb),
+    routerShorts: design.pcb === undefined || design.circuit === undefined ? [] : routerShorts(design),
   }
 }
 

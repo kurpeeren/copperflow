@@ -1,5 +1,6 @@
 import type { CheckResult, LoadedCircuit, PartInfo, TraceInfo } from "../core/index.js"
 import { oneLine } from "../core/summary.js"
+import { netArgument, type CopperShort } from "../core/copper-shorts.js"
 import { aboutInstance, flatCounts, flatPartLine, instanceAt, instancePartLines, partLinesWithSheets, type Flattened } from "./compact-sheets.js"
 import { COPPER_RULES } from "./copper-summary.js"
 
@@ -231,11 +232,29 @@ export function formatCompactCheck(file: string, result: CheckResult, filter?: s
   const sorted = [...all.filter((f) => f.severity === "error"), ...all.filter((f) => f.severity === "warning")]
   const errors = sorted.filter((f) => f.severity === "error").length
   const head = `${file}: ${plural(errors, "error")}, ${plural(sorted.length - errors, "warning")}${filter ? ` (filter: ${filter})` : ""}`
-  const lines = sorted.map(findingLine)
+  const lines = sorted.map((f) => withUnrouteHint(findingLine(f), f, file, result.routerShorts ?? []))
   const more = lines.length > COMPACT_LIMIT ? [`… and ${lines.length - COMPACT_LIMIT} more (narrow with filter: errors, warnings, a part or a net)`] : []
   const shown = lines.slice(0, COMPACT_LIMIT)
   const places = sorted.slice(0, COMPACT_LIMIT).some((f) => f.rule === "unrouted") ? unroutedPlaceLines(result.unrouted ?? []) : []
   return [head, ...shown, ...places, ...more].join("\n")
+}
+
+/** The copper ids a short's hint names; the rest are counted. */
+const SHORT_COPPER_SHOWN = 5
+
+/**
+ * A short that only the router's copper makes (its tracks for nets since rewritten) gets a second line: unroute for
+ * those nets removes that copper, then autoroute lays it for the nets as they are now.
+ */
+function withUnrouteHint(line: string, finding: Finding, file: string, shorts: readonly CopperShort[]): string {
+  if (finding.rule !== "short") return line
+  const short = shorts.find((one) => one.copper.every((id) => finding.items.includes(id)))
+  if (short === undefined) return line
+  const ids = short.copper.slice(0, SHORT_COPPER_SHOWN).join(", ")
+  const more = short.copper.length > SHORT_COPPER_SHOWN ? ` and ${short.copper.length - SHORT_COPPER_SHOWN} more` : ""
+  const nets = short.nets.map((net) => JSON.stringify(netArgument(net))).join(", ")
+  const them = short.copper.length === 1 ? "it" : "them"
+  return `${line}\n  The router made ${ids}${more}: unroute { file: ${JSON.stringify(file)}, nets: [${nets}] } removes ${them}, then autoroute`
 }
 
 /** The unrouted connections shown under the unrouted warning, with their pads' positions. */
