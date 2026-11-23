@@ -66,6 +66,7 @@ import { formatKicadImport, importKicad } from "../library/kicad/import.js"
 import { watchIdle } from "./idle.js"
 import { controlRoute, type StudioHost } from "./studio-control.js"
 import { fileRoute } from "./file-routes.js"
+import { MAX_REFERENCE_BODY, ReferenceBody, referenceRoute } from "./reference-route.js"
 import { AgentActivitySchema } from "./activity-event.js"
 import { projectRoot } from "./studio-note.js"
 import { HttpError } from "./http-error.js"
@@ -496,6 +497,14 @@ export async function startStudio(options: StudioOptions): Promise<Studio> {
         live.requestBuild(circuit.file)
         return send(res, { entryId: result.entry.id, summary: formatGraphicImport(result).slice(0, 2).join(" "), writeMark })
       }
+      // The Layer panel's reference images: a picked image comes as base64, so this body may be larger than others.
+      case "POST /api/reference": {
+        const body = ReferenceBody.parse(await readJson(req, MAX_REFERENCE_BODY))
+        const result = await referenceRoute(root, body)
+        const writeMark = live.nextMark()
+        live.requestBuild((await resolveCircuit(root, body.file)).file)
+        return send(res, { ...result, writeMark })
+      }
       case "POST /api/unroute": {
         const body = Bodies.unroute.parse(await readJson(req))
         const layout = await resolveLayoutFile(root, layoutNameOf(body.file))
@@ -754,12 +763,12 @@ function sendError(res: ServerResponse, error: unknown, root: string): void {
   res.end(JSON.stringify({ ok: false, error: message }))
 }
 
-async function readJson(req: IncomingMessage): Promise<unknown> {
+async function readJson(req: IncomingMessage, limit = MAX_BODY_BYTES): Promise<unknown> {
   let size = 0
   const chunks: Buffer[] = []
   for await (const chunk of req) {
     size += (chunk as Buffer).length
-    if (size > MAX_BODY_BYTES) throw new HttpError(413, "Request body is too large")
+    if (size > limit) throw new HttpError(413, "Request body is too large")
     chunks.push(chunk as Buffer)
   }
   return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}")

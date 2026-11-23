@@ -134,7 +134,7 @@ export function blocksGesture(start: GestureStart): boolean {
 }
 
 /** The server requests that write the circuit files, the layout file, the rules or the history. */
-const WRITES: ReadonlySet<string> = new Set(["/api/edit", "/api/layout", "/api/undo", "/api/redo", "/api/rename-parts", "/api/make-sheet", "/api/route", "/api/autoplace", "/api/fit-board", "/api/import-board", "/api/import-graphic", "/api/unroute", "/api/rules", "/api/place", "/api/new-circuit"])
+const WRITES: ReadonlySet<string> = new Set(["/api/edit", "/api/layout", "/api/undo", "/api/redo", "/api/rename-parts", "/api/make-sheet", "/api/route", "/api/autoplace", "/api/fit-board", "/api/import-board", "/api/import-graphic", "/api/reference", "/api/unroute", "/api/rules", "/api/place", "/api/new-circuit"])
 
 /** Whether a request writes, and so is not sent while the lock is closed. A GET (no body) or a preview never writes. */
 export function blocksRequest(path: string, body: unknown): boolean {

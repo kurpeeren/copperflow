@@ -116,9 +116,9 @@ function straighten(image: Drawable, matrix: Matrix3, make: MakeCanvas): { canva
   return { canvas, matrix: [1 / k, 0, box.minX, 0, -1 / k, box.maxY, 0, 0, 1] }
 }
 
-/** The image ready to draw: itself with its matrix, or straightened first when its fit has perspective. */
-export function referenceLayer(record: ReferenceRecord, image: Drawable, board: BoardFrame | undefined, make: MakeCanvas): ReferenceLayer {
-  const { matrix } = fitReference(record, board)
+/** The image ready to draw: itself with its matrix, or straightened first when its fit has perspective. `placed` overrides the fit (while aligning). */
+export function referenceLayer(record: ReferenceRecord, image: Drawable, board: BoardFrame | undefined, make: MakeCanvas, placed?: Matrix3): ReferenceLayer {
+  const matrix = placed ?? fitReference(record, board).matrix
   if (isAffine(matrix)) return { id: record.id, image, matrix, opacity: record.opacity }
   const straight = straighten(image, matrix, make)
   return { id: record.id, image: straight.canvas, matrix: straight.matrix, opacity: record.opacity }

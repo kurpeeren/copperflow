@@ -135,3 +135,59 @@ button.layer-eye:active:not(:disabled) {
   padding: 8px 10px 2px;
   color: var(--muted);
 }
+
+/* The reference images: a row of name, eye and remove, then the opacity slider, Mirror and Align. */
+.layer-references {
+  flex: none;
+  padding-bottom: 8px;
+}
+
+.reference-row.off .layer-name {
+  opacity: 0.4;
+}
+
+.reference-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px 4px 10px;
+}
+
+.reference-opacity {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.reference-opacity input {
+  width: 100%;
+  min-width: 0;
+  accent-color: var(--copper);
+}
+
+.reference-button {
+  flex: none;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+button.reference-button.on,
+button.reference-button.on:hover:not(:disabled) {
+  border-color: var(--copper);
+  background: var(--copper-wash);
+  color: var(--copper-text);
+}
+
+.reference-add {
+  margin: 4px 6px 0 10px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text);
+}

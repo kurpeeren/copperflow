@@ -5,6 +5,9 @@ import { POUR_COLORS } from "../pcb/pour-draw"
 import { blurAfterPointerClick } from "./focus"
 import { sideTabId, stripPanelId } from "./SideStrip"
 import { useTabList } from "./use-tab-list"
+import { ReferenceList } from "./ReferenceList"
+import type { Actions } from "../use-actions"
+import type { ReferenceRecord } from "../../../src/core/layout-references.js"
 import "./layer-panel.css"
 
 const FILTERS: ReadonlyArray<{ id: LayerFilter; label: string }> = [
@@ -29,6 +32,9 @@ interface Props {
   /** The board's copper pours, by layer, each with its own eye. */
   pours: readonly { layer: string; name: string; pours: readonly PourRow[] }[]
   onTogglePour(id: string): void
+  /** The reference images under the board, and what writes their changes. */
+  references: readonly ReferenceRecord[] | undefined
+  actions: Pick<Actions, "reference" | "notify">
 }
 
 
@@ -90,7 +96,7 @@ function LayerFilters({ filter, onFilter }: Pick<Props, "filter" | "onFilter">) 
 }
 
 /** The PCB's layers: the filters at the top, the active layer, then a 28px row for each layer with its colour, its name and an eye. */
-export function LayerPanel({ visibility, filter, hasKeepouts, boardLayers, onFilter, onToggle, active, onActive, pours, onTogglePour }: Props) {
+export function LayerPanel({ visibility, filter, hasKeepouts, boardLayers, onFilter, onToggle, active, onActive, pours, onTogglePour, references, actions }: Props) {
   return (
     <aside className="panel right layer-panel" id={stripPanelId("right")} role="tabpanel" aria-labelledby={sideTabId("layer")} onClick={blurAfterPointerClick}>
       <LayerFilters filter={filter} onFilter={onFilter} />
@@ -111,6 +117,7 @@ export function LayerPanel({ visibility, filter, hasKeepouts, boardLayers, onFil
         })}
       </ul>
       {filter !== "non-copper" && <PourList pours={pours} onTogglePour={onTogglePour} />}
+      {filter !== "copper" && <ReferenceList references={references} actions={actions} />}
     </aside>
   )
 }

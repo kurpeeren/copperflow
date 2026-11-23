@@ -18,7 +18,7 @@ import { checkReference, DEFAULT_OPACITY, MAX_REFERENCE_POINTS, nextReferenceId,
 import { loadCircuit, projectPath, resolveCircuit, resolveInRoot, resolveLayoutFile } from "./workspace.js"
 
 /** The largest image or Gerber file taken, in bytes. */
-export const MAX_REFERENCE_BYTES = 16 * 1024 * 1024
+export const MAX_REFERENCE_BYTES = 8 * 1024 * 1024
 const MAX_RENAMES = 100
 export const REFERENCE_FOLDER = "references"
 

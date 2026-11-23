@@ -51,6 +51,10 @@ import { usePartPlaceTool, type PartPlaceTool } from "./use-part-place-tool"
 import { useBoardTextTool } from "./use-board-text-tool"
 import { InlineTextField } from "./DrawText"
 import { disarmPart } from "../shell/armed-part"
+import { useReferenceUnderlay, type ReferenceUnderlay } from "./use-reference-underlay"
+import { drawReferenceLayers } from "./reference-draw"
+import { drawAlignMarks } from "./reference-align"
+import { worldMatrix } from "./pcb-draw"
 
 const BACKGROUND = PALETTE.background
 
@@ -109,16 +113,21 @@ interface PcbScene {
   pours: PourScene
   /** The board's silkscreen texts: the selected, hovered and dragged ones. */
   silkTexts: SilkTextScene
+  /** The reference images under the board, and the points of an align run. */
+  underlay: Pick<ReferenceUnderlay, "layers" | "marks">
 }
 
 /** Draws the board and its violation rings, then the editor layer, whenever anything visible changes. */
 function usePcbPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: PcbScene): void {
-  const { design, camera, size, layers, hoverPad, moving, boxes, hover, selection, locked, circuit, gesture, highlightNets, markers, activeViolation, grid, copper, texts, pours, silkTexts } = scene
+  const { design, camera, size, layers, hoverPad, moving, boxes, hover, selection, locked, circuit, gesture, highlightNets, markers, activeViolation, grid, copper, texts, pours, silkTexts, underlay } = scene
   const board = useMemo(() => boardWithTextMoves(design.pcb, texts.moves), [design.pcb, texts.moves])
   const litNets = useMemo(() => (highlightNets.length > 0 ? highlightNets : hoverPad?.net ? [hoverPad.net] : NO_HIGHLIGHT), [highlightNets, hoverPad])
   useEffect(() => {
     if (!camera) return
-    const prepared = prepareCanvas(canvasRef.current, size, camera, BACKGROUND, (c, cam, s, r) => drawGrid(c, cam, s, grid, r))
+    const prepared = prepareCanvas(canvasRef.current, size, camera, BACKGROUND, (c, cam, s, r) => {
+      drawReferenceLayers(c as unknown as Parameters<typeof drawReferenceLayers>[0], underlay.layers, worldMatrix({ camera: cam, size: s }, r))
+      drawGrid(c, cam, s, grid, r)
+    })
     if (!prepared) return
     const { ctx, ratio } = prepared
     drawPcb(ctx, board, { camera, size }, {
@@ -135,7 +144,8 @@ function usePcbPaint(canvasRef: RefObject<HTMLCanvasElement | null>, scene: PcbS
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
     drawEditorLayer(ctx, camera, size, { view: "pcb", boxes, moving, hover, selection, locked, marks: circuit.annotations.marks, gesture, look: PCB_LOOK, ratio })
     drawTextOutlines(ctx, { camera, size }, texts.shown, { selected: selection.texts, hover: gesture ? undefined : texts.hover }, PCB_LOOK, ratio)
-  }, [canvasRef, board, camera, size, layers, litNets, moving, boxes, hover, selection, locked, circuit, gesture, markers, activeViolation, grid, copper, texts, pours, silkTexts])
+    drawAlignMarks(ctx, underlay.marks, (p) => worldToScreen(camera, size, p))
+  }, [canvasRef, board, camera, size, layers, litNets, moving, boxes, hover, selection, locked, circuit, gesture, markers, activeViolation, grid, copper, texts, pours, silkTexts, underlay])
 }
 
 interface PcbToolsProps {
@@ -359,7 +369,9 @@ export function PcbCanvas(props: PcbCanvasProps) {
   const putAway = (other: () => void) => () => [disarmNoteAndTrack, pours.disarm, other].forEach((stop) => stop())
   const boardText = useBoardTextTool({ design, circuit, actions, step, snap, activeLayer: props.activeLayer, othersArmed: note.armed || trackArm.armed !== null || pours.armed, putOthersAway: putAway(disarmPart), onSelect })
   const partPlace = usePartPlaceTool({ view: "pcb", step, snap, othersArmed: note.armed || trackArm.armed !== null || pours.armed || boardText.armed, putOthersAway: putAway(boardText.disarm) })
-  const firstTool: PartPlaceTool = { armed: partPlace.armed || boardText.armed, press: (event, world) => partPlace.press(event, world) || boardText.press(event, world), hint: partPlace.hint ?? boardText.hint }
+  const underlay = useReferenceUnderlay(design, camera, actions)
+  const align = underlay.tool
+  const firstTool: PartPlaceTool = { armed: align.armed || partPlace.armed || boardText.armed, press: (event, world) => align.press(event, world) || partPlace.press(event, world) || boardText.press(event, world), hint: align.hint ?? partPlace.hint ?? boardText.hint }
   const silkShown = useCallback((name: string) => {
     const part = design.pcb.parts.find((p) => p.component === name)
     return part !== undefined && layers[part.side === "top" ? "topSilk" : "bottomSilk"]
@@ -376,7 +388,7 @@ export function PcbCanvas(props: PcbCanvasProps) {
   const sceneTexts = useMemo(() => ({ ...shownTexts, hover: hover.text }), [shownTexts, hover.text])
   const moving = copper.moving ? { names: copper.moving.names, offset: copper.moving.offset } : gestures.moving
   const copperScene: CopperScene = { ...copper.scene, activeLayer: props.activeLayer, routes: track.routes }
-  usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad: hover.pad, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, highlightNets: highlight, markers, activeViolation, grid, copper: copperScene, texts: sceneTexts, pours: pours.scene, silkTexts: silk.scene })
+  usePcbPaint(canvasRef, { design, camera, size, layers, hoverPad: hover.pad, moving, boxes: parts.boxes, hover: hover.part, selection, locked: parts.locked, circuit, gesture, highlightNets: highlight, markers, activeViolation, grid, copper: copperScene, texts: sceneTexts, pours: pours.scene, silkTexts: silk.scene, underlay })
   const context: PickContext = { selection, armed: note.tool, layers: pick, filter: pickFilter }
   const scene: PcbHoverScene | undefined = camera && { view: "pcb", design, copper: copper.shown, scale: camera.scale, layers: pick, context, boxes: parts.boxes, texts: texts.tools, pours: { hidden: props.hiddenPours, activeLayer: props.activeLayer } }
   const probe = scene && { pick: (world: Point) => hoverTarget(world, scene), still: (target: HoverTarget, world: Point) => stillOver(target, world, scene) }

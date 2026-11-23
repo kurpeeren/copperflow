@@ -2,6 +2,7 @@
 import { useCallback, useMemo } from "react"
 import type { GraphicImportRequest } from "./shell/graphic-import-form"
 import type { LayoutEdit } from "../../src/core/layout-records.js"
+import type { ReferenceRequest } from "../../src/studio/reference-route.js"
 import { api, type Edit, type PlaceScope, type RouteScope } from "./api"
 import { announceHistoryWrite } from "./history-writes"
 import { noteRulesWrite } from "./pcb/rules-writes"
@@ -49,10 +50,15 @@ export interface Actions {
   importGraphic(request: GraphicImportRequest): Promise<EditOutcome & { refusal?: string }>
   /** Route → Unroute: removes the router's copper among `ids`, or all of it, as one history entry, and tells it. */
   unroute(ids?: readonly string[]): Promise<EditOutcome>
+  /** The Layer panel's reference images: add, change or remove one, as one history entry, and tell it; `id` is the one added. */
+  reference(request: ReferenceAction): Promise<EditOutcome & { id?: string }>
   /** Design rules: writes the fillet radius to rules.yaml (null for the default), as one history entry, and tells it. */
   setFilletRadius(radius: number | null): Promise<boolean>
   notify(text: string): void
 }
+
+/** A reference image request without the circuit file, which the open one gives. */
+export type ReferenceAction = ReferenceRequest extends infer R ? (R extends unknown ? Omit<R, "file"> : never) : never
 
 /** Whether an edit went through, and the mark the server took when it wrote it. */
 export interface EditOutcome {
@@ -201,6 +207,18 @@ export function useActions({ file, refresh, notify, openVerify }: ActionsInput):
         })
         return made
       },
+      reference: (request) =>
+        announceHistoryWrite(
+          (async () => {
+            let [mark, id]: [number | undefined, string | undefined] = [undefined, undefined]
+            const ok = await run(async () => {
+              const done = await api<{ summary: string; writeMark: number; id: string }>("/api/reference", { file, ...request })
+              ;[mark, id] = [done.writeMark, done.id]
+              notify(done.summary)
+            })
+            return { ok, mark, ...(id === undefined ? {} : { id }) }
+          })(),
+        ),
       unroute: (ids) =>
         announceHistoryWrite(
           (async () => {
