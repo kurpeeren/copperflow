@@ -298,7 +298,7 @@ describe("MCP server", () => {
 
   test("check_circuit only reads, so clients need not ask before it runs", async () => {
     const { tools } = await client.listTools()
-    expect(tools.find((t) => t.name === "check_circuit")?.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false })
+    expect(tools.find((t) => t.name === "check_circuit")?.annotations).toEqual({ readOnlyHint: true })
   })
 
   test("the skill says to check once at the end and fix every error, as the tool description does", async () => {

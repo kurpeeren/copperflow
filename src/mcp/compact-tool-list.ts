@@ -39,14 +39,31 @@ function compactProperties(value: unknown): unknown {
 interface ToolEntry {
   inputSchema?: unknown
   execution?: { taskSupport?: string }
+  annotations?: Record<string, unknown>
   [key: string]: unknown
+}
+
+/**
+ * The annotations that say something: readOnlyHint false is the default, and destructiveHint means nothing on a tool
+ * that only reads (MCP: it is meaningful only when readOnlyHint is false). None left: no annotations.
+ */
+export function compactAnnotations(annotations: Record<string, unknown>): Record<string, unknown> | undefined {
+  const readOnly = annotations["readOnlyHint"] === true
+  const kept = Object.entries(annotations).filter(([key, value]) => !(key === "readOnlyHint" && value === false) && !(key === "destructiveHint" && readOnly))
+  return kept.length === 0 ? undefined : Object.fromEntries(kept)
 }
 
 /** One tool without the plumbing; `execution` goes when it only says tasks are not supported (the default). */
 function compactTool(tool: ToolEntry): ToolEntry {
-  const { execution, inputSchema, ...rest } = tool
+  const { execution, inputSchema, annotations, ...rest } = tool
   const keepExecution = execution !== undefined && execution.taskSupport !== "forbidden"
-  return { ...rest, ...(inputSchema === undefined ? {} : { inputSchema: compactSchema(inputSchema) }), ...(keepExecution ? { execution } : {}) }
+  const hints = annotations === undefined ? undefined : compactAnnotations(annotations)
+  return {
+    ...rest,
+    ...(inputSchema === undefined ? {} : { inputSchema: compactSchema(inputSchema) }),
+    ...(hints === undefined ? {} : { annotations: hints }),
+    ...(keepExecution ? { execution } : {}),
+  }
 }
 
 type Handler = (request: unknown, extra: unknown) => unknown

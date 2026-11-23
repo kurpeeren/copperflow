@@ -48,7 +48,8 @@ describe("export_fabrication", () => {
     const tool = tools.find((t) => t.name === "export_fabrication")
     expect(Object.keys(tool?.inputSchema.properties ?? {})).toEqual(["file", "out"])
     expect(tool?.inputSchema.required).toEqual(["file"])
-    expect(tool?.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false })
+    expect(tool?.annotations).toMatchObject({ destructiveHint: false })
+    expect(tool?.annotations?.readOnlyHint).not.toBe(true)
     expect(tool?.description).toMatch(/JLCPCB/)
   })
 

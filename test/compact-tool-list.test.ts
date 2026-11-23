@@ -3,7 +3,7 @@ import { z } from "zod"
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
-import { compactSchema, compactToolList } from "../src/mcp/compact-tool-list.js"
+import { compactAnnotations, compactSchema, compactToolList } from "../src/mcp/compact-tool-list.js"
 
 async function connected(): Promise<Client> {
   const server = new McpServer({ name: "t", version: "0" })
@@ -58,6 +58,13 @@ describe("the compacted tool list", () => {
     expect(compactSchema(record)).toEqual({ type: "object", additionalProperties: { type: "string" } })
     expect(compactSchema({ type: "object", additionalProperties: {} })).toEqual({ type: "object" })
     expect(compactSchema({ type: "object", propertyNames: { type: "string", enum: ["a"] } })).toEqual({ type: "object", propertyNames: { type: "string", enum: ["a"] } })
+  })
+
+  test("annotations keep what is not a default: no readOnlyHint false, no destructiveHint on a tool that only reads", () => {
+    expect(compactAnnotations({ readOnlyHint: true, destructiveHint: false })).toEqual({ readOnlyHint: true })
+    expect(compactAnnotations({ readOnlyHint: false, destructiveHint: false, openWorldHint: false })).toEqual({ destructiveHint: false, openWorldHint: false })
+    expect(compactAnnotations({ destructiveHint: true })).toEqual({ destructiveHint: true })
+    expect(compactAnnotations({ readOnlyHint: false })).toBeUndefined()
   })
 
   test("compactSchema leaves non-schema values alone", () => {

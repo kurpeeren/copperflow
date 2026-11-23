@@ -40,7 +40,8 @@ afterEach(async () => {
 describe("the render tool", () => {
   test("changes nothing but the file out names, and answers a PNG image and the line saying what it shows", async () => {
     const tool = (await client.listTools()).tools.find((t) => t.name === "render")
-    expect(tool?.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false })
+    expect(tool?.annotations).toMatchObject({ destructiveHint: false })
+    expect(tool?.annotations?.readOnlyHint).not.toBe(true)
     expect(Object.keys(tool?.inputSchema.properties ?? {})).toEqual(["file", "view", "page", "parts", "width", "side", "angle", "look", "change", "since", "out"])
     const result = await client.callTool({ name: "render", arguments: { file: "io.circuit.tsx", width: 400 } })
     const [image, text] = result.content as Array<{ type: string; data?: string; mimeType?: string; text?: string }>
