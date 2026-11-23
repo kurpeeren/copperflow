@@ -27,8 +27,10 @@ npm run build
 
 A version is published to npm by pushing its tag; `.github/workflows/release.yml` does the rest.
 
-1. Set the new version in `package.json` and in `src/version.ts` (a test fails when they differ), and
-   run `npm install` so `package-lock.json` follows.
+1. Set the new version in `package.json`, `src/version.ts`, `server.json` (twice), the Rev line of
+   `site/public/index.html` and `site/public/connect.html`, and the two plugin manifests,
+   `.claude-plugin/plugin.json` and `.antigravity-plugin/plugin.json`. Run `npm install` so
+   `package-lock.json` follows. `test/version.test.ts` fails while any of them differs.
 2. Commit, and push `main`. Wait for CI to pass.
 3. Tag that commit and push the tag:
 
