@@ -22,7 +22,7 @@ describe("copperflow skill", () => {
     expect(await exists(join(skills, "copperflow", "references", "copper.md"))).toBe(true)
     // The planning skill points at this file, beside it once both are installed.
     expect(await exists(join(skills, "copperflow-plan", "..", "copperflow", "references", "planning.md"))).toBe(true)
-    expect(said).toMatch(/^Installed the copperflow skills \(copperflow, copperflow-plan; 10 files\) in .*[\\/]\.claude[\\/]skills\. Start a new agent session to load them\.$/)
+    expect(said).toMatch(/^Installed the copperflow skills \(copperflow, copperflow-plan; 11 files\) in .*[\\/]\.claude[\\/]skills\. Start a new agent session to load them\.$/)
     expect(await exists(join(home, ".claude"))).toBe(false)
   })
 

@@ -48,7 +48,7 @@ describe("guide", () => {
     for (const topic of ["nope", "../../package.json", "references/copper.md", "__proto__", "constructor"]) {
       const answer = await call(client, "guide", { topic })
       expect(answer.isError, topic).toBe(true)
-      expect(answer.text).toContain("Topics: planning, design-workflow, copper, writing-circuits, parts-library, design-rules, editable-subset, modules")
+      expect(answer.text).toContain("Topics: planning, design-workflow, copper, writing-circuits, parts-library, design-rules, editable-subset, modules, redraw-from-image")
       expect(answer.text).not.toContain('"name": "copperflow"')
     }
   })

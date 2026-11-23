@@ -17,6 +17,7 @@ export const GUIDE_TOPICS: Readonly<Record<string, string>> = {
   "design-rules": "references/design-rules.md",
   "editable-subset": "references/editable-subset.md",
   modules: "references/modules.md",
+  "redraw-from-image": "references/redraw-from-image.md",
 }
 
 /** The topic made from the footprint catalogue at call time, not read from a file; words after it narrow the list. */
