@@ -132,7 +132,7 @@ describe("PROJECT.md on disk", () => {
     expect(await readFile(join(root, "PROJECT.md"), "utf8")).toBe(WRITTEN)
   })
 
-  test("note_open adds one item at the end of Open, as one entry, and keeps the items already there", async () => {
+  test("noteOpen adds one item at the end of Open, as one entry, and keeps the items already there", async () => {
     await writeFile(join(root, "PROJECT.md"), WRITTEN)
     const before = sectionLines(WRITTEN, "Open")
     const entry = await noteOpen(root, "check the\nUSB-C footprint", { author: "ai" })
@@ -144,7 +144,7 @@ describe("PROJECT.md on disk", () => {
     expect(await readFile(join(root, "PROJECT.md"), "utf8")).toBe(WRITTEN)
   })
 
-  test("note_open refuses an empty item, a heading, an item already open and a full list", async () => {
+  test("noteOpen refuses an empty item, a heading, an item already open and a full list", async () => {
     await expect(noteOpen(root, "  ", { author: "ai" })).rejects.toThrow(/empty/)
     await expect(noteOpen(root, "## Sneaky", { author: "ai" })).rejects.toThrow(/heading/)
     await noteOpen(root, "route the board", { author: "ai" })
@@ -182,10 +182,8 @@ describe("the project tools", () => {
     expect(Object.keys(tool("project_status")?.inputSchema.properties ?? {})).toEqual([])
     expect(tool("project_status")?.annotations).toMatchObject({ readOnlyHint: true })
     expect(tool("project_status")?.description).toMatch(/first/)
-    expect(Object.keys(tool("note_decision")?.inputSchema.properties ?? {})).toEqual(["file", "text"])
+    expect(Object.keys(tool("note_decision")?.inputSchema.properties ?? {})).toEqual(["file", "text", "open"])
     expect(tool("note_decision")?.inputSchema.required).toEqual(["text"])
-    expect(Object.keys(tool("note_open")?.inputSchema.properties ?? {})).toEqual(["file", "text"])
-    expect(tool("note_open")?.inputSchema.required).toEqual(["text"])
     expect(Object.keys(tool("set_project")?.inputSchema.properties ?? {})).toEqual(["intent", "blocks", "open"])
     expect(Object.keys(tool("board_summary")?.inputSchema.properties ?? {})).toEqual(["file", "detail"])
     expect(tool("board_summary")?.inputSchema.required).toEqual(["file"])
@@ -221,13 +219,14 @@ describe("the project tools", () => {
     expect(missing.isError).toBe(true)
   })
 
-  test("note_open adds one item to Open, naming the circuit, and project_status shows it", async () => {
+  test("note_decision with open adds one item to Open, naming the circuit, and project_status shows it", async () => {
     await call("set_project", { open: ["route"] })
-    const added = await call("note_open", { file: "second.circuit.tsx", text: "move R1 to the edge" })
+    const added = await call("note_decision", { file: "second.circuit.tsx", text: "move R1 to the edge", open: true })
     expect(added.text).toBe("Change c0002: added to Open in PROJECT.md (2 open items)")
     expect(sectionLines(await readFile(join(root, "PROJECT.md"), "utf8"), "Open")).toEqual(["route", "second.circuit.tsx: move R1 to the edge"])
     expect((await call("project_status")).text.split("\n")).toContain("  second.circuit.tsx: move R1 to the edge")
-    const missing = await call("note_open", { file: "nope.circuit.tsx", text: "x" })
+    expect(sectionLines(await readFile(join(root, "PROJECT.md"), "utf8"), "Decisions")).toEqual([])
+    const missing = await call("note_decision", { file: "nope.circuit.tsx", text: "x", open: true })
     expect(missing.isError).toBe(true)
     expect(missing.text).toMatch(/nope\.circuit\.tsx does not exist/)
     expect(sectionLines(await readFile(join(root, "PROJECT.md"), "utf8"), "Open")).toHaveLength(2)

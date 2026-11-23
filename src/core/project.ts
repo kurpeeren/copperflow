@@ -6,7 +6,7 @@ import { inProjectQueue, readIfThere, writeNew, writeWithHistory } from "./file-
 import { assertMeta, type Author, type HistoryEntry } from "./history.js"
 import { appendToSection, EMPTY_PROJECT, oneLine, PROJECT_PATH, sectionLines, withSection, type ProjectSection } from "./project-text.js"
 
-/** The most items Open holds: set_project refuses a longer list and note_open refuses an item past it. */
+/** The most items Open holds: set_project refuses a longer list and note_decision { open: true } an item past it. */
 export const MAX_OPEN_ITEMS = 50
 
 export interface ProjectBlock {

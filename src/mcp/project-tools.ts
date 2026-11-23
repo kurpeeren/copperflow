@@ -1,6 +1,6 @@
 // The project memory tools. project_status is the first call a fresh context makes: PROJECT.md's Intent, Blocks, the
-// last five Decisions and Open, then per circuit file its counts and its last three changes. note_decision, note_open
-// and set_project write PROJECT.md through the core, one history entry by the agent each.
+// last five Decisions and Open, then per circuit file its counts and its last three changes. note_decision (a decision,
+// or with open an item under Open) and set_project write PROJECT.md through the core, one history entry by the agent each.
 import { existsSync } from "node:fs"
 import { join } from "node:path"
 import { z } from "zod"
@@ -20,11 +20,7 @@ const HISTORY_READ = 500
 export const noteDecisionInput = {
   file: z.string().optional(),
   text: z.string().min(1).max(500).describe('e.g. "TJA1051 over MCP2551: 3.3 V I/O"'),
-}
-
-export const noteOpenInput = {
-  file: z.string().optional(),
-  text: z.string().min(1).max(500).describe('e.g. "check the USB-C footprint against the datasheet"'),
+  open: z.boolean().optional().describe("true: add the text as one item under Open (still to do or to ask) instead"),
 }
 
 const MAX_BLOCKS = 50
@@ -52,9 +48,7 @@ export const setProjectInput = {
 export const PROJECT_STATUS_DESCRIPTION =
   "Call this first in every task: PROJECT.md (intent, blocks, last decisions, open items), then per circuit file its counts, unplaced, unrouted, errors, warnings and last changes."
 export const NOTE_DECISION_DESCRIPTION =
-  "Note a design decision in PROJECT.md as one dated line, as ONE change: each choice a later context should not undo (a part and why, a board size, what the person approved)."
-export const NOTE_OPEN_DESCRIPTION =
-  "Add one item to PROJECT.md's Open list as ONE change: what is still to do or to ask (a part to verify, a question for the person). The items already there stay; set_project { open } rewrites the whole list."
+  "Note a design decision in PROJECT.md as one dated line, as ONE change: each choice a later context should not undo (a part and why, a board size, what the person approved). With open: true the text is instead one item added to Open (a part to verify, a question for the person); set_project { open } rewrites that list."
 export const SET_PROJECT_DESCRIPTION =
   `Rewrite sections of PROJECT.md as ONE change: intent (at most ${MAX_INTENT_CHARS} characters), blocks (an array of at most ${MAX_BLOCKS} { name, does, status }) and open (an array of at most ${MAX_OPEN_ITEMS} non-empty strings). Sections not given and Decisions stay.`
 
@@ -130,12 +124,14 @@ async function aboutCircuit(ports: Ports, input: { file?: string | undefined; te
   return about === undefined ? input.text : `${about}: ${input.text}`
 }
 
-export async function noteDecisionTool(ports: Ports, input: { file?: string | undefined; text: string }): Promise<string> {
+export async function noteDecisionTool(ports: Ports, input: { file?: string | undefined; text: string; open?: boolean | undefined }): Promise<string> {
+  if (input.open === true) return noteOpenItem(ports, input)
   const entry = await noteDecision(ports.root, await aboutCircuit(ports, input), { author: "ai" })
   return `Change ${entry.id}: noted under Decisions in ${PROJECT_PATH}`
 }
 
-export async function noteOpenTool(ports: Ports, input: { file?: string | undefined; text: string }): Promise<string> {
+/** note_decision { open: true }: one item at the end of Open, and how many there are now. */
+async function noteOpenItem(ports: Ports, input: { file?: string | undefined; text: string }): Promise<string> {
   const entry = await noteOpen(ports.root, await aboutCircuit(ports, input), { author: "ai" })
   const count = sectionLines((await readProject(ports.root)) ?? "", "Open").length
   return `Change ${entry.id}: added to Open in ${PROJECT_PATH} (${count} open item${count === 1 ? "" : "s"})`

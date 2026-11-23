@@ -72,7 +72,7 @@ describe("the two-channel sensor board of the skill", () => {
     ])
     expect((await call("check_circuit", { file: FILE })).text).toMatch(/^sensor\.circuit\.tsx: 0 errors, \d+ warnings/)
     expect((await call("note_decision", { file: FILE, text: "Schematic approved" })).text).toMatch(/^Change c\d+: noted under Decisions in PROJECT\.md$/)
-    expect((await call("note_open", { text: "human: verify AP2112K-3.3 and ATTINY814" })).text).toMatch(/^Change c\d+: added to Open in PROJECT\.md \(2 open items\)$/)
+    expect((await call("note_decision", { text: "human: verify AP2112K-3.3 and ATTINY814", open: true })).text).toMatch(/^Change c\d+: added to Open in PROJECT\.md \(2 open items\)$/)
     expect((await call("autoplace", { file: FILE, parts: ["U1", "C1"] })).text).toMatch(/^Placed 2 parts; wire length \d+ mm \(was \d+\); board 30 × 20 mm; 0 overlaps\nChange c\d+; undo_change takes it back\./)
     for (const instance of ["PS1", "CH1"]) expect((await call("autoplace", { file: FILE, instance })).text).toMatch(/^Placed \d+ parts/)
     // CH2 shares Channel.sheet.tsx with CH1, so it took CH1's layout; autoplace moves it as a block by its anchor.

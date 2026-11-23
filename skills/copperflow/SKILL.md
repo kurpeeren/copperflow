@@ -74,7 +74,7 @@ means, `replace`, refused pins and the export's warnings are in
    (7.5 mm: 16–28), `sop<N>`, `ssop<N>`, `tssop<N>`, `qfn…`, `qfp…`, `sot23_5`; the full list is
    in [references/editable-subset.md](references/editable-subset.md). A connector with no family
    (a screw terminal) is a `pinheader` with its pitch (`pinrow2_p5.08mm`), noted in PROJECT.md's
-   Open (`note_open`) for the person to replace.
+   Open (`note_decision` with `open: true`) for the person to replace.
    Unused inputs of a chip: tie them off as the datasheet says and `note_decision` it, or flag
    them with `set_props` `{ part: "U1", props: { noConnect: "pin4,pin5" } }` (null removes), or
    give `noConnect` in the part's `props` in `new_circuit`.
@@ -146,7 +146,7 @@ means, `replace`, refused pins and the export's warnings are in
 14. **Remember, throughout.** `note_decision` `{ text, file? }` as each choice is made that a
     later context needs (a part and why, a board size, what the person approved; at most 500
     characters each), not batched at the end: `Change …: noted under Decisions in PROJECT.md`.
-    `note_open` `{ text, file? }` adds one item to Open; keep `set_project`'s blocks and open items current.
+    `open: true` adds the text as one item to Open instead; keep `set_project`'s blocks and open items current.
 
 ## Checking
 
