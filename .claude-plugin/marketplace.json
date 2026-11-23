@@ -1,0 +1,17 @@
+{
+  "name": "copperflow",
+  "description": "copperflow: design circuit boards in code with a human and an agent editing the same files.",
+  "owner": {
+    "name": "Eren Kürpe",
+    "url": "https://github.com/kurpeeren"
+  },
+  "plugins": [
+    {
+      "name": "copperflow",
+      "source": "./",
+      "description": "The copperflow MCP server and the copperflow skill: design PCBs with an agent, from schematic to Gerber.",
+      "category": "development",
+      "skills": ["./skills/copperflow"]
+    }
+  ]
+}

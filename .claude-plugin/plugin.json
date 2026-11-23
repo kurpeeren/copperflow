@@ -1,0 +1,20 @@
+{
+  "name": "copperflow",
+  "displayName": "copperflow",
+  "version": "0.5.4",
+  "description": "Design PCBs with an agent: schematic, placement, autorouting, DRC, Gerber, BOM and STEP export. Brings the copperflow MCP server and the copperflow skill.",
+  "author": {
+    "name": "Eren Kürpe",
+    "url": "https://github.com/kurpeeren"
+  },
+  "homepage": "https://copperflow.kurpeeren.com",
+  "repository": "https://github.com/kurpeeren/copperflow",
+  "license": "Apache-2.0",
+  "keywords": ["pcb", "schematic", "circuit", "pcb-design", "eda", "mcp"],
+  "mcpServers": {
+    "copperflow": {
+      "command": "npx",
+      "args": ["-y", "copperflow", "mcp"]
+    }
+  }
+}
