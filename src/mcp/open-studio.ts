@@ -7,7 +7,7 @@ import { z } from "zod"
 import { focusStudio, runningStudio, studioAnswers, studioOpenUrl, studioUrl, readNote, type StudioNote } from "../studio/studio-note.js"
 
 export const OPEN_STUDIO_DESCRIPTION =
-  "Open the Studio, the visual editor, for the person: reuses this project's running Studio or starts one, and opens it in their browser. Call it when the person asks to open copperflow, the editor or the board, or wants to watch. Give them the address it returns, to them only."
+  "Open the Studio (the visual editor) in the person's browser, reusing this project's running one or starting one. Call it when they ask to open copperflow, the editor or the board, or want to watch; give the address it returns to them only."
 
 export const openStudioInput = {
   open: z.boolean().optional().describe("Open the person's browser; default true"),

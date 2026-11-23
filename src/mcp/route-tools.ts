@@ -47,7 +47,7 @@ export const unrouteInput = {
 }
 
 export const AUTOROUTE_DESCRIPTION =
-  "Route the unrouted connections as ONE change: the whole board, or only some nets, parts or one instance (one of these). Run it after placing; parts with no position get no copper; existing copper is kept. It names each connection it could not route, with the reason: route those with route_track, or move parts and run it again."
+  "Route the unrouted connections as ONE change: the whole board, or only some nets, parts or one instance (one of these). Run it after placing; unplaced parts get no copper; existing copper is kept. It names each connection it could not route and why: route those with route_track, or move parts and run it again."
 export const UNROUTE_DESCRIPTION =
   "Remove the router's copper, for some nets (and copper shorting them) or all, as ONE change. Hand-drawn and locked copper stay."
 

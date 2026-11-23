@@ -226,7 +226,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "check_circuit",
     {
       description:
-        "Check the circuit: electrical, placement, copper and pour rules. Answers with the error and warning counts, then up to 20 findings. Run it after autoplace, after autoroute and after removing copper; fix the errors before reporting success.",
+        "Check electrical, placement, copper and pour rules: the error and warning counts, then up to 20 findings. Run it after autoplace, autoroute and removing copper; fix the errors before reporting success.",
       inputSchema: { file, filter: z.string().optional().describe('"errors", "warnings", "copper", a part, net, rule or instance') },
       annotations: READ_ONLY,
     },
@@ -289,7 +289,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "board_summary",
     {
       description: BOARD_SUMMARY_DESCRIPTION,
-      inputSchema: { file, detail: z.enum(["compact", "full"]).optional().describe('"compact" (default, about 60 lines) or "full"') },
+      inputSchema: { file, detail: z.enum(["compact", "full"]).optional().describe('"compact" (default) or "full"') },
       annotations: READ_ONLY,
     },
     ({ file: circuit, detail }) =>

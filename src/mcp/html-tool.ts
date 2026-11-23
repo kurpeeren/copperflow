@@ -8,7 +8,7 @@ import { stepsAroundBuild } from "./build-steps.js"
 import { QUIET, type Reporter } from "./tool-activity.js"
 
 export const EXPORT_HTML_DESCRIPTION =
-  "Write the design as one HTML file beside the circuit (schematic, board, 3D, BOM, fabrication and model files inside; opens offline). Use it to hand the design to a person as one file."
+  "Write the design as one HTML file beside the circuit, to hand to a person (schematic, board, 3D, BOM, fabrication and model files inside; opens offline)."
 
 export const exportHtmlInput = {
   file: z.string().describe("Circuit file"),

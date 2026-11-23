@@ -8,7 +8,7 @@ import { exportStep, formatStepExport } from "../core/step-export.js"
 import type { LookRequest } from "../engine/fab/picture/looks.js"
 
 export const EXPORT_MODEL_DESCRIPTION =
-  'Write the board and its parts as one 3D model file beside the circuit: a STEP file for mechanical CAD (the parts as the 3D view draws them, in colour) or a GLB file a 3D viewer turns (the board as made). An unfinished design is written too.'
+  'Write the board and its parts as one 3D model file beside the circuit: STEP for mechanical CAD (parts as the 3D view draws them, in colour) or GLB for a 3D viewer (the board as made). An unfinished design is written too.'
 
 export const exportModelInput = {
   file: z.string().describe("Circuit file"),

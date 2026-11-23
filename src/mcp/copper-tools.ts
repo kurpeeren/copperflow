@@ -32,7 +32,7 @@ export const routeTrackInput = {
     .describe("Corners in mm; the first on the net's copper"),
   from: padRef.optional().describe('e.g. "C3.pin2" or "U2.GND"'),
   to: padRef.optional(),
-  via: z.array(point).max(200).optional().describe("Corners between from and to; none: the router finds the path"),
+  via: z.array(point).max(200).optional().describe("Corners between from and to; none: the router finds the path or says what is in the way"),
   width: z.number().positive().optional().describe("mm; default the net class's"),
 }
 
@@ -59,7 +59,7 @@ export const removeCopperInput = {
 }
 
 export const ROUTE_TRACK_DESCRIPTION =
-  "Copper track (not a schematic trace): draw one of a net by hand as ONE change: corners on one layer, or from and to pads (via: corners between; none: the router finds the path or says what is in the way). It starts on the net's copper, not a locked part's pad, and touches no other net. The answer lists copper violations. For what autoroute could not route."
+  "Copper track (not a schematic trace): draw one of a net by hand as ONE change: corners on one layer, or from and to pads. It starts on the net's copper, not a locked part's pad, and touches no other net. The answer lists copper violations. For what autoroute could not route."
 export const ADD_VIA_DESCRIPTION =
   "Place a via by hand as ONE change; its net is that of the copper under it unless given."
 export const REMOVE_COPPER_DESCRIPTION =
