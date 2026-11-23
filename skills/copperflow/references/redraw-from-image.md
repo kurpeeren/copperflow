@@ -45,7 +45,10 @@ read pixel positions by eye from a picture shown smaller than its file.
   picture under the board: `import_graphic` `{ file, layer: "reference", source: "scan-bottom.png" }`,
   then align it by holes, each point `[pixel x, pixel y, board x, board y]`:
   `{ file, layer: "reference", reference: { id: "r1", mirror: true, points: [[213, 297, -60.31, 50.02], …] } }`
-  (copper.md). Every later `render` `{ file, reference: true }` draws it under the board.
+  (copper.md). Use four or more points spread to the board's corners: three points on a phone
+  photo taken at a slight angle miss by 2 to 3 mm. A JPEG's camera turn is applied, so pixels
+  are those of the photo as shown. Every later `render` `{ file, reference: true }` draws it
+  under the board.
 
 ## 2. Board outline and holes
 
