@@ -52,6 +52,19 @@ describe("imageSize", () => {
     expect(svg('width="3cm" height="2cm" viewBox="0 0 30 20"')).toEqual({ kind: "svg", width: 30, height: 20 })
     expect(svg('viewBox="0 0 0 20"')).toBeUndefined()
     expect(imageSize(new Uint8Array([0xff, 0xd8, 0x00]))).toBeUndefined()
+    // An EXIF orientation that turns the photo a quarter swaps its size, as it is shown; others leave it.
+    const exif = (orientation: number, little: boolean) => {
+      const short = (n: number) => (little ? [n & 255, n >> 8] : [n >> 8, n & 255])
+      const long = (n: number) => (little ? [n & 255, 0, 0, 0] : [0, 0, 0, n & 255])
+      const tiff = [...(little ? [0x49, 0x49] : [0x4d, 0x4d]), ...short(42), ...long(8), ...short(2), ...short(0x0100), ...short(3), ...long(1), ...short(5), 0, 0, ...short(0x0112), ...short(3), ...long(1), ...short(orientation), 0, 0, 0, 0, 0, 0]
+      const body = [0x45, 0x78, 0x69, 0x66, 0, 0, ...tiff]
+      const app1 = [0xff, 0xe1, (body.length + 2) >> 8, (body.length + 2) & 255, ...body]
+      const plain = jpegHeader(1600, 1200)
+      return new Uint8Array([...plain.slice(0, 2), ...app1, ...plain.slice(2)])
+    }
+    expect(imageSize(exif(6, false))).toEqual({ kind: "jpeg", width: 1200, height: 1600 })
+    expect(imageSize(exif(8, true))).toEqual({ kind: "jpeg", width: 1200, height: 1600 })
+    expect(imageSize(exif(3, true))).toEqual({ kind: "jpeg", width: 1600, height: 1200 })
     expect(imageSize(new TextEncoder().encode("hello"))).toBeUndefined()
   })
 })
