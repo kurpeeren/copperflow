@@ -1,4 +1,5 @@
 import { layoutPathFor, parseLayout, type LayoutRecord } from "../core/layout-file.js"
+import type { ReferenceRecord } from "../core/layout-references.js"
 import { isCopperNote } from "./checks/copper-notes.js"
 import { checkDesign } from "./checks/index.js"
 import type { Violation } from "./checks/violation.js"
@@ -32,6 +33,8 @@ export interface Design {
   violations: Violation[]
   /** The lengths of the nets of pair, length and impedance classes; absent on a board without such classes. */
   lines?: LineRow[]
+  /** The reference images drawn under the PCB (layout-references.ts); absent when there are none. Never made. */
+  references?: ReferenceRecord[]
 }
 
 type Files = Readonly<Record<string, string>>
@@ -53,12 +56,12 @@ const pinPads = (footprint: FootprintResult): number | undefined =>
   "error" in footprint ? undefined : new Set(footprint.pads.map((pad) => pad.number)).size
 
 /** The copper in the layout file beside `main`, when there is one; each bad line is an error and is left out. */
-function readCopper(files: Files, main: string): { records: LayoutRecord[]; diagnostics: Diagnostic[] } {
+function readCopper(files: Files, main: string): { records: LayoutRecord[]; references?: ReferenceRecord[]; diagnostics: Diagnostic[] } {
   const file = main.endsWith(".circuit.tsx") ? layoutPathFor(main) : undefined
   const text = file === undefined ? undefined : files[file]
   if (text === undefined) return { records: [], diagnostics: [] }
-  const { records, errors } = parseLayout(text)
-  return { records, diagnostics: errors.map((error) => diagnostic("layout-file", "error", `${file}: ${error}`, [])) }
+  const { records, references, errors } = parseLayout(text)
+  return { records, ...(references ? { references } : {}), diagnostics: errors.map((error) => diagnostic("layout-file", "error", `${file}: ${error}`, [])) }
 }
 
 /** Fills the board's pours from the placed pads, the resolved copper, the board and the rules; none without pours. */
@@ -87,5 +90,5 @@ export function buildDesign(files: Files, main: string): Design {
   const violations = checkDesign(circuit, schematic, layout, loaded.rules, notes)
   const board = withDesignators(layout, loaded.rules.fabrication)
   const lines = fast ? lineRows(circuit.nets, layout, loaded.rules, viaThickness(circuit.board?.thickness, loaded.rules)) : undefined
-  return { version: 1, file: main, circuit, schematic, pcb: board, rules: loaded.rules, diagnostics, violations, ...(lines ? { lines } : {}) }
+  return { version: 1, file: main, circuit, schematic, pcb: board, rules: loaded.rules, diagnostics, violations, ...(lines ? { lines } : {}), ...(copper.references ? { references: copper.references } : {}) }
 }

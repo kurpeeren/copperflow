@@ -1,7 +1,9 @@
 /**
  * The layout file: `<name>.circuit.layout.json` beside `<name>.circuit.tsx`, one JSON record per line, holding the
- * copper a person, the agent or the router drew. Pure text handling: no file system here (layout-edits.ts writes it).
+ * copper a person, the agent or the router drew, and the reference images drawn under the board (layout-references.ts).
+ * Pure text handling: no file system here (layout-edits.ts writes it).
  */
+import { checkReference, serializeReferences, type ReferenceRecord } from "./layout-references.js"
 
 export interface LayoutPoint {
   x: number
@@ -154,6 +156,8 @@ export interface LayoutCounters {
 export interface LayoutDoc {
   next: LayoutCounters
   records: LayoutRecord[]
+  /** The reference images, written after the copper; absent when there are none. */
+  references?: ReferenceRecord[]
 }
 
 const isCount = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 1
@@ -169,7 +173,7 @@ function checkMeta(raw: Record<string, unknown>): LayoutCounters | string {
   return { track: next.track, via: next.via }
 }
 
-type ParsedLine = { record: LayoutRecord } | { meta: LayoutCounters } | { error: string }
+type ParsedLine = { record: LayoutRecord } | { meta: LayoutCounters } | { reference: ReferenceRecord } | { error: string }
 
 function parseLine(line: string, number: number): ParsedLine {
   let raw: unknown
@@ -181,6 +185,11 @@ function parseLine(line: string, number: number): ParsedLine {
   if (isObject(raw) && raw.t === "meta") {
     const meta = checkMeta(raw)
     return typeof meta === "string" ? { error: `line ${number} (meta): ${meta}` } : { meta }
+  }
+  if (isObject(raw) && raw.t === "reference") {
+    const reference = checkReference(raw)
+    if ("record" in reference) return { reference: reference.record }
+    return { error: `${reference.id === undefined ? `line ${number}` : `line ${number} (${reference.id})`}: ${reference.problems.join("; ")}` }
   }
   const checked = checkRecord(raw)
   if ("record" in checked) return checked
@@ -202,6 +211,7 @@ function countersFor(records: readonly LayoutRecord[], meta: LayoutCounters | un
  */
 export function parseLayout(text: string): LayoutDoc & { errors: string[] } {
   const records: LayoutRecord[] = []
+  const references: ReferenceRecord[] = []
   const errors: string[] = []
   const seen = new Set<string>()
   let meta: LayoutCounters | undefined
@@ -212,20 +222,24 @@ export function parseLayout(text: string): LayoutDoc & { errors: string[] } {
     else if ("meta" in parsed) {
       if (seen.size > 0 || meta !== undefined || errors.length > 0) errors.push(`line ${index + 1}: the meta line must be the first line`)
       else meta = parsed.meta
-    } else if (seen.has(parsed.record.id)) errors.push(`line ${index + 1}: ${parsed.record.id} is used twice`)
-    else {
-      seen.add(parsed.record.id)
-      records.push(parsed.record)
+    } else {
+      const record = "reference" in parsed ? parsed.reference : parsed.record
+      if (seen.has(record.id)) errors.push(`line ${index + 1}: ${record.id} is used twice`)
+      else {
+        seen.add(record.id)
+        if (record.t === "reference") references.push(record)
+        else records.push(record)
+      }
     }
   })
-  return { next: countersFor(records, meta), records, errors }
+  return { next: countersFor(records, meta), records, ...(references.length > 0 ? { references } : {}), errors }
 }
 
 /** Reads a layout file that must be valid throughout; the error names the file and every problem. */
 export function readLayoutText(text: string, file = "The layout file"): LayoutDoc {
-  const { next, records, errors } = parseLayout(text)
+  const { errors, ...doc } = parseLayout(text)
   if (errors.length > 0) throw new Error(`${file}: ${errors.join("; ")}`)
-  return { next, records }
+  return doc
 }
 
 /** The records alone, one line each, fields in a fixed order, a newline after each. */
@@ -243,7 +257,7 @@ export function serializeRecords(records: readonly LayoutRecord[]): string {
 export function serializeLayout(doc: LayoutDoc): string {
   const used = doc.next.track > 1 || doc.next.via > 1
   const meta = used ? `${JSON.stringify({ t: "meta", next: { track: doc.next.track, via: doc.next.via } })}\n` : ""
-  return meta + serializeRecords(doc.records)
+  return meta + serializeRecords(doc.records) + serializeReferences(doc.references ?? [])
 }
 
 /** The id the next record of that kind gets: t0001, t0002, … */

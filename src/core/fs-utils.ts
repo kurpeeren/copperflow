@@ -19,7 +19,7 @@ const MAX_WAIT_MS = 100
  * that fails because the file is briefly held is retried; when it still fails, the temporary file
  * is removed and the last error thrown.
  */
-export async function writeFileAtomic(path: string, text: string, ops: AtomicWriteOps = DEFAULT_OPS): Promise<void> {
+export async function writeFileAtomic(path: string, text: string | Uint8Array, ops: AtomicWriteOps = DEFAULT_OPS): Promise<void> {
   const temp = `${path}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`
   await writeFile(temp, text)
   try {

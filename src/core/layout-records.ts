@@ -108,7 +108,7 @@ function addOne(doc: LayoutDoc, edit: Extract<LayoutEdit, { kind: "addTrack" | "
   const record = checked({ t, id: nextLayoutId(doc, t), ...fields, locked: edit.locked ?? false, by })
   refuseMissingLayer(record, edit, context)
   refuseLockedPart(record, context)
-  return { next: { ...doc.next, [t]: doc.next[t] + 1 }, records: [...doc.records, record] }
+  return { ...doc, next: { ...doc.next, [t]: doc.next[t] + 1 }, records: [...doc.records, record] }
 }
 
 function setOne(doc: LayoutDoc, index: number, edit: Extract<LayoutEdit, { kind: "setTrack" | "setVia" }>, context: LayoutEditContext): LayoutDoc {
