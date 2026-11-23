@@ -97,7 +97,7 @@ describe("the regulator board through the agent's tools", () => {
     expect((await inProcessEngine.build(root, FILE)).pcb.tracks[0]?.pads).toContain(tip?.id)
     const answer = await autoplace(ports(), { file: FILE, parts: ["J1"], fit: true, budgetSeconds: 10 })
     expect(answer).toMatch(/^Placed 1 part;/)
-    expect(answer).toMatch(/Copper left behind: t0001 no longer ends on J1 pad 1[^.]*\. Remove it with remove_copper \{ ids: \["t0001"\] \} or unroute \{ nets: \["V5"\] \}, then autoroute\./)
+    expect(answer).toMatch(/Copper left behind: t0001 no longer ends on J1 pad 1[^.]*\. Remove it with remove_copper \{ ids: \["t0001"\] \} or \{ nets: \["V5"\] \}, then autoroute\./)
   })
 
   test("a bottom pour's sparse warning points well inside the pour, on the board", async () => {

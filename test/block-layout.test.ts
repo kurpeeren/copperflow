@@ -136,7 +136,7 @@ describe("B3: a block is routed on its own", () => {
   test("the route still copies to another instance placed the same way", async () => {
     await call("new_circuit", eightInputs)
     await call("autoplace", { file: FILE, instance: "CH1" })
-    await call("set_props", { file: FILE, part: "CH2", props: { pcbX: 8, pcbY: 0 } })
+    await call("edit_circuit", { file: FILE, edits: [{ set_props: { part: "CH2", props: { pcbX: 8, pcbY: 0 } } }] })
     const answer = await call("autoroute", { file: FILE, instance: "CH1" })
     expect(answer.text).toMatch(/Routed 8 of 8 connections/)
     expect(tracksOn(await build(), "CH2/DIV")).toBeGreaterThan(0)
@@ -154,13 +154,13 @@ function copperInside(design: Design, net: string, n: number): boolean {
 }
 
 describe("B4: a block is one thing on the board", () => {
-  test("set_props moving and turning an instance carries its inner copper", async () => {
+  test("edit_circuit set_props moving and turning an instance carries its inner copper", async () => {
     await call("new_circuit", eightInputs)
     await call("autoplace", { file: FILE, instance: "CH1" })
-    await call("set_props", { file: FILE, part: "CH2", props: { pcbX: 8, pcbY: 0 } })
+    await call("edit_circuit", { file: FILE, edits: [{ set_props: { part: "CH2", props: { pcbX: 8, pcbY: 0 } } }] })
     await call("autoroute", { file: FILE, instance: "CH1" })
     expect(openOn(await build(), "CH2/DIV")).toBe(0)
-    const answer = await call("set_props", { file: FILE, part: "CH2", props: { pcbX: 9, pcbY: 9, pcbRotation: 90 } })
+    const answer = await call("edit_circuit", { file: FILE, edits: [{ set_props: { part: "CH2", props: { pcbX: 9, pcbY: 9, pcbRotation: 90 } } }] })
     expect(answer.text).toMatch(/^Copper: .* went with CH2/m)
     const design = await build()
     expect(openOn(design, "CH2/DIV")).toBe(0)
@@ -175,7 +175,7 @@ describe("B4: a block is one thing on the board", () => {
     await call("autoplace", { file: FILE, fit: true })
     expect((await call("autoroute", { file: FILE, nets: ["IN2"] })).text).toMatch(/Routed 1 of 1/)
     expect(tracksOn(await build(), "IN2")).toBeGreaterThan(0)
-    const answer = await call("set_props", { file: FILE, part: "CH2", props: { pcbX: 40, pcbY: 40 } })
+    const answer = await call("edit_circuit", { file: FILE, edits: [{ set_props: { part: "CH2", props: { pcbX: 40, pcbY: 40 } } }] })
     expect(answer.text).toMatch(/removed \(now unrouted\)/)
     const design = await build()
     expect(tracksOn(design, "IN2")).toBe(0)

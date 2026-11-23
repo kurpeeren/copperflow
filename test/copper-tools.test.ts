@@ -88,7 +88,7 @@ describe("route_track", () => {
   test("may start on a track of the net and on a via of the net", async () => {
     await route("VBUS", [pt(-2.275, 0), pt(-2.275, -3)])
     expect((await route("VBUS", [pt(-2.275, -3), pt(0, -3)])).isError).toBe(false)
-    await call("add_via", { file: FILE, at: pt(0, -3) })
+    await call("route_track", { file: FILE, at: pt(0, -3) })
     expect((await route("VBUS", [pt(0, -3), pt(0, -4)])).isError).toBe(false)
   })
 
@@ -162,52 +162,52 @@ describe("undo_change of copper", () => {
   })
 })
 
-describe("add_via", () => {
+describe("route_track with at (a via)", () => {
   test("takes the net of the pad under it and the default via size", async () => {
-    const { text } = await call("add_via", { file: FILE, at: pt(-2.275, 0) })
+    const { text } = await call("route_track", { file: FILE, at: pt(-2.275, 0) })
     expect(text.split("\n")[0]).toMatch(/^Change c\d+: added via v0001 on VBUS at \(-2\.275, 0\), 0\.3\/0\.66 mm$/)
     expect((await layoutRecords())[1]).toMatchObject({ t: "via", net: "VBUS", drill: 0.3, diameter: 0.66, layers: ["top", "bottom"] })
   })
 
   test("takes the net of the track under it", async () => {
     await route("VBUS", [pt(-2.275, 0), pt(-2.275, -3)])
-    await call("add_via", { file: FILE, at: pt(-2.275, -2) })
+    await call("route_track", { file: FILE, at: pt(-2.275, -2) })
     expect((await layoutRecords())[2]).toMatchObject({ t: "via", net: "VBUS" })
   })
 
   test("on top of another via, it is refused naming that via and what to do, and nothing is written", async () => {
-    await call("add_via", { file: FILE, at: pt(0, 5) })
+    await call("route_track", { file: FILE, at: pt(0, 5) })
     const before = await layoutRecords()
-    const refused = await call("add_via", { file: FILE, at: pt(0.2, 5) })
+    const refused = await call("route_track", { file: FILE, at: pt(0.2, 5) })
     expect(refused.isError).toBe(true)
     expect(refused.text).toMatch(/^Via v0001 is already at \(0, 5\), and a via here would lie on it\. Put it at least 0\.66 mm from that centre, or remove v0001 first/)
     expect(await layoutRecords()).toEqual(before)
-    expect((await call("add_via", { file: FILE, at: pt(0.7, 5) })).isError).toBe(false)
+    expect((await call("route_track", { file: FILE, at: pt(0.7, 5) })).isError).toBe(false)
   })
 
   test("without copper under it and without a net, it has no net", async () => {
-    const { text } = await call("add_via", { file: FILE, at: pt(0, 5) })
+    const { text } = await call("route_track", { file: FILE, at: pt(0, 5) })
     expect(text).toContain("on no net")
     expect((await layoutRecords())[1].net).toBeUndefined()
   })
 
   test("an explicit net is used where there is no copper, and refused against another net's copper", async () => {
-    expect((await call("add_via", { file: FILE, net: "GND", at: pt(0, 5) })).isError).toBe(false)
-    const refused = await call("add_via", { file: FILE, net: "GND", at: pt(-2.275, 0) })
+    expect((await call("route_track", { file: FILE, net: "GND", at: pt(0, 5) })).isError).toBe(false)
+    const refused = await call("route_track", { file: FILE, net: "GND", at: pt(-2.275, 0) })
     expect(refused.isError).toBe(true)
     expect(refused.text).toContain("VBUS")
     expect(refused.text).toContain("GND")
   })
 
   test("refuses an unknown net", async () => {
-    expect((await call("add_via", { file: FILE, net: "NOPE", at: pt(0, 5) })).isError).toBe(true)
+    expect((await call("route_track", { file: FILE, net: "NOPE", at: pt(0, 5) })).isError).toBe(true)
   })
 })
 
 describe("remove_copper", () => {
   test("removes tracks and vias as one history entry", async () => {
     await route("VBUS", [pt(-2.275, 0), pt(-2.275, -3)])
-    await call("add_via", { file: FILE, at: pt(0, 5) })
+    await call("route_track", { file: FILE, at: pt(0, 5) })
     const before = await entries()
     const { text, isError } = await call("remove_copper", { file: FILE, ids: ["t0001", "v0001"] })
     expect(isError).toBe(false)
@@ -249,7 +249,7 @@ describe("remove_copper", () => {
 
   test("refuses a segment the track does not have and a segment of a via, writing nothing", async () => {
     await route("VBUS", [pt(-2.275, 0), pt(-2.275, -3)])
-    await call("add_via", { file: FILE, at: pt(0, 5) })
+    await call("route_track", { file: FILE, at: pt(0, 5) })
     const before = await entries()
     const missing = await call("remove_copper", { file: FILE, ids: [{ id: "t0001", segment: 1 }] })
     expect(missing.isError).toBe(true)
@@ -288,11 +288,11 @@ describe("remove_copper", () => {
   })
 })
 
-describe("copper_summary", () => {
+describe("circuit_summary view copper", () => {
   test("lists a line per net with copper or unrouted connections, then the violation counts", async () => {
     await route("VBUS", [pt(-2.275, 0), pt(-2.275, -3), pt(1.55, -3), pt(1.55, -1.2875)])
-    await call("add_via", { file: FILE, net: "GND", at: pt(0, 5) })
-    const lines = (await call("copper_summary", { file: FILE })).text.split("\n")
+    await call("route_track", { file: FILE, net: "GND", at: pt(0, 5) })
+    const lines = (await call("circuit_summary", { file: FILE, view: "copper" })).text.split("\n")
     expect(lines[0]).toMatch(new RegExp(`^${FILE}: 1 track, 1 via, 8\\.5 mm of copper, \\d+ connections unrouted$`))
     expect(lines).toContainEqual(expect.stringMatching(/^VBUS: 1 track, 0 vias, 8.5 mm, \d+ unrouted$/))
     expect(lines).toContainEqual(expect.stringMatching(/^GND: 0 tracks, 1 via, 0\.0 mm, \d+ unrouted$/))
@@ -301,19 +301,19 @@ describe("copper_summary", () => {
 
   test("counts violations by rule on one line", async () => {
     await route("VBUS", [pt(-2.275, 0), pt(-2.275, 0.7), pt(-0.725, 0.7)])
-    const { text } = await call("copper_summary", { file: FILE })
+    const { text } = await call("circuit_summary", { file: FILE, view: "copper" })
     expect(text).toMatch(/Copper violations: \d+ \(.*copper-clearance \d+/)
   })
 
   test("says none when the copper is clean, and works with no layout file", async () => {
-    const { text, isError } = await call("copper_summary", { file: FILE })
+    const { text, isError } = await call("circuit_summary", { file: FILE, view: "copper" })
     expect(isError).toBe(false)
     expect(text).toContain("0 tracks, 0 vias")
     expect(text.split("\n").at(-1)).toBe("Copper violations: none")
   })
 
   test("stays within 60 lines and ends a long list with '… and N more'", async () => {
-    const { text } = await call("copper_summary", { file: FILE })
+    const { text } = await call("circuit_summary", { file: FILE, view: "copper" })
     expect(text.split("\n").length).toBeLessThanOrEqual(60)
     // The example has 6 nets, all unrouted; a tiny limit is exercised in the unit test of copper-summary.
     expect(text.split("\n").filter((l) => /unrouted$/.test(l)).length).toBeGreaterThanOrEqual(5)
@@ -331,24 +331,24 @@ describe("check_circuit copper filter", () => {
     expect(lines.some((l) => /^ {2}unrouted: \S+ \(.+\) to \S+ \(.+\)$/.test(l))).toBe(true)
   })
 
-  test("shows via holes too close together (hole-to-hole), as copper_summary counts them", async () => {
-    await call("add_via", { file: FILE, net: "GND", at: pt(10, 6) })
+  test("shows via holes too close together (hole-to-hole), as circuit_summary view copper counts them", async () => {
+    await call("route_track", { file: FILE, net: "GND", at: pt(10, 6) })
     // Far enough apart that their copper does not touch (a via on a via is refused), too close for the drill.
-    await call("add_via", { file: FILE, net: "GND", at: pt(10.7, 6) })
+    await call("route_track", { file: FILE, net: "GND", at: pt(10.7, 6) })
     const { text } = await call("check_circuit", { file: FILE, filter: "copper" })
     expect(text).toMatch(/hole-to-hole/)
-    const summary = (await call("copper_summary", { file: FILE })).text
+    const summary = (await call("circuit_summary", { file: FILE, view: "copper" })).text
     expect(summary.split(/\n/).at(-1)).toMatch(/hole-to-hole \d+/)
   })
 
   test("is mentioned in the tool description and the skill", async () => {
     const tools = (await client.listTools()).tools
     expect(tools.find((t) => t.name === "check_circuit")?.description).toContain("copper")
-    expect(await skillText()).toMatch(/copper_summary/)
+    expect(await skillText()).toMatch(/view: "copper"/)
   })
 })
 
-describe("fillet_tracks and straighten_tracks", () => {
+describe("fillet_tracks, and fillet_tracks with square", () => {
   const L_TRACK = [pt(-2.275, 0), pt(-2.275, -3), pt(1.55, -3), pt(1.55, -1.2875)]
 
   test("round every corner as one history entry and answer in a line; straighten puts them back", async () => {
@@ -360,7 +360,7 @@ describe("fillet_tracks and straighten_tracks", () => {
     expect(await entries()).toBe(before + 1)
     const [, track] = await layoutRecords()
     expect(track.points.length).toBeGreaterThan(10)
-    const back = await call("straighten_tracks", { file: FILE, ids: ["t0001"] })
+    const back = await call("fillet_tracks", { file: FILE, ids: ["t0001"], square: true })
     expect(back.text.split("\n")[0]).toMatch(/^Change c\d+: straightened 2 corners on 1 track$/)
     const [, square] = await layoutRecords()
     expect(square.points.length).toBe(4)
@@ -376,7 +376,7 @@ describe("fillet_tracks and straighten_tracks", () => {
     expect(tooBig.isError).toBe(false)
     expect(tooBig.text).toBe("Nothing was written: no corner was rounded; 2 left square: too short")
     const before = await entries()
-    expect((await call("straighten_tracks", { file: FILE })).text).toBe("Nothing was written: no rounded corners to straighten")
+    expect((await call("fillet_tracks", { file: FILE, square: true })).text).toBe("Nothing was written: no rounded corners to straighten")
     expect(await entries()).toBe(before)
   })
 
@@ -392,22 +392,23 @@ describe("fillet_tracks and straighten_tracks", () => {
 })
 
 describe("the tool list", () => {
-  test("has the six copper tools and no unlock or verify tool", async () => {
+  test("has the copper tools and no unlock or verify tool", async () => {
     const names = (await client.listTools()).tools.map((t) => t.name)
-    for (const name of ["route_track", "add_via", "remove_copper", "copper_summary", "fillet_tracks", "straighten_tracks"]) expect(names).toContain(name)
+    for (const name of ["route_track", "remove_copper", "circuit_summary", "fillet_tracks"]) expect(names).toContain(name)
+    for (const name of ["add_via", "copper_summary", "straighten_tracks"]) expect(names).not.toContain(name)
     expect(names.filter((n) => /unlock|verify/.test(n))).toEqual([])
   })
 
-  test("fillet_tracks takes file, ids and radius; straighten_tracks file and ids", async () => {
+  test("fillet_tracks takes file, ids, radius and square; route_track takes at and layers for a via", async () => {
     const tools = (await client.listTools()).tools
     const keys = (name: string) => Object.keys(tools.find((t) => t.name === name)?.inputSchema.properties ?? {})
-    expect(keys("fillet_tracks")).toEqual(["file", "ids", "radius"])
-    expect(keys("straighten_tracks")).toEqual(["file", "ids"])
+    expect(keys("fillet_tracks")).toEqual(["file", "ids", "radius", "square"])
+    expect(keys("route_track")).toEqual(expect.arrayContaining(["at", "layers"]))
     expect(await skillText()).toMatch(/fillet_tracks/)
   })
 })
 
-describe("copper_summary limit", () => {
+describe("circuit_summary view copper limit", () => {
   test("cuts the net lines at the limit and says how many more", async () => {
     const { formatCopperSummary } = await import("../src/mcp/copper-summary.js")
     const design = await engine.build(root, FILE)
@@ -436,8 +437,8 @@ describe("fix round 1", () => {
 
   test("a via without a net takes the net of the track under it, beside another via of that net", async () => {
     await route("VBUS", [pt(-2.275, 0), pt(-2.275, -3)])
-    await call("add_via", { file: FILE, net: "VBUS", at: pt(-2.275, -1) })
-    const { text, isError } = await call("add_via", { file: FILE, at: pt(-2.275, -2.2) })
+    await call("route_track", { file: FILE, net: "VBUS", at: pt(-2.275, -1) })
+    const { text, isError } = await call("route_track", { file: FILE, at: pt(-2.275, -2.2) })
     expect(isError).toBe(false)
     expect(text).toContain("on VBUS")
   })
@@ -446,13 +447,13 @@ describe("fix round 1", () => {
     const before = await entries()
     const track = await route("VBUS", [pt(-2.275, 0), pt(-2.275, -3)], { layer: "inner1" })
     expect(track).toEqual({ isError: true, text: "The board has 2 layers (top, bottom), so there is no inner1. Nothing was written." })
-    const via = await call("add_via", { file: FILE, at: pt(-2.275, 0), layers: ["top", "inner2"] })
+    const via = await call("route_track", { file: FILE, at: pt(-2.275, 0), layers: ["top", "inner2"] })
     expect(via).toEqual({ isError: true, text: "The board has 2 layers (top, bottom), so there is no inner2. Nothing was written." })
     expect(await entries()).toBe(before)
   })
 
   test("refuses an invalid layer and a file outside the project", async () => {
     expect((await call("route_track", { file: FILE, net: "VBUS", layer: "middle", points: [pt(0, 0), pt(1, 0)] })).isError).toBe(true)
-    expect((await call("copper_summary", { file: "../outside.circuit.tsx" })).isError).toBe(true)
+    expect((await call("circuit_summary", { file: "../outside.circuit.tsx", view: "copper" })).isError).toBe(true)
   })
 })

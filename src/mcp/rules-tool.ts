@@ -51,7 +51,7 @@ export function effectLines(design: Design): string[] {
     const head = nets.length === 0 ? `Class ${one.name} matches no net yet` : `${nets.join(", ")} ${nets.length === 1 ? "is" : "are"} class ${one.name}: ${mm(one.trackWidth)} mm tracks, ${mm(one.clearance)} mm clearance`
     if (narrow.length === 0) return [head]
     const which = [...new Set(narrow.map((track) => netName(track.net as string)))].join(", ")
-    return [`${head}; ${plural(narrow.length, "existing track")} ${narrow.length === 1 ? "is" : "are"} narrower: unroute and autoroute ${which}`]
+    return [`${head}; ${plural(narrow.length, "existing track")} ${narrow.length === 1 ? "is" : "are"} narrower: remove their router copper (remove_copper { nets }) and autoroute ${which}`]
   })
   const layers = design.pcb.board?.layers ?? 2
   const profile = design.rules.fabrication

@@ -1,4 +1,4 @@
-// The last result of each sheet's cases in this process, by sheet name: simulate records them, module_info shows them.
+// The last result of each sheet's cases in this process, by sheet name: simulate records them, list_modules { name } shows them.
 // Kept in memory only: a result belongs to the session that ran it, never to the module's files.
 import type { CaseLine } from "../engine/sim/cases.js"
 

@@ -49,26 +49,26 @@ async function cli(...args: string[]): Promise<string> {
 }
 
 describe("the order report is the same text everywhere", () => {
-  test("the bom tool and copperflow bom print it after the table; --csv stays a plain CSV", async () => {
-    expect(await mcp("bom", { file: FILE })).toBe(`${table}\n${report}`)
+  test("circuit_summary { view: \"bom\" } and copperflow bom print it after the table; --csv stays a plain CSV", async () => {
+    expect(await mcp("circuit_summary", { file: FILE, view: "bom" })).toBe(`${table}\n${report}`)
     expect(await cli("bom", FILE)).toBe(`${table}\n${report}`)
     expect(await cli("bom", FILE, "--csv")).not.toContain("Ready for")
   })
 
-  test("export_fabrication and copperflow export end with the short form", async () => {
-    expect((await mcp("export_fabrication", { file: FILE })).endsWith(`\n${short}`)).toBe(true)
+  test("export { as: \"fabrication\" } and copperflow export end with the short form", async () => {
+    expect((await mcp("export", { file: FILE, as: "fabrication" })).endsWith(`\n${short}`)).toBe(true)
     expect((await cli("export", FILE)).endsWith(`\n${short}`)).toBe(true)
   })
 
   test("a refused export ends with the short form too", async () => {
     await writeFile(join(root, "bad.circuit.tsx"), 'export default () => (\n  <board width="10mm" height="10mm">\n    <resistor name="R1" resistance="1k" footprint="bogus9" pcbX={0} pcbY={0} />\n  </board>\n)\n')
-    const text = await mcp("export_fabrication", { file: "bad.circuit.tsx" })
+    const text = await mcp("export", { file: "bad.circuit.tsx", as: "fabrication" })
     expect(text).toMatch(/^Refused/)
-    expect(text).toMatch(/\nReady for bare boards: no: [^\n]+\nReady for assembly: [^\n]+\nThe whole order report: the bom tool, or copperflow bom bad\.circuit\.tsx\.$/)
+    expect(text).toMatch(/\nReady for bare boards: no: [^\n]+\nReady for assembly: [^\n]+\nThe whole order report: circuit_summary's bom view, or copperflow bom bad\.circuit\.tsx\.$/)
   })
 
-  test("export_package writes it into README.md", async () => {
-    await mcp("export_package", { file: FILE })
+  test("export { as: \"package\" } writes it into README.md", async () => {
+    await mcp("export", { file: FILE, as: "package" })
     expect(await readFile(join(root, "exports", "can-node", "README.md"), "utf8")).toContain(`\n## Ready to order?\n\n${report}\n`)
   })
 

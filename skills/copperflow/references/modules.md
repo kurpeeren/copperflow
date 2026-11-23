@@ -38,7 +38,7 @@ instance, shows the card.
 
 1. `list_modules { filter }`: one line a module, its job, its ports and whether a person verified
    it. A module that does the job is used, not designed again.
-2. `module_info { name }`: the card, the parts with values and footprints, the sources, where it
+2. `list_modules { name }`: the card, the parts with values and footprints, the sources, where it
    was saved from. Read it before using one.
 3. `use_module { module, file }` copies the module's sheet beside the circuit `file` (and its
    library parts the project does not have), then says how to place it with `edit_circuit`'s
@@ -66,7 +66,7 @@ of each figure; each figure is an item of its verification checklist.
 A sheet's card can carry `cases` (write them with `describe_sheet`): `[{ name, set, closed?, coil?,
 expect: { OUT: [3.2, 3.6], "K1.coil.i": [0.027, 0.033] } }]`. A figure is a net's voltage, or a
 part's `.v`, `.i`, `.p` (`Q1.vgs` for a MOSFET, `K1.coil.i` for a relay). `simulate { file, sheet
-}` with no `set` runs them, one line each; `module_info` shows the last result. A case that passes
+}` with no `set` runs them, one line each; `list_modules { name }` shows the last result. A case that passes
 shows the block's DC levels with the models given, not that the module is verified. If a case shows
 a block not doing what its card says, say so to the person; do not change the case or the figures
 until it passes. `copperflow spice <file> --out x.cir` writes the same circuit for another
@@ -92,7 +92,7 @@ one off. The shelf is `~/.copperflow/modules/`, or the folder `COPPERFLOW_MODULE
 
 Besides the shelf, modules come from libraries: `copperflow`, which ships with copperflow, and the
 ones the person added from a git address or a folder. `list_modules` lists the shelf, then each
-library; a library's module is named `<library>/<Name>` (`copperflow/Input`), and `module_info` and
+library; a library's module is named `<library>/<Name>` (`copperflow/Input`), and `list_modules { name }` and
 `use_module` take that name. `use_module` brings a library's sheet only when it is plain (part
 imports, one function returning tags with literal values) and writes its parts' component files
 itself; a sheet that is not plain is refused with the first thing found and its line. The history

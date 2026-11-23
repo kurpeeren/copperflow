@@ -1,5 +1,5 @@
 // The editor's edits through MCP: drawings and text, pages, a wire's corners, renaming designators, sheet ports and
-// size, a pour's and a hole's props after they exist, and redo of the agent's own undo.
+// size, a pour's and a hole's props after they exist, and undo_change { redo } of the agent's own undo.
 import { beforeEach, describe, expect, test } from "vitest"
 import { mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -56,9 +56,9 @@ const source = (file = FILE) => readFile(join(root, file), "utf8")
 
 describe("drawings and text", () => {
   test("add_text writes a note on a page in one call and names it", async () => {
-    const result = await call("add_text", { file: FILE, text: "Rev A", x: 1, y: 2 })
+    const result = await edit([{ add_text: { text: "Rev A", x: 1, y: 2 } }])
     expect(result.isError, result.text).toBe(false)
-    expect(result.text).toMatch(/^Change c0001 applied: add text G1 "Rev A"/)
+    expect(result.text).toBe('Change c0001 applied: 1 edit: add text G1 "Rev A"')
     expect(await source()).toContain('<schematictext name="G1" text="Rev A" x={1} y={2} />')
   })
 
@@ -150,11 +150,11 @@ describe("review fixes", () => {
   })
 
   test("a page that does not exist and a fontSize not above 0 are refused", async () => {
-    const missing = await call("add_text", { file: FILE, text: "x", x: 0, y: 0, page: "Nope" })
+    const missing = await edit([{ add_text: { text: "x", x: 0, y: 0, page: "Nope" } }])
     expect(missing.isError).toBe(true)
     expect(missing.text).toContain('No schematic page "Nope"; the pages are Main; add_page makes one')
     expect((await edit([{ add_page: { name: "P" } }, { add_drawing: { text: "x", x: 0, y: 0, page: "P" } }])).isError).toBe(false)
-    expect((await call("add_text", { file: FILE, text: "x", x: 0, y: 0, fontSize: 0 })).text).toContain("fontSize")
+    expect((await edit([{ add_text: { text: "x", x: 0, y: 0, fontSize: 0 } }])).text).toContain("fontSize")
     expect((await edit([{ add_drawing: { text: "x", x: 0, y: 0, fontSize: -1 } }])).isError).toBe(true)
   })
 })
@@ -193,24 +193,24 @@ describe("pours and holes after they exist", () => {
   })
 })
 
-describe("redo_change", () => {
+describe("undo_change with redo", () => {
   test("brings back the agent's own undo", async () => {
-    await call("add_text", { file: FILE, text: "Rev A", x: 1, y: 2 })
+    await edit([{ add_text: { text: "Rev A", x: 1, y: 2 } }])
     await call("undo_change")
     expect(await source()).toBe(CIRCUIT)
-    const result = await call("redo_change")
-    expect(result.text).toMatch(/^Change c0003 applied: Redo: add text G1/)
+    const result = await call("undo_change", { redo: true })
+    expect(result.text).toMatch(/^Change c0003 applied: Redo: edit add text G1 "Rev A"/)
     expect(await source()).toContain("Rev A")
   })
 
   test("refuses a human's undo and says when there is nothing to redo", async () => {
-    expect((await call("redo_change")).text).toBe("Nothing to redo")
+    expect((await call("undo_change", { redo: true })).text).toBe("Nothing to redo")
     const after = CIRCUIT.replace("1k", "2k")
     await writeFile(join(root, FILE), after)
     const change = await recordEntry(root, { author: "human", file: FILE, summary: "set R1", before: CIRCUIT, after })
     await writeFile(join(root, FILE), CIRCUIT)
     await recordEntry(root, { author: "human", file: FILE, summary: "Undo: set R1", before: after, after: CIRCUIT, undoOf: change.id })
-    expect((await call("redo_change")).text).toBe("Nothing to redo")
-    expect((await call("redo_change", { id: change.id })).text).toBe("The agent can only redo its own undos")
+    expect((await call("undo_change", { redo: true })).text).toBe("Nothing to redo")
+    expect((await call("undo_change", { id: change.id, redo: true })).text).toBe("The agent can only redo its own undos")
   })
 })

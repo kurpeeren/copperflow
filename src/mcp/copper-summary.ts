@@ -13,7 +13,7 @@ export { fastLineBlock }
 /** The rule codes of copper findings: the copper checks and what copper joining reports. */
 export const COPPER_RULES: ReadonlySet<string> = new Set(["copper-clearance", "track-width", "via-drill", "via-ring", "hole-to-hole", "copper-edge", "copper-keepout", "short", "floating", "mismatch", "copper-layer", "copper-hole", "hole-off-board", "pour-floating", "pour-sparse", "pour-empty", "pour-net", "track-current", "pour-current", "pair-skew", "pair-apart", "pair-gap", "pair-vias", "net-length", "match-spread", "impedance-width", "drawing-width", "drawing-floating", "drawing-net"])
 
-/** copper_summary stops here, so the answer fits a screen. */
+/** The copper view stops here, so the answer fits a screen. */
 export const SUMMARY_LIMIT = 60
 const SHOWN_INTRODUCED = 5
 
@@ -108,7 +108,7 @@ export function copperDrawingLines(design: Pick<Design, "pcb" | "circuit">): str
 }
 
 /**
- * The default copper_summary: totals, a line per net with copper or unrouted connections, the pours and holes, then
+ * The default copper view: totals, a line per net with copper or unrouted connections, the pours and holes, then
  * violations by rule; at most 60 lines.
  */
 export function formatCopperSummary(file: string, design: Design, limit = SUMMARY_LIMIT): string {

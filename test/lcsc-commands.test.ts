@@ -87,7 +87,7 @@ describe("MCP import_part", () => {
     const imported = await call(client, "import_part", { lcsc: "C158012", id: "XH2" })
     expect(imported.isError).toBe(false)
     expect(imported.text).toContain("Imported C158012 as XH2")
-    expect(imported.text).toContain('Use it with place_part (part "XH2")')
+    expect(imported.text).toContain('Place it with edit_circuit place_part (part "XH2")')
     expect((await call(client, "list_parts")).text).toMatch(/^XH2 {2}<XH2> {2}B2B-XH-A \(LF\)\(SN\), CONN-TH_B2B-XH-A-LF-SN {2}footprint\.yaml {2}NOT verified {2}lcsc C158012, imported \d{4}-\d{2}-\d{2}$/)
     const again = await call(client, "import_part", { lcsc: "C158012", id: "XH2" })
     expect(again).toMatchObject({ isError: true })

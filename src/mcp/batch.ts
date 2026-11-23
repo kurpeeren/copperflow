@@ -21,6 +21,7 @@ import { pinName } from "./compact.js"
 import { findNet } from "./copper-under.js"
 import { holeFields, pointText, pourFields } from "./pour-tools.js"
 import { connectCorners, STEP_KEYS, stepEdit, type StepKey } from "./batch-steps.js"
+import { addTextFields, textEdit } from "./text-tool.js"
 
 type LoadedModel = Awaited<ReturnType<typeof loadCircuit>>["model"]
 
@@ -36,11 +37,20 @@ const steps = Object.fromEntries(STEP_KEYS.map((key) => [key, step])) as Record<
 /** One step of edit_circuit: exactly one of these keys is set. */
 export const editItem = z
   .object({
-    set_props: z.object({ part: z.string(), props: setValues }).optional(),
+    set_props: z
+      .object({
+        part: z.string(),
+        props: setValues.describe(
+          'Literal props (pcbX, pcbY, pcbRotation, schX, resistance, footprint, …); missing ones are added. schNameAt, schValueAt, pcbNameAt: label offsets { x, y }; noConnect: "pin3,pin10" flags pins meant to stay open; supplierPartNumbers: "jlcpcb:C25804". null removes these.',
+        ),
+      })
+      .optional(),
     connect: z.object({ ...ends, corners: z.unknown().optional() }).optional(),
-    disconnect: z.object(ends).optional(),
-    place_part: z.object({ part: z.string(), name: z.string(), props: props.optional(), page: z.string().optional() }).optional(),
-    remove_part: z.object({ part: z.string() }).optional(),
+    disconnect: z.object(ends).optional().describe("A schematic trace, in either direction"),
+    place_part: z
+      .object({ part: z.string().describe('A library part id (list_parts) or a built-in kind (guide { topic: "writing-circuits" })'), name: z.string().describe("e.g. U2"), props: props.optional(), page: z.string().optional().describe('Made when missing; default "Main"') })
+      .optional(),
+    remove_part: z.object({ part: z.string() }).optional().describe("With every trace connected to it"),
     add_instance: z
       .object({
         sheet: z.string().describe("e.g. PowerStage"),
@@ -52,16 +62,20 @@ export const editItem = z
       .optional(),
     set_connections: z.object({ instance: z.string(), connections: z.record(z.string(), z.string()).describe("Ports left out are open") }).optional(),
     move_to_page: z.object({ part: z.string().describe("Part or instance"), page: z.string() }).optional(),
-    add_pour: z.object(pourFields).optional(),
-    remove_pour: z.object({ id: z.string() }).optional(),
-    add_hole: z.object(holeFields).optional(),
-    remove_hole: z.object({ id: z.string() }).optional(),
+    add_text: z
+      .object(addTextFields)
+      .optional()
+      .describe("No layer: a note on a schematic page (default Main) at (x, y) sheet units; layer: board silkscreen at (x, y) mm, height default 1.5"),
+    add_pour: z.object(pourFields).optional().describe("Copper of a net on one layer; it fills round other nets' copper on every build, and what it joins counts as routed: check the pads the answer gives"),
+    remove_pour: z.object({ id: z.string() }).optional().describe('Locked pours are refused; one inside an instance ("PS1/copperpour:1") lives in its sheet file'),
+    add_hole: z.object(holeFields).optional().describe("A non-plated mounting hole: no copper, no net"),
+    remove_hole: z.object({ id: z.string() }).optional().describe('Locked holes are refused; one inside an instance ("PS1/hole:1") lives in its sheet file'),
     ...steps,
   })
   .describe("Exactly one key")
 export type EditItem = z.infer<typeof editItem>
 
-const KINDS = ["set_props", "connect", "disconnect", "place_part", "remove_part", "add_instance", "set_connections", "move_to_page", "add_pour", "remove_pour", "add_hole", "remove_hole", ...STEP_KEYS] as const
+const KINDS = ["set_props", "connect", "disconnect", "place_part", "remove_part", "add_instance", "set_connections", "move_to_page", "add_pour", "remove_pour", "add_hole", "remove_hole", "add_text", ...STEP_KEYS] as const
 const SUMMARY_LIMIT = 100
 
 export function kindOf(item: EditItem): (typeof KINDS)[number] {
@@ -71,8 +85,15 @@ export function kindOf(item: EditItem): (typeof KINDS)[number] {
   return present[0] as (typeof KINDS)[number]
 }
 
+/** One step as the core's edit, its label for the history entry, and a line for the answer when the label is not enough. */
+export interface StepEdit {
+  edit: Edit
+  label: string
+  note?: string
+}
+
 /** Turns one step into the core's edit, or throws why it cannot. `earlier` are the edits of the steps before it. */
-export async function toEdit(root: string, file: string, item: EditItem, earlier: readonly Edit[] = []): Promise<{ edit: Edit; label: string }> {
+export async function toEdit(root: string, file: string, item: EditItem, earlier: readonly Edit[] = []): Promise<StepEdit> {
   switch (kindOf(item)) {
     case "set_props": {
       const { part, props: values } = item.set_props!
@@ -118,6 +139,12 @@ export async function toEdit(root: string, file: string, item: EditItem, earlier
     }
     case "remove_hole":
       return { edit: { kind: "removeHole", id: item.remove_hole!.id }, label: `remove ${item.remove_hole!.id}` }
+    case "add_text": {
+      // The label names the note or board text; a board text's ink box goes on a line of its own.
+      const { edit, label } = await textEdit(root, { file, ...item.add_text! }, earlier)
+      const named = label.split(", its ink")[0] ?? label
+      return { edit, label: named, ...(named === label ? {} : { note: label }) }
+    }
     default: {
       const key = kindOf(item) as StepKey
       const model = key === "add_drawing" ? (await loadCircuit(root, file)).model : { parts: [], traces: [], drawings: [], skipped: [], imports: [] }
@@ -191,29 +218,40 @@ export async function firstRefusal(root: string, file: string, edits: Edit[]): P
 const namedIn = (source: string, name: string) => analyzeCircuit(source).traces.some((trace) => trace.from === `net.${name}` || trace.to === `net.${name}`)
 
 /**
- * The first add_pour on a net that neither the built design has nor an earlier edit of the batch writes (the batch is
- * applied in order, so a net it connects first is fine). Nothing is refused when the design does not build.
+ * The batch's pours checked against the built design: the first add_pour on a net that neither the design has nor an
+ * earlier edit of the batch writes (the batch is applied in order, so a net it connects first is fine), or on an inner
+ * layer of a 2-layer board, is the refusal. Otherwise the edits, each pour on a net of the design with the net's own
+ * name (an alias or "net.GND" becomes "GND"). Nothing is refused or renamed when the design does not build.
  */
-export async function unknownPourNet(root: string, file: string, edits: readonly Edit[], engine?: DesignSource): Promise<Refusal | undefined> {
-  if (!edits.some((edit) => edit.kind === "addPour")) return undefined
+export async function checkPours(root: string, file: string, edits: readonly Edit[], engine?: DesignSource): Promise<{ refusal?: Refusal; edits: Edit[] }> {
+  if (!edits.some((edit) => edit.kind === "addPour")) return { edits: [...edits] }
   let nets: readonly Net[]
+  let layers: number
   try {
-    nets = (await buildWith(root, file, engine)).circuit.nets
+    const { circuit } = await buildWith(root, file, engine)
+    nets = circuit.nets
+    layers = circuit.board?.layers ?? 2
   } catch {
-    return undefined
+    return { edits: [...edits] }
   }
+  const named = edits.map((edit): Edit => {
+    if (edit.kind !== "addPour") return edit
+    const net = findNet(nets, edit.net)
+    return net ? { ...edit, net: net.names[0] ?? edit.net } : edit
+  })
   const loaded = await loadCircuit(root, file)
   const locked = new Set(loaded.annotations.locks.map((lock) => lock.part))
   let source = loaded.source
   for (const [index, edit] of edits.entries()) {
-    if (edit.kind === "addPour" && !findNet(nets, edit.net) && !namedIn(source, edit.net)) return { index, reason: `There is no net ${edit.net}; connect pins to it first` }
+    if (edit.kind === "addPour" && !findNet(nets, edit.net) && !namedIn(source, edit.net)) return { refusal: { index, reason: `There is no net ${edit.net}; connect pins to it first` }, edits: named }
+    if (edit.kind === "addPour" && layers === 2 && edit.layer.startsWith("inner")) return { refusal: { index, reason: `The board has 2 layers (top, bottom), so there is no ${edit.layer}` }, edits: named }
     try {
       source = applyEdits(source, [edit], locked)
     } catch {
-      return undefined
+      return { edits: named }
     }
   }
-  return undefined
+  return { edits: named }
 }
 
 export function batchSummary(labels: string[]): string {

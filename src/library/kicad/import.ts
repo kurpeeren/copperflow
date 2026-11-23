@@ -1,6 +1,6 @@
 // Imports a KiCad board (.kicad_pcb) as a new circuit: the circuit file, its layout file and its library parts in ONE
 // history entry, whose undo takes them all back. Then the circuit is built and checked, and every pad's net in the
-// built design is compared with the file's. The CLI's `copperflow import kicad` and the agent's import_board call it.
+// built design is compared with the file's. The CLI's `copperflow import kicad` and the agent's fit_board { drawing } call it.
 import { readdir, readFile, realpath, stat } from "node:fs/promises"
 import { basename, join, resolve } from "node:path"
 import { checkDesign, checkCounts, type CheckResult } from "../../core/check.js"

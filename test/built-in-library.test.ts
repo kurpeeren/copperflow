@@ -64,7 +64,7 @@ test.each(names)("%s is listed, read and used from a fresh project, and one inst
   const root = await mkdtemp(join(tmpdir(), "cf-builtin-"))
   const call = await connect(root)
   expect((await call("list_modules", { filter: name })).text).toContain(`copperflow/${name}: `)
-  const info = (await call("module_info", { name: `copperflow/${name}` })).text
+  const info = (await call("list_modules", { name: `copperflow/${name}` })).text
   expect(info).toContain("NOT verified")
   expect(info).toContain("Plain: use_module can bring it into a project")
   const ports = readCard(readFileSync(join(MODULES, name, `${name}.sheet.tsx`), "utf8")).ports.map((port) => port.name)

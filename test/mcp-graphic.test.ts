@@ -1,5 +1,5 @@
 // A drawing placed on the board through MCP and the CLI: import_graphic, edit_circuit's set_drawing / remove_drawing by
-// its id, board_summary listing it, and `copperflow graphic`.
+// its id, circuit_summary view "board" listing it, and `copperflow graphic`.
 import { beforeEach, describe, expect, test } from "vitest"
 import { access, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -54,16 +54,16 @@ describe("import_graphic", () => {
     expect(result.text).toMatch(/Left out of the file: .*text/)
     expect(await readFile(join(root, "graphics", "logo.svg"), "utf8")).toBe(LOGO)
     expect(await source()).toContain('<boardgraphic file="graphics/logo.svg" layer="top-silkscreen" x={0} y={0} width={8} />')
-    const summary = await call("board_summary", { file: FILE })
+    const summary = await call("circuit_summary", { file: FILE, view: "board" })
     expect(summary.text).toContain("Drawings (1):\n  boardgraphic:1 graphics/logo.svg top-silkscreen at (0.0, 0.0), 8.0 x 4.0 mm")
   })
 
-  test("puts it on copper, says what is checked, and copper_summary lists it", async () => {
+  test("puts it on copper, says what is checked, and circuit_summary view copper lists it", async () => {
     const result = await call("import_graphic", { file: FILE, source: "art/logo.svg", layer: "bottom", x: 5, y: 4, width: 6 })
     expect(result.isError, result.text).toBe(false)
     expect(result.text).toContain("on the bottom, 6 x 3 mm")
     expect(result.text).toContain("On copper it belongs to no net")
-    const summary = await call("copper_summary", { file: FILE })
+    const summary = await call("circuit_summary", { file: FILE, view: "copper" })
     expect(summary.text).toContain("Drawings on copper: boardgraphic:1 graphics/logo.svg bottom at (5, 4), 6.0 x 3.0 mm, no net")
   })
 

@@ -32,7 +32,7 @@ afterEach(async () => {
 })
 
 async function call(args: Record<string, unknown>) {
-  const result = await client.callTool({ name: "export_fabrication", arguments: args })
+  const result = await client.callTool({ name: "export", arguments: { as: "fabrication", ...args } })
   const content = result.content as Array<{ type: string; text: string }>
   return { text: content.map((c) => c.text).join("\n"), isError: result.isError === true }
 }
@@ -42,12 +42,12 @@ const exists = (path: string) => stat(join(root, path)).then(
   () => false,
 )
 
-describe("export_fabrication", () => {
+describe("export { as: \"fabrication\" }", () => {
   test("takes the circuit file and an optional project folder, and says it writes files", async () => {
     const { tools } = await client.listTools()
-    const tool = tools.find((t) => t.name === "export_fabrication")
-    expect(Object.keys(tool?.inputSchema.properties ?? {})).toEqual(["file", "out"])
-    expect(tool?.inputSchema.required).toEqual(["file"])
+    const tool = tools.find((t) => t.name === "export")
+    expect(Object.keys(tool?.inputSchema.properties ?? {})).toEqual(["file", "as", "out", "look"])
+    expect(tool?.inputSchema.required).toEqual(["file", "as"])
     expect(tool?.annotations).toMatchObject({ destructiveHint: false })
     expect(tool?.annotations?.readOnlyHint).not.toBe(true)
     expect(tool?.description).toMatch(/JLCPCB/)
@@ -59,7 +59,7 @@ describe("export_fabrication", () => {
     expect(answer.isError).toBe(false)
     const files = ["F_Cu.gtl", "B_Cu.gbl", "F_Mask.gts", "B_Mask.gbs", "F_Paste.gtp", "B_Paste.gbp", "F_Silkscreen.gto", "B_Silkscreen.gbo", "Edge_Cuts.gm1", "PTH.drl", "NPTH.drl", "pick-and-place.csv", "bom.csv"]
     expect(answer.text).toBe(
-      ["Wrote 16 files to led-fab/ and led-fab.zip:", [...files.map((name) => `led-${name}`), "led.step", "led-top.png", "led-bottom.png"].join(", "), "led.step: parts are the 3D view's shapes as coloured faces (surfaces, not solids), not their real models; heights marked typical come from a package table, assumed ones are guesses (typical: R1; none assumed).", "Checks: 0 errors, 2 warnings.", "Next, a person should upload led-fab.zip to JLCPCB's PCB order, and led-bom.csv and led-pick-and-place.csv from led-fab/ at its assembly step (the zip holds them too).", "Ready for bare boards: yes", "Ready for assembly: yes", "The whole order report: the bom tool, or copperflow bom led.circuit.tsx."].join("\n"),
+      ["Wrote 16 files to led-fab/ and led-fab.zip:", [...files.map((name) => `led-${name}`), "led.step", "led-top.png", "led-bottom.png"].join(", "), "led.step: parts are the 3D view's shapes as coloured faces (surfaces, not solids), not their real models; heights marked typical come from a package table, assumed ones are guesses (typical: R1; none assumed).", "Checks: 0 errors, 2 warnings.", "Next, a person should upload led-fab.zip to JLCPCB's PCB order, and led-bom.csv and led-pick-and-place.csv from led-fab/ at its assembly step (the zip holds them too).", "Ready for bare boards: yes", "Ready for assembly: yes", "The whole order report: circuit_summary's bom view, or copperflow bom led.circuit.tsx."].join("\n"),
     )
     expect(await readdir(join(root, "led-fab"))).toHaveLength(16)
     expect((await readFile(join(root, "led-fab.zip"))).subarray(0, 4).toString("hex")).toBe("504b0304")
@@ -91,7 +91,7 @@ describe("export_fabrication", () => {
 
   test("the skill says to export after autoroute and a clean check_circuit, and that a person uploads the zip", async () => {
     const skill = await readFile(new URL("../skills/copperflow/SKILL.md", import.meta.url), "utf8")
-    expect(skill).toMatch(/after `autoroute` and a clean `check_circuit` \(0 errors\s+and no `unrouted` warning\), call `export_fabrication`/)
+    expect(skill).toMatch(/after `autoroute` and a clean `check_circuit` \(0 errors\s+and no `unrouted` warning\), call `export` `\{ file, as: "fabrication" \}`/)
     expect(skill).toMatch(/An export with unrouted connections is written with a warning and is NOT a finished\s+board/)
     expect(skill).toMatch(/A person uploads the\s+zip to JLCPCB/)
   })

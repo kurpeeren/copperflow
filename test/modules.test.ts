@@ -125,13 +125,13 @@ describe("save_module", () => {
     const saved = await call("save_module", { file: "Input.sheet.tsx" })
     expect(saved.isError, saved.text).toBe(false)
     expect(await readFile(join(shelf, "Input", "parts", "TVS1", "part.yaml"), "utf8")).toBe("title: TVS\n")
-    const info = await call("module_info", { name: "Input" })
+    const info = await call("list_modules", { name: "Input" })
     expect(info.text).toContain("D1 part TVS1")
   })
 })
 
 describe("the shelf from an agent", () => {
-  test("list_modules writes one line a module; module_info the card, parts, sources and origin, not the code", async () => {
+  test("list_modules writes one line a module; with name the card, parts, sources and origin, not the code", async () => {
     const call = await connect(first)
     await board(call)
     await call("save_module", { file: "Input.sheet.tsx" })
@@ -142,7 +142,7 @@ describe("the shelf from an agent", () => {
     expect((await call("list_modules", { filter: "nothing like it" })).text).toBe("No modules match nothing like it.")
     expect((await call("list_modules", { filter: "clamp" })).text).toContain("Input:")
     expect((await call("list_modules", { filter: "OUT" })).text).toContain("Input:")
-    const info = await call("module_info", { name: "Input" })
+    const info = await call("list_modules", { name: "Input" })
     expect(info.text).toContain("Does: 24 V digital input: divider, clamp, RC filter")
     expect(info.text).toContain("  port IN (input, 0 to 24 V from the field)")
     expect(info.text).toContain("R2 resistor 1.5k 0603")
@@ -254,7 +254,7 @@ describe("names and links cannot leave the shelf", () => {
     for (const name of HOSTILE) {
       const saved = await call("save_module", { file: "Input.sheet.tsx", name })
       expect(saved.isError, `save ${name}`).toBe(true)
-      expect((await call("module_info", { name })).isError, `info ${name}`).toBe(true)
+      expect((await call("list_modules", { name })).isError, `info ${name}`).toBe(true)
       expect((await call("use_module", { module: name, file: "main.circuit.tsx" })).isError, `use ${name}`).toBe(true)
       expect(await runCli(["modules", "remove", name], first, { out: () => undefined, err: () => undefined } as never), `remove ${name}`).toBe(1)
     }
@@ -274,7 +274,7 @@ describe("names and links cannot leave the shelf", () => {
     expect(saved).toMatchObject({ isError: true })
     expect(saved.text).toContain("link")
     expect(await readdir(target)).toEqual([])
-    expect((await call("module_info", { name: "Input" })).isError).toBe(true)
+    expect((await call("list_modules", { name: "Input" })).isError).toBe(true)
     expect((await call("use_module", { module: "Input", file: "main.circuit.tsx" })).isError).toBe(true)
     expect(await runCli(["modules", "remove", "Input"], first, { out: () => undefined, err: () => undefined } as never)).toBe(1)
     expect((await lstat(target)).isDirectory()).toBe(true)

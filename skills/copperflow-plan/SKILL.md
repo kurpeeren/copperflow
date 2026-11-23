@@ -18,7 +18,7 @@ copperflow server's `guide` tool with `{ topic: "planning" }`) and follow it in 
    typical application circuits, application notes, reference designs, pictures of schematics.
    Check leads against the datasheet and write the sources down with `note_decision`.
 3. **The block tree.** Each block does one job and has named ports; a repeated function is one
-   block and a count; power first. Write it with `set_project` and get the person's yes.
+   block and a count; power first. Write it with `note_decision` `{ sections }` and get the person's yes.
 4. **One sub-agent per block**, which sends back the block as one sheet (`parts`, `nets`,
    `ports`) and writes no circuit file.
 5. **Put the blocks together** with one `new_circuit` (`sheets` and `instances`), then

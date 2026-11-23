@@ -28,7 +28,7 @@ test("no tool's input schema writes items as a list", async () => {
   const client = new Client({ name: "test", version: "0.0.0" })
   await Promise.all([server.connect(serverSide), client.connect(clientSide)])
   const { tools } = await client.listTools()
-  expect(tools.length).toBeGreaterThan(30)
+  expect(tools.length).toBeGreaterThan(25)
   expect(tools.flatMap((tool) => listItems(tool.inputSchema, tool.name))).toEqual([])
 })
 
@@ -42,18 +42,16 @@ async function listedTools() {
   return (await client.listTools()).tools
 }
 
-// Every client pays for the whole tool list on every turn: worked detail belongs in the guide. The limit is an
-// average per tool (31,000 characters for 42 tools when it was set), so a new tool is allowed and a fat one is not.
-// Raised from 740 to 760 so every argument says what it is (the module tools', add_hole's): an argument without a
-// description was the commonest reason an agent called a tool wrongly.
-const AVERAGE_PER_TOOL = 760
+// Every client pays for the whole tool list on every turn: worked detail belongs in the guide. The cap is on the whole
+// list, so a new tool must fit in it and a fat one does not. It was 760 characters a tool on average until the tool fold
+// (2026-11-23): folding tools raises the average while it shrinks the list, so the fold set this total instead.
+const TOOL_LIST_CAP = 36_500
 
-test("the tool list stays at 760 characters a tool on average", async () => {
+test("the tool list stays within 36,500 characters", async () => {
   const tools = await listedTools()
   const total = JSON.stringify(tools).length
-  const limit = AVERAGE_PER_TOOL * tools.length
   const sizes = tools.map((tool) => `${tool.name} ${JSON.stringify(tool).length}`).sort().join(", ")
-  expect(total, `tool list is ${total} characters for ${tools.length} tools (limit ${limit}): ${sizes}`).toBeLessThanOrEqual(limit)
+  expect(total, `tool list is ${total} characters for ${tools.length} tools (cap ${TOOL_LIST_CAP}): ${sizes}`).toBeLessThanOrEqual(TOOL_LIST_CAP)
 })
 
 test("every tool's description is at most 700 characters", async () => {

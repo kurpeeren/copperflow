@@ -46,7 +46,7 @@ const CAN_NODE = [
   "Not verified: MCP2515-I-SO (U101), TJA1051T-3 (U102). A person should check them against their datasheets before ordering.",
   "Through-hole: J1, J2, J3, JP1, Y101",
   "Ready for assembly: no: 11 of 11 lines have no supplier part number; 2 library parts are not verified",
-  'Add a number to a built-in part: set_props { part, props: { supplierPartNumbers: "jlcpcb:<number>" } } in the file that writes it (a sheet\'s part by its name in the .sheet.tsx).',
+  'Add a number to a built-in part: edit_circuit set_props { part, props: { supplierPartNumbers: "jlcpcb:<number>" } } in the file that writes it (a sheet\'s part by its name in the .sheet.tsx).',
   'Add a number to a library part: suppliers: { jlcpcb: "<number>" } in parts/<id>/part.yaml, then copperflow parts build (or create_part again with replace); a person then verifies it again.',
   "No price or stock is checked: copperflow stores neither.",
   '"Ready" covers only the lines above: it does not say the board works or that a maker will accept it.',
@@ -64,7 +64,7 @@ describe("the order report", () => {
       [
         "Ready for bare boards: yes",
         "Ready for assembly: no: 11 of 11 lines have no supplier part number; 2 library parts are not verified",
-        "The whole order report: the bom tool, or copperflow bom can-node.circuit.tsx.",
+        "The whole order report: circuit_summary's bom view, or copperflow bom can-node.circuit.tsx.",
       ].join("\n"),
     )
   })

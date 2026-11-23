@@ -36,61 +36,36 @@ describe("MCP server", () => {
   test("exposes its tools, with no unlock or verify tool", async () => {
     const { tools } = await client.listTools()
     expect(tools.map((t) => t.name).sort()).toEqual([
-      "add_hole",
-      "add_pour",
-      "add_text",
       "add_trace",
-      "add_via",
-      "attach_datasheet",
       "autoplace",
       "autoroute",
-      "board_summary",
-      "bom",
       "check_circuit",
       "circuit_summary",
-      "copper_summary",
       "create_part",
       "describe_sheet",
       "edit_circuit",
-      "export_fabrication",
-      "export_html",
-      "export_model",
-      "export_package",
+      "export",
       "fillet_tracks",
       "fit_board",
       "guide",
-      "import_board",
       "import_graphic",
       "import_part",
-      "list_circuits",
       "list_modules",
       "list_parts",
       "make_sheet",
-      "module_info",
       "new_circuit",
       "note_decision",
       "open_studio",
-      "part_info",
-      "place_part",
       "project_status",
       "recent_changes",
-      "redo_change",
       "remove_copper",
-      "remove_hole",
-      "remove_part",
-      "remove_pour",
-      "remove_trace",
       "render",
       "route_track",
       "save_module",
       "set_part_fields",
-      "set_project",
-      "set_props",
       "set_rules",
       "simulate",
-      "straighten_tracks",
       "undo_change",
-      "unroute",
       "use_module",
     ])
   })
@@ -102,12 +77,11 @@ describe("MCP server", () => {
     expect(description.toLowerCase()).not.toContain("tscircuit")
   })
 
-  test("bom and export_package take no build input", async () => {
+  test("circuit_summary (view bom) and export (as package) take no build input", async () => {
     const { tools } = await client.listTools()
-    for (const name of ["bom", "export_package"]) {
-      const properties = tools.find((t) => t.name === name)?.inputSchema.properties ?? {}
-      expect(Object.keys(properties)).toEqual(["file"])
-    }
+    const keys = (name: string) => Object.keys(tools.find((t) => t.name === name)?.inputSchema.properties ?? {})
+    expect(keys("circuit_summary")).toEqual(["file", "view", "detail", "filter"])
+    expect(keys("export")).toEqual(["file", "as", "out", "look"])
   })
 
   test("the agent creates a part from a datasheet, places it and sees it in the BOM", async () => {
@@ -115,11 +89,11 @@ describe("MCP server", () => {
     expect(created.isError).toBe(false)
     expect(created.text).toContain("NOT verified")
     expect((await call("list_parts")).text).toContain("AP2112K-3.3  <AP2112K_3_3>  AP2112K-3.3 LDO regulator  sot23_5  NOT verified")
-    expect((await call("part_info", { id: "AP2112K-3.3" })).text).toContain("mpn: AP2112K-3.3TRG1")
-    const placed = await call("place_part", { file: FILE, part: "AP2112K-3.3", name: "U5", props: { pcbX: 3 } })
-    expect(placed.text).toMatch(/Change c0001 applied: place U5/)
+    expect((await call("list_parts", { id: "AP2112K-3.3" })).text).toContain("mpn: AP2112K-3.3TRG1")
+    const placed = await call("edit_circuit", { file: FILE, edits: [{ place_part: { part: "AP2112K-3.3", name: "U5", props: { pcbX: 3 } } }] })
+    expect(placed.text).toMatch(/Change c0001 applied: 1 edit: place U5/)
     expect(await readFile(join(root, FILE), "utf8")).toContain('<AP2112K_3_3 name="U5" pcbX={3} />')
-    expect((await call("bom", { file: FILE })).text).toContain("| U5 | 1 | chip | AP2112K-3.3 LDO regulator | sot23_5 | Diodes Incorporated | AP2112K-3.3TRG1 | jlcpcb C51118 |")
+    expect((await call("circuit_summary", { file: FILE, view: "bom" })).text).toContain("| U5 | 1 | chip | AP2112K-3.3 LDO regulator | sot23_5 | Diodes Incorporated | AP2112K-3.3TRG1 | jlcpcb C51118 |")
   })
 
   test("create_part with footprint_file writes parts/<id>/footprint.yaml and lists it", async () => {
@@ -146,14 +120,14 @@ describe("MCP server", () => {
     expect(description).toContain("datasheet")
     for (const key of ["url", "file", "title"]) expect(description).toContain(key)
     expect(description).toContain('{ "url": "https://example.com/ds.pdf", "title": "TJA1051 datasheet" }')
-    expect(description).toContain("attach_datasheet")
+    expect(description).toContain("set_part_fields { datasheet }")
     const schema = tools.find((t) => t.name === "create_part")?.inputSchema.properties as Record<string, { description?: string }>
     expect(schema.datasheet?.description).toContain("url, file, title")
     const refused = await call("create_part", { id: "TJA", title: "TJA1051", package: "hc49s", pins: "1 TXD\n2 GND", datasheet: { url: "https://example.com/ds.pdf", pages: "3-4" } })
     expect(refused.isError).toBe(true)
     expect(refused.text).toContain('"pages"')
     expect(refused.text).toContain("accepted keys: url, file, title")
-    expect(refused.text).toContain("attach_datasheet")
+    expect(refused.text).toContain("set_part_fields { datasheet }")
     const ok = await call("create_part", { id: "TJA", title: "TJA1051", package: "hc49s", pins: "1 TXD\n2 GND", datasheet: { url: "https://example.com/ds.pdf", title: "TJA1051 datasheet" } })
     expect(ok.text).toContain("Created TJA")
     expect(ok.isError).toBe(false)
@@ -171,7 +145,7 @@ describe("MCP server", () => {
         "Created X16M: 16 MHz crystal, 2 pins, footprint hc49s.",
         "Wrote parts/X16M/part.yaml, parts/X16M/X16M.tsx, parts/X16M/verification.md.",
         "It is NOT verified: check every pin and the footprint in parts/X16M/verification.md against the datasheet.",
-        'Use it with place_part (part "X16M"). Tell the human it is Unverified until they check verification.md.',
+        'Place it with edit_circuit place_part (part "X16M"). Tell the human it is Unverified until they check verification.md.',
       ].join("\n"),
     )
     expect((await call("list_parts")).text).toMatch(/^X16M .* NOT verified {2}written \d{4}-\d{2}-\d{2}$/)
@@ -195,8 +169,10 @@ describe("MCP server", () => {
     expect(result.isError).toBe(true)
   })
 
-  test("list_circuits and circuit_summary describe the project", async () => {
-    expect((await call("list_circuits")).text).toContain(FILE)
+  test("project_status and circuit_summary describe the project", async () => {
+    const status = (await call("project_status")).text
+    expect(status).toContain("Circuits (1):")
+    expect(status).toContain(FILE)
     const { model } = await loadCircuit(root, FILE)
     await updateAnnotations(root, FILE, (ann) =>
       addMark(lockParts(ann, model, ["C1"], "2026-11-03T10:00:00.000Z"), { text: "route GND here", view: "pcb", x: 1, y: 2 }, "2026-11-03T10:00:00.000Z").annotations,
@@ -211,25 +187,25 @@ describe("MCP server", () => {
     expect(summary).toContain("Lock violations: none")
   })
 
-  test("set_props edits the file and returns the change id", async () => {
-    const result = await call("set_props", { file: FILE, part: "R1", props: { pcbX: 2, pcbRotation: 90 } })
+  test("edit_circuit set_props edits the file and returns the change id", async () => {
+    const result = await call("edit_circuit", { file: FILE, edits: [{ set_props: { part: "R1", props: { pcbX: 2, pcbRotation: 90 } } }] })
     expect(result.isError).toBe(false)
-    expect(result.text).toMatch(/Change \S+ applied/)
+    expect(result.text).toMatch(/^Change c\d+ applied: 1 edit: set R1 pcbX,pcbRotation$/)
     expect(await readFile(join(root, FILE), "utf8")).toContain("pcbX={2} pcbY={2} pcbRotation={90}")
   })
 
-  test("set_props moves a label with a point and puts it back with null", async () => {
-    const moved = await call("set_props", { file: FILE, part: "R1", props: { schNameAt: { x: 0.5, y: 0.4 } } })
+  test("edit_circuit set_props moves a label with a point and puts it back with null", async () => {
+    const moved = await call("edit_circuit", { file: FILE, edits: [{ set_props: { part: "R1", props: { schNameAt: { x: 0.5, y: 0.4 } } } }] })
     expect(moved.isError).toBe(false)
     expect(await readFile(join(root, FILE), "utf8")).toContain("pcbY={2} schNameAt={{ x: 0.5, y: 0.4 }}")
-    expect((await call("set_props", { file: FILE, part: "R1", props: { schNameAt: null } })).isError).toBe(false)
+    expect((await call("edit_circuit", { file: FILE, edits: [{ set_props: { part: "R1", props: { schNameAt: null } } }] })).isError).toBe(false)
     expect(await readFile(join(root, FILE), "utf8")).not.toContain("schNameAt")
   })
 
   test("edits of locked parts come back as tool errors", async () => {
     const { model } = await loadCircuit(root, FILE)
     await updateAnnotations(root, FILE, (ann) => lockParts(ann, model, ["R1"], "2026-11-03T10:00:00.000Z"))
-    const result = await call("remove_part", { file: FILE, part: "R1" })
+    const result = await call("edit_circuit", { file: FILE, edits: [{ remove_part: { part: "R1" } }] })
     expect(result.isError).toBe(true)
     expect(result.text).toContain("R1 is locked")
   })
@@ -240,13 +216,13 @@ describe("MCP server", () => {
     expect(description).toMatch(/"Redo:"/)
     expect(description).toMatch(/cannot undo/)
     expect(tools.find((t) => t.name === "recent_changes")?.description).toMatch(/redos/)
-    expect((await call("remove_part", { file: FILE, part: "LED1" })).isError).toBe(false)
+    expect((await call("edit_circuit", { file: FILE, edits: [{ remove_part: { part: "LED1" } }] })).isError).toBe(false)
     await undoChange(root, { author: "human" })
     await redoChange(root, { author: "human" })
     const history = (await call("recent_changes")).text.split("\n")
-    expect(history[0]).toContain("human  Redo: remove LED1")
-    expect(history[1]).toMatch(/Undo: remove LED1 .*\[redone as c0003\]$/)
-    expect(history[2]).toMatch(/ai  remove LED1 .*\[redone as c0003\]$/)
+    expect(history[0]).toContain("human  Redo: edit remove LED1")
+    expect(history[1]).toMatch(/Undo: edit remove LED1 .*\[redone as c0003\]$/)
+    expect(history[2]).toMatch(/ai  edit remove LED1 .*\[redone as c0003\]$/)
     const refused = await call("undo_change", { id: "c0001" })
     expect(refused).toMatchObject({ isError: true })
     expect(refused.text).toContain("redone as c0003")
@@ -255,8 +231,8 @@ describe("MCP server", () => {
 
   test("traces, history and undo work end to end", async () => {
     expect((await call("add_trace", { file: FILE, from: ".LED1 > .pin1", to: "net.GND" })).isError).toBe(false)
-    expect((await call("remove_trace", { file: FILE, from: ".R1 > .pin1", to: "net.GND" })).isError).toBe(false)
-    expect((await call("recent_changes", { limit: 5 })).text).toContain("ai  remove trace .R1 > .pin1 -> net.GND")
+    expect((await call("edit_circuit", { file: FILE, edits: [{ disconnect: { from: ".R1 > .pin1", to: "net.GND" } }] })).isError).toBe(false)
+    expect((await call("recent_changes", { limit: 5 })).text).toContain("ai  edit disconnect .R1 > .pin1 -> net.GND")
     expect((await call("undo_change")).isError).toBe(false)
     expect((await call("undo_change")).isError).toBe(false)
     expect(await readFile(join(root, FILE), "utf8")).toBe(BOARD)

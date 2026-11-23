@@ -25,7 +25,7 @@ describe("the copperflow skill", () => {
   test("names every tool the server registers", async () => {
     const text = Object.values(await skillFiles()).join("\n")
     const names = (await client.listTools()).tools.map((tool) => tool.name)
-    expect(names.length).toBeGreaterThan(30)
+    expect(names.length).toBeGreaterThan(25)
     expect(names.filter((name) => !new RegExp(`\\b${name}\\b`).test(text))).toEqual([])
   })
 

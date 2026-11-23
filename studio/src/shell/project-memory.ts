@@ -8,7 +8,7 @@ export interface MemorySection {
 
 export type MemoryView = { kind: "missing"; note: string } | { kind: "file"; title: string; sections: MemorySection[] }
 
-export const MISSING_NOTE = "No PROJECT.md yet. The agent writes it with set_project and note_decision; you can also write it by hand at the project root."
+export const MISSING_NOTE = "No PROJECT.md yet. The agent writes it with note_decision; you can also write it by hand at the project root."
 
 /** The lines of a section body: blank lines dropped, list bullets kept as the text after them. */
 const bodyLines = (body: string[]) => body.map((line) => line.trim()).filter((line) => line !== "").map((line) => line.replace(/^[-*]\s+/, ""))

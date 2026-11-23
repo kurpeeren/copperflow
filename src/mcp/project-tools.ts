@@ -1,6 +1,6 @@
 // The project memory tools. project_status is the first call a fresh context makes: PROJECT.md's Intent, Blocks, the
 // last five Decisions and Open, then per circuit file its counts and its last three changes. note_decision (a decision,
-// or with open an item under Open) and set_project write PROJECT.md through the core, one history entry by the agent each.
+// or with open an item under Open, or with sections whole sections) writes PROJECT.md through the core, one history entry by the agent each.
 import { existsSync } from "node:fs"
 import { join } from "node:path"
 import { z } from "zod"
@@ -49,8 +49,6 @@ export const PROJECT_STATUS_DESCRIPTION =
   "Call this first in every task: PROJECT.md (intent, blocks, last decisions, open items), then per circuit file its counts, unplaced, unrouted, errors, warnings and last changes."
 export const NOTE_DECISION_DESCRIPTION =
   "Note a design decision in PROJECT.md as one dated line, as ONE change: each choice a later context should not undo (a part and why, a board size, what the person approved). open: true adds the text to Open instead (still to do or ask)."
-export const SET_PROJECT_DESCRIPTION =
-  `Rewrite sections of PROJECT.md as ONE change: intent (at most ${MAX_INTENT_CHARS} characters), blocks (an array of at most ${MAX_BLOCKS} { name, does, status }) and open (an array of at most ${MAX_OPEN_ITEMS} non-empty strings). Sections not given and Decisions stay.`
 
 /** "parts 12, nets 9, unplaced 0, unrouted 3, errors 0, warnings 2" */
 export function circuitCounts(design: Design): string {
@@ -64,7 +62,7 @@ const changeLine = (e: HistoryListing) => `  ${e.id} ${e.time.slice(0, 10)} ${e.
 
 /** PROJECT.md's sections as answer lines. */
 export function projectLines(text: string | undefined): string[] {
-  if (text === undefined) return [`No ${PROJECT_PATH} yet: write the Intent and Blocks with set_project.`]
+  if (text === undefined) return [`No ${PROJECT_PATH} yet: write the Intent and Blocks with note_decision { sections }.`]
   const intent = sectionText(text, "Intent")
   const blocks = sectionLines(text, "Blocks")
   const decisions = sectionLines(text, "Decisions")

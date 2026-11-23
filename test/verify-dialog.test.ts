@@ -108,7 +108,7 @@ describe("the Verify screen", () => {
 
   test("a part with no datasheet says so and what to do", () => {
     const html = render({ ...DETAILS, part: { ...DETAILS.part, datasheet: undefined, datasheet_pages: undefined } })
-    expect(html).toContain("This part records no datasheet. Ask the agent to attach it (attach_datasheet), or add it to part.yaml")
+    expect(html).toContain("This part records no datasheet. Ask the agent to attach it (set_part_fields { datasheet }), or add it to part.yaml")
   })
 
   test("a placeholder footprint is drawn with the reason, and marking stays off", () => {

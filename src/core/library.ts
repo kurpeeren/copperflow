@@ -46,7 +46,7 @@ export const DATASHEET_KEYS = ["url", "file", "title"] as const
 /** The refusal for a datasheet key that is not one of DATASHEET_KEYS: the field, the keys it accepts and an example. */
 function unknownDatasheetKeys(keys: readonly string[]): string {
   const shown = keys.map((key) => `"${key.slice(0, 40)}"`).join(", ")
-  return `datasheet has no key ${shown}; accepted keys: ${DATASHEET_KEYS.join(", ")}, e.g. { "url": "https://example.com/ds.pdf", "title": "TJA1051 datasheet" }. The pages of the pin table go to attach_datasheet.`
+  return `datasheet has no key ${shown}; accepted keys: ${DATASHEET_KEYS.join(", ")}, e.g. { "url": "https://example.com/ds.pdf", "title": "TJA1051 datasheet" }. The pages of the pin table go to set_part_fields { datasheet }.`
 }
 
 const PinSchema = z
@@ -93,7 +93,7 @@ export const PartSchema = z
       )
       .strict()
       .optional(),
-    /** The datasheet pages the pin table was read from, e.g. "3-4" (attach_datasheet). */
+    /** The datasheet pages the pin table was read from, e.g. "3-4" (set_part_fields { datasheet }). */
     datasheet_pages: line(100).min(1).optional(),
     /** What the DC simulator uses for this part: its kind, pin roles and figures, each with its datasheet page. */
     model: ModelSchema.optional(),

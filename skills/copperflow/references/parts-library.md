@@ -48,16 +48,16 @@ Passive parts (resistors, capacitors, LEDs, headers) are built in and need no en
    - `suppliers` (for example `jlcpcb: C51118`) and `datasheet` when you know them: an object
      with only the keys `url` (an http or https link), `file` (a PDF file name in the part folder)
      and `title` (at most 200 characters), e.g. `{ "url": "https://example.com/ds.pdf", "title": "TJA1051 datasheet" }`.
-     Any other key (`pages`, `page`) is refused; the pages go to `attach_datasheet` below.
+     Any other key (`pages`, `page`) is refused; the pages go to `set_part_fields` `{ datasheet }` below.
    An existing id is refused unless you pass `replace: true` (never for a verified part). The
    human can do the same in the Studio with Library → New part….
-3. Call `attach_datasheet` with `part`, the datasheet's `url`, its `title` and the `pages` of the
+3. Call `set_part_fields` `{ id, datasheet: { url, title, pages } }` with the datasheet's `url`, its `title` and the `pages` of the
    pin table: `verification.md` then asks the human to compare each pin with that page.
    Tell the human the part is not verified and that `parts/<id>/verification.md` lists what to
    check.
-4. Place it with `place_part`, connect it with `add_trace` (`nets` for many pins, `from` and `to` for one), then run `check_circuit`.
+4. Place it with an `edit_circuit` `place_part` step, connect it with `add_trace` (`nets` for many pins, `from` and `to` for one), then run `check_circuit`.
 
-`part_info` `{ id }` shows part.yaml, then the footprint's pads under the pins
+`list_parts` `{ id }` shows part.yaml, then the footprint's pads under the pins
 (`  5  at (1.1, -0.95)  0.6 x 1.1 roundrect  VOUT`: number, centre in mm, size, hole, pin name),
 then verification.md. For a generated package, `guide { topic: "packages dcjack" }` lists the pads
 when the search finds at most three packages, with what each pad is where the footprint says so:

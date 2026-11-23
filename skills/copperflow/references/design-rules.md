@@ -37,7 +37,7 @@ IPC-2152 replaces the IPC-2221 charts with more detailed data; use it when the m
   0.035 mm, when the file does not set it). An inner layer needs about 2.6 times the outer width.
 - **What it reports:** one warning per net, naming the tracks narrower than that width. Vias are
   not measured; pours are, as the `pour-current` warning below.
-- **Fixing it:** give the net a class with that `trackWidth`, then `unroute` and `autoroute` it,
+- **Fixing it:** give the net a class with that `trackWidth`, then `remove_copper` `{ nets }` and `autoroute` it,
   or carry it in a pour. Write a port's `carries` with the most current it really takes, as a
   number with `A`, `mA` or `µA` ("2 A", "350 mA"); a text that names no current that way gives
   no warning.
@@ -165,8 +165,8 @@ leaves the file as it was and the answer gives the schema's reason
 
 - A power class: `{ "netClasses": { "power": { "nets": ["GND", "V5"], "trackWidth": 0.5 } } }`.
   The answer: `Change c0012: rules.yaml netClasses = …`, then `GND, V5 are class power: 0.5 mm
-  tracks, 0.2 mm clearance; 3 existing tracks are narrower: unroute and autoroute GND, V5`. Set the
-  classes before `autoroute`; afterwards, `unroute` and `autoroute` the nets it names.
+  tracks, 0.2 mm clearance; 3 existing tracks are narrower: remove their router copper (remove_copper { nets }) and autoroute GND, V5`. Set the
+  classes before `autoroute`; afterwards, `remove_copper` `{ nets }` and `autoroute` the nets it names.
 - Four layers: `{ "fabrication": { "profile": "jlcpcb-4layer" } }`, then `fit_board` `{ file,
   layers: 4 }` gives the board its inner layers `inner1` and `inner2` (the answer says so when the
   profile and the board disagree).
@@ -213,13 +213,13 @@ netClasses:
 
 - `pair: by-name` pairs names ending in `_P`/`_N`, `+`/`-`, `DP`/`DM` and `H`/`L` (CANH/CANL) within the class.
 - When `impedance` or `differentialImpedance` is given and `trackWidth` is not, the width (and a pair's gap, at
-  twice the profile's smallest gap unless `gap` is set) come from the stack; `copper_summary` says so. A target
+  twice the profile's smallest gap unless `gap` is set) come from the stack; `circuit_summary` `view: "copper"` says so. A target
   the board cannot make (a gap or width under the profile's smallest) is a `rules` warning that says what it needs.
 - The `jlcpcb-4layer` profile has no `dielectricHeight`: set it to calculate there.
 - A length runs pad to pad along the joined copper, the farthest two pads of the net; a via adds the board's thickness.
 
 To work with a pair: declare the class, route the two nets by hand with `route_track` side by side at the class's
-width and gap (or let `autoroute` route them and read the checks), read `check_circuit` and `copper_summary`, and
+width and gap (or let `autoroute` route them and read the checks), read `check_circuit` and `circuit_summary` `view: "copper"`, and
 fix a finding by re-routing. `copperflow impedance --single 50 --pair 90` prints the calculation for the project.
 
 ## What the checks report
@@ -253,7 +253,7 @@ position. Anything a check cannot evaluate is reported as `unchecked`, never sil
 | `courtyard-overlap` | error | Two part courtyards overlap. |
 | `keepout` | error | A part lies inside a keep-out area. |
 | `outside-board` | warning | A part is not inside the board outline. |
-| `silk-on-pad` | warning | Silkscreen lies on a pad, closer than `minSilkToPad`; or a designator covers pads or another designator (the same findings, in the same words, as `export_fabrication`'s warnings: move it with `pcbNameAt` or move the part); or a `<silkscreentext>` or silkscreen `<boardgraphic>` lies on an exposed pad, a drill or a `<hole>` (move it). |
+| `silk-on-pad` | warning | Silkscreen lies on a pad, closer than `minSilkToPad`; or a designator covers pads or another designator (the same findings, in the same words, as the fabrication export's warnings: move it with `pcbNameAt` or move the part); or a `<silkscreentext>` or silkscreen `<boardgraphic>` lies on an exposed pad, a drill or a `<hole>` (move it). |
 | `silk-off-board` | warning | A `<silkscreentext>`'s or silkscreen `<boardgraphic>`'s ink runs past the board outline, where the board house clips it: move it inside or shorten it. |
 | `drawing-width` | warning | A `<boardgraphic>` on copper has lines narrower than `minTrackWidth`; the message names the thinnest. Thin parts of its filled shapes are not measured. |
 | `silk-too-thin` | warning | A silkscreen `<boardgraphic>` has lines thinner than about 0.15 mm, which a board house may not print: the message names the thinnest; give a larger width or thicker lines. |
@@ -276,4 +276,4 @@ Rules the checks follow:
 - With no usable board outline, the edge and outside-board checks do not run, and an `unchecked`
   warning says so.
 - Copper checks (track width, track clearance, vias, pours) run with the others: `check_circuit` with filter
-  `copper` lists them, and `copper_summary` counts them by rule. `unrouted` is the reminder that copper is missing.
+  `copper` lists them, and `circuit_summary` `view: "copper"` counts them by rule. `unrouted` is the reminder that copper is missing.

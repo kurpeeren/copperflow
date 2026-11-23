@@ -1,4 +1,4 @@
-// Writes a circuit's board and parts as a GLB file (copperflow glb, export_model): `<name>.glb` beside the circuit, or
+// Writes a circuit's board and parts as a GLB file (copperflow glb, export { as: "glb" }): `<name>.glb` beside the circuit, or
 // the project file given. The model is the scene render's view "3d" draws, made by the Studio's renderer bundled to
 // dist/render/render.js; a design with errors is still written, since the file is a look at the board, not an order.
 import { refuseStreamName } from "./out-name.js"

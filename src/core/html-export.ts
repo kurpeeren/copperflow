@@ -1,4 +1,4 @@
-// Writes a circuit's design as one web page (copperflow html, export_html): every schematic page, the board, the 3D
+// Writes a circuit's design as one web page (copperflow html, export { as: "html" }): every schematic page, the board, the 3D
 // view and the bill of materials, with the fabrication files, the 3D models and the BOM inside it as downloads.
 // `<name>.html` beside the circuit, or the project file given. A design with errors is still written, since the page
 // is a look at the design, not an order; it then carries no fabrication files and says why.

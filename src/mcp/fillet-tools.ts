@@ -18,15 +18,6 @@ export const filletTracksInput = {
   radius: z.number().positive().optional().describe("mm; default the rules' fillet radius"),
 }
 
-export const straightenTracksInput = {
-  file: z.string().describe("Circuit file"),
-  ids: trackIds,
-}
-
-export const FILLET_TRACKS_DESCRIPTION =
-  "Round the square corners of tracks as ONE change. A corner stays square where the arc would break clearance; the answer counts those with reasons. Locked tracks are left alone; straighten_tracks undoes it."
-export const STRAIGHTEN_TRACKS_DESCRIPTION =
-  "Put back the square corners fillet_tracks rounded, as ONE change, where clearance allows. Locked tracks are left alone."
 
 /** Refuses ids that name no track of the layout, before anything is written. */
 function checkIds(design: Design, ids: readonly string[] | undefined): void {
@@ -54,7 +45,7 @@ export function filletTracks(ports: Ports, input: { file: string; ids?: string[]
   return runPlan(ports, input.file, input.ids, planFillet, input.radius === undefined ? {} : { radius: input.radius })
 }
 
-/** straighten_tracks: the rounded corners of the tracks put back as one change. */
+/** fillet_tracks { square: true }: the rounded corners of the tracks put back as one change. */
 export function straightenTracks(ports: Ports, input: { file: string; ids?: string[] }): Promise<string> {
   return runPlan(ports, input.file, input.ids, planStraighten)
 }

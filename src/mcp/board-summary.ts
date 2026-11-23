@@ -1,4 +1,4 @@
-// board_summary: the board in words, the model's eyes on the layout. Board size and layers, the share of the board the
+// circuit_summary { view: "board" }: the board in words, the model's eyes on the layout. Board size and layers, the share of the board the
 // courtyards take, a line per part, the longest connections with their pads, placement findings, pours, the silkscreen
 // texts by id and the unrouted count; the
 // default answer stops at about 60 lines and the rest is behind detail "full".
@@ -10,7 +10,7 @@ import type { PlacedFootprint, RatsnestLine } from "../engine/pcb.js"
 import { ratsnest } from "../engine/ratsnest.js"
 import { netLabel } from "./copper-under.js"
 
-/** board_summary stops near here, so the answer fits a screen. */
+/** The board view stops near here, so the answer fits a screen. */
 export const BOARD_SUMMARY_LIMIT = 60
 const LONGEST_SHOWN = 10
 /** The finding lists name at most this many parts each in the default answer. */
@@ -19,9 +19,6 @@ const FINDINGS_SHOWN = 10
 const TEXTS_SHOWN = 10
 /** A text is quoted up to this many characters. */
 const QUOTED = 40
-
-export const BOARD_SUMMARY_DESCRIPTION =
-  "The board in about 60 lines: size, layers, courtyard use, one line per part (position, side, [LOCKED] or \"not placed\"), the ten longest connections, overlaps, parts off the board, pours, silkscreen texts, drawings, unrouted count."
 
 export type BoardDetail = "compact" | "full"
 

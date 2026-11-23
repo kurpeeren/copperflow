@@ -25,7 +25,7 @@ beforeAll(async () => {
 })
 
 describe("parts with no position", () => {
-  test("new_circuit, check_circuit and board_summary agree: no position, no pad places", async () => {
+  test("new_circuit, check_circuit and circuit_summary view board agree: no position, no pad places", async () => {
     const parts = [
       { name: "R1", kind: "resistor", value: "1k", footprint: "0603" },
       { name: "R2", kind: "resistor", value: "1k", footprint: "0603" },
@@ -36,7 +36,7 @@ describe("parts with no position", () => {
     expect(checked).toMatch(/^warning unplaced \[R1, R2\]: These parts have no position yet; autoplace places them$/m)
     expect(checked).toMatch(/^ {2}unrouted: R1\.pin1 \(not placed\) to R2\.pin1 \(not placed\)$/m)
     expect(checked).not.toMatch(PAD_PLACE)
-    const summary = await call("board_summary", { file: "a.circuit.tsx" })
+    const summary = await call("circuit_summary", { file: "a.circuit.tsx", view: "board" })
     expect(summary).toMatch(/^R1 1k 0603 not placed$/m)
     expect(summary).not.toMatch(PAD_PLACE)
   })

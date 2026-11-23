@@ -45,14 +45,14 @@ export function strandedCopper(before: Pick<Design, "pcb" | "violations">, after
 }
 
 /**
- * The lines of an answer naming the copper left behind and what to do: remove_copper with the ids, or unroute the
- * nets and route again. None when nothing was left behind.
+ * The lines of an answer naming the copper left behind and what to do: remove_copper with the ids, or with the nets
+ * (the router's copper of them), and route again. None when nothing was left behind.
  */
 export function strandedLines(stranded: readonly StrandedCopper[], netName: (net: string) => string = (net) => net): string[] {
   if (stranded.length === 0) return []
   const ids = stranded.map((one) => one.id)
   const nets = [...new Set(stranded.flatMap((one) => (one.net === undefined ? [] : [netName(one.net)])))]
   const named = stranded.map((one) => `${one.id} ${one.why}`).join("; ")
-  const unroute = nets.length === 0 ? "" : ` or unroute { nets: ${JSON.stringify(nets)} }`
+  const unroute = nets.length === 0 ? "" : ` or { nets: ${JSON.stringify(nets)} }`
   return [`Copper left behind: ${named}. Remove it with remove_copper { ids: ${JSON.stringify(ids)} }${unroute}, then autoroute.`]
 }

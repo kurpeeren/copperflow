@@ -44,4 +44,4 @@ export function checkedAgainst(datasheet: DatasheetRecord | undefined, pages: st
 }
 
 /** What the screen says when the part records no datasheet. */
-export const NO_DATASHEET = 'This part records no datasheet. Ask the agent to attach it (attach_datasheet), or add it to part.yaml: datasheet: { url: "https://…", title: "…" } and datasheet_pages: "3-4".'
+export const NO_DATASHEET = 'This part records no datasheet. Ask the agent to attach it (set_part_fields { datasheet }), or add it to part.yaml: datasheet: { url: "https://…", title: "…" } and datasheet_pages: "3-4".'

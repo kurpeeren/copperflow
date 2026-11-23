@@ -84,10 +84,10 @@ on the person's shelf that does a block's job is used, not designed again ([modu
   in the plan and written at the top level. Every larger board is written as sheets, one per
   block, also for a block used once.
 
-Write the plan with `set_project`, each block's `does` carrying its job, its count and its ports:
+Write the plan with `note_decision` `{ sections }`, each block's `does` carrying its job, its count and its ports:
 
 ```
-set_project {
+note_decision { sections: {
   intent: "Eight 24 V digital inputs read by an STM32G030 and reported over RS-485; 24 V in, 3.3 V rail.",
   blocks: [
     { name: "Power", does: "24 V to 3.3 V 300 mA buck; ports VIN, V3_3, GND", status: "planned" },
@@ -96,7 +96,7 @@ set_project {
     { name: "Bus", does: "RS-485 transceiver with termination jumper; ports V3_3, GND, TX, RX, DE, A, B", status: "planned" }
   ],
   open: ["assumed: 0603 parts, assembled by the fab", "approval of the plan", "blocks, then the board"]
-}
+} }
 ```
 
 Then show the person the block list, the supply tree and what you assumed, and ask whether to go
@@ -114,9 +114,9 @@ The brief is all a sub-agent knows. Give it:
 - the block: its job, every port with what it carries, and the limits from the answers (packages,
   supplier, parts the person fixed);
 - the sources step 2 found for this block, to read and to look further from in the same way;
-- the tools: `guide` for how to work, `list_parts`, `part_info`, `create_part` and
-  `attach_datasheet` for parts. **It writes no circuit file**: no `new_circuit`, `edit_circuit`,
-  `place_part` or `add_trace`. Only you write the circuit, once, in step 5;
+- the tools: `guide` for how to work, `list_parts` (with `id` for one part), `create_part` and
+  `set_part_fields` (its `datasheet`) for parts. **It writes no circuit file**: no `new_circuit`, `edit_circuit`
+  or `add_trace`. Only you write the circuit, once, in step 5;
 - what to send back, below.
 
 A sub-agent sends back the block as one sheet in the shape `new_circuit` takes, and a few lines:
@@ -147,7 +147,7 @@ questions: V3_3 is not needed by this block; drop the port?
 - Every port is a net of the block, and no net leaves the block except through a port.
 - Parts are chosen in the order of SKILL.md step 2. A chip that is not in the library is created
   with `create_part` from its datasheet, which the sub-agent finds and reads with its own web
-  access; `attach_datasheet` records the link and the page. It reports each created part and
+  access; `set_part_fields` `{ datasheet }` records the link and the page. It reports each created part and
   that it is not verified.
 
 ## 5. Put the blocks together
@@ -178,7 +178,7 @@ questions: V3_3 is not needed by this block; drop the port?
    An instance name and a net name are different words (`CH1`, not `IN1`).
 3. `check_circuit` once. An error inside a block is the block's: correct the sheet and write the
    board again with `replace: true`, so every use gets the correction.
-4. `set_project` with each block's status `designed`, then go on with SKILL.md at "Ask the
+4. `note_decision` `{ sections }` with each block's status `designed`, then go on with SKILL.md at "Ask the
    person before the PCB". On the board, blocks first (`autoplace` and `autoroute` with
    `{ file, instance }`, `render` to look), then the whole board and the tracks between blocks:
    the order and the answers are in [copper.md](copper.md), "Placing and routing".

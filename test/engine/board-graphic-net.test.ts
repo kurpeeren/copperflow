@@ -134,7 +134,7 @@ describe("a pour", () => {
   })
 })
 
-describe("copper_summary", () => {
+describe("circuit_summary view copper", () => {
   test("lists the drawing under its net", () => {
     const [line] = copperDrawingLines(build(uAt(LOW)))
     expect(line).toContain(`boardgraphic:1 graphics/u.svg top`)

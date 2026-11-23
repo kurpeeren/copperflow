@@ -11,7 +11,7 @@ describe("the agent strip", () => {
   })
 
   test("a step without a total has no bar, and a count past its total is held to a full bar", () => {
-    expect(afterActivity({ tool: "export_fabrication", message: "Writing the Gerbers", state: "running" }, NOW).strip?.fraction).toBeUndefined()
+    expect(afterActivity({ tool: "export", message: "Writing the Gerbers", state: "running" }, NOW).strip?.fraction).toBeUndefined()
     expect(afterActivity({ tool: "autoplace", message: "x", progress: 9, total: 8, state: "running" }, NOW).strip?.fraction).toBe(1)
   })
 
@@ -29,11 +29,11 @@ describe("the agent strip", () => {
     expect(msUntilHide(failed, NOW)).toBeUndefined()
     expect(afterTime(failed, NOW + 10 * RUNNING_STALE_MS)).toBe(failed)
     expect(afterClick(failed)).toEqual(NO_STRIP)
-    expect(afterActivity({ tool: "bom", message: "bom a.circuit.tsx", state: "running" }, NOW).strip?.tone).toBe("running")
+    expect(afterActivity({ tool: "circuit_summary", message: "circuit_summary a.circuit.tsx", state: "running" }, NOW).strip?.tone).toBe("running")
   })
 
   test("a click leaves a running or done strip alone", () => {
-    const running = afterActivity({ tool: "bom", message: "bom", state: "running" }, NOW)
+    const running = afterActivity({ tool: "circuit_summary", message: "circuit_summary", state: "running" }, NOW)
     expect(afterClick(running)).toBe(running)
     expect(afterClick(NO_STRIP)).toBe(NO_STRIP)
   })

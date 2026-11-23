@@ -1,4 +1,4 @@
-// "Is this board ready to order?" in plain lines, the same for the bom tool and command, the end of the fabrication
+// "Is this board ready to order?" in plain lines, the same for the BOM view and command, the end of the fabrication
 // export, the package's README and the Studio's BOM section. Pure: it reads a built design and its BOM lines. It
 // checks only what copperflow knows: no price, no stock, nothing fetched.
 import type { Design } from "../engine/design.js"
@@ -13,7 +13,7 @@ export const ORDER_REPORT_MAX_LINES = 40
 const PLACEHOLDER_CODE = "footprint-placeholder"
 const counted = (n: number, word: string, plural = `${word}s`) => `${n} ${n === 1 ? word : plural}`
 const BUILT_IN_HOW =
-  'Add a number to a built-in part: set_props { part, props: { supplierPartNumbers: "jlcpcb:<number>" } } in the file that writes it (a sheet\'s part by its name in the .sheet.tsx).'
+  'Add a number to a built-in part: edit_circuit set_props { part, props: { supplierPartNumbers: "jlcpcb:<number>" } } in the file that writes it (a sheet\'s part by its name in the .sheet.tsx).'
 const LIBRARY_HOW =
   'Add a number to a library part: suppliers: { jlcpcb: "<number>" } in parts/<id>/part.yaml, then copperflow parts build (or create_part again with replace); a person then verifies it again.'
 const NO_PRICE = "No price or stock is checked: copperflow stores neither."
@@ -105,5 +105,5 @@ export function orderReportLines(design: Design, bom: readonly BomLine[]): strin
 export function formatOrderReport(design: Design, bom: readonly BomLine[], options: { short?: boolean } = {}): string {
   const lines = orderReportLines(design, bom)
   if (!options.short) return lines.join("\n")
-  return [...lines.filter((line) => line.startsWith("Ready for ")), `The whole order report: the bom tool, or copperflow bom ${design.file}.`].join("\n")
+  return [...lines.filter((line) => line.startsWith("Ready for ")), `The whole order report: circuit_summary's bom view, or copperflow bom ${design.file}.`].join("\n")
 }

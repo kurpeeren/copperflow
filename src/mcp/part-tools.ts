@@ -1,4 +1,4 @@
-// The library part tools beside create_part: part_info (part.yaml, its footprint's pads under the pins, and the
+// The library part tools beside create_part: list_parts { id } (part.yaml, its footprint's pads under the pins, and the
 // verification checklist) and set_part_fields (supplier numbers, MPN, manufacturer, description of an existing part).
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
@@ -39,7 +39,7 @@ async function partPadLines(root: string, id: string, part: Part): Promise<strin
   return [`--- pads of ${fromFile ? path : part.footprint}: number, centre, size (mm), hole, pin ---`, ...padLines(footprint.pads, (number) => part.pins[number]?.name)]
 }
 
-/** part_info: part.yaml, the pads under the pins, then verification.md. */
+/** list_parts { id }: part.yaml, the pads under the pins, then verification.md. */
 export async function partInfo(root: string, id: string): Promise<string> {
   const part = await readPart(root, id)
   const checklist = await readFile(join(partDir(root, id), "verification.md"), "utf8").catch(() => "(no verification.md)")

@@ -1,4 +1,4 @@
-// The 3D model files: copperflow glb and the MCP tool export_model, which writes the STEP file or the GLB file.
+// The 3D model files: copperflow glb and the MCP tool export { as: "step" | "glb" }, which writes the STEP file or the GLB file.
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -125,7 +125,7 @@ describe("copperflow glb", () => {
   })
 })
 
-describe("export_model", () => {
+describe("export { as: \"step\" | \"glb\" }", () => {
   let client: Client
 
   beforeEach(async () => {
@@ -141,24 +141,24 @@ describe("export_model", () => {
   })
 
   async function call(args: Record<string, unknown>) {
-    const result = await client.callTool({ name: "export_model", arguments: { file: "led.circuit.tsx", ...args } })
+    const result = await client.callTool({ name: "export", arguments: { file: "led.circuit.tsx", ...args } })
     const content = result.content as Array<{ type: string; text: string }>
     return { text: content.map((c) => c.text).join("\n"), isError: result.isError === true }
   }
 
-  test("takes the circuit, the format, and optionally a project file and a look, and says it writes files", async () => {
+  test("takes the circuit, the kind, and optionally a project file and a look, and says it writes files", async () => {
     const { tools } = await client.listTools()
-    const tool = tools.find((t) => t.name === "export_model")
-    expect(Object.keys(tool?.inputSchema.properties ?? {})).toEqual(["file", "format", "out", "look"])
-    expect(tool?.inputSchema.required).toEqual(["file", "format"])
+    const tool = tools.find((t) => t.name === "export")
+    expect(Object.keys(tool?.inputSchema.properties ?? {})).toEqual(["file", "as", "out", "look"])
+    expect(tool?.inputSchema.required).toEqual(["file", "as"])
     expect(tool?.annotations).toMatchObject({ destructiveHint: false })
     expect(tool?.annotations?.readOnlyHint).not.toBe(true)
     expect(tool?.description).toMatch(/STEP/)
     expect(tool?.description).toMatch(/GLB/)
   })
 
-  test("format step writes the STEP file, as copperflow step does, for a design that is not finished too", async () => {
-    const answer = await call({ format: "step" })
+  test("as step writes the STEP file, as copperflow step does, for a design that is not finished too", async () => {
+    const answer = await call({ as: "step" })
     expect(answer).toEqual({
       isError: false,
       text: [
@@ -169,21 +169,21 @@ describe("export_model", () => {
     expect(productNames(readStep(await readFile(join(root, "led.step"), "utf8")))).toEqual(["led", "board", "R1", "U1"])
   })
 
-  test("format glb writes the GLB file, in a look when one is asked for", async () => {
-    const answer = await call({ format: "glb", out: "cad/led.glb", look: { mask: "blue" } })
+  test("as glb writes the GLB file, in a look when one is asked for", async () => {
+    const answer = await call({ as: "glb", out: "cad/led.glb", look: { mask: "blue" } })
     expect(answer.isError).toBe(false)
     expect(answer.text.split("\n")[0]).toMatch(/^Wrote cad\/led\.glb \(\d+ kB\): the board as made \(blue mask, ENIG\) and 2 parts as simple shapes/)
     expect(readGlb(await readFile(join(root, "cad", "led.glb"))).json.asset.version).toBe("2.0")
   })
 
-  test("an empty look with format step is no look", async () => {
-    expect((await call({ format: "step", look: {} })).isError).toBe(false)
+  test("an empty look with as step is no look", async () => {
+    expect((await call({ as: "step", look: {} })).isError).toBe(false)
   })
 
   test("refuses a look for a STEP file, a file of the other kind, and a file outside the project", async () => {
-    expect(await call({ format: "step", look: { mask: "blue" } })).toEqual({ isError: true, text: "look is for format glb: a STEP file has no colours of the board as made" })
-    expect(await call({ format: "glb", out: "led.step" })).toEqual({ isError: true, text: "out takes a file ending in .glb (got led.step)" })
-    expect((await call({ format: "step", out: "../led.step" })).text).toMatch(/outside the project/)
+    expect(await call({ as: "step", look: { mask: "blue" } })).toEqual({ isError: true, text: "look is for format glb: a STEP file has no colours of the board as made" })
+    expect(await call({ as: "glb", out: "led.step" })).toEqual({ isError: true, text: "out takes a file ending in .glb (got led.step)" })
+    expect((await call({ as: "step", out: "../led.step" })).text).toMatch(/outside the project/)
     expect(await exists("led.step")).toBe(false)
     expect(await exists("led.glb")).toBe(false)
   })

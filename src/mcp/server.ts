@@ -2,71 +2,39 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js"
 import { z } from "zod"
 import { readFile } from "node:fs/promises"
-import {
-  bomWithReport,
-  exportPackage,
-  formatBomMarkdown,
-  listParts,
-  PartSchema,
-  placePart,
-  checkCircuit,
-  editCircuit,
-  formatHistory,
-  formatSummary,
-  listCircuits,
-  listHistory,
-  loadCircuit,
-  resolveCircuit,
-  redoChange,
-  renameDesignators,
-  undoChange,
-  type Edit,
-} from "../core/index.js"
+import { fileURLToPath } from "node:url"
+import { checkCircuit, editCircuit, formatHistory, listHistory, listParts, redoChange, undoChange, type Edit } from "../core/index.js"
 import type { DesignSource } from "../core/bom.js"
 import { buildWith } from "../core/design-source.js"
-import { FootprintFileSchema } from "../engine/footprints/file.js"
 import { VERSION } from "../version.js"
-import { batchSummary, describeRefusal, editItem, firstRefusal, kindOf, moveNotes, planNets, toEdit, unknownPourNet } from "./batch.js"
-import { formatCompactCheck, formatCompactSummary, formatInstanceSummary, formatPartSummary, type SheetView } from "./compact.js"
-import { importsSheet, instanceAt, type Flattened } from "./compact-sheets.js"
-import { readCard } from "../core/sheet-card.js"
-import { DESCRIBE_SHEET_DESCRIPTION, describeSheetInput, describeSheetTool, instanceCard, withCard } from "./sheet-card-tools.js"
-import { formatCopperSummary } from "./copper-summary.js"
-import { BOARD_SUMMARY_DESCRIPTION, formatBoardSummary } from "./board-summary.js"
+import { planNets } from "./batch.js"
+import { formatCompactCheck } from "./compact.js"
+import { DESCRIBE_SHEET_DESCRIPTION, describeSheetInput, describeSheetTool } from "./sheet-card-tools.js"
 import * as project from "./project-tools.js"
-import { lockedNames } from "../studio/place-runner.js"
-import * as copper from "./copper-tools.js"
-import * as fillet from "./fillet-tools.js"
-import * as pour from "./pour-tools.js"
 import * as router from "./route-tools.js"
 import * as placer from "./place-tools.js"
+import * as folded from "./folded-tools.js"
 import { CREATE_PART_DESCRIPTION, createPartInput, createPartTool } from "./create-part.js"
 import { SIMULATE_DESCRIPTION, simulateInput } from "./simulate-tool.js"
 import { simulate } from "../core/simulate.js"
 import { IMPORT_PART_DESCRIPTION, importPart, importPartInput } from "./import-part.js"
-import { IMPORT_BOARD_DESCRIPTION, importBoardInput, importBoardTool } from "./board-import-tool.js"
 import { IMPORT_GRAPHIC_DESCRIPTION, importGraphicInput, importGraphicTool } from "./graphic-tool.js"
 import { MAKE_SHEET_DESCRIPTION, makeSheet, makeSheetInput } from "./make-sheet.js"
 import { NEW_CIRCUIT_DESCRIPTION, newCircuit, newCircuitInput } from "./new-circuit.js"
-import { fileURLToPath } from "node:url"
 import { compactToolList } from "./compact-tool-list.js"
 import { createGuideMemory, GUIDE_DESCRIPTION, guideInSession, guideInput, skillResources } from "./guide.js"
-import { ATTACH_DATASHEET_DESCRIPTION, attachDatasheetInput, attachDatasheetTool } from "./datasheet-tools.js"
 import { RENDER_DESCRIPTION, renderInput, renderTool } from "./render-tool.js"
 import { changeTarget, changeText, changeView } from "../core/change-view.js"
 import { registerModuleTools } from "./module-tools.js"
-import { EXPORT_MODEL_DESCRIPTION, exportModelInput, exportModelTool } from "./model-tool.js"
-import { EXPORT_HTML_DESCRIPTION, exportHtmlInput, exportHtmlTool } from "./html-tool.js"
 import { OPEN_STUDIO_DESCRIPTION, openStudio, openStudioInput } from "./open-studio.js"
-import { BOARD_DESCRIPTION, boardInput, boardTool } from "./board-tool.js"
-import { partInfo, SET_PART_FIELDS_DESCRIPTION, setPartFieldsInput, setPartFieldsTool } from "./part-tools.js"
+import { partInfo } from "./part-tools.js"
 import { SET_RULES_DESCRIPTION, setRulesInput, setRulesTool } from "./rules-tool.js"
 import type { Renderer } from "../core/render.js"
-import { renameMapping } from "./batch-steps.js"
-import { ADD_TEXT_DESCRIPTION, addTextInput, textEdit } from "./text-tool.js"
 import { currentReporter, tellToolActivity, type Reporter } from "./tool-activity.js"
 import { studioLink, type StudioLink } from "./studio-activity.js"
-import { exportFabricationTool } from "./fabrication-tool.js"
+import { SUMMARY_DESCRIPTION, summaryInput, summaryTool } from "./summary-tool.js"
+import { EXPORT_DESCRIPTION, exportInput, exportTool } from "./export-tool.js"
+import { EDIT_DESCRIPTION, editInput, editTool } from "./edit-tool.js"
 
 /** The opening line and the rules that hold wherever the server runs. */
 const INSTRUCTIONS_INTRO = "copperflow lets you design circuit boards (*.circuit.tsx files) together with a human, who edits the same files in the Studio."
@@ -82,12 +50,11 @@ ${INSTRUCTIONS_RULES}
 - A new board starts with a plan, before any circuit file: guide { topic: "planning" } (the questions to ask the person, what to look up first, the blocks and their ports, one sub-agent per block).`
 
 const file = z.string().describe("Circuit file")
-const SHEET_FILE = /\.sheet\.tsx$/
 const literal = z.union([z.string(), z.number(), z.boolean()])
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false }
 
 export interface ServerOptions {
-  /** Builds the design for check_circuit, bom, export_package and export_fabrication; tests pass one that runs in this process. */
+  /** Builds the design for check_circuit, circuit_summary and export; tests pass one that runs in this process. */
   engine?: DesignSource
   /** Fetches for import_part; tests pass one that answers from fixtures. */
   fetch?: typeof fetch
@@ -118,76 +85,9 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
       return apply(circuit, plan.edits, `connect nets ${counts}`, `connected ${plan.edits.length} pins (${counts}${skipped})`, added)
     })
 
-  server.registerTool(
-    "list_circuits",
-    { description: "List the circuit files (*.circuit.tsx) in the project.", annotations: READ_ONLY },
-    () => run(async () => (await listCircuits(root)).join("\n") || "No circuit files found."),
-  )
-
-  server.registerTool(
-    "circuit_summary",
-    {
-      description:
-        'Summarize a circuit: one line per part and per net, then locked parts, marks from the human and lock violations. filter shows one part or sub-sheet instance; detail "full" lists every prop and trace.',
-      inputSchema: {
-        file,
-        detail: z.enum(["compact", "full"]).optional().describe('Default "compact"'),
-        filter: z.string().optional().describe("A part or instance, e.g. J2 or PS1"),
-      },
-      annotations: READ_ONLY,
-    },
-    ({ file: circuit, detail, filter }) =>
-      run(async () => {
-        const loaded = await loadCircuit(root, circuit)
-        if (filter) {
-          const flat = await flatDesign(root, loaded.file, options.engine)
-          const isInstance = (flat.instances ?? []).some((instance) => instance.path === filter)
-          const part = isInstance ? undefined : formatPartSummary(loaded, flat, filter)
-          if (part !== undefined) return part
-          if (!isInstance) {
-            const instances = (flat.instances ?? []).map((instance) => instance.path)
-            const also = instances.length > 0 ? `; the instances are ${instances.join(", ")}` : ""
-            throw new Error(`There is no part or sub-sheet instance ${filter} in ${loaded.file}${also}`)
-          }
-          const card = instanceCard(instanceAt(loaded.file, flat, filter))
-          const described = card.does !== undefined || card.ports.some((port) => port.type || port.carries)
-          return described ? withCard(formatInstanceSummary(loaded, flat, filter), card) : formatInstanceSummary(loaded, flat, filter)
-        }
-        const card = (text: string) => (SHEET_FILE.test(loaded.file) ? withCard(text, readCard(loaded.source)) : text)
-        if (detail === "full") return card(formatSummary(loaded))
-        const usesSheets = loaded.model.imports.some((spec) => importsSheet(spec.source))
-        return card(formatCompactSummary(loaded, usesSheets ? await sheetView(root, circuit, options.engine) : undefined))
-      }),
-  )
-
-  server.registerTool(
-    "set_props",
-    {
-      description:
-        "Set literal props of a part (pcbX, pcbY, pcbRotation, schX, resistance, footprint, …); missing props are added. schNameAt, schValueAt and pcbNameAt are label offsets { x, y }; noConnect: \"pin3,pin10\" flags pins meant to stay open; supplierPartNumbers: \"jlcpcb:C25804\". null removes these.",
-      inputSchema: {
-        file,
-        part: z.string().describe("Part name, e.g. R1"),
-        props: z
-          .record(z.string(), z.union([literal, z.object({ x: z.number(), y: z.number() }), z.null()]))
-          .describe('e.g. { "pcbX": 4, "resistance": "10k" }'),
-      },
-    },
-    ({ file: circuit, part, props }) => {
-      const changes = Object.entries(props).map(([key, value]) => `${key}=${JSON.stringify(value)}`)
-      return edit(circuit, [{ kind: "setProps", part, props }], `set ${part} ${changes.join(" ")}`)
-    },
-  )
-
-  server.registerTool(
-    "remove_part",
-    {
-      description: "Remove a part and every trace connected to it.",
-      inputSchema: { file, part: z.string() },
-      annotations: { destructiveHint: true },
-    },
-    ({ file: circuit, part }) => edit(circuit, [{ kind: "removePart", part }], `remove ${part}`),
-  )
+  const ports = { root, ...(options.engine ? { engine: options.engine } : {}) }
+  const renderer = options.renderer ? { renderer: options.renderer } : {}
+  server.registerTool("circuit_summary", { description: SUMMARY_DESCRIPTION, inputSchema: summaryInput, annotations: READ_ONLY }, (input) => run(() => summaryTool(ports, input)))
 
   server.registerTool(
     "add_trace",
@@ -213,16 +113,6 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
   )
 
   server.registerTool(
-    "remove_trace",
-    {
-      description: "Schematic trace (a connection, not copper): remove the one between two selectors (in either direction).",
-      inputSchema: { file, from: z.string(), to: z.string() },
-      annotations: { destructiveHint: true },
-    },
-    ({ file: circuit, from, to }) => edit(circuit, [{ kind: "removeTrace", from, to }], `remove trace ${from} -> ${to}`),
-  )
-
-  server.registerTool(
     "check_circuit",
     {
       description:
@@ -234,78 +124,25 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
       run(async () => formatCompactCheck(circuit, await checkCircuit(root, circuit, designOptions), filter)),
   )
 
-  const ports = { root, ...(options.engine ? { engine: options.engine } : {}) }
-  server.registerTool(
-    "route_track",
-    { description: copper.ROUTE_TRACK_DESCRIPTION, inputSchema: copper.routeTrackInput },
-    (input) => run(() => copper.routeTrack(ports, input)),
-  )
-  server.registerTool("add_via", { description: copper.ADD_VIA_DESCRIPTION, inputSchema: copper.addViaInput }, (input) => run(() => copper.addVia(ports, input)))
+  server.registerTool("route_track", { description: folded.ROUTE_DESCRIPTION, inputSchema: folded.routeInput }, (input) => run(() => folded.routeTool(ports, input)))
   server.registerTool(
     "remove_copper",
-    { description: copper.REMOVE_COPPER_DESCRIPTION, inputSchema: copper.removeCopperInput, annotations: { destructiveHint: true } },
-    (input) => run(() => copper.removeCopper(ports, input)),
+    { description: folded.REMOVE_DESCRIPTION, inputSchema: folded.removeInput, annotations: { destructiveHint: true } },
+    (input) => run(() => folded.removeTool(ports, input)),
   )
-  server.registerTool(
-    "fillet_tracks",
-    { description: fillet.FILLET_TRACKS_DESCRIPTION, inputSchema: fillet.filletTracksInput },
-    (input) => run(() => fillet.filletTracks(ports, input)),
-  )
-  server.registerTool(
-    "straighten_tracks",
-    { description: fillet.STRAIGHTEN_TRACKS_DESCRIPTION, inputSchema: fillet.straightenTracksInput },
-    (input) => run(() => fillet.straightenTracks(ports, input)),
-  )
+  server.registerTool("fillet_tracks", { description: folded.FILLET_DESCRIPTION, inputSchema: folded.filletInput }, (input) => run(() => folded.filletTool(ports, input)))
   // The two long runs hear the client's cancel (extra.signal): the worker is ended and nothing is written afterwards.
   server.registerTool("autoplace", { description: placer.AUTOPLACE_DESCRIPTION, inputSchema: placer.autoplaceInput }, (input, extra) => run((report) => placer.autoplace(ports, input, { report, signal: extra.signal })))
-  server.registerTool("fit_board", { description: BOARD_DESCRIPTION, inputSchema: boardInput }, (input) => run(() => boardTool(ports, input)))
+  server.registerTool("fit_board", { description: folded.FIT_DESCRIPTION, inputSchema: folded.fitInput }, (input) => run(() => folded.fitTool(ports, input)))
   server.registerTool("set_rules", { description: SET_RULES_DESCRIPTION, inputSchema: setRulesInput }, (input) => run(() => setRulesTool(ports, input)))
-  server.registerTool("import_board", { description: IMPORT_BOARD_DESCRIPTION, inputSchema: importBoardInput }, (input) => run(() => importBoardTool(ports, input)))
   server.registerTool("import_graphic", { description: IMPORT_GRAPHIC_DESCRIPTION, inputSchema: importGraphicInput }, (input) => run(() => importGraphicTool(ports, input)))
   server.registerTool("autoroute", { description: router.AUTOROUTE_DESCRIPTION, inputSchema: router.autorouteInput }, (input, extra) => run((report) => router.autoroute(ports, input, { report, signal: extra.signal })))
-  server.registerTool(
-    "unroute",
-    { description: router.UNROUTE_DESCRIPTION, inputSchema: router.unrouteInput, annotations: { destructiveHint: true } },
-    (input) => run(() => router.unroute(ports, input)),
-  )
-  server.registerTool("add_pour", { description: pour.ADD_POUR_DESCRIPTION, inputSchema: pour.addPourInput }, (input) => run(() => pour.addPour(ports, input)))
-  server.registerTool(
-    "remove_pour",
-    { description: pour.REMOVE_POUR_DESCRIPTION, inputSchema: pour.removePourInput, annotations: { destructiveHint: true } },
-    (input) => run(() => pour.removePour(ports, input)),
-  )
-  server.registerTool("add_hole", { description: pour.ADD_HOLE_DESCRIPTION, inputSchema: pour.addHoleInput }, (input) => run(() => pour.addHole(ports, input)))
-  server.registerTool(
-    "remove_hole",
-    { description: pour.REMOVE_HOLE_DESCRIPTION, inputSchema: pour.removeHoleInput, annotations: { destructiveHint: true } },
-    (input) => run(() => pour.removeHole(ports, input)),
-  )
-  server.registerTool(
-    "copper_summary",
-    { description: copper.COPPER_SUMMARY_DESCRIPTION, inputSchema: { file }, annotations: READ_ONLY },
-    ({ file: circuit }) => run(async () => formatCopperSummary(circuit, await copper.buildOf(ports, circuit))),
-  )
-  server.registerTool(
-    "board_summary",
-    {
-      description: BOARD_SUMMARY_DESCRIPTION,
-      inputSchema: { file, detail: z.enum(["compact", "full"]).optional().describe('"compact" (default) or "full"') },
-      annotations: READ_ONLY,
-    },
-    ({ file: circuit, detail }) =>
-      run(async () => {
-        const resolved = await resolveCircuit(root, circuit)
-        const design = await copper.buildOf(ports, resolved.file)
-        return formatBoardSummary(resolved.file, design, new Set(await lockedNames(resolved.path, design)), detail)
-      }),
-  )
   // Not read-only: out writes the picture into the project.
   server.registerTool("render", { description: RENDER_DESCRIPTION, inputSchema: renderInput, annotations: { readOnlyHint: false, destructiveHint: false } }, (input) =>
-    renderTool({ ...ports, ...(options.renderer ? { renderer: options.renderer } : {}), report: currentReporter() }, input),
+    renderTool({ ...ports, ...renderer, report: currentReporter() }, input),
   )
   server.registerTool("project_status", { description: project.PROJECT_STATUS_DESCRIPTION, inputSchema: {}, annotations: READ_ONLY }, () => run(() => project.projectStatus(ports)))
-  server.registerTool("note_decision", { description: project.NOTE_DECISION_DESCRIPTION, inputSchema: project.noteDecisionInput }, (input) => run(() => project.noteDecisionTool(ports, input)))
-  server.registerTool("set_project", { description: project.SET_PROJECT_DESCRIPTION, inputSchema: project.setProjectInput }, (input) => run(() => project.setProjectTool(ports, input)))
+  server.registerTool("note_decision", { description: folded.NOTE_DESCRIPTION, inputSchema: folded.noteInput }, (input) => run(() => folded.noteTool(ports, input)))
 
   server.registerTool(
     "new_circuit",
@@ -316,72 +153,21 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
   server.registerTool("describe_sheet", { description: DESCRIBE_SHEET_DESCRIPTION, inputSchema: describeSheetInput }, (input) => run(() => describeSheetTool(root, input)))
   server.registerTool("simulate", { description: SIMULATE_DESCRIPTION, inputSchema: simulateInput, annotations: READ_ONLY }, (input) => run(() => simulate(root, input, options.engine)))
   server.registerTool("make_sheet", { description: MAKE_SHEET_DESCRIPTION, inputSchema: makeSheetInput }, (input) => run(() => makeSheet(root, input, options.engine)))
+  server.registerTool("edit_circuit", { description: EDIT_DESCRIPTION, inputSchema: editInput }, (input) => run(() => editTool(ports, input)))
 
-  server.registerTool(
-    "edit_circuit",
-    {
-      description:
-        'Apply several edits in order as ONE change, each with one key shaped like the tool of that name (connect also takes corners). add_drawing, set_drawing, remove_drawing, add_page, rename_page, remove_page, wire_corners, rename_parts, rename_port, sheet_size, set_pour, set_hole: guide { topic: "writing-circuits" }. One refused edit writes nothing; the answer names it.',
-      inputSchema: { file, edits: z.array(editItem).min(1).max(100) },
-    },
-    ({ file: circuit, edits }) =>
-      run(async () => {
-        const rename = edits.findIndex((item) => item.rename_parts !== undefined)
-        if (rename !== -1 && edits.length > 1) throw new Error(describeRefusal({ index: rename, reason: "rename_parts goes alone in its edit_circuit call; send the other edits in another" }, edits.length, "rename_parts"))
-        if (rename !== -1) {
-          try {
-            kindOf(edits[0]!)
-          } catch (error) {
-            throw new Error(describeRefusal({ index: 0, reason: (error as Error).message }, 1, "rename_parts"))
-          }
-          return renameStep(circuit, edits[0]?.rename_parts)
-        }
-        const converted: Awaited<ReturnType<typeof toEdit>>[] = []
-        for (const [index, item] of edits.entries()) {
-          try {
-            converted.push(await toEdit(root, circuit, item, converted.map((done) => done.edit)))
-          } catch (error) {
-            throw new Error(describeRefusal({ index, reason: (error as Error).message }, edits.length, Object.keys(item)[0] ?? "edit"))
-          }
-        }
-        const list = converted.map((c) => c.edit)
-        const badNet = await unknownPourNet(root, circuit, list, options.engine)
-        if (badNet) throw new Error(describeRefusal(badNet, edits.length, "add_pour"))
-        const summary = batchSummary(converted.map((c) => c.label))
-        const notes = list.some((e) => e.kind === "movePartToPage") ? await movesLeaveBehind(root, circuit, list) : []
-        try {
-          return await apply(circuit, list, summary, `${edits.length} edit${edits.length === 1 ? "" : "s"}: ${summary.slice(5)}`, notes)
-        } catch (error) {
-          const refusal = await firstRefusal(root, circuit, list)
-          if (!refusal) throw new Error(`The batch was refused as a whole: ${(error as Error).message}
-Nothing was written.`)
-          throw new Error(describeRefusal(refusal, edits.length, Object.keys(edits[refusal.index] ?? {})[0] ?? "edit"))
-        }
-      }),
-  )
-
-  server.registerTool(
-    "list_parts",
-    { description: 'List the parts library (parts/) with verification status. Built-in kinds (resistor, capacitor, led, pinheader, …) are not here: guide { topic: "writing-circuits" } lists them.', annotations: READ_ONLY },
-    () =>
-      run(async () => {
-        const parts = await listParts(root)
-        if (parts.length === 0) return "The parts library is empty. Create parts with create_part."
-        return parts
-          .map((p) => `${p.id}  <${p.component}>  ${p.title}  ${p.footprint}  ${p.verified ? "verified" : "NOT verified"}${p.origin ? `  ${p.origin}` : ""}`)
-          .join("\n")
-      }),
-  )
-
-  server.registerTool(
-    "part_info",
-    { description: "Show a library part's part.yaml, its footprint's pads and the verification checklist.", inputSchema: { id: z.string() }, annotations: READ_ONLY },
-    ({ id }) => run(() => partInfo(root, id)),
+  server.registerTool("list_parts", { description: folded.LIST_PARTS_DESCRIPTION, inputSchema: folded.listPartsInput, annotations: READ_ONLY }, ({ id }) =>
+    run(async () => {
+      if (id !== undefined) return partInfo(root, id)
+      const parts = await listParts(root)
+      if (parts.length === 0) return "The parts library is empty. Create parts with create_part."
+      return parts
+        .map((p) => `${p.id}  <${p.component}>  ${p.title}  ${p.footprint}  ${p.verified ? "verified" : "NOT verified"}${p.origin ? `  ${p.origin}` : ""}`)
+        .join("\n")
+    }),
   )
 
   server.registerTool("create_part", { description: CREATE_PART_DESCRIPTION, inputSchema: createPartInput }, (input) => run(() => createPartTool(root, input)))
-  server.registerTool("set_part_fields", { description: SET_PART_FIELDS_DESCRIPTION, inputSchema: setPartFieldsInput }, (input) => run(() => setPartFieldsTool(root, input)))
-  server.registerTool("attach_datasheet", { description: ATTACH_DATASHEET_DESCRIPTION, inputSchema: attachDatasheetInput }, (input) => run(() => attachDatasheetTool(root, input)))
+  server.registerTool("set_part_fields", { description: folded.PART_FIELDS_DESCRIPTION, inputSchema: folded.partFieldsInput }, (input) => run(() => folded.partFieldsTool(root, input)))
   // One server is one MCP session (stdio: the process), so this memory is the session's.
   const guideSeen = createGuideMemory()
   server.registerTool("guide", { description: GUIDE_DESCRIPTION, inputSchema: guideInput, annotations: READ_ONLY }, (input) => run(() => guideInSession(guideSeen, input)))
@@ -393,74 +179,9 @@ Nothing was written.`)
 
   server.registerTool("import_part", { description: IMPORT_PART_DESCRIPTION, inputSchema: importPartInput, annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true } }, (input) => run(() => importPart(root, input, options.fetch)))
 
-  server.registerTool(
-    "place_part",
-    {
-      description: 'Add a part to a circuit: a library part id from list_parts or a built-in kind (guide { topic: "writing-circuits" }).',
-      inputSchema: {
-        file,
-        part: z.string(),
-        name: z.string().describe("New designator, e.g. U2 or R5"),
-        props: z.record(z.string(), literal).optional().describe('e.g. { "resistance": "10k" }'),
-        page: z.string().optional().describe('Schematic page, made when missing; default "Main"'),
-      },
-    },
-    ({ file: circuit, part, name, props, page }) =>
-      run(async () => {
-        const result = await placePart(root, circuit, { part, name, ...(props ? { props } : {}), ...(page ? { page } : {}) }, { author: "ai" })
-        return `Change ${result.entry.id} applied: ${result.entry.summary}. Connect it with add_trace; run check_circuit once at the end.`
-      }),
+  server.registerTool("export", { description: EXPORT_DESCRIPTION, inputSchema: exportInput, annotations: { readOnlyHint: false, destructiveHint: false } }, (input) =>
+    exportTool({ ...ports, ...renderer, report: currentReporter() }, input),
   )
-
-  server.registerTool(
-    "bom",
-    {
-      description: "Bill of materials for a circuit, grouped by part, and whether the board is ready to order.",
-      inputSchema: { file },
-      annotations: READ_ONLY,
-    },
-    ({ file: circuit }) =>
-      run(async () => {
-        const { lines, report } = await bomWithReport(root, circuit, designOptions)
-        return `${formatBomMarkdown(lines)}\n${report}`
-      }),
-  )
-
-  server.registerTool(
-    "export_fabrication",
-    {
-      description:
-        "Write the JLCPCB fabrication files to <name>-fab/ and a zip: Gerbers, drills, pick-and-place and BOM CSVs, pictures of the board as made and a STEP model. Call it after a clean check_circuit: a design with errors is refused.",
-      inputSchema: {
-        file,
-        out: z.string().optional().describe("Project folder to write into, e.g. fab"),
-      },
-      annotations: { readOnlyHint: false, destructiveHint: false },
-    },
-    (input) => exportFabricationTool({ ...ports, ...(options.renderer ? { renderer: options.renderer } : {}), report: currentReporter() }, input),
-  )
-
-  server.registerTool("export_model", { description: EXPORT_MODEL_DESCRIPTION, inputSchema: exportModelInput, annotations: { readOnlyHint: false, destructiveHint: false } }, (input) =>
-    run(() => exportModelTool({ root, ...designOptions, ...(options.renderer ? { renderer: options.renderer } : {}) }, input)),
-  )
-
-  server.registerTool("export_html", { description: EXPORT_HTML_DESCRIPTION, inputSchema: exportHtmlInput, annotations: { readOnlyHint: false, destructiveHint: false } }, (input) =>
-    run((report) => exportHtmlTool({ root, ...designOptions, ...(options.renderer ? { renderer: options.renderer } : {}), report }, input)),
-  )
-
-  server.registerTool(
-    "export_package",
-    {
-      description: "Write a folder for whoever orders and checks the parts: the BOM, local datasheets and each library part's verification status. The factory's files come from export_fabrication.",
-      inputSchema: { file },
-    },
-    ({ file: circuit }) =>
-      run(async () => {
-        const result = await exportPackage(root, circuit, designOptions)
-        return `Wrote ${result.files.length} files to ${result.outDir}:\n${result.files.join("\n")}`
-      }),
-  )
-
 
   server.registerTool(
     "recent_changes",
@@ -481,72 +202,24 @@ Nothing was written.`)
     "undo_change",
     {
       description:
-        'Undo one of your own changes: the newest, or the given id. A human\'s "Redo:" of it is theirs; you cannot undo it.',
-      inputSchema: { id: z.string().optional().describe("e.g. c0003") },
+        'Undo one of your own changes: the newest, or the given id. A human\'s "Redo:" of it is theirs; you cannot undo it. redo: true redoes one of your own undos instead: the newest, or the given id (the undo\'s or the undone change\'s); a human\'s undo is theirs, you cannot redo it.',
+      inputSchema: { id: z.string().optional().describe("e.g. c0003"), redo: z.boolean().optional() },
     },
-    ({ id }) =>
+    ({ id, redo }) =>
       run(async () => {
         // The built design tells which tracks start on locked parts, so copper can be undone while parts are locked.
         const design = (circuit: string) => buildWith(root, circuit, options.engine)
-        const entry = await undoChange(root, { author: "ai", design, ...(id ? { id } : {}) })
+        const request = { author: "ai" as const, design, ...(id ? { id } : {}) }
+        const entry = redo === true ? await redoChange(root, request) : await undoChange(root, request)
         return `Change ${entry.id} applied: ${entry.summary}`
       }),
   )
-
-  server.registerTool(
-    "redo_change",
-    { description: "Redo one of your own undos: the newest, or the given id (the undo's or the undone change's). A human's undo is theirs; you cannot redo it.", inputSchema: { id: z.string().optional() } },
-    ({ id }) =>
-      run(async () => {
-        const design = (circuit: string) => buildWith(root, circuit, options.engine)
-        const entry = await redoChange(root, { author: "ai", design, ...(id ? { id } : {}) })
-        return `Change ${entry.id} applied: ${entry.summary}`
-      }),
-  )
-
-  server.registerTool("add_text", { description: ADD_TEXT_DESCRIPTION, inputSchema: addTextInput }, (input) =>
-    run(async () => {
-      const { edit: one, label } = await textEdit(root, input)
-      return apply(input.file, [one], label)
-    }),
-  )
-
-  /** Renames designators as one change, the layout file's nets with them (Design → Annotate). */
-  const renameStep = async (circuit: string, value: unknown) => {
-    const mapping = renameMapping(value)
-    const words = mapping.map(({ from, to }) => `${from} -> ${to}`).join(", ")
-    const { entry } = await renameDesignators(root, circuit, mapping, { author: "ai", summary: `rename ${words}`.slice(0, 200), ...designOptions })
-    return `Change ${entry.id} applied: renamed ${words}`
-  }
 
   server.registerTool("open_studio", { description: OPEN_STUDIO_DESCRIPTION, inputSchema: openStudioInput, annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false } }, (input) => run(() => openStudio({ root }, input)))
   registerModuleTools(server, root, run, options.engine)
   compactToolList(server)
   tellToolActivity(server, options.studio === null ? undefined : (options.studio ?? studioLink({ root })))
   return server
-}
-
-/** What the moves to a page in a batch leave behind, read before anything is written. */
-async function movesLeaveBehind(root: string, circuit: string, edits: Edit[]): Promise<string[]> {
-  const loaded = await loadCircuit(root, circuit)
-  return moveNotes(loaded.source, edits, new Set(loaded.annotations.locks.map((lock) => lock.part)))
-}
-
-/** The flattened design, for a summary of one instance; a build that fails is the answer. */
-async function flatDesign(root: string, circuit: string, engine: DesignSource | undefined): Promise<Flattened> {
-  const view = await sheetView(root, circuit, engine)
-  if ("failure" in view) throw new Error(`The circuit does not build, so its instances cannot be shown: ${view.failure}`)
-  return view.flat
-}
-
-/** The flattened design of a circuit with sub-sheets, or why it could not be built; the summary is given either way. */
-async function sheetView(root: string, circuit: string, engine: DesignSource | undefined): Promise<SheetView> {
-  try {
-    const { circuit: built } = await buildWith(root, circuit, engine)
-    return { flat: built }
-  } catch (error) {
-    return { failure: error instanceof Error ? error.message : String(error) }
-  }
 }
 
 /** add_trace takes from and to (one connection) or nets (many pins), never both. */

@@ -1,7 +1,7 @@
 // fit_board: the board's size, shape and copper layers as ONE change by the agent. With no size it fits a rectangle
 // round the parts (place-tools' fitBoardTool, as Layout → Fit board does); width and height give that rectangle,
 // outline gives a polygon, layers 2 or 4 the copper layers. After a resize the answer names the parts now off the
-// board, as import_board does for a drawn outline.
+// board, as fit_board { drawing } does for a drawn outline.
 import { z } from "zod"
 import { editCircuit, resolveCircuit, type Edit } from "../core/index.js"
 import type { Point } from "../core/types.js"

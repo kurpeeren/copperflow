@@ -1,4 +1,4 @@
-// The board from an SVG drawing, for import_board, `copperflow board --svg` and the Studio's Import board: the drawing
+// The board from an SVG drawing, for fit_board { drawing }, `copperflow board --svg` and the Studio's Import board: the drawing
 // is read as any drawing is (engine/graphics), and its closed shapes are sorted into what the DXF import gives
 // (engine/dxf, BoardFromDrawing), so the rest of the import is the same. The largest closed shape (a filled area's
 // outer ring, one of its openings, or a closed line) is the outline; a closed shape inside it is a hole when it is a

@@ -6,7 +6,7 @@ import { inProjectQueue, readIfThere, writeNew, writeWithHistory } from "./file-
 import { assertMeta, type Author, type HistoryEntry } from "./history.js"
 import { appendToSection, EMPTY_PROJECT, oneLine, PROJECT_PATH, sectionLines, withSection, type ProjectSection } from "./project-text.js"
 
-/** The most items Open holds: set_project refuses a longer list and note_decision { open: true } an item past it. */
+/** The most items Open holds: note_decision { sections } refuses a longer list and note_decision { open: true } an item past it. */
 export const MAX_OPEN_ITEMS = 50
 
 export interface ProjectBlock {
@@ -76,7 +76,7 @@ export async function noteOpen(root: string, text: string, meta: { author: Autho
   const add = (source: string) => {
     const open = sectionLines(source, "Open")
     if (open.some((item) => item.toLowerCase() === line.toLowerCase())) throw new Error(`"${line}" is already open in ${PROJECT_PATH}. Nothing was written.`)
-    if (open.length >= MAX_OPEN_ITEMS) throw new Error(`Open already has ${MAX_OPEN_ITEMS} items: rewrite it with set_project { open }, leaving out what is done. Nothing was written.`)
+    if (open.length >= MAX_OPEN_ITEMS) throw new Error(`Open already has ${MAX_OPEN_ITEMS} items: rewrite it with note_decision { sections: { open } }, leaving out what is done. Nothing was written.`)
     return appendToSection(source, "Open", `- ${line}`)
   }
   return changeProject(root, add, { author: meta.author, summary: `Note open: ${line}` })

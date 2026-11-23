@@ -1,5 +1,5 @@
 // simulate over the MCP server: a library module brought into a fresh project, run with sources set and with the
-// sheet's own cases; module_info then shows each case with its last result.
+// sheet's own cases; list_modules { name } then shows each case with its last result.
 import { afterEach, beforeEach, expect, test } from "vitest"
 import { mkdtemp } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -51,7 +51,7 @@ test("simulate runs a module's sheet with sources set, and its cases without", a
   expect(on.text).toContain("Beyond a limit: none")
   const cases = await call("simulate", { file: "main.circuit.tsx", sheet: "RelayDriver" })
   expect(cases.text).toContain("Cases of RelayDriver: 4 of 4 passed")
-  const info = await call("module_info", { name: "copperflow/RelayDriver" })
+  const info = await call("list_modules", { name: "copperflow/RelayDriver" })
   expect(info.text).toContain('  case "3.3 V control": V12=12, GND=0, CTRL=3.3; expects K1.coil.i 0.027 to 0.033, Q1.vgs 2.5 to 12, LED1.i 0.0015 to 0.0025 (last run: passed)')
   expect(info.text.split("\n").filter((line) => line.startsWith("  case ") && /verified/i.test(line))).toEqual([])
   expect(info.text).toContain("  A case that passes shows the block's DC levels with the models given, not that the module is verified.")

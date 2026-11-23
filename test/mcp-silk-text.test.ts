@@ -1,5 +1,5 @@
-// Text on the board's silkscreen through MCP: add_text with a layer, edit_circuit's add_drawing / set_drawing /
-// remove_drawing by its id, and board_summary listing it.
+// Text on the board's silkscreen through MCP: edit_circuit's add_text with a layer, its add_drawing / set_drawing /
+// remove_drawing by its id, and circuit_summary view "board" listing it.
 import { beforeEach, describe, expect, test } from "vitest"
 import { mkdtemp, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -40,9 +40,10 @@ const source = () => readFile(join(root, FILE), "utf8")
 
 describe("board text through MCP", () => {
   test("add_text with a layer puts the words on the silkscreen and names their id", async () => {
-    const result = await call("add_text", { file: FILE, text: "IO-8 v1", x: 0, y: 8, layer: "top", height: 2 })
+    const result = await edit([{ add_text: { text: "IO-8 v1", x: 0, y: 8, layer: "top", height: 2 } }])
     expect(result.isError, result.text).toBe(false)
-    expect(result.text).toMatch(/^Change c0001 applied: add silkscreentext:1 "IO-8 v1" on the top silkscreen, its ink x -[\d.]+ to [\d.]+, y [\d.]+ to [\d.]+ mm/)
+    expect(result.text).toMatch(/^Change c0001 applied: 1 edit: add silkscreentext:1 "IO-8 v1" on the top silkscreen\nadd silkscreentext:1 "IO-8 v1" on the top silkscreen, its ink x -[\d.]+ to [\d.]+, y [\d.]+ to [\d.]+ mm/)
+    expect(result.text).toMatch(/^Written: silkscreentext:1$/m)
     // 2 mm tall about y = 8: the ink is the letters' height and a stroke wider.
     const [, low, high] = /y ([\d.]+) to ([\d.]+) mm/.exec(result.text) ?? []
     expect(Number(high) - Number(low)).toBeGreaterThan(2)
@@ -51,8 +52,8 @@ describe("board text through MCP", () => {
   })
 
   test("add_text refuses a schematic page or font size with a layer, and too small a height, in plain words", async () => {
-    expect((await call("add_text", { file: FILE, text: "x", x: 0, y: 0, layer: "top", page: "Main" })).text).toMatch(/page and fontSize are for a schematic note/)
-    const small = await call("add_text", { file: FILE, text: "tiny", x: 0, y: 0, layer: "bottom", height: 0.4 })
+    expect((await edit([{ add_text: { text: "x", x: 0, y: 0, layer: "top", page: "Main" } }])).text).toMatch(/page and fontSize are for a schematic note/)
+    const small = await edit([{ add_text: { text: "tiny", x: 0, y: 0, layer: "bottom", height: 0.4 } }])
     expect(small.isError).toBe(true)
     expect(small.text).toContain("height must be at least 0.8 mm")
   })
@@ -64,7 +65,7 @@ describe("board text through MCP", () => {
     const moved = await edit([{ set_drawing: { id: "silkscreentext:1", x: -3, text: "UNDER" } }])
     expect(moved.isError, moved.text).toBe(false)
     expect(await source()).toContain('<silkscreentext text="UNDER" x={-3} y={-8} layer="bottom" rotation={90} />')
-    const summary = await call("board_summary", { file: FILE })
+    const summary = await call("circuit_summary", { file: FILE, view: "board" })
     expect(summary.text).toContain('Silkscreen text (1):\n  silkscreentext:1 "UNDER" bottom at (-3.0, -8.0), 1.5 mm, turned 90°')
     const removed = await edit([{ remove_drawing: { id: "silkscreentext:1" } }])
     expect(removed.isError, removed.text).toBe(false)

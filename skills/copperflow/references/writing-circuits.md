@@ -87,7 +87,7 @@ a wrong shape is answered with the right one. Sheet units on a schematic page, m
   `"junction"` (`x, y`) or `"bus"` (`name` such as `"D[0:7]"`, `points`). Lines take `strokeWidth`,
   `lineStyle` (solid, dashed, dotted) and `color` (`"#000080"`). Without a name it is `G<n>`, and
   the answer says which: `{ "add_drawing": { "text": "5 V in", "x": 2, "y": 1.5, "page": "Power" } }`.
-  The common note is one `add_text` call: `{ file, text, x, y, page?, fontSize? }`.
+  The common note is one `add_text` step: `{ text, x, y, page?, fontSize? }`.
 - `set_drawing` `{ id, …props }` moves or changes one (`name` renames it); `remove_drawing` `{ id }`.
 - `add_page` `{ name }`, `rename_page` `{ from, to }`, `remove_page` `{ name }` (refused while a part is on it; "Main" keeps its name).
 - `wire_corners` `{ from, to, corners: [{ x, y }] }` sets the corners of the trace's schematic wire,
@@ -107,10 +107,10 @@ a wrong shape is answered with the right one. Sheet units on a schematic page, m
 
 Text on the board's silkscreen (its name, a version, a connector's legend) is `<silkscreentext text="IO-8 v1"
 x={0} y={9} layer="top" height={1.5} rotation={0} />` inside `<board>`, centred on x, y in mm; `layer="bottom"`
-is mirrored so it reads from below. Write it with `add_text` `{ file, text, x, y, layer, height?, rotation? }`
+is mirrored so it reads from below. Write it with an `add_text` step `{ text, x, y, layer, height?, rotation? }`
 or `add_drawing` with a `layer`; the answer names its id (`silkscreentext:1`) for `set_drawing` (`text`, `x`,
 `y`, `layer`, `height`, `rotation`, `name`; null removes height, rotation or name) and `remove_drawing`, and
-`board_summary` lists every one. Limits: one line, at most 100 characters, height 0.8 to 20 mm (default
+`circuit_summary` `view: "board"` lists every one. Limits: one line, at most 100 characters, height 0.8 to 20 mm (default
 1.5), and only the characters the lettering draws: A-Z a-z 0-9, space and `- _ + . / ~ ( ) # : % = , !`.
 `check_circuit` reports text over a pad or hole (`silk-on-pad`) and text off the board (`silk-off-board`).
 
@@ -135,31 +135,31 @@ Dark shapes are ink and light shapes cut them out, in the file's order (a white 
 gradients and images are not read. SVG lines keep their `stroke-width`; a DXF has lines of no width (they print at 0.15 mm)
 and fills only from SOLID or HATCH, so give `fill: true` to fill its closed outlines. Move, resize, re-layer or
 remove it with `set_drawing` (`file`, `layer`, `x`, `y`, `width`, `scale`, `rotation`, `fill`, `name`, `net`; null removes `net`) and
-`remove_drawing`; `board_summary` lists it. A bad or missing file is a build warning and the drawing is left out.
+`remove_drawing`; `circuit_summary` `view: "board"` lists it. A bad or missing file is a build warning and the drawing is left out.
 `check_circuit` reports silkscreen ink over a pad or hole (`silk-on-pad`), off the board (`silk-off-board`) and
 lines thinner than a board house prints (`silk-too-thin`). The CLI is `copperflow graphic <file> <drawing> --layer …`.
-`redo_change` `{ id? }` brings back a change you undid by mistake; it never redoes a human's undo.
+`undo_change` `{ id?, redo: true }` brings back a change you undid by mistake; it never redoes a human's undo.
 
 ## Export
 
-`export_fabrication` `{ file, out? }` writes into the circuit's folder, or into the project
+`export` `{ file, as: "fabrication", out? }` writes into the circuit's folder, or into the project
 folder `out` (e.g. `"fab"`). Pass on every `Warning:` line: connections not routed, parts
 without a footprint, silkscreen over pads, parts without an LCSC number (JLCPCB assembly will
 not match them). A design with errors is refused and nothing is written. It writes Gerbers,
 plated and non-plated drills, pick-and-place and the BOM into `<name>-fab/` and
-`<name>-fab.zip`. `bom` and `export_package` read the built design, so parts made in loops count.
-`bom` ends with the order report (ready for bare boards, ready for assembly, each line without a
-supplier part number and how to add one) and `export_fabrication` with its two verdicts;
-`export_package` also writes `pins.md` and a `<part>_pins.h` per library chip, the pin map for the firmware.
+`<name>-fab.zip`. `circuit_summary` `view: "bom"` and `export` `as: "package"` read the built design, so parts made in loops count.
+The BOM view ends with the order report (ready for bare boards, ready for assembly, each line without a
+supplier part number and how to add one) and the fabrication export with its two verdicts;
+`as: "package"` also writes `pins.md` and a `<part>_pins.h` per library chip, the pin map for the firmware.
 
-`export_model` `{ file, format, out?, look? }` writes one 3D model file beside the circuit, for a
-design that still has errors too: `format: "step"` is the STEP file for mechanical CAD (the board
-as a solid, each part as the 3D view draws it, as coloured faces), `format: "glb"` a GLB file a 3D
+`export` `{ file, as: "step" | "glb", out?, look? }` writes one 3D model file beside the circuit, for a
+design that still has errors too: `as: "step"` is the STEP file for mechanical CAD (the board
+as a solid, each part as the 3D view draws it, as coloured faces), `as: "glb"` a GLB file a 3D
 viewer turns (the board as made, in the `look` asked for, and the parts as simple shapes, not their
 real models). Its answer names the parts
 whose height is typical or assumed; pass that on when the person will fit an enclosure around it.
 
-`export_html` `{ file, out?, look? }` writes `<name>.html`: the whole design as one web page (every
+`export` `{ file, as: "html", out?, look? }` writes `<name>.html`: the whole design as one web page (every
 schematic page, the board, 3D, the BOM, and the fabrication zip, GLB, STEP and BOM CSV inside as
 downloads). Use it to hand the design to a person as one file; it opens offline.
 

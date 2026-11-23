@@ -55,7 +55,7 @@ describe("copperflow export", () => {
         "Next, a person should upload led-fab.zip to JLCPCB's PCB order, and led-bom.csv and led-pick-and-place.csv from boards/led-fab/ at its assembly step (the zip holds them too).",
         "Ready for bare boards: yes",
         "Ready for assembly: yes",
-        "The whole order report: the bom tool, or copperflow bom boards/led.circuit.tsx.",
+        "The whole order report: circuit_summary's bom view, or copperflow bom boards/led.circuit.tsx.",
       ].join("\n"),
     )
     expect((await readdir(join(root, "boards", "led-fab"))).sort()).toEqual([...NAMES.map((name) => `led-${name}`), "led.step", "led-top.png", "led-bottom.png"].sort())

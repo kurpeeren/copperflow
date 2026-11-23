@@ -66,7 +66,7 @@ describe("progress numbers", () => {
 describe("the activity line", () => {
   test("names the tool and what it works on", () => {
     expect(activityLine("autoroute", { file: "amp.circuit.tsx", budgetSeconds: 5 })).toBe("autoroute amp.circuit.tsx")
-    expect(activityLine("part_info", { id: "ne555" })).toBe("part_info ne555")
+    expect(activityLine("list_parts", { id: "ne555" })).toBe("list_parts ne555")
     expect(activityLine("project_status", {})).toBe("project_status")
     expect(activityLine("list_parts", undefined)).toBe("list_parts")
     expect(activityLine("autoroute", { file: "x".repeat(200) })).toHaveLength("autoroute ".length + 80)
@@ -159,13 +159,13 @@ describe("tool calls through the server", () => {
   test("every tool says it started and ended; a refused call says why", async () => {
     const studio: AgentActivity[] = []
     const client = await connect(studio)
-    await client.callTool({ name: "list_circuits", arguments: {} })
-    await client.callTool({ name: "remove_part", arguments: { file: FILE, part: "R9" } })
+    await client.callTool({ name: "project_status", arguments: {} })
+    await client.callTool({ name: "edit_circuit", arguments: { file: FILE, edits: [{ remove_part: { part: "R9" } }] } })
     expect(studio.slice(0, 2)).toEqual([
-      { tool: "list_circuits", message: "list_circuits", state: "running" },
-      { tool: "list_circuits", message: "list_circuits", state: "done" },
+      { tool: "project_status", message: "project_status", state: "running" },
+      { tool: "project_status", message: "project_status", state: "done" },
     ])
     expect(studio[3]?.state).toBe("failed")
-    expect(studio[3]?.message).toMatch(/^remove_part main\.circuit\.tsx: .*R9/)
+    expect(studio[3]?.message).toMatch(/^edit_circuit main\.circuit\.tsx: .*R9/)
   })
 })

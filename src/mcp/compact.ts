@@ -243,7 +243,7 @@ export function formatCompactCheck(file: string, result: CheckResult, filter?: s
 const SHORT_COPPER_SHOWN = 5
 
 /**
- * A short that only the router's copper makes (its tracks for nets since rewritten) gets a second line: unroute for
+ * A short that only the router's copper makes (its tracks for nets since rewritten) gets a second line: remove_copper { nets } for
  * those nets removes that copper, then autoroute lays it for the nets as they are now.
  */
 function withUnrouteHint(line: string, finding: Finding, file: string, shorts: readonly CopperShort[]): string {
@@ -254,7 +254,7 @@ function withUnrouteHint(line: string, finding: Finding, file: string, shorts: r
   const more = short.copper.length > SHORT_COPPER_SHOWN ? ` and ${short.copper.length - SHORT_COPPER_SHOWN} more` : ""
   const nets = short.nets.map((net) => JSON.stringify(netArgument(net))).join(", ")
   const them = short.copper.length === 1 ? "it" : "them"
-  return `${line}\n  The router made ${ids}${more}: unroute { file: ${JSON.stringify(file)}, nets: [${nets}] } removes ${them}, then autoroute`
+  return `${line}\n  The router made ${ids}${more}: remove_copper { file: ${JSON.stringify(file)}, nets: [${nets}] } removes ${them}, then autoroute`
 }
 
 /** The unrouted connections shown under the unrouted warning, with their pads' positions. */

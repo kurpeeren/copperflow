@@ -315,7 +315,7 @@ describe("edit_circuit", () => {
 
   test("a batch that sets a library-owned prop names the edit instead of a raw error", async () => {
     await call("create_part", createPartArgs("AP2112K-3.3", LDO))
-    await call("place_part", { file: FILE, part: "AP2112K-3.3", name: "U5" })
+    await call("edit_circuit", { file: FILE, edits: [{ place_part: { part: "AP2112K-3.3", name: "U5" } }] })
     const before = await readFile(join(root, FILE), "utf8")
     const { text, isError } = await call("edit_circuit", {
       file: FILE,

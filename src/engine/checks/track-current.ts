@@ -91,7 +91,7 @@ function narrowTracks(name: string, current: NetCurrent, tracks: readonly PcbTra
   const seen = narrow.length === 1 ? `1 track is ${mm(low)} mm` : `${narrow.length} tracks are ${low === high ? mm(low) : `${mm(low)} to ${mm(high)}`} mm`
   const message =
     `${name} carries ${mm(current.amps)} A (${current.from}): for a ${TEMPERATURE_RISE} °C rise in ${mm(thickness)} mm copper its tracks need ` +
-    `${needs} (IPC-2221), but ${seen}. Give ${name} a net class with that trackWidth, then unroute and autoroute it; or carry it in a pour`
+    `${needs} (IPC-2221), but ${seen}. Give ${name} a net class with that trackWidth, then remove its router copper and autoroute it; or carry it in a pour`
   return [violation("track-current", "warning", message, narrow.map((track) => track.id), "pcb")]
 }
 

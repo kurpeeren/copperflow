@@ -108,7 +108,7 @@ describe("render with change or since", () => {
     client = new Client({ name: "test", version: "0.0.0" })
     await Promise.all([server.connect(serverSide), client.connect(clientSide)])
     await createCircuitFile(root, "io.circuit.tsx", BOARD, { author: "human", summary: "create" })
-    await client.callTool({ name: "set_props", arguments: { file: "io.circuit.tsx", part: "R1", props: { pcbX: -6 } } })
+    await client.callTool({ name: "edit_circuit", arguments: { file: "io.circuit.tsx", edits: [{ set_props: { part: "R1", props: { pcbX: -6 } } }] } })
     await client.callTool({ name: "autoroute", arguments: { file: "io.circuit.tsx" } })
   }, 120_000)
 

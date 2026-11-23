@@ -31,7 +31,7 @@ beforeAll(async () => {
 describe("the two-channel sensor board of the skill", () => {
   test("runs from project_status to a placed board", async () => {
     expect((await call("project_status")).text).toMatch(/^No PROJECT\.md yet/)
-    const intent = await call("set_project", { intent: "Two analog sensors on an ATtiny814.", blocks: [{ name: "Power", does: "LDO", status: "planned" }], open: ["choose parts"] })
+    const intent = await call("note_decision", { sections: { intent: "Two analog sensors on an ATtiny814.", blocks: [{ name: "Power", does: "LDO", status: "planned" }], open: ["choose parts"] } })
     expect(intent.text).toMatch(/^Change c\d+: Intent, Blocks, Open written to PROJECT\.md$/)
     const ldo = await call("create_part", { id: "AP2112K-3.3", title: "AP2112K 3.3 V 600 mA LDO", manufacturer: "Diodes Inc.", mpn: "AP2112K-3.3TRG1", package: "sot23_5", pins: "1 VIN power_in\n2 GND ground\n3 EN input\n4 NC no_connect\n5 VOUT power_out", suppliers: { lcsc: "C51118" } })
     expect(ldo.text).toMatch(/^Created AP2112K-3.3: AP2112K 3.3 V 600 mA LDO, 5 pins, footprint sot23_5\./)
@@ -80,11 +80,11 @@ describe("the two-channel sensor board of the skill", () => {
     expect(ch2.text).toMatch(/^Placed 2 parts; wire length \d+ mm \(was \d+\); board 30 × 20 mm; 0 overlaps\nChange c\d+; undo_change takes it back\.\nNotes: CH2 was moved as a block, keeping the arrangement of CH1$/)
     expect((await call("autoplace", { file: FILE, parts: ["J1", "J2"] })).text).toMatch(/^Placed 2 parts/)
     expect((await call("fit_board", { file: FILE })).text).toMatch(/^Change c\d+: board [\d.]+ × [\d.]+ mm \(margin 2 mm\)$/)
-    expect((await call("board_summary", { file: FILE })).text).toMatch(/^sensor\.circuit\.tsx: Board [\d.]+ × [\d.]+ mm, 2 layers, courtyards use \d+%; 11 parts, \d+ nets/)
+    expect((await call("circuit_summary", { file: FILE, view: "board" })).text).toMatch(/^sensor\.circuit\.tsx: Board [\d.]+ × [\d.]+ mm, 2 layers, courtyards use \d+%; 11 parts, \d+ nets/)
     // A placed instance stays where it is: nothing to place.
     expect((await call("autoplace", { file: FILE, instance: "CH1" })).text).toMatch(/^Nothing to place/)
-    expect((await call("add_pour", { file: FILE, net: "GND", layer: "top" })).text).toMatch(/^Change c\d+: added copperpour:1 \(GND, top\)\ncopperpour:1 GND top: [\d.]+ mm², joins \d+ pads/)
-    expect((await call("add_pour", { file: FILE, net: "GND", layer: "bottom" })).text).toMatch(/^Change c\d+: added copperpour:2 \(GND, bottom\)/)
+    const pours = await call("edit_circuit", { file: FILE, edits: [{ add_pour: { net: "GND", layer: "top" } }, { add_pour: { net: "GND", layer: "bottom" } }] })
+    expect(pours.text).toMatch(/^Change c\d+ applied: 2 edits: add pour GND top; add pour GND bottom\nWritten: copperpour:1, copperpour:2\ncopperpour:1 GND top: [\d.]+ mm², joins \d+ pads/)
     const byRef = await call("route_track", { file: FILE, from: "R201.pin2", to: "U1.PA4" })
     expect(byRef.text).toMatch(/^Change c\d+: routed ADC1 R201\.pin2 \(-?[\d.]+, -?[\d.]+ top\) to U1\.pin2 \(-?[\d.]+, -?[\d.]+ top\): \d+ tracks?, \d+ vias?/)
     const routed = await call("autoroute", { file: FILE })
@@ -92,7 +92,10 @@ describe("the two-channel sensor board of the skill", () => {
     const checked = (await call("check_circuit", { file: FILE })).text
     expect(checked).toMatch(/^sensor\.circuit\.tsx: 0 errors, \d+ warnings/)
     expect(checked).not.toMatch(/unrouted/)
-    expect((await call("export_fabrication", { file: FILE })).text).toMatch(/^Wrote \d+ files to sensor-fab\/ and sensor-fab\.zip:/)
+    expect((await call("export", { file: FILE, as: "fabrication" })).text).toMatch(/^Wrote \d+ files to sensor-fab\/ and sensor-fab\.zip:/)
+    expect((await call("note_decision", { file: FILE, text: "Board 24 x 17 mm, GND pour top, routed on two layers" })).text).toMatch(/^Change c\d+: noted under Decisions in PROJECT\.md$/)
+    const routedBlocks = { sections: { blocks: [{ name: "Power", does: "LDO", status: "routed" }], open: ["human: verify AP2112K-3.3 and ATTINY814", "order"] } }
+    expect((await call("note_decision", routedBlocks)).text).toMatch(/^Change c\d+: Blocks, Open written to PROJECT\.md$/)
   }, 60_000)
 
   test("a wide SOIC part from create_part, with its unused inputs flagged no connect", async () => {
@@ -113,7 +116,7 @@ describe("the two-channel sensor board of the skill", () => {
     expect(flagged).not.toMatch(/U1\.pin3\b/)
     expect(flagged).not.toMatch(/U1\.pin4\b/)
     const unused = "TXCAN,RXCAN,CLKOUT,TX0RTS,TX1RTS,TX2RTS,OSC2,OSC1,RX1BF,RX0BF,INT,SCK,SI,SO,CS,RESET"
-    expect((await call("set_props", { file, part: "U1", props: { noConnect: unused } })).isError).toBe(false)
+    expect((await call("edit_circuit", { file, edits: [{ set_props: { part: "U1", props: { noConnect: unused } } }] })).isError).toBe(false)
     const checked = await call("check_circuit", { file, filter: "U1" })
     expect(checked.text).not.toMatch(/pin-unconnected/)
     expect(checked.text).not.toMatch(/footprint/)

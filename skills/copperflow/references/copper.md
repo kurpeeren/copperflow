@@ -4,21 +4,21 @@ Read before you place or route a board, or draw copper by hand.
 
 ## The board from a drawing
 
-When the person has put a `.dxf` in the project folder, `import_board` `{ file, dxf }` first, then
+When the person has put a `.dxf` in the project folder, `fit_board` `{ file, drawing }` first, then
 `render` to look, then place. One change: the largest closed shape is the outline (centred on the
 origin; `origin: "keep"` leaves it as drawn), circles inside it are mounting holes, other closed
 shapes inside it become keepouts on all layers (not cut out of the board). It answers
 `Change c0003: board outline from enclosure.dxf: 12 corners, 82 x 54 mm (drawing in mm, moved by
--41, -27)`, then the holes, the keepouts and `Not used: 2 SPLINE, …`. `layer` picks the outline's
+-41, -27)`, then the holes, the keepouts and `Not used: 2 SPLINE, …`. `dxfLayer` picks the outline's
 layer when the largest shape is not the board; `units` overrides the file's; a board that has holes
 or keepouts already needs `replace: true`. Placed parts stay; the answer names those now outside.
-An `.svg` goes in the same `dxf` field (CLI `copperflow board <file> --svg <path>`): its width and height
+An `.svg` goes in the same `drawing` field (CLI `copperflow board <file> --svg <path>`): its width and height
 must be physical (`60mm`, `2in`), as a board has real dimensions; the largest closed shape (a filled
 area's ring or a closed line) is the outline, a circle inside it a hole, another closed shape a keepout.
-An SVG has no layers, so `layer` and `units` are refused; an open path is not an outline.
+An SVG has no layers, so `dxfLayer` and `units` are refused; an open path is not an outline.
 
-A KiCad board (`.kicad_pcb`, saved by KiCad 6 or newer, two copper layers) goes in the same tool:
-`import_board` `{ file: "new.circuit.tsx", dxf: "old.kicad_pcb" }` writes `file` as a new circuit in one
+A KiCad board (`.kicad_pcb`, saved by KiCad 6 or newer, two copper layers) goes in the same field:
+`fit_board` `{ file: "new.circuit.tsx", drawing: "old.kicad_pcb" }` writes `file` as a new circuit in one
 change: the outline from Edge.Cuts, every footprint as a placed part (one library part per land
 pattern, pin list and value, never verified), the nets, tracks, vias and pours. It builds and checks
 the result and answers what it wrote against what the file held, whether every pad kept its net, and
@@ -35,7 +35,7 @@ an `instance`, within `budgetSeconds`, 20 s by default, and names each connectio
 route with the reason), then `check_circuit` once at the end (filter `copper` for the full list).
 
 Connectors go on the board edge nearest the parts they serve, pins inward. To choose the edge (input
-on the left, output on the right), give the part `pcbEdge`: `set_props` `{ pcbEdge: "left" }` (left,
+on the left, output on the right), give the part `pcbEdge`: `edit_circuit` `set_props` `{ pcbEdge: "left" }` (left,
 right, top or bottom; the board is y up, so top is the largest y). Any part with `pcbEdge` goes
 against that edge, a connector or not (an LED or a switch at the front). With no room there it goes
 on another edge and the answer's `Notes:` say so; `null` removes the choice.
@@ -69,7 +69,7 @@ sheet). A board with sub-sheets is laid out the way a person does it, blocks fir
    round it.
 5. Pours, then `autoroute` `{ file }` for the tracks between blocks and to the connectors.
 
-An instance is one thing on the board: `set_props` `{ file, part: "CH3", props: { pcbX, pcbY,
+An instance is one thing on the board: `edit_circuit` `set_props` `{ part: "CH3", props: { pcbX, pcbY,
 pcbRotation } }` moves and turns it with its inner copper (`Copper: 4 pieces of copper went with
 CH3`); copper that left it (to a connector or another block) is removed and shows as unrouted
 again (`… removed (now unrouted)`). The Studio's moves and the placer's do the same.
@@ -77,7 +77,7 @@ again (`… removed (now unrouted)`). The Studio's moves and the placer's do the
 On a board without sub-sheets, place block by block with `{ parts: [...] }`, the part with most
 connections first, connectors last. The placer keeps decoupling capacitors beside their supply pins, a crystal beside the two chip pins
 it is across with its load capacitors on its far side, and a pull-up or an LED's resistor beside
-the pin it serves. After `autoplace`, read `board_summary`'s longest connections: a part far
+the pin it serves. After `autoplace`, read the longest connections in `circuit_summary` `view: "board"`: a part far
 from the pin it serves shows there with both pads' places. Move it with `set_props`
 `{ pcbX, pcbY, pcbRotation }`; it then has a position, and `autoplace` leaves it alone.
 Look at the board with `render` `{ file }` after `autoplace` and again after `autoroute`: it is the
@@ -87,7 +87,7 @@ Studio (or finds the running one), opens it in their browser and answers with th
 key: give that address to the person only.
 
 Connectors are placed last, into the edge room the other parts left, so on a tight board a
-connector can land far from the part it serves. If `board_summary` or `copper_summary` shows a
+connector can land far from the part it serves. If `circuit_summary` (`view: "board"` or `"copper"`) shows a
 connector's nets much longer than the rest, note the unrouted count and those nets' lengths,
 then `undo_change` the `autoroute` and the `autoplace` (`autoplace` moves only parts without a
 position, so a second run over placed parts does nothing). Run `autoplace` with
@@ -99,7 +99,7 @@ placement is the usual one. "ahead" is not the default because it can route wors
 `autoroute` answers `Change c0012: Routed 30 of 32 connections in 2 passes; unrouted: U1.pin3
 (4.10, 2.00 top) to R1.pin2 (9.30, 2.00 top) (no room between U1 and C3), …`, then the copper
 violations the change introduced. Each unrouted connection names its pads with their centres and
-layer (`through` for a through pad); `check_circuit` with filter `copper` and `copper_summary`
+layer (`through` for a through pad); `check_circuit` with filter `copper` and `circuit_summary` `view: "copper"`
 list them the same way. When the router is boxed in by its own routes it takes them up, routes
 the closed-in connection first and routes them again, keeping that only if fewer are left open.
 
@@ -108,22 +108,22 @@ Route by hand only what the router reports: `route_track` by reference,
 (tracks and vias) or is refused naming what is in the way; with `via: [{ x, y }, …]` it draws
 one track from pad centre through those corners to pad centre, on the pads' layer (or `layer`).
 `route_track` with `net`, `layer` and `points` draws a track by coordinates (starting on a pad,
-track or via of that net). `add_via` and `remove_copper` add and remove, and round track corners with
-`fillet_tracks` (`straighten_tracks` squares them again); each is one history entry, and the
+track or via of that net). `route_track` `{ file, at, net? }` adds a via and `remove_copper` removes, and round track corners with
+`fillet_tracks` (`square: true` squares them again); each is one history entry, and the
 answer lists the copper violations the change introduced. Or move parts and run `autoroute`
-again; `unroute` (`nets` or `all: true`) takes back the router's copper and never hand-drawn
+again; `remove_copper` with `nets` or `all: true` takes back the router's copper and never hand-drawn
 copper, locked copper or router tracks that start on a locked part's pad (the answer names those).
 After a circuit's nets are rewritten, the router's tracks for the old nets can join pads of two new
 nets: `check_circuit` reports a `short` and, when only the router's copper makes it, a second line
-`The router made t0012, t0013: unroute { file, nets: ["A", "C"] } removes them, then autoroute`.
-`unroute` with either net takes back the copper of a short on it.
+`The router made t0012, t0013: remove_copper { file, nets: ["A", "C"] } removes them, then autoroute`.
+`remove_copper` with either net takes back the copper of a short on it.
 
 Details of the copper tools:
 - `layer` is `top` or `bottom`; `inner1` and `inner2` exist only on a 4-layer board and cannot be
   routed in the Studio. With `from` and `to`, the layer defaults to the pads' shared layer; a
   `from` or `to` may name a pin by name (`"U2.GND"`). `width` defaults to the net class's width,
   else the fabrication default. No corner or segment may touch another net's copper.
-- `add_via` takes its net from the pad or track under it unless `net` is given; its size follows
+- A via (`route_track` with `at`) takes its net from the pad or track under it unless `net` is given; its size follows
   the net class and the fabrication minimum ring; `layers` defaults to `["top", "bottom"]`. A via
   whose copper would lie on another via's is refused, naming that via.
 - `remove_copper` takes a list, `{ ids: ["t0003", "v0002"] }`: whole tracks and vias by id. An
@@ -133,7 +133,7 @@ Details of the copper tools:
 - `fillet_tracks` rounds with chords on an arc tangent to both legs, of the design rules' fillet
   radius (1 mm unless `rules.yaml` sets `fabrication.filletRadius`; a track's width is the floor).
   A corner stays square when its arc would break clearance, its legs are too short or its net's
-  copper joins the replaced part; `straighten_tracks` keeps a corner round when the square corner
+  copper joins the replaced part; `square: true` keeps a corner round when the square corner
   would break clearance. Both leave locked tracks and tracks starting on a locked part alone; with
   no `tracks` they take every track of the board.
 - `autoroute`'s `instance` route is copied to the other instances of its sheet placed the same
@@ -149,7 +149,7 @@ Details of the copper tools:
 - `render` `{ file, out: "pics/top.png" }` also writes the picture into the project (a name not
   ending in `.png` and a path outside the project are refused); the answer adds `Wrote pics/top.png`.
 
-`copper_summary` shows per net the tracks, vias, length and unrouted connections, each pour
+`circuit_summary` `view: "copper"` shows per net the tracks, vias, length and unrouted connections, each pour
 (`copperpour:1 GND top: 812.40 mm², joins 14 pads`) and each hole (`hole:1 at (3, 3), 3.2 mm`),
 then the copper violations counted by rule; at most 60 lines.
 
@@ -159,14 +159,14 @@ end there are not locked, so leave them alone unless the human asks.
 ## Pours
 
 Pours: before `autoroute`, a two-layer board gets a GND pour on both layers (`top` and `bottom`),
-checked with `copper_summary`'s 'joins N pads': a pour joins
+checked with the 'joins N pads' of `circuit_summary` `view: "copper"`: a pour joins
 only the pads on its own layer and through pads, so a bottom pour under parts on top joins almost
-nothing. `add_pour` `{ net: "GND", layer: "top" }` without an `outline` fills the whole board,
+nothing. `edit_circuit` `add_pour` `{ net: "GND", layer: "top" }` without an `outline` fills the whole board,
 with thermal spokes to the GND pads, and the connections the fill makes count as routed. Tracks
 of other nets cut the fill, so a pad the unrouted fill joined can end up cut off from it: the
 router then routes that pad again, and with only one pour it may find no room. A second pour on
 the other layer gives such a pad a way out through a via. It
-answers `Change c0010: added copperpour:1 (GND, top)` and the fill line. Then `autoroute`, then
+answers `Change c0010 applied: 1 edit: add pour GND top`, `Written: copperpour:1` and the fill line. Then `autoroute`, then
 `check_circuit` (`pour-floating` warns of a pour that joins no pad of its net, `pour-sparse` of
 one joining fewer than half of them, `pour-empty` of one left with no copper, `copper-hole` of
 copper too near a hole).
@@ -179,8 +179,8 @@ pour on the layer the parts sit on (both layers when a two-layer board is routed
 
 ## Holes and ids
 
-`remove_pour`, `add_hole` and `remove_hole` (mounting holes) work by id (`copperpour:1`,
-`hole:1`), as do `edit_circuit`'s `add_pour`, `remove_pour`, `add_hole` and `remove_hole`;
+`edit_circuit`'s `remove_pour`, `add_hole` and `remove_hole` (mounting holes), `set_pour` and
+`set_hole` work by id (`copperpour:1`, `hole:1`);
 `new_circuit` takes `pours` and `holes`. A part's lock never covers a pour; a pour or hole is
 locked by its id, and a locked one is left alone. A pour or hole inside a sub-sheet instance
 (`PS1/copperpour:1`) is written in its sheet file: edit that file instead.
@@ -192,11 +192,11 @@ running along that side (standing beside a left or right side, never upside down
 holes, vias, other parts, other names and the board's edge, and the same round every copy of a
 sheet's part where that place is free. A name with no free place within 2 mm takes the least bad
 one, and `check_circuit` gives a `silk-on-pad` warning naming what it covers. For such a name,
-give the part room (move it or its neighbours), or put the name yourself with `set_props`:
+give the part room (move it or its neighbours), or put the name yourself with `edit_circuit` `set_props`:
 `pcbNameAt` (`{ x, y }`, the name's middle as an offset from the part's origin, in mm, along the
 board's x and y whatever the part's rotation) and `pcbNameRotation` (0 flat, 90 standing); the
 other names go round it, and so do the board's `<silkscreentext>`s. `null` removes either. A name
-is 1 mm tall, as the silkscreen prints it; `add_text`'s answer gives a text's ink box.
+is 1 mm tall, as the silkscreen prints it; an `add_text` step's answer gives a text's ink box.
 `pcbNameText: "IN+"` prints that text in place of the name, placed the same way, so a wire pad's
 or a jack's label stays beside it when the part moves (better than a board `<silkscreentext>`,
 which stays where it was written); `null` prints the name again. A label goes before the plain

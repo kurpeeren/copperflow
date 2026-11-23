@@ -117,7 +117,7 @@ describe("library modules for the agent", () => {
     )
     expect((await call("list_modules", { filter: "team" })).text.split("\n")).toHaveLength(1)
     expect((await call("list_modules", { filter: "3.3 V logic" })).text.split("\n")).toHaveLength(2)
-    const info = (await call("module_info", { name: "team/Input" })).text
+    const info = (await call("list_modules", { name: "team/Input" })).text
     expect(info).toContain("team/Input: NOT verified")
     expect(info).toContain("D1 part tvs1")
     expect(info).toMatch(/From: library team, folder .*lib/)
@@ -158,7 +158,7 @@ describe("library modules for the agent", () => {
       expect(refused.text).toMatch(new RegExp(`^team/Input cannot be used: the sheet is not plain: line \\d+: ${reason.replace(/[.()]/g, "\\$&")}`))
       expect(refused.text).toContain("Nothing was written")
       expect(await tree(project)).toEqual(before)
-      expect((await call("module_info", { name: "team/Input" })).text).toContain("Not usable: the sheet is not plain")
+      expect((await call("list_modules", { name: "team/Input" })).text).toContain("Not usable: the sheet is not plain")
     })
   }
 
@@ -199,7 +199,7 @@ describe("library modules for the agent", () => {
     for (const name of ["team/Linked", "team/..", "team/../Input", "../team/Input", "te\\am/Input", "team/Input/x", "nobody/Input"]) {
       const used = await call("use_module", { module: name, file: "io.circuit.tsx" })
       expect(used.isError, name).toBe(true)
-      expect((await call("module_info", { name })).isError, name).toBe(true)
+      expect((await call("list_modules", { name })).isError, name).toBe(true)
     }
     expect(await tree(project)).toEqual([])
   })

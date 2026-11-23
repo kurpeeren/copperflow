@@ -1,4 +1,4 @@
-// The export_fabrication tool: the JLCPCB files written through the core, its steps told while it works.
+// export { as: "fabrication" }: the JLCPCB files written through the core, its steps told while it works.
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js"
 import type { DesignSource } from "../core/design-source.js"
 import type { ShapesLoader } from "../core/part-shapes.js"

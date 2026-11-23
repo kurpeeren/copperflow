@@ -45,7 +45,7 @@ beforeAll(async () => {
   await snapshot() // 0: nothing
   await createCircuitFile(root, MAIN, BOARD, { author: "human", summary: "create io.circuit.tsx" })
   await snapshot() // 1: c0001 new circuit
-  await call("set_props", { file: MAIN, part: "R1", props: { pcbX: -6 } })
+  await call("edit_circuit", { file: MAIN, edits: [{ set_props: { part: "R1", props: { pcbX: -6 } } }] })
   await snapshot() // 2: c0002 move
   await call("autoroute", { file: MAIN })
   await snapshot() // 3: c0003 autoroute
@@ -54,7 +54,7 @@ beforeAll(async () => {
   await redoChange(root, { author: "ai" })
   await snapshot() // 5: c0005 redo
   await writeFile(join(root, MAIN), (await disk(MAIN))!.replace('resistance="1k"', 'resistance="2k"'))
-  await call("set_props", { file: MAIN, part: "C1", props: { pcbY: 2 } })
+  await call("edit_circuit", { file: MAIN, edits: [{ set_props: { part: "C1", props: { pcbY: 2 } } }] })
   await snapshot() // 6: c0006, after a hand edit
   entries = await readEntries(root)
 }, 120_000)

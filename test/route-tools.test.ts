@@ -120,15 +120,17 @@ beforeEach(() => {
 })
 
 describe("the tools' shapes", () => {
-  test("autoroute takes the file, a scope and a budget; unroute the file and nets or all", async () => {
+  test("autoroute takes the file, a scope and a budget; remove_copper the file and ids, nets or all", async () => {
     await open(CROSS)
     const tools = (await client.listTools()).tools
     const autoroute = tools.find((tool) => tool.name === "autoroute")
-    const unroute = tools.find((tool) => tool.name === "unroute")
+    const remove = tools.find((tool) => tool.name === "remove_copper")
     expect(Object.keys(autoroute?.inputSchema.properties ?? {}).sort()).toEqual(["budgetSeconds", "file", "instance", "nets", "parts"])
     expect(autoroute?.inputSchema.required).toEqual(["file"])
-    expect(Object.keys(unroute?.inputSchema.properties ?? {}).sort()).toEqual(["all", "file", "nets"])
-    expect(unroute?.annotations?.destructiveHint).toBe(true)
+    expect(Object.keys(remove?.inputSchema.properties ?? {}).sort()).toEqual(["all", "file", "ids", "nets"])
+    expect(remove?.inputSchema.required).toEqual(["file"])
+    expect(remove?.annotations?.destructiveHint).toBe(true)
+    expect(tools.find((tool) => tool.name === "unroute")).toBeUndefined()
   })
 
   test("the skill says: place first, then autoroute, then check_circuit; route by hand only what the router reports", async () => {
@@ -136,7 +138,7 @@ describe("the tools' shapes", () => {
       const text = await skillText()
       expect(text).toMatch(/place the parts first[^]*?, then run `?autoroute`?[^]*?, then `?check_circuit`? once at the end/)
       expect(text).toMatch(/Route by hand only what the router reports/)
-      expect(text).toMatch(/`?unroute`?/)
+      expect(text).toMatch(/remove_copper/)
     }
   })
 })
@@ -250,15 +252,15 @@ describe("net names", () => {
     await writeFile(join(root, "Block.sheet.tsx"), BLOCK)
     expect((await call("circuit_summary", { file: FILE })).text).toMatch(/^PS1\/FB: /m)
     expect((await call("autoroute", { file: FILE, nets: ["PS1/FB"] })).text).toMatch(/^Change c\d+: Routed 1 of 1 connection in/)
-    expect((await call("unroute", { file: FILE, nets: ["net.PS1/FB"] })).text).toMatch(/^Change c\d+: Unroute: remove /)
+    expect((await call("remove_copper", { file: FILE, nets: ["net.PS1/FB"] })).text).toMatch(/^Change c\d+: Unroute: remove /)
     expect((await call("autoroute", { file: FILE, nets: ["net.PS1/FB"] })).text).toMatch(/^Change c\d+: Routed 1 of 1 connection in/)
-    expect((await call("unroute", { file: FILE, nets: ["PS1/FB"] })).text).toMatch(/^Change c\d+: Unroute: remove /)
+    expect((await call("remove_copper", { file: FILE, nets: ["PS1/FB"] })).text).toMatch(/^Change c\d+: Unroute: remove /)
   }, 30_000)
 
   test("a bus is refused by both tools: it is given as its member nets", async () => {
     await open(WITH_BLOCK)
     await writeFile(join(root, "Block.sheet.tsx"), BLOCK)
-    for (const tool of ["autoroute", "unroute"]) {
+    for (const tool of ["autoroute", "remove_copper"]) {
       for (const bus of ["D", "D[0:3]"]) {
         const { text, isError } = await call(tool, { file: FILE, nets: [bus] })
         expect(isError).toBe(true)
@@ -270,11 +272,11 @@ describe("net names", () => {
   test("an unknown net is refused, saying nothing was written", async () => {
     await open(CROSS)
     expect((await call("autoroute", { file: FILE, nets: ["Z"] })).text).toMatch(/^The circuit has no net "Z"\. Nets: .*\. Nothing was written\.$/)
-    expect((await call("unroute", { file: FILE, nets: ["Z"] })).text).toMatch(/Nothing was written\.$/)
+    expect((await call("remove_copper", { file: FILE, nets: ["Z"] })).text).toMatch(/Nothing was written\.$/)
   })
 })
 
-describe("unroute", () => {
+describe("remove_copper with nets or all", () => {
   const hand = () => applyLayoutEdits(root, FILE, [{ kind: "addTrack", layer: "top", width: 0.25, points: [{ x: -6, y: 5 }, { x: -4, y: 5 }] }], { author: "human", summary: "Add track" })
 
   test("removes the router's copper of some nets or all of it, as one entry; hand copper stays", async () => {
@@ -282,32 +284,32 @@ describe("unroute", () => {
     await call("autoroute", { file: FILE })
     await hand()
     const before = (await entries()).length
-    const one = await call("unroute", { file: FILE, nets: ["A"] })
+    const one = await call("remove_copper", { file: FILE, nets: ["A"] })
     expect(one.text.split("\n")[0]).toMatch(/^Change c\d+: Unroute: remove \d+ tracks?( and \d+ vias?)? the router made$/)
     expect((await entries()).length).toBe(before + 1)
     expect((await design()).pcb.ratsnest.map((line) => line.net)).toEqual(["net.A"])
-    await call("unroute", { file: FILE, all: true })
+    await call("remove_copper", { file: FILE, all: true })
     expect((await records()).map((record) => record.by)).toEqual(["human"])
-    const none = await call("unroute", { file: FILE, all: true })
+    const none = await call("remove_copper", { file: FILE, all: true })
     expect(none.isError).toBe(true)
     expect(none.text).toMatch(/no unlocked router copper/)
   }, 30_000)
 
-  test("a short made by the router's copper after the nets were rewritten: check_circuit points at unroute, which takes it back", async () => {
+  test("a short made by the router's copper after the nets were rewritten: check_circuit points at remove_copper { nets }, which takes it back", async () => {
     await open(CROSS)
     await call("autoroute", { file: FILE })
     const source = await readFile(join(root, FILE), "utf8")
     await writeFile(join(root, FILE), source.replace('<trace from="R2.pin1" to="net.A" />', '<trace from="R2.pin1" to="net.C" />'))
     const check = (await call("check_circuit", { file: FILE })).text
     expect(check).toMatch(/^error short \[net\.A, net\.C, t\d{4}/m)
-    expect(check).toMatch(/^ {2}The router made t\d{4}.*: unroute \{ file: "main\.circuit\.tsx", nets: \["A", "C"\] \} removes (it|them), then autoroute$/m)
-    const taken = await call("unroute", { file: FILE, nets: ["C"] })
+    expect(check).toMatch(/^ {2}The router made t\d{4}.*: remove_copper \{ file: "main\.circuit\.tsx", nets: \["A", "C"\] \} removes (it|them), then autoroute$/m)
+    const taken = await call("remove_copper", { file: FILE, nets: ["C"] })
     expect(taken.isError).toBe(false)
     expect((await design()).violations.filter((v) => v.code === "short")).toEqual([])
     expect((await records()).length).toBeGreaterThan(0)
   }, 30_000)
 
-  test("a short with hand-drawn copper in it gets no unroute line", async () => {
+  test("a short with hand-drawn copper in it gets no remove_copper line", async () => {
     await open(CROSS)
     await applyLayoutEdits(root, FILE, [{ kind: "addTrack", layer: "top", width: 0.25, points: [{ x: -4.7, y: 0 }, { x: 4.7, y: 0 }] }], { author: "human", summary: "Add track" })
     await writeFile(join(root, FILE), CROSS.replace('<trace from="R2.pin1" to="net.A" />', '<trace from="R2.pin1" to="net.C" />'))
@@ -318,15 +320,15 @@ describe("unroute", () => {
 
   test("asks for nets or all, not both and not neither", async () => {
     await open(CROSS)
-    expect((await call("unroute", { file: FILE })).text).toMatch(/Give nets or all: true/)
-    expect((await call("unroute", { file: FILE, nets: ["A"], all: true })).text).toMatch(/Give nets or all: true/)
+    expect((await call("remove_copper", { file: FILE })).text).toMatch(/Give ids, nets or all: true/)
+    expect((await call("remove_copper", { file: FILE, nets: ["A"], all: true })).text).toMatch(/Give nets or all: true/)
   })
 
   test("leaves a router track that starts on a part locked since, and names it", async () => {
     await open(CROSS)
     await call("autoroute", { file: FILE })
     await lock(["R1", "R2", "R3", "R4"])
-    const { text, isError } = await call("unroute", { file: FILE, all: true })
+    const { text, isError } = await call("remove_copper", { file: FILE, all: true })
     expect(isError).toBe(false)
     expect(text).toMatch(/left t\d{4} \(starts on the locked part R\d\)/)
     expect((await records()).length).toBeGreaterThan(0)

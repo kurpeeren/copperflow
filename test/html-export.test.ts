@@ -1,4 +1,4 @@
-// The one-file web page of a design: copperflow html and the MCP tool export_html.
+// The one-file web page of a design: copperflow html and the MCP tool export { as: "html" }.
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -178,7 +178,7 @@ describe("copperflow html", () => {
   }, LOADED_MACHINE_MS)
 })
 
-describe("export_html", () => {
+describe("export { as: \"html\" }", () => {
   test("writes the page and answers the CLI's lines", async () => {
     // The client gives up on a request after 60 s by default, which one full-size export outlasts on a loaded machine.
     const patient = { timeout: LOADED_MACHINE_MS }
@@ -187,11 +187,11 @@ describe("export_html", () => {
     const [clientSide, serverSide] = InMemoryTransport.createLinkedPair()
     const client = new Client({ name: "test", version: "0.0.0" })
     await Promise.all([server.connect(serverSide), client.connect(clientSide)])
-    const result = (await client.callTool({ name: "export_html", arguments: { file: "led.circuit.tsx", out: "share/led.html", look: { mask: "blue" } } }, undefined, patient)) as { isError?: boolean; content: { text: string }[] }
+    const result = (await client.callTool({ name: "export", arguments: { file: "led.circuit.tsx", as: "html", out: "share/led.html", look: { mask: "blue" } } }, undefined, patient)) as { isError?: boolean; content: { text: string }[] }
     expect(result.isError).toBeFalsy()
     expect(result.content[0]!.text).toMatch(/^Wrote share\/led\.html \(\d+ kB\): the design as one page/)
     expect(await exists("share/led.html")).toBe(true)
-    const refused = (await client.callTool({ name: "export_html", arguments: { file: "led.circuit.tsx", out: "led.png" } }, undefined, patient)) as { isError?: boolean; content: { text: string }[] }
+    const refused = (await client.callTool({ name: "export", arguments: { file: "led.circuit.tsx", as: "html", out: "led.png" } }, undefined, patient)) as { isError?: boolean; content: { text: string }[] }
     expect(refused.isError).toBe(true)
     await client.close()
   }, LOADED_MACHINE_MS)

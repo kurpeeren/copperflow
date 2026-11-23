@@ -26,7 +26,7 @@ export interface CheckResult {
   names?: string[]
   /** Each connection not routed yet, with its pads' positions: "C3.pin2 (12.30, 4.50 top) to U2.pin2 (15.10, 6.00 top)". */
   unrouted?: string[]
-  /** The shorts only the router's unlocked copper makes, which unroute takes back. */
+  /** The shorts only the router's unlocked copper makes, which remove_copper { nets } takes back. */
   routerShorts?: CopperShort[]
 }
 

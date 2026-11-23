@@ -1,20 +1,10 @@
-// The export_html tool: the design as one web page with its pictures, BOM and files inside, to hand to a person.
-import { z } from "zod"
+// export { as: "html" }: the design as one web page with its pictures, BOM and files inside, to hand to a person.
 import type { DesignSource } from "../core/design-source.js"
 import { exportHtml, formatHtmlExport } from "../core/html-export.js"
 import type { Renderer } from "../core/render.js"
 import type { LookRequest } from "../engine/fab/picture/looks.js"
 import { stepsAroundBuild } from "./build-steps.js"
 import { QUIET, type Reporter } from "./tool-activity.js"
-
-export const EXPORT_HTML_DESCRIPTION =
-  "Write the design as one HTML file beside the circuit, to hand to a person (schematic, board, 3D, BOM, fabrication and model files inside; opens offline)."
-
-export const exportHtmlInput = {
-  file: z.string().describe("Circuit file"),
-  out: z.string().optional().describe("Project file, .html"),
-  look: z.object({ mask: z.string(), silk: z.string(), finish: z.string() }).partial().optional().describe("As render's"),
-}
 
 export interface HtmlPorts {
   root: string

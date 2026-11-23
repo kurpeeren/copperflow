@@ -1,4 +1,4 @@
-// The one-file web page of a design (copperflow html, export_html): pure, the gathered data in and the HTML out.
+// The one-file web page of a design (copperflow html, export { as: "html" }): pure, the gathered data in and the HTML out.
 // Every word that comes from the user's files is escaped here; pictures and files are embedded as data URIs, so the
 // page opens from disk and fetches nothing.
 import type { BomLine } from "./bom.js"

@@ -19,5 +19,5 @@ export async function importPart(root: string, input: { lcsc: string; id?: strin
     ...(input.id ? { id: input.id } : {}),
     ...(get ? { fetch: get } : {}),
   })
-  return [formatImport(result), `Use it with place_part (part "${result.id}").`].join("\n")
+  return [formatImport(result), `Place it with edit_circuit place_part (part "${result.id}").`].join("\n")
 }

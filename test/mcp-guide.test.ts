@@ -74,11 +74,11 @@ describe("guide", () => {
 describe("datasheets", () => {
   const CHIP = { ...LDO, datasheet: undefined } as typeof LDO
 
-  test("attach_datasheet records the link and pages in part.yaml and the checklist, keeping the part unverified", async () => {
+  test("set_part_fields { datasheet } records the link and pages in part.yaml and the checklist, keeping the part unverified", async () => {
     const root = await demoCopy()
     const client = await memoryClient(root)
     expect((await call(client, "create_part", createPartArgs("LDO-X", CHIP))).isError).toBe(false)
-    const answer = await call(client, "attach_datasheet", { part: "LDO-X", url: "https://www.diodes.com/assets/Datasheets/AP2112.pdf", title: "AP2112 datasheet rev 2", pages: "3" })
+    const answer = await call(client, "set_part_fields", { id: "LDO-X", datasheet: { url: "https://www.diodes.com/assets/Datasheets/AP2112.pdf", title: "AP2112 datasheet rev 2", pages: "3" } })
     expect(answer.isError).toBe(false)
     const yaml = await readFile(join(root, "parts", "LDO-X", "part.yaml"), "utf8")
     expect(yaml).toContain("url: https://www.diodes.com/assets/Datasheets/AP2112.pdf")
@@ -90,16 +90,16 @@ describe("datasheets", () => {
     expect(answer.text).toContain("Pins from AP2112 datasheet rev 2, page(s) 3: compare each pin")
   })
 
-  test("attach_datasheet takes only http(s) links and never a missing part", async () => {
+  test("set_part_fields { datasheet } takes only http(s) links and never a missing part", async () => {
     const root = await demoCopy()
     const client = await memoryClient(root)
     await call(client, "create_part", createPartArgs("LDO-X", CHIP))
     for (const url of ["file:///etc/passwd", "javascript:alert(1)", "not a url"]) {
-      const answer = await call(client, "attach_datasheet", { part: "LDO-X", url })
+      const answer = await call(client, "set_part_fields", { id: "LDO-X", datasheet: { url } })
       expect(answer.isError, url).toBe(true)
       expect(answer.text).toContain("http(s)")
     }
-    expect((await call(client, "attach_datasheet", { part: "nothing", url: "https://x.example/a.pdf" })).isError).toBe(true)
+    expect((await call(client, "set_part_fields", { id: "nothing", datasheet: { url: "https://x.example/a.pdf" } })).isError).toBe(true)
   })
 
   test("create_part takes a chip without a datasheet link", async () => {

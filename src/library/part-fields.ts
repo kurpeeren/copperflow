@@ -1,5 +1,5 @@
 // set_part_fields: a library part's supplier numbers, MPN, manufacturer and description changed without touching its
-// pins or footprint, through the core's createPart as one write (as attach_datasheet does). A verified part is
+// pins or footprint, through the core's createPart as one write (as the datasheet form does). A verified part is
 // refused: its verification covers every field, so any change would void what a person checked.
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"

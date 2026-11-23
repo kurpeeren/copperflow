@@ -7,7 +7,7 @@ import { benchmarkUnplaced, BENCHMARK_MAIN, CAN_FOLDER, CAN_MAIN, filesIn } from
 const DEMO_FOLDER = fileURLToPath(new URL("../examples/usb-c-ldo", import.meta.url))
 const lines = (text: string) => text.split("\n")
 
-describe("board_summary", () => {
+describe("circuit_summary view board", () => {
   test("the small demo board fits and names every part", () => {
     const design = buildDesign(filesIn(DEMO_FOLDER), "index.circuit.tsx")
     const text = formatBoardSummary("index.circuit.tsx", design, new Set([design.pcb.parts[0]?.component as string]))

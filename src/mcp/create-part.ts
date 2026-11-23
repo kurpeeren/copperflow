@@ -27,7 +27,7 @@ export const createPartInput = {
 }
 
 export const CREATE_PART_DESCRIPTION =
-  "Make a library part from a datasheet you have read: pins by number, name and type, a footprint string (sot23_5, 0402), MPN, suppliers. If none fits, package { \"file\": \"footprint.yaml\" } with footprint_file pads from the datasheet land pattern (never estimated). datasheet (url, file, title) e.g. { \"url\": \"https://example.com/ds.pdf\", \"title\": \"TJA1051 datasheet\" }; pin table pages go to attach_datasheet. An existing id needs replace. It starts NOT verified: tell the human to check verification.md."
+  "Make a library part from a datasheet you have read: pins by number, name and type, a footprint string (sot23_5, 0402), MPN, suppliers. If none fits, package { \"file\": \"footprint.yaml\" } with footprint_file pads from the datasheet land pattern (never estimated). datasheet (url, file, title) e.g. { \"url\": \"https://example.com/ds.pdf\", \"title\": \"TJA1051 datasheet\" }; pin table pages go to set_part_fields { datasheet }. An existing id needs replace. It starts NOT verified: tell the human to check verification.md."
 
 type CreatePartArgs = z.infer<z.ZodObject<typeof createPartInput>>
 
@@ -37,5 +37,5 @@ export async function createPartTool(root: string, input: CreatePartArgs): Promi
   // The input writes a point as a list of two numbers; the land pattern's own schema makes the pairs of them.
   const footprintFile = footprint_file ? { footprintFile: FootprintFileSchema.parse(footprint_file) } : {}
   const result = await writeNewPart(root, { ...part, ...footprintFile }, { now: new Date().toISOString(), replace: replace === true })
-  return [formatNewPart(result), `Use it with place_part (part "${result.id}"). Tell the human it is Unverified until they check verification.md.`].join("\n")
+  return [formatNewPart(result), `Place it with edit_circuit place_part (part "${result.id}"). Tell the human it is Unverified until they check verification.md.`].join("\n")
 }

@@ -96,14 +96,14 @@ describe("the agent's tools with a hole inside a sub-sheet", () => {
     await Promise.all([server.connect(serverSide), client.connect(clientSide)])
   })
 
-  test("copper_summary lists the instance's hole by its path; remove_hole hole:1 removes the circuit's own, and M1/hole:1 is refused", async () => {
-    const summary = await call("copper_summary", { file: MAIN })
+  test("circuit_summary view copper lists the instance's hole by its path; edit_circuit remove_hole hole:1 removes the circuit's own, and M1/hole:1 is refused", async () => {
+    const summary = await call("circuit_summary", { file: MAIN, view: "copper" })
     expect(summary.text).toMatch(/^M1\/hole:1 at \(-10, 0\), 3\.2 mm$/m)
     expect(summary.text).toMatch(/^hole:1 at \(12, -8\), 2 mm$/m)
-    const refused = await call("remove_hole", { file: MAIN, id: "M1/hole:1" })
+    const refused = await call("edit_circuit", { file: MAIN, edits: [{ remove_hole: { id: "M1/hole:1" } }] })
     expect(refused.isError).toBe(true)
-    expect(refused.text).toMatch(/edit Mount\.sheet\.tsx instead\. Nothing was written\./)
-    const removed = await call("remove_hole", { file: MAIN, id: "hole:1" })
+    expect(refused.text).toMatch(/edit Mount\.sheet\.tsx instead\nNo edits come before it, and nothing was written: the batch is all or nothing\./)
+    const removed = await call("edit_circuit", { file: MAIN, edits: [{ remove_hole: { id: "hole:1" } }] })
     expect(removed.isError).toBe(false)
     const text = await readFile(join(root, MAIN), "utf8")
     expect(text).not.toContain("<hole x={12}")

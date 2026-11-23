@@ -1,4 +1,4 @@
-// attach_datasheet: records where a part's pin table came from (the datasheet's link, title and pages) in part.yaml and
+// set_part_fields { datasheet }: records where a part's pin table came from (the datasheet's link, title and pages) in part.yaml and
 // in verification.md, through the core's createPart as one write. The link is only recorded, never fetched.
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"

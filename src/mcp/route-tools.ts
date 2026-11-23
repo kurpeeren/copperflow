@@ -4,7 +4,7 @@
 // locked part's pad, hand copper an obstacle. The MCP server and the Studio are separate processes, so a Studio run on
 // the same board cannot be seen from here; instead the files a build reads are hashed before routing and again inside
 // the write queue, and a change in between (the Studio's own write, a hand edit) discards the result, as the Studio
-// does with its own runs. unroute takes back only the router's unlocked copper.
+// does with its own runs. remove_copper { nets } or { all } (unroute) takes back only the router's unlocked copper.
 import { z } from "zod"
 import { applyLayoutEdits, resolveCircuit } from "../core/index.js"
 import { unrouteEdits, unrouteSummary, type UnrouteTrack } from "../core/unroute.js"
@@ -40,17 +40,8 @@ export const autorouteInput = {
   budgetSeconds: z.number().positive().max(MAX_BUDGET_SECONDS).optional().describe(`Default ${DEFAULT_BUDGET_SECONDS}`),
 }
 
-export const unrouteInput = {
-  file: z.string().describe("Circuit file"),
-  nets: names.optional(),
-  all: z.boolean().optional(),
-}
-
 export const AUTOROUTE_DESCRIPTION =
   "Route the unrouted connections as ONE change: the whole board, or only some nets, parts or one instance (one of these). Run it after placing; unplaced parts get no copper; existing copper is kept. It names each connection it could not route and why: route those with route_track, or move parts and run it again."
-export const UNROUTE_DESCRIPTION =
-  "Remove the router's copper, for some nets (and copper shorting them) or all, as ONE change. Hand-drawn and locked copper stay."
-
 const plural = (count: number, word: string, many = `${word}s`) => `${count} ${count === 1 ? word : many}`
 
 /** The scope the arguments ask for, checked against the circuit; at most one of nets, parts and instance. */
@@ -187,7 +178,7 @@ function copperOfNets(design: Design, nets: readonly string[]): string[] {
   return [...new Set([...carried, ...shorted])]
 }
 
-/** unroute: the router's unlocked copper of some nets, or all of it, removed as one change. */
+/** remove_copper { nets } or { all }: the router's unlocked copper of some nets, or all of it, removed as one change. */
 export async function unroute(ports: Ports, input: { file: string; nets?: string[] | undefined; all?: boolean | undefined }): Promise<string> {
   if ((input.nets === undefined) === (input.all !== true)) throw new Error("Give nets or all: true (not both). Nothing was written.")
   const circuit = await resolveCircuit(ports.root, input.file)

@@ -150,7 +150,7 @@ describe("PROJECT.md on disk", () => {
     await noteOpen(root, "route the board", { author: "ai" })
     await expect(noteOpen(root, "Route the board ", { author: "ai" })).rejects.toThrow(/already open/)
     await setProject(root, { open: Array.from({ length: 50 }, (_, i) => `item ${i}`) }, { author: "ai" })
-    await expect(noteOpen(root, "one more", { author: "ai" })).rejects.toThrow(/50 items.*set_project/)
+    await expect(noteOpen(root, "one more", { author: "ai" })).rejects.toThrow(/50 items.*note_decision \{ sections: \{ open \} \}/)
   })
 
   test("refuses a heading inside a section and an empty update", async () => {
@@ -182,18 +182,19 @@ describe("the project tools", () => {
     expect(Object.keys(tool("project_status")?.inputSchema.properties ?? {})).toEqual([])
     expect(tool("project_status")?.annotations).toMatchObject({ readOnlyHint: true })
     expect(tool("project_status")?.description).toMatch(/first/)
-    expect(Object.keys(tool("note_decision")?.inputSchema.properties ?? {})).toEqual(["file", "text", "open"])
-    expect(tool("note_decision")?.inputSchema.required).toEqual(["text"])
-    expect(Object.keys(tool("set_project")?.inputSchema.properties ?? {})).toEqual(["intent", "blocks", "open"])
-    expect(Object.keys(tool("board_summary")?.inputSchema.properties ?? {})).toEqual(["file", "detail"])
-    expect(tool("board_summary")?.inputSchema.required).toEqual(["file"])
+    expect(Object.keys(tool("note_decision")?.inputSchema.properties ?? {})).toEqual(["file", "text", "open", "sections"])
+    expect(tool("note_decision")?.inputSchema.required ?? []).toEqual([])
+    const sections = tool("note_decision")?.inputSchema.properties?.sections as { properties?: Record<string, unknown> } | undefined
+    expect(Object.keys(sections?.properties ?? {})).toEqual(["intent", "blocks", "open"])
+    expect(Object.keys(tool("circuit_summary")?.inputSchema.properties ?? {})).toEqual(["file", "view", "detail", "filter"])
+    expect(tool("circuit_summary")?.inputSchema.required).toEqual(["file"])
   })
 
   test("project_status on a project with two circuits: the sections, the counts and the last changes", async () => {
     expect((await call("project_status")).text).toMatch(/^No PROJECT\.md yet/)
-    expect((await call("set_project", { intent: "A USB-C supply.", blocks: [{ name: "PSU", does: "LDO", status: "placed" }], open: ["route"] })).text).toMatch(/^Change c\d{4}: Intent, Blocks, Open written to PROJECT\.md$/)
+    expect((await call("note_decision", { sections: { intent: "A USB-C supply.", blocks: [{ name: "PSU", does: "LDO", status: "placed" }], open: ["route"] } })).text).toMatch(/^Change c\d{4}: Intent, Blocks, Open written to PROJECT\.md$/)
     for (let i = 1; i <= 6; i++) await call("note_decision", { text: `decision ${i}` })
-    await call("set_props", { file: "second.circuit.tsx", part: "R1", props: { pcbX: 4 } })
+    await call("edit_circuit", { file: "second.circuit.tsx", edits: [{ set_props: { part: "R1", props: { pcbX: 4 } } }] })
     const { text, isError } = await call("project_status")
     expect(isError).toBe(false)
     const lines = text.split("\n")
@@ -206,7 +207,7 @@ describe("the project tools", () => {
     expect(text).toMatch(/^Circuits \(2\):$/m)
     expect(lines).toContain("index.circuit.tsx: parts 9, nets 6, unplaced 0, unrouted 22, errors 0, warnings 1")
     expect(lines).toContain("second.circuit.tsx: parts 1, nets 0, unplaced 0, unrouted 0, errors 0, warnings 2")
-    expect(text).toMatch(/^ {2}c\d{4} \d{4}-\d\d-\d\d ai: set R1 pcbX=4$/m)
+    expect(text).toMatch(/^ {2}c\d{4} \d{4}-\d\d-\d\d ai: edit set R1 pcbX$/m)
     expect(lines.length).toBeLessThan(40)
   })
 
@@ -220,7 +221,7 @@ describe("the project tools", () => {
   })
 
   test("note_decision with open adds one item to Open, naming the circuit, and project_status shows it", async () => {
-    await call("set_project", { open: ["route"] })
+    await call("note_decision", { sections: { open: ["route"] } })
     const added = await call("note_decision", { file: "second.circuit.tsx", text: "move R1 to the edge", open: true })
     expect(added.text).toBe("Change c0002: added to Open in PROJECT.md (2 open items)")
     expect(sectionLines(await readFile(join(root, "PROJECT.md"), "utf8"), "Open")).toEqual(["route", "second.circuit.tsx: move R1 to the edge"])
@@ -232,33 +233,33 @@ describe("the project tools", () => {
     expect(sectionLines(await readFile(join(root, "PROJECT.md"), "utf8"), "Open")).toHaveLength(2)
   })
 
-  test("set_project states the shape of every limited field, and a refusal names the field, the rule and a valid example", async () => {
+  test("note_decision { sections } states the shape of every limited field, and a refusal names the field, the rule and a valid example", async () => {
     const { tools } = await client.listTools()
-    const description = tools.find((t) => t.name === "set_project")?.description ?? ""
-    for (const rule of ["intent", "at most 2000 characters", "blocks", "array of at most 50", "open", "array of at most 50 non-empty strings"]) expect(description).toContain(rule)
-    const bad = await call("set_project", { open: "route the board" })
+    const description = tools.find((t) => t.name === "note_decision")?.description ?? ""
+    for (const rule of ["intent", "at most 2000 characters", "blocks", "at most 50 { name, does, status }", "open", "at most 50 non-empty strings"]) expect(description).toContain(rule)
+    const bad = await call("note_decision", { sections: { open: "route the board" } })
     expect(bad.isError).toBe(true)
     expect(bad.text).toContain("open")
     expect(bad.text).toContain("array of at most 50 non-empty strings")
     expect(bad.text).toContain('e.g. ["route the board"]')
-    const many = await call("set_project", { open: Array.from({ length: 51 }, (_, i) => `item ${i}`) })
+    const many = await call("note_decision", { sections: { open: Array.from({ length: 51 }, (_, i) => `item ${i}`) } })
     expect(many.isError).toBe(true)
     expect(many.text).toContain("array of at most 50 non-empty strings")
-    const blocks = await call("set_project", { blocks: [{ name: "PSU" }] })
+    const blocks = await call("note_decision", { sections: { blocks: [{ name: "PSU" }] } })
     expect(blocks.isError).toBe(true)
     expect(blocks.text).toContain("blocks")
     expect(blocks.text).toContain('e.g. [{ "name": "CAN", "does": "MCP2515 + TJA1051 transceiver", "status": "placed" }]')
-    const intent = await call("set_project", { intent: "x".repeat(2001) })
+    const intent = await call("note_decision", { sections: { intent: "x".repeat(2001) } })
     expect(intent.isError).toBe(true)
     expect(intent.text).toContain("intent")
     expect(intent.text).toContain("at most 2000 characters")
     expect(intent.text).toContain('e.g. "A CAN node for the bench."')
     // The limits are not loosened: 50 items still pass, 2000 characters still pass.
-    expect((await call("set_project", { intent: "x".repeat(2000), open: Array.from({ length: 50 }, (_, i) => `item ${i}`) })).isError).toBe(false)
+    expect((await call("note_decision", { sections: { intent: "x".repeat(2000), open: Array.from({ length: 50 }, (_, i) => `item ${i}`) } })).isError).toBe(false)
   })
 
-  test("board_summary answers through the server", async () => {
-    const { text, isError } = await call("board_summary", { file: "second.circuit.tsx" })
+  test("circuit_summary { view: \"board\" } answers through the server", async () => {
+    const { text, isError } = await call("circuit_summary", { file: "second.circuit.tsx", view: "board" })
     expect(isError).toBe(false)
     expect(text).toMatch(/^second\.circuit\.tsx: Board 20\.0 × 10\.0 mm, 2 layers/)
     expect(text).toMatch(/^R1 1k 0603 @\(3\.0, 3\.0\) r0 top$/m)

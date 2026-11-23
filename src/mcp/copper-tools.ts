@@ -36,13 +36,6 @@ export const routeTrackInput = {
   width: z.number().positive().optional().describe("mm; default the net class's"),
 }
 
-export const addViaInput = {
-  file: z.string().describe("Circuit file"),
-  net: z.string().optional(),
-  at: point,
-  layers: z.array(layer).min(2).optional().describe('Default ["top", "bottom"]'),
-}
-
 const copperId = z.string().regex(/^[tv]\d+$/, 'a track id such as "t0001" or a via id such as "v0001"')
 const trackSegment = z.object({
   id: z.string().regex(/^t\d+$/, 'a track id such as "t0001"'),
@@ -60,12 +53,6 @@ export const removeCopperInput = {
 
 export const ROUTE_TRACK_DESCRIPTION =
   "Copper track (not a schematic trace): draw one of a net by hand as ONE change: corners on one layer, or from and to pads. It starts on the net's copper, not a locked part's pad, and touches no other net. The answer lists copper violations. For what autoroute could not route."
-export const ADD_VIA_DESCRIPTION =
-  "Place a via by hand as ONE change; its net is that of the copper under it unless given."
-export const REMOVE_COPPER_DESCRIPTION =
-  "Remove tracks and vias by id (from copper_summary or check_circuit) as ONE change; { id, segment } removes one segment. Locked copper is refused."
-export const COPPER_SUMMARY_DESCRIPTION =
-  "Summarize the copper in at most 60 lines: totals, per net (tracks, vias, unrouted), pours and holes by id, violations by rule. Call it before and after drawing copper."
 
 export interface Ports {
   root: string
@@ -215,7 +202,7 @@ function viaNet(design: Design, centre: Point, layers: readonly CopperLayer[], w
   return design.circuit.nets.find((net) => net.id === id)
 }
 
-/** add_via: one via as one change. */
+/** route_track { at }: one via as one change. */
 /**
  * Refuses a via whose copper would lie on another via's: the two holes would be drilled into each other. Saying so
  * before anything is written beats a hole-to-hole error after it.

@@ -50,9 +50,9 @@ beforeAll(async () => {
   client = new Client({ name: "test", version: "0.0.0" })
   await Promise.all([server.connect(serverSide), client.connect(clientSide)])
   await createCircuitFile(root, MAIN, BOARD, { author: "human", summary: "create io.circuit.tsx" }) // c0001
-  await call("set_props", { file: MAIN, part: "R1", props: { pcbX: -6 } }) // c0002
+  await call("edit_circuit", { file: MAIN, edits: [{ set_props: { part: "R1", props: { pcbX: -6 } } }] }) // c0002
   await call("autoroute", { file: MAIN }) // c0003
-  await call("remove_part", { file: MAIN, part: "C1" }) // c0004
+  await call("edit_circuit", { file: MAIN, edits: [{ remove_part: { part: "C1" } }] }) // c0004
   await writeFile(join(root, "broken.circuit.tsx"), "export default () => (<board")
 }, 120_000)
 
@@ -63,7 +63,7 @@ afterAll(async () => {
 
 describe("recent_changes and history with one change or since one", () => {
   test("one change: the title, then what changed", async () => {
-    expect(await call("recent_changes", { id: "c0002" })).toBe(["Change c0002 by the agent: set R1 pcbX=-6", "Moved 1 part: R1"].join("\n"))
+    expect(await call("recent_changes", { id: "c0002" })).toBe(["Change c0002 by the agent: edit set R1 pcbX", "Moved 1 part: R1"].join("\n"))
   })
 
   test("the autoroute: tracks as a count with their length", async () => {

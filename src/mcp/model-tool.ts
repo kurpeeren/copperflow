@@ -1,22 +1,10 @@
-// The export_model tool: the board and its parts as one 3D model file, a STEP file for mechanical CAD or a GLB file
-// for a 3D viewer. Unlike export_fabrication it writes a design that still has errors: the file is a look at the
+// export { as: "step" | "glb" }: the board and its parts as one 3D model file, a STEP file for mechanical CAD or a GLB file
+// for a 3D viewer. Unlike the fabrication export it writes a design that still has errors: the file is a look at the
 // board's shape, not an order.
-import { z } from "zod"
 import type { DesignSource } from "../core/design-source.js"
 import { exportGlb, formatGlbExport, type Modeller } from "../core/model-export.js"
 import { exportStep, formatStepExport } from "../core/step-export.js"
 import type { LookRequest } from "../engine/fab/picture/looks.js"
-
-export const EXPORT_MODEL_DESCRIPTION =
-  'Write the board and its parts as one 3D model file beside the circuit: STEP for mechanical CAD (parts as the 3D view draws them, in colour) or GLB for a 3D viewer (the board as made). An unfinished design is written too.'
-
-export const exportModelInput = {
-  file: z.string().describe("Circuit file"),
-  format: z.enum(["step", "glb"]),
-  out: z.string().optional().describe("Project file, e.g. cad/board.step"),
-  // The names are render's; a wrong one is refused with the list, which costs the tool list nothing.
-  look: z.object({ mask: z.string(), silk: z.string(), finish: z.string() }).partial().optional().describe("glb only, as render's"),
-}
 
 export interface ModelPorts {
   root: string

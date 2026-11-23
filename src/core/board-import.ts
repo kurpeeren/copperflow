@@ -1,5 +1,5 @@
 // Import board: the outline, mounting holes and inner shapes of a DXF or SVG drawing (board-import-svg.ts) written to
-// a circuit's board as one history entry (board-shape-edit.ts). The agent's import_board, the CLI's `copperflow board
+// a circuit's board as one history entry (board-shape-edit.ts). The agent's fit_board { drawing }, the CLI's `copperflow board
 // --dxf | --svg` and the Studio's File → Import board all call importBoard and show formatBoardImport's lines.
 import { readFile } from "node:fs/promises"
 import { basename } from "node:path"

@@ -73,7 +73,7 @@ describe("set_rules", () => {
     const drawn = await call("route_track", { file: FILE, from: "R1.pin1", to: "R2.pin1" })
     expect(drawn.isError, drawn.text).toBe(false)
     const result = await call("set_rules", { rules: { netClasses: { power: { nets: ["V5"], trackWidth: 0.5 } } } })
-    expect(result.text).toContain("1 existing track is narrower: unroute and autoroute V5")
+    expect(result.text).toContain("1 existing track is narrower: remove their router copper (remove_copper { nets }) and autoroute V5")
   })
 
   test("merges into what is there, keeps comments, and null removes a key", async () => {
@@ -188,9 +188,9 @@ describe("pads", () => {
     expect((await call("guide", { topic: "packages soic" })).text).not.toContain("pads: number")
   })
 
-  test("part_info lists the footprint's pads under the pins", async () => {
+  test("list_parts { id } lists the footprint's pads under the pins", async () => {
     await call("create_part", { id: "LDO", title: "LDO", package: "sot23_5", pins: "1 VIN power_in\n2 GND ground\n3 EN input\n4 NC no_connect\n5 VOUT power_out" })
-    const info = (await call("part_info", { id: "LDO" })).text
+    const info = (await call("list_parts", { id: "LDO" })).text
     expect(info).toContain("--- pads of sot23_5: number, centre, size (mm), hole, pin ---")
     expect(info).toMatch(/^ {2}5 {2}at \(.+\) .+ {2}VOUT$/m)
     expect(info.indexOf("--- pads")).toBeLessThan(info.indexOf("--- verification.md ---"))
@@ -242,11 +242,12 @@ describe("words that misled", () => {
     const { tools } = await client.listTools()
     const description = (name: string) => tools.find((tool) => tool.name === name)?.description ?? ""
     expect(description("add_trace")).toMatch(/^Schematic trace/)
-    expect(description("remove_trace")).toMatch(/^Schematic trace/)
+    const edits = tools.find((tool) => tool.name === "edit_circuit")?.inputSchema.properties?.edits as { items?: { properties?: Record<string, { description?: string }> } } | undefined
+    expect(edits?.items?.properties?.disconnect?.description).toMatch(/^A schematic trace/)
     expect(description("route_track")).toMatch(/^Copper track/)
     expect(description("list_parts")).toContain("Built-in kinds")
     expect(description("check_circuit")).toContain("after autoplace, after autoroute and after removing copper")
-    expect(description("export_fabrication")).toContain("pictures")
+    expect(description("export")).toContain("pictures")
     const refused = await call("edit_circuit", { file: FILE, edits: [{ route_track: { net: "V5" } }] })
     expect(refused.isError).toBe(true)
     expect(refused.text).toContain("Copper, the board's size and shape, design rules and library parts are not edited through it")

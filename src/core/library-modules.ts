@@ -316,5 +316,5 @@ export async function verifyLibraryModule(full: string, by: string, now: string)
   await writeFile(marksFile(), `${JSON.stringify({ marks: next }, null, 2)}\n`)
 }
 
-/** list_modules, module_info and use_module for any module: <Name> on the shelf, <library>/<Name> in a library. */
+/** list_modules (with or without name) and use_module for any module: <Name> on the shelf, <library>/<Name> in a library. */
 export const isLibraryName = (name: unknown): name is string => typeof name === "string" && name.includes("/")

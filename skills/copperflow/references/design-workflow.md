@@ -9,14 +9,14 @@ lengths are illustrative: read your own answers.
 
 ```
 project_status {}
-→ No PROJECT.md yet: write the Intent and Blocks with set_project.
+→ No PROJECT.md yet: write the Intent and Blocks with note_decision { sections }.
   Circuits: none yet (new_circuit starts one)
 ```
 
 ## 2. Intent and blocks
 
 ```
-set_project {
+note_decision { sections: {
   intent: "Reads two 0-3.3 V analog sensors with an ATtiny814 and reports over UPDI/serial; 5 V in, 3.3 V LDO.",
   blocks: [
     { name: "Power", does: "AP2112K-3.3 LDO, 5 V to 3.3 V", status: "planned" },
@@ -25,7 +25,7 @@ set_project {
     { name: "Connectors", does: "J1 sensor header (5V, GND, S1, S2), J2 UPDI header", status: "planned" }
   ],
   open: ["choose parts", "approval before the board", "place, route, export"]
-}
+} }
 → Change c0001: Intent, Blocks, Open written to PROJECT.md
 ```
 
@@ -45,7 +45,7 @@ create_part { id: "AP2112K-3.3", title: "AP2112K 3.3 V 600 mA LDO", manufacturer
 → Created AP2112K-3.3: AP2112K 3.3 V 600 mA LDO, 5 pins, footprint sot23_5.
   Wrote parts/AP2112K-3.3/part.yaml, ….
   It is NOT verified: check every pin and the footprint in parts/AP2112K-3.3/verification.md against the datasheet.
-  Use it with place_part (part "AP2112K-3.3"). Tell the human it is Unverified until they check verification.md.
+  Place it with edit_circuit place_part (part "AP2112K-3.3"). Tell the human it is Unverified until they check verification.md.
 
 create_part { id: "ATTINY814", title: "ATtiny814 8-bit MCU", manufacturer: "Microchip",
   mpn: "ATTINY814-SSN", package: "soic14",
@@ -150,12 +150,12 @@ A sheet holds one layout for all its instances: placing CH1 wrote the positions 
 `Channel.sheet.tsx`, so CH2 took the same layout on top of CH1. `autoplace` on
 CH2 (or on the whole board) moves the other instance as a whole: it sets the instance's `pcbX`,
 `pcbY` so its copy overlaps nothing, near what it connects to. A locked instance stays. Then look
-with `board_summary`.
+with the board view of `circuit_summary`.
 
 ## 7. Look, tune, pour, route
 
 ```
-board_summary { file: "sensor.circuit.tsx" }
+circuit_summary { file: "sensor.circuit.tsx", view: "board" }
 → sensor.circuit.tsx: Board 24 × 17 mm, 2 layers, courtyards use 31%; 11 parts, 8 nets
   C1 100nF 0402 @(4.1, 2.0) r0 top
   …
@@ -164,15 +164,14 @@ board_summary { file: "sensor.circuit.tsx" }
   …
   Pours: none
   Unrouted: 17 connections
-add_pour { file: "sensor.circuit.tsx", net: "GND", layer: "top" }
-→ Change c0012: added copperpour:1 (GND, top)
+edit_circuit { file: "sensor.circuit.tsx", edits: [{ add_pour: { net: "GND", layer: "top" } }, { add_pour: { net: "GND", layer: "bottom" } }] }
+→ Change c0012 applied: 2 edits: add pour GND top; add pour GND bottom
+  Written: copperpour:1, copperpour:2
   copperpour:1 GND top: 301.20 mm², joins 9 pads
-add_pour { file: "sensor.circuit.tsx", net: "GND", layer: "bottom" }
-→ Change c0013: added copperpour:2 (GND, bottom)
 route_track { file: "sensor.circuit.tsx", from: "R201.pin2", to: "U1.PA4" }
-→ Change c0014: routed ADC1 R201.pin2 (6.10, 3.00 top) to U1.pin2 (9.20, 4.10 top): 1 track, 0 vias
+→ Change c0013: routed ADC1 R201.pin2 (6.10, 3.00 top) to U1.pin2 (9.20, 4.10 top): 1 track, 0 vias
 autoroute { file: "sensor.circuit.tsx" }
-→ Change c0015: Routed 7 of 7 connections in 1 pass
+→ Change c0014: Routed 7 of 7 connections in 1 pass
 check_circuit { file: "sensor.circuit.tsx" }
 → sensor.circuit.tsx: 0 errors, 6 warnings
 ```
@@ -181,19 +180,19 @@ Clean means 0 errors and no `unrouted` warning. Had `autoroute` left one (`unrou
 (12.30, 4.50 top) to U2.pin2 (…)`), route it with `route_track` by reference or move a part and
 run `autoroute` again before the export.
 
-A part that sits badly in `board_summary` (overlapping, off the board, a long line) is moved
-with `set_props { pcbX, pcbY, pcbRotation }` or placed again with `autoplace` before routing.
+A part that sits badly in the board view (overlapping, off the board, a long line) is moved
+with an `edit_circuit` `set_props { part, props: { pcbX, pcbY, pcbRotation } }` step or placed again with `autoplace` before routing.
 
 ## 8. Export and remember
 
 ```
-export_fabrication { file: "sensor.circuit.tsx" }
+export { file: "sensor.circuit.tsx", as: "fabrication" }
 → Wrote 11 files to sensor-fab/ and sensor-fab.zip:
   …
   Warning: …
   Next, a person should …
 note_decision { file: "sensor.circuit.tsx", text: "Board 24 x 17 mm, GND pour top, routed on two layers" }
-set_project { blocks: [ …each block with status "routed"… ], open: ["human: verify AP2112K-3.3 and ATTINY814", "order"] }
+note_decision { sections: { blocks: [ …each block with status "routed"… ], open: ["human: verify AP2112K-3.3 and ATTINY814", "order"] } }
 ```
 
 Then tell the human the change ids and what you did not verify.

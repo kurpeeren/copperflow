@@ -178,7 +178,7 @@ function pickBoardDrawing(actions: Actions, openImported: (file: string) => void
     const picked = picker.files?.[0]
     if (!picked) return
     const kicad = /\.kicad_pcb$/i.test(picked.name)
-    if (picked.size > MAX_DRAWING_BYTES) return actions.notify(`${picked.name} is larger than 1 MB; import it with the agent's import_board or ${kicad ? "copperflow import kicad" : "copperflow board --dxf"}`)
+    if (picked.size > MAX_DRAWING_BYTES) return actions.notify(`${picked.name} is larger than 1 MB; import it with the agent's fit_board { drawing } or ${kicad ? "copperflow import kicad" : "copperflow board --dxf"}`)
     picked
       .text()
       .then(async (text) => {

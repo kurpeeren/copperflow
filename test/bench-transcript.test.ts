@@ -68,7 +68,7 @@ describe("parseTranscript", () => {
 describe("measurement parsers", () => {
   it("reads the counts per circuit from project_status", () => {
     const text = [
-      "No PROJECT.md yet: write the Intent and Blocks with set_project.",
+      "No PROJECT.md yet: write the Intent and Blocks with note_decision { sections }.",
       "Circuits (2):",
       "a.circuit.tsx: parts 9, nets 6, unplaced 0, unrouted 22, errors 0, warnings 1",
       "  c0003 2026-11-16 something",
@@ -91,7 +91,7 @@ describe("measurement parsers", () => {
     expect(countInstances(text)).toBe(2)
   })
 
-  it("reads the board size from board_summary", () => {
+  it("reads the board size from circuit_summary { view: \"board\" }", () => {
     expect(parseBoardSize("x.circuit.tsx: Board 30.0 × 18.0 mm, 2 layers")).toEqual({ width: 30, height: 18 })
     expect(parseBoardSize("no board here")).toBeNull()
   })
