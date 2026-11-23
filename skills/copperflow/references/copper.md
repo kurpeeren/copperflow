@@ -25,6 +25,10 @@ the result and answers what it wrote against what the file held, whether every p
 a list `Not carried over:` by kind and count (silkscreen, texts, 3D models, rules, …). Tell the person
 the parts must be compared with their datasheets before they are verified.
 
+A board that exists only as a scan or photo is redrawn step by step in
+[redraw-from-image.md](redraw-from-image.md): scale, holes, parts at their measured places, nets read
+from the copper.
+
 ## Placing and routing
 
 Copper: place the parts first with `autoplace` (one history entry; parts without a position, or
