@@ -4,7 +4,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Show a board you made with copperflow. Pictures and the one-page HTML from `export_html` are the best way:
+        Show a board you made with copperflow. Pictures and the one-page HTML from `export { as: "html" }` are the best way:
         the HTML holds the schematic, the board, the 3D view and the BOM, and opens in any browser without running
         anything from your project.
   - type: input
@@ -26,7 +26,7 @@ body:
     id: html
     attributes:
       label: The one-page HTML
-      description: Attach the file `export_html` wrote (zip it if GitHub refuses the .html), or link to it.
+      description: 'Attach the file `export { as: "html" }` wrote (zip it if GitHub refuses the .html), or link to it.'
   - type: input
     id: repository
     attributes:

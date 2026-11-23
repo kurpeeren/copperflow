@@ -307,7 +307,7 @@ put together as mask, finish, print and holes, in the maker's usual colours (`--
 `--silk`). `--view 3d` and the Studio's 3D tab lay that picture on the board and stand the parts on
 it. `copperflow glb <file>` writes that same board and its parts as a GLB file, a 3D model a viewer, a
 3D editor or a web page opens and turns; `copperflow step <file>` writes the STEP file alone. Both
-write a board that is not finished too. `copperflow html <file>` (MCP `export_html`) writes the whole design as
+write a board that is not finished too. `copperflow html <file>` (MCP `export` `as: "html"`) writes the whole design as
 one web page to hand to someone: every schematic page, the PCB view, the board as made top and bottom,
 3D from three angles and the BOM as a table, with the fabrication zip, the GLB, the STEP file and the
 BOM as CSV inside it as downloads. It opens from disk with no network; a design with errors is written
@@ -326,48 +326,45 @@ sources and simple part models: no time, no frequency, no temperature, no tolera
 modelled. A sheet's card can hold cases ("at 24 V in, the output is between 3.0 and 3.5 V") that it
 runs; `copperflow spice` writes the same circuit as a SPICE netlist for another simulator.
 
-**A board from KiCad.** `copperflow import kicad board.kicad_pcb` (the agent's `import_board`, or
+**A board from KiCad.** `copperflow import kicad board.kicad_pcb` (the agent's `fit_board` with `drawing`, or
 File, Import board in the Studio) makes a new circuit from a KiCad 6 or newer board: its outline,
 parts, nets, tracks, vias and pours. The parts arrive as library parts, not verified.
 
 ## MCP tools
 
+31 tools. Tools that do the same kind of thing to the same object are one tool with a parameter
+(`view`, `as`, `redo`, `square`, …); [docs/design.md](docs/design.md) lists the old calls and their
+new forms.
+
 | Tool | What it does |
 |------|--------------|
-| `list_circuits` | Lists the `*.circuit.tsx` files in the project |
-| `circuit_summary` | Compact by default (a line per part and net, locks, marks, lock violations); `detail: "full"` lists every prop and trace |
-| `set_props` | Sets literal props: position, rotation, value, footprint; `schNameAt`, `schValueAt` and `pcbNameAt` take a point `{ x, y }` that moves the name, value or silkscreen designator from the part's origin; `null` removes one of those three |
-| `remove_part` | Removes a part and its traces |
-| `add_trace` / `remove_trace` | Connects or disconnects two ports or nets; `add_trace` with `nets` connects many pins of a circuit in one call, e.g. `{ "GND": ["R1.pin2", "C1.pin2"] }`, refusing unknown parts or pins and listing the pins it added |
+| `project_status` / `note_decision` | The project memory `PROJECT.md` (Intent, Blocks, Decisions, Open) with the circuit files, each circuit's counts and last changes; a dated decision (or with `open: true` one more open item), or with `sections` rewritten Intent, Blocks and Open, each write one change |
+| `circuit_summary` | Compact by default (a line per part and net, locks, marks, lock violations); `detail: "full"` lists every prop and trace. `view: "board"`: the board in about 60 lines (size, one line per part, longest connections with both pads' places, overlaps, edge, pours); `view: "copper"`: per net the tracks, vias, length and unrouted connections, then copper violations by rule; `view: "bom"`: the bill of materials, with whether the board is ready to order |
+| `edit_circuit` | Edits applied in order as one change (one history entry), stopping at the first refused edit and writing nothing: `set_props` (position, rotation, value, footprint; `schNameAt`, `schValueAt` and `pcbNameAt` take a point `{ x, y }`; `null` removes one of those), `place_part` (a library or built-in part, with its import), `remove_part` (with its traces), `disconnect`, `add_text` (a schematic note, or with `layer` board silkscreen), `add_pour` / `remove_pour` / `add_hole` / `remove_hole`, instances, pages, drawings |
+| `add_trace` | Connects two ports or nets; with `nets` many pins of a circuit in one call, e.g. `{ "GND": ["R1.pin2", "C1.pin2"] }`, refusing unknown parts or pins and listing the pins it added |
 | `check_circuit` | Runs copperflow's own ERC and placement DRC: counts, then up to 20 findings, one line each; `filter` narrows by severity, `copper`, part or net; copper clearance, width, via, board-edge and keepout violations are included |
 | `new_circuit` | Writes a whole new circuit from a netlist in one call: parts (a built-in `kind` or a library `part`, `value`, `footprint`, `props` such as `pinCount` or a `pinLabels` object to name pins, no positions) and `nets` (`{ GND: ["R1.pin2", "U1.GND"] }`, no wire corners). Pins are checked first (a wrong one is refused with the part's real pin names); an existing file needs `replace: true`; one history entry, and undo removes the file. It then places the board (`autoplace`, a second entry; the board is fitted when no `board` size is given) unless `place: false` |
 | `autoplace` | Places the parts nobody placed or locked (or only `parts`, or one `instance`) by their connections, as one change: answers "Placed 12 parts; wire length 184 mm (was 412); board 42 × 28 mm; 0 overlaps", then the parts it found no room for and its notes; `fit: true` fits the board too; `budgetSeconds` (20 s by default); `connectors: "ahead"` tries each connector beside the part it serves (route and compare before keeping it) |
-| `fit_board` | Shrinks or grows a rectangular board to the parts' courtyards plus `margin` (2 mm by default), as one change |
-| `import_board` | Sets the board's outline, mounting holes and keepouts from a DXF drawing in the project folder, as one change; a `.kicad_pcb` file makes a new circuit from a KiCad board |
-| `autoroute` / `unroute` | Routes the unrouted connections (the whole board, some nets, some parts or one instance) and names each one it could not route with the reason; or removes the router's copper |
-| `add_pour` / `remove_pour` / `add_hole` / `remove_hole` | A copper pour of a net on one layer, or a non-plated mounting hole, each as one change |
+| `fit_board` | Shrinks or grows a rectangular board to the parts' courtyards plus `margin` (2 mm by default), or sets a size, an outline or 4 copper layers, as one change; with `drawing` the outline, mounting holes and keepouts come from a DXF or SVG drawing in the project folder, and a `.kicad_pcb` file makes a new circuit from a KiCad board |
+| `set_rules` | Changes `rules.yaml` (net classes, fabrication profile and minimums) as one change, and says what it means for the board |
+| `autoroute` | Routes the unrouted connections (the whole board, some nets, some parts or one instance) and names each one it could not route with the reason |
+| `route_track` | Draws one track of a net by hand from a pad, track or via of that net, as one change, refused when a point lands on another net's copper; with `at` places a via (net from the copper under it, size from the net class and the fabrication ring); the answer lists the copper violations it introduced |
+| `remove_copper` | Removes tracks and vias by id (or one segment of a track by `{ id, segment }`), or with `nets` or `all: true` the router's copper, as one change |
+| `fillet_tracks` | Rounds the square corners of tracks (by id, or every track) into short chords on an arc of the design rules' fillet radius, or with `square: true` puts rounded corners back, as one change; a corner too close to other copper, a pad, a keepout or the board edge, or with legs too short, stays as it was and is counted |
+| `import_graphic` | Places a logo or mark from an SVG or DXF in the project on the board, as silkscreen or copper |
 | `simulate` | The DC operating point of a circuit or a sheet: set nets to volts, close switches, energise relay coils; with a sheet and no values it runs the sheet's cases |
 | `make_sheet` / `describe_sheet` | Moves parts into a sub-sheet with ports, and writes a sheet's card: what it does, its ports and its cases |
-| `list_modules` / `module_info` / `use_module` / `save_module` | The shelf of modules and the libraries: read one, bring one into the project, save a described sheet |
-| `export_fabrication` | Writes the fabrication files, the STEP model and the board's pictures; refused when the circuit has errors |
-| `export_model` | Writes the board and its parts as one 3D model file, STEP for mechanical CAD or GLB for a 3D viewer; an unfinished board too |
-| `export_html` | Writes the design as one web page (schematic, board, 3D, BOM, with the fabrication and model files inside) to hand to a person; opens offline |
-| `attach_datasheet` / `guide` | Records the datasheet a part came from; and the copperflow skill's texts for an agent that has no skills |
-| `edit_circuit` | Several edits in one call, applied as one change (one history entry); stops at the first refused edit and writes nothing |
-| `route_track` | Draws one track of a net by hand from a pad, track or via of that net, as one change; refused when a point lands on another net's copper; the answer lists the copper violations it introduced |
-| `add_via` / `remove_copper` | Places a via (net from the copper under it, size from the net class and the fabrication ring) or removes tracks and vias by id (or one segment of a track by `{ id, segment }`), each as one change |
-| `fillet_tracks` / `straighten_tracks` | Rounds the square corners of tracks (by id, or every track) into short chords on an arc of the design rules' fillet radius, or puts rounded corners back, each as one change; a corner too close to other copper, a pad, a keepout or the board edge, or with legs too short, stays square and is counted |
-| `copper_summary` | Per net: tracks, vias, length and unrouted connections, then copper violations by rule (at most 60 lines) |
-| `board_summary` / `project_status` / `note_decision` / `set_project` | The board in about 60 lines (size, one line per part, longest connections with both pads' places, overlaps, edge, pours; `detail: "full"` for the rest); and the project memory `PROJECT.md` (Intent, Blocks, Decisions, Open) with each circuit's counts and last changes, a dated decision (or with `open: true` one more open item), or rewritten sections, each write one change |
-| `open_studio` | Starts the Studio for the project if none runs, opens it in your browser and answers with the address |
+| `list_modules` / `use_module` / `save_module` | The shelf of modules and the libraries (`name` reads one), bring one into the project, save a described sheet |
+| `export` | Writes files from the design: `as: "fabrication"` the fabrication files, the STEP model and the board's pictures (refused when the circuit has errors); `"step"` or `"glb"` one 3D model file, STEP for mechanical CAD or GLB for a 3D viewer (an unfinished board too); `"html"` one web page (schematic, board, 3D, BOM, with the fabrication and model files inside) to hand to a person, opening offline; `"package"` a folder with BOM, datasheets, part status and pin maps |
 | `render` | A PNG of the board or of one schematic page, drawn by the Studio's own code; `view: "board"` is the bare board as made: mask, finish, print and holes drawn from the fabrication layers, either side, in the maker's usual colours; `view: "3d"` is that board with its parts as simple shapes, at an angle; `change` or `since` draws what a change did; `parts` zooms to some parts (needs the optional package `@napi-rs/canvas`) |
-| `list_parts` / `part_info` | Shows the parts library and a part's data and checklist |
+| `list_parts` | Shows the parts library; with `id` a part's data, its pads and checklist |
 | `create_part` | Adds a part from a datasheet: pins, footprint string or footprint file, MPN, suppliers |
+| `set_part_fields` | Sets a part's suppliers, MPN, manufacturer or description; with `datasheet` records the datasheet its pins came from |
 | `import_part` | Fetches one part by its LCSC number from EasyEDA into `parts/<id>/`, unverified, for personal, non-commercial use only (see [licences](docs/licences.md)) |
-| `place_part` | Adds a library or built-in part to a circuit, with its import |
-| `bom` / `export_package` | Bill of materials, with whether the board is ready to order; folder with BOM, datasheets, part status and pin maps |
 | `recent_changes` | Recent changes by you and the agent, including undos; `id` says what one change did, `since` everything after it |
-| `undo_change` | Undoes one of the agent's own changes |
+| `undo_change` | Undoes one of the agent's own changes; `redo: true` redoes one of its undos |
+| `open_studio` | Starts the Studio for the project if none runs, opens it in your browser and answers with the address |
+| `guide` | The copperflow skill's texts, for an agent that has no skills |
 
 There is no unlock tool and no verify tool on purpose.
 
@@ -466,7 +463,7 @@ copperflow library remove <name>
 ```
 
 `copperflow library` lists them. The agent sees their modules as `<library>/<Name>` in
-`list_modules`, `module_info` and `use_module`. A circuit file is code that runs when the board
+`list_modules` (with `name` for one) and `use_module`. A circuit file is code that runs when the board
 builds, so a sheet from a library enters a project only when copperflow has proved it plain (part
 imports, one function returning tags with literal values, nothing else), and its parts come as data,
 their component files written by copperflow. A library module reads NOT verified until you run
@@ -483,7 +480,7 @@ their component files written by copperflow. A library module reads NOT verified
 
 ## Share your board
 
-Share the one-page HTML from `export_html` (or `copperflow html`) in
+Share the one-page HTML from `export` `as: "html"` (or `copperflow html`) in
 [GitHub Discussions, Show and tell](https://github.com/kurpeeren/copperflow/discussions/categories/show-and-tell). It shows
 the schematic, the board, 3D and the BOM, and it runs no code from the project. Add the topic `copperflow-project` to a
 repository that holds a copperflow project. To credit copperflow in its README:

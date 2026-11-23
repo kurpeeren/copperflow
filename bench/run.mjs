@@ -130,7 +130,7 @@ export async function measure(project, runDir) {
   try {
     found.circuits = parseProjectStatus((await server.call("project_status")).text)
     for (const file of circuitFiles) {
-      const board = await server.call("board_summary", { file })
+      const board = await server.call("circuit_summary", { file, view: "board" })
       found.boards[file] = board.isError ? { error: board.text.slice(0, 200) } : parseBoardSize(board.text)
     }
   } finally {

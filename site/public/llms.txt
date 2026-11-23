@@ -39,12 +39,12 @@ Do these in the folder that will hold the board.
   question the design needs in one message.
 - Only the person unlocks a part, verifies a library part and verifies a module. There is no tool for these on purpose.
 - Before drawing a block, call `list_modules`: a module is a block already drawn, with named ports. copperflow ships
-  `copperflow/RelayDriver`, `copperflow/DigitalInput24V` and `copperflow/CanNode`; `module_info` reads one and
-  `use_module` brings it into the project. Every module reads NOT verified until the person has verified it: say so.
+  `copperflow/RelayDriver`, `copperflow/DigitalInput24V` and `copperflow/CanNode`; `list_modules { name }` reads one
+  and `use_module` brings it into the project. Every module reads NOT verified until the person has verified it: say so.
 - The person adds a library of their own with `copperflow library add <name> <git address or folder>`; its modules
   appear as `<name>/<Module>`. No tool adds a library: ask the person to run the command.
-- A board drawn in a mechanical program comes in with `import_board`: the outline, the mounting holes and the keepouts
-  from a DXF or SVG file (the file goes in the parameter named `dxf` either way). A `.kicad_pcb` file (KiCad 6 or
+- A board drawn in a mechanical program comes in with `fit_board { drawing }`: the outline, the mounting holes and the
+  keepouts from a DXF or SVG file. A `.kicad_pcb` file (KiCad 6 or
   newer) makes a new circuit from that board; its parts arrive not verified.
 - To show the person what you did: `recent_changes { id }` says what one change did and `render { change: id }` draws
   it; `since` covers everything after a change.
@@ -53,17 +53,17 @@ Do these in the folder that will hold the board.
   values runs them.
 - `render` with `view: "board"` is the bare board as made, drawn from the fabrication layers; `view: "3d"` adds the
   parts as simple shapes, not their real models. Look at one before asking the person to.
-- `export_model` writes the board and its parts as one 3D model file beside the circuit, for a board that is not
-  finished too: `format: "step"` for mechanical CAD (parts as boxes), `format: "glb"` for a 3D viewer (the board as
-  made, parts as simple shapes).
+- `export { as: "step" }` or `{ as: "glb" }` writes the board and its parts as one 3D model file beside the circuit, for
+  a board that is not finished too: STEP for mechanical CAD (parts as boxes), GLB for a 3D viewer (the board as made,
+  parts as simple shapes).
 - `guide { topic: "packages" }` lists the standard packages copperflow makes a footprint and a 3D shape for, each
   with the string to type as a part's `footprint`; `guide { topic: "packages sot" }` searches them, and a search
   that finds a few lists each one's pads and what each pad is.
-- `export_html` writes the whole design as one HTML file to hand to a person: every schematic page, the board, the
+- `export { as: "html" }` writes the whole design as one HTML file to hand to a person: every schematic page, the board, the
   3D view and the BOM, with the fabrication files and the 3D models inside it as downloads. It opens offline.
 - `set_rules` changes `rules.yaml` (net classes, clearances, the 4-layer profile); `fit_board` also takes an exact
   width and height, an outline or the layer count; `render` takes `out` to write its picture to a file.
-- `add_text` with a `layer` puts words on the board's silkscreen; `import_graphic` places a drawing from an SVG or
+- `edit_circuit`'s `add_text` step with a `layer` puts words on the board's silkscreen; `import_graphic` places a drawing from an SVG or
   DXF file in the project on the silkscreen, as a solder-mask opening, or as copper. Copper with a `net` is that
   net's copper: it joins the net's pads and tracks and shorts against any other net. In an SVG the dark shapes are
   ink and light shapes over them are cut out.
@@ -71,7 +71,8 @@ Do these in the folder that will hold the board.
   for them. When the person has the Studio open on the same project (in a browser or in the desktop app), every tool
   call also shows there as it runs, and `open_studio` brings the desktop app's window to the front instead of opening a
   browser. `copperflow connect claude-desktop` adds the server to Claude Desktop; the desktop app has the same button.
-- `bom` ends with whether the board is ready to order. `export_fabrication` writes the Gerbers, drills,
+- `circuit_summary { view: "bom" }` ends with whether the board is ready to order. `export { as: "fabrication" }`
+  writes the Gerbers, drills,
   pick-and-place file, a STEP model and a picture of each side; it refuses a circuit with errors.
 - Impedance, differential pairs and matched lengths are net classes in `rules.yaml`
   (`guide { topic: "design-rules" }`). The figures are estimates; the router does not route a pair together or tune

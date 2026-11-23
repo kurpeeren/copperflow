@@ -116,7 +116,7 @@ export function countInstances(summaryText) {
   return summaryText.split("\n").filter((line) => /^\s+\S+ <[^>]+> connections=\{\{/.test(line)).length
 }
 
-/** The board size from board_summary, or null. */
+/** The board size from circuit_summary { view: "board" }, or null. */
 export function parseBoardSize(text) {
   const match = /Board ([\d.]+) × ([\d.]+) mm/.exec(text)
   return match ? { width: Number(match[1]), height: Number(match[2]) } : null
