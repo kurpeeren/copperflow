@@ -25,7 +25,7 @@ const nets = z.record(z.string(), z.array(z.string()).min(1))
 export const newCircuitInput = {
   file: z.string().describe("e.g. power.circuit.tsx"),
   parts: z.array(part).max(200).describe("May be empty when instances make them"),
-  nets: nets.optional().describe('e.g. { "GND": ["R1.pin2", "U1.GND"] }; leave out for no nets yet'),
+  nets: nets.optional().describe('e.g. { "GND": ["R1.pin2", "U1.GND"] }; optional'),
   board: z.object({ width: z.number(), height: z.number() }).optional().describe("mm; default 30 x 20"),
   pages: z
     .array(z.object({ name: z.string(), parts: z.array(z.string()) }))

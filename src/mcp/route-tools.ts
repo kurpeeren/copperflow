@@ -49,7 +49,7 @@ export const unrouteInput = {
 export const AUTOROUTE_DESCRIPTION =
   "Route the unrouted connections as ONE change: the whole board, or only some nets, parts or one instance (one of these). Run it after placing; parts with no position get no copper; existing copper is kept. It names each connection it could not route, with the reason: route those with route_track, or move parts and run it again."
 export const UNROUTE_DESCRIPTION =
-  "Remove the router's copper, for some nets (with any of its copper shorting them to another net) or all, as ONE change. Hand-drawn and locked copper stay."
+  "Remove the router's copper, for some nets (and copper shorting them) or all, as ONE change. Hand-drawn and locked copper stay."
 
 const plural = (count: number, word: string, many = `${word}s`) => `${count} ${count === 1 ? word : many}`
 

@@ -20,7 +20,7 @@ const HISTORY_READ = 500
 export const noteDecisionInput = {
   file: z.string().optional(),
   text: z.string().min(1).max(500).describe('e.g. "TJA1051 over MCP2551: 3.3 V I/O"'),
-  open: z.boolean().optional().describe("true: add the text as one item under Open (still to do or to ask) instead"),
+  open: z.boolean().optional(),
 }
 
 const MAX_BLOCKS = 50
@@ -48,7 +48,7 @@ export const setProjectInput = {
 export const PROJECT_STATUS_DESCRIPTION =
   "Call this first in every task: PROJECT.md (intent, blocks, last decisions, open items), then per circuit file its counts, unplaced, unrouted, errors, warnings and last changes."
 export const NOTE_DECISION_DESCRIPTION =
-  "Note a design decision in PROJECT.md as one dated line, as ONE change: each choice a later context should not undo (a part and why, a board size, what the person approved). With open: true the text is instead one item added to Open (a part to verify, a question for the person); set_project { open } rewrites that list."
+  "Note a design decision in PROJECT.md as one dated line, as ONE change: each choice a later context should not undo (a part and why, a board size, what the person approved). open: true adds the text to Open instead (still to do or ask)."
 export const SET_PROJECT_DESCRIPTION =
   `Rewrite sections of PROJECT.md as ONE change: intent (at most ${MAX_INTENT_CHARS} characters), blocks (an array of at most ${MAX_BLOCKS} { name, does, status }) and open (an array of at most ${MAX_OPEN_ITEMS} non-empty strings). Sections not given and Decisions stay.`
 

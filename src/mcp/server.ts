@@ -193,13 +193,13 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "add_trace",
     {
       description:
-        'Schematic trace (a connection, no copper): connect two ports or nets with from and to, e.g. from ".R1 > .pin1" to "net.GND". Or many pins of a circuit with nets instead, as ONE change, e.g. { "GND": ["R1.pin2", "C1.pin2"] }: pins already on the net are skipped, an unknown part or pin is refused and nothing is written, and the answer lists the pins added per net.',
+        'Schematic connection (no copper): from and to, e.g. ".R1 > .pin1" to "net.GND"; or nets, many pins as ONE change, e.g. { "GND": ["R1.pin2", "C1.pin2"] }: pins on the net already are skipped, unknown pins refused; the answer lists the pins added.',
       inputSchema: {
         file,
         from: z.string().optional(),
         to: z.string().optional(),
         props: z.record(z.string(), literal).optional().describe('Extra trace props, e.g. { "thickness": "0.4mm" }'),
-        nets: z.record(z.string(), z.array(z.string()).min(1)).optional().describe("Net name to pins, in place of from and to"),
+        nets: z.record(z.string(), z.array(z.string()).min(1)).optional(),
       },
     },
     ({ file: circuit, from, to, props, nets }) => {
