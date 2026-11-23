@@ -1,10 +1,13 @@
-// PROJECT.md on disk: read it, note a decision, rewrite the Intent, Blocks or Open sections. Each change is one history
+// PROJECT.md on disk: read it, note a decision or an open item, rewrite the Intent, Blocks or Open sections. Each change is one history
 // entry by the author the caller names, so it is undone like any file edit; the file is created with its four empty
 // sections by the first change when it is missing.
 import { resolve } from "node:path"
 import { inProjectQueue, readIfThere, writeNew, writeWithHistory } from "./file-writes.js"
 import { assertMeta, type Author, type HistoryEntry } from "./history.js"
-import { appendToSection, EMPTY_PROJECT, oneLine, PROJECT_PATH, withSection, type ProjectSection } from "./project-text.js"
+import { appendToSection, EMPTY_PROJECT, oneLine, PROJECT_PATH, sectionLines, withSection, type ProjectSection } from "./project-text.js"
+
+/** The most items Open holds: set_project refuses a longer list and note_open refuses an item past it. */
+export const MAX_OPEN_ITEMS = 50
 
 export interface ProjectBlock {
   name: string
@@ -63,6 +66,20 @@ export async function noteDecision(root: string, text: string, meta: { author: A
   plain(line, "decision")
   const entry = `- ${day(meta.now ?? new Date())} ${line}`
   return changeProject(root, (source) => appendToSection(source, "Decisions", entry), { author: meta.author, summary: `Note decision: ${line}` })
+}
+
+/** Adds "- text" at the end of Open; an item already there (in any case) and a full list are refused. */
+export async function noteOpen(root: string, text: string, meta: { author: Author }): Promise<HistoryEntry> {
+  const line = oneLine(text)
+  if (line === "") throw new Error("The open item is empty. Nothing was written.")
+  plain(line, "open item")
+  const add = (source: string) => {
+    const open = sectionLines(source, "Open")
+    if (open.some((item) => item.toLowerCase() === line.toLowerCase())) throw new Error(`"${line}" is already open in ${PROJECT_PATH}. Nothing was written.`)
+    if (open.length >= MAX_OPEN_ITEMS) throw new Error(`Open already has ${MAX_OPEN_ITEMS} items: rewrite it with set_project { open }, leaving out what is done. Nothing was written.`)
+    return appendToSection(source, "Open", `- ${line}`)
+  }
+  return changeProject(root, add, { author: meta.author, summary: `Note open: ${line}` })
 }
 
 /** Rewrites the sections the update names (Intent, Blocks, Open) as one change. */

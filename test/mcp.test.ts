@@ -70,6 +70,7 @@ describe("MCP server", () => {
       "module_info",
       "new_circuit",
       "note_decision",
+      "note_open",
       "open_studio",
       "part_info",
       "place_part",

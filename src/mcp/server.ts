@@ -287,6 +287,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
   )
   server.registerTool("project_status", { description: project.PROJECT_STATUS_DESCRIPTION, inputSchema: {}, annotations: READ_ONLY }, () => run(() => project.projectStatus(ports)))
   server.registerTool("note_decision", { description: project.NOTE_DECISION_DESCRIPTION, inputSchema: project.noteDecisionInput }, (input) => run(() => project.noteDecisionTool(ports, input)))
+  server.registerTool("note_open", { description: project.NOTE_OPEN_DESCRIPTION, inputSchema: project.noteOpenInput }, (input) => run(() => project.noteOpenTool(ports, input)))
   server.registerTool("set_project", { description: project.SET_PROJECT_DESCRIPTION, inputSchema: project.setProjectInput }, (input) => run(() => project.setProjectTool(ports, input)))
 
   server.registerTool(

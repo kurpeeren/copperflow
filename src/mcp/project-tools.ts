@@ -1,12 +1,12 @@
 // The project memory tools. project_status is the first call a fresh context makes: PROJECT.md's Intent, Blocks, the
-// last five Decisions and Open, then per circuit file its counts and its last three changes. note_decision and
-// set_project write PROJECT.md through the core, one history entry by the agent each.
+// last five Decisions and Open, then per circuit file its counts and its last three changes. note_decision, note_open
+// and set_project write PROJECT.md through the core, one history entry by the agent each.
 import { existsSync } from "node:fs"
 import { join } from "node:path"
 import { z } from "zod"
 import { listCircuits, listEntries, resolveCircuit, type HistoryListing } from "../core/index.js"
 import { layoutPathFor } from "../core/layout-file.js"
-import { noteDecision, readProject, setProject, type ProjectUpdate } from "../core/project.js"
+import { MAX_OPEN_ITEMS, noteDecision, noteOpen, readProject, setProject, type ProjectUpdate } from "../core/project.js"
 import { PROJECT_PATH, sectionLines, sectionText } from "../core/project-text.js"
 import type { Design } from "../engine/design.js"
 import { buildOf, type Ports } from "./copper-tools.js"
@@ -22,8 +22,12 @@ export const noteDecisionInput = {
   text: z.string().min(1).max(500).describe('e.g. "TJA1051 over MCP2551: 3.3 V I/O"'),
 }
 
+export const noteOpenInput = {
+  file: z.string().optional(),
+  text: z.string().min(1).max(500).describe('e.g. "check the USB-C footprint against the datasheet"'),
+}
+
 const MAX_BLOCKS = 50
-const MAX_OPEN_ITEMS = 50
 const MAX_INTENT_CHARS = 2000
 
 /** The refusal for a field: its name, the rule it broke and one valid value. */
@@ -49,6 +53,8 @@ export const PROJECT_STATUS_DESCRIPTION =
   "Call this first in every task: PROJECT.md (intent, blocks, last decisions, open items), then per circuit file its counts, unplaced, unrouted, errors, warnings and last changes."
 export const NOTE_DECISION_DESCRIPTION =
   "Note a design decision in PROJECT.md as one dated line, as ONE change: each choice a later context should not undo (a part and why, a board size, what the person approved)."
+export const NOTE_OPEN_DESCRIPTION =
+  "Add one item to PROJECT.md's Open list as ONE change: what is still to do or to ask (a part to verify, a question for the person). The items already there stay; set_project { open } rewrites the whole list."
 export const SET_PROJECT_DESCRIPTION =
   `Rewrite sections of PROJECT.md as ONE change: intent (at most ${MAX_INTENT_CHARS} characters), blocks (an array of at most ${MAX_BLOCKS} { name, does, status }) and open (an array of at most ${MAX_OPEN_ITEMS} non-empty strings). Sections not given and Decisions stay.`
 
@@ -117,11 +123,22 @@ export async function projectStatus(ports: Ports): Promise<string> {
   ].join("\n")
 }
 
-export async function noteDecisionTool(ports: Ports, input: { file?: string | undefined; text: string }): Promise<string> {
+/** The note's text, led by the circuit file it is about; a file that does not exist is refused. */
+async function aboutCircuit(ports: Ports, input: { file?: string | undefined; text: string }): Promise<string> {
   const about = input.file === undefined ? undefined : (await resolveCircuit(ports.root, input.file)).file
   if (about !== undefined && !existsSync(join(ports.root, about))) throw new Error(`There is no circuit file ${about}. Nothing was written.`)
-  const entry = await noteDecision(ports.root, about === undefined ? input.text : `${about}: ${input.text}`, { author: "ai" })
+  return about === undefined ? input.text : `${about}: ${input.text}`
+}
+
+export async function noteDecisionTool(ports: Ports, input: { file?: string | undefined; text: string }): Promise<string> {
+  const entry = await noteDecision(ports.root, await aboutCircuit(ports, input), { author: "ai" })
   return `Change ${entry.id}: noted under Decisions in ${PROJECT_PATH}`
+}
+
+export async function noteOpenTool(ports: Ports, input: { file?: string | undefined; text: string }): Promise<string> {
+  const entry = await noteOpen(ports.root, await aboutCircuit(ports, input), { author: "ai" })
+  const count = sectionLines((await readProject(ports.root)) ?? "", "Open").length
+  return `Change ${entry.id}: added to Open in ${PROJECT_PATH} (${count} open item${count === 1 ? "" : "s"})`
 }
 
 export async function setProjectTool(ports: Ports, input: ProjectUpdate): Promise<string> {

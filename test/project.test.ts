@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
 import { listEntries, redoChange, undoChange } from "../src/core/index.js"
-import { noteDecision, setProject } from "../src/core/project.js"
+import { noteDecision, noteOpen, setProject } from "../src/core/project.js"
 import { appendToSection, EMPTY_PROJECT, sectionLines, sectionText, withSection } from "../src/core/project-text.js"
 import type { HistoryListing } from "../src/core/history.js"
 import { changesOf } from "../src/mcp/project-tools.js"
@@ -132,6 +132,27 @@ describe("PROJECT.md on disk", () => {
     expect(await readFile(join(root, "PROJECT.md"), "utf8")).toBe(WRITTEN)
   })
 
+  test("note_open adds one item at the end of Open, as one entry, and keeps the items already there", async () => {
+    await writeFile(join(root, "PROJECT.md"), WRITTEN)
+    const before = sectionLines(WRITTEN, "Open")
+    const entry = await noteOpen(root, "check the\nUSB-C footprint", { author: "ai" })
+    const text = await readFile(join(root, "PROJECT.md"), "utf8")
+    expect(sectionLines(text, "Open")).toEqual([...before, "check the USB-C footprint"])
+    expect(sectionLines(text, "Decisions")).toEqual(sectionLines(WRITTEN, "Decisions"))
+    expect(entry).toMatchObject({ author: "ai", file: "PROJECT.md", summary: "Note open: check the USB-C footprint" })
+    await undoChange(root, { author: "ai" })
+    expect(await readFile(join(root, "PROJECT.md"), "utf8")).toBe(WRITTEN)
+  })
+
+  test("note_open refuses an empty item, a heading, an item already open and a full list", async () => {
+    await expect(noteOpen(root, "  ", { author: "ai" })).rejects.toThrow(/empty/)
+    await expect(noteOpen(root, "## Sneaky", { author: "ai" })).rejects.toThrow(/heading/)
+    await noteOpen(root, "route the board", { author: "ai" })
+    await expect(noteOpen(root, "Route the board ", { author: "ai" })).rejects.toThrow(/already open/)
+    await setProject(root, { open: Array.from({ length: 50 }, (_, i) => `item ${i}`) }, { author: "ai" })
+    await expect(noteOpen(root, "one more", { author: "ai" })).rejects.toThrow(/50 items.*set_project/)
+  })
+
   test("refuses a heading inside a section and an empty update", async () => {
     await expect(setProject(root, { intent: "## Sneaky" }, { author: "ai" })).rejects.toThrow(/heading/)
     await expect(setProject(root, {}, { author: "ai" })).rejects.toThrow(/Give intent/)
@@ -163,6 +184,8 @@ describe("the project tools", () => {
     expect(tool("project_status")?.description).toMatch(/first/)
     expect(Object.keys(tool("note_decision")?.inputSchema.properties ?? {})).toEqual(["file", "text"])
     expect(tool("note_decision")?.inputSchema.required).toEqual(["text"])
+    expect(Object.keys(tool("note_open")?.inputSchema.properties ?? {})).toEqual(["file", "text"])
+    expect(tool("note_open")?.inputSchema.required).toEqual(["text"])
     expect(Object.keys(tool("set_project")?.inputSchema.properties ?? {})).toEqual(["intent", "blocks", "open"])
     expect(Object.keys(tool("board_summary")?.inputSchema.properties ?? {})).toEqual(["file", "detail"])
     expect(tool("board_summary")?.inputSchema.required).toEqual(["file"])
@@ -196,6 +219,18 @@ describe("the project tools", () => {
     expect(lines).toEqual([expect.stringMatching(/^\d{4}-\d\d-\d\d second\.circuit\.tsx: R1 at the edge for the probe$/), expect.stringMatching(/^\d{4}-\d\d-\d\d 3\.3 V only$/)])
     const missing = await call("note_decision", { file: "nope.circuit.tsx", text: "x" })
     expect(missing.isError).toBe(true)
+  })
+
+  test("note_open adds one item to Open, naming the circuit, and project_status shows it", async () => {
+    await call("set_project", { open: ["route"] })
+    const added = await call("note_open", { file: "second.circuit.tsx", text: "move R1 to the edge" })
+    expect(added.text).toBe("Change c0002: added to Open in PROJECT.md (2 open items)")
+    expect(sectionLines(await readFile(join(root, "PROJECT.md"), "utf8"), "Open")).toEqual(["route", "second.circuit.tsx: move R1 to the edge"])
+    expect((await call("project_status")).text.split("\n")).toContain("  second.circuit.tsx: move R1 to the edge")
+    const missing = await call("note_open", { file: "nope.circuit.tsx", text: "x" })
+    expect(missing.isError).toBe(true)
+    expect(missing.text).toMatch(/nope\.circuit\.tsx does not exist/)
+    expect(sectionLines(await readFile(join(root, "PROJECT.md"), "utf8"), "Open")).toHaveLength(2)
   })
 
   test("set_project states the shape of every limited field, and a refusal names the field, the rule and a valid example", async () => {
