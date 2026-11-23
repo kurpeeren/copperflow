@@ -25,7 +25,7 @@ const nets = z.record(z.string(), z.array(z.string()).min(1))
 export const newCircuitInput = {
   file: z.string().describe("e.g. power.circuit.tsx"),
   parts: z.array(part).max(200).describe("May be empty when instances make them"),
-  nets: nets.describe('e.g. { "GND": ["R1.pin2", "U1.GND"] }'),
+  nets: nets.optional().describe('e.g. { "GND": ["R1.pin2", "U1.GND"] }; leave out for no nets yet'),
   board: z.object({ width: z.number(), height: z.number() }).optional().describe("mm; default 30 x 20"),
   pages: z
     .array(z.object({ name: z.string(), parts: z.array(z.string()) }))
@@ -102,8 +102,13 @@ async function placeAfter(root: string, file: string, fit: boolean, engine: Desi
 }
 
 /** Writes the circuit (and its sheet files) and answers in a few lines. */
-export async function newCircuit(root: string, input: { file: string; replace?: boolean; place?: boolean } & NewCircuit, engine?: DesignSource): Promise<string> {
-  const { file: written, replace, place, ...spec } = input
+export async function newCircuit(
+  root: string,
+  input: { file: string; replace?: boolean; place?: boolean; nets?: NewCircuit["nets"] | undefined } & Omit<NewCircuit, "nets">,
+  engine?: DesignSource,
+): Promise<string> {
+  const { file: written, replace, place, nets: given, ...rest } = input
+  const spec: NewCircuit = { ...rest, nets: given ?? {} }
   const file = projectPath(root, written)
   const { text, traces, sheets, instances } = await generateCircuit(root, file, spec)
   const left = await leftovers(root, file)

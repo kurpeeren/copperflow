@@ -98,6 +98,15 @@ describe("new_circuit round trip and pins", () => {
   test("a circuit needs a part, also below the tool's schema", async () => {
     await expect(generateCircuit(root, "a.circuit.tsx", { parts: [], nets: {} })).rejects.toThrow(/at least one part/)
   })
+
+  test("nets may be left out: the circuit is written with its parts and no nets yet", async () => {
+    const { text, isError } = await call("new_circuit", { file: "bare.circuit.tsx", parts: [{ name: "R1", kind: "resistor", value: "1k", footprint: "0402" }] })
+    expect(isError).toBe(false)
+    expect(text).toMatch(/^Change c\d+: wrote bare\.circuit\.tsx$/m)
+    expect(text).toContain("0 nets, 0 traces")
+    expect(await readFile(join(root, "bare.circuit.tsx"), "utf8")).not.toContain("<trace")
+    expect(await errorsLine("bare.circuit.tsx")).toMatch(/^bare\.circuit\.tsx: 0 errors/)
+  })
 })
 
 describe("new_circuit file names and folders", () => {
