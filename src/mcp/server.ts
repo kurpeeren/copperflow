@@ -193,7 +193,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "add_trace",
     {
       description:
-        'Schematic connection (no copper): from and to, e.g. ".R1 > .pin1" to "net.GND"; or nets, many pins as ONE change, e.g. { "GND": ["R1.pin2", "C1.pin2"] }: pins on the net already are skipped, unknown pins refused; the answer lists the pins added.',
+        'Schematic trace (a connection, no copper): from and to, e.g. ".R1 > .pin1" to "net.GND"; or nets, many pins as ONE change, e.g. { "GND": ["R1.pin2", "C1.pin2"] }: pins on the net already are skipped, unknown pins refused; the answer lists the pins added.',
       inputSchema: {
         file,
         from: z.string().optional(),
@@ -226,7 +226,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
     "check_circuit",
     {
       description:
-        "Check electrical, placement, copper and pour rules: the error and warning counts, then up to 20 findings. Run it after autoplace, autoroute and removing copper; fix the errors before reporting success.",
+        "Check electrical, placement, copper and pour rules: the error and warning counts, then up to 20 findings. Run it after autoplace, after autoroute and after removing copper; fix the errors before reporting success.",
       inputSchema: { file, filter: z.string().optional().describe('"errors", "warnings", "copper", a part, net, rule or instance') },
       annotations: READ_ONLY,
     },
