@@ -122,8 +122,6 @@ On a yes:
 ```
 note_decision { file: "sensor.circuit.tsx", text: "Schematic approved; AP2112K-3.3 and ATtiny814 unverified" }
 → Change c0005: noted under Decisions in PROJECT.md
-note_open { text: "human: verify AP2112K-3.3 and ATTINY814" }
-→ Change c0006: added to Open in PROJECT.md (4 open items)
 ```
 
 ## 6. Place block by block
@@ -133,19 +131,19 @@ The MCU first (most connections), then the blocks round it, then the connectors.
 ```
 autoplace { file: "sensor.circuit.tsx", parts: ["U1", "C1"] }
 → Placed 2 parts; wire length 96 mm (was 140); board 30 × 20 mm; 0 overlaps
-  Change c0007; undo_change takes it back.
+  Change c0006; undo_change takes it back.
 autoplace { file: "sensor.circuit.tsx", instance: "PS1" }
 → Placed 3 parts; …
 autoplace { file: "sensor.circuit.tsx", instance: "CH1" }
 → Placed 2 parts; …
 autoplace { file: "sensor.circuit.tsx", instance: "CH2" }
 → Placed 2 parts; wire length 78 mm (was 85); board 30 × 20 mm; 0 overlaps
-  Change c0010; undo_change takes it back.
+  Change c0009; undo_change takes it back.
   Notes: CH2 was moved as a block, keeping the arrangement of CH1
 autoplace { file: "sensor.circuit.tsx", parts: ["J1", "J2"] }
 → Placed 2 parts; wire length 61 mm (was 88); board 30 × 20 mm; 0 overlaps
 fit_board { file: "sensor.circuit.tsx" }
-→ Change c0012: board 24 × 17 mm (margin 2 mm)
+→ Change c0011: board 24 × 17 mm (margin 2 mm)
 ```
 
 A sheet holds one layout for all its instances: placing CH1 wrote the positions into
@@ -167,14 +165,14 @@ board_summary { file: "sensor.circuit.tsx" }
   Pours: none
   Unrouted: 17 connections
 add_pour { file: "sensor.circuit.tsx", net: "GND", layer: "top" }
-→ Change c0013: added copperpour:1 (GND, top)
+→ Change c0012: added copperpour:1 (GND, top)
   copperpour:1 GND top: 301.20 mm², joins 9 pads
 add_pour { file: "sensor.circuit.tsx", net: "GND", layer: "bottom" }
-→ Change c0014: added copperpour:2 (GND, bottom)
+→ Change c0013: added copperpour:2 (GND, bottom)
 route_track { file: "sensor.circuit.tsx", from: "R201.pin2", to: "U1.PA4" }
-→ Change c0015: routed ADC1 R201.pin2 (6.10, 3.00 top) to U1.pin2 (9.20, 4.10 top): 1 track, 0 vias
+→ Change c0014: routed ADC1 R201.pin2 (6.10, 3.00 top) to U1.pin2 (9.20, 4.10 top): 1 track, 0 vias
 autoroute { file: "sensor.circuit.tsx" }
-→ Change c0016: Routed 7 of 7 connections in 1 pass
+→ Change c0015: Routed 7 of 7 connections in 1 pass
 check_circuit { file: "sensor.circuit.tsx" }
 → sensor.circuit.tsx: 0 errors, 6 warnings
 ```

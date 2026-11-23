@@ -95,10 +95,8 @@ means, `replace`, refused pins and the export's warnings are in
 4. **Design each block.** Write parts and connections, not positions or wire corners: the
    program places and routes. `edit_circuit` `{ file, edits: [...] }` applies a list as one
    change (`Change c0004 applied: 3 edits: …`; nothing written if one is refused, and the answer
-   says which). Many pins of an existing circuit, also after redrawing a board's nets:
-   `connect_nets` `{ file, nets: { GND: ["R1.pin2", "C1.pin2"] } }` answers
-   `connected 4 pins (GND +4)` and a line per net with the pins added; an unknown part or pin is
-   refused, all of them named, and nothing is written. Single edits: `place_part`, `set_props`, `remove_part`,
+   says which). Many pins of a written circuit: `connect_nets` `{ file, nets: { GND: ["R1.pin2", "C1.pin2"] } }`
+   answers `connected 4 pins (GND +4)` and the pins per net; unknown pins: nothing written. Single edits: `place_part`, `set_props`, `remove_part`,
    `add_trace`, `remove_trace`. These tools enforce locks and record history; editing the file
    directly does not. Labels move with `set_props` `schNameAt`, `schValueAt`, `pcbNameAt`
    (a point `{ x, y }` from the part's origin; `null` puts it back).
@@ -148,9 +146,7 @@ means, `replace`, refused pins and the export's warnings are in
 14. **Remember, throughout.** `note_decision` `{ text, file? }` as each choice is made that a
     later context needs (a part and why, a board size, what the person approved; at most 500
     characters each), not batched at the end: `Change …: noted under Decisions in PROJECT.md`.
-    `note_open` `{ text, file? }` adds one item still to do or to ask to Open (`Change …: added
-    to Open in PROJECT.md (3 open items)`); `set_project` `{ open }` rewrites the list once items
-    are done. Keep `set_project`'s blocks current.
+    `note_open` `{ text, file? }` adds one item to Open; keep `set_project`'s blocks and open items current.
 
 ## Checking
 
