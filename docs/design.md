@@ -102,6 +102,8 @@ human undid.
 
 ### MCP tools (0.1)
 
+The first tools, as 0.1 shipped them; the tool fold below turned several into parameters of others.
+
 | Tool | Purpose |
 |------|---------|
 | `list_circuits` | circuit files in the project |
@@ -121,6 +123,42 @@ human undid.
 | `copper_summary` | per net one line (tracks, vias, mm, unrouted connections), then copper violations by rule; at most 60 lines (read-only) |
 | `recent_changes` | recent history entries, including undos |
 | `undo_change` | undo one of the agent's own changes |
+
+### The tool fold (0.5.6)
+
+Every client pays for the whole tool list on every turn, and an agent picks better from fewer
+tools. 0.5.6 folds tools that do the same kind of thing to the same object into one tool with a
+parameter: 56 tools became 31, and every old call has an equivalent. Tools an agent calls for
+different reasons stay apart (`add_trace` for connections, `route_track` for copper).
+
+| Old call | New call |
+|----------|----------|
+| `list_circuits` | `project_status` (its Circuits list) |
+| `board_summary { detail }` | `circuit_summary { view: "board", detail }` |
+| `copper_summary` | `circuit_summary { view: "copper" }` |
+| `bom` | `circuit_summary { view: "bom" }` |
+| `set_props`, `remove_part`, `place_part` | `edit_circuit` steps of the same names |
+| `remove_trace { from, to }` | `edit_circuit` step `disconnect { from, to }` |
+| `add_text { … }` | `edit_circuit` step `add_text { … }` |
+| `add_pour`, `remove_pour`, `add_hole`, `remove_hole` | `edit_circuit` steps of the same names |
+| `add_via { net, at, layers }` | `route_track { at, net, layers }` |
+| `unroute { nets }` / `{ all }` | `remove_copper { nets }` / `{ all: true }` |
+| `straighten_tracks { ids }` | `fillet_tracks { ids, square: true }` |
+| `import_board { dxf, layer, … }` | `fit_board { drawing, dxfLayer, … }` |
+| `part_info { id }` | `list_parts { id }` |
+| `attach_datasheet { part, url, title, pages }` | `set_part_fields { id, datasheet: { url, title, pages } }` |
+| `set_project { intent, blocks, open }` | `note_decision { sections: { intent, blocks, open } }` |
+| `module_info { name }` | `list_modules { name }` |
+| `redo_change { id }` | `undo_change { id, redo: true }` |
+| `export_fabrication { out }` | `export { as: "fabrication", out }` |
+| `export_model { format, out, look }` | `export { as: "step" \| "glb", out, look }` |
+| `export_html { out, look }` | `export { as: "html", out, look }` |
+| `export_package` | `export { as: "package" }` |
+
+The handlers behind the old tools stay as they were; the folded tool picks one by its
+parameter, so the answers and refusals are the same. The tool list's size test caps the whole
+list at a fixed total instead of an average per tool, since folding raises the average while
+it shrinks the list.
 
 All file arguments are resolved inside the project root; paths outside it are rejected.
 Every edit is re-parsed before it is written; an edit that would produce invalid code is
