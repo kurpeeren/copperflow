@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "copperflow": {
+      "command": "npx",
+      "args": ["-y", "copperflow", "mcp"]
+    }
+  }
+}
