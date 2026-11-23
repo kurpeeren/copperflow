@@ -7,21 +7,27 @@ import { ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js"
 /** Keys dropped wherever they appear in a schema: the validation detail the server enforces anyway. */
 const DROPPED_KEYS = new Set(["$schema", "pattern", "maxLength", "minLength", "maxItems", "format", "additionalItems"])
 
+/** An object with no keys: as a schema it accepts anything, the same as no schema at all. */
+const isEmptyObject = (value: unknown) => typeof value === "object" && value !== null && !Array.isArray(value) && Object.keys(value).length === 0
+
 const isUnbounded = (key: string, value: unknown) =>
   ((key === "maximum" || key === "minimum") && typeof value === "number" && Math.abs(value) === Number.MAX_SAFE_INTEGER) ||
-  (key === "additionalProperties" && value === false)
+  (key === "additionalProperties" && (value === false || isEmptyObject(value)))
 const isPlainStringKeys = (key: string, value: unknown) =>
   key === "propertyNames" && typeof value === "object" && value !== null && Object.keys(value).length === 1 && (value as { type?: unknown }).type === "string"
 
 /**
- * A schema without the dropped keywords, unbounded integer limits and `propertyNames: { type: "string" }`. Keywords
- * are dropped only where they are keywords: the keys of `properties` are argument names and all stay.
+ * A schema without the dropped keywords, unbounded integer limits, `additionalProperties: {}` and `propertyNames:
+ * { type: "string" }` (also one that is only that once its dropped keywords are gone). Keywords are dropped only where
+ * they are keywords: the keys of `properties` are argument names and all stay.
  */
 export function compactSchema(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(compactSchema)
   if (typeof value !== "object" || value === null) return value
-  const entries = Object.entries(value).filter(([key, child]) => !DROPPED_KEYS.has(key) && !isUnbounded(key, child) && !isPlainStringKeys(key, child))
-  return Object.fromEntries(entries.map(([key, child]) => [key, key === "properties" ? compactProperties(child) : compactSchema(child)]))
+  const entries = Object.entries(value)
+    .filter(([key, child]) => !DROPPED_KEYS.has(key) && !isUnbounded(key, child))
+    .map(([key, child]): [string, unknown] => [key, key === "properties" ? compactProperties(child) : compactSchema(child)])
+  return Object.fromEntries(entries.filter(([key, child]) => !isPlainStringKeys(key, child)))
 }
 
 /** The argument schemas of `properties`, each compacted, under their own names whatever those are. */

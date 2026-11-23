@@ -53,6 +53,13 @@ describe("the compacted tool list", () => {
     }
   })
 
+  test("drops an empty additionalProperties and a propertyNames that is plain once its limits are gone", () => {
+    const record = { type: "object", propertyNames: { type: "string", minLength: 1 }, additionalProperties: { type: "string" } }
+    expect(compactSchema(record)).toEqual({ type: "object", additionalProperties: { type: "string" } })
+    expect(compactSchema({ type: "object", additionalProperties: {} })).toEqual({ type: "object" })
+    expect(compactSchema({ type: "object", propertyNames: { type: "string", enum: ["a"] } })).toEqual({ type: "object", propertyNames: { type: "string", enum: ["a"] } })
+  })
+
   test("compactSchema leaves non-schema values alone", () => {
     expect(compactSchema({ type: "object", properties: { pattern: { type: "string", pattern: "^x$" } }, $schema: "x" })).toEqual({ type: "object", properties: { pattern: { type: "string" } } })
   })
