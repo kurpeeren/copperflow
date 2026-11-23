@@ -25,9 +25,28 @@ the result and answers what it wrote against what the file held, whether every p
 a list `Not carried over:` by kind and count (silkscreen, texts, 3D models, rules, …). Tell the person
 the parts must be compared with their datasheets before they are verified.
 
+## Redrawing a board from photos or Gerbers
+
 A board that exists only as a scan or photo is redrawn step by step in
 [redraw-from-image.md](redraw-from-image.md): scale, holes, parts at their measured places, nets read
 from the copper.
+
+To redraw a board that exists, lay a picture of it under the PCB: `import_graphic` `{ file, layer: "reference",
+source }`, where `source` is a `.png`/`.jpg` photo or scan of either side, or a Gerber copper or silkscreen layer, in
+the project folder. It is kept in `references/` (a Gerber as an SVG at its own scale) and listed in the layout
+file; it is drawn under the PCB only, never in Gerbers, drill files, BOM, pick-and-place or 3D. The answer gives
+its id (`r1`) and its size in pixels.
+
+Align it with points, each `[pixel x, pixel y, board x, board y]`: a pixel of the image (from its top-left corner)
+and the board point in mm it belongs on, usually the mounting holes:
+`{ file, layer: "reference", reference: { id: "r1", mirror: true, points: [[213, 297, -60.31, 50.02], …] } }`.
+Two or three points scale, turn and move it; four or more also take out a photo's slant (perspective). The answer
+says how far each point lands from its board point; a miss of more than half a millimetre is a point picked wrong.
+A photo of the bottom side is a mirror image: give `mirror: true` (with four or more points the perspective takes
+the flip anyway). If you read pixel positions from a picture shown smaller than the file, scale them to the size
+the answer gave. `opacity` (0 to 1, default 0.5) and `shown` change how it is drawn; `remove: true` takes it out
+(the image stays in `references/`). Then `render` `{ file, reference: true }` shows it under the board: check the
+holes line up, then place parts with their pads on the photo's pads, and draw tracks along its copper.
 
 ## Placing and routing
 

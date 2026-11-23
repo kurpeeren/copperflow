@@ -43,7 +43,7 @@ export const fitBoardInput = {
 }
 
 export const AUTOPLACE_DESCRIPTION =
-  "Place parts by their connections as ONE change: every part without a position, or only some parts or one instance. Placed and locked parts stay. Connectors go on the nearest edge; a part's pcbEdge (left, right, top, bottom) picks one. Run it before autoroute. With fit: true a part with no room grows the board. The answer gives wire length, board size, overlaps, parts with no room and copper a move left behind."
+  "Place parts by their connections as ONE change: every part without a position, or only some parts or one instance. Placed and locked parts stay. Connectors go on the nearest edge; a part's pcbEdge (left, right, top, bottom) picks one. Run it before autoroute. With fit: true a part with no room grows the board."
 export const FIT_BOARD_DESCRIPTION =
   "Shrink or grow a rectangular board round the parts plus a margin, as ONE change. Refused for a non-rectangular outline."
 

@@ -150,7 +150,8 @@ export function pcbBoxes(layout: PcbLayout): PartBox[] {
   })
 }
 
-function worldMatrix({ camera, size }: View, ratio: number): [number, number, number, number, number, number] {
+/** Board mm to device pixels under the view's camera. */
+export function worldMatrix({ camera, size }: View, ratio: number): [number, number, number, number, number, number] {
   const s = camera.scale * ratio
   return [s, 0, 0, -s, (size.width / 2 - camera.cx * camera.scale) * ratio, (size.height / 2 + camera.cy * camera.scale) * ratio]
 }

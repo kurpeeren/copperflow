@@ -2,7 +2,7 @@
 // it to the Studio's renderer, bundled to dist/render/render.js (studio/src/render/node-render.ts), which draws it with
 // the Studio's own drawing code on a canvas from the optional package @napi-rs/canvas; the board as made (view "board")
 // is drawn from the fabrication layers instead (src/engine/fab/picture). Also writes the picture for the CLI.
-import { mkdir, writeFile } from "node:fs/promises"
+import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { basename, dirname, relative, resolve, sep } from "node:path"
 import type { Design } from "../engine/design.js"
 import type { DesignDiff } from "../engine/design-diff.js"
@@ -13,7 +13,8 @@ import type { CanvasLoader } from "../engine/fab/picture/png.js"
 import { buildWith, type DesignSource } from "./design-source.js"
 import { assertLandsInProject } from "./fabrication.js"
 import type { Modeller } from "./model-export.js"
-import { resolveCircuit } from "./workspace.js"
+import type { ReferenceRecord } from "./layout-references.js"
+import { resolveCircuit, resolveInRoot } from "./workspace.js"
 
 /** What to draw; the Studio's renderer defines the same. */
 export interface RenderRequest {
@@ -33,7 +34,12 @@ export interface RenderRequest {
   width?: number
   /** A change marked over the dimmed board, and the words the line ends with (change-render.ts). The PCB only. */
   change?: { diff: DesignDiff; caption: string }
+  /** Draw the shown reference images under the PCB (references.ts). The PCB only. */
+  reference?: boolean
 }
+
+/** What the renderer is handed for the reference images: each with its file's bytes. */
+export type Underlay = { record: ReferenceRecord; bytes: Uint8Array }[]
 
 /** The picture and one line saying what it shows. */
 export interface Rendered {
@@ -48,7 +54,7 @@ export interface Rendered {
 }
 
 export interface Renderer extends Modeller {
-  renderDesign(design: Design, request: RenderRequest): Promise<Rendered>
+  renderDesign(design: Design, request: Omit<RenderRequest, "reference"> & { underlay?: Underlay }): Promise<Rendered>
 }
 
 export interface RenderOptions {
@@ -82,15 +88,34 @@ export async function renderCircuit(root: string, file: string, request: RenderR
   if (request.view === "3d" && request.side !== undefined) throw new Error("side is for view board only; view 3d takes angle")
   if (request.view !== "3d" && request.angle !== undefined) throw new Error("angle is for view 3d only")
   if (request.view !== "board" && request.view !== "3d" && (request.side !== undefined || request.look !== undefined)) throw new Error("side and look are for view board only")
+  if (request.reference && request.view !== "pcb") throw new Error("reference is for view pcb only: the reference images lie under the PCB")
   const design = options.design ?? (await buildWith(root, circuit, options.engine))
   try {
-    if (request.view === "board") return { ...(await renderBoardView(design, request, options.canvas)), file: circuit }
+    const { reference, ...drawn } = request
+    if (drawn.view === "board") return { ...(await renderBoardView(design, drawn, options.canvas)), file: circuit }
+    const underlay = reference ? await underlayOf(root, design) : undefined
     const renderer = await (options.renderer ?? bundledRenderer)()
-    return { ...(await renderer.renderDesign(design, request)), file: circuit }
+    const rendered = await renderer.renderDesign(design, underlay ? { ...drawn, underlay: underlay.images } : drawn)
+    return { ...rendered, ...(underlay ? { what: `${rendered.what}; ${underlay.words}` } : {}), file: circuit }
   } catch (error) {
     if (canvasMissing(error)) throw new Error(CANVAS_MISSING)
     throw error
   }
+}
+
+/** The shown reference images with their bytes, and the words saying what lies under the board. */
+async function underlayOf(root: string, design: Design): Promise<{ images: Underlay; words: string }> {
+  const shown = (design.references ?? []).filter((r) => r.shown)
+  if (shown.length === 0) return { images: [], words: (design.references ?? []).length === 0 ? "no reference image (add one with import_graphic, layer reference)" : "every reference image is hidden" }
+  const images: Underlay = []
+  const missing: string[] = []
+  for (const record of shown) {
+    const bytes = await readFile(resolveInRoot(root, record.file)).catch(() => undefined)
+    if (bytes) images.push({ record, bytes: new Uint8Array(bytes) })
+    else missing.push(`${record.id}'s ${record.file} is missing`)
+  }
+  const drawn = images.map((i) => `${i.record.id} (${i.record.points.length} point${i.record.points.length === 1 ? "" : "s"})`)
+  return { images, words: [drawn.length > 0 ? `under it reference ${drawn.join(", ")}` : "", ...missing].filter((w) => w !== "").join("; ") }
 }
 
 /** The one-line answer: `io.circuit.tsx: PCB, whole board 32.3 x 23.6 mm; 1024 x 748 px`. */

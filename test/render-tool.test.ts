@@ -42,7 +42,7 @@ describe("the render tool", () => {
     const tool = (await client.listTools()).tools.find((t) => t.name === "render")
     expect(tool?.annotations).toMatchObject({ destructiveHint: false })
     expect(tool?.annotations?.readOnlyHint).not.toBe(true)
-    expect(Object.keys(tool?.inputSchema.properties ?? {})).toEqual(["file", "view", "page", "parts", "width", "side", "angle", "look", "change", "since", "out"])
+    expect(Object.keys(tool?.inputSchema.properties ?? {})).toEqual(["file", "view", "page", "parts", "width", "side", "angle", "look", "change", "reference", "since", "out"])
     const result = await client.callTool({ name: "render", arguments: { file: "io.circuit.tsx", width: 400 } })
     const [image, text] = result.content as Array<{ type: string; data?: string; mimeType?: string; text?: string }>
     expect(result.isError).not.toBe(true)

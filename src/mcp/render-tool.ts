@@ -17,7 +17,7 @@ import { stepsAroundBuild } from "./build-steps.js"
 import { QUIET, type Reporter } from "./tool-activity.js"
 
 export const RENDER_DESCRIPTION =
-  "A PNG of the board or one schematic page, as the person sees it; view board: the bare board as made; 3d: with parts as simple shapes, at an angle. Look after autoplace and autoroute, before asking the person."
+  "A PNG of the board or a schematic page as the person sees it; board: the bare board as made; 3d: parts as simple shapes. Look after autoplace and autoroute."
 
 export const renderInput = {
   file: z.string().describe("Circuit file"),
@@ -32,6 +32,7 @@ export const renderInput = {
     .partial()
     .optional(),
   change: z.string().optional().describe("Mark this change"),
+  reference: z.boolean().optional().describe("Reference images under the PCB"),
   since: z.string().optional().describe("Mark all after it"),
   out: z.string().optional().describe("Also write it, e.g. pics/top.png"),
 }
@@ -44,7 +45,7 @@ export interface RenderPorts {
   report?: Reporter
 }
 
-type RenderInput = { file: string; view?: "pcb" | "schematic" | "board" | "3d" | undefined; side?: "top" | "bottom" | undefined; angle?: "top" | "bottom" | "front" | "iso" | undefined; look?: Record<string, string | undefined> | undefined; page?: string | undefined; parts?: string[] | undefined; width?: number | undefined; change?: string | undefined; since?: string | undefined; out?: string | undefined }
+type RenderInput = { reference?: boolean | undefined; file: string; view?: "pcb" | "schematic" | "board" | "3d" | undefined; side?: "top" | "bottom" | undefined; angle?: "top" | "bottom" | "front" | "iso" | undefined; look?: Record<string, string | undefined> | undefined; page?: string | undefined; parts?: string[] | undefined; width?: number | undefined; change?: string | undefined; since?: string | undefined; out?: string | undefined }
 
 /** The image and its line, or the refusal as an error answer. */
 export async function renderTool(ports: RenderPorts, input: RenderInput): Promise<CallToolResult> {
@@ -60,6 +61,7 @@ export async function renderTool(ports: RenderPorts, input: RenderInput): Promis
       ...(input.side !== undefined ? { side: input.side } : {}),
       ...(input.angle !== undefined ? { angle: input.angle } : {}),
       ...(input.look !== undefined ? { look: input.look as LookRequest } : {}),
+      ...(input.reference ? { reference: true } : {}),
     } as const
     const engine = request.view === "3d" ? stepsAroundBuild(ports.engine, ports.report ?? QUIET, "Drawing the 3D view") : ports.engine
     const options = { ...(engine ? { engine } : {}), ...(ports.renderer ? { renderer: ports.renderer } : {}) }

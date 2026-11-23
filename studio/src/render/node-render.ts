@@ -5,7 +5,9 @@
 import type { Design } from "../../../src/engine/design.js"
 import type { Ctx } from "../pcb/ctx.js"
 import { PALETTE } from "../pcb/ctx.js"
-import { drawPcb } from "../pcb/pcb-draw.js"
+import { drawPcb, worldMatrix } from "../pcb/pcb-draw.js"
+import { boardFrameOf, drawReferenceLayers, referenceLayer, type ImageCtx, type MakeCanvas } from "../pcb/reference-draw.js"
+import type { ReferenceRecord } from "../../../src/core/layout-references.js"
 import type { DesignDiff } from "../../../src/engine/design-diff.js"
 import { dimBoard, drawChangeLegend, drawChangeMarks } from "../pcb/change-draw.js"
 import { drawSchematic } from "../pcb/schematic-draw.js"
@@ -31,6 +33,8 @@ export interface RenderRequest {
   width?: number
   /** A change to mark over the board, dimmed, and the words the picture's line ends with. The PCB only. */
   change?: { diff: DesignDiff; caption: string }
+  /** Reference images to draw under the PCB, each with its file's bytes. The PCB only. */
+  underlay?: { record: ReferenceRecord; bytes: Uint8Array }[]
 }
 
 export interface Rendered {
@@ -42,6 +46,19 @@ export interface Rendered {
   page?: string
   /** What the line names in place of the file: the design's name for view 3d. */
   label?: string
+}
+
+/** The reference images under the board, each placed by its points and drawn at its opacity. */
+async function drawUnderlay(ctx: ImageCtx, underlay: NonNullable<RenderRequest["underlay"]>, pcb: Design["pcb"], view: Parameters<typeof worldMatrix>[0]): Promise<void> {
+  const { createCanvas, loadImage } = await import("@napi-rs/canvas")
+  const make: MakeCanvas = (width, height) => {
+    const canvas = createCanvas(width, height)
+    return { canvas, ctx: canvas.getContext("2d") as unknown as ImageCtx }
+  }
+  const board = boardFrameOf(pcb)
+  const layers = []
+  for (const { record, bytes } of underlay) layers.push(referenceLayer(record, await loadImage(Buffer.from(bytes)), board, make))
+  drawReferenceLayers(ctx, layers, worldMatrix(view, 1))
 }
 
 /** Draws the request's view of the design into a PNG; a page for the PCB, a missing page or part, or a bad width is refused. */
@@ -58,6 +75,7 @@ export async function renderDesign(design: Design, request: RenderRequest): Prom
     ctx.fillStyle = PALETTE.background
     ctx.fillRect(0, 0, size.width, size.height)
     const pcb = frame.design.pcb
+    if (request.underlay) await drawUnderlay(ctx as unknown as ImageCtx, request.underlay, frame.design.pcb, view)
     drawPcb(ctx as unknown as Ctx, pcb, view, { ratio: 1, copper: { tracks: pcb.tracks, vias: pcb.vias, selected: new Set() } })
     if (request.change) {
       dimBoard(ctx as unknown as Ctx, size)
