@@ -182,7 +182,7 @@ export function createCopperflowServer(root: string, options: ServerOptions = {}
   server.registerTool(
     "add_trace",
     {
-      description: 'Schematic trace (a connection, no copper): connect two ports or nets, e.g. from ".R1 > .pin1" to "net.GND".',
+      description: 'Schematic trace (a connection, no copper): connect two ports or nets, e.g. from ".R1 > .pin1" to "net.GND". Many pins to nets: connect_nets, one call.',
       inputSchema: {
         file,
         from: z.string(),
@@ -347,7 +347,7 @@ Nothing was written.`)
     "connect_nets",
     {
       description:
-        'Connect pins to named nets as ONE change, e.g. { "GND": ["R1.pin2", "C1.pin2"] }; pins already on the net are skipped.',
+        'Connect pins of an existing circuit to named nets as ONE change, e.g. { "GND": ["R1.pin2", "C1.pin2"] }; pins already on the net are skipped, an unknown part or pin is refused and nothing is written. The answer lists the pins added per net.',
       inputSchema: { file, nets: z.record(z.string(), z.array(z.string()).min(1)) },
     },
     ({ file: circuit, nets }) =>
@@ -356,7 +356,8 @@ Nothing was written.`)
         const counts = Object.entries(plan.added).map(([name, n]) => `${name} +${n}`).join(", ")
         if (plan.edits.length === 0) return `Nothing to do: all ${plan.skipped} pins are already on their nets.`
         const skipped = plan.skipped > 0 ? `; ${plan.skipped} already connected` : ""
-        return apply(circuit, plan.edits, `connect nets ${counts}`, `connected ${plan.edits.length} pins (${counts}${skipped})`)
+        const added = Object.entries(plan.pins).map(([name, pins]) => `${name} +${pins.length}: ${pins.join(" ")}`)
+        return apply(circuit, plan.edits, `connect nets ${counts}`, `connected ${plan.edits.length} pins (${counts}${skipped})`, added)
       }),
   )
 

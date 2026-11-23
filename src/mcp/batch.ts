@@ -16,6 +16,7 @@ import { connectionsEdit, instanceEdit } from "../core/instance-requests.js"
 import { movePartNote } from "../core/page-edits.js"
 import { localNet, localNetRefusal, parseSelector } from "../engine/selectors.js"
 import type { Circuit, Component, Net } from "../engine/model.js"
+import { naturalCompare } from "../engine/order.js"
 import { pinName } from "./compact.js"
 import { findNet } from "./copper-under.js"
 import { holeFields, pointText, pourFields } from "./pour-tools.js"
@@ -226,7 +227,27 @@ const PIN = /^([\w-]+\.[\w-]+|\.[\w-]+\s*>\s*\.[\w-]+)$/
 export interface NetPlan {
   edits: Edit[]
   added: Record<string, number>
+  /** The pins each net gets, as they were given. */
+  pins: Record<string, string[]>
   skipped: number
+}
+
+/** The pin names an unknown pin's refusal lists; the rest are counted. */
+const PIN_NAMES_SHOWN = 24
+
+/** Why a pin selector names no pin in the built design, or undefined when it names one. */
+function unknownPin(circuit: Circuit, selector: string): string | undefined {
+  if (resolvePin(circuit, selector) !== undefined) return undefined
+  const parsed = parseSelector(selector)
+  if (parsed?.kind !== "pin") return undefined
+  const component = circuit.components.find((c) => c.id === parsed.part)
+  if (component === undefined) {
+    const instance = circuit.instances?.some((one) => one.path === parsed.part)
+    return `${selector} (${instance ? `${parsed.part} is a sub-sheet instance; connect its ports with edit_circuit set_connections` : `there is no part ${parsed.part}`})`
+  }
+  const names = component.pins.map((pin) => pin.names[0] ?? "").sort(naturalCompare)
+  const more = names.length > PIN_NAMES_SHOWN ? ` … and ${names.length - PIN_NAMES_SHOWN} more` : ""
+  return `${selector} (${component.id} has ${names.length === 0 ? "no pins" : `${names.slice(0, PIN_NAMES_SHOWN).join(", ")}${more}`})`
 }
 
 /** The pin a selector means in the built design: the engine's rule, the first pin of the part with that name. */
@@ -253,14 +274,20 @@ export async function planNets(root: string, file: string, nets: Record<string, 
     const id = resolvePin(circuit, pin)
     return id !== undefined && circuit.nets.some((net) => net.names.includes(name) && net.pins.includes(id))
   }
-  const plan: NetPlan = { edits: [], added: {}, skipped: 0 }
+  const plan: NetPlan = { edits: [], added: {}, pins: {}, skipped: 0 }
   const claimed = new Map<string, string>()
+  const unknown: string[] = []
   for (const [name, pins] of Object.entries(nets)) {
     const local = localNet(`net.${name}`)
     if (local) throw new Error(localNetRefusal(local, circuit.instances?.find((instance) => instance.path === local.instance)?.file))
     if (!NET_NAME.test(name)) throw new Error(`"${name}" is not a net name; use letters, digits, _ and -, e.g. GND`)
     for (const pin of new Set(pins.map((p) => p.trim()))) {
       if (!PIN.test(pin)) throw new Error(`"${pin}" is not a pin selector; write PART.pin, e.g. R1.pin2 or U1.VOUT`)
+      const why = unknownPin(circuit, pin)
+      if (why !== undefined) {
+        unknown.push(why)
+        continue
+      }
       const key = resolvePin(circuit, pin) ?? pinName(pin)
       const other = claimed.get(key)
       if (other !== undefined && other !== name) throw new Error(`${pin} is given for both ${other} and ${name}; that would short the two nets`)
@@ -269,8 +296,10 @@ export async function planNets(root: string, file: string, nets: Record<string, 
       else {
         plan.edits.push({ kind: "addTrace", from: pin, to: `net.${name}` })
         plan.added[name] = (plan.added[name] ?? 0) + 1
+        plan.pins[name] = [...(plan.pins[name] ?? []), pin]
       }
     }
   }
+  if (unknown.length > 0) throw new Error(`Unknown pins; nothing was written: ${unknown.join("; ")}`)
   return plan
 }

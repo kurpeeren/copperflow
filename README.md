@@ -329,7 +329,7 @@ parts, nets, tracks, vias and pours. The parts arrive as library parts, not veri
 | `export_html` | Writes the design as one web page (schematic, board, 3D, BOM, with the fabrication and model files inside) to hand to a person; opens offline |
 | `attach_datasheet` / `guide` | Records the datasheet a part came from; and the copperflow skill's texts for an agent that has no skills |
 | `edit_circuit` | Several edits in one call, applied as one change (one history entry); stops at the first refused edit and writes nothing |
-| `connect_nets` | Connects many pins to named nets in one call, e.g. `{ "GND": ["R1.pin2", "C1.pin2"] }` |
+| `connect_nets` | Connects many pins of an existing circuit to named nets in one call, e.g. `{ "GND": ["R1.pin2", "C1.pin2"] }`; refuses unknown parts or pins and lists the pins it added |
 | `route_track` | Draws one track of a net by hand from a pad, track or via of that net, as one change; refused when a point lands on another net's copper; the answer lists the copper violations it introduced |
 | `add_via` / `remove_copper` | Places a via (net from the copper under it, size from the net class and the fabrication ring) or removes tracks and vias by id (or one segment of a track by `{ id, segment }`), each as one change |
 | `fillet_tracks` / `straighten_tracks` | Rounds the square corners of tracks (by id, or every track) into short chords on an arc of the design rules' fillet radius, or puts rounded corners back, each as one change; a corner too close to other copper, a pad, a keepout or the board edge, or with legs too short, stays square and is counted |

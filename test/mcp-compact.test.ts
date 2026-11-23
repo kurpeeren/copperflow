@@ -361,6 +361,28 @@ describe("connect_nets", () => {
     expect(await listEntries(root, 10)).toHaveLength(1)
   })
 
+  test("names the pins it added, per net", async () => {
+    const { text } = await call("connect_nets", { file: FILE, nets: { GND: ["R1.pin1", "C1.pin2", "LED1.pin2"], V3_3: ["U1.pin1"] } })
+    expect(text.split("\n").slice(1, 3)).toEqual(["GND +2: C1.pin2 LED1.pin2", "V3_3 +1: U1.pin1"])
+  })
+
+  test("refuses every unknown part or pin in one answer and writes nothing", async () => {
+    const before = await readFile(join(root, FILE), "utf8")
+    const { text, isError } = await call("connect_nets", { file: FILE, nets: { GND: ["R1.pin7", "C1.pin2"], VCC: ["Q9.pin1", "U1.FOO"] } })
+    expect(isError).toBe(true)
+    expect(text).toMatch(/^Unknown pins; nothing was written:/)
+    expect(text).toContain("R1.pin7 (R1 has pin1, pin2)")
+    expect(text).toContain("Q9.pin1 (there is no part Q9)")
+    expect(text).toMatch(/U1\.FOO \(U1 has pin1, pin2, pin3/)
+    expect(await readFile(join(root, FILE), "utf8")).toBe(before)
+    expect(await listEntries(root, 10)).toHaveLength(0)
+  })
+
+  test("add_trace points at connect_nets for many pins", async () => {
+    const { tools } = await client.listTools()
+    expect(tools.find((tool) => tool.name === "add_trace")?.description).toContain("connect_nets")
+  })
+
   test("a repeat call changes nothing", async () => {
     await call("connect_nets", { file: FILE, nets: { GND: ["C1.pin2"] } })
     const again = await call("connect_nets", { file: FILE, nets: { GND: ["C1.pin2"] } })
