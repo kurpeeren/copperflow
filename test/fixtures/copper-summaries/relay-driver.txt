@@ -10,4 +10,4 @@ RL1/LEDA: 1 track, 0 vias, 5.1 mm, 0 unrouted
 V12: 4 tracks, 1 via, 19.8 mm, 0 unrouted
 Pours: 1, holes: 0
 copperpour:1 GND bottom: 683.81 mm², joins 2 pads
-Copper violations: none
+Copper violations: 3 (track-current 3)

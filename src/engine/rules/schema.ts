@@ -49,7 +49,7 @@ export interface NetClass {
   via: { drill: number; diameter: number }
   /** Net name patterns with `*` and `?`. */
   patterns: string[]
-  /** The current its nets carry, in amperes: the track-current check sizes their tracks for it. */
+  /** The current its nets carry, in amperes: the track-current and pour-current checks size their tracks and pours for it. */
   current?: number
   /** Single-line impedance, in ohm. */
   impedance?: number

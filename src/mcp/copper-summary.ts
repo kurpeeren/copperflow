@@ -11,7 +11,7 @@ import { fastLineBlock } from "./fast-summary.js"
 export { fastLineBlock }
 
 /** The rule codes of copper findings: the copper checks and what copper joining reports. */
-export const COPPER_RULES: ReadonlySet<string> = new Set(["copper-clearance", "track-width", "via-drill", "via-ring", "hole-to-hole", "copper-edge", "copper-keepout", "short", "floating", "mismatch", "copper-layer", "copper-hole", "hole-off-board", "pour-floating", "pour-sparse", "pour-empty", "pour-net", "pair-skew", "pair-apart", "pair-gap", "pair-vias", "net-length", "match-spread", "impedance-width", "drawing-width", "drawing-floating", "drawing-net"])
+export const COPPER_RULES: ReadonlySet<string> = new Set(["copper-clearance", "track-width", "via-drill", "via-ring", "hole-to-hole", "copper-edge", "copper-keepout", "short", "floating", "mismatch", "copper-layer", "copper-hole", "hole-off-board", "pour-floating", "pour-sparse", "pour-empty", "pour-net", "track-current", "pour-current", "pair-skew", "pair-apart", "pair-gap", "pair-vias", "net-length", "match-spread", "impedance-width", "drawing-width", "drawing-floating", "drawing-net"])
 
 /** copper_summary stops here, so the answer fits a screen. */
 export const SUMMARY_LIMIT = 60

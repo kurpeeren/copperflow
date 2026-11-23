@@ -35,12 +35,28 @@ IPC-2152 replaces the IPC-2221 charts with more detailed data; use it when the m
   amperes, in `rules.yaml`) counts as well, and the larger of the two is used.
 - **The width it asks for:** the width for a 10 °C rise in `fabrication.copperThickness` (1 oz,
   0.035 mm, when the file does not set it). An inner layer needs about 2.6 times the outer width.
-- **What it reports:** one warning per net, naming the tracks narrower than that width. Vias and
-  pours are not measured.
+- **What it reports:** one warning per net, naming the tracks narrower than that width. Vias are
+  not measured; pours are, as the `pour-current` warning below.
 - **Fixing it:** give the net a class with that `trackWidth`, then `unroute` and `autoroute` it,
   or carry it in a pour. Write a port's `carries` with the most current it really takes, as a
   number with `A`, `mA` or `µA` ("2 A", "350 mA"); a text that names no current that way gives
   no warning.
+
+A copper pour on such a net gets the same width, as the `pour-current` warning:
+
+- **The neck:** the narrowest the pour's copper gets on its widest way between the pads, tracks
+  and vias of its net that it joins on its layer. It is read on a grid that never reads it wider
+  than the copper, so the warning gives it as a range (the reading, and the reading plus what
+  the grid can lose) and says where it is. Copper too thin for the grid to hold at all is
+  still a warning ("too thin for the grid to place"). The copper within half the needed width
+  of each pad, track and via is not read, so a pad near the pour's edge is not a neck; where two
+  of those areas meet, the copper is read. A pour whose `minWidth` is at least the needed width
+  is not read: its fill drops copper narrower than `minWidth`.
+- **The spokes:** a relief pour joins each pad through up to four spokes `thermalWidth` wide; a
+  pad whose spokes that reach the fill are narrower than the needed width all together is named.
+  A spoke counts when its tip is in the fill.
+- **Fixing it:** widen the pour where it narrows (move the copper that pinches it, or widen its
+  outline), and give it `thermal: "solid"` or a wider `thermalWidth`.
 
 Source: IPC-2221, *Generic Standard on Printed Board Design*; IPC-2152, *Standard for
 Determining Current Carrying Capacity in Printed Board Design*.
@@ -83,7 +99,7 @@ netClasses:
     trackWidth: 0.5
     clearance: 0.3
     via: { drill: 0.4, diameter: 0.8 }
-    current: 1.4             # amperes its nets carry; optional, for the track-current check
+    current: 1.4             # amperes its nets carry; optional, for the track- and pour-current checks
     nets: [GND, VBUS, "V*"]  # net names or patterns with * and ?
   field:
     nets: ["IN*", V24]
@@ -123,8 +139,8 @@ globalNets: [GND, V24, V3_3]
 - A class field left out takes the default class's value: track 0.25 mm, clearance 0.2 mm, via drill
   0.3 mm and diameter 0.6 mm. These are copperflow's own conservative choice, above the profile minimums.
 - `current` is the current a class's nets carry, in amperes. It does not change the router's width:
-  the `track-current` warning compares the tracks with the width that current needs (see "Trace
-  width for current"). Set `trackWidth` to that width yourself.
+  the `track-current` and `pour-current` warnings compare the tracks and pours with the width that
+  current needs (see "Trace width for current"). Set `trackWidth` to that width yourself.
 - Patterns are case-sensitive and match a net's names. `*` alone matches every net, named or not.
   An unnamed net is in no class otherwise.
 - A pattern that starts with `*` must be quoted (`"*GND"`): unquoted, YAML reads it as an alias.
@@ -231,6 +247,8 @@ position. Anything a check cannot evaluate is reported as `unchecked`, never sil
 | `hole-off-board` | error | A non-plated `<hole>` is not wholly inside the board outline less `boardEdgeClearance` (off the board or across its edge); the export refuses it. |
 | `pour-floating` | warning | A copper pour's fill joins no pad of its net. |
 | `pour-sparse` | warning | A copper pour joins fewer than half of its net's pads (and its net's other pours do not make up the half): a pour joins only the pads on its layer and through pads, so put it on the layer the parts sit on. |
+| `track-current` | warning | A net carries a current (a port's `carries`, or its class's `current`) and has tracks narrower than IPC-2221 asks for it: see "Trace width for current". |
+| `pour-current` | warning | A copper pour on a net that carries a current narrows below the width that current needs between the pads, tracks and vias it joins, or joins a pad through spokes too thin together: see "Trace width for current". |
 | `pour-empty` | warning | A copper pour has no copper: a pour of another net filled first (higher priority, or equal and earlier) took its area, or what is left touches none of its net's copper. |
 | `courtyard-overlap` | error | Two part courtyards overlap. |
 | `keepout` | error | A part lies inside a keep-out area. |

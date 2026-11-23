@@ -1,7 +1,7 @@
 // Track width for current. A net carries the largest current a sheet port on it names in its `carries` text ("10 A at
 // most", "33 mA"), or its net class's `current`, whichever is larger. IPC-2221 gives the width that current needs for a
 // 10 °C rise in the board's copper (fabrication.copperThickness, 1 oz when not set); each net with tracks narrower than
-// that is one `track-current` warning naming those tracks. Vias and pours are not measured. Pure.
+// that is one `track-current` warning naming those tracks. Vias are not measured; pours are, in pour-current.ts. Pure.
 import type { Circuit, Net } from "../model.js"
 import type { PcbLayout, PcbTrack } from "../pcb.js"
 import { netClasses } from "../rules/classes.js"
@@ -11,7 +11,7 @@ import { violation, type Violation } from "./violation.js"
 /** The temperature rise the width is worked out for, in °C. */
 export const TEMPERATURE_RISE = 10
 /** 1 oz copper, in mm, when the rules give no thickness. */
-const ONE_OUNCE = 0.035
+export const ONE_OUNCE = 0.035
 /** IPC-2221's constant for outer and inner layers (I in A, ΔT in °C, area in square mils). */
 const K = { outer: 0.048, inner: 0.024 } as const
 const MIL = 0.0254
@@ -38,7 +38,7 @@ export function widthForCurrent(amps: number, thickness: number, side: CopperSid
   return (area / (thickness / MIL)) * MIL
 }
 
-interface NetCurrent {
+export interface NetCurrent {
   amps: number
   /** Where the current is said: a port and its text, or a net class. */
   from: string
@@ -60,8 +60,8 @@ function portCurrents(circuit: Circuit): { net: Net; current: NetCurrent }[] {
   })
 }
 
-/** Each net's current: the largest any port on it or its class says. */
-function netCurrents(circuit: Circuit, rules: Rules): Map<string, NetCurrent> {
+/** Each net's current, by net id: the largest any port on it or its class says. */
+export function netCurrents(circuit: Circuit, rules: Rules): Map<string, NetCurrent> {
   const currents = new Map<string, NetCurrent>()
   const keep = (net: string, current: NetCurrent) => {
     if (current.amps > (currents.get(net)?.amps ?? 0)) currents.set(net, current)
@@ -78,7 +78,7 @@ function netCurrents(circuit: Circuit, rules: Rules): Map<string, NetCurrent> {
 }
 
 const sideOf = (track: PcbTrack): CopperSide => (track.layer === "top" || track.layer === "bottom" ? "outer" : "inner")
-const mm = (value: number): string => `${Number(value.toFixed(3))}`
+export const mm = (value: number): string => `${Number(value.toFixed(3))}`
 
 function narrowTracks(name: string, current: NetCurrent, tracks: readonly PcbTrack[], thickness: number): Violation[] {
   const need = { outer: widthForCurrent(current.amps, thickness, "outer"), inner: widthForCurrent(current.amps, thickness, "inner") }
