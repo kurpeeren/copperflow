@@ -1,6 +1,7 @@
 import { diagnostic } from "./diagnostics.js"
 import type { Board, Diagnostic, Point, SourceRef } from "./model.js"
 import { PropReader, type Props } from "./read-props.js"
+import { gridAround, gridOutline, MAX_HOLES, MIN_HOLES, PROTO_KINDS, type ProtoGrid, type ProtoKind } from "./proto/grid.js"
 import { parseLength } from "./units.js"
 
 export const DEFAULT_THICKNESS = 1.6
@@ -38,10 +39,41 @@ function rectangle(reader: PropReader): Point[] | undefined {
   ]
 }
 
+const holeCount = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isInteger(value) && value >= MIN_HOLES && value <= MAX_HOLES ? value : undefined
+
+/**
+ * The hole grid of a board whose kind is perfboard or stripboard, centred on pcbX, pcbY; undefined for a made PCB.
+ * A bad kind, hole count or strip direction is a warning; width, height and outline beside a grid are ignored.
+ */
+function protoGrid(props: Props, reader: PropReader, warn: (message: string, item: string) => void): ProtoGrid | undefined {
+  const kind = props["kind"]
+  if (kind === undefined || kind === "pcb") return undefined
+  if (!PROTO_KINDS.includes(kind as ProtoKind)) {
+    warn(`board: kind must be "pcb", "perfboard" or "stripboard"`, "board.kind")
+    return undefined
+  }
+  const [columns, rows] = [holeCount(props["columns"]), holeCount(props["rows"])]
+  if (columns === undefined || rows === undefined) {
+    warn(`board: a ${String(kind)} needs columns and rows, whole numbers of holes from ${MIN_HOLES} to ${MAX_HOLES}`, "board.columns")
+    return undefined
+  }
+  const strips = props["strips"]
+  if (strips !== undefined && (kind !== "stripboard" || (strips !== "rows" && strips !== "columns"))) {
+    warn(kind === "stripboard" ? 'board: strips must be "rows" or "columns"' : "board: strips is for a stripboard", "board.strips")
+  }
+  const ignored = ["width", "height", "outline"].filter((key) => props[key] !== undefined)
+  if (ignored.length > 0) warn(`board: a ${String(kind)} takes its size from columns and rows; ${ignored.join(", ")} ignored`, `board.${ignored[0]}`)
+  const centre = { x: reader.length("pcbX") ?? 0, y: reader.length("pcbY") ?? 0 }
+  return gridAround(kind as ProtoKind, columns, rows, centre, strips === "columns" ? "columns" : "rows")
+}
+
 export function buildBoard(props: Props, source: SourceRef): { board: Board; diagnostics: Diagnostic[] } {
   const reader = new PropReader(props, "board", source)
   const diagnostics: Diagnostic[] = []
   const warn = (message: string, item: string) => diagnostics.push(diagnostic("bad-value", "warning", message, [item], source))
+  const proto = protoGrid(props, reader, warn)
+  if (proto) return { board: { outline: gridOutline(proto), layers: 2, thickness: reader.length("thickness") ?? DEFAULT_THICKNESS, keepouts: [], proto }, diagnostics: [...reader.diagnostics, ...diagnostics] }
   const given = props["outline"]
   const fromOutline = given === undefined ? undefined : outlinePoints(given)
   if (given !== undefined && !fromOutline) warn("board: outline must be a list of at least 3 points with x and y", "board.outline")

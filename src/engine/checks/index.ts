@@ -14,6 +14,7 @@ import { electricalChecks } from "./erc.js"
 import { caseSizeChecks } from "./case-size.js"
 import { fastLineChecks, viaThickness } from "./fast-lines.js"
 import { pourCurrentChecks } from "./pour-current.js"
+import { protoPartChecks } from "../proto/placement.js"
 import { trackCurrentChecks } from "./track-current.js"
 import { withoutUnplacedPositions } from "./unplaced-parts.js"
 import { violation, type Violation } from "./violation.js"
@@ -76,6 +77,7 @@ export function checkDesign(
     ...fastLineChecks(circuit.nets, placed, rules, viaThickness(circuit.board?.thickness, rules)),
     ...trackCurrentChecks(circuit, placed, rules),
     ...pourCurrentChecks(circuit, placed, rules),
+    ...protoPartChecks(placed),
     ...skipped,
   ])
   return withoutUnplacedPositions(found, layout)

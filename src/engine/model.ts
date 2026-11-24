@@ -1,3 +1,5 @@
+import type { ProtoGrid } from "./proto/grid.js"
+
 /** Where a piece of circuit code is written. `line` and `column` are 1-based, `offset` is the 0-based string index. */
 export interface SourceRef {
   file: string
@@ -205,6 +207,8 @@ export interface Board {
   silkTexts?: SilkText[]
   /** The drawings from SVG or DXF files, in source order; absent when there are none. */
   graphics?: BoardGraphic[]
+  /** A perfboard or stripboard: its hole grid (proto/grid.ts); absent on a made PCB. */
+  proto?: ProtoGrid
 }
 
 export type DrawingKind = "path" | "rect" | "circle" | "arc" | "text" | "bus" | "junction"
