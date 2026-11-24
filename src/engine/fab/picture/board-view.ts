@@ -6,6 +6,7 @@ import { boardPicture, MAX_PICTURE_SIDE, outlineBox, type Side } from "./board-p
 import { lookWords, type LookRequest } from "./looks.js"
 import { encodePng, loadCanvas, type CanvasLoader } from "./png.js"
 import type { Box } from "./raster.js"
+import { protoPicture, protoScale } from "../../proto/picture.js"
 
 export interface BoardViewRequest {
   side?: Side
@@ -53,6 +54,7 @@ const sideWords = (side: Side) => (side === "top" ? "top" : "bottom seen from be
 /** The picture as a PNG and what it shows: "the board as made, top, green mask, ENIG, 43.4 x 24.2 mm". */
 export async function renderBoardView(design: Design, request: BoardViewRequest, canvas: CanvasLoader = loadCanvas): Promise<{ png: Uint8Array; width: number; height: number; what: string; label: string }> {
   if (request.page !== undefined) throw new Error("page is for the schematic only; the board has no pages")
+  if (design.pcb.board?.proto) return protoView(design, request, canvas)
   const side = request.side ?? "top"
   const outline = outlineBox(design.pcb)
   const zoomed = request.parts !== undefined && request.parts.length > 0
@@ -61,5 +63,25 @@ export async function renderBoardView(design: Design, request: BoardViewRequest,
   const picture = boardPicture(design, { side, ...(request.look ? { look: request.look } : {}), pxPerMm: width / (box.maxX - box.minX), box })
   const where = zoomed ? `around ${(request.parts as string[]).join(", ")}` : `${round1(outline.maxX - outline.minX)} x ${round1(outline.maxY - outline.minY)} mm`
   const what = `the board as made, ${sideWords(side)}, ${lookWords(picture.look)}, ${where}`
+  return { png: await encodePng(picture, canvas), width: picture.width, height: picture.height, what, label: designName(design.file) }
+}
+
+/** A perfboard or stripboard as built: "the stripboard as built, top, 30 x 20 holes, 2 links, 3 cuts". */
+async function protoView(design: Design, request: BoardViewRequest, canvas: CanvasLoader): Promise<{ png: Uint8Array; width: number; height: number; what: string; label: string }> {
+  const grid = design.pcb.board?.proto
+  if (!grid) throw new Error("The board is not a perfboard or stripboard")
+  if (request.look !== undefined) throw new Error(`look is for a made board; a ${grid.kind} is drawn as it is`)
+  if (request.parts !== undefined && request.parts.length > 0) throw new Error(`parts zooms a made board; a ${grid.kind} is drawn whole`)
+  const side = request.side ?? "top"
+  const width = request.width ?? DEFAULT_WIDTH
+  if (!Number.isInteger(width) || width < MIN_BOARD_WIDTH || width > MAX_PICTURE_SIDE) throw new Error(`width must be a whole number of pixels from ${MIN_BOARD_WIDTH} to ${MAX_PICTURE_SIDE}`)
+  const picture = protoPicture(design.pcb, side, protoScale(design.pcb, width))
+  const records = design.pcb.proto ?? []
+  const count = (t: string, word: string) => {
+    const n = records.filter((r) => r.t === t).length
+    return `${n} ${word}${n === 1 ? "" : "s"}`
+  }
+  const made = [...(grid.kind === "perfboard" ? [count("solder", "solder run")] : []), count("link", "link"), ...(grid.kind === "stripboard" ? [count("cut", "cut")] : [])]
+  const what = `the ${grid.kind} as built, ${side === "top" ? "top: parts and links" : `bottom seen from below (left and right swapped): ${grid.kind === "stripboard" ? "strips and cuts" : "pads and solder"}`}, ${grid.columns} x ${grid.rows} holes, ${made.join(", ")}`
   return { png: await encodePng(picture, canvas), width: picture.width, height: picture.height, what, label: designName(design.file) }
 }

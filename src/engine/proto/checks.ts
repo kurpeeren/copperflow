@@ -75,7 +75,7 @@ function shorts(board: Board): Violation[] {
     const names = ordered.map(([net]) => board.nameOf(net))
     const where = `${pinOf(a.pad)} (${holeName(a.hole)}) and ${pinOf(b.pad)} (${holeName(b.hole)})`
     const fix = stripJoins(board, a.hole, b.hole) ? `${stripName(board.grid, a.hole)} joins them: cut it between the two` : "remove the solder or link that joins them"
-    found.push(violation("proto-short", "error", `${names.join(" and ")} are joined: ${where} are on one piece of copper; ${fix}`, [...ordered.map(([net]) => net), a.pad.id], "pcb", a.pad))
+    found.push(violation("proto-short", "error", `${names.length > 2 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names.join(" and ")} are joined: ${where} are on one piece of copper; ${fix}`, [...ordered.map(([net]) => net), a.pad.id], "pcb", a.pad))
   }
   return found
 }

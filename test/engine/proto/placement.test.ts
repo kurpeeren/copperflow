@@ -71,20 +71,20 @@ describe("parts on the grid", () => {
   test("a part off the grid is refused, naming the hole and why", () => {
     const built = design('<pinheader name="J1" pinCount={2} pitch="2.54mm" pcbX={-7.62} pcbY={2.27} />')
     const found = built.violations.filter((v) => v.code === "proto-off-grid")
-    expect(found).toHaveLength(2)
-    expect(found[0]?.message).toMatch(/^J1 pin 1 is 1\.00 mm from hole C2: it lies between holes, so J1 cannot sit on the grid$/)
+    expect(found.map((v) => v.message)).toEqual(["J1 lies between holes: pin 1 is 1.00 mm from hole C2; move it onto the grid (autoplace snaps it)"])
+    expect(found[0]?.items).toEqual(["J1"])
   })
 
   test("a part whose pins are not 2.54 mm apart is refused", () => {
     // A 3.5 mm screw terminal with pin 1 in hole C2: pin 2 lies 0.96 mm short of C3.
     const built = design('<connector name="J2" pinCount={2} footprint="screw2_p3.5" pcbX={-7.14} pcbY={1.27} />')
     const found = built.violations.find((v) => v.code === "proto-off-grid")
-    expect(found?.message).toMatch(/^J2 pin 2 is .* mm from hole C\d+: it is 3\.50 x 0\.00 mm from pin 1, not a whole number of 2\.54 mm steps, so J2 cannot sit on the grid$/)
+    expect(found?.message).toBe("J2 pin 2 is 3.50 x 0.00 mm from pin 1, not a whole number of 2.54 mm steps, so J2 cannot sit on the grid; give it a footprint with 2.54 mm spacing")
   })
 
   test("a pin outside the holes is named", () => {
     const built = design('<pinheader name="J1" pinCount={2} pitch="2.54mm" pcbX={30} pcbY={1.27} />')
-    expect(codes(built)).toContain("proto-outside")
+    expect(built.violations.find((v) => v.code === "proto-outside")?.message).toBe("J1 has pins 1, 2 outside the perfboard's holes; move it onto the board")
   })
 
   test("two pins in one hole", () => {
