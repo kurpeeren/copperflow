@@ -123,3 +123,11 @@ export const sameStrip = (grid: ProtoGrid, a: Hole, b: Hole): boolean => (grid.s
 
 /** "strip C" for a row strip, "strip 7" for a column strip. */
 export const stripName = (grid: ProtoGrid, hole: Hole): string => (grid.strips === "columns" ? `strip ${hole.col + 1}` : `strip ${rowName(hole.row)}`)
+
+/** The holes a link passes over, its ends left out; undefined when it is not straight. */
+export function linkSpan(from: Hole, to: Hole): Hole[] | undefined {
+  if (from.col !== to.col && from.row !== to.row) return undefined
+  const steps = Math.abs(to.col - from.col) + Math.abs(to.row - from.row)
+  const [dc, dr] = [Math.sign(to.col - from.col), Math.sign(to.row - from.row)]
+  return Array.from({ length: Math.max(steps - 1, 0) }, (_, i) => ({ col: from.col + dc * (i + 1), row: from.row + dr * (i + 1) }))
+}

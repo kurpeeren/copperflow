@@ -11,8 +11,9 @@ import { pinHoles } from "./placement.js"
 export class HoleSets {
   private readonly parent: Int32Array
 
-  constructor(size: number) {
-    this.parent = new Int32Array(size).map((_, i) => i)
+  /** Every hole on its own, or a copy of another's parents. */
+  constructor(size: number | Int32Array) {
+    this.parent = typeof size === "number" ? new Int32Array(size).map((_, i) => i) : size.slice()
   }
 
   find(key: number): number {
@@ -25,6 +26,10 @@ export class HoleSets {
       at = next
     }
     return root
+  }
+
+  clone(): HoleSets {
+    return new HoleSets(this.parent)
   }
 
   join(a: number, b: number): void {

@@ -6,7 +6,7 @@ import { protoWords } from "../../core/layout-proto.js"
 import { violation, type Violation } from "../checks/violation.js"
 import { naturalCompare } from "../order.js"
 import type { PcbLayout, WorldPad } from "../pcb.js"
-import { alongStrip, holeKey, holeName, holePoint, neighbours, sameStrip, stripName, type Hole, type ProtoGrid } from "./grid.js"
+import { alongStrip, holeKey, holeName, holePoint, linkSpan, neighbours, sameStrip, stripName, type Hole, type ProtoGrid } from "./grid.js"
 import { gridHole, protoSets, type HoleSets } from "./joins.js"
 import { pinHoles, type PinHole } from "./placement.js"
 
@@ -116,14 +116,6 @@ function cutFindings(board: Board, cut: CutRecord): Violation[] {
   const net = shared[0] as string
   const pins = [left?.get(net)?.[0], right?.get(net)?.[0]].map((one) => (one ? pinOf(one.pad) : "?"))
   return [violation("proto-cut-splits", "error", `${protoWords(cut)} parts net ${board.nameOf(net)} (${pins[0]} from ${pins[1]}) and nothing else joins them; remove the cut or join the two sides`, [cut.id], "pcb", holePoint(grid, sides[0]))]
-}
-
-/** The holes a link passes over, its ends left out; undefined when it is not straight. */
-export function linkSpan(from: Hole, to: Hole): Hole[] | undefined {
-  if (from.col !== to.col && from.row !== to.row) return undefined
-  const steps = Math.abs(to.col - from.col) + Math.abs(to.row - from.row)
-  const [dc, dr] = [Math.sign(to.col - from.col), Math.sign(to.row - from.row)]
-  return Array.from({ length: Math.max(steps - 1, 0) }, (_, i) => ({ col: from.col + dc * (i + 1), row: from.row + dr * (i + 1) }))
 }
 
 function linkFindings(board: Board, links: readonly LinkRecord[]): Violation[] {
