@@ -8,12 +8,12 @@
     "url": "https://github.com/kurpeeren/copperflow",
     "source": "github"
   },
-  "version": "0.5.5",
+  "version": "0.6.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "copperflow",
-      "version": "0.5.5",
+      "version": "0.6.0",
       "transport": {
         "type": "stdio"
       },

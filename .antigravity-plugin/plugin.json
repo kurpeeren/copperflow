@@ -1,7 +1,7 @@
 {
   "name": "copperflow",
   "displayName": "copperflow",
-  "version": "0.5.4",
+  "version": "0.6.0",
   "description": "Design PCBs with an agent: schematic, placement, autorouting, DRC, Gerber, BOM and STEP export. Brings the copperflow MCP server and the copperflow skill.",
   "author": {
     "name": "Eren Kürpe",
