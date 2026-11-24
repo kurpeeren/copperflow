@@ -23,7 +23,7 @@ export const exportInput = {
 }
 
 export const EXPORT_DESCRIPTION =
-  'Write files from the design. as "fabrication": the JLCPCB files to <name>-fab/ and a zip (Gerbers, drills, pick-and-place and BOM CSVs, pictures of the board as made, a STEP model); call it after a clean check_circuit: a design with errors is refused. "step" or "glb": one 3D model beside the circuit, STEP for mechanical CAD (parts as the 3D view draws them, in colour), GLB for a 3D viewer (the board as made); an unfinished design is written too. "html": one offline page to hand to a person (schematic, board, 3D, BOM, files inside). "package": a folder for whoever orders and checks the parts (BOM, local datasheets, each library part\'s verification status). "build": a perfboard or stripboard build sheet (holes, cut and link lists, pictures).'
+  'Write files from the design. as "fabrication": the JLCPCB files to <name>-fab/ and a zip (Gerbers, drills, pick-and-place and BOM CSVs, pictures of the board as made, a STEP model); call it after a clean check_circuit: a design with errors is refused. "step" or "glb": one 3D model beside the circuit, STEP for mechanical CAD (parts as the 3D view draws them, in colour), GLB for a 3D viewer (the board as made); an unfinished design is written too. "html": one offline page for a person (schematic, board, 3D, BOM, files inside). "package": a folder for whoever orders and checks the parts (BOM, local datasheets, each library part\'s verification status). "build": a hole board\'s build sheet.'
 
 export interface ExportPorts {
   root: string
