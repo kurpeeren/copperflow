@@ -71,3 +71,13 @@ describe.each(["perfboard", "stripboard"] as const)("a relay driver on %s", (kin
     else expect(text).toMatch(/## Solder runs \(bottom, \d+\)/)
   }, 120_000)
 })
+
+describe("the relay-protoboard example", () => {
+  test.each(["perfboard", "stripboard"])("relay-%s checks clean, every pin joined", async (kind) => {
+    const root = join(import.meta.dirname, "..", "examples", "relay-protoboard")
+    const check = await checkCircuit(root, `relay-${kind}.circuit.tsx`, { engine })
+    expect([...check.errors, ...check.warnings]).toEqual([])
+    expect(check.ok).toBe(true)
+    expect(check.unrouted).toEqual([])
+  }, 60_000)
+})

@@ -1,0 +1,15 @@
+{"t":"solder","id":"s1","net":"LEDA","holes":["I15","H15","G15","G14"],"locked":false,"by":"router"}
+{"t":"solder","id":"s2","net":"BASE","holes":["H9","I9","I10","J10"],"locked":false,"by":"router"}
+{"t":"solder","id":"s3","net":"BASE","holes":["J10","J11","K11"],"locked":false,"by":"router"}
+{"t":"solder","id":"s4","net":"CTRL","holes":["N12","M12","L12","K12","K13","K14","K15"],"locked":false,"by":"router"}
+{"t":"solder","id":"s5","net":"V24","holes":["D12","D11","D10"],"locked":false,"by":"router"}
+{"t":"solder","id":"s6","net":"V24","holes":["D12","C12","C13","C14"],"locked":false,"by":"router"}
+{"t":"solder","id":"s7","net":"V24","holes":["D10","C10","C9","C8","C7","C6","C5","D5"],"locked":false,"by":"router"}
+{"t":"solder","id":"s8","net":"GND","holes":["D8","E8","F8","G8","H8"],"locked":false,"by":"router"}
+{"t":"solder","id":"s9","net":"GND","holes":["H8","H7","H6","I6","J6"],"locked":false,"by":"router"}
+{"t":"solder","id":"s10","net":"GND","holes":["H8","I8","J8","J9","K9","K10","L10","L11","M11","N11"],"locked":false,"by":"router"}
+{"t":"solder","id":"s11","net":"DRV","holes":["H12","H11","H10"],"locked":false,"by":"router"}
+{"t":"solder","id":"s12","net":"DRV","holes":["H12","H13","H14","I14"],"locked":false,"by":"router"}
+{"t":"solder","id":"s13","net":"DRV","holes":["H10","G10","F10","E10"],"locked":false,"by":"router"}
+{"t":"link","id":"w1","net":"DRV","from":"E10","to":"E3","locked":false,"by":"router"}
+{"t":"solder","id":"s14","net":"DRV","holes":["E3","D3"],"locked":false,"by":"router"}
