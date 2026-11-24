@@ -132,7 +132,7 @@ async function writeReferences(
     const source = await readIfThere(layout.path)
     const before = source === undefined ? EMPTY_LAYOUT : readLayoutText(source, layout.file)
     const { references, record } = edit(before.references ?? [])
-    const after: LayoutDoc = { next: before.next, records: before.records, ...(references.length > 0 ? { references } : {}) }
+    const after: LayoutDoc = { next: before.next, records: before.records, ...(before.proto ? { proto: before.proto } : {}), ...(references.length > 0 ? { references } : {}) }
     const text = serializeLayout(after)
     if (text === (source ?? "")) throw new EditError("invalid", "The change made no change")
     const data = { author: meta.author, summary: summary(after) }

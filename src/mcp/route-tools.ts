@@ -23,6 +23,7 @@ import { routeTold } from "./told-runs.js"
 import { throwIfCancelled } from "./worker-run.js"
 import { introducedLines } from "./copper-summary.js"
 import { applyCopper, buildOf, netOrThrow, type Ports } from "./copper-tools.js"
+import { protoAutoroute, protoUnroute } from "./proto-route.js"
 
 /** The time autoroute may take by default, in seconds. */
 export const DEFAULT_BUDGET_SECONDS = 20
@@ -139,6 +140,7 @@ export async function autoroute(ports: Ports, input: { file: string; nets?: stri
   told.step(BUILDING_STEP)
   const start = await contentHashes(ports.root, circuit.file)
   const design = await buildOf(ports, circuit.file)
+  if (design.pcb.board?.proto) return protoAutoroute(ports, circuit.file, design, input, start)
   const scope = scopeOf(design, input)
   const run = await routeTold(routeInput(design), { scope, budgetMs: budgetSeconds * 1000, clock: options.clock, worker: options.worker, signal: options.signal }, told)
   throwIfCancelled(options.signal, "router")
@@ -183,6 +185,7 @@ export async function unroute(ports: Ports, input: { file: string; nets?: string
   if ((input.nets === undefined) === (input.all !== true)) throw new Error("Give nets or all: true (not both). Nothing was written.")
   const circuit = await resolveCircuit(ports.root, input.file)
   const design = await buildOf(ports, circuit.file)
+  if (design.pcb.board?.proto && (design.pcb.proto ?? []).length > 0) return protoUnroute(ports, circuit.file, design, input)
   const ids = input.nets ? copperOfNets(design, input.nets) : undefined
   const locked = await lockedPartsAt(circuit.path)
   const startsOn = locked.size === 0 ? undefined : lockedStart(locked, design)
