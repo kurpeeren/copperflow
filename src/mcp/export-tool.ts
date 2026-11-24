@@ -5,12 +5,13 @@ import { z } from "zod"
 import { exportPackage } from "../core/index.js"
 import type { DesignSource } from "../core/design-source.js"
 import type { Renderer } from "../core/render.js"
+import { exportBuildSheet } from "../core/build-sheet.js"
 import { exportFabricationTool } from "./fabrication-tool.js"
 import { exportHtmlTool } from "./html-tool.js"
 import { exportModelTool } from "./model-tool.js"
 import type { Reporter } from "./tool-activity.js"
 
-export const EXPORT_KINDS = ["fabrication", "step", "glb", "html", "package"] as const
+export const EXPORT_KINDS = ["fabrication", "step", "glb", "html", "package", "build"] as const
 type Kind = (typeof EXPORT_KINDS)[number]
 
 export const exportInput = {
@@ -22,7 +23,7 @@ export const exportInput = {
 }
 
 export const EXPORT_DESCRIPTION =
-  'Write files from the design. as "fabrication": the JLCPCB files to <name>-fab/ and a zip (Gerbers, drills, pick-and-place and BOM CSVs, pictures of the board as made, a STEP model); call it after a clean check_circuit: a design with errors is refused. "step" or "glb": one 3D model beside the circuit, STEP for mechanical CAD (parts as the 3D view draws them, in colour), GLB for a 3D viewer (the board as made); an unfinished design is written too. "html": one offline page to hand to a person (schematic, board, 3D, BOM, files inside). "package": a folder for whoever orders and checks the parts (BOM, local datasheets, each library part\'s verification status).'
+  'Write files from the design. as "fabrication": the JLCPCB files to <name>-fab/ and a zip (Gerbers, drills, pick-and-place and BOM CSVs, pictures of the board as made, a STEP model); call it after a clean check_circuit: a design with errors is refused. "step" or "glb": one 3D model beside the circuit, STEP for mechanical CAD (parts as the 3D view draws them, in colour), GLB for a 3D viewer (the board as made); an unfinished design is written too. "html": one offline page to hand to a person (schematic, board, 3D, BOM, files inside). "package": a folder for whoever orders and checks the parts (BOM, local datasheets, each library part\'s verification status). "build": a perfboard or stripboard build sheet (holes, cut and link lists, pictures).'
 
 export interface ExportPorts {
   root: string
@@ -53,6 +54,12 @@ export async function exportTool(ports: ExportPorts, input: ExportInput): Promis
       if (input.out !== undefined) throw new Error('out is not taken by as "package": the folder is named after the circuit')
       const result = await exportPackage(root, input.file, engine)
       return text(`Wrote ${result.files.length} files to ${result.outDir}:\n${result.files.join("\n")}`)
+    }
+    if (input.as === "build") {
+      refuseLook(input)
+      if (input.out !== undefined) throw new Error('out is not taken by as "build": the sheet is written beside the circuit')
+      const result = await exportBuildSheet(root, input.file, engine)
+      return text([`Wrote ${result.files.join(", ")}`, ...(result.note ? [result.note] : [])].join("\n"))
     }
     if (input.as === "html") return text(await exportHtmlTool({ root, ...engine, ...renderer, report }, input))
     return text(await exportModelTool({ root, ...engine, ...renderer }, { ...input, format: input.as }))
