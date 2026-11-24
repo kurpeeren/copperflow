@@ -12,6 +12,7 @@ import { drawViolationMarkers, type ViolationMarker } from "./markers.js"
 import { drawHoles, drawPourFills, drawPourOutlines, type PourScene } from "./pour-draw.js"
 import { drawSilkTexts, strokeLine, type SilkTextScene } from "./silk-text-draw.js"
 import { drawGraphics } from "./graphic-draw.js"
+import { drawProto } from "./proto-draw.js"
 import { devicePxFor, sharpenText, textShown } from "./text-level.js"
 
 export interface PcbDrawOptions {
@@ -94,6 +95,7 @@ export function drawPcb(ctx: Ctx, layout: PcbLayout, view: View, options: PcbDra
   if (layers.keepout) drawKeepouts(ctx, layout, px, hair)
   const pours = options.pours ?? PLAIN_POURS
   drawPourFills(ctx, layout, pours, layers, px)
+  drawProto(ctx, layout, layers, hair)
   drawCopper(ctx, layers, options.highlight, each, px)
   if (options.copper) drawCopperItems(ctx, options.copper, layers, options.highlight, px)
   if (layers.hole) drawDrills(ctx, each)
