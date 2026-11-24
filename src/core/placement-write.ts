@@ -215,7 +215,7 @@ async function fitted(root: string, texts: Texts, fit: { margin: number }): Prom
   const design = buildDesign(files, texts.circuit.file)
   const board = fitBoard(design, fit.margin)
   if ("error" in board) return { board }
-  return { board, edit: { kind: "setBoard", width: board.width, height: board.height, x: board.centre.x, y: board.centre.y } }
+  return { board, edit: { kind: "setBoard", width: board.width, height: board.height, x: board.centre.x, y: board.centre.y, ...(board.holes ?? {}) } }
 }
 
 /** Writes the changed files as one entry: the circuit as its file when it changed, else the first sheet file. */

@@ -237,7 +237,7 @@ export type Edit =
   /** In a sheet file: its card, `does` and `sources` on `<sheet>` and `type` and `carries` on ports; null removes one. */
   | ({ kind: "describeSheet" } & CardChange)
   /** The board as a rectangle of `width` × `height` mm centred on (`x`, `y`): Layout → Fit board. */
-  | { kind: "setBoard"; width: number; height: number; x: number; y: number }
+  | { kind: "setBoard"; width: number; height: number; x: number; y: number; columns?: number; rows?: number }
   /**
    * The board from a drawing: its outline, its holes and its keepouts (on all layers) at once. A board that has holes or
    * keepouts already is refused unless `replace`, which removes them first. `keepItems` changes only the outline and
@@ -246,3 +246,5 @@ export type Edit =
   | { kind: "setBoardShape"; outline: Point[]; holes: { x: number; y: number; diameter: number }[]; keepouts: Point[][]; replace: boolean; keepItems?: boolean }
   /** The board's copper layer count, `layers` on `<board>`. */
   | { kind: "setBoardLayers"; layers: 2 | 4 }
+  /** A made PCB of width × height mm, or a perfboard or stripboard of columns × rows holes. */
+  | { kind: "setBoardKind"; board: "pcb" | "perfboard" | "stripboard"; width: number; height: number; columns: number; rows: number }

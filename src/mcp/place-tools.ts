@@ -9,6 +9,7 @@ import { editCircuit, resolveCircuit } from "../core/index.js"
 import { placementWrites, writePlacement } from "../core/placement-write.js"
 import { strandedCopper, strandedLines } from "../engine/checks/stranded-copper.js"
 import type { Design } from "../engine/design.js"
+import { snapPositions } from "../engine/proto/snap.js"
 import { DEFAULT_FIT_MARGIN, type Placement } from "../engine/pcb-place/index.js"
 import type { PlaceScope } from "../engine/pcb-place/scope.js"
 import { ratsnestLength } from "../engine/pcb-place/score.js"
@@ -129,7 +130,9 @@ export async function autoplace(ports: Ports, input: AutoplaceInput, options: Au
   throwIfCancelled(options.signal, "placer")
   const placement = placed.result
   const ranHere = placed.note === undefined ? [] : [placed.note]
-  const writes = placementWrites(design, placement.positions, placement.blocks)
+  // On a perfboard or stripboard the parts then drop into free holes.
+  const snapped = snapPositions(design.pcb, placement.positions, { unbounded: input.fit === true })
+  const writes = placementWrites(design, snapped.positions, placement.blocks)
   // A block put beside the board is on it once the board is fitted round it; without fit it is named as not placed.
   const beside = input.fit ? [] : placement.beside.map((b) => `${b.instance} (${b.reason}; fit: true grows the board round it)`)
   const grown = input.fit ? placement.beside.map((b) => `${b.instance} had no free room on the board; the board was grown round it`) : []
@@ -155,7 +158,7 @@ export async function autoplace(ports: Ports, input: AutoplaceInput, options: Au
   return [
     ...head,
     ...unplaced,
-    ...listLine("Notes", [...placement.notes, ...grown, ...writes.notes, ...written.skipped.map((s) => `${s}; it was not moved`), ...fitError, ...(written.copperNote ? [written.copperNote] : [])]),
+    ...listLine("Notes", [...placement.notes, ...snapped.notes, ...grown, ...writes.notes, ...written.skipped.map((s) => `${s}; it was not moved`), ...fitError, ...(written.copperNote ? [written.copperNote] : [])]),
     ...(placement.budgetSpent ? [`Stopped at the ${budgetSeconds} s time budget; run autoplace again (with a larger budgetSeconds) to do better.`] : []),
     ...ranHere,
   ].join("\n")
@@ -167,5 +170,6 @@ export async function fitBoardTool(ports: Ports, input: { file: string; margin?:
   const fit = fitBoardEdit(await buildOf(ports, circuit.file), input.margin)
   if ("error" in fit) throw new Error(`${fit.error}. Nothing was written.`)
   const result = await editCircuit(ports.root, circuit.file, [fit.edit], { author: "ai", summary: fit.summary })
+  if (fit.edit.kind === "setBoard" && fit.edit.columns !== undefined) return `Change ${result.entry.id}: board ${fit.edit.columns} × ${fit.edit.rows} holes (one free hole all round)`
   return `Change ${result.entry.id}: board ${mm(fit.width)} × ${mm(fit.height)} mm (margin ${input.margin ?? DEFAULT_FIT_MARGIN} mm)`
 }

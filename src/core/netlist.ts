@@ -1,6 +1,7 @@
 // A netlist as new_circuit takes it: parts by kind or library id, and nets as lists of PART.pin. These check it and
 // turn it into the core's edits; new-circuit.ts writes a circuit from it, new-circuit-sheets.ts a sheet.
 import { generateFootprint } from "../engine/footprints/index.js"
+import { holesFor } from "../engine/proto/grid.js"
 import { kindOf, pinSpecs } from "../engine/kinds.js"
 import { libraryIds, readPart } from "./library.js"
 import { BUILTIN_PARTS, placeEdit } from "./place.js"
@@ -32,9 +33,11 @@ export interface PartPins {
 }
 export type PinTable = Map<string, PartPins>
 
-/** An empty circuit file with a board of this size, which the netlist edits fill. */
-export function boardSkeleton(board: { width: number; height: number }): string {
-  return `export default () => (\n  <board width="${board.width}mm" height="${board.height}mm">\n  </board>\n)\n`
+/** An empty circuit file with a board of this size, which the netlist edits fill; a perfboard or stripboard in whole holes. */
+export function boardSkeleton(board: { width: number; height: number; kind?: "pcb" | "perfboard" | "stripboard" | undefined }): string {
+  const grid = board.kind === "perfboard" || board.kind === "stripboard"
+  const open = grid ? `<board kind="${board.kind}" columns={${holesFor(board.width)}} rows={${holesFor(board.height)}}>` : `<board width="${board.width}mm" height="${board.height}mm">`
+  return `export default () => (\n  ${open}\n  </board>\n)\n`
 }
 
 function checkKind(part: NewPart): void {

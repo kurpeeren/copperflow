@@ -46,7 +46,7 @@ export const stripOf = (grid: ProtoGrid, hole: Hole): number => (grid.strips ===
 export const stripCount = (grid: ProtoGrid): number => (grid.strips === "columns" ? grid.columns : grid.rows)
 
 /** Whether two holes next to each other along a strip are parted by a cut. */
-export function partedAlong(state: BoardState, a: number, b: number): boolean {
+export function partedAlong(state: Pick<BoardState, "cutAt" | "cutBetween">, a: number, b: number): boolean {
   return state.cutAt[a] === 1 || state.cutAt[b] === 1 || state.cutBetween.has(pairKey(a, b))
 }
 

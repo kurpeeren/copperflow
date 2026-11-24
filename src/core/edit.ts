@@ -25,7 +25,7 @@ import { partsInSelector, sheetFileIn } from "./selectors.js"
 import { renamePort, setSheetSize } from "./sheet-edits.js"
 import { describeSheet } from "./sheet-card.js"
 import { renameParts } from "./rename-parts.js"
-import { setBoard, setBoardLayers } from "./board-edits.js"
+import { setBoard, setBoardKind, setBoardLayers } from "./board-edits.js"
 import { setBoardShape } from "./board-shape-edit.js"
 import { EDGE_PROP, LABEL_AT_PROPS, NAME_HIDDEN_PROP, NAME_ROTATION_PROP, NAME_TEXT_PROP } from "../engine/component.js"
 import { NO_CONNECT_PROP } from "../engine/no-connect.js"
@@ -121,6 +121,8 @@ function editSource(source: string, scan: Scan, edit: Edit, locked: ReadonlySet<
       return setBoardShape(source, scan, edit, locked)
     case "setBoardLayers":
       return setBoardLayers(source, scan, edit.layers)
+    case "setBoardKind":
+      return setBoardKind(source, scan, edit)
   }
 }
 

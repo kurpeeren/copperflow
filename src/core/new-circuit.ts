@@ -13,7 +13,8 @@ export interface NewCircuit {
   parts: NewPart[]
   /** Net name to the pins on it, each written PART.pin. */
   nets: Record<string, string[]>
-  board?: { width: number; height: number }
+  /** The size in mm (30 x 20 unless given); kind "perfboard" or "stripboard" makes it a 2.54 mm hole grid that size. */
+  board?: { width?: number | undefined; height?: number | undefined; kind?: "pcb" | "perfboard" | "stripboard" | undefined }
   /** Schematic pages after the first ("Main"), in order, each with the names of its parts and instances; one in none is on Main. */
   pages?: { name: string; parts: string[] }[]
   /** Sub-sheets written beside the circuit as `<name>.sheet.tsx`, by name. */
@@ -95,8 +96,9 @@ export interface GeneratedInstance {
  * why the netlist cannot be written. Reads the parts library and the sheet files already there, writes nothing.
  */
 export async function generateCircuit(root: string, file: string, spec: NewCircuit): Promise<GeneratedCircuit> {
-  const board = spec.board ?? DEFAULT_BOARD
+  const board = { width: spec.board?.width ?? DEFAULT_BOARD.width, height: spec.board?.height ?? DEFAULT_BOARD.height, kind: spec.board?.kind }
   checkBoard(board)
+  if (board.kind !== undefined && board.kind !== "pcb" && (spec.pours ?? []).length > 0) throw new Error(`A ${board.kind} has no copper pours; leave pours out`)
   if (spec.parts.length === 0 && (spec.instances ?? []).length === 0) throw new Error("A circuit needs at least one part or instance")
   const { table, props } = await checkParts(root, spec.parts)
   const planned = await planSheets(root, file, spec, [...table.keys()])

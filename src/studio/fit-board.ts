@@ -10,8 +10,8 @@ export function fitBoardEdit(design: Design, margin = DEFAULT_FIT_MARGIN): { edi
   const fit = fitBoard(design, margin)
   if ("error" in fit) return { error: `The board was not fitted: ${fit.error}` }
   return {
-    edit: { kind: "setBoard", width: fit.width, height: fit.height, x: fit.centre.x, y: fit.centre.y },
-    summary: `Fit board: ${mm(fit.width)} × ${mm(fit.height)} mm`,
+    edit: { kind: "setBoard", width: fit.width, height: fit.height, x: fit.centre.x, y: fit.centre.y, ...(fit.holes ?? {}) },
+    summary: fit.holes ? `Fit board: ${fit.holes.columns} × ${fit.holes.rows} holes` : `Fit board: ${mm(fit.width)} × ${mm(fit.height)} mm`,
     width: fit.width,
     height: fit.height,
   }

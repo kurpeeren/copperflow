@@ -7,6 +7,7 @@ import { listModules, moduleInfo } from "../core/modules.js"
 import type { ProjectUpdate } from "../core/project.js"
 import { BOARD_DESCRIPTION, boardInput, boardTool, type BoardInput } from "./board-tool.js"
 import { importBoardTool } from "./board-import-tool.js"
+import { BOARD_KINDS, boardKindTool, type BoardKind } from "./proto-board.js"
 import { addVia, removeCopper, removeCopperInput, routeTrack, ROUTE_TRACK_DESCRIPTION, routeTrackInput, type CopperRemoval, type Ports, type RouteTrackRequest } from "./copper-tools.js"
 import { attachDatasheetTool } from "./datasheet-tools.js"
 import { filletTracks, filletTracksInput, straightenTracks } from "./fillet-tools.js"
@@ -100,11 +101,13 @@ export const fitInput = {
   units: z.enum(["mm", "inch"]).optional().describe("Overrides the drawing's own units"),
   origin: z.enum(["centre", "keep"]).optional().describe('"centre" (default) centres the outline on the origin; "keep" leaves it as drawn'),
   replace: z.boolean().optional().describe("Replace the board's holes and keepouts; without it a board that has some is refused"),
+  kind: z.enum(BOARD_KINDS).optional(),
 }
 
-export const FIT_DESCRIPTION = `${BOARD_DESCRIPTION} Or drawing: the board from a DXF or SVG drawing; the largest closed shape is the outline, circles in it mounting holes, other shapes keepouts; parts are not moved and the answer lists those now outside. A .kicad_pcb instead makes file a new circuit (outline, parts, nets, copper); the answer lists what did not come over.`
+export const FIT_DESCRIPTION = `${BOARD_DESCRIPTION} Or drawing: the board from a DXF or SVG drawing; the largest closed shape is the outline, circles in it mounting holes, other shapes keepouts; parts are not moved and the answer lists those now outside. A .kicad_pcb instead makes file a new circuit (outline, parts, nets, copper); the answer lists what did not come over. kind "perfboard" or "stripboard": a 2.54 mm hole grid, parts put on holes.`
 
 type FitInput = BoardInput & {
+  kind?: BoardKind | undefined
   drawing?: string | undefined
   dxfLayer?: string | undefined
   units?: "mm" | "inch" | undefined
@@ -112,8 +115,13 @@ type FitInput = BoardInput & {
   replace?: boolean | undefined
 }
 
-export function fitTool(ports: Ports, input: FitInput): Promise<string> {
-  const { drawing, dxfLayer, units, origin, replace, ...board } = input
+export async function fitTool(ports: Ports, input: FitInput): Promise<string> {
+  const { drawing, dxfLayer, units, origin, replace, kind, ...board } = input
+  if (kind !== undefined) {
+    const extra = Object.keys(input).filter((key) => key !== "file" && key !== "kind" && input[key as keyof FitInput] !== undefined)
+    if (extra.length > 0) throw new Error(`kind changes the board alone; leave out ${extra.join(", ")}. Nothing was written.`)
+    return boardKindTool(ports, { file: input.file, kind })
+  }
   if (drawing === undefined) {
     refuseWith(input, DRAWING_KEYS, "the board's shape (they are for a drawing)")
     return boardTool(ports, board)

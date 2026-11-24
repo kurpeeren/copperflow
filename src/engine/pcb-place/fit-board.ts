@@ -2,6 +2,8 @@ import { MIN_OUTLINE_POINTS } from "../board.js"
 import type { Design } from "../design.js"
 import type { Point } from "../model.js"
 import { boxOfPoints, isRectangle } from "./geometry.js"
+import { fitProto } from "../proto/fit.js"
+import { gridAround, gridOutline } from "../proto/grid.js"
 
 /** The margin round the parts when none is given, in mm. */
 export const DEFAULT_FIT_MARGIN = 2
@@ -9,7 +11,7 @@ export const DEFAULT_FIT_MARGIN = 2
 const STEP = 0.1
 
 /** A rectangular outline round the placed parts: its corners, size and centre; or why there is none. */
-export type FitBoard = { outline: Point[]; width: number; height: number; centre: Point } | { error: string }
+export type FitBoard = { outline: Point[]; width: number; height: number; centre: Point; holes?: { columns: number; rows: number } } | { error: string }
 
 const down = (v: number) => Math.floor(v / STEP + 1e-9) * STEP
 const up = (v: number) => Math.ceil(v / STEP - 1e-9) * STEP
@@ -24,6 +26,14 @@ const tidy = (v: number) => Math.round(v * 1e6) / 1e6
  * that is not a rectangle, and for a design without parts.
  */
 export function fitBoard(design: Design, margin = DEFAULT_FIT_MARGIN): FitBoard {
+  const proto = design.pcb.board?.proto
+  if (proto) {
+    // A perfboard or stripboard grows in whole holes with one free hole all round, its holes staying where they are.
+    const fit = fitProto(proto, design.pcb.parts.flatMap((p) => p.courtyard))
+    if ("error" in fit) return fit
+    const grid = gridAround(proto.kind, fit.columns, fit.rows, fit.centre, proto.strips)
+    return { outline: gridOutline(grid), width: tidy(fit.columns * proto.pitch), height: tidy(fit.rows * proto.pitch), centre: fit.centre, holes: { columns: fit.columns, rows: fit.rows } }
+  }
   const outline = design.pcb.board?.outline ?? []
   if (outline.length >= MIN_OUTLINE_POINTS && !isRectangle(outline)) return { error: "fitBoard only reshapes a rectangular board; this outline is not one" }
   if (!(margin >= 0)) return { error: `the margin must be 0 or more, got ${margin}` }

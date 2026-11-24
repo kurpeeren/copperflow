@@ -1,3 +1,4 @@
+import { BOARD_KINDS } from "./proto-board.js"
 import { z } from "zod"
 import { access } from "node:fs/promises"
 import { annotationsPathFor, createCircuitFile, generateCircuit, projectPath, readAnnotations, resolveInRoot, type GeneratedInstance, type NewCircuit } from "../core/index.js"
@@ -26,7 +27,7 @@ export const newCircuitInput = {
   file: z.string().describe("e.g. power.circuit.tsx"),
   parts: z.array(part).max(200).describe("May be empty when instances make them"),
   nets: nets.optional().describe('e.g. { "GND": ["R1.pin2", "U1.GND"] }; optional'),
-  board: z.object({ width: z.number(), height: z.number() }).optional().describe("mm; default 30 x 20"),
+  board: z.object({ width: z.number().optional(), height: z.number().optional(), kind: z.enum(BOARD_KINDS).optional() }).optional().describe('mm; default 30 x 20; kind "perfboard"/"stripboard": 2.54 mm holes'),
   pages: z
     .array(z.object({ name: z.string(), parts: z.array(z.string()) }))
     .max(50)
@@ -120,7 +121,7 @@ export async function newCircuit(
     ...(sheets.length > 0 ? { sheets } : {}),
   })
   const sheetFiles = (entry.also ?? []).map((change) => change.file)
-  const placed = place === false ? [] : await placeAfter(root, file, spec.board === undefined, engine)
+  const placed = place === false ? [] : await placeAfter(root, file, spec.board?.width === undefined, engine)
   return [
     `Change ${entry.id}: wrote ${[entry.file, ...sheetFiles].join(", ")}`,
     counted,
