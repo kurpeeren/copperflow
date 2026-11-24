@@ -41,8 +41,7 @@ read pixel positions by eye from a picture shown smaller than its file.
 - **Both sides.** Fit the back to the front by the holes they share: try the eight right-angle
   turns and mirrors, shift by the nearest-hole median, keep the one with the least error. A
   median under a pixel is a good fit. Holes seen on one side only are vias or a misreading.
-- **The underlay.** Where `import_graphic` takes `layer: "reference"` (not in 0.5.5), lay the
-  picture under the board: `import_graphic` `{ file, layer: "reference", source: "scan-bottom.png" }`,
+- **The underlay.** Lay the picture under the board: `import_graphic` `{ file, layer: "reference", source: "scan-bottom.png" }`,
   then align it by holes, each point `[pixel x, pixel y, board x, board y]`:
   `{ file, layer: "reference", reference: { id: "r1", mirror: true, points: [[213, 297, -60.31, 50.02], …] } }`
   (copper.md). Use four or more points spread to the board's corners: three points on a phone

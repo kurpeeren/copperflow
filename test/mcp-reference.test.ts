@@ -105,7 +105,7 @@ describe("import_graphic with layer reference", () => {
   test("the layout file holds it and no export carries it", async () => {
     await call({ source: "photos/top.png" })
     expect(await readFile(join(root, "main.circuit.layout.json"), "utf8")).toContain('"t":"reference"')
-    const exported = await client.callTool({ name: "export_fabrication", arguments: { file: FILE } })
+    const exported = await client.callTool({ name: "export", arguments: { file: FILE, as: "fabrication" } })
     expect(text(exported)).not.toMatch(/reference/i)
   })
 
