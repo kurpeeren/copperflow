@@ -159,6 +159,10 @@ viewer turns (the board as made, in the `look` asked for, and the parts as simpl
 real models). Its answer names the parts
 whose height is typical or assumed; pass that on when the person will fit an enclosure around it.
 
+`export` `{ file, as: "easyeda", out? }` writes `<name>-easyeda.json`: the board as an EasyEDA Standard PCB
+document the person opens and edits in EasyEDA Standard (pads with nets, tracks, vias, holes, texts, the pours as
+copper areas to rebuild there with Shift+B). An unfinished design is written too.
+
 `export` `{ file, as: "html", out?, look? }` writes `<name>.html`: the whole design as one web page (every
 schematic page, the board, 3D, the BOM, and the fabrication zip, GLB, STEP and BOM CSV inside as
 downloads). Use it to hand the design to a person as one file; it opens offline.

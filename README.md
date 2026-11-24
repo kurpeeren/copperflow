@@ -301,6 +301,11 @@ connectors, as a table, CSV or a C header (`--format c`); `copperflow package` w
 BOM for JLCPCB into `<name>-fab/` and a zip, with `<name>.step` for a mechanical CAD program and a
 picture of each side of the board. A circuit with errors is refused.
 
+**EasyEDA.** `copperflow easyeda <file>` (MCP `export` `as: "easyeda"`) writes the board as an EasyEDA Standard
+PCB document, `<name>-easyeda.json`, which EasyEDA Standard opens as an editable PCB: outline, parts with their pads
+and nets, tracks, vias, holes, texts and the pours as copper areas to rebuild there. `docs/easyeda-export.md` lists
+what is written and what is left out.
+
 **Pictures and 3D.** `copperflow render <file> --view board` draws the bare board as made: every
 fabrication layer is drawn by itself, from the same data the Gerbers are written from, and they are
 put together as mask, finish, print and holes, in the maker's usual colours (`--mask`, `--finish`,
@@ -355,7 +360,7 @@ new forms.
 | `simulate` | The DC operating point of a circuit or a sheet: set nets to volts, close switches, energise relay coils; with a sheet and no values it runs the sheet's cases |
 | `make_sheet` / `describe_sheet` | Moves parts into a sub-sheet with ports, and writes a sheet's card: what it does, its ports and its cases |
 | `list_modules` / `use_module` / `save_module` | The shelf of modules and the libraries (`name` reads one), bring one into the project, save a described sheet |
-| `export` | Writes files from the design: `as: "fabrication"` the fabrication files, the STEP model and the board's pictures (refused when the circuit has errors); `"step"` or `"glb"` one 3D model file, STEP for mechanical CAD or GLB for a 3D viewer (an unfinished board too); `"html"` one web page (schematic, board, 3D, BOM, with the fabrication and model files inside) to hand to a person, opening offline; `"package"` a folder with BOM, datasheets, part status and pin maps |
+| `export` | Writes files from the design: `as: "fabrication"` the fabrication files, the STEP model and the board's pictures (refused when the circuit has errors); `"step"` or `"glb"` one 3D model file, STEP for mechanical CAD or GLB for a 3D viewer (an unfinished board too); `"html"` one web page (schematic, board, 3D, BOM, with the fabrication and model files inside) to hand to a person, opening offline; `"package"` a folder with BOM, datasheets, part status and pin maps; `"easyeda"` the board as an EasyEDA Standard PCB document to open and edit there |
 | `render` | A PNG of the board or of one schematic page, drawn by the Studio's own code; `view: "board"` is the bare board as made: mask, finish, print and holes drawn from the fabrication layers, either side, in the maker's usual colours; `view: "3d"` is that board with its parts as simple shapes, at an angle; `change` or `since` draws what a change did; `parts` zooms to some parts (needs the optional package `@napi-rs/canvas`) |
 | `list_parts` | Shows the parts library; with `id` a part's data, its pads and checklist |
 | `create_part` | Adds a part from a datasheet: pins, footprint string or footprint file, MPN, suppliers |
@@ -416,6 +421,9 @@ copperflow export <file> [--out dir]        write the fabrication files for JLCP
                                             beside the circuit (or in the project folder --out), with <name>.step
 copperflow step <file> [--out file.step]   write the board and its parts (in colour, as the 3D view draws
                                             them) as a STEP file for CAD, <name>.step beside the circuit
+copperflow easyeda <file> [--out file.json]
+                                            write the board as an EasyEDA Standard PCB document to open and
+                                            edit there, <name>-easyeda.json beside the circuit
 copperflow glb <file> [--out file.glb] [--mask black] [--finish hasl] [--silk black]
                                             write the board as made and its parts (as simple shapes) as a GLB
                                             file a 3D viewer turns, <name>.glb beside the circuit
