@@ -3,7 +3,7 @@
 Read before you redraw a board that exists from a picture of it: a scan or photo of either side,
 with or without its parts. The result is a circuit file with the parts where the original has
 them, the nets read from its copper, and a list in PROJECT.md of what could not be read.
-A KiCad file or a `.dxf` of the board is faster than any picture: `import_board` (copper.md).
+A KiCad file or a `.dxf` of the board is faster than any picture: `fit_board` `{ file, drawing }` (copper.md).
 (Without this skill installed, `guide { "topic": "redraw-from-image" }` returns this page.)
 
 Do the measuring in one small script (Python with Pillow, NumPy and SciPy, in your scratch
@@ -55,7 +55,7 @@ read pixel positions by eye from a picture shown smaller than its file.
 The board's size and its mounting holes go in the same `new_circuit` call as the parts (step 4):
 `board: { width: 129, height: 109 }`, `holes: [{ x: -60.31, y: -50.31, diameter: 3.2 }, …]`, in mm.
 A shape that is not a rectangle: `fit_board` `{ file, outline: [{ x, y }, …] }`. A hole added
-later: `add_hole` `{ file, x, y, diameter }`. Mounting holes only: a part's own holes come with
+later: `edit_circuit` `{ file, edits: [{ add_hole: { x, y, diameter } }] }`. Mounting holes only: a part's own holes come with
 its footprint.
 
 ## 3. Identify the parts and their footprints
@@ -76,15 +76,15 @@ person's notes; a part whose value or polarity you could not read is a question,
 
 ## 4. Place each part at its measured position
 
-`part_info` `{ id }` lists each pad's place from the part's origin (pin 1 of a terminal block
+`list_parts` `{ id }` lists each pad's place from the part's origin (pin 1 of a terminal block
 is not at its origin). From the board positions of two of a part's holes, its `pcbX`, `pcbY`
 and `pcbRotation` (degrees, counter-clockwise) follow; compute them in the script. Write all
 parts in one call:
 `new_circuit` `{ file, board, holes, parts: [{ name: "K1", part: "HLS-14F2L-DC24V-C", props: { pcbX: -51.25, pcbY: -5.1, pcbRotation: 0 } }, { name: "D1", kind: "diode", footprint: "axial9.5x14_d5.3", props: { … } }], place: false }`.
 `place: false` keeps your positions; a redrawn board needs no `autoplace`. A part moved later:
-`set_props` `{ file, part, props: { pcbX, pcbY, pcbRotation } }`.
+`edit_circuit` `{ file, edits: [{ set_props: { part, props: { pcbX, pcbY, pcbRotation } } }] }`.
 
-Check every pad, not the look: in the script, put each pad of the circuit (from `part_info`,
+Check every pad, not the look: in the script, put each pad of the circuit (from `list_parts` `{ id }`,
 turned and moved) on the picture and find its nearest hole. Each part should sit within about
 0.3 mm; one off by a whole pitch (a terminal block shifted one pin) is the usual miss. Draw the
 pin names on the picture and look at it zoomed in. A part soldered on the bottom side takes
@@ -119,8 +119,8 @@ Ask which the person wants. A board to be made again with the same parts and net
 pours, then `autoroute` (steps 10–11 of the skill); wider tracks for the currents the original
 carried go first in `set_rules` (design-rules.md). A copy of the original copper: per track,
 `route_track` `{ file, net, layer: "bottom", points: [{ x, y }, …], width }` along its centre
-line, with the width measured from the scan; `add_via` where it changes side; a copper area is
-`add_pour` `{ file, net, layer, outline: [{ x, y }, …] }`.
+line, with the width measured from the scan; `route_track` `{ file, at: { x, y } }` for a via where it changes side; a copper area is an
+`edit_circuit` `add_pour` step `{ net, layer, outline: [{ x, y }, …] }`.
 
 ## 7. Check against the picture
 
@@ -130,7 +130,7 @@ line, with the width measured from the scan; `add_via` where it changes side; a 
   board from below, as a scan of the bottom shows it; `render` `{ file }` the top with its parts;
   with the underlay, `render` `{ file, reference: true }` puts it under the board. Compare part
   by part: places, turns, the pad of pin 1, polarity marks.
-- `board_summary` `{ file }`: each part's place and turn, against your list.
+- `circuit_summary` `{ file, view: "board" }`: each part's place and turn, against your list.
 - Send the person the scan with every pin's name drawn on it: it is the quickest way for them to
   check your reading.
 
