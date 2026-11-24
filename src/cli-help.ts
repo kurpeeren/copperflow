@@ -50,6 +50,9 @@ Usage:
                                               beside the circuit (or in the project folder --out), with <name>.step
   copperflow step <file> [--out file.step]   write the board and its parts (in colour, as the 3D view draws
                                               them) as a STEP file for CAD, <name>.step beside the circuit
+  copperflow easyeda <file> [--out file.json]
+                                              write the board as an EasyEDA Standard PCB document to open and
+                                              edit there, <name>-easyeda.json beside the circuit
   copperflow glb <file> [--out file.glb] [--mask black] [--finish hasl] [--silk black]
                                               write the board as made and its parts (as simple shapes) as a GLB
                                               file a 3D viewer turns, <name>.glb beside the circuit

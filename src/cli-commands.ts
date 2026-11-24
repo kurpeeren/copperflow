@@ -52,6 +52,7 @@ import { simulateCommand, spiceCommand } from "./cli-simulate.js"
 import { exportGlb, formatGlbExport } from "./core/model-export.js"
 import { exportHtml, formatHtmlExport } from "./core/html-export.js"
 import { exportStep, formatStepExport } from "./core/step-export.js"
+import { exportEasyeda, formatEasyedaExport } from "./core/easyeda-export.js"
 import { packagesText } from "./core/packages.js"
 
 export interface CliIO {
@@ -179,6 +180,11 @@ export async function runCli(args: string[], cwd: string, io: CliIO, options: Cl
       case "step": {
         const [out, args] = takeOption(rest, "--out")
         io.out(formatStepExport(await exportStep(root, required(args[0], "file"), { ...designOptions(options), ...(out ? { out } : {}), ...(options.renderer ? { shapes: options.renderer } : {}) })))
+        return 0
+      }
+      case "easyeda": {
+        const [out, args] = takeOption(rest, "--out")
+        io.out(formatEasyedaExport(await exportEasyeda(root, required(args[0], "file"), { ...designOptions(options), ...(out ? { out } : {}) })))
         return 0
       }
       case "glb": {
