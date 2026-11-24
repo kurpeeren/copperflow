@@ -54,7 +54,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "@babel/types": "8.1.0",
+    "@babel/types": "8.1.2",
     "@tracespace/parser": "5.0.0-alpha.0",
     "@types/node": "22.20.5",
     "@types/react": "19.3.0",
