@@ -1,4 +1,5 @@
 import type { LayoutRecord } from "../core/layout-file.js"
+import type { ProtoRecord } from "../core/layout-proto.js"
 import { boundsOf, findSpot, type Bounds } from "./autoplace.js"
 import { usableOutline } from "./board.js"
 import type { PcbTrack, PcbVia } from "./copper.js"
@@ -9,6 +10,7 @@ import type { Board, BoardGraphic, Circuit, Component, Diagnostic, Hole, Point, 
 import { naturalCompare } from "./order.js"
 import type { PourFill } from "./pour/fill.js"
 import { resolveWithPours, type PourFiller } from "./pour/resolve.js"
+import { protoIslands } from "./proto/joins.js"
 import { pourMadeConnections, ratsnest } from "./ratsnest.js"
 
 export interface WorldPad extends Pad {
@@ -78,6 +80,8 @@ export interface PcbLayout {
   silkTexts?: SilkText[]
   /** The drawings from SVG or DXF files, placed; absent when there are none. */
   graphics?: BoardGraphic[]
+  /** A perfboard's or stripboard's solder runs, links and cuts from the layout file, in file order; absent when there are none. */
+  proto?: ProtoRecord[]
 }
 
 export type { PcbTrack, PcbVia, PourFill }
@@ -245,6 +249,7 @@ export function layoutPcb(
   footprintOf: FootprintOf,
   records: readonly LayoutRecord[] = [],
   fill?: PourFiller,
+  proto: readonly ProtoRecord[] = [],
 ): { layout: PcbLayout; diagnostics: Diagnostic[] } {
   const { resolved, diagnostics, missing } = resolveFootprints(circuit, footprintOf)
   const parts = withCopies(circuit, placeAll(circuit, resolved, pinNets(circuit)).parts)
@@ -253,17 +258,21 @@ export function layoutPcb(
   }
   const { copper, pours, bare } = resolveWithPours(parts, records, circuit.nets, circuit.board?.layers ?? 2, fill, circuit.board?.graphics)
   const pourMade = pours.length === 0 ? [] : pourMadeConnections(parts, bare.islands, copper.islands)
+  // On a perfboard or stripboard the holes, strips, solder and links join the pins, not copper drawn as tracks.
+  const grid = circuit.board?.proto
+  const islands = grid ? protoIslands(grid, parts, proto) : copper.islands
   const layout: PcbLayout = {
     ...(circuit.board ? { board: circuit.board } : {}),
     parts,
     tracks: copper.tracks,
     vias: copper.vias,
-    ratsnest: ratsnest(parts, copper.islands),
+    ratsnest: ratsnest(parts, islands),
     ...(pourMade.length > 0 ? { pourMade } : {}),
     pours,
     holes: circuit.board?.holes ?? [],
     ...(circuit.board?.silkTexts ? { silkTexts: circuit.board.silkTexts } : {}),
     ...(circuit.board?.graphics ? { graphics: circuit.board.graphics } : {}),
+    ...(proto.length > 0 ? { proto: [...proto] } : {}),
   }
   return { layout, diagnostics: [...diagnostics, ...copper.diagnostics] }
 }

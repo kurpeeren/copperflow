@@ -3,6 +3,7 @@
  * copper a person, the agent or the router drew, and the reference images drawn under the board (layout-references.ts).
  * Pure text handling: no file system here (layout-edits.ts writes it).
  */
+import { checkProto, isProtoKind, serializeProto, type ProtoRecord } from "./layout-proto.js"
 import { checkReference, serializeReferences, type ReferenceRecord } from "./layout-references.js"
 
 export interface LayoutPoint {
@@ -156,6 +157,8 @@ export interface LayoutCounters {
 export interface LayoutDoc {
   next: LayoutCounters
   records: LayoutRecord[]
+  /** A perfboard's or stripboard's solder runs, links and cuts (layout-proto.ts), after the copper; absent when there are none. */
+  proto?: ProtoRecord[]
   /** The reference images, written after the copper; absent when there are none. */
   references?: ReferenceRecord[]
 }
@@ -173,7 +176,7 @@ function checkMeta(raw: Record<string, unknown>): LayoutCounters | string {
   return { track: next.track, via: next.via }
 }
 
-type ParsedLine = { record: LayoutRecord } | { meta: LayoutCounters } | { reference: ReferenceRecord } | { error: string }
+type ParsedLine = { record: LayoutRecord } | { meta: LayoutCounters } | { reference: ReferenceRecord } | { proto: ProtoRecord } | { error: string }
 
 function parseLine(line: string, number: number): ParsedLine {
   let raw: unknown
@@ -190,6 +193,11 @@ function parseLine(line: string, number: number): ParsedLine {
     const reference = checkReference(raw)
     if ("record" in reference) return { reference: reference.record }
     return { error: `${reference.id === undefined ? `line ${number}` : `line ${number} (${reference.id})`}: ${reference.problems.join("; ")}` }
+  }
+  if (isObject(raw) && isProtoKind(raw.t)) {
+    const proto = checkProto(raw)
+    if ("record" in proto) return { proto: proto.record }
+    return { error: `${proto.id === undefined ? `line ${number}` : `line ${number} (${proto.id})`}: ${proto.problems.join("; ")}` }
   }
   const checked = checkRecord(raw)
   if ("record" in checked) return checked
@@ -212,6 +220,7 @@ function countersFor(records: readonly LayoutRecord[], meta: LayoutCounters | un
 export function parseLayout(text: string): LayoutDoc & { errors: string[] } {
   const records: LayoutRecord[] = []
   const references: ReferenceRecord[] = []
+  const proto: ProtoRecord[] = []
   const errors: string[] = []
   const seen = new Set<string>()
   let meta: LayoutCounters | undefined
@@ -223,16 +232,17 @@ export function parseLayout(text: string): LayoutDoc & { errors: string[] } {
       if (seen.size > 0 || meta !== undefined || errors.length > 0) errors.push(`line ${index + 1}: the meta line must be the first line`)
       else meta = parsed.meta
     } else {
-      const record = "reference" in parsed ? parsed.reference : parsed.record
+      const record = "reference" in parsed ? parsed.reference : "proto" in parsed ? parsed.proto : parsed.record
       if (seen.has(record.id)) errors.push(`line ${index + 1}: ${record.id} is used twice`)
       else {
         seen.add(record.id)
         if (record.t === "reference") references.push(record)
+        else if (record.t === "solder" || record.t === "link" || record.t === "cut") proto.push(record)
         else records.push(record)
       }
     }
   })
-  return { next: countersFor(records, meta), records, ...(references.length > 0 ? { references } : {}), errors }
+  return { next: countersFor(records, meta), records, ...(proto.length > 0 ? { proto } : {}), ...(references.length > 0 ? { references } : {}), errors }
 }
 
 /** Reads a layout file that must be valid throughout; the error names the file and every problem. */
@@ -257,7 +267,7 @@ export function serializeRecords(records: readonly LayoutRecord[]): string {
 export function serializeLayout(doc: LayoutDoc): string {
   const used = doc.next.track > 1 || doc.next.via > 1
   const meta = used ? `${JSON.stringify({ t: "meta", next: { track: doc.next.track, via: doc.next.via } })}\n` : ""
-  return meta + serializeRecords(doc.records) + serializeReferences(doc.references ?? [])
+  return meta + serializeRecords(doc.records) + serializeProto(doc.proto ?? []) + serializeReferences(doc.references ?? [])
 }
 
 /** The id the next record of that kind gets: t0001, t0002, … */

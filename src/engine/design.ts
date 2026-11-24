@@ -1,4 +1,5 @@
 import { layoutPathFor, parseLayout, type LayoutRecord } from "../core/layout-file.js"
+import type { ProtoRecord } from "../core/layout-proto.js"
 import type { ReferenceRecord } from "../core/layout-references.js"
 import { isCopperNote } from "./checks/copper-notes.js"
 import { checkDesign } from "./checks/index.js"
@@ -56,12 +57,12 @@ const pinPads = (footprint: FootprintResult): number | undefined =>
   "error" in footprint ? undefined : new Set(footprint.pads.map((pad) => pad.number)).size
 
 /** The copper in the layout file beside `main`, when there is one; each bad line is an error and is left out. */
-function readCopper(files: Files, main: string): { records: LayoutRecord[]; references?: ReferenceRecord[]; diagnostics: Diagnostic[] } {
+function readCopper(files: Files, main: string): { records: LayoutRecord[]; proto?: ProtoRecord[]; references?: ReferenceRecord[]; diagnostics: Diagnostic[] } {
   const file = main.endsWith(".circuit.tsx") ? layoutPathFor(main) : undefined
   const text = file === undefined ? undefined : files[file]
   if (text === undefined) return { records: [], diagnostics: [] }
-  const { records, references, errors } = parseLayout(text)
-  return { records, ...(references ? { references } : {}), diagnostics: errors.map((error) => diagnostic("layout-file", "error", `${file}: ${error}`, [])) }
+  const { records, proto, references, errors } = parseLayout(text)
+  return { records, ...(proto ? { proto } : {}), ...(references ? { references } : {}), diagnostics: errors.map((error) => diagnostic("layout-file", "error", `${file}: ${error}`, [])) }
 }
 
 /** Fills the board's pours from the placed pads, the resolved copper, the board and the rules; none without pours. */
@@ -79,7 +80,7 @@ export function buildDesign(files: Files, main: string): Design {
   const copper = readCopper(files, main)
   const loaded = loadRules(files)
   const classes = netClasses(loaded.rules, circuit.nets)
-  const pcb = layoutPcb(circuit, (component) => footprintOf(component.footprint as string), copper.records, pourFiller(circuit.board, loaded.rules, classes.byNet))
+  const pcb = layoutPcb(circuit, (component) => footprintOf(component.footprint as string), copper.records, pourFiller(circuit.board, loaded.rules, classes.byNet), copper.proto)
   const layers = layerCountWarnings(loaded.rules, circuit.board)
   const notes = pcb.diagnostics.filter(isCopperNote)
   const placement = pcb.diagnostics.filter((d) => !isCopperNote(d))
