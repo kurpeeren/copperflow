@@ -14,6 +14,8 @@ Gerbers, BOM and a 3D view, on your own computer.
 [Connect your agent](https://copperflow.kurpeeren.com/connect.html) ·
 `npm install -g copperflow`
 
+[![kurpeeren/copperflow MCP server](https://glama.ai/mcp/servers/kurpeeren/copperflow/badges/score.svg)](https://glama.ai/mcp/servers/kurpeeren/copperflow)
+
 <table>
   <tr>
     <td width="50%"><img src="docs/images/board-turn.gif" alt="A USB-C to 3.3 V power board turning once in copperflow's 3D view: a green board with a USB-C socket, a regulator, capacitors, an LED and two pin headers."></td>
